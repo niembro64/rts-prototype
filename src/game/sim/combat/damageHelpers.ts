@@ -83,7 +83,11 @@ export function buildUnitDeathEvent(
     x: target?.body?.physicsBody.vx ?? 0,
     y: target?.body?.physicsBody.vy ?? 0,
   };
-  const radius = target?.unit?.unitRadiusCollider.shot ?? 15;
+  const collider = target?.unit?.unitRadiusCollider;
+  const visualRadius = collider?.scale ?? collider?.shot ?? 15;
+  const pushRadius = collider?.push ?? collider?.shot ?? visualRadius;
+  const radius = collider?.shot ?? visualRadius;
+  const baseZ = target ? target.transform.z - pushRadius : undefined;
   const unitType = target?.unit?.unitType;
   const rotation = target?.transform.rotation ?? 0;
   // Per-turret yaw + pitch at death — Debris3D rotates each barrel
@@ -105,6 +109,9 @@ export function buildUnitDeathEvent(
         projectileVel: ctx.attackerVel,
         attackMagnitude: ctx.attackMagnitude,
         radius,
+        visualRadius,
+        pushRadius,
+        baseZ,
         color: playerColor,
         unitType,
         rotation,
@@ -116,6 +123,9 @@ export function buildUnitDeathEvent(
         projectileVel: { x: 0, y: 0 },
         attackMagnitude: 25,
         radius,
+        visualRadius,
+        pushRadius,
+        baseZ,
         color: playerColor,
         unitType,
         rotation,

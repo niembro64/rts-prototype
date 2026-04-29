@@ -23,7 +23,19 @@ export type SimDeathContext = {
   hitDir: Vec2;
   projectileVel: Vec2;
   attackMagnitude: number;
+  /** Combat/death-effect radius, usually the shot collider radius. */
   radius: number;
+  /** Render body radius used for material debris templates. Kept
+   *  separate from `radius` because shot, visual, and push colliders
+   *  intentionally differ for several units. */
+  visualRadius?: number;
+  /** Physics push radius used to recover the unit's rendered base
+   *  height from `transform.z`. */
+  pushRadius?: number;
+  /** Exact rendered base altitude at death (`transform.z - pushRadius`).
+   *  Debris pieces are local-to-body/base, so using this avoids
+   *  guessing the third axis from the shot collider. */
+  baseZ?: number;
   color: number;
   unitType?: string;
   rotation?: number;

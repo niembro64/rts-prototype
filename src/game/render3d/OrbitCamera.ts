@@ -5,6 +5,8 @@
 //   - Alt + middle drag   → orbit (yaw + pitch)
 //   - Middle drag         → pan (slide target on the world ground)
 //   - Shift + middle drag → pan (alias)
+//   - Touch 1 finger      → pan
+//   - Touch 2 fingers     → centroid pan + pinch zoom + twist rotate
 //
 // Architecture: every input that changes the camera (wheel, pan drag,
 // orbit drag) writes into a single TO-STATE — `(toDistance,
@@ -26,6 +28,9 @@
 // regardless of terrain elevation under it.
 
 import * as THREE from 'three';
+
+const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
+const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
 
 export type OrbitCameraOptions = {
   /** Distance clamps act as safety bounds — the wheel-zoom rail
@@ -157,6 +162,12 @@ export class OrbitCamera {
   private dragMode: 'none' | 'orbit' | 'pan' = 'none';
   private lastMouseX = 0;
   private lastMouseY = 0;
+  private touchMode: 'none' | 'pan' | 'pinch' = 'none';
+  private touchLastCenterX = 0;
+  private touchLastCenterY = 0;
+  private touchLastDistance = 0;
+  private touchLastAngle = 0;
+  private previousTouchAction = '';
 
   /** 3D anchor point captured at drag-start (pan) — the actual
    *  rendered ground point the cursor was over when the user pressed
@@ -203,6 +214,9 @@ export class OrbitCamera {
   private onMouseDown: (e: MouseEvent) => void;
   private onMouseMove: (e: MouseEvent) => void;
   private onMouseUp: (e: MouseEvent) => void;
+  private onTouchStart: (e: TouchEvent) => void;
+  private onTouchMove: (e: TouchEvent) => void;
+  private onTouchEnd: (e: TouchEvent) => void;
   private onContextMenu: (e: MouseEvent) => void;
 
   constructor(
@@ -234,6 +248,8 @@ export class OrbitCamera {
     this.toTargetX = this.target.x;
     this.toTargetY = this.target.y;
     this.toTargetZ = this.target.z;
+    this.previousTouchAction = canvas.style.touchAction;
+    canvas.style.touchAction = 'none';
 
     this.onWheel = (e) => {
       e.preventDefault();
@@ -273,59 +289,7 @@ export class OrbitCamera {
       // the orbit math itself — the orbit state stays free, and the
       // visible camera floats above terrain as needed.
       const f = this.zoomStepFraction;
-      const wantFactor = e.deltaY > 0 ? 1 / (1 - f) : 1 - f;
-      const p0 = this._cursorWorldPoint(e.clientX, e.clientY);
-
-      const wantedDistance = this.toDistance * wantFactor;
-      const newToDistance = Math.min(
-        this.maxDistance,
-        Math.max(this.minDistance, wantedDistance),
-      );
-      if (newToDistance === this.toDistance) return; // already at the rail
-      const actualFactor = newToDistance / this.toDistance;
-
-      this.toDistance = newToDistance;
-      if (p0) {
-        const k = 1 - actualFactor;
-        // Blend ALL THREE target axes toward p0 — Y matters because
-        // the cursor pin invariant is c'_new = α·c + (1-α)·p0 in 3D,
-        // not just XZ. Skipping Y leaves newCamera.y at α·c.y +
-        // (1-α)·target.y instead of α·c.y + (1-α)·p0.y, and the
-        // cursor pin drifts vertically by (1-α)·(p0.y - target.y)
-        // per scroll whenever the user zooms over terrain at a
-        // different height than target.y.
-        this.toTargetX = actualFactor * this.toTargetX + k * p0.x;
-        this.toTargetY = actualFactor * this.toTargetY + k * p0.y;
-        this.toTargetZ = actualFactor * this.toTargetZ + k * p0.z;
-        // Bound the Y blend's accumulated drift. Without this clamp,
-        // zoom-OUT (α > 1) pushes target.y AWAY from anchor.y by a
-        // factor of ~(1+f) per click, so a few cycles of "zoom in
-        // on a mountain, then zoom out over the lake" can leave
-        // toTargetY hundreds of wu above any real surface. At that
-        // point `cameraY = toTargetY + d·cosP` gets driven into the
-        // altitudeMax/Min clamp at small `d`, which inverts the
-        // user's zoom direction — that's the "stuck at altitude 481
-        // after panning around" symptom. The clamp re-pins target.y
-        // to actual ground each step; cursor-pin still works for
-        // normal slopes within ±band wu.
-        if (this.getTerrainHeight && this.targetTerrainBand > 0) {
-          const ground = this.getTerrainHeight(this.toTargetX, this.toTargetZ);
-          const lo = ground - this.targetTerrainBand;
-          const hi = ground + this.targetTerrainBand;
-          if (this.toTargetY < lo) this.toTargetY = lo;
-          else if (this.toTargetY > hi) this.toTargetY = hi;
-        }
-      }
-
-      // Snap mode applies inputs directly to the rendered state.
-      // EMA mode leaves the rendered state and lets tick() ease.
-      if (this.smoothTauSec === 0) {
-        this.distance = this.toDistance;
-        this.target.x = this.toTargetX;
-        this.target.y = this.toTargetY;
-        this.target.z = this.toTargetZ;
-        this.apply();
-      }
+      this.zoomByFactorAt(e.clientX, e.clientY, e.deltaY > 0 ? 1 / (1 - f) : 1 - f);
     };
 
     this.onMouseDown = (e) => {
@@ -336,23 +300,7 @@ export class OrbitCamera {
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
       if (this.dragMode === 'pan') {
-        // Capture the cursor's 3D ground point + camera-to-anchor
-        // distance. The distance is what worldPerPixel keys off
-        // during the drag — bounded at every camera pitch (no
-        // blowup at near-horizontal views), and accurate to the
-        // depth the user actually grabbed.
-        const hit = this._cursorWorldPoint(e.clientX, e.clientY);
-        if (hit) {
-          this.panAnchor.copy(hit);
-          const dxh = this.camera.position.x - hit.x;
-          const dyh = this.camera.position.y - hit.y;
-          const dzh = this.camera.position.z - hit.z;
-          this.panAnchorDistance = Math.hypot(dxh, dyh, dzh);
-          this.panAnchorValid = true;
-        } else {
-          this.panAnchorValid = false;
-          this.panAnchorDistance = this.distance;
-        }
+        this.capturePanAnchor(e.clientX, e.clientY);
       } else if (this.dragMode === 'orbit') {
         // Capture pivot + start camera position + start yaw/pitch
         // for a RIGID tumble around the cursor's 3D ground point.
@@ -493,31 +441,7 @@ export class OrbitCamera {
           this.apply();
         }
       } else if (this.dragMode === 'pan') {
-        // Move-the-camera pan with bounded magnitude: world-per-pixel
-        // is keyed to the camera-to-anchor distance captured at
-        // drag-start (not the orbit target distance, not the
-        // current rendered distance). That gives the right pan rate
-        // for the depth the user grabbed, but stays bounded at
-        // every camera pitch — no exact-3D plane-raycast blowup
-        // when the camera is near horizontal. Drag direction is
-        // RTS / 2D-camera convention: cursor drag direction =
-        // camera drag direction in world.
-        const refDist = this.panAnchorValid ? this.panAnchorDistance : this.distance;
-        const vFovRad = (this.camera.fov * Math.PI) / 180;
-        const worldPerPixel =
-          (2 * Math.tan(vFovRad / 2) * refDist) / this.canvas.clientHeight;
-        const scale = worldPerPixel * this.panMultiplier;
-        const rx = Math.cos(this.yaw);
-        const rz = Math.sin(this.yaw);
-        const fx = Math.sin(this.yaw);
-        const fz = -Math.cos(this.yaw);
-        this.toTargetX -= dx * scale * rx - dy * scale * fx;
-        this.toTargetZ -= dx * scale * rz - dy * scale * fz;
-        if (this.smoothTauSec === 0) {
-          this.target.x = this.toTargetX;
-          this.target.z = this.toTargetZ;
-          this.apply();
-        }
+        this.panByScreenDelta(dx, dy);
       }
     };
 
@@ -525,6 +449,67 @@ export class OrbitCamera {
       if (e.button !== 1) return;
       this.dragMode = 'none';
       this.orbitPivotActive = false;
+    };
+
+    this.onTouchStart = (e) => {
+      if (e.touches.length === 0) return;
+      e.preventDefault();
+      this.dragMode = 'none';
+      this.orbitPivotActive = false;
+      this.beginTouchGesture(e);
+    };
+
+    this.onTouchMove = (e) => {
+      if (this.touchMode === 'none' || e.touches.length === 0) return;
+      e.preventDefault();
+      const nextMode = e.touches.length >= 2 ? 'pinch' : 'pan';
+      if (nextMode !== this.touchMode) {
+        this.beginTouchGesture(e);
+        return;
+      }
+
+      const center = this.touchCenter(e);
+      const dx = center.x - this.touchLastCenterX;
+      const dy = center.y - this.touchLastCenterY;
+      this.panByScreenDelta(dx, dy);
+
+      if (nextMode === 'pinch') {
+        const dist = this.touchDistance(e);
+        const angle = this.touchAngle(e);
+        if (dist > 1 && this.touchLastDistance > 1) {
+          // Fingers apart means zoom in. Clamp the per-event factor
+          // so browser event bursts cannot create a jarring jump.
+          const factor = Math.min(1.25, Math.max(0.8, this.touchLastDistance / dist));
+          this.zoomByFactorAt(center.x, center.y, factor);
+        }
+        if (Number.isFinite(angle) && Number.isFinite(this.touchLastAngle)) {
+          const twist = OrbitCamera.normalizeAngleDelta(angle - this.touchLastAngle);
+          if (Math.abs(twist) >= TOUCH_ROTATE_DEADZONE_RAD) {
+            const clampedTwist = Math.max(
+              -TOUCH_ROTATE_MAX_DELTA_RAD,
+              Math.min(TOUCH_ROTATE_MAX_DELTA_RAD, twist),
+            );
+            // Screen-space clockwise twist should rotate the map clockwise,
+            // which is camera-yaw negative in this orbit convention.
+            this.rotateYawAroundScreenPoint(center.x, center.y, -clampedTwist);
+          }
+        }
+        this.touchLastDistance = dist;
+        this.touchLastAngle = angle;
+      }
+
+      this.touchLastCenterX = center.x;
+      this.touchLastCenterY = center.y;
+    };
+
+    this.onTouchEnd = (e) => {
+      e.preventDefault();
+      if (e.touches.length === 0) {
+        this.touchMode = 'none';
+        this.panAnchorValid = false;
+        return;
+      }
+      this.beginTouchGesture(e);
     };
 
     this.onContextMenu = (e) => {
@@ -535,9 +520,209 @@ export class OrbitCamera {
     canvas.addEventListener('mousedown', this.onMouseDown);
     window.addEventListener('mousemove', this.onMouseMove);
     window.addEventListener('mouseup', this.onMouseUp);
+    canvas.addEventListener('touchstart', this.onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', this.onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', this.onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', this.onTouchEnd, { passive: false });
     canvas.addEventListener('contextmenu', this.onContextMenu);
 
     this.apply();
+  }
+
+  private applyDestinationIfSnap(): void {
+    // Snap mode applies inputs directly to the rendered state.
+    // EMA mode leaves the rendered state and lets tick() ease.
+    if (this.smoothTauSec !== 0) return;
+    this.distance = this.toDistance;
+    this.target.x = this.toTargetX;
+    this.target.y = this.toTargetY;
+    this.target.z = this.toTargetZ;
+    this.apply();
+  }
+
+  private zoomByFactorAt(clientX: number, clientY: number, wantFactor: number): void {
+    if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
+    const p0 = this._cursorWorldPoint(clientX, clientY);
+    const wantedDistance = this.toDistance * wantFactor;
+    const newToDistance = Math.min(
+      this.maxDistance,
+      Math.max(this.minDistance, wantedDistance),
+    );
+    if (newToDistance === this.toDistance) return; // already at the rail
+    const actualFactor = newToDistance / this.toDistance;
+
+    this.toDistance = newToDistance;
+    if (p0) {
+      const k = 1 - actualFactor;
+      // Blend ALL THREE target axes toward p0 — Y matters because
+      // the cursor pin invariant is c'_new = α·c + (1-α)·p0 in 3D,
+      // not just XZ. Skipping Y leaves newCamera.y at α·c.y +
+      // (1-α)·target.y instead of α·c.y + (1-α)·p0.y, and the
+      // cursor pin drifts vertically by (1-α)·(p0.y - target.y)
+      // per scroll / pinch whenever the user zooms over terrain at
+      // a different height than target.y.
+      this.toTargetX = actualFactor * this.toTargetX + k * p0.x;
+      this.toTargetY = actualFactor * this.toTargetY + k * p0.y;
+      this.toTargetZ = actualFactor * this.toTargetZ + k * p0.z;
+      // Bound the Y blend's accumulated drift. Without this clamp,
+      // zoom-OUT (α > 1) pushes target.y AWAY from anchor.y by a
+      // factor of ~(1+f) per click, so a few cycles of "zoom in
+      // on a mountain, then zoom out over the lake" can leave
+      // toTargetY hundreds of wu above any real surface. At that
+      // point `cameraY = toTargetY + d·cosP` gets driven into the
+      // altitudeMax/Min clamp at small `d`, which inverts the
+      // user's zoom direction — that's the "stuck at altitude 481
+      // after panning around" symptom. The clamp re-pins target.y
+      // to actual ground each step; cursor-pin still works for
+      // normal slopes within ±band wu.
+      if (this.getTerrainHeight && this.targetTerrainBand > 0) {
+        const ground = this.getTerrainHeight(this.toTargetX, this.toTargetZ);
+        const lo = ground - this.targetTerrainBand;
+        const hi = ground + this.targetTerrainBand;
+        if (this.toTargetY < lo) this.toTargetY = lo;
+        else if (this.toTargetY > hi) this.toTargetY = hi;
+      }
+    }
+
+    this.applyDestinationIfSnap();
+  }
+
+  private capturePanAnchor(clientX: number, clientY: number): void {
+    // Capture the cursor's 3D ground point + camera-to-anchor
+    // distance. The distance is what worldPerPixel keys off during
+    // the drag — bounded at every camera pitch (no blowup at
+    // near-horizontal views), and accurate to the depth the user
+    // actually grabbed.
+    const hit = this._cursorWorldPoint(clientX, clientY);
+    if (hit) {
+      this.panAnchor.copy(hit);
+      const dxh = this.camera.position.x - hit.x;
+      const dyh = this.camera.position.y - hit.y;
+      const dzh = this.camera.position.z - hit.z;
+      this.panAnchorDistance = Math.hypot(dxh, dyh, dzh);
+      this.panAnchorValid = true;
+    } else {
+      this.panAnchorValid = false;
+      this.panAnchorDistance = this.distance;
+    }
+  }
+
+  private panByScreenDelta(dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) return;
+    // Move-the-camera pan with bounded magnitude: world-per-pixel
+    // is keyed to the camera-to-anchor distance captured at
+    // drag-start (not the orbit target distance, not the current
+    // rendered distance). That gives the right pan rate for the
+    // depth the user grabbed, but stays bounded at every camera
+    // pitch — no exact-3D plane-raycast blowup when the camera is
+    // near horizontal. Drag direction is RTS / 2D-camera convention:
+    // cursor drag direction = camera drag direction in world.
+    const refDist = this.panAnchorValid ? this.panAnchorDistance : this.distance;
+    const vFovRad = (this.camera.fov * Math.PI) / 180;
+    const worldPerPixel =
+      (2 * Math.tan(vFovRad / 2) * refDist) / this.canvas.clientHeight;
+    const scale = worldPerPixel * this.panMultiplier;
+    const rx = Math.cos(this.yaw);
+    const rz = Math.sin(this.yaw);
+    const fx = Math.sin(this.yaw);
+    const fz = -Math.cos(this.yaw);
+    this.toTargetX -= dx * scale * rx - dy * scale * fx;
+    this.toTargetZ -= dx * scale * rz - dy * scale * fz;
+    this.applyDestinationIfSnap();
+  }
+
+  private rotateYawAroundScreenPoint(clientX: number, clientY: number, yawDelta: number): void {
+    if (!Number.isFinite(yawDelta) || yawDelta === 0) return;
+    const oldYaw = this.yaw;
+    const newYaw = oldYaw + yawDelta;
+    const pivot = this._cursorWorldPoint(clientX, clientY);
+    if (!pivot) {
+      this.yaw = newYaw;
+      this.apply();
+      return;
+    }
+
+    this.apply();
+    const sinP = Math.sin(this.pitch);
+    const cosP = Math.cos(this.pitch);
+    const oldDirX = sinP * Math.sin(oldYaw);
+    const oldDirY = cosP;
+    const oldDirZ = sinP * -Math.cos(oldYaw);
+    const newDirX = sinP * Math.sin(newYaw);
+    const newDirY = cosP;
+    const newDirZ = sinP * -Math.cos(newYaw);
+
+    this._orbitYawQuatTmp.setFromAxisAngle(OrbitCamera._ORBIT_WORLD_Y, -yawDelta);
+
+    // Rotate the rendered camera around the terrain point under the
+    // two-finger centroid, then synthesize the target that preserves
+    // that new camera pose for the normal orbit state.
+    this._orbitOffsetTmp.copy(this.camera.position).sub(pivot);
+    this._orbitOffsetTmp.applyQuaternion(this._orbitYawQuatTmp);
+    const camX = pivot.x + this._orbitOffsetTmp.x;
+    const camY = pivot.y + this._orbitOffsetTmp.y;
+    const camZ = pivot.z + this._orbitOffsetTmp.z;
+    this.target.set(
+      camX - this.distance * newDirX,
+      camY - this.distance * newDirY,
+      camZ - this.distance * newDirZ,
+    );
+
+    // Mirror the same rigid rotation into the smooth destination so
+    // pan/zoom easing continues from the rotated endpoint instead of
+    // pulling the view back toward the pre-twist heading.
+    const toCamX = this.toTargetX + this.toDistance * oldDirX;
+    const toCamY = this.toTargetY + this.toDistance * oldDirY;
+    const toCamZ = this.toTargetZ + this.toDistance * oldDirZ;
+    this._orbitOffsetTmp.set(toCamX - pivot.x, toCamY - pivot.y, toCamZ - pivot.z);
+    this._orbitOffsetTmp.applyQuaternion(this._orbitYawQuatTmp);
+    const toRotCamX = pivot.x + this._orbitOffsetTmp.x;
+    const toRotCamY = pivot.y + this._orbitOffsetTmp.y;
+    const toRotCamZ = pivot.z + this._orbitOffsetTmp.z;
+    this.toTargetX = toRotCamX - this.toDistance * newDirX;
+    this.toTargetY = toRotCamY - this.toDistance * newDirY;
+    this.toTargetZ = toRotCamZ - this.toDistance * newDirZ;
+
+    this.yaw = newYaw;
+    this.apply();
+  }
+
+  private touchCenter(e: TouchEvent): { x: number; y: number } {
+    const a = e.touches[0];
+    const b = e.touches.length >= 2 ? e.touches[1] : null;
+    if (!b) return { x: a.clientX, y: a.clientY };
+    return {
+      x: (a.clientX + b.clientX) * 0.5,
+      y: (a.clientY + b.clientY) * 0.5,
+    };
+  }
+
+  private touchDistance(e: TouchEvent): number {
+    if (e.touches.length < 2) return 0;
+    const a = e.touches[0];
+    const b = e.touches[1];
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  }
+
+  private touchAngle(e: TouchEvent): number {
+    if (e.touches.length < 2) return Number.NaN;
+    const a = e.touches[0];
+    const b = e.touches[1];
+    return Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
+  }
+
+  private static normalizeAngleDelta(delta: number): number {
+    return Math.atan2(Math.sin(delta), Math.cos(delta));
+  }
+
+  private beginTouchGesture(e: TouchEvent): void {
+    const center = this.touchCenter(e);
+    this.touchMode = e.touches.length >= 2 ? 'pinch' : 'pan';
+    this.touchLastCenterX = center.x;
+    this.touchLastCenterY = center.y;
+    this.touchLastDistance = this.touchMode === 'pinch' ? this.touchDistance(e) : 0;
+    this.touchLastAngle = this.touchMode === 'pinch' ? this.touchAngle(e) : Number.NaN;
+    this.capturePanAnchor(center.x, center.y);
   }
 
   /** Clamp both rendered target and smooth destination target to the
@@ -751,6 +936,11 @@ export class OrbitCamera {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mousemove', this.onMouseMove);
     window.removeEventListener('mouseup', this.onMouseUp);
+    this.canvas.removeEventListener('touchstart', this.onTouchStart);
+    this.canvas.removeEventListener('touchmove', this.onTouchMove);
+    this.canvas.removeEventListener('touchend', this.onTouchEnd);
+    this.canvas.removeEventListener('touchcancel', this.onTouchEnd);
     this.canvas.removeEventListener('contextmenu', this.onContextMenu);
+    this.canvas.style.touchAction = this.previousTouchAction;
   }
 }

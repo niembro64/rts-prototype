@@ -16,5 +16,24 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, '/');
+          if (!normalizedId.includes('/node_modules/')) return;
+          if (normalizedId.includes('/node_modules/three/')) return 'vendor-three';
+          if (
+            normalizedId.includes('/node_modules/vue/') ||
+            normalizedId.includes('/node_modules/@vue/')
+          ) return 'vendor-vue';
+          if (
+            normalizedId.includes('/node_modules/peerjs/') ||
+            normalizedId.includes('/node_modules/peerjs-js-binarypack/') ||
+            normalizedId.includes('/node_modules/@msgpack/')
+          ) return 'vendor-network';
+          return 'vendor';
+        },
+      },
+    },
   },
 });

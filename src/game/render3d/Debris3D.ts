@@ -25,7 +25,12 @@ import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { getShotBlueprint } from '../sim/blueprints/shots';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
-import { getBodyTopY, getSegmentMidYAt } from '../math/BodyDimensions';
+import {
+  getBodyMountTopY,
+  getBodyTopY,
+  getChassisLiftY,
+  getSegmentMidYAt,
+} from '../math/BodyDimensions';
 import { turretHeadRadiusFromBodyRadius } from '../math';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
@@ -379,21 +384,22 @@ export class Debris3D {
 
   /** Spawn a full debris cluster for a dying unit at a full 3D sim pos.
    *  (simX, simY) is the horizontal footprint, simZ is the unit's sim
-   *  altitude at death. Debris piece template y coords are local-to-
-   *  ground; emitPiece adds (simZ − unit radius) so an airborne unit
-   *  dying at z=100 has its debris spawn up there instead of at the
-   *  ground. A ground-resting unit's math reduces to the old path
-   *  because simZ − radius = 0. */
+   *  center altitude at death. Debris templates are local to the
+   *  rendered body/base, so the vertical origin must be the same base
+   *  Y used by Render3DEntities: transform.z - pushRadius. New death
+   *  contexts carry that as `baseZ`; older contexts fall back to the
+   *  previous radius-derived estimate. */
   spawn(simX: number, simY: number, simZ: number, ctx: SimDeathContext): void {
     const style = (getGraphicsConfig().deathExplosionStyle ?? 'scatter') as DebrisStyle;
     const stride = STYLE_STRIDE[style];
 
-    const r = Math.max(ctx.radius ?? 10, 6);
+    const r = Math.max(ctx.visualRadius ?? ctx.radius ?? 10, 6);
     const primary = ctx.color ?? 0xcccccc;
     const rotation = ctx.rotation ?? 0;
-    // Vertical lift of the piece's local-y so aerial deaths shed
-    // debris at altitude rather than at ground level.
-    const groundZ = simZ - r;
+    // Vertical lift of the piece's local-y. Prefer the exact rendered
+    // base altitude from the death context; fall back to push radius,
+    // then visual radius, for older snapshots / synthesized events.
+    const groundZ = ctx.baseZ ?? (simZ - (ctx.pushRadius ?? r));
 
     const templates = this.buildTemplates(ctx, r, primary);
 
@@ -443,6 +449,8 @@ export class Debris3D {
     } catch {
       return this.fallbackTemplates(r, primary);
     }
+
+    const chassisLiftY = getChassisLiftY(bp, r);
 
     // --- Locomotion parts ---
     const loc = bp.locomotion;
@@ -538,6 +546,22 @@ export class Debris3D {
     // contrasting tint later.)
     const bodyShape = bp.bodyShape;
     const bodyTopY = getBodyTopY(bodyShape, r);
+    let hostTurretBlueprint: ReturnType<typeof getTurretBlueprint> | undefined;
+    try {
+      if (bp.turrets[0]) hostTurretBlueprint = getTurretBlueprint(bp.turrets[0].turretId);
+    } catch { /* missing host turret blueprint: no mirror stack */ }
+    const unitHasMirrorsHere = (hostTurretBlueprint?.mirrorPanels?.length ?? 0) > 0;
+    const hostHeadRadiusForStack = unitHasMirrorsHere
+      ? turretHeadRadiusFromBodyRadius(r, hostTurretBlueprint?.bodyRadius)
+      : 0;
+    const hostBodyTopYForStack = unitHasMirrorsHere && bp.turrets[0]
+      ? getBodyMountTopY(
+          bodyShape,
+          r,
+          bp.turrets[0].offsetX,
+          bp.turrets[0].offsetY,
+        )
+      : bodyTopY;
 
     // Each barrel template is built in chassis-local coords assuming
     // the turret was aimed straight ahead (yaw=0, pitch=0). At death
@@ -589,7 +613,11 @@ export class Debris3D {
       // same vertical span. Per-turret bodyRadius takes precedence over
       // the auto-derived default — matches Render3DEntities.buildTurretMesh.
       const headR = turretHeadRadiusFromBodyRadius(r, tb.bodyRadius);
-      const shotHeight = bodyTopY + headR;
+      const bodyMountTopY = getBodyMountTopY(bodyShape, r, tox, toz);
+      const turretMountY = unitHasMirrorsHere && ti > 0
+        ? hostBodyTopYForStack + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT
+        : bodyMountTopY;
+      const shotHeight = chassisLiftY + turretMountY + headR;
 
       // Skip the head + barrels for the mirror-host turret — its visible
       // body IS the mirror panels, not a separate cylinder. Render3DEntities
@@ -602,7 +630,7 @@ export class Debris3D {
         out.push({
           shape: 'sphere',
           x: tox,
-          y: bodyTopY + headR,
+          y: shotHeight,
           z: toz,
           radius: headR,
           color: primary,
@@ -709,9 +737,9 @@ export class Debris3D {
       // would be invisible mid-tumble, so debris pieces get a token
       // 1-wu thickness for visibility.
       if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
-        const panelTop = bodyTopY + 2 * headR + MIRROR_EXTRA_HEIGHT;
+        const panelTop = turretMountY + 2 * headR + MIRROR_EXTRA_HEIGHT;
         const mirrorH = Math.max(panelTop - MIRROR_BASE_Y, 1);
-        const panelCenterY = MIRROR_BASE_Y + mirrorH / 2;
+        const panelCenterY = chassisLiftY + MIRROR_BASE_Y + mirrorH / 2;
         const side = mirrorH;
         // Mirror panels track the host turret's yaw — when the mirror
         // is aimed off the chassis +X, every panel pivots around the
@@ -750,7 +778,7 @@ export class Debris3D {
     for (const e of edges) {
       out.push({
         shape: 'box',
-        x: e.x, y: e.height / 2, z: e.z,
+        x: e.x, y: chassisLiftY + e.height / 2, z: e.z,
         yaw: e.yaw,
         sx: e.length, sy: e.height, sz: e.thickness,
         color: primary,

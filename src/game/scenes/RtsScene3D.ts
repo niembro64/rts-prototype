@@ -1139,6 +1139,12 @@ export class RtsScene3D {
       if (!ctx && ent) {
         const pid = ent.ownership?.playerId;
         const tcol = getPlayerPrimaryColor(pid);
+        const visualRadius = ent.unit?.unitRadiusCollider.scale
+          ?? ent.unit?.unitRadiusCollider.shot
+          ?? 15;
+        const pushRadius = ent.unit?.unitRadiusCollider.push
+          ?? ent.unit?.unitRadiusCollider.shot
+          ?? visualRadius;
         ctx = {
           unitVel: {
             x: ent.unit?.velocityX ?? 0,
@@ -1148,10 +1154,35 @@ export class RtsScene3D {
           projectileVel: { x: 0, y: 0 },
           attackMagnitude: 25,
           radius: ent.unit?.unitRadiusCollider.shot ?? 15,
+          visualRadius,
+          pushRadius,
+          baseZ: ent.transform.z - pushRadius,
           color: tcol,
           unitType: ent.unit?.unitType,
           rotation: ent.transform.rotation,
         };
+      }
+      if (ctx && ent?.unit) {
+        const visualRadius = ent.unit.unitRadiusCollider.scale
+          ?? ent.unit.unitRadiusCollider.shot
+          ?? ctx.visualRadius
+          ?? ctx.radius;
+        const pushRadius = ent.unit.unitRadiusCollider.push
+          ?? ent.unit.unitRadiusCollider.shot
+          ?? ctx.pushRadius
+          ?? visualRadius;
+        if (
+          ctx.visualRadius === undefined ||
+          ctx.pushRadius === undefined ||
+          ctx.baseZ === undefined
+        ) {
+          ctx = {
+            ...ctx,
+            visualRadius: ctx.visualRadius ?? visualRadius,
+            pushRadius: ctx.pushRadius ?? pushRadius,
+            baseZ: ctx.baseZ ?? (ent.transform.z - pushRadius),
+          };
+        }
       }
       if (ctx && ent && !ctx.turretPoses && ent.turrets && ent.turrets.length > 0) {
         ctx = {
@@ -1173,6 +1204,9 @@ export class RtsScene3D {
           projectileVel: { x: 0, y: 0 },
           attackMagnitude: 25,
           radius: 15,
+          visualRadius: 15,
+          pushRadius: 15,
+          baseZ: event.pos.z - 15,
           color: 0xcccccc,
         };
       }
