@@ -68,7 +68,7 @@ import type {
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
-import { getPlayerPrimaryColor, setLocalPlayerForColors, setPlayerCountForColors } from '../sim/types';
+import { getPlayerPrimaryColor, setPlayerCountForColors } from '../sim/types';
 import type {
   Entity,
   EntityId,
@@ -353,12 +353,9 @@ export class RtsScene3D {
     this.threeApp = threeApp;
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
-    // Pin the color wheel: Red is always the local viewer, and the
-    // remaining slots are evenly spaced around the hue circle based
-    // on the lobby's player count. Slot 1 + floor(N/2) sits at
-    // anti-red (180° = Cyan) so 2-team matches read as Red ↔ Cyan.
+    // Pin the color wheel to the lobby's player count. Player ids map
+    // directly to color slots, so every browser sees the same colors.
     setPlayerCountForColors(this.playerIds.length);
-    setLocalPlayerForColors(this.localPlayerId);
     // Also seed the heightmap's team-separator count from the same
     // source. The host's GameServer constructor sets this too, but
     // remote clients don't construct a GameServer locally — without
@@ -1372,8 +1369,6 @@ export class RtsScene3D {
 
   public switchPlayer(playerId: PlayerId): void {
     this.localPlayerId = playerId;
-    // Re-pin Red on the new local player.
-    setLocalPlayerForColors(playerId);
     this.markSelectionDirty();
     this.onPlayerChange?.(playerId);
   }

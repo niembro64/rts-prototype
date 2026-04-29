@@ -62,25 +62,11 @@ export type PlayerColors = { primary: number; secondary: number; name: string };
 // anti-red". Set via setPlayerCountForColors() at game/lobby init.
 let _playerCountForColors = 6;
 
-// Slot 1 of the curated palette = Red, and we want the LOCAL CLIENT
-// player to always render in red regardless of which raw pid the
-// server assigned them. The mapping is: local pid → slot 1; every
-// other pid → slot 2..N enumerated in ascending pid order, skipping
-// the local pid's own slot. The cache below is keyed by SLOT (not
-// pid) so the palette stays stable as long as the local player
-// doesn't change mid-session.
-let _localPlayerForColors: PlayerId | undefined = undefined;
-
-/** Tell the color helpers which pid is the local viewer's team — that
- *  pid will render in slot 1 (Red) on this client. Other pids slide
- *  into the remaining slots in ascending order. Calling with a new
- *  value invalidates the slot cache (slot mapping changed). Pass
- *  undefined to disable remapping (pid maps directly to slot). */
-export function setLocalPlayerForColors(playerId: PlayerId | undefined): void {
-  if (_localPlayerForColors === playerId) return;
-  _localPlayerForColors = playerId;
-  // Old cache reflected the previous remapping — clear it.
-  _playerColorCache.clear();
+/** Compatibility shim for older callers. Colors are global by player
+ *  id now: player 1 is the same color on every browser, player 2 is
+ *  the same color on every browser, and so on. */
+export function setLocalPlayerForColors(_playerId: PlayerId | undefined): void {
+  // Intentionally no-op. Never remap colors per local browser.
 }
 
 /** Tell the color helpers how many total players are in the game so
@@ -95,15 +81,10 @@ export function setPlayerCountForColors(count: number): void {
   _playerColorCache.clear();
 }
 
-/** Map a real pid to its display slot under the current local-player
- *  remapping. Slot 1 is reserved for the local player. */
+/** Map a real pid to its display slot. This is intentionally global
+ *  and independent of the local viewer so every client agrees. */
 function pidToSlot(pid: PlayerId): PlayerId {
-  const local = _localPlayerForColors;
-  if (local === undefined) return pid;
-  if (pid === local) return 1 as PlayerId;
-  // pids below the local one shift up by one slot to make room for
-  // local at slot 1; pids above the local one keep their natural slot.
-  return (pid < local ? pid + 1 : pid) as PlayerId;
+  return pid;
 }
 
 const _playerColorCache = new Map<PlayerId, PlayerColors>();
@@ -166,9 +147,8 @@ function hslToHex(h: number, s: number, l: number): number {
  *  total player count: with N players, slot k is at hue
  *  ((k − 1) / N) × 360°. Slot 1 = Red (always, regardless of N), and
  *  slot 1 + floor(N/2) sits at "anti-red" (180° = Cyan). Saturation
- *  and lightness are fixed for a cohesive palette. The pid → slot
- *  remapping (see setLocalPlayerForColors) puts the local viewer at
- *  slot 1 so RED is always "you". Cached by slot. */
+ *  and lightness are fixed for a cohesive palette. Player ids map
+ *  directly to slots so all clients see the same team colors. */
 export function getPlayerColors(playerId: PlayerId): PlayerColors {
   const slot = pidToSlot(playerId);
   let cached = _playerColorCache.get(slot);

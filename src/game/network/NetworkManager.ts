@@ -585,9 +585,14 @@ export class NetworkManager {
         // Client receives game start signal
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message)) return;
+          if (message.assignedPlayerId !== undefined) {
+            this.localPlayerId = message.assignedPlayerId;
+            this.onPlayerAssignment?.(message.assignedPlayerId);
+          }
           const handoff = this.normalizeBattleHandoff(message);
           this.applyBattleHandoff(handoff);
           this.gameStarted = true;
+          console.log(`[NET] Game start as player ${this.localPlayerId}; players=${handoff.playerIds.join(',')}`);
           this.onGameStart?.(handoff);
         }
         break;
@@ -852,12 +857,15 @@ export class NetworkManager {
     const handoff = this.buildBattleHandoff(playerIds);
     this.applyBattleHandoff(handoff);
 
-    this.broadcast({
-      type: 'gameStart',
-      gameId: handoff.gameId,
-      playerIds: handoff.playerIds,
-      handoff,
-    });
+    for (const [playerId, conn] of this.connections) {
+      this.safeSend(conn, {
+        type: 'gameStart',
+        gameId: handoff.gameId,
+        playerIds: handoff.playerIds,
+        handoff,
+        assignedPlayerId: playerId,
+      });
+    }
     this.onGameStart?.(handoff);
   }
 

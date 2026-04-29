@@ -92,7 +92,13 @@ export type LobbySettings = {
 export type NetworkServerSnapshotMessage =
   | { type: 'state'; gameId?: string; data: NetworkServerSnapshot | string | Uint8Array | ArrayBuffer }
   | { type: 'playerAssignment'; playerId: PlayerId; gameId?: string }
-  | { type: 'gameStart'; playerIds: PlayerId[]; gameId?: string; handoff?: BattleHandoff }
+  | {
+      type: 'gameStart';
+      playerIds: PlayerId[];
+      gameId?: string;
+      handoff?: BattleHandoff;
+      assignedPlayerId?: PlayerId;
+    }
   | { type: 'playerJoined'; gameId?: string; playerId: PlayerId; playerName: string }
   | { type: 'playerLeft'; gameId?: string; playerId: PlayerId }
   | { type: 'lobbySettings'; gameId?: string; settings: LobbySettings }
