@@ -119,8 +119,13 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   for (const unit of world.getArmedUnits()) {
     if (!unit.ownership || !unit.unit || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
+    const unitState = unit.unit;
     unit.unit.activeTurretMask = 0;
     unit.unit.firingTurretMask = 0;
+    const priorityId = unitState.priorityTargetId;
+    if (priorityId === undefined && (unitState.nextCombatProbeTick ?? 0) > tick) {
+      continue;
+    }
 
     const playerId = unit.ownership.playerId;
     unit.transform.rotCos = Math.cos(unit.transform.rotation);
@@ -128,19 +133,21 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const { cos, sin } = getTransformCosSin(unit.transform);
     const weapons = unit.turrets;
 
+    let hasCooldownState = false;
     for (const weapon of weapons) {
       if (weapon.cooldown > 0) {
+        hasCooldownState = true;
         weapon.cooldown -= dtMs;
         if (weapon.cooldown < 0) weapon.cooldown = 0;
       }
 
       if (weapon.burst?.cooldown !== undefined && weapon.burst.cooldown > 0) {
+        hasCooldownState = true;
         weapon.burst.cooldown -= dtMs;
         if (weapon.burst.cooldown < 0) weapon.burst.cooldown = 0;
       }
     }
 
-    const priorityId = unit.unit!.priorityTargetId;
     let hasLiveWeaponState = false;
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
@@ -155,9 +162,11 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
     }
     const shouldReacquire = stride <= 1 || ((unit.id + tick) % stride) === 0;
-    if (priorityId === undefined && !hasLiveWeaponState && !shouldReacquire) {
+    if (priorityId === undefined && !hasLiveWeaponState && !hasCooldownState && !shouldReacquire) {
+      unitState.nextCombatProbeTick = tick + stride;
       continue;
     }
+    unitState.nextCombatProbeTick = undefined;
 
     // Pass 0: Compute weapon world positions (needed for both modes).
     // All three axes are cached PER TURRET — altitude is that turret's
@@ -296,7 +305,13 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // stride window (~67 ms at stride=4, 60 Hz), which is below the
     // perceptible threshold for combat reaction. Validation already ran
     // above so an out-of-range or dead target was cleared this tick.
-    if (!shouldReacquire) continue;
+    if (!shouldReacquire) {
+      if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
+      else if (priorityId === undefined) {
+        unitState.nextCombatProbeTick = hasCooldownState ? tick + 1 : tick + stride;
+      }
+      continue;
+    }
 
     // Pre-scan: find any weapon that needs an acquisition query plus
     // the max acquire range + max weapon offset, so a single
@@ -429,6 +444,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
 
     if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
+    else if (priorityId === undefined) {
+      unitState.nextCombatProbeTick = hasCooldownState ? tick + 1 : tick + stride;
+    }
   }
 
   return _activeCombatUnits;

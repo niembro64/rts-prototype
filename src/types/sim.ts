@@ -178,6 +178,10 @@ export type Unit = {
    *  fields and are never serialized. */
   activeTurretMask?: number;
   firingTurretMask?: number;
+  /** Tick before which fully-idle armed units can skip the targeting
+   *  pass. Attack commands clear this implicitly by setting
+   *  priorityTargetId, and live/cooldown weapons process every tick. */
+  nextCombatProbeTick?: number;
   /** Consecutive ticks the unit has wanted to move but failed to make
    *  meaningful progress. Reset on either no-movement-intent ticks or
    *  ticks where physics velocity exceeds the stuck threshold. When
