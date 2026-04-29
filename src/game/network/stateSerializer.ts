@@ -869,11 +869,11 @@ function serializeEntity(
         u.hp.max = entity.unit.maxHp;
       }
 
-      // Turret rotation ships on EVERY delta where the unit is present
-      // — not gated by ENTITY_CHANGED_TURRETS. Smooth client-side
-      // turret aim depends on getting fresh angles even between the
-      // discrete state changes the bit tracks. Quantized to 0.001 rad.
-      {
+      // Turret rotation ships only on full records or turret-dirty
+      // deltas. Active combat units mark ENTITY_CHANGED_TURRETS every
+      // tick; idle movers no longer resend turret pose just because
+      // their body position/velocity changed.
+      if (isFull || (changedFields! & ENTITY_CHANGED_TURRETS)) {
         let turretRot = entity.transform.rotation;
         const weapons = entity.turrets ?? [];
         for (const weapon of weapons) {
@@ -912,13 +912,11 @@ function serializeEntity(
         }
       }
 
-      // Turrets
-      // Turrets array now ships on every delta where the unit is
-      // present (gated only by "does the unit have turrets") so
-      // angular.rot / vel / pitch and target/state stay in sync with
-      // the client per-snapshot. Quantized angles keep the JSON small.
+      // Turrets. Full records seed the client; deltas only carry this
+      // array when combat actually dirtied turret state. This keeps
+      // large armies moving without serializing every idle turret.
       u.turrets = undefined;
-      if (entity.turrets && entity.turrets.length > 0) {
+      if (entity.turrets && entity.turrets.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
         const weapons = entity.turrets;
         const count = weapons.length;
         while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
