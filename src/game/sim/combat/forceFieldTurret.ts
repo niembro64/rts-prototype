@@ -90,13 +90,13 @@ export function applyForceFieldDamage(
   // dt by the stride so the time-integral of force matches the
   // every-tick path. Push pulses get coarser at low LOD but the
   // average velocity change over time stays the same.
-  const stride = Math.max(1, getSimDetailConfig().forceFieldStride | 0);
+  const simDetail = getSimDetailConfig();
+  const stride = Math.max(1, simDetail.forceFieldStride | 0);
   if (stride > 1) {
     if (world.getTick() % stride !== 0) return [];
     dtMs = dtMs * stride;
   }
-  const dtSec = dtMs / 1000;
-  if (dtSec <= 0 || _activeForceFieldCount === 0) return [];
+  if (dtMs <= 0 || _activeForceFieldCount === 0) return [];
 
   // Both effect flags off → there's nothing the outer loop could
   // accomplish. Skip wholesale.
@@ -105,6 +105,12 @@ export function applyForceFieldDamage(
   }
 
   _velocityUpdateMap.clear();
+  const activeCount = _activeForceFieldCount;
+  const applyBudget = Math.max(1, simDetail.forceFieldApplyBudget | 0);
+  const isBudgeted = activeCount > applyBudget;
+  const applyStart = isBudgeted ? (world.getTick() * applyBudget) % activeCount : 0;
+  const dtSec = (dtMs / 1000) * (isBudgeted ? activeCount / applyBudget : 1);
+  let activeOrdinal = 0;
 
   for (const unit of world.getForceFieldUnits()) {
     if (!unit.ownership || !unit.unit) continue;
@@ -120,6 +126,13 @@ export function applyForceFieldDamage(
 
       const progress = weapon.forceField?.transition ?? (weapon.forceField?.range ?? 0);
       if (progress <= 0) continue;
+      const ordinal = activeOrdinal++;
+      if (isBudgeted) {
+        const relative = ordinal >= applyStart
+          ? ordinal - applyStart
+          : ordinal + activeCount - applyStart;
+        if (relative >= applyBudget) continue;
+      }
 
       const push = fieldShot.push;
       if (!push || push.power == null) continue;

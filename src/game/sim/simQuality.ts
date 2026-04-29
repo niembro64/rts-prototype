@@ -189,6 +189,7 @@ function buildDetail(tier: ConcreteServerSimQuality): ServerSimDetailConfig {
     targetingDensityThreshold: SERVER_SIM_DETAIL.TARGETING_DENSITY_THRESHOLD[tier],
     targetingDensityStride: SERVER_SIM_DETAIL.TARGETING_DENSITY_STRIDE[tier],
     forceFieldStride: SERVER_SIM_DETAIL.FORCE_FIELD_STRIDE[tier],
+    forceFieldApplyBudget: SERVER_SIM_DETAIL.FORCE_FIELD_APPLY_BUDGET[tier],
     projectileCollisionStride: SERVER_SIM_DETAIL.PROJECTILE_COLLISION_STRIDE[tier],
     captureStride: SERVER_SIM_DETAIL.CAPTURE_STRIDE[tier],
   };
