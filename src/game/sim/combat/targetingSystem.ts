@@ -59,6 +59,13 @@ function commitCombatMasks(unit: Entity): boolean {
   return activeMask !== 0 || overflowActive;
 }
 
+function nextTargetingReacquireTick(unitId: number, tick: number, stride: number): number {
+  if (stride <= 1) return tick + 1;
+  const phase = (unitId + tick) % stride;
+  const ticksUntil = phase === 0 ? stride : stride - phase;
+  return tick + ticksUntil;
+}
+
 // Density-cap thresholds + stride for the dense-crowd fallback used
 // inside the inner targeting loops are now read per-tick from the
 // HOST SERVER LOD tier (see simQuality.ts). Lower tiers tighten the
@@ -123,7 +130,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     unit.unit.activeTurretMask = 0;
     unit.unit.firingTurretMask = 0;
     const priorityId = unitState.priorityTargetId;
-    if (priorityId === undefined && (unitState.nextCombatProbeTick ?? 0) > tick) {
+    const scheduledProbeTick = unitState.nextCombatProbeTick;
+    if (priorityId === undefined && scheduledProbeTick !== undefined && scheduledProbeTick > tick) {
       continue;
     }
 
@@ -161,9 +169,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         break;
       }
     }
-    const shouldReacquire = stride <= 1 || ((unit.id + tick) % stride) === 0;
+    const forcedProbeDue = priorityId === undefined &&
+      scheduledProbeTick !== undefined &&
+      scheduledProbeTick <= tick;
+    const shouldReacquire = forcedProbeDue || stride <= 1 || ((unit.id + tick) % stride) === 0;
     if (priorityId === undefined && !hasLiveWeaponState && !hasCooldownState && !shouldReacquire) {
-      unitState.nextCombatProbeTick = tick + stride;
+      unitState.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
       continue;
     }
     unitState.nextCombatProbeTick = undefined;
@@ -308,7 +319,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     if (!shouldReacquire) {
       if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
       else if (priorityId === undefined) {
-        unitState.nextCombatProbeTick = hasCooldownState ? tick + 1 : tick + stride;
+        unitState.nextCombatProbeTick = hasCooldownState
+          ? tick + 1
+          : nextTargetingReacquireTick(unit.id, tick, stride);
       }
       continue;
     }
@@ -445,7 +458,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
     else if (priorityId === undefined) {
-      unitState.nextCombatProbeTick = hasCooldownState ? tick + 1 : tick + stride;
+      unitState.nextCombatProbeTick = hasCooldownState
+        ? tick + 1
+        : nextTargetingReacquireTick(unit.id, tick, stride);
     }
   }
 
