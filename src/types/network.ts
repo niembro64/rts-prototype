@@ -52,9 +52,39 @@ export function codeToActionType(c: number): string {
 import type { Command } from './commands';
 import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
 import type { Vec2, Vec3 } from './vec2';
+import type { TerrainShape } from './terrain';
 
 // Client → Server
-export type NetworkPlayerActionMessage = { type: 'command'; data: Command };
+export type NetworkPlayerActionMessage =
+  | { type: 'command'; data: Command }
+  // Client reports its own IP / location / timezone to the host.
+  // The host updates the local LobbyPlayer record and re-broadcasts
+  // (see `playerInfoUpdate` below) so every connected client sees
+  // the same player list with IP + location columns populated.
+  | { type: 'playerInfo'; ipAddress?: string; location?: string; timezone?: string }
+  // Heartbeat ping. Both directions (client→host AND host→client)
+  // — every peer sends one every couple seconds while the GAME
+  // LOBBY is alive, and every peer monitors what it's received
+  // from the others. A peer that hasn't sent in too long gets
+  // its connection forcibly closed, which triggers the regular
+  // `playerLeft` cleanup. Catches silent disconnects (frozen
+  // tabs, network drops) that don't fire PeerJS's `close` event.
+  | { type: 'heartbeat'; playerId: PlayerId };
+
+// Host → Client lobby-settings sync. Carries the host's
+// pre-game choices (terrain shape today, extensible to other
+// host-only knobs in the future) so every connected client sees
+// the same map preview and starts the real battle from the same
+// configuration. The host broadcasts on every change AND on
+// each new player joining (so late-joiners get the current state
+// up front, not just future deltas). The whole settings object
+// ships every time — small enough that diffing isn't worth the
+// complexity, and atomic-replace avoids the "client missed one
+// field" failure mode if a future delta protocol drops a packet.
+export type LobbySettings = {
+  terrainCenter: TerrainShape;
+  terrainDividers: TerrainShape;
+};
 
 // Server → Client
 export type NetworkServerSnapshotMessage =
@@ -62,7 +92,13 @@ export type NetworkServerSnapshotMessage =
   | { type: 'playerAssignment'; playerId: PlayerId }
   | { type: 'gameStart'; playerIds: PlayerId[] }
   | { type: 'playerJoined'; playerId: PlayerId; playerName: string }
-  | { type: 'playerLeft'; playerId: PlayerId };
+  | { type: 'playerLeft'; playerId: PlayerId }
+  | { type: 'lobbySettings'; settings: LobbySettings }
+  // Host fans a player's IP + location out to every connected
+  // client (whoever just resolved their ipapi.co lookup, or a
+  // back-fill on `playerJoined` for late-joiners). Carries
+  // playerId so receivers can match it to their player list.
+  | { type: 'playerInfoUpdate'; playerId: PlayerId; ipAddress?: string; location?: string; timezone?: string };
 
 // Combined (transport envelope)
 export type NetworkMessage = NetworkPlayerActionMessage | NetworkServerSnapshotMessage;
@@ -332,6 +368,21 @@ export type LobbyPlayer = {
   playerId: PlayerId;
   name: string;
   isHost: boolean;
+  /** Public IP (v4) — populated lazily after the player's
+   *  client-side IP lookup resolves and the host has fanned the
+   *  value out to every connected client via
+   *  `playerInfoUpdate`. May be undefined briefly between the
+   *  player joining and the lookup completing. */
+  ipAddress?: string;
+  /** Coarse human-readable location ("Austin, US") from the same
+   *  lookup, or a timezone-derived fallback if the IP service
+   *  didn't return one. Same staleness window as `ipAddress`. */
+  location?: string;
+  /** IANA timezone of the player's machine (e.g.
+   *  `America/Los_Angeles`). Lets every viewer render the
+   *  player's CURRENT local time + timezone abbreviation in
+   *  the lobby roster, ticking live in their own browser. */
+  timezone?: string;
 };
 
 export type NetworkRole = 'host' | 'client';

@@ -188,11 +188,19 @@ export class CaptureSystem {
    *  team. Tiles that straddle a sector boundary are split AREA-
    *  WEIGHTED across the teams whose slices touch them — a tile
    *  30% in A, 10% in B, 60% in C ends up with heights
-   *  (sqrt(0.30), sqrt(0.10), sqrt(0.60)) × ownerHeight
-   *  respectively. The split is computed by sub-sampling the tile on
-   *  a regular sub-grid and counting which slice each sample falls in;
-   *  the centre tile naturally ends up shared roughly equally among
-   *  all N teams, so there's no need for a separate neutral disc.
+   *  (0.30, 0.10, 0.60) × ownerHeight respectively. The per-team
+   *  heights sum to exactly ownerHeight on every initially-stamped
+   *  tile, regardless of how many teams share it; the GRID overlay
+   *  drives brightness from that SUM (see getCaptureTileBrightness)
+   *  so a border tile renders just as bright as a single-owned
+   *  perimeter tile — no dim seams along the spawn-circle radial
+   *  cuts. Per-team mana income is each team's exact area share, so
+   *  total income from the tile is ownerHeight × tileRate however
+   *  it's split. The split is computed by sub-sampling the tile on
+   *  a regular sub-grid and counting which slice each sample falls
+   *  in; the centre tile naturally ends up shared roughly equally
+   *  among all N teams, so there's no need for a separate neutral
+   *  disc.
    *
    *  Sector math mirrors spawn.ts → getPlayerBaseAngle: player i is
    *  centred at `(i / N) * 2π + firstPlayerAngle`, so we shift each
@@ -263,7 +271,7 @@ export class CaptureSystem {
         for (let n = 0; n < N; n++) {
           const count = sampleCounts[n];
           if (count === 0) continue;
-          const height = ownerHeight * Math.sqrt(count / totalSamples);
+          const height = ownerHeight * (count / totalSamples);
           const pid = playerIds[n];
           tile.set(pid, height);
           this.productionRates.set(

@@ -52,7 +52,7 @@ import {
   getGridOverlayIntensity,
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
-import { getPlayerBaseAngle } from '../sim/spawn';
+import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
 import {
   getTerrainHeight,
   setTerrainTeamCount,
@@ -85,6 +85,8 @@ import {
   WORLD_PADDING_PERCENT,
   ZOOM_INITIAL_GAME,
   ZOOM_INITIAL_DEMO,
+  ZOOM_INITIAL_LOBBY_PREVIEW,
+  LOBBY_PREVIEW_SPIN_RATE,
 } from '../../config';
 
 const RENDER_SCOPE_AERIAL_HEADROOM_Y = 700;
@@ -112,6 +114,11 @@ export type RtsScene3DConfig = {
   mapWidth: number;
   mapHeight: number;
   backgroundMode: boolean;
+  /** GAME LOBBY preview pane — uses the dedicated wider zoom and
+   *  expects the GameServer to have spawned commanders only (no
+   *  AI, no buildings, no background units). Set by the lobby
+   *  preview path; everywhere else this stays false. */
+  lobbyPreview?: boolean;
 };
 
 // Mini "camera" accessor that PhaserCanvas.vue reads for zoom display. We derive
@@ -220,6 +227,7 @@ export class RtsScene3D {
   private mapWidth: number;
   private mapHeight: number;
   private backgroundMode: boolean;
+  private lobbyPreview: boolean;
 
   private isGameOver = false;
   private hasCenteredCamera = false;
@@ -363,6 +371,7 @@ export class RtsScene3D {
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;
     this.backgroundMode = config.backgroundMode;
+    this.lobbyPreview = config.lobbyPreview ?? false;
     this.gameConnection = config.gameConnection;
     // ClientViewState is owned by GameCanvas so its state (units, buildings,
     // prediction, selection) survives a live 2D↔3D renderer swap.
@@ -380,11 +389,39 @@ export class RtsScene3D {
     // red's seat. centerCameraOnCommander() refines this once entities
     // are alive (in case the commander has drifted off its spawn);
     // centerCameraOnMap() preserves yaw so demo-mode framing stays put.
-    const initialZoom = this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
+    // GAME LOBBY preview gets a wide map-center framing and a
+    // continuous slow orbit (driven from `update()` below — feels
+    // like an alt+middle-drag spinning around the map). Demo mode
+    // (full-screen pre-game backdrop) and real-game mode keep the
+    // existing centered-on-map framing + their per-mode zooms.
+    const initialZoom = this.lobbyPreview
+      ? ZOOM_INITIAL_LOBBY_PREVIEW
+      : this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
+    // Real game: target the LOCAL SEAT's spawn position so the
+    // commander is in-frame from frame 1, before any snapshot
+    // arrives. Otherwise the camera sits at the map centre with
+    // its yaw pointing inward from the local seat — which puts
+    // the local seat (and the spawning commander) BEHIND the
+    // camera, so the joiner can't see their own commander until
+    // centerCameraOnCommander() runs after the first snapshot.
+    // Demo / lobby-preview keep the wide map-centre framing they
+    // had before so the whole battlefield reads at a glance.
+    const isRealGame = !this.lobbyPreview && !this.backgroundMode;
+    const seatIndex = isRealGame
+      ? Math.max(0, this.playerIds.indexOf(this.localPlayerId))
+      : 0;
+    const initialTarget = isRealGame
+      ? getSpawnPositionForSeat(
+          seatIndex,
+          Math.max(1, this.playerIds.length),
+          this.mapWidth,
+          this.mapHeight,
+        )
+      : { x: this.mapWidth / 2, y: this.mapHeight / 2 };
     this.threeApp.orbit.setState({
-      targetX: this.mapWidth / 2,
+      targetX: initialTarget.x,
       targetY: 0,
-      targetZ: this.mapHeight / 2,
+      targetZ: initialTarget.y,
       distance: this._baseDistance / initialZoom,
       yaw: this._povYawForLocalSeat(),
       pitch: this.threeApp.orbit.pitch,
@@ -719,6 +756,18 @@ export class RtsScene3D {
     this.lastEffectsTickMs = effectNow;
     this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
     this.threeApp.orbit.tick(effectDt / 1000);
+    // GAME LOBBY preview: continuous slow orbit around the map
+    // center, like an unattended alt+middle-drag. `effectDt` is
+    // the same clamped per-frame ms the orbit tick uses, so the
+    // spin stays smooth at any frame rate and pauses cleanly
+    // when the tab backgrounds (the clamp caps catch-up bursts).
+    if (this.lobbyPreview) {
+      const dtSec = effectDt / 1000;
+      this.threeApp.orbit.setOrbitAngles(
+        this.threeApp.orbit.yaw + LOBBY_PREVIEW_SPIN_RATE * dtSec,
+        this.threeApp.orbit.pitch,
+      );
+    }
     // Publish camera zoom for UI/legacy signal reads after camera
     // smoothing has advanced. In 3D the global AUTO tier no longer
     // depends on zoom by default; view scale is consumed inside
@@ -811,7 +860,15 @@ export class RtsScene3D {
     }
     this.forceFieldRenderer.endFrame();
 
-    if (this.healthBar3D && updateHudThisFrame) {
+    // Health bars + selection labels track unit positions and run
+    // EVERY frame — the sprites are siblings of the unit groups (not
+    // children), so without a per-frame position update they visibly
+    // "snap" to the unit's last hud-stride position while the unit's
+    // own mesh continues moving smoothly. The expensive part (canvas
+    // texture rebake) is gated internally by `repaintIfChanged`, so
+    // per-frame iteration just sets sprite positions and frustum-
+    // probes for the (small) damaged-units / selected-units lists.
+    if (this.healthBar3D) {
       this.healthBar3D.beginFrame(hudFrustum);
       for (const u of this.clientViewState.getDamagedUnits()) {
         this.healthBar3D.perUnit(u);
@@ -821,15 +878,18 @@ export class RtsScene3D {
       }
       this.healthBar3D.endFrame();
     }
+    this.selectionLabel3D?.update(
+      this._cachedSelectedUnits,
+      this._cachedSelectedBuildings,
+      hudFrustum,
+    );
+    // Waypoint markers stay gated — their world points are fixed
+    // command goals (move target, build site, rally point), not
+    // tracking entities, so per-frame updates would be wasted work.
     if (updateHudThisFrame) {
       this.waypoint3D?.update(
         this._cachedSelectedUnits,
         this._cachedSelectedBuildings,
-      );
-      this.selectionLabel3D?.update(
-        this._cachedSelectedUnits,
-        this._cachedSelectedBuildings,
-        hudFrustum,
       );
     }
     const renderEnd = performance.now();

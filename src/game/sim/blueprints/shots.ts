@@ -101,6 +101,35 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     lifespan: 3000,
     hitSound: AUDIO.event.hit.heavyShot,
   },
+  // Cluster mortar — carries `mortarShot`s as submunitions. The
+  // outer carrier flies a high arc and detonates on impact / lifespan
+  // expiry; each spawned child IS a mortarShot, so it then runs
+  // mortarShot's own submunition chain (5 mediumShot fragments) when
+  // IT lands. Net effect: one trigger pull → 4 mortar-bursts spread
+  // around the impact zone.
+  advancedMortarShot: {
+    type: 'projectile',
+    id: 'advancedMortarShot',
+    // Same physics profile as a single mortarShot — pure carrier, no
+    // damage of its own, no splash. Slightly heavier so the arc
+    // matches a "bigger payload" look.
+    mass: 80,
+    collision: { radius: 5 },
+    detonateOnExpiry: true,
+    lifespan: 5000,
+    hitSound: AUDIO.event.hit.advancedMortarShot,
+    submunitions: {
+      shotId: 'mortarShot',
+      count: 4,
+      // Wide horizontal sweep so the four mortar children spread
+      // around the carrier's ground impact, not stack on top of
+      // each other. Vertical kick keeps them lofted long enough
+      // to land in a ring around the original aim point.
+      randomSpreadSpeedHorizontal: 80,
+      randomSpreadSpeedVertical: 140,
+      reflectedVelocityDamper: 0.4,
+    },
+  },
   mortarShot: {
     type: 'projectile',
     id: 'mortarShot',

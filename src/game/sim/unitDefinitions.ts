@@ -8,7 +8,7 @@ import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
 // Re-export types (still used by many files)
 export type { LegStyle } from './blueprints/types';
 export type UnitType = 'jackal' | 'lynx' | 'daddy' | 'badger' | 'mongoose'
-  | 'tick' | 'mammoth' | 'widow' | 'hippo' | 'tarantula' | 'commander';
+  | 'tick' | 'mammoth' | 'widow' | 'formik' | 'hippo' | 'tarantula' | 'commander';
 export type LocomotionType = 'wheels' | 'treads' | 'legs';
 
 // Create turrets for a unit using its blueprint

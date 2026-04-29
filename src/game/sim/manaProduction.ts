@@ -68,17 +68,24 @@ export function getManaCellProductionPerSecond(
 // GRID-overlay colour model
 // =============================================================================
 //
-// Brightness is a single proportional axis that tracks mana/sec
-// directly:
+// Brightness is a single proportional axis that tracks the tile's
+// total ownership × mana/sec:
 //
-//   mix = intensity × (dominantHeight × tileRate) / maxTileRate
+//   mix = intensity × (totalOwnership × tileRate) / maxTileRate
 //
 // where `maxTileRate = BASE_MANA_PER_SECOND × MANA_CENTER_TILE_MULTIPLIER`
 // — the rate of a fully-captured centre tile, the brightest tile
-// the map can produce. The GRID-overlay setting (OFF / LOW / MED /
-// HI) sets `intensity`, which is the mix the brightest possible
-// tile reaches; every other tile scales down in exact proportion to
-// its mana-per-second. A perimeter tile fully captured renders at
+// the map can produce. `totalOwnership` is the SUM of every team's
+// flag height on the tile, so a border tile shared 50/50 between
+// two teams reads just as bright as a single-team tile (sum = 1.0
+// in both cases). The blended team color is the area-weighted
+// average of those teams' colors — see CaptureTileRenderer3D /
+// Minimap.
+//
+// The GRID-overlay setting (OFF / LOW / MED / HI) sets `intensity`,
+// which is the mix the brightest possible tile reaches; every
+// other tile scales down in exact proportion to its mana-per-
+// second. A perimeter tile fully captured renders at
 // 1 / MANA_CENTER_TILE_MULTIPLIER of the centre tile's brightness,
 // because that's exactly the ratio of mana income they produce.
 // The 3D mesh and 2D minimap consume this same factor so both
@@ -86,18 +93,19 @@ export function getManaCellProductionPerSecond(
 
 /** Direct lerp factor `mix ∈ [0, 1]` for blending neutral → team
  *  colour on one captured tile, given the tile's mana-per-second
- *  rate (from getManaTileProductionPerSecond), the dominant team's
- *  flag height, and the global GRID-overlay intensity. A fully-
- *  captured centre tile returns `intensity` exactly; every other
- *  tile scales down in proportion to its mana production. */
+ *  rate (from getManaTileProductionPerSecond), the tile's TOTAL
+ *  ownership height (sum of every team's flag height on the tile),
+ *  and the global GRID-overlay intensity. A fully-captured centre
+ *  tile returns `intensity` exactly; every other tile scales down
+ *  in proportion to its mana production × ownership. */
 export function getCaptureTileBrightness(
   tileProductionPerSec: number,
-  dominantHeight: number,
+  totalOwnershipHeight: number,
   intensity: number,
 ): number {
   const maxTileProd = BASE_MANA_PER_SECOND * MANA_CENTER_TILE_MULTIPLIER;
   if (maxTileProd <= 0 || intensity <= 0) return 0;
   const productionFraction =
-    (dominantHeight * tileProductionPerSec) / maxTileProd;
+    (totalOwnershipHeight * tileProductionPerSec) / maxTileProd;
   return Math.min(1, intensity * productionFraction);
 }

@@ -46,3 +46,4 @@ export type PlatformDefaults<T> = {
 };
 
 export type PlatformBooleanDefaults = PlatformDefaults<boolean>;
+

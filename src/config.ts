@@ -607,8 +607,51 @@ export const ZOOM_INITIAL_DEMO = 1.5;
  *  two commanders. The user can wheel out to see the opponent. */
 export const ZOOM_INITIAL_GAME = 3.0;
 
+/** GAME LOBBY preview pane — pulled WAY back so the whole map
+ *  fits in the small box and players can read the terrain layout
+ *  (CENTER + DIVIDERS) at a glance. The preview shows commanders
+ *  only (no units, no buildings) and slowly orbits around the map
+ *  center, so a wide framing makes the relative spawn positions
+ *  legible during the spin. */
+export const ZOOM_INITIAL_LOBBY_PREVIEW = 0.6;
+
+/** Continuous-orbit rate (radians per second) for the GAME LOBBY
+ *  preview camera. ~5.3 °/s = a full rotation every ~68 s — slow
+ *  enough that it reads as "alive" rather than "frantic". */
+export const LOBBY_PREVIEW_SPIN_RATE = 0.0925;
+
+
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
 export const CAMERA_PAN_MULTIPLIER = 6.0;
+
+/** Minimum world-Y gap (sim units) between the camera and the
+ *  terrain directly beneath it. Acts as the TRUE "minimum zoom"
+ *  rail: the wheel-zoom altitude clamp uses
+ *  `terrain(x,z) + CAMERA_MIN_TERRAIN_CLEARANCE` as its floor (not
+ *  the flat altitudeMin), so the player can never zoom into a hill
+ *  or get pinned between mountains. The same value is also used by
+ *  the per-frame camera lift in `OrbitCamera.apply()` as a hard
+ *  backstop. Tune up if "minimum zoom" feels too close to terrain;
+ *  down if you want the camera able to nuzzle the surface. 80 is
+ *  visually safe across the current heightmap (mountains ~750 wu,
+ *  TILE_FLOOR_Y = -1200) and well above z-fighting range. */
+export const CAMERA_MIN_TERRAIN_CLEARANCE = 80;
+
+/** Half-width (sim units) of the band the orbit-camera target's Y
+ *  coordinate is clamped to, measured from the terrain height at
+ *  the target's XZ. Bounds cursor-pin's 3D Y drift: every wheel
+ *  event blends `target.y` with the cursor's world-point Y, and
+ *  zoom-OUT in particular (α > 1) PUSHES target away from the
+ *  anchor rather than toward it — so target.y multiplies by
+ *  (1 + zoomStepFraction) per click whenever the cursor is below
+ *  the target. Across many zoom-in/out cycles target.y can balloon
+ *  far above (or below) any real surface, until the altitudeMax/Min
+ *  clamps invert the user's zoom direction and the camera gets
+ *  stuck at a low effective zoom-out. The band re-anchors target.y
+ *  to the actual terrain elevation it's flying over, killing the
+ *  drift while still letting cursor-pin work for normal slopes
+ *  within ±BAND wu. */
+export const CAMERA_TARGET_TERRAIN_BAND = 200;
 
 /**
  * World padding as a percentage of map dimensions.

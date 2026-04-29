@@ -207,6 +207,17 @@ export class GameServer {
     this.backgroundAllowedTypes = new Set(
       config.initialAllowedTypes ?? BACKGROUND_UNIT_TYPES,
     );
+    // Same ordering rule for the unit cap: the demo spawn now fills
+    // `maxTotalUnits / numPlayers` slots per team, so the cap must
+    // be set BEFORE spawnBackgroundUnitsStandalone runs (in the
+    // playerIds branch below). Without this override, the world
+    // boots at MAX_TOTAL_UNITS (4096) regardless of user storage,
+    // the spawn fills to that, and only AFTER would `setMaxTotalUnits`
+    // arrive from LobbyManager — producing the visible "4075/16"
+    // mismatch where the spawn count and the displayed cap disagree.
+    if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
+      this.world.maxTotalUnits = config.initialMaxTotalUnits;
+    }
 
     // Setup simulation callbacks
     this.setupSimulationCallbacks();

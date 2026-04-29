@@ -1,7 +1,7 @@
 import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './types/server';
 import type { ServerSimQuality, ServerSimSignalStates } from './types/serverSimLod';
 import type { SignalState } from './types/lod';
-import { persist, persistJson, readPersisted } from './persistence';
+import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import { SERVER_SIM_LOD_SIGNAL_DEFAULTS } from './serverSimLodConfig';
 
 export const SERVER_CONFIG = {
@@ -27,10 +27,30 @@ export const SERVER_CONFIG = {
 } as const satisfies ServerBarConfig;
 
 // ── localStorage keys (module-private) ──
-const STORAGE_SNAPSHOT_RATE = 'rts-snapshot-rate';
-const STORAGE_KEYFRAME_RATIO = 'rts-keyframe-ratio';
-const STORAGE_TICK_RATE = 'rts-tick-rate';
-const STORAGE_SIM_QUALITY = 'rts-sim-quality';
+// Every key in this file is for the HOST SERVER bar — namespace
+// prefix `host-server-` makes that explicit in DevTools. Legacy
+// `rts-*` keys are migrated lazily by the load helpers below.
+const STORAGE_SNAPSHOT_RATE = 'host-server-snapshot-rate';
+const STORAGE_KEYFRAME_RATIO = 'host-server-keyframe-ratio';
+const STORAGE_TICK_RATE = 'host-server-tick-rate';
+const STORAGE_SIM_QUALITY = 'host-server-sim-quality';
+
+const HOST_SERVER_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
+  ['rts-snapshot-rate', STORAGE_SNAPSHOT_RATE],
+  ['rts-keyframe-ratio', STORAGE_KEYFRAME_RATIO],
+  ['rts-tick-rate', STORAGE_TICK_RATE],
+  ['rts-sim-quality', STORAGE_SIM_QUALITY],
+  ['rts-sim-signal-states', 'host-server-sim-signal-states'],
+];
+
+let _hostServerMigrationsRun = false;
+/** Run the legacy → prefixed key rename once per process. Each
+ *  loadStored* helper calls this before reading; idempotent. */
+function ensureHostServerMigrations(): void {
+  if (_hostServerMigrationsRun) return;
+  _hostServerMigrationsRun = true;
+  for (const [oldK, newK] of HOST_SERVER_KEY_MIGRATIONS) migrateKey(oldK, newK);
+}
 
 // Includes legacy auto-tps / auto-cpu / auto-units for backward
 // compat — those are migrated to 'auto' + a SOLO signal state on
@@ -42,6 +62,7 @@ const VALID_SIM_QUALITIES: readonly string[] = [
 ];
 
 export function loadStoredSimQuality(): ServerSimQuality {
+  ensureHostServerMigrations();
   const stored = readPersisted(STORAGE_SIM_QUALITY);
   if (stored && VALID_SIM_QUALITIES.includes(stored)) {
     // Migrate legacy auto-X to 'auto'. The corresponding SOLO
@@ -58,9 +79,10 @@ export function saveSimQuality(q: ServerSimQuality): void {
   persist(STORAGE_SIM_QUALITY, q);
 }
 
-const STORAGE_SIM_SIGNAL_STATES = 'rts-sim-signal-states';
+const STORAGE_SIM_SIGNAL_STATES = 'host-server-sim-signal-states';
 
 export function loadStoredSimSignalStates(): ServerSimSignalStates {
+  ensureHostServerMigrations();
   // Seed from the centralized SERVER_SIM_LOD_SIGNAL_DEFAULTS table
   // (single source of truth for first-load + DEFAULTS-button state).
   const def: ServerSimSignalStates = { ...SERVER_SIM_LOD_SIGNAL_DEFAULTS };
@@ -105,6 +127,7 @@ export function resetSimSignalStates(): ServerSimSignalStates {
 }
 
 export function loadStoredSnapshotRate(): SnapshotRate {
+  ensureHostServerMigrations();
   const stored = readPersisted(STORAGE_SNAPSHOT_RATE);
   if (stored === 'none') return 'none';
   if (stored) {
@@ -119,6 +142,7 @@ export function saveSnapshotRate(rate: SnapshotRate): void {
 }
 
 export function loadStoredKeyframeRatio(): KeyframeRatio {
+  ensureHostServerMigrations();
   const stored = readPersisted(STORAGE_KEYFRAME_RATIO);
   if (stored === 'ALL') return 'ALL';
   if (stored === 'NONE') return 'NONE';
@@ -134,6 +158,7 @@ export function saveKeyframeRatio(ratio: KeyframeRatio): void {
 }
 
 export function loadStoredTickRate(): TickRate {
+  ensureHostServerMigrations();
   const stored = readPersisted(STORAGE_TICK_RATE);
   if (stored) {
     const num = Number(stored);

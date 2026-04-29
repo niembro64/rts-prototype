@@ -25,7 +25,7 @@ import type {
   UnitRadiusType,
   WaypointDetail,
 } from './types/client';
-import { persist, persistJson, readPersisted } from './persistence';
+import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import {
   PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
   LOD_THRESHOLDS,
@@ -82,7 +82,7 @@ export const CLIENT_CONFIG = {
   unitRadiusToggles: { default: false },
   lobbyVisible: { default: { mobile: false, desktop: false } },
   gridOverlay: {
-    default: 'low' as const,
+    default: 'high' as const,
     options: [
       { value: 'off' as const, label: 'OFF' },
       { value: 'zero' as const, label: 'ZERO' },
@@ -265,24 +265,62 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
 };
 
 // ── localStorage keys (module-private) ──
-const STORAGE_KEY = 'rts-graphics-quality';
-const RENDER_MODE_STORAGE_KEY = 'rts-render-mode';
-const AUDIO_SCOPE_STORAGE_KEY = 'rts-audio-scope';
-const AUDIO_SMOOTHING_STORAGE_KEY = 'rts-audio-smoothing';
-const BURN_MARKS_STORAGE_KEY = 'rts-burn-marks';
-const DRIFT_MODE_STORAGE_KEY = 'rts-drift-mode';
-const SOUND_TOGGLES_STORAGE_KEY = 'rts-sound-toggles';
-const RANGE_TOGGLES_STORAGE_KEY = 'rts-range-toggles';
-const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'rts-proj-range-toggles';
-const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'rts-unit-radius-toggles';
-const LEGS_RADIUS_STORAGE_KEY = 'rts-legs-radius';
-const CAMERA_SMOOTH_STORAGE_KEY = 'rts-camera-smooth';
-const EDGE_SCROLL_STORAGE_KEY = 'rts-edge-scroll';
-const DRAG_PAN_STORAGE_KEY = 'rts-drag-pan';
-const LOBBY_VISIBLE_STORAGE_KEY = 'rts-lobby-visible';
-const GRID_OVERLAY_STORAGE_KEY = 'rts-grid-overlay';
-const LOD_SIGNAL_STATES_STORAGE_KEY = 'rts-lod-signal-states';
-const WAYPOINT_DETAIL_STORAGE_KEY = 'rts-waypoint-detail';
+// Every key in this file is for the PLAYER CLIENT bar — namespace
+// prefix `player-client-` makes that explicit in DevTools and lets
+// the four bar namespaces (demo-battle, real-battle, host-server,
+// player-client) be wiped/inspected independently. The previous
+// `rts-*` keys are migrated on first load via `migrateKey()` so
+// existing users don't lose their preferences across this rename.
+const STORAGE_KEY = 'player-client-graphics-quality';
+const RENDER_MODE_STORAGE_KEY = 'player-client-render-mode';
+const AUDIO_SCOPE_STORAGE_KEY = 'player-client-audio-scope';
+const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
+const BURN_MARKS_STORAGE_KEY = 'player-client-burn-marks';
+const DRIFT_MODE_STORAGE_KEY = 'player-client-drift-mode';
+const SOUND_TOGGLES_STORAGE_KEY = 'player-client-sound-toggles';
+const RANGE_TOGGLES_STORAGE_KEY = 'player-client-range-toggles';
+const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'player-client-proj-range-toggles';
+const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'player-client-unit-radius-toggles';
+const LEGS_RADIUS_STORAGE_KEY = 'player-client-legs-radius';
+const CAMERA_SMOOTH_STORAGE_KEY = 'player-client-camera-smooth';
+const EDGE_SCROLL_STORAGE_KEY = 'player-client-edge-scroll';
+const DRAG_PAN_STORAGE_KEY = 'player-client-drag-pan';
+// The "BUDGET ANNIHILATION" lobby modal IS the demo-battle pre-game
+// view — its visibility belongs to the demo-battle namespace.
+// Migration table below covers both prior locations (`rts-lobby-visible`
+// from the original prefix and `player-client-lobby-visible` from the
+// brief stop during the namespace rename).
+const LOBBY_VISIBLE_STORAGE_KEY = 'demo-battle-lobby-visible';
+const GRID_OVERLAY_STORAGE_KEY = 'player-client-grid-overlay';
+const LOD_SIGNAL_STATES_STORAGE_KEY = 'player-client-lod-signal-states';
+const WAYPOINT_DETAIL_STORAGE_KEY = 'player-client-waypoint-detail';
+
+// Migration table — old `rts-*` keys → new `player-client-*` keys.
+// Run once at module init (inside `loadFromStorage` below) so the
+// rename is invisible to existing users.
+const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
+  ['rts-graphics-quality', STORAGE_KEY],
+  ['rts-render-mode', RENDER_MODE_STORAGE_KEY],
+  ['rts-audio-scope', AUDIO_SCOPE_STORAGE_KEY],
+  ['rts-audio-smoothing', AUDIO_SMOOTHING_STORAGE_KEY],
+  ['rts-burn-marks', BURN_MARKS_STORAGE_KEY],
+  ['rts-drift-mode', DRIFT_MODE_STORAGE_KEY],
+  ['rts-sound-toggles', SOUND_TOGGLES_STORAGE_KEY],
+  ['rts-range-toggles', RANGE_TOGGLES_STORAGE_KEY],
+  ['rts-proj-range-toggles', PROJ_RANGE_TOGGLES_STORAGE_KEY],
+  ['rts-unit-radius-toggles', UNIT_RADIUS_TOGGLES_STORAGE_KEY],
+  ['rts-legs-radius', LEGS_RADIUS_STORAGE_KEY],
+  ['rts-camera-smooth', CAMERA_SMOOTH_STORAGE_KEY],
+  ['rts-edge-scroll', EDGE_SCROLL_STORAGE_KEY],
+  ['rts-drag-pan', DRAG_PAN_STORAGE_KEY],
+  // Lobby visibility migrated from BOTH historical homes — the
+  // original `rts-` prefix AND the brief stop in `player-client-`.
+  ['rts-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
+  ['player-client-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
+  ['rts-grid-overlay', GRID_OVERLAY_STORAGE_KEY],
+  ['rts-lod-signal-states', LOD_SIGNAL_STATES_STORAGE_KEY],
+  ['rts-waypoint-detail', WAYPOINT_DETAIL_STORAGE_KEY],
+];
 
 // ── Runtime state ──
 const _cd = CLIENT_CONFIG;
@@ -361,6 +399,10 @@ let localServerRunning: boolean = false;
 // JSON.parse blocks get their own per-key try so a malformed entry is
 // just ignored instead of poisoning the loader.
 function loadFromStorage(): void {
+  // Run the legacy `rts-*` → `player-client-*` migration once before
+  // we read anything. Idempotent: if the new key already exists the
+  // old one is just deleted; if neither exists nothing happens.
+  for (const [oldK, newK] of LEGACY_KEY_MIGRATIONS) migrateKey(oldK, newK);
   const storedQuality = readPersisted(STORAGE_KEY);
   if (storedQuality) {
     // Migrate legacy 'auto-X' values to 'auto' + a SOLO state on the

@@ -75,6 +75,10 @@ export type OrbitCameraOptions = {
    *  beneath it. Defaults to 30 wu — enough to clear z-fighting and
    *  still let the camera get genuinely close to a hilltop. */
   minTerrainClearance?: number;
+  /** Half-width of the band `target.y` is clamped to around
+   *  terrain at the target's XZ. Bounds cursor-pin's accumulated
+   *  Y drift across many wheel events. 0 disables the clamp. */
+  targetTerrainBand?: number;
 };
 
 export class OrbitCamera {
@@ -136,6 +140,19 @@ export class OrbitCamera {
    *  it. The camera position is lifted in `apply()` whenever its
    *  computed Y would fall below `terrain + this`. */
   public minTerrainClearance = 30;
+  /** Half-width of the band `toTargetY` is clamped to around
+   *  terrain at the target's XZ. The 3D cursor-pin formula
+   *  `target.y = α·oldTargetY + (1-α)·anchorY` is fine for any
+   *  single wheel event but accumulates ghost altitude across many
+   *  events: zoom-OUT (α > 1) PUSHES target away from the anchor,
+   *  multiplying target.y by ~(1+f) per click whenever the cursor
+   *  is below the target. After enough cycles target.y is hundreds
+   *  to thousands of wu off any real surface, and the altitude
+   *  clamps invert the user's zoom direction → "stuck on max zoom
+   *  out at altitude 481". Clamping target.y to terrain ± this
+   *  band re-anchors it to the actual ground while still letting
+   *  cursor-pin track normal slopes. 0 disables the clamp. */
+  public targetTerrainBand = 200;
 
   private dragMode: 'none' | 'orbit' | 'pan' = 'none';
   private lastMouseX = 0;
@@ -209,6 +226,9 @@ export class OrbitCamera {
     if (opts.minTerrainClearance !== undefined) {
       this.minTerrainClearance = Math.max(0, opts.minTerrainClearance);
     }
+    if (opts.targetTerrainBand !== undefined) {
+      this.targetTerrainBand = Math.max(0, opts.targetTerrainBand);
+    }
 
     this.toDistance = this.distance;
     this.toTargetX = this.target.x;
@@ -221,92 +241,48 @@ export class OrbitCamera {
       //   scroll down (deltaY > 0)  → zoom out
       if (e.deltaY === 0) return;
 
-      // Fraction-toward-cursor zoom:
+      // SINGLE-RAIL WHEEL ZOOM. The wheel's only effect is to scale
+      // `toDistance` against the [minDistance, maxDistance] rails;
+      // cursor-pin then shifts `toTarget` toward p0 by the SAME
+      // factor so the cursor pixel stays over its world point.
+      // Per-frame `apply()` lift keeps the rendered camera above
+      // terrain — there's NO altitude clamp in this handler and
+      // there CANNOT be one without re-introducing the "stuck
+      // camera" trap.
       //
-      //   P0 = the actual rendered ground/water point under the
-      //        cursor (raycast against the scene — what the user
-      //        sees and is aiming at).
-      //   f  = zoomStepFraction. Per scroll-IN tick the camera
-      //        moves f of the way toward P0. Scroll-OUT applies
-      //        the inverse factor 1/(1−f) so paired in/out ticks
-      //        cancel exactly.
+      // The trap worked like this: the old handler re-solved α
+      // against an altitude floor or ceiling using the cursor-pin
+      // identity `target_y = α·cameraY + (1−α)·anchorY`. When
+      // toTargetY had drifted (cursor-pin's Y blend accumulates
+      // ghost altitude over many wheel events), `cameraY = toTargetY
+      // + d·cosP` could land far outside the [altitudeMin,
+      // altitudeMax] band. Solving for α in those configurations
+      // gave a NEGATIVE actualFactor — a direction REVERSAL of the
+      // user's zoom intent. The downstream `Math.max(minDistance,
+      // wantedDistance)` distance clamp then snapped the negative
+      // wantedDistance to minDistance, and `if (newToDistance ===
+      // toDistance) return` blocked any further input. The user
+      // experienced "I can't zoom in or out anymore — stuck."
       //
-      // The orbit math is `camera = target + distance · dir(yaw,
-      // pitch)` with yaw/pitch held fixed by wheel input. The clean
-      // way to slide the camera by (1−factor)·(P0 − camera) along
-      // the cursor ray is to scale BOTH distance AND target by the
-      // same factor toward P0:
-      //
-      //   newDistance = factor · oldDistance
-      //   newTarget   = factor · oldTarget + (1 − factor) · P0
-      //
-      // Plugging back in: newCamera = factor · oldCamera + (1 −
-      // factor) · P0, which lies exactly on the camera-to-P0 line
-      // (= the cursor ray, since orientation is unchanged). So the
-      // cursor pixel keeps mapping to P0 — no anchor drift across
-      // tilts or terrain elevation, no plane-vs-mesh raycast
-      // mismatch.
-      //
-      // Without a P0 hit (cursor off-canvas, no terrain beneath)
-      // the move falls back to "zoom into the current target" —
-      // equivalent to P0 ≡ target, which leaves toTarget unchanged.
+      // Removing the altitude re-solve makes the wheel monotonic:
+      // every scroll-in shrinks `toDistance` (or no-ops at min),
+      // every scroll-out grows it (or no-ops at max). The camera
+      // can never end up in a state the user can't drive out of.
+      // Geometric "you can't zoom into a hill" is enforced by
+      // apply()'s clearance lift on the rendered Y, NOT by clamping
+      // the orbit math itself — the orbit state stays free, and the
+      // visible camera floats above terrain as needed.
       const f = this.zoomStepFraction;
       const wantFactor = e.deltaY > 0 ? 1 / (1 - f) : 1 - f;
       const p0 = this._cursorWorldPoint(e.clientX, e.clientY);
 
-      // Cursor-pin formula: post-zoom camera position is
-      //   c' = α · c + (1 − α) · p0
-      // where p0 is the world point under the cursor (or the orbit
-      // target if the cursor doesn't hit anything). Inverting on the Y
-      // axis lets us solve for the α that lands camera.y on a chosen
-      // altitude, which is how we clamp.
-      //
-      // Build "to-state" camera Y from the to-state target + distance:
-      //   c.y = target.y + distance · cos(pitch)
-      const cosP = Math.cos(this.pitch);
-      const cameraY = this.toTargetY + this.toDistance * cosP;
-      const anchorY = p0 ? p0.y : this.toTargetY;
-
-      // Clamp on ALTITUDE rather than distance — that's the rail the
-      // user feels. With the previous distance clamp + cursor-pin +
-      // toTargetY tracking, target.y could drift far enough that
-      // camera altitude diverged wildly from `baseDistance / distance`,
-      // leaving you "stuck on min zoom while close to the surface" or
-      // "stuck on max zoom while far away". Solving for α directly
-      // from a target altitude makes those states unreachable.
-      let actualFactor = wantFactor;
-      const candidateCameraY = actualFactor * cameraY + (1 - actualFactor) * anchorY;
-      if (candidateCameraY < this.altitudeMin || candidateCameraY > this.altitudeMax) {
-        // Solve α from cursor-pin formula:
-        //   target_y = α · cameraY + (1 − α) · anchorY
-        //   α = (target_y − anchorY) / (cameraY − anchorY)
-        const targetY = candidateCameraY < this.altitudeMin
-          ? this.altitudeMin
-          : this.altitudeMax;
-        const denom = cameraY - anchorY;
-        if (Math.abs(denom) > 1e-6) {
-          actualFactor = (targetY - anchorY) / denom;
-        } else {
-          // cameraY ≈ anchorY: any α produces camera.y ≈ anchorY, and
-          // anchorY is already outside the altitude band. Bail without
-          // moving — there's no α that brings altitude into range.
-          return;
-        }
-      }
-      // Distance safety clamp — at near-horizontal pitch (cos pitch
-      // → 0) altitude depends weakly on distance, so a runaway
-      // distance is possible without hitting altitude bounds. The
-      // generous distance clamp catches that without normally
-      // triggering.
-      const wantedDistance = this.toDistance * actualFactor;
+      const wantedDistance = this.toDistance * wantFactor;
       const newToDistance = Math.min(
         this.maxDistance,
         Math.max(this.minDistance, wantedDistance),
       );
-      if (newToDistance === this.toDistance) return; // already at clamp
-      // If the distance clamp fired, re-derive actualFactor so the
-      // target shift stays in sync — otherwise the cursor pin drifts.
-      actualFactor = newToDistance / this.toDistance;
+      if (newToDistance === this.toDistance) return; // already at the rail
+      const actualFactor = newToDistance / this.toDistance;
 
       this.toDistance = newToDistance;
       if (p0) {
@@ -321,6 +297,24 @@ export class OrbitCamera {
         this.toTargetX = actualFactor * this.toTargetX + k * p0.x;
         this.toTargetY = actualFactor * this.toTargetY + k * p0.y;
         this.toTargetZ = actualFactor * this.toTargetZ + k * p0.z;
+        // Bound the Y blend's accumulated drift. Without this clamp,
+        // zoom-OUT (α > 1) pushes target.y AWAY from anchor.y by a
+        // factor of ~(1+f) per click, so a few cycles of "zoom in
+        // on a mountain, then zoom out over the lake" can leave
+        // toTargetY hundreds of wu above any real surface. At that
+        // point `cameraY = toTargetY + d·cosP` gets driven into the
+        // altitudeMax/Min clamp at small `d`, which inverts the
+        // user's zoom direction — that's the "stuck at altitude 481
+        // after panning around" symptom. The clamp re-pins target.y
+        // to actual ground each step; cursor-pin still works for
+        // normal slopes within ±band wu.
+        if (this.getTerrainHeight && this.targetTerrainBand > 0) {
+          const ground = this.getTerrainHeight(this.toTargetX, this.toTargetZ);
+          const lo = ground - this.targetTerrainBand;
+          const hi = ground + this.targetTerrainBand;
+          if (this.toTargetY < lo) this.toTargetY = lo;
+          else if (this.toTargetY > hi) this.toTargetY = hi;
+        }
       }
 
       // Snap mode applies inputs directly to the rendered state.

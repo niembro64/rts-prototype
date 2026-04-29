@@ -138,8 +138,10 @@ const playerIds = computed(() => {
 }
 
 .combat-stats-modal {
-  background: rgba(10, 12, 18, 0.95);
-  border: 1px solid rgba(100, 120, 160, 0.4);
+  /* Aligned with the bottom-bar aesthetic: dark semi-transparent
+   * base + muted gray border (`#444`). Rounded corners stay. */
+  background: rgba(15, 18, 24, 0.92);
+  border: 1px solid #444;
   border-radius: 10px;
   padding: 28px 32px;
   min-width: 900px;

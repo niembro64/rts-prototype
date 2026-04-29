@@ -186,6 +186,43 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     bodyRadius: 7,
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
   },
+  // Gatling mortar — multi-barrel rotating cluster that lobs
+  // advancedMortarShot rounds. Each round is itself a cluster
+  // carrier (4 mortarShot submunitions), so the per-shot effective
+  // payload is 4 mortars × 5 medium fragments = 20 hits. Pacing is
+  // slower than the hippo gatling because each round is a heavy
+  // cluster.
+  gatlingMortarTurret: {
+    id: 'gatlingMortarTurret',
+    projectileId: 'advancedMortarShot',
+    range: 700,
+    cooldown: 350,
+    launchForce: 32_000,
+    turretTurnAccel: 80,
+    turretDrag: 0.4,
+    barrel: {
+      type: 'simpleMultiBarrel',
+      barrelCount: 6,
+      barrelLength: 1.0,
+      orbitRadius: 0.5,
+      depthScale: 0.12,
+      spin: { idle: 2, max: 18, accel: 80, decel: 10 },
+    },
+    rangeMultiplierOverrides: {
+      tracking: { acquire: null, release: null },
+      engage: { acquire: null, release: null },
+    },
+    color: 0xffffff,
+    spread: { angle: Math.PI / 32 },
+    bodyRadius: 14,
+    audio: { fireSound: AUDIO.event.fire.gatlingMortarTurret },
+    // Lobs cluster carriers like a regular mortar.
+    highArc: true,
+    // Aim short so the cluster carrier lands inside the target
+    // group; the bouncing mortar children carry the rest of the
+    // fragmentation outward.
+    groundAimFraction: 0.95,
+  },
   hippoGatlingTurret: {
     id: 'hippoGatlingTurret',
     projectileId: 'mediumShot',

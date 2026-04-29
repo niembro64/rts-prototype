@@ -21,21 +21,31 @@ const STYLE = {
    *  offset is generous enough to clear them and leave the HP bar
    *  visibly separated below the text. */
   worldOffsetAbove: 90,
-  /** TARGET pixel height of the label on screen, regardless of
-   *  camera distance — sprites use sizeAttenuation: false so the
-   *  text always reads at this size whether the unit is close or
-   *  way out at the edge of the map. */
-  pixelHeight: 18,
-  /** Canvas resolution. The font fills the canvas height; width
-   *  grows with the measured text width. With non-mipped textures
-   *  there's no benefit to power-of-two sizing. */
-  canvasHeight: 64,
-  fontSize: 40,
+  /** Logical font pixel size — drawn at this size in canvas CSS px
+   *  and shown 1:1 in screen px (sprite uses sizeAttenuation: false).
+   *  The canvas backing-store is oversampled by `devicePixelRatio`
+   *  so the rendered glyphs stay crisp on hi-DPI displays. The
+   *  previous baker drew at 40 px on a 64-tall canvas and then
+   *  downsampled to 18 screen px — that 64→18 LinearFilter shrink
+   *  is what produced the "Tick w" smear (sub-pixel artifacts where
+   *  the right side of 'k' bleeds into the right padding). 1:1
+   *  logical-to-screen mapping keeps glyphs tight and unambiguous. */
+  fontSize: 18,
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   textColor: '#ffffff',
-  bgColor: 'rgba(0, 0, 0, 0.55)',
-  paddingX: 16,
+  bgColor: 'rgba(15, 18, 24, 0.78)',
+  paddingX: 10,
+  paddingY: 4,
+  borderRadius: 4,
 };
+
+/** Backing-store oversample so the canvas bitmap matches device pixels.
+ *  Capped at 3 (no benefit beyond — texture upload bandwidth grows
+ *  quadratically). Computed once at module load: hot-DPR changes are
+ *  rare enough that re-evaluating per-bake isn't worth the cost. */
+const DPR = Math.max(1, Math.min(3, Math.floor(
+  typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+)));
 
 type Label = {
   sprite: THREE.Sprite;
@@ -46,9 +56,10 @@ type Label = {
   /** Last text we baked, so we skip canvas work when it hasn't
    *  changed. */
   lastText: string | null;
-  /** Cached canvas width that produced lastText, so the world
-   *  scale factor stays in sync without re-measuring. */
-  lastCanvasWidth: number;
+  /** Cached CSS-pixel width of the last bake — drives sprite scale. */
+  lastCssWidth: number;
+  /** Cached CSS-pixel height of the last bake — drives sprite scale. */
+  lastCssHeight: number;
 };
 
 export class SelectionLabel3D {
@@ -75,8 +86,9 @@ export class SelectionLabel3D {
     let label = this.pool[i];
     if (!label) {
       const canvas = document.createElement('canvas');
-      canvas.height = STYLE.canvasHeight;
-      canvas.width = 1; // sized on first paint
+      // Sized on first paint; backing-store dims set in repaintIfChanged.
+      canvas.width = 1;
+      canvas.height = 1;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('SelectionLabel3D: 2d canvas context unavailable');
       const texture = new THREE.CanvasTexture(canvas);
@@ -91,39 +103,72 @@ export class SelectionLabel3D {
       });
       const sprite = new THREE.Sprite(material);
       this.parent.add(sprite);
-      label = { sprite, canvas, ctx, texture, material, lastText: null, lastCanvasWidth: 1 };
+      label = {
+        sprite, canvas, ctx, texture, material,
+        lastText: null, lastCssWidth: 1, lastCssHeight: 1,
+      };
       this.pool.push(label);
     }
     label.sprite.visible = true;
     return label;
   }
 
-  /** Repaint the label canvas if the text changed. Returns the new
-   *  canvas width so the caller can compute the sprite's world
-   *  scale. */
-  private repaintIfChanged(label: Label, text: string): number {
-    if (label.lastText === text) return label.lastCanvasWidth;
+  /** Repaint the label canvas if the text changed. Bakes at
+   *  device-pixel resolution but works in CSS-pixel coordinates so
+   *  the math stays simple and the on-screen size matches the
+   *  declared `STYLE.fontSize` 1:1. */
+  private repaintIfChanged(label: Label, text: string): void {
+    if (label.lastText === text) return;
     label.lastText = text;
+
     const ctx = label.ctx;
-    // Use a temporary font setting on the bare context to measure
-    // the text width before we know the final canvas size.
-    ctx.font = `${STYLE.fontSize}px ${STYLE.fontFamily}`;
+    const canvas = label.canvas;
+    const fontSpec = `${STYLE.fontSize}px ${STYLE.fontFamily}`;
+
+    // Measure with the destination ctx. The canvas is about to be
+    // resized, which wipes ctx state — we'll re-set after.
+    ctx.font = fontSpec;
     const metrics = ctx.measureText(text);
     const textWidth = Math.ceil(metrics.width);
-    const canvasWidth = textWidth + 2 * STYLE.paddingX;
-    label.canvas.width = canvasWidth;
-    label.canvas.height = STYLE.canvasHeight;
-    // Resizing the canvas resets context state — re-set everything.
-    ctx.font = `${STYLE.fontSize}px ${STYLE.fontFamily}`;
+
+    const cssW = textWidth + 2 * STYLE.paddingX;
+    const cssH = STYLE.fontSize + 2 * STYLE.paddingY;
+
+    // Backing-store dims = CSS dims × DPR. Always reassign even if
+    // the value matches — per HTML spec any assignment to canvas.
+    // width/height resets the bitmap, which is the cheapest way to
+    // guarantee no residual pixels from a prior bake leak through
+    // (a previous bake at a wider canvas + a same-width new bake
+    // could otherwise show stale glyphs along the right edge).
+    canvas.width = cssW * DPR;
+    canvas.height = cssH * DPR;
+
+    // The resize zeroed ctx state — re-establish transform + style.
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    ctx.font = fontSpec;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+
+    // Rounded background pill. `roundRect` is in modern Chromium /
+    // Safari / Firefox; fall back to a square rect on the rare
+    // engine that lacks it.
     ctx.fillStyle = STYLE.bgColor;
-    ctx.fillRect(0, 0, canvasWidth, STYLE.canvasHeight);
+    const ctxAny = ctx as unknown as { roundRect?: (x: number, y: number, w: number, h: number, r: number) => void };
+    if (typeof ctxAny.roundRect === 'function') {
+      ctx.beginPath();
+      ctxAny.roundRect(0, 0, cssW, cssH, STYLE.borderRadius);
+      ctx.fill();
+    } else {
+      ctx.fillRect(0, 0, cssW, cssH);
+    }
+
     ctx.fillStyle = STYLE.textColor;
-    ctx.fillText(text, canvasWidth / 2, STYLE.canvasHeight / 2);
+    ctx.fillText(text, cssW / 2, cssH / 2);
+
     label.texture.needsUpdate = true;
-    label.lastCanvasWidth = canvasWidth;
-    return canvasWidth;
+    label.lastCssWidth = cssW;
+    label.lastCssHeight = cssH;
   }
 
   update(
@@ -131,7 +176,15 @@ export class SelectionLabel3D {
     selectedBuildings: readonly Entity[],
     frustum?: THREE.Frustum,
   ): void {
-    if (selectedUnits.length === 0 && selectedBuildings.length === 0) {
+    // Single-select policy: name labels only show when ONE entity is
+    // selected. With sizeAttenuation: false the sprite is a fixed
+    // pixel size on screen, so multi-select clusters render their
+    // labels stacked on top of each other in screen space — readable
+    // for one unit, an unreadable pile for ten. Matches SC2 / AoE /
+    // Total War convention: multi-select detail lives in the bottom
+    // selection panel, not as floating text.
+    const total = selectedUnits.length + selectedBuildings.length;
+    if (total !== 1) {
       if (this.hadVisible) {
         for (let i = 0; i < this.pool.length; i++) {
           this.pool[i].sprite.visible = false;
@@ -174,11 +227,12 @@ export class SelectionLabel3D {
       const worldZ = u.transform.y;
       const text = labelTextForUnit(u);
       const label = this.acquire(used++);
-      const canvasWidth = this.repaintIfChanged(label, text);
-      const aspect = canvasWidth / STYLE.canvasHeight;
-      const pxH = STYLE.pixelHeight;
-      const pxW = pxH * aspect;
-      label.sprite.scale.set(pxW * pxToScale, pxH * pxToScale, 1);
+      this.repaintIfChanged(label, text);
+      label.sprite.scale.set(
+        label.lastCssWidth * pxToScale,
+        label.lastCssHeight * pxToScale,
+        1,
+      );
       label.sprite.position.set(worldX, worldY, worldZ);
       if (frustum) {
         probe.set(worldX, worldY, worldZ);
@@ -194,11 +248,12 @@ export class SelectionLabel3D {
       const worldZ = b.transform.y;
       const text = labelTextForBuilding(b);
       const label = this.acquire(used++);
-      const canvasWidth = this.repaintIfChanged(label, text);
-      const aspect = canvasWidth / STYLE.canvasHeight;
-      const pxH = STYLE.pixelHeight;
-      const pxW = pxH * aspect;
-      label.sprite.scale.set(pxW * pxToScale, pxH * pxToScale, 1);
+      this.repaintIfChanged(label, text);
+      label.sprite.scale.set(
+        label.lastCssWidth * pxToScale,
+        label.lastCssHeight * pxToScale,
+        1,
+      );
       label.sprite.position.set(worldX, worldY, worldZ);
       if (frustum) {
         probe.set(worldX, worldY, worldZ);

@@ -197,8 +197,10 @@ function label(s: UniqueSound): string {
 }
 
 .sound-test-modal {
-  background: #181828;
-  border: 1px solid #446;
+  /* Aligned with the bottom-bar aesthetic: dark semi-transparent
+   * base + muted gray border. Rounded corners kept. */
+  background: rgba(15, 18, 24, 0.92);
+  border: 1px solid #444;
   border-radius: 8px;
   width: 720px;
   max-height: 85vh;

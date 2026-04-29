@@ -125,7 +125,6 @@ function drawEntityLayer(): void {
       if (cx < 0 || cx >= tileCellsX || cy < 0 || cy >= tileCellsY) continue;
       let totalWeight = 0;
       let r = 0, g = 0, b = 0;
-      let maxHeight = 0;
       for (const pidStr in tile.heights) {
         const height = tile.heights[Number(pidStr)];
         if (height <= 0) continue;
@@ -136,14 +135,13 @@ function drawEntityLayer(): void {
         r += ((color >> 16) & 0xff) * height;
         g += ((color >> 8) & 0xff) * height;
         b += (color & 0xff) * height;
-        if (height > maxHeight) maxHeight = height;
       }
       if (totalWeight <= 0) continue;
       const tr = r / totalWeight;
       const tg = g / totalWeight;
       const tb = b / totalWeight;
       const tileProd = getManaCellProductionPerSecond(cx, cy, captureCellSize, mapWidth, mapHeight);
-      const mix = getCaptureTileBrightness(tileProd, maxHeight, gridOverlayIntensity);
+      const mix = getCaptureTileBrightness(tileProd, totalWeight, gridOverlayIntensity);
       const inv = 1 - mix;
       const idx = cy * tileCellsX + cx;
       tileFinalR[idx] = NEUTRAL_R * inv + tr * mix;
@@ -359,11 +357,13 @@ onMounted(() => {
 
 <style scoped>
 .minimap-container {
+  /* Aligned with the bottom-bar aesthetic: dark semi-transparent
+   * base + muted gray border. Rounded corners stay. */
   position: absolute;
   top: 60px;  /* Below the top bar */
   left: 10px;
-  background: rgba(0, 0, 0, 0.85);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 18, 24, 0.92);
+  border: 1px solid #444;
   border-radius: 8px;
   padding: 8px;
   font-family: monospace;

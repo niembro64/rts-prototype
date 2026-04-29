@@ -289,8 +289,16 @@ export class Render3DEntities {
   // on EXACTLY the same surface — no front/back offset where a beam
   // could appear to clip the visible chrome but miss the sim plane.
   private mirrorGeom = new THREE.PlaneGeometry(1, 1);
-  // Thin ring for the selection indicator (flat, sits just above the ground plane)
-  private ringGeom = new THREE.RingGeometry(0.9, 1.0, 28);
+  // Selection-indicator halo. Open-ended cylinder (no top/bottom
+  // faces — those would pop into view when the camera dips low).
+  // Built at radius 1 / height 1 in geom-local coords; per-unit
+  // scale stretches it to the unit's selection radius and the
+  // desired vertical extent (see RING_HEIGHT below). Used to be a
+  // flat RingGeometry which got partly buried whenever a unit stood
+  // on uneven terrain — the uphill arc disappeared into the slope.
+  // Vertical thickness keeps the halo visible from every camera
+  // angle and through small terrain undulations.
+  private ringGeom = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 28, 1, true);
   // Unit-radius indicator wireframe spheres (SCAL/SHOT/PUSH). Unit
   // radius = 1 → scale per mesh to the actual collider radius. The
   // sim's hit-detection uses 3D spheres centered on transform.z, so
@@ -2168,15 +2176,18 @@ export class Render3DEntities {
       // lower one.
       const bodyTopY = bodyEntry.topY * radius;
 
-      // Selection ring (flat ring on ground under the unit). Material
-      // is the renderer-owned shared instance; mesh is per-unit so its
-      // scale tracks the unit's render radius.
+      // Selection halo — vertical cylinder band wrapping the unit's
+      // base. Material is the renderer-owned shared instance; the
+      // mesh is per-unit so its scale tracks the unit's render
+      // radius. Cylinder is vertical by default (axis = Y), so no
+      // rotation is needed.
       const selected = e.selectable?.selected === true;
       if (selected && !m.ring) {
         const ring = new THREE.Mesh(this.ringGeom, this.selectionRingMat);
-        ring.rotation.x = -Math.PI / 2;
-        // Group is at ground; ring sits just above ground to avoid z-fighting.
-        ring.position.y = 1;
+        // Cylinder centered at half its scaled height puts the
+        // bottom edge at y = 1 (the +1 offset below) — slightly
+        // above the m.group origin to dodge z-fighting with the
+        // terrain mesh on flat ground.
         m.group.add(ring);
         m.ring = ring;
       } else if (!selected && m.ring) {
@@ -2185,7 +2196,16 @@ export class Render3DEntities {
       }
       if (m.ring) {
         const ringR = radius * 1.35;
-        m.ring.scale.set(ringR, ringR, 1);
+        // Vertical extent in world units. Tall enough to peek over
+        // typical terrain undulations within the unit's footprint
+        // (≤ ~6 wu at the heightmap's rendered slope) while still
+        // reading as a thin halo, not a tower.
+        const ringH = 8;
+        m.ring.scale.set(ringR, ringH, ringR);
+        // Position only needs to be set once on creation, but the
+        // assignment is cheap and keeps the math co-located with
+        // the height that drives it.
+        m.ring.position.y = ringH / 2 + 1;
       }
 
       // SCAL / SHOT / PUSH unit-radius indicator rings. The 2D renderer
@@ -2594,6 +2614,16 @@ export class Render3DEntities {
     const seen = this._seenBuildingIds;
     seen.clear();
 
+    // LOD-driven detail visibility for buildings. At low graphics tiers
+    // the player is typically zoomed out / running on a constrained GPU,
+    // so the small accent meshes (chimney, machinery inset, solar cell
+    // grid) are hidden — buildings collapse to their team-colored slab
+    // silhouette. The detail meshes stay alive in the scenegraph (cheap)
+    // and re-appear automatically when the tier flips back up. Mirrors
+    // the unit LOD pattern where min/low strips turrets, mirrors, legs.
+    const tier = this.lod.gfx.tier;
+    const showBuildingDetails = tier !== 'min' && tier !== 'low';
+
     for (const e of buildings) {
       seen.add(e.id);
       // Scope gate — larger padding for buildings (bigger footprint).
@@ -2674,7 +2704,7 @@ export class Render3DEntities {
       primary.position.set(0, renderH / 2, 0);
       primary.scale.set(w, renderH, d);
       if (m.buildingDetails) {
-        const detailsVisible = progress >= 1;
+        const detailsVisible = showBuildingDetails && progress >= 1;
         for (const dMesh of m.buildingDetails) dMesh.visible = detailsVisible;
       }
 

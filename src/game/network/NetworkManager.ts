@@ -27,6 +27,7 @@ export type {
 } from './NetworkTypes';
 
 import type { NetworkServerSnapshot, LobbyPlayer, NetworkMessage, NetworkRole } from './NetworkTypes';
+import type { LobbySettings } from '@/types/network';
 
 // Generate a short room code (4 characters)
 function generateRoomCode(): string {
@@ -50,6 +51,21 @@ export class NetworkManager {
   private snapshotsSent: number = 0;
   private snapshotsReceived: number = 0;
 
+  // Heartbeat presence tracking. Every connected peer sends a
+  // `heartbeat` message every `heartbeatSendIntervalMs`; the
+  // receiving side records the timestamp here. The check loop
+  // sweeps the map every second and force-closes any connection
+  // whose last heartbeat is older than `heartbeatTimeoutMs` —
+  // that fires the regular `connection.close` handler (see
+  // `setupConnectionHandlers`) which in turn calls
+  // `onPlayerLeft`, so the GAME LOBBY player roster stays
+  // accurate even when PeerJS misses a silent network drop.
+  private lastHeartbeatReceived: Map<PlayerId, number> = new Map();
+  private heartbeatSendInterval: ReturnType<typeof setInterval> | null = null;
+  private heartbeatCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly heartbeatSendIntervalMs = 2000;
+  private readonly heartbeatTimeoutMs = 6000;
+
   // Callbacks
   public onPlayerJoined?: (player: LobbyPlayer) => void;
   public onPlayerLeft?: (playerId: PlayerId) => void;
@@ -59,6 +75,24 @@ export class NetworkManager {
   public onPlayerAssignment?: (playerId: PlayerId) => void;
   public onError?: (error: string) => void;
   public onConnected?: () => void;
+  /** Client-side: invoked when the host's lobby settings arrive
+   *  (initial snapshot on connect AND every change while the
+   *  lobby is open). The host runs the local copy of these
+   *  settings as the source of truth and never receives this
+   *  callback itself. */
+  public onLobbySettings?: (settings: LobbySettings) => void;
+  /** Host-side: read the current lobby settings on demand. The
+   *  network layer pulls fresh values whenever it needs to ship
+   *  them (e.g. a new player just connected) so the host's
+   *  GameCanvas stays the single source of truth — no shadow
+   *  copy in the network layer that could drift. */
+  public getLobbySettings?: () => LobbySettings;
+  /** Fired on every receiver (host AND clients) when a player's
+   *  IP / location info arrives or updates. Hosts get this for
+   *  joiners reporting in via `playerInfo`; clients get it for
+   *  any player via the host's re-broadcast. The receiver
+   *  updates its own LobbyPlayer record from `getPlayer(id)`. */
+  public onPlayerInfoUpdate?: (player: LobbyPlayer) => void;
 
   // Host a new game
   async hostGame(): Promise<string> {
@@ -192,6 +226,11 @@ export class NetworkManager {
           console.log('Connected to host');
           this.connections.set(1, conn); // Host is always player 1
           this.setupConnectionHandlers(conn, 1);
+          // Track host's heartbeats — if the host stops sending
+          // for too long, the check loop closes our side of the
+          // connection and the regular `playerLeft` path fires.
+          this.lastHeartbeatReceived.set(1, Date.now());
+          this.startHeartbeats();
           this.onConnected?.();
           resolve();
         });
@@ -253,6 +292,12 @@ export class NetworkManager {
     conn.on('open', () => {
       console.log(`Player ${playerId} connected`);
 
+      // Begin tracking heartbeats from this peer; if it goes
+      // silent for `heartbeatTimeoutMs`, the check loop will
+      // close the connection and trigger normal cleanup.
+      this.lastHeartbeatReceived.set(playerId, Date.now());
+      this.startHeartbeats();
+
       // Get color name for this player
       const colorNames = ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange'];
       const playerName = colorNames[playerId - 1] || `Player ${playerId}`;
@@ -267,18 +312,46 @@ export class NetworkManager {
       // Send player their assignment
       this.sendTo(playerId, { type: 'playerAssignment', playerId });
 
-      // Send current player list to new player
+      // Send current player list to new player, plus any IP /
+       // location info already known about each. Without the
+       // info-update follow-up the joiner would see existing
+       // players in the list but with their IP/location columns
+       // blank until those players happened to re-report.
       for (const p of this.players.values()) {
         this.sendTo(playerId, {
           type: 'playerJoined',
           playerId: p.playerId,
           playerName: p.name,
         });
+        if (
+          p.ipAddress !== undefined ||
+          p.location !== undefined ||
+          p.timezone !== undefined
+        ) {
+          this.sendTo(playerId, {
+            type: 'playerInfoUpdate',
+            playerId: p.playerId,
+            ipAddress: p.ipAddress,
+            location: p.location,
+            timezone: p.timezone,
+          });
+        }
       }
 
       // Notify all players about new player
       this.broadcast({ type: 'playerJoined', playerId, playerName });
       this.onPlayerJoined?.(player);
+
+      // Bring the new player up to date on the host's current
+      // lobby settings (terrain shape today, more later). Without
+      // this initial push the joiner would render their own
+      // stored terrain in the preview pane until the host happens
+      // to change something — visually inconsistent across
+      // clients during the lobby idle state.
+      const settings = this.getLobbySettings?.();
+      if (settings) {
+        this.sendTo(playerId, { type: 'lobbySettings', settings });
+      }
 
       this.setupConnectionHandlers(conn, playerId);
     });
@@ -295,6 +368,7 @@ export class NetworkManager {
       console.warn(`[NET] Player ${playerId} connection CLOSED (role=${this.role})`);
       this.connections.delete(playerId);
       this.players.delete(playerId);
+      this.lastHeartbeatReceived.delete(playerId);
       this.onPlayerLeft?.(playerId);
 
       if (this.role === 'host') {
@@ -336,7 +410,19 @@ export class NetworkManager {
 
   // Handle incoming message
   private handleMessage(message: NetworkMessage, fromPlayerId: PlayerId): void {
+    // Any inbound message is also a sign of life — refresh the
+    // heartbeat-received timestamp for this peer regardless of
+    // type. That prevents the timeout sweep from kicking peers
+    // who are sending plenty of state but happen to skip a
+    // heartbeat tick (snapshots, commands, etc. all count).
+    if (this.lastHeartbeatReceived.has(fromPlayerId)) {
+      this.lastHeartbeatReceived.set(fromPlayerId, Date.now());
+    }
     switch (message.type) {
+      case 'heartbeat':
+        // Bookkeeping only — the unconditional refresh above
+        // already updated the timestamp. Nothing else to do.
+        return;
       case 'state':
         // Client receives state from host. Host now ships state as a
         // MessagePack Uint8Array; legacy JSON-string form is still
@@ -371,6 +457,30 @@ export class NetworkManager {
         }
         break;
 
+      case 'playerInfo':
+        // Host: a client just resolved its own IP/location/tz
+        // lookup and is reporting in. Stamp the values on our
+        // player record + fan out to every connected client
+        // (including the originator — keeps every end pulling
+        // from one canonical record set, no special-casing).
+        if (this.role === 'host') {
+          const player = this.players.get(fromPlayerId);
+          if (player) {
+            player.ipAddress = message.ipAddress;
+            player.location = message.location;
+            player.timezone = message.timezone;
+            this.onPlayerInfoUpdate?.(player);
+            this.broadcast({
+              type: 'playerInfoUpdate',
+              playerId: fromPlayerId,
+              ipAddress: message.ipAddress,
+              location: message.location,
+              timezone: message.timezone,
+            });
+          }
+        }
+        break;
+
       case 'playerAssignment':
         // Client receives their player ID
         if (this.role === 'client') {
@@ -401,6 +511,116 @@ export class NetworkManager {
         this.players.delete(message.playerId);
         this.onPlayerLeft?.(message.playerId);
         break;
+
+      case 'playerInfoUpdate':
+        // Client: host is fanning out a player's IP/location/tz.
+        // Update the matching record so every client's player
+        // list stays in sync.
+        if (this.role === 'client') {
+          const target = this.players.get(message.playerId);
+          if (target) {
+            target.ipAddress = message.ipAddress;
+            target.location = message.location;
+            target.timezone = message.timezone;
+            this.onPlayerInfoUpdate?.(target);
+          }
+        }
+        break;
+
+      case 'lobbySettings':
+        // Only meaningful client-side — the host owns the source
+        // of truth and never broadcasts to itself.
+        if (this.role === 'client') {
+          this.onLobbySettings?.(message.settings);
+        }
+        break;
+    }
+  }
+
+  /** Host: ship the current lobby settings to every connected
+   *  client. Caller invokes this whenever a host-controlled lobby
+   *  setting changes (terrain shape today, future knobs later).
+   *  No-op on clients. */
+  broadcastLobbySettings(settings: LobbySettings): void {
+    if (this.role !== 'host') return;
+    this.broadcast({ type: 'lobbySettings', settings });
+  }
+
+  /** Begin emitting heartbeat pings to every open connection +
+   *  start the timeout sweep. Idempotent — calling twice is a
+   *  no-op once timers exist. Called from hostGame / joinGame
+   *  once a peer is established; stopped on `disconnect`. */
+  private startHeartbeats(): void {
+    if (this.heartbeatSendInterval !== null) return;
+    const now = Date.now();
+    for (const pid of this.connections.keys()) {
+      this.lastHeartbeatReceived.set(pid, now);
+    }
+    this.heartbeatSendInterval = setInterval(() => {
+      const beat: NetworkMessage = { type: 'heartbeat', playerId: this.localPlayerId };
+      for (const conn of this.connections.values()) {
+        if (conn.open) conn.send(beat);
+      }
+    }, this.heartbeatSendIntervalMs);
+    this.heartbeatCheckInterval = setInterval(() => {
+      const cutoff = Date.now() - this.heartbeatTimeoutMs;
+      for (const [pid, lastSeen] of this.lastHeartbeatReceived) {
+        if (lastSeen < cutoff) {
+          // Force-close the silent connection — its close handler
+          // (setupConnectionHandlers) cleans up `players` /
+          // `connections` and fires `onPlayerLeft`, so the lobby
+          // roster updates without any extra plumbing here.
+          const conn = this.connections.get(pid);
+          if (conn) conn.close();
+          this.lastHeartbeatReceived.delete(pid);
+        }
+      }
+    }, 1000);
+  }
+
+  private stopHeartbeats(): void {
+    if (this.heartbeatSendInterval) {
+      clearInterval(this.heartbeatSendInterval);
+      this.heartbeatSendInterval = null;
+    }
+    if (this.heartbeatCheckInterval) {
+      clearInterval(this.heartbeatCheckInterval);
+      this.heartbeatCheckInterval = null;
+    }
+    this.lastHeartbeatReceived.clear();
+  }
+
+  /** Report the LOCAL player's IP / location / timezone. On the
+   *  host this updates the host's record + fans out to every
+   *  client; on a client it ships a `playerInfo` to the host
+   *  (which then does the broadcast). Caller invokes once the
+   *  IP lookup resolves; timezone is available immediately so
+   *  it can ride along on that single call. */
+  reportLocalPlayerInfo(
+    ipAddress: string | undefined,
+    location: string | undefined,
+    timezone: string | undefined,
+  ): void {
+    if (this.role === 'host') {
+      const self = this.players.get(this.localPlayerId);
+      if (self) {
+        self.ipAddress = ipAddress;
+        self.location = location;
+        self.timezone = timezone;
+        this.onPlayerInfoUpdate?.(self);
+        this.broadcast({
+          type: 'playerInfoUpdate',
+          playerId: this.localPlayerId,
+          ipAddress,
+          location,
+          timezone,
+        });
+      }
+    } else if (this.role === 'client') {
+      const hostConn = this.connections.get(1);
+      if (hostConn?.open) {
+        hostConn.send({ type: 'playerInfo', ipAddress, location, timezone });
+      }
     }
   }
 
@@ -526,6 +746,7 @@ export class NetworkManager {
 
   // Disconnect and cleanup
   disconnect(): void {
+    this.stopHeartbeats();
     for (const conn of this.connections.values()) {
       conn.close();
     }

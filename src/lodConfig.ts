@@ -40,7 +40,7 @@ export const LOD_SIGNAL_DEFAULTS: LodSignalStates = {
   zoom: 'off',
   tps: 'active',
   fps: 'active',
-  units: 'active',
+  units: 'off',
 };
 
 // =============================================================================
@@ -155,12 +155,21 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // global AUTO quality tier: zoom/camera distance should decide
   // which individual units get rich meshes, not downgrade the whole
   // renderer when the player pulls back for a strategic view.
+  // Threshold is the MINIMUM on-screen radius (px) below which a
+  // unit drops from rich body geometry to an instanced sphere. The
+  // bar is set low so units only collapse to spheres when they're
+  // genuinely a few pixels across — pulling the camera back to a
+  // moderate strategic view shouldn't strip body details out from
+  // under the player. The cap on rich-unit count (RICH_UNIT_CAP)
+  // is the hard ceiling on per-frame load; lowering this threshold
+  // doesn't grow that load past the cap, just changes WHICH units
+  // earn the rich slot when more qualify than the cap allows.
   RICH_UNIT_SCREEN_RADIUS_PX: {
     min: Number.POSITIVE_INFINITY,
-    low: 14,
-    medium: 10,
-    high: 7,
-    max: 5,
+    low: 6,
+    medium: 4,
+    high: 2.5,
+    max: 1.5,
   },
   HUD_FRAME_STRIDE: {
     min: 4,

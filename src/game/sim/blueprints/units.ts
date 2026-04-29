@@ -309,6 +309,40 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     deathSound: AUDIO.event.death.mammoth,
     fightStopEngagedRatio: 0.9,
   },
+  formik: {
+    id: 'formik',
+    name: 'Formik',
+    shortName: 'FMK',
+    // Larger than Widow (scale 30 → 40) and tougher to match.
+    hp: 3200,
+    moveSpeed: 60,
+    unitRadiusCollider: { scale: 40, shot: 50, push: 50 * 1.3 },
+    mass: 280,
+    energyCost: 10,
+    manaCost: 4000,
+    turrets: [{ turretId: 'gatlingMortarTurret', offsetX: 0, offsetY: 0 }],
+    chassisMounts: [{ x: 0.3, y: 0 }],
+    bodyShape: BODY_SHAPES.arachnid,
+    locomotion: {
+      type: 'legs',
+      style: 'widow',
+      config: {
+        // Bigger thorax = beefier legs. Bumped over widow's
+        // (7/6/4/6/3.5) to keep limb thickness in proportion to
+        // the larger chassis.
+        upperThickness: 9,
+        lowerThickness: 8,
+        hipRadius: 5.5,
+        kneeRadius: 7.5,
+        footRadius: 4.5,
+        lerpDuration: 320,
+      },
+    },
+    renderer: 'arachnid',
+    seeRange: 500,
+    deathSound: AUDIO.event.death.formik,
+    fightStopEngagedRatio: 0.9,
+  },
   widow: {
     id: 'widow',
     name: 'Widow',
@@ -479,6 +513,7 @@ export const BUILDABLE_UNIT_IDS = [
   'loris',
   'daddy',
   'widow',
+  'formik',
   'hippo',
 ];
 

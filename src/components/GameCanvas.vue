@@ -9,6 +9,10 @@ import {
   type BackgroundBattleState,
 } from '../game/lobby/LobbyManager';
 import BarDivider from './BarDivider.vue';
+import BarLabel from './BarLabel.vue';
+import BarButton from './BarButton.vue';
+import BarButtonGroup from './BarButtonGroup.vue';
+import BarControlGroup from './BarControlGroup.vue';
 import SelectionPanel, {
   type SelectionInfo,
   type SelectionActions,
@@ -62,6 +66,11 @@ import {
   loadStoredTerrainDividers,
   saveTerrainDividers,
   getDefaultDemoUnits,
+  loadStoredDemoBarsCollapsed,
+  saveDemoBarsCollapsed,
+  loadStoredRealBarsCollapsed,
+  saveRealBarsCollapsed,
+  type BattleMode,
 } from '../battleBarConfig';
 import { setTerrainCenterShape, setTerrainDividersShape } from '../game/sim/Terrain';
 import type { TerrainShape } from '../types/terrain';
@@ -83,7 +92,7 @@ import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSim
 import type { SignalState } from '../types/lod';
 import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
 import { SERVER_SIM_LOD_SIGNALS_ENABLED } from '../serverSimLodConfig';
-import { BAR_THEMES } from '../barThemes';
+import { BAR_THEMES, barVars } from '../barThemes';
 import {
   formatDuration,
   fmt4,
@@ -167,20 +176,41 @@ const isMobile =
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const backgroundContainerRef = ref<HTMLDivElement | null>(null);
+// The original DOM home of `backgroundContainerRef`. The watcher
+// below moves the container between this element and the lobby
+// modal's preview slot (`#lobby-preview-target`). Captured as a
+// ref so the watcher doesn't depend on selector lookups.
+const gameAreaRef = ref<HTMLDivElement | null>(null);
 const mobileBarsVisible = ref(false);
-const bottomBarsCollapsed = ref(false);
+// When true, hide the BUDGET ANNIHILATION lobby modal so the demo
+// battle is full-screen in the background (the user's "watch the
+// demo battle" mode). The hamburger ☰ button is what brings the
+// lobby back. Persisted under `demo-battle-lobby-visible`.
+const spectateMode = ref(!getLobbyVisible());
+// Bottom-bars collapsed state, persisted PER MODE — demo and real
+// each remember their own preference. The watcher below swaps the
+// value when `gameStarted` flips, so transitioning lobby → real
+// game (or back) restores the appropriate stored state. Initial
+// value uses the demo key because gameStarted starts at false.
+const bottomBarsCollapsed = ref(loadStoredDemoBarsCollapsed());
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 
 // Background battle state (managed by LobbyManager)
 let backgroundBattle: BackgroundBattleState | null = null;
+// Monotonic counter incremented at the start of every
+// `startBackgroundBattle` call. Lets concurrent invocations (e.g.
+// multiple lobby-roster-change watcher firings during initial
+// handshake) racing through the async createBackgroundBattle
+// await detect that they've been superseded — see
+// startBackgroundBattle below.
+let backgroundBattleGen = 0;
 
 // Current game server (owned by this component)
 let currentServer: GameServer | null = null;
 
 // Lobby state
 const showLobby = ref(true);
-const spectateMode = ref(!getLobbyVisible()); // When true, hide lobby to spectate background battle
 const isHost = ref(false);
 const roomCode = ref('');
 const lobbyPlayers = ref<LobbyPlayer[]>([]);
@@ -191,9 +221,40 @@ const gameStarted = ref(false);
 const networkRole = ref<NetworkRole | null>(null);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 
+// When the user switches between demo battle and real battle, restore
+// THAT mode's saved bottom-bars collapse preference. Persistence
+// happens in `toggleBottomBars` below — this watcher only handles the
+// READ side of the per-mode split, so swapping modes doesn't clobber
+// the destination mode's stored state.
+watch(gameStarted, (started) => {
+  bottomBarsCollapsed.value = started
+    ? loadStoredRealBarsCollapsed()
+    : loadStoredDemoBarsCollapsed();
+});
+
+function toggleBottomBars(): void {
+  const next = !bottomBarsCollapsed.value;
+  bottomBarsCollapsed.value = next;
+  if (gameStarted.value) saveRealBarsCollapsed(next);
+  else saveDemoBarsCollapsed(next);
+}
+
 // Server metadata received from snapshots (for remote clients to display server bar)
 const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
 const localIpAddress = ref<string>('N/A');
+// Coarse "City, Country" string from the IP-services lookup,
+// or a timezone-derived fallback if the IP service didn't yield
+// one. Used in the GAME LOBBY player list. Empty until resolved.
+const localLocation = ref<string>('');
+// IANA timezone string (e.g. "America/Los_Angeles") for the
+// local browser. Available synchronously via Intl, populated
+// once at script init and never changes for the session.
+const localTimezone = ref<string>(
+  (() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }
+    catch { return ''; }
+  })(),
+);
 const clientTime = ref<string>('');
 
 // Active connection for sending commands (set when server/connection is created)
@@ -208,8 +269,13 @@ const demoUnitTypes = BACKGROUND_UNIT_TYPES;
 // the next game construction (background battle restart for live
 // preview, or first real-game start), so click handlers save the
 // new value AND restart the demo battle when one is running.
-const terrainCenter = ref<TerrainShape>(loadStoredTerrainCenter());
-const terrainDividers = ref<TerrainShape>(loadStoredTerrainDividers());
+// Initial load is always demo mode — at component-mount time the
+// user is on the BUDGET ANNIHILATION screen (gameStarted=false,
+// roomCode=''). Switching into the GAME LOBBY flips
+// `currentBattleMode` to `real`; the watcher below re-loads these
+// refs from the real-battle keys at that point.
+const terrainCenter = ref<TerrainShape>(loadStoredTerrainCenter('demo'));
+const terrainDividers = ref<TerrainShape>(loadStoredTerrainDividers('demo'));
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<ConcreteGraphicsQuality>(
   getEffectiveQuality(),
@@ -374,14 +440,57 @@ let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
 let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
 let clientTimeInterval: ReturnType<typeof setInterval> | null = null;
 
-// Start the background battle (runs behind lobby)
+// Start the background battle (runs behind lobby).
+//
+// The "background battle" is the live demo simulation we use as the
+// pre-game backdrop AND the GAME LOBBY preview pane. Pass the
+// active battle mode so the demo reads its terrain + sim settings
+// from the right namespace: `demo` keys when the user is on the
+// BUDGET ANNIHILATION screen (solo prefs), `real` keys once they
+// click Host/Join (so the preview shows what the upcoming real
+// battle will look like).
+//
+// In lobby-preview mode we also pass the live lobby player count
+// so the spawn circle reflects who's actually in the room — the
+// watcher below restarts the demo whenever that count changes.
 async function startBackgroundBattle(): Promise<void> {
-  if (backgroundBattle || !backgroundContainerRef.value) return;
-
-  backgroundBattle = await createBackgroundBattle(
+  if (!backgroundContainerRef.value) return;
+  // Always teardown any existing battle first — this function is
+  // the canonical "rebuild the simulation NOW" entry point, called
+  // from every watcher (mode flip, terrain change, lobby roster
+  // change). Concurrent calls during the async createBattle await
+  // are handled by the generation counter below: each invocation
+  // claims a fresh `gen`, and only the call whose `gen` still
+  // matches the latest counter value gets to install its result.
+  // Earlier-generation results are silently destroyed so we don't
+  // leak GameServer instances.
+  stopBackgroundBattle();
+  const myGen = ++backgroundBattleGen;
+  // For the GAME LOBBY preview we pass the ACTUAL lobby seat IDs
+  // (not a generic 1..N) and the local player's seat — so the
+  // preview spawns commanders at the same seats the real battle
+  // will use AND the camera/HUD treats the local player's
+  // commander as "yours" instead of always defaulting to seat 1.
+  const previewPlayerIds = currentBattleMode.value === 'real'
+    ? lobbyPlayers.value.map((p) => p.playerId)
+    : undefined;
+  const previewLocalPlayerId = currentBattleMode.value === 'real'
+    ? localPlayerId.value
+    : undefined;
+  const battle = await createBackgroundBattle(
     backgroundContainerRef.value,
     localIpAddress.value,
+    currentBattleMode.value,
+    previewPlayerIds,
+    previewLocalPlayerId,
   );
+  if (myGen !== backgroundBattleGen) {
+    // Superseded by a later restart while we were awaiting —
+    // discard this instance instead of installing it.
+    destroyBackgroundBattle(battle);
+    return;
+  }
+  backgroundBattle = battle;
   activeConnection = backgroundBattle.connection;
   hasServer.value = true;
 
@@ -473,6 +582,118 @@ const showPlayerToggle = computed(() => {
 const lobbyModalVisible = computed(
   () => !isMobile && showLobby.value && !spectateMode.value,
 );
+// True ONLY when the user is on the GAME LOBBY screen AND the
+// lobby modal is mounted. The watcher below uses this to decide
+// where the demo-battle container should be DOM-parented.
+const inGameLobby = computed(
+  () => roomCode.value !== '' && lobbyModalVisible.value,
+);
+
+// Which battle storage namespace is active right now.
+//   `demo` = the visual demo behind the BUDGET ANNIHILATION screen
+//            (initial page load + return-to-lobby cancel).
+//   `real` = the GAME LOBBY (preview pane) AND the actual REAL
+//            BATTLE — both share the `real-battle-*` keys so the
+//            lobby preview reflects what the upcoming real game
+//            will look like, and any host adjustments in the lobby
+//            persist into the real battle and across sessions.
+//
+// `roomCode` is set the moment the user clicks Host/Join (or
+// finishes joining), and `gameStarted` covers the actual game; the
+// union of those two flips the namespace at exactly the right
+// boundary without depending on modal visibility (so a brief
+// hide-modal during transitions doesn't accidentally write to demo
+// keys mid-lobby).
+const currentBattleMode = computed<BattleMode>(
+  () => (gameStarted.value || roomCode.value !== '' ? 'real' : 'demo'),
+);
+
+// When the active namespace flips, refresh the reactive UI refs so
+// the BATTLE bar + terrain options reflect THAT mode's stored
+// values, AND restart the running demo battle so the preview pane
+// rebuilds against the new mode's settings (terrain shape, sim
+// rules). The first-write-falls-back-to-demo logic in the loaders
+// means a user entering the lobby for the first time sees their
+// existing demo settings, after which lobby mutations save under
+// real-battle-* and the two namespaces diverge. Skipped when
+// `gameStarted` is true — by then the real battle owns the
+// container and the demo isn't running.
+watch(currentBattleMode, (mode) => {
+  terrainCenter.value = loadStoredTerrainCenter(mode);
+  terrainDividers.value = loadStoredTerrainDividers(mode);
+  if (!gameStarted.value) {
+    stopBackgroundBattle();
+    nextTick(() => {
+      startBackgroundBattle();
+    });
+  }
+});
+
+// GAME LOBBY preview keeps its commander count in sync with the
+// actual lobby roster — every join / leave triggers a demo
+// rebuild so the preview reflects who's connected. Only fires in
+// lobby-preview mode (real namespace + lobby active); the
+// full-screen demo backdrop stays at DEMO_CONFIG.playerCount.
+watch(() => lobbyPlayers.value.length, () => {
+  if (
+    currentBattleMode.value === 'real' &&
+    !gameStarted.value &&
+    inGameLobby.value
+  ) {
+    stopBackgroundBattle();
+    nextTick(() => {
+      startBackgroundBattle();
+    });
+  }
+});
+
+// Local seat assignment (`onPlayerAssignment`) can land AFTER the
+// initial roster sync — a fresh joiner first sees the player list
+// arrive, then receives their seat. Rebuild the preview when our
+// own seat changes so the local commander reflects who we are,
+// not seat 1.
+watch(localPlayerId, () => {
+  if (
+    currentBattleMode.value === 'real' &&
+    !gameStarted.value &&
+    inGameLobby.value
+  ) {
+    stopBackgroundBattle();
+    nextTick(() => {
+      startBackgroundBattle();
+    });
+  }
+});
+
+// Re-parent the demo-battle container into the lobby's preview
+// pane when in the GAME LOBBY state, and back to its original spot
+// otherwise. Imperative DOM move (not Vue Teleport) because the
+// demo battle pumps reactive refs every frame, and Vue Teleport
+// with a reactive `:disabled` interacts badly with that traffic —
+// the patcher hits stale vnodes ("Cannot set properties of null
+// setting '__vnode'"). Pure DOM moves bypass Vue's vnode tracking
+// entirely; the element's vnode→DOM mapping stays fixed via its
+// `el` reference, and Three.js's ResizeObserver on the parent
+// picks up the new size automatically.
+watch(inGameLobby, (active) => {
+  const container = backgroundContainerRef.value;
+  if (!container) return;
+  // Wait one tick so the LobbyModal has rendered the target div
+  // (or torn it down) before we attempt to move into / out of it.
+  nextTick(() => {
+    if (active) {
+      const target = document.getElementById('lobby-preview-target');
+      if (target && container.parentElement !== target) {
+        target.appendChild(container);
+      }
+    } else {
+      const home = gameAreaRef.value;
+      if (home && container.parentElement !== home) {
+        home.appendChild(container);
+      }
+    }
+  });
+});
 
 // Show server controls when we own a server OR when we receive server meta from snapshots (remote client)
 const showServerControls = computed(
@@ -482,20 +703,9 @@ const showServerControls = computed(
 // Server bar is read-only for remote clients (no local server)
 const serverBarReadonly = computed(() => !hasServer.value);
 
-// Bar color theming via CSS custom properties
-type BarColorTheme = (typeof BAR_THEMES)[keyof typeof BAR_THEMES];
-function barVars(theme: BarColorTheme): Record<string, string> {
-  return {
-    '--bar-bg': theme.barBg,
-    '--bar-time': theme.time,
-    '--bar-active-bg': theme.activeBg,
-    '--bar-active-border': theme.activeBorder,
-    '--bar-active-hover-bg': theme.activeHoverBg,
-    '--bar-active-hover-border': theme.activeHoverBorder,
-    '--bar-active-pressed-bg': theme.activePressedBg,
-    '--bar-active-pressed-border': theme.activePressedBorder,
-  };
-}
+// Bar color theming — `barVars` lives in `src/barThemes.ts` so the
+// LobbyModal's CENTER / DIVIDERS controls can apply the same battle
+// palette without duplicating the CSS-var dictionary.
 const battleBarVars = computed(() =>
   barVars(serverBarReadonly.value
     ? BAR_THEMES.disabled
@@ -686,7 +896,11 @@ function changeMaxTotalUnits(value: number): void {
     tick: 0,
     maxTotalUnits: value,
   });
-  if (gameStarted.value) {
+  // Cap is mode-namespaced: GAME LOBBY changes write to the
+  // real-battle key (alongside the running real battle), demo
+  // mutations write to the demo key. Same pattern every shared
+  // setting below uses via `currentBattleMode`.
+  if (currentBattleMode.value === 'real') {
     saveRealCap(value);
   } else {
     saveDemoCap(value);
@@ -701,27 +915,27 @@ function toggleProjVelInherit(): void {
     tick: 0,
     enabled: !current,
   });
-  saveProjVelInherit(!current);
+  saveProjVelInherit(!current, currentBattleMode.value);
 }
 
 function setFiringForce(enabled: boolean): void {
   activeConnection?.sendCommand({ type: 'setFiringForce', tick: 0, enabled });
-  saveFiringForce(enabled);
+  saveFiringForce(enabled, currentBattleMode.value);
 }
 
 function setHitForce(enabled: boolean): void {
   activeConnection?.sendCommand({ type: 'setHitForce', tick: 0, enabled });
-  saveHitForce(enabled);
+  saveHitForce(enabled, currentBattleMode.value);
 }
 
 function setFfAccelUnits(enabled: boolean): void {
   activeConnection?.sendCommand({ type: 'setFfAccelUnits', tick: 0, enabled });
-  saveFfAccelUnits(enabled);
+  saveFfAccelUnits(enabled, currentBattleMode.value);
 }
 
 function setFfAccelShots(enabled: boolean): void {
   activeConnection?.sendCommand({ type: 'setFfAccelShots', tick: 0, enabled });
-  saveFfAccelShots(enabled);
+  saveFfAccelShots(enabled, currentBattleMode.value);
 }
 
 /** Pick a new terrain shape (CENTER or DIVIDERS). Persists the choice
@@ -732,13 +946,18 @@ function setFfAccelShots(enabled: boolean): void {
  *  same lobby. During a real battle, the choice is saved but won't
  *  be visible until the next game start — terrain meshes are baked
  *  once at scene construction. */
-function applyTerrainShape(kind: 'center' | 'dividers', shape: TerrainShape): void {
+function applyTerrainShape(
+  kind: 'center' | 'dividers',
+  shape: TerrainShape,
+  broadcast = true,
+): void {
+  const mode = currentBattleMode.value;
   if (kind === 'center') {
     terrainCenter.value = shape;
-    saveTerrainCenter(shape);
+    saveTerrainCenter(shape, mode);
   } else {
     terrainDividers.value = shape;
-    saveTerrainDividers(shape);
+    saveTerrainDividers(shape, mode);
   }
   // Live preview only when the demo battle is the active scene; a real
   // battle keeps the host's choice queued for the next game start.
@@ -746,6 +965,21 @@ function applyTerrainShape(kind: 'center' | 'dividers', shape: TerrainShape): vo
     stopBackgroundBattle();
     nextTick(() => {
       startBackgroundBattle();
+    });
+  }
+  // Sync the change to remote clients when the host is in the
+  // GAME LOBBY. `broadcast=false` is the path used by the
+  // `onLobbySettings` listener below (a client receiving the
+  // host's broadcast applies it locally without re-broadcasting,
+  // so there's no echo loop).
+  if (
+    broadcast &&
+    networkRole.value === 'host' &&
+    roomCode.value !== ''
+  ) {
+    networkManager.broadcastLobbySettings({
+      terrainCenter: terrainCenter.value,
+      terrainDividers: terrainDividers.value,
     });
   }
 }
@@ -762,13 +996,17 @@ function resetDemoDefaults(): void {
     });
   }
   saveDemoUnits(defaultUnits);
-  changeMaxTotalUnits(gameStarted.value ? REAL_CAP_DEFAULT : DEMO_CAP_DEFAULT);
+  changeMaxTotalUnits(currentBattleMode.value === 'real' ? REAL_CAP_DEFAULT : DEMO_CAP_DEFAULT);
+  // DEFAULTS only resets the CURRENTLY-ACTIVE mode's namespace —
+  // resetting demo while in the lobby would wipe the user's solo
+  // demo prefs out from under them, and vice versa.
+  const mode = currentBattleMode.value;
   activeConnection?.sendCommand({
     type: 'setProjVelInherit',
     tick: 0,
     enabled: BATTLE_CONFIG.projVelInherit.default,
   });
-  saveProjVelInherit(BATTLE_CONFIG.projVelInherit.default);
+  saveProjVelInherit(BATTLE_CONFIG.projVelInherit.default, mode);
   setFiringForce(BATTLE_CONFIG.firingForce.default);
   setHitForce(BATTLE_CONFIG.hitForce.default);
   setFfAccelUnits(BATTLE_CONFIG.ffAccelUnits.default);
@@ -783,8 +1021,8 @@ function resetDemoDefaults(): void {
   if (terrainCenter.value !== centerDefault || terrainDividers.value !== dividersDefault) {
     terrainCenter.value = centerDefault;
     terrainDividers.value = dividersDefault;
-    saveTerrainCenter(centerDefault);
-    saveTerrainDividers(dividersDefault);
+    saveTerrainCenter(centerDefault, mode);
+    saveTerrainDividers(dividersDefault, mode);
     if (!gameStarted.value) {
       stopBackgroundBattle();
       nextTick(() => {
@@ -803,6 +1041,12 @@ function resetServerDefaults(): void {
   setTickRateValue(SERVER_CONFIG.tickRate.default);
   setNetworkUpdateRate(SERVER_CONFIG.snapshot.default);
   setKeyframeRatioValue(SERVER_CONFIG.keyframe.default);
+  // Sim quality (auto / min / low / med / high / max). Was missing
+  // from the reset path — clicking DEFAULTS reverted everything else
+  // but left this at whatever the user last picked, so a refresh
+  // would replay the stale value while every other server setting
+  // came back at default.
+  setSimQualityValue('auto');
   // Reset every HOST SERVER LOD signal to the centralized
   // SERVER_SIM_LOD_SIGNAL_DEFAULTS table, persist, and ship the new
   // states so the simulation's auto-LOD picks them up immediately.
@@ -848,6 +1092,12 @@ function resetClientDefaults(): void {
   setGridOverlay(cd.gridOverlay.default);
   waypointDetail.value = cd.waypointDetail.default;
   setWaypointDetail(cd.waypointDetail.default);
+  // Two settings the previous reset was forgetting to persist — the
+  // bar showed them flip back to default in the UI, but neither
+  // setter was called, so localStorage retained the old value and
+  // the next page refresh replayed it.
+  if (legsRadiusToggle.value !== false) toggleLegsRadius();
+  setCameraMode('mid');
   // Reset every PLAYER CLIENT LOD signal to the centralized
   // LOD_SIGNAL_DEFAULTS table, then refresh the reactive ref the
   // bar template reads from so the buttons repaint immediately.
@@ -946,11 +1196,25 @@ async function handleHost(): Promise<void> {
         playerId: 1,
         name: 'Red',
         isHost: true,
+        ipAddress: localIpAddress.value !== 'N/A' ? localIpAddress.value : undefined,
+        location: localLocation.value || undefined,
+        timezone: localTimezone.value || undefined,
       },
     ];
 
     // Setup network callbacks
     setupNetworkCallbacks();
+
+    // Always broadcast on host start — we have at least the local
+    // timezone (synchronously available via Intl), and may also
+    // have IP/location if the IP fetch already resolved. Future
+    // joiners receive this via the playerJoined handshake's
+    // info-update follow-up; a later fetch resolution overwrites.
+    networkManager.reportLocalPlayerInfo(
+      localIpAddress.value !== 'N/A' ? localIpAddress.value : undefined,
+      localLocation.value || undefined,
+      localTimezone.value || undefined,
+    );
 
     isConnecting.value = false;
   } catch (err) {
@@ -964,13 +1228,34 @@ async function handleJoin(code: string): Promise<void> {
     isConnecting.value = true;
     lobbyError.value = null;
 
+    // Wire callbacks BEFORE joining. The host sends `playerAssignment`
+    // immediately on `conn.on('open')`, so the message can land in
+    // the joiner's data handler the moment the await unwraps —
+    // before any code AFTER the await has had a chance to run.
+    // If the callbacks aren't set up by then, the message is still
+    // processed (`networkManager.localPlayerId` is updated internally)
+    // but `onPlayerAssignment` is `undefined` so the Vue ref
+    // `localPlayerId.value` never gets the assigned seat. The joiner
+    // would then build their scene with the default `localPlayerId=1`,
+    // and centerCameraOnCommander would look for player 1's commander
+    // (which isn't in the joiner's per-player AOI) — leaving the
+    // joiner staring at empty terrain with no commander on screen.
+    networkRole.value = 'client';
+    setupNetworkCallbacks();
+
     await networkManager.joinGame(code);
     roomCode.value = code;
     isHost.value = false;
-    networkRole.value = 'client';
 
-    // Setup network callbacks
-    setupNetworkCallbacks();
+    // Same eager-report rule as `handleHost` above — timezone is
+    // always available, IP/location may still be pending; the
+    // onMounted fetch's .then() will re-call this once IP
+    // resolves to fill in the remaining columns.
+    networkManager.reportLocalPlayerInfo(
+      localIpAddress.value !== 'N/A' ? localIpAddress.value : undefined,
+      localLocation.value || undefined,
+      localTimezone.value || undefined,
+    );
 
     isConnecting.value = false;
   } catch (err) {
@@ -1270,6 +1555,45 @@ function setupNetworkCallbacks(): void {
   networkManager.onError = (error: string) => {
     lobbyError.value = error;
   };
+
+  // Player IP + location reports flow in here for both the host
+  // (own + every joining client's report) and clients (host
+  // re-broadcast). Update the matching entry in lobbyPlayers so
+  // the GAME LOBBY player list re-renders with the new columns.
+  networkManager.onPlayerInfoUpdate = (player) => {
+    const idx = lobbyPlayers.value.findIndex((p) => p.playerId === player.playerId);
+    if (idx === -1) return;
+    lobbyPlayers.value = lobbyPlayers.value.map((p, i) =>
+      i === idx
+        ? {
+            ...p,
+            ipAddress: player.ipAddress,
+            location: player.location,
+            timezone: player.timezone,
+          }
+        : p,
+    );
+  };
+
+  // Lobby-settings sync. The host registers a getter so the
+  // network layer can grab fresh terrain values whenever a new
+  // client joins (initial handshake push); the client registers
+  // an apply-listener that re-uses our existing single-shape
+  // applier in `broadcast=false` mode — same demo-restart, same
+  // localStorage write, just no outbound broadcast (the change
+  // came FROM the host already).
+  networkManager.getLobbySettings = () => ({
+    terrainCenter: terrainCenter.value,
+    terrainDividers: terrainDividers.value,
+  });
+  networkManager.onLobbySettings = (settings) => {
+    if (settings.terrainCenter !== terrainCenter.value) {
+      applyTerrainShape('center', settings.terrainCenter, false);
+    }
+    if (settings.terrainDividers !== terrainDividers.value) {
+      applyTerrainShape('dividers', settings.terrainDividers, false);
+    }
+  };
 }
 
 async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): Promise<void> {
@@ -1291,16 +1615,46 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       // Apply terrain shape BEFORE creating the server — the
       // constructor samples the heightmap when laying out bases. See
       // LobbyManager.createBackgroundBattle for the same dance on the
-      // demo path.
-      setTerrainCenterShape(loadStoredTerrainCenter());
-      setTerrainDividersShape(loadStoredTerrainDividers());
+      // demo path. The real battle reads from the `real-battle-*`
+      // namespace so lobby host adjustments carry into the game and
+      // never get cross-contaminated with the user's solo demo prefs.
+      setTerrainCenterShape(loadStoredTerrainCenter('real'));
+      setTerrainDividersShape(loadStoredTerrainDividers('real'));
 
       // Create GameServer for host/offline (WASM physics)
       currentServer = await GameServer.create({ playerIds, aiPlayerIds });
 
-      // If hosting, also broadcast snapshots to remote clients
+      // If hosting, also broadcast snapshots to remote clients.
+      //
+      // The PeerJS peer instance + every connection established
+      // during the lobby phase persist into the real battle — we
+      // never call `disconnect()` or `new Peer(...)` between the
+      // two phases. So the host's `ba-${roomCode}` peer ID and the
+      // existing client peer connections are the SAME identifiers
+      // the lobby gameStart broadcast just used. Routing snapshots
+      // to those connections continues to work; clients don't
+      // re-handshake.
+      //
+      // We register a snapshot listener for every non-host playerId
+      // in the game, NOT just `getConnectedPlayerIds()` at this
+      // instant. Reasons:
+      //   - During the preceding `await GameServer.create(...)`
+      //     (WASM load can take ~100-500ms) a joiner's connection
+      //     could drop momentarily and fall out of the connections
+      //     map, in which case a one-shot iteration of
+      //     `getConnectedPlayerIds()` would never register a
+      //     listener for them and they'd see no commanders for the
+      //     entire match.
+      //   - `networkManager.sendStateTo(playerId, state)` already
+      //     gates on `conn?.open`, so a listener for a player whose
+      //     connection isn't currently open is a silent no-op. If
+      //     they reconnect later the listener routes successfully.
+      // Single source of truth for "who is in this game": the
+      // `playerIds` array passed to `startGameWithPlayers` (= the
+      // same list the host broadcast in the gameStart message).
       if (networkRole.value === 'host') {
-        for (const remotePlayerId of networkManager.getConnectedPlayerIds()) {
+        for (const remotePlayerId of playerIds) {
+          if (remotePlayerId === localPlayerId.value) continue;
           currentServer.addSnapshotListener((state) => {
             networkManager.sendStateTo(remotePlayerId, state);
           }, remotePlayerId);
@@ -1339,27 +1693,27 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       currentServer.receiveCommand({
         type: 'setProjVelInherit',
         tick: 0,
-        enabled: loadStoredProjVelInherit(),
+        enabled: loadStoredProjVelInherit('real'),
       });
       currentServer.receiveCommand({
         type: 'setFiringForce',
         tick: 0,
-        enabled: loadStoredFiringForce(),
+        enabled: loadStoredFiringForce('real'),
       });
       currentServer.receiveCommand({
         type: 'setHitForce',
         tick: 0,
-        enabled: loadStoredHitForce(),
+        enabled: loadStoredHitForce('real'),
       });
       currentServer.receiveCommand({
         type: 'setFfAccelUnits',
         tick: 0,
-        enabled: loadStoredFfAccelUnits(),
+        enabled: loadStoredFfAccelUnits('real'),
       });
       currentServer.receiveCommand({
         type: 'setFfAccelShots',
         tick: 0,
-        enabled: loadStoredFfAccelShots(),
+        enabled: loadStoredFfAccelShots('real'),
       });
       currentServer.receiveCommand({
         type: 'setSendGridInfo',
@@ -1578,17 +1932,69 @@ onMounted(() => {
   // Start FPS tracking
   fpsUpdateInterval = setInterval(updateFPSStats, 100); // Update 10x per second
 
-  // Fetch public IP for server bar display
-  fetch('https://api.ipify.org?format=text')
-    .then((res) => res.text())
-    .then((ip) => {
-      localIpAddress.value = ip.trim();
-      // Push to whichever server is already running (fetch is async)
-      backgroundBattle?.server.setIpAddress(localIpAddress.value);
-      currentServer?.setIpAddress(localIpAddress.value);
+  // Public IP + coarse location for the server bar AND the GAME
+  // LOBBY player list. Three-stage chain so location is ALWAYS
+  // populated (even when the IP services fail / rate-limit / lie):
+  //
+  //   1. ipwho.is  — primary; returns IP + city + country.
+  //   2. ipify     — fallback for IP only if (1) fails.
+  //   3. Intl tz   — last-resort location from the browser's
+  //                  resolved timezone (e.g. "America/Los_Angeles"
+  //                  → "Los Angeles, America"). Always available,
+  //                  zero network, no rate limits — so even users
+  //                  on networks that block geo-IP services or
+  //                  whose IP isn't in any geo database still get
+  //                  something readable in the lobby roster.
+  function deriveLocationFromTimezone(): string {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (!tz) return '';
+      const parts = tz.split('/');
+      const tzCity = (parts[parts.length - 1] ?? '').replace(/_/g, ' ');
+      const tzRegion = parts.length > 1 ? parts[0] : '';
+      return [tzCity, tzRegion].filter((s) => s.length > 0).join(', ');
+    } catch {
+      return '';
+    }
+  }
+
+  fetch('https://ipwho.is/')
+    .then((r) => r.json())
+    .then((data) => {
+      if (!data || typeof data !== 'object' || data.success === false) {
+        throw new Error('ipwho.is returned non-success');
+      }
+      return {
+        ip: typeof data.ip === 'string' ? data.ip : '',
+        city: typeof data.city === 'string' ? data.city : '',
+        country: typeof data.country === 'string' ? data.country : '',
+      };
     })
-    .catch(() => {
-      /* keep 'N/A' */
+    .catch(() => fetch('https://api.ipify.org?format=text')
+      .then((r) => r.text())
+      .then((ip) => ({ ip: ip.trim(), city: '', country: '' }))
+      .catch(() => ({ ip: '', city: '', country: '' })),
+    )
+    .then(({ ip, city, country }) => {
+      let loc = [city, country].filter((s) => s.length > 0).join(', ');
+      // Last-resort: timezone-derived location if no city/country
+      // came back from the IP services. Coarser ("Los Angeles,
+      // America") but always populated.
+      if (!loc) loc = deriveLocationFromTimezone();
+      if (ip) {
+        localIpAddress.value = ip;
+        backgroundBattle?.server.setIpAddress(ip);
+        currentServer?.setIpAddress(ip);
+      }
+      if (loc) localLocation.value = loc;
+      // Fan out to peers so every player's row in the lobby has
+      // populated IP + location + timezone columns. No-op when
+      // not connected to a network session.
+      networkManager.reportLocalPlayerInfo(
+        ip || undefined,
+        loc || undefined,
+        localTimezone.value || undefined,
+      );
     });
 
   // Update client time every second
@@ -1646,8 +2052,18 @@ onUnmounted(() => {
 
 <template>
   <div class="game-wrapper">
-    <div class="game-area">
-      <!-- Background battle container (demo game — always visible when no real game) -->
+    <div ref="gameAreaRef" class="game-area">
+      <!-- Background battle container (demo game).
+           Loads full-screen behind the BUDGET ANNIHILATION screen
+           exactly as before. Once the user clicks Host/Join AND
+           lands in the GAME LOBBY state (`inGameLobby` true), an
+           imperative watcher (see script) re-parents this element
+           into the lobby modal's `#lobby-preview-target` so the
+           demo runs as a small preview pane. Vue Teleport was the
+           obvious tool but its interaction with the demo battle's
+           per-frame reactive updates triggered "Cannot set
+           properties of null" patcher crashes on initial mount;
+           an imperative move keeps Vue's vnode tree stable. -->
       <div
         ref="backgroundContainerRef"
         class="background-battle-container"
@@ -1696,7 +2112,7 @@ onUnmounted(() => {
         :aria-expanded="!bottomBarsCollapsed"
         :aria-label="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
         :title="bottomBarsCollapsed ? 'Show bottom controls' : 'Hide bottom controls'"
-        @click="bottomBarsCollapsed = !bottomBarsCollapsed"
+        @click="toggleBottomBars"
       >
         <span class="toggle-dot"></span>
         <span class="toggle-dot"></span>
@@ -1712,14 +2128,15 @@ onUnmounted(() => {
           :style="battleBarVars"
         >
         <div class="bar-info">
-          <button
-            class="control-btn active bar-label"
+          <BarButton
+            :active="true"
+            class="bar-label"
             title="Click to reset battle settings to defaults"
             @click="resetDemoDefaults"
           >
             <span class="bar-label-text">{{ battleLabel }}</span
             ><span class="bar-label-hover">DEFAULTS</span>
-          </button>
+          </BarButton>
         </div>
         <BarDivider />
         <div class="bar-controls">
@@ -1727,91 +2144,73 @@ onUnmounted(() => {
             battleElapsed
           }}</span>
           <BarDivider />
-          <div class="control-group">
-            <span class="control-label">UNITS:</span>
-            <button
-              class="control-btn"
-              :class="{ active: allDemoUnitsActive }"
+          <BarControlGroup>
+            <BarLabel>UNITS:</BarLabel>
+            <BarButton
+              :active="allDemoUnitsActive"
               title="Toggle all unit types on/off"
               @click="toggleAllDemoUnits"
-            >
-              ALL
-            </button>
-            <div class="button-group">
-              <button
+            >ALL</BarButton>
+            <BarButtonGroup>
+              <BarButton
                 v-for="ut in demoUnitTypes"
                 :key="ut"
-                class="control-btn"
-                :class="{
-                  active:
-                    serverMetaFromSnapshot?.units.allowed?.includes(ut) ??
-                    true,
-                }"
+                :active="serverMetaFromSnapshot?.units.allowed?.includes(ut) ?? true"
                 :title="`Toggle ${ut} units in demo battle`"
                 @click="toggleDemoUnitType(ut)"
-              >
-                {{ getUnitBlueprint(ut).shortName }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{ getUnitBlueprint(ut).shortName }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">CAP:</span>
-            <div class="button-group">
-              <button
+            <BarLabel>CAP:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in BATTLE_CONFIG.cap.options"
                 :key="opt"
-                class="control-btn"
-                :class="{
-                  active: serverMetaFromSnapshot?.units.max === opt,
-                }"
+                :active="serverMetaFromSnapshot?.units.max === opt"
                 :title="`Max ${opt} total units`"
                 @click="changeMaxTotalUnits(opt)"
-              >
-                {{ opt.toExponential(0).toUpperCase() }}
-              </button>
-            </div>
-          </div>
+              >{{ opt.toExponential(0).toUpperCase() }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
           <!-- CENTER / DIVIDERS only in DEMO BATTLE — terrain is baked
                into the heightmap at game construction, so changing it
                mid-real-battle would desync against the rendered tile
-               mesh. Lobby modal owns the same controls for picking a
-               shape before the real battle starts. -->
-          <div v-if="!gameStarted" class="control-group">
+               mesh. Lobby modal owns the SAME components for these
+               controls (BarControlGroup + BarButtonGroup + BarButton),
+               so the bottom-bar's pre-game terrain pickers and the
+               GAME LOBBY's pre-game terrain pickers render from one
+               component tree — single source of truth. -->
+          <BarControlGroup v-if="!gameStarted">
             <BarDivider />
-            <span class="control-label">CENTER:</span>
-            <div class="button-group">
-              <button
+            <BarLabel>CENTER:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in BATTLE_CONFIG.center.options"
                 :key="opt.value"
-                class="control-btn"
-                :class="{ active: terrainCenter === opt.value }"
+                :active="terrainCenter === opt.value"
                 :title="`Set the central ripple to ${opt.label.toLowerCase()}`"
                 @click="applyTerrainShape('center', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div v-if="!gameStarted" class="control-group">
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup v-if="!gameStarted">
             <BarDivider />
-            <span class="control-label">DIVIDERS:</span>
-            <div class="button-group">
-              <button
+            <BarLabel>DIVIDERS:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in BATTLE_CONFIG.dividers.options"
                 :key="opt.value"
-                class="control-btn"
-                :class="{ active: terrainDividers === opt.value }"
+                :active="terrainDividers === opt.value"
                 :title="`Set the team-separator ridges to ${opt.label.toLowerCase()}`"
                 @click="applyTerrainShape('dividers', opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label" title="Total units alive / unit cap">UNITS:</span>
+            <BarLabel title="Total units alive / unit cap">UNITS:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -1826,93 +2225,48 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
-          <div class="control-group">
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">SHOT VEL:</span>
-            <button
-              class="control-btn"
-              :class="{ active: serverMetaFromSnapshot?.projVelInherit }"
+            <BarLabel>SHOT VEL:</BarLabel>
+            <BarButton
+              :active="serverMetaFromSnapshot?.projVelInherit"
               title="Add firing unit's velocity to projectile velocity"
               @click="toggleProjVelInherit"
-            >
-              ADD
-            </button>
-          </div>
-          <div class="control-group">
+            >ADD</BarButton>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">FORCE:</span>
-            <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{
-                  active:
-                    serverMetaFromSnapshot?.firingForce ??
-                    BATTLE_CONFIG.firingForce.default,
-                }"
+            <BarLabel>FORCE:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                :active="serverMetaFromSnapshot?.firingForce ?? BATTLE_CONFIG.firingForce.default"
                 title="Apply recoil to the firing unit when its weapon fires"
-                @click="
-                  setFiringForce(
-                    !(serverMetaFromSnapshot?.firingForce ??
-                      BATTLE_CONFIG.firingForce.default),
-                  )
-                "
-              >
-                FIRING
-              </button>
-              <button
-                class="control-btn"
-                :class="{
-                  active:
-                    serverMetaFromSnapshot?.hitForce ??
-                    BATTLE_CONFIG.hitForce.default,
-                }"
+                @click="setFiringForce(!(serverMetaFromSnapshot?.firingForce ?? BATTLE_CONFIG.firingForce.default))"
+              >FIRING</BarButton>
+              <BarButton
+                :active="serverMetaFromSnapshot?.hitForce ?? BATTLE_CONFIG.hitForce.default"
                 title="Apply knockback to units when shots hit them"
-                @click="
-                  setHitForce(
-                    !(serverMetaFromSnapshot?.hitForce ??
-                      BATTLE_CONFIG.hitForce.default),
-                  )
-                "
-              >
-                HIT
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+                @click="setHitForce(!(serverMetaFromSnapshot?.hitForce ?? BATTLE_CONFIG.hitForce.default))"
+              >HIT</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">FF:</span>
-            <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{
-                  active: serverMetaFromSnapshot?.ffAccel.units ?? false,
-                }"
+            <BarLabel>FF:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                :active="serverMetaFromSnapshot?.ffAccel.units ?? false"
                 title="Force field accelerates enemy units"
-                @click="
-                  setFfAccelUnits(
-                    !(serverMetaFromSnapshot?.ffAccel.units ?? false),
-                  )
-                "
-              >
-                UNIT-ACC
-              </button>
-              <button
-                class="control-btn"
-                :class="{
-                  active: serverMetaFromSnapshot?.ffAccel.shots ?? true,
-                }"
+                @click="setFfAccelUnits(!(serverMetaFromSnapshot?.ffAccel.units ?? false))"
+              >UNIT-ACC</BarButton>
+              <BarButton
+                :active="serverMetaFromSnapshot?.ffAccel.shots ?? true"
                 title="Force field accelerates enemy projectiles"
-                @click="
-                  setFfAccelShots(
-                    !(serverMetaFromSnapshot?.ffAccel.shots ?? true),
-                  )
-                "
-              >
-                SHOT-ACC
-              </button>
-            </div>
-          </div>
+                @click="setFfAccelShots(!(serverMetaFromSnapshot?.ffAccel.shots ?? true))"
+              >SHOT-ACC</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
         </div>
       </div>
 
@@ -1924,14 +2278,15 @@ onUnmounted(() => {
         :style="serverBarVars"
       >
         <div class="bar-info">
-          <button
-            class="control-btn active bar-label"
+          <BarButton
+            :active="true"
+            class="bar-label"
             title="Click to reset server settings to defaults"
             @click="resetServerDefaults"
           >
             <span class="bar-label-text">HOST SERVER</span
             ><span class="bar-label-hover">DEFAULTS</span>
-          </button>
+          </BarButton>
         </div>
         <BarDivider />
         <div class="bar-controls">
@@ -1948,28 +2303,21 @@ onUnmounted(() => {
             >{{ displayServerIp }}</span
           >
           <BarDivider />
-          <div class="control-group">
-            <span class="control-label">TARGET TPS:</span>
-            <div class="button-group">
-              <button
+          <BarControlGroup>
+            <BarLabel>TARGET TPS:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="rate in SERVER_CONFIG.tickRate.options"
                 :key="rate"
-                class="control-btn"
-                :class="{ active: displayTickRate === rate }"
+                :active="displayTickRate === rate"
                 :title="`Target ${rate} simulation ticks per second`"
                 @click="setTickRateValue(rate)"
-              >
-                {{ rate }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{ rate }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span
-              class="control-label"
-              title="Server simulation ticks per second"
-              >TPS:</span
-            >
+            <BarLabel title="Server simulation ticks per second">TPS:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2002,20 +2350,16 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
+          </BarControlGroup>
           <!--
             Host CPU load: how much of each tick's budget (1000 / tickRate
             ms) the sim actually spent working. Ticked here as avg + hi,
             same semantics as the client CPU/GPU bars. >100 means the host
             is falling behind the target TPS.
           -->
-          <div class="control-group">
+          <BarControlGroup>
             <BarDivider />
-            <span
-              class="control-label"
-              title="Host CPU load — simulation tick time as a percent of the target tick budget. >100% means the host is falling behind."
-              >CPU:</span
-            >
+            <BarLabel title="Host CPU load — simulation tick time as a percent of the target tick budget. >100% means the host is falling behind.">CPU:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2042,32 +2386,28 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
-          <div class="control-group">
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">TARGET SPS:</span>
-            <div class="button-group">
-              <button
+            <BarLabel>TARGET SPS:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="rate in SERVER_CONFIG.snapshot.options"
                 :key="String(rate)"
-                class="control-btn"
-                :class="{ active: displaySnapshotRate === rate }"
+                :active="displaySnapshotRate === rate"
                 :title="`Cap snapshots at ${rate === 'none' ? 'no limit (every tick)' : rate + '/sec'}`"
                 @click="setNetworkUpdateRate(rate)"
-              >
-                {{ rate === 'none' ? 'NONE' : (rate as number) }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{ rate === 'none' ? 'NONE' : (rate as number) }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">FULLSNAP:</span>
-            <div class="button-group">
-              <button
+            <BarLabel>FULLSNAP:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in SERVER_CONFIG.keyframe.options"
                 :key="String(opt)"
-                class="control-btn"
-                :class="{ active: displayKeyframeRatio === opt }"
+                :active="displayKeyframeRatio === opt"
                 :title="
                   opt === 'ALL'
                     ? 'Every snapshot is a full keyframe'
@@ -2076,110 +2416,88 @@ onUnmounted(() => {
                       : secPerFullsnap(opt as number)
                 "
                 @click="setKeyframeRatioValue(opt)"
-              >
-                {{
-                  opt === 'ALL'
-                    ? 'ALL'
-                    : opt === 'NONE'
-                      ? 'NONE'
-                      : `1e-${Math.round(-Math.log10(opt as number))}`
-                }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{
+                opt === 'ALL'
+                  ? 'ALL'
+                  : opt === 'NONE'
+                    ? 'NONE'
+                    : `1e-${Math.round(-Math.log10(opt as number))}`
+              }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">LOD:</span>
-            <button
-              class="control-btn"
-              :class="{
-                active: serverSimQuality === 'auto' && !serverAnySolo,
-                'active-level': serverSimQuality === 'auto' && serverAnySolo,
-              }"
+            <BarLabel>LOD:</BarLabel>
+            <BarButton
+              :active="serverSimQuality === 'auto' && !serverAnySolo"
+              :active-level="serverSimQuality === 'auto' && serverAnySolo"
               title="Auto-adjust sim throttling (lowest of TPS, CPU, units)"
               @click="setSimQualityValue('auto')"
-            >
-              AUTO
-            </button>
-            <div class="button-group">
-              <button
+            >AUTO</BarButton>
+            <BarButtonGroup>
+              <BarButton
                 v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.tps"
-                class="control-btn"
-                :class="{
-                  active: serverSimQuality === 'auto' && serverSignalStates.tps === 'solo',
-                  'active-level':
-                    serverSimQuality === 'auto'
+                :active="serverSimQuality === 'auto' && serverSignalStates.tps === 'solo'"
+                :active-level="
+                  serverSimQuality === 'auto'
                     && serverSignalStates.tps === 'active'
-                    && !serverAnySolo,
-                }"
+                    && !serverAnySolo
+                "
                 :title="`Server TPS signal — click to cycle off / active / solo. Currently ${serverSignalStates.tps}.`"
                 @click="cycleServerSignal('tps')"
-              >
-                TPS
-              </button>
-              <button
+              >TPS</BarButton>
+              <BarButton
                 v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.cpu"
-                class="control-btn"
-                :class="{
-                  active: serverSimQuality === 'auto' && serverSignalStates.cpu === 'solo',
-                  'active-level':
-                    serverSimQuality === 'auto'
+                :active="serverSimQuality === 'auto' && serverSignalStates.cpu === 'solo'"
+                :active-level="
+                  serverSimQuality === 'auto'
                     && serverSignalStates.cpu === 'active'
-                    && !serverAnySolo,
-                }"
+                    && !serverAnySolo
+                "
                 :title="`Host CPU load signal — click to cycle off / active / solo. Currently ${serverSignalStates.cpu}.`"
                 @click="cycleServerSignal('cpu')"
-              >
-                CPU
-              </button>
-              <button
+              >CPU</BarButton>
+              <BarButton
                 v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.units"
-                class="control-btn"
-                :class="{
-                  active: serverSimQuality === 'auto' && serverSignalStates.units === 'solo',
-                  'active-level':
-                    serverSimQuality === 'auto'
+                :active="serverSimQuality === 'auto' && serverSignalStates.units === 'solo'"
+                :active-level="
+                  serverSimQuality === 'auto'
                     && serverSignalStates.units === 'active'
-                    && !serverAnySolo,
-                }"
+                    && !serverAnySolo
+                "
                 :title="`World fullness signal — click to cycle off / active / solo. Currently ${serverSignalStates.units}.`"
                 @click="cycleServerSignal('units')"
-              >
-                UNITS
-              </button>
-            </div>
-            <div class="button-group">
-              <button
+              >UNITS</BarButton>
+            </BarButtonGroup>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in CLIENT_CONFIG.graphics.options"
                 :key="opt.value"
-                class="control-btn"
-                :class="{
-                  active: serverSimQuality === opt.value,
-                  'active-level':
-                    effectiveSimQuality === opt.value &&
-                    serverSimQuality !== opt.value,
-                }"
+                :active="serverSimQuality === opt.value"
+                :active-level="
+                  effectiveSimQuality === opt.value &&
+                  serverSimQuality !== opt.value
+                "
                 :title="`Lock sim throttling to ${opt.value} tier`"
                 @click="setSimQualityValue(opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
         </div>
       </div>
 
       <!-- CLIENT CONTROLS (always visible) -->
       <div class="control-bar" :style="clientBarVars">
         <div class="bar-info">
-          <button
-            class="control-btn active bar-label"
+          <BarButton
+            :active="true"
+            class="bar-label"
             title="Click to reset client settings to defaults"
             @click="resetClientDefaults"
           >
             <span class="bar-label-text">PLAYER CLIENT</span
             ><span class="bar-label-hover">DEFAULTS</span>
-          </button>
+          </BarButton>
         </div>
         <BarDivider />
         <div class="bar-controls">
@@ -2196,37 +2514,31 @@ onUnmounted(() => {
             >{{ localIpAddress }}</span
           >
           <BarDivider />
-          <div class="control-group">
-            <span class="control-label">GRID:</span>
-            <div class="button-group">
-              <button
+          <BarControlGroup>
+            <BarLabel>GRID:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in CLIENT_CONFIG.gridOverlay.options"
                 :key="opt.value"
-                class="control-btn"
-                :class="{ active: gridOverlay === opt.value }"
+                :active="gridOverlay === opt.value"
                 title="Territory capture overlay intensity"
                 @click="changeGridOverlay(opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">WAYPOINTS:</span>
-            <div class="button-group">
-              <button
+            <BarLabel>WAYPOINTS:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in CLIENT_CONFIG.waypointDetail.options"
                 :key="opt.value"
-                class="control-btn"
-                :class="{ active: waypointDetail === opt.value }"
+                :active="waypointDetail === opt.value"
                 title="Waypoint visualization — SIMPLE shows only your click points; DETAILED shows the planner's intermediates too"
                 @click="changeWaypointDetail(opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
           <BarDivider />
           <!--
             Bottleneck-first ordering: CPU (sim/update work) then GPU (real
@@ -2235,12 +2547,8 @@ onUnmounted(() => {
             FRAME (total), then LONG (main-thread blocks ≥50 ms from the
             Longtask API). Raw ms throughout — no arbitrary 100%.
           -->
-          <div class="control-group">
-            <span
-              class="control-label"
-              title="Client CPU — simulation prediction, input, HUD updates. Raw logicMs avg/hi in milliseconds per frame."
-              >CPU:</span
-            >
+          <BarControlGroup>
+            <BarLabel title="Client CPU — simulation prediction, input, HUD updates. Raw logicMs avg/hi in milliseconds per frame.">CPU:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2261,13 +2569,9 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
-          <div class="control-group">
-            <span
-              class="control-label"
-              :title="`Client GPU — source: ${gpuSourceLabel}. Raw renderMs avg/hi ${fmt4(renderMsAvg)} / ${fmt4(renderMsHi)} ms. Timer-query (when supported) shows the actual GPU-side execution time in milliseconds; otherwise shows renderer.render() wall-clock which is mostly CPU draw-call submission.`"
-              >GPU:</span
-            >
+          </BarControlGroup>
+          <BarControlGroup>
+            <BarLabel :title="`Client GPU — source: ${gpuSourceLabel}. Raw renderMs avg/hi ${fmt4(renderMsAvg)} / ${fmt4(renderMsHi)} ms. Timer-query (when supported) shows the actual GPU-side execution time in milliseconds; otherwise shows renderer.render() wall-clock which is mostly CPU draw-call submission.`">GPU:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2290,13 +2594,9 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
-          <div class="control-group">
-            <span
-              class="control-label"
-              title="Total frame time — CPU + GPU wall-clock per frame (ms)"
-              >FRAME:</span
-            >
+          </BarControlGroup>
+          <BarControlGroup>
+            <BarLabel title="Total frame time — CPU + GPU wall-clock per frame (ms)">FRAME:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2317,8 +2617,8 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
-          <div v-if="longtaskSupported" class="control-group">
+          </BarControlGroup>
+          <BarControlGroup v-if="longtaskSupported">
             <!--
               Longtask API: any single main-thread task ≥50 ms counts. This
               shows how many ms per second of wall-clock time were "lost"
@@ -2327,11 +2627,7 @@ onUnmounted(() => {
               work from a single giant stall). Scaled to 200 ms/sec = red
               (20% of wall-clock blocked).
             -->
-            <span
-              class="control-label"
-              title="Long-task blocked time from PerformanceObserver — ms per second of wall-clock time lost to main-thread tasks ≥50 ms. 0 = smooth; 200+ = heavy main-thread contention. Not available in Safari."
-              >LONG:</span
-            >
+            <BarLabel title="Long-task blocked time from PerformanceObserver — ms per second of wall-clock time lost to main-thread tasks ≥50 ms. 0 = smooth; 200+ = heavy main-thread contention. Not available in Safari.">LONG:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2346,14 +2642,10 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
+          </BarControlGroup>
           <BarDivider />
-          <div class="control-group">
-            <span
-              class="control-label"
-              title="Client rendering frames per second"
-              >FPS:</span
-            >
+          <BarControlGroup>
+            <BarLabel title="Client rendering frames per second">FPS:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2380,25 +2672,17 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
-          <div class="control-group">
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
             <div class="fps-stats">
-              <span
-                class="control-label"
-                title="Camera altitude (world units, distance from the ground plane). Smaller = closer to surface. Wheel clamp rides on altitude too — at the floor / ceiling you're at the actual physical limit, no more 'stuck' states."
-                >ZOOM:</span
-              >
+              <BarLabel title="Camera altitude (world units, distance from the ground plane). Smaller = closer to surface. Wheel clamp rides on altitude too — at the floor / ceiling you're at the actual physical limit, no more 'stuck' states.">ZOOM:</BarLabel>
               <span class="fps-value">{{ fmt4(currentZoom) }}</span>
             </div>
-          </div>
-          <div class="control-group">
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span
-              class="control-label"
-              title="Snapshots received per second from server"
-              >SPS:</span
-            >
+            <BarLabel title="Snapshots received per second from server">SPS:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2439,7 +2723,7 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
+          </BarControlGroup>
           <!-- FSPS — full snapshots per second. Counts only keyframes
                (state.isDelta === false). The bar is scaled by the host's
                configured keyframeRatio × snapshotRate so a healthy
@@ -2447,13 +2731,9 @@ onUnmounted(() => {
                is re-seeding statics often (catch-up cheap, late-joiner
                friendly); a low reading saves bandwidth at the cost of
                longer recovery if a delta gets lost. -->
-          <div class="control-group">
+          <BarControlGroup>
             <BarDivider />
-            <span
-              class="control-label"
-              title="Full keyframe snapshots received per second (state.isDelta === false). Driven by the host's keyframe ratio."
-              >FSPS:</span
-            >
+            <BarLabel title="Full keyframe snapshots received per second (state.isDelta === false). Driven by the host's keyframe ratio.">FSPS:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2480,203 +2760,150 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </div>
-          <div class="control-group">
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">EVENTS:</span>
-            <button
-              class="control-btn"
-              :class="{ active: audioSmoothing }"
+            <BarLabel>EVENTS:</BarLabel>
+            <BarButton
+              :active="audioSmoothing"
               title="Smooth audio events across snapshot intervals"
               @click="toggleAudioSmoothing"
-            >
-              SMOOTH
-            </button>
-          </div>
-          <div class="control-group">
+            >SMOOTH</BarButton>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">MARKS:</span>
-            <button
-              class="control-btn"
-              :class="{ active: burnMarks }"
+            <BarLabel>MARKS:</BarLabel>
+            <BarButton
+              :active="burnMarks"
               title="Draw scorch marks on the ground where beams and lasers hit"
               @click="toggleBurnMarks"
-            >
-              BURN
-            </button>
-          </div>
-          <div class="control-group">
+            >BURN</BarButton>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">DRIFT:</span>
-            <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{ active: driftMode === 'snap' }"
+            <BarLabel>DRIFT:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                :active="driftMode === 'snap'"
                 title="Snap instantly to new server state"
                 @click="changeDriftMode('snap')"
-              >
-                SNAP
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: driftMode === 'fast' }"
+              >SNAP</BarButton>
+              <BarButton
+                :active="driftMode === 'fast'"
                 title="Fast interpolation to server state"
                 @click="changeDriftMode('fast')"
-              >
-                FAST
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: driftMode === 'mid' }"
+              >FAST</BarButton>
+              <BarButton
+                :active="driftMode === 'mid'"
                 title="Medium interpolation to server state"
                 @click="changeDriftMode('mid')"
-              >
-                MID
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: driftMode === 'slow' }"
+              >MID</BarButton>
+              <BarButton
+                :active="driftMode === 'slow'"
                 title="Slow interpolation to server state"
                 @click="changeDriftMode('slow')"
-              >
-                SLOW
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >SLOW</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">PAN:</span>
-            <button
-              class="control-btn"
-              :class="{ active: allPanActive }"
+            <BarLabel>PAN:</BarLabel>
+            <BarButton
+              :active="allPanActive"
               title="Toggle all camera pan methods on/off"
               @click="toggleAllPan"
-            >
-              ALL
-            </button>
-            <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{ active: dragPanEnabled }"
+            >ALL</BarButton>
+            <BarButtonGroup>
+              <BarButton
+                :active="dragPanEnabled"
                 title="Middle-click drag to pan camera"
                 @click="toggleDragPan"
-              >
-                DRAG
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: edgeScrollEnabled }"
+              >DRAG</BarButton>
+              <BarButton
+                :active="edgeScrollEnabled"
                 title="Edge scroll — move camera when mouse near viewport border"
                 @click="toggleEdgeScroll"
-              >
-                EDGE
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >EDGE</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">LOD:</span>
-            <button
-              class="control-btn"
-              :class="{
-                active: graphicsQuality === 'auto' && !clientAnySolo,
-                'active-level': graphicsQuality === 'auto' && clientAnySolo,
-              }"
+            <BarLabel>LOD:</BarLabel>
+            <BarButton
+              :active="graphicsQuality === 'auto' && !clientAnySolo"
+              :active-level="graphicsQuality === 'auto' && clientAnySolo"
               title="Auto-adjust graphics quality from the lowest active client signal"
               @click="changeGraphicsQuality('auto')"
-            >
-              AUTO
-            </button>
-            <div class="button-group">
-              <button
+            >AUTO</BarButton>
+            <BarButtonGroup>
+              <BarButton
                 v-if="LOD_SIGNALS_ENABLED.zoom"
-                class="control-btn"
-                :class="{
-                  active: graphicsQuality === 'auto' && clientSignalStates.zoom === 'solo',
-                  'active-level':
-                    graphicsQuality === 'auto'
+                :active="graphicsQuality === 'auto' && clientSignalStates.zoom === 'solo'"
+                :active-level="
+                  graphicsQuality === 'auto'
                     && clientSignalStates.zoom === 'active'
-                    && !clientAnySolo,
-                }"
+                    && !clientAnySolo
+                "
                 :title="`Zoom signal — click to cycle off / active / solo. Currently ${clientSignalStates.zoom}.`"
                 @click="cycleClientSignal('zoom')"
-              >
-                ZOOM
-              </button>
-              <button
+              >ZOOM</BarButton>
+              <BarButton
                 v-if="LOD_SIGNALS_ENABLED.tps"
-                class="control-btn"
-                :class="{
-                  active: graphicsQuality === 'auto' && clientSignalStates.tps === 'solo',
-                  'active-level':
-                    graphicsQuality === 'auto'
+                :active="graphicsQuality === 'auto' && clientSignalStates.tps === 'solo'"
+                :active-level="
+                  graphicsQuality === 'auto'
                     && clientSignalStates.tps === 'active'
                     && !clientAnySolo
-                    && hasServer,
-                }"
+                    && hasServer
+                "
                 :title="`Server TPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.tps}.`"
                 @click="cycleClientSignal('tps')"
-              >
-                TPS
-              </button>
-              <button
+              >TPS</BarButton>
+              <BarButton
                 v-if="LOD_SIGNALS_ENABLED.fps"
-                class="control-btn"
-                :class="{
-                  active: graphicsQuality === 'auto' && clientSignalStates.fps === 'solo',
-                  'active-level':
-                    graphicsQuality === 'auto'
+                :active="graphicsQuality === 'auto' && clientSignalStates.fps === 'solo'"
+                :active-level="
+                  graphicsQuality === 'auto'
                     && clientSignalStates.fps === 'active'
-                    && !clientAnySolo,
-                }"
+                    && !clientAnySolo
+                "
                 :title="`Client FPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.fps}.`"
                 @click="cycleClientSignal('fps')"
-              >
-                FPS
-              </button>
-              <button
+              >FPS</BarButton>
+              <BarButton
                 v-if="LOD_SIGNALS_ENABLED.units"
-                class="control-btn"
-                :class="{
-                  active: graphicsQuality === 'auto' && clientSignalStates.units === 'solo',
-                  'active-level':
-                    graphicsQuality === 'auto'
+                :active="graphicsQuality === 'auto' && clientSignalStates.units === 'solo'"
+                :active-level="
+                  graphicsQuality === 'auto'
                     && clientSignalStates.units === 'active'
-                    && !clientAnySolo,
-                }"
+                    && !clientAnySolo
+                "
                 :title="`World fullness signal — click to cycle off / active / solo. Currently ${clientSignalStates.units}.`"
                 @click="cycleClientSignal('units')"
-              >
-                UNITS
-              </button>
-            </div>
-            <div class="button-group">
-              <button
+              >UNITS</BarButton>
+            </BarButtonGroup>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in CLIENT_CONFIG.graphics.options"
                 :key="opt.value"
-                class="control-btn"
-                :class="{
-                  active: graphicsQuality === opt.value,
-                  'active-level':
-                    effectiveQuality === opt.value &&
-                    graphicsQuality !== opt.value,
-                }"
+                :active="graphicsQuality === opt.value"
+                :active-level="
+                  effectiveQuality === opt.value &&
+                  graphicsQuality !== opt.value
+                "
                 :title="`${opt.value} graphics quality`"
                 @click="changeGraphicsQuality(opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">RENDER:</span>
-            <div class="button-group">
-              <button
+            <BarLabel>RENDER:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in CLIENT_CONFIG.render.options"
                 :key="opt.value"
-                class="control-btn"
-                :class="{ active: renderMode === opt.value }"
+                :active="renderMode === opt.value"
                 :title="
                   opt.value === 'window'
                     ? 'Render only visible window'
@@ -2685,20 +2912,17 @@ onUnmounted(() => {
                       : 'Render entire map'
                 "
                 @click="changeRenderMode(opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">AUDIO:</span>
-            <div class="button-group">
-              <button
+            <BarLabel>AUDIO:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
                 v-for="opt in CLIENT_CONFIG.audio.options"
                 :key="opt.value"
-                class="control-btn"
-                :class="{ active: audioScope === opt.value }"
+                :active="audioScope === opt.value"
                 :title="
                   opt.value === 'window'
                     ? 'Play audio from visible area'
@@ -2707,226 +2931,169 @@ onUnmounted(() => {
                       : 'Play audio from entire map'
                 "
                 @click="changeAudioScope(opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">SOUNDS:</span>
-            <button
-              class="control-btn"
-              :class="{ active: allSoundsActive }"
+            <BarLabel>SOUNDS:</BarLabel>
+            <BarButton
+              :active="allSoundsActive"
               title="Toggle all sound categories on/off"
               @click="toggleAllSounds"
-            >F
-              ALL
-            </button>
-            <div class="button-group">
-              <button
+            >ALL</BarButton>
+            <BarButtonGroup>
+              <BarButton
                 v-for="cat in SFX_CATEGORIES"
                 :key="cat"
-                class="control-btn"
-                :class="{ active: soundToggles[cat] }"
+                :active="soundToggles[cat]"
                 :title="SOUND_TOOLTIPS[cat]"
                 @click="toggleSoundCategory(cat)"
-              >
-                {{ SOUND_LABELS[cat] }}
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >{{ SOUND_LABELS[cat] }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">MUSIC:</span>
-            <button
-              class="control-btn"
-              :class="{ active: soundToggles.music }"
+            <BarLabel>MUSIC:</BarLabel>
+            <BarButton
+              :active="soundToggles.music"
               :title="SOUND_TOOLTIPS.music"
               @click="toggleSoundCategory('music')"
-            >
-              {{ soundToggles.music ? 'ON' : 'OFF' }}
-            </button>
-          </div>
-          <div class="control-group">
+            >{{ soundToggles.music ? 'ON' : 'OFF' }}</BarButton>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">TURR RAD:</span>
-            <button
-              class="control-btn"
-              :class="{ active: allRangesActive }"
+            <BarLabel>TURR RAD:</BarLabel>
+            <BarButton
+              :active="allRangesActive"
               title="Toggle every turret-range viz on/off"
               @click="toggleAllRanges"
-            >
-              ALL
-            </button>
-            <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{ active: rangeToggles.trackAcquire }"
+            >ALL</BarButton>
+            <BarButtonGroup>
+              <BarButton
+                :active="rangeToggles.trackAcquire"
                 title="Show tracking acquire range (start tracking target)"
                 @click="toggleRange('trackAcquire')"
-              >
-                T.A
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: rangeToggles.trackRelease }"
+              >T.A</BarButton>
+              <BarButton
+                :active="rangeToggles.trackRelease"
                 title="Show tracking release range (lose target)"
                 @click="toggleRange('trackRelease')"
-              >
-                T.R
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: rangeToggles.engageAcquire }"
+              >T.R</BarButton>
+              <BarButton
+                :active="rangeToggles.engageAcquire"
                 title="Show engage acquire range (start firing)"
                 @click="toggleRange('engageAcquire')"
-              >
-                E.A
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: rangeToggles.engageRelease }"
+              >E.A</BarButton>
+              <BarButton
+                :active="rangeToggles.engageRelease"
                 title="Show engage release range (stop firing)"
                 @click="toggleRange('engageRelease')"
-              >
-                E.R
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: rangeToggles.build }"
+              >E.R</BarButton>
+              <BarButton
+                :active="rangeToggles.build"
                 title="Show build range"
                 @click="toggleRange('build')"
-              >
-                BLD
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >BLD</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">SHOT RAD:</span>
-            <button
-              class="control-btn"
-              :class="{ active: allProjRangesActive }"
+            <BarLabel>SHOT RAD:</BarLabel>
+            <BarButton
+              :active="allProjRangesActive"
               title="Toggle every projectile-radius viz on/off"
               @click="toggleAllProjRanges"
-            >
-              ALL
-            </button>
-            <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{ active: projRangeToggles.collision }"
+            >ALL</BarButton>
+            <BarButtonGroup>
+              <BarButton
+                :active="projRangeToggles.collision"
                 title="Show projectile collision radius"
                 @click="toggleProjRange('collision')"
-              >
-                COL
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: projRangeToggles.explosion }"
+              >COL</BarButton>
+              <BarButton
+                :active="projRangeToggles.explosion"
                 title="Show projectile explosion radius"
                 @click="toggleProjRange('explosion')"
-              >
-                EXP
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >EXP</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">UNIT RAD:</span>
-            <button
-              class="control-btn"
-              :class="{ active: allUnitRadiiActive }"
+            <BarLabel>UNIT RAD:</BarLabel>
+            <BarButton
+              :active="allUnitRadiiActive"
               title="Toggle every unit-radius viz on/off"
               @click="toggleAllUnitRadii"
-            >
-              ALL
-            </button>
-            <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{ active: unitRadiusToggles.visual }"
+            >ALL</BarButton>
+            <BarButtonGroup>
+              <BarButton
+                :active="unitRadiusToggles.visual"
                 title="Show unit scale radius (unitRadiusCollider.scale — rendering &amp; click detection)"
                 @click="toggleUnitRadius('visual')"
-              >
-                SCAL
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: unitRadiusToggles.shot }"
+              >SCAL</BarButton>
+              <BarButton
+                :active="unitRadiusToggles.shot"
                 title="Show unit shot radius (unitRadiusCollider.shot — projectile/beam hit detection)"
                 @click="toggleUnitRadius('shot')"
-              >
-                SHOT
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: unitRadiusToggles.push }"
+              >SHOT</BarButton>
+              <BarButton
+                :active="unitRadiusToggles.push"
                 title="Show unit push radius (unitRadiusCollider.push — unit-unit push physics)"
                 @click="toggleUnitRadius('push')"
-              >
-                PUSH
-              </button>
-            </div>
-          </div>
-          <div class="control-group">
+              >PUSH</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">LEGS:</span>
-            <button
-              class="control-btn"
-              :class="{ active: legsRadiusToggle }"
+            <BarLabel>LEGS:</BarLabel>
+            <BarButton
+              :active="legsRadiusToggle"
               title="Show each leg's rest circle (chassis-local — the foot wanders inside this radius before snapping to the opposite edge)"
               @click="toggleLegsRadius"
-            >
-              RAD
-            </button>
-          </div>
-          <div class="control-group">
+            >RAD</BarButton>
+          </BarControlGroup>
+          <BarControlGroup>
             <BarDivider />
-            <span class="control-label">CAMERA:</span>
-            <div class="button-group">
-              <button
-                class="control-btn"
-                :class="{ active: cameraSmoothMode === 'snap' }"
+            <BarLabel>CAMERA:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                :active="cameraSmoothMode === 'snap'"
                 title="Zoom and pan apply instantly — original behavior, no animation"
                 @click="setCameraMode('snap')"
-              >
-                SNAP
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: cameraSmoothMode === 'fast' }"
+              >SNAP</BarButton>
+              <BarButton
+                :active="cameraSmoothMode === 'fast'"
                 title="Zoom and pan ease with EMA τ ≈ 50 ms — quick settle"
                 @click="setCameraMode('fast')"
-              >
-                FAST
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: cameraSmoothMode === 'mid' }"
+              >FAST</BarButton>
+              <BarButton
+                :active="cameraSmoothMode === 'mid'"
                 title="Zoom and pan ease with EMA τ ≈ 120 ms — default-feeling smoothness"
                 @click="setCameraMode('mid')"
-              >
-                MID
-              </button>
-              <button
-                class="control-btn"
-                :class="{ active: cameraSmoothMode === 'slow' }"
+              >MID</BarButton>
+              <BarButton
+                :active="cameraSmoothMode === 'slow'"
                 title="Zoom and pan ease with EMA τ ≈ 400 ms — deliberate, weighty feel"
                 @click="setCameraMode('slow')"
-              >
-                SLOW
-              </button>
-            </div>
-          </div>
+              >SLOW</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
         </div>
         </div>
       </div>
 
     </div>
 
-    <!-- Lobby Modal (full-screen overlay, covers bars too) -->
+    <!-- Lobby Modal. On the initial (BUDGET ANNIHILATION) and
+         connecting screens it renders full-screen over the
+         demo-battle backdrop — exactly the original load-time
+         behavior. Once `roomCode` is set (the user clicked
+         Host or finished joining), the GAME LOBBY screen renders
+         a `#lobby-preview-target` div inside the modal; the demo
+         container teleports into it (see Teleport above) and the
+         demo battle runs as a small simulation preview alongside
+         the lobby's terrain / player controls. -->
     <LobbyModal
       :visible="!isMobile && showLobby && !spectateMode"
       :is-host="isHost"
@@ -2947,7 +3114,9 @@ onUnmounted(() => {
       @set-terrain-dividers="(s) => applyTerrainShape('dividers', s)"
     />
 
-    <!-- Spectate mode toggle (show menu button when spectating) -->
+    <!-- Spectate mode toggle — restored. When the user has hidden
+         the lobby to watch the demo battle full-screen, this ☰
+         button brings the lobby back. -->
     <button
       v-if="!isMobile && showLobby && spectateMode"
       class="spectate-toggle-btn"
@@ -3034,6 +3203,17 @@ onUnmounted(() => {
 }
 
 .background-battle-container {
+  /* Identical positioning rules in both contexts:
+   *   - default home: inside `.game-area` (position: relative) →
+   *     fills the full viewport behind the BUDGET ANNIHILATION
+   *     lobby screen (original pre-change behavior).
+   *   - re-parented home: inside `.preview-pane` (also
+   *     position: relative, sized 480x270) → fills that small
+   *     box, framing the demo as a mini-simulation preview.
+   *
+   * The watcher on `inGameLobby` does the DOM move; the element's
+   * own CSS doesn't need to change because both parents resolve
+   * `position: absolute; width/height: 100%` to the right thing. */
   position: absolute;
   top: 0;
   left: 0;
@@ -3065,12 +3245,15 @@ onUnmounted(() => {
 }
 
 .game-over-content {
+  /* Aligned with the bottom-bar aesthetic: dark semi-transparent
+   * base + muted gray border. Rounded corners stay; the soft glow
+   * is preserved as the game-over moment's accent. */
   text-align: center;
   padding: 40px 60px;
-  background: rgba(20, 20, 30, 0.95);
-  border: 3px solid #4444aa;
+  background: rgba(15, 18, 24, 0.92);
+  border: 1px solid #444;
   border-radius: 16px;
-  box-shadow: 0 0 40px rgba(68, 68, 170, 0.5);
+  box-shadow: 0 0 40px rgba(68, 68, 170, 0.4);
   cursor: default;
 }
 
@@ -3138,7 +3321,8 @@ onUnmounted(() => {
   transform: scale(0.98);
 }
 
-/* Spectate mode toggle button */
+/* Spectate mode toggle button — restored. Aligned with the
+ * bottom-bar aesthetic: dark base + muted gray border. */
 .spectate-toggle-btn {
   position: absolute;
   top: 12px;
@@ -3147,8 +3331,8 @@ onUnmounted(() => {
   width: 36px;
   height: 36px;
   padding: 0;
-  background: rgba(20, 20, 35, 0.9);
-  border: 2px solid #4444aa;
+  background: rgba(15, 18, 24, 0.92);
+  border: 1px solid #444;
   border-radius: 8px;
   color: #aaa;
   font-size: 18px;
@@ -3160,8 +3344,8 @@ onUnmounted(() => {
 }
 
 .spectate-toggle-btn:hover {
-  background: rgba(40, 40, 60, 0.95);
-  border-color: #6666cc;
+  background: rgba(35, 35, 48, 0.96);
+  border-color: #777;
   color: white;
 }
 
@@ -3206,7 +3390,7 @@ onUnmounted(() => {
   position: absolute;
   left: 0;
   bottom: 0;
-  width: 18px;
+  width: 30px;
   height: 72px;
   background: transparent;
 }
@@ -3221,7 +3405,7 @@ onUnmounted(() => {
 }
 
 .bottom-controls-toggle {
-  flex: 0 0 18px;
+  flex: 0 0 30px;
   align-self: stretch;
   min-height: 100%;
   padding: 0;
@@ -3341,19 +3525,9 @@ onUnmounted(() => {
   visibility: visible;
 }
 
-.control-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.control-label {
-  color: #888;
-  font-size: 11px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
+/* `.control-group` and `.control-label` rules now live in
+ * `src/styles/barControls.css` (single source of truth shared
+ * with the GAME LOBBY's BarControlGroup / BarLabel components). */
 
 .fps-stats {
   display: flex;
@@ -3415,82 +3589,14 @@ onUnmounted(() => {
   margin: 0 6px;
 }
 
-.button-group {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-}
-
-.button-group .control-btn {
-  border-radius: 0;
-  margin-left: -1px;
-  text-align: center;
-  overflow: hidden;
-}
-
-.button-group .control-btn:first-child {
-  border-radius: 3px 0 0 3px;
-  margin-left: 0;
-}
-
-.button-group .control-btn:last-child {
-  border-radius: 0 3px 3px 0;
-}
-
+/* `.button-group` and `.control-btn` rules — including the
+ * disabled-active fix — now live in `src/styles/barControls.css`.
+ * Bottom-bar bare HTML, BarButton/BarButtonGroup components, and
+ * the GAME LOBBY all draw from the same source. The bar-specific
+ * `.button-group.view-toggle` width override stays here because
+ * it's a one-off used by a single bar. */
 .button-group.view-toggle {
   width: 105px;
-}
-
-.control-btn {
-  padding: 3px 6px;
-  background: rgba(60, 60, 60, 0.8);
-  border: 1px solid #555;
-  border-radius: 3px;
-  color: #556;
-  font-family: monospace;
-  font-size: 10px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.control-btn:hover {
-  background: rgba(85, 85, 85, 0.9);
-  border-color: #888;
-  color: #99a;
-}
-
-.control-btn:active {
-  background: rgba(50, 50, 50, 0.95);
-  border-color: #666;
-  color: #778;
-  transition: all 0.05s ease;
-}
-
-.control-btn.active {
-  background: var(--bar-active-bg);
-  border-color: var(--bar-active-border);
-  color: #fff;
-}
-
-.control-btn.active:hover {
-  background: var(--bar-active-hover-bg);
-  border-color: var(--bar-active-hover-border);
-}
-
-.control-btn.active:active {
-  background: var(--bar-active-pressed-bg);
-  border-color: var(--bar-active-pressed-border);
-  transition: all 0.05s ease;
-}
-
-.control-btn.active-level {
-  color: white;
-}
-
-.bar-readonly .control-btn {
-  pointer-events: none;
-  cursor: default;
 }
 
 .time-display {

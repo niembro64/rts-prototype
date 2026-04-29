@@ -59,6 +59,7 @@ const botOptions = [
   { unitId: 'tarantula', label: 'Tarantula', ...unitCost('tarantula') },
   { unitId: 'daddy', label: 'Daddy', ...unitCost('daddy') },
   { unitId: 'widow', label: 'Widow', ...unitCost('widow') },
+  { unitId: 'formik', label: 'Formik', ...unitCost('formik') },
 ];
 
 // Queue units with modifier key support (Shift=5, Ctrl=100)
@@ -216,13 +217,15 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
 </template>
 
 <style scoped>
-/* Base panel styles */
+/* Base panel styles — aligned with the bottom-bar aesthetic
+ * (dark semi-transparent base + muted gray border). Rounded
+ * corners stay so the panel still reads as a discrete card. */
 .options-panel,
 .status-panel {
   position: absolute;
   bottom: 20px;
-  background: rgba(0, 0, 0, 0.85);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 18, 24, 0.92);
+  border: 1px solid #444;
   border-radius: 8px;
   padding: 12px;
   min-width: 200px;

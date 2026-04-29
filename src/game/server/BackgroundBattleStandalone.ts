@@ -174,7 +174,13 @@ export function spawnBackgroundUnitsStandalone(
     // failures the unit is skipped — the central disk is the SAME
     // sample area as before, just with the wet portion carved out.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * mapHeight;
-    const totalPerPlayer = DEMO_CONFIG.centerSpawnPerPlayer;
+    // Initial demo spawn fills each team's slice of the global unit cap
+    // — `unitCapPerPlayer` (= maxTotalUnits / numPlayers). The demo
+    // starts at FULL CAP so the user immediately sees the battle at
+    // the intended scale; reinforcement ticks below pick up any units
+    // that water-rejection skipped, but with unitCapPerPlayer as the
+    // ceiling there's no separate "demo size" knob to keep in sync.
+    const totalPerPlayer = unitCapPerPlayer;
     const waterBuffer = DEMO_CONFIG.centerSpawnWaterBufferPx;
     const maxAttempts = DEMO_CONFIG.centerSpawnWaterMaxAttempts;
 

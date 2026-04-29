@@ -1,0 +1,168 @@
+/* Canonical styling for the bar-control component family:
+ *
+ *   .control-group   — wrapper for a label + button-group pair
+ *   .control-label   — uppercase gray label text
+ *   .button-group    — grid of connected (pill) buttons
+ *   .control-btn     — individual button (with .active modifier)
+ *
+ * One source of truth so the bottom bars (BATTLE / SERVER / CLIENT)
+ * and the GAME LOBBY's CENTER / DIVIDERS pickers render identically.
+ * Each Vue wrapper component (BarLabel / BarButton / BarButtonGroup
+ * / BarControlGroup) renders the SAME class names this file styles,
+ * so consumers can mix-and-match bare HTML and components freely.
+ *
+ * Active-state colors come from CSS custom properties — the bottom
+ * bars override them per-bar via inline style binding (BAR_THEMES);
+ * any element without that override (e.g. inside the lobby modal)
+ * picks up the `:root` defaults below (the realBattle palette). */
+
+:root {
+  --bar-active-bg: rgba(120, 50, 170, 0.9);
+  --bar-active-border: #9944cc;
+  --bar-active-hover-bg: rgba(140, 65, 195, 0.95);
+  --bar-active-hover-border: #aa55dd;
+  --bar-active-pressed-bg: rgba(100, 40, 145, 0.95);
+  --bar-active-pressed-border: #8833aa;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.control-label {
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+.button-group {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+
+.button-group .control-btn {
+  border-radius: 0;
+  margin-left: -1px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.button-group .control-btn:first-child {
+  border-radius: 3px 0 0 3px;
+  margin-left: 0;
+}
+
+.button-group .control-btn:last-child {
+  border-radius: 0 3px 3px 0;
+}
+
+/* Three-state design — every `.control-btn` lands in exactly
+ * ONE of these visual buckets; the cascade is structured so each
+ * bucket also owns its own hover / press states (no rule from
+ * one bucket leaks into another via specificity ties).
+ *
+ *   1. OFF      — neither .active nor .active-level. Default bg,
+ *                 dark muted #556 text. Reads as "not engaged".
+ *   2. ACTIVE-LEVEL — `.active-level` only. Default bg, WHITE text.
+ *                 The "this signal is participating but not the
+ *                 solo driver" indicator (e.g. LOD signals in
+ *                 ACTIVE state with no SOLO present).
+ *   3. ACTIVE   — `.active` set. Saturated bg from BAR_THEMES vars
+ *                 + white text. The "this is THE selected option"
+ *                 indicator (single-pick groups, solo signals). */
+.control-btn {
+  padding: 3px 6px;
+  background: rgba(60, 60, 60, 0.8);
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #556;
+  font-family: monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+/* OFF bucket — explicitly excludes both highlight states so the
+ * cascade for active / active-level stays clean. */
+.control-btn:hover:not(:disabled):not(.active):not(.active-level) {
+  background: rgba(85, 85, 85, 0.9);
+  border-color: #888;
+  color: #99a;
+}
+
+.control-btn:active:not(:disabled):not(.active):not(.active-level) {
+  background: rgba(50, 50, 50, 0.95);
+  border-color: #666;
+  color: #778;
+  transition: all 0.05s ease;
+}
+
+/* ACTIVE bucket — bg/border/text fully colored. */
+.control-btn.active {
+  background: var(--bar-active-bg);
+  border-color: var(--bar-active-border);
+  color: #fff;
+}
+
+.control-btn.active:hover:not(:disabled) {
+  background: var(--bar-active-hover-bg);
+  border-color: var(--bar-active-hover-border);
+}
+
+.control-btn.active:active:not(:disabled) {
+  background: var(--bar-active-pressed-bg);
+  border-color: var(--bar-active-pressed-border);
+  transition: all 0.05s ease;
+}
+
+/* ACTIVE-LEVEL bucket — text-only highlight; bg + border match the
+ * OFF state so it reads as "engaged but not solo". Hover / press
+ * brighten the bg the same way OFF does, but text stays white. */
+.control-btn.active-level {
+  color: white;
+}
+
+.control-btn.active-level:hover:not(:disabled) {
+  background: rgba(85, 85, 85, 0.9);
+  border-color: #888;
+}
+
+.control-btn.active-level:active:not(:disabled) {
+  background: rgba(50, 50, 50, 0.95);
+  border-color: #666;
+  transition: all 0.05s ease;
+}
+
+/* Disabled (e.g. non-host viewing the lobby's CENTER / DIVIDERS).
+ * Inactive: dim gray, low opacity. Active: SUBTLE outline so the
+ * non-host can still tell which option the host has picked, but
+ * with the saturated bg gone — it shouldn't read as interactive. */
+.control-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.control-btn.active:disabled {
+  background: rgba(70, 70, 80, 0.55);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(230, 230, 240, 0.85);
+}
+
+/* `bar-readonly` — applied to a wrapper (a whole bar, or a single
+ * control-group, or the lobby's terrain section) to neutralize
+ * clicks on every nested .control-btn while keeping the saturated
+ * active palette intact. Use this instead of per-button `:disabled`
+ * when you want the "host-locked / read-only" look that doesn't
+ * trigger the dim disabled-active rule above — so a non-host viewer
+ * sees the same bright active text as the host does, just locked. */
+.bar-readonly .control-btn {
+  pointer-events: none;
+  cursor: default;
+}

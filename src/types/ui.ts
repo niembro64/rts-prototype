@@ -107,12 +107,11 @@ export type MinimapData = {
   showTerrain: boolean;
 };
 
-// Lobby player (used in both component and network)
-export type LobbyPlayer = {
-  playerId: PlayerId;
-  name: string;
-  isHost: boolean;
-};
+// Lobby player — re-exported from `types/network.ts` so the
+// component layer and the network layer can't drift apart on
+// schema (IP / location columns landed in network.ts and the
+// duplicate that previously lived here was missing them).
+export type { LobbyPlayer } from './network';
 
 // Combat stats
 export type FriendlyFireMode = 'include' | 'ignore' | 'subHalf' | 'subtract';

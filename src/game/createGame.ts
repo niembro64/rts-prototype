@@ -20,6 +20,7 @@ export function createGame(config: GameConfig): GameInstance {
     bgColor,
   );
 
+  const lobbyPreview = config.lobbyPreview ?? false;
   const buildScene = () =>
     new RtsScene3D(app, {
       playerIds,
@@ -29,6 +30,7 @@ export function createGame(config: GameConfig): GameInstance {
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
       backgroundMode,
+      lobbyPreview,
     });
 
   let scene = buildScene();

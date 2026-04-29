@@ -346,13 +346,15 @@ export class CaptureTileRenderer3D {
       }
     }
 
-    // Pass 2: blend dominant-team colour onto captured tiles. The
-    // mix factor is strictly proportional to the tile's mana/sec —
-    // see getCaptureTileBrightness. A fully-captured centre tile
-    // reaches `intensity` exactly; everything else scales down by
-    // its production fraction. 3D mesh and 2D minimap consume the
-    // SAME factor function so the gradient looks identical in
-    // both views.
+    // Pass 2: blend the area-weighted team colour onto each captured
+    // tile. The mix factor is proportional to the tile's TOTAL
+    // ownership height (sum across teams) × its mana/sec — see
+    // getCaptureTileBrightness. A border tile shared 50/50 between
+    // two teams sums to height 1.0 just like a single-team tile, so
+    // both render at the same brightness; the colour is the area-
+    // weighted blend of the two teams' colours. 3D mesh and 2D
+    // minimap consume the SAME factor function so the gradient
+    // looks identical in both views.
     for (let i = 0; i < tiles.length; i++) {
       const tile = tiles[i];
       const cx = tile.cx;
@@ -361,7 +363,6 @@ export class CaptureTileRenderer3D {
 
       let totalWeight = 0;
       let r = 0, g = 0, b = 0;
-      let maxHeight = 0;
       for (const pidStr in tile.heights) {
         const pid = Number(pidStr) as PlayerId;
         const height = tile.heights[pid];
@@ -373,7 +374,6 @@ export class CaptureTileRenderer3D {
         r += ((color >> 16) & 0xff) * height;
         g += ((color >> 8) & 0xff) * height;
         b += (color & 0xff) * height;
-        if (height > maxHeight) maxHeight = height;
       }
       if (totalWeight <= 0) continue;
 
@@ -381,7 +381,7 @@ export class CaptureTileRenderer3D {
       const tg = (g / totalWeight) / 255;
       const tb = (b / totalWeight) / 255;
       const tileProd = getManaCellProductionPerSecond(cx, cy, cellSize, this.mapWidth, this.mapHeight);
-      const mix = getCaptureTileBrightness(tileProd, maxHeight, intensity);
+      const mix = getCaptureTileBrightness(tileProd, totalWeight, intensity);
       const inv = 1 - mix;
       const lerpR = NEUTRAL_R * inv + tr * mix;
       const lerpG = NEUTRAL_G * inv + tg * mix;

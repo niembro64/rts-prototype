@@ -19,6 +19,13 @@ export type GameConfig = {
   mapWidth: number;
   mapHeight: number;
   backgroundMode?: boolean;
+  /** Lobby-preview rendering: skip the usual demo zoom + base spawn
+   *  so the small pane in the GAME LOBBY shows commanders only
+   *  (no units, no buildings) at a hardcoded wide zoom. The
+   *  caller is responsible for matching the GameServer config
+   *  (empty `aiPlayerIds`, etc.) so the simulation matches what
+   *  the renderer expects. Defaults to false. */
+  lobbyPreview?: boolean;
 };
 
 export type GameScene = import('../game/scenes/RtsScene3D').RtsScene3D;
@@ -64,8 +71,16 @@ export type GameServerConfig = {
    *  should pass them here so the initial spawn doesn't create units
    *  the user has deselected (which would then be wiped a tick later
    *  by setBackgroundUnitTypeEnabled, leaving the player with far
-   *  fewer initial units than centerSpawnPerPlayer would suggest). */
+   *  fewer initial units than the cap-derived per-team count). */
   initialAllowedTypes?: ReadonlySet<string>;
+  /** Initial unit cap for the world, applied BEFORE the demo's
+   *  initial-spawn pass so the spawn count tracks the user's stored
+   *  cap (now that the demo fills `maxTotalUnits / numPlayers` slots
+   *  per team). Without this the world boots at the BATTLE_CONFIG
+   *  default (4096), the spawn fills to that, and only AFTER does
+   *  `setMaxTotalUnits` arrive from the stored value — leaving a
+   *  mismatch like "4075 units / 16 cap" on screen. */
+  initialMaxTotalUnits?: number;
 };
 
 export type EmaConfig = {

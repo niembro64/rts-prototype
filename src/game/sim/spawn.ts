@@ -65,6 +65,29 @@ export function getPlayerBaseAngle(i: number, playerCount: number): number {
   return (i / playerCount) * Math.PI * 2 + FIRST_PLAYER_ANGLE;
 }
 
+/** World-space spawn position for seat `i` of a `playerCount`-player
+ *  game on a map of the given dimensions. Stateless mirror of the
+ *  internal `getSpawnPositions` helper, exposed so the 3D scene can
+ *  pre-frame each client's camera on its own commander BEFORE the
+ *  first snapshot arrives — without that, the camera stays centered
+ *  on the map mid and the joiner's commander spawns off-frustum on
+ *  the periphery. The radial-sector layout uses the same circle as
+ *  `getDemoCircle`, so this is also the same seat the capture
+ *  system pre-paints for that player. */
+export function getSpawnPositionForSeat(
+  seatIndex: number,
+  playerCount: number,
+  mapWidth: number,
+  mapHeight: number,
+): { x: number; y: number } {
+  const radius = Math.min(mapWidth, mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
+  const angle = getPlayerBaseAngle(seatIndex, Math.max(1, playerCount));
+  return {
+    x: mapWidth / 2 + Math.cos(angle) * radius,
+    y: mapHeight / 2 + Math.sin(angle) * radius,
+  };
+}
+
 // Calculate spawn positions on the spawn circle for N players.
 function getSpawnPositions(
   world: WorldState,

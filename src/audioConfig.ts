@@ -112,6 +112,11 @@ export const AUDIO = {
         volume: 0.3,
         playSpeed: 0.4,
       },
+      gatlingMortarTurret: {
+        synth: 'cannon' as SynthId,
+        volume: 0.3,
+        playSpeed: 0.7,
+      },
     } as Record<string, SoundEntry>,
 
     // Per-turret laser/continuous weapon start sounds
@@ -125,6 +130,7 @@ export const AUDIO = {
       lightRocket: { synth: 'heavy' as SynthId, volume: 0.3, playSpeed: 0.3 },
       mediumShot: { synth: 'heavy' as SynthId, volume: 0.5, playSpeed: 0.2 },
       mortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.1 },
+      advancedMortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.08 },
       heavyShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.05 },
       // hippoShot: { synth: 'heavy' as SynthId, volume: 0.7, playSpeed: 0.15 },
       laserShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },
@@ -142,6 +148,7 @@ export const AUDIO = {
       tick: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       mammoth: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       widow: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      formik: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.25 },
       tarantula: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       commander: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       hippo: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
