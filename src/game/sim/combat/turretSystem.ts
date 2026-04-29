@@ -35,6 +35,15 @@ import {
  *  the barrel through the body. */
 const PITCH_MIN = -Math.PI / 2;
 const PITCH_MAX = Math.PI / 2;
+const TURRET_MASK_MAX_INDEX = 30;
+
+function turretMaskIncludes(mask: number | undefined, index: number): boolean {
+  if (mask === undefined) return true;
+  if (mask < 0) return true;
+  if (mask === 0) return false;
+  if (index > TURRET_MASK_MAX_INDEX) return true;
+  return (mask & (1 << index)) !== 0;
+}
 
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedUnits()): void {
   const dtSec = dtMs / 1000;
@@ -44,8 +53,10 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     if (unit.unit.hp <= 0) continue;
 
     const { cos, sin } = getTransformCosSin(unit.transform);
+    const activeMask = unit.unit.activeTurretMask;
 
     for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
+      if (!turretMaskIncludes(activeMask, weaponIndex)) continue;
       const weapon = unit.turrets[weaponIndex];
       // Vertical launchers skip the normal yaw/pitch aim math — the
       // turret always points straight up and each fired rocket picks

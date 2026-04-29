@@ -171,6 +171,13 @@ export type Unit = {
   priorityTargetId?: EntityId;
   mirrorPanels: CachedMirrorPanel[];
   mirrorBoundRadius: number;
+  /** Per-tick combat hot-path masks, written by targetingSystem.
+   *  Bit i set in activeTurretMask means turret i still needs rotation
+   *  integration this tick; bit i set in firingTurretMask means turret i
+   *  is eligible for the fire/recoil path. These are transient sim-only
+   *  fields and are never serialized. */
+  activeTurretMask?: number;
+  firingTurretMask?: number;
   /** Consecutive ticks the unit has wanted to move but failed to make
    *  meaningful progress. Reset on either no-movement-intent ticks or
    *  ticks where physics velocity exceeds the stuck threshold. When

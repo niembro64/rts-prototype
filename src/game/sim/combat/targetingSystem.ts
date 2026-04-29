@@ -13,6 +13,51 @@ import { getTurretWorldMount } from '../../math/MountGeometry';
 // Module-level reusable buffer for batched enemy queries (multi-weapon units)
 const _batchedEnemies: Entity[] = [];
 const _activeCombatUnits: Entity[] = [];
+const TURRET_MASK_MAX_INDEX = 30;
+
+function turretBit(index: number): number {
+  return index <= TURRET_MASK_MAX_INDEX ? (1 << index) : 0;
+}
+
+function commitCombatMasks(unit: Entity): boolean {
+  const weapons = unit.turrets;
+  if (!unit.unit || !weapons) return false;
+
+  let activeMask = 0;
+  let firingMask = 0;
+  let overflowActive = false;
+  let overflowFiring = false;
+
+  for (let i = 0; i < weapons.length; i++) {
+    const weapon = weapons[i];
+    const isActive =
+      weapon.target !== null ||
+      weapon.state !== 'idle' ||
+      Math.abs(weapon.angularVelocity) > 0.0001 ||
+      Math.abs(weapon.pitchVelocity) > 0.0001;
+    if (!isActive) continue;
+
+    const bit = turretBit(i);
+    if (bit !== 0) activeMask |= bit;
+    else overflowActive = true;
+
+    const shotType = weapon.config.shot.type;
+    if (
+      weapon.state === 'engaged' &&
+      !weapon.config.passive &&
+      shotType !== 'force'
+    ) {
+      if (bit !== 0) firingMask |= bit;
+      else overflowFiring = true;
+    }
+  }
+
+  // Overflow units are extremely unusual, but treating them as
+  // all-turret-active is safer than dropping turret 31+ from combat.
+  unit.unit.activeTurretMask = overflowActive ? -1 : activeMask;
+  unit.unit.firingTurretMask = overflowFiring ? -1 : firingMask;
+  return activeMask !== 0 || overflowActive;
+}
 
 // Density-cap thresholds + stride for the dense-crowd fallback used
 // inside the inner targeting loops are now read per-tick from the
@@ -74,6 +119,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   for (const unit of world.getArmedUnits()) {
     if (!unit.ownership || !unit.unit || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
+    unit.unit.activeTurretMask = 0;
+    unit.unit.firingTurretMask = 0;
 
     const playerId = unit.ownership.playerId;
     unit.transform.rotCos = Math.cos(unit.transform.rotation);
@@ -185,7 +232,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             weapon.state = 'tracking';
           }
         }
-        _activeCombatUnits.push(unit);
+        if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
         continue; // Skip auto-targeting entirely for this unit
       }
       // Priority target dead/gone — fall through to auto-targeting
@@ -381,15 +428,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
     }
 
-    let hasActiveCombatState = false;
-    for (let wi = 0; wi < weapons.length; wi++) {
-      const weapon = weapons[wi];
-      if (weapon.target !== null || weapon.state !== 'idle' || Math.abs(weapon.angularVelocity) > 0.0001 || Math.abs(weapon.pitchVelocity) > 0.0001) {
-        hasActiveCombatState = true;
-        break;
-      }
-    }
-    if (hasActiveCombatState) _activeCombatUnits.push(unit);
+    if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
   }
 
   return _activeCombatUnits;

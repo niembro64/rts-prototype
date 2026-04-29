@@ -72,6 +72,15 @@ const _fireSimEvents: import('./types').SimEvent[] = [];
 const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
 const _orphanedIds: EntityId[] = [];
 const _despawnEvents: ProjectileDespawnEvent[] = [];
+const TURRET_MASK_MAX_INDEX = 30;
+
+function turretMaskIncludes(mask: number | undefined, index: number): boolean {
+  if (mask === undefined) return true;
+  if (mask < 0) return true;
+  if (mask === 0) return false;
+  if (index > TURRET_MASK_MAX_INDEX) return true;
+  return (mask & (1 << index)) !== 0;
+}
 
 // Reset module-level reusable buffers between game sessions
 // (prevents stale entity references from surviving across sessions)
@@ -107,9 +116,11 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 
     const playerId = unit.ownership.playerId;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
+    const firingMask = unit.unit.firingTurretMask;
 
     // Fire each weapon independently
     for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
+      if (!turretMaskIncludes(firingMask, weaponIndex)) continue;
       const weapon = unit.turrets[weaponIndex];
       const config = weapon.config;
       const shot = config.shot;
