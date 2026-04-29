@@ -1,4 +1,4 @@
-import Peer, { DataConnection } from 'peerjs';
+import Peer, { DataConnection, util, type PeerOptions } from 'peerjs';
 import { encode as msgpackEncode, decode as msgpackDecode } from '@msgpack/msgpack';
 import type { PlayerId } from '../sim/types';
 import type { Command } from '../sim/commands';
@@ -57,6 +57,23 @@ function getDefaultPlayerName(playerId: PlayerId): string {
   return colorNames[playerId - 1] || `Player ${playerId}`;
 }
 
+const PEER_OPTIONS: PeerOptions = {
+  debug: 0,
+  // Keep PeerJS's default TURN fallback. The previous STUN-only
+  // override worked on easy local networks but could fail for real
+  // internet peers behind stricter NATs.
+  config: {
+    ...util.defaultConfig,
+    iceServers: [
+      ...util.defaultConfig.iceServers,
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ],
+  },
+};
+
+const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;
+const SIGNALING_RECONNECT_MAX_DELAY_MS = 10000;
+
 export class NetworkManager {
   private peer: Peer | null = null;
   private connections: Map<PlayerId, DataConnection> = new Map();
@@ -79,6 +96,8 @@ export class NetworkManager {
   private heartbeatCheckInterval: ReturnType<typeof setInterval> | null = null;
   private readonly heartbeatSendIntervalMs = 2000;
   private readonly heartbeatTimeoutMs = 30000;
+  private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
 
   // Callbacks
   public onPlayerJoined?: (player: LobbyPlayer) => void;
@@ -107,6 +126,56 @@ export class NetworkManager {
    *  any player via the host's re-broadcast. The receiver
    *  updates its own LobbyPlayer record from `getPlayer(id)`. */
   public onPlayerInfoUpdate?: (player: LobbyPlayer) => void;
+
+  private createPeer(peerId: string): Peer {
+    return new Peer(peerId, PEER_OPTIONS);
+  }
+
+  private clearSignalingReconnect(): void {
+    if (this.signalingReconnectTimer !== null) {
+      clearTimeout(this.signalingReconnectTimer);
+      this.signalingReconnectTimer = null;
+    }
+  }
+
+  private markSignalingOpen(): void {
+    this.clearSignalingReconnect();
+    this.signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
+  }
+
+  private scheduleHostSignalingReconnect(reason: string): void {
+    if (this.role !== 'host' || this.gameStarted) return;
+    const peer = this.peer;
+    if (!peer || peer.destroyed || !peer.disconnected) return;
+    if (this.signalingReconnectTimer !== null) return;
+
+    const delay = this.signalingReconnectDelayMs;
+    console.warn(`[NET] Host signaling disconnected while lobby is open (${reason}); reconnecting in ${delay}ms`);
+    this.signalingReconnectTimer = setTimeout(() => {
+      this.signalingReconnectTimer = null;
+      const currentPeer = this.peer;
+      if (
+        this.role !== 'host' ||
+        this.gameStarted ||
+        !currentPeer ||
+        currentPeer.destroyed ||
+        !currentPeer.disconnected
+      ) {
+        return;
+      }
+
+      try {
+        currentPeer.reconnect();
+        this.signalingReconnectDelayMs = Math.min(
+          this.signalingReconnectDelayMs * 2,
+          SIGNALING_RECONNECT_MAX_DELAY_MS,
+        );
+      } catch (err) {
+        console.warn('[NET] Host signaling reconnect failed:', err);
+        this.scheduleHostSignalingReconnect('reconnect failed');
+      }
+    }, delay);
+  }
 
   // Host a new game
   async hostGame(): Promise<string> {
@@ -137,19 +206,11 @@ export class NetworkManager {
         }
       }, 10000);
 
-      // Use room code as peer ID prefix for discoverability
-      // Configure with debug off and connection settings
-      this.peer = new Peer(this.getUniversalGameId(), {
-        debug: 0,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-          ],
-        },
-      });
+      // Use room code as peer ID prefix for discoverability.
+      this.peer = this.createPeer(this.getUniversalGameId());
 
       this.peer.on('open', () => {
+        this.markSignalingOpen();
         if (resolved) return;
         resolved = true;
         clearTimeout(timeout);
@@ -161,11 +222,13 @@ export class NetworkManager {
         this.handleIncomingConnection(conn);
       });
 
-      // Handle disconnection from signaling server (this is OK once game starts)
+      // While the lobby is open, the host must stay registered with
+      // the signaling server so new computers can dial ba-ROOM.
+      // Once a real battle starts, existing WebRTC data channels no
+      // longer need the signaling socket.
       this.peer.on('disconnected', () => {
-        console.log('Disconnected from signaling server (this is normal for P2P)');
-        // Don't treat this as an error - P2P connections are already established
-        // Only matters if we need new players to join
+        console.log('Disconnected from signaling server');
+        this.scheduleHostSignalingReconnect('host peer disconnected');
       });
 
       this.peer.on('error', (err) => {
@@ -174,8 +237,9 @@ export class NetworkManager {
           // Room code already in use, try another
           this.peer?.destroy();
           this.roomCode = generateRoomCode();
-          this.peer = new Peer(this.getUniversalGameId());
+          this.peer = this.createPeer(this.getUniversalGameId());
           this.peer.on('open', () => {
+            this.markSignalingOpen();
             if (resolved) return;
             resolved = true;
             clearTimeout(timeout);
@@ -184,6 +248,7 @@ export class NetworkManager {
           this.peer.on('connection', (conn) => this.handleIncomingConnection(conn));
           this.peer.on('disconnected', () => {
             console.log('Disconnected from signaling server');
+            this.scheduleHostSignalingReconnect('host peer disconnected');
           });
           this.peer.on('error', (e) => {
             if (resolved) return;
@@ -220,15 +285,7 @@ export class NetworkManager {
       let opened = false;
       // Generate a random ID for the client
       const clientId = `ba-client-${Math.random().toString(36).substring(2, 10)}`;
-      this.peer = new Peer(clientId, {
-        debug: 0,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-          ],
-        },
-      });
+      this.peer = this.createPeer(clientId);
 
       this.peer.on('open', () => {
         console.log('Client peer opened, connecting to host...');
@@ -273,6 +330,8 @@ export class NetworkManager {
         }
         if (err.type === 'peer-unavailable') {
           this.onError?.('Game not found - check the code and try again');
+          this.peer?.destroy();
+          this.peer = null;
           reject(new Error('Game not found'));
           return;
         }
@@ -283,6 +342,8 @@ export class NetworkManager {
       // Timeout after 10 seconds
       setTimeout(() => {
         if (!opened) {
+          this.peer?.destroy();
+          this.peer = null;
           reject(new Error('Connection timeout - room may not exist'));
         }
       }, 10000);
@@ -846,6 +907,7 @@ export class NetworkManager {
   startGame(): void {
     if (this.role !== 'host') return;
     this.gameStarted = true;
+    this.clearSignalingReconnect();
 
     let playerIds = this.getGamePlayerIds();
 
@@ -916,6 +978,7 @@ export class NetworkManager {
 
   // Disconnect and cleanup
   disconnect(): void {
+    this.clearSignalingReconnect();
     this.stopHeartbeats();
     for (const conn of this.connections.values()) {
       conn.close();
