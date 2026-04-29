@@ -24,4 +24,10 @@ export { updateForceFieldSounds, emitForceFieldStopsForEntity } from './forceFie
 export { updateForceFieldState, applyForceFieldDamage, resetForceFieldBuffers } from './forceFieldTurret';
 
 // Projectiles
-export { fireTurrets, updateProjectiles, checkProjectileCollisions } from './projectileSystem';
+export {
+  fireTurrets,
+  updateProjectiles,
+  checkProjectileCollisions,
+  registerPackedProjectile,
+  unregisterPackedProjectile,
+} from './projectileSystem';

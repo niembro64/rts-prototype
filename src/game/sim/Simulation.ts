@@ -17,6 +17,8 @@ import {
   updateForceFieldState,
   applyForceFieldDamage,
   resetForceFieldBuffers,
+  registerPackedProjectile,
+  unregisterPackedProjectile,
 } from './combat';
 import { clearTargetIndex } from './combat/targetIndex';
 import {
@@ -426,6 +428,7 @@ export class Simulation {
     const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator, activeCombatUnits);
     for (const proj of fireResult.projectiles) {
       this.world.addEntity(proj);
+      registerPackedProjectile(proj);
     }
 
     // Collect projectile spawn events
@@ -461,10 +464,12 @@ export class Simulation {
     if (this.world.getProjectiles().length > 0) {
       const updateResult = updateProjectiles(this.world, dtMs, this.damageSystem);
       for (const id of updateResult.orphanedIds) {
+        unregisterPackedProjectile(id);
         spatialGrid.removeProjectile(id);
         this.world.removeEntity(id);
       }
       for (const event of updateResult.despawnEvents) {
+        unregisterPackedProjectile(event.id);
         spatialGrid.removeProjectile(event.id);
         this.pendingProjectileDespawns.push(event);
       }
@@ -481,6 +486,7 @@ export class Simulation {
       // them the same way they see any freshly-fired round.
       for (const proj of collisionResult.newProjectiles) {
         this.world.addEntity(proj);
+        registerPackedProjectile(proj);
       }
       for (const event of collisionResult.spawnEvents) {
         this.pendingProjectileSpawns.push(event);
@@ -488,6 +494,7 @@ export class Simulation {
 
       // Collect projectile despawn events from collisions
       for (const event of collisionResult.despawnEvents) {
+        unregisterPackedProjectile(event.id);
         spatialGrid.removeProjectile(event.id);
         this.pendingProjectileDespawns.push(event);
       }

@@ -74,12 +74,121 @@ const _orphanedIds: EntityId[] = [];
 const _despawnEvents: ProjectileDespawnEvent[] = [];
 const TURRET_MASK_MAX_INDEX = 30;
 
+let _packedProjectileCapacity = 0;
+let _packedProjectileCount = 0;
+let _packedProjectileIds = new Int32Array(0);
+let _packedProjectileX = new Float64Array(0);
+let _packedProjectileY = new Float64Array(0);
+let _packedProjectileZ = new Float64Array(0);
+let _packedProjectileVx = new Float64Array(0);
+let _packedProjectileVy = new Float64Array(0);
+let _packedProjectileVz = new Float64Array(0);
+let _packedProjectileTimeAlive = new Float64Array(0);
+let _packedProjectileHasGravity = new Uint8Array(0);
+const _packedProjectileEntities: Entity[] = [];
+const _packedProjectileSlots = new Map<EntityId, number>();
+
 function turretMaskIncludes(mask: number | undefined, index: number): boolean {
   if (mask === undefined) return true;
   if (mask < 0) return true;
   if (mask === 0) return false;
   if (index > TURRET_MASK_MAX_INDEX) return true;
   return (mask & (1 << index)) !== 0;
+}
+
+function ensurePackedProjectileCapacity(needed: number): void {
+  if (needed <= _packedProjectileCapacity) return;
+  let next = _packedProjectileCapacity > 0 ? _packedProjectileCapacity * 2 : 256;
+  while (next < needed) next *= 2;
+
+  const ids = new Int32Array(next);
+  const x = new Float64Array(next);
+  const y = new Float64Array(next);
+  const z = new Float64Array(next);
+  const vx = new Float64Array(next);
+  const vy = new Float64Array(next);
+  const vz = new Float64Array(next);
+  const timeAlive = new Float64Array(next);
+  const hasGravity = new Uint8Array(next);
+
+  ids.set(_packedProjectileIds);
+  x.set(_packedProjectileX);
+  y.set(_packedProjectileY);
+  z.set(_packedProjectileZ);
+  vx.set(_packedProjectileVx);
+  vy.set(_packedProjectileVy);
+  vz.set(_packedProjectileVz);
+  timeAlive.set(_packedProjectileTimeAlive);
+  hasGravity.set(_packedProjectileHasGravity);
+
+  _packedProjectileCapacity = next;
+  _packedProjectileIds = ids;
+  _packedProjectileX = x;
+  _packedProjectileY = y;
+  _packedProjectileZ = z;
+  _packedProjectileVx = vx;
+  _packedProjectileVy = vy;
+  _packedProjectileVz = vz;
+  _packedProjectileTimeAlive = timeAlive;
+  _packedProjectileHasGravity = hasGravity;
+}
+
+function isPackedProjectileEligible(entity: Entity): boolean {
+  const proj = entity.projectile;
+  if (!proj || proj.projectileType !== 'projectile') return false;
+  if (entity.dgunProjectile) return false;
+  const shot = proj.config.shot;
+  if (shot.type !== 'projectile') return false;
+  if ((shot.homingTurnRate ?? 0) > 0 || proj.homingTargetId !== undefined) return false;
+  if (proj.maxHits !== 1) return false;
+  return true;
+}
+
+export function registerPackedProjectile(entity: Entity): void {
+  if (!isPackedProjectileEligible(entity)) return;
+  if (_packedProjectileSlots.has(entity.id)) return;
+  const proj = entity.projectile!;
+  const shot = proj.config.shot as ProjectileShot;
+  const slot = _packedProjectileCount++;
+  ensurePackedProjectileCapacity(_packedProjectileCount);
+  _packedProjectileSlots.set(entity.id, slot);
+  _packedProjectileEntities[slot] = entity;
+  _packedProjectileIds[slot] = entity.id;
+  _packedProjectileX[slot] = entity.transform.x;
+  _packedProjectileY[slot] = entity.transform.y;
+  _packedProjectileZ[slot] = entity.transform.z;
+  _packedProjectileVx[slot] = proj.velocityX;
+  _packedProjectileVy[slot] = proj.velocityY;
+  _packedProjectileVz[slot] = proj.velocityZ;
+  _packedProjectileTimeAlive[slot] = proj.timeAlive;
+  _packedProjectileHasGravity[slot] = shot.ignoresGravity === true ? 0 : 1;
+}
+
+export function unregisterPackedProjectile(id: EntityId): void {
+  const slot = _packedProjectileSlots.get(id);
+  if (slot === undefined) return;
+  const last = _packedProjectileCount - 1;
+  _packedProjectileSlots.delete(id);
+  if (slot !== last) {
+    const moved = _packedProjectileEntities[last];
+    _packedProjectileEntities[slot] = moved;
+    _packedProjectileIds[slot] = _packedProjectileIds[last];
+    _packedProjectileX[slot] = _packedProjectileX[last];
+    _packedProjectileY[slot] = _packedProjectileY[last];
+    _packedProjectileZ[slot] = _packedProjectileZ[last];
+    _packedProjectileVx[slot] = _packedProjectileVx[last];
+    _packedProjectileVy[slot] = _packedProjectileVy[last];
+    _packedProjectileVz[slot] = _packedProjectileVz[last];
+    _packedProjectileTimeAlive[slot] = _packedProjectileTimeAlive[last];
+    _packedProjectileHasGravity[slot] = _packedProjectileHasGravity[last];
+    if (moved) _packedProjectileSlots.set(moved.id, slot);
+  }
+  _packedProjectileCount = last;
+  _packedProjectileEntities.length = _packedProjectileCount;
+}
+
+function isPackedProjectile(id: EntityId): boolean {
+  return _packedProjectileSlots.has(id);
 }
 
 // Reset module-level reusable buffers between game sessions
@@ -92,6 +201,9 @@ export function resetProjectileBuffers(): void {
   _homingVelocityUpdates.length = 0;
   _orphanedIds.length = 0;
   _despawnEvents.length = 0;
+  _packedProjectileCount = 0;
+  _packedProjectileSlots.clear();
+  _packedProjectileEntities.length = 0;
 }
 
 // Check if a specific weapon has an active beam (by weapon index)
@@ -420,9 +532,86 @@ const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] 
 // Gravity constant lives in config.ts so it's shared with the physics
 // engine, client dead-reckoning, debris, and explosion sparks.
 
+function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
+  for (let slot = 0; slot < _packedProjectileCount;) {
+    const entity = _packedProjectileEntities[slot];
+    const proj = entity?.projectile;
+    if (!entity || !proj || !isPackedProjectileEligible(entity)) {
+      unregisterPackedProjectile(_packedProjectileIds[slot]);
+      continue;
+    }
+
+    // Force fields and other systems may mutate velocity before the
+    // projectile integration pass. Pull those object-side velocities
+    // back into the dense sidecar so packed shots stay authoritative.
+    let vx = proj.velocityX;
+    let vy = proj.velocityY;
+    let vz = proj.velocityZ;
+    let x = entity.transform.x;
+    let y = entity.transform.y;
+    let z = entity.transform.z;
+
+    proj.timeAlive += dtMs;
+    _packedProjectileTimeAlive[slot] = proj.timeAlive;
+
+    if (proj.collisionStartX === undefined) {
+      proj.collisionStartX = x;
+      proj.collisionStartY = y;
+      proj.collisionStartZ = z;
+    }
+
+    // Stash prev-state for swept 3D collision in ProjectileCollisionHandler.
+    proj.prevX = x;
+    proj.prevY = y;
+    proj.prevZ = z;
+
+    if (_packedProjectileHasGravity[slot] !== 0) {
+      vz -= GRAVITY * dtSec;
+    }
+
+    x += vx * dtSec;
+    y += vy * dtSec;
+    z += vz * dtSec;
+
+    _packedProjectileX[slot] = x;
+    _packedProjectileY[slot] = y;
+    _packedProjectileZ[slot] = z;
+    _packedProjectileVx[slot] = vx;
+    _packedProjectileVy[slot] = vy;
+    _packedProjectileVz[slot] = vz;
+
+    entity.transform.x = x;
+    entity.transform.y = y;
+    entity.transform.z = z;
+    proj.velocityX = vx;
+    proj.velocityY = vy;
+    proj.velocityZ = vz;
+
+    if (!proj.hasLeftSource) {
+      const source = world.getEntity(proj.sourceEntityId);
+      if (!source?.unit) {
+        proj.hasLeftSource = true;
+      } else {
+        const dx = (proj.prevX ?? 0) - source.transform.x;
+        const dy = (proj.prevY ?? 0) - source.transform.y;
+        const dz = (proj.prevZ ?? 0) - source.transform.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+        const shot = proj.config.shot as ProjectileShot;
+        const clearance = source.unit.unitRadiusCollider.shot + shot.collision.radius + 2;
+        if (distSq > clearance * clearance) {
+          proj.hasLeftSource = true;
+        }
+      }
+    }
+
+    slot++;
+  }
+}
+
 function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
   for (const entity of world.getTravelingProjectiles()) {
     if (!entity.projectile) continue;
+    if (isPackedProjectile(entity.id)) continue;
     const proj = entity.projectile;
 
     proj.timeAlive += dtMs;
@@ -558,6 +747,7 @@ export function updateProjectiles(
   // Position integration + homing for traveling projectiles. The
   // WASM-batched path was 2D-only and is disabled on this branch —
   // M12 deletes it entirely. The JS path below is the 3D authority.
+  _updatePackedProjectilesJS(world, dtMs, dtSec);
   _updateTravelingProjectilesJS(world, dtMs, dtSec);
 
   for (const entity of world.getLineProjectiles()) {

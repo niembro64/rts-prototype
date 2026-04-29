@@ -42,4 +42,6 @@ export {
   fireTurrets,
   updateProjectiles,
   checkProjectileCollisions,
+  registerPackedProjectile,
+  unregisterPackedProjectile,
 } from './combat/projectileSystem';
