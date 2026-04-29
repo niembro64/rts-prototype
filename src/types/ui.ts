@@ -163,8 +163,8 @@ export type ForceContribution = {
 
 // Spray target
 export type SprayTarget = {
-  source: { id: EntityId; pos: Vec2; playerId: PlayerId };
-  target: { id: EntityId; pos: Vec2; dim?: Vec2; radius?: number };
+  source: { id: EntityId; pos: Vec2; z?: number; playerId: PlayerId };
+  target: { id: EntityId; pos: Vec2; z?: number; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
   intensity: number;
 };

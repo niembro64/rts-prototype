@@ -15,7 +15,7 @@ import {
   buildMinimapData,
 } from './helpers';
 import type { EconomyInfo, MinimapData } from './helpers';
-import type { UIInputState } from '@/types/ui';
+import type { SprayTarget, UIInputState } from '@/types/ui';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { LongtaskTracker } from './helpers/LongtaskTracker';
@@ -193,6 +193,7 @@ export class RtsScene3D {
   private renderFrameIndex = 0;
   private burnMarkAccumMs = 0;
   private smokeTrailAccumMs = 0;
+  private combinedSprayTargets: SprayTarget[] = [];
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
   private snapshotBuffer = new SnapshotBuffer();
@@ -811,9 +812,19 @@ export class RtsScene3D {
       this.burnMarkRenderer.update(lineProjectiles, this.burnMarkAccumMs);
       this.burnMarkAccumMs = 0;
     }
-    // Commander build / heal spray trails — read straight from sim state
-    // via ClientViewState, same list the 2D renderer consumes.
-    this.sprayRenderer.update(this.clientViewState.getSprayTargets(), effectDt);
+    // Commander build/heal spray comes from sim state; factory unit
+    // construction spray is derived from the client-side factory tower
+    // rig so it can originate at the rendered nozzle height.
+    const commanderSprays = this.clientViewState.getSprayTargets();
+    const factorySprays = this.entityRenderer.getFactorySprayTargets();
+    if (factorySprays.length > 0) {
+      this.combinedSprayTargets.length = 0;
+      for (const spray of commanderSprays) this.combinedSprayTargets.push(spray);
+      for (const spray of factorySprays) this.combinedSprayTargets.push(spray);
+      this.sprayRenderer.update(this.combinedSprayTargets, effectDt);
+    } else {
+      this.sprayRenderer.update(commanderSprays, effectDt);
+    }
     // Rocket smoke trails: reads the same projectile list the beam
     // renderer consumes; puffs fall back to pooled meshes once their
     // fade completes.

@@ -96,9 +96,10 @@ export class FactoryProductionSystem {
 
     const factoryComp = factory.factory;
 
-    // Spawn position (center of factory)
-    const spawnX = factory.transform.x;
-    const spawnY = factory.transform.y;
+    const bp = getUnitBlueprint(unitType);
+    const spawn = this.computeSpawnOutsideFactory(world, factory, bp.unitRadiusCollider.push);
+    const spawnX = spawn.x;
+    const spawnY = spawn.y;
 
     // Create unit from blueprint
     const unit = world.createUnitFromBlueprint(spawnX, spawnY, factory.ownership.playerId, unitType);
@@ -148,6 +149,41 @@ export class FactoryProductionSystem {
     world.addEntity(unit);
 
     return unit;
+  }
+
+  private computeSpawnOutsideFactory(
+    world: WorldState,
+    factory: Entity,
+    unitRadius: number,
+  ): { x: number; y: number } {
+    const factoryComp = factory.factory!;
+    const waypoint = factoryComp.waypoints[0];
+    const targetX = waypoint?.x ?? factoryComp.rallyX;
+    const targetY = waypoint?.y ?? factoryComp.rallyY;
+    let dx = targetX - factory.transform.x;
+    let dy = targetY - factory.transform.y;
+    let len = Math.hypot(dx, dy);
+    if (len < 1e-3) {
+      dx = Math.cos(factory.transform.rotation);
+      dy = Math.sin(factory.transform.rotation);
+      len = Math.hypot(dx, dy);
+    }
+    const dirX = dx / len;
+    const dirY = dy / len;
+
+    const halfW = (factory.building?.width ?? 100) / 2;
+    const halfD = (factory.building?.height ?? 100) / 2;
+    const edgeAlongDir = Math.min(
+      Math.abs(dirX) > 1e-3 ? halfW / Math.abs(dirX) : Number.POSITIVE_INFINITY,
+      Math.abs(dirY) > 1e-3 ? halfD / Math.abs(dirY) : Number.POSITIVE_INFINITY,
+    );
+    const offset = edgeAlongDir + unitRadius + 12;
+    const x = factory.transform.x + dirX * offset;
+    const y = factory.transform.y + dirY * offset;
+    return {
+      x: Math.max(unitRadius, Math.min(world.mapWidth - unitRadius, x)),
+      y: Math.max(unitRadius, Math.min(world.mapHeight - unitRadius, y)),
+    };
   }
 
   // Add a unit to factory's build queue (cap-checked externally via canPlayerQueueUnit)

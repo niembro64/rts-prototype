@@ -669,8 +669,8 @@ export function serializeGameState(
     for (let i = 0; i < sprayTargets.length; i++) {
       const st = sprayTargets[i];
       _sprayBuf.push({
-        source: { id: st.source.id, pos: st.source.pos, playerId: st.source.playerId },
-        target: { id: st.target.id, pos: st.target.pos, dim: st.target.dim, radius: st.target.radius },
+        source: { id: st.source.id, pos: st.source.pos, z: st.source.z, playerId: st.source.playerId },
+        target: { id: st.target.id, pos: st.target.pos, z: st.target.z, dim: st.target.dim, radius: st.target.radius },
         type: st.type,
         intensity: st.intensity,
       });

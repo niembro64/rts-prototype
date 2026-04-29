@@ -240,8 +240,8 @@ export type NetworkServerSnapshot = {
 };
 
 export type NetworkServerSnapshotSprayTarget = {
-  source: { id: number; pos: Vec2; playerId: PlayerId };
-  target: { id: number; pos: Vec2; dim?: Vec2; radius?: number };
+  source: { id: number; pos: Vec2; z?: number; playerId: PlayerId };
+  target: { id: number; pos: Vec2; z?: number; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
   intensity: number;
 };

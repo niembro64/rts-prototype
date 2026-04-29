@@ -396,11 +396,13 @@ export class ClientViewState {
           source: {
             id: st.source.id,
             pos: st.source.pos,
+            z: st.source.z,
             playerId: st.source.playerId,
           },
           target: {
             id: st.target.id,
             pos: st.target.pos,
+            z: st.target.z,
             dim: st.target.dim,
             radius: st.target.radius,
           },

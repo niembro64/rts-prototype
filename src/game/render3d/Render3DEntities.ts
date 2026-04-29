@@ -12,6 +12,8 @@
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { UnitBodyShape } from '@/types/blueprints';
+import type { ConcreteGraphicsQuality } from '@/types/graphics';
+import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
 import type { SpinConfig } from '../../config';
 import { MIRROR_EXTRA_HEIGHT } from '../../config';
@@ -34,6 +36,8 @@ import { getBodyGeom, getBodyMountTopY, disposeBodyGeoms } from './BodyShape3D';
 import {
   buildBuildingShape,
   disposeBuildingGeoms,
+  type BuildingDetailMesh,
+  type FactoryConstructionRig,
   type BuildingShapeType,
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -60,6 +64,29 @@ const _INST_UP = new THREE.Vector3(0, 1, 0);
 const LOW_INSTANCED_COMPACT_MIN_FREE = 128;
 const LOW_INSTANCED_COMPACT_INTERVAL_FRAMES = 30;
 const LOW_INSTANCED_COMPACT_MAX_MOVES = 256;
+const BUILDING_TIER_ORDER: Record<ConcreteGraphicsQuality, number> = {
+  min: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+  max: 4,
+};
+
+function buildingTierAtLeast(
+  tier: ConcreteGraphicsQuality,
+  minTier: ConcreteGraphicsQuality,
+): boolean {
+  return BUILDING_TIER_ORDER[tier] >= BUILDING_TIER_ORDER[minTier];
+}
+
+function buildingDetailVisible(
+  detail: BuildingDetailMesh,
+  tier: ConcreteGraphicsQuality,
+): boolean {
+  const level = BUILDING_TIER_ORDER[tier];
+  return level >= BUILDING_TIER_ORDER[detail.minTier]
+    && (detail.maxTier === undefined || level <= BUILDING_TIER_ORDER[detail.maxTier]);
+}
 
 // Scratch globals reused by the per-unit surface-tilt path so the
 // per-frame loop allocates no quaternions/vectors. Tilt is applied
@@ -177,7 +204,8 @@ type EntityMesh = {
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  slab. Empty / undefined for units. */
-  buildingDetails?: THREE.Mesh[];
+  buildingDetails?: BuildingDetailMesh[];
+  factoryRig?: FactoryConstructionRig;
   /** Per-building render height (solar is shorter than the default). */
   buildingHeight?: number;
   /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
@@ -205,6 +233,7 @@ export class Render3DEntities {
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
   private projectileMeshes = new Map<number, THREE.Mesh>();
+  private factorySprayTargets: SprayTarget[] = [];
   // Reusable "seen this frame" sets — the four per-frame update loops
   // (barrel-spin, unit, building, projectile) each need to track which
   // entity ids were visited so stale Map entries get pruned. Keeping
@@ -263,6 +292,9 @@ export class Render3DEntities {
   private _projPos = new THREE.Vector3();
   private _projScale = new THREE.Vector3();
   private _projMatrix = new THREE.Matrix4();
+  private _factorySprayTargetLocal = new THREE.Vector3();
+  private _factorySpraySourceWorld = new THREE.Vector3();
+  private _factorySprayTargetWorld = new THREE.Vector3();
   private static readonly _PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
   /** Engine fallback values used when a shape:'cylinder' shot doesn't
    *  define its own `cylinderShape` block. World length =
@@ -2627,16 +2659,13 @@ export class Render3DEntities {
     const buildings = this.clientViewState.getBuildings();
     const seen = this._seenBuildingIds;
     seen.clear();
+    this.factorySprayTargets.length = 0;
 
-    // LOD-driven detail visibility for buildings. At low graphics tiers
-    // the player is typically zoomed out / running on a constrained GPU,
-    // so the small accent meshes (chimney, machinery inset, solar cell
-    // grid) are hidden — buildings collapse to their team-colored slab
-    // silhouette. The detail meshes stay alive in the scenegraph (cheap)
-    // and re-appear automatically when the tier flips back up. Mirrors
-    // the unit LOD pattern where min/low strips turrets, mirrors, legs.
+    // LOD-driven detail visibility for buildings. Each accent mesh now
+    // declares its own tier range, so min/low/medium/high/max all get a
+    // deliberate silhouette instead of one detail on/off switch.
     const tier = this.lod.gfx.tier;
-    const showBuildingDetails = tier !== 'min' && tier !== 'low';
+    const detailTimeSec = this._lastSpinMs / 1000;
 
     for (const e of buildings) {
       seen.add(e.id);
@@ -2668,7 +2697,7 @@ export class Render3DEntities {
         const chassis = new THREE.Group();
         chassis.add(shape.primary);
         group.add(chassis);
-        for (const detail of shape.details) group.add(detail);
+        for (const detail of shape.details) group.add(detail.mesh);
         this.world.add(group);
         m = {
           group,
@@ -2685,6 +2714,7 @@ export class Render3DEntities {
           // path (if we ever add one for buildings) knows what to
           // discard along with the primary.
           buildingDetails: shape.details,
+          factoryRig: shape.factoryRig,
           buildingHeight: shape.height,
         };
         this.buildingMeshes.set(e.id, m);
@@ -2718,9 +2748,16 @@ export class Render3DEntities {
       primary.position.set(0, renderH / 2, 0);
       primary.scale.set(w, renderH, d);
       if (m.buildingDetails) {
-        const detailsVisible = showBuildingDetails && progress >= 1;
-        for (const dMesh of m.buildingDetails) dMesh.visible = detailsVisible;
+        const detailsReady = progress >= 1;
+        for (const detail of m.buildingDetails) {
+          const visible = detailsReady && buildingDetailVisible(detail, tier);
+          detail.mesh.visible = visible;
+          if (visible && detail.role === 'solarShine') {
+            this.updateSolarShine(detail.mesh, detailTimeSec);
+          }
+        }
       }
+      this.updateFactoryConstructionRig(m.factoryRig, e, tier, progress >= 1, w, d, m.group);
 
       // Health + build-progress bars handled by HealthBar3D
       // (billboarded sprite in the world group).
@@ -2731,6 +2768,120 @@ export class Render3DEntities {
         this.world.remove(m.group);
         this.buildingMeshes.delete(id);
       }
+    }
+  }
+
+  private updateSolarShine(mesh: THREE.Mesh, timeSec: number): void {
+    const shine = mesh.userData.solarShine as
+      | {
+          baseX: number;
+          baseZ: number;
+          baseScaleX: number;
+          travel: number;
+          phase: number;
+        }
+      | undefined;
+    if (!shine) return;
+
+    const cycle = (timeSec * 0.22 + shine.phase) % 1;
+    const sweep = (cycle * 2 - 1) * shine.travel;
+    const pulse = Math.sin(cycle * Math.PI);
+    mesh.position.x = shine.baseX + sweep;
+    mesh.position.z = shine.baseZ + Math.sin((cycle + shine.phase) * Math.PI * 2) * shine.travel * 0.08;
+    mesh.scale.x = shine.baseScaleX * (0.55 + pulse * 0.5);
+  }
+
+  private updateFactoryConstructionRig(
+    rig: FactoryConstructionRig | undefined,
+    e: Entity,
+    tier: ConcreteGraphicsQuality,
+    detailsReady: boolean,
+    footprintW: number,
+    footprintD: number,
+    group: THREE.Group,
+  ): void {
+    if (!rig) return;
+
+    const factory = e.factory;
+    const queuedUnitType = factory?.buildQueue[0];
+    const progress = Math.max(0, Math.min(1, factory?.currentBuildProgress ?? 0));
+    const active = detailsReady
+      && !!factory
+      && !!queuedUnitType
+      && (factory.isProducing || progress > 0);
+
+    if (!active) {
+      rig.unitGhost.visible = false;
+      rig.unitCore.visible = false;
+      for (const spark of rig.sparks) spark.visible = false;
+      return;
+    }
+
+    let blueprintRadius = Math.min(footprintW, footprintD) * 0.13;
+    if (queuedUnitType) {
+      try {
+        const bp = getUnitBlueprint(queuedUnitType);
+        blueprintRadius = bp.unitRadiusCollider.scale;
+      } catch {
+        // Unknown queue ids should not break rendering; keep the generic bay ghost.
+      }
+    }
+
+    const maxBayRadius = Math.max(12, Math.min(footprintW, footprintD) * 0.18);
+    const baseRadius = Math.max(8, Math.min(maxBayRadius, blueprintRadius * 1.15));
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    const radius = baseRadius * (0.28 + easedProgress * 0.72);
+    const timeSec = this._lastSpinMs / 1000;
+    const phase = timeSec * 4.7 + e.id * 0.19;
+    const pulse = 1 + Math.sin(phase * 1.7) * 0.035;
+    const centerY = rig.bayBaseY + Math.max(5, radius * 0.68);
+
+    rig.unitGhost.visible = buildingTierAtLeast(tier, 'medium');
+    rig.unitGhost.position.set(0, centerY, 0);
+    rig.unitGhost.scale.set(radius * 1.22 * pulse, Math.max(5, radius * 0.64), radius * pulse);
+
+    rig.unitCore.visible = buildingTierAtLeast(tier, 'high');
+    rig.unitCore.position.set(0, centerY + radius * 0.08, 0);
+    rig.unitCore.scale.setScalar(Math.max(3, radius * 0.18));
+
+    if (buildingTierAtLeast(tier, 'high') && e.ownership) {
+      group.updateWorldMatrix(true, false);
+      this._factorySprayTargetLocal.copy(rig.targetLocal);
+      this._factorySprayTargetLocal.y = centerY + radius * 0.06;
+      this._factorySpraySourceWorld.copy(rig.nozzleLocal).applyMatrix4(group.matrixWorld);
+      this._factorySprayTargetWorld.copy(this._factorySprayTargetLocal).applyMatrix4(group.matrixWorld);
+      this.factorySprayTargets.push({
+        source: {
+          id: e.id,
+          pos: { x: this._factorySpraySourceWorld.x, y: this._factorySpraySourceWorld.z },
+          z: this._factorySpraySourceWorld.y,
+          playerId: e.ownership.playerId,
+        },
+        target: {
+          id: e.id,
+          pos: { x: this._factorySprayTargetWorld.x, y: this._factorySprayTargetWorld.z },
+          z: this._factorySprayTargetWorld.y,
+          radius,
+        },
+        type: 'build',
+        intensity: Math.max(0.45, Math.min(1, 0.65 + easedProgress * 0.35)),
+      });
+    }
+
+    const showSparks = buildingTierAtLeast(tier, 'max');
+    for (let i = 0; i < rig.sparks.length; i++) {
+      const spark = rig.sparks[i];
+      spark.visible = showSparks;
+      if (!showSparks) continue;
+
+      const sparkPhase = phase * 1.8 + i * 1.37;
+      const sparkRadius = radius * (0.2 + (i % 3) * 0.1);
+      spark.position.set(
+        Math.cos(sparkPhase) * sparkRadius,
+        centerY + Math.sin(sparkPhase * 1.23) * radius * 0.38,
+        Math.sin(sparkPhase) * sparkRadius,
+      );
+      spark.scale.setScalar(Math.max(2.2, radius * (0.055 + (i % 2) * 0.015)));
     }
   }
 
@@ -2965,6 +3116,10 @@ export class Render3DEntities {
    *  liftGroup so this is unit-only. */
   getUnitYawGroup(eid: EntityId): THREE.Group | undefined {
     return this.unitMeshes.get(eid)?.liftGroup;
+  }
+
+  getFactorySprayTargets(): readonly SprayTarget[] {
+    return this.factorySprayTargets;
   }
 
   destroy(): void {

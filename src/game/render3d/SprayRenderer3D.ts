@@ -36,9 +36,8 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { getGraphicsConfig } from '@/clientBarConfig';
 
-// Spray trail sits slightly above ground level — high enough to show
-// clearly over the tile grid, low enough to still feel "on the ground"
-// next to the building.
+// Default spray trail altitude for legacy 2D spray targets. Factory
+// tower sprays can pass explicit source/target z heights.
 const TRAIL_Y = 4;
 const PARTICLE_BASE_RADIUS = 2.5;
 
@@ -169,18 +168,25 @@ export class SprayRenderer3D {
       const n = Math.min(count, MAX_PARTICLES_PER_SPRAY);
 
       const sx = spray.source.pos.x;
+      const sy = spray.source.z ?? TRAIL_Y;
       const sz = spray.source.pos.y;
       const tx = spray.target.pos.x;
+      const ty = spray.target.z ?? TRAIL_Y;
       const tz = spray.target.pos.y;
       const dx = tx - sx;
+      const dy = ty - sy;
       const dz = tz - sz;
-      const len = Math.hypot(dx, dz);
+      const len = Math.hypot(dx, dy, dz);
       if (len < 1e-3) continue;
       const dirX = dx / len;
+      const dirY = dy / len;
       const dirZ = dz / len;
-      // Perpendicular vector for the wobble offset.
-      const perpX = -dirZ;
-      const perpZ = dirX;
+      // Horizontal perpendicular vector for the wobble offset. Commander
+      // sprays stay flat at TRAIL_Y; factory tower sprays keep the same
+      // particle stream while the centerline slopes from nozzle to unit.
+      const flatLen = Math.hypot(dx, dz);
+      const perpX = flatLen > 1e-3 ? -dz / flatLen : 1;
+      const perpZ = flatLen > 1e-3 ? dx / flatLen : 0;
 
       // Resolve per-spray color once. Heal sprays are always white,
       // build sprays use the caster's team primary.
@@ -213,6 +219,7 @@ export class SprayRenderer3D {
         const sineWobble = Math.sin(t * 7 + i * 1.3) * (len * 0.03);
         const pos = len * phase;
         const px = sx + dirX * pos + perpX * sineWobble;
+        const py = sy + dirY * pos;
         const pz = sz + dirZ * pos + perpZ * sineWobble;
         // Radius taper — particles grow into the stream from the source
         // and shrink near the target so the trail has a visible profile
@@ -222,9 +229,9 @@ export class SprayRenderer3D {
         const size = PARTICLE_BASE_RADIUS * (0.7 + 0.6 * fadeIn * fadeOut)
           * (0.5 + 0.5 * scaledIntensity);
 
-        // Compose instance matrix: T(px, TRAIL_Y, pz) · S(size).
+        // Compose instance matrix: T(px, py, pz) · S(size).
         this._scratchMat.makeScale(size, size, size);
-        this._scratchMat.setPosition(px, TRAIL_Y, pz);
+        this._scratchMat.setPosition(px, py, pz);
         this.mesh.setMatrixAt(visibleCount, this._scratchMat);
         // Per-instance color (team or heal-white) and global alpha.
         this.colorArr[visibleCount * 3]     = r;
