@@ -23,6 +23,7 @@ import type {
   ServerSimAutoModeConfig,
   ServerSimDetailTable,
   ServerSimHysteresis,
+  ServerSimQuality,
   ServerSimSignalStates,
 } from './types/serverSimLod';
 
@@ -63,6 +64,8 @@ export const SERVER_SIM_LOD_SIGNAL_DEFAULTS: ServerSimSignalStates = {
   cpu: 'off',
   units: 'off',
 };
+
+export const SERVER_SIM_QUALITY_DEFAULT: ServerSimQuality = 'auto';
 
 export const SERVER_SIM_DETAIL: ServerSimDetailTable = {
   TARGETING_REACQUIRE_STRIDE: {

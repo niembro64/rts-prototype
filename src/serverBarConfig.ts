@@ -2,7 +2,10 @@ import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './t
 import type { ServerSimQuality, ServerSimSignalStates } from './types/serverSimLod';
 import type { SignalState } from './types/lod';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
-import { SERVER_SIM_LOD_SIGNAL_DEFAULTS } from './serverSimLodConfig';
+import {
+  SERVER_SIM_LOD_SIGNAL_DEFAULTS,
+  SERVER_SIM_QUALITY_DEFAULT,
+} from './serverSimLodConfig';
 
 export const SERVER_CONFIG = {
   tickRate: {
@@ -68,11 +71,11 @@ export function loadStoredSimQuality(): ServerSimQuality {
     // Migrate legacy auto-X to 'auto'. The corresponding SOLO
     // signal state is set by loadStoredSimSignalStates().
     if (stored === 'auto-tps' || stored === 'auto-cpu' || stored === 'auto-units') {
-      return 'auto';
+      return SERVER_SIM_QUALITY_DEFAULT;
     }
     return stored as ServerSimQuality;
   }
-  return 'auto';
+  return SERVER_SIM_QUALITY_DEFAULT;
 }
 
 export function saveSimQuality(q: ServerSimQuality): void {

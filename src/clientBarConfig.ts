@@ -17,6 +17,7 @@ import type {
 import type { ClientBarConfig } from './types/client';
 import type {
   AudioScope,
+  CameraSmoothMode,
   DriftMode,
   GridOverlay,
   SoundCategory,
@@ -25,6 +26,7 @@ import type {
   UnitRadiusType,
   WaypointDetail,
 } from './types/client';
+import { MAX_TOTAL_UNITS } from './config';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import {
   PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
@@ -34,6 +36,8 @@ import {
   LOD_SIGNAL_DEFAULTS,
 } from '@/lodConfig';
 import type { SignalState, LodSignalStates } from './types/lod';
+
+export type { CameraSmoothMode } from './types/client';
 
 export const CLIENT_CONFIG = {
   graphics: {
@@ -65,6 +69,16 @@ export const CLIENT_CONFIG = {
   audioSmoothing: { default: true },
   burnMarks: { default: false },
   driftMode: { default: 'mid' as const },
+  legsRadius: { default: false },
+  cameraSmooth: {
+    default: 'mid' as const,
+    options: [
+      { value: 'snap' as const, label: 'SNAP' },
+      { value: 'fast' as const, label: 'FAST' },
+      { value: 'mid' as const, label: 'MID' },
+      { value: 'slow' as const, label: 'SLOW' },
+    ],
+  },
   edgeScroll: { default: false },
   dragPan: { default: true },
   sounds: {
@@ -81,6 +95,7 @@ export const CLIENT_CONFIG = {
   projRangeToggles: { default: false },
   unitRadiusToggles: { default: false },
   lobbyVisible: { default: { mobile: false, desktop: false } },
+  unitCapFallback: { default: MAX_TOTAL_UNITS },
   gridOverlay: {
     default: 'high' as const,
     options: [
@@ -344,8 +359,8 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
 };
 // Whether to render the per-leg "rest circle" (the chassis-local
 // circle each foot wanders inside before snapping to the opposite
-// edge). Off by default — purely a debug viz.
-let currentLegsRadius = false;
+// edge).
+let currentLegsRadius: boolean = _cd.legsRadius.default;
 // 3D orbit camera EMA mode for zoom AND pan:
 //   'snap' = inputs apply immediately, no animation.
 //   'fast' = small EMA tau (~50 ms) — quick settle, still eased.
@@ -354,8 +369,7 @@ let currentLegsRadius = false;
 //
 // Both wheel zoom and pan-drag feed the same EMA, so they animate
 // simultaneously without fighting each other.
-export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
-let currentCameraSmoothMode: CameraSmoothMode = 'mid';
+let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
@@ -374,11 +388,10 @@ let currentZoom: number = 1.0;
 let currentTpsRatio: number = 1.0;
 let currentFpsRatio: number = 1.0;
 let currentUnitCount: number = 0;
-// Default cap matches MAX_TOTAL_UNITS in config (2^12 = 4096) so the
-// units LOD has a sensible reading before any server snapshot lands.
-// GameCanvas overrides this every frame with the authoritative cap
-// from serverMeta.units.max.
-let currentUnitCap: number = 4096;
+// Units LOD fallback before a server snapshot lands. GameCanvas
+// overrides this every frame with the authoritative cap from
+// serverMeta.units.max.
+let currentUnitCap: number = _cd.unitCapFallback.default;
 let prevZoomRank: number = 4;
 let prevTpsRank: number = 4;
 let prevFpsRank: number = 4;
@@ -490,9 +503,10 @@ function loadFromStorage(): void {
     currentCameraSmoothMode = storedCameraSmooth;
   } else if (storedCameraSmooth === 'true') {
     // Backward-compat: the old boolean toggle wrote 'true' / 'false';
-    // map 'true' (smooth-on) to 'mid' so existing users land at the
-    // middle setting, and ignore 'false' (default 'snap' covers it).
-    currentCameraSmoothMode = 'mid';
+    // map 'true' (smooth-on) to the configured smooth default.
+    currentCameraSmoothMode = _cd.cameraSmooth.default;
+  } else if (storedCameraSmooth === 'false') {
+    currentCameraSmoothMode = 'snap';
   }
   const storedDriftMode = readPersisted(DRIFT_MODE_STORAGE_KEY);
   if (
@@ -651,7 +665,7 @@ export function setCurrentUnitCount(count: number): void {
 
 export function setCurrentUnitCap(cap: number): void {
   // Guard against 0 — `count / cap` would NaN out and break the ratio
-  // ladder. The default (4096) stays in place until a real cap arrives.
+  // ladder. The configured fallback stays in place until a real cap arrives.
   if (cap > 0) currentUnitCap = cap;
 }
 

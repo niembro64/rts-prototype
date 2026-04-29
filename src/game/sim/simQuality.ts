@@ -26,27 +26,26 @@ import {
   SERVER_SIM_LOD_THRESHOLDS,
   SERVER_SIM_HYSTERESIS,
   SERVER_SIM_LOD_SIGNALS_ENABLED,
+  SERVER_SIM_LOD_SIGNAL_DEFAULTS,
+  SERVER_SIM_QUALITY_DEFAULT,
 } from '../../serverSimLodConfig';
+import { MAX_TOTAL_UNITS } from '../../config';
 
-let currentQuality: ServerSimQuality = 'auto';
+let currentQuality: ServerSimQuality = SERVER_SIM_QUALITY_DEFAULT;
 
 let currentTpsRatio: number = 1.0;
 let currentCpuRatio: number = 1.0;
 let currentUnitCount: number = 0;
-let currentUnitCap: number = 4096;
+let currentUnitCap: number = MAX_TOTAL_UNITS;
 
 let prevTpsRank: number = 4;
 let prevCpuRank: number = 4;
 let prevUnitsRank: number = 4;
 
-// Per-signal tri-state. Mirrors the client side; default ACTIVE
-// for every signal. setSimSignalStates() replaces wholesale (sent
-// from the host client as a single struct).
-let currentSignalStates: ServerSimSignalStates = {
-  tps: 'active',
-  cpu: 'active',
-  units: 'active',
-};
+// Per-signal tri-state. Mirrors the HOST SERVER bar defaults.
+// setSimSignalStates() replaces wholesale (sent from the host
+// client as a single struct).
+let currentSignalStates: ServerSimSignalStates = { ...SERVER_SIM_LOD_SIGNAL_DEFAULTS };
 
 const RANK_TO_QUALITY: ConcreteServerSimQuality[] = [
   'min', 'low', 'medium', 'high', 'max',

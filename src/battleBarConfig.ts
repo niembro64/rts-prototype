@@ -62,7 +62,20 @@ export const BATTLE_CONFIG = {
 
 // Default caps per mode (must be values from BATTLE_CONFIG.cap.options)
 export const DEMO_CAP_DEFAULT = Math.pow(2, 8);   // 256 ≈ 3e+2
-export const REAL_CAP_DEFAULT = Math.pow(2, 12);   // 4096 ≈ 4e+3
+export const REAL_CAP_DEFAULT = BATTLE_CONFIG.cap.default;   // 4096 ≈ 4e+3
+
+export const BATTLE_MODE_DEFAULTS = {
+  demo: {
+    cap: DEMO_CAP_DEFAULT,
+    grid: true,
+    barsCollapsed: false,
+  },
+  real: {
+    cap: REAL_CAP_DEFAULT,
+    grid: false,
+    barsCollapsed: false,
+  },
+} as const;
 
 // ── localStorage keys (module-private) ──
 // `demo-battle-*` and `real-battle-*` namespace each setting to the
@@ -185,7 +198,7 @@ export function getDefaultDemoUnits(): string[] {
 }
 
 export function loadStoredDemoCap(): number {
-  return loadPosNum(STORAGE_DEMO_CAP) ?? DEMO_CAP_DEFAULT;
+  return loadPosNum(STORAGE_DEMO_CAP) ?? BATTLE_MODE_DEFAULTS.demo.cap;
 }
 
 export function saveDemoCap(value: number): void {
@@ -193,7 +206,7 @@ export function saveDemoCap(value: number): void {
 }
 
 export function loadStoredRealCap(): number {
-  return loadPosNum(STORAGE_REAL_CAP) ?? REAL_CAP_DEFAULT;
+  return loadPosNum(STORAGE_REAL_CAP) ?? BATTLE_MODE_DEFAULTS.real.cap;
 }
 
 export function saveRealCap(value: number): void {
@@ -201,7 +214,7 @@ export function saveRealCap(value: number): void {
 }
 
 export function loadStoredDemoGrid(): boolean {
-  return loadBool(STORAGE_DEMO_GRID) ?? true; // default ON for demo
+  return loadBool(STORAGE_DEMO_GRID) ?? BATTLE_MODE_DEFAULTS.demo.grid;
 }
 
 export function saveDemoGrid(enabled: boolean): void {
@@ -209,7 +222,7 @@ export function saveDemoGrid(enabled: boolean): void {
 }
 
 export function loadStoredRealGrid(): boolean {
-  return loadBool(STORAGE_REAL_GRID) ?? false; // default OFF for real
+  return loadBool(STORAGE_REAL_GRID) ?? BATTLE_MODE_DEFAULTS.real.grid;
 }
 
 export function saveRealGrid(enabled: boolean): void {
@@ -226,7 +239,7 @@ export function saveStoredGrid(mode: BattleMode, enabled: boolean): void {
 }
 
 export function loadStoredDemoBarsCollapsed(): boolean {
-  return loadBool(STORAGE_DEMO_BARS_COLLAPSED) ?? false; // default expanded
+  return loadBool(STORAGE_DEMO_BARS_COLLAPSED) ?? BATTLE_MODE_DEFAULTS.demo.barsCollapsed;
 }
 
 export function saveDemoBarsCollapsed(collapsed: boolean): void {
@@ -234,7 +247,7 @@ export function saveDemoBarsCollapsed(collapsed: boolean): void {
 }
 
 export function loadStoredRealBarsCollapsed(): boolean {
-  return loadBool(STORAGE_REAL_BARS_COLLAPSED) ?? false; // default expanded
+  return loadBool(STORAGE_REAL_BARS_COLLAPSED) ?? BATTLE_MODE_DEFAULTS.real.barsCollapsed;
 }
 
 export function saveRealBarsCollapsed(collapsed: boolean): void {
@@ -248,6 +261,23 @@ export function saveRealBarsCollapsed(collapsed: boolean): void {
  *  Pass this to every battle-setting load / save call so the
  *  two namespaces stay isolated. */
 export type BattleMode = 'demo' | 'real';
+
+export function getDefaultCap(mode: BattleMode): number {
+  return BATTLE_MODE_DEFAULTS[mode].cap;
+}
+
+export function loadStoredCap(mode: BattleMode): number {
+  return mode === 'real' ? loadStoredRealCap() : loadStoredDemoCap();
+}
+
+export function saveStoredCap(mode: BattleMode, value: number): void {
+  if (mode === 'real') saveRealCap(value);
+  else saveDemoCap(value);
+}
+
+export function getDefaultGrid(mode: BattleMode): boolean {
+  return BATTLE_MODE_DEFAULTS[mode].grid;
+}
 
 /** Read a per-mode boolean. When `mode === 'real'` and the real
  *  key has never been written, falls back to the demo key (so a

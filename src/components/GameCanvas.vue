@@ -45,11 +45,12 @@ import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
 import {
   BATTLE_CONFIG,
   saveDemoUnits,
-  saveDemoCap,
+  getDefaultCap,
+  loadStoredCap,
+  saveStoredCap,
   loadStoredRealCap,
-  saveRealCap,
-  DEMO_CAP_DEFAULT,
-  REAL_CAP_DEFAULT,
+  getDefaultGrid,
+  loadStoredGrid,
   saveStoredGrid,
   saveProjVelInherit,
   saveFiringForce,
@@ -83,7 +84,10 @@ import {
 import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
 import type { SignalState } from '../types/lod';
 import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
-import { SERVER_SIM_LOD_SIGNALS_ENABLED } from '../serverSimLodConfig';
+import {
+  SERVER_SIM_LOD_SIGNALS_ENABLED,
+  SERVER_SIM_QUALITY_DEFAULT,
+} from '../serverSimLodConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
 import {
   formatDuration,
@@ -825,13 +829,13 @@ const fullSnapBarTarget = computed(() => {
   return Math.max(0.1, sps * (kf as number));
 });
 const displayGridInfo = computed(
-  () => serverMetaFromSnapshot.value?.grid ?? false,
+  () => serverMetaFromSnapshot.value?.grid ?? loadStoredGrid(currentBattleMode.value),
 );
 const displayUnitCount = computed(
   () => serverMetaFromSnapshot.value?.units.count ?? 0,
 );
 const displayUnitCap = computed(
-  () => serverMetaFromSnapshot.value?.units.max ?? 100,
+  () => serverMetaFromSnapshot.value?.units.max ?? loadStoredCap(currentBattleMode.value),
 );
 const displayServerTime = computed(
   () => serverMetaFromSnapshot.value?.server.time ?? '',
@@ -842,13 +846,14 @@ const displayServerIp = computed(
 
 const allDemoUnitsActive = computed(() => {
   const allowed = serverMetaFromSnapshot.value?.units.allowed;
-  if (!allowed) return true; // default is all enabled
+  if (!allowed) return demoUnitTypes.every((ut) => BATTLE_CONFIG.units[ut]?.default);
   return demoUnitTypes.every((ut) => allowed.includes(ut));
 });
 
 function toggleDemoUnitType(unitType: string): void {
   const current =
-    serverMetaFromSnapshot.value?.units.allowed?.includes(unitType) ?? true;
+    serverMetaFromSnapshot.value?.units.allowed?.includes(unitType) ??
+    (BATTLE_CONFIG.units[unitType]?.default ?? false);
   activeConnection?.sendCommand({
     type: 'setBackgroundUnitType',
     tick: 0,
@@ -857,9 +862,7 @@ function toggleDemoUnitType(unitType: string): void {
   });
 
   // Persist updated unit list to localStorage
-  const currentList = serverMetaFromSnapshot.value?.units.allowed ?? [
-    ...demoUnitTypes,
-  ];
+  const currentList = serverMetaFromSnapshot.value?.units.allowed ?? getDefaultDemoUnits();
   const newList = current
     ? currentList.filter((ut) => ut !== unitType)
     : [...currentList, unitType];
@@ -889,11 +892,7 @@ function changeMaxTotalUnits(value: number): void {
   // real-battle key (alongside the running real battle), demo
   // mutations write to the demo key. Same pattern every shared
   // setting below uses via `currentBattleMode`.
-  if (currentBattleMode.value === 'real') {
-    saveRealCap(value);
-  } else {
-    saveDemoCap(value);
-  }
+  saveStoredCap(currentBattleMode.value, value);
 }
 
 function toggleProjVelInherit(): void {
@@ -985,7 +984,7 @@ function resetDemoDefaults(): void {
     });
   }
   saveDemoUnits(defaultUnits);
-  changeMaxTotalUnits(currentBattleMode.value === 'real' ? REAL_CAP_DEFAULT : DEMO_CAP_DEFAULT);
+  changeMaxTotalUnits(getDefaultCap(currentBattleMode.value));
   // DEFAULTS only resets the CURRENTLY-ACTIVE mode's namespace —
   // resetting demo while in the lobby would wipe the user's solo
   // demo prefs out from under them, and vice versa.
@@ -1020,7 +1019,7 @@ function resetDemoDefaults(): void {
     }
   }
   // Reset grid to mode default
-  const gridDefault = gameStarted.value ? false : true;
+  const gridDefault = getDefaultGrid(currentBattleMode.value);
   if (displayGridInfo.value !== gridDefault) {
     toggleSendGridInfo();
   }
@@ -1035,7 +1034,7 @@ function resetServerDefaults(): void {
   // but left this at whatever the user last picked, so a refresh
   // would replay the stale value while every other server setting
   // came back at default.
-  setSimQualityValue('auto');
+  setSimQualityValue(SERVER_SIM_QUALITY_DEFAULT);
   // Reset every HOST SERVER LOD signal to the centralized
   // SERVER_SIM_LOD_SIGNAL_DEFAULTS table, persist, and ship the new
   // states so the simulation's auto-LOD picks them up immediately.
@@ -1085,8 +1084,8 @@ function resetClientDefaults(): void {
   // bar showed them flip back to default in the UI, but neither
   // setter was called, so localStorage retained the old value and
   // the next page refresh replayed it.
-  if (legsRadiusToggle.value !== false) toggleLegsRadius();
-  setCameraMode('mid');
+  if (legsRadiusToggle.value !== cd.legsRadius.default) toggleLegsRadius();
+  setCameraMode(cd.cameraSmooth.default);
   // Reset every PLAYER CLIENT LOD signal to the centralized
   // LOD_SIGNAL_DEFAULTS table, then refresh the reactive ref the
   // bar template reads from so the buttons repaint immediately.
@@ -1784,7 +1783,7 @@ function setKeyframeRatioValue(ratio: KeyframeRatio): void {
 }
 
 function toggleSendGridInfo(): void {
-  const current = serverMetaFromSnapshot.value?.grid ?? false;
+  const current = displayGridInfo.value;
   activeConnection?.sendCommand({
     type: 'setSendGridInfo',
     tick: 0,
@@ -2022,7 +2021,7 @@ onUnmounted(() => {
               <BarButton
                 v-for="ut in demoUnitTypes"
                 :key="ut"
-                :active="serverMetaFromSnapshot?.units.allowed?.includes(ut) ?? true"
+                :active="serverMetaFromSnapshot?.units.allowed?.includes(ut) ?? (BATTLE_CONFIG.units[ut]?.default ?? false)"
                 :title="`Toggle ${ut} units in demo battle`"
                 @click="toggleDemoUnitType(ut)"
               >{{ getUnitBlueprint(ut).shortName }}</BarButton>
@@ -2123,14 +2122,14 @@ onUnmounted(() => {
             <BarLabel>FF:</BarLabel>
             <BarButtonGroup>
               <BarButton
-                :active="serverMetaFromSnapshot?.ffAccel.units ?? false"
+                :active="serverMetaFromSnapshot?.ffAccel.units ?? BATTLE_CONFIG.ffAccelUnits.default"
                 title="Force field accelerates enemy units"
-                @click="setFfAccelUnits(!(serverMetaFromSnapshot?.ffAccel.units ?? false))"
+                @click="setFfAccelUnits(!(serverMetaFromSnapshot?.ffAccel.units ?? BATTLE_CONFIG.ffAccelUnits.default))"
               >UNIT-ACC</BarButton>
               <BarButton
-                :active="serverMetaFromSnapshot?.ffAccel.shots ?? true"
+                :active="serverMetaFromSnapshot?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default"
                 title="Force field accelerates enemy projectiles"
-                @click="setFfAccelShots(!(serverMetaFromSnapshot?.ffAccel.shots ?? true))"
+                @click="setFfAccelShots(!(serverMetaFromSnapshot?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default))"
               >SHOT-ACC</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
