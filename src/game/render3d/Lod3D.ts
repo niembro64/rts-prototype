@@ -11,6 +11,7 @@
 // meshes store their build-time key; Render3DEntities compares it to the
 // current key each frame.
 
+import type * as THREE from 'three';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 
@@ -25,7 +26,7 @@ export function lodKey(gfx: GraphicsConfig): string {
     gfx.tier,
     gfx.unitRenderMode,
     gfx.richUnitCap,
-    gfx.richUnitNearRadius,
+    gfx.richUnitScreenRadiusPx,
     gfx.unitShape,
     gfx.legs,
     gfx.treadsAnimated ? 'tw' : 'ts',
@@ -45,9 +46,65 @@ export function lodKey(gfx: GraphicsConfig): string {
 export type Lod3DState = {
   gfx: GraphicsConfig;
   key: string;
+  view: RenderViewLodState;
 };
 
-export function snapshotLod(): Lod3DState {
+export type RenderViewLodState = {
+  viewportHeightPx: number;
+  cameraX: number;
+  cameraY: number;
+  cameraZ: number;
+  forwardX: number;
+  forwardY: number;
+  forwardZ: number;
+  fovYRad: number;
+};
+
+const DEFAULT_VIEW_LOD: RenderViewLodState = {
+  viewportHeightPx: 1,
+  cameraX: 0,
+  cameraY: 0,
+  cameraZ: 0,
+  forwardX: 0,
+  forwardY: 0,
+  forwardZ: -1,
+  fovYRad: Math.PI / 4,
+};
+
+export function projectWorldRadiusToPixels(
+  view: RenderViewLodState,
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+  radius: number,
+): number {
+  const dx = worldX - view.cameraX;
+  const dy = worldY - view.cameraY;
+  const dz = worldZ - view.cameraZ;
+  const depth = dx * view.forwardX + dy * view.forwardY + dz * view.forwardZ;
+  if (depth <= 1) return 0;
+  const visibleWorldHeight = 2 * Math.tan(view.fovYRad / 2) * depth;
+  return radius * view.viewportHeightPx / Math.max(1, visibleWorldHeight);
+}
+
+export function snapshotLod(
+  camera?: THREE.PerspectiveCamera,
+  viewportHeightPx: number = 1,
+): Lod3DState {
   const gfx = getGraphicsConfig();
-  return { gfx, key: lodKey(gfx) };
+  let view = DEFAULT_VIEW_LOD;
+  if (camera) {
+    const me = camera.matrixWorld.elements;
+    view = {
+      viewportHeightPx: Math.max(1, viewportHeightPx),
+      cameraX: camera.position.x,
+      cameraY: camera.position.y,
+      cameraZ: camera.position.z,
+      forwardX: -me[8],
+      forwardY: -me[9],
+      forwardZ: -me[10],
+      fovYRad: (camera.fov * Math.PI) / 180,
+    };
+  }
+  return { gfx, key: lodKey(gfx), view };
 }

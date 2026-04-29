@@ -25,7 +25,11 @@ import {
   type Locomotion3DMesh,
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
-import { snapshotLod, type Lod3DState } from './Lod3D';
+import {
+  projectWorldRadiusToPixels,
+  snapshotLod,
+  type Lod3DState,
+} from './Lod3D';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
 import {
   buildBuildingShape,
@@ -184,6 +188,8 @@ type EntityMesh = {
 export class Render3DEntities {
   private world: THREE.Group;
   private clientViewState: ClientViewState;
+  private camera: THREE.PerspectiveCamera;
+  private getViewportHeight: () => number;
   /** Visibility scope (RENDER: WIN/PAD/ALL). Each per-entity update
    *  loop early-outs when the entity is outside this rect — skipping
    *  transform writes, locomotion IK, turret placement, etc.
@@ -586,11 +592,15 @@ export class Render3DEntities {
     clientViewState: ClientViewState,
     scope: ViewportFootprint,
     legRenderer: LegInstancedRenderer,
+    camera: THREE.PerspectiveCamera,
+    getViewportHeight: () => number,
   ) {
     this.world = world;
     this.clientViewState = clientViewState;
     this.scope = scope;
     this.legRenderer = legRenderer;
+    this.camera = camera;
+    this.getViewportHeight = getViewportHeight;
     // Per-team materials are created lazily on first use (see
     // getPrimaryMat / getSecondaryMat / getMirrorShinyMat). The
     // player-color generator (sim/types.getPlayerColors) supports any
@@ -949,7 +959,7 @@ export class Render3DEntities {
     // them at the new level — the simplest way to keep every sub-mesh
     // (body, turrets, legs, locomotion, mirrors) consistent with the
     // current GraphicsConfig.
-    const newLod = snapshotLod();
+    const newLod = snapshotLod(this.camera, this.getViewportHeight());
     if (newLod.key !== this.lod.key) {
       this.rebuildAllUnitsOnLodChange();
     }
@@ -1583,11 +1593,7 @@ export class Render3DEntities {
     rich.length = 0;
     if (richCap <= 0) return rich;
 
-    const quad = this.scope.quad;
-    const cx = (quad[0].x + quad[1].x + quad[2].x + quad[3].x) * 0.25;
-    const cy = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) * 0.25;
-    const nearRadius = Math.max(0, this.lod.gfx.richUnitNearRadius);
-    const nearRadiusSq = nearRadius * nearRadius;
+    const minScreenRadiusPx = Math.max(0, this.lod.gfx.richUnitScreenRadiusPx);
 
     const add = (entity: Entity): boolean => {
       if (ids.has(entity.id)) return rich.length < richCap;
@@ -1610,9 +1616,18 @@ export class Render3DEntities {
     for (const entity of units) {
       if (ids.has(entity.id)) continue;
       if (!this.scope.inScope(entity.transform.x, entity.transform.y, 100)) continue;
-      const dx = entity.transform.x - cx;
-      const dy = entity.transform.y - cy;
-      if (dx * dx + dy * dy <= nearRadiusSq && !add(entity)) break;
+      const radius = entity.unit?.unitRadiusCollider.scale
+        ?? entity.unit?.unitRadiusCollider.shot
+        ?? 15;
+      const screenRadiusPx = projectWorldRadiusToPixels(
+        this.lod.view,
+        entity.transform.x,
+        entity.transform.z,
+        entity.transform.y,
+        radius,
+      );
+      if (screenRadiusPx < minScreenRadiusPx) continue;
+      if (!add(entity)) break;
     }
 
     return rich;

@@ -18,10 +18,11 @@ import type {
 //   - The matching button is hidden in the PLAYER CLIENT LOD bar.
 //
 // Toggle here to debug a single signal in isolation, or to disable a
-// signal that doesn't apply to your runtime (e.g. drop ZOOM if you
-// always run a fixed-camera demo).
+// signal that should not globally downgrade the renderer. Zoom is off
+// by default in 3D because camera scale now feeds per-object view LOD
+// instead of the global performance tier.
 export const LOD_SIGNALS_ENABLED = {
-  zoom: true,
+  zoom: false,
   tps: true,
   fps: true,
   units: true,
@@ -36,7 +37,7 @@ export const LOD_SIGNALS_ENABLED = {
 // signal does on first load, edit this table and nothing else.
 //
 export const LOD_SIGNAL_DEFAULTS: LodSignalStates = {
-  zoom: 'active',
+  zoom: 'off',
   tps: 'active',
   fps: 'active',
   units: 'active',
@@ -133,8 +134,8 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // Unit renderer policy. These are client-LOD decisions, not local
   // renderer constants:
   //   mass   — every unit is a cheap instanced body
-  //   hybrid — all units get a cheap instance; selected/near/commander
-  //            units also get capped rich meshes
+  //   hybrid — all units get a cheap instance; selected/commander and
+  //            large-on-screen units also get capped rich meshes
   //   rich   — all in-scope units use rich meshes
   UNIT_RENDER_MODE: {
     min: 'mass',
@@ -150,12 +151,16 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: 384,
     max: 768,
   },
-  RICH_UNIT_NEAR_RADIUS: {
-    min: 0,
-    low: 450,
-    medium: 650,
-    high: 900,
-    max: 1200,
+  // Object-level view LOD. This is intentionally separate from the
+  // global AUTO quality tier: zoom/camera distance should decide
+  // which individual units get rich meshes, not downgrade the whole
+  // renderer when the player pulls back for a strategic view.
+  RICH_UNIT_SCREEN_RADIUS_PX: {
+    min: Number.POSITIVE_INFINITY,
+    low: 14,
+    medium: 10,
+    high: 7,
+    max: 0,
   },
   HUD_FRAME_STRIDE: {
     min: 4,

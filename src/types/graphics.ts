@@ -37,7 +37,7 @@ export type GraphicsConfig = {
   tier: ConcreteGraphicsQuality;
   unitRenderMode: UnitRenderMode;
   richUnitCap: number;
-  richUnitNearRadius: number;
+  richUnitScreenRadiusPx: number;
   hudFrameStride: number;
   effectFrameStride: number;
   unitShape: UnitShape;

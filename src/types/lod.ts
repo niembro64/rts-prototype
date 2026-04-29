@@ -67,7 +67,7 @@ export type LodEmaSource = {
 export type GraphicsDetailConfig = {
   UNIT_RENDER_MODE: LodTierMap<UnitRenderMode>;
   RICH_UNIT_CAP: LodTierMap<number>;
-  RICH_UNIT_NEAR_RADIUS: LodTierMap<number>;
+  RICH_UNIT_SCREEN_RADIUS_PX: LodTierMap<number>;
   HUD_FRAME_STRIDE: LodTierMap<number>;
   EFFECT_FRAME_STRIDE: LodTierMap<number>;
   UNIT_SHAPE: LodTierMap<UnitShape>;

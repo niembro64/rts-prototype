@@ -121,10 +121,11 @@ export type RtsScene3DConfig = {
 // Two zoom-shaped values:
 //
 //   `zoom`     — LOD ratio (`baseDistance / orbit.distance`). Higher = more
-//                zoomed in. Used for save/restore camera state, the LOD
-//                signal (clientBarConfig.setCurrentZoom), and any code path
-//                that needs a multiplicative scalar relative to the default
-//                framing. Counts wheel ticks multiplicatively.
+//                zoomed in. Used for save/restore camera state, UI/legacy
+//                camera reads, and any code path that needs a multiplicative
+//                scalar relative to the default framing. Counts wheel ticks
+//                multiplicatively. Object-level view LOD uses camera
+//                projection instead of this raw ratio.
 //
 //   `altitude` — Camera world Y, i.e. distance from the y=0 ground plane
 //                along its normal. Universal: same physical state → same
@@ -483,6 +484,8 @@ export class RtsScene3D {
       this.clientViewState,
       this.renderScope,
       this.legInstancedRenderer,
+      this.threeApp.camera,
+      () => this.threeApp.renderer.domElement.clientHeight,
     );
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world, this.renderScope);
     // ForceFieldRenderer3D parents each unit's force-field meshes onto
@@ -705,13 +708,22 @@ export class RtsScene3D {
 
     // Render phase
     const renderStart = performance.now();
-    // Publish the current zoom to the LOD system so the 'auto' and
-    // 'auto-zoom' quality modes can react to the camera's distance.
-    // The 2D path does this via setCurrentZoom(camera.zoom); the 3D
-    // camera shim's `zoom` accessor already derives a 2D-equivalent
-    // zoom from baseDistance / orbit.distance.
-    setCurrentZoom(this.cameras.main.zoom);
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
+    // Camera smoothing must step BEFORE visibility scope and view-LOD
+    // decisions. Otherwise CPU culling and rich-unit selection trail
+    // the rendered camera by one frame during dolly/pan.
+    const effectNow = performance.now();
+    const effectDt = this.lastEffectsTickMs === 0
+      ? 0
+      : Math.min(effectNow - this.lastEffectsTickMs, 100);
+    this.lastEffectsTickMs = effectNow;
+    this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
+    this.threeApp.orbit.tick(effectDt / 1000);
+    // Publish camera zoom for UI/legacy signal reads after camera
+    // smoothing has advanced. In 3D the global AUTO tier no longer
+    // depends on zoom by default; view scale is consumed inside
+    // Render3DEntities for per-object rich mesh selection instead.
+    setCurrentZoom(this.cameras.main.zoom);
     const graphicsConfig = getGraphicsConfig();
     const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
@@ -742,19 +754,6 @@ export class RtsScene3D {
     // Effects: explosions / debris integrate their own physics each frame;
     // burn marks sample live beams to trace scorches on the ground. We feed
     // the scheduler's clamped dt so backgrounded tabs don't jump-forward.
-    const effectNow = performance.now();
-    const effectDt = this.lastEffectsTickMs === 0
-      ? 0
-      : Math.min(effectNow - this.lastEffectsTickMs, 100);
-    this.lastEffectsTickMs = effectNow;
-    // Smooth-zoom animation steps once per frame using the same
-    // clamped dt the effects systems do, so the eased dolly stays
-    // in lockstep with everything else (and a tab-defocus pause
-    // doesn't fast-forward the zoom). The mode is rechecked here
-    // (cheap idempotent set) so flipping CAMERA: SNAP / FAST / SLOW
-    // at runtime takes effect on the next zoom.
-    this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
-    this.threeApp.orbit.tick(effectDt / 1000);
     // Advance the water-surface time uniform — the actual GPU draw
     // happens on the next render pass, this just nudges the wave
     // phase. Cheap (single uniform write), no buffer upload.

@@ -223,10 +223,10 @@ const clientSignalStates = ref({ ...getLodSignalStates() });
 // text indicator (it's the parent mode, still relevant), and other
 // active signals stop showing white text (they're overridden).
 const clientAnySolo = computed(() =>
-  clientSignalStates.value.zoom === 'solo' ||
-  clientSignalStates.value.tps === 'solo' ||
-  clientSignalStates.value.fps === 'solo' ||
-  clientSignalStates.value.units === 'solo',
+  (LOD_SIGNALS_ENABLED.zoom && clientSignalStates.value.zoom === 'solo') ||
+  (LOD_SIGNALS_ENABLED.tps && clientSignalStates.value.tps === 'solo') ||
+  (LOD_SIGNALS_ENABLED.fps && clientSignalStates.value.fps === 'solo') ||
+  (LOD_SIGNALS_ENABLED.units && clientSignalStates.value.units === 'solo'),
 );
 const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
@@ -2582,7 +2582,7 @@ onUnmounted(() => {
                 active: graphicsQuality === 'auto' && !clientAnySolo,
                 'active-level': graphicsQuality === 'auto' && clientAnySolo,
               }"
-              title="Auto-adjust graphics quality (lowest of zoom, TPS, FPS, units)"
+              title="Auto-adjust graphics quality from the lowest active client signal"
               @click="changeGraphicsQuality('auto')"
             >
               AUTO
