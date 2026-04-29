@@ -23,6 +23,9 @@ export function lodKey(gfx: GraphicsConfig): string {
     // skipping turrets/legs/mirrors entirely. Tier flips MUST trigger a
     // mesh rebuild even if the per-axis fields happen to coincide.
     gfx.tier,
+    gfx.unitRenderMode,
+    gfx.richUnitCap,
+    gfx.richUnitNearRadius,
     gfx.unitShape,
     gfx.legs,
     gfx.treadsAnimated ? 'tw' : 'ts',

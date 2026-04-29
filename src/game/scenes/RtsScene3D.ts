@@ -32,21 +32,6 @@ import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 /** Same color the per-mesh leg path used. Single uniform value
  *  across the whole shared pool — legs aren't team-tinted. */
 const LEG_COLOR = 0x2a2f36;
-const MASS_RENDER_UNIT_THRESHOLD = 1500;
-const MASS_HUD_FRAME_STRIDE = {
-  min: 4,
-  low: 3,
-  medium: 2,
-  high: 1,
-  max: 1,
-} as const;
-const MASS_EFFECT_FRAME_STRIDE = {
-  min: 4,
-  low: 3,
-  medium: 2,
-  high: 1,
-  max: 1,
-} as const;
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
@@ -706,9 +691,8 @@ export class RtsScene3D {
     setCurrentZoom(this.cameras.main.zoom);
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
     const graphicsConfig = getGraphicsConfig();
-    const massRenderMode = this.clientViewState.getUnits().length >= MASS_RENDER_UNIT_THRESHOLD;
-    const hudFrameStride = massRenderMode ? MASS_HUD_FRAME_STRIDE[graphicsConfig.tier] : 1;
-    const effectFrameStride = massRenderMode ? MASS_EFFECT_FRAME_STRIDE[graphicsConfig.tier] : 1;
+    const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
+    const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
     const updateEffectsThisFrame = effectFrameStride <= 1 || this.renderFrameIndex % effectFrameStride === 0;
     // Refresh the shared visibility footprint once per frame so every

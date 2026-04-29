@@ -35,13 +35,11 @@ export const LOD_SIGNALS_ENABLED = {
 // from this, and the DEFAULTS reset path re-applies it. To change what a
 // signal does on first load, edit this table and nothing else.
 //
-// Currently OFF by default: UNITS (most users don't care about a unit-
-// fullness LOD signal until they actually hit the cap).
 export const LOD_SIGNAL_DEFAULTS: LodSignalStates = {
   zoom: 'active',
   tps: 'active',
   fps: 'active',
-  units: 'off',
+  units: 'active',
 };
 
 // =============================================================================
@@ -86,16 +84,15 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
   // world is 1.0 and a full one is 0.0. Same direction as tps/fps:
   // ratio >= threshold ⇒ tier eligible.
   //
-  // Defaults: full visuals while the world is below 1/4 full; drop
-  // to MIN once it's past 95% — that's the band where the instanced
-  // sphere path becomes the only viable renderer regardless of cap.
+  // Defaults: full visuals only while the world is sparse, then move
+  // into hybrid/mass rendering before the frame has already collapsed.
   // Whether the cap is 1k or 16k, the LOD ladder steps at the same
   // proportional milestones.
   units: {
-    low: 0.1,    // ratio >= 0.05 (≤95% full) → low or better
-    medium: 0.2, // ratio >= 0.25 (≤75% full) → medium or better
-    high: 0.3,   // ratio >= 0.50 (≤50% full) → high or better
-    max: 0.4,    // ratio >= 0.75 (≤25% full) → max
+    low: 0.25,    // ratio >= 0.25 (≤75% full) → low or better
+    medium: 0.5,  // ratio >= 0.50 (≤50% full) → medium or better
+    high: 0.75,   // ratio >= 0.75 (≤25% full) → high or better
+    max: 0.9,     // ratio >= 0.90 (≤10% full) → max
   },
 };
 
@@ -132,6 +129,48 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   //   HIGH — chassis detail, tread animation, standard beams (~25 draws/unit)
   //   MAX  — full joints, barrel spin, trails, inferno explosions (~50 draws/unit)
   // -------------------------------------------------------------------------
+
+  // Unit renderer policy. These are client-LOD decisions, not local
+  // renderer constants:
+  //   mass   — every unit is a cheap instanced body
+  //   hybrid — all units get a cheap instance; selected/near/commander
+  //            units also get capped rich meshes
+  //   rich   — all in-scope units use rich meshes
+  UNIT_RENDER_MODE: {
+    min: 'mass',
+    low: 'hybrid',
+    medium: 'hybrid',
+    high: 'hybrid',
+    max: 'rich',
+  },
+  RICH_UNIT_CAP: {
+    min: 0,
+    low: 96,
+    medium: 192,
+    high: 384,
+    max: 768,
+  },
+  RICH_UNIT_NEAR_RADIUS: {
+    min: 0,
+    low: 450,
+    medium: 650,
+    high: 900,
+    max: 1200,
+  },
+  HUD_FRAME_STRIDE: {
+    min: 4,
+    low: 3,
+    medium: 2,
+    high: 1,
+    max: 1,
+  },
+  EFFECT_FRAME_STRIDE: {
+    min: 4,
+    low: 3,
+    medium: 2,
+    high: 1,
+    max: 1,
+  },
 
   // Unit body shape rendering
   // 'circles': two concentric circles (push+shot radii), 'full': complete body shape

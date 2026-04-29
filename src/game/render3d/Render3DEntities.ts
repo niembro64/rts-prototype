@@ -53,9 +53,6 @@ const BARREL_COLOR = 0xffffff;
 // path. Three.js' Quaternion.setFromAxisAngle reads the axis as an
 // (input) Vector3, but never mutates it.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
-const AUTO_MASS_UNIT_RENDER_THRESHOLD = 1500;
-const MASS_RICH_UNIT_CAP = 192;
-const MASS_RICH_NEAR_RADIUS = 650;
 const LOW_INSTANCED_COMPACT_MIN_FREE = 128;
 const LOW_INSTANCED_COMPACT_INTERVAL_FRAMES = 30;
 const LOW_INSTANCED_COMPACT_MAX_MOVES = 256;
@@ -1581,17 +1578,20 @@ export class Render3DEntities {
   private collectMassRichUnits(units: readonly Entity[]): readonly Entity[] {
     const ids = this.massRichUnitIds;
     const rich = this.massRichUnits;
+    const richCap = Math.max(0, this.lod.gfx.richUnitCap | 0);
     ids.clear();
     rich.length = 0;
+    if (richCap <= 0) return rich;
 
     const quad = this.scope.quad;
     const cx = (quad[0].x + quad[1].x + quad[2].x + quad[3].x) * 0.25;
     const cy = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) * 0.25;
-    const nearRadiusSq = MASS_RICH_NEAR_RADIUS * MASS_RICH_NEAR_RADIUS;
+    const nearRadius = Math.max(0, this.lod.gfx.richUnitNearRadius);
+    const nearRadiusSq = nearRadius * nearRadius;
 
     const add = (entity: Entity): boolean => {
-      if (ids.has(entity.id)) return rich.length < MASS_RICH_UNIT_CAP;
-      if (rich.length >= MASS_RICH_UNIT_CAP) return false;
+      if (ids.has(entity.id)) return rich.length < richCap;
+      if (rich.length >= richCap) return false;
       ids.add(entity.id);
       rich.push(entity);
       return true;
@@ -1620,11 +1620,9 @@ export class Render3DEntities {
 
   private updateUnits(): void {
     const units = this.clientViewState.getUnits();
-    const forceMassOnly = this.lod.gfx.tier === 'min';
-    const useMassInstancing = forceMassOnly ||
-      units.length >= AUTO_MASS_UNIT_RENDER_THRESHOLD;
+    const unitRenderMode = this.lod.gfx.unitRenderMode;
 
-    if (forceMassOnly) {
+    if (unitRenderMode === 'mass') {
       if (this.unitMeshes.size > 0) {
         this.rebuildAllUnitsOnLodChange();
       }
@@ -1632,7 +1630,7 @@ export class Render3DEntities {
       return;
     }
 
-    if (useMassInstancing) {
+    if (unitRenderMode === 'hybrid') {
       const richUnits = this.collectMassRichUnits(units);
       this.updateUnitsInstanced(units, this.massRichUnitIds);
       this.updateUnitMeshes(richUnits);

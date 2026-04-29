@@ -27,6 +27,7 @@ export type TurretStyle = 'none' | 'simple' | 'full';
 export type ForceTurretStyle = 'none' | 'simple' | 'full';
 export type UnitShape = 'circles' | 'full';
 export type LegStyle = 'none' | 'simple' | 'animated' | 'full';
+export type UnitRenderMode = 'mass' | 'hybrid' | 'rich';
 
 export type GraphicsConfig = {
   /** The concrete tier this config was resolved to. Lets renderers
@@ -34,6 +35,11 @@ export type GraphicsConfig = {
    *  min/low) without having to reverse-engineer it from individual
    *  field combinations. */
   tier: ConcreteGraphicsQuality;
+  unitRenderMode: UnitRenderMode;
+  richUnitCap: number;
+  richUnitNearRadius: number;
+  hudFrameStride: number;
+  effectFrameStride: number;
   unitShape: UnitShape;
   legs: LegStyle;
   treadsAnimated: boolean;

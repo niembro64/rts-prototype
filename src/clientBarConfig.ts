@@ -12,6 +12,7 @@ import type {
   TurretStyle,
   ForceTurretStyle,
   UnitShape,
+  UnitRenderMode,
 } from './types/graphics';
 import type { ClientBarConfig } from './types/client';
 import type {
@@ -133,6 +134,11 @@ const D = PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL;
 const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   min: {
     tier: 'min',
+    unitRenderMode: D.UNIT_RENDER_MODE.min as UnitRenderMode,
+    richUnitCap: D.RICH_UNIT_CAP.min,
+    richUnitNearRadius: D.RICH_UNIT_NEAR_RADIUS.min,
+    hudFrameStride: D.HUD_FRAME_STRIDE.min,
+    effectFrameStride: D.EFFECT_FRAME_STRIDE.min,
     unitShape: D.UNIT_SHAPE.min as UnitShape,
     legs: D.LEGS.min as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.min,
@@ -154,6 +160,11 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   },
   low: {
     tier: 'low',
+    unitRenderMode: D.UNIT_RENDER_MODE.low as UnitRenderMode,
+    richUnitCap: D.RICH_UNIT_CAP.low,
+    richUnitNearRadius: D.RICH_UNIT_NEAR_RADIUS.low,
+    hudFrameStride: D.HUD_FRAME_STRIDE.low,
+    effectFrameStride: D.EFFECT_FRAME_STRIDE.low,
     unitShape: D.UNIT_SHAPE.low as UnitShape,
     legs: D.LEGS.low as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.low,
@@ -175,6 +186,11 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   },
   medium: {
     tier: 'medium',
+    unitRenderMode: D.UNIT_RENDER_MODE.medium as UnitRenderMode,
+    richUnitCap: D.RICH_UNIT_CAP.medium,
+    richUnitNearRadius: D.RICH_UNIT_NEAR_RADIUS.medium,
+    hudFrameStride: D.HUD_FRAME_STRIDE.medium,
+    effectFrameStride: D.EFFECT_FRAME_STRIDE.medium,
     unitShape: D.UNIT_SHAPE.medium as UnitShape,
     legs: D.LEGS.medium as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.medium,
@@ -196,6 +212,11 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   },
   high: {
     tier: 'high',
+    unitRenderMode: D.UNIT_RENDER_MODE.high as UnitRenderMode,
+    richUnitCap: D.RICH_UNIT_CAP.high,
+    richUnitNearRadius: D.RICH_UNIT_NEAR_RADIUS.high,
+    hudFrameStride: D.HUD_FRAME_STRIDE.high,
+    effectFrameStride: D.EFFECT_FRAME_STRIDE.high,
     unitShape: D.UNIT_SHAPE.high as UnitShape,
     legs: D.LEGS.high as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.high,
@@ -217,6 +238,11 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   },
   max: {
     tier: 'max',
+    unitRenderMode: D.UNIT_RENDER_MODE.max as UnitRenderMode,
+    richUnitCap: D.RICH_UNIT_CAP.max,
+    richUnitNearRadius: D.RICH_UNIT_NEAR_RADIUS.max,
+    hudFrameStride: D.HUD_FRAME_STRIDE.max,
+    effectFrameStride: D.EFFECT_FRAME_STRIDE.max,
     unitShape: D.UNIT_SHAPE.max as UnitShape,
     legs: D.LEGS.max as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.max,
