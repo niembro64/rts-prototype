@@ -51,20 +51,18 @@ export class NetworkManager {
   private snapshotsSent: number = 0;
   private snapshotsReceived: number = 0;
 
-  // Heartbeat presence tracking. Every connected peer sends a
-  // `heartbeat` message every `heartbeatSendIntervalMs`; the
-  // receiving side records the timestamp here. The check loop
-  // sweeps the map every second and force-closes any connection
-  // whose last heartbeat is older than `heartbeatTimeoutMs` —
-  // that fires the regular `connection.close` handler (see
-  // `setupConnectionHandlers`) which in turn calls
-  // `onPlayerLeft`, so the GAME LOBBY player roster stays
-  // accurate even when PeerJS misses a silent network drop.
+  // Heartbeat presence tracking. The lobby uses a short timeout so
+  // the roster reacts to silent disconnects quickly. Once the real
+  // game starts, use a wider timeout: a busy renderer or host tick
+  // can stall the browser long enough to miss a few heartbeat sends,
+  // and closing an otherwise healthy WebRTC channel would kill the
+  // match.
   private lastHeartbeatReceived: Map<PlayerId, number> = new Map();
   private heartbeatSendInterval: ReturnType<typeof setInterval> | null = null;
   private heartbeatCheckInterval: ReturnType<typeof setInterval> | null = null;
   private readonly heartbeatSendIntervalMs = 2000;
   private readonly heartbeatTimeoutMs = 6000;
+  private readonly heartbeatBattleTimeoutMs = 30000;
 
   // Callbacks
   public onPlayerJoined?: (player: LobbyPlayer) => void;
@@ -559,11 +557,14 @@ export class NetworkManager {
     this.heartbeatSendInterval = setInterval(() => {
       const beat: NetworkMessage = { type: 'heartbeat', playerId: this.localPlayerId };
       for (const conn of this.connections.values()) {
-        if (conn.open) conn.send(beat);
+        this.safeSend(conn, beat);
       }
     }, this.heartbeatSendIntervalMs);
     this.heartbeatCheckInterval = setInterval(() => {
-      const cutoff = Date.now() - this.heartbeatTimeoutMs;
+      const timeoutMs = this.gameStarted
+        ? this.heartbeatBattleTimeoutMs
+        : this.heartbeatTimeoutMs;
+      const cutoff = Date.now() - timeoutMs;
       for (const [pid, lastSeen] of this.lastHeartbeatReceived) {
         if (lastSeen < cutoff) {
           // Force-close the silent connection — its close handler
@@ -618,26 +619,33 @@ export class NetworkManager {
       }
     } else if (this.role === 'client') {
       const hostConn = this.connections.get(1);
-      if (hostConn?.open) {
-        hostConn.send({ type: 'playerInfo', ipAddress, location, timezone });
-      }
+      if (hostConn) this.safeSend(hostConn, { type: 'playerInfo', ipAddress, location, timezone });
     }
   }
 
   // Send message to specific player (host only)
   private sendTo(playerId: PlayerId, message: NetworkMessage): void {
     const conn = this.connections.get(playerId);
-    if (conn && conn.open) {
-      conn.send(message);
-    }
+    if (conn) this.safeSend(conn, message);
   }
 
   // Broadcast message to all connected players (host only)
   private broadcast(message: NetworkMessage, excludePlayerId?: PlayerId): void {
     for (const [playerId, conn] of this.connections) {
-      if (playerId !== excludePlayerId && conn.open) {
-        conn.send(message);
+      if (playerId !== excludePlayerId) {
+        this.safeSend(conn, message);
       }
+    }
+  }
+
+  private safeSend(conn: DataConnection, message: NetworkMessage): boolean {
+    if (!conn.open) return false;
+    try {
+      conn.send(message);
+      return true;
+    } catch (err) {
+      console.warn('[NET] Failed to send message:', err);
+      return false;
     }
   }
 
@@ -690,9 +698,7 @@ export class NetworkManager {
   sendCommand(command: Command): void {
     if (this.role !== 'client') return;
     const hostConn = this.connections.get(1);
-    if (hostConn && hostConn.open) {
-      hostConn.send({ type: 'command', data: command });
-    }
+    if (hostConn) this.safeSend(hostConn, { type: 'command', data: command });
   }
 
   // Start the game (host only)

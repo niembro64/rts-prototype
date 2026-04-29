@@ -1577,23 +1577,39 @@ function setupNetworkCallbacks(): void {
 
   // Lobby-settings sync. The host registers a getter so the
   // network layer can grab fresh terrain values whenever a new
-  // client joins (initial handshake push); the client registers
-  // an apply-listener that re-uses our existing single-shape
-  // applier in `broadcast=false` mode — same demo-restart, same
-  // localStorage write, just no outbound broadcast (the change
-  // came FROM the host already).
+  // client joins (initial handshake push). Clients always write
+  // these into the real-match namespace, even if the packet arrives
+  // before `roomCode` flips the UI out of demo mode.
   networkManager.getLobbySettings = () => ({
     terrainCenter: terrainCenter.value,
     terrainDividers: terrainDividers.value,
   });
   networkManager.onLobbySettings = (settings) => {
-    if (settings.terrainCenter !== terrainCenter.value) {
-      applyTerrainShape('center', settings.terrainCenter, false);
-    }
-    if (settings.terrainDividers !== terrainDividers.value) {
-      applyTerrainShape('dividers', settings.terrainDividers, false);
-    }
+    applyLobbySettingsFromHost(settings);
   };
+}
+
+function applyLobbySettingsFromHost(settings: {
+  terrainCenter: TerrainShape;
+  terrainDividers: TerrainShape;
+}): void {
+  const changed =
+    settings.terrainCenter !== terrainCenter.value ||
+    settings.terrainDividers !== terrainDividers.value;
+
+  terrainCenter.value = settings.terrainCenter;
+  terrainDividers.value = settings.terrainDividers;
+  saveTerrainCenter(settings.terrainCenter, 'real');
+  saveTerrainDividers(settings.terrainDividers, 'real');
+  setTerrainCenterShape(settings.terrainCenter);
+  setTerrainDividersShape(settings.terrainDividers);
+
+  if (changed && !gameStarted.value && currentBattleMode.value === 'real') {
+    stopBackgroundBattle();
+    nextTick(() => {
+      startBackgroundBattle();
+    });
+  }
 }
 
 async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): Promise<void> {
@@ -1611,20 +1627,23 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
     let gameConnection: GameConnection;
 
-    if (networkRole.value !== 'client') {
-      // Apply terrain shape BEFORE creating the server — the
-      // constructor samples the heightmap when laying out bases. See
-      // LobbyManager.createBackgroundBattle for the same dance on the
-      // demo path. The real battle reads from the `real-battle-*`
-      // namespace so lobby host adjustments carry into the game and
-      // never get cross-contaminated with the user's solo demo prefs.
-      setTerrainCenterShape(loadStoredTerrainCenter('real'));
-      setTerrainDividersShape(loadStoredTerrainDividers('real'));
+    // Apply the real-match terrain before constructing either the
+    // authoritative server or a remote client's renderer. The host
+    // persisted this through lobbySettings, so clients must read the
+    // same namespace before baking their terrain mesh.
+    setTerrainCenterShape(loadStoredTerrainCenter('real'));
+    setTerrainDividersShape(loadStoredTerrainDividers('real'));
 
+    if (networkRole.value !== 'client') {
       // Create GameServer for host/offline (WASM physics)
       currentServer = await GameServer.create({ playerIds, aiPlayerIds });
 
-      // If hosting, also broadcast snapshots to remote clients.
+      // If hosting, broadcast the authoritative real-battle snapshot
+      // to every connected client. Keep this on the pre-lobby-info
+      // transport path: one unfiltered server snapshot, one msgpack
+      // encode, all peers receive the same state. The per-player AOI
+      // listener path is useful later, but it changed the actual
+      // internet battle protocol and made remote play fragile.
       //
       // The PeerJS peer instance + every connection established
       // during the lobby phase persist into the real battle — we
@@ -1635,30 +1654,10 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       // to those connections continues to work; clients don't
       // re-handshake.
       //
-      // We register a snapshot listener for every non-host playerId
-      // in the game, NOT just `getConnectedPlayerIds()` at this
-      // instant. Reasons:
-      //   - During the preceding `await GameServer.create(...)`
-      //     (WASM load can take ~100-500ms) a joiner's connection
-      //     could drop momentarily and fall out of the connections
-      //     map, in which case a one-shot iteration of
-      //     `getConnectedPlayerIds()` would never register a
-      //     listener for them and they'd see no commanders for the
-      //     entire match.
-      //   - `networkManager.sendStateTo(playerId, state)` already
-      //     gates on `conn?.open`, so a listener for a player whose
-      //     connection isn't currently open is a silent no-op. If
-      //     they reconnect later the listener routes successfully.
-      // Single source of truth for "who is in this game": the
-      // `playerIds` array passed to `startGameWithPlayers` (= the
-      // same list the host broadcast in the gameStart message).
       if (networkRole.value === 'host') {
-        for (const remotePlayerId of playerIds) {
-          if (remotePlayerId === localPlayerId.value) continue;
-          currentServer.addSnapshotListener((state) => {
-            networkManager.sendStateTo(remotePlayerId, state);
-          }, remotePlayerId);
-        }
+        currentServer.addSnapshotListener((state) => {
+          networkManager.broadcastState(state);
+        });
 
         // Receive commands from remote clients
         networkManager.onCommandReceived = (command, _fromPlayerId) => {
@@ -1666,9 +1665,10 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         };
       }
 
-      // Create LocalGameConnection for the host client after remote
-      // listeners so its zero-copy snapshot is the last serialization.
-      const localConnection = new LocalGameConnection(currentServer, localPlayerId.value);
+      // Create LocalGameConnection for the host client. Leave the
+      // listener unscoped so the host sees the same full snapshot
+      // shape the real-battle protocol used before the lobby changes.
+      const localConnection = new LocalGameConnection(currentServer);
       activeConnection = localConnection;
       gameConnection = localConnection;
 
