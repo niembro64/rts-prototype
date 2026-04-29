@@ -26,6 +26,7 @@ export type BuildingDetailRole =
   | 'solarShine'
   | 'factoryUnitGhost'
   | 'factoryUnitCore'
+  | 'factoryBuildPulse'
   | 'factorySpark';
 
 export type BuildingDetailMesh = {
@@ -38,6 +39,7 @@ export type BuildingDetailMesh = {
 export type FactoryConstructionRig = {
   unitGhost: THREE.Mesh;
   unitCore: THREE.Mesh;
+  buildPulses: THREE.Mesh[];
   sparks: THREE.Mesh[];
   nozzleLocal: THREE.Vector3;
   bayBaseY: number;
@@ -306,7 +308,7 @@ function buildFactory(
     nozzleY,
     0,
   );
-  details.push(detail(nozzle, 'high'));
+  details.push(detail(nozzle, 'medium'));
 
   const unitGhost = new THREE.Mesh(constructionOrbGeom, constructionGhostMat);
   unitGhost.visible = false;
@@ -315,6 +317,14 @@ function buildFactory(
   const unitCore = new THREE.Mesh(constructionOrbGeom, constructionCoreMat);
   unitCore.visible = false;
   details.push(detail(unitCore, 'high', undefined, 'factoryUnitCore'));
+
+  const buildPulses: THREE.Mesh[] = [];
+  for (let i = 0; i < 5; i++) {
+    const pulse = new THREE.Mesh(constructionOrbGeom, constructionCoreMat);
+    pulse.visible = false;
+    buildPulses.push(pulse);
+    details.push(detail(pulse, 'medium', 'medium', 'factoryBuildPulse'));
+  }
 
   const sparks: THREE.Mesh[] = [];
   for (let i = 0; i < 5; i++) {
@@ -331,6 +341,7 @@ function buildFactory(
     factoryRig: {
       unitGhost,
       unitCore,
+      buildPulses,
       sparks,
       nozzleLocal: new THREE.Vector3(
         nozzle.position.x,
