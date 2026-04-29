@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { getTerrainHeight, WATER_LEVEL } from '@/game/sim/Terrain';
-import { PLAYER_COLORS } from '@/game/sim/types';
-import type { PlayerId } from '@/game/sim/types';
+import { getTerrainMeshHeight, WATER_LEVEL } from '@/game/sim/Terrain';
 import { MAP_BG_COLOR } from '@/config';
-import { getManaCellProductionPerSecond, getCaptureTileBrightness } from '@/game/sim/manaProduction';
+import { getCaptureTileDisplayColor } from '@/game/sim/manaProduction';
+import { minimapPointerToWorld } from './minimapHelpers';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
@@ -25,6 +24,7 @@ const emit = defineEmits<{
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
+const draggingPointerId = ref<number | null>(null);
 
 // Minimap display size. The longest side is pinned at MINIMAP_MAX;
 // the other side follows the map's aspect ratio — so a 3000×3000
@@ -48,12 +48,12 @@ const scale = computed(() => ({
   y: size.value.h / props.data.mapHeight,
 }));
 
-// Offscreen canvas holding the "slow layer" — map background, grid
-// lines, and entity markers. Regenerated only when props.data changes
-// (entity refresh cadence is 20 Hz, throttled by the scene). The
-// main visible canvas composites this + strokes the camera quad
-// every frame; that hot path is ~1 drawImage + 1 polygon stroke,
-// so the camera box stays pinned to the view with no lag.
+// Offscreen canvas holding the "slow layer" — terrain/capture
+// background and entity markers. Regenerated only when props.data
+// changes (entity refresh cadence is 20 Hz, throttled by the scene).
+// The main visible canvas composites this + strokes the camera quad
+// every frame; that hot path is ~1 drawImage + 1 polygon stroke, so
+// the camera box stays pinned to the view with no lag.
 let offscreen: HTMLCanvasElement | null = null;
 let offCtx: CanvasRenderingContext2D | null = null;
 
@@ -123,30 +123,22 @@ function drawEntityLayer(): void {
       const tile = captureTiles[i];
       const { cx, cy } = tile;
       if (cx < 0 || cx >= tileCellsX || cy < 0 || cy >= tileCellsY) continue;
-      let totalWeight = 0;
-      let r = 0, g = 0, b = 0;
-      for (const pidStr in tile.heights) {
-        const height = tile.heights[Number(pidStr)];
-        if (height <= 0) continue;
-        const pc = PLAYER_COLORS[Number(pidStr) as PlayerId];
-        if (!pc) continue;
-        const color = pc.primary;
-        totalWeight += height;
-        r += ((color >> 16) & 0xff) * height;
-        g += ((color >> 8) & 0xff) * height;
-        b += (color & 0xff) * height;
-      }
-      if (totalWeight <= 0) continue;
-      const tr = r / totalWeight;
-      const tg = g / totalWeight;
-      const tb = b / totalWeight;
-      const tileProd = getManaCellProductionPerSecond(cx, cy, captureCellSize, mapWidth, mapHeight);
-      const mix = getCaptureTileBrightness(tileProd, totalWeight, gridOverlayIntensity);
-      const inv = 1 - mix;
+      const color = getCaptureTileDisplayColor(
+        tile.heights,
+        cx, cy,
+        captureCellSize,
+        mapWidth,
+        mapHeight,
+        gridOverlayIntensity,
+        NEUTRAL_R,
+        NEUTRAL_G,
+        NEUTRAL_B,
+      );
+      if (!color.hasColor) continue;
       const idx = cy * tileCellsX + cx;
-      tileFinalR[idx] = NEUTRAL_R * inv + tr * mix;
-      tileFinalG[idx] = NEUTRAL_G * inv + tg * mix;
-      tileFinalB[idx] = NEUTRAL_B * inv + tb * mix;
+      tileFinalR[idx] = color.r;
+      tileFinalG[idx] = color.g;
+      tileFinalB[idx] = color.b;
       tileHasColor[idx] = 1;
     }
   }
@@ -177,7 +169,7 @@ function drawEntityLayer(): void {
       const ty = overlayActive ? Math.floor(worldY / captureCellSize) : 0;
       for (let px = 0; px < w; px++, pi += 4) {
         const worldX = px / scaleX;
-        const height = getTerrainHeight(worldX, worldY, mapWidth, mapHeight);
+        const height = getTerrainMeshHeight(worldX, worldY, mapWidth, mapHeight);
         const wet = height < WATER_LEVEL;
         let outR: number, outG: number, outB: number;
         if (wet) {
@@ -204,23 +196,6 @@ function drawEntityLayer(): void {
     }
   }
   ctx.putImageData(lakeImg, 0, 0);
-
-  // Subtle world grid
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-  ctx.lineWidth = 0.5;
-  const gridSize = 200;
-  for (let x = 0; x <= mapWidth; x += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(x * scaleX, 0);
-    ctx.lineTo(x * scaleX, h);
-    ctx.stroke();
-  }
-  for (let y = 0; y <= mapHeight; y += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(0, y * scaleY);
-    ctx.lineTo(w, y * scaleY);
-    ctx.stroke();
-  }
 
   for (const entity of entities) {
     const x = entity.pos.x * scaleX;
@@ -289,18 +264,41 @@ function compose(): void {
   ctx.strokeRect(0, 0, w, h);
 }
 
-function handleClick(event: MouseEvent) {
+function emitCameraTargetFromPointer(event: PointerEvent): void {
   const canvas = canvasRef.value;
   if (!canvas) return;
+  const target = minimapPointerToWorld(event, canvas, props.data);
+  if (!target) return;
+  emit('click', target.x, target.y);
+}
 
-  const rect = canvas.getBoundingClientRect();
-  const clickX = event.clientX - rect.left;
-  const clickY = event.clientY - rect.top;
+function handlePointerDown(event: PointerEvent): void {
+  if (event.button !== 0) return;
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  event.preventDefault();
+  event.stopPropagation();
+  draggingPointerId.value = event.pointerId;
+  canvas.setPointerCapture(event.pointerId);
+  emitCameraTargetFromPointer(event);
+}
 
-  const worldX = clickX / scale.value.x;
-  const worldY = clickY / scale.value.y;
+function handlePointerMove(event: PointerEvent): void {
+  if (draggingPointerId.value !== event.pointerId) return;
+  if ((event.buttons & 1) === 0) {
+    draggingPointerId.value = null;
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  emitCameraTargetFromPointer(event);
+}
 
-  emit('click', worldX, worldY);
+function handlePointerEnd(event: PointerEvent): void {
+  if (draggingPointerId.value !== event.pointerId) return;
+  draggingPointerId.value = null;
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 // Regenerate the entity layer only when entities / map size change.
@@ -350,7 +348,12 @@ onMounted(() => {
       :width="size.w"
       :height="size.h"
       class="minimap-canvas"
-      @click="handleClick"
+      :class="{ dragging: draggingPointerId !== null }"
+      @pointerdown="handlePointerDown"
+      @pointermove="handlePointerMove"
+      @pointerup="handlePointerEnd"
+      @pointercancel="handlePointerEnd"
+      @lostpointercapture="handlePointerEnd"
     ></canvas>
   </div>
 </template>
@@ -383,9 +386,15 @@ onMounted(() => {
   display: block;
   cursor: pointer;
   border-radius: 4px;
+  touch-action: none;
+  user-select: none;
 }
 
 .minimap-canvas:hover {
   box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+.minimap-canvas.dragging {
+  cursor: grabbing;
 }
 </style>

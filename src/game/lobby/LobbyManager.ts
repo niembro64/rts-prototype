@@ -9,17 +9,8 @@ import { getMapSize } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { BACKGROUND_UNIT_TYPES } from '../server/BackgroundBattleStandalone';
 import {
-  loadStoredTickRate,
-  loadStoredSnapshotRate,
-  loadStoredKeyframeRatio,
-} from '../../serverBarConfig';
-import {
   loadStoredDemoUnits,
   loadStoredDemoCap,
-  loadStoredProjVelInherit,
-  loadStoredFfAccelUnits,
-  loadStoredFfAccelShots,
-  loadStoredDemoGrid,
   loadStoredTerrainCenter,
   loadStoredTerrainDividers,
   getDefaultDemoUnits,
@@ -28,6 +19,7 @@ import {
 import { setTerrainCenterShape, setTerrainDividersShape } from '../sim/Terrain';
 import type { PlayerId } from '../sim/types';
 import type { GameInstance } from '@/types/game';
+import { applyStoredBattleServerSettings } from '../server/battleServerSettings';
 
 export type BackgroundBattleState = {
   gameInstance: GameInstance;
@@ -138,10 +130,7 @@ export async function createBackgroundBattle(
   });
 
   const connection = new LocalGameConnection(server);
-  server.setTickRate(loadStoredTickRate());
-  server.setSnapshotRate(loadStoredSnapshotRate());
-  server.setKeyframeRatio(loadStoredKeyframeRatio());
-  server.setIpAddress(ipAddress);
+  applyStoredBattleServerSettings(server, mode, { ipAddress });
 
   // Tell the AI / UI layer about the same selection (the GameServer
   // already used it for the initial spawn). Skipped in lobby-preview
@@ -157,27 +146,6 @@ export async function createBackgroundBattle(
   // spawn so the unit count matches the stored cap from the first
   // frame. The post-construction `setMaxTotalUnits` command path
   // still exists for runtime cap changes.)
-  server.receiveCommand({
-    type: 'setProjVelInherit',
-    tick: 0,
-    enabled: loadStoredProjVelInherit(mode),
-  });
-  server.receiveCommand({
-    type: 'setFfAccelUnits',
-    tick: 0,
-    enabled: loadStoredFfAccelUnits(mode),
-  });
-  server.receiveCommand({
-    type: 'setFfAccelShots',
-    tick: 0,
-    enabled: loadStoredFfAccelShots(mode),
-  });
-  server.receiveCommand({
-    type: 'setSendGridInfo',
-    tick: 0,
-    enabled: loadStoredDemoGrid(),
-  });
-
   server.start();
 
   // Background-battle CVS — owned by the returned gameInstance; destroyed

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
-import { createGame, destroyGame, type GameInstance } from '../game/createGame';
+import { createGame, destroyGame, type GameInstance, type GameScene } from '../game/createGame';
 import { ClientViewState } from '../game/network/ClientViewState';
 import { type PlayerId, type WaypointType } from '../game/sim/types';
 import {
@@ -18,10 +18,11 @@ import SelectionPanel, {
   type SelectionActions,
 } from './SelectionPanel.vue';
 import TopBar, { type EconomyInfo } from './TopBar.vue';
-import Minimap, { type MinimapData } from './Minimap.vue';
+import Minimap from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import CombatStatsModal from './CombatStatsModal.vue';
 import SoundTestModal from './SoundTestModal.vue';
+import type { MinimapData } from '@/types/ui';
 import type {
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
@@ -49,18 +50,11 @@ import {
   saveRealCap,
   DEMO_CAP_DEFAULT,
   REAL_CAP_DEFAULT,
-  saveDemoGrid,
-  loadStoredRealGrid,
-  saveRealGrid,
-  loadStoredProjVelInherit,
+  saveStoredGrid,
   saveProjVelInherit,
-  loadStoredFiringForce,
   saveFiringForce,
-  loadStoredHitForce,
   saveHitForce,
-  loadStoredFfAccelUnits,
   saveFfAccelUnits,
-  loadStoredFfAccelShots,
   saveFfAccelShots,
   loadStoredTerrainCenter,
   saveTerrainCenter,
@@ -77,11 +71,8 @@ import { setTerrainCenterShape, setTerrainDividersShape } from '../game/sim/Terr
 import type { TerrainShape } from '../types/terrain';
 import {
   SERVER_CONFIG,
-  loadStoredSnapshotRate,
   saveSnapshotRate,
-  loadStoredKeyframeRatio,
   saveKeyframeRatio,
-  loadStoredTickRate,
   saveTickRate,
   loadStoredSimQuality,
   saveSimQuality,
@@ -105,6 +96,7 @@ import {
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
+import { applyStoredBattleServerSettings } from '../game/server/battleServerSettings';
 import type { GameConnection } from '../game/server/GameConnection';
 import {
   getGraphicsQuality,
@@ -169,6 +161,15 @@ import type {
 } from '../types/client';
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
+import {
+  applyMinimapCameraQuad,
+  applyMinimapContentData,
+  createInitialMinimapData,
+} from './minimapHelpers';
+import {
+  bindSceneUiCallbacks,
+  waitForSceneAndBind,
+} from './gameSceneBindings';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -405,21 +406,7 @@ const economyInfo = reactive<EconomyInfo>({
 });
 
 // Minimap state
-const minimapData = reactive<MinimapData>({
-  mapWidth: 2000,
-  mapHeight: 2000,
-  entities: [],
-  cameraQuad: [
-    { x: 0, y: 0 },
-    { x: 800, y: 0 },
-    { x: 800, y: 600 },
-    { x: 0, y: 600 },
-  ],
-  captureTiles: [],
-  captureCellSize: 0,
-  gridOverlayIntensity: 0,
-  showTerrain: true,
-});
+const minimapData = reactive<MinimapData>(createInitialMinimapData());
 
 // Combat stats state
 const combatStats = ref<NetworkServerSnapshotCombatStats | null>(null);
@@ -429,6 +416,53 @@ const combatStatsViewMode = ref<'global' | 'player'>('global');
 const combatStatsHistory = ref<StatsSnapshot[]>([]);
 let statsHistoryStartTime = 0;
 const battleElapsed = ref('00:00:00');
+
+function recordCombatStats(stats: NetworkServerSnapshotCombatStats): void {
+  const cloned = structuredClone(stats);
+  combatStats.value = cloned;
+  if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
+  combatStatsHistory.value.push({
+    timestamp: Date.now() - statsHistoryStartTime,
+    stats: cloned,
+  });
+  if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
+    combatStatsHistory.value.shift();
+  }
+}
+
+function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
+  bindSceneUiCallbacks(scene, {
+    onPlayerChange: (playerId) => {
+      activePlayer.value = playerId;
+    },
+    onSelectionChange: (info) => {
+      Object.assign(selectionInfo, info);
+    },
+    onEconomyChange: (info) => {
+      Object.assign(economyInfo, info);
+    },
+    onMinimapUpdate: (data) => {
+      applyMinimapContentData(minimapData, data);
+    },
+    onCameraQuadUpdate: (quad) => {
+      applyMinimapCameraQuad(minimapData, quad);
+    },
+    onCombatStatsUpdate: recordCombatStats,
+    onServerMetaUpdate: (meta) => {
+      serverMetaFromSnapshot.value = meta;
+    },
+    ...(includeGameLifecycle
+      ? {
+          onGameOver: (winnerId: PlayerId) => {
+            gameOverWinner.value = winnerId;
+          },
+          onGameRestart: () => {
+            gameOverWinner.value = null;
+          },
+        }
+      : {}),
+  });
+}
 
 let gameInstance: GameInstance | null = null;
 // Hoisted from the scene so state survives a live 2D↔3D renderer swap.
@@ -495,59 +529,13 @@ async function startBackgroundBattle(): Promise<void> {
   activeConnection = backgroundBattle.connection;
   hasServer.value = true;
 
-  // Wire combat stats callback for background scene
-  let bgAttempts = 0;
-  checkBgSceneInterval = setInterval(() => {
-    bgAttempts++;
-    if (bgAttempts > 50) {
-      if (checkBgSceneInterval) clearInterval(checkBgSceneInterval);
+  checkBgSceneInterval = waitForSceneAndBind(
+    () => backgroundBattle?.gameInstance?.getScene(),
+    (bgScene) => {
+      bindGameSceneUi(bgScene);
       checkBgSceneInterval = null;
-      return;
-    }
-    const bgScene = backgroundBattle?.gameInstance?.getScene();
-    if (bgScene) {
-      bgScene.onCombatStatsUpdate = (stats: NetworkServerSnapshotCombatStats) => {
-        const cloned = structuredClone(stats);
-        combatStats.value = cloned;
-        if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
-        combatStatsHistory.value.push({
-          timestamp: Date.now() - statsHistoryStartTime,
-          stats: cloned,
-        });
-        if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
-          combatStatsHistory.value.shift();
-        }
-      };
-      bgScene.onServerMetaUpdate = (meta: NetworkServerSnapshotMeta) => {
-        serverMetaFromSnapshot.value = meta;
-      };
-      bgScene.onEconomyChange = (info: EconomyInfo) => {
-        Object.assign(economyInfo, info);
-      };
-      bgScene.onSelectionChange = (info: SelectionInfo) => {
-        Object.assign(selectionInfo, info);
-      };
-      bgScene.onPlayerChange = (playerId: PlayerId) => {
-        activePlayer.value = playerId;
-      };
-      bgScene.onMinimapUpdate = (data: MinimapData) => {
-        // Entity refresh (throttled by the scene, ~20 Hz). The
-        // cameraQuad is live-updated separately below at full fps.
-        minimapData.entities = data.entities;
-        minimapData.mapWidth = data.mapWidth;
-        minimapData.mapHeight = data.mapHeight;
-        minimapData.captureTiles = data.captureTiles;
-        minimapData.captureCellSize = data.captureCellSize;
-        minimapData.gridOverlayIntensity = data.gridOverlayIntensity;
-        minimapData.showTerrain = data.showTerrain;
-      };
-      bgScene.onCameraQuadUpdate = (quad) => {
-        minimapData.cameraQuad = quad;
-      };
-      if (checkBgSceneInterval) clearInterval(checkBgSceneInterval);
-      checkBgSceneInterval = null;
-    }
-  }, 100);
+    },
+  );
 }
 
 // Stop the background battle
@@ -1679,53 +1667,12 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       activeConnection = localConnection;
       gameConnection = localConnection;
 
-      // Configure snapshot rate and start (restore from localStorage)
-      currentServer.setTickRate(loadStoredTickRate());
-      currentServer.setSnapshotRate(loadStoredSnapshotRate());
-      currentServer.setKeyframeRatio(loadStoredKeyframeRatio());
-      currentServer.setSimQuality(serverSimQuality.value);
-      currentServer.receiveCommand({
-        type: 'setSimSignalStates',
-        tick: 0,
-        tps: serverSignalStates.value.tps,
-        cpu: serverSignalStates.value.cpu,
-        units: serverSignalStates.value.units,
-      });
-      currentServer.setIpAddress(localIpAddress.value);
-      currentServer.receiveCommand({
-        type: 'setMaxTotalUnits',
-        tick: 0,
+      applyStoredBattleServerSettings(currentServer, 'real', {
+        ipAddress: localIpAddress.value,
         maxTotalUnits: loadStoredRealCap(),
-      });
-      currentServer.receiveCommand({
-        type: 'setProjVelInherit',
-        tick: 0,
-        enabled: loadStoredProjVelInherit('real'),
-      });
-      currentServer.receiveCommand({
-        type: 'setFiringForce',
-        tick: 0,
-        enabled: loadStoredFiringForce('real'),
-      });
-      currentServer.receiveCommand({
-        type: 'setHitForce',
-        tick: 0,
-        enabled: loadStoredHitForce('real'),
-      });
-      currentServer.receiveCommand({
-        type: 'setFfAccelUnits',
-        tick: 0,
-        enabled: loadStoredFfAccelUnits('real'),
-      });
-      currentServer.receiveCommand({
-        type: 'setFfAccelShots',
-        tick: 0,
-        enabled: loadStoredFfAccelShots('real'),
-      });
-      currentServer.receiveCommand({
-        type: 'setSendGridInfo',
-        tick: 0,
-        enabled: loadStoredRealGrid(),
+        simQuality: serverSimQuality.value,
+        simSignalStates: serverSignalStates.value,
+        includeForceSettings: true,
       });
       currentServer.start();
       if (networkRole.value === 'host') {
@@ -1770,80 +1717,13 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 }
 
 function setupSceneCallbacks(): void {
-  let sceneAttempts = 0;
-  checkSceneInterval = setInterval(() => {
-    sceneAttempts++;
-    if (sceneAttempts > 50) {
-      if (checkSceneInterval) clearInterval(checkSceneInterval);
+  checkSceneInterval = waitForSceneAndBind(
+    () => gameInstance?.getScene(),
+    (scene) => {
+      bindGameSceneUi(scene, true);
       checkSceneInterval = null;
-      return;
-    }
-    const scene = gameInstance?.getScene();
-    if (scene) {
-      // Player change callback
-      scene.onPlayerChange = (playerId: PlayerId) => {
-        activePlayer.value = playerId;
-      };
-
-      // Selection change callback
-      scene.onSelectionChange = (info: SelectionInfo) => {
-        Object.assign(selectionInfo, info);
-      };
-
-      // Economy change callback
-      scene.onEconomyChange = (info: EconomyInfo) => {
-        Object.assign(economyInfo, info);
-      };
-
-      // Minimap data callback — entities + map size only, throttled
-      // by the scene. The camera quad flows through the dedicated
-      // per-frame channel below so the box tracks the view at 60 fps.
-      scene.onMinimapUpdate = (data: MinimapData) => {
-        minimapData.entities = data.entities;
-        minimapData.mapWidth = data.mapWidth;
-        minimapData.mapHeight = data.mapHeight;
-        minimapData.captureTiles = data.captureTiles;
-        minimapData.captureCellSize = data.captureCellSize;
-        minimapData.gridOverlayIntensity = data.gridOverlayIntensity;
-        minimapData.showTerrain = data.showTerrain;
-      };
-      scene.onCameraQuadUpdate = (quad) => {
-        minimapData.cameraQuad = quad;
-      };
-
-      // Game over callback
-      scene.onGameOverUI = (winnerId: PlayerId) => {
-        gameOverWinner.value = winnerId;
-      };
-
-      // Game restart callback
-      scene.onGameRestart = () => {
-        gameOverWinner.value = null;
-      };
-
-      // Combat stats callback
-      scene.onCombatStatsUpdate = (stats: NetworkServerSnapshotCombatStats) => {
-        const cloned = structuredClone(stats);
-        combatStats.value = cloned;
-        if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
-        combatStatsHistory.value.push({
-          timestamp: Date.now() - statsHistoryStartTime,
-          stats: cloned,
-        });
-        if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
-          combatStatsHistory.value.shift();
-        }
-      };
-
-      // Server metadata callback (for remote clients to see server bar)
-      scene.onServerMetaUpdate = (meta: NetworkServerSnapshotMeta) => {
-        serverMetaFromSnapshot.value = meta;
-      };
-
-      if (checkSceneInterval) clearInterval(checkSceneInterval);
-      checkSceneInterval = null;
-    }
-  }, 100);
+    },
+  );
 }
 
 function setNetworkUpdateRate(rate: SnapshotRate): void {
@@ -1910,11 +1790,7 @@ function toggleSendGridInfo(): void {
     tick: 0,
     enabled: !current,
   });
-  if (gameStarted.value) {
-    saveRealGrid(!current);
-  } else {
-    saveDemoGrid(!current);
-  }
+  saveStoredGrid(currentBattleMode.value, !current);
 }
 
 function changeGridOverlay(mode: GridOverlay): void {

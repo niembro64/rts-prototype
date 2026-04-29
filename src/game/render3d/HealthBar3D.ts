@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
+import { getUnitHudTopY } from './HudAnchor';
 
 const STYLE = {
   /** Height of the bar in world units. The bar's WIDTH is keyed to
@@ -141,16 +142,15 @@ export class HealthBar3D {
     const hp = u.unit.hp;
     const maxHp = u.unit.maxHp;
     if (hp <= 0 || (STYLE.hideAtFull && hp >= maxHp)) return;
-    const radius = u.unit.unitRadiusCollider.scale;
     const worldX = u.transform.x;
-    const worldY = u.transform.z + radius + STYLE.worldOffsetAbove;
+    const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
     const worldZ = u.transform.y;
     const ratio = Math.max(0, Math.min(1, hp / maxHp));
     const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
     const bar = this.acquire(this._used++);
     this.repaintIfChanged(bar, ratio, mode);
 
-    const worldWidth = radius * 2;
+    const worldWidth = u.unit.unitRadiusCollider.scale * 2;
     bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
     bar.sprite.position.set(worldX, worldY, worldZ);
     if (this._frustum) {

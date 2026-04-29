@@ -24,13 +24,11 @@
 // overlay (lerp neutral → dominant team color by intensity * height).
 
 import * as THREE from 'three';
-import type { PlayerId } from '../sim/types';
-import { PLAYER_COLORS } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
-import { getManaCellProductionPerSecond, getCaptureTileBrightness } from '../sim/manaProduction';
+import { getCaptureTileDisplayColor } from '../sim/manaProduction';
 
 // Floor of every mana tile post — sourced from the canonical
 // TILE_FLOOR_Y in Terrain so the heightmap clamp, the water level,
@@ -361,31 +359,21 @@ export class CaptureTileRenderer3D {
       const cy = tile.cy;
       if (cx < 0 || cx >= cellsX || cy < 0 || cy >= cellsY) continue;
 
-      let totalWeight = 0;
-      let r = 0, g = 0, b = 0;
-      for (const pidStr in tile.heights) {
-        const pid = Number(pidStr) as PlayerId;
-        const height = tile.heights[pid];
-        if (height <= 0) continue;
-        const pc = PLAYER_COLORS[pid];
-        if (!pc) continue;
-        const color = pc.primary;
-        totalWeight += height;
-        r += ((color >> 16) & 0xff) * height;
-        g += ((color >> 8) & 0xff) * height;
-        b += (color & 0xff) * height;
-      }
-      if (totalWeight <= 0) continue;
-
-      const tr = (r / totalWeight) / 255;
-      const tg = (g / totalWeight) / 255;
-      const tb = (b / totalWeight) / 255;
-      const tileProd = getManaCellProductionPerSecond(cx, cy, cellSize, this.mapWidth, this.mapHeight);
-      const mix = getCaptureTileBrightness(tileProd, totalWeight, intensity);
-      const inv = 1 - mix;
-      const lerpR = NEUTRAL_R * inv + tr * mix;
-      const lerpG = NEUTRAL_G * inv + tg * mix;
-      const lerpB = NEUTRAL_B * inv + tb * mix;
+      const color = getCaptureTileDisplayColor(
+        tile.heights,
+        cx, cy,
+        cellSize,
+        this.mapWidth,
+        this.mapHeight,
+        intensity,
+        NEUTRAL_R * 255,
+        NEUTRAL_G * 255,
+        NEUTRAL_B * 255,
+      );
+      if (!color.hasColor) continue;
+      const lerpR = color.r / 255;
+      const lerpG = color.g / 255;
+      const lerpB = color.b / 255;
 
       const cBase = (cy * cellsX + cx) * VERTS_PER_TILE * 3;
       for (let v = 0; v < VERTS_PER_TILE; v++) {

@@ -24,6 +24,8 @@ import {
   MANA_HOTSPOT_RADIUS_FRACTION,
 } from '../../captureConfig';
 import { BASE_MANA_PER_SECOND, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { getPlayerPrimaryColor } from './types';
+import type { PlayerId } from './types';
 
 /** Mana per second a tile at (cellCenterX, cellCenterY) produces
  *  when fully captured by a single team (height = 1). Multiplying
@@ -108,4 +110,51 @@ export function getCaptureTileBrightness(
   const productionFraction =
     (totalOwnershipHeight * tileProductionPerSec) / maxTileProd;
   return Math.min(1, intensity * productionFraction);
+}
+
+export type CaptureTileColor = {
+  hasColor: boolean;
+  r: number;
+  g: number;
+  b: number;
+};
+
+export function getCaptureTileDisplayColor(
+  heights: Record<number, number>,
+  cx: number,
+  cy: number,
+  cellSize: number,
+  mapWidth: number,
+  mapHeight: number,
+  intensity: number,
+  neutralR: number,
+  neutralG: number,
+  neutralB: number,
+): CaptureTileColor {
+  let totalWeight = 0;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (const pidStr in heights) {
+    const height = heights[Number(pidStr)];
+    if (height <= 0) continue;
+    const color = getPlayerPrimaryColor(Number(pidStr) as PlayerId);
+    totalWeight += height;
+    r += ((color >> 16) & 0xff) * height;
+    g += ((color >> 8) & 0xff) * height;
+    b += (color & 0xff) * height;
+  }
+  if (totalWeight <= 0) {
+    return { hasColor: false, r: neutralR, g: neutralG, b: neutralB };
+  }
+
+  const tileProd = getManaCellProductionPerSecond(cx, cy, cellSize, mapWidth, mapHeight);
+  const mix = getCaptureTileBrightness(tileProd, totalWeight, intensity);
+  const inv = 1 - mix;
+  return {
+    hasColor: true,
+    r: neutralR * inv + (r / totalWeight) * mix,
+    g: neutralG * inv + (g / totalWeight) * mix,
+    b: neutralB * inv + (b / totalWeight) * mix,
+  };
 }

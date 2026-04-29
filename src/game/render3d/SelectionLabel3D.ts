@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { labelTextForUnit, labelTextForBuilding } from '../uiLabels';
+import { getUnitHudTopY } from './HudAnchor';
 
 const STYLE = {
   /** Distance above the entity's top in world units where the label
@@ -221,9 +222,8 @@ export class SelectionLabel3D {
     // visibility flag, not a slot-skip.
     for (const u of selectedUnits) {
       if (!u.unit || u.unit.hp <= 0) continue;
-      const radius = u.unit.unitRadiusCollider.scale;
       const worldX = u.transform.x;
-      const worldY = u.transform.z + radius + STYLE.worldOffsetAbove;
+      const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
       const worldZ = u.transform.y;
       const text = labelTextForUnit(u);
       const label = this.acquire(used++);

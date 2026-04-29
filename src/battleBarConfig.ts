@@ -216,6 +216,15 @@ export function saveRealGrid(enabled: boolean): void {
   persist(STORAGE_REAL_GRID, String(enabled));
 }
 
+export function loadStoredGrid(mode: BattleMode): boolean {
+  return mode === 'real' ? loadStoredRealGrid() : loadStoredDemoGrid();
+}
+
+export function saveStoredGrid(mode: BattleMode, enabled: boolean): void {
+  if (mode === 'real') saveRealGrid(enabled);
+  else saveDemoGrid(enabled);
+}
+
 export function loadStoredDemoBarsCollapsed(): boolean {
   return loadBool(STORAGE_DEMO_BARS_COLLAPSED) ?? false; // default expanded
 }
