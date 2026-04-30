@@ -256,6 +256,7 @@ export class Render3DEntities {
   private buildingMeshes = new Map<number, EntityMesh>();
   private projectileMeshes = new Map<number, THREE.Mesh>();
   private factorySprayTargets: SprayTarget[] = [];
+  private factorySprayTargetPool: SprayTarget[] = [];
   private windFanYaw: number | null = null;
   private windRotorPhase = 0;
   private windAnimLastMs = 0;
@@ -278,6 +279,7 @@ export class Render3DEntities {
     collision?: THREE.LineSegments;
     explosion?: THREE.LineSegments;
   }>();
+  private projectileRadiusMeshPool: THREE.LineSegments[] = [];
 
   // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
   // Angle advances by `speed` radians/sec; speed accelerates toward
@@ -2796,7 +2798,7 @@ export class Render3DEntities {
     const buildings = this.clientViewState.getBuildings();
     const seen = this._seenBuildingIds;
     seen.clear();
-    this.factorySprayTargets.length = 0;
+    this.releaseFactorySprayTargets();
 
     // LOD-driven detail visibility for buildings. Each accent mesh now
     // declares its own tier range, so min/low/medium/high/max all get a
@@ -2912,6 +2914,27 @@ export class Render3DEntities {
         this.buildingMeshes.delete(id);
       }
     }
+  }
+
+  private releaseFactorySprayTargets(): void {
+    for (let i = 0; i < this.factorySprayTargets.length; i++) {
+      this.factorySprayTargetPool.push(this.factorySprayTargets[i]);
+    }
+    this.factorySprayTargets.length = 0;
+  }
+
+  private acquireFactorySprayTarget(): SprayTarget {
+    let target = this.factorySprayTargetPool.pop();
+    if (!target) {
+      target = {
+        source: { id: 0, pos: { x: 0, y: 0 }, z: 0, playerId: 1 as PlayerId },
+        target: { id: 0, pos: { x: 0, y: 0 }, z: 0, radius: 0 },
+        type: 'build',
+        intensity: 0,
+      };
+    }
+    this.factorySprayTargets.push(target);
+    return target;
   }
 
   private updateSolarCollectorAnimation(
@@ -3060,22 +3083,20 @@ export class Render3DEntities {
       this._factorySprayTargetLocal.y = centerY + radius * 0.06;
       this._factorySpraySourceWorld.copy(rig.nozzleLocal).applyMatrix4(group.matrixWorld);
       this._factorySprayTargetWorld.copy(this._factorySprayTargetLocal).applyMatrix4(group.matrixWorld);
-      this.factorySprayTargets.push({
-        source: {
-          id: e.id,
-          pos: { x: this._factorySpraySourceWorld.x, y: this._factorySpraySourceWorld.z },
-          z: this._factorySpraySourceWorld.y,
-          playerId: e.ownership.playerId,
-        },
-        target: {
-          id: e.id,
-          pos: { x: this._factorySprayTargetWorld.x, y: this._factorySprayTargetWorld.z },
-          z: this._factorySprayTargetWorld.y,
-          radius,
-        },
-        type: 'build',
-        intensity: Math.max(0.45, Math.min(1, 0.65 + easedProgress * 0.35)),
-      });
+      const spray = this.acquireFactorySprayTarget();
+      spray.source.id = e.id;
+      spray.source.pos.x = this._factorySpraySourceWorld.x;
+      spray.source.pos.y = this._factorySpraySourceWorld.z;
+      spray.source.z = this._factorySpraySourceWorld.y;
+      spray.source.playerId = e.ownership.playerId;
+      spray.target.id = e.id;
+      spray.target.pos.x = this._factorySprayTargetWorld.x;
+      spray.target.pos.y = this._factorySprayTargetWorld.z;
+      spray.target.z = this._factorySprayTargetWorld.y;
+      spray.target.dim = undefined;
+      spray.target.radius = radius;
+      spray.type = 'build';
+      spray.intensity = Math.max(0.45, Math.min(1, 0.65 + easedProgress * 0.35));
     }
 
     const showSparks = buildingTierAtLeast(tier, 'max');
@@ -3224,8 +3245,8 @@ export class Render3DEntities {
     // Drop SHOT RAD wireframes that went with despawned projectiles.
     for (const [id, radii] of this.projectileRadiusMeshes) {
       if (!seen.has(id)) {
-        if (radii.collision) this.world.remove(radii.collision);
-        if (radii.explosion) this.world.remove(radii.explosion);
+        this.releaseProjRadiusMesh(radii.collision);
+        this.releaseProjRadiusMesh(radii.explosion);
         this.projectileRadiusMeshes.delete(id);
       }
     }
@@ -3301,7 +3322,8 @@ export class Render3DEntities {
     }
     let mesh = radii[key];
     if (!mesh) {
-      mesh = new THREE.LineSegments(this.radiusSphereGeom, mat);
+      mesh = this.projectileRadiusMeshPool.pop() ?? new THREE.LineSegments(this.radiusSphereGeom, mat);
+      mesh.material = mat;
       this.world.add(mesh);
       radii[key] = mesh;
     }
@@ -3311,6 +3333,13 @@ export class Render3DEntities {
     // code tests against.
     mesh.position.set(x, z, y);
     mesh.scale.setScalar(radius);
+  }
+
+  private releaseProjRadiusMesh(mesh?: THREE.LineSegments): void {
+    if (!mesh) return;
+    mesh.visible = false;
+    this.world.remove(mesh);
+    this.projectileRadiusMeshPool.push(mesh);
   }
 
   /** Look up the lift subgroup for a unit's mesh. The lift group
@@ -3358,10 +3387,16 @@ export class Render3DEntities {
       if (radii.collision) this.world.remove(radii.collision);
       if (radii.explosion) this.world.remove(radii.explosion);
     }
+    for (const mesh of this.projectileRadiusMeshPool) {
+      this.world.remove(mesh);
+    }
     this.unitMeshes.clear();
     this.buildingMeshes.clear();
     this.projectileMeshes.clear();
     this.projectileRadiusMeshes.clear();
+    this.projectileRadiusMeshPool.length = 0;
+    this.factorySprayTargets.length = 0;
+    this.factorySprayTargetPool.length = 0;
     // Polygonal-chassis pools must tear down BEFORE disposeBodyGeoms()
     // — their InstancedMeshes reference the BodyShape3D-owned per-
     // renderer ExtrudeGeometry objects that disposeBodyGeoms() releases.
