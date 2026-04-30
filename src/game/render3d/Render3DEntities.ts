@@ -360,16 +360,12 @@ export class Render3DEntities {
   // on EXACTLY the same surface — no front/back offset where a beam
   // could appear to clip the visible chrome but miss the sim plane.
   private mirrorGeom = new THREE.PlaneGeometry(1, 1);
-  // Selection-indicator halo. Open-ended cylinder (no top/bottom
-  // faces — those would pop into view when the camera dips low).
-  // Built at radius 1 / height 1 in geom-local coords; per-unit
-  // scale stretches it to the unit's selection radius and the
-  // desired vertical extent (see RING_HEIGHT below). Used to be a
-  // flat RingGeometry which got partly buried whenever a unit stood
-  // on uneven terrain — the uphill arc disappeared into the slope.
-  // Vertical thickness keeps the halo visible from every camera
-  // angle and through small terrain undulations.
-  private ringGeom = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 28, 1, true);
+  // Selection-indicator halo. A low torus reads as a real 3D donut
+  // around the unit instead of a flat 2D strip or billboarded band.
+  // Geometry is unit-sized: major radius 1, tube radius 0.06. The
+  // mesh is rotated into the XZ ground plane on creation and scaled
+  // per unit below.
+  private ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
   // Unit-radius indicator wireframe spheres (SCAL/SHOT/PUSH). Unit
   // radius = 1 → scale per mesh to the actual collider radius. The
   // sim's hit-detection uses 3D spheres centered on transform.z, so
@@ -402,11 +398,11 @@ export class Render3DEntities {
   // instance covers every unit. Was previously allocated fresh on
   // every (deselect → select) toggle, with a matching dispose on
   // deselect/death; that churned a MeshBasicMaterial per click.
-  private selectionRingMat = new THREE.MeshBasicMaterial({
+  private selectionRingMat = new THREE.MeshLambertMaterial({
     color: 0xffffff,
+    emissive: 0x333333,
     transparent: true,
     opacity: 0.9,
-    side: THREE.DoubleSide,
     depthWrite: false,
   });
 
@@ -2352,18 +2348,15 @@ export class Render3DEntities {
       // lower one.
       const bodyTopY = bodyEntry.topY * radius;
 
-      // Selection halo — vertical cylinder band wrapping the unit's
-      // base. Material is the renderer-owned shared instance; the
-      // mesh is per-unit so its scale tracks the unit's render
-      // radius. Cylinder is vertical by default (axis = Y), so no
-      // rotation is needed.
+      // Selection halo — low torus wrapping the unit's base. Material
+      // is the renderer-owned shared instance; the mesh is per-unit
+      // so its scale tracks the unit's render radius.
       const selected = e.selectable?.selected === true;
       if (selected && !m.ring) {
         const ring = new THREE.Mesh(this.ringGeom, this.selectionRingMat);
-        // Cylinder centered at half its scaled height puts the
-        // bottom edge at y = 1 (the +1 offset below) — slightly
-        // above the m.group origin to dodge z-fighting with the
-        // terrain mesh on flat ground.
+        // TorusGeometry lies in XY by default; rotate it into XZ so
+        // the donut rests on the local ground plane.
+        ring.rotation.x = Math.PI / 2;
         m.group.add(ring);
         m.ring = ring;
       } else if (!selected && m.ring) {
@@ -2372,16 +2365,11 @@ export class Render3DEntities {
       }
       if (m.ring) {
         const ringR = radius * 1.35;
-        // Vertical extent in world units. Tall enough to peek over
-        // typical terrain undulations within the unit's footprint
-        // (≤ ~6 wu at the heightmap's rendered slope) while still
-        // reading as a thin halo, not a tower.
-        const ringH = 8;
-        m.ring.scale.set(ringR, ringH, ringR);
-        // Position only needs to be set once on creation, but the
-        // assignment is cheap and keeps the math co-located with
-        // the height that drives it.
-        m.ring.position.y = ringH / 2 + 1;
+        m.ring.scale.setScalar(ringR);
+        // Keep the torus slightly above the ground. The geometry's
+        // tube radius is 0.06, so this places the lower curve just
+        // above local y=0 after scaling.
+        m.ring.position.y = ringR * 0.06 + 0.8;
       }
 
       // SCAL / SHOT / PUSH unit-radius indicator rings. The 2D renderer
