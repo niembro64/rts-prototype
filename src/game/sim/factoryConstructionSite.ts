@@ -28,6 +28,7 @@ export type FactoryBuildSpotOptions = {
 const FACTORY_CONSTRUCTION_RADIUS_CELLS = 6;
 const FACTORY_BUILD_CLEARANCE = 16;
 const FACTORY_BUILD_RADIUS_FRACTION = 0.72;
+const _buildSpotDir = { x: 0, y: 0 };
 
 export function getFactoryFootprintDimensions(): FactoryFootprintDimensions {
   const cfg = getBuildingConfig('factory');
@@ -44,6 +45,11 @@ export function getFactoryConstructionRadius(): number {
 }
 
 export function getFactoryWaypointDirection(factory: Entity): { x: number; y: number } {
+  writeFactoryWaypointDirection(factory, _buildSpotDir);
+  return { x: _buildSpotDir.x, y: _buildSpotDir.y };
+}
+
+function writeFactoryWaypointDirection(factory: Entity, out: { x: number; y: number }): void {
   const factoryComp = factory.factory;
   const waypoint = factoryComp?.waypoints[0];
   const targetX = waypoint?.x ?? factoryComp?.rallyX ?? factory.transform.x + 1;
@@ -56,16 +62,19 @@ export function getFactoryWaypointDirection(factory: Entity): { x: number; y: nu
     dy = Math.sin(factory.transform.rotation);
     len = Math.max(1e-3, Math.hypot(dx, dy));
   }
-  return { x: dx / len, y: dy / len };
+  out.x = dx / len;
+  out.y = dy / len;
 }
 
 export function getFactoryBuildSpot(
   factory: Entity,
   unitRadius: number = 0,
   options: FactoryBuildSpotOptions = {},
+  out?: FactoryBuildSpot,
 ): FactoryBuildSpot {
   const dims = getFactoryFootprintDimensions();
-  const dir = getFactoryWaypointDirection(factory);
+  const dir = _buildSpotDir;
+  writeFactoryWaypointDirection(factory, dir);
   const edgeAlongDir = Math.min(
     Math.abs(dir.x) > 1e-3 ? dims.footprintWidth / 2 / Math.abs(dir.x) : Number.POSITIVE_INFINITY,
     Math.abs(dir.y) > 1e-3 ? dims.footprintHeight / 2 / Math.abs(dir.y) : Number.POSITIVE_INFINITY,
@@ -84,13 +93,21 @@ export function getFactoryBuildSpot(
   if (options.mapHeight !== undefined && Number.isFinite(options.mapHeight)) {
     y = Math.max(clampRadius, Math.min(options.mapHeight - clampRadius, y));
   }
-  return {
-    x,
-    y,
-    localX: x - factory.transform.x,
-    localY: y - factory.transform.y,
-    dirX: dir.x,
-    dirY: dir.y,
-    offset,
+  const result = out ?? {
+    x: 0,
+    y: 0,
+    localX: 0,
+    localY: 0,
+    dirX: 0,
+    dirY: 0,
+    offset: 0,
   };
+  result.x = x;
+  result.y = y;
+  result.localX = x - factory.transform.x;
+  result.localY = y - factory.transform.y;
+  result.dirX = dir.x;
+  result.dirY = dir.y;
+  result.offset = offset;
+  return result;
 }

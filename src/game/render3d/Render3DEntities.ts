@@ -47,7 +47,7 @@ import {
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
-import { getFactoryBuildSpot, getFactoryConstructionRadius } from '../sim/factoryConstructionSite';
+import { getFactoryBuildSpot, getFactoryConstructionRadius, type FactoryBuildSpot } from '../sim/factoryConstructionSite';
 import { getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
 import { getWeaponWorldPosition, getTurretHeadRadius } from '../math';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
@@ -325,6 +325,15 @@ export class Render3DEntities {
   private _factorySprayTargetLocal = new THREE.Vector3();
   private _factorySpraySourceWorld = new THREE.Vector3();
   private _factorySprayTargetWorld = new THREE.Vector3();
+  private _factoryBuildSpot: FactoryBuildSpot = {
+    x: 0,
+    y: 0,
+    localX: 0,
+    localY: 0,
+    dirX: 0,
+    dirY: 0,
+    offset: 0,
+  };
   private static readonly _PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
   /** Engine fallback values used when a shape:'cylinder' shot doesn't
    *  define its own `cylinderShape` block. World length =
@@ -3038,7 +3047,7 @@ export class Render3DEntities {
     const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
       mapWidth: this.clientViewState.getMapWidth(),
       mapHeight: this.clientViewState.getMapHeight(),
-    });
+    }, this._factoryBuildSpot);
     const spotDx = buildSpot.x - e.transform.x;
     const spotDz = buildSpot.y - e.transform.y;
     const cos = Math.cos(e.transform.rotation);
