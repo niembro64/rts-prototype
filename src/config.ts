@@ -286,6 +286,21 @@ export const MAX_MANA = 1000;
 /** Base mana income per second (before territory) */
 export const BASE_MANA_PER_SECOND = 5;
 
+/** Starting metal stockpile for each player */
+export const STARTING_METAL = 200;
+
+/** Maximum metal stockpile capacity */
+export const MAX_METAL = 1000;
+
+/** Base metal income per second (before extractors). Kept low — players
+ *  are meant to claim deposits and run extractors on them for serious
+ *  metal income, not coast on the passive drip. */
+export const BASE_METAL_PER_SECOND = 2;
+
+/** Metal produced per second by each completed extractor sitting on a
+ *  metal deposit. Tuned so 1 extractor ≈ 1 solar in income scale. */
+export const EXTRACTOR_METAL_PER_SECOND = 50;
+
 // Per-tile territory mana income uses BASE_MANA_PER_SECOND above as
 // the perimeter rate, scaled by the central-hotspot config in
 // captureConfig.ts (MANA_CENTER_TILE_MULTIPLIER, MANA_HOTSPOT_RADIUS_FRACTION).
@@ -471,16 +486,20 @@ export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
 
 export const BUILDING_STATS: Record<string, BuildingStatEntry> = {
   solar: {
-    energyCost: 100, // Base energy cost (before multiplier)
+    resourceCost: 100, // Unified energy/mana/metal cost (before multiplier)
     hp: 200,
   },
   wind: {
-    energyCost: 60, // Base energy cost (before multiplier)
+    resourceCost: 60,
     hp: 100,
   },
   factory: {
-    energyCost: 300, // Base energy cost (before multiplier)
+    resourceCost: 300,
     hp: 800,
+  },
+  extractor: {
+    resourceCost: 80,
+    hp: 250,
   },
 };
 

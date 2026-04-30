@@ -129,8 +129,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 300,
     unitRadiusCollider: { scale: 8, shot: 6, push: 8 * 1.2 },
     mass: 30,
-    energyCost: 50,
-    manaCost: 10,
+    resourceCost: 50,
     turrets: [{ turretId: 'lightTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.scout,
@@ -157,8 +156,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 170,
     unitRadiusCollider: { scale: 10, shot: 7, push: 10 * 1.3 },
     mass: 40,
-    energyCost: 90,
-    manaCost: 10,
+    resourceCost: 90,
     turrets: [{ turretId: 'pulseTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.burst,
@@ -184,8 +182,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 200,
     unitRadiusCollider: { scale: 13, shot: 9, push: 13 * 2.5 },
     mass: 30,
-    energyCost: 10,
-    manaCost: 350,
+    resourceCost: 350,
     turrets: [
       { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
       { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
@@ -221,8 +218,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 200,
     unitRadiusCollider: { scale: 16, shot: 13, push: 16 * 1.4 },
     mass: 300,
-    energyCost: 300,
-    manaCost: 10,
+    resourceCost: 300,
     turrets: [{ turretId: 'salvoRocketTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.brawl,
@@ -248,8 +244,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 220,
     unitRadiusCollider: { scale: 20, shot: 12, push: 20 * 1.2 },
     mass: 200,
-    energyCost: 220,
-    manaCost: 10,
+    resourceCost: 220,
     turrets: [{ turretId: 'mortarTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.mortar,
@@ -276,8 +271,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 120,
     unitRadiusCollider: { scale: 10, shot: 8, push: 11 * 1.1 },
     mass: 30,
-    energyCost: 10,
-    manaCost: 35,
+    resourceCost: 35,
     turrets: [{ turretId: 'laserTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: -0.45, y: 0 }],
     bodyShape: BODY_SHAPES.snipe,
@@ -305,8 +299,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 60,
     unitRadiusCollider: { scale: 24, shot: 24, push: 24 * 1.5 },
     mass: 1000,
-    energyCost: 1200,
-    manaCost: 10,
+    resourceCost: 1200,
     turrets: [{ turretId: 'cannonTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.tank,
@@ -333,8 +326,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 60,
     unitRadiusCollider: { scale: 40, shot: 50, push: 50 * 1.3 },
     mass: 280,
-    energyCost: 10,
-    manaCost: 4000,
+    resourceCost: 4000,
     turrets: [{ turretId: 'gatlingMortarTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0.3, y: 0 }],
     bodyShape: BODY_SHAPES.formik,
@@ -366,8 +358,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 70,
     unitRadiusCollider: { scale: 30, shot: 40, push: 40 * 1.3 },
     mass: 200,
-    energyCost: 10,
-    manaCost: 3000,
+    resourceCost: 3000,
     turrets: [
       { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
       { turretId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
@@ -402,8 +393,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 55,
     unitRadiusCollider: { scale: 30, shot: 27, push: 45 * 1.2 },
     mass: 1500,
-    energyCost: 2500,
-    manaCost: 10,
+    resourceCost: 2500,
     turrets: [{ turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0.2, y: 0 }],
     bodyShape: BODY_SHAPES.hippo,
@@ -429,8 +419,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 200,
     unitRadiusCollider: { scale: 11, shot: 13, push: 11 * 1.8 },
     mass: 18,
-    energyCost: 10,
-    manaCost: 300,
+    resourceCost: 300,
     turrets: [{ turretId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0.1, y: 0 }],
     bodyShape: BODY_SHAPES.beam,
@@ -458,8 +447,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 160,
     unitRadiusCollider: { scale: 10, shot: 8, push: 24 },
     mass: 20,
-    energyCost: 190,
-    manaCost: 10,
+    resourceCost: 190,
     turrets: [{ turretId: 'mirrorTurret', offsetX: 0, offsetY: 0 }],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.loris,
@@ -485,8 +473,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     moveSpeed: 200,
     unitRadiusCollider: { scale: 20, shot: 20, push: 20 },
     mass: 60,
-    energyCost: 10,
-    manaCost: 400,
+    resourceCost: 400,
     turrets: [
       { turretId: 'beamTurret3', offsetX: 0, offsetY: 0 },
       { turretId: 'dgunTurret', offsetX: 0, offsetY: 0 },
@@ -542,30 +529,23 @@ export function getAllUnitBlueprints(): UnitBlueprint[] {
   return Object.values(UNIT_BLUEPRINTS);
 }
 
-// Normalized composite cost: avg(energy/maxEnergy, mana/maxMana).
-// Both resources contribute equally on a 0–1 scale.
-let _costNormsCache: { maxEnergy: number; maxMana: number } | null = null;
+// Normalized cost: resourceCost / max(resourceCost across buildables).
+// One resource pool, one normalization — used for UI rank/scale display.
+let _costNormCache: { max: number } | null = null;
 
-function getCostNorms(): { maxEnergy: number; maxMana: number } {
-  if (_costNormsCache) return _costNormsCache;
-  let maxEnergy = 0;
-  let maxMana = 0;
+function getCostNorm(): { max: number } {
+  if (_costNormCache) return _costNormCache;
+  let max = 0;
   for (const id of BUILDABLE_UNIT_IDS) {
     const bp = UNIT_BLUEPRINTS[id];
     if (!bp) continue;
-    if (bp.energyCost > maxEnergy) maxEnergy = bp.energyCost;
-    if (bp.manaCost > maxMana) maxMana = bp.manaCost;
+    if (bp.resourceCost > max) max = bp.resourceCost;
   }
-  _costNormsCache = { maxEnergy, maxMana };
-  return _costNormsCache;
+  _costNormCache = { max };
+  return _costNormCache;
 }
 
-export function getNormalizedUnitCost(bp: {
-  energyCost: number;
-  manaCost: number;
-}): number {
-  const { maxEnergy, maxMana } = getCostNorms();
-  const eNorm = maxEnergy > 0 ? bp.energyCost / maxEnergy : 0;
-  const mNorm = maxMana > 0 ? bp.manaCost / maxMana : 0;
-  return (eNorm + mNorm) / 2;
+export function getNormalizedUnitCost(bp: { resourceCost: number }): number {
+  const { max } = getCostNorm();
+  return max > 0 ? bp.resourceCost / max : 0;
 }

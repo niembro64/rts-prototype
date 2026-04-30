@@ -199,6 +199,66 @@ export function setTerrainTeamCount(n: number): void {
 export function getTerrainTeamCount(): number {
   return teamCount;
 }
+
+// ── METAL-DEPOSIT FLAT ZONES ─────────────────────────────────────
+//
+// Each zone is a circle on the map where the terrain is forced to a
+// fixed height (`height`) so an extractor can sit on a level pad.
+// height=0 stays at ground level; positive values raise the pad above
+// natural terrain (a knoll); negative cuts a pit. Outside the zone's
+// `flatRadius` the natural terrain (ripple + ridge) takes back over;
+// between `flatRadius` and `flatRadius + DEPOSIT_FALLOFF` the result
+// blends smoothly between the deposit height and natural so there's
+// no visible cliff.
+//
+// Set once at world init via `setMetalDepositFlatZones`; reads on
+// the heightmap hot path. Empty list (default) = no flattening.
+
+type FlatZone = { x: number; y: number; flatRadius: number; height: number };
+let depositFlatZones: ReadonlyArray<FlatZone> = [];
+
+/** Width (world units) of the smooth blend OUTSIDE each deposit's
+ *  flatRadius. Inside flatRadius the terrain is exactly the deposit's
+ *  height; from there to flatRadius+DEPOSIT_FALLOFF it eases back to
+ *  the natural height. Tuned to ~half a grid cell so the transition
+ *  is visible-but-smooth without a visible cliff. */
+const DEPOSIT_FALLOFF = 25;
+
+/** Install the flat zones for the current map. Call once after
+ *  metal deposits are generated and BEFORE the renderer bakes its
+ *  tile geometry. Pass `[]` to clear (e.g. on world reset). */
+export function setMetalDepositFlatZones(
+  zones: ReadonlyArray<FlatZone>,
+): void {
+  depositFlatZones = zones.slice();
+  _terrainVersion++;
+}
+
+/** Find the deposit override at sample point (x, y).
+ *  Returns blend weight w (0 = fully deposit, 1 = fully natural)
+ *  and the deposit's target height. When no zone affects the sample,
+ *  weight is 1 and height is irrelevant — the caller uses the
+ *  natural value untouched. */
+function depositOverride(x: number, y: number): { weight: number; height: number } {
+  if (depositFlatZones.length === 0) return { weight: 1, height: 0 };
+  let minWeight = 1;
+  let bestHeight = 0;
+  for (const z of depositFlatZones) {
+    const dx = x - z.x;
+    const dy = y - z.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d <= z.flatRadius) return { weight: 0, height: z.height };
+    if (d < z.flatRadius + DEPOSIT_FALLOFF) {
+      const t = (d - z.flatRadius) / DEPOSIT_FALLOFF;
+      const w = (1 - Math.cos(t * Math.PI)) * 0.5;
+      if (w < minWeight) {
+        minWeight = w;
+        bestHeight = z.height;
+      }
+    }
+  }
+  return { weight: minWeight, height: bestHeight };
+}
 // Wavelengths for the three sinusoids that combine into the
 // ripple pattern. Mixing irrational ratios prevents the layers
 // from harmonizing into a clean grid.
@@ -294,12 +354,21 @@ export function getTerrainHeight(
     }
   }
 
+  // Metal-deposit flat zones override BOTH ripple and ridge: inside
+  // each deposit's flat radius the terrain is forced to the ring's
+  // `height`. Outside the falloff band the weight is 1 (natural
+  // terrain), so this is a pass-through for every map sample that
+  // isn't near a deposit.
+  const override = depositOverride(x, y);
+  const natural = ripple + ridge;
+  const blended = override.height * (1 - override.weight) + natural * override.weight;
+
   // Clamp to the tile floor — the heightmap defines the TOP of every
   // 3D tile cube and tiles can't physically extend below their floor.
   // Without this clamp, a strongly-negative amplitude (e.g. carved
   // trenches) would invert the tile geometry: top vertex lower than
   // floor vertex, faces flipped, sides facing inward.
-  return Math.max(TILE_FLOOR_Y, ripple + ridge);
+  return Math.max(TILE_FLOOR_Y, blended);
 }
 
 type TerrainMeshSample = {

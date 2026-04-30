@@ -7,6 +7,28 @@ import { computeFactoryWaypoint } from './spawn';
 import { isWaterAt } from './Terrain';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { deactivateSolarCollector, ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
+import { economyManager } from './economy';
+
+// Find the deposit (if any) whose flat zone contains world point (x, y).
+// Used by both extractor placement validation and the user-facing
+// "is this a valid extractor spot?" cursor check.
+export function findDepositAt(world: WorldState, x: number, y: number): { id: number; x: number; y: number; flatRadius: number } | null {
+  for (const d of world.metalDeposits) {
+    const dx = x - d.x;
+    const dy = y - d.y;
+    if (dx * dx + dy * dy <= d.flatRadius * d.flatRadius) return d;
+  }
+  return null;
+}
+
+// True iff some completed-or-in-progress extractor already occupies
+// the given deposit. Each deposit hosts at most one extractor.
+function isDepositOccupied(world: WorldState, depositId: number): boolean {
+  for (const b of world.getBuildings()) {
+    if (b.buildingType === 'extractor' && b.metalDepositId === depositId) return true;
+  }
+  return false;
+}
 
 // Construction system - handles building progress and energy consumption
 export class ConstructionSystem {
@@ -100,6 +122,14 @@ export class ConstructionSystem {
     if (entity.buildingType === 'factory' && entity.factory) {
       // Rally point is set when factory is created
     }
+
+    // Extractor completion — start producing metal income for the owner.
+    if (entity.buildingType === 'extractor' && entity.ownership) {
+      const cfg = getBuildingConfig('extractor');
+      if (cfg.metalProduction) {
+        economyManager.addMetalExtraction(entity.ownership.playerId, cfg.metalProduction);
+      }
+    }
   }
 
   // Start a new building construction
@@ -120,6 +150,15 @@ export class ConstructionSystem {
 
     // Get world position for building center
     const worldPos = this.buildingGrid.getBuildingCenter(gridX, gridY, config.gridWidth, config.gridHeight);
+
+    // Extractors REQUIRE an unoccupied deposit within reach. Any other
+    // building type silently bypasses this check.
+    let depositId: number | undefined = undefined;
+    if (buildingType === 'extractor') {
+      const deposit = findDepositAt(world, worldPos.x, worldPos.y);
+      if (!deposit || isDepositOccupied(world, deposit.id)) return null;
+      depositId = deposit.id;
+    }
 
     // Reject placements over water — buildings can't sit on the
     // water plane. Sample the footprint corners + center; if any is
@@ -156,8 +195,7 @@ export class ConstructionSystem {
     // Add buildable component
     entity.buildable = {
       buildProgress: 0,
-      energyCost: config.energyCost,
-      manaCost: config.manaCost,
+      resourceCost: config.resourceCost,
       isComplete: false,
       isGhost: false,
     };
@@ -166,6 +204,9 @@ export class ConstructionSystem {
     entity.buildingType = buildingType;
     if (buildingType === 'solar') {
       ensureSolarCollectorState(entity);
+    }
+    if (buildingType === 'extractor' && depositId !== undefined) {
+      entity.metalDepositId = depositId;
     }
 
     // Set max HP from config
@@ -180,8 +221,7 @@ export class ConstructionSystem {
       entity.factory = {
         buildQueue: [],
         currentBuildProgress: 0,
-        currentBuildCost: 0,
-        currentBuildManaCost: 0,
+        currentBuildResourceCost: 0,
         rallyX: wp.x,
         rallyY: wp.y,
         isProducing: false,
@@ -233,8 +273,7 @@ export class ConstructionSystem {
 
     entity.buildable = {
       buildProgress: 0,
-      energyCost: config.energyCost,
-      manaCost: config.manaCost,
+      resourceCost: config.resourceCost,
       isComplete: false,
       isGhost: true,
     };
@@ -261,6 +300,14 @@ export class ConstructionSystem {
     // If it was a solar panel, remove production
     if (entity.buildingType === 'solar' && entity.ownership && entity.buildable?.isComplete) {
       deactivateSolarCollector(entity);
+    }
+
+    // If it was an extractor, stop its metal income contribution.
+    if (entity.buildingType === 'extractor' && entity.ownership && entity.buildable?.isComplete) {
+      const cfg = getBuildingConfig('extractor');
+      if (cfg.metalProduction) {
+        economyManager.removeMetalExtraction(entity.ownership.playerId, cfg.metalProduction);
+      }
     }
   }
 

@@ -48,8 +48,14 @@ export type EconomyInfo = {
     expenditure: number;
     netFlow: number;
   };
+  metal: {
+    stockpile: { curr: number; max: number };
+    income: { base: number; extraction: number; total: number };
+    expenditure: number;
+    netFlow: number;
+  };
   units: { count: number; cap: number };
-  buildings: { solar: number; wind: number; factory: number };
+  buildings: { solar: number; wind: number; factory: number; extractor: number };
 };
 
 // Minimap types
@@ -218,7 +224,7 @@ export type EnergyConsumer = {
 export type UnitTypeStats = {
   damage: { dealt: { enemy: number; friendly: number }; received: number };
   kills: { enemy: number; friendly: number };
-  units: { produced: number; lost: number; energyCost: number; manaCost: number };
+  units: { produced: number; lost: number; resourceCost: number };
 };
 
 export type CombatStatsSnapshot = {

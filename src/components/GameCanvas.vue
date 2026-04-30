@@ -406,8 +406,14 @@ const economyInfo = reactive<EconomyInfo>({
     expenditure: 0,
     netFlow: 5,
   },
+  metal: {
+    stockpile: { curr: 200, max: 1000 },
+    income: { base: 2, extraction: 0, total: 2 },
+    expenditure: 0,
+    netFlow: 2,
+  },
   units: { count: 1, cap: 120 },
-  buildings: { solar: 0, wind: 0, factory: 0 },
+  buildings: { solar: 0, wind: 0, factory: 0, extractor: 0 },
 });
 
 // Minimap state

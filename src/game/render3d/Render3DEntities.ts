@@ -2811,7 +2811,7 @@ export class Render3DEntities {
       // Building type drives the per-type shape (factory, solar, …) —
       // fallback to 'unknown' for anything the art doesn't cover yet.
       const shapeType: BuildingShapeType =
-        e.buildingType === 'factory' || e.buildingType === 'solar' || e.buildingType === 'wind'
+        e.buildingType === 'factory' || e.buildingType === 'solar' || e.buildingType === 'wind' || e.buildingType === 'extractor'
           ? e.buildingType
           : 'unknown';
       const w = e.building?.width ?? 100;

@@ -173,7 +173,7 @@ export type NetworkServerSnapshotGridCell = {
 export type NetworkServerSnapshotUnitTypeStats = {
   damage: { dealt: { enemy: number; friendly: number }; received: number };
   kills: { enemy: number; friendly: number };
-  units: { produced: number; lost: number; energyCost: number; manaCost: number };
+  units: { produced: number; lost: number; resourceCost: number };
 };
 
 export type NetworkServerSnapshotCombatStats = {
@@ -379,6 +379,11 @@ export type NetworkServerSnapshotEconomy = {
   mana: {
     stockpile: { curr: number; max: number };
     income: { base: number; territory: number };
+    expenditure: number;
+  };
+  metal: {
+    stockpile: { curr: number; max: number };
+    income: { base: number; extraction: number };
     expenditure: number;
   };
 };

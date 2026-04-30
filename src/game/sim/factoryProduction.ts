@@ -52,8 +52,7 @@ export class FactoryProductionSystem {
       if (!factoryComp.isProducing) {
         factoryComp.isProducing = true;
         factoryComp.currentBuildProgress = 0;
-        factoryComp.currentBuildCost = bp.energyCost * COST_MULTIPLIER;
-        factoryComp.currentBuildManaCost = bp.manaCost * COST_MULTIPLIER;
+        factoryComp.currentBuildResourceCost = bp.resourceCost * COST_MULTIPLIER;
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       }
 

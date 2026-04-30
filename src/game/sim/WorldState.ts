@@ -1,4 +1,5 @@
 import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileType } from './types';
+import type { MetalDeposit } from '../../metalDepositConfig';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint } from './blueprints';
@@ -64,6 +65,12 @@ export class WorldState {
   // Map dimensions
   public readonly mapWidth: number;
   public readonly mapHeight: number;
+
+  // Metal deposits — fixed map features generated at world init.
+  // Same list across all clients (deterministic from map size). Each
+  // deposit can host at most one extractor; extractors track which
+  // deposit they sit on via `entity.metalDepositId`.
+  public metalDeposits: MetalDeposit[] = [];
 
   // Runtime thrust multiplier (set by GameServer based on game/demo mode)
   public thrustMultiplier: number = 8.0;

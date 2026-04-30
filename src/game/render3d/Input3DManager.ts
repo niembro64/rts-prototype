@@ -42,6 +42,7 @@ import {
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { isWaterAt } from '../sim/Terrain';
+import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
@@ -106,6 +107,12 @@ export class Input3DManager {
   // is called, so an un-wired scene shows green ghosts everywhere.
   private mapWidth = Infinity;
   private mapHeight = Infinity;
+
+  // Cached deposit list — derived deterministically from map size, so
+  // the client can re-generate it locally without a network round-trip.
+  // Used by the build ghost validator to gate extractor placement on
+  // unclaimed deposits.
+  private metalDeposits: ReadonlyArray<MetalDeposit> = [];
 
   // Drag state (screen coords only — box select is screen-space)
   private leftDown = false;
@@ -212,9 +219,10 @@ export class Input3DManager {
   /** Scene hook — feeds the client-side placement validator so the
    *  build ghost turns red at the map edge or when overlapping an
    *  existing building. */
-  setMapBounds(width: number, height: number): void {
+  setMapBounds(width: number, height: number, playerCount: number): void {
     this.mapWidth = width;
     this.mapHeight = height;
+    this.metalDeposits = generateMetalDeposits(width, height, playerCount);
   }
 
   getHoveredEntity(): Entity | null {
@@ -477,6 +485,7 @@ export class Input3DManager {
           buildType, snapped.x, snapped.y,
           this.mapWidth, this.mapHeight,
           this.entitySource.getBuildings(),
+          this.metalDeposits,
         );
         this.buildGhost.setTarget(
           buildType, world.x, world.y,

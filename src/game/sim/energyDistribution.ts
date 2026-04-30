@@ -78,7 +78,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       // Don't spend energy if player is already at or over the unit cap
       if (world.canPlayerBuildUnit(entity.ownership.playerId)) {
         const f = entity.factory;
-        const remaining = f.currentBuildCost * (1 - f.currentBuildProgress);
+        const remaining = f.currentBuildResourceCost * (1 - f.currentBuildProgress);
         if (remaining > 0) {
           const config = getBuildingConfig(entity.buildingType!);
           const rateCap = (config.maxEnergyUseRate ?? Infinity) * dtSec;
@@ -95,7 +95,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       && entity.ownership
       && buildTargets.has(entity.id)
     ) {
-      const remaining = entity.buildable.energyCost * (1 - entity.buildable.buildProgress);
+      const remaining = entity.buildable.resourceCost * (1 - entity.buildable.buildProgress);
       if (remaining > 0) {
         const rateCap = (maxEnergyUseRateByTarget.get(entity.id) ?? Infinity) * dtSec;
         addConsumer(entity.ownership.playerId, entity, 'building', remaining, rateCap);
@@ -142,7 +142,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         }
       }
       if (!alreadyAdded) {
-        const remaining = target.buildable.energyCost * (1 - target.buildable.buildProgress);
+        const remaining = target.buildable.resourceCost * (1 - target.buildable.buildProgress);
         if (remaining > 0) {
           addConsumer(commander.ownership.playerId, target, 'building', remaining, commanderRateCap);
         }
@@ -159,69 +159,57 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   }
 
   // Distribute stockpile equally among consumers for each player.
-  // Both energy and mana are spent proportionally — progress is limited
-  // by whichever resource is more scarce.
+  // All three resources (energy, mana, metal) are spent proportionally —
+  // build progress is limited by whichever resource is most scarce.
+  // Each consumer's `remainingCost` is the unified resourceCost remaining
+  // (same number drawn from each pool per unit of progress).
   for (const [playerId, indices] of byPlayer) {
     const economy = economyManager.getEconomy(playerId);
     if (!economy || indices.length === 0) continue;
 
     const equalEnergyShare = economy.stockpile.curr / indices.length;
     const equalManaShare = economy.mana.stockpile.curr / indices.length;
+    const equalMetalShare = economy.metal.stockpile.curr / indices.length;
     let totalEnergySpent = 0;
     let totalManaSpent = 0;
+    let totalMetalSpent = 0;
 
     for (const idx of indices) {
       const c = consumers[idx];
 
-      if (c.type === 'factory') {
-        const f = c.entity.factory!;
-        const totalEnergyCost = f.currentBuildCost;
-        const totalManaCost = f.currentBuildManaCost;
-        const remaining = 1 - f.currentBuildProgress;
+      if (c.type === 'factory' || c.type === 'building') {
+        const totalCost = c.type === 'factory'
+          ? c.entity.factory!.currentBuildResourceCost
+          : c.entity.buildable!.resourceCost;
+        const currentProgress = c.type === 'factory'
+          ? c.entity.factory!.currentBuildProgress
+          : c.entity.buildable!.buildProgress;
+        const remaining = 1 - currentProgress;
 
-        // How much progress can energy afford?
-        const energyProgress = totalEnergyCost > 0
-          ? Math.min(equalEnergyShare, c.remainingCost, c.maxEnergyPerTick) / totalEnergyCost
-          : remaining;
-        // How much progress can mana afford?
-        const manaProgress = totalManaCost > 0
-          ? equalManaShare / totalManaCost
-          : remaining;
-        // Actual progress is the minimum of both
-        const progress = Math.min(energyProgress, manaProgress, remaining);
-
-        if (progress > 0) {
-          f.currentBuildProgress += progress;
-          world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_FACTORY);
-        }
-        const energySpent = progress * totalEnergyCost;
-        const manaSpent = progress * totalManaCost;
-        totalEnergySpent += energySpent;
-        totalManaSpent += manaSpent;
-      } else if (c.type === 'building') {
-        const b = c.entity.buildable!;
-        const totalEnergyCost = b.energyCost;
-        const totalManaCost = b.manaCost;
-        const remaining = 1 - b.buildProgress;
-
-        const energyProgress = totalEnergyCost > 0
-          ? Math.min(equalEnergyShare, c.remainingCost, c.maxEnergyPerTick) / totalEnergyCost
-          : remaining;
-        const manaProgress = totalManaCost > 0
-          ? equalManaShare / totalManaCost
-          : remaining;
-        const progress = Math.min(energyProgress, manaProgress, remaining);
+        // Each resource pool can afford `share / cost` progress this tick.
+        // The energy budget also has a per-tick rate cap and a per-consumer
+        // remaining-cost cap; mana and metal share the same ticket.
+        const energyAffordableSpend = Math.min(equalEnergyShare, c.remainingCost, c.maxEnergyPerTick);
+        const energyProgress = totalCost > 0 ? energyAffordableSpend / totalCost : remaining;
+        const manaProgress = totalCost > 0 ? equalManaShare / totalCost : remaining;
+        const metalProgress = totalCost > 0 ? equalMetalShare / totalCost : remaining;
+        const progress = Math.min(energyProgress, manaProgress, metalProgress, remaining);
 
         if (progress > 0) {
-          b.buildProgress += progress;
-          world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_BUILDING);
+          if (c.type === 'factory') {
+            c.entity.factory!.currentBuildProgress += progress;
+            world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_FACTORY);
+          } else {
+            c.entity.buildable!.buildProgress += progress;
+            world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_BUILDING);
+          }
         }
-        const energySpent = progress * totalEnergyCost;
-        const manaSpent = progress * totalManaCost;
-        totalEnergySpent += energySpent;
-        totalManaSpent += manaSpent;
+        const spent = progress * totalCost;
+        totalEnergySpent += spent;
+        totalManaSpent += spent;
+        totalMetalSpent += spent;
       } else if (c.type === 'heal') {
-        // Healing only costs energy, no mana
+        // Healing only costs energy — no mana, no metal.
         const energyToSpend = Math.min(equalEnergyShare, c.remainingCost, c.maxEnergyPerTick);
         totalEnergySpent += energyToSpend;
         const hpHealed = energyToSpend / 0.5;
@@ -236,7 +224,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
 
     economy.stockpile.curr -= totalEnergySpent;
     economy.mana.stockpile.curr -= totalManaSpent;
+    economy.metal.stockpile.curr -= totalMetalSpent;
     economyManager.recordExpenditure(playerId, totalEnergySpent / dtSec);
     economyManager.recordManaExpenditure(playerId, totalManaSpent / dtSec);
+    economyManager.recordMetalExpenditure(playerId, totalMetalSpent / dtSec);
   }
 }

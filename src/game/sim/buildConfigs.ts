@@ -4,6 +4,7 @@ import {
   BUILDING_STATS,
   SOLAR_ENERGY_PER_SECOND,
   WIND_ENERGY_PER_SECOND,
+  EXTRACTOR_METAL_PER_SECOND,
 } from '../../config';
 import { getUnitBlueprint, BUILDABLE_UNIT_IDS } from './blueprints';
 
@@ -17,8 +18,7 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     // Solar panels are short and low-slung — a single cell tall.
     gridDepth: 1,
     hp: BUILDING_STATS.solar.hp,
-    energyCost: BUILDING_STATS.solar.energyCost * COST_MULTIPLIER,
-    manaCost: 20 * COST_MULTIPLIER,
+    resourceCost: BUILDING_STATS.solar.resourceCost * COST_MULTIPLIER,
     energyProduction: SOLAR_ENERGY_PER_SECOND,
   },
   wind: {
@@ -28,8 +28,7 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     gridHeight: 2,
     gridDepth: 5,
     hp: BUILDING_STATS.wind.hp,
-    energyCost: BUILDING_STATS.wind.energyCost * COST_MULTIPLIER,
-    manaCost: 25 * COST_MULTIPLIER,
+    resourceCost: BUILDING_STATS.wind.resourceCost * COST_MULTIPLIER,
     energyProduction: WIND_ENERGY_PER_SECOND,
   },
   factory: {
@@ -41,9 +40,20 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     gridHeight: 2,
     gridDepth: 6,
     hp: BUILDING_STATS.factory.hp,
-    energyCost: BUILDING_STATS.factory.energyCost * COST_MULTIPLIER,
-    manaCost: 50 * COST_MULTIPLIER,
+    resourceCost: BUILDING_STATS.factory.resourceCost * COST_MULTIPLIER,
     maxEnergyUseRate: 100,
+  },
+  extractor: {
+    id: 'extractor',
+    name: 'Extractor',
+    // Squat metal pump. Small footprint so it fits inside a deposit's
+    // flat zone without crowding adjacent buildings.
+    gridWidth: 2,
+    gridHeight: 2,
+    gridDepth: 2,
+    hp: BUILDING_STATS.extractor.hp,
+    resourceCost: BUILDING_STATS.extractor.resourceCost * COST_MULTIPLIER,
+    metalProduction: EXTRACTOR_METAL_PER_SECOND,
   },
 };
 
@@ -60,8 +70,7 @@ export function getUnitBuildConfig(unitId: string) {
   return {
     unitId: bp.turrets[0]?.turretId ?? 'lightTurret',
     name: bp.name,
-    energyCost: bp.energyCost * COST_MULTIPLIER,
-    manaCost: bp.manaCost * COST_MULTIPLIER,
+    resourceCost: bp.resourceCost * COST_MULTIPLIER,
     unitRadiusCollider: { ...bp.unitRadiusCollider },
     moveSpeed: bp.moveSpeed,
     mass: bp.mass,

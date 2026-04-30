@@ -148,8 +148,7 @@ function placeCompleteBuilding(
 
   entity.buildable = {
     buildProgress: 1,
-    energyCost: config.energyCost,
-    manaCost: config.manaCost,
+    resourceCost: config.resourceCost,
     isComplete: true,
     isGhost: false,
   };
@@ -169,8 +168,7 @@ function placeCompleteBuilding(
     entity.factory = {
       buildQueue: [],
       currentBuildProgress: 0,
-      currentBuildCost: 0,
-      currentBuildManaCost: 0,
+      currentBuildResourceCost: 0,
       rallyX: rally.x,
       rallyY: rally.y,
       isProducing: false,

@@ -49,6 +49,9 @@ const energyPct = computed(() =>
 const manaPct = computed(() =>
   Math.min(100, Math.round((props.economy.mana.stockpile.curr / props.economy.mana.stockpile.max) * 100))
 );
+const metalPct = computed(() =>
+  Math.min(100, Math.round((props.economy.metal.stockpile.curr / props.economy.metal.stockpile.max) * 100))
+);
 
 const unitCapColor = computed(() => {
   const pct = (props.economy.units.count / props.economy.units.cap) * 100;
@@ -150,6 +153,27 @@ function flowColor(n: number): string {
         <span class="flow-pos">+{{ fmtMag(economy.mana.income.total) }}</span>
         <span class="flow-neg" :class="{ inactive: economy.mana.expenditure < 0.05 }">−{{ fmtMag(economy.mana.expenditure) }}</span>
         <span class="flow-net" :style="{ color: flowColor(economy.mana.netFlow) }">={{ fmtSigned(economy.mana.netFlow) }}</span>
+      </div>
+    </div>
+
+    <!-- Metal block -->
+    <div class="resource-block metal-block">
+      <div class="resource-header">
+        <span class="resource-icon">⛏</span>
+        <span class="resource-label">METAL</span>
+      </div>
+      <div class="resource-row">
+        <span class="resource-stock">{{ fmtStock(economy.metal.stockpile.curr) }}</span>
+        <span class="resource-sep">/</span>
+        <span class="resource-max">{{ economy.metal.stockpile.max }}</span>
+      </div>
+      <div class="resource-bar">
+        <div class="resource-bar-fill metal-fill" :style="{ width: metalPct + '%' }"></div>
+      </div>
+      <div class="resource-flows">
+        <span class="flow-pos">+{{ fmtMag(economy.metal.income.total) }}</span>
+        <span class="flow-neg" :class="{ inactive: economy.metal.expenditure < 0.05 }">−{{ fmtMag(economy.metal.expenditure) }}</span>
+        <span class="flow-net" :style="{ color: flowColor(economy.metal.netFlow) }">={{ fmtSigned(economy.metal.netFlow) }}</span>
       </div>
     </div>
   </div>
@@ -264,6 +288,7 @@ function flowColor(n: number): string {
 
 .energy-block .resource-header { color: #ffcc00; }
 .mana-block .resource-header { color: #44aaff; }
+.metal-block .resource-header { color: #d8a878; }
 
 .resource-icon {
   font-size: 11px;
@@ -279,6 +304,7 @@ function flowColor(n: number): string {
 
 .energy-block .resource-stock { color: #ffcc00; }
 .mana-block .resource-stock { color: #44aaff; }
+.metal-block .resource-stock { color: #d8a878; }
 
 .resource-sep {
   color: rgba(255, 255, 255, 0.3);
@@ -307,6 +333,7 @@ function flowColor(n: number): string {
 
 .energy-fill { background: #ffcc00; }
 .mana-fill { background: #44aaff; }
+.metal-fill { background: #d8a878; }
 
 .resource-flows {
   display: flex;

@@ -4,6 +4,7 @@ export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
 export const SOLAR_BUILDING_VISUAL_HEIGHT = 52;
 export const WIND_BUILDING_VISUAL_HEIGHT = 250;
 export const FACTORY_BASE_VISUAL_HEIGHT = 30;
+export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 84;
 
 function factoryVisualTopAboveGround(width: number, depth: number): number {
   const minDim = Math.min(width, depth);
@@ -30,6 +31,8 @@ export function getBuildingVisualTopAboveGround(entity: Entity): number {
       return WIND_BUILDING_VISUAL_HEIGHT;
     case 'factory':
       return factoryVisualTopAboveGround(width, depth);
+    case 'extractor':
+      return EXTRACTOR_BUILDING_VISUAL_HEIGHT;
     default:
       return entity.building?.depth ?? DEFAULT_BUILDING_VISUAL_HEIGHT;
   }

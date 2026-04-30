@@ -48,7 +48,8 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt } from '../sim/Terrain';
+import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones } from '../sim/Terrain';
+import { generateMetalDeposits } from '../../metalDepositConfig';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -192,9 +193,20 @@ export class GameServer {
     // downstream consumer reads the same surface.
     setTerrainTeamCount(this.playerIds.length);
 
+    // Metal deposits — same set across all clients (deterministic from
+    // map size + player count). Push their flat zones (with per-ring
+    // height) to the heightmap BEFORE the physics ground lookup or any
+    // sim/render code samples terrain, so every consumer sees the
+    // raised pads on first read.
+    const deposits = generateMetalDeposits(mapWidth, mapHeight, this.playerIds.length);
+    setMetalDepositFlatZones(
+      deposits.map((d) => ({ x: d.x, y: d.y, flatRadius: d.flatRadius, height: d.height })),
+    );
+
     // The physics engine is now fully 3D — same module for every path.
     this.physics = physics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     this.world = new WorldState(42, mapWidth, mapHeight);
+    this.world.metalDeposits = deposits;
     // Wire the heightmap into physics so ground contacts settle units
     // on top of their terrain cube tile AND project their velocity
     // onto the slope tangent each tick — keeps units glued to the

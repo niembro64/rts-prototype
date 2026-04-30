@@ -114,7 +114,7 @@ export type MountPoint = {
 };
 
 export type BuildingStatEntry = {
-  energyCost: number;
+  resourceCost: number;
   hp: number;
 };
 

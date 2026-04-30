@@ -16,6 +16,7 @@
 // fail, not to gate the command itself.
 
 import type { Entity, BuildingType } from '../../sim/types';
+import type { MetalDeposit } from '../../../metalDepositConfig';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
 import { isWaterAt } from '../../sim/Terrain';
@@ -24,7 +25,12 @@ import { isWaterAt } from '../../sim/Terrain';
  *  at (centerX, centerY) would fit in the map and not overlap any
  *  existing building. `centerX/Y` should already be snapped (via
  *  getSnappedBuildPosition); passing raw mouse coords is fine but the
- *  result will be noisier at cell boundaries. */
+ *  result will be noisier at cell boundaries.
+ *
+ *  Extractors additionally require a metal deposit at the candidate
+ *  position that isn't already occupied by another extractor. Pass
+ *  the deposit list (deterministic per map) so this check matches the
+ *  server-side validation in construction.startBuilding. */
 export function canPlaceBuildingAt(
   candidateType: BuildingType,
   centerX: number,
@@ -32,6 +38,7 @@ export function canPlaceBuildingAt(
   mapWidth: number,
   mapHeight: number,
   buildings: Entity[],
+  metalDeposits: ReadonlyArray<MetalDeposit> = [],
 ): boolean {
   const config = getBuildingConfig(candidateType);
   const w = config.gridWidth * GRID_CELL_SIZE;
@@ -75,6 +82,25 @@ export function canPlaceBuildingAt(
     if (candRight <= bLeft || candLeft >= bRight) continue;
     if (candBottom <= bTop || candTop >= bBottom) continue;
     return false;
+  }
+
+  // Extractor-specific: must sit on an unclaimed deposit. Server runs
+  // the same check in construction.startBuilding, so this stays an
+  // accurate preview gate.
+  if (candidateType === 'extractor') {
+    let depositId = -1;
+    for (const d of metalDeposits) {
+      const dx = centerX - d.x;
+      const dy = centerY - d.y;
+      if (dx * dx + dy * dy <= d.flatRadius * d.flatRadius) {
+        depositId = d.id;
+        break;
+      }
+    }
+    if (depositId < 0) return false;
+    for (const b of buildings) {
+      if (b.buildingType === 'extractor' && b.metalDepositId === depositId) return false;
+    }
   }
 
   return true;

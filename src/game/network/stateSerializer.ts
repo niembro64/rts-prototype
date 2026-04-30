@@ -663,6 +663,11 @@ export function serializeGameState(
           income: { base: eco.mana.income.base, territory: eco.mana.income.territory },
           expenditure: eco.mana.expenditure,
         },
+        metal: {
+          stockpile: { curr: eco.metal.stockpile.curr, max: eco.metal.stockpile.max },
+          income: { base: eco.metal.income.base, extraction: eco.metal.income.extraction },
+          expenditure: eco.metal.expenditure,
+        },
       };
     }
   }

@@ -24,8 +24,7 @@ function cloneStats(s: NetworkServerSnapshotUnitTypeStats): NetworkServerSnapsho
     units: {
       produced: s.units.produced,
       lost: s.units.lost,
-      energyCost: s.units.energyCost,
-      manaCost: s.units.manaCost,
+      resourceCost: s.units.resourceCost,
     },
   };
 }
@@ -52,6 +51,11 @@ function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapsh
       stockpile: { curr: e.mana.stockpile.curr, max: e.mana.stockpile.max },
       income: { base: e.mana.income.base, territory: e.mana.income.territory },
       expenditure: e.mana.expenditure,
+    },
+    metal: {
+      stockpile: { curr: e.metal.stockpile.curr, max: e.metal.stockpile.max },
+      income: { base: e.metal.income.base, extraction: e.metal.income.extraction },
+      expenditure: e.metal.expenditure,
     },
   };
 }

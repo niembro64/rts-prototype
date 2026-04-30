@@ -60,7 +60,6 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
 export function getUnitDefinition(unitId: string) {
   const bp = UNIT_BLUEPRINTS[unitId];
   if (!bp) return undefined;
-  // Return a shim that looks enough like the old UnitDefinition
   return {
     id: bp.id as UnitType,
     name: bp.name,
@@ -68,7 +67,7 @@ export function getUnitDefinition(unitId: string) {
     hp: bp.hp,
     moveSpeed: bp.moveSpeed,
     unitRadiusCollider: { ...bp.unitRadiusCollider },
-    energyCost: bp.energyCost,
+    resourceCost: bp.resourceCost,
     locomotion: bp.locomotion.type as LocomotionType,
     legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,
   };
@@ -82,7 +81,7 @@ export function getAllUnitDefinitions() {
     hp: bp.hp,
     moveSpeed: bp.moveSpeed,
     unitRadiusCollider: { ...bp.unitRadiusCollider },
-    energyCost: bp.energyCost,
+    resourceCost: bp.resourceCost,
     locomotion: bp.locomotion.type as LocomotionType,
     legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,
   }));

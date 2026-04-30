@@ -184,8 +184,7 @@ function createBuildingFromNetwork(
     buildable: {
       buildProgress: b?.build.progress ?? 1,
       isComplete: b?.build.complete ?? true,
-      energyCost: 100,
-      manaCost: 0,
+      resourceCost: 100,
       isGhost: false,
     },
     buildingType: b?.type as BuildingType | undefined,
@@ -204,8 +203,7 @@ function createBuildingFromNetwork(
     entity.factory = {
       buildQueue: f.queue,
       currentBuildProgress: f.progress ?? 0,
-      currentBuildCost: 0,
-      currentBuildManaCost: 0,
+      currentBuildResourceCost: 0,
       rallyX: rally?.pos.x ?? x,
       rallyY: rally?.pos.y ?? y + 100,
       isProducing: f.producing ?? false,

@@ -356,8 +356,7 @@ export type UnitBlueprint = {
   moveSpeed: number;
   unitRadiusCollider: { scale: number; shot: number; push: number };
   mass: number;
-  energyCost: number;
-  manaCost: number;
+  resourceCost: number;
   turrets: TurretMount[];
   chassisMounts: MountPoint[];
   /** 3D chassis/body shape in unit-radius-1 space. */

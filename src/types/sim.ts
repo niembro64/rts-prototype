@@ -86,7 +86,7 @@ export type Waypoint = {
 export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair' | 'attack';
 
 // Building type identifiers
-export type BuildingType = 'solar' | 'wind' | 'factory';
+export type BuildingType = 'solar' | 'wind' | 'factory' | 'extractor';
 
 // Unified action for any unit command. Altitude (`z`) carries the
 // actual 3D ground point the user clicked (from CursorGround.pickSim
@@ -432,7 +432,9 @@ export type Projectile = {
   lastSentVelZ?: number;
 };
 
-// Economy state per player
+// Economy state per player. `resourceCost` on a buildable is the
+// SAME number for energy + mana + metal — every build draws from
+// all three pools in lockstep, gated by whichever is most scarce.
 export type EconomyState = {
   stockpile: { curr: number; max: number };
   income: { base: number; production: number };
@@ -442,13 +444,19 @@ export type EconomyState = {
     income: { base: number; territory: number };
     expenditure: number;
   };
+  metal: {
+    stockpile: { curr: number; max: number };
+    income: { base: number; extraction: number };
+    expenditure: number;
+  };
 };
 
-// Buildable component
+// Buildable component. `resourceCost` is the unified cost — the
+// build pulls this number of energy AND this number of mana AND this
+// number of metal to complete. See EconomyState above.
 export type Buildable = {
   buildProgress: number;
-  energyCost: number;
-  manaCost: number;
+  resourceCost: number;
   isComplete: boolean;
   isGhost: boolean;
 };
@@ -472,9 +480,9 @@ export type BuildingConfig = {
   gridHeight: number;
   gridDepth: number;
   hp: number;
-  energyCost: number;
-  manaCost: number;
+  resourceCost: number;
   energyProduction?: number;
+  metalProduction?: number;
   maxEnergyUseRate?: number;
 };
 
@@ -482,7 +490,7 @@ export type BuildingConfig = {
 export type UnitBuildConfig = {
   unitId: string;
   name: string;
-  energyCost: number;
+  resourceCost: number;
   unitRadiusCollider: { scale: number; shot: number; push: number };
   moveSpeed: number;
   mass: number;
@@ -491,12 +499,13 @@ export type UnitBuildConfig = {
   fireRange?: number;
 };
 
-// Factory component
+// Factory component. `currentBuildResourceCost` is the unified cost
+// of the unit currently in production (same number drawn from each
+// of the three pools).
 export type Factory = {
   buildQueue: string[];
   currentBuildProgress: number;
-  currentBuildCost: number;
-  currentBuildManaCost: number;
+  currentBuildResourceCost: number;
   rallyX: number;
   rallyY: number;
   isProducing: boolean;
@@ -535,4 +544,7 @@ export type Entity = {
   commander?: Commander;
   dgunProjectile?: DGunProjectile;
   buildingType?: BuildingType;
+  /** For extractors only — the id of the metal deposit this building
+   *  occupies. Used to free the deposit on destruction. */
+  metalDepositId?: number;
 };

@@ -27,7 +27,7 @@ import {
 
 /** Short building types we have art for. Unknown types fall back to a
  *  plain primary-color slab (same as before). */
-export type BuildingShapeType = 'solar' | 'wind' | 'factory' | 'unknown';
+export type BuildingShapeType = 'solar' | 'wind' | 'factory' | 'extractor' | 'unknown';
 
 export type BuildingDetailRole =
   | 'static'
@@ -237,9 +237,41 @@ export function buildBuildingShape(
       return buildWind(width, depth, primaryMat);
     case 'factory':
       return buildFactory(width, depth, primaryMat);
-    default:
+    case 'extractor':
+      return buildExtractor(primaryMat);
+    case 'unknown':
       return buildUnknown(primaryMat);
+    default:
+      throw new Error(`Unhandled building shape type: ${type as string}`);
   }
+}
+
+/** Metal extractor: hex pump base with a tall central shaft and a
+ *  small dome on top — reads as "industrial drill" at any distance. */
+function buildExtractor(primaryMat: THREE.Material): BuildingShape {
+  const baseHeight = 24;
+  const base = new THREE.Mesh(hexCylinderGeom, primaryMat);
+  base.scale.set(1, baseHeight, 1);
+  base.position.y = baseHeight / 2;
+
+  const shaftHeight = 60;
+  const shaftRadius = 0.18;
+  const shaft = new THREE.Mesh(cylinderGeom, primaryMat);
+  shaft.scale.set(shaftRadius, shaftHeight, shaftRadius);
+  shaft.position.y = baseHeight + shaftHeight / 2;
+
+  const cap = new THREE.Mesh(factorySphereGeom, primaryMat);
+  cap.scale.setScalar(shaftRadius * 1.6);
+  cap.position.y = baseHeight + shaftHeight;
+
+  return {
+    primary: base,
+    details: [
+      { mesh: shaft, minTier: 'low', role: 'static' },
+      { mesh: cap, minTier: 'low', role: 'static' },
+    ],
+    height: baseHeight + shaftHeight,
+  };
 }
 
 // ── Per-type builders ──────────────────────────────────────────────────

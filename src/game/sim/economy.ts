@@ -6,6 +6,9 @@ import {
   STARTING_MANA,
   MAX_MANA,
   BASE_MANA_PER_SECOND,
+  STARTING_METAL,
+  MAX_METAL,
+  BASE_METAL_PER_SECOND,
 } from '../../config';
 import { getUnitBlueprint } from './blueprints';
 
@@ -17,6 +20,9 @@ export const ECONOMY_CONSTANTS = {
   maxMana: MAX_MANA,
   baseManaIncome: BASE_MANA_PER_SECOND,
   startingMana: STARTING_MANA,
+  maxMetal: MAX_METAL,
+  baseMetalIncome: BASE_METAL_PER_SECOND,
+  startingMetal: STARTING_METAL,
   dgunCost: getUnitBlueprint('commander').dgun!.energyCost,
 };
 
@@ -29,6 +35,11 @@ export function createEconomyState(): EconomyState {
     mana: {
       stockpile: { curr: ECONOMY_CONSTANTS.startingMana, max: ECONOMY_CONSTANTS.maxMana },
       income: { base: ECONOMY_CONSTANTS.baseManaIncome, territory: 0 },
+      expenditure: 0,
+    },
+    metal: {
+      stockpile: { curr: ECONOMY_CONSTANTS.startingMetal, max: ECONOMY_CONSTANTS.maxMetal },
+      income: { base: ECONOMY_CONSTANTS.baseMetalIncome, extraction: 0 },
       expenditure: 0,
     },
   };
@@ -87,6 +98,18 @@ export class EconomyManager {
     economy.mana.income.territory = amount;
   }
 
+  // Add to metal extraction income (when an extractor completes)
+  addMetalExtraction(playerId: PlayerId, amount: number): void {
+    const economy = this.getOrCreateEconomy(playerId);
+    economy.metal.income.extraction += amount;
+  }
+
+  // Remove from metal extraction income (when an extractor is destroyed)
+  removeMetalExtraction(playerId: PlayerId, amount: number): void {
+    const economy = this.getOrCreateEconomy(playerId);
+    economy.metal.income.extraction = Math.max(0, economy.metal.income.extraction - amount);
+  }
+
   // Get total energy income (base + production)
   getTotalIncome(playerId: PlayerId): number {
     const economy = this.getOrCreateEconomy(playerId);
@@ -107,10 +130,14 @@ export class EconomyManager {
     return actualSpend;
   }
 
-  // Check if player can afford energy + mana
-  canAfford(playerId: PlayerId, energyCost: number, manaCost: number = 0): boolean {
+  // Check if player can afford a unified resource cost (energy + mana + metal each).
+  canAfford(playerId: PlayerId, resourceCost: number): boolean {
     const economy = this.getOrCreateEconomy(playerId);
-    return economy.stockpile.curr >= energyCost && economy.mana.stockpile.curr >= manaCost;
+    return (
+      economy.stockpile.curr >= resourceCost &&
+      economy.mana.stockpile.curr >= resourceCost &&
+      economy.metal.stockpile.curr >= resourceCost
+    );
   }
 
   // Spend energy instantly (for things like D-gun)
@@ -131,21 +158,36 @@ export class EconomyManager {
     return actualSpend;
   }
 
+  // Try to spend metal (returns amount actually spent)
+  trySpendMetal(playerId: PlayerId, amount: number): number {
+    const economy = this.getOrCreateEconomy(playerId);
+    const actualSpend = Math.min(amount, economy.metal.stockpile.curr);
+    economy.metal.stockpile.curr -= actualSpend;
+    return actualSpend;
+  }
+
   // Record mana expenditure (called by distribution system)
   recordManaExpenditure(playerId: PlayerId, amount: number): void {
     const economy = this.getOrCreateEconomy(playerId);
     economy.mana.expenditure += amount;
   }
 
-  // Update economy each tick (energy + mana income).
+  // Record metal expenditure (called by distribution system)
+  recordMetalExpenditure(playerId: PlayerId, amount: number): void {
+    const economy = this.getOrCreateEconomy(playerId);
+    economy.metal.expenditure += amount;
+  }
+
+  // Update economy each tick (energy + mana + metal income).
   //
   // `hasCommander(playerId)` gates the BASE mana income: a team only
   // earns its passive mana drip while it still has a living commander
   // on the field. Lose your commander → mana production stops (you
-  // can still spend whatever's stockpiled). Energy stays unconditional
-  // so a commander-less team can at least keep paying for solar
-  // panels and existing builds. Predicate is optional — when omitted,
-  // both incomes credit unconditionally (single-player sandbox / tests).
+  // can still spend whatever's stockpiled). Energy and metal stay
+  // unconditional so a commander-less team can keep paying for solar
+  // panels, existing builds, and harvesting deposits. Predicate is
+  // optional — when omitted, both incomes credit unconditionally
+  // (single-player sandbox / tests).
   update(dtMs: number, hasCommander?: (playerId: PlayerId) => boolean): void {
     const dtSec = dtMs / 1000;
 
@@ -169,6 +211,15 @@ export class EconomyManager {
         economy.mana.stockpile.max,
       );
       economy.mana.expenditure = 0;
+
+      // Metal income — base + extraction (from completed extractors
+      // sitting on deposits). Unconditional, like energy.
+      const totalMetal = economy.metal.income.base + economy.metal.income.extraction;
+      economy.metal.stockpile.curr = Math.min(
+        economy.metal.stockpile.curr + totalMetal * dtSec,
+        economy.metal.stockpile.max,
+      );
+      economy.metal.expenditure = 0;
     }
   }
 

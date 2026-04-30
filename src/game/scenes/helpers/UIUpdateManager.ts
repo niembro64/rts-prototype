@@ -119,6 +119,7 @@ export function buildEconomyInfo(
   const solarCount = playerBuildings.filter(b => b.buildingType === 'solar').length;
   const windCount = playerBuildings.filter(b => b.buildingType === 'wind').length;
   const factoryCount = playerBuildings.filter(b => b.buildingType === 'factory').length;
+  const extractorCount = playerBuildings.filter(b => b.buildingType === 'extractor').length;
 
   // Count units for this player
   const unitCount = entitySource.getUnitsByPlayer(playerId).length;
@@ -128,6 +129,9 @@ export function buildEconomyInfo(
 
   const manaTotal = economy.mana.income.base + economy.mana.income.territory;
   const manaNetFlow = manaTotal - economy.mana.expenditure;
+
+  const metalTotal = economy.metal.income.base + economy.metal.income.extraction;
+  const metalNetFlow = metalTotal - economy.metal.expenditure;
 
   return {
     stockpile: { curr: economy.stockpile.curr, max: economy.stockpile.max },
@@ -140,8 +144,14 @@ export function buildEconomyInfo(
       expenditure: economy.mana.expenditure,
       netFlow: manaNetFlow,
     },
+    metal: {
+      stockpile: { curr: economy.metal.stockpile.curr, max: economy.metal.stockpile.max },
+      income: { base: economy.metal.income.base, extraction: economy.metal.income.extraction, total: metalTotal },
+      expenditure: economy.metal.expenditure,
+      netFlow: metalNetFlow,
+    },
     units: { count: unitCount, cap: unitCap },
-    buildings: { solar: solarCount, wind: windCount, factory: factoryCount },
+    buildings: { solar: solarCount, wind: windCount, factory: factoryCount, extractor: extractorCount },
   };
 }
 

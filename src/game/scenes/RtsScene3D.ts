@@ -25,6 +25,8 @@ import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
+import { MetalDepositRenderer3D } from '../render3d/MetalDepositRenderer3D';
+import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
@@ -56,6 +58,7 @@ import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
 import {
   getTerrainMeshHeight,
   setTerrainTeamCount,
+  setMetalDepositFlatZones,
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
 } from '../sim/Terrain';
@@ -173,6 +176,7 @@ export class RtsScene3D {
   private beamRenderer!: BeamRenderer3D;
   private forceFieldRenderer!: ForceFieldRenderer3D;
   private captureTileRenderer!: CaptureTileRenderer3D;
+  private metalDeposits: MetalDeposit[] = [];
   private waterRenderer!: WaterRenderer3D;
   private explosionRenderer!: Explosion3D;
   private debrisRenderer!: Debris3D;
@@ -388,6 +392,18 @@ export class RtsScene3D {
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;
     this.backgroundMode = config.backgroundMode;
+
+    // Metal deposits are deterministic from map size + player count,
+    // so the client re-derives the same list and pushes flat zones to
+    // its local Terrain module. The server already does this in its
+    // own GameServer constructor; we mirror it here so the client's
+    // baked terrain mesh matches the server's heightmap. Captured for
+    // rendering further down so the marker pass uses the same list.
+    const metalDeposits = generateMetalDeposits(this.mapWidth, this.mapHeight, this.playerIds.length);
+    setMetalDepositFlatZones(
+      metalDeposits.map((d) => ({ x: d.x, y: d.y, flatRadius: d.flatRadius, height: d.height })),
+    );
+    this.metalDeposits = metalDeposits;
     this.lobbyPreview = config.lobbyPreview ?? false;
     this.gameConnection = config.gameConnection;
     // ClientViewState is owned by GameCanvas so its state (units, buildings,
@@ -559,6 +575,7 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
     );
+    new MetalDepositRenderer3D(this.threeApp.world, this.metalDeposits);
     // Translucent water plane sits at WATER_LEVEL (the halfway point
     // between the tile-cube floor and the building-zero ground), so
     // any terrain that dips below WATER_LEVEL reads as submerged
@@ -649,7 +666,7 @@ export class RtsScene3D {
     // drive preview updates on mouse-move-in-build-mode (hidden on
     // mode exit via the onBuildModeChange callback below).
     this.inputManager.setBuildGhost(this.buildGhostRenderer);
-    this.inputManager.setMapBounds(this.mapWidth, this.mapHeight);
+    this.inputManager.setMapBounds(this.mapWidth, this.mapHeight, this.playerIds.length);
     // Keep scene's waypointMode in lockstep with the InputManager so the
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.
     this.inputManager.onWaypointModeChange = (mode) => {
