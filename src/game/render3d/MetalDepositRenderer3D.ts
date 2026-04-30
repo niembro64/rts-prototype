@@ -1,8 +1,8 @@
 // MetalDepositRenderer3D — simple ground-disc markers at each metal
-// deposit. The terrain has been pre-flattened to z=0 inside each
-// deposit's flatRadius (see Terrain.setMetalDepositFlatZones), so the
-// disc sits cleanly on a level pad. One static InstancedMesh: one
-// instance per deposit, never updated after init.
+// deposit. The terrain has been pre-flattened to each deposit's
+// configured height inside flatRadius (see Terrain.setMetalDepositFlatZones),
+// so the disc sits cleanly on a level pad. One static InstancedMesh:
+// one instance per deposit, never updated after init.
 //
 // Visual is intentionally restrained — a coppery emissive disc with a
 // thin amber rim — so it reads as "claim this spot" without competing

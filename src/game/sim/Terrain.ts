@@ -207,22 +207,15 @@ export function getTerrainTeamCount(): number {
 // height=0 stays at ground level; positive values raise the pad above
 // natural terrain (a knoll); negative cuts a pit. Outside the zone's
 // `flatRadius` the natural terrain (ripple + ridge) takes back over;
-// between `flatRadius` and `flatRadius + DEPOSIT_FALLOFF` the result
+// between `flatRadius` and `flatRadius + blendRadius` the result
 // blends smoothly between the deposit height and natural so there's
 // no visible cliff.
 //
 // Set once at world init via `setMetalDepositFlatZones`; reads on
 // the heightmap hot path. Empty list (default) = no flattening.
 
-type FlatZone = { x: number; y: number; flatRadius: number; height: number };
+type FlatZone = { x: number; y: number; flatRadius: number; height: number; blendRadius: number };
 let depositFlatZones: ReadonlyArray<FlatZone> = [];
-
-/** Width (world units) of the smooth blend OUTSIDE each deposit's
- *  flatRadius. Inside flatRadius the terrain is exactly the deposit's
- *  height; from there to flatRadius+DEPOSIT_FALLOFF it eases back to
- *  the natural height. Tuned to ~half a grid cell so the transition
- *  is visible-but-smooth without a visible cliff. */
-const DEPOSIT_FALLOFF = 25;
 
 /** Install the flat zones for the current map. Call once after
  *  metal deposits are generated and BEFORE the renderer bakes its
@@ -248,8 +241,9 @@ function depositOverride(x: number, y: number): { weight: number; height: number
     const dy = y - z.y;
     const d = Math.sqrt(dx * dx + dy * dy);
     if (d <= z.flatRadius) return { weight: 0, height: z.height };
-    if (d < z.flatRadius + DEPOSIT_FALLOFF) {
-      const t = (d - z.flatRadius) / DEPOSIT_FALLOFF;
+    const blendRadius = Math.max(0, z.blendRadius);
+    if (blendRadius > 0 && d < z.flatRadius + blendRadius) {
+      const t = (d - z.flatRadius) / blendRadius;
       const w = (1 - Math.cos(t * Math.PI)) * 0.5;
       if (w < minWeight) {
         minWeight = w;

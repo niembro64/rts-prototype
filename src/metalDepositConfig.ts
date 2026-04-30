@@ -11,7 +11,8 @@
 // flat pad is forced to. height=0 stays at ground level; positive
 // values raise the pad above natural terrain; negative values cut a
 // pit. Around each pad the terrain blends smoothly from the deposit
-// height back to natural over `DEPOSIT_FALLOFF` (Terrain.ts).
+// height back to natural over `terrainBlendRadius` unless a ring
+// overrides it with `blendRadius`.
 //
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
@@ -31,11 +32,15 @@ export type DepositRing = {
   rotationOffset: number;
   /** World-unit radius around each deposit where terrain is forced to
    *  the ring's `height`. Tune up if the extractor's grid footprint
-   *  doesn't clear the falloff edge. */
+   *  doesn't clear the blend edge. */
   flatRadius: number;
   /** Z elevation (sim units) of the flat pad. 0 = ground level; positive
    *  raises the deposit above natural terrain. */
   height: number;
+  /** Optional world-unit blend width outside `flatRadius`. Defaults to
+   *  METAL_DEPOSIT_CONFIG.terrainBlendRadius. Larger values make the
+   *  deposit pad integrate more gradually with surrounding terrain. */
+  blendRadius?: number;
 };
 
 export const METAL_DEPOSIT_CONFIG = {
@@ -48,20 +53,26 @@ export const METAL_DEPOSIT_CONFIG = {
    *  without dominating the terrain. */
   markerRadius: 50,
 
+  /** World-unit width outside each deposit's flat pad where terrain
+   *  eases back to the natural heightmap. Keep this larger than a grid
+   *  cell when deposits sit far above/below the surrounding land. */
+  terrainBlendRadius: 180,
+
   /** Concentric rings of deposits. Order doesn't matter — the renderer
    *  and placement validator iterate over all of them. */
   rings: [
     // Center deposit — single contested spot at the map's heart, on
     // ground level so the central arena stays open to fights.
-    { radiusFraction: 0.1, countPerPlayer: 1, rotationOffset: 0, flatRadius: 80, height: 0 },
+    { radiusFraction: 0.15, countPerPlayer: 1, rotationOffset: 0, flatRadius: 80, height: 0 },
 
     // Inner ring — 1 deposit per player, sitting on a low rise so it
     // reads as a defensible knoll.
-    { radiusFraction: 0.2, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 60 },
+    { radiusFraction: 0.3, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 0 },
+    { radiusFraction: 0.5, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 0 },
 
     // Outer ring — 2 deposits per player, slightly raised. Closer to
     // bases and easier to defend.
-    { radiusFraction: 0.3, countPerPlayer: 2, rotationOffset: 0, flatRadius: 60, height: 30 },
+    { radiusFraction: 0.8, countPerPlayer: 2, rotationOffset: 0, flatRadius: 60, height: -30 },
   ] as DepositRing[],
 };
 
@@ -76,6 +87,9 @@ export type MetalDeposit = {
   flatRadius: number;
   /** Z elevation (sim units) of this deposit's flat pad. */
   height: number;
+  /** World-unit blend width outside `flatRadius` before natural terrain
+   *  fully takes over. */
+  blendRadius: number;
 };
 
 /**
@@ -99,10 +113,11 @@ export function generateMetalDeposits(
 
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const ringRadius = ring.radiusFraction * halfExtent;
+    const blendRadius = ring.blendRadius ?? METAL_DEPOSIT_CONFIG.terrainBlendRadius;
 
     // Center: one deposit, regardless of countPerPlayer.
     if (ring.radiusFraction <= 1e-6) {
-      deposits.push({ id: id++, x: cx, y: cy, flatRadius: ring.flatRadius, height: ring.height });
+      deposits.push({ id: id++, x: cx, y: cy, flatRadius: ring.flatRadius, height: ring.height, blendRadius });
       continue;
     }
 
@@ -116,7 +131,7 @@ export function generateMetalDeposits(
         const angle = sliceCenter + angleInSlice + ring.rotationOffset;
         const x = cx + Math.cos(angle) * ringRadius;
         const y = cy + Math.sin(angle) * ringRadius;
-        deposits.push({ id: id++, x, y, flatRadius: ring.flatRadius, height: ring.height });
+        deposits.push({ id: id++, x, y, flatRadius: ring.flatRadius, height: ring.height, blendRadius });
       }
     }
   }

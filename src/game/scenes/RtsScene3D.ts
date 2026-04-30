@@ -401,7 +401,13 @@ export class RtsScene3D {
     // rendering further down so the marker pass uses the same list.
     const metalDeposits = generateMetalDeposits(this.mapWidth, this.mapHeight, this.playerIds.length);
     setMetalDepositFlatZones(
-      metalDeposits.map((d) => ({ x: d.x, y: d.y, flatRadius: d.flatRadius, height: d.height })),
+      metalDeposits.map((d) => ({
+        x: d.x,
+        y: d.y,
+        flatRadius: d.flatRadius,
+        height: d.height,
+        blendRadius: d.blendRadius,
+      })),
     );
     this.metalDeposits = metalDeposits;
     this.lobbyPreview = config.lobbyPreview ?? false;

@@ -200,7 +200,13 @@ export class GameServer {
     // raised pads on first read.
     const deposits = generateMetalDeposits(mapWidth, mapHeight, this.playerIds.length);
     setMetalDepositFlatZones(
-      deposits.map((d) => ({ x: d.x, y: d.y, flatRadius: d.flatRadius, height: d.height })),
+      deposits.map((d) => ({
+        x: d.x,
+        y: d.y,
+        flatRadius: d.flatRadius,
+        height: d.height,
+        blendRadius: d.blendRadius,
+      })),
     );
 
     // The physics engine is now fully 3D — same module for every path.
