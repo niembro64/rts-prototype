@@ -7,17 +7,19 @@
 // across it. So a 6-player map with `countPerPlayer: 2` yields 12
 // deposits in that ring; the same ring on a 4-player map yields 8.
 //
-// Each ring also carries a `height`: the z elevation the deposit's
-// flat pad is forced to. height=0 stays at ground level; positive
-// values raise the pad above natural terrain; negative values cut a
-// pit. Around each pad the terrain blends smoothly from the deposit
-// height back to natural over `terrainBlendRadius` unless a ring
-// overrides it with `blendRadius`.
+// Each ring also carries a `height`: the magnitude of the z elevation
+// the deposit's flat pad is forced to. The sign follows the same
+// CENTER terrain convention: LAKE cuts below ground, MOUNTAIN rises
+// above ground, FLAT suppresses the height. Around each pad the
+// terrain blends smoothly from the signed deposit height back to
+// natural over `terrainBlendRadius` unless a ring overrides it with
+// `blendRadius`.
 //
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
 
 import { getPlayerBaseAngle } from './game/sim/spawn';
+import { terrainShapeSign, type TerrainShape } from './types/terrain';
 
 export type DepositRing = {
   /** Distance from map center as a fraction of (mapMinExtent/2 - margin).
@@ -34,8 +36,8 @@ export type DepositRing = {
    *  the ring's `height`. Tune up if the extractor's grid footprint
    *  doesn't clear the blend edge. */
   flatRadius: number;
-  /** Z elevation (sim units) of the flat pad. 0 = ground level; positive
-   *  raises the deposit above natural terrain. */
+  /** Z elevation magnitude (sim units) of the flat pad. The sign is
+   *  derived from the selected CENTER terrain shape at generation time. */
   height: number;
   /** Optional world-unit blend width outside `flatRadius`. Defaults to
    *  METAL_DEPOSIT_CONFIG.terrainBlendRadius. Larger values make the
@@ -70,9 +72,9 @@ export const METAL_DEPOSIT_CONFIG = {
     { radiusFraction: 0.3, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 0 },
     { radiusFraction: 0.5, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 0 },
 
-    // Outer ring — 2 deposits per player, slightly raised. Closer to
-    // bases and easier to defend.
-    { radiusFraction: 0.8, countPerPlayer: 2, rotationOffset: 0, flatRadius: 60, height: -30 },
+    // Outer ring — 2 deposits per player. Magnitude is 30; LAKE makes
+    // shallow pits, MOUNTAIN makes low rises, FLAT leaves them level.
+    { radiusFraction: 0.8, countPerPlayer: 2, rotationOffset: 0, flatRadius: 60, height: 30 },
   ] as DepositRing[],
 };
 
@@ -85,7 +87,7 @@ export type MetalDeposit = {
   /** Radius around the center where terrain is flat at `height` and
    *  an extractor may be placed. Copied from the ring at gen time. */
   flatRadius: number;
-  /** Z elevation (sim units) of this deposit's flat pad. */
+  /** Signed z elevation (sim units) of this deposit's flat pad. */
   height: number;
   /** World-unit blend width outside `flatRadius` before natural terrain
    *  fully takes over. */
@@ -94,14 +96,16 @@ export type MetalDeposit = {
 
 /**
  * Compute the deterministic deposit list for a map of given size and
- * player count. Same `(mapWidth, mapHeight, playerCount)` always
- * produces the same deposits in the same order — fine to call
- * independently on host and clients without networking the list.
+ * player count. Same `(mapWidth, mapHeight, playerCount,
+ * terrainCenterShape)` always produces the same deposits in the same
+ * order — fine to call independently on host and clients without
+ * networking the list.
  */
 export function generateMetalDeposits(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
+  terrainCenterShape: TerrainShape = 'lake',
 ): MetalDeposit[] {
   const deposits: MetalDeposit[] = [];
   const halfExtent = Math.min(mapWidth, mapHeight) / 2 - METAL_DEPOSIT_CONFIG.edgeMarginPx;
@@ -114,10 +118,11 @@ export function generateMetalDeposits(
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const ringRadius = ring.radiusFraction * halfExtent;
     const blendRadius = ring.blendRadius ?? METAL_DEPOSIT_CONFIG.terrainBlendRadius;
+    const height = Math.abs(ring.height) * terrainShapeSign(terrainCenterShape);
 
     // Center: one deposit, regardless of countPerPlayer.
     if (ring.radiusFraction <= 1e-6) {
-      deposits.push({ id: id++, x: cx, y: cy, flatRadius: ring.flatRadius, height: ring.height, blendRadius });
+      deposits.push({ id: id++, x: cx, y: cy, flatRadius: ring.flatRadius, height, blendRadius });
       continue;
     }
 
@@ -131,7 +136,7 @@ export function generateMetalDeposits(
         const angle = sliceCenter + angleInSlice + ring.rotationOffset;
         const x = cx + Math.cos(angle) * ringRadius;
         const y = cy + Math.sin(angle) * ringRadius;
-        deposits.push({ id: id++, x, y, flatRadius: ring.flatRadius, height: ring.height, blendRadius });
+        deposits.push({ id: id++, x, y, flatRadius: ring.flatRadius, height, blendRadius });
       }
     }
   }

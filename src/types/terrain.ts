@@ -8,3 +8,15 @@
  *    - 'flat'     → zero amplitude: that component is suppressed,
  *                   leaving featureless ground. */
 export type TerrainShape = 'lake' | 'mountain' | 'flat';
+
+/** Shared sign convention for terrain-shaped height features.
+ *  LAKE cuts below ground, MOUNTAIN rises above ground, FLAT removes
+ *  the feature. */
+export function terrainShapeSign(shape: TerrainShape): -1 | 0 | 1 {
+  switch (shape) {
+    case 'lake': return -1;
+    case 'mountain': return 1;
+    case 'flat': return 0;
+    default: throw new Error(`Unknown terrain shape: ${shape as string}`);
+  }
+}

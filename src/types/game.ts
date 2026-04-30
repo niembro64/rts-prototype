@@ -4,6 +4,7 @@ import type { PlayerId } from './sim';
 import type { Command } from './commands';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
+import type { TerrainShape } from './terrain';
 
 export type GameConfig = {
   parent: HTMLElement;
@@ -18,6 +19,9 @@ export type GameConfig = {
   clientViewState: import('../game/network/ClientViewState').ClientViewState;
   mapWidth: number;
   mapHeight: number;
+  /** CENTER terrain shape used for terrain-derived features such as
+   *  metal-deposit pad heights. */
+  terrainCenter?: TerrainShape;
   backgroundMode?: boolean;
   /** Lobby-preview rendering: skip the usual demo zoom + base spawn
    *  so the small pane in the GAME LOBBY shows commanders only
@@ -62,6 +66,8 @@ export type GameConnection = {
 
 export type GameServerConfig = {
   playerIds: PlayerId[];
+  /** CENTER terrain shape selected by the host/lobby. */
+  terrainCenter?: TerrainShape;
   backgroundMode?: boolean;
   aiPlayerIds?: PlayerId[];
   maxSnapshotsPerSec?: number;

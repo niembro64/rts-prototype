@@ -67,6 +67,7 @@ import { Waypoint3D } from '../render3d/Waypoint3D';
 import { SelectionLabel3D } from '../render3d/SelectionLabel3D';
 
 import type { GameConnection } from '../server/GameConnection';
+import type { TerrainShape } from '@/types/terrain';
 import type {
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
@@ -116,6 +117,7 @@ export type RtsScene3DConfig = {
   clientViewState: ClientViewState;
   mapWidth: number;
   mapHeight: number;
+  terrainCenter?: TerrainShape;
   backgroundMode: boolean;
   /** GAME LOBBY preview pane — uses the dedicated wider zoom and
    *  expects the GameServer to have spawned commanders only (no
@@ -231,6 +233,7 @@ export class RtsScene3D {
   private playerIds: PlayerId[];
   private mapWidth: number;
   private mapHeight: number;
+  private terrainCenter: TerrainShape;
   private backgroundMode: boolean;
   private lobbyPreview: boolean;
 
@@ -377,6 +380,7 @@ export class RtsScene3D {
     this.threeApp = threeApp;
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
+    this.terrainCenter = config.terrainCenter ?? 'lake';
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
     setPlayerCountForColors(this.playerIds.length);
@@ -399,7 +403,7 @@ export class RtsScene3D {
     // own GameServer constructor; we mirror it here so the client's
     // baked terrain mesh matches the server's heightmap. Captured for
     // rendering further down so the marker pass uses the same list.
-    const metalDeposits = generateMetalDeposits(this.mapWidth, this.mapHeight, this.playerIds.length);
+    const metalDeposits = generateMetalDeposits(this.mapWidth, this.mapHeight, this.playerIds.length, this.terrainCenter);
     setMetalDepositFlatZones(
       metalDeposits.map((d) => ({
         x: d.x,
@@ -672,7 +676,7 @@ export class RtsScene3D {
     // drive preview updates on mouse-move-in-build-mode (hidden on
     // mode exit via the onBuildModeChange callback below).
     this.inputManager.setBuildGhost(this.buildGhostRenderer);
-    this.inputManager.setMapBounds(this.mapWidth, this.mapHeight, this.playerIds.length);
+    this.inputManager.setMapBounds(this.mapWidth, this.mapHeight, this.playerIds.length, this.terrainCenter);
     // Keep scene's waypointMode in lockstep with the InputManager so the
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.
     this.inputManager.onWaypointModeChange = (mode) => {

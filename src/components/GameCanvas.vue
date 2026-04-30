@@ -1637,12 +1637,14 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
     // authoritative server or a remote client's renderer. The host
     // persisted this through lobbySettings, so clients must read the
     // same namespace before baking their terrain mesh.
-    setTerrainCenterShape(loadStoredTerrainCenter('real'));
-    setTerrainDividersShape(loadStoredTerrainDividers('real'));
+    const realTerrainCenter = loadStoredTerrainCenter('real');
+    const realTerrainDividers = loadStoredTerrainDividers('real');
+    setTerrainCenterShape(realTerrainCenter);
+    setTerrainDividersShape(realTerrainDividers);
 
     if (networkRole.value !== 'client') {
       // Create GameServer for host/offline (WASM physics)
-      currentServer = await GameServer.create({ playerIds, aiPlayerIds });
+      currentServer = await GameServer.create({ playerIds, aiPlayerIds, terrainCenter: realTerrainCenter });
 
       // If hosting, broadcast the authoritative real-battle snapshot
       // to every connected client. Keep this on the pre-lobby-info
@@ -1719,6 +1721,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       clientViewState,
       mapWidth: getMapSize(false).width,
       mapHeight: getMapSize(false).height,
+      terrainCenter: realTerrainCenter,
       backgroundMode: false,
     });
 

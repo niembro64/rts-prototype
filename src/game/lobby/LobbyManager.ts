@@ -84,8 +84,10 @@ export async function createBackgroundBattle(
   // renderer bakes its tile mesh once when the scene is created — both
   // must read the current shape, not the module's compile-time
   // default.
-  setTerrainCenterShape(loadStoredTerrainCenter(mode));
-  setTerrainDividersShape(loadStoredTerrainDividers(mode));
+  const terrainCenter = loadStoredTerrainCenter(mode);
+  const terrainDividers = loadStoredTerrainDividers(mode);
+  setTerrainCenterShape(terrainCenter);
+  setTerrainDividersShape(terrainDividers);
 
   // GAME LOBBY preview = a stripped-down background battle showing
   // only commanders. Passing `aiPlayerIds: []` flips GameServer's
@@ -119,6 +121,7 @@ export async function createBackgroundBattle(
   // reinforcement tick reconciles to their stored preference.
   const server = await GameServer.create({
     playerIds: demoPlayerIds,
+    terrainCenter,
     backgroundMode: true,
     initialAllowedTypes,
     initialMaxTotalUnits: loadStoredDemoCap(),
@@ -162,6 +165,7 @@ export async function createBackgroundBattle(
     clientViewState,
     mapWidth: getMapSize(true).width,
     mapHeight: getMapSize(true).height,
+    terrainCenter,
     backgroundMode: true,
     lobbyPreview: isLobbyPreview,
   });

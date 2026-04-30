@@ -24,6 +24,7 @@ import type { BuildGhost3D } from './BuildGhost3D';
 import type { CursorGround, SimGroundPoint } from './CursorGround';
 import type { CommandQueue } from '../sim/commands';
 import type { InputContext } from '@/types/input';
+import type { TerrainShape } from '@/types/terrain';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import {
   findClosestUnitToPoint,
@@ -219,10 +220,10 @@ export class Input3DManager {
   /** Scene hook — feeds the client-side placement validator so the
    *  build ghost turns red at the map edge or when overlapping an
    *  existing building. */
-  setMapBounds(width: number, height: number, playerCount: number): void {
+  setMapBounds(width: number, height: number, playerCount: number, terrainCenter: TerrainShape = 'lake'): void {
     this.mapWidth = width;
     this.mapHeight = height;
-    this.metalDeposits = generateMetalDeposits(width, height, playerCount);
+    this.metalDeposits = generateMetalDeposits(width, height, playerCount, terrainCenter);
   }
 
   getHoveredEntity(): Entity | null {

@@ -1,4 +1,4 @@
-import type { TerrainShape } from '@/types/terrain';
+import { terrainShapeSign, type TerrainShape } from '@/types/terrain';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 export type { TerrainShape } from '@/types/terrain';
 
@@ -86,12 +86,7 @@ let mountainRippleAmplitude = TERRAIN_SHAPE_MAGNITUDE;
 let mountainSeparatorAmplitude = TERRAIN_SHAPE_MAGNITUDE;
 
 function shapeToAmplitude(shape: TerrainShape): number {
-  switch (shape) {
-    case 'lake': return -TERRAIN_SHAPE_MAGNITUDE;
-    case 'mountain': return TERRAIN_SHAPE_MAGNITUDE;
-    case 'flat': return 0;
-    default: throw new Error(`Unknown terrain shape: ${shape as string}`);
-  }
+  return terrainShapeSign(shape) * TERRAIN_SHAPE_MAGNITUDE;
 }
 
 /** Monotonically-increasing token bumped whenever the heightmap's

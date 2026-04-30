@@ -29,6 +29,7 @@ export function createGame(config: GameConfig): GameInstance {
       clientViewState: config.clientViewState,
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
+      terrainCenter: config.terrainCenter,
       backgroundMode,
       lobbyPreview,
     });

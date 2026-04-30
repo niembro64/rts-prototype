@@ -198,7 +198,7 @@ export class GameServer {
     // height) to the heightmap BEFORE the physics ground lookup or any
     // sim/render code samples terrain, so every consumer sees the
     // raised pads on first read.
-    const deposits = generateMetalDeposits(mapWidth, mapHeight, this.playerIds.length);
+    const deposits = generateMetalDeposits(mapWidth, mapHeight, this.playerIds.length, config.terrainCenter);
     setMetalDepositFlatZones(
       deposits.map((d) => ({
         x: d.x,
