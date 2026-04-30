@@ -157,10 +157,8 @@ function flowColor(n: number): string {
 
 <style scoped>
 .top-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative;
+  width: 100%;
   box-sizing: border-box;
   min-height: 58px;
   background:
@@ -173,7 +171,6 @@ function flowColor(n: number): string {
   gap: 16px;
   font-family: monospace;
   color: white;
-  z-index: 1000;
   pointer-events: auto;
 }
 

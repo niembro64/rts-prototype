@@ -1924,6 +1924,21 @@ onUnmounted(() => {
 
 <template>
   <div class="game-wrapper">
+    <!-- Top status bar lives outside the Three.js game area, like the bottom controls. -->
+    <div
+      v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible"
+      class="top-controls-shell"
+    >
+      <TopBar
+        :economy="economyInfo"
+        :player-name="getPlayerName(activePlayer)"
+        :player-color="getPlayerColor(activePlayer)"
+        :can-toggle-player="showPlayerToggle"
+        :direction-data="minimapData"
+        @toggle-player="togglePlayer"
+      />
+    </div>
+
     <div ref="gameAreaRef" class="game-area">
       <!-- Background battle container (demo game).
            Loads full-screen behind the BUDGET ANNIHILATION screen
@@ -1951,16 +1966,6 @@ onUnmounted(() => {
 
       <!-- Game UI (desktop: hidden when lobby modal visible; mobile: follows hamburger toggle) -->
       <template v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible">
-        <!-- Top bar with economy info -->
-        <TopBar
-          :economy="economyInfo"
-          :player-name="getPlayerName(activePlayer)"
-          :player-color="getPlayerColor(activePlayer)"
-          :can-toggle-player="showPlayerToggle"
-          :direction-data="minimapData"
-          @toggle-player="togglePlayer"
-        />
-
         <!-- Selection panel (bottom-left) -->
         <SelectionPanel
           :selection="selectionInfo"
@@ -3102,9 +3107,20 @@ onUnmounted(() => {
   display: block;
 }
 
+.top-controls-shell {
+  flex-shrink: 0;
+  z-index: 3001;
+  width: 100%;
+  pointer-events: none;
+}
+
+.top-controls-shell :deep(.top-bar) {
+  pointer-events: auto;
+}
+
 .minimap-stack {
   position: absolute;
-  top: 60px;
+  top: 10px;
   left: 10px;
   z-index: 1000;
   display: grid;
