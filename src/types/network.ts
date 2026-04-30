@@ -49,6 +49,65 @@ export function actionTypeToCode(s: string): ActionTypeCode {
 export function codeToActionType(c: number): string {
   return _CODE_TO_ACTION[c] ?? 'move';
 }
+
+// ── Unit type codes ────────────────────────────────────────────────
+// Stable wire IDs for every unit-type string. Order is append-only:
+// new units go at the end so existing replays / cross-version snapshots
+// keep decoding correctly. The string form lives at runtime (entity
+// .unit.unitType) and on the client side after decode — only the
+// serializer / deserializer touches the int form.
+const _UNIT_TYPES: readonly string[] = [
+  'jackal', 'lynx', 'badger', 'mongoose', 'mammoth',
+  'tick', 'tarantula', 'loris', 'daddy', 'widow',
+  'formik', 'hippo', 'commander',
+];
+const _UNIT_TYPE_TO_CODE: Record<string, number> = {};
+for (let i = 0; i < _UNIT_TYPES.length; i++) _UNIT_TYPE_TO_CODE[_UNIT_TYPES[i]] = i;
+// Sentinel for "type not in the table" — clients fall back to
+// 'jackal' when decoding so an unknown id never crashes the renderer.
+export const UNIT_TYPE_UNKNOWN = 0xff;
+export function unitTypeToCode(s: string): number {
+  const code = _UNIT_TYPE_TO_CODE[s];
+  return code === undefined ? UNIT_TYPE_UNKNOWN : code;
+}
+export function codeToUnitType(c: number): string {
+  return _UNIT_TYPES[c] ?? 'jackal';
+}
+
+// ── Building type codes ────────────────────────────────────────────
+const _BUILDING_TYPES: readonly string[] = [
+  'solar', 'wind', 'factory', 'extractor',
+];
+const _BUILDING_TYPE_TO_CODE: Record<string, number> = {};
+for (let i = 0; i < _BUILDING_TYPES.length; i++) _BUILDING_TYPE_TO_CODE[_BUILDING_TYPES[i]] = i;
+export const BUILDING_TYPE_UNKNOWN = 0xff;
+export function buildingTypeToCode(s: string): number {
+  const code = _BUILDING_TYPE_TO_CODE[s];
+  return code === undefined ? BUILDING_TYPE_UNKNOWN : code;
+}
+export function codeToBuildingType(c: number): string {
+  return _BUILDING_TYPES[c] ?? 'solar';
+}
+
+// ── Projectile type codes ──────────────────────────────────────────
+export const PROJECTILE_TYPE_PROJECTILE = 0;
+export const PROJECTILE_TYPE_BEAM = 1;
+export const PROJECTILE_TYPE_LASER = 2;
+export type ProjectileTypeCode = 0 | 1 | 2;
+const _PROJECTILE_TYPE_TO_CODE: Record<string, ProjectileTypeCode> = {
+  projectile: PROJECTILE_TYPE_PROJECTILE,
+  beam: PROJECTILE_TYPE_BEAM,
+  laser: PROJECTILE_TYPE_LASER,
+};
+const _CODE_TO_PROJECTILE_TYPE: ('projectile' | 'beam' | 'laser')[] = [
+  'projectile', 'beam', 'laser',
+];
+export function projectileTypeToCode(s: string): ProjectileTypeCode {
+  return _PROJECTILE_TYPE_TO_CODE[s] ?? PROJECTILE_TYPE_PROJECTILE;
+}
+export function codeToProjectileType(c: number): 'projectile' | 'beam' | 'laser' {
+  return _CODE_TO_PROJECTILE_TYPE[c] ?? 'projectile';
+}
 import type { Command } from './commands';
 import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
 import type { Vec2, Vec3 } from './vec2';
@@ -134,7 +193,9 @@ export type NetworkServerSnapshotProjectileSpawn = {
   pos: Vec3;
   rotation: number;
   velocity: Vec3;
-  projectileType: string;
+  /** Bit-packed projectile type code (see PROJECTILE_TYPE_* constants
+   *  and projectileTypeToCode / codeToProjectileType helpers). */
+  projectileType: ProjectileTypeCode;
   /** Resolved per-instance max lifespan in ms. */
   maxLifespan?: number;
   turretId: string;
@@ -327,8 +388,9 @@ export type NetworkServerSnapshotEntity = {
   changedFields?: number | null;
   unit?: {
     /** Static fields are present on full records and omitted from
-     *  ordinary deltas after the entity has been created. */
-    unitType?: string;
+     *  ordinary deltas after the entity has been created.
+     *  Numeric wire ID — see UNIT_TYPE_* / unitTypeToCode helpers. */
+    unitType?: number;
     hp: { curr: number; max: number };
     collider?: { scale: number; shot: number; push: number };
     moveSpeed?: number;
@@ -342,8 +404,9 @@ export type NetworkServerSnapshotEntity = {
   };
   building?: {
     /** type / dim are present on full records and omitted from
-     *  ordinary deltas after the entity has been created. */
-    type?: string;
+     *  ordinary deltas after the entity has been created.
+     *  Numeric wire ID — see BUILDING_TYPE_* / buildingTypeToCode helpers. */
+    type?: number;
     /** Footprint in world units — planar xy is dim.x/dim.y. Full
      *  depth (vertical extent) lives on the building entity, not
      *  here — clients re-derive it from the blueprint. */
@@ -354,7 +417,8 @@ export type NetworkServerSnapshotEntity = {
       open: boolean;
     };
     factory?: {
-      queue: string[];
+      /** Queue of unit type codes (see UNIT_TYPE_* / unitTypeToCode). */
+      queue: number[];
       progress: number;
       producing: boolean;
       /** `posZ` carries the click-altitude of the player-issued
@@ -364,7 +428,8 @@ export type NetworkServerSnapshotEntity = {
     };
   };
   shot?: {
-    type: string;
+    /** Projectile type code — see PROJECTILE_TYPE_* / projectileTypeToCode. */
+    type: ProjectileTypeCode;
     source: number;
     turretId?: string;
     turretIndex?: number;

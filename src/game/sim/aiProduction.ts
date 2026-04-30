@@ -22,7 +22,7 @@ function initWeights(): void {
   }
 }
 
-function pickRandomUnit(allowedTypes?: ReadonlySet<string>): string {
+function pickRandomUnit(world: WorldState, allowedTypes?: ReadonlySet<string>): string {
   initWeights();
 
   if (allowedTypes && allowedTypes.size > 0) {
@@ -33,7 +33,7 @@ function pickRandomUnit(allowedTypes?: ReadonlySet<string>): string {
     }
     if (filteredTotal <= 0) return weights[0].id;
 
-    const r = Math.random() * filteredTotal;
+    const r = world.rng.next() * filteredTotal;
     let cumulative = 0;
     for (const entry of weights) {
       if (!allowedTypes.has(entry.id)) continue;
@@ -42,7 +42,7 @@ function pickRandomUnit(allowedTypes?: ReadonlySet<string>): string {
     }
   }
 
-  const r = Math.random() * totalWeight;
+  const r = world.rng.next() * totalWeight;
   let cumulative = 0;
   for (const entry of weights) {
     cumulative += entry.weight;
@@ -82,7 +82,7 @@ export function updateAiProduction(
 
     // Queue a unit if the factory is idle and player is under cap
     if (entity.factory.buildQueue.length === 0 && world.canPlayerQueueUnit(entity.ownership.playerId)) {
-      if (factoryProductionSystem.queueUnit(entity, pickRandomUnit(allowedTypes))) {
+      if (factoryProductionSystem.queueUnit(entity, pickRandomUnit(world, allowedTypes))) {
         world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
       }
     }

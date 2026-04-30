@@ -154,111 +154,25 @@ export class SpatialGrid {
     this.projectileCellKey.clear();
   }
 
-  /**
-   * Update a unit's position in the grid. O(1) if cell didn't change.
-   * Also handles new units (not yet tracked) and dead units (removes them).
-   */
-  updateUnit(entity: Entity): void {
-    if (!entity.unit || entity.unit.hp <= 0) {
-      // Dead unit — remove if tracked
-      this.removeUnit(entity.id);
-      return;
-    }
+  // === Unified single-cell entity tracking ===
+  //
+  // Units and projectiles each occupy exactly one grid cube; their
+  // (insert / move / remove) bookkeeping is identical save for which
+  // cell-array (`cell.units` vs `cell.projectiles`) and which key map
+  // (`unitCellKey` vs `projectileCellKey`) they touch. The two helpers
+  // below own the swap-remove + cell-prune logic so any future
+  // optimization (cell-allocator, per-cell stats, dirty bits) lands
+  // here once and benefits both categories. Buildings span a (multi-
+  // cell) AABB and keep their own routines below.
 
-    const newKey = this.getCellKey(entity.transform.x, entity.transform.y, entity.transform.z);
-    const oldKey = this.unitCellKey.get(entity.id);
-
-    if (oldKey === newKey) return; // Same cell — no work needed
-
-    // Remove from old cell (swap-remove for O(1))
-    if (oldKey !== undefined) {
-      const oldCell = this.cells.get(oldKey);
-      if (oldCell) {
-        let idx = -1;
-        for (let j = 0; j < oldCell.units.length; j++) {
-          if (oldCell.units[j].id === entity.id) { idx = j; break; }
-        }
-        if (idx !== -1) {
-          const last = oldCell.units.length - 1;
-          if (idx !== last) oldCell.units[idx] = oldCell.units[last];
-          oldCell.units.pop();
-        }
-      }
-      this.pruneCellIfEmpty(oldKey);
-    }
-
-    // Add to new cell
-    const newCell = this.getOrCreateCell(newKey);
-    newCell.units.push(entity);
-    this.unitCellKey.set(entity.id, newKey);
-  }
-
-  /**
-   * Remove a unit from the grid (on death)
-   */
-  removeUnit(id: EntityId): void {
-    const key = this.unitCellKey.get(id);
-    if (key === undefined) return;
-
-    const cell = this.cells.get(key);
+  private removeFromCell(
+    cellKey: number,
+    id: EntityId,
+    pickArr: (cell: GridCell) => Entity[],
+  ): void {
+    const cell = this.cells.get(cellKey);
     if (cell) {
-      let idx = -1;
-      for (let j = 0; j < cell.units.length; j++) {
-        if (cell.units[j].id === id) { idx = j; break; }
-      }
-      if (idx !== -1) {
-        const last = cell.units.length - 1;
-        if (idx !== last) cell.units[idx] = cell.units[last];
-        cell.units.pop();
-      }
-    }
-    this.unitCellKey.delete(id);
-    this.pruneCellIfEmpty(key);
-  }
-
-  /**
-   * Update a projectile's position in the grid. O(1) if cell didn't change.
-   */
-  updateProjectile(entity: Entity): void {
-    const newKey = this.getCellKey(entity.transform.x, entity.transform.y, entity.transform.z);
-    const oldKey = this.projectileCellKey.get(entity.id);
-
-    if (oldKey === newKey) return;
-
-    // Remove from old cell (swap-remove for O(1))
-    if (oldKey !== undefined) {
-      const oldCell = this.cells.get(oldKey);
-      if (oldCell) {
-        const arr = oldCell.projectiles;
-        let idx = -1;
-        for (let j = 0; j < arr.length; j++) {
-          if (arr[j].id === entity.id) { idx = j; break; }
-        }
-        if (idx !== -1) {
-          const last = arr.length - 1;
-          if (idx !== last) arr[idx] = arr[last];
-          arr.pop();
-        }
-      }
-      this.pruneCellIfEmpty(oldKey);
-    }
-
-    // Add to new cell
-    const newCell = this.getOrCreateCell(newKey);
-    newCell.projectiles.push(entity);
-    this.projectileCellKey.set(entity.id, newKey);
-  }
-
-  /**
-   * Remove a projectile from the grid (on despawn/collision)
-   */
-  removeProjectile(id: EntityId): void {
-    const key = this.projectileCellKey.get(id);
-    if (key === undefined) return;
-
-    const cell = this.cells.get(key);
-    if (cell) {
-      const arr = cell.projectiles;
+      const arr = pickArr(cell);
       let idx = -1;
       for (let j = 0; j < arr.length; j++) {
         if (arr[j].id === id) { idx = j; break; }
@@ -269,9 +183,71 @@ export class SpatialGrid {
         arr.pop();
       }
     }
-    this.projectileCellKey.delete(id);
-    this.pruneCellIfEmpty(key);
+    this.pruneCellIfEmpty(cellKey);
   }
+
+  private updateSingleCellEntity(
+    entity: Entity,
+    keyMap: Map<EntityId, number>,
+    pickArr: (cell: GridCell) => Entity[],
+  ): void {
+    const newKey = this.getCellKey(entity.transform.x, entity.transform.y, entity.transform.z);
+    const oldKey = keyMap.get(entity.id);
+    if (oldKey === newKey) return;
+    if (oldKey !== undefined) this.removeFromCell(oldKey, entity.id, pickArr);
+    pickArr(this.getOrCreateCell(newKey)).push(entity);
+    keyMap.set(entity.id, newKey);
+  }
+
+  private removeSingleCellEntity(
+    id: EntityId,
+    keyMap: Map<EntityId, number>,
+    pickArr: (cell: GridCell) => Entity[],
+  ): void {
+    const key = keyMap.get(id);
+    if (key === undefined) return;
+    this.removeFromCell(key, id, pickArr);
+    keyMap.delete(id);
+  }
+
+  /**
+   * Update a unit's position in the grid. O(1) if cell didn't change.
+   * Also handles new units (not yet tracked) and dead units (removes them).
+   */
+  updateUnit(entity: Entity): void {
+    if (!entity.unit || entity.unit.hp <= 0) {
+      // Dead unit — remove if tracked
+      this.removeUnit(entity.id);
+      return;
+    }
+    this.updateSingleCellEntity(entity, this.unitCellKey, SpatialGrid._pickUnits);
+  }
+
+  /**
+   * Remove a unit from the grid (on death)
+   */
+  removeUnit(id: EntityId): void {
+    this.removeSingleCellEntity(id, this.unitCellKey, SpatialGrid._pickUnits);
+  }
+
+  /**
+   * Update a projectile's position in the grid. O(1) if cell didn't change.
+   */
+  updateProjectile(entity: Entity): void {
+    this.updateSingleCellEntity(entity, this.projectileCellKey, SpatialGrid._pickProjectiles);
+  }
+
+  /**
+   * Remove a projectile from the grid (on despawn/collision)
+   */
+  removeProjectile(id: EntityId): void {
+    this.removeSingleCellEntity(id, this.projectileCellKey, SpatialGrid._pickProjectiles);
+  }
+
+  // Static array selectors — declared once so the helpers above can
+  // dispatch without allocating a closure per call.
+  private static _pickUnits = (cell: GridCell): Entity[] => cell.units;
+  private static _pickProjectiles = (cell: GridCell): Entity[] => cell.projectiles;
 
   /**
    * Add a building to the grid. Buildings span every cube their

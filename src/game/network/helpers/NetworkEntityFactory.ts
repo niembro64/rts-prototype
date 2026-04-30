@@ -2,7 +2,7 @@
 
 import type { Entity, BuildingType, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity } from '../NetworkManager';
-import { codeToActionType, codeToTurretState } from '../../../types/network';
+import { codeToActionType, codeToTurretState, codeToUnitType, codeToBuildingType, codeToProjectileType } from '../../../types/network';
 import { getTurretConfig } from '../../sim/turretConfigs';
 import { getUnitBlueprint } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
@@ -68,7 +68,7 @@ function createUnitFromNetwork(
     ownership: { playerId },
     selectable: { selected: false },
     unit: {
-      unitType: u?.unitType ?? 'jackal',
+      unitType: u?.unitType !== undefined ? codeToUnitType(u.unitType) : 'jackal',
       hp: u?.hp.curr ?? 100,
       maxHp: u?.hp.max ?? 100,
       unitRadiusCollider: {
@@ -125,7 +125,7 @@ function createUnitFromNetwork(
   // runs on the host (WorldState.createUnitFromBlueprint) so the
   // hydrated client and the authoritative sim share one rectangle.
   try {
-    const bp = getUnitBlueprint(u?.unitType ?? 'jackal');
+    const bp = getUnitBlueprint(entity.unit!.unitType);
     entity.unit!.mirrorBoundRadius = buildMirrorPanelCache(
       bp, entity.unit!.mirrorPanels,
     );
@@ -162,8 +162,10 @@ function createBuildingFromNetwork(
   // field per entity per snapshot. Client looks up gridDepth by type.
   let depth = 100;
   try {
-    const bc = getBuildingConfig(b?.type as BuildingType);
-    depth = bc.gridDepth * GRID_CELL_SIZE;
+    if (b?.type !== undefined) {
+      const bc = getBuildingConfig(codeToBuildingType(b.type) as BuildingType);
+      depth = bc.gridDepth * GRID_CELL_SIZE;
+    }
   } catch { /* unknown type — keep default depth */ }
   const entity: Entity = {
     id,
@@ -177,7 +179,7 @@ function createBuildingFromNetwork(
       depth,
       hp: b?.hp.curr ?? 500,
       maxHp: b?.hp.max ?? 500,
-      solar: b?.type === 'solar'
+      solar: b?.type !== undefined && codeToBuildingType(b.type) === 'solar'
         ? { open: b.solar?.open ?? false, producing: false, reopenDelayMs: 0 }
         : undefined,
     },
@@ -187,7 +189,9 @@ function createBuildingFromNetwork(
       resourceCost: 100,
       isGhost: false,
     },
-    buildingType: b?.type as BuildingType | undefined,
+    buildingType: b?.type !== undefined
+      ? (codeToBuildingType(b.type) as BuildingType)
+      : undefined,
   };
 
   const f = b?.factory;
@@ -201,7 +205,7 @@ function createBuildingFromNetwork(
       waypoints.push({ x: wp.pos.x, y: wp.pos.y, z: wp.posZ, type: wp.type as 'move' | 'fight' | 'patrol' });
     }
     entity.factory = {
-      buildQueue: f.queue,
+      buildQueue: f.queue.map(codeToUnitType),
       currentBuildProgress: f.progress ?? 0,
       currentBuildResourceCost: 0,
       rallyX: rally?.pos.x ?? x,
@@ -240,7 +244,7 @@ function createProjectileFromNetwork(
           range: 100,
           cooldown: 1000,
         },
-      projectileType: (s?.type as 'projectile' | 'beam' | 'laser') ?? 'projectile',
+      projectileType: s?.type !== undefined ? codeToProjectileType(s.type) : 'projectile',
       velocityX: s?.velocity?.x ?? 0,
       velocityY: s?.velocity?.y ?? 0,
       velocityZ: s?.velocity?.z ?? 0,

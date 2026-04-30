@@ -48,7 +48,7 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones } from '../sim/Terrain';
+import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion } from '../sim/Terrain';
 import { generateMetalDeposits } from '../../metalDepositConfig';
 
 export type { GameServerConfig } from '@/types/game';
@@ -66,6 +66,13 @@ const WATER_ESCAPE_PROBE_MULTS = [1.5, 3, 6];
 const MATTER_FORCE_SCALE = 150000;
 const WATER_OUT_CACHE_CELL_SIZE = 25;
 const WATER_OUT_CACHE_BUCKET_SCALE = 10;
+// Hard cap on the probe cache. At cell-size 25 a 4k×4k map has ~25k
+// possible cells; in practice probes cluster around shorelines, so a
+// few thousand keys cover every spot units actually visit. Beyond
+// that the cache is just a long-tail leak, so we drop it wholesale
+// on overflow rather than carry per-entry LRU bookkeeping in the
+// physics tick.
+const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
 type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
 const SNAPSHOT_AOI_PADDING = 1200;
 
@@ -717,6 +724,7 @@ export class GameServer {
   private _waterOutX = 0;
   private _waterOutY = 0;
   private waterOutCache = new Map<number, WaterOutCacheEntry>();
+  private waterOutCacheTerrainVersion = -1;
 
   private waterOutCacheKey(x: number, y: number, probeR: number): number {
     const cx = Math.floor(x / WATER_OUT_CACHE_CELL_SIZE) + 32768;
@@ -735,6 +743,15 @@ export class GameServer {
     mapWidth: number,
     mapHeight: number,
   ): boolean {
+    // Cache invariants: tied to terrain shape AND map dims AND a soft
+    // size cap. Drop on any of those changing so a long match (terrain
+    // edits, generator-driven flat zones, hour-long sessions probing
+    // new shorelines) can't grow the map indefinitely.
+    const tv = getTerrainVersion();
+    if (tv !== this.waterOutCacheTerrainVersion || this.waterOutCache.size >= WATER_OUT_CACHE_MAX_ENTRIES) {
+      this.waterOutCache.clear();
+      this.waterOutCacheTerrainVersion = tv;
+    }
     const key = this.waterOutCacheKey(x, y, probeR);
     const cached = this.waterOutCache.get(key);
     if (cached) {
@@ -884,7 +901,17 @@ export class GameServer {
     // Add capture tile data (delta-aware: only changed tiles on delta snapshots)
     const captureTiles = this.captureSystem.consumeSnapshot(isDelta);
 
-    const combatStats = this.simulation.getCombatStatsSnapshot();
+    // CombatStats are end-of-game-style aggregates (units killed,
+    // resources spent) that the UI reads at human rates. Shipping them
+    // on every tick burned ~unit-count bytes/snapshot for fields that
+    // never changed. Send on keyframes plus once per ~500ms in deltas.
+    const combatStatsThrottleMs = 500;
+    const nowMs = performance.now();
+    let combatStats: ReturnType<Simulation['getCombatStatsSnapshot']> | undefined;
+    if (!isDelta || nowMs - this.lastSentCombatStatsMs >= combatStatsThrottleMs) {
+      combatStats = this.simulation.getCombatStatsSnapshot();
+      this.lastSentCombatStatsMs = nowMs;
+    }
 
     // Add server metadata to snapshot
     // On delta snapshots, only include serverMeta when the time string changed (once per second)
@@ -961,9 +988,13 @@ export class GameServer {
         serializeOptions,
       );
 
-      if (captureTiles.length > 0) {
-        state.capture = { tiles: captureTiles, cellSize: spatialGrid.getCellSize() };
-      }
+      // _snapshotBuf is reused across listeners and across ticks, so
+      // any optional field that's only set on some paths must be
+      // explicitly cleared on the others — otherwise the previous
+      // listener / tick's data leaks into the next encode.
+      state.capture = captureTiles.length > 0
+        ? { tiles: captureTiles, cellSize: spatialGrid.getCellSize() }
+        : undefined;
       state.combatStats = combatStats;
       state.serverMeta = serverMeta;
 
@@ -1055,6 +1086,13 @@ export class GameServer {
     return candidates;
   }
 
+  // Reusable scratch buffers for prepareSnapshotInterestPlans. Hoisted
+  // out so the units×players inner loop reads from local arrays instead
+  // of calling Map.get() per (unit, player) — at 1000 units × 4 players
+  // that's 4k Map lookups per snapshot we used to pay every tick.
+  private _aoiBoundsBuf: SnapshotInterestBounds[] = [];
+  private _aoiCandidatesBuf: EntityId[][] = [];
+
   private prepareSnapshotInterestPlans(): void {
     this.snapshotInterestPlansByPlayer.clear();
     if (this.backgroundMode) return;
@@ -1068,17 +1106,31 @@ export class GameServer {
     }
     if (targetPlayerIds.length === 0) return;
 
+    const playerCount = targetPlayerIds.length;
+    const boundsBuf = this._aoiBoundsBuf;
+    const candidatesBuf = this._aoiCandidatesBuf;
+    boundsBuf.length = playerCount;
+    candidatesBuf.length = playerCount;
+
     this.snapshotInterestBuildingIdsBuf.length = 0;
-    for (const playerId of targetPlayerIds) {
-      this.getSnapshotInterestBounds(playerId);
-      this.getSnapshotInterestCandidates(playerId);
+    for (let i = 0; i < playerCount; i++) {
+      const playerId = targetPlayerIds[i];
+      boundsBuf[i] = this.getSnapshotInterestBounds(playerId);
+      candidatesBuf[i] = this.getSnapshotInterestCandidates(playerId);
     }
 
     const includeOwnedBounds = (entity: Entity): void => {
       const playerId = entity.ownership?.playerId;
       if (playerId === undefined) return;
-      const bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
-      if (!bounds) return;
+      // Linear scan over targetPlayerIds beats Map.get when player
+      // count is small (typical: 2–8). Same-trip indexing into
+      // boundsBuf avoids a second hashmap lookup.
+      let slot = -1;
+      for (let i = 0; i < playerCount; i++) {
+        if (targetPlayerIds[i] === playerId) { slot = i; break; }
+      }
+      if (slot < 0) return;
+      const bounds = boundsBuf[slot];
       bounds.hasOwnedEntity = true;
       const x = entity.transform.x;
       const y = entity.transform.y;
@@ -1096,9 +1148,8 @@ export class GameServer {
       this.snapshotInterestBuildingIdsBuf.push(building.id);
     }
 
-    for (const playerId of targetPlayerIds) {
-      const bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
-      if (!bounds) continue;
+    for (let i = 0; i < playerCount; i++) {
+      const bounds = boundsBuf[i];
       if (!bounds.hasOwnedEntity) continue;
       bounds.minX -= SNAPSHOT_AOI_PADDING;
       bounds.minY -= SNAPSHOT_AOI_PADDING;
@@ -1106,38 +1157,60 @@ export class GameServer {
       bounds.maxY += SNAPSHOT_AOI_PADDING;
     }
 
-    for (const unit of this.world.getUnits()) {
-      const unitPlayerId = unit.ownership?.playerId;
-      const x = unit.transform.x;
-      const y = unit.transform.y;
-      for (const playerId of targetPlayerIds) {
-        const bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
-        if (!bounds) continue;
-        if (
-          unitPlayerId === playerId ||
-          (
-            bounds.hasOwnedEntity &&
-            x >= bounds.minX && x <= bounds.maxX &&
-            y >= bounds.minY && y <= bounds.maxY
-          )
-        ) {
-          this.snapshotInterestCandidateIdsByPlayer.get(playerId)?.push(unit.id);
+    // Hot loop: with bounds + candidates pre-fetched into parallel
+    // arrays, per-(unit, player) cost is 4 comparisons + 1 push, no
+    // Map lookups. Single-player fast path skips the inner loop.
+    if (playerCount === 1) {
+      const playerId = targetPlayerIds[0];
+      const bounds = boundsBuf[0];
+      const candidates = candidatesBuf[0];
+      const includeOthers = bounds.hasOwnedEntity;
+      for (const unit of this.world.getUnits()) {
+        const unitPlayerId = unit.ownership?.playerId;
+        if (unitPlayerId === playerId) {
+          candidates.push(unit.id);
+          continue;
+        }
+        if (!includeOthers) continue;
+        const x = unit.transform.x;
+        const y = unit.transform.y;
+        if (x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY) {
+          candidates.push(unit.id);
+        }
+      }
+    } else {
+      for (const unit of this.world.getUnits()) {
+        const unitPlayerId = unit.ownership?.playerId;
+        const x = unit.transform.x;
+        const y = unit.transform.y;
+        for (let i = 0; i < playerCount; i++) {
+          const bounds = boundsBuf[i];
+          if (unitPlayerId === targetPlayerIds[i]) {
+            candidatesBuf[i].push(unit.id);
+            continue;
+          }
+          if (!bounds.hasOwnedEntity) continue;
+          if (x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY) {
+            candidatesBuf[i].push(unit.id);
+          }
         }
       }
     }
 
-    for (const playerId of targetPlayerIds) {
-      const candidates = this.snapshotInterestCandidateIdsByPlayer.get(playerId);
-      if (!candidates) continue;
-      for (let i = 0; i < this.snapshotInterestBuildingIdsBuf.length; i++) {
-        candidates.push(this.snapshotInterestBuildingIdsBuf[i]);
-      }
+    const buildingIds = this.snapshotInterestBuildingIdsBuf;
+    const buildingCount = buildingIds.length;
+    for (let i = 0; i < playerCount; i++) {
+      const candidates = candidatesBuf[i];
+      for (let j = 0; j < buildingCount; j++) candidates.push(buildingIds[j]);
     }
 
-    for (const playerId of targetPlayerIds) {
-      const bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
-      const candidates = this.snapshotInterestCandidateIdsByPlayer.get(playerId);
-      if (!bounds || !candidates) continue;
+    for (let i = 0; i < playerCount; i++) {
+      const playerId = targetPlayerIds[i];
+      const bounds = boundsBuf[i];
+      const candidates = candidatesBuf[i];
+      // Predicate captures the per-player bounds object directly so
+      // the serializer's per-entity test costs 4 comparisons + 1
+      // ownership read — no Map lookups in the inner loop.
       const predicate: SnapshotInterest = (entity) => {
         if (entity.type === 'building') return true;
         if (entity.ownership?.playerId === playerId) return true;
@@ -1150,19 +1223,33 @@ export class GameServer {
     }
   }
 
-  // Add a snapshot listener
-  addSnapshotListener(callback: SnapshotCallback, playerId?: PlayerId): void {
+  // Add a snapshot listener. Returns the trackingKey so callers can
+  // later removeSnapshotListener — without that, listeners (and the
+  // closures they capture) accumulate forever as clients connect /
+  // disconnect or as connections are re-created across restarts.
+  addSnapshotListener(callback: SnapshotCallback, playerId?: PlayerId): string {
     const trackingScope = playerId === undefined ? 'global' : `player-${playerId}`;
-    this.snapshotListeners.push({
-      callback,
-      playerId,
-      trackingKey: `${trackingScope}-${this.snapshotListenerId++}`,
-    });
+    const trackingKey = `${trackingScope}-${this.snapshotListenerId++}`;
+    this.snapshotListeners.push({ callback, playerId, trackingKey });
+    return trackingKey;
   }
 
-  // Add a game over listener
-  addGameOverListener(callback: GameOverCallback): void {
+  removeSnapshotListener(trackingKey: string): void {
+    const idx = this.snapshotListeners.findIndex((l) => l.trackingKey === trackingKey);
+    if (idx >= 0) this.snapshotListeners.splice(idx, 1);
+  }
+
+  // Add a game over listener. Returns the callback reference so callers
+  // can remove it on cleanup; otherwise the listener pins the callback's
+  // closure (and whatever component owns it) for the GameServer's life.
+  addGameOverListener(callback: GameOverCallback): GameOverCallback {
     this.gameOverListeners.push(callback);
+    return callback;
+  }
+
+  removeGameOverListener(callback: GameOverCallback): void {
+    const idx = this.gameOverListeners.indexOf(callback);
+    if (idx >= 0) this.gameOverListeners.splice(idx, 1);
   }
 
   // Change keyframe ratio (fraction of snapshots that are full keyframes)
@@ -1349,6 +1436,11 @@ export class GameServer {
   private lastServerTime: string = '';
   private lastServerTimeSec: number = -1;
   private lastSentServerTime: string = ''; // Track what was last sent so deltas can skip
+  // Wall-clock of the last delta snapshot that included combatStats.
+  // Stats only ship on keyframes or after this throttle elapses; the
+  // value is in performance.now() ms so it's monotonic across timer
+  // resets the host might do mid-game.
+  private lastSentCombatStatsMs: number = 0;
   private formatServerTime(): string {
     const now = new Date();
     const sec = now.getSeconds();

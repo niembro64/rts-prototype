@@ -32,6 +32,10 @@ import {
   ENTITY_CHANGED_FACTORY,
   codeToActionType,
   codeToTurretState,
+  codeToUnitType,
+  codeToBuildingType,
+  codeToProjectileType,
+  PROJECTILE_TYPE_BEAM,
 } from '../../types/network';
 
 import { findBeamPath } from './BeamPathResolver';
@@ -569,8 +573,8 @@ export class ClientViewState {
     }
 
     const sb = server.building;
-    if (entity.building && sb?.type && isFull) {
-      entity.buildingType = sb.type as BuildingType;
+    if (entity.building && sb?.type !== undefined && isFull) {
+      entity.buildingType = codeToBuildingType(sb.type) as BuildingType;
     }
 
     if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_HP)) {
@@ -597,7 +601,14 @@ export class ClientViewState {
 
     const sf = sb?.factory;
     if (entity.factory && sf && (isFull || cf! & ENTITY_CHANGED_FACTORY)) {
-      entity.factory.buildQueue = sf.queue;
+      // Decode wire codes back to string ids in place — reuses the
+      // entity's existing buildQueue array so we don't allocate per
+      // factory per delta. UIUpdateManager reads strings from this
+      // field so the conversion has to happen on the way in.
+      const dst = entity.factory.buildQueue;
+      const src = sf.queue;
+      dst.length = src.length;
+      for (let i = 0; i < src.length; i++) dst[i] = codeToUnitType(src[i]);
       entity.factory.currentBuildProgress = sf.progress;
       entity.factory.isProducing = sf.producing;
       // waypoints[0] = rally point, rest = user-set waypoints
@@ -1086,7 +1097,7 @@ export class ClientViewState {
     // turret-rotation chain (unit yaw → turret yaw+pitch) to the shared
     // primitive, so multi-barrel shots use the same centerline spawn on
     // both sides.
-    if (spawn.projectileType !== 'beam' && !spawn.fromParentDetonation) {
+    if (spawn.projectileType !== PROJECTILE_TYPE_BEAM && !spawn.fromParentDetonation) {
       const source = this.entities.get(spawn.sourceEntityId);
       const weapon = source?.turrets?.[spawn.turretIndex];
       if (source && source.unit && weapon) {
@@ -1126,7 +1137,7 @@ export class ClientViewState {
         ownerId: spawn.playerId,
         sourceEntityId: spawn.sourceEntityId,
         config,
-        projectileType: spawn.projectileType as 'projectile' | 'beam' | 'laser',
+        projectileType: codeToProjectileType(spawn.projectileType),
         velocityX: spawn.velocity.x,
         velocityY: spawn.velocity.y,
         velocityZ: spawn.velocity.z,

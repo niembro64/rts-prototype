@@ -93,6 +93,13 @@ export class NetworkManager {
   // peers from this timer; WebRTC's own close/error events are the
   // source of truth for an active match.
   private lastHeartbeatReceived: Map<PlayerId, number> = new Map();
+  // Track DataChannel listener handles per peer so we can detach them
+  // on connection close (PeerJS reuses peer objects across reconnects;
+  // without removal the listeners stack up and fire on dead channels).
+  private dcListeners: Map<PlayerId, { dc: RTCDataChannel; onClose: () => void; onError: (e: Event) => void }> = new Map();
+  // Pending intervals waiting for a DataChannel to materialize, keyed
+  // by playerId so we can clear them if the connection closes first.
+  private dcWaitIntervals: Map<PlayerId, ReturnType<typeof setInterval>> = new Map();
   private heartbeatSendInterval: ReturnType<typeof setInterval> | null = null;
   private heartbeatCheckInterval: ReturnType<typeof setInterval> | null = null;
   private readonly heartbeatSendIntervalMs = 2000;
@@ -460,6 +467,7 @@ export class NetworkManager {
       this.connections.delete(playerId);
       this.players.delete(playerId);
       this.lastHeartbeatReceived.delete(playerId);
+      this.detachDataChannelListeners(playerId);
       this.onPlayerLeft?.(playerId);
 
       if (this.role === 'host') {
@@ -487,20 +495,42 @@ export class NetworkManager {
         if (conn.dataChannel) {
           this.monitorDataChannel(conn.dataChannel, playerId);
           clearInterval(checkDc);
+          this.dcWaitIntervals.delete(playerId);
         } else if (dcAttempts > 50) {
           clearInterval(checkDc);
+          this.dcWaitIntervals.delete(playerId);
         }
       }, 100);
+      this.dcWaitIntervals.set(playerId, checkDc);
     }
   }
 
   private monitorDataChannel(dc: RTCDataChannel, playerId: PlayerId): void {
-    dc.addEventListener('close', () => {
+    // If a previous channel was being monitored for this player, drop
+    // its listeners first so reconnects don't accumulate handlers.
+    this.detachDataChannelListeners(playerId);
+    const onClose = () => {
       console.warn(`[NET] DataChannel CLOSED for player ${playerId} (state=${dc.readyState})`);
-    });
-    dc.addEventListener('error', (e) => {
+    };
+    const onError = (e: Event) => {
       console.error(`[NET] DataChannel ERROR for player ${playerId}:`, e);
-    });
+    };
+    dc.addEventListener('close', onClose);
+    dc.addEventListener('error', onError);
+    this.dcListeners.set(playerId, { dc, onClose, onError });
+  }
+
+  private detachDataChannelListeners(playerId: PlayerId): void {
+    const wait = this.dcWaitIntervals.get(playerId);
+    if (wait !== undefined) {
+      clearInterval(wait);
+      this.dcWaitIntervals.delete(playerId);
+    }
+    const entry = this.dcListeners.get(playerId);
+    if (!entry) return;
+    entry.dc.removeEventListener('close', entry.onClose);
+    entry.dc.removeEventListener('error', entry.onError);
+    this.dcListeners.delete(playerId);
   }
 
   private isMessageForCurrentGame(message: { gameId?: string }): boolean {

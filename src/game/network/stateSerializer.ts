@@ -12,6 +12,7 @@ import {
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY,
   actionTypeToCode, turretStateToCode,
+  unitTypeToCode, buildingTypeToCode, projectileTypeToCode,
 } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
 
@@ -69,7 +70,7 @@ type PooledEntry = {
   turrets: NetworkServerSnapshotTurret[];
   actions: NetworkServerSnapshotAction[];
   waypoints: { pos: Vec2; posZ?: number; type: string }[];
-  buildQueue: string[];
+  buildQueue: number[];
 };
 
 /** Position quantization: round to integer world units. The renderer
@@ -119,7 +120,7 @@ function createPooledEntry(): PooledEntry {
       waypoints: [],
     },
     shotSub: {
-      type: '', source: 0,
+      type: 0 as const, source: 0,
     },
     turrets,
     actions,
@@ -605,21 +606,27 @@ export function serializeGameState(
     }
   } else {
     tracking.currentEntityIds.clear();
-    for (const entity of world.getUnits()) {
-      if (!acceptsEntity(entity)) continue;
-      tracking.currentEntityIds.add(entity.id);
-      const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded);
-      if (netEntity) _entityBuf.push(netEntity);
-      const prev = getPrevState(tracking, entity.id);
-      captureEntityState(entity, prev);
-    }
-    for (const entity of world.getBuildings()) {
-      if (!acceptsEntity(entity)) continue;
-      tracking.currentEntityIds.add(entity.id);
-      const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded);
-      if (netEntity) _entityBuf.push(netEntity);
-      const prev = getPrevState(tracking, entity.id);
-      captureEntityState(entity, prev);
+    // Keyframe: serialize every accepted unit + building. Both
+    // categories take exactly the same path — pool an entry, capture
+    // its prev state for delta tracking — so we walk both source
+    // arrays through one body. Adding a new entity-shaped category
+    // (e.g. capture-tile entities) means appending one more source
+    // here, not duplicating another loop.
+    const keyframeSources: ReadonlyArray<readonly Entity[]> = [
+      world.getUnits(),
+      world.getBuildings(),
+    ];
+    for (let s = 0; s < keyframeSources.length; s++) {
+      const source = keyframeSources[s];
+      for (let i = 0; i < source.length; i++) {
+        const entity = source[i];
+        if (!acceptsEntity(entity)) continue;
+        tracking.currentEntityIds.add(entity.id);
+        const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded);
+        if (netEntity) _entityBuf.push(netEntity);
+        const prev = getPrevState(tracking, entity.id);
+        captureEntityState(entity, prev);
+      }
     }
     if (!options?.dirtyEntityIds) {
       world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
@@ -716,7 +723,7 @@ export function serializeGameState(
         id: ps.id,
         pos: ps.pos, rotation: ps.rotation,
         velocity: ps.velocity,
-        projectileType: ps.projectileType,
+        projectileType: projectileTypeToCode(ps.projectileType),
         maxLifespan: ps.maxLifespan,
         turretId: ps.turretId,
         playerId: ps.playerId,
@@ -849,7 +856,7 @@ function serializeEntity(
       // the client can never create those entities and renders an
       // empty battlefield even while snapshots keep arriving.
       if (isFull) {
-        u.unitType = entity.unit.unitType;
+        u.unitType = unitTypeToCode(entity.unit.unitType);
         u.collider = pool.unitCollider;
         u.collider.scale = entity.unit.unitRadiusCollider.scale;
         u.collider.shot = entity.unit.unitRadiusCollider.shot;
@@ -983,7 +990,9 @@ function serializeEntity(
         b.dim = pool.buildingDim;
         b.dim.x = entity.building.width;
         b.dim.y = entity.building.height;
-        b.type = entity.buildingType ?? '';
+        b.type = entity.buildingType !== undefined
+          ? buildingTypeToCode(entity.buildingType)
+          : undefined;
         protocolSeeded.add(entity.id);
       } else {
         b.dim = undefined;
@@ -1022,7 +1031,7 @@ function serializeEntity(
         const srcQueue = entity.factory.buildQueue;
         pool.buildQueue.length = srcQueue.length;
         for (let i = 0; i < srcQueue.length; i++) {
-          pool.buildQueue[i] = srcQueue[i];
+          pool.buildQueue[i] = unitTypeToCode(srcQueue[i]);
         }
         f.queue = pool.buildQueue;
 

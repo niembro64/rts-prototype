@@ -12,12 +12,14 @@ export class LocalGameConnection implements GameConnection {
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
+  private snapshotListenerKey: string;
+  private gameOverListenerRef: GameOverCallback;
 
   constructor(server: GameServer, playerId?: PlayerId) {
     this.server = server;
 
     // Wire server snapshot emissions to this connection
-    server.addSnapshotListener((state) => {
+    this.snapshotListenerKey = server.addSnapshotListener((state) => {
       if (this.snapshotCallback) {
         this.snapshotCallback(state);
       } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
@@ -25,7 +27,7 @@ export class LocalGameConnection implements GameConnection {
       }
     }, playerId);
 
-    server.addGameOverListener((winnerId) => {
+    this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
       this.gameOverCallback?.(winnerId);
     });
   }
@@ -52,6 +54,8 @@ export class LocalGameConnection implements GameConnection {
   }
 
   disconnect(): void {
+    this.server.removeSnapshotListener(this.snapshotListenerKey);
+    this.server.removeGameOverListener(this.gameOverListenerRef);
     this.snapshotCallback = null;
     this.gameOverCallback = null;
     this.pendingSnapshot = null;

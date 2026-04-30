@@ -100,8 +100,13 @@ export class Simulation {
   private damageSystem: DamageSystem;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private combatStatsTracker: CombatStatsTracker;
-  private windState: WindState = sampleWindState();
+  private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
+  // Accumulated sim time (ms). Drives deterministic systems like wind
+  // that used to read Date.now(); now they advance only with the
+  // simulation tick, so replays and host-migration produce the same
+  // wave phase regardless of wall-clock drift.
+  private simElapsedMs = 0;
 
   // Current spray targets for rendering (build/heal effects)
   private currentSprayTargets: SprayTarget[] = [];
@@ -272,6 +277,7 @@ export class Simulation {
     // Replan budget resets each tick — see updateUnits / stuck detection.
     this.replansThisTick = 0;
 
+    this.simElapsedMs += dtMs;
     const tick = this.world.getTick();
 
     // Process commands for this tick
@@ -290,7 +296,7 @@ export class Simulation {
     // Solar collectors are stateful: damage closes them, a quiet
     // debounce reopens them, and production follows that open state.
     updateSolarCollectors(this.world, dtMs);
-    this.windState = sampleWindState(Date.now());
+    this.windState = sampleWindState(this.simElapsedMs);
     this.windPowerTracker.update(this.world, this.windState);
 
     // Update economy (income, production). Mana base income is gated
