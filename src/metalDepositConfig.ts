@@ -8,9 +8,9 @@
 // deposits in that ring; the same ring on a 4-player map yields 8.
 //
 // Rings can be phase-shifted independently with `phaseOffset`, expressed
-// as a fraction of one player's angular slice. This keeps offsets stable
-// across different player counts and avoids every ring lining up on the
-// same radial spokes.
+// as a multiple of π radians. For example, 0.5 = π/2, 1 = π, and
+// 2 = a full turn. Use this to keep rings from lining up on the same
+// radial spokes.
 //
 // Each ring also carries a `height`: the z elevation the deposit's
 // flat pad is forced to before terrain-shape polarity is applied.
@@ -33,11 +33,11 @@ export type DepositRing = {
    *  Total deposits per ring = countPerPlayer × playerCount (with the
    *  center ring as a special case — always 1 regardless). */
   countPerPlayer: number;
-  /** Fraction of one player slice to shift this entire ring. 0.5 means
-   *  half way to the next player's slice center; negative values work too. */
+  /** Angular phase offset as a multiple of π radians. 0.5 = π/2,
+   *  1 = π, 2 = full turn; negative values work too. */
   phaseOffset?: number;
-  /** Absolute angular offset (radians) added after `phaseOffset`.
-   *  Prefer `phaseOffset` for player-count-independent ring layout. */
+  /** Absolute raw angular offset in radians, added after `phaseOffset`.
+   *  Prefer `phaseOffset` for config values that should read in π units. */
   rotationOffset: number;
   /** World-unit radius around each deposit where terrain is forced to
    *  the ring's `height`. Tune up if the extractor's grid footprint
@@ -73,7 +73,7 @@ export const METAL_DEPOSIT_CONFIG = {
     {
       radiusFraction: 0.2,
       countPerPlayer: 1,
-      phaseOffset: 0,
+      phaseOffset: 3,
       rotationOffset: 0,
       flatRadius: 100,
       height: 100,
@@ -89,7 +89,7 @@ export const METAL_DEPOSIT_CONFIG = {
     {
       radiusFraction: 0.5,
       countPerPlayer: 1,
-      phaseOffset: 0.5,
+      phaseOffset: -0.2,
       rotationOffset: 0,
       flatRadius: 80,
       height: 300,
@@ -149,7 +149,7 @@ export function generateMetalDeposits(
       ring.blendRadius ?? METAL_DEPOSIT_CONFIG.terrainBlendRadius;
     const height = ring.height * terrainShapeSign(terrainCenterShape);
     const ringAngularOffset =
-      (ring.phaseOffset ?? 0) * sliceWidth + ring.rotationOffset;
+      (ring.phaseOffset ?? 0) * Math.PI + ring.rotationOffset;
 
     // Center: one deposit, regardless of countPerPlayer.
     if (ring.radiusFraction <= 1e-6) {
