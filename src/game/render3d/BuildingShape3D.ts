@@ -288,18 +288,18 @@ function buildExtractor(
   primaryMat: THREE.Material,
 ): BuildingShape {
   const minDim = Math.min(width, depth);
-  const baseHeight = Math.max(22, minDim * 0.58);
+  const baseHeight = Math.max(18, minDim * 0.48);
   const base = new THREE.Mesh(hexCylinderGeom, primaryMat);
   base.scale.set(1, baseHeight, 1);
   base.position.y = baseHeight / 2;
 
   const details: BuildingDetailMesh[] = [];
-  const shaftHeight = Math.min(58, EXTRACTOR_VISUAL_HEIGHT - baseHeight - 28);
-  const shaftRadius = Math.max(3.5, minDim * 0.1);
+  const shaftHeight = Math.max(26, Math.min(36, EXTRACTOR_VISUAL_HEIGHT - baseHeight - 24));
+  const shaftRadius = Math.max(5.8, minDim * 0.16);
   const shaftTopY = baseHeight + shaftHeight;
 
   details.push(detail(
-    makeCylinder(extractorDarkMat, Math.max(8, minDim * 0.26), 5, 0, baseHeight + 2.5, 0, hexCylinderGeom),
+    makeCylinder(extractorDarkMat, Math.max(13, minDim * 0.38), 7, 0, baseHeight + 3.5, 0, hexCylinderGeom),
     'low',
   ));
   details.push(detail(
@@ -307,28 +307,28 @@ function buildExtractor(
     'low',
   ));
   details.push(detail(
-    makeCylinder(factoryFrameMat, shaftRadius * 1.72, 5, 0, baseHeight + shaftHeight * 0.3, 0, hexCylinderGeom),
+    makeCylinder(factoryFrameMat, shaftRadius * 2.1, 6, 0, baseHeight + shaftHeight * 0.34, 0, hexCylinderGeom),
     'medium',
   ));
   details.push(detail(
-    makeCylinder(factoryFrameMat, shaftRadius * 1.96, 5.5, 0, shaftTopY - 4, 0, hexCylinderGeom),
+    makeCylinder(factoryFrameMat, shaftRadius * 2.35, 6.5, 0, shaftTopY - 4, 0, hexCylinderGeom),
     'low',
   ));
 
-  const cap = makeSphere(primaryMat, shaftRadius * 1.28, 0, shaftTopY + shaftRadius * 0.38, 0);
+  const cap = makeSphere(primaryMat, shaftRadius * 1.55, 0, shaftTopY + shaftRadius * 0.25, 0);
   details.push(detail(cap, 'low'));
 
-  const rotorY = shaftTopY + Math.max(10, shaftRadius * 1.6);
-  const bladeLen = Math.max(22, minDim * 0.74);
-  const bladeWidth = Math.max(4.2, minDim * 0.13);
-  const bladeThickness = Math.max(1.4, minDim * 0.035);
+  const rotorY = shaftTopY + Math.max(5.5, shaftRadius * 0.82);
+  const bladeLen = Math.max(28, minDim * 0.92);
+  const bladeWidth = Math.max(5.5, minDim * 0.17);
+  const bladeThickness = Math.max(1.6, minDim * 0.04);
   const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 4, rotorY, 0);
   details.push(detail(rotor, 'medium', undefined, 'extractorRotor'));
 
-  const counterRotor = makeExtractorRotor(bladeLen * 0.62, bladeWidth * 0.72, bladeThickness, 3, rotorY - 7, Math.PI / 3);
+  const counterRotor = makeExtractorRotor(bladeLen * 0.72, bladeWidth * 0.78, bladeThickness, 3, rotorY - 5, Math.PI / 3);
   details.push(detail(counterRotor, 'high', undefined, 'extractorCounterRotor'));
 
-  const ringRadius = Math.max(14, minDim * 0.38);
+  const ringRadius = Math.max(18, minDim * 0.48);
   const pulse = new THREE.Mesh(extractorPulseGeom, extractorPulseMat);
   pulse.rotation.x = Math.PI / 2;
   pulse.position.set(0, rotorY + 1.5, 0);
@@ -338,15 +338,15 @@ function buildExtractor(
 
   for (let i = 0; i < 3; i++) {
     const angle = (i / 3) * Math.PI * 2;
-    const x = Math.cos(angle) * minDim * 0.27;
-    const z = Math.sin(angle) * minDim * 0.27;
+    const x = Math.cos(angle) * minDim * 0.33;
+    const z = Math.sin(angle) * minDim * 0.33;
     const conduit = makeBox(
       extractorGlowMat,
-      Math.max(1.3, minDim * 0.035),
-      shaftHeight * 0.55,
-      Math.max(1.3, minDim * 0.035),
+      Math.max(1.8, minDim * 0.048),
+      shaftHeight * 0.42,
+      Math.max(1.8, minDim * 0.048),
       x,
-      baseHeight + shaftHeight * 0.48,
+      baseHeight + shaftHeight * 0.43,
       z,
     );
     conduit.rotation.y = -angle;
