@@ -40,6 +40,7 @@ import {
   getConstructionHazardMaterial,
   type BuildingDetailMesh,
   type ConstructionEmitterRig,
+  type ExtractorRig,
   type FactoryConstructionRig,
   type WindTurbineRig,
   type BuildingShapeType,
@@ -63,6 +64,7 @@ const BUILDING_HEIGHT = 120;
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const WIND_YAW_EMA_ALPHA = 0.035;
 const WIND_ROTOR_RAD_PER_SEC = 8;
+const EXTRACTOR_ROTOR_RAD_PER_SEC = 6.5;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
 
@@ -224,6 +226,7 @@ type EntityMesh = {
   constructionEmitter?: ConstructionEmitterRig;
   factoryRig?: FactoryConstructionRig;
   windRig?: WindTurbineRig;
+  extractorRig?: ExtractorRig;
   /** Per-building render height (solar is shorter than the default). */
   buildingHeight?: number;
   /** True when the building primary mesh owns its material and should
@@ -260,6 +263,7 @@ export class Render3DEntities {
   private windFanYaw: number | null = null;
   private windRotorPhase = 0;
   private windAnimLastMs = 0;
+  private extractorRotorPhase = 0;
   // Reusable "seen this frame" sets — the four per-frame update loops
   // (barrel-spin, unit, building, projectile) each need to track which
   // entity ids were visited so stale Map entries get pruned. Keeping
@@ -2802,6 +2806,8 @@ export class Render3DEntities {
     // deliberate silhouette instead of one detail on/off switch.
     const tier = this.lod.gfx.tier;
     this.updateWindAnimationGlobals();
+    this.extractorRotorPhase =
+      (this.extractorRotorPhase + this._spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC) % (Math.PI * 2);
 
     for (const e of buildings) {
       seen.add(e.id);
@@ -2856,6 +2862,7 @@ export class Render3DEntities {
           buildingDetails: shape.details,
           factoryRig: shape.factoryRig,
           windRig: shape.windRig,
+          extractorRig: shape.extractorRig,
           buildingHeight: shape.height,
           buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
           solarOpenAmount: e.building?.solar?.open === false ? 0 : 1,
@@ -2907,6 +2914,7 @@ export class Render3DEntities {
         }
         this.updateSolarCollectorAnimation(m, e, detailsReady);
         this.updateWindTurbineRig(m, detailsReady);
+        this.updateExtractorRig(m, e, detailsReady);
       }
       this.updateFactoryConstructionRig(m.factoryRig, e, tier, progress >= 1, w, d, m.group);
 
@@ -3013,6 +3021,22 @@ export class Render3DEntities {
     if (!m.windRig || !detailsReady || !m.windRig.root.visible || this.windFanYaw === null) return;
     m.windRig.root.rotation.y = this.windFanYaw - m.group.rotation.y;
     m.windRig.rotor.rotation.z = this.windRotorPhase;
+  }
+
+  private updateExtractorRig(m: EntityMesh, e: Entity, detailsReady: boolean): void {
+    if (!m.extractorRig || e.buildingType !== 'extractor' || !detailsReady) return;
+    const phase = this.extractorRotorPhase + e.id * 0.173;
+    if (m.extractorRig.rotor.visible) {
+      m.extractorRig.rotor.rotation.y = phase;
+    }
+    if (m.extractorRig.counterRotor?.visible) {
+      m.extractorRig.counterRotor.rotation.y = -phase * 0.58;
+    }
+    if (m.extractorRig.pulse?.visible) {
+      const base = Number(m.extractorRig.pulse.userData.baseScale) || 1;
+      const s = base * (1 + Math.sin(phase * 2.7) * 0.07);
+      m.extractorRig.pulse.scale.setScalar(s);
+    }
   }
 
   private updateFactoryConstructionRig(

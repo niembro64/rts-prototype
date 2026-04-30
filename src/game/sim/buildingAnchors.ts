@@ -4,7 +4,7 @@ export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
 export const SOLAR_BUILDING_VISUAL_HEIGHT = 52;
 export const WIND_BUILDING_VISUAL_HEIGHT = 250;
 export const FACTORY_BASE_VISUAL_HEIGHT = 30;
-export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 84;
+export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 112;
 
 function factoryVisualTopAboveGround(width: number, depth: number): number {
   const minDim = Math.min(width, depth);

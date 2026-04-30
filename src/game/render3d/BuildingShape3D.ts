@@ -10,6 +10,7 @@
 //             spinning three-blade rotor.
 //   factory — compact radial construction tower. Produced units are
 //             assembled outside the tower footprint by spray particles.
+//   extractor — squat metal pump with a rotating top extractor head.
 //
 // Shapes are additive — the caller owns a `THREE.Group` containing the
 // whole building and plugs in the primary + detail meshes returned by
@@ -21,6 +22,7 @@ import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import {
   FACTORY_BASE_VISUAL_HEIGHT,
+  EXTRACTOR_BUILDING_VISUAL_HEIGHT,
   SOLAR_BUILDING_VISUAL_HEIGHT,
   WIND_BUILDING_VISUAL_HEIGHT,
 } from '../sim/buildingAnchors';
@@ -35,6 +37,9 @@ export type BuildingDetailRole =
   | 'solarPanel'
   | 'solarTeamAccent'
   | 'windRig'
+  | 'extractorRotor'
+  | 'extractorCounterRotor'
+  | 'extractorPulse'
   | 'factoryUnitGhost'
   | 'factoryUnitCore'
   | 'factoryBuildPulse'
@@ -66,6 +71,12 @@ export type WindTurbineRig = {
   rotor: THREE.Mesh;
 };
 
+export type ExtractorRig = {
+  rotor: THREE.Mesh;
+  counterRotor?: THREE.Mesh;
+  pulse?: THREE.Mesh;
+};
+
 export type ConstructionEmitterRig = {
   group: THREE.Group;
   nozzleLocal: THREE.Vector3;
@@ -88,6 +99,7 @@ export type BuildingShape = {
   height: number;
   factoryRig?: FactoryConstructionRig;
   windRig?: WindTurbineRig;
+  extractorRig?: ExtractorRig;
 };
 
 // ── Standard dimensions ────────────────────────────────────────────────
@@ -97,6 +109,7 @@ const DEFAULT_HEIGHT = 120;
  *  for the photovoltaic faces to read as the main structure. */
 const SOLAR_HEIGHT = SOLAR_BUILDING_VISUAL_HEIGHT;
 const WIND_HEIGHT = WIND_BUILDING_VISUAL_HEIGHT;
+const EXTRACTOR_VISUAL_HEIGHT = EXTRACTOR_BUILDING_VISUAL_HEIGHT;
 /** Factory primary is the compact cylindrical base of the tower. */
 const FACTORY_BASE_HEIGHT = FACTORY_BASE_VISUAL_HEIGHT;
 
@@ -129,6 +142,7 @@ const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
 const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
 const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
 const windBladeGeom = createWindBladeGeometry();
+const extractorPulseGeom = new THREE.TorusGeometry(1, 0.035, 8, 48);
 
 // Slightly lighter gray for structural columns/gantries.
 const chimneyMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
@@ -170,6 +184,25 @@ const windGlowMat = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0.82,
   depthWrite: false,
+});
+const extractorDarkMat = new THREE.MeshLambertMaterial({ color: 0x20262d });
+const extractorBladeMat = new THREE.MeshStandardMaterial({
+  color: 0xcbd4dc,
+  metalness: 0.78,
+  roughness: 0.18,
+});
+const extractorGlowMat = new THREE.MeshBasicMaterial({
+  color: 0x6ff0ff,
+  transparent: true,
+  opacity: 0.62,
+  depthWrite: false,
+});
+const extractorPulseMat = new THREE.MeshBasicMaterial({
+  color: 0xa8fbff,
+  transparent: true,
+  opacity: 0.42,
+  depthWrite: false,
+  side: THREE.DoubleSide,
 });
 const invisibleMat = new THREE.MeshBasicMaterial({
   color: 0x000000,
@@ -238,7 +271,7 @@ export function buildBuildingShape(
     case 'factory':
       return buildFactory(width, depth, primaryMat);
     case 'extractor':
-      return buildExtractor(primaryMat);
+      return buildExtractor(width, depth, primaryMat);
     case 'unknown':
       return buildUnknown(primaryMat);
     default:
@@ -246,31 +279,85 @@ export function buildBuildingShape(
   }
 }
 
-/** Metal extractor: hex pump base with a tall central shaft and a
- *  small dome on top — reads as "industrial drill" at any distance. */
-function buildExtractor(primaryMat: THREE.Material): BuildingShape {
-  const baseHeight = 24;
+/** Metal extractor: squat armored pump with an active rotary extractor
+ *  head. Low tiers keep the silhouette cheap; medium+ tiers add motion
+ *  so completed deposits read as working metal harvesters. */
+function buildExtractor(
+  width: number,
+  depth: number,
+  primaryMat: THREE.Material,
+): BuildingShape {
+  const minDim = Math.min(width, depth);
+  const baseHeight = Math.max(22, minDim * 0.58);
   const base = new THREE.Mesh(hexCylinderGeom, primaryMat);
   base.scale.set(1, baseHeight, 1);
   base.position.y = baseHeight / 2;
 
-  const shaftHeight = 60;
-  const shaftRadius = 0.18;
-  const shaft = new THREE.Mesh(cylinderGeom, primaryMat);
-  shaft.scale.set(shaftRadius, shaftHeight, shaftRadius);
-  shaft.position.y = baseHeight + shaftHeight / 2;
+  const details: BuildingDetailMesh[] = [];
+  const shaftHeight = Math.min(58, EXTRACTOR_VISUAL_HEIGHT - baseHeight - 28);
+  const shaftRadius = Math.max(3.5, minDim * 0.1);
+  const shaftTopY = baseHeight + shaftHeight;
 
-  const cap = new THREE.Mesh(factorySphereGeom, primaryMat);
-  cap.scale.setScalar(shaftRadius * 1.6);
-  cap.position.y = baseHeight + shaftHeight;
+  details.push(detail(
+    makeCylinder(extractorDarkMat, Math.max(8, minDim * 0.26), 5, 0, baseHeight + 2.5, 0, hexCylinderGeom),
+    'low',
+  ));
+  details.push(detail(
+    makeCylinder(chimneyMat, shaftRadius, shaftHeight, 0, baseHeight + shaftHeight / 2, 0),
+    'low',
+  ));
+  details.push(detail(
+    makeCylinder(factoryFrameMat, shaftRadius * 1.72, 5, 0, baseHeight + shaftHeight * 0.3, 0, hexCylinderGeom),
+    'medium',
+  ));
+  details.push(detail(
+    makeCylinder(factoryFrameMat, shaftRadius * 1.96, 5.5, 0, shaftTopY - 4, 0, hexCylinderGeom),
+    'low',
+  ));
+
+  const cap = makeSphere(primaryMat, shaftRadius * 1.28, 0, shaftTopY + shaftRadius * 0.38, 0);
+  details.push(detail(cap, 'low'));
+
+  const rotorY = shaftTopY + Math.max(10, shaftRadius * 1.6);
+  const bladeLen = Math.max(22, minDim * 0.74);
+  const bladeWidth = Math.max(4.2, minDim * 0.13);
+  const bladeThickness = Math.max(1.4, minDim * 0.035);
+  const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 4, rotorY, 0);
+  details.push(detail(rotor, 'medium', undefined, 'extractorRotor'));
+
+  const counterRotor = makeExtractorRotor(bladeLen * 0.62, bladeWidth * 0.72, bladeThickness, 3, rotorY - 7, Math.PI / 3);
+  details.push(detail(counterRotor, 'high', undefined, 'extractorCounterRotor'));
+
+  const ringRadius = Math.max(14, minDim * 0.38);
+  const pulse = new THREE.Mesh(extractorPulseGeom, extractorPulseMat);
+  pulse.rotation.x = Math.PI / 2;
+  pulse.position.set(0, rotorY + 1.5, 0);
+  pulse.scale.setScalar(ringRadius);
+  pulse.userData.baseScale = ringRadius;
+  details.push(detail(pulse, 'max', undefined, 'extractorPulse'));
+
+  for (let i = 0; i < 3; i++) {
+    const angle = (i / 3) * Math.PI * 2;
+    const x = Math.cos(angle) * minDim * 0.27;
+    const z = Math.sin(angle) * minDim * 0.27;
+    const conduit = makeBox(
+      extractorGlowMat,
+      Math.max(1.3, minDim * 0.035),
+      shaftHeight * 0.55,
+      Math.max(1.3, minDim * 0.035),
+      x,
+      baseHeight + shaftHeight * 0.48,
+      z,
+    );
+    conduit.rotation.y = -angle;
+    details.push(detail(conduit, 'high'));
+  }
 
   return {
     primary: base,
-    details: [
-      { mesh: shaft, minTier: 'low', role: 'static' },
-      { mesh: cap, minTier: 'low', role: 'static' },
-    ],
-    height: baseHeight + shaftHeight,
+    details,
+    height: baseHeight,
+    extractorRig: { rotor, counterRotor, pulse },
   };
 }
 
@@ -752,6 +839,55 @@ function makeTurbineBlade(
   return mesh;
 }
 
+function makeExtractorRotor(
+  bladeLength: number,
+  bladeWidth: number,
+  bladeThickness: number,
+  bladeCount: number,
+  y: number,
+  angleOffset: number,
+): THREE.Mesh {
+  const rotor = new THREE.Mesh(cylinderGeom, invisibleMat);
+  rotor.position.set(0, y, 0);
+
+  const hubRadius = Math.max(4, bladeWidth * 0.9);
+  const hub = makeCylinder(extractorDarkMat, hubRadius, bladeThickness * 2.4, 0, 0, 0, hexCylinderGeom);
+  rotor.add(hub);
+
+  const crown = makeSphere(extractorBladeMat, hubRadius * 0.68, 0, bladeThickness * 1.25, 0);
+  rotor.add(crown);
+
+  for (let i = 0; i < bladeCount; i++) {
+    const angle = angleOffset + (i / bladeCount) * Math.PI * 2;
+    const blade = makeBox(
+      extractorBladeMat,
+      bladeLength,
+      bladeThickness,
+      bladeWidth,
+      Math.cos(angle) * bladeLength * 0.52,
+      0,
+      Math.sin(angle) * bladeLength * 0.52,
+    );
+    blade.rotation.y = -angle;
+    blade.rotation.z = 0.08;
+    rotor.add(blade);
+
+    const cuttingEdge = makeBox(
+      extractorGlowMat,
+      bladeLength * 0.78,
+      bladeThickness * 0.35,
+      Math.max(0.8, bladeWidth * 0.18),
+      Math.cos(angle) * bladeLength * 0.58,
+      bladeThickness * 0.72,
+      Math.sin(angle) * bladeLength * 0.58,
+    );
+    cuttingEdge.rotation.y = -angle;
+    rotor.add(cuttingEdge);
+  }
+
+  return rotor;
+}
+
 function makeTrianglePetal(
   material: THREE.Material,
   width: number,
@@ -944,6 +1080,7 @@ export function disposeBuildingGeoms(): void {
   factorySphereGeom.dispose();
   coneGeom.dispose();
   windBladeGeom.dispose();
+  extractorPulseGeom.dispose();
   constructionOrbGeom.dispose();
   chimneyMat.dispose();
   solarCellMat.dispose();
@@ -954,6 +1091,10 @@ export function disposeBuildingGeoms(): void {
   windBladeMat.dispose();
   windGlassMat.dispose();
   windGlowMat.dispose();
+  extractorDarkMat.dispose();
+  extractorBladeMat.dispose();
+  extractorGlowMat.dispose();
+  extractorPulseMat.dispose();
   invisibleMat.dispose();
   factoryFrameMat.dispose();
   hazardStripeMat.dispose();
