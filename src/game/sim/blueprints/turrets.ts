@@ -177,6 +177,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       depthScale: 0.1,
       spin: { idle: 2, max: 30, accel: 80, decel: 30 },
     },
+    
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },

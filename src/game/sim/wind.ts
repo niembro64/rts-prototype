@@ -1,4 +1,8 @@
 import type { PlayerId } from '@/types/sim';
+import {
+  WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS,
+  WIND_SPEED_OSCILLATION_PERIODS_SECONDS,
+} from '@/config';
 import type { WorldState } from './WorldState';
 import { getBuildingConfig } from './buildConfigs';
 import { economyManager } from './economy';
@@ -10,17 +14,25 @@ export type WindState = {
   angle: number;
 };
 
+const TAU = Math.PI * 2;
+
+function wave(tSec: number, periodSec: number, phase = 0): number {
+  return (tSec / Math.max(1, periodSec)) * TAU + phase;
+}
+
 export function sampleWindState(nowMs = Date.now()): WindState {
   const t = nowMs / 1000;
+  const dirPeriods = WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS;
+  const speedPeriods = WIND_SPEED_OSCILLATION_PERIODS_SECONDS;
   const angle =
-    Math.sin(t / 271) * 1.1 +
-    Math.cos(t / 619 + 0.8) * 0.7 +
-    Math.sin(t / 1429 + 2.4) * 0.45;
+    Math.sin(wave(t, dirPeriods.primary)) * 1.1 +
+    Math.cos(wave(t, dirPeriods.secondary, 0.8)) * 0.7 +
+    Math.sin(wave(t, dirPeriods.tertiary, 2.4)) * 0.45;
   const rawSpeed =
     0.92 +
-    Math.sin(t / 353 + 1.7) * 0.28 +
-    Math.cos(t / 811 + 0.2) * 0.22 +
-    Math.sin(t / 1777 + 4.1) * 0.13;
+    Math.sin(wave(t, speedPeriods.primary, 1.7)) * 0.28 +
+    Math.cos(wave(t, speedPeriods.secondary, 0.2)) * 0.22 +
+    Math.sin(wave(t, speedPeriods.tertiary, 4.1)) * 0.13;
   const speed = Math.max(0.25, Math.min(1.55, rawSpeed));
   return {
     x: Math.cos(angle) * speed,

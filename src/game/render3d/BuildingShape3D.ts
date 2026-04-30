@@ -33,6 +33,7 @@ export type BuildingDetailRole =
   | 'static'
   | 'solarLeaf'
   | 'solarPanel'
+  | 'solarTeamAccent'
   | 'windRig'
   | 'factoryUnitGhost'
   | 'factoryUnitCore'
@@ -139,16 +140,20 @@ const solarCellMat = new THREE.MeshStandardMaterial({
   metalness: 1.0,
   roughness: 0.02,
   side: THREE.DoubleSide,
+  polygonOffset: true,
+  polygonOffsetFactor: -1,
+  polygonOffsetUnits: -4,
 });
 const solarPetalBackMat = new THREE.MeshLambertMaterial({
   color: 0x2b3036,
   side: THREE.DoubleSide,
 });
-const windTowerMat = new THREE.MeshLambertMaterial({ color: 0x4c5562 });
+const windTowerMat = new THREE.MeshLambertMaterial({ color: 0x33404d });
+const windTrimMat = new THREE.MeshLambertMaterial({ color: 0x172331 });
 const windNacelleMat = new THREE.MeshStandardMaterial({
-  color: 0xdce5ee,
-  metalness: 0.32,
-  roughness: 0.2,
+  color: 0xe7f0f8,
+  metalness: 0.48,
+  roughness: 0.16,
 });
 const windBladeMat = new THREE.MeshStandardMaterial({
   color: 0xf7fbff,
@@ -159,6 +164,12 @@ const windGlassMat = new THREE.MeshStandardMaterial({
   color: 0x123a58,
   metalness: 1.0,
   roughness: 0.04,
+});
+const windGlowMat = new THREE.MeshBasicMaterial({
+  color: 0x73e8ff,
+  transparent: true,
+  opacity: 0.82,
+  depthWrite: false,
 });
 const invisibleMat = new THREE.MeshBasicMaterial({
   color: 0x000000,
@@ -239,7 +250,7 @@ export function buildBuildingShape(
 function buildSolar(
   width: number,
   depth: number,
-  _primaryMat: THREE.Material,
+  primaryMat: THREE.Material,
 ): BuildingShape {
   const primary = new THREE.Mesh(solarPanelPyramidGeom, solarCellMat);
   const details: BuildingDetailMesh[] = [];
@@ -247,8 +258,10 @@ function buildSolar(
   const petalTilt = 0.42;
   const petalHingeY = 0;
   const petalThickness = 3.2;
-  const panelRaise = 0.45;
+  const panelRaise = 2.4;
   const petalFaceOffset = petalThickness + panelRaise;
+  const teamAccentThickness = 0.85;
+  const teamAccentOffset = -teamAccentThickness - 0.35;
   const frontBackAspect = width / Math.hypot(SOLAR_HEIGHT, depth * 0.5);
   const sideAspect = depth / Math.hypot(SOLAR_HEIGHT, width * 0.5);
 
@@ -289,6 +302,23 @@ function buildSolar(
       petalThickness,
       frontBackClosedDir,
     ), 'low', undefined, 'solarLeaf'));
+    details.push(detail(makeTrianglePetal(
+      primaryMat,
+      frontBackSpan * 0.58,
+      frontBackLen * 0.42,
+      0,
+      petalHingeY,
+      sign * frontBackZ,
+      1,
+      0,
+      0,
+      sign,
+      petalTilt,
+      frontBackLen * 0.2,
+      teamAccentOffset,
+      teamAccentThickness,
+      frontBackClosedDir,
+    ), 'medium', undefined, 'solarTeamAccent'));
     details.push(detail(makeTrianglePetal(
       solarCellMat,
       frontBackSpan,
@@ -336,6 +366,23 @@ function buildSolar(
       sideClosedDir,
     ), 'low', undefined, 'solarLeaf'));
     details.push(detail(makeTrianglePetal(
+      primaryMat,
+      sideSpan * 0.58,
+      sideLen * 0.42,
+      sign * sideX,
+      petalHingeY,
+      0,
+      0,
+      1,
+      sign,
+      0,
+      petalTilt,
+      sideLen * 0.2,
+      teamAccentOffset,
+      teamAccentThickness,
+      sideClosedDir,
+    ), 'medium', undefined, 'solarTeamAccent'));
+    details.push(detail(makeTrianglePetal(
       solarCellMat,
       sideSpan,
       sideLen,
@@ -374,9 +421,34 @@ function buildWind(
     'low',
   ));
   details.push(detail(
+    makeCylinder(windGlowMat, Math.max(8.5, minDim * 0.34), 2.5, 0, baseH + 6.8, 0, hexCylinderGeom),
+    'medium',
+  ));
+  details.push(detail(
     makeCylinder(windTowerMat, towerRadius, towerH, 0, towerH / 2, 0),
     'low',
   ));
+  details.push(detail(
+    makeCylinder(windTrimMat, towerRadius * 1.34, 4, 0, towerH * 0.38, 0, hexCylinderGeom),
+    'medium',
+  ));
+  details.push(detail(
+    makeCylinder(windTrimMat, towerRadius * 1.5, 4.5, 0, towerH * 0.72, 0, hexCylinderGeom),
+    'medium',
+  ));
+
+  const conduitH = towerH * 0.68;
+  for (const side of [-1, 1]) {
+    details.push(detail(makeBox(
+      windGlowMat,
+      Math.max(0.9, towerRadius * 0.18),
+      conduitH,
+      Math.max(0.75, towerRadius * 0.14),
+      side * towerRadius * 1.22,
+      towerH * 0.5,
+      towerRadius * 0.52,
+    ), 'high'));
+  }
 
   const root = new THREE.Mesh(boxGeom, invisibleMat);
   root.position.set(0, towerH, 0);
@@ -387,6 +459,10 @@ function buildWind(
   const nacelle = makeCylinder(windNacelleMat, nacelleRadius, nacelleLen, 0, 0, 0);
   nacelle.rotation.x = Math.PI / 2;
   root.add(nacelle);
+
+  const tailCap = makeCone(windTrimMat, nacelleRadius * 0.72, nacelleRadius * 1.7, 0, 0, -nacelleLen * 0.52);
+  tailCap.rotation.x = -Math.PI / 2;
+  root.add(tailCap);
 
   const panelLen = nacelleLen * 0.52;
   const panelH = nacelleRadius * 0.42;
@@ -400,12 +476,26 @@ function buildWind(
       nacelleRadius * 0.1,
       -nacelleLen * 0.05,
     ));
+    const fin = makeBox(
+      windTrimMat,
+      Math.max(1.4, nacelleRadius * 0.16),
+      nacelleRadius * 1.9,
+      nacelleLen * 0.3,
+      side * nacelleRadius * 1.34,
+      nacelleRadius * 0.15,
+      -nacelleLen * 0.1,
+    );
+    fin.rotation.z = side * 0.2;
+    root.add(fin);
   }
 
   const rotor = new THREE.Mesh(boxGeom, invisibleMat);
   rotor.position.set(0, 0, nacelleLen * 0.66);
   root.add(rotor);
 
+  const bladeLen = Math.min(WIND_HEIGHT * 0.42, Math.max(86, minDim * 1.55));
+  const bladeW = Math.max(8, minDim * 0.19);
+  const bladeThickness = Math.max(1.6, minDim * 0.032);
   const hub = makeSphere(windNacelleMat, nacelleRadius * 0.78, 0, 0, 0);
   rotor.add(hub);
 
@@ -413,12 +503,22 @@ function buildWind(
   nose.rotation.x = Math.PI / 2;
   rotor.add(nose);
 
-  const bladeLen = Math.min(WIND_HEIGHT * 0.42, Math.max(86, minDim * 1.55));
-  const bladeW = Math.max(8, minDim * 0.19);
-  const bladeThickness = Math.max(1.6, minDim * 0.032);
   for (let i = 0; i < 3; i++) {
-    const blade = makeTurbineBlade(windBladeMat, bladeLen, bladeW, bladeThickness, (i / 3) * Math.PI * 2);
+    const angle = (i / 3) * Math.PI * 2;
+    const blade = makeTurbineBlade(windBladeMat, bladeLen, bladeW, bladeThickness, angle);
     rotor.add(blade);
+    const ribCenter = bladeLen * 0.54;
+    const rib = makeBox(
+      windGlowMat,
+      bladeW * 0.16,
+      bladeLen * 0.68,
+      bladeThickness * 0.55,
+      -Math.sin(angle) * ribCenter,
+      Math.cos(angle) * ribCenter,
+      bladeThickness * 0.95,
+    );
+    rib.rotation.z = angle;
+    rotor.add(rib);
   }
 
   details.push(detail(root, 'low', undefined, 'windRig'));
@@ -817,9 +917,11 @@ export function disposeBuildingGeoms(): void {
   solarCellMat.dispose();
   solarPetalBackMat.dispose();
   windTowerMat.dispose();
+  windTrimMat.dispose();
   windNacelleMat.dispose();
   windBladeMat.dispose();
   windGlassMat.dispose();
+  windGlowMat.dispose();
   invisibleMat.dispose();
   factoryFrameMat.dispose();
   hazardStripeMat.dispose();
