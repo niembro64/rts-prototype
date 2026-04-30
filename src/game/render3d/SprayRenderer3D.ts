@@ -3,9 +3,10 @@
 // The sim publishes active `SprayTarget`s each tick via
 // `ClientViewState.getSprayTargets()` — one entry per active
 // construction-emitter → build-area (or commander → unit for heal)
-// pair. For each active spray we emit small colored particles from
-// source to a target footprint area, with chaotic perpendicular
-// wobble, source fade-in, and target fade-out.
+// pair. Active sprays emit small colored particles at the source
+// barrel/nozzle. Each particle stores its own target point and flies
+// there over a short lifetime, with chaotic perpendicular wobble,
+// source fade-in, and target fade-out.
 //
 // Implementation: ONE shared InstancedMesh of unit-sphere particles,
 // drawn in a single draw call for every active spray on the map.
@@ -19,11 +20,10 @@
 // with active spray count. The new path scales with TOTAL active
 // particle count, capped at MAX_PARTICLES, in one draw call.
 //
-// Slot allocation is TRANSIENT per frame: each frame we walk active
-// sprays, write to slots [0, visibleCount), and set count =
-// visibleCount. Inactive sprays' particles aren't written and the
-// trailing slots (if any) are bounded out by the count, so off-screen
-// / inactive sprays cost zero GPU time.
+// Particle allocation is persistent across frames: when an active
+// spray stops, no new particles are emitted, but already-fired
+// particles finish their short flight and fade out instead of the
+// whole spray popping off instantly.
 //
 // LOD: particle count scales with `fireExplosionStyle` (flash → inferno
 // ≈ 0.15× → 1.0×) — matching the 2D intensity multiplier — so low LODs
@@ -39,6 +39,11 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 // tower sprays can pass explicit source/target z heights.
 const TRAIL_Y = 4;
 const PARTICLE_BASE_RADIUS = 2.35;
+const MIN_FLIGHT_SEC = 0.16;
+const MAX_FLIGHT_SEC = 0.62;
+const BUILD_PARTICLE_SPEED = 470;
+const HEAL_PARTICLE_SPEED = 560;
+const MAX_PARTICLE_SPAWNS_PER_SPRAY_FRAME = 24;
 
 /** LOD multiplier on the raw per-spray particle count, matching the 2D
  *  `SprayParticles.renderSprayEffect`'s fireExplosionStyle scaling. */
@@ -104,6 +109,27 @@ export class SprayRenderer3D {
   private colorArr = new Float32Array(MAX_PARTICLES * 3);
   private alphaAttr: THREE.InstancedBufferAttribute;
   private colorAttr: THREE.InstancedBufferAttribute;
+  // Particle state. Kept in typed arrays so the stream can persist
+  // across frames without allocating one object per particle.
+  private particleCount = 0;
+  private pStartX = new Float32Array(MAX_PARTICLES);
+  private pStartY = new Float32Array(MAX_PARTICLES);
+  private pStartZ = new Float32Array(MAX_PARTICLES);
+  private pEndX = new Float32Array(MAX_PARTICLES);
+  private pEndY = new Float32Array(MAX_PARTICLES);
+  private pEndZ = new Float32Array(MAX_PARTICLES);
+  private pAge = new Float32Array(MAX_PARTICLES);
+  private pLife = new Float32Array(MAX_PARTICLES);
+  private pSize = new Float32Array(MAX_PARTICLES);
+  private pWobble = new Float32Array(MAX_PARTICLES);
+  private pArc = new Float32Array(MAX_PARTICLES);
+  private pSeed = new Float32Array(MAX_PARTICLES);
+  private pR = new Float32Array(MAX_PARTICLES);
+  private pG = new Float32Array(MAX_PARTICLES);
+  private pB = new Float32Array(MAX_PARTICLES);
+  private spraySpawnBudget = new Map<string, number>();
+  private activeSprayKeys = new Set<string>();
+  private rngState = 0x9e3779b9;
   // Phase accumulator — drives the sinusoidal per-particle wobble so
   // successive frames look like a continuous animated stream.
   private _time = 0;
@@ -149,13 +175,13 @@ export class SprayRenderer3D {
    *  doesn't affect the animation speed. */
   update(sprayTargets: readonly SprayTarget[], dtMs: number): void {
     this._time += dtMs;
+    const dtSec = Math.max(0, Math.min(dtMs, 100)) / 1000;
 
     const style = getGraphicsConfig().fireExplosionStyle ?? 'burst';
     const lodMult = LOD_INTENSITY[style] ?? 0.5;
 
-    // Visible-count cursor — indexes into the InstancedMesh slots.
-    // Walk active sprays, write [0, visibleCount), set count.
-    let visibleCount = 0;
+    this.advanceParticles(dtSec);
+    this.activeSprayKeys.clear();
 
     for (const spray of sprayTargets) {
       if (spray.intensity <= 0) continue;
@@ -166,19 +192,6 @@ export class SprayRenderer3D {
       const baseCount = spray.type === 'build' ? 36 : 16;
       const count = Math.max(4, Math.floor(baseCount * scaledIntensity));
       const n = Math.min(count, MAX_PARTICLES_PER_SPRAY);
-
-      const sx = spray.source.pos.x;
-      const sy = spray.source.z ?? TRAIL_Y;
-      const sz = spray.source.pos.y;
-      const tx = spray.target.pos.x;
-      const ty = spray.target.z ?? TRAIL_Y;
-      const tz = spray.target.pos.y;
-      const dimSpread = spray.target.dim
-        ? Math.min(spray.target.dim.x, spray.target.dim.y) * 0.42
-        : 0;
-      const targetSpread = spray.type === 'build'
-        ? Math.max(spray.target.radius ?? 0, dimSpread)
-        : 0;
 
       // Resolve per-spray color once. Heal sprays are always white,
       // build sprays use the caster's team primary.
@@ -198,56 +211,35 @@ export class SprayRenderer3D {
         }
       }
 
-      // Time → phase in seconds, used to advance each particle's position
-      // along the ray and its wobble oscillation.
-      const t = this._time / 1000;
+      const sx = spray.source.pos.x;
+      const sy = spray.source.z ?? TRAIL_Y;
+      const sz = spray.source.pos.y;
+      const tx = spray.target.pos.x;
+      const ty = spray.target.z ?? TRAIL_Y;
+      const tz = spray.target.pos.y;
+      const dist = Math.hypot(tx - sx, ty - sy, tz - sz);
+      const flightSec = this.flightTimeForDistance(dist, spray.type);
+      const key = this.sprayKey(spray);
+      this.activeSprayKeys.add(key);
+      let budget = this.spraySpawnBudget.get(key) ?? 0;
+      budget += (n / Math.max(flightSec, MIN_FLIGHT_SEC)) * dtSec;
+      const spawnCount = Math.min(
+        MAX_PARTICLE_SPAWNS_PER_SPRAY_FRAME,
+        Math.floor(budget),
+      );
+      budget -= spawnCount;
+      this.spraySpawnBudget.set(key, budget);
 
-      for (let i = 0; i < n; i++) {
-        if (visibleCount >= MAX_PARTICLES) break;
-        // Normalized progress along the ray for this particle, phased
-        // so the stream flows source -> target over time.
-        const phase = (i / n + t * 1.2) % 1;
-        const areaPhase = i * 2.399963 + spray.target.id * 0.37 + t * 0.55;
-        const areaRing = targetSpread * Math.sqrt(((i * 37) % 101) / 101);
-        const endX = tx + Math.cos(areaPhase) * areaRing;
-        const endZ = tz + Math.sin(areaPhase) * areaRing;
-        const endY = ty + (spray.type === 'build'
-          ? Math.sin(areaPhase * 1.7) * Math.min(targetSpread * 0.16, 10)
-          : 0);
-
-        const dx = endX - sx;
-        const dy = endY - sy;
-        const dz = endZ - sz;
-        const len = Math.hypot(dx, dy, dz);
-        if (len < 1e-3) continue;
-        const flatLen = Math.hypot(dx, dz);
-        const perpX = flatLen > 1e-3 ? -dz / flatLen : 1;
-        const perpZ = flatLen > 1e-3 ? dx / flatLen : 0;
-        const sineWobble = Math.sin(t * 7 + i * 1.3) * (len * 0.018 + targetSpread * 0.035);
-        const px = sx + dx * phase + perpX * sineWobble;
-        const py = sy + dy * phase;
-        const pz = sz + dz * phase + perpZ * sineWobble;
-        // Radius taper — particles grow into the stream from the source
-        // and shrink near the target so the trail has a visible profile
-        // instead of a uniform strip.
-        const fadeIn = Math.min(1, phase * 3);
-        const fadeOut = Math.min(1, (1 - phase) * 3);
-        const size = PARTICLE_BASE_RADIUS * (0.7 + 0.6 * fadeIn * fadeOut)
-          * (0.5 + 0.5 * scaledIntensity);
-
-        // Compose instance matrix: T(px, py, pz) · S(size).
-        this._scratchMat.makeScale(size, size, size);
-        this._scratchMat.setPosition(px, py, pz);
-        this.mesh.setMatrixAt(visibleCount, this._scratchMat);
-        // Per-instance color (team or heal-white) and global alpha.
-        this.colorArr[visibleCount * 3]     = r;
-        this.colorArr[visibleCount * 3 + 1] = g;
-        this.colorArr[visibleCount * 3 + 2] = b;
-        this.alphaArr[visibleCount] = PARTICLE_ALPHA;
-        visibleCount++;
+      for (let i = 0; i < spawnCount; i++) {
+        this.emitParticle(spray, scaledIntensity, r, g, b);
       }
-      if (visibleCount >= MAX_PARTICLES) break;
     }
+
+    for (const key of this.spraySpawnBudget.keys()) {
+      if (!this.activeSprayKeys.has(key)) this.spraySpawnBudget.delete(key);
+    }
+
+    const visibleCount = this.writeParticlesToMesh();
 
     // Cap draw to the live prefix — trailing slots (whatever they
     // happen to hold from previous frames) don't render.
@@ -265,12 +257,166 @@ export class SprayRenderer3D {
     }
   }
 
+  private sprayKey(spray: SprayTarget): string {
+    return `${spray.type}:${spray.source.id}:${spray.target.id}`;
+  }
+
+  private random(): number {
+    // Xorshift32: deterministic, tiny, and plenty for cosmetic spray.
+    let x = this.rngState | 0;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    this.rngState = x;
+    return ((x >>> 0) / 0x100000000);
+  }
+
+  private flightTimeForDistance(distance: number, type: SprayTarget['type']): number {
+    const speed = type === 'build' ? BUILD_PARTICLE_SPEED : HEAL_PARTICLE_SPEED;
+    return Math.max(MIN_FLIGHT_SEC, Math.min(MAX_FLIGHT_SEC, distance / speed));
+  }
+
+  private emitParticle(
+    spray: SprayTarget,
+    scaledIntensity: number,
+    r: number,
+    g: number,
+    b: number,
+  ): void {
+    if (this.particleCount >= MAX_PARTICLES) return;
+
+    const sx = spray.source.pos.x;
+    const sy = spray.source.z ?? TRAIL_Y;
+    const sz = spray.source.pos.y;
+    const tx = spray.target.pos.x;
+    const ty = spray.target.z ?? TRAIL_Y;
+    const tz = spray.target.pos.y;
+    const dimSpread = spray.target.dim
+      ? Math.min(spray.target.dim.x, spray.target.dim.y) * 0.42
+      : 0;
+    const targetSpread = spray.type === 'build'
+      ? Math.max(spray.target.radius ?? 0, dimSpread)
+      : Math.max(spray.target.radius ?? 0, 0) * 0.25;
+
+    const areaPhase = this.random() * Math.PI * 2;
+    const areaRing = targetSpread * Math.sqrt(this.random());
+    const endX = tx + Math.cos(areaPhase) * areaRing;
+    const endZ = tz + Math.sin(areaPhase) * areaRing;
+    const endY = ty + (spray.type === 'build'
+      ? (this.random() * 2 - 1) * Math.min(targetSpread * 0.16, 10)
+      : (this.random() * 2 - 1) * Math.min(targetSpread * 0.1, 5));
+    const dx = endX - sx;
+    const dy = endY - sy;
+    const dz = endZ - sz;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1e-3) return;
+
+    const idx = this.particleCount++;
+    const life = this.flightTimeForDistance(len, spray.type) * (0.86 + this.random() * 0.28);
+    this.pStartX[idx] = sx;
+    this.pStartY[idx] = sy;
+    this.pStartZ[idx] = sz;
+    this.pEndX[idx] = endX;
+    this.pEndY[idx] = endY;
+    this.pEndZ[idx] = endZ;
+    this.pAge[idx] = 0;
+    this.pLife[idx] = life;
+    this.pSize[idx] = PARTICLE_BASE_RADIUS
+      * (0.72 + this.random() * 0.52)
+      * (0.5 + 0.5 * scaledIntensity);
+    this.pWobble[idx] = len * 0.018 + targetSpread * 0.035;
+    this.pArc[idx] = spray.type === 'build'
+      ? Math.min(34, Math.max(5, len * 0.09))
+      : Math.min(18, Math.max(3, len * 0.045));
+    this.pSeed[idx] = this.random() * Math.PI * 2;
+    this.pR[idx] = r;
+    this.pG[idx] = g;
+    this.pB[idx] = b;
+  }
+
+  private advanceParticles(dtSec: number): void {
+    if (dtSec <= 0) return;
+    for (let i = 0; i < this.particleCount; i++) {
+      this.pAge[i] += dtSec;
+      if (this.pAge[i] >= this.pLife[i]) {
+        this.removeParticle(i);
+        i--;
+      }
+    }
+  }
+
+  private removeParticle(index: number): void {
+    const last = this.particleCount - 1;
+    if (index !== last) {
+      this.pStartX[index] = this.pStartX[last];
+      this.pStartY[index] = this.pStartY[last];
+      this.pStartZ[index] = this.pStartZ[last];
+      this.pEndX[index] = this.pEndX[last];
+      this.pEndY[index] = this.pEndY[last];
+      this.pEndZ[index] = this.pEndZ[last];
+      this.pAge[index] = this.pAge[last];
+      this.pLife[index] = this.pLife[last];
+      this.pSize[index] = this.pSize[last];
+      this.pWobble[index] = this.pWobble[last];
+      this.pArc[index] = this.pArc[last];
+      this.pSeed[index] = this.pSeed[last];
+      this.pR[index] = this.pR[last];
+      this.pG[index] = this.pG[last];
+      this.pB[index] = this.pB[last];
+    }
+    this.particleCount = last;
+  }
+
+  private writeParticlesToMesh(): number {
+    const timeSec = this._time / 1000;
+    let visibleCount = 0;
+
+    for (let i = 0; i < this.particleCount; i++) {
+      const phase = Math.max(0, Math.min(1, this.pAge[i] / this.pLife[i]));
+      const sx = this.pStartX[i];
+      const sy = this.pStartY[i];
+      const sz = this.pStartZ[i];
+      const dx = this.pEndX[i] - sx;
+      const dy = this.pEndY[i] - sy;
+      const dz = this.pEndZ[i] - sz;
+      const flatLen = Math.hypot(dx, dz);
+      const perpX = flatLen > 1e-3 ? -dz / flatLen : 1;
+      const perpZ = flatLen > 1e-3 ? dx / flatLen : 0;
+      const envelope = Math.sin(phase * Math.PI);
+      const wobble = Math.sin(timeSec * 8.5 + this.pSeed[i] + phase * Math.PI * 4)
+        * this.pWobble[i]
+        * envelope;
+      const px = sx + dx * phase + perpX * wobble;
+      const py = sy + dy * phase + this.pArc[i] * envelope;
+      const pz = sz + dz * phase + perpZ * wobble;
+
+      const fadeIn = Math.min(1, phase * 4);
+      const fadeOut = Math.min(1, (1 - phase) * 3.4);
+      const alpha = PARTICLE_ALPHA * fadeIn * fadeOut;
+      if (alpha <= 0.002) continue;
+
+      const size = this.pSize[i] * (0.68 + 0.42 * envelope);
+      this._scratchMat.makeScale(size, size, size);
+      this._scratchMat.setPosition(px, py, pz);
+      this.mesh.setMatrixAt(visibleCount, this._scratchMat);
+      this.colorArr[visibleCount * 3] = this.pR[i];
+      this.colorArr[visibleCount * 3 + 1] = this.pG[i];
+      this.colorArr[visibleCount * 3 + 2] = this.pB[i];
+      this.alphaArr[visibleCount] = alpha;
+      visibleCount++;
+    }
+
+    return visibleCount;
+  }
+
   destroy(): void {
     this.root.remove(this.mesh);
     this.mesh.dispose();
     this.mat.dispose();
     this.geom.dispose();
     this._teamColorCache.clear();
+    this.spraySpawnBudget.clear();
+    this.activeSprayKeys.clear();
     this.root.parent?.remove(this.root);
   }
 }
