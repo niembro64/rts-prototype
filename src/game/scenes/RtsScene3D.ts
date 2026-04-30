@@ -274,6 +274,24 @@ export class RtsScene3D {
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
   private readonly MINIMAP_UPDATE_INTERVAL = 50;
   private readonly COMBAT_STATS_UPDATE_INTERVAL = COMBAT_STATS_SAMPLE_INTERVAL;
+  private _minimapDataScratch: MinimapData = {
+    contentVersion: 0,
+    mapWidth: 0,
+    mapHeight: 0,
+    entities: [],
+    cameraQuad: [
+      { x: 0, y: 0 },
+      { x: 0, y: 0 },
+      { x: 0, y: 0 },
+      { x: 0, y: 0 },
+    ],
+    cameraYaw: 0,
+    captureTiles: [],
+    captureCellSize: 0,
+    gridOverlayIntensity: 0,
+    showTerrain: true,
+    wind: undefined,
+  };
 
   // Snapshot-arrival tracking for snap-rate EMA
   private lastSnapArrivalMs = 0;
@@ -1317,6 +1335,7 @@ export class RtsScene3D {
         intensity,
         showTerrain,
         this.clientViewState.getServerMeta()?.wind,
+        this._minimapDataScratch,
       ),
     );
   }

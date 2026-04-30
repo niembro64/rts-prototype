@@ -301,22 +301,17 @@ function handlePointerEnd(event: PointerEvent): void {
   event.stopPropagation();
 }
 
-// Regenerate the entity layer only when entities / map size change.
+// Regenerate the entity layer only when minimap content changes.
 // GameCanvas mutates these slower (20 Hz) and keeps `cameraQuad` as
 // a live reference that changes every frame — so watching specific
 // sub-fields instead of `props.data` lets the cheap camera-only
 // path skip the expensive full rebuild.
 //
-// REACTIVITY CONTRACT: `deep: false` means the watch fires on reference
-// change, NOT in-place mutation. Callers (RtsScene*.updateMinimapInfo
-// via buildMinimapData) MUST emit a fresh `entities` array on every
-// update — buildMinimapData already does this by constructing a new
-// array per call. If anything ever starts pushing into the same array
-// in-place, flip this to `deep: true` or this watch will silently stop
-// firing.
+// REACTIVITY CONTRACT: callers may reuse entity records in-place, but
+// they MUST bump contentVersion whenever that cached content changes.
 watch(
   () => [
-    props.data.entities,
+    props.data.contentVersion,
     props.data.mapWidth,
     props.data.mapHeight,
     props.data.captureTiles,

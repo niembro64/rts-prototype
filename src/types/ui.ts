@@ -72,6 +72,10 @@ export type MinimapCaptureTile = {
 };
 
 export type MinimapData = {
+  /** Incremented whenever the minimap content layer changes. This lets
+   *  callers reuse entity records without depending on array identity
+   *  for redraws. */
+  contentVersion: number;
   mapWidth: number;
   mapHeight: number;
   entities: MinimapEntity[];

@@ -13,6 +13,38 @@ function unitLabel(unitType: string): string {
   }
 }
 
+const _minimapColorCache = new Map<number, string>();
+
+function minimapColor(color: number): string {
+  let cached = _minimapColorCache.get(color);
+  if (!cached) {
+    cached = '#' + color.toString(16).padStart(6, '0');
+    _minimapColorCache.set(color, cached);
+  }
+  return cached;
+}
+
+function writeMinimapEntity(
+  entities: MinimapEntity[],
+  index: number,
+  x: number,
+  y: number,
+  type: MinimapEntity['type'],
+  color: string,
+  isSelected: boolean | undefined,
+): number {
+  let entity = entities[index];
+  if (!entity) {
+    entity = { pos: { x: 0, y: 0 }, type, color };
+    entities[index] = entity;
+  }
+  entity.pos.x = x;
+  entity.pos.y = y;
+  entity.type = type;
+  entity.color = color;
+  entity.isSelected = isSelected;
+  return index + 1;
+}
 export type {
   UIEntitySource,
   SelectionInfo,
@@ -130,35 +162,13 @@ export function buildMinimapData(
   gridOverlayIntensity: number,
   showTerrain: boolean,
   wind?: { x: number; y: number; speed: number },
+  out?: MinimapData,
 ): MinimapData {
-  const entities: MinimapEntity[] = [];
-
-  // Add units to minimap
-  for (const unit of entitySource.getUnits()) {
-    const color = getPlayerPrimaryColor(unit.ownership?.playerId);
-    entities.push({
-      pos: { x: unit.transform.x, y: unit.transform.y },
-      type: 'unit',
-      color: '#' + color.toString(16).padStart(6, '0'),
-      isSelected: unit.selectable?.selected,
-    });
-  }
-
-  // Add buildings to minimap
-  for (const building of entitySource.getBuildings()) {
-    const color = getPlayerPrimaryColor(building.ownership?.playerId);
-    entities.push({
-      pos: { x: building.transform.x, y: building.transform.y },
-      type: 'building',
-      color: '#' + color.toString(16).padStart(6, '0'),
-      isSelected: building.selectable?.selected,
-    });
-  }
-
-  return {
+  const data = out ?? {
+    contentVersion: 0,
     mapWidth,
     mapHeight,
-    entities,
+    entities: [],
     cameraQuad,
     cameraYaw,
     captureTiles,
@@ -167,4 +177,45 @@ export function buildMinimapData(
     showTerrain,
     wind,
   };
+  const entities = data.entities;
+  let entityCount = 0;
+
+  // Add units to minimap
+  for (const unit of entitySource.getUnits()) {
+    entityCount = writeMinimapEntity(
+      entities,
+      entityCount,
+      unit.transform.x,
+      unit.transform.y,
+      'unit',
+      minimapColor(getPlayerPrimaryColor(unit.ownership?.playerId)),
+      unit.selectable?.selected,
+    );
+  }
+
+  // Add buildings to minimap
+  for (const building of entitySource.getBuildings()) {
+    entityCount = writeMinimapEntity(
+      entities,
+      entityCount,
+      building.transform.x,
+      building.transform.y,
+      'building',
+      minimapColor(getPlayerPrimaryColor(building.ownership?.playerId)),
+      building.selectable?.selected,
+    );
+  }
+  entities.length = entityCount;
+
+  data.mapWidth = mapWidth;
+  data.mapHeight = mapHeight;
+  data.contentVersion += 1;
+  data.cameraQuad = cameraQuad;
+  data.cameraYaw = cameraYaw;
+  data.captureTiles = captureTiles;
+  data.captureCellSize = captureCellSize;
+  data.gridOverlayIntensity = gridOverlayIntensity;
+  data.showTerrain = showTerrain;
+  data.wind = wind;
+  return data;
 }

@@ -30,7 +30,7 @@ function cloneStats(s: NetworkServerSnapshotUnitTypeStats): NetworkServerSnapsho
   };
 }
 
-function cloneCombatStats(stats: NetworkServerSnapshotCombatStats): NetworkServerSnapshotCombatStats {
+export function cloneNetworkCombatStats(stats: NetworkServerSnapshotCombatStats): NetworkServerSnapshotCombatStats {
   const players: NetworkServerSnapshotCombatStats['players'] = {};
   for (const playerId in stats.players) {
     const src = stats.players[playerId];
@@ -240,7 +240,7 @@ export function cloneNetworkSnapshot(state: NetworkServerSnapshot): NetworkServe
       velocityUpdates: state.projectiles.velocityUpdates?.map(cloneVelocityUpdate),
     } : undefined,
     gameState: state.gameState ? { phase: state.gameState.phase, winnerId: state.gameState.winnerId } : undefined,
-    combatStats: state.combatStats ? cloneCombatStats(state.combatStats) : undefined,
+    combatStats: state.combatStats ? cloneNetworkCombatStats(state.combatStats) : undefined,
     serverMeta: state.serverMeta ? {
       ticks: { ...state.serverMeta.ticks },
       snaps: { ...state.serverMeta.snaps },

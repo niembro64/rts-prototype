@@ -33,6 +33,7 @@ import {
   type NetworkRole,
   type BattleHandoff,
 } from '../game/network/NetworkManager';
+import { cloneNetworkCombatStats } from '../game/network/snapshotClone';
 import {
   getMapSize,
   COMBAT_STATS_HISTORY_MAX,
@@ -422,9 +423,14 @@ let statsHistoryStartTime = 0;
 const battleElapsed = ref('00:00:00');
 
 function recordCombatStats(stats: NetworkServerSnapshotCombatStats): void {
-  const cloned = structuredClone(stats);
-  combatStats.value = cloned;
   if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
+  if (!showCombatStats.value) {
+    combatStats.value = stats;
+    return;
+  }
+
+  const cloned = cloneNetworkCombatStats(stats);
+  combatStats.value = cloned;
   combatStatsHistory.value.push({
     timestamp: Date.now() - statsHistoryStartTime,
     stats: cloned,
