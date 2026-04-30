@@ -85,6 +85,7 @@ export function buildEconomyInfo(
   // Count buildings for this player
   const playerBuildings = entitySource.getBuildingsByPlayer(playerId);
   const solarCount = playerBuildings.filter(b => b.buildingType === 'solar').length;
+  const windCount = playerBuildings.filter(b => b.buildingType === 'wind').length;
   const factoryCount = playerBuildings.filter(b => b.buildingType === 'factory').length;
 
   // Count units for this player
@@ -108,7 +109,7 @@ export function buildEconomyInfo(
       netFlow: manaNetFlow,
     },
     units: { count: unitCount, cap: unitCap },
-    buildings: { solar: solarCount, factory: factoryCount },
+    buildings: { solar: solarCount, wind: windCount, factory: factoryCount },
   };
 }
 
@@ -123,10 +124,12 @@ export function buildMinimapData(
   mapWidth: number,
   mapHeight: number,
   cameraQuad: MinimapData['cameraQuad'],
+  cameraYaw: number,
   captureTiles: readonly MinimapCaptureTile[],
   captureCellSize: number,
   gridOverlayIntensity: number,
   showTerrain: boolean,
+  wind?: { x: number; y: number; speed: number },
 ): MinimapData {
   const entities: MinimapEntity[] = [];
 
@@ -157,9 +160,11 @@ export function buildMinimapData(
     mapHeight,
     entities,
     cameraQuad,
+    cameraYaw,
     captureTiles,
     captureCellSize,
     gridOverlayIntensity,
     showTerrain,
+    wind,
   };
 }

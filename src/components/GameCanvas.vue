@@ -2,7 +2,7 @@
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { createGame, destroyGame, type GameInstance, type GameScene } from '../game/createGame';
 import { ClientViewState } from '../game/network/ClientViewState';
-import { type PlayerId, type WaypointType } from '../game/sim/types';
+import { type BuildingType, type PlayerId, type WaypointType } from '../game/sim/types';
 import {
   createBackgroundBattle,
   destroyBackgroundBattle,
@@ -406,7 +406,7 @@ const economyInfo = reactive<EconomyInfo>({
     netFlow: 5,
   },
   units: { count: 1, cap: 120 },
-  buildings: { solar: 0, factory: 0 },
+  buildings: { solar: 0, wind: 0, factory: 0 },
 });
 
 // Minimap state
@@ -448,8 +448,8 @@ function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
     onMinimapUpdate: (data) => {
       applyMinimapContentData(minimapData, data);
     },
-    onCameraQuadUpdate: (quad) => {
-      applyMinimapCameraQuad(minimapData, quad);
+    onCameraQuadUpdate: (quad, cameraYaw) => {
+      applyMinimapCameraQuad(minimapData, quad, cameraYaw);
     },
     onCombatStatsUpdate: recordCombatStats,
     onServerMetaUpdate: (meta) => {
@@ -1144,7 +1144,7 @@ const selectionActions: SelectionActions = {
     const scene = gameInstance?.getScene();
     scene?.setWaypointMode(mode);
   },
-  startBuild: (buildingType: 'solar' | 'factory') => {
+  startBuild: (buildingType: BuildingType) => {
     const scene = gameInstance?.getScene();
     scene?.startBuildMode(buildingType);
   },
@@ -1951,6 +1951,7 @@ onUnmounted(() => {
           :player-name="getPlayerName(activePlayer)"
           :player-color="getPlayerColor(activePlayer)"
           :can-toggle-player="showPlayerToggle"
+          :direction-data="minimapData"
           @toggle-player="togglePlayer"
         />
 
@@ -1960,8 +1961,10 @@ onUnmounted(() => {
           :actions="selectionActions"
         />
 
-        <!-- Minimap (bottom-right) -->
-        <Minimap :data="minimapData" @click="handleMinimapClick" />
+        <!-- Minimap -->
+        <div class="minimap-stack">
+          <Minimap :data="minimapData" @click="handleMinimapClick" />
+        </div>
       </template>
     </div>
 
@@ -3091,6 +3094,19 @@ onUnmounted(() => {
 
 .phaser-container canvas {
   display: block;
+}
+
+.minimap-stack {
+  position: absolute;
+  top: 60px;
+  left: 10px;
+  z-index: 1000;
+  display: grid;
+  pointer-events: none;
+}
+
+.minimap-stack :deep(.minimap-container) {
+  pointer-events: auto;
 }
 
 

@@ -3,8 +3,11 @@
 // Each building type gets its own recognizable silhouette, built from a
 // team-colored primary body plus LOD-tagged type-specific accents:
 //
-//   solar   — raised photovoltaic modules. No coplanar/near-coplanar
-//             paper-thin overlays, so distant zoom levels do not shimmer.
+//   solar   — static pyramid-flower collector: a wide team-colored
+//             pyramid base, four opened photovoltaic leaves, and a
+//             dark photovoltaic inner pyramid.
+//   wind    — tower turbine with a globally wind-aligned nacelle and
+//             spinning three-blade rotor.
 //   factory — compact radial construction tower. Produced units are
 //             assembled outside the tower footprint by spray particles.
 //
@@ -16,14 +19,21 @@
 
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
+import {
+  FACTORY_BASE_VISUAL_HEIGHT,
+  SOLAR_BUILDING_VISUAL_HEIGHT,
+  WIND_BUILDING_VISUAL_HEIGHT,
+} from '../sim/buildingAnchors';
 
 /** Short building types we have art for. Unknown types fall back to a
  *  plain primary-color slab (same as before). */
-export type BuildingShapeType = 'solar' | 'factory' | 'unknown';
+export type BuildingShapeType = 'solar' | 'wind' | 'factory' | 'unknown';
 
 export type BuildingDetailRole =
   | 'static'
-  | 'solarShine'
+  | 'solarLeaf'
+  | 'solarPanel'
+  | 'windRig'
   | 'factoryUnitGhost'
   | 'factoryUnitCore'
   | 'factoryBuildPulse'
@@ -36,6 +46,11 @@ export type BuildingDetailMesh = {
   role?: BuildingDetailRole;
 };
 
+export type SolarPetalAnimation = {
+  openMatrix: THREE.Matrix4;
+  closedMatrix: THREE.Matrix4;
+};
+
 export type FactoryConstructionRig = {
   unitGhost: THREE.Mesh;
   unitCore: THREE.Mesh;
@@ -45,11 +60,25 @@ export type FactoryConstructionRig = {
   bayBaseY: number;
 };
 
+export type WindTurbineRig = {
+  root: THREE.Mesh;
+  rotor: THREE.Mesh;
+};
+
+export type ConstructionEmitterRig = {
+  group: THREE.Group;
+  nozzleLocal: THREE.Vector3;
+};
+
 /** What the caller receives back from `buildBuildingShape()`. */
 export type BuildingShape = {
-  /** Team-primary-colored main body. Scaled per-instance at the call
-   *  site to the building's (width, height, depth). */
+  /** Main body. Scaled per-instance at the call site to the building's
+   *  (width, height, depth). Usually team-primary colored, except
+   *  material-locked art such as the solar collector pyramid. */
   primary: THREE.Mesh;
+  /** When true, Render3DEntities must not replace `primary.material`
+   *  with a team material after ownership changes. */
+  primaryMaterialLocked?: boolean;
   /** Decorative accent meshes already positioned relative to the primary
    *  body. Each declares the client LOD tier range where it should exist. */
   details: BuildingDetailMesh[];
@@ -57,25 +86,48 @@ export type BuildingShape = {
    *  primary body correctly on the ground plane. */
   height: number;
   factoryRig?: FactoryConstructionRig;
+  windRig?: WindTurbineRig;
 };
 
 // ── Standard dimensions ────────────────────────────────────────────────
 /** Default fallback block height for unknown buildings. */
 const DEFAULT_HEIGHT = 120;
-/** Solar collector silhouette is much shorter and wider — reads as a
- *  flat panel array, not a building. */
-const SOLAR_HEIGHT = 30;
+/** Solar collector silhouette is a squat opened pyramid, but tall enough
+ *  for the photovoltaic faces to read as the main structure. */
+const SOLAR_HEIGHT = SOLAR_BUILDING_VISUAL_HEIGHT;
+const WIND_HEIGHT = WIND_BUILDING_VISUAL_HEIGHT;
 /** Factory primary is the compact cylindrical base of the tower. */
-const FACTORY_BASE_HEIGHT = 30;
+const FACTORY_BASE_HEIGHT = FACTORY_BASE_VISUAL_HEIGHT;
 
 // ── Shared cached geometries ───────────────────────────────────────────
 // Unit box reused for all building slabs + accents; each caller scales
 // it to the right dimensions. Shared across instances so every factory
 // and every solar uses the same backing BufferGeometry.
 const boxGeom = new THREE.BoxGeometry(1, 1, 1);
+const solarPanelPyramidGeom = new THREE.BufferGeometry();
+solarPanelPyramidGeom.setAttribute('position', new THREE.Float32BufferAttribute([
+  -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,   0, 0.5, 0,
+   0.5, -0.5, -0.5,  -0.5, -0.5, -0.5,   0, 0.5, 0,
+   0.5, -0.5,  0.5,   0.5, -0.5, -0.5,   0, 0.5, 0,
+  -0.5, -0.5, -0.5,  -0.5, -0.5,  0.5,   0, 0.5, 0,
+], 3));
+solarPanelPyramidGeom.computeVertexNormals();
+const solarTrianglePetalShape = new THREE.Shape([
+  new THREE.Vector2(-0.5, 0),
+  new THREE.Vector2(0.5, 0),
+  new THREE.Vector2(0, 1),
+]);
+const solarTrianglePanelGeom = new THREE.ShapeGeometry(solarTrianglePetalShape);
+const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape, {
+  depth: 1,
+  bevelEnabled: false,
+  steps: 1,
+});
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
 const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
+const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
+const windBladeGeom = createWindBladeGeometry();
 
 // Slightly lighter gray for structural columns/gantries.
 const chimneyMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
@@ -86,29 +138,33 @@ const solarCellMat = new THREE.MeshStandardMaterial({
   color: 0x123a58,
   metalness: 1.0,
   roughness: 0.02,
-});
-const solarShineGeom = new THREE.PlaneGeometry(1, 1);
-const solarShineMat = new THREE.ShaderMaterial({
-  vertexShader: `
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`,
-  fragmentShader: `
-varying vec2 vUv;
-void main() {
-  float crossFade = smoothstep(0.0, 0.16, vUv.x) * smoothstep(1.0, 0.84, vUv.x);
-  float strip = 1.0 - smoothstep(0.0, 0.5, abs(vUv.y - 0.5) * 2.0);
-  float alpha = crossFade * strip * strip * 0.72;
-  gl_FragColor = vec4(0.72, 0.96, 1.0, alpha);
-}
-`,
-  transparent: true,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
   side: THREE.DoubleSide,
+});
+const solarPetalBackMat = new THREE.MeshLambertMaterial({
+  color: 0x2b3036,
+  side: THREE.DoubleSide,
+});
+const windTowerMat = new THREE.MeshLambertMaterial({ color: 0x4c5562 });
+const windNacelleMat = new THREE.MeshStandardMaterial({
+  color: 0xdce5ee,
+  metalness: 0.32,
+  roughness: 0.2,
+});
+const windBladeMat = new THREE.MeshStandardMaterial({
+  color: 0xf7fbff,
+  metalness: 0.38,
+  roughness: 0.14,
+});
+const windGlassMat = new THREE.MeshStandardMaterial({
+  color: 0x123a58,
+  metalness: 1.0,
+  roughness: 0.04,
+});
+const invisibleMat = new THREE.MeshBasicMaterial({
+  color: 0x000000,
+  transparent: true,
+  opacity: 0,
+  depthWrite: false,
 });
 const factoryFrameMat = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
 const constructionGhostMat = new THREE.MeshLambertMaterial({
@@ -130,6 +186,28 @@ const constructionSparkMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
 });
 const constructionOrbGeom = new THREE.SphereGeometry(1, 12, 8);
+const hazardStripeMat = new THREE.ShaderMaterial({
+  vertexShader: `
+varying vec3 vLocal;
+void main() {
+  vLocal = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`,
+  fragmentShader: `
+varying vec3 vLocal;
+void main() {
+  float diagonal = fract((vLocal.x + vLocal.y * 0.72 + vLocal.z * 0.28) * 3.25);
+  vec3 yellow = vec3(1.0, 0.78, 0.04);
+  vec3 black = vec3(0.025, 0.022, 0.018);
+  gl_FragColor = vec4(diagonal < 0.5 ? yellow : black, 1.0);
+}
+`,
+});
+
+export function getConstructionHazardMaterial(): THREE.Material {
+  return hazardStripeMat;
+}
 
 /** Build a type-specific building mesh set. `width` and `depth` are the
  *  building's footprint in world units (from `entity.building.width/height`);
@@ -144,6 +222,8 @@ export function buildBuildingShape(
   switch (type) {
     case 'solar':
       return buildSolar(width, depth, primaryMat);
+    case 'wind':
+      return buildWind(width, depth, primaryMat);
     case 'factory':
       return buildFactory(width, depth, primaryMat);
     default:
@@ -153,96 +233,201 @@ export function buildBuildingShape(
 
 // ── Per-type builders ──────────────────────────────────────────────────
 
-/** Solar collector: short team-colored slab with a 3×2 grid of darker
- *  "cell" inset boxes on top. Height clamped low so the whole thing
- *  reads as a ground-hugging panel array. */
+/** Solar collector: a static pyramid-flower silhouette. The primary
+ *  body is one wide photovoltaic pyramid. LOW+ detail adds four
+ *  opened photovoltaic leaves attached at the pyramid base. */
 function buildSolar(
+  width: number,
+  depth: number,
+  _primaryMat: THREE.Material,
+): BuildingShape {
+  const primary = new THREE.Mesh(solarPanelPyramidGeom, solarCellMat);
+  const details: BuildingDetailMesh[] = [];
+
+  const petalTilt = 0.42;
+  const petalHingeY = 0;
+  const petalThickness = 3.2;
+  const panelRaise = 0.45;
+  const petalFaceOffset = petalThickness + panelRaise;
+  const frontBackAspect = width / Math.hypot(SOLAR_HEIGHT, depth * 0.5);
+  const sideAspect = depth / Math.hypot(SOLAR_HEIGHT, width * 0.5);
+
+  const frontBackSpan = width;
+  const frontBackLen = frontBackSpan / frontBackAspect;
+  const frontBackZ = depth * 0.5;
+  const sideSpan = depth;
+  const sideLen = sideSpan / sideAspect;
+  const sideX = width * 0.5;
+  const hingeRadius = Math.max(2.2, Math.min(width, depth) * 0.035);
+
+  for (const sign of [-1, 1]) {
+    const frontBackClosedDir = new THREE.Vector3(0, SOLAR_HEIGHT, -sign * frontBackZ);
+    details.push(detail(makeHingeBar(
+      solarPetalBackMat,
+      frontBackSpan,
+      hingeRadius,
+      0,
+      hingeRadius,
+      sign * frontBackZ,
+      1,
+      0,
+    ), 'low'));
+    details.push(detail(makeTrianglePetal(
+      solarPetalBackMat,
+      frontBackSpan,
+      frontBackLen,
+      0,
+      petalHingeY,
+      sign * frontBackZ,
+      1,
+      0,
+      0,
+      sign,
+      petalTilt,
+      0,
+      0,
+      petalThickness,
+      frontBackClosedDir,
+    ), 'low', undefined, 'solarLeaf'));
+    details.push(detail(makeTrianglePetal(
+      solarCellMat,
+      frontBackSpan,
+      frontBackLen,
+      0,
+      petalHingeY,
+      sign * frontBackZ,
+      1,
+      0,
+      0,
+      sign,
+      petalTilt,
+      0,
+      petalFaceOffset,
+      0,
+      frontBackClosedDir,
+    ), 'low', undefined, 'solarPanel'));
+
+    const sideClosedDir = new THREE.Vector3(-sign * sideX, SOLAR_HEIGHT, 0);
+    details.push(detail(makeHingeBar(
+      solarPetalBackMat,
+      sideSpan,
+      hingeRadius,
+      sign * sideX,
+      hingeRadius,
+      0,
+      0,
+      1,
+    ), 'low'));
+    details.push(detail(makeTrianglePetal(
+      solarPetalBackMat,
+      sideSpan,
+      sideLen,
+      sign * sideX,
+      petalHingeY,
+      0,
+      0,
+      1,
+      sign,
+      0,
+      petalTilt,
+      0,
+      0,
+      petalThickness,
+      sideClosedDir,
+    ), 'low', undefined, 'solarLeaf'));
+    details.push(detail(makeTrianglePetal(
+      solarCellMat,
+      sideSpan,
+      sideLen,
+      sign * sideX,
+      petalHingeY,
+      0,
+      0,
+      1,
+      sign,
+      0,
+      petalTilt,
+      0,
+      petalFaceOffset,
+      0,
+      sideClosedDir,
+    ), 'low', undefined, 'solarPanel'));
+  }
+
+  return { primary, details, height: SOLAR_HEIGHT, primaryMaterialLocked: true };
+}
+
+function buildWind(
   width: number,
   depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
-  const primary = new THREE.Mesh(boxGeom, primaryMat);
+  const minDim = Math.min(width, depth);
+  const towerRadius = Math.max(3, minDim * 0.1);
+  const towerH = WIND_HEIGHT * 0.57;
+  const baseH = 12;
+  const primary = new THREE.Mesh(cylinderGeom, primaryMat);
   const details: BuildingDetailMesh[] = [];
 
-  // LOW gets one chunky raised collector plate. MED+ replaces it with
-  // the 3x2 modules below; using maxTier avoids stacked overlapping
-  // panels when the LOD gets richer.
-  const lowPlate = makeBox(
-    solarCellMat,
-    width * 0.84,
-    8,
-    depth * 0.7,
-    0,
-    SOLAR_HEIGHT + 7,
-    0,
-  );
-  details.push(detail(lowPlate, 'low', 'low'));
+  details.push(detail(
+    makeCylinder(factoryFrameMat, Math.max(7, minDim * 0.28), 5, 0, baseH + 2.5, 0, hexCylinderGeom),
+    'low',
+  ));
+  details.push(detail(
+    makeCylinder(windTowerMat, towerRadius, towerH, 0, towerH / 2, 0),
+    'low',
+  ));
 
-  // Cell grid on top. 3 wide x 2 deep like the 2D version, but each
-  // module is a real raised slab with several world units of clearance
-  // from the roof so it does not z-fight or shimmer at long zoom.
-  const MARGIN = 0.08;
-  const GAP = 0.055;
-  const cellsX = 3, cellsZ = 2;
-  const availW = width * (1 - 2 * MARGIN);
-  const availD = depth * (1 - 2 * MARGIN);
-  const gapW = availW * GAP;
-  const gapD = availD * GAP;
-  const cellW = (availW - gapW * (cellsX - 1)) / cellsX;
-  const cellD = (availD - gapD * (cellsZ - 1)) / cellsZ;
-  const startX = -width / 2 + width * MARGIN + cellW / 2;
-  const startZ = -depth / 2 + depth * MARGIN + cellD / 2;
-  const cellH = 8;
-  const slabTop = SOLAR_HEIGHT;
-  for (let cz = 0; cz < cellsZ; cz++) {
-    for (let cx = 0; cx < cellsX; cx++) {
-      const cell = makeBox(
-        solarCellMat,
-        cellW,
-        cellH,
-        cellD,
-        startX + cx * (cellW + gapW),
-        slabTop + 4 + cellH / 2,
-        startZ + cz * (cellD + gapD),
-      );
-      details.push(detail(cell, 'medium'));
+  const root = new THREE.Mesh(boxGeom, invisibleMat);
+  root.position.set(0, towerH, 0);
+  root.visible = false;
 
-      const shineY = slabTop + 4 + cellH + 2.5;
-      const shinePhase = (cx + cz * cellsX) / (cellsX * cellsZ);
-      details.push(detail(
-        makeSolarShine(
-          cell.position.x,
-          shineY,
-          cell.position.z,
-          cellW * 1.35,
-          cellD * 0.22,
-          cellW * 0.42,
-          shinePhase,
-          -Math.PI / 11,
-        ),
-        'high',
-        undefined,
-        'solarShine',
-      ));
-      details.push(detail(
-        makeSolarShine(
-          cell.position.x,
-          shineY + 0.6,
-          cell.position.z,
-          cellW * 1.55,
-          cellD * 0.16,
-          cellW * 0.52,
-          shinePhase + 0.37,
-          Math.PI / 12,
-        ),
-        'max',
-        undefined,
-        'solarShine',
-      ));
-    }
+  const nacelleLen = Math.max(32, minDim * 0.86);
+  const nacelleRadius = Math.max(5.2, minDim * 0.16);
+  const nacelle = makeCylinder(windNacelleMat, nacelleRadius, nacelleLen, 0, 0, 0);
+  nacelle.rotation.x = Math.PI / 2;
+  root.add(nacelle);
+
+  const panelLen = nacelleLen * 0.52;
+  const panelH = nacelleRadius * 0.42;
+  for (const side of [-1, 1]) {
+    root.add(makeBox(
+      windGlassMat,
+      0.6,
+      panelH,
+      panelLen,
+      side * nacelleRadius * 1.02,
+      nacelleRadius * 0.1,
+      -nacelleLen * 0.05,
+    ));
   }
 
-  return { primary, details, height: SOLAR_HEIGHT };
+  const rotor = new THREE.Mesh(boxGeom, invisibleMat);
+  rotor.position.set(0, 0, nacelleLen * 0.66);
+  root.add(rotor);
+
+  const hub = makeSphere(windNacelleMat, nacelleRadius * 0.78, 0, 0, 0);
+  rotor.add(hub);
+
+  const nose = makeCone(windNacelleMat, nacelleRadius * 0.74, nacelleRadius * 1.38, 0, 0, nacelleRadius * 0.5);
+  nose.rotation.x = Math.PI / 2;
+  rotor.add(nose);
+
+  const bladeLen = Math.min(WIND_HEIGHT * 0.42, Math.max(86, minDim * 1.55));
+  const bladeW = Math.max(8, minDim * 0.19);
+  const bladeThickness = Math.max(1.6, minDim * 0.032);
+  for (let i = 0; i < 3; i++) {
+    const blade = makeTurbineBlade(windBladeMat, bladeLen, bladeW, bladeThickness, (i / 3) * Math.PI * 2);
+    rotor.add(blade);
+  }
+
+  details.push(detail(root, 'low', undefined, 'windRig'));
+  return {
+    primary,
+    details,
+    height: baseH,
+    windRig: { root, rotor },
+  };
 }
 
 /** Factory: compact radial construction tower. No yard geometry is
@@ -262,7 +447,7 @@ function buildFactory(
   const towerBaseY = FACTORY_BASE_HEIGHT;
 
   details.push(detail(
-    makeCylinder(factoryFrameMat, collarRadius, 10, 0, FACTORY_BASE_HEIGHT + 5, 0, hexCylinderGeom),
+    makeCylinder(hazardStripeMat, collarRadius, 10, 0, FACTORY_BASE_HEIGHT + 5, 0, hexCylinderGeom),
     'low',
   ));
   details.push(detail(
@@ -289,13 +474,13 @@ function buildFactory(
   }
 
   details.push(detail(
-    makeCylinder(factoryFrameMat, collarRadius * 0.82, 8, 0, towerBaseY + towerH * 0.56, 0, hexCylinderGeom),
+    makeCylinder(hazardStripeMat, collarRadius * 0.82, 8, 0, towerBaseY + towerH * 0.56, 0, hexCylinderGeom),
     'medium',
   ));
 
   const capY = towerBaseY + towerH + 5;
   details.push(detail(
-    makeCylinder(factoryFrameMat, collarRadius * 0.72, 10, 0, capY, 0, hexCylinderGeom),
+    makeCylinder(hazardStripeMat, collarRadius * 0.72, 10, 0, capY, 0, hexCylinderGeom),
     'medium',
   ));
 
@@ -309,6 +494,10 @@ function buildFactory(
     0,
   );
   details.push(detail(nozzle, 'medium'));
+  details.push(detail(
+    makeCylinder(hazardStripeMat, nozzleRadius * 1.18, 5, 0, nozzleY - nozzleRadius * 0.62, 0, hexCylinderGeom),
+    'medium',
+  ));
 
   const unitGhost = new THREE.Mesh(constructionOrbGeom, constructionGhostMat);
   unitGhost.visible = false;
@@ -353,23 +542,209 @@ function buildFactory(
   };
 }
 
+export function buildConstructionEmitterRig(scale: number): ConstructionEmitterRig {
+  const root = new THREE.Group();
+  const baseRadius = Math.max(3, scale * 0.72);
+  const mastRadius = Math.max(1.2, scale * 0.18);
+  const mastHeight = Math.max(7, scale * 1.05);
+  const headRadius = Math.max(3, scale * 0.48);
+
+  root.add(makeCylinder(hazardStripeMat, baseRadius, Math.max(4, scale * 0.22), 0, scale * 0.11, 0, hexCylinderGeom));
+  root.add(makeCylinder(factoryFrameMat, mastRadius, mastHeight, 0, scale * 0.22 + mastHeight / 2, 0));
+
+  const headY = scale * 0.22 + mastHeight + headRadius * 0.78;
+  root.add(makeCylinder(hazardStripeMat, headRadius * 1.18, Math.max(3.5, scale * 0.18), 0, headY - headRadius * 0.62, 0, hexCylinderGeom));
+  root.add(makeSphere(constructionCoreMat, headRadius, 0, headY, 0));
+
+  return {
+    group: root,
+    nozzleLocal: new THREE.Vector3(0, headY, 0),
+  };
+}
+
 /** Fallback — plain team-primary slab at default height, no detail. */
 function buildUnknown(primaryMat: THREE.Material): BuildingShape {
   const primary = new THREE.Mesh(boxGeom, primaryMat);
   return { primary, details: [], height: DEFAULT_HEIGHT };
 }
 
+function createWindBladeGeometry(): THREE.BufferGeometry {
+  const stations = [
+    { y: 0.06, halfW: 0.34, halfT: 0.46, sweep: -0.02 },
+    { y: 0.48, halfW: 0.18, halfT: 0.28, sweep: -0.08 },
+    { y: 1.0, halfW: 0.035, halfT: 0.09, sweep: 0.08 },
+  ];
+  const positions: number[] = [];
+  for (const s of stations) {
+    positions.push(
+      s.sweep - s.halfW, s.y, -s.halfT,
+      s.sweep + s.halfW, s.y, -s.halfT,
+      s.sweep + s.halfW, s.y,  s.halfT,
+      s.sweep - s.halfW, s.y,  s.halfT,
+    );
+  }
+
+  const indices: number[] = [];
+  const addFace = (a: number, b: number, c: number, d: number): void => {
+    indices.push(a, b, c, a, c, d);
+  };
+  for (let i = 0; i < stations.length - 1; i++) {
+    const a = i * 4;
+    const b = (i + 1) * 4;
+    addFace(a + 0, a + 1, b + 1, b + 0);
+    addFace(a + 1, a + 2, b + 2, b + 1);
+    addFace(a + 2, a + 3, b + 3, b + 2);
+    addFace(a + 3, a + 0, b + 0, b + 3);
+  }
+  addFace(0, 3, 2, 1);
+  const tip = (stations.length - 1) * 4;
+  addFace(tip + 0, tip + 1, tip + 2, tip + 3);
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+  return geom;
+}
+
+function makeTurbineBlade(
+  material: THREE.Material,
+  length: number,
+  rootWidth: number,
+  thickness: number,
+  angle: number,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(windBladeGeom, material);
+  mesh.scale.set(rootWidth, length, thickness);
+  mesh.rotation.z = angle;
+  return mesh;
+}
+
+function makeTrianglePetal(
+  material: THREE.Material,
+  width: number,
+  length: number,
+  hingeX: number,
+  hingeY: number,
+  hingeZ: number,
+  tangentX: number,
+  tangentZ: number,
+  outwardX: number,
+  outwardZ: number,
+  openAngle: number,
+  inset = 0,
+  normalOffset = 0,
+  thickness = 0,
+  closedDirection?: THREE.Vector3,
+): THREE.Mesh {
+  const hinge = new THREE.Vector3(hingeX, hingeY, hingeZ);
+  const tangent = new THREE.Vector3(tangentX, 0, tangentZ);
+  const openDirection = new THREE.Vector3(
+    outwardX * Math.cos(openAngle),
+    Math.sin(openAngle),
+    outwardZ * Math.cos(openAngle),
+  );
+  const mesh = makeTrianglePlate(
+    material,
+    width,
+    length,
+    hinge,
+    tangent,
+    openDirection,
+    inset,
+    normalOffset,
+    thickness,
+  );
+  if (closedDirection) {
+    mesh.userData.solarPetal = {
+      openMatrix: mesh.matrix.clone(),
+      closedMatrix: makeTrianglePlateMatrix(
+        width,
+        length,
+        hinge,
+        tangent,
+        closedDirection,
+        inset,
+        normalOffset,
+        thickness,
+      ),
+    } satisfies SolarPetalAnimation;
+  }
+  return mesh;
+}
+
+function makeTrianglePlate(
+  material: THREE.Material,
+  width: number,
+  length: number,
+  hinge: THREE.Vector3,
+  tangent: THREE.Vector3,
+  petalDirection: THREE.Vector3,
+  inset = 0,
+  normalOffset = 0,
+  thickness = 0,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(thickness > 0 ? solarTrianglePetalGeom : solarTrianglePanelGeom, material);
+  mesh.matrixAutoUpdate = false;
+  mesh.matrix.copy(makeTrianglePlateMatrix(width, length, hinge, tangent, petalDirection, inset, normalOffset, thickness));
+  return mesh;
+}
+
+function makeTrianglePlateMatrix(
+  width: number,
+  length: number,
+  hinge: THREE.Vector3,
+  tangent: THREE.Vector3,
+  petalDirection: THREE.Vector3,
+  inset = 0,
+  normalOffset = 0,
+  thickness = 0,
+): THREE.Matrix4 {
+  const tangentDir = tangent.clone().normalize();
+  const petalDir = petalDirection.clone().normalize();
+  const normal = new THREE.Vector3().crossVectors(tangentDir, petalDir).normalize();
+  if (normal.y < 0) normal.multiplyScalar(-1);
+  const origin = hinge.clone()
+    .addScaledVector(petalDir, inset)
+    .addScaledVector(normal, normalOffset);
+  const xAxis = tangentDir.multiplyScalar(width);
+  const yAxis = petalDir.multiplyScalar(Math.max(1, length - inset));
+  const zAxis = normal.multiplyScalar(Math.max(1, thickness));
+  const matrix = new THREE.Matrix4();
+  matrix.makeBasis(xAxis, yAxis, zAxis);
+  matrix.setPosition(origin);
+  return matrix;
+}
+
+function makeHingeBar(
+  material: THREE.Material,
+  length: number,
+  radius: number,
+  x: number,
+  y: number,
+  z: number,
+  tangentX: number,
+  tangentZ: number,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(cylinderGeom, material);
+  mesh.scale.set(radius * 2, length, radius * 2);
+  mesh.position.set(x, y, z);
+  const tangent = new THREE.Vector3(tangentX, 0, tangentZ).normalize();
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
+  return mesh;
+}
+
 function makeBox(
   material: THREE.Material,
-  sx: number,
-  sy: number,
-  sz: number,
+  width: number,
+  height: number,
+  depth: number,
   x: number,
   y: number,
   z: number,
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(boxGeom, material);
-  mesh.scale.set(sx, sy, sz);
+  mesh.scale.set(width, height, depth);
   mesh.position.set(x, y, z);
   return mesh;
 }
@@ -389,6 +764,20 @@ function makeCylinder(
   return mesh;
 }
 
+function makeCone(
+  material: THREE.Material,
+  radius: number,
+  height: number,
+  x: number,
+  y: number,
+  z: number,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(coneGeom, material);
+  mesh.scale.set(radius * 2, height, radius * 2);
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+
 function makeSphere(
   material: THREE.Material,
   radius: number,
@@ -399,34 +788,6 @@ function makeSphere(
   const mesh = new THREE.Mesh(factorySphereGeom, material);
   mesh.scale.setScalar(radius);
   mesh.position.set(x, y, z);
-  return mesh;
-}
-
-function makeSolarShine(
-  x: number,
-  y: number,
-  z: number,
-  sx: number,
-  sz: number,
-  travel: number,
-  phase: number,
-  angle: number,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(solarShineGeom, solarShineMat);
-  // The mesh is a wide transparent ribbon. The shader fades everything
-  // except a soft center streak, so the visible result is a moving line
-  // of reflected light rather than a hard rectangular overlay.
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.rotation.z = angle;
-  mesh.scale.set(sx, sz, 1);
-  mesh.position.set(x, y, z);
-  mesh.userData.solarShine = {
-    baseX: x,
-    baseZ: z,
-    baseScaleX: sx,
-    travel,
-    phase,
-  };
   return mesh;
 }
 
@@ -443,15 +804,25 @@ function detail(
  *  (Render3DEntities.destroy) invoke once at app teardown. */
 export function disposeBuildingGeoms(): void {
   boxGeom.dispose();
+  solarPanelPyramidGeom.dispose();
+  solarTrianglePanelGeom.dispose();
+  solarTrianglePetalGeom.dispose();
   cylinderGeom.dispose();
   hexCylinderGeom.dispose();
   factorySphereGeom.dispose();
-  solarShineGeom.dispose();
+  coneGeom.dispose();
+  windBladeGeom.dispose();
   constructionOrbGeom.dispose();
   chimneyMat.dispose();
   solarCellMat.dispose();
-  solarShineMat.dispose();
+  solarPetalBackMat.dispose();
+  windTowerMat.dispose();
+  windNacelleMat.dispose();
+  windBladeMat.dispose();
+  windGlassMat.dispose();
+  invisibleMat.dispose();
   factoryFrameMat.dispose();
+  hazardStripeMat.dispose();
   constructionGhostMat.dispose();
   constructionCoreMat.dispose();
   constructionSparkMat.dispose();

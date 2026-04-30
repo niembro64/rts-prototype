@@ -85,12 +85,19 @@ const BODY_SHAPES = {
     parts: [
       {
         kind: 'oval',
-        offsetForward: -0.45,
-        xFrac: 0.7,
-        yFrac: (0.7 + 0.65) / 2,
-        zFrac: 0.65,
+        offsetForward: -0.58,
+        xFrac: 0.68,
+        yFrac: 0.58,
+        zFrac: 0.72,
       },
-      { kind: 'circle', offsetForward: 0.4, radiusFrac: 0.5, yFrac: 0.5 },
+      {
+        kind: 'oval',
+        offsetForward: 0.04,
+        xFrac: 0.78,
+        yFrac: 0.62,
+        zFrac: 0.76,
+      },
+      { kind: 'circle', offsetForward: 0.64, radiusFrac: 0.38, yFrac: 0.42 },
     ],
   },
   forceField: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.55 },
@@ -485,8 +492,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       { turretId: 'dgunTurret', offsetX: 0, offsetY: 0 },
     ],
     chassisMounts: [
-      { x: 0.3, y: 0 },
-      { x: 0, y: 0 },
+      { x: 0.36, y: -0.42 },
+      { x: 0.36, y: 0.42 },
     ],
     bodyShape: BODY_SHAPES.commander,
     locomotion: {

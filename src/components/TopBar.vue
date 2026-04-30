@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import WorldDirectionHud from './WorldDirectionHud.vue';
 
 export type { EconomyInfo } from '@/types/ui';
-import type { EconomyInfo } from '@/types/ui';
+import type { EconomyInfo, MinimapData } from '@/types/ui';
 
 const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 
@@ -16,6 +17,7 @@ const props = defineProps<{
   playerName: string;
   playerColor: string;
   canTogglePlayer: boolean;
+  directionData: Pick<MinimapData, 'cameraYaw' | 'wind'>;
 }>();
 
 const emit = defineEmits<{
@@ -96,11 +98,18 @@ function flowColor(n: number): string {
       <div class="count-row">
         <span class="count-label">BLDG</span>
         <span class="count-value">
-          <span class="building-solar" title="Solar Panels">☀{{ economy.buildings.solar }}</span>
-          <span class="building-factory" title="Factories">🏭{{ economy.buildings.factory }}</span>
+          <span class="building-solar" title="Solar">☀{{ economy.buildings.solar }}</span>
+          <span class="building-wind" title="Wind">◌{{ economy.buildings.wind }}</span>
+          <span class="building-factory" title="Fabricators">🏭{{ economy.buildings.factory }}</span>
         </span>
       </div>
     </div>
+
+    <WorldDirectionHud
+      class="top-direction-widget"
+      :data="directionData"
+      compact
+    />
 
     <!-- Energy block -->
     <div class="resource-block energy-block">
@@ -152,19 +161,24 @@ function flowColor(n: number): string {
   top: 0;
   left: 0;
   right: 0;
-  height: 50px;
+  box-sizing: border-box;
+  min-height: 58px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--player-color) 15%, transparent) 0%, transparent 100%),
     linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.7) 100%);
   border-bottom: 2px solid var(--player-color);
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 6px 12px 7px;
   gap: 16px;
   font-family: monospace;
   color: white;
   z-index: 1000;
   pointer-events: auto;
+}
+
+.top-direction-widget {
+  flex: 0 0 auto;
 }
 
 .exit-btn {
@@ -340,6 +354,7 @@ function flowColor(n: number): string {
 }
 
 .building-solar { color: #ffcc00; }
+.building-wind { color: #bde7ff; }
 .building-factory { color: #88ccff; }
 
 .cap-warning {

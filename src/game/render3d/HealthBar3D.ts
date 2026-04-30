@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { getUnitHudTopY } from './HudAnchor';
+import { getBuildingHudTopY, getUnitHudTopY } from './HudAnchor';
 
 const STYLE = {
   /** Height of the bar in world units. The bar's WIDTH is keyed to
@@ -137,11 +137,11 @@ export class HealthBar3D {
   /** Fused-iteration entry: process one unit. Caller's outer loop
    *  walks `getUnits()` once and dispatches here (and to other
    *  per-unit renderers like ForceFieldRenderer3D). */
-  perUnit(u: Entity): void {
+  perUnit(u: Entity, forceVisible = false): void {
     if (!u.unit) return;
     const hp = u.unit.hp;
     const maxHp = u.unit.maxHp;
-    if (hp <= 0 || (STYLE.hideAtFull && hp >= maxHp)) return;
+    if (hp <= 0 || (!forceVisible && STYLE.hideAtFull && hp >= maxHp)) return;
     const worldX = u.transform.x;
     const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
     const worldZ = u.transform.y;
@@ -163,7 +163,7 @@ export class HealthBar3D {
   }
 
   /** Fused-iteration entry: process one building. */
-  perBuilding(b: Entity): void {
+  perBuilding(b: Entity, forceVisible = false): void {
     if (!b.building) return;
     let ratio: number;
     let mode: BarMode;
@@ -173,13 +173,12 @@ export class HealthBar3D {
     } else {
       const hp = b.building.hp;
       const maxHp = b.building.maxHp;
-      if (hp <= 0 || (STYLE.hideAtFull && hp >= maxHp)) return;
+      if (hp <= 0 || (!forceVisible && STYLE.hideAtFull && hp >= maxHp)) return;
       ratio = Math.max(0, Math.min(1, hp / maxHp));
       mode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
     }
-    const halfDepth = b.building.depth / 2;
     const worldX = b.transform.x;
-    const worldY = b.transform.z + halfDepth + STYLE.worldOffsetAbove;
+    const worldY = getBuildingHudTopY(b) + STYLE.worldOffsetAbove;
     const worldZ = b.transform.y;
     const bar = this.acquire(this._used++);
     this.repaintIfChanged(bar, ratio, mode);

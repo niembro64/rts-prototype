@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { WaypointType } from '../game/sim/types';
+import type { BuildingType, WaypointType } from '../game/sim/types';
 import { getUnitBlueprint } from '../game/sim/blueprints';
 import { BUILDING_CONFIGS } from '../game/sim/buildConfigs';
 import { COST_MULTIPLIER } from '../config';
@@ -28,14 +28,15 @@ const waypointModes: { mode: WaypointType; label: string; key: string; color: st
   { mode: 'patrol', label: 'Patrol', key: 'H', color: '#0088ff' },
 ];
 
-function bldCost(type: 'solar' | 'factory') {
+function bldCost(type: BuildingType) {
   const c = BUILDING_CONFIGS[type];
   return { energy: c.energyCost, mana: c.manaCost };
 }
 
 const buildingOptions = [
   { type: 'solar' as const, label: 'Solar', key: '1', ...bldCost('solar') },
-  { type: 'factory' as const, label: 'Factory', key: '2', ...bldCost('factory') },
+  { type: 'wind' as const, label: 'Wind', key: '2', ...bldCost('wind') },
+  { type: 'factory' as const, label: 'Fabricator', key: '3', ...bldCost('factory') },
 ];
 
 function unitCost(id: string) {
@@ -83,7 +84,7 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
     <!-- Unit count display -->
     <div class="panel-header">
       <span v-if="selection.hasCommander" class="unit-type commander">Commander</span>
-      <span v-else-if="selection.hasFactory" class="unit-type factory">Factory</span>
+      <span v-else-if="selection.hasFactory" class="unit-type factory">Fabricator</span>
       <span v-else class="unit-type">{{ selection.unitCount }} Unit{{ selection.unitCount > 1 ? 's' : '' }}</span>
     </div>
 

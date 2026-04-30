@@ -86,7 +86,7 @@ export type Waypoint = {
 export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair' | 'attack';
 
 // Building type identifiers
-export type BuildingType = 'solar' | 'factory';
+export type BuildingType = 'solar' | 'wind' | 'factory';
 
 // Unified action for any unit command. Altitude (`z`) carries the
 // actual 3D ground point the user clicked (from CursorGround.pickSim
@@ -196,12 +196,19 @@ export type Unit = {
 // width (x-footprint) × height (y-footprint) × depth (z, vertical).
 // The physics engine stores the building as a cuboid centered at
 // (transform.x, transform.y, depth/2) so the base sits on the ground.
+export type SolarCollectorState = {
+  open: boolean;
+  producing: boolean;
+  reopenDelayMs: number;
+};
+
 export type Building = {
   width: number;
   height: number;
   depth: number;
   hp: number;
   maxHp: number;
+  solar?: SolarCollectorState;
 };
 
 // Force field zone configuration (push or pull)

@@ -3,6 +3,7 @@ import {
   COST_MULTIPLIER,
   BUILDING_STATS,
   SOLAR_ENERGY_PER_SECOND,
+  WIND_ENERGY_PER_SECOND,
 } from '../../config';
 import { getUnitBlueprint, BUILDABLE_UNIT_IDS } from './blueprints';
 
@@ -10,7 +11,7 @@ import { getUnitBlueprint, BUILDABLE_UNIT_IDS } from './blueprints';
 export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
   solar: {
     id: 'solar',
-    name: 'Solar Panel',
+    name: 'Solar',
     gridWidth: 3,
     gridHeight: 3,
     // Solar panels are short and low-slung — a single cell tall.
@@ -20,10 +21,21 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     manaCost: 20 * COST_MULTIPLIER,
     energyProduction: SOLAR_ENERGY_PER_SECOND,
   },
+  wind: {
+    id: 'wind',
+    name: 'Wind',
+    gridWidth: 2,
+    gridHeight: 2,
+    gridDepth: 5,
+    hp: BUILDING_STATS.wind.hp,
+    energyCost: BUILDING_STATS.wind.energyCost * COST_MULTIPLIER,
+    manaCost: 25 * COST_MULTIPLIER,
+    energyProduction: WIND_ENERGY_PER_SECOND,
+  },
   factory: {
     id: 'factory',
-    name: 'Factory',
-    // Factories are just their construction tower. Units are assembled
+    name: 'Fabricator',
+    // Fabricators are just their construction tower. Units are assembled
     // outside this small blocking footprint, not inside a reserved yard.
     gridWidth: 2,
     gridHeight: 2,

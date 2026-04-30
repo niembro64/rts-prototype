@@ -10,9 +10,10 @@ export const DEMO_CONFIG = {
    *  slice, ~51° usable at arcSectorFraction=0.85. */
   factoryCount: 3,
 
-  /** Number of solar panels per player. Same rationale as
+  /** Number of power buildings per player. Demo bases split these
+   *  slots evenly between Solar and Wind. Same rationale as
    *  factoryCount — buildings have to fit inside the team slice. */
-  solarCount: 6,
+  solarCount: 5,
 
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the

@@ -1,12 +1,11 @@
-// SprayRenderer3D — the commander's build (and heal) spray trail.
+// SprayRenderer3D — shared construction/heal spray trails.
 //
 // The sim publishes active `SprayTarget`s each tick via
 // `ClientViewState.getSprayTargets()` — one entry per active
-// commander → building (or commander → unit for heal) pair. For each
-// active spray we emit a trail of small colored particles along the
-// source→target line that animates with a chaotic perpendicular
-// wobble, fades in at the source, and fades out at the target (same
-// aesthetic as the 2D SprayParticles renderer).
+// construction-emitter → build-area (or commander → unit for heal)
+// pair. For each active spray we emit small colored particles from
+// source to a target footprint area, with chaotic perpendicular
+// wobble, source fade-in, and target fade-out.
 //
 // Implementation: ONE shared InstancedMesh of unit-sphere particles,
 // drawn in a single draw call for every active spray on the map.
@@ -39,7 +38,7 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 // Default spray trail altitude for legacy 2D spray targets. Factory
 // tower sprays can pass explicit source/target z heights.
 const TRAIL_Y = 4;
-const PARTICLE_BASE_RADIUS = 2.5;
+const PARTICLE_BASE_RADIUS = 2.35;
 
 /** LOD multiplier on the raw per-spray particle count, matching the 2D
  *  `SprayParticles.renderSprayEffect`'s fireExplosionStyle scaling. */
@@ -53,12 +52,12 @@ const LOD_INTENSITY: Record<string, number> = {
 
 /** Max particles per spray at max LOD — keeps the pool bounded even
  *  when every commander on the map is actively building. */
-const MAX_PARTICLES_PER_SPRAY = 14;
+const MAX_PARTICLES_PER_SPRAY = 42;
 
 /** Global cap on simultaneous particles across every spray on the
- *  map. With MAX_PARTICLES_PER_SPRAY=14 this fits ~36 concurrent
- *  sprays, well above any realistic commander count. */
-const MAX_PARTICLES = 512;
+ *  map. With MAX_PARTICLES_PER_SPRAY=42 this fits ~36 concurrent
+ *  sprays, well above any realistic commander / fabricator count. */
+const MAX_PARTICLES = 1536;
 
 /** Heal-spray color — matches the 2D convention where heal sprays
  *  don't take the caster's team color. Constant white. */
@@ -161,10 +160,11 @@ export class SprayRenderer3D {
     for (const spray of sprayTargets) {
       if (spray.intensity <= 0) continue;
       const scaledIntensity = Math.min(1, spray.intensity) * lodMult;
-      // Particles per spray — 12 at base intensity × lodMult, floored to
-      // at least 3 so even the cheapest LOD shows the effect when the
-      // commander is actively spraying.
-      const count = Math.max(3, Math.floor(12 * scaledIntensity));
+      // Build sprays are intentionally denser than heal sprays because
+      // they represent a construction emitter painting a footprint, not
+      // a single repair beam.
+      const baseCount = spray.type === 'build' ? 36 : 16;
+      const count = Math.max(4, Math.floor(baseCount * scaledIntensity));
       const n = Math.min(count, MAX_PARTICLES_PER_SPRAY);
 
       const sx = spray.source.pos.x;
@@ -173,20 +173,12 @@ export class SprayRenderer3D {
       const tx = spray.target.pos.x;
       const ty = spray.target.z ?? TRAIL_Y;
       const tz = spray.target.pos.y;
-      const dx = tx - sx;
-      const dy = ty - sy;
-      const dz = tz - sz;
-      const len = Math.hypot(dx, dy, dz);
-      if (len < 1e-3) continue;
-      const dirX = dx / len;
-      const dirY = dy / len;
-      const dirZ = dz / len;
-      // Horizontal perpendicular vector for the wobble offset. Commander
-      // sprays stay flat at TRAIL_Y; factory tower sprays keep the same
-      // particle stream while the centerline slopes from nozzle to unit.
-      const flatLen = Math.hypot(dx, dz);
-      const perpX = flatLen > 1e-3 ? -dz / flatLen : 1;
-      const perpZ = flatLen > 1e-3 ? dx / flatLen : 0;
+      const dimSpread = spray.target.dim
+        ? Math.min(spray.target.dim.x, spray.target.dim.y) * 0.42
+        : 0;
+      const targetSpread = spray.type === 'build'
+        ? Math.max(spray.target.radius ?? 0, dimSpread)
+        : 0;
 
       // Resolve per-spray color once. Heal sprays are always white,
       // build sprays use the caster's team primary.
@@ -212,15 +204,29 @@ export class SprayRenderer3D {
 
       for (let i = 0; i < n; i++) {
         if (visibleCount >= MAX_PARTICLES) break;
-        // Normalized progress along the ray for this particle — staggered
-        // by i so the stream looks continuous, phased by `t` so it flows
-        // source → target over time. Wraps modulo 1.
+        // Normalized progress along the ray for this particle, phased
+        // so the stream flows source -> target over time.
         const phase = (i / n + t * 1.2) % 1;
-        const sineWobble = Math.sin(t * 7 + i * 1.3) * (len * 0.03);
-        const pos = len * phase;
-        const px = sx + dirX * pos + perpX * sineWobble;
-        const py = sy + dirY * pos;
-        const pz = sz + dirZ * pos + perpZ * sineWobble;
+        const areaPhase = i * 2.399963 + spray.target.id * 0.37 + t * 0.55;
+        const areaRing = targetSpread * Math.sqrt(((i * 37) % 101) / 101);
+        const endX = tx + Math.cos(areaPhase) * areaRing;
+        const endZ = tz + Math.sin(areaPhase) * areaRing;
+        const endY = ty + (spray.type === 'build'
+          ? Math.sin(areaPhase * 1.7) * Math.min(targetSpread * 0.16, 10)
+          : 0);
+
+        const dx = endX - sx;
+        const dy = endY - sy;
+        const dz = endZ - sz;
+        const len = Math.hypot(dx, dy, dz);
+        if (len < 1e-3) continue;
+        const flatLen = Math.hypot(dx, dz);
+        const perpX = flatLen > 1e-3 ? -dz / flatLen : 1;
+        const perpZ = flatLen > 1e-3 ? dx / flatLen : 0;
+        const sineWobble = Math.sin(t * 7 + i * 1.3) * (len * 0.018 + targetSpread * 0.035);
+        const px = sx + dx * phase + perpX * sineWobble;
+        const py = sy + dy * phase;
+        const pz = sz + dz * phase + perpZ * sineWobble;
         // Radius taper — particles grow into the stream from the source
         // and shrink near the target so the trail has a visible profile
         // instead of a uniform strip.

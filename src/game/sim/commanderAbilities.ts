@@ -1,9 +1,8 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
 import { distance3 } from '../math';
-import { economyManager } from './economy';
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
-// Note: economyManager still used for onConstructionComplete (addProduction)
+import { activateSolarCollector } from './solarCollector';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -24,6 +23,11 @@ export class CommanderAbilitiesSystem {
       const buildRange = commander.builder.buildRange;
       const commanderX = commander.transform.x;
       const commanderY = commander.transform.y;
+      const constructionEmitterOffset = -commander.unit.unitRadiusCollider.scale * 0.42;
+      const commanderSprayX = commanderX + Math.cos(commander.transform.rotation) * constructionEmitterOffset;
+      const commanderSprayY = commanderY + Math.sin(commander.transform.rotation) * constructionEmitterOffset;
+      const commanderSprayZ = commander.transform.z +
+        (commander.unit.unitRadiusCollider.scale * 1.75);
 
       // Get current target from queue (only work on ONE thing at a time)
       const currentTarget = this.getCurrentTarget(world, commander, buildRange);
@@ -45,11 +49,16 @@ export class CommanderAbilitiesSystem {
 
         // Spray effect - intensity based on whether we're actively building
         const intensity = currentTarget.buildable.buildProgress < 1 ? 1 : 0;
+        const targetZ = currentTarget.building
+          ? currentTarget.transform.z - currentTarget.building.depth / 2 +
+            currentTarget.building.depth * Math.max(0.1, currentTarget.buildable.buildProgress)
+          : currentTarget.transform.z;
         sprayTargets.push({
-          source: { id: commander.id, pos: { x: commanderX, y: commanderY }, playerId },
+          source: { id: commander.id, pos: { x: commanderSprayX, y: commanderSprayY }, z: commanderSprayZ, playerId },
           target: {
             id: currentTarget.id,
             pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },
+            z: targetZ,
             dim: currentTarget.building ? { x: currentTarget.building.width, y: currentTarget.building.height } : undefined,
           },
           type: 'build',
@@ -65,10 +74,11 @@ export class CommanderAbilitiesSystem {
         // Spray effect
         const intensity = currentTarget.unit.hp < currentTarget.unit.maxHp ? 1 : 0;
         sprayTargets.push({
-          source: { id: commander.id, pos: { x: commanderX, y: commanderY }, playerId },
+          source: { id: commander.id, pos: { x: commanderSprayX, y: commanderSprayY }, z: commanderSprayZ, playerId },
           target: {
             id: currentTarget.id,
             pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },
+            z: currentTarget.transform.z,
             radius: currentTarget.unit.unitRadiusCollider.shot,
           },
           type: 'heal',
@@ -133,27 +143,13 @@ export class CommanderAbilitiesSystem {
   }
 
   // Called when construction completes
-  private onConstructionComplete(_world: WorldState, entity: Entity, playerId: PlayerId): void {
+  private onConstructionComplete(world: WorldState, entity: Entity, _playerId: PlayerId): void {
     // Handle building-specific completion
     if (entity.buildingType === 'solar' && entity.ownership) {
-      // Solar panel - add production
-      // Note: This is also handled in ConstructionSystem, but commander-built
-      // buildings need it too. The ConstructionSystem checks isComplete before
-      // adding production, so we need to handle it here.
-      const config = this.getSolarConfig();
-      if (config.energyProduction) {
-        economyManager.addProduction(playerId, config.energyProduction);
-      }
+      activateSolarCollector(world, entity);
     }
 
     // Factory - waypoints are already set up during creation
-  }
-
-  // Get solar config (inline to avoid circular imports)
-  private getSolarConfig() {
-    return {
-      energyProduction: 15,
-    };
   }
 }
 

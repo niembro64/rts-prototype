@@ -42,6 +42,7 @@ import {
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { isWaterAt } from '../sim/Terrain';
+import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 
 /** Approximate world-space vertical center for box-select projection,
  *  picked per entity kind so the screen-projected point lands near
@@ -56,7 +57,7 @@ function selectionCenterY(entity: Entity): number {
   // we just project at that altitude. Constants like the old
   // hand-tuned 8/14/3 assumed flat ground at z=0 and silently
   // missed any unit standing on a raised cube.
-  return entity.transform.z;
+  return entity.building ? getBuildingVisualCenterZ(entity) : entity.transform.z;
 }
 
 type EntitySource = {
@@ -92,6 +93,7 @@ export class Input3DManager {
   private mode = new CommanderModeController();
   public onBuildModeChange?: (type: BuildingType | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
+  private hoveredEntityId: EntityId | null = null;
 
   // Optional preview renderer driven on mouse-move-in-build-mode;
   // scene injects one via setBuildGhost. Stays null in the demo /
@@ -211,6 +213,12 @@ export class Input3DManager {
   setMapBounds(width: number, height: number): void {
     this.mapWidth = width;
     this.mapHeight = height;
+  }
+
+  getHoveredEntity(): Entity | null {
+    return this.hoveredEntityId !== null
+      ? this.entitySource.getEntity(this.hoveredEntityId) ?? null
+      : null;
   }
 
   setWaypointMode(mode: WaypointType): void {
@@ -360,6 +368,15 @@ export class Input3DManager {
 
   /** Raycast against entity meshes in the world group. Returns closest hit's entityId. */
   private raycastEntity(clientX: number, clientY: number): EntityId | null {
+    const rect = this.canvasRect();
+    if (
+      clientX < rect.left ||
+      clientX > rect.right ||
+      clientY < rect.top ||
+      clientY > rect.bottom
+    ) {
+      return null;
+    }
     this.castRay(clientX, clientY);
     const hits = this.raycaster.intersectObject(this.threeApp.world, true);
     for (const hit of hits) {
@@ -443,6 +460,10 @@ export class Input3DManager {
   }
 
   private handleMouseMove(e: MouseEvent): void {
+    this.hoveredEntityId = this.leftDown || this.rightDown
+      ? null
+      : this.raycastEntity(e.clientX, e.clientY);
+
     // Live build-ghost preview — only while in build mode and the
     // scene provided a ghost renderer.
     const buildType = this.mode.buildingType;

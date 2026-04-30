@@ -98,7 +98,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     collision: { radius: 4 },
     explosion: { radius: 25, damage: 150, force: 7_000 },
     detonateOnExpiry: true,
-    lifespan: 3000,
+    lifespan: 4000,
     hitSound: AUDIO.event.hit.heavyShot,
   },
   // Cluster mortar — carries `mortarShot`s as submunitions. The
@@ -117,9 +117,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 80,
     collision: { radius: 6 },
     detonateOnExpiry: true,
-    lifespan: 3000,
+    lifespan: 4000,
     // Per projectile instance, roll max lifespan within ±10% of lifespan.
-    lifespanVariance: 0.5,
+    lifespanVariance: 0.6,
     hitSound: AUDIO.event.hit.advancedMortarShot,
     submunitions: {
       shotId: 'mortarShot',
@@ -143,9 +143,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 60,
     collision: { radius: 4 },
     detonateOnExpiry: true,
-    lifespan: 1000,
+    lifespan: 3000,
     // Per projectile instance, roll max lifespan within ±10% of lifespan.
-    lifespanVariance: 0.8,
+    lifespanVariance: 0.6,
     hitSound: AUDIO.event.hit.mortarShot,
     submunitions: {
       shotId: 'mediumShot',

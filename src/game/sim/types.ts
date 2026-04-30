@@ -23,6 +23,7 @@ export type {
   ActionType,
   BuildingType,
   UnitAction,
+  SolarCollectorState,
   Unit,
   Building,
   ForceFieldZoneConfig,

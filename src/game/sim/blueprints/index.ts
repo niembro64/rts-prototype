@@ -170,7 +170,10 @@ export function buildTurretConfig(turretId: string): TurretConfig {
     const rawThickness = pb.type === 'beam' || pb.type === 'laser'
       ? pb.width
       : (pb.collision.radius > 0 ? pb.collision.radius * 2 : 2);
-    base.barrel = { ...base.barrel, barrelThickness: rawThickness * BARREL_THICKNESS_MULTIPLIER };
+    base.barrel = {
+      ...base.barrel,
+      barrelThickness: base.barrel.barrelThickness ?? rawThickness * BARREL_THICKNESS_MULTIPLIER,
+    };
   }
 
   // Optional firing modifiers

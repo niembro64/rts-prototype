@@ -19,11 +19,12 @@
 //     only when the team color actually changes.
 
 import * as THREE from 'three';
-import type { Entity } from '../sim/types';
+import type { Entity, UnitAction } from '../sim/types';
 import { ACTION_COLORS, WAYPOINT_COLORS } from '../uiLabels';
 import { getSurfaceHeight } from '../sim/Terrain';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getWaypointDetail } from '../../clientBarConfig';
+import { getEntityTargetPoint } from '../sim/buildingAnchors';
 
 const STYLE = {
   /** Vertical lift above the terrain so lines / dots / flags float
@@ -65,6 +66,7 @@ export class Waypoint3D {
   private parent: THREE.Group;
   private mapWidth: number;
   private mapHeight: number;
+  private getEntity?: (id: number) => Entity | undefined;
 
   // Line buffer (path segments + rect outlines).
   private lineGeom: THREE.BufferGeometry;
@@ -84,10 +86,16 @@ export class Waypoint3D {
   private flagPool: FlagSlot[] = [];
   private hadVisible = false;
 
-  constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
+  constructor(
+    parent: THREE.Group,
+    mapWidth: number,
+    mapHeight: number,
+    getEntity?: (id: number) => Entity | undefined,
+  ) {
     this.parent = parent;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+    this.getEntity = getEntity;
 
     // Lines.
     this.lineCap = STYLE.initialLineCap;
@@ -283,6 +291,16 @@ export class Waypoint3D {
     state.dotCount++;
   }
 
+  private actionDisplayPoint(a: UnitAction): { x: number; y: number; z?: number } {
+    if (a.type === 'attack' && a.targetId !== undefined && this.getEntity) {
+      const target = this.getEntity(a.targetId);
+      if (target?.building) {
+        return getEntityTargetPoint(target);
+      }
+    }
+    return { x: a.x, y: a.y, z: a.z };
+  }
+
   /** Pool slot for a flag sprite. Lazily creates a small canvas
    *  on first use; recolors only when the team color changes. */
   private acquireFlag(i: number, color: number, x: number, y: number, zHint?: number): void {
@@ -378,23 +396,24 @@ export class Waypoint3D {
       let prevZ: number | undefined = u.transform.z;
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
+        const p = this.actionDisplayPoint(a);
         const color = ACTION_COLORS[a.type] ?? 0xffffff;
         // Always draw the connecting line — this traces the unit's
         // physical route, regardless of mode.
-        this.pushTerrainLine(state, prevX, prevY, a.x, a.y, color, STYLE.lineAlpha, prevZ, a.z);
+        this.pushTerrainLine(state, prevX, prevY, p.x, p.y, color, STYLE.lineAlpha, prevZ, p.z);
         // Endpoint markers (dots / rect outlines) get suppressed in
         // SIMPLE mode for path-expansion intermediates so only
         // user-issued endpoints carry a visible marker.
         if (!simple || !a.isPathExpansion) {
           if (a.type === 'build' || a.type === 'repair') {
-            this.pushRectOutline(state, a.x, a.y, color, a.z);
+            this.pushRectOutline(state, p.x, p.y, color, p.z);
           } else {
-            this.pushDot(state, a.x, a.y, color, a.z);
+            this.pushDot(state, p.x, p.y, color, p.z);
           }
         }
-        prevX = a.x;
-        prevY = a.y;
-        prevZ = a.z;
+        prevX = p.x;
+        prevY = p.y;
+        prevZ = p.z;
       }
       // Patrol return — link last patrol waypoint back to the first
       // patrol waypoint with a dimmer line. In SIMPLE mode pick the

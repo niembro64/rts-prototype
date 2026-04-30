@@ -4,6 +4,7 @@ import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import { getBodyTopY, getChassisLiftY } from '../math/BodyDimensions';
 import { getTurretHeadRadius } from '../math';
 import { TURRET_HEIGHT } from '../../config';
+import { getBuildingVisualTopZ } from '../sim/buildingAnchors';
 
 const BARREL_MIN_THICKNESS = 2;
 
@@ -79,4 +80,9 @@ export function getUnitHudTopY(unit: Entity): number {
   }
 
   return groundY + topAboveGround;
+}
+
+export function getBuildingHudTopY(building: Entity): number {
+  if (!building.building) return building.transform.z;
+  return getBuildingVisualTopZ(building);
 }

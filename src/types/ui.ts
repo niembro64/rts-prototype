@@ -1,6 +1,6 @@
 // UI component types extracted from Vue components and helpers
 
-import type { PlayerId, EntityId, WaypointType, Entity } from './sim';
+import type { PlayerId, EntityId, WaypointType, Entity, BuildingType } from './sim';
 import type { NetworkServerSnapshotCombatStats } from './network';
 import type { Vec2 } from './vec2';
 
@@ -29,7 +29,7 @@ export type SelectionInfo = {
 
 export type SelectionActions = {
   setWaypointMode: (mode: WaypointType) => void;
-  startBuild: (buildingType: 'solar' | 'factory') => void;
+  startBuild: (buildingType: BuildingType) => void;
   cancelBuild: () => void;
   toggleDGun: () => void;
   queueUnit: (factoryId: number, unitId: string) => void;
@@ -49,7 +49,7 @@ export type EconomyInfo = {
     netFlow: number;
   };
   units: { count: number; cap: number };
-  buildings: { solar: number; factory: number };
+  buildings: { solar: number; wind: number; factory: number };
 };
 
 // Minimap types
@@ -83,6 +83,9 @@ export type MinimapData = {
    *  as a polygon so the shape always matches the actual viewport,
    *  including the trapezoidal ground-plane projection in 3D. */
   cameraQuad: readonly [Vec2, Vec2, Vec2, Vec2];
+  /** Orbit camera yaw in radians. Used by minimap instruments to draw
+   *  world directions in current screen-space rather than map-space. */
+  cameraYaw: number;
 
   /** Per-tile capture data, paralleled with the 3D capture-tile
    *  renderer. Empty array when the GRID overlay is OFF — the minimap
@@ -105,6 +108,7 @@ export type MinimapData = {
    *  minimap skips the terrain pass too and just stamps the dark map
    *  background under the entity dots. */
   showTerrain: boolean;
+  wind?: { x: number; y: number; speed: number };
 };
 
 // Lobby player — re-exported from `types/network.ts` so the

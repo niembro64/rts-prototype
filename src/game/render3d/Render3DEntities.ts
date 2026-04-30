@@ -35,10 +35,15 @@ import {
 import { getBodyGeom, getBodyMountTopY, disposeBodyGeoms } from './BodyShape3D';
 import {
   buildBuildingShape,
+  buildConstructionEmitterRig,
   disposeBuildingGeoms,
+  getConstructionHazardMaterial,
   type BuildingDetailMesh,
+  type ConstructionEmitterRig,
   type FactoryConstructionRig,
+  type WindTurbineRig,
   type BuildingShapeType,
+  type SolarPetalAnimation,
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
@@ -55,6 +60,9 @@ import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 // value so visual barrel tip and sim muzzle stay locked together.
 
 const BUILDING_HEIGHT = 120;
+const SOLAR_PETAL_ANIM_ALPHA = 0.16;
+const WIND_YAW_EMA_ALPHA = 0.035;
+const WIND_ROTOR_RAD_PER_SEC = 8;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
 
@@ -87,6 +95,13 @@ function buildingDetailVisible(
   const level = BUILDING_TIER_ORDER[tier];
   return level >= BUILDING_TIER_ORDER[detail.minTier]
     && (detail.maxTier === undefined || level <= BUILDING_TIER_ORDER[detail.maxTier]);
+}
+
+function lerpAngleRadians(current: number, target: number, alpha: number): number {
+  let delta = target - current;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return current + delta * alpha;
 }
 
 // Scratch globals reused by the per-unit surface-tilt path so the
@@ -206,9 +221,15 @@ type EntityMesh = {
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  body. Empty / undefined for units. */
   buildingDetails?: BuildingDetailMesh[];
+  constructionEmitter?: ConstructionEmitterRig;
   factoryRig?: FactoryConstructionRig;
+  windRig?: WindTurbineRig;
   /** Per-building render height (solar is shorter than the default). */
   buildingHeight?: number;
+  /** True when the building primary mesh owns its material and should
+   *  not be recolored to team primary on ownership updates. */
+  buildingPrimaryMaterialLocked?: boolean;
+  solarOpenAmount?: number;
   /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
    *  the mesh when the current frame's LOD key differs. */
   lodKey: string;
@@ -235,6 +256,9 @@ export class Render3DEntities {
   private buildingMeshes = new Map<number, EntityMesh>();
   private projectileMeshes = new Map<number, THREE.Mesh>();
   private factorySprayTargets: SprayTarget[] = [];
+  private windFanYaw: number | null = null;
+  private windRotorPhase = 0;
+  private windAnimLastMs = 0;
   // Reusable "seen this frame" sets — the four per-frame update loops
   // (barrel-spin, unit, building, projectile) each need to track which
   // entity ids were visited so stale Map entries get pruned. Keeping
@@ -274,6 +298,9 @@ export class Render3DEntities {
   // around, letting pitch aim up toward AA targets without the
   // barrels clipping through a flat cylinder top.
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
+  private commanderBoxGeom = new THREE.BoxGeometry(1, 1, 1);
+  private commanderCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 18);
+  private commanderDomeGeom = new THREE.SphereGeometry(1, 14, 10);
   // Plain sphere used at MIN / LOW LOD as the entire unit body — mirrors
   // the 2D "circles" representation. Coarser tessellation than the
   // turret-head sphere because at low tiers we trade detail for draw
@@ -392,6 +419,14 @@ export class Render3DEntities {
   // disappear when viewed from behind.
   private mirrorShinyNeutralMat = new THREE.MeshStandardMaterial({
     color: 0xdddddd, metalness: 1.0, roughness: 0.0, side: THREE.DoubleSide,
+  });
+  private commanderArmorMat = new THREE.MeshLambertMaterial({ color: 0x232830 });
+  private commanderTrimMat = new THREE.MeshLambertMaterial({ color: 0xc8d0da });
+  private commanderLensMat = new THREE.MeshBasicMaterial({
+    color: 0x73e9ff,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
   });
 
   // ── LOW-tier instanced sphere ─────────────────────────────────────
@@ -847,6 +882,80 @@ export class Render3DEntities {
       this.primaryMats.set(pid, mat);
     }
     return mat;
+  }
+
+  private buildCommanderVisualKit(): THREE.Group {
+    const kit = new THREE.Group();
+    const hazardMat = getConstructionHazardMaterial();
+    const addBox = (
+      material: THREE.Material,
+      x: number, y: number, z: number,
+      sx: number, sy: number, sz: number,
+    ): void => {
+      const mesh = new THREE.Mesh(this.commanderBoxGeom, material);
+      mesh.position.set(x, y, z);
+      mesh.scale.set(sx, sy, sz);
+      kit.add(mesh);
+    };
+    const addCylinder = (
+      material: THREE.Material,
+      x: number, y: number, z: number,
+      radiusX: number, height: number, radiusZ: number,
+    ): void => {
+      const mesh = new THREE.Mesh(this.commanderCylinderGeom, material);
+      mesh.position.set(x, y, z);
+      mesh.scale.set(radiusX, height, radiusZ);
+      kit.add(mesh);
+    };
+
+    addBox(this.commanderArmorMat, -0.1, 1.15, 0, 1.3, 0.16, 0.92);
+    addBox(this.commanderTrimMat, 0.48, 1.23, 0, 0.26, 0.12, 0.58);
+    addBox(this.commanderLensMat, 0.66, 1.27, 0, 0.08, 0.11, 0.46);
+    addCylinder(hazardMat, -0.42, 1.34, 0, 0.34, 0.1, 0.34);
+    addCylinder(this.commanderArmorMat, 0.36, 1.29, -0.42, 0.24, 0.16, 0.24);
+    addCylinder(this.commanderArmorMat, 0.36, 1.29, 0.42, 0.24, 0.16, 0.24);
+    addBox(this.commanderTrimMat, 0.36, 1.42, -0.42, 0.4, 0.055, 0.17);
+    addBox(this.commanderTrimMat, 0.36, 1.42, 0.42, 0.4, 0.055, 0.17);
+
+    const sensor = new THREE.Mesh(this.commanderDomeGeom, this.commanderLensMat);
+    sensor.position.set(0.18, 1.36, 0);
+    sensor.scale.set(0.12, 0.12, 0.12);
+    kit.add(sensor);
+    return kit;
+  }
+
+  private decorateCommanderTurret(tm: TurretMesh, turretId: string): void {
+    const headRadius = tm.headRadius ?? 6;
+    const collar = new THREE.Mesh(this.commanderCylinderGeom, this.commanderArmorMat);
+    collar.position.set(0, Math.max(1.2, headRadius * 0.16), 0);
+    collar.scale.set(
+      headRadius * 1.18,
+      Math.max(1.6, headRadius * 0.15),
+      headRadius * 1.18,
+    );
+    tm.root.add(collar);
+
+    const brow = new THREE.Mesh(this.commanderBoxGeom, this.commanderArmorMat);
+    brow.position.set(headRadius * 0.55, headRadius * 1.24, 0);
+    brow.scale.set(headRadius * 0.46, headRadius * 0.16, headRadius * 0.86);
+    tm.root.add(brow);
+
+    const optic = new THREE.Mesh(this.commanderBoxGeom, this.commanderLensMat);
+    optic.position.set(headRadius * 1.02, headRadius * 1.25, 0);
+    optic.scale.set(headRadius * 0.08, headRadius * 0.12, headRadius * 0.42);
+    tm.root.add(optic);
+
+    if (tm.pitchGroup) {
+      const isDgun = turretId === 'dgunTurret';
+      const sleeve = new THREE.Mesh(this.commanderBoxGeom, isDgun ? this.commanderArmorMat : this.commanderTrimMat);
+      sleeve.position.set(headRadius * (isDgun ? 0.72 : 0.55), 0, 0);
+      sleeve.scale.set(
+        headRadius * (isDgun ? 1.05 : 0.72),
+        headRadius * (isDgun ? 0.34 : 0.22),
+        headRadius * (isDgun ? 0.34 : 0.22),
+      );
+      tm.pitchGroup.add(sleeve);
+    }
   }
 
 
@@ -1855,6 +1964,12 @@ export class Render3DEntities {
           }
         }
         liftGroup.add(chassis);
+        if (e.commander) {
+          const commanderKit = this.buildCommanderVisualKit();
+          commanderKit.userData.entityId = e.id;
+          commanderKit.traverse((obj) => { obj.userData.entityId = e.id; });
+          chassis.add(commanderKit);
+        }
 
         // Build one TurretMesh per actual turret on the entity. Each turret
         // has an optional head + barrel cylinders matching its barrel config.
@@ -1865,6 +1980,7 @@ export class Render3DEntities {
         // we mirror the 2D convention: the mirror host is turret[0], and any
         // additional turrets render normally with their own cylinder body.
         const unitHasMirrors = (e.unit?.mirrorPanels?.length ?? 0) > 0;
+        const isCommanderUnit = e.commander !== undefined;
         const turretMeshes: TurretMesh[] = [];
         const turretOff = this.lod.gfx.turretStyle === 'none';
         for (let ti = 0; ti < turrets.length; ti++) {
@@ -1881,7 +1997,7 @@ export class Render3DEntities {
           const isForceField = (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
           const hideHead = turretOff || isForceField || isMirrorHost;
           let headSlot: number | undefined;
-          if (!hideHead) {
+          if (!hideHead && !isCommanderUnit) {
             const allocated = this.allocTurretHeadSlot();
             if (allocated !== null) headSlot = allocated;
           }
@@ -1919,6 +2035,7 @@ export class Render3DEntities {
             skipBarrels: false, // try to attach for fallback safety
           });
           if (tm.head) tm.head.userData.entityId = e.id;
+          if (isCommanderUnit && !hideHead) this.decorateCommanderTurret(tm, t.config.id);
           for (const b of tm.barrels) b.userData.entityId = e.id;
           tm.headSlot = headSlot;
           // Try to allocate one barrel slot per barrel. All-or-nothing:
@@ -1947,10 +2064,25 @@ export class Render3DEntities {
           turretMeshes.push(tm);
         }
 
+        const constructionEmitter = e.commander && e.builder
+          ? buildConstructionEmitterRig(Math.max(5, radius * 0.34))
+          : undefined;
+        if (constructionEmitter) {
+          constructionEmitter.group.userData.entityId = e.id;
+          constructionEmitter.group.traverse((obj) => { obj.userData.entityId = e.id; });
+          constructionEmitter.group.position.set(
+            -radius * 0.42,
+            bodyEntry.topY * radius + radius * 0.14,
+            0,
+          );
+          liftGroup.add(constructionEmitter.group);
+        }
+
         this.world.add(group);
         m = {
           group, yawGroup, liftGroup, chassis, chassisMeshes, rendererId, bodyShape,
           turrets: turretMeshes, lodKey: this.lod.key,
+          constructionEmitter,
           smoothChassisSlots,
           polyChassisSlot,
           // Cache the lift so the chassis instance writers can
@@ -2246,6 +2378,10 @@ export class Render3DEntities {
       // here we mirror the same toggle → ring visibility behaviour.
       this.updateRadiusRings(m, e);
       this.updateRangeRings(m, e);
+      if (m.constructionEmitter) {
+        m.constructionEmitter.group.visible = buildingTierAtLeast(this.lod.gfx.tier, 'low');
+        m.constructionEmitter.group.rotation.y = this._lastSpinMs / 900;
+      }
 
       // Per-turret placement. Turret offset is chassis-local in sim coords
       // (x, y) which map to (x, z) in three. Root Y sits at the top of the
@@ -2666,7 +2802,7 @@ export class Render3DEntities {
     // declares its own tier range, so min/low/medium/high/max all get a
     // deliberate silhouette instead of one detail on/off switch.
     const tier = this.lod.gfx.tier;
-    const detailTimeSec = this._lastSpinMs / 1000;
+    this.updateWindAnimationGlobals();
 
     for (const e of buildings) {
       seen.add(e.id);
@@ -2676,7 +2812,7 @@ export class Render3DEntities {
       // Building type drives the per-type shape (factory, solar, …) —
       // fallback to 'unknown' for anything the art doesn't cover yet.
       const shapeType: BuildingShapeType =
-        e.buildingType === 'factory' || e.buildingType === 'solar'
+        e.buildingType === 'factory' || e.buildingType === 'solar' || e.buildingType === 'wind'
           ? e.buildingType
           : 'unknown';
       const w = e.building?.width ?? 100;
@@ -2720,10 +2856,13 @@ export class Render3DEntities {
           // discard along with the primary.
           buildingDetails: shape.details,
           factoryRig: shape.factoryRig,
+          windRig: shape.windRig,
           buildingHeight: shape.height,
+          buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
+          solarOpenAmount: e.building?.solar?.open === false ? 0 : 1,
         };
         this.buildingMeshes.set(e.id, m);
-      } else {
+      } else if (!m.buildingPrimaryMaterialLocked) {
         const primaryMat = this.getPrimaryMat(pid);
         for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
       }
@@ -2757,10 +2896,9 @@ export class Render3DEntities {
         for (const detail of m.buildingDetails) {
           const visible = detailsReady && buildingDetailVisible(detail, tier);
           detail.mesh.visible = visible;
-          if (visible && detail.role === 'solarShine') {
-            this.updateSolarShine(detail.mesh, detailTimeSec);
-          }
         }
+        this.updateSolarCollectorAnimation(m, e, detailsReady);
+        this.updateWindTurbineRig(m, detailsReady);
       }
       this.updateFactoryConstructionRig(m.factoryRig, e, tier, progress >= 1, w, d, m.group);
 
@@ -2776,24 +2914,52 @@ export class Render3DEntities {
     }
   }
 
-  private updateSolarShine(mesh: THREE.Mesh, timeSec: number): void {
-    const shine = mesh.userData.solarShine as
-      | {
-          baseX: number;
-          baseZ: number;
-          baseScaleX: number;
-          travel: number;
-          phase: number;
-        }
-      | undefined;
-    if (!shine) return;
+  private updateSolarCollectorAnimation(
+    m: EntityMesh,
+    e: Entity,
+    detailsReady: boolean,
+  ): void {
+    if (e.buildingType !== 'solar' || !m.buildingDetails || !detailsReady) return;
+    const target = e.building?.solar?.open === false ? 0 : 1;
+    const current = m.solarOpenAmount ?? target;
+    const next = Math.abs(target - current) < 0.002
+      ? target
+      : current + (target - current) * SOLAR_PETAL_ANIM_ALPHA;
+    m.solarOpenAmount = next;
 
-    const cycle = (timeSec * 0.22 + shine.phase) % 1;
-    const sweep = (cycle * 2 - 1) * shine.travel;
-    const pulse = Math.sin(cycle * Math.PI);
-    mesh.position.x = shine.baseX + sweep;
-    mesh.position.z = shine.baseZ + Math.sin((cycle + shine.phase) * Math.PI * 2) * shine.travel * 0.08;
-    mesh.scale.x = shine.baseScaleX * (0.55 + pulse * 0.5);
+    const t = next * next * (3 - 2 * next);
+    for (const detail of m.buildingDetails) {
+      if (detail.role !== 'solarLeaf' && detail.role !== 'solarPanel') continue;
+      const anim = detail.mesh.userData.solarPetal as SolarPetalAnimation | undefined;
+      if (!anim) continue;
+      const open = anim.openMatrix.elements;
+      const closed = anim.closedMatrix.elements;
+      const out = detail.mesh.matrix.elements;
+      for (let i = 0; i < 16; i++) {
+        out[i] = closed[i] + (open[i] - closed[i]) * t;
+      }
+      detail.mesh.matrixWorldNeedsUpdate = true;
+    }
+  }
+
+  private updateWindAnimationGlobals(): void {
+    const wind = this.clientViewState.getServerMeta()?.wind;
+    const now = performance.now();
+    const dtSec = this.windAnimLastMs > 0 ? (now - this.windAnimLastMs) / 1000 : 0;
+    this.windAnimLastMs = now;
+    if (!wind) return;
+
+    const targetYaw = Math.atan2(wind.x, wind.y);
+    this.windFanYaw = this.windFanYaw === null
+      ? targetYaw
+      : lerpAngleRadians(this.windFanYaw, targetYaw, WIND_YAW_EMA_ALPHA);
+    this.windRotorPhase += dtSec * wind.speed * WIND_ROTOR_RAD_PER_SEC;
+  }
+
+  private updateWindTurbineRig(m: EntityMesh, detailsReady: boolean): void {
+    if (!m.windRig || !detailsReady || !m.windRig.root.visible || this.windFanYaw === null) return;
+    m.windRig.root.rotation.y = this.windFanYaw - m.group.rotation.y;
+    m.windRig.rotor.rotation.z = this.windRotorPhase;
   }
 
   private updateFactoryConstructionRig(
@@ -3210,6 +3376,9 @@ export class Render3DEntities {
     disposeBodyGeoms();
     disposeBuildingGeoms();
     this.turretHeadGeom.dispose();
+    this.commanderBoxGeom.dispose();
+    this.commanderCylinderGeom.dispose();
+    this.commanderDomeGeom.dispose();
     this.barrelGeom.dispose();
     this.projectileGeom.dispose();
     this.projectileCylinderGeom.dispose();
@@ -3232,6 +3401,9 @@ export class Render3DEntities {
     for (const m of this.mirrorShinyMats.values()) m.dispose();
     this.mirrorShinyMats.clear();
     this.mirrorShinyNeutralMat.dispose();
+    this.commanderArmorMat.dispose();
+    this.commanderTrimMat.dispose();
+    this.commanderLensMat.dispose();
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
     this.neutralMat.dispose();

@@ -299,6 +299,7 @@ export const BASE_MANA_PER_SECOND = 5;
 
 /** Energy produced per second by each completed solar panel */
 export const SOLAR_ENERGY_PER_SECOND = 50;
+export const WIND_ENERGY_PER_SECOND = 50;
 
 // =============================================================================
 // COST MULTIPLIER
@@ -456,6 +457,10 @@ export const BUILDING_STATS: Record<string, BuildingStatEntry> = {
   solar: {
     energyCost: 100, // Base energy cost (before multiplier)
     hp: 200,
+  },
+  wind: {
+    energyCost: 120, // Base energy cost (before multiplier)
+    hp: 250,
   },
   factory: {
     energyCost: 300, // Base energy cost (before multiplier)

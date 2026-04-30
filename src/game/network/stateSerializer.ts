@@ -62,6 +62,7 @@ type PooledEntry = {
   unitCollider: { scale: number; shot: number; push: number };
   /** Persistent building dim reused across snapshots — same swap rule. */
   buildingDim: { x: number; y: number };
+  solarSub: { open: boolean };
   buildingSub: BuildingSub;
   factorySub: FactorySub;
   shotSub: ShotSub;
@@ -108,6 +109,7 @@ function createPooledEntry(): PooledEntry {
     },
     unitCollider: { scale: 0, shot: 0, push: 0 },
     buildingDim: { x: 0, y: 0 },
+    solarSub: { open: true },
     buildingSub: {
       type: undefined, dim: undefined, hp: { curr: 0, max: 0 },
       build: { progress: 0, complete: false },
@@ -162,6 +164,7 @@ type PrevEntityState = {
   forceFieldRanges: number[]; // per-weapon force field range
   // building
   buildProgress: number;
+  solarOpen: number;       // 0 or 1
   factoryProgress: number;
   isProducing: number;      // 0 or 1
   buildQueueLen: number;
@@ -182,7 +185,7 @@ function createPrevEntityState(): PrevEntityState {
     hp: 0, actionCount: 0, actionHash: 0,
     isEngagedBits: 0, targetBits: 0,
     weaponCount: 0, turretRots, turretAngVels, forceFieldRanges,
-    buildProgress: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
+    buildProgress: 0, solarOpen: 1, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
   };
 }
 
@@ -316,7 +319,7 @@ function getChangedFields(entity: Entity, prev: PrevEntityState, next: PrevEntit
     if (next.hp !== prev.hp) {
       mask |= ENTITY_CHANGED_HP;
     }
-    if (next.buildProgress !== prev.buildProgress) {
+    if (next.buildProgress !== prev.buildProgress || next.solarOpen !== prev.solarOpen) {
       mask |= ENTITY_CHANGED_BUILDING;
     }
     if (entity.factory) {
@@ -376,6 +379,7 @@ function captureEntityState(entity: Entity, prev: PrevEntityState): void {
   }
 
   prev.buildProgress = entity.buildable?.buildProgress ?? 0;
+  prev.solarOpen = entity.building?.solar?.open === false ? 0 : 1;
   prev.factoryProgress = entity.factory?.currentBuildProgress ?? 0;
   prev.isProducing = entity.factory?.isProducing ? 1 : 0;
   prev.buildQueueLen = entity.factory?.buildQueue.length ?? 0;
@@ -404,6 +408,7 @@ function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {
     to.forceFieldRanges[i] = from.forceFieldRanges[i];
   }
   to.buildProgress = from.buildProgress;
+  to.solarOpen = from.solarOpen;
   to.factoryProgress = from.factoryProgress;
   to.isProducing = from.isProducing;
   to.buildQueueLen = from.buildQueueLen;
@@ -963,6 +968,7 @@ function serializeEntity(
     if (hasBuildingFields) {
       const b = pool.buildingSub;
       ne.building = b;
+      b.solar = undefined;
 
       // Full records must be self-contained for the same reason as
       // unit records: clients can miss the first keyframe during a
@@ -993,6 +999,11 @@ function serializeEntity(
         } else {
           b.build.progress = 1;
           b.build.complete = true;
+        }
+        if (entity.building.solar) {
+          const s = pool.solarSub;
+          s.open = entity.building.solar.open;
+          b.solar = s;
         }
       }
 

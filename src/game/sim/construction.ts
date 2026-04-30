@@ -1,12 +1,12 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId, BuildingType } from './types';
 import { magnitude3 } from '../math';
-import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
 import { isWaterAt } from './Terrain';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
+import { activateSolarCollector, deactivateSolarCollector, ensureSolarCollectorState } from './solarCollector';
 
 // Construction system - handles building progress and energy consumption
 export class ConstructionSystem {
@@ -93,10 +93,7 @@ export class ConstructionSystem {
 
     // Handle building-specific completion
     if (entity.buildingType === 'solar' && entity.ownership) {
-      const config = getBuildingConfig('solar');
-      if (config.energyProduction) {
-        economyManager.addProduction(entity.ownership.playerId, config.energyProduction);
-      }
+      activateSolarCollector(world, entity);
     }
 
     // Factory completion - set up rally point
@@ -167,6 +164,9 @@ export class ConstructionSystem {
 
     // Set building type
     entity.buildingType = buildingType;
+    if (buildingType === 'solar') {
+      ensureSolarCollectorState(entity);
+    }
 
     // Set max HP from config
     if (entity.building) {
@@ -240,6 +240,9 @@ export class ConstructionSystem {
     };
 
     entity.buildingType = buildingType;
+    if (buildingType === 'solar') {
+      ensureSolarCollectorState(entity);
+    }
 
     return entity;
   }
@@ -257,10 +260,7 @@ export class ConstructionSystem {
 
     // If it was a solar panel, remove production
     if (entity.buildingType === 'solar' && entity.ownership && entity.buildable?.isComplete) {
-      const config = getBuildingConfig('solar');
-      if (config.energyProduction) {
-        economyManager.removeProduction(entity.ownership.playerId, config.energyProduction);
-      }
+      deactivateSolarCollector(entity);
     }
   }
 

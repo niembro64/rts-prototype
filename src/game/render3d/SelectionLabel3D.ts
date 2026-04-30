@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { labelTextForUnit, labelTextForBuilding } from '../uiLabels';
-import { getUnitHudTopY } from './HudAnchor';
+import { getBuildingHudTopY, getUnitHudTopY } from './HudAnchor';
 
 const STYLE = {
   /** Distance above the entity's top in world units where the label
@@ -176,6 +176,7 @@ export class SelectionLabel3D {
     selectedUnits: readonly Entity[],
     selectedBuildings: readonly Entity[],
     frustum?: THREE.Frustum,
+    hoveredEntity?: Entity | null,
   ): void {
     // Single-select policy: name labels only show when ONE entity is
     // selected. With sizeAttenuation: false the sprite is a fixed
@@ -185,7 +186,10 @@ export class SelectionLabel3D {
     // Total War convention: multi-select detail lives in the bottom
     // selection panel, not as floating text.
     const total = selectedUnits.length + selectedBuildings.length;
-    if (total !== 1) {
+    const hoverBuilding = hoveredEntity?.building && hoveredEntity.building.hp > 0
+      ? hoveredEntity
+      : null;
+    if (total !== 1 && !hoverBuilding) {
       if (this.hadVisible) {
         for (let i = 0; i < this.pool.length; i++) {
           this.pool[i].sprite.visible = false;
@@ -220,31 +224,32 @@ export class SelectionLabel3D {
     // ending up briefly on a Commander, etc.) until the next text
     // repaint catches up. Frustum culling here is a per-sprite
     // visibility flag, not a slot-skip.
-    for (const u of selectedUnits) {
-      if (!u.unit || u.unit.hp <= 0) continue;
-      const worldX = u.transform.x;
-      const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
-      const worldZ = u.transform.y;
-      const text = labelTextForUnit(u);
-      const label = this.acquire(used++);
-      this.repaintIfChanged(label, text);
-      label.sprite.scale.set(
-        label.lastCssWidth * pxToScale,
-        label.lastCssHeight * pxToScale,
-        1,
-      );
-      label.sprite.position.set(worldX, worldY, worldZ);
-      if (frustum) {
-        probe.set(worldX, worldY, worldZ);
-        label.sprite.visible = frustum.containsPoint(probe);
+    if (total === 1) {
+      for (const u of selectedUnits) {
+        if (!u.unit || u.unit.hp <= 0) continue;
+        const worldX = u.transform.x;
+        const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
+        const worldZ = u.transform.y;
+        const text = labelTextForUnit(u);
+        const label = this.acquire(used++);
+        this.repaintIfChanged(label, text);
+        label.sprite.scale.set(
+          label.lastCssWidth * pxToScale,
+          label.lastCssHeight * pxToScale,
+          1,
+        );
+        label.sprite.position.set(worldX, worldY, worldZ);
+        if (frustum) {
+          probe.set(worldX, worldY, worldZ);
+          label.sprite.visible = frustum.containsPoint(probe);
+        }
       }
     }
 
-    for (const b of selectedBuildings) {
-      if (!b.building || b.building.hp <= 0) continue;
-      const halfDepth = b.building.depth / 2;
+    const paintBuilding = (b: Entity): void => {
+      if (!b.building || b.building.hp <= 0) return;
       const worldX = b.transform.x;
-      const worldY = b.transform.z + halfDepth + STYLE.worldOffsetAbove;
+      const worldY = getBuildingHudTopY(b) + STYLE.worldOffsetAbove;
       const worldZ = b.transform.y;
       const text = labelTextForBuilding(b);
       const label = this.acquire(used++);
@@ -259,6 +264,16 @@ export class SelectionLabel3D {
         probe.set(worldX, worldY, worldZ);
         label.sprite.visible = frustum.containsPoint(probe);
       }
+    };
+
+    if (total === 1) {
+      for (const b of selectedBuildings) {
+        paintBuilding(b);
+      }
+    }
+
+    if (hoverBuilding && !hoverBuilding.selectable?.selected) {
+      paintBuilding(hoverBuilding);
     }
 
     for (let i = used; i < this.pool.length; i++) {

@@ -860,6 +860,7 @@ export class GameServer {
     const timeChanged = currentTime !== this.lastSentServerTime;
     if (!isDelta || timeChanged) {
       const tickStats = this.getTickStats();
+      const wind = this.simulation.getWindState();
       // CPU load = tick work / tick budget, expressed as a percent. We
       // clamp nothing here — the UI can show >100 to mean "falling behind".
       const tickBudgetMs = 1000 / this.tickRateHz;
@@ -888,6 +889,12 @@ export class GameServer {
           picked: this.getSimQuality(),
           effective: this.getEffectiveSimQuality(),
           signals: { ...getSimSignalStates() },
+        },
+        wind: {
+          x: wind.x,
+          y: wind.y,
+          speed: wind.speed,
+          angle: wind.angle,
         },
       };
       this.lastSentServerTime = currentTime;

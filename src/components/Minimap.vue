@@ -362,9 +362,7 @@ onMounted(() => {
 .minimap-container {
   /* Aligned with the bottom-bar aesthetic: dark semi-transparent
    * base + muted gray border. Rounded corners stay. */
-  position: absolute;
-  top: 60px;  /* Below the top bar */
-  left: 10px;
+  position: relative;
   background: rgba(15, 18, 24, 0.92);
   border: 1px solid #444;
   border-radius: 8px;

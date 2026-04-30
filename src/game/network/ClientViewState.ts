@@ -555,6 +555,18 @@ export class ClientViewState {
       entity.buildable.isComplete = sb.build.complete;
     }
 
+    if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
+      if (sb.solar) {
+        entity.building.solar = {
+          open: sb.solar.open,
+          producing: entity.building.solar?.producing ?? false,
+          reopenDelayMs: entity.building.solar?.reopenDelayMs ?? 0,
+        };
+      } else if (isFull && entity.buildingType === 'solar') {
+        entity.building.solar = { open: true, producing: false, reopenDelayMs: 0 };
+      }
+    }
+
     const sf = sb?.factory;
     if (entity.factory && sf && (isFull || cf! & ENTITY_CHANGED_FACTORY)) {
       entity.factory.buildQueue = sf.queue;

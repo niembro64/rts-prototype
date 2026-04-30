@@ -7,6 +7,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { isWaterAt } from './Terrain';
+import { activateSolarCollector, ensureSolarCollectorState } from './solarCollector';
 
 /**
  * Compute a factory's default fight waypoint along the factory → map-center axis.
@@ -153,6 +154,9 @@ function placeCompleteBuilding(
     isGhost: false,
   };
   entity.buildingType = buildingType;
+  if (buildingType === 'solar') {
+    ensureSolarCollectorState(entity);
+  }
 
   if (entity.building) {
     entity.building.hp = config.hp;
@@ -175,7 +179,7 @@ function placeCompleteBuilding(
   }
 
   if (buildingType === 'solar' && config.energyProduction) {
-    economyManager.addProduction(playerId, config.energyProduction);
+    activateSolarCollector(world, entity);
   }
 
   grid.place(gx, gy, config.gridWidth, config.gridHeight, entity.id, playerId);
@@ -232,6 +236,38 @@ function placeArcRow(
   const startAngle = baseAngle - sectorAngle / 2;
   const angularStep = count > 1 ? sectorAngle / (count - 1) : 0;
   for (let j = 0; j < count; j++) {
+    const a = count > 1 ? startAngle + j * angularStep : baseAngle;
+    const wx = centerX + Math.cos(a) * radius;
+    const wy = centerY + Math.sin(a) * radius;
+    const e = placeCompleteBuilding(world, construction, buildingType, wx, wy, playerId);
+    if (e) entities.push(e);
+  }
+  return entities;
+}
+
+function placePowerArcRow(
+  world: WorldState,
+  construction: ConstructionSystem,
+  count: number,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  baseAngle: number,
+  sectorAngle: number,
+  playerId: PlayerId,
+): Entity[] {
+  if (count <= 0) return [];
+  const entities: Entity[] = [];
+  const startAngle = baseAngle - sectorAngle / 2;
+  const angularStep = count > 1 ? sectorAngle / (count - 1) : 0;
+  let solarRemaining = Math.ceil(count / 2);
+  let windRemaining = Math.floor(count / 2);
+  for (let j = 0; j < count; j++) {
+    const preferWind = j % 2 === 1;
+    const buildingType: BuildingType =
+      (preferWind && windRemaining > 0) || solarRemaining <= 0 ? 'wind' : 'solar';
+    if (buildingType === 'wind') windRemaining--;
+    else solarRemaining--;
     const a = count > 1 ? startAngle + j * angularStep : baseAngle;
     const wx = centerX + Math.cos(a) * radius;
     const wy = centerY + Math.sin(a) * radius;
@@ -305,9 +341,10 @@ export function spawnInitialBases(
     const commander = spawnCommander(world, playerId, cmdX, cmdY, cmdFacing);
     entities.push(commander);
 
-    // Solar arc.
-    entities.push(...placeArcRow(
-      world, construction, 'solar', DEMO_CONFIG.solarCount,
+    // Power arc: same slots that used to be all solar, split evenly
+    // between solar collectors and wind turbines.
+    entities.push(...placePowerArcRow(
+      world, construction, DEMO_CONFIG.solarCount,
       cx, cy, solarRadius, baseAngle, sectorAngle, playerId,
     ));
 

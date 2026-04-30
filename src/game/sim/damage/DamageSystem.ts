@@ -22,6 +22,11 @@ import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIn
 import { findClosestPanelHit } from '../combat/MirrorPanelHit';
 import { getTargetRadius } from '../combat/combatUtils';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
+import {
+  SOLAR_CLOSED_DAMAGE_MULTIPLIER,
+  isSolarCollectorDamageReduced,
+  notifySolarCollectorDamaged,
+} from '../solarCollector';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -777,9 +782,15 @@ export class DamageSystem {
         }
       }
     } else if (entity.building && entity.building.hp > 0) {
-      const actualDamage = Math.min(damage, entity.building.hp);
+      const effectiveDamage = isSolarCollectorDamageReduced(entity)
+        ? damage * SOLAR_CLOSED_DAMAGE_MULTIPLIER
+        : damage;
+      if (entity.buildingType === 'solar') {
+        notifySolarCollectorDamaged(this.world, entity);
+      }
+      const actualDamage = Math.min(effectiveDamage, entity.building.hp);
       this.statsTracker?.recordDamage(sourceEntityId, entity.id, actualDamage);
-      entity.building.hp -= damage;
+      entity.building.hp -= effectiveDamage;
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
       if (entity.building.hp <= 0 && !result.killedBuildingIds.has(entity.id)) {
         result.killedBuildingIds.add(entity.id);

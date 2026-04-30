@@ -326,6 +326,7 @@ export class RtsScene3D {
    *  smooth even when entity rebuilding is throttled to 20 Hz. */
   public onCameraQuadUpdate?: (
     quad: import('../ViewportFootprint').FootprintQuad,
+    cameraYaw: number,
   ) => void;
   public onGameOverUI?: (winnerId: PlayerId) => void;
   public onGameRestart?: () => void;
@@ -606,6 +607,7 @@ export class RtsScene3D {
       this.waypoint3D = new Waypoint3D(
         this.threeApp.world,
         this.mapWidth, this.mapHeight,
+        (id) => this.clientViewState.getEntity(id),
       );
     }
 
@@ -788,7 +790,7 @@ export class RtsScene3D {
     // Emit the quad every frame — the minimap's camera box reads
     // this directly so it stays pinned to the view regardless of
     // the (throttled) entity-list refresh.
-    this.onCameraQuadUpdate?.(this._cameraQuad);
+    this.onCameraQuadUpdate?.(this._cameraQuad, this.threeApp.orbit.yaw);
     this.entityRenderer.update();
     this.captureTileRenderer.update();
     const lineProjectiles = this.clientViewState.getLineProjectiles();
@@ -876,13 +878,24 @@ export class RtsScene3D {
     // texture rebake) is gated internally by `repaintIfChanged`, so
     // per-frame iteration just sets sprite positions and frustum-
     // probes for the (small) damaged-units / selected-units lists.
+    const hoveredEntity = this.inputManager?.getHoveredEntity() ?? null;
     if (this.healthBar3D) {
       this.healthBar3D.beginFrame(hudFrustum);
-      for (const u of this.clientViewState.getDamagedUnits()) {
+      const damagedUnits = this.clientViewState.getDamagedUnits();
+      for (const u of damagedUnits) {
         this.healthBar3D.perUnit(u);
       }
-      for (const b of this.clientViewState.getHealthBarBuildings()) {
+      const healthBarBuildings = this.clientViewState.getHealthBarBuildings();
+      for (const b of healthBarBuildings) {
         this.healthBar3D.perBuilding(b);
+      }
+      if (hoveredEntity?.unit && !damagedUnits.some((u) => u.id === hoveredEntity.id)) {
+        this.healthBar3D.perUnit(hoveredEntity, true);
+      } else if (
+        hoveredEntity?.building &&
+        !healthBarBuildings.some((b) => b.id === hoveredEntity.id)
+      ) {
+        this.healthBar3D.perBuilding(hoveredEntity, true);
       }
       this.healthBar3D.endFrame();
     }
@@ -890,6 +903,7 @@ export class RtsScene3D {
       this._cachedSelectedUnits,
       this._cachedSelectedBuildings,
       hudFrustum,
+      hoveredEntity,
     );
     // Waypoint markers stay gated — their world points are fixed
     // command goals (move target, build site, rally point), not
@@ -1297,10 +1311,12 @@ export class RtsScene3D {
         this.mapWidth,
         this.mapHeight,
         this._cameraQuad,
+        this.threeApp.orbit.yaw,
         captureTiles,
         captureCellSize,
         intensity,
         showTerrain,
+        this.clientViewState.getServerMeta()?.wind,
       ),
     );
   }

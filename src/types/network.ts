@@ -208,6 +208,12 @@ export type NetworkServerSnapshotMeta = {
     effective: string;
     signals?: { tps: string; cpu: string; units: string };
   };
+  wind?: {
+    x: number;
+    y: number;
+    speed: number;
+    angle: number;
+  };
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';
@@ -344,6 +350,9 @@ export type NetworkServerSnapshotEntity = {
     dim?: Vec2;
     hp: { curr: number; max: number };
     build: { progress: number; complete: boolean };
+    solar?: {
+      open: boolean;
+    };
     factory?: {
       queue: string[];
       progress: number;

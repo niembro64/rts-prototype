@@ -17,10 +17,12 @@ export function createInitialMinimapData(
       { x: viewWidth, y: viewHeight },
       { x: 0, y: viewHeight },
     ],
+    cameraYaw: 0,
     captureTiles: [],
     captureCellSize: 0,
     gridOverlayIntensity: 0,
     showTerrain: true,
+    wind: undefined,
   };
 }
 
@@ -31,17 +33,21 @@ export function applyMinimapContentData(
   target.entities = source.entities;
   target.mapWidth = source.mapWidth;
   target.mapHeight = source.mapHeight;
+  target.cameraYaw = source.cameraYaw;
   target.captureTiles = source.captureTiles;
   target.captureCellSize = source.captureCellSize;
   target.gridOverlayIntensity = source.gridOverlayIntensity;
   target.showTerrain = source.showTerrain;
+  target.wind = source.wind;
 }
 
 export function applyMinimapCameraQuad(
   target: MinimapData,
   cameraQuad: MinimapData['cameraQuad'],
+  cameraYaw?: number,
 ): void {
   target.cameraQuad = cameraQuad;
+  if (cameraYaw !== undefined) target.cameraYaw = cameraYaw;
 }
 
 export function minimapPointerToWorld(

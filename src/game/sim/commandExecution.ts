@@ -12,6 +12,7 @@ import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions } from './Pathfinder';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { getEntityTargetPoint } from './buildingAnchors';
 
 const _dgunFallbackMountVelocity = { x: 0, y: 0, z: 0 };
 const _dgunMuzzleVelocity = { x: 0, y: 0, z: 0 };
@@ -383,11 +384,12 @@ function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void
   // across a lake used to push the commander into the shore. The
   // final waypoint keeps targetId so the repair handler fires when
   // the commander arrives.
+  const targetPoint = getEntityTargetPoint(target);
   const action: UnitAction = {
     type: 'repair',
-    x: target.transform.x,
-    y: target.transform.y,
-    z: target.transform.z,
+    x: targetPoint.x,
+    y: targetPoint.y,
+    z: targetPoint.z,
     targetId: command.targetId,
   };
 
@@ -415,11 +417,12 @@ function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void
     // water while the unit pressed into the shore. The final
     // waypoint keeps targetId so the targeting handler engages
     // the right entity once the unit is in range.
+    const targetPoint = getEntityTargetPoint(target);
     const action: UnitAction = {
       type: 'attack',
-      x: target.transform.x,
-      y: target.transform.y,
-      z: target.transform.z,
+      x: targetPoint.x,
+      y: targetPoint.y,
+      z: targetPoint.z,
       targetId: command.targetId,
     };
     addPathActionsWithFinal(entity, action, command.queue, ctx);
@@ -588,6 +591,11 @@ function addPathActionsWithFinal(
   // approach to the target rather than pushing into water.
   const last = actions[actions.length - 1];
   last.type = finalAction.type;
+  if (finalAction.type === 'attack') {
+    last.x = finalAction.x;
+    last.y = finalAction.y;
+    last.z = finalAction.z;
+  }
   if (finalAction.targetId !== undefined) last.targetId = finalAction.targetId;
   if (finalAction.buildingType !== undefined) last.buildingType = finalAction.buildingType;
   if (finalAction.buildingId !== undefined) last.buildingId = finalAction.buildingId;

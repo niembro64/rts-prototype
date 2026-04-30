@@ -44,6 +44,9 @@ import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS } from '@/types/network'
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import { expandPathActions } from './Pathfinder';
+import { updateSolarCollectors } from './solarCollector';
+import { getEntityTargetPoint } from './buildingAnchors';
+import { WindPowerTracker, sampleWindState, type WindState } from './wind';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
@@ -97,6 +100,8 @@ export class Simulation {
   private damageSystem: DamageSystem;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private combatStatsTracker: CombatStatsTracker;
+  private windState: WindState = sampleWindState();
+  private windPowerTracker = new WindPowerTracker();
 
   // Current spray targets for rendering (build/heal effects)
   private currentSprayTargets: SprayTarget[] = [];
@@ -256,6 +261,10 @@ export class Simulation {
     return this.combatStatsTracker;
   }
 
+  getWindState(): WindState {
+    return this.windState;
+  }
+
   // Run one simulation step with the given timestep
   update(dtMs: number): void {
     if (this.gamePhase === 'init') this.gamePhase = transitionPhase('init', 'battle');
@@ -277,6 +286,12 @@ export class Simulation {
     for (const command of commands) {
       executeCommand(cmdCtx, command);
     }
+
+    // Solar collectors are stateful: damage closes them, a quiet
+    // debounce reopens them, and production follows that open state.
+    updateSolarCollectors(this.world, dtMs);
+    this.windState = sampleWindState(Date.now());
+    this.windPowerTracker.update(this.world, this.windState);
 
     // Update economy (income, production). Mana base income is gated
     // on a living commander — pass the predicate so a team that's
@@ -722,9 +737,13 @@ export class Simulation {
         // Set priority target for turret system
         unit.priorityTargetId = currentAction.targetId;
 
-        // Update action position to target's current location (follow moving target)
-        currentAction.x = attackTarget.transform.x;
-        currentAction.y = attackTarget.transform.y;
+        // Update action position to target's current anchor (follow
+        // moving units and keep building attack markers on the visual
+        // building center/top instead of collider-center guesses).
+        const targetPoint = getEntityTargetPoint(attackTarget);
+        currentAction.x = targetPoint.x;
+        currentAction.y = targetPoint.y;
+        currentAction.z = targetPoint.z;
 
         // Stop if enough turrets are engaged
         const turrets = entity.turrets;
@@ -741,8 +760,8 @@ export class Simulation {
         }
 
         // Thrust toward target
-        const dx = attackTarget!.transform.x - transform.x;
-        const dy = attackTarget!.transform.y - transform.y;
+        const dx = targetPoint.x - transform.x;
+        const dy = targetPoint.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 5) {
           unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
@@ -882,7 +901,11 @@ export class Simulation {
     // so we'll retry the replan on the next stuck-tick threshold.
     if (newPath.length <= 1 && actions.length > 1) return false;
     if (finalAction.type === 'attack' && finalAction.targetId !== undefined) {
-      newPath[newPath.length - 1].targetId = finalAction.targetId;
+      const last = newPath[newPath.length - 1];
+      last.targetId = finalAction.targetId;
+      last.x = finalAction.x;
+      last.y = finalAction.y;
+      last.z = finalAction.z;
     }
     entity.unit.actions = newPath;
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);

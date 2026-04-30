@@ -22,6 +22,7 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
   const result: Record<string, TurretBlueprint> = {};
 
   for (let i = 0; i < harmonicSeries.length; i++) {
+    const commanderShoulderEmitter = i === 3;
     const range = 250;
     result[`beamTurret${i}`] = {
       id: `beamTurret${i}`,
@@ -31,7 +32,7 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
       turretDrag: 0.4,
       barrel: {
         type: 'simpleSingleBarrel',
-        barrelLength: beamTurretBarrelLength,
+        barrelLength: commanderShoulderEmitter ? 0.82 : beamTurretBarrelLength,
       },
       launchForce: 1000,
       rangeMultiplierOverrides: {
@@ -39,7 +40,7 @@ function generateBeamTurrets(): Record<string, TurretBlueprint> {
         engage: { acquire: null, release: null },
       },
       color: 0xffffff,
-      bodyRadius: 6,
+      bodyRadius: commanderShoulderEmitter ? 5 : 6,
       audio: {
         fireSound: AUDIO.event.fire[`beamTurret${i}`],
         laserSound: AUDIO.event.laser[`beamTurret${i}`],
@@ -257,7 +258,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     launchForce: 7000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.7 },
+    barrel: { type: 'simpleSingleBarrel', barrelLength: 1.0, barrelThickness: 8 },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
