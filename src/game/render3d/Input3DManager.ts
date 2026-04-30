@@ -43,6 +43,7 @@ import {
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { isWaterAt } from '../sim/Terrain';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
+import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 /** Approximate world-space vertical center for box-select projection,
  *  picked per entity kind so the screen-projected point lands near
@@ -133,6 +134,7 @@ export class Input3DManager {
   // Reusable scratch vector for projecting entities in selectEntitiesInScreenRect.
   // One allocation for the lifetime of the manager keeps the hot loop alloc-free.
   private _selectV = new THREE.Vector3();
+  private _ndc = new THREE.Vector2();
   // Resets waypoint mode back to 'move' when the owned-selected set
   // changes — matches the 2D SelectionController's rule so squads
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
@@ -341,7 +343,7 @@ export class Input3DManager {
   /** Convert client mouse coords to Normalized Device Coords ((-1,1) centered) */
   private toNDC(clientX: number, clientY: number): THREE.Vector2 {
     const rect = this.canvasRect();
-    return new THREE.Vector2(
+    return this._ndc.set(
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
@@ -648,8 +650,8 @@ export class Input3DManager {
       e.shiftKey,
     );
     if (repairCmd) {
-      // eslint-disable-next-line no-console
-      console.log(
+      debugLog(
+        GAME_DIAGNOSTICS.commandPlans,
         '[click] repair: clicked at (%d, %d, %d) → target #%d',
         Math.round(world.x), Math.round(world.y), Math.round(world.z),
         repairCmd.targetId,
@@ -669,8 +671,8 @@ export class Input3DManager {
         e.shiftKey,
       );
       if (attackCmd) {
-        // eslint-disable-next-line no-console
-        console.log(
+        debugLog(
+          GAME_DIAGNOSTICS.commandPlans,
           '[click] attack: clicked at (%d, %d, %d) → target #%d, %d unit(s)',
           Math.round(world.x), Math.round(world.y), Math.round(world.z),
           attackCmd.targetId, selectedUnits.length,
@@ -682,8 +684,8 @@ export class Input3DManager {
       // (mouse goes up before any drag motion) finalises this as a
       // group-move to the click point — so log the click here so we
       // see both endpoints of any drag the user does.
-      // eslint-disable-next-line no-console
-      console.log(
+      debugLog(
+        GAME_DIAGNOSTICS.commandPlans,
         '[click] move-start: clicked at (%d, %d, %d), %d unit(s) selected',
         Math.round(world.x), Math.round(world.y), Math.round(world.z),
         selectedUnits.length,
@@ -698,8 +700,8 @@ export class Input3DManager {
     // (no distribution), so seed the accumulator with a fixed target.
     const factories = this.getSelectedFactories();
     if (factories.length > 0) {
-      // eslint-disable-next-line no-console
-      console.log(
+      debugLog(
+        GAME_DIAGNOSTICS.commandPlans,
         '[click] factory-waypoint-start: clicked at (%d, %d, %d), %d factory(s) selected',
         Math.round(world.x), Math.round(world.y), Math.round(world.z),
         factories.length,
@@ -753,8 +755,8 @@ export class Input3DManager {
         tick, shiftHeld,
       );
       if (repairCmd) {
-        // eslint-disable-next-line no-console
-        console.log(
+        debugLog(
+          GAME_DIAGNOSTICS.commandPlans,
           '[click] repair-on-release: released at (%d, %d, %d) → target #%d',
           Math.round(finalPoint.x), Math.round(finalPoint.y),
           finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
@@ -768,42 +770,40 @@ export class Input3DManager {
         this.linePath, selectedUnits, this.waypointMode, tick, shiftHeld,
       );
       if (moveCmd) {
-        const mw = this.mapWidth, mh = this.mapHeight;
-        const finalWet = isFinite(mw) && isFinite(mh)
-          ? isWaterAt(finalPoint.x, finalPoint.y, mw, mh)
-          : null;
-        // eslint-disable-next-line no-console
-        console.log(
-          '[click] move: released at (%d, %d, %d) wet=%s, %d unit(s), %d drag sample(s), waypointType=%s',
-          Math.round(finalPoint.x), Math.round(finalPoint.y),
-          finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
-          finalWet,
-          selectedUnits.length, points.length, moveCmd.waypointType,
-        );
-        // Each unit's CURRENT position + wet flag, so we can replay the
-        // exact pathfinder query offline. (The unit might be in transit
-        // from a previous move command and standing on a wet cell at
-        // click-time — that's the most common reason a path's first
-        // visualised segment looks like it crosses water.)
-        for (let i = 0; i < selectedUnits.length; i++) {
-          const u = selectedUnits[i];
-          const ux = u.transform.x;
-          const uy = u.transform.y;
-          const uz = u.transform.z;
-          const uWet = isFinite(mw) && isFinite(mh)
-            ? isWaterAt(ux, uy, mw, mh)
+        if (GAME_DIAGNOSTICS.commandPlans) {
+          const mw = this.mapWidth, mh = this.mapHeight;
+          const canSampleWet = isFinite(mw) && isFinite(mh);
+          const finalWet = canSampleWet
+            ? isWaterAt(finalPoint.x, finalPoint.y, mw, mh)
             : null;
-          const tgt = moveCmd.individualTargets?.[i];
-          // eslint-disable-next-line no-console
-          console.log(
-            '  [click]   unit #%d at (%d, %d, %d) wet=%s%s',
-            u.id,
-            Math.round(ux), Math.round(uy), Math.round(uz),
-            uWet,
-            tgt
-              ? ` → (${Math.round(tgt.x)}, ${Math.round(tgt.y)}, ${tgt.z !== undefined ? Math.round(tgt.z) : -1})`
-              : ` → (${Math.round(finalPoint.x)}, ${Math.round(finalPoint.y)}, ${finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1})`,
+          debugLog(
+            true,
+            '[click] move: released at (%d, %d, %d) wet=%s, %d unit(s), %d drag sample(s), waypointType=%s',
+            Math.round(finalPoint.x), Math.round(finalPoint.y),
+            finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
+            finalWet,
+            selectedUnits.length, points.length, moveCmd.waypointType,
           );
+          // Each unit's CURRENT position + wet flag, so we can replay the
+          // exact pathfinder query offline.
+          for (let i = 0; i < selectedUnits.length; i++) {
+            const u = selectedUnits[i];
+            const ux = u.transform.x;
+            const uy = u.transform.y;
+            const uz = u.transform.z;
+            const uWet = canSampleWet ? isWaterAt(ux, uy, mw, mh) : null;
+            const tgt = moveCmd.individualTargets?.[i];
+            debugLog(
+              true,
+              '  [click]   unit #%d at (%d, %d, %d) wet=%s%s',
+              u.id,
+              Math.round(ux), Math.round(uy), Math.round(uz),
+              uWet,
+              tgt
+                ? ` → (${Math.round(tgt.x)}, ${Math.round(tgt.y)}, ${tgt.z !== undefined ? Math.round(tgt.z) : -1})`
+                : ` → (${Math.round(finalPoint.x)}, ${Math.round(finalPoint.y)}, ${finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1})`,
+            );
+          }
         }
         this.localCommandQueue.enqueue(moveCmd);
       }
@@ -815,8 +815,8 @@ export class Input3DManager {
     const factories = this.getSelectedFactories();
     if (factories.length > 0 && points.length > 0) {
       const finalPoint = points[points.length - 1];
-      // eslint-disable-next-line no-console
-      console.log(
+      debugLog(
+        GAME_DIAGNOSTICS.commandPlans,
         '[click] factory-waypoint: released at (%d, %d, %d), %d factory(s)',
         Math.round(finalPoint.x), Math.round(finalPoint.y),
         finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,

@@ -148,11 +148,7 @@ export class SpatialGrid {
    * Full clear (for reset/restart)
    */
   clear(): void {
-    for (const cell of this.cells.values()) {
-      cell.units.length = 0;
-      cell.buildings.length = 0;
-      cell.projectiles.length = 0;
-    }
+    this.cells.clear();
     this.unitCellKey.clear();
     this.buildingCellKeys.clear();
     this.projectileCellKey.clear();

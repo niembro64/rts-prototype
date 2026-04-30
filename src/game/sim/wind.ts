@@ -32,10 +32,12 @@ export function sampleWindState(nowMs = Date.now()): WindState {
 
 export class WindPowerTracker {
   private appliedProductionByPlayer = new Map<PlayerId, number>();
+  private nextProductionByPlayer = new Map<PlayerId, number>();
 
   update(world: WorldState, wind: WindState): void {
     const baseProduction = getBuildingConfig('wind').energyProduction ?? 0;
-    const nextProductionByPlayer = new Map<PlayerId, number>();
+    const nextProductionByPlayer = this.nextProductionByPlayer;
+    nextProductionByPlayer.clear();
 
     for (const entity of world.getBuildings()) {
       if (entity.buildingType !== 'wind') continue;
