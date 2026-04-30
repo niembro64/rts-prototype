@@ -2877,6 +2877,12 @@ export class Render3DEntities {
         const primaryMat = this.getPrimaryMat(pid);
         for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
       }
+      if (m.buildingDetails) {
+        const primaryMat = this.getPrimaryMat(pid);
+        for (const detail of m.buildingDetails) {
+          if (detail.role === 'solarTeamAccent') detail.mesh.material = primaryMat;
+        }
+      }
 
       // Group at ground; box elevated inside so it sits on the ground plane.
       m.group.position.set(e.transform.x, 0, e.transform.y);
@@ -2961,7 +2967,11 @@ export class Render3DEntities {
 
     const t = next * next * (3 - 2 * next);
     for (const detail of m.buildingDetails) {
-      if (detail.role !== 'solarLeaf' && detail.role !== 'solarPanel') continue;
+      if (
+        detail.role !== 'solarLeaf' &&
+        detail.role !== 'solarPanel' &&
+        detail.role !== 'solarTeamAccent'
+      ) continue;
       const anim = detail.mesh.userData.solarPetal as SolarPetalAnimation | undefined;
       if (!anim) continue;
       const open = anim.openMatrix.elements;

@@ -301,6 +301,22 @@ export const BASE_MANA_PER_SECOND = 5;
 export const SOLAR_ENERGY_PER_SECOND = 50;
 export const WIND_ENERGY_PER_SECOND = 50;
 
+/** Wind direction oscillation wave periods in seconds. These are true
+ *  sine/cosine periods, not angular divisors. Longer = slower turning. */
+export const WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS = {
+  primary: 271 * Math.PI * 2,
+  secondary: 619 * Math.PI * 2,
+  tertiary: 1429 * Math.PI * 2,
+} as const;
+
+/** Wind magnitude/speed oscillation wave periods in seconds. Longer =
+ *  slower production-multiplier drift for Wind buildings. */
+export const WIND_SPEED_OSCILLATION_PERIODS_SECONDS = {
+  primary: 353 * Math.PI * 2,
+  secondary: 811 * Math.PI * 2,
+  tertiary: 1777 * Math.PI * 2,
+} as const;
+
 // =============================================================================
 // COST MULTIPLIER
 // =============================================================================
