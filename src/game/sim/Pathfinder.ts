@@ -37,6 +37,7 @@
 import type { BuildingGrid } from './grid';
 import { GRID_CELL_SIZE } from './grid';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { GAME_DIAGNOSTICS, debugWarn } from '../diagnostics';
 import {
   isWaterAt,
   getSurfaceNormal,
@@ -98,7 +99,7 @@ const MAX_A_STAR_NODES = 50_000;
  *  output of A* + LOS smoothing should never put a line over water,
  *  so any log here is a real bug. Set to false to silence in
  *  production once the planner is trusted. */
-const VALIDATE_PATHS = true;
+const VALIDATE_PATHS = GAME_DIAGNOSTICS.pathValidation;
 
 /** Spacing (world units) between water-check samples along each
  *  segment during path validation. 5 wu = quarter-cell resolution
@@ -628,8 +629,8 @@ function validatePathDoesNotCrossWater(
         const wet = isWaterAt(x, y, mapWidth, mapHeight);
         if (wet) {
           if (reachedDryLand) {
-            // eslint-disable-next-line no-console
-            console.warn(
+            debugWarn(
+              VALIDATE_PATHS,
               '[Pathfinder] path RE-ENTERS water at (%d,%d) on segment %d — segment (%d,%d)→(%d,%d), full path (%d,%d)→(%d,%d) with %d waypoints',
               Math.round(x), Math.round(y),
               segIdx,

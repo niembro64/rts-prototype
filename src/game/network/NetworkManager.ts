@@ -2,6 +2,7 @@ import Peer, { DataConnection, util, type PeerOptions } from 'peerjs';
 import { encode as msgpackEncode, decode as msgpackDecode } from '@msgpack/msgpack';
 import type { PlayerId } from '../sim/types';
 import type { Command } from '../sim/commands';
+import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 // Re-export types from NetworkTypes for backward compatibility
 export type {
@@ -575,10 +576,10 @@ export class NetworkManager {
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message)) return;
           this.snapshotsReceived++;
-          if (this.snapshotsReceived % 100 === 0) {
+          if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsReceived % 100 === 0) {
             const hostConn = this.connections.get(1);
             const dc = hostConn?.dataChannel;
-            console.log(`[NET] Client received snapshot #${this.snapshotsReceived} (dc=${dc?.readyState ?? 'none'})`);
+            debugLog(true, `[NET] Client received snapshot #${this.snapshotsReceived} (dc=${dc?.readyState ?? 'none'})`);
           }
           const raw = message.data;
           let state: NetworkServerSnapshot;
@@ -846,12 +847,12 @@ export class NetworkManager {
     const buf = msgpackEncode(state);
 
     // Log every 100th snapshot with connection health + payload size
-    if (this.snapshotsSent % 100 === 0) {
+    if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsSent % 100 === 0) {
       for (const [pid, conn] of this.connections) {
         const dc = conn.dataChannel;
         const buffered = dc ? dc.bufferedAmount : -1;
         const dcState = dc ? dc.readyState : 'no-dc';
-        console.log(`[NET] Host snapshot #${this.snapshotsSent} → player ${pid}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${buf.byteLength}`);
+        debugLog(true, `[NET] Host snapshot #${this.snapshotsSent} -> player ${pid}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${buf.byteLength}`);
       }
     }
 
@@ -870,11 +871,11 @@ export class NetworkManager {
     this.snapshotsSent++;
     const buf = msgpackEncode(state);
 
-    if (this.snapshotsSent % 100 === 0) {
+    if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsSent % 100 === 0) {
       const dc = conn.dataChannel;
       const buffered = dc ? dc.bufferedAmount : -1;
       const dcState = dc ? dc.readyState : 'no-dc';
-      console.log(`[NET] Host snapshot #${this.snapshotsSent} -> player ${playerId}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${buf.byteLength}`);
+      debugLog(true, `[NET] Host snapshot #${this.snapshotsSent} -> player ${playerId}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${buf.byteLength}`);
     }
 
     this.sendTo(playerId, {

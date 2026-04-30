@@ -13,6 +13,7 @@ import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions } from './Pathfinder';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { getEntityTargetPoint } from './buildingAnchors';
+import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 const _dgunFallbackMountVelocity = { x: 0, y: 0, z: 0 };
 const _dgunMuzzleVelocity = { x: 0, y: 0, z: 0 };
@@ -494,32 +495,31 @@ function addPathActions(
     ctx.constructionSystem.getGrid(),
     goalZ,
   );
-  // Diagnostic: dump the plan for player-issued move commands so we
-  // can correlate "I clicked here" → "the unit got these waypoints".
-  // Now also reports queue=false/true and the unit's existing
-  // actions.length so we can see if non-shift clicks are actually
-  // replacing the queue or just appending.
-  const beforeLen = unit.unit?.actions.length ?? 0;
-  // eslint-disable-next-line no-console
-  console.log(
-    '[plan] unit #%d (%d,%d)→(%d,%d) type=%s queue=%s: prev queue had %d action(s), planner emits %d waypoint(s)',
-    unit.id,
-    Math.round(unit.transform.x), Math.round(unit.transform.y),
-    Math.round(goalX), Math.round(goalY),
-    type,
-    queue,
-    beforeLen,
-    actions.length,
-  );
-  for (let i = 0; i < actions.length; i++) {
-    const a = actions[i];
-    // eslint-disable-next-line no-console
-    console.log(
-      '  [plan]   wp %d: (%d, %d, %d)%s',
-      i, Math.round(a.x), Math.round(a.y),
-      a.z !== undefined ? Math.round(a.z) : -1,
-      a.isPathExpansion ? ' [intermediate]' : '',
+  if (GAME_DIAGNOSTICS.commandPlans) {
+    // Diagnostic: dump the plan for player-issued move commands so we
+    // can correlate "I clicked here" -> "the unit got these waypoints".
+    const beforeLen = unit.unit?.actions.length ?? 0;
+    debugLog(
+      true,
+      '[plan] unit #%d (%d,%d)->(%d,%d) type=%s queue=%s: prev queue had %d action(s), planner emits %d waypoint(s)',
+      unit.id,
+      Math.round(unit.transform.x), Math.round(unit.transform.y),
+      Math.round(goalX), Math.round(goalY),
+      type,
+      queue,
+      beforeLen,
+      actions.length,
     );
+    for (let i = 0; i < actions.length; i++) {
+      const a = actions[i];
+      debugLog(
+        true,
+        '  [plan]   wp %d: (%d, %d, %d)%s',
+        i, Math.round(a.x), Math.round(a.y),
+        a.z !== undefined ? Math.round(a.z) : -1,
+        a.isPathExpansion ? ' [intermediate]' : '',
+      );
+    }
   }
   // First action either replaces the queue (queue=false) or appends.
   // The remaining waypoints always append regardless — they belong
@@ -528,13 +528,10 @@ function addPathActions(
   for (let i = 0; i < actions.length; i++) {
     addActionToUnit(unit, actions[i], i === 0 ? queue : true, ctx.world);
   }
-  // Confirm the queue actually got replaced/extended as expected.
-  const afterLen = unit.unit?.actions.length ?? 0;
-  // eslint-disable-next-line no-console
-  console.log(
-    '  [plan]   → unit #%d actions.length now = %d',
-    unit.id, afterLen,
-  );
+  if (GAME_DIAGNOSTICS.commandPlans) {
+    const afterLen = unit.unit?.actions.length ?? 0;
+    debugLog(true, '  [plan]   unit #%d actions.length now = %d', unit.id, afterLen);
+  }
 }
 
 /** Plan a path to (goalX, goalY) and enqueue intermediate `move`
