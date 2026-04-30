@@ -569,6 +569,10 @@ export class ClientViewState {
     }
 
     const sb = server.building;
+    if (entity.building && sb?.type && isFull) {
+      entity.buildingType = sb.type as BuildingType;
+    }
+
     if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_HP)) {
       entity.building.hp = sb.hp.curr;
       entity.building.maxHp = sb.hp.max;

@@ -189,7 +189,11 @@ export class SelectionLabel3D {
     const hoverBuilding = hoveredEntity?.building && hoveredEntity.building.hp > 0
       ? hoveredEntity
       : null;
-    if (total !== 1 && !hoverBuilding) {
+    // Selection labels and hover labels occupy the same in-world lane.
+    // Prefer explicit selection; otherwise a hovered building under the
+    // cursor can stack text behind a selected unit label.
+    const showHoverBuilding = total === 0 ? hoverBuilding : null;
+    if (total !== 1 && !showHoverBuilding) {
       if (this.hadVisible) {
         for (let i = 0; i < this.pool.length; i++) {
           this.pool[i].sprite.visible = false;
@@ -272,8 +276,8 @@ export class SelectionLabel3D {
       }
     }
 
-    if (hoverBuilding && !hoverBuilding.selectable?.selected) {
-      paintBuilding(hoverBuilding);
+    if (showHoverBuilding && !showHoverBuilding.selectable?.selected) {
+      paintBuilding(showHoverBuilding);
     }
 
     for (let i = used; i < this.pool.length; i++) {
