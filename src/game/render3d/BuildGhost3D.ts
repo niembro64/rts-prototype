@@ -15,9 +15,11 @@ import { getSnappedBuildPosition } from '../input/helpers';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
 const RANGE_Y = 0.6;
+type GroundHeightLookup = (x: number, y: number) => number;
 
 export class BuildGhost3D {
   private world: THREE.Group;
+  private getGroundHeight: GroundHeightLookup;
   private group = new THREE.Group();
 
   /** Flat footprint rectangle (scaled to the current building type). */
@@ -38,8 +40,9 @@ export class BuildGhost3D {
   // Reusable scratch arrays.
   private _linePositions = new Float32Array(6);
 
-  constructor(world: THREE.Group) {
+  constructor(world: THREE.Group, getGroundHeight: GroundHeightLookup = () => 0) {
     this.world = world;
+    this.getGroundHeight = getGroundHeight;
 
     this.footMatOk = new THREE.MeshBasicMaterial({
       color: 0x88ff88,
@@ -123,23 +126,27 @@ export class BuildGhost3D {
     }
 
     const okVisually = inRange && canPlace;
+    const targetGroundY = this.getGroundHeight(snapped.x, snapped.y);
     this.footprint.scale.set(width, depth, 1);
-    this.footprint.position.set(snapped.x, GHOST_Y, snapped.y);
+    this.footprint.position.set(snapped.x, targetGroundY + GHOST_Y, snapped.y);
     this.footprint.material = okVisually ? this.footMatOk : this.footMatBad;
 
     if (commander?.builder) {
+      const commanderGroundY =
+        commander.transform.z - (commander.unit?.unitRadiusCollider.push ?? 0);
+      const ringY = commanderGroundY + RANGE_Y;
       this.rangeRing.visible = true;
-      this.rangeRing.position.set(commander.transform.x, RANGE_Y, commander.transform.y);
+      this.rangeRing.position.set(commander.transform.x, ringY, commander.transform.y);
       const r = commander.builder.buildRange;
       this.rangeRing.scale.set(r, r, 1);
 
       this.rangeLine.visible = !inRange;
       if (!inRange) {
         this._linePositions[0] = commander.transform.x;
-        this._linePositions[1] = RANGE_Y;
+        this._linePositions[1] = ringY;
         this._linePositions[2] = commander.transform.y;
         this._linePositions[3] = snapped.x;
-        this._linePositions[4] = RANGE_Y;
+        this._linePositions[4] = targetGroundY + RANGE_Y;
         this._linePositions[5] = snapped.y;
         this.rangeLineGeom.attributes.position.needsUpdate = true;
       }

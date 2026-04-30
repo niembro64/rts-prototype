@@ -7,6 +7,41 @@ export const GRID_CELL_SIZE = 20; // 20x20 world units per cell
 export type { GridCell } from '@/types/ui';
 import type { GridCell } from '@/types/ui';
 
+export type BuildingGridSnap = {
+  /** Top-left occupied cell in the shared building grid. */
+  gridX: number;
+  gridY: number;
+  /** World-space center of the building footprint. */
+  x: number;
+  y: number;
+};
+
+export function getBuildingCenterFromGrid(
+  gridX: number,
+  gridY: number,
+  gridWidth: number,
+  gridHeight: number,
+): { x: number; y: number } {
+  return {
+    x: gridX * GRID_CELL_SIZE + (gridWidth * GRID_CELL_SIZE) / 2,
+    y: gridY * GRID_CELL_SIZE + (gridHeight * GRID_CELL_SIZE) / 2,
+  };
+}
+
+export function snapBuildingToGrid(
+  worldX: number,
+  worldY: number,
+  gridWidth: number,
+  gridHeight: number,
+): BuildingGridSnap {
+  const centerGx = Math.floor(worldX / GRID_CELL_SIZE);
+  const centerGy = Math.floor(worldY / GRID_CELL_SIZE);
+  const gridX = centerGx - Math.floor(gridWidth / 2);
+  const gridY = centerGy - Math.floor(gridHeight / 2);
+  const center = getBuildingCenterFromGrid(gridX, gridY, gridWidth, gridHeight);
+  return { gridX, gridY, x: center.x, y: center.y };
+}
+
 // Building grid manager
 export class BuildingGrid {
   private cells: Map<string, GridCell> = new Map();
@@ -64,25 +99,15 @@ export class BuildingGrid {
 
   // Get the world position for the center of a building
   getBuildingCenter(gx: number, gy: number, gridWidth: number, gridHeight: number): { x: number; y: number } {
-    return {
-      x: gx * GRID_CELL_SIZE + (gridWidth * GRID_CELL_SIZE) / 2,
-      y: gy * GRID_CELL_SIZE + (gridHeight * GRID_CELL_SIZE) / 2,
-    };
+    return getBuildingCenterFromGrid(gx, gy, gridWidth, gridHeight);
   }
 
   // Snap world coordinates to grid (returns top-left corner of building)
   snapToGrid(worldX: number, worldY: number, gridWidth: number, gridHeight: number): { x: number; y: number } {
-    // Find the grid cell for the center of where we're placing
-    const centerGx = Math.floor(worldX / GRID_CELL_SIZE);
-    const centerGy = Math.floor(worldY / GRID_CELL_SIZE);
-
-    // Offset to get top-left based on building size
-    const topLeftGx = centerGx - Math.floor(gridWidth / 2);
-    const topLeftGy = centerGy - Math.floor(gridHeight / 2);
-
+    const snapped = snapBuildingToGrid(worldX, worldY, gridWidth, gridHeight);
     return {
-      x: topLeftGx * GRID_CELL_SIZE,
-      y: topLeftGy * GRID_CELL_SIZE,
+      x: snapped.gridX * GRID_CELL_SIZE,
+      y: snapped.gridY * GRID_CELL_SIZE,
     };
   }
 

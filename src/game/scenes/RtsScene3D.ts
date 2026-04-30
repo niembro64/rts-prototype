@@ -179,6 +179,7 @@ export class RtsScene3D {
   private forceFieldRenderer!: ForceFieldRenderer3D;
   private captureTileRenderer!: CaptureTileRenderer3D;
   private metalDeposits: MetalDeposit[] = [];
+  private metalDepositRenderer: MetalDepositRenderer3D | null = null;
   private waterRenderer!: WaterRenderer3D;
   private explosionRenderer!: Explosion3D;
   private debrisRenderer!: Debris3D;
@@ -585,7 +586,11 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
     );
-    new MetalDepositRenderer3D(this.threeApp.world, this.metalDeposits);
+    this.metalDepositRenderer = new MetalDepositRenderer3D(
+      this.threeApp.world,
+      this.metalDeposits,
+      getGraphicsConfig().tier,
+    );
     // Translucent water plane sits at WATER_LEVEL (the halfway point
     // between the tile-cube floor and the building-zero ground), so
     // any terrain that dips below WATER_LEVEL reads as submerged
@@ -630,7 +635,10 @@ export class RtsScene3D {
     this.debrisRenderer = new Debris3D(this.threeApp.world);
     this.burnMarkRenderer = new BurnMark3D(this.threeApp.world, this.renderScope);
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
-    this.buildGhostRenderer = new BuildGhost3D(this.threeApp.world);
+    this.buildGhostRenderer = new BuildGhost3D(
+      this.threeApp.world,
+      (x, y) => getTerrainMeshHeight(x, y, this.mapWidth, this.mapHeight),
+    );
     this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
     this.smokeTrailRenderer = new SmokeTrail3D(this.threeApp.world);
 
@@ -819,6 +827,7 @@ export class RtsScene3D {
     // Render3DEntities for per-object rich mesh selection instead.
     setCurrentZoom(this.cameras.main.zoom);
     const graphicsConfig = getGraphicsConfig();
+    this.metalDepositRenderer?.update(graphicsConfig.tier);
     const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
@@ -1654,6 +1663,8 @@ export class RtsScene3D {
     this.selectionLabel3D?.destroy();
     this.selectionLabel3D = null;
     this.entityRenderer?.destroy();
+    this.metalDepositRenderer?.dispose();
+    this.metalDepositRenderer = null;
     this.beamRenderer?.destroy();
     this.forceFieldRenderer?.destroy();
     this.captureTileRenderer?.destroy();

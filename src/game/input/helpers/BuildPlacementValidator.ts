@@ -18,7 +18,8 @@
 import type { Entity, BuildingType } from '../../sim/types';
 import type { MetalDeposit } from '../../../metalDepositConfig';
 import { getBuildingConfig } from '../../sim/buildConfigs';
-import { GRID_CELL_SIZE } from '../../sim/grid';
+import { GRID_CELL_SIZE, snapBuildingToGrid } from '../../sim/grid';
+import { findDepositCoveringFootprint } from '../../sim/metalDeposits';
 import { isWaterAt } from '../../sim/Terrain';
 
 /** Returns true if a building of `candidateType` placed with its center
@@ -88,18 +89,10 @@ export function canPlaceBuildingAt(
   // the same check in construction.startBuilding, so this stays an
   // accurate preview gate.
   if (candidateType === 'extractor') {
-    let depositId = -1;
-    for (const d of metalDeposits) {
-      const dx = centerX - d.x;
-      const dy = centerY - d.y;
-      if (dx * dx + dy * dy <= d.flatRadius * d.flatRadius) {
-        depositId = d.id;
-        break;
-      }
-    }
-    if (depositId < 0) return false;
+    const deposit = findDepositCoveringFootprint(metalDeposits, centerX, centerY, w / 2, h / 2);
+    if (!deposit) return false;
     for (const b of buildings) {
-      if (b.buildingType === 'extractor' && b.metalDepositId === depositId) return false;
+      if (b.buildingType === 'extractor' && b.metalDepositId === deposit.id) return false;
     }
   }
 
@@ -109,17 +102,13 @@ export function canPlaceBuildingAt(
 /** Snap a world-space cursor position to the canonical center of a
  *  building footprint of the given type. Building cells are aligned to
  *  the GRID_CELL_SIZE lattice; the building's center sits at the
- *  midpoint of its (gridWidth × gridHeight) footprint anchored at the
- *  cell containing the cursor. */
+ *  midpoint of its (gridWidth × gridHeight) footprint using the same
+ *  top-left-cell convention as the authoritative BuildingGrid. */
 export function getSnappedBuildPosition(
   worldX: number,
   worldY: number,
   buildingType: BuildingType,
 ): { x: number; y: number; gridX: number; gridY: number } {
   const config = getBuildingConfig(buildingType);
-  const gridX = Math.floor(worldX / GRID_CELL_SIZE);
-  const gridY = Math.floor(worldY / GRID_CELL_SIZE);
-  const x = gridX * GRID_CELL_SIZE + (config.gridWidth * GRID_CELL_SIZE) / 2;
-  const y = gridY * GRID_CELL_SIZE + (config.gridHeight * GRID_CELL_SIZE) / 2;
-  return { x, y, gridX, gridY };
+  return snapBuildingToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
 }

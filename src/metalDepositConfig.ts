@@ -62,18 +62,34 @@ export const METAL_DEPOSIT_CONFIG = {
   /** Concentric rings of deposits. Order doesn't matter — the renderer
    *  and placement validator iterate over all of them. */
   rings: [
-    // Center deposit — single contested spot at the map's heart, on
-    // ground level so the central arena stays open to fights.
-    { radiusFraction: 0.15, countPerPlayer: 1, rotationOffset: 0, flatRadius: 80, height: 200 },
-
-    // Inner ring — 1 deposit per player, sitting on a low rise so it
-    // reads as a defensible knoll.
-    { radiusFraction: 0.3, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 200 },
-    { radiusFraction: 0.5, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 200 },
-
-    // Outer ring — 2 deposits per player. CENTER polarity multiplies
-    // this raw value directly.
-    { radiusFraction: 0.8, countPerPlayer: 2, rotationOffset: 0, flatRadius: 60, height: 200 },
+    {
+      radiusFraction: 0.1,
+      countPerPlayer: 1,
+      rotationOffset: 0,
+      flatRadius: 100,
+      height: 100,
+    },
+    {
+      radiusFraction: 0.3,
+      countPerPlayer: 2,
+      rotationOffset: 0,
+      flatRadius: 80,
+      height: 300,
+    },
+    {
+      radiusFraction: 0.5,
+      countPerPlayer: 1,
+      rotationOffset: 0,
+      flatRadius: 80,
+      height: 300,
+    },
+    {
+      radiusFraction: 0.8,
+      countPerPlayer: 2,
+      rotationOffset: 0,
+      flatRadius: 80,
+      height: 0,
+    },
   ] as DepositRing[],
 };
 
@@ -107,7 +123,8 @@ export function generateMetalDeposits(
   terrainCenterShape: TerrainShape = 'lake',
 ): MetalDeposit[] {
   const deposits: MetalDeposit[] = [];
-  const halfExtent = Math.min(mapWidth, mapHeight) / 2 - METAL_DEPOSIT_CONFIG.edgeMarginPx;
+  const halfExtent =
+    Math.min(mapWidth, mapHeight) / 2 - METAL_DEPOSIT_CONFIG.edgeMarginPx;
   const cx = mapWidth / 2;
   const cy = mapHeight / 2;
   const players = Math.max(1, playerCount);
@@ -116,12 +133,20 @@ export function generateMetalDeposits(
 
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const ringRadius = ring.radiusFraction * halfExtent;
-    const blendRadius = ring.blendRadius ?? METAL_DEPOSIT_CONFIG.terrainBlendRadius;
+    const blendRadius =
+      ring.blendRadius ?? METAL_DEPOSIT_CONFIG.terrainBlendRadius;
     const height = ring.height * terrainShapeSign(terrainCenterShape);
 
     // Center: one deposit, regardless of countPerPlayer.
     if (ring.radiusFraction <= 1e-6) {
-      deposits.push({ id: id++, x: cx, y: cy, flatRadius: ring.flatRadius, height, blendRadius });
+      deposits.push({
+        id: id++,
+        x: cx,
+        y: cy,
+        flatRadius: ring.flatRadius,
+        height,
+        blendRadius,
+      });
       continue;
     }
 
@@ -135,7 +160,14 @@ export function generateMetalDeposits(
         const angle = sliceCenter + angleInSlice + ring.rotationOffset;
         const x = cx + Math.cos(angle) * ringRadius;
         const y = cy + Math.sin(angle) * ringRadius;
-        deposits.push({ id: id++, x, y, flatRadius: ring.flatRadius, height, blendRadius });
+        deposits.push({
+          id: id++,
+          x,
+          y,
+          flatRadius: ring.flatRadius,
+          height,
+          blendRadius,
+        });
       }
     }
   }

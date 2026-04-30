@@ -9,42 +9,75 @@
 // with capture-tile colors or building meshes for attention.
 
 import * as THREE from 'three';
+import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
 
+const MARKER_LOD: Record<ConcreteGraphicsQuality, {
+  discSegments: number;
+  rimSegments: number;
+  discOpacity: number;
+  rimOpacity: number;
+  radiusScale: number;
+}> = {
+  min:    { discSegments: 12, rimSegments: 0,  discOpacity: 0.55, rimOpacity: 0.00, radiusScale: 0.82 },
+  low:    { discSegments: 20, rimSegments: 24, discOpacity: 0.68, rimOpacity: 0.65, radiusScale: 0.9 },
+  medium: { discSegments: 32, rimSegments: 40, discOpacity: 0.78, rimOpacity: 0.82, radiusScale: 1.0 },
+  high:   { discSegments: 48, rimSegments: 56, discOpacity: 0.85, rimOpacity: 0.92, radiusScale: 1.0 },
+  max:    { discSegments: 64, rimSegments: 72, discOpacity: 0.88, rimOpacity: 0.98, radiusScale: 1.05 },
+};
+
 export class MetalDepositRenderer3D {
   private group: THREE.Group;
+  private deposits: ReadonlyArray<MetalDeposit>;
+  private tier: ConcreteGraphicsQuality | null = null;
   private discMesh: THREE.InstancedMesh | null = null;
   private rimMesh: THREE.InstancedMesh | null = null;
 
-  constructor(parentWorld: THREE.Group, deposits: ReadonlyArray<MetalDeposit>) {
+  constructor(
+    parentWorld: THREE.Group,
+    deposits: ReadonlyArray<MetalDeposit>,
+    initialTier: ConcreteGraphicsQuality = 'medium',
+  ) {
+    this.deposits = deposits;
     this.group = new THREE.Group();
     parentWorld.add(this.group);
-    if (deposits.length > 0) this.build(deposits);
+    this.update(initialTier);
   }
 
-  private build(deposits: ReadonlyArray<MetalDeposit>): void {
+  update(tier: ConcreteGraphicsQuality): void {
+    if (tier === this.tier) return;
+    this.clearMeshes();
+    this.tier = tier;
+    if (this.deposits.length > 0) this.build(tier);
+  }
+
+  private build(tier: ConcreteGraphicsQuality): void {
+    const deposits = this.deposits;
+    const lod = MARKER_LOD[tier];
     const count = deposits.length;
     // Unit disc / annulus geometry — instance scale handles per-deposit radius.
-    const discGeo = new THREE.CircleGeometry(1, 48);
+    const discGeo = new THREE.CircleGeometry(1, lod.discSegments);
     const discMat = new THREE.MeshBasicMaterial({
       color: 0x6b3a1a,
       transparent: true,
-      opacity: 0.85,
+      opacity: lod.discOpacity,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
     this.discMesh = new THREE.InstancedMesh(discGeo, discMat, count);
 
-    const rimGeo = new THREE.RingGeometry(0.92, 1.0, 64);
-    const rimMat = new THREE.MeshBasicMaterial({
-      color: 0xffaa44,
-      transparent: true,
-      opacity: 0.95,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    this.rimMesh = new THREE.InstancedMesh(rimGeo, rimMat, count);
+    if (lod.rimOpacity > 0 && lod.rimSegments > 0) {
+      const rimGeo = new THREE.RingGeometry(0.92, 1.0, lod.rimSegments);
+      const rimMat = new THREE.MeshBasicMaterial({
+        color: 0xffaa44,
+        transparent: true,
+        opacity: lod.rimOpacity,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      this.rimMesh = new THREE.InstancedMesh(rimGeo, rimMat, count);
+    }
 
     const m = new THREE.Matrix4();
     const e = new THREE.Euler();
@@ -55,7 +88,7 @@ export class MetalDepositRenderer3D {
     // Marker radius is configured separately from flatRadius so the
     // visual doesn't reach all the way to the falloff edge — buildable
     // area extends past the marker.
-    const r = METAL_DEPOSIT_CONFIG.markerRadius;
+    const r = METAL_DEPOSIT_CONFIG.markerRadius * lod.radiusScale;
 
     for (let i = 0; i < count; i++) {
       const d = deposits[i];
@@ -68,18 +101,20 @@ export class MetalDepositRenderer3D {
       scl.set(r, r, r);
       m.compose(pos, q, scl);
       this.discMesh.setMatrixAt(i, m);
-      this.rimMesh.setMatrixAt(i, m);
+      this.rimMesh?.setMatrixAt(i, m);
     }
     this.discMesh.instanceMatrix.needsUpdate = true;
-    this.rimMesh.instanceMatrix.needsUpdate = true;
     this.discMesh.count = count;
-    this.rimMesh.count = count;
+    if (this.rimMesh) {
+      this.rimMesh.instanceMatrix.needsUpdate = true;
+      this.rimMesh.count = count;
+    }
 
     this.group.add(this.discMesh);
-    this.group.add(this.rimMesh);
+    if (this.rimMesh) this.group.add(this.rimMesh);
   }
 
-  dispose(): void {
+  private clearMeshes(): void {
     if (this.discMesh) {
       this.discMesh.geometry.dispose();
       (this.discMesh.material as THREE.Material).dispose();
@@ -92,6 +127,10 @@ export class MetalDepositRenderer3D {
       this.group.remove(this.rimMesh);
       this.rimMesh = null;
     }
+  }
+
+  dispose(): void {
+    this.clearMeshes();
     if (this.group.parent) this.group.parent.remove(this.group);
   }
 }

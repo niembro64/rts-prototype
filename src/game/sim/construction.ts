@@ -1,24 +1,27 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId, BuildingType } from './types';
+import type { MetalDeposit } from '../../metalDepositConfig';
 import { magnitude3 } from '../math';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
+import { findDepositCoveringFootprint } from './metalDeposits';
 import { isWaterAt } from './Terrain';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { deactivateSolarCollector, ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 import { economyManager } from './economy';
 
-// Find the deposit (if any) whose flat zone contains world point (x, y).
+// Find the deposit (if any) whose flat zone covers the candidate footprint.
 // Used by both extractor placement validation and the user-facing
 // "is this a valid extractor spot?" cursor check.
-export function findDepositAt(world: WorldState, x: number, y: number): { id: number; x: number; y: number; flatRadius: number } | null {
-  for (const d of world.metalDeposits) {
-    const dx = x - d.x;
-    const dy = y - d.y;
-    if (dx * dx + dy * dy <= d.flatRadius * d.flatRadius) return d;
-  }
-  return null;
+export function findDepositAt(
+  world: WorldState,
+  x: number,
+  y: number,
+  halfWidth = 0,
+  halfHeight = 0,
+): MetalDeposit | null {
+  return findDepositCoveringFootprint(world.metalDeposits, x, y, halfWidth, halfHeight);
 }
 
 // True iff some completed-or-in-progress extractor already occupies
@@ -150,12 +153,14 @@ export class ConstructionSystem {
 
     // Get world position for building center
     const worldPos = this.buildingGrid.getBuildingCenter(gridX, gridY, config.gridWidth, config.gridHeight);
+    const halfW = (config.gridWidth * GRID_CELL_SIZE) / 2;
+    const halfH = (config.gridHeight * GRID_CELL_SIZE) / 2;
 
     // Extractors REQUIRE an unoccupied deposit within reach. Any other
     // building type silently bypasses this check.
     let depositId: number | undefined = undefined;
     if (buildingType === 'extractor') {
-      const deposit = findDepositAt(world, worldPos.x, worldPos.y);
+      const deposit = findDepositAt(world, worldPos.x, worldPos.y, halfW, halfH);
       if (!deposit || isDepositOccupied(world, deposit.id)) return null;
       depositId = deposit.id;
     }
@@ -163,8 +168,6 @@ export class ConstructionSystem {
     // Reject placements over water — buildings can't sit on the
     // water plane. Sample the footprint corners + center; if any is
     // submerged, the cell is impassable.
-    const halfW = (config.gridWidth * GRID_CELL_SIZE) / 2;
-    const halfH = (config.gridHeight * GRID_CELL_SIZE) / 2;
     const mw = world.mapWidth;
     const mh = world.mapHeight;
     if (

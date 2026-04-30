@@ -2872,8 +2872,11 @@ export class Render3DEntities {
         }
       }
 
-      // Group at ground; box elevated inside so it sits on the ground plane.
-      m.group.position.set(e.transform.x, 0, e.transform.y);
+      // Transform.z is the building's vertical center in sim space.
+      // Render from the footprint base so buildings sit on the same
+      // terrain height the server used when creating their collider.
+      const buildingBaseY = e.building ? e.transform.z - e.building.depth / 2 : 0;
+      m.group.position.set(e.transform.x, buildingBaseY, e.transform.y);
       m.group.rotation.y = -e.transform.rotation;
       const h = m.buildingHeight ?? BUILDING_HEIGHT;
 
