@@ -65,7 +65,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
-    spread: { angle: Math.PI / 12 },
+    spread: { angle: 0 },
+    // spread: { angle: Math.PI / 12 },
     bodyRadius: 4,
     audio: { fireSound: AUDIO.event.fire.lightTurret },
   },
@@ -127,7 +128,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
-    spread: { angle: Math.PI / 24 },
+    spread: { angle: 0 },
     bodyRadius: 10,
     audio: { fireSound: AUDIO.event.fire.cannonTurret },
   },
@@ -145,7 +146,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
-    spread: { angle: Math.PI / 24 },
+    spread: { angle: 0 },
     bodyRadius: 9,
     audio: { fireSound: AUDIO.event.fire.mortarTurret },
     // Mortars lob — high-arc solution from the ballistic solver so
@@ -159,7 +160,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // the rest of the way into a fragmentation ring around the
     // target. Designed in tandem with mortarShot.submunitions —
     // tune both knobs together.
-    groundAimFraction: 1.00,
+    groundAimFraction: 1.0,
   },
   pulseTurret: {
     id: 'pulseTurret',
@@ -215,7 +216,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
-    spread: { angle: Math.PI / 32 },
+    spread: { angle: 0 },
+    // spread: { angle: Math.PI / 32 },
     bodyRadius: 14,
     audio: { fireSound: AUDIO.event.fire.gatlingMortarTurret },
     // Uses the low ballistic solution; the submunitions do the area spread.
@@ -223,14 +225,14 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // Aim short so the cluster carrier lands inside the target
     // group; the bouncing mortar children carry the rest of the
     // fragmentation outward.
-    groundAimFraction: 1.00,
+    groundAimFraction: 1.0,
   },
   hippoGatlingTurret: {
     id: 'hippoGatlingTurret',
     projectileId: 'mediumShot',
     range: 300,
-    cooldown: 100,
-    launchForce: 2_200,
+    cooldown: 50,
+    launchForce: 4_200,
     turretTurnAccel: 100,
     turretDrag: 0.4,
     barrel: {
@@ -246,7 +248,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
-    spread: { angle: Math.PI / 8 },
+    spread: { angle: Math.PI / 16 },
     burst: { count: 1, delay: 80 },
     bodyRadius: 12,
     audio: { fireSound: AUDIO.event.fire.hippoGatlingTurret },
@@ -259,7 +261,11 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     launchForce: 7000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 1.0, barrelThickness: 8 },
+    barrel: {
+      type: 'simpleSingleBarrel',
+      barrelLength: 1.0,
+      barrelThickness: 8,
+    },
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
@@ -287,7 +293,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engage: { acquire: null, release: null },
     },
     color: 0xffffff,
-    spread: { angle: Math.PI / 32 },
+    spread: { angle: 0 },
+    // spread: { angle: Math.PI / 32 },
     bodyRadius: 5,
     audio: { fireSound: AUDIO.event.fire.laserTurret },
   },
