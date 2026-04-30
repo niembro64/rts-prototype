@@ -68,7 +68,31 @@ type ActiveForceField = {
   progress: number;
 };
 const _forceFields: ActiveForceField[] = [];
+let _forceFieldCount = 0;
 const _ffZones = { pushInner: 0, pushOuter: 0 };
+
+function pushClientForceField(
+  weaponX: number,
+  weaponY: number,
+  turretAngle: number,
+  playerId: PlayerId,
+  shot: ForceShot,
+  progress: number,
+): void {
+  let field = _forceFields[_forceFieldCount];
+  if (!field) {
+    field = { weaponX, weaponY, turretAngle, playerId, shot, progress };
+    _forceFields[_forceFieldCount] = field;
+  } else {
+    field.weaponX = weaponX;
+    field.weaponY = weaponY;
+    field.turretAngle = turretAngle;
+    field.playerId = playerId;
+    field.shot = shot;
+    field.progress = progress;
+  }
+  _forceFieldCount++;
+}
 
 function getClientForceFieldZones(shot: ForceShot, progress: number) {
   const push = shot.push;
@@ -611,8 +635,9 @@ export class ClientViewState {
     const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
     const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
 
-    // Collect active force fields for client-side projectile prediction (Gap 3)
-    _forceFields.length = 0;
+    // Collect active force fields for client-side projectile prediction.
+    // The backing objects stay pooled at the session high-water mark.
+    _forceFieldCount = 0;
 
     for (const entity of this.entities.values()) {
       const target = this.serverTargets.get(entity.id);
@@ -720,14 +745,14 @@ export class ClientViewState {
               if (next > 0 && entity.ownership) {
                 const unitCos = Math.cos(entity.transform.rotation);
                 const unitSin = Math.sin(entity.transform.rotation);
-                _forceFields.push({
-                  weaponX: entity.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y,
-                  weaponY: entity.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y,
-                  turretAngle: weapon.rotation,
-                  playerId: entity.ownership.playerId,
-                  shot: fieldShot,
-                  progress: next,
-                });
+                pushClientForceField(
+                  entity.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y,
+                  entity.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y,
+                  weapon.rotation,
+                  entity.ownership.playerId,
+                  fieldShot,
+                  next,
+                );
               }
             }
           }
@@ -861,14 +886,14 @@ export class ClientViewState {
           }
 
           // Client-side force field prediction: apply same deflection physics as server
-          if (_forceFields.length > 0 && entity.ownership) {
+          if (_forceFieldCount > 0 && entity.ownership) {
             const projOwnerId = entity.ownership.playerId;
             const projRadius = proj.config.shot.type === 'projectile'
               ? proj.config.shot.collision.radius : 5;
             const projMass = (proj.config.shot.type === 'projectile'
               ? proj.config.shot.mass : 1) * PROJECTILE_MASS_MULTIPLIER;
 
-            for (let fi = 0; fi < _forceFields.length; fi++) {
+            for (let fi = 0; fi < _forceFieldCount; fi++) {
               const ff = _forceFields[fi];
               if (ff.playerId === projOwnerId) continue; // Only deflect enemy projectiles
 

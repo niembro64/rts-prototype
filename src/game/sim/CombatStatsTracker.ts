@@ -20,8 +20,10 @@ export class CombatStatsTracker {
   private world: WorldState;
   // Registry persists entity identity after death so posthumous projectile
   // damage can still be attributed to the correct player + unit type.
-  // Entries are pruned every tick to prevent unbounded growth.
-  private entityRegistry: Map<EntityId, { playerId: PlayerId; unitType: string }> = new Map();
+  // Entries are pruned on a stride with a short TTL to prevent unbounded growth
+  // without losing attribution for shells/beams that resolve after source death.
+  private entityRegistry: Map<EntityId, { playerId: PlayerId; unitType: string; missingSinceTick?: number }> = new Map();
+  private nextRegistryPruneTick = 0;
 
   // Cached snapshot to avoid allocations — rebuilt in-place each call
   private _snapshot: CombatStatsSnapshot = { players: {}, global: {} };
@@ -74,14 +76,23 @@ export class CombatStatsTracker {
   }
 
   /**
-   * Remove registry entries for entities no longer in the world.
-   * O(1) map lookup per entry — safe to call every tick.
+   * Remove old registry entries for entities no longer in the world.
+   * This is intentionally rate-limited: the registry is only needed as a
+   * posthumous attribution cache, so scanning it every combat update wastes
+   * server time in long battles.
    */
-  pruneRegistry(): void {
-    for (const id of this.entityRegistry.keys()) {
-      if (!this.world.getEntity(id)) {
-        this.entityRegistry.delete(id);
+  pruneRegistry(currentTick: number): void {
+    if (currentTick < this.nextRegistryPruneTick) return;
+    this.nextRegistryPruneTick = currentTick + 30;
+
+    for (const [id, record] of this.entityRegistry) {
+      if (this.world.getEntity(id)) {
+        record.missingSinceTick = undefined;
+        continue;
       }
+
+      record.missingSinceTick ??= currentTick;
+      if (currentTick - record.missingSinceTick >= 180) this.entityRegistry.delete(id);
     }
   }
 

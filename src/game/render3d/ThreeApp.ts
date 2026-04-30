@@ -52,6 +52,7 @@ export class ThreeApp {
   private _dynamicPixelRatioEnabled = true;
   private _lastCssWidth = 0;
   private _lastCssHeight = 0;
+  private _environmentTexture: THREE.Texture | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -85,11 +86,18 @@ export class ThreeApp {
     // per-frame overhead.
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const roomEnv = new RoomEnvironment();
-    this.scene.environment = pmrem.fromScene(roomEnv, 0.04).texture;
+    this._environmentTexture = pmrem.fromScene(roomEnv, 0.04).texture;
+    this.scene.environment = this._environmentTexture;
     roomEnv.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
         const m = obj as THREE.Mesh;
         if ('dispose' in (m.geometry ?? {})) m.geometry.dispose();
+        const material = m.material;
+        if (Array.isArray(material)) {
+          for (const mat of material) mat.dispose();
+        } else {
+          material?.dispose();
+        }
       }
     });
     pmrem.dispose();
@@ -240,6 +248,9 @@ export class ThreeApp {
     this.orbit.destroy();
     this._resizeObserver.disconnect();
     this.gpuTimer.destroy();
+    this.scene.environment = null;
+    this._environmentTexture?.dispose();
+    this._environmentTexture = null;
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);

@@ -561,7 +561,7 @@ export class Simulation {
     }
 
     // Prune stale combat stats registry entries (rate-limited internally)
-    this.combatStatsTracker.pruneRegistry();
+    this.combatStatsTracker.pruneRegistry(this.world.getTick());
 
     // Safety cleanup - remove any dead entities that slipped through.
     // Normal combat deaths are handled in the collision path above;
