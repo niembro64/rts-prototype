@@ -4,7 +4,7 @@
 import { WorldState } from '../sim/WorldState';
 import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
-import { spawnInitialEntities, spawnInitialBases, FIRST_PLAYER_ANGLE } from '../sim/spawn';
+import { spawnInitialEntities, spawnInitialBases, spawnMetalExtractorsOnDeposits, FIRST_PLAYER_ANGLE } from '../sim/spawn';
 import { CAPTURE_CONFIG } from '../../captureConfig';
 import { serializeGameState, resetDeltaTracking, resetProtocolSeeded } from '../network/stateSerializer';
 import type { SerializeGameStateOptions, SnapshotInterest } from '../network/stateSerializer';
@@ -281,6 +281,9 @@ export class GameServer {
       // AI game: full base with factories, solars, and commander per player
       const constructionSystem = this.simulation.getConstructionSystem();
       const entities = spawnInitialBases(this.world, constructionSystem, this.playerIds);
+      if (this.backgroundMode) {
+        entities.push(...spawnMetalExtractorsOnDeposits(this.world, constructionSystem, this.playerIds));
+      }
       this.createPhysicsBodies(entities);
       this.simulation.setAiPlayerIds(aiPlayerIds);
 

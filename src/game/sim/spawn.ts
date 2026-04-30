@@ -355,3 +355,64 @@ export function spawnInitialBases(
 
   return entities;
 }
+
+function angleDeltaAbs(a: number, b: number): number {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d);
+}
+
+function ownerForDeposit(world: WorldState, playerIds: PlayerId[], x: number, y: number): PlayerId {
+  if (playerIds.length <= 1) return playerIds[0] ?? (1 as PlayerId);
+  const cx = world.mapWidth / 2;
+  const cy = world.mapHeight / 2;
+  const depositAngle = Math.atan2(y - cy, x - cx);
+  let bestIndex = 0;
+  let bestDelta = Infinity;
+  for (let i = 0; i < playerIds.length; i++) {
+    const delta = angleDeltaAbs(depositAngle, getPlayerBaseAngle(i, playerIds.length));
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestIndex = i;
+    }
+  }
+  return playerIds[bestIndex];
+}
+
+export function spawnMetalExtractorsOnDeposits(
+  world: WorldState,
+  construction: ConstructionSystem,
+  playerIds: PlayerId[],
+): Entity[] {
+  if (playerIds.length === 0 || world.metalDeposits.length === 0) return [];
+  const entities: Entity[] = [];
+  const grid = construction.getGrid();
+  const config = getBuildingConfig('extractor');
+
+  for (const deposit of world.metalDeposits) {
+    const ownerId = ownerForDeposit(world, playerIds, deposit.x, deposit.y);
+    const snapped = grid.snapToGrid(deposit.x, deposit.y, config.gridWidth, config.gridHeight);
+    const gridPos = grid.worldToGrid(snapped.x, snapped.y);
+    const extractor = construction.startBuilding(
+      world,
+      'extractor',
+      gridPos.gx,
+      gridPos.gy,
+      ownerId,
+      0,
+    );
+    if (!extractor) continue;
+
+    if (extractor.buildable) {
+      extractor.buildable.buildProgress = 1;
+      extractor.buildable.isComplete = true;
+    }
+    if (config.metalProduction) {
+      economyManager.addMetalExtraction(ownerId, config.metalProduction);
+    }
+    entities.push(extractor);
+  }
+
+  return entities;
+}
