@@ -79,6 +79,14 @@ type SnapshotInterestPlan = {
   candidateEntityIds?: EntityId[];
 };
 
+type SnapshotInterestBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  hasOwnedEntity: boolean;
+};
+
 export class GameServer {
   private physics: PhysicsEngine3D;
   private world: WorldState;
@@ -116,7 +124,11 @@ export class GameServer {
   private snapshotDirtyIdsBuf: EntityId[] = [];
   private snapshotDirtyFieldsBuf: number[] = [];
   private snapshotRemovedIdsBuf: EntityId[] = [];
-  private snapshotInterestCandidateIdsBuf: EntityId[] = [];
+  private snapshotInterestPlansByPlayer: Map<PlayerId, SnapshotInterestPlan> = new Map();
+  private snapshotInterestBoundsByPlayer: Map<PlayerId, SnapshotInterestBounds> = new Map();
+  private snapshotInterestCandidateIdsByPlayer: Map<PlayerId, EntityId[]> = new Map();
+  private snapshotInterestPlayerIdsBuf: PlayerId[] = [];
+  private snapshotInterestBuildingIdsBuf: EntityId[] = [];
   private gameOverListeners: GameOverCallback[] = [];
 
   // Game over tracking
@@ -900,8 +912,10 @@ export class GameServer {
       this.lastSentServerTime = currentTime;
     }
 
+    this.prepareSnapshotInterestPlans();
+
     for (const listener of this.snapshotListeners) {
-      const interest = this.buildSnapshotInterest(listener.playerId);
+      const interest = this.getSnapshotInterestPlan(listener.playerId);
       const serializeOptions: SerializeGameStateOptions = {
         trackingKey: listener.trackingKey,
         dirtyEntityIds: this.snapshotDirtyIdsBuf,
@@ -989,26 +1003,68 @@ export class GameServer {
     this.commandQueue.enqueue(command);
   }
 
-  private buildSnapshotInterest(playerId?: PlayerId): SnapshotInterestPlan {
-    if (playerId === undefined || this.backgroundMode) {
-      return {};
+  private getSnapshotInterestPlan(playerId?: PlayerId): SnapshotInterestPlan {
+    if (playerId === undefined || this.backgroundMode) return {};
+    return this.snapshotInterestPlansByPlayer.get(playerId) ?? {};
+  }
+
+  private getSnapshotInterestBounds(playerId: PlayerId): SnapshotInterestBounds {
+    let bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
+    if (!bounds) {
+      bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, hasOwnedEntity: false };
+      this.snapshotInterestBoundsByPlayer.set(playerId, bounds);
+    } else {
+      bounds.minX = Infinity;
+      bounds.minY = Infinity;
+      bounds.maxX = -Infinity;
+      bounds.maxY = -Infinity;
+      bounds.hasOwnedEntity = false;
+    }
+    return bounds;
+  }
+
+  private getSnapshotInterestCandidates(playerId: PlayerId): EntityId[] {
+    let candidates = this.snapshotInterestCandidateIdsByPlayer.get(playerId);
+    if (!candidates) {
+      candidates = [];
+      this.snapshotInterestCandidateIdsByPlayer.set(playerId, candidates);
+    } else {
+      candidates.length = 0;
+    }
+    return candidates;
+  }
+
+  private prepareSnapshotInterestPlans(): void {
+    this.snapshotInterestPlansByPlayer.clear();
+    if (this.backgroundMode) return;
+
+    const targetPlayerIds = this.snapshotInterestPlayerIdsBuf;
+    targetPlayerIds.length = 0;
+    for (const listener of this.snapshotListeners) {
+      const playerId = listener.playerId;
+      if (playerId === undefined || targetPlayerIds.includes(playerId)) continue;
+      targetPlayerIds.push(playerId);
+    }
+    if (targetPlayerIds.length === 0) return;
+
+    this.snapshotInterestBuildingIdsBuf.length = 0;
+    for (const playerId of targetPlayerIds) {
+      this.getSnapshotInterestBounds(playerId);
+      this.getSnapshotInterestCandidates(playerId);
     }
 
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let hasOwnedEntity = false;
-
     const includeOwnedBounds = (entity: Entity): void => {
-      if (entity.ownership?.playerId !== playerId) return;
-      hasOwnedEntity = true;
+      const playerId = entity.ownership?.playerId;
+      if (playerId === undefined) return;
+      const bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
+      if (!bounds) return;
+      bounds.hasOwnedEntity = true;
       const x = entity.transform.x;
       const y = entity.transform.y;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
+      if (x < bounds.minX) bounds.minX = x;
+      if (x > bounds.maxX) bounds.maxX = x;
+      if (y < bounds.minY) bounds.minY = y;
+      if (y > bounds.maxY) bounds.maxY = y;
     };
 
     for (const unit of this.world.getUnits()) {
@@ -1016,34 +1072,61 @@ export class GameServer {
     }
     for (const building of this.world.getBuildings()) {
       includeOwnedBounds(building);
+      this.snapshotInterestBuildingIdsBuf.push(building.id);
     }
 
-    if (hasOwnedEntity) {
-      minX -= SNAPSHOT_AOI_PADDING;
-      minY -= SNAPSHOT_AOI_PADDING;
-      maxX += SNAPSHOT_AOI_PADDING;
-      maxY += SNAPSHOT_AOI_PADDING;
+    for (const playerId of targetPlayerIds) {
+      const bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
+      if (!bounds) continue;
+      if (!bounds.hasOwnedEntity) continue;
+      bounds.minX -= SNAPSHOT_AOI_PADDING;
+      bounds.minY -= SNAPSHOT_AOI_PADDING;
+      bounds.maxX += SNAPSHOT_AOI_PADDING;
+      bounds.maxY += SNAPSHOT_AOI_PADDING;
     }
 
-    const predicate: SnapshotInterest = (entity) => {
-      if (entity.type === 'building') return true;
-      if (entity.ownership?.playerId === playerId) return true;
-      if (!hasOwnedEntity) return false;
-      const x = entity.transform.x;
-      const y = entity.transform.y;
-      return x >= minX && x <= maxX && y >= minY && y <= maxY;
-    };
-
-    const candidates = this.snapshotInterestCandidateIdsBuf;
-    candidates.length = 0;
     for (const unit of this.world.getUnits()) {
-      if (predicate(unit)) candidates.push(unit.id);
-    }
-    for (const building of this.world.getBuildings()) {
-      candidates.push(building.id);
+      const unitPlayerId = unit.ownership?.playerId;
+      const x = unit.transform.x;
+      const y = unit.transform.y;
+      for (const playerId of targetPlayerIds) {
+        const bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
+        if (!bounds) continue;
+        if (
+          unitPlayerId === playerId ||
+          (
+            bounds.hasOwnedEntity &&
+            x >= bounds.minX && x <= bounds.maxX &&
+            y >= bounds.minY && y <= bounds.maxY
+          )
+        ) {
+          this.snapshotInterestCandidateIdsByPlayer.get(playerId)?.push(unit.id);
+        }
+      }
     }
 
-    return { predicate, candidateEntityIds: candidates };
+    for (const playerId of targetPlayerIds) {
+      const candidates = this.snapshotInterestCandidateIdsByPlayer.get(playerId);
+      if (!candidates) continue;
+      for (let i = 0; i < this.snapshotInterestBuildingIdsBuf.length; i++) {
+        candidates.push(this.snapshotInterestBuildingIdsBuf[i]);
+      }
+    }
+
+    for (const playerId of targetPlayerIds) {
+      const bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
+      const candidates = this.snapshotInterestCandidateIdsByPlayer.get(playerId);
+      if (!bounds || !candidates) continue;
+      const predicate: SnapshotInterest = (entity) => {
+        if (entity.type === 'building') return true;
+        if (entity.ownership?.playerId === playerId) return true;
+        if (!bounds.hasOwnedEntity) return false;
+        const x = entity.transform.x;
+        const y = entity.transform.y;
+        return x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY;
+      };
+      this.snapshotInterestPlansByPlayer.set(playerId, { predicate, candidateEntityIds: candidates });
+    }
   }
 
   // Add a snapshot listener
