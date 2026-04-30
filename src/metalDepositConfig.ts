@@ -7,13 +7,12 @@
 // across it. So a 6-player map with `countPerPlayer: 2` yields 12
 // deposits in that ring; the same ring on a 4-player map yields 8.
 //
-// Each ring also carries a `height`: the magnitude of the z elevation
-// the deposit's flat pad is forced to. The sign follows the same
-// CENTER terrain convention: LAKE cuts below ground, MOUNTAIN rises
-// above ground, FLAT suppresses the height. Around each pad the
-// terrain blends smoothly from the signed deposit height back to
-// natural over `terrainBlendRadius` unless a ring overrides it with
-// `blendRadius`.
+// Each ring also carries a `height`: the z elevation the deposit's
+// flat pad is forced to before terrain-shape polarity is applied.
+// The value is not normalized: LAKE multiplies it by -1, MOUNTAIN
+// by +1, and FLAT by 0. Around each pad the terrain blends smoothly
+// from the signed deposit height back to natural over
+// `terrainBlendRadius` unless a ring overrides it with `blendRadius`.
 //
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
@@ -36,8 +35,8 @@ export type DepositRing = {
    *  the ring's `height`. Tune up if the extractor's grid footprint
    *  doesn't clear the blend edge. */
   flatRadius: number;
-  /** Z elevation magnitude (sim units) of the flat pad. The sign is
-   *  derived from the selected CENTER terrain shape at generation time. */
+  /** Z elevation (sim units) before CENTER terrain polarity is applied.
+   *  This is multiplied as-is; no absolute-value normalization. */
   height: number;
   /** Optional world-unit blend width outside `flatRadius`. Defaults to
    *  METAL_DEPOSIT_CONFIG.terrainBlendRadius. Larger values make the
@@ -65,16 +64,16 @@ export const METAL_DEPOSIT_CONFIG = {
   rings: [
     // Center deposit — single contested spot at the map's heart, on
     // ground level so the central arena stays open to fights.
-    { radiusFraction: 0.15, countPerPlayer: 1, rotationOffset: 0, flatRadius: 80, height: 0 },
+    { radiusFraction: 0.15, countPerPlayer: 1, rotationOffset: 0, flatRadius: 80, height: 200 },
 
     // Inner ring — 1 deposit per player, sitting on a low rise so it
     // reads as a defensible knoll.
-    { radiusFraction: 0.3, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 0 },
-    { radiusFraction: 0.5, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 0 },
+    { radiusFraction: 0.3, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 200 },
+    { radiusFraction: 0.5, countPerPlayer: 1, rotationOffset: 0, flatRadius: 70, height: 200 },
 
-    // Outer ring — 2 deposits per player. Magnitude is 30; LAKE makes
-    // shallow pits, MOUNTAIN makes low rises, FLAT leaves them level.
-    { radiusFraction: 0.8, countPerPlayer: 2, rotationOffset: 0, flatRadius: 60, height: 30 },
+    // Outer ring — 2 deposits per player. CENTER polarity multiplies
+    // this raw value directly.
+    { radiusFraction: 0.8, countPerPlayer: 2, rotationOffset: 0, flatRadius: 60, height: 200 },
   ] as DepositRing[],
 };
 
@@ -118,7 +117,7 @@ export function generateMetalDeposits(
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const ringRadius = ring.radiusFraction * halfExtent;
     const blendRadius = ring.blendRadius ?? METAL_DEPOSIT_CONFIG.terrainBlendRadius;
-    const height = Math.abs(ring.height) * terrainShapeSign(terrainCenterShape);
+    const height = ring.height * terrainShapeSign(terrainCenterShape);
 
     // Center: one deposit, regardless of countPerPlayer.
     if (ring.radiusFraction <= 1e-6) {
