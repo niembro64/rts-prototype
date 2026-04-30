@@ -459,8 +459,8 @@ export const BUILDING_STATS: Record<string, BuildingStatEntry> = {
     hp: 200,
   },
   wind: {
-    energyCost: 120, // Base energy cost (before multiplier)
-    hp: 250,
+    energyCost: 60, // Base energy cost (before multiplier)
+    hp: 100,
   },
   factory: {
     energyCost: 300, // Base energy cost (before multiplier)
