@@ -11,6 +11,7 @@ import type {
   NetworkServerSnapshotVelocityUpdate,
 } from '../../network/NetworkTypes';
 import type { GameConnection } from '../../server/GameConnection';
+import { cloneNetworkSnapshot } from '../../network/snapshotClone';
 
 export class SnapshotBuffer {
   private pendingSnapshot: NetworkServerSnapshot | null = null;
@@ -67,7 +68,7 @@ export class SnapshotBuffer {
       if (!this.pendingSnapshot || !state.isDelta || this.pendingSnapshot.isDelta) {
         this.pendingSnapshot = state.isDelta
           ? state
-          : structuredClone(state) as NetworkServerSnapshot;
+          : cloneNetworkSnapshot(state);
       }
     });
   }

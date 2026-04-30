@@ -5,10 +5,7 @@ import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
-
-function cloneSnapshot(state: NetworkServerSnapshot): NetworkServerSnapshot {
-  return structuredClone(state) as NetworkServerSnapshot;
-}
+import { cloneNetworkSnapshot } from '../network/snapshotClone';
 
 export class LocalGameConnection implements GameConnection {
   private server: GameServer;
@@ -24,7 +21,7 @@ export class LocalGameConnection implements GameConnection {
       if (this.snapshotCallback) {
         this.snapshotCallback(state);
       } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
-        this.pendingSnapshot = cloneSnapshot(state);
+        this.pendingSnapshot = cloneNetworkSnapshot(state);
       }
     }, playerId);
 
