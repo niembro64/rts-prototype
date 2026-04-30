@@ -395,9 +395,9 @@ export class Render3DEntities {
   private ringMatEngageRelease = new THREE.LineBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.25, depthWrite: false });
   private ringMatBuild = new THREE.LineBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.30, depthWrite: false });
   // Selection ring material — color is always white, so one shared
-  // instance covers every unit. Was previously allocated fresh on
-  // every (deselect → select) toggle, with a matching dispose on
-  // deselect/death; that churned a MeshBasicMaterial per click.
+  // instance covers every selectable entity. Was previously allocated
+  // fresh on every (deselect → select) toggle, with a matching dispose
+  // on deselect/death; that churned a MeshBasicMaterial per click.
   private selectionRingMat = new THREE.MeshLambertMaterial({
     color: 0xffffff,
     emissive: 0x333333,
@@ -2906,6 +2906,26 @@ export class Render3DEntities {
         this.updateWindTurbineRig(m, detailsReady);
       }
       this.updateFactoryConstructionRig(m.factoryRig, e, tier, progress >= 1, w, d, m.group);
+
+      // Building selection halo. Uses the same torus material/geometry as
+      // units so clicking a factory/solar/wind reads like selecting any
+      // other owned entity. Scale by footprint diagonal so rectangular
+      // buildings sit fully inside the donut.
+      const selected = e.selectable?.selected === true;
+      if (selected && !m.ring) {
+        const ring = new THREE.Mesh(this.ringGeom, this.selectionRingMat);
+        ring.rotation.x = Math.PI / 2;
+        m.group.add(ring);
+        m.ring = ring;
+      } else if (!selected && m.ring) {
+        m.group.remove(m.ring);
+        m.ring = undefined;
+      }
+      if (m.ring) {
+        const ringR = Math.hypot(w, d) * 0.55;
+        m.ring.scale.setScalar(ringR);
+        m.ring.position.set(0, ringR * 0.06 + 0.8, 0);
+      }
 
       // Health + build-progress bars handled by HealthBar3D
       // (billboarded sprite in the world group).

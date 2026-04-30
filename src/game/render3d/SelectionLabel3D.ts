@@ -189,10 +189,10 @@ export class SelectionLabel3D {
     const hoverBuilding = hoveredEntity?.building && hoveredEntity.building.hp > 0
       ? hoveredEntity
       : null;
-    // Selection labels and hover labels occupy the same in-world lane.
-    // Prefer explicit selection; otherwise a hovered building under the
-    // cursor can stack text behind a selected unit label.
-    const showHoverBuilding = total === 0 ? hoverBuilding : null;
+    // Hovered buildings get their own label even while one unit is
+    // selected, so the label under the cursor is always the building's
+    // real name instead of the selected unit's name.
+    const showHoverBuilding = hoverBuilding?.selectable?.selected ? null : hoverBuilding;
     if (total !== 1 && !showHoverBuilding) {
       if (this.hadVisible) {
         for (let i = 0; i < this.pool.length; i++) {

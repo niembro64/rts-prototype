@@ -1079,6 +1079,7 @@ export class RtsScene3D {
         const sc = command as SelectCommand;
         if (!sc.additive) this.clientViewState.clearSelection();
         for (const id of sc.entityIds) this.clientViewState.selectEntity(id);
+        this.preferUnitsOverBuildingsInSelection();
         this.selectionDirty = true;
         this._selectedEntityCacheDirty = true;
       } else if (command.type === 'clearSelection') {
@@ -1087,6 +1088,24 @@ export class RtsScene3D {
         this._selectedEntityCacheDirty = true;
       } else {
         this.gameConnection.sendCommand(command);
+      }
+    }
+  }
+
+  private preferUnitsOverBuildingsInSelection(): void {
+    let hasSelectedUnit = false;
+    const pid = this.localPlayerId;
+    for (const unit of this.clientViewState.getUnits()) {
+      if (unit.selectable?.selected && unit.ownership?.playerId === pid) {
+        hasSelectedUnit = true;
+        break;
+      }
+    }
+    if (!hasSelectedUnit) return;
+
+    for (const building of this.clientViewState.getBuildings()) {
+      if (building.selectable?.selected && building.ownership?.playerId === pid) {
+        this.clientViewState.deselectEntity(building.id);
       }
     }
   }
