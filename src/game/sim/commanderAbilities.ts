@@ -2,7 +2,7 @@ import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
 import { distance3 } from '../math';
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
-import { activateSolarCollector } from './solarCollector';
+import { startSolarCollectorClosed } from './solarCollector';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -146,7 +146,7 @@ export class CommanderAbilitiesSystem {
   private onConstructionComplete(world: WorldState, entity: Entity, _playerId: PlayerId): void {
     // Handle building-specific completion
     if (entity.buildingType === 'solar' && entity.ownership) {
-      activateSolarCollector(world, entity);
+      startSolarCollectorClosed(world, entity);
     }
 
     // Factory - waypoints are already set up during creation

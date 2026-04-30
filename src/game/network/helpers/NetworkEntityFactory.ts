@@ -178,7 +178,7 @@ function createBuildingFromNetwork(
       hp: b?.hp.curr ?? 500,
       maxHp: b?.hp.max ?? 500,
       solar: b?.type === 'solar'
-        ? { open: b.solar?.open ?? true, producing: false, reopenDelayMs: 0 }
+        ? { open: b.solar?.open ?? false, producing: false, reopenDelayMs: 0 }
         : undefined,
     },
     buildable: {

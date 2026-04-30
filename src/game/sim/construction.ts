@@ -6,7 +6,7 @@ import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
 import { isWaterAt } from './Terrain';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
-import { activateSolarCollector, deactivateSolarCollector, ensureSolarCollectorState } from './solarCollector';
+import { deactivateSolarCollector, ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 
 // Construction system - handles building progress and energy consumption
 export class ConstructionSystem {
@@ -93,7 +93,7 @@ export class ConstructionSystem {
 
     // Handle building-specific completion
     if (entity.buildingType === 'solar' && entity.ownership) {
-      activateSolarCollector(world, entity);
+      startSolarCollectorClosed(world, entity);
     }
 
     // Factory completion - set up rally point

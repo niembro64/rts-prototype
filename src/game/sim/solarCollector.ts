@@ -11,14 +11,18 @@ function getEnergyProduction(): number {
   return getBuildingConfig('solar').energyProduction ?? 0;
 }
 
+export function createClosedSolarCollectorState(): SolarCollectorState {
+  return {
+    open: false,
+    producing: false,
+    reopenDelayMs: SOLAR_DAMAGE_REOPEN_DELAY_MS,
+  };
+}
+
 export function ensureSolarCollectorState(entity: Entity): SolarCollectorState | undefined {
   if (entity.buildingType !== 'solar' || !entity.building) return undefined;
   if (!entity.building.solar) {
-    entity.building.solar = {
-      open: true,
-      producing: false,
-      reopenDelayMs: 0,
-    };
+    entity.building.solar = createClosedSolarCollectorState();
   }
   return entity.building.solar;
 }
@@ -48,6 +52,22 @@ export function activateSolarCollector(world: WorldState, entity: Entity): void 
     changed = true;
   }
   setSolarProduction(entity, true);
+  if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
+}
+
+export function startSolarCollectorClosed(world: WorldState, entity: Entity): void {
+  const state = ensureSolarCollectorState(entity);
+  if (!state || !entity.building || !entity.buildable?.isComplete || entity.building.hp <= 0) return;
+  let changed = false;
+  if (state.open) {
+    state.open = false;
+    changed = true;
+  }
+  if (state.reopenDelayMs !== SOLAR_DAMAGE_REOPEN_DELAY_MS) {
+    state.reopenDelayMs = SOLAR_DAMAGE_REOPEN_DELAY_MS;
+    changed = true;
+  }
+  if (setSolarProduction(entity, false)) changed = true;
   if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
 }
 

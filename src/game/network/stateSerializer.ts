@@ -109,7 +109,7 @@ function createPooledEntry(): PooledEntry {
     },
     unitCollider: { scale: 0, shot: 0, push: 0 },
     buildingDim: { x: 0, y: 0 },
-    solarSub: { open: true },
+    solarSub: { open: false },
     buildingSub: {
       type: undefined, dim: undefined, hp: { curr: 0, max: 0 },
       build: { progress: 0, complete: false },
@@ -185,7 +185,7 @@ function createPrevEntityState(): PrevEntityState {
     hp: 0, actionCount: 0, actionHash: 0,
     isEngagedBits: 0, targetBits: 0,
     weaponCount: 0, turretRots, turretAngVels, forceFieldRanges,
-    buildProgress: 0, solarOpen: 1, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
+    buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
   };
 }
 

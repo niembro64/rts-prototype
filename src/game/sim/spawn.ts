@@ -7,7 +7,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { isWaterAt } from './Terrain';
-import { activateSolarCollector, ensureSolarCollectorState } from './solarCollector';
+import { ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 
 /**
  * Compute a factory's default fight waypoint along the factory → map-center axis.
@@ -179,7 +179,7 @@ function placeCompleteBuilding(
   }
 
   if (buildingType === 'solar' && config.energyProduction) {
-    activateSolarCollector(world, entity);
+    startSolarCollectorClosed(world, entity);
   }
 
   grid.place(gx, gy, config.gridWidth, config.gridHeight, entity.id, playerId);

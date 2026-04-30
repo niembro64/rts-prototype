@@ -591,7 +591,7 @@ export class ClientViewState {
           reopenDelayMs: entity.building.solar?.reopenDelayMs ?? 0,
         };
       } else if (isFull && entity.buildingType === 'solar') {
-        entity.building.solar = { open: true, producing: false, reopenDelayMs: 0 };
+        entity.building.solar = { open: false, producing: false, reopenDelayMs: 0 };
       }
     }
 
