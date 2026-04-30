@@ -303,10 +303,11 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
       }
 
-      // Fire-event position will be set to the first-fired barrel tip
+      // Fire-event position will be set to the first-fired muzzle tip
       // below so the muzzle-flash visual and audio come out of the
-      // exact barrel the projectile did. `muzzleAboveGround` here is
-      // still the shared barrel-pivot altitude everything derives from.
+      // same centerline point the projectile did. `muzzleAboveGround`
+      // here is still the shared barrel-pivot altitude everything
+      // derives from.
       const muzzleAboveGround = getTurretMountHeight(unit, weaponIndex);
 
       // Fire the weapon along the turret's full 3D aim (yaw + pitch).
@@ -329,15 +330,13 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const fireBaseIndex = weapon.barrelFireIndex ?? 0;
 
       for (let i = 0; i < pellets; i++) {
-        // Each pellet comes out of its own barrel, cycling from the
-        // current fire-index so a 4-barrel gatling actually rolls
-        // through its cluster (index 0, 1, 2, 3, 0, …) and a 4-barrel
-        // shotgun with 4 pellets fires all four at once.
+        // Keep the round-robin barrel index for visual/audio metadata,
+        // while the authoritative shot itself comes from the stable
+        // center point between the barrels.
         const barrelIndex = (fireBaseIndex + i) % barrelCount;
 
         // Optional random yaw jitter for cone-shotgun spread. Applied
-        // AFTER the primitive resolves the barrel tip — the tip comes
-        // from the barrel's actual world axis; yaw jitter only tweaks
+        // AFTER the primitive resolves the muzzle tip — yaw jitter only tweaks
         // the outbound direction per pellet.
         let yaw = turretAngle;
         if (spreadAngle > 0) {
@@ -353,14 +352,14 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           turretAngle, turretPitch,
           config,
           unit.unit.unitRadiusCollider.scale,
-          barrelIndex,
+          0,
         );
         const spawnX = tip.x;
         const spawnY = tip.y;
         const spawnZ = tip.z;
 
-        // Fire audio event from the FIRST pellet's barrel tip so the
-        // muzzle-flash visual originates at the actual barrel. Non-
+        // Fire audio event from the FIRST pellet's muzzle tip so the
+        // muzzle-flash visual originates at the authoritative spawn. Non-
         // beam weapons only — continuous beams use start/stop lifecycle.
         if (i === 0 && shot.type !== 'beam') {
           audioEvents.push({
@@ -517,8 +516,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           }
         }
       }
-      // Advance the round-robin so the next volley emerges from the
-      // next set of barrels (index % N, wraps automatically).
+      // Advance the round-robin so render/audio metadata continues to
+      // cycle through the barrel set (index % N, wraps automatically).
       weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
     }
   }
@@ -834,12 +833,9 @@ export function updateProjectiles(
         }
 
         // Delegate the whole turret-rotation stack (unit yaw → turret
-        // yaw → turret pitch → per-barrel orbit) to the single primitive
-        // so beam origin and direction are computed from the exact same
-        // numbers the projectile-spawn path uses. Continuous beams pin
-        // to barrelFireIndex 0 — visually a beam streams from one
-        // consistent barrel rather than flickering across a gatling
-        // cluster.
+        // yaw → turret pitch) to the single primitive so beam origin and
+        // direction are computed from the exact same centerline numbers
+        // the projectile-spawn path uses.
         const turretAngle = weapon.rotation;
         const turretPitch = weapon.pitch;
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);

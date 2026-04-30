@@ -23,7 +23,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { computeTurretPointVelocity, getEntityVelocity3, getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
-import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, countBarrels, normalizeAngle } from '../../math';
+import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
 import {
   TURRET_RETURN_TO_FORWARD,
@@ -113,23 +113,18 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           // velocity-predicted intercept point.
           targetAngle = Math.atan2(target.transform.y - weaponY, target.transform.x - weaponX);
 
-          // Ballistic arcs are solved from the actual barrel TIP (not
+          // Ballistic arcs are solved from the actual muzzle TIP (not
           // the turret mount) — otherwise shots would fire from a
           // point one barrel-length farther back than the pitch was
-          // solved for, and every projectile would overshoot. The
-          // primitive returns the tip in world coords that already
-          // accounts for the barrel's orbit offset, pitch contribution,
-          // and yaw direction. Multi-barrel weapons must solve from
-          // the next barrel that will actually fire; otherwise a wide
-          // gatling cluster aims from barrel 0 while the projectile
-          // spawns from barrel 1/2/3/etc.
-          const referenceBarrelIndex = (weapon.barrelFireIndex ?? 0) % countBarrels(weapon.config);
+          // solved for, and every projectile would overshoot.
+          // Multi-barrel weapons use the stable cluster centerline, so
+          // aim no longer depends on the round-robin barrel index.
           let tipRef = getBarrelTip(
             weaponX, weaponY, mountZ,
             targetAngle, weapon.pitch,
             weapon.config,
             unit.unit.unitRadiusCollider.scale,
-            referenceBarrelIndex,
+            0,
           );
 
           // Lead prediction: aim at where the target will be when the
@@ -243,7 +238,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               targetAngle, weapon.pitch,
               weapon.config,
               unit.unit.unitRadiusCollider.scale,
-              referenceBarrelIndex,
+              0,
             );
             if (groundAimFraction !== undefined && groundAimFraction > 0) {
               const f = groundAimFraction;
@@ -255,7 +250,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
                 targetAngle, weapon.pitch,
                 weapon.config,
                 unit.unit.unitRadiusCollider.scale,
-                referenceBarrelIndex,
+                0,
               );
             }
             const horizDist = Math.hypot(aimX - tipRef.x, aimY - tipRef.y);
@@ -271,7 +266,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               targetAngle, weapon.pitch,
               weapon.config,
               unit.unit.unitRadiusCollider.scale,
-              referenceBarrelIndex,
+              0,
             );
             const horizDist = Math.hypot(aimX - tipRef.x, aimY - tipRef.y);
             const heightDiff = aimZ - tipRef.z;

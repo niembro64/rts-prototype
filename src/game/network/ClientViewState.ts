@@ -1078,15 +1078,14 @@ export class ClientViewState {
 
     // Projectiles that came from the shooter's own turret (i.e. NOT
     // parent-detonation submunitions) get their spawn position nudged
-    // onto the client's local barrel tip. This hides any small latency
+    // onto the client's local muzzle tip. This hides any small latency
     // drift between the server snapshot and the client's render of the
     // source unit — without it, a shot would pop at the server's
     // slightly-stale position and then the projectile would race to
-    // catch up with the visibly-moved barrel. We delegate the whole
-    // turret-rotation chain (unit yaw → turret yaw+pitch → barrel
-    // orbit) to the shared primitive with the exact barrelIndex the
-    // server used, so the spawn visually emerges from the same physical
-    // barrel on both sides.
+    // catch up with the visibly-moved barrel cluster. We delegate the
+    // turret-rotation chain (unit yaw → turret yaw+pitch) to the shared
+    // primitive, so multi-barrel shots use the same centerline spawn on
+    // both sides.
     if (spawn.projectileType !== 'beam' && !spawn.fromParentDetonation) {
       const source = this.entities.get(spawn.sourceEntityId);
       const weapon = source?.turrets?.[spawn.turretIndex];
@@ -1110,7 +1109,7 @@ export class ClientViewState {
           weapon.rotation, weapon.pitch,
           config,
           source.unit.unitRadiusCollider.scale,
-          spawn.barrelIndex,
+          0,
         );
         spawnX = tip.x;
         spawnY = tip.y;
