@@ -4,14 +4,12 @@ import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { isLineShot } from '../types';
 import { getTargetRadius, getTurretMountHeight } from './combatUtils';
-import { getTransformCosSin, distance3 } from '../../math';
+import { getTransformCosSin, distance3, distanceSquared3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
 import { getTurretWorldMount } from '../../math/MountGeometry';
 
-// Module-level reusable buffer for batched enemy queries (multi-weapon units)
-const _batchedEnemies: Entity[] = [];
 const _activeCombatUnits: Entity[] = [];
 const TURRET_MASK_MAX_INDEX = 30;
 
@@ -360,20 +358,15 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
     }
 
-    // Always batch when ANY weapon needs acquisition. The previous
-    // ≥2 threshold meant single-weapon units (the majority) fell
-    // through to per-weapon spatial-grid calls in passes 2 and 3 —
-    // each call does its own grid traversal even though a single
-    // unit-centered query covers everything. Per-weapon range
-    // filtering still happens inside the inner loops.
-    const useBatch = needsAnyQuery;
-    if (useBatch) {
+    // Always batch when ANY weapon needs acquisition. The spatial grid
+    // returns a reused array, so consume it directly before any other
+    // spatial query can overwrite the result.
+    let batchedEnemies: Entity[] | null = null;
+    if (needsAnyQuery) {
       const batchRadius = maxAcquireRange + maxWeaponOffset;
-      const enemies = spatialGrid.queryEnemyEntitiesInRadius(
+      batchedEnemies = spatialGrid.queryEnemyEntitiesInRadius(
         unit.transform.x, unit.transform.y, unit.transform.z, batchRadius, playerId
       );
-      _batchedEnemies.length = enemies.length;
-      for (let i = 0; i < enemies.length; i++) _batchedEnemies[i] = enemies[i];
     }
 
     // Pass 2: Re-evaluate tracking weapons — if a closer engageable target
@@ -389,12 +382,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const weaponZ = weapon.worldPos!.z;
       const r = weapon.ranges;
 
-      const candidates = useBatch
-        ? _batchedEnemies
+      const candidates = batchedEnemies
+        ? batchedEnemies
         : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, r.tracking.acquire, playerId);
 
       let closestEngageable: Entity | null = null;
-      let closestDist = Infinity;
+      let closestDistSq = Infinity;
 
       const denseScan = candidates.length > densityThreshold;
       const scanStride = denseScan ? densityStride : 1;
@@ -403,13 +396,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         const enemy = candidates[ci];
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
         const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const dist = distance3(
+        const acquireRange = r.engage.acquire + enemyRadius;
+        const distSq = distanceSquared3(
           weaponX, weaponY, weaponZ,
           enemy.transform.x, enemy.transform.y, enemy.transform.z,
         );
         // Only consider enemies within engage range
-        if (dist <= r.engage.acquire + enemyRadius && dist < closestDist) {
-          closestDist = dist;
+        if (distSq <= acquireRange * acquireRange && distSq < closestDistSq) {
+          closestDistSq = distSq;
           closestEngageable = enemy;
         }
       }
@@ -432,13 +426,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const weaponZ = weapon.worldPos!.z;
       const r = weapon.ranges;
 
-      // Use batched results for multi-weapon units, per-weapon query for single-weapon
-      const candidates = useBatch
-        ? _batchedEnemies
+      // Use batched results when available, otherwise fall back to a
+      // per-weapon query if this path is reached without a unit batch.
+      const candidates = batchedEnemies
+        ? batchedEnemies
         : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, r.tracking.acquire, playerId);
 
       let closestEnemy: Entity | null = null;
-      let closestDist = Infinity;
+      let closestDistSq = Infinity;
 
       const denseScan = candidates.length > densityThreshold;
       const scanStride = denseScan ? densityStride : 1;
@@ -449,13 +444,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
 
         const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const dist = distance3(
+        const acquireRange = r.tracking.acquire + enemyRadius;
+        const distSq = distanceSquared3(
           weaponX, weaponY, weaponZ,
           enemy.transform.x, enemy.transform.y, enemy.transform.z,
         );
 
-        if (dist <= r.tracking.acquire + enemyRadius && dist < closestDist) {
-          closestDist = dist;
+        if (distSq <= acquireRange * acquireRange && distSq < closestDistSq) {
+          closestDistSq = distSq;
           closestEnemy = enemy;
         }
       }
@@ -464,7 +460,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         setWeaponTarget(weapon, unit, wi, closestEnemy.id);
         const targetRadius = closestEnemy.unit ? closestEnemy.unit.unitRadiusCollider.shot
           : (closestEnemy.building ? getTargetRadius(closestEnemy) : 0);
-        weapon.state = closestDist <= r.engage.acquire + targetRadius ? 'engaged' : 'tracking';
+        const engageRange = r.engage.acquire + targetRadius;
+        weapon.state = closestDistSq <= engageRange * engageRange ? 'engaged' : 'tracking';
       } else {
         setWeaponTarget(weapon, unit, wi, null);
         weapon.state = 'idle';
