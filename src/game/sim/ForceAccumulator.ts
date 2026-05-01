@@ -162,13 +162,23 @@ export class ForceAccumulator {
     }
   }
 
+  /** Reusable scratch for `readFinalForce`. */
+  private _scratchForce: { fx: number; fy: number } = { fx: 0, fy: 0 };
+
   /**
-   * Get the final force for an entity (after finalize).
+   * Get the final force for an entity (after finalize). Returns null
+   * when the entity has no contributions; otherwise returns a SHARED
+   * scratch object whose fields are mutated on each call — the caller
+   * must read the components immediately and not retain the reference.
+   * Avoids ~one allocation per dynamic unit per tick.
    */
   getFinalForce(entityId: EntityId): { fx: number; fy: number } | null {
     const entry = this.forces.get(entityId);
     if (!entry || entry.contributionCount === 0) return null;
-    return { fx: entry.finalFx, fy: entry.finalFy };
+    const out = this._scratchForce;
+    out.fx = entry.finalFx;
+    out.fy = entry.finalFy;
+    return out;
   }
 
   /**

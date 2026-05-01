@@ -569,14 +569,18 @@ export class GameServer {
       const dirY = entity.unit.thrustDirY ?? 0;
       const dirMag = magnitude(dirX, dirY);
 
-      // Get external forces from the accumulator before the expensive
-      // terrain/water path. A sleeping unit with no thrust and no
-      // external force can stay parked without probing shorelines or
-      // sampling surface normals this tick.
+      // Sleeping units that aren't being asked to thrust short-circuit
+      // BEFORE the accumulator probe — `hasForce` is a single Map.has
+      // (no allocation) where `getFinalForce` would build a scratch
+      // tuple. Skip the rotation update too: dirMag is already below
+      // the threshold there.
+      if (body.sleeping && dirMag <= 0.01 && !forceAccumulator.hasForce(entity.id)) {
+        continue;
+      }
+
       const externalForce = forceAccumulator.getFinalForce(entity.id);
       const externalFx = (externalForce?.fx ?? 0) / 3600;
       const externalFy = (externalForce?.fy ?? 0) / 3600;
-      const hasExternalForce = externalFx !== 0 || externalFy !== 0;
 
       // Unit faces its movement direction (yaw only — chassis tilt
       // is a render concern; sim transform.rotation stays a 2D yaw).
@@ -586,10 +590,6 @@ export class GameServer {
           entity.transform.rotation = nextRotation;
           this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
         }
-      }
-
-      if (body.sleeping && dirMag <= 0.01 && !hasExternalForce) {
-        continue;
       }
 
       let thrustForceX = 0;
