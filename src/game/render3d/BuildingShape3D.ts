@@ -317,11 +317,11 @@ function buildExtractor(
   const cap = makeSphere(primaryMat, hubRadius * 1.28, 0, rotorY, 0);
   details.push(detail(cap, 'low'));
 
-  const bladeLen = Math.max(16, minDim * 0.51);
+  const bladeLen = Math.max(32, minDim * 1.02);
   const bladeWidth = Math.max(10, minDim * 0.26);
   const bladeThickness = Math.max(4.5, minDim * 0.11);
   const bladeRootRadius = Math.max(hubRadius * 1.7, minDim * 0.34);
-  const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 6, rotorY, Math.PI / 6, bladeRootRadius);
+  const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 6, rotorY, Math.PI / 6, bladeRootRadius, 0.5);
   details.push(detail(rotor, 'medium', undefined, 'extractorRotor'));
 
   return {
@@ -866,6 +866,7 @@ function makeExtractorRotor(
   y: number,
   angleOffset: number,
   bladeRootRadius: number,
+  bladeLengthScale: number = 1,
 ): THREE.Mesh {
   const rotor = new THREE.Mesh(cylinderGeom, invisibleMat);
   rotor.position.set(0, y, 0);
@@ -878,9 +879,11 @@ function makeExtractorRotor(
   rotor.add(crown);
 
   const groundClearance = Math.max(3.5, bladeThickness * 1.5);
-  const verticalDrop = Math.max(12, y - groundClearance);
+  const fullVerticalDrop = Math.max(12, y - groundClearance);
   const rootRadius = Math.max(0, Math.min(bladeRootRadius, Math.max(0, bladeReach - 16)));
-  const horizontalSpan = Math.max(16, Math.min(bladeReach - rootRadius, verticalDrop));
+  const fullHorizontalSpan = Math.max(16, Math.min(bladeReach - rootRadius, fullVerticalDrop));
+  const horizontalSpan = fullHorizontalSpan * bladeLengthScale;
+  const verticalDrop = fullVerticalDrop * bladeLengthScale;
   const bladeAxisLength = Math.hypot(horizontalSpan, verticalDrop);
 
   for (let i = 0; i < bladeCount; i++) {
