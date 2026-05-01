@@ -189,6 +189,62 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: 1,
     max: 1,
   },
+  // Terrain/capture overlay mesh. Lower tiers reduce the per-tile
+  // surface tessellation and throttle color-buffer uploads. MAX
+  // keeps the canonical TERRAIN_MESH_SUBDIV=4 surface detail.
+  CAPTURE_TILE_SUBDIV: {
+    min: 1,
+    low: 1,
+    medium: 2,
+    high: 3,
+    max: 4,
+  },
+  CAPTURE_TILE_FRAME_STRIDE: {
+    min: 8,
+    low: 5,
+    medium: 3,
+    high: 2,
+    max: 1,
+  },
+  CAPTURE_TILE_SIDE_WALLS: {
+    min: false,
+    low: true,
+    medium: true,
+    high: true,
+    max: true,
+  },
+  // Full-map translucent water is mostly GPU/fill-rate pressure. Tie
+  // mesh density, uniform update cadence, wave amplitude, and opacity
+  // to the same PLAYER CLIENT tier so low LODs stop paying MAX-water
+  // costs while still keeping lakes readable.
+  WATER_SUBDIVISIONS: {
+    min: 1,
+    low: 8,
+    medium: 24,
+    high: 48,
+    max: 96,
+  },
+  WATER_FRAME_STRIDE: {
+    min: 8,
+    low: 4,
+    medium: 2,
+    high: 1,
+    max: 1,
+  },
+  WATER_WAVE_AMPLITUDE: {
+    min: 0,
+    low: 1.5,
+    medium: 3,
+    high: 4.5,
+    max: 6,
+  },
+  WATER_OPACITY: {
+    min: 0.28,
+    low: 0.34,
+    medium: 0.42,
+    high: 0.5,
+    max: 0.55,
+  },
 
   // Unit body shape rendering
   // 'circles': two concentric circles (push+shot radii), 'full': complete body shape

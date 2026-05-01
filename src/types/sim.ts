@@ -9,10 +9,16 @@ export type EntityId = number;
 // Player ID type
 export type PlayerId = number;
 
-// A single hysteresis pair: acquire (inner) < release (outer)
+// A single hysteresis pair. For outer/max ranges, acquire < release
+// prevents flicker at the far edge. For minimum fire ranges, acquire
+// is the distance required to start firing and release is the smaller
+// distance where an already-firing weapon drops back to tracking.
 export type HysteresisRange = {
   acquire: number;
   release: number;
+  /** Precomputed squares for hot-path distance checks. */
+  acquireSq?: number;
+  releaseSq?: number;
 };
 
 // Nullable hysteresis pair for per-weapon overrides (null = use global default)
@@ -21,19 +27,38 @@ export type HysteresisRangeOverride = {
   release: number | null;
 };
 
-// Computed absolute ranges for both weapon states (in world units)
+// Computed absolute firing envelope. `max` is the old engage/fire range;
+// `min` is the optional dead zone for mortars or other close-range-limited
+// weapons. Defaults to 0/0, which means no minimum.
+export type FireEnvelope = {
+  min: HysteresisRange;
+  max: HysteresisRange;
+};
+
+// Computed absolute ranges for weapon states (in world units)
 export type TurretRanges = {
+  /** Acquisition / lock / awareness range. */
   tracking: HysteresisRange;
+  /** Legacy name for maximum fire range, kept for snapshots/UI labels. */
   engage: HysteresisRange;
+  /** Canonical fire envelope used by targeting/firing logic. */
+  fire?: FireEnvelope;
 };
 
 // Range multipliers relative to weapon's base range
-export type TurretRangeMultipliers = TurretRanges;
+export type TurretRangeMultipliers = {
+  tracking: HysteresisRange;
+  engage: HysteresisRange;
+  fireMin: HysteresisRange;
+};
 
 // Per-weapon range overrides (null = fall back to global default)
 export type TurretRangeOverrides = {
   tracking: HysteresisRangeOverride;
+  /** Legacy max-fire envelope override. */
   engage: HysteresisRangeOverride;
+  /** Optional minimum fire envelope override. Defaults to no dead zone. */
+  fireMin?: HysteresisRangeOverride;
 };
 
 // Transform component - position and rotation in world space.
@@ -376,6 +401,13 @@ export type Turret = {
   worldVelocity?: Vec3;
   /** Simulation tick corresponding to worldPos/worldVelocity. */
   worldPosTick?: number;
+  /** Last solver target and signed miss vector in radians. The firing
+   *  path uses this to avoid spending shots while a damped turret is
+   *  still visibly traversing toward a steep 3D target. */
+  aimTargetYaw?: number;
+  aimTargetPitch?: number;
+  aimErrorYaw?: number;
+  aimErrorPitch?: number;
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
   /** Round-robin pointer across the physical barrels on this turret.

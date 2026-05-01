@@ -17,6 +17,7 @@ import type {
   NetworkServerSnapshotMeta,
 } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
+import type { NetworkCaptureTile } from '@/types/capture';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getTurretConfig } from '../sim/turretConfigs';
@@ -198,8 +199,10 @@ export class ClientViewState {
   private gridCellSize: number = 0;
 
   // Capture tile data — Map for delta merge, array cache for rendering
-  private captureTileMap: Map<number, import('@/types/capture').NetworkCaptureTile> = new Map();
-  private captureTilesCache: import('@/types/capture').NetworkCaptureTile[] = [];
+  private captureTileMap: Map<number, NetworkCaptureTile> = new Map();
+  private captureTilesCache: NetworkCaptureTile[] = [];
+  private captureDirtyTileMap: Map<number, NetworkCaptureTile> = new Map();
+  private captureFullDirty: boolean = true;
   private captureTilesDirty: boolean = true;
   private captureVersion: number = 0;
   private captureCellSize: number = 0;
@@ -464,14 +467,19 @@ export class ClientViewState {
       if (!state.isDelta) {
         // Keyframe: replace all
         this.captureTileMap.clear();
+        this.captureDirtyTileMap.clear();
+        this.captureFullDirty = true;
       }
       for (const tile of state.capture.tiles) {
         const key = ((tile.cx + 32768) & 0xFFFF) << 16 | ((tile.cy + 32768) & 0xFFFF);
         if (Object.keys(tile.heights).length === 0) {
           this.captureTileMap.delete(key);
+          this.captureDirtyTileMap.set(key, { cx: tile.cx, cy: tile.cy, heights: {} });
         } else {
           // Copy heights — tile objects may be pooled/reused by the server
-          this.captureTileMap.set(key, { cx: tile.cx, cy: tile.cy, heights: { ...tile.heights } });
+          const copy = { cx: tile.cx, cy: tile.cy, heights: { ...tile.heights } };
+          this.captureTileMap.set(key, copy);
+          if (!this.captureFullDirty) this.captureDirtyTileMap.set(key, copy);
         }
       }
       this.captureTilesDirty = true;
@@ -479,6 +487,8 @@ export class ClientViewState {
     } else if (!state.isDelta) {
       // Keyframe with no capture data: clear
       this.captureTileMap.clear();
+      this.captureDirtyTileMap.clear();
+      this.captureFullDirty = true;
       this.captureTilesDirty = true;
       this.captureVersion++;
     }
@@ -1367,12 +1377,44 @@ export class ClientViewState {
 
   // === Capture tile data ===
 
-  getCaptureTiles(): import('@/types/capture').NetworkCaptureTile[] {
+  getCaptureTiles(): NetworkCaptureTile[] {
     if (this.captureTilesDirty) {
       this.captureTilesCache = Array.from(this.captureTileMap.values());
       this.captureTilesDirty = false;
     }
     return this.captureTilesCache;
+  }
+
+  consumeCaptureTileChanges(): {
+    version: number;
+    full: boolean;
+    tiles: NetworkCaptureTile[];
+  } {
+    if (this.captureFullDirty) {
+      this.captureFullDirty = false;
+      this.captureDirtyTileMap.clear();
+      return {
+        version: this.captureVersion,
+        full: true,
+        tiles: this.getCaptureTiles(),
+      };
+    }
+
+    if (this.captureDirtyTileMap.size === 0) {
+      return {
+        version: this.captureVersion,
+        full: false,
+        tiles: [],
+      };
+    }
+
+    const tiles = Array.from(this.captureDirtyTileMap.values());
+    this.captureDirtyTileMap.clear();
+    return {
+      version: this.captureVersion,
+      full: false,
+      tiles,
+    };
   }
 
   getCaptureCellSize(): number {
@@ -1403,6 +1445,8 @@ export class ClientViewState {
     this.gridCellSize = 0;
     this.captureTileMap.clear();
     this.captureTilesCache = [];
+    this.captureDirtyTileMap.clear();
+    this.captureFullDirty = true;
     this.captureTilesDirty = true;
     this.captureVersion++;
     this.captureCellSize = 0;

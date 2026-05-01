@@ -7,6 +7,7 @@ import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
 import { findDepositCoveringFootprint } from './metalDeposits';
 import { isWaterAt } from './Terrain';
+import { REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../config';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { deactivateSolarCollector, ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 import { economyManager } from './economy';
@@ -228,7 +229,7 @@ export class ConstructionSystem {
         rallyX: wp.x,
         rallyY: wp.y,
         isProducing: false,
-        waypoints: [{ x: wp.x, y: wp.y, type: 'fight' }],
+        waypoints: [{ x: wp.x, y: wp.y, type: REAL_BATTLE_FACTORY_WAYPOINT_TYPE }],
       };
     }
 

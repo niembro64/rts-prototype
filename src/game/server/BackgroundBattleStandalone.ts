@@ -8,7 +8,7 @@ import { BUILDABLE_UNIT_IDS, getUnitBlueprint, getNormalizedUnitCost } from '../
 import {
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
 } from '../../config';
-import { DEMO_CONFIG } from '../../demoConfig';
+import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
 import { getPlayerBaseAngle } from '../sim/spawn';
 import { isFarFromWater } from '../sim/Terrain';
 import { expandPathActions } from '../sim/Pathfinder';
@@ -82,7 +82,7 @@ function selectUnitType(allowedTypes?: ReadonlySet<string>): string | null {
   return BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
 }
 
-// Spawn a single unit at a specific position with a fight waypoint
+// Spawn a single unit at a specific position with the configured demo waypoint.
 function spawnUnit(
   world: WorldState,
   physics: PhysicsEngine,
@@ -92,6 +92,7 @@ function spawnUnit(
   targetX: number,
   targetY: number,
   buildingGrid: BuildingGrid,
+  waypointType: DemoBattleWaypointType,
   allowedTypes?: ReadonlySet<string>,
 ): Entity | null {
   if (allowedTypes && allowedTypes.size === 0) return null;
@@ -109,14 +110,11 @@ function spawnUnit(
   aimTurretsToward(unit, targetX, targetY);
 
   if (unit.unit) {
-    // 'fight' (not plain 'move'): demo units engage targets en route
-    // to the waypoint instead of running blind through the contact
-    // line. Lining up with the factory rally so initial units and
-    // factory-spawned units share behaviour. Path-expand so the
-    // unit routes around lakes / mountains / building lines instead
-    // of pressing into a shore it can't cross.
+    // Demo order type is data-driven so initial waves can use cheap
+    // normal move while still keeping the path expansion that routes
+    // around lakes / mountains / building lines.
     unit.unit.actions = expandPathActions(
-      x, y, targetX, targetY, 'fight',
+      x, y, targetX, targetY, waypointType,
       world.mapWidth, world.mapHeight, buildingGrid,
     );
   }
@@ -164,7 +162,7 @@ export function spawnBackgroundUnitsStandalone(
   if (initialSpawn) {
     // All teams' initial units spawn at random positions inside a
     // single circle around the map center (uniform area density via
-    // sqrt-sample). Each unit's fight waypoint is the diametrically
+    // sqrt-sample). Each unit's waypoint is the diametrically
     // opposite point through the center, so the units from every team
     // intermix on launch and converge through the middle — the
     // characteristic demo-battle clash.
@@ -204,11 +202,14 @@ export function spawnBackgroundUnitsStandalone(
         }
         if (!found) continue;
 
-        // Fight waypoint = diametrically opposite point through center.
+        // Waypoint = diametrically opposite point through center.
         const targetX = cx - (spawnX - cx);
         const targetY = cy - (spawnY - cy);
 
-        const unit = spawnUnit(world, physics, playerId, spawnX, spawnY, targetX, targetY, buildingGrid, allowedTypes);
+        const unit = spawnUnit(
+          world, physics, playerId, spawnX, spawnY, targetX, targetY,
+          buildingGrid, DEMO_CONFIG.initialUnitWaypointType, allowedTypes,
+        );
         if (unit) spawned.push(unit);
       }
     }
@@ -229,7 +230,10 @@ export function spawnBackgroundUnitsStandalone(
       const x = cx + Math.cos(a) * r;
       const y = cy + Math.sin(a) * r;
 
-      const unit = spawnUnit(world, physics, playerId, x, y, cx, cy, buildingGrid, allowedTypes);
+      const unit = spawnUnit(
+        world, physics, playerId, x, y, cx, cy,
+        buildingGrid, DEMO_CONFIG.initialUnitWaypointType, allowedTypes,
+      );
       if (unit) spawned.push(unit);
     }
   }

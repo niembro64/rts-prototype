@@ -95,9 +95,17 @@ export const METAL_DEPOSIT_CONFIG = {
       height: 300,
     },
     {
-      radiusFraction: 0.8,
+      radiusFraction: 0.75,
       countPerPlayer: 2,
       phaseOffset: 0.125,
+      rotationOffset: 0,
+      flatRadius: 80,
+      height: 0,
+    },
+    {
+      radiusFraction: 0.95,
+      countPerPlayer: 2,
+      phaseOffset: -0.125,
       rotationOffset: 0,
       flatRadius: 80,
       height: 0,

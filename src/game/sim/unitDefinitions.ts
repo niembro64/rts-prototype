@@ -2,7 +2,7 @@
 // Kept for backward compatibility of type exports and createTurretsFromDefinition
 
 import type { Turret } from './types';
-import { getTurretConfig, computeTurretRanges } from './turretConfigs';
+import { getTurretConfig, computeTurretRanges, refreshHysteresisRangeSquares } from './turretConfigs';
 import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
 
 // Re-export types (still used by many files)
@@ -29,6 +29,7 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
       const ratio = ranges.tracking.release / ranges.tracking.acquire;
       ranges.tracking.acquire = bp.seeRange;
       ranges.tracking.release = bp.seeRange * ratio;
+      refreshHysteresisRangeSquares(ranges.tracking);
     }
 
     // For multi-turret units (widow), offsets come from chassisMounts (world-space fractions of radius)

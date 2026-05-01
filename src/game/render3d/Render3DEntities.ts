@@ -64,7 +64,7 @@ const BUILDING_HEIGHT = 120;
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const WIND_YAW_EMA_ALPHA = 0.035;
 const WIND_ROTOR_RAD_PER_SEC = 8;
-const EXTRACTOR_ROTOR_RAD_PER_SEC = 6.5;
+const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
 
@@ -3027,15 +3027,7 @@ export class Render3DEntities {
     if (!m.extractorRig || e.buildingType !== 'extractor' || !detailsReady) return;
     const phase = this.extractorRotorPhase + e.id * 0.173;
     if (m.extractorRig.rotor.visible) {
-      m.extractorRig.rotor.rotation.y = phase;
-    }
-    if (m.extractorRig.counterRotor?.visible) {
-      m.extractorRig.counterRotor.rotation.y = -phase * 0.58;
-    }
-    if (m.extractorRig.pulse?.visible) {
-      const base = Number(m.extractorRig.pulse.userData.baseScale) || 1;
-      const s = base * (1 + Math.sin(phase * 2.7) * 0.07);
-      m.extractorRig.pulse.scale.setScalar(s);
+      m.extractorRig.rotor.rotation.y = -phase;
     }
   }
 

@@ -10,7 +10,7 @@ import { isWaterAt } from './Terrain';
 import { ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 
 /**
- * Compute a factory's default fight waypoint along the factory → map-center axis.
+ * Compute a factory's default waypoint along the factory -> map-center axis.
  * `distance` controls how far: 0.5 = halfway to center, 1.0 = center, 1.5 = past center.
  */
 export function computeFactoryWaypoint(
@@ -163,7 +163,7 @@ function placeCompleteBuilding(
   }
 
   if (buildingType === 'factory') {
-    const wp = computeFactoryWaypoint(center.x, center.y, world.mapWidth, world.mapHeight, DEMO_CONFIG.factoryFightDistance);
+    const wp = computeFactoryWaypoint(center.x, center.y, world.mapWidth, world.mapHeight, DEMO_CONFIG.factoryWaypointDistance);
     const rally = computeFactoryWaypoint(center.x, center.y, world.mapWidth, world.mapHeight, 0.5);
     entity.factory = {
       buildQueue: [],

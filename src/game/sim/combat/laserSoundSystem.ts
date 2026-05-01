@@ -3,8 +3,6 @@
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
 import type { SimEvent } from './types';
-import { distance, getTargetRadius } from './combatUtils';
-import { getWeaponWorldPosition, getTransformCosSin } from '../../math';
 import { getBeamWeaponsTargeting } from './targetIndex';
 
 // Reusable array for laser sound events (avoids per-frame allocation)
@@ -74,8 +72,6 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
     // Dead units must still emit laserStop so the client releases audio nodes
     const isDead = unit.unit.hp <= 0;
 
-    const { cos, sin } = getTransformCosSin(unit.transform);
-
     // Check each weapon for beam sounds
     for (let i = 0; i < unit.turrets.length; i++) {
       const weapon = unit.turrets[i];
@@ -98,24 +94,10 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
         continue;
       }
 
-      // Check if weapon has a valid target in weapon's fire range
-      let hasTargetInRange = false;
-      if (weapon.target !== null) {
-        const target = world.getEntity(weapon.target);
-        if (target) {
-          const targetIsUnit = target.unit && target.unit.hp > 0;
-          const targetIsBuilding = target.building && target.building.hp > 0;
-          if (targetIsUnit || targetIsBuilding) {
-            // Calculate weapon position
-            const wp = getWeaponWorldPosition(unit.transform.x, unit.transform.y, cos, sin, weapon.offset.x, weapon.offset.y);
-            const weaponX = wp.x;
-            const weaponY = wp.y;
-            const dist = distance(weaponX, weaponY, target.transform.x, target.transform.y);
-            const targetRadius = getTargetRadius(target);
-            hasTargetInRange = dist <= weapon.ranges.engage.acquire + targetRadius;
-          }
-        }
-      }
+      // Targeting already validated the full 3D fire envelope, including
+      // optional minimum fire range. Reuse that state here instead of
+      // doing a second 2D distance check for every beam turret.
+      const hasTargetInRange = weapon.target !== null && weapon.state === 'engaged';
 
       if (hasTargetInRange) {
         audioEvents.push({

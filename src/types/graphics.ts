@@ -40,6 +40,13 @@ export type GraphicsConfig = {
   richUnitScreenRadiusPx: number;
   hudFrameStride: number;
   effectFrameStride: number;
+  captureTileSubdiv: number;
+  captureTileFrameStride: number;
+  captureTileSideWalls: boolean;
+  waterSubdivisions: number;
+  waterFrameStride: number;
+  waterWaveAmplitude: number;
+  waterOpacity: number;
   unitShape: UnitShape;
   legs: LegStyle;
   treadsAnimated: boolean;

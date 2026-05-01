@@ -144,6 +144,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
+      // Artillery keeps tracking close enemies, but only fires once
+      // the target intersects this inner/outer fire annulus.
+      fireMin: { acquire: 0.28, release: 0.22 },
     },
     color: 0xffffff,
     spread: { angle: 0 },
@@ -214,6 +217,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     rangeMultiplierOverrides: {
       tracking: { acquire: null, release: null },
       engage: { acquire: null, release: null },
+      // Heavy indirect fire uses a slightly smaller dead zone so it
+      // can still participate once enemies break through the front.
+      fireMin: { acquire: 0.25, release: 0.2 },
     },
     color: 0xffffff,
     spread: { angle: 0 },

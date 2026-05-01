@@ -217,6 +217,15 @@ export const EMA_INITIAL_VALUES = {
 export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
 
 // =============================================================================
+// BATTLE WAYPOINT DEFAULTS
+// =============================================================================
+
+/** REAL BATTLE default order type assigned to units produced by
+ *  player-built factories/fabricators. Demo-battle factories use
+ *  DEMO_CONFIG.factoryWaypointType instead. */
+export const REAL_BATTLE_FACTORY_WAYPOINT_TYPE = 'fight' as const;
+
+// =============================================================================
 // VISUAL DIMENSIONS (shared sim + render)
 // =============================================================================
 // The sim knows each unit's physics sphere (radius around transform.z),
@@ -387,22 +396,30 @@ export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slo
 /**
  * Two-state hysteresis range multipliers (relative to weapon base range).
  *
- * Each weapon has two states with hysteresis (acquire < release prevents flickering):
- *   - tracking: turret pre-aims at approaching enemies
- *   - engage: weapon actively fires
+ * Each weapon has acquisition + fire envelopes:
+ *   - tracking: turret acquires/locks/aims at enemies
+ *   - engage: legacy name for the maximum fire range
+ *   - fireMin: optional minimum fire range dead zone
  *
- * Hierarchy (outer to inner):
+ * Max hierarchy (outer to inner):
  *   tracking.release (1.1x) > tracking.acquire (1.0x) > engage.release (0.95x) > engage.acquire (0.9x)
+ *
+ * Min hierarchy:
+ *   fireMin.acquire starts firing once the target is this far away;
+ *   fireMin.release keeps an already-firing weapon from flickering off
+ *   until the target gets closer than this smaller distance.
  */
 export const TURRET_RANGE_MULTIPLIERS: import('./game/sim/types').TurretRangeMultipliers =
   {
     tracking: { acquire: 1.0, release: 1.1 },
     engage: { acquire: 0.9, release: 0.95 },
+    fireMin: { acquire: 0, release: 0 },
   };
 export const FORCE_TURRET_RANGE_MULTIPLIERS: import('./game/sim/types').TurretRangeMultipliers =
   {
     tracking: { acquire: 1.0, release: 1.1 },
     engage: { acquire: 1.0, release: 1.05 },
+    fireMin: { acquire: 0, release: 0 },
   };
 
 export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig =

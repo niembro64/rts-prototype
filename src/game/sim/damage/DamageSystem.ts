@@ -421,19 +421,25 @@ export class DamageSystem {
       }
     }
 
-    // Check buildings
+    // Check buildings — full 3D AABB, matching the beam tracer and
+    // client predictor. A beam that visually passes over a building
+    // no longer applies 2D footprint damage.
     for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
-      const bWidth = building.building.width;
-      const bHeight = building.building.height;
-      const rectX = building.transform.x - bWidth / 2;
-      const rectY = building.transform.y - bHeight / 2;
-
-      const t = lineRectIntersectionT(
-        source.start.x, source.start.y, source.end.x, source.end.y,
-        rectX, rectY, bWidth, bHeight
+      const halfW = building.building.width / 2;
+      const halfH = building.building.height / 2;
+      const halfD = building.building.depth / 2;
+      const t = rayBoxIntersectionT(
+        source.start.x, source.start.y, source.start.z,
+        source.end.x, source.end.y, source.end.z,
+        building.transform.x - halfW,
+        building.transform.y - halfH,
+        building.transform.z - halfD,
+        building.transform.x + halfW,
+        building.transform.y + halfH,
+        building.transform.z + halfD,
       );
 
       if (t !== null) {
@@ -541,23 +547,24 @@ export class DamageSystem {
       }
     }
 
-    // Check buildings using swept collision
+    // Check buildings using swept 3D collision against the AABB
+    // expanded by projectile radius.
     for (const building of nearbyBuildings) {
       if (source.excludeEntities.has(building.id)) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
-      const bWidth = building.building.width;
-      const bHeight = building.building.height;
-      // Expand rect by projectile radius
-      const rectX = building.transform.x - bWidth / 2 - source.radius;
-      const rectY = building.transform.y - bHeight / 2 - source.radius;
-
-      const t = lineRectIntersectionT(
-        source.prev.x, source.prev.y,
-        source.current.x, source.current.y,
-        rectX, rectY,
-        bWidth + source.radius * 2,
-        bHeight + source.radius * 2
+      const halfW = building.building.width / 2 + source.radius;
+      const halfH = building.building.height / 2 + source.radius;
+      const halfD = building.building.depth / 2 + source.radius;
+      const t = rayBoxIntersectionT(
+        source.prev.x, source.prev.y, source.prev.z,
+        source.current.x, source.current.y, source.current.z,
+        building.transform.x - halfW,
+        building.transform.y - halfH,
+        building.transform.z - halfD,
+        building.transform.x + halfW,
+        building.transform.y + halfH,
+        building.transform.z + halfD,
       );
 
       if (t !== null) {

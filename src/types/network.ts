@@ -243,7 +243,14 @@ export type NetworkServerSnapshotCombatStats = {
 };
 
 export type NetworkServerSnapshotMeta = {
-  ticks: { avg: number; low: number; rate: number };
+  ticks: {
+    avg: number;
+    low: number;
+    /** Effective tick rate after adaptive host throttling. */
+    rate: number;
+    /** User-selected HOST SERVER TARGET TPS. */
+    target: number;
+  };
   snaps: { rate: number | 'none'; keyframes: number | 'ALL' | 'NONE' };
   server: { time: string; ip: string };
   grid: boolean;

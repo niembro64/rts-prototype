@@ -211,12 +211,12 @@ function findBeamSegmentHit(
     const hh = bldg.building.height / 2;
     const bx = bldg.transform.x;
     const by = bldg.transform.y;
-    const bd = bldg.building.depth;
+    const halfD = bldg.building.depth / 2;
     const t = rayBoxIntersectionT(
       sx, sy, sz,
       ex, ey, ez,
-      bx - hw, by - hh, 0,
-      bx + hw, by + hh, bd,
+      bx - hw, by - hh, bldg.transform.z - halfD,
+      bx + hw, by + hh, bldg.transform.z + halfD,
     );
     if (t !== null && t < bestT) {
       bestT = t;

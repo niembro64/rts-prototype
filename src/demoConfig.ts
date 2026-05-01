@@ -1,5 +1,7 @@
 // Demo game configuration — controls initial base layout for AI battles
 
+export type DemoBattleWaypointType = 'move' | 'fight';
+
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
   playerCount: 6,
@@ -35,7 +37,7 @@ export const DEMO_CONFIG = {
    * Radial gap (in grid cells) between the commander arc and the solar
    * arc directly inward of it. 1 cell = 20 px.
    */
-  commanderGapCells: 12,
+  commanderGapCells: 20,
 
   /**
    * Spawn radius margin in px. Distance from map edge to spawn point.
@@ -44,18 +46,25 @@ export const DEMO_CONFIG = {
   spawnMarginPx: 100,
 
   /**
-   * Factory rally/waypoint type. Units produced by factories get this
-   * action toward the map center. 'fight' has them stop and engage
-   * along the way (default); 'move' commits to the waypoint without
-   * pausing to fire en route.
+   * DEMO BATTLE initial-spawn unit order type. 'move' keeps demo launch
+   * waves moving to their assigned waypoint without stopping for fight-move
+   * targeting work; 'fight' makes them engage opportunistically en route.
    */
-  factoryWaypointType: 'fight' as const,
+  initialUnitWaypointType: 'move' as DemoBattleWaypointType,
 
   /**
-   * How far (as a fraction of factory→map-center distance) the default fight
-   * waypoint is placed.  0.5 = halfway to center, 1.0 = center, 1.5 = past center.
+   * DEMO BATTLE factory/fabricator-produced unit order type. This only
+   * affects the demo's prebuilt AI factories; real-battle factories use
+   * REAL_BATTLE_FACTORY_WAYPOINT_TYPE in config.ts.
    */
-  factoryFightDistance: 1.22,
+  factoryWaypointType: 'move' as DemoBattleWaypointType,
+
+  /**
+   * How far (as a fraction of factory→map-center distance) the default
+   * factory waypoint is placed. 0.5 = halfway to center, 1.0 = center,
+   * 1.5 = past center.
+   */
+  factoryWaypointDistance: 1.22,
 
   /**
    * Whether AI uses inverse-cost weighting when picking units to queue.
@@ -69,7 +78,7 @@ export const DEMO_CONFIG = {
    * (between map center and the spawn circle) and fight toward the
    * opposite side through center. 0.5 = half the map height.
    */
-  centerSpawnRadius: 0.4,
+  centerSpawnRadius: 0.2,
 
   /**
    * Angular spread of each team's initial unit cluster, as a fraction

@@ -1,90 +1,54 @@
-// CaptureTileRenderer3D — 3D mana cubes that double as terrain.
+// CaptureTileRenderer3D — static terrain mesh + tiny capture-overlay texture.
 //
-// Each tile is a "post" rising from a deep floor (CUBE_FLOOR_Y) up to
-// its top quad. Top quad corners are sampled from the CONTINUOUS
-// terrain heightmap (not the tile-aligned one), so adjacent tiles
-// share the same height at their shared corner — the four-tile
-// surface joins seamlessly into a continuous, sloped piece of
-// terrain. Inside the central ripple disc the corners stair up and
-// down following the heightmap; outside the disc every corner is at
-// y=0 and the surface is perfectly flat.
-//
-// Each tile keeps its OWN copy of every vertex (no sharing across
-// tiles) so the per-tile capture color stays sharp at the boundary —
-// shared vertices would smear team colors across neighboring tiles.
-//
-// Sides + top are drawn; bottom is omitted (it's always under the
-// world and never visible). Lighting uses computed vertex normals
-// from face winding — `flatShading` would make per-face normals,
-// but the mild smoothing across each tile's own corners helps sell
-// the continuous-surface look on the top face.
-//
-// Capture-overlay color: per-tile uniform color, written to all 8
-// vertices of that tile's posts. Same blend math as the old 2D
-// overlay (lerp neutral → dominant team color by intensity * height).
+// The old path used one vertex-coloured mesh for both terrain and capture
+// ownership. Every capture update could touch a large vertex color buffer.
+// This renderer splits the responsibilities:
+//   - terrainMesh: static lit geometry, rebuilt only for map/cell/LOD changes
+//   - overlayMesh: top surface only, transparent, sampled from a cellsX*cellsY
+//     DataTexture. Dynamic ownership updates modify a few bytes per tile and
+//     upload a tiny texture instead of a terrain-sized color buffer.
 
 import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
+import type { GraphicsConfig } from '@/types/graphics';
+import type { NetworkCaptureTile } from '@/types/capture';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
 
-// Floor of every mana tile post — sourced from the canonical
-// TILE_FLOOR_Y in Terrain so the heightmap clamp, the water level,
-// and this tile geometry all agree on where the world's bottom is.
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
+const OVERLAY_Y_OFFSET = 1.5;
 
-// Color for unowned cells. Slightly lighter than MAP_BG_COLOR so the
-// grid is visible as "floor" rather than merging into the scene
-// background.
-const NEUTRAL_R = ((MAP_BG_COLOR >> 16) & 0xff) / 255;
-const NEUTRAL_G = ((MAP_BG_COLOR >> 8) & 0xff) / 255;
-const NEUTRAL_B = (MAP_BG_COLOR & 0xff) / 255;
-
-// Tile top is subdivided into SUBDIV x SUBDIV sub-cells so the
-// rendered surface tracks the smooth heightmap continuously instead
-// of folding at the tile diagonal. Increasing SUBDIV softens the
-// fold further at the cost of more triangles + heightmap evaluations
-// per tile. Sourced from Terrain.ts so gameplay and rendering agree
-// on the exact triangle mesh surface.
-const SUBDIV = TERRAIN_MESH_SUBDIV;
-const TOP_VERTS_PER_ROW = SUBDIV + 1;
-const TOP_VERTS_PER_TILE = TOP_VERTS_PER_ROW * TOP_VERTS_PER_ROW;
-// Floor: 4 outer corners (sides connect outer top corners to these).
-const FLOOR_VERTS_PER_TILE = 4;
-const VERTS_PER_TILE = TOP_VERTS_PER_TILE + FLOOR_VERTS_PER_TILE;
-// Triangles: SUBDIV² sub-quads × 2 on top + 4 sides × (SUBDIV+1)
-// fan triangles on each outside wall (bottom face omitted, always
-// underground). Each side wall reuses the SUBDIV+1 subdivided top
-// vertices along its boundary edge so the side surface follows the
-// exact same heightmap curve the top does — no top-to-side seam,
-// no visible gap at tile boundaries.
-const TOP_TRIS_PER_TILE = SUBDIV * SUBDIV * 2;
-const SIDE_TRIS_PER_FACE = SUBDIV + 1;
-const SIDE_TRIS_PER_TILE = SIDE_TRIS_PER_FACE * 4;
-const TRIS_PER_TILE = TOP_TRIS_PER_TILE + SIDE_TRIS_PER_TILE;
-// Floor vertex indices, after the (SUBDIV+1)² top vertices.
-const FLOOR_IDX_BASE = TOP_VERTS_PER_TILE;
-// Convenience: index of an outer top corner in the per-tile vertex
-// block (used to wire side faces between top edges and floor corners).
-function topIdx(i: number, j: number): number {
-  return j * TOP_VERTS_PER_ROW + i;
-}
+const NEUTRAL_R_BYTE = (MAP_BG_COLOR >> 16) & 0xff;
+const NEUTRAL_G_BYTE = (MAP_BG_COLOR >> 8) & 0xff;
+const NEUTRAL_B_BYTE = MAP_BG_COLOR & 0xff;
+const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
 
 export class CaptureTileRenderer3D {
-  private mesh: THREE.Mesh;
-  private geometry: THREE.BufferGeometry;
-  private material: THREE.MeshLambertMaterial;
+  private terrainMesh: THREE.Mesh;
+  private terrainGeometry: THREE.BufferGeometry;
+  private terrainMaterial: THREE.MeshLambertMaterial;
 
-  private positions: Float32Array = new Float32Array(0);
-  private colors: Float32Array = new Float32Array(0);
-  private indices: Uint32Array = new Uint32Array(0);
+  private overlayMesh: THREE.Mesh;
+  private overlayGeometry: THREE.BufferGeometry;
+  private overlayMaterial: THREE.MeshBasicMaterial;
+  private overlayTexture: THREE.DataTexture;
+  private overlayPixels = new Uint8Array(4);
 
-  /** Dimensions of the last-built grid; rebuilt only when these change. */
   private gridCellsX = 0;
   private gridCellsY = 0;
   private gridCellSize = 0;
+  private terrainSubdiv = 0;
+  private includeSideWalls = true;
+  private topVertsPerRow = 0;
+  private topVertsPerTile = 0;
+  private floorVertsPerTile = 0;
+  private terrainVertsPerTile = 0;
+  private floorIdxBase = 0;
+  private terrainTrisPerTile = 0;
+  private overlayTrisPerTile = 0;
+  private renderFrameIndex = 0;
   private lastCaptureVersion = -1;
   private lastOverlayIntensity = -1;
 
@@ -102,79 +66,144 @@ export class CaptureTileRenderer3D {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
 
-    this.geometry = new THREE.BufferGeometry();
-    // Lambert lighting so slopes inside the ripple disc shade with
-    // their normal — faces tilted toward the sun read brighter,
-    // faces tilted away read darker, exactly the angle-of-incidence
-    // signal that sells the topography. Flat tiles outside the disc
-    // (normal +Y everywhere) shade uniformly so they keep their
-    // clean per-tile capture color.
-    this.material = new THREE.MeshLambertMaterial({
-      vertexColors: true,
+    this.terrainGeometry = new THREE.BufferGeometry();
+    this.terrainMaterial = new THREE.MeshLambertMaterial({
+      color: NEUTRAL_COLOR,
       side: THREE.DoubleSide,
     });
-    this.mesh = new THREE.Mesh(this.geometry, this.material);
-    this.mesh.frustumCulled = false;
-    this.mesh.visible = false;
-    parentWorld.add(this.mesh);
+    this.terrainMesh = new THREE.Mesh(this.terrainGeometry, this.terrainMaterial);
+    this.terrainMesh.frustumCulled = false;
+    this.terrainMesh.visible = false;
+    parentWorld.add(this.terrainMesh);
+
+    this.overlayTexture = this.makeOverlayTexture(1, 1);
+    this.overlayGeometry = new THREE.BufferGeometry();
+    this.overlayMaterial = new THREE.MeshBasicMaterial({
+      map: this.overlayTexture,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    this.overlayMesh = new THREE.Mesh(this.overlayGeometry, this.overlayMaterial);
+    this.overlayMesh.frustumCulled = false;
+    this.overlayMesh.visible = false;
+    parentWorld.add(this.overlayMesh);
   }
 
-  /**
-   * (Re)build the geometry when cell size / map dims first become
-   * known. Positions and indices are static after this — only the
-   * per-vertex color buffer is rewritten per frame.
-   */
-  private rebuildGridIfNeeded(cellSize: number): boolean {
+  private makeOverlayTexture(width: number, height: number): THREE.DataTexture {
+    this.overlayPixels = new Uint8Array(Math.max(1, width * height * 4));
+    const texture = new THREE.DataTexture(
+      this.overlayPixels,
+      Math.max(1, width),
+      Math.max(1, height),
+      THREE.RGBAFormat,
+    );
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    texture.generateMipmaps = false;
+    texture.flipY = false;
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  private ensureOverlayTexture(width: number, height: number): boolean {
+    if (
+      this.overlayTexture.image.width === width &&
+      this.overlayTexture.image.height === height
+    ) {
+      return false;
+    }
+    const old = this.overlayTexture;
+    this.overlayTexture = this.makeOverlayTexture(width, height);
+    this.overlayMaterial.map = this.overlayTexture;
+    this.overlayMaterial.needsUpdate = true;
+    old.dispose();
+    this.lastCaptureVersion = -1;
+    this.lastOverlayIntensity = -1;
+    return true;
+  }
+
+  private setLayout(subdiv: number, includeSideWalls: boolean): void {
+    this.terrainSubdiv = Math.max(1, Math.min(TERRAIN_MESH_SUBDIV, subdiv | 0));
+    this.includeSideWalls = includeSideWalls;
+    this.topVertsPerRow = this.terrainSubdiv + 1;
+    this.topVertsPerTile = this.topVertsPerRow * this.topVertsPerRow;
+    this.floorVertsPerTile = includeSideWalls ? 4 : 0;
+    this.terrainVertsPerTile = this.topVertsPerTile + this.floorVertsPerTile;
+    this.floorIdxBase = this.topVertsPerTile;
+
+    const topTris = this.terrainSubdiv * this.terrainSubdiv * 2;
+    const sideTris = includeSideWalls ? (this.terrainSubdiv + 1) * 4 : 0;
+    this.terrainTrisPerTile = topTris + sideTris;
+    this.overlayTrisPerTile = topTris;
+  }
+
+  private topIdx(i: number, j: number): number {
+    return j * this.topVertsPerRow + i;
+  }
+
+  private rebuildGeometryIfNeeded(cellSize: number, graphicsConfig: GraphicsConfig): boolean {
     const cellsX = Math.max(1, Math.ceil(this.mapWidth / cellSize));
     const cellsY = Math.max(1, Math.ceil(this.mapHeight / cellSize));
+    const nextSubdiv = Math.max(
+      1,
+      Math.min(TERRAIN_MESH_SUBDIV, graphicsConfig.captureTileSubdiv | 0),
+    );
+    const nextSideWalls = graphicsConfig.captureTileSideWalls;
+    const textureRebuilt = this.ensureOverlayTexture(cellsX, cellsY);
+
     if (
+      !textureRebuilt &&
       cellsX === this.gridCellsX &&
       cellsY === this.gridCellsY &&
-      cellSize === this.gridCellSize
-    ) return false;
+      cellSize === this.gridCellSize &&
+      nextSubdiv === this.terrainSubdiv &&
+      nextSideWalls === this.includeSideWalls
+    ) {
+      return false;
+    }
 
     this.gridCellsX = cellsX;
     this.gridCellsY = cellsY;
     this.gridCellSize = cellSize;
+    this.setLayout(nextSubdiv, nextSideWalls);
     this.lastCaptureVersion = -1;
 
     const tileCount = cellsX * cellsY;
-    this.positions = new Float32Array(tileCount * VERTS_PER_TILE * 3);
-    this.colors = new Float32Array(tileCount * VERTS_PER_TILE * 3);
-    this.indices = new Uint32Array(tileCount * TRIS_PER_TILE * 3);
-    // Hand-computed normals: top-corner normals come from the
-    // heightmap GRADIENT at that corner, NOT from this tile's local
-    // triangle topology. Adjacent tiles share corners → same gradient
-    // → same normal → continuous shading across the whole surface.
-    // Flat regions all get +Y; only sloped (ripple) topography varies.
-    const normals = new Float32Array(tileCount * VERTS_PER_TILE * 3);
+    const terrainPositions = new Float32Array(tileCount * this.terrainVertsPerTile * 3);
+    const terrainNormals = new Float32Array(tileCount * this.terrainVertsPerTile * 3);
+    const terrainIndices = new Uint32Array(tileCount * this.terrainTrisPerTile * 3);
+    const overlayPositions = new Float32Array(tileCount * this.topVertsPerTile * 3);
+    const overlayUvs = new Float32Array(tileCount * this.topVertsPerTile * 2);
+    const overlayIndices = new Uint32Array(tileCount * this.overlayTrisPerTile * 3);
 
     const eps = 1;
+    const subdiv = this.terrainSubdiv;
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
-        const i = cy * cellsX + cx;
+        const tileIndex = cy * cellsX + cx;
         const x0 = cx * cellSize;
         const z0 = cy * cellSize;
-        const vBase = i * VERTS_PER_TILE * 3;
+        const terrainBase = tileIndex * this.terrainVertsPerTile * 3;
+        const overlayBase = tileIndex * this.topVertsPerTile * 3;
+        const overlayUvBase = tileIndex * this.topVertsPerTile * 2;
+        const tileU = (cx + 0.5) / cellsX;
+        const tileV = (cy + 0.5) / cellsY;
 
-        // Top sub-grid: SUBDIV+1 vertices per row × per column. Each
-        // sub-vertex's height comes from the underlying heightmap
-        // directly, so the visible surface tracks the smooth function
-        // and adjacent tiles share corner heights for free (the
-        // gradient is the same at the shared world point).
-        for (let j = 0; j <= SUBDIV; j++) {
-          const wz = z0 + (j / SUBDIV) * cellSize;
-          for (let ix = 0; ix <= SUBDIV; ix++) {
-            const wx = x0 + (ix / SUBDIV) * cellSize;
+        for (let j = 0; j <= subdiv; j++) {
+          const wz = z0 + (j / subdiv) * cellSize;
+          for (let ix = 0; ix <= subdiv; ix++) {
+            const wx = x0 + (ix / subdiv) * cellSize;
             const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight);
-            const idx = j * TOP_VERTS_PER_ROW + ix;
-            const off = vBase + idx * 3;
-            this.positions[off]     = wx;
-            this.positions[off + 1] = h;
-            this.positions[off + 2] = wz;
-            // Continuous gradient normal at the same world point.
-            // Surface z = h(x, z) → upward normal = (-∂h/∂x, 1, -∂h/∂z)
-            // normalized.
+            const idx = this.topIdx(ix, j);
+            const terrainOff = terrainBase + idx * 3;
+            terrainPositions[terrainOff] = wx;
+            terrainPositions[terrainOff + 1] = h;
+            terrainPositions[terrainOff + 2] = wz;
+
             const hxp = getTerrainHeight(wx + eps, wz, this.mapWidth, this.mapHeight);
             const hxm = getTerrainHeight(wx - eps, wz, this.mapWidth, this.mapHeight);
             const hzp = getTerrainHeight(wx, wz + eps, this.mapWidth, this.mapHeight);
@@ -184,219 +213,248 @@ export class CaptureTileRenderer3D {
             let nx = -dHdx, ny = 1, nz = -dHdz;
             const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
             nx /= len; ny /= len; nz /= len;
-            normals[off]     = nx;
-            normals[off + 1] = ny;
-            normals[off + 2] = nz;
-          }
-        }
-        // Floor: 4 outer corners directly below the outer top corners.
-        const fOff = vBase + FLOOR_IDX_BASE * 3;
-        const x1 = x0 + cellSize;
-        const z1 = z0 + cellSize;
-        this.positions[fOff + 0]  = x0; this.positions[fOff + 1]  = CUBE_FLOOR_Y; this.positions[fOff + 2]  = z0;
-        this.positions[fOff + 3]  = x1; this.positions[fOff + 4]  = CUBE_FLOOR_Y; this.positions[fOff + 5]  = z0;
-        this.positions[fOff + 6]  = x1; this.positions[fOff + 7]  = CUBE_FLOOR_Y; this.positions[fOff + 8]  = z1;
-        this.positions[fOff + 9]  = x0; this.positions[fOff + 10] = CUBE_FLOOR_Y; this.positions[fOff + 11] = z1;
-        // Floor normals: copy from the top corner directly overhead so
-        // each side wall's top and bottom edges share the same shading
-        // signal. The wall reads as a single uniform extension of the
-        // top surface rather than a "lit lid + dark base" gradient.
-        // Floor corner order matches outer top corners: f00, f10, f11, f01.
-        const cornerSrc = [
-          topIdx(0, 0),
-          topIdx(SUBDIV, 0),
-          topIdx(SUBDIV, SUBDIV),
-          topIdx(0, SUBDIV),
-        ];
-        for (let f = 0; f < FLOOR_VERTS_PER_TILE; f++) {
-          const dstOff = vBase + (FLOOR_IDX_BASE + f) * 3;
-          const srcOff = vBase + cornerSrc[f] * 3;
-          normals[dstOff]     = normals[srcOff];
-          normals[dstOff + 1] = normals[srcOff + 1];
-          normals[dstOff + 2] = normals[srcOff + 2];
-        }
+            terrainNormals[terrainOff] = nx;
+            terrainNormals[terrainOff + 1] = ny;
+            terrainNormals[terrainOff + 2] = nz;
 
-        // Initial neutral color for every vertex of this tile.
-        const cBase = i * VERTS_PER_TILE * 3;
-        for (let v = 0; v < VERTS_PER_TILE; v++) {
-          this.colors[cBase + v * 3 + 0] = NEUTRAL_R;
-          this.colors[cBase + v * 3 + 1] = NEUTRAL_G;
-          this.colors[cBase + v * 3 + 2] = NEUTRAL_B;
-        }
-
-        // Triangles, written into the shared index buffer offset.
-        const v = i * VERTS_PER_TILE;
-        const iBase = i * TRIS_PER_TILE * 3;
-        let k = iBase;
-
-        // TOP — SUBDIV² sub-quads, each split into two triangles
-        // (CCW from above). Indices reference the per-row sub-grid.
-        for (let j = 0; j < SUBDIV; j++) {
-          for (let ix = 0; ix < SUBDIV; ix++) {
-            const a = topIdx(ix, j);
-            const b = topIdx(ix + 1, j);
-            const c = topIdx(ix + 1, j + 1);
-            const d = topIdx(ix, j + 1);
-            this.indices[k++] = v + a; this.indices[k++] = v + b; this.indices[k++] = v + c;
-            this.indices[k++] = v + a; this.indices[k++] = v + c; this.indices[k++] = v + d;
+            const overlayOff = overlayBase + idx * 3;
+            overlayPositions[overlayOff] = wx;
+            overlayPositions[overlayOff + 1] = h + OVERLAY_Y_OFFSET;
+            overlayPositions[overlayOff + 2] = wz;
+            const uvOff = overlayUvBase + idx * 2;
+            overlayUvs[uvOff] = tileU;
+            overlayUvs[uvOff + 1] = tileV;
           }
         }
 
-        // SIDES — each face uses the SUBDIV+1 subdivided top vertices
-        // along its edge plus 2 floor corners. Triangulate as a fan
-        // anchored to ONE floor corner, walking the top edge:
-        //
-        //   for s = 0..SUBDIV-1:  (anchor, top_s, top_{s+1})
-        //   closing triangle:     (anchor, top_SUBDIV, far_floor)
-        //
-        // Total per face = SUBDIV + 1 triangles. The face fully
-        // covers the rectangle bounded by the curved top edge, the
-        // two vertical edges, and the floor edge — no top-to-side
-        // gap at tile boundaries.
-        const f00 = v + FLOOR_IDX_BASE + 0;
-        const f10 = v + FLOOR_IDX_BASE + 1;
-        const f11 = v + FLOOR_IDX_BASE + 2;
-        const f01 = v + FLOOR_IDX_BASE + 3;
-        // FRONT (−Z): top edge is j=0, i=0..SUBDIV. Anchor f00.
-        for (let s = 0; s < SUBDIV; s++) {
-          this.indices[k++] = f00;
-          this.indices[k++] = v + topIdx(s, 0);
-          this.indices[k++] = v + topIdx(s + 1, 0);
+        if (this.includeSideWalls) {
+          const floorOff = terrainBase + this.floorIdxBase * 3;
+          const x1 = x0 + cellSize;
+          const z1 = z0 + cellSize;
+          terrainPositions[floorOff + 0] = x0; terrainPositions[floorOff + 1] = CUBE_FLOOR_Y; terrainPositions[floorOff + 2] = z0;
+          terrainPositions[floorOff + 3] = x1; terrainPositions[floorOff + 4] = CUBE_FLOOR_Y; terrainPositions[floorOff + 5] = z0;
+          terrainPositions[floorOff + 6] = x1; terrainPositions[floorOff + 7] = CUBE_FLOOR_Y; terrainPositions[floorOff + 8] = z1;
+          terrainPositions[floorOff + 9] = x0; terrainPositions[floorOff + 10] = CUBE_FLOOR_Y; terrainPositions[floorOff + 11] = z1;
+
+          const cornerSrc = [
+            this.topIdx(0, 0),
+            this.topIdx(subdiv, 0),
+            this.topIdx(subdiv, subdiv),
+            this.topIdx(0, subdiv),
+          ];
+          for (let f = 0; f < this.floorVertsPerTile; f++) {
+            const dstOff = terrainBase + (this.floorIdxBase + f) * 3;
+            const srcOff = terrainBase + cornerSrc[f] * 3;
+            terrainNormals[dstOff] = terrainNormals[srcOff];
+            terrainNormals[dstOff + 1] = terrainNormals[srcOff + 1];
+            terrainNormals[dstOff + 2] = terrainNormals[srcOff + 2];
+          }
         }
-        this.indices[k++] = f00; this.indices[k++] = v + topIdx(SUBDIV, 0); this.indices[k++] = f10;
-        // BACK (+Z): top edge is j=SUBDIV, i=SUBDIV..0. Anchor f11.
-        for (let s = 0; s < SUBDIV; s++) {
-          this.indices[k++] = f11;
-          this.indices[k++] = v + topIdx(SUBDIV - s, SUBDIV);
-          this.indices[k++] = v + topIdx(SUBDIV - s - 1, SUBDIV);
+
+        const terrainVertexBase = tileIndex * this.terrainVertsPerTile;
+        const overlayVertexBase = tileIndex * this.topVertsPerTile;
+        const terrainIndexBase = tileIndex * this.terrainTrisPerTile * 3;
+        const overlayIndexBase = tileIndex * this.overlayTrisPerTile * 3;
+        let tk = terrainIndexBase;
+        let ok = overlayIndexBase;
+
+        for (let j = 0; j < subdiv; j++) {
+          for (let ix = 0; ix < subdiv; ix++) {
+            const a = this.topIdx(ix, j);
+            const b = this.topIdx(ix + 1, j);
+            const c = this.topIdx(ix + 1, j + 1);
+            const d = this.topIdx(ix, j + 1);
+            terrainIndices[tk++] = terrainVertexBase + a;
+            terrainIndices[tk++] = terrainVertexBase + b;
+            terrainIndices[tk++] = terrainVertexBase + c;
+            terrainIndices[tk++] = terrainVertexBase + a;
+            terrainIndices[tk++] = terrainVertexBase + c;
+            terrainIndices[tk++] = terrainVertexBase + d;
+
+            overlayIndices[ok++] = overlayVertexBase + a;
+            overlayIndices[ok++] = overlayVertexBase + b;
+            overlayIndices[ok++] = overlayVertexBase + c;
+            overlayIndices[ok++] = overlayVertexBase + a;
+            overlayIndices[ok++] = overlayVertexBase + c;
+            overlayIndices[ok++] = overlayVertexBase + d;
+          }
         }
-        this.indices[k++] = f11; this.indices[k++] = v + topIdx(0, SUBDIV); this.indices[k++] = f01;
-        // LEFT (−X): top edge is i=0, j=SUBDIV..0. Anchor f01.
-        for (let s = 0; s < SUBDIV; s++) {
-          this.indices[k++] = f01;
-          this.indices[k++] = v + topIdx(0, SUBDIV - s);
-          this.indices[k++] = v + topIdx(0, SUBDIV - s - 1);
+
+        if (!this.includeSideWalls) continue;
+
+        const f00 = terrainVertexBase + this.floorIdxBase + 0;
+        const f10 = terrainVertexBase + this.floorIdxBase + 1;
+        const f11 = terrainVertexBase + this.floorIdxBase + 2;
+        const f01 = terrainVertexBase + this.floorIdxBase + 3;
+        for (let s = 0; s < subdiv; s++) {
+          terrainIndices[tk++] = f00;
+          terrainIndices[tk++] = terrainVertexBase + this.topIdx(s, 0);
+          terrainIndices[tk++] = terrainVertexBase + this.topIdx(s + 1, 0);
         }
-        this.indices[k++] = f01; this.indices[k++] = v + topIdx(0, 0); this.indices[k++] = f00;
-        // RIGHT (+X): top edge is i=SUBDIV, j=0..SUBDIV. Anchor f10.
-        for (let s = 0; s < SUBDIV; s++) {
-          this.indices[k++] = f10;
-          this.indices[k++] = v + topIdx(SUBDIV, s);
-          this.indices[k++] = v + topIdx(SUBDIV, s + 1);
+        terrainIndices[tk++] = f00; terrainIndices[tk++] = terrainVertexBase + this.topIdx(subdiv, 0); terrainIndices[tk++] = f10;
+
+        for (let s = 0; s < subdiv; s++) {
+          terrainIndices[tk++] = f11;
+          terrainIndices[tk++] = terrainVertexBase + this.topIdx(subdiv - s, subdiv);
+          terrainIndices[tk++] = terrainVertexBase + this.topIdx(subdiv - s - 1, subdiv);
         }
-        this.indices[k++] = f10; this.indices[k++] = v + topIdx(SUBDIV, SUBDIV); this.indices[k++] = f11;
+        terrainIndices[tk++] = f11; terrainIndices[tk++] = terrainVertexBase + this.topIdx(0, subdiv); terrainIndices[tk++] = f01;
+
+        for (let s = 0; s < subdiv; s++) {
+          terrainIndices[tk++] = f01;
+          terrainIndices[tk++] = terrainVertexBase + this.topIdx(0, subdiv - s);
+          terrainIndices[tk++] = terrainVertexBase + this.topIdx(0, subdiv - s - 1);
+        }
+        terrainIndices[tk++] = f01; terrainIndices[tk++] = terrainVertexBase + this.topIdx(0, 0); terrainIndices[tk++] = f00;
+
+        for (let s = 0; s < subdiv; s++) {
+          terrainIndices[tk++] = f10;
+          terrainIndices[tk++] = terrainVertexBase + this.topIdx(subdiv, s);
+          terrainIndices[tk++] = terrainVertexBase + this.topIdx(subdiv, s + 1);
+        }
+        terrainIndices[tk++] = f10; terrainIndices[tk++] = terrainVertexBase + this.topIdx(subdiv, subdiv); terrainIndices[tk++] = f11;
       }
     }
 
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    this.geometry.setAttribute(
-      'color',
-      new THREE.BufferAttribute(this.colors, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-    this.geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-    this.geometry.setIndex(new THREE.BufferAttribute(this.indices, 1));
+    this.terrainGeometry.dispose();
+    this.terrainGeometry.setAttribute('position', new THREE.BufferAttribute(terrainPositions, 3));
+    this.terrainGeometry.setAttribute('normal', new THREE.BufferAttribute(terrainNormals, 3));
+    this.terrainGeometry.setIndex(new THREE.BufferAttribute(terrainIndices, 1));
+    this.terrainGeometry.computeBoundingSphere();
+
+    this.overlayGeometry.dispose();
+    this.overlayGeometry.setAttribute('position', new THREE.BufferAttribute(overlayPositions, 3));
+    this.overlayGeometry.setAttribute('uv', new THREE.BufferAttribute(overlayUvs, 2));
+    this.overlayGeometry.setIndex(new THREE.BufferAttribute(overlayIndices, 1));
+    this.overlayGeometry.computeBoundingSphere();
+
     return true;
   }
 
-  update(): void {
-    if (getGridOverlay() === 'off') {
-      this.mesh.visible = false;
+  private clearOverlayTexture(): void {
+    this.overlayPixels.fill(0);
+    this.overlayTexture.needsUpdate = true;
+  }
+
+  private writeOverlayTile(tile: NetworkCaptureTile, cellSize: number, intensity: number): void {
+    const cx = tile.cx;
+    const cy = tile.cy;
+    if (cx < 0 || cx >= this.gridCellsX || cy < 0 || cy >= this.gridCellsY) return;
+    const idx = (cy * this.gridCellsX + cx) * 4;
+    if (Object.keys(tile.heights).length === 0 || intensity <= 0) {
+      this.overlayPixels[idx] = 0;
+      this.overlayPixels[idx + 1] = 0;
+      this.overlayPixels[idx + 2] = 0;
+      this.overlayPixels[idx + 3] = 0;
       return;
     }
 
-    // The server only sends `capture.cellSize` once a tile actually
-    // becomes captured, so on a fresh game it's 0. Fall back to
-    // SPATIAL_GRID_CELL_SIZE so cell placement matches once
-    // ownership arrives.
+    const color = getCaptureTileDisplayColor(
+      tile.heights,
+      cx,
+      cy,
+      cellSize,
+      this.mapWidth,
+      this.mapHeight,
+      intensity,
+      NEUTRAL_R_BYTE,
+      NEUTRAL_G_BYTE,
+      NEUTRAL_B_BYTE,
+    );
+    if (!color.hasColor) {
+      this.overlayPixels[idx] = 0;
+      this.overlayPixels[idx + 1] = 0;
+      this.overlayPixels[idx + 2] = 0;
+      this.overlayPixels[idx + 3] = 0;
+      return;
+    }
+    this.overlayPixels[idx] = Math.max(0, Math.min(255, Math.round(color.r)));
+    this.overlayPixels[idx + 1] = Math.max(0, Math.min(255, Math.round(color.g)));
+    this.overlayPixels[idx + 2] = Math.max(0, Math.min(255, Math.round(color.b)));
+    this.overlayPixels[idx + 3] = 255;
+  }
+
+  private refreshAllOverlayTiles(cellSize: number, intensity: number): void {
+    this.overlayPixels.fill(0);
+    if (intensity > 0) {
+      const tiles = this.clientViewState.getCaptureTiles();
+      for (let i = 0; i < tiles.length; i++) {
+        this.writeOverlayTile(tiles[i], cellSize, intensity);
+      }
+    }
+    this.overlayTexture.needsUpdate = true;
+  }
+
+  private refreshChangedOverlayTiles(
+    tiles: readonly NetworkCaptureTile[],
+    cellSize: number,
+    intensity: number,
+  ): void {
+    if (tiles.length === 0) return;
+    for (let i = 0; i < tiles.length; i++) {
+      this.writeOverlayTile(tiles[i], cellSize, intensity);
+    }
+    this.overlayTexture.needsUpdate = true;
+  }
+
+  update(graphicsConfig: GraphicsConfig): void {
+    this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
+
     let cellSize = this.clientViewState.getCaptureCellSize();
     if (cellSize <= 0) cellSize = SPATIAL_GRID_CELL_SIZE;
 
-    const rebuilt = this.rebuildGridIfNeeded(cellSize);
+    const rebuilt = this.rebuildGeometryIfNeeded(cellSize, graphicsConfig);
+    this.terrainMesh.visible = true;
 
+    const gridMode = getGridOverlay();
     const intensity = getGridOverlayIntensity();
+    const overlayActive = gridMode !== 'off' && intensity > 0;
+    this.overlayMesh.visible = overlayActive;
+    if (!overlayActive) {
+      if (this.lastOverlayIntensity !== intensity) {
+        this.clearOverlayTexture();
+        this.lastOverlayIntensity = intensity;
+      }
+      return;
+    }
+
     const captureVersion = this.clientViewState.getCaptureVersion();
+    const intensityChanged = intensity !== this.lastOverlayIntensity;
     if (
       !rebuilt &&
       captureVersion === this.lastCaptureVersion &&
-      intensity === this.lastOverlayIntensity
+      !intensityChanged
     ) {
-      this.mesh.visible = true;
       return;
     }
+
+    if (!rebuilt && !intensityChanged && captureVersion !== this.lastCaptureVersion) {
+      const stride = Math.max(1, graphicsConfig.captureTileFrameStride | 0);
+      if (stride > 1 && this.renderFrameIndex % stride !== 0) return;
+    }
+
+    const changes = this.clientViewState.consumeCaptureTileChanges();
+    if (rebuilt || intensityChanged || changes.full) {
+      this.refreshAllOverlayTiles(cellSize, intensity);
+    } else {
+      this.refreshChangedOverlayTiles(changes.tiles, cellSize, intensity);
+    }
+
     this.lastCaptureVersion = captureVersion;
     this.lastOverlayIntensity = intensity;
-
-    const tiles = this.clientViewState.getCaptureTiles();
-    const col = this.colors;
-    const cellsX = this.gridCellsX;
-    const cellsY = this.gridCellsY;
-
-    // Pass 1: stamp neutral color across every vertex. Cheap linear
-    // sweep over the color buffer.
-    for (let cy = 0; cy < cellsY; cy++) {
-      for (let cx = 0; cx < cellsX; cx++) {
-        const cBase = (cy * cellsX + cx) * VERTS_PER_TILE * 3;
-        for (let v = 0; v < VERTS_PER_TILE; v++) {
-          col[cBase + v * 3 + 0] = NEUTRAL_R;
-          col[cBase + v * 3 + 1] = NEUTRAL_G;
-          col[cBase + v * 3 + 2] = NEUTRAL_B;
-        }
-      }
-    }
-
-    // Pass 2: blend the area-weighted team colour onto each captured
-    // tile. The mix factor is proportional to the tile's TOTAL
-    // ownership height (sum across teams) × its mana/sec — see
-    // getCaptureTileBrightness. A border tile shared 50/50 between
-    // two teams sums to height 1.0 just like a single-team tile, so
-    // both render at the same brightness; the colour is the area-
-    // weighted blend of the two teams' colours. 3D mesh and 2D
-    // minimap consume the SAME factor function so the gradient
-    // looks identical in both views.
-    for (let i = 0; i < tiles.length; i++) {
-      const tile = tiles[i];
-      const cx = tile.cx;
-      const cy = tile.cy;
-      if (cx < 0 || cx >= cellsX || cy < 0 || cy >= cellsY) continue;
-
-      const color = getCaptureTileDisplayColor(
-        tile.heights,
-        cx, cy,
-        cellSize,
-        this.mapWidth,
-        this.mapHeight,
-        intensity,
-        NEUTRAL_R * 255,
-        NEUTRAL_G * 255,
-        NEUTRAL_B * 255,
-      );
-      if (!color.hasColor) continue;
-      const lerpR = color.r / 255;
-      const lerpG = color.g / 255;
-      const lerpB = color.b / 255;
-
-      const cBase = (cy * cellsX + cx) * VERTS_PER_TILE * 3;
-      for (let v = 0; v < VERTS_PER_TILE; v++) {
-        col[cBase + v * 3 + 0] = lerpR;
-        col[cBase + v * 3 + 1] = lerpG;
-        col[cBase + v * 3 + 2] = lerpB;
-      }
-    }
-
-    (this.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
-    this.mesh.visible = true;
   }
 
-  /** The terrain mesh — exposed so the orbit camera (and any other
-   *  cursor-picking consumer) can raycast against the actual rendered
-   *  ground geometry rather than approximating with a y=0 plane. */
   getMesh(): THREE.Mesh {
-    return this.mesh;
+    return this.terrainMesh;
   }
 
   destroy(): void {
-    this.geometry.dispose();
-    this.material.dispose();
-    this.mesh.parent?.remove(this.mesh);
+    this.terrainGeometry.dispose();
+    this.terrainMaterial.dispose();
+    this.terrainMesh.parent?.remove(this.terrainMesh);
+    this.overlayGeometry.dispose();
+    this.overlayTexture.dispose();
+    this.overlayMaterial.dispose();
+    this.overlayMesh.parent?.remove(this.overlayMesh);
   }
 }

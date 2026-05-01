@@ -200,6 +200,26 @@ const spectateMode = ref(!getLobbyVisible());
 // game (or back) restores the appropriate stored state. Initial
 // value uses the demo key because gameStarted starts at false.
 const bottomBarsCollapsed = ref(loadStoredDemoBarsCollapsed());
+const PLAYER_CLIENT_ENABLED_STORAGE_KEY = 'player-client-game-enabled';
+
+function loadStoredPlayerClientEnabled(): boolean {
+  try {
+    const raw = window.localStorage.getItem(PLAYER_CLIENT_ENABLED_STORAGE_KEY);
+    return raw === null ? true : raw !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function savePlayerClientEnabled(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(PLAYER_CLIENT_ENABLED_STORAGE_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Ignore storage failures; the button still works for this session.
+  }
+}
+
+const playerClientEnabled = ref(loadStoredPlayerClientEnabled());
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 
@@ -245,6 +265,26 @@ function toggleBottomBars(): void {
   if (gameStarted.value) saveRealBarsCollapsed(next);
   else saveDemoBarsCollapsed(next);
 }
+
+function setInstancePlayerClientEnabled(instance: GameInstance | null | undefined, enabled: boolean): void {
+  if (!instance) return;
+  instance.app.setRenderEnabled(enabled);
+  instance.getScene()?.setClientRenderEnabled(enabled);
+}
+
+function applyPlayerClientEnabled(): void {
+  setInstancePlayerClientEnabled(backgroundBattle?.gameInstance, playerClientEnabled.value);
+  setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
+}
+
+function togglePlayerClientEnabled(): void {
+  playerClientEnabled.value = !playerClientEnabled.value;
+}
+
+watch(playerClientEnabled, (enabled) => {
+  savePlayerClientEnabled(enabled);
+  applyPlayerClientEnabled();
+});
 
 // Server metadata received from snapshots (for remote clients to display server bar)
 const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
@@ -544,10 +584,12 @@ async function startBackgroundBattle(): Promise<void> {
   backgroundBattle = battle;
   activeConnection = backgroundBattle.connection;
   hasServer.value = true;
+  setInstancePlayerClientEnabled(backgroundBattle.gameInstance, playerClientEnabled.value);
 
   checkBgSceneInterval = waitForSceneAndBind(
     () => backgroundBattle?.gameInstance?.getScene(),
     (bgScene) => {
+      bgScene.setClientRenderEnabled(playerClientEnabled.value);
       bindGameSceneUi(bgScene);
       checkBgSceneInterval = null;
     },
@@ -749,6 +791,10 @@ const gpuSourceLabel = computed(() =>
 const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.ticks.rate ?? SERVER_CONFIG.tickRate.default,
+);
+const displayTargetTickRate = computed(
+  () =>
+    serverMetaFromSnapshot.value?.ticks.target ?? displayTickRate.value,
 );
 // HOST SERVER LOD pick — driven from local persistence + sent to the
 // server via setSimQuality command. Effective tier (after the auto
@@ -1724,6 +1770,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       terrainCenter: realTerrainCenter,
       backgroundMode: false,
     });
+    setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
 
     // Setup scene callbacks
     setupSceneCallbacks();
@@ -1734,6 +1781,7 @@ function setupSceneCallbacks(): void {
   checkSceneInterval = waitForSceneAndBind(
     () => gameInstance?.getScene(),
     (scene) => {
+      scene.setClientRenderEnabled(playerClientEnabled.value);
       bindGameSceneUi(scene, true);
       checkSceneInterval = null;
     },
@@ -1948,7 +1996,11 @@ onUnmounted(() => {
       />
     </div>
 
-    <div ref="gameAreaRef" class="game-area">
+    <div
+      ref="gameAreaRef"
+      class="game-area"
+      :class="{ 'player-client-off': !playerClientEnabled }"
+    >
       <!-- Background battle container (demo game).
            Loads full-screen behind the BUDGET ANNIHILATION screen
            exactly as before. Once the user clicks Host/Join AND
@@ -1973,8 +2025,14 @@ onUnmounted(() => {
         v-show="gameStarted"
       ></div>
 
+      <div
+        v-if="!playerClientEnabled"
+        class="player-client-off-overlay"
+        aria-hidden="true"
+      ></div>
+
       <!-- Game UI (desktop: hidden when lobby modal visible; mobile: follows hamburger toggle) -->
-      <template v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible">
+      <template v-if="playerClientEnabled && (isMobile ? mobileBarsVisible : !lobbyModalVisible)">
         <!-- Selection panel (bottom-left) -->
         <SelectionPanel
           :selection="selectionInfo"
@@ -2198,8 +2256,9 @@ onUnmounted(() => {
               <BarButton
                 v-for="rate in SERVER_CONFIG.tickRate.options"
                 :key="rate"
-                :active="displayTickRate === rate"
-                :title="`Target ${rate} simulation ticks per second`"
+                :active="displayTargetTickRate === rate"
+                :active-level="displayTickRate === rate && displayTargetTickRate !== rate"
+                :title="`Target ${rate} simulation ticks per second. Effective TPS cap is currently ${displayTickRate}.`"
                 @click="setTickRateValue(rate)"
               >{{ rate }}</BarButton>
             </BarButtonGroup>
@@ -2387,6 +2446,12 @@ onUnmounted(() => {
             <span class="bar-label-text">PLAYER CLIENT</span
             ><span class="bar-label-hover">DEFAULTS</span>
           </BarButton>
+          <BarButton
+            :active="playerClientEnabled"
+            class="client-power-button"
+            :title="playerClientEnabled ? 'Turn PLAYER CLIENT game rendering off' : 'Turn PLAYER CLIENT game rendering on'"
+            @click="togglePlayerClientEnabled"
+          >{{ playerClientEnabled ? 'ON' : 'OFF' }}</BarButton>
         </div>
         <BarDivider />
         <div class="bar-controls">
@@ -3116,6 +3181,19 @@ onUnmounted(() => {
   display: block;
 }
 
+.player-client-off .phaser-container canvas,
+.player-client-off .background-battle-container canvas {
+  visibility: hidden;
+}
+
+.player-client-off-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 900;
+  background: #000;
+  pointer-events: auto;
+}
+
 .top-controls-shell {
   flex-shrink: 0;
   z-index: 3001;
@@ -3419,6 +3497,12 @@ onUnmounted(() => {
   letter-spacing: 1px;
   text-align: center;
   min-width: 105px;
+}
+
+.client-power-button {
+  width: 100%;
+  min-width: 105px;
+  padding-block: 2px;
 }
 
 .bar-label-text,

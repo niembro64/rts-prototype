@@ -931,7 +931,12 @@ export class GameServer {
         ? (this.tickMsHi / tickBudgetMs) * 100
         : 0;
       serverMeta = {
-        ticks: { avg: tickStats.avgFps, low: tickStats.worstFps, rate: this.tickRateHz },
+        ticks: {
+          avg: tickStats.avgFps,
+          low: tickStats.worstFps,
+          rate: this.tickRateHz,
+          target: this.userTickRateHz,
+        },
         snaps: { rate: this.maxSnapshotsDisplay, keyframes: this.keyframeRatioDisplay },
         server: { time: currentTime, ip: this.ipAddress },
         grid: this.sendGridInfo,

@@ -1,10 +1,10 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity } from '../types';
+import type { Entity, HysteresisRange, TurretRanges } from '../types';
 import { isLineShot } from '../types';
 import { getTargetRadius, getTurretMountHeight } from './combatUtils';
-import { getTransformCosSin, distance3, distanceSquared3 } from '../../math';
+import { getTransformCosSin, distanceSquared3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
@@ -64,6 +64,57 @@ function nextTargetingReacquireTick(unitId: number, tick: number, stride: number
   return tick + ticksUntil;
 }
 
+function rangeEdgeValue(range: HysteresisRange, edge: 'acquire' | 'release'): number {
+  return edge === 'acquire' ? range.acquire : range.release;
+}
+
+function rangeEdgeSq(range: HysteresisRange, edge: 'acquire' | 'release'): number {
+  const cached = edge === 'acquire' ? range.acquireSq : range.releaseSq;
+  if (cached !== undefined) return cached;
+  const value = rangeEdgeValue(range, edge);
+  return value * value;
+}
+
+function maxRangeWithTargetSq(range: HysteresisRange, edge: 'acquire' | 'release', targetRadius: number): number {
+  if (targetRadius <= 0) return rangeEdgeSq(range, edge);
+  const r = rangeEdgeValue(range, edge) + targetRadius;
+  return r * r;
+}
+
+function minRangeAllowsTargetSq(range: HysteresisRange | undefined, edge: 'acquire' | 'release', targetRadius: number, distSq: number): boolean {
+  if (!range) return true;
+  const minRange = rangeEdgeValue(range, edge);
+  if (minRange <= 0) return true;
+
+  // Range checks are against the target collider. For max range a target
+  // is valid if its near edge is reachable (dist <= max + radius). For
+  // min range it is valid if its far edge reaches outside the dead zone
+  // (dist >= min - radius). This treats fire range as an annulus rather
+  // than punishing large targets by center point only.
+  const threshold = minRange - targetRadius;
+  if (threshold <= 0) return true;
+  const thresholdSq = targetRadius <= 0 ? rangeEdgeSq(range, edge) : threshold * threshold;
+  return distSq >= thresholdSq;
+}
+
+function withinFireEnvelopeSq(
+  ranges: TurretRanges,
+  edge: 'acquire' | 'release',
+  distSq: number,
+  targetRadius: number,
+): boolean {
+  const fire = ranges.fire;
+  const max = fire?.max ?? ranges.engage;
+  return (
+    minRangeAllowsTargetSq(fire?.min, edge, targetRadius, distSq) &&
+    distSq <= maxRangeWithTargetSq(max, edge, targetRadius)
+  );
+}
+
+function outsideTrackingReleaseSq(ranges: TurretRanges, distSq: number, targetRadius: number): boolean {
+  return distSq > maxRangeWithTargetSq(ranges.tracking, 'release', targetRadius);
+}
+
 // Density-cap thresholds + stride for the dense-crowd fallback used
 // inside the inner targeting loops are now read per-tick from the
 // HOST SERVER LOD tier (see simQuality.ts). Lower tiers tighten the
@@ -85,7 +136,7 @@ function isBeamUnit(entity: Entity): boolean {
 //
 // 1) ATTACK MODE (priorityTargetId set by attack command):
 //    All weapons forced to the priority target exclusively.
-//    Uses only engage ranges (fight radiuses) — no tracking hysteresis.
+//    Uses the fire envelope, not the broader tracking/search range.
 //    The unit is already moving toward the target via the attack action handler.
 //
 // 2) AUTO MODE (no priorityTargetId):
@@ -94,12 +145,12 @@ function isBeamUnit(entity: Entity): boolean {
 //      tracking: turret has a target and is aimed at it
 //        - acquire: nearest enemy enters tracking.acquire range
 //        - release: tracked target exits tracking.release range (or dies) → idle
-//        - promote: tracked target enters engage.acquire → engaged
+//        - promote: tracked target enters the fire acquire envelope → engaged
 //      engaged: weapon is actively firing
-//        - release: target exits engage.release → tracking
+//        - release: target exits the fire release envelope → tracking
 //        - escape: target exits tracking.release → idle
 //
-//    Hysteresis (acquire < release) prevents state flickering at boundaries.
+//    Hysteresis prevents state flickering at both max and optional min fire boundaries.
 //
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
 // PERFORMANCE: Multi-weapon units batch a single spatial query instead of per-weapon queries
@@ -239,7 +290,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
 
       if (priorityTarget) {
-        // ATTACK MODE: force all weapons to the priority target, engage ranges only
+        // ATTACK MODE: force all weapons to the priority target, firing only inside the fire envelope.
         for (let wi = 0; wi < weapons.length; wi++) {
           const weapon = weapons[wi];
           if (weapon.config.isManualFire) continue;
@@ -251,14 +302,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           }
 
           setWeaponTarget(weapon, unit, wi, priorityId);
-          const dist = distance3(
+          const distSq = distanceSquared3(
             weapon.worldPos!.x, weapon.worldPos!.y, weapon.worldPos!.z,
             priorityTarget.transform.x, priorityTarget.transform.y, priorityTarget.transform.z,
           );
 
-          if (dist <= weapon.ranges.engage.acquire + priorityRadius) {
+          if (withinFireEnvelopeSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
             weapon.state = 'engaged';
-          } else if (dist <= weapon.ranges.engage.release + priorityRadius) {
+          } else if (withinFireEnvelopeSq(weapon.ranges, 'release', distSq, priorityRadius)) {
             // Between acquire and release — maintain engaged if already engaged, otherwise tracking
             weapon.state = weapon.state === 'engaged' ? 'engaged' : 'tracking';
           } else {
@@ -290,7 +341,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         weapon.state = 'idle';
       } else {
         const r = weapon.ranges;
-        const dist = distance3(
+        const distSq = distanceSquared3(
           weapon.worldPos!.x, weapon.worldPos!.y, weapon.worldPos!.z,
           target.transform.x, target.transform.y, target.transform.z,
         );
@@ -300,20 +351,20 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             // Shouldn't have a target while idle — treat as new acquisition
             break;
           case 'tracking':
-            if (dist > r.tracking.release + targetRadius) {
+            if (outsideTrackingReleaseSq(r, distSq, targetRadius)) {
               setWeaponTarget(weapon, unit, wi, null);
               weapon.state = 'idle';
-            } else if (dist <= r.engage.acquire + targetRadius) {
+            } else if (withinFireEnvelopeSq(r, 'acquire', distSq, targetRadius)) {
               weapon.state = 'engaged';
             }
             // else: still tracking but can't fire — Pass 2.5 will check
             // if there's a closer engageable target to switch to.
             break;
           case 'engaged':
-            if (dist > r.tracking.release + targetRadius) {
+            if (outsideTrackingReleaseSq(r, distSq, targetRadius)) {
               setWeaponTarget(weapon, unit, wi, null);
               weapon.state = 'idle';
-            } else if (dist > r.engage.release + targetRadius) {
+            } else if (!withinFireEnvelopeSq(r, 'release', distSq, targetRadius)) {
               weapon.state = 'tracking';
             }
             break;
@@ -396,13 +447,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         const enemy = candidates[ci];
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
         const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const acquireRange = r.engage.acquire + enemyRadius;
         const distSq = distanceSquared3(
           weaponX, weaponY, weaponZ,
           enemy.transform.x, enemy.transform.y, enemy.transform.z,
         );
-        // Only consider enemies within engage range
-        if (distSq <= acquireRange * acquireRange && distSq < closestDistSq) {
+        // Only consider enemies inside the full fire envelope.
+        if (withinFireEnvelopeSq(r, 'acquire', distSq, enemyRadius) && distSq < closestDistSq) {
           closestDistSq = distSq;
           closestEngageable = enemy;
         }
@@ -444,13 +494,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         if (weapon.config.passive && !isBeamUnit(enemy)) continue;
 
         const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const acquireRange = r.tracking.acquire + enemyRadius;
         const distSq = distanceSquared3(
           weaponX, weaponY, weaponZ,
           enemy.transform.x, enemy.transform.y, enemy.transform.z,
         );
 
-        if (distSq <= acquireRange * acquireRange && distSq < closestDistSq) {
+        if (distSq <= maxRangeWithTargetSq(r.tracking, 'acquire', enemyRadius) && distSq < closestDistSq) {
           closestDistSq = distSq;
           closestEnemy = enemy;
         }
@@ -460,8 +509,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         setWeaponTarget(weapon, unit, wi, closestEnemy.id);
         const targetRadius = closestEnemy.unit ? closestEnemy.unit.unitRadiusCollider.shot
           : (closestEnemy.building ? getTargetRadius(closestEnemy) : 0);
-        const engageRange = r.engage.acquire + targetRadius;
-        weapon.state = closestDistSq <= engageRange * engageRange ? 'engaged' : 'tracking';
+        weapon.state = withinFireEnvelopeSq(r, 'acquire', closestDistSq, targetRadius) ? 'engaged' : 'tracking';
       } else {
         setWeaponTarget(weapon, unit, wi, null);
         weapon.state = 'idle';

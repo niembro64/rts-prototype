@@ -326,6 +326,7 @@ export class RtsScene3D {
   private _cachedPlayerBuildings: Entity[] = [];
   private _cachedPlayerIdForUnits: PlayerId = -1 as PlayerId;
   private _cachedPlayerIdForBuildings: PlayerId = -1 as PlayerId;
+  private clientRenderEnabled = true;
 
   // ── Callback interface matching RtsScene ──
   public onPlayerChange?: (playerId: PlayerId) => void;
@@ -379,6 +380,7 @@ export class RtsScene3D {
 
   constructor(threeApp: ThreeApp, config: RtsScene3DConfig) {
     this.threeApp = threeApp;
+    this.clientRenderEnabled = threeApp.isRenderEnabled();
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
     this.terrainCenter = config.terrainCenter ?? 'lake';
@@ -493,6 +495,21 @@ export class RtsScene3D {
       width: { get: () => this.threeApp.renderer.domElement.clientWidth },
       height: { get: () => this.threeApp.renderer.domElement.clientHeight },
     });
+  }
+
+  public setClientRenderEnabled(enabled: boolean): void {
+    if (this.clientRenderEnabled === enabled) return;
+    this.clientRenderEnabled = enabled;
+    this.threeApp.setRenderEnabled(enabled);
+    if (!enabled) {
+      this.audioScheduler.clear();
+      this.burnMarkAccumMs = 0;
+      this.smokeTrailAccumMs = 0;
+    }
+  }
+
+  public isClientRenderEnabled(): boolean {
+    return this.clientRenderEnabled;
   }
 
   /** Approximate visible world-width at the ground plane (for minimap viewport). */
@@ -722,8 +739,10 @@ export class RtsScene3D {
     // Drain any audio events whose scheduled playback time has arrived. This
     // runs every frame (not just on snapshot arrival) because scheduled events
     // are staggered across the snapshot interval.
-    const nowDrain = performance.now();
-    this.audioScheduler.drain(nowDrain, (event) => this.handleSimEvent3D(event));
+    if (this.clientRenderEnabled) {
+      const nowDrain = performance.now();
+      this.audioScheduler.drain(nowDrain, (event) => this.handleSimEvent3D(event));
+    }
 
     // Consume newest snapshot (if any)
     const state = this.snapshotBuffer.consume();
@@ -747,18 +766,20 @@ export class RtsScene3D {
         this.lastFullSnapArrivalMs = now;
       }
 
-      // Schedule any new SimEvents that came in with this snapshot. Smoothing
-      // staggers one-shot events across the snapshot interval; continuous
-      // start/stop events fire immediately (handled inside AudioEventScheduler).
-      this.audioScheduler.recordSnapshot(now);
-      const events = this.clientViewState.getPendingAudioEvents();
-      if (events && events.length > 0) {
-        this.audioScheduler.schedule(
-          events,
-          now,
-          getAudioSmoothing(),
-          (event) => this.handleSimEvent3D(event),
-        );
+      if (this.clientRenderEnabled) {
+        // Schedule any new SimEvents that came in with this snapshot. Smoothing
+        // staggers one-shot events across the snapshot interval; continuous
+        // start/stop events fire immediately (handled inside AudioEventScheduler).
+        this.audioScheduler.recordSnapshot(now);
+        const events = this.clientViewState.getPendingAudioEvents();
+        if (events && events.length > 0) {
+          this.audioScheduler.schedule(
+            events,
+            now,
+            getAudioSmoothing(),
+            (event) => this.handleSimEvent3D(event),
+          );
+        }
       }
 
       // Forward server meta to UI
@@ -786,6 +807,34 @@ export class RtsScene3D {
     // Process local commands — select/clearSelection apply to ClientViewState,
     // everything else gets forwarded to the server via GameConnection
     this.processLocalCommands();
+
+    if (!this.clientRenderEnabled) {
+      // Diagnostic PLAYER CLIENT OFF path. Keep network snapshot intake,
+      // server-meta/economy/combat-stat UI, local commands, and timing
+      // instrumentation alive, but skip prediction, camera, minimap, 3D
+      // entity/effect/HUD/selection-cache updates, and the WebGL draw call
+      // in ThreeApp.
+      this.economyUpdateTimer += delta;
+      if (this.economyUpdateTimer >= this.ECONOMY_UPDATE_INTERVAL) {
+        this.economyUpdateTimer = 0;
+        this.updateEconomyInfo();
+      }
+
+      this.combatStatsUpdateTimer += delta;
+      if (this.combatStatsUpdateTimer >= this.COMBAT_STATS_UPDATE_INTERVAL) {
+        this.combatStatsUpdateTimer = 0;
+        const stats = this.clientViewState.getCombatStats();
+        if (stats && this.onCombatStatsUpdate) this.onCombatStatsUpdate(stats);
+      }
+
+      const frameEnd = performance.now();
+      const frameMs = frameEnd - frameStart;
+      this.frameMsTracker.update(frameMs);
+      this.renderMsTracker.update(0);
+      this.logicMsTracker.update(frameMs);
+      this.longtaskTracker.tick();
+      return;
+    }
 
     this.rebuildSelectedEntityCachesIfNeeded();
 
@@ -846,7 +895,7 @@ export class RtsScene3D {
     // the (throttled) entity-list refresh.
     this.onCameraQuadUpdate?.(this._cameraQuad, this.threeApp.orbit.yaw);
     this.entityRenderer.update();
-    this.captureTileRenderer.update();
+    this.captureTileRenderer.update(graphicsConfig);
     const lineProjectiles = this.clientViewState.getLineProjectiles();
     const travelingProjectiles = this.clientViewState.getTravelingProjectiles();
     this.beamRenderer.update(lineProjectiles);
@@ -860,7 +909,7 @@ export class RtsScene3D {
     // Advance the water-surface time uniform — the actual GPU draw
     // happens on the next render pass, this just nudges the wave
     // phase. Cheap (single uniform write), no buffer upload.
-    this.waterRenderer.update(effectDt / 1000);
+    this.waterRenderer.update(effectDt / 1000, graphicsConfig);
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
     this.burnMarkAccumMs += effectDt;
@@ -992,7 +1041,9 @@ export class RtsScene3D {
     }
 
     this.minimapUpdateTimer += delta;
-    if (this.minimapUpdateTimer >= this.MINIMAP_UPDATE_INTERVAL) {
+    const minimapInterval = this.MINIMAP_UPDATE_INTERVAL
+      * Math.min(4, Math.max(1, graphicsConfig.captureTileFrameStride | 0));
+    if (this.minimapUpdateTimer >= minimapInterval) {
       this.minimapUpdateTimer = 0;
       this.updateMinimapData();
     }
@@ -1371,13 +1422,13 @@ export class RtsScene3D {
     //
     // Capture-overlay parity: hand the minimap the same tiles +
     // cellSize the 3D CaptureTileRenderer3D consumes, plus the GRID
-    // intensity from clientBarConfig (off=0 → minimap skips the
-    // overlay). One switch keeps the two views in lockstep.
+    // intensity from clientBarConfig. GRID now controls ownership
+    // tint only; terrain/water stay visible and are optimized by LOD.
     const captureTiles = this.clientViewState.getCaptureTiles();
     const captureCellSize = this.clientViewState.getCaptureCellSize();
     const gridMode = getGridOverlay();
-    const showTerrain = gridMode !== 'off';
-    const intensity = showTerrain ? getGridOverlayIntensity() : 0;
+    const showTerrain = true;
+    const intensity = gridMode !== 'off' ? getGridOverlayIntensity() : 0;
     this.onMinimapUpdate(
       buildMinimapData(
         this.entitySourceAdapter,
@@ -1615,7 +1666,7 @@ export class RtsScene3D {
       renderMsHi: this.renderMsTracker.getHi(),
       logicMsAvg: this.logicMsTracker.getAvg(),
       logicMsHi: this.logicMsTracker.getHi(),
-      gpuTimerMs: this.threeApp.gpuTimer.getGpuMs(),
+      gpuTimerMs: this.clientRenderEnabled ? this.threeApp.gpuTimer.getGpuMs() : 0,
       gpuTimerSupported: this.threeApp.gpuTimer.isSupported(),
       longtaskMsPerSec: this.longtaskTracker.getBlockedMsPerSec(),
       longtaskCountPerSec: this.longtaskTracker.getCountPerSec(),

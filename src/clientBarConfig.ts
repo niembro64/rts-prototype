@@ -154,6 +154,13 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.min,
     hudFrameStride: D.HUD_FRAME_STRIDE.min,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.min,
+    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.min,
+    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.min,
+    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.min,
+    waterSubdivisions: D.WATER_SUBDIVISIONS.min,
+    waterFrameStride: D.WATER_FRAME_STRIDE.min,
+    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.min,
+    waterOpacity: D.WATER_OPACITY.min,
     unitShape: D.UNIT_SHAPE.min as UnitShape,
     legs: D.LEGS.min as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.min,
@@ -180,6 +187,13 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.low,
     hudFrameStride: D.HUD_FRAME_STRIDE.low,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.low,
+    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.low,
+    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.low,
+    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.low,
+    waterSubdivisions: D.WATER_SUBDIVISIONS.low,
+    waterFrameStride: D.WATER_FRAME_STRIDE.low,
+    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.low,
+    waterOpacity: D.WATER_OPACITY.low,
     unitShape: D.UNIT_SHAPE.low as UnitShape,
     legs: D.LEGS.low as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.low,
@@ -206,6 +220,13 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.medium,
     hudFrameStride: D.HUD_FRAME_STRIDE.medium,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.medium,
+    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.medium,
+    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.medium,
+    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.medium,
+    waterSubdivisions: D.WATER_SUBDIVISIONS.medium,
+    waterFrameStride: D.WATER_FRAME_STRIDE.medium,
+    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.medium,
+    waterOpacity: D.WATER_OPACITY.medium,
     unitShape: D.UNIT_SHAPE.medium as UnitShape,
     legs: D.LEGS.medium as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.medium,
@@ -232,6 +253,13 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.high,
     hudFrameStride: D.HUD_FRAME_STRIDE.high,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.high,
+    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.high,
+    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.high,
+    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.high,
+    waterSubdivisions: D.WATER_SUBDIVISIONS.high,
+    waterFrameStride: D.WATER_FRAME_STRIDE.high,
+    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.high,
+    waterOpacity: D.WATER_OPACITY.high,
     unitShape: D.UNIT_SHAPE.high as UnitShape,
     legs: D.LEGS.high as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.high,
@@ -258,6 +286,13 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.max,
     hudFrameStride: D.HUD_FRAME_STRIDE.max,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.max,
+    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.max,
+    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.max,
+    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.max,
+    waterSubdivisions: D.WATER_SUBDIVISIONS.max,
+    waterFrameStride: D.WATER_FRAME_STRIDE.max,
+    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.max,
+    waterOpacity: D.WATER_OPACITY.max,
     unitShape: D.UNIT_SHAPE.max as UnitShape,
     legs: D.LEGS.max as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.max,
@@ -943,12 +978,8 @@ export function setLobbyVisible(visible: boolean): void {
 // blend (mix = clamp(intensity * 3 * height, 0, 1)).
 //
 // Tier semantics:
-//   off     — capture-tile mesh hidden entirely (3D scene shows no
-//             land tiles, only water + units). The minimap mirrors
-//             this: terrain layer is skipped, only entities + bg.
-//   zero    — mesh shown, NO team-color blend. Lets the player see
-//             terrain topology (elevation shading) without the
-//             team-ownership overlay distracting from it.
+//   off     — terrain and water remain visible, capture ownership tint is hidden.
+//   zero    — terrain and water remain visible, capture ownership tint is hidden.
 //   low     — gentle team tint (subtle ownership read at a glance).
 //   medium  — old "low" intensity, the previous default.
 //   high    — saturated team color, used as a strategic overview.

@@ -70,6 +70,13 @@ export type GraphicsDetailConfig = {
   RICH_UNIT_SCREEN_RADIUS_PX: LodTierMap<number>;
   HUD_FRAME_STRIDE: LodTierMap<number>;
   EFFECT_FRAME_STRIDE: LodTierMap<number>;
+  CAPTURE_TILE_SUBDIV: LodTierMap<number>;
+  CAPTURE_TILE_FRAME_STRIDE: LodTierMap<number>;
+  CAPTURE_TILE_SIDE_WALLS: LodTierMap<boolean>;
+  WATER_SUBDIVISIONS: LodTierMap<number>;
+  WATER_FRAME_STRIDE: LodTierMap<number>;
+  WATER_WAVE_AMPLITUDE: LodTierMap<number>;
+  WATER_OPACITY: LodTierMap<number>;
   UNIT_SHAPE: LodTierMap<UnitShape>;
   CIRCLES_DRAW_PUSH: boolean;
   CIRCLES_DRAW_SHOT: boolean;

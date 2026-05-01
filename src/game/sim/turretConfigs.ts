@@ -22,20 +22,41 @@ export type WeaponId = keyof typeof TURRET_BLUEPRINTS;
 export const TURRET_CONFIGS: Record<string, TurretConfig> =
   buildAllTurretConfigs();
 
+export function refreshHysteresisRangeSquares(range: { acquire: number; release: number; acquireSq?: number; releaseSq?: number }): void {
+  range.acquireSq = range.acquire * range.acquire;
+  range.releaseSq = range.release * range.release;
+}
+
+function makeHysteresisRange(acquire: number, release: number): { acquire: number; release: number; acquireSq: number; releaseSq: number } {
+  return {
+    acquire,
+    release,
+    acquireSq: acquire * acquire,
+    releaseSq: release * release,
+  };
+}
+
 // Compute hysteresis range pairs for a turret, using per-turret overrides with global fallback
 export function computeTurretRanges(config: TurretConfig): TurretRanges {
   const baseRange = config.range;
   const m = config.rangeOverrides;
   const d = TURRET_RANGE_MULTIPLIERS;
+  const tracking = makeHysteresisRange(
+    baseRange * (m?.tracking.acquire ?? d.tracking.acquire),
+    baseRange * (m?.tracking.release ?? d.tracking.release),
+  );
+  const engage = makeHysteresisRange(
+    baseRange * (m?.engage.acquire ?? d.engage.acquire),
+    baseRange * (m?.engage.release ?? d.engage.release),
+  );
+  const fireMin = makeHysteresisRange(
+    baseRange * (m?.fireMin?.acquire ?? d.fireMin.acquire),
+    baseRange * (m?.fireMin?.release ?? d.fireMin.release),
+  );
   return {
-    tracking: {
-      acquire: baseRange * (m?.tracking.acquire ?? d.tracking.acquire),
-      release: baseRange * (m?.tracking.release ?? d.tracking.release),
-    },
-    engage: {
-      acquire: baseRange * (m?.engage.acquire ?? d.engage.acquire),
-      release: baseRange * (m?.engage.release ?? d.engage.release),
-    },
+    tracking,
+    engage,
+    fire: { min: fireMin, max: engage },
   };
 }
 

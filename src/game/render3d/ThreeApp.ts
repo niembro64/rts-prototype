@@ -17,6 +17,7 @@ import {
 } from '../../config';
 
 const MOBILE_PIXEL_RATIO_CAP = 2;
+const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
 
 function isMobileLikeBrowser(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -53,6 +54,7 @@ export class ThreeApp {
   private _lastCssWidth = 0;
   private _lastCssHeight = 0;
   private _environmentTexture: THREE.Texture | null = null;
+  private _renderEnabled = true;
 
   constructor(
     parent: HTMLElement,
@@ -170,6 +172,14 @@ export class ThreeApp {
     this._updateCallback = callback;
   }
 
+  setRenderEnabled(enabled: boolean): void {
+    this._renderEnabled = enabled;
+  }
+
+  isRenderEnabled(): boolean {
+    return this._renderEnabled;
+  }
+
   start(): void {
     if (this._running) return;
     this._running = true;
@@ -177,18 +187,24 @@ export class ThreeApp {
     const tick = (now: number) => {
       if (!this._running) return;
       const delta = now - this._lastTime;
+      if (!this._renderEnabled && delta < RENDER_DISABLED_UPDATE_INTERVAL_MS) {
+        this._rafId = requestAnimationFrame(tick);
+        return;
+      }
       this._lastTime = now;
       if (this._updateCallback) this._updateCallback(now, delta);
-      // Wrap the render call so the GPU timer captures true draw-time
-      // (only the render; update-callback work is CPU-side).
-      this.gpuTimer.begin();
-      this.renderer.render(this.scene, this.camera);
-      this.gpuTimer.end();
-      // Poll results from any queries that resolved during this frame —
-      // results arrive 2-3 frames after the begin/end pair, so `getGpuMs()`
-      // always reflects slightly stale data (acceptable for a UI readout).
-      this.gpuTimer.poll();
-      this.adjustPixelRatio(now, delta);
+      if (this._renderEnabled) {
+        // Wrap the render call so the GPU timer captures true draw-time
+        // (only the render; update-callback work is CPU-side).
+        this.gpuTimer.begin();
+        this.renderer.render(this.scene, this.camera);
+        this.gpuTimer.end();
+        // Poll results from any queries that resolved during this frame —
+        // results arrive 2-3 frames after the begin/end pair, so `getGpuMs()`
+        // always reflects slightly stale data (acceptable for a UI readout).
+        this.gpuTimer.poll();
+        this.adjustPixelRatio(now, delta);
+      }
       this._rafId = requestAnimationFrame(tick);
     };
     this._rafId = requestAnimationFrame(tick);

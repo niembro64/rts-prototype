@@ -1,7 +1,7 @@
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot } from '../types';
+import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
 import { isLineShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -10,6 +10,7 @@ import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, BEAM_MAX_LENGTH } from '../../../config';
 import { computeTurretPointVelocity, getEntityVelocity3, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
+import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { spatialGrid } from '../SpatialGrid';
@@ -89,6 +90,9 @@ const _packedProjectileEntities: Entity[] = [];
 const _packedProjectileSlots = new Map<EntityId, number>();
 const _fireMuzzleVelocity = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
+const _homingAimPoint = { x: 0, y: 0, z: 0 };
+const FIRE_YAW_TOLERANCE = 0.16;
+const FIRE_PITCH_TOLERANCE = 0.16;
 
 function turretMaskIncludes(mask: number | undefined, index: number): boolean {
   if (mask === undefined) return true;
@@ -96,6 +100,15 @@ function turretMaskIncludes(mask: number | undefined, index: number): boolean {
   if (mask === 0) return false;
   if (index > TURRET_MASK_MAX_INDEX) return true;
   return (mask & (1 << index)) !== 0;
+}
+
+function isWeaponAimedForFire(weapon: Turret): boolean {
+  if (weapon.config.verticalLauncher) return true;
+  if (weapon.aimErrorYaw === undefined || weapon.aimErrorPitch === undefined) return true;
+  return (
+    Math.abs(weapon.aimErrorYaw) <= FIRE_YAW_TOLERANCE &&
+    Math.abs(weapon.aimErrorPitch) <= FIRE_PITCH_TOLERANCE
+  );
 }
 
 function ensurePackedProjectileCapacity(needed: number): void {
@@ -261,6 +274,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         weapon.state = 'idle';
         continue;
       }
+      if (!isWeaponAimedForFire(weapon)) continue;
 
       // Use cached weapon world position from targeting phase
       const weaponWP = resolveWeaponWorldPos(weapon, unit.transform.x, unit.transform.y, unitCos, unitSin);
@@ -690,9 +704,14 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         }
       }
       if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
-        let steerX = homingTarget.transform.x;
-        let steerY = homingTarget.transform.y;
-        let steerZ = homingTarget.transform.z;
+        const aimPoint = resolveTargetAimPoint(
+          homingTarget,
+          entity.transform.x, entity.transform.y, entity.transform.z,
+          _homingAimPoint,
+        );
+        let steerX = aimPoint.x;
+        let steerY = aimPoint.y;
+        let steerZ = aimPoint.z;
         const targetVelocity = getEntityVelocity3(homingTarget, _homingTargetVelocity);
         const targetSpeedSq =
           targetVelocity.x * targetVelocity.x +

@@ -38,8 +38,6 @@ export type BuildingDetailRole =
   | 'solarTeamAccent'
   | 'windRig'
   | 'extractorRotor'
-  | 'extractorCounterRotor'
-  | 'extractorPulse'
   | 'factoryUnitGhost'
   | 'factoryUnitCore'
   | 'factoryBuildPulse'
@@ -73,8 +71,6 @@ export type WindTurbineRig = {
 
 export type ExtractorRig = {
   rotor: THREE.Mesh;
-  counterRotor?: THREE.Mesh;
-  pulse?: THREE.Mesh;
 };
 
 export type ConstructionEmitterRig = {
@@ -139,18 +135,30 @@ const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape
 });
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
+const extractorPyramidGeom = createHexFrustumGeometry();
 const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
 const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
 const windBladeGeom = createWindBladeGeometry();
-const extractorPulseGeom = new THREE.TorusGeometry(1, 0.035, 8, 48);
 
-// Slightly lighter gray for structural columns/gantries.
-const chimneyMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
+const BUILDING_PALETTE = {
+  structureDark: 0x172331,
+  structureMid: 0x34414d,
+  structureLight: 0xc8d4dd,
+  photovoltaic: 0x123a58,
+  photovoltaicBack: 0x26313a,
+  cyanGlow: 0x73ddeb,
+  cyanGlass: 0x82dce9,
+  constructionAmber: 0xe8cd72,
+  constructionSpark: 0xdbe9ee,
+} as const;
+
+// Shared blue-gray structure used by non-team building frames.
+const chimneyMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 // Solar-panel glass uses the same PBR trick as mirror panels: metalness=1
 // and near-zero roughness reflect the scene PMREM, while the dark blue
 // base tint keeps it reading as photovoltaic glass.
 const solarCellMat = new THREE.MeshStandardMaterial({
-  color: 0x123a58,
+  color: BUILDING_PALETTE.photovoltaic,
   metalness: 1.0,
   roughness: 0.02,
   side: THREE.DoubleSide,
@@ -159,50 +167,43 @@ const solarCellMat = new THREE.MeshStandardMaterial({
   polygonOffsetUnits: -4,
 });
 const solarPetalBackMat = new THREE.MeshLambertMaterial({
-  color: 0x2b3036,
+  color: BUILDING_PALETTE.photovoltaicBack,
   side: THREE.DoubleSide,
 });
-const windTowerMat = new THREE.MeshLambertMaterial({ color: 0x33404d });
-const windTrimMat = new THREE.MeshLambertMaterial({ color: 0x172331 });
+const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
+const windTrimMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 const windNacelleMat = new THREE.MeshStandardMaterial({
-  color: 0xe7f0f8,
+  color: BUILDING_PALETTE.structureLight,
   metalness: 0.48,
   roughness: 0.16,
 });
 const windBladeMat = new THREE.MeshStandardMaterial({
-  color: 0xf7fbff,
+  color: 0xd5dfe7,
   metalness: 0.38,
   roughness: 0.14,
 });
 const windGlassMat = new THREE.MeshStandardMaterial({
-  color: 0x123a58,
+  color: BUILDING_PALETTE.photovoltaic,
   metalness: 1.0,
   roughness: 0.04,
 });
 const windGlowMat = new THREE.MeshBasicMaterial({
-  color: 0x73e8ff,
+  color: BUILDING_PALETTE.cyanGlow,
   transparent: true,
   opacity: 0.82,
   depthWrite: false,
 });
-const extractorDarkMat = new THREE.MeshLambertMaterial({ color: 0x20262d });
+const extractorDarkMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 const extractorBladeMat = new THREE.MeshStandardMaterial({
-  color: 0xcbd4dc,
+  color: BUILDING_PALETTE.structureLight,
   metalness: 0.78,
   roughness: 0.18,
 });
 const extractorGlowMat = new THREE.MeshBasicMaterial({
-  color: 0x6ff0ff,
+  color: BUILDING_PALETTE.cyanGlow,
   transparent: true,
   opacity: 0.62,
   depthWrite: false,
-});
-const extractorPulseMat = new THREE.MeshBasicMaterial({
-  color: 0xa8fbff,
-  transparent: true,
-  opacity: 0.42,
-  depthWrite: false,
-  side: THREE.DoubleSide,
 });
 const invisibleMat = new THREE.MeshBasicMaterial({
   color: 0x000000,
@@ -210,21 +211,21 @@ const invisibleMat = new THREE.MeshBasicMaterial({
   opacity: 0,
   depthWrite: false,
 });
-const factoryFrameMat = new THREE.MeshLambertMaterial({ color: 0x2c3038 });
+const factoryFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 const constructionGhostMat = new THREE.MeshLambertMaterial({
-  color: 0x8fdcff,
+  color: BUILDING_PALETTE.cyanGlass,
   transparent: true,
   opacity: 0.5,
   depthWrite: false,
 });
 const constructionCoreMat = new THREE.MeshBasicMaterial({
-  color: 0xffe08a,
+  color: BUILDING_PALETTE.constructionAmber,
   transparent: true,
   opacity: 0.8,
   depthWrite: false,
 });
 const constructionSparkMat = new THREE.MeshBasicMaterial({
-  color: 0xffffff,
+  color: BUILDING_PALETTE.constructionSpark,
   transparent: true,
   opacity: 0.85,
   depthWrite: false,
@@ -242,8 +243,8 @@ void main() {
 varying vec3 vLocal;
 void main() {
   float diagonal = fract((vLocal.x + vLocal.y * 0.72 + vLocal.z * 0.28) * 3.25);
-  vec3 yellow = vec3(1.0, 0.78, 0.04);
-  vec3 black = vec3(0.025, 0.022, 0.018);
+  vec3 yellow = vec3(0.89, 0.69, 0.18);
+  vec3 black = vec3(0.075, 0.105, 0.13);
   gl_FragColor = vec4(diagonal < 0.5 ? yellow : black, 1.0);
 }
 `,
@@ -279,85 +280,55 @@ export function buildBuildingShape(
   }
 }
 
-/** Metal extractor: squat armored pump with an active rotary extractor
- *  head. Low tiers keep the silhouette cheap; medium+ tiers add motion
- *  so completed deposits read as working metal harvesters. */
+/** Metal extractor: wide six-sided truncated pyramid with an active rotary
+ *  extractor head. Medium+ tiers add a sloped fan whose blades sweep
+ *  from the flat top down toward the deposit surface. */
 function buildExtractor(
   width: number,
   depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
   const minDim = Math.min(width, depth);
-  const baseHeight = Math.max(18, minDim * 0.48);
-  const base = new THREE.Mesh(hexCylinderGeom, primaryMat);
-  base.scale.set(1, baseHeight, 1);
-  base.position.y = baseHeight / 2;
+  const pyramidHeight = Math.min(EXTRACTOR_VISUAL_HEIGHT * 0.64, Math.max(28, minDim * 0.78));
+  const base = new THREE.Mesh(extractorPyramidGeom, primaryMat);
 
   const details: BuildingDetailMesh[] = [];
-  const shaftHeight = Math.max(26, Math.min(36, EXTRACTOR_VISUAL_HEIGHT - baseHeight - 24));
-  const shaftRadius = Math.max(5.8, minDim * 0.16);
-  const shaftTopY = baseHeight + shaftHeight;
+  const hubRadius = Math.max(5.5, minDim * 0.15);
+  const collarY = pyramidHeight - Math.max(1.8, minDim * 0.045);
+  const rotorY = Math.min(EXTRACTOR_VISUAL_HEIGHT - 6, pyramidHeight + Math.max(4, minDim * 0.1));
 
   details.push(detail(
-    makeCylinder(extractorDarkMat, Math.max(13, minDim * 0.38), 7, 0, baseHeight + 3.5, 0, hexCylinderGeom),
+    makeCylinder(extractorDarkMat, Math.max(22, minDim * 0.58), 5, 0, 2.5, 0, hexCylinderGeom),
     'low',
   ));
   details.push(detail(
-    makeCylinder(chimneyMat, shaftRadius, shaftHeight, 0, baseHeight + shaftHeight / 2, 0),
+    makeCylinder(factoryFrameMat, Math.max(15, minDim * 0.38), 4.5, 0, collarY, 0, hexCylinderGeom),
     'low',
   ));
   details.push(detail(
-    makeCylinder(factoryFrameMat, shaftRadius * 2.1, 6, 0, baseHeight + shaftHeight * 0.34, 0, hexCylinderGeom),
+    makeCylinder(chimneyMat, hubRadius * 1.05, Math.max(8, rotorY - collarY), 0, (collarY + rotorY) * 0.5, 0, hexCylinderGeom),
+    'low',
+  ));
+  details.push(detail(
+    makeCylinder(factoryFrameMat, hubRadius * 2.15, 4.2, 0, rotorY - 2.5, 0, hexCylinderGeom),
     'medium',
   ));
-  details.push(detail(
-    makeCylinder(factoryFrameMat, shaftRadius * 2.35, 6.5, 0, shaftTopY - 4, 0, hexCylinderGeom),
-    'low',
-  ));
 
-  const cap = makeSphere(primaryMat, shaftRadius * 1.55, 0, shaftTopY + shaftRadius * 0.25, 0);
+  const cap = makeSphere(primaryMat, hubRadius * 1.28, 0, rotorY, 0);
   details.push(detail(cap, 'low'));
 
-  const rotorY = shaftTopY + Math.max(5.5, shaftRadius * 0.82);
-  const bladeLen = Math.max(28, minDim * 0.92);
-  const bladeWidth = Math.max(5.5, minDim * 0.17);
-  const bladeThickness = Math.max(1.6, minDim * 0.04);
-  const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 4, rotorY, 0);
+  const bladeLen = Math.max(32, minDim * 1.02);
+  const bladeWidth = Math.max(10, minDim * 0.26);
+  const bladeThickness = Math.max(4.5, minDim * 0.11);
+  const bladeRootRadius = Math.max(hubRadius * 1.7, minDim * 0.34);
+  const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 4, rotorY, Math.PI / 4, bladeRootRadius);
   details.push(detail(rotor, 'medium', undefined, 'extractorRotor'));
-
-  const counterRotor = makeExtractorRotor(bladeLen * 0.72, bladeWidth * 0.78, bladeThickness, 3, rotorY - 5, Math.PI / 3);
-  details.push(detail(counterRotor, 'high', undefined, 'extractorCounterRotor'));
-
-  const ringRadius = Math.max(18, minDim * 0.48);
-  const pulse = new THREE.Mesh(extractorPulseGeom, extractorPulseMat);
-  pulse.rotation.x = Math.PI / 2;
-  pulse.position.set(0, rotorY + 1.5, 0);
-  pulse.scale.setScalar(ringRadius);
-  pulse.userData.baseScale = ringRadius;
-  details.push(detail(pulse, 'max', undefined, 'extractorPulse'));
-
-  for (let i = 0; i < 3; i++) {
-    const angle = (i / 3) * Math.PI * 2;
-    const x = Math.cos(angle) * minDim * 0.33;
-    const z = Math.sin(angle) * minDim * 0.33;
-    const conduit = makeBox(
-      extractorGlowMat,
-      Math.max(1.8, minDim * 0.048),
-      shaftHeight * 0.42,
-      Math.max(1.8, minDim * 0.048),
-      x,
-      baseHeight + shaftHeight * 0.43,
-      z,
-    );
-    conduit.rotation.y = -angle;
-    details.push(detail(conduit, 'high'));
-  }
 
   return {
     primary: base,
     details,
-    height: baseHeight,
-    extractorRig: { rotor, counterRotor, pulse },
+    height: pyramidHeight,
+    extractorRig: { rotor },
   };
 }
 
@@ -826,6 +797,48 @@ function createWindBladeGeometry(): THREE.BufferGeometry {
   return geom;
 }
 
+function createHexFrustumGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const bottomRadius = 0.82;
+  const topRadius = 0.28;
+  const bottomY = -0.5;
+  const topY = 0.5;
+  const bottomCorners: THREE.Vector3[] = [];
+  const topCorners: THREE.Vector3[] = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 6 + (i / 6) * Math.PI * 2;
+    bottomCorners.push(new THREE.Vector3(Math.cos(angle) * bottomRadius, bottomY, Math.sin(angle) * bottomRadius));
+    topCorners.push(new THREE.Vector3(Math.cos(angle) * topRadius, topY, Math.sin(angle) * topRadius));
+  }
+
+  for (let i = 0; i < 6; i++) {
+    const b0 = bottomCorners[i];
+    const b1 = bottomCorners[(i + 1) % 6];
+    const t0 = topCorners[i];
+    const t1 = topCorners[(i + 1) % 6];
+    positions.push(
+      b0.x, b0.y, b0.z, t1.x, t1.y, t1.z, b1.x, b1.y, b1.z,
+      b0.x, b0.y, b0.z, t0.x, t0.y, t0.z, t1.x, t1.y, t1.z,
+    );
+  }
+
+  const bottomCenter = new THREE.Vector3(0, bottomY, 0);
+  const topCenter = new THREE.Vector3(0, topY, 0);
+  for (let i = 0; i < 6; i++) {
+    const b0 = bottomCorners[(i + 1) % 6];
+    const b1 = bottomCorners[i];
+    positions.push(bottomCenter.x, bottomCenter.y, bottomCenter.z, b1.x, b1.y, b1.z, b0.x, b0.y, b0.z);
+    const t0 = topCorners[i];
+    const t1 = topCorners[(i + 1) % 6];
+    positions.push(topCenter.x, topCenter.y, topCenter.z, t1.x, t1.y, t1.z, t0.x, t0.y, t0.z);
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.computeVertexNormals();
+  return geom;
+}
+
 function makeTurbineBlade(
   material: THREE.Material,
   length: number,
@@ -839,49 +852,77 @@ function makeTurbineBlade(
   return mesh;
 }
 
+function applyBasis(mesh: THREE.Mesh, xAxis: THREE.Vector3, yAxis: THREE.Vector3, zAxis: THREE.Vector3): void {
+  const basis = new THREE.Matrix4();
+  basis.makeBasis(xAxis, yAxis, zAxis);
+  mesh.quaternion.setFromRotationMatrix(basis);
+}
+
 function makeExtractorRotor(
-  bladeLength: number,
+  bladeReach: number,
   bladeWidth: number,
   bladeThickness: number,
   bladeCount: number,
   y: number,
   angleOffset: number,
+  bladeRootRadius: number,
 ): THREE.Mesh {
   const rotor = new THREE.Mesh(cylinderGeom, invisibleMat);
   rotor.position.set(0, y, 0);
 
-  const hubRadius = Math.max(4, bladeWidth * 0.9);
-  const hub = makeCylinder(extractorDarkMat, hubRadius, bladeThickness * 2.4, 0, 0, 0, hexCylinderGeom);
+  const hubRadius = Math.max(4.5, bladeWidth * 0.68);
+  const hub = makeCylinder(extractorDarkMat, hubRadius, bladeThickness * 2.7, 0, 0, 0, hexCylinderGeom);
   rotor.add(hub);
 
-  const crown = makeSphere(extractorBladeMat, hubRadius * 0.68, 0, bladeThickness * 1.25, 0);
+  const crown = makeSphere(extractorBladeMat, hubRadius * 0.72, 0, bladeThickness * 1.45, 0);
   rotor.add(crown);
+
+  const groundClearance = Math.max(3.5, bladeThickness * 1.5);
+  const verticalDrop = Math.max(12, y - groundClearance);
+  const rootRadius = Math.max(0, Math.min(bladeRootRadius, Math.max(0, bladeReach - 16)));
+  const horizontalSpan = Math.max(16, Math.min(bladeReach - rootRadius, verticalDrop));
+  const bladeAxisLength = Math.hypot(horizontalSpan, verticalDrop);
 
   for (let i = 0; i < bladeCount; i++) {
     const angle = angleOffset + (i / bladeCount) * Math.PI * 2;
+    const radialDir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const tangentDir = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
+    const bladeDir = new THREE.Vector3(
+      radialDir.x * horizontalSpan,
+      -verticalDrop,
+      radialDir.z * horizontalSpan,
+    ).normalize();
+    const normalDir = new THREE.Vector3().crossVectors(tangentDir, bladeDir).normalize();
+    const centerRadius = rootRadius + horizontalSpan * 0.5;
+    const centerX = radialDir.x * centerRadius;
+    const centerY = -verticalDrop * 0.5;
+    const centerZ = radialDir.z * centerRadius;
+
     const blade = makeBox(
       extractorBladeMat,
-      bladeLength,
+      bladeAxisLength,
       bladeThickness,
       bladeWidth,
-      Math.cos(angle) * bladeLength * 0.52,
-      0,
-      Math.sin(angle) * bladeLength * 0.52,
+      centerX,
+      centerY,
+      centerZ,
     );
-    blade.rotation.y = -angle;
-    blade.rotation.z = 0.08;
+    applyBasis(blade, bladeDir, normalDir, tangentDir);
     rotor.add(blade);
 
+    const edgeCenterX = centerX + normalDir.x * bladeThickness * 0.56;
+    const edgeCenterY = centerY + normalDir.y * bladeThickness * 0.56;
+    const edgeCenterZ = centerZ + normalDir.z * bladeThickness * 0.56;
     const cuttingEdge = makeBox(
       extractorGlowMat,
-      bladeLength * 0.78,
-      bladeThickness * 0.35,
-      Math.max(0.8, bladeWidth * 0.18),
-      Math.cos(angle) * bladeLength * 0.58,
-      bladeThickness * 0.72,
-      Math.sin(angle) * bladeLength * 0.58,
+      bladeAxisLength * 0.72,
+      Math.max(1.2, bladeThickness * 0.18),
+      Math.max(1.2, bladeWidth * 0.16),
+      edgeCenterX,
+      edgeCenterY,
+      edgeCenterZ,
     );
-    cuttingEdge.rotation.y = -angle;
+    applyBasis(cuttingEdge, bladeDir, normalDir, tangentDir);
     rotor.add(cuttingEdge);
   }
 
@@ -1077,10 +1118,10 @@ export function disposeBuildingGeoms(): void {
   solarTrianglePetalGeom.dispose();
   cylinderGeom.dispose();
   hexCylinderGeom.dispose();
+  extractorPyramidGeom.dispose();
   factorySphereGeom.dispose();
   coneGeom.dispose();
   windBladeGeom.dispose();
-  extractorPulseGeom.dispose();
   constructionOrbGeom.dispose();
   chimneyMat.dispose();
   solarCellMat.dispose();
@@ -1094,7 +1135,6 @@ export function disposeBuildingGeoms(): void {
   extractorDarkMat.dispose();
   extractorBladeMat.dispose();
   extractorGlowMat.dispose();
-  extractorPulseMat.dispose();
   invisibleMat.dispose();
   factoryFrameMat.dispose();
   hazardStripeMat.dispose();

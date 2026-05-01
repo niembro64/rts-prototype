@@ -22,13 +22,11 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
-import { computeTurretPointVelocity, getEntityVelocity3, getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
-import { getTransformCosSin, solveBallisticPitch, computeInterceptTime, getBarrelTip, normalizeAngle } from '../../math';
+import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
+import { getTransformCosSin, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
-import {
-  TURRET_RETURN_TO_FORWARD,
-  GRAVITY,
-} from '../../../config';
+import { TURRET_RETURN_TO_FORWARD } from '../../../config';
+import { createDirectTurretAimScratch, createProjectileTurretAimScratch, solveDirectTurretAim, solveProjectileTurretAim } from './aimSolver';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
  *  renderer's pitch range and keeps the ballistic solver from driving
@@ -36,8 +34,8 @@ import {
 const PITCH_MIN = -Math.PI / 2;
 const PITCH_MAX = Math.PI / 2;
 const TURRET_MASK_MAX_INDEX = 30;
-const _targetVelocity = { x: 0, y: 0, z: 0 };
-const _muzzleVelocity = { x: 0, y: 0, z: 0 };
+const _directAim = createDirectTurretAimScratch();
+const _projectileAim = createProjectileTurretAimScratch();
 
 function turretMaskIncludes(mask: number | undefined, index: number): boolean {
   if (mask === undefined) return true;
@@ -73,6 +71,10 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         weapon.angularVelocity = 0;
         weapon.pitch = Math.PI / 2;
         weapon.pitchVelocity = 0;
+        weapon.aimTargetYaw = 0;
+        weapon.aimTargetPitch = Math.PI / 2;
+        weapon.aimErrorYaw = 0;
+        weapon.aimErrorPitch = 0;
         continue;
       }
 
@@ -108,38 +110,18 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
             mountZ = unitGroundZ + getTurretMountHeight(unit, weaponIndex);
           }
 
-          // Initial unleaded aim — used to bootstrap the barrel tip
-          // reference. The lead step below replaces this with a
-          // velocity-predicted intercept point.
-          targetAngle = Math.atan2(target.transform.y - weaponY, target.transform.x - weaponX);
-
-          // Ballistic arcs are solved from the actual muzzle TIP (not
-          // the turret mount) — otherwise shots would fire from a
-          // point one barrel-length farther back than the pitch was
-          // solved for, and every projectile would overshoot.
-          // Multi-barrel weapons use the stable cluster centerline, so
-          // aim no longer depends on the round-robin barrel index.
-          let tipRef = getBarrelTip(
-            weaponX, weaponY, mountZ,
-            targetAngle, weapon.pitch,
-            weapon.config,
-            unit.unit.unitRadiusCollider.scale,
-            0,
-          );
-
-          // Lead prediction: aim at where the target will be when the
-          // projectile arrives, in the moving turret's frame. That
-          // means the relative velocity is target velocity minus the
-          // turret's own muzzle velocity, not merely the carrier unit's
-          // velocity. For ballistic arcs we run a single refinement
-          // pass using horizontal projectile speed (launchSpeed ·
-          // cos(pitch)) because high arcs spend longer in flight.
           const shot = weapon.config.shot;
-          const targetVelocity = getEntityVelocity3(target, _targetVelocity);
-
-          let aimX = target.transform.x;
-          let aimY = target.transform.y;
-          let aimZ = target.transform.z;
+          const unitScale = unit.unit.unitRadiusCollider.scale;
+          const directAim = solveDirectTurretAim(
+            target,
+            weaponX, weaponY, mountZ,
+            weapon.pitch,
+            weapon.config,
+            unitScale,
+            _directAim,
+          );
+          targetAngle = directAim.yaw;
+          targetPitch = directAim.pitch;
 
           // Passive (mirror) turret aim — orient the reflector so the
           // enemy's beam bounces toward the chosen victim. All the
@@ -156,121 +138,27 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
             if (aim) {
               targetAngle = aim.targetAngle;
               mirrorPitchOverride = aim.mirrorPitch;
-              aimX = aim.aimX;
-              aimY = aim.aimY;
-              aimZ = aim.aimZ;
             }
           }
 
-          if (shot.type === 'projectile') {
-            const launchSpeed = shot.launchForce / shot.mass;
-            const muzzleVelocity = _muzzleVelocity;
-            if (world.projVelInherit) {
-              computeTurretPointVelocity(
-                weapon,
-                weaponX, weaponY, mountZ,
-                tipRef.x, tipRef.y, tipRef.z,
-                muzzleVelocity,
-              );
-            } else {
-              muzzleVelocity.x = 0;
-              muzzleVelocity.y = 0;
-              muzzleVelocity.z = 0;
-            }
-            const relVx = targetVelocity.x - muzzleVelocity.x;
-            const relVy = targetVelocity.y - muzzleVelocity.y;
-            const relVz = targetVelocity.z - muzzleVelocity.z;
-            const relMoves = (relVx * relVx + relVy * relVy + relVz * relVz) > 1e-6;
-
-            if (relMoves) {
-              const dxT = target.transform.x - tipRef.x;
-              const dyT = target.transform.y - tipRef.y;
-              const dzT = target.transform.z - tipRef.z;
-
-              // First pass — closed-form intercept assuming straight-
-              // line projectile speed in the turret's moving frame.
-              let tIntercept = computeInterceptTime(dxT, dyT, dzT, relVx, relVy, relVz, launchSpeed);
-
-              // Second pass — refine using the ballistic horizontal
-              // speed (gravity drag on the arc). Only meaningful for
-              // gravity-affected shots; ignoresGravity shots stay flat.
-              if (tIntercept > 0 && !shot.ignoresGravity) {
-                const px = target.transform.x + relVx * tIntercept;
-                const py = target.transform.y + relVy * tIntercept;
-                const pz = target.transform.z + relVz * tIntercept;
-                const horizD = Math.hypot(px - tipRef.x, py - tipRef.y);
-                const heightD = pz - tipRef.z;
-                const pitch0 = solveBallisticPitch(
-                  horizD, heightD, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
-                );
-                const horizSpeed = launchSpeed * Math.max(Math.cos(pitch0), 0.1);
-                const tRefined = computeInterceptTime(dxT, dyT, dzT, relVx, relVy, relVz, horizSpeed);
-                if (tRefined > 0) tIntercept = tRefined;
-              }
-
-              aimX = target.transform.x + relVx * tIntercept;
-              aimY = target.transform.y + relVy * tIntercept;
-              aimZ = target.transform.z + relVz * tIntercept;
-              targetAngle = Math.atan2(aimY - tipRef.y, aimX - tipRef.x);
-            }
-
-            // groundAimFraction: aim short of the lead-corrected
-            // target so the round lands on the ground at this
-            // fraction of the weapon→aim distance, then let the
-            // submunition bounce/spread carry the rest. Mortar uses
-            // this so its lightShots arc into the impact ring around
-            // the target instead of the carrier dropping directly on
-            // top. Applied after lead so the "aim point" we shorten
-            // is the predicted intercept, not the stale current pos.
-            const groundAimFraction = weapon.config.groundAimFraction;
-            const leadAimX = aimX;
-            const leadAimY = aimY;
-            if (groundAimFraction !== undefined && groundAimFraction > 0) {
-              const f = groundAimFraction;
-              aimX = tipRef.x + f * (aimX - tipRef.x);
-              aimY = tipRef.y + f * (aimY - tipRef.y);
-              aimZ = 0;
-            }
-
-            targetAngle = Math.atan2(aimY - tipRef.y, aimX - tipRef.x);
-            tipRef = getBarrelTip(
+          if (shot.type === 'projectile' && !weapon.config.passive) {
+            // Ballistic arcs are solved from the actual muzzle TIP and
+            // from a collider-aware 3D target point. Lead prediction is
+            // relative to the turret's own muzzle velocity, not just
+            // the carrier unit velocity, and gravity comes from the
+            // shared config constant inside aimSolver.
+            const solved = solveProjectileTurretAim(
+              weapon,
+              target,
               weaponX, weaponY, mountZ,
-              targetAngle, weapon.pitch,
-              weapon.config,
-              unit.unit.unitRadiusCollider.scale,
-              0,
+              weapon.pitch,
+              unitScale,
+              world.projVelInherit,
+              (x, y) => world.getGroundZ(x, y),
+              _projectileAim,
             );
-            if (groundAimFraction !== undefined && groundAimFraction > 0) {
-              const f = groundAimFraction;
-              aimX = tipRef.x + f * (leadAimX - tipRef.x);
-              aimY = tipRef.y + f * (leadAimY - tipRef.y);
-              targetAngle = Math.atan2(aimY - tipRef.y, aimX - tipRef.x);
-              tipRef = getBarrelTip(
-                weaponX, weaponY, mountZ,
-                targetAngle, weapon.pitch,
-                weapon.config,
-                unit.unit.unitRadiusCollider.scale,
-                0,
-              );
-            }
-            const horizDist = Math.hypot(aimX - tipRef.x, aimY - tipRef.y);
-            const heightDiff = aimZ - tipRef.z;
-            targetPitch = solveBallisticPitch(
-              horizDist, heightDiff, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
-            );
-          } else {
-            // Beam / laser / force — direct aim, no ballistic drop.
-            targetAngle = Math.atan2(aimY - tipRef.y, aimX - tipRef.x);
-            tipRef = getBarrelTip(
-              weaponX, weaponY, mountZ,
-              targetAngle, weapon.pitch,
-              weapon.config,
-              unit.unit.unitRadiusCollider.scale,
-              0,
-            );
-            const horizDist = Math.hypot(aimX - tipRef.x, aimY - tipRef.y);
-            const heightDiff = aimZ - tipRef.z;
-            targetPitch = Math.atan2(heightDiff, horizDist);
+            targetAngle = solved.yaw;
+            targetPitch = solved.pitch;
           }
           // Mirror turrets pivot at the panel center, not the turret
           // mount — override with the panel-aware pitch computed above
@@ -307,20 +195,26 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
 
       // Yaw — use normalized angle difference so we always turn the
       // short way around and don't blow up near ±π.
-      const yawDiff = normalizeAngle(targetAngle! - weapon.rotation);
+      const aimTargetYaw = targetAngle!;
+      const aimTargetPitch = targetPitch;
+      const yawDiff = normalizeAngle(aimTargetYaw - weapon.rotation);
       const yawAccel = yawDiff * k - weapon.angularVelocity * c;
       weapon.angularVelocity += yawAccel * dtSec;
       weapon.rotation = normalizeAngle(weapon.rotation + weapon.angularVelocity * dtSec);
 
       // Pitch — straight difference; clamp the integrated pitch so
       // the barrel doesn't rotate past vertical.
-      const pitchDiff = targetPitch - weapon.pitch;
+      const pitchDiff = aimTargetPitch - weapon.pitch;
       const pitchAccel = pitchDiff * k - weapon.pitchVelocity * c;
       weapon.pitchVelocity += pitchAccel * dtSec;
       let newPitch = weapon.pitch + weapon.pitchVelocity * dtSec;
       if (newPitch < PITCH_MIN) { newPitch = PITCH_MIN; weapon.pitchVelocity = 0; }
       else if (newPitch > PITCH_MAX) { newPitch = PITCH_MAX; weapon.pitchVelocity = 0; }
       weapon.pitch = newPitch;
+      weapon.aimTargetYaw = aimTargetYaw;
+      weapon.aimTargetPitch = aimTargetPitch;
+      weapon.aimErrorYaw = normalizeAngle(aimTargetYaw - weapon.rotation);
+      weapon.aimErrorPitch = aimTargetPitch - weapon.pitch;
     }
   }
 }
