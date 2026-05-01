@@ -135,45 +135,39 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   //   MAX  — full joints, barrel spin, trails, inferno explosions (~50 draws/unit)
   // -------------------------------------------------------------------------
 
-  // Unit renderer policy. These are client-LOD decisions, not local
-  // renderer constants:
-  //   mass   — every unit is a cheap instanced body
-  //   hybrid — all units get a cheap instance; selected/commander and
-  //            large-on-screen units also get capped rich meshes
-  //   rich   — all in-scope units use rich meshes
+  // Unit renderer policy. Object design LOD is now driven by the
+  // camera-shell resolver, so every global tier keeps the hybrid path:
+  // all units get the cheap packed body, while units inside the rich
+  // / simple camera spheres get their ring-appropriate detail mesh.
   UNIT_RENDER_MODE: {
-    min: 'mass',
+    min: 'hybrid',
     low: 'hybrid',
     medium: 'hybrid',
     high: 'hybrid',
     max: 'hybrid',
   },
-  RICH_UNIT_CAP: {
-    min: 0,
-    low: 96,
-    medium: 192,
-    high: 384,
-    max: 512,
+  // Object-level view LOD. The configured value is the literal 3D radius
+  // of the innermost camera-centered sphere. Ground markings are the
+  // terrain intersections of those spheres, so their footprints shrink
+  // and expand naturally as camera altitude changes. Object size is
+  // intentionally ignored so detail is regular and controlled by one
+  // set of concentric fidelity shells.
+  RICH_OBJECT_DISTANCE: {
+    min: 180,
+    low: 260,
+    medium: 380,
+    high: 500,
+    max: 600,
   },
-  // Object-level view LOD. This is intentionally separate from the
-  // global AUTO quality tier: zoom/camera distance should decide
-  // which individual units get rich meshes, not downgrade the whole
-  // renderer when the player pulls back for a strategic view.
-  // Threshold is the MINIMUM on-screen radius (px) below which a
-  // unit drops from rich body geometry to an instanced sphere. The
-  // bar is set low so units only collapse to spheres when they're
-  // genuinely a few pixels across — pulling the camera back to a
-  // moderate strategic view shouldn't strip body details out from
-  // under the player. The cap on rich-unit count (RICH_UNIT_CAP)
-  // is the hard ceiling on per-frame load; lowering this threshold
-  // doesn't grow that load past the cap, just changes WHICH units
-  // earn the rich slot when more qualify than the cap allows.
-  RICH_UNIT_SCREEN_RADIUS_PX: {
-    min: Number.POSITIVE_INFINITY,
-    low: 6,
-    medium: 4,
-    high: 2.5,
-    max: 1.5,
+  // Full 3D render LOD grid cell size. Units, buildings, and deposits
+  // inherit the LOD tier of the grid cell containing their origin; item
+  // size and projected screen size are intentionally ignored.
+  OBJECT_LOD_CELL_SIZE: {
+    min: 160,
+    low: 144,
+    medium: 128,
+    high: 112,
+    max: 96,
   },
   HUD_FRAME_STRIDE: {
     min: 4,
@@ -377,10 +371,10 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
 
   // Beam path collision recomputation — frames to skip between beam path traces
   BEAM_PATH_FRAMES_SKIP: {
-    min: 0,
-    low: 0,
-    medium: 0,
-    high: 0,
+    min: 15,
+    low: 11,
+    medium: 7,
+    high: 3,
     max: 0,
   },
 

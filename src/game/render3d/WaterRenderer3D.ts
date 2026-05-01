@@ -7,14 +7,14 @@
 
 import * as THREE from 'three';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getTerrainHeight, WATER_LEVEL } from '../sim/Terrain';
+import { getTerrainHeight, TERRAIN_MESH_SUBDIV, WATER_LEVEL } from '../sim/Terrain';
 import type { GraphicsConfig } from '@/types/graphics';
 
 const WAVE_LAMBDA_X = 240;
 const WAVE_LAMBDA_Z = 320;
 const WAVE_OMEGA_X = 0.6;
 const WAVE_OMEGA_Z = 0.45;
-const WATER_COLOR = 0x3a82c4;
+const WATER_COLOR = 0x4aa3df;
 
 export class WaterRenderer3D {
   private mesh: THREE.Mesh;
@@ -33,6 +33,7 @@ export class WaterRenderer3D {
     this.geometry = new THREE.BufferGeometry();
     this.material = new THREE.MeshLambertMaterial({
       color: WATER_COLOR,
+      emissive: 0x071a2a,
       transparent: true,
       opacity: 0.55,
       depthWrite: false,
@@ -65,6 +66,7 @@ export class WaterRenderer3D {
     };
 
     this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.mesh.renderOrder = 3;
     parent.add(this.mesh);
   }
 
@@ -74,15 +76,32 @@ export class WaterRenderer3D {
   }
 
   private isWaterCell(x0: number, z0: number, x1: number, z1: number): boolean {
-    const cx = (x0 + x1) * 0.5;
-    const cz = (z0 + z1) * 0.5;
-    return (
-      getTerrainHeight(cx, cz, this.mapWidth, this.mapHeight) < WATER_LEVEL ||
-      getTerrainHeight(x0, z0, this.mapWidth, this.mapHeight) < WATER_LEVEL ||
-      getTerrainHeight(x1, z0, this.mapWidth, this.mapHeight) < WATER_LEVEL ||
-      getTerrainHeight(x1, z1, this.mapWidth, this.mapHeight) < WATER_LEVEL ||
-      getTerrainHeight(x0, z1, this.mapWidth, this.mapHeight) < WATER_LEVEL
-    );
+    // Match the terrain mesh's own sample lattice. The old optimized path
+    // checked only corners + center, which can miss water when a subdivided
+    // terrain vertex dips below WATER_LEVEL inside an otherwise dry cell.
+    for (let iz = 0; iz <= TERRAIN_MESH_SUBDIV; iz++) {
+      const z = z0 + ((z1 - z0) * iz) / TERRAIN_MESH_SUBDIV;
+      for (let ix = 0; ix <= TERRAIN_MESH_SUBDIV; ix++) {
+        const x = x0 + ((x1 - x0) * ix) / TERRAIN_MESH_SUBDIV;
+        if (getTerrainHeight(x, z, this.mapWidth, this.mapHeight) < WATER_LEVEL) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private hasWetNeighbor(wetCells: Uint8Array, cellsX: number, cellsY: number, cx: number, cy: number): boolean {
+    for (let oy = -1; oy <= 1; oy++) {
+      const y = cy + oy;
+      if (y < 0 || y >= cellsY) continue;
+      for (let ox = -1; ox <= 1; ox++) {
+        const x = cx + ox;
+        if (x < 0 || x >= cellsX) continue;
+        if (wetCells[y * cellsX + x] !== 0) return true;
+      }
+    }
+    return false;
   }
 
   private rebuildGeometryIfNeeded(globalSubdivisions: number): void {
@@ -93,6 +112,7 @@ export class WaterRenderer3D {
     const cellsX = Math.max(1, Math.ceil(this.mapWidth / SPATIAL_GRID_CELL_SIZE));
     const cellsY = Math.max(1, Math.ceil(this.mapHeight / SPATIAL_GRID_CELL_SIZE));
     const waterCells: Array<{ x0: number; z0: number; x1: number; z1: number }> = [];
+    const wetCells = new Uint8Array(cellsX * cellsY);
 
     for (let cy = 0; cy < cellsY; cy++) {
       const z0 = cy * SPATIAL_GRID_CELL_SIZE;
@@ -100,7 +120,18 @@ export class WaterRenderer3D {
       for (let cx = 0; cx < cellsX; cx++) {
         const x0 = cx * SPATIAL_GRID_CELL_SIZE;
         const x1 = Math.min(this.mapWidth, x0 + SPATIAL_GRID_CELL_SIZE);
-        if (this.isWaterCell(x0, z0, x1, z1)) waterCells.push({ x0, z0, x1, z1 });
+        if (this.isWaterCell(x0, z0, x1, z1)) wetCells[cy * cellsX + cx] = 1;
+      }
+    }
+
+    for (let cy = 0; cy < cellsY; cy++) {
+      const z0 = cy * SPATIAL_GRID_CELL_SIZE;
+      const z1 = Math.min(this.mapHeight, z0 + SPATIAL_GRID_CELL_SIZE);
+      for (let cx = 0; cx < cellsX; cx++) {
+        if (!this.hasWetNeighbor(wetCells, cellsX, cellsY, cx, cy)) continue;
+        const x0 = cx * SPATIAL_GRID_CELL_SIZE;
+        const x1 = Math.min(this.mapWidth, x0 + SPATIAL_GRID_CELL_SIZE);
+        waterCells.push({ x0, z0, x1, z1 });
       }
     }
 

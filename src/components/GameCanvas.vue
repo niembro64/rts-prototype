@@ -135,6 +135,8 @@ import {
   setAudioSmoothing,
   getBurnMarks,
   setBurnMarks,
+  getLodShellRings,
+  setLodShellRings,
   getDriftMode,
   setDriftMode,
   getSoundToggle,
@@ -345,6 +347,7 @@ const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
 const audioSmoothing = ref<boolean>(getAudioSmoothing());
 const burnMarks = ref<boolean>(getBurnMarks());
+const lodShellRings = ref<boolean>(getLodShellRings());
 const driftMode = ref<DriftMode>(getDriftMode());
 const edgeScrollEnabled = ref(getEdgeScrollEnabled());
 const dragPanEnabled = ref(getDragPanEnabled());
@@ -1116,6 +1119,8 @@ function resetClientDefaults(): void {
   audioSmoothing.value = cd.audioSmoothing.default;
   setBurnMarks(cd.burnMarks.default);
   burnMarks.value = cd.burnMarks.default;
+  setLodShellRings(cd.lodShellRings.default);
+  lodShellRings.value = cd.lodShellRings.default;
   setDriftMode(cd.driftMode.default);
   driftMode.value = cd.driftMode.default;
   if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();
@@ -1447,6 +1452,12 @@ function toggleBurnMarks(): void {
   const newValue = !burnMarks.value;
   setBurnMarks(newValue);
   burnMarks.value = newValue;
+}
+
+function toggleLodShellRings(): void {
+  const newValue = !lodShellRings.value;
+  setLodShellRings(newValue);
+  lodShellRings.value = newValue;
 }
 
 function changeDriftMode(mode: DriftMode): void {
@@ -2849,6 +2860,11 @@ onUnmounted(() => {
                 @click="changeGraphicsQuality(opt.value)"
               >{{ opt.label }}</BarButton>
             </BarButtonGroup>
+            <BarButton
+              :active="lodShellRings"
+              title="Show object-LOD shell intersections on the terrain around the camera"
+              @click="toggleLodShellRings"
+            >RINGS</BarButton>
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />

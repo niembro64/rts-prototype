@@ -44,6 +44,7 @@ export type ClientBarConfig = {
   readonly audio: LabeledOptionsConfig<Exclude<AudioScope, 'off'>>;
   readonly audioSmoothing: BooleanSetting;
   readonly burnMarks: BooleanSetting;
+  readonly lodShellRings: BooleanSetting;
   readonly driftMode: DefaultSetting<DriftMode>;
   readonly legsRadius: BooleanSetting;
   readonly cameraSmooth: LabeledOptionsConfig<CameraSmoothMode>;

@@ -30,6 +30,8 @@ import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConf
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
+import { LodShellGround3D } from '../render3d/LodShellGround3D';
+import { getRenderObjectLodShellDistances } from '../render3d/RenderObjectLod';
 
 /** Same color the per-mesh leg path used. Single uniform value
  *  across the whole shared pool — legs aren't team-tinted. */
@@ -49,6 +51,7 @@ import {
   getAudioSmoothing,
   getCameraSmoothMode,
   getGraphicsConfig,
+  getLodShellRings,
   setCurrentZoom,
   getGridOverlay,
   getGridOverlayIntensity,
@@ -213,6 +216,7 @@ export class RtsScene3D {
   private currentDGunActive = false;
   private healthBar3D: HealthBar3D | null = null;
   private waypoint3D: Waypoint3D | null = null;
+  private lodShellGround3D: LodShellGround3D | null = null;
   private selectionLabel3D: SelectionLabel3D | null = null;
 
   // Camera frustum cached once per frame and shared with the HUD
@@ -679,6 +683,12 @@ export class RtsScene3D {
         this.mapWidth, this.mapHeight,
         (id) => this.clientViewState.getEntity(id),
       );
+      this.lodShellGround3D = new LodShellGround3D(
+        this.threeApp.world,
+        this.mapWidth,
+        this.mapHeight,
+        (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
+      );
     }
 
     // Wire raycast-based selection + move commands. The shared
@@ -838,8 +848,21 @@ export class RtsScene3D {
 
     this.rebuildSelectedEntityCachesIfNeeded();
 
-    // Dead-reckon + drift every frame so units animate between snapshots
-    this.clientViewState.applyPrediction(delta);
+    // Dead-reckon + drift by the same camera-sphere cells that drive
+    // render object LOD. Near entities predict every frame; far cells
+    // update on sparse staggered strides.
+    const predictionGraphicsConfig = getGraphicsConfig();
+    const predictionLodShells = getRenderObjectLodShellDistances(predictionGraphicsConfig);
+    this.clientViewState.applyPrediction(delta, {
+      cameraX: this.threeApp.camera.position.x,
+      cameraY: this.threeApp.camera.position.y,
+      cameraZ: this.threeApp.camera.position.z,
+      richDistance: predictionLodShells.rich,
+      simpleDistance: predictionLodShells.simple,
+      massDistance: predictionLodShells.mass,
+      impostorDistance: predictionLodShells.impostor,
+      cellSize: predictionGraphicsConfig.objectLodCellSize,
+    });
 
     // Invalidate per-player entity caches (rebuilt lazily by adapter)
     this._cachedPlayerIdForUnits = -1 as PlayerId;
@@ -876,7 +899,22 @@ export class RtsScene3D {
     // Render3DEntities for per-object rich mesh selection instead.
     setCurrentZoom(this.cameras.main.zoom);
     const graphicsConfig = getGraphicsConfig();
-    this.metalDepositRenderer?.update(graphicsConfig.tier);
+    const lodShells = getRenderObjectLodShellDistances(graphicsConfig);
+    this.lodShellGround3D?.update(
+      this.threeApp.camera,
+      [
+        { tier: 'rich', distance: lodShells.rich },
+        { tier: 'simple', distance: lodShells.simple },
+        { tier: 'mass', distance: lodShells.mass },
+        { tier: 'impostor', distance: lodShells.impostor },
+      ],
+      getLodShellRings(),
+    );
+    this.metalDepositRenderer?.update(
+      graphicsConfig,
+      this.threeApp.camera,
+      this.threeApp.renderer.domElement.clientHeight,
+    );
     const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
@@ -1711,6 +1749,8 @@ export class RtsScene3D {
     this.healthBar3D = null;
     this.waypoint3D?.destroy();
     this.waypoint3D = null;
+    this.lodShellGround3D?.destroy();
+    this.lodShellGround3D = null;
     this.selectionLabel3D?.destroy();
     this.selectionLabel3D = null;
     this.entityRenderer?.destroy();

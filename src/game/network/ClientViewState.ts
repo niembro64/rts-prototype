@@ -168,6 +168,32 @@ function createServerTarget(): ServerTarget {
   return { x: 0, y: 0, z: 0, rotation: 0, velocityX: 0, velocityY: 0, velocityZ: 0, turrets: [] };
 }
 
+export type PredictionLodTier = 'rich' | 'simple' | 'mass' | 'impostor' | 'hidden';
+
+export type PredictionLodContext = {
+  /** Three.js/world camera x. */
+  cameraX: number;
+  /** Three.js/world camera height. */
+  cameraY: number;
+  /** Three.js/world camera z, equivalent to sim y. */
+  cameraZ: number;
+  richDistance: number;
+  simpleDistance: number;
+  massDistance: number;
+  impostorDistance: number;
+  cellSize: number;
+};
+
+type PredictionLodCellRecord = {
+  frameId: number;
+  tier: PredictionLodTier;
+};
+
+type PredictionStep = {
+  entityDeltaMs: number;
+  targetDeltaMs: number;
+};
+
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
   private entities: Map<EntityId, Entity> = new Map();
@@ -219,6 +245,14 @@ export class ClientViewState {
   // Frame counter for beam path throttling (recompute every N frames instead of every frame)
   private frameCounter: number = 0;
 
+  // Client prediction is LOD-stepped by the same camera-centered 3D
+  // cells used by rendering. Far entities accumulate elapsed time and
+  // run less often instead of paying turret/projectile/beam prediction
+  // cost every browser frame.
+  private predictionAccumMs: Map<EntityId, number> = new Map();
+  private targetPredictionAccumMs: Map<EntityId, number> = new Map();
+  private predictionLodCells: Map<number, Map<number, Map<number, PredictionLodCellRecord>>> = new Map();
+
   // Per-frame cache of living enemy entities, built lazily the first
   // time a rocket needs to re-acquire this frame. Subsequent rockets
   // losing target in the same frame share the same scan result — so
@@ -253,6 +287,14 @@ export class ClientViewState {
     this.cache.invalidate();
   }
 
+  private deleteEntityLocalState(id: EntityId): void {
+    this.entities.delete(id);
+    this.serverTargets.delete(id);
+    this.selectedIds.delete(id);
+    this.predictionAccumMs.delete(id);
+    this.targetPredictionAccumMs.delete(id);
+  }
+
   private rebuildCachesIfNeeded(): void {
     this.cache.rebuildIfNeeded(this.entities);
   }
@@ -272,6 +314,11 @@ export class ClientViewState {
         target = createServerTarget();
         this.serverTargets.set(netEntity.id, target);
       }
+      // A fresh server target supersedes any sparse-prediction time
+      // accumulated before this snapshot. Otherwise far entities can
+      // extrapolate the newest target by time that already belonged
+      // to an older target and visibly overshoot.
+      this.targetPredictionAccumMs.delete(netEntity.id);
       const cf = netEntity.changedFields;
       const isFull = cf == null;
       if (isFull || cf! & ENTITY_CHANGED_POS) {
@@ -347,9 +394,7 @@ export class ClientViewState {
       // Delta snapshot: only remove entities explicitly listed in removedEntityIds
       if (state.removedEntityIds) {
         for (const id of state.removedEntityIds) {
-          this.entities.delete(id);
-          this.serverTargets.delete(id);
-          this.selectedIds.delete(id);
+          this.deleteEntityLocalState(id);
         }
       }
     } else {
@@ -361,9 +406,7 @@ export class ClientViewState {
       for (const [id, entity] of this.entities) {
         if (entity.type === 'shot') continue;
         if (!this._serverIds.has(id)) {
-          this.entities.delete(id);
-          this.serverTargets.delete(id);
-          this.selectedIds.delete(id);
+          this.deleteEntityLocalState(id);
         }
       }
     }
@@ -383,8 +426,7 @@ export class ClientViewState {
     // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
     if (state.projectiles?.despawns) {
       for (const despawn of state.projectiles.despawns) {
-        this.entities.delete(despawn.id);
-        this.serverTargets.delete(despawn.id);
+        this.deleteEntityLocalState(despawn.id);
       }
     }
 
@@ -405,6 +447,7 @@ export class ClientViewState {
           target.velocityX = vu.velocity.x;
           target.velocityZ = vu.velocity.z;
           target.velocityY = vu.velocity.y;
+          this.targetPredictionAccumMs.delete(vu.id);
         }
       }
     }
@@ -641,30 +684,191 @@ export class ClientViewState {
     // Projectiles are no longer in server snapshots — handled via spawn/despawn events
   }
 
+  private resolvePredictionLodTier(
+    entity: Entity,
+    lod: PredictionLodContext | undefined,
+  ): PredictionLodTier {
+    if (!lod) return 'rich';
+
+    const size = Math.max(16, lod.cellSize);
+    // Sim coordinates are x/y on the ground plane and z for height.
+    // Three.js uses x/z for the ground plane and y for height, so
+    // classify the same 3D cell that the renderer uses.
+    const ix = Math.floor(entity.transform.x / size);
+    const iy = Math.floor(entity.transform.z / size);
+    const iz = Math.floor(entity.transform.y / size);
+    const cached = this.getPredictionLodCell(ix, iy, iz);
+    if (cached?.frameId === this.frameCounter) return cached.tier;
+
+    const cellX = (ix + 0.5) * size;
+    const cellY = (iy + 0.5) * size;
+    const cellZ = (iz + 0.5) * size;
+    const dx = cellX - lod.cameraX;
+    const dy = cellY - lod.cameraY;
+    const dz = cellZ - lod.cameraZ;
+    const tier = this.resolvePredictionLodTierForDistanceSq(
+      dx * dx + dy * dy + dz * dz,
+      lod,
+    );
+    this.setPredictionLodCell(ix, iy, iz, { frameId: this.frameCounter, tier });
+    return tier;
+  }
+
+  private resolvePredictionLodTierForDistanceSq(
+    distanceSq: number,
+    lod: PredictionLodContext,
+  ): PredictionLodTier {
+    const rich = Math.max(0, lod.richDistance);
+    const simple = Math.max(0, lod.simpleDistance);
+    const mass = Math.max(0, lod.massDistance);
+    const impostor = Math.max(0, lod.impostorDistance);
+    if (rich > 0 && distanceSq <= rich * rich) return 'rich';
+    if (simple > 0 && distanceSq <= simple * simple) return 'simple';
+    if (mass > 0 && distanceSq <= mass * mass) return 'mass';
+    if (impostor > 0 && distanceSq <= impostor * impostor) return 'impostor';
+    return 'hidden';
+  }
+
+  private getPredictionLodCell(
+    ix: number,
+    iy: number,
+    iz: number,
+  ): PredictionLodCellRecord | undefined {
+    return this.predictionLodCells.get(ix)?.get(iy)?.get(iz);
+  }
+
+  private setPredictionLodCell(
+    ix: number,
+    iy: number,
+    iz: number,
+    record: PredictionLodCellRecord,
+  ): void {
+    let yCells = this.predictionLodCells.get(ix);
+    if (!yCells) {
+      yCells = new Map();
+      this.predictionLodCells.set(ix, yCells);
+    }
+    let zCells = yCells.get(iy);
+    if (!zCells) {
+      zCells = new Map();
+      yCells.set(iy, zCells);
+    }
+    zCells.set(iz, record);
+  }
+
+  private pruneStalePredictionLodCells(): void {
+    const frameId = this.frameCounter;
+    for (const [ix, yCells] of this.predictionLodCells) {
+      for (const [iy, zCells] of yCells) {
+        for (const [iz, cell] of zCells) {
+          if (cell.frameId !== frameId) zCells.delete(iz);
+        }
+        if (zCells.size === 0) yCells.delete(iy);
+      }
+      if (yCells.size === 0) this.predictionLodCells.delete(ix);
+    }
+  }
+
+  private predictionFrameStrideForTier(
+    tier: PredictionLodTier,
+    entity: Entity,
+  ): number {
+    if (entity.selectable?.selected === true) return 1;
+    if (
+      entity.projectile &&
+      this.entities.get(entity.projectile.sourceEntityId)?.selectable?.selected === true
+    ) {
+      return 1;
+    }
+    switch (tier) {
+      case 'rich': return 1;
+      case 'simple': return 2;
+      case 'mass': return 4;
+      case 'impostor': return 8;
+      case 'hidden': return 16;
+    }
+  }
+
+  private beamPathFrameStrideForTier(tier: PredictionLodTier): number {
+    switch (tier) {
+      case 'rich': return 1;
+      case 'simple': return 2;
+      case 'mass': return 4;
+      case 'impostor': return 8;
+      case 'hidden': return 16;
+    }
+  }
+
+  private consumePredictionDeltaMs(
+    entity: Entity,
+    deltaMs: number,
+    stride: number,
+  ): PredictionStep | null {
+    if (stride <= 1) {
+      this.predictionAccumMs.delete(entity.id);
+      this.targetPredictionAccumMs.delete(entity.id);
+      return { entityDeltaMs: deltaMs, targetDeltaMs: deltaMs };
+    }
+
+    const accumulatedMs = Math.min(
+      (this.predictionAccumMs.get(entity.id) ?? 0) + deltaMs,
+      250,
+    );
+    const targetAccumulatedMs = Math.min(
+      (this.targetPredictionAccumMs.get(entity.id) ?? 0) + deltaMs,
+      250,
+    );
+    if ((this.frameCounter + entity.id) % stride !== 0) {
+      this.predictionAccumMs.set(entity.id, accumulatedMs);
+      this.targetPredictionAccumMs.set(entity.id, targetAccumulatedMs);
+      return null;
+    }
+
+    this.predictionAccumMs.delete(entity.id);
+    this.targetPredictionAccumMs.delete(entity.id);
+    return {
+      entityDeltaMs: accumulatedMs,
+      targetDeltaMs: targetAccumulatedMs,
+    };
+  }
+
   /**
    * Called every frame. Two steps:
    * 1. Dead-reckon: advance positions using velocity
    * 2. Drift: EMA blend position/velocity/rotation toward server targets
    */
-  applyPrediction(deltaMs: number): void {
-    const dt = deltaMs / 1000;
-    this.frameCounter++;
+  applyPrediction(deltaMs: number, lod?: PredictionLodContext): void {
+    this.frameCounter = (this.frameCounter + 1) & 0x3fffffff;
+    if (this.frameCounter === 0) {
+      this.frameCounter = 1;
+      this.predictionLodCells.clear();
+    }
+    if ((this.frameCounter & 63) === 0) this.pruneStalePredictionLodCells();
 
     // Ensure caches are fresh for beam obstruction checks
     this.rebuildCachesIfNeeded();
 
     // Frame-rate independent blend factors (driven by drift mode half-lives)
     const preset = DRIFT_PRESETS[getDriftMode()];
-    const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
-    const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
-    const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
-    const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
+    const beamGraphicsFrameStride = getGraphicsConfig().beamPathFramesSkip + 1;
 
     // Collect active force fields for client-side projectile prediction.
     // The backing objects stay pooled at the session high-water mark.
     _forceFieldCount = 0;
 
     for (const entity of this.entities.values()) {
+      const predictionTier = this.resolvePredictionLodTier(entity, lod);
+      const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity);
+      const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
+      if (predictionStep === null) continue;
+
+      const entityDeltaMs = predictionStep.entityDeltaMs;
+      const dt = entityDeltaMs / 1000;
+      const targetDt = predictionStep.targetDeltaMs / 1000;
+      const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
+      const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
+      const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
+      const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
       const target = this.serverTargets.get(entity.id);
 
       if (entity.type === 'unit' && entity.unit) {
@@ -672,9 +876,9 @@ export class ClientViewState {
           // Advance server target using its velocity (so drift target
           // isn't stale). All three axes — z updates matter for
           // airborne units (explosion knockback, falling off ledges).
-          target.x += target.velocityX * dt;
-          target.y += target.velocityY * dt;
-          target.z += target.velocityZ * dt;
+          target.x += target.velocityX * targetDt;
+          target.y += target.velocityY * targetDt;
+          target.z += target.velocityZ * targetDt;
         }
 
         // Step 1: Dead-reckon entity using current velocity (full 3D).
@@ -716,7 +920,7 @@ export class ClientViewState {
             const tw = target?.turrets?.[i];
             if (tw) {
               // Advance turret target rotation using its angular velocity
-              tw.rotation += tw.angularVelocity * dt;
+              tw.rotation += tw.angularVelocity * targetDt;
 
               weapon.rotation = lerpAngle(
                 weapon.rotation,
@@ -841,12 +1045,21 @@ export class ClientViewState {
             entity.transform.z = startZ;
             entity.transform.rotation = turretAngle;
 
-            // Throttle beam path recomputation (client has no spatial grid — full O(N) scan)
-            const beamSkip = getGraphicsConfig().beamPathFramesSkip;
+            // Throttle beam path recomputation by graphics tier AND
+            // camera-sphere prediction tier. The client resolver is a
+            // broad entity scan, so far beams should reuse their last
+            // authoritative/predicted segment for several frames.
+            const sourceTier = source.selectable?.selected === true
+              ? 'rich'
+              : this.resolvePredictionLodTier(source, lod);
+            const beamFrameStride = Math.max(
+              beamGraphicsFrameStride,
+              this.beamPathFrameStrideForTier(sourceTier),
+            );
             if (
               entity.projectile.endX === undefined ||
-              beamSkip === 0 ||
-              this.frameCounter % (beamSkip + 1) === 0
+              beamFrameStride <= 1 ||
+              this.frameCounter % beamFrameStride === 0
             ) {
               const beamPath = findBeamPath(
                 this.cache,
@@ -865,8 +1078,7 @@ export class ClientViewState {
             }
           } else {
             // Source unit gone or weapon stopped firing — remove beam
-            this.entities.delete(entity.id);
-            this.serverTargets.delete(entity.id);
+            this.deleteEntityLocalState(entity.id);
           }
         } else {
           // Homing steering — 3D velocity rotation toward the target,
@@ -964,11 +1176,11 @@ export class ClientViewState {
             const targetShotCfg = entity.projectile.config.shot;
             const targetIgnoresGravity = targetShotCfg.type === 'projectile' && targetShotCfg.ignoresGravity === true;
             if (!targetIgnoresGravity) {
-              target.velocityZ -= GRAVITY * dt;
+              target.velocityZ -= GRAVITY * targetDt;
             }
-            target.x += target.velocityX * dt;
-            target.y += target.velocityY * dt;
-            target.z += target.velocityZ * dt;
+            target.x += target.velocityX * targetDt;
+            target.y += target.velocityY * targetDt;
+            target.z += target.velocityZ * targetDt;
 
             entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
             entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
@@ -1005,10 +1217,9 @@ export class ClientViewState {
           }
 
           // Auto-remove if projectile has left the map bounds
-          entity.projectile.timeAlive += deltaMs;
+          entity.projectile.timeAlive += entityDeltaMs;
           if (entity.projectile.timeAlive > 10000) {
-            this.entities.delete(entity.id);
-            this.serverTargets.delete(entity.id);
+            this.deleteEntityLocalState(entity.id);
           }
         }
       }
@@ -1452,6 +1663,9 @@ export class ClientViewState {
     this.captureCellSize = 0;
     this.serverMeta = null;
     this.frameCounter = 0;
+    this.predictionAccumMs.clear();
+    this.targetPredictionAccumMs.clear();
+    this.predictionLodCells.clear();
     this.invalidateCaches();
   }
 }

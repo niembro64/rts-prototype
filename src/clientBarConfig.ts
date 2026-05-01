@@ -68,6 +68,7 @@ export const CLIENT_CONFIG = {
   },
   audioSmoothing: { default: true },
   burnMarks: { default: false },
+  lodShellRings: { default: false },
   driftMode: { default: 'mid' as const },
   legsRadius: { default: false },
   cameraSmooth: {
@@ -150,8 +151,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   min: {
     tier: 'min',
     unitRenderMode: D.UNIT_RENDER_MODE.min as UnitRenderMode,
-    richUnitCap: D.RICH_UNIT_CAP.min,
-    richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.min,
+    richObjectDistance: D.RICH_OBJECT_DISTANCE.min,
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.min,
     hudFrameStride: D.HUD_FRAME_STRIDE.min,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.min,
     captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.min,
@@ -183,8 +184,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   low: {
     tier: 'low',
     unitRenderMode: D.UNIT_RENDER_MODE.low as UnitRenderMode,
-    richUnitCap: D.RICH_UNIT_CAP.low,
-    richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.low,
+    richObjectDistance: D.RICH_OBJECT_DISTANCE.low,
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.low,
     hudFrameStride: D.HUD_FRAME_STRIDE.low,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.low,
     captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.low,
@@ -216,8 +217,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   medium: {
     tier: 'medium',
     unitRenderMode: D.UNIT_RENDER_MODE.medium as UnitRenderMode,
-    richUnitCap: D.RICH_UNIT_CAP.medium,
-    richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.medium,
+    richObjectDistance: D.RICH_OBJECT_DISTANCE.medium,
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.medium,
     hudFrameStride: D.HUD_FRAME_STRIDE.medium,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.medium,
     captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.medium,
@@ -249,8 +250,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   high: {
     tier: 'high',
     unitRenderMode: D.UNIT_RENDER_MODE.high as UnitRenderMode,
-    richUnitCap: D.RICH_UNIT_CAP.high,
-    richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.high,
+    richObjectDistance: D.RICH_OBJECT_DISTANCE.high,
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.high,
     hudFrameStride: D.HUD_FRAME_STRIDE.high,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.high,
     captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.high,
@@ -282,8 +283,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   max: {
     tier: 'max',
     unitRenderMode: D.UNIT_RENDER_MODE.max as UnitRenderMode,
-    richUnitCap: D.RICH_UNIT_CAP.max,
-    richUnitScreenRadiusPx: D.RICH_UNIT_SCREEN_RADIUS_PX.max,
+    richObjectDistance: D.RICH_OBJECT_DISTANCE.max,
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.max,
     hudFrameStride: D.HUD_FRAME_STRIDE.max,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.max,
     captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.max,
@@ -326,6 +327,7 @@ const RENDER_MODE_STORAGE_KEY = 'player-client-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'player-client-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
 const BURN_MARKS_STORAGE_KEY = 'player-client-burn-marks';
+const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
 const DRIFT_MODE_STORAGE_KEY = 'player-client-drift-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'player-client-sound-toggles';
 const RANGE_TOGGLES_STORAGE_KEY = 'player-client-range-toggles';
@@ -354,6 +356,7 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-audio-scope', AUDIO_SCOPE_STORAGE_KEY],
   ['rts-audio-smoothing', AUDIO_SMOOTHING_STORAGE_KEY],
   ['rts-burn-marks', BURN_MARKS_STORAGE_KEY],
+  ['rts-lod-shell-rings', LOD_SHELL_RINGS_STORAGE_KEY],
   ['rts-drift-mode', DRIFT_MODE_STORAGE_KEY],
   ['rts-sound-toggles', SOUND_TOGGLES_STORAGE_KEY],
   ['rts-range-toggles', RANGE_TOGGLES_STORAGE_KEY],
@@ -408,6 +411,7 @@ let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
+let currentLodShellRings: boolean = _cd.lodShellRings.default;
 let currentDriftMode: DriftMode = _cd.driftMode.default;
 const currentSoundToggles: Record<SoundCategory, boolean> = {
   ..._cd.sounds.default,
@@ -523,6 +527,10 @@ function loadFromStorage(): void {
   const storedBurnMarks = readPersisted(BURN_MARKS_STORAGE_KEY);
   if (storedBurnMarks !== null) {
     currentBurnMarks = storedBurnMarks === 'true';
+  }
+  const storedLodShellRings = readPersisted(LOD_SHELL_RINGS_STORAGE_KEY);
+  if (storedLodShellRings !== null) {
+    currentLodShellRings = storedLodShellRings === 'true';
   }
   const storedLegsRadius = readPersisted(LEGS_RADIUS_STORAGE_KEY);
   if (storedLegsRadius !== null) {
@@ -922,6 +930,15 @@ export function getBurnMarks(): boolean {
 export function setBurnMarks(enabled: boolean): void {
   currentBurnMarks = enabled;
   persist(BURN_MARKS_STORAGE_KEY, String(enabled));
+}
+
+export function getLodShellRings(): boolean {
+  return currentLodShellRings;
+}
+
+export function setLodShellRings(enabled: boolean): void {
+  currentLodShellRings = enabled;
+  persist(LOD_SHELL_RINGS_STORAGE_KEY, String(enabled));
 }
 
 export function getDriftMode(): DriftMode {

@@ -36,8 +36,8 @@ export type GraphicsConfig = {
    *  field combinations. */
   tier: ConcreteGraphicsQuality;
   unitRenderMode: UnitRenderMode;
-  richUnitCap: number;
-  richUnitScreenRadiusPx: number;
+  richObjectDistance: number;
+  objectLodCellSize: number;
   hudFrameStride: number;
   effectFrameStride: number;
   captureTileSubdiv: number;

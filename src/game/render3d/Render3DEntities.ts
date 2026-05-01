@@ -28,10 +28,16 @@ import {
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import {
-  projectWorldRadiusToPixels,
+  lodKey,
   snapshotLod,
   type Lod3DState,
 } from './Lod3D';
+import {
+  isRichObjectLod,
+  objectLodToGraphicsTier,
+  type RenderObjectLodTier,
+} from './RenderObjectLod';
+import { RenderLodGrid } from './RenderLodGrid';
 import { getBodyGeom, getBodyMountTopY, disposeBodyGeoms } from './BodyShape3D';
 import {
   buildBuildingShape,
@@ -49,7 +55,7 @@ import {
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getFactoryBuildSpot, getFactoryConstructionRadius, type FactoryBuildSpot } from '../sim/factoryConstructionSite';
-import { getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
+import { getGraphicsConfigFor, getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
 import { getWeaponWorldPosition, getTurretHeadRadius } from '../math';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
@@ -453,10 +459,11 @@ export class Render3DEntities {
   private unitInstancedSlot = new Map<EntityId, number>();
   /** Reverse lookup so low-tier compaction can move tail slots into holes in O(1). */
   private unitInstancedEntityBySlot: (EntityId | undefined)[] = [];
-  /** Maps entityId → last owner color key written into its instance slot. */
-  private unitInstancedColorKey = new Map<EntityId, number>();
+  /** Maps entityId → last owner/lod color key written into its instance slot. */
+  private unitInstancedColorKey = new Map<EntityId, string>();
   private massRichUnitIds = new Set<EntityId>();
   private massRichUnits: Entity[] = [];
+  private objectLodGrid = new RenderLodGrid();
   /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
   private unitInstancedFreeSlots: number[] = [];
   /** High-water mark; everything ≥ this is unused. */
@@ -895,7 +902,7 @@ export class Render3DEntities {
     return mat;
   }
 
-  private buildCommanderVisualKit(): THREE.Group {
+  private buildCommanderVisualKit(tier: ConcreteGraphicsQuality): THREE.Group {
     const kit = new THREE.Group();
     const hazardMat = getConstructionHazardMaterial();
     const addBox = (
@@ -919,23 +926,39 @@ export class Render3DEntities {
       kit.add(mesh);
     };
 
-    addBox(this.commanderArmorMat, -0.1, 1.15, 0, 1.3, 0.16, 0.92);
-    addBox(this.commanderTrimMat, 0.48, 1.23, 0, 0.26, 0.12, 0.58);
-    addBox(this.commanderLensMat, 0.66, 1.27, 0, 0.08, 0.11, 0.46);
-    addCylinder(hazardMat, -0.42, 1.34, 0, 0.34, 0.1, 0.34);
-    addCylinder(this.commanderArmorMat, 0.36, 1.29, -0.42, 0.24, 0.16, 0.24);
-    addCylinder(this.commanderArmorMat, 0.36, 1.29, 0.42, 0.24, 0.16, 0.24);
-    addBox(this.commanderTrimMat, 0.36, 1.42, -0.42, 0.4, 0.055, 0.17);
-    addBox(this.commanderTrimMat, 0.36, 1.42, 0.42, 0.4, 0.055, 0.17);
+    addBox(this.commanderArmorMat, -0.08, 1.12, 0, 1.04, 0.14, 0.76);
+    if (buildingTierAtLeast(tier, 'low')) {
+      addBox(this.commanderTrimMat, 0.44, 1.22, 0, 0.28, 0.12, 0.58);
+      addBox(this.commanderLensMat, 0.64, 1.27, 0, 0.08, 0.11, 0.46);
+    }
+    if (buildingTierAtLeast(tier, 'medium')) {
+      addCylinder(hazardMat, -0.42, 1.34, 0, 0.34, 0.1, 0.34);
+      addCylinder(this.commanderArmorMat, 0.34, 1.29, -0.42, 0.24, 0.16, 0.24);
+      addCylinder(this.commanderArmorMat, 0.34, 1.29, 0.42, 0.24, 0.16, 0.24);
+    }
+    if (buildingTierAtLeast(tier, 'high')) {
+      addBox(this.commanderTrimMat, 0.36, 1.42, -0.42, 0.4, 0.055, 0.17);
+      addBox(this.commanderTrimMat, 0.36, 1.42, 0.42, 0.4, 0.055, 0.17);
 
-    const sensor = new THREE.Mesh(this.commanderDomeGeom, this.commanderLensMat);
-    sensor.position.set(0.18, 1.36, 0);
-    sensor.scale.set(0.12, 0.12, 0.12);
-    kit.add(sensor);
+      const sensor = new THREE.Mesh(this.commanderDomeGeom, this.commanderLensMat);
+      sensor.position.set(0.18, 1.36, 0);
+      sensor.scale.set(0.12, 0.12, 0.12);
+      kit.add(sensor);
+    }
+    if (buildingTierAtLeast(tier, 'max')) {
+      addBox(this.commanderArmorMat, -0.28, 1.24, -0.38, 0.36, 0.07, 0.08);
+      addBox(this.commanderArmorMat, -0.28, 1.24, 0.38, 0.36, 0.07, 0.08);
+      addBox(this.commanderTrimMat, -0.38, 1.31, 0, 0.09, 0.22, 0.12);
+      addBox(this.commanderLensMat, -0.39, 1.43, 0, 0.06, 0.07, 0.08);
+    }
     return kit;
   }
 
-  private decorateCommanderTurret(tm: TurretMesh, turretId: string): void {
+  private decorateCommanderTurret(
+    tm: TurretMesh,
+    turretId: string,
+    tier: ConcreteGraphicsQuality,
+  ): void {
     const headRadius = tm.headRadius ?? 6;
     const collar = new THREE.Mesh(this.commanderCylinderGeom, this.commanderArmorMat);
     collar.position.set(0, Math.max(1.2, headRadius * 0.16), 0);
@@ -945,6 +968,8 @@ export class Render3DEntities {
       headRadius * 1.18,
     );
     tm.root.add(collar);
+
+    if (!buildingTierAtLeast(tier, 'medium')) return;
 
     const brow = new THREE.Mesh(this.commanderBoxGeom, this.commanderArmorMat);
     brow.position.set(headRadius * 0.55, headRadius * 1.24, 0);
@@ -956,7 +981,7 @@ export class Render3DEntities {
     optic.scale.set(headRadius * 0.08, headRadius * 0.12, headRadius * 0.42);
     tm.root.add(optic);
 
-    if (tm.pitchGroup) {
+    if (tm.pitchGroup && buildingTierAtLeast(tier, 'high')) {
       const isDgun = turretId === 'dgunTurret';
       const sleeve = new THREE.Mesh(this.commanderBoxGeom, isDgun ? this.commanderArmorMat : this.commanderTrimMat);
       sleeve.position.set(headRadius * (isDgun ? 0.72 : 0.55), 0, 0);
@@ -966,6 +991,12 @@ export class Render3DEntities {
         headRadius * (isDgun ? 0.34 : 0.22),
       );
       tm.pitchGroup.add(sleeve);
+    }
+    if (buildingTierAtLeast(tier, 'max')) {
+      const crest = new THREE.Mesh(this.commanderBoxGeom, this.commanderTrimMat);
+      crest.position.set(-headRadius * 0.08, headRadius * 1.34, 0);
+      crest.scale.set(headRadius * 0.1, headRadius * 0.18, headRadius * 0.18);
+      tm.root.add(crest);
     }
   }
 
@@ -1151,6 +1182,7 @@ export class Render3DEntities {
       this.rebuildAllUnitsOnLodChange();
     }
     this.lod = newLod;
+    this.objectLodGrid.beginFrame(this.lod.view, this.lod.gfx);
 
     // Time step for continuous-rotation effects (barrel spin, wheel roll).
     // Clamp in case the tab was backgrounded.
@@ -1282,6 +1314,32 @@ export class Render3DEntities {
     this.releaseAllMirrorPanelSlots();
   }
 
+  private unitInstanceScaleForLod(tier: RenderObjectLodTier | undefined): number {
+    switch (tier) {
+      case 'hidden':
+        return 0.55;
+      case 'impostor':
+        return 0.72;
+      case 'mass':
+        return 0.9;
+      default:
+        return 1;
+    }
+  }
+
+  private unitInstanceBrightnessForLod(tier: RenderObjectLodTier | undefined): number {
+    switch (tier) {
+      case 'hidden':
+        return 0.48;
+      case 'impostor':
+        return 0.66;
+      case 'mass':
+        return 0.86;
+      default:
+        return 1;
+    }
+  }
+
   /** LOW-tier per-frame instance write. Each visible unit takes one
    *  slot in the InstancedMesh; the slot's matrix encodes its world
    *  pose (translation + Y-rotation + uniform scale by render radius)
@@ -1341,26 +1399,30 @@ export class Render3DEntities {
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;
       const pushR = e.unit?.unitRadiusCollider.push ?? 0;
+      const objectTier = this.resolveEntityObjectLod(e);
+      const scaleMul = e.commander !== undefined ? 1 : this.unitInstanceScaleForLod(objectTier);
 
       // Mirror of the per-unit Mesh path: group at (x, z-pushR, y),
       // chassis at origin, sphere at chassis-local y=1 with chassis
       // scaled by radius. Composed into a single matrix here.
       this._instPos.set(
         e.transform.x,
-        e.transform.z - pushR + radius,
+        e.transform.z - pushR + radius * scaleMul,
         e.transform.y,
       );
       this._instQuat.setFromAxisAngle(_INST_UP, -e.transform.rotation);
-      this._instScale.set(radius, radius, radius);
+      this._instScale.set(radius * scaleMul, radius * scaleMul, radius * scaleMul);
       this._instMatrix.compose(this._instPos, this._instQuat, this._instScale);
       im.setMatrixAt(slot, this._instMatrix);
       if (slot < matrixMinSlot) matrixMinSlot = slot;
       if (slot > matrixMaxSlot) matrixMaxSlot = slot;
 
       const pid = e.ownership?.playerId;
-      const colorKey = pid ?? -1;
+      const colorKey = `${pid ?? -1}:${objectTier}`;
       if (this.unitInstancedColorKey.get(e.id) !== colorKey) {
-        this._instColor.set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888);
+        this._instColor
+          .set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888)
+          .multiplyScalar(this.unitInstanceBrightnessForLod(objectTier));
         im.setColorAt(slot, this._instColor);
         this.unitInstancedColorKey.set(e.id, colorKey);
         colorDirty = true;
@@ -1735,6 +1797,24 @@ export class Render3DEntities {
     m.ring = undefined;
   }
 
+  private destroyUnitMesh(id: EntityId, m: EntityMesh): void {
+    destroyLocomotion(m.locomotion, this.legRenderer);
+    this.world.remove(m.group);
+    this.disposeWorldParentedOverlays(m);
+    if (m.smoothChassisSlots) this.freeSmoothChassisSlotsForEntity(id);
+    if (m.polyChassisSlot !== undefined) this.freePolyChassisSlotForEntity(m.rendererId, id);
+    for (const tm of m.turrets) {
+      if (tm.headSlot !== undefined) this.freeTurretHeadSlot(tm.headSlot);
+      if (tm.barrelSlots) {
+        for (const slot of tm.barrelSlots) this.freeBarrelSlot(slot);
+      }
+    }
+    if (m.mirrors?.panelSlots) {
+      for (const slot of m.mirrors.panelSlots) this.freeMirrorPanelSlot(slot);
+    }
+    this.unitMeshes.delete(id);
+  }
+
 
   /** Advance the barrel-spin state for one unit. Picks the first
    *  multi-barrel turret as the spin source, accelerates toward max
@@ -1772,52 +1852,39 @@ export class Render3DEntities {
     state.angle = (state.angle + state.speed * dt) % (Math.PI * 2);
   }
 
+  private resolveEntityObjectLod(entity: Entity): RenderObjectLodTier {
+    return this.objectLodGrid.resolve(
+      entity.transform.x,
+      entity.transform.z,
+      entity.transform.y,
+    );
+  }
+
   private collectMassRichUnits(units: readonly Entity[]): readonly Entity[] {
     const ids = this.massRichUnitIds;
-    const rich = this.massRichUnits;
-    const richCap = Math.max(0, this.lod.gfx.richUnitCap | 0);
+    const detail = this.massRichUnits;
     ids.clear();
-    rich.length = 0;
-    if (richCap <= 0) return rich;
+    detail.length = 0;
 
-    const minScreenRadiusPx = Math.max(0, this.lod.gfx.richUnitScreenRadiusPx);
-
-    const add = (entity: Entity): boolean => {
-      if (ids.has(entity.id)) return rich.length < richCap;
-      if (rich.length >= richCap) return false;
-      ids.add(entity.id);
-      rich.push(entity);
-      return true;
+    const add = (entity: Entity, hideMassBody: boolean): void => {
+      if (detail.includes(entity)) return;
+      if (hideMassBody) ids.add(entity.id);
+      detail.push(entity);
     };
 
     for (const entity of units) {
       if (!this.scope.inScope(entity.transform.x, entity.transform.y, 100)) continue;
-      if (
-        entity.selectable?.selected === true ||
-        entity.commander !== undefined
-      ) {
-        if (!add(entity)) return rich;
+      const tier = this.resolveEntityObjectLod(entity);
+      if (entity.commander !== undefined) {
+        if (tier !== 'hidden') add(entity, true);
+      } else if (isRichObjectLod(tier)) {
+        add(entity, true);
+      } else if (tier === 'simple') {
+        add(entity, false);
       }
     }
 
-    for (const entity of units) {
-      if (ids.has(entity.id)) continue;
-      if (!this.scope.inScope(entity.transform.x, entity.transform.y, 100)) continue;
-      const radius = entity.unit?.unitRadiusCollider.scale
-        ?? entity.unit?.unitRadiusCollider.shot
-        ?? 15;
-      const screenRadiusPx = projectWorldRadiusToPixels(
-        this.lod.view,
-        entity.transform.x,
-        entity.transform.z,
-        entity.transform.y,
-        radius,
-      );
-      if (screenRadiusPx < minScreenRadiusPx) continue;
-      if (!add(entity)) break;
-    }
-
-    return rich;
+    return detail;
   }
 
   private updateUnits(): void {
@@ -1825,6 +1892,8 @@ export class Render3DEntities {
     const unitRenderMode = this.lod.gfx.unitRenderMode;
 
     if (unitRenderMode === 'mass') {
+      this.massRichUnitIds.clear();
+      this.massRichUnits.length = 0;
       if (this.unitMeshes.size > 0) {
         this.rebuildAllUnitsOnLodChange();
       }
@@ -1891,8 +1960,18 @@ export class Render3DEntities {
       const pid = e.ownership?.playerId;
       const colorKey = pid ?? -1;
       const turrets = e.turrets ?? [];
+      const objectTier = this.resolveEntityObjectLod(e);
+      const isCommanderUnit = e.commander !== undefined;
+      const fullUnitDetail = isRichObjectLod(objectTier) || isCommanderUnit;
+      const unitGraphicsTier = objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
+      const unitGfx = getGraphicsConfigFor(unitGraphicsTier);
+      const unitLodKey = lodKey(unitGfx);
 
       let m = this.unitMeshes.get(e.id);
+      if (m && m.lodKey !== unitLodKey) {
+        this.destroyUnitMesh(e.id, m);
+        m = undefined;
+      }
       if (!m) {
         const group = new THREE.Group();
         // Pull the 2D renderer id from the unit blueprint and use the
@@ -1976,7 +2055,7 @@ export class Render3DEntities {
         }
         liftGroup.add(chassis);
         if (e.commander) {
-          const commanderKit = this.buildCommanderVisualKit();
+          const commanderKit = this.buildCommanderVisualKit(unitGraphicsTier);
           commanderKit.userData.entityId = e.id;
           commanderKit.traverse((obj) => { obj.userData.entityId = e.id; });
           chassis.add(commanderKit);
@@ -1991,9 +2070,8 @@ export class Render3DEntities {
         // we mirror the 2D convention: the mirror host is turret[0], and any
         // additional turrets render normally with their own cylinder body.
         const unitHasMirrors = (e.unit?.mirrorPanels?.length ?? 0) > 0;
-        const isCommanderUnit = e.commander !== undefined;
         const turretMeshes: TurretMesh[] = [];
-        const turretOff = this.lod.gfx.turretStyle === 'none';
+        const turretOff = unitGfx.turretStyle === 'none';
         for (let ti = 0; ti < turrets.length; ti++) {
           const t = turrets[ti];
           const isMirrorHost = unitHasMirrors && ti === 0;
@@ -2037,7 +2115,7 @@ export class Render3DEntities {
           // tilt so the world barrel direction still matches the
           // sim's weapon.rotation / weapon.pitch even though the
           // parent chain is tilted.
-          const tm = buildTurretMesh3D(liftGroup, t, radius, isMirrorHost, this.lod.gfx, {
+          const tm = buildTurretMesh3D(liftGroup, t, radius, isMirrorHost, unitGfx, {
             headGeom: this.turretHeadGeom,
             barrelGeom: this.barrelGeom,
             barrelMat: this.barrelMat,
@@ -2046,7 +2124,7 @@ export class Render3DEntities {
             skipBarrels: false, // try to attach for fallback safety
           });
           if (tm.head) tm.head.userData.entityId = e.id;
-          if (isCommanderUnit && !hideHead) this.decorateCommanderTurret(tm, t.config.id);
+          if (isCommanderUnit && !hideHead) this.decorateCommanderTurret(tm, t.config.id, unitGraphicsTier);
           for (const b of tm.barrels) b.userData.entityId = e.id;
           tm.headSlot = headSlot;
           // Try to allocate one barrel slot per barrel. All-or-nothing:
@@ -2092,7 +2170,7 @@ export class Render3DEntities {
         this.world.add(group);
         m = {
           group, yawGroup, liftGroup, chassis, chassisMeshes, rendererId, bodyShape,
-          turrets: turretMeshes, lodKey: this.lod.key,
+          turrets: turretMeshes, lodKey: unitLodKey,
           constructionEmitter,
           smoothChassisSlots,
           polyChassisSlot,
@@ -2118,7 +2196,7 @@ export class Render3DEntities {
         // The map dims feed the leg builder + per-frame logic so
         // snap targets can sample terrain elevation directly.
         m.locomotion = buildLocomotion(
-          yawGroup, this.world, e, radius, pid, this.lod.gfx,
+          yawGroup, this.world, e, radius, pid, unitGfx,
           this.clientViewState.getMapWidth(),
           this.clientViewState.getMapHeight(),
           this.legRenderer,
@@ -2177,6 +2255,7 @@ export class Render3DEntities {
           if (tm.head) tm.head.material = this.getPrimaryMat(pid);
         }
       }
+      m.chassis.visible = fullUnitDetail;
 
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
@@ -2272,7 +2351,16 @@ export class Render3DEntities {
       // Doing it per-part means an arachnid's two segments take two
       // slots, a snipe / loris / forceField takes one. All slots feed
       // the same shared draw call.
-      if (m.smoothChassisSlots && this.smoothChassis) {
+      if (!fullUnitDetail) {
+        if (m.smoothChassisSlots && this.smoothChassis) {
+          for (const slot of m.smoothChassisSlots) {
+            this.smoothChassis.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+          }
+        } else if (m.polyChassisSlot !== undefined) {
+          const pool = this.polyChassis.get(m.rendererId);
+          if (pool) pool.mesh.setMatrixAt(m.polyChassisSlot, Render3DEntities._ZERO_MATRIX);
+        }
+      } else if (m.smoothChassisSlots && this.smoothChassis) {
         // Reuse cached parentQuat / liftedPos from the per-unit prefix
         // block above. Chassis adds its own radius scale on top of the
         // shared chain. parentMat = T(liftedPos) · R(parentQuat) · S(radius).
@@ -2382,7 +2470,7 @@ export class Render3DEntities {
       this.updateRadiusRings(m, e);
       this.updateRangeRings(m, e);
       if (m.constructionEmitter) {
-        m.constructionEmitter.group.visible = buildingTierAtLeast(this.lod.gfx.tier, 'low');
+        m.constructionEmitter.group.visible = buildingTierAtLeast(unitGraphicsTier, 'low');
         m.constructionEmitter.group.rotation.y = this._lastSpinMs / 900;
       }
 
@@ -2574,7 +2662,7 @@ export class Render3DEntities {
         // which is the actual barrel axis after the tilt-aware yaw
         // and pitch compose into the parent chain.
         if (tm.spinGroup) {
-          tm.spinGroup.rotation.x = this.lod.gfx.barrelSpin
+          tm.spinGroup.rotation.x = unitGfx.barrelSpin
             ? spinState?.angle ?? 0
             : 0;
         }
@@ -2802,9 +2890,8 @@ export class Render3DEntities {
     this.releaseFactorySprayTargets();
 
     // LOD-driven detail visibility for buildings. Each accent mesh now
-    // declares its own tier range, so min/low/medium/high/max all get a
-    // deliberate silhouette instead of one detail on/off switch.
-    const tier = this.lod.gfx.tier;
+    // declares its own tier range, and the per-object resolver can lower
+    // distant buildings below the global tier without using footprint size.
     this.updateWindAnimationGlobals();
     this.extractorRotorPhase =
       (this.extractorRotorPhase + this._spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC) % (Math.PI * 2);
@@ -2813,6 +2900,8 @@ export class Render3DEntities {
       seen.add(e.id);
       // Scope gate — larger padding for buildings (bigger footprint).
       if (!this.scope.inScope(e.transform.x, e.transform.y, 200)) continue;
+      const objectTier = this.resolveEntityObjectLod(e);
+      const tier = objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
       const pid = e.ownership?.playerId;
       // Building type drives the per-type shape (factory, solar, …) —
       // fallback to 'unknown' for anything the art doesn't cover yet.
