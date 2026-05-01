@@ -258,8 +258,16 @@ export class CaptureTileRenderer3D {
         if (sharedLodGrid) {
           const x = (cx + 0.5) * cellSize;
           const z = (cy + 0.5) * cellSize;
-          const y = getTerrainHeight(x, z, this.mapWidth, this.mapHeight);
-          const tier = objectLodToCameraSphereGraphicsTier(sharedLodGrid.resolve(x, y, z));
+          // Bucket the LOD lookup at y=0 so two horizontally adjacent
+          // tiles whose terrain heights happen to straddle a Y LOD-cell
+          // boundary still resolve to the SAME LOD cell — and therefore
+          // the same tier. Using the tile's actual terrain Y here
+          // produced visible LOD mismatches on the rare tile pairs
+          // where one center sat just under and the other just over a
+          // vertical cell edge. Mana tile fidelity is a horizontal
+          // decision; binning by terrain height was an accidental
+          // coupling.
+          const tier = objectLodToCameraSphereGraphicsTier(sharedLodGrid.resolve(x, 0, z));
           tileGfx = getGraphicsConfigFor(tier);
         }
         let subdiv = tileGfx.captureTileSubdiv | 0;
