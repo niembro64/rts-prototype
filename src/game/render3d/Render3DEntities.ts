@@ -1314,32 +1314,6 @@ export class Render3DEntities {
     this.releaseAllMirrorPanelSlots();
   }
 
-  private unitInstanceScaleForLod(tier: RenderObjectLodTier | undefined): number {
-    switch (tier) {
-      case 'hidden':
-        return 0.55;
-      case 'impostor':
-        return 0.72;
-      case 'mass':
-        return 0.9;
-      default:
-        return 1;
-    }
-  }
-
-  private unitInstanceBrightnessForLod(tier: RenderObjectLodTier | undefined): number {
-    switch (tier) {
-      case 'hidden':
-        return 0.48;
-      case 'impostor':
-        return 0.66;
-      case 'mass':
-        return 0.86;
-      default:
-        return 1;
-    }
-  }
-
   /** LOW-tier per-frame instance write. Each visible unit takes one
    *  slot in the InstancedMesh; the slot's matrix encodes its world
    *  pose (translation + Y-rotation + uniform scale by render radius)
@@ -1399,30 +1373,27 @@ export class Render3DEntities {
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;
       const pushR = e.unit?.unitRadiusCollider.push ?? 0;
-      const objectTier = this.resolveEntityObjectLod(e);
-      const scaleMul = e.commander !== undefined ? 1 : this.unitInstanceScaleForLod(objectTier);
 
       // Mirror of the per-unit Mesh path: group at (x, z-pushR, y),
       // chassis at origin, sphere at chassis-local y=1 with chassis
       // scaled by radius. Composed into a single matrix here.
       this._instPos.set(
         e.transform.x,
-        e.transform.z - pushR + radius * scaleMul,
+        e.transform.z - pushR + radius,
         e.transform.y,
       );
       this._instQuat.setFromAxisAngle(_INST_UP, -e.transform.rotation);
-      this._instScale.set(radius * scaleMul, radius * scaleMul, radius * scaleMul);
+      this._instScale.set(radius, radius, radius);
       this._instMatrix.compose(this._instPos, this._instQuat, this._instScale);
       im.setMatrixAt(slot, this._instMatrix);
       if (slot < matrixMinSlot) matrixMinSlot = slot;
       if (slot > matrixMaxSlot) matrixMaxSlot = slot;
 
       const pid = e.ownership?.playerId;
-      const colorKey = `${pid ?? -1}:${objectTier}`;
+      const colorKey = `${pid ?? -1}`;
       if (this.unitInstancedColorKey.get(e.id) !== colorKey) {
         this._instColor
-          .set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888)
-          .multiplyScalar(this.unitInstanceBrightnessForLod(objectTier));
+          .set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888);
         im.setColorAt(slot, this._instColor);
         this.unitInstancedColorKey.set(e.id, colorKey);
         colorDirty = true;
