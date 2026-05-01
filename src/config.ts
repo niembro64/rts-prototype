@@ -483,8 +483,8 @@ export const MANA_TILE_TEXTURE = {
     // signal maps negative -> black, zero -> gray, positive -> white,
     // then blends back into the mana-tile base color.
     neutral: 0.5,
-    contrast: 0.44,
-    mix: 0.34,
+    contrast: 0.72,
+    mix: 0.52,
   },
   overlayOpacity: {
     min: 0.46,
