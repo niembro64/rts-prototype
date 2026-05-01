@@ -19,9 +19,13 @@ import * as THREE from 'three';
 import type { Entity, EntityId, Turret } from '../sim/types';
 import { getBodyMountTopY } from './BodyShape3D';
 import { getUnitBlueprint } from '../sim/blueprints';
-import { getGraphicsConfig } from '@/clientBarConfig';
+import { getGraphicsConfig, getGraphicsConfigFor } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
+import type { GraphicsConfig } from '@/types/graphics';
+import { snapshotLod } from './Lod3D';
+import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjectLod';
+import { RenderLodGrid } from './RenderLodGrid';
 
 /** How far the force-field emitter sphere is embedded into the body
  *  part it's mounted on. Expressed as a chassis-local Y offset added
@@ -200,6 +204,9 @@ export class ForceFieldRenderer3D {
   /** RENDER: WIN/PAD/ALL visibility scope — off-screen force fields
    *  skip their per-frame animation work. */
   private scope: ViewportFootprint;
+  private lodGrid = new RenderLodGrid();
+  private lodActive = false;
+  private frameGfx: GraphicsConfig = getGraphicsConfig();
   /** Look up the unit's yaw subgroup. Force-field meshes attach to
    *  this group like a regular turret root — the scenegraph chain
    *  (group → yawGroup → field meshes) handles position, tilt, and
@@ -365,12 +372,22 @@ export class ForceFieldRenderer3D {
   /** Begin a fused per-frame iteration. Caller follows with a series
    *  of perUnit calls and finishes with endFrame. Recomputes LOD-
    *  derived counts once per frame so the inner loop is tight. */
-  beginFrame(): void {
+  beginFrame(
+    graphicsConfig: GraphicsConfig = getGraphicsConfig(),
+    camera?: THREE.PerspectiveCamera,
+    viewportHeightPx = 1,
+  ): void {
     this._seenFieldKeys.clear();
     this._sphereCursor = 0;
     this._frameNowMs = performance.now();
     this._frameNowSec = this._frameNowMs / 1000;
-    const gfx = getGraphicsConfig();
+    const gfx = graphicsConfig;
+    this.frameGfx = gfx;
+    this.lodActive = camera !== undefined;
+    if (camera) {
+      const lod = snapshotLod(camera, viewportHeightPx);
+      this.lodGrid.beginFrame(lod.view, gfx);
+    }
     this._frameStyle = gfx.forceFieldStyle as never;
     const style = this._frameStyle as string;
     this._frameWantParticles = style === 'simple' || style === 'enhanced';
@@ -389,7 +406,18 @@ export class ForceFieldRenderer3D {
     // units across), so pad generously so a turret just off-screen
     // with its bubble reaching in still updates.
     if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
-    this._processUnit(unit);
+    const objectTier = this.resolveUnitObjectLod(unit);
+    if (objectTier === 'hidden') return;
+    this._processUnit(unit, objectTier);
+  }
+
+  private resolveUnitObjectLod(unit: Entity): RenderObjectLodTier {
+    if (!this.lodActive) return 'rich';
+    return this.lodGrid.resolve(
+      unit.transform.x,
+      unit.transform.z,
+      unit.transform.y,
+    );
   }
 
   /** End a fused-iteration frame: tear down fields that didn't get
@@ -443,14 +471,26 @@ export class ForceFieldRenderer3D {
    *  update(). Reads frame state set by beginFrame(); the only thing
    *  changed from the original is that the outer for/scope/seen-clear
    *  was lifted up into the begin/perUnit/endFrame trio. */
-  private _processUnit(unit: Entity): void {
+  private _processUnit(unit: Entity, objectTier?: RenderObjectLodTier): void {
     const seen = this._seenFieldKeys;
     const nowMs = this._frameNowMs;
     const nowSec = this._frameNowSec;
-    const style = this._frameStyle as string;
-    const wantParticles = this._frameWantParticles;
-    const wantArcs = this._frameWantArcs;
-    const particleCount = this._frameParticleCount;
+    const resolvedTier = objectTier ?? this.resolveUnitObjectLod(unit);
+    if (resolvedTier === 'hidden') return;
+    const effectiveGraphicsTier = objectLodToGraphicsTier(resolvedTier, this.frameGfx.tier);
+    const fieldGfx = this.lodActive ? getGraphicsConfigFor(effectiveGraphicsTier) : this.frameGfx;
+    const style = (this.lodActive ? fieldGfx.forceFieldStyle : this._frameStyle) as string;
+    const wantParticles = this.lodActive
+      ? style === 'simple' || style === 'enhanced'
+      : this._frameWantParticles;
+    const wantArcs = this.lodActive
+      ? style === 'enhanced'
+      : this._frameWantArcs;
+    const particleCount = this.lodActive
+      ? style === 'enhanced' ? PARTICLE_COUNT_ENHANCED
+        : style === 'simple' ? PARTICLE_COUNT_SIMPLE
+        : 0
+      : this._frameParticleCount;
 
     // Sanity guard — perUnit already filtered, but check again so
     // _processUnit is safe to call directly. Any of these mean

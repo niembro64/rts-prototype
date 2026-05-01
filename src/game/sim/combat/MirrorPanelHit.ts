@@ -1,6 +1,6 @@
-// Mirror-panel hit testing — shared between server (DamageSystem),
-// client (BeamPathResolver), and projectile collision. Computes the
-// closest hit of a 3D ray segment against a unit's reflective panels,
+// Mirror-panel hit testing — shared by server beam tracing and
+// projectile collision. Computes the closest hit of a 3D ray segment
+// against a unit's reflective panels,
 // honoring both YAW (turret rotation) and PITCH (turret pitch) so the
 // panel can redirect both horizontal and vertical components of an
 // incoming beam / shot.

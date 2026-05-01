@@ -862,6 +862,7 @@ export class RtsScene3D {
       massDistance: predictionLodShells.mass,
       impostorDistance: predictionLodShells.impostor,
       cellSize: predictionGraphicsConfig.objectLodCellSize,
+      physicsPredictionFramesSkip: predictionGraphicsConfig.clientPhysicsPredictionFramesSkip,
     });
 
     // Invalidate per-player entity caches (rebuilt lazily by adapter)
@@ -940,7 +941,12 @@ export class RtsScene3D {
     );
     const lineProjectiles = this.clientViewState.getLineProjectiles();
     const travelingProjectiles = this.clientViewState.getTravelingProjectiles();
-    this.beamRenderer.update(lineProjectiles);
+    this.beamRenderer.update(
+      lineProjectiles,
+      graphicsConfig,
+      this.threeApp.camera,
+      this.threeApp.renderer.domElement.clientHeight,
+    );
     // Force-field iteration is deferred — fused with HealthBar3D's
     // per-unit walk below, after the camera frustum is computed.
     // Single getUnits() iteration drives both per-unit renderers.
@@ -951,7 +957,12 @@ export class RtsScene3D {
     // Advance the water-surface time uniform — the actual GPU draw
     // happens on the next render pass, this just nudges the wave
     // phase. Cheap (single uniform write), no buffer upload.
-    this.waterRenderer.update(effectDt / 1000, graphicsConfig);
+    this.waterRenderer.update(
+      effectDt / 1000,
+      graphicsConfig,
+      this.threeApp.camera,
+      this.threeApp.renderer.domElement.clientHeight,
+    );
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
     this.burnMarkAccumMs += effectDt;
@@ -1009,7 +1020,11 @@ export class RtsScene3D {
     // renderer its cached subset instead of asking every normal unit
     // to run the force-field branch. Health bars still walk broad
     // entity lists because HP/build progress are dynamic per snapshot.
-    this.forceFieldRenderer.beginFrame();
+    this.forceFieldRenderer.beginFrame(
+      graphicsConfig,
+      this.threeApp.camera,
+      this.threeApp.renderer.domElement.clientHeight,
+    );
     for (const u of this.clientViewState.getForceFieldUnits()) {
       this.forceFieldRenderer.perUnit(u);
     }

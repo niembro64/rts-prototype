@@ -9,12 +9,23 @@ import * as THREE from 'three';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, WATER_LEVEL } from '../sim/Terrain';
 import type { GraphicsConfig } from '@/types/graphics';
+import { getGraphicsConfigFor } from '@/clientBarConfig';
+import { snapshotLod } from './Lod3D';
+import { objectLodToGraphicsTier } from './RenderObjectLod';
+import { RenderLodGrid } from './RenderLodGrid';
 
 const WAVE_LAMBDA_X = 240;
 const WAVE_LAMBDA_Z = 320;
 const WAVE_OMEGA_X = 0.6;
 const WAVE_OMEGA_Z = 0.45;
 const WATER_COLOR = 0x4aa3df;
+
+type WaterCell = {
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
+};
 
 export class WaterRenderer3D {
   private mesh: THREE.Mesh;
@@ -24,7 +35,10 @@ export class WaterRenderer3D {
   private amplitudeUniform = { value: 0 };
   private mapWidth: number;
   private mapHeight: number;
-  private patchSubdiv = -1;
+  private terrainLodKey = '';
+  private waterCellCache: WaterCell[] | null = null;
+  private lodGrid = new RenderLodGrid();
+  private lodActive = false;
   private frameIndex = 0;
 
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
@@ -104,14 +118,11 @@ export class WaterRenderer3D {
     return false;
   }
 
-  private rebuildGeometryIfNeeded(globalSubdivisions: number): void {
-    const nextSubdiv = this.perCellSubdiv(globalSubdivisions);
-    if (nextSubdiv === this.patchSubdiv) return;
-    this.patchSubdiv = nextSubdiv;
-
+  private getWaterCells(): readonly WaterCell[] {
+    if (this.waterCellCache) return this.waterCellCache;
     const cellsX = Math.max(1, Math.ceil(this.mapWidth / SPATIAL_GRID_CELL_SIZE));
     const cellsY = Math.max(1, Math.ceil(this.mapHeight / SPATIAL_GRID_CELL_SIZE));
-    const waterCells: Array<{ x0: number; z0: number; x1: number; z1: number }> = [];
+    const waterCells: WaterCell[] = [];
     const wetCells = new Uint8Array(cellsX * cellsY);
 
     for (let cy = 0; cy < cellsY; cy++) {
@@ -134,56 +145,93 @@ export class WaterRenderer3D {
         waterCells.push({ x0, z0, x1, z1 });
       }
     }
+    this.waterCellCache = waterCells;
+    return waterCells;
+  }
 
-    const vertsPerCell = (nextSubdiv + 1) * (nextSubdiv + 1);
-    const trisPerCell = nextSubdiv * nextSubdiv * 2;
-    const positions = new Float32Array(waterCells.length * vertsPerCell * 3);
-    const normals = new Float32Array(waterCells.length * vertsPerCell * 3);
-    const indices = new Uint32Array(waterCells.length * trisPerCell * 3);
+  private waterLodKey(graphicsConfig: GraphicsConfig, camera?: THREE.PerspectiveCamera): string {
+    if (!camera) {
+      return `${graphicsConfig.tier}|${graphicsConfig.waterSubdivisions}|static`;
+    }
+    const cellSize = Math.max(16, graphicsConfig.objectLodCellSize);
+    return [
+      graphicsConfig.tier,
+      graphicsConfig.waterSubdivisions,
+      graphicsConfig.richObjectDistance,
+      cellSize,
+      Math.floor(camera.position.x / cellSize),
+      Math.floor(camera.position.y / cellSize),
+      Math.floor(camera.position.z / cellSize),
+    ].join('|');
+  }
 
-    const idx = (ix: number, iz: number) => iz * (nextSubdiv + 1) + ix;
+  private graphicsConfigForWaterCell(cell: WaterCell, fallback: GraphicsConfig): GraphicsConfig {
+    if (!this.lodActive) return fallback;
+    const centerX = (cell.x0 + cell.x1) * 0.5;
+    const centerZ = (cell.z0 + cell.z1) * 0.5;
+    const objectTier = this.lodGrid.resolve(centerX, WATER_LEVEL, centerZ);
+    const graphicsTier = objectLodToGraphicsTier(objectTier, fallback.tier);
+    return getGraphicsConfigFor(graphicsTier);
+  }
+
+  private rebuildGeometryIfNeeded(graphicsConfig: GraphicsConfig, camera?: THREE.PerspectiveCamera): void {
+    const nextKey = this.waterLodKey(graphicsConfig, camera);
+    if (nextKey === this.terrainLodKey) return;
+    this.terrainLodKey = nextKey;
+
+    const waterCells = this.getWaterCells();
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const indices: number[] = [];
+
     for (let c = 0; c < waterCells.length; c++) {
       const cell = waterCells[c];
-      const vBase = c * vertsPerCell;
-      const pBase = vBase * 3;
-      for (let iz = 0; iz <= nextSubdiv; iz++) {
-        const z = cell.z0 + ((cell.z1 - cell.z0) * iz) / nextSubdiv;
-        for (let ix = 0; ix <= nextSubdiv; ix++) {
-          const x = cell.x0 + ((cell.x1 - cell.x0) * ix) / nextSubdiv;
-          const off = pBase + idx(ix, iz) * 3;
-          positions[off] = x;
-          positions[off + 1] = WATER_LEVEL;
-          positions[off + 2] = z;
-          normals[off] = 0;
-          normals[off + 1] = 1;
-          normals[off + 2] = 0;
+      const cellGfx = this.graphicsConfigForWaterCell(cell, graphicsConfig);
+      const subdiv = this.perCellSubdiv(cellGfx.waterSubdivisions);
+      const vBase = positions.length / 3;
+      const idx = (ix: number, iz: number) => iz * (subdiv + 1) + ix;
+
+      for (let iz = 0; iz <= subdiv; iz++) {
+        const z = cell.z0 + ((cell.z1 - cell.z0) * iz) / subdiv;
+        for (let ix = 0; ix <= subdiv; ix++) {
+          const x = cell.x0 + ((cell.x1 - cell.x0) * ix) / subdiv;
+          positions.push(x, WATER_LEVEL, z);
+          normals.push(0, 1, 0);
         }
       }
 
-      let k = c * trisPerCell * 3;
-      for (let iz = 0; iz < nextSubdiv; iz++) {
-        for (let ix = 0; ix < nextSubdiv; ix++) {
+      for (let iz = 0; iz < subdiv; iz++) {
+        for (let ix = 0; ix < subdiv; ix++) {
           const a = vBase + idx(ix, iz);
           const b = vBase + idx(ix + 1, iz);
           const d = vBase + idx(ix, iz + 1);
           const e = vBase + idx(ix + 1, iz + 1);
-          indices[k++] = a; indices[k++] = b; indices[k++] = e;
-          indices[k++] = a; indices[k++] = e; indices[k++] = d;
+          indices.push(a, b, e, a, e, d);
         }
       }
     }
 
     this.geometry.dispose();
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    this.geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-    this.geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+    this.geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
+    this.geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
     this.geometry.computeBoundingSphere();
     this.mesh.visible = waterCells.length > 0;
   }
 
-  update(dtSec: number, graphicsConfig: GraphicsConfig): void {
+  update(
+    dtSec: number,
+    graphicsConfig: GraphicsConfig,
+    camera?: THREE.PerspectiveCamera,
+    viewportHeightPx = 1,
+  ): void {
     this.frameIndex = (this.frameIndex + 1) & 0x3fffffff;
-    this.rebuildGeometryIfNeeded(graphicsConfig.waterSubdivisions);
+    this.lodActive = camera !== undefined;
+    if (camera) {
+      const lod = snapshotLod(camera, viewportHeightPx);
+      this.lodGrid.beginFrame(lod.view, graphicsConfig);
+    }
+    this.rebuildGeometryIfNeeded(graphicsConfig, camera);
     this.material.opacity = graphicsConfig.waterOpacity;
     this.amplitudeUniform.value = graphicsConfig.waterWaveAmplitude;
     if (!this.mesh.visible || graphicsConfig.waterOpacity <= 0) return;

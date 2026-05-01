@@ -12,6 +12,7 @@ import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotProjectileSpawn,
+  NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
@@ -37,15 +38,15 @@ import {
   codeToBuildingType,
   codeToProjectileType,
   PROJECTILE_TYPE_BEAM,
+  PROJECTILE_TYPE_LASER,
 } from '../../types/network';
 
-import { findBeamPath } from './BeamPathResolver';
 import {
   lerp,
   lerpAngle,
   applyHomingSteering,
 } from '../math';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY, BEAM_MAX_LENGTH } from '../../config';
+import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY } from '../../config';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
@@ -114,7 +115,7 @@ function getClientForceFieldZones(shot: ForceShot, progress: number) {
 // Drift half-lives (seconds). How long to close 50% of the gap to the server value.
 // Smaller = snappier correction, larger = smoother/lazier.
 // Blend factor per frame: 1 - Math.pow(0.5, dt / halfLife)
-import { getDriftMode, getGraphicsConfig } from '@/clientBarConfig';
+import { getDriftMode } from '@/clientBarConfig';
 import type { DriftMode } from '@/types/client';
 
 type DriftAxis = { pos: number; vel: number };
@@ -182,6 +183,9 @@ export type PredictionLodContext = {
   massDistance: number;
   impostorDistance: number;
   cellSize: number;
+  /** PLAYER CLIENT LOD global cadence: frames to skip before
+   *  another client prediction step. 0 means every render frame. */
+  physicsPredictionFramesSkip: number;
 };
 
 type PredictionLodCellRecord = {
@@ -420,6 +424,15 @@ export class ClientViewState {
         } catch {
           // Skip projectiles with unknown weapon configs (e.g. corrupted by serialization)
         }
+      }
+    }
+
+    // Server-authored live beam/laser paths. These carry current
+    // start/end/reflection points so the client can draw beams without
+    // running local mirror/unit/building beam traces in applyPrediction.
+    if (state.projectiles?.beamUpdates) {
+      for (const update of state.projectiles.beamUpdates) {
+        this.applyBeamUpdate(update);
       }
     }
 
@@ -684,6 +697,51 @@ export class ClientViewState {
     // Projectiles are no longer in server snapshots — handled via spawn/despawn events
   }
 
+  private applyBeamUpdate(update: NetworkServerSnapshotBeamUpdate): void {
+    const entity = this.entities.get(update.id);
+    const proj = entity?.projectile;
+    if (!entity || !proj) return;
+
+    proj.startX = update.start.x;
+    proj.startY = update.start.y;
+    proj.startZ = update.start.z;
+    proj.endX = update.end.x;
+    proj.endY = update.end.y;
+    proj.endZ = update.end.z;
+    proj.obstructionT = update.obstructionT;
+
+    entity.transform.x = update.start.x;
+    entity.transform.y = update.start.y;
+    entity.transform.z = update.start.z;
+
+    const firstSegmentEnd = update.reflections?.[0] ?? update.end;
+    entity.transform.rotation = Math.atan2(
+      firstSegmentEnd.y - update.start.y,
+      firstSegmentEnd.x - update.start.x,
+    );
+
+    const reflections = update.reflections;
+    if (reflections && reflections.length > 0) {
+      const dst = proj.reflections ?? [];
+      dst.length = reflections.length;
+      for (let i = 0; i < reflections.length; i++) {
+        const src = reflections[i];
+        const item = dst[i] ?? { x: 0, y: 0, z: 0, mirrorEntityId: 0 };
+        item.x = src.x;
+        item.y = src.y;
+        item.z = src.z;
+        item.mirrorEntityId = src.mirrorEntityId;
+        dst[i] = item;
+      }
+      proj.reflections = dst;
+    } else {
+      proj.reflections = undefined;
+    }
+
+    this.predictionAccumMs.delete(update.id);
+    this.targetPredictionAccumMs.delete(update.id);
+  }
+
   private resolvePredictionLodTier(
     entity: Entity,
     lod: PredictionLodContext | undefined,
@@ -772,6 +830,7 @@ export class ClientViewState {
   private predictionFrameStrideForTier(
     tier: PredictionLodTier,
     entity: Entity,
+    lod: PredictionLodContext | undefined,
   ): number {
     if (entity.selectable?.selected === true) return 1;
     if (
@@ -780,22 +839,18 @@ export class ClientViewState {
     ) {
       return 1;
     }
-    switch (tier) {
-      case 'rich': return 1;
-      case 'simple': return 2;
-      case 'mass': return 4;
-      case 'impostor': return 8;
-      case 'hidden': return 16;
-    }
+    const globalFramesSkip = Math.max(0, Math.floor(lod?.physicsPredictionFramesSkip ?? 0));
+    const sphereFramesSkip = this.predictionFramesSkipForTier(tier);
+    return Math.max(globalFramesSkip, sphereFramesSkip) + 1;
   }
 
-  private beamPathFrameStrideForTier(tier: PredictionLodTier): number {
+  private predictionFramesSkipForTier(tier: PredictionLodTier): number {
     switch (tier) {
-      case 'rich': return 1;
-      case 'simple': return 2;
-      case 'mass': return 4;
-      case 'impostor': return 8;
-      case 'hidden': return 16;
+      case 'rich': return 0;
+      case 'simple': return 1;
+      case 'mass': return 3;
+      case 'impostor': return 7;
+      case 'hidden': return 15;
     }
   }
 
@@ -850,7 +905,6 @@ export class ClientViewState {
 
     // Frame-rate independent blend factors (driven by drift mode half-lives)
     const preset = DRIFT_PRESETS[getDriftMode()];
-    const beamGraphicsFrameStride = getGraphicsConfig().beamPathFramesSkip + 1;
 
     // Collect active force fields for client-side projectile prediction.
     // The backing objects stay pooled at the session high-water mark.
@@ -858,7 +912,7 @@ export class ClientViewState {
 
     for (const entity of this.entities.values()) {
       const predictionTier = this.resolvePredictionLodTier(entity, lod);
-      const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity);
+      const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
       const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
       if (predictionStep === null) continue;
 
@@ -993,91 +1047,15 @@ export class ClientViewState {
           entity.projectile.projectileType === 'beam' ||
           entity.projectile.projectileType === 'laser'
         ) {
-          // Beams: reconstruct from source unit's current position + turret rotation
-          // Beam existence is driven by the weapon's state (updated every snapshot),
-          // so lost despawn events self-correct on the next snapshot.
-          const weaponIndex = entity.projectile.config.turretIndex ?? 0;
-          const source = this.entities.get(entity.projectile.sourceEntityId);
-          const weapon = source?.turrets?.[weaponIndex];
-
-          if (source && weapon && weapon.state === 'engaged') {
-            // Delegate the full turret-rotation chain to the shared
-            // BarrelGeometry primitive — identical call the server uses
-            // in projectileSystem's beam update — so predicted and
-            // authoritative beam geometry agree by construction.
-            const turretAngle = weapon.rotation;
-            const turretPitch = weapon.pitch;
-            const unitCos = Math.cos(source.transform.rotation);
-            const unitSin = Math.sin(source.transform.rotation);
-            // Same canonical mount math as the sim's targeting path.
-            const sn = getSurfaceNormal(
-              source.transform.x, source.transform.y,
-              this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE,
-            );
-            const unitGroundZ = source.transform.z - source.unit!.unitRadiusCollider.push;
-            const mount = getTurretWorldMount(
-              source.transform.x, source.transform.y, unitGroundZ,
-              unitCos, unitSin,
-              weapon.offset.x, weapon.offset.y, getTurretMountHeight(source, weaponIndex),
-              sn,
-            );
-            const tip = getBarrelTip(
-              mount.x, mount.y, mount.z,
-              turretAngle, turretPitch,
-              entity.projectile.config,
-              source.unit!.unitRadiusCollider.scale,
-              0,
-            );
-            const startX = tip.x;
-            const startY = tip.y;
-            const startZ = tip.z;
-
-            const beamLength = BEAM_MAX_LENGTH;
-            const fullEndX = tip.x + tip.dirX * beamLength;
-            const fullEndY = tip.y + tip.dirY * beamLength;
-            const fullEndZ = tip.z + tip.dirZ * beamLength;
-
-            entity.projectile.startX = startX;
-            entity.projectile.startY = startY;
-            entity.projectile.startZ = startZ;
-            entity.transform.x = startX;
-            entity.transform.y = startY;
-            entity.transform.z = startZ;
-            entity.transform.rotation = turretAngle;
-
-            // Throttle beam path recomputation by graphics tier AND
-            // camera-sphere prediction tier. The client resolver is a
-            // broad entity scan, so far beams should reuse their last
-            // authoritative/predicted segment for several frames.
-            const sourceTier = source.selectable?.selected === true
-              ? 'rich'
-              : this.resolvePredictionLodTier(source, lod);
-            const beamFrameStride = Math.max(
-              beamGraphicsFrameStride,
-              this.beamPathFrameStrideForTier(sourceTier),
-            );
-            if (
-              entity.projectile.endX === undefined ||
-              beamFrameStride <= 1 ||
-              this.frameCounter % beamFrameStride === 0
-            ) {
-              const beamPath = findBeamPath(
-                this.cache,
-                startX, startY, startZ,
-                fullEndX, fullEndY, fullEndZ,
-                entity.projectile.sourceEntityId,
-              );
-              entity.projectile.endX = beamPath.endX;
-              entity.projectile.endY = beamPath.endY;
-              entity.projectile.endZ = beamPath.endZ;
-              entity.projectile.obstructionT = beamPath.obstructionT;
-              entity.projectile.reflections =
-                beamPath.reflections.length > 0
-                  ? beamPath.reflections
-                  : undefined;
-            }
-          } else {
-            // Source unit gone or weapon stopped firing — remove beam
+          // Beam/laser geometry is server-authored in snapshot
+          // beamUpdates. The client only retains the latest path for
+          // rendering and local timeout cleanup; it no longer re-traces
+          // mirror/unit/building intersections in the render frame.
+          entity.projectile.timeAlive += entityDeltaMs;
+          if (
+            Number.isFinite(entity.projectile.maxLifespan) &&
+            entity.projectile.timeAlive > entity.projectile.maxLifespan + 1000
+          ) {
             this.deleteEntityLocalState(entity.id);
           }
         } else {
@@ -1318,7 +1296,11 @@ export class ClientViewState {
     // turret-rotation chain (unit yaw → turret yaw+pitch) to the shared
     // primitive, so multi-barrel shots use the same centerline spawn on
     // both sides.
-    if (spawn.projectileType !== PROJECTILE_TYPE_BEAM && !spawn.fromParentDetonation) {
+    if (
+      spawn.projectileType !== PROJECTILE_TYPE_BEAM &&
+      spawn.projectileType !== PROJECTILE_TYPE_LASER &&
+      !spawn.fromParentDetonation
+    ) {
       const source = this.entities.get(spawn.sourceEntityId);
       const weapon = source?.turrets?.[spawn.turretIndex];
       if (source && source.unit && weapon) {

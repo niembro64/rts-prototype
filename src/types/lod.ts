@@ -70,6 +70,7 @@ export type GraphicsDetailConfig = {
   OBJECT_LOD_CELL_SIZE: LodTierMap<number>;
   HUD_FRAME_STRIDE: LodTierMap<number>;
   EFFECT_FRAME_STRIDE: LodTierMap<number>;
+  CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP: LodTierMap<number>;
   CAPTURE_TILE_SUBDIV: LodTierMap<number>;
   CAPTURE_TILE_FRAME_STRIDE: LodTierMap<number>;
   CAPTURE_TILE_SIDE_WALLS: LodTierMap<boolean>;
@@ -92,7 +93,6 @@ export type GraphicsDetailConfig = {
   BARREL_SPIN: LodTierMap<boolean>;
   BURN_MARK_ALPHA_CUTOFF: LodTierMap<number>;
   BURN_MARK_FRAMES_SKIP: LodTierMap<number>;
-  BEAM_PATH_FRAMES_SKIP: LodTierMap<number>;
   PROJECTILE_STYLE: LodTierMap<ProjectileStyle>;
   FIRE_EXPLOSION_STYLE: LodTierMap<FireExplosionStyle>;
   DEATH_EXPLOSION_STYLE: LodTierMap<DeathExplosionStyle>;

@@ -1,12 +1,9 @@
 // BeamRenderer3D — renders beam and laser projectiles as thin 3D cylinders.
 //
-// ClientViewState reconstructs start/end/reflections (including z) from the
-// source unit's turret yaw + pitch each frame via the 3D beam tracer in
-// BeamPathResolver. This renderer reads those fields and draws one cylinder
-// per path segment using each segment's real altitude — a pitched beam
-// leaves the barrel tip at the unit's muzzle height and its reflections
-// each carry their own hit-point z, so the rendered polyline matches the
-// collision math exactly.
+// ClientViewState receives authoritative start/end/reflections (including z)
+// from the host snapshots. This renderer reads those fields and draws one
+// cylinder per path segment using each segment's real altitude, so reflected
+// beam visuals match the server collision path without client-side tracing.
 //
 // Cylinders come from a shared pool: each frame we rebuild by pulling from
 // the pool and hiding any leftover meshes. Per-team materials are cached.
@@ -15,6 +12,11 @@ import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
 import { BEAM_MAX_LENGTH } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
+import type { ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
+import { getGraphicsConfig } from '@/clientBarConfig';
+import { snapshotLod } from './Lod3D';
+import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjectLod';
+import { RenderLodGrid } from './RenderLodGrid';
 
 // Fallback altitude for beams whose proj.startZ / endZ haven't been
 // populated yet (a single frame gap before the tracer runs). Matches the
@@ -35,6 +37,31 @@ const BEAM_RADIUS_SCALE = 0.55;
 const BEAM_OPACITY = 0.16;
 const LASER_OPACITY_MAX = 0.24;
 const BEAM_COLOR = 0xffffff;
+
+const BEAM_LOD_ORDER: Record<RenderObjectLodTier, number> = {
+  hidden: 0,
+  impostor: 1,
+  mass: 2,
+  simple: 3,
+  rich: 4,
+  hero: 5,
+};
+
+const BEAM_OPACITY_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
+  min: 0.28,
+  low: 0.42,
+  medium: 0.62,
+  high: 0.82,
+  max: 1,
+};
+
+const BEAM_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
+  min: 0.45,
+  low: 0.55,
+  medium: 0.7,
+  high: 0.88,
+  max: 1,
+};
 
 type BeamMat = {
   material: THREE.MeshBasicMaterial;
@@ -62,6 +89,9 @@ export class BeamRenderer3D {
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
   private scope: ViewportFootprint;
+  private lodGrid = new RenderLodGrid();
+  private lodActive = false;
+  private frameGfx: GraphicsConfig = getGraphicsConfig();
 
   // Scratch vectors reused per frame (no per-segment allocations).
   private _a = new THREE.Vector3();
@@ -75,6 +105,33 @@ export class BeamRenderer3D {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope;
+  }
+
+  private resolvePointLod(simX: number, simY: number, simZ: number): RenderObjectLodTier {
+    if (!this.lodActive) return 'rich';
+    return this.lodGrid.resolve(simX, simZ, simY);
+  }
+
+  private richerLod(a: RenderObjectLodTier, b: RenderObjectLodTier): RenderObjectLodTier {
+    return BEAM_LOD_ORDER[b] > BEAM_LOD_ORDER[a] ? b : a;
+  }
+
+  private resolveBeamLod(
+    startX: number,
+    startY: number,
+    startZ: number,
+    endX: number,
+    endY: number,
+    endZ: number,
+  ): RenderObjectLodTier {
+    let tier = this.resolvePointLod(startX, startY, startZ);
+    tier = this.richerLod(tier, this.resolvePointLod(endX, endY, endZ));
+    tier = this.richerLod(tier, this.resolvePointLod(
+      (startX + endX) * 0.5,
+      (startY + endY) * 0.5,
+      (startZ + endZ) * 0.5,
+    ));
+    return tier;
   }
 
   private getMaterial(pid: PlayerId | undefined, projectileType: string): THREE.MeshBasicMaterial {
@@ -150,8 +207,19 @@ export class BeamRenderer3D {
     mesh.scale.set(cylRadius, Math.max(length, 1e-3), cylRadius);
   }
 
-  update(projectiles: readonly Entity[]): void {
+  update(
+    projectiles: readonly Entity[],
+    graphicsConfig?: GraphicsConfig,
+    camera?: THREE.PerspectiveCamera,
+    viewportHeightPx = 1,
+  ): void {
     if (projectiles.length === 0 && this.activeSegmentCount === 0) return;
+    this.frameGfx = graphicsConfig ?? getGraphicsConfig();
+    this.lodActive = camera !== undefined;
+    if (camera) {
+      const lod = snapshotLod(camera, viewportHeightPx);
+      this.lodGrid.beginFrame(lod.view, this.frameGfx);
+    }
 
     let segIdx = 0;
 
@@ -173,6 +241,14 @@ export class BeamRenderer3D {
       // keyframe where start/endZ wasn't populated yet).
       const startZ = proj.startZ ?? SHOT_HEIGHT;
       const endZ = proj.endZ ?? SHOT_HEIGHT;
+      const objectTier = this.resolveBeamLod(startX, startY, startZ, endX, endY, endZ);
+      if (objectTier === 'hidden') continue;
+      const graphicsTier = objectLodToGraphicsTier(objectTier, this.frameGfx.tier);
+      const opacityMul = BEAM_OPACITY_BY_TIER[graphicsTier];
+      const radiusMul = BEAM_RADIUS_BY_TIER[graphicsTier];
+      const drawReflections = objectTier !== 'impostor'
+        && graphicsTier !== 'min'
+        && graphicsTier !== 'low';
 
       // Scope gate — skip the beam entirely when BOTH endpoints are
       // outside the render rect. A beam that crosses the rect (one
@@ -189,7 +265,7 @@ export class BeamRenderer3D {
       // directly as the cylinder scale makes the diameter = shot.width.
       let cylRadius = BEAM_MIN_RADIUS;
       if (shot && (shot.type === 'beam' || shot.type === 'laser')) {
-        cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius * BEAM_RADIUS_SCALE);
+        cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius * BEAM_RADIUS_SCALE * radiusMul);
       }
       const baseMat = this.getMaterial(proj.ownerId, pt);
 
@@ -207,12 +283,12 @@ export class BeamRenderer3D {
       let prevZ = startZ;
       let cumDist = 0;
       const reflections = proj.reflections;
-      if (reflections) {
+      if (reflections && drawReflections) {
         for (let i = 0; i < reflections.length; i++) {
           const r = reflections[i];
           const segLen = Math.hypot(r.x - prevX, r.y - prevY, r.z - prevZ);
           const midDist = cumDist + segLen / 2;
-          const fade = Math.max(0, 1 - midDist / BEAM_MAX_LENGTH);
+          const fade = Math.max(0, 1 - midDist / BEAM_MAX_LENGTH) * opacityMul;
           const slot = segIdx++;
           const mesh = this.acquireSegment(slot);
           mesh.material = this.acquireSegmentMat(slot, baseMat, fade);
@@ -225,7 +301,7 @@ export class BeamRenderer3D {
       }
       const finalLen = Math.hypot(endX - prevX, endY - prevY, endZ - prevZ);
       const finalMid = cumDist + finalLen / 2;
-      const finalFade = Math.max(0, 1 - finalMid / BEAM_MAX_LENGTH);
+      const finalFade = Math.max(0, 1 - finalMid / BEAM_MAX_LENGTH) * opacityMul;
       const finalSlot = segIdx++;
       const mesh = this.acquireSegment(finalSlot);
       mesh.material = this.acquireSegmentMat(finalSlot, baseMat, finalFade);

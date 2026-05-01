@@ -74,6 +74,14 @@ const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
 
+const PROJECTILE_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
+  min: 0.7,
+  low: 0.8,
+  medium: 0.9,
+  high: 1,
+  max: 1,
+};
+
 // Module-level rotation axis reused by the LOW-tier instanced sphere
 // path. Three.js' Quaternion.setFromAxisAngle reads the axis as an
 // (input) Vector3, but never mutates it.
@@ -3244,18 +3252,27 @@ export class Render3DEntities {
       seen.add(e.id);
       // Scope gate — tighter padding (projectiles are small and moving fast).
       if (!this.scope.inScope(e.transform.x, e.transform.y, 50)) {
-        const radii = this.projectileRadiusMeshes.get(e.id);
-        if (radii) {
-          if (radii.collision) radii.collision.visible = false;
-          if (radii.explosion) radii.explosion.visible = false;
-        }
+        this.hideProjRadiusMeshes(e.id);
         continue;
       }
+
+      const objectTier = this.resolveEntityObjectLod(e);
+      if (objectTier === 'hidden') {
+        this.hideProjRadiusMeshes(e.id);
+        continue;
+      }
+      const projectileGraphicsTier = objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
+      const richProjectile = objectTier === 'rich' || objectTier === 'hero' || objectTier === 'simple';
       const shot = e.projectile?.config.shot;
       // Projectile shots have collision.radius
       let radius = 4;
       if (shot && shot.type === 'projectile') radius = shot.collision.radius;
-      const isCylinder = shot && shot.type === 'projectile' && shot.shape === 'cylinder';
+      const radiusScale = PROJECTILE_RADIUS_BY_TIER[projectileGraphicsTier];
+      const visualRadius = radius * radiusScale;
+      const isCylinder = richProjectile
+        && shot
+        && shot.type === 'projectile'
+        && shot.shape === 'cylinder';
 
       // Projectile altitude is authoritative sim state (arcs through
       // real z from turret muzzle to ground / target). SHOT_HEIGHT is
@@ -3265,11 +3282,7 @@ export class Render3DEntities {
 
       if (isCylinder) {
         if (!cylinderMesh || cylinderCount >= Render3DEntities.PROJECTILE_INSTANCED_CAP) {
-          const radii = this.projectileRadiusMeshes.get(e.id);
-          if (radii) {
-            if (radii.collision) radii.collision.visible = false;
-            if (radii.explosion) radii.explosion.visible = false;
-          }
+          this.hideProjRadiusMeshes(e.id);
           continue;
         }
         // Cylinder rocket body: stretch along its local +Y, then rotate
@@ -3280,7 +3293,7 @@ export class Render3DEntities {
         // (lightRocket vs heavyMissile vs torpedo etc.). The sim
         // collision footprint stays a sphere of collision.radius —
         // this is purely a render hint.
-        const r = Math.max(radius, PROJECTILE_MIN_RADIUS);
+        const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
         const cylSpec = (shot && shot.type === 'projectile') ? shot.cylinderShape : undefined;
         const lengthMult = cylSpec?.lengthMult ?? Render3DEntities._PROJ_CYL_LENGTH_MULT_DEFAULT;
         const diameterMult = cylSpec?.diameterMult ?? Render3DEntities._PROJ_CYL_DIAMETER_MULT_DEFAULT;
@@ -3308,17 +3321,13 @@ export class Render3DEntities {
         cylinderMesh.setMatrixAt(cylinderCount++, this._projMatrix);
       } else {
         if (!sphereMesh || sphereCount >= Render3DEntities.PROJECTILE_INSTANCED_CAP) {
-          const radii = this.projectileRadiusMeshes.get(e.id);
-          if (radii) {
-            if (radii.collision) radii.collision.visible = false;
-            if (radii.explosion) radii.explosion.visible = false;
-          }
+          this.hideProjRadiusMeshes(e.id);
           continue;
         }
         // Match 2D: `fillCircle(x, y, radius)` — the sphere's world-space radius
         // equals the sim's shot.collision.radius. SphereGeometry has radius 1,
         // so setScalar(radius) is the correct scale.
-        const r = Math.max(radius, PROJECTILE_MIN_RADIUS);
+        const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
         this._projScale.set(r, r, r);
         this._projMatrix.compose(
           this._projPos,
@@ -3328,7 +3337,11 @@ export class Render3DEntities {
         sphereMesh.setMatrixAt(sphereCount++, this._projMatrix);
       }
 
-      this.updateProjRadiusMeshes(e);
+      if (richProjectile) {
+        this.updateProjRadiusMeshes(e);
+      } else {
+        this.hideProjRadiusMeshes(e.id);
+      }
     }
 
     if (sphereMesh) {
@@ -3407,6 +3420,13 @@ export class Render3DEntities {
       shot.explosion?.radius ?? 0,
       this.projMatExplosion,
     );
+  }
+
+  private hideProjRadiusMeshes(entityId: EntityId): void {
+    const radii = this.projectileRadiusMeshes.get(entityId);
+    if (!radii) return;
+    if (radii.collision) radii.collision.visible = false;
+    if (radii.explosion) radii.explosion.visible = false;
   }
 
   /** Internal helper — create/show/hide one of the SHOT RAD

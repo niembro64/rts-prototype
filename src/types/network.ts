@@ -226,6 +226,21 @@ export type NetworkServerSnapshotVelocityUpdate = {
   velocity: Vec3;
 };
 
+export type NetworkServerSnapshotBeamReflection = {
+  x: number;
+  y: number;
+  z: number;
+  mirrorEntityId: number;
+};
+
+export type NetworkServerSnapshotBeamUpdate = {
+  id: number;
+  start: Vec3;
+  end: Vec3;
+  obstructionT?: number;
+  reflections?: NetworkServerSnapshotBeamReflection[];
+};
+
 export type NetworkServerSnapshotGridCell = {
   cell: Vec3;
   players: number[];
@@ -296,6 +311,10 @@ export type NetworkServerSnapshot = {
     spawns?: NetworkServerSnapshotProjectileSpawn[];
     despawns?: NetworkServerSnapshotProjectileDespawn[];
     velocityUpdates?: NetworkServerSnapshotVelocityUpdate[];
+    /** Authoritative live beam/laser paths. Sent every snapshot so
+     *  clients draw reflected segments directly instead of re-tracing
+     *  mirror/unit/building intersections in the render frame. */
+    beamUpdates?: NetworkServerSnapshotBeamUpdate[];
   };
   gameState?: { phase: GamePhase; winnerId?: PlayerId };
   combatStats?: NetworkServerSnapshotCombatStats;

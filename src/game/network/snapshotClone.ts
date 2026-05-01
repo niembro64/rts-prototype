@@ -7,6 +7,7 @@ import type {
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotProjectileSpawn,
+  NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotTurret,
@@ -218,6 +219,21 @@ function cloneVelocityUpdate(v: NetworkServerSnapshotVelocityUpdate): NetworkSer
   };
 }
 
+function cloneBeamUpdate(b: NetworkServerSnapshotBeamUpdate): NetworkServerSnapshotBeamUpdate {
+  return {
+    id: b.id,
+    start: { x: b.start.x, y: b.start.y, z: b.start.z },
+    end: { x: b.end.x, y: b.end.y, z: b.end.z },
+    obstructionT: b.obstructionT,
+    reflections: b.reflections?.map((r) => ({
+      x: r.x,
+      y: r.y,
+      z: r.z,
+      mirrorEntityId: r.mirrorEntityId,
+    })),
+  };
+}
+
 function cloneCell(c: NetworkServerSnapshotGridCell): NetworkServerSnapshotGridCell {
   return {
     cell: { x: c.cell.x, y: c.cell.y, z: c.cell.z },
@@ -242,6 +258,7 @@ export function cloneNetworkSnapshot(state: NetworkServerSnapshot): NetworkServe
       spawns: state.projectiles.spawns?.map(cloneSpawn),
       despawns: state.projectiles.despawns?.map((d: NetworkServerSnapshotProjectileDespawn) => ({ id: d.id })),
       velocityUpdates: state.projectiles.velocityUpdates?.map(cloneVelocityUpdate),
+      beamUpdates: state.projectiles.beamUpdates?.map(cloneBeamUpdate),
     } : undefined,
     gameState: state.gameState ? { phase: state.gameState.phase, winnerId: state.gameState.winnerId } : undefined,
     combatStats: state.combatStats ? cloneNetworkCombatStats(state.combatStats) : undefined,

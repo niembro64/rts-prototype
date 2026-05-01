@@ -40,6 +40,7 @@ export type GraphicsConfig = {
   objectLodCellSize: number;
   hudFrameStride: number;
   effectFrameStride: number;
+  clientPhysicsPredictionFramesSkip: number;
   captureTileSubdiv: number;
   captureTileFrameStride: number;
   captureTileSideWalls: boolean;
@@ -60,7 +61,6 @@ export type GraphicsConfig = {
   antialias: boolean;
   burnMarkAlphaCutoff: number;
   burnMarkFramesSkip: number;
-  beamPathFramesSkip: number;
   forceFieldStyle: ForceFieldStyle;
   projectileStyle: ProjectileStyle;
   fireExplosionStyle: FireExplosionStyle;

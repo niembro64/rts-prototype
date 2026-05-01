@@ -1,7 +1,7 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamReflection, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -91,6 +91,20 @@ function qVel(n: number): number {
  *  visible turret jitter and saves several chars per rotation field. */
 function qRot(n: number): number {
   return Math.round(n * 1000) / 1000;
+}
+
+function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
+  return {
+    id: 0,
+    start: { x: 0, y: 0, z: 0 },
+    end: { x: 0, y: 0, z: 0 },
+    obstructionT: undefined,
+    reflections: undefined,
+  };
+}
+
+function createPooledBeamReflection(): NetworkServerSnapshotBeamReflection {
+  return { x: 0, y: 0, z: 0, mirrorEntityId: 0 };
 }
 
 function createPooledEntry(): PooledEntry {
@@ -439,6 +453,11 @@ const _audioBuf: NetworkServerSnapshotSimEvent[] = [];
 const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
 const _despawnBuf: NetworkServerSnapshotProjectileDespawn[] = [];
 const _velUpdateBuf: NetworkServerSnapshotVelocityUpdate[] = [];
+const _beamUpdateBuf: NetworkServerSnapshotBeamUpdate[] = [];
+const _beamUpdatePool: NetworkServerSnapshotBeamUpdate[] = [];
+const _beamReflectionPool: NetworkServerSnapshotBeamReflection[] = [];
+let _beamUpdatePoolIndex = 0;
+let _beamReflectionPoolIndex = 0;
 const _economyBuf: Record<PlayerId, NetworkServerSnapshotEconomy> = {} as Record<PlayerId, NetworkServerSnapshotEconomy>;
 const _economyKeys: PlayerId[] = [];
 
@@ -447,6 +466,7 @@ const _projectilesBuf: NonNullable<NetworkServerSnapshot['projectiles']> = {
   spawns: undefined,
   despawns: undefined,
   velocityUpdates: undefined,
+  beamUpdates: undefined,
 };
 const _gridBuf: NonNullable<NetworkServerSnapshot['grid']> = {
   cells: [],
@@ -471,6 +491,28 @@ const _snapshotBuf: NetworkServerSnapshot = {
   isDelta: false,
   removedEntityIds: undefined,
 };
+
+function getPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
+  let update = _beamUpdatePool[_beamUpdatePoolIndex];
+  if (!update) {
+    update = createPooledBeamUpdate();
+    _beamUpdatePool[_beamUpdatePoolIndex] = update;
+  }
+  _beamUpdatePoolIndex++;
+  if (update.reflections) update.reflections.length = 0;
+  update.obstructionT = undefined;
+  return update;
+}
+
+function getPooledBeamReflection(): NetworkServerSnapshotBeamReflection {
+  let reflection = _beamReflectionPool[_beamReflectionPoolIndex];
+  if (!reflection) {
+    reflection = createPooledBeamReflection();
+    _beamReflectionPool[_beamReflectionPoolIndex] = reflection;
+  }
+  _beamReflectionPoolIndex++;
+  return reflection;
+}
 
 export type SnapshotInterest = (entity: Entity) => boolean;
 
@@ -515,6 +557,8 @@ export function serializeGameState(
 
   // Reset entity pool for this frame
   _poolIndex = 0;
+  _beamUpdatePoolIndex = 0;
+  _beamReflectionPoolIndex = 0;
   _entityBuf.length = 0;
   _removedIdsBuf.length = 0;
 
@@ -761,12 +805,66 @@ export function serializeGameState(
     netVelocityUpdates = _velUpdateBuf;
   }
 
+  // Serialize authoritative live beam/laser paths. Spawns only carry
+  // the initial line; reflected beams move every tick with turret aim
+  // and mirror intersections, so clients need the current path in
+  // snapshots to draw without re-running beam tracing locally.
+  let netBeamUpdates: NetworkServerSnapshotBeamUpdate[] | undefined;
+  const lineProjectiles = world.getLineProjectiles();
+  if (lineProjectiles.length > 0) {
+    _beamUpdateBuf.length = 0;
+    for (let i = 0; i < lineProjectiles.length; i++) {
+      const entity = lineProjectiles[i];
+      const proj = entity.projectile;
+      if (!proj) continue;
+      const startX = proj.startX ?? entity.transform.x;
+      const startY = proj.startY ?? entity.transform.y;
+      const startZ = proj.startZ ?? entity.transform.z;
+      const endX = proj.endX;
+      const endY = proj.endY;
+      const endZ = proj.endZ;
+      if (endX === undefined || endY === undefined || endZ === undefined) continue;
+
+      const update = getPooledBeamUpdate();
+      update.id = entity.id;
+      update.start.x = qPos(startX);
+      update.start.y = qPos(startY);
+      update.start.z = qPos(startZ);
+      update.end.x = qPos(endX);
+      update.end.y = qPos(endY);
+      update.end.z = qPos(endZ);
+      update.obstructionT = proj.obstructionT === undefined ? undefined : qRot(proj.obstructionT);
+
+      const reflections = proj.reflections;
+      if (reflections && reflections.length > 0) {
+        const dst = update.reflections ?? [];
+        dst.length = reflections.length;
+        for (let r = 0; r < reflections.length; r++) {
+          const src = reflections[r];
+          const out = getPooledBeamReflection();
+          out.x = qPos(src.x);
+          out.y = qPos(src.y);
+          out.z = qPos(src.z);
+          out.mirrorEntityId = src.mirrorEntityId;
+          dst[r] = out;
+        }
+        update.reflections = dst;
+      } else {
+        update.reflections = undefined;
+      }
+
+      _beamUpdateBuf.push(update);
+    }
+    if (_beamUpdateBuf.length > 0) netBeamUpdates = _beamUpdateBuf;
+  }
+
   // Nest projectile events (undefined when all empty)
-  const hasProjectiles = netProjectileSpawns || netProjectileDespawns || netVelocityUpdates;
+  const hasProjectiles = netProjectileSpawns || netProjectileDespawns || netVelocityUpdates || netBeamUpdates;
   if (hasProjectiles) {
     _projectilesBuf.spawns = netProjectileSpawns;
     _projectilesBuf.despawns = netProjectileDespawns;
     _projectilesBuf.velocityUpdates = netVelocityUpdates;
+    _projectilesBuf.beamUpdates = netBeamUpdates;
   }
 
   // Nest grid info (undefined when grid off)

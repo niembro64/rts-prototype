@@ -8,6 +8,8 @@ export type {
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotVelocityUpdate,
+  NetworkServerSnapshotBeamReflection,
+  NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotUnitTypeStats,
   NetworkServerSnapshotCombatStats,

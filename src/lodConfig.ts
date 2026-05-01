@@ -121,6 +121,22 @@ export const LOD_EMA_SOURCE: LodEmaSource = {
 // GRAPHICS DETAIL DEFINITIONS
 // =============================================================================
 
+// Client-side prediction cadence by PLAYER CLIENT LOD. Values are
+// FRAMES TO SKIP, not frame stride:
+//   0 => update every render frame
+//   1 => update every other render frame
+//   7 => update once every 8 render frames
+//
+// Labels are intentionally the same names shown in the bar:
+// MIN / LOW / MID / HI / MAX.
+export const CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP = {
+  MIN: 7,
+  LOW: 4,
+  MID: 2,
+  HI: 1,
+  MAX: 0,
+} as const;
+
 /**
  * Centralized graphics detail level configuration.
  * Each key defines what happens at each detail level: min, low, medium, high, max.
@@ -182,6 +198,13 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     medium: 2,
     high: 1,
     max: 1,
+  },
+  CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP: {
+    min: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.MIN,
+    low: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.LOW,
+    medium: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.MID,
+    high: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.HI,
+    max: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.MAX,
   },
   // Terrain/capture overlay mesh. Lower tiers reduce the per-tile
   // surface tessellation and throttle color-buffer uploads. MAX
@@ -366,15 +389,6 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     low: 4,
     medium: 3,
     high: 1,
-    max: 0,
-  },
-
-  // Beam path collision recomputation — frames to skip between beam path traces
-  BEAM_PATH_FRAMES_SKIP: {
-    min: 15,
-    low: 11,
-    medium: 7,
-    high: 3,
     max: 0,
   },
 
