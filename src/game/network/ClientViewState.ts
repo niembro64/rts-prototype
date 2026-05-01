@@ -199,6 +199,15 @@ type PredictionStep = {
   targetDeltaMs: number;
 };
 
+const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
+const PREDICTION_VEL_EPSILON_SQ = 0.01 * 0.01;
+const PREDICTION_ROT_EPSILON = 0.001;
+const PREDICTION_TURRET_EPSILON = 0.001;
+
+function angleDeltaAbs(a: number, b: number): number {
+  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+}
+
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
   private entities: Map<EntityId, Entity> = new Map();
@@ -259,6 +268,8 @@ export class ClientViewState {
   private predictionAccumMs: Map<EntityId, number> = new Map();
   private targetPredictionAccumMs: Map<EntityId, number> = new Map();
   private predictionLodCells: Map<PredictionLodCellKey, PredictionLodCellRecord> = new Map();
+  private activeUnitPredictionIds: Set<EntityId> = new Set();
+  private activeProjectilePredictionIds: Set<EntityId> = new Set();
 
   // Per-frame cache of living enemy entities, built lazily the first
   // time a rocket needs to re-acquire this frame. Subsequent rockets
@@ -305,7 +316,29 @@ export class ClientViewState {
     this.selectedIds.delete(id);
     this.predictionAccumMs.delete(id);
     this.targetPredictionAccumMs.delete(id);
+    this.activeUnitPredictionIds.delete(id);
+    this.activeProjectilePredictionIds.delete(id);
     if (existed) this.markEntitySetChanged();
+  }
+
+  private markEntityPredictionActive(entity: Entity): void {
+    if (entity.unit) {
+      this.activeUnitPredictionIds.add(entity.id);
+    } else if (entity.projectile) {
+      this.activeProjectilePredictionIds.add(entity.id);
+    }
+  }
+
+  private markNetworkUnitPredictionActive(server: NetworkServerSnapshotEntity): void {
+    if (server.type !== 'unit') return;
+    const cf = server.changedFields;
+    if (
+      cf == null ||
+      (cf & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0 ||
+      server.unit?.turrets !== undefined
+    ) {
+      this.activeUnitPredictionIds.add(server.id);
+    }
   }
 
   private snapshotAffectsEntityCaches(
@@ -424,6 +457,7 @@ export class ClientViewState {
             newEntity.selectable.selected = true;
           }
           this.entities.set(netEntity.id, newEntity);
+          this.markEntityPredictionActive(newEntity);
           this.entitySetVersion++;
           cacheNeedsInvalidate = true;
         }
@@ -433,6 +467,7 @@ export class ClientViewState {
           cacheNeedsInvalidate = true;
         }
         this.snapNonVisualState(existing, netEntity);
+        this.markNetworkUnitPredictionActive(netEntity);
       }
     }
 
@@ -465,6 +500,7 @@ export class ClientViewState {
           this.entitySetVersion++;
           cacheNeedsInvalidate = true;
           this.entities.set(spawn.id, entity);
+          this.activeProjectilePredictionIds.add(spawn.id);
         } catch {
           // Skip projectiles with unknown weapon configs (e.g. corrupted by serialization)
         }
@@ -505,6 +541,7 @@ export class ClientViewState {
           target.velocityZ = vu.velocity.z;
           target.velocityY = vu.velocity.y;
           this.targetPredictionAccumMs.delete(vu.id);
+          this.activeProjectilePredictionIds.add(vu.id);
         }
       }
     }
@@ -795,6 +832,7 @@ export class ClientViewState {
 
     this.predictionAccumMs.delete(update.id);
     this.targetPredictionAccumMs.delete(update.id);
+    this.activeProjectilePredictionIds.add(update.id);
   }
 
   private resolvePredictionLodTier(
@@ -1027,6 +1065,57 @@ export class ClientViewState {
     }
   }
 
+  private unitPredictionIsSettled(
+    entity: Entity,
+    target: ServerTarget | undefined,
+  ): boolean {
+    const unit = entity.unit;
+    if (!unit) return true;
+
+    const vx = unit.velocityX ?? 0;
+    const vy = unit.velocityY ?? 0;
+    const vz = unit.velocityZ ?? 0;
+    if (vx * vx + vy * vy + vz * vz > PREDICTION_VEL_EPSILON_SQ) return false;
+
+    if (target) {
+      const tvx = target.velocityX ?? 0;
+      const tvy = target.velocityY ?? 0;
+      const tvz = target.velocityZ ?? 0;
+      if (tvx * tvx + tvy * tvy + tvz * tvz > PREDICTION_VEL_EPSILON_SQ) return false;
+
+      const dx = entity.transform.x - target.x;
+      const dy = entity.transform.y - target.y;
+      const dz = entity.transform.z - target.z;
+      if (dx * dx + dy * dy + dz * dz > PREDICTION_POS_EPSILON_SQ) return false;
+      if (angleDeltaAbs(entity.transform.rotation, target.rotation) > PREDICTION_ROT_EPSILON) return false;
+    }
+
+    const weapons = entity.turrets;
+    if (!weapons || weapons.length === 0) return true;
+
+    for (let i = 0; i < weapons.length; i++) {
+      const weapon = weapons[i];
+      if (Math.abs(weapon.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
+
+      const tw = target?.turrets?.[i];
+      if (tw) {
+        if (Math.abs(tw.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
+        if (angleDeltaAbs(weapon.rotation, tw.rotation) > PREDICTION_TURRET_EPSILON) return false;
+        if (angleDeltaAbs(weapon.pitch, tw.pitch) > PREDICTION_TURRET_EPSILON) return false;
+        const localRange = weapon.forceField?.range ?? 0;
+        const targetRange = tw.forceFieldRange ?? 0;
+        if (Math.abs(localRange - targetRange) > PREDICTION_TURRET_EPSILON) return false;
+      }
+
+      if (weapon.config.shot.type === 'force') {
+        if ((weapon.forceField?.range ?? 0) > PREDICTION_TURRET_EPSILON) return false;
+        if (weapon.state === 'engaged') return false;
+      }
+    }
+
+    return true;
+  }
+
   /**
    * Called every frame. Two steps:
    * 1. Dead-reckon: advance positions using velocity
@@ -1047,15 +1136,18 @@ export class ClientViewState {
     // The backing objects stay pooled at the session high-water mark.
     _forceFieldCount = 0;
 
-    this.rebuildCachesIfNeeded();
-
     // Buildings are intentionally absent here. They are static actor
     // graphs and their network transform is snapped when snapshots are
     // applied, so the render frame should spend prediction time only on
-    // moving units and live shots.
-    for (const entity of this.cache.getUnits()) {
-      const target = this.serverTargets.get(entity.id);
+    // units that are still correcting/moving and live shots.
+    for (const id of this.activeUnitPredictionIds) {
+      const entity = this.entities.get(id);
+      if (!entity?.unit) {
+        this.activeUnitPredictionIds.delete(id);
+        continue;
+      }
 
+      const target = this.serverTargets.get(id);
       this.applyUnitVisualPrediction(entity, target, deltaMs, preset);
       if (entity.turrets && entity.turrets.length > 0) {
         const predictionTier = this.resolvePredictionLodTier(entity, lod);
@@ -1063,11 +1155,20 @@ export class ClientViewState {
         const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
         if (predictionStep) this.applyUnitExpensivePrediction(entity, target, predictionStep, preset);
       }
+
+      if (this.unitPredictionIsSettled(entity, target)) {
+        this.activeUnitPredictionIds.delete(id);
+      }
     }
 
-    for (const entity of this.cache.getProjectiles()) {
-      if (!entity.projectile) continue;
-      const target = this.serverTargets.get(entity.id);
+    for (const id of this.activeProjectilePredictionIds) {
+      const entity = this.entities.get(id);
+      if (!entity?.projectile) {
+        this.activeProjectilePredictionIds.delete(id);
+        continue;
+      }
+
+      const target = this.serverTargets.get(id);
       const predictionTier = this.resolvePredictionLodTier(entity, lod);
       const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
       const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
@@ -1475,6 +1576,7 @@ export class ClientViewState {
     for (const entity of this.entities.values()) {
       if (entity.selectable) {
         entity.selectable.selected = this.selectedIds.has(entity.id);
+        if (entity.selectable.selected) this.markEntityPredictionActive(entity);
       }
     }
   }
@@ -1488,6 +1590,7 @@ export class ClientViewState {
     const entity = this.entities.get(id);
     if (entity?.selectable) {
       entity.selectable.selected = true;
+      this.markEntityPredictionActive(entity);
     }
   }
 
@@ -1677,6 +1780,8 @@ export class ClientViewState {
     this.predictionAccumMs.clear();
     this.targetPredictionAccumMs.clear();
     this.predictionLodCells.clear();
+    this.activeUnitPredictionIds.clear();
+    this.activeProjectilePredictionIds.clear();
     this.entitySetVersion++;
     this.invalidateCaches();
   }
