@@ -477,7 +477,131 @@ export class CaptureTileRenderer3D {
         } else {
           const outer = addBoundaryLoop(northSubdiv, eastSubdiv, southSubdiv, westSubdiv);
 
-          if (tileSubdiv >= 2) {
+          if (tileSubdiv >= 3) {
+            // Two adjacent tiles can share the same LOD tier yet take
+            // different paths here: tile A becomes irregular only because
+            // ONE of its OTHER neighbors is at a higher LOD (bumping
+            // that edge's subdiv via Math.max), while same-LOD tile B
+            // (with all-equal neighbors) goes through regularInterior.
+            // The old fan-to-center path then produced ~one triangle per
+            // boundary segment for A while B got a full subdiv x subdiv
+            // grid — visibly different meshes on hilly terrain at the
+            // same LOD.
+            //
+            // Fix: still generate the full regular interior grid at
+            // tileSubdiv density, then zip-stitch the (higher-density)
+            // outer boundary loop to the inner ring of the grid. Inner
+            // grid triangulation matches regularInterior exactly; only
+            // the outer skirt differs.
+            const subdiv = tileSubdiv;
+            const innerStride = subdiv - 1;
+            const innerStart = topLocal.length;
+            for (let j = 1; j <= subdiv - 1; j++) {
+              for (let ix = 1; ix <= subdiv - 1; ix++) {
+                addTopVertex(ix / subdiv, j / subdiv);
+              }
+            }
+            const innerIdx = (i: number, j: number): number =>
+              innerStart + (j - 1) * innerStride + (i - 1);
+
+            // Inner grid quads (interior only — the inner "ring" is
+            // stitched separately to the outer boundary below).
+            for (let j = 1; j < subdiv - 1; j++) {
+              for (let ix = 1; ix < subdiv - 1; ix++) {
+                const a = innerIdx(ix, j);
+                const b = innerIdx(ix + 1, j);
+                const c = innerIdx(ix + 1, j + 1);
+                const d = innerIdx(ix, j + 1);
+                const useAcDiagonal = terrainTextureEnabled
+                  ? terrainColorDiffSq(terrainColors, terrainVertexBase + a, terrainVertexBase + c) <=
+                    terrainColorDiffSq(terrainColors, terrainVertexBase + b, terrainVertexBase + d)
+                  : true;
+                if (useAcDiagonal) {
+                  addTopTri(a, b, c);
+                  addTopTri(a, c, d);
+                } else {
+                  addTopTri(a, b, d);
+                  addTopTri(b, c, d);
+                }
+              }
+            }
+
+            // Inner ring — outermost layer of the inner grid, walked
+            // CCW starting at inner_NW (matches the outer loop's CCW
+            // start at outer_NW).
+            const innerRing: number[] = [];
+            // North side: (1, 1) → (subdiv-1, 1).
+            for (let i = 1; i <= subdiv - 1; i++) innerRing.push(innerIdx(i, 1));
+            // East side: (subdiv-1, 2) → (subdiv-1, subdiv-1).
+            for (let j = 2; j <= subdiv - 1; j++) innerRing.push(innerIdx(subdiv - 1, j));
+            // South side: (subdiv-2, subdiv-1) → (1, subdiv-1).
+            for (let i = subdiv - 2; i >= 1; i--) innerRing.push(innerIdx(i, subdiv - 1));
+            // West side: (1, subdiv-2) → (1, 2).
+            for (let j = subdiv - 2; j >= 2; j--) innerRing.push(innerIdx(1, j));
+
+            // Perimeter t for each loop, both walked CCW from the
+            // tile's NW corner. Each side contributes 0.25 of the total
+            // perimeter so corners always align at t = 0.25, 0.5, 0.75.
+            const outerT = new Float32Array(outer.length);
+            const innerT = new Float32Array(innerRing.length);
+            const noN = northSubdiv, noE = eastSubdiv, noS = southSubdiv, noW = westSubdiv;
+            for (let i = 0; i < noN; i++) outerT[i] = (i / noN) * 0.25;
+            for (let i = 0; i < noE; i++) outerT[noN + i] = 0.25 + (i / noE) * 0.25;
+            for (let i = 0; i < noS; i++) outerT[noN + noE + i] = 0.5 + (i / noS) * 0.25;
+            for (let i = 0; i < noW; i++) outerT[noN + noE + noS + i] = 0.75 + (i / noW) * 0.25;
+
+            const innerSide = subdiv - 1;
+            const innerSegPerSide = subdiv - 2;
+            // Vertices per side in the ring excluding the next side's
+            // starting corner: subdiv-1 verts per side, but consecutive
+            // sides share corners so each side after the first
+            // contributes subdiv-2 fresh entries. The corners (other
+            // than NW=0) are at ring indices innerSide-1, 2*(innerSide-1),
+            // 3*(innerSide-1).
+            const cornerNE = innerSide - 1;
+            const cornerSE = 2 * (innerSide - 1);
+            const cornerSW = 3 * (innerSide - 1);
+            for (let k = 0; k < innerRing.length; k++) {
+              if (k <= cornerNE) {
+                innerT[k] = innerSegPerSide > 0 ? (k / innerSegPerSide) * 0.25 : 0;
+              } else if (k <= cornerSE) {
+                innerT[k] = 0.25 + ((k - cornerNE) / innerSegPerSide) * 0.25;
+              } else if (k <= cornerSW) {
+                innerT[k] = 0.5 + ((k - cornerSE) / innerSegPerSide) * 0.25;
+              } else {
+                innerT[k] = 0.75 + ((k - cornerSW) / innerSegPerSide) * 0.25;
+              }
+            }
+
+            // Zip-stitch: walk both loops CCW. At each step, advance the
+            // pointer whose NEXT vertex has the smaller perimeter t, and
+            // emit a triangle bridging the current pair to the advanced
+            // vertex. Total triangles = outer.length + innerRing.length
+            // (each ring segment contributes one tri).
+            const no = outer.length;
+            const ni = innerRing.length;
+            let oi = 0, ii = 0;
+            while (oi < no || ii < ni) {
+              const tOuterNext = (oi + 1) >= no ? 1 : outerT[oi + 1];
+              const tInnerNext = (ii + 1) >= ni ? 1 : innerT[ii + 1];
+              const advanceOuter = ii >= ni ? true
+                : oi >= no ? false
+                : tOuterNext <= tInnerNext;
+              if (advanceOuter) {
+                const a = outer[oi];
+                const b = outer[(oi + 1) % no];
+                const c = innerRing[ii % ni];
+                addTopTri(a, b, c);
+                oi++;
+              } else {
+                const a = outer[oi % no];
+                const b = innerRing[(ii + 1) % ni];
+                const c = innerRing[ii];
+                addTopTri(a, b, c);
+                ii++;
+              }
+            }
+          } else if (tileSubdiv >= 2) {
             addFanToCenter(outer);
           } else {
             addFanFromFirstBoundaryVertex(outer);
