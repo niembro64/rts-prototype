@@ -260,6 +260,17 @@ type EntityMesh = {
    *  not be recolored to team primary on ownership updates. */
   buildingPrimaryMaterialLocked?: boolean;
   solarOpenAmount?: number;
+  buildingCachedTier?: RenderObjectLodTier;
+  buildingCachedGraphicsTier?: ConcreteGraphicsQuality;
+  buildingCachedOwnerId?: PlayerId;
+  buildingCachedProgress?: number;
+  buildingCachedSelected?: boolean;
+  buildingCachedWidth?: number;
+  buildingCachedDepth?: number;
+  buildingCachedX?: number;
+  buildingCachedY?: number;
+  buildingCachedZ?: number;
+  buildingCachedRotation?: number;
   /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
    *  the mesh when the current frame's LOD key differs. */
   lodKey: string;
@@ -2996,93 +3007,126 @@ export class Render3DEntities {
           solarOpenAmount: e.building?.solar?.open === false ? 0 : 1,
         };
         this.buildingMeshes.set(e.id, m);
-      } else if (!m.buildingPrimaryMaterialLocked) {
-        m.group.visible = true;
-        const primaryMat = this.getPrimaryMat(pid);
-        for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
-      }
-      if (m) m.group.visible = true;
-      if (m.buildingDetails) {
-        const primaryMat = this.getPrimaryMat(pid);
-        for (const detail of m.buildingDetails) {
-          if (detail.role === 'solarTeamAccent') detail.mesh.material = primaryMat;
-        }
       }
 
-      // Transform.z is the building's vertical center in sim space.
-      // Render from the footprint base so buildings sit on the same
-      // terrain height the server used when creating their collider.
-      const buildingBaseY = e.building ? e.transform.z - e.building.depth / 2 : 0;
-      m.group.position.set(e.transform.x, buildingBaseY, e.transform.y);
-      m.group.rotation.y = -e.transform.rotation;
-      const h = m.buildingHeight ?? BUILDING_HEIGHT;
-
-      // Build-progress visual — mirrors the 2D BuildingRenderer's
-      // bottom-up fill. Primary body scales vertically by buildProgress
-      // (clamped to a small minimum so a 0% building still catches
-      // light and is clickable); accent meshes (chimney, solar cells)
-      // stay hidden until the building is complete so they don't pop
-      // out of an incomplete silhouette.
       const buildable = e.buildable;
       const progress =
         buildable && !buildable.isComplete
           ? Math.max(0.05, Math.min(1, buildable.buildProgress))
           : 1;
-      const renderH = h * progress;
-      // Buildings own the single primary body at chassisMeshes[0]; scale
-      // it directly instead of the chassis wrapper group (which stays
-      // at identity so the building-detail meshes added alongside it
-      // aren't affected).
-      const primary = m.chassisMeshes[0];
-      primary.position.set(0, renderH / 2, 0);
-      primary.scale.set(w, renderH, d);
-      primary.visible = !markerOnly;
-      if (!m.lodMarker) {
-        const marker = new THREE.Mesh(this.unitSphereLowGeom, this.getPrimaryMat(pid));
-        marker.userData.entityId = e.id;
-        m.group.add(marker);
-        m.lodMarker = marker;
-      } else {
-        m.lodMarker.material = this.getPrimaryMat(pid);
-      }
-      const markerRadius = Math.max(
-        e.buildingType === 'extractor' ? 18 : 12,
-        Math.min(48, Math.hypot(w, d) * 0.16),
-      );
-      m.lodMarker.visible = markerOnly;
-      m.lodMarker.position.set(0, markerRadius, 0);
-      m.lodMarker.scale.setScalar(markerRadius);
-      if (m.buildingDetails) {
-        const detailsReady = !markerOnly && progress >= 1;
-        for (const detail of m.buildingDetails) {
-          const visible = detailsReady && buildingDetailVisible(detail, tier);
-          detail.mesh.visible = visible;
+      const selected = e.selectable?.selected === true;
+      const buildingBaseY = e.building ? e.transform.z - e.building.depth / 2 : 0;
+      const detailsReady = !markerOnly && progress >= 1;
+      const buildingRenderDirty =
+        m.buildingCachedTier !== objectTier ||
+        m.buildingCachedGraphicsTier !== tier ||
+        m.buildingCachedOwnerId !== pid ||
+        m.buildingCachedProgress !== progress ||
+        m.buildingCachedSelected !== selected ||
+        m.buildingCachedWidth !== w ||
+        m.buildingCachedDepth !== d ||
+        m.buildingCachedX !== e.transform.x ||
+        m.buildingCachedY !== e.transform.y ||
+        m.buildingCachedZ !== e.transform.z ||
+        m.buildingCachedRotation !== e.transform.rotation;
+
+      if (buildingRenderDirty) {
+        m.group.visible = true;
+        if (!m.buildingPrimaryMaterialLocked) {
+          const primaryMat = this.getPrimaryMat(pid);
+          for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
         }
+        if (m.buildingDetails) {
+          const primaryMat = this.getPrimaryMat(pid);
+          for (const detail of m.buildingDetails) {
+            if (detail.role === 'solarTeamAccent') detail.mesh.material = primaryMat;
+          }
+        }
+
+        // Transform.z is the building's vertical center in sim space.
+        // Render from the footprint base so buildings sit on the same
+        // terrain height the server used when creating their collider.
+        m.group.position.set(e.transform.x, buildingBaseY, e.transform.y);
+        m.group.rotation.y = -e.transform.rotation;
+        const h = m.buildingHeight ?? BUILDING_HEIGHT;
+
+        // Build-progress visual — mirrors the 2D BuildingRenderer's
+        // bottom-up fill. Primary body scales vertically by buildProgress
+        // (clamped to a small minimum so a 0% building still catches
+        // light and is clickable); accent meshes (chimney, solar cells)
+        // stay hidden until the building is complete so they don't pop
+        // out of an incomplete silhouette.
+        const renderH = h * progress;
+        // Buildings own the single primary body at chassisMeshes[0]; scale
+        // it directly instead of the chassis wrapper group (which stays
+        // at identity so the building-detail meshes added alongside it
+        // aren't affected).
+        const primary = m.chassisMeshes[0];
+        primary.position.set(0, renderH / 2, 0);
+        primary.scale.set(w, renderH, d);
+        primary.visible = !markerOnly;
+        if (!m.lodMarker) {
+          const marker = new THREE.Mesh(this.unitSphereLowGeom, this.getPrimaryMat(pid));
+          marker.userData.entityId = e.id;
+          m.group.add(marker);
+          m.lodMarker = marker;
+        } else {
+          m.lodMarker.material = this.getPrimaryMat(pid);
+        }
+        const markerRadius = Math.max(
+          e.buildingType === 'extractor' ? 18 : 12,
+          Math.min(48, Math.hypot(w, d) * 0.16),
+        );
+        m.lodMarker.visible = markerOnly;
+        m.lodMarker.position.set(0, markerRadius, 0);
+        m.lodMarker.scale.setScalar(markerRadius);
+        if (m.buildingDetails) {
+          for (const detail of m.buildingDetails) {
+            const visible = detailsReady && buildingDetailVisible(detail, tier);
+            detail.mesh.visible = visible;
+          }
+        }
+
+        // Building selection halo. Uses the same torus material/geometry as
+        // units so clicking a factory/solar/wind reads like selecting any
+        // other owned entity. Scale by footprint diagonal so rectangular
+        // buildings sit fully inside the donut.
+        if (selected && !m.ring) {
+          const ring = new THREE.Mesh(this.ringGeom, this.selectionRingMat);
+          ring.rotation.x = Math.PI / 2;
+          m.group.add(ring);
+          m.ring = ring;
+        } else if (!selected && m.ring) {
+          m.group.remove(m.ring);
+          m.ring = undefined;
+        }
+        if (m.ring) {
+          const ringR = Math.hypot(w, d) * 0.55;
+          m.ring.scale.setScalar(ringR);
+          m.ring.position.set(0, ringR * 0.06 + 0.8, 0);
+        }
+
+        m.buildingCachedTier = objectTier;
+        m.buildingCachedGraphicsTier = tier;
+        m.buildingCachedOwnerId = pid;
+        m.buildingCachedProgress = progress;
+        m.buildingCachedSelected = selected;
+        m.buildingCachedWidth = w;
+        m.buildingCachedDepth = d;
+        m.buildingCachedX = e.transform.x;
+        m.buildingCachedY = e.transform.y;
+        m.buildingCachedZ = e.transform.z;
+        m.buildingCachedRotation = e.transform.rotation;
+      } else {
+        m.group.visible = true;
+      }
+
+      if (m.buildingDetails) {
         this.updateSolarCollectorAnimation(m, e, detailsReady);
         this.updateWindTurbineRig(m, detailsReady);
         this.updateExtractorRig(m, e, detailsReady);
       }
-      this.updateFactoryConstructionRig(m.factoryRig, e, tier, !markerOnly && progress >= 1, w, d, m.group);
-
-      // Building selection halo. Uses the same torus material/geometry as
-      // units so clicking a factory/solar/wind reads like selecting any
-      // other owned entity. Scale by footprint diagonal so rectangular
-      // buildings sit fully inside the donut.
-      const selected = e.selectable?.selected === true;
-      if (selected && !m.ring) {
-        const ring = new THREE.Mesh(this.ringGeom, this.selectionRingMat);
-        ring.rotation.x = Math.PI / 2;
-        m.group.add(ring);
-        m.ring = ring;
-      } else if (!selected && m.ring) {
-        m.group.remove(m.ring);
-        m.ring = undefined;
-      }
-      if (m.ring) {
-        const ringR = Math.hypot(w, d) * 0.55;
-        m.ring.scale.setScalar(ringR);
-        m.ring.position.set(0, ringR * 0.06 + 0.8, 0);
-      }
+      this.updateFactoryConstructionRig(m.factoryRig, e, tier, detailsReady, w, d, m.group);
 
       // Health + build-progress bars handled by HealthBar3D
       // (billboarded sprite in the world group).
