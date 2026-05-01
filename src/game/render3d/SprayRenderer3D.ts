@@ -174,6 +174,14 @@ export class SprayRenderer3D {
   /** Per-frame update. `dtMs` advances the wobble phase so frame rate
    *  doesn't affect the animation speed. */
   update(sprayTargets: readonly SprayTarget[], dtMs: number): void {
+    if (
+      sprayTargets.length === 0
+      && this.particleCount === 0
+      && this.spraySpawnBudget.size === 0
+    ) {
+      return;
+    }
+
     this._time += dtMs;
     const dtSec = Math.max(0, Math.min(dtMs, 100)) / 1000;
 

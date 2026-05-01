@@ -386,6 +386,8 @@ export class Explosion3D {
   }
 
   update(dtMs: number): void {
+    if (this.puffs.length === 0 && this.sparks.length === 0) return;
+
     const dtSec = dtMs / 1000;
 
     // 1) Puffs: expand radius linearly with progress, fade alpha. Core fades

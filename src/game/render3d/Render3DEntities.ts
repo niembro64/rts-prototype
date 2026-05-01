@@ -284,7 +284,6 @@ export class Render3DEntities {
 
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
-  private projectileMeshes = new Map<number, THREE.Mesh>();
   private factorySprayTargets: SprayTarget[] = [];
   private factorySprayTargetPool: SprayTarget[] = [];
   private windFanYaw: number | null = null;
@@ -1403,14 +1402,15 @@ export class Render3DEntities {
 
     for (const e of units) {
       seen.add(e.id);
-      // Out-of-scope units still get a slot (so they reappear instantly
-      // when the camera pans back) but their slot transform stays at
-      // the last known pose; instanced rendering doesn't have the
-      // per-unit destruction cost the per-Mesh path was avoiding.
-      if (!this.scope.inScope(e.transform.x, e.transform.y, 100)) continue;
       const objectTier = this.resolveEntityObjectLod(e);
+      const inScope = this.scope.inScope(e.transform.x, e.transform.y, 100);
       if (collectRichUnits) {
-        if (isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor') {
+        // Rich scenegraph units stay render-scope gated because they
+        // drive terrain tilt, locomotion, turret/mirror matrices, and
+        // selection overlays. Units outside that older 2D footprint
+        // still flow through the cheap instanced body below, so the
+        // 3D LOD grid never resolves to "invisible" for unit bodies.
+        if (inScope && (isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor')) {
           richIds.add(e.id);
           richUnits.push(e);
           this.hideUnitInstancedSlot(im, e.id, this.unitInstancedSlot.get(e.id), matrixDirty);
@@ -3327,11 +3327,6 @@ export class Render3DEntities {
     let sphereCount = 0;
     let cylinderCount = 0;
 
-    if (this.projectileMeshes.size > 0) {
-      for (const mesh of this.projectileMeshes.values()) this.world.remove(mesh);
-      this.projectileMeshes.clear();
-    }
-
     for (const e of projectiles) {
       // Skip beams/lasers — handled by BeamRenderer3D as line segments rather
       // than spheres. Without this, long-range beams would render as a single
@@ -3443,12 +3438,6 @@ export class Render3DEntities {
       if (cylinderCount > 0) this.markInstanceMatrixRange(cylinderMesh, 0, cylinderCount - 1);
     }
 
-    for (const [id, mesh] of this.projectileMeshes) {
-      if (!seen.has(id)) {
-        this.world.remove(mesh);
-        this.projectileMeshes.delete(id);
-      }
-    }
     // Drop SHOT RAD wireframes that went with despawned projectiles.
     for (const [id, radii] of this.projectileRadiusMeshes) {
       if (!seen.has(id)) {
@@ -3586,7 +3575,6 @@ export class Render3DEntities {
       this.disposeWorldParentedOverlays(m);
     }
     for (const m of this.buildingMeshes.values()) this.world.remove(m.group);
-    for (const mesh of this.projectileMeshes.values()) this.world.remove(mesh);
     if (this.projectileSphereInstanced) {
       this.world.remove(this.projectileSphereInstanced);
       this.projectileSphereInstanced.dispose();
@@ -3606,7 +3594,6 @@ export class Render3DEntities {
     }
     this.unitMeshes.clear();
     this.buildingMeshes.clear();
-    this.projectileMeshes.clear();
     this.projectileRadiusMeshes.clear();
     this.projectileRadiusMeshPool.length = 0;
     this.factorySprayTargets.length = 0;

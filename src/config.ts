@@ -329,7 +329,7 @@ export const WIND_ENERGY_PER_SECOND = 50;
 
 /** Wind direction oscillation wave periods in seconds. These are true
  *  sine/cosine periods, not angular divisors. Longer = slower turning. */
-const wmult = 0.2;
+const wmult = 0.5;
 
 export const WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS = {
   primary: 96 * wmult,
