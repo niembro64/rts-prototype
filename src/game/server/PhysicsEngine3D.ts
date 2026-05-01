@@ -451,7 +451,28 @@ export class PhysicsEngine3D {
    *  component. That matches the RTS-where-everything-stays-on-the-
    *  ground design intent; when aircraft come online they'll need
    *  their own non-grounded integration pipeline. */
+  /** Cached `Math.pow(1 - frictionAir, dtSec * 60)` keyed by frictionAir.
+   *  Cleared and rekeyed each integrate() call by the current dtSec.
+   *  In practice every dynamic body is a sphere with frictionAir = 0.15,
+   *  so the inner loop hits this map exactly once per tick instead of
+   *  paying ~50ns of Math.pow per body per tick. */
+  private _dampCache = new Map<number, number>();
+  private _dampCacheDtSec = 0;
+
+  private getDampForFriction(frictionAir: number, dtSec: number): number {
+    let damp = this._dampCache.get(frictionAir);
+    if (damp === undefined) {
+      damp = Math.pow(1 - frictionAir, dtSec * 60);
+      this._dampCache.set(frictionAir, damp);
+    }
+    return damp;
+  }
+
   private integrate(dtSec: number): void {
+    if (dtSec !== this._dampCacheDtSec) {
+      this._dampCache.clear();
+      this._dampCacheDtSec = dtSec;
+    }
     for (const b of this.dynamicBodies) {
       if (b.sleeping) continue;
       let ax = b.ax;
@@ -465,7 +486,7 @@ export class PhysicsEngine3D {
         b.vx += ax * dtSec;
         b.vy += ay * dtSec;
         b.vz += az * dtSec;
-        const damp = Math.pow(1 - b.frictionAir, dtSec * 60);
+        const damp = this.getDampForFriction(b.frictionAir, dtSec);
         b.vx *= damp;
         b.vy *= damp;
         b.x += b.vx * dtSec;
@@ -491,7 +512,7 @@ export class PhysicsEngine3D {
       b.vy += ay * dtSec;
       b.vz += az * dtSec;
       // (4) horizontal drag.
-      const damp = Math.pow(1 - b.frictionAir, dtSec * 60);
+      const damp = this.getDampForFriction(b.frictionAir, dtSec);
       b.vx *= damp;
       b.vy *= damp;
       // (5) horizontal position update only — z is owned by step 6.
@@ -747,12 +768,16 @@ export class PhysicsEngine3D {
             a.sleepTicks = 0;
             b.sleepTicks = 0;
             const dist = Math.sqrt(distSq) || 1e-6;
-            const nx = ddx / dist;
-            const ny = ddy / dist;
-            const nz = ddz / dist;
+            const invDist = 1 / dist;
+            const nx = ddx * invDist;
+            const ny = ddy * invDist;
+            const nz = ddz * invDist;
             const penetration = rSum - dist;
-            const wA = a.invMass / (a.invMass + b.invMass);
-            const wB = b.invMass / (a.invMass + b.invMass);
+            // Same denominator (a.invMass + b.invMass) was being divided
+            // into 3 times below — fold to one inverse and multiply.
+            const invMassSum = 1 / (a.invMass + b.invMass);
+            const wA = a.invMass * invMassSum;
+            const wB = b.invMass * invMassSum;
             a.x -= nx * penetration * wA;
             a.y -= ny * penetration * wA;
             a.z -= nz * penetration * wA;
@@ -766,7 +791,7 @@ export class PhysicsEngine3D {
             const vDotN = rvx * nx + rvy * ny + rvz * nz;
             if (vDotN >= 0) continue;
             const e = Math.min(a.restitution, b.restitution);
-            const jMag = -(1 + e) * vDotN / (a.invMass + b.invMass);
+            const jMag = -(1 + e) * vDotN * invMassSum;
             const ix = jMag * nx;
             const iy = jMag * ny;
             const iz = jMag * nz;
