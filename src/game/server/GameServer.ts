@@ -137,6 +137,8 @@ export class GameServer {
   private snapshotInterestCandidateIdsByPlayer: Map<PlayerId, EntityId[]> = new Map();
   private snapshotInterestPlayerIdsBuf: PlayerId[] = [];
   private snapshotInterestBuildingIdsBuf: EntityId[] = [];
+  private snapshotInterestBuildingBoundsByPlayer: Map<PlayerId, SnapshotInterestBounds> = new Map();
+  private snapshotInterestBuildingCacheVersion: number = -1;
   private gameOverListeners: GameOverCallback[] = [];
 
   // Game over tracking
@@ -1090,6 +1092,50 @@ export class GameServer {
     return candidates;
   }
 
+  private expandSnapshotBounds(bounds: SnapshotInterestBounds, entity: Entity): void {
+    bounds.hasOwnedEntity = true;
+    const x = entity.transform.x;
+    const y = entity.transform.y;
+    if (x < bounds.minX) bounds.minX = x;
+    if (x > bounds.maxX) bounds.maxX = x;
+    if (y < bounds.minY) bounds.minY = y;
+    if (y > bounds.maxY) bounds.maxY = y;
+  }
+
+  private mergeSnapshotBounds(dst: SnapshotInterestBounds, src: SnapshotInterestBounds): void {
+    if (!src.hasOwnedEntity) return;
+    dst.hasOwnedEntity = true;
+    if (src.minX < dst.minX) dst.minX = src.minX;
+    if (src.maxX > dst.maxX) dst.maxX = src.maxX;
+    if (src.minY < dst.minY) dst.minY = src.minY;
+    if (src.maxY > dst.maxY) dst.maxY = src.maxY;
+  }
+
+  private getSnapshotInterestBuildingBounds(playerId: PlayerId): SnapshotInterestBounds {
+    let bounds = this.snapshotInterestBuildingBoundsByPlayer.get(playerId);
+    if (!bounds) {
+      bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, hasOwnedEntity: false };
+      this.snapshotInterestBuildingBoundsByPlayer.set(playerId, bounds);
+    }
+    return bounds;
+  }
+
+  private prepareSnapshotInterestBuildingCache(): void {
+    const buildingVersion = this.world.getBuildingVersion();
+    if (buildingVersion === this.snapshotInterestBuildingCacheVersion) return;
+
+    this.snapshotInterestBuildingIdsBuf.length = 0;
+    this.snapshotInterestBuildingBoundsByPlayer.clear();
+    for (const building of this.world.getBuildings()) {
+      this.snapshotInterestBuildingIdsBuf.push(building.id);
+      const playerId = building.ownership?.playerId;
+      if (playerId !== undefined) {
+        this.expandSnapshotBounds(this.getSnapshotInterestBuildingBounds(playerId), building);
+      }
+    }
+    this.snapshotInterestBuildingCacheVersion = buildingVersion;
+  }
+
   // Reusable scratch buffers for prepareSnapshotInterestPlans. Hoisted
   // out so the units×players inner loop reads from local arrays instead
   // of calling Map.get() per (unit, player) — at 1000 units × 4 players
@@ -1110,16 +1156,20 @@ export class GameServer {
     }
     if (targetPlayerIds.length === 0) return;
 
+    this.prepareSnapshotInterestBuildingCache();
+
     const playerCount = targetPlayerIds.length;
     const boundsBuf = this._aoiBoundsBuf;
     const candidatesBuf = this._aoiCandidatesBuf;
     boundsBuf.length = playerCount;
     candidatesBuf.length = playerCount;
 
-    this.snapshotInterestBuildingIdsBuf.length = 0;
     for (let i = 0; i < playerCount; i++) {
       const playerId = targetPlayerIds[i];
-      boundsBuf[i] = this.getSnapshotInterestBounds(playerId);
+      const bounds = this.getSnapshotInterestBounds(playerId);
+      const buildingBounds = this.snapshotInterestBuildingBoundsByPlayer.get(playerId);
+      if (buildingBounds) this.mergeSnapshotBounds(bounds, buildingBounds);
+      boundsBuf[i] = bounds;
       candidatesBuf[i] = this.getSnapshotInterestCandidates(playerId);
     }
 
@@ -1134,22 +1184,11 @@ export class GameServer {
         if (targetPlayerIds[i] === playerId) { slot = i; break; }
       }
       if (slot < 0) return;
-      const bounds = boundsBuf[slot];
-      bounds.hasOwnedEntity = true;
-      const x = entity.transform.x;
-      const y = entity.transform.y;
-      if (x < bounds.minX) bounds.minX = x;
-      if (x > bounds.maxX) bounds.maxX = x;
-      if (y < bounds.minY) bounds.minY = y;
-      if (y > bounds.maxY) bounds.maxY = y;
+      this.expandSnapshotBounds(boundsBuf[slot], entity);
     };
 
     for (const unit of this.world.getUnits()) {
       includeOwnedBounds(unit);
-    }
-    for (const building of this.world.getBuildings()) {
-      includeOwnedBounds(building);
-      this.snapshotInterestBuildingIdsBuf.push(building.id);
     }
 
     for (let i = 0; i < playerCount; i++) {
