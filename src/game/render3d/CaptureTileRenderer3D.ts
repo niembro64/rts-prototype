@@ -200,6 +200,7 @@ export class CaptureTileRenderer3D {
   private rebuildGeometryIfNeeded(
     cellSize: number,
     graphicsConfig: GraphicsConfig,
+    terrainTextureEnabled: boolean,
   ): boolean {
     const cellsX = Math.max(1, Math.ceil(this.mapWidth / cellSize));
     const cellsY = Math.max(1, Math.ceil(this.mapHeight / cellSize));
@@ -212,6 +213,7 @@ export class CaptureTileRenderer3D {
       graphicsConfig.tier,
       subdiv,
       includeSideWalls ? 'walls' : 'flat',
+      terrainTextureEnabled ? 'texture' : 'flat-color',
     ].join('|');
     const textureRebuilt = this.ensureOverlayTexture(cellsX, cellsY);
 
@@ -257,7 +259,9 @@ export class CaptureTileRenderer3D {
             const wx = x0 + (ix / subdiv) * cellSize;
             const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight);
             terrainPositions.push(wx, h, wz);
-            pushManaTerrainColor(terrainColors, wx, wz);
+            if (terrainTextureEnabled) {
+              pushManaTerrainColor(terrainColors, wx, wz);
+            }
 
             const hxp = getTerrainHeight(wx + eps, wz, this.mapWidth, this.mapHeight);
             const hxm = getTerrainHeight(wx - eps, wz, this.mapWidth, this.mapHeight);
@@ -286,10 +290,12 @@ export class CaptureTileRenderer3D {
             x1, CUBE_FLOOR_Y, z1,
             x0, CUBE_FLOOR_Y, z1,
           );
-          pushManaTerrainColor(terrainColors, x0, z0, 0.68);
-          pushManaTerrainColor(terrainColors, x1, z0, 0.68);
-          pushManaTerrainColor(terrainColors, x1, z1, 0.68);
-          pushManaTerrainColor(terrainColors, x0, z1, 0.68);
+          if (terrainTextureEnabled) {
+            pushManaTerrainColor(terrainColors, x0, z0, 0.68);
+            pushManaTerrainColor(terrainColors, x1, z0, 0.68);
+            pushManaTerrainColor(terrainColors, x1, z1, 0.68);
+            pushManaTerrainColor(terrainColors, x0, z1, 0.68);
+          }
 
           const cornerSrc = [
             topIdx(0, 0),
@@ -317,9 +323,10 @@ export class CaptureTileRenderer3D {
             // diagonal. This keeps vertex-color interpolation smooth
             // without imposing a map-wide 45-degree or checkerboard
             // direction that can reveal mana tile size.
-            const useAcDiagonal =
-              terrainColorDiffSq(terrainColors, terrainVertexBase + a, terrainVertexBase + c) <=
-              terrainColorDiffSq(terrainColors, terrainVertexBase + b, terrainVertexBase + d);
+            const useAcDiagonal = terrainTextureEnabled
+              ? terrainColorDiffSq(terrainColors, terrainVertexBase + a, terrainVertexBase + c) <=
+                terrainColorDiffSq(terrainColors, terrainVertexBase + b, terrainVertexBase + d)
+              : true;
             if (useAcDiagonal) {
               terrainIndices.push(
                 terrainVertexBase + a,
@@ -389,7 +396,11 @@ export class CaptureTileRenderer3D {
     this.terrainGeometry.dispose();
     this.terrainGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
     this.terrainGeometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
-    this.terrainGeometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(terrainColors), 3));
+    if (terrainTextureEnabled) {
+      this.terrainGeometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(terrainColors), 3));
+    } else {
+      this.terrainGeometry.deleteAttribute('color');
+    }
     this.terrainGeometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
     this.terrainGeometry.computeBoundingSphere();
 
@@ -486,11 +497,12 @@ export class CaptureTileRenderer3D {
     let cellSize = this.clientViewState.getCaptureCellSize();
     if (cellSize <= 0) cellSize = MANA_TILE_SIZE;
 
-    const rebuilt = this.rebuildGeometryIfNeeded(cellSize, graphicsConfig);
-    this.terrainMesh.visible = true;
-
     const gridMode = getGridOverlay();
     const intensity = getGridOverlayIntensity();
+    const terrainTextureEnabled = gridMode !== 'off';
+    const rebuilt = this.rebuildGeometryIfNeeded(cellSize, graphicsConfig, terrainTextureEnabled);
+    this.terrainMesh.visible = true;
+
     this.setTerrainTextureActive(gridMode !== 'off');
     const overlayActive = gridMode !== 'off' && intensity > 0;
     this.overlayMesh.visible = overlayActive;

@@ -474,6 +474,15 @@ const combatStatsHistory = ref<StatsSnapshot[]>([]);
 let statsHistoryStartTime = 0;
 const battleElapsed = ref('00:00:00');
 
+function setRefIfChanged<T>(target: { value: T }, value: T): void {
+  if (!Object.is(target.value, value)) target.value = value;
+}
+
+function setNumberRefIfChanged(target: { value: number }, value: number, epsilon = 0.01): void {
+  if (!Number.isFinite(value)) return;
+  if (Math.abs(target.value - value) > epsilon) target.value = value;
+}
+
 function recordCombatStats(stats: NetworkServerSnapshotCombatStats): void {
   if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
   if (!showCombatStats.value) {
@@ -1552,30 +1561,30 @@ function updateFPSStats(): void {
     // zoom" matches what the user feels: at the floor you're grazing
     // the surface, at the ceiling you're at panoramic altitude. The
     // `zoom` ratio is still used internally for LOD + save/restore.
-    currentZoom.value = scene.cameras.main.altitude ?? scene.cameras.main.zoom;
+    setNumberRefIfChanged(currentZoom, scene.cameras.main.altitude ?? scene.cameras.main.zoom, 0.05);
 
     const timing = scene.getFrameTiming();
-    frameMsAvg.value = timing.frameMsAvg;
-    frameMsHi.value = timing.frameMsHi;
-    renderMsAvg.value = timing.renderMsAvg;
-    renderMsHi.value = timing.renderMsHi;
-    logicMsAvg.value = timing.logicMsAvg;
-    logicMsHi.value = timing.logicMsHi;
-    gpuTimerMs.value = timing.gpuTimerMs;
-    gpuTimerSupported.value = timing.gpuTimerSupported;
-    longtaskMsPerSec.value = timing.longtaskMsPerSec;
-    longtaskSupported.value = timing.longtaskSupported;
+    setNumberRefIfChanged(frameMsAvg, timing.frameMsAvg);
+    setNumberRefIfChanged(frameMsHi, timing.frameMsHi);
+    setNumberRefIfChanged(renderMsAvg, timing.renderMsAvg);
+    setNumberRefIfChanged(renderMsHi, timing.renderMsHi);
+    setNumberRefIfChanged(logicMsAvg, timing.logicMsAvg);
+    setNumberRefIfChanged(logicMsHi, timing.logicMsHi);
+    setNumberRefIfChanged(gpuTimerMs, timing.gpuTimerMs);
+    setRefIfChanged(gpuTimerSupported, timing.gpuTimerSupported);
+    setNumberRefIfChanged(longtaskMsPerSec, timing.longtaskMsPerSec);
+    setRefIfChanged(longtaskSupported, timing.longtaskSupported);
 
     const frameStats = scene.getFrameStats();
-    actualAvgFPS.value = frameStats.avgFps;
-    actualWorstFPS.value = frameStats.worstFps;
+    setNumberRefIfChanged(actualAvgFPS, frameStats.avgFps, 0.05);
+    setNumberRefIfChanged(actualWorstFPS, frameStats.worstFps, 0.05);
 
     const snapStats = scene.getSnapshotStats();
-    snapAvgRate.value = snapStats.avgRate;
-    snapWorstRate.value = snapStats.worstRate;
+    setNumberRefIfChanged(snapAvgRate, snapStats.avgRate, 0.05);
+    setNumberRefIfChanged(snapWorstRate, snapStats.worstRate, 0.05);
     const fullSnapStats = scene.getFullSnapshotStats();
-    fullSnapAvgRate.value = fullSnapStats.avgRate;
-    fullSnapWorstRate.value = fullSnapStats.worstRate;
+    setNumberRefIfChanged(fullSnapAvgRate, fullSnapStats.avgRate, 0.05);
+    setNumberRefIfChanged(fullSnapWorstRate, fullSnapStats.worstRate, 0.05);
   }
   const fpsVal = LOD_EMA_SOURCE.fps === 'avg' ? actualAvgFPS.value : actualWorstFPS.value;
   const tpsVal = LOD_EMA_SOURCE.tps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
@@ -1591,7 +1600,7 @@ function updateFPSStats(): void {
   setCurrentUnitCount(meta?.units.count ?? 0);
   if (meta?.units.max !== undefined) setCurrentUnitCap(meta.units.max);
   setLocalServerRunning(hasServer.value);
-  effectiveQuality.value = getEffectiveQuality();
+  setRefIfChanged(effectiveQuality, getEffectiveQuality());
 }
 
 function setupNetworkCallbacks(): void {

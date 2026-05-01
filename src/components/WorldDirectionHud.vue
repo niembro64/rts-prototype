@@ -20,6 +20,18 @@ let compassRig: THREE.Group | null = null;
 let windArrow: THREE.Group | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let rafId = 0;
+let lastRenderMs = 0;
+let lastWidth = 0;
+let lastHeight = 0;
+let lastCompact = props.compact;
+let lastCompassYaw = Number.NaN;
+let lastWindYaw = Number.NaN;
+let lastWindScale = Number.NaN;
+let lastWindVisible = false;
+
+const RENDER_INTERVAL_MS = 1000 / 30;
+const ANGLE_EPS = 0.0005;
+const SCALE_EPS = 0.001;
 
 const rightVec = new THREE.Vector2();
 const upVec = new THREE.Vector2();
@@ -131,7 +143,7 @@ function buildScene(): void {
     alpha: true,
   });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, props.compact ? 1.5 : 2));
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(38, 1, 0.1, 30);
@@ -196,6 +208,10 @@ function resize(): void {
   const canvas = canvasRef.value;
   const width = Math.max(1, canvas.clientWidth);
   const height = Math.max(1, canvas.clientHeight);
+  if (width === lastWidth && height === lastHeight && props.compact === lastCompact) return;
+  lastWidth = width;
+  lastHeight = height;
+  lastCompact = props.compact;
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   camera.position.set(0, props.compact ? 4.8 : 4.0, props.compact ? 5.4 : 4.8);
@@ -203,20 +219,38 @@ function resize(): void {
   camera.updateProjectionMatrix();
 }
 
-function animate(): void {
+function animate(now: number): void {
   rafId = requestAnimationFrame(animate);
   if (!renderer || !scene || !camera || !compassRig || !windArrow) return;
+  if (typeof document !== 'undefined' && document.hidden) return;
+  if (now - lastRenderMs < RENDER_INTERVAL_MS) return;
+  lastRenderMs = now;
 
-  compassRig.rotation.y = cameraRelativeYaw(0, -1);
+  const compassYaw = cameraRelativeYaw(0, -1);
+  if (Math.abs(compassYaw - lastCompassYaw) > ANGLE_EPS || Number.isNaN(lastCompassYaw)) {
+    compassRig.rotation.y = compassYaw;
+    lastCompassYaw = compassYaw;
+  }
 
   const wind = props.data.wind;
   if (wind && wind.speed > 1e-6) {
-    windArrow.visible = true;
-    windArrow.rotation.y = cameraRelativeYaw(wind.x, wind.y);
+    if (!lastWindVisible) {
+      windArrow.visible = true;
+      lastWindVisible = true;
+    }
+    const windYaw = cameraRelativeYaw(wind.x, wind.y);
+    if (Math.abs(windYaw - lastWindYaw) > ANGLE_EPS || Number.isNaN(lastWindYaw)) {
+      windArrow.rotation.y = windYaw;
+      lastWindYaw = windYaw;
+    }
     const speedScale = Math.max(0.72, Math.min(1.35, 0.74 + wind.speed * 0.28));
-    windArrow.scale.set(1, 1, speedScale);
-  } else {
+    if (Math.abs(speedScale - lastWindScale) > SCALE_EPS || Number.isNaN(lastWindScale)) {
+      windArrow.scale.set(1, 1, speedScale);
+      lastWindScale = speedScale;
+    }
+  } else if (lastWindVisible) {
     windArrow.visible = false;
+    lastWindVisible = false;
   }
 
   renderer.render(scene, camera);
@@ -246,7 +280,7 @@ function disposeSceneResources(root: THREE.Scene): void {
 
 onMounted(() => {
   buildScene();
-  animate();
+  rafId = requestAnimationFrame(animate);
 });
 
 onUnmounted(() => {

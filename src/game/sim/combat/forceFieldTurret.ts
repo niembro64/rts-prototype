@@ -1,7 +1,7 @@
 // Force field weapon system - dual-zone pie-slice AoE with push (inner) and pull (outer)
 
 import type { WorldState } from '../WorldState';
-import type { ForceShot } from '../types';
+import type { Entity, ForceShot, Turret } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { ProjectileVelocityUpdateEvent } from './types';
@@ -15,21 +15,27 @@ import { getSimDetailConfig } from '../simQuality';
 const _velocityUpdateMap = new Map<number, ProjectileVelocityUpdateEvent>();
 const _velocityUpdateResult: ProjectileVelocityUpdateEvent[] = [];
 
-// Tracks how many force field weapons have progress > 0 (set by updateForceFieldState)
-let _activeForceFieldCount = 0;
+// Compact list of force field weapons with progress > 0, built by
+// updateForceFieldState() and consumed by applyForceFieldDamage().
+type ActiveForceFieldRef = {
+  unit: Entity;
+  weapon: Turret;
+  shot: ForceShot;
+};
+const _activeForceFields: ActiveForceFieldRef[] = [];
 
 // Reset module-level buffers (call between game sessions)
 export function resetForceFieldBuffers(): void {
   _velocityUpdateMap.clear();
   _velocityUpdateResult.length = 0;
-  _activeForceFieldCount = 0;
+  _activeForceFields.length = 0;
 }
 
 // Update force field state (transition progress 0→1)
 // Both push and pull zones grow outward from middleRadius simultaneously.
 // currentForceFieldRange is repurposed to carry the progress (0→1) for serialization.
 export function updateForceFieldState(world: WorldState, dtMs: number): void {
-  _activeForceFieldCount = 0;
+  _activeForceFields.length = 0;
 
   for (const unit of world.getForceFieldUnits()) {
     for (const weapon of unit.turrets!) {
@@ -58,7 +64,9 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
       weapon.forceField.range = weapon.forceField.transition;
 
       if (weapon.forceField.transition > 0) {
-        _activeForceFieldCount++;
+        if (unit.ownership && unit.unit && unit.unit.hp > 0) {
+          _activeForceFields.push({ unit, weapon, shot: fieldShot });
+        }
       }
     }
   }
@@ -96,7 +104,8 @@ export function applyForceFieldDamage(
     if (world.getTick() % stride !== 0) return [];
     dtMs = dtMs * stride;
   }
-  if (dtMs <= 0 || _activeForceFieldCount === 0) return [];
+  const activeFields = _activeForceFields;
+  if (dtMs <= 0 || activeFields.length === 0) return [];
 
   // Both effect flags off → there's nothing the outer loop could
   // accomplish. Skip wholesale.
@@ -105,32 +114,26 @@ export function applyForceFieldDamage(
   }
 
   _velocityUpdateMap.clear();
-  const activeCount = _activeForceFieldCount;
+  const activeCount = activeFields.length;
   const applyBudget = Math.max(1, simDetail.forceFieldApplyBudget | 0);
   const isBudgeted = activeCount > applyBudget;
   const applyStart = isBudgeted ? (world.getTick() * applyBudget) % activeCount : 0;
   const dtSec = (dtMs / 1000) * (isBudgeted ? activeCount / applyBudget : 1);
-  let activeOrdinal = 0;
 
-  for (const unit of world.getForceFieldUnits()) {
-    if (!unit.ownership || !unit.unit) continue;
-    if (unit.unit.hp <= 0) continue;
-
+  for (let activeOrdinal = 0; activeOrdinal < activeFields.length; activeOrdinal++) {
+    const active = activeFields[activeOrdinal];
+    const unit = active.unit;
+    const weapon = active.weapon;
+    const fieldShot = active.shot;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
-    const sourcePlayerId = unit.ownership.playerId;
-
-    for (const weapon of unit.turrets!) {
-      const config = weapon.config;
-      if (config.shot.type !== 'force') continue;
-      const fieldShot = config.shot as ForceShot;
+    const sourcePlayerId = unit.ownership!.playerId;
 
       const progress = weapon.forceField?.transition ?? (weapon.forceField?.range ?? 0);
       if (progress <= 0) continue;
-      const ordinal = activeOrdinal++;
       if (isBudgeted) {
-        const relative = ordinal >= applyStart
-          ? ordinal - applyStart
-          : ordinal + activeCount - applyStart;
+        const relative = activeOrdinal >= applyStart
+          ? activeOrdinal - applyStart
+          : activeOrdinal + activeCount - applyStart;
         if (relative >= applyBudget) continue;
       }
 
@@ -155,7 +158,7 @@ export function applyForceFieldDamage(
       // (weaponX, weaponY, pushOuter). When only one is enabled we fall
       // through to the targeted helper.
       const useCombinedQuery =
-        (world.ffAccelUnits && forceAccumulator !== null) && world.ffAccelShots;
+        (world.ffAccelUnits && forceAccumulator) && world.ffAccelShots;
       const combined = useCombinedQuery
         ? spatialGrid.queryEnemyUnitsAndProjectilesInRadius(
             weaponX, weaponY, weaponZ, zones.pushOuter, sourcePlayerId,
@@ -261,7 +264,6 @@ export function applyForceFieldDamage(
           });
         }
       }
-    }
   }
 
   // Build result from dedup map (reuse array to reduce GC pressure)

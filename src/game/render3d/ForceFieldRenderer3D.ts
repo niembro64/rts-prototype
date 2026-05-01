@@ -107,7 +107,28 @@ type FieldMesh = {
   arcMat?: THREE.LineBasicMaterial;
   arcLines?: THREE.LineSegments;
   arcLastFlickerMs: number;
+  mountUnitType: string | null;
+  mountRadius: number;
+  mountOffsetX: number;
+  mountOffsetY: number;
+  localX: number;
+  localY: number;
+  localZ: number;
 };
+
+type FieldKey = number | string;
+const FIELD_KEY_TURRET_STRIDE = 1024;
+
+function forceFieldKey(unitId: number, turretIndex: number): FieldKey {
+  if (
+    turretIndex >= 0 &&
+    turretIndex < FIELD_KEY_TURRET_STRIDE &&
+    Number.isSafeInteger(unitId)
+  ) {
+    return unitId * FIELD_KEY_TURRET_STRIDE + turretIndex;
+  }
+  return `${unitId}-${turretIndex}`;
+}
 
 /** Deterministic 0..1 hash used by the particle layout + arc jitter so each
  *  field has stable angular slots without per-frame allocation. Same shape
@@ -162,7 +183,7 @@ export class ForceFieldRenderer3D {
   // Unit sphere reused for the bubble, the emitter, and the particle motes.
   private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
   private particleSphereGeom = new THREE.SphereGeometry(1, 6, 4);
-  private fields = new Map<string, FieldMesh>();
+  private fields = new Map<FieldKey, FieldMesh>();
 
   /** Shared InstancedMesh covering every emitter + zone sphere across
    *  every active force field on the map. Slots are allocated TRANSIENT
@@ -200,7 +221,7 @@ export class ForceFieldRenderer3D {
   /** Reused across `update()` calls to track which fields are still
    *  active this frame (everything not in here gets pruned). Allocating
    *  a fresh Set per frame is wasted GC pressure — clear-and-reuse. */
-  private _seenFieldKeys = new Set<string>();
+  private _seenFieldKeys = new Set<FieldKey>();
   /** RENDER: WIN/PAD/ALL visibility scope — off-screen force fields
    *  skip their per-frame animation work. */
   private scope: ViewportFootprint;
@@ -262,7 +283,7 @@ export class ForceFieldRenderer3D {
     this.root.add(this.sphereInstancedMesh);
   }
 
-  private acquire(key: string): FieldMesh {
+  private acquire(key: FieldKey): FieldMesh {
     const existing = this.fields.get(key);
     if (existing) return existing;
     // Emitter + zone are invisible parent-anchor Meshes (see FieldMesh
@@ -296,9 +317,54 @@ export class ForceFieldRenderer3D {
       trailMeshes: [],
       trailMats: [],
       arcLastFlickerMs: 0,
+      mountUnitType: null,
+      mountRadius: -1,
+      mountOffsetX: NaN,
+      mountOffsetY: NaN,
+      localX: 0,
+      localY: 0,
+      localZ: 0,
     };
     this.fields.set(key, field);
     return field;
+  }
+
+  private updateMountCache(field: FieldMesh, unit: Entity, turret: Turret): void {
+    const unitData = unit.unit!;
+    const unitRadius = unitData.unitRadiusCollider.scale;
+    const offsetX = turret.offset.x;
+    const offsetY = turret.offset.y;
+    const unitType = unitData.unitType;
+    if (
+      field.mountUnitType === unitType &&
+      field.mountRadius === unitRadius &&
+      field.mountOffsetX === offsetX &&
+      field.mountOffsetY === offsetY
+    ) {
+      return;
+    }
+
+    let bp;
+    try { bp = getUnitBlueprint(unitType); }
+    catch { /* keep fallback */ }
+    const mountTopY = getBodyMountTopY(
+      bp?.bodyShape ?? {
+        kind: 'composite',
+        parts: [
+          { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
+          { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
+        ],
+      },
+      unitRadius,
+      offsetX, offsetY,
+    );
+    field.mountUnitType = unitType;
+    field.mountRadius = unitRadius;
+    field.mountOffsetX = offsetX;
+    field.mountOffsetY = offsetY;
+    field.localX = offsetX;
+    field.localY = mountTopY + INSET_DEPTH_BELOW_DOME;
+    field.localZ = offsetY;
   }
 
   // Particles + trails are no longer per-Mesh — they write into the
@@ -516,9 +582,10 @@ export class ForceFieldRenderer3D {
         const shot = turret.config.shot;
         if (shot.type !== 'force' || !shot.push) continue;
 
-        const key = `${unit.id}-${ti}`;
+        const key = forceFieldKey(unit.id, ti);
         seen.add(key);
         const field = this.acquire(key);
+        this.updateMountCache(field, unit, turret);
 
         // Chassis-local mount position. Force-field emitter sphere
         // is positioned to sit ON the body part the chassisMount
@@ -546,24 +613,9 @@ export class ForceFieldRenderer3D {
         // chassis-bottom origin — these chassis-local coords write
         // straight into emitter / zone / particle / arc positions
         // and the scenegraph chain places them in world.
-        const unitRadius = unit.unit.unitRadiusCollider.scale;
-        let bp;
-        try { bp = getUnitBlueprint(unit.unit.unitType); }
-        catch { /* keep fallback */ }
-        const mountTopY = getBodyMountTopY(
-          bp?.bodyShape ?? {
-            kind: 'composite',
-            parts: [
-              { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
-              { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
-            ],
-          },
-          unitRadius,
-          turret.offset.x, turret.offset.y,
-        );
-        const localX = turret.offset.x;
-        const localY = mountTopY + INSET_DEPTH_BELOW_DOME;
-        const localZ = turret.offset.y;
+        const localX = field.localX;
+        const localY = field.localY;
+        const localZ = field.localZ;
 
         // Reparent every field mesh to the unit's yawGroup if not
         // already there — handles first-frame attachment AND LOD

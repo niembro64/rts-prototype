@@ -82,6 +82,10 @@ export type MinimapData = {
    *  callers reuse entity records without depending on array identity
    *  for redraws. */
   contentVersion: number;
+  /** Incremented only when the terrain/capture background data changes.
+   *  Entity position refreshes should not force the minimap to repaint
+   *  the slow per-pixel terrain/capture layer. */
+  captureVersion: number;
   mapWidth: number;
   mapHeight: number;
   entities: MinimapEntity[];

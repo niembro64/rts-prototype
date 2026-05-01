@@ -167,6 +167,7 @@ export class BeamRenderer3D {
     ax: number, ay: number, az: number,
     bx: number, by: number, bz: number,
     cylRadius: number,
+    length: number,
   ): void {
     // sim-(x, y, z) maps to three-(x, z, y) — height is sim.z, which
     // the beam tracer now reports per segment (barrel-tip start,
@@ -174,7 +175,6 @@ export class BeamRenderer3D {
     this._a.set(ax, az, ay);
     this._b.set(bx, bz, by);
     this._mid.copy(this._a).lerp(this._b, 0.5);
-    const length = this._a.distanceTo(this._b);
     this._dir.copy(this._b).sub(this._a);
     if (length > 1e-5) this._dir.multiplyScalar(1 / length);
     else this._dir.set(1, 0, 0); // avoid NaN on degenerate segments
@@ -193,10 +193,11 @@ export class BeamRenderer3D {
     bx: number, by: number, bz: number,
     cylRadius: number,
     alpha: number,
+    length: number,
   ): boolean {
     if (slot >= BEAM_SEGMENT_CAP || alpha <= 0.001) return false;
     this.segmentAlpha[slot] = alpha;
-    this.placeSegment(slot, ax, ay, az, bx, by, bz, cylRadius);
+    this.placeSegment(slot, ax, ay, az, bx, by, bz, cylRadius, length);
     return true;
   }
 
@@ -229,6 +230,14 @@ export class BeamRenderer3D {
         startX === undefined || startY === undefined ||
         endX === undefined || endY === undefined
       ) continue;
+      // Scope gate before any LOD-grid work. Off-screen beam segments
+      // can be numerous in large fights, and resolving their camera
+      // sphere tier is wasted if both endpoints are outside the active
+      // render footprint.
+      const startIn = this.scope.inScope(startX, startY, 200);
+      const endIn = this.scope.inScope(endX, endY, 200);
+      if (!startIn && !endIn) continue;
+
       // Vertical endpoints come from the 3D beam tracer; fall back to
       // SHOT_HEIGHT for beams that predate the z-aware path (e.g. a
       // keyframe where start/endZ wasn't populated yet).
@@ -242,16 +251,6 @@ export class BeamRenderer3D {
       const drawReflections = objectTier !== 'impostor'
         && graphicsTier !== 'min'
         && graphicsTier !== 'low';
-
-      // Scope gate — skip the beam entirely when BOTH endpoints are
-      // outside the render rect. A beam that crosses the rect (one
-      // endpoint inside) still draws so long/grazing shots aren't
-      // clipped to the visible area. Padding is generous (200) because
-      // laser endpoints can be far from the beam's visible midline
-      // when hitting terrain edges.
-      const startIn = this.scope.inScope(startX, startY, 200);
-      const endIn = this.scope.inScope(endX, endY, 200);
-      if (!startIn && !endIn) continue;
 
       const shot = proj.config.shot;
       // shot.radius already equals shot.width / 2 for line shots, so using it
@@ -279,10 +278,13 @@ export class BeamRenderer3D {
       if (reflections && drawReflections) {
         for (let i = 0; i < reflections.length; i++) {
           const r = reflections[i];
-          const segLen = Math.hypot(r.x - prevX, r.y - prevY, r.z - prevZ);
+          const dx = r.x - prevX;
+          const dy = r.y - prevY;
+          const dz = r.z - prevZ;
+          const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
           const midDist = cumDist + segLen / 2;
           const alpha = baseAlpha * Math.max(0, 1 - midDist / BEAM_MAX_LENGTH) * opacityMul;
-          if (this.writeSegment(segIdx, prevX, prevY, prevZ, r.x, r.y, r.z, cylRadius, alpha)) {
+          if (this.writeSegment(segIdx, prevX, prevY, prevZ, r.x, r.y, r.z, cylRadius, alpha, segLen)) {
             segIdx++;
           }
           prevX = r.x;
@@ -291,10 +293,13 @@ export class BeamRenderer3D {
           cumDist += segLen;
         }
       }
-      const finalLen = Math.hypot(endX - prevX, endY - prevY, endZ - prevZ);
+      const finalDx = endX - prevX;
+      const finalDy = endY - prevY;
+      const finalDz = endZ - prevZ;
+      const finalLen = Math.sqrt(finalDx * finalDx + finalDy * finalDy + finalDz * finalDz);
       const finalMid = cumDist + finalLen / 2;
       const finalAlpha = baseAlpha * Math.max(0, 1 - finalMid / BEAM_MAX_LENGTH) * opacityMul;
-      if (this.writeSegment(segIdx, prevX, prevY, prevZ, endX, endY, endZ, cylRadius, finalAlpha)) {
+      if (this.writeSegment(segIdx, prevX, prevY, prevZ, endX, endY, endZ, cylRadius, finalAlpha, finalLen)) {
         segIdx++;
       }
     }

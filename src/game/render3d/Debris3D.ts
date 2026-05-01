@@ -68,6 +68,7 @@ const FOOT_Y = 1;
 // Global cap on simultaneous pieces across the scene — generous since most
 // units only produce ~30-60 pieces now. Old pieces are evicted oldest-first.
 const GLOBAL_MAX_PIECES = 800;
+const MAX_PIECES_EMITTED_PER_FRAME = 180;
 
 // Physics. Linear drag mirrors the 2D DebrisSystem (~0.99/frame at 60Hz).
 // Angular drag is lower so spin decays noticeably faster than travel — the
@@ -351,9 +352,10 @@ export class Debris3D {
   private spherePool: InstancedDebrisPool;
 
   /** Active pieces in INSERTION ORDER — front of array is oldest.
-   *  Eviction (when over GLOBAL_MAX_PIECES) shifts from front; per-
-   *  frame death (age >= lifetime) splices from anywhere. */
+   *  Global-cap eviction drops a front slice; per-frame death
+   *  (age >= lifetime) splices from anywhere. */
   private pieces: Piece[] = [];
+  private piecesEmittedThisFrame = 0;
   private physicsFrameIndex = 0;
   private poolFlushPending = false;
 
@@ -367,6 +369,10 @@ export class Debris3D {
    *  did implicitly in the per-Mesh path. */
   private _emitQuat = new THREE.Quaternion();
   private _emitEuler = new THREE.Euler();
+
+  beginFrame(): void {
+    this.piecesEmittedThisFrame = 0;
+  }
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
@@ -423,8 +429,13 @@ export class Debris3D {
 
     const templates = this.buildTemplates(ctx, r, primary);
     const candidateCount = Math.ceil(templates.length / stride);
-    const emitCount = Math.min(pieceBudget, candidateCount);
+    const remainingFrameBudget = Math.max(
+      0,
+      MAX_PIECES_EMITTED_PER_FRAME - this.piecesEmittedThisFrame,
+    );
+    const emitCount = Math.min(pieceBudget, candidateCount, remainingFrameBudget);
     if (emitCount <= 0) return;
+    this.piecesEmittedThisFrame += emitCount;
 
     // Hit bias (sim XY → world XZ) — biases all pieces away from the
     // attacker. Small magnitude so it reads as a nudge rather than a shove.
@@ -459,13 +470,19 @@ export class Debris3D {
       );
     }
 
-    // Evict oldest pieces if we blew past the global cap.
-    while (this.pieces.length > GLOBAL_MAX_PIECES) {
-      const dropped = this.pieces.shift();
-      if (dropped) {
-        this.poolFor(dropped.shape).free(dropped.slot);
-        this.poolFlushPending = true;
+    // Evict oldest pieces if we blew past the global cap. Batch the
+    // array compaction so mass-death frames do not pay one O(n) shift
+    // per dropped piece.
+    const overflow = this.pieces.length - GLOBAL_MAX_PIECES;
+    if (overflow > 0) {
+      for (let i = 0; i < overflow; i++) {
+        const dropped = this.pieces[i];
+        if (dropped) {
+          this.poolFor(dropped.shape).free(dropped.slot);
+          this.poolFlushPending = true;
+        }
       }
+      this.pieces.splice(0, overflow);
     }
   }
 

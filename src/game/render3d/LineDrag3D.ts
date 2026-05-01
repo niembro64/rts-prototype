@@ -65,6 +65,7 @@ export class LineDrag3D {
   private dotPool: THREE.Mesh[] = [];
   private ringGeom = new THREE.RingGeometry(1.0, 1.15, 24);
   private ringPool: THREE.Mesh[] = [];
+  private hadVisible = false;
 
   // One fill + one line material per mode; lazily built, disposed on destroy.
   private fillMats = new Map<WaypointType, THREE.MeshBasicMaterial>();
@@ -90,7 +91,7 @@ export class LineDrag3D {
     // Inactive or empty — hide every live mesh and early-out. We don't tear
     // down pools here; they're reused the next drag.
     if (!state.active || state.points.length === 0) {
-      this.hideAll();
+      if (this.hadVisible) this.hideAll();
       return;
     }
 
@@ -147,6 +148,7 @@ export class LineDrag3D {
     for (let i = targets.length; i < this.ringPool.length; i++) {
       this.ringPool[i].visible = false;
     }
+    this.hadVisible = segIdx > 0 || targets.length > 0;
   }
 
   private acquireSegment(i: number): THREE.Mesh {
@@ -206,6 +208,7 @@ export class LineDrag3D {
     for (const m of this.segmentPool) m.visible = false;
     for (const m of this.dotPool) m.visible = false;
     for (const m of this.ringPool) m.visible = false;
+    this.hadVisible = false;
   }
 
   destroy(): void {

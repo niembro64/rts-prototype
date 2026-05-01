@@ -233,6 +233,7 @@ export class ClientViewState {
   private captureTileMap: Map<number, NetworkCaptureTile> = new Map();
   private captureTilesCache: NetworkCaptureTile[] = [];
   private captureDirtyTileMap: Map<number, NetworkCaptureTile> = new Map();
+  private captureDirtyTilesScratch: NetworkCaptureTile[] = [];
   private captureFullDirty: boolean = true;
   private captureTilesDirty: boolean = true;
   private captureVersion: number = 0;
@@ -246,6 +247,7 @@ export class ClientViewState {
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
+  private entitySetVersion = 0;
 
   // Frame counter for beam path throttling (recompute every N frames instead of every frame)
   private frameCounter: number = 0;
@@ -292,13 +294,34 @@ export class ClientViewState {
     this.cache.invalidate();
   }
 
+  private markEntitySetChanged(): void {
+    this.entitySetVersion++;
+    this.invalidateCaches();
+  }
+
   private deleteEntityLocalState(id: EntityId): void {
     const existed = this.entities.delete(id);
     this.serverTargets.delete(id);
     this.selectedIds.delete(id);
     this.predictionAccumMs.delete(id);
     this.targetPredictionAccumMs.delete(id);
-    if (existed) this.invalidateCaches();
+    if (existed) this.markEntitySetChanged();
+  }
+
+  private snapshotAffectsEntityCaches(
+    entity: Entity,
+    server: NetworkServerSnapshotEntity,
+  ): boolean {
+    const cf = server.changedFields;
+    if (cf == null) return true;
+    if (entity.unit && (cf & ENTITY_CHANGED_HP)) return true;
+    if (
+      entity.building &&
+      (cf & (ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING))
+    ) {
+      return true;
+    }
+    return false;
   }
 
   private rebuildCachesIfNeeded(): void {
@@ -311,67 +334,79 @@ export class ClientViewState {
    */
   applyNetworkState(state: NetworkServerSnapshot): void {
     this.currentTick = state.tick;
+    let cacheNeedsInvalidate = false;
 
     // Process entity updates (present in both delta and keyframe snapshots)
     for (const netEntity of state.entities) {
-      // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
-      let target = this.serverTargets.get(netEntity.id);
-      if (!target) {
-        target = createServerTarget();
-        this.serverTargets.set(netEntity.id, target);
-      }
-      // A fresh server target supersedes any sparse-prediction time
-      // accumulated before this snapshot. Otherwise far entities can
-      // extrapolate the newest target by time that already belonged
-      // to an older target and visibly overshoot.
-      this.targetPredictionAccumMs.delete(netEntity.id);
       const cf = netEntity.changedFields;
       const isFull = cf == null;
-      if (isFull || cf! & ENTITY_CHANGED_POS) {
-        target.x = netEntity.pos.x;
-        target.y = netEntity.pos.y;
-        // netEntity.pos is a Vec3 — altitude must ride along or
-        // airborne units render at stale ground-plane z on the client.
-        target.z = netEntity.pos.z;
-      }
-      if (isFull || cf! & ENTITY_CHANGED_ROT) {
-        target.rotation = netEntity.rotation;
-      }
-      // Velocity ships on full records and on deltas where
-      // ENTITY_CHANGED_VEL is set. The wire field is still optional
-      // (older / future deltas may omit it) so guard with `?.`.
-      if (isFull || cf! & ENTITY_CHANGED_VEL) {
-        const v = netEntity.unit?.velocity;
-        if (v !== undefined) {
-          target.velocityX = v.x;
-          target.velocityY = v.y;
-          target.velocityZ = v.z;
+      const isBuildingUpdate = netEntity.type === 'building';
+      if (isBuildingUpdate) {
+        // Buildings are static scene objects. Keep them out of the
+        // per-frame prediction maps entirely; their transform is snapped
+        // directly in snapNonVisualState() when the network record says
+        // it changed.
+        this.serverTargets.delete(netEntity.id);
+        this.predictionAccumMs.delete(netEntity.id);
+        this.targetPredictionAccumMs.delete(netEntity.id);
+      } else {
+        // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
+        let target = this.serverTargets.get(netEntity.id);
+        if (!target) {
+          target = createServerTarget();
+          this.serverTargets.set(netEntity.id, target);
         }
-      }
-      // Server now ships u.turrets on every delta where the unit is
-      // present (not gated by ENTITY_CHANGED_TURRETS) so client-side
-      // turret aim stays smooth between threshold-crossing changes.
-      // Read whenever it's there.
-      {
-        const nw = netEntity.unit?.turrets;
-        if (nw) {
-          while (target.turrets.length < nw.length) {
-            target.turrets.push({
-              rotation: 0,
-              angularVelocity: 0,
-              pitch: 0,
-              forceFieldRange: undefined,
-            });
+        // A fresh server target supersedes any sparse-prediction time
+        // accumulated before this snapshot. Otherwise far entities can
+        // extrapolate the newest target by time that already belonged
+        // to an older target and visibly overshoot.
+        this.targetPredictionAccumMs.delete(netEntity.id);
+        if (isFull || cf! & ENTITY_CHANGED_POS) {
+          target.x = netEntity.pos.x;
+          target.y = netEntity.pos.y;
+          // netEntity.pos is a Vec3 — altitude must ride along or
+          // airborne units render at stale ground-plane z on the client.
+          target.z = netEntity.pos.z;
+        }
+        if (isFull || cf! & ENTITY_CHANGED_ROT) {
+          target.rotation = netEntity.rotation;
+        }
+        // Velocity ships on full records and on deltas where
+        // ENTITY_CHANGED_VEL is set. The wire field is still optional
+        // (older / future deltas may omit it) so guard with `?.`.
+        if (isFull || cf! & ENTITY_CHANGED_VEL) {
+          const v = netEntity.unit?.velocity;
+          if (v !== undefined) {
+            target.velocityX = v.x;
+            target.velocityY = v.y;
+            target.velocityZ = v.z;
           }
-          target.turrets.length = nw.length;
-          for (let i = 0; i < nw.length; i++) {
-            target.turrets[i].rotation = nw[i].turret.angular.rot;
-            target.turrets[i].angularVelocity = nw[i].turret.angular.vel;
-            target.turrets[i].pitch = nw[i].turret.angular.pitch;
-            target.turrets[i].forceFieldRange = nw[i].currentForceFieldRange;
+        }
+        // Server now ships u.turrets on every delta where the unit is
+        // present (not gated by ENTITY_CHANGED_TURRETS) so client-side
+        // turret aim stays smooth between threshold-crossing changes.
+        // Read whenever it's there.
+        {
+          const nw = netEntity.unit?.turrets;
+          if (nw) {
+            while (target.turrets.length < nw.length) {
+              target.turrets.push({
+                rotation: 0,
+                angularVelocity: 0,
+                pitch: 0,
+                forceFieldRange: undefined,
+              });
+            }
+            target.turrets.length = nw.length;
+            for (let i = 0; i < nw.length; i++) {
+              target.turrets[i].rotation = nw[i].turret.angular.rot;
+              target.turrets[i].angularVelocity = nw[i].turret.angular.vel;
+              target.turrets[i].pitch = nw[i].turret.angular.pitch;
+              target.turrets[i].forceFieldRange = nw[i].currentForceFieldRange;
+            }
+          } else if (isFull) {
+            target.turrets.length = 0;
           }
-        } else if (isFull) {
-          target.turrets.length = 0;
         }
       }
 
@@ -389,9 +424,14 @@ export class ClientViewState {
             newEntity.selectable.selected = true;
           }
           this.entities.set(netEntity.id, newEntity);
+          this.entitySetVersion++;
+          cacheNeedsInvalidate = true;
         }
       } else {
         // Existing entity — snap non-visual state immediately
+        if (this.snapshotAffectsEntityCaches(existing, netEntity)) {
+          cacheNeedsInvalidate = true;
+        }
         this.snapNonVisualState(existing, netEntity);
       }
     }
@@ -422,6 +462,8 @@ export class ClientViewState {
       for (const spawn of state.projectiles.spawns) {
         try {
           const entity = this.createProjectileFromSpawn(spawn);
+          this.entitySetVersion++;
+          cacheNeedsInvalidate = true;
           this.entities.set(spawn.id, entity);
         } catch {
           // Skip projectiles with unknown weapon configs (e.g. corrupted by serialization)
@@ -467,7 +509,7 @@ export class ClientViewState {
       }
     }
 
-    this.invalidateCaches();
+    if (cacheNeedsInvalidate) this.invalidateCaches();
 
     // Update economy state (immediate)
     for (const [playerIdStr, eco] of Object.entries(state.economy)) {
@@ -641,6 +683,17 @@ export class ClientViewState {
     }
 
     const sb = server.building;
+    if (entity.building) {
+      if (isFull || cf! & ENTITY_CHANGED_POS) {
+        entity.transform.x = server.pos.x;
+        entity.transform.y = server.pos.y;
+        entity.transform.z = server.pos.z;
+      }
+      if (isFull || cf! & ENTITY_CHANGED_ROT) {
+        entity.transform.rotation = server.rotation;
+      }
+    }
+
     if (entity.building && sb?.type !== undefined && isFull) {
       entity.buildingType = codeToBuildingType(sb.type) as BuildingType;
     }
@@ -994,27 +1047,27 @@ export class ClientViewState {
     // The backing objects stay pooled at the session high-water mark.
     _forceFieldCount = 0;
 
-    for (const entity of this.entities.values()) {
+    this.rebuildCachesIfNeeded();
+
+    // Buildings are intentionally absent here. They are static actor
+    // graphs and their network transform is snapped when snapshots are
+    // applied, so the render frame should spend prediction time only on
+    // moving units and live shots.
+    for (const entity of this.cache.getUnits()) {
       const target = this.serverTargets.get(entity.id);
 
-      if (entity.type === 'unit' && entity.unit) {
-        this.applyUnitVisualPrediction(entity, target, deltaMs, preset);
-        if (entity.turrets && entity.turrets.length > 0) {
-          const predictionTier = this.resolvePredictionLodTier(entity, lod);
-          const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
-          const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
-          if (predictionStep) this.applyUnitExpensivePrediction(entity, target, predictionStep, preset);
-        }
-        continue;
+      this.applyUnitVisualPrediction(entity, target, deltaMs, preset);
+      if (entity.turrets && entity.turrets.length > 0) {
+        const predictionTier = this.resolvePredictionLodTier(entity, lod);
+        const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
+        const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
+        if (predictionStep) this.applyUnitExpensivePrediction(entity, target, predictionStep, preset);
       }
+    }
 
-      if (entity.type === 'building' && target) {
-        entity.transform.x = target.x;
-        entity.transform.y = target.y;
-        entity.transform.rotation = target.rotation;
-        continue;
-      }
-
+    for (const entity of this.cache.getProjectiles()) {
+      if (!entity.projectile) continue;
+      const target = this.serverTargets.get(entity.id);
       const predictionTier = this.resolvePredictionLodTier(entity, lod);
       const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
       const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
@@ -1026,171 +1079,153 @@ export class ClientViewState {
       const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
       const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
 
-      if (entity.type === 'shot' && entity.projectile) {
+      if (
+        entity.projectile.projectileType === 'beam' ||
+        entity.projectile.projectileType === 'laser'
+      ) {
+        // Beam/laser geometry is server-authored in snapshot
+        // beamUpdates. The client only retains the latest path for
+        // rendering and local timeout cleanup; it no longer re-traces
+        // mirror/unit/building intersections in the render frame.
+        entity.projectile.timeAlive += entityDeltaMs;
         if (
-          entity.projectile.projectileType === 'beam' ||
-          entity.projectile.projectileType === 'laser'
+          Number.isFinite(entity.projectile.maxLifespan) &&
+          entity.projectile.timeAlive > entity.projectile.maxLifespan + 1000
         ) {
-          // Beam/laser geometry is server-authored in snapshot
-          // beamUpdates. The client only retains the latest path for
-          // rendering and local timeout cleanup; it no longer re-traces
-          // mirror/unit/building intersections in the render frame.
-          entity.projectile.timeAlive += entityDeltaMs;
-          if (
-            Number.isFinite(entity.projectile.maxLifespan) &&
-            entity.projectile.timeAlive > entity.projectile.maxLifespan + 1000
-          ) {
-            this.deleteEntityLocalState(entity.id);
-          }
-        } else {
-          // Homing steering — 3D velocity rotation toward the target,
-          // identical math to the server's projectileSystem call so
-          // predicted and authoritative paths agree frame-for-frame.
-          // Rocket-class shots (ignoresGravity=true) also re-acquire
-          // the nearest enemy when their original target dies —
-          // mirrors the server's seeker behavior so the predicted
-          // trajectory matches until the server's next velocity-
-          // update snapshot.
-          const proj = entity.projectile;
-          if (proj.homingTargetId !== undefined) {
-            let homingTarget = this.entities.get(proj.homingTargetId);
-            let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
-            if (!targetValid) {
-              const shotCfg = proj.config.shot;
-              const isRocket = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
-              if (isRocket && entity.ownership) {
-                homingTarget = this.findNearestEnemyForRocketClient(entity, entity.ownership.playerId) ?? undefined;
-                if (homingTarget) {
-                  proj.homingTargetId = homingTarget.id;
-                  targetValid = true;
-                } else {
-                  proj.homingTargetId = undefined;
-                }
+          this.deleteEntityLocalState(entity.id);
+        }
+      } else {
+        // Homing steering — 3D velocity rotation toward the target,
+        // identical math to the server's projectileSystem call so
+        // predicted and authoritative paths agree frame-for-frame.
+        // Rocket-class shots (ignoresGravity=true) also re-acquire
+        // the nearest enemy when their original target dies —
+        // mirrors the server's seeker behavior so the predicted
+        // trajectory matches until the server's next velocity-
+        // update snapshot.
+        const proj = entity.projectile;
+        if (proj.homingTargetId !== undefined) {
+          let homingTarget = this.entities.get(proj.homingTargetId);
+          let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
+          if (!targetValid) {
+            const shotCfg = proj.config.shot;
+            const isRocket = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
+            if (isRocket && entity.ownership) {
+              homingTarget = this.findNearestEnemyForRocketClient(entity, entity.ownership.playerId) ?? undefined;
+              if (homingTarget) {
+                proj.homingTargetId = homingTarget.id;
+                targetValid = true;
               } else {
                 proj.homingTargetId = undefined;
               }
-            }
-            if (targetValid && homingTarget) {
-              const steered = applyHomingSteering(
-                proj.velocityX, proj.velocityY, proj.velocityZ,
-                homingTarget.transform.x, homingTarget.transform.y, homingTarget.transform.z,
-                entity.transform.x, entity.transform.y, entity.transform.z,
-                proj.homingTurnRate ?? 0, dt,
-              );
-              proj.velocityX = steered.velocityX;
-              proj.velocityY = steered.velocityY;
-              proj.velocityZ = steered.velocityZ;
-              entity.transform.rotation = steered.rotation;
+            } else {
+              proj.homingTargetId = undefined;
             }
           }
-
-          // Client-side force field prediction: apply same deflection physics as server
-          if (_forceFieldCount > 0 && entity.ownership) {
-            const projOwnerId = entity.ownership.playerId;
-            const projRadius = proj.config.shot.type === 'projectile'
-              ? proj.config.shot.collision.radius : 5;
-            const projMass = (proj.config.shot.type === 'projectile'
-              ? proj.config.shot.mass : 1) * PROJECTILE_MASS_MULTIPLIER;
-
-            for (let fi = 0; fi < _forceFieldCount; fi++) {
-              const ff = _forceFields[fi];
-              if (ff.playerId === projOwnerId) continue; // Only deflect enemy projectiles
-
-              const zones = getClientForceFieldZones(ff.shot, ff.progress);
-              if (zones.pushOuter <= 0) continue;
-
-              const dx = entity.transform.x - ff.weaponX;
-              const dy = entity.transform.y - ff.weaponY;
-              const distSq = dx * dx + dy * dy;
-              const maxDist = zones.pushOuter + projRadius;
-              if (distSq > maxDist * maxDist) continue;
-
-              const dist = Math.sqrt(distSq);
-              if (zones.pushInner > 0 && dist + projRadius < zones.pushInner) continue;
-
-              const pushPower = ff.shot.push?.power ?? 0;
-              const pushAccel = (pushPower * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER) / projMass;
-
-              const dirX = dist > 0 ? dx / dist : 0;
-              const dirY = dist > 0 ? dy / dist : 0;
-              proj.velocityX += dirX * pushAccel * dt;  // push outward
-              proj.velocityY += dirY * pushAccel * dt;
-              entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
-            }
-          }
-
-          // Drift projectile position + velocity toward server target
-          // (smooth correction). Z is drifted too now that server
-          // velocity updates carry a vz — force-field deflections and
-          // homing corrections in the vertical axis propagate instead
-          // of being lost.
-          //
-          // The server only emits velocity-update events on homing /
-          // knockback, NOT on gravity decay. So `target.velocityZ`
-          // would stay frozen at the launch vz between updates; the
-          // lerp below would then pull `proj.velocityZ` back up to
-          // launch vz every tick, fighting against the local gravity
-          // application a few lines down. Apply gravity to the target
-          // here so the extrapolated drift target decays exactly the
-          // way the server's authoritative state does — high-arc
-          // shells stop flying up forever.
-          if (target) {
-            const targetShotCfg = entity.projectile.config.shot;
-            const targetIgnoresGravity = targetShotCfg.type === 'projectile' && targetShotCfg.ignoresGravity === true;
-            if (!targetIgnoresGravity) {
-              target.velocityZ -= GRAVITY * targetDt;
-            }
-            target.x += target.velocityX * targetDt;
-            target.y += target.velocityY * targetDt;
-            target.z += target.velocityZ * targetDt;
-
-            entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
-            entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
-            entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
-            proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelDrift);
-            proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelDrift);
-            proj.velocityZ = lerp(proj.velocityZ, target.velocityZ, movVelDrift);
-            entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
-          }
-
-          // Traveling projectiles: dead-reckon using (possibly steered)
-          // velocity in full 3D. Ballistic projectiles take gravity;
-          // rockets (shot.ignoresGravity) travel on pure thrust and
-          // are bent only by homing — mirrors the server path so
-          // predicted arcs match authoritative arcs.
-          const shotCfg = entity.projectile.config.shot;
-          const ignoresGravity = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
-          if (!ignoresGravity) {
-            entity.projectile.velocityZ -= GRAVITY * dt;
-          }
-          entity.transform.x += entity.projectile.velocityX * dt;
-          entity.transform.y += entity.projectile.velocityY * dt;
-          entity.transform.z += entity.projectile.velocityZ * dt;
-          // Don't let the visual sink through the ground — the server
-          // will despawn-and-explode the projectile on its next tick,
-          // but the client may run a few prediction frames ahead.
-          // Clamp to the local terrain height so projectiles arcing
-          // toward a raised cube tile rest on its top face instead of
-          // burrowing into z=0 underneath the cube.
-          const groundZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE);
-          if (entity.transform.z < groundZ) {
-            entity.transform.z = groundZ;
-            if (entity.projectile.velocityZ < 0) entity.projectile.velocityZ = 0;
-          }
-
-          // Auto-remove if projectile has left the map bounds
-          entity.projectile.timeAlive += entityDeltaMs;
-          if (entity.projectile.timeAlive > 10000) {
-            this.deleteEntityLocalState(entity.id);
+          if (targetValid && homingTarget) {
+            const steered = applyHomingSteering(
+              proj.velocityX, proj.velocityY, proj.velocityZ,
+              homingTarget.transform.x, homingTarget.transform.y, homingTarget.transform.z,
+              entity.transform.x, entity.transform.y, entity.transform.z,
+              proj.homingTurnRate ?? 0, dt,
+            );
+            proj.velocityX = steered.velocityX;
+            proj.velocityY = steered.velocityY;
+            proj.velocityZ = steered.velocityZ;
+            entity.transform.rotation = steered.rotation;
           }
         }
-      }
+        // Client-side force field prediction: apply same deflection physics as server
+        if (_forceFieldCount > 0 && entity.ownership) {
+          const projOwnerId = entity.ownership.playerId;
+          const projRadius = proj.config.shot.type === 'projectile'
+            ? proj.config.shot.collision.radius : 5;
+          const projMass = (proj.config.shot.type === 'projectile'
+            ? proj.config.shot.mass : 1) * PROJECTILE_MASS_MULTIPLIER;
+          for (let fi = 0; fi < _forceFieldCount; fi++) {
+            const ff = _forceFields[fi];
+            if (ff.playerId === projOwnerId) continue; // Only deflect enemy projectiles
+            const zones = getClientForceFieldZones(ff.shot, ff.progress);
+            if (zones.pushOuter <= 0) continue;
+            const dx = entity.transform.x - ff.weaponX;
+            const dy = entity.transform.y - ff.weaponY;
+            const distSq = dx * dx + dy * dy;
+            const maxDist = zones.pushOuter + projRadius;
+            if (distSq > maxDist * maxDist) continue;
+            const dist = Math.sqrt(distSq);
+            if (zones.pushInner > 0 && dist + projRadius < zones.pushInner) continue;
+            const pushPower = ff.shot.push?.power ?? 0;
+            const pushAccel = (pushPower * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER) / projMass;
+            const dirX = dist > 0 ? dx / dist : 0;
+            const dirY = dist > 0 ? dy / dist : 0;
+            proj.velocityX += dirX * pushAccel * dt;  // push outward
+            proj.velocityY += dirY * pushAccel * dt;
+            entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
+          }
+        }
+        // Drift projectile position + velocity toward server target
+        // (smooth correction). Z is drifted too now that server
+        // velocity updates carry a vz — force-field deflections and
+        // homing corrections in the vertical axis propagate instead
+        // of being lost.
+        //
+        // The server only emits velocity-update events on homing /
+        // knockback, NOT on gravity decay. So `target.velocityZ`
+        // would stay frozen at the launch vz between updates; the
+        // lerp below would then pull `proj.velocityZ` back up to
+        // launch vz every tick, fighting against the local gravity
+        // application a few lines down. Apply gravity to the target
+        // here so the extrapolated drift target decays exactly the
+        // way the server's authoritative state does — high-arc
+        // shells stop flying up forever.
+        if (target) {
+          const targetShotCfg = entity.projectile.config.shot;
+          const targetIgnoresGravity = targetShotCfg.type === 'projectile' && targetShotCfg.ignoresGravity === true;
+          if (!targetIgnoresGravity) {
+            target.velocityZ -= GRAVITY * targetDt;
+          }
+          target.x += target.velocityX * targetDt;
+          target.y += target.velocityY * targetDt;
+          target.z += target.velocityZ * targetDt;
+          entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
+          entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
+          entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
+          proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelDrift);
+          proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelDrift);
+          proj.velocityZ = lerp(proj.velocityZ, target.velocityZ, movVelDrift);
+          entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
+        }
 
-      // Buildings don't move — snap position from target
-      if (entity.type === 'building' && target) {
-        entity.transform.x = target.x;
-        entity.transform.y = target.y;
-        entity.transform.rotation = target.rotation;
+        // Traveling projectiles: dead-reckon using (possibly steered)
+        // velocity in full 3D. Ballistic projectiles take gravity;
+        // rockets (shot.ignoresGravity) travel on pure thrust and
+        // are bent only by homing — mirrors the server path so
+        // predicted arcs match authoritative arcs.
+        const shotCfg = entity.projectile.config.shot;
+        const ignoresGravity = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
+        if (!ignoresGravity) {
+          entity.projectile.velocityZ -= GRAVITY * dt;
+        }
+        entity.transform.x += entity.projectile.velocityX * dt;
+        entity.transform.y += entity.projectile.velocityY * dt;
+        entity.transform.z += entity.projectile.velocityZ * dt;
+        // Don't let the visual sink through the ground — the server
+        // will despawn-and-explode the projectile on its next tick,
+        // but the client may run a few prediction frames ahead.
+        // Clamp to the local terrain height so projectiles arcing
+        // toward a raised cube tile rest on its top face instead of
+        // burrowing into z=0 underneath the cube.
+        const groundZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE);
+        if (entity.transform.z < groundZ) {
+          entity.transform.z = groundZ;
+          if (entity.projectile.velocityZ < 0) entity.projectile.velocityZ = 0;
+        }
+
+        // Auto-remove if projectile has left the map bounds
+        entity.projectile.timeAlive += entityDeltaMs;
+        if (entity.projectile.timeAlive > 10000) {
+          this.deleteEntityLocalState(entity.id);
+        }
       }
     }
   }
@@ -1360,6 +1395,10 @@ export class ClientViewState {
 
   getEntity(id: EntityId): Entity | undefined {
     return this.entities.get(id);
+  }
+
+  getEntitySetVersion(): number {
+    return this.entitySetVersion;
   }
 
   getAllEntities(): Entity[] {
@@ -1554,7 +1593,10 @@ export class ClientViewState {
 
   getCaptureTiles(): NetworkCaptureTile[] {
     if (this.captureTilesDirty) {
-      this.captureTilesCache = Array.from(this.captureTileMap.values());
+      this.captureTilesCache.length = 0;
+      for (const tile of this.captureTileMap.values()) {
+        this.captureTilesCache.push(tile);
+      }
       this.captureTilesDirty = false;
     }
     return this.captureTilesCache;
@@ -1583,7 +1625,11 @@ export class ClientViewState {
       };
     }
 
-    const tiles = Array.from(this.captureDirtyTileMap.values());
+    const tiles = this.captureDirtyTilesScratch;
+    tiles.length = 0;
+    for (const tile of this.captureDirtyTileMap.values()) {
+      tiles.push(tile);
+    }
     this.captureDirtyTileMap.clear();
     return {
       version: this.captureVersion,
@@ -1619,8 +1665,9 @@ export class ClientViewState {
     this.gridSearchCells = [];
     this.gridCellSize = 0;
     this.captureTileMap.clear();
-    this.captureTilesCache = [];
+    this.captureTilesCache.length = 0;
     this.captureDirtyTileMap.clear();
+    this.captureDirtyTilesScratch.length = 0;
     this.captureFullDirty = true;
     this.captureTilesDirty = true;
     this.captureVersion++;
@@ -1630,6 +1677,7 @@ export class ClientViewState {
     this.predictionAccumMs.clear();
     this.targetPredictionAccumMs.clear();
     this.predictionLodCells.clear();
+    this.entitySetVersion++;
     this.invalidateCaches();
   }
 }

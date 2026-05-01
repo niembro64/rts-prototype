@@ -81,7 +81,12 @@ export class RenderLodGrid {
     const dy = cy - view.cameraY;
     const dz = cz - view.cameraZ;
     const tier = resolveRenderObjectLodForDistanceSq(dx * dx + dy * dy + dz * dz, this.shells);
-    this.cells.set(key, { frameId: this.frameId, tier });
+    if (cached) {
+      cached.frameId = this.frameId;
+      cached.tier = tier;
+    } else {
+      this.cells.set(key, { frameId: this.frameId, tier });
+    }
     return tier;
   }
 

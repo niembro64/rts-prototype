@@ -300,6 +300,8 @@ export class Render3DEntities {
   private _seenUnitIds = new Set<EntityId>();
   private _seenBuildingIds = new Set<number>();
   private _seenProjectileIds = new Set<number>();
+  private lastUnitInstancedEntitySetVersion = -1;
+  private lastProjectileEntitySetVersion = -1;
   /** SHOT RAD overlay meshes per projectile. Wireframe spheres —
    *  not ground rings — because the matching sim checks ARE 3D
    *  (lineSphereIntersectionT for collision, sqrt(dx²+dy²+dz²) for
@@ -481,12 +483,13 @@ export class Render3DEntities {
   /** Reverse lookup so low-tier compaction can move tail slots into holes in O(1). */
   private unitInstancedEntityBySlot: (EntityId | undefined)[] = [];
   /** Maps entityId → last owner/lod color key written into its instance slot. */
-  private unitInstancedColorKey = new Map<EntityId, string>();
+  private unitInstancedColorKey = new Map<EntityId, number>();
   // In hybrid mode this is the set of units whose mass-body slot should
   // be hidden because a richer object mesh is responsible for drawing
   // the body. The outer marker tier still uses this packed sphere path.
   private massRichUnitIds = new Set<EntityId>();
   private massRichUnits: Entity[] = [];
+  private massRichObjectTiers = new Map<EntityId, RenderObjectLodTier>();
   private ownedObjectLodGrid = new RenderLodGrid();
   private objectLodGrid = this.ownedObjectLodGrid;
   /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
@@ -1392,6 +1395,7 @@ export class Render3DEntities {
     if (collectRichUnits) {
       richIds.clear();
       richUnits.length = 0;
+      this.massRichObjectTiers.clear();
     }
     let colorDirty = false;
     let matrixMinSlot = Number.POSITIVE_INFINITY;
@@ -1410,9 +1414,10 @@ export class Render3DEntities {
         // selection overlays. Units outside that older 2D footprint
         // still flow through the cheap instanced body below, so the
         // 3D LOD grid never resolves to "invisible" for unit bodies.
-        if (inScope && (isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor')) {
+        if (inScope && (isRichObjectLod(objectTier) || objectTier === 'simple')) {
           richIds.add(e.id);
           richUnits.push(e);
+          this.massRichObjectTiers.set(e.id, objectTier);
           this.hideUnitInstancedSlot(im, e.id, this.unitInstancedSlot.get(e.id), matrixDirty);
           continue;
         }
@@ -1458,7 +1463,7 @@ export class Render3DEntities {
       }
 
       const pid = e.ownership?.playerId;
-      const colorKey = `${pid ?? -1}`;
+      const colorKey = pid ?? -1;
       if (this.unitInstancedColorKey.get(e.id) !== colorKey) {
         this._instColor
           .set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888);
@@ -1470,18 +1475,24 @@ export class Render3DEntities {
       }
     }
 
-    // Free slots for units that disappeared this frame.
-    for (const [id, slot] of this.unitInstancedSlot) {
-      if (!seen.has(id)) {
-        im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-        if (slot < matrixDirty.matrixMinSlot) matrixDirty.matrixMinSlot = slot;
-        if (slot > matrixDirty.matrixMaxSlot) matrixDirty.matrixMaxSlot = slot;
-        this.unitInstancedFreeSlots.push(slot);
-        this.unitInstancedEntityBySlot[slot] = undefined;
-        this.unitInstancedSlot.delete(id);
-        this.unitInstancedColorKey.delete(id);
-        this.unitInstancedHiddenIds.delete(id);
+    // Free slots for units that disappeared. This is an O(active units)
+    // map walk, so run it only when the client entity set actually
+    // changed rather than on every render frame.
+    const entitySetVersion = this.clientViewState.getEntitySetVersion();
+    if (entitySetVersion !== this.lastUnitInstancedEntitySetVersion) {
+      for (const [id, slot] of this.unitInstancedSlot) {
+        if (!seen.has(id)) {
+          im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+          if (slot < matrixDirty.matrixMinSlot) matrixDirty.matrixMinSlot = slot;
+          if (slot > matrixDirty.matrixMaxSlot) matrixDirty.matrixMaxSlot = slot;
+          this.unitInstancedFreeSlots.push(slot);
+          this.unitInstancedEntityBySlot[slot] = undefined;
+          this.unitInstancedSlot.delete(id);
+          this.unitInstancedColorKey.delete(id);
+          this.unitInstancedHiddenIds.delete(id);
+        }
       }
+      this.lastUnitInstancedEntitySetVersion = entitySetVersion;
     }
     matrixMinSlot = matrixDirty.matrixMinSlot;
     matrixMaxSlot = matrixDirty.matrixMaxSlot;
@@ -1914,6 +1925,7 @@ export class Render3DEntities {
     if (unitRenderMode === 'mass') {
       this.massRichUnitIds.clear();
       this.massRichUnits.length = 0;
+      this.massRichObjectTiers.clear();
       if (this.unitMeshes.size > 0) {
         this.rebuildAllUnitsOnLodChange();
       }
@@ -1930,6 +1942,7 @@ export class Render3DEntities {
     if (this.unitInstancedSlot.size > 0) {
       this.releaseAllInstancedSlots();
     }
+    this.massRichObjectTiers.clear();
     this.updateUnitMeshes(units);
   }
 
@@ -1979,7 +1992,7 @@ export class Render3DEntities {
       const pid = e.ownership?.playerId;
       const colorKey = pid ?? -1;
       const turrets = e.turrets ?? [];
-      const objectTier = this.resolveEntityObjectLod(e);
+      const objectTier = this.massRichObjectTiers.get(e.id) ?? this.resolveEntityObjectLod(e);
       const isCommanderUnit = e.commander !== undefined;
       const fullUnitDetail =
         isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor';
@@ -3322,7 +3335,7 @@ export class Render3DEntities {
   }
 
   private updateProjectiles(): void {
-    const projectiles = this.clientViewState.getProjectiles();
+    const projectiles = this.clientViewState.getTravelingProjectiles();
     const seen = this._seenProjectileIds;
     seen.clear();
     const sphereMesh = this.projectileSphereInstanced;
@@ -3331,12 +3344,6 @@ export class Render3DEntities {
     let cylinderCount = 0;
 
     for (const e of projectiles) {
-      // Skip beams/lasers — handled by BeamRenderer3D as line segments rather
-      // than spheres. Without this, long-range beams would render as a single
-      // sphere at the wrong position.
-      const pt = e.projectile?.projectileType;
-      if (pt === 'beam' || pt === 'laser') continue;
-
       seen.add(e.id);
       // Scope gate — tighter padding (projectiles are small and moving fast).
       if (!this.scope.inScope(e.transform.x, e.transform.y, 50)) {
@@ -3442,12 +3449,18 @@ export class Render3DEntities {
     }
 
     // Drop SHOT RAD wireframes that went with despawned projectiles.
-    for (const [id, radii] of this.projectileRadiusMeshes) {
-      if (!seen.has(id)) {
-        this.releaseProjRadiusMesh(radii.collision);
-        this.releaseProjRadiusMesh(radii.explosion);
-        this.projectileRadiusMeshes.delete(id);
+    // This map is sparse, but avoid the walk on frames where the
+    // network entity set did not change.
+    const entitySetVersion = this.clientViewState.getEntitySetVersion();
+    if (entitySetVersion !== this.lastProjectileEntitySetVersion) {
+      for (const [id, radii] of this.projectileRadiusMeshes) {
+        if (!seen.has(id)) {
+          this.releaseProjRadiusMesh(radii.collision);
+          this.releaseProjRadiusMesh(radii.explosion);
+          this.projectileRadiusMeshes.delete(id);
+        }
       }
+      this.lastProjectileEntitySetVersion = entitySetVersion;
     }
   }
 

@@ -81,6 +81,20 @@ type BeamState = {
   prevMark: Mark | null;
 };
 
+type BeamStateKey = number | string;
+const BEAM_KEY_TURRET_STRIDE = 1024;
+
+function beamStateKey(sourceEntityId: number, turretIndex: number): BeamStateKey {
+  if (
+    turretIndex >= 0 &&
+    turretIndex < BEAM_KEY_TURRET_STRIDE &&
+    Number.isSafeInteger(sourceEntityId)
+  ) {
+    return sourceEntityId * BEAM_KEY_TURRET_STRIDE + turretIndex;
+  }
+  return `${sourceEntityId}:${turretIndex}`;
+}
+
 type Mark = {
   /** Index into the big buffer (`marks[slot] === this`). Kept explicit so
    *  appending a miter-joined mark can rewrite this mark's end vertices
@@ -112,8 +126,8 @@ export class BurnMark3D {
   private marks: Mark[] = [];
 
   // Per-beam state, keyed by `${sourceEntityId}:${turretIndex}`.
-  private beams = new Map<string, BeamState>();
-  private _seenBeamKeys = new Set<string>();
+  private beams = new Map<BeamStateKey, BeamState>();
+  private _seenBeamKeys = new Set<BeamStateKey>();
 
   private _frameCounter = 0;
 
@@ -210,7 +224,7 @@ export class BurnMark3D {
       if (proj.projectileType !== 'beam' && proj.projectileType !== 'laser') continue;
 
       const turretIndex = proj.config.turretIndex ?? 0;
-      const key = `${proj.sourceEntityId}:${turretIndex}`;
+      const key = beamStateKey(proj.sourceEntityId, turretIndex);
       this._seenBeamKeys.add(key);
 
       const ex = proj.endX ?? e.transform.x;

@@ -116,10 +116,18 @@ export function buildEconomyInfo(
 
   // Count buildings for this player
   const playerBuildings = entitySource.getBuildingsByPlayer(playerId);
-  const solarCount = playerBuildings.filter(b => b.buildingType === 'solar').length;
-  const windCount = playerBuildings.filter(b => b.buildingType === 'wind').length;
-  const factoryCount = playerBuildings.filter(b => b.buildingType === 'factory').length;
-  const extractorCount = playerBuildings.filter(b => b.buildingType === 'extractor').length;
+  let solarCount = 0;
+  let windCount = 0;
+  let factoryCount = 0;
+  let extractorCount = 0;
+  for (let i = 0; i < playerBuildings.length; i++) {
+    switch (playerBuildings[i].buildingType) {
+      case 'solar': solarCount++; break;
+      case 'wind': windCount++; break;
+      case 'factory': factoryCount++; break;
+      case 'extractor': extractorCount++; break;
+    }
+  }
 
   // Count units for this player
   const unitCount = entitySource.getUnitsByPlayer(playerId).length;
@@ -168,6 +176,7 @@ export function buildMinimapData(
   cameraQuad: MinimapData['cameraQuad'],
   cameraYaw: number,
   captureTiles: readonly MinimapCaptureTile[],
+  captureVersion: number,
   captureCellSize: number,
   gridOverlayIntensity: number,
   showTerrain: boolean,
@@ -176,6 +185,7 @@ export function buildMinimapData(
 ): MinimapData {
   const data = out ?? {
     contentVersion: 0,
+    captureVersion: 0,
     mapWidth,
     mapHeight,
     entities: [],
@@ -220,6 +230,7 @@ export function buildMinimapData(
   data.mapWidth = mapWidth;
   data.mapHeight = mapHeight;
   data.contentVersion += 1;
+  data.captureVersion = captureVersion;
   data.cameraQuad = cameraQuad;
   data.cameraYaw = cameraYaw;
   data.captureTiles = captureTiles;

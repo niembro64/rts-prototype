@@ -217,8 +217,11 @@ export class RtsScene3D {
   private audioScheduler = new AudioEventScheduler();
   private lastEffectsTickMs = 0;
   private renderFrameIndex = 0;
+  private fireExplosionAccumMs = 0;
+  private debrisAccumMs = 0;
   private burnMarkAccumMs = 0;
   private smokeTrailAccumMs = 0;
+  private sprayAccumMs = 0;
   private combinedSprayTargets: SprayTarget[] = [];
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
@@ -306,6 +309,7 @@ export class RtsScene3D {
   private readonly COMBAT_STATS_UPDATE_INTERVAL = COMBAT_STATS_SAMPLE_INTERVAL;
   private _minimapDataScratch: MinimapData = {
     contentVersion: 0,
+    captureVersion: 0,
     mapWidth: 0,
     mapHeight: 0,
     entities: [],
@@ -525,8 +529,11 @@ export class RtsScene3D {
     this.threeApp.setRenderEnabled(enabled);
     if (!enabled) {
       this.audioScheduler.clear();
+      this.fireExplosionAccumMs = 0;
+      this.debrisAccumMs = 0;
       this.burnMarkAccumMs = 0;
       this.smokeTrailAccumMs = 0;
+      this.sprayAccumMs = 0;
     }
   }
 
@@ -770,6 +777,10 @@ export class RtsScene3D {
 
     // Per-frame FPS tracker
     if (delta > 0) this.fpsTracker.update(1000 / delta);
+    if (this.clientRenderEnabled) {
+      this.explosionRenderer.beginFrame();
+      this.debrisRenderer.beginFrame();
+    }
 
     // Drain any audio events whose scheduled playback time has arrived. This
     // runs every frame (not just on snapshot arrival) because scheduled events
@@ -994,8 +1005,14 @@ export class RtsScene3D {
       renderLod,
       this.renderLodGrid,
     );
-    this.explosionRenderer.update(effectDt);
-    this.debrisRenderer.update(effectDt);
+    this.fireExplosionAccumMs += effectDt;
+    this.debrisAccumMs += effectDt;
+    if (updateEffectsThisFrame) {
+      this.explosionRenderer.update(this.fireExplosionAccumMs);
+      this.debrisRenderer.update(this.debrisAccumMs);
+      this.fireExplosionAccumMs = 0;
+      this.debrisAccumMs = 0;
+    }
     this.burnMarkAccumMs += effectDt;
     if (updateEffectsThisFrame) {
       this.burnMarkRenderer.update(lineProjectiles, this.burnMarkAccumMs);
@@ -1004,15 +1021,19 @@ export class RtsScene3D {
     // Commander build/heal spray comes from sim state; factory unit
     // construction spray is derived from the client-side factory tower
     // rig so it can originate at the rendered nozzle height.
-    const commanderSprays = this.clientViewState.getSprayTargets();
-    const factorySprays = this.entityRenderer.getFactorySprayTargets();
-    if (factorySprays.length > 0) {
-      this.combinedSprayTargets.length = 0;
-      for (const spray of commanderSprays) this.combinedSprayTargets.push(spray);
-      for (const spray of factorySprays) this.combinedSprayTargets.push(spray);
-      this.sprayRenderer.update(this.combinedSprayTargets, effectDt);
-    } else {
-      this.sprayRenderer.update(commanderSprays, effectDt);
+    this.sprayAccumMs += effectDt;
+    if (updateEffectsThisFrame) {
+      const commanderSprays = this.clientViewState.getSprayTargets();
+      const factorySprays = this.entityRenderer.getFactorySprayTargets();
+      if (factorySprays.length > 0) {
+        this.combinedSprayTargets.length = 0;
+        for (const spray of commanderSprays) this.combinedSprayTargets.push(spray);
+        for (const spray of factorySprays) this.combinedSprayTargets.push(spray);
+        this.sprayRenderer.update(this.combinedSprayTargets, this.sprayAccumMs);
+      } else {
+        this.sprayRenderer.update(commanderSprays, this.sprayAccumMs);
+      }
+      this.sprayAccumMs = 0;
     }
     // Rocket smoke trails: reads the same projectile list the beam
     // renderer consumes; puffs fall back to pooled meshes once their
@@ -1022,10 +1043,10 @@ export class RtsScene3D {
       this.smokeTrailRenderer.update(travelingProjectiles, this.smokeTrailAccumMs, this.renderScope);
       this.smokeTrailAccumMs = 0;
     }
-    // Per-frame input bookkeeping — currently just the shared
-    // SelectionChangeTracker, which resets waypoint mode when the
-    // selection changes (matches the 2D path's InputManager.update).
-    this.inputManager?.tick();
+    // Input selection-change bookkeeping is handled when local
+    // selection commands are processed. Do not poll all units here:
+    // at 10k units that turns a rare UI state change into a permanent
+    // per-frame full-unit scan.
     // Line-drag preview reads directly from the input manager's live state.
     if (this.inputManager) {
       this.lineDragRenderer.update(this.inputManager.getLineDragState());
@@ -1080,12 +1101,9 @@ export class RtsScene3D {
       for (const b of healthBarBuildings) {
         this.healthBar3D.perBuilding(b);
       }
-      if (hoveredEntity?.unit && !damagedUnits.some((u) => u.id === hoveredEntity.id)) {
+      if (hoveredEntity?.unit) {
         this.healthBar3D.perUnit(hoveredEntity, true);
-      } else if (
-        hoveredEntity?.building &&
-        !healthBarBuildings.some((b) => b.id === hoveredEntity.id)
-      ) {
+      } else if (hoveredEntity?.building) {
         this.healthBar3D.perBuilding(hoveredEntity, true);
       }
       this.healthBar3D.endFrame();
@@ -1255,10 +1273,12 @@ export class RtsScene3D {
         if (!sc.additive) this.clientViewState.clearSelection();
         for (const id of sc.entityIds) this.clientViewState.selectEntity(id);
         this.preferUnitsOverBuildingsInSelection();
+        this.inputManager?.setWaypointMode('move');
         this.selectionDirty = true;
         this._selectedEntityCacheDirty = true;
       } else if (command.type === 'clearSelection') {
         this.clientViewState.clearSelection();
+        this.inputManager?.setWaypointMode('move');
         this.selectionDirty = true;
         this._selectedEntityCacheDirty = true;
       } else {
@@ -1562,6 +1582,7 @@ export class RtsScene3D {
     // intensity from clientBarConfig. GRID now controls ownership
     // tint only; terrain/water stay visible and are optimized by LOD.
     const captureTiles = this.clientViewState.getCaptureTiles();
+    const captureVersion = this.clientViewState.getCaptureVersion();
     const captureCellSize = this.clientViewState.getCaptureCellSize();
     const gridMode = getGridOverlay();
     const showTerrain = true;
@@ -1574,6 +1595,7 @@ export class RtsScene3D {
         this._cameraQuad,
         this.threeApp.orbit.yaw,
         captureTiles,
+        captureVersion,
         captureCellSize,
         intensity,
         showTerrain,
@@ -1692,6 +1714,7 @@ export class RtsScene3D {
 
   public switchPlayer(playerId: PlayerId): void {
     this.localPlayerId = playerId;
+    this.inputManager?.setWaypointMode('move');
     this.markSelectionDirty();
     this.onPlayerChange?.(playerId);
   }
@@ -1708,6 +1731,7 @@ export class RtsScene3D {
 
   public markSelectionDirty(): void {
     this.selectionDirty = true;
+    this._selectedEntityCacheDirty = true;
   }
 
   public setWaypointMode(mode: WaypointType): void {

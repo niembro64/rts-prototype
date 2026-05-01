@@ -56,6 +56,10 @@ const scale = computed(() => ({
 // the camera box stays pinned to the view with no lag.
 let offscreen: HTMLCanvasElement | null = null;
 let offCtx: CanvasRenderingContext2D | null = null;
+let background: HTMLCanvasElement | null = null;
+let backgroundCtx: CanvasRenderingContext2D | null = null;
+let backgroundKey = '';
+let canvasCtx: CanvasRenderingContext2D | null = null;
 
 function ensureOffscreen(): void {
   // Rebuild offscreen if the minimap's target dimensions changed
@@ -69,15 +73,39 @@ function ensureOffscreen(): void {
   offscreen.height = size.value.h;
 }
 
-function drawEntityLayer(): void {
-  ensureOffscreen();
-  if (!offCtx || !offscreen) return;
-  const ctx = offCtx;
-  const { mapWidth, mapHeight, entities } = props.data;
+function ensureBackground(): void {
+  if (background && background.width === size.value.w && background.height === size.value.h) return;
+  if (!background) {
+    background = document.createElement('canvas');
+    backgroundCtx = background.getContext('2d');
+  }
+  background.width = size.value.w;
+  background.height = size.value.h;
+  backgroundKey = '';
+}
+
+function drawBackgroundLayer(): void {
+  ensureBackground();
+  if (!backgroundCtx || !background) return;
+  const ctx = backgroundCtx;
+  const { mapWidth, mapHeight } = props.data;
   const scaleX = scale.value.x;
   const scaleY = scale.value.y;
   const w = size.value.w;
   const h = size.value.h;
+  const { captureTiles, captureVersion, captureCellSize, gridOverlayIntensity, showTerrain } = props.data;
+  const nextKey = [
+    w,
+    h,
+    mapWidth,
+    mapHeight,
+    captureVersion,
+    captureCellSize,
+    gridOverlayIntensity,
+    showTerrain ? 1 : 0,
+  ].join('|');
+  if (nextKey === backgroundKey) return;
+  backgroundKey = nextKey;
 
   // Lake / background — single pass over every minimap pixel, sample
   // the heightmap once per pixel, write either lake-blue or the dark
@@ -103,7 +131,6 @@ function drawEntityLayer(): void {
   // brightness is `intensity × tileMana / maxTileMana`, so the
   // centre tile reaches the GRID-overlay ceiling and every other
   // tile scales down in exact proportion to its mana/sec.
-  const { captureTiles, captureCellSize, gridOverlayIntensity, showTerrain } = props.data;
   const overlayActive = showTerrain && captureCellSize > 0 && gridOverlayIntensity > 0 && captureTiles.length > 0;
   let tileFinalR: Uint8ClampedArray | null = null;
   let tileFinalG: Uint8ClampedArray | null = null;
@@ -196,6 +223,18 @@ function drawEntityLayer(): void {
     }
   }
   ctx.putImageData(lakeImg, 0, 0);
+}
+
+function drawEntityLayer(): void {
+  ensureOffscreen();
+  drawBackgroundLayer();
+  if (!offCtx || !offscreen || !background) return;
+  const ctx = offCtx;
+  const { entities } = props.data;
+  const scaleX = scale.value.x;
+  const scaleY = scale.value.y;
+  ctx.clearRect(0, 0, offscreen.width, offscreen.height);
+  ctx.drawImage(background, 0, 0);
 
   for (const entity of entities) {
     const x = entity.pos.x * scaleX;
@@ -229,7 +268,8 @@ function drawEntityLayer(): void {
 function compose(): void {
   const canvas = canvasRef.value;
   if (!canvas || !offscreen) return;
-  const ctx = canvas.getContext('2d');
+  if (!canvasCtx) canvasCtx = canvas.getContext('2d');
+  const ctx = canvasCtx;
   if (!ctx) return;
   const { cameraQuad } = props.data;
   const scaleX = scale.value.x;
@@ -312,6 +352,7 @@ function handlePointerEnd(event: PointerEvent): void {
 watch(
   () => [
     props.data.contentVersion,
+    props.data.captureVersion,
     props.data.mapWidth,
     props.data.mapHeight,
     props.data.captureTiles,

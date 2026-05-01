@@ -71,7 +71,7 @@ export const TERRAIN_MESH_SUBDIV = 4;
  *  Magnitude only — the sign is picked from the shape. Tuned so a
  *  lake is deep enough to flood meaningfully under WATER_LEVEL=0.5
  *  and a mountain is tall enough to actually block sightlines. */
-const TERRAIN_SHAPE_MAGNITUDE = 500;
+const TERRAIN_SHAPE_MAGNITUDE = 800;
 export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 
 /** Mutable amplitude for the central ripple zone. Negative = basin

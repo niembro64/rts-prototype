@@ -93,6 +93,8 @@ const LOD_TABLE: Record<ExplosionStyle, { sparks: number; sparkReach: number }> 
 // dozens of concurrent inferno-tier impacts.
 const MAX_PUFFS = 2048;
 const MAX_SPARKS = 4096;
+const MAX_PUFF_SPAWNS_PER_FRAME = 256;
+const MAX_SPARK_SPAWNS_PER_FRAME = 768;
 
 type Puff = {
   startR: number;
@@ -239,6 +241,8 @@ export class Explosion3D {
   // Index i in puffs[] corresponds to slot i in puffPool.mesh, same for sparks.
   private puffs: Puff[] = [];
   private sparks: Spark[] = [];
+  private puffSpawnsThisFrame = 0;
+  private sparkSpawnsThisFrame = 0;
 
   constructor(parentWorld: THREE.Group) {
     this.root = new THREE.Group();
@@ -247,6 +251,11 @@ export class Explosion3D {
     // 15 so sparks consistently composite over the fireball shell.
     this.puffPool = new InstancedSpherePool(this.root, MAX_PUFFS, 14);
     this.sparkPool = new InstancedSpherePool(this.root, MAX_SPARKS, 15);
+  }
+
+  beginFrame(): void {
+    this.puffSpawnsThisFrame = 0;
+    this.sparkSpawnsThisFrame = 0;
   }
 
   /**
@@ -333,6 +342,8 @@ export class Explosion3D {
     startR: number, endR: number, isShell: boolean,
   ): void {
     if (this.puffs.length >= MAX_PUFFS) return;
+    if (this.puffSpawnsThisFrame >= MAX_PUFF_SPAWNS_PER_FRAME) return;
+    this.puffSpawnsThisFrame++;
     const r = ((color >> 16) & 0xff) / 255;
     const g = ((color >> 8)  & 0xff) / 255;
     const b = ( color        & 0xff) / 255;
@@ -362,7 +373,13 @@ export class Explosion3D {
     const r = ((SPARK_COLOR >> 16) & 0xff) / 255;
     const g = ((SPARK_COLOR >> 8)  & 0xff) / 255;
     const b = ( SPARK_COLOR        & 0xff) / 255;
-    for (let i = 0; i < count; i++) {
+    const spawnCount = Math.min(
+      count,
+      MAX_SPARK_SPAWNS_PER_FRAME - this.sparkSpawnsThisFrame,
+    );
+    if (spawnCount <= 0) return;
+    this.sparkSpawnsThisFrame += spawnCount;
+    for (let i = 0; i < spawnCount; i++) {
       if (this.sparks.length >= MAX_SPARKS) break;
       // Random direction biased slightly upward — sparks that go under the
       // ground get culled, so biasing up yields fewer wasted particles.

@@ -24,6 +24,8 @@ const WATER_COLOR = 0x4aa3df;
 // coarsely than object cells; water detail can lag slightly without gameplay
 // or readability cost, and this removes frequent rebuild spikes while panning.
 const WATER_LOD_REBUILD_CELL_MULTIPLIER = 4;
+const WATER_LOD_REBUILD_SETTLE_FRAMES = 3;
+const WATER_LOD_REBUILD_MIN_FRAME_SPACING = 24;
 
 type WaterCell = {
   x0: number;
@@ -41,6 +43,10 @@ export class WaterRenderer3D {
   private mapWidth: number;
   private mapHeight: number;
   private terrainLodKey = '';
+  private pendingTerrainLodKey = '';
+  private pendingTerrainLodFrames = 0;
+  private lastGeometryRebuildFrame = -WATER_LOD_REBUILD_MIN_FRAME_SPACING;
+  private hasWaterGeometry = false;
   private waterCellCache: WaterCell[] | null = null;
   private ownedLodGrid = new RenderLodGrid();
   private frameLodGrid = this.ownedLodGrid;
@@ -189,8 +195,33 @@ export class WaterRenderer3D {
 
   private rebuildGeometryIfNeeded(graphicsConfig: GraphicsConfig, lod?: Lod3DState): void {
     const nextKey = this.waterLodKey(graphicsConfig, lod);
-    if (nextKey === this.terrainLodKey) return;
+    if (nextKey === this.terrainLodKey) {
+      this.pendingTerrainLodKey = '';
+      this.pendingTerrainLodFrames = 0;
+      return;
+    }
+
+    const hasBuiltGeometry = this.terrainLodKey !== '';
+    if (hasBuiltGeometry) {
+      if (this.pendingTerrainLodKey !== nextKey) {
+        this.pendingTerrainLodKey = nextKey;
+        this.pendingTerrainLodFrames = 0;
+        return;
+      }
+      this.pendingTerrainLodFrames++;
+      const framesSinceRebuild = this.frameIndex - this.lastGeometryRebuildFrame;
+      if (
+        this.pendingTerrainLodFrames < WATER_LOD_REBUILD_SETTLE_FRAMES ||
+        framesSinceRebuild < WATER_LOD_REBUILD_MIN_FRAME_SPACING
+      ) {
+        return;
+      }
+    }
+
     this.terrainLodKey = nextKey;
+    this.pendingTerrainLodKey = '';
+    this.pendingTerrainLodFrames = 0;
+    this.lastGeometryRebuildFrame = this.frameIndex;
 
     const waterCells = this.getWaterCells();
     const positions: number[] = [];
@@ -229,7 +260,8 @@ export class WaterRenderer3D {
     this.geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
     this.geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
     this.geometry.computeBoundingSphere();
-    this.mesh.visible = waterCells.length > 0;
+    this.hasWaterGeometry = waterCells.length > 0;
+    this.mesh.visible = this.hasWaterGeometry;
   }
 
   update(
@@ -244,9 +276,15 @@ export class WaterRenderer3D {
     if (lod) {
       if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, graphicsConfig);
     }
-    this.rebuildGeometryIfNeeded(graphicsConfig, lod);
     this.material.opacity = graphicsConfig.waterOpacity;
     this.amplitudeUniform.value = graphicsConfig.waterWaveAmplitude;
+    if (graphicsConfig.waterOpacity <= 0) {
+      this.mesh.visible = false;
+      return;
+    }
+
+    this.rebuildGeometryIfNeeded(graphicsConfig, lod);
+    this.mesh.visible = this.hasWaterGeometry;
     if (!this.mesh.visible || graphicsConfig.waterOpacity <= 0) return;
 
     const stride = Math.max(1, graphicsConfig.waterFrameStride | 0);

@@ -121,6 +121,8 @@ export class HealthBar3D {
    *  per-entity calls in any order they like. The legacy `update`
    *  wrapper still exists for callers that want the all-in-one form. */
   private _used = 0;
+  private _seenEntityFrame = new Map<number, number>();
+  private _frameToken = 0;
   /** Optional frustum reference set per frame by the caller — null
    *  disables sprite-visibility frustum culling (every visible bar
    *  draws). Stored on the instance so perUnit / perBuilding don't
@@ -131,6 +133,11 @@ export class HealthBar3D {
    *  series of perUnit / perBuilding calls and finishes with endFrame. */
   beginFrame(frustum?: THREE.Frustum): void {
     this._used = 0;
+    this._frameToken = (this._frameToken + 1) & 0x3fffffff;
+    if (this._frameToken === 0) {
+      this._seenEntityFrame.clear();
+      this._frameToken = 1;
+    }
     this._frustum = frustum ?? null;
   }
 
@@ -142,6 +149,8 @@ export class HealthBar3D {
     const hp = u.unit.hp;
     const maxHp = u.unit.maxHp;
     if (hp <= 0 || (!forceVisible && STYLE.hideAtFull && hp >= maxHp)) return;
+    if (this._seenEntityFrame.get(u.id) === this._frameToken) return;
+    this._seenEntityFrame.set(u.id, this._frameToken);
     const worldX = u.transform.x;
     const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
     const worldZ = u.transform.y;
@@ -177,6 +186,8 @@ export class HealthBar3D {
       ratio = Math.max(0, Math.min(1, hp / maxHp));
       mode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
     }
+    if (this._seenEntityFrame.get(b.id) === this._frameToken) return;
+    this._seenEntityFrame.set(b.id, this._frameToken);
     const worldX = b.transform.x;
     const worldY = getBuildingHudTopY(b) + STYLE.worldOffsetAbove;
     const worldZ = b.transform.y;

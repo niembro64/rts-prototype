@@ -9,6 +9,7 @@ export function createInitialMinimapData(
   const viewHeight = Math.min(600, mapHeight);
   return {
     contentVersion: 0,
+    captureVersion: 0,
     mapWidth,
     mapHeight,
     entities: [],
@@ -32,6 +33,7 @@ export function applyMinimapContentData(
   source: MinimapData,
 ): void {
   target.contentVersion = source.contentVersion;
+  target.captureVersion = source.captureVersion;
   target.entities = source.entities;
   target.mapWidth = source.mapWidth;
   target.mapHeight = source.mapHeight;

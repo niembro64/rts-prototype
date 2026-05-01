@@ -47,6 +47,8 @@ import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConf
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
+const HOVER_RAYCAST_INTERVAL_MS = 50;
+
 /** Approximate world-space vertical center for box-select projection,
  *  picked per entity kind so the screen-projected point lands near
  *  the visible body. Keep these in rough lockstep with Render3DEntities
@@ -97,6 +99,11 @@ export class Input3DManager {
   public onBuildModeChange?: (type: BuildingType | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
   private hoveredEntityId: EntityId | null = null;
+  private lastHoverRaycastMs = 0;
+  private lastHoverClientX = Number.NaN;
+  private lastHoverClientY = Number.NaN;
+  private buildGhostValidationKey = '';
+  private buildGhostCanPlace = false;
 
   // Optional preview renderer driven on mouse-move-in-build-mode;
   // scene injects one via setBuildGhost. Stays null in the demo /
@@ -199,6 +206,7 @@ export class Input3DManager {
     // Forward shared mode events to the scene's UI callbacks; also
     // hide the build ghost whenever build mode exits.
     this.mode.onBuildModeChange = (type) => {
+      this.buildGhostValidationKey = '';
       if (type === null) this.buildGhost?.hide();
       this.onBuildModeChange?.(type);
     };
@@ -400,6 +408,15 @@ export class Input3DManager {
     return null;
   }
 
+  private updateHoveredEntity(clientX: number, clientY: number): void {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - this.lastHoverRaycastMs < HOVER_RAYCAST_INTERVAL_MS) return;
+    this.lastHoverRaycastMs = now;
+    this.lastHoverClientX = clientX;
+    this.lastHoverClientY = clientY;
+    this.hoveredEntityId = this.raycastEntity(clientX, clientY);
+  }
+
   private handleMouseDown(e: MouseEvent): void {
     // Button 0 = left (select / mode-click), Button 2 = right
     // (command / cancel), Button 1 (middle) is handled by OrbitCamera.
@@ -471,9 +488,11 @@ export class Input3DManager {
   }
 
   private handleMouseMove(e: MouseEvent): void {
-    this.hoveredEntityId = this.leftDown || this.rightDown
-      ? null
-      : this.raycastEntity(e.clientX, e.clientY);
+    if (this.leftDown || this.rightDown || this.mode.isInBuildMode || this.mode.isInDGunMode) {
+      this.hoveredEntityId = null;
+    } else if (this.lastHoverClientX !== e.clientX || this.lastHoverClientY !== e.clientY) {
+      this.updateHoveredEntity(e.clientX, e.clientY);
+    }
 
     // Live build-ghost preview — only while in build mode and the
     // scene provided a ghost renderer.
@@ -482,16 +501,20 @@ export class Input3DManager {
       const world = this.raycastGround(e.clientX, e.clientY);
       if (world) {
         const snapped = getSnappedBuildPosition(world.x, world.y, buildType);
-        const canPlace = canPlaceBuildingAt(
-          buildType, snapped.x, snapped.y,
-          this.mapWidth, this.mapHeight,
-          this.entitySource.getBuildings(),
-          this.metalDeposits,
-        );
+        const validationKey = `${buildType}:${snapped.x}:${snapped.y}:${this.mapWidth}:${this.mapHeight}`;
+        if (validationKey !== this.buildGhostValidationKey) {
+          this.buildGhostValidationKey = validationKey;
+          this.buildGhostCanPlace = canPlaceBuildingAt(
+            buildType, snapped.x, snapped.y,
+            this.mapWidth, this.mapHeight,
+            this.entitySource.getBuildings(),
+            this.metalDeposits,
+          );
+        }
         this.buildGhost.setTarget(
           buildType, world.x, world.y,
           this.getSelectedCommander(),
-          canPlace,
+          this.buildGhostCanPlace,
         );
       }
     }

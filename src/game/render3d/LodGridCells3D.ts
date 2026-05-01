@@ -84,6 +84,10 @@ export class LodGridCells3D {
     this.lastKey = key;
 
     const state = { lineSeg: 0 };
+    const xSteps = Math.floor((x1 - x0) / size) + 1;
+    const ySteps = Math.floor((y1 - y0) / size) + 1;
+    const zSteps = Math.floor((z1 - z0) / size) + 1;
+    this.growLineCap((ySteps * zSteps) + (xSteps * zSteps) + (xSteps * ySteps));
     const xColor = { r: 0.4, g: 0.94, b: 1.0 };
     const yColor = { r: 0.52, g: 1.0, b: 0.78 };
     const zColor = { r: 0.72, g: 0.62, b: 1.0 };
