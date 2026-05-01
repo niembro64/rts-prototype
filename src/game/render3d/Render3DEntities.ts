@@ -1213,15 +1213,12 @@ export class Render3DEntities {
   }
 
   update(lodOverride?: Lod3DState, sharedLodGrid?: RenderLodGrid): void {
-    // Refresh LOD snapshot once per frame. If the global LOD changed since
-    // the last frame, tear down all unit meshes so updateUnits() rebuilds
-    // them at the new level — the simplest way to keep every sub-mesh
-    // (body, turrets, legs, locomotion, mirrors) consistent with the
-    // current GraphicsConfig.
+    // Refresh LOD snapshot once per frame. Unit meshes compare their
+    // own effective object-tier key inside updateUnitMeshes(), so global
+    // LOD changes no longer tear down every unit at once. That avoids a
+    // large hitch when the user changes PLAYER CLIENT LOD or the camera
+    // sphere config while thousands of units are alive.
     const newLod = lodOverride ?? snapshotLod(this.camera, this.getViewportHeight());
-    if (newLod.key !== this.lod.key) {
-      this.rebuildAllUnitsOnLodChange();
-    }
     this.lod = newLod;
     this.objectLodGrid = sharedLodGrid ?? this.ownedObjectLodGrid;
     if (!sharedLodGrid) this.objectLodGrid.beginFrame(this.lod.view, this.lod.gfx);
