@@ -933,7 +933,11 @@ export class RtsScene3D {
     // the (throttled) entity-list refresh.
     this.onCameraQuadUpdate?.(this._cameraQuad, this.threeApp.orbit.yaw);
     this.entityRenderer.update();
-    this.captureTileRenderer.update(graphicsConfig);
+    this.captureTileRenderer.update(
+      graphicsConfig,
+      this.threeApp.camera,
+      this.threeApp.renderer.domElement.clientHeight,
+    );
     const lineProjectiles = this.clientViewState.getLineProjectiles();
     const travelingProjectiles = this.clientViewState.getTravelingProjectiles();
     this.beamRenderer.update(lineProjectiles);

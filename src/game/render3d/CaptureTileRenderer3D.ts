@@ -16,6 +16,9 @@ import type { NetworkCaptureTile } from '@/types/capture';
 import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
+import { snapshotLod } from './Lod3D';
+import type { RenderObjectLodTier } from './RenderObjectLod';
+import { RenderLodGrid } from './RenderLodGrid';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const OVERLAY_Y_OFFSET = 1.5;
@@ -24,6 +27,14 @@ const NEUTRAL_R_BYTE = (MAP_BG_COLOR >> 16) & 0xff;
 const NEUTRAL_G_BYTE = (MAP_BG_COLOR >> 8) & 0xff;
 const NEUTRAL_B_BYTE = MAP_BG_COLOR & 0xff;
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
+const CAPTURE_TILE_LOD_INTENSITY: Record<RenderObjectLodTier, number> = {
+  hero: 1,
+  rich: 1,
+  simple: 1,
+  mass: 0.92,
+  impostor: 0.84,
+  hidden: 0.76,
+};
 
 export class CaptureTileRenderer3D {
   private terrainMesh: THREE.Mesh;
@@ -51,6 +62,9 @@ export class CaptureTileRenderer3D {
   private renderFrameIndex = 0;
   private lastCaptureVersion = -1;
   private lastOverlayIntensity = -1;
+  private lastOverlayLodKey = '';
+  private overlayLodGrid = new RenderLodGrid();
+  private overlayLodActive = false;
 
   private clientViewState: ClientViewState;
   private mapWidth: number;
@@ -336,12 +350,43 @@ export class CaptureTileRenderer3D {
     this.overlayTexture.needsUpdate = true;
   }
 
+  private captureOverlayLodKey(
+    graphicsConfig: GraphicsConfig,
+    camera?: THREE.PerspectiveCamera,
+  ): string {
+    if (!camera) return `${graphicsConfig.tier}:no-camera`;
+    const cellSize = Math.max(16, graphicsConfig.objectLodCellSize);
+    return [
+      graphicsConfig.tier,
+      graphicsConfig.richObjectDistance,
+      cellSize,
+      Math.floor(camera.position.x / cellSize),
+      Math.floor(camera.position.y / cellSize),
+      Math.floor(camera.position.z / cellSize),
+    ].join('|');
+  }
+
+  private overlayIntensityForTile(
+    cx: number,
+    cy: number,
+    cellSize: number,
+    intensity: number,
+  ): number {
+    if (!this.overlayLodActive) return intensity;
+    const wx = (cx + 0.5) * cellSize;
+    const wz = (cy + 0.5) * cellSize;
+    const wy = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight);
+    const tier = this.overlayLodGrid.resolve(wx, wy, wz);
+    return intensity * CAPTURE_TILE_LOD_INTENSITY[tier];
+  }
+
   private writeOverlayTile(tile: NetworkCaptureTile, cellSize: number, intensity: number): void {
     const cx = tile.cx;
     const cy = tile.cy;
     if (cx < 0 || cx >= this.gridCellsX || cy < 0 || cy >= this.gridCellsY) return;
     const idx = (cy * this.gridCellsX + cx) * 4;
-    if (Object.keys(tile.heights).length === 0 || intensity <= 0) {
+    const tileIntensity = this.overlayIntensityForTile(cx, cy, cellSize, intensity);
+    if (Object.keys(tile.heights).length === 0 || tileIntensity <= 0) {
       this.overlayPixels[idx] = 0;
       this.overlayPixels[idx + 1] = 0;
       this.overlayPixels[idx + 2] = 0;
@@ -356,7 +401,7 @@ export class CaptureTileRenderer3D {
       cellSize,
       this.mapWidth,
       this.mapHeight,
-      intensity,
+      tileIntensity,
       NEUTRAL_R_BYTE,
       NEUTRAL_G_BYTE,
       NEUTRAL_B_BYTE,
@@ -397,8 +442,17 @@ export class CaptureTileRenderer3D {
     this.overlayTexture.needsUpdate = true;
   }
 
-  update(graphicsConfig: GraphicsConfig): void {
+  update(
+    graphicsConfig: GraphicsConfig,
+    camera?: THREE.PerspectiveCamera,
+    viewportHeightPx = 1,
+  ): void {
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
+    this.overlayLodActive = camera !== undefined;
+    if (camera) {
+      const lod = snapshotLod(camera, viewportHeightPx);
+      this.overlayLodGrid.beginFrame(lod.view, graphicsConfig);
+    }
 
     let cellSize = this.clientViewState.getCaptureCellSize();
     if (cellSize <= 0) cellSize = SPATIAL_GRID_CELL_SIZE;
@@ -409,12 +463,15 @@ export class CaptureTileRenderer3D {
     const gridMode = getGridOverlay();
     const intensity = getGridOverlayIntensity();
     const overlayActive = gridMode !== 'off' && intensity > 0;
+    const overlayLodKey = this.captureOverlayLodKey(graphicsConfig, camera);
+    const overlayLodChanged = overlayLodKey !== this.lastOverlayLodKey;
     this.overlayMesh.visible = overlayActive;
     if (!overlayActive) {
       if (this.lastOverlayIntensity !== intensity) {
         this.clearOverlayTexture();
         this.lastOverlayIntensity = intensity;
       }
+      this.lastOverlayLodKey = overlayLodKey;
       return;
     }
 
@@ -423,18 +480,19 @@ export class CaptureTileRenderer3D {
     if (
       !rebuilt &&
       captureVersion === this.lastCaptureVersion &&
-      !intensityChanged
+      !intensityChanged &&
+      !overlayLodChanged
     ) {
       return;
     }
 
-    if (!rebuilt && !intensityChanged && captureVersion !== this.lastCaptureVersion) {
+    if (!rebuilt && !intensityChanged && !overlayLodChanged && captureVersion !== this.lastCaptureVersion) {
       const stride = Math.max(1, graphicsConfig.captureTileFrameStride | 0);
       if (stride > 1 && this.renderFrameIndex % stride !== 0) return;
     }
 
     const changes = this.clientViewState.consumeCaptureTileChanges();
-    if (rebuilt || intensityChanged || changes.full) {
+    if (rebuilt || intensityChanged || overlayLodChanged || changes.full) {
       this.refreshAllOverlayTiles(cellSize, intensity);
     } else {
       this.refreshChangedOverlayTiles(changes.tiles, cellSize, intensity);
@@ -442,6 +500,7 @@ export class CaptureTileRenderer3D {
 
     this.lastCaptureVersion = captureVersion;
     this.lastOverlayIntensity = intensity;
+    this.lastOverlayLodKey = overlayLodKey;
   }
 
   getMesh(): THREE.Mesh {
