@@ -142,6 +142,8 @@ export class CaptureTileRenderer3D {
   private gridCellsY = 0;
   private gridCellSize = 0;
   private terrainLodKey = '';
+  private tileSubdivisions = new Uint8Array(0);
+  private tileSideWalls = new Uint8Array(0);
   private renderFrameIndex = 0;
   private lastCaptureVersion = -1;
   private lastOverlayIntensity = -1;
@@ -230,10 +232,14 @@ export class CaptureTileRenderer3D {
   ): boolean {
     const cellsX = Math.max(1, Math.ceil(this.mapWidth / cellSize));
     const cellsY = Math.max(1, Math.ceil(this.mapHeight / cellSize));
-    const tileSubdivisions = new Uint8Array(cellsX * cellsY);
-    const tileSideWalls = new Uint8Array(cellsX * cellsY);
-    let subdivSignature = '';
-    let sideWallSignature = '';
+    const tileCount = cellsX * cellsY;
+    if (this.tileSubdivisions.length !== tileCount) {
+      this.tileSubdivisions = new Uint8Array(tileCount);
+      this.tileSideWalls = new Uint8Array(tileCount);
+    }
+    const tileSubdivisions = this.tileSubdivisions;
+    const tileSideWalls = this.tileSideWalls;
+    let lodHash = 2166136261;
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
         let tileGfx = graphicsConfig;
@@ -249,14 +255,15 @@ export class CaptureTileRenderer3D {
         const tileIdx = cy * cellsX + cx;
         tileSubdivisions[tileIdx] = subdiv;
         tileSideWalls[tileIdx] = tileGfx.captureTileSideWalls ? 1 : 0;
-        subdivSignature += subdiv.toString(36);
-        sideWallSignature += tileGfx.captureTileSideWalls ? '1' : '0';
+        lodHash = Math.imul(
+          lodHash ^ (subdiv | (tileSideWalls[tileIdx] << 4)),
+          16777619,
+        ) >>> 0;
       }
     }
     const nextTerrainLodKey = [
       graphicsConfig.tier,
-      subdivSignature,
-      sideWallSignature,
+      lodHash.toString(36),
       terrainTextureEnabled ? 'texture' : 'flat-color',
     ].join('|');
     const textureRebuilt = this.ensureOverlayTexture(cellsX, cellsY);
@@ -651,5 +658,8 @@ export class CaptureTileRenderer3D {
     this.overlayTexture.dispose();
     this.overlayMaterial.dispose();
     this.overlayMesh.parent?.remove(this.overlayMesh);
+    this.overlayPixels = new Uint8Array(4);
+    this.tileSubdivisions = new Uint8Array(0);
+    this.tileSideWalls = new Uint8Array(0);
   }
 }

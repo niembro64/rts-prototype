@@ -1983,7 +1983,6 @@ export class Render3DEntities {
   }
 
   private updateUnits(): void {
-    const units = this.clientViewState.getUnits();
     const unitRenderMode = this.lod.gfx.unitRenderMode;
 
     if (unitRenderMode === 'mass') {
@@ -1993,12 +1992,12 @@ export class Render3DEntities {
       if (this.unitMeshes.size > 0) {
         this.rebuildAllUnitsOnLodChange();
       }
-      this.updateUnitsInstanced(units);
+      this.updateUnitsInstanced();
       return;
     }
 
     if (unitRenderMode === 'hybrid') {
-      const richUnits = this.updateUnitsInstanced(units, true);
+      const richUnits = this.updateUnitsInstanced(undefined, true);
       this.updateUnitMeshes(richUnits);
       return;
     }
@@ -2007,6 +2006,7 @@ export class Render3DEntities {
       this.releaseAllInstancedSlots();
     }
     this.massRichObjectTiers.clear();
+    const units = this.clientViewState.getUnits();
     this.updateUnitMeshes(units);
   }
 
@@ -3707,6 +3707,10 @@ export class Render3DEntities {
     }
     this.unitMeshes.clear();
     this.buildingMeshes.clear();
+    this.barrelSpins.clear();
+    this._seenUnitIds.clear();
+    this._seenBuildingIds.clear();
+    this._seenProjectileIds.clear();
     this.projectileRadiusMeshes.clear();
     this.projectileRadiusMeshPool.length = 0;
     this.factorySprayTargets.length = 0;
@@ -3771,6 +3775,7 @@ export class Render3DEntities {
     this.unitInstancedColorKey.clear();
     this.unitInstancedHiddenIds.clear();
     this.massRichUnitIds.clear();
+    this.massRichObjectTiers.clear();
     this.massRichUnits.length = 0;
     this.unitInstancedEntityBySlot.length = 0;
     this.unitInstancedFreeSlots.length = 0;
@@ -3790,6 +3795,7 @@ export class Render3DEntities {
     }
     this.smoothChassisGeom.dispose();
     this.smoothChassisSlots.clear();
+    this.smoothChassisColorKey.clear();
     this.smoothChassisFreeSlots.length = 0;
     if (this.turretHeadInstanced) {
       this.world.remove(this.turretHeadInstanced);
@@ -3803,6 +3809,7 @@ export class Render3DEntities {
       this.turretHeadInstanced = null;
     }
     this.turretHeadFreeSlots.length = 0;
+    this.turretHeadColorKey.clear();
     if (this.barrelInstanced) {
       this.world.remove(this.barrelInstanced);
       // Material is the SHARED `this.barrelMat` — already disposed
@@ -3826,5 +3833,6 @@ export class Render3DEntities {
       this.mirrorPanelInstanced = null;
     }
     this.mirrorPanelFreeSlots.length = 0;
+    this.mirrorPanelColorKey.clear();
   }
 }
