@@ -1875,9 +1875,7 @@ export class Render3DEntities {
     for (const entity of units) {
       if (!this.scope.inScope(entity.transform.x, entity.transform.y, 100)) continue;
       const tier = this.resolveEntityObjectLod(entity);
-      if (entity.commander !== undefined) {
-        if (tier !== 'hidden') add(entity, true);
-      } else if (isRichObjectLod(tier)) {
+      if (isRichObjectLod(tier)) {
         add(entity, true);
       } else if (tier === 'simple') {
         add(entity, false);
@@ -1962,7 +1960,7 @@ export class Render3DEntities {
       const turrets = e.turrets ?? [];
       const objectTier = this.resolveEntityObjectLod(e);
       const isCommanderUnit = e.commander !== undefined;
-      const fullUnitDetail = isRichObjectLod(objectTier) || isCommanderUnit;
+      const fullUnitDetail = isRichObjectLod(objectTier);
       const unitGraphicsTier = objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
       const unitGfx = getGraphicsConfigFor(unitGraphicsTier);
       const unitLodKey = lodKey(unitGfx);
