@@ -271,12 +271,17 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const weaponWP = resolveWeaponWorldPos(weapon, unit.transform.x, unit.transform.y, unitCos, unitSin);
       const weaponX = weaponWP.x, weaponY = weaponWP.y;
 
-      // Check cooldown / active beam
+      // Check cooldown / active beam. Beam weapons gate purely on whether
+      // their existing beam is still alive; non-beam weapons gate on
+      // cooldown / burst readiness — those flags carry through to the
+      // cooldown-update block below so we only compute them once.
+      let canFire = false;
+      let canBurstFire = false;
       if (shot.type === 'beam') {
         if (hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
       } else {
-        const canFire = weapon.cooldown <= 0;
-        const canBurstFire = weapon.burst?.remaining !== undefined &&
+        canFire = weapon.cooldown <= 0;
+        canBurstFire = weapon.burst?.remaining !== undefined &&
           weapon.burst.remaining > 0 &&
           (weapon.burst.cooldown === undefined || weapon.burst.cooldown <= 0);
 
@@ -285,15 +290,10 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         if (shot.type === 'laser' && hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
       }
 
-      // Handle cooldowns
-      // For laser shots, cooldown is set when the beam expires (not at fire time),
-      // so the gap between shots = beamDuration + cooldown.
+      // Handle cooldowns. For laser shots, cooldown is set when the beam
+      // expires (not at fire time), so the gap between shots =
+      // beamDuration + cooldown.
       if (shot.type !== 'beam') {
-        const canFire = weapon.cooldown <= 0;
-        const canBurstFire = weapon.burst?.remaining !== undefined &&
-          weapon.burst.remaining > 0 &&
-          (weapon.burst.cooldown === undefined || weapon.burst.cooldown <= 0);
-
         if (canBurstFire && weapon.burst?.remaining !== undefined) {
           weapon.burst!.remaining--;
           weapon.burst!.cooldown = config.burst?.delay ?? 80;

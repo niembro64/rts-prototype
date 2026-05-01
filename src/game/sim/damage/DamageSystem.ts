@@ -666,18 +666,18 @@ export class DamageSystem {
 
       // Knockback direction is still from center outward so units are
       // pushed AWAY from the blast, not in a fixed direction.
-      const dirX = dist > 0 ? dx / dist : 0;
-      const dirY = dist > 0 ? dy / dist : 0;
+      const invDist = dist > 0 ? 1 / dist : 0;
+      const dirX = dx * invDist;
+      const dirY = dy * invDist;
       const force = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       const forceX = dirX * force;
       const forceY = dirY * force;
 
-      // For area damage, penetration direction is from explosion center through unit
-      // (same as knockback direction - outward from center)
-      // Attacker velocity uses direction * force for area damage
+      // For area damage, penetration direction is from explosion center
+      // through unit (same as knockback direction — outward from center).
       this.applyDamageToEntity(unit, damage, result, source.sourceEntityId, {
         penetrationDir: { x: dirX, y: dirY },
-        attackerVel: { x: dirX * force, y: dirY * force },
+        attackerVel: { x: forceX, y: forceY },
         attackMagnitude: damage,
       });
       result.hitEntityIds.push(unit.id);
@@ -720,13 +720,16 @@ export class DamageSystem {
       const distSq = dx * dx + dy * dy + dz * dz;
       if (distSq > source.radius * source.radius) continue;
 
+      // Horizontal delta from explosion center to building center.
+      // Used by both the slice (wave-weapon cone) test and the knockback
+      // direction below — compute once.
+      const hDx = building.transform.x - source.center.x;
+      const hDy = building.transform.y - source.center.y;
+      const hDist = Math.hypot(hDx, hDy);
+
       // Slice (wave-weapon cone) stays a horizontal test — the wave
-      // direction is a yaw, not a 3D vector — using the horizontal
-      // delta from explosion center to building center.
+      // direction is a yaw, not a 3D vector.
       if (hasSlice) {
-        const hDx = building.transform.x - source.center.x;
-        const hDy = building.transform.y - source.center.y;
-        const hDist = Math.hypot(hDx, hDy);
         const buildingRadius = getTargetRadius(building);
         if (!isPointInSlice(
           hDx, hDy, hDist,
@@ -740,19 +743,18 @@ export class DamageSystem {
       // Boolean AoE damage to buildings — same as units above.
       const damage = source.damage;
 
-      // Knockback direction: from the AABB's closest point back toward
-      // the sphere center, flattened to horizontal because buildings
-      // are static — the vertical component of force would be wasted.
-      const hKx = building.transform.x - source.center.x;
-      const hKy = building.transform.y - source.center.y;
-      const hKmag = Math.hypot(hKx, hKy);
-      const dirX = hKmag > 0 ? hKx / hKmag : 0;
-      const dirY = hKmag > 0 ? hKy / hKmag : 0;
+      // Knockback direction: horizontal (buildings are static, vertical
+      // force is wasted). Reuse hDist from above.
+      const invH = hDist > 0 ? 1 / hDist : 0;
+      const dirX = hDx * invH;
+      const dirY = hDy * invH;
 
       const bForce = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
+      const bForceX = dirX * bForce;
+      const bForceY = dirY * bForce;
       this.applyDamageToEntity(building, damage, result, source.sourceEntityId, {
         penetrationDir: { x: dirX, y: dirY },
-        attackerVel: { x: dirX * bForce, y: dirY * bForce },
+        attackerVel: { x: bForceX, y: bForceY },
         attackMagnitude: damage,
       });
       result.hitEntityIds.push(building.id);
