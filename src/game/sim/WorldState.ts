@@ -331,6 +331,12 @@ export class WorldState {
     return this.cache.getMirrorUnits();
   }
 
+  // Get wind turbine buildings (cached - DO NOT MODIFY returned array)
+  getWindBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getWindBuildings();
+  }
+
   // Get units by player — returns reusable array, DO NOT STORE the reference
   getUnitsByPlayer(playerId: PlayerId): Entity[] {
     const buf = this._queryBuf;

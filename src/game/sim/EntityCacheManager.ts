@@ -11,6 +11,10 @@ export class EntityCacheManager {
   private cachedLineProjectiles: Entity[] = [];
   private cachedDamagedUnits: Entity[] = [];
   private cachedHealthBarBuildings: Entity[] = [];
+  /** Wind turbines specifically. Polled every sim tick by WindPowerTracker
+   *  to apply per-player wind production deltas; far cheaper to walk this
+   *  small list than to filter the full building array each tick. */
+  private cachedWindBuildings: Entity[] = [];
   private cachedForceFieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
@@ -44,6 +48,7 @@ export class EntityCacheManager {
     this.cachedLineProjectiles.length = 0;
     this.cachedDamagedUnits.length = 0;
     this.cachedHealthBarBuildings.length = 0;
+    this.cachedWindBuildings.length = 0;
     this.cachedForceFieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
@@ -88,6 +93,9 @@ export class EntityCacheManager {
           ) {
             this.cachedHealthBarBuildings.push(entity);
           }
+          if (entity.buildingType === 'wind') {
+            this.cachedWindBuildings.push(entity);
+          }
           break;
         case 'shot':
           this.cachedProjectiles.push(entity);
@@ -129,6 +137,10 @@ export class EntityCacheManager {
 
   getHealthBarBuildings(): Entity[] {
     return this.cachedHealthBarBuildings;
+  }
+
+  getWindBuildings(): Entity[] {
+    return this.cachedWindBuildings;
   }
 
   getForceFieldUnits(): Entity[] {

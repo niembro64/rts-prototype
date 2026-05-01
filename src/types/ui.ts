@@ -210,6 +210,11 @@ export type EnergyBuffers = {
   consumersByPlayer: Map<PlayerId, number[]>;
   buildTargetSet: Set<EntityId>;
   maxEnergyUseRateByTarget: Map<EntityId, number>;
+  /** Building IDs already added as a 'building' consumer this tick.
+   *  Used by the commander pass to skip re-adding a target that a
+   *  builder unit has already registered, in O(1) instead of an
+   *  O(consumers-per-player) linear walk. */
+  buildingConsumerIds: Set<EntityId>;
 };
 
 export type EnergyConsumer = {

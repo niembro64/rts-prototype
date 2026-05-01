@@ -51,8 +51,7 @@ export class WindPowerTracker {
     const nextProductionByPlayer = this.nextProductionByPlayer;
     nextProductionByPlayer.clear();
 
-    for (const entity of world.getBuildings()) {
-      if (entity.buildingType !== 'wind') continue;
+    for (const entity of world.getWindBuildings()) {
       if (!entity.ownership || !entity.building || entity.building.hp <= 0) continue;
       if (!entity.buildable?.isComplete || entity.buildable.isGhost) continue;
       const pid = entity.ownership.playerId;

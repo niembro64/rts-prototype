@@ -17,6 +17,7 @@ export function createEnergyBuffers(): EnergyBuffers {
     consumersByPlayer: new Map(),
     buildTargetSet: new Set(),
     maxEnergyUseRateByTarget: new Map(),
+    buildingConsumerIds: new Set(),
   };
 }
 
@@ -25,6 +26,7 @@ export function resetEnergyBuffers(buffers: EnergyBuffers): void {
   buffers.consumersByPlayer.clear();
   buffers.buildTargetSet.clear();
   buffers.maxEnergyUseRateByTarget.clear();
+  buffers.buildingConsumerIds.clear();
 }
 
 // Distribute energy equally among all active consumers for each player.
@@ -36,6 +38,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   consumers.length = 0;
   const byPlayer = buffers.consumersByPlayer;
   byPlayer.clear();
+  const buildingConsumerIds = buffers.buildingConsumerIds;
+  buildingConsumerIds.clear();
 
   const addConsumer = (playerId: PlayerId, entity: Entity, type: 'factory' | 'building' | 'heal', remainingCost: number, maxEnergyPerTick: number) => {
     const idx = consumers.length;
@@ -46,6 +50,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       byPlayer.set(playerId, arr);
     }
     arr.push(idx);
+    if (type === 'building') buildingConsumerIds.add(entity.id);
   };
 
   // Builder/buildable bookkeeping is split across the cached entity
@@ -127,21 +132,11 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const commanderRateCap = commander.builder.maxEnergyUseRate * dtSec;
 
     if (target.buildable && !target.buildable.isComplete && !target.buildable.isGhost) {
-      // Commander building — check if this building is already registered as a construction consumer
-      // If so, it gets shared energy from both sources (builder + commander = 2 consumers)
-      // Actually, commander building and builder building are the same consumer (the building itself).
-      // We should not double-count. Check if already added.
-      let alreadyAdded = false;
-      const playerIndices = byPlayer.get(commander.ownership.playerId);
-      if (playerIndices) {
-        for (const idx of playerIndices) {
-          if (consumers[idx].entity.id === target.id && consumers[idx].type === 'building') {
-            alreadyAdded = true;
-            break;
-          }
-        }
-      }
-      if (!alreadyAdded) {
+      // Commander building — only register as a consumer if no builder unit
+      // already added this same target in pass 2 (the consumer is the
+      // building itself, regardless of who funds it, and adding it twice
+      // would skew the per-player energy share).
+      if (!buildingConsumerIds.has(target.id)) {
         const remaining = target.buildable.resourceCost * (1 - target.buildable.buildProgress);
         if (remaining > 0) {
           addConsumer(commander.ownership.playerId, target, 'building', remaining, commanderRateCap);
