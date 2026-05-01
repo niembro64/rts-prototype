@@ -387,11 +387,16 @@ export class DamageSystem {
     const knockbackDirX = beamLen > 0 ? beamDx / beamLen : 0;
     const knockbackDirY = beamLen > 0 ? beamDy / beamLen : 0;
 
-    // Collect all hits with their T values
-    _reusableHits.length = 0;
-    const hits = _reusableHits;
+    // Beams truncate at the closest hit (the loop below used to collect
+    // all hits, sort by T, then unconditionally break on the first one —
+    // the sort and per-hit allocations were pure waste). Track the
+    // single closest hit instead. PERFORMANCE: spatial grid culls to
+    // near-line entities; we still test each candidate but skip the
+    // array + sort entirely.
+    let bestT = Infinity;
+    let bestEntityId: EntityId = 0;
+    let bestIsUnit = false;
 
-    // PERFORMANCE: Query only entities near the line using spatial grid
     const nearbyUnits = spatialGrid.queryUnitsAlongLine(
       source.start.x, source.start.y, source.start.z,
       source.end.x, source.end.y, source.end.z, source.width + 50
@@ -416,8 +421,10 @@ export class DamageSystem {
         unit.unit.unitRadiusCollider.shot + source.width / 2
       );
 
-      if (t !== null) {
-        hits.push({ entityId: unit.id, t, isUnit: true, isBuilding: false });
+      if (t !== null && t < bestT) {
+        bestT = t;
+        bestEntityId = unit.id;
+        bestIsUnit = true;
       }
     }
 
@@ -442,55 +449,43 @@ export class DamageSystem {
         building.transform.z + halfD,
       );
 
-      if (t !== null) {
-        hits.push({ entityId: building.id, t, isUnit: false, isBuilding: true });
+      if (t !== null && t < bestT) {
+        bestT = t;
+        bestEntityId = building.id;
+        bestIsUnit = false;
       }
     }
 
-    // Sort by T (distance along line)
-    hits.sort((a, b) => a.t - b.t);
+    if (bestT === Infinity) return result;
 
-    // Apply damage in order, respecting maxHits
-    let hitCount = 0;
-    for (const hit of hits) {
-      if (hitCount >= source.maxHits) break;
+    const entity = this.world.getEntity(bestEntityId);
+    if (!entity) return result;
 
-      const entity = this.world.getEntity(hit.entityId);
-      if (!entity) continue;
+    // Momentum-based knockback (mass × velocity × MULTIPLIER) — depends
+    // only on source, hoist out of the (now-unrolled) hit loop.
+    const lineMomentum = (source.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER * (source.velocity ?? 0);
 
-      // Momentum-based knockback (mass × velocity × MULTIPLIER)
-      const lineMomentum = (source.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER * (source.velocity ?? 0);
-      const forceX = knockbackDirX * lineMomentum;
-      const forceY = knockbackDirY * lineMomentum;
+    // Calculate hit point using T value
+    const hitX = source.start.x + bestT * (source.end.x - source.start.x);
+    const hitY = source.start.y + bestT * (source.end.y - source.start.y);
 
-      // Calculate hit point using T value
-      const hitX = source.start.x + hit.t * (source.end.x - source.start.x);
-      const hitY = source.start.y + hit.t * (source.end.y - source.start.y);
+    // Penetration direction: from hit point through unit center
+    const penDirX = entity.transform.x - hitX;
+    const penDirY = entity.transform.y - hitY;
+    const penMag = magnitude(penDirX, penDirY);
+    const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
+    const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
 
-      // Calculate penetration direction: from hit point through unit center
-      const penDirX = entity.transform.x - hitX;
-      const penDirY = entity.transform.y - hitY;
-      const penMag = magnitude(penDirX, penDirY);
-      const penNormX = penMag > 0 ? penDirX / penMag : knockbackDirX;
-      const penNormY = penMag > 0 ? penDirY / penMag : knockbackDirY;
+    this.applyDamageToEntity(entity, source.damage, result, source.sourceEntityId, {
+      penetrationDir: { x: penNormX, y: penNormY },
+      attackerVel: { x: knockbackDirX * BEAM_EXPLOSION_MAGNITUDE, y: knockbackDirY * BEAM_EXPLOSION_MAGNITUDE },
+      attackMagnitude: source.damage,
+    });
+    result.hitEntityIds.push(bestEntityId);
+    result.truncationT = bestT;
 
-      // Apply damage with death context (attacker velocity = beam direction * magnitude)
-      this.applyDamageToEntity(entity, source.damage, result, source.sourceEntityId, {
-        penetrationDir: { x: penNormX, y: penNormY },
-        attackerVel: { x: knockbackDirX * BEAM_EXPLOSION_MAGNITUDE, y: knockbackDirY * BEAM_EXPLOSION_MAGNITUDE },
-        attackMagnitude: source.damage,
-      });
-      result.hitEntityIds.push(hit.entityId);
-      hitCount++;
-
-      // Add knockback for units (buildings don't get pushed)
-      if (hit.isUnit && lineMomentum > 0) {
-        pushKnockback(result, hit.entityId, forceX, forceY);
-      }
-
-      // Always truncate at first hit
-      result.truncationT = hit.t;
-      break;
+    if (bestIsUnit && lineMomentum > 0) {
+      pushKnockback(result, bestEntityId, knockbackDirX * lineMomentum, knockbackDirY * lineMomentum);
     }
 
     return result;
