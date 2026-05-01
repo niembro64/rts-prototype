@@ -458,6 +458,13 @@ export function resetDeltaTracking(): void {
   _trackingStates.clear();
 }
 
+/** Drop delta tracking state for one snapshot stream. Call when that
+ *  stream's listener is removed so per-client prev-state pools do not
+ *  live until the next full game reset. */
+export function resetDeltaTrackingForKey(key: string | number | undefined): void {
+  _trackingStates.delete(getTrackingKey(key));
+}
+
 /** Force the next emitted snapshot to re-include static fields for
  *  every entity. Call when a new client joins mid-game so they get the
  *  full picture on their first keyframe; for single-host games this is

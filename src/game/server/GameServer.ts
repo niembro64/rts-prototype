@@ -6,7 +6,7 @@ import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities, spawnInitialBases, spawnMetalExtractorsOnDeposits, FIRST_PLAYER_ANGLE } from '../sim/spawn';
 import { CAPTURE_CONFIG } from '../../captureConfig';
-import { serializeGameState, resetDeltaTracking, resetProtocolSeeded } from '../network/stateSerializer';
+import { serializeGameState, resetDeltaTracking, resetDeltaTrackingForKey, resetProtocolSeeded } from '../network/stateSerializer';
 import type { SerializeGameStateOptions, SnapshotInterest } from '../network/stateSerializer';
 import type { NetworkServerSnapshot, NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
@@ -1241,6 +1241,7 @@ export class GameServer {
   removeSnapshotListener(trackingKey: string): void {
     const idx = this.snapshotListeners.findIndex((l) => l.trackingKey === trackingKey);
     if (idx >= 0) this.snapshotListeners.splice(idx, 1);
+    resetDeltaTrackingForKey(trackingKey);
   }
 
   // Add a game over listener. Returns the callback reference so callers
