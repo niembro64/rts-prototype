@@ -317,11 +317,11 @@ function buildExtractor(
   const cap = makeSphere(primaryMat, hubRadius * 1.28, 0, rotorY, 0);
   details.push(detail(cap, 'low'));
 
-  const bladeLen = Math.max(32, minDim * 1.02);
+  const bladeLen = Math.max(16, minDim * 0.51);
   const bladeWidth = Math.max(10, minDim * 0.26);
   const bladeThickness = Math.max(4.5, minDim * 0.11);
   const bladeRootRadius = Math.max(hubRadius * 1.7, minDim * 0.34);
-  const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 4, rotorY, Math.PI / 4, bladeRootRadius);
+  const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 6, rotorY, Math.PI / 6, bladeRootRadius);
   details.push(detail(rotor, 'medium', undefined, 'extractorRotor'));
 
   return {
