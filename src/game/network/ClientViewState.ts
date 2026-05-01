@@ -63,48 +63,38 @@ const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 type ActiveForceField = {
   weaponX: number;
   weaponY: number;
-  turretAngle: number;
   playerId: PlayerId;
-  shot: ForceShot;
-  progress: number;
+  pushInner: number;
+  pushOuter: number;
+  pushPower: number;
 };
 const _forceFields: ActiveForceField[] = [];
 let _forceFieldCount = 0;
-const _ffZones = { pushInner: 0, pushOuter: 0 };
 
 function pushClientForceField(
   weaponX: number,
   weaponY: number,
-  turretAngle: number,
   playerId: PlayerId,
   shot: ForceShot,
   progress: number,
 ): void {
+  const push = shot.push;
+  if (!push || push.power == null || push.outerRange <= 0 || progress <= 0) return;
+
   let field = _forceFields[_forceFieldCount];
+  const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
   if (!field) {
-    field = { weaponX, weaponY, turretAngle, playerId, shot, progress };
+    field = { weaponX, weaponY, playerId, pushInner, pushOuter: push.outerRange, pushPower: push.power };
     _forceFields[_forceFieldCount] = field;
   } else {
     field.weaponX = weaponX;
     field.weaponY = weaponY;
-    field.turretAngle = turretAngle;
     field.playerId = playerId;
-    field.shot = shot;
-    field.progress = progress;
+    field.pushInner = pushInner;
+    field.pushOuter = push.outerRange;
+    field.pushPower = push.power;
   }
   _forceFieldCount++;
-}
-
-function getClientForceFieldZones(shot: ForceShot, progress: number) {
-  const push = shot.push;
-  if (push && push.power != null) {
-    _ffZones.pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
-    _ffZones.pushOuter = push.outerRange;
-  } else {
-    _ffZones.pushInner = 0;
-    _ffZones.pushOuter = 0;
-  }
-  return _ffZones;
 }
 
 // Drift half-lives (seconds). How long to close 50% of the gap to the server value.
@@ -268,6 +258,10 @@ export class ClientViewState {
   private predictionAccumMs: Map<EntityId, number> = new Map();
   private targetPredictionAccumMs: Map<EntityId, number> = new Map();
   private predictionLodCells: Map<PredictionLodCellKey, PredictionLodCellRecord> = new Map();
+  private predictionRichDistanceSq = 0;
+  private predictionSimpleDistanceSq = 0;
+  private predictionMassDistanceSq = 0;
+  private predictionImpostorDistanceSq = 0;
   private activeUnitPredictionIds: Set<EntityId> = new Set();
   private activeProjectilePredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
@@ -864,7 +858,6 @@ export class ClientViewState {
     const dz = cellZ - lod.cameraZ;
     const tier = this.resolvePredictionLodTierForDistanceSq(
       dx * dx + dy * dy + dz * dz,
-      lod,
     );
     this.predictionLodCells.set(key, { frameId: this.frameCounter, tier });
     return tier;
@@ -872,16 +865,11 @@ export class ClientViewState {
 
   private resolvePredictionLodTierForDistanceSq(
     distanceSq: number,
-    lod: PredictionLodContext,
   ): PredictionLodTier {
-    const rich = Math.max(0, lod.richDistance);
-    const simple = Math.max(0, lod.simpleDistance);
-    const mass = Math.max(0, lod.massDistance);
-    const impostor = Math.max(0, lod.impostorDistance);
-    if (rich > 0 && distanceSq <= rich * rich) return 'rich';
-    if (simple > 0 && distanceSq <= simple * simple) return 'simple';
-    if (mass > 0 && distanceSq <= mass * mass) return 'mass';
-    if (impostor > 0 && distanceSq <= impostor * impostor) return 'impostor';
+    if (this.predictionRichDistanceSq > 0 && distanceSq <= this.predictionRichDistanceSq) return 'rich';
+    if (this.predictionSimpleDistanceSq > 0 && distanceSq <= this.predictionSimpleDistanceSq) return 'simple';
+    if (this.predictionMassDistanceSq > 0 && distanceSq <= this.predictionMassDistanceSq) return 'mass';
+    if (this.predictionImpostorDistanceSq > 0 && distanceSq <= this.predictionImpostorDistanceSq) return 'impostor';
     return 'marker';
   }
 
@@ -1060,7 +1048,6 @@ export class ClientViewState {
         pushClientForceField(
           entity.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y,
           entity.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y,
-          weapon.rotation,
           entity.ownership.playerId,
           fieldShot,
           next,
@@ -1135,6 +1122,21 @@ export class ClientViewState {
 
     // Frame-rate independent blend factors (driven by drift mode half-lives)
     const preset = getDriftPreset(getDriftMode());
+    if (lod) {
+      const rich = Math.max(0, lod.richDistance);
+      const simple = Math.max(0, lod.simpleDistance);
+      const mass = Math.max(0, lod.massDistance);
+      const impostor = Math.max(0, lod.impostorDistance);
+      this.predictionRichDistanceSq = rich * rich;
+      this.predictionSimpleDistanceSq = simple * simple;
+      this.predictionMassDistanceSq = mass * mass;
+      this.predictionImpostorDistanceSq = impostor * impostor;
+    } else {
+      this.predictionRichDistanceSq = 0;
+      this.predictionSimpleDistanceSq = 0;
+      this.predictionMassDistanceSq = 0;
+      this.predictionImpostorDistanceSq = 0;
+    }
 
     // Collect active force fields for client-side projectile prediction.
     // The backing objects stay pooled at the session high-water mark.
@@ -1251,17 +1253,14 @@ export class ClientViewState {
           for (let fi = 0; fi < _forceFieldCount; fi++) {
             const ff = _forceFields[fi];
             if (ff.playerId === projOwnerId) continue; // Only deflect enemy projectiles
-            const zones = getClientForceFieldZones(ff.shot, ff.progress);
-            if (zones.pushOuter <= 0) continue;
             const dx = entity.transform.x - ff.weaponX;
             const dy = entity.transform.y - ff.weaponY;
             const distSq = dx * dx + dy * dy;
-            const maxDist = zones.pushOuter + projRadius;
+            const maxDist = ff.pushOuter + projRadius;
             if (distSq > maxDist * maxDist) continue;
             const dist = Math.sqrt(distSq);
-            if (zones.pushInner > 0 && dist + projRadius < zones.pushInner) continue;
-            const pushPower = ff.shot.push?.power ?? 0;
-            const pushAccel = (pushPower * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER) / projMass;
+            if (ff.pushInner > 0 && dist + projRadius < ff.pushInner) continue;
+            const pushAccel = (ff.pushPower * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER) / projMass;
             const dirX = dist > 0 ? dx / dist : 0;
             const dirY = dist > 0 ? dy / dist : 0;
             proj.velocityX += dirX * pushAccel * dt;  // push outward
@@ -1358,15 +1357,18 @@ export class ClientViewState {
     ) {
       const list = this._rocketEnemyCache;
       list.length = 0;
-      for (const e of this.entities.values()) {
+      const units = this.getUnits();
+      for (let i = 0; i < units.length; i++) {
+        const e = units[i];
         if (e.ownership?.playerId === undefined || e.ownership.playerId === ownerId) continue;
-        if (e.unit) {
-          if (e.unit.hp <= 0) continue;
-        } else if (e.building) {
-          if (e.building.hp <= 0) continue;
-        } else {
-          continue;
-        }
+        if (!e.unit || e.unit.hp <= 0) continue;
+        list.push(e);
+      }
+      const buildings = this.getBuildings();
+      for (let i = 0; i < buildings.length; i++) {
+        const e = buildings[i];
+        if (e.ownership?.playerId === undefined || e.ownership.playerId === ownerId) continue;
+        if (!e.building || e.building.hp <= 0) continue;
         list.push(e);
       }
       this._rocketEnemyCacheFrame = this.frameCounter;
@@ -1517,6 +1519,11 @@ export class ClientViewState {
     return this.cache.getUnits();
   }
 
+  getUnitsByPlayer(playerId: PlayerId): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getUnitsByPlayer(playerId);
+  }
+
   collectActiveUnitRenderEntities(out: Entity[]): Entity[] {
     out.length = 0;
     for (const id of this.activeUnitPredictionIds) {
@@ -1535,6 +1542,11 @@ export class ClientViewState {
   getBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getBuildings();
+  }
+
+  getBuildingsByPlayer(playerId: PlayerId): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getBuildingsByPlayer(playerId);
   }
 
   getProjectiles(): Entity[] {

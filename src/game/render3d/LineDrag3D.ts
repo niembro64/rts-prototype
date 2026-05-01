@@ -19,10 +19,11 @@
 import * as THREE from 'three';
 import type { WaypointType } from '../sim/types';
 import { WAYPOINT_COLORS } from '../uiLabels';
+import { WAYPOINT_GROUND_LIFT } from '../../config';
 
-// Lift values chosen so the preview reads above the tile layer (y=0) and the
-// burn-mark layer (y≈2.5), but below beam cylinders (y=SHOT_HEIGHT). Target
-// dots sit slightly higher than the line so they don't z-fight with it.
+// Lift values chosen so the preview reads above the mana-tile overlay at
+// every terrain LOD. Keep these tied to the persistent waypoint lift so
+// issued commands and the drag preview stay visually aligned.
 //
 // The DragState's points / targets carry the click-altitude `z` from
 // CursorGround.pickSim (sim coord = three.y), so the preview rides the
@@ -31,10 +32,10 @@ import { WAYPOINT_COLORS } from '../uiLabels';
 // z-fighting on slopes. The constants below are the legacy fixed-plane
 // values, used only as a fallback when a point's z is missing
 // (degenerate / 2D-only callers).
-const LINE_LIFT = 3.5;
-const DOT_LIFT = 5.0;
-const LEGACY_LINE_Y = 3.5;
-const LEGACY_DOT_Y = 5.0;
+const LINE_LIFT = WAYPOINT_GROUND_LIFT;
+const DOT_LIFT = WAYPOINT_GROUND_LIFT;
+const LEGACY_LINE_Y = WAYPOINT_GROUND_LIFT;
+const LEGACY_DOT_Y = WAYPOINT_GROUND_LIFT;
 
 // Visual sizing. Ribbon width is constant in world units (it's a 3D scene —
 // dividing by camera zoom the way the 2D overlay does would fight the

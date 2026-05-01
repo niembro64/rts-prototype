@@ -348,10 +348,6 @@ export class RtsScene3D {
   private _cachedSelectedUnits: Entity[] = [];
   private _cachedSelectedBuildings: Entity[] = [];
   private _selectedEntityCacheDirty = true;
-  private _cachedPlayerUnits: Entity[] = [];
-  private _cachedPlayerBuildings: Entity[] = [];
-  private _cachedPlayerIdForUnits: PlayerId = -1 as PlayerId;
-  private _cachedPlayerIdForBuildings: PlayerId = -1 as PlayerId;
   private clientRenderEnabled = true;
 
   // ── Callback interface matching RtsScene ──
@@ -566,26 +562,8 @@ export class RtsScene3D {
       getEntity: (id) => this.clientViewState.getEntity(id),
       getSelectedUnits: () => this._cachedSelectedUnits,
       getSelectedBuildings: () => this._cachedSelectedBuildings,
-      getBuildingsByPlayer: (pid) => {
-        if (pid !== this._cachedPlayerIdForBuildings) {
-          this._cachedPlayerBuildings.length = 0;
-          for (const b of this.clientViewState.getBuildings()) {
-            if (b.ownership?.playerId === pid) this._cachedPlayerBuildings.push(b);
-          }
-          this._cachedPlayerIdForBuildings = pid;
-        }
-        return this._cachedPlayerBuildings;
-      },
-      getUnitsByPlayer: (pid) => {
-        if (pid !== this._cachedPlayerIdForUnits) {
-          this._cachedPlayerUnits.length = 0;
-          for (const u of this.clientViewState.getUnits()) {
-            if (u.ownership?.playerId === pid) this._cachedPlayerUnits.push(u);
-          }
-          this._cachedPlayerIdForUnits = pid;
-        }
-        return this._cachedPlayerUnits;
-      },
+      getBuildingsByPlayer: (pid) => this.clientViewState.getBuildingsByPlayer(pid),
+      getUnitsByPlayer: (pid) => this.clientViewState.getUnitsByPlayer(pid),
     };
 
     this.snapshotBuffer.attach(this.gameConnection);
@@ -900,10 +878,6 @@ export class RtsScene3D {
       cellSize: predictionGraphicsConfig.objectLodCellSize,
       physicsPredictionFramesSkip: predictionGraphicsConfig.clientPhysicsPredictionFramesSkip,
     });
-
-    // Invalidate per-player entity caches (rebuilt lazily by adapter)
-    this._cachedPlayerIdForUnits = -1 as PlayerId;
-    this._cachedPlayerIdForBuildings = -1 as PlayerId;
 
     // Render phase
     const renderStart = performance.now();

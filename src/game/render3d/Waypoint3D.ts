@@ -22,15 +22,15 @@ import * as THREE from 'three';
 import type { Entity, UnitAction } from '../sim/types';
 import { ACTION_COLORS, WAYPOINT_COLORS } from '../uiLabels';
 import { getSurfaceHeight } from '../sim/Terrain';
-import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { SPATIAL_GRID_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
 import { getWaypointDetail } from '../../clientBarConfig';
 import { getEntityTargetPoint } from '../sim/buildingAnchors';
 
 const STYLE = {
-  /** Vertical lift above the terrain so lines / dots / flags float
-   *  just clear of the ground (avoids z-fighting with the surface
-   *  while still getting depth-occluded by intervening hills). */
-  worldLift: 5,
+  /** Vertical lift above the terrain so lines / dots / flags clear
+   *  mana-tile overlays at every terrain LOD while still getting
+   *  depth-occluded by intervening hills. */
+  worldLift: WAYPOINT_GROUND_LIFT,
   /** Maximum world-unit length of one line sub-segment. Long lines
    *  are subdivided so they hug the terrain instead of cutting
    *  through it as a straight chord. */

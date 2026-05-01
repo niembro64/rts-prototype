@@ -46,6 +46,12 @@ export const SPATIAL_GRID_CELL_SIZE = 160 * 2;
 export const MANA_TILE_SIZE_MULTIPLIER = 1;
 export const MANA_TILE_SIZE = SPATIAL_GRID_CELL_SIZE * MANA_TILE_SIZE_MULTIPLIER;
 
+// 3D waypoint visual lift above the sampled terrain surface. This is
+// render-only: command positions and pathfinding still use the actual
+// terrain height, while dots/lines/flags float this many world units up
+// so mana-tile LOD and overlay layers do not hide them.
+export const WAYPOINT_GROUND_LIFT = 12;
+
 // F=============================================================================
 // SNAPSHOT / NETWORKING
 // =============================================================================
@@ -172,22 +178,22 @@ export const BAR_COLORS = BAR_THEMES;
 export const EMA_CONFIG: Record<string, EmaTierConfig> = {
   tps: {
     avg: 0.01,
-    low: { drop: 0.5, recovery: 0.0001 },
+    low: { drop: 0.5, recovery: 0.001 },
   },
   fps: {
     avg: 0.01,
-    low: { drop: 0.5, recovery: 0.0001 },
+    low: { drop: 0.5, recovery: 0.001 },
   },
   snaps: {
     avg: 0.01,
-    low: { drop: 0.5, recovery: 0.0001 },
+    low: { drop: 0.5, recovery: 0.001 },
   },
 };
 
 // Frame timing EMA config (tracks durations in ms — uses "hi" instead of "low")
 const FRAME_MS_EMA: EmaMsConfig = {
   avg: 0.01,
-  hi: { spike: 0.5, recovery: 0.0001 },
+  hi: { spike: 0.5, recovery: 0.001 },
 };
 export const FRAME_TIMING_EMA = {
   frameMs: FRAME_MS_EMA,

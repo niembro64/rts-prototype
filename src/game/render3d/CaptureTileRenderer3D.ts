@@ -144,6 +144,8 @@ export class CaptureTileRenderer3D {
   private terrainLodKey = '';
   private tileSubdivisions = new Uint8Array(0);
   private tileSideWalls = new Uint8Array(0);
+  private horizontalEdgeSubdivisions = new Uint8Array(0);
+  private verticalEdgeSubdivisions = new Uint8Array(0);
   private renderFrameIndex = 0;
   private lastCaptureVersion = -1;
   private lastOverlayIntensity = -1;
@@ -237,8 +239,18 @@ export class CaptureTileRenderer3D {
       this.tileSubdivisions = new Uint8Array(tileCount);
       this.tileSideWalls = new Uint8Array(tileCount);
     }
+    const horizontalEdgeCount = cellsX * (cellsY + 1);
+    if (this.horizontalEdgeSubdivisions.length !== horizontalEdgeCount) {
+      this.horizontalEdgeSubdivisions = new Uint8Array(horizontalEdgeCount);
+    }
+    const verticalEdgeCount = (cellsX + 1) * cellsY;
+    if (this.verticalEdgeSubdivisions.length !== verticalEdgeCount) {
+      this.verticalEdgeSubdivisions = new Uint8Array(verticalEdgeCount);
+    }
     const tileSubdivisions = this.tileSubdivisions;
     const tileSideWalls = this.tileSideWalls;
+    const horizontalEdgeSubdivisions = this.horizontalEdgeSubdivisions;
+    const verticalEdgeSubdivisions = this.verticalEdgeSubdivisions;
     let lodHash = 2166136261;
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
@@ -261,6 +273,27 @@ export class CaptureTileRenderer3D {
         ) >>> 0;
       }
     }
+
+    // Canonical shared-edge resolution. Each tile reads these buffers
+    // instead of independently asking its neighbor, so both sides of a
+    // shared edge always emit the exact same vertex count.
+    for (let ey = 0; ey <= cellsY; ey++) {
+      for (let cx = 0; cx < cellsX; cx++) {
+        const above = ey > 0 ? tileSubdivisions[(ey - 1) * cellsX + cx] : 0;
+        const below = ey < cellsY ? tileSubdivisions[ey * cellsX + cx] : 0;
+        horizontalEdgeSubdivisions[ey * cellsX + cx] = Math.max(above, below, 1);
+      }
+    }
+    for (let cy = 0; cy < cellsY; cy++) {
+      const rowOff = cy * (cellsX + 1);
+      const tileRowOff = cy * cellsX;
+      for (let ex = 0; ex <= cellsX; ex++) {
+        const left = ex > 0 ? tileSubdivisions[tileRowOff + ex - 1] : 0;
+        const right = ex < cellsX ? tileSubdivisions[tileRowOff + ex] : 0;
+        verticalEdgeSubdivisions[rowOff + ex] = Math.max(left, right, 1);
+      }
+    }
+
     const nextTerrainLodKey = [
       graphicsConfig.tier,
       lodHash.toString(36),
@@ -293,11 +326,6 @@ export class CaptureTileRenderer3D {
     const overlayIndices: number[] = [];
 
     const eps = 1;
-    const tileSubdivAt = (tx: number, ty: number): number | undefined => {
-      if (tx < 0 || tx >= cellsX || ty < 0 || ty >= cellsY) return undefined;
-      return tileSubdivisions[ty * cellsX + tx] || 1;
-    };
-
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
         const x0 = cx * cellSize;
@@ -394,10 +422,10 @@ export class CaptureTileRenderer3D {
         let edgeSouth: number[] = [];
         let edgeWest: number[] = [];
 
-        const northSubdiv = Math.max(tileSubdiv, tileSubdivAt(cx, cy - 1) ?? tileSubdiv);
-        const eastSubdiv = Math.max(tileSubdiv, tileSubdivAt(cx + 1, cy) ?? tileSubdiv);
-        const southSubdiv = Math.max(tileSubdiv, tileSubdivAt(cx, cy + 1) ?? tileSubdiv);
-        const westSubdiv = Math.max(tileSubdiv, tileSubdivAt(cx - 1, cy) ?? tileSubdiv);
+        const northSubdiv = horizontalEdgeSubdivisions[cy * cellsX + cx] || tileSubdiv;
+        const eastSubdiv = verticalEdgeSubdivisions[cy * (cellsX + 1) + cx + 1] || tileSubdiv;
+        const southSubdiv = horizontalEdgeSubdivisions[(cy + 1) * cellsX + cx] || tileSubdiv;
+        const westSubdiv = verticalEdgeSubdivisions[cy * (cellsX + 1) + cx] || tileSubdiv;
         const regularInterior =
           tileSubdiv >= 3 &&
           northSubdiv === tileSubdiv &&
@@ -661,5 +689,7 @@ export class CaptureTileRenderer3D {
     this.overlayPixels = new Uint8Array(4);
     this.tileSubdivisions = new Uint8Array(0);
     this.tileSideWalls = new Uint8Array(0);
+    this.horizontalEdgeSubdivisions = new Uint8Array(0);
+    this.verticalEdgeSubdivisions = new Uint8Array(0);
   }
 }

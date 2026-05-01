@@ -345,12 +345,8 @@ export class WorldState {
 
   // Get units by player — returns reusable array, DO NOT STORE the reference
   getUnitsByPlayer(playerId: PlayerId): Entity[] {
-    const buf = this._queryBuf;
-    buf.length = 0;
-    for (const e of this.getUnits()) {
-      if (e.ownership?.playerId === playerId) buf.push(e);
-    }
-    return buf;
+    this.rebuildCachesIfNeeded();
+    return this.cache.getUnitsByPlayer(playerId);
   }
 
   // Get enemy units (not owned by specified player) — returns reusable array
@@ -387,12 +383,8 @@ export class WorldState {
 
   // Get buildings by player — returns reusable array, DO NOT STORE the reference
   getBuildingsByPlayer(playerId: PlayerId): Entity[] {
-    const buf = this._queryBuf;
-    buf.length = 0;
-    for (const e of this.getBuildings()) {
-      if (e.ownership?.playerId === playerId) buf.push(e);
-    }
-    return buf;
+    this.rebuildCachesIfNeeded();
+    return this.cache.getBuildingsByPlayer(playerId);
   }
 
   // Get factories by player

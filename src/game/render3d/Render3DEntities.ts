@@ -515,7 +515,12 @@ export class Render3DEntities {
   private unitInstancedCompactFrame = 0;
   private unitInstancedFrame = 0;
   private unitInstancedLastFullPassFrame = -1;
-  private unitInstancedLastFullPassKey = '';
+  private unitInstancedLastFullPassEntitySetVersion = -1;
+  private unitInstancedLastFullPassLodKey = '';
+  private unitInstancedLastFullPassCellSize = 0;
+  private unitInstancedLastFullPassCameraCellX = 0;
+  private unitInstancedLastFullPassCameraCellY = 0;
+  private unitInstancedLastFullPassCameraCellZ = 0;
   private unitInstancedActiveUnits: Entity[] = [];
   private unitInstancedHiddenIds = new Set<EntityId>();
   /** Hidden-slot transform: scale=0 collapses the geometry to a point. */
@@ -1387,24 +1392,29 @@ export class Render3DEntities {
     return (this.unitInstancedFrame + entity.id) % stride === 0;
   }
 
-  private unitInstancedFullPassKey(entitySetVersion: number): string {
-    const size = normalizeLodCellSize(this.lod.gfx.objectLodCellSize);
-    const view = this.lod.view;
-    const cameraCell = [
-      lodCellIndex(view.cameraX, size),
-      lodCellIndex(view.cameraY, size),
-      lodCellIndex(view.cameraZ, size),
-    ].join(',');
-    return `${entitySetVersion}|${this.lod.key}|${size}|${cameraCell}`;
-  }
-
   private shouldRunUnitInstancedFullPass(
     entitySetVersion: number,
     collectRichUnits: boolean,
   ): boolean {
-    const key = this.unitInstancedFullPassKey(entitySetVersion);
-    if (key !== this.unitInstancedLastFullPassKey) {
-      this.unitInstancedLastFullPassKey = key;
+    const size = normalizeLodCellSize(this.lod.gfx.objectLodCellSize);
+    const view = this.lod.view;
+    const cameraCellX = lodCellIndex(view.cameraX, size);
+    const cameraCellY = lodCellIndex(view.cameraY, size);
+    const cameraCellZ = lodCellIndex(view.cameraZ, size);
+    if (
+      entitySetVersion !== this.unitInstancedLastFullPassEntitySetVersion ||
+      this.lod.key !== this.unitInstancedLastFullPassLodKey ||
+      size !== this.unitInstancedLastFullPassCellSize ||
+      cameraCellX !== this.unitInstancedLastFullPassCameraCellX ||
+      cameraCellY !== this.unitInstancedLastFullPassCameraCellY ||
+      cameraCellZ !== this.unitInstancedLastFullPassCameraCellZ
+    ) {
+      this.unitInstancedLastFullPassEntitySetVersion = entitySetVersion;
+      this.unitInstancedLastFullPassLodKey = this.lod.key;
+      this.unitInstancedLastFullPassCellSize = size;
+      this.unitInstancedLastFullPassCameraCellX = cameraCellX;
+      this.unitInstancedLastFullPassCameraCellY = cameraCellY;
+      this.unitInstancedLastFullPassCameraCellZ = cameraCellZ;
       return true;
     }
     if (!collectRichUnits) return false;
@@ -1604,7 +1614,12 @@ export class Render3DEntities {
     this.unitInstancedCompactFrame = 0;
     this.unitInstancedFrame = 0;
     this.unitInstancedLastFullPassFrame = -1;
-    this.unitInstancedLastFullPassKey = '';
+    this.unitInstancedLastFullPassEntitySetVersion = -1;
+    this.unitInstancedLastFullPassLodKey = '';
+    this.unitInstancedLastFullPassCellSize = 0;
+    this.unitInstancedLastFullPassCameraCellX = 0;
+    this.unitInstancedLastFullPassCameraCellY = 0;
+    this.unitInstancedLastFullPassCameraCellZ = 0;
     this.unitInstancedActiveUnits.length = 0;
     im.count = 0;
     im.instanceMatrix.needsUpdate = true;
@@ -3782,7 +3797,12 @@ export class Render3DEntities {
     this.unitInstancedCompactFrame = 0;
     this.unitInstancedFrame = 0;
     this.unitInstancedLastFullPassFrame = -1;
-    this.unitInstancedLastFullPassKey = '';
+    this.unitInstancedLastFullPassEntitySetVersion = -1;
+    this.unitInstancedLastFullPassLodKey = '';
+    this.unitInstancedLastFullPassCellSize = 0;
+    this.unitInstancedLastFullPassCameraCellX = 0;
+    this.unitInstancedLastFullPassCameraCellY = 0;
+    this.unitInstancedLastFullPassCameraCellZ = 0;
     this.unitInstancedActiveUnits.length = 0;
     if (this.smoothChassis) {
       this.world.remove(this.smoothChassis);

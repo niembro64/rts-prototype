@@ -1,7 +1,7 @@
 // Shared entity cache manager - avoids allocating new arrays every frame
 // Used by both WorldState (server) and ClientViewState (client)
 
-import type { Entity, EntityId } from './types';
+import type { Entity, EntityId, PlayerId } from './types';
 
 export class EntityCacheManager {
   private cachedUnits: Entity[] = [];
@@ -36,6 +36,8 @@ export class EntityCacheManager {
    *  rare attribute. */
   private cachedMirrorUnits: Entity[] = [];
   private cachedAll: Entity[] = [];
+  private cachedUnitsByPlayer: Map<PlayerId, Entity[]> = new Map();
+  private cachedBuildingsByPlayer: Map<PlayerId, Entity[]> = new Map();
   private dirty: boolean = true;
 
   invalidate(): void {
@@ -61,12 +63,17 @@ export class EntityCacheManager {
     this.cachedBeamUnits.length = 0;
     this.cachedMirrorUnits.length = 0;
     this.cachedAll.length = 0;
+    for (const list of this.cachedUnitsByPlayer.values()) list.length = 0;
+    for (const list of this.cachedBuildingsByPlayer.values()) list.length = 0;
 
     for (const entity of entities.values()) {
       this.cachedAll.push(entity);
       switch (entity.type) {
         case 'unit':
           this.cachedUnits.push(entity);
+          if (entity.ownership?.playerId !== undefined) {
+            this.getOrCreateUnitsByPlayer(entity.ownership.playerId).push(entity);
+          }
           if (entity.unit && entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp) {
             this.cachedDamagedUnits.push(entity);
           }
@@ -91,6 +98,9 @@ export class EntityCacheManager {
           break;
         case 'building':
           this.cachedBuildings.push(entity);
+          if (entity.ownership?.playerId !== undefined) {
+            this.getOrCreateBuildingsByPlayer(entity.ownership.playerId).push(entity);
+          }
           if (
             entity.building &&
             entity.building.hp > 0 &&
@@ -118,12 +128,38 @@ export class EntityCacheManager {
     this.dirty = false;
   }
 
+  private getOrCreateUnitsByPlayer(playerId: PlayerId): Entity[] {
+    let list = this.cachedUnitsByPlayer.get(playerId);
+    if (!list) {
+      list = [];
+      this.cachedUnitsByPlayer.set(playerId, list);
+    }
+    return list;
+  }
+
+  private getOrCreateBuildingsByPlayer(playerId: PlayerId): Entity[] {
+    let list = this.cachedBuildingsByPlayer.get(playerId);
+    if (!list) {
+      list = [];
+      this.cachedBuildingsByPlayer.set(playerId, list);
+    }
+    return list;
+  }
+
   getUnits(): Entity[] {
     return this.cachedUnits;
   }
 
   getBuildings(): Entity[] {
     return this.cachedBuildings;
+  }
+
+  getUnitsByPlayer(playerId: PlayerId): Entity[] {
+    return this.cachedUnitsByPlayer.get(playerId) ?? [];
+  }
+
+  getBuildingsByPlayer(playerId: PlayerId): Entity[] {
+    return this.cachedBuildingsByPlayer.get(playerId) ?? [];
   }
 
   getProjectiles(): Entity[] {

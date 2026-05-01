@@ -7,7 +7,6 @@ import {
 import type { RenderViewLodState } from './Lod3D';
 import {
   getRenderObjectLodShellDistances,
-  resolveRenderObjectLodForDistanceSq,
   type RenderObjectLodShellDistances,
   type RenderObjectLodTier,
 } from './RenderObjectLod';
@@ -48,6 +47,12 @@ export class RenderLodGrid {
     mass: 0,
     impostor: 0,
   };
+  private shellDistanceSq: RenderObjectLodShellDistances = {
+    rich: 0,
+    simple: 0,
+    mass: 0,
+    impostor: 0,
+  };
   private cells = new Map<LodCellKey, LodCellRecord>();
 
   beginFrame(view: RenderViewLodState, gfx: GraphicsConfig): void {
@@ -59,6 +64,10 @@ export class RenderLodGrid {
     this.view = view;
     this.cellSize = normalizeLodCellSize(gfx.objectLodCellSize);
     this.shells = getRenderObjectLodShellDistances(gfx);
+    this.shellDistanceSq.rich = this.shells.rich * this.shells.rich;
+    this.shellDistanceSq.simple = this.shells.simple * this.shells.simple;
+    this.shellDistanceSq.mass = this.shells.mass * this.shells.mass;
+    this.shellDistanceSq.impostor = this.shells.impostor * this.shells.impostor;
     if ((this.frameId & 63) === 0) this.pruneStaleCells();
   }
 
@@ -80,7 +89,13 @@ export class RenderLodGrid {
     const dx = cx - view.cameraX;
     const dy = cy - view.cameraY;
     const dz = cz - view.cameraZ;
-    const tier = resolveRenderObjectLodForDistanceSq(dx * dx + dy * dy + dz * dz, this.shells);
+    const distanceSq = dx * dx + dy * dy + dz * dz;
+    const shellSq = this.shellDistanceSq;
+    let tier: RenderObjectLodTier = 'marker';
+    if (shellSq.rich > 0 && distanceSq <= shellSq.rich) tier = 'rich';
+    else if (shellSq.simple > 0 && distanceSq <= shellSq.simple) tier = 'simple';
+    else if (shellSq.mass > 0 && distanceSq <= shellSq.mass) tier = 'mass';
+    else if (shellSq.impostor > 0 && distanceSq <= shellSq.impostor) tier = 'impostor';
     if (cached) {
       cached.frameId = this.frameId;
       cached.tier = tier;

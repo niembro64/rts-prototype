@@ -49,6 +49,7 @@
 // code small enough to audit at a glance.
 
 import { UNIT_MASS_MULTIPLIER, GRAVITY } from '../../config';
+import type { EntityId } from '../sim/types';
 
 // Pack a (cx, cy, cz) integer cell coordinate into a single numeric
 // key. Each axis is 16-bit biased; the packed value is a 48-bit
@@ -102,6 +103,8 @@ export type Body3D = {
   sleepTicks: number;
   /** Debug / log tag — entity type or id for tracing. */
   label: string;
+  /** Owning sim entity id for dynamic unit bodies. */
+  entityId?: EntityId;
   /** Internal broad-phase query stamp. Avoids duplicate narrow-phase
    *  checks when a large static cuboid spans several queried cells. */
   _staticQueryStamp?: number;
@@ -145,6 +148,7 @@ export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
   private dynamicBodies: Body3D[] = [];
   private staticBodies: Body3D[] = [];
+  private awakeDynamicBodyCount = 0;
   private mapWidth: number;
   private mapHeight: number;
 
@@ -208,6 +212,7 @@ export class PhysicsEngine3D {
     physicsRadius: number,
     mass: number,
     label: string,
+    entityId?: EntityId,
   ): Body3D {
     const physicsMass = mass * UNIT_MASS_MULTIPLIER;
     const body: Body3D = {
@@ -233,6 +238,7 @@ export class PhysicsEngine3D {
       sleeping: false,
       sleepTicks: 0,
       label,
+      entityId,
     };
     this.addBody(body);
     return body;
@@ -288,6 +294,7 @@ export class PhysicsEngine3D {
       this.addStaticToBroadphase(body);
     } else {
       this.dynamicBodies.push(body);
+      if (!body.sleeping) this.awakeDynamicBodyCount++;
     }
   }
 
@@ -295,7 +302,10 @@ export class PhysicsEngine3D {
     const i = this.bodies.indexOf(body);
     if (i >= 0) this.bodies.splice(i, 1);
     const j = this.dynamicBodies.indexOf(body);
-    if (j >= 0) this.dynamicBodies.splice(j, 1);
+    if (j >= 0) {
+      this.dynamicBodies.splice(j, 1);
+      if (!body.sleeping) this.awakeDynamicBodyCount = Math.max(0, this.awakeDynamicBodyCount - 1);
+    }
     const k = this.staticBodies.indexOf(body);
     if (k >= 0) {
       this.staticBodies.splice(k, 1);
@@ -312,18 +322,45 @@ export class PhysicsEngine3D {
   applyForce(body: Body3D, fx: number, fy: number, fz: number): void {
     if (body.isStatic) return;
     if ((fx * fx + fy * fy + fz * fz) > 0) {
-      body.sleeping = false;
-      body.sleepTicks = 0;
+      this.wakeBody(body);
     }
     body.ax += fx * body.invMass;
     body.ay += fy * body.invMass;
     body.az += fz * body.invMass;
   }
 
+  collectAwakeEntityIds(out: EntityId[]): void {
+    if (this.awakeDynamicBodyCount <= 0) return;
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const body = this.dynamicBodies[i];
+      if (body.sleeping || body.entityId === undefined) continue;
+      out.push(body.entityId);
+    }
+  }
+
   /** Mark that `dynamicBody` should not collide with `staticBody`.
    *  Used for units spawning inside their factory. */
   setIgnoreStatic(dynamicBody: Body3D, staticBody: Body3D): void {
     this.ignoreStatic.set(dynamicBody, staticBody);
+  }
+
+  private wakeBody(body: Body3D): void {
+    if (body.sleeping) {
+      body.sleeping = false;
+      this.awakeDynamicBodyCount++;
+    }
+    body.sleepTicks = 0;
+  }
+
+  private sleepBody(body: Body3D): void {
+    if (!body.sleeping) {
+      body.sleeping = true;
+      this.awakeDynamicBodyCount = Math.max(0, this.awakeDynamicBodyCount - 1);
+    }
+    body.sleepTicks = SLEEP_TICKS;
+    body.ax = 0;
+    body.ay = 0;
+    body.az = 0;
   }
 
   private cellCoordXy(v: number): number {
@@ -382,7 +419,9 @@ export class PhysicsEngine3D {
   }
 
   step(dtSec: number): void {
+    if (this.awakeDynamicBodyCount <= 0) return;
     this.integrate(dtSec);
+    if (this.awakeDynamicBodyCount <= 0) return;
     this.resolveGroundContacts();
     this.resolveSphereCuboidContacts();
     this.rebuildContactCells();
@@ -543,7 +582,7 @@ export class PhysicsEngine3D {
           b.vx = 0;
           b.vy = 0;
           b.vz = 0;
-          b.sleeping = true;
+          this.sleepBody(b);
         }
       } else {
         b.sleepTicks = 0;
@@ -763,10 +802,8 @@ export class PhysicsEngine3D {
             const rSum = a.radius + b.radius;
             const distSq = ddx * ddx + ddy * ddy + ddz * ddz;
             if (distSq >= rSum * rSum) continue;
-            a.sleeping = false;
-            b.sleeping = false;
-            a.sleepTicks = 0;
-            b.sleepTicks = 0;
+            this.wakeBody(a);
+            this.wakeBody(b);
             const dist = Math.sqrt(distSq) || 1e-6;
             const invDist = 1 / dist;
             const nx = ddx * invDist;

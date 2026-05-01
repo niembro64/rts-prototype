@@ -127,6 +127,7 @@ function spawnUnit(
       unit.unit.unitRadiusCollider.push,
       unit.unit.mass,
       `unit_${unit.id}`,
+      unit.id,
     );
     unit.body = { physicsBody: body };
   }

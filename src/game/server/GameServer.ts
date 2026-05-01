@@ -140,6 +140,10 @@ export class GameServer {
   private snapshotInterestBuildingBoundsByPlayer: Map<PlayerId, SnapshotInterestBounds> = new Map();
   private snapshotInterestBuildingCacheVersion: number = -1;
   private gameOverListeners: GameOverCallback[] = [];
+  private physicsForceUnitIdsBuf: EntityId[] = [];
+  private physicsSyncUnitIdsBuf: EntityId[] = [];
+  private physicsCandidateUnitIdsBuf: EntityId[] = [];
+  private physicsActiveUnitIds = new Set<EntityId>();
 
   // Game over tracking
   private isGameOver: boolean = false;
@@ -346,7 +350,8 @@ export class GameServer {
             entity.transform.y,
             entity.unit.unitRadiusCollider.push,
             entity.unit.mass,
-            `unit_${entity.id}`
+            `unit_${entity.id}`,
+            entity.id,
           );
           entity.body = { physicsBody: body };
 
@@ -548,8 +553,11 @@ export class GameServer {
     const mw = this.world.mapWidth;
     const mh = this.world.mapHeight;
 
-    for (const entity of this.world.getUnits()) {
-      if (!entity.body?.physicsBody || !entity.unit) continue;
+    this.collectPhysicsForceUnitIds();
+    const activeIds = this.physicsForceUnitIdsBuf;
+    for (let i = 0; i < activeIds.length; i++) {
+      const entity = this.world.getEntity(activeIds[i]);
+      if (!entity || !entity.body?.physicsBody || !entity.unit) continue;
 
       const body = entity.body.physicsBody;
 
@@ -723,6 +731,37 @@ export class GameServer {
     }
   }
 
+  private collectPhysicsForceUnitIds(): void {
+    const ids = this.physicsForceUnitIdsBuf;
+    const seen = this.physicsActiveUnitIds;
+    ids.length = 0;
+    seen.clear();
+
+    const pushId = (id: EntityId): void => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      ids.push(id);
+    };
+
+    const movingUnits = this.simulation.getMovingUnits();
+    for (let i = 0; i < movingUnits.length; i++) {
+      pushId(movingUnits[i].id);
+    }
+
+    const candidates = this.physicsCandidateUnitIdsBuf;
+    candidates.length = 0;
+    this.simulation.getForceAccumulator().collectActiveEntityIds(candidates);
+    for (let i = 0; i < candidates.length; i++) {
+      pushId(candidates[i]);
+    }
+
+    candidates.length = 0;
+    this.physics.collectAwakeEntityIds(candidates);
+    for (let i = 0; i < candidates.length; i++) {
+      pushId(candidates[i]);
+    }
+  }
+
   private _waterOutX = 0;
   private _waterOutY = 0;
   private waterOutCache = new Map<number, WaterOutCacheEntry>();
@@ -787,8 +826,12 @@ export class GameServer {
 
   // Sync positions and velocities from physics bodies to entities
   private syncFromPhysics(): void {
-    for (const entity of this.world.getUnits()) {
-      if (!entity.body?.physicsBody || !entity.unit) continue;
+    const ids = this.physicsSyncUnitIdsBuf;
+    ids.length = 0;
+    this.physics.collectAwakeEntityIds(ids);
+    for (let i = 0; i < ids.length; i++) {
+      const entity = this.world.getEntity(ids[i]);
+      if (!entity || !entity.body?.physicsBody || !entity.unit) continue;
       const body = entity.body.physicsBody;
       if (body.sleeping) continue;
       entity.transform.x = body.x;
@@ -832,7 +875,8 @@ export class GameServer {
           entity.transform.y,
           entity.unit.unitRadiusCollider.push,
           entity.unit.mass,
-          `unit_${entity.id}`
+          `unit_${entity.id}`,
+          entity.id,
         );
         entity.body = { physicsBody: body };
 
@@ -1173,22 +1217,12 @@ export class GameServer {
       candidatesBuf[i] = this.getSnapshotInterestCandidates(playerId);
     }
 
-    const includeOwnedBounds = (entity: Entity): void => {
-      const playerId = entity.ownership?.playerId;
-      if (playerId === undefined) return;
-      // Linear scan over targetPlayerIds beats Map.get when player
-      // count is small (typical: 2–8). Same-trip indexing into
-      // boundsBuf avoids a second hashmap lookup.
-      let slot = -1;
-      for (let i = 0; i < playerCount; i++) {
-        if (targetPlayerIds[i] === playerId) { slot = i; break; }
+    for (let i = 0; i < playerCount; i++) {
+      const ownedUnits = this.world.getUnitsByPlayer(targetPlayerIds[i]);
+      const bounds = boundsBuf[i];
+      for (let j = 0; j < ownedUnits.length; j++) {
+        this.expandSnapshotBounds(bounds, ownedUnits[j]);
       }
-      if (slot < 0) return;
-      this.expandSnapshotBounds(boundsBuf[slot], entity);
-    };
-
-    for (const unit of this.world.getUnits()) {
-      includeOwnedBounds(unit);
     }
 
     for (let i = 0; i < playerCount; i++) {
@@ -1208,12 +1242,13 @@ export class GameServer {
       const bounds = boundsBuf[0];
       const candidates = candidatesBuf[0];
       const includeOthers = bounds.hasOwnedEntity;
+      const ownedUnits = this.world.getUnitsByPlayer(playerId);
+      for (let i = 0; i < ownedUnits.length; i++) {
+        candidates.push(ownedUnits[i].id);
+      }
       for (const unit of this.world.getUnits()) {
         const unitPlayerId = unit.ownership?.playerId;
-        if (unitPlayerId === playerId) {
-          candidates.push(unit.id);
-          continue;
-        }
+        if (unitPlayerId === playerId) continue;
         if (!includeOthers) continue;
         const x = unit.transform.x;
         const y = unit.transform.y;

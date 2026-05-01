@@ -145,7 +145,7 @@ export const CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP = {
  * Centralized graphics detail level configuration.
  * Each key defines what happens at each detail level: min, low, medium, high, max.
  */
-export const CAMERA_SPHERE_BASE_RADIUS = 300;
+export const CAMERA_SPHERE_BASE_RADIUS = 400;
 
 // Scales the innermost "rich" sphere by global PLAYER CLIENT LOD.
 // CAMERA_SPHERE_BASE_RADIUS is a true linear multiplier for every
@@ -154,10 +154,10 @@ export const CAMERA_SPHERE_BASE_RADIUS = 300;
 // an entire 3150 game map resolve to the same LOD band.
 export const CAMERA_SPHERE_LOD_RADIUS_MULTIPLIERS = {
   min: 1,
-  low: 1.35,
-  medium: 1.75,
-  high: 2.15,
-  max: 2.5,
+  low: 2,
+  medium: 3,
+  high: 4,
+  max: 5,
 } as const satisfies Record<ConcreteGraphicsQuality, number>;
 
 // Scales each concentric camera sphere from that LOD's rich radius.
@@ -166,8 +166,8 @@ export const CAMERA_SPHERE_LOD_RADIUS_MULTIPLIERS = {
 // are skipped by both object LOD resolution and debug ground rings.
 export const CAMERA_SPHERE_RING_RADIUS_MULTIPLIERS = {
   rich: 1,
-  simple: 1.75,
-  mass: 2.75,
+  simple: 2,
+  mass: 3,
   impostor: 4,
 } as const satisfies CameraSphereRadii;
 

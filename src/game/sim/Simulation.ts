@@ -923,6 +923,12 @@ export class Simulation {
     return this.forceAccumulator;
   }
 
+  // Units that received thrust during the latest movement pass.
+  // Reference is valid until the next update(); callers must not mutate.
+  getMovingUnits(): readonly Entity[] {
+    return this._movingUnitsBuf;
+  }
+
   // Advance to next action (with patrol loop support)
   private advanceAction(entity: Entity): void {
     if (!entity.unit) return;
