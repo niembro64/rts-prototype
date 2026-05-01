@@ -26,7 +26,10 @@ export function lodKey(gfx: GraphicsConfig): string {
     // if the per-axis fields happen to coincide.
     gfx.tier,
     gfx.unitRenderMode,
-    gfx.richObjectDistance,
+    gfx.cameraSphereRadii.rich,
+    gfx.cameraSphereRadii.simple,
+    gfx.cameraSphereRadii.mass,
+    gfx.cameraSphereRadii.impostor,
     gfx.unitShape,
     gfx.legs,
     gfx.treadsAnimated ? 'tw' : 'ts',

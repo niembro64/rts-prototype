@@ -10,7 +10,7 @@ import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, WATER_LEVEL } from '../sim/Terrain';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getGraphicsConfigFor } from '@/clientBarConfig';
-import { snapshotLod } from './Lod3D';
+import type { Lod3DState } from './Lod3D';
 import { objectLodToGraphicsTier } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
 
@@ -19,6 +19,11 @@ const WAVE_LAMBDA_Z = 320;
 const WAVE_OMEGA_X = 0.6;
 const WAVE_OMEGA_Z = 0.45;
 const WATER_COLOR = 0x4aa3df;
+// Water LOD geometry is expensive to rebuild because it walks every wet
+// terrain cell and emits fresh typed arrays. Quantize camera movement more
+// coarsely than object cells; water detail can lag slightly without gameplay
+// or readability cost, and this removes frequent rebuild spikes while panning.
+const WATER_LOD_REBUILD_CELL_MULTIPLIER = 4;
 
 type WaterCell = {
   x0: number;
@@ -37,7 +42,8 @@ export class WaterRenderer3D {
   private mapHeight: number;
   private terrainLodKey = '';
   private waterCellCache: WaterCell[] | null = null;
-  private lodGrid = new RenderLodGrid();
+  private ownedLodGrid = new RenderLodGrid();
+  private frameLodGrid = this.ownedLodGrid;
   private lodActive = false;
   private frameIndex = 0;
 
@@ -149,19 +155,26 @@ export class WaterRenderer3D {
     return waterCells;
   }
 
-  private waterLodKey(graphicsConfig: GraphicsConfig, camera?: THREE.PerspectiveCamera): string {
-    if (!camera) {
+  private waterLodKey(graphicsConfig: GraphicsConfig, lod?: Lod3DState): string {
+    if (!lod) {
       return `${graphicsConfig.tier}|${graphicsConfig.waterSubdivisions}|static`;
     }
-    const cellSize = Math.max(16, graphicsConfig.objectLodCellSize);
+    const cellSize = Math.max(
+      16,
+      graphicsConfig.objectLodCellSize * WATER_LOD_REBUILD_CELL_MULTIPLIER,
+    );
+    const view = lod.view;
     return [
       graphicsConfig.tier,
       graphicsConfig.waterSubdivisions,
-      graphicsConfig.richObjectDistance,
+      graphicsConfig.cameraSphereRadii.rich,
+      graphicsConfig.cameraSphereRadii.simple,
+      graphicsConfig.cameraSphereRadii.mass,
+      graphicsConfig.cameraSphereRadii.impostor,
       cellSize,
-      Math.floor(camera.position.x / cellSize),
-      Math.floor(camera.position.y / cellSize),
-      Math.floor(camera.position.z / cellSize),
+      Math.floor(view.cameraX / cellSize),
+      Math.floor(view.cameraY / cellSize),
+      Math.floor(view.cameraZ / cellSize),
     ].join('|');
   }
 
@@ -169,13 +182,13 @@ export class WaterRenderer3D {
     if (!this.lodActive) return fallback;
     const centerX = (cell.x0 + cell.x1) * 0.5;
     const centerZ = (cell.z0 + cell.z1) * 0.5;
-    const objectTier = this.lodGrid.resolve(centerX, WATER_LEVEL, centerZ);
+    const objectTier = this.frameLodGrid.resolve(centerX, WATER_LEVEL, centerZ);
     const graphicsTier = objectLodToGraphicsTier(objectTier, fallback.tier);
     return getGraphicsConfigFor(graphicsTier);
   }
 
-  private rebuildGeometryIfNeeded(graphicsConfig: GraphicsConfig, camera?: THREE.PerspectiveCamera): void {
-    const nextKey = this.waterLodKey(graphicsConfig, camera);
+  private rebuildGeometryIfNeeded(graphicsConfig: GraphicsConfig, lod?: Lod3DState): void {
+    const nextKey = this.waterLodKey(graphicsConfig, lod);
     if (nextKey === this.terrainLodKey) return;
     this.terrainLodKey = nextKey;
 
@@ -222,16 +235,16 @@ export class WaterRenderer3D {
   update(
     dtSec: number,
     graphicsConfig: GraphicsConfig,
-    camera?: THREE.PerspectiveCamera,
-    viewportHeightPx = 1,
+    lod?: Lod3DState,
+    sharedLodGrid?: RenderLodGrid,
   ): void {
     this.frameIndex = (this.frameIndex + 1) & 0x3fffffff;
-    this.lodActive = camera !== undefined;
-    if (camera) {
-      const lod = snapshotLod(camera, viewportHeightPx);
-      this.lodGrid.beginFrame(lod.view, graphicsConfig);
+    this.lodActive = lod !== undefined;
+    this.frameLodGrid = sharedLodGrid ?? this.ownedLodGrid;
+    if (lod) {
+      if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, graphicsConfig);
     }
-    this.rebuildGeometryIfNeeded(graphicsConfig, camera);
+    this.rebuildGeometryIfNeeded(graphicsConfig, lod);
     this.material.opacity = graphicsConfig.waterOpacity;
     this.amplitudeUniform.value = graphicsConfig.waterWaveAmplitude;
     if (!this.mesh.visible || graphicsConfig.waterOpacity <= 0) return;

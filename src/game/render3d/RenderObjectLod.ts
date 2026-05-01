@@ -1,7 +1,9 @@
-import type { ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
+import type { CameraSphereRadii, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
 
 export type RenderObjectLodTier =
-  | 'hidden'
+  // Outside the impostor sphere. World objects draw cheap marker
+  // spheres at this tier; effects may still skip it for budget reasons.
+  | 'marker'
   | 'impostor'
   | 'mass'
   | 'simple'
@@ -25,7 +27,7 @@ const GRAPHICS_TIER_BY_ORDER: ConcreteGraphicsQuality[] = [
 ];
 
 const MAX_GRAPHICS_TIER_BY_OBJECT: Record<RenderObjectLodTier, ConcreteGraphicsQuality> = {
-  hidden: 'min',
+  marker: 'min',
   impostor: 'low',
   mass: 'medium',
   simple: 'high',
@@ -33,24 +35,39 @@ const MAX_GRAPHICS_TIER_BY_OBJECT: Record<RenderObjectLodTier, ConcreteGraphicsQ
   hero: 'max',
 };
 
-const SIMPLE_DISTANCE_MULTIPLIER = 1.6;
-const MASS_DISTANCE_MULTIPLIER = 2.2;
-const IMPOSTOR_DISTANCE_MULTIPLIER = 2.8;
-
-export type RenderObjectLodShellDistances = {
-  rich: number;
-  simple: number;
-  mass: number;
-  impostor: number;
+const CAMERA_SPHERE_GRAPHICS_TIER_BY_OBJECT: Record<RenderObjectLodTier, ConcreteGraphicsQuality> = {
+  marker: 'min',
+  impostor: 'low',
+  mass: 'medium',
+  simple: 'high',
+  rich: 'max',
+  hero: 'max',
 };
 
+export type RenderObjectLodShellDistances = CameraSphereRadii;
+
+function normalizeEnabledShellRadius(rawRadius: number, minEnabledRadius: number): number {
+  if (!Number.isFinite(rawRadius) || rawRadius <= 0) return 0;
+  return Math.max(minEnabledRadius, rawRadius);
+}
+
 export function getRenderObjectLodShellDistances(gfx: GraphicsConfig): RenderObjectLodShellDistances {
-  const rich = Math.max(0, gfx.richObjectDistance);
+  // A radius <= 0 means that shell is intentionally disabled. Preserve
+  // that zero so both the LOD resolver and the debug ground-ring renderer
+  // skip it. Enabled shells are still clamped outward so accidental
+  // out-of-order radii cannot invert the LOD bands.
+  const rich = normalizeEnabledShellRadius(gfx.cameraSphereRadii.rich, 0);
+  const simple = normalizeEnabledShellRadius(gfx.cameraSphereRadii.simple, rich);
+  const mass = normalizeEnabledShellRadius(gfx.cameraSphereRadii.mass, Math.max(rich, simple));
+  const impostor = normalizeEnabledShellRadius(
+    gfx.cameraSphereRadii.impostor,
+    Math.max(rich, simple, mass),
+  );
   return {
     rich,
-    simple: rich * SIMPLE_DISTANCE_MULTIPLIER,
-    mass: rich * MASS_DISTANCE_MULTIPLIER,
-    impostor: rich * IMPOSTOR_DISTANCE_MULTIPLIER,
+    simple,
+    mass,
+    impostor,
   };
 }
 
@@ -62,7 +79,7 @@ export function resolveRenderObjectLodForDistanceSq(
   if (shells.simple > 0 && distanceSq <= shells.simple * shells.simple) return 'simple';
   if (shells.mass > 0 && distanceSq <= shells.mass * shells.mass) return 'mass';
   if (shells.impostor > 0 && distanceSq <= shells.impostor * shells.impostor) return 'impostor';
-  return 'hidden';
+  return 'marker';
 }
 
 export function isRichObjectLod(tier: RenderObjectLodTier): boolean {
@@ -76,4 +93,10 @@ export function objectLodToGraphicsTier(
   const objectMaxTier = MAX_GRAPHICS_TIER_BY_OBJECT[objectTier];
   const order = Math.min(GRAPHICS_TIER_ORDER[globalTier], GRAPHICS_TIER_ORDER[objectMaxTier]);
   return GRAPHICS_TIER_BY_ORDER[order];
+}
+
+export function objectLodToCameraSphereGraphicsTier(
+  objectTier: RenderObjectLodTier,
+): ConcreteGraphicsQuality {
+  return CAMERA_SPHERE_GRAPHICS_TIER_BY_OBJECT[objectTier];
 }

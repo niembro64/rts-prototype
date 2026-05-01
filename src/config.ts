@@ -39,7 +39,6 @@ import type {
 // Spatial grid cell size in pixels. Should be roughly 1/2 to 1/3 of typical weapon range.
 export const SPATIAL_GRID_CELL_SIZE = 150;
 
-
 // F=============================================================================
 // SNAPSHOT / NETWORKING
 // =============================================================================
@@ -179,7 +178,10 @@ export const EMA_CONFIG: Record<string, EmaTierConfig> = {
 };
 
 // Frame timing EMA config (tracks durations in ms — uses "hi" instead of "low")
-const FRAME_MS_EMA: EmaMsConfig = { avg: 0.01, hi: { spike: 0.5, recovery: 0.0001 } };
+const FRAME_MS_EMA: EmaMsConfig = {
+  avg: 0.01,
+  hi: { spike: 0.5, recovery: 0.0001 },
+};
 export const FRAME_TIMING_EMA = {
   frameMs: FRAME_MS_EMA,
   renderMs: FRAME_MS_EMA,
@@ -198,14 +200,14 @@ export const FRAME_TIMING_EMA = {
  */
 export const EMA_INITIAL_VALUES = {
   // Rate trackers — start optimistic (high = good)
-  tps:      60,     // assume 60 ticks/sec until measured
-  fps:      60,     // assume 60 frames/sec until measured
-  snaps:    32,     // assume 32 snapshots/sec until measured
+  tps: 60, // assume 60 ticks/sec until measured
+  fps: 60, // assume 60 frames/sec until measured
+  snaps: 32, // assume 32 snapshots/sec until measured
 
   // Ms trackers — start optimistic (low = good)
-  frameMs:  1,      // assume 1ms frame time until measured
-  renderMs: 0.5,    // assume 0.5ms render time until measured
-  logicMs:  0.5,    // assume 0.5ms logic time until measured
+  frameMs: 1, // assume 1ms frame time until measured
+  renderMs: 0.5, // assume 0.5ms render time until measured
+  logicMs: 0.5, // assume 0.5ms logic time until measured
 };
 
 // =============================================================================
@@ -327,18 +329,37 @@ export const WIND_ENERGY_PER_SECOND = 50;
 
 /** Wind direction oscillation wave periods in seconds. These are true
  *  sine/cosine periods, not angular divisors. Longer = slower turning. */
+const wmult = 0.2;
+
 export const WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS = {
-  primary: 271 * Math.PI * 2,
-  secondary: 619 * Math.PI * 2,
-  tertiary: 1429 * Math.PI * 2,
+  primary: 96 * wmult,
+  secondary: 173 * wmult,
+  tertiary: 317 * wmult,
 } as const;
 
 /** Wind magnitude/speed oscillation wave periods in seconds. Longer =
  *  slower production-multiplier drift for Wind buildings. */
 export const WIND_SPEED_OSCILLATION_PERIODS_SECONDS = {
-  primary: 353 * Math.PI * 2,
-  secondary: 811 * Math.PI * 2,
-  tertiary: 1777 * Math.PI * 2,
+  primary: 42 * wmult,
+  secondary: 89 * wmult,
+  tertiary: 157 * wmult,
+} as const;
+
+/** Visual wind turbine rotor speed, in radians per second at wind speed 1.0.
+ *  Actual blade rotation is `wind.speed * WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED`. */
+export const WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED = 2;
+
+/** Wind turbine visual EMA half-life multipliers layered on top of the
+ *  selected PLAYER CLIENT DRIFT preset.
+ *
+ *  1.0 = exactly the selected DRIFT half-life.
+ *  <1.0 = faster turbine response.
+ *  >1.0 = smoother/slower turbine response.
+ *  0.0 = snap for that channel.
+ */
+export const WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS = {
+  fanYaw: 4,
+  bladeSpeed: 1.0,
 } as const;
 
 // =============================================================================
@@ -676,7 +697,6 @@ export const ZOOM_INITIAL_LOBBY_PREVIEW = 0.6;
  *  preview camera. ~5.3 °/s = a full rotation every ~68 s — slow
  *  enough that it reads as "alive" rather than "frantic". */
 export const LOBBY_PREVIEW_SPIN_RATE = 0.0925;
-
 
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
 export const CAMERA_PAN_MULTIPLIER = 6.0;

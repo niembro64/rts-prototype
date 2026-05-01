@@ -31,7 +31,14 @@ import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 import { LodShellGround3D } from '../render3d/LodShellGround3D';
-import { getRenderObjectLodShellDistances } from '../render3d/RenderObjectLod';
+import { LodGridCells3D } from '../render3d/LodGridCells3D';
+import { RenderLodGrid } from '../render3d/RenderLodGrid';
+import { snapshotLod } from '../render3d/Lod3D';
+import {
+  getRenderObjectLodShellDistances,
+  objectLodToGraphicsTier,
+  resolveRenderObjectLodForDistanceSq,
+} from '../render3d/RenderObjectLod';
 
 /** Same color the per-mesh leg path used. Single uniform value
  *  across the whole shared pool — legs aren't team-tinted. */
@@ -51,7 +58,9 @@ import {
   getAudioSmoothing,
   getCameraSmoothMode,
   getGraphicsConfig,
+  getGraphicsConfigFor,
   getLodShellRings,
+  getLodGridBorders,
   setCurrentZoom,
   getGridOverlay,
   getGridOverlayIntensity,
@@ -64,13 +73,20 @@ import {
   setMetalDepositFlatZones,
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
+  WATER_LEVEL,
 } from '../sim/Terrain';
+import {
+  lodCellCenter,
+  lodCellIndex,
+  normalizeLodCellSize,
+} from '../lodGridMath';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
 import { SelectionLabel3D } from '../render3d/SelectionLabel3D';
 
 import type { GameConnection } from '../server/GameConnection';
 import type { TerrainShape } from '@/types/terrain';
+import type { GraphicsConfig } from '@/types/graphics';
 import type {
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
@@ -217,6 +233,8 @@ export class RtsScene3D {
   private healthBar3D: HealthBar3D | null = null;
   private waypoint3D: Waypoint3D | null = null;
   private lodShellGround3D: LodShellGround3D | null = null;
+  private lodGridCells3D: LodGridCells3D | null = null;
+  private renderLodGrid = new RenderLodGrid();
   private selectionLabel3D: SelectionLabel3D | null = null;
 
   // Camera frustum cached once per frame and shared with the HUD
@@ -689,6 +707,13 @@ export class RtsScene3D {
         this.mapHeight,
         (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
       );
+      this.lodGridCells3D = new LodGridCells3D(
+        this.threeApp.world,
+        this.mapWidth,
+        this.mapHeight,
+        WATER_LEVEL,
+        TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
+      );
     }
 
     // Wire raycast-based selection + move commands. The shared
@@ -899,7 +924,10 @@ export class RtsScene3D {
     // depends on zoom by default; view scale is consumed inside
     // Render3DEntities for per-object rich mesh selection instead.
     setCurrentZoom(this.cameras.main.zoom);
-    const graphicsConfig = getGraphicsConfig();
+    const viewportHeightPx = this.threeApp.renderer.domElement.clientHeight;
+    const renderLod = snapshotLod(this.threeApp.camera, viewportHeightPx);
+    const graphicsConfig = renderLod.gfx;
+    this.renderLodGrid.beginFrame(renderLod.view, graphicsConfig);
     const lodShells = getRenderObjectLodShellDistances(graphicsConfig);
     this.lodShellGround3D?.update(
       this.threeApp.camera,
@@ -911,10 +939,14 @@ export class RtsScene3D {
       ],
       getLodShellRings(),
     );
+    this.lodGridCells3D?.update(
+      graphicsConfig.objectLodCellSize,
+      getLodGridBorders(),
+    );
     this.metalDepositRenderer?.update(
       graphicsConfig,
-      this.threeApp.camera,
-      this.threeApp.renderer.domElement.clientHeight,
+      renderLod,
+      this.renderLodGrid,
     );
     const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
@@ -933,25 +965,24 @@ export class RtsScene3D {
     // this directly so it stays pinned to the view regardless of
     // the (throttled) entity-list refresh.
     this.onCameraQuadUpdate?.(this._cameraQuad, this.threeApp.orbit.yaw);
-    this.entityRenderer.update();
+    this.entityRenderer.update(renderLod, this.renderLodGrid);
     this.captureTileRenderer.update(
       graphicsConfig,
-      this.threeApp.camera,
-      this.threeApp.renderer.domElement.clientHeight,
     );
     const lineProjectiles = this.clientViewState.getLineProjectiles();
     const travelingProjectiles = this.clientViewState.getTravelingProjectiles();
     this.beamRenderer.update(
       lineProjectiles,
       graphicsConfig,
-      this.threeApp.camera,
-      this.threeApp.renderer.domElement.clientHeight,
+      renderLod,
+      this.renderLodGrid,
     );
     // Force-field iteration is deferred — fused with HealthBar3D's
     // per-unit walk below, after the camera frustum is computed.
     // Single getUnits() iteration drives both per-unit renderers.
 
-    // Effects: explosions / debris integrate their own physics each frame;
+    // Effects integrate their own lightweight physics. Debris/material
+    // explosions apply their PLAYER CLIENT LOD physics-frame skip internally;
     // burn marks sample live beams to trace scorches on the ground. We feed
     // the scheduler's clamped dt so backgrounded tabs don't jump-forward.
     // Advance the water-surface time uniform — the actual GPU draw
@@ -960,8 +991,8 @@ export class RtsScene3D {
     this.waterRenderer.update(
       effectDt / 1000,
       graphicsConfig,
-      this.threeApp.camera,
-      this.threeApp.renderer.domElement.clientHeight,
+      renderLod,
+      this.renderLodGrid,
     );
     this.explosionRenderer.update(effectDt);
     this.debrisRenderer.update(effectDt);
@@ -1022,8 +1053,8 @@ export class RtsScene3D {
     // entity lists because HP/build progress are dynamic per snapshot.
     this.forceFieldRenderer.beginFrame(
       graphicsConfig,
-      this.threeApp.camera,
-      this.threeApp.renderer.domElement.clientHeight,
+      renderLod,
+      this.renderLodGrid,
     );
     for (const u of this.clientViewState.getForceFieldUnits()) {
       this.forceFieldRenderer.perUnit(u);
@@ -1273,6 +1304,29 @@ export class RtsScene3D {
     }
   }
 
+  private graphicsConfigForEffectCell(
+    simX: number,
+    simY: number,
+    simZ: number,
+  ): GraphicsConfig | null {
+    const base = getGraphicsConfig();
+    const shells = getRenderObjectLodShellDistances(base);
+    const cellSize = normalizeLodCellSize(base.objectLodCellSize);
+    const cx = lodCellCenter(lodCellIndex(simX, cellSize), cellSize);
+    const cy = lodCellCenter(lodCellIndex(simZ, cellSize), cellSize);
+    const cz = lodCellCenter(lodCellIndex(simY, cellSize), cellSize);
+    const camera = this.threeApp.camera.position;
+    const dx = cx - camera.x;
+    const dy = cy - camera.y;
+    const dz = cz - camera.z;
+    const objectTier = resolveRenderObjectLodForDistanceSq(
+      dx * dx + dy * dy + dz * dz,
+      shells,
+    );
+    if (objectTier === 'marker') return null;
+    return getGraphicsConfigFor(objectLodToGraphicsTier(objectTier, base.tier));
+  }
+
   /**
    * Dispatch a SimEvent to the 3D effect renderers. Mirrors the subset of
    * DeathEffectsHandler that is visual (audio is handled separately, or not
@@ -1289,6 +1343,13 @@ export class RtsScene3D {
    * visuals come from FLAG toggles on their turret state.
    */
   private handleSimEvent3D(event: NetworkServerSnapshotSimEvent): void {
+    const effectGfx = this.graphicsConfigForEffectCell(
+      event.pos.x,
+      event.pos.y,
+      event.pos.z,
+    );
+    if (!effectGfx) return;
+
     if (event.type === 'hit') {
       const ctx = event.impactContext;
       // Size the explosion by the biggest radius the shot genuinely
@@ -1318,13 +1379,31 @@ export class RtsScene3D {
           ctx.projectile.vel.y * 0.3 +
           ctx.entity.vel.y * 0.3;
       }
-      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, event.pos.z, r, mx, mz);
+      this.explosionRenderer.spawnImpact(
+        event.pos.x,
+        event.pos.y,
+        event.pos.z,
+        r,
+        mx,
+        mz,
+        undefined,
+        effectGfx.fireExplosionStyle,
+      );
     } else if (event.type === 'projectileExpire') {
       // Ground / expired-projectile fire — always a small pop, no meaningful
       // momentum (the projectile stopped). event.pos.z carries the exact
       // altitude the sim computed — ground-impact events have z=0, aerial
       // splash-on-expiry have whatever altitude the shot reached.
-      this.explosionRenderer.spawnImpact(event.pos.x, event.pos.y, event.pos.z, 8);
+      this.explosionRenderer.spawnImpact(
+        event.pos.x,
+        event.pos.y,
+        event.pos.z,
+        8,
+        0,
+        0,
+        undefined,
+        effectGfx.fireExplosionStyle,
+      );
     } else if (event.type === 'death') {
       // Some kill paths (splash, bleed-out, force-field zone damage) emit
       // a death event with no deathContext. Rather than skipping the
@@ -1433,8 +1512,9 @@ export class RtsScene3D {
         event.pos.x, event.pos.y, event.pos.z,
         Math.max(ctx.radius, 6),
         mx, mz,
+        effectGfx.fireExplosionStyle,
       );
-      this.debrisRenderer.spawn(event.pos.x, event.pos.y, event.pos.z, ctx);
+      this.debrisRenderer.spawn(event.pos.x, event.pos.y, event.pos.z, ctx, effectGfx);
     }
   }
 
@@ -1770,6 +1850,8 @@ export class RtsScene3D {
     this.waypoint3D = null;
     this.lodShellGround3D?.destroy();
     this.lodShellGround3D = null;
+    this.lodGridCells3D?.destroy();
+    this.lodGridCells3D = null;
     this.selectionLabel3D?.destroy();
     this.selectionLabel3D = null;
     this.entityRenderer?.destroy();

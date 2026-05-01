@@ -51,12 +51,7 @@ import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
-
-/** Frame-rate independent EMA blend factor from a half-life (seconds).
- *  halfLife=0 → instant snap (returns 1). */
-function halfLifeBlend(dt: number, halfLife: number): number {
-  return halfLife <= 0 ? 1 : 1 - Math.pow(0.5, dt / halfLife);
-}
+import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -116,30 +111,11 @@ function getClientForceFieldZones(shot: ForceShot, progress: number) {
 // Smaller = snappier correction, larger = smoother/lazier.
 // Blend factor per frame: 1 - Math.pow(0.5, dt / halfLife)
 import { getDriftMode } from '@/clientBarConfig';
-import type { DriftMode } from '@/types/client';
-
-type DriftAxis = { pos: number; vel: number };
-type DriftPreset = { movement: DriftAxis; rotation: DriftAxis };
-
-const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
-  snap: { movement: { pos: 0, vel: 0 }, rotation: { pos: 0, vel: 0 } },
-  // FAST — half the previous FAST half-life, corrections close
-  // ~twice as fast as before. The previous FAST values now live
-  // under MID so the slot order keeps a clean fast→mid→slow ramp.
-  // SLOW doubled so it's noticeably lazier than before.
-  fast: {
-    movement: { pos: 0.0175, vel: 0.010 },
-    rotation: { pos: 0.0175, vel: 0.010 },
-  },
-  mid: {
-    movement: { pos: 0.035, vel: 0.020 },
-    rotation: { pos: 0.035, vel: 0.020 },
-  },
-  slow: {
-    movement: { pos: 8, vel: 4 },
-    rotation: { pos: 8, vel: 4 },
-  },
-};
+import {
+  lodCellCenter,
+  lodCellIndex,
+  normalizeLodCellSize,
+} from '../lodGridMath';
 
 // Lightweight copy of server state used for per-frame drift in applyPrediction().
 // Owns its data (not a reference to pooled serializer objects).
@@ -169,7 +145,7 @@ function createServerTarget(): ServerTarget {
   return { x: 0, y: 0, z: 0, rotation: 0, velocityX: 0, velocityY: 0, velocityZ: 0, turrets: [] };
 }
 
-export type PredictionLodTier = 'rich' | 'simple' | 'mass' | 'impostor' | 'hidden';
+export type PredictionLodTier = 'rich' | 'simple' | 'mass' | 'impostor' | 'marker';
 
 export type PredictionLodContext = {
   /** Three.js/world camera x. */
@@ -192,6 +168,31 @@ type PredictionLodCellRecord = {
   frameId: number;
   tier: PredictionLodTier;
 };
+
+type PredictionLodCellKey = number | string;
+
+const PREDICTION_CELL_KEY_BITS = 17;
+const PREDICTION_CELL_KEY_BASE = 2 ** PREDICTION_CELL_KEY_BITS;
+const PREDICTION_CELL_KEY_BIAS = 2 ** (PREDICTION_CELL_KEY_BITS - 1);
+const PREDICTION_CELL_KEY_MAX = PREDICTION_CELL_KEY_BASE - 1;
+
+function packPredictionLodCellKey(
+  ix: number,
+  iy: number,
+  iz: number,
+): PredictionLodCellKey {
+  const x = ix + PREDICTION_CELL_KEY_BIAS;
+  const y = iy + PREDICTION_CELL_KEY_BIAS;
+  const z = iz + PREDICTION_CELL_KEY_BIAS;
+  if (
+    x >= 0 && x <= PREDICTION_CELL_KEY_MAX &&
+    y >= 0 && y <= PREDICTION_CELL_KEY_MAX &&
+    z >= 0 && z <= PREDICTION_CELL_KEY_MAX
+  ) {
+    return (x * PREDICTION_CELL_KEY_BASE + y) * PREDICTION_CELL_KEY_BASE + z;
+  }
+  return `${ix},${iy},${iz}`;
+}
 
 type PredictionStep = {
   entityDeltaMs: number;
@@ -255,7 +256,7 @@ export class ClientViewState {
   // cost every browser frame.
   private predictionAccumMs: Map<EntityId, number> = new Map();
   private targetPredictionAccumMs: Map<EntityId, number> = new Map();
-  private predictionLodCells: Map<number, Map<number, Map<number, PredictionLodCellRecord>>> = new Map();
+  private predictionLodCells: Map<PredictionLodCellKey, PredictionLodCellRecord> = new Map();
 
   // Per-frame cache of living enemy entities, built lazily the first
   // time a rocket needs to re-acquire this frame. Subsequent rockets
@@ -292,11 +293,12 @@ export class ClientViewState {
   }
 
   private deleteEntityLocalState(id: EntityId): void {
-    this.entities.delete(id);
+    const existed = this.entities.delete(id);
     this.serverTargets.delete(id);
     this.selectedIds.delete(id);
     this.predictionAccumMs.delete(id);
     this.targetPredictionAccumMs.delete(id);
+    if (existed) this.invalidateCaches();
   }
 
   private rebuildCachesIfNeeded(): void {
@@ -748,19 +750,20 @@ export class ClientViewState {
   ): PredictionLodTier {
     if (!lod) return 'rich';
 
-    const size = Math.max(16, lod.cellSize);
+    const size = normalizeLodCellSize(lod.cellSize);
     // Sim coordinates are x/y on the ground plane and z for height.
     // Three.js uses x/z for the ground plane and y for height, so
     // classify the same 3D cell that the renderer uses.
-    const ix = Math.floor(entity.transform.x / size);
-    const iy = Math.floor(entity.transform.z / size);
-    const iz = Math.floor(entity.transform.y / size);
-    const cached = this.getPredictionLodCell(ix, iy, iz);
+    const ix = lodCellIndex(entity.transform.x, size);
+    const iy = lodCellIndex(entity.transform.z, size);
+    const iz = lodCellIndex(entity.transform.y, size);
+    const key = packPredictionLodCellKey(ix, iy, iz);
+    const cached = this.predictionLodCells.get(key);
     if (cached?.frameId === this.frameCounter) return cached.tier;
 
-    const cellX = (ix + 0.5) * size;
-    const cellY = (iy + 0.5) * size;
-    const cellZ = (iz + 0.5) * size;
+    const cellX = lodCellCenter(ix, size);
+    const cellY = lodCellCenter(iy, size);
+    const cellZ = lodCellCenter(iz, size);
     const dx = cellX - lod.cameraX;
     const dy = cellY - lod.cameraY;
     const dz = cellZ - lod.cameraZ;
@@ -768,7 +771,7 @@ export class ClientViewState {
       dx * dx + dy * dy + dz * dz,
       lod,
     );
-    this.setPredictionLodCell(ix, iy, iz, { frameId: this.frameCounter, tier });
+    this.predictionLodCells.set(key, { frameId: this.frameCounter, tier });
     return tier;
   }
 
@@ -784,46 +787,13 @@ export class ClientViewState {
     if (simple > 0 && distanceSq <= simple * simple) return 'simple';
     if (mass > 0 && distanceSq <= mass * mass) return 'mass';
     if (impostor > 0 && distanceSq <= impostor * impostor) return 'impostor';
-    return 'hidden';
-  }
-
-  private getPredictionLodCell(
-    ix: number,
-    iy: number,
-    iz: number,
-  ): PredictionLodCellRecord | undefined {
-    return this.predictionLodCells.get(ix)?.get(iy)?.get(iz);
-  }
-
-  private setPredictionLodCell(
-    ix: number,
-    iy: number,
-    iz: number,
-    record: PredictionLodCellRecord,
-  ): void {
-    let yCells = this.predictionLodCells.get(ix);
-    if (!yCells) {
-      yCells = new Map();
-      this.predictionLodCells.set(ix, yCells);
-    }
-    let zCells = yCells.get(iy);
-    if (!zCells) {
-      zCells = new Map();
-      yCells.set(iy, zCells);
-    }
-    zCells.set(iz, record);
+    return 'marker';
   }
 
   private pruneStalePredictionLodCells(): void {
     const frameId = this.frameCounter;
-    for (const [ix, yCells] of this.predictionLodCells) {
-      for (const [iy, zCells] of yCells) {
-        for (const [iz, cell] of zCells) {
-          if (cell.frameId !== frameId) zCells.delete(iz);
-        }
-        if (zCells.size === 0) yCells.delete(iy);
-      }
-      if (yCells.size === 0) this.predictionLodCells.delete(ix);
+    for (const [key, cell] of this.predictionLodCells) {
+      if (cell.frameId !== frameId) this.predictionLodCells.delete(key);
     }
   }
 
@@ -850,7 +820,7 @@ export class ClientViewState {
       case 'simple': return 1;
       case 'mass': return 3;
       case 'impostor': return 7;
-      case 'hidden': return 15;
+      case 'marker': return 15;
     }
   }
 
@@ -887,6 +857,123 @@ export class ClientViewState {
     };
   }
 
+  private applyUnitVisualPrediction(
+    entity: Entity,
+    target: ServerTarget | undefined,
+    deltaMs: number,
+    preset: DriftPreset,
+  ): void {
+    if (!entity.unit) return;
+    const dt = deltaMs / 1000;
+    const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
+    const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
+    const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
+
+    if (target) {
+      // Unit body motion is a visual contract, not an optional detail.
+      // Keep this smooth at render cadence while LOD throttles heavier
+      // turret / force-field prediction below.
+      target.x += target.velocityX * dt;
+      target.y += target.velocityY * dt;
+      target.z += target.velocityZ * dt;
+    }
+
+    const vx = entity.unit.velocityX ?? 0;
+    const vy = entity.unit.velocityY ?? 0;
+    const vz = entity.unit.velocityZ ?? 0;
+    entity.transform.x += vx * dt;
+    entity.transform.y += vy * dt;
+    entity.transform.z += vz * dt;
+
+    if (!target) return;
+
+    entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
+    entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
+    entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
+    entity.transform.rotation = lerpAngle(
+      entity.transform.rotation,
+      target.rotation,
+      rotPosDrift,
+    );
+
+    entity.unit.velocityX = lerp(vx, target.velocityX ?? 0, movVelDrift);
+    entity.unit.velocityY = lerp(vy, target.velocityY ?? 0, movVelDrift);
+    entity.unit.velocityZ = lerp(vz, target.velocityZ ?? 0, movVelDrift);
+  }
+
+  private applyUnitExpensivePrediction(
+    entity: Entity,
+    target: ServerTarget | undefined,
+    predictionStep: PredictionStep,
+    preset: DriftPreset,
+  ): void {
+    if (!entity.unit || !entity.turrets) return;
+    const dt = predictionStep.entityDeltaMs / 1000;
+    const targetDt = predictionStep.targetDeltaMs / 1000;
+    const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
+    const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
+
+    for (let i = 0; i < entity.turrets.length; i++) {
+      const weapon = entity.turrets[i];
+      weapon.rotation += weapon.angularVelocity * dt;
+
+      const tw = target?.turrets?.[i];
+      if (tw) {
+        tw.rotation += tw.angularVelocity * targetDt;
+        weapon.rotation = lerpAngle(
+          weapon.rotation,
+          tw.rotation,
+          rotPosDrift,
+        );
+        weapon.angularVelocity = lerp(
+          weapon.angularVelocity,
+          tw.angularVelocity,
+          rotVelDrift,
+        );
+        weapon.pitch = lerpAngle(
+          weapon.pitch,
+          tw.pitch,
+          rotPosDrift,
+        );
+      }
+
+      if (weapon.config.shot.type !== 'force') continue;
+      const fieldShot = weapon.config.shot;
+      const cur = weapon.forceField?.range ?? 0;
+      const targetProgress = weapon.state === 'engaged' ? 1 : 0;
+      const progressDelta = dt / (fieldShot.transitionTime / 1000);
+      let next = cur;
+      if (cur < targetProgress) {
+        next = Math.min(cur + progressDelta, 1);
+      } else if (cur > targetProgress) {
+        next = Math.max(cur - progressDelta, 0);
+      }
+
+      const serverRange = tw?.forceFieldRange;
+      if (serverRange !== undefined) {
+        next = lerp(next, serverRange, rotPosDrift);
+      }
+      if (!weapon.forceField) {
+        weapon.forceField = { range: next, transition: 0 };
+      } else {
+        weapon.forceField.range = next;
+      }
+
+      if (next > 0 && entity.ownership) {
+        const unitCos = Math.cos(entity.transform.rotation);
+        const unitSin = Math.sin(entity.transform.rotation);
+        pushClientForceField(
+          entity.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y,
+          entity.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y,
+          weapon.rotation,
+          entity.ownership.playerId,
+          fieldShot,
+          next,
+        );
+      }
+    }
+  }
+
   /**
    * Called every frame. Two steps:
    * 1. Dead-reckon: advance positions using velocity
@@ -900,17 +987,34 @@ export class ClientViewState {
     }
     if ((this.frameCounter & 63) === 0) this.pruneStalePredictionLodCells();
 
-    // Ensure caches are fresh for beam obstruction checks
-    this.rebuildCachesIfNeeded();
-
     // Frame-rate independent blend factors (driven by drift mode half-lives)
-    const preset = DRIFT_PRESETS[getDriftMode()];
+    const preset = getDriftPreset(getDriftMode());
 
     // Collect active force fields for client-side projectile prediction.
     // The backing objects stay pooled at the session high-water mark.
     _forceFieldCount = 0;
 
     for (const entity of this.entities.values()) {
+      const target = this.serverTargets.get(entity.id);
+
+      if (entity.type === 'unit' && entity.unit) {
+        this.applyUnitVisualPrediction(entity, target, deltaMs, preset);
+        if (entity.turrets && entity.turrets.length > 0) {
+          const predictionTier = this.resolvePredictionLodTier(entity, lod);
+          const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
+          const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
+          if (predictionStep) this.applyUnitExpensivePrediction(entity, target, predictionStep, preset);
+        }
+        continue;
+      }
+
+      if (entity.type === 'building' && target) {
+        entity.transform.x = target.x;
+        entity.transform.y = target.y;
+        entity.transform.rotation = target.rotation;
+        continue;
+      }
+
       const predictionTier = this.resolvePredictionLodTier(entity, lod);
       const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
       const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
@@ -921,126 +1025,6 @@ export class ClientViewState {
       const targetDt = predictionStep.targetDeltaMs / 1000;
       const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
       const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
-      const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
-      const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
-      const target = this.serverTargets.get(entity.id);
-
-      if (entity.type === 'unit' && entity.unit) {
-        if (target) {
-          // Advance server target using its velocity (so drift target
-          // isn't stale). All three axes — z updates matter for
-          // airborne units (explosion knockback, falling off ledges).
-          target.x += target.velocityX * targetDt;
-          target.y += target.velocityY * targetDt;
-          target.z += target.velocityZ * targetDt;
-        }
-
-        // Step 1: Dead-reckon entity using current velocity (full 3D).
-        const vx = entity.unit.velocityX ?? 0;
-        const vy = entity.unit.velocityY ?? 0;
-        const vz = entity.unit.velocityZ ?? 0;
-        entity.transform.x += vx * dt;
-        entity.transform.y += vy * dt;
-        entity.transform.z += vz * dt;
-
-        // Step 2: Drift toward server targets
-        // Body rotation is set authoritatively by the server (facing command direction),
-        // so the client only drifts toward the server target — no local dead-reckoning.
-        if (target) {
-          entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
-          entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
-          entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
-          entity.transform.rotation = lerpAngle(
-            entity.transform.rotation,
-            target.rotation,
-            rotPosDrift,
-          );
-
-          const serverVelX = target.velocityX ?? 0;
-          const serverVelY = target.velocityY ?? 0;
-          const serverVelZ = target.velocityZ ?? 0;
-          entity.unit.velocityX = lerp(vx, serverVelX, movVelDrift);
-          entity.unit.velocityY = lerp(vy, serverVelY, movVelDrift);
-          entity.unit.velocityZ = lerp(vz, serverVelZ, movVelDrift);
-        }
-
-        // Advance turret rotations using angular velocity + drift toward server
-        if (entity.turrets) {
-          for (let i = 0; i < entity.turrets.length; i++) {
-            const weapon = entity.turrets[i];
-            weapon.rotation += weapon.angularVelocity * dt;
-
-            // Drift turret toward server target
-            const tw = target?.turrets?.[i];
-            if (tw) {
-              // Advance turret target rotation using its angular velocity
-              tw.rotation += tw.angularVelocity * targetDt;
-
-              weapon.rotation = lerpAngle(
-                weapon.rotation,
-                tw.rotation,
-                rotPosDrift,
-              );
-              weapon.angularVelocity = lerp(
-                weapon.angularVelocity,
-                tw.angularVelocity,
-                rotVelDrift,
-              );
-              // Pitch: the sim sets it each tick from the ballistic
-              // solver, no angular velocity to dead-reckon — just drift
-              // the current value toward the latest server target using
-              // the same rotation-position blend. Without this the
-              // visible barrel pitch stays frozen at whatever the turret
-              // was at when the entity was first received, so shots
-              // launch at their real arc while the barrel visibly
-              // points horizontally (or wherever it was last snapped).
-              weapon.pitch = lerpAngle(
-                weapon.pitch,
-                tw.pitch,
-                rotPosDrift,
-              );
-            }
-
-            // Dead-reckon force field expansion/contraction + drift toward server
-            if (weapon.config.shot.type === 'force') {
-              const fieldShot = weapon.config.shot;
-              const cur = weapon.forceField?.range ?? 0;
-              const targetProgress = weapon.state === 'engaged' ? 1 : 0;
-              const progressDelta = dt / (fieldShot.transitionTime / 1000);
-              let next = cur;
-              if (cur < targetProgress) {
-                next = Math.min(cur + progressDelta, 1);
-              } else if (cur > targetProgress) {
-                next = Math.max(cur - progressDelta, 0);
-              }
-              // Drift toward server's authoritative value
-              const serverRange = tw?.forceFieldRange;
-              if (serverRange !== undefined) {
-                next = lerp(next, serverRange, rotPosDrift);
-              }
-              if (!weapon.forceField) {
-                weapon.forceField = { range: next, transition: 0 };
-              } else {
-                weapon.forceField.range = next;
-              }
-
-              // Collect active force fields for projectile prediction
-              if (next > 0 && entity.ownership) {
-                const unitCos = Math.cos(entity.transform.rotation);
-                const unitSin = Math.sin(entity.transform.rotation);
-                pushClientForceField(
-                  entity.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y,
-                  entity.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y,
-                  weapon.rotation,
-                  entity.ownership.playerId,
-                  fieldShot,
-                  next,
-                );
-              }
-            }
-          }
-        }
-      }
 
       if (entity.type === 'shot' && entity.projectile) {
         if (
@@ -1209,8 +1193,6 @@ export class ClientViewState {
         entity.transform.rotation = target.rotation;
       }
     }
-
-    this.invalidateCaches();
   }
 
   /** Find the closest live enemy (unit or building) within rocket

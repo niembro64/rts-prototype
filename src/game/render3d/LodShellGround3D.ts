@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { RenderObjectLodTier } from './RenderObjectLod';
 
 type LodShell = {
-  tier: Exclude<RenderObjectLodTier, 'hidden' | 'hero'>;
+  tier: Exclude<RenderObjectLodTier, 'marker' | 'hero'>;
   distance: number;
 };
 
@@ -13,11 +13,13 @@ type GroundPoint = {
 };
 
 const STYLE = {
-  samplesPerRing: 192,
+  samplesPerRing: 96,
   worldLift: 8,
-  initialLineCap: 768,
-  sphereSearchSteps: 48,
-  sphereSolveIterations: 18,
+  initialLineCap: 512,
+  sphereSearchSteps: 24,
+  sphereSolveIterations: 10,
+  minUpdateIntervalMs: 180,
+  cameraQuantize: 12,
 };
 
 const SHELL_COLORS: Record<LodShell['tier'], number> = {
@@ -38,6 +40,8 @@ export class LodShellGround3D {
   private lineGeom = new THREE.BufferGeometry();
   private lineMesh: THREE.LineSegments;
   private hadVisible = false;
+  private lastUpdateKey = '';
+  private lastUpdateMs = 0;
 
   constructor(
     parent: THREE.Group,
@@ -82,13 +86,27 @@ export class LodShellGround3D {
       return;
     }
 
+    const drawableShells = this.drawableShells(shells);
+    if (drawableShells.length === 0) {
+      this.hide();
+      return;
+    }
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const updateKey = this.makeUpdateKey(camera, drawableShells);
+    if (this.lastUpdateKey !== '') {
+      const tooSoon = now - this.lastUpdateMs < STYLE.minUpdateIntervalMs;
+      if (updateKey === this.lastUpdateKey || tooSoon) return;
+    }
+    this.lastUpdateKey = updateKey;
+    this.lastUpdateMs = now;
+
     const state = { lineSeg: 0 };
     const cx = camera.position.x;
     const cy = camera.position.y;
     const cz = camera.position.z;
 
-    for (const shell of shells) {
-      if (shell.distance <= 0 || !Number.isFinite(shell.distance)) continue;
+    for (const shell of drawableShells) {
       this.pushShellRing(state, cx, cy, cz, shell.distance, shell);
     }
 
@@ -113,10 +131,37 @@ export class LodShellGround3D {
   }
 
   private hide(): void {
-    if (!this.hadVisible) return;
+    if (!this.hadVisible) {
+      this.lastUpdateKey = '';
+      this.lastUpdateMs = 0;
+      return;
+    }
     this.lineGeom.setDrawRange(0, 0);
     this.lineMesh.visible = false;
     this.hadVisible = false;
+    this.lastUpdateKey = '';
+    this.lastUpdateMs = 0;
+  }
+
+  private drawableShells(shells: readonly LodShell[]): LodShell[] {
+    const out: LodShell[] = [];
+    for (const shell of shells) {
+      if (shell.distance <= 0 || !Number.isFinite(shell.distance)) continue;
+      out.push(shell);
+    }
+    return out;
+  }
+
+  private makeUpdateKey(camera: THREE.PerspectiveCamera, shells: readonly LodShell[]): string {
+    const q = STYLE.cameraQuantize;
+    const qx = Math.round(camera.position.x / q);
+    const qy = Math.round(camera.position.y / q);
+    const qz = Math.round(camera.position.z / q);
+    let key = `${qx},${qy},${qz}`;
+    for (const shell of shells) {
+      key += `|${shell.tier}:${Math.round(shell.distance)}`;
+    }
+    return key;
   }
 
   private growLineCap(needed: number): void {

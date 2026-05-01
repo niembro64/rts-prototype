@@ -30,6 +30,7 @@
 
 import * as THREE from 'three';
 import { getGraphicsConfig } from '@/clientBarConfig';
+import type { FireExplosionStyle } from '@/types/graphics';
 // Sparks are affected by gravity so they arc. Imported from config.ts
 // so explosion sparks, debris, projectiles, and physics all share one
 // gravity value.
@@ -72,7 +73,7 @@ const CORE_EXPAND_END = 1.6;
 const FIRE_EXPAND_START = 0.8;
 const FIRE_EXPAND_END = 2.3;
 
-type ExplosionStyle = 'flash' | 'spark' | 'burst' | 'blaze' | 'inferno';
+type ExplosionStyle = FireExplosionStyle;
 
 // Particle counts and reach per LOD tier. Values picked to keep the 'inferno'
 // tier readable but not overwhelming — at 20 sparks each hit still disposes
@@ -271,8 +272,9 @@ export class Explosion3D {
     simX: number, simY: number, simZ: number, radius: number,
     momentumX: number = 0, momentumZ: number = 0,
     shellColor?: number,
+    styleOverride?: ExplosionStyle,
   ): void {
-    const style = this.getStyle();
+    const style = styleOverride ?? this.getStyle();
     // Tiny safety floor so a zero-radius call still renders one
     // visible pixel; callers are expected to pass the correct size
     // (projectile explosion zones size themselves; beam/laser hits
@@ -320,8 +322,9 @@ export class Explosion3D {
   spawnDeath(
     simX: number, simY: number, simZ: number, radius: number,
     momentumX: number = 0, momentumZ: number = 0,
+    styleOverride?: ExplosionStyle,
   ): void {
-    this.spawnImpact(simX, simY, simZ, radius * 2.5, momentumX, momentumZ);
+    this.spawnImpact(simX, simY, simZ, radius * 2.5, momentumX, momentumZ, undefined, styleOverride);
   }
 
   private addPuff(

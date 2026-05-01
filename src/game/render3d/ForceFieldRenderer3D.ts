@@ -23,7 +23,7 @@ import { getGraphicsConfig, getGraphicsConfigFor } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
-import { snapshotLod } from './Lod3D';
+import type { Lod3DState } from './Lod3D';
 import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
 
@@ -204,7 +204,8 @@ export class ForceFieldRenderer3D {
   /** RENDER: WIN/PAD/ALL visibility scope — off-screen force fields
    *  skip their per-frame animation work. */
   private scope: ViewportFootprint;
-  private lodGrid = new RenderLodGrid();
+  private ownedLodGrid = new RenderLodGrid();
+  private frameLodGrid = this.ownedLodGrid;
   private lodActive = false;
   private frameGfx: GraphicsConfig = getGraphicsConfig();
   /** Look up the unit's yaw subgroup. Force-field meshes attach to
@@ -374,8 +375,8 @@ export class ForceFieldRenderer3D {
    *  derived counts once per frame so the inner loop is tight. */
   beginFrame(
     graphicsConfig: GraphicsConfig = getGraphicsConfig(),
-    camera?: THREE.PerspectiveCamera,
-    viewportHeightPx = 1,
+    lod?: Lod3DState,
+    sharedLodGrid?: RenderLodGrid,
   ): void {
     this._seenFieldKeys.clear();
     this._sphereCursor = 0;
@@ -383,10 +384,10 @@ export class ForceFieldRenderer3D {
     this._frameNowSec = this._frameNowMs / 1000;
     const gfx = graphicsConfig;
     this.frameGfx = gfx;
-    this.lodActive = camera !== undefined;
-    if (camera) {
-      const lod = snapshotLod(camera, viewportHeightPx);
-      this.lodGrid.beginFrame(lod.view, gfx);
+    this.lodActive = lod !== undefined;
+    this.frameLodGrid = sharedLodGrid ?? this.ownedLodGrid;
+    if (lod) {
+      if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, gfx);
     }
     this._frameStyle = gfx.forceFieldStyle as never;
     const style = this._frameStyle as string;
@@ -407,13 +408,13 @@ export class ForceFieldRenderer3D {
     // with its bubble reaching in still updates.
     if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
     const objectTier = this.resolveUnitObjectLod(unit);
-    if (objectTier === 'hidden') return;
+    if (objectTier === 'marker') return;
     this._processUnit(unit, objectTier);
   }
 
   private resolveUnitObjectLod(unit: Entity): RenderObjectLodTier {
     if (!this.lodActive) return 'rich';
-    return this.lodGrid.resolve(
+    return this.frameLodGrid.resolve(
       unit.transform.x,
       unit.transform.z,
       unit.transform.y,
@@ -476,7 +477,7 @@ export class ForceFieldRenderer3D {
     const nowMs = this._frameNowMs;
     const nowSec = this._frameNowSec;
     const resolvedTier = objectTier ?? this.resolveUnitObjectLod(unit);
-    if (resolvedTier === 'hidden') return;
+    if (resolvedTier === 'marker') return;
     const effectiveGraphicsTier = objectLodToGraphicsTier(resolvedTier, this.frameGfx.tier);
     const fieldGfx = this.lodActive ? getGraphicsConfigFor(effectiveGraphicsTier) : this.frameGfx;
     const style = (this.lodActive ? fieldGfx.forceFieldStyle : this._frameStyle) as string;

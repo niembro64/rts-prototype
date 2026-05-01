@@ -69,6 +69,7 @@ export const CLIENT_CONFIG = {
   audioSmoothing: { default: true },
   burnMarks: { default: false },
   lodShellRings: { default: false },
+  lodGridBorders: { default: false },
   driftMode: { default: 'mid' as const },
   legsRadius: { default: false },
   cameraSmooth: {
@@ -151,12 +152,12 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   min: {
     tier: 'min',
     unitRenderMode: D.UNIT_RENDER_MODE.min as UnitRenderMode,
-    richObjectDistance: D.RICH_OBJECT_DISTANCE.min,
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.min,
+    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.min },
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
     hudFrameStride: D.HUD_FRAME_STRIDE.min,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.min,
     clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.min,
-    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.min,
+    captureTileSubdiv: D.MANA_TILE_SMOOTHNESS.min,
     captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.min,
     captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.min,
     waterSubdivisions: D.WATER_SUBDIVISIONS.min,
@@ -179,17 +180,20 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     forceFieldStyle: D.FORCE_FIELD_STYLE.min as ForceFieldStyle,
     projectileStyle: D.PROJECTILE_STYLE.min as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.min as FireExplosionStyle,
+    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.min as DeathExplosionStyle,
+    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.min,
+    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.min,
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.min as DeathExplosionStyle,
   },
   low: {
     tier: 'low',
     unitRenderMode: D.UNIT_RENDER_MODE.low as UnitRenderMode,
-    richObjectDistance: D.RICH_OBJECT_DISTANCE.low,
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.low,
+    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.low },
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
     hudFrameStride: D.HUD_FRAME_STRIDE.low,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.low,
     clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.low,
-    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.low,
+    captureTileSubdiv: D.MANA_TILE_SMOOTHNESS.low,
     captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.low,
     captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.low,
     waterSubdivisions: D.WATER_SUBDIVISIONS.low,
@@ -212,17 +216,20 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     forceFieldStyle: D.FORCE_FIELD_STYLE.low as ForceFieldStyle,
     projectileStyle: D.PROJECTILE_STYLE.low as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.low as FireExplosionStyle,
+    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.low as DeathExplosionStyle,
+    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.low,
+    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.low,
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.low as DeathExplosionStyle,
   },
   medium: {
     tier: 'medium',
     unitRenderMode: D.UNIT_RENDER_MODE.medium as UnitRenderMode,
-    richObjectDistance: D.RICH_OBJECT_DISTANCE.medium,
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.medium,
+    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.medium },
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
     hudFrameStride: D.HUD_FRAME_STRIDE.medium,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.medium,
     clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.medium,
-    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.medium,
+    captureTileSubdiv: D.MANA_TILE_SMOOTHNESS.medium,
     captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.medium,
     captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.medium,
     waterSubdivisions: D.WATER_SUBDIVISIONS.medium,
@@ -245,17 +252,20 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     forceFieldStyle: D.FORCE_FIELD_STYLE.medium as ForceFieldStyle,
     projectileStyle: D.PROJECTILE_STYLE.medium as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.medium as FireExplosionStyle,
+    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.medium as DeathExplosionStyle,
+    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.medium,
+    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.medium,
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.medium as DeathExplosionStyle,
   },
   high: {
     tier: 'high',
     unitRenderMode: D.UNIT_RENDER_MODE.high as UnitRenderMode,
-    richObjectDistance: D.RICH_OBJECT_DISTANCE.high,
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.high,
+    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.high },
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
     hudFrameStride: D.HUD_FRAME_STRIDE.high,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.high,
     clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.high,
-    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.high,
+    captureTileSubdiv: D.MANA_TILE_SMOOTHNESS.high,
     captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.high,
     captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.high,
     waterSubdivisions: D.WATER_SUBDIVISIONS.high,
@@ -278,17 +288,20 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     forceFieldStyle: D.FORCE_FIELD_STYLE.high as ForceFieldStyle,
     projectileStyle: D.PROJECTILE_STYLE.high as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.high as FireExplosionStyle,
+    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.high as DeathExplosionStyle,
+    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.high,
+    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.high,
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.high as DeathExplosionStyle,
   },
   max: {
     tier: 'max',
     unitRenderMode: D.UNIT_RENDER_MODE.max as UnitRenderMode,
-    richObjectDistance: D.RICH_OBJECT_DISTANCE.max,
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE.max,
+    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.max },
+    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
     hudFrameStride: D.HUD_FRAME_STRIDE.max,
     effectFrameStride: D.EFFECT_FRAME_STRIDE.max,
     clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.max,
-    captureTileSubdiv: D.CAPTURE_TILE_SUBDIV.max,
+    captureTileSubdiv: D.MANA_TILE_SMOOTHNESS.max,
     captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.max,
     captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.max,
     waterSubdivisions: D.WATER_SUBDIVISIONS.max,
@@ -311,6 +324,9 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     forceFieldStyle: D.FORCE_FIELD_STYLE.max as ForceFieldStyle,
     projectileStyle: D.PROJECTILE_STYLE.max as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.max as FireExplosionStyle,
+    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.max as DeathExplosionStyle,
+    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.max,
+    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.max,
     deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.max as DeathExplosionStyle,
   },
 };
@@ -328,6 +344,7 @@ const AUDIO_SCOPE_STORAGE_KEY = 'player-client-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
 const BURN_MARKS_STORAGE_KEY = 'player-client-burn-marks';
 const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
+const LOD_GRID_BORDERS_STORAGE_KEY = 'player-client-lod-grid-borders';
 const DRIFT_MODE_STORAGE_KEY = 'player-client-drift-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'player-client-sound-toggles';
 const RANGE_TOGGLES_STORAGE_KEY = 'player-client-range-toggles';
@@ -357,6 +374,7 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-audio-smoothing', AUDIO_SMOOTHING_STORAGE_KEY],
   ['rts-burn-marks', BURN_MARKS_STORAGE_KEY],
   ['rts-lod-shell-rings', LOD_SHELL_RINGS_STORAGE_KEY],
+  ['rts-lod-grid-borders', LOD_GRID_BORDERS_STORAGE_KEY],
   ['rts-drift-mode', DRIFT_MODE_STORAGE_KEY],
   ['rts-sound-toggles', SOUND_TOGGLES_STORAGE_KEY],
   ['rts-range-toggles', RANGE_TOGGLES_STORAGE_KEY],
@@ -412,6 +430,7 @@ let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLodShellRings: boolean = _cd.lodShellRings.default;
+let currentLodGridBorders: boolean = _cd.lodGridBorders.default;
 let currentDriftMode: DriftMode = _cd.driftMode.default;
 const currentSoundToggles: Record<SoundCategory, boolean> = {
   ..._cd.sounds.default,
@@ -531,6 +550,10 @@ function loadFromStorage(): void {
   const storedLodShellRings = readPersisted(LOD_SHELL_RINGS_STORAGE_KEY);
   if (storedLodShellRings !== null) {
     currentLodShellRings = storedLodShellRings === 'true';
+  }
+  const storedLodGridBorders = readPersisted(LOD_GRID_BORDERS_STORAGE_KEY);
+  if (storedLodGridBorders !== null) {
+    currentLodGridBorders = storedLodGridBorders === 'true';
   }
   const storedLegsRadius = readPersisted(LEGS_RADIUS_STORAGE_KEY);
   if (storedLegsRadius !== null) {
@@ -939,6 +962,15 @@ export function getLodShellRings(): boolean {
 export function setLodShellRings(enabled: boolean): void {
   currentLodShellRings = enabled;
   persist(LOD_SHELL_RINGS_STORAGE_KEY, String(enabled));
+}
+
+export function getLodGridBorders(): boolean {
+  return currentLodGridBorders;
+}
+
+export function setLodGridBorders(enabled: boolean): void {
+  currentLodGridBorders = enabled;
+  persist(LOD_GRID_BORDERS_STORAGE_KEY, String(enabled));
 }
 
 export function getDriftMode(): DriftMode {

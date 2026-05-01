@@ -10,6 +10,7 @@ import type {
   TurretStyle,
   ForceTurretStyle,
   UnitRenderMode,
+  CameraSphereRadii,
 } from './graphics';
 
 export type EmaStat = 'avg' | 'low';
@@ -66,12 +67,12 @@ export type LodEmaSource = {
 
 export type GraphicsDetailConfig = {
   UNIT_RENDER_MODE: LodTierMap<UnitRenderMode>;
-  RICH_OBJECT_DISTANCE: LodTierMap<number>;
-  OBJECT_LOD_CELL_SIZE: LodTierMap<number>;
+  CAMERA_SPHERE_RADII: LodTierMap<CameraSphereRadii>;
+  OBJECT_LOD_CELL_SIZE: number;
   HUD_FRAME_STRIDE: LodTierMap<number>;
   EFFECT_FRAME_STRIDE: LodTierMap<number>;
   CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP: LodTierMap<number>;
-  CAPTURE_TILE_SUBDIV: LodTierMap<number>;
+  MANA_TILE_SMOOTHNESS: LodTierMap<number>;
   CAPTURE_TILE_FRAME_STRIDE: LodTierMap<number>;
   CAPTURE_TILE_SIDE_WALLS: LodTierMap<boolean>;
   WATER_SUBDIVISIONS: LodTierMap<number>;
@@ -95,6 +96,9 @@ export type GraphicsDetailConfig = {
   BURN_MARK_FRAMES_SKIP: LodTierMap<number>;
   PROJECTILE_STYLE: LodTierMap<ProjectileStyle>;
   FIRE_EXPLOSION_STYLE: LodTierMap<FireExplosionStyle>;
+  MATERIAL_EXPLOSION_STYLE: LodTierMap<DeathExplosionStyle>;
+  MATERIAL_EXPLOSION_PIECE_BUDGET: LodTierMap<number>;
+  MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP: LodTierMap<number>;
   DEATH_EXPLOSION_STYLE: LodTierMap<DeathExplosionStyle>;
   FORCE_FIELD_STYLE: LodTierMap<ForceFieldStyle>;
 };

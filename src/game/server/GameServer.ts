@@ -913,12 +913,12 @@ export class GameServer {
       this.lastSentCombatStatsMs = nowMs;
     }
 
-    // Add server metadata to snapshot
-    // On delta snapshots, only include serverMeta when the time string changed (once per second)
+    // Add server metadata to snapshot. Wind is visual/gameplay-visible and
+    // intentionally changes continuously, so metadata must ride every
+    // snapshot instead of only when the human-readable clock changes.
     let serverMeta: NetworkServerSnapshot['serverMeta'] | undefined;
     const currentTime = this.formatServerTime();
-    const timeChanged = currentTime !== this.lastSentServerTime;
-    if (!isDelta || timeChanged) {
+    {
       const tickStats = this.getTickStats();
       const wind = this.simulation.getWindState();
       // CPU load = tick work / tick budget, expressed as a percent. We
@@ -962,7 +962,6 @@ export class GameServer {
           angle: wind.angle,
         },
       };
-      this.lastSentServerTime = currentTime;
     }
 
     this.prepareSnapshotInterestPlans();
@@ -1440,7 +1439,6 @@ export class GameServer {
   // Caches result so delta snapshots can skip sending unchanged time
   private lastServerTime: string = '';
   private lastServerTimeSec: number = -1;
-  private lastSentServerTime: string = ''; // Track what was last sent so deltas can skip
   // Wall-clock of the last delta snapshot that included combatStats.
   // Stats only ship on keyframes or after this throttle elapses; the
   // value is in performance.now() ms so it's monotonic across timer

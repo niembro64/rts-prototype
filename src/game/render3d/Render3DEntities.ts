@@ -16,7 +16,11 @@ import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
 import type { SpinConfig } from '../../config';
-import { MIRROR_EXTRA_HEIGHT } from '../../config';
+import {
+  MIRROR_EXTRA_HEIGHT,
+  WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
+  WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
+} from '../../config';
 import { getGroundNormal } from '../sim/Terrain';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
@@ -55,8 +59,9 @@ import {
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getFactoryBuildSpot, getFactoryConstructionRadius, type FactoryBuildSpot } from '../sim/factoryConstructionSite';
-import { getGraphicsConfigFor, getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
-import { getWeaponWorldPosition, getTurretHeadRadius } from '../math';
+import { getDriftMode, getGraphicsConfigFor, getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
+import { getDriftPreset, halfLifeBlend } from '../network/driftEma';
+import { getWeaponWorldPosition, getTurretHeadRadius, lerp, lerpAngle } from '../math';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 
@@ -68,8 +73,6 @@ import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 
 const BUILDING_HEIGHT = 120;
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
-const WIND_YAW_EMA_ALPHA = 0.035;
-const WIND_ROTOR_RAD_PER_SEC = 8;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
@@ -89,6 +92,14 @@ const _INST_UP = new THREE.Vector3(0, 1, 0);
 const LOW_INSTANCED_COMPACT_MIN_FREE = 128;
 const LOW_INSTANCED_COMPACT_INTERVAL_FRAMES = 30;
 const LOW_INSTANCED_COMPACT_MAX_MOVES = 256;
+const MASS_INSTANCE_MATRIX_STRIDE: Record<RenderObjectLodTier, number> = {
+  hero: 1,
+  rich: 1,
+  simple: 1,
+  mass: 2,
+  impostor: 4,
+  marker: 8,
+};
 const BUILDING_TIER_ORDER: Record<ConcreteGraphicsQuality, number> = {
   min: 0,
   low: 1,
@@ -113,11 +124,9 @@ function buildingDetailVisible(
     && (detail.maxTier === undefined || level <= BUILDING_TIER_ORDER[detail.maxTier]);
 }
 
-function lerpAngleRadians(current: number, target: number, alpha: number): number {
-  let delta = target - current;
-  while (delta > Math.PI) delta -= Math.PI * 2;
-  while (delta < -Math.PI) delta += Math.PI * 2;
-  return current + delta * alpha;
+function scaledWindTurbineHalfLife(baseHalfLife: number, multiplier: number): number {
+  if (baseHalfLife <= 0 || multiplier <= 0) return 0;
+  return baseHalfLife * multiplier;
 }
 
 // Scratch globals reused by the per-unit surface-tilt path so the
@@ -212,6 +221,10 @@ type EntityMesh = {
    *  a per-unit material reference. The mesh itself lives under
    *  `m.group` and is GC'd with the group on death. */
   ring?: THREE.Mesh;
+  /** Outer camera-sphere marker for buildings. Units use the packed
+   *  mass InstancedMesh for the same role; buildings need a tiny mesh
+   *  because their normal render path is type-specific scenegraph art. */
+  lodMarker?: THREE.Mesh;
   /** UNIT RAD wireframe spheres. All three channels are now 3D in
    *  the sim:
    *    - scale → pure visual horizontal footprint (no sim collision);
@@ -275,6 +288,7 @@ export class Render3DEntities {
   private factorySprayTargets: SprayTarget[] = [];
   private factorySprayTargetPool: SprayTarget[] = [];
   private windFanYaw: number | null = null;
+  private windVisualSpeed: number | null = null;
   private windRotorPhase = 0;
   private windAnimLastMs = 0;
   private extractorRotorPhase = 0;
@@ -469,14 +483,20 @@ export class Render3DEntities {
   private unitInstancedEntityBySlot: (EntityId | undefined)[] = [];
   /** Maps entityId → last owner/lod color key written into its instance slot. */
   private unitInstancedColorKey = new Map<EntityId, string>();
+  // In hybrid mode this is the set of units whose mass-body slot should
+  // be hidden because a richer object mesh is responsible for drawing
+  // the body. The outer marker tier still uses this packed sphere path.
   private massRichUnitIds = new Set<EntityId>();
   private massRichUnits: Entity[] = [];
-  private objectLodGrid = new RenderLodGrid();
+  private ownedObjectLodGrid = new RenderLodGrid();
+  private objectLodGrid = this.ownedObjectLodGrid;
   /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
   private unitInstancedFreeSlots: number[] = [];
   /** High-water mark; everything ≥ this is unused. */
   private unitInstancedNextSlot = 0;
   private unitInstancedCompactFrame = 0;
+  private unitInstancedFrame = 0;
+  private unitInstancedHiddenIds = new Set<EntityId>();
   /** Hidden-slot transform: scale=0 collapses the geometry to a point. */
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
   /** Reusable scratch matrix to avoid allocations in the per-instance write hot loop. */
@@ -1179,18 +1199,19 @@ export class Render3DEntities {
     }
   }
 
-  update(): void {
+  update(lodOverride?: Lod3DState, sharedLodGrid?: RenderLodGrid): void {
     // Refresh LOD snapshot once per frame. If the global LOD changed since
     // the last frame, tear down all unit meshes so updateUnits() rebuilds
     // them at the new level — the simplest way to keep every sub-mesh
     // (body, turrets, legs, locomotion, mirrors) consistent with the
     // current GraphicsConfig.
-    const newLod = snapshotLod(this.camera, this.getViewportHeight());
+    const newLod = lodOverride ?? snapshotLod(this.camera, this.getViewportHeight());
     if (newLod.key !== this.lod.key) {
       this.rebuildAllUnitsOnLodChange();
     }
     this.lod = newLod;
-    this.objectLodGrid.beginFrame(this.lod.view, this.lod.gfx);
+    this.objectLodGrid = sharedLodGrid ?? this.ownedObjectLodGrid;
+    if (!sharedLodGrid) this.objectLodGrid.beginFrame(this.lod.view, this.lod.gfx);
 
     // Time step for continuous-rotation effects (barrel spin, wheel roll).
     // Clamp in case the tab was backgrounded.
@@ -1322,6 +1343,32 @@ export class Render3DEntities {
     this.releaseAllMirrorPanelSlots();
   }
 
+  private hideUnitInstancedSlot(
+    im: THREE.InstancedMesh,
+    entityId: EntityId,
+    slot: number | undefined,
+    dirty: { matrixMinSlot: number; matrixMaxSlot: number },
+  ): void {
+    if (slot === undefined || this.unitInstancedHiddenIds.has(entityId)) return;
+    im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    this.unitInstancedHiddenIds.add(entityId);
+    if (slot < dirty.matrixMinSlot) dirty.matrixMinSlot = slot;
+    if (slot > dirty.matrixMaxSlot) dirty.matrixMaxSlot = slot;
+  }
+
+  private shouldUpdateUnitInstancedMatrix(
+    entity: Entity,
+    tier: RenderObjectLodTier,
+    slotWasNew: boolean,
+    wasHidden: boolean,
+  ): boolean {
+    if (slotWasNew || wasHidden) return true;
+    if (entity.selectable?.selected === true) return true;
+    const stride = MASS_INSTANCE_MATRIX_STRIDE[tier] ?? 1;
+    if (stride <= 1) return true;
+    return (this.unitInstancedFrame + entity.id) % stride === 0;
+  }
+
   /** LOW-tier per-frame instance write. Each visible unit takes one
    *  slot in the InstancedMesh; the slot's matrix encodes its world
    *  pose (translation + Y-rotation + uniform scale by render radius)
@@ -1333,37 +1380,46 @@ export class Render3DEntities {
    *  visible unit per frame, no allocations. */
   private updateUnitsInstanced(
     units = this.clientViewState.getUnits(),
-    hiddenIds?: ReadonlySet<EntityId>,
-  ): void {
+    collectRichUnits = false,
+  ): readonly Entity[] {
     const im = this.unitInstanced;
-    if (!im) return;
+    if (!im) return this.massRichUnits;
 
+    this.unitInstancedFrame = (this.unitInstancedFrame + 1) & 0x3fffffff;
     const seen = this._seenUnitIds;
     seen.clear();
+    const richIds = this.massRichUnitIds;
+    const richUnits = this.massRichUnits;
+    if (collectRichUnits) {
+      richIds.clear();
+      richUnits.length = 0;
+    }
     let colorDirty = false;
     let matrixMinSlot = Number.POSITIVE_INFINITY;
     let matrixMaxSlot = -1;
     let colorMinSlot = Number.POSITIVE_INFINITY;
     let colorMaxSlot = -1;
+    const matrixDirty = { matrixMinSlot, matrixMaxSlot };
 
     for (const e of units) {
       seen.add(e.id);
-      if (hiddenIds?.has(e.id)) {
-        const slot = this.unitInstancedSlot.get(e.id);
-        if (slot !== undefined) {
-          im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-          if (slot < matrixMinSlot) matrixMinSlot = slot;
-          if (slot > matrixMaxSlot) matrixMaxSlot = slot;
-        }
-        continue;
-      }
       // Out-of-scope units still get a slot (so they reappear instantly
       // when the camera pans back) but their slot transform stays at
       // the last known pose; instanced rendering doesn't have the
       // per-unit destruction cost the per-Mesh path was avoiding.
       if (!this.scope.inScope(e.transform.x, e.transform.y, 100)) continue;
+      const objectTier = this.resolveEntityObjectLod(e);
+      if (collectRichUnits) {
+        if (isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor') {
+          richIds.add(e.id);
+          richUnits.push(e);
+          this.hideUnitInstancedSlot(im, e.id, this.unitInstancedSlot.get(e.id), matrixDirty);
+          continue;
+        }
+      }
 
       let slot = this.unitInstancedSlot.get(e.id);
+      let slotWasNew = false;
       if (slot === undefined) {
         if (this.unitInstancedFreeSlots.length > 0) {
           slot = this.unitInstancedFreeSlots.pop()!;
@@ -1375,27 +1431,31 @@ export class Render3DEntities {
         }
         this.unitInstancedSlot.set(e.id, slot);
         this.unitInstancedEntityBySlot[slot] = e.id;
+        slotWasNew = true;
       }
+      const wasHidden = this.unitInstancedHiddenIds.delete(e.id);
 
       const radius = e.unit?.unitRadiusCollider.scale
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;
       const pushR = e.unit?.unitRadiusCollider.push ?? 0;
 
-      // Mirror of the per-unit Mesh path: group at (x, z-pushR, y),
-      // chassis at origin, sphere at chassis-local y=1 with chassis
-      // scaled by radius. Composed into a single matrix here.
-      this._instPos.set(
-        e.transform.x,
-        e.transform.z - pushR + radius,
-        e.transform.y,
-      );
-      this._instQuat.setFromAxisAngle(_INST_UP, -e.transform.rotation);
-      this._instScale.set(radius, radius, radius);
-      this._instMatrix.compose(this._instPos, this._instQuat, this._instScale);
-      im.setMatrixAt(slot, this._instMatrix);
-      if (slot < matrixMinSlot) matrixMinSlot = slot;
-      if (slot > matrixMaxSlot) matrixMaxSlot = slot;
+      if (this.shouldUpdateUnitInstancedMatrix(e, objectTier, slotWasNew, wasHidden)) {
+        // Mirror of the per-unit Mesh path: group at (x, z-pushR, y),
+        // chassis at origin, sphere at chassis-local y=1 with chassis
+        // scaled by radius. Composed into a single matrix here.
+        this._instPos.set(
+          e.transform.x,
+          e.transform.z - pushR + radius,
+          e.transform.y,
+        );
+        this._instQuat.setFromAxisAngle(_INST_UP, -e.transform.rotation);
+        this._instScale.set(radius, radius, radius);
+        this._instMatrix.compose(this._instPos, this._instQuat, this._instScale);
+        im.setMatrixAt(slot, this._instMatrix);
+        if (slot < matrixDirty.matrixMinSlot) matrixDirty.matrixMinSlot = slot;
+        if (slot > matrixDirty.matrixMaxSlot) matrixDirty.matrixMaxSlot = slot;
+      }
 
       const pid = e.ownership?.playerId;
       const colorKey = `${pid ?? -1}`;
@@ -1414,14 +1474,17 @@ export class Render3DEntities {
     for (const [id, slot] of this.unitInstancedSlot) {
       if (!seen.has(id)) {
         im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-        if (slot < matrixMinSlot) matrixMinSlot = slot;
-        if (slot > matrixMaxSlot) matrixMaxSlot = slot;
+        if (slot < matrixDirty.matrixMinSlot) matrixDirty.matrixMinSlot = slot;
+        if (slot > matrixDirty.matrixMaxSlot) matrixDirty.matrixMaxSlot = slot;
         this.unitInstancedFreeSlots.push(slot);
         this.unitInstancedEntityBySlot[slot] = undefined;
         this.unitInstancedSlot.delete(id);
         this.unitInstancedColorKey.delete(id);
+        this.unitInstancedHiddenIds.delete(id);
       }
     }
+    matrixMinSlot = matrixDirty.matrixMinSlot;
+    matrixMaxSlot = matrixDirty.matrixMaxSlot;
     this.unitInstancedNextSlot = this.trimFreeTail(
       this.unitInstancedFreeSlots,
       this.unitInstancedNextSlot,
@@ -1446,6 +1509,7 @@ export class Render3DEntities {
     im.count = this.unitInstancedNextSlot;
     this.markInstanceMatrixRange(im, matrixMinSlot, matrixMaxSlot);
     if (colorDirty) this.markInstanceColorRange(im, colorMinSlot, colorMaxSlot);
+    return richUnits;
   }
 
   /** Tier flipped from LOW to MED+: hide every active instanced slot
@@ -1460,9 +1524,13 @@ export class Render3DEntities {
     this.unitInstancedSlot.clear();
     this.unitInstancedEntityBySlot.length = 0;
     this.unitInstancedColorKey.clear();
+    this.unitInstancedHiddenIds.clear();
+    this.massRichUnitIds.clear();
+    this.massRichUnits.length = 0;
     this.unitInstancedFreeSlots.length = 0;
     this.unitInstancedNextSlot = 0;
     this.unitInstancedCompactFrame = 0;
+    this.unitInstancedFrame = 0;
     im.count = 0;
     im.instanceMatrix.needsUpdate = true;
   }
@@ -1839,31 +1907,6 @@ export class Render3DEntities {
     );
   }
 
-  private collectMassRichUnits(units: readonly Entity[]): readonly Entity[] {
-    const ids = this.massRichUnitIds;
-    const detail = this.massRichUnits;
-    ids.clear();
-    detail.length = 0;
-
-    const add = (entity: Entity, hideMassBody: boolean): void => {
-      if (detail.includes(entity)) return;
-      if (hideMassBody) ids.add(entity.id);
-      detail.push(entity);
-    };
-
-    for (const entity of units) {
-      if (!this.scope.inScope(entity.transform.x, entity.transform.y, 100)) continue;
-      const tier = this.resolveEntityObjectLod(entity);
-      if (isRichObjectLod(tier)) {
-        add(entity, true);
-      } else if (tier === 'simple') {
-        add(entity, false);
-      }
-    }
-
-    return detail;
-  }
-
   private updateUnits(): void {
     const units = this.clientViewState.getUnits();
     const unitRenderMode = this.lod.gfx.unitRenderMode;
@@ -1879,8 +1922,7 @@ export class Render3DEntities {
     }
 
     if (unitRenderMode === 'hybrid') {
-      const richUnits = this.collectMassRichUnits(units);
-      this.updateUnitsInstanced(units, this.massRichUnitIds);
+      const richUnits = this.updateUnitsInstanced(units, true);
       this.updateUnitMeshes(richUnits);
       return;
     }
@@ -1939,8 +1981,11 @@ export class Render3DEntities {
       const turrets = e.turrets ?? [];
       const objectTier = this.resolveEntityObjectLod(e);
       const isCommanderUnit = e.commander !== undefined;
-      const fullUnitDetail = isRichObjectLod(objectTier);
-      const unitGraphicsTier = objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
+      const fullUnitDetail =
+        isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor';
+      const unitGraphicsTier = objectTier === 'impostor'
+        ? 'min'
+        : objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
       const unitGfx = getGraphicsConfigFor(unitGraphicsTier);
       const unitLodKey = lodKey(unitGfx);
 
@@ -2875,10 +2920,14 @@ export class Render3DEntities {
 
     for (const e of buildings) {
       seen.add(e.id);
-      // Scope gate — larger padding for buildings (bigger footprint).
-      if (!this.scope.inScope(e.transform.x, e.transform.y, 200)) continue;
+      // Buildings are sparse and strategically important. Do not apply
+      // the 2D render-scope early-out here: it can disagree with the
+      // perspective/frustum view at steep camera angles and make a
+      // building vanish even though its 3D LOD cell should render a
+      // full shape or marker. Let Three frustum-cull the final meshes.
       const objectTier = this.resolveEntityObjectLod(e);
-      const tier = objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
+      const markerOnly = objectTier === 'marker';
+      const tier = markerOnly ? 'min' : objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
       const pid = e.ownership?.playerId;
       // Building type drives the per-type shape (factory, solar, …) —
       // fallback to 'unknown' for anything the art doesn't cover yet.
@@ -2935,9 +2984,11 @@ export class Render3DEntities {
         };
         this.buildingMeshes.set(e.id, m);
       } else if (!m.buildingPrimaryMaterialLocked) {
+        m.group.visible = true;
         const primaryMat = this.getPrimaryMat(pid);
         for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
       }
+      if (m) m.group.visible = true;
       if (m.buildingDetails) {
         const primaryMat = this.getPrimaryMat(pid);
         for (const detail of m.buildingDetails) {
@@ -2972,8 +3023,21 @@ export class Render3DEntities {
       const primary = m.chassisMeshes[0];
       primary.position.set(0, renderH / 2, 0);
       primary.scale.set(w, renderH, d);
+      primary.visible = !markerOnly;
+      if (!m.lodMarker) {
+        const marker = new THREE.Mesh(this.unitSphereLowGeom, this.getPrimaryMat(pid));
+        marker.userData.entityId = e.id;
+        m.group.add(marker);
+        m.lodMarker = marker;
+      } else {
+        m.lodMarker.material = this.getPrimaryMat(pid);
+      }
+      const markerRadius = Math.max(12, Math.min(48, Math.hypot(w, d) * 0.16));
+      m.lodMarker.visible = markerOnly;
+      m.lodMarker.position.set(0, markerRadius, 0);
+      m.lodMarker.scale.setScalar(markerRadius);
       if (m.buildingDetails) {
-        const detailsReady = progress >= 1;
+        const detailsReady = !markerOnly && progress >= 1;
         for (const detail of m.buildingDetails) {
           const visible = detailsReady && buildingDetailVisible(detail, tier);
           detail.mesh.visible = visible;
@@ -2982,7 +3046,7 @@ export class Render3DEntities {
         this.updateWindTurbineRig(m, detailsReady);
         this.updateExtractorRig(m, e, detailsReady);
       }
-      this.updateFactoryConstructionRig(m.factoryRig, e, tier, progress >= 1, w, d, m.group);
+      this.updateFactoryConstructionRig(m.factoryRig, e, tier, !markerOnly && progress >= 1, w, d, m.group);
 
       // Building selection halo. Uses the same torus material/geometry as
       // units so clicking a factory/solar/wind reads like selecting any
@@ -3077,10 +3141,36 @@ export class Render3DEntities {
     if (!wind) return;
 
     const targetYaw = Math.atan2(wind.x, wind.y);
-    this.windFanYaw = this.windFanYaw === null
-      ? targetYaw
-      : lerpAngleRadians(this.windFanYaw, targetYaw, WIND_YAW_EMA_ALPHA);
-    this.windRotorPhase += dtSec * wind.speed * WIND_ROTOR_RAD_PER_SEC;
+    const targetSpeed = wind.speed;
+    if (this.windFanYaw === null || this.windVisualSpeed === null || dtSec <= 0) {
+      this.windFanYaw = targetYaw;
+      this.windVisualSpeed = targetSpeed;
+    } else {
+      const preset = getDriftPreset(getDriftMode());
+      this.windFanYaw = lerpAngle(
+        this.windFanYaw,
+        targetYaw,
+        halfLifeBlend(
+          dtSec,
+          scaledWindTurbineHalfLife(
+            preset.rotation.pos,
+            WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.fanYaw,
+          ),
+        ),
+      );
+      this.windVisualSpeed = lerp(
+        this.windVisualSpeed,
+        targetSpeed,
+        halfLifeBlend(
+          dtSec,
+          scaledWindTurbineHalfLife(
+            preset.rotation.vel,
+            WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.bladeSpeed,
+          ),
+        ),
+      );
+    }
+    this.windRotorPhase += dtSec * this.windVisualSpeed * WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED;
   }
 
   private updateWindTurbineRig(m: EntityMesh, detailsReady: boolean): void {
@@ -3257,7 +3347,7 @@ export class Render3DEntities {
       }
 
       const objectTier = this.resolveEntityObjectLod(e);
-      if (objectTier === 'hidden') {
+      if (objectTier === 'marker') {
         this.hideProjRadiusMeshes(e.id);
         continue;
       }
@@ -3578,9 +3668,14 @@ export class Render3DEntities {
     }
     this.unitSphereLowGeom.dispose();
     this.unitInstancedSlot.clear();
+    this.unitInstancedColorKey.clear();
+    this.unitInstancedHiddenIds.clear();
+    this.massRichUnitIds.clear();
+    this.massRichUnits.length = 0;
     this.unitInstancedEntityBySlot.length = 0;
     this.unitInstancedFreeSlots.length = 0;
     this.unitInstancedCompactFrame = 0;
+    this.unitInstancedFrame = 0;
     if (this.smoothChassis) {
       this.world.remove(this.smoothChassis);
       // Material is a private MeshLambertMaterial only owned by this

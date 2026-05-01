@@ -6,6 +6,10 @@ import type {
   GraphicsDetailConfig,
   LodSignalStates,
 } from './types/lod';
+import type {
+  CameraSphereRadii,
+  ConcreteGraphicsQuality,
+} from './types/graphics';
 
 // =============================================================================
 // PLAYER CLIENT LOD — SIGNAL TOGGLES
@@ -90,10 +94,10 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
   // Whether the cap is 1k or 16k, the LOD ladder steps at the same
   // proportional milestones.
   units: {
-    low: 0.25,    // ratio >= 0.25 (≤75% full) → low or better
-    medium: 0.5,  // ratio >= 0.50 (≤50% full) → medium or better
-    high: 0.75,   // ratio >= 0.75 (≤25% full) → high or better
-    max: 0.9,     // ratio >= 0.90 (≤10% full) → max
+    low: 0.25, // ratio >= 0.25 (≤75% full) → low or better
+    medium: 0.5, // ratio >= 0.50 (≤50% full) → medium or better
+    high: 0.75, // ratio >= 0.75 (≤25% full) → high or better
+    max: 0.9, // ratio >= 0.90 (≤10% full) → max
   },
 };
 
@@ -130,8 +134,8 @@ export const LOD_EMA_SOURCE: LodEmaSource = {
 // Labels are intentionally the same names shown in the bar:
 // MIN / LOW / MID / HI / MAX.
 export const CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP = {
-  MIN: 7,
-  LOW: 4,
+  MIN: 4,
+  LOW: 3,
   MID: 2,
   HI: 1,
   MAX: 0,
@@ -141,6 +145,49 @@ export const CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP = {
  * Centralized graphics detail level configuration.
  * Each key defines what happens at each detail level: min, low, medium, high, max.
  */
+export const CAMERA_SPHERE_BASE_RADIUS = 300;
+
+// Scales the innermost "rich" sphere by global PLAYER CLIENT LOD.
+// CAMERA_SPHERE_BASE_RADIUS is a true linear multiplier for every
+// generated camera sphere radius. Keep these modest: the camera
+// distance itself is part of the 3D sphere distance, so huge radii make
+// an entire 3150 game map resolve to the same LOD band.
+export const CAMERA_SPHERE_LOD_RADIUS_MULTIPLIERS = {
+  min: 1,
+  low: 1.35,
+  medium: 1.75,
+  high: 2.15,
+  max: 2.5,
+} as const satisfies Record<ConcreteGraphicsQuality, number>;
+
+// Scales each concentric camera sphere from that LOD's rich radius.
+// Edit these to change ring spacing globally without touching every LOD.
+// Set a sphere multiplier to 0 to disable that shell; disabled shells
+// are skipped by both object LOD resolution and debug ground rings.
+export const CAMERA_SPHERE_RING_RADIUS_MULTIPLIERS = {
+  rich: 1,
+  simple: 1.75,
+  mass: 2.75,
+  impostor: 4,
+} as const satisfies CameraSphereRadii;
+
+function makeCameraSphereRadii(
+  lod: ConcreteGraphicsQuality,
+): CameraSphereRadii {
+  const richRadius =
+    CAMERA_SPHERE_BASE_RADIUS * CAMERA_SPHERE_LOD_RADIUS_MULTIPLIERS[lod];
+  return {
+    rich: Math.round(richRadius * CAMERA_SPHERE_RING_RADIUS_MULTIPLIERS.rich),
+    simple: Math.round(
+      richRadius * CAMERA_SPHERE_RING_RADIUS_MULTIPLIERS.simple,
+    ),
+    mass: Math.round(richRadius * CAMERA_SPHERE_RING_RADIUS_MULTIPLIERS.mass),
+    impostor: Math.round(
+      richRadius * CAMERA_SPHERE_RING_RADIUS_MULTIPLIERS.impostor,
+    ),
+  };
+}
+
 export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // -------------------------------------------------------------------------
   // Each tier should feel visibly different from the one below it.
@@ -162,29 +209,32 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: 'hybrid',
     max: 'hybrid',
   },
-  // Object-level view LOD. The configured value is the literal 3D radius
-  // of the innermost camera-centered sphere. Ground markings are the
-  // terrain intersections of those spheres, so their footprints shrink
-  // and expand naturally as camera altitude changes. Object size is
-  // intentionally ignored so detail is regular and controlled by one
-  // set of concentric fidelity shells.
-  RICH_OBJECT_DISTANCE: {
-    min: 180,
-    low: 260,
-    medium: 380,
-    high: 500,
-    max: 600,
+  // Camera-centered object LOD sphere radii, in world units. Ground
+  // markings are the terrain intersections of these spheres, so their
+  // footprints shrink and expand naturally as camera altitude changes.
+  // Object size is intentionally ignored so detail is regular and
+  // controlled by one set of concentric fidelity shells.
+  //
+  // Bands:
+  //   0..rich       => rich
+  //   rich..simple  => simple
+  //   simple..mass  => mass
+  //   mass..impostor => impostor
+  //   outside impostor => marker sphere
+
+  CAMERA_SPHERE_RADII: {
+    min: makeCameraSphereRadii('min'),
+    low: makeCameraSphereRadii('low'),
+    medium: makeCameraSphereRadii('medium'),
+    high: makeCameraSphereRadii('high'),
+    max: makeCameraSphereRadii('max'),
   },
-  // Full 3D render LOD grid cell size. Units, buildings, and deposits
-  // inherit the LOD tier of the grid cell containing their origin; item
-  // size and projected screen size are intentionally ignored.
-  OBJECT_LOD_CELL_SIZE: {
-    min: 160,
-    low: 144,
-    medium: 128,
-    high: 112,
-    max: 96,
-  },
+  // Full 3D render/prediction LOD grid cell size. This is intentionally
+  // fixed across PLAYER CLIENT LOD states: the grid is the stable world
+  // partition, while LOD changes adjust sphere radii, quality, cadence,
+  // and budgets. Units, buildings, deposits, effects, and client
+  // prediction inherit the LOD tier of the cell containing their origin.
+  OBJECT_LOD_CELL_SIZE: 512,
   HUD_FRAME_STRIDE: {
     min: 4,
     low: 3,
@@ -206,15 +256,19 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.HI,
     max: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.MAX,
   },
-  // Terrain/capture overlay mesh. Lower tiers reduce the per-tile
-  // surface tessellation and throttle color-buffer uploads. MAX
-  // keeps the canonical TERRAIN_MESH_SUBDIV=4 surface detail.
-  CAPTURE_TILE_SUBDIV: {
+  // Mana/capture tile terrain smoothness. This is intentionally global
+  // per PLAYER CLIENT LOD, not camera-sphere based: every mana tile
+  // switches together when the global LOD changes.
+  //
+  // Values are per-tile terrain subdivisions. The renderer caps this
+  // at TERRAIN_MESH_SUBDIV, so higher values are safe but no richer
+  // than the terrain mesh can represent.
+  MANA_TILE_SMOOTHNESS: {
     min: 1,
     low: 1,
     medium: 2,
-    high: 3,
-    max: 4,
+    high: 2,
+    max: 2,
   },
   CAPTURE_TILE_FRAME_STRIDE: {
     min: 8,
@@ -413,13 +467,41 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 'inferno',
   },
 
-  // Death (unit wreckage) explosion style
-  // 'puff' ~3 draws, 'scatter' ~12, 'shatter' ~25, 'detonate' ~55, 'obliterate' ~120
+  // Material explosions: part-based wreckage/debris emitted by Debris3D
+  // when units die. These are separate from fireball impact explosions.
+  // Style controls visual richness, piece budget caps pieces per death,
+  // and physics frame skip controls how often debris position/tumble
+  // integrates:
+  //   0 => every render frame, 1 => every other frame, etc.
+  MATERIAL_EXPLOSION_STYLE: {
+    min: 'puff',
+    low: 'scatter',
+    medium: 'shatter',
+    high: 'detonate',
+    max: 'obliterate',
+  },
+  MATERIAL_EXPLOSION_PIECE_BUDGET: {
+    min: 3,
+    low: 6,
+    medium: 12,
+    high: 24,
+    max: 40,
+  },
+  MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP: {
+    min: 8,
+    low: 5,
+    medium: 3,
+    high: 1,
+    max: 0,
+  },
+
+  // Legacy death explosion style alias. Kept aligned with material
+  // explosions for older call sites and saved configs.
   DEATH_EXPLOSION_STYLE: {
     min: 'puff',
     low: 'scatter',
-    medium: 'scatter',
-    high: 'shatter',
+    medium: 'shatter',
+    high: 'detonate',
     max: 'obliterate',
   },
 

@@ -5,16 +5,17 @@
 // cylinder per path segment using each segment's real altitude, so reflected
 // beam visuals match the server collision path without client-side tracing.
 //
-// Cylinders come from a shared pool: each frame we rebuild by pulling from
-// the pool and hiding any leftover meshes. Per-team materials are cached.
+// Beam cylinders are drawn through one InstancedMesh. Each live path segment
+// writes a matrix + alpha into the shared instance buffers, so a beam-heavy
+// fight stays one draw call instead of one mesh/material draw per segment.
 
 import * as THREE from 'three';
-import type { Entity, PlayerId } from '../sim/types';
+import type { Entity } from '../sim/types';
 import { BEAM_MAX_LENGTH } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { snapshotLod } from './Lod3D';
+import type { Lod3DState } from './Lod3D';
 import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
 
@@ -36,10 +37,10 @@ const BEAM_RADIUS_SCALE = 0.55;
 // slightly brighter than plain beams to keep the "laser = hotter" feel.
 const BEAM_OPACITY = 0.16;
 const LASER_OPACITY_MAX = 0.24;
-const BEAM_COLOR = 0xffffff;
+const BEAM_SEGMENT_CAP = 8192;
 
 const BEAM_LOD_ORDER: Record<RenderObjectLodTier, number> = {
-  hidden: 0,
+  marker: 0,
   impostor: 1,
   mass: 2,
   simple: 3,
@@ -63,33 +64,37 @@ const BEAM_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
   max: 1,
 };
 
-type BeamMat = {
-  material: THREE.MeshBasicMaterial;
-  /** Neutralise pool color if later re-used for a different team. */
-  pid: PlayerId | undefined;
-};
+const BEAM_VERTEX_SHADER = `
+attribute float aAlpha;
+varying float vAlpha;
+void main() {
+  vAlpha = aAlpha;
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+}
+`;
+
+const BEAM_FRAGMENT_SHADER = `
+varying float vAlpha;
+void main() {
+  gl_FragColor = vec4(vec3(1.0), vAlpha);
+}
+`;
 
 export class BeamRenderer3D {
   private root: THREE.Group;
   // Unit cylinder along +Y; rotated/positioned to span each segment
   private segmentGeom = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
-  private segmentPool: THREE.Mesh[] = [];
+  private segmentMesh: THREE.InstancedMesh;
+  private segmentMat: THREE.ShaderMaterial;
+  private segmentAlpha = new Float32Array(BEAM_SEGMENT_CAP);
+  private segmentAlphaAttr: THREE.InstancedBufferAttribute;
   private activeSegmentCount = 0;
-
-  // One material per (team, projectileType). Lasers and beams render the same
-  // shape but at different opacities.
-  private matCache = new Map<string, BeamMat>();
-
-  // One MUTABLE material per pool slot, used to apply per-segment
-  // distance-based alpha decay. Cloned from the team/type material on
-  // first acquire; per-frame updates rewrite color (in case the slot
-  // is reused for a different team) and opacity (the fade).
-  private segmentMats: THREE.MeshBasicMaterial[] = [];
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
   private scope: ViewportFootprint;
-  private lodGrid = new RenderLodGrid();
+  private ownedLodGrid = new RenderLodGrid();
+  private frameLodGrid = this.ownedLodGrid;
   private lodActive = false;
   private frameGfx: GraphicsConfig = getGraphicsConfig();
 
@@ -100,16 +105,39 @@ export class BeamRenderer3D {
   private _dir = new THREE.Vector3();
   private _up = new THREE.Vector3(0, 1, 0);
   private _quat = new THREE.Quaternion();
+  private _scale = new THREE.Vector3();
+  private _matrix = new THREE.Matrix4();
 
   constructor(parentWorld: THREE.Group, scope: ViewportFootprint) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope;
+
+    this.segmentAlphaAttr = new THREE.InstancedBufferAttribute(this.segmentAlpha, 1);
+    this.segmentAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+    this.segmentGeom.setAttribute('aAlpha', this.segmentAlphaAttr);
+    this.segmentMat = new THREE.ShaderMaterial({
+      vertexShader: BEAM_VERTEX_SHADER,
+      fragmentShader: BEAM_FRAGMENT_SHADER,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+    });
+    this.segmentMesh = new THREE.InstancedMesh(
+      this.segmentGeom,
+      this.segmentMat,
+      BEAM_SEGMENT_CAP,
+    );
+    this.segmentMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.segmentMesh.frustumCulled = false;
+    this.segmentMesh.renderOrder = 12;
+    this.segmentMesh.count = 0;
+    this.root.add(this.segmentMesh);
   }
 
   private resolvePointLod(simX: number, simY: number, simZ: number): RenderObjectLodTier {
     if (!this.lodActive) return 'rich';
-    return this.lodGrid.resolve(simX, simZ, simY);
+    return this.frameLodGrid.resolve(simX, simZ, simY);
   }
 
   private richerLod(a: RenderObjectLodTier, b: RenderObjectLodTier): RenderObjectLodTier {
@@ -134,65 +162,17 @@ export class BeamRenderer3D {
     return tier;
   }
 
-  private getMaterial(pid: PlayerId | undefined, projectileType: string): THREE.MeshBasicMaterial {
-    // Beam color is WHITE regardless of player — matches 2D where the
-    // beam core is always `0xffffff` and team identity comes from the
-    // shooter / hit flare. The `pid` field is still kept in the cache
-    // key so we can swap out later if we add a team-colored outer halo.
-    const key = `${pid ?? -1}|${projectileType}`;
-    const cached = this.matCache.get(key);
-    if (cached) return cached.material;
-    const mat = new THREE.MeshBasicMaterial({
-      color: BEAM_COLOR,
-      transparent: true,
-      opacity: projectileType === 'laser' ? LASER_OPACITY_MAX : BEAM_OPACITY,
-      depthWrite: false,
-    });
-    this.matCache.set(key, { material: mat, pid });
-    return mat;
-  }
-
-  private acquireSegment(i: number): THREE.Mesh {
-    let mesh = this.segmentPool[i];
-    if (!mesh) {
-      mesh = new THREE.Mesh(this.segmentGeom);
-      mesh.renderOrder = 12;
-      this.root.add(mesh);
-      this.segmentPool.push(mesh);
-    }
-    mesh.visible = true;
-    return mesh;
-  }
-
-  /** Per-pool-slot mutable material so each segment can carry its own
-   *  alpha (set from the distance-fade math). Cloned lazily from the
-   *  team/type base material; color + opacity rewritten each frame. */
-  private acquireSegmentMat(
-    i: number,
-    base: THREE.MeshBasicMaterial,
-    fadeMul: number,
-  ): THREE.MeshBasicMaterial {
-    let mat = this.segmentMats[i];
-    if (!mat) {
-      mat = base.clone();
-      this.segmentMats[i] = mat;
-    }
-    mat.color.copy(base.color);
-    mat.opacity = base.opacity * fadeMul;
-    return mat;
-  }
-
   private placeSegment(
-    mesh: THREE.Mesh,
-    ax: number, az: number, bx: number, bz: number,
-    ay: number, by: number,
+    slot: number,
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
     cylRadius: number,
   ): void {
     // sim-(x, y, z) maps to three-(x, z, y) — height is sim.z, which
     // the beam tracer now reports per segment (barrel-tip start,
     // reflection points, and final end all carry their real altitude).
-    this._a.set(ax, ay, az);
-    this._b.set(bx, by, bz);
+    this._a.set(ax, az, ay);
+    this._b.set(bx, bz, by);
     this._mid.copy(this._a).lerp(this._b, 0.5);
     const length = this._a.distanceTo(this._b);
     this._dir.copy(this._b).sub(this._a);
@@ -200,25 +180,38 @@ export class BeamRenderer3D {
     else this._dir.set(1, 0, 0); // avoid NaN on degenerate segments
     // Rotate cylinder's default +Y axis to align with the segment direction.
     this._quat.setFromUnitVectors(this._up, this._dir);
-    mesh.position.copy(this._mid);
-    mesh.quaternion.copy(this._quat);
     // CylinderGeometry has radius 1; scale.x/.z become the actual radius, so
     // beam diameter = 2 · cylRadius = shot.width, matching the 2D renderer.
-    mesh.scale.set(cylRadius, Math.max(length, 1e-3), cylRadius);
+    this._scale.set(cylRadius, Math.max(length, 1e-3), cylRadius);
+    this._matrix.compose(this._mid, this._quat, this._scale);
+    this.segmentMesh.setMatrixAt(slot, this._matrix);
+  }
+
+  private writeSegment(
+    slot: number,
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+    cylRadius: number,
+    alpha: number,
+  ): boolean {
+    if (slot >= BEAM_SEGMENT_CAP || alpha <= 0.001) return false;
+    this.segmentAlpha[slot] = alpha;
+    this.placeSegment(slot, ax, ay, az, bx, by, bz, cylRadius);
+    return true;
   }
 
   update(
     projectiles: readonly Entity[],
     graphicsConfig?: GraphicsConfig,
-    camera?: THREE.PerspectiveCamera,
-    viewportHeightPx = 1,
+    lod?: Lod3DState,
+    sharedLodGrid?: RenderLodGrid,
   ): void {
     if (projectiles.length === 0 && this.activeSegmentCount === 0) return;
     this.frameGfx = graphicsConfig ?? getGraphicsConfig();
-    this.lodActive = camera !== undefined;
-    if (camera) {
-      const lod = snapshotLod(camera, viewportHeightPx);
-      this.lodGrid.beginFrame(lod.view, this.frameGfx);
+    this.lodActive = lod !== undefined;
+    this.frameLodGrid = sharedLodGrid ?? this.ownedLodGrid;
+    if (lod) {
+      if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, this.frameGfx);
     }
 
     let segIdx = 0;
@@ -242,7 +235,7 @@ export class BeamRenderer3D {
       const startZ = proj.startZ ?? SHOT_HEIGHT;
       const endZ = proj.endZ ?? SHOT_HEIGHT;
       const objectTier = this.resolveBeamLod(startX, startY, startZ, endX, endY, endZ);
-      if (objectTier === 'hidden') continue;
+      if (objectTier === 'marker') continue;
       const graphicsTier = objectLodToGraphicsTier(objectTier, this.frameGfx.tier);
       const opacityMul = BEAM_OPACITY_BY_TIER[graphicsTier];
       const radiusMul = BEAM_RADIUS_BY_TIER[graphicsTier];
@@ -267,7 +260,7 @@ export class BeamRenderer3D {
       if (shot && (shot.type === 'beam' || shot.type === 'laser')) {
         cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius * BEAM_RADIUS_SCALE * radiusMul);
       }
-      const baseMat = this.getMaterial(proj.ownerId, pt);
+      const baseAlpha = pt === 'laser' ? LASER_OPACITY_MAX : BEAM_OPACITY;
 
       // Build the path: start → reflections[0..n-1] → end. Each
       // consecutive pair is one cylinder segment. Each reflection
@@ -288,11 +281,10 @@ export class BeamRenderer3D {
           const r = reflections[i];
           const segLen = Math.hypot(r.x - prevX, r.y - prevY, r.z - prevZ);
           const midDist = cumDist + segLen / 2;
-          const fade = Math.max(0, 1 - midDist / BEAM_MAX_LENGTH) * opacityMul;
-          const slot = segIdx++;
-          const mesh = this.acquireSegment(slot);
-          mesh.material = this.acquireSegmentMat(slot, baseMat, fade);
-          this.placeSegment(mesh, prevX, prevY, r.x, r.y, prevZ, r.z, cylRadius);
+          const alpha = baseAlpha * Math.max(0, 1 - midDist / BEAM_MAX_LENGTH) * opacityMul;
+          if (this.writeSegment(segIdx, prevX, prevY, prevZ, r.x, r.y, r.z, cylRadius, alpha)) {
+            segIdx++;
+          }
           prevX = r.x;
           prevY = r.y;
           prevZ = r.z;
@@ -301,28 +293,29 @@ export class BeamRenderer3D {
       }
       const finalLen = Math.hypot(endX - prevX, endY - prevY, endZ - prevZ);
       const finalMid = cumDist + finalLen / 2;
-      const finalFade = Math.max(0, 1 - finalMid / BEAM_MAX_LENGTH) * opacityMul;
-      const finalSlot = segIdx++;
-      const mesh = this.acquireSegment(finalSlot);
-      mesh.material = this.acquireSegmentMat(finalSlot, baseMat, finalFade);
-      this.placeSegment(mesh, prevX, prevY, endX, endY, prevZ, endZ, cylRadius);
+      const finalAlpha = baseAlpha * Math.max(0, 1 - finalMid / BEAM_MAX_LENGTH) * opacityMul;
+      if (this.writeSegment(segIdx, prevX, prevY, prevZ, endX, endY, endZ, cylRadius, finalAlpha)) {
+        segIdx++;
+      }
     }
 
-    // Hide leftover pool entries (beams that disappeared this frame).
-    for (let i = segIdx; i < this.segmentPool.length; i++) {
-      this.segmentPool[i].visible = false;
+    this.segmentMesh.count = segIdx;
+    if (segIdx > 0) {
+      this.segmentMesh.instanceMatrix.clearUpdateRanges();
+      this.segmentMesh.instanceMatrix.addUpdateRange(0, segIdx * 16);
+      this.segmentMesh.instanceMatrix.needsUpdate = true;
+      this.segmentAlphaAttr.clearUpdateRanges();
+      this.segmentAlphaAttr.addUpdateRange(0, segIdx);
+      this.segmentAlphaAttr.needsUpdate = true;
     }
     this.activeSegmentCount = segIdx;
   }
 
   destroy(): void {
-    for (const mesh of this.segmentPool) this.root.remove(mesh);
-    this.segmentPool.length = 0;
-    for (const mat of this.segmentMats) mat.dispose();
-    this.segmentMats.length = 0;
+    this.root.remove(this.segmentMesh);
+    this.segmentMesh.dispose();
+    this.segmentMat.dispose();
     this.segmentGeom.dispose();
-    for (const { material } of this.matCache.values()) material.dispose();
-    this.matCache.clear();
     this.root.parent?.remove(this.root);
   }
 }

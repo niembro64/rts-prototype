@@ -8,14 +8,18 @@
 // the tumble visibly slows to a stop while the color fades toward the map
 // background.
 //
-// The `deathExplosionStyle` LOD only narrows the final list lightly — at
-// 'puff' we take every other piece, at 'scatter' three quarters, at
-// 'shatter'/'detonate'/'obliterate' we emit all pieces. Every LOD still
-// sees pieces from each kind of source (treads, legs, turret, body, etc.)
-// because the selection strides through the template list rather than
-// truncating the tail.
+// Material-explosion LOD is controlled by three explicit PLAYER CLIENT
+// config fields:
+//   materialExplosionStyle             => visual richness / source thinning
+//   materialExplosionPieceBudget       => max pieces emitted per unit death
+//   materialExplosionPhysicsFramesSkip => debris physics update cadence
+//
+// Even at low budgets we keep a representative spread from the template list
+// rather than truncating the tail, so body, tread, leg, turret, and barrel
+// sources all still get a chance to appear.
 
 import * as THREE from 'three';
+import type { GraphicsConfig } from '@/types/graphics';
 import type { SimDeathContext } from '@/types/combat';
 import type { UnitBodyShape } from '@/types/blueprints';
 import { getGraphicsConfig } from '@/clientBarConfig';
@@ -39,9 +43,9 @@ type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
  *  emit every piece, '2' every other, etc. All pieces are visually
  *  equivalent so a stride still yields a representative mix. */
 const STYLE_STRIDE: Record<DebrisStyle, number> = {
-  puff: 2,
-  scatter: 1,
-  shatter: 1,
+  puff: 4,
+  scatter: 3,
+  shatter: 2,
   detonate: 1,
   obliterate: 1,
 };
@@ -72,6 +76,7 @@ const GLOBAL_MAX_PIECES = 800;
 // that falls (physics engine, projectile arc, client prediction).
 const LINEAR_DRAG = 0.985;
 const ANGULAR_DRAG = 0.955;
+const MAX_PHYSICS_STEP_MS = 80;
 
 const BASE_LIFETIME_MS = 1700;
 const LIFETIME_JITTER_MS = 800;
@@ -332,6 +337,8 @@ type Piece = {
   sx: number; sy: number; sz: number;
   age: number;
   lifetime: number;
+  accumMs: number;
+  frameStride: number;
   baseR: number; baseG: number; baseB: number;
 };
 
@@ -347,6 +354,8 @@ export class Debris3D {
    *  Eviction (when over GLOBAL_MAX_PIECES) shifts from front; per-
    *  frame death (age >= lifetime) splices from anywhere. */
   private pieces: Piece[] = [];
+  private physicsFrameIndex = 0;
+  private poolFlushPending = false;
 
   // Scratch vectors reused per emit — avoids per-piece allocation.
   private _up = new THREE.Vector3(0, 1, 0);
@@ -389,9 +398,20 @@ export class Debris3D {
    *  Y used by Render3DEntities: transform.z - pushRadius. New death
    *  contexts carry that as `baseZ`; older contexts fall back to the
    *  previous radius-derived estimate. */
-  spawn(simX: number, simY: number, simZ: number, ctx: SimDeathContext): void {
-    const style = (getGraphicsConfig().deathExplosionStyle ?? 'scatter') as DebrisStyle;
-    const stride = STYLE_STRIDE[style];
+  spawn(
+    simX: number,
+    simY: number,
+    simZ: number,
+    ctx: SimDeathContext,
+    graphicsOverride?: GraphicsConfig,
+  ): void {
+    const gfx = graphicsOverride ?? getGraphicsConfig();
+    const style = (gfx.materialExplosionStyle ?? gfx.deathExplosionStyle ?? 'scatter') as DebrisStyle;
+    const stride = Math.max(1, STYLE_STRIDE[style] ?? 1);
+    const pieceBudget = Math.max(0, Math.floor(gfx.materialExplosionPieceBudget ?? GLOBAL_MAX_PIECES));
+    const physicsFrameStride =
+      Math.max(0, Math.floor(gfx.materialExplosionPhysicsFramesSkip ?? 0)) + 1;
+    if (pieceBudget <= 0) return;
 
     const r = Math.max(ctx.visualRadius ?? ctx.radius ?? 10, 6);
     const primary = ctx.color ?? 0xcccccc;
@@ -402,6 +422,9 @@ export class Debris3D {
     const groundZ = ctx.baseZ ?? (simZ - (ctx.pushRadius ?? r));
 
     const templates = this.buildTemplates(ctx, r, primary);
+    const candidateCount = Math.ceil(templates.length / stride);
+    const emitCount = Math.min(pieceBudget, candidateCount);
+    if (emitCount <= 0) return;
 
     // Hit bias (sim XY → world XZ) — biases all pieces away from the
     // attacker. Small magnitude so it reads as a nudge rather than a shove.
@@ -418,15 +441,46 @@ export class Debris3D {
     const cosR = Math.cos(rotation);
     const sinR = Math.sin(rotation);
 
-    for (let i = 0; i < templates.length; i += stride) {
-      this.emitPiece(templates[i], simX, simY, groundZ, cosR, sinR, rotation, biasX, biasZ, uvx, uvz);
+    for (let emitIdx = 0; emitIdx < emitCount; emitIdx++) {
+      const templateIdx = this.templateIndexForBudget(emitIdx, emitCount, candidateCount, stride);
+      this.emitPiece(
+        templates[templateIdx],
+        simX,
+        simY,
+        groundZ,
+        cosR,
+        sinR,
+        rotation,
+        biasX,
+        biasZ,
+        uvx,
+        uvz,
+        physicsFrameStride,
+      );
     }
 
     // Evict oldest pieces if we blew past the global cap.
     while (this.pieces.length > GLOBAL_MAX_PIECES) {
       const dropped = this.pieces.shift();
-      if (dropped) this.poolFor(dropped.shape).free(dropped.slot);
+      if (dropped) {
+        this.poolFor(dropped.shape).free(dropped.slot);
+        this.poolFlushPending = true;
+      }
     }
+  }
+
+  private templateIndexForBudget(
+    emitIdx: number,
+    emitCount: number,
+    candidateCount: number,
+    stride: number,
+  ): number {
+    if (emitCount >= candidateCount) return emitIdx * stride;
+    const candidateIdx = Math.min(
+      candidateCount - 1,
+      Math.floor(((emitIdx + 0.5) * candidateCount) / emitCount),
+    );
+    return candidateIdx * stride;
   }
 
   /**
@@ -832,6 +886,7 @@ export class Debris3D {
     biasZ: number,
     uvx: number,
     uvz: number,
+    physicsFrameStride: number,
   ): void {
     // --- Allocate slot in the right pool ---
     const pool = this.poolFor(t.shape);
@@ -959,23 +1014,39 @@ export class Debris3D {
       sx, sy, sz,
       age: 0,
       lifetime: BASE_LIFETIME_MS + Math.random() * LIFETIME_JITTER_MS,
+      accumMs: 0,
+      frameStride: physicsFrameStride,
       baseR, baseG, baseB,
     };
     this.pieces.push(piece);
     // Write initial state to the slot so the piece is visible from
     // frame 0 (the per-frame update loop will keep it fresh).
     pool.write(slot, px, py, pz, rx, ry, rz, sx, sy, sz, baseR, baseG, baseB, 1);
+    this.poolFlushPending = true;
   }
 
   update(dtMs: number): void {
-    const dtSec = dtMs / 1000;
-    // Time-aware drag factors derived from the per-60Hz multipliers.
-    const linDrag = Math.pow(LINEAR_DRAG, dtSec * 60);
-    const angDrag = Math.pow(ANGULAR_DRAG, dtSec * 60);
+    if (this.pieces.length === 0) {
+      if (this.poolFlushPending) this.flushPools();
+      return;
+    }
+    this.physicsFrameIndex = (this.physicsFrameIndex + 1) & 0x3fffffff;
 
     for (let i = this.pieces.length - 1; i >= 0; i--) {
       const p = this.pieces[i];
-      p.age += dtMs;
+      p.accumMs += dtMs;
+      const frameStride = Math.max(1, p.frameStride | 0);
+      if (frameStride > 1 && (this.physicsFrameIndex + p.slot) % frameStride !== 0) {
+        continue;
+      }
+
+      const stepMs = Math.min(p.accumMs, MAX_PHYSICS_STEP_MS);
+      p.accumMs = 0;
+      const dtSec = stepMs / 1000;
+      // Time-aware drag factors derived from the per-60Hz multipliers.
+      const linDrag = Math.pow(LINEAR_DRAG, dtSec * 60);
+      const angDrag = Math.pow(ANGULAR_DRAG, dtSec * 60);
+      p.age += stepMs;
 
       // Linear physics — gravity + drag + integrate position.
       p.vy -= GRAVITY * dtSec;
@@ -1010,6 +1081,7 @@ export class Debris3D {
       const t = p.age / p.lifetime;
       if (t >= 1) {
         this.poolFor(p.shape).free(p.slot);
+        this.poolFlushPending = true;
         this.pieces.splice(i, 1);
         continue;
       }
@@ -1028,14 +1100,20 @@ export class Debris3D {
         p.sx, p.sy, p.sz,
         r, g, b, alpha,
       );
+      this.poolFlushPending = true;
     }
 
     // Flush all three pools — push instance buffer updates + tighten
     // count to nextSlot so the GPU only runs the vertex shader on
     // active slots.
+    this.flushPools();
+  }
+
+  private flushPools(): void {
     this.boxPool.flush();
     this.cylPool.flush();
     this.spherePool.flush();
+    this.poolFlushPending = false;
   }
 
   destroy(): void {

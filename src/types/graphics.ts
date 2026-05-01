@@ -29,6 +29,17 @@ export type UnitShape = 'circles' | 'full';
 export type LegStyle = 'none' | 'simple' | 'animated' | 'full';
 export type UnitRenderMode = 'mass' | 'hybrid' | 'rich';
 
+export type CameraSphereRadii = {
+  /** Innermost sphere: full rich object visuals. */
+  rich: number;
+  /** Second sphere: simplified rich meshes. */
+  simple: number;
+  /** Third sphere: mass-renderer/detail-reduced visuals. */
+  mass: number;
+  /** Outermost simplified-shape sphere. Outside this, objects render as cheap markers. */
+  impostor: number;
+};
+
 export type GraphicsConfig = {
   /** The concrete tier this config was resolved to. Lets renderers
    *  branch on the *level* (e.g. 3D draws units as plain spheres at
@@ -36,7 +47,7 @@ export type GraphicsConfig = {
    *  field combinations. */
   tier: ConcreteGraphicsQuality;
   unitRenderMode: UnitRenderMode;
-  richObjectDistance: number;
+  cameraSphereRadii: CameraSphereRadii;
   objectLodCellSize: number;
   hudFrameStride: number;
   effectFrameStride: number;
@@ -64,5 +75,8 @@ export type GraphicsConfig = {
   forceFieldStyle: ForceFieldStyle;
   projectileStyle: ProjectileStyle;
   fireExplosionStyle: FireExplosionStyle;
+  materialExplosionStyle: DeathExplosionStyle;
+  materialExplosionPieceBudget: number;
+  materialExplosionPhysicsFramesSkip: number;
   deathExplosionStyle: DeathExplosionStyle;
 };
