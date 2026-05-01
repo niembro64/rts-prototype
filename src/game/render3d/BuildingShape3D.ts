@@ -322,7 +322,7 @@ function buildExtractor(
   const bladeThickness = Math.max(4.5, minDim * 0.11);
   const bladeRootRadius = Math.max(hubRadius * 1.7, minDim * 0.34);
   const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 6, rotorY, Math.PI / 6, bladeRootRadius, 0.5);
-  details.push(detail(rotor, 'medium', undefined, 'extractorRotor'));
+  details.push(detail(rotor, 'low', undefined, 'extractorRotor'));
 
   return {
     primary: base,

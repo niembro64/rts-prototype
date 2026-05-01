@@ -760,15 +760,16 @@ export class SpatialGrid {
   }
 
   /**
-   * Get all occupied cells with one player entry per unit/building (for capture system).
+   * Get all occupied mana tiles with one player entry per unit/building (for capture system).
    * Unlike getOccupiedCells(), players are NOT deduplicated — 3 red units
    * on a tile yield [1,1,1] so the capture system can count them.
-   * Buildings contribute one vote per cell they span, just like a unit.
+   * Buildings contribute one vote per spatial cell they span, just like
+   * before; larger mana tiles aggregate those spatial cells afterward.
    *
    * Territory capture is a GROUND concept: a tile is the XY footprint
-   * of a column of cubes. Units stacked in the air above the same XY
-   * cube all vote into the same tile. The returned key is therefore
-   * the 2D (cx, cy) packed key, NOT the full 3D cube key — the
+   * of one or more columns of cubes. Units stacked in the air above the
+   * same XY tile all vote into the same tile. The returned key is therefore
+   * the 2D mana-tile (cx, cy) packed key, NOT the full 3D cube key — the
    * capture system stays 2D even though the spatial grid is 3D. When
    * aircraft arrive and the question of "do flying units capture?"
    * gets answered, gate the unit/building loop here on the unit's
@@ -776,15 +777,17 @@ export class SpatialGrid {
    *
    * Returns a reusable array — do NOT store the reference.
    */
-  getOccupiedCellsForCapture(): CaptureCell[] {
+  getOccupiedCellsForCapture(captureCellSize: number = this.cellSize): CaptureCell[] {
+    const tileCellSize = captureCellSize > 0 ? captureCellSize : this.cellSize;
+
     // Return last tick's entries (and their inner players arrays) to
     // the pool — both get reused on this tick instead of reallocated.
     for (const c of _captureCells) _capturePool.push(c);
     _captureCells.length = 0;
 
-    // Aggregate by 2D (cx, cy) tile key, summing contributions from
-    // every cube in the Z column. Two units at the same XY but
-    // different altitudes both vote into the same ground tile.
+    // Aggregate by 2D mana-tile key, summing contributions from every
+    // cube in the Z column. If mana tiles are larger than spatial cubes,
+    // fold several spatial columns into the same capture key.
     const byTile: Map<number, { key: number; players: PlayerId[] }> = _captureByTile;
     byTile.clear();
 
@@ -798,9 +801,19 @@ export class SpatialGrid {
       const cy = (Math.floor(cubeKey / CY_MULT) & CELL_MASK) - CELL_BIAS;
       const cx = Math.floor(cubeKey / CX_MULT) - CELL_BIAS;
       void cz; // intentional: column-collapsed, cz unused for capture
+
+      const tileCx = tileCellSize === this.cellSize
+        ? cx
+        : Math.floor((cx * this.cellSize) / tileCellSize);
+      const tileCy = tileCellSize === this.cellSize
+        ? cy
+        : Math.floor((cy * this.cellSize) / tileCellSize);
+
       // 2D tile key — same bit-packing the legacy 2D grid produced,
       // so the existing CaptureSystem decoder stays valid.
-      const tileKey = (((cx + CELL_BIAS) & CELL_MASK) << 16) | ((cy + CELL_BIAS) & CELL_MASK);
+      const tileKey =
+        (((tileCx + CELL_BIAS) & CELL_MASK) << 16) |
+        ((tileCy + CELL_BIAS) & CELL_MASK);
 
       let entry = byTile.get(tileKey);
       if (!entry) {

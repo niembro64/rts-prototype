@@ -37,7 +37,14 @@ import type {
 } from './types/config';
 
 // Spatial grid cell size in pixels. Should be roughly 1/2 to 1/3 of typical weapon range.
-export const SPATIAL_GRID_CELL_SIZE = 150;
+export const SPATIAL_GRID_CELL_SIZE = 100;
+
+// Mana/capture tile size is intentionally independent of the simulation
+// spatial grid. A multiplier of 2 means one mana tile covers a 2x2 block
+// of the old 150wu capture tiles, cutting the territory grid to 1/4 the
+// tile count while keeping physics/query cells unchanged.
+export const MANA_TILE_SIZE_MULTIPLIER = 2;
+export const MANA_TILE_SIZE = SPATIAL_GRID_CELL_SIZE * MANA_TILE_SIZE_MULTIPLIER;
 
 // F=============================================================================
 // SNAPSHOT / NETWORKING
@@ -424,7 +431,7 @@ export const MANA_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.2;
 
 const manaTileWaveScale = (tileWidths: number): number =>
   (Math.PI * 2) / (
-    SPATIAL_GRID_CELL_SIZE *
+    MANA_TILE_SIZE *
     tileWidths *
     MANA_TILE_TEXTURE_PERIOD_MULTIPLIER
   );
@@ -670,16 +677,32 @@ export const UNIT_HP_MULTIPLIER = 2.0;
 // MAP SIZE SETTINGS
 // =============================================================================
 
+export const MAP_MANA_TILE_COUNTS = {
+  game: 11,
+  demo: 21,
+} as const;
+
+const manaTileMapSpan = (manaTilesPerAxis: number): number => {
+  const clamped = Math.max(1, Math.floor(manaTilesPerAxis));
+  const oddTileCount = clamped % 2 === 1 ? clamped : clamped + 1;
+  return oddTileCount * MANA_TILE_SIZE;
+};
+
 export const MAP_SETTINGS: Record<string, MapSize> = {
   // Real (foreground) match. Demo / lobby battle uses MAP_SETTINGS.demo
   // (2× linear) so the AI vs. AI showcase has more breathing room.
   //
-  // Sized to a multiple of SPATIAL_GRID_CELL_SIZE * (2k+1) so each axis
-  // ends up with an ODD number of tiles, giving the map a single
-  // central tile (the ripple-disc visualization is centered there).
-  // 3150 / 150 = 21 tiles per axis (game); 6150 / 150 = 41 (demo).
-  game: { width: 3_150, height: 3_150 },
-  demo: { width: 6_150, height: 6_150 },
+  // Sized to an ODD number of mana tiles on each axis so the map always
+  // has exactly one central mana tile. With the default 300wu mana tile:
+  // game = 11x11, demo = 21x21.
+  game: {
+    width: manaTileMapSpan(MAP_MANA_TILE_COUNTS.game),
+    height: manaTileMapSpan(MAP_MANA_TILE_COUNTS.game),
+  },
+  demo: {
+    width: manaTileMapSpan(MAP_MANA_TILE_COUNTS.demo),
+    height: manaTileMapSpan(MAP_MANA_TILE_COUNTS.demo),
+  },
 };
 
 /** Pick the map size for the current battle: demo (background) or game (real). */

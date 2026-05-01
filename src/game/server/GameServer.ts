@@ -39,6 +39,7 @@ import {
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
   EMA_INITIAL_VALUES,
+  MANA_TILE_SIZE,
   MAX_TICK_DT_MS,
   type KeyframeRatio,
 } from '../../config';
@@ -47,7 +48,6 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
-import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion } from '../sim/Terrain';
 import { generateMetalDeposits } from '../../metalDepositConfig';
 
@@ -272,9 +272,9 @@ export class GameServer {
       // available during update() AND for the initial radial paint
       // below. The renderer pulls the same weights so on-screen
       // brightness and income stay in lockstep.
-      this.captureSystem.setMapSize(mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
+      this.captureSystem.setMapSize(mapWidth, mapHeight, MANA_TILE_SIZE);
       this.captureSystem.initializeRadialOwnership(
-        mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE,
+        mapWidth, mapHeight, MANA_TILE_SIZE,
         this.playerIds, FIRST_PLAYER_ANGLE,
         CAPTURE_CONFIG.initialOwnershipHeight,
       );
@@ -524,7 +524,7 @@ export class GameServer {
     const captureStride = Math.max(1, getSimDetailConfig().captureStride | 0);
     if (captureStride === 1 || this.world.getTick() % captureStride === 0) {
       this.captureSystem.update(
-        spatialGrid.getOccupiedCellsForCapture(),
+        spatialGrid.getOccupiedCellsForCapture(this.captureSystem.getCellSize()),
         dtSec * captureStride,
       );
     }
@@ -997,7 +997,7 @@ export class GameServer {
       // explicitly cleared on the others — otherwise the previous
       // listener / tick's data leaks into the next encode.
       state.capture = captureTiles.length > 0
-        ? { tiles: captureTiles, cellSize: spatialGrid.getCellSize() }
+        ? { tiles: captureTiles, cellSize: this.captureSystem.getCellSize() }
         : undefined;
       state.combatStats = combatStats;
       state.serverMeta = serverMeta;

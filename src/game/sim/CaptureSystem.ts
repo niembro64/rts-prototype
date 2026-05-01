@@ -1,6 +1,6 @@
 // Capture-the-tile system — territory painting driven by unit presence
 //
-// Each spatial grid cell has independent flag heights per team (0–1).
+// Each mana/capture tile has independent flag heights per team (0–1).
 // Units raise their own team's flag and lower all other teams' flags.
 // Mana income is proportional to the sum of a team's flag heights.
 
@@ -36,6 +36,10 @@ export class CaptureSystem {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.cellSize = cellSize;
+  }
+
+  getCellSize(): number {
+    return this.cellSize;
   }
 
   /** Mana per second a single tile produces when fully captured by
@@ -179,7 +183,7 @@ export class CaptureSystem {
     this.productionRates.clear();
   }
 
-  /** Pre-capture every grid cell to the team whose radial sector
+  /** Pre-capture every mana tile to the team whose radial sector
    *  contains it, so the map starts already partitioned along the
    *  same angular sectors the spawn-circle and terrain-divider
    *  ridges use.

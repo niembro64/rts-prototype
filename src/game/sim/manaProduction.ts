@@ -23,7 +23,7 @@ import {
   MANA_CENTER_TILE_MULTIPLIER,
   MANA_HOTSPOT_RADIUS_FRACTION,
 } from '../../captureConfig';
-import { BASE_MANA_PER_SECOND, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { BASE_MANA_PER_SECOND, MANA_TILE_SIZE } from '../../config';
 import { getPlayerPrimaryColor } from './types';
 import type { PlayerId } from './types';
 
@@ -60,7 +60,7 @@ export function getManaCellProductionPerSecond(
   mapWidth: number,
   mapHeight: number,
 ): number {
-  const size = cellSize > 0 ? cellSize : SPATIAL_GRID_CELL_SIZE;
+  const size = cellSize > 0 ? cellSize : MANA_TILE_SIZE;
   const wx = (cx + 0.5) * size;
   const wy = (cy + 0.5) * size;
   return getManaTileProductionPerSecond(wx, wy, mapWidth, mapHeight);

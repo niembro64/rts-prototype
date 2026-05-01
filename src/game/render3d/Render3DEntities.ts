@@ -3032,7 +3032,10 @@ export class Render3DEntities {
       } else {
         m.lodMarker.material = this.getPrimaryMat(pid);
       }
-      const markerRadius = Math.max(12, Math.min(48, Math.hypot(w, d) * 0.16));
+      const markerRadius = Math.max(
+        e.buildingType === 'extractor' ? 18 : 12,
+        Math.min(48, Math.hypot(w, d) * 0.16),
+      );
       m.lodMarker.visible = markerOnly;
       m.lodMarker.position.set(0, markerRadius, 0);
       m.lodMarker.scale.setScalar(markerRadius);

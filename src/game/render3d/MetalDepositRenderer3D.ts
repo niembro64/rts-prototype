@@ -27,7 +27,7 @@ const PLAYER_CLIENT_DEPOSIT_LOD: Record<ConcreteGraphicsQuality, {
   material: 'lambert' | 'standard';
   veinCount: number;
 }> = {
-  min:    { shape: 'sphere',  radialStep: 8, verticalStep: 8, radiusScale: 0.62, heightScale: 1, material: 'lambert',  veinCount: 0 },
+  min:    { shape: 'sphere',  radialStep: 8, verticalStep: 8, radiusScale: 1, heightScale: 1, material: 'lambert',  veinCount: 0 },
   low:    { shape: 'deposit', radialStep: 4, verticalStep: 4, radiusScale: 1, heightScale: 1, material: 'lambert',  veinCount: 0 },
   medium: { shape: 'deposit', radialStep: 2, verticalStep: 4, radiusScale: 1, heightScale: 1, material: 'standard', veinCount: 3 },
   high:   { shape: 'deposit', radialStep: 1, verticalStep: 2, radiusScale: 1, heightScale: 1, material: 'standard', veinCount: 7 },
@@ -267,13 +267,18 @@ function makeChunkyDepositGeometry(
 }
 
 function makeDepositMarkerSphereGeometry(seed: number, radius: number): THREE.BufferGeometry {
+  // Lowest LOD is still a sphere-class proxy, but it must follow the
+  // same half-buried, squashed deposit volume as the higher tiers.
+  // A full radius-tall ball can cover the short metal extractor that
+  // sits on the same pad, making the building look like it vanished.
+  const { radiusX, radiusZ, verticalRadius, burial } = getDepositRadii(seed, radius, 1);
   const geom = new THREE.SphereGeometry(1, 8, 6);
-  geom.scale(radius, radius, radius);
-  geom.translate(0, radius, 0);
+  geom.scale(radiusX, verticalRadius, radiusZ);
+  geom.translate(0, -burial, 0);
   const position = geom.getAttribute('position');
   const colors: number[] = [];
   for (let i = 0; i < position.count; i++) {
-    const height01 = Math.max(0, Math.min(1, position.getY(i) / (radius * 2)));
+    const height01 = Math.max(0, Math.min(1, (position.getY(i) + burial + verticalRadius) / (verticalRadius * 2)));
     pushDepositColor(colors, seed, i, height01);
   }
   geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));

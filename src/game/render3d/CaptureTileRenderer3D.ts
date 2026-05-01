@@ -13,7 +13,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { NetworkCaptureTile } from '@/types/capture';
-import { MANA_TILE_TEXTURE, MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { MANA_TILE_SIZE, MANA_TILE_TEXTURE, MAP_BG_COLOR } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
 
@@ -484,7 +484,7 @@ export class CaptureTileRenderer3D {
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
 
     let cellSize = this.clientViewState.getCaptureCellSize();
-    if (cellSize <= 0) cellSize = SPATIAL_GRID_CELL_SIZE;
+    if (cellSize <= 0) cellSize = MANA_TILE_SIZE;
 
     const rebuilt = this.rebuildGeometryIfNeeded(cellSize, graphicsConfig);
     this.terrainMesh.visible = true;
