@@ -1013,6 +1013,13 @@ export class NetworkManager {
   disconnect(): void {
     this.clearSignalingReconnect();
     this.stopHeartbeats();
+    for (const playerId of this.connections.keys()) {
+      this.detachDataChannelListeners(playerId);
+    }
+    for (const interval of this.dcWaitIntervals.values()) {
+      clearInterval(interval);
+    }
+    this.dcWaitIntervals.clear();
     for (const conn of this.connections.values()) {
       conn.close();
     }

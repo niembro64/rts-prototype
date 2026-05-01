@@ -270,6 +270,7 @@ export class ClientViewState {
   private predictionLodCells: Map<PredictionLodCellKey, PredictionLodCellRecord> = new Map();
   private activeUnitPredictionIds: Set<EntityId> = new Set();
   private activeProjectilePredictionIds: Set<EntityId> = new Set();
+  private dirtyUnitRenderIds: Set<EntityId> = new Set();
 
   // Per-frame cache of living enemy entities, built lazily the first
   // time a rocket needs to re-acquire this frame. Subsequent rockets
@@ -318,12 +319,14 @@ export class ClientViewState {
     this.targetPredictionAccumMs.delete(id);
     this.activeUnitPredictionIds.delete(id);
     this.activeProjectilePredictionIds.delete(id);
+    this.dirtyUnitRenderIds.delete(id);
     if (existed) this.markEntitySetChanged();
   }
 
   private markEntityPredictionActive(entity: Entity): void {
     if (entity.unit) {
       this.activeUnitPredictionIds.add(entity.id);
+      this.dirtyUnitRenderIds.add(entity.id);
     } else if (entity.projectile) {
       this.activeProjectilePredictionIds.add(entity.id);
     }
@@ -338,6 +341,7 @@ export class ClientViewState {
       server.unit?.turrets !== undefined
     ) {
       this.activeUnitPredictionIds.add(server.id);
+      this.dirtyUnitRenderIds.add(server.id);
     }
   }
 
@@ -1149,6 +1153,7 @@ export class ClientViewState {
 
       const target = this.serverTargets.get(id);
       this.applyUnitVisualPrediction(entity, target, deltaMs, preset);
+      this.dirtyUnitRenderIds.add(id);
       if (entity.turrets && entity.turrets.length > 0) {
         const predictionTier = this.resolvePredictionLodTier(entity, lod);
         const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
@@ -1512,6 +1517,21 @@ export class ClientViewState {
     return this.cache.getUnits();
   }
 
+  collectActiveUnitRenderEntities(out: Entity[]): Entity[] {
+    out.length = 0;
+    for (const id of this.activeUnitPredictionIds) {
+      const entity = this.entities.get(id);
+      if (entity?.unit) out.push(entity);
+    }
+    for (const id of this.dirtyUnitRenderIds) {
+      if (this.activeUnitPredictionIds.has(id)) continue;
+      const entity = this.entities.get(id);
+      if (entity?.unit) out.push(entity);
+    }
+    this.dirtyUnitRenderIds.clear();
+    return out;
+  }
+
   getBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getBuildings();
@@ -1575,8 +1595,12 @@ export class ClientViewState {
     for (const id of ids) this.selectedIds.add(id);
     for (const entity of this.entities.values()) {
       if (entity.selectable) {
-        entity.selectable.selected = this.selectedIds.has(entity.id);
-        if (entity.selectable.selected) this.markEntityPredictionActive(entity);
+        const selected = this.selectedIds.has(entity.id);
+        if (entity.selectable.selected !== selected && entity.unit) {
+          this.dirtyUnitRenderIds.add(entity.id);
+        }
+        entity.selectable.selected = selected;
+        if (selected) this.markEntityPredictionActive(entity);
       }
     }
   }
@@ -1589,6 +1613,7 @@ export class ClientViewState {
     this.selectedIds.add(id);
     const entity = this.entities.get(id);
     if (entity?.selectable) {
+      if (!entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
       entity.selectable.selected = true;
       this.markEntityPredictionActive(entity);
     }
@@ -1598,6 +1623,7 @@ export class ClientViewState {
     this.selectedIds.delete(id);
     const entity = this.entities.get(id);
     if (entity?.selectable) {
+      if (entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
       entity.selectable.selected = false;
     }
   }
@@ -1606,6 +1632,7 @@ export class ClientViewState {
     for (const id of this.selectedIds) {
       const entity = this.entities.get(id);
       if (entity?.selectable) {
+        if (entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
         entity.selectable.selected = false;
       }
     }
@@ -1782,6 +1809,7 @@ export class ClientViewState {
     this.predictionLodCells.clear();
     this.activeUnitPredictionIds.clear();
     this.activeProjectilePredictionIds.clear();
+    this.dirtyUnitRenderIds.clear();
     this.entitySetVersion++;
     this.invalidateCaches();
   }

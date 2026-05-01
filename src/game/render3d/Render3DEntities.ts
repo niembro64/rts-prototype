@@ -62,6 +62,10 @@ import { getFactoryBuildSpot, getFactoryConstructionRadius, type FactoryBuildSpo
 import { getDriftMode, getGraphicsConfigFor, getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
 import { getDriftPreset, halfLifeBlend } from '../network/driftEma';
 import { getWeaponWorldPosition, getTurretHeadRadius, lerp, lerpAngle } from '../math';
+import {
+  lodCellIndex,
+  normalizeLodCellSize,
+} from '../lodGridMath';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 
@@ -92,6 +96,7 @@ const _INST_UP = new THREE.Vector3(0, 1, 0);
 const LOW_INSTANCED_COMPACT_MIN_FREE = 128;
 const LOW_INSTANCED_COMPACT_INTERVAL_FRAMES = 30;
 const LOW_INSTANCED_COMPACT_MAX_MOVES = 256;
+const UNIT_INSTANCED_FULL_REFRESH_INTERVAL_FRAMES = 8;
 const MASS_INSTANCE_MATRIX_STRIDE: Record<RenderObjectLodTier, number> = {
   hero: 1,
   rich: 1,
@@ -509,6 +514,9 @@ export class Render3DEntities {
   private unitInstancedNextSlot = 0;
   private unitInstancedCompactFrame = 0;
   private unitInstancedFrame = 0;
+  private unitInstancedLastFullPassFrame = -1;
+  private unitInstancedLastFullPassKey = '';
+  private unitInstancedActiveUnits: Entity[] = [];
   private unitInstancedHiddenIds = new Set<EntityId>();
   /** Hidden-slot transform: scale=0 collapses the geometry to a point. */
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -1379,6 +1387,41 @@ export class Render3DEntities {
     return (this.unitInstancedFrame + entity.id) % stride === 0;
   }
 
+  private unitInstancedFullPassKey(entitySetVersion: number): string {
+    const size = normalizeLodCellSize(this.lod.gfx.objectLodCellSize);
+    const view = this.lod.view;
+    const cameraCell = [
+      lodCellIndex(view.cameraX, size),
+      lodCellIndex(view.cameraY, size),
+      lodCellIndex(view.cameraZ, size),
+    ].join(',');
+    return `${entitySetVersion}|${this.lod.key}|${size}|${cameraCell}`;
+  }
+
+  private shouldRunUnitInstancedFullPass(
+    entitySetVersion: number,
+    collectRichUnits: boolean,
+  ): boolean {
+    const key = this.unitInstancedFullPassKey(entitySetVersion);
+    if (key !== this.unitInstancedLastFullPassKey) {
+      this.unitInstancedLastFullPassKey = key;
+      return true;
+    }
+    if (!collectRichUnits) return false;
+    return (
+      this.unitInstancedLastFullPassFrame < 0 ||
+      this.unitInstancedFrame - this.unitInstancedLastFullPassFrame >=
+        UNIT_INSTANCED_FULL_REFRESH_INTERVAL_FRAMES
+    );
+  }
+
+  private removeMassRichUnit(id: EntityId): void {
+    if (!this.massRichUnitIds.delete(id)) return;
+    this.massRichObjectTiers.delete(id);
+    const idx = this.massRichUnits.findIndex((entity) => entity.id === id);
+    if (idx >= 0) this.massRichUnits.splice(idx, 1);
+  }
+
   /** LOW-tier per-frame instance write. Each visible unit takes one
    *  slot in the InstancedMesh; the slot's matrix encodes its world
    *  pose (translation + Y-rotation + uniform scale by render radius)
@@ -1389,18 +1432,25 @@ export class Render3DEntities {
    *  CPU cost: one Matrix4.compose + setMatrixAt + setColorAt per
    *  visible unit per frame, no allocations. */
   private updateUnitsInstanced(
-    units = this.clientViewState.getUnits(),
+    units?: readonly Entity[],
     collectRichUnits = false,
   ): readonly Entity[] {
     const im = this.unitInstanced;
     if (!im) return this.massRichUnits;
 
     this.unitInstancedFrame = (this.unitInstancedFrame + 1) & 0x3fffffff;
+    const entitySetVersion = this.clientViewState.getEntitySetVersion();
+    const fullPass = this.shouldRunUnitInstancedFullPass(entitySetVersion, collectRichUnits);
+    const unitsToProcess = fullPass
+      ? (units ?? this.clientViewState.getUnits())
+      : this.clientViewState.collectActiveUnitRenderEntities(this.unitInstancedActiveUnits);
+    if (fullPass) this.unitInstancedLastFullPassFrame = this.unitInstancedFrame;
+
     const seen = this._seenUnitIds;
     seen.clear();
     const richIds = this.massRichUnitIds;
     const richUnits = this.massRichUnits;
-    if (collectRichUnits) {
+    if (collectRichUnits && fullPass) {
       richIds.clear();
       richUnits.length = 0;
       this.massRichObjectTiers.clear();
@@ -1412,7 +1462,7 @@ export class Render3DEntities {
     let colorMaxSlot = -1;
     const matrixDirty = { matrixMinSlot, matrixMaxSlot };
 
-    for (const e of units) {
+    for (const e of unitsToProcess) {
       seen.add(e.id);
       const objectTier = this.resolveEntityObjectLod(e);
       const inScope = this.scope.inScope(e.transform.x, e.transform.y, 100);
@@ -1423,12 +1473,16 @@ export class Render3DEntities {
         // still flow through the cheap instanced body below, so the
         // 3D LOD grid never resolves to "invisible" for unit bodies.
         if (inScope && (isRichObjectLod(objectTier) || objectTier === 'simple')) {
+          const alreadyRich = richIds.has(e.id);
           richIds.add(e.id);
-          richUnits.push(e);
+          if (fullPass || !alreadyRich) {
+            richUnits.push(e);
+          }
           this.massRichObjectTiers.set(e.id, objectTier);
           this.hideUnitInstancedSlot(im, e.id, this.unitInstancedSlot.get(e.id), matrixDirty);
           continue;
         }
+        this.removeMassRichUnit(e.id);
       }
 
       let slot = this.unitInstancedSlot.get(e.id);
@@ -1486,7 +1540,6 @@ export class Render3DEntities {
     // Free slots for units that disappeared. This is an O(active units)
     // map walk, so run it only when the client entity set actually
     // changed rather than on every render frame.
-    const entitySetVersion = this.clientViewState.getEntitySetVersion();
     if (entitySetVersion !== this.lastUnitInstancedEntitySetVersion) {
       for (const [id, slot] of this.unitInstancedSlot) {
         if (!seen.has(id)) {
@@ -1550,6 +1603,9 @@ export class Render3DEntities {
     this.unitInstancedNextSlot = 0;
     this.unitInstancedCompactFrame = 0;
     this.unitInstancedFrame = 0;
+    this.unitInstancedLastFullPassFrame = -1;
+    this.unitInstancedLastFullPassKey = '';
+    this.unitInstancedActiveUnits.length = 0;
     im.count = 0;
     im.instanceMatrix.needsUpdate = true;
   }
@@ -3720,6 +3776,9 @@ export class Render3DEntities {
     this.unitInstancedFreeSlots.length = 0;
     this.unitInstancedCompactFrame = 0;
     this.unitInstancedFrame = 0;
+    this.unitInstancedLastFullPassFrame = -1;
+    this.unitInstancedLastFullPassKey = '';
+    this.unitInstancedActiveUnits.length = 0;
     if (this.smoothChassis) {
       this.world.remove(this.smoothChassis);
       // Material is a private MeshLambertMaterial only owned by this

@@ -256,13 +256,19 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.HI,
     max: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.MAX,
   },
-  // Mana/capture tile terrain smoothness. This is intentionally global
-  // per PLAYER CLIENT LOD, not camera-sphere based: every mana tile
-  // switches together when the global LOD changes.
+  // Mana/capture tile terrain smoothness by camera-sphere object LOD.
+  // The renderer resolves each tile through the same 3D LOD grid as
+  // units/buildings, then reads this table for that tile's effective
+  // MIN/LOW/MID/HI/MAX smoothness. Tile borders always keep shared edge
+  // samples so adjacent tiles with different smoothness do not crack.
+  // Side walls follow the same per-tile camera-sphere tier, so tiles
+  // outside the final sphere get the full MIN terrain shape.
   //
   // Values are per-tile terrain subdivisions. The renderer caps this
   // at TERRAIN_MESH_SUBDIV, so higher values are safe but no richer
-  // than the terrain mesh can represent.
+  // than the terrain mesh can represent. MIN/LOW use reduced interior
+  // triangulation while only upgrading shared edges that border a
+  // higher-detail tile.
   MANA_TILE_SMOOTHNESS: {
     min: 1,
     low: 2,

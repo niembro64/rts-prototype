@@ -979,6 +979,7 @@ export class RtsScene3D {
     this.entityRenderer.update(renderLod, this.renderLodGrid);
     this.captureTileRenderer.update(
       graphicsConfig,
+      this.renderLodGrid,
     );
     const lineProjectiles = this.clientViewState.getLineProjectiles();
     const travelingProjectiles = this.clientViewState.getTravelingProjectiles();

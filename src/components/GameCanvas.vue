@@ -239,6 +239,19 @@ let backgroundBattleGen = 0;
 
 // Current game server (owned by this component)
 let currentServer: GameServer | null = null;
+let realBattleStartGen = 0;
+let realBattleStartTimeout: ReturnType<typeof setTimeout> | null = null;
+let recoveryKeyframeTimeouts: ReturnType<typeof setTimeout>[] = [];
+
+function clearRealBattleTimeouts(): void {
+  realBattleStartGen++;
+  if (realBattleStartTimeout) {
+    clearTimeout(realBattleStartTimeout);
+    realBattleStartTimeout = null;
+  }
+  for (const timeout of recoveryKeyframeTimeouts) clearTimeout(timeout);
+  recoveryKeyframeTimeouts = [];
+}
 
 // Lobby state
 const showLobby = ref(true);
@@ -1187,6 +1200,7 @@ function restartGame(): void {
   gameOverWinner.value = null;
   combatStatsHistory.value = [];
   statsHistoryStartTime = 0;
+  clearRealBattleTimeouts();
   // Return to lobby
   gameStarted.value = false;
   showLobby.value = true;
@@ -1701,10 +1715,13 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
   // Stop the background battle first
   stopBackgroundBattle();
+  clearRealBattleTimeouts();
+  const startGen = realBattleStartGen;
 
   // Small delay to ensure WebGL cleanup before creating new game
-  setTimeout(async () => {
-    if (!containerRef.value) return;
+  realBattleStartTimeout = setTimeout(async () => {
+    realBattleStartTimeout = null;
+    if (startGen !== realBattleStartGen || !containerRef.value) return;
 
     const rect = containerRef.value.getBoundingClientRect();
 
@@ -1721,7 +1738,12 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
     if (networkRole.value !== 'client') {
       // Create GameServer for host/offline (WASM physics)
-      currentServer = await GameServer.create({ playerIds, aiPlayerIds, terrainCenter: realTerrainCenter });
+      const createdServer = await GameServer.create({ playerIds, aiPlayerIds, terrainCenter: realTerrainCenter });
+      if (startGen !== realBattleStartGen || !gameStarted.value || !containerRef.value) {
+        createdServer.stop();
+        return;
+      }
+      currentServer = createdServer;
 
       // If hosting, broadcast the authoritative real-battle snapshot
       // to every connected client. Keep this on the pre-lobby-info
@@ -1768,11 +1790,13 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       if (networkRole.value === 'host') {
         const serverForRecoveryKeyframes = currentServer;
         for (const delayMs of [500, 1500]) {
-          setTimeout(() => {
-            if (currentServer === serverForRecoveryKeyframes) {
+          const timeout = setTimeout(() => {
+            recoveryKeyframeTimeouts = recoveryKeyframeTimeouts.filter((item) => item !== timeout);
+            if (startGen === realBattleStartGen && currentServer === serverForRecoveryKeyframes) {
               serverForRecoveryKeyframes.forceNextSnapshotKeyframe();
             }
           }, delayMs);
+          recoveryKeyframeTimeouts.push(timeout);
         }
       }
       hasServer.value = true;
@@ -1980,6 +2004,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  clearRealBattleTimeouts();
   if (fpsUpdateInterval) {
     clearInterval(fpsUpdateInterval);
   }
