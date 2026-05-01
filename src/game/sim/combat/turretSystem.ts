@@ -22,7 +22,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
-import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
+import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight, turretMaskIncludes } from './combatUtils';
 import { getTransformCosSin, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
@@ -33,17 +33,8 @@ import { createDirectTurretAimScratch, createProjectileTurretAimScratch, solveDi
  *  the barrel through the body. */
 const PITCH_MIN = -Math.PI / 2;
 const PITCH_MAX = Math.PI / 2;
-const TURRET_MASK_MAX_INDEX = 30;
 const _directAim = createDirectTurretAimScratch();
 const _projectileAim = createProjectileTurretAimScratch();
-
-function turretMaskIncludes(mask: number | undefined, index: number): boolean {
-  if (mask === undefined) return true;
-  if (mask < 0) return true;
-  if (mask === 0) return false;
-  if (index > TURRET_MASK_MAX_INDEX) return true;
-  return (mask & (1 << index)) !== 0;
-}
 
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedUnits()): void {
   const dtSec = dtMs / 1000;

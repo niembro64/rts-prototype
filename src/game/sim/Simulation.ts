@@ -21,6 +21,7 @@ import {
   unregisterPackedProjectile,
 } from './combat';
 import { clearTargetIndex } from './combat/targetIndex';
+import { engagedTurretCount } from './combat/combatUtils';
 import {
   updateProjectiles,
   checkProjectileCollisions,
@@ -729,8 +730,7 @@ export class Simulation {
         }
 
         // Thrust toward target
-        unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
-        unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+        this.applyThrustToward(unit, dx, dy, distance);
         movingUnits.push(entity);
         continue;
       }
@@ -752,17 +752,9 @@ export class Simulation {
         currentAction.z = targetPoint.z;
 
         // Stop if enough turrets are engaged
-        const turrets = entity.turrets;
-        if (turrets && turrets.length > 0) {
-          let engagedCount = 0;
-          for (let i = 0; i < turrets.length; i++) {
-            if (turrets[i].state === 'engaged') engagedCount++;
-          }
-          const stopRatio = getUnitBlueprint(unit.unitType).fightStopEngagedRatio;
-          if (engagedCount >= turrets.length * stopRatio) {
-            unit.stuckTicks = 0;
-            continue;
-          }
+        if (this.shouldStopForEngagedCombat(entity)) {
+          unit.stuckTicks = 0;
+          continue;
         }
 
         // Thrust toward target
@@ -770,8 +762,7 @@ export class Simulation {
         const dy = targetPoint.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 5) {
-          unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
-          unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+          this.applyThrustToward(unit, dx, dy, distance);
           movingUnits.push(entity);
         } else {
           unit.stuckTicks = 0;
@@ -781,17 +772,9 @@ export class Simulation {
 
       // Check if unit should stop for combat (fight or patrol mode with enough turrets engaged)
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
-        const turrets = entity.turrets;
-        if (turrets && turrets.length > 0) {
-          let engagedCount = 0;
-          for (let i = 0; i < turrets.length; i++) {
-            if (turrets[i].state === 'engaged') engagedCount++;
-          }
-          const stopRatio = getUnitBlueprint(unit.unitType).fightStopEngagedRatio;
-          if (engagedCount >= turrets.length * stopRatio) {
-            unit.stuckTicks = 0;
-            continue;
-          }
+        if (this.shouldStopForEngagedCombat(entity)) {
+          unit.stuckTicks = 0;
+          continue;
         }
       }
 
@@ -808,8 +791,7 @@ export class Simulation {
       }
 
       // Thrust toward waypoint
-      unit.thrustDirX = (dx / distance) * unit.moveSpeed * this.world.thrustMultiplier;
-      unit.thrustDirY = (dy / distance) * unit.moveSpeed * this.world.thrustMultiplier;
+      this.applyThrustToward(unit, dx, dy, distance);
       movingUnits.push(entity);
     }
 
@@ -823,6 +805,24 @@ export class Simulation {
     // tick budget on planning — units that don't get a slot this
     // tick stay at the threshold and try again next tick.
     this.evaluateStuckAndReplan(movingUnits);
+  }
+
+  /** Set the unit's thrust vector toward a (dx, dy) offset whose
+   *  pre-computed magnitude is `distance`. Caller is responsible for
+   *  the distance check — this just normalizes and scales. */
+  private applyThrustToward(unit: NonNullable<Entity['unit']>, dx: number, dy: number, distance: number): void {
+    const scale = (unit.moveSpeed * this.world.thrustMultiplier) / distance;
+    unit.thrustDirX = dx * scale;
+    unit.thrustDirY = dy * scale;
+  }
+
+  /** True when the unit has enough turrets engaged that it should hold
+   *  position to fight rather than continue chasing the current waypoint. */
+  private shouldStopForEngagedCombat(entity: Entity): boolean {
+    const turrets = entity.turrets;
+    if (!turrets || turrets.length === 0) return false;
+    const stopRatio = getUnitBlueprint(entity.unit!.unitType).fightStopEngagedRatio;
+    return engagedTurretCount(turrets) >= turrets.length * stopRatio;
   }
 
   /** Per-tick stuck check. For each unit that wanted to move this

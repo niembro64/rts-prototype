@@ -3,19 +3,14 @@
 import type { WorldState } from '../WorldState';
 import type { Entity, HysteresisRange, TurretRanges } from '../types';
 import { isLineShot } from '../types';
-import { getTargetRadius, getTurretMountHeight } from './combatUtils';
-import { getTransformCosSin, distanceSquared3 } from '../../math';
+import { getTargetRadius, getTurretMountHeight, turretBit } from './combatUtils';
+import { distanceSquared3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
 import { getTurretWorldMount } from '../../math/MountGeometry';
 
 const _activeCombatUnits: Entity[] = [];
-const TURRET_MASK_MAX_INDEX = 30;
-
-function turretBit(index: number): number {
-  return index <= TURRET_MASK_MAX_INDEX ? (1 << index) : 0;
-}
 
 function commitCombatMasks(unit: Entity): boolean {
   const weapons = unit.turrets;
@@ -185,9 +180,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
 
     const playerId = unit.ownership.playerId;
-    unit.transform.rotCos = Math.cos(unit.transform.rotation);
-    unit.transform.rotSin = Math.sin(unit.transform.rotation);
-    const { cos, sin } = getTransformCosSin(unit.transform);
+    const cos = Math.cos(unit.transform.rotation);
+    const sin = Math.sin(unit.transform.rotation);
+    unit.transform.rotCos = cos;
+    unit.transform.rotSin = sin;
     const weapons = unit.turrets;
 
     let hasCooldownState = false;
@@ -254,24 +250,23 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         weapon.offset.x, weapon.offset.y, getTurretMountHeight(unit, i),
         surfaceN,
       );
-      const prevPos = weapon.worldPos;
+      const worldPos = weapon.worldPos!;
+      const worldVel = weapon.worldVelocity!;
       const prevTick = weapon.worldPosTick;
-      if (!weapon.worldPos) weapon.worldPos = { x: 0, y: 0, z: 0 };
-      if (!weapon.worldVelocity) weapon.worldVelocity = { x: 0, y: 0, z: 0 };
       const ticksElapsed = prevTick !== undefined ? tick - prevTick : 0;
-      if (prevPos && ticksElapsed === 1 && dtMs > 0) {
-        const invElapsedSec = 1000 / (dtMs * ticksElapsed);
-        weapon.worldVelocity.x = (mount.x - prevPos.x) * invElapsedSec;
-        weapon.worldVelocity.y = (mount.y - prevPos.y) * invElapsedSec;
-        weapon.worldVelocity.z = (mount.z - prevPos.z) * invElapsedSec;
+      if (ticksElapsed === 1 && dtMs > 0) {
+        const invElapsedSec = 1000 / dtMs;
+        worldVel.x = (mount.x - worldPos.x) * invElapsedSec;
+        worldVel.y = (mount.y - worldPos.y) * invElapsedSec;
+        worldVel.z = (mount.z - worldPos.z) * invElapsedSec;
       } else {
-        weapon.worldVelocity.x = unit.unit.velocityX ?? 0;
-        weapon.worldVelocity.y = unit.unit.velocityY ?? 0;
-        weapon.worldVelocity.z = unit.unit.velocityZ ?? 0;
+        worldVel.x = unit.unit.velocityX ?? 0;
+        worldVel.y = unit.unit.velocityY ?? 0;
+        worldVel.z = unit.unit.velocityZ ?? 0;
       }
-      weapon.worldPos.x = mount.x;
-      weapon.worldPos.y = mount.y;
-      weapon.worldPos.z = mount.z;
+      worldPos.x = mount.x;
+      worldPos.y = mount.y;
+      worldPos.z = mount.z;
       weapon.worldPosTick = tick;
     }
 
@@ -527,30 +522,3 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   return _activeCombatUnits;
 }
 
-// Update weapon cooldowns and cache rotation sin/cos (merged to avoid extra iteration)
-export function updateWeaponCooldowns(world: WorldState, dtMs: number): void {
-  for (const unit of world.getArmedUnits()) {
-    // Cache rotation sin/cos (used by targeting, turret, firing, beam systems)
-    unit.transform.rotCos = Math.cos(unit.transform.rotation);
-    unit.transform.rotSin = Math.sin(unit.transform.rotation);
-
-    if (!unit.turrets) continue;
-
-    for (const weapon of unit.turrets) {
-      if (weapon.cooldown > 0) {
-        weapon.cooldown -= dtMs;
-        if (weapon.cooldown < 0) {
-          weapon.cooldown = 0;
-        }
-      }
-
-      // Update burst cooldown
-      if (weapon.burst?.cooldown !== undefined && weapon.burst.cooldown > 0) {
-        weapon.burst.cooldown -= dtMs;
-        if (weapon.burst.cooldown < 0) {
-          weapon.burst.cooldown = 0;
-        }
-      }
-    }
-  }
-}

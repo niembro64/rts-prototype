@@ -51,6 +51,8 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
       turnAccel,
       drag,
       offset: { x: offsetX, y: offsetY },
+      worldPos: { x: 0, y: 0, z: 0 },
+      worldVelocity: { x: 0, y: 0, z: 0 },
     });
   }
 

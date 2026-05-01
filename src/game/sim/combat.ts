@@ -18,7 +18,6 @@ export {
 
 export {
   updateTargetingAndFiringState,
-  updateWeaponCooldowns,
 } from './combat/targetingSystem';
 
 export {

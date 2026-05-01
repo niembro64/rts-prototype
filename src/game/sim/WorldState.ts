@@ -577,6 +577,8 @@ export class WorldState {
       turnAccel: accel,
       drag: drag,
       offset: { x: 0, y: 0 },
+      worldPos: { x: 0, y: 0, z: 0 },
+      worldVelocity: { x: 0, y: 0, z: 0 },
     }];
 
     return entity;

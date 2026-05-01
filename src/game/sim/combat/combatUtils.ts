@@ -10,6 +10,36 @@ import type { Vec3 } from '@/types/vec2';
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
 
+/** Bit-mask of which turrets are engaged/firing. Indices >= this can't
+ *  fit in a 32-bit mask, so the helpers below treat them as always
+ *  included (the rare unit with 31+ turrets falls back to "permissive"
+ *  semantics rather than silently dropping out of the mask). */
+export const TURRET_MASK_MAX_INDEX = 30;
+
+export function turretBit(index: number): number {
+  return index <= TURRET_MASK_MAX_INDEX ? (1 << index) : 0;
+}
+
+export function turretMaskIncludes(mask: number | undefined, index: number): boolean {
+  if (mask === undefined) return true;
+  if (mask < 0) return true;
+  if (mask === 0) return false;
+  if (index > TURRET_MASK_MAX_INDEX) return true;
+  return (mask & (1 << index)) !== 0;
+}
+
+/** Count turrets currently in the 'engaged' state. Used by movement
+ *  decisions (commit/disengage thresholds) and worth a helper because
+ *  it's called in multiple movement branches per tick. */
+export function engagedTurretCount(turrets: { state: string }[] | undefined): number {
+  if (!turrets) return 0;
+  let count = 0;
+  for (let i = 0; i < turrets.length; i++) {
+    if (turrets[i].state === 'engaged') count++;
+  }
+  return count;
+}
+
 // Get target radius for range calculations
 export function getTargetRadius(target: Entity): number {
   if (target.unit) {

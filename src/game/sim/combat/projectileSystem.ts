@@ -9,7 +9,7 @@ import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } 
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, BEAM_MAX_LENGTH } from '../../../config';
-import { computeTurretPointVelocity, getEntityVelocity3, resolveWeaponWorldPos, getTurretMountHeight } from './combatUtils';
+import { computeTurretPointVelocity, getEntityVelocity3, resolveWeaponWorldPos, getTurretMountHeight, turretMaskIncludes } from './combatUtils';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
@@ -73,7 +73,6 @@ const _fireSimEvents: import('./types').SimEvent[] = [];
 const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
 const _orphanedIds: EntityId[] = [];
 const _despawnEvents: ProjectileDespawnEvent[] = [];
-const TURRET_MASK_MAX_INDEX = 30;
 
 let _packedProjectileCapacity = 0;
 let _packedProjectileCount = 0;
@@ -93,14 +92,6 @@ const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
 const FIRE_YAW_TOLERANCE = 0.16;
 const FIRE_PITCH_TOLERANCE = 0.16;
-
-function turretMaskIncludes(mask: number | undefined, index: number): boolean {
-  if (mask === undefined) return true;
-  if (mask < 0) return true;
-  if (mask === 0) return false;
-  if (index > TURRET_MASK_MAX_INDEX) return true;
-  return (mask & (1 << index)) !== 0;
-}
 
 function isWeaponAimedForFire(weapon: Turret): boolean {
   if (weapon.config.verticalLauncher) return true;
