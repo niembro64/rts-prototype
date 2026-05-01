@@ -39,8 +39,30 @@ function createPooledTurret(): NetworkServerSnapshotTurret {
   };
 }
 
+/** Pooled action carries its own pos/grid sub-objects so the per-snapshot
+ *  serialization just mutates them and toggles the action's pos/grid
+ *  fields between that persistent reference and undefined — instead of
+ *  allocating a fresh `{ x, y }` per action per snapshot. The hidden
+ *  `_pos` / `_grid` properties are not on the wire shape; only the
+ *  `pos` / `grid` fields above are serialized. */
+type PooledActionStorage = NetworkServerSnapshotAction & {
+  _pos: { x: number; y: number };
+  _grid: { x: number; y: number };
+};
 function createPooledAction(): NetworkServerSnapshotAction {
-  return { type: 0, pos: undefined, posZ: undefined, pathExp: undefined, targetId: undefined, buildingType: undefined, grid: undefined, buildingId: undefined };
+  const storage: PooledActionStorage = {
+    type: 0,
+    pos: undefined,
+    posZ: undefined,
+    pathExp: undefined,
+    targetId: undefined,
+    buildingType: undefined,
+    grid: undefined,
+    buildingId: undefined,
+    _pos: { x: 0, y: 0 },
+    _grid: { x: 0, y: 0 },
+  };
+  return storage;
 }
 
 function createPooledWaypoint(): { pos: Vec2; posZ?: number; type: string } {
@@ -1010,9 +1032,15 @@ function serializeEntity(
           pool.actions.length = count;
           for (let i = 0; i < count; i++) {
             const src = actions[i];
-            const dst = pool.actions[i];
+            const dst = pool.actions[i] as PooledActionStorage;
             dst.type = actionTypeToCode(src.type);
-            dst.pos = src.x !== undefined ? { x: src.x, y: src.y } : undefined;
+            if (src.x !== undefined) {
+              dst._pos.x = src.x;
+              dst._pos.y = src.y;
+              dst.pos = dst._pos;
+            } else {
+              dst.pos = undefined;
+            }
             // src.z is the click-derived altitude (or terrain sample
             // for path-expanded intermediates) — ship it so joining
             // clients render dots at the same altitude as the issuing
@@ -1023,7 +1051,13 @@ function serializeEntity(
             dst.pathExp = src.isPathExpansion ? true : undefined;
             dst.targetId = src.targetId;
             dst.buildingType = src.buildingType;
-            dst.grid = src.gridX !== undefined ? { x: src.gridX, y: src.gridY! } : undefined;
+            if (src.gridX !== undefined) {
+              dst._grid.x = src.gridX;
+              dst._grid.y = src.gridY!;
+              dst.grid = dst._grid;
+            } else {
+              dst.grid = undefined;
+            }
             dst.buildingId = src.buildingId;
           }
           u.actions = pool.actions;

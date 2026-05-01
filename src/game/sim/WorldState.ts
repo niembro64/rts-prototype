@@ -337,6 +337,12 @@ export class WorldState {
     return this.cache.getWindBuildings();
   }
 
+  // Get solar collector buildings (cached - DO NOT MODIFY returned array)
+  getSolarBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getSolarBuildings();
+  }
+
   // Get units by player — returns reusable array, DO NOT STORE the reference
   getUnitsByPlayer(playerId: PlayerId): Entity[] {
     const buf = this._queryBuf;

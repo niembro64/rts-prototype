@@ -95,8 +95,8 @@ export function isSolarCollectorDamageReduced(entity: Entity): boolean {
 }
 
 export function updateSolarCollectors(world: WorldState, dtMs: number): void {
-  for (const entity of world.getBuildings()) {
-    if (entity.buildingType !== 'solar' || !entity.building) continue;
+  for (const entity of world.getSolarBuildings()) {
+    if (!entity.building) continue;
     const state = ensureSolarCollectorState(entity);
     if (!state) continue;
     if (!entity.buildable?.isComplete || entity.building.hp <= 0) {

@@ -15,6 +15,10 @@ export class EntityCacheManager {
    *  to apply per-player wind production deltas; far cheaper to walk this
    *  small list than to filter the full building array each tick. */
   private cachedWindBuildings: Entity[] = [];
+  /** Solar collectors specifically. updateSolarCollectors runs every
+   *  tick and only acts on this building type — same caching rationale
+   *  as wind. */
+  private cachedSolarBuildings: Entity[] = [];
   private cachedForceFieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
@@ -49,6 +53,7 @@ export class EntityCacheManager {
     this.cachedDamagedUnits.length = 0;
     this.cachedHealthBarBuildings.length = 0;
     this.cachedWindBuildings.length = 0;
+    this.cachedSolarBuildings.length = 0;
     this.cachedForceFieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
@@ -95,6 +100,8 @@ export class EntityCacheManager {
           }
           if (entity.buildingType === 'wind') {
             this.cachedWindBuildings.push(entity);
+          } else if (entity.buildingType === 'solar') {
+            this.cachedSolarBuildings.push(entity);
           }
           break;
         case 'shot':
@@ -141,6 +148,10 @@ export class EntityCacheManager {
 
   getWindBuildings(): Entity[] {
     return this.cachedWindBuildings;
+  }
+
+  getSolarBuildings(): Entity[] {
+    return this.cachedSolarBuildings;
   }
 
   getForceFieldUnits(): Entity[] {
