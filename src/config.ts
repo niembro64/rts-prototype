@@ -420,7 +420,7 @@ export const MAP_GRID_COLOR = MAP_BG_COLOR;
  *  This replaces the old local `mmult` scale multiplier. The current
  *  value preserves the previous `mmult = 0.02` broad-stroke period.
  */
-export const MANA_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.4;
+export const MANA_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.2;
 
 const manaTileWaveScale = (tileWidths: number): number =>
   (Math.PI * 2) / (
@@ -452,8 +452,8 @@ export const MANA_TILE_TEXTURE = {
     zScaleMultiplier: 0.61,
     xPhase: 3.37,
     zPhase: 0.94,
-    amplitude: 0.035,
-    power: 8,
+    amplitude: 0.025,
+    power: 1.6,
   },
   vein: {
     xScale: manaTileWaveScale(18.5),
@@ -462,8 +462,8 @@ export const MANA_TILE_TEXTURE = {
     zWarpScale: manaTileWaveScale(41.9),
     xWarpAmplitude: 3.2,
     zWarpAmplitude: 2.6,
-    power: 7,
-    colorBoost: { r: 0.026, g: 0.065, b: 0.14 },
+    power: 1.8,
+    colorBoost: { r: 0.018, g: 0.045, b: 0.1 },
   },
   base: {
     brightness: 0.86,

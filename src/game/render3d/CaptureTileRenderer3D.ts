@@ -30,6 +30,11 @@ function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
 
+function softWave01(v: number, power: number): number {
+  const t = clamp01(v * 0.5 + 0.5);
+  return Math.pow(t, Math.max(0.25, power));
+}
+
 function pushManaTerrainColor(
   out: number[],
   wx: number,
@@ -59,14 +64,14 @@ function pushManaTerrainColor(
       wz * (MANA_TILE_TEXTURE.fleck.xScale * MANA_TILE_TEXTURE.fleck.zScaleMultiplier) +
       MANA_TILE_TEXTURE.fleck.zPhase,
     );
-  const fleck = Math.pow(Math.max(0, fleckWave), MANA_TILE_TEXTURE.fleck.power);
+  const fleck = softWave01(fleckWave, MANA_TILE_TEXTURE.fleck.power);
   const veinRaw = Math.sin(
     wx * MANA_TILE_TEXTURE.vein.xScale +
     wz * MANA_TILE_TEXTURE.vein.zScale +
     Math.sin(wx * MANA_TILE_TEXTURE.vein.xWarpScale) * MANA_TILE_TEXTURE.vein.xWarpAmplitude +
     Math.sin(wz * MANA_TILE_TEXTURE.vein.zWarpScale) * MANA_TILE_TEXTURE.vein.zWarpAmplitude,
   );
-  const vein = Math.pow(Math.max(0, veinRaw), MANA_TILE_TEXTURE.vein.power);
+  const vein = softWave01(veinRaw, MANA_TILE_TEXTURE.vein.power);
   const brightness = (
     MANA_TILE_TEXTURE.base.brightness +
     xWaves * MANA_TILE_TEXTURE.base.xWaveAmplitude +
