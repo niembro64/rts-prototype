@@ -37,13 +37,13 @@ import type {
 } from './types/config';
 
 // Spatial grid cell size in pixels. Should be roughly 1/2 to 1/3 of typical weapon range.
-export const SPATIAL_GRID_CELL_SIZE = 160;
+export const SPATIAL_GRID_CELL_SIZE = 160 * 2;
 
 // Mana/capture tile size is intentionally independent of the simulation
 // spatial grid. A multiplier of 2 means one mana tile covers a 2x2 block
 // of the old 150wu capture tiles, cutting the territory grid to 1/4 the
 // tile count while keeping physics/query cells unchanged.
-export const MANA_TILE_SIZE_MULTIPLIER = 2;
+export const MANA_TILE_SIZE_MULTIPLIER = 1;
 export const MANA_TILE_SIZE = SPATIAL_GRID_CELL_SIZE * MANA_TILE_SIZE_MULTIPLIER;
 
 // F=============================================================================
