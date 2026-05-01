@@ -233,6 +233,11 @@ export type Building = {
   depth: number;
   hp: number;
   maxHp: number;
+  /** sqrt(width² + height²) / 2 — precomputed at construction so the
+   *  per-tick targeting/damage range checks don't recompute the
+   *  bounding-circle radius for every candidate evaluation. Immutable
+   *  for the life of the building (dimensions never change). */
+  targetRadius: number;
   solar?: SolarCollectorState;
 };
 

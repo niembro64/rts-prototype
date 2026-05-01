@@ -173,16 +173,21 @@ function createBuildingFromNetwork(
     transform: { x, y, z: netEntity.pos.z, rotation },
     ownership: { playerId },
     selectable: { selected: false },
-    building: {
-      width: b?.dim?.x ?? 100,
-      height: b?.dim?.y ?? 100,
-      depth,
-      hp: b?.hp.curr ?? 500,
-      maxHp: b?.hp.max ?? 500,
-      solar: b?.type !== undefined && codeToBuildingType(b.type) === 'solar'
-        ? { open: b.solar?.open ?? false, producing: false, reopenDelayMs: 0 }
-        : undefined,
-    },
+    building: (() => {
+      const w = b?.dim?.x ?? 100;
+      const h = b?.dim?.y ?? 100;
+      return {
+        width: w,
+        height: h,
+        depth,
+        hp: b?.hp.curr ?? 500,
+        maxHp: b?.hp.max ?? 500,
+        targetRadius: Math.sqrt(w * w + h * h) / 2,
+        solar: b?.type !== undefined && codeToBuildingType(b.type) === 'solar'
+          ? { open: b.solar?.open ?? false, producing: false, reopenDelayMs: 0 }
+          : undefined,
+      };
+    })(),
     buildable: {
       buildProgress: b?.build.progress ?? 1,
       isComplete: b?.build.complete ?? true,

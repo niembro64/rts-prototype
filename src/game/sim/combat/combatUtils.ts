@@ -40,14 +40,14 @@ export function engagedTurretCount(turrets: { state: string }[] | undefined): nu
   return count;
 }
 
-// Get target radius for range calculations
+// Get target radius for range calculations.
+// Buildings precompute targetRadius at construction (dimensions never
+// change), so this is a property read, not a per-call sqrt.
 export function getTargetRadius(target: Entity): number {
   if (target.unit) {
     return target.unit.unitRadiusCollider.shot;
   } else if (target.building) {
-    const bWidth = target.building.width;
-    const bHeight = target.building.height;
-    return magnitude(bWidth, bHeight) / 2;
+    return target.building.targetRadius;
   }
   return 0;
 }

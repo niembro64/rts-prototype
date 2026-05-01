@@ -648,6 +648,7 @@ export class WorldState {
         depth,
         hp: 500,
         maxHp: 500,
+        targetRadius: Math.sqrt(width * width + height * height) / 2,
       },
       selectable: { selected: false },
     };
