@@ -469,14 +469,22 @@ export const MANA_TILE_TEXTURE = {
     zWarpScale: manaTileWaveScale(41.9),
     xWarpAmplitude: 3.2,
     zWarpAmplitude: 2.6,
+    amplitude: 0.18,
     power: 1.8,
-    colorBoost: { r: 0.018, g: 0.045, b: 0.1 },
   },
   base: {
     brightness: 0.86,
     xWaveAmplitude: 0.1,
     zWaveAmplitude: 0.085,
     color: { r: 0.07, g: 0.115, b: 0.13 },
+  },
+  tone: {
+    // Signed grayscale texture layer. The combined procedural wave
+    // signal maps negative -> black, zero -> gray, positive -> white,
+    // then blends back into the mana-tile base color.
+    neutral: 0.5,
+    contrast: 0.44,
+    mix: 0.34,
   },
   overlayOpacity: {
     min: 0.46,

@@ -30,9 +30,18 @@ function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
 
-function softWave01(v: number, power: number): number {
-  const t = clamp01(v * 0.5 + 0.5);
-  return Math.pow(t, Math.max(0.25, power));
+function clampSigned(v: number): number {
+  return Math.max(-1, Math.min(1, v));
+}
+
+function softSignedWave(v: number, power: number): number {
+  const clamped = clampSigned(v);
+  const magnitude = Math.pow(Math.abs(clamped), Math.max(0.25, power));
+  return clamped < 0 ? -magnitude : magnitude;
+}
+
+function lerpColorChannel(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
 }
 
 function pushManaTerrainColor(
@@ -64,26 +73,40 @@ function pushManaTerrainColor(
       wz * (MANA_TILE_TEXTURE.fleck.xScale * MANA_TILE_TEXTURE.fleck.zScaleMultiplier) +
       MANA_TILE_TEXTURE.fleck.zPhase,
     );
-  const fleck = softWave01(fleckWave, MANA_TILE_TEXTURE.fleck.power);
+  const fleck = softSignedWave(fleckWave, MANA_TILE_TEXTURE.fleck.power);
   const veinRaw = Math.sin(
     wx * MANA_TILE_TEXTURE.vein.xScale +
     wz * MANA_TILE_TEXTURE.vein.zScale +
     Math.sin(wx * MANA_TILE_TEXTURE.vein.xWarpScale) * MANA_TILE_TEXTURE.vein.xWarpAmplitude +
     Math.sin(wz * MANA_TILE_TEXTURE.vein.zWarpScale) * MANA_TILE_TEXTURE.vein.zWarpAmplitude,
   );
-  const vein = softWave01(veinRaw, MANA_TILE_TEXTURE.vein.power);
-  const brightness = (
+  const vein = softSignedWave(veinRaw, MANA_TILE_TEXTURE.vein.power);
+  const signedTexture = clampSigned(
+    xWaves * MANA_TILE_TEXTURE.base.xWaveAmplitude +
+    zWaves * MANA_TILE_TEXTURE.base.zWaveAmplitude +
+    cross * MANA_TILE_TEXTURE.cross.amplitude +
+    fleck * MANA_TILE_TEXTURE.fleck.amplitude +
+    vein * MANA_TILE_TEXTURE.vein.amplitude,
+  );
+  const brightness =
     MANA_TILE_TEXTURE.base.brightness +
     xWaves * MANA_TILE_TEXTURE.base.xWaveAmplitude +
     zWaves * MANA_TILE_TEXTURE.base.zWaveAmplitude +
     cross * MANA_TILE_TEXTURE.cross.amplitude +
-    fleck * MANA_TILE_TEXTURE.fleck.amplitude
-  ) * verticalShade;
+    fleck * MANA_TILE_TEXTURE.fleck.amplitude;
+  const baseR = clamp01(MANA_TILE_TEXTURE.base.color.r * brightness * verticalShade);
+  const baseG = clamp01(MANA_TILE_TEXTURE.base.color.g * brightness * verticalShade);
+  const baseB = clamp01(MANA_TILE_TEXTURE.base.color.b * brightness * verticalShade);
+  const grayTone = clamp01(
+    (MANA_TILE_TEXTURE.tone.neutral + signedTexture * MANA_TILE_TEXTURE.tone.contrast) *
+    verticalShade,
+  );
+  const mix = clamp01(MANA_TILE_TEXTURE.tone.mix);
 
   out.push(
-    clamp01(MANA_TILE_TEXTURE.base.color.r * brightness + vein * MANA_TILE_TEXTURE.vein.colorBoost.r),
-    clamp01(MANA_TILE_TEXTURE.base.color.g * brightness + vein * MANA_TILE_TEXTURE.vein.colorBoost.g),
-    clamp01(MANA_TILE_TEXTURE.base.color.b * brightness + vein * MANA_TILE_TEXTURE.vein.colorBoost.b),
+    clamp01(lerpColorChannel(baseR, grayTone, mix)),
+    clamp01(lerpColorChannel(baseG, grayTone, mix)),
+    clamp01(lerpColorChannel(baseB, grayTone, mix)),
   );
 }
 
