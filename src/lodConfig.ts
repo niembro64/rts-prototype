@@ -265,10 +265,10 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
   // than the terrain mesh can represent.
   MANA_TILE_SMOOTHNESS: {
     min: 1,
-    low: 1,
-    medium: 2,
-    high: 2,
-    max: 2,
+    low: 2,
+    medium: 3,
+    high: 4,
+    max: 4,
   },
   CAPTURE_TILE_FRAME_STRIDE: {
     min: 8,

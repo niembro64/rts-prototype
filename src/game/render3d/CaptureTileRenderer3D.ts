@@ -13,7 +13,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { NetworkCaptureTile } from '@/types/capture';
-import { MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { MANA_TILE_TEXTURE, MAP_BG_COLOR, SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
 
@@ -24,6 +24,78 @@ const NEUTRAL_R_BYTE = (MAP_BG_COLOR >> 16) & 0xff;
 const NEUTRAL_G_BYTE = (MAP_BG_COLOR >> 8) & 0xff;
 const NEUTRAL_B_BYTE = MAP_BG_COLOR & 0xff;
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
+const WHITE_COLOR = new THREE.Color(0xffffff);
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+function pushManaTerrainColor(
+  out: number[],
+  wx: number,
+  wz: number,
+  verticalShade = 1,
+): void {
+  // Seam-safe procedural texture: color is a pure function of world
+  // coordinates, not tile id. Adjacent mana tiles duplicate edge/corner
+  // vertices, but those duplicate vertices now resolve identical colors
+  // and triangle interpolation lines up across shared boundaries.
+  const xWaves =
+    Math.sin(wx * MANA_TILE_TEXTURE.xWaves[0].scale + MANA_TILE_TEXTURE.xWaves[0].phase) * MANA_TILE_TEXTURE.xWaves[0].amplitude +
+    Math.sin(wx * MANA_TILE_TEXTURE.xWaves[1].scale + MANA_TILE_TEXTURE.xWaves[1].phase) * MANA_TILE_TEXTURE.xWaves[1].amplitude;
+  const zWaves =
+    Math.sin(wz * MANA_TILE_TEXTURE.zWaves[0].scale + MANA_TILE_TEXTURE.zWaves[0].phase) * MANA_TILE_TEXTURE.zWaves[0].amplitude +
+    Math.sin(wz * MANA_TILE_TEXTURE.zWaves[1].scale + MANA_TILE_TEXTURE.zWaves[1].phase) * MANA_TILE_TEXTURE.zWaves[1].amplitude;
+  const cross =
+    Math.sin(
+      (wx + wz) * MANA_TILE_TEXTURE.cross.scale +
+      MANA_TILE_TEXTURE.cross.phase +
+      xWaves * MANA_TILE_TEXTURE.cross.xInfluence +
+      zWaves * MANA_TILE_TEXTURE.cross.zInfluence,
+    );
+  const fleckWave =
+    Math.sin(wx * MANA_TILE_TEXTURE.fleck.xScale + MANA_TILE_TEXTURE.fleck.xPhase) *
+    Math.sin(
+      wz * (MANA_TILE_TEXTURE.fleck.xScale * MANA_TILE_TEXTURE.fleck.zScaleMultiplier) +
+      MANA_TILE_TEXTURE.fleck.zPhase,
+    );
+  const fleck = Math.pow(Math.max(0, fleckWave), MANA_TILE_TEXTURE.fleck.power);
+  const veinRaw = Math.sin(
+    wx * MANA_TILE_TEXTURE.vein.xScale +
+    wz * MANA_TILE_TEXTURE.vein.zScale +
+    Math.sin(wx * MANA_TILE_TEXTURE.vein.xWarpScale) * MANA_TILE_TEXTURE.vein.xWarpAmplitude +
+    Math.sin(wz * MANA_TILE_TEXTURE.vein.zWarpScale) * MANA_TILE_TEXTURE.vein.zWarpAmplitude,
+  );
+  const vein = Math.pow(Math.max(0, veinRaw), MANA_TILE_TEXTURE.vein.power);
+  const brightness = (
+    MANA_TILE_TEXTURE.base.brightness +
+    xWaves * MANA_TILE_TEXTURE.base.xWaveAmplitude +
+    zWaves * MANA_TILE_TEXTURE.base.zWaveAmplitude +
+    cross * MANA_TILE_TEXTURE.cross.amplitude +
+    fleck * MANA_TILE_TEXTURE.fleck.amplitude
+  ) * verticalShade;
+
+  out.push(
+    clamp01(MANA_TILE_TEXTURE.base.color.r * brightness + vein * MANA_TILE_TEXTURE.vein.colorBoost.r),
+    clamp01(MANA_TILE_TEXTURE.base.color.g * brightness + vein * MANA_TILE_TEXTURE.vein.colorBoost.g),
+    clamp01(MANA_TILE_TEXTURE.base.color.b * brightness + vein * MANA_TILE_TEXTURE.vein.colorBoost.b),
+  );
+}
+
+function captureOverlayOpacity(intensity: number): number {
+  const t = clamp01(intensity);
+  return MANA_TILE_TEXTURE.overlayOpacity.min +
+    (MANA_TILE_TEXTURE.overlayOpacity.max - MANA_TILE_TEXTURE.overlayOpacity.min) * t;
+}
+
+function terrainColorDiffSq(colors: number[], ai: number, bi: number): number {
+  const a = ai * 3;
+  const b = bi * 3;
+  const dr = colors[a] - colors[b];
+  const dg = colors[a + 1] - colors[b + 1];
+  const db = colors[a + 2] - colors[b + 2];
+  return dr * dr + dg * dg + db * db;
+}
 
 export class CaptureTileRenderer3D {
   private terrainMesh: THREE.Mesh;
@@ -43,6 +115,7 @@ export class CaptureTileRenderer3D {
   private renderFrameIndex = 0;
   private lastCaptureVersion = -1;
   private lastOverlayIntensity = -1;
+  private terrainTextureActive = false;
 
   private clientViewState: ClientViewState;
   private mapWidth: number;
@@ -62,6 +135,7 @@ export class CaptureTileRenderer3D {
     this.terrainMaterial = new THREE.MeshLambertMaterial({
       color: NEUTRAL_COLOR,
       side: THREE.DoubleSide,
+      vertexColors: false,
     });
     this.terrainMesh = new THREE.Mesh(this.terrainGeometry, this.terrainMaterial);
     this.terrainMesh.frustumCulled = false;
@@ -154,6 +228,7 @@ export class CaptureTileRenderer3D {
 
     const terrainPositions: number[] = [];
     const terrainNormals: number[] = [];
+    const terrainColors: number[] = [];
     const terrainIndices: number[] = [];
     const overlayPositions: number[] = [];
     const overlayUvs: number[] = [];
@@ -177,6 +252,7 @@ export class CaptureTileRenderer3D {
             const wx = x0 + (ix / subdiv) * cellSize;
             const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight);
             terrainPositions.push(wx, h, wz);
+            pushManaTerrainColor(terrainColors, wx, wz);
 
             const hxp = getTerrainHeight(wx + eps, wz, this.mapWidth, this.mapHeight);
             const hxm = getTerrainHeight(wx - eps, wz, this.mapWidth, this.mapHeight);
@@ -205,6 +281,10 @@ export class CaptureTileRenderer3D {
             x1, CUBE_FLOOR_Y, z1,
             x0, CUBE_FLOOR_Y, z1,
           );
+          pushManaTerrainColor(terrainColors, x0, z0, 0.68);
+          pushManaTerrainColor(terrainColors, x1, z0, 0.68);
+          pushManaTerrainColor(terrainColors, x1, z1, 0.68);
+          pushManaTerrainColor(terrainColors, x0, z1, 0.68);
 
           const cornerSrc = [
             topIdx(0, 0),
@@ -228,22 +308,48 @@ export class CaptureTileRenderer3D {
             const b = topIdx(ix + 1, j);
             const c = topIdx(ix + 1, j + 1);
             const d = topIdx(ix, j + 1);
-            terrainIndices.push(
-              terrainVertexBase + a,
-              terrainVertexBase + b,
-              terrainVertexBase + c,
-              terrainVertexBase + a,
-              terrainVertexBase + c,
-              terrainVertexBase + d,
-            );
-            overlayIndices.push(
-              overlayVertexBase + a,
-              overlayVertexBase + b,
-              overlayVertexBase + c,
-              overlayVertexBase + a,
-              overlayVertexBase + c,
-              overlayVertexBase + d,
-            );
+            // Pick the split with the smaller color delta across its
+            // diagonal. This keeps vertex-color interpolation smooth
+            // without imposing a map-wide 45-degree or checkerboard
+            // direction that can reveal mana tile size.
+            const useAcDiagonal =
+              terrainColorDiffSq(terrainColors, terrainVertexBase + a, terrainVertexBase + c) <=
+              terrainColorDiffSq(terrainColors, terrainVertexBase + b, terrainVertexBase + d);
+            if (useAcDiagonal) {
+              terrainIndices.push(
+                terrainVertexBase + a,
+                terrainVertexBase + b,
+                terrainVertexBase + c,
+                terrainVertexBase + a,
+                terrainVertexBase + c,
+                terrainVertexBase + d,
+              );
+              overlayIndices.push(
+                overlayVertexBase + a,
+                overlayVertexBase + b,
+                overlayVertexBase + c,
+                overlayVertexBase + a,
+                overlayVertexBase + c,
+                overlayVertexBase + d,
+              );
+            } else {
+              terrainIndices.push(
+                terrainVertexBase + a,
+                terrainVertexBase + b,
+                terrainVertexBase + d,
+                terrainVertexBase + b,
+                terrainVertexBase + c,
+                terrainVertexBase + d,
+              );
+              overlayIndices.push(
+                overlayVertexBase + a,
+                overlayVertexBase + b,
+                overlayVertexBase + d,
+                overlayVertexBase + b,
+                overlayVertexBase + c,
+                overlayVertexBase + d,
+              );
+            }
           }
         }
 
@@ -278,6 +384,7 @@ export class CaptureTileRenderer3D {
     this.terrainGeometry.dispose();
     this.terrainGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
     this.terrainGeometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
+    this.terrainGeometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(terrainColors), 3));
     this.terrainGeometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
     this.terrainGeometry.computeBoundingSphere();
 
@@ -288,6 +395,14 @@ export class CaptureTileRenderer3D {
     this.overlayGeometry.computeBoundingSphere();
 
     return true;
+  }
+
+  private setTerrainTextureActive(active: boolean): void {
+    if (this.terrainTextureActive === active) return;
+    this.terrainTextureActive = active;
+    this.terrainMaterial.vertexColors = active;
+    this.terrainMaterial.color.copy(active ? WHITE_COLOR : NEUTRAL_COLOR);
+    this.terrainMaterial.needsUpdate = true;
   }
 
   private clearOverlayTexture(): void {
@@ -371,8 +486,10 @@ export class CaptureTileRenderer3D {
 
     const gridMode = getGridOverlay();
     const intensity = getGridOverlayIntensity();
+    this.setTerrainTextureActive(gridMode !== 'off');
     const overlayActive = gridMode !== 'off' && intensity > 0;
     this.overlayMesh.visible = overlayActive;
+    this.overlayMaterial.opacity = captureOverlayOpacity(intensity);
     if (!overlayActive) {
       if (this.lastOverlayIntensity !== intensity) {
         this.clearOverlayTexture();

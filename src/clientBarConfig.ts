@@ -1027,8 +1027,8 @@ export function setLobbyVisible(visible: boolean): void {
 // blend (mix = clamp(intensity * 3 * height, 0, 1)).
 //
 // Tier semantics:
-//   off     — terrain and water remain visible, capture ownership tint is hidden.
-//   zero    — terrain and water remain visible, capture ownership tint is hidden.
+//   off     — terrain and water remain visible; mana texture and capture tint are hidden.
+//   zero    — mana terrain texture visible, capture ownership tint hidden.
 //   low     — gentle team tint (subtle ownership read at a glance).
 //   medium  — old "low" intensity, the previous default.
 //   high    — saturated team color, used as a strategic overview.

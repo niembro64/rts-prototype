@@ -408,6 +408,75 @@ export const MAP_OOB_COLOR = 0x08080f; // out-of-bounds background
 export const MAP_CAMERA_BG = 0x0a0a14; // camera clear color
 export const MAP_GRID_COLOR = MAP_BG_COLOR;
 
+// Seam-safe mana tile terrain texture. These waves are evaluated from
+// world-space X/Z only, so adjacent mana tiles share exact vertex colors
+// on shared edges and corners.
+/** Global period multiplier for every sine wave in MANA_TILE_TEXTURE.
+ *
+ *  1.0 = the configured tile-width periods below.
+ *  2.0 = all waves are twice as wide / slower-changing.
+ *  0.5 = all waves are half as wide / more frequent.
+ *
+ *  This replaces the old local `mmult` scale multiplier. The current
+ *  value preserves the previous `mmult = 0.02` broad-stroke period.
+ */
+export const MANA_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.4;
+
+const manaTileWaveScale = (tileWidths: number): number =>
+  (Math.PI * 2) / (
+    SPATIAL_GRID_CELL_SIZE *
+    tileWidths *
+    MANA_TILE_TEXTURE_PERIOD_MULTIPLIER
+  );
+
+export const MANA_TILE_TEXTURE = {
+  xWaves: [
+    { scale: manaTileWaveScale(9.4), phase: 1.31, amplitude: 0.34 },
+    { scale: manaTileWaveScale(17.8), phase: 4.76, amplitude: 0.16 },
+  ],
+  zWaves: [
+    { scale: manaTileWaveScale(12.7), phase: 2.38, amplitude: 0.31 },
+    { scale: manaTileWaveScale(23.6), phase: 5.11, amplitude: 0.14 },
+  ],
+  cross: {
+    // Keep this at 0 by default: a strong `(x + z)` term reads as a
+    // regular 45-degree pattern across the mana grid.
+    scale: manaTileWaveScale(31.5),
+    phase: 1.9,
+    amplitude: 0,
+    xInfluence: 0.31,
+    zInfluence: -0.73,
+  },
+  fleck: {
+    xScale: manaTileWaveScale(15.2),
+    zScaleMultiplier: 0.61,
+    xPhase: 3.37,
+    zPhase: 0.94,
+    amplitude: 0.035,
+    power: 8,
+  },
+  vein: {
+    xScale: manaTileWaveScale(18.5),
+    zScale: manaTileWaveScale(33.7),
+    xWarpScale: manaTileWaveScale(24.3),
+    zWarpScale: manaTileWaveScale(41.9),
+    xWarpAmplitude: 3.2,
+    zWarpAmplitude: 2.6,
+    power: 7,
+    colorBoost: { r: 0.026, g: 0.065, b: 0.14 },
+  },
+  base: {
+    brightness: 0.86,
+    xWaveAmplitude: 0.1,
+    zWaveAmplitude: 0.085,
+    color: { r: 0.07, g: 0.115, b: 0.13 },
+  },
+  overlayOpacity: {
+    min: 0.46,
+    max: 0.76,
+  },
+} as const;
+
 // Scorched earth burn mark colors and decay
 export const BURN_COLOR_HOT = 0x882200; // bright red start
 export const BURN_COLOR_COOL = MAP_BG_COLOR; // fades to background
