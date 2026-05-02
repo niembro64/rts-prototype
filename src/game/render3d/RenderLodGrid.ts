@@ -23,10 +23,12 @@ export class RenderLodGrid {
     mass: 0,
     impostor: 0,
   };
-  private cells = new Map<number, RenderObjectLodTier>();
+  private cellTiers = new Map<number, RenderObjectLodTier>();
+  private cellFrames = new Map<number, number>();
+  private frameId = 0;
+  private structuralKey = '';
 
   beginFrame(view: RenderViewLodState, gfx: GraphicsConfig): void {
-    this.cells.clear();
     this.view = view;
     this.cellSize = normalizeLodCellSize(gfx.objectLodCellSize);
     this.shells = getRenderObjectLodShellDistances(gfx);
@@ -34,6 +36,20 @@ export class RenderLodGrid {
     this.shellDistanceSq.simple = this.shells.simple * this.shells.simple;
     this.shellDistanceSq.mass = this.shells.mass * this.shells.mass;
     this.shellDistanceSq.impostor = this.shells.impostor * this.shells.impostor;
+    const nextStructuralKey = [
+      this.cellSize,
+      this.shells.rich,
+      this.shells.simple,
+      this.shells.mass,
+      this.shells.impostor,
+    ].join('|');
+    if (nextStructuralKey !== this.structuralKey || this.frameId >= 0x3fffffff) {
+      this.cellTiers.clear();
+      this.cellFrames.clear();
+      this.frameId = 0;
+      this.structuralKey = nextStructuralKey;
+    }
+    this.frameId++;
   }
 
   resolve(worldX: number, _worldY: number, worldZ: number): RenderObjectLodTier {
@@ -44,8 +60,9 @@ export class RenderLodGrid {
     const ix = landCellIndexForSize(worldX, size);
     const iz = landCellIndexForSize(worldZ, size);
     const key = packLandCellKey(ix, iz);
-    const cached = this.cells.get(key);
-    if (cached !== undefined) return cached;
+    if (this.cellFrames.get(key) === this.frameId) {
+      return this.cellTiers.get(key) ?? 'marker';
+    }
 
     const cx = landCellCenterForSize(ix, size);
     const cz = landCellCenterForSize(iz, size);
@@ -59,7 +76,8 @@ export class RenderLodGrid {
     else if (shellSq.simple > 0 && distanceSq <= shellSq.simple) tier = 'simple';
     else if (shellSq.mass > 0 && distanceSq <= shellSq.mass) tier = 'mass';
     else if (shellSq.impostor > 0 && distanceSq <= shellSq.impostor) tier = 'impostor';
-    this.cells.set(key, tier);
+    this.cellTiers.set(key, tier);
+    this.cellFrames.set(key, this.frameId);
     return tier;
   }
 }
