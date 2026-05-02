@@ -2174,7 +2174,7 @@ onUnmounted(() => {
                 :active="serverMetaFromSnapshot?.units.max === opt"
                 :title="`Max ${opt} total units`"
                 @click="changeMaxTotalUnits(opt)"
-              >{{ opt.toExponential(0).toUpperCase() }}</BarButton>
+              >{{ opt.toLocaleString() }}</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
           <!-- CENTER / DIVIDERS only in DEMO BATTLE — terrain is baked
