@@ -53,6 +53,9 @@ const BODY_SHAPES = {
   },
   beam: {
     kind: 'composite',
+    // Forward head sphere intentionally removed — the beam turret head
+    // now sits at offsetForward=0.3 (tarantula chassisMount) and visually
+    // takes that head sphere's place, same approach used on the formik.
     parts: [
       {
         kind: 'oval',
@@ -61,7 +64,6 @@ const BODY_SHAPES = {
         yFrac: (0.9 + 0.65) / 2,
         zFrac: 0.65,
       },
-      { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.6, yFrac: 0.6 },
     ],
   },
   arachnid: {
@@ -103,7 +105,13 @@ const BODY_SHAPES = {
       { kind: 'circle', offsetForward: 0.64, radiusFrac: 0.38, yFrac: 0.42 },
     ],
   },
-  forceField: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.55 },
+  // Daddy used to have a single dome-sized body sphere here that
+  // overlapped the central force-field turret's emitter — the emitter
+  // and the body read as two stacked spheres. Drop the body to a thin
+  // platform (still wide enough for the leg hips to land sensibly) so
+  // the central force-field emitter is the unit's visible head, same
+  // intent as removing the head sphere on formik / tarantula.
+  forceField: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.12 },
   loris: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.55 },
 } satisfies Record<string, UnitBodyShape>;
 
@@ -425,7 +433,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 18,
     resourceCost: 300,
     turrets: [{ turretId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
-    chassisMounts: [{ x: 0.1, y: 0 }],
+    // Mount sits where the (removed) head sphere used to be so the
+    // turret head visually takes its place on the silhouette — same
+    // pattern applied to the formik.
+    chassisMounts: [{ x: 0.3, y: 0 }],
     bodyShape: BODY_SHAPES.beam,
     locomotion: {
       type: 'legs',
