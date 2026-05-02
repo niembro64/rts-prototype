@@ -46,18 +46,22 @@ export const DEMO_CONFIG = {
   spawnMarginPx: 100,
 
   /**
-   * DEMO BATTLE initial-spawn unit order type. 'move' keeps demo launch
-   * waves moving to their assigned waypoint without stopping for fight-move
-   * targeting work; 'fight' makes them engage opportunistically en route.
+   * DEMO BATTLE initial-spawn unit order type. 'fight' makes the
+   * launch waves engage opportunistically en route to their assigned
+   * waypoint instead of barreling straight through enemy lines —
+   * produces the messy mid-map clash the demo is supposed to read as.
+   * Switch to 'move' to restore the no-stop "march to waypoint" path.
    */
-  initialUnitWaypointType: 'move' as DemoBattleWaypointType,
+  initialUnitWaypointType: 'fight' as DemoBattleWaypointType,
 
   /**
-   * DEMO BATTLE factory/fabricator-produced unit order type. This only
-   * affects the demo's prebuilt AI factories; real-battle factories use
+   * DEMO BATTLE factory/fabricator-produced unit order type. Same
+   * 'fight' default as the initial spawn so reinforcements behave
+   * consistently with the launch waves. Only affects the demo's
+   * prebuilt AI factories; real-battle factories use
    * REAL_BATTLE_FACTORY_WAYPOINT_TYPE in config.ts.
    */
-  factoryWaypointType: 'move' as DemoBattleWaypointType,
+  factoryWaypointType: 'fight' as DemoBattleWaypointType,
 
   /**
    * How far (as a fraction of factory→map-center distance) the default
