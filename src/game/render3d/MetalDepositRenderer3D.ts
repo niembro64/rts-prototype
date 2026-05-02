@@ -19,7 +19,7 @@ import {
 import { RenderLodGrid } from './RenderLodGrid';
 
 const PLAYER_CLIENT_DEPOSIT_LOD: Record<ConcreteGraphicsQuality, {
-  shape: 'sphere' | 'deposit';
+  shape: 'circle' | 'sphere' | 'deposit';
   radialStep: number;
   verticalStep: number;
   radiusScale: number;
@@ -27,11 +27,19 @@ const PLAYER_CLIENT_DEPOSIT_LOD: Record<ConcreteGraphicsQuality, {
   material: 'lambert' | 'standard';
   veinCount: number;
 }> = {
-  min:    { shape: 'sphere',  radialStep: 8, verticalStep: 8, radiusScale: 1, heightScale: 1, material: 'lambert',  veinCount: 0 },
-  low:    { shape: 'deposit', radialStep: 4, verticalStep: 4, radiusScale: 1, heightScale: 1, material: 'lambert',  veinCount: 0 },
-  medium: { shape: 'deposit', radialStep: 2, verticalStep: 4, radiusScale: 1, heightScale: 1, material: 'standard', veinCount: 3 },
-  high:   { shape: 'deposit', radialStep: 1, verticalStep: 2, radiusScale: 1, heightScale: 1, material: 'standard', veinCount: 7 },
-  max:    { shape: 'deposit', radialStep: 1, verticalStep: 1, radiusScale: 1, heightScale: 1, material: 'standard', veinCount: 14 },
+  // Lowest tier: a flat, super-simple circle marker on the deposit's pad.
+  // Reads as "ore here" from far camera distances without paying for any
+  // 3D geometry. radialStep doubles as the circle's segment count.
+  min:    { shape: 'circle',  radialStep: 8, verticalStep: 1, radiusScale: 1, heightScale: 1, material: 'lambert',  veinCount: 0 },
+  low:    { shape: 'sphere',  radialStep: 8, verticalStep: 8, radiusScale: 1, heightScale: 1, material: 'lambert',  veinCount: 0 },
+  medium: { shape: 'deposit', radialStep: 4, verticalStep: 4, radiusScale: 1, heightScale: 1, material: 'lambert',  veinCount: 0 },
+  high:   { shape: 'deposit', radialStep: 2, verticalStep: 4, radiusScale: 1, heightScale: 1, material: 'standard', veinCount: 3 },
+  // The previous distinct 'max' tier (radialStep:1, verticalStep:1, 14 veins,
+  // brighter veinMax material) was overkill — visually indistinguishable
+  // from 'high' at gameplay distances. Collapse it to match 'high' so
+  // every camera-sphere band still resolves to a valid config without
+  // paying for the extra geometry or the second vein material.
+  max:    { shape: 'deposit', radialStep: 2, verticalStep: 4, radiusScale: 1, heightScale: 1, material: 'standard', veinCount: 3 },
 };
 
 // All deposit LODs are sampled from this same seed grid. Lower tiers keep
@@ -43,12 +51,21 @@ const DEPOSIT_MAX_VERTICAL_SEGMENTS = 24;
 const DEPOSIT_BASE = new THREE.Color(0x272b2e);
 const DEPOSIT_DARK = new THREE.Color(0x111416);
 const DEPOSIT_LIGHT = new THREE.Color(0x6f7678);
+const DEPOSIT_LOD_TIERS: readonly ConcreteGraphicsQuality[] = [
+  'min',
+  'low',
+  'medium',
+  'high',
+  'max',
+];
+
+type DepositLodNodeMap = Partial<Record<ConcreteGraphicsQuality, THREE.Group>>;
 
 export class MetalDepositRenderer3D {
   private group: THREE.Group;
   private deposits: ReadonlyArray<MetalDeposit>;
   private records: Array<{
-    node: THREE.Group | null;
+    nodes: DepositLodNodeMap;
     tier: ConcreteGraphicsQuality | null;
     objectTier: RenderObjectLodTier | null;
   }> = [];
@@ -63,7 +80,7 @@ export class MetalDepositRenderer3D {
     this.deposits = deposits;
     this.group = new THREE.Group();
     parentWorld.add(this.group);
-    this.records = deposits.map(() => ({ node: null, tier: null, objectTier: null }));
+    this.records = deposits.map(() => ({ nodes: {}, tier: null, objectTier: null }));
     this.buildAll(initialTier);
   }
 
@@ -86,8 +103,8 @@ export class MetalDepositRenderer3D {
       // radii. Capping this by global tier made all visible deposits look
       // identical at MIN/LOW and read as "not responding" to the rings.
       const tier = objectLodToCameraSphereGraphicsTier(objectTier);
-      if (tier !== record.tier) this.rebuildDeposit(i, tier);
-      const node = this.records[i].node;
+      if (tier !== record.tier) this.setDepositTier(i, tier);
+      const node = record.nodes[tier];
       if (node) {
         node.visible = true;
         node.userData.objectLodTier = objectTier;
@@ -97,46 +114,62 @@ export class MetalDepositRenderer3D {
   }
 
   private buildAll(tier: ConcreteGraphicsQuality): void {
-    for (let i = 0; i < this.deposits.length; i++) this.rebuildDeposit(i, tier);
+    for (let i = 0; i < this.deposits.length; i++) {
+      const record = this.records[i];
+      for (const lodTier of DEPOSIT_LOD_TIERS) {
+        const node = this.buildDepositNode(i, lodTier);
+        node.visible = lodTier === tier;
+        record.nodes[lodTier] = node;
+        this.group.add(node);
+      }
+      record.tier = tier;
+    }
   }
 
-  private rebuildDeposit(index: number, tier: ConcreteGraphicsQuality): void {
+  private setDepositTier(index: number, tier: ConcreteGraphicsQuality): void {
     const record = this.records[index];
-    if (record.node) {
-      disposeDepositNode(record.node);
-      this.group.remove(record.node);
+    if (record.tier === tier) return;
+    if (record.tier) {
+      const previous = record.nodes[record.tier];
+      if (previous) previous.visible = false;
     }
+    const next = record.nodes[tier];
+    if (next) next.visible = true;
+    record.tier = tier;
+  }
+
+  private buildDepositNode(index: number, tier: ConcreteGraphicsQuality): THREE.Group {
     const d = this.deposits[index];
     const lod = PLAYER_CLIENT_DEPOSIT_LOD[tier];
     const r = METAL_DEPOSIT_CONFIG.markerRadius * lod.radiusScale;
     const node = new THREE.Group();
-    const geom = lod.shape === 'sphere'
-      ? makeDepositMarkerSphereGeometry(d.id, r)
-      : makeChunkyDepositGeometry(
-          d.id,
-          r,
-          lod.radialStep,
-          lod.verticalStep,
-          lod.heightScale,
-        );
+    const geom = lod.shape === 'circle'
+      ? makeDepositCircleGeometry(r, lod.radialStep)
+      : lod.shape === 'sphere'
+        ? makeDepositMarkerSphereGeometry(d.id, r)
+        : makeChunkyDepositGeometry(
+            d.id,
+            r,
+            lod.radialStep,
+            lod.verticalStep,
+            lod.heightScale,
+          );
     const mesh = new THREE.Mesh(geom, this.getMaterial(lod.material));
     node.add(mesh);
     if (lod.shape === 'deposit' && lod.veinCount > 0) {
       const veins = new THREE.LineSegments(
         makeDepositVeinGeometry(d.id, r, lod.heightScale, lod.veinCount),
-        this.getMaterial(tier === 'max' ? 'veinMax' : 'vein'),
+        this.getMaterial('vein'),
       );
       node.add(veins);
     }
     node.position.set(d.x, d.height + 0.25, d.y);
     node.rotation.y = seededNoise(d.id * 991 + 13) * Math.PI * 2;
-    record.node = node;
-    record.tier = tier;
     node.userData.graphicsTier = tier;
-    this.group.add(node);
+    return node;
   }
 
-  private getMaterial(kind: 'lambert' | 'standard' | 'vein' | 'veinMax'): THREE.Material {
+  private getMaterial(kind: 'lambert' | 'standard' | 'vein'): THREE.Material {
     let material = this.materials.get(kind);
     if (!material) {
       material = makeDepositMaterial(kind);
@@ -147,10 +180,14 @@ export class MetalDepositRenderer3D {
 
   dispose(): void {
     for (const record of this.records) {
-      if (!record.node) continue;
-      disposeDepositNode(record.node);
-      this.group.remove(record.node);
-      record.node = null;
+      for (const tier of DEPOSIT_LOD_TIERS) {
+        const node = record.nodes[tier];
+        if (!node) continue;
+        disposeDepositNode(node);
+        this.group.remove(node);
+        delete record.nodes[tier];
+      }
+      record.tier = null;
     }
     for (const material of this.materials.values()) material.dispose();
     this.materials.clear();
@@ -170,7 +207,7 @@ function seededNoise(seed: number): number {
   return x - Math.floor(x);
 }
 
-function makeDepositMaterial(kind: 'lambert' | 'standard' | 'vein' | 'veinMax'): THREE.Material {
+function makeDepositMaterial(kind: 'lambert' | 'standard' | 'vein'): THREE.Material {
   if (kind === 'standard') {
     return new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -180,11 +217,11 @@ function makeDepositMaterial(kind: 'lambert' | 'standard' | 'vein' | 'veinMax'):
       roughness: 0.58,
     });
   }
-  if (kind === 'vein' || kind === 'veinMax') {
+  if (kind === 'vein') {
     return new THREE.LineBasicMaterial({
-      color: kind === 'veinMax' ? 0xd2dde0 : 0x909b9e,
+      color: 0x909b9e,
       transparent: true,
-      opacity: kind === 'veinMax' ? 0.82 : 0.55,
+      opacity: 0.55,
       depthWrite: false,
     });
   }
@@ -263,6 +300,26 @@ function makeChunkyDepositGeometry(
   geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geom.setIndex(indices);
   geom.computeVertexNormals();
+  return geom;
+}
+
+function makeDepositCircleGeometry(radius: number, segments: number): THREE.BufferGeometry {
+  // Simplest possible deposit marker: a flat lit disc lying on the
+  // pad. Used at the lowest camera-sphere LOD so distant deposits
+  // still read as "ore here" without paying for any 3D geometry.
+  // Segment count is bounded low by the LOD config (typically 8).
+  const geom = new THREE.CircleGeometry(radius, Math.max(6, segments | 0));
+  geom.rotateX(-Math.PI / 2);
+  // Per-vertex color attribute keeps the lambert material instance
+  // shared with the higher tiers (they all use vertexColors: true).
+  // Using a single deposit-base tone reads as a unified "metal pile"
+  // patch from the far camera band.
+  const position = geom.getAttribute('position');
+  const colors: number[] = [];
+  for (let i = 0; i < position.count; i++) {
+    colors.push(DEPOSIT_BASE.r, DEPOSIT_BASE.g, DEPOSIT_BASE.b);
+  }
+  geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   return geom;
 }
 
