@@ -284,6 +284,7 @@ type EntityMesh = {
   buildingCachedY?: number;
   buildingCachedZ?: number;
   buildingCachedRotation?: number;
+  buildingCachedDetailsReady?: boolean;
   /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
    *  the mesh when the current frame's LOD key differs. */
   lodKey: string;
@@ -308,6 +309,14 @@ export class Render3DEntities {
 
   private unitMeshes = new Map<number, EntityMesh>();
   private buildingMeshes = new Map<number, EntityMesh>();
+  private solarBuildingIds: EntityId[] = [];
+  private solarBuildingIdSet = new Set<EntityId>();
+  private windBuildingIds: EntityId[] = [];
+  private windBuildingIdSet = new Set<EntityId>();
+  private extractorBuildingIds: EntityId[] = [];
+  private extractorBuildingIdSet = new Set<EntityId>();
+  private factoryBuildingIds: EntityId[] = [];
+  private factoryBuildingIdSet = new Set<EntityId>();
   private factorySprayTargets: SprayTarget[] = [];
   private factorySprayTargetPool: SprayTarget[] = [];
   private windFanYaw: number | null = null;
@@ -3104,9 +3113,6 @@ export class Render3DEntities {
     // LOD-driven detail visibility for buildings. Each accent mesh now
     // declares its own tier range, and the per-object resolver can lower
     // distant buildings below the global tier without using footprint size.
-    this.updateWindAnimationGlobals();
-    this.extractorRotorPhase =
-      (this.extractorRotorPhase + this._spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC) % (Math.PI * 2);
 
     for (const e of buildings) {
       if (pruneBuildings) seen.add(e.id);
@@ -3173,6 +3179,7 @@ export class Render3DEntities {
           solarOpenAmount: e.building?.solar?.open === false ? 0 : 1,
         };
         this.buildingMeshes.set(e.id, m);
+        this.registerAnimatedBuilding(e, m);
       }
 
       const buildable = e.buildable;
@@ -3283,29 +3290,114 @@ export class Render3DEntities {
         m.buildingCachedY = e.transform.y;
         m.buildingCachedZ = e.transform.z;
         m.buildingCachedRotation = e.transform.rotation;
+        m.buildingCachedDetailsReady = detailsReady;
       } else {
         m.group.visible = true;
       }
 
-      if (m.buildingDetails) {
-        this.updateSolarCollectorAnimation(m, e, detailsReady);
-        this.updateWindTurbineRig(m, detailsReady);
-        this.updateExtractorRig(m, e, detailsReady);
-      }
-      this.updateFactoryConstructionRig(m.factoryRig, e, tier, detailsReady, w, d, m.group);
-
       // Health + build-progress bars handled by HealthBar3D
       // (billboarded sprite in the world group).
     }
+
+    this.updateAnimatedBuildings();
 
     if (pruneBuildings) {
       for (const [id, m] of this.buildingMeshes) {
         if (!seen.has(id)) {
           this.world.remove(m.group);
           this.buildingMeshes.delete(id);
+          this.unregisterAnimatedBuilding(id);
         }
       }
       this.lastBuildingEntitySetVersion = entitySetVersion;
+    }
+  }
+
+  private addAnimatedBuilding(
+    list: EntityId[],
+    set: Set<EntityId>,
+    id: EntityId,
+  ): void {
+    if (set.has(id)) return;
+    set.add(id);
+    list.push(id);
+  }
+
+  private removeAnimatedBuilding(
+    list: EntityId[],
+    set: Set<EntityId>,
+    id: EntityId,
+  ): void {
+    if (!set.delete(id)) return;
+    const idx = list.indexOf(id);
+    if (idx >= 0) list.splice(idx, 1);
+  }
+
+  private registerAnimatedBuilding(entity: Entity, mesh: EntityMesh): void {
+    const id = entity.id;
+    if (entity.buildingType === 'solar' && mesh.buildingDetails) {
+      this.addAnimatedBuilding(this.solarBuildingIds, this.solarBuildingIdSet, id);
+    }
+    if (mesh.windRig) {
+      this.addAnimatedBuilding(this.windBuildingIds, this.windBuildingIdSet, id);
+    }
+    if (mesh.extractorRig) {
+      this.addAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
+    }
+    if (mesh.factoryRig) {
+      this.addAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
+    }
+  }
+
+  private unregisterAnimatedBuilding(id: EntityId): void {
+    this.removeAnimatedBuilding(this.solarBuildingIds, this.solarBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.windBuildingIds, this.windBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
+  }
+
+  private updateAnimatedBuildings(): void {
+    for (const id of this.solarBuildingIds) {
+      const mesh = this.buildingMeshes.get(id);
+      const entity = this.clientViewState.getEntity(id);
+      if (mesh && entity) {
+        this.updateSolarCollectorAnimation(mesh, entity, mesh.buildingCachedDetailsReady === true);
+      }
+    }
+
+    if (this.windBuildingIds.length > 0) {
+      this.updateWindAnimationGlobals();
+      for (const id of this.windBuildingIds) {
+        const mesh = this.buildingMeshes.get(id);
+        if (mesh) this.updateWindTurbineRig(mesh, mesh.buildingCachedDetailsReady === true);
+      }
+    }
+
+    if (this.extractorBuildingIds.length > 0) {
+      this.extractorRotorPhase =
+        (this.extractorRotorPhase + this._spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC) % (Math.PI * 2);
+      for (const id of this.extractorBuildingIds) {
+        const mesh = this.buildingMeshes.get(id);
+        const entity = this.clientViewState.getEntity(id);
+        if (mesh && entity) {
+          this.updateExtractorRig(mesh, entity, mesh.buildingCachedDetailsReady === true);
+        }
+      }
+    }
+
+    for (const id of this.factoryBuildingIds) {
+      const mesh = this.buildingMeshes.get(id);
+      const entity = this.clientViewState.getEntity(id);
+      if (!mesh || !entity) continue;
+      this.updateFactoryConstructionRig(
+        mesh.factoryRig,
+        entity,
+        mesh.buildingCachedGraphicsTier ?? 'min',
+        mesh.buildingCachedDetailsReady === true,
+        mesh.buildingCachedWidth ?? entity.building?.width ?? 100,
+        mesh.buildingCachedDepth ?? entity.building?.height ?? 100,
+        mesh.group,
+      );
     }
   }
 
