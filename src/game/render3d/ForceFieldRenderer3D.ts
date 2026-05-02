@@ -576,8 +576,18 @@ export class ForceFieldRenderer3D {
     // the unit's mesh hasn't been built yet (off-scope at scene
     // start) or was torn down (LOD flip mid-frame), skip; we'll
     // re-acquire when it's back.
+    // yawGroup is the unit's mesh hierarchy node; it only exists for
+    // units rendered at the rich tier. Lower tiers (mass / impostor /
+    // marker) draw the unit as an instanced sphere with no scenegraph
+    // node — but force-field bubbles are gameplay info we want visible
+    // regardless of camera distance. The bubble (sphereInstancedMesh
+    // slots) doesn't actually need a parent; it's written in absolute
+    // world coords. So we proceed even without yawGroup, falling back
+    // to the unit's transform for the world position. The persistent
+    // particle / trail / arc meshes are gated separately on yawGroup
+    // below — they need a parent and only run at simple/enhanced
+    // styles anyway.
     const yawGroup = this.getYawGroup(unit.id);
-    if (!yawGroup) return;
 
       for (let ti = 0; ti < unit.turrets.length; ti++) {
         const turret = unit.turrets[ti];
@@ -633,7 +643,7 @@ export class ForceFieldRenderer3D {
         // `field.emitter.parent` so the lazy-alloc path attaches new
         // motes to the right yawGroup); the actual emitter+zone
         // visuals come from sphereInstancedMesh below.
-        if (field.emitter.parent !== yawGroup) {
+        if (yawGroup && field.emitter.parent !== yawGroup) {
           this.reparentFieldTo(field, yawGroup);
         }
 
@@ -661,10 +671,10 @@ export class ForceFieldRenderer3D {
         // use: `worldPos = groupPos + R(tilt · Ry(yaw)) · (localX,
         // lift + localY, localZ)`.
         const liftGroupNode = yawGroup; // getYawGroup returns liftGroup
-        const realYawGroup = liftGroupNode.parent;
+        const realYawGroup = liftGroupNode?.parent;
         const groupOuter = realYawGroup?.parent;
         let havePosition = false;
-        if (realYawGroup && groupOuter) {
+        if (liftGroupNode && realYawGroup && groupOuter) {
           this._sphereYawQuat.setFromAxisAngle(
             ForceFieldRenderer3D._SPHERE_UP,
             realYawGroup.rotation.y,
@@ -677,6 +687,31 @@ export class ForceFieldRenderer3D {
           this._sphereScratchPos
             .copy(groupOuter.position)
             .add(this._sphereLocalPos);
+          havePosition = true;
+        } else {
+          // No yawGroup — unit isn't rendered at rich tier this frame.
+          // Build the world position straight from the sim transform so
+          // the force-field bubble still draws at the expected place.
+          // No tilt info from this path (terrain slope tilt lives only
+          // on the rich-tier mesh chain), but ground-truth yaw is on
+          // unit.transform.rotation. Three.js position = (sim.x,
+          // sim.altitude, sim.y); the chassis-local (localX, localZ)
+          // pair is rotated around the world Y axis by the unit's yaw,
+          // and localY adds to the altitude. The orientation quat is
+          // also built so particle / arc paths below get a coherent
+          // basis even though those paths are gated on style anyway.
+          const yaw = unit.transform.rotation;
+          const cosYaw = Math.cos(yaw);
+          const sinYaw = Math.sin(yaw);
+          const rx = cosYaw * localX - sinYaw * localZ;
+          const rz = sinYaw * localX + cosYaw * localZ;
+          this._sphereScratchPos.set(
+            unit.transform.x + rx,
+            unit.transform.z + localY,
+            unit.transform.y + rz,
+          );
+          this._sphereYawQuat.setFromAxisAngle(ForceFieldRenderer3D._SPHERE_UP, yaw);
+          this._sphereParentQuat.copy(this._sphereYawQuat);
           havePosition = true;
 
           // Write the emitter slot now — opaque white→blue pulse.
