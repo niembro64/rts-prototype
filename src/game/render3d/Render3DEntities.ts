@@ -109,6 +109,17 @@ const MASS_INSTANCE_MATRIX_STRIDE: Record<RenderObjectLodTier, number> = {
   impostor: 4,
   marker: 8,
 };
+const RICH_UNIT_DETAIL_STRIDE: Record<RenderObjectLodTier, number> = {
+  hero: 1,
+  rich: 1,
+  simple: 2,
+  mass: 3,
+  impostor: 4,
+  marker: 8,
+};
+const UNIT_DETAIL_TRANSFORM_EPSILON = 0.05;
+const UNIT_DETAIL_ROTATION_EPSILON = 0.001;
+const UNIT_DETAIL_VELOCITY_EPSILON_SQ = 0.25;
 const BUILDING_TIER_ORDER: Record<ConcreteGraphicsQuality, number> = {
   min: 0,
   low: 1,
@@ -285,6 +296,10 @@ type EntityMesh = {
   buildingCachedZ?: number;
   buildingCachedRotation?: number;
   buildingCachedDetailsReady?: boolean;
+  unitDetailCachedX?: number;
+  unitDetailCachedY?: number;
+  unitDetailCachedZ?: number;
+  unitDetailCachedRotation?: number;
   /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
    *  the mesh when the current frame's LOD key differs. */
   lodKey: string;
@@ -542,6 +557,7 @@ export class Render3DEntities {
   private unitInstancedLastFullPassCameraCellY = 0;
   private unitInstancedActiveUnits: Entity[] = [];
   private unitInstancedHiddenIds = new Set<EntityId>();
+  private richUnitDetailFrame = 0;
   /** Hidden-slot transform: scale=0 collapses the geometry to a point. */
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
   /** Reusable scratch matrix to avoid allocations in the per-instance write hot loop. */
@@ -1456,6 +1472,49 @@ export class Render3DEntities {
     return (this.unitInstancedFrame + entity.id) % stride === 0;
   }
 
+  private shouldUpdateRichUnitDetails(
+    entity: Entity,
+    mesh: EntityMesh,
+    tier: RenderObjectLodTier,
+    meshWasBuilt: boolean,
+  ): boolean {
+    if (meshWasBuilt) return true;
+    if (isRichObjectLod(tier)) return true;
+    if (entity.selectable?.selected === true || mesh.ring !== undefined) return true;
+    if (mesh.radiusRingsVisible || mesh.rangeRingsVisible || mesh.buildRing !== undefined) return true;
+    const unit = entity.unit;
+    if (unit) {
+      const vx = unit.velocityX ?? 0;
+      const vy = unit.velocityY ?? 0;
+      const vz = unit.velocityZ ?? 0;
+      if (vx * vx + vy * vy + vz * vz > UNIT_DETAIL_VELOCITY_EPSILON_SQ) return true;
+    }
+    const turrets = entity.turrets;
+    if (turrets?.some((t) => t.state === 'tracking' || t.state === 'engaged' || t.target !== null)) {
+      return true;
+    }
+    const cachedX = mesh.unitDetailCachedX;
+    if (
+      cachedX === undefined ||
+      Math.abs(entity.transform.x - cachedX) > UNIT_DETAIL_TRANSFORM_EPSILON ||
+      Math.abs(entity.transform.y - (mesh.unitDetailCachedY ?? entity.transform.y)) > UNIT_DETAIL_TRANSFORM_EPSILON ||
+      Math.abs(entity.transform.z - (mesh.unitDetailCachedZ ?? entity.transform.z)) > UNIT_DETAIL_TRANSFORM_EPSILON ||
+      Math.abs(entity.transform.rotation - (mesh.unitDetailCachedRotation ?? entity.transform.rotation)) >
+        UNIT_DETAIL_ROTATION_EPSILON
+    ) {
+      return true;
+    }
+    const stride = RICH_UNIT_DETAIL_STRIDE[tier] ?? 1;
+    return stride <= 1 || ((this.richUnitDetailFrame + entity.id) % stride) === 0;
+  }
+
+  private markRichUnitDetailsUpdated(entity: Entity, mesh: EntityMesh): void {
+    mesh.unitDetailCachedX = entity.transform.x;
+    mesh.unitDetailCachedY = entity.transform.y;
+    mesh.unitDetailCachedZ = entity.transform.z;
+    mesh.unitDetailCachedRotation = entity.transform.rotation;
+  }
+
   private shouldRunUnitInstancedFullPass(
     entitySetVersion: number,
     collectRichUnits: boolean,
@@ -2112,6 +2171,7 @@ export class Render3DEntities {
     const seen = this._seenUnitIds;
     seen.clear();
     const spinDt = this._spinDt;
+    this.richUnitDetailFrame = (this.richUnitDetailFrame + 1) & 0x3fffffff;
     let smoothColorDirty = false;
     this.turretHeadColorDirty = false;
     this.mirrorPanelColorDirty = false;
@@ -2168,6 +2228,7 @@ export class Render3DEntities {
         this.destroyUnitMesh(e.id, m);
         m = undefined;
       }
+      const meshWasBuilt = !m;
       if (!m) {
         const group = new THREE.Group();
         // Pull the 2D renderer id from the unit blueprint and use the
@@ -2463,6 +2524,10 @@ export class Render3DEntities {
         }
       }
       m.chassis.visible = fullUnitDetail && !m.hideChassis;
+
+      if (!this.shouldUpdateRichUnitDetails(e, m, objectTier, meshWasBuilt)) {
+        continue;
+      }
 
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
@@ -2978,6 +3043,7 @@ export class Render3DEntities {
           this.legRenderer,
         );
       }
+      this.markRichUnitDetailsUpdated(e, m);
 
       // Health bar handled by HealthBar3D (billboarded sprite in the
       // world group, depth-occluded by terrain).
