@@ -284,8 +284,12 @@ export type TurretBlueprint = {
 
 export type TurretMount = {
   turretId: string;
-  offsetX: number;
-  offsetY: number;
+  /** Optional chassis-local Y center for the visible turret head,
+   *  expressed in unit-radius fractions. Use this when a turret is
+   *  replacing a removed body segment and its center needs to occupy
+   *  that old segment center instead of sitting on top of the nearest
+   *  remaining body part. */
+  headCenterHeightFrac?: number;
 };
 
 export type WheelConfig = {
@@ -356,17 +360,30 @@ export type UnitBlueprint = {
   hp: number;
   moveSpeed: number;
   unitRadiusCollider: { scale: number; shot: number; push: number };
+  /** World-space height of the authored unit body center above terrain.
+   *  This is intentionally separate from collider radii so visuals,
+   *  turret mounts, legs, and physics rest altitude can move without
+   *  changing push/collision behavior. */
+  bodyCenterHeight: number;
   mass: number;
   resourceCost: number;
   turrets: TurretMount[];
   chassisMounts: MountPoint[];
   /** 3D chassis/body shape in unit-radius-1 space. */
   bodyShape: UnitBodyShape;
+  /** Hide the rendered chassis while keeping bodyShape for logical
+   *  mount/leg/debris math. Used by units whose weapon turret is meant
+   *  to visually replace the whole body. */
+  hideChassis?: boolean;
+  /** Optional leg hip/attach height in unitRadius fractions, before
+   *  any weapon-as-body vertical offset is applied. Use for units
+   *  whose visible body is a turret or custom rig rather than the
+   *  logical bodyShape segment. */
+  legAttachHeightFrac?: number;
   locomotion: LocomotionBlueprint;
   renderer: string;
   builder?: { buildRange: number; maxEnergyUseRate: number };
   dgun?: { turretId: string; energyCost: number };
   deathSound?: SoundEntry;
-  seeRange?: number;
   fightStopEngagedRatio: number;
 };

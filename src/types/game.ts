@@ -19,8 +19,8 @@ export type GameConfig = {
   clientViewState: import('../game/network/ClientViewState').ClientViewState;
   mapWidth: number;
   mapHeight: number;
-  /** CENTER terrain shape used for terrain-derived features such as
-   *  metal-deposit pad heights. */
+  /** CENTER terrain shape used for the central terrain heightmap and
+   *  terrain-polarized metal-deposit dTerrain levels. */
   terrainCenter?: TerrainShape;
   backgroundMode?: boolean;
   /** Lobby-preview rendering: skip the usual demo zoom + base spawn

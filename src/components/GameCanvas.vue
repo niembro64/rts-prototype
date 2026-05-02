@@ -469,6 +469,7 @@ const minimapData = reactive<MinimapData>(createInitialMinimapData());
 
 const showSoundTest = ref(false);
 const battleElapsed = ref('00:00:00');
+let battleStartTime = 0;
 
 function setRefIfChanged<T>(target: { value: T }, value: T): void {
   if (!Object.is(target.value, value)) target.value = value;
@@ -576,6 +577,7 @@ async function startBackgroundBattle(): Promise<void> {
   backgroundBattle = battle;
   activeConnection = backgroundBattle.connection;
   hasServer.value = true;
+  battleStartTime = Date.now();
   setInstancePlayerClientEnabled(backgroundBattle.gameInstance, playerClientEnabled.value);
 
   checkBgSceneInterval = waitForSceneAndBind(
@@ -602,6 +604,7 @@ function stopBackgroundBattle(): void {
   if (!currentServer) {
     activeConnection = null;
     hasServer.value = false;
+    if (!gameStarted.value) battleStartTime = 0;
   }
 }
 
@@ -1143,6 +1146,7 @@ function handleMinimapClick(x: number, y: number): void {
 
 function restartGame(): void {
   gameOverWinner.value = null;
+  battleStartTime = 0;
   clearRealBattleTimeouts();
   // Return to lobby
   gameStarted.value = false;
@@ -1651,6 +1655,7 @@ function applyLobbySettingsFromHost(settings: {
 async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): Promise<void> {
   showLobby.value = false;
   gameStarted.value = true;
+  battleStartTime = Date.now();
   if (networkRole.value !== null) {
     localPlayerId.value = networkManager.getLocalPlayerId();
     activePlayer.value = localPlayerId.value;
@@ -1929,8 +1934,8 @@ onMounted(() => {
       hour12: false,
       timeZoneName: 'short',
     }).format(new Date());
-    if (statsHistoryStartTime > 0) {
-      battleElapsed.value = formatDuration(Date.now() - statsHistoryStartTime);
+    if (battleStartTime > 0) {
+      battleElapsed.value = formatDuration(Date.now() - battleStartTime);
     } else {
       battleElapsed.value = '00:00:00';
     }

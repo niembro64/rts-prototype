@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import type { UnitBodyShape } from '@/types/blueprints';
+import type { TurretMount, UnitBodyShape } from '@/types/blueprints';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
@@ -42,7 +42,7 @@ import {
   type RenderObjectLodTier,
 } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
-import { getBodyGeom, getBodyMountTopY, disposeBodyGeoms } from './BodyShape3D';
+import { getBodyGeom, getTurretRootY, disposeBodyGeoms } from './BodyShape3D';
 import {
   buildBuildingShape,
   buildConstructionEmitterRig,
@@ -58,14 +58,13 @@ import {
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
+import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getFactoryBuildSpot, getFactoryConstructionRadius, type FactoryBuildSpot } from '../sim/factoryConstructionSite';
 import { getDriftMode, getGraphicsConfigFor, getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
 import { getDriftPreset, halfLifeBlend } from '../network/driftEma';
 import { getWeaponWorldPosition, getTurretHeadRadius, lerp, lerpAngle } from '../math';
-import {
-  lodCellIndex,
-  normalizeLodCellSize,
-} from '../lodGridMath';
+import { normalizeLodCellSize } from '../lodGridMath';
+import { landCellIndexForSize } from '../landGrid';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 
@@ -223,6 +222,8 @@ type EntityMesh = {
    *  entity, so we stash the result here. */
   rendererId: string;
   bodyShape?: UnitBodyShape;
+  hideChassis?: boolean;
+  turretMounts?: TurretMount[];
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;
@@ -252,10 +253,12 @@ type EntityMesh = {
     shot?: THREE.LineSegments;
     push?: THREE.LineSegments;
   };
+  radiusRingsVisible?: boolean;
   /** Builder-unit BLD wireframe sphere — 3D now that the build-range
    *  check includes altitude. Parented to the WORLD group and
    *  positioned at the unit's sim sphere center each frame. */
   buildRing?: THREE.LineSegments;
+  rangeRingsVisible?: boolean;
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  body. Empty / undefined for units. */
@@ -512,6 +515,7 @@ export class Render3DEntities {
   // the body. The outer marker tier still uses this packed sphere path.
   private massRichUnitIds = new Set<EntityId>();
   private massRichUnits: Entity[] = [];
+  private massRichUnitIndex = new Map<EntityId, number>();
   private massRichObjectTiers = new Map<EntityId, RenderObjectLodTier>();
   private ownedObjectLodGrid = new RenderLodGrid();
   private objectLodGrid = this.ownedObjectLodGrid;
@@ -1068,38 +1072,51 @@ export class Render3DEntities {
    * and simply hidden (not destroyed) when toggled off, so flipping toggles
    * repeatedly doesn't churn geometry.
    *
-   * Wireframe SPHERE centered at the unit's hit-sphere center (= push
-   * radius above the group's ground origin). Scale is the collider
+   * Wireframe SPHERE centered at the authored unit body center above
+   * the group's ground origin. Scale is the collider
    * value for the selected channel. Shows the actual 3D volume the
    * sim tests against, so overlapping spheres of different colors
    * immediately communicate which check is hitting or missing.
    */
   private updateRadiusRings(m: EntityMesh, entity: Entity): void {
+    const showScale = getUnitRadiusToggle('visual');
+    const showShot = getUnitRadiusToggle('shot');
+    const showPush = getUnitRadiusToggle('push');
+    if (!showScale && !showShot && !showPush) {
+      if (m.radiusRingsVisible && m.radiusRings) {
+        if (m.radiusRings.scale) m.radiusRings.scale.visible = false;
+        if (m.radiusRings.shot) m.radiusRings.shot.visible = false;
+        if (m.radiusRings.push) m.radiusRings.push.visible = false;
+      }
+      m.radiusRingsVisible = false;
+      return;
+    }
+
     const collider = entity.unit?.unitRadiusCollider;
     if (!collider) return;
 
     const rings = m.radiusRings ?? (m.radiusRings = {});
 
-    // All three UNIT RAD spheres sit at the unit's sim sphere center.
+    // All three UNIT RAD spheres sit at the authored unit center.
     // Because the unit group is positioned at (x, groundZ, y) in
-    // three-space and the sim sphere center is `push radius` above
-    // that ground, a local-Y of `collider.push` puts the sphere
-    // exactly where the collision code measures from. The sphere
-    // follows altitude changes for free.
-    const centerY = collider.push;
+    // three-space and the center height is authored per blueprint,
+    // a local-Y of `bodyCenterHeight` keeps debug spheres aligned with
+    // the visible/sim center. The sphere follows altitude changes for free.
+    const centerY = getUnitBodyCenterHeight(entity.unit);
 
     this.setUnitRadiusSphere(
-      rings, 'scale', getUnitRadiusToggle('visual'), m.group,
+      rings, 'scale', showScale, m.group,
       centerY, collider.scale, this.radiusMatScale,
     );
     this.setUnitRadiusSphere(
-      rings, 'shot', getUnitRadiusToggle('shot'), m.group,
+      rings, 'shot', showShot, m.group,
       centerY, collider.shot, this.radiusMatShot,
     );
     this.setUnitRadiusSphere(
-      rings, 'push', getUnitRadiusToggle('push'), m.group,
+      rings, 'push', showPush, m.group,
       centerY, collider.push, this.radiusMatPush,
     );
+    m.radiusRingsVisible = true;
   }
 
   /** Internal helper for the three UNIT RAD sphere toggles. All three
@@ -1148,16 +1165,23 @@ export class Render3DEntities {
     const showEngageAcquire = getRangeToggle('engageAcquire');
     const showEngageRelease = getRangeToggle('engageRelease');
     const showBuild = getRangeToggle('build');
+    const showAnyTurretRange =
+      showTrackAcquire || showTrackRelease || showEngageAcquire || showEngageRelease;
+    if (!showAnyTurretRange && !showBuild) {
+      if (m.rangeRingsVisible) this.hideRangeRings(m);
+      m.rangeRingsVisible = false;
+      return;
+    }
 
     const ux = entity.transform.x;
     const uy = entity.transform.y;
     const uz = entity.transform.z;
-    const cos = Math.cos(entity.transform.rotation);
-    const sin = Math.sin(entity.transform.rotation);
 
     // Per-turret spheres — same center the sim's targeting code uses,
     // so what you see is exactly the volume the sim tests against.
-    if (entity.turrets) {
+    if (showAnyTurretRange && entity.turrets) {
+      const cos = Math.cos(entity.transform.rotation);
+      const sin = Math.sin(entity.transform.rotation);
       for (let i = 0; i < entity.turrets.length; i++) {
         const weapon = entity.turrets[i];
         const tm = m.turrets[i];
@@ -1185,6 +1209,8 @@ export class Render3DEntities {
           weapon.ranges.engage.release, this.ringMatEngageRelease,
         );
       }
+    } else if (m.rangeRingsVisible) {
+      this.hideTurretRangeRings(m);
     }
 
     // Build range (builder-only, centered on the unit's sim sphere).
@@ -1200,6 +1226,23 @@ export class Render3DEntities {
       m.buildRing.scale.setScalar(builder.buildRange);
     } else if (m.buildRing) {
       m.buildRing.visible = false;
+    }
+    m.rangeRingsVisible = showAnyTurretRange || (showBuild && builder !== undefined);
+  }
+
+  private hideRangeRings(m: EntityMesh): void {
+    this.hideTurretRangeRings(m);
+    if (m.buildRing) m.buildRing.visible = false;
+  }
+
+  private hideTurretRangeRings(m: EntityMesh): void {
+    for (const tm of m.turrets) {
+      const rings = tm.rangeRings;
+      if (!rings) continue;
+      if (rings.trackAcquire) rings.trackAcquire.visible = false;
+      if (rings.trackRelease) rings.trackRelease.visible = false;
+      if (rings.engageAcquire) rings.engageAcquire.visible = false;
+      if (rings.engageRelease) rings.engageRelease.visible = false;
     }
   }
 
@@ -1410,8 +1453,8 @@ export class Render3DEntities {
   ): boolean {
     const size = normalizeLodCellSize(this.lod.gfx.objectLodCellSize);
     const view = this.lod.view;
-    const cameraCellX = lodCellIndex(view.cameraX, size);
-    const cameraCellY = lodCellIndex(view.cameraZ, size);
+    const cameraCellX = landCellIndexForSize(view.cameraX, size);
+    const cameraCellY = landCellIndexForSize(view.cameraZ, size);
     if (
       entitySetVersion !== this.unitInstancedLastFullPassEntitySetVersion ||
       this.lod.key !== this.unitInstancedLastFullPassLodKey ||
@@ -1437,8 +1480,32 @@ export class Render3DEntities {
   private removeMassRichUnit(id: EntityId): void {
     if (!this.massRichUnitIds.delete(id)) return;
     this.massRichObjectTiers.delete(id);
-    const idx = this.massRichUnits.findIndex((entity) => entity.id === id);
-    if (idx >= 0) this.massRichUnits.splice(idx, 1);
+    const idx = this.massRichUnitIndex.get(id);
+    this.massRichUnitIndex.delete(id);
+    if (idx === undefined) return;
+    const lastIdx = this.massRichUnits.length - 1;
+    const last = this.massRichUnits[lastIdx];
+    if (idx !== lastIdx && last) {
+      this.massRichUnits[idx] = last;
+      this.massRichUnitIndex.set(last.id, idx);
+    }
+    this.massRichUnits.pop();
+  }
+
+  private clearMassRichUnits(): void {
+    this.massRichUnitIds.clear();
+    this.massRichUnits.length = 0;
+    this.massRichUnitIndex.clear();
+    this.massRichObjectTiers.clear();
+  }
+
+  private addMassRichUnit(entity: Entity, objectTier: RenderObjectLodTier): void {
+    if (!this.massRichUnitIds.has(entity.id)) {
+      this.massRichUnitIds.add(entity.id);
+      this.massRichUnitIndex.set(entity.id, this.massRichUnits.length);
+      this.massRichUnits.push(entity);
+    }
+    this.massRichObjectTiers.set(entity.id, objectTier);
   }
 
   /** LOW-tier per-frame instance write. Each visible unit takes one
@@ -1468,11 +1535,8 @@ export class Render3DEntities {
     const seen = this._seenUnitIds;
     seen.clear();
     const richIds = this.massRichUnitIds;
-    const richUnits = this.massRichUnits;
     if (collectRichUnits && fullPass) {
-      richIds.clear();
-      richUnits.length = 0;
-      this.massRichObjectTiers.clear();
+      this.clearMassRichUnits();
     }
     let colorDirty = false;
     let matrixMinSlot = Number.POSITIVE_INFINITY;
@@ -1501,11 +1565,7 @@ export class Render3DEntities {
             richPromotionsThisFrame < RICH_UNIT_PROMOTION_BUDGET_PER_FRAME;
           if (canPromote) {
             if (!alreadyRich && !hasSceneMesh) richPromotionsThisFrame++;
-            richIds.add(e.id);
-            if (fullPass || !alreadyRich) {
-              richUnits.push(e);
-            }
-            this.massRichObjectTiers.set(e.id, objectTier);
+            this.addMassRichUnit(e, objectTier);
             this.hideUnitInstancedSlot(im, e.id, this.unitInstancedSlot.get(e.id), matrixDirty);
             continue;
           }
@@ -1533,15 +1593,15 @@ export class Render3DEntities {
       const radius = e.unit?.unitRadiusCollider.scale
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;
-      const pushR = e.unit?.unitRadiusCollider.push ?? 0;
+      const bodyCenterHeight = getUnitBodyCenterHeight(e.unit);
 
       if (this.shouldUpdateUnitInstancedMatrix(e, objectTier, slotWasNew, wasHidden)) {
-        // Mirror of the per-unit Mesh path: group at (x, z-pushR, y),
+        // Mirror of the per-unit Mesh path: group at (x, groundZ, y),
         // chassis at origin, sphere at chassis-local y=1 with chassis
         // scaled by radius. Composed into a single matrix here.
         this._instPos.set(
           e.transform.x,
-          e.transform.z - pushR + radius,
+          e.transform.z - bodyCenterHeight + radius,
           e.transform.y,
         );
         this._instQuat.setFromAxisAngle(_INST_UP, -e.transform.rotation);
@@ -1609,7 +1669,7 @@ export class Render3DEntities {
     im.count = this.unitInstancedNextSlot;
     this.markInstanceMatrixRange(im, matrixMinSlot, matrixMaxSlot);
     if (colorDirty) this.markInstanceColorRange(im, colorMinSlot, colorMaxSlot);
-    return richUnits;
+    return this.massRichUnits;
   }
 
   /** Tier flipped from LOW to MED+: hide every active instanced slot
@@ -1625,8 +1685,7 @@ export class Render3DEntities {
     this.unitInstancedEntityBySlot.length = 0;
     this.unitInstancedColorKey.clear();
     this.unitInstancedHiddenIds.clear();
-    this.massRichUnitIds.clear();
-    this.massRichUnits.length = 0;
+    this.clearMassRichUnits();
     this.unitInstancedFreeSlots.length = 0;
     this.unitInstancedNextSlot = 0;
     this.unitInstancedCompactFrame = 0;
@@ -2018,9 +2077,7 @@ export class Render3DEntities {
     const unitRenderMode = this.lod.gfx.unitRenderMode;
 
     if (unitRenderMode === 'mass') {
-      this.massRichUnitIds.clear();
-      this.massRichUnits.length = 0;
-      this.massRichObjectTiers.clear();
+      this.clearMassRichUnits();
       if (this.unitMeshes.size > 0) {
         this.rebuildAllUnitsOnLodChange();
       }
@@ -2037,7 +2094,7 @@ export class Render3DEntities {
     if (this.unitInstancedSlot.size > 0) {
       this.releaseAllInstancedSlots();
     }
-    this.massRichObjectTiers.clear();
+    this.clearMassRichUnits();
     const units = this.clientViewState.getUnits();
     this.updateUnitMeshes(units);
   }
@@ -2063,8 +2120,7 @@ export class Render3DEntities {
       const inScope = this.scope.inScope(e.transform.x, e.transform.y, 100);
       const existing = this.unitMeshes.get(e.id);
       if (existing) {
-        const r0 = e.unit?.unitRadiusCollider.push ?? 0;
-        existing.group.position.set(e.transform.x, e.transform.z - r0, e.transform.y);
+        existing.group.position.set(e.transform.x, getUnitGroundZ(e), e.transform.y);
         if (existing.yawGroup) existing.yawGroup.rotation.set(0, -e.transform.rotation, 0);
       }
       // The expensive per-frame work below (terrain normal, slope tilt,
@@ -2121,6 +2177,7 @@ export class Render3DEntities {
           ],
         } satisfies UnitBodyShape;
         const bodyEntry = getBodyGeom(bodyShape);
+        const hideChassis = bp?.hideChassis === true;
         // The chassis is a group so composite bodies (arachnid, beam,
         // commander — multiple spheres/spheroids) and single-part bodies
         // (tank, loris, …) share one code path. Each BodyMeshPart's
@@ -2166,15 +2223,15 @@ export class Render3DEntities {
         // by the scenegraph chain like before.
         let smoothChassisSlots: number[] | undefined;
         let polyChassisSlot: number | undefined;
-        if (bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
+        if (!hideChassis && bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
           smoothChassisSlots = this.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
-        } else if (!bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
+        } else if (!hideChassis && !bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
           const allocated = this.allocPolyChassisSlot(
             e.id, rendererId, bodyEntry.parts[0].geometry,
           );
           if (allocated !== null) polyChassisSlot = allocated;
         }
-        if (!smoothChassisSlots && polyChassisSlot === undefined) {
+        if (!hideChassis && !smoothChassisSlots && polyChassisSlot === undefined) {
           for (const part of bodyEntry.parts) {
             const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(pid));
             mesh.position.set(part.x, part.y, part.z);
@@ -2301,6 +2358,8 @@ export class Render3DEntities {
         this.world.add(group);
         m = {
           group, yawGroup, liftGroup, chassis, chassisMeshes, rendererId, bodyShape,
+          hideChassis,
+          turretMounts: bp?.turrets,
           turrets: turretMeshes, lodKey: unitLodKey,
           constructionEmitter,
           smoothChassisSlots,
@@ -2343,7 +2402,15 @@ export class Render3DEntities {
           // the panels read as taller than the head they replace. Host
           // turret is index 0; its bodyRadius (when set) wins.
           const hostHeadRadius = getTurretHeadRadius(radius, turrets[0]?.config);
-          const panelTopY = bodyEntry.topY * radius + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
+          const hostRootY = getTurretRootY(
+            bodyShape,
+            radius,
+            turrets[0]?.offset.x ?? 0,
+            turrets[0]?.offset.y ?? 0,
+            hostHeadRadius,
+            bp?.turrets[0],
+          );
+          const panelTopY = hostRootY + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
           // Mirror panels parent to liftGroup like turrets — they're
           // physically attached to the chassis. Try to alloc one
           // slot per panel through the shared mirrorPanelInstanced
@@ -2386,17 +2453,14 @@ export class Render3DEntities {
           if (tm.head) tm.head.material = this.getPrimaryMat(pid);
         }
       }
-      m.chassis.visible = fullUnitDetail;
+      m.chassis.visible = fullUnitDetail && !m.hideChassis;
 
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
-      // sim.z - radius: for a ground-resting unit sim.z == radius, so
-      // the group sits at y=0 and the chassis/turret meshes inside it
-      // still stack from the ground up. If the unit is pushed airborne
-      // by an explosion or falling from an overhang, the entire group
-      // lifts with it — no per-child Y touchups needed.
-      const unitRadius = e.unit?.unitRadiusCollider.push ?? 0;
-      m.group.position.set(e.transform.x, e.transform.z - unitRadius, e.transform.y);
+      // sim.z - bodyCenterHeight: for a ground-resting unit sim.z is
+      // terrain + bodyCenterHeight, so the group sits at the terrain
+      // surface and the chassis/turret meshes stack from there.
+      m.group.position.set(e.transform.x, getUnitGroundZ(e), e.transform.y);
 
       // unitGroup (m.group) carries POSITION + the world-frame TILT.
       // m.yawGroup (the inner group) carries the chassis YAW around
@@ -2482,7 +2546,7 @@ export class Render3DEntities {
       // Doing it per-part means an arachnid's two segments take two
       // slots, a snipe / loris / forceField takes one. All slots feed
       // the same shared draw call.
-      if (!fullUnitDetail) {
+      if (!fullUnitDetail || m.hideChassis) {
         if (m.smoothChassisSlots && this.smoothChassis) {
           for (const slot of m.smoothChassisSlots) {
             this.smoothChassis.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
@@ -2617,22 +2681,34 @@ export class Render3DEntities {
         ? getTurretHeadRadius(radius, turrets[0]?.config)
         : 0;
       const hostBodyTopYForStack = unitHasMirrorsHere
-        ? getBodyMountTopY(
+        ? getTurretRootY(
             m.bodyShape!,
             radius,
             turrets[0]?.offset.x ?? 0,
             turrets[0]?.offset.y ?? 0,
+            hostHeadRadiusForStack,
+            m.turretMounts?.[0],
           )
         : bodyTopY;
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
-        const bodyMountTopY = getBodyMountTopY(
-          m.bodyShape!,
-          radius,
-          t.offset.x,
-          t.offset.y,
-        );
+        const headRadius = tm.headRadius ?? getTurretHeadRadius(radius, t.config);
+        const mount = m.turretMounts?.[i];
+        const bodyMountTopY = (
+          m.hideChassis === true &&
+          mount?.headCenterHeightFrac !== undefined &&
+          e.unit?.bodyCenterHeight !== undefined
+        )
+          ? e.unit.bodyCenterHeight - (m.chassisLift ?? 0) - headRadius
+          : getTurretRootY(
+              m.bodyShape!,
+              radius,
+              t.offset.x,
+              t.offset.y,
+              headRadius,
+              mount,
+            );
         // Non-mirror turrets on mirror-host units sit ON TOP of the
         // mirror panel stack: root Y = panel top in chassis-local
         // coords = hostBodyTopY + 2·hostHeadRadius + MIRROR_EXTRA_HEIGHT.
@@ -3815,9 +3891,7 @@ export class Render3DEntities {
     this.unitInstancedSlot.clear();
     this.unitInstancedColorKey.clear();
     this.unitInstancedHiddenIds.clear();
-    this.massRichUnitIds.clear();
-    this.massRichObjectTiers.clear();
-    this.massRichUnits.length = 0;
+    this.clearMassRichUnits();
     this.unitInstancedEntityBySlot.length = 0;
     this.unitInstancedFreeSlots.length = 0;
     this.unitInstancedCompactFrame = 0;

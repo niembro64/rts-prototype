@@ -240,10 +240,11 @@ function createPooledEntry(): PooledEntry {
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createPooledWaypoint());
   return {
     entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
-    unitSub: {
-      unitType: undefined, hp: { curr: 0, max: 0 },
-      collider: undefined,
-      moveSpeed: undefined, mass: undefined, velocity: { x: 0, y: 0, z: 0 },
+      unitSub: {
+        unitType: undefined, hp: { curr: 0, max: 0 },
+        collider: undefined,
+        bodyCenterHeight: undefined,
+        moveSpeed: undefined, mass: undefined, velocity: { x: 0, y: 0, z: 0 },
       turretRotation: 0,
     },
     unitCollider: { scale: 0, shot: 0, push: 0 },
@@ -1208,6 +1209,7 @@ function serializeEntity(
         u.collider.scale = entity.unit.unitRadiusCollider.scale;
         u.collider.shot = entity.unit.unitRadiusCollider.shot;
         u.collider.push = entity.unit.unitRadiusCollider.push;
+        u.bodyCenterHeight = entity.unit.bodyCenterHeight;
         u.moveSpeed = entity.unit.moveSpeed;
         u.mass = entity.unit.mass;
         u.isCommander = entity.commander !== undefined ? true : undefined;
@@ -1215,6 +1217,7 @@ function serializeEntity(
       } else {
         u.unitType = undefined;
         u.collider = undefined;
+        u.bodyCenterHeight = undefined;
         u.moveSpeed = undefined;
         u.mass = undefined;
         u.isCommander = undefined;

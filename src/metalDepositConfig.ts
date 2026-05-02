@@ -12,17 +12,18 @@
 // 2 = a full turn. Use this to keep rings from lining up on the same
 // radial spokes.
 //
-// Each ring also carries a `height`: the z elevation the deposit's
-// flat pad is forced to before terrain-shape polarity is applied.
-// The value is not normalized: LAKE multiplies it by -1, MOUNTAIN
-// by +1, and FLAT by 0. Around each pad the terrain blends smoothly
-// from the signed deposit height back to natural over
+// Each ring also carries `dTerrainLevels`: a signed integer count of
+// TERRAIN_D_TERRAIN steps above/below world height 0, before terrain
+// CENTER polarity is applied. LAKE inverts the level count, MOUNTAIN
+// preserves it, and FLAT collapses it to 0. Around each pad the terrain
+// blends smoothly from that derived height back to natural over
 // `terrainBlendRadius` unless a ring overrides it with `blendRadius`.
 //
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
 
 import { getPlayerBaseAngle } from './game/sim/spawn';
+import { TERRAIN_D_TERRAIN } from './game/sim/Terrain';
 import { terrainShapeSign, type TerrainShape } from './types/terrain';
 
 export type DepositRing = {
@@ -43,9 +44,8 @@ export type DepositRing = {
    *  the ring's `height`. Tune up if the extractor's grid footprint
    *  doesn't clear the blend edge. */
   flatRadius: number;
-  /** Z elevation (sim units) before CENTER terrain polarity is applied.
-   *  This is multiplied as-is; no absolute-value normalization. */
-  height: number;
+  /** Signed count of TERRAIN_D_TERRAIN steps before CENTER polarity. */
+  dTerrainLevels: number;
   /** Optional world-unit blend width outside `flatRadius`. Defaults to
    *  METAL_DEPOSIT_CONFIG.terrainBlendRadius. Larger values make the
    *  deposit pad integrate more gradually with surrounding terrain. */
@@ -76,7 +76,7 @@ export const METAL_DEPOSIT_CONFIG = {
       phaseOffset: 3,
       rotationOffset: 0,
       flatRadius: 100,
-      height: 100,
+      dTerrainLevels: 1,
     },
     // {
     //   radiusFraction: 0.3,
@@ -84,7 +84,7 @@ export const METAL_DEPOSIT_CONFIG = {
     //   phaseOffset: 0.25,
     //   rotationOffset: 0,
     //   flatRadius: 80,
-    //   height: 300,
+    //   dTerrainLevels: 3,
     // },
     {
       radiusFraction: 0.5,
@@ -92,7 +92,7 @@ export const METAL_DEPOSIT_CONFIG = {
       phaseOffset: -0.2,
       rotationOffset: 0,
       flatRadius: 80,
-      height: 300,
+      dTerrainLevels: 3,
     },
     {
       radiusFraction: 0.75,
@@ -100,7 +100,7 @@ export const METAL_DEPOSIT_CONFIG = {
       phaseOffset: 0.125,
       rotationOffset: 0,
       flatRadius: 80,
-      height: 0,
+      dTerrainLevels: 0,
     },
     {
       radiusFraction: 0.95,
@@ -108,7 +108,7 @@ export const METAL_DEPOSIT_CONFIG = {
       phaseOffset: -0.125,
       rotationOffset: 0,
       flatRadius: 80,
-      height: 0,
+      dTerrainLevels: 0,
     },
   ] as DepositRing[],
 };
@@ -122,6 +122,8 @@ export type MetalDeposit = {
   /** Radius around the center where terrain is flat at `height` and
    *  an extractor may be placed. Copied from the ring at gen time. */
   flatRadius: number;
+  /** Signed count of TERRAIN_D_TERRAIN steps after CENTER polarity. */
+  dTerrainLevels: number;
   /** Signed z elevation (sim units) of this deposit's flat pad. */
   height: number;
   /** World-unit blend width outside `flatRadius` before natural terrain
@@ -150,12 +152,17 @@ export function generateMetalDeposits(
   const players = Math.max(1, playerCount);
   const sliceWidth = (2 * Math.PI) / players;
   let id = 0;
+  const terrainSign = terrainShapeSign(terrainCenterShape);
 
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const ringRadius = ring.radiusFraction * halfExtent;
     const blendRadius =
       ring.blendRadius ?? METAL_DEPOSIT_CONFIG.terrainBlendRadius;
-    const height = ring.height * terrainShapeSign(terrainCenterShape);
+    const dTerrainLevels = signedMetalDepositDTerrainLevels(
+      ring.dTerrainLevels,
+      terrainSign,
+    );
+    const height = metalDepositHeightForDTerrainLevels(dTerrainLevels);
     const ringAngularOffset =
       (ring.phaseOffset ?? 0) * Math.PI + ring.rotationOffset;
 
@@ -166,6 +173,7 @@ export function generateMetalDeposits(
         x: cx,
         y: cy,
         flatRadius: ring.flatRadius,
+        dTerrainLevels,
         height,
         blendRadius,
       });
@@ -187,6 +195,7 @@ export function generateMetalDeposits(
           x,
           y,
           flatRadius: ring.flatRadius,
+          dTerrainLevels,
           height,
           blendRadius,
         });
@@ -195,4 +204,18 @@ export function generateMetalDeposits(
   }
 
   return deposits;
+}
+
+function signedMetalDepositDTerrainLevels(levels: number, terrainSign: -1 | 0 | 1): number {
+  if (!Number.isFinite(levels) || !Number.isInteger(levels)) {
+    throw new Error(`Metal deposit dTerrainLevels must be a finite integer; received ${levels}`);
+  }
+  return levels * terrainSign;
+}
+
+function metalDepositHeightForDTerrainLevels(levels: number): number {
+  if (!Number.isFinite(levels) || !Number.isInteger(levels)) {
+    throw new Error(`Metal deposit dTerrainLevels must be a finite integer; received ${levels}`);
+  }
+  return levels * TERRAIN_D_TERRAIN;
 }

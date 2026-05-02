@@ -3,6 +3,8 @@
 
 import type { Entity, EntityId, PlayerId } from './types';
 
+const EMPTY_ENTITIES: Entity[] = [];
+
 export class EntityCacheManager {
   private cachedUnits: Entity[] = [];
   private cachedBuildings: Entity[] = [];
@@ -20,6 +22,10 @@ export class EntityCacheManager {
    *  tick and only acts on this building type — same caching rationale
    *  as wind. */
   private cachedSolarBuildings: Entity[] = [];
+  /** Fabricators/factories specifically. AI production and factory
+   *  production run every sim tick and should not scan every building
+   *  just to find this subset. */
+  private cachedFactoryBuildings: Entity[] = [];
   private cachedForceFieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
@@ -58,6 +64,7 @@ export class EntityCacheManager {
     this.cachedHealthBarBuildings.length = 0;
     this.cachedWindBuildings.length = 0;
     this.cachedSolarBuildings.length = 0;
+    this.cachedFactoryBuildings.length = 0;
     this.cachedForceFieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
@@ -115,6 +122,7 @@ export class EntityCacheManager {
           } else if (entity.buildingType === 'solar') {
             this.cachedSolarBuildings.push(entity);
           }
+          if (entity.factory) this.cachedFactoryBuildings.push(entity);
           break;
         case 'shot':
           this.cachedProjectiles.push(entity);
@@ -162,11 +170,11 @@ export class EntityCacheManager {
   }
 
   getUnitsByPlayer(playerId: PlayerId): Entity[] {
-    return this.cachedUnitsByPlayer.get(playerId) ?? [];
+    return this.cachedUnitsByPlayer.get(playerId) ?? EMPTY_ENTITIES;
   }
 
   getBuildingsByPlayer(playerId: PlayerId): Entity[] {
-    return this.cachedBuildingsByPlayer.get(playerId) ?? [];
+    return this.cachedBuildingsByPlayer.get(playerId) ?? EMPTY_ENTITIES;
   }
 
   getProjectiles(): Entity[] {
@@ -199,6 +207,10 @@ export class EntityCacheManager {
 
   getSolarBuildings(): Entity[] {
     return this.cachedSolarBuildings;
+  }
+
+  getFactoryBuildings(): Entity[] {
+    return this.cachedFactoryBuildings;
   }
 
   getForceFieldUnits(): Entity[] {

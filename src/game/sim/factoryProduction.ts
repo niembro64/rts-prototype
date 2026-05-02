@@ -13,15 +13,13 @@ import type { FactoryProductionResult } from '@/types/ui';
 
 // Factory production system
 export class FactoryProductionSystem {
-  // Update all factories. Iterates getBuildings() instead of
-  // getAllEntities() — factories only exist on buildings, never on
-  // units or projectiles, so the smaller cached subset filters out
-  // 80%+ of irrelevant entities every tick.
+  // Update all factories. Iterates the cached factory subset instead
+  // of scanning all buildings every tick.
   update(world: WorldState, _dtMs: number, buildingGrid: BuildingGrid): FactoryProductionResult {
     const completedUnits: Entity[] = [];
 
-    for (const factory of world.getBuildings()) {
-      // Skip if not a factory or not complete
+    for (const factory of world.getFactoryBuildings()) {
+      // Skip if not complete
       if (!factory.factory || !factory.buildable?.isComplete) continue;
       if (!factory.ownership) continue;
 

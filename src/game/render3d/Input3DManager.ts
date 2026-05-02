@@ -150,6 +150,7 @@ export class Input3DManager {
   // One allocation for the lifetime of the manager keeps the hot loop alloc-free.
   private _selectV = new THREE.Vector3();
   private _ndc = new THREE.Vector2();
+  private _selectedFactoriesScratch: Entity[] = [];
   // Resets waypoint mode back to 'move' when the owned-selected set
   // changes — matches the 2D SelectionController's rule so squads
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
@@ -228,7 +229,12 @@ export class Input3DManager {
   /** Scene hook — feeds the client-side placement validator so the
    *  build ghost turns red at the map edge or when overlapping an
    *  existing building. */
-  setMapBounds(width: number, height: number, playerCount: number, terrainCenter: TerrainShape = 'lake'): void {
+  setMapBounds(
+    width: number,
+    height: number,
+    playerCount: number,
+    terrainCenter: TerrainShape = 'lake',
+  ): void {
     this.mapWidth = width;
     this.mapHeight = height;
     this.metalDeposits = generateMetalDeposits(width, height, playerCount, terrainCenter);
@@ -745,11 +751,19 @@ export class Input3DManager {
   }
 
   private getSelectedFactories(): Entity[] {
-    return this.entitySource.getSelectedBuildings().filter(
-      (b) =>
+    const out = this._selectedFactoriesScratch;
+    out.length = 0;
+    const selectedBuildings = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedBuildings.length; i++) {
+      const b = selectedBuildings[i];
+      if (
         b.factory !== undefined &&
-        b.ownership?.playerId === this.context.activePlayerId,
-    );
+        b.ownership?.playerId === this.context.activePlayerId
+      ) {
+        out.push(b);
+      }
+    }
+    return out;
   }
 
   /** State shape consumed by the 3D line-drag overlay. Populated

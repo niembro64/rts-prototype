@@ -17,6 +17,7 @@ export class UnitEntity extends GameEntity {
   // Movement properties
   public moveSpeed: number;
   public unitRadiusCollider: { scale: number; shot: number; push: number };
+  public bodyCenterHeight: number;
   public velocityX: number = 0;
   public velocityY: number = 0;
 
@@ -49,11 +50,13 @@ export class UnitEntity extends GameEntity {
     hp: number,
     moveSpeed: number,
     unitRadiusCollider: { scale: number; shot: number; push: number },
+    bodyCenterHeight: number,
     playerId: number
   ) {
     super(id, x, y, hp, hp);
     this.moveSpeed = moveSpeed;
     this.unitRadiusCollider = { ...unitRadiusCollider };
+    this.bodyCenterHeight = bodyCenterHeight;
     this.ownership = { playerId };
     this.selectable = { selected: false };
   }
@@ -78,6 +81,7 @@ export class UnitEntity extends GameEntity {
     maxHp: number;
     moveSpeed: number;
     unitRadiusCollider: { scale: number; shot: number; push: number };
+    bodyCenterHeight: number;
     actions: UnitAction[];
     patrolStartIndex: number | null;
     velocityX: number;
@@ -88,6 +92,7 @@ export class UnitEntity extends GameEntity {
       maxHp: this.maxHp,
       moveSpeed: this.moveSpeed,
       unitRadiusCollider: this.unitRadiusCollider,
+      bodyCenterHeight: this.bodyCenterHeight,
       actions: this.actions,
       patrolStartIndex: this.patrolStartIndex,
       velocityX: this.velocityX,
@@ -96,11 +101,12 @@ export class UnitEntity extends GameEntity {
   }
 
   // Allow setting HP through the unit property for compatibility
-  set unit(value: { hp: number; maxHp: number; moveSpeed: number; unitRadiusCollider: { scale: number; shot: number; push: number }; actions: UnitAction[]; patrolStartIndex: number | null; velocityX?: number; velocityY?: number }) {
+  set unit(value: { hp: number; maxHp: number; moveSpeed: number; unitRadiusCollider: { scale: number; shot: number; push: number }; bodyCenterHeight?: number; actions: UnitAction[]; patrolStartIndex: number | null; velocityX?: number; velocityY?: number }) {
     this.hp = value.hp;
     this.maxHp = value.maxHp;
     this.moveSpeed = value.moveSpeed;
     this.unitRadiusCollider = value.unitRadiusCollider;
+    this.bodyCenterHeight = value.bodyCenterHeight ?? value.unitRadiusCollider.push;
     this.actions = value.actions;
     this.patrolStartIndex = value.patrolStartIndex;
     this.velocityX = value.velocityX ?? 0;

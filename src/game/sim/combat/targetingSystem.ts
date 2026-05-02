@@ -9,6 +9,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
 import { getTurretWorldMount } from '../../math/MountGeometry';
+import { getUnitGroundZ } from '../unitGeometry';
 
 const _activeCombatUnits: Entity[] = [];
 
@@ -270,7 +271,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // on the unit reuses it through the shared getTurretWorldMount
     // helper. Flat ground takes the early-return inside the helper
     // and the math collapses to the legacy yaw-only path.
-    const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+    const unitGroundZ = getUnitGroundZ(unit);
     const surfaceN = world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y);
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];

@@ -13,6 +13,7 @@ import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions } from './Pathfinder';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { getEntityTargetPoint } from './buildingAnchors';
+import { getUnitGroundZ } from './unitGeometry';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 const _dgunFallbackMountVelocity = { x: 0, y: 0, z: 0 };
@@ -263,8 +264,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // primitive — exactly the same call AI turrets use — so the
   // commander-fired shot emerges from the same point and axis the
   // renderer draws.
-  const commanderGroundZ = commander.transform.z -
-    (commander.unit?.unitRadiusCollider.push ?? 0);
+  const commanderGroundZ = getUnitGroundZ(commander);
   const surfaceN = ctx.world.getCachedSurfaceNormal(
     commander.transform.x, commander.transform.y,
   );

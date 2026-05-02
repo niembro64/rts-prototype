@@ -34,6 +34,7 @@ import {
   getBodyTopY,
   getChassisLiftY,
   getSegmentMidYAt,
+  getTurretRootY,
 } from '../math/BodyDimensions';
 import { turretHeadRadiusFromBodyRadius } from '../math';
 
@@ -632,12 +633,13 @@ export class Debris3D {
     const hostHeadRadiusForStack = unitHasMirrorsHere
       ? turretHeadRadiusFromBodyRadius(r, hostTurretBlueprint?.bodyRadius)
       : 0;
+    const hostChassisMount = bp.chassisMounts[0] ?? { x: 0, y: 0 };
     const hostBodyTopYForStack = unitHasMirrorsHere && bp.turrets[0]
       ? getBodyMountTopY(
           bodyShape,
           r,
-          bp.turrets[0].offsetX,
-          bp.turrets[0].offsetY,
+          hostChassisMount.x * r,
+          hostChassisMount.y * r,
         )
       : bodyTopY;
 
@@ -674,8 +676,10 @@ export class Debris3D {
       const mount = bp.turrets[ti];
       let tb;
       try { tb = getTurretBlueprint(mount.turretId); } catch { continue; }
-      const tox = mount.offsetX;
-      const toz = mount.offsetY;
+      const chassisMount = bp.chassisMounts[Math.min(ti, bp.chassisMounts.length - 1)]
+        ?? { x: 0, y: 0 };
+      const tox = chassisMount.x * r;
+      const toz = chassisMount.y * r;
       // Live turret pose at death (when supplied by the death event
       // handler). Without it we fall back to chassis-aligned, which
       // is only correct when the turret happened to be facing
@@ -691,7 +695,13 @@ export class Debris3D {
       // same vertical span. Per-turret bodyRadius takes precedence over
       // the auto-derived default — matches Render3DEntities.buildTurretMesh.
       const headR = turretHeadRadiusFromBodyRadius(r, tb.bodyRadius);
-      const bodyMountTopY = getBodyMountTopY(bodyShape, r, tox, toz);
+      const bodyMountTopY = (
+        bp.hideChassis === true &&
+        mount.headCenterHeightFrac !== undefined &&
+        bp.bodyCenterHeight !== undefined
+      )
+        ? bp.bodyCenterHeight - chassisLiftY - headR
+        : getTurretRootY(bodyShape, r, tox, toz, headR, mount);
       const turretMountY = unitHasMirrorsHere && ti > 0
         ? hostBodyTopYForStack + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT
         : bodyMountTopY;

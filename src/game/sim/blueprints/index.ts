@@ -7,7 +7,15 @@ export * from './shots';
 export * from './turrets';
 export * from './units';
 
-import type { TurretConfig, ShotConfig, ForceFieldZoneConfig, ProjectileShot, BeamShot, LaserShot, ForceShot } from '../types';
+import type {
+  BeamShot,
+  ForceFieldZoneConfig,
+  ForceShot,
+  LaserShot,
+  ProjectileShot,
+  ShotConfig,
+  TurretConfig,
+} from '../types';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
 import type { ShotBlueprint, ForceFieldZoneRatioConfig, TurretBlueprint } from './types';
@@ -43,7 +51,12 @@ function validateTurretRangeMultipliers(
     );
   }
 
-  if (min.acquire <= min.release) {
+  // `{ acquire: 0, release: 0 }` is the canonical "no minimum fire
+  // range" envelope. Any positive minimum range still needs hysteresis:
+  // acquire must be farther out than release, so the turret does not
+  // flicker when targets sit on the inner boundary.
+  const minDisabled = min.acquire === 0 && min.release === 0;
+  if (!minDisabled && min.acquire <= min.release) {
     throw new Error(
       `Invalid turret range multipliers for ${turretId}: engageRangeMin.acquire (${min.acquire}) must be greater than engageRangeMin.release (${min.release})`,
     );
@@ -70,30 +83,34 @@ function computeZoneConfig(
 }
 
 /** Build a ShotConfig from a ShotBlueprint + turret blueprint data */
-function buildShotConfig(bp: ShotBlueprint, launchForce?: number, homingTurnRate?: number): ShotConfig {
-  if (bp.type === 'beam') {
+function buildShotConfig(
+  shotBlueprint: ShotBlueprint,
+  launchForce?: number,
+  homingTurnRate?: number,
+): ShotConfig {
+  if (shotBlueprint.type === 'beam') {
     const shot: BeamShot = {
       type: 'beam',
-      id: bp.id,
-      dps: bp.dps,
-      force: bp.force,
-      recoil: bp.recoil,
-      radius: bp.radius,
-      width: bp.width,
+      id: shotBlueprint.id,
+      dps: shotBlueprint.dps,
+      force: shotBlueprint.force,
+      recoil: shotBlueprint.recoil,
+      radius: shotBlueprint.radius,
+      width: shotBlueprint.width,
     };
     return shot;
   }
 
-  if (bp.type === 'laser') {
+  if (shotBlueprint.type === 'laser') {
     const shot: LaserShot = {
       type: 'laser',
-      id: bp.id,
-      dps: bp.dps,
-      force: bp.force,
-      recoil: bp.recoil,
-      radius: bp.radius,
-      width: bp.width,
-      duration: bp.duration,
+      id: shotBlueprint.id,
+      dps: shotBlueprint.dps,
+      force: shotBlueprint.force,
+      recoil: shotBlueprint.recoil,
+      radius: shotBlueprint.radius,
+      width: shotBlueprint.width,
+      duration: shotBlueprint.duration,
     };
     return shot;
   }
@@ -101,20 +118,20 @@ function buildShotConfig(bp: ShotBlueprint, launchForce?: number, homingTurnRate
   // Projectile shot
   const shot: ProjectileShot = {
     type: 'projectile',
-    id: bp.id,
-    mass: bp.mass,
+    id: shotBlueprint.id,
+    mass: shotBlueprint.mass,
     launchForce: launchForce ?? 0,
-    collision: bp.collision,
-    explosion: bp.explosion,
-    detonateOnExpiry: bp.detonateOnExpiry || undefined,
-    lifespan: bp.lifespan,
-    lifespanVariance: bp.lifespanVariance,
+    collision: shotBlueprint.collision,
+    explosion: shotBlueprint.explosion,
+    detonateOnExpiry: shotBlueprint.detonateOnExpiry || undefined,
+    lifespan: shotBlueprint.lifespan,
+    lifespanVariance: shotBlueprint.lifespanVariance,
     homingTurnRate: homingTurnRate,
-    submunitions: bp.submunitions,
-    ignoresGravity: bp.ignoresGravity,
-    smokeTrail: bp.smokeTrail,
-    shape: bp.shape,
-    cylinderShape: bp.cylinderShape,
+    submunitions: shotBlueprint.submunitions,
+    ignoresGravity: shotBlueprint.ignoresGravity,
+    smokeTrail: shotBlueprint.smokeTrail,
+    shape: shotBlueprint.shape,
+    cylinderShape: shotBlueprint.cylinderShape,
   };
   return shot;
 }
@@ -135,13 +152,13 @@ export function getSubmunitionTurretConfig(childShotId: string): TurretConfig {
   const cached = _submunitionConfigCache.get(childShotId);
   if (cached) return cached;
 
-  const bp = SHOT_BLUEPRINTS[childShotId];
-  if (!bp) throw new Error(`Unknown submunition shot: ${childShotId}`);
-  if (bp.type !== 'projectile') {
+  const shotBlueprint = SHOT_BLUEPRINTS[childShotId];
+  if (!shotBlueprint) throw new Error(`Unknown submunition shot: ${childShotId}`);
+  if (shotBlueprint.type !== 'projectile') {
     throw new Error(`Submunition must be a projectile shot: ${childShotId}`);
   }
 
-  const shot = buildShotConfig(bp) as ProjectileShot;
+  const shot = buildShotConfig(shotBlueprint) as ProjectileShot;
   const config: TurretConfig = {
     id: `__sub:${childShotId}`,
     range: 0,
@@ -162,70 +179,84 @@ export function getSubmunitionTurretConfig(childShotId: string): TurretConfig {
  * Build a TurretConfig (for runtime sim) from a TurretBlueprint.
  */
 export function buildTurretConfig(turretId: string): TurretConfig {
-  const wb = TURRET_BLUEPRINTS[turretId];
-  if (!wb) throw new Error(`Unknown turret blueprint: ${turretId}`);
-  validateTurretRangeMultipliers(turretId, wb.rangeMultiplierOverrides);
+  const turretBlueprint = TURRET_BLUEPRINTS[turretId];
+  if (!turretBlueprint) throw new Error(`Unknown turret blueprint: ${turretId}`);
+  validateTurretRangeMultipliers(turretId, turretBlueprint.rangeMultiplierOverrides);
 
   // Determine shot config
   let shot: ShotConfig;
 
-  if (wb.forceField) {
+  if (turretBlueprint.forceField) {
     // Force field turret: build ForceShot
     const fieldShot: ForceShot = {
       type: 'force',
-      angle: wb.forceField.angle ?? Math.PI * 2,
-      transitionTime: wb.forceField.transitionTime ?? 1000,
-      push: computeZoneConfig(wb.forceField.push, wb.range) ?? undefined,
-      pull: computeZoneConfig(wb.forceField.pull, wb.range) ?? undefined,
+      angle: turretBlueprint.forceField.angle ?? Math.PI * 2,
+      transitionTime: turretBlueprint.forceField.transitionTime ?? 1000,
+      push: computeZoneConfig(turretBlueprint.forceField.push, turretBlueprint.range) ?? undefined,
+      pull: computeZoneConfig(turretBlueprint.forceField.pull, turretBlueprint.range) ?? undefined,
     };
     shot = fieldShot;
-  } else if (wb.projectileId) {
+  } else if (turretBlueprint.projectileId) {
     // Projectile or beam turret
-    const pb = SHOT_BLUEPRINTS[wb.projectileId];
-    if (!pb)
+    const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.projectileId];
+    if (!shotBlueprint)
       throw new Error(
-        `Unknown projectile in turret ${turretId}: ${wb.projectileId}`,
+        `Unknown projectile in turret ${turretId}: ${turretBlueprint.projectileId}`,
       );
-    shot = buildShotConfig(pb, wb.launchForce, wb.homingTurnRate);
+    shot = buildShotConfig(
+      shotBlueprint,
+      turretBlueprint.launchForce,
+      turretBlueprint.homingTurnRate,
+    );
   } else {
     throw new Error(`Turret ${turretId} has neither projectileId nor forceField`);
   }
 
-  const base: TurretConfig = {
-    id: wb.id,
-    range: wb.range,
-    cooldown: wb.cooldown ?? 0,
-    color: wb.color,
-    barrel: wb.barrel,
-    angular: { turnAccel: wb.turretTurnAccel, drag: wb.turretDrag },
-    rangeOverrides: wb.rangeMultiplierOverrides,
-    eventsSmooth: wb.eventsSmooth,
+  const config: TurretConfig = {
+    id: turretBlueprint.id,
+    range: turretBlueprint.range,
+    cooldown: turretBlueprint.cooldown ?? 0,
+    color: turretBlueprint.color,
+    barrel: turretBlueprint.barrel,
+    angular: {
+      turnAccel: turretBlueprint.turretTurnAccel,
+      drag: turretBlueprint.turretDrag,
+    },
+    rangeOverrides: turretBlueprint.rangeMultiplierOverrides,
+    eventsSmooth: turretBlueprint.eventsSmooth,
     shot,
-    highArc: wb.highArc ?? false,
-    verticalLauncher: wb.verticalLauncher ?? false,
-    groundAimFraction: wb.groundAimFraction,
-    bodyRadius: wb.bodyRadius,
+    highArc: turretBlueprint.highArc ?? false,
+    verticalLauncher: turretBlueprint.verticalLauncher ?? false,
+    groundAimFraction: turretBlueprint.groundAimFraction,
+    bodyRadius: turretBlueprint.bodyRadius,
   };
 
   // Derive barrelThickness from shot size, scaled by global multiplier
-  if (wb.projectileId && base.barrel && base.barrel.type !== 'complexSingleEmitter') {
-    const pb = SHOT_BLUEPRINTS[wb.projectileId];
-    const rawThickness = pb.type === 'beam' || pb.type === 'laser'
-      ? pb.width
-      : (pb.collision.radius > 0 ? pb.collision.radius * 2 : 2);
-    base.barrel = {
-      ...base.barrel,
-      barrelThickness: base.barrel.barrelThickness ?? rawThickness * BARREL_THICKNESS_MULTIPLIER,
+  if (
+    turretBlueprint.projectileId &&
+    config.barrel &&
+    config.barrel.type !== 'complexSingleEmitter'
+  ) {
+    const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.projectileId];
+    const rawThickness = shotBlueprint.type === 'beam' || shotBlueprint.type === 'laser'
+      ? shotBlueprint.width
+      : (shotBlueprint.collision.radius > 0 ? shotBlueprint.collision.radius * 2 : 2);
+    config.barrel = {
+      ...config.barrel,
+      barrelThickness: config.barrel.barrelThickness ??
+        rawThickness * BARREL_THICKNESS_MULTIPLIER,
     };
   }
 
   // Optional firing modifiers
-  if (wb.spread) base.spread = { ...wb.spread };
-  if (wb.burst) base.burst = { ...wb.burst };
-  if (wb.isManualFire != null) base.isManualFire = wb.isManualFire;
-  if (wb.passive != null) base.passive = wb.passive;
+  if (turretBlueprint.spread) config.spread = { ...turretBlueprint.spread };
+  if (turretBlueprint.burst) config.burst = { ...turretBlueprint.burst };
+  if (turretBlueprint.isManualFire != null) {
+    config.isManualFire = turretBlueprint.isManualFire;
+  }
+  if (turretBlueprint.passive != null) config.passive = turretBlueprint.passive;
 
-  return base;
+  return config;
 }
 
 /**

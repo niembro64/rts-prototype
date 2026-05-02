@@ -6,11 +6,12 @@ import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
 import { findDepositCoveringFootprint } from './metalDeposits';
-import { isWaterAt } from './Terrain';
+import { isBuildableTerrainFootprint } from './Terrain';
 import { REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../config';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { deactivateSolarCollector, ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 import { economyManager } from './economy';
+import { spatialGrid } from './SpatialGrid';
 
 // Find the deposit (if any) whose flat zone covers the candidate footprint.
 // Used by both extractor placement validation and the user-facing
@@ -106,6 +107,8 @@ export class ConstructionSystem {
 
   // Called when construction completes
   private onConstructionComplete(world: WorldState, entity: Entity): void {
+    spatialGrid.syncBuildingCapture(entity);
+
     // Clear all builder targets for this entity using the reverse index (O(k) not O(n))
     const builders = this.buildersByTarget.get(entity.id);
     if (builders) {
@@ -166,18 +169,12 @@ export class ConstructionSystem {
       depositId = deposit.id;
     }
 
-    // Reject placements over water — buildings can't sit on the
-    // water plane. Sample the footprint corners + center; if any is
-    // submerged, the cell is impassable.
+    // Reject placements off the flat dTerrain shelves. Ramps between
+    // shelves remain valid movement terrain, but buildings require a
+    // dry footprint where all sampled points sit on the same plateau.
     const mw = world.mapWidth;
     const mh = world.mapHeight;
-    if (
-      isWaterAt(worldPos.x, worldPos.y, mw, mh) ||
-      isWaterAt(worldPos.x - halfW + 1, worldPos.y - halfH + 1, mw, mh) ||
-      isWaterAt(worldPos.x + halfW - 1, worldPos.y - halfH + 1, mw, mh) ||
-      isWaterAt(worldPos.x - halfW + 1, worldPos.y + halfH - 1, mw, mh) ||
-      isWaterAt(worldPos.x + halfW - 1, worldPos.y + halfH - 1, mw, mh)
-    ) {
+    if (!isBuildableTerrainFootprint(worldPos.x, worldPos.y, halfW, halfH, mw, mh)) {
       return null;
     }
 

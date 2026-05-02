@@ -2,7 +2,7 @@
 // Kept for backward compatibility of type exports and createTurretsFromDefinition
 
 import type { Turret } from './types';
-import { getTurretConfig, computeTurretRanges, refreshHysteresisRangeSquares } from './turretConfigs';
+import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
 
 // Re-export types (still used by many files)
@@ -23,14 +23,6 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
     const ranges = computeTurretRanges(turretConfig);
     const turnAccel = turretConfig.angular.turnAccel;
     const drag = turretConfig.angular.drag;
-
-    // Override tracking acquire range if blueprint specifies seeRange
-    if (bp.seeRange != null) {
-      const ratio = ranges.tracking.release / ranges.tracking.acquire;
-      ranges.tracking.acquire = bp.seeRange;
-      ranges.tracking.release = bp.seeRange * ratio;
-      refreshHysteresisRangeSquares(ranges.tracking);
-    }
 
     // For multi-turret units (widow), offsets come from chassisMounts (world-space fractions of radius)
     // For single-turret units, offsets are 0,0
@@ -70,6 +62,7 @@ export function getUnitDefinition(unitId: string) {
     hp: bp.hp,
     moveSpeed: bp.moveSpeed,
     unitRadiusCollider: { ...bp.unitRadiusCollider },
+    bodyCenterHeight: bp.bodyCenterHeight,
     resourceCost: bp.resourceCost,
     locomotion: bp.locomotion.type as LocomotionType,
     legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,
@@ -84,6 +77,7 @@ export function getAllUnitDefinitions() {
     hp: bp.hp,
     moveSpeed: bp.moveSpeed,
     unitRadiusCollider: { ...bp.unitRadiusCollider },
+    bodyCenterHeight: bp.bodyCenterHeight,
     resourceCost: bp.resourceCost,
     locomotion: bp.locomotion.type as LocomotionType,
     legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,

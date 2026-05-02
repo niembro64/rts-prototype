@@ -5,6 +5,7 @@ import { getBodyTopY, getChassisLiftY } from '../math/BodyDimensions';
 import { getTurretHeadRadius } from '../math';
 import { TURRET_HEIGHT } from '../../config';
 import { getBuildingVisualTopZ } from '../sim/buildingAnchors';
+import { getUnitGroundZ } from '../sim/unitGeometry';
 
 const BARREL_MIN_THICKNESS = 2;
 
@@ -48,7 +49,7 @@ function getBarrelTopAboveGround(turret: Turret, unitRadius: number, mountY: num
 export function getUnitHudTopY(unit: Entity): number {
   if (!unit.unit) return unit.transform.z;
   const unitRadius = unit.unit.unitRadiusCollider.scale;
-  const groundY = unit.transform.z - unit.unit.unitRadiusCollider.push;
+  const groundY = getUnitGroundZ(unit);
   let topAboveGround = unitRadius;
 
   try {

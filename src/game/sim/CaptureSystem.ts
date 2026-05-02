@@ -8,6 +8,17 @@ import type { PlayerId } from './types';
 import type { TileState, NetworkCaptureTile } from '@/types/capture';
 import { CAPTURE_CONFIG } from '../../captureConfig';
 import { getManaTileProductionPerSecond } from './manaProduction';
+import {
+  landCellCenterXForMetrics,
+  landCellCenterYForMetrics,
+  makeLandGridMetrics,
+  packLandCellKey,
+  unpackLandCellX,
+  unpackLandCellY,
+  writeLandCellBounds,
+  type LandCellBounds,
+  type LandGridMetrics,
+} from '../landGrid';
 
 export class CaptureSystem {
   private tiles: Map<number, TileState> = new Map();
@@ -28,14 +39,24 @@ export class CaptureSystem {
   private mapWidth = 0;
   private mapHeight = 0;
   private cellSize = 0;
+  private landGrid: LandGridMetrics = makeLandGridMetrics(0, 0);
+  private tileProductionCache: Map<number, number> = new Map();
 
   /** Tell the system the map it lives on so per-tile mana production
    *  rates can be computed. Must be called before update() runs.
    *  Idempotent — safe to call once at construction. */
   setMapSize(mapWidth: number, mapHeight: number, cellSize: number): void {
+    if (
+      this.mapWidth !== mapWidth ||
+      this.mapHeight !== mapHeight ||
+      this.cellSize !== cellSize
+    ) {
+      this.tileProductionCache.clear();
+    }
+    this.landGrid = makeLandGridMetrics(mapWidth, mapHeight, cellSize);
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
-    this.cellSize = cellSize;
+    this.cellSize = this.landGrid.cellSize;
   }
 
   getCellSize(): number {
@@ -52,11 +73,15 @@ export class CaptureSystem {
     if (this.cellSize <= 0) {
       return getManaTileProductionPerSecond(0, 0, 0, 0);
     }
-    const cx = ((key >> 16) & 0xFFFF) - 32768;
-    const cy = (key & 0xFFFF) - 32768;
-    const wx = (cx + 0.5) * this.cellSize;
-    const wy = (cy + 0.5) * this.cellSize;
-    return getManaTileProductionPerSecond(wx, wy, this.mapWidth, this.mapHeight);
+    const cached = this.tileProductionCache.get(key);
+    if (cached !== undefined) return cached;
+    const cx = unpackLandCellX(key);
+    const cy = unpackLandCellY(key);
+    const wx = landCellCenterXForMetrics(this.landGrid, cx);
+    const wy = landCellCenterYForMetrics(this.landGrid, cy);
+    const production = getManaTileProductionPerSecond(wx, wy, this.mapWidth, this.mapHeight);
+    this.tileProductionCache.set(key, production);
+    return production;
   }
 
   /** Process one tick. Each unit raises its team's flag and lowers others. */
@@ -158,8 +183,8 @@ export class CaptureSystem {
           _snapshotTiles.push(tileToNetwork(key, tile));
         } else {
           // Tile was fully cleared — send empty heights so client removes it
-          const cx = ((key >> 16) & 0xFFFF) - 32768;
-          const cy = (key & 0xFFFF) - 32768;
+          const cx = unpackLandCellX(key);
+          const cy = unpackLandCellY(key);
           _snapshotTiles.push(acquireTile(cx, cy));
         }
       }
@@ -181,6 +206,7 @@ export class CaptureSystem {
     this.tiles.clear();
     this.dirtyTiles.clear();
     this.productionRates.clear();
+    this.tileProductionCache.clear();
   }
 
   /** Pre-capture every mana tile to the team whose radial sector
@@ -222,11 +248,13 @@ export class CaptureSystem {
   ): void {
     const N = playerIds.length;
     if (N <= 0 || ownerHeight <= 0) return;
+    this.setMapSize(mapWidth, mapHeight, cellSize);
 
     const cx0 = mapWidth / 2;
     const cy0 = mapHeight / 2;
-    const cellsX = Math.max(1, Math.ceil(mapWidth / cellSize));
-    const cellsY = Math.max(1, Math.ceil(mapHeight / cellSize));
+    const grid = this.landGrid;
+    const cellsX = grid.cellsX;
+    const cellsY = grid.cellsY;
     const sectorWidth = (Math.PI * 2) / N;
     const TWO_PI = Math.PI * 2;
 
@@ -234,23 +262,25 @@ export class CaptureSystem {
     // each sample falls in. S=8 → 64 samples/tile, ~1.6% accuracy
     // on slice fractions, well below visual / sim discrimination.
     const S = 8;
-    const subStep = cellSize / S;
-    const subStart = subStep * 0.5; // first sample at sub-cell centre
     const sampleCounts = new Array<number>(N).fill(0);
     const totalSamples = S * S;
     const angleShift = -firstPlayerAngle + sectorWidth * 0.5;
+    const bounds: LandCellBounds = { x0: 0, y0: 0, x1: 0, y1: 0 };
 
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
-        const x0 = cx * cellSize;
-        const y0 = cy * cellSize;
+        writeLandCellBounds(grid, cx, cy, bounds);
+        const subStepX = (bounds.x1 - bounds.x0) / S;
+        const subStepY = (bounds.y1 - bounds.y0) / S;
+        const subStartX = subStepX * 0.5; // first sample at sub-cell centre
+        const subStartY = subStepY * 0.5;
 
         for (let n = 0; n < N; n++) sampleCounts[n] = 0;
 
         for (let sj = 0; sj < S; sj++) {
-          const dy = y0 + subStart + sj * subStep - cy0;
+          const dy = bounds.y0 + subStartY + sj * subStepY - cy0;
           for (let si = 0; si < S; si++) {
-            const dx = x0 + subStart + si * subStep - cx0;
+            const dx = bounds.x0 + subStartX + si * subStepX - cx0;
             let theta = Math.atan2(dy, dx) + angleShift;
             theta = ((theta % TWO_PI) + TWO_PI) % TWO_PI;
             const idx = Math.floor(theta / sectorWidth) % N;
@@ -258,13 +288,10 @@ export class CaptureSystem {
           }
         }
 
+        const key = packLandCellKey(cx, cy);
         // Per-tile mana production at the cell's centroid — same
         // rate the sim and renderer use for this tile.
-        const wx = (cx + 0.5) * cellSize;
-        const wy = (cy + 0.5) * cellSize;
-        const tileProd = getManaTileProductionPerSecond(wx, wy, mapWidth, mapHeight);
-
-        const key = ((cx + 32768) << 16) | (cy + 32768);
+        const tileProd = this.getTileProduction(key);
         const tile: TileState = new Map();
         for (let n = 0; n < N; n++) {
           const count = sampleCounts[n];
@@ -308,8 +335,8 @@ function recycleTiles(tiles: NetworkCaptureTile[]): void {
 }
 
 function tileToNetwork(key: number, tile: TileState): NetworkCaptureTile {
-  const cx = ((key >> 16) & 0xFFFF) - 32768;
-  const cy = (key & 0xFFFF) - 32768;
+  const cx = unpackLandCellX(key);
+  const cy = unpackLandCellY(key);
   const t = acquireTile(cx, cy);
   for (const [pid, h] of tile) {
     t.heights[pid as number] = h;

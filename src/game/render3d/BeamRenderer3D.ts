@@ -13,12 +13,13 @@ import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { BEAM_MAX_LENGTH } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import type { ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
+import type { BeamStyle, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { Lod3DState } from './Lod3D';
 import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
-import { lodCellIndex, normalizeLodCellSize } from '../lodGridMath';
+import { normalizeLodCellSize } from '../lodGridMath';
+import { landCellIndexForSize } from '../landGrid';
 
 // Fallback altitude for beams whose proj.startZ / endZ haven't been
 // populated yet (a single frame gap before the tracer runs). Matches the
@@ -65,19 +66,55 @@ const BEAM_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
   max: 1,
 };
 
+const BEAM_FLOW_BY_TIER: Record<ConcreteGraphicsQuality, {
+  strength: number;
+  spacing: number;
+  speed: number;
+}> = {
+  min: { strength: 0.18, spacing: 240, speed: 3.8 },
+  low: { strength: 0.26, spacing: 180, speed: 4.8 },
+  medium: { strength: 0.4, spacing: 125, speed: 6.6 },
+  high: { strength: 0.56, spacing: 90, speed: 8.8 },
+  max: { strength: 0.72, spacing: 65, speed: 11.5 },
+};
+
+const BEAM_FLOW_STYLE_MULTIPLIER: Record<BeamStyle, number> = {
+  simple: 0.55,
+  standard: 0.82,
+  detailed: 1,
+  complex: 1.15,
+};
+
 const BEAM_VERTEX_SHADER = `
 attribute float aAlpha;
+attribute vec4 aFlow;
 varying float vAlpha;
+varying float vAlong;
+varying vec4 vFlow;
 void main() {
   vAlpha = aAlpha;
+  vAlong = position.y + 0.5;
+  vFlow = aFlow;
   gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
 }
 `;
 
 const BEAM_FRAGMENT_SHADER = `
+uniform float uTime;
 varying float vAlpha;
+varying float vAlong;
+varying vec4 vFlow;
 void main() {
-  gl_FragColor = vec4(vec3(1.0), vAlpha);
+  float alpha = vAlpha;
+  if (vFlow.x > 0.001) {
+    float repeats = max(0.001, vFlow.y);
+    float p = fract(vAlong * repeats - uTime * vFlow.w + vFlow.z);
+    float pulseA = pow(max(0.0, 1.0 - abs(p - 0.18) / 0.18), 2.7);
+    float pulseB = pow(max(0.0, 1.0 - abs(p - 0.62) / 0.08), 3.0) * 0.32;
+    float pulse = min(1.0, pulseA + pulseB);
+    alpha = min(1.0, alpha * (1.0 + vFlow.x * 1.8) + pulse * vFlow.x * 0.22);
+  }
+  gl_FragColor = vec4(vec3(1.0), alpha);
 }
 `;
 
@@ -89,6 +126,9 @@ export class BeamRenderer3D {
   private segmentMat: THREE.ShaderMaterial;
   private segmentAlpha = new Float32Array(BEAM_SEGMENT_CAP);
   private segmentAlphaAttr: THREE.InstancedBufferAttribute;
+  private segmentFlow = new Float32Array(BEAM_SEGMENT_CAP * 4);
+  private segmentFlowAttr: THREE.InstancedBufferAttribute;
+  private flowTimeUniform = { value: 0 };
   private activeSegmentCount = 0;
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
@@ -119,9 +159,15 @@ export class BeamRenderer3D {
     this.segmentAlphaAttr = new THREE.InstancedBufferAttribute(this.segmentAlpha, 1);
     this.segmentAlphaAttr.setUsage(THREE.DynamicDrawUsage);
     this.segmentGeom.setAttribute('aAlpha', this.segmentAlphaAttr);
+    this.segmentFlowAttr = new THREE.InstancedBufferAttribute(this.segmentFlow, 4);
+    this.segmentFlowAttr.setUsage(THREE.DynamicDrawUsage);
+    this.segmentGeom.setAttribute('aFlow', this.segmentFlowAttr);
     this.segmentMat = new THREE.ShaderMaterial({
       vertexShader: BEAM_VERTEX_SHADER,
       fragmentShader: BEAM_FRAGMENT_SHADER,
+      uniforms: {
+        uTime: this.flowTimeUniform,
+      },
       transparent: true,
       depthWrite: false,
       depthTest: true,
@@ -197,11 +243,30 @@ export class BeamRenderer3D {
     cylRadius: number,
     alpha: number,
     length: number,
+    flowStrength: number,
+    flowRepeats: number,
+    flowPhase: number,
+    flowSpeed: number,
   ): boolean {
     if (slot >= BEAM_SEGMENT_CAP || alpha <= 0.001) return false;
     this.segmentAlpha[slot] = alpha;
+    const flowBase = slot * 4;
+    this.segmentFlow[flowBase] = flowStrength;
+    this.segmentFlow[flowBase + 1] = flowRepeats;
+    this.segmentFlow[flowBase + 2] = flowPhase;
+    this.segmentFlow[flowBase + 3] = flowSpeed;
     this.placeSegment(slot, ax, ay, az, bx, by, bz, cylRadius, length);
     return true;
+  }
+
+  private flowPhase(entityId: number, segmentIndex: number): number {
+    const v = Math.sin(entityId * 12.9898 + segmentIndex * 78.233) * 43758.5453;
+    return v - Math.floor(v);
+  }
+
+  private flowRepeats(length: number, spacing: number): number {
+    if (spacing <= 0 || length <= 1e-3) return 1;
+    return Math.max(1, Math.min(80, length / spacing));
   }
 
   private makeRenderKey(lod?: Lod3DState): string {
@@ -212,8 +277,8 @@ export class BeamRenderer3D {
     return [
       lod.key,
       size,
-      lodCellIndex(view.cameraX, size),
-      lodCellIndex(view.cameraZ, size),
+      landCellIndexForSize(view.cameraX, size),
+      landCellIndexForSize(view.cameraZ, size),
       cameraAltitudeBand,
       this.scope.getVersion(),
     ].join('|');
@@ -227,6 +292,7 @@ export class BeamRenderer3D {
     contentVersion?: number,
   ): void {
     if (projectiles.length === 0 && this.activeSegmentCount === 0) return;
+    this.flowTimeUniform.value = performance.now() * 0.001;
     this.frameGfx = graphicsConfig ?? getGraphicsConfig();
     this.lodActive = lod !== undefined;
     this.frameLodGrid = sharedLodGrid ?? this.ownedLodGrid;
@@ -273,10 +339,14 @@ export class BeamRenderer3D {
       const startZ = proj.startZ ?? SHOT_HEIGHT;
       const endZ = proj.endZ ?? SHOT_HEIGHT;
       const objectTier = this.resolveBeamLod(startX, startY, startZ, endX, endY, endZ);
-      if (objectTier === 'marker') continue;
       const graphicsTier = objectLodToGraphicsTier(objectTier, this.frameGfx.tier);
       const opacityMul = BEAM_OPACITY_BY_TIER[graphicsTier];
       const radiusMul = BEAM_RADIUS_BY_TIER[graphicsTier];
+      const flowCfg = BEAM_FLOW_BY_TIER[graphicsTier];
+      const flowStyleMul = BEAM_FLOW_STYLE_MULTIPLIER[this.frameGfx.beamStyle] ?? 1;
+      const flowTypeMul = pt === 'laser' ? 1.12 : 1;
+      const flowStrength = flowCfg.strength * flowStyleMul * flowTypeMul;
+      const flowSpeed = flowCfg.speed * flowTypeMul;
       const drawReflections = objectTier !== 'impostor'
         && graphicsTier !== 'min'
         && graphicsTier !== 'low';
@@ -313,7 +383,18 @@ export class BeamRenderer3D {
           const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
           const midDist = cumDist + segLen / 2;
           const alpha = baseAlpha * Math.max(0, 1 - midDist / BEAM_MAX_LENGTH) * opacityMul;
-          if (this.writeSegment(segIdx, prevX, prevY, prevZ, r.x, r.y, r.z, cylRadius, alpha, segLen)) {
+          if (this.writeSegment(
+            segIdx,
+            prevX, prevY, prevZ,
+            r.x, r.y, r.z,
+            cylRadius,
+            alpha,
+            segLen,
+            flowStrength,
+            this.flowRepeats(segLen, flowCfg.spacing),
+            this.flowPhase(e.id, segIdx),
+            flowSpeed,
+          )) {
             segIdx++;
           }
           prevX = r.x;
@@ -328,7 +409,18 @@ export class BeamRenderer3D {
       const finalLen = Math.sqrt(finalDx * finalDx + finalDy * finalDy + finalDz * finalDz);
       const finalMid = cumDist + finalLen / 2;
       const finalAlpha = baseAlpha * Math.max(0, 1 - finalMid / BEAM_MAX_LENGTH) * opacityMul;
-      if (this.writeSegment(segIdx, prevX, prevY, prevZ, endX, endY, endZ, cylRadius, finalAlpha, finalLen)) {
+      if (this.writeSegment(
+        segIdx,
+        prevX, prevY, prevZ,
+        endX, endY, endZ,
+        cylRadius,
+        finalAlpha,
+        finalLen,
+        flowStrength,
+        this.flowRepeats(finalLen, flowCfg.spacing),
+        this.flowPhase(e.id, segIdx),
+        flowSpeed,
+      )) {
         segIdx++;
       }
     }
@@ -341,6 +433,9 @@ export class BeamRenderer3D {
       this.segmentAlphaAttr.clearUpdateRanges();
       this.segmentAlphaAttr.addUpdateRange(0, segIdx);
       this.segmentAlphaAttr.needsUpdate = true;
+      this.segmentFlowAttr.clearUpdateRanges();
+      this.segmentFlowAttr.addUpdateRange(0, segIdx * 4);
+      this.segmentFlowAttr.needsUpdate = true;
     }
     this.activeSegmentCount = segIdx;
   }

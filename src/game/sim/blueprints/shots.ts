@@ -5,14 +5,12 @@
  * Moved from PROJECTILE_STATS in config.ts.
  */
 
-const beam_width: number = 4.8;
-
-const beam_recoil: number = 2000;
-
-const fire_explosion_multiplier: number = 3;
-
 import { AUDIO } from '../../../audioConfig';
 import type { ShotBlueprint } from './types';
+
+const BEAM_WIDTH = 6;
+const BEAM_RECOIL = 2000;
+const FIRE_EXPLOSION_RADIUS_MULTIPLIER = 3;
 
 export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
@@ -24,7 +22,11 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // intersects this radius takes the FULL damage and force; nothing
     // outside it. No falloff. Trim the radius down if shots feel too
     // generous now that there's no near-zone bonus.
-    explosion: { radius: 5 * fire_explosion_multiplier, damage: 6, force: 500 },
+    explosion: {
+      radius: 5 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
+      damage: 6,
+      force: 500,
+    },
     detonateOnExpiry: true,
     lifespan: 10_000,
     hitSound: AUDIO.event.hit.lightShot,
@@ -35,7 +37,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 8,
     collision: { radius: 2.2 },
     explosion: {
-      radius: 8 * fire_explosion_multiplier,
+      radius: 8 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
       damage: 12,
       force: 1000,
     },
@@ -55,7 +57,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 8,
     collision: { radius: 2.5 },
     explosion: {
-      radius: 10 * fire_explosion_multiplier,
+      radius: 10 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
       damage: 4,
       force: 800,
     },
@@ -82,10 +84,10 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   heavyShot: {
     type: 'projectile',
     id: 'heavyShot',
-    mass: 30.0,
+    mass: 30,
     collision: { radius: 4 },
     explosion: {
-      radius: 25 * fire_explosion_multiplier,
+      radius: 25 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
       damage: 150,
       force: 7_000,
     },
@@ -95,11 +97,10 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   },
   // Cluster mortar — carries `mortarShot`s as submunitions. The
   // outer carrier follows its turret's selected arc and detonates on
-  // impact / lifespan expiry; each spawned child IS a mortarShot, so it
-  // then runs
-  // mortarShot's own submunition chain (5 mediumShot fragments) when
-  // IT lands. Net effect: one trigger pull → 4 mortar-bursts spread
-  // around the impact zone.
+  // impact / lifespan expiry; each spawned child is a mortarShot, so
+  // it then runs mortarShot's own submunition chain (5 mediumShot
+  // fragments) when it lands. Net effect: one trigger pull creates
+  // 5 mortar bursts spread around the impact zone.
   advancedMortarShot: {
     type: 'projectile',
     id: 'advancedMortarShot',
@@ -110,13 +111,13 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     collision: { radius: 6 },
     detonateOnExpiry: true,
     lifespan: 2000,
-    // Per projectile instance, roll max lifespan within ±10% of lifespan.
+    // Per projectile instance, roll max lifespan within +/-20% of lifespan.
     lifespanVariance: 0.2,
     hitSound: AUDIO.event.hit.advancedMortarShot,
     submunitions: {
       shotId: 'mortarShot',
       count: 5,
-      // Wide horizontal sweep so the four mortar children spread
+      // Wide horizontal sweep so the mortar children spread
       // around the carrier's ground impact, not stack on top of
       // each other. Vertical kick keeps them lofted long enough
       // to land in a ring around the original aim point.
@@ -131,12 +132,12 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // Mortar is a pure carrier: it does no damage of its own and has
     // no splash explosion. Its only job is to fly to a point and
     // release submunitions on impact / lifespan expiry. All damage
-    // comes from the lightShot fragments sprayed below.
+    // comes from the mediumShot fragments sprayed below.
     mass: 60,
     collision: { radius: 4 },
     detonateOnExpiry: true,
     lifespan: 2000,
-    // Per projectile instance, roll max lifespan within ±10% of lifespan.
+    // Per projectile instance, roll max lifespan within +/-20% of lifespan.
     lifespanVariance: 0.2,
     hitSound: AUDIO.event.hit.mortarShot,
     submunitions: {
@@ -148,23 +149,22 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       // mix of launch angles.
       randomSpreadSpeedHorizontal: 20,
       randomSpreadSpeedVertical: 20,
-      // Soft bounce — submunitions retain ~10% of the carrier's
+      // Soft bounce — submunitions retain 40% of the carrier's
       // reflected velocity so the burst still reads as a bounce off
-      // the surface, without launching the lightShots so far that
+      // the surface, without launching the fragments so far that
       // they leave the AOE the player expected. Tune up toward 1.0
       // for a more energetic bounce, down toward 0.0 to absorb the
       // momentum entirely.
       reflectedVelocityDamper: 0.4,
-      // reflectedVelocityDamper: 0.4,
     },
   },
   disruptorShot: {
     type: 'projectile',
     id: 'disruptorShot',
-    mass: 20.0,
+    mass: 20,
     collision: { radius: 25 },
     explosion: {
-      radius: 40 * fire_explosion_multiplier,
+      radius: 40 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
       damage: 999999,
       force: 2499750,
     },
@@ -177,9 +177,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'laserShot',
     dps: 10 / (300 / 1000), // collision.damage / (beamDuration/1000) ≈ 33.3 dps
     force: 2500,
-    recoil: beam_recoil, // mass * launchForce
-    radius: beam_width / 2,
-    width: beam_width,
+    recoil: BEAM_RECOIL,
+    radius: BEAM_WIDTH / 2,
+    width: BEAM_WIDTH,
     duration: 300,
     hitSound: AUDIO.event.hit.laserShot,
   },
@@ -188,9 +188,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'beamShot',
     dps: 30,
     force: 2000,
-    recoil: beam_recoil,
-    radius: beam_width / 2,
-    width: beam_width,
+    recoil: BEAM_RECOIL,
+    radius: BEAM_WIDTH / 2,
+    width: BEAM_WIDTH,
     hitSound: AUDIO.event.hit.beamShot,
   },
   // megaBeam — beefy single-emitter beam used by the widow head and
@@ -202,15 +202,15 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'megaBeamShot',
     dps: 90,
     force: 4000,
-    recoil: beam_recoil,
-    radius: beam_width,
-    width: beam_width * 2,
+    recoil: BEAM_RECOIL,
+    radius: BEAM_WIDTH,
+    width: BEAM_WIDTH * 2,
     hitSound: AUDIO.event.hit.megaBeamShot,
   },
 };
 
 export function getShotBlueprint(id: string): ShotBlueprint {
-  const bp = SHOT_BLUEPRINTS[id];
-  if (!bp) throw new Error(`Unknown projectile blueprint: ${id}`);
-  return bp;
+  const shotBlueprint = SHOT_BLUEPRINTS[id];
+  if (!shotBlueprint) throw new Error(`Unknown projectile blueprint: ${id}`);
+  return shotBlueprint;
 }

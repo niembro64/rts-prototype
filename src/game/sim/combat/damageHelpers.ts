@@ -9,6 +9,7 @@ import type { SimEvent, ImpactContext } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types';
 import type { TurretConfig, Projectile } from '../types';
+import { getUnitBodyCenterHeight } from '../unitGeometry';
 
 // Build an ImpactContext for hit/projectileExpire audio events
 export function buildImpactContext(
@@ -86,11 +87,12 @@ export function buildUnitDeathEvent(
   const collider = target?.unit?.unitRadiusCollider;
   const visualRadius = collider?.scale ?? collider?.shot ?? 15;
   const pushRadius = collider?.push ?? collider?.shot ?? visualRadius;
+  const bodyCenterHeight = getUnitBodyCenterHeight(target?.unit);
   const radius = collider?.shot ?? visualRadius;
   const deathX = target?.body?.physicsBody.x ?? target?.transform.x ?? 0;
   const deathY = target?.body?.physicsBody.y ?? target?.transform.y ?? 0;
   const deathZ = target?.body?.physicsBody.z ?? target?.transform.z ?? 0;
-  const baseZ = target ? deathZ - pushRadius : undefined;
+  const baseZ = target ? deathZ - bodyCenterHeight : undefined;
   const unitType = target?.unit?.unitType;
   const rotation = target?.transform.rotation ?? 0;
   // Per-turret yaw + pitch at death — Debris3D rotates each barrel

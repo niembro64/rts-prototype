@@ -3,6 +3,7 @@ import type { Entity, EntityId, PlayerId } from './types';
 import { distance3 } from '../math';
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { startSolarCollectorClosed } from './solarCollector';
+import { spatialGrid } from './SpatialGrid';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -144,6 +145,8 @@ export class CommanderAbilitiesSystem {
 
   // Called when construction completes
   private onConstructionComplete(world: WorldState, entity: Entity, _playerId: PlayerId): void {
+    spatialGrid.syncBuildingCapture(entity);
+
     // Handle building-specific completion
     if (entity.buildingType === 'solar' && entity.ownership) {
       startSolarCollectorClosed(world, entity);

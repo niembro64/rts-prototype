@@ -125,6 +125,7 @@ function spawnUnit(
     const body = physics.createUnitBody(
       x, y,
       unit.unit.unitRadiusCollider.push,
+      unit.unit.bodyCenterHeight,
       unit.unit.mass,
       `unit_${unit.id}`,
       unit.id,

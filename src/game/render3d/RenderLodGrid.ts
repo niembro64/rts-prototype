@@ -1,9 +1,6 @@
 import type { GraphicsConfig } from '@/types/graphics';
-import {
-  lodCellCenter,
-  lodCellIndex,
-  normalizeLodCellSize,
-} from '../lodGridMath';
+import { normalizeLodCellSize } from '../lodGridMath';
+import { landCellCenterForSize, landCellIndexForSize, packLandCellKey } from '../landGrid';
 import type { RenderViewLodState } from './Lod3D';
 import {
   getRenderObjectLodShellDistances,
@@ -11,32 +8,7 @@ import {
   type RenderObjectLodTier,
 } from './RenderObjectLod';
 
-type LodCellRecord = {
-  frameId: number;
-  tier: RenderObjectLodTier;
-};
-
-type LodCellKey = number | string;
-
-const CELL_KEY_BITS = 17;
-const CELL_KEY_BASE = 2 ** CELL_KEY_BITS;
-const CELL_KEY_BIAS = 2 ** (CELL_KEY_BITS - 1);
-const CELL_KEY_MAX = CELL_KEY_BASE - 1;
-
-function packLodCellKey(ix: number, iz: number): LodCellKey {
-  const x = ix + CELL_KEY_BIAS;
-  const z = iz + CELL_KEY_BIAS;
-  if (
-    x >= 0 && x <= CELL_KEY_MAX &&
-    z >= 0 && z <= CELL_KEY_MAX
-  ) {
-    return x * CELL_KEY_BASE + z;
-  }
-  return `${ix},${iz}`;
-}
-
 export class RenderLodGrid {
-  private frameId = 0;
   private view: RenderViewLodState | null = null;
   private cellSize = 128;
   private shells: RenderObjectLodShellDistances = {
@@ -51,14 +23,10 @@ export class RenderLodGrid {
     mass: 0,
     impostor: 0,
   };
-  private cells = new Map<LodCellKey, LodCellRecord>();
+  private cells = new Map<number, RenderObjectLodTier>();
 
   beginFrame(view: RenderViewLodState, gfx: GraphicsConfig): void {
-    this.frameId = (this.frameId + 1) & 0x3fffffff;
-    if (this.frameId === 0) {
-      this.cells.clear();
-      this.frameId = 1;
-    }
+    this.cells.clear();
     this.view = view;
     this.cellSize = normalizeLodCellSize(gfx.objectLodCellSize);
     this.shells = getRenderObjectLodShellDistances(gfx);
@@ -66,7 +34,6 @@ export class RenderLodGrid {
     this.shellDistanceSq.simple = this.shells.simple * this.shells.simple;
     this.shellDistanceSq.mass = this.shells.mass * this.shells.mass;
     this.shellDistanceSq.impostor = this.shells.impostor * this.shells.impostor;
-    if ((this.frameId & 63) === 0) this.pruneStaleCells();
   }
 
   resolve(worldX: number, _worldY: number, worldZ: number): RenderObjectLodTier {
@@ -74,14 +41,14 @@ export class RenderLodGrid {
     if (!view) return 'marker';
 
     const size = this.cellSize;
-    const ix = lodCellIndex(worldX, size);
-    const iz = lodCellIndex(worldZ, size);
-    const key = packLodCellKey(ix, iz);
+    const ix = landCellIndexForSize(worldX, size);
+    const iz = landCellIndexForSize(worldZ, size);
+    const key = packLandCellKey(ix, iz);
     const cached = this.cells.get(key);
-    if (cached?.frameId === this.frameId) return cached.tier;
+    if (cached !== undefined) return cached;
 
-    const cx = lodCellCenter(ix, size);
-    const cz = lodCellCenter(iz, size);
+    const cx = landCellCenterForSize(ix, size);
+    const cz = landCellCenterForSize(iz, size);
     const dx = cx - view.cameraX;
     const dy = -view.cameraY;
     const dz = cz - view.cameraZ;
@@ -92,19 +59,7 @@ export class RenderLodGrid {
     else if (shellSq.simple > 0 && distanceSq <= shellSq.simple) tier = 'simple';
     else if (shellSq.mass > 0 && distanceSq <= shellSq.mass) tier = 'mass';
     else if (shellSq.impostor > 0 && distanceSq <= shellSq.impostor) tier = 'impostor';
-    if (cached) {
-      cached.frameId = this.frameId;
-      cached.tier = tier;
-    } else {
-      this.cells.set(key, { frameId: this.frameId, tier });
-    }
+    this.cells.set(key, tier);
     return tier;
-  }
-
-  private pruneStaleCells(): void {
-    const frameId = this.frameId;
-    for (const [key, cell] of this.cells) {
-      if (cell.frameId !== frameId) this.cells.delete(key);
-    }
   }
 }

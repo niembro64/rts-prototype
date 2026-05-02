@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
 import { getUnitBlueprint } from '../sim/blueprints';
+import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import type {
   TreadConfig,
   WheelConfig,
@@ -102,6 +103,9 @@ const TREAD_Y = TREAD_HEIGHT / 2;
  *             half of the body sphere — legs read as emerging from
  *             the body's underside, which is the natural
  *             quadruped / arachnid look.
+ *             Weapon-as-body units can author bodyCenterHeight plus
+ *             legAttachHeightFrac to pin the hip directly to the visible
+ *             turret body's underside.
  *
  *  Returned in WORLD UNITS — used as `liftGroup.position.y` in
  *  Render3DEntities. */
@@ -112,6 +116,23 @@ export function getChassisLift(
   return getChassisLiftY(blueprint, unitRadius);
 }
 const WHEEL_COLOR = 0x2a2f36;
+
+function getLegHipLiftY(
+  blueprint: import('@/types/blueprints').UnitBlueprint,
+  unitRadius: number,
+): number {
+  if (
+    blueprint.hideChassis === true &&
+    blueprint.legAttachHeightFrac !== undefined &&
+    blueprint.bodyCenterHeight !== undefined
+  ) {
+    const replacementHead = blueprint.turrets.find((t) => t.headCenterHeightFrac !== undefined);
+    if (replacementHead?.headCenterHeightFrac !== undefined) {
+      return blueprint.bodyCenterHeight - replacementHead.headCenterHeightFrac * unitRadius;
+    }
+  }
+  return 0;
+}
 
 // Vertical layout for legs. Feet stay on the ground, hips attach at
 // each leg's per-body-segment midpoint — computed once when the leg
@@ -365,9 +386,10 @@ export function buildLocomotion(
       return mesh;
     }
     case 'legs': {
+      const hipLiftY = getLegHipLiftY(bp, unitRadius);
       const mesh = buildLegs(
         worldGroup, entity, unitRadius, loc.style, loc.config,
-        gfx.legs, bp.bodyShape, mapWidth, mapHeight, legRenderer,
+        gfx.legs, bp.bodyShape, hipLiftY, bp.legAttachHeightFrac, mapWidth, mapHeight, legRenderer,
       );
       if (mesh) mesh.lodKey = lodKey;
       return mesh;
@@ -499,6 +521,8 @@ function buildLegs(
   cfg: BlueprintLegConfig,
   legLod: LegLod,
   bodyShape: UnitBodyShape,
+  hipLiftY: number,
+  legAttachHeightFrac: number | undefined,
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
@@ -572,12 +596,14 @@ function buildLegs(
       footJointSlot = legRenderer.allocJoint();
     }
 
-    // Hip Y is the vertical mid-point of whichever body segment the
-    // leg sits under. For composite bodies this picks the closest
-    // segment by forward offset — so an arachnid's rear legs hook
-    // into the tall abdomen while front legs hook into the shorter
-    // prosoma.
-    const hipY = getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
+    // Hip Y defaults to the vertical mid-point of whichever body
+    // segment the leg sits under. Units whose visible body is a turret
+    // can author legAttachHeightFrac so legs attach to that visible body's
+    // underside instead of the hidden logical chassis segment.
+    const attachY = legAttachHeightFrac !== undefined
+      ? legAttachHeightFrac * r
+      : getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
+    const hipY = hipLiftY + attachY;
 
     legs.push({
       config: legCfg,
@@ -654,14 +680,14 @@ const _chassisN = new THREE.Vector3();
  *
  *    world = T(unit_base) · tilt · Ry(yaw) · chassis_local
  *
- *  where unit_base is (sim.x, sim.z − unitRadius, sim.y), yaw is
+ *  where unit_base is (sim.x, sim.z − bodyCenterHeight, sim.y), yaw is
  *  −sim.rotation, and tilt is built from the surface normal at the
  *  unit's footprint. Surface normal sampling is done inline so the
  *  caller doesn't need to thread it through. */
 function transformChassisToWorld(
   cx: number, cy: number, cz: number,
   entity: Entity,
-  unitRadius: number,
+  bodyCenterHeight: number,
   mapWidth: number,
   mapHeight: number,
   out: { x: number; y: number; z: number },
@@ -680,7 +706,7 @@ function transformChassisToWorld(
   );
   if (n.nx === 0 && n.ny === 0) {
     out.x = entity.transform.x + yx;
-    out.y = entity.transform.z - unitRadius + yy;
+    out.y = entity.transform.z - bodyCenterHeight + yy;
     out.z = entity.transform.y + yz;
     return;
   }
@@ -689,7 +715,7 @@ function transformChassisToWorld(
   _chassisTilt.setFromUnitVectors(_chassisUp, _chassisN);
   _chassisVec.set(yx, yy, yz).applyQuaternion(_chassisTilt);
   out.x = entity.transform.x + _chassisVec.x;
-  out.y = entity.transform.z - unitRadius + _chassisVec.y;
+  out.y = entity.transform.z - bodyCenterHeight + _chassisVec.y;
   out.z = entity.transform.y + _chassisVec.z;
 }
 
@@ -699,7 +725,7 @@ const _worldOut = { x: 0, y: 0, z: 0 };
 function initializeLegAt(
   leg: LegInstance,
   entity: Entity,
-  unitRadius: number,
+  bodyCenterHeight: number,
   mapWidth: number,
   mapHeight: number,
   stepRadius: number,
@@ -726,7 +752,7 @@ function initializeLegAt(
   const cz = restLocalZ;
   // Transform to world to find the foot's spawn XZ, then snap Y to
   // the actual terrain elevation so the foot lands ON the ground.
-  transformChassisToWorld(cx, cy, cz, entity, unitRadius, mapWidth, mapHeight, _worldOut);
+  transformChassisToWorld(cx, cy, cz, entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut);
   const groundY = getSurfaceHeight(_worldOut.x, _worldOut.z, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
   leg.worldX = _worldOut.x;
   leg.worldY = groundY;
@@ -881,7 +907,7 @@ export function updateLocomotion(
     //   - stepRadius < restDistance, so the rest sphere never includes
     //     the hip; the foot can drift toward the body but the trigger
     //     always fires before the foot crosses the body's footprint.
-    const unitRadius = entity.unit?.unitRadiusCollider.push ?? 0;
+    const bodyCenterHeight = getUnitBodyCenterHeight(entity.unit);
     const stepRadius = mesh.stepRadius;
     const showViz = getLegsRadiusToggle();
     // Chassis-UP direction in three.js world coords — the surface
@@ -922,7 +948,7 @@ export function updateLocomotion(
 
       transformChassisToWorld(
         hipLocalX, hipLocalY, hipLocalZ,
-        entity, unitRadius, mapWidth, mapHeight, _worldOut,
+        entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
       );
       const hipWorldX = _worldOut.x;
       const hipWorldY = _worldOut.y;
@@ -930,7 +956,7 @@ export function updateLocomotion(
 
       transformChassisToWorld(
         restLocalX, restLocalY, restLocalZ,
-        entity, unitRadius, mapWidth, mapHeight, _worldOut,
+        entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
       );
       const restWorldX = _worldOut.x;
       const restWorldY = _worldOut.y;
@@ -953,7 +979,7 @@ export function updateLocomotion(
       if (!leg.initialized) {
         // Defer init to the helper so the build-time and "lazy on
         // first update" paths stay in sync.
-        initializeLegAt(leg, entity, unitRadius, mapWidth, mapHeight, stepRadius);
+        initializeLegAt(leg, entity, bodyCenterHeight, mapWidth, mapHeight, stepRadius);
       }
 
       // Lerp the foot through 3D world space when mid-step. Otherwise
@@ -1038,7 +1064,7 @@ export function updateLocomotion(
         const targetLocalZ = restLocalZ + offsetZ;
         transformChassisToWorld(
           targetLocalX, targetLocalY, targetLocalZ,
-          entity, unitRadius, mapWidth, mapHeight, _worldOut,
+          entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
         );
         const tWorldX = _worldOut.x;
         const tWorldZ = _worldOut.z;

@@ -19,9 +19,12 @@
 // shape, just bigger or smaller.
 
 import * as THREE from 'three';
-import type { UnitBodyShape } from '@/types/blueprints';
+import type { TurretMount, UnitBodyShape } from '@/types/blueprints';
 import { getUnitBlueprint } from '../sim/blueprints';
-import { getBodyMountTopY as getBodyMountTopYShared } from '../math/BodyDimensions';
+import {
+  getBodyMountTopY as getBodyMountTopYShared,
+  getTurretRootY as getTurretRootYShared,
+} from '../math/BodyDimensions';
 
 const FALLBACK_BODY_SHAPE: UnitBodyShape = {
   kind: 'composite',
@@ -225,6 +228,20 @@ export function getBodyMountTopY(
   mountZ: number,
 ): number {
   return getBodyMountTopYShared(bodyShape, unitRadius, mountX, mountZ);
+}
+
+/** Chassis-local Y for a turret root. Mirrors the sim's
+ *  BodyDimensions helper so the visible turret head, barrel pivot, and
+ *  authoritative projectile/beam origin share one mount rule. */
+export function getTurretRootY(
+  bodyShape: UnitBodyShape,
+  unitRadius: number,
+  mountX: number,
+  mountZ: number,
+  headRadius: number,
+  mount?: Pick<TurretMount, 'headCenterHeightFrac'>,
+): number {
+  return getTurretRootYShared(bodyShape, unitRadius, mountX, mountZ, headRadius, mount);
 }
 
 function buildPolygonShape(sides: number, radius: number, rotation: number): THREE.Shape {

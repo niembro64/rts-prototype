@@ -62,5 +62,6 @@ export class LocalGameConnection implements GameConnection {
     this.snapshotCallback = null;
     this.gameOverCallback = null;
     this.pendingSnapshot = null;
+    this.pendingSnapshotCloner.clear();
   }
 }

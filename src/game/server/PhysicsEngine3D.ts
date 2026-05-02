@@ -82,6 +82,10 @@ export type Body3D = {
   shape: 'sphere' | 'cuboid';
   /** Sphere radius (shape='sphere' only). 0 for cuboids. */
   radius: number;
+  /** Center height above terrain when resting. For unit spheres this
+   *  is authored separately from `radius`; the radius still controls
+   *  collision/push volume. */
+  groundOffset: number;
   /** Cuboid half-extents (shape='cuboid' only). */
   halfX: number;
   halfY: number;
@@ -205,11 +209,12 @@ export class PhysicsEngine3D {
   }
 
   /** Dynamic sphere body (units). Spawns at (x, y) on the ground,
-   *  z starts at radius so it sits tangent to the ground plane. */
+   *  z starts at the authored body-center height above terrain. */
   createUnitBody(
     x: number,
     y: number,
     physicsRadius: number,
+    bodyCenterHeight: number,
     mass: number,
     label: string,
     entityId?: EntityId,
@@ -218,12 +223,13 @@ export class PhysicsEngine3D {
     const body: Body3D = {
       x,
       y,
-      z: physicsRadius,
+      z: this.getGroundZ(x, y) + bodyCenterHeight,
       vx: 0,
       vy: 0,
       vz: 0,
       shape: 'sphere',
       radius: physicsRadius,
+      groundOffset: bodyCenterHeight,
       halfX: 0,
       halfY: 0,
       halfZ: 0,
@@ -268,6 +274,7 @@ export class PhysicsEngine3D {
       vz: 0,
       shape: 'cuboid',
       radius: 0,
+      groundOffset: 0,
       halfX: width / 2,
       halfY: height / 2,
       halfZ: depth / 2,
@@ -471,7 +478,7 @@ export class PhysicsEngine3D {
    *      drifts off curved surfaces (this was the "flies off the
    *      crest of a hill" bug).
    *   6. Snap z to the new surface: z = ground(x_new, y_new) +
-   *      radius. The unit ALWAYS sits on the ground, regardless of
+   *      groundOffset. The unit ALWAYS sits on the ground, regardless of
    *      slope curvature or speed.
    *   7. Recompute vz from the slope-tangent constraint at the new
    *      position: v · n_new = 0 → vz = −(vx·n.x + vy·n.y) / n.z.
@@ -561,7 +568,7 @@ export class PhysicsEngine3D {
       //     that prevents flight on hill crests / steep climbs:
       //     curvature drift gets absorbed every tick instead of
       //     accumulating until the unit is "airborne" by tolerance.
-      b.z = this.getGroundZ(b.x, b.y) + b.radius;
+      b.z = this.getGroundZ(b.x, b.y) + b.groundOffset;
       // (7) recompute vz from the slope constraint at the new
       //     position so velocity is tangent to wherever we just
       //     landed. Near-vertical surfaces (n.z ≈ 0) would divide
@@ -603,7 +610,7 @@ export class PhysicsEngine3D {
       if (b.sleeping) continue;
       if (b.shape !== 'sphere') continue;
       const groundZ = this.getGroundZ(b.x, b.y);
-      const restingZ = groundZ + b.radius;
+      const restingZ = groundZ + b.groundOffset;
       if (b.z >= restingZ - GROUND_PENETRATION_EPS) continue;
       // Penetrated — lift up and re-tangent the velocity so it
       // doesn't keep pushing through the surface next tick.

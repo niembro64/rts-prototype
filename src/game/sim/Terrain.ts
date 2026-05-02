@@ -8,10 +8,11 @@ export type { TerrainShape } from '@/types/terrain';
 // flat at z=0 and gets a circular patch of "ripples" at the map
 // center: a hand-tuned superposition of three sinusoids whose
 // amplitude tapers to zero on a cosine curve as you walk outward.
-// Outside the ripple radius the terrain is exactly flat — which keeps
-// player corner-spawns and most building placements untouched while
-// giving the early game a piece of interesting topography to fly over
-// and shoot through.
+// That natural height is then terraced into dTerrain plateau shelves
+// with smooth ramp bands between them. Outside the ripple radius the
+// terrain is exactly flat — which keeps player corner-spawns and most
+// building placements untouched while giving the early game readable
+// shelves, ramps, and sightline terrain.
 //
 // This module is a PURE FUNCTION of (x, y, mapWidth, mapHeight) so
 // the client and server compute the same surface without any seed
@@ -22,9 +23,10 @@ export type { TerrainShape } from '@/types/terrain';
 //
 // Two functions, one canonical surface:
 //
-//   `getTerrainHeight(x, z)` — raw continuous heightmap. The terrain
-//   mesh sampler and renderer call it to sample tile-corner heights
-//   and the shading gradient.
+//   `getTerrainHeight(x, z)` — final authored heightmap after natural
+//   terrain, dTerrain terracing, and special flat-zone overrides. The
+//   terrain mesh sampler and renderer call it to sample tile-corner
+//   heights and the shading gradient.
 //
 //   `getSurfaceHeight(x, z, cellSize)` — THE one and only "what is
 //   the ground at (x, z)?" answer that gameplay reads. It samples the
@@ -73,6 +75,26 @@ export const TERRAIN_MESH_SUBDIV = 4;
  *  and a mountain is tall enough to actually block sightlines. */
 const TERRAIN_SHAPE_MAGNITUDE = 800;
 export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
+
+/** Vertical spacing between authored terrain plateau levels. Metal
+ *  deposit rings store signed multiples of this value so extractor pads
+ *  stay aligned with the same dTerrain scale as future terraced terrain. */
+export const TERRAIN_D_TERRAIN = 200;
+
+export const TERRAIN_PLATEAU_CONFIG = {
+  enabled: true,
+  /** Fraction of each vertical dTerrain band that snaps flat to one
+   *  of the two neighboring plateau levels. The rest of the band is a
+   *  smooth ramp, so terrain stays continuous instead of stair-stepped. */
+  flatFraction: 0.6,
+  /** 0 = soft eased shelf edges, 1 = crisp linear ramp-to-flat edges.
+   *  The same symmetric curve is used at the lower and upper plateau
+   *  boundaries, so floor and top edges stay visually consistent. */
+  edgeSharpness: 1,
+  /** Height tolerance used by building placement when deciding whether
+   *  a sampled rendered mesh point is on a plateau shelf. */
+  buildHeightEpsilon: 0.5,
+} as const;
 
 /** Mutable amplitude for the central ripple zone. Negative = basin
  *  (lake), positive = peak (mountain), 0 = flat. Default 'lake'.
@@ -258,8 +280,44 @@ const RIPPLE_W3 = 600;
 // peak at the same dist value.
 const RIPPLE_PHASE = 1.7;
 
-/** Raw continuous terrain height at world point (x, y) =
- *  central ripple disc + radial team-separation ridges. Always ≥ 0. */
+function smootherstep(t: number): number {
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+function clamp01(value: number): number {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+function plateauRampCurve(t: number): number {
+  const smooth = smootherstep(t);
+  const sharpness = clamp01(TERRAIN_PLATEAU_CONFIG.edgeSharpness);
+  return smooth + (t - smooth) * sharpness;
+}
+
+function applyTerrainPlateaus(height: number): number {
+  if (!TERRAIN_PLATEAU_CONFIG.enabled || !Number.isFinite(height)) return height;
+  const step = TERRAIN_D_TERRAIN;
+  if (step <= 0) return height;
+
+  const flatHalf = Math.min(
+    0.49,
+    Math.max(0, TERRAIN_PLATEAU_CONFIG.flatFraction * 0.5),
+  );
+  const q = height / step;
+  const lowerLevel = Math.floor(q);
+  const t = q - lowerLevel;
+  if (t <= flatHalf) return lowerLevel * step;
+  if (t >= 1 - flatHalf) return (lowerLevel + 1) * step;
+
+  const rampT = (t - flatHalf) / Math.max(1e-6, 1 - flatHalf * 2);
+  return (lowerLevel + plateauRampCurve(rampT)) * step;
+}
+
+/** Final authored terrain height at world point (x, y): natural
+ *  central ripple disc + radial team-separation ridges, terraced into
+ *  dTerrain plateaus, then locally overridden by special flat zones. */
 export function getTerrainHeight(
   x: number, y: number,
   mapWidth: number, mapHeight: number,
@@ -343,14 +401,19 @@ export function getTerrainHeight(
     }
   }
 
+  // Terracing happens after the natural terrain math, but before
+  // special flat zones. That gives the map clean buildable shelves
+  // while preserving exact authored pads for metal deposits.
+  const natural = ripple + ridge;
+  const terraced = applyTerrainPlateaus(natural);
+
   // Metal-deposit flat zones override BOTH ripple and ridge: inside
   // each deposit's flat radius the terrain is forced to the ring's
-  // `height`. Outside the falloff band the weight is 1 (natural
-  // terrain), so this is a pass-through for every map sample that
-  // isn't near a deposit.
+  // dTerrain-derived `height`. Outside the falloff band the weight is
+  // 1 (terraced terrain), so this is a pass-through for every map
+  // sample that isn't near a deposit.
   const override = depositOverride(x, y);
-  const natural = ripple + ridge;
-  const blended = override.height * (1 - override.weight) + natural * override.weight;
+  const blended = override.height * (1 - override.weight) + terraced * override.weight;
 
   // Clamp to the tile floor — the heightmap defines the TOP of every
   // 3D tile cube and tiles can't physically extend below their floor.
@@ -462,6 +525,62 @@ export function getTerrainMeshNormal(
   return terrainMeshNormalFromSample(
     getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize),
   );
+}
+
+export function getTerrainPlateauLevelAt(
+  x: number, z: number,
+  mapWidth: number, mapHeight: number,
+  cellSize: number = SPATIAL_GRID_CELL_SIZE,
+): number | null {
+  if (!TERRAIN_PLATEAU_CONFIG.enabled) return 0;
+  const step = TERRAIN_D_TERRAIN;
+  if (step <= 0) return 0;
+  const height = getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
+  const level = Math.round(height / step);
+  return Math.abs(height - level * step) <= TERRAIN_PLATEAU_CONFIG.buildHeightEpsilon
+    ? level
+    : null;
+}
+
+/** Authoritative terrain buildability check for rectangular building
+ *  footprints. A footprint is buildable only if all sampled points are
+ *  dry, on plateau flats, and on the same dTerrain level. Ramps between
+ *  plateaus remain traversable terrain, but are not build pads. */
+export function isBuildableTerrainFootprint(
+  centerX: number,
+  centerZ: number,
+  halfWidth: number,
+  halfDepth: number,
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number = SPATIAL_GRID_CELL_SIZE,
+): boolean {
+  const rx = Math.max(0, halfWidth - 1);
+  const rz = Math.max(0, halfDepth - 1);
+  const samples: [number, number][] = [
+    [centerX, centerZ],
+    [centerX - rx, centerZ - rz],
+    [centerX + rx, centerZ - rz],
+    [centerX - rx, centerZ + rz],
+    [centerX + rx, centerZ + rz],
+    [centerX, centerZ - rz],
+    [centerX, centerZ + rz],
+    [centerX - rx, centerZ],
+    [centerX + rx, centerZ],
+  ];
+
+  let footprintLevel: number | null = null;
+  for (const [sx, sz] of samples) {
+    if (isWaterAt(sx, sz, mapWidth, mapHeight, cellSize)) return false;
+    const level = getTerrainPlateauLevelAt(sx, sz, mapWidth, mapHeight, cellSize);
+    if (level === null) return false;
+    if (footprintLevel === null) {
+      footprintLevel = level;
+    } else if (level !== footprintLevel) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Step size for the finite-difference gradient used by visual-only

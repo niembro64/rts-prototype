@@ -15,7 +15,17 @@ import type { NetworkCaptureTile } from '@/types/capture';
 import { MANA_TILE_SIZE, MANA_TILE_TEXTURE, MAP_BG_COLOR, MANA_TILE_GROUND_LIFT } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
-import { lodCellIndex, normalizeLodCellSize } from '../lodGridMath';
+import { normalizeLodCellSize } from '../lodGridMath';
+import {
+  landCellCenterXForMetrics,
+  landCellCenterYForMetrics,
+  landCellIndexForSize,
+  makeLandGridMetrics,
+  normalizeLandCellSize,
+  writeLandCellBounds,
+  type LandCellBounds,
+  type LandGridMetrics,
+} from '../landGrid';
 import type { Lod3DState } from './Lod3D';
 import { objectLodToCameraSphereGraphicsTier } from './RenderObjectLod';
 import type { RenderLodGrid } from './RenderLodGrid';
@@ -324,8 +334,8 @@ export class CaptureTileRenderer3D {
       const cameraAltitudeBand = Math.floor(view.cameraY / cameraCellSize);
       parts.push(
         cameraCellSize,
-        lodCellIndex(view.cameraX, cameraCellSize),
-        lodCellIndex(view.cameraZ, cameraCellSize),
+        landCellIndexForSize(view.cameraX, cameraCellSize),
+        landCellIndexForSize(view.cameraZ, cameraCellSize),
         cameraAltitudeBand,
       );
     } else {
@@ -366,7 +376,8 @@ export class CaptureTileRenderer3D {
     this.lastGeometryRebuildFrame = this.renderFrameIndex;
   }
 
-  private ensureSteepTileMask(cellsX: number, cellsY: number, cellSize: number): void {
+  private ensureSteepTileMask(grid: LandGridMetrics): void {
+    const { cellsX, cellsY, cellSize } = grid;
     const tileCount = cellsX * cellsY;
     const key = `${cellsX}|${cellsY}|${cellSize}|${this.mapWidth}|${this.mapHeight}`;
     if (this.steepTileKey === key && this.steepTileMask.length === tileCount) return;
@@ -383,14 +394,16 @@ export class CaptureTileRenderer3D {
     // of its camera-based LOD tier. This is static for a renderer/map
     // configuration, so cache it instead of re-sampling nine terrain
     // points for every tile on every render frame.
+    const bounds: LandCellBounds = { x0: 0, y0: 0, x1: 0, y1: 0 };
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
-        const x0w = cx * cellSize;
-        const x1w = x0w + cellSize;
-        const xCw = x0w + cellSize * 0.5;
-        const z0w = cy * cellSize;
-        const z1w = z0w + cellSize;
-        const zCw = z0w + cellSize * 0.5;
+        writeLandCellBounds(grid, cx, cy, bounds);
+        const x0w = bounds.x0;
+        const x1w = bounds.x1;
+        const xCw = (x0w + x1w) * 0.5;
+        const z0w = bounds.y0;
+        const z1w = bounds.y1;
+        const zCw = (z0w + z1w) * 0.5;
         const h00 = getTerrainHeight(x0w, z0w, this.mapWidth, this.mapHeight);
         const h10 = getTerrainHeight(x1w, z0w, this.mapWidth, this.mapHeight);
         const h11 = getTerrainHeight(x1w, z1w, this.mapWidth, this.mapHeight);
@@ -429,8 +442,10 @@ export class CaptureTileRenderer3D {
     lod?: Lod3DState,
     sharedLodGrid?: RenderLodGrid,
   ): boolean {
-    const cellsX = Math.max(1, Math.ceil(this.mapWidth / cellSize));
-    const cellsY = Math.max(1, Math.ceil(this.mapHeight / cellSize));
+    const grid = makeLandGridMetrics(this.mapWidth, this.mapHeight, cellSize);
+    cellSize = grid.cellSize;
+    const cellsX = grid.cellsX;
+    const cellsY = grid.cellsY;
     const textureRebuilt = this.ensureOverlayTexture(cellsX, cellsY);
     const nextTerrainLodKey = this.makeTerrainLodKey(
       cellsX,
@@ -468,14 +483,14 @@ export class CaptureTileRenderer3D {
     const tileSideWalls = this.tileSideWalls;
     const horizontalEdgeSubdivisions = this.horizontalEdgeSubdivisions;
     const verticalEdgeSubdivisions = this.verticalEdgeSubdivisions;
-    this.ensureSteepTileMask(cellsX, cellsY, cellSize);
+    this.ensureSteepTileMask(grid);
 
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
         let tileGfx = graphicsConfig;
         if (sharedLodGrid) {
-          const x = (cx + 0.5) * cellSize;
-          const z = (cy + 0.5) * cellSize;
+          const x = landCellCenterXForMetrics(grid, cx);
+          const z = landCellCenterYForMetrics(grid, cy);
           // Bucket the LOD lookup at y=0 so two horizontally adjacent
           // tiles whose terrain heights happen to straddle a Y LOD-cell
           // boundary still resolve to the SAME LOD cell — and therefore
@@ -534,10 +549,14 @@ export class CaptureTileRenderer3D {
     const terrainIndices: number[] = [];
 
     const eps = 1;
+    const bounds: LandCellBounds = { x0: 0, y0: 0, x1: 0, y1: 0 };
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
-        const x0 = cx * cellSize;
-        const z0 = cy * cellSize;
+        writeLandCellBounds(grid, cx, cy, bounds);
+        const x0 = bounds.x0;
+        const z0 = bounds.y0;
+        const cellWidth = bounds.x1 - bounds.x0;
+        const cellDepth = bounds.y1 - bounds.y0;
         const tileU = (cx + 0.5) / cellsX;
         const tileV = (cy + 0.5) / cellsY;
         const tileIdx = cy * cellsX + cx;
@@ -559,8 +578,8 @@ export class CaptureTileRenderer3D {
         innerRing.length = 0;
 
         const addTopVertex = (fx: number, fz: number): number => {
-          const wx = x0 + fx * cellSize;
-          const wz = z0 + fz * cellSize;
+          const wx = x0 + fx * cellWidth;
+          const wz = z0 + fz * cellDepth;
           const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight) + MANA_TILE_GROUND_LIFT;
           const localIndex = topLocalCount++;
           terrainPositions.push(wx, h, wz);
@@ -966,6 +985,7 @@ export class CaptureTileRenderer3D {
 
     let cellSize = this.clientViewState.getCaptureCellSize();
     if (cellSize <= 0) cellSize = MANA_TILE_SIZE;
+    cellSize = normalizeLandCellSize(cellSize);
 
     const gridMode = getGridOverlay();
     const intensity = getGridOverlayIntensity();

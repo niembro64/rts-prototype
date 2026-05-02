@@ -15,6 +15,7 @@ import { getSurfaceNormal } from '../Terrain';
 import { getSimDetailConfig } from '../simQuality';
 import { spatialGrid } from '../SpatialGrid';
 import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
+import { getUnitGroundZ } from '../unitGeometry';
 
 const MIRROR_PROJECTILE_QUERY_PAD = 96;
 
@@ -293,7 +294,7 @@ export function checkProjectileCollisions(
           const mirrorPitch = u.turrets && u.turrets.length > 0
             ? u.turrets[0].pitch
             : 0;
-          const groundZ = u.transform.z - u.unit.unitRadiusCollider.push;
+          const groundZ = getUnitGroundZ(u);
           const hit = findClosestPanelHit(
             panels, mirrorRot, mirrorPitch,
             u.transform.x, u.transform.y, groundZ,

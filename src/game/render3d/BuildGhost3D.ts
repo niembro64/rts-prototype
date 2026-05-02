@@ -12,6 +12,7 @@ import type { Entity, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
 import { getSnappedBuildPosition } from '../input/helpers';
+import { getUnitGroundZ } from '../sim/unitGeometry';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
 const RANGE_Y = 0.6;
@@ -132,8 +133,7 @@ export class BuildGhost3D {
     this.footprint.material = okVisually ? this.footMatOk : this.footMatBad;
 
     if (commander?.builder) {
-      const commanderGroundY =
-        commander.transform.z - (commander.unit?.unitRadiusCollider.push ?? 0);
+      const commanderGroundY = getUnitGroundZ(commander);
       const ringY = commanderGroundY + RANGE_Y;
       this.rangeRing.visible = true;
       this.rangeRing.position.set(commander.transform.x, ringY, commander.transform.y);

@@ -76,6 +76,7 @@ function createUnitFromNetwork(
         shot: u?.collider?.shot ?? defaultRadius,
         push: u?.collider?.push ?? defaultRadius,
       },
+      bodyCenterHeight: u?.bodyCenterHeight ?? u?.collider?.push ?? defaultRadius,
       moveSpeed: u?.moveSpeed ?? 100,
       mass: u?.mass ?? 25,
       actions,

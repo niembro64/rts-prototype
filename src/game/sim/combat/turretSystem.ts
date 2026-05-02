@@ -27,6 +27,7 @@ import { getTransformCosSin, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 import { createDirectTurretAimScratch, createProjectileTurretAimScratch, solveDirectTurretAim, solveProjectileTurretAim } from './aimSolver';
+import { getUnitGroundZ } from '../unitGeometry';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
  *  renderer's pitch range and keeps the ballistic solver from driving
@@ -86,7 +87,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           // and the rendered barrel locked together on slopes; if for
           // any reason worldPos isn't populated (very first tick on a
           // newly spawned unit) we fall back to the upright math.
-          const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+          const unitGroundZ = getUnitGroundZ(unit);
           let weaponX: number;
           let weaponY: number;
           let mountZ: number;

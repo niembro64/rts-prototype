@@ -12,7 +12,7 @@
 // projectile spawn Z lines up with the drawn barrel tip regardless of
 // how tall the unit's body happens to be.
 
-import type { UnitBlueprint, UnitBodyShape, UnitBodyShapePart } from '@/types/blueprints';
+import type { TurretMount, UnitBlueprint, UnitBodyShape, UnitBodyShapePart } from '@/types/blueprints';
 
 function circleYFrac(radiusFrac: number, yFrac?: number): number {
   return yFrac ?? radiusFrac;
@@ -75,8 +75,8 @@ export function getBodyTopFrac(bodyShape: UnitBodyShape): number {
   return topY;
 }
 
-/** World-space body-top Y for a unit with the given renderer and
- *  physical radius (unit.unitRadiusCollider.push). */
+/** World-space body-top Y for a unit with the given body shape and
+ *  visual unit radius. */
 export function getBodyTopY(bodyShape: UnitBodyShape, unitRadius: number): number {
   return getBodyTopFrac(bodyShape) * unitRadius;
 }
@@ -132,6 +132,39 @@ export function getBodyMountTopY(
   }
 
   return bodyPartTopFrac(best) * unitRadius;
+}
+
+/** Chassis-local Y where a turret root should be placed. Most turrets
+ *  rest on the body segment under their horizontal mount. Some units
+ *  intentionally remove a body segment and replace it with a turret
+ *  head; those mounts can pin the turret-head center to the removed
+ *  segment's old center height through headCenterHeightFrac. */
+export function getTurretRootY(
+  bodyShape: UnitBodyShape,
+  unitRadius: number,
+  mountX: number,
+  mountY: number,
+  headRadius: number,
+  mount?: Pick<TurretMount, 'headCenterHeightFrac'>,
+): number {
+  if (mount?.headCenterHeightFrac !== undefined) {
+    return mount.headCenterHeightFrac * unitRadius - headRadius;
+  }
+  return getBodyMountTopY(bodyShape, unitRadius, mountX, mountY);
+}
+
+/** Chassis-local Y of the turret head center. This is the value used
+ *  by sim muzzle math before chassis lift and world terrain altitude
+ *  are applied. */
+export function getTurretHeadCenterY(
+  bodyShape: UnitBodyShape,
+  unitRadius: number,
+  mountX: number,
+  mountY: number,
+  headRadius: number,
+  mount?: Pick<TurretMount, 'headCenterHeightFrac'>,
+): number {
+  return getTurretRootY(bodyShape, unitRadius, mountX, mountY, headRadius, mount) + headRadius;
 }
 
 /** World-space Y for the mid-height of whichever body segment sits

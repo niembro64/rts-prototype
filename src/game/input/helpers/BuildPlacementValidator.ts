@@ -20,7 +20,7 @@ import type { MetalDeposit } from '../../../metalDepositConfig';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE, snapBuildingToGrid } from '../../sim/grid';
 import { findDepositCoveringFootprint } from '../../sim/metalDeposits';
-import { isWaterAt } from '../../sim/Terrain';
+import { isBuildableTerrainFootprint } from '../../sim/Terrain';
 
 /** Returns true if a building of `candidateType` placed with its center
  *  at (centerX, centerY) would fit in the map and not overlap any
@@ -56,17 +56,11 @@ export function canPlaceBuildingAt(
     return false;
   }
 
-  // Buildings can't sit on water — sample the four corners and the
-  // center; if any is over water, the cell is impassable.
-  const samples: [number, number][] = [
-    [candLeft + 1, candTop + 1],
-    [candRight - 1, candTop + 1],
-    [candLeft + 1, candBottom - 1],
-    [candRight - 1, candBottom - 1],
-    [centerX, centerY],
-  ];
-  for (const [sx, sy] of samples) {
-    if (isWaterAt(sx, sy, mapWidth, mapHeight)) return false;
+  // Buildings require a dry, flat dTerrain plateau footprint. Smooth
+  // ramps between plateau shelves remain passable terrain, but are not
+  // valid build pads.
+  if (!isBuildableTerrainFootprint(centerX, centerY, w / 2, h / 2, mapWidth, mapHeight)) {
+    return false;
   }
 
   for (const b of buildings) {

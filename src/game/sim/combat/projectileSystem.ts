@@ -15,6 +15,7 @@ import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { spatialGrid } from '../SpatialGrid';
 import { getSimDetailConfig } from '../simQuality';
+import { getUnitGroundZ } from '../unitGeometry';
 
 /** Rocket seeker re-acquisition radius. When a rocket's homing target
  *  dies, it scans this radius around its current position for the
@@ -325,7 +326,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       // spawn and the rendered turret base agree pixel-perfect on
       // sloped ground. Fallback (no cache) recomputes the flat-ground
       // height for parity with the legacy path.
-      const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+      const unitGroundZ = getUnitGroundZ(unit);
       const mountZ = weapon.worldPos?.z ?? (unitGroundZ + muzzleAboveGround);
       void muzzleAboveGround; // kept for fallback above; eslint-pleasing
 
@@ -848,7 +849,7 @@ export function updateProjectiles(
         const turretPitch = weapon.pitch;
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
         const beamWP = resolveWeaponWorldPos(weapon, source.transform.x, source.transform.y, srcCos, srcSin);
-        const unitGroundZ = source.transform.z - source.unit.unitRadiusCollider.push;
+        const unitGroundZ = getUnitGroundZ(source);
         // Same tilt-aware lift as the projectile spawn path above —
         // beams emerge from the same world mount the turret renders at.
         const mountZ = weapon.worldPos?.z ?? (unitGroundZ + getTurretMountHeight(source, weaponIndex));

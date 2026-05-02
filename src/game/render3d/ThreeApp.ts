@@ -256,17 +256,22 @@ export class ThreeApp {
 
   stop(): void {
     this._running = false;
-    if (this._rafId) cancelAnimationFrame(this._rafId);
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = 0;
+    }
   }
 
   destroy(): void {
     this.stop();
+    this._updateCallback = null;
     this.orbit.destroy();
     this._resizeObserver.disconnect();
     this.gpuTimer.destroy();
     this.scene.environment = null;
     this._environmentTexture?.dispose();
     this._environmentTexture = null;
+    this.renderer.renderLists.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);

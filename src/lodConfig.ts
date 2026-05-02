@@ -1,4 +1,4 @@
-import { ZOOM_MIN, ZOOM_MAX } from './config';
+import { LAND_CELL_SIZE, ZOOM_MIN, ZOOM_MAX } from './config';
 import type {
   LodAutoModeConfig,
   LodHysteresis,
@@ -229,12 +229,11 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: makeCameraSphereRadii('high'),
     max: makeCameraSphereRadii('max'),
   },
-  // Full 3D render/prediction LOD grid cell size. This is intentionally
-  // fixed across PLAYER CLIENT LOD states: the grid is the stable world
-  // partition, while LOD changes adjust sphere radii, quality, cadence,
-  // and budgets. Units, buildings, deposits, effects, and client
-  // prediction inherit the LOD tier of the cell containing their origin.
-  OBJECT_LOD_CELL_SIZE: 512,
+  // Player-client object LOD grid cell size. This intentionally shares
+  // the canonical land-cell size used by the host spatial grid and
+  // capture/mana tiles. LOD changes adjust camera sphere radii, quality,
+  // cadence, and budgets; the land partition itself stays fixed.
+  OBJECT_LOD_CELL_SIZE: LAND_CELL_SIZE,
   HUD_FRAME_STRIDE: {
     min: 4,
     low: 3,

@@ -6,10 +6,10 @@
 // terrain dips below WATER_LEVEL, then applies the same cheap shader waves.
 
 import * as THREE from 'three';
-import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, WATER_LEVEL } from '../sim/Terrain';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { Lod3DState } from './Lod3D';
+import { makeLandGridMetrics, writeLandCellBounds, type LandCellBounds } from '../landGrid';
 
 const WAVE_LAMBDA_X = 240;
 const WAVE_LAMBDA_Z = 320;
@@ -116,29 +116,32 @@ export class WaterRenderer3D {
 
   private getWaterCells(): readonly WaterCell[] {
     if (this.waterCellCache) return this.waterCellCache;
-    const cellsX = Math.max(1, Math.ceil(this.mapWidth / SPATIAL_GRID_CELL_SIZE));
-    const cellsY = Math.max(1, Math.ceil(this.mapHeight / SPATIAL_GRID_CELL_SIZE));
+    const grid = makeLandGridMetrics(this.mapWidth, this.mapHeight);
+    const cellsX = grid.cellsX;
+    const cellsY = grid.cellsY;
     const waterCells: WaterCell[] = [];
     const wetCells = new Uint8Array(cellsX * cellsY);
+    const bounds: LandCellBounds = { x0: 0, y0: 0, x1: 0, y1: 0 };
 
     for (let cy = 0; cy < cellsY; cy++) {
-      const z0 = cy * SPATIAL_GRID_CELL_SIZE;
-      const z1 = Math.min(this.mapHeight, z0 + SPATIAL_GRID_CELL_SIZE);
       for (let cx = 0; cx < cellsX; cx++) {
-        const x0 = cx * SPATIAL_GRID_CELL_SIZE;
-        const x1 = Math.min(this.mapWidth, x0 + SPATIAL_GRID_CELL_SIZE);
-        if (this.isWaterCell(x0, z0, x1, z1)) wetCells[cy * cellsX + cx] = 1;
+        writeLandCellBounds(grid, cx, cy, bounds);
+        if (this.isWaterCell(bounds.x0, bounds.y0, bounds.x1, bounds.y1)) {
+          wetCells[cy * cellsX + cx] = 1;
+        }
       }
     }
 
     for (let cy = 0; cy < cellsY; cy++) {
-      const z0 = cy * SPATIAL_GRID_CELL_SIZE;
-      const z1 = Math.min(this.mapHeight, z0 + SPATIAL_GRID_CELL_SIZE);
       for (let cx = 0; cx < cellsX; cx++) {
         if (!this.hasWetNeighbor(wetCells, cellsX, cellsY, cx, cy)) continue;
-        const x0 = cx * SPATIAL_GRID_CELL_SIZE;
-        const x1 = Math.min(this.mapWidth, x0 + SPATIAL_GRID_CELL_SIZE);
-        waterCells.push({ x0, z0, x1, z1 });
+        writeLandCellBounds(grid, cx, cy, bounds);
+        waterCells.push({
+          x0: bounds.x0,
+          z0: bounds.y0,
+          x1: bounds.x1,
+          z1: bounds.y1,
+        });
       }
     }
     this.waterCellCache = waterCells;

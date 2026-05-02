@@ -24,6 +24,7 @@ import {
   MANA_HOTSPOT_RADIUS_FRACTION,
 } from '../../captureConfig';
 import { BASE_MANA_PER_SECOND, MANA_TILE_SIZE } from '../../config';
+import { landCellCenterForSize, normalizeLandCellSize } from '../landGrid';
 import { getPlayerPrimaryColor } from './types';
 import type { PlayerId } from './types';
 
@@ -60,9 +61,9 @@ export function getManaCellProductionPerSecond(
   mapWidth: number,
   mapHeight: number,
 ): number {
-  const size = cellSize > 0 ? cellSize : MANA_TILE_SIZE;
-  const wx = (cx + 0.5) * size;
-  const wy = (cy + 0.5) * size;
+  const size = normalizeLandCellSize(cellSize > 0 ? cellSize : MANA_TILE_SIZE);
+  const wx = landCellCenterForSize(cx, size);
+  const wy = landCellCenterForSize(cy, size);
   return getManaTileProductionPerSecond(wx, wy, mapWidth, mapHeight);
 }
 

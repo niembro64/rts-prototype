@@ -172,6 +172,9 @@ export type Unit = {
   unitType: string;
   moveSpeed: number;
   unitRadiusCollider: { scale: number; shot: number; push: number };
+  /** World-space height of the unit's authored body center above terrain.
+   *  `unitRadiusCollider.push` remains the push/collision radius. */
+  bodyCenterHeight: number;
   mass: number;
   hp: number;
   maxHp: number;
@@ -550,10 +553,10 @@ export type UnitBuildConfig = {
   name: string;
   resourceCost: number;
   unitRadiusCollider: { scale: number; shot: number; push: number };
+  bodyCenterHeight: number;
   moveSpeed: number;
   mass: number;
   hp: number;
-  seeRange?: number;
   fireRange?: number;
 };
 

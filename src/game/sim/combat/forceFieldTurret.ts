@@ -6,9 +6,12 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { ProjectileVelocityUpdateEvent } from './types';
 import { getTransformCosSin } from '../../math';
+import { getTurretWorldMount } from '../../math/MountGeometry';
 import { spatialGrid } from '../SpatialGrid';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG } from '../../../config';
 import { getSimDetailConfig } from '../simQuality';
+import { getTurretMountHeight } from './combatUtils';
+import { getUnitGroundZ } from '../unitGeometry';
 
 // Module-level dedup map: keyed by projectile entity ID, keeps only the last velocity state
 // when a projectile is affected by multiple force fields in the same tick.
@@ -20,6 +23,7 @@ const _velocityUpdateResult: ProjectileVelocityUpdateEvent[] = [];
 type ActiveForceFieldRef = {
   unit: Entity;
   weapon: Turret;
+  weaponIndex: number;
   shot: ForceShot;
 };
 const _activeForceFields: ActiveForceFieldRef[] = [];
@@ -38,7 +42,8 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
   _activeForceFields.length = 0;
 
   for (const unit of world.getForceFieldUnits()) {
-    for (const weapon of unit.turrets!) {
+    for (let weaponIndex = 0; weaponIndex < unit.turrets!.length; weaponIndex++) {
+      const weapon = unit.turrets![weaponIndex];
       const config = weapon.config;
       if (config.shot.type !== 'force') continue;
       const fieldShot = config.shot as ForceShot;
@@ -65,7 +70,7 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
 
       if (weapon.forceField.transition > 0) {
         if (unit.ownership && unit.unit && unit.unit.hp > 0) {
-          _activeForceFields.push({ unit, weapon, shot: fieldShot });
+          _activeForceFields.push({ unit, weapon, weaponIndex, shot: fieldShot });
         }
       }
     }
@@ -124,6 +129,7 @@ export function applyForceFieldDamage(
     const active = activeFields[activeOrdinal];
     const unit = active.unit;
     const weapon = active.weapon;
+    const weaponIndex = active.weaponIndex;
     const fieldShot = active.shot;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
     const sourcePlayerId = unit.ownership!.playerId;
@@ -145,13 +151,32 @@ export function applyForceFieldDamage(
 
       const pushStrength = push.power * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER;
 
-      // Force fields are always 360° — no angle checks needed
-      const weaponX = unit.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y;
-      const weaponY = unit.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y;
-      // Mount points are 2D (XY offset on the unit chassis); the
-      // emitter's altitude is the unit's. Force-field zones are now
-      // true 3D spheres around (weaponX, weaponY, weaponZ).
-      const weaponZ = unit.transform.z;
+      // Force fields are always 360° — no angle checks needed.
+      // Center the gameplay sphere on the same 3D turret mount used by
+      // targeting, firing, and the renderer. Weapon-as-body units use
+      // bodyCenterHeight/headCenterHeightFrac, so using the unit altitude
+      // here makes the backend sphere disagree with the frontend
+      // emitter/body sphere.
+      let weaponX: number;
+      let weaponY: number;
+      let weaponZ: number;
+      if (weapon.worldPos) {
+        weaponX = weapon.worldPos.x;
+        weaponY = weapon.worldPos.y;
+        weaponZ = weapon.worldPos.z;
+      } else {
+        const unitGroundZ = getUnitGroundZ(unit);
+        const surfaceN = world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y);
+        const mount = getTurretWorldMount(
+          unit.transform.x, unit.transform.y, unitGroundZ,
+          unitCos, unitSin,
+          weapon.offset.x, weapon.offset.y, getTurretMountHeight(unit, weaponIndex),
+          surfaceN,
+        );
+        weaponX = mount.x;
+        weaponY = mount.y;
+        weaponZ = mount.z;
+      }
 
       // Single combined cell sweep when BOTH unit and projectile pushes
       // are enabled — saves rebuilding `nearbyCells` twice for the same

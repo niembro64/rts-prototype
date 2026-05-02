@@ -1,18 +1,27 @@
 import type { Entity, EntityId, PlayerId } from './types';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import {
+  packLandCellKey,
+  spatialCubeKeyToLandCellKey,
+  unpackLandCellX,
+  unpackLandCellY,
+} from '../landGrid';
 
 // Maximum shot collider radius any unit can have (hippo = 45). Used to pad cell search
-// in queryEnemyEntitiesInRadius so units at seeRange + radius boundary aren't
+// in queryEnemyEntitiesInRadius so units at tracking range + radius boundary aren't
 // missed due to cell-level culling.
 const MAX_UNIT_SHOT_RADIUS = 45;
 
 /**
  * 3D voxel spatial hash for efficient sphere/segment range queries.
  *
- * The world is divided into uniform CUBES of side `cellSize`. Every
- * entity (unit / projectile / building footprint) is bucketed into
- * the cube that contains its center; queries iterate only the cubes
- * intersecting the query volume.
+ * The world is divided into uniform CUBES of side `cellSize`. The XY
+ * footprint uses the same canonical LAND_CELL_SIZE as capture/mana
+ * tiles and the player-client object LOD grid; Z still stacks into
+ * cubes for projectile and altitude-aware queries. Every entity (unit
+ * / projectile / building footprint) is bucketed into the cube that
+ * contains its center; queries iterate only the cubes intersecting the
+ * query volume.
  *
  * Ground convention: z=0 sits at the CENTER of the bottom cube, not
  * its lower edge. The bottom cube spans z ∈ [-cellSize/2, +cellSize/2);
@@ -42,9 +51,11 @@ type GridCell = {
   units: Entity[];
   buildings: Entity[];
   projectiles: Entity[];
+  landKey: number;
 };
 
 export type CaptureCell = { key: number; players: PlayerId[] };
+type CaptureVote = { key: number; playerId: PlayerId };
 
 // 16-bit bias for each axis — keeps Math.floor results positive
 // before packing so the cell key is always a non-negative integer.
@@ -71,6 +82,15 @@ export class SpatialGrid {
 
   // Track which cell each projectile is in (single cell per projectile)
   private projectileCellKey: Map<EntityId, number> = new Map();
+
+  // Incremental capture occupancy keyed by canonical 2D land cell.
+  // Capture no longer has to scan every populated 3D cube each update;
+  // units/buildings add or remove one vote when their land-cell
+  // contribution changes.
+  private captureByLandCell: Map<number, CaptureCell> = new Map();
+  private captureResult: CaptureCell[] = [];
+  private unitCaptureVotes: Map<EntityId, CaptureVote> = new Map();
+  private buildingCaptureVotes: Map<EntityId, CaptureVote[]> = new Map();
 
   // Reusable dedup Set for multi-cell building queries (avoids per-query allocation)
   private _dedup: Set<EntityId> = new Set();
@@ -117,7 +137,12 @@ export class SpatialGrid {
   private getOrCreateCell(key: number): GridCell {
     let cell = this.cells.get(key);
     if (!cell) {
-      cell = { units: [], buildings: [], projectiles: [] };
+      cell = {
+        units: [],
+        buildings: [],
+        projectiles: [],
+        landKey: spatialCubeKeyToLandCellKey(key),
+      };
       this.cells.set(key, cell);
     }
     return cell;
@@ -144,6 +169,89 @@ export class SpatialGrid {
     }
   }
 
+  private addCaptureVote(key: number, playerId: PlayerId): void {
+    let entry = this.captureByLandCell.get(key);
+    if (!entry) {
+      entry = { key, players: [] };
+      this.captureByLandCell.set(key, entry);
+    }
+    entry.players.push(playerId);
+  }
+
+  private removeCaptureVote(key: number, playerId: PlayerId): void {
+    const entry = this.captureByLandCell.get(key);
+    if (!entry) return;
+    const players = entry.players;
+    for (let i = players.length - 1; i >= 0; i--) {
+      if (players[i] !== playerId) continue;
+      const last = players.length - 1;
+      if (i !== last) players[i] = players[last];
+      players.pop();
+      break;
+    }
+    if (players.length === 0) this.captureByLandCell.delete(key);
+  }
+
+  private removeUnitCaptureVote(id: EntityId): void {
+    const previous = this.unitCaptureVotes.get(id);
+    if (!previous) return;
+    this.removeCaptureVote(previous.key, previous.playerId);
+    this.unitCaptureVotes.delete(id);
+  }
+
+  private syncUnitCaptureVote(entity: Entity, cellKey: number | undefined): void {
+    const playerId = entity.ownership?.playerId;
+    const shouldVote =
+      cellKey !== undefined &&
+      playerId !== undefined &&
+      !!entity.unit &&
+      entity.unit.hp > 0;
+    const previous = this.unitCaptureVotes.get(entity.id);
+    if (!shouldVote) {
+      if (previous) this.removeUnitCaptureVote(entity.id);
+      return;
+    }
+
+    const key = spatialCubeKeyToLandCellKey(cellKey);
+    if (previous && previous.key === key && previous.playerId === playerId) return;
+    if (previous) this.removeCaptureVote(previous.key, previous.playerId);
+    this.addCaptureVote(key, playerId);
+    this.unitCaptureVotes.set(entity.id, { key, playerId });
+  }
+
+  private removeBuildingCaptureVotes(id: EntityId): void {
+    const votes = this.buildingCaptureVotes.get(id);
+    if (!votes) return;
+    for (let i = 0; i < votes.length; i++) {
+      const vote = votes[i];
+      this.removeCaptureVote(vote.key, vote.playerId);
+    }
+    this.buildingCaptureVotes.delete(id);
+  }
+
+  syncBuildingCapture(entity: Entity): void {
+    this.removeBuildingCaptureVotes(entity.id);
+    const playerId = entity.ownership?.playerId;
+    const keys = this.buildingCellKeys.get(entity.id);
+    if (
+      playerId === undefined ||
+      !keys ||
+      !entity.building ||
+      entity.building.hp <= 0 ||
+      !entity.buildable?.isComplete
+    ) {
+      return;
+    }
+
+    const votes: CaptureVote[] = [];
+    for (let i = 0; i < keys.length; i++) {
+      const key = spatialCubeKeyToLandCellKey(keys[i]);
+      this.addCaptureVote(key, playerId);
+      votes.push({ key, playerId });
+    }
+    if (votes.length > 0) this.buildingCaptureVotes.set(entity.id, votes);
+  }
+
   /**
    * Full clear (for reset/restart)
    */
@@ -152,6 +260,10 @@ export class SpatialGrid {
     this.unitCellKey.clear();
     this.buildingCellKeys.clear();
     this.projectileCellKey.clear();
+    this.captureByLandCell.clear();
+    this.captureResult.length = 0;
+    this.unitCaptureVotes.clear();
+    this.buildingCaptureVotes.clear();
   }
 
   // === Unified single-cell entity tracking ===
@@ -190,13 +302,15 @@ export class SpatialGrid {
     entity: Entity,
     keyMap: Map<EntityId, number>,
     pickArr: (cell: GridCell) => Entity[],
-  ): void {
+  ): number {
     const newKey = this.getCellKey(entity.transform.x, entity.transform.y, entity.transform.z);
     const oldKey = keyMap.get(entity.id);
-    if (oldKey === newKey) return;
-    if (oldKey !== undefined) this.removeFromCell(oldKey, entity.id, pickArr);
-    pickArr(this.getOrCreateCell(newKey)).push(entity);
-    keyMap.set(entity.id, newKey);
+    if (oldKey !== newKey) {
+      if (oldKey !== undefined) this.removeFromCell(oldKey, entity.id, pickArr);
+      pickArr(this.getOrCreateCell(newKey)).push(entity);
+      keyMap.set(entity.id, newKey);
+    }
+    return newKey;
   }
 
   private removeSingleCellEntity(
@@ -220,13 +334,15 @@ export class SpatialGrid {
       this.removeUnit(entity.id);
       return;
     }
-    this.updateSingleCellEntity(entity, this.unitCellKey, SpatialGrid._pickUnits);
+    const cellKey = this.updateSingleCellEntity(entity, this.unitCellKey, SpatialGrid._pickUnits);
+    this.syncUnitCaptureVote(entity, cellKey);
   }
 
   /**
    * Remove a unit from the grid (on death)
    */
   removeUnit(id: EntityId): void {
+    this.removeUnitCaptureVote(id);
     this.removeSingleCellEntity(id, this.unitCellKey, SpatialGrid._pickUnits);
   }
 
@@ -290,6 +406,7 @@ export class SpatialGrid {
     }
 
     this.buildingCellKeys.set(entity.id, keys);
+    this.syncBuildingCapture(entity);
   }
 
   /**
@@ -298,6 +415,7 @@ export class SpatialGrid {
   removeBuilding(id: EntityId): void {
     const keys = this.buildingCellKeys.get(id);
     if (!keys) return;
+    this.removeBuildingCaptureVotes(id);
 
     for (const key of keys) {
       const cell = this.cells.get(key);
@@ -588,7 +706,7 @@ export class SpatialGrid {
         const dy = unit.transform.y - y;
         const dz = unit.transform.z - z;
         // Add unit shot collider radius to distance check (matches building behavior)
-        // so units at edge of seeRange + radius are not incorrectly excluded
+        // so units at edge of tracking range + radius are not incorrectly excluded
         const unitCheckRadius = radius + unit.unit.unitRadiusCollider.shot;
         if (dx * dx + dy * dy + dz * dz <= unitCheckRadius * unitCheckRadius) {
           this.queryResultAll.push(unit);
@@ -763,8 +881,9 @@ export class SpatialGrid {
    * Get all occupied mana tiles with one player entry per unit/building (for capture system).
    * Unlike getOccupiedCells(), players are NOT deduplicated — 3 red units
    * on a tile yield [1,1,1] so the capture system can count them.
-   * Buildings contribute one vote per spatial cell they span, just like
-   * before; larger mana tiles aggregate those spatial cells afterward.
+   * Buildings contribute one vote per spatial cell they span. Capture
+   * tile size is normally the same as the spatial-grid XY size; the
+   * aggregation path remains for diagnostics or future map variants.
    *
    * Territory capture is a GROUND concept: a tile is the XY footprint
    * of one or more columns of cubes. Units stacked in the air above the
@@ -775,10 +894,21 @@ export class SpatialGrid {
    * gets answered, gate the unit/building loop here on the unit's
    * altitude instead of changing the key shape.
    *
+   * In the normal LAND_CELL_SIZE path this returns the incrementally
+   * maintained capture map. The scan below is only for non-canonical
+   * capture sizes.
+   *
    * Returns a reusable array — do NOT store the reference.
    */
   getOccupiedCellsForCapture(captureCellSize: number = this.cellSize): CaptureCell[] {
     const tileCellSize = captureCellSize > 0 ? captureCellSize : this.cellSize;
+    if (tileCellSize === this.cellSize) {
+      this.captureResult.length = 0;
+      for (const entry of this.captureByLandCell.values()) {
+        if (entry.players.length > 0) this.captureResult.push(entry);
+      }
+      return this.captureResult;
+    }
 
     // Return last tick's entries (and their inner players arrays) to
     // the pool — both get reused on this tick instead of reallocated.
@@ -786,34 +916,23 @@ export class SpatialGrid {
     _captureCells.length = 0;
 
     // Aggregate by 2D mana-tile key, summing contributions from every
-    // cube in the Z column. If mana tiles are larger than spatial cubes,
+    // cube in the Z column. With the canonical land-cell setup this is
+    // a one-to-one XY mapping; if a caller passes a larger capture size,
     // fold several spatial columns into the same capture key.
     const byTile: Map<number, { key: number; players: PlayerId[] }> = _captureByTile;
     byTile.clear();
+    const sameLandCellSize = tileCellSize === this.cellSize;
+    const tileScale = sameLandCellSize ? 1 : this.cellSize / tileCellSize;
 
-    for (const [cubeKey, cell] of this.cells) {
+    for (const cell of this.cells.values()) {
       if (cell.units.length === 0 && cell.buildings.length === 0) continue;
 
-      // Drop cz from the 3D cube key to get a 2D tile key. The
-      // packing is `cx * 2^32 + cy * 2^16 + cz` (each axis 16-bit
-      // biased), so the cx/cy bits live in the high 32 bits.
-      const cz = (cubeKey & CELL_MASK) - CELL_BIAS;
-      const cy = (Math.floor(cubeKey / CY_MULT) & CELL_MASK) - CELL_BIAS;
-      const cx = Math.floor(cubeKey / CX_MULT) - CELL_BIAS;
-      void cz; // intentional: column-collapsed, cz unused for capture
-
-      const tileCx = tileCellSize === this.cellSize
-        ? cx
-        : Math.floor((cx * this.cellSize) / tileCellSize);
-      const tileCy = tileCellSize === this.cellSize
-        ? cy
-        : Math.floor((cy * this.cellSize) / tileCellSize);
-
-      // 2D tile key — same bit-packing the legacy 2D grid produced,
-      // so the existing CaptureSystem decoder stays valid.
-      const tileKey =
-        (((tileCx + CELL_BIAS) & CELL_MASK) << 16) |
-        ((tileCy + CELL_BIAS) & CELL_MASK);
+      const tileKey = sameLandCellSize
+        ? cell.landKey
+        : packLandCellKey(
+          Math.floor(unpackLandCellX(cell.landKey) * tileScale),
+          Math.floor(unpackLandCellY(cell.landKey) * tileScale),
+        );
 
       let entry = byTile.get(tileKey);
       if (!entry) {

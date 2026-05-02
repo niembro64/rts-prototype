@@ -18,7 +18,9 @@
 import * as THREE from 'three';
 import type { Entity, EntityId, Turret } from '../sim/types';
 import { getBodyMountTopY } from './BodyShape3D';
+import { getChassisLiftY } from '../math/BodyDimensions';
 import { getUnitBlueprint } from '../sim/blueprints';
+import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { getGraphicsConfig, getGraphicsConfigFor } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -111,6 +113,8 @@ type FieldMesh = {
   mountRadius: number;
   mountOffsetX: number;
   mountOffsetY: number;
+  mountLiftY: number;
+  mountHeadCenterHeightFrac: number;
   localX: number;
   localY: number;
   localZ: number;
@@ -321,6 +325,8 @@ export class ForceFieldRenderer3D {
       mountRadius: -1,
       mountOffsetX: NaN,
       mountOffsetY: NaN,
+      mountLiftY: NaN,
+      mountHeadCenterHeightFrac: NaN,
       localX: 0,
       localY: 0,
       localZ: 0,
@@ -335,33 +341,48 @@ export class ForceFieldRenderer3D {
     const offsetX = turret.offset.x;
     const offsetY = turret.offset.y;
     const unitType = unitData.unitType;
+    let bp;
+    try { bp = getUnitBlueprint(unitType); }
+    catch { /* keep fallback */ }
+    const mountLiftY = getChassisLiftY(bp, unitRadius);
+    const turretIndex = unit.turrets?.indexOf(turret) ?? -1;
+    const mountHeadCenterHeightFrac = bp?.turrets[turretIndex]?.headCenterHeightFrac ?? NaN;
     if (
       field.mountUnitType === unitType &&
       field.mountRadius === unitRadius &&
       field.mountOffsetX === offsetX &&
-      field.mountOffsetY === offsetY
+      field.mountOffsetY === offsetY &&
+      field.mountLiftY === mountLiftY &&
+      Object.is(field.mountHeadCenterHeightFrac, mountHeadCenterHeightFrac)
     ) {
       return;
     }
 
-    let bp;
-    try { bp = getUnitBlueprint(unitType); }
-    catch { /* keep fallback */ }
-    const mountTopY = getBodyMountTopY(
-      bp?.bodyShape ?? {
-        kind: 'composite',
-        parts: [
-          { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
-          { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
-        ],
-      },
-      unitRadius,
-      offsetX, offsetY,
-    );
+    const mountTopY = (
+      bp?.hideChassis === true &&
+      Number.isFinite(mountHeadCenterHeightFrac) &&
+      unitData.bodyCenterHeight !== undefined
+    )
+      ? unitData.bodyCenterHeight - mountLiftY
+      : Number.isFinite(mountHeadCenterHeightFrac)
+      ? mountHeadCenterHeightFrac * unitRadius
+      : getBodyMountTopY(
+          bp?.bodyShape ?? {
+            kind: 'composite',
+            parts: [
+              { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
+              { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
+            ],
+          },
+          unitRadius,
+          offsetX, offsetY,
+        );
     field.mountUnitType = unitType;
     field.mountRadius = unitRadius;
     field.mountOffsetX = offsetX;
     field.mountOffsetY = offsetY;
+    field.mountLiftY = mountLiftY;
+    field.mountHeadCenterHeightFrac = mountHeadCenterHeightFrac;
     field.localX = offsetX;
     field.localY = mountTopY + INSET_DEPTH_BELOW_DOME;
     field.localZ = offsetY;
@@ -689,25 +710,21 @@ export class ForceFieldRenderer3D {
             .add(this._sphereLocalPos);
           havePosition = true;
         } else {
-          // No yawGroup — unit isn't rendered at rich tier this frame.
-          // Build the world position straight from the sim transform so
-          // the force-field bubble still draws at the expected place.
-          // No tilt info from this path (terrain slope tilt lives only
-          // on the rich-tier mesh chain), but ground-truth yaw is on
-          // unit.transform.rotation. Three.js position = (sim.x,
-          // sim.altitude, sim.y); the chassis-local (localX, localZ)
-          // pair is rotated around the world Y axis by the unit's yaw,
-          // and localY adds to the altitude. The orientation quat is
-          // also built so particle / arc paths below get a coherent
-          // basis even though those paths are gated on style anyway.
+          // No liftGroup — unit isn't rendered at rich tier this frame.
+          // Rebuild the same base-Y convention Render3DEntities uses:
+          // group.y = sim altitude - bodyCenterHeight, then add the cached
+          // blueprint chassis lift and this turret's chassis-local mount
+          // Y. Terrain slope tilt lives only on the rich mesh chain, but
+          // yaw and vertical body lift still stay coherent.
           const yaw = unit.transform.rotation;
           const cosYaw = Math.cos(yaw);
           const sinYaw = Math.sin(yaw);
           const rx = cosYaw * localX - sinYaw * localZ;
           const rz = sinYaw * localX + cosYaw * localZ;
+          const bodyCenterHeight = getUnitBodyCenterHeight(unit.unit);
           this._sphereScratchPos.set(
             unit.transform.x + rx,
-            unit.transform.z + localY,
+            unit.transform.z - bodyCenterHeight + field.mountLiftY + localY,
             unit.transform.y + rz,
           );
           this._sphereYawQuat.setFromAxisAngle(ForceFieldRenderer3D._SPHERE_UP, yaw);

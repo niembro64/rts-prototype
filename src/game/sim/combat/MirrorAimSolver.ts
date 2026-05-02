@@ -10,7 +10,7 @@
 //                       beam/laser turret)
 //   - weaponX/Y       — turret mount world position (chassis-local
 //                       offset already resolved)
-//   - unitGroundZ     — unit's ground footprint Z (transform.z − push)
+//   - unitGroundZ     — unit's ground footprint Z
 //   - fallbackYaw     — current desired yaw to use if the bisector
 //                       can't be solved (degenerate input vectors)
 //
@@ -43,6 +43,7 @@ import { getTransformCosSin, getBarrelTip, getWeaponWorldPosition } from '../../
 import { getTurretMountHeight } from './combatUtils';
 import { spatialGrid } from '../SpatialGrid';
 import { getSimDetailConfig } from '../simQuality';
+import { getUnitGroundZ } from '../unitGeometry';
 
 export type MirrorAim = {
   targetAngle: number;
@@ -74,7 +75,7 @@ export function solveMirrorAim(
     // chassis lift and slope tilt; fall back to upright mount math for
     // first-frame/stale targets.
     const tCS = getTransformCosSin(target.transform);
-    const eGroundZ = target.transform.z - (target.unit?.unitRadiusCollider.push ?? 0);
+    const eGroundZ = getUnitGroundZ(target);
     const ewp = enemyTurret.worldPos ?? getWeaponWorldPosition(
       target.transform.x, target.transform.y,
       tCS.cos, tCS.sin,

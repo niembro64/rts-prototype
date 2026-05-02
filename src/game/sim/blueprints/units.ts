@@ -7,7 +7,7 @@
  */
 
 import { AUDIO } from '../../../audioConfig';
-import type { UnitBlueprint, MountPoint, UnitBodyShape } from './types';
+import type { UnitBlueprint, MountPoint, TurretMount, UnitBodyShape } from './types';
 
 const BODY_SHAPES = {
   scout: {
@@ -53,9 +53,8 @@ const BODY_SHAPES = {
   },
   beam: {
     kind: 'composite',
-    // Forward head sphere intentionally removed — the beam turret head
-    // now sits at offsetForward=0.3 (tarantula chassisMount) and visually
-    // takes that head sphere's place, same approach used on the formik.
+    // Tarantula keeps its forward head sphere; its beam turret mounts
+    // on top of the rear abdomen segment.
     parts: [
       {
         kind: 'oval',
@@ -64,16 +63,16 @@ const BODY_SHAPES = {
         yFrac: (0.9 + 0.65) / 2,
         zFrac: 0.65,
       },
+      { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
     ],
   },
   arachnid: {
     kind: 'composite',
-    // Prosoma (head sphere) removed — the megaBeamTurret mounted at
-    // chassisMount (0.3, 0) puts its head sphere where the prosoma
-    // used to sit, so a separate body sphere there would clip through
-    // the turret. Same pattern applied to formik / tarantula.
+    // Widow keeps its forward prosoma/head sphere; the mega beam
+    // turret mounts on top of the rear abdomen segment.
     parts: [
       { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
+      { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
     ],
   },
   formik: {
@@ -83,8 +82,20 @@ const BODY_SHAPES = {
     // replaces the old body head, so a separate body sphere there
     // would just clip through the turret.
     parts: [
-      { kind: 'oval', offsetForward: -0.85, xFrac: 0.75, yFrac: 0.85, zFrac: 0.68 },
-      { kind: 'oval', offsetForward: 0.05, xFrac: 0.7, yFrac: 0.72, zFrac: 0.55 },
+      {
+        kind: 'oval',
+        offsetForward: -0.85,
+        xFrac: 0.75,
+        yFrac: 0.85,
+        zFrac: 0.68,
+      },
+      {
+        kind: 'oval',
+        offsetForward: 0.05,
+        xFrac: 0.7,
+        yFrac: 0.72,
+        zFrac: 0.55,
+      },
     ],
   },
   snipe: { kind: 'oval', xFrac: 0.5, yFrac: (0.5 + 0.35) / 2, zFrac: 0.35 },
@@ -118,19 +129,42 @@ const BODY_SHAPES = {
   loris: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.55 },
 } satisfies Record<string, UnitBodyShape>;
 
-// Compute widow's mount points: 4 beam turrets on abdomen edge, force field on prosoma
+const WIDOW_ABDOMEN_RADIUS_FRAC = 1.15;
+const WIDOW_ABDOMEN_FORWARD_FRAC = -1.1;
+const TARANTULA_ABDOMEN_FORWARD_FRAC = -0.65;
+const FORMIK_REPLACED_HEAD_FORWARD_FRAC = 0.78;
+const FORMIK_REPLACED_HEAD_CENTER_HEIGHT_FRAC = 0.42;
+const TICK_REPLACED_HEAD_CENTER_HEIGHT_FRAC = 0.37;
+const DADDY_VISUAL_RADIUS = 13;
+const DADDY_PUSH_RADIUS = 15;
+const DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC = 0.55;
+const DADDY_REPLACEMENT_HEAD_RADIUS_FRAC = 5 / 13;
+const DADDY_LEG_ATTACH_HEIGHT_FRAC =
+  DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC - DADDY_REPLACEMENT_HEAD_RADIUS_FRAC;
+
+function turretMount(
+  turretId: string,
+  headCenterHeightFrac?: number,
+): TurretMount {
+  return headCenterHeightFrac === undefined
+    ? { turretId }
+    : { turretId, headCenterHeightFrac };
+}
+
+// Compute widow's mount points: 4 beam turrets on abdomen edge,
+// mega beam centered on top of the rear abdomen segment.
 function computeWidowMounts(): MountPoint[] {
-  const abdomenR = 1.15; // matches abdomen radius in renderer
-  const abdomenFwd = -1.1; // matches abdomen offset in renderer
   const mounts: MountPoint[] = [];
   for (let i = 0; i < 4; i++) {
     const angle = Math.PI / 4 + (i * Math.PI) / 2;
     mounts.push({
-      x: Math.cos(angle) * abdomenR + abdomenFwd,
-      y: Math.sin(angle) * abdomenR,
+      x:
+        Math.cos(angle) * WIDOW_ABDOMEN_RADIUS_FRAC +
+        WIDOW_ABDOMEN_FORWARD_FRAC,
+      y: Math.sin(angle) * WIDOW_ABDOMEN_RADIUS_FRAC,
     });
   }
-  mounts.push({ x: 0.3, y: 0 }); // Force field at prosoma center
+  mounts.push({ x: WIDOW_ABDOMEN_FORWARD_FRAC, y: 0 });
   return mounts;
 }
 
@@ -142,9 +176,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 55,
     moveSpeed: 300,
     unitRadiusCollider: { scale: 8, shot: 6, push: 8 * 1.2 },
+    bodyCenterHeight: 8 * 1.2,
     mass: 30,
     resourceCost: 50,
-    turrets: [{ turretId: 'lightTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [turretMount('lightTurret')],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.scout,
     locomotion: {
@@ -169,9 +204,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 60,
     moveSpeed: 170,
     unitRadiusCollider: { scale: 10, shot: 7, push: 10 * 1.3 },
+    bodyCenterHeight: 10 * 1.3,
     mass: 40,
     resourceCost: 90,
-    turrets: [{ turretId: 'pulseTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [turretMount('pulseTurret')],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.burst,
     locomotion: {
@@ -194,20 +230,25 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'DDY',
     hp: 200,
     moveSpeed: 200,
-    unitRadiusCollider: { scale: 13, shot: 9, push: 13 * 2.5 },
+    unitRadiusCollider: {
+      scale: DADDY_VISUAL_RADIUS,
+      shot: 9,
+      push: DADDY_PUSH_RADIUS,
+    },
+    bodyCenterHeight: 60,
     mass: 30,
     resourceCost: 350,
     turrets: [
-      { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
-      { turretId: 'laserTurret', offsetX: 0, offsetY: 0 },
-      { turretId: 'forceTurretLarge', offsetX: 0, offsetY: 0 },
+      turretMount('laserTurret', DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC),
+      turretMount('forceTurretLarge', DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC),
     ],
     chassisMounts: [
-      { x: 0.5, y: -0.4 }, // front-left laser
-      { x: 0.5, y: 0.4 }, // front-right laser
+      { x: 0, y: 0 }, // laser body
       { x: 0, y: 0 }, // center force field
     ],
     bodyShape: BODY_SHAPES.forceField,
+    hideChassis: true,
+    legAttachHeightFrac: DADDY_LEG_ATTACH_HEIGHT_FRAC,
     locomotion: {
       type: 'legs',
       style: 'daddy',
@@ -231,9 +272,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 300,
     moveSpeed: 200,
     unitRadiusCollider: { scale: 16, shot: 13, push: 16 * 1.4 },
+    bodyCenterHeight: 16 * 1.4,
     mass: 300,
     resourceCost: 300,
-    turrets: [{ turretId: 'salvoRocketTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [turretMount('salvoRocketTurret')],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.brawl,
     locomotion: {
@@ -257,9 +299,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 200,
     moveSpeed: 220,
     unitRadiusCollider: { scale: 20, shot: 12, push: 20 * 1.2 },
+    bodyCenterHeight: 20 * 1.2,
     mass: 200,
     resourceCost: 220,
-    turrets: [{ turretId: 'mortarTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [turretMount('mortarTurret')],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.mortar,
     locomotion: {
@@ -284,11 +327,15 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 55,
     moveSpeed: 120,
     unitRadiusCollider: { scale: 10, shot: 8, push: 11 * 1.1 },
+    bodyCenterHeight: 11 * 1.1,
     mass: 30,
     resourceCost: 35,
-    turrets: [{ turretId: 'laserTurret', offsetX: 0, offsetY: 0 }],
-    chassisMounts: [{ x: -0.45, y: 0 }],
+    turrets: [
+      turretMount('laserTurret', TICK_REPLACED_HEAD_CENTER_HEIGHT_FRAC),
+    ],
+    chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.snipe,
+    hideChassis: true,
     locomotion: {
       type: 'legs',
       style: 'tick',
@@ -312,9 +359,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 900,
     moveSpeed: 60,
     unitRadiusCollider: { scale: 24, shot: 24, push: 24 * 1.5 },
+    bodyCenterHeight: 24 * 1.5,
     mass: 1000,
     resourceCost: 1200,
-    turrets: [{ turretId: 'cannonTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [turretMount('cannonTurret')],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.tank,
     locomotion: {
@@ -339,13 +387,16 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 3200,
     moveSpeed: 60,
     unitRadiusCollider: { scale: 40, shot: 50, push: 50 * 1.3 },
+    bodyCenterHeight: 50 * 1.3,
     mass: 500,
     resourceCost: 4000,
-    turrets: [{ turretId: 'gatlingMortarTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [
+      turretMount('gatlingMortarTurret', FORMIK_REPLACED_HEAD_CENTER_HEIGHT_FRAC),
+    ],
     // Mount sits at the same forward position as the (removed) head
     // sphere — so the turret's head visually takes the head's place
     // on the silhouette instead of perched between thorax and head.
-    chassisMounts: [{ x: 0.78, y: 0 }],
+    chassisMounts: [{ x: FORMIK_REPLACED_HEAD_FORWARD_FRAC, y: 0 }],
     bodyShape: BODY_SHAPES.formik,
     locomotion: {
       type: 'legs',
@@ -373,17 +424,17 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 2400,
     moveSpeed: 70,
     unitRadiusCollider: { scale: 30, shot: 40, push: 40 * 1.3 },
+    bodyCenterHeight: 40 * 1.3,
     mass: 200,
     resourceCost: 3000,
     turrets: [
-      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 }, // front-left
-      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 }, // back-left
-      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 }, // back-right
-      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 }, // front-right
-      // Mega beam mount sits where the prosoma (head) sphere used to —
-      // see BODY_SHAPES.arachnid. Replaces the previous force-field
-      // emitter at this position; the unit now has 5 beams total.
-      { turretId: 'megaBeamTurret', offsetX: 0, offsetY: 0 }, // center / head
+      turretMount('lightTurret'), // front-left
+      turretMount('lightTurret'), // back-left
+      turretMount('lightTurret'), // back-right
+      turretMount('lightTurret'), // front-right
+      // Mega beam mount sits on top of the rear abdomen segment; the
+      // forward prosoma/head body sphere remains visible.
+      turretMount('megaBeamTurret'), // abdomen top
     ],
     chassisMounts: computeWidowMounts(),
     bodyShape: BODY_SHAPES.arachnid,
@@ -410,9 +461,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 1500,
     moveSpeed: 55,
     unitRadiusCollider: { scale: 30, shot: 27, push: 45 * 1.2 },
+    bodyCenterHeight: 45 * 1.2,
     mass: 1500,
     resourceCost: 2500,
-    turrets: [{ turretId: 'hippoGatlingTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [turretMount('hippoGatlingTurret')],
     chassisMounts: [{ x: 0.2, y: 0 }],
     bodyShape: BODY_SHAPES.hippo,
     locomotion: {
@@ -436,13 +488,15 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 100,
     moveSpeed: 200,
     unitRadiusCollider: { scale: 11, shot: 13, push: 11 * 1.8 },
+    bodyCenterHeight: 11 * 1.8,
     mass: 18,
     resourceCost: 300,
-    turrets: [{ turretId: 'beamTurret', offsetX: 0, offsetY: 0 }],
-    // Mount sits where the (removed) head sphere used to be so the
-    // turret head visually takes its place on the silhouette — same
-    // pattern applied to the formik.
-    chassisMounts: [{ x: 0.3, y: 0 }],
+    turrets: [
+      turretMount('beamTurret'),
+    ],
+    // Mount the beam turret on the rear abdomen segment; the forward
+    // head body sphere stays in place.
+    chassisMounts: [{ x: TARANTULA_ABDOMEN_FORWARD_FRAC, y: 0 }],
     bodyShape: BODY_SHAPES.beam,
     locomotion: {
       type: 'legs',
@@ -467,9 +521,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 200,
     moveSpeed: 160,
     unitRadiusCollider: { scale: 10, shot: 8, push: 24 },
+    bodyCenterHeight: 24,
     mass: 20,
     resourceCost: 190,
-    turrets: [{ turretId: 'mirrorTurret', offsetX: 0, offsetY: 0 }],
+    turrets: [turretMount('mirrorTurret')],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.loris,
     locomotion: {
@@ -493,11 +548,12 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 500,
     moveSpeed: 200,
     unitRadiusCollider: { scale: 20, shot: 20, push: 20 },
+    bodyCenterHeight: 20,
     mass: 60,
     resourceCost: 400,
     turrets: [
-      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 },
-      { turretId: 'dgunTurret', offsetX: 0, offsetY: 0 },
+      turretMount('beamTurret'),
+      turretMount('dgunTurret'),
     ],
     chassisMounts: [
       { x: 0.36, y: -0.42 },
@@ -541,9 +597,9 @@ export const BUILDABLE_UNIT_IDS = [
 ];
 
 export function getUnitBlueprint(id: string): UnitBlueprint {
-  const bp = UNIT_BLUEPRINTS[id];
-  if (!bp) throw new Error(`Unknown unit blueprint: ${id}`);
-  return bp;
+  const unitBlueprint = UNIT_BLUEPRINTS[id];
+  if (!unitBlueprint) throw new Error(`Unknown unit blueprint: ${id}`);
+  return unitBlueprint;
 }
 
 export function getAllUnitBlueprints(): UnitBlueprint[] {
@@ -558,15 +614,15 @@ function getCostNorm(): { max: number } {
   if (_costNormCache) return _costNormCache;
   let max = 0;
   for (const id of BUILDABLE_UNIT_IDS) {
-    const bp = UNIT_BLUEPRINTS[id];
-    if (!bp) continue;
-    if (bp.resourceCost > max) max = bp.resourceCost;
+    const unitBlueprint = UNIT_BLUEPRINTS[id];
+    if (!unitBlueprint) continue;
+    if (unitBlueprint.resourceCost > max) max = unitBlueprint.resourceCost;
   }
   _costNormCache = { max };
   return _costNormCache;
 }
 
-export function getNormalizedUnitCost(bp: { resourceCost: number }): number {
+export function getNormalizedUnitCost(unitBlueprint: { resourceCost: number }): number {
   const { max } = getCostNorm();
-  return max > 0 ? bp.resourceCost / max : 0;
+  return max > 0 ? unitBlueprint.resourceCost / max : 0;
 }

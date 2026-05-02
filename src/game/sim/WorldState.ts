@@ -347,6 +347,12 @@ export class WorldState {
     return this.cache.getSolarBuildings();
   }
 
+  // Get fabricator/factory buildings (cached - DO NOT MODIFY returned array)
+  getFactoryBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getFactoryBuildings();
+  }
+
   // Get units by player — returns reusable array, DO NOT STORE the reference
   getUnitsByPlayer(playerId: PlayerId): Entity[] {
     this.rebuildCachesIfNeeded();
@@ -464,30 +470,31 @@ export class WorldState {
     playerId: PlayerId,
     unitType: string,
     unitRadiusCollider: { scale: number; shot: number; push: number } = { scale: 15, shot: 15, push: 15 },
+    bodyCenterHeight: number = unitRadiusCollider.push,
     moveSpeed: number = 100,
     mass: number = 25,
     hp: number = 100,
   ): Entity {
     const id = this.generateEntityId();
 
-    // Initial altitude = the local terrain height + the unit's sphere
-    // radius (its sphere rests on the top face of the cube tile under
-    // it). The physics engine clamps to the same terrain height on
-    // its first step anyway, but seeding it avoids a visible snap for
-    // any client that renders the entity before the first sim tick.
+    // Initial altitude = the local terrain height + the authored body
+    // center height. The push/collision radius is separate; this value
+    // is the canonical center used by rendering, turrets, legs, and
+    // physics rest altitude.
     // Units spawned in the central ripple disc come in already on top
-    // of the elevated cubes; corner spawns sit at z = push as before.
+    // of the elevated cubes; corner spawns sit at z = bodyCenterHeight.
     const groundZ = this.getGroundZ(x, y);
     const entity: Entity = {
       id,
       type: 'unit',
-      transform: { x, y, z: groundZ + unitRadiusCollider.push, rotation: 0 },
+      transform: { x, y, z: groundZ + bodyCenterHeight, rotation: 0 },
       selectable: { selected: false },
       ownership: { playerId },
       unit: {
         unitType,
         moveSpeed,
         unitRadiusCollider: { ...unitRadiusCollider },
+        bodyCenterHeight,
         mass,
         hp,
         maxHp: hp,
@@ -513,6 +520,7 @@ export class WorldState {
     const entity = this.createUnitBase(
       x, y, playerId, unitId,
       bp.unitRadiusCollider,
+      bp.bodyCenterHeight,
       bp.moveSpeed,
       bp.mass,
       bp.hp * UNIT_HP_MULTIPLIER,
@@ -570,7 +578,14 @@ export class WorldState {
     const accel = turretTurnAccel ?? turretConfig.angular.turnAccel;
     const drag = turretDrag ?? turretConfig.angular.drag;
 
-    const entity = this.createUnitBase(x, y, playerId, unitType, { scale: radiusColliderUnitShot, shot: radiusColliderUnitShot, push: radiusColliderUnitShot }, moveSpeed, mass, 100);
+    const entity = this.createUnitBase(
+      x, y, playerId, unitType,
+      { scale: radiusColliderUnitShot, shot: radiusColliderUnitShot, push: radiusColliderUnitShot },
+      radiusColliderUnitShot,
+      moveSpeed,
+      mass,
+      100,
+    );
 
     entity.turrets = [{
       config: turretConfig,
