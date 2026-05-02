@@ -252,6 +252,29 @@ export class CaptureTileRenderer3D {
     const horizontalEdgeSubdivisions = this.horizontalEdgeSubdivisions;
     const verticalEdgeSubdivisions = this.verticalEdgeSubdivisions;
     let lodHash = 2166136261;
+    // Height-variation threshold (in world units) above which a tile is
+    // treated as "steep" and forced to TERRAIN_MESH_SUBDIV regardless
+    // of its camera-based LOD tier. Two reasons this is a flat-tile
+    // safety net rather than a smooth scaling:
+    //   1. Steep tiles need the regular subdiv x subdiv grid to
+    //      accurately capture cliff faces — the irregular path's
+    //      inner-grid + skirt approximation is much coarser than the
+    //      regular grid for the same tileSubdiv (e.g. at subdiv=3 the
+    //      irregular path produces 1 inner quad vs the regular path's
+    //      9). On flat ground that gap is invisible; on a cliff it's
+    //      a visibly different mesh between regular and irregular
+    //      neighbors at the SAME LOD tier.
+    //   2. Steepness is computed from samples taken at world coords
+    //      shared between every tile touching the steep area
+    //      (corners, edge midpoints, center). Both sides of any steep
+    //      seam see the same sample heights, so they detect the same
+    //      "this is steep" and bump together — adjacent steep tiles
+    //      always end up at matching subdivs.
+    // Tuned for typical map heights (TERRAIN_MAX_RENDER_Y = 1600 wu);
+    // 30 wu of corner-to-corner spread comfortably catches cliff and
+    // ridge tiles while leaving gentle terrain at its proposed LOD.
+    const STEEP_TILE_HEIGHT_THRESHOLD = 30;
+
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
         let tileGfx = graphicsConfig;
@@ -272,6 +295,35 @@ export class CaptureTileRenderer3D {
         }
         let subdiv = tileGfx.captureTileSubdiv | 0;
         subdiv = Math.max(1, Math.min(TERRAIN_MESH_SUBDIV, subdiv));
+
+        // Steep-tile bump. Sample 9 heights in a 3x3 grid (corners,
+        // edge midpoints, center). All sample points are at world
+        // coords any neighboring tile that touches them will also
+        // sample, so the comparison is symmetric — both sides of a
+        // steep seam reach the same conclusion and bump together.
+        if (subdiv < TERRAIN_MESH_SUBDIV) {
+          const x0w = cx * cellSize;
+          const x1w = x0w + cellSize;
+          const xCw = x0w + cellSize * 0.5;
+          const z0w = cy * cellSize;
+          const z1w = z0w + cellSize;
+          const zCw = z0w + cellSize * 0.5;
+          const h00 = getTerrainHeight(x0w, z0w, this.mapWidth, this.mapHeight);
+          const h10 = getTerrainHeight(x1w, z0w, this.mapWidth, this.mapHeight);
+          const h11 = getTerrainHeight(x1w, z1w, this.mapWidth, this.mapHeight);
+          const h01 = getTerrainHeight(x0w, z1w, this.mapWidth, this.mapHeight);
+          const hN  = getTerrainHeight(xCw, z0w, this.mapWidth, this.mapHeight);
+          const hS  = getTerrainHeight(xCw, z1w, this.mapWidth, this.mapHeight);
+          const hE  = getTerrainHeight(x1w, zCw, this.mapWidth, this.mapHeight);
+          const hW  = getTerrainHeight(x0w, zCw, this.mapWidth, this.mapHeight);
+          const hC  = getTerrainHeight(xCw, zCw, this.mapWidth, this.mapHeight);
+          const hMin = Math.min(h00, h10, h11, h01, hN, hS, hE, hW, hC);
+          const hMax = Math.max(h00, h10, h11, h01, hN, hS, hE, hW, hC);
+          if (hMax - hMin > STEEP_TILE_HEIGHT_THRESHOLD) {
+            subdiv = TERRAIN_MESH_SUBDIV;
+          }
+        }
+
         const tileIdx = cy * cellsX + cx;
         tileSubdivisions[tileIdx] = subdiv;
         tileSideWalls[tileIdx] = tileGfx.captureTileSideWalls ? 1 : 0;
