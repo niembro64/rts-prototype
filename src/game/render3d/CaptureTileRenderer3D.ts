@@ -35,6 +35,7 @@ const STEEP_TILE_HEIGHT_THRESHOLD = 30;
 const TERRAIN_LOD_REBUILD_CELL_MULTIPLIER = 4;
 const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING = 24;
+const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
 
 const NEUTRAL_R_BYTE = (MAP_BG_COLOR >> 16) & 0xff;
 const NEUTRAL_G_BYTE = (MAP_BG_COLOR >> 8) & 0xff;
@@ -148,10 +149,17 @@ function terrainColorDiffSq(colors: number[], ai: number, bi: number): number {
   return dr * dr + dg * dg + db * db;
 }
 
+type CachedTerrainGeometry = {
+  geometry: THREE.BufferGeometry;
+  lastUsedFrame: number;
+};
+
 export class CaptureTileRenderer3D {
   private terrainMesh: THREE.Mesh;
   private terrainGeometry: THREE.BufferGeometry;
   private terrainMaterial: THREE.MeshLambertMaterial;
+  private terrainGeometryCache = new Map<string, CachedTerrainGeometry>();
+  private currentTerrainGeometryCacheKey = '';
 
   private overlayTexture: THREE.DataTexture;
   private overlayPixels = new Uint8Array(4);
@@ -376,6 +384,48 @@ export class CaptureTileRenderer3D {
     this.lastGeometryRebuildFrame = this.renderFrameIndex;
   }
 
+  private useTerrainGeometry(nextKey: string, geometry: THREE.BufferGeometry): void {
+    if (this.terrainGeometry !== geometry) {
+      const oldGeometry = this.terrainGeometry;
+      const oldKey = this.currentTerrainGeometryCacheKey;
+      this.terrainGeometry = geometry;
+      this.terrainMesh.geometry = geometry;
+      if (oldKey === '' || !this.terrainGeometryCache.has(oldKey)) {
+        oldGeometry.dispose();
+      }
+    }
+    this.currentTerrainGeometryCacheKey = nextKey;
+    const cached = this.terrainGeometryCache.get(nextKey);
+    if (cached) cached.lastUsedFrame = this.renderFrameIndex;
+  }
+
+  private cacheTerrainGeometry(nextKey: string, geometry: THREE.BufferGeometry): void {
+    this.terrainGeometryCache.set(nextKey, {
+      geometry,
+      lastUsedFrame: this.renderFrameIndex,
+    });
+    this.useTerrainGeometry(nextKey, geometry);
+    this.pruneTerrainGeometryCache();
+  }
+
+  private pruneTerrainGeometryCache(): void {
+    while (this.terrainGeometryCache.size > TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES) {
+      let oldestKey = '';
+      let oldestFrame = Number.POSITIVE_INFINITY;
+      for (const [key, cached] of this.terrainGeometryCache) {
+        if (key === this.currentTerrainGeometryCacheKey) continue;
+        if (cached.lastUsedFrame < oldestFrame) {
+          oldestFrame = cached.lastUsedFrame;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey === '') return;
+      const evicted = this.terrainGeometryCache.get(oldestKey);
+      this.terrainGeometryCache.delete(oldestKey);
+      evicted?.geometry.dispose();
+    }
+  }
+
   private ensureSteepTileMask(grid: LandGridMetrics): void {
     const { cellsX, cellsY, cellSize } = grid;
     const tileCount = cellsX * cellsY;
@@ -464,6 +514,17 @@ export class CaptureTileRenderer3D {
       terrainTextureEnabled !== this.terrainTextureGeometryActive;
     if (!this.shouldRebuildTerrainGeometry(nextTerrainLodKey, structuralChange)) {
       return false;
+    }
+
+    const cachedGeometry = this.terrainGeometryCache.get(nextTerrainLodKey);
+    if (cachedGeometry) {
+      this.gridCellsX = cellsX;
+      this.gridCellsY = cellsY;
+      this.gridCellSize = cellSize;
+      this.useTerrainGeometry(nextTerrainLodKey, cachedGeometry.geometry);
+      this.markTerrainGeometryRebuilt(nextTerrainLodKey, terrainTextureEnabled);
+      this.lastCaptureVersion = -1;
+      return true;
     }
 
     const tileCount = cellsX * cellsY;
@@ -886,18 +947,17 @@ export class CaptureTileRenderer3D {
       }
     }
 
-    this.terrainGeometry.dispose();
-    this.terrainGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
-    this.terrainGeometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
-    this.terrainGeometry.setAttribute('captureUv', new THREE.BufferAttribute(new Float32Array(terrainCaptureUvs), 2));
-    this.terrainGeometry.setAttribute('captureMask', new THREE.BufferAttribute(new Float32Array(terrainCaptureMasks), 1));
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
+    geometry.setAttribute('captureUv', new THREE.BufferAttribute(new Float32Array(terrainCaptureUvs), 2));
+    geometry.setAttribute('captureMask', new THREE.BufferAttribute(new Float32Array(terrainCaptureMasks), 1));
     if (terrainTextureEnabled) {
-      this.terrainGeometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(terrainColors), 3));
-    } else {
-      this.terrainGeometry.deleteAttribute('color');
+      geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(terrainColors), 3));
     }
-    this.terrainGeometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
-    this.terrainGeometry.computeBoundingSphere();
+    geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
+    geometry.computeBoundingSphere();
+    this.cacheTerrainGeometry(nextTerrainLodKey, geometry);
 
     return true;
   }
@@ -1042,7 +1102,11 @@ export class CaptureTileRenderer3D {
   }
 
   destroy(): void {
-    this.terrainGeometry.dispose();
+    for (const cached of this.terrainGeometryCache.values()) {
+      cached.geometry.dispose();
+    }
+    this.terrainGeometryCache.clear();
+    if (this.currentTerrainGeometryCacheKey === '') this.terrainGeometry.dispose();
     this.terrainMaterial.dispose();
     this.terrainMesh.parent?.remove(this.terrainMesh);
     this.overlayTexture.dispose();
