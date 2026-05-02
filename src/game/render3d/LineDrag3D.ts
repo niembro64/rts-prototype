@@ -52,6 +52,13 @@ type DragState = {
 };
 
 export class LineDrag3D {
+  /** Reusable scratch — quaternion alignment per segment runs many
+   *  times per frame during a drag; allocating these once keeps the
+   *  hot path allocation-free. */
+  private static readonly _UNIT_X = new THREE.Vector3(1, 0, 0);
+  private static readonly _scratchDir = new THREE.Vector3();
+  private static readonly _scratchQuat = new THREE.Quaternion();
+
   private root: THREE.Group;
 
   // Ribbon segment = flat box scaled to (segmentLength × LINE_WIDTH), laid on
@@ -99,31 +106,36 @@ export class LineDrag3D {
     const fill = this.getFillMat(state.mode);
 
     // --- Path ribbon ---
-    // Each consecutive pair of points becomes one segment box, rotated around
-    // Y so its local X axis points along the segment direction. Each
-    // segment is short (LINE_PATH_SEGMENT_MIN ≈ 10wu — the minimum
-    // distance between accumulated samples), so picking the box's
-    // height as the average of the two endpoints' click-altitudes
-    // tracks the terrain closely without needing per-pixel
-    // re-tessellation.
+    // Each consecutive pair of points becomes one segment box. Earlier
+    // versions yawed the box only and placed it at the AVERAGE endpoint
+    // altitude — so on a slope a segment crossing a height drop sat
+    // below terrain at one end (clip-through) and adjacent segments
+    // didn't even agree on Y at their shared endpoint (jagged seam at
+    // every joint). Now we use each endpoint's lifted altitude directly
+    // and rotate the box in 3D to align its local +X with the actual
+    // slope direction; the ribbon follows the terrain and consecutive
+    // segments share Y at their shared endpoint.
     const pts = state.points;
     let segIdx = 0;
+    const dirVec = LineDrag3D._scratchDir;
+    const segQuat = LineDrag3D._scratchQuat;
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1];
       const b = pts[i];
+      const aY = a.z !== undefined ? a.z + LINE_LIFT : LEGACY_LINE_Y;
+      const bY = b.z !== undefined ? b.z + LINE_LIFT : LEGACY_LINE_Y;
       const dx = b.x - a.x;
+      const dy = bY - aY;
       const dz = b.y - a.y;
-      const length = Math.hypot(dx, dz);
-      if (length < 1e-3) continue;
+      const length3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (length3D < 1e-3) continue;
       const seg = this.acquireSegment(segIdx++);
       seg.material = fill;
-      const angle = Math.atan2(dz, dx);
-      seg.rotation.set(0, -angle, 0);
-      const segY = a.z !== undefined && b.z !== undefined
-        ? (a.z + b.z) * 0.5 + LINE_LIFT
-        : LEGACY_LINE_Y;
-      seg.position.set((a.x + b.x) / 2, segY, (a.y + b.y) / 2);
-      seg.scale.set(length, 1, LINE_WIDTH);
+      dirVec.set(dx / length3D, dy / length3D, dz / length3D);
+      segQuat.setFromUnitVectors(LineDrag3D._UNIT_X, dirVec);
+      seg.quaternion.copy(segQuat);
+      seg.position.set((a.x + b.x) / 2, (aY + bY) / 2, (a.y + b.y) / 2);
+      seg.scale.set(length3D, 1, LINE_WIDTH);
     }
     for (let i = segIdx; i < this.segmentPool.length; i++) {
       this.segmentPool[i].visible = false;
