@@ -156,6 +156,8 @@ export class SmokeTrail3D {
   private _seen = new Set<EntityId>();
   private _eligible: Entity[] = [];
   private _scratchMat = new THREE.Matrix4();
+  private colorUpdateMin = Number.POSITIVE_INFINITY;
+  private colorUpdateMax = -1;
 
   constructor(worldGroup: THREE.Group) {
     this.root = new THREE.Group();
@@ -222,15 +224,19 @@ export class SmokeTrail3D {
     //    swap-popped: the last live puff takes the dead slot's index,
     //    and we re-process that index without advancing — so a long
     //    chain of die-this-frame puffs collapses correctly in one
-    //    pass. Each surviving puff writes its matrix + alpha + color
-    //    to the instance attributes at its (possibly swapped) index.
+    //    pass. Each surviving puff writes matrix + alpha every frame;
+    //    color is static after spawn and only moves when swap-pop
+    //    compaction changes a puff's slot.
     let i = 0;
     while (i < this.active.length) {
       const p = this.active[i];
       p.timeLeft -= dtSec;
       if (p.timeLeft <= 0) {
         const last = this.active.length - 1;
-        if (i !== last) this.active[i] = this.active[last];
+        if (i !== last) {
+          this.active[i] = this.active[last];
+          this.writePuffColor(i, this.active[i]);
+        }
         this.active.pop();
         continue;
       }
@@ -245,9 +251,6 @@ export class SmokeTrail3D {
       this._scratchMat.setPosition(p.threeX, p.threeY, p.threeZ);
       this.mesh.setMatrixAt(i, this._scratchMat);
       this.alphaArr[i] = alpha;
-      this.colorArr[i * 3]     = p.r;
-      this.colorArr[i * 3 + 1] = p.g;
-      this.colorArr[i * 3 + 2] = p.b;
       i++;
     }
 
@@ -346,10 +349,28 @@ export class SmokeTrail3D {
       this.alphaAttr.clearUpdateRanges();
       this.alphaAttr.addUpdateRange(0, count);
       this.alphaAttr.needsUpdate = true;
-      this.colorAttr.clearUpdateRanges();
-      this.colorAttr.addUpdateRange(0, count * 3);
-      this.colorAttr.needsUpdate = true;
+      if (this.colorUpdateMax >= this.colorUpdateMin) {
+        this.colorAttr.clearUpdateRanges();
+        this.colorAttr.addUpdateRange(
+          this.colorUpdateMin * 3,
+          (this.colorUpdateMax - this.colorUpdateMin + 1) * 3,
+        );
+        this.colorAttr.needsUpdate = true;
+        this.colorUpdateMin = Number.POSITIVE_INFINITY;
+        this.colorUpdateMax = -1;
+      }
+    } else {
+      this.colorUpdateMin = Number.POSITIVE_INFINITY;
+      this.colorUpdateMax = -1;
     }
+  }
+
+  private writePuffColor(index: number, puff: Puff): void {
+    this.colorArr[index * 3] = puff.r;
+    this.colorArr[index * 3 + 1] = puff.g;
+    this.colorArr[index * 3 + 2] = puff.b;
+    if (index < this.colorUpdateMin) this.colorUpdateMin = index;
+    if (index > this.colorUpdateMax) this.colorUpdateMax = index;
   }
 
   private spawnPuff(
@@ -388,9 +409,7 @@ export class SmokeTrail3D {
     this._scratchMat.setPosition(puff.threeX, puff.threeY, puff.threeZ);
     this.mesh.setMatrixAt(i, this._scratchMat);
     this.alphaArr[i] = startAlpha;
-    this.colorArr[i * 3]     = r;
-    this.colorArr[i * 3 + 1] = g;
-    this.colorArr[i * 3 + 2] = b;
+    this.writePuffColor(i, puff);
   }
 
   destroy(): void {
