@@ -110,6 +110,11 @@ export class Waypoint3D {
       'color',
       new THREE.BufferAttribute(this.lineColors, 3).setUsage(THREE.DynamicDrawUsage),
     );
+    // Don't render anything until the first update() populates the
+    // buffer. Without this, THREE.js defaults the draw range to the
+    // entire backing buffer — and since Float32Array starts zeroed,
+    // every initial line endpoint is at (0,0,0) with color black.
+    this.lineGeom.setDrawRange(0, 0);
     const lineMat = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: false,
@@ -133,6 +138,11 @@ export class Waypoint3D {
       'color',
       new THREE.BufferAttribute(this.dotColors, 3).setUsage(THREE.DynamicDrawUsage),
     );
+    // Same as the line geom above: dots default to (0,0,0) black, and
+    // PointsMaterial here has sizeAttenuation:false, so without an
+    // initial empty draw range every uninitialized dot stacks into a
+    // single constant-screen-pixel black square at the origin.
+    this.dotGeom.setDrawRange(0, 0);
     const dotMat = new THREE.PointsMaterial({
       vertexColors: true,
       size: STYLE.dotPixelSize,
