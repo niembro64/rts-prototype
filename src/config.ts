@@ -46,6 +46,11 @@ export const SPATIAL_GRID_CELL_SIZE = 160 * 2;
 export const MANA_TILE_SIZE_MULTIPLIER = 1;
 export const MANA_TILE_SIZE = SPATIAL_GRID_CELL_SIZE * MANA_TILE_SIZE_MULTIPLIER;
 
+// Render-only vertical lift for mana/capture tile surfaces above sampled
+// terrain. Capture ownership, pathfinding, and physics stay on the real
+// terrain height; this only controls where the visual tile mesh sits.
+export const MANA_TILE_GROUND_LIFT = -5;
+
 // 3D waypoint visual lift above the sampled terrain surface. This is
 // render-only: command positions and pathfinding still use the actual
 // terrain height, while dots/lines/flags float this many world units up

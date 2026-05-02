@@ -73,16 +73,16 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
     max: ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5),
   },
   tps: {
-    low: 0.05,
-    medium: 0.1,
-    high: 0.3,
+    low: 0.2,
+    medium: 4,
+    high: 0.6,
     max: 0.8,
   },
   fps: {
-    low: 0.2,
-    medium: 0.3,
-    high: 0.5,
-    max: 0.8,
+    low: 0.1,
+    medium: 0.5,
+    high: 0.3,
+    max: 0.4,
   },
   // UNIT-FULLNESS THRESHOLDS — fractions of the user-configured unit
   // cap. The ratio fed in is `1 − unitCount / unitCap`, so an empty
@@ -94,10 +94,10 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
   // Whether the cap is 1k or 16k, the LOD ladder steps at the same
   // proportional milestones.
   units: {
-    low: 0.25, // ratio >= 0.25 (≤75% full) → low or better
-    medium: 0.5, // ratio >= 0.50 (≤50% full) → medium or better
-    high: 0.75, // ratio >= 0.75 (≤25% full) → high or better
-    max: 0.9, // ratio >= 0.90 (≤10% full) → max
+    low: 0.2, // ratio >= 0.25 (≤75% full) → low or better
+    medium: 4, // ratio >= 0.50 (≤50% full) → medium or better
+    high: 0.6, // ratio >= 0.75 (≤25% full) → high or better
+    max: 0.8, // ratio >= 0.90 (≤10% full) → max
   },
 };
 
@@ -145,7 +145,7 @@ export const CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP = {
  * Centralized graphics detail level configuration.
  * Each key defines what happens at each detail level: min, low, medium, high, max.
  */
-export const CAMERA_SPHERE_BASE_RADIUS = 400;
+export const CAMERA_SPHERE_BASE_RADIUS = 100;
 
 // Scales the innermost "rich" sphere by global PLAYER CLIENT LOD.
 // CAMERA_SPHERE_BASE_RADIUS is a true linear multiplier for every
@@ -155,9 +155,9 @@ export const CAMERA_SPHERE_BASE_RADIUS = 400;
 export const CAMERA_SPHERE_LOD_RADIUS_MULTIPLIERS = {
   min: 1,
   low: 2,
-  medium: 3,
-  high: 4,
-  max: 5,
+  medium: 4,
+  high: 8,
+  max: 16,
 } as const satisfies Record<ConcreteGraphicsQuality, number>;
 
 // Scales each concentric camera sphere from that LOD's rich radius.
@@ -167,8 +167,8 @@ export const CAMERA_SPHERE_LOD_RADIUS_MULTIPLIERS = {
 export const CAMERA_SPHERE_RING_RADIUS_MULTIPLIERS = {
   rich: 1,
   simple: 2,
-  mass: 3,
-  impostor: 4,
+  mass: 4,
+  impostor: 8,
 } as const satisfies CameraSphereRadii;
 
 function makeCameraSphereRadii(

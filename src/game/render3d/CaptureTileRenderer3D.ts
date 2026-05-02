@@ -13,14 +13,14 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { getGraphicsConfigFor, getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { NetworkCaptureTile } from '@/types/capture';
-import { MANA_TILE_SIZE, MANA_TILE_TEXTURE, MAP_BG_COLOR } from '../../config';
+import { MANA_TILE_SIZE, MANA_TILE_TEXTURE, MAP_BG_COLOR, MANA_TILE_GROUND_LIFT } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
 import { objectLodToCameraSphereGraphicsTier } from './RenderObjectLod';
 import type { RenderLodGrid } from './RenderLodGrid';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
-const OVERLAY_Y_OFFSET = 1.5;
+const OVERLAY_Y_OFFSET = 60;
 
 const NEUTRAL_R_BYTE = (MAP_BG_COLOR >> 16) & 0xff;
 const NEUTRAL_G_BYTE = (MAP_BG_COLOR >> 8) & 0xff;
@@ -358,6 +358,7 @@ export class CaptureTileRenderer3D {
       graphicsConfig.tier,
       lodHash.toString(36),
       terrainTextureEnabled ? 'texture' : 'flat-color',
+      MANA_TILE_GROUND_LIFT,
     ].join('|');
     const textureRebuilt = this.ensureOverlayTexture(cellsX, cellsY);
 
@@ -402,7 +403,7 @@ export class CaptureTileRenderer3D {
         const addTopVertex = (fx: number, fz: number): number => {
           const wx = x0 + fx * cellSize;
           const wz = z0 + fz * cellSize;
-          const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight);
+          const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight) + MANA_TILE_GROUND_LIFT;
           const localIndex = topLocal.length;
           topLocal.push(localIndex);
           terrainPositions.push(wx, h, wz);

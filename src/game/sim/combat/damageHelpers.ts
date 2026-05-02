@@ -87,7 +87,10 @@ export function buildUnitDeathEvent(
   const visualRadius = collider?.scale ?? collider?.shot ?? 15;
   const pushRadius = collider?.push ?? collider?.shot ?? visualRadius;
   const radius = collider?.shot ?? visualRadius;
-  const baseZ = target ? target.transform.z - pushRadius : undefined;
+  const deathX = target?.body?.physicsBody.x ?? target?.transform.x ?? 0;
+  const deathY = target?.body?.physicsBody.y ?? target?.transform.y ?? 0;
+  const deathZ = target?.body?.physicsBody.z ?? target?.transform.z ?? 0;
+  const baseZ = target ? deathZ - pushRadius : undefined;
   const unitType = target?.unit?.unitType;
   const rotation = target?.transform.rotation ?? 0;
   // Per-turret yaw + pitch at death — Debris3D rotates each barrel
@@ -135,9 +138,9 @@ export function buildUnitDeathEvent(
     type: 'death',
     turretId: turretOrUnitId,
     pos: {
-      x: target?.transform.x ?? 0,
-      y: target?.transform.y ?? 0,
-      z: target?.transform.z ?? 0,
+      x: deathX,
+      y: deathY,
+      z: deathZ,
     },
     entityId: id,
     deathContext,
@@ -156,13 +159,23 @@ export function buildBuildingDeathEvent(
   turretOrBuildingId: string,
 ): SimEvent {
   const playerColor = getPlayerPrimaryColor(building?.ownership?.playerId);
+  const footprintRadius = Math.hypot(
+    building?.building?.width ?? 100,
+    building?.building?.height ?? 100,
+  ) / 2;
+  const baseZ = building && building.building
+    ? (building.body?.physicsBody.z ?? building.transform.z) - building.building.depth / 2
+    : undefined;
+  const deathX = building?.body?.physicsBody.x ?? building?.transform.x ?? 0;
+  const deathY = building?.body?.physicsBody.y ?? building?.transform.y ?? 0;
+  const deathZ = building?.body?.physicsBody.z ?? building?.transform.z ?? 0;
   return {
     type: 'death',
     turretId: turretOrBuildingId,
     pos: {
-      x: building?.transform.x ?? 0,
-      y: building?.transform.y ?? 0,
-      z: building?.transform.z ?? 0,
+      x: deathX,
+      y: deathY,
+      z: deathZ,
     },
     entityId: id,
     deathContext: {
@@ -170,7 +183,10 @@ export function buildBuildingDeathEvent(
       hitDir: { x: 0, y: -1 },
       projectileVel: { x: 0, y: 0 },
       attackMagnitude: 50,
-      radius: (building?.building?.width ?? 100) / 2,
+      radius: footprintRadius,
+      visualRadius: footprintRadius,
+      pushRadius: building?.building?.depth ?? footprintRadius,
+      baseZ,
       color: playerColor,
     },
   };

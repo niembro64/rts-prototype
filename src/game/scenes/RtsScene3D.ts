@@ -656,7 +656,10 @@ export class RtsScene3D {
       getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight)
     );
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
-    this.debrisRenderer = new Debris3D(this.threeApp.world);
+    this.debrisRenderer = new Debris3D(
+      this.threeApp.world,
+      (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
+    );
     this.burnMarkRenderer = new BurnMark3D(this.threeApp.world, this.renderScope);
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
     this.buildGhostRenderer = new BuildGhost3D(

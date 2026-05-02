@@ -81,6 +81,7 @@ const MAX_PHYSICS_STEP_MS = 80;
 
 const BASE_LIFETIME_MS = 1700;
 const LIFETIME_JITTER_MS = 800;
+const GROUND_BOUNCE_CLEARANCE = 0.5;
 
 // Launch speeds (world units / s).
 const RANDOM_SPEED_MIN = 70;
@@ -323,6 +324,7 @@ type Piece = {
   slot: number;
   px: number; py: number; pz: number;
   vx: number; vy: number; vz: number;
+  groundY: number;
   /** Rotation as Euler XYZ — initialized from the per-shape base
    *  orientation (cylinder alignment from setFromUnitVectors → Euler;
    *  boxes get a small random pitch/roll plus the template yaw;
@@ -345,6 +347,7 @@ type Piece = {
 
 export class Debris3D {
   private root: THREE.Group;
+  private groundHeightAt: (worldX: number, worldZ: number) => number;
   // Three InstancedMesh pools — one per shape. Each holds up to
   // GLOBAL_MAX_PIECES so a worst-case all-of-one-shape spawn fits.
   private boxPool: InstancedDebrisPool;
@@ -374,8 +377,12 @@ export class Debris3D {
     this.piecesEmittedThisFrame = 0;
   }
 
-  constructor(parentWorld: THREE.Group) {
+  constructor(
+    parentWorld: THREE.Group,
+    groundHeightAt: (worldX: number, worldZ: number) => number = () => 0,
+  ) {
     this.root = new THREE.Group();
+    this.groundHeightAt = groundHeightAt;
     parentWorld.add(this.root);
     // Allocate pool buffers up front. Each pool's geometry is owned
     // by the pool and disposed in destroy().
@@ -1018,12 +1025,14 @@ export class Debris3D {
     const baseR = ((t.color >> 16) & 0xff) / 255;
     const baseG = ((t.color >>  8) & 0xff) / 255;
     const baseB = ( t.color        & 0xff) / 255;
+    const groundY = this.groundHeightAt(px, pz) + GROUND_BOUNCE_CLEARANCE;
 
     const piece: Piece = {
       shape: t.shape,
       slot,
       px, py, pz,
       vx, vy, vz,
+      groundY,
       rx, ry, rz,
       avx: (Math.random() - 0.5) * ANGULAR_INIT * 2 * spinScale,
       avy: (Math.random() - 0.5) * ANGULAR_INIT * 2 * spinScale,
@@ -1057,43 +1066,50 @@ export class Debris3D {
         continue;
       }
 
-      const stepMs = Math.min(p.accumMs, MAX_PHYSICS_STEP_MS);
+      let remainingMs = p.accumMs;
       p.accumMs = 0;
-      const dtSec = stepMs / 1000;
-      // Time-aware drag factors derived from the per-60Hz multipliers.
-      const linDrag = Math.pow(LINEAR_DRAG, dtSec * 60);
-      const angDrag = Math.pow(ANGULAR_DRAG, dtSec * 60);
-      p.age += stepMs;
 
-      // Linear physics — gravity + drag + integrate position.
-      p.vy -= GRAVITY * dtSec;
-      p.vx *= linDrag;
-      p.vy *= linDrag;
-      p.vz *= linDrag;
-      p.px += p.vx * dtSec;
-      p.py += p.vy * dtSec;
-      p.pz += p.vz * dtSec;
+      while (remainingMs > 0 && p.age < p.lifetime) {
+        const stepMs = Math.min(remainingMs, MAX_PHYSICS_STEP_MS);
+        remainingMs -= stepMs;
+        const dtSec = stepMs / 1000;
+        // Time-aware drag factors derived from the per-60Hz multipliers.
+        const linDrag = Math.pow(LINEAR_DRAG, dtSec * 60);
+        const angDrag = Math.pow(ANGULAR_DRAG, dtSec * 60);
+        p.age += stepMs;
 
-      // Ground bounce with heavy damping.
-      if (p.py < 0.5) {
-        p.py = 0.5;
-        if (p.vy < 0) {
-          p.vy = -p.vy * 0.25;
-          p.vx *= 0.55;
-          p.vz *= 0.55;
-          p.avx *= 0.5;
-          p.avy *= 0.5;
-          p.avz *= 0.5;
+        // Linear physics — gravity + drag + integrate position.
+        p.vy -= GRAVITY * dtSec;
+        p.vx *= linDrag;
+        p.vy *= linDrag;
+        p.vz *= linDrag;
+        p.px += p.vx * dtSec;
+        p.py += p.vy * dtSec;
+        p.pz += p.vz * dtSec;
+
+        // Ground bounce with heavy damping. The bounce floor follows
+        // the rendered terrain under the piece rather than the world-
+        // zero plane, so raised terrain does not snap debris down.
+        if (p.py < p.groundY) {
+          p.py = p.groundY;
+          if (p.vy < 0) {
+            p.vy = -p.vy * 0.25;
+            p.vx *= 0.55;
+            p.vz *= 0.55;
+            p.avx *= 0.5;
+            p.avy *= 0.5;
+            p.avz *= 0.5;
+          }
         }
-      }
 
-      // Tumble — Euler XYZ accumulates angular velocity, drag decays.
-      p.rx += p.avx * dtSec;
-      p.ry += p.avy * dtSec;
-      p.rz += p.avz * dtSec;
-      p.avx *= angDrag;
-      p.avy *= angDrag;
-      p.avz *= angDrag;
+        // Tumble — Euler XYZ accumulates angular velocity, drag decays.
+        p.rx += p.avx * dtSec;
+        p.ry += p.avy * dtSec;
+        p.rz += p.avz * dtSec;
+        p.avx *= angDrag;
+        p.avy *= angDrag;
+        p.avz *= angDrag;
+      }
 
       const t = p.age / p.lifetime;
       if (t >= 1) {
