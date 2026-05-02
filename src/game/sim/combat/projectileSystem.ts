@@ -8,7 +8,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
-import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, BEAM_MAX_LENGTH } from '../../../config';
+import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY } from '../../../config';
 import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, resolveWeaponWorldPos, getTurretMountHeight, turretMaskIncludes } from './combatUtils';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
@@ -410,15 +410,15 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
 
         if (isBeamWeapon) {
-          // Create beam using an effectively-infinite trace length.
-          // Targeting is range-gated (weapon.state becomes 'engaged'
-          // only when a target is in range), but once firing the beam
-          // extends until it hits a mirror / unit / building. End point
-          // is the full 3D direction × beamLength so the initial fire
-          // visual already shows the real pitched beam before the
-          // per-tick findBeamPath call refines it with reflections /
-          // obstructions.
-          const beamLength = BEAM_MAX_LENGTH;
+          // Beam length is the firing turret's own `range`. The trace
+          // (findBeamPath) bounces off mirrors and subtracts each
+          // segment's travelled distance from the budget, so the total
+          // polyline length stays ≤ range — the beam expires at the
+          // sphere surface centred on the muzzle. End point on the
+          // initial fire spawn is start + dir × range so the spawn
+          // visual already shows the correct unobstructed reach until
+          // the per-tick re-trace refines it with bounces / hits.
+          const beamLength = weapon.config.range;
           const endX = spawnX + dirX * beamLength;
           const endY = spawnY + dirY * beamLength;
           const endZ = spawnZ + dirZ * beamLength;
@@ -888,7 +888,11 @@ export function updateProjectiles(
         proj.startY = tip.y;
         proj.startZ = tip.z;
 
-        const beamLength = BEAM_MAX_LENGTH;
+        // Per-tick re-trace uses the firing turret's own range as the
+        // total polyline budget — see the spawn site above for the
+        // semantics. findBeamPath subtracts each segment's distance
+        // from the remainder so reflections stay inside the sphere.
+        const beamLength = proj.config.range;
         const fullEndX = tip.x + tip.dirX * beamLength;
         const fullEndY = tip.y + tip.dirY * beamLength;
         const fullEndZ = tip.z + tip.dirZ * beamLength;

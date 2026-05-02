@@ -292,13 +292,17 @@ export const MIRROR_BASE_Y = 2;
  *  units (they sit on top of the panel stack). */
 export const MIRROR_EXTRA_HEIGHT = 15;
 
-/** Maximum length for a live beam's ray trace, in world units.
- *  Turrets still fire only when their target is within weapon.ranges
- *  — once firing the beam extends along its aim up to this distance,
- *  truncating earlier if it hits a mirror / unit / building. After
- *  reflection the remainder is shortened by the distance already
- *  travelled, so the TOTAL polyline length (across all bounces) is
- *  bounded by this value. About half the 3000-wu map width. */
+/** Renderer-only reference length for the beam alpha fade.
+ *  The sim no longer caps beam length here — each beam's total
+ *  polyline budget is the firing turret's own `range`, and the trace
+ *  in findBeamPath subtracts each segment's distance from that
+ *  remainder so a beam expires at its sphere boundary regardless of
+ *  how many mirror bounces happened along the way. This constant is
+ *  used by BeamRenderer3D's per-segment alpha fade only — long-reach
+ *  beams ease toward invisible as cumulative drawn distance
+ *  approaches this value, so a stray uncontested beam doesn't render
+ *  uniformly bright across the whole map. About half the 3000-wu map
+ *  width. */
 export const BEAM_MAX_LENGTH = 1500;
 
 /** Universal gravity acceleration (world units / s², pulling −z).

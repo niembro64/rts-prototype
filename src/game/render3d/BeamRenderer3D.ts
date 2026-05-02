@@ -366,9 +366,11 @@ export class BeamRenderer3D {
       // mirrors trace the correct 3D polyline. Cumulative distance
       // along the polyline drives a linear alpha fade so the beam
       // visually "decays" with range — fully bright at the muzzle,
-      // fading to invisible at BEAM_MAX_LENGTH (which is also the
-      // hard collision cutoff on the sim side, so the visual fade
-      // hits zero at exactly the same place the beam itself ends).
+      // fading to invisible at BEAM_MAX_LENGTH. This is a pure visual
+      // reference now; the sim no longer caps beams at this length.
+      // Each beam expires at the firing turret's own `range` (its
+      // bounded polyline budget), and the renderer fade just keeps
+      // long-reach beams from being uniformly bright across the map.
       let prevX = startX;
       let prevY = startY;
       let prevZ = startZ;
