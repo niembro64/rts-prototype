@@ -21,15 +21,15 @@ export type HysteresisRange = {
   releaseSq?: number;
 };
 
-// Nullable hysteresis pair for per-weapon overrides (null = use global default)
-export type HysteresisRangeOverride = {
-  acquire: number | null;
-  release: number | null;
+// Multiplier pair authored directly on each turret blueprint.
+export type HysteresisRangeMultiplier = {
+  acquire: number;
+  release: number;
 };
 
-// Computed absolute firing envelope. `max` is the old engage/fire range;
-// `min` is the optional dead zone for mortars or other close-range-limited
-// weapons. Defaults to 0/0, which means no minimum.
+// Computed absolute firing envelope. `max` is the outer fire range; `min`
+// is the optional dead zone for mortars or other close-range-limited weapons.
+// Defaults to 0/0, which means no minimum.
 export type FireEnvelope = {
   min: HysteresisRange;
   max: HysteresisRange;
@@ -45,20 +45,12 @@ export type TurretRanges = {
   fire?: FireEnvelope;
 };
 
-// Range multipliers relative to weapon's base range
-export type TurretRangeMultipliers = {
-  tracking: HysteresisRange;
-  engage: HysteresisRange;
-  fireMin: HysteresisRange;
-};
-
-// Per-weapon range overrides (null = fall back to global default)
+// Per-weapon fire-envelope multipliers authored directly on each turret
+// blueprint. Tracking is intentionally derived from the turret's base range;
+// blueprints define only where the weapon can actually fire.
 export type TurretRangeOverrides = {
-  tracking: HysteresisRangeOverride;
-  /** Legacy max-fire envelope override. */
-  engage: HysteresisRangeOverride;
-  /** Optional minimum fire envelope override. Defaults to no dead zone. */
-  fireMin?: HysteresisRangeOverride;
+  engageRangeMax: HysteresisRangeMultiplier;
+  engageRangeMin: HysteresisRangeMultiplier;
 };
 
 // Transform component - position and rotation in world space.
@@ -340,7 +332,9 @@ export type TurretConfig = {
   color?: number;
   barrel?: BarrelShape;
   angular: { turnAccel: number; drag: number };
-  rangeOverrides?: TurretRangeOverrides;
+  rangeOverrides: TurretRangeOverrides;
+  /** Smooth this turret's projectile spawn events across snapshot intervals. */
+  eventsSmooth: boolean;
   spread?: { pelletCount?: number; angle?: number };
   burst?: { count?: number; delay?: number };
   isManualFire?: boolean;

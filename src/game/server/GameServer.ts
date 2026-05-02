@@ -12,7 +12,7 @@ import type { NetworkServerSnapshot, NetworkServerSnapshotGridCell } from '../ne
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
-import { ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL } from '../../types/network';
+import { ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_TURRETS, ENTITY_CHANGED_VEL } from '../../types/network';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import {
@@ -41,6 +41,9 @@ import {
   EMA_INITIAL_VALUES,
   MANA_TILE_SIZE,
   MAX_TICK_DT_MS,
+  SERVER_GRID_DEBUG_INTERVAL_MS,
+  SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS,
+  SERVER_GRID_DEBUG_MAX_SEARCH_CELLS,
   type KeyframeRatio,
 } from '../../config';
 import { SERVER_SIM_LOD_EMA_SOURCE } from '../../serverSimLodConfig';
@@ -75,11 +78,16 @@ const WATER_OUT_CACHE_BUCKET_SCALE = 10;
 const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
 type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
 const SNAPSHOT_AOI_PADDING = 1200;
+const GRID_DEBUG_KEY_BIAS = 10000;
+const GRID_DEBUG_KEY_BASE = 20000;
+const GRID_DEBUG_KEY_Y_MULT = GRID_DEBUG_KEY_BASE;
+const GRID_DEBUG_KEY_X_MULT = GRID_DEBUG_KEY_BASE * GRID_DEBUG_KEY_BASE;
 
 type SnapshotListenerEntry = {
   callback: SnapshotCallback;
   playerId?: PlayerId;
   trackingKey: string;
+  deltaTrackingKey: string;
 };
 
 type SnapshotInterestPlan = {
@@ -139,6 +147,12 @@ export class GameServer {
   private snapshotInterestBuildingIdsBuf: EntityId[] = [];
   private snapshotInterestBuildingBoundsByPlayer: Map<PlayerId, SnapshotInterestBounds> = new Map();
   private snapshotInterestBuildingCacheVersion: number = -1;
+  private gridDebugCellsCache: NetworkServerSnapshotGridCell[] = [];
+  private gridDebugSearchCellsCache: NetworkServerSnapshotGridCell[] = [];
+  private gridDebugCellPool: NetworkServerSnapshotGridCell[] = [];
+  private gridDebugSearchCellMaskByKey = new Map<number, number>();
+  private gridDebugLastSnapshotMs = -Infinity;
+  private gridDebugForceRefresh = true;
   private gameOverListeners: GameOverCallback[] = [];
   private physicsForceUnitIdsBuf: EntityId[] = [];
   private physicsSyncUnitIdsBuf: EntityId[] = [];
@@ -908,11 +922,6 @@ export class GameServer {
     const projectileDespawns = this.simulation.getAndClearProjectileDespawns();
     const projectileVelocityUpdates = this.simulation.getAndClearProjectileVelocityUpdates();
 
-    // Include spatial grid occupancy and search cells when debug toggle is on
-    const gridCells = this.sendGridInfo ? spatialGrid.getOccupiedCells() : undefined;
-    const gridSearchCells = this.sendGridInfo ? this.computeSearchCells() : undefined;
-    const gridCellSize = this.sendGridInfo ? spatialGrid.getCellSize() : undefined;
-
     // Determine if this snapshot should be a delta or a full keyframe
     // First snapshot is always a keyframe; then use ratio-based counter
     let isDelta = false;
@@ -991,10 +1000,9 @@ export class GameServer {
           max: this.world.maxTotalUnits,
           count: this.world.getUnits().length,
         },
-        projVelInherit: this.world.projVelInherit,
-        firingForce: this.world.firingForce,
-        hitForce: this.world.hitForce,
         ffAccel: { units: this.world.ffAccelUnits, shots: this.world.ffAccelShots },
+        mirrorsEnabled: this.world.mirrorsEnabled,
+        forceFieldsEnabled: this.world.forceFieldsEnabled,
         cpu: { avg: cpuAvg, hi: cpuHi },
         simLod: {
           picked: this.getSimQuality(),
@@ -1010,12 +1018,20 @@ export class GameServer {
       };
     }
 
+    // Spatial-grid debug data is diagnostic and expensive to build.
+    // Emit it on a slower cadence; clients retain the last grid payload
+    // between updates while normal gameplay snapshots keep flowing.
+    const includeGridDebug = this.refreshGridDebugSnapshot(nowMs);
+    const gridCells = includeGridDebug ? this.gridDebugCellsCache : undefined;
+    const gridSearchCells = includeGridDebug ? this.gridDebugSearchCellsCache : undefined;
+    const gridCellSize = includeGridDebug ? spatialGrid.getCellSize() : undefined;
+
     this.prepareSnapshotInterestPlans();
 
-    for (const listener of this.snapshotListeners) {
+    const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
       const interest = this.getSnapshotInterestPlan(listener.playerId);
       const serializeOptions: SerializeGameStateOptions = {
-        trackingKey: listener.trackingKey,
+        trackingKey: listener.deltaTrackingKey,
         dirtyEntityIds: this.snapshotDirtyIdsBuf,
         dirtyEntityFields: this.snapshotDirtyFieldsBuf,
         removedEntityIds: this.snapshotRemovedIdsBuf,
@@ -1047,8 +1063,19 @@ export class GameServer {
         : undefined;
       state.combatStats = combatStats;
       state.serverMeta = serverMeta;
+      return state;
+    };
 
-      listener.callback(state);
+    let sharedGlobalState: NetworkServerSnapshot | undefined;
+    for (const listener of this.snapshotListeners) {
+      if (listener.playerId !== undefined) continue;
+      if (!sharedGlobalState) sharedGlobalState = serializeForListener(listener);
+      listener.callback(sharedGlobalState);
+    }
+
+    for (const listener of this.snapshotListeners) {
+      if (listener.playerId === undefined) continue;
+      listener.callback(serializeForListener(listener));
     }
   }
 
@@ -1074,20 +1101,17 @@ export class GameServer {
       case 'setMaxTotalUnits':
         this.world.maxTotalUnits = command.maxTotalUnits;
         return;
-      case 'setProjVelInherit':
-        this.world.projVelInherit = command.enabled;
-        return;
-      case 'setFiringForce':
-        this.world.firingForce = command.enabled;
-        return;
-      case 'setHitForce':
-        this.world.hitForce = command.enabled;
-        return;
       case 'setFfAccelUnits':
         this.world.ffAccelUnits = command.enabled;
         return;
       case 'setFfAccelShots':
         this.world.ffAccelShots = command.enabled;
+        return;
+      case 'setMirrorsEnabled':
+        this.setMirrorsEnabled(command.enabled);
+        return;
+      case 'setForceFieldsEnabled':
+        this.setForceFieldsEnabled(command.enabled);
         return;
       case 'setSimQuality':
         this.setSimQuality(command.quality as ServerSimQuality);
@@ -1103,6 +1127,45 @@ export class GameServer {
         return;
     }
     this.commandQueue.enqueue(command);
+  }
+
+  private setMirrorsEnabled(enabled: boolean): void {
+    if (this.world.mirrorsEnabled === enabled) return;
+    this.world.mirrorsEnabled = enabled;
+    if (enabled) return;
+    for (const unit of this.world.getMirrorUnits()) {
+      if (!unit.turrets) continue;
+      for (let i = 0; i < unit.turrets.length; i++) {
+        const turret = unit.turrets[i];
+        if (!turret.config.passive) continue;
+        turret.target = null;
+        turret.state = 'idle';
+        turret.angularVelocity = 0;
+        turret.pitchVelocity = 0;
+      }
+      this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
+    }
+  }
+
+  private setForceFieldsEnabled(enabled: boolean): void {
+    if (this.world.forceFieldsEnabled === enabled) return;
+    this.world.forceFieldsEnabled = enabled;
+    if (enabled) return;
+    for (const unit of this.world.getForceFieldUnits()) {
+      if (!unit.turrets) continue;
+      for (const turret of unit.turrets) {
+        if (turret.config.shot.type !== 'force') continue;
+        turret.target = null;
+        turret.state = 'idle';
+        turret.angularVelocity = 0;
+        turret.pitchVelocity = 0;
+        if (turret.forceField) {
+          turret.forceField.transition = 0;
+          turret.forceField.range = 0;
+        }
+      }
+      this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
+    }
   }
 
   private getSnapshotInterestPlan(playerId?: PlayerId): SnapshotInterestPlan {
@@ -1308,14 +1371,18 @@ export class GameServer {
   addSnapshotListener(callback: SnapshotCallback, playerId?: PlayerId): string {
     const trackingScope = playerId === undefined ? 'global' : `player-${playerId}`;
     const trackingKey = `${trackingScope}-${this.snapshotListenerId++}`;
-    this.snapshotListeners.push({ callback, playerId, trackingKey });
+    const deltaTrackingKey = playerId === undefined ? 'global-shared' : trackingKey;
+    this.snapshotListeners.push({ callback, playerId, trackingKey, deltaTrackingKey });
     return trackingKey;
   }
 
   removeSnapshotListener(trackingKey: string): void {
     const idx = this.snapshotListeners.findIndex((l) => l.trackingKey === trackingKey);
-    if (idx >= 0) this.snapshotListeners.splice(idx, 1);
-    resetDeltaTrackingForKey(trackingKey);
+    if (idx < 0) return;
+    const [removed] = this.snapshotListeners.splice(idx, 1);
+    if (!this.snapshotListeners.some((l) => l.deltaTrackingKey === removed.deltaTrackingKey)) {
+      resetDeltaTrackingForKey(removed.deltaTrackingKey);
+    }
   }
 
   // Add a game over listener. Returns the callback reference so callers
@@ -1538,20 +1605,107 @@ export class GameServer {
   // Toggle spatial grid debug info in snapshots
   setSendGridInfo(enabled: boolean): void {
     this.sendGridInfo = enabled;
+    this.gridDebugForceRefresh = true;
+    this.gridDebugLastSnapshotMs = -Infinity;
+    if (!enabled) {
+      this.releaseGridDebugCells(this.gridDebugCellsCache);
+      this.releaseGridDebugCells(this.gridDebugSearchCellsCache);
+    }
+  }
+
+  private refreshGridDebugSnapshot(nowMs: number): boolean {
+    if (!this.sendGridInfo) return false;
+    if (
+      !this.gridDebugForceRefresh &&
+      nowMs - this.gridDebugLastSnapshotMs < SERVER_GRID_DEBUG_INTERVAL_MS
+    ) {
+      return false;
+    }
+    this.gridDebugForceRefresh = false;
+    this.gridDebugLastSnapshotMs = nowMs;
+    this.computeOccupiedGridDebugCells();
+    this.computeSearchCells();
+    return true;
+  }
+
+  private acquireGridDebugCell(
+    cx: number,
+    cy: number,
+    cz: number,
+    playersMask: number,
+  ): NetworkServerSnapshotGridCell {
+    const cell = this.gridDebugCellPool.pop() ?? { cell: { x: 0, y: 0, z: 0 }, players: [] };
+    cell.cell.x = cx;
+    cell.cell.y = cy;
+    cell.cell.z = cz;
+    this.writeGridDebugPlayers(cell.players, playersMask);
+    return cell;
+  }
+
+  private releaseGridDebugCells(cells: NetworkServerSnapshotGridCell[]): void {
+    for (let i = 0; i < cells.length; i++) {
+      cells[i].players.length = 0;
+      this.gridDebugCellPool.push(cells[i]);
+    }
+    cells.length = 0;
+  }
+
+  private writeGridDebugPlayers(players: number[], playersMask: number): void {
+    players.length = 0;
+    for (let playerId = 1; playerId <= 31; playerId++) {
+      if ((playersMask & (1 << (playerId - 1))) !== 0) players.push(playerId);
+    }
+  }
+
+  private playerGridDebugMask(playerId: number | undefined): number {
+    if (playerId === undefined || playerId < 1 || playerId > 31) return 0;
+    return 1 << (playerId - 1);
+  }
+
+  private packGridDebugCellKey(cx: number, cy: number, cz: number): number {
+    return (
+      (cx + GRID_DEBUG_KEY_BIAS) * GRID_DEBUG_KEY_X_MULT +
+      (cy + GRID_DEBUG_KEY_BIAS) * GRID_DEBUG_KEY_Y_MULT +
+      (cz + GRID_DEBUG_KEY_BIAS)
+    );
+  }
+
+  private unpackGridDebugCellKey(key: number): { cx: number; cy: number; cz: number } {
+    const cz = (key % GRID_DEBUG_KEY_BASE) - GRID_DEBUG_KEY_BIAS;
+    const cy = (Math.floor(key / GRID_DEBUG_KEY_Y_MULT) % GRID_DEBUG_KEY_BASE) - GRID_DEBUG_KEY_BIAS;
+    const cx = Math.floor(key / GRID_DEBUG_KEY_X_MULT) - GRID_DEBUG_KEY_BIAS;
+    return { cx, cy, cz };
+  }
+
+  private computeOccupiedGridDebugCells(): void {
+    this.releaseGridDebugCells(this.gridDebugCellsCache);
+    const occupiedCells = spatialGrid.getOccupiedCells();
+    const count = Math.min(occupiedCells.length, SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS);
+    for (let i = 0; i < count; i++) {
+      const src = occupiedCells[i];
+      let mask = 0;
+      for (let p = 0; p < src.players.length; p++) {
+        mask |= this.playerGridDebugMask(src.players[p]);
+      }
+      this.gridDebugCellsCache.push(
+        this.acquireGridDebugCell(src.cell.x, src.cell.y, src.cell.z, mask),
+      );
+    }
   }
 
   // Compute per-team search cells: the bounding box of cells each unit's seeRange covers
-  private computeSearchCells(): NetworkServerSnapshotGridCell[] {
+  private computeSearchCells(): void {
+    this.releaseGridDebugCells(this.gridDebugSearchCellsCache);
+    this.gridDebugSearchCellMaskByKey.clear();
     const cellSize = spatialGrid.getCellSize();
-    if (cellSize <= 0) return [];
-
-    // Map from bit-packed cell key to Set of player IDs searching that cell
-    const cellMap = new Map<number, Set<number>>();
+    if (cellSize <= 0) return;
 
     for (const unit of this.world.getUnits()) {
       if (!unit.unit || unit.unit.hp <= 0 || !unit.turrets || unit.turrets.length === 0) continue;
       const playerId = unit.ownership?.playerId;
       if (playerId === undefined) continue;
+      const playerMask = this.playerGridDebugMask(playerId);
+      if (playerMask === 0) continue;
 
       // Find max seeRange across all weapons
       let maxSeeRange = 0;
@@ -1576,29 +1730,27 @@ export class GameServer {
       for (let cz = minCz; cz <= maxCz; cz++) {
         for (let cy = minCy; cy <= maxCy; cy++) {
           for (let cx = minCx; cx <= maxCx; cx++) {
-            // Bit-pack key: offset by 10000 (gives cell index range
-            // [-10000, +10000]) and pack three axes into one int.
-            const key = (cx + 10000) * 20000 * 20000 + (cy + 10000) * 20000 + (cz + 10000);
-            let players = cellMap.get(key);
-            if (!players) {
-              players = new Set();
-              cellMap.set(key, players);
+            const key = this.packGridDebugCellKey(cx, cy, cz);
+            const previousMask = this.gridDebugSearchCellMaskByKey.get(key);
+            if (previousMask === undefined) {
+              if (this.gridDebugSearchCellMaskByKey.size >= SERVER_GRID_DEBUG_MAX_SEARCH_CELLS) {
+                continue;
+              }
+              this.gridDebugSearchCellMaskByKey.set(key, playerMask);
+            } else if ((previousMask & playerMask) === 0) {
+              this.gridDebugSearchCellMaskByKey.set(key, previousMask | playerMask);
             }
-            players.add(playerId);
           }
         }
       }
     }
 
-    // Convert to NetworkServerSnapshotGridCell array
-    const result: NetworkServerSnapshotGridCell[] = [];
-    for (const [key, players] of cellMap) {
-      const cz = (key % 20000) - 10000;
-      const cy = (Math.floor(key / 20000) % 20000) - 10000;
-      const cx = Math.floor(key / (20000 * 20000)) - 10000;
-      result.push({ cell: { x: cx, y: cy, z: cz }, players: Array.from(players) });
+    for (const [key, playersMask] of this.gridDebugSearchCellMaskByKey) {
+      const { cx, cy, cz } = this.unpackGridDebugCellKey(key);
+      this.gridDebugSearchCellsCache.push(
+        this.acquireGridDebugCell(cx, cy, cz, playersMask),
+      );
     }
-    return result;
   }
 
   // Get tick rate stats (EMA-based avg and low)

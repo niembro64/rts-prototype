@@ -264,7 +264,7 @@ export function checkProjectileCollisions(
     // expiry → projectileExpire event → remove). Skipped for beams/
     // lasers (they bounce off mirrors via the beam tracer, not here).
     let hitMirrorPanel = false;
-    if (processCollision && proj.projectileType === 'projectile') {
+    if (world.mirrorsEnabled && processCollision && proj.projectileType === 'projectile') {
       const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
       const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
       const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
@@ -366,7 +366,7 @@ export function checkProjectileCollisions(
               radius: projShot.explosion!.radius,
               knockbackForce: projShot.explosion!.force,
             });
-            if (world.hitForce) applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
+            applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
             collectKillsAndDeathContexts(splashResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
             splashHitCount = splashResult.hitEntityIds.length;
             firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
@@ -495,10 +495,10 @@ export function checkProjectileCollisions(
         knockbackForce: tickForce,
       });
 
-      if (world.hitForce) applyKnockbackForces(result.knockbacks, forceAccumulator);
+      applyKnockbackForces(result.knockbacks, forceAccumulator);
 
       // Apply beam force (knockback only, no damage) to each mirror entity
-      if (world.hitForce && proj.reflections && proj.reflections.length > 0 && forceAccumulator) {
+      if (proj.reflections && proj.reflections.length > 0 && forceAccumulator) {
         const startX = proj.startX ?? projEntity.transform.x;
         const startY = proj.startY ?? projEntity.transform.y;
         let prevX = startX;
@@ -566,7 +566,7 @@ export function checkProjectileCollisions(
       });
 
       // Apply knockback from projectile hit
-      if (world.hitForce) applyKnockbackForces(result.knockbacks, forceAccumulator);
+      applyKnockbackForces(result.knockbacks, forceAccumulator);
       // Note: Recoil for traveling projectiles is applied at fire time in fireTurrets()
 
       // Track hits
@@ -618,7 +618,7 @@ export function checkProjectileCollisions(
             knockbackForce: projShot.explosion.force,
           });
 
-          if (world.hitForce) applyKnockbackForces(splash.knockbacks, forceAccumulator);
+          applyKnockbackForces(splash.knockbacks, forceAccumulator);
           collectKillsAndDeathContexts(splash, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
         }
 

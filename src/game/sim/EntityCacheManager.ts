@@ -8,6 +8,7 @@ export class EntityCacheManager {
   private cachedBuildings: Entity[] = [];
   private cachedProjectiles: Entity[] = [];
   private cachedTravelingProjectiles: Entity[] = [];
+  private cachedSmokeTrailProjectiles: Entity[] = [];
   private cachedLineProjectiles: Entity[] = [];
   private cachedDamagedUnits: Entity[] = [];
   private cachedHealthBarBuildings: Entity[] = [];
@@ -44,13 +45,14 @@ export class EntityCacheManager {
     this.dirty = true;
   }
 
-  rebuildIfNeeded(entities: Map<EntityId, Entity>): void {
-    if (!this.dirty) return;
+  rebuildIfNeeded(entities: Map<EntityId, Entity>): boolean {
+    if (!this.dirty) return false;
 
     this.cachedUnits.length = 0;
     this.cachedBuildings.length = 0;
     this.cachedProjectiles.length = 0;
     this.cachedTravelingProjectiles.length = 0;
+    this.cachedSmokeTrailProjectiles.length = 0;
     this.cachedLineProjectiles.length = 0;
     this.cachedDamagedUnits.length = 0;
     this.cachedHealthBarBuildings.length = 0;
@@ -118,6 +120,10 @@ export class EntityCacheManager {
           this.cachedProjectiles.push(entity);
           if (entity.projectile?.projectileType === 'projectile') {
             this.cachedTravelingProjectiles.push(entity);
+            const shot = entity.projectile.config.shot;
+            if (shot.type === 'projectile' && shot.smokeTrail) {
+              this.cachedSmokeTrailProjectiles.push(entity);
+            }
           } else if (entity.projectile?.projectileType === 'beam' || entity.projectile?.projectileType === 'laser') {
             this.cachedLineProjectiles.push(entity);
           }
@@ -126,6 +132,7 @@ export class EntityCacheManager {
     }
 
     this.dirty = false;
+    return true;
   }
 
   private getOrCreateUnitsByPlayer(playerId: PlayerId): Entity[] {
@@ -168,6 +175,10 @@ export class EntityCacheManager {
 
   getTravelingProjectiles(): Entity[] {
     return this.cachedTravelingProjectiles;
+  }
+
+  getSmokeTrailProjectiles(): Entity[] {
+    return this.cachedSmokeTrailProjectiles;
   }
 
   getLineProjectiles(): Entity[] {

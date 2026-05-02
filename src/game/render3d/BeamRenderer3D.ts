@@ -18,6 +18,7 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 import type { Lod3DState } from './Lod3D';
 import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
+import { lodCellIndex, normalizeLodCellSize } from '../lodGridMath';
 
 // Fallback altitude for beams whose proj.startZ / endZ haven't been
 // populated yet (a single frame gap before the tracer runs). Matches the
@@ -97,6 +98,8 @@ export class BeamRenderer3D {
   private frameLodGrid = this.ownedLodGrid;
   private lodActive = false;
   private frameGfx: GraphicsConfig = getGraphicsConfig();
+  private lastContentVersion = -1;
+  private lastRenderKey = '';
 
   // Scratch vectors reused per frame (no per-segment allocations).
   private _a = new THREE.Vector3();
@@ -201,11 +204,27 @@ export class BeamRenderer3D {
     return true;
   }
 
+  private makeRenderKey(lod?: Lod3DState): string {
+    if (!lod) return `none|${this.frameGfx.tier}|${this.scope.getVersion()}`;
+    const size = normalizeLodCellSize(this.frameGfx.objectLodCellSize);
+    const view = lod.view;
+    const cameraAltitudeBand = Math.floor(view.cameraY / size);
+    return [
+      lod.key,
+      size,
+      lodCellIndex(view.cameraX, size),
+      lodCellIndex(view.cameraZ, size),
+      cameraAltitudeBand,
+      this.scope.getVersion(),
+    ].join('|');
+  }
+
   update(
     projectiles: readonly Entity[],
     graphicsConfig?: GraphicsConfig,
     lod?: Lod3DState,
     sharedLodGrid?: RenderLodGrid,
+    contentVersion?: number,
   ): void {
     if (projectiles.length === 0 && this.activeSegmentCount === 0) return;
     this.frameGfx = graphicsConfig ?? getGraphicsConfig();
@@ -214,6 +233,16 @@ export class BeamRenderer3D {
     if (lod) {
       if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, this.frameGfx);
     }
+    const renderKey = this.makeRenderKey(lod);
+    if (
+      contentVersion !== undefined &&
+      contentVersion === this.lastContentVersion &&
+      renderKey === this.lastRenderKey
+    ) {
+      return;
+    }
+    if (contentVersion !== undefined) this.lastContentVersion = contentVersion;
+    this.lastRenderKey = renderKey;
 
     let segIdx = 0;
 

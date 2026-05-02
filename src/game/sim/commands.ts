@@ -20,9 +20,10 @@ export type {
   SetSendGridInfoCommand,
   SetBackgroundUnitTypeCommand,
   SetMaxTotalUnitsCommand,
-  SetProjVelInheritCommand,
   SetFfAccelUnitsCommand,
   SetFfAccelShotsCommand,
+  SetMirrorsEnabledCommand,
+  SetForceFieldsEnabledCommand,
   Command,
 } from '@/types/commands';
 

@@ -20,11 +20,10 @@ export type CommandType =
   | 'setSendGridInfo'
   | 'setBackgroundUnitType'
   | 'setMaxTotalUnits'
-  | 'setProjVelInherit'
-  | 'setFiringForce'
-  | 'setHitForce'
   | 'setFfAccelUnits'
   | 'setFfAccelShots'
+  | 'setMirrorsEnabled'
+  | 'setForceFieldsEnabled'
   | 'setSimQuality'
   | 'setSimSignalStates';
 
@@ -159,21 +158,6 @@ export type SetMaxTotalUnitsCommand = BaseCommand & {
   maxTotalUnits: number;
 };
 
-export type SetProjVelInheritCommand = BaseCommand & {
-  type: 'setProjVelInherit';
-  enabled: boolean;
-};
-
-export type SetFiringForceCommand = BaseCommand & {
-  type: 'setFiringForce';
-  enabled: boolean;
-};
-
-export type SetHitForceCommand = BaseCommand & {
-  type: 'setHitForce';
-  enabled: boolean;
-};
-
 export type SetFfAccelUnitsCommand = BaseCommand & {
   type: 'setFfAccelUnits';
   enabled: boolean;
@@ -181,6 +165,16 @@ export type SetFfAccelUnitsCommand = BaseCommand & {
 
 export type SetFfAccelShotsCommand = BaseCommand & {
   type: 'setFfAccelShots';
+  enabled: boolean;
+};
+
+export type SetMirrorsEnabledCommand = BaseCommand & {
+  type: 'setMirrorsEnabled';
+  enabled: boolean;
+};
+
+export type SetForceFieldsEnabledCommand = BaseCommand & {
+  type: 'setForceFieldsEnabled';
   enabled: boolean;
 };
 
@@ -218,10 +212,9 @@ export type Command =
   | SetSendGridInfoCommand
   | SetBackgroundUnitTypeCommand
   | SetMaxTotalUnitsCommand
-  | SetProjVelInheritCommand
-  | SetFiringForceCommand
-  | SetHitForceCommand
   | SetFfAccelUnitsCommand
   | SetFfAccelShotsCommand
+  | SetMirrorsEnabledCommand
+  | SetForceFieldsEnabledCommand
   | SetSimQualityCommand
   | SetSimSignalStatesCommand;

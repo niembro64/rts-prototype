@@ -872,6 +872,16 @@ export class NetworkManager {
   // ASCII chars and field names use a length-prefixed compact form.
   broadcastState(state: NetworkServerSnapshot): void {
     if (this.role !== 'host') return;
+
+    let hasOpenConnection = false;
+    for (const conn of this.connections.values()) {
+      if (conn.open) {
+        hasOpenConnection = true;
+        break;
+      }
+    }
+    if (!hasOpenConnection) return;
+
     this.snapshotsSent++;
 
     // Pre-serialize once for all clients (msgpack-javascript is fast,

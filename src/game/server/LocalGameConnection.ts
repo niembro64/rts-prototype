@@ -5,13 +5,14 @@ import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
-import { cloneNetworkSnapshot } from '../network/snapshotClone';
+import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 
 export class LocalGameConnection implements GameConnection {
   private server: GameServer;
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
+  private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
   private snapshotListenerKey: string;
   private gameOverListenerRef: GameOverCallback;
 
@@ -23,7 +24,9 @@ export class LocalGameConnection implements GameConnection {
       if (this.snapshotCallback) {
         this.snapshotCallback(state);
       } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
-        this.pendingSnapshot = cloneNetworkSnapshot(state);
+        this.pendingSnapshot = state.isDelta
+          ? state
+          : this.pendingSnapshotCloner.clone(state);
       }
     }, playerId);
 

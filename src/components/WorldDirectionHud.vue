@@ -28,6 +28,7 @@ let lastCompassYaw = Number.NaN;
 let lastWindYaw = Number.NaN;
 let lastWindScale = Number.NaN;
 let lastWindVisible = false;
+let needsRender = true;
 
 const RENDER_INTERVAL_MS = 1000 / 30;
 const ANGLE_EPS = 0.0005;
@@ -217,6 +218,7 @@ function resize(): void {
   camera.position.set(0, props.compact ? 4.8 : 4.0, props.compact ? 5.4 : 4.8);
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
+  needsRender = true;
 }
 
 function animate(now: number): void {
@@ -226,10 +228,12 @@ function animate(now: number): void {
   if (now - lastRenderMs < RENDER_INTERVAL_MS) return;
   lastRenderMs = now;
 
+  let changed = needsRender;
   const compassYaw = cameraRelativeYaw(0, -1);
   if (Math.abs(compassYaw - lastCompassYaw) > ANGLE_EPS || Number.isNaN(lastCompassYaw)) {
     compassRig.rotation.y = compassYaw;
     lastCompassYaw = compassYaw;
+    changed = true;
   }
 
   const wind = props.data.wind;
@@ -237,23 +241,30 @@ function animate(now: number): void {
     if (!lastWindVisible) {
       windArrow.visible = true;
       lastWindVisible = true;
+      changed = true;
     }
     const windYaw = cameraRelativeYaw(wind.x, wind.y);
     if (Math.abs(windYaw - lastWindYaw) > ANGLE_EPS || Number.isNaN(lastWindYaw)) {
       windArrow.rotation.y = windYaw;
       lastWindYaw = windYaw;
+      changed = true;
     }
     const speedScale = Math.max(0.72, Math.min(1.35, 0.74 + wind.speed * 0.28));
     if (Math.abs(speedScale - lastWindScale) > SCALE_EPS || Number.isNaN(lastWindScale)) {
       windArrow.scale.set(1, 1, speedScale);
       lastWindScale = speedScale;
+      changed = true;
     }
   } else if (lastWindVisible) {
     windArrow.visible = false;
     lastWindVisible = false;
+    changed = true;
   }
 
-  renderer.render(scene, camera);
+  if (changed) {
+    renderer.render(scene, camera);
+    needsRender = false;
+  }
 }
 
 function disposeSceneResources(root: THREE.Scene): void {

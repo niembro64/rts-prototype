@@ -53,11 +53,10 @@ import {
   getDefaultGrid,
   loadStoredGrid,
   saveStoredGrid,
-  saveProjVelInherit,
-  saveFiringForce,
-  saveHitForce,
   saveFfAccelUnits,
   saveFfAccelShots,
+  saveMirrorsEnabled,
+  saveForceFieldsEnabled,
   loadStoredTerrainCenter,
   saveTerrainCenter,
   loadStoredTerrainDividers,
@@ -981,27 +980,6 @@ function changeMaxTotalUnits(value: number): void {
   saveStoredCap(currentBattleMode.value, value);
 }
 
-function toggleProjVelInherit(): void {
-  const current =
-    serverMetaFromSnapshot.value?.projVelInherit ?? BATTLE_CONFIG.projVelInherit.default;
-  activeConnection?.sendCommand({
-    type: 'setProjVelInherit',
-    tick: 0,
-    enabled: !current,
-  });
-  saveProjVelInherit(!current, currentBattleMode.value);
-}
-
-function setFiringForce(enabled: boolean): void {
-  activeConnection?.sendCommand({ type: 'setFiringForce', tick: 0, enabled });
-  saveFiringForce(enabled, currentBattleMode.value);
-}
-
-function setHitForce(enabled: boolean): void {
-  activeConnection?.sendCommand({ type: 'setHitForce', tick: 0, enabled });
-  saveHitForce(enabled, currentBattleMode.value);
-}
-
 function setFfAccelUnits(enabled: boolean): void {
   activeConnection?.sendCommand({ type: 'setFfAccelUnits', tick: 0, enabled });
   saveFfAccelUnits(enabled, currentBattleMode.value);
@@ -1010,6 +988,16 @@ function setFfAccelUnits(enabled: boolean): void {
 function setFfAccelShots(enabled: boolean): void {
   activeConnection?.sendCommand({ type: 'setFfAccelShots', tick: 0, enabled });
   saveFfAccelShots(enabled, currentBattleMode.value);
+}
+
+function setMirrorsEnabled(enabled: boolean): void {
+  activeConnection?.sendCommand({ type: 'setMirrorsEnabled', tick: 0, enabled });
+  saveMirrorsEnabled(enabled, currentBattleMode.value);
+}
+
+function setForceFieldsEnabled(enabled: boolean): void {
+  activeConnection?.sendCommand({ type: 'setForceFieldsEnabled', tick: 0, enabled });
+  saveForceFieldsEnabled(enabled, currentBattleMode.value);
 }
 
 /** Pick a new terrain shape (CENTER or DIVIDERS). Persists the choice
@@ -1075,16 +1063,10 @@ function resetDemoDefaults(): void {
   // resetting demo while in the lobby would wipe the user's solo
   // demo prefs out from under them, and vice versa.
   const mode = currentBattleMode.value;
-  activeConnection?.sendCommand({
-    type: 'setProjVelInherit',
-    tick: 0,
-    enabled: BATTLE_CONFIG.projVelInherit.default,
-  });
-  saveProjVelInherit(BATTLE_CONFIG.projVelInherit.default, mode);
-  setFiringForce(BATTLE_CONFIG.firingForce.default);
-  setHitForce(BATTLE_CONFIG.hitForce.default);
   setFfAccelUnits(BATTLE_CONFIG.ffAccelUnits.default);
   setFfAccelShots(BATTLE_CONFIG.ffAccelShots.default);
+  setMirrorsEnabled(BATTLE_CONFIG.mirrorsEnabled.default);
+  setForceFieldsEnabled(BATTLE_CONFIG.forceFieldsEnabled.default);
   // Reset terrain shape to defaults. applyTerrainShape handles the
   // demo-battle restart so the new heightmap is visible immediately.
   // Skip the restart if both values already match the defaults — a
@@ -1784,7 +1766,6 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         maxTotalUnits: loadStoredRealCap(),
         simQuality: serverSimQuality.value,
         simSignalStates: serverSignalStates.value,
-        includeForceSettings: true,
       });
       currentServer.start();
       if (networkRole.value === 'host') {
@@ -2231,31 +2212,6 @@ onUnmounted(() => {
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />
-            <BarLabel>SHOT VEL:</BarLabel>
-            <BarButton
-              :active="serverMetaFromSnapshot?.projVelInherit"
-              title="Add firing unit's velocity to projectile velocity"
-              @click="toggleProjVelInherit"
-            >ADD</BarButton>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>FORCE:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                :active="serverMetaFromSnapshot?.firingForce ?? BATTLE_CONFIG.firingForce.default"
-                title="Apply recoil to the firing unit when its weapon fires"
-                @click="setFiringForce(!(serverMetaFromSnapshot?.firingForce ?? BATTLE_CONFIG.firingForce.default))"
-              >FIRING</BarButton>
-              <BarButton
-                :active="serverMetaFromSnapshot?.hitForce ?? BATTLE_CONFIG.hitForce.default"
-                title="Apply knockback to units when shots hit them"
-                @click="setHitForce(!(serverMetaFromSnapshot?.hitForce ?? BATTLE_CONFIG.hitForce.default))"
-              >HIT</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
             <BarLabel>FF:</BarLabel>
             <BarButtonGroup>
               <BarButton
@@ -2268,6 +2224,22 @@ onUnmounted(() => {
                 title="Force field accelerates enemy projectiles"
                 @click="setFfAccelShots(!(serverMetaFromSnapshot?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default))"
               >SHOT-ACC</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
+            <BarDivider />
+            <BarLabel>SYSTEM:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                :active="serverMetaFromSnapshot?.mirrorsEnabled ?? BATTLE_CONFIG.mirrorsEnabled.default"
+                title="Enable mirror turrets and laser/beam reflections"
+                @click="setMirrorsEnabled(!(serverMetaFromSnapshot?.mirrorsEnabled ?? BATTLE_CONFIG.mirrorsEnabled.default))"
+              >MIRROR</BarButton>
+              <BarButton
+                :active="serverMetaFromSnapshot?.forceFieldsEnabled ?? BATTLE_CONFIG.forceFieldsEnabled.default"
+                title="Enable force-field turrets, force-field simulation, and force-field rendering"
+                @click="setForceFieldsEnabled(!(serverMetaFromSnapshot?.forceFieldsEnabled ?? BATTLE_CONFIG.forceFieldsEnabled.default))"
+              >FIELD</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
         </div>
@@ -2776,7 +2748,7 @@ onUnmounted(() => {
             <BarLabel>EVENTS:</BarLabel>
             <BarButton
               :active="audioSmoothing"
-              title="Smooth audio events across snapshot intervals"
+              title="Smooth one-shot events and turret projectile spawns across snapshot intervals"
               @click="toggleAudioSmoothing"
             >SMOOTH</BarButton>
           </BarControlGroup>
@@ -2912,7 +2884,7 @@ onUnmounted(() => {
             >RINGS</BarButton>
             <BarButton
               :active="lodGridBorders"
-              title="Show object-LOD spatial grid cells as 3D cube outlines"
+              title="Show object-LOD spatial grid tiles as 2D ground-plane outlines"
               @click="toggleLodGridBorders"
             >CELLS</BarButton>
           </BarControlGroup>

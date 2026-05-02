@@ -1,7 +1,7 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity, HysteresisRange, TurretRanges } from '../types';
+import type { Entity, HysteresisRange, Turret, TurretRanges } from '../types';
 import { isLineShot } from '../types';
 import { getTargetRadius, getTurretMountHeight, turretBit } from './combatUtils';
 import { distanceSquared3 } from '../../math';
@@ -124,6 +124,31 @@ function isBeamUnit(entity: Entity): boolean {
   return false;
 }
 
+function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
+  return (
+    (weapon.config.passive && !world.mirrorsEnabled) ||
+    (weapon.config.shot.type === 'force' && !world.forceFieldsEnabled)
+  );
+}
+
+function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, weaponIndex: number): boolean {
+  if (!weaponSystemDisabled(world, weapon)) return false;
+  setWeaponTarget(weapon, unit, weaponIndex, null);
+  weapon.state = 'idle';
+  weapon.cooldown = 0;
+  weapon.angularVelocity = 0;
+  weapon.pitchVelocity = 0;
+  if (weapon.burst) {
+    weapon.burst.remaining = 0;
+    weapon.burst.cooldown = 0;
+  }
+  if (weapon.forceField) {
+    weapon.forceField.transition = 0;
+    weapon.forceField.range = 0;
+  }
+  return true;
+}
+
 // Update auto-targeting and firing state for all units in a single pass.
 // Each weapon independently finds its own target using its own ranges.
 //
@@ -187,7 +212,11 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const weapons = unit.turrets;
 
     let hasCooldownState = false;
-    for (const weapon of weapons) {
+    let hasEnabledWeapon = false;
+    for (let wi = 0; wi < weapons.length; wi++) {
+      const weapon = weapons[wi];
+      if (resetDisabledWeapon(world, unit, weapon, wi)) continue;
+      hasEnabledWeapon = true;
       if (weapon.cooldown > 0) {
         hasCooldownState = true;
         weapon.cooldown -= dtMs;
@@ -200,10 +229,15 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         if (weapon.burst.cooldown < 0) weapon.burst.cooldown = 0;
       }
     }
+    if (!hasEnabledWeapon) {
+      unitState.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
+      continue;
+    }
 
     let hasLiveWeaponState = false;
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
+      if (weaponSystemDisabled(world, weapon)) continue;
       if (
         weapon.target !== null ||
         weapon.state !== 'idle' ||
@@ -240,6 +274,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const surfaceN = world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y);
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
+      if (weaponSystemDisabled(world, weapon)) continue;
       if (weapon.config.isManualFire) {
         weapon.state = 'idle';
         continue;
@@ -288,6 +323,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         // ATTACK MODE: force all weapons to the priority target, firing only inside the fire envelope.
         for (let wi = 0; wi < weapons.length; wi++) {
           const weapon = weapons[wi];
+          if (weaponSystemDisabled(world, weapon)) continue;
           if (weapon.config.isManualFire) continue;
           // Passive turrets (mirrors) only target beam units
           if (weapon.config.passive && !isBeamUnit(priorityTarget)) {
@@ -322,6 +358,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // Pass 1: Validate existing targets with hysteresis
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
+      if (weaponSystemDisabled(world, weapon)) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.target === null) continue;
 
@@ -392,6 +429,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     let maxAcquireRange = 0;
     let maxWeaponOffset = 0;
     for (const weapon of weapons) {
+      if (weaponSystemDisabled(world, weapon)) continue;
       if (weapon.config.isManualFire) continue;
       // Needs query if: no target (idle), or tracking but not engaged
       // (tracking weapons should re-evaluate for a closer engageable target)
@@ -420,6 +458,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // This uses per-turret ranges so each weapon evaluates independently.
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
+      if (weaponSystemDisabled(world, weapon)) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.state !== 'tracking' || weapon.target === null) continue;
 
@@ -463,6 +502,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // Pass 3: Acquire targets for weapons with no target (idle)
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
+      if (weaponSystemDisabled(world, weapon)) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.target !== null) continue;
 
@@ -521,4 +561,3 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
   return _activeCombatUnits;
 }
-

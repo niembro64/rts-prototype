@@ -10,12 +10,10 @@ const STYLE = {
   initialLineCap: 4096,
 };
 
-export class LodGridCells3D {
+export class LodGridCells2D {
   private parent: THREE.Group;
   private mapWidth: number;
   private mapHeight: number;
-  private waterLevelY: number;
-  private maxY: number;
   private lineCap = STYLE.initialLineCap;
   private linePositions = new Float32Array(this.lineCap * 2 * 3);
   private lineColors = new Float32Array(this.lineCap * 2 * 3);
@@ -27,14 +25,10 @@ export class LodGridCells3D {
     parent: THREE.Group,
     mapWidth: number,
     mapHeight: number,
-    waterLevelY: number,
-    maxY: number,
   ) {
     this.parent = parent;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
-    this.waterLevelY = waterLevelY;
-    this.maxY = maxY;
 
     this.lineGeom.setAttribute(
       'position',
@@ -68,15 +62,9 @@ export class LodGridCells3D {
     const size = normalizeLodCellSize(cellSize);
     const x0 = lodCellMin(lodCellIndex(0, size), size);
     const x1 = lodCellBoundaryCeil(this.mapWidth, size);
-    // Draw the cell plane that contains water level, then everything
-    // above it. That preserves exact LOD-cell alignment while avoiding
-    // deep underground/lake-bed stacks; the water plane's own cell is
-    // the one buffer layer below playable surface.
-    const y0 = lodCellMin(lodCellIndex(this.waterLevelY, size), size);
-    const y1 = lodCellBoundaryCeil(this.maxY, size);
     const z0 = lodCellMin(lodCellIndex(0, size), size);
     const z1 = lodCellBoundaryCeil(this.mapHeight, size);
-    const key = `${x0}|${x1}|${y0}|${y1}|${z0}|${z1}|${size}`;
+    const key = `${x0}|${x1}|${z0}|${z1}|${size}`;
     if (key === this.lastKey) {
       this.lineMesh.visible = true;
       return;
@@ -85,27 +73,17 @@ export class LodGridCells3D {
 
     const state = { lineSeg: 0 };
     const xSteps = Math.floor((x1 - x0) / size) + 1;
-    const ySteps = Math.floor((y1 - y0) / size) + 1;
     const zSteps = Math.floor((z1 - z0) / size) + 1;
-    this.growLineCap((ySteps * zSteps) + (xSteps * zSteps) + (xSteps * ySteps));
+    this.growLineCap(xSteps + zSteps);
     const xColor = { r: 0.4, g: 0.94, b: 1.0 };
-    const yColor = { r: 0.52, g: 1.0, b: 0.78 };
     const zColor = { r: 0.72, g: 0.62, b: 1.0 };
+    const y = 0;
 
-    for (let y = y0; y <= y1; y += size) {
-      for (let z = z0; z <= z1; z += size) {
-        this.pushSegment(state, x0, y, z, x1, y, z, xColor);
-      }
+    for (let z = z0; z <= z1; z += size) {
+      this.pushSegment(state, x0, y, z, x1, y, z, xColor);
     }
     for (let x = x0; x <= x1; x += size) {
-      for (let z = z0; z <= z1; z += size) {
-        this.pushSegment(state, x, y0, z, x, y1, z, yColor);
-      }
-    }
-    for (let x = x0; x <= x1; x += size) {
-      for (let y = y0; y <= y1; y += size) {
-        this.pushSegment(state, x, y, z0, x, y, z1, zColor);
-      }
+      this.pushSegment(state, x, y, z0, x, y, z1, zColor);
     }
 
     this.lineGeom.setDrawRange(0, state.lineSeg * 2);

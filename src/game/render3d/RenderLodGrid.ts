@@ -23,18 +23,16 @@ const CELL_KEY_BASE = 2 ** CELL_KEY_BITS;
 const CELL_KEY_BIAS = 2 ** (CELL_KEY_BITS - 1);
 const CELL_KEY_MAX = CELL_KEY_BASE - 1;
 
-function packLodCellKey(ix: number, iy: number, iz: number): LodCellKey {
+function packLodCellKey(ix: number, iz: number): LodCellKey {
   const x = ix + CELL_KEY_BIAS;
-  const y = iy + CELL_KEY_BIAS;
   const z = iz + CELL_KEY_BIAS;
   if (
     x >= 0 && x <= CELL_KEY_MAX &&
-    y >= 0 && y <= CELL_KEY_MAX &&
     z >= 0 && z <= CELL_KEY_MAX
   ) {
-    return (x * CELL_KEY_BASE + y) * CELL_KEY_BASE + z;
+    return x * CELL_KEY_BASE + z;
   }
-  return `${ix},${iy},${iz}`;
+  return `${ix},${iz}`;
 }
 
 export class RenderLodGrid {
@@ -71,23 +69,21 @@ export class RenderLodGrid {
     if ((this.frameId & 63) === 0) this.pruneStaleCells();
   }
 
-  resolve(worldX: number, worldY: number, worldZ: number): RenderObjectLodTier {
+  resolve(worldX: number, _worldY: number, worldZ: number): RenderObjectLodTier {
     const view = this.view;
     if (!view) return 'marker';
 
     const size = this.cellSize;
     const ix = lodCellIndex(worldX, size);
-    const iy = lodCellIndex(worldY, size);
     const iz = lodCellIndex(worldZ, size);
-    const key = packLodCellKey(ix, iy, iz);
+    const key = packLodCellKey(ix, iz);
     const cached = this.cells.get(key);
     if (cached?.frameId === this.frameId) return cached.tier;
 
     const cx = lodCellCenter(ix, size);
-    const cy = lodCellCenter(iy, size);
     const cz = lodCellCenter(iz, size);
     const dx = cx - view.cameraX;
-    const dy = cy - view.cameraY;
+    const dy = -view.cameraY;
     const dz = cz - view.cameraZ;
     const distanceSq = dx * dx + dy * dy + dz * dz;
     const shellSq = this.shellDistanceSq;

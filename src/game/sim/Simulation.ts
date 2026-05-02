@@ -434,8 +434,10 @@ export class Simulation {
     }
 
     // Update force field sounds based on transition progress (every frame)
-    const forceFieldUnits = this.world.getForceFieldUnits();
-    if (forceFieldUnits.length > 0) {
+    const forceFieldUnits = this.world.forceFieldsEnabled
+      ? this.world.getForceFieldUnits()
+      : undefined;
+    if (forceFieldUnits && forceFieldUnits.length > 0) {
       const forceFieldSimEvents = updateForceFieldSounds(forceFieldUnits);
       for (const event of forceFieldSimEvents) {
         this.onSimEvent?.(event);
@@ -465,13 +467,13 @@ export class Simulation {
     }
 
     // Update force field state (range transitions)
-    if (forceFieldUnits.length > 0) {
+    if (forceFieldUnits && forceFieldUnits.length > 0) {
       updateForceFieldState(this.world, dtMs);
     }
 
     // Apply force field knockback (force fields no longer deal damage,
     // only push enemy units / projectiles).
-    if (forceFieldUnits.length > 0) {
+    if (forceFieldUnits && forceFieldUnits.length > 0) {
       const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
       for (const event of forceFieldVelocityUpdates) {
         this.pendingProjectileVelocityUpdates.set(event.id, event);

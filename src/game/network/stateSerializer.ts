@@ -5,7 +5,7 @@ import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerS
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
-import type { Vec2 } from '../../types/vec2';
+import type { Vec2, Vec3 } from '../../types/vec2';
 import type { GamePhase } from '../../types/network';
 import {
   ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
@@ -127,6 +127,106 @@ function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
 
 function createPooledBeamReflection(): NetworkServerSnapshotBeamReflection {
   return { x: 0, y: 0, z: 0, mirrorEntityId: 0 };
+}
+
+type PooledSprayTarget = NetworkServerSnapshotSprayTarget & {
+  _sourcePos: Vec2;
+  _targetPos: Vec2;
+  _targetDim: Vec2;
+};
+
+function createPooledSprayTarget(): NetworkServerSnapshotSprayTarget {
+  const spray: PooledSprayTarget = {
+    source: { id: 0, pos: { x: 0, y: 0 }, z: undefined, playerId: 1 as PlayerId },
+    target: { id: 0, pos: { x: 0, y: 0 }, z: undefined, dim: undefined, radius: undefined },
+    type: 'build',
+    intensity: 0,
+    _sourcePos: { x: 0, y: 0 },
+    _targetPos: { x: 0, y: 0 },
+    _targetDim: { x: 0, y: 0 },
+  };
+  spray.source.pos = spray._sourcePos;
+  spray.target.pos = spray._targetPos;
+  return spray;
+}
+
+type PooledSimEvent = NetworkServerSnapshotSimEvent & {
+  _pos: Vec3;
+};
+
+function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
+  const event: PooledSimEvent = {
+    type: 'fire',
+    turretId: '',
+    pos: { x: 0, y: 0, z: 0 },
+    entityId: undefined,
+    deathContext: undefined,
+    impactContext: undefined,
+    _pos: { x: 0, y: 0, z: 0 },
+  };
+  event.pos = event._pos;
+  return event;
+}
+
+type PooledProjectileSpawn = NetworkServerSnapshotProjectileSpawn & {
+  _pos: Vec3;
+  _velocity: Vec3;
+  _beamStart: Vec3;
+  _beamEnd: Vec3;
+  _beam: { start: Vec3; end: Vec3 };
+};
+
+function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
+  const spawn: PooledProjectileSpawn = {
+    id: 0,
+    pos: { x: 0, y: 0, z: 0 },
+    rotation: 0,
+    velocity: { x: 0, y: 0, z: 0 },
+    projectileType: 0,
+    maxLifespan: undefined,
+    turretId: '',
+    playerId: 1,
+    sourceEntityId: 0,
+    turretIndex: 0,
+    barrelIndex: 0,
+    isDGun: undefined,
+    fromParentDetonation: undefined,
+    beam: undefined,
+    targetEntityId: undefined,
+    homingTurnRate: undefined,
+    _pos: { x: 0, y: 0, z: 0 },
+    _velocity: { x: 0, y: 0, z: 0 },
+    _beamStart: { x: 0, y: 0, z: 0 },
+    _beamEnd: { x: 0, y: 0, z: 0 },
+    _beam: { start: { x: 0, y: 0, z: 0 }, end: { x: 0, y: 0, z: 0 } },
+  };
+  spawn.pos = spawn._pos;
+  spawn.velocity = spawn._velocity;
+  spawn._beam.start = spawn._beamStart;
+  spawn._beam.end = spawn._beamEnd;
+  return spawn;
+}
+
+function createPooledProjectileDespawn(): NetworkServerSnapshotProjectileDespawn {
+  return { id: 0 };
+}
+
+type PooledVelocityUpdate = NetworkServerSnapshotVelocityUpdate & {
+  _pos: Vec3;
+  _velocity: Vec3;
+};
+
+function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
+  const update: PooledVelocityUpdate = {
+    id: 0,
+    pos: { x: 0, y: 0, z: 0 },
+    velocity: { x: 0, y: 0, z: 0 },
+    _pos: { x: 0, y: 0, z: 0 },
+    _velocity: { x: 0, y: 0, z: 0 },
+  };
+  update.pos = update._pos;
+  update.velocity = update._velocity;
+  return update;
 }
 
 function createPooledEntry(): PooledEntry {
@@ -478,13 +578,23 @@ export function resetProtocolSeeded(): void {
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
 const _sprayBuf: NetworkServerSnapshotSprayTarget[] = [];
+const _sprayPool: NetworkServerSnapshotSprayTarget[] = [];
 const _audioBuf: NetworkServerSnapshotSimEvent[] = [];
 const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
 const _despawnBuf: NetworkServerSnapshotProjectileDespawn[] = [];
 const _velUpdateBuf: NetworkServerSnapshotVelocityUpdate[] = [];
+const _audioPool: NetworkServerSnapshotSimEvent[] = [];
+const _spawnPool: NetworkServerSnapshotProjectileSpawn[] = [];
+const _despawnPool: NetworkServerSnapshotProjectileDespawn[] = [];
+const _velUpdatePool: NetworkServerSnapshotVelocityUpdate[] = [];
 const _beamUpdateBuf: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamUpdatePool: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamReflectionPool: NetworkServerSnapshotBeamReflection[] = [];
+let _sprayPoolIndex = 0;
+let _audioPoolIndex = 0;
+let _spawnPoolIndex = 0;
+let _despawnPoolIndex = 0;
+let _velUpdatePoolIndex = 0;
 let _beamUpdatePoolIndex = 0;
 let _beamReflectionPoolIndex = 0;
 const _economyBuf: Record<PlayerId, NetworkServerSnapshotEconomy> = {} as Record<PlayerId, NetworkServerSnapshotEconomy>;
@@ -543,6 +653,56 @@ function getPooledBeamReflection(): NetworkServerSnapshotBeamReflection {
   return reflection;
 }
 
+function getPooledSprayTarget(): PooledSprayTarget {
+  let spray = _sprayPool[_sprayPoolIndex] as PooledSprayTarget | undefined;
+  if (!spray) {
+    spray = createPooledSprayTarget() as PooledSprayTarget;
+    _sprayPool[_sprayPoolIndex] = spray;
+  }
+  _sprayPoolIndex++;
+  return spray;
+}
+
+function getPooledSimEvent(): PooledSimEvent {
+  let event = _audioPool[_audioPoolIndex] as PooledSimEvent | undefined;
+  if (!event) {
+    event = createPooledSimEvent() as PooledSimEvent;
+    _audioPool[_audioPoolIndex] = event;
+  }
+  _audioPoolIndex++;
+  return event;
+}
+
+function getPooledProjectileSpawn(): PooledProjectileSpawn {
+  let spawn = _spawnPool[_spawnPoolIndex] as PooledProjectileSpawn | undefined;
+  if (!spawn) {
+    spawn = createPooledProjectileSpawn() as PooledProjectileSpawn;
+    _spawnPool[_spawnPoolIndex] = spawn;
+  }
+  _spawnPoolIndex++;
+  return spawn;
+}
+
+function getPooledProjectileDespawn(): NetworkServerSnapshotProjectileDespawn {
+  let despawn = _despawnPool[_despawnPoolIndex];
+  if (!despawn) {
+    despawn = createPooledProjectileDespawn();
+    _despawnPool[_despawnPoolIndex] = despawn;
+  }
+  _despawnPoolIndex++;
+  return despawn;
+}
+
+function getPooledVelocityUpdate(): PooledVelocityUpdate {
+  let update = _velUpdatePool[_velUpdatePoolIndex] as PooledVelocityUpdate | undefined;
+  if (!update) {
+    update = createPooledVelocityUpdate() as PooledVelocityUpdate;
+    _velUpdatePool[_velUpdatePoolIndex] = update;
+  }
+  _velUpdatePoolIndex++;
+  return update;
+}
+
 export type SnapshotInterest = (entity: Entity) => boolean;
 
 export type SerializeGameStateOptions = {
@@ -586,6 +746,11 @@ export function serializeGameState(
 
   // Reset entity pool for this frame
   _poolIndex = 0;
+  _sprayPoolIndex = 0;
+  _audioPoolIndex = 0;
+  _spawnPoolIndex = 0;
+  _despawnPoolIndex = 0;
+  _velUpdatePoolIndex = 0;
   _beamUpdatePoolIndex = 0;
   _beamReflectionPoolIndex = 0;
   _entityBuf.length = 0;
@@ -758,12 +923,27 @@ export function serializeGameState(
     _sprayBuf.length = 0;
     for (let i = 0; i < sprayTargets.length; i++) {
       const st = sprayTargets[i];
-      _sprayBuf.push({
-        source: { id: st.source.id, pos: st.source.pos, z: st.source.z, playerId: st.source.playerId },
-        target: { id: st.target.id, pos: st.target.pos, z: st.target.z, dim: st.target.dim, radius: st.target.radius },
-        type: st.type,
-        intensity: st.intensity,
-      });
+      const out = getPooledSprayTarget();
+      out.source.id = st.source.id;
+      out._sourcePos.x = st.source.pos.x;
+      out._sourcePos.y = st.source.pos.y;
+      out.source.z = st.source.z;
+      out.source.playerId = st.source.playerId;
+      out.target.id = st.target.id;
+      out._targetPos.x = st.target.pos.x;
+      out._targetPos.y = st.target.pos.y;
+      out.target.z = st.target.z;
+      if (st.target.dim) {
+        out._targetDim.x = st.target.dim.x;
+        out._targetDim.y = st.target.dim.y;
+        out.target.dim = out._targetDim;
+      } else {
+        out.target.dim = undefined;
+      }
+      out.target.radius = st.target.radius;
+      out.type = st.type;
+      out.intensity = st.intensity;
+      _sprayBuf.push(out);
     }
     netSprayTargets = _sprayBuf;
   }
@@ -774,14 +954,16 @@ export function serializeGameState(
     _audioBuf.length = 0;
     for (let i = 0; i < audioEvents.length; i++) {
       const ae = audioEvents[i];
-      _audioBuf.push({
-        type: ae.type,
-        turretId: ae.turretId,
-        pos: ae.pos,
-        entityId: ae.entityId,
-        deathContext: ae.deathContext,
-        impactContext: ae.impactContext,
-      });
+      const out = getPooledSimEvent();
+      out.type = ae.type;
+      out.turretId = ae.turretId;
+      out._pos.x = ae.pos.x;
+      out._pos.y = ae.pos.y;
+      out._pos.z = ae.pos.z;
+      out.entityId = ae.entityId;
+      out.deathContext = ae.deathContext;
+      out.impactContext = ae.impactContext;
+      _audioBuf.push(out);
     }
     netAudioEvents = _audioBuf;
   }
@@ -792,23 +974,38 @@ export function serializeGameState(
     _spawnBuf.length = 0;
     for (let i = 0; i < projectileSpawns.length; i++) {
       const ps = projectileSpawns[i];
-      _spawnBuf.push({
-        id: ps.id,
-        pos: ps.pos, rotation: ps.rotation,
-        velocity: ps.velocity,
-        projectileType: projectileTypeToCode(ps.projectileType),
-        maxLifespan: ps.maxLifespan,
-        turretId: ps.turretId,
-        playerId: ps.playerId,
-        sourceEntityId: ps.sourceEntityId,
-        turretIndex: ps.turretIndex,
-        barrelIndex: ps.barrelIndex,
-        isDGun: ps.isDGun,
-        fromParentDetonation: ps.fromParentDetonation,
-        beam: ps.beam,
-        targetEntityId: ps.targetEntityId,
-        homingTurnRate: ps.homingTurnRate,
-      });
+      const out = getPooledProjectileSpawn();
+      out.id = ps.id;
+      out._pos.x = ps.pos.x;
+      out._pos.y = ps.pos.y;
+      out._pos.z = ps.pos.z;
+      out.rotation = ps.rotation;
+      out._velocity.x = ps.velocity.x;
+      out._velocity.y = ps.velocity.y;
+      out._velocity.z = ps.velocity.z;
+      out.projectileType = projectileTypeToCode(ps.projectileType);
+      out.maxLifespan = ps.maxLifespan;
+      out.turretId = ps.turretId;
+      out.playerId = ps.playerId;
+      out.sourceEntityId = ps.sourceEntityId;
+      out.turretIndex = ps.turretIndex;
+      out.barrelIndex = ps.barrelIndex;
+      out.isDGun = ps.isDGun;
+      out.fromParentDetonation = ps.fromParentDetonation;
+      if (ps.beam) {
+        out._beamStart.x = ps.beam.start.x;
+        out._beamStart.y = ps.beam.start.y;
+        out._beamStart.z = ps.beam.start.z;
+        out._beamEnd.x = ps.beam.end.x;
+        out._beamEnd.y = ps.beam.end.y;
+        out._beamEnd.z = ps.beam.end.z;
+        out.beam = out._beam;
+      } else {
+        out.beam = undefined;
+      }
+      out.targetEntityId = ps.targetEntityId;
+      out.homingTurnRate = ps.homingTurnRate;
+      _spawnBuf.push(out);
     }
     netProjectileSpawns = _spawnBuf;
   }
@@ -818,7 +1015,9 @@ export function serializeGameState(
   if (projectileDespawns && projectileDespawns.length > 0) {
     _despawnBuf.length = 0;
     for (let i = 0; i < projectileDespawns.length; i++) {
-      _despawnBuf.push({ id: projectileDespawns[i].id });
+      const out = getPooledProjectileDespawn();
+      out.id = projectileDespawns[i].id;
+      _despawnBuf.push(out);
     }
     netProjectileDespawns = _despawnBuf;
   }
@@ -829,7 +1028,15 @@ export function serializeGameState(
     _velUpdateBuf.length = 0;
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
-      _velUpdateBuf.push({ id: vu.id, pos: vu.pos, velocity: vu.velocity });
+      const out = getPooledVelocityUpdate();
+      out.id = vu.id;
+      out._pos.x = vu.pos.x;
+      out._pos.y = vu.pos.y;
+      out._pos.z = vu.pos.z;
+      out._velocity.x = vu.velocity.x;
+      out._velocity.y = vu.velocity.y;
+      out._velocity.z = vu.velocity.z;
+      _velUpdateBuf.push(out);
     }
     netVelocityUpdates = _velUpdateBuf;
   }

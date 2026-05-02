@@ -9,23 +9,13 @@ import * as THREE from 'three';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, WATER_LEVEL } from '../sim/Terrain';
 import type { GraphicsConfig } from '@/types/graphics';
-import { getGraphicsConfigFor } from '@/clientBarConfig';
 import type { Lod3DState } from './Lod3D';
-import { objectLodToGraphicsTier } from './RenderObjectLod';
-import { RenderLodGrid } from './RenderLodGrid';
 
 const WAVE_LAMBDA_X = 240;
 const WAVE_LAMBDA_Z = 320;
 const WAVE_OMEGA_X = 0.6;
 const WAVE_OMEGA_Z = 0.45;
 const WATER_COLOR = 0x4aa3df;
-// Water LOD geometry is expensive to rebuild because it walks every wet
-// terrain cell and emits fresh typed arrays. Quantize camera movement more
-// coarsely than object cells; water detail can lag slightly without gameplay
-// or readability cost, and this removes frequent rebuild spikes while panning.
-const WATER_LOD_REBUILD_CELL_MULTIPLIER = 4;
-const WATER_LOD_REBUILD_SETTLE_FRAMES = 3;
-const WATER_LOD_REBUILD_MIN_FRAME_SPACING = 24;
 
 type WaterCell = {
   x0: number;
@@ -43,14 +33,8 @@ export class WaterRenderer3D {
   private mapWidth: number;
   private mapHeight: number;
   private terrainLodKey = '';
-  private pendingTerrainLodKey = '';
-  private pendingTerrainLodFrames = 0;
-  private lastGeometryRebuildFrame = -WATER_LOD_REBUILD_MIN_FRAME_SPACING;
   private hasWaterGeometry = false;
   private waterCellCache: WaterCell[] | null = null;
-  private ownedLodGrid = new RenderLodGrid();
-  private frameLodGrid = this.ownedLodGrid;
-  private lodActive = false;
   private frameIndex = 0;
 
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
@@ -161,67 +145,21 @@ export class WaterRenderer3D {
     return waterCells;
   }
 
-  private waterLodKey(graphicsConfig: GraphicsConfig, lod?: Lod3DState): string {
-    if (!lod) {
-      return `${graphicsConfig.tier}|${graphicsConfig.waterSubdivisions}|static`;
-    }
-    const cellSize = Math.max(
-      16,
-      graphicsConfig.objectLodCellSize * WATER_LOD_REBUILD_CELL_MULTIPLIER,
-    );
-    const view = lod.view;
+  private waterLodKey(graphicsConfig: GraphicsConfig): string {
+    // Water is an environmental surface, not an object graph. Tying its
+    // geometry subdivisions to camera-sphere cells caused large typed-array
+    // rebuilds while panning. Keep mesh density global by PLAYER CLIENT LOD;
+    // camera/object LOD still controls units/buildings/deposits/tiles.
     return [
       graphicsConfig.tier,
       graphicsConfig.waterSubdivisions,
-      graphicsConfig.cameraSphereRadii.rich,
-      graphicsConfig.cameraSphereRadii.simple,
-      graphicsConfig.cameraSphereRadii.mass,
-      graphicsConfig.cameraSphereRadii.impostor,
-      cellSize,
-      Math.floor(view.cameraX / cellSize),
-      Math.floor(view.cameraY / cellSize),
-      Math.floor(view.cameraZ / cellSize),
     ].join('|');
   }
 
-  private graphicsConfigForWaterCell(cell: WaterCell, fallback: GraphicsConfig): GraphicsConfig {
-    if (!this.lodActive) return fallback;
-    const centerX = (cell.x0 + cell.x1) * 0.5;
-    const centerZ = (cell.z0 + cell.z1) * 0.5;
-    const objectTier = this.frameLodGrid.resolve(centerX, WATER_LEVEL, centerZ);
-    const graphicsTier = objectLodToGraphicsTier(objectTier, fallback.tier);
-    return getGraphicsConfigFor(graphicsTier);
-  }
-
-  private rebuildGeometryIfNeeded(graphicsConfig: GraphicsConfig, lod?: Lod3DState): void {
-    const nextKey = this.waterLodKey(graphicsConfig, lod);
-    if (nextKey === this.terrainLodKey) {
-      this.pendingTerrainLodKey = '';
-      this.pendingTerrainLodFrames = 0;
-      return;
-    }
-
-    const hasBuiltGeometry = this.terrainLodKey !== '';
-    if (hasBuiltGeometry) {
-      if (this.pendingTerrainLodKey !== nextKey) {
-        this.pendingTerrainLodKey = nextKey;
-        this.pendingTerrainLodFrames = 0;
-        return;
-      }
-      this.pendingTerrainLodFrames++;
-      const framesSinceRebuild = this.frameIndex - this.lastGeometryRebuildFrame;
-      if (
-        this.pendingTerrainLodFrames < WATER_LOD_REBUILD_SETTLE_FRAMES ||
-        framesSinceRebuild < WATER_LOD_REBUILD_MIN_FRAME_SPACING
-      ) {
-        return;
-      }
-    }
-
+  private rebuildGeometryIfNeeded(graphicsConfig: GraphicsConfig): void {
+    const nextKey = this.waterLodKey(graphicsConfig);
+    if (nextKey === this.terrainLodKey) return;
     this.terrainLodKey = nextKey;
-    this.pendingTerrainLodKey = '';
-    this.pendingTerrainLodFrames = 0;
-    this.lastGeometryRebuildFrame = this.frameIndex;
 
     const waterCells = this.getWaterCells();
     const positions: number[] = [];
@@ -230,8 +168,7 @@ export class WaterRenderer3D {
 
     for (let c = 0; c < waterCells.length; c++) {
       const cell = waterCells[c];
-      const cellGfx = this.graphicsConfigForWaterCell(cell, graphicsConfig);
-      const subdiv = this.perCellSubdiv(cellGfx.waterSubdivisions);
+      const subdiv = this.perCellSubdiv(graphicsConfig.waterSubdivisions);
       const vBase = positions.length / 3;
       const idx = (ix: number, iz: number) => iz * (subdiv + 1) + ix;
 
@@ -267,15 +204,10 @@ export class WaterRenderer3D {
   update(
     dtSec: number,
     graphicsConfig: GraphicsConfig,
-    lod?: Lod3DState,
-    sharedLodGrid?: RenderLodGrid,
+    _lod?: Lod3DState,
+    _sharedLodGrid?: unknown,
   ): void {
     this.frameIndex = (this.frameIndex + 1) & 0x3fffffff;
-    this.lodActive = lod !== undefined;
-    this.frameLodGrid = sharedLodGrid ?? this.ownedLodGrid;
-    if (lod) {
-      if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, graphicsConfig);
-    }
     this.material.opacity = graphicsConfig.waterOpacity;
     this.amplitudeUniform.value = graphicsConfig.waterWaveAmplitude;
     if (graphicsConfig.waterOpacity <= 0) {
@@ -283,7 +215,7 @@ export class WaterRenderer3D {
       return;
     }
 
-    this.rebuildGeometryIfNeeded(graphicsConfig, lod);
+    this.rebuildGeometryIfNeeded(graphicsConfig);
     this.mesh.visible = this.hasWaterGeometry;
     if (!this.mesh.visible || graphicsConfig.waterOpacity <= 0) return;
 

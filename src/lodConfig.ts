@@ -257,7 +257,7 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.MAX,
   },
   // Mana/capture tile terrain smoothness by camera-sphere object LOD.
-  // The renderer resolves each tile through the same 3D LOD grid as
+  // The renderer resolves each tile through the same 2D LOD grid as
   // units/buildings, then reads this table for that tile's effective
   // MIN/LOW/MID/HI/MAX smoothness. Tile borders always keep shared edge
   // samples so adjacent tiles with different smoothness do not crack.

@@ -245,6 +245,11 @@ function createProjectileFromNetwork(
         : {
           id: 'unknown',
           angular: { turnAccel: 0, drag: 0 },
+          rangeOverrides: {
+            engageRangeMax: { acquire: 0, release: 0 },
+            engageRangeMin: { acquire: 0, release: 0 },
+          },
+          eventsSmooth: false,
           shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5 } },
           range: 100,
           cooldown: 1000,

@@ -96,7 +96,12 @@ const _INST_UP = new THREE.Vector3(0, 1, 0);
 const LOW_INSTANCED_COMPACT_MIN_FREE = 128;
 const LOW_INSTANCED_COMPACT_INTERVAL_FRAMES = 30;
 const LOW_INSTANCED_COMPACT_MAX_MOVES = 256;
-const UNIT_INSTANCED_FULL_REFRESH_INTERVAL_FRAMES = 8;
+// Safety sweep for rare missed dirty events. Normal movement/selection
+// reaches the mass renderer through active/dirty lists; camera-cell,
+// LOD, and entity-set changes still force immediate full passes. Keep
+// this slow so 10k-unit scenes do not get periodic all-unit spikes.
+const UNIT_INSTANCED_FULL_REFRESH_INTERVAL_FRAMES = 120;
+const RICH_UNIT_PROMOTION_BUDGET_PER_FRAME = 64;
 const MASS_INSTANCE_MATRIX_STRIDE: Record<RenderObjectLodTier, number> = {
   hero: 1,
   rich: 1,
@@ -316,7 +321,9 @@ export class Render3DEntities {
   private _seenUnitIds = new Set<EntityId>();
   private _seenBuildingIds = new Set<number>();
   private _seenProjectileIds = new Set<number>();
+  private _projectileRenderScratch: Entity[] = [];
   private lastUnitInstancedEntitySetVersion = -1;
+  private lastBuildingEntitySetVersion = -1;
   private lastProjectileEntitySetVersion = -1;
   /** SHOT RAD overlay meshes per projectile. Wireframe spheres —
    *  not ground rings — because the matching sim checks ARE 3D
@@ -520,7 +527,6 @@ export class Render3DEntities {
   private unitInstancedLastFullPassCellSize = 0;
   private unitInstancedLastFullPassCameraCellX = 0;
   private unitInstancedLastFullPassCameraCellY = 0;
-  private unitInstancedLastFullPassCameraCellZ = 0;
   private unitInstancedActiveUnits: Entity[] = [];
   private unitInstancedHiddenIds = new Set<EntityId>();
   /** Hidden-slot transform: scale=0 collapses the geometry to a point. */
@@ -740,6 +746,7 @@ export class Render3DEntities {
   private mirrorPanelColorDirty = false;
   private mirrorPanelFreeSlots: number[] = [];
   private mirrorPanelNextSlot = 0;
+  private mirrorsEnabled = true;
 
   constructor(
     world: THREE.Group,
@@ -1225,7 +1232,11 @@ export class Render3DEntities {
     }
   }
 
-  update(lodOverride?: Lod3DState, sharedLodGrid?: RenderLodGrid): void {
+  update(
+    lodOverride?: Lod3DState,
+    sharedLodGrid?: RenderLodGrid,
+    featureFlags?: { mirrorsEnabled?: boolean },
+  ): void {
     // Refresh LOD snapshot once per frame. Unit meshes compare their
     // own effective object-tier key inside updateUnitMeshes(), so global
     // LOD changes no longer tear down every unit at once. That avoids a
@@ -1235,6 +1246,7 @@ export class Render3DEntities {
     this.lod = newLod;
     this.objectLodGrid = sharedLodGrid ?? this.ownedObjectLodGrid;
     if (!sharedLodGrid) this.objectLodGrid.beginFrame(this.lod.view, this.lod.gfx);
+    this.mirrorsEnabled = featureFlags?.mirrorsEnabled ?? true;
 
     // Time step for continuous-rotation effects (barrel spin, wheel roll).
     // Clamp in case the tab was backgrounded.
@@ -1399,22 +1411,19 @@ export class Render3DEntities {
     const size = normalizeLodCellSize(this.lod.gfx.objectLodCellSize);
     const view = this.lod.view;
     const cameraCellX = lodCellIndex(view.cameraX, size);
-    const cameraCellY = lodCellIndex(view.cameraY, size);
-    const cameraCellZ = lodCellIndex(view.cameraZ, size);
+    const cameraCellY = lodCellIndex(view.cameraZ, size);
     if (
       entitySetVersion !== this.unitInstancedLastFullPassEntitySetVersion ||
       this.lod.key !== this.unitInstancedLastFullPassLodKey ||
       size !== this.unitInstancedLastFullPassCellSize ||
       cameraCellX !== this.unitInstancedLastFullPassCameraCellX ||
-      cameraCellY !== this.unitInstancedLastFullPassCameraCellY ||
-      cameraCellZ !== this.unitInstancedLastFullPassCameraCellZ
+      cameraCellY !== this.unitInstancedLastFullPassCameraCellY
     ) {
       this.unitInstancedLastFullPassEntitySetVersion = entitySetVersion;
       this.unitInstancedLastFullPassLodKey = this.lod.key;
       this.unitInstancedLastFullPassCellSize = size;
       this.unitInstancedLastFullPassCameraCellX = cameraCellX;
       this.unitInstancedLastFullPassCameraCellY = cameraCellY;
-      this.unitInstancedLastFullPassCameraCellZ = cameraCellZ;
       return true;
     }
     if (!collectRichUnits) return false;
@@ -1471,6 +1480,7 @@ export class Render3DEntities {
     let colorMinSlot = Number.POSITIVE_INFINITY;
     let colorMaxSlot = -1;
     const matrixDirty = { matrixMinSlot, matrixMaxSlot };
+    let richPromotionsThisFrame = 0;
 
     for (const e of unitsToProcess) {
       seen.add(e.id);
@@ -1481,16 +1491,24 @@ export class Render3DEntities {
         // drive terrain tilt, locomotion, turret/mirror matrices, and
         // selection overlays. Units outside that older 2D footprint
         // still flow through the cheap instanced body below, so the
-        // 3D LOD grid never resolves to "invisible" for unit bodies.
+        // 2D LOD grid never resolves to "invisible" for unit bodies.
         if (inScope && (isRichObjectLod(objectTier) || objectTier === 'simple')) {
           const alreadyRich = richIds.has(e.id);
-          richIds.add(e.id);
-          if (fullPass || !alreadyRich) {
-            richUnits.push(e);
+          const hasSceneMesh = this.unitMeshes.has(e.id);
+          const canPromote =
+            alreadyRich ||
+            hasSceneMesh ||
+            richPromotionsThisFrame < RICH_UNIT_PROMOTION_BUDGET_PER_FRAME;
+          if (canPromote) {
+            if (!alreadyRich && !hasSceneMesh) richPromotionsThisFrame++;
+            richIds.add(e.id);
+            if (fullPass || !alreadyRich) {
+              richUnits.push(e);
+            }
+            this.massRichObjectTiers.set(e.id, objectTier);
+            this.hideUnitInstancedSlot(im, e.id, this.unitInstancedSlot.get(e.id), matrixDirty);
+            continue;
           }
-          this.massRichObjectTiers.set(e.id, objectTier);
-          this.hideUnitInstancedSlot(im, e.id, this.unitInstancedSlot.get(e.id), matrixDirty);
-          continue;
         }
         this.removeMassRichUnit(e.id);
       }
@@ -1619,7 +1637,6 @@ export class Render3DEntities {
     this.unitInstancedLastFullPassCellSize = 0;
     this.unitInstancedLastFullPassCameraCellX = 0;
     this.unitInstancedLastFullPassCameraCellY = 0;
-    this.unitInstancedLastFullPassCameraCellZ = 0;
     this.unitInstancedActiveUnits.length = 0;
     im.count = 0;
     im.instanceMatrix.needsUpdate = true;
@@ -2796,68 +2813,71 @@ export class Render3DEntities {
       // tilting backward, so the rendered chrome would lean opposite to
       // where the sim's reflection plane actually sits.
       if (m.mirrors) {
-        const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
-        const mirrorPitch = turrets[0]?.pitch ?? 0;
-        // Mirror root is a child of yawGroup (rigid hull) — same
-        // tilt-compensated yaw the turret-aim path above uses. The
-        // panel-pitch (rotation.x per panel) operates in the
-        // tilt-corrected parent frame, so it still reads as a world-
-        // horizontal-axis tilt of the panel surface.
-        _aimDir.set(Math.cos(mirrorRot), 0, Math.sin(mirrorRot));
-        if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
-        const mCombinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
-        m.mirrors.root.rotation.y = mCombinedYaw + e.transform.rotation;
-        for (const panel of m.mirrors.panels) {
-          panel.rotation.x = mirrorPitch;
-        }
-
-        // Mirror-panel InstancedMesh write — same chain-compose
-        // pattern as barrels (group · yawGroup · liftGroup · mirrors.root),
-        // multiplied by each panel's local T·R·S. Even when
-        // skipPerMesh detached the per-Mesh panels from `mirrors.root`,
-        // each panel's .position / .rotation / .scale are still set
-        // (rotation.x just got the per-frame pitch update above), so
-        // the InstancedMesh writer reads them as data.
-        if (m.mirrors.panelSlots && this.mirrorPanelInstanced) {
-          // parentMat = group · yawGroup · liftGroup · mirrors.root —
-          // first three groups are the cached unit chain.
-          this._barrelParentMat.copy(this._unitChainMat);
-          // Mirror root rotation around Y in the lift-space frame.
-          this._smoothYawQuat.setFromAxisAngle(_INST_UP, m.mirrors.root.rotation.y);
-          this._barrelStepMat.compose(
-            this._barrelZeroVec, this._smoothYawQuat, this._barrelOneVec,
-          );
-          this._barrelParentMat.multiply(this._barrelStepMat);
-
-          const writeColor = this.mirrorPanelColorKey.get(m.mirrors.panelSlots[0]) !== colorKey;
-          if (writeColor) {
-            this._instColor.set(
-              pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
-            );
-            this.mirrorPanelColorDirty = true;
+        m.mirrors.root.visible = this.mirrorsEnabled;
+        if (this.mirrorsEnabled) {
+          const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
+          const mirrorPitch = turrets[0]?.pitch ?? 0;
+          // Mirror root is a child of yawGroup (rigid hull) — same
+          // tilt-compensated yaw the turret-aim path above uses. The
+          // panel-pitch (rotation.x per panel) operates in the
+          // tilt-corrected parent frame, so it still reads as a world-
+          // horizontal-axis tilt of the panel surface.
+          _aimDir.set(Math.cos(mirrorRot), 0, Math.sin(mirrorRot));
+          if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
+          const mCombinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
+          m.mirrors.root.rotation.y = mCombinedYaw + e.transform.rotation;
+          for (const panel of m.mirrors.panels) {
+            panel.rotation.x = mirrorPitch;
           }
-          const slotCount = Math.min(
-            m.mirrors.panels.length,
-            m.mirrors.panelSlots.length,
-          );
-          for (let pi = 0; pi < slotCount; pi++) {
-            const panel = m.mirrors.panels[pi];
-            const slot = m.mirrors.panelSlots[pi];
-            // panel.quaternion auto-syncs with panel.rotation
-            // (Euler XYZ for the rotation-order detection — note
-            // mirror panels use 'YXZ' order for the panel→world
-            // sandwich; THREE syncs whichever order is set on
-            // .rotation.order).
+
+          // Mirror-panel InstancedMesh write — same chain-compose
+          // pattern as barrels (group · yawGroup · liftGroup · mirrors.root),
+          // multiplied by each panel's local T·R·S. Even when
+          // skipPerMesh detached the per-Mesh panels from `mirrors.root`,
+          // each panel's .position / .rotation / .scale are still set
+          // (rotation.x just got the per-frame pitch update above), so
+          // the InstancedMesh writer reads them as data.
+          if (m.mirrors.panelSlots && this.mirrorPanelInstanced) {
+            // parentMat = group · yawGroup · liftGroup · mirrors.root —
+            // first three groups are the cached unit chain.
+            this._barrelParentMat.copy(this._unitChainMat);
+            // Mirror root rotation around Y in the lift-space frame.
+            this._smoothYawQuat.setFromAxisAngle(_INST_UP, m.mirrors.root.rotation.y);
             this._barrelStepMat.compose(
-              panel.position, panel.quaternion, panel.scale,
+              this._barrelZeroVec, this._smoothYawQuat, this._barrelOneVec,
             );
-            this._smoothFinalMat.multiplyMatrices(
-              this._barrelParentMat, this._barrelStepMat,
-            );
-            this.mirrorPanelInstanced.setMatrixAt(slot, this._smoothFinalMat);
+            this._barrelParentMat.multiply(this._barrelStepMat);
+
+            const writeColor = this.mirrorPanelColorKey.get(m.mirrors.panelSlots[0]) !== colorKey;
             if (writeColor) {
-              this.mirrorPanelInstanced.setColorAt(slot, this._instColor);
-              this.mirrorPanelColorKey.set(slot, colorKey);
+              this._instColor.set(
+                pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
+              );
+              this.mirrorPanelColorDirty = true;
+            }
+            const slotCount = Math.min(
+              m.mirrors.panels.length,
+              m.mirrors.panelSlots.length,
+            );
+            for (let pi = 0; pi < slotCount; pi++) {
+              const panel = m.mirrors.panels[pi];
+              const slot = m.mirrors.panelSlots[pi];
+              // panel.quaternion auto-syncs with panel.rotation
+              // (Euler XYZ for the rotation-order detection — note
+              // mirror panels use 'YXZ' order for the panel→world
+              // sandwich; THREE syncs whichever order is set on
+              // .rotation.order).
+              this._barrelStepMat.compose(
+                panel.position, panel.quaternion, panel.scale,
+              );
+              this._smoothFinalMat.multiplyMatrices(
+                this._barrelParentMat, this._barrelStepMat,
+              );
+              this.mirrorPanelInstanced.setMatrixAt(slot, this._smoothFinalMat);
+              if (writeColor) {
+                this.mirrorPanelInstanced.setColorAt(slot, this._instColor);
+                this.mirrorPanelColorKey.set(slot, colorKey);
+              }
             }
           }
         }
@@ -2987,7 +3007,7 @@ export class Render3DEntities {
     }
     // Mirror panels — one shared chrome PBR draw call.
     if (this.mirrorPanelInstanced) {
-      this.mirrorPanelInstanced.count = this.mirrorPanelNextSlot;
+      this.mirrorPanelInstanced.count = this.mirrorsEnabled ? this.mirrorPanelNextSlot : 0;
       if (this.mirrorPanelNextSlot > 0) {
         this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
         if (this.mirrorPanelColorDirty && this.mirrorPanelInstanced.instanceColor) {
@@ -3000,7 +3020,9 @@ export class Render3DEntities {
   private updateBuildings(): void {
     const buildings = this.clientViewState.getBuildings();
     const seen = this._seenBuildingIds;
-    seen.clear();
+    const entitySetVersion = this.clientViewState.getEntitySetVersion();
+    const pruneBuildings = entitySetVersion !== this.lastBuildingEntitySetVersion;
+    if (pruneBuildings) seen.clear();
     this.releaseFactorySprayTargets();
 
     // LOD-driven detail visibility for buildings. Each accent mesh now
@@ -3011,7 +3033,7 @@ export class Render3DEntities {
       (this.extractorRotorPhase + this._spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC) % (Math.PI * 2);
 
     for (const e of buildings) {
-      seen.add(e.id);
+      if (pruneBuildings) seen.add(e.id);
       // Buildings are sparse and strategically important. Do not apply
       // the 2D render-scope early-out here: it can disagree with the
       // perspective/frustum view at steep camera angles and make a
@@ -3200,11 +3222,14 @@ export class Render3DEntities {
       // (billboarded sprite in the world group).
     }
 
-    for (const [id, m] of this.buildingMeshes) {
-      if (!seen.has(id)) {
-        this.world.remove(m.group);
-        this.buildingMeshes.delete(id);
+    if (pruneBuildings) {
+      for (const [id, m] of this.buildingMeshes) {
+        if (!seen.has(id)) {
+          this.world.remove(m.group);
+          this.buildingMeshes.delete(id);
+        }
       }
+      this.lastBuildingEntitySetVersion = entitySetVersion;
     }
   }
 
@@ -3447,16 +3472,18 @@ export class Render3DEntities {
   }
 
   private updateProjectiles(): void {
-    const projectiles = this.clientViewState.getTravelingProjectiles();
+    const projectiles = this.clientViewState.collectTravelingProjectiles(this._projectileRenderScratch);
     const seen = this._seenProjectileIds;
-    seen.clear();
+    const entitySetVersion = this.clientViewState.getEntitySetVersion();
+    const pruneProjectiles = entitySetVersion !== this.lastProjectileEntitySetVersion;
+    if (pruneProjectiles) seen.clear();
     const sphereMesh = this.projectileSphereInstanced;
     const cylinderMesh = this.projectileCylinderInstanced;
     let sphereCount = 0;
     let cylinderCount = 0;
 
     for (const e of projectiles) {
-      seen.add(e.id);
+      if (pruneProjectiles) seen.add(e.id);
       // Scope gate — tighter padding (projectiles are small and moving fast).
       if (!this.scope.inScope(e.transform.x, e.transform.y, 50)) {
         this.hideProjRadiusMeshes(e.id);
@@ -3563,8 +3590,7 @@ export class Render3DEntities {
     // Drop SHOT RAD wireframes that went with despawned projectiles.
     // This map is sparse, but avoid the walk on frames where the
     // network entity set did not change.
-    const entitySetVersion = this.clientViewState.getEntitySetVersion();
-    if (entitySetVersion !== this.lastProjectileEntitySetVersion) {
+    if (pruneProjectiles) {
       for (const [id, radii] of this.projectileRadiusMeshes) {
         if (!seen.has(id)) {
           this.releaseProjRadiusMesh(radii.collision);
@@ -3802,7 +3828,6 @@ export class Render3DEntities {
     this.unitInstancedLastFullPassCellSize = 0;
     this.unitInstancedLastFullPassCameraCellX = 0;
     this.unitInstancedLastFullPassCameraCellY = 0;
-    this.unitInstancedLastFullPassCameraCellZ = 0;
     this.unitInstancedActiveUnits.length = 0;
     if (this.smoothChassis) {
       this.world.remove(this.smoothChassis);

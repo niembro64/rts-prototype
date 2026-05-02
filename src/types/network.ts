@@ -270,10 +270,9 @@ export type NetworkServerSnapshotMeta = {
   server: { time: string; ip: string };
   grid: boolean;
   units: { allowed?: string[]; max?: number; count?: number };
-  projVelInherit?: boolean;
-  firingForce?: boolean;
-  hitForce?: boolean;
   ffAccel: { units?: boolean; shots?: boolean };
+  mirrorsEnabled?: boolean;
+  forceFieldsEnabled?: boolean;
   /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).
    *  `avg` = EMA-smoothed steady-state load; `hi` = EMA spike, climbs fast
    *  on jumps and decays slowly. Both can exceed 100 when the server is

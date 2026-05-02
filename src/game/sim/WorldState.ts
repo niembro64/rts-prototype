@@ -4,7 +4,15 @@ import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
-import { MAX_TOTAL_UNITS, DEFAULT_PROJ_VEL_INHERIT, DEFAULT_FIRING_FORCE, DEFAULT_HIT_FORCE, DEFAULT_FF_ACCEL_UNITS, DEFAULT_FF_ACCEL_SHOTS, UNIT_HP_MULTIPLIER, SPATIAL_GRID_CELL_SIZE } from '../../config';
+import {
+  MAX_TOTAL_UNITS,
+  DEFAULT_FF_ACCEL_UNITS,
+  DEFAULT_FF_ACCEL_SHOTS,
+  DEFAULT_MIRRORS_ENABLED,
+  DEFAULT_FORCE_FIELDS_ENABLED,
+  UNIT_HP_MULTIPLIER,
+  SPATIAL_GRID_CELL_SIZE,
+} from '../../config';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
@@ -78,18 +86,14 @@ export class WorldState {
   // Configurable unit cap (can be changed at runtime via command)
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 
-  // Whether projectiles inherit their firing unit's velocity
-  public projVelInherit: boolean = DEFAULT_PROJ_VEL_INHERIT;
-
-  // Whether firing a weapon applies recoil to the firing unit
-  public firingForce: boolean = DEFAULT_FIRING_FORCE;
-  // Whether shots apply knockback to units they hit
-  public hitForce: boolean = DEFAULT_HIT_FORCE;
-
   // Whether force fields accelerate enemy units
   public ffAccelUnits: boolean = DEFAULT_FF_ACCEL_UNITS;
   // Whether force fields accelerate enemy projectiles
   public ffAccelShots: boolean = DEFAULT_FF_ACCEL_SHOTS;
+  // Whether mirror turrets/panels participate in targeting and reflections
+  public mirrorsEnabled: boolean = DEFAULT_MIRRORS_ENABLED;
+  // Whether force-field turrets participate in targeting, simulation, and rendering
+  public forceFieldsEnabled: boolean = DEFAULT_FORCE_FIELDS_ENABLED;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call

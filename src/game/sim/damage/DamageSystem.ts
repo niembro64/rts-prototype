@@ -279,12 +279,13 @@ export class DamageSystem {
       const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
       const crossSq = (ux * dy - uy * dx);
       const panels = unit.unit.mirrorPanels;
-      const boundR = panels.length > 0
+      const mirrorsActive = this.world.mirrorsEnabled && panels.length > 0;
+      const boundR = mirrorsActive
         ? Math.max(unit.unit.mirrorBoundRadius, unit.unit.unitRadiusCollider.shot) + lineWidth
         : unit.unit.unitRadiusCollider.shot + lineWidth / 2;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
-      if (panels.length > 0) {
+      if (mirrorsActive) {
         // Mirror unit: 3D ray-vs-tilted-rectangle for each panel
         // (yaw + pitch from the mirror turret rotation/pitch).
         const mirrorRot = unit.turrets && unit.turrets.length > 0

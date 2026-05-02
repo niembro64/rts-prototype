@@ -2,6 +2,10 @@ import type { BattleBarConfig } from './types/battle';
 import type { TerrainShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 
+const clean = (x: number) => {
+  return Math.floor(Math.pow(3, x));
+};
+
 export const BATTLE_CONFIG = {
   units: {
     jackal: { shortName: 'JKL', default: false },
@@ -19,22 +23,22 @@ export const BATTLE_CONFIG = {
     commander: { shortName: 'CMD', default: true },
   } as Record<string, { shortName: string; default: boolean }>,
   cap: {
-    default: Math.pow(2, 12),
+    default: clean(5),
     options: [
-      Math.pow(2, 2),
-      Math.pow(2, 4),
-      Math.pow(2, 6),
-      Math.pow(2, 8),
-      Math.pow(2, 10),
-      Math.pow(2, 12),
-      Math.pow(2, 14),
+      // clean(1),
+      clean(2),
+      // clean(3),
+      clean(4),
+      clean(5),
+      clean(6),
+      clean(6.5),
+      clean(7),
     ] as readonly number[],
   },
-  projVelInherit: { default: false },
-  firingForce: { default: false },
-  hitForce: { default: false },
   ffAccelUnits: { default: false },
   ffAccelShots: { default: true },
+  mirrorsEnabled: { default: true },
+  forceFieldsEnabled: { default: true },
   // Terrain shape — applied at game-construction time via
   // setTerrainCenterShape / setTerrainDividersShape (Terrain.ts).
   // Default 'lake' for both: the central basin floods to a body of
@@ -43,7 +47,7 @@ export const BATTLE_CONFIG = {
   // demo battle starts and again when the host launches the real
   // battle.
   center: {
-    default: 'lake',
+    default: 'flat',
     options: [
       { value: 'lake', label: 'LAKE' },
       { value: 'mountain', label: 'MOUNTAIN' },
@@ -61,8 +65,8 @@ export const BATTLE_CONFIG = {
 } as const satisfies BattleBarConfig;
 
 // Default caps per mode (must be values from BATTLE_CONFIG.cap.options)
-export const DEMO_CAP_DEFAULT = Math.pow(2, 8);   // 256 ≈ 3e+2
-export const REAL_CAP_DEFAULT = BATTLE_CONFIG.cap.default;   // 4096 ≈ 4e+3
+export const DEMO_CAP_DEFAULT = BATTLE_CONFIG.cap.default;
+export const REAL_CAP_DEFAULT = BATTLE_CONFIG.cap.default;
 
 export const BATTLE_MODE_DEFAULTS = {
   demo: {
@@ -80,8 +84,8 @@ export const BATTLE_MODE_DEFAULTS = {
 // ── localStorage keys (module-private) ──
 // `demo-battle-*` and `real-battle-*` namespace each setting to the
 // bar/mode it belongs to. EVERY setting that's tunable in BOTH
-// modes (firing force, hit force, ff accel, projectile velocity
-// inheritance, terrain shapes) gets paired demo + real keys so
+// modes (ff accel, system toggles, terrain shapes) gets paired
+// demo + real keys so
 // the two modes don't bleed:
 //
 //   demo battle = the visual demo running on initial page load
@@ -107,16 +111,14 @@ const STORAGE_DEMO_CAP = 'demo-battle-cap';
 const STORAGE_REAL_CAP = 'real-battle-cap';
 const STORAGE_DEMO_GRID = 'demo-battle-grid';
 const STORAGE_REAL_GRID = 'real-battle-grid';
-const STORAGE_DEMO_PROJ_VEL_INHERIT = 'demo-battle-proj-vel-inherit';
-const STORAGE_REAL_PROJ_VEL_INHERIT = 'real-battle-proj-vel-inherit';
-const STORAGE_DEMO_FIRING_FORCE = 'demo-battle-firing-force';
-const STORAGE_REAL_FIRING_FORCE = 'real-battle-firing-force';
-const STORAGE_DEMO_HIT_FORCE = 'demo-battle-hit-force';
-const STORAGE_REAL_HIT_FORCE = 'real-battle-hit-force';
 const STORAGE_DEMO_FF_ACCEL_UNITS = 'demo-battle-ff-accel-units';
 const STORAGE_REAL_FF_ACCEL_UNITS = 'real-battle-ff-accel-units';
 const STORAGE_DEMO_FF_ACCEL_SHOTS = 'demo-battle-ff-accel-shots';
 const STORAGE_REAL_FF_ACCEL_SHOTS = 'real-battle-ff-accel-shots';
+const STORAGE_DEMO_MIRRORS_ENABLED = 'demo-battle-mirrors-enabled';
+const STORAGE_REAL_MIRRORS_ENABLED = 'real-battle-mirrors-enabled';
+const STORAGE_DEMO_FORCE_FIELDS_ENABLED = 'demo-battle-force-fields-enabled';
+const STORAGE_REAL_FORCE_FIELDS_ENABLED = 'real-battle-force-fields-enabled';
 const STORAGE_DEMO_TERRAIN_CENTER = 'demo-battle-terrain-center';
 const STORAGE_REAL_TERRAIN_CENTER = 'real-battle-terrain-center';
 const STORAGE_DEMO_TERRAIN_DIVIDERS = 'demo-battle-terrain-dividers';
@@ -135,11 +137,10 @@ const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-real-cap', STORAGE_REAL_CAP],
   ['rts-demo-grid', STORAGE_DEMO_GRID],
   ['rts-real-grid', STORAGE_REAL_GRID],
-  ['rts-proj-vel-inherit', STORAGE_DEMO_PROJ_VEL_INHERIT],
-  ['rts-firing-force', STORAGE_DEMO_FIRING_FORCE],
-  ['rts-hit-force', STORAGE_DEMO_HIT_FORCE],
   ['rts-ff-accel-units', STORAGE_DEMO_FF_ACCEL_UNITS],
   ['rts-ff-accel-shots', STORAGE_DEMO_FF_ACCEL_SHOTS],
+  ['rts-mirrors-enabled', STORAGE_DEMO_MIRRORS_ENABLED],
+  ['rts-force-fields-enabled', STORAGE_DEMO_FORCE_FIELDS_ENABLED],
   ['rts-terrain-center', STORAGE_DEMO_TERRAIN_CENTER],
   ['rts-terrain-dividers', STORAGE_DEMO_TERRAIN_DIVIDERS],
 ];
@@ -183,7 +184,9 @@ export function loadStoredDemoUnits(): string[] | null {
   try {
     const parsed = JSON.parse(stored);
     if (Array.isArray(parsed)) return parsed;
-  } catch { /* malformed JSON */ }
+  } catch {
+    /* malformed JSON */
+  }
   return null;
 }
 
@@ -239,7 +242,10 @@ export function saveStoredGrid(mode: BattleMode, enabled: boolean): void {
 }
 
 export function loadStoredDemoBarsCollapsed(): boolean {
-  return loadBool(STORAGE_DEMO_BARS_COLLAPSED) ?? BATTLE_MODE_DEFAULTS.demo.barsCollapsed;
+  return (
+    loadBool(STORAGE_DEMO_BARS_COLLAPSED) ??
+    BATTLE_MODE_DEFAULTS.demo.barsCollapsed
+  );
 }
 
 export function saveDemoBarsCollapsed(collapsed: boolean): void {
@@ -247,7 +253,10 @@ export function saveDemoBarsCollapsed(collapsed: boolean): void {
 }
 
 export function loadStoredRealBarsCollapsed(): boolean {
-  return loadBool(STORAGE_REAL_BARS_COLLAPSED) ?? BATTLE_MODE_DEFAULTS.real.barsCollapsed;
+  return (
+    loadBool(STORAGE_REAL_BARS_COLLAPSED) ??
+    BATTLE_MODE_DEFAULTS.real.barsCollapsed
+  );
 }
 
 export function saveRealBarsCollapsed(collapsed: boolean): void {
@@ -299,51 +308,11 @@ function loadModeBool(
   return defaultValue;
 }
 
-export function loadStoredProjVelInherit(mode: BattleMode): boolean {
-  return loadModeBool(
-    mode, STORAGE_REAL_PROJ_VEL_INHERIT, STORAGE_DEMO_PROJ_VEL_INHERIT,
-    BATTLE_CONFIG.projVelInherit.default,
-  );
-}
-
-export function saveProjVelInherit(enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_PROJ_VEL_INHERIT : STORAGE_DEMO_PROJ_VEL_INHERIT,
-    String(enabled),
-  );
-}
-
-export function loadStoredFiringForce(mode: BattleMode): boolean {
-  return loadModeBool(
-    mode, STORAGE_REAL_FIRING_FORCE, STORAGE_DEMO_FIRING_FORCE,
-    BATTLE_CONFIG.firingForce.default,
-  );
-}
-
-export function saveFiringForce(enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_FIRING_FORCE : STORAGE_DEMO_FIRING_FORCE,
-    String(enabled),
-  );
-}
-
-export function loadStoredHitForce(mode: BattleMode): boolean {
-  return loadModeBool(
-    mode, STORAGE_REAL_HIT_FORCE, STORAGE_DEMO_HIT_FORCE,
-    BATTLE_CONFIG.hitForce.default,
-  );
-}
-
-export function saveHitForce(enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_HIT_FORCE : STORAGE_DEMO_HIT_FORCE,
-    String(enabled),
-  );
-}
-
 export function loadStoredFfAccelUnits(mode: BattleMode): boolean {
   return loadModeBool(
-    mode, STORAGE_REAL_FF_ACCEL_UNITS, STORAGE_DEMO_FF_ACCEL_UNITS,
+    mode,
+    STORAGE_REAL_FF_ACCEL_UNITS,
+    STORAGE_DEMO_FF_ACCEL_UNITS,
     BATTLE_CONFIG.ffAccelUnits.default,
   );
 }
@@ -357,7 +326,9 @@ export function saveFfAccelUnits(enabled: boolean, mode: BattleMode): void {
 
 export function loadStoredFfAccelShots(mode: BattleMode): boolean {
   return loadModeBool(
-    mode, STORAGE_REAL_FF_ACCEL_SHOTS, STORAGE_DEMO_FF_ACCEL_SHOTS,
+    mode,
+    STORAGE_REAL_FF_ACCEL_SHOTS,
+    STORAGE_DEMO_FF_ACCEL_SHOTS,
     BATTLE_CONFIG.ffAccelShots.default,
   );
 }
@@ -365,6 +336,42 @@ export function loadStoredFfAccelShots(mode: BattleMode): boolean {
 export function saveFfAccelShots(enabled: boolean, mode: BattleMode): void {
   persist(
     mode === 'real' ? STORAGE_REAL_FF_ACCEL_SHOTS : STORAGE_DEMO_FF_ACCEL_SHOTS,
+    String(enabled),
+  );
+}
+
+export function loadStoredMirrorsEnabled(mode: BattleMode): boolean {
+  return loadModeBool(
+    mode,
+    STORAGE_REAL_MIRRORS_ENABLED,
+    STORAGE_DEMO_MIRRORS_ENABLED,
+    BATTLE_CONFIG.mirrorsEnabled.default,
+  );
+}
+
+export function saveMirrorsEnabled(enabled: boolean, mode: BattleMode): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_MIRRORS_ENABLED
+      : STORAGE_DEMO_MIRRORS_ENABLED,
+    String(enabled),
+  );
+}
+
+export function loadStoredForceFieldsEnabled(mode: BattleMode): boolean {
+  return loadModeBool(
+    mode,
+    STORAGE_REAL_FORCE_FIELDS_ENABLED,
+    STORAGE_DEMO_FORCE_FIELDS_ENABLED,
+    BATTLE_CONFIG.forceFieldsEnabled.default,
+  );
+}
+
+export function saveForceFieldsEnabled(enabled: boolean, mode: BattleMode): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_FORCE_FIELDS_ENABLED
+      : STORAGE_DEMO_FORCE_FIELDS_ENABLED,
     String(enabled),
   );
 }
@@ -379,12 +386,18 @@ function parseTerrainShape(s: string | null): TerrainShape | null {
 
 export function loadStoredTerrainCenter(mode: BattleMode): TerrainShape {
   ensureBattleMigrations();
-  const primary = parseTerrainShape(readPersisted(
-    mode === 'real' ? STORAGE_REAL_TERRAIN_CENTER : STORAGE_DEMO_TERRAIN_CENTER,
-  ));
+  const primary = parseTerrainShape(
+    readPersisted(
+      mode === 'real'
+        ? STORAGE_REAL_TERRAIN_CENTER
+        : STORAGE_DEMO_TERRAIN_CENTER,
+    ),
+  );
   if (primary !== null) return primary;
   if (mode === 'real') {
-    const demoFallback = parseTerrainShape(readPersisted(STORAGE_DEMO_TERRAIN_CENTER));
+    const demoFallback = parseTerrainShape(
+      readPersisted(STORAGE_DEMO_TERRAIN_CENTER),
+    );
     if (demoFallback !== null) return demoFallback;
   }
   return BATTLE_CONFIG.center.default;
@@ -399,20 +412,31 @@ export function saveTerrainCenter(shape: TerrainShape, mode: BattleMode): void {
 
 export function loadStoredTerrainDividers(mode: BattleMode): TerrainShape {
   ensureBattleMigrations();
-  const primary = parseTerrainShape(readPersisted(
-    mode === 'real' ? STORAGE_REAL_TERRAIN_DIVIDERS : STORAGE_DEMO_TERRAIN_DIVIDERS,
-  ));
+  const primary = parseTerrainShape(
+    readPersisted(
+      mode === 'real'
+        ? STORAGE_REAL_TERRAIN_DIVIDERS
+        : STORAGE_DEMO_TERRAIN_DIVIDERS,
+    ),
+  );
   if (primary !== null) return primary;
   if (mode === 'real') {
-    const demoFallback = parseTerrainShape(readPersisted(STORAGE_DEMO_TERRAIN_DIVIDERS));
+    const demoFallback = parseTerrainShape(
+      readPersisted(STORAGE_DEMO_TERRAIN_DIVIDERS),
+    );
     if (demoFallback !== null) return demoFallback;
   }
   return BATTLE_CONFIG.dividers.default;
 }
 
-export function saveTerrainDividers(shape: TerrainShape, mode: BattleMode): void {
+export function saveTerrainDividers(
+  shape: TerrainShape,
+  mode: BattleMode,
+): void {
   persist(
-    mode === 'real' ? STORAGE_REAL_TERRAIN_DIVIDERS : STORAGE_DEMO_TERRAIN_DIVIDERS,
+    mode === 'real'
+      ? STORAGE_REAL_TERRAIN_DIVIDERS
+      : STORAGE_DEMO_TERRAIN_DIVIDERS,
     shape,
   );
 }

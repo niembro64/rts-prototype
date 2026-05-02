@@ -3,7 +3,7 @@ import type { Entity, ProjectileShot, Turret, TurretConfig } from '../types';
 import { computeInterceptTime, getBarrelTip, solveBallisticPitch } from '../../math';
 import type { BarrelEndpoint } from '../../math/BarrelGeometry';
 import { GRAVITY } from '../../../config';
-import { computeTurretPointVelocity, getEntityVelocity3 } from './combatUtils';
+import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed } from './combatUtils';
 
 type GroundHeightLookup = (x: number, y: number) => number;
 
@@ -131,7 +131,7 @@ export function solveProjectileTurretAim(
   out: ProjectileTurretAim,
 ): ProjectileTurretAim {
   const shot = weapon.config.shot as ProjectileShot;
-  const launchSpeed = shot.launchForce / shot.mass;
+  const launchSpeed = getProjectileLaunchSpeed(shot);
 
   resolveTargetAimPoint(target, mountX, mountY, mountZ, out.aim);
   let yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
@@ -177,7 +177,7 @@ export function solveProjectileTurretAim(
         horizD, heightD, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
       );
       const horizSpeed = launchSpeed * Math.max(Math.cos(pitch0), 0.1);
-      const tRefined = computeInterceptTime(dxT, dyT, dzT, relVx, relVy, relVz, horizSpeed);
+      const tRefined = computeInterceptTime(dxT, dyT, 0, relVx, relVy, 0, horizSpeed);
       if (tRefined > 0) tIntercept = tRefined;
     }
 
@@ -211,9 +211,11 @@ export function solveProjectileTurretAim(
   const horizDist = Math.hypot(out.aim.x - tip.x, out.aim.y - tip.y);
   const heightDiff = out.aim.z - tip.z;
   out.yaw = yaw;
-  out.pitch = solveBallisticPitch(
-    horizDist, heightDiff, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
-  );
+  out.pitch = shot.ignoresGravity
+    ? Math.atan2(heightDiff, horizDist)
+    : solveBallisticPitch(
+        horizDist, heightDiff, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
+      );
   out.tip = tip;
   return out;
 }

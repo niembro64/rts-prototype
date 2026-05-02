@@ -204,18 +204,17 @@ export class BurnMark3D {
     // existing trail geometry and skip sampling, but keep the per-beam
     // update below (glow + sparks) running.
     const marksEnabled = getBurnMarks();
-    if (!marksEnabled && this.marks.length > 0) {
-      this.clearMarksOnly();
+    if (!marksEnabled) {
+      if (this.marks.length > 0) this.clearMarksOnly();
+      if (this.beams.size > 0) this.beams.clear();
+      this._frameCounter = 0;
+      return;
     }
 
     // Sample at every (framesSkip + 1)th frame.
     const framesSkip = gfx.burnMarkFramesSkip ?? 0;
-    const sampleNow = marksEnabled && this._frameCounter === 0;
-    if (marksEnabled) {
-      this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
-    } else {
-      this._frameCounter = 0;
-    }
+    const sampleNow = this._frameCounter === 0;
+    this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
 
     this._seenBeamKeys.clear();
     for (const e of projectiles) {

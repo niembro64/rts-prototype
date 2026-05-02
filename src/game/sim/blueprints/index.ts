@@ -10,8 +10,45 @@ export * from './units';
 import type { TurretConfig, ShotConfig, ForceFieldZoneConfig, ProjectileShot, BeamShot, LaserShot, ForceShot } from '../types';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
-import type { ShotBlueprint, ForceFieldZoneRatioConfig } from './types';
+import type { ShotBlueprint, ForceFieldZoneRatioConfig, TurretBlueprint } from './types';
 import { BARREL_THICKNESS_MULTIPLIER } from '../../../config';
+
+function assertFiniteRangeMultiplier(
+  turretId: string,
+  path: string,
+  value: number,
+): void {
+  if (!Number.isFinite(value)) {
+    throw new Error(
+      `Invalid turret range multiplier for ${turretId}: ${path} must be finite, got ${value}`,
+    );
+  }
+}
+
+function validateTurretRangeMultipliers(
+  turretId: string,
+  ranges: TurretBlueprint['rangeMultiplierOverrides'],
+): void {
+  const max = ranges.engageRangeMax;
+  const min = ranges.engageRangeMin;
+
+  assertFiniteRangeMultiplier(turretId, 'engageRangeMax.acquire', max.acquire);
+  assertFiniteRangeMultiplier(turretId, 'engageRangeMax.release', max.release);
+  assertFiniteRangeMultiplier(turretId, 'engageRangeMin.acquire', min.acquire);
+  assertFiniteRangeMultiplier(turretId, 'engageRangeMin.release', min.release);
+
+  if (max.release <= max.acquire) {
+    throw new Error(
+      `Invalid turret range multipliers for ${turretId}: engageRangeMax.release (${max.release}) must be greater than engageRangeMax.acquire (${max.acquire})`,
+    );
+  }
+
+  if (min.acquire <= min.release) {
+    throw new Error(
+      `Invalid turret range multipliers for ${turretId}: engageRangeMin.acquire (${min.acquire}) must be greater than engageRangeMin.release (${min.release})`,
+    );
+  }
+}
 
 /** Compute a ForceFieldZoneConfig from ratio-based blueprint data and weapon range */
 function computeZoneConfig(
@@ -19,12 +56,11 @@ function computeZoneConfig(
   range: number,
 ): ForceFieldZoneConfig | null {
   if (!zone) return null;
-  const innerRange = range * zone.innerRatio;
   const outerRange = zone.rimWidth != null
-    ? innerRange + zone.rimWidth
-    : range * (zone.outerRatio ?? zone.innerRatio);
+    ? zone.rimWidth
+    : range * (zone.outerRatio ?? 1);
   return {
-    innerRange,
+    innerRange: 0,
     outerRange,
     color: zone.color,
     alpha: zone.alpha,
@@ -111,6 +147,11 @@ export function getSubmunitionTurretConfig(childShotId: string): TurretConfig {
     range: 0,
     cooldown: 0,
     angular: { turnAccel: 0, drag: 0 },
+    rangeOverrides: {
+      engageRangeMax: { acquire: 0, release: 0 },
+      engageRangeMin: { acquire: 0, release: 0 },
+    },
+    eventsSmooth: false,
     shot,
   };
   _submunitionConfigCache.set(childShotId, config);
@@ -123,6 +164,7 @@ export function getSubmunitionTurretConfig(childShotId: string): TurretConfig {
 export function buildTurretConfig(turretId: string): TurretConfig {
   const wb = TURRET_BLUEPRINTS[turretId];
   if (!wb) throw new Error(`Unknown turret blueprint: ${turretId}`);
+  validateTurretRangeMultipliers(turretId, wb.rangeMultiplierOverrides);
 
   // Determine shot config
   let shot: ShotConfig;
@@ -157,6 +199,7 @@ export function buildTurretConfig(turretId: string): TurretConfig {
     barrel: wb.barrel,
     angular: { turnAccel: wb.turretTurnAccel, drag: wb.turretDrag },
     rangeOverrides: wb.rangeMultiplierOverrides,
+    eventsSmooth: wb.eventsSmooth,
     shot,
     highArc: wb.highArc ?? false,
     verticalLauncher: wb.verticalLauncher ?? false,

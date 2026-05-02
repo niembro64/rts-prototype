@@ -57,6 +57,14 @@ export const MANA_TILE_GROUND_LIFT = -5;
 // so mana-tile LOD and overlay layers do not hide them.
 export const WAYPOINT_GROUND_LIFT = 12;
 
+// Host-server spatial-grid debug snapshots are intentionally throttled
+// separately from normal gameplay snapshots. These overlays are diagnostic
+// data, not simulation state, and recomputing/sending them every snapshot can
+// create visible hitches at high unit counts.
+export const SERVER_GRID_DEBUG_INTERVAL_MS = 250;
+export const SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS = 4096;
+export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = 4096;
+
 // F=============================================================================
 // SNAPSHOT / NETWORKING
 // =============================================================================
@@ -169,11 +177,10 @@ export const KEYFRAME_RATIO_OPTIONS = SERVER_CONFIG.keyframe.options;
 export const DEFAULT_SNAPSHOT_RATE = SERVER_CONFIG.snapshot.default;
 export const SNAPSHOT_RATE_OPTIONS = SERVER_CONFIG.snapshot.options;
 export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
-export const DEFAULT_PROJ_VEL_INHERIT = BATTLE_CONFIG.projVelInherit.default;
-export const DEFAULT_FIRING_FORCE = BATTLE_CONFIG.firingForce.default;
-export const DEFAULT_HIT_FORCE = BATTLE_CONFIG.hitForce.default;
 export const DEFAULT_FF_ACCEL_UNITS = BATTLE_CONFIG.ffAccelUnits.default;
 export const DEFAULT_FF_ACCEL_SHOTS = BATTLE_CONFIG.ffAccelShots.default;
+export const DEFAULT_MIRRORS_ENABLED = BATTLE_CONFIG.mirrorsEnabled.default;
+export const DEFAULT_FORCE_FIELDS_ENABLED = BATTLE_CONFIG.forceFieldsEnabled.default;
 export const BAR_COLORS = BAR_THEMES;
 
 // =============================================================================
@@ -291,7 +298,7 @@ export const BEAM_MAX_LENGTH = 1500;
  *  RTS-scale ballistics rather than real-world 9.8 m/s²; the map is
  *  ~3000 wu wide and shots travel hundreds of units per second, so
  *  heavier gravity would flatten every arc into a short lob. */
-export const GRAVITY = 400;
+export const GRAVITY = 200;
 
 // =============================================================================
 // ECONOMY & RESOURCES
@@ -509,38 +516,8 @@ export const BURN_COLOR_COOL = MAP_BG_COLOR; // fades to background
 export const BURN_COLOR_TAU = 200; // color decay: red → black (ms), fast
 export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slow
 
-/**
- * Two-state hysteresis range multipliers (relative to weapon base range).
- *
- * Each weapon has acquisition + fire envelopes:
- *   - tracking: turret acquires/locks/aims at enemies
- *   - engage: legacy name for the maximum fire range
- *   - fireMin: optional minimum fire range dead zone
- *
- * Max hierarchy (outer to inner):
- *   tracking.release (1.1x) > tracking.acquire (1.0x) > engage.release (0.95x) > engage.acquire (0.9x)
- *
- * Min hierarchy:
- *   fireMin.acquire starts firing once the target is this far away;
- *   fireMin.release keeps an already-firing weapon from flickering off
- *   until the target gets closer than this smaller distance.
- */
-export const TURRET_RANGE_MULTIPLIERS: import('./game/sim/types').TurretRangeMultipliers =
-  {
-    tracking: { acquire: 1.0, release: 1.1 },
-    engage: { acquire: 0.9, release: 0.95 },
-    fireMin: { acquire: 0, release: 0 },
-  };
-export const FORCE_TURRET_RANGE_MULTIPLIERS: import('./game/sim/types').TurretRangeMultipliers =
-  {
-    tracking: { acquire: 1.0, release: 1.1 },
-    engage: { acquire: 1.0, release: 1.05 },
-    fireMin: { acquire: 0, release: 0 },
-  };
-
 export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig =
   {
-    innerRatio: 0.0,
     outerRatio: 0.5,
     color: 0x3366ff,
     alpha: 0.05,

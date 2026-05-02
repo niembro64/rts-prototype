@@ -13,6 +13,7 @@ import type {
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotBeamUpdate,
+  NetworkServerSnapshotBeamReflection,
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
@@ -21,8 +22,9 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkCaptureTile } from '@/types/capture';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
-import { getTurretConfig } from '../sim/turretConfigs';
-import { getTurretMountHeight } from '../sim/combat/combatUtils';
+import { getTurretConfig, TURRET_CONFIGS } from '../sim/turretConfigs';
+import { getEntityVelocity3, getTurretMountHeight } from '../sim/combat/combatUtils';
+import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import { getBarrelTip } from '../math';
 import {
   ENTITY_CHANGED_POS,
@@ -37,6 +39,7 @@ import {
   codeToUnitType,
   codeToBuildingType,
   codeToProjectileType,
+  PROJECTILE_TYPE_PROJECTILE,
   PROJECTILE_TYPE_BEAM,
   PROJECTILE_TYPE_LASER,
 } from '../../types/network';
@@ -45,6 +48,7 @@ import {
   lerp,
   lerpAngle,
   applyHomingSteering,
+  computeInterceptTime,
 } from '../math';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY } from '../../config';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
@@ -70,6 +74,8 @@ type ActiveForceField = {
 };
 const _forceFields: ActiveForceField[] = [];
 let _forceFieldCount = 0;
+const _clientHomingAimPoint = { x: 0, y: 0, z: 0 };
+const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 
 function pushClientForceField(
   weaponX: number,
@@ -135,6 +141,82 @@ function createServerTarget(): ServerTarget {
   return { x: 0, y: 0, z: 0, rotation: 0, velocityX: 0, velocityY: 0, velocityZ: 0, turrets: [] };
 }
 
+type BeamPathTarget = {
+  start: { x: number; y: number; z: number };
+  end: { x: number; y: number; z: number };
+  reflections: NetworkServerSnapshotBeamReflection[];
+  obstructionT?: number;
+};
+
+function createBeamPathTarget(): BeamPathTarget {
+  return {
+    start: { x: 0, y: 0, z: 0 },
+    end: { x: 0, y: 0, z: 0 },
+    reflections: [],
+  };
+}
+
+type QueuedProjectileSpawn = {
+  spawn: NetworkServerSnapshotProjectileSpawn;
+  playAt: number;
+};
+
+function createOwnedProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
+  return {
+    id: 0,
+    pos: { x: 0, y: 0, z: 0 },
+    rotation: 0,
+    velocity: { x: 0, y: 0, z: 0 },
+    projectileType: PROJECTILE_TYPE_PROJECTILE,
+    turretId: '',
+    playerId: 0,
+    sourceEntityId: 0,
+    turretIndex: 0,
+    barrelIndex: 0,
+  };
+}
+
+function copyProjectileSpawnInto(
+  src: NetworkServerSnapshotProjectileSpawn,
+  dst: NetworkServerSnapshotProjectileSpawn,
+): NetworkServerSnapshotProjectileSpawn {
+  dst.id = src.id;
+  dst.pos.x = src.pos.x;
+  dst.pos.y = src.pos.y;
+  dst.pos.z = src.pos.z;
+  dst.rotation = src.rotation;
+  dst.velocity.x = src.velocity.x;
+  dst.velocity.y = src.velocity.y;
+  dst.velocity.z = src.velocity.z;
+  dst.projectileType = src.projectileType;
+  dst.maxLifespan = src.maxLifespan;
+  dst.turretId = src.turretId;
+  dst.playerId = src.playerId;
+  dst.sourceEntityId = src.sourceEntityId;
+  dst.turretIndex = src.turretIndex;
+  dst.barrelIndex = src.barrelIndex;
+  dst.isDGun = src.isDGun;
+  dst.fromParentDetonation = src.fromParentDetonation;
+  dst.targetEntityId = src.targetEntityId;
+  dst.homingTurnRate = src.homingTurnRate;
+  if (src.beam) {
+    const beam = dst.beam ?? {
+      start: { x: 0, y: 0, z: 0 },
+      end: { x: 0, y: 0, z: 0 },
+    };
+    beam.start.x = src.beam.start.x;
+    beam.start.y = src.beam.start.y;
+    beam.start.z = src.beam.start.z;
+    beam.end.x = src.beam.end.x;
+    beam.end.y = src.beam.end.y;
+    beam.end.z = src.beam.end.z;
+    dst.beam = beam;
+  } else {
+    dst.beam = undefined;
+  }
+  return dst;
+}
+
 export type PredictionLodTier = 'rich' | 'simple' | 'mass' | 'impostor' | 'marker';
 
 export type PredictionLodContext = {
@@ -169,19 +251,16 @@ const PREDICTION_CELL_KEY_MAX = PREDICTION_CELL_KEY_BASE - 1;
 function packPredictionLodCellKey(
   ix: number,
   iy: number,
-  iz: number,
 ): PredictionLodCellKey {
   const x = ix + PREDICTION_CELL_KEY_BIAS;
   const y = iy + PREDICTION_CELL_KEY_BIAS;
-  const z = iz + PREDICTION_CELL_KEY_BIAS;
   if (
     x >= 0 && x <= PREDICTION_CELL_KEY_MAX &&
-    y >= 0 && y <= PREDICTION_CELL_KEY_MAX &&
-    z >= 0 && z <= PREDICTION_CELL_KEY_MAX
+    y >= 0 && y <= PREDICTION_CELL_KEY_MAX
   ) {
-    return (x * PREDICTION_CELL_KEY_BASE + y) * PREDICTION_CELL_KEY_BASE + z;
+    return x * PREDICTION_CELL_KEY_BASE + y;
   }
-  return `${ix},${iy},${iz}`;
+  return `${ix},${iy}`;
 }
 
 type PredictionStep = {
@@ -198,15 +277,37 @@ function angleDeltaAbs(a: number, b: number): number {
   return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 }
 
+function captureHeightsEmpty(heights: NetworkCaptureTile['heights']): boolean {
+  for (const _key in heights) return false;
+  return true;
+}
+
+function isLineProjectileEntity(entity: Entity): boolean {
+  return entity.projectile?.projectileType === 'beam' ||
+    entity.projectile?.projectileType === 'laser';
+}
+
+function isLineProjectileCode(projectileType: number): boolean {
+  return projectileType === PROJECTILE_TYPE_BEAM ||
+    projectileType === PROJECTILE_TYPE_LASER;
+}
+
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
   private entities: Map<EntityId, Entity> = new Map();
 
   // Server target state — owned copies of drift-relevant fields per entity
   private serverTargets: Map<EntityId, ServerTarget> = new Map();
+  private beamPathTargets: Map<EntityId, BeamPathTarget> = new Map();
+  private activeBeamPathIds: Set<EntityId> = new Set();
+  private projectileSpawnQueue: QueuedProjectileSpawn[] = [];
+  private projectileSpawnQueuePool: QueuedProjectileSpawn[] = [];
+  private projectileSpawnSnapshotTime = 0;
+  private projectileSpawnSnapshotInterval = 100;
 
   // Current spray targets for rendering
   private sprayTargets: SprayTarget[] = [];
+  private sprayTargetPool: SprayTarget[] = [];
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
@@ -233,6 +334,7 @@ export class ClientViewState {
   private captureTilesCache: NetworkCaptureTile[] = [];
   private captureDirtyTileMap: Map<number, NetworkCaptureTile> = new Map();
   private captureDirtyTilesScratch: NetworkCaptureTile[] = [];
+  private captureTilePool: NetworkCaptureTile[] = [];
   private captureFullDirty: boolean = true;
   private captureTilesDirty: boolean = true;
   private captureVersion: number = 0;
@@ -243,10 +345,13 @@ export class ClientViewState {
 
   // Server metadata from latest snapshot
   private serverMeta: NetworkServerSnapshotMeta | null = null;
+  private forceFieldsEnabledForPrediction = true;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
   private entitySetVersion = 0;
+  private lineProjectileRenderVersion = 0;
+  private projectileCacheDirty = false;
 
   // Frame counter for beam path throttling (recompute every N frames instead of every frame)
   private frameCounter: number = 0;
@@ -297,38 +402,175 @@ export class ClientViewState {
   getMapHeight(): number { return this.mapHeight; }
 
   private invalidateCaches(): void {
+    this.projectileCacheDirty = false;
     this.cache.invalidate();
   }
 
-  private markEntitySetChanged(): void {
+  private invalidateProjectileCaches(): void {
+    this.projectileCacheDirty = true;
+  }
+
+  private markEntitySetChanged(invalidateCaches = true): void {
     this.entitySetVersion++;
-    this.invalidateCaches();
+    if (invalidateCaches) this.invalidateCaches();
+    else this.invalidateProjectileCaches();
   }
 
   private deleteEntityLocalState(id: EntityId): void {
+    const existing = this.entities.get(id);
+    const wasLineProjectile = existing ? isLineProjectileEntity(existing) : false;
     const existed = this.entities.delete(id);
     this.serverTargets.delete(id);
+    this.beamPathTargets.delete(id);
+    this.removeQueuedProjectileSpawn(id);
     this.selectedIds.delete(id);
     this.predictionAccumMs.delete(id);
     this.targetPredictionAccumMs.delete(id);
     this.activeUnitPredictionIds.delete(id);
     this.activeProjectilePredictionIds.delete(id);
+    this.activeBeamPathIds.delete(id);
     this.dirtyUnitRenderIds.delete(id);
-    if (existed) this.markEntitySetChanged();
+    if (existed) {
+      if (wasLineProjectile) this.markLineProjectilesChanged();
+      this.markEntitySetChanged(existing?.type !== 'shot');
+    }
+  }
+
+  private markLineProjectilesChanged(): void {
+    this.lineProjectileRenderVersion = (this.lineProjectileRenderVersion + 1) & 0x3fffffff;
+  }
+
+  private acquireQueuedProjectileSpawn(): QueuedProjectileSpawn {
+    const queued = this.projectileSpawnQueuePool.pop();
+    if (queued) {
+      queued.playAt = 0;
+      return queued;
+    }
+    return {
+      spawn: createOwnedProjectileSpawn(),
+      playAt: 0,
+    };
+  }
+
+  private releaseQueuedProjectileSpawn(queued: QueuedProjectileSpawn): void {
+    queued.spawn.beam = undefined;
+    queued.spawn.maxLifespan = undefined;
+    queued.spawn.isDGun = undefined;
+    queued.spawn.fromParentDetonation = undefined;
+    queued.spawn.targetEntityId = undefined;
+    queued.spawn.homingTurnRate = undefined;
+    queued.playAt = 0;
+    this.projectileSpawnQueuePool.push(queued);
+  }
+
+  private removeQueuedProjectileSpawn(id: EntityId): void {
+    const q = this.projectileSpawnQueue;
+    for (let i = q.length - 1; i >= 0; i--) {
+      if (q[i].spawn.id !== id) continue;
+      const queued = q[i];
+      q[i] = q[q.length - 1];
+      q.length--;
+      this.releaseQueuedProjectileSpawn(queued);
+      return;
+    }
+  }
+
+  private recordProjectileSpawnSnapshot(now: number): void {
+    if (this.projectileSpawnSnapshotTime > 0) {
+      const dt = now - this.projectileSpawnSnapshotTime;
+      if (dt > 0) {
+        this.projectileSpawnSnapshotInterval =
+          0.8 * this.projectileSpawnSnapshotInterval + 0.2 * dt;
+      }
+    }
+    this.projectileSpawnSnapshotTime = now;
+  }
+
+  private shouldSmoothProjectileSpawn(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
+    return spawn.projectileType === PROJECTILE_TYPE_PROJECTILE &&
+      !spawn.fromParentDetonation &&
+      !!TURRET_CONFIGS[spawn.turretId]?.eventsSmooth;
+  }
+
+  private queueProjectileSpawn(spawn: NetworkServerSnapshotProjectileSpawn, now: number): void {
+    this.removeQueuedProjectileSpawn(spawn.id);
+    const queued = this.acquireQueuedProjectileSpawn();
+    copyProjectileSpawnInto(spawn, queued.spawn);
+    queued.playAt = now + Math.random() * this.projectileSpawnSnapshotInterval;
+    this.projectileSpawnQueue.push(queued);
+  }
+
+  private applyProjectileSpawn(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
+    if (this.entities.has(spawn.id)) return false;
+    try {
+      const entity = this.createProjectileFromSpawn(spawn);
+      this.markEntitySetChanged(false);
+      this.entities.set(spawn.id, entity);
+      if (isLineProjectileCode(spawn.projectileType)) {
+        this.activeBeamPathIds.add(spawn.id);
+        this.markLineProjectilesChanged();
+      } else {
+        this.activeProjectilePredictionIds.add(spawn.id);
+      }
+      return true;
+    } catch {
+      // Skip projectiles with unknown weapon configs (e.g. corrupted by serialization)
+      return false;
+    }
+  }
+
+  private drainQueuedProjectileSpawns(now: number): boolean {
+    const q = this.projectileSpawnQueue;
+    let changed = false;
+    for (let i = q.length - 1; i >= 0; i--) {
+      const queued = q[i];
+      if (now < queued.playAt) continue;
+      if (this.applyProjectileSpawn(queued.spawn)) changed = true;
+      q[i] = q[q.length - 1];
+      q.length--;
+      this.releaseQueuedProjectileSpawn(queued);
+    }
+    return changed;
+  }
+
+  private acquireSprayTarget(): SprayTarget {
+    let target = this.sprayTargetPool.pop();
+    if (!target) {
+      target = {
+        source: { id: 0, pos: { x: 0, y: 0 }, z: 0, playerId: 1 as PlayerId },
+        target: { id: 0, pos: { x: 0, y: 0 }, z: 0 },
+        type: 'build',
+        intensity: 0,
+      };
+    }
+    return target;
+  }
+
+  private releaseSprayTargets(): void {
+    for (let i = 0; i < this.sprayTargets.length; i++) {
+      this.sprayTargetPool.push(this.sprayTargets[i]);
+    }
+    this.sprayTargets.length = 0;
   }
 
   private markEntityPredictionActive(entity: Entity): void {
     if (entity.unit) {
       this.activeUnitPredictionIds.add(entity.id);
       this.dirtyUnitRenderIds.add(entity.id);
-    } else if (entity.projectile) {
+    } else if (entity.projectile && !isLineProjectileEntity(entity)) {
       this.activeProjectilePredictionIds.add(entity.id);
     }
   }
 
-  private markNetworkUnitPredictionActive(server: NetworkServerSnapshotEntity): void {
+  private markNetworkUnitPredictionActive(
+    server: NetworkServerSnapshotEntity,
+    entity?: Entity,
+  ): void {
     if (server.type !== 'unit') return;
     const cf = server.changedFields;
+    if (cf == null && entity && this.unitPredictionIsSettled(entity, this.serverTargets.get(server.id))) {
+      return;
+    }
     if (
       cf == null ||
       (cf & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0 ||
@@ -344,19 +586,63 @@ export class ClientViewState {
     server: NetworkServerSnapshotEntity,
   ): boolean {
     const cf = server.changedFields;
-    if (cf == null) return true;
-    if (entity.unit && (cf & ENTITY_CHANGED_HP)) return true;
+    if (entity.unit && (cf == null || (cf & ENTITY_CHANGED_HP))) {
+      return this.unitHealthBarCacheMembership(entity) !==
+        this.networkUnitHealthBarCacheMembership(entity, server);
+    }
     if (
       entity.building &&
-      (cf & (ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING))
+      (cf == null || (cf & (ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING)))
     ) {
-      return true;
+      return this.buildingHealthBarCacheMembership(entity) !==
+        this.networkBuildingHealthBarCacheMembership(entity, server);
     }
     return false;
   }
 
-  private rebuildCachesIfNeeded(): void {
-    this.cache.rebuildIfNeeded(this.entities);
+  private unitHealthBarCacheMembership(entity: Entity): boolean {
+    const unit = entity.unit;
+    return !!unit && unit.hp > 0 && unit.hp < unit.maxHp;
+  }
+
+  private networkUnitHealthBarCacheMembership(
+    entity: Entity,
+    server: NetworkServerSnapshotEntity,
+  ): boolean {
+    const hp = server.unit?.hp;
+    if (!hp) return this.unitHealthBarCacheMembership(entity);
+    return hp.curr > 0 && hp.curr < hp.max;
+  }
+
+  private buildingHealthBarCacheMembership(entity: Entity): boolean {
+    const building = entity.building;
+    if (!building || building.hp <= 0) return false;
+    return building.hp < building.maxHp ||
+      !!(entity.buildable && !entity.buildable.isComplete);
+  }
+
+  private networkBuildingHealthBarCacheMembership(
+    entity: Entity,
+    server: NetworkServerSnapshotEntity,
+  ): boolean {
+    const building = entity.building;
+    const hp = server.building?.hp;
+    const build = server.building?.build;
+    const curr = hp?.curr ?? building?.hp ?? 0;
+    const max = hp?.max ?? building?.maxHp ?? 0;
+    if (curr <= 0) return false;
+    const complete = build?.complete ?? entity.buildable?.isComplete ?? true;
+    return curr < max || !!(entity.buildable && !complete);
+  }
+
+  private rebuildCachesIfNeeded(includeProjectileChanges = false): void {
+    if (includeProjectileChanges && this.projectileCacheDirty) {
+      this.projectileCacheDirty = false;
+      this.cache.invalidate();
+    }
+    if (this.cache.rebuildIfNeeded(this.entities)) {
+      this.projectileCacheDirty = false;
+    }
   }
 
   /**
@@ -366,6 +652,9 @@ export class ClientViewState {
   applyNetworkState(state: NetworkServerSnapshot): void {
     this.currentTick = state.tick;
     let cacheNeedsInvalidate = false;
+    const now = performance.now();
+    this.recordProjectileSpawnSnapshot(now);
+    this.drainQueuedProjectileSpawns(now);
 
     // Process entity updates (present in both delta and keyframe snapshots)
     for (const netEntity of state.entities) {
@@ -465,7 +754,7 @@ export class ClientViewState {
           cacheNeedsInvalidate = true;
         }
         this.snapNonVisualState(existing, netEntity);
-        this.markNetworkUnitPredictionActive(netEntity);
+        this.markNetworkUnitPredictionActive(netEntity, existing);
       }
     }
 
@@ -493,15 +782,11 @@ export class ClientViewState {
     // Process projectile spawn events
     if (state.projectiles?.spawns) {
       for (const spawn of state.projectiles.spawns) {
-        try {
-          const entity = this.createProjectileFromSpawn(spawn);
-          this.entitySetVersion++;
-          cacheNeedsInvalidate = true;
-          this.entities.set(spawn.id, entity);
-          this.activeProjectilePredictionIds.add(spawn.id);
-        } catch {
-          // Skip projectiles with unknown weapon configs (e.g. corrupted by serialization)
+        if (this.shouldSmoothProjectileSpawn(spawn)) {
+          this.queueProjectileSpawn(spawn, now);
+          continue;
         }
+        this.applyProjectileSpawn(spawn);
       }
     }
 
@@ -539,45 +824,48 @@ export class ClientViewState {
           target.velocityZ = vu.velocity.z;
           target.velocityY = vu.velocity.y;
           this.targetPredictionAccumMs.delete(vu.id);
-          this.activeProjectilePredictionIds.add(vu.id);
+          if (isLineProjectileEntity(entity)) this.activeBeamPathIds.add(vu.id);
+          else this.activeProjectilePredictionIds.add(vu.id);
         }
       }
     }
 
     if (cacheNeedsInvalidate) this.invalidateCaches();
 
-    // Update economy state (immediate)
-    for (const [playerIdStr, eco] of Object.entries(state.economy)) {
-      const playerId = parseInt(playerIdStr) as PlayerId;
-      economyManager.setEconomyState(playerId, eco);
+    // Update economy state (immediate). Avoid Object.entries here:
+    // snapshots arrive frequently and this path should not allocate an
+    // intermediate [key,value][] array just to walk up to six players.
+    for (const playerIdStr in state.economy) {
+      economyManager.setEconomyState(
+        Number(playerIdStr) as PlayerId,
+        state.economy[Number(playerIdStr) as PlayerId],
+      );
     }
 
-    // Store spray targets for rendering (reuse array, overwrite in place)
+    // Store spray targets for rendering. Reuse nested objects instead
+    // of retaining pooled snapshot references or allocating a fresh
+    // object tree on every construction snapshot.
+    this.releaseSprayTargets();
     if (state.sprayTargets && state.sprayTargets.length > 0) {
       const src = state.sprayTargets;
-      this.sprayTargets.length = src.length;
       for (let i = 0; i < src.length; i++) {
         const st = src[i];
-        this.sprayTargets[i] = {
-          source: {
-            id: st.source.id,
-            pos: st.source.pos,
-            z: st.source.z,
-            playerId: st.source.playerId,
-          },
-          target: {
-            id: st.target.id,
-            pos: st.target.pos,
-            z: st.target.z,
-            dim: st.target.dim,
-            radius: st.target.radius,
-          },
-          type: st.type,
-          intensity: st.intensity,
-        };
+        const target = this.acquireSprayTarget();
+        target.source.id = st.source.id;
+        target.source.pos.x = st.source.pos.x;
+        target.source.pos.y = st.source.pos.y;
+        target.source.z = st.source.z;
+        target.source.playerId = st.source.playerId;
+        target.target.id = st.target.id;
+        target.target.pos.x = st.target.pos.x;
+        target.target.pos.y = st.target.pos.y;
+        target.target.z = st.target.z;
+        target.target.dim = st.target.dim;
+        target.target.radius = st.target.radius;
+        target.type = st.type;
+        target.intensity = st.intensity;
+        this.sprayTargets.push(target);
       }
-    } else {
-      this.sprayTargets.length = 0;
     }
 
     // Store audio events for processing (reuse constant for empty case)
@@ -591,38 +879,60 @@ export class ClientViewState {
       this.gameOverWinnerId = state.gameState.winnerId;
     }
 
-    // Store spatial grid debug data
-    this.gridCells = state.grid?.cells ?? [];
-    this.gridSearchCells = state.grid?.searchCells ?? [];
-    this.gridCellSize = state.grid?.cellSize ?? 0;
+    // Store spatial grid debug data. The server sends this diagnostic
+    // payload on a slower cadence than normal snapshots; keep the last
+    // received grid payload until a new one arrives. When the server
+    // toggle is off, serverMeta.grid clears the client copy.
+    if (state.grid) {
+      this.gridCells = state.grid.cells;
+      this.gridSearchCells = state.grid.searchCells;
+      this.gridCellSize = state.grid.cellSize;
+    } else if (state.serverMeta?.grid === false) {
+      this.gridCells = [];
+      this.gridSearchCells = [];
+      this.gridCellSize = 0;
+    }
 
     // Merge capture tile data (delta-aware)
     if (state.capture) {
       this.captureCellSize = state.capture.cellSize;
       if (!state.isDelta) {
         // Keyframe: replace all
-        this.captureTileMap.clear();
-        this.captureDirtyTileMap.clear();
+        this.clearCaptureTileMaps();
         this.captureFullDirty = true;
       }
       for (const tile of state.capture.tiles) {
         const key = ((tile.cx + 32768) & 0xFFFF) << 16 | ((tile.cy + 32768) & 0xFFFF);
-        if (Object.keys(tile.heights).length === 0) {
-          this.captureTileMap.delete(key);
-          this.captureDirtyTileMap.set(key, { cx: tile.cx, cy: tile.cy, heights: {} });
+        if (captureHeightsEmpty(tile.heights)) {
+          const removed = this.captureTileMap.get(key);
+          const previousDirty = this.captureDirtyTileMap.get(key);
+          if (removed) {
+            this.captureTileMap.delete(key);
+            this.releaseCaptureTile(removed);
+          }
+          if (!this.captureFullDirty) {
+            const dirty = this.acquireCaptureTile(tile.cx, tile.cy, undefined);
+            if (previousDirty && previousDirty !== removed) this.releaseCaptureTile(previousDirty);
+            this.captureDirtyTileMap.set(key, dirty);
+          }
         } else {
           // Copy heights — tile objects may be pooled/reused by the server
-          const copy = { cx: tile.cx, cy: tile.cy, heights: { ...tile.heights } };
+          const copy = this.acquireCaptureTile(tile.cx, tile.cy, tile.heights);
+          const previous = this.captureTileMap.get(key);
+          const previousDirty = this.captureDirtyTileMap.get(key);
+          if (previous) this.releaseCaptureTile(previous);
           this.captureTileMap.set(key, copy);
-          if (!this.captureFullDirty) this.captureDirtyTileMap.set(key, copy);
+          if (!this.captureFullDirty) {
+            if (previousDirty && previousDirty !== previous) this.releaseCaptureTile(previousDirty);
+            this.captureDirtyTileMap.set(key, copy);
+          }
         }
       }
       this.captureTilesDirty = true;
       this.captureVersion++;
     } else if (!state.isDelta) {
       // Keyframe with no capture data: clear
-      this.captureTileMap.clear();
-      this.captureDirtyTileMap.clear();
+      this.clearCaptureTileMaps();
       this.captureFullDirty = true;
       this.captureTilesDirty = true;
       this.captureVersion++;
@@ -792,27 +1102,22 @@ export class ClientViewState {
     const proj = entity?.projectile;
     if (!entity || !proj) return;
 
-    proj.startX = update.start.x;
-    proj.startY = update.start.y;
-    proj.startZ = update.start.z;
-    proj.endX = update.end.x;
-    proj.endY = update.end.y;
-    proj.endZ = update.end.z;
-    proj.obstructionT = update.obstructionT;
-
-    entity.transform.x = update.start.x;
-    entity.transform.y = update.start.y;
-    entity.transform.z = update.start.z;
-
-    const firstSegmentEnd = update.reflections?.[0] ?? update.end;
-    entity.transform.rotation = Math.atan2(
-      firstSegmentEnd.y - update.start.y,
-      firstSegmentEnd.x - update.start.x,
-    );
+    let target = this.beamPathTargets.get(update.id);
+    if (!target) {
+      target = createBeamPathTarget();
+      this.beamPathTargets.set(update.id, target);
+    }
+    target.start.x = update.start.x;
+    target.start.y = update.start.y;
+    target.start.z = update.start.z;
+    target.end.x = update.end.x;
+    target.end.y = update.end.y;
+    target.end.z = update.end.z;
+    target.obstructionT = update.obstructionT;
 
     const reflections = update.reflections;
     if (reflections && reflections.length > 0) {
-      const dst = proj.reflections ?? [];
+      const dst = target.reflections;
       dst.length = reflections.length;
       for (let i = 0; i < reflections.length; i++) {
         const src = reflections[i];
@@ -823,14 +1128,143 @@ export class ClientViewState {
         item.mirrorEntityId = src.mirrorEntityId;
         dst[i] = item;
       }
-      proj.reflections = dst;
+    } else {
+      target.reflections.length = 0;
+    }
+
+    if (proj.startX === undefined || proj.startY === undefined || proj.endX === undefined || proj.endY === undefined) {
+      proj.startX = update.start.x;
+      proj.startY = update.start.y;
+      proj.startZ = update.start.z;
+      proj.endX = update.end.x;
+      proj.endY = update.end.y;
+      proj.endZ = update.end.z;
+      entity.transform.x = update.start.x;
+      entity.transform.y = update.start.y;
+      entity.transform.z = update.start.z;
+    }
+    if (reflections && reflections.length > 0) {
+      const current = proj.reflections ?? [];
+      current.length = reflections.length;
+      for (let i = 0; i < reflections.length; i++) {
+        const src = reflections[i];
+        let item = current[i];
+        if (!item) {
+          item = { x: src.x, y: src.y, z: src.z, mirrorEntityId: src.mirrorEntityId };
+          current[i] = item;
+        }
+      }
+      proj.reflections = current;
     } else {
       proj.reflections = undefined;
     }
-
+    proj.obstructionT = update.obstructionT;
+    this.activeBeamPathIds.add(update.id);
     this.predictionAccumMs.delete(update.id);
     this.targetPredictionAccumMs.delete(update.id);
-    this.activeProjectilePredictionIds.add(update.id);
+    this.markLineProjectilesChanged();
+  }
+
+  private applyBeamPathPrediction(
+    entity: Entity,
+    target: BeamPathTarget,
+    deltaMs: number,
+    preset: DriftPreset,
+  ): boolean {
+    const proj = entity.projectile;
+    if (!proj) return false;
+
+    const blend = halfLifeBlend(deltaMs / 1000, preset.movement.pos);
+    let changed = false;
+
+    const startX = proj.startX ?? target.start.x;
+    const startY = proj.startY ?? target.start.y;
+    const startZ = proj.startZ ?? target.start.z;
+    const endX = proj.endX ?? target.end.x;
+    const endY = proj.endY ?? target.end.y;
+    const endZ = proj.endZ ?? target.end.z;
+
+    const nextStartX = lerp(startX, target.start.x, blend);
+    const nextStartY = lerp(startY, target.start.y, blend);
+    const nextStartZ = lerp(startZ, target.start.z, blend);
+    const nextEndX = lerp(endX, target.end.x, blend);
+    const nextEndY = lerp(endY, target.end.y, blend);
+    const nextEndZ = lerp(endZ, target.end.z, blend);
+
+    if (
+      Math.abs(nextStartX - startX) > 1e-4 ||
+      Math.abs(nextStartY - startY) > 1e-4 ||
+      Math.abs(nextStartZ - startZ) > 1e-4 ||
+      Math.abs(nextEndX - endX) > 1e-4 ||
+      Math.abs(nextEndY - endY) > 1e-4 ||
+      Math.abs(nextEndZ - endZ) > 1e-4
+    ) {
+      changed = true;
+    }
+
+    proj.startX = nextStartX;
+    proj.startY = nextStartY;
+    proj.startZ = nextStartZ;
+    proj.endX = nextEndX;
+    proj.endY = nextEndY;
+    proj.endZ = nextEndZ;
+    proj.obstructionT = target.obstructionT;
+
+    const targetRefs = target.reflections;
+    if (targetRefs.length > 0) {
+      const refs = proj.reflections ?? [];
+      if (refs.length !== targetRefs.length) changed = true;
+      refs.length = targetRefs.length;
+      for (let i = 0; i < targetRefs.length; i++) {
+        const tr = targetRefs[i];
+        let r = refs[i];
+        if (!r) {
+          r = { x: tr.x, y: tr.y, z: tr.z, mirrorEntityId: tr.mirrorEntityId };
+          refs[i] = r;
+          continue;
+        }
+        const rx = r.x;
+        const ry = r.y;
+        const rz = r.z;
+        const nextX = lerp(rx, tr.x, blend);
+        const nextY = lerp(ry, tr.y, blend);
+        const nextZ = lerp(rz, tr.z, blend);
+        if (
+          Math.abs(nextX - rx) > 1e-4 ||
+          Math.abs(nextY - ry) > 1e-4 ||
+          Math.abs(nextZ - rz) > 1e-4 ||
+          r.mirrorEntityId !== tr.mirrorEntityId
+        ) {
+          changed = true;
+        }
+        r.x = nextX;
+        r.y = nextY;
+        r.z = nextZ;
+        r.mirrorEntityId = tr.mirrorEntityId;
+      }
+      proj.reflections = refs;
+    } else if (proj.reflections && proj.reflections.length > 0) {
+      proj.reflections = undefined;
+      changed = true;
+    }
+
+    const firstRef = proj.reflections?.[0];
+    const firstEndX = firstRef?.x ?? proj.endX ?? target.end.x;
+    const firstEndY = firstRef?.y ?? proj.endY ?? target.end.y;
+    const nextRotation = Math.atan2(firstEndY - nextStartY, firstEndX - nextStartX);
+    if (
+      Math.abs(entity.transform.x - nextStartX) > 1e-4 ||
+      Math.abs(entity.transform.y - nextStartY) > 1e-4 ||
+      Math.abs(entity.transform.z - nextStartZ) > 1e-4 ||
+      angleDeltaAbs(entity.transform.rotation, nextRotation) > 1e-4
+    ) {
+      changed = true;
+    }
+    entity.transform.x = nextStartX;
+    entity.transform.y = nextStartY;
+    entity.transform.z = nextStartZ;
+    entity.transform.rotation = nextRotation;
+    return changed;
   }
 
   private resolvePredictionLodTier(
@@ -840,22 +1274,20 @@ export class ClientViewState {
     if (!lod) return 'rich';
 
     const size = normalizeLodCellSize(lod.cellSize);
-    // Sim coordinates are x/y on the ground plane and z for height.
-    // Three.js uses x/z for the ground plane and y for height, so
-    // classify the same 3D cell that the renderer uses.
+    // LOD grouping is intentionally 2D: sim x/y on the ground plane.
+    // Altitude still affects the camera-sphere distance through the
+    // camera's height above the ground plane, but not cell identity.
     const ix = lodCellIndex(entity.transform.x, size);
-    const iy = lodCellIndex(entity.transform.z, size);
-    const iz = lodCellIndex(entity.transform.y, size);
-    const key = packPredictionLodCellKey(ix, iy, iz);
+    const iy = lodCellIndex(entity.transform.y, size);
+    const key = packPredictionLodCellKey(ix, iy);
     const cached = this.predictionLodCells.get(key);
     if (cached?.frameId === this.frameCounter) return cached.tier;
 
     const cellX = lodCellCenter(ix, size);
     const cellY = lodCellCenter(iy, size);
-    const cellZ = lodCellCenter(iz, size);
     const dx = cellX - lod.cameraX;
-    const dy = cellY - lod.cameraY;
-    const dz = cellZ - lod.cameraZ;
+    const dy = -lod.cameraY;
+    const dz = cellY - lod.cameraZ;
     const tier = this.resolvePredictionLodTierForDistanceSq(
       dx * dx + dy * dy + dz * dz,
     );
@@ -1021,6 +1453,13 @@ export class ClientViewState {
       }
 
       if (weapon.config.shot.type !== 'force') continue;
+      if (!this.forceFieldsEnabledForPrediction) {
+        if (weapon.forceField) {
+          weapon.forceField.range = 0;
+          weapon.forceField.transition = 0;
+        }
+        continue;
+      }
       const fieldShot = weapon.config.shot;
       const cur = weapon.forceField?.range ?? 0;
       const targetProgress = weapon.state === 'engaged' ? 1 : 0;
@@ -1093,12 +1532,14 @@ export class ClientViewState {
         if (Math.abs(tw.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
         if (angleDeltaAbs(weapon.rotation, tw.rotation) > PREDICTION_TURRET_EPSILON) return false;
         if (angleDeltaAbs(weapon.pitch, tw.pitch) > PREDICTION_TURRET_EPSILON) return false;
-        const localRange = weapon.forceField?.range ?? 0;
-        const targetRange = tw.forceFieldRange ?? 0;
-        if (Math.abs(localRange - targetRange) > PREDICTION_TURRET_EPSILON) return false;
+        if (this.forceFieldsEnabledForPrediction) {
+          const localRange = weapon.forceField?.range ?? 0;
+          const targetRange = tw.forceFieldRange ?? 0;
+          if (Math.abs(localRange - targetRange) > PREDICTION_TURRET_EPSILON) return false;
+        }
       }
 
-      if (weapon.config.shot.type === 'force') {
+      if (this.forceFieldsEnabledForPrediction && weapon.config.shot.type === 'force') {
         if ((weapon.forceField?.range ?? 0) > PREDICTION_TURRET_EPSILON) return false;
         if (weapon.state === 'engaged') return false;
       }
@@ -1122,6 +1563,7 @@ export class ClientViewState {
 
     // Frame-rate independent blend factors (driven by drift mode half-lives)
     const preset = getDriftPreset(getDriftMode());
+    this.drainQueuedProjectileSpawns(performance.now());
     if (lod) {
       const rich = Math.max(0, lod.richDistance);
       const simple = Math.max(0, lod.simpleDistance);
@@ -1141,6 +1583,33 @@ export class ClientViewState {
     // Collect active force fields for client-side projectile prediction.
     // The backing objects stay pooled at the session high-water mark.
     _forceFieldCount = 0;
+    this.forceFieldsEnabledForPrediction = this.serverMeta?.forceFieldsEnabled ?? true;
+
+    let beamPathsChanged = false;
+    for (const id of this.activeBeamPathIds) {
+      const entity = this.entities.get(id);
+      if (!entity?.projectile || !isLineProjectileEntity(entity)) {
+        this.activeBeamPathIds.delete(id);
+        this.beamPathTargets.delete(id);
+        continue;
+      }
+
+      entity.projectile.timeAlive += deltaMs;
+      if (
+        Number.isFinite(entity.projectile.maxLifespan) &&
+        entity.projectile.timeAlive > entity.projectile.maxLifespan + 1000
+      ) {
+        this.deleteEntityLocalState(entity.id);
+        beamPathsChanged = true;
+        continue;
+      }
+
+      const beamTarget = this.beamPathTargets.get(id);
+      if (beamTarget && this.applyBeamPathPrediction(entity, beamTarget, deltaMs, preset)) {
+        beamPathsChanged = true;
+      }
+    }
+    if (beamPathsChanged) this.markLineProjectilesChanged();
 
     // Buildings are intentionally absent here. They are static actor
     // graphs and their network transform is snapped when snapshots are
@@ -1191,17 +1660,8 @@ export class ClientViewState {
         entity.projectile.projectileType === 'beam' ||
         entity.projectile.projectileType === 'laser'
       ) {
-        // Beam/laser geometry is server-authored in snapshot
-        // beamUpdates. The client only retains the latest path for
-        // rendering and local timeout cleanup; it no longer re-traces
-        // mirror/unit/building intersections in the render frame.
-        entity.projectile.timeAlive += entityDeltaMs;
-        if (
-          Number.isFinite(entity.projectile.maxLifespan) &&
-          entity.projectile.timeAlive > entity.projectile.maxLifespan + 1000
-        ) {
-          this.deleteEntityLocalState(entity.id);
-        }
+        this.activeBeamPathIds.add(id);
+        this.activeProjectilePredictionIds.delete(id);
       } else {
         // Homing steering — 3D velocity rotation toward the target,
         // identical math to the server's projectileSystem call so
@@ -1231,9 +1691,41 @@ export class ClientViewState {
             }
           }
           if (targetValid && homingTarget) {
+            const aimPoint = resolveTargetAimPoint(
+              homingTarget,
+              entity.transform.x, entity.transform.y, entity.transform.z,
+              _clientHomingAimPoint,
+            );
+            let steerX = aimPoint.x;
+            let steerY = aimPoint.y;
+            let steerZ = aimPoint.z;
+            const targetVelocity = getEntityVelocity3(homingTarget, _clientHomingTargetVelocity);
+            const targetSpeedSq =
+              targetVelocity.x * targetVelocity.x +
+              targetVelocity.y * targetVelocity.y +
+              targetVelocity.z * targetVelocity.z;
+            const projectileSpeed = Math.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
+            if (targetSpeedSq > 1e-6 && projectileSpeed > 1e-6) {
+              const tLead = computeInterceptTime(
+                steerX - entity.transform.x,
+                steerY - entity.transform.y,
+                steerZ - entity.transform.z,
+                targetVelocity.x, targetVelocity.y, targetVelocity.z,
+                projectileSpeed,
+              );
+              if (tLead > 0) {
+                const remainingSec = Number.isFinite(proj.maxLifespan)
+                  ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
+                  : tLead;
+                const leadT = remainingSec > 0 ? Math.min(tLead, remainingSec) : tLead;
+                steerX += targetVelocity.x * leadT;
+                steerY += targetVelocity.y * leadT;
+                steerZ += targetVelocity.z * leadT;
+              }
+            }
             const steered = applyHomingSteering(
               proj.velocityX, proj.velocityY, proj.velocityZ,
-              homingTarget.transform.x, homingTarget.transform.y, homingTarget.transform.z,
+              steerX, steerY, steerZ,
               entity.transform.x, entity.transform.y, entity.transform.z,
               proj.homingTurnRate ?? 0, dt,
             );
@@ -1510,7 +2002,7 @@ export class ClientViewState {
   }
 
   getAllEntities(): Entity[] {
-    this.rebuildCachesIfNeeded();
+    this.rebuildCachesIfNeeded(true);
     return this.cache.getAll();
   }
 
@@ -1550,18 +2042,57 @@ export class ClientViewState {
   }
 
   getProjectiles(): Entity[] {
-    this.rebuildCachesIfNeeded();
+    this.rebuildCachesIfNeeded(true);
     return this.cache.getProjectiles();
   }
 
   getTravelingProjectiles(): Entity[] {
-    this.rebuildCachesIfNeeded();
+    this.rebuildCachesIfNeeded(true);
     return this.cache.getTravelingProjectiles();
   }
 
+  getSmokeTrailProjectiles(): Entity[] {
+    this.rebuildCachesIfNeeded(true);
+    return this.cache.getSmokeTrailProjectiles();
+  }
+
   getLineProjectiles(): Entity[] {
-    this.rebuildCachesIfNeeded();
+    this.rebuildCachesIfNeeded(true);
     return this.cache.getLineProjectiles();
+  }
+
+  collectTravelingProjectiles(out: Entity[]): Entity[] {
+    out.length = 0;
+    for (const id of this.activeProjectilePredictionIds) {
+      const entity = this.entities.get(id);
+      if (entity?.projectile?.projectileType === 'projectile') out.push(entity);
+    }
+    return out;
+  }
+
+  collectSmokeTrailProjectiles(out: Entity[]): Entity[] {
+    out.length = 0;
+    for (const id of this.activeProjectilePredictionIds) {
+      const entity = this.entities.get(id);
+      const shot = entity?.projectile?.config.shot;
+      if (entity?.projectile?.projectileType === 'projectile' && shot?.type === 'projectile' && shot.smokeTrail) {
+        out.push(entity);
+      }
+    }
+    return out;
+  }
+
+  collectLineProjectiles(out: Entity[]): Entity[] {
+    out.length = 0;
+    for (const id of this.activeBeamPathIds) {
+      const entity = this.entities.get(id);
+      if (entity?.projectile && isLineProjectileEntity(entity)) out.push(entity);
+    }
+    return out;
+  }
+
+  getLineProjectileRenderVersion(): number {
+    return this.lineProjectileRenderVersion;
   }
 
   getForceFieldUnits(): Entity[] {
@@ -1733,6 +2264,38 @@ export class ClientViewState {
 
   // === Capture tile data ===
 
+  private acquireCaptureTile(
+    cx: number,
+    cy: number,
+    heights: NetworkCaptureTile['heights'] | undefined,
+  ): NetworkCaptureTile {
+    const tile = this.captureTilePool.pop() ?? { cx: 0, cy: 0, heights: {} };
+    tile.cx = cx;
+    tile.cy = cy;
+    const dst = tile.heights;
+    for (const key in dst) delete dst[key];
+    if (heights) {
+      for (const key in heights) dst[Number(key)] = heights[key];
+    }
+    return tile;
+  }
+
+  private releaseCaptureTile(tile: NetworkCaptureTile): void {
+    for (const key in tile.heights) delete tile.heights[key];
+    this.captureTilePool.push(tile);
+  }
+
+  private clearCaptureTileMaps(): void {
+    for (const [key, tile] of this.captureDirtyTileMap) {
+      if (this.captureTileMap.get(key) !== tile) this.releaseCaptureTile(tile);
+    }
+    this.captureDirtyTileMap.clear();
+    for (const tile of this.captureTileMap.values()) this.releaseCaptureTile(tile);
+    this.captureTileMap.clear();
+    this.captureTilesCache.length = 0;
+    this.captureDirtyTilesScratch.length = 0;
+  }
+
   getCaptureTiles(): NetworkCaptureTile[] {
     if (this.captureTilesDirty) {
       this.captureTilesCache.length = 0;
@@ -1799,6 +2362,13 @@ export class ClientViewState {
   clear(): void {
     this.entities.clear();
     this.serverTargets.clear();
+    this.beamPathTargets.clear();
+    for (let i = 0; i < this.projectileSpawnQueue.length; i++) {
+      this.releaseQueuedProjectileSpawn(this.projectileSpawnQueue[i]);
+    }
+    this.projectileSpawnQueue.length = 0;
+    this.projectileSpawnSnapshotTime = 0;
+    this.projectileSpawnSnapshotInterval = 100;
     this.sprayTargets = [];
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.gameOverWinnerId = null;
@@ -1806,10 +2376,7 @@ export class ClientViewState {
     this.gridCells = [];
     this.gridSearchCells = [];
     this.gridCellSize = 0;
-    this.captureTileMap.clear();
-    this.captureTilesCache.length = 0;
-    this.captureDirtyTileMap.clear();
-    this.captureDirtyTilesScratch.length = 0;
+    this.clearCaptureTileMaps();
     this.captureFullDirty = true;
     this.captureTilesDirty = true;
     this.captureVersion++;
@@ -1821,6 +2388,7 @@ export class ClientViewState {
     this.predictionLodCells.clear();
     this.activeUnitPredictionIds.clear();
     this.activeProjectilePredictionIds.clear();
+    this.activeBeamPathIds.clear();
     this.dirtyUnitRenderIds.clear();
     this.entitySetVersion++;
     this.invalidateCaches();

@@ -32,6 +32,7 @@ export type FootprintBounds = {
 export type FootprintQuad = readonly [Vec2, Vec2, Vec2, Vec2];
 
 export class ViewportFootprint {
+  private static readonly VERSION_EPSILON = 0.01;
   private _quad: FootprintQuad = [
     { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
   ];
@@ -40,6 +41,7 @@ export class ViewportFootprint {
   private minY = -Infinity;
   private maxY = Infinity;
   private mode: RenderMode = 'all';
+  private version = 0;
   /** Cached "padded" extra margin, = 30% of the viewport's visible
    *  edge length (NOT the AABB diagonal — under camera rotation or
    *  3D pitch the AABB is much larger than the visible quad and
@@ -69,10 +71,9 @@ export class ViewportFootprint {
       minY = Math.min(minY, scopeBounds.minY);
       maxY = Math.max(maxY, scopeBounds.maxY);
     }
-    this.minX = minX; this.maxX = maxX;
-    this.minY = minY; this.maxY = maxY;
-    this.mode = getRenderMode() as RenderMode;
-    if (this.mode === 'padded') {
+    const nextMode = getRenderMode() as RenderMode;
+    let nextPaddedExtra = 0;
+    if (nextMode === 'padded') {
       // Average of the two "width" edges (top TL→TR, bottom BL→BR)
       // and the two "height" edges (left TL→BL, right TR→BR). For a
       // rotated 2D rect all four are equal; for a 3D trapezoid this
@@ -82,10 +83,24 @@ export class ViewportFootprint {
         Math.hypot(a.x - b.x, a.y - b.y);
       const avgW = (edgeLen(tl, tr) + edgeLen(bl, br)) * 0.5;
       const avgH = (edgeLen(tl, bl) + edgeLen(tr, br)) * 0.5;
-      this.paddedExtra = Math.max(avgW, avgH) * 0.3;
-    } else {
-      this.paddedExtra = 0;
+      nextPaddedExtra = Math.max(avgW, avgH) * 0.3;
     }
+
+    const eps = ViewportFootprint.VERSION_EPSILON;
+    if (
+      nextMode !== this.mode ||
+      Math.abs(minX - this.minX) > eps ||
+      Math.abs(maxX - this.maxX) > eps ||
+      Math.abs(minY - this.minY) > eps ||
+      Math.abs(maxY - this.maxY) > eps ||
+      Math.abs(nextPaddedExtra - this.paddedExtra) > eps
+    ) {
+      this.version = (this.version + 1) & 0x3fffffff;
+    }
+    this.minX = minX; this.maxX = maxX;
+    this.minY = minY; this.maxY = maxY;
+    this.mode = nextMode;
+    this.paddedExtra = nextPaddedExtra;
   }
 
   /** The 4 corners in screen order (TL, TR, BR, BL), sim coords. */
@@ -97,6 +112,10 @@ export class ViewportFootprint {
    *  want a coarse short-circuit don't re-query clientBarConfig). */
   getMode(): RenderMode {
     return this.mode;
+  }
+
+  getVersion(): number {
+    return this.version;
   }
 
   /** Conservative AABB scope test:

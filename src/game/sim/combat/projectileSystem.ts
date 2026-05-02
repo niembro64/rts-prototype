@@ -9,7 +9,7 @@ import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } 
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, BEAM_MAX_LENGTH } from '../../../config';
-import { computeTurretPointVelocity, getEntityVelocity3, resolveWeaponWorldPos, getTurretMountHeight, turretMaskIncludes } from './combatUtils';
+import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, resolveWeaponWorldPos, getTurretMountHeight, turretMaskIncludes } from './combatUtils';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
@@ -250,7 +250,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (weapon.state !== 'engaged') continue;
 
       // Apply beam recoil only while the beam is actually active
-      if (world.firingForce && isBeamWeapon && forceAccumulator && (shot as BeamShot | LaserShot).recoil && hasActiveWeaponBeam(world, unit.id, weaponIndex)) {
+      if (isBeamWeapon && forceAccumulator && (shot as BeamShot | LaserShot).recoil && hasActiveWeaponBeam(world, unit.id, weaponIndex)) {
         const dtSec = dtMs / 1000;
         const knockBackPerTick = (shot as BeamShot | LaserShot).recoil * PROJECTILE_MASS_MULTIPLIER * dtSec;
         const turretAngle = weapon.rotation;
@@ -455,25 +455,23 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           // as before; the direction comes entirely from the primitive
           // + per-pellet yaw jitter.
           const projShot = shot as ProjectileShot;
-          const speed = projShot.launchForce / projShot.mass;
+          const speed = getProjectileLaunchSpeed(projShot);
           let projVx = dirX * speed;
           let projVy = dirY * speed;
           let projVz = dirZ * speed;
-          if (world.projVelInherit) {
-            // Inherit the turret muzzle's own 3D velocity, not just
-            // the carrier unit's velocity. The mount velocity is
-            // cached from world-position deltas; yaw/pitch angular
-            // velocity adds the barrel-tip tangential component.
-            const inherited = computeTurretPointVelocity(
-              weapon,
-              weaponX, weaponY, mountZ,
-              spawnX, spawnY, spawnZ,
-              _fireMuzzleVelocity,
-            );
-            projVx += inherited.x;
-            projVy += inherited.y;
-            projVz += inherited.z;
-          }
+          // Inherit the turret muzzle's own 3D velocity, not just
+          // the carrier unit's velocity. The mount velocity is cached
+          // from world-position deltas; yaw/pitch angular velocity
+          // adds the barrel-tip tangential component.
+          const inherited = computeTurretPointVelocity(
+            weapon,
+            weaponX, weaponY, mountZ,
+            spawnX, spawnY, spawnZ,
+            _fireMuzzleVelocity,
+          );
+          projVx += inherited.x;
+          projVy += inherited.y;
+          projVz += inherited.z;
           const projectile = world.createProjectile(
             spawnX,
             spawnY,
@@ -515,7 +513,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           // the pellet's actual outbound horizontal direction so cone
           // shotguns / jittered pellets push back along their real
           // firing axis, not a shared central one.
-          if (world.firingForce && forceAccumulator && projShot.mass > 0) {
+          if (forceAccumulator && projShot.mass > 0) {
             const recoilForce = projShot.launchForce * PROJECTILE_MASS_MULTIPLIER;
             forceAccumulator.addForce(unit.id, -dirX * recoilForce, -dirY * recoilForce, 'recoil');
           }

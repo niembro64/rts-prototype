@@ -1,6 +1,6 @@
 // Combat utility functions
 
-import type { Entity } from '../types';
+import type { Entity, ProjectileShot } from '../types';
 import { distance, normalizeAngle, magnitude, getWeaponWorldPosition, getTurretHeadRadius } from '../../math';
 import { getBodyMountTopY, getChassisLiftY } from '../../math/BodyDimensions';
 import { getUnitBlueprint } from '../blueprints';
@@ -50,6 +50,11 @@ export function getTargetRadius(target: Entity): number {
     return target.building.targetRadius;
   }
   return 0;
+}
+
+export function getProjectileLaunchSpeed(shot: Pick<ProjectileShot, 'launchForce' | 'mass'>): number {
+  if (shot.mass <= 1e-6) return 0;
+  return shot.launchForce / shot.mass;
 }
 
 // Resolve turret world position, using cached values if available

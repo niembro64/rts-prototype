@@ -9,6 +9,8 @@ const beam_width: number = 4.8;
 
 const beam_recoil: number = 2000;
 
+const fire_explosion_multiplier: number = 3;
+
 import { AUDIO, harmonicSeries } from '../../../audioConfig';
 import type { ShotBlueprint, BeamShotBlueprint } from './types';
 
@@ -44,7 +46,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     // intersects this radius takes the FULL damage and force; nothing
     // outside it. No falloff. Trim the radius down if shots feel too
     // generous now that there's no near-zone bonus.
-    explosion: { radius: 5, damage: 6, force: 500 },
+    explosion: { radius: 5 * fire_explosion_multiplier, damage: 6, force: 500 },
     detonateOnExpiry: true,
     lifespan: 10_000,
     hitSound: AUDIO.event.hit.lightShot,
@@ -54,7 +56,11 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'mediumShot',
     mass: 8,
     collision: { radius: 2.2 },
-    explosion: { radius: 8, damage: 12, force: 1000 },
+    explosion: {
+      radius: 8 * fire_explosion_multiplier,
+      damage: 12,
+      force: 1000,
+    },
     detonateOnExpiry: true,
     lifespan: 10_000,
     hitSound: AUDIO.event.hit.mediumShot,
@@ -70,7 +76,11 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'lightRocket',
     mass: 8,
     collision: { radius: 2.5 },
-    explosion: { radius: 10, damage: 4, force: 800 },
+    explosion: {
+      radius: 10 * fire_explosion_multiplier,
+      damage: 4,
+      force: 800,
+    },
     detonateOnExpiry: true,
     lifespan: 5500,
     ignoresGravity: true,
@@ -96,7 +106,11 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'heavyShot',
     mass: 30.0,
     collision: { radius: 4 },
-    explosion: { radius: 25, damage: 150, force: 7_000 },
+    explosion: {
+      radius: 25 * fire_explosion_multiplier,
+      damage: 150,
+      force: 7_000,
+    },
     detonateOnExpiry: true,
     lifespan: 4000,
     hitSound: AUDIO.event.hit.heavyShot,
@@ -117,9 +131,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 80,
     collision: { radius: 6 },
     detonateOnExpiry: true,
-    lifespan: 4000,
+    lifespan: 2000,
     // Per projectile instance, roll max lifespan within ±10% of lifespan.
-    lifespanVariance: 0.6,
+    lifespanVariance: 0.2,
     hitSound: AUDIO.event.hit.advancedMortarShot,
     submunitions: {
       shotId: 'mortarShot',
@@ -143,9 +157,9 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     mass: 60,
     collision: { radius: 4 },
     detonateOnExpiry: true,
-    lifespan: 3000,
+    lifespan: 2000,
     // Per projectile instance, roll max lifespan within ±10% of lifespan.
-    lifespanVariance: 0.6,
+    lifespanVariance: 0.2,
     hitSound: AUDIO.event.hit.mortarShot,
     submunitions: {
       shotId: 'mediumShot',
@@ -171,7 +185,11 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'disruptorShot',
     mass: 20.0,
     collision: { radius: 25 },
-    explosion: { radius: 40, damage: 999999, force: 2499750 },
+    explosion: {
+      radius: 40 * fire_explosion_multiplier,
+      damage: 999999,
+      force: 2499750,
+    },
     detonateOnExpiry: true,
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,

@@ -33,6 +33,8 @@ const draggingPointerId = ref<number | null>(null);
 // regardless of the map, which squashed square maps into rectangles
 // and miscomputed the camera-quad overlay.
 const MINIMAP_MAX = 180;
+const DENSE_ENTITY_MARKER_THRESHOLD = 1500;
+const DENSE_UNIT_MARKER_SIZE = 2;
 
 const size = computed(() => {
   const mw = Math.max(1, props.data.mapWidth);
@@ -231,8 +233,21 @@ function drawEntityLayer(): void {
   if (!offCtx || !offscreen || !background) return;
   const ctx = offCtx;
   const { entities } = props.data;
+  const denseMarkers = entities.length >= DENSE_ENTITY_MARKER_THRESHOLD;
   const scaleX = scale.value.x;
   const scaleY = scale.value.y;
+  let activeFill = '';
+  let activeStroke = '';
+  const setFill = (color: string): void => {
+    if (activeFill === color) return;
+    ctx.fillStyle = color;
+    activeFill = color;
+  };
+  const setStroke = (color: string): void => {
+    if (activeStroke === color) return;
+    ctx.strokeStyle = color;
+    activeStroke = color;
+  };
   ctx.clearRect(0, 0, offscreen.width, offscreen.height);
   ctx.drawImage(background, 0, 0);
 
@@ -241,21 +256,33 @@ function drawEntityLayer(): void {
     const y = entity.pos.y * scaleY;
     if (entity.type === 'building') {
       const size = entity.isSelected ? 5 : 4;
-      ctx.fillStyle = entity.color;
+      setFill(entity.color);
       ctx.fillRect(x - size / 2, y - size / 2, size, size);
       if (entity.isSelected) {
-        ctx.strokeStyle = '#ffffff';
+        setStroke('#ffffff');
         ctx.lineWidth = 1;
         ctx.strokeRect(x - size / 2 - 1, y - size / 2 - 1, size + 2, size + 2);
       }
+    } else if (denseMarkers && !entity.isSelected) {
+      // Canvas arc paths are surprisingly expensive when 10k-unit
+      // scenes refresh the minimap. Dense-mode units are minimap
+      // pixels, not inspectable shapes, so use rect stamps and avoid
+      // per-entity path construction.
+      setFill(entity.color);
+      ctx.fillRect(
+        x - DENSE_UNIT_MARKER_SIZE * 0.5,
+        y - DENSE_UNIT_MARKER_SIZE * 0.5,
+        DENSE_UNIT_MARKER_SIZE,
+        DENSE_UNIT_MARKER_SIZE,
+      );
     } else {
       const radius = entity.isSelected ? 3 : 2;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = entity.color;
+      setFill(entity.color);
       ctx.fill();
       if (entity.isSelected) {
-        ctx.strokeStyle = '#ffffff';
+        setStroke('#ffffff');
         ctx.lineWidth = 1;
         ctx.stroke();
       }

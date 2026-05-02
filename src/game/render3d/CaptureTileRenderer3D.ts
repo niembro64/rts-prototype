@@ -1,12 +1,11 @@
-// CaptureTileRenderer3D — static terrain mesh + tiny capture-overlay texture.
+// CaptureTileRenderer3D — static mana terrain mesh + tiny capture ownership texture.
 //
 // The old path used one vertex-coloured mesh for both terrain and capture
 // ownership. Every capture update could touch a large vertex color buffer.
-// This renderer splits the responsibilities:
-//   - terrainMesh: static lit geometry, rebuilt only for map/cell/LOD changes
-//   - overlayMesh: top surface only, transparent, sampled from a cellsX*cellsY
-//     DataTexture. Dynamic ownership updates modify a few bytes per tile and
-//     upload a tiny texture instead of a terrain-sized color buffer.
+// This renderer keeps one visible terrain mesh and blends dynamic ownership
+// from a cellsX*cellsY DataTexture inside the terrain shader. Capture changes
+// still update only a few texture bytes, but there is no second lifted overlay
+// surface fighting the terrain for depth or readability.
 
 import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -16,11 +15,16 @@ import type { NetworkCaptureTile } from '@/types/capture';
 import { MANA_TILE_SIZE, MANA_TILE_TEXTURE, MAP_BG_COLOR, MANA_TILE_GROUND_LIFT } from '../../config';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
+import { lodCellIndex, normalizeLodCellSize } from '../lodGridMath';
+import type { Lod3DState } from './Lod3D';
 import { objectLodToCameraSphereGraphicsTier } from './RenderObjectLod';
 import type { RenderLodGrid } from './RenderLodGrid';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
-const OVERLAY_Y_OFFSET = 60;
+const STEEP_TILE_HEIGHT_THRESHOLD = 30;
+const TERRAIN_LOD_REBUILD_CELL_MULTIPLIER = 4;
+const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
+const TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING = 24;
 
 const NEUTRAL_R_BYTE = (MAP_BG_COLOR >> 16) & 0xff;
 const NEUTRAL_G_BYTE = (MAP_BG_COLOR >> 8) & 0xff;
@@ -118,6 +122,13 @@ function captureOverlayOpacity(intensity: number): number {
     (MANA_TILE_TEXTURE.overlayOpacity.max - MANA_TILE_TEXTURE.overlayOpacity.min) * t;
 }
 
+function hasCaptureHeight(heights: NetworkCaptureTile['heights']): boolean {
+  for (const key in heights) {
+    if (Object.prototype.hasOwnProperty.call(heights, key)) return true;
+  }
+  return false;
+}
+
 function terrainColorDiffSq(colors: number[], ai: number, bi: number): number {
   const a = ai * 3;
   const b = bi * 3;
@@ -132,11 +143,11 @@ export class CaptureTileRenderer3D {
   private terrainGeometry: THREE.BufferGeometry;
   private terrainMaterial: THREE.MeshLambertMaterial;
 
-  private overlayMesh: THREE.Mesh;
-  private overlayGeometry: THREE.BufferGeometry;
-  private overlayMaterial: THREE.MeshBasicMaterial;
   private overlayTexture: THREE.DataTexture;
   private overlayPixels = new Uint8Array(4);
+  private overlayMapUniform!: { value: THREE.DataTexture };
+  private overlayOpacityUniform = { value: 0 };
+  private overlayEnabledUniform = { value: 0 };
 
   private gridCellsX = 0;
   private gridCellsY = 0;
@@ -144,12 +155,26 @@ export class CaptureTileRenderer3D {
   private terrainLodKey = '';
   private tileSubdivisions = new Uint8Array(0);
   private tileSideWalls = new Uint8Array(0);
+  private steepTileMask = new Uint8Array(0);
+  private steepTileKey = '';
   private horizontalEdgeSubdivisions = new Uint8Array(0);
   private verticalEdgeSubdivisions = new Uint8Array(0);
   private renderFrameIndex = 0;
   private lastCaptureVersion = -1;
   private lastOverlayIntensity = -1;
   private terrainTextureActive = false;
+  private terrainTextureGeometryActive = false;
+  private pendingTerrainLodKey = '';
+  private pendingTerrainLodFrames = 0;
+  private lastGeometryRebuildFrame = -TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING;
+  private scratchEdgeNorth: number[] = [];
+  private scratchEdgeEast: number[] = [];
+  private scratchEdgeSouth: number[] = [];
+  private scratchEdgeWest: number[] = [];
+  private scratchOuterLoop: number[] = [];
+  private scratchInnerRing: number[] = [];
+  private scratchOuterT = new Float32Array(0);
+  private scratchInnerT = new Float32Array(0);
 
   private clientViewState: ClientViewState;
   private mapWidth: number;
@@ -165,32 +190,71 @@ export class CaptureTileRenderer3D {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
 
+    this.overlayTexture = this.makeOverlayTexture(1, 1);
+    this.overlayMapUniform = { value: this.overlayTexture };
+
     this.terrainGeometry = new THREE.BufferGeometry();
     this.terrainMaterial = new THREE.MeshLambertMaterial({
       color: NEUTRAL_COLOR,
       side: THREE.DoubleSide,
       vertexColors: false,
     });
+    this.installCaptureOverlayShader();
     this.terrainMesh = new THREE.Mesh(this.terrainGeometry, this.terrainMaterial);
     this.terrainMesh.frustumCulled = false;
     this.terrainMesh.visible = false;
     parentWorld.add(this.terrainMesh);
+  }
 
-    this.overlayTexture = this.makeOverlayTexture(1, 1);
-    this.overlayGeometry = new THREE.BufferGeometry();
-    this.overlayMaterial = new THREE.MeshBasicMaterial({
-      map: this.overlayTexture,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
-    });
-    this.overlayMesh = new THREE.Mesh(this.overlayGeometry, this.overlayMaterial);
-    this.overlayMesh.frustumCulled = false;
-    this.overlayMesh.visible = false;
-    parentWorld.add(this.overlayMesh);
+  private installCaptureOverlayShader(): void {
+    this.terrainMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.uCaptureOverlayMap = this.overlayMapUniform;
+      shader.uniforms.uCaptureOverlayOpacity = this.overlayOpacityUniform;
+      shader.uniforms.uCaptureOverlayEnabled = this.overlayEnabledUniform;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          [
+            'attribute vec2 captureUv;',
+            'attribute float captureMask;',
+            'varying vec2 vCaptureUv;',
+            'varying float vCaptureMask;',
+            '#include <common>',
+          ].join('\n'),
+        )
+        .replace(
+          '#include <begin_vertex>',
+          [
+            '#include <begin_vertex>',
+            'vCaptureUv = captureUv;',
+            'vCaptureMask = captureMask;',
+          ].join('\n'),
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          [
+            'uniform sampler2D uCaptureOverlayMap;',
+            'uniform float uCaptureOverlayOpacity;',
+            'uniform float uCaptureOverlayEnabled;',
+            'varying vec2 vCaptureUv;',
+            'varying float vCaptureMask;',
+            '#include <common>',
+          ].join('\n'),
+        )
+        .replace(
+          '#include <color_fragment>',
+          [
+            '#include <color_fragment>',
+            'if (uCaptureOverlayEnabled > 0.0 && vCaptureMask > 0.0) {',
+            '  vec4 captureOverlay = texture2D(uCaptureOverlayMap, vCaptureUv);',
+            '  float captureBlend = clamp(captureOverlay.a * uCaptureOverlayOpacity, 0.0, 1.0);',
+            '  diffuseColor.rgb = mix(diffuseColor.rgb, captureOverlay.rgb, captureBlend);',
+            '}',
+          ].join('\n'),
+        );
+    };
+    this.terrainMaterial.customProgramCacheKey = () => 'capture-tile-single-surface-v2';
   }
 
   private makeOverlayTexture(width: number, height: number): THREE.DataTexture {
@@ -218,22 +282,175 @@ export class CaptureTileRenderer3D {
     }
     const old = this.overlayTexture;
     this.overlayTexture = this.makeOverlayTexture(width, height);
-    this.overlayMaterial.map = this.overlayTexture;
-    this.overlayMaterial.needsUpdate = true;
+    this.overlayMapUniform.value = this.overlayTexture;
     old.dispose();
     this.lastCaptureVersion = -1;
     this.lastOverlayIntensity = -1;
     return true;
   }
 
+  private makeTerrainLodKey(
+    cellsX: number,
+    cellsY: number,
+    cellSize: number,
+    graphicsConfig: GraphicsConfig,
+    terrainTextureEnabled: boolean,
+    lod?: Lod3DState,
+    sharedLodGrid?: RenderLodGrid,
+  ): string {
+    const parts: Array<string | number> = [
+      cellsX,
+      cellsY,
+      cellSize,
+      terrainTextureEnabled ? 'texture' : 'flat-color',
+      MANA_TILE_GROUND_LIFT,
+      graphicsConfig.tier,
+      graphicsConfig.captureTileSubdiv,
+      graphicsConfig.captureTileSideWalls ? 1 : 0,
+      graphicsConfig.objectLodCellSize,
+      graphicsConfig.cameraSphereRadii.rich,
+      graphicsConfig.cameraSphereRadii.simple,
+      graphicsConfig.cameraSphereRadii.mass,
+      graphicsConfig.cameraSphereRadii.impostor,
+    ];
+
+    if (lod && sharedLodGrid) {
+      const cameraCellSize = Math.max(
+        cellSize,
+        normalizeLodCellSize(graphicsConfig.objectLodCellSize) *
+          TERRAIN_LOD_REBUILD_CELL_MULTIPLIER,
+      );
+      const view = lod.view;
+      const cameraAltitudeBand = Math.floor(view.cameraY / cameraCellSize);
+      parts.push(
+        cameraCellSize,
+        lodCellIndex(view.cameraX, cameraCellSize),
+        lodCellIndex(view.cameraZ, cameraCellSize),
+        cameraAltitudeBand,
+      );
+    } else {
+      parts.push('static');
+    }
+
+    return parts.join('|');
+  }
+
+  private shouldRebuildTerrainGeometry(nextKey: string, immediate: boolean): boolean {
+    if (this.terrainLodKey === '') return true;
+    if (nextKey === this.terrainLodKey) {
+      this.pendingTerrainLodKey = '';
+      this.pendingTerrainLodFrames = 0;
+      return false;
+    }
+    if (immediate) return true;
+
+    if (this.pendingTerrainLodKey !== nextKey) {
+      this.pendingTerrainLodKey = nextKey;
+      this.pendingTerrainLodFrames = 0;
+      return false;
+    }
+
+    this.pendingTerrainLodFrames++;
+    const framesSinceRebuild = this.renderFrameIndex - this.lastGeometryRebuildFrame;
+    return (
+      this.pendingTerrainLodFrames >= TERRAIN_LOD_REBUILD_SETTLE_FRAMES &&
+      framesSinceRebuild >= TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING
+    );
+  }
+
+  private markTerrainGeometryRebuilt(nextKey: string, terrainTextureEnabled: boolean): void {
+    this.terrainLodKey = nextKey;
+    this.terrainTextureGeometryActive = terrainTextureEnabled;
+    this.pendingTerrainLodKey = '';
+    this.pendingTerrainLodFrames = 0;
+    this.lastGeometryRebuildFrame = this.renderFrameIndex;
+  }
+
+  private ensureSteepTileMask(cellsX: number, cellsY: number, cellSize: number): void {
+    const tileCount = cellsX * cellsY;
+    const key = `${cellsX}|${cellsY}|${cellSize}|${this.mapWidth}|${this.mapHeight}`;
+    if (this.steepTileKey === key && this.steepTileMask.length === tileCount) return;
+
+    if (this.steepTileMask.length !== tileCount) {
+      this.steepTileMask = new Uint8Array(tileCount);
+    } else {
+      this.steepTileMask.fill(0);
+    }
+    this.steepTileKey = key;
+
+    // Height-variation threshold (in world units) above which a tile is
+    // treated as "steep" and forced to TERRAIN_MESH_SUBDIV regardless
+    // of its camera-based LOD tier. This is static for a renderer/map
+    // configuration, so cache it instead of re-sampling nine terrain
+    // points for every tile on every render frame.
+    for (let cy = 0; cy < cellsY; cy++) {
+      for (let cx = 0; cx < cellsX; cx++) {
+        const x0w = cx * cellSize;
+        const x1w = x0w + cellSize;
+        const xCw = x0w + cellSize * 0.5;
+        const z0w = cy * cellSize;
+        const z1w = z0w + cellSize;
+        const zCw = z0w + cellSize * 0.5;
+        const h00 = getTerrainHeight(x0w, z0w, this.mapWidth, this.mapHeight);
+        const h10 = getTerrainHeight(x1w, z0w, this.mapWidth, this.mapHeight);
+        const h11 = getTerrainHeight(x1w, z1w, this.mapWidth, this.mapHeight);
+        const h01 = getTerrainHeight(x0w, z1w, this.mapWidth, this.mapHeight);
+        const hN = getTerrainHeight(xCw, z0w, this.mapWidth, this.mapHeight);
+        const hS = getTerrainHeight(xCw, z1w, this.mapWidth, this.mapHeight);
+        const hE = getTerrainHeight(x1w, zCw, this.mapWidth, this.mapHeight);
+        const hW = getTerrainHeight(x0w, zCw, this.mapWidth, this.mapHeight);
+        const hC = getTerrainHeight(xCw, zCw, this.mapWidth, this.mapHeight);
+        const hMin = Math.min(h00, h10, h11, h01, hN, hS, hE, hW, hC);
+        const hMax = Math.max(h00, h10, h11, h01, hN, hS, hE, hW, hC);
+        this.steepTileMask[cy * cellsX + cx] =
+          hMax - hMin > STEEP_TILE_HEIGHT_THRESHOLD ? 1 : 0;
+      }
+    }
+  }
+
+  private ensureOuterTScratch(length: number): Float32Array {
+    if (this.scratchOuterT.length < length) {
+      this.scratchOuterT = new Float32Array(Math.max(length, this.scratchOuterT.length * 2, 16));
+    }
+    return this.scratchOuterT;
+  }
+
+  private ensureInnerTScratch(length: number): Float32Array {
+    if (this.scratchInnerT.length < length) {
+      this.scratchInnerT = new Float32Array(Math.max(length, this.scratchInnerT.length * 2, 16));
+    }
+    return this.scratchInnerT;
+  }
+
   private rebuildGeometryIfNeeded(
     cellSize: number,
     graphicsConfig: GraphicsConfig,
     terrainTextureEnabled: boolean,
+    lod?: Lod3DState,
     sharedLodGrid?: RenderLodGrid,
   ): boolean {
     const cellsX = Math.max(1, Math.ceil(this.mapWidth / cellSize));
     const cellsY = Math.max(1, Math.ceil(this.mapHeight / cellSize));
+    const textureRebuilt = this.ensureOverlayTexture(cellsX, cellsY);
+    const nextTerrainLodKey = this.makeTerrainLodKey(
+      cellsX,
+      cellsY,
+      cellSize,
+      graphicsConfig,
+      terrainTextureEnabled,
+      lod,
+      sharedLodGrid,
+    );
+    const structuralChange =
+      textureRebuilt ||
+      cellsX !== this.gridCellsX ||
+      cellsY !== this.gridCellsY ||
+      cellSize !== this.gridCellSize ||
+      terrainTextureEnabled !== this.terrainTextureGeometryActive;
+    if (!this.shouldRebuildTerrainGeometry(nextTerrainLodKey, structuralChange)) {
+      return false;
+    }
+
     const tileCount = cellsX * cellsY;
     if (this.tileSubdivisions.length !== tileCount) {
       this.tileSubdivisions = new Uint8Array(tileCount);
@@ -251,29 +468,7 @@ export class CaptureTileRenderer3D {
     const tileSideWalls = this.tileSideWalls;
     const horizontalEdgeSubdivisions = this.horizontalEdgeSubdivisions;
     const verticalEdgeSubdivisions = this.verticalEdgeSubdivisions;
-    let lodHash = 2166136261;
-    // Height-variation threshold (in world units) above which a tile is
-    // treated as "steep" and forced to TERRAIN_MESH_SUBDIV regardless
-    // of its camera-based LOD tier. Two reasons this is a flat-tile
-    // safety net rather than a smooth scaling:
-    //   1. Steep tiles need the regular subdiv x subdiv grid to
-    //      accurately capture cliff faces — the irregular path's
-    //      inner-grid + skirt approximation is much coarser than the
-    //      regular grid for the same tileSubdiv (e.g. at subdiv=3 the
-    //      irregular path produces 1 inner quad vs the regular path's
-    //      9). On flat ground that gap is invisible; on a cliff it's
-    //      a visibly different mesh between regular and irregular
-    //      neighbors at the SAME LOD tier.
-    //   2. Steepness is computed from samples taken at world coords
-    //      shared between every tile touching the steep area
-    //      (corners, edge midpoints, center). Both sides of any steep
-    //      seam see the same sample heights, so they detect the same
-    //      "this is steep" and bump together — adjacent steep tiles
-    //      always end up at matching subdivs.
-    // Tuned for typical map heights (TERRAIN_MAX_RENDER_Y = 1600 wu);
-    // 30 wu of corner-to-corner spread comfortably catches cliff and
-    // ridge tiles while leaving gentle terrain at its proposed LOD.
-    const STEEP_TILE_HEIGHT_THRESHOLD = 30;
+    this.ensureSteepTileMask(cellsX, cellsY, cellSize);
 
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
@@ -296,41 +491,12 @@ export class CaptureTileRenderer3D {
         let subdiv = tileGfx.captureTileSubdiv | 0;
         subdiv = Math.max(1, Math.min(TERRAIN_MESH_SUBDIV, subdiv));
 
-        // Steep-tile bump. Sample 9 heights in a 3x3 grid (corners,
-        // edge midpoints, center). All sample points are at world
-        // coords any neighboring tile that touches them will also
-        // sample, so the comparison is symmetric — both sides of a
-        // steep seam reach the same conclusion and bump together.
-        if (subdiv < TERRAIN_MESH_SUBDIV) {
-          const x0w = cx * cellSize;
-          const x1w = x0w + cellSize;
-          const xCw = x0w + cellSize * 0.5;
-          const z0w = cy * cellSize;
-          const z1w = z0w + cellSize;
-          const zCw = z0w + cellSize * 0.5;
-          const h00 = getTerrainHeight(x0w, z0w, this.mapWidth, this.mapHeight);
-          const h10 = getTerrainHeight(x1w, z0w, this.mapWidth, this.mapHeight);
-          const h11 = getTerrainHeight(x1w, z1w, this.mapWidth, this.mapHeight);
-          const h01 = getTerrainHeight(x0w, z1w, this.mapWidth, this.mapHeight);
-          const hN  = getTerrainHeight(xCw, z0w, this.mapWidth, this.mapHeight);
-          const hS  = getTerrainHeight(xCw, z1w, this.mapWidth, this.mapHeight);
-          const hE  = getTerrainHeight(x1w, zCw, this.mapWidth, this.mapHeight);
-          const hW  = getTerrainHeight(x0w, zCw, this.mapWidth, this.mapHeight);
-          const hC  = getTerrainHeight(xCw, zCw, this.mapWidth, this.mapHeight);
-          const hMin = Math.min(h00, h10, h11, h01, hN, hS, hE, hW, hC);
-          const hMax = Math.max(h00, h10, h11, h01, hN, hS, hE, hW, hC);
-          if (hMax - hMin > STEEP_TILE_HEIGHT_THRESHOLD) {
-            subdiv = TERRAIN_MESH_SUBDIV;
-          }
-        }
-
         const tileIdx = cy * cellsX + cx;
+        if (subdiv < TERRAIN_MESH_SUBDIV && this.steepTileMask[tileIdx] !== 0) {
+          subdiv = TERRAIN_MESH_SUBDIV;
+        }
         tileSubdivisions[tileIdx] = subdiv;
         tileSideWalls[tileIdx] = tileGfx.captureTileSideWalls ? 1 : 0;
-        lodHash = Math.imul(
-          lodHash ^ (subdiv | (tileSideWalls[tileIdx] << 4)),
-          16777619,
-        ) >>> 0;
       }
     }
 
@@ -354,37 +520,18 @@ export class CaptureTileRenderer3D {
       }
     }
 
-    const nextTerrainLodKey = [
-      graphicsConfig.tier,
-      lodHash.toString(36),
-      terrainTextureEnabled ? 'texture' : 'flat-color',
-      MANA_TILE_GROUND_LIFT,
-    ].join('|');
-    const textureRebuilt = this.ensureOverlayTexture(cellsX, cellsY);
-
-    if (
-      !textureRebuilt &&
-      cellsX === this.gridCellsX &&
-      cellsY === this.gridCellsY &&
-      cellSize === this.gridCellSize &&
-      nextTerrainLodKey === this.terrainLodKey
-    ) {
-      return false;
-    }
-
     this.gridCellsX = cellsX;
     this.gridCellsY = cellsY;
     this.gridCellSize = cellSize;
-    this.terrainLodKey = nextTerrainLodKey;
+    this.markTerrainGeometryRebuilt(nextTerrainLodKey, terrainTextureEnabled);
     this.lastCaptureVersion = -1;
 
     const terrainPositions: number[] = [];
     const terrainNormals: number[] = [];
     const terrainColors: number[] = [];
+    const terrainCaptureUvs: number[] = [];
+    const terrainCaptureMasks: number[] = [];
     const terrainIndices: number[] = [];
-    const overlayPositions: number[] = [];
-    const overlayUvs: number[] = [];
-    const overlayIndices: number[] = [];
 
     const eps = 1;
     for (let cy = 0; cy < cellsY; cy++) {
@@ -397,16 +544,28 @@ export class CaptureTileRenderer3D {
         const tileSubdiv = tileSubdivisions[tileIdx] || 1;
         const includeSideWalls = tileSideWalls[tileIdx] === 1;
         const terrainVertexBase = terrainPositions.length / 3;
-        const overlayVertexBase = overlayPositions.length / 3;
-        const topLocal: number[] = [];
+        let topLocalCount = 0;
+        const edgeNorth = this.scratchEdgeNorth;
+        const edgeEast = this.scratchEdgeEast;
+        const edgeSouth = this.scratchEdgeSouth;
+        const edgeWest = this.scratchEdgeWest;
+        const outerLoop = this.scratchOuterLoop;
+        const innerRing = this.scratchInnerRing;
+        edgeNorth.length = 0;
+        edgeEast.length = 0;
+        edgeSouth.length = 0;
+        edgeWest.length = 0;
+        outerLoop.length = 0;
+        innerRing.length = 0;
 
         const addTopVertex = (fx: number, fz: number): number => {
           const wx = x0 + fx * cellSize;
           const wz = z0 + fz * cellSize;
           const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight) + MANA_TILE_GROUND_LIFT;
-          const localIndex = topLocal.length;
-          topLocal.push(localIndex);
+          const localIndex = topLocalCount++;
           terrainPositions.push(wx, h, wz);
+          terrainCaptureUvs.push(tileU, tileV);
+          terrainCaptureMasks.push(1);
           if (terrainTextureEnabled) pushManaTerrainColor(terrainColors, wx, wz);
 
           const hxp = getTerrainHeight(wx + eps, wz, this.mapWidth, this.mapHeight);
@@ -420,14 +579,11 @@ export class CaptureTileRenderer3D {
           nx /= len; ny /= len; nz /= len;
           terrainNormals.push(nx, ny, nz);
 
-          overlayPositions.push(wx, h + OVERLAY_Y_OFFSET, wz);
-          overlayUvs.push(tileU, tileV);
           return localIndex;
         };
 
         const addTopTri = (a: number, b: number, c: number): void => {
           terrainIndices.push(terrainVertexBase + a, terrainVertexBase + b, terrainVertexBase + c);
-          overlayIndices.push(overlayVertexBase + a, overlayVertexBase + b, overlayVertexBase + c);
         };
 
         const addBoundaryLoop = (
@@ -436,10 +592,9 @@ export class CaptureTileRenderer3D {
           southSubdiv: number,
           westSubdiv: number,
         ): number[] => {
-          const loop: number[] = [];
           const push = (fx: number, fz: number): number => {
             const idx = addTopVertex(fx, fz);
-            loop.push(idx);
+            outerLoop.push(idx);
             return idx;
           };
 
@@ -461,8 +616,8 @@ export class CaptureTileRenderer3D {
             if (i === westSubdiv) edgeSouth.push(idx);
             edgeWest.push(idx);
           }
-          edgeWest.push(loop[0]);
-          return loop;
+          edgeWest.push(outerLoop[0]);
+          return outerLoop;
         };
 
         const addFanToCenter = (loop: readonly number[]): void => {
@@ -477,11 +632,6 @@ export class CaptureTileRenderer3D {
             addTopTri(loop[0], loop[i], loop[i + 1]);
           }
         };
-
-        let edgeNorth: number[] = [];
-        let edgeEast: number[] = [];
-        let edgeSouth: number[] = [];
-        let edgeWest: number[] = [];
 
         const northSubdiv = horizontalEdgeSubdivisions[cy * cellsX + cx] || tileSubdiv;
         const eastSubdiv = verticalEdgeSubdivisions[cy * (cellsX + 1) + cx + 1] || tileSubdiv;
@@ -503,10 +653,10 @@ export class CaptureTileRenderer3D {
               addTopVertex(ix / subdiv, j / subdiv);
             }
           }
-          edgeNorth = Array.from({ length: subdiv + 1 }, (_, i) => topIdx(i, 0));
-          edgeEast = Array.from({ length: subdiv + 1 }, (_, i) => topIdx(subdiv, i));
-          edgeSouth = Array.from({ length: subdiv + 1 }, (_, i) => topIdx(subdiv - i, subdiv));
-          edgeWest = Array.from({ length: subdiv + 1 }, (_, i) => topIdx(0, subdiv - i));
+          for (let i = 0; i <= subdiv; i++) edgeNorth.push(topIdx(i, 0));
+          for (let i = 0; i <= subdiv; i++) edgeEast.push(topIdx(subdiv, i));
+          for (let i = 0; i <= subdiv; i++) edgeSouth.push(topIdx(subdiv - i, subdiv));
+          for (let i = 0; i <= subdiv; i++) edgeWest.push(topIdx(0, subdiv - i));
 
           for (let j = 0; j < subdiv; j++) {
             for (let ix = 0; ix < subdiv; ix++) {
@@ -548,7 +698,7 @@ export class CaptureTileRenderer3D {
             // the outer skirt differs.
             const subdiv = tileSubdiv;
             const innerStride = subdiv - 1;
-            const innerStart = topLocal.length;
+            const innerStart = topLocalCount;
             for (let j = 1; j <= subdiv - 1; j++) {
               for (let ix = 1; ix <= subdiv - 1; ix++) {
                 addTopVertex(ix / subdiv, j / subdiv);
@@ -582,7 +732,6 @@ export class CaptureTileRenderer3D {
             // Inner ring — outermost layer of the inner grid, walked
             // CCW starting at inner_NW (matches the outer loop's CCW
             // start at outer_NW).
-            const innerRing: number[] = [];
             // North side: (1, 1) → (subdiv-1, 1).
             for (let i = 1; i <= subdiv - 1; i++) innerRing.push(innerIdx(i, 1));
             // East side: (subdiv-1, 2) → (subdiv-1, subdiv-1).
@@ -595,8 +744,8 @@ export class CaptureTileRenderer3D {
             // Perimeter t for each loop, both walked CCW from the
             // tile's NW corner. Each side contributes 0.25 of the total
             // perimeter so corners always align at t = 0.25, 0.5, 0.75.
-            const outerT = new Float32Array(outer.length);
-            const innerT = new Float32Array(innerRing.length);
+            const outerT = this.ensureOuterTScratch(outer.length);
+            const innerT = this.ensureInnerTScratch(innerRing.length);
             const noN = northSubdiv, noE = eastSubdiv, noS = southSubdiv, noW = westSubdiv;
             for (let i = 0; i < noN; i++) outerT[i] = (i / noN) * 0.25;
             for (let i = 0; i < noE; i++) outerT[noN + i] = 0.25 + (i / noE) * 0.25;
@@ -661,48 +810,59 @@ export class CaptureTileRenderer3D {
           }
         }
 
-        let floorVertexBase = 0;
         if (includeSideWalls) {
-          floorVertexBase = terrainPositions.length / 3;
-          const x1 = x0 + cellSize;
-          const z1 = z0 + cellSize;
-          terrainPositions.push(
-            x0, CUBE_FLOOR_Y, z0,
-            x1, CUBE_FLOOR_Y, z0,
-            x1, CUBE_FLOOR_Y, z1,
-            x0, CUBE_FLOOR_Y, z1,
-          );
-          if (terrainTextureEnabled) {
-            pushManaTerrainColor(terrainColors, x0, z0, 0.68);
-            pushManaTerrainColor(terrainColors, x1, z0, 0.68);
-            pushManaTerrainColor(terrainColors, x1, z1, 0.68);
-            pushManaTerrainColor(terrainColors, x0, z1, 0.68);
-          }
-
-          const cornerSrc = [edgeNorth[0], edgeNorth[edgeNorth.length - 1], edgeSouth[0], edgeSouth[edgeSouth.length - 1]];
-          for (let f = 0; f < 4; f++) {
-            const srcOff = (terrainVertexBase + cornerSrc[f]) * 3;
-            terrainNormals.push(
-              terrainNormals[srcOff],
-              terrainNormals[srcOff + 1],
-              terrainNormals[srcOff + 2],
-            );
-          }
-
-          const f00 = floorVertexBase + 0;
-          const f10 = floorVertexBase + 1;
-          const f11 = floorVertexBase + 2;
-          const f01 = floorVertexBase + 3;
-          const addWall = (floorA: number, floorB: number, edge: readonly number[]): void => {
-            for (let s = 0; s < edge.length - 1; s++) {
-              terrainIndices.push(floorA, terrainVertexBase + edge[s], terrainVertexBase + edge[s + 1]);
-            }
-            terrainIndices.push(floorA, terrainVertexBase + edge[edge.length - 1], floorB);
+          const pushWallVertex = (
+            x: number,
+            y: number,
+            z: number,
+            nx: number,
+            nz: number,
+          ): number => {
+            const idx = terrainPositions.length / 3;
+            terrainPositions.push(x, y, z);
+            terrainNormals.push(nx, 0, nz);
+            terrainCaptureUvs.push(tileU, tileV);
+            terrainCaptureMasks.push(0);
+            if (terrainTextureEnabled) pushManaTerrainColor(terrainColors, x, z, 0.68);
+            return idx;
           };
-          addWall(f00, f10, edgeNorth);
-          addWall(f10, f11, edgeEast);
-          addWall(f11, f01, edgeSouth);
-          addWall(f01, f00, edgeWest);
+          const copyWallTopVertex = (localIdx: number, nx: number, nz: number): number => {
+            const off = (terrainVertexBase + localIdx) * 3;
+            return pushWallVertex(
+              terrainPositions[off],
+              terrainPositions[off + 1],
+              terrainPositions[off + 2],
+              nx,
+              nz,
+            );
+          };
+          const addWall = (edge: readonly number[], nx: number, nz: number): void => {
+            for (let s = 0; s < edge.length - 1; s++) {
+              const topA = copyWallTopVertex(edge[s], nx, nz);
+              const topB = copyWallTopVertex(edge[s + 1], nx, nz);
+              const topAOff = topA * 3;
+              const topBOff = topB * 3;
+              const floorA = pushWallVertex(
+                terrainPositions[topAOff],
+                CUBE_FLOOR_Y,
+                terrainPositions[topAOff + 2],
+                nx,
+                nz,
+              );
+              const floorB = pushWallVertex(
+                terrainPositions[topBOff],
+                CUBE_FLOOR_Y,
+                terrainPositions[topBOff + 2],
+                nx,
+                nz,
+              );
+              terrainIndices.push(floorA, topA, topB, floorA, topB, floorB);
+            }
+          };
+          addWall(edgeNorth, 0, -1);
+          addWall(edgeEast, 1, 0);
+          addWall(edgeSouth, 0, 1);
+          addWall(edgeWest, -1, 0);
         }
       }
     }
@@ -710,6 +870,8 @@ export class CaptureTileRenderer3D {
     this.terrainGeometry.dispose();
     this.terrainGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
     this.terrainGeometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
+    this.terrainGeometry.setAttribute('captureUv', new THREE.BufferAttribute(new Float32Array(terrainCaptureUvs), 2));
+    this.terrainGeometry.setAttribute('captureMask', new THREE.BufferAttribute(new Float32Array(terrainCaptureMasks), 1));
     if (terrainTextureEnabled) {
       this.terrainGeometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(terrainColors), 3));
     } else {
@@ -717,12 +879,6 @@ export class CaptureTileRenderer3D {
     }
     this.terrainGeometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
     this.terrainGeometry.computeBoundingSphere();
-
-    this.overlayGeometry.dispose();
-    this.overlayGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(overlayPositions), 3));
-    this.overlayGeometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(overlayUvs), 2));
-    this.overlayGeometry.setIndex(new THREE.BufferAttribute(new Uint32Array(overlayIndices), 1));
-    this.overlayGeometry.computeBoundingSphere();
 
     return true;
   }
@@ -745,7 +901,7 @@ export class CaptureTileRenderer3D {
     const cy = tile.cy;
     if (cx < 0 || cx >= this.gridCellsX || cy < 0 || cy >= this.gridCellsY) return;
     const idx = (cy * this.gridCellsX + cx) * 4;
-    if (Object.keys(tile.heights).length === 0 || intensity <= 0) {
+    if (!hasCaptureHeight(tile.heights) || intensity <= 0) {
       this.overlayPixels[idx] = 0;
       this.overlayPixels[idx + 1] = 0;
       this.overlayPixels[idx + 2] = 0;
@@ -803,6 +959,7 @@ export class CaptureTileRenderer3D {
 
   update(
     graphicsConfig: GraphicsConfig,
+    lod?: Lod3DState,
     sharedLodGrid?: RenderLodGrid,
   ): void {
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
@@ -817,14 +974,15 @@ export class CaptureTileRenderer3D {
       cellSize,
       graphicsConfig,
       terrainTextureEnabled,
+      lod,
       sharedLodGrid,
     );
     this.terrainMesh.visible = true;
 
     this.setTerrainTextureActive(gridMode !== 'off');
     const overlayActive = gridMode !== 'off' && intensity > 0;
-    this.overlayMesh.visible = overlayActive;
-    this.overlayMaterial.opacity = captureOverlayOpacity(intensity);
+    this.overlayEnabledUniform.value = overlayActive ? 1 : 0;
+    this.overlayOpacityUniform.value = overlayActive ? captureOverlayOpacity(intensity) : 0;
     if (!overlayActive) {
       if (this.lastOverlayIntensity !== intensity) {
         this.clearOverlayTexture();
@@ -867,13 +1025,12 @@ export class CaptureTileRenderer3D {
     this.terrainGeometry.dispose();
     this.terrainMaterial.dispose();
     this.terrainMesh.parent?.remove(this.terrainMesh);
-    this.overlayGeometry.dispose();
     this.overlayTexture.dispose();
-    this.overlayMaterial.dispose();
-    this.overlayMesh.parent?.remove(this.overlayMesh);
     this.overlayPixels = new Uint8Array(4);
     this.tileSubdivisions = new Uint8Array(0);
     this.tileSideWalls = new Uint8Array(0);
+    this.steepTileMask = new Uint8Array(0);
+    this.steepTileKey = '';
     this.horizontalEdgeSubdivisions = new Uint8Array(0);
     this.verticalEdgeSubdivisions = new Uint8Array(0);
   }

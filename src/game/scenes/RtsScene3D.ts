@@ -31,7 +31,7 @@ import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 import { LodShellGround3D } from '../render3d/LodShellGround3D';
-import { LodGridCells3D } from '../render3d/LodGridCells3D';
+import { LodGridCells2D } from '../render3d/LodGridCells2D';
 import { RenderLodGrid } from '../render3d/RenderLodGrid';
 import { snapshotLod } from '../render3d/Lod3D';
 import {
@@ -73,7 +73,6 @@ import {
   setMetalDepositFlatZones,
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
-  WATER_LEVEL,
 } from '../sim/Terrain';
 import {
   lodCellCenter,
@@ -236,7 +235,7 @@ export class RtsScene3D {
   private healthBar3D: HealthBar3D | null = null;
   private waypoint3D: Waypoint3D | null = null;
   private lodShellGround3D: LodShellGround3D | null = null;
-  private lodGridCells3D: LodGridCells3D | null = null;
+  private lodGridCells2D: LodGridCells2D | null = null;
   private renderLodGrid = new RenderLodGrid();
   private selectionLabel3D: SelectionLabel3D | null = null;
 
@@ -326,6 +325,8 @@ export class RtsScene3D {
     showTerrain: true,
     wind: undefined,
   };
+  private _lineProjectilesScratch: Entity[] = [];
+  private _smokeTrailProjectilesScratch: Entity[] = [];
 
   // Snapshot-arrival tracking for snap-rate EMA
   private lastSnapArrivalMs = 0;
@@ -695,12 +696,10 @@ export class RtsScene3D {
         this.mapHeight,
         (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
       );
-      this.lodGridCells3D = new LodGridCells3D(
+      this.lodGridCells2D = new LodGridCells2D(
         this.threeApp.world,
         this.mapWidth,
         this.mapHeight,
-        WATER_LEVEL,
-        TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
       );
     }
 
@@ -927,7 +926,7 @@ export class RtsScene3D {
       ],
       getLodShellRings(),
     );
-    this.lodGridCells3D?.update(
+    this.lodGridCells2D?.update(
       graphicsConfig.objectLodCellSize,
       getLodGridBorders(),
     );
@@ -953,18 +952,25 @@ export class RtsScene3D {
     // this directly so it stays pinned to the view regardless of
     // the (throttled) entity-list refresh.
     this.onCameraQuadUpdate?.(this._cameraQuad, this.threeApp.orbit.yaw);
-    this.entityRenderer.update(renderLod, this.renderLodGrid);
+    const serverMeta = this.clientViewState.getServerMeta();
+    this.entityRenderer.update(
+      renderLod,
+      this.renderLodGrid,
+      { mirrorsEnabled: serverMeta?.mirrorsEnabled ?? true },
+    );
     this.captureTileRenderer.update(
       graphicsConfig,
+      renderLod,
       this.renderLodGrid,
     );
-    const lineProjectiles = this.clientViewState.getLineProjectiles();
-    const travelingProjectiles = this.clientViewState.getTravelingProjectiles();
+    const lineProjectiles = this.clientViewState.collectLineProjectiles(this._lineProjectilesScratch);
+    const smokeTrailProjectiles = this.clientViewState.collectSmokeTrailProjectiles(this._smokeTrailProjectilesScratch);
     this.beamRenderer.update(
       lineProjectiles,
       graphicsConfig,
       renderLod,
       this.renderLodGrid,
+      this.clientViewState.getLineProjectileRenderVersion(),
     );
     // Force-field iteration is deferred — fused with HealthBar3D's
     // per-unit walk below, after the camera frustum is computed.
@@ -1018,7 +1024,7 @@ export class RtsScene3D {
     // fade completes.
     this.smokeTrailAccumMs += effectDt;
     if (updateEffectsThisFrame) {
-      this.smokeTrailRenderer.update(travelingProjectiles, this.smokeTrailAccumMs, this.renderScope);
+      this.smokeTrailRenderer.update(smokeTrailProjectiles, this.smokeTrailAccumMs, this.renderScope);
       this.smokeTrailAccumMs = 0;
     }
     // Input selection-change bookkeeping is handled when local
@@ -1055,8 +1061,10 @@ export class RtsScene3D {
       renderLod,
       this.renderLodGrid,
     );
-    for (const u of this.clientViewState.getForceFieldUnits()) {
-      this.forceFieldRenderer.perUnit(u);
+    if (this.clientViewState.getServerMeta()?.forceFieldsEnabled ?? true) {
+      for (const u of this.clientViewState.getForceFieldUnits()) {
+        this.forceFieldRenderer.perUnit(u);
+      }
     }
     this.forceFieldRenderer.endFrame();
 
@@ -1125,8 +1133,7 @@ export class RtsScene3D {
     }
 
     this.minimapUpdateTimer += delta;
-    const minimapInterval = this.MINIMAP_UPDATE_INTERVAL
-      * Math.min(4, Math.max(1, graphicsConfig.captureTileFrameStride | 0));
+    const minimapInterval = this.getMinimapUpdateInterval(graphicsConfig);
     if (this.minimapUpdateTimer >= minimapInterval) {
       this.minimapUpdateTimer = 0;
       this.updateMinimapData();
@@ -1148,6 +1155,20 @@ export class RtsScene3D {
     this.renderMsTracker.update(renderMs);
     this.logicMsTracker.update(logicMs);
     this.longtaskTracker.tick();
+  }
+
+  private getMinimapUpdateInterval(graphicsConfig: GraphicsConfig): number {
+    const renderStrideScale = Math.min(
+      4,
+      Math.max(1, graphicsConfig.captureTileFrameStride | 0),
+    );
+    const unitCount = this.clientViewState.getServerMeta()?.units?.count ?? 0;
+    const unitScale =
+      unitCount >= 8000 ? 6 :
+      unitCount >= 4000 ? 4 :
+      unitCount >= 1500 ? 2 :
+      1;
+    return this.MINIMAP_UPDATE_INTERVAL * renderStrideScale * unitScale;
   }
 
   private centerCameraOnCommander(): void {
@@ -1304,18 +1325,17 @@ export class RtsScene3D {
 
   private graphicsConfigForEffectCell(
     simX: number,
-    simY: number,
+    _simY: number,
     simZ: number,
   ): GraphicsConfig | null {
     const base = getGraphicsConfig();
     const shells = getRenderObjectLodShellDistances(base);
     const cellSize = normalizeLodCellSize(base.objectLodCellSize);
     const cx = lodCellCenter(lodCellIndex(simX, cellSize), cellSize);
-    const cy = lodCellCenter(lodCellIndex(simZ, cellSize), cellSize);
-    const cz = lodCellCenter(lodCellIndex(simY, cellSize), cellSize);
+    const cz = lodCellCenter(lodCellIndex(simZ, cellSize), cellSize);
     const camera = this.threeApp.camera.position;
     const dx = cx - camera.x;
-    const dy = cy - camera.y;
+    const dy = -camera.y;
     const dz = cz - camera.z;
     const objectTier = resolveRenderObjectLodForDistanceSq(
       dx * dx + dy * dy + dz * dz,
@@ -1852,8 +1872,8 @@ export class RtsScene3D {
     this.waypoint3D = null;
     this.lodShellGround3D?.destroy();
     this.lodShellGround3D = null;
-    this.lodGridCells3D?.destroy();
-    this.lodGridCells3D = null;
+    this.lodGridCells2D?.destroy();
+    this.lodGridCells2D = null;
     this.selectionLabel3D?.destroy();
     this.selectionLabel3D = null;
     this.entityRenderer?.destroy();

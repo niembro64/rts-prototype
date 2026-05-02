@@ -2,10 +2,9 @@ import type { BattleMode } from '../../battleBarConfig';
 import {
   loadStoredFfAccelShots,
   loadStoredFfAccelUnits,
-  loadStoredFiringForce,
+  loadStoredForceFieldsEnabled,
   loadStoredGrid,
-  loadStoredHitForce,
-  loadStoredProjVelInherit,
+  loadStoredMirrorsEnabled,
 } from '../../battleBarConfig';
 import {
   loadStoredKeyframeRatio,
@@ -20,7 +19,6 @@ export type StoredBattleServerSettingsOptions = {
   maxTotalUnits?: number;
   simQuality?: ServerSimQuality;
   simSignalStates?: ServerSimSignalStates;
-  includeForceSettings?: boolean;
 };
 
 export function applyStoredBattleServerSettings(
@@ -56,23 +54,6 @@ export function applyStoredBattleServerSettings(
   }
 
   server.receiveCommand({
-    type: 'setProjVelInherit',
-    tick: 0,
-    enabled: loadStoredProjVelInherit(mode),
-  });
-  if (options.includeForceSettings) {
-    server.receiveCommand({
-      type: 'setFiringForce',
-      tick: 0,
-      enabled: loadStoredFiringForce(mode),
-    });
-    server.receiveCommand({
-      type: 'setHitForce',
-      tick: 0,
-      enabled: loadStoredHitForce(mode),
-    });
-  }
-  server.receiveCommand({
     type: 'setFfAccelUnits',
     tick: 0,
     enabled: loadStoredFfAccelUnits(mode),
@@ -81,6 +62,16 @@ export function applyStoredBattleServerSettings(
     type: 'setFfAccelShots',
     tick: 0,
     enabled: loadStoredFfAccelShots(mode),
+  });
+  server.receiveCommand({
+    type: 'setMirrorsEnabled',
+    tick: 0,
+    enabled: loadStoredMirrorsEnabled(mode),
+  });
+  server.receiveCommand({
+    type: 'setForceFieldsEnabled',
+    tick: 0,
+    enabled: loadStoredForceFieldsEnabled(mode),
   });
   server.receiveCommand({
     type: 'setSendGridInfo',

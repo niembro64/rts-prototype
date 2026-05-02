@@ -1,5 +1,4 @@
 import type { TurretConfig, TurretRanges } from './types';
-import { TURRET_RANGE_MULTIPLIERS } from '../../config';
 import { buildAllTurretConfigs, getSubmunitionTurretConfig, TURRET_BLUEPRINTS } from './blueprints';
 
 /** Prefix for synthetic turret IDs emitted by the submunition/cluster
@@ -36,27 +35,24 @@ function makeHysteresisRange(acquire: number, release: number): { acquire: numbe
   };
 }
 
-// Compute hysteresis range pairs for a turret, using per-turret overrides with global fallback
+// Compute hysteresis range pairs for a turret. Base turret range is the
+// tracking/awareness range; each blueprint owns its full firing envelope.
 export function computeTurretRanges(config: TurretConfig): TurretRanges {
   const baseRange = config.range;
   const m = config.rangeOverrides;
-  const d = TURRET_RANGE_MULTIPLIERS;
-  const tracking = makeHysteresisRange(
-    baseRange * (m?.tracking.acquire ?? d.tracking.acquire),
-    baseRange * (m?.tracking.release ?? d.tracking.release),
-  );
+  const tracking = makeHysteresisRange(baseRange, baseRange);
   const engage = makeHysteresisRange(
-    baseRange * (m?.engage.acquire ?? d.engage.acquire),
-    baseRange * (m?.engage.release ?? d.engage.release),
+    baseRange * m.engageRangeMax.acquire,
+    baseRange * m.engageRangeMax.release,
   );
-  const fireMin = makeHysteresisRange(
-    baseRange * (m?.fireMin?.acquire ?? d.fireMin.acquire),
-    baseRange * (m?.fireMin?.release ?? d.fireMin.release),
+  const engageMin = makeHysteresisRange(
+    baseRange * m.engageRangeMin.acquire,
+    baseRange * m.engageRangeMin.release,
   );
   return {
     tracking,
     engage,
-    fire: { min: fireMin, max: engage },
+    fire: { min: engageMin, max: engage },
   };
 }
 
@@ -79,12 +75,17 @@ export function getTurretConfig(id: string): TurretConfig {
 
 // Helper to create a custom turret config
 export function createTurretConfig(
-  base: Partial<TurretConfig> & { id: string; angular: { turnAccel: number; drag: number } },
+  base: Partial<TurretConfig> & {
+    id: string;
+    angular: { turnAccel: number; drag: number };
+    rangeOverrides: TurretConfig['rangeOverrides'];
+  },
 ): TurretConfig {
   return {
     range: 100,
     cooldown: 1000,
     color: 0xffffff,
+    eventsSmooth: false,
     shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5 } },
     ...base,
   };

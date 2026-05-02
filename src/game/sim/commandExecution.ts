@@ -7,7 +7,7 @@ import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
 import { magnitude, getTransformCosSin, getBarrelTip } from '../math';
 import { getTurretWorldMount } from '../math/MountGeometry';
-import { computeTurretPointVelocity, getTurretMountHeight } from './combat/combatUtils';
+import { computeTurretPointVelocity, getProjectileLaunchSpeed, getTurretMountHeight } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions } from './Pathfinder';
@@ -288,11 +288,11 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   // Calculate velocity with turret-tip inheritance
   const dgunShot = dgunTurret.config.shot;
-  const speed = dgunShot.type === 'projectile' ? dgunShot.launchForce / dgunShot.mass : 350;
+  const speed = dgunShot.type === 'projectile' ? getProjectileLaunchSpeed(dgunShot) : 350;
   let velocityX = tip.dirX * speed;
   let velocityY = tip.dirY * speed;
   let velocityZ = tip.dirZ * speed;
-  if (ctx.world.projVelInherit && commander.unit) {
+  if (commander.unit) {
     // Manual D-gun shots may not have passed through the normal
     // targeting cache this tick, so fall back to the commander body's
     // current 3D velocity for the mount and still add the turret's own

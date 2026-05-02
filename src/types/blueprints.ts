@@ -20,9 +20,8 @@ export type {
 };
 
 export type ForceFieldZoneRatioConfig = {
-  innerRatio: number;
   outerRatio?: number;       // percentage of range (ignored if rimWidth set)
-  rimWidth?: number;         // fixed pixel width for the zone band
+  rimWidth?: number;         // fixed world-space outer radius
   color: number;
   alpha: number;
   particleAlpha: number;
@@ -228,6 +227,8 @@ export type TurretBlueprint = {
   turretDrag: number;
   barrel: BarrelShape;
   rangeMultiplierOverrides: TurretRangeOverrides;
+  /** Smooth this turret's projectile spawn events across snapshot intervals. */
+  eventsSmooth: boolean;
   homingTurnRate?: number;
   launchForce?: number;
   isManualFire?: boolean;

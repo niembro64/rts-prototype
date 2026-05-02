@@ -8,9 +8,8 @@
 
 export type {
   HysteresisRange,
-  HysteresisRangeOverride,
+  HysteresisRangeMultiplier,
   TurretRanges,
-  TurretRangeMultipliers,
   TurretRangeOverrides,
   EntityId,
   PlayerId,

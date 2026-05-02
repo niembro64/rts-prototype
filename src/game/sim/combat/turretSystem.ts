@@ -120,7 +120,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           // refinement lives in MirrorAimSolver; here we just apply
           // the solved overrides.
           let mirrorPitchOverride: number | null = null;
-          if (weapon.config.passive) {
+          if (weapon.config.passive && world.mirrorsEnabled) {
             const aim = solveMirrorAim(
               unit, weapon, target,
               weaponX, weaponY, unitGroundZ,
@@ -144,7 +144,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               weaponX, weaponY, mountZ,
               weapon.pitch,
               unitScale,
-              world.projVelInherit,
+              true,
               (x, y) => world.getGroundZ(x, y),
               _projectileAim,
             );
