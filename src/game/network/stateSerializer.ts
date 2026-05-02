@@ -120,6 +120,8 @@ function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
     id: 0,
     start: { x: 0, y: 0, z: 0 },
     end: { x: 0, y: 0, z: 0 },
+    startVel: { x: 0, y: 0, z: 0 },
+    endVel: { x: 0, y: 0, z: 0 },
     obstructionT: undefined,
     reflections: undefined,
   };
@@ -1069,6 +1071,17 @@ export function serializeGameState(
       update.end.x = qPos(endX);
       update.end.y = qPos(endY);
       update.end.z = qPos(endZ);
+      // Velocities are quantized at the same precision as projectile
+      // velocities (qVel = 0.1 wu/sec). Same role too — the client
+      // extrapolates start and end positions between snapshots using
+      // these, just like turret rotation prediction uses the
+      // angularVelocity field.
+      update.startVel.x = qVel(proj.startVelX ?? 0);
+      update.startVel.y = qVel(proj.startVelY ?? 0);
+      update.startVel.z = qVel(proj.startVelZ ?? 0);
+      update.endVel.x = qVel(proj.endVelX ?? 0);
+      update.endVel.y = qVel(proj.endVelY ?? 0);
+      update.endVel.z = qVel(proj.endVelZ ?? 0);
       update.obstructionT = proj.obstructionT === undefined ? undefined : qRot(proj.obstructionT);
 
       const reflections = proj.reflections;

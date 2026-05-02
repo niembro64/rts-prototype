@@ -224,6 +224,8 @@ function cloneBeamUpdate(b: NetworkServerSnapshotBeamUpdate): NetworkServerSnaps
     id: b.id,
     start: { x: b.start.x, y: b.start.y, z: b.start.z },
     end: { x: b.end.x, y: b.end.y, z: b.end.z },
+    startVel: { x: b.startVel.x, y: b.startVel.y, z: b.startVel.z },
+    endVel: { x: b.endVel.x, y: b.endVel.y, z: b.endVel.z },
     obstructionT: b.obstructionT,
     reflections: b.reflections?.map((r) => ({
       x: r.x,
@@ -669,7 +671,13 @@ function createReusableVelocity(): NetworkServerSnapshotVelocityUpdate {
 }
 
 function createReusableBeam(): NetworkServerSnapshotBeamUpdate {
-  return { id: 0, start: { x: 0, y: 0, z: 0 }, end: { x: 0, y: 0, z: 0 } };
+  return {
+    id: 0,
+    start: { x: 0, y: 0, z: 0 },
+    end: { x: 0, y: 0, z: 0 },
+    startVel: { x: 0, y: 0, z: 0 },
+    endVel: { x: 0, y: 0, z: 0 },
+  };
 }
 
 function copyBeamInto(
@@ -683,6 +691,12 @@ function copyBeamInto(
   dst.end.x = src.end.x;
   dst.end.y = src.end.y;
   dst.end.z = src.end.z;
+  dst.startVel.x = src.startVel.x;
+  dst.startVel.y = src.startVel.y;
+  dst.startVel.z = src.startVel.z;
+  dst.endVel.x = src.endVel.x;
+  dst.endVel.y = src.endVel.y;
+  dst.endVel.z = src.endVel.z;
   dst.obstructionT = src.obstructionT;
   if (src.reflections && src.reflections.length > 0) {
     const reflections = dst.reflections ?? (dst.reflections = []);
@@ -781,6 +795,37 @@ export class ReusableNetworkSnapshotCloner {
   private capture: NonNullable<NetworkServerSnapshot['capture']> = { tiles: [], cellSize: 0 };
   private gameState: NonNullable<NetworkServerSnapshot['gameState']> = { phase: 'battle' };
   private removedEntityIds: number[] = [];
+
+  clear(): void {
+    this.snapshot.entities.length = 0;
+    for (let i = 0; i < this.economyKeys.length; i++) {
+      delete this.snapshot.economy[Number(this.economyKeys[i]) as keyof NetworkServerSnapshot['economy']];
+    }
+    this.economyKeys.length = 0;
+    this.sprayTargets.length = 0;
+    this.audioEvents.length = 0;
+    this.spawns.length = 0;
+    this.despawns.length = 0;
+    this.velocityUpdates.length = 0;
+    this.beamUpdates.length = 0;
+    this.projectiles.spawns = undefined;
+    this.projectiles.despawns = undefined;
+    this.projectiles.velocityUpdates = undefined;
+    this.projectiles.beamUpdates = undefined;
+    this.grid.cells.length = 0;
+    this.grid.searchCells.length = 0;
+    this.capture.tiles.length = 0;
+    this.removedEntityIds.length = 0;
+    this.snapshot.sprayTargets = undefined;
+    this.snapshot.audioEvents = undefined;
+    this.snapshot.projectiles = undefined;
+    this.snapshot.grid = undefined;
+    this.snapshot.capture = undefined;
+    this.snapshot.gameState = undefined;
+    this.snapshot.combatStats = undefined;
+    this.snapshot.serverMeta = undefined;
+    this.snapshot.removedEntityIds = undefined;
+  }
 
   clone(state: NetworkServerSnapshot): NetworkServerSnapshot {
     const dst = this.snapshot;

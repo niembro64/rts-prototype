@@ -448,6 +448,33 @@ export type Projectile = {
   endX?: number;
   endY?: number;
   endZ?: number;
+  /** Beam start-point velocity (wu/sec, world frame). Sim-only field
+   *  written by the per-tick beam handler; serialized on every beam
+   *  snapshot so the client can extrapolate the start position
+   *  between snapshots. */
+  startVelX?: number;
+  startVelY?: number;
+  startVelZ?: number;
+  /** Beam end-point velocity (wu/sec, world frame). Same role as
+   *  startVel for the truncated/reflected end point — but updated only
+   *  when the host re-traces the beam path (LOD-strided), so it
+   *  represents (current − previous-trace) / elapsed-trace-seconds. */
+  endVelX?: number;
+  endVelY?: number;
+  endVelZ?: number;
+  /** Internal: previous tick's start position. Used to compute the
+   *  per-tick start-point velocity. Not serialized. */
+  prevStartX?: number;
+  prevStartY?: number;
+  prevStartZ?: number;
+  /** Internal: previous re-trace tick's end position. Used to compute
+   *  endVel across the re-trace stride. Not serialized. */
+  prevEndX?: number;
+  prevEndY?: number;
+  prevEndZ?: number;
+  /** Internal: tick at which prevEnd* was captured, used as the dt for
+   *  the next end-velocity finite difference. Not serialized. */
+  prevEndTick?: number;
   targetEntityId?: EntityId;
   obstructionT?: number;
   obstructionTick?: number;

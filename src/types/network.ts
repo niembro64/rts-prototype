@@ -237,6 +237,17 @@ export type NetworkServerSnapshotBeamUpdate = {
   id: number;
   start: Vec3;
   end: Vec3;
+  /** Instantaneous 3D velocity of the start point (muzzle), in wu/sec.
+   *  Lets the client extrapolate the beam between snapshots — same role
+   *  the per-turret rotation+angularVelocity pair plays for turret pose
+   *  prediction. Computed on the host as (start − prevStart) / dt. */
+  startVel: Vec3;
+  /** Instantaneous 3D velocity of the end point, in wu/sec. End position
+   *  is recomputed on a (LOD-strided) re-trace cadence, so this carries
+   *  the per-trace delta divided by the trace stride's elapsed time —
+   *  client-side extrapolation is then accurate even when end position
+   *  itself isn't refreshed every snapshot. */
+  endVel: Vec3;
   obstructionT?: number;
   reflections?: NetworkServerSnapshotBeamReflection[];
 };

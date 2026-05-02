@@ -32,6 +32,8 @@ type BufferedVelocityUpdate = NetworkServerSnapshotVelocityUpdate & {
 type BufferedBeamUpdate = NetworkServerSnapshotBeamUpdate & {
   _start: Vec3;
   _end: Vec3;
+  _startVel: Vec3;
+  _endVel: Vec3;
   _reflections: NetworkServerSnapshotBeamReflection[];
 };
 
@@ -130,12 +132,18 @@ function createBufferedBeamUpdate(): BufferedBeamUpdate {
     id: 0,
     start: { x: 0, y: 0, z: 0 },
     end: { x: 0, y: 0, z: 0 },
+    startVel: { x: 0, y: 0, z: 0 },
+    endVel: { x: 0, y: 0, z: 0 },
     _start: { x: 0, y: 0, z: 0 },
     _end: { x: 0, y: 0, z: 0 },
+    _startVel: { x: 0, y: 0, z: 0 },
+    _endVel: { x: 0, y: 0, z: 0 },
     _reflections: [],
   };
   update.start = update._start;
   update.end = update._end;
+  update.startVel = update._startVel;
+  update.endVel = update._endVel;
   return update;
 }
 
@@ -147,6 +155,12 @@ function copyBeamInto(src: NetworkServerSnapshotBeamUpdate, dst: BufferedBeamUpd
   dst._end.x = src.end.x;
   dst._end.y = src.end.y;
   dst._end.z = src.end.z;
+  dst._startVel.x = src.startVel.x;
+  dst._startVel.y = src.startVel.y;
+  dst._startVel.z = src.startVel.z;
+  dst._endVel.x = src.endVel.x;
+  dst._endVel.y = src.endVel.y;
+  dst._endVel.z = src.endVel.z;
   dst.obstructionT = src.obstructionT;
   if (src.reflections && src.reflections.length > 0) {
     dst._reflections.length = src.reflections.length;
@@ -408,20 +422,33 @@ export class SnapshotBuffer {
   /** Release all buffered data. */
   clear(): void {
     this.pendingSnapshot = null;
+    this.fullSnapshotCloner.clear();
     this._spawnsA.length = 0;
     this._spawnsB.length = 0;
+    this._spawnsPoolA.length = 0;
+    this._spawnsPoolB.length = 0;
     this._despawnsA.length = 0;
     this._despawnsB.length = 0;
+    this._despawnsPoolA.length = 0;
+    this._despawnsPoolB.length = 0;
     this._audioA.length = 0;
     this._audioB.length = 0;
+    this._audioPoolA.length = 0;
+    this._audioPoolB.length = 0;
     this.bufferedVelocityUpdates.clear();
+    this.velocityStagePool.length = 0;
     this.velocityStagePoolIndex = 0;
     this.bufferedBeamUpdates.clear();
+    this.beamStagePool.length = 0;
     this.beamStagePoolIndex = 0;
     this.bufferedGrid = undefined;
     this._velBufA.length = 0;
     this._velBufB.length = 0;
+    this._velPoolA.length = 0;
+    this._velPoolB.length = 0;
     this._beamBufA.length = 0;
     this._beamBufB.length = 0;
+    this._beamPoolA.length = 0;
+    this._beamPoolB.length = 0;
   }
 }

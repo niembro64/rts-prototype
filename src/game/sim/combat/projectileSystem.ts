@@ -859,6 +859,30 @@ export function updateProjectiles(
           source.unit.unitRadiusCollider.scale,
           0,
         );
+        // Start-point velocity = (current start − last tick's start) / dt.
+        // Updated every tick because the start follows the muzzle (which
+        // moves with the unit body + turret yaw/pitch every tick). On
+        // the FIRST tick the prevStart fields are undefined → velocity
+        // resolves to 0, which is the correct semantic ("just spawned,
+        // no history yet").
+        if (
+          dtSec > 0 &&
+          proj.prevStartX !== undefined &&
+          proj.prevStartY !== undefined &&
+          proj.prevStartZ !== undefined
+        ) {
+          const inv = 1 / dtSec;
+          proj.startVelX = (tip.x - proj.prevStartX) * inv;
+          proj.startVelY = (tip.y - proj.prevStartY) * inv;
+          proj.startVelZ = (tip.z - proj.prevStartZ) * inv;
+        } else {
+          proj.startVelX = 0;
+          proj.startVelY = 0;
+          proj.startVelZ = 0;
+        }
+        proj.prevStartX = tip.x;
+        proj.prevStartY = tip.y;
+        proj.prevStartZ = tip.z;
         proj.startX = tip.x;
         proj.startY = tip.y;
         proj.startZ = tip.z;
@@ -885,6 +909,39 @@ export function updateProjectiles(
               proj.sourceEntityId,
               collisionRadius
             );
+            // End-point velocity = (current end − previous trace's end)
+            // / elapsed seconds since the previous trace. Updated only
+            // on re-trace ticks because end position itself only
+            // changes then; the value stays stable across the trace
+            // stride so the client can extrapolate using a meaningful
+            // average velocity over each stride window.
+            if (
+              proj.prevEndX !== undefined &&
+              proj.prevEndY !== undefined &&
+              proj.prevEndZ !== undefined &&
+              proj.prevEndTick !== undefined
+            ) {
+              const tickDelta = currentTick - proj.prevEndTick;
+              if (tickDelta > 0 && dtSec > 0) {
+                const elapsed = tickDelta * dtSec;
+                const inv = 1 / elapsed;
+                proj.endVelX = (beamPath.endX - proj.prevEndX) * inv;
+                proj.endVelY = (beamPath.endY - proj.prevEndY) * inv;
+                proj.endVelZ = (beamPath.endZ - proj.prevEndZ) * inv;
+              } else {
+                proj.endVelX = 0;
+                proj.endVelY = 0;
+                proj.endVelZ = 0;
+              }
+            } else {
+              proj.endVelX = 0;
+              proj.endVelY = 0;
+              proj.endVelZ = 0;
+            }
+            proj.prevEndX = beamPath.endX;
+            proj.prevEndY = beamPath.endY;
+            proj.prevEndZ = beamPath.endZ;
+            proj.prevEndTick = currentTick;
             proj.endX = beamPath.endX;
             proj.endY = beamPath.endY;
             proj.endZ = beamPath.endZ;
@@ -897,12 +954,18 @@ export function updateProjectiles(
             proj.endX = fullEndX;
             proj.endY = fullEndY;
             proj.endZ = fullEndZ;
+            proj.endVelX = 0;
+            proj.endVelY = 0;
+            proj.endVelZ = 0;
           }
         } else {
           if (proj.endX === undefined) {
             proj.endX = fullEndX;
             proj.endY = fullEndY;
             proj.endZ = fullEndZ;
+            proj.endVelX = 0;
+            proj.endVelY = 0;
+            proj.endVelZ = 0;
           }
         }
 

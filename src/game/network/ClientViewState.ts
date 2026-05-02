@@ -56,6 +56,7 @@ import { getTurretWorldMount } from '../math/MountGeometry';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
+import { landCellCenterForSize, landCellIndexForSize, packLandCellKey } from '../landGrid';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -107,11 +108,7 @@ function pushClientForceField(
 // Smaller = snappier correction, larger = smoother/lazier.
 // Blend factor per frame: 1 - Math.pow(0.5, dt / halfLife)
 import { getDriftMode } from '@/clientBarConfig';
-import {
-  lodCellCenter,
-  lodCellIndex,
-  normalizeLodCellSize,
-} from '../lodGridMath';
+import { normalizeLodCellSize } from '../lodGridMath';
 
 // Lightweight copy of server state used for per-frame drift in applyPrediction().
 // Owns its data (not a reference to pooled serializer objects).
@@ -144,6 +141,12 @@ function createServerTarget(): ServerTarget {
 type BeamPathTarget = {
   start: { x: number; y: number; z: number };
   end: { x: number; y: number; z: number };
+  /** Authoritative per-snapshot velocities for the start and end
+   *  points. Mirrors the per-turret rotation+angularVelocity
+   *  prediction path: the snapshot carries an instant + a velocity,
+   *  the renderer extrapolates between snapshots. */
+  startVel: { x: number; y: number; z: number };
+  endVel: { x: number; y: number; z: number };
   reflections: NetworkServerSnapshotBeamReflection[];
   obstructionT?: number;
 };
@@ -152,6 +155,8 @@ function createBeamPathTarget(): BeamPathTarget {
   return {
     start: { x: 0, y: 0, z: 0 },
     end: { x: 0, y: 0, z: 0 },
+    startVel: { x: 0, y: 0, z: 0 },
+    endVel: { x: 0, y: 0, z: 0 },
     reflections: [],
   };
 }
@@ -236,32 +241,7 @@ export type PredictionLodContext = {
   physicsPredictionFramesSkip: number;
 };
 
-type PredictionLodCellRecord = {
-  frameId: number;
-  tier: PredictionLodTier;
-};
-
-type PredictionLodCellKey = number | string;
-
-const PREDICTION_CELL_KEY_BITS = 17;
-const PREDICTION_CELL_KEY_BASE = 2 ** PREDICTION_CELL_KEY_BITS;
-const PREDICTION_CELL_KEY_BIAS = 2 ** (PREDICTION_CELL_KEY_BITS - 1);
-const PREDICTION_CELL_KEY_MAX = PREDICTION_CELL_KEY_BASE - 1;
-
-function packPredictionLodCellKey(
-  ix: number,
-  iy: number,
-): PredictionLodCellKey {
-  const x = ix + PREDICTION_CELL_KEY_BIAS;
-  const y = iy + PREDICTION_CELL_KEY_BIAS;
-  if (
-    x >= 0 && x <= PREDICTION_CELL_KEY_MAX &&
-    y >= 0 && y <= PREDICTION_CELL_KEY_MAX
-  ) {
-    return x * PREDICTION_CELL_KEY_BASE + y;
-  }
-  return `${ix},${iy}`;
-}
+type PredictionLodCellKey = number;
 
 type PredictionStep = {
   entityDeltaMs: number;
@@ -362,11 +342,12 @@ export class ClientViewState {
   // cost every browser frame.
   private predictionAccumMs: Map<EntityId, number> = new Map();
   private targetPredictionAccumMs: Map<EntityId, number> = new Map();
-  private predictionLodCells: Map<PredictionLodCellKey, PredictionLodCellRecord> = new Map();
+  private predictionLodCells: Map<PredictionLodCellKey, PredictionLodTier> = new Map();
   private predictionRichDistanceSq = 0;
   private predictionSimpleDistanceSq = 0;
   private predictionMassDistanceSq = 0;
   private predictionImpostorDistanceSq = 0;
+  private predictionLodCellSize = 1;
   private activeUnitPredictionIds: Set<EntityId> = new Set();
   private activeProjectilePredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
@@ -1113,6 +1094,12 @@ export class ClientViewState {
     target.end.x = update.end.x;
     target.end.y = update.end.y;
     target.end.z = update.end.z;
+    target.startVel.x = update.startVel.x;
+    target.startVel.y = update.startVel.y;
+    target.startVel.z = update.startVel.z;
+    target.endVel.x = update.endVel.x;
+    target.endVel.y = update.endVel.y;
+    target.endVel.z = update.endVel.z;
     target.obstructionT = update.obstructionT;
 
     const reflections = update.reflections;
@@ -1175,7 +1162,22 @@ export class ClientViewState {
     if (!proj) return false;
 
     const blend = halfLifeBlend(deltaMs / 1000, preset.movement.pos);
+    const dt = deltaMs / 1000;
     let changed = false;
+
+    // Advance the snapshot target itself by its velocity each frame so
+    // the beam tracks the host's anticipated position between snapshots
+    // — same role the per-turret rotation+angularVelocity prediction
+    // plays for turret pose. The existing exponential blend below keeps
+    // proj.start/end easing toward the moving target so a fresh
+    // snapshot doesn't pop the beam if its corrected position differs
+    // from the extrapolated one.
+    target.start.x += target.startVel.x * dt;
+    target.start.y += target.startVel.y * dt;
+    target.start.z += target.startVel.z * dt;
+    target.end.x += target.endVel.x * dt;
+    target.end.y += target.endVel.y * dt;
+    target.end.z += target.endVel.z * dt;
 
     const startX = proj.startX ?? target.start.x;
     const startY = proj.startY ?? target.start.y;
@@ -1273,25 +1275,25 @@ export class ClientViewState {
   ): PredictionLodTier {
     if (!lod) return 'rich';
 
-    const size = normalizeLodCellSize(lod.cellSize);
+    const size = this.predictionLodCellSize;
     // LOD grouping is intentionally 2D: sim x/y on the ground plane.
     // Altitude still affects the camera-sphere distance through the
     // camera's height above the ground plane, but not cell identity.
-    const ix = lodCellIndex(entity.transform.x, size);
-    const iy = lodCellIndex(entity.transform.y, size);
-    const key = packPredictionLodCellKey(ix, iy);
+    const ix = landCellIndexForSize(entity.transform.x, size);
+    const iy = landCellIndexForSize(entity.transform.y, size);
+    const key = packLandCellKey(ix, iy);
     const cached = this.predictionLodCells.get(key);
-    if (cached?.frameId === this.frameCounter) return cached.tier;
+    if (cached !== undefined) return cached;
 
-    const cellX = lodCellCenter(ix, size);
-    const cellY = lodCellCenter(iy, size);
+    const cellX = landCellCenterForSize(ix, size);
+    const cellY = landCellCenterForSize(iy, size);
     const dx = cellX - lod.cameraX;
     const dy = -lod.cameraY;
     const dz = cellY - lod.cameraZ;
     const tier = this.resolvePredictionLodTierForDistanceSq(
       dx * dx + dy * dy + dz * dz,
     );
-    this.predictionLodCells.set(key, { frameId: this.frameCounter, tier });
+    this.predictionLodCells.set(key, tier);
     return tier;
   }
 
@@ -1303,13 +1305,6 @@ export class ClientViewState {
     if (this.predictionMassDistanceSq > 0 && distanceSq <= this.predictionMassDistanceSq) return 'mass';
     if (this.predictionImpostorDistanceSq > 0 && distanceSq <= this.predictionImpostorDistanceSq) return 'impostor';
     return 'marker';
-  }
-
-  private pruneStalePredictionLodCells(): void {
-    const frameId = this.frameCounter;
-    for (const [key, cell] of this.predictionLodCells) {
-      if (cell.frameId !== frameId) this.predictionLodCells.delete(key);
-    }
   }
 
   private predictionFrameStrideForTier(
@@ -1557,9 +1552,8 @@ export class ClientViewState {
     this.frameCounter = (this.frameCounter + 1) & 0x3fffffff;
     if (this.frameCounter === 0) {
       this.frameCounter = 1;
-      this.predictionLodCells.clear();
     }
-    if ((this.frameCounter & 63) === 0) this.pruneStalePredictionLodCells();
+    this.predictionLodCells.clear();
 
     // Frame-rate independent blend factors (driven by drift mode half-lives)
     const preset = getDriftPreset(getDriftMode());
@@ -1569,6 +1563,7 @@ export class ClientViewState {
       const simple = Math.max(0, lod.simpleDistance);
       const mass = Math.max(0, lod.massDistance);
       const impostor = Math.max(0, lod.impostorDistance);
+      this.predictionLodCellSize = normalizeLodCellSize(lod.cellSize);
       this.predictionRichDistanceSq = rich * rich;
       this.predictionSimpleDistanceSq = simple * simple;
       this.predictionMassDistanceSq = mass * mass;
@@ -1578,6 +1573,7 @@ export class ClientViewState {
       this.predictionSimpleDistanceSq = 0;
       this.predictionMassDistanceSq = 0;
       this.predictionImpostorDistanceSq = 0;
+      this.predictionLodCellSize = 1;
     }
 
     // Collect active force fields for client-side projectile prediction.
