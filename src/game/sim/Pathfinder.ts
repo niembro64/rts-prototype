@@ -112,6 +112,20 @@ const SQRT2 = Math.SQRT2;
 const SQRT2_MINUS_1 = SQRT2 - 1;
 
 // ── Mask + CC cache ──────────────────────────────────────────────
+//
+// The full `_blocked` mask depends on BOTH terrain (water + slope) and
+// the current building footprints. Terrain barely ever changes mid-
+// battle (only when the host changes the map shape), but buildings
+// change every time something is built or destroyed — and the demo
+// battle does that constantly. Step 1 of the rebuild (terrain water
+// sampling, 5 samples per cell × ~25k cells) was responsible for an
+// observed ~500ms host-tick freeze whenever a building changed and the
+// next path query landed: the whole mask was thrown out and rebuilt.
+//
+// Split the cache so the *terrain-only* mask + dilation is keyed on
+// terrain version alone and reused across all building changes; only
+// step 3 (building dilation) and step 4 (CC labels) re-run when the
+// building grid changes.
 
 let _maskKey = '';
 let _gridW = 0;
@@ -119,19 +133,32 @@ let _gridH = 0;
 let _blocked: Uint8Array | null = null;   // 1 = blocked, 0 = open
 let _ccLabels: Int16Array | null = null;  // 0 = blocked, 1+ = component id
 
-function ensureMaskAndCC(
-  buildingGrid: BuildingGrid,
-  mapWidth: number, mapHeight: number,
-): void {
+// Terrain-only blocked mask: water + slope cells, dilated by
+// TERRAIN_INFLATION_CELLS, with map-edge cells clamped to blocked.
+// Independent of buildings — only invalidated when terrain changes
+// shape (host re-config) or grid dimensions change.
+let _terrainBlockedKey = '';
+let _terrainBlocked: Uint8Array | null = null;
+
+function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
+  terrainBlocked: Uint8Array;
+  gridW: number;
+  gridH: number;
+  n: number;
+} {
   const tVer = getTerrainVersion();
-  const bVer = buildingGrid.getVersion();
   const gridW = Math.ceil(mapWidth / GRID_CELL_SIZE);
   const gridH = Math.ceil(mapHeight / GRID_CELL_SIZE);
-  const key = `${tVer}|${bVer}|${gridW}|${gridH}`;
-  if (key === _maskKey && _blocked !== null && _ccLabels !== null) return;
-
   const n = gridW * gridH;
-  const blocked = new Uint8Array(n);
+  const tKey = `${tVer}|${gridW}|${gridH}`;
+  if (
+    tKey === _terrainBlockedKey &&
+    _terrainBlocked !== null &&
+    _terrainBlocked.length === n
+  ) {
+    return { terrainBlocked: _terrainBlocked, gridW, gridH, n };
+  }
+
   const half = GRID_CELL_SIZE / 2;
 
   // Step 1 — terrain mask. A cell is terrain-blocked iff any of
@@ -180,13 +207,16 @@ function ensureMaskAndCC(
   }
 
   // Step 2 — dilate the terrain mask by TERRAIN_INFLATION_CELLS into
-  // the final `blocked` array. Cells within `tk` of the map edge are
-  // blocked too (out-of-bounds is treated as a wall).
+  // the cached `terrainBlocked` array. Cells within `tk` of the map
+  // edge are blocked too (out-of-bounds is treated as a wall). Result
+  // is purely a function of terrain — buildings change does not
+  // invalidate this and we reuse it across building churn.
   const tk = TERRAIN_INFLATION_CELLS;
+  const terrainBlocked = new Uint8Array(n);
   for (let gy = 0; gy < gridH; gy++) {
     for (let gx = 0; gx < gridW; gx++) {
       if (gx < tk || gy < tk || gx >= gridW - tk || gy >= gridH - tk) {
-        blocked[gy * gridW + gx] = 1;
+        terrainBlocked[gy * gridW + gx] = 1;
         continue;
       }
       let blk = 0;
@@ -196,9 +226,34 @@ function ensureMaskAndCC(
           if (terrainMask[row + gx + dx] === 1) { blk = 1; break stencil; }
         }
       }
-      if (blk) blocked[gy * gridW + gx] = 1;
+      if (blk) terrainBlocked[gy * gridW + gx] = 1;
     }
   }
+
+  _terrainBlockedKey = tKey;
+  _terrainBlocked = terrainBlocked;
+  return { terrainBlocked, gridW, gridH, n };
+}
+
+function ensureMaskAndCC(
+  buildingGrid: BuildingGrid,
+  mapWidth: number, mapHeight: number,
+): void {
+  const tVer = getTerrainVersion();
+  const bVer = buildingGrid.getVersion();
+  // Terrain-only mask: cached across all building churn; recomputed
+  // only when terrain config changes (very rare during a battle).
+  const { terrainBlocked, gridW, gridH, n } = ensureTerrainBlocked(mapWidth, mapHeight);
+  const key = `${tVer}|${bVer}|${gridW}|${gridH}`;
+  if (key === _maskKey && _blocked !== null && _ccLabels !== null && _blocked.length === n) {
+    return;
+  }
+
+  // Start the per-tick mask from the cached terrain mask. Avoids the
+  // ~500ms terrain water-sampling pass on every building-version bump
+  // — that pass was responsible for the host-side freeze whenever a
+  // building was built or destroyed and the next path query landed.
+  const blocked = new Uint8Array(terrainBlocked);
 
   // Step 3 — buildings dilated by BUILDING_INFLATION_CELLS, OR'd into
   // the same blocked mask. Iterating the BuildingGrid's occupied
