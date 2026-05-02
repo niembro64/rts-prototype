@@ -473,8 +473,14 @@ export class ForceFieldRenderer3D {
     // units across), so pad generously so a turret just off-screen
     // with its bubble reaching in still updates.
     if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
+    // Force fields render at every camera-sphere band, including the
+    // farthest 'marker' tier. The fill is gameplay-relevant
+    // information (it tells the player there's a push field there),
+    // not just decoration — bailing at marker made distant fields
+    // pop in and out as the camera moved. The graphics-tier mapping
+    // below clamps style to 'minimal' (faint fill only) at marker
+    // distance, so the cost stays low.
     const objectTier = this.resolveUnitObjectLod(unit);
-    if (objectTier === 'marker') return;
     this._processUnit(unit, objectTier);
   }
 
@@ -543,7 +549,7 @@ export class ForceFieldRenderer3D {
     const nowMs = this._frameNowMs;
     const nowSec = this._frameNowSec;
     const resolvedTier = objectTier ?? this.resolveUnitObjectLod(unit);
-    if (resolvedTier === 'marker') return;
+    // Intentionally render at marker tier too — see perUnit() comment.
     const effectiveGraphicsTier = objectLodToGraphicsTier(resolvedTier, this.frameGfx.tier);
     const fieldGfx = this.lodActive ? getGraphicsConfigFor(effectiveGraphicsTier) : this.frameGfx;
     const style = (this.lodActive ? fieldGfx.forceFieldStyle : this._frameStyle) as string;
