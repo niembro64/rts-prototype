@@ -1,7 +1,6 @@
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotAction,
-  NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotEconomy,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotGridCell,
@@ -11,37 +10,8 @@ import type {
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotTurret,
-  NetworkServerSnapshotUnitTypeStats,
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkTypes';
-
-function cloneStats(s: NetworkServerSnapshotUnitTypeStats): NetworkServerSnapshotUnitTypeStats {
-  return {
-    damage: {
-      dealt: { enemy: s.damage.dealt.enemy, friendly: s.damage.dealt.friendly },
-      received: s.damage.received,
-    },
-    kills: { enemy: s.kills.enemy, friendly: s.kills.friendly },
-    units: {
-      produced: s.units.produced,
-      lost: s.units.lost,
-      resourceCost: s.units.resourceCost,
-    },
-  };
-}
-
-export function cloneNetworkCombatStats(stats: NetworkServerSnapshotCombatStats): NetworkServerSnapshotCombatStats {
-  const players: NetworkServerSnapshotCombatStats['players'] = {};
-  for (const playerId in stats.players) {
-    const src = stats.players[playerId];
-    const dst: Record<string, NetworkServerSnapshotUnitTypeStats> = {};
-    for (const unitType in src) dst[unitType] = cloneStats(src[unitType]);
-    players[Number(playerId)] = dst;
-  }
-  const global: NetworkServerSnapshotCombatStats['global'] = {};
-  for (const unitType in stats.global) global[unitType] = cloneStats(stats.global[unitType]);
-  return { players, global };
-}
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -120,6 +90,7 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
         shot: e.unit.collider.shot,
         push: e.unit.collider.push,
       } : undefined,
+      bodyCenterHeight: e.unit.bodyCenterHeight,
       moveSpeed: e.unit.moveSpeed,
       mass: e.unit.mass,
       velocity: { x: e.unit.velocity.x, y: e.unit.velocity.y, z: e.unit.velocity.z },
@@ -263,7 +234,6 @@ export function cloneNetworkSnapshot(state: NetworkServerSnapshot): NetworkServe
       beamUpdates: state.projectiles.beamUpdates?.map(cloneBeamUpdate),
     } : undefined,
     gameState: state.gameState ? { phase: state.gameState.phase, winnerId: state.gameState.winnerId } : undefined,
-    combatStats: state.combatStats ? cloneNetworkCombatStats(state.combatStats) : undefined,
     serverMeta: state.serverMeta ? {
       ticks: { ...state.serverMeta.ticks },
       snaps: { ...state.serverMeta.snaps },
@@ -391,6 +361,7 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
   } else {
     dst.collider = undefined;
   }
+  dst.bodyCenterHeight = src.bodyCenterHeight;
   dst.moveSpeed = src.moveSpeed;
   dst.mass = src.mass;
   dst.velocity.x = src.velocity.x;
@@ -822,7 +793,6 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.grid = undefined;
     this.snapshot.capture = undefined;
     this.snapshot.gameState = undefined;
-    this.snapshot.combatStats = undefined;
     this.snapshot.serverMeta = undefined;
     this.snapshot.removedEntityIds = undefined;
   }
@@ -877,7 +847,6 @@ export class ReusableNetworkSnapshotCloner {
     } else {
       dst.gameState = undefined;
     }
-    dst.combatStats = state.combatStats ? cloneNetworkCombatStats(state.combatStats) : undefined;
     dst.serverMeta = state.serverMeta ? {
       ticks: { ...state.serverMeta.ticks },
       snaps: { ...state.serverMeta.snaps },

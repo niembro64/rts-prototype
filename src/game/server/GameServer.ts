@@ -82,6 +82,8 @@ const GRID_DEBUG_KEY_BIAS = 10000;
 const GRID_DEBUG_KEY_BASE = 20000;
 const GRID_DEBUG_KEY_Y_MULT = GRID_DEBUG_KEY_BASE;
 const GRID_DEBUG_KEY_X_MULT = GRID_DEBUG_KEY_BASE * GRID_DEBUG_KEY_BASE;
+const GRID_DEBUG_CELL_POOL_MAX =
+  SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS + SERVER_GRID_DEBUG_MAX_SEARCH_CELLS;
 
 type SnapshotListenerEntry = {
   callback: SnapshotCallback;
@@ -376,6 +378,7 @@ export class GameServer {
             entity.transform.x,
             entity.transform.y,
             entity.unit.unitRadiusCollider.push,
+            entity.unit.bodyCenterHeight,
             entity.unit.mass,
             `unit_${entity.id}`,
             entity.id,
@@ -497,7 +500,7 @@ export class GameServer {
     beamIndex.clear();
     economyManager.reset();
 
-    // Reset simulation-owned state (ForceAccumulator, CombatStatsTracker, pending event buffers)
+    // Reset simulation-owned state (ForceAccumulator, pending event buffers)
     this.simulation.resetSessionState();
 
     // Reset module-level reusable buffers that hold stale entity references
@@ -901,6 +904,7 @@ export class GameServer {
           entity.transform.x,
           entity.transform.y,
           entity.unit.unitRadiusCollider.push,
+          entity.unit.bodyCenterHeight,
           entity.unit.mass,
           `unit_${entity.id}`,
           entity.id,
@@ -969,18 +973,6 @@ export class GameServer {
     // Add capture tile data (delta-aware: only changed tiles on delta snapshots)
     const captureTiles = this.captureSystem.consumeSnapshot(isDelta);
 
-    // CombatStats are end-of-game-style aggregates (units killed,
-    // resources spent) that the UI reads at human rates. Shipping them
-    // on every tick burned ~unit-count bytes/snapshot for fields that
-    // never changed. Send on keyframes plus once per ~500ms in deltas.
-    const combatStatsThrottleMs = 500;
-    const nowMs = performance.now();
-    let combatStats: ReturnType<Simulation['getCombatStatsSnapshot']> | undefined;
-    if (!isDelta || nowMs - this.lastSentCombatStatsMs >= combatStatsThrottleMs) {
-      combatStats = this.simulation.getCombatStatsSnapshot();
-      this.lastSentCombatStatsMs = nowMs;
-    }
-
     // Add server metadata to snapshot. Wind is visual/gameplay-visible and
     // intentionally changes continuously, so metadata must ride every
     // snapshot instead of only when the human-readable clock changes.
@@ -1034,7 +1026,7 @@ export class GameServer {
     // Spatial-grid debug data is diagnostic and expensive to build.
     // Emit it on a slower cadence; clients retain the last grid payload
     // between updates while normal gameplay snapshots keep flowing.
-    const includeGridDebug = this.refreshGridDebugSnapshot(nowMs);
+    const includeGridDebug = this.refreshGridDebugSnapshot(performance.now());
     const gridCells = includeGridDebug ? this.gridDebugCellsCache : undefined;
     const gridSearchCells = includeGridDebug ? this.gridDebugSearchCellsCache : undefined;
     const gridCellSize = includeGridDebug ? spatialGrid.getCellSize() : undefined;
@@ -1074,7 +1066,6 @@ export class GameServer {
       state.capture = captureTiles.length > 0
         ? { tiles: captureTiles, cellSize: this.captureSystem.getCellSize() }
         : undefined;
-      state.combatStats = combatStats;
       state.serverMeta = serverMeta;
       return state;
     };
@@ -1594,11 +1585,6 @@ export class GameServer {
   // Caches result so delta snapshots can skip sending unchanged time
   private lastServerTime: string = '';
   private lastServerTimeSec: number = -1;
-  // Wall-clock of the last delta snapshot that included combatStats.
-  // Stats only ship on keyframes or after this throttle elapses; the
-  // value is in performance.now() ms so it's monotonic across timer
-  // resets the host might do mid-game.
-  private lastSentCombatStatsMs: number = 0;
   private formatServerTime(): string {
     const now = new Date();
     const sec = now.getSeconds();
@@ -1623,6 +1609,8 @@ export class GameServer {
     if (!enabled) {
       this.releaseGridDebugCells(this.gridDebugCellsCache);
       this.releaseGridDebugCells(this.gridDebugSearchCellsCache);
+      this.gridDebugCellPool.length = 0;
+      this.gridDebugSearchCellMaskByKey.clear();
     }
   }
 
@@ -1658,7 +1646,9 @@ export class GameServer {
   private releaseGridDebugCells(cells: NetworkServerSnapshotGridCell[]): void {
     for (let i = 0; i < cells.length; i++) {
       cells[i].players.length = 0;
-      this.gridDebugCellPool.push(cells[i]);
+      if (this.gridDebugCellPool.length < GRID_DEBUG_CELL_POOL_MAX) {
+        this.gridDebugCellPool.push(cells[i]);
+      }
     }
     cells.length = 0;
   }
@@ -1706,7 +1696,7 @@ export class GameServer {
     }
   }
 
-  // Compute per-team search cells: the bounding box of cells each unit's seeRange covers
+  // Compute per-team search cells: the bounding box of cells each unit's turret tracking ranges cover
   private computeSearchCells(): void {
     this.releaseGridDebugCells(this.gridDebugSearchCellsCache);
     this.gridDebugSearchCellMaskByKey.clear();
@@ -1720,7 +1710,7 @@ export class GameServer {
       const playerMask = this.playerGridDebugMask(playerId);
       if (playerMask === 0) continue;
 
-      // Find max seeRange across all weapons
+      // Find max tracking range across all weapons
       let maxSeeRange = 0;
       for (let i = 0; i < unit.turrets.length; i++) {
         if (unit.turrets[i].ranges.tracking.release > maxSeeRange) {

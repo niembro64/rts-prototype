@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
+import type { TerrainShape } from '@/types/terrain';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import {
   buildSelectionInfo,
@@ -75,19 +76,16 @@ import {
   TILE_FLOOR_Y,
 } from '../sim/Terrain';
 import {
-  lodCellCenter,
-  lodCellIndex,
   normalizeLodCellSize,
 } from '../lodGridMath';
+import { landCellCenterForSize, landCellIndexForSize } from '../landGrid';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
-import { SelectionLabel3D } from '../render3d/SelectionLabel3D';
+import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 
 import type { GameConnection } from '../server/GameConnection';
-import type { TerrainShape } from '@/types/terrain';
 import type { GraphicsConfig } from '@/types/graphics';
 import type {
-  NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
 import { getPlayerPrimaryColor, setPlayerCountForColors } from '../sim/types';
@@ -100,7 +98,6 @@ import type {
 } from '../sim/types';
 
 import {
-  COMBAT_STATS_SAMPLE_INTERVAL,
   EMA_CONFIG,
   FRAME_TIMING_EMA,
   EMA_INITIAL_VALUES,
@@ -237,13 +234,12 @@ export class RtsScene3D {
   private lodShellGround3D: LodShellGround3D | null = null;
   private lodGridCells2D: LodGridCells2D | null = null;
   private renderLodGrid = new RenderLodGrid();
-  private selectionLabel3D: SelectionLabel3D | null = null;
 
   // Camera frustum cached once per frame and shared with the HUD
-  // renderers (HP bars, selection labels) so they can skip the bake
-  // / position update for every entity outside the view. With ~5k
-  // units on the map but only a few hundred visible at any zoom the
-  // savings are large; the test itself is six plane dot products.
+  // renderers so they can skip the bake / position update for every
+  // entity outside the view. With ~5k units on the map but only a few
+  // hundred visible at any zoom the savings are large; the test itself
+  // is six plane dot products.
   private _frustum = new THREE.Frustum();
   private _frustumMatrix = new THREE.Matrix4();
 
@@ -302,10 +298,8 @@ export class RtsScene3D {
   private selectionDirty = true;
   private economyUpdateTimer = 0;
   private minimapUpdateTimer = 0;
-  private combatStatsUpdateTimer = 0;
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
   private readonly MINIMAP_UPDATE_INTERVAL = 50;
-  private readonly COMBAT_STATS_UPDATE_INTERVAL = COMBAT_STATS_SAMPLE_INTERVAL;
   private _minimapDataScratch: MinimapData = {
     contentVersion: 0,
     captureVersion: 0,
@@ -380,7 +374,6 @@ export class RtsScene3D {
   ) => void;
   public onGameOverUI?: (winnerId: PlayerId) => void;
   public onGameRestart?: () => void;
-  public onCombatStatsUpdate?: (stats: NetworkServerSnapshotCombatStats) => void;
   public onServerMetaUpdate?: (meta: NetworkServerSnapshotMeta) => void;
 
   // Phaser-compat accessors used by PhaserCanvas.vue
@@ -429,7 +422,12 @@ export class RtsScene3D {
     // own GameServer constructor; we mirror it here so the client's
     // baked terrain mesh matches the server's heightmap. Captured for
     // rendering further down so the marker pass uses the same list.
-    const metalDeposits = generateMetalDeposits(this.mapWidth, this.mapHeight, this.playerIds.length, this.terrainCenter);
+    const metalDeposits = generateMetalDeposits(
+      this.mapWidth,
+      this.mapHeight,
+      this.playerIds.length,
+      this.terrainCenter,
+    );
     setMetalDepositFlatZones(
       metalDeposits.map((d) => ({
         x: d.x,
@@ -675,16 +673,8 @@ export class RtsScene3D {
       // HUD elements live in the 3D scene now: pooled sprites + line
       // buffers parented to the world group so they get full GPU
       // depth-occlusion against the terrain (a unit behind a hill
-      // has its bar/label/waypoint markers naturally clipped).
+      // has its bar/waypoint markers naturally clipped).
       this.healthBar3D = new HealthBar3D(this.threeApp.world);
-      this.selectionLabel3D = new SelectionLabel3D(
-        this.threeApp.world,
-        this.threeApp.camera,
-        () => ({
-          width: this.threeApp.renderer.domElement.clientWidth,
-          height: this.threeApp.renderer.domElement.clientHeight,
-        }),
-      );
       this.waypoint3D = new Waypoint3D(
         this.threeApp.world,
         this.mapWidth, this.mapHeight,
@@ -723,7 +713,12 @@ export class RtsScene3D {
     // drive preview updates on mouse-move-in-build-mode (hidden on
     // mode exit via the onBuildModeChange callback below).
     this.inputManager.setBuildGhost(this.buildGhostRenderer);
-    this.inputManager.setMapBounds(this.mapWidth, this.mapHeight, this.playerIds.length, this.terrainCenter);
+    this.inputManager.setMapBounds(
+      this.mapWidth,
+      this.mapHeight,
+      this.playerIds.length,
+      this.terrainCenter,
+    );
     // Keep scene's waypointMode in lockstep with the InputManager so the
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.
     this.inputManager.onWaypointModeChange = (mode) => {
@@ -844,13 +839,6 @@ export class RtsScene3D {
       if (this.economyUpdateTimer >= this.ECONOMY_UPDATE_INTERVAL) {
         this.economyUpdateTimer = 0;
         this.updateEconomyInfo();
-      }
-
-      this.combatStatsUpdateTimer += delta;
-      if (this.combatStatsUpdateTimer >= this.COMBAT_STATS_UPDATE_INTERVAL) {
-        this.combatStatsUpdateTimer = 0;
-        const stats = this.clientViewState.getCombatStats();
-        if (stats && this.onCombatStatsUpdate) this.onCombatStatsUpdate(stats);
       }
 
       const frameEnd = performance.now();
@@ -1068,14 +1056,14 @@ export class RtsScene3D {
     }
     this.forceFieldRenderer.endFrame();
 
-    // Health bars + selection labels track unit positions and run
-    // EVERY frame — the sprites are siblings of the unit groups (not
-    // children), so without a per-frame position update they visibly
-    // "snap" to the unit's last hud-stride position while the unit's
-    // own mesh continues moving smoothly. The expensive part (canvas
-    // texture rebake) is gated internally by `repaintIfChanged`, so
-    // per-frame iteration just sets sprite positions and frustum-
-    // probes for the (small) damaged-units / selected-units lists.
+    // Health bars track unit positions and run EVERY frame — the
+    // sprites are siblings of the unit groups (not children), so
+    // without a per-frame position update they visibly "snap" to the
+    // unit's last hud-stride position while the unit's own mesh
+    // continues moving smoothly. The expensive part is gated
+    // internally by `repaintIfChanged`, so per-frame iteration just
+    // sets sprite positions and frustum-probes for small damaged /
+    // hovered entity lists.
     const hoveredEntity = this.inputManager?.getHoveredEntity() ?? null;
     if (this.healthBar3D) {
       this.healthBar3D.beginFrame(hudFrustum);
@@ -1094,12 +1082,6 @@ export class RtsScene3D {
       }
       this.healthBar3D.endFrame();
     }
-    this.selectionLabel3D?.update(
-      this._cachedSelectedUnits,
-      this._cachedSelectedBuildings,
-      hudFrustum,
-      hoveredEntity,
-    );
     // Waypoint markers stay gated — their world points are fixed
     // command goals (move target, build site, rally point), not
     // tracking entities, so per-frame updates would be wasted work.
@@ -1137,13 +1119,6 @@ export class RtsScene3D {
     if (this.minimapUpdateTimer >= minimapInterval) {
       this.minimapUpdateTimer = 0;
       this.updateMinimapData();
-    }
-
-    this.combatStatsUpdateTimer += delta;
-    if (this.combatStatsUpdateTimer >= this.COMBAT_STATS_UPDATE_INTERVAL) {
-      this.combatStatsUpdateTimer = 0;
-      const stats = this.clientViewState.getCombatStats();
-      if (stats && this.onCombatStatsUpdate) this.onCombatStatsUpdate(stats);
     }
 
     // Track frame timing
@@ -1331,8 +1306,8 @@ export class RtsScene3D {
     const base = getGraphicsConfig();
     const shells = getRenderObjectLodShellDistances(base);
     const cellSize = normalizeLodCellSize(base.objectLodCellSize);
-    const cx = lodCellCenter(lodCellIndex(simX, cellSize), cellSize);
-    const cz = lodCellCenter(lodCellIndex(simZ, cellSize), cellSize);
+    const cx = landCellCenterForSize(landCellIndexForSize(simX, cellSize), cellSize);
+    const cz = landCellCenterForSize(landCellIndexForSize(simZ, cellSize), cellSize);
     const camera = this.threeApp.camera.position;
     const dx = cx - camera.x;
     const dy = -camera.y;
@@ -1445,9 +1420,7 @@ export class RtsScene3D {
         const visualRadius = ent.unit?.unitRadiusCollider.scale
           ?? ent.unit?.unitRadiusCollider.shot
           ?? 15;
-        const pushRadius = ent.unit?.unitRadiusCollider.push
-          ?? ent.unit?.unitRadiusCollider.shot
-          ?? visualRadius;
+        const pushRadius = ent.unit ? getUnitBodyCenterHeight(ent.unit) : visualRadius;
         ctx = {
           unitVel: {
             x: ent.unit?.velocityX ?? 0,
@@ -1459,7 +1432,7 @@ export class RtsScene3D {
           radius: ent.unit?.unitRadiusCollider.shot ?? 15,
           visualRadius,
           pushRadius,
-          baseZ: ent.transform.z - pushRadius,
+          baseZ: ent.unit ? getUnitGroundZ(ent) : ent.transform.z - pushRadius,
           color: tcol,
           unitType: ent.unit?.unitType,
           rotation: ent.transform.rotation,
@@ -1470,10 +1443,7 @@ export class RtsScene3D {
           ?? ent.unit.unitRadiusCollider.shot
           ?? ctx.visualRadius
           ?? ctx.radius;
-        const pushRadius = ent.unit.unitRadiusCollider.push
-          ?? ent.unit.unitRadiusCollider.shot
-          ?? ctx.pushRadius
-          ?? visualRadius;
+        const pushRadius = getUnitBodyCenterHeight(ent.unit);
         if (
           ctx.visualRadius === undefined ||
           ctx.pushRadius === undefined ||
@@ -1483,7 +1453,7 @@ export class RtsScene3D {
             ...ctx,
             visualRadius: ctx.visualRadius ?? visualRadius,
             pushRadius: ctx.pushRadius ?? pushRadius,
-            baseZ: ctx.baseZ ?? (ent.transform.z - pushRadius),
+            baseZ: ctx.baseZ ?? getUnitGroundZ(ent),
           };
         }
       }
@@ -1874,8 +1844,6 @@ export class RtsScene3D {
     this.lodShellGround3D = null;
     this.lodGridCells2D?.destroy();
     this.lodGridCells2D = null;
-    this.selectionLabel3D?.destroy();
-    this.selectionLabel3D = null;
     this.entityRenderer?.destroy();
     this.metalDepositRenderer?.dispose();
     this.metalDepositRenderer = null;
@@ -1904,7 +1872,6 @@ export class RtsScene3D {
     this.onCameraQuadUpdate = undefined;
     this.onGameOverUI = undefined;
     this.onGameRestart = undefined;
-    this.onCombatStatsUpdate = undefined;
     this.onServerMetaUpdate = undefined;
   }
 }

@@ -4,7 +4,6 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
-import type { CombatStatsTracker } from '../CombatStatsTracker';
 import type {
   AnyDamageSource,
   LineDamageSource,
@@ -27,6 +26,7 @@ import {
   isSolarCollectorDamageReduced,
   notifySolarCollectorDamaged,
 } from '../solarCollector';
+import { getUnitGroundZ } from '../unitGeometry';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -97,8 +97,6 @@ const _segHit = { t: 0, x: 0, y: 0, z: 0, entityId: 0 as EntityId, isMirror: fal
 
 
 export class DamageSystem {
-  public statsTracker?: CombatStatsTracker;
-
   constructor(private world: WorldState) {}
 
   // Main entry point - apply any damage source
@@ -294,7 +292,7 @@ export class DamageSystem {
         const mirrorPitch = unit.turrets && unit.turrets.length > 0
           ? unit.turrets[0].pitch
           : 0;
-        const unitGroundZ = unit.transform.z - unit.unit.unitRadiusCollider.push;
+        const unitGroundZ = getUnitGroundZ(unit);
         const panelExclude = isExcludedEntity ? excludePanelIndex : -1;
         const hit = findClosestPanelHit(
           panels, mirrorRot, mirrorPitch,
@@ -772,15 +770,12 @@ export class DamageSystem {
     sourceEntityId: EntityId,
     deathContext?: DeathContext
   ): void {
+    void sourceEntityId;
     if (entity.unit && entity.unit.hp > 0) {
-      // Cap recorded damage at remaining HP to avoid overkill inflation
-      const actualDamage = Math.min(damage, entity.unit.hp);
-      this.statsTracker?.recordDamage(sourceEntityId, entity.id, actualDamage);
       entity.unit.hp -= damage;
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
       if (entity.unit.hp <= 0 && !result.killedUnitIds.has(entity.id)) {
         result.killedUnitIds.add(entity.id);
-        this.statsTracker?.recordKill(sourceEntityId, entity.id);
         // Store death context for explosion effects
         if (deathContext) {
           result.deathContexts.set(entity.id, deathContext);
@@ -793,13 +788,10 @@ export class DamageSystem {
       if (entity.buildingType === 'solar') {
         notifySolarCollectorDamaged(this.world, entity);
       }
-      const actualDamage = Math.min(effectiveDamage, entity.building.hp);
-      this.statsTracker?.recordDamage(sourceEntityId, entity.id, actualDamage);
       entity.building.hp -= effectiveDamage;
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
       if (entity.building.hp <= 0 && !result.killedBuildingIds.has(entity.id)) {
         result.killedBuildingIds.add(entity.id);
-        this.statsTracker?.recordKill(sourceEntityId, entity.id);
       }
     }
   }

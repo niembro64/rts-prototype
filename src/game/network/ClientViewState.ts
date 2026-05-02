@@ -15,7 +15,6 @@ import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotBeamReflection,
   NetworkServerSnapshotGridCell,
-  NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
 } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
@@ -55,6 +54,7 @@ import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
+import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
 import { landCellCenterForSize, landCellIndexForSize, packLandCellKey } from '../landGrid';
 
@@ -68,6 +68,7 @@ const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 type ActiveForceField = {
   weaponX: number;
   weaponY: number;
+  weaponZ: number;
   playerId: PlayerId;
   pushInner: number;
   pushOuter: number;
@@ -81,6 +82,7 @@ const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 function pushClientForceField(
   weaponX: number,
   weaponY: number,
+  weaponZ: number,
   playerId: PlayerId,
   shot: ForceShot,
   progress: number,
@@ -91,11 +93,12 @@ function pushClientForceField(
   let field = _forceFields[_forceFieldCount];
   const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
   if (!field) {
-    field = { weaponX, weaponY, playerId, pushInner, pushOuter: push.outerRange, pushPower: push.power };
+    field = { weaponX, weaponY, weaponZ, playerId, pushInner, pushOuter: push.outerRange, pushPower: push.power };
     _forceFields[_forceFieldCount] = field;
   } else {
     field.weaponX = weaponX;
     field.weaponY = weaponY;
+    field.weaponZ = weaponZ;
     field.playerId = playerId;
     field.pushInner = pushInner;
     field.pushOuter = push.outerRange;
@@ -248,6 +251,11 @@ type PredictionStep = {
   targetDeltaMs: number;
 };
 
+type PredictionAccumulator = {
+  entityMs: number;
+  targetMs: number;
+};
+
 const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
 const PREDICTION_VEL_EPSILON_SQ = 0.01 * 0.01;
 const PREDICTION_ROT_EPSILON = 0.001;
@@ -320,9 +328,6 @@ export class ClientViewState {
   private captureVersion: number = 0;
   private captureCellSize: number = 0;
 
-  // Combat stats from latest snapshot
-  private combatStats: NetworkServerSnapshotCombatStats | null = null;
-
   // Server metadata from latest snapshot
   private serverMeta: NetworkServerSnapshotMeta | null = null;
   private forceFieldsEnabledForPrediction = true;
@@ -340,8 +345,7 @@ export class ClientViewState {
   // cells used by rendering. Far entities accumulate elapsed time and
   // run less often instead of paying turret/projectile/beam prediction
   // cost every browser frame.
-  private predictionAccumMs: Map<EntityId, number> = new Map();
-  private targetPredictionAccumMs: Map<EntityId, number> = new Map();
+  private predictionAccums: Map<EntityId, PredictionAccumulator> = new Map();
   private predictionLodCells: Map<PredictionLodCellKey, PredictionLodTier> = new Map();
   private predictionRichDistanceSq = 0;
   private predictionSimpleDistanceSq = 0;
@@ -397,6 +401,17 @@ export class ClientViewState {
     else this.invalidateProjectileCaches();
   }
 
+  private clearPredictionAccum(id: EntityId): void {
+    this.predictionAccums.delete(id);
+  }
+
+  private clearTargetPredictionAccum(id: EntityId): void {
+    const accum = this.predictionAccums.get(id);
+    if (!accum) return;
+    accum.targetMs = 0;
+    if (accum.entityMs <= 0) this.predictionAccums.delete(id);
+  }
+
   private deleteEntityLocalState(id: EntityId): void {
     const existing = this.entities.get(id);
     const wasLineProjectile = existing ? isLineProjectileEntity(existing) : false;
@@ -405,8 +420,7 @@ export class ClientViewState {
     this.beamPathTargets.delete(id);
     this.removeQueuedProjectileSpawn(id);
     this.selectedIds.delete(id);
-    this.predictionAccumMs.delete(id);
-    this.targetPredictionAccumMs.delete(id);
+    this.clearPredictionAccum(id);
     this.activeUnitPredictionIds.delete(id);
     this.activeProjectilePredictionIds.delete(id);
     this.activeBeamPathIds.delete(id);
@@ -648,8 +662,7 @@ export class ClientViewState {
         // directly in snapNonVisualState() when the network record says
         // it changed.
         this.serverTargets.delete(netEntity.id);
-        this.predictionAccumMs.delete(netEntity.id);
-        this.targetPredictionAccumMs.delete(netEntity.id);
+        this.clearPredictionAccum(netEntity.id);
       } else {
         // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
         let target = this.serverTargets.get(netEntity.id);
@@ -661,7 +674,7 @@ export class ClientViewState {
         // accumulated before this snapshot. Otherwise far entities can
         // extrapolate the newest target by time that already belonged
         // to an older target and visibly overshoot.
-        this.targetPredictionAccumMs.delete(netEntity.id);
+        this.clearTargetPredictionAccum(netEntity.id);
         if (isFull || cf! & ENTITY_CHANGED_POS) {
           target.x = netEntity.pos.x;
           target.y = netEntity.pos.y;
@@ -804,7 +817,7 @@ export class ClientViewState {
           target.velocityX = vu.velocity.x;
           target.velocityZ = vu.velocity.z;
           target.velocityY = vu.velocity.y;
-          this.targetPredictionAccumMs.delete(vu.id);
+          this.clearTargetPredictionAccum(vu.id);
           if (isLineProjectileEntity(entity)) this.activeBeamPathIds.add(vu.id);
           else this.activeProjectilePredictionIds.add(vu.id);
         }
@@ -919,11 +932,6 @@ export class ClientViewState {
       this.captureVersion++;
     }
 
-    // Store combat stats
-    if (state.combatStats) {
-      this.combatStats = state.combatStats;
-    }
-
     // Store server metadata
     if (state.serverMeta) {
       this.serverMeta = state.serverMeta;
@@ -953,6 +961,9 @@ export class ClientViewState {
         entity.unit.unitRadiusCollider.scale = su.collider.scale;
         entity.unit.unitRadiusCollider.shot = su.collider.shot;
         entity.unit.unitRadiusCollider.push = su.collider.push;
+      }
+      if (su.bodyCenterHeight !== undefined) {
+        entity.unit.bodyCenterHeight = su.bodyCenterHeight;
       }
       if (su.moveSpeed !== undefined) entity.unit.moveSpeed = su.moveSpeed;
       if (su.mass !== undefined) entity.unit.mass = su.mass;
@@ -1147,8 +1158,7 @@ export class ClientViewState {
     }
     proj.obstructionT = update.obstructionT;
     this.activeBeamPathIds.add(update.id);
-    this.predictionAccumMs.delete(update.id);
-    this.targetPredictionAccumMs.delete(update.id);
+    this.clearPredictionAccum(update.id);
     this.markLineProjectilesChanged();
   }
 
@@ -1340,27 +1350,31 @@ export class ClientViewState {
     stride: number,
   ): PredictionStep | null {
     if (stride <= 1) {
-      this.predictionAccumMs.delete(entity.id);
-      this.targetPredictionAccumMs.delete(entity.id);
+      this.clearPredictionAccum(entity.id);
       return { entityDeltaMs: deltaMs, targetDeltaMs: deltaMs };
     }
 
+    let accum = this.predictionAccums.get(entity.id);
     const accumulatedMs = Math.min(
-      (this.predictionAccumMs.get(entity.id) ?? 0) + deltaMs,
+      (accum?.entityMs ?? 0) + deltaMs,
       250,
     );
     const targetAccumulatedMs = Math.min(
-      (this.targetPredictionAccumMs.get(entity.id) ?? 0) + deltaMs,
+      (accum?.targetMs ?? 0) + deltaMs,
       250,
     );
     if ((this.frameCounter + entity.id) % stride !== 0) {
-      this.predictionAccumMs.set(entity.id, accumulatedMs);
-      this.targetPredictionAccumMs.set(entity.id, targetAccumulatedMs);
+      if (!accum) {
+        accum = { entityMs: accumulatedMs, targetMs: targetAccumulatedMs };
+        this.predictionAccums.set(entity.id, accum);
+      } else {
+        accum.entityMs = accumulatedMs;
+        accum.targetMs = targetAccumulatedMs;
+      }
       return null;
     }
 
-    this.predictionAccumMs.delete(entity.id);
-    this.targetPredictionAccumMs.delete(entity.id);
+    this.clearPredictionAccum(entity.id);
     return {
       entityDeltaMs: accumulatedMs,
       targetDeltaMs: targetAccumulatedMs,
@@ -1479,9 +1493,20 @@ export class ClientViewState {
       if (next > 0 && entity.ownership) {
         const unitCos = Math.cos(entity.transform.rotation);
         const unitSin = Math.sin(entity.transform.rotation);
+        const unitGroundZ = getUnitGroundZ(entity);
+        const mount = getTurretWorldMount(
+          entity.transform.x, entity.transform.y, unitGroundZ,
+          unitCos, unitSin,
+          weapon.offset.x, weapon.offset.y, getTurretMountHeight(entity, i),
+          getSurfaceNormal(
+            entity.transform.x, entity.transform.y,
+            this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE,
+          ),
+        );
         pushClientForceField(
-          entity.transform.x + unitCos * weapon.offset.x - unitSin * weapon.offset.y,
-          entity.transform.y + unitSin * weapon.offset.x + unitCos * weapon.offset.y,
+          mount.x,
+          mount.y,
+          mount.z,
           entity.ownership.playerId,
           fieldShot,
           next,
@@ -1743,7 +1768,8 @@ export class ClientViewState {
             if (ff.playerId === projOwnerId) continue; // Only deflect enemy projectiles
             const dx = entity.transform.x - ff.weaponX;
             const dy = entity.transform.y - ff.weaponY;
-            const distSq = dx * dx + dy * dy;
+            const dz = entity.transform.z - ff.weaponZ;
+            const distSq = dx * dx + dy * dy + dz * dz;
             const maxDist = ff.pushOuter + projRadius;
             if (distSq > maxDist * maxDist) continue;
             const dist = Math.sqrt(distSq);
@@ -1751,8 +1777,10 @@ export class ClientViewState {
             const pushAccel = (ff.pushPower * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER) / projMass;
             const dirX = dist > 0 ? dx / dist : 0;
             const dirY = dist > 0 ? dy / dist : 0;
+            const dirZ = dist > 0 ? dz / dist : 0;
             proj.velocityX += dirX * pushAccel * dt;  // push outward
             proj.velocityY += dirY * pushAccel * dt;
+            proj.velocityZ += dirZ * pushAccel * dt;
             entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
           }
         }
@@ -1924,7 +1952,7 @@ export class ClientViewState {
           source.transform.x, source.transform.y,
           this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE,
         );
-        const unitGroundZ = source.transform.z - source.unit.unitRadiusCollider.push;
+        const unitGroundZ = getUnitGroundZ(source);
         const mount = getTurretWorldMount(
           source.transform.x, source.transform.y, unitGroundZ,
           unitCos, unitSin,
@@ -2347,10 +2375,6 @@ export class ClientViewState {
     return this.captureVersion;
   }
 
-  getCombatStats(): NetworkServerSnapshotCombatStats | null {
-    return this.combatStats;
-  }
-
   getServerMeta(): NetworkServerSnapshotMeta | null {
     return this.serverMeta;
   }
@@ -2379,8 +2403,7 @@ export class ClientViewState {
     this.captureCellSize = 0;
     this.serverMeta = null;
     this.frameCounter = 0;
-    this.predictionAccumMs.clear();
-    this.targetPredictionAccumMs.clear();
+    this.predictionAccums.clear();
     this.predictionLodCells.clear();
     this.activeUnitPredictionIds.clear();
     this.activeProjectilePredictionIds.clear();

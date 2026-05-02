@@ -32,7 +32,6 @@ import {
   type ProjectileVelocityUpdateEvent,
 } from './combat';
 import { DamageSystem } from './damage';
-import { CombatStatsTracker, type CombatStatsSnapshot } from './CombatStatsTracker';
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
@@ -100,7 +99,6 @@ export class Simulation {
   private constructionSystem: ConstructionSystem;
   private damageSystem: DamageSystem;
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
-  private combatStatsTracker: CombatStatsTracker;
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
   // Accumulated sim time (ms). Drives deterministic systems like wind
@@ -177,9 +175,7 @@ export class Simulation {
     this.world = world;
     this.commandQueue = commandQueue;
     this.constructionSystem = new ConstructionSystem(world.mapWidth, world.mapHeight);
-    this.combatStatsTracker = new CombatStatsTracker(world);
     this.damageSystem = new DamageSystem(world);
-    this.damageSystem.statsTracker = this.combatStatsTracker;
   }
 
   // AI player IDs (for auto-production)
@@ -257,16 +253,6 @@ export class Simulation {
     return buf;
   }
 
-  // Get combat stats snapshot for network broadcast
-  getCombatStatsSnapshot(): CombatStatsSnapshot {
-    return this.combatStatsTracker.getSnapshot();
-  }
-
-  // Get the combat stats tracker (for recording external events like background spawns)
-  getCombatStatsTracker(): CombatStatsTracker {
-    return this.combatStatsTracker;
-  }
-
   getWindState(): WindState {
     return this.windState;
   }
@@ -319,14 +305,8 @@ export class Simulation {
       this.world, dtMs,
       this.constructionSystem.getGrid(),
     );
-    // Record production stats and notify about newly spawned units (need physics bodies)
+    // Notify about newly spawned units (need physics bodies)
     if (productionResult.completedUnits.length > 0) {
-      for (const unit of productionResult.completedUnits) {
-        if (unit.unit?.unitType && unit.ownership) {
-          this.combatStatsTracker.registerEntity(unit.id, unit.ownership.playerId, unit.unit.unitType);
-          this.combatStatsTracker.recordUnitProduced(unit.ownership.playerId, unit.unit.unitType);
-        }
-      }
       this.onUnitSpawn?.(productionResult.completedUnits);
     }
 
@@ -548,9 +528,6 @@ export class Simulation {
             for (const evt of emitForceFieldStopsForEntity(entity)) {
               this.pendingSimEvents.push(evt);
             }
-            if (entity.unit?.unitType && entity.ownership) {
-              this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
-            }
           }
           spatialGrid.removeUnit(id);
           buf.push(id);
@@ -568,9 +545,6 @@ export class Simulation {
         this.onBuildingDeath?.(buf);
       }
     }
-
-    // Prune stale combat stats registry entries (rate-limited internally)
-    this.combatStatsTracker.pruneRegistry(this.world.getTick());
 
     // Safety cleanup - remove any dead entities that slipped through.
     // Normal combat deaths are handled in the collision path above;
@@ -619,9 +593,6 @@ export class Simulation {
           // Emit forceFieldStop for the dying entity's force field weapons
           for (const evt of emitForceFieldStopsForEntity(entity)) {
             this.pendingSimEvents.push(evt);
-          }
-          if (entity.unit?.unitType && entity.ownership) {
-            this.combatStatsTracker.recordUnitLost(entity.ownership.playerId, entity.unit.unitType);
           }
           // Synthesize a death SimEvent so the renderer still fires a
           // material explosion for units killed outside the normal
@@ -966,7 +937,6 @@ export class Simulation {
   // Reset all session state (call between game sessions to free stale references)
   resetSessionState(): void {
     this.forceAccumulator.reset();
-    this.combatStatsTracker.reset();
     this._audioA.length = 0;
     this._audioB.length = 0;
     this.pendingSimEvents = this._audioA;

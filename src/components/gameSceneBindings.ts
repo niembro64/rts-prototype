@@ -1,10 +1,7 @@
 import type { GameScene } from '@/types/game';
 import type { PlayerId } from '@/types/sim';
 import type { EconomyInfo, MinimapData, SelectionInfo } from '@/types/ui';
-import type {
-  NetworkServerSnapshotCombatStats,
-  NetworkServerSnapshotMeta,
-} from '@/types/network';
+import type { NetworkServerSnapshotMeta } from '@/types/network';
 
 export type SceneUiBindings = {
   onPlayerChange: (playerId: PlayerId) => void;
@@ -12,7 +9,6 @@ export type SceneUiBindings = {
   onEconomyChange: (info: EconomyInfo) => void;
   onMinimapUpdate: (data: MinimapData) => void;
   onCameraQuadUpdate: (quad: MinimapData['cameraQuad'], cameraYaw: number) => void;
-  onCombatStatsUpdate: (stats: NetworkServerSnapshotCombatStats) => void;
   onServerMetaUpdate: (meta: NetworkServerSnapshotMeta) => void;
   onGameOver?: (winnerId: PlayerId) => void;
   onGameRestart?: () => void;
@@ -27,7 +23,6 @@ export function bindSceneUiCallbacks(
   scene.onEconomyChange = bindings.onEconomyChange;
   scene.onMinimapUpdate = bindings.onMinimapUpdate;
   scene.onCameraQuadUpdate = bindings.onCameraQuadUpdate;
-  scene.onCombatStatsUpdate = bindings.onCombatStatsUpdate;
   scene.onServerMetaUpdate = bindings.onServerMetaUpdate;
   if (bindings.onGameOver) scene.onGameOverUI = bindings.onGameOver;
   if (bindings.onGameRestart) scene.onGameRestart = bindings.onGameRestart;

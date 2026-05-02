@@ -257,17 +257,6 @@ export type NetworkServerSnapshotGridCell = {
   players: number[];
 };
 
-export type NetworkServerSnapshotUnitTypeStats = {
-  damage: { dealt: { enemy: number; friendly: number }; received: number };
-  kills: { enemy: number; friendly: number };
-  units: { produced: number; lost: number; resourceCost: number };
-};
-
-export type NetworkServerSnapshotCombatStats = {
-  players: Record<number, Record<string, NetworkServerSnapshotUnitTypeStats>>;
-  global: Record<string, NetworkServerSnapshotUnitTypeStats>;
-};
-
 export type NetworkServerSnapshotMeta = {
   ticks: {
     avg: number;
@@ -327,7 +316,6 @@ export type NetworkServerSnapshot = {
     beamUpdates?: NetworkServerSnapshotBeamUpdate[];
   };
   gameState?: { phase: GamePhase; winnerId?: PlayerId };
-  combatStats?: NetworkServerSnapshotCombatStats;
   serverMeta?: NetworkServerSnapshotMeta;
   grid?: {
     cells: NetworkServerSnapshotGridCell[];
@@ -429,6 +417,7 @@ export type NetworkServerSnapshotEntity = {
     unitType?: number;
     hp: { curr: number; max: number };
     collider?: { scale: number; shot: number; push: number };
+    bodyCenterHeight?: number;
     moveSpeed?: number;
     mass?: number;
     velocity: Vec3;

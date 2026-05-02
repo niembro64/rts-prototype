@@ -11,8 +11,6 @@ export type {
   NetworkServerSnapshotBeamReflection,
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotGridCell,
-  NetworkServerSnapshotUnitTypeStats,
-  NetworkServerSnapshotCombatStats,
   NetworkServerSnapshotMeta,
   NetworkServerSnapshot,
   NetworkServerSnapshotSprayTarget,

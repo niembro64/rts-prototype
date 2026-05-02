@@ -20,25 +20,15 @@ import SelectionPanel, {
 import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
-import CombatStatsModal from './CombatStatsModal.vue';
 import SoundTestModal from './SoundTestModal.vue';
 import type { MinimapData } from '@/types/ui';
-import type {
-  NetworkServerSnapshotCombatStats,
-  NetworkServerSnapshotMeta,
-} from '../game/network/NetworkTypes';
-import type { StatsSnapshot } from './combatStatsUtils';
+import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import {
   networkManager,
   type NetworkRole,
   type BattleHandoff,
 } from '../game/network/NetworkManager';
-import { cloneNetworkCombatStats } from '../game/network/snapshotClone';
-import {
-  getMapSize,
-  COMBAT_STATS_HISTORY_MAX,
-  COMBAT_STATS_VISIBLE_ON_LOAD,
-} from '../config';
+import { getMapSize } from '../config';
 import { getUnitBlueprint } from '../game/sim/blueprints';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
 import { LOD_EMA_SOURCE, GOOD_TPS } from '../lodConfig';
@@ -477,13 +467,7 @@ const economyInfo = reactive<EconomyInfo>({
 // Minimap state
 const minimapData = reactive<MinimapData>(createInitialMinimapData());
 
-// Combat stats state
-const combatStats = ref<NetworkServerSnapshotCombatStats | null>(null);
-const showCombatStats = ref(COMBAT_STATS_VISIBLE_ON_LOAD);
 const showSoundTest = ref(false);
-const combatStatsViewMode = ref<'global' | 'player'>('global');
-const combatStatsHistory = ref<StatsSnapshot[]>([]);
-let statsHistoryStartTime = 0;
 const battleElapsed = ref('00:00:00');
 
 function setRefIfChanged<T>(target: { value: T }, value: T): void {
@@ -493,24 +477,6 @@ function setRefIfChanged<T>(target: { value: T }, value: T): void {
 function setNumberRefIfChanged(target: { value: number }, value: number, epsilon = 0.01): void {
   if (!Number.isFinite(value)) return;
   if (Math.abs(target.value - value) > epsilon) target.value = value;
-}
-
-function recordCombatStats(stats: NetworkServerSnapshotCombatStats): void {
-  if (statsHistoryStartTime === 0) statsHistoryStartTime = Date.now();
-  if (!showCombatStats.value) {
-    combatStats.value = stats;
-    return;
-  }
-
-  const cloned = cloneNetworkCombatStats(stats);
-  combatStats.value = cloned;
-  combatStatsHistory.value.push({
-    timestamp: Date.now() - statsHistoryStartTime,
-    stats: cloned,
-  });
-  if (combatStatsHistory.value.length > COMBAT_STATS_HISTORY_MAX) {
-    combatStatsHistory.value.shift();
-  }
 }
 
 function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
@@ -530,7 +496,6 @@ function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
     onCameraQuadUpdate: (quad, cameraYaw) => {
       applyMinimapCameraQuad(minimapData, quad, cameraYaw);
     },
-    onCombatStatsUpdate: recordCombatStats,
     onServerMetaUpdate: (meta) => {
       serverMetaFromSnapshot.value = meta;
     },
@@ -638,8 +603,6 @@ function stopBackgroundBattle(): void {
     activeConnection = null;
     hasServer.value = false;
   }
-  combatStatsHistory.value = [];
-  statsHistoryStartTime = 0;
 }
 
 // Show player toggle only in single-player mode (offline or hosting alone)
@@ -1180,8 +1143,6 @@ function handleMinimapClick(x: number, y: number): void {
 
 function restartGame(): void {
   gameOverWinner.value = null;
-  combatStatsHistory.value = [];
-  statsHistoryStartTime = 0;
   clearRealBattleTimeouts();
   // Return to lobby
   gameStarted.value = false;
@@ -1905,10 +1866,7 @@ function dismissGameOver(): void {
   gameOverWinner.value = null;
 }
 
-function handleCombatStatsKeydown(e: KeyboardEvent): void {
-  if (e.key === '`') {
-    showCombatStats.value = !showCombatStats.value;
-  }
+function handleSoundTestKeydown(e: KeyboardEvent): void {
   if (e.key === '~') {
     showSoundTest.value = !showSoundTest.value;
   }
@@ -1981,7 +1939,7 @@ onMounted(() => {
   clientTimeInterval = setInterval(updateClientTime, 1000);
 
   // Listen for backtick to toggle combat stats
-  window.addEventListener('keydown', handleCombatStatsKeydown);
+  window.addEventListener('keydown', handleSoundTestKeydown);
 });
 
 onUnmounted(() => {
@@ -2001,7 +1959,7 @@ onUnmounted(() => {
     clearInterval(checkBgSceneInterval);
     checkBgSceneInterval = null;
   }
-  window.removeEventListener('keydown', handleCombatStatsKeydown);
+  window.removeEventListener('keydown', handleSoundTestKeydown);
   // Stop servers
   if (currentServer) {
     currentServer.stop();
@@ -3128,16 +3086,6 @@ onUnmounted(() => {
     >
       ☰
     </button>
-
-    <!-- Combat Stats Modal -->
-    <CombatStatsModal
-      :visible="showCombatStats"
-      :stats="combatStats"
-      :view-mode="combatStatsViewMode"
-      :stats-history="combatStatsHistory"
-      @update:view-mode="combatStatsViewMode = $event"
-      @close="showCombatStats = false"
-    />
 
     <!-- Sound Test Modal -->
     <SoundTestModal

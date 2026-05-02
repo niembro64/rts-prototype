@@ -735,15 +735,6 @@ export type { SynthId, SoundEntry } from './audioConfig';
 // UI
 // =============================================================================
 
-/** How often to sample combat stats for the history graph (ms) */
-export const COMBAT_STATS_SAMPLE_INTERVAL = 200;
-
-/** Maximum number of combat stats snapshots to retain (samples × interval = time window) */
-export const COMBAT_STATS_HISTORY_MAX = 25; // 1200 × 500ms = 10 minutes
-
-/** Whether the Combat Statistics modal is visible on page load */
-export const COMBAT_STATS_VISIBLE_ON_LOAD = false;
-
 // =============================================================================
 // CAMERA & ZOOM
 // =============================================================================

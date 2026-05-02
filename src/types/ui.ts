@@ -1,7 +1,6 @@
 // UI component types extracted from Vue components and helpers
 
 import type { PlayerId, EntityId, WaypointType, Entity, BuildingType } from './sim';
-import type { NetworkServerSnapshotCombatStats } from './network';
 import type { Vec2 } from './vec2';
 
 // Selection panel types
@@ -131,14 +130,6 @@ export type MinimapData = {
 // duplicate that previously lived here was missing them).
 export type { LobbyPlayer } from './network';
 
-// Combat stats
-export type FriendlyFireMode = 'include' | 'ignore' | 'subHalf' | 'subtract';
-
-export type StatsSnapshot = {
-  timestamp: number;
-  stats: NetworkServerSnapshotCombatStats;
-};
-
 // UI entity source
 export type UIEntitySource = {
   getUnits(): Entity[];
@@ -229,14 +220,3 @@ export type EnergyConsumer = {
   maxEnergyPerTick: number;
 };
 
-// Combat stats tracker types
-export type UnitTypeStats = {
-  damage: { dealt: { enemy: number; friendly: number }; received: number };
-  kills: { enemy: number; friendly: number };
-  units: { produced: number; lost: number; resourceCost: number };
-};
-
-export type CombatStatsSnapshot = {
-  players: Record<number, Record<string, UnitTypeStats>>;
-  global: Record<string, UnitTypeStats>;
-};
