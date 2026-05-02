@@ -73,10 +73,13 @@ const BODY_SHAPES = {
   },
   formik: {
     kind: 'composite',
+    // Head sphere intentionally removed — the turret head sphere now
+    // sits at offsetForward=0.78 (chassisMount below) and visually
+    // replaces the old body head, so a separate body sphere there
+    // would just clip through the turret.
     parts: [
       { kind: 'oval', offsetForward: -0.85, xFrac: 0.75, yFrac: 0.85, zFrac: 0.68 },
       { kind: 'oval', offsetForward: 0.05, xFrac: 0.7, yFrac: 0.72, zFrac: 0.55 },
-      { kind: 'circle', offsetForward: 0.78, radiusFrac: 0.38, yFrac: 0.38 },
     ],
   },
   snipe: { kind: 'oval', xFrac: 0.5, yFrac: (0.5 + 0.35) / 2, zFrac: 0.35 },
@@ -325,10 +328,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 3200,
     moveSpeed: 60,
     unitRadiusCollider: { scale: 40, shot: 50, push: 50 * 1.3 },
-    mass: 280,
+    mass: 500,
     resourceCost: 4000,
     turrets: [{ turretId: 'gatlingMortarTurret', offsetX: 0, offsetY: 0 }],
-    chassisMounts: [{ x: 0.3, y: 0 }],
+    // Mount sits at the same forward position as the (removed) head
+    // sphere — so the turret's head visually takes the head's place
+    // on the silhouette instead of perched between thorax and head.
+    chassisMounts: [{ x: 0.78, y: 0 }],
     bodyShape: BODY_SHAPES.formik,
     locomotion: {
       type: 'legs',
@@ -346,7 +352,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     renderer: 'formik',
-    seeRange: 500,
     deathSound: AUDIO.event.death.formik,
     fightStopEngagedRatio: 0.9,
   },
@@ -381,7 +386,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     renderer: 'arachnid',
-    seeRange: 400,
     deathSound: AUDIO.event.death.widow,
     fightStopEngagedRatio: 0.9,
   },
