@@ -68,9 +68,12 @@ const BODY_SHAPES = {
   },
   arachnid: {
     kind: 'composite',
+    // Prosoma (head sphere) removed — the megaBeamTurret mounted at
+    // chassisMount (0.3, 0) puts its head sphere where the prosoma
+    // used to sit, so a separate body sphere there would clip through
+    // the turret. Same pattern applied to formik / tarantula.
     parts: [
       { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
-      { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
     ],
   },
   formik: {
@@ -373,11 +376,14 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 200,
     resourceCost: 3000,
     turrets: [
-      { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-left
-      { turretId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-left
-      { turretId: 'beamTurret5', offsetX: 0, offsetY: 0 }, // back-right
-      { turretId: 'beamTurret6', offsetX: 0, offsetY: 0 }, // front-right
-      { turretId: 'forceTurretMedium', offsetX: 0, offsetY: 0 }, // center
+      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 }, // front-left
+      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 }, // back-left
+      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 }, // back-right
+      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 }, // front-right
+      // Mega beam mount sits where the prosoma (head) sphere used to —
+      // see BODY_SHAPES.arachnid. Replaces the previous force-field
+      // emitter at this position; the unit now has 5 beams total.
+      { turretId: 'megaBeamTurret', offsetX: 0, offsetY: 0 }, // center / head
     ],
     chassisMounts: computeWidowMounts(),
     bodyShape: BODY_SHAPES.arachnid,
@@ -432,7 +438,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusCollider: { scale: 11, shot: 13, push: 11 * 1.8 },
     mass: 18,
     resourceCost: 300,
-    turrets: [{ turretId: 'beamTurret8', offsetX: 0, offsetY: 0 }],
+    turrets: [{ turretId: 'beamTurret', offsetX: 0, offsetY: 0 }],
     // Mount sits where the (removed) head sphere used to be so the
     // turret head visually takes its place on the silhouette — same
     // pattern applied to the formik.
@@ -490,7 +496,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 60,
     resourceCost: 400,
     turrets: [
-      { turretId: 'beamTurret3', offsetX: 0, offsetY: 0 },
+      { turretId: 'beamTurret', offsetX: 0, offsetY: 0 },
       { turretId: 'dgunTurret', offsetX: 0, offsetY: 0 },
     ],
     chassisMounts: [

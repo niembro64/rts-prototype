@@ -27,29 +27,51 @@ export const harmonicSeriesBaseMultipler = 32;
 export type { SynthId, SoundEntry } from './types/audio';
 import type { SynthId, SoundEntry } from './types/audio';
 
-// Generate beam sound entries for all harmonic series indices (0 = lowest pitch/biggest, 13 = highest pitch/smallest)
-const _beamFire: Record<string, SoundEntry> = {};
-const _beamLaser: Record<string, SoundEntry> = {};
-const _beamHit: Record<string, SoundEntry> = {};
-for (let i = 0; i < harmonicSeries.length; i++) {
-  const playSpeed = harmonicSeries[8] / harmonicSeries[i];
-  _beamFire[`beamTurret${i}`] = {
+// Beam sound entries. Previously this generated one variant per
+// harmonic-series index so the widow's four beams played a chord;
+// the four-turret unit was reduced to a single beamTurret blueprint
+// so the per-index variation is no longer needed. Keeps a single
+// canonical entry plus a beefier megaBeam pair for the megaBeamTurret.
+const _beamPlaySpeed = harmonicSeries[8] / harmonicSeries[6];
+const _beamFire: Record<string, SoundEntry> = {
+  beamTurret: {
     synth: 'laser-zap' as SynthId,
     volume: 0.2,
-    playSpeed,
-  };
-  _beamLaser[`beamTurret${i}`] = {
+    playSpeed: _beamPlaySpeed,
+  },
+  // Lower-pitched, slightly louder version for the heavier mount.
+  megaBeamTurret: {
+    synth: 'laser-zap' as SynthId,
+    volume: 0.35,
+    playSpeed: harmonicSeries[8] / harmonicSeries[1],
+  },
+};
+const _beamLaser: Record<string, SoundEntry> = {
+  beamTurret: {
     synth: 'beam-hum' as SynthId,
     volume: 1.0,
     playSpeed: 1,
-    freq: harmonicSeriesBaseMultipler / harmonicSeries[i],
-  };
-  _beamHit[`beamShot${i}`] = {
+    freq: harmonicSeriesBaseMultipler / harmonicSeries[6],
+  },
+  megaBeamTurret: {
+    synth: 'beam-hum' as SynthId,
+    volume: 1.2,
+    playSpeed: 1,
+    freq: harmonicSeriesBaseMultipler / harmonicSeries[1],
+  },
+};
+const _beamHit: Record<string, SoundEntry> = {
+  beamShot: {
     synth: 'sizzle' as SynthId,
     volume: 1.0,
-    playSpeed,
-  };
-}
+    playSpeed: _beamPlaySpeed,
+  },
+  megaBeamShot: {
+    synth: 'sizzle' as SynthId,
+    volume: 1.4,
+    playSpeed: harmonicSeries[8] / harmonicSeries[1],
+  },
+};
 
 export const AUDIO = {
   masterVolume: 0.99, // Global master gain (applied to AudioContext destination)

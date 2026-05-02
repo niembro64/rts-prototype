@@ -11,30 +11,8 @@ const beam_recoil: number = 2000;
 
 const fire_explosion_multiplier: number = 3;
 
-import { AUDIO, harmonicSeries } from '../../../audioConfig';
-import type { ShotBlueprint, BeamShotBlueprint } from './types';
-
-// Generate beam shot blueprints for all harmonic series indices
-// Index 0 = most powerful (lowest pitch, biggest beam), index 13 = weakest (highest pitch, smallest)
-function generateBeamShots(): Record<string, BeamShotBlueprint> {
-  const result: Record<string, BeamShotBlueprint> = {};
-
-  for (let i = 0; i < harmonicSeries.length; i++) {
-    const dps = 30;
-
-    result[`beamShot${i}`] = {
-      type: 'beam',
-      id: `beamShot${i}`,
-      dps,
-      force: 2000,
-      recoil: beam_recoil,
-      radius: beam_width / 2,
-      width: beam_width,
-      hitSound: AUDIO.event.hit[`beamShot${i}`],
-    };
-  }
-  return result;
-}
+import { AUDIO } from '../../../audioConfig';
+import type { ShotBlueprint } from './types';
 
 export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
@@ -205,7 +183,30 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     duration: 300,
     hitSound: AUDIO.event.hit.laserShot,
   },
-  ...generateBeamShots(),
+  beamShot: {
+    type: 'beam',
+    id: 'beamShot',
+    dps: 30,
+    force: 2000,
+    recoil: beam_recoil,
+    radius: beam_width / 2,
+    width: beam_width,
+    hitSound: AUDIO.event.hit.beamShot,
+  },
+  // megaBeam — beefy single-emitter beam used by the widow head and
+  // any future "boss" beam mounts. Higher dps and a thicker beam,
+  // same recoil so it doesn't shove the host unit harder than the
+  // standard beams already do.
+  megaBeamShot: {
+    type: 'beam',
+    id: 'megaBeamShot',
+    dps: 90,
+    force: 4000,
+    recoil: beam_recoil,
+    radius: beam_width,
+    width: beam_width * 2,
+    hitSound: AUDIO.event.hit.megaBeamShot,
+  },
 };
 
 export function getShotBlueprint(id: string): ShotBlueprint {

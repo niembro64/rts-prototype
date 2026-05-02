@@ -10,45 +10,11 @@ import {
   FORCE_FIELD_TURRET,
   FORCE_PUSH,
 } from '../../../config';
-import { AUDIO, harmonicSeries } from '../../../audioConfig';
+import { AUDIO } from '../../../audioConfig';
 import type { TurretBlueprint } from './types';
 
 const beamTurretBarrelLength: number = 1.0;
-
-// Generate beam turret blueprints for all harmonic series indices
-// Index 0 = most powerful (lowest pitch, thickest barrel), index 13 = weakest (highest pitch, thinnest)
-function generateBeamTurrets(): Record<string, TurretBlueprint> {
-  const result: Record<string, TurretBlueprint> = {};
-
-  for (let i = 0; i < harmonicSeries.length; i++) {
-    const commanderShoulderEmitter = i === 3;
-    const range = 250;
-    result[`beamTurret${i}`] = {
-      id: `beamTurret${i}`,
-      projectileId: `beamShot${i}`,
-      range,
-      turretTurnAccel: 100,
-      turretDrag: 0.4,
-      barrel: {
-        type: 'simpleSingleBarrel',
-        barrelLength: commanderShoulderEmitter ? 0.82 : beamTurretBarrelLength,
-      },
-      launchForce: 1000,
-      rangeMultiplierOverrides: {
-        engageRangeMax: { acquire: 0.9, release: 0.95 },
-        engageRangeMin: { acquire: 0.0, release: 0.0 },
-      },
-      eventsSmooth: false,
-      color: 0xffffff,
-      bodyRadius: commanderShoulderEmitter ? 5 : 6,
-      audio: {
-        fireSound: AUDIO.event.fire[`beamTurret${i}`],
-        laserSound: AUDIO.event.laser[`beamTurret${i}`],
-      },
-    };
-  }
-  return result;
-}
+const NO_MIN_FIRE_RANGE = { acquire: 0, release: 0 };
 
 export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   lightTurret: {
@@ -62,7 +28,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     barrel: { type: 'simpleSingleBarrel', barrelLength: 1.5 },
     rangeMultiplierOverrides: {
       engageRangeMax: { acquire: 0.9, release: 0.95 },
-      engageRangeMin: { acquire: 0.0, release: 0.0 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
     },
     eventsSmooth: false,
     color: 0xffffff,
@@ -140,7 +106,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'mortarShot',
     range: 600,
     cooldown: 6000,
-    launchForce: 30000,
+    launchForce: 25000,
     turretTurnAccel: 90,
     turretDrag: 0.4,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
@@ -186,7 +152,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     rangeMultiplierOverrides: {
       engageRangeMax: { acquire: 0.9, release: 0.95 },
-      engageRangeMin: { acquire: 0.0, release: 0 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
     },
     eventsSmooth: false,
     color: 0xffffff,
@@ -203,10 +169,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   // cluster.
   gatlingMortarTurret: {
     id: 'gatlingMortarTurret',
-    projectileId: 'advancedMortarShot',
+    projectileId: 'mortarShot',
     range: 3000,
     cooldown: 200,
-    launchForce: 50_000,
+    launchForce: 30000,
     turretTurnAccel: 80,
     turretDrag: 0.4,
     barrel: {
@@ -218,10 +184,11 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       spin: { idle: 2, max: 18, accel: 80, decel: 10 },
     },
     rangeMultiplierOverrides: {
-      // Heavy indirect fire uses a slightly smaller dead zone so it
-      // can still participate once enemies break through the front.
+      // Keep only a short safety dead zone. This turret's very long
+      // base range makes artillery-style ratios create a huge no-fire
+      // annulus that looks like broken targeting in dense battles.
       engageRangeMax: { acquire: 0.9, release: 0.95 },
-      engageRangeMin: { acquire: 0.3, release: 0.25 },
+      engageRangeMin: { acquire: 0.08, release: 0.06 },
     },
     eventsSmooth: true,
     color: 0xffffff,
@@ -254,7 +221,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     rangeMultiplierOverrides: {
       engageRangeMax: { acquire: 0.9, release: 0.95 },
-      engageRangeMin: { acquire: 0.0, release: 0.0 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
     },
     eventsSmooth: true,
     color: 0xffffff,
@@ -279,7 +246,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     isManualFire: true,
     rangeMultiplierOverrides: {
       engageRangeMax: { acquire: 0.9, release: 0.95 },
-      engageRangeMin: { acquire: 0.0, release: 0.0 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
     },
     eventsSmooth: false,
     color: 0xff8800,
@@ -301,7 +268,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     launchForce: 1000,
     rangeMultiplierOverrides: {
       engageRangeMax: { acquire: 0.9, release: 0.95 },
-      engageRangeMin: { acquire: 0.0, release: 0.0 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
     },
     eventsSmooth: false,
     color: 0xffffff,
@@ -312,7 +279,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   },
   mirrorTurret: {
     id: 'mirrorTurret',
-    projectileId: 'beamShot0',
+    projectileId: 'beamShot',
     range: 400,
     turretTurnAccel: 50,
     turretDrag: 1,
@@ -322,7 +289,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     spread: { angle: Math.PI / 2 },
     rangeMultiplierOverrides: {
       engageRangeMax: { acquire: 0.9, release: 0.95 },
-      engageRangeMin: { acquire: 0.0, release: 0.0 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
     },
     eventsSmooth: false,
     color: 0xffffff,
@@ -339,7 +306,59 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // visible mesh share one canonical rectangle.
     mirrorPanels: [{ offsetX: 18, offsetY: 0, angle: 0 }],
   },
-  ...generateBeamTurrets(),
+  beamTurret: {
+    id: 'beamTurret',
+    projectileId: 'beamShot',
+    range: 250,
+    turretTurnAccel: 100,
+    turretDrag: 0.4,
+    barrel: {
+      type: 'simpleSingleBarrel',
+      barrelLength: beamTurretBarrelLength,
+    },
+    launchForce: 1000,
+    rangeMultiplierOverrides: {
+      engageRangeMax: { acquire: 0.9, release: 0.95 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
+    },
+    eventsSmooth: false,
+    color: 0xffffff,
+    bodyRadius: 6,
+    audio: {
+      fireSound: AUDIO.event.fire.beamTurret,
+      laserSound: AUDIO.event.laser.beamTurret,
+    },
+  },
+  // megaBeamTurret — bigger beam mount for "boss" beam units. Same
+  // direction as beamTurret but a much thicker head sphere and
+  // longer barrel so it visually reads as a heavy weapon and
+  // naturally fills a head slot when the host's body head segment
+  // is removed (see widow body shape). Fires the megaBeamShot, which
+  // does roughly 3× the dps and a wider beam radius.
+  megaBeamTurret: {
+    id: 'megaBeamTurret',
+    projectileId: 'megaBeamShot',
+    range: 350,
+    turretTurnAccel: 60,
+    turretDrag: 0.5,
+    barrel: {
+      type: 'simpleSingleBarrel',
+      barrelLength: 1.3,
+      barrelThickness: 6,
+    },
+    launchForce: 1500,
+    rangeMultiplierOverrides: {
+      engageRangeMax: { acquire: 0.9, release: 0.95 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
+    },
+    eventsSmooth: false,
+    color: 0xffffff,
+    bodyRadius: 14,
+    audio: {
+      fireSound: AUDIO.event.fire.megaBeamTurret,
+      laserSound: AUDIO.event.laser.megaBeamTurret,
+    },
+  },
   forceTurretLarge: {
     id: 'forceTurretLarge',
     range: SPATIAL_GRID_CELL_SIZE * 3 * 0.9,
@@ -351,7 +370,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     rangeMultiplierOverrides: {
       engageRangeMax: { acquire: 0.9, release: 0.95 },
-      engageRangeMin: { acquire: 0.0, release: 0.0 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
     },
     eventsSmooth: false,
     color: 0xffffff,
@@ -377,7 +396,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     rangeMultiplierOverrides: {
       engageRangeMax: { acquire: 0.9, release: 0.95 },
-      engageRangeMin: { acquire: 0.0, release: 0.0 },
+      engageRangeMin: NO_MIN_FIRE_RANGE,
     },
     eventsSmooth: false,
     color: 0xffffff,
