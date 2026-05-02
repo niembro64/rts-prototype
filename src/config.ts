@@ -36,15 +36,14 @@ import type {
   MapSize,
 } from './types/config';
 
-// Spatial grid cell size in pixels. Should be roughly 1/2 to 1/3 of typical weapon range.
-export const SPATIAL_GRID_CELL_SIZE = 160 * 2;
-
-// Mana/capture tile size is intentionally independent of the simulation
-// spatial grid. A multiplier of 2 means one mana tile covers a 2x2 block
-// of the old 150wu capture tiles, cutting the territory grid to 1/4 the
-// tile count while keeping physics/query cells unchanged.
-export const MANA_TILE_SIZE_MULTIPLIER = 1;
-export const MANA_TILE_SIZE = SPATIAL_GRID_CELL_SIZE * MANA_TILE_SIZE_MULTIPLIER;
+// Canonical 2D land partition size. All broad ground-space systems
+// should derive from this: host spatial-grid XY columns, capture/mana
+// tiles, terrain/water tiles, and player-client object LOD cells. Keep
+// this separate from GRID_CELL_SIZE (fine building placement) and the
+// physics contact grid (local collision broadphase).
+export const LAND_CELL_SIZE = 160 * 2;
+export const SPATIAL_GRID_CELL_SIZE = LAND_CELL_SIZE;
+export const MANA_TILE_SIZE = LAND_CELL_SIZE;
 
 // Render-only vertical lift for mana/capture tile surfaces above sampled
 // terrain. Capture ownership, pathfinding, and physics stay on the real
@@ -222,17 +221,28 @@ export const FRAME_TIMING_EMA = {
  *
  * Rate trackers (FPS/TPS/SPS): high number = good performance.
  * Ms trackers (frame/render/logic): low number = good performance.
+ *
+ * Both HOST SERVER and PLAYER CLIENT auto-LOD ladders feed off these
+ * values until real samples arrive. Initialize EVERY tracker at
+ * "0% performance" so the game opens at MIN tier and the LOD climbs
+ * up only as measured headroom appears — instead of opening at MAX
+ * and having a visible spike of work in the first second while the
+ * EMA catches up to the real load.
  */
+const FRAME_BUDGET_MS_60HZ = 1000 / 60;
 export const EMA_INITIAL_VALUES = {
-  // Rate trackers — start optimistic (high = good)
-  tps: 60, // assume 60 ticks/sec until measured
-  fps: 60, // assume 60 frames/sec until measured
-  snaps: 32, // assume 32 snapshots/sec until measured
+  // Rate trackers — start pessimistic (0 ticks/frames/snapshots/sec).
+  // LOD ratio = actual / target, so 0 → ratio 0 → MIN tier.
+  tps: 0,
+  fps: 0,
+  snaps: 0,
 
-  // Ms trackers — start optimistic (low = good)
-  frameMs: 1, // assume 1ms frame time until measured
-  renderMs: 0.5, // assume 0.5ms render time until measured
-  logicMs: 0.5, // assume 0.5ms logic time until measured
+  // Ms trackers — start pessimistic (at the 60Hz frame budget).
+  // The msBarStyle UI fills fully red at budget, and on the server side
+  // the CPU-load LOD signal saturates at 100% load → 0 headroom → MIN.
+  frameMs: FRAME_BUDGET_MS_60HZ,
+  renderMs: FRAME_BUDGET_MS_60HZ,
+  logicMs: FRAME_BUDGET_MS_60HZ,
 };
 
 // =============================================================================
@@ -688,9 +698,9 @@ export const MAP_SETTINGS: Record<string, MapSize> = {
   // Real (foreground) match. Demo / lobby battle uses MAP_SETTINGS.demo
   // (2× linear) so the AI vs. AI showcase has more breathing room.
   //
-  // Sized to an ODD number of mana tiles on each axis so the map always
-  // has exactly one central mana tile. With the default 300wu mana tile:
-  // game = 11x11, demo = 21x21.
+  // Sized to an ODD number of land/mana cells on each axis so the map
+  // always has exactly one central mana tile. With the default 320wu
+  // land cell: game = 11x11, demo = 21x21.
   game: {
     width: manaTileMapSpan(MAP_MANA_TILE_COUNTS.game),
     height: manaTileMapSpan(MAP_MANA_TILE_COUNTS.game),

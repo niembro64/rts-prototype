@@ -162,7 +162,8 @@ export class GameServer {
   // Game over tracking
   private isGameOver: boolean = false;
 
-  // Tick rate tracking (EMA-based, start optimistic)
+  // Tick rate tracking (EMA-based, start pessimistic at 0 ticks/sec so
+  // the host LOD opens at MIN and climbs as measured headroom appears).
   private tpsAvg: number = EMA_INITIAL_VALUES.tps;
   private tpsLow: number = EMA_INITIAL_VALUES.tps;
   private tpsInitialized: boolean = true;
@@ -172,9 +173,16 @@ export class GameServer {
   // performance.now() wrapping the tick() body. Exposed as a load-percent
   // via NetworkServerSnapshotMeta.cpu so both host and remote clients can
   // see how saturated the simulation is relative to the tick budget.
-  private tickMsAvg: number = 0;
-  private tickMsHi: number = 0;
-  private tickMsInitialized: boolean = false;
+  //
+  // Initialize at the frame budget (≈16.67ms at 60Hz) and mark as
+  // initialized — same "start pessimistic" stance as the rate
+  // trackers. Pre-initialization the CPU-load LOD signal would have
+  // resolved to 0% load → max headroom (optimistic); the budget seed
+  // saturates load to ~100% → 0 headroom → MIN tier from the first
+  // sample, climbing as real ticks come in below budget.
+  private tickMsAvg: number = EMA_INITIAL_VALUES.frameMs;
+  private tickMsHi: number = EMA_INITIAL_VALUES.frameMs;
+  private tickMsInitialized: boolean = true;
 
   // Delta snapshot keyframe ratio tracking
   private isFirstSnapshot: boolean = true;
@@ -221,11 +229,16 @@ export class GameServer {
     setTerrainTeamCount(this.playerIds.length);
 
     // Metal deposits — same set across all clients (deterministic from
-    // map size + player count). Push their flat zones (with per-ring
-    // height) to the heightmap BEFORE the physics ground lookup or any
-    // sim/render code samples terrain, so every consumer sees the
-    // raised pads on first read.
-    const deposits = generateMetalDeposits(mapWidth, mapHeight, this.playerIds.length, config.terrainCenter);
+    // map size + player count + CENTER terrain polarity). Push their
+    // flat zones (with per-ring dTerrain-derived height) to the heightmap
+    // BEFORE the physics ground lookup or any sim/render code samples
+    // terrain, so every consumer sees the raised/lowered pads on first read.
+    const deposits = generateMetalDeposits(
+      mapWidth,
+      mapHeight,
+      this.playerIds.length,
+      config.terrainCenter,
+    );
     setMetalDepositFlatZones(
       deposits.map((d) => ({
         x: d.x,
