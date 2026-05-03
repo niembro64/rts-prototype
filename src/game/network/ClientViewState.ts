@@ -22,6 +22,7 @@ import type { NetworkCaptureTile } from '@/types/capture';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
 import { getTurretConfig, TURRET_CONFIGS } from '../sim/turretConfigs';
+import { getUnitLocomotion } from '../sim/blueprints';
 import { getEntityVelocity3, getTurretMountHeight } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import { getBarrelTip } from '../math';
@@ -974,7 +975,7 @@ export class ClientViewState {
       if (su.bodyCenterHeight !== undefined) {
         entity.unit.bodyCenterHeight = su.bodyCenterHeight;
       }
-      if (su.moveSpeed !== undefined) entity.unit.moveSpeed = su.moveSpeed;
+      if (su.unitType !== undefined) entity.unit.locomotion = getUnitLocomotion(codeToUnitType(su.unitType));
       if (su.mass !== undefined) entity.unit.mass = su.mass;
 
       if ((isFull || cf! & ENTITY_CHANGED_ACTIONS) && su.actions) {
@@ -1042,6 +1043,10 @@ export class ClientViewState {
 
     if (entity.building && sb?.type !== undefined && isFull) {
       entity.buildingType = codeToBuildingType(sb.type) as BuildingType;
+    }
+
+    if (entity.building && sb && (isFull || sb.metalExtractionRate !== undefined)) {
+      entity.metalExtractionRate = sb.metalExtractionRate;
     }
 
     if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_HP)) {

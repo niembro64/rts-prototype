@@ -329,10 +329,24 @@ export type LegConfig = {
 
 export type LegStyle = 'widow' | 'formik' | 'daddy' | 'tarantula' | 'tick' | 'commander';
 
+export type LocomotionPhysics = {
+  /** Authored propulsion force scalar. The server turns this into a
+   *  slope-aware force with unit mass, terrain normal, gravity, water
+   *  blocking, and any external force accumulators. This replaces the
+   *  old top-level Unit.moveSpeed value, which was already used as
+   *  thrust rather than as a hard speed cap. */
+  driveForce: number;
+  /** Ground traction coefficient: how much of the drive force can
+   *  couple into the terrain contact patch. This is NOT damping or
+   *  air resistance. Wheels have low traction, treads middle, legs
+   *  high. */
+  traction: number;
+};
+
 export type LocomotionBlueprint =
-  | { type: 'wheels'; config: WheelConfig }
-  | { type: 'treads'; config: TreadConfig }
-  | { type: 'legs'; style: LegStyle; config: LegConfig };
+  | { type: 'wheels'; physics: LocomotionPhysics; config: WheelConfig }
+  | { type: 'treads'; physics: LocomotionPhysics; config: TreadConfig }
+  | { type: 'legs'; style: LegStyle; physics: LocomotionPhysics; config: LegConfig };
 
 export type UnitBodyShapePart =
   | {
@@ -367,7 +381,6 @@ export type UnitBlueprint = {
   name: string;
   shortName: string;
   hp: number;
-  moveSpeed: number;
   /** Hit/push radii. Visual body size is the separate `bodyRadius`
    *  field below; the two used to be conflated under
    *  `unitRadiusCollider.scale` but are independent values now. */

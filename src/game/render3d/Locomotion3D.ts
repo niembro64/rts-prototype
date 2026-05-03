@@ -288,6 +288,70 @@ export function lodKeyFor(gfx: GraphicsConfig): string {
   return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;
 }
 
+/** Per-leg state worth surviving an LOD-driven mesh rebuild — every
+ *  scalar that says "where is this foot RIGHT NOW and what is it
+ *  doing?". The cylinder/joint pool slot indices and config refs
+ *  intentionally aren't here; those are bound to the freshly-built
+ *  LegInstance and will be re-issued by buildLegs when the rebuilt
+ *  mesh allocates new pool slots. */
+export type LegStateSnapshot = ReadonlyArray<{
+  worldX: number; worldY: number; worldZ: number;
+  startWorldX: number; startWorldY: number; startWorldZ: number;
+  targetWorldX: number; targetWorldY: number; targetWorldZ: number;
+  isSliding: boolean;
+  lerpProgress: number;
+  lerpDuration: number;
+  initialized: boolean;
+  phaseShift01: 0 | 1;
+}>;
+
+/** Capture per-leg state from a legged locomotion mesh into a plain
+ *  array of POJOs the caller can stash across a tear-down/rebuild.
+ *  Returns `undefined` for non-legged units (treads/wheels/none) so
+ *  the caller can `if (snap)` cheaply. Cost: O(legs.length); called
+ *  only at LOD-flip time, not per-frame. */
+export function captureLegState(loc: Locomotion3DMesh): LegStateSnapshot | undefined {
+  if (!loc || loc.type !== 'legs') return undefined;
+  const out: LegStateSnapshot[number][] = [];
+  for (const leg of loc.legs) {
+    out.push({
+      worldX: leg.worldX, worldY: leg.worldY, worldZ: leg.worldZ,
+      startWorldX: leg.startWorldX, startWorldY: leg.startWorldY, startWorldZ: leg.startWorldZ,
+      targetWorldX: leg.targetWorldX, targetWorldY: leg.targetWorldY, targetWorldZ: leg.targetWorldZ,
+      isSliding: leg.isSliding,
+      lerpProgress: leg.lerpProgress,
+      lerpDuration: leg.lerpDuration,
+      initialized: leg.initialized,
+      phaseShift01: leg.phaseShift01,
+    });
+  }
+  return out;
+}
+
+/** Pour a captured snapshot back into a freshly-built legged mesh,
+ *  matching by leg index. Leg COUNT is determined by the unit's
+ *  blueprint (style + bodyShape), which doesn't change with graphics
+ *  LOD — so the indices line up 1:1 between the old and new
+ *  LegInstance arrays. Slot indices, configs, and per-leg geometry
+ *  refs (newly minted by buildLegs) are left untouched; only the
+ *  foot-position / lerp / phase fields are overwritten. */
+export function applyLegState(loc: Locomotion3DMesh, snapshot: LegStateSnapshot): void {
+  if (!loc || loc.type !== 'legs') return;
+  const n = Math.min(loc.legs.length, snapshot.length);
+  for (let i = 0; i < n; i++) {
+    const dst = loc.legs[i];
+    const src = snapshot[i];
+    dst.worldX = src.worldX; dst.worldY = src.worldY; dst.worldZ = src.worldZ;
+    dst.startWorldX = src.startWorldX; dst.startWorldY = src.startWorldY; dst.startWorldZ = src.startWorldZ;
+    dst.targetWorldX = src.targetWorldX; dst.targetWorldY = src.targetWorldY; dst.targetWorldZ = src.targetWorldZ;
+    dst.isSliding = src.isSliding;
+    dst.lerpProgress = src.lerpProgress;
+    dst.lerpDuration = src.lerpDuration;
+    dst.initialized = src.initialized;
+    dst.phaseShift01 = src.phaseShift01;
+  }
+}
+
 /**
  * Per-style leg-config builder, cloned from LocomotionManager.getOrCreateLegs
  * in the 2D renderer. Returns left-side configs only; the caller mirrors

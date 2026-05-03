@@ -1,10 +1,21 @@
 import type { MetalDeposit } from '../../metalDepositConfig';
+import { GRID_CELL_SIZE } from './grid';
 
 export type MetalDepositFootprintCell = {
   x: number;
   y: number;
+  gx: number;
+  gy: number;
   covered: boolean;
   depositId?: number;
+};
+
+export type MetalDepositGridCell = {
+  gx: number;
+  gy: number;
+  x: number;
+  y: number;
+  depositId: number;
 };
 
 export type MetalDepositFootprintCoverage = {
@@ -19,9 +30,22 @@ export function metalDepositContainsPoint(
   x: number,
   y: number,
 ): boolean {
-  const dx = x - deposit.x;
-  const dy = y - deposit.y;
-  return dx * dx + dy * dy <= deposit.flatRadius * deposit.flatRadius;
+  const gx = Math.floor(x / GRID_CELL_SIZE);
+  const gy = Math.floor(y / GRID_CELL_SIZE);
+  return metalDepositContainsGridCell(deposit, gx, gy);
+}
+
+export function metalDepositContainsGridCell(
+  deposit: MetalDeposit,
+  gx: number,
+  gy: number,
+): boolean {
+  return (
+    gx >= deposit.gridX &&
+    gy >= deposit.gridY &&
+    gx < deposit.gridX + deposit.resourceCells &&
+    gy < deposit.gridY + deposit.resourceCells
+  );
 }
 
 export function findDepositContainingPoint(
@@ -33,6 +57,29 @@ export function findDepositContainingPoint(
     if (metalDepositContainsPoint(deposit, x, y)) return deposit;
   }
   return null;
+}
+
+export function getMetalDepositGridCells(
+  deposits: ReadonlyArray<MetalDeposit>,
+  out: MetalDepositGridCell[] = [],
+): MetalDepositGridCell[] {
+  out.length = 0;
+  for (const deposit of deposits) {
+    for (let dy = 0; dy < deposit.resourceCells; dy++) {
+      for (let dx = 0; dx < deposit.resourceCells; dx++) {
+        const gx = deposit.gridX + dx;
+        const gy = deposit.gridY + dy;
+        out.push({
+          gx,
+          gy,
+          x: gx * GRID_CELL_SIZE + GRID_CELL_SIZE / 2,
+          y: gy * GRID_CELL_SIZE + GRID_CELL_SIZE / 2,
+          depositId: deposit.id,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 export function getMetalDepositFootprintCoverage(
@@ -60,6 +107,8 @@ export function getMetalDepositFootprintCoverage(
     const sampleY = minY + (y + 0.5) * stepY;
     for (let x = 0; x < cellsX; x++) {
       const sampleX = minX + (x + 0.5) * stepX;
+      const gx = Math.floor(sampleX / GRID_CELL_SIZE);
+      const gy = Math.floor(sampleY / GRID_CELL_SIZE);
       const deposit = findDepositContainingPoint(deposits, sampleX, sampleY);
       if (deposit) {
         coveredCells++;
@@ -69,6 +118,8 @@ export function getMetalDepositFootprintCoverage(
         outCells.push({
           x: sampleX,
           y: sampleY,
+          gx,
+          gy,
           covered: deposit !== null,
           depositId: deposit?.id,
         });

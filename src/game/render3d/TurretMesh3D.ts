@@ -23,7 +23,6 @@ export type TurretMesh = {
   root: THREE.Group;
   /** Absent for:
    *   - force fields (the glowing sphere is the whole visual)
-   *   - mirror units (the mirror panels are the body)
    *   - units routing the head through the shared `turretHeadInstanced`
    *     InstancedMesh (deps.skipHead=true) — caller sets `headSlot`
    *     and the per-frame writer fills the slot with the head's
@@ -31,7 +30,7 @@ export type TurretMesh = {
   head?: THREE.Mesh;
   /** Slot index in Render3DEntities.turretHeadInstanced when the head
    *  is rendered via the shared InstancedMesh. Undefined for hidden
-   *  heads (force-field / mirror-host / min-tier) and for the per-
+   *  heads (force-field / min-tier) and for the per-
    *  Mesh fallback (when the cap is exhausted). The caller assigns
    *  this after buildTurretMesh3D returns. */
   headSlot?: number;
@@ -68,6 +67,8 @@ export type TurretMesh = {
     trackRelease?: THREE.LineSegments;
     engageAcquire?: THREE.LineSegments;
     engageRelease?: THREE.LineSegments;
+    engageMinAcquire?: THREE.LineSegments;
+    engageMinRelease?: THREE.LineSegments;
   };
 };
 
@@ -100,7 +101,6 @@ export function buildTurretMesh3D(
   parent: THREE.Group,
   turret: Turret,
   unitRadius: number,
-  isMirrorHost: boolean,
   gfx: GraphicsConfig,
   deps: TurretMesh3DDeps,
 ): TurretMesh {
@@ -112,13 +112,11 @@ export function buildTurretMesh3D(
   //  - turretStyle='none' (min LOD): no body, no barrels — chassis only.
   //  - force-field turrets at ANY LOD: the ForceFieldRenderer3D's glowing
   //    sphere is the whole visual.
-  //  - the mirror-host turret on mirror units (Loris index 0): the mirror
-  //    panels already represent that turret's body.
   //  - deps.skipHead=true: the caller is rendering the head through the
   //    shared `turretHeadInstanced` InstancedMesh path — see
   //    Render3DEntities.allocTurretHeadSlot.
   const turretOff = gfx.turretStyle === 'none';
-  const hideHead = turretOff || isForceField || isMirrorHost;
+  const hideHead = turretOff || isForceField;
   const skipHeadMesh = hideHead || deps.skipHead === true;
 
   // Resolved head radius drives BOTH the sphere mesh size AND its
@@ -137,8 +135,8 @@ export function buildTurretMesh3D(
   // Cache headRadius on the returned mesh whenever the head is
   // visible (per-Mesh OR via the instanced path) so the per-frame
   // writer can read the resolved value without re-calling
-  // getTurretHeadRadius. Hidden heads (force-field / mirror-host /
-  // turret-off) don't need it — leave headRadius undefined.
+  // getTurretHeadRadius. Hidden heads (force-field / turret-off)
+  // don't need it — leave headRadius undefined.
   const cachedHeadRadius = hideHead ? undefined : headRadius;
 
   const barrels: THREE.Mesh[] = [];
@@ -148,8 +146,7 @@ export function buildTurretMesh3D(
   }
 
   // Barrel pivots through the head's center, so its Y in turret-root
-  // local space is the head radius (mirror-host turrets that hide
-  // their head still pivot at the same conceptual height).
+  // local space is the head radius.
   const barrelCenterY = headRadius;
 
   // Barrel thickness is the shot width (for line shots) falling back to the

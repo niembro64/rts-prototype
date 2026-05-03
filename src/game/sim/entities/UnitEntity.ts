@@ -11,11 +11,12 @@ import type {
   Builder,
   Commander,
   DGunProjectile,
+  UnitLocomotion,
 } from '../types';
 
 export class UnitEntity extends GameEntity {
   // Movement properties
-  public moveSpeed: number;
+  public locomotion: UnitLocomotion;
   public unitRadiusCollider: { scale: number; shot: number; push: number };
   public bodyCenterHeight: number;
   public velocityX: number = 0;
@@ -48,13 +49,13 @@ export class UnitEntity extends GameEntity {
     x: number,
     y: number,
     hp: number,
-    moveSpeed: number,
+    locomotion: UnitLocomotion,
     unitRadiusCollider: { scale: number; shot: number; push: number },
     bodyCenterHeight: number,
     playerId: number
   ) {
     super(id, x, y, hp, hp);
-    this.moveSpeed = moveSpeed;
+    this.locomotion = { ...locomotion };
     this.unitRadiusCollider = { ...unitRadiusCollider };
     this.bodyCenterHeight = bodyCenterHeight;
     this.ownership = { playerId };
@@ -79,7 +80,7 @@ export class UnitEntity extends GameEntity {
   get unit(): {
     hp: number;
     maxHp: number;
-    moveSpeed: number;
+    locomotion: UnitLocomotion;
     unitRadiusCollider: { scale: number; shot: number; push: number };
     bodyCenterHeight: number;
     actions: UnitAction[];
@@ -90,7 +91,7 @@ export class UnitEntity extends GameEntity {
     return {
       hp: this.hp,
       maxHp: this.maxHp,
-      moveSpeed: this.moveSpeed,
+      locomotion: this.locomotion,
       unitRadiusCollider: this.unitRadiusCollider,
       bodyCenterHeight: this.bodyCenterHeight,
       actions: this.actions,
@@ -101,10 +102,10 @@ export class UnitEntity extends GameEntity {
   }
 
   // Allow setting HP through the unit property for compatibility
-  set unit(value: { hp: number; maxHp: number; moveSpeed: number; unitRadiusCollider: { scale: number; shot: number; push: number }; bodyCenterHeight?: number; actions: UnitAction[]; patrolStartIndex: number | null; velocityX?: number; velocityY?: number }) {
+  set unit(value: { hp: number; maxHp: number; locomotion: UnitLocomotion; unitRadiusCollider: { scale: number; shot: number; push: number }; bodyCenterHeight?: number; actions: UnitAction[]; patrolStartIndex: number | null; velocityX?: number; velocityY?: number }) {
     this.hp = value.hp;
     this.maxHp = value.maxHp;
-    this.moveSpeed = value.moveSpeed;
+    this.locomotion = { ...value.locomotion };
     this.unitRadiusCollider = value.unitRadiusCollider;
     this.bodyCenterHeight = value.bodyCenterHeight ?? value.unitRadiusCollider.push;
     this.actions = value.actions;

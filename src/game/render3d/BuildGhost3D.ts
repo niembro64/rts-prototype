@@ -20,6 +20,7 @@ import {
 import { getUnitGroundZ } from '../sim/unitGeometry';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
+const RESOURCE_CELL_Y = 1.1;
 const CELL_Y = 1.25;
 const RANGE_Y = 0.6;
 type GroundHeightLookup = (x: number, y: number) => number;
@@ -39,6 +40,9 @@ export class BuildGhost3D {
   /** Per-footprint-cell diagnostic tiles. */
   private cellGeom: THREE.PlaneGeometry;
   private cellMeshes: THREE.Mesh[] = [];
+  private depositCellMeshes: THREE.Mesh[] = [];
+  private lastTargetKey = '';
+  private lastDiagnostics?: BuildPlacementDiagnostics;
 
   // Materials kept as fields so we can swap colors without re-creating
   // the meshes on every frame.
@@ -46,6 +50,7 @@ export class BuildGhost3D {
   private footMatBad: THREE.MeshBasicMaterial;
   private cellMatOk: THREE.MeshBasicMaterial;
   private cellMatMetal: THREE.MeshBasicMaterial;
+  private cellMatMetalDeposit: THREE.MeshBasicMaterial;
   private cellMatBad: THREE.MeshBasicMaterial;
   private ringMat: THREE.MeshBasicMaterial;
   private lineMat: THREE.LineBasicMaterial;
@@ -81,6 +86,14 @@ export class BuildGhost3D {
     this.cellMatMetal = new THREE.MeshBasicMaterial({
       color: 0x006dff,
       transparent: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    this.cellMatMetalDeposit = new THREE.MeshBasicMaterial({
+      color: 0x00baff,
+      transparent: true,
+      opacity: 0.72,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
@@ -155,6 +168,19 @@ export class BuildGhost3D {
     const config = getBuildingConfig(buildingType);
     const width = config.gridWidth * GRID_CELL_SIZE;
     const depth = config.gridHeight * GRID_CELL_SIZE;
+    const commanderKey = commander?.builder
+      ? `${commander.id}:${commander.transform.x}:${commander.transform.y}:${commander.transform.z}:${commander.builder.buildRange}`
+      : 'none';
+    const targetKey = `${buildingType}:${snapped.gridX}:${snapped.gridY}:${canPlace ? 1 : 0}:${commanderKey}`;
+    if (
+      this.group.visible &&
+      targetKey === this.lastTargetKey &&
+      diagnostics === this.lastDiagnostics
+    ) {
+      return;
+    }
+    this.lastTargetKey = targetKey;
+    this.lastDiagnostics = diagnostics;
 
     let inRange = true;
     if (commander?.builder) {
@@ -198,6 +224,8 @@ export class BuildGhost3D {
 
   hide(): void {
     this.group.visible = false;
+    this.lastTargetKey = '';
+    this.lastDiagnostics = undefined;
   }
 
   private materialForCell(cell: BuildPlacementCellDiagnostic): THREE.Material {
@@ -207,6 +235,7 @@ export class BuildGhost3D {
   }
 
   private updateDiagnosticCells(diagnostics?: BuildPlacementDiagnostics): boolean {
+    this.updateMetalDepositCells(diagnostics?.metalDepositCells);
     const cells = diagnostics?.cells ?? [];
     while (this.cellMeshes.length < cells.length) {
       const mesh = new THREE.Mesh(this.cellGeom, this.cellMatOk);
@@ -231,6 +260,29 @@ export class BuildGhost3D {
     return cells.length > 0;
   }
 
+  private updateMetalDepositCells(cells?: BuildPlacementCellDiagnostic[]): void {
+    const depositCells = cells ?? [];
+    while (this.depositCellMeshes.length < depositCells.length) {
+      const mesh = new THREE.Mesh(this.cellGeom, this.cellMatMetalDeposit);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.renderOrder = 28;
+      this.group.add(mesh);
+      this.depositCellMeshes.push(mesh);
+    }
+
+    for (let i = 0; i < this.depositCellMeshes.length; i++) {
+      const mesh = this.depositCellMeshes[i];
+      const cell = depositCells[i];
+      if (!cell) {
+        mesh.visible = false;
+        continue;
+      }
+      const y = this.getGroundHeight(cell.x, cell.y);
+      mesh.position.set(cell.x, y + RESOURCE_CELL_Y, cell.y);
+      mesh.visible = true;
+    }
+  }
+
   destroy(): void {
     this.world.remove(this.group);
     (this.footprint.geometry as THREE.BufferGeometry).dispose();
@@ -241,6 +293,7 @@ export class BuildGhost3D {
     this.footMatBad.dispose();
     this.cellMatOk.dispose();
     this.cellMatMetal.dispose();
+    this.cellMatMetalDeposit.dispose();
     this.cellMatBad.dispose();
     this.ringMat.dispose();
     this.lineMat.dispose();

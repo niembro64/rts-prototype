@@ -1,6 +1,5 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId, BuildingType } from './types';
-import { magnitude3 } from '../math';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
@@ -8,9 +7,9 @@ import { getMetalDepositFootprintCoverage } from './metalDeposits';
 import { isBuildableTerrainFootprint } from './Terrain';
 import { REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../config';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
-import { deactivateSolarCollector, ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
-import { economyManager } from './economy';
-import { spatialGrid } from './SpatialGrid';
+import { ensureSolarCollectorState } from './solarCollector';
+import { applyCompletedBuildingEffects, removeCompletedBuildingEffects } from './buildingCompletion';
+import { isBuildTargetInRange } from './builderRange';
 
 // Construction system - handles building progress and energy consumption
 export class ConstructionSystem {
@@ -84,7 +83,7 @@ export class ConstructionSystem {
 
   // Called when construction completes
   private onConstructionComplete(world: WorldState, entity: Entity): void {
-    spatialGrid.syncBuildingCapture(entity);
+    applyCompletedBuildingEffects(world, entity);
 
     // Clear all builder targets for this entity using the reverse index (O(k) not O(n))
     const builders = this.buildersByTarget.get(entity.id);
@@ -97,23 +96,9 @@ export class ConstructionSystem {
       }
     }
 
-    // Handle building-specific completion
-    if (entity.buildingType === 'solar' && entity.ownership) {
-      startSolarCollectorClosed(world, entity);
-    }
-
     // Factory completion - set up rally point
     if (entity.buildingType === 'factory' && entity.factory) {
       // Rally point is set when factory is created
-    }
-
-    // Extractor completion — start producing metal income for the owner.
-    if (entity.buildingType === 'extractor' && entity.ownership) {
-      const cfg = getBuildingConfig('extractor');
-      const amount = entity.metalExtractionRate ?? cfg.metalProduction ?? 0;
-      if (amount > 0) {
-        economyManager.addMetalExtraction(entity.ownership.playerId, amount);
-      }
     }
   }
 
@@ -138,9 +123,12 @@ export class ConstructionSystem {
     const halfW = (config.gridWidth * GRID_CELL_SIZE) / 2;
     const halfH = (config.gridHeight * GRID_CELL_SIZE) / 2;
 
-    // Extractors produce from the fraction of their footprint cells
-    // whose centers land inside metal deposits. They no longer require
-    // the whole building to fit inside one deposit circle.
+    // Extractors can be placed ANYWHERE that satisfies the normal
+    // building placement rules — there's no longer a "must overlap a
+    // deposit" gate. Production AND visual rotor speed both scale with
+    // the fraction of extractor footprint cells that overlap logical
+    // metal resource cells: 0 covered cells → 0 metal/sec and a
+    // stationary rotor; full coverage → full config rate.
     let depositId: number | undefined;
     let metalExtractionRate = 0;
     if (buildingType === 'extractor') {
@@ -152,7 +140,6 @@ export class ConstructionSystem {
         halfH,
         GRID_CELL_SIZE,
       );
-      if (coverage.coveredCells <= 0) return null;
       depositId = coverage.primaryDepositId;
       metalExtractionRate = (config.metalProduction ?? 0) * coverage.fraction;
     }
@@ -194,8 +181,12 @@ export class ConstructionSystem {
     if (buildingType === 'solar') {
       ensureSolarCollectorState(entity);
     }
-    if (buildingType === 'extractor' && depositId !== undefined) {
-      entity.metalDepositId = depositId;
+    if (buildingType === 'extractor') {
+      // depositId is undefined when the extractor sits on bare ground
+      // (no covered cells); the rate is 0 in that case but we still
+      // record the field so renderers/economy code never have to
+      // distinguish "extractor on deposits" from "extractor on dirt".
+      if (depositId !== undefined) entity.metalDepositId = depositId;
       entity.metalExtractionRate = metalExtractionRate;
     }
 
@@ -287,19 +278,7 @@ export class ConstructionSystem {
     // Remove from grid
     this.buildingGrid.removeByEntityId(entity.id);
 
-    // If it was a solar panel, remove production
-    if (entity.buildingType === 'solar' && entity.ownership && entity.buildable?.isComplete) {
-      deactivateSolarCollector(entity);
-    }
-
-    // If it was an extractor, stop its metal income contribution.
-    if (entity.buildingType === 'extractor' && entity.ownership && entity.buildable?.isComplete) {
-      const cfg = getBuildingConfig('extractor');
-      const amount = entity.metalExtractionRate ?? cfg.metalProduction ?? 0;
-      if (amount > 0) {
-        economyManager.removeMetalExtraction(entity.ownership.playerId, amount);
-      }
-    }
+    removeCompletedBuildingEffects(entity);
   }
 
   // Assign a builder to a construction site
@@ -316,15 +295,7 @@ export class ConstructionSystem {
       return false;
     }
 
-    // Check range — 3D, respects altitude so a builder on a ledge
-    // reaching for a grounded build site (or vice versa) gets the
-    // same behavior the weapon-range checks use.
-    const dx = target.transform.x - builder.transform.x;
-    const dy = target.transform.y - builder.transform.y;
-    const dz = target.transform.z - builder.transform.z;
-    const dist = magnitude3(dx, dy, dz);
-
-    if (dist > builder.builder.buildRange) {
+    if (!isBuildTargetInRange(builder, target)) {
       return false;
     }
 

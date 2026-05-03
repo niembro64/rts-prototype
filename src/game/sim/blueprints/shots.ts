@@ -117,7 +117,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     hitSound: AUDIO.event.hit.advancedMortarShot,
     submunitions: {
       shotId: 'mortarShot',
-      count: 5,
+      count: 3,
       // Wide horizontal sweep so the mortar children spread
       // around the carrier's ground impact, not stack on top of
       // each other. Vertical kick keeps them lofted long enough
@@ -143,7 +143,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     hitSound: AUDIO.event.hit.mortarShot,
     submunitions: {
       shotId: 'mediumShot',
-      count: 5,
+      count: 3,
       // Wide horizontal sweep, lower vertical jitter so fragments
       // arc outward instead of fountaining mostly upward. Bump
       // horizontal for a wider fan, vertical for a more chaotic

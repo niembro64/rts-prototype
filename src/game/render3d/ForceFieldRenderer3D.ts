@@ -358,14 +358,10 @@ export class ForceFieldRenderer3D {
       return;
     }
 
-    const mountTopY = (
-      bp?.hideChassis === true &&
-      Number.isFinite(mountHeadCenterHeightFrac) &&
-      unitData.bodyCenterHeight !== undefined
-    )
-      ? unitData.bodyCenterHeight - mountLiftY
-      : Number.isFinite(mountHeadCenterHeightFrac)
+    const mountTopY = Number.isFinite(mountHeadCenterHeightFrac)
       ? mountHeadCenterHeightFrac * unitRadius
+      : bp?.hideChassis === true && unitData.bodyCenterHeight !== undefined
+      ? unitData.bodyCenterHeight - mountLiftY
       : getBodyMountTopY(
           bp?.bodyShape ?? {
             kind: 'composite',
@@ -519,8 +515,9 @@ export class ForceFieldRenderer3D {
    *  Was the second half of the original update(); same logic. */
   endFrame(): void {
     // Flush the sphereInstancedMesh — count rides on the cursor we
-    // advanced per emitter+zone write in _processUnit, so off-scope /
-    // inactive fields cost zero GPU time.
+    // advanced per emitter+zone write in _processUnit, so off-scope
+    // fields cost zero GPU time. Idle force-field turrets still draw
+    // their small emitter sphere.
     this.sphereInstancedMesh.count = this._sphereCursor;
     if (this._sphereCursor > 0) {
       this.sphereInstancedMesh.instanceMatrix.clearUpdateRanges();
@@ -614,7 +611,6 @@ export class ForceFieldRenderer3D {
         const turret = unit.turrets[ti];
         if (!isForceFieldTurret(turret)) continue;
         const progress = turret.forceField?.range ?? 0;
-        if (progress <= 0) continue;
 
         const shot = turret.config.shot;
         if (shot.type !== 'force' || !shot.push) continue;
@@ -624,25 +620,10 @@ export class ForceFieldRenderer3D {
         const field = this.acquire(key);
         this.updateMountCache(field, unit, turret);
 
-        // Chassis-local mount position. Force-field emitter sphere
-        // is positioned to sit ON the body part the chassisMount
-        // points at, INSET into it — emitter center at the dome's
-        // top so the bottom hemisphere is embedded in the body and
-        // the top hemisphere reads as a glowing dome jutting out.
-        // (A regular turret head adds +headRadius to lift the
-        // sphere clear of the dome; force fields skip that lift on
-        // purpose — the "head" of a force-field unit IS the emitter,
-        // not a stack of turret + dome.)
-        //
-        // `getBodyMountTopY(renderer, radius, offsetX, offsetZ)`
-        // finds the body part nearest the mount and returns ITS top
-        // y in world units — for the widow (arachnid composite) the
-        // force-field mount at chassisMount (0.3, 0) lands on the
-        // prosoma (front sphere, top y ≈ 1.1·radius), not the
-        // taller abdomen. For the daddy (forceField renderer, single
-        // circle body) it returns the global topY since there's
-        // only one part. Both units get the "inset emitter on top of
-        // the body" look from one formula.
+        // Chassis-local mount position. Force-field emitters are their
+        // visible turret body: authored head-center mounts are honored
+        // directly, otherwise the emitter sits on top of the nearest
+        // body segment selected by the chassisMount.
         //
         // turret.offset is already in world units (chassisMount.{x,y}
         // × radius, baked at unit-creation time). yawGroup has scale
@@ -668,9 +649,12 @@ export class ForceFieldRenderer3D {
           this.reparentFieldTo(field, yawGroup);
         }
 
-        // Central pulsing emitter sphere: lerp white → blue, radius scales with progress.
+        // Central pulsing emitter sphere: lerp white -> blue. It stays
+        // visible while idle so force-field turrets read as physical
+        // parts of the unit; the larger translucent field shell below
+        // is still gated by active progress.
         const freq = (Math.PI * 2) / (shot.transitionTime / 1000);
-        const pulse = (Math.sin(nowSec * freq) * 0.5 + 0.5) * progress;
+        const pulse = Math.sin(nowSec * freq) * 0.5 + 0.5;
         const er =
           ((EMITTER_COLOR_A >> 16) & 0xff)
           + (((EMITTER_COLOR_B >> 16) & 0xff) - ((EMITTER_COLOR_A >> 16) & 0xff)) * pulse;
@@ -680,8 +664,9 @@ export class ForceFieldRenderer3D {
         const eb =
           (EMITTER_COLOR_A & 0xff)
           + ((EMITTER_COLOR_B & 0xff) - (EMITTER_COLOR_A & 0xff)) * pulse;
+        const emitterVisualProgress = Math.max(progress, 0.3);
         const emitterRadius = EMITTER_BASE_RADIUS
-          + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * progress;
+          + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * emitterVisualProgress;
 
         // Compose the field's WORLD position from the unit's parent
         // chain — group → realYawGroup → liftGroup. The InstancedMesh
@@ -731,22 +716,29 @@ export class ForceFieldRenderer3D {
           this._sphereParentQuat.copy(this._sphereYawQuat);
           havePosition = true;
 
-          // Write the emitter slot now — opaque white→blue pulse.
-          // (Zone slot is written below after we've read shot.push.)
-          if (this._sphereCursor < SPHERE_INSTANCED_CAP) {
-            this._sphereScratchScale.set(emitterRadius, emitterRadius, emitterRadius);
-            this._sphereScratchMat.compose(
-              this._sphereScratchPos,
-              ForceFieldRenderer3D._IDENTITY_QUAT,
-              this._sphereScratchScale,
-            );
-            this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
-            this.sphereAlphaArr[this._sphereCursor] = 0.9; // emitter base opacity
-            this.sphereColorArr[this._sphereCursor * 3]     = er / 255;
-            this.sphereColorArr[this._sphereCursor * 3 + 1] = eg / 255;
-            this.sphereColorArr[this._sphereCursor * 3 + 2] = eb / 255;
-            this._sphereCursor++;
-          }
+        }
+
+        if (havePosition && this._sphereCursor < SPHERE_INSTANCED_CAP) {
+          this._sphereScratchScale.set(emitterRadius, emitterRadius, emitterRadius);
+          this._sphereScratchMat.compose(
+            this._sphereScratchPos,
+            ForceFieldRenderer3D._IDENTITY_QUAT,
+            this._sphereScratchScale,
+          );
+          this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
+          this.sphereAlphaArr[this._sphereCursor] = 0.9;
+          this.sphereColorArr[this._sphereCursor * 3]     = er / 255;
+          this.sphereColorArr[this._sphereCursor * 3 + 1] = eg / 255;
+          this.sphereColorArr[this._sphereCursor * 3 + 2] = eb / 255;
+          this._sphereCursor++;
+        }
+
+        if (progress <= 0) {
+          field.zone.visible = false;
+          for (const p of field.particles) p.visible = false;
+          for (const tr of field.trailMeshes) tr.visible = false;
+          if (field.arcLines) field.arcLines.visible = false;
+          continue;
         }
 
         // Spherical force-field zone — scale = outerRange (= push-zone radius

@@ -124,8 +124,8 @@ export class Input3DManager {
 
   // Cached deposit list — derived deterministically from map size, so
   // the client can re-generate it locally without a network round-trip.
-  // Used by the build ghost validator to gate extractor placement on
-  // unclaimed deposits.
+  // Used by the build ghost validator to highlight metal resource cells
+  // and preview extractor coverage/yield.
   private metalDeposits: ReadonlyArray<MetalDeposit> = [];
 
   // Drag state (screen coords only — box select is screen-space)

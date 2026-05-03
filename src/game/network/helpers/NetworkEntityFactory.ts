@@ -4,7 +4,7 @@ import type { Entity, BuildingType, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity } from '../NetworkManager';
 import { codeToActionType, codeToTurretState, codeToUnitType, codeToBuildingType, codeToProjectileType } from '../../../types/network';
 import { getTurretConfig } from '../../sim/turretConfigs';
-import { getUnitBlueprint } from '../../sim/blueprints';
+import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
 import { buildMirrorPanelCache } from '../../sim/mirrorPanelCache';
@@ -77,7 +77,7 @@ function createUnitFromNetwork(
       },
       bodyRadius: u?.bodyRadius ?? defaultRadius,
       bodyCenterHeight: u?.bodyCenterHeight ?? u?.collider?.push ?? defaultRadius,
-      moveSpeed: u?.moveSpeed ?? 100,
+      locomotion: getUnitLocomotion(u?.unitType !== undefined ? codeToUnitType(u.unitType) : 'jackal'),
       mass: u?.mass ?? 25,
       actions,
       patrolStartIndex: null,
@@ -201,6 +201,7 @@ function createBuildingFromNetwork(
     buildingType: b?.type !== undefined
       ? (codeToBuildingType(b.type) as BuildingType)
       : undefined,
+    metalExtractionRate: b?.metalExtractionRate,
   };
 
   const f = b?.factory;

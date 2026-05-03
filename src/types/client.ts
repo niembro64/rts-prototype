@@ -29,6 +29,8 @@ export type RangeType =
   | 'trackRelease'
   | 'engageAcquire'
   | 'engageRelease'
+  | 'engageMinAcquire'
+  | 'engageMinRelease'
   | 'build';
 export type ProjRangeType = 'collision' | 'explosion';
 export type UnitRadiusType = 'visual' | 'shot' | 'push';

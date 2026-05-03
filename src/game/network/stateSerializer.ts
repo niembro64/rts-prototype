@@ -242,7 +242,7 @@ function createPooledEntry(): PooledEntry {
         collider: undefined,
         bodyRadius: undefined,
         bodyCenterHeight: undefined,
-        moveSpeed: undefined, mass: undefined, velocity: { x: 0, y: 0, z: 0 },
+        mass: undefined, velocity: { x: 0, y: 0, z: 0 },
       turretRotation: 0,
     },
     unitCollider: { shot: 0, push: 0 },
@@ -251,6 +251,7 @@ function createPooledEntry(): PooledEntry {
     buildingSub: {
       type: undefined, dim: undefined, hp: { curr: 0, max: 0 },
       build: { progress: 0, complete: false },
+      metalExtractionRate: undefined,
     },
     factorySub: {
       queue: [], progress: 0, producing: false,
@@ -1352,7 +1353,6 @@ function serializeEntity(
         u.collider.push = entity.unit.unitRadiusCollider.push;
         u.bodyRadius = entity.unit.bodyRadius;
         u.bodyCenterHeight = entity.unit.bodyCenterHeight;
-        u.moveSpeed = entity.unit.moveSpeed;
         u.mass = entity.unit.mass;
         u.isCommander = entity.commander !== undefined ? true : undefined;
         protocolSeeded.add(entity.id);
@@ -1361,7 +1361,6 @@ function serializeEntity(
         u.collider = undefined;
         u.bodyRadius = undefined;
         u.bodyCenterHeight = undefined;
-        u.moveSpeed = undefined;
         u.mass = undefined;
         u.isCommander = undefined;
       }
@@ -1505,6 +1504,7 @@ function serializeEntity(
       const b = pool.buildingSub;
       ne.building = b;
       b.solar = undefined;
+      b.metalExtractionRate = undefined;
 
       // Full records must be self-contained for the same reason as
       // unit records: clients can miss the first keyframe during a
@@ -1517,10 +1517,14 @@ function serializeEntity(
         b.type = entity.buildingType !== undefined
           ? buildingTypeToCode(entity.buildingType)
           : undefined;
+        b.metalExtractionRate = entity.buildingType === 'extractor'
+          ? entity.metalExtractionRate ?? 0
+          : undefined;
         protocolSeeded.add(entity.id);
       } else {
         b.dim = undefined;
         b.type = undefined;
+        b.metalExtractionRate = undefined;
       }
 
       // HP

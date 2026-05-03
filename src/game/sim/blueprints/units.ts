@@ -7,7 +7,24 @@
  */
 
 import { AUDIO } from '../../../audioConfig';
-import type { UnitBlueprint, MountPoint, TurretMount, UnitBodyShape } from './types';
+import type { UnitBlueprint, MountPoint, TurretMount, UnitBodyShape, LocomotionPhysics } from './types';
+import type { UnitLocomotion } from '../types';
+
+const LOCOMOTION_TRACTION = {
+  wheels: 0.45,
+  treads: 0.75,
+  legs: 1.0,
+} as const;
+
+function locomotionPhysics(
+  type: keyof typeof LOCOMOTION_TRACTION,
+  driveForce: number,
+): LocomotionPhysics {
+  return {
+    driveForce,
+    traction: LOCOMOTION_TRACTION[type],
+  };
+}
 
 const BODY_SHAPES = {
   scout: {
@@ -137,6 +154,9 @@ const TICK_REPLACED_HEAD_CENTER_HEIGHT_FRAC = 0.37;
 const DADDY_VISUAL_RADIUS = 13;
 const DADDY_PUSH_RADIUS = 15;
 const DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC = 0.55;
+// Daddy's main body is authored high above the ground; this force-field
+// mount intentionally uses a >1 radius fraction to sit on its underside.
+const DADDY_FORCE_FIELD_CENTER_HEIGHT_FRAC = 49 / DADDY_VISUAL_RADIUS;
 const DADDY_REPLACEMENT_HEAD_RADIUS_FRAC = 5 / 13;
 const DADDY_LEG_ATTACH_HEIGHT_FRAC =
   DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC - DADDY_REPLACEMENT_HEAD_RADIUS_FRAC;
@@ -150,8 +170,8 @@ function turretMount(
     : { turretId, headCenterHeightFrac };
 }
 
-// Compute widow's mount points: 4 beam turrets on abdomen edge,
-// mega beam centered on top of the rear abdomen segment.
+// Compute widow's mount points: 4 light turrets on abdomen edge,
+// force-field emitter centered on top of the rear abdomen segment.
 function computeWidowMounts(): MountPoint[] {
   const mounts: MountPoint[] = [];
   for (let i = 0; i < 4; i++) {
@@ -173,7 +193,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Jackal',
     shortName: 'JKL',
     hp: 55,
-    moveSpeed: 300,
     unitRadiusCollider: { shot: 6, push: 8 * 1.2 },
     bodyRadius: 8,
     bodyCenterHeight: 8 * 1.2,
@@ -184,6 +203,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.scout,
     locomotion: {
       type: 'wheels',
+      physics: locomotionPhysics('wheels', 300),
       config: {
         wheelDistX: 0.6,
         wheelDistY: 0.7,
@@ -202,7 +222,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Lynx',
     shortName: 'LNX',
     hp: 60,
-    moveSpeed: 170,
     unitRadiusCollider: { shot: 7, push: 10 * 1.3 },
     bodyRadius: 10,
     bodyCenterHeight: 10 * 1.3,
@@ -213,6 +232,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.burst,
     locomotion: {
       type: 'treads',
+      physics: locomotionPhysics('treads', 170),
       config: {
         treadOffset: 0.8,
         treadLength: 1.6,
@@ -230,7 +250,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Daddy',
     shortName: 'DDY',
     hp: 200,
-    moveSpeed: 200,
     unitRadiusCollider: {
       shot: 9,
       push: DADDY_PUSH_RADIUS,
@@ -241,7 +260,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     resourceCost: 350,
     turrets: [
       turretMount('laserTurret', DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC),
-      turretMount('forceTurretLarge', DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC),
+      turretMount('forceTurretLarge', DADDY_FORCE_FIELD_CENTER_HEIGHT_FRAC),
     ],
     chassisMounts: [
       { x: 0, y: 0 }, // laser body
@@ -253,6 +272,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'daddy',
+      physics: locomotionPhysics('legs', 200),
       config: {
         upperThickness: 2.5,
         lowerThickness: 2,
@@ -271,7 +291,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Badger',
     shortName: 'BDG',
     hp: 300,
-    moveSpeed: 200,
     unitRadiusCollider: { shot: 13, push: 16 * 1.4 },
     bodyRadius: 16,
     bodyCenterHeight: 16 * 1.4,
@@ -282,6 +301,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.brawl,
     locomotion: {
       type: 'treads',
+      physics: locomotionPhysics('treads', 200),
       config: {
         treadOffset: 0.85,
         treadLength: 1.7,
@@ -299,7 +319,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Mongoose',
     shortName: 'MGS',
     hp: 200,
-    moveSpeed: 220,
     unitRadiusCollider: { shot: 12, push: 20 * 1.2 },
     bodyRadius: 20,
     bodyCenterHeight: 20 * 1.2,
@@ -310,6 +329,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.mortar,
     locomotion: {
       type: 'wheels',
+      physics: locomotionPhysics('wheels', 220),
       config: {
         wheelDistX: 0.65,
         wheelDistY: 0.7,
@@ -328,7 +348,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Tick',
     shortName: 'TCK',
     hp: 55,
-    moveSpeed: 120,
     unitRadiusCollider: { shot: 8, push: 11 * 1.1 },
     bodyRadius: 10,
     bodyCenterHeight: 8,
@@ -343,6 +362,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'tick',
+      physics: locomotionPhysics('legs', 120),
       config: {
         upperThickness: 2,
         lowerThickness: 1.5,
@@ -361,7 +381,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Mammoth',
     shortName: 'MMT',
     hp: 900,
-    moveSpeed: 60,
     unitRadiusCollider: { shot: 24, push: 24 * 1.5 },
     bodyRadius: 24,
     bodyCenterHeight: 24 * 1.5,
@@ -372,6 +391,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.tank,
     locomotion: {
       type: 'treads',
+      physics: locomotionPhysics('treads', 60),
       config: {
         treadOffset: 0.9,
         treadLength: 2.0,
@@ -390,7 +410,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'FMK',
     // Larger than Widow (scale 30 → 40) and tougher to match.
     hp: 3200,
-    moveSpeed: 60,
     unitRadiusCollider: { shot: 50, push: 50 * 1.3 },
     bodyRadius: 40,
     bodyCenterHeight: 50 * 1.3,
@@ -406,6 +425,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'formik',
+      physics: locomotionPhysics('legs', 60),
       config: {
         // Bigger thorax = beefier legs. Bumped over widow's
         // (7/6/4/6/3.5) to keep limb thickness in proportion to
@@ -427,7 +447,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Widow',
     shortName: 'WDW',
     hp: 2400,
-    moveSpeed: 70,
     unitRadiusCollider: { shot: 40, push: 40 * 1.3 },
     bodyRadius: 30,
     bodyCenterHeight: 40 * 1.3,
@@ -438,15 +457,16 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       turretMount('lightTurret'), // back-left
       turretMount('lightTurret'), // back-right
       turretMount('lightTurret'), // front-right
-      // Mega beam mount sits on top of the rear abdomen segment; the
+      // Force-field emitter sits on top of the rear abdomen segment; the
       // forward prosoma/head body sphere remains visible.
-      turretMount('megaBeamTurret'), // abdomen top
+      turretMount('forceTurretMedium'), // abdomen top
     ],
     chassisMounts: computeWidowMounts(),
     bodyShape: BODY_SHAPES.arachnid,
     locomotion: {
       type: 'legs',
       style: 'widow',
+      physics: locomotionPhysics('legs', 70),
       config: {
         upperThickness: 7,
         lowerThickness: 6,
@@ -465,7 +485,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Hippo',
     shortName: 'HPO',
     hp: 1500,
-    moveSpeed: 55,
     unitRadiusCollider: { shot: 27, push: 45 * 1.2 },
     bodyRadius: 30,
     bodyCenterHeight: 45 * 1.2,
@@ -476,6 +495,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.hippo,
     locomotion: {
       type: 'treads',
+      physics: locomotionPhysics('treads', 55),
       config: {
         treadOffset: 1.1,
         treadLength: 2.6,
@@ -493,7 +513,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Tarantula',
     shortName: 'TRN',
     hp: 100,
-    moveSpeed: 200,
     unitRadiusCollider: { shot: 13, push: 11 * 1.8 },
     bodyRadius: 11,
     bodyCenterHeight: 11 * 1.8,
@@ -509,6 +528,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'tarantula',
+      physics: locomotionPhysics('legs', 200),
       config: {
         upperThickness: 6.5,
         lowerThickness: 6,
@@ -527,7 +547,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Loris',
     shortName: 'LRS',
     hp: 200,
-    moveSpeed: 160,
     unitRadiusCollider: { shot: 8, push: 24 },
     bodyRadius: 10,
     bodyCenterHeight: 24,
@@ -536,8 +555,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [turretMount('mirrorTurret')],
     chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.loris,
+    hideChassis: true,
     locomotion: {
       type: 'treads',
+      physics: locomotionPhysics('treads', 160),
       config: {
         treadOffset: 0.85,
         treadLength: 1.7,
@@ -555,7 +576,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Commander',
     shortName: 'CMD',
     hp: 500,
-    moveSpeed: 200,
     unitRadiusCollider: { shot: 20, push: 20 },
     bodyRadius: 20,
     bodyCenterHeight: 20,
@@ -573,6 +593,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'commander',
+      physics: locomotionPhysics('legs', 200),
       config: {
         upperThickness: 8,
         lowerThickness: 7,
@@ -610,6 +631,15 @@ export function getUnitBlueprint(id: string): UnitBlueprint {
   const unitBlueprint = UNIT_BLUEPRINTS[id];
   if (!unitBlueprint) throw new Error(`Unknown unit blueprint: ${id}`);
   return unitBlueprint;
+}
+
+export function getUnitLocomotion(id: string): UnitLocomotion {
+  const locomotion = getUnitBlueprint(id).locomotion;
+  return {
+    type: locomotion.type,
+    driveForce: locomotion.physics.driveForce,
+    traction: locomotion.physics.traction,
+  };
 }
 
 export function getAllUnitBlueprints(): UnitBlueprint[] {

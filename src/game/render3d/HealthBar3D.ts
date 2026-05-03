@@ -146,10 +146,17 @@ export class HealthBar3D {
    *  per-unit renderers like ForceFieldRenderer3D). */
   perUnit(u: Entity, forceVisible = false): void {
     if (!u.unit) return;
-    const hp = u.unit.hp;
-    const maxHp = u.unit.maxHp;
-    if (hp <= 0 || (!forceVisible && STYLE.hideAtFull && hp >= maxHp)) return;
+    // Cheap guards FIRST — already-seen check (a single Map.get) +
+    // hp dead/full skip — before pulling HP / radius / ground-Y. The
+    // fused outer loop in RtsScene3D dispatches every unit to multiple
+    // per-unit renderers, so HealthBar3D often gets the same unit
+    // twice via different entry points; bailing early on the dedup
+    // check saves the rest of this body for those duplicate calls.
     if (this._seenEntityFrame.get(u.id) === this._frameToken) return;
+    const unit = u.unit;
+    const hp = unit.hp;
+    const maxHp = unit.maxHp;
+    if (hp <= 0 || (!forceVisible && STYLE.hideAtFull && hp >= maxHp)) return;
     this._seenEntityFrame.set(u.id, this._frameToken);
     const worldX = u.transform.x;
     const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
@@ -159,7 +166,7 @@ export class HealthBar3D {
     const bar = this.acquire(this._used++);
     this.repaintIfChanged(bar, ratio, mode);
 
-    const worldWidth = u.unit.bodyRadius * 2;
+    const worldWidth = unit.bodyRadius * 2;
     bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
     bar.sprite.position.set(worldX, worldY, worldZ);
     if (this._frustum) {
@@ -174,6 +181,11 @@ export class HealthBar3D {
   /** Fused-iteration entry: process one building. */
   perBuilding(b: Entity, forceVisible = false): void {
     if (!b.building) return;
+    // Already-seen guard FIRST — see perUnit for rationale. Avoids
+    // doing the build-progress / HP ratio math twice when the fused
+    // outer loop dispatches a building to multiple per-entity
+    // renderers in the same frame.
+    if (this._seenEntityFrame.get(b.id) === this._frameToken) return;
     let ratio: number;
     let mode: BarMode;
     if (b.buildable && !b.buildable.isComplete) {
@@ -186,7 +198,6 @@ export class HealthBar3D {
       ratio = Math.max(0, Math.min(1, hp / maxHp));
       mode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
     }
-    if (this._seenEntityFrame.get(b.id) === this._frameToken) return;
     this._seenEntityFrame.set(b.id, this._frameToken);
     const worldX = b.transform.x;
     const worldY = getBuildingHudTopY(b) + STYLE.worldOffsetAbove;

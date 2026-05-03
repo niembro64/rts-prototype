@@ -166,6 +166,17 @@ export type CachedMirrorPanel = {
   topY: number;
 };
 
+export type UnitLocomotion = {
+  type: 'wheels' | 'treads' | 'legs';
+  /** Authored propulsion scalar supplied by the locomotion blueprint.
+   *  GameServer.applyForces converts this into actual 3D force using
+   *  terrain tangent, mass, gravity, and external forces. */
+  driveForce: number;
+  /** Ground traction coefficient. This is the ability to couple drive
+   *  force into terrain, not drag. */
+  traction: number;
+};
+
 // Unit component - movable entities. Velocities are 3D: X/Y are
 // horizontal (ground-plane) motion, Z is vertical (for units that
 // take off, get knocked up by explosions, or fall from overhangs).
@@ -182,7 +193,7 @@ export type CachedMirrorPanel = {
 // turretSystem's lead math runs.
 export type Unit = {
   unitType: string;
-  moveSpeed: number;
+  locomotion: UnitLocomotion;
   /** Hit/push radii. `shot` is the projectile-vs-unit collider; `push`
    *  is the unit-vs-unit physics radius. Visual body size is the
    *  separate `bodyRadius` field below — historically `scale` lived
@@ -599,7 +610,7 @@ export type UnitBuildConfig = {
   unitRadiusCollider: { shot: number; push: number };
   bodyRadius: number;
   bodyCenterHeight: number;
-  moveSpeed: number;
+  locomotion: UnitLocomotion;
   mass: number;
   hp: number;
   fireRange?: number;

@@ -17,6 +17,27 @@ const WAVE_OMEGA_X = 0.6;
 const WAVE_OMEGA_Z = 0.45;
 const WATER_COLOR = 0x4aa3df;
 
+/** Depth (world units) the water surface drops down at the MAP EDGE
+ *  to close off the side. Without this skirt, panning the camera
+ *  outside the map shows the water as a paper-thin sheet ending in
+ *  thin air. With it, every water cell whose footprint touches the
+ *  map's outer rectangle gets a vertical wall going down to
+ *  `WATER_LEVEL − WATER_EDGE_SKIRT_DEPTH`, so the water reads as a
+ *  proper basin from oblique angles. The skirt is part of the SAME
+ *  BufferGeometry / mesh / material as the flat water cells —
+ *  vertical normals so there's no chance of coplanar z-fighting,
+ *  one extra draw call avoided.
+ *
+ *  600 wu is well past where the camera can pull back in normal
+ *  gameplay; the skirt's bottom never reads as a visible seam.  */
+const WATER_EDGE_SKIRT_DEPTH = 600;
+/** Slack on the "is this cell at the map edge?" test. Cells were
+ *  built off `landGrid` cell bounds so x0 / x1 / z0 / z1 land on
+ *  exact integer multiples of the cell size; 0.5 wu absorbs any
+ *  floating-point drift from the grid metrics math without
+ *  accidentally tagging interior cells as edge cells.  */
+const MAP_EDGE_EPS = 0.5;
+
 type WaterCell = {
   x0: number;
   z0: number;
@@ -169,6 +190,27 @@ export class WaterRenderer3D {
     const normals: number[] = [];
     const indices: number[] = [];
 
+    const skirtBottomY = WATER_LEVEL - WATER_EDGE_SKIRT_DEPTH;
+    const mapEdgeEastX = this.mapWidth - MAP_EDGE_EPS;
+    const mapEdgeSouthZ = this.mapHeight - MAP_EDGE_EPS;
+    /** Push one vertical skirt quad along a map-edge segment from
+     *  `WATER_LEVEL` down to `skirtBottomY`, with a constant outward
+     *  normal. Two triangles per quad; geometry is double-sided on
+     *  the material side so winding doesn't matter for visibility. */
+    const pushSkirtQuad = (
+      x0: number, z0: number, x1: number, z1: number,
+      nx: number, nz: number,
+    ): void => {
+      const v = positions.length / 3;
+      // Top-left, top-right, bottom-right, bottom-left.
+      positions.push(x0, WATER_LEVEL, z0);
+      positions.push(x1, WATER_LEVEL, z1);
+      positions.push(x1, skirtBottomY, z1);
+      positions.push(x0, skirtBottomY, z0);
+      for (let i = 0; i < 4; i++) normals.push(nx, 0, nz);
+      indices.push(v, v + 1, v + 2, v, v + 2, v + 3);
+    };
+
     for (let c = 0; c < waterCells.length; c++) {
       const cell = waterCells[c];
       const subdiv = this.perCellSubdiv(graphicsConfig.waterSubdivisions);
@@ -192,6 +234,30 @@ export class WaterRenderer3D {
           const e = vBase + idx(ix + 1, iz + 1);
           indices.push(a, b, e, a, e, d);
         }
+      }
+
+      // Map-edge skirts. Only emitted for cells whose footprint
+      // actually touches the map perimeter rectangle; interior cells
+      // skip the test. Each emitted side is a single quad regardless
+      // of `waterSubdivisions` — the side is a vertical band, not a
+      // height field, so subdividing it would just spend verts on
+      // identical positions.
+      if (cell.x0 <= MAP_EDGE_EPS) {
+        // West edge — outward normal points −X, run along +Z so
+        // the front face looks at a camera outside the map.
+        pushSkirtQuad(cell.x0, cell.z1, cell.x0, cell.z0, -1, 0);
+      }
+      if (cell.x1 >= mapEdgeEastX) {
+        // East edge — outward normal +X.
+        pushSkirtQuad(cell.x1, cell.z0, cell.x1, cell.z1, 1, 0);
+      }
+      if (cell.z0 <= MAP_EDGE_EPS) {
+        // North edge — outward normal −Z.
+        pushSkirtQuad(cell.x0, cell.z0, cell.x1, cell.z0, 0, -1);
+      }
+      if (cell.z1 >= mapEdgeSouthZ) {
+        // South edge — outward normal +Z.
+        pushSkirtQuad(cell.x1, cell.z1, cell.x0, cell.z1, 0, 1);
       }
     }
 

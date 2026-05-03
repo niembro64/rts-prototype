@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import * as THREE from 'three';
 import type { MinimapData } from '@/types/ui';
 
@@ -20,6 +20,7 @@ let compassRig: THREE.Group | null = null;
 let windArrow: THREE.Group | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let rafId = 0;
+let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 let lastRenderMs = 0;
 let lastWidth = 0;
 let lastHeight = 0;
@@ -218,14 +219,26 @@ function resize(): void {
   camera.position.set(0, props.compact ? 4.8 : 4.0, props.compact ? 5.4 : 4.8);
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
-  needsRender = true;
+  requestHudRender();
 }
 
-function animate(now: number): void {
-  rafId = requestAnimationFrame(animate);
+function renderHud(now: number): void {
+  rafId = 0;
   if (!renderer || !scene || !camera || !compassRig || !windArrow) return;
-  if (typeof document !== 'undefined' && document.hidden) return;
-  if (now - lastRenderMs < RENDER_INTERVAL_MS) return;
+  if (typeof document !== 'undefined' && document.hidden) {
+    needsRender = true;
+    return;
+  }
+  const waitMs = RENDER_INTERVAL_MS - (now - lastRenderMs);
+  if (waitMs > 0) {
+    if (!throttleTimer) {
+      throttleTimer = setTimeout(() => {
+        throttleTimer = null;
+        requestHudRender();
+      }, waitMs);
+    }
+    return;
+  }
   lastRenderMs = now;
 
   let changed = needsRender;
@@ -267,6 +280,17 @@ function animate(now: number): void {
   }
 }
 
+function requestHudRender(): void {
+  needsRender = true;
+  if (throttleTimer) return;
+  if (rafId !== 0) return;
+  rafId = requestAnimationFrame(renderHud);
+}
+
+function handleVisibilityChange(): void {
+  if (typeof document !== 'undefined' && !document.hidden) requestHudRender();
+}
+
 function disposeSceneResources(root: THREE.Scene): void {
   const disposedGeometries = new Set<THREE.BufferGeometry>();
   const disposedMaterials = new Set<THREE.Material>();
@@ -291,11 +315,19 @@ function disposeSceneResources(root: THREE.Scene): void {
 
 onMounted(() => {
   buildScene();
-  rafId = requestAnimationFrame(animate);
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+  }
+  requestHudRender();
 });
 
 onUnmounted(() => {
-  cancelAnimationFrame(rafId);
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }
+  if (rafId !== 0) cancelAnimationFrame(rafId);
+  if (throttleTimer) clearTimeout(throttleTimer);
+  throttleTimer = null;
   resizeObserver?.disconnect();
   resizeObserver = null;
   if (scene) disposeSceneResources(scene);
@@ -306,6 +338,17 @@ onUnmounted(() => {
   compassRig = null;
   windArrow = null;
 });
+
+watch(
+  () => [
+    props.data.cameraYaw ?? 0,
+    props.data.wind?.x ?? 0,
+    props.data.wind?.y ?? 0,
+    props.data.wind?.speed ?? 0,
+    props.compact ? 1 : 0,
+  ],
+  requestHudRender,
+);
 </script>
 
 <template>

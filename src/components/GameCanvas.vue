@@ -402,6 +402,8 @@ const rangeToggles = reactive<Record<RangeType, boolean>>({
   trackRelease: getRangeToggle('trackRelease'),
   engageAcquire: getRangeToggle('engageAcquire'),
   engageRelease: getRangeToggle('engageRelease'),
+  engageMinAcquire: getRangeToggle('engageMinAcquire'),
+  engageMinRelease: getRangeToggle('engageMinRelease'),
   build: getRangeToggle('build'),
 });
 const projRangeToggles = reactive<Record<ProjRangeType, boolean>>({
@@ -1771,10 +1773,14 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         };
       }
 
-      // Create LocalGameConnection for the host client. Leave the
-      // listener unscoped so the host sees the same full snapshot
-      // shape the real-battle protocol used before the lobby changes.
-      const localConnection = new LocalGameConnection(currentServer);
+      // Create LocalGameConnection for the local player. In hosted
+      // real battles, scope the host's own client exactly like remote
+      // clients so red does not process the full global snapshot stream
+      // while every other player gets the fast per-player AOI path.
+      const localConnection = new LocalGameConnection(
+        currentServer,
+        networkRole.value === 'host' ? localPlayerId.value : undefined,
+      );
       activeConnection = localConnection;
       gameConnection = localConnection;
 

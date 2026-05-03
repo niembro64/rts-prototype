@@ -27,7 +27,10 @@ import {
   updateLocomotion,
   destroyLocomotion,
   getChassisLift,
+  captureLegState,
+  applyLegState,
   type Locomotion3DMesh,
+  type LegStateSnapshot,
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import {
@@ -57,6 +60,7 @@ import {
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
+import { getBuildingConfig } from '../sim/buildConfigs';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getFactoryBuildSpot, getFactoryConstructionRadius, type FactoryBuildSpot } from '../sim/factoryConstructionSite';
 import { getDriftMode, getGraphicsConfigFor, getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
@@ -78,6 +82,14 @@ import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 const BUILDING_HEIGHT = 120;
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
+/** Reciprocal of the extractor's configured ceiling rate, computed
+ *  once at module load. The per-frame rotor loop multiplies by this
+ *  instead of dividing each entity's `metalExtractionRate` by the
+ *  base rate every frame. */
+const INV_EXTRACTOR_BASE_PRODUCTION = (() => {
+  const base = getBuildingConfig('extractor').metalProduction ?? 0;
+  return base > 0 ? 1 / base : 0;
+})();
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
 
@@ -339,7 +351,13 @@ export class Render3DEntities {
   private windVisualSpeed: number | null = null;
   private windRotorPhase = 0;
   private windAnimLastMs = 0;
-  private extractorRotorPhase = 0;
+  /** Per-entity rotor phase. Each extractor advances its own counter
+   *  by `dt × EXTRACTOR_ROTOR_RAD_PER_SEC × coverageFraction`, so an
+   *  extractor sitting on bare ground (0 covered tiles) stays
+   *  stationary while one fully covering a deposit spins at full
+   *  speed. Indexed by entity id; entries get pruned when the
+   *  extractor despawns. */
+  private extractorRotorPhases = new Map<EntityId, number>();
   // Reusable "seen this frame" sets — the four per-frame update loops
   // (barrel-spin, unit, building, projectile) each need to track which
   // entity ids were visited so stale Map entries get pruned. Keeping
@@ -371,6 +389,11 @@ export class Render3DEntities {
   // spinConfig.idle otherwise. Mirrors the 2D barrel-spin system exactly.
   private barrelSpins = new Map<EntityId, { angle: number; speed: number }>();
   private _lastSpinMs = performance.now();
+
+  // Per-entity leg-state snapshots stashed right before an LOD-driven
+  // mesh teardown and consumed immediately after rebuild, so feet keep
+  // their world-space planted positions instead of snapping to rest.
+  private legStateCache = new Map<EntityId, LegStateSnapshot>();
 
   // LOD state — read once per frame in update(), then every builder/drawer
   // consults these values instead of calling getGraphicsConfig() ad-hoc.
@@ -477,6 +500,11 @@ export class Render3DEntities {
   private ringMatTrackRelease = new THREE.LineBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.12, depthWrite: false });
   private ringMatEngageAcquire = new THREE.LineBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.30, depthWrite: false });
   private ringMatEngageRelease = new THREE.LineBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.25, depthWrite: false });
+  // Min-fire dead-zone rings (mortars + similar). Orange = "I can
+  // start firing once I'm at least this far out from the target";
+  // purple = the closer hysteresis line ("stop firing inside this").
+  private ringMatEngageMinAcquire = new THREE.LineBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.30, depthWrite: false });
+  private ringMatEngageMinRelease = new THREE.LineBasicMaterial({ color: 0xaa44ff, transparent: true, opacity: 0.25, depthWrite: false });
   private ringMatBuild = new THREE.LineBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.30, depthWrite: false });
   // Selection ring material — color is always white, so one shared
   // instance covers every selectable entity. Was previously allocated
@@ -722,7 +750,7 @@ export class Render3DEntities {
   // and rewritten every frame; slots persist across frames so
   // count tracks nextSlot like the chassis pools.
   //
-  // Hidden heads (turretStyle=none / force-field / mirror-host)
+  // Hidden heads (turretStyle=none / force-field)
   // don't get a slot — they have no visible head at all. Heads
   // that would be visible but hit the cap fall back to per-Mesh
   // (TurretMesh.head) — same fallback the chassis pools use.
@@ -1190,9 +1218,13 @@ export class Render3DEntities {
     const showTrackRelease = getRangeToggle('trackRelease');
     const showEngageAcquire = getRangeToggle('engageAcquire');
     const showEngageRelease = getRangeToggle('engageRelease');
+    const showEngageMinAcquire = getRangeToggle('engageMinAcquire');
+    const showEngageMinRelease = getRangeToggle('engageMinRelease');
     const showBuild = getRangeToggle('build');
     const showAnyTurretRange =
-      showTrackAcquire || showTrackRelease || showEngageAcquire || showEngageRelease;
+      showTrackAcquire || showTrackRelease
+      || showEngageAcquire || showEngageRelease
+      || showEngageMinAcquire || showEngageMinRelease;
     if (!showAnyTurretRange && !showBuild) {
       if (m.rangeRingsVisible) this.hideRangeRings(m);
       m.rangeRingsVisible = false;
@@ -1251,6 +1283,18 @@ export class Render3DEntities {
           tm, 'engageRelease', showEngageRelease, mountX, mountY, mountZ,
           weapon.ranges.fire.max.release, this.ringMatEngageRelease,
         );
+        // Min-fire dead-zone rings — only emitted for turrets with a
+        // configured fire.min (mortars, gatling-mortar, etc.). Null
+        // hides the ring without erroring, so direct-fire weapons
+        // simply skip these channels.
+        this.setRangeSphere(
+          tm, 'engageMinAcquire', showEngageMinAcquire, mountX, mountY, mountZ,
+          weapon.ranges.fire.min?.acquire ?? null, this.ringMatEngageMinAcquire,
+        );
+        this.setRangeSphere(
+          tm, 'engageMinRelease', showEngageMinRelease, mountX, mountY, mountZ,
+          weapon.ranges.fire.min?.release ?? null, this.ringMatEngageMinRelease,
+        );
       }
     } else if (m.rangeRingsVisible) {
       this.hideTurretRangeRings(m);
@@ -1282,10 +1326,12 @@ export class Render3DEntities {
     for (const tm of m.turrets) {
       const rings = tm.rangeRings;
       if (!rings) continue;
-      if (rings.trackAcquire) rings.trackAcquire.visible = false;
-      if (rings.trackRelease) rings.trackRelease.visible = false;
-      if (rings.engageAcquire) rings.engageAcquire.visible = false;
-      if (rings.engageRelease) rings.engageRelease.visible = false;
+      if (rings.trackAcquire)     rings.trackAcquire.visible = false;
+      if (rings.trackRelease)     rings.trackRelease.visible = false;
+      if (rings.engageAcquire)    rings.engageAcquire.visible = false;
+      if (rings.engageRelease)    rings.engageRelease.visible = false;
+      if (rings.engageMinAcquire) rings.engageMinAcquire.visible = false;
+      if (rings.engageMinRelease) rings.engageMinRelease.visible = false;
     }
   }
 
@@ -1295,7 +1341,13 @@ export class Render3DEntities {
    *  dance. */
   private setRangeSphere(
     tm: TurretMesh,
-    key: 'trackAcquire' | 'trackRelease' | 'engageAcquire' | 'engageRelease',
+    key:
+      | 'trackAcquire'
+      | 'trackRelease'
+      | 'engageAcquire'
+      | 'engageRelease'
+      | 'engageMinAcquire'
+      | 'engageMinRelease',
     want: boolean,
     cx: number, cy: number, cz: number,
     /** Radius in world units, or `null` when this turret has no shell
@@ -1450,7 +1502,13 @@ export class Render3DEntities {
    *  the current LOD. Explosions / projectiles / tile grid don't need a rebuild
    *  — their per-frame loops already read the LOD snapshot directly. */
   private rebuildAllUnitsOnLodChange(): void {
-    for (const m of this.unitMeshes.values()) {
+    for (const [id, m] of this.unitMeshes) {
+      // Stash leg state across the rebuild so feet keep their world
+      // positions / gait phase / lerp progress instead of snapping to
+      // rest. captureLegState returns undefined for non-legged units,
+      // so the cache only grows for spider/tick/etc. — cheap.
+      const legSnap = captureLegState(m.locomotion);
+      if (legSnap) this.legStateCache.set(id, legSnap);
       destroyLocomotion(m.locomotion, this.legRenderer);
       this.world.remove(m.group);
       this.disposeWorldParentedOverlays(m);
@@ -2087,10 +2145,12 @@ export class Render3DEntities {
     if (m.buildRing) this.world.remove(m.buildRing);
     for (const tm of m.turrets) {
       if (tm.rangeRings) {
-        if (tm.rangeRings.trackAcquire)  this.world.remove(tm.rangeRings.trackAcquire);
-        if (tm.rangeRings.trackRelease)  this.world.remove(tm.rangeRings.trackRelease);
-        if (tm.rangeRings.engageAcquire) this.world.remove(tm.rangeRings.engageAcquire);
-        if (tm.rangeRings.engageRelease) this.world.remove(tm.rangeRings.engageRelease);
+        if (tm.rangeRings.trackAcquire)     this.world.remove(tm.rangeRings.trackAcquire);
+        if (tm.rangeRings.trackRelease)     this.world.remove(tm.rangeRings.trackRelease);
+        if (tm.rangeRings.engageAcquire)    this.world.remove(tm.rangeRings.engageAcquire);
+        if (tm.rangeRings.engageRelease)    this.world.remove(tm.rangeRings.engageRelease);
+        if (tm.rangeRings.engageMinAcquire) this.world.remove(tm.rangeRings.engageMinAcquire);
+        if (tm.rangeRings.engageMinRelease) this.world.remove(tm.rangeRings.engageMinRelease);
       }
     }
     // Selection ring is parented to m.group and gets GC'd with the
@@ -2199,6 +2259,13 @@ export class Render3DEntities {
 
     for (const e of units) {
       seen.add(e.id);
+      // Hoist transform reads — referenced by the scope gate AND the
+      // per-tick group / yaw write; reading the same prop slot off
+      // `e.transform` four+ times for thousands of units adds up.
+      const transform = e.transform;
+      const tx = transform.x;
+      const ty = transform.y;
+      const tRot = transform.rotation;
       // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME, scope or no scope.
       // The unit group carries the chassis AND its child turret /
       // mirror groups (both parented to yawGroup). Skipping the
@@ -2207,11 +2274,11 @@ export class Render3DEntities {
       // its last on-screen pose; if the camera then panned to it
       // before the next in-scope tick, the user would see a unit
       // floating somewhere it isn't. Cheap to set unconditionally.
-      const inScope = this.scope.inScope(e.transform.x, e.transform.y, 100);
+      const inScope = this.scope.inScope(tx, ty, 100);
       const existing = this.unitMeshes.get(e.id);
       if (existing) {
-        existing.group.position.set(e.transform.x, getUnitGroundZ(e), e.transform.y);
-        if (existing.yawGroup) existing.yawGroup.rotation.set(0, -e.transform.rotation, 0);
+        existing.group.position.set(tx, getUnitGroundZ(e), ty);
+        if (existing.yawGroup) existing.yawGroup.rotation.set(0, -tRot, 0);
       }
       // The expensive per-frame work below (terrain normal, slope tilt,
       // locomotion, mirror tracking, range rings, turret-aim math) IS
@@ -2246,6 +2313,12 @@ export class Render3DEntities {
 
       let m = this.unitMeshes.get(e.id);
       if (m && m.lodKey !== unitLodKey) {
+        // Preserve leg state across the LOD-driven rebuild — feet keep
+        // their planted world positions through the teardown so the
+        // newly built mesh resumes the gait instead of snapping back
+        // to rest. Captured BEFORE destroyUnitMesh frees the legs.
+        const legSnap = captureLegState(m.locomotion);
+        if (legSnap) this.legStateCache.set(e.id, legSnap);
         this.destroyUnitMesh(e.id, m);
         m = undefined;
       }
@@ -2342,28 +2415,20 @@ export class Render3DEntities {
 
         // Build one TurretMesh per actual turret on the entity. Each turret
         // has an optional head + barrel cylinders matching its barrel config.
-        //
-        // On mirror units (e.g. Loris) the blueprint lists the mirror turret
-        // at index 0 and the shooting turret after it. The mirror panels are
-        // aggregated to entity.unit.mirrorPanels with no per-turret tag, so
-        // we mirror the 2D convention: the mirror host is turret[0], and any
-        // additional turrets render normally with their own cylinder body.
-        const unitHasMirrors = (e.unit?.mirrorPanels?.length ?? 0) > 0;
         const turretMeshes: TurretMesh[] = [];
         const turretOff = unitGfx.turretStyle === 'none';
         for (let ti = 0; ti < turrets.length; ti++) {
           const t = turrets[ti];
-          const isMirrorHost = unitHasMirrors && ti === 0;
           // Decide whether to route this turret's head through the
           // shared `turretHeadInstanced` InstancedMesh. The same
           // hideHead conditions buildTurretMesh3D uses (turret-off
-          // / force-field / mirror-host) skip the slot entirely; for
+          // / force-field) skip the slot entirely; for
           // visible heads, alloc a slot and pass `skipHead: true`
           // so buildTurretMesh3D doesn't ALSO build a per-Mesh head
           // (would double-render). Slot alloc returns null on cap
           // exhaustion → fall back to per-Mesh head.
           const isForceField = (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
-          const hideHead = turretOff || isForceField || isMirrorHost;
+          const hideHead = turretOff || isForceField;
           let headSlot: number | undefined;
           if (!hideHead && !isCommanderUnit) {
             const allocated = this.allocTurretHeadSlot();
@@ -2371,8 +2436,7 @@ export class Render3DEntities {
           }
           // Decide whether to route this turret's barrels through the
           // shared `barrelInstanced` InstancedMesh. Force-field and
-          // turretOff turrets have no barrels; mirror-host turrets
-          // also skip (they're a panel host, not a shooter). For
+          // turretOff turrets have no barrels. For
           // shooting turrets, we don't yet know how many barrels
           // until buildTurretMesh3D runs (multiBarrel patterns vary
           // by config). Build first; if barrels are produced, walk
@@ -2394,7 +2458,7 @@ export class Render3DEntities {
           // tilt so the world barrel direction still matches the
           // sim's weapon.rotation / weapon.pitch even though the
           // parent chain is tilted.
-          const tm = buildTurretMesh3D(liftGroup, t, radius, isMirrorHost, unitGfx, {
+          const tm = buildTurretMesh3D(liftGroup, t, radius, unitGfx, {
             headGeom: this.turretHeadGeom,
             barrelGeom: this.barrelGeom,
             barrelMat: this.barrelMat,
@@ -2482,6 +2546,17 @@ export class Render3DEntities {
           this.clientViewState.getMapHeight(),
           this.legRenderer,
         );
+        // Restore leg state if this was an LOD-driven rebuild — feet
+        // resume from where they were planted instead of snapping
+        // back to rest. Cache entry consumed (deleted) on restore so
+        // a stale snapshot doesn't pollute a future genuinely-fresh
+        // build (e.g. spawn after death). Non-legged locomotion
+        // ignores the call (applyLegState early-outs on type !== 'legs').
+        const legSnap = this.legStateCache.get(e.id);
+        if (legSnap !== undefined) {
+          applyLegState(m.locomotion, legSnap);
+          this.legStateCache.delete(e.id);
+        }
 
 
         // Mirror panels (e.g. Loris): square slabs mounted at arm's
@@ -2527,7 +2602,7 @@ export class Render3DEntities {
             liftGroup, mirrorPanels,
             panelCenterY, panelHalfSide, panelArmLength,
             this.mirrorGeom, this.barrelGeom,
-            this.getMirrorShinyMat(pid), this.barrelMat,
+            this.getMirrorShinyMat(pid), this.getPrimaryMat(pid),
             allMirrorAlloc, // skipPerMesh when instancing is on
           );
           if (allMirrorAlloc) m.mirrors.panelSlots = allocedPanelSlots;
@@ -2542,6 +2617,10 @@ export class Render3DEntities {
         for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
         for (const tm of m.turrets) {
           if (tm.head) tm.head.material = this.getPrimaryMat(pid);
+        }
+        if (m.mirrors) {
+          const primaryMat = this.getPrimaryMat(pid);
+          for (const arm of m.mirrors.arms) arm.material = primaryMat;
         }
       }
       m.chassis.visible = fullUnitDetail && !m.hideChassis;
@@ -2761,9 +2840,8 @@ export class Render3DEntities {
       // Per-turret placement. Turret offset is chassis-local in sim coords
       // (x, y) which map to (x, z) in three. Root Y sits at the top of the
       // chassis; the head + barrels extend upward from there inside the root.
-      // On mirror-host units (e.g. Loris) turret[0] IS the mirror — any
-      // shooting turrets after it sit on top of the mirror stack, matching
-      // getTurretMountHeight() on the sim side.
+      // On mirror-host units (e.g. Loris) turret[0] owns the mirror panel
+      // and the visible host turret body.
       const spinState = this.barrelSpins.get(e.id);
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
@@ -3069,6 +3147,11 @@ export class Render3DEntities {
         if (m.mirrors?.panelSlots) {
           for (const slot of m.mirrors.panelSlots) this.freeMirrorPanelSlot(slot);
         }
+        // True entity removal — drop any stashed leg-state snapshot
+        // so a future re-spawn of a different unit reusing this
+        // entityId starts fresh instead of inheriting last unit's
+        // foot positions.
+        this.legStateCache.delete(id);
         this.unitMeshes.delete(id);
       }
     }
@@ -3409,6 +3492,7 @@ export class Render3DEntities {
     this.removeAnimatedBuilding(this.solarBuildingIds, this.solarBuildingIdSet, id);
     this.removeAnimatedBuilding(this.windBuildingIds, this.windBuildingIdSet, id);
     this.removeAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
+    this.extractorRotorPhases.delete(id);
     this.removeAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
   }
 
@@ -3430,13 +3514,41 @@ export class Render3DEntities {
     }
 
     if (this.extractorBuildingIds.length > 0) {
-      this.extractorRotorPhase =
-        (this.extractorRotorPhase + this._spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC) % (Math.PI * 2);
+      // Each extractor advances its own rotor phase by dt × base ×
+      // coverageFraction, so spin scales 1:1 with metal-per-second.
+      // 0 covered tiles → stationary; full coverage → full base rate.
+      // metalProduction is the extractor's configured ceiling rate;
+      // metalExtractionRate is what this particular instance pulls
+      // (computed at construction time). The per-entity jitter
+      // (`id × 0.173`) is baked INTO the stored phase the first time
+      // we see an extractor and never re-applied, so the per-frame
+      // body is one Map.get + one Map.set.
+      const invBase = INV_EXTRACTOR_BASE_PRODUCTION;
+      const dtRate = this._spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC;
+      const TWO_PI = Math.PI * 2;
+      const phases = this.extractorRotorPhases;
       for (const id of this.extractorBuildingIds) {
         const mesh = this.buildingMeshes.get(id);
         const entity = this.clientViewState.getEntity(id);
-        if (mesh && entity) {
-          this.updateExtractorRig(mesh, entity, mesh.buildingCachedDetailsReady === true);
+        if (!mesh || !entity) continue;
+        const rate = entity.metalExtractionRate ?? 0;
+        let phase = phases.get(id);
+        if (phase === undefined) phase = id * 0.173; // first-frame jitter seed
+        phase = (phase + dtRate * (rate * invBase)) % TWO_PI;
+        phases.set(id, phase);
+        // Inline the rig write. Every per-tier rotor in the rig
+        // array gets the same yaw — only one is visible at a time
+        // (tier-gated by detail.minTier/maxTier), so writing the
+        // hidden one is just a property assign with no GPU work.
+        // Avoids an LOD-flip glitch where the swapped-in rotor would
+        // briefly point at an old yaw.
+        const rig = mesh.extractorRig;
+        if (rig && mesh.buildingCachedDetailsReady === true) {
+          const yaw = -phase;
+          const rotors = rig.rotors;
+          for (let r = 0; r < rotors.length; r++) {
+            rotors[r].rotation.y = yaw;
+          }
         }
       }
     }
@@ -3556,13 +3668,6 @@ export class Render3DEntities {
     m.windRig.rotor.rotation.z = this.windRotorPhase;
   }
 
-  private updateExtractorRig(m: EntityMesh, e: Entity, detailsReady: boolean): void {
-    if (!m.extractorRig || e.buildingType !== 'extractor' || !detailsReady) return;
-    const phase = this.extractorRotorPhase + e.id * 0.173;
-    if (m.extractorRig.rotor.visible) {
-      m.extractorRig.rotor.rotation.y = -phase;
-    }
-  }
 
   private updateFactoryConstructionRig(
     rig: FactoryConstructionRig | undefined,
@@ -3708,8 +3813,16 @@ export class Render3DEntities {
 
     for (const e of projectiles) {
       if (pruneProjectiles) seen.add(e.id);
+      // Hoist the transform reads once per projectile — used in
+      // scope gate, position write, and (for cylinders) the orientation
+      // basis. Property access on `e.transform` six times each frame
+      // for thousands of in-flight shots adds up; one local-var copy
+      // pays for the rest of the loop body.
+      const tx = e.transform.x;
+      const ty = e.transform.y;
+      const tz = e.transform.z;
       // Scope gate — tighter padding (projectiles are small and moving fast).
-      if (!this.scope.inScope(e.transform.x, e.transform.y, 50)) {
+      if (!this.scope.inScope(tx, ty, 50)) {
         this.hideProjRadiusMeshes(e.id);
         continue;
       }
@@ -3736,7 +3849,7 @@ export class Render3DEntities {
       // real z from turret muzzle to ground / target). SHOT_HEIGHT is
       // no longer the truth — the sphere renders exactly where the
       // sim says it is.
-      this._projPos.set(e.transform.x, e.transform.z, e.transform.y);
+      this._projPos.set(tx, tz, ty);
 
       if (isCylinder) {
         if (!cylinderMesh || cylinderCount >= Render3DEntities.PROJECTILE_INSTANCED_CAP) {
@@ -3952,6 +4065,9 @@ export class Render3DEntities {
       this.world.remove(m.group);
       this.disposeWorldParentedOverlays(m);
     }
+    // Renderer-wide teardown — drop every cached leg snapshot, no
+    // future build will consume them.
+    this.legStateCache.clear();
     for (const m of this.buildingMeshes.values()) this.world.remove(m.group);
     if (this.projectileSphereInstanced) {
       this.world.remove(this.projectileSphereInstanced);
@@ -4011,6 +4127,8 @@ export class Render3DEntities {
     this.ringMatTrackRelease.dispose();
     this.ringMatEngageAcquire.dispose();
     this.ringMatEngageRelease.dispose();
+    this.ringMatEngageMinAcquire.dispose();
+    this.ringMatEngageMinRelease.dispose();
     this.ringMatBuild.dispose();
     this.selectionRingMat.dispose();
     this.projMatCollision.dispose();

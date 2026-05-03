@@ -47,6 +47,7 @@ import { expandPathActions } from './Pathfinder';
 import { updateSolarCollectors } from './solarCollector';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { WindPowerTracker, sampleWindState, type WindState } from './wind';
+import { isBuildTargetInRange } from './builderRange';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
@@ -686,18 +687,26 @@ export class Simulation {
         continue;
       }
 
+      this.promoteReachableBuildAction(entity);
+
       // Get current action
       const currentAction = unit.actions[0];
 
       // For build/repair actions, check if we're in range
       if (currentAction.type === 'build' || currentAction.type === 'repair') {
-        const buildRange = entity.builder?.buildRange ?? 100;
+        const targetId = currentAction.type === 'build'
+          ? currentAction.buildingId
+          : currentAction.targetId;
+        const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
+        if (target && isBuildTargetInRange(entity, target)) {
+          unit.stuckTicks = 0;
+          continue;
+        }
+
         const dx = currentAction.x - transform.x;
         const dy = currentAction.y - transform.y;
         const distance = magnitude(dx, dy);
-
-        // In range - no thrust needed
-        if (distance <= buildRange) {
+        if (distance <= 1) {
           unit.stuckTicks = 0;
           continue;
         }
@@ -780,13 +789,36 @@ export class Simulation {
     this.evaluateStuckAndReplan(movingUnits);
   }
 
+  private promoteReachableBuildAction(entity: Entity): void {
+    const unit = entity.unit;
+    if (!unit || !entity.builder || unit.actions.length === 0) return;
+
+    const actions = unit.actions;
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      if (action.type !== 'build' && action.type !== 'repair') {
+        if (!action.isPathExpansion) return;
+        continue;
+      }
+
+      const targetId = action.type === 'build' ? action.buildingId : action.targetId;
+      const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
+      if (!target || !isBuildTargetInRange(entity, target)) return;
+
+      if (i > 0) {
+        actions.splice(0, i);
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      }
+      return;
+    }
+  }
+
   /** Set the unit's thrust vector toward a (dx, dy) offset whose
-   *  pre-computed magnitude is `distance`. Caller is responsible for
-   *  the distance check — this just normalizes and scales. */
+   *  pre-computed magnitude is `distance`. Locomotion physics owns
+   *  propulsion strength; actions only author desired direction. */
   private applyThrustToward(unit: NonNullable<Entity['unit']>, dx: number, dy: number, distance: number): void {
-    const scale = (unit.moveSpeed * this.world.thrustMultiplier) / distance;
-    unit.thrustDirX = dx * scale;
-    unit.thrustDirY = dy * scale;
+    unit.thrustDirX = dx / distance;
+    unit.thrustDirY = dy / distance;
   }
 
   /** True when the unit has enough turrets engaged that it should hold

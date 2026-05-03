@@ -93,7 +93,6 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       } : undefined,
       bodyRadius: e.unit.bodyRadius,
       bodyCenterHeight: e.unit.bodyCenterHeight,
-      moveSpeed: e.unit.moveSpeed,
       mass: e.unit.mass,
       velocity: { x: e.unit.velocity.x, y: e.unit.velocity.y, z: e.unit.velocity.z },
       turretRotation: e.unit.turretRotation,
@@ -107,6 +106,7 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       dim: e.building.dim ? { x: e.building.dim.x, y: e.building.dim.y } : undefined,
       hp: { curr: e.building.hp.curr, max: e.building.hp.max },
       build: { progress: e.building.build.progress, complete: e.building.build.complete },
+      metalExtractionRate: e.building.metalExtractionRate,
       solar: e.building.solar ? { open: e.building.solar.open } : undefined,
       factory: e.building.factory ? {
         queue: e.building.factory.queue.slice(),
@@ -378,7 +378,6 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
   }
   dst.bodyRadius = src.bodyRadius;
   dst.bodyCenterHeight = src.bodyCenterHeight;
-  dst.moveSpeed = src.moveSpeed;
   dst.mass = src.mass;
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
@@ -454,6 +453,7 @@ function copyBuildingInto(
   dst.hp.max = src.hp.max;
   dst.build.progress = src.build.progress;
   dst.build.complete = src.build.complete;
+  dst.metalExtractionRate = src.metalExtractionRate;
   if (src.solar) {
     if (!dst.solar) dst.solar = { open: true };
     dst.solar.open = src.solar.open;

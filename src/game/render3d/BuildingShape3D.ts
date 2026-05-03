@@ -69,8 +69,12 @@ export type WindTurbineRig = {
   rotor: THREE.Mesh;
 };
 
+/** Per-LOD rotor meshes for the extractor. The detail system gates
+ *  visibility by tier so only ONE rotor is on-screen at a time, but
+ *  the animator advances the same yaw on every entry — flipping LOD
+ *  bands is a free visibility toggle, no rebuild needed. */
 export type ExtractorRig = {
-  rotor: THREE.Mesh;
+  rotors: THREE.Mesh[];
 };
 
 export type ConstructionEmitterRig = {
@@ -280,15 +284,42 @@ export function buildBuildingShape(
   }
 }
 
-/** Metal extractor: wide six-sided truncated pyramid with an active rotary
- *  extractor head. Medium+ tiers add a sloped fan whose blades sweep
- *  from the flat top down toward the deposit surface. */
+/** Metal extractor LOD ladder.
+ *
+ *  Principle: every tier preserves the SILHOUETTE — pyramid base +
+ *  chimney column + rotating fan — so the building reads as the same
+ *  object at any zoom level. Higher tiers add DECORATIVE details
+ *  (cap spheres, collar rings, glowing cutting edges) on top of that
+ *  silhouette; lower tiers strip those small touches but keep the
+ *  major masses visible.
+ *
+ *    min    — pyramid + base ring + chimney + simple 3-blade rotor.
+ *             Silhouette is complete; no decorative trim.
+ *    low    — + cap sphere on the chimney tip (small polish where
+ *             the chimney meets the rotor mount).
+ *    medium — + collar ring around the pyramid's top edge (reads as
+ *             a structural seam).
+ *    high   — + top-cap collar around the rotor base AND swap the
+ *             3-blade rotor for the full 6-blade rotor with glowing
+ *             cutting edges.
+ *    max    — same content as high (the full rig is already at the
+ *             ceiling of useful detail).
+ *
+ *  Tier-gating lives in the top-level detail array. Both rotor
+ *  variants get parented as separate details with mutually exclusive
+ *  tier ranges so only one is on-screen at a time. The animator
+ *  advances yaw on every rotor in `extractorRig.rotors`; writing to
+ *  the hidden one is free (one assign, no GPU work) and prevents an
+ *  LOD-flip glitch where the swapped-in rotor would briefly show an
+ *  old yaw.
+ */
 function buildExtractor(
   width: number,
   depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
   const minDim = Math.min(width, depth);
+  const footprintRadius = minDim * 0.5;
   const pyramidHeight = Math.min(EXTRACTOR_VISUAL_HEIGHT * 0.64, Math.max(28, minDim * 0.78));
   const base = new THREE.Mesh(extractorPyramidGeom, primaryMat);
 
@@ -297,38 +328,79 @@ function buildExtractor(
   const collarY = pyramidHeight - Math.max(1.8, minDim * 0.045);
   const rotorY = Math.min(EXTRACTOR_VISUAL_HEIGHT - 6, pyramidHeight + Math.max(4, minDim * 0.1));
 
+  // MIN+ silhouette — base ring + chimney column. These are the
+  // major masses that make the building read as an extractor at any
+  // zoom level. Stripping them at min would collapse the building
+  // back to "just a pyramid" which doesn't communicate the function.
   details.push(detail(
-    makeCylinder(extractorDarkMat, Math.max(22, minDim * 0.58), 5, 0, 2.5, 0, hexCylinderGeom),
-    'low',
-  ));
-  details.push(detail(
-    makeCylinder(factoryFrameMat, Math.max(15, minDim * 0.38), 4.5, 0, collarY, 0, hexCylinderGeom),
-    'low',
+    makeCylinder(
+      extractorDarkMat,
+      Math.min(footprintRadius * 0.92, Math.max(12, minDim * 0.45)),
+      5,
+      0,
+      2.5,
+      0,
+      hexCylinderGeom,
+    ),
+    'min',
   ));
   details.push(detail(
     makeCylinder(chimneyMat, hubRadius * 1.05, Math.max(8, rotorY - collarY), 0, (collarY + rotorY) * 0.5, 0, hexCylinderGeom),
-    'low',
+    'min',
   ));
+
+  // HIGH+ decorative — cap sphere where the chimney meets the rotor
+  // mount. Lower LODs keep the six-blade motion silhouette but drop
+  // this trim.
+  const cap = makeSphere(primaryMat, hubRadius * 1.28, 0, rotorY, 0);
+  details.push(detail(cap, 'high'));
+
+  // HIGH+ decorative — collar ring around the pyramid's top edge.
+  // Visually "tightens" the seam between the pyramid and the chimney.
+  details.push(detail(
+    makeCylinder(factoryFrameMat, Math.max(15, minDim * 0.38), 4.5, 0, collarY, 0, hexCylinderGeom),
+    'high',
+  ));
+
+  // MAX decorative — top-cap collar around the rotor base. Fine
+  // detail right next to the rotor; only worth drawing when the
+  // camera is close enough to the rotor itself to read it.
   details.push(detail(
     makeCylinder(factoryFrameMat, hubRadius * 2.15, 4.2, 0, rotorY - 2.5, 0, hexCylinderGeom),
-    'medium',
+    'max',
   ));
 
-  const cap = makeSphere(primaryMat, hubRadius * 1.28, 0, rotorY, 0);
-  details.push(detail(cap, 'low'));
-
-  const bladeLen = Math.max(32, minDim * 1.02);
-  const bladeWidth = Math.max(10, minDim * 0.26);
+  const bladeLen = Math.max(32, minDim * 0.86);
+  const bladeWidth = Math.max(10, minDim * 0.2);
   const bladeThickness = Math.max(4.5, minDim * 0.11);
-  const bladeRootRadius = Math.max(hubRadius * 1.7, minDim * 0.34);
-  const rotor = makeExtractorRotor(bladeLen, bladeWidth, bladeThickness, 6, rotorY, Math.PI / 6, bladeRootRadius, 0.5);
-  details.push(detail(rotor, 'low', undefined, 'extractorRotor'));
+  const bladeRootRadius = Math.max(hubRadius * 1.7, minDim * 0.28);
+
+  // MIN..MEDIUM rotor — all six blades remain visible and rotating so
+  // the silhouette is stable across LODs. Lower tiers only strip the
+  // cutting-edge glow and trim.
+  const simpleRotor = makeExtractorRotor(
+    bladeLen, bladeWidth, bladeThickness,
+    6, rotorY, Math.PI / 6, bladeRootRadius, 0.5,
+    /* withCuttingEdgeGlow */ false,
+  );
+  details.push(detail(simpleRotor, 'min', 'medium', 'extractorRotor'));
+
+  // HIGH+ rotor — full six-blade rotor with glowing cutting edges.
+  // Mutually exclusive tier range with the simple rotor (maxTier on
+  // the simple variant = 'medium') so exactly one is visible per
+  // frame; the LOD swap is a free visibility toggle.
+  const fullRotor = makeExtractorRotor(
+    bladeLen, bladeWidth, bladeThickness,
+    6, rotorY, Math.PI / 6, bladeRootRadius, 0.5,
+    /* withCuttingEdgeGlow */ true,
+  );
+  details.push(detail(fullRotor, 'high', undefined, 'extractorRotor'));
 
   return {
     primary: base,
     details,
     height: pyramidHeight,
-    extractorRig: { rotor },
+    extractorRig: { rotors: [simpleRotor, fullRotor] },
   };
 }
 
@@ -799,8 +871,11 @@ function createWindBladeGeometry(): THREE.BufferGeometry {
 
 function createHexFrustumGeometry(): THREE.BufferGeometry {
   const positions: number[] = [];
-  const bottomRadius = 0.82;
-  const topRadius = 0.28;
+  // Normalized footprint: when Render3DEntities scales the primary by
+  // building width/depth, the widest base edge stays inside that exact
+  // logical footprint instead of spilling past the extractor cells.
+  const bottomRadius = 0.5;
+  const topRadius = 0.17;
   const bottomY = -0.5;
   const topY = 0.5;
   const bottomCorners: THREE.Vector3[] = [];
@@ -867,6 +942,10 @@ function makeExtractorRotor(
   angleOffset: number,
   bladeRootRadius: number,
   bladeLengthScale: number = 1,
+  /** When true, each blade gets an emissive cutting-edge strip along
+   *  its outer face. Used at HIGH+ tier; the LOW/MEDIUM rotor variant
+   *  passes false to halve the per-blade draw cost. */
+  withCuttingEdgeGlow: boolean = true,
 ): THREE.Mesh {
   const rotor = new THREE.Mesh(cylinderGeom, invisibleMat);
   rotor.position.set(0, y, 0);
@@ -913,20 +992,22 @@ function makeExtractorRotor(
     applyBasis(blade, bladeDir, normalDir, tangentDir);
     rotor.add(blade);
 
-    const edgeCenterX = centerX + normalDir.x * bladeThickness * 0.56;
-    const edgeCenterY = centerY + normalDir.y * bladeThickness * 0.56;
-    const edgeCenterZ = centerZ + normalDir.z * bladeThickness * 0.56;
-    const cuttingEdge = makeBox(
-      extractorGlowMat,
-      bladeAxisLength * 0.72,
-      Math.max(1.2, bladeThickness * 0.18),
-      Math.max(1.2, bladeWidth * 0.16),
-      edgeCenterX,
-      edgeCenterY,
-      edgeCenterZ,
-    );
-    applyBasis(cuttingEdge, bladeDir, normalDir, tangentDir);
-    rotor.add(cuttingEdge);
+    if (withCuttingEdgeGlow) {
+      const edgeCenterX = centerX + normalDir.x * bladeThickness * 0.56;
+      const edgeCenterY = centerY + normalDir.y * bladeThickness * 0.56;
+      const edgeCenterZ = centerZ + normalDir.z * bladeThickness * 0.56;
+      const cuttingEdge = makeBox(
+        extractorGlowMat,
+        bladeAxisLength * 0.72,
+        Math.max(1.2, bladeThickness * 0.18),
+        Math.max(1.2, bladeWidth * 0.16),
+        edgeCenterX,
+        edgeCenterY,
+        edgeCenterZ,
+      );
+      applyBasis(cuttingEdge, bladeDir, normalDir, tangentDir);
+      rotor.add(cuttingEdge);
+    }
   }
 
   return rotor;

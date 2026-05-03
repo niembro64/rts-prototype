@@ -8,6 +8,7 @@ import { GRID_CELL_SIZE } from './grid';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { isWaterAt } from './Terrain';
 import { ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
+import { applyCompletedBuildingEffects } from './buildingCompletion';
 
 /**
  * Compute a factory's default waypoint along the factory -> map-center axis.
@@ -408,10 +409,7 @@ export function spawnMetalExtractorsOnDeposits(
       extractor.buildable.buildProgress = 1;
       extractor.buildable.isComplete = true;
     }
-    const amount = extractor.metalExtractionRate ?? config.metalProduction ?? 0;
-    if (amount > 0) {
-      economyManager.addMetalExtraction(ownerId, amount);
-    }
+    applyCompletedBuildingEffects(world, extractor);
     entities.push(extractor);
   }
 

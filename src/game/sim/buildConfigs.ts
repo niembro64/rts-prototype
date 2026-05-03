@@ -5,6 +5,7 @@ import {
   SOLAR_ENERGY_PER_SECOND,
   WIND_ENERGY_PER_SECOND,
   EXTRACTOR_METAL_PER_SECOND,
+  METAL_DEPOSIT_RESOURCE_CELLS,
 } from '../../config';
 import { getUnitBlueprint, BUILDABLE_UNIT_IDS } from './blueprints';
 
@@ -46,10 +47,9 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
   extractor: {
     id: 'extractor',
     name: 'Extractor',
-    // Squat metal pump. Small footprint so it fits inside a deposit's
-    // flat zone without crowding adjacent buildings.
-    gridWidth: 2,
-    gridHeight: 2,
+    // Matches the logical square metal-deposit footprint exactly.
+    gridWidth: METAL_DEPOSIT_RESOURCE_CELLS,
+    gridHeight: METAL_DEPOSIT_RESOURCE_CELLS,
     gridDepth: 2,
     hp: BUILDING_STATS.extractor.hp,
     resourceCost: BUILDING_STATS.extractor.resourceCost * COST_MULTIPLIER,
@@ -74,7 +74,11 @@ export function getUnitBuildConfig(unitId: string) {
     unitRadiusCollider: { ...bp.unitRadiusCollider },
     bodyRadius: bp.bodyRadius,
     bodyCenterHeight: bp.bodyCenterHeight,
-    moveSpeed: bp.moveSpeed,
+    locomotion: {
+      type: bp.locomotion.type,
+      driveForce: bp.locomotion.physics.driveForce,
+      traction: bp.locomotion.physics.traction,
+    },
     mass: bp.mass,
     hp: bp.hp,
   };

@@ -46,6 +46,16 @@ export const LAND_CELL_SIZE = 160 * 2;
 export const SPATIAL_GRID_CELL_SIZE = LAND_CELL_SIZE;
 export const MANA_TILE_SIZE = LAND_CELL_SIZE;
 
+// Logical metal resource footprint, in fine build-grid cells per side.
+// This drives the metal-producing square, extractor gridWidth/gridHeight,
+// and the visual footprint of both the deposit marker and extractor.
+export const METAL_DEPOSIT_RESOURCE_CELLS = 5;
+
+// Circular terrain pad diameter around each metal deposit, in fine
+// build-grid cells. This is intentionally separate from the logical
+// resource square: it only controls how much nearby terrain is forced flat.
+export const METAL_DEPOSIT_FLAT_PAD_CELLS = 20;
+
 // Render-only vertical lift for mana/capture tile surfaces above sampled
 // terrain. Capture ownership, pathfinding, and physics stay on the real
 // terrain height; this only controls where the visual tile mesh sits.

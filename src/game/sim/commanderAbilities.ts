@@ -1,9 +1,8 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
-import { distance3 } from '../math';
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
-import { startSolarCollectorClosed } from './solarCollector';
-import { spatialGrid } from './SpatialGrid';
+import { applyCompletedBuildingEffects } from './buildingCompletion';
+import { isBuildTargetInRange } from './builderRange';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -21,7 +20,6 @@ export class CommanderAbilitiesSystem {
       if (!commander.unit || commander.unit.hp <= 0) continue;
 
       const playerId = commander.ownership.playerId;
-      const buildRange = commander.builder.buildRange;
       const commanderX = commander.transform.x;
       const commanderY = commander.transform.y;
       const constructionEmitterOffset = -commander.unit.bodyRadius * 0.42;
@@ -31,7 +29,7 @@ export class CommanderAbilitiesSystem {
         (commander.unit.bodyRadius * 1.75);
 
       // Get current target from queue (only work on ONE thing at a time)
-      const currentTarget = this.getCurrentTarget(world, commander, buildRange);
+      const currentTarget = this.getCurrentTarget(world, commander);
       if (!currentTarget) continue;
 
       // Energy spending is handled by the shared energy distribution system.
@@ -94,8 +92,7 @@ export class CommanderAbilitiesSystem {
   // Get the current build/repair target from commander's action queue
   private getCurrentTarget(
     world: WorldState,
-    commander: Entity,
-    buildRange: number
+    commander: Entity
   ): Entity | null {
     if (!commander.unit) return null;
 
@@ -125,18 +122,7 @@ export class CommanderAbilitiesSystem {
       return null;
     }
 
-    // Check if in range — 3D, so a commander at the foot of a cliff
-    // and a half-built turret at the top are correctly rejected.
-    const dist = distance3(
-      commander.transform.x,
-      commander.transform.y,
-      commander.transform.z,
-      target.transform.x,
-      target.transform.y,
-      target.transform.z,
-    );
-
-    if (dist <= buildRange) {
+    if (isBuildTargetInRange(commander, target)) {
       return target;
     }
 
@@ -145,13 +131,7 @@ export class CommanderAbilitiesSystem {
 
   // Called when construction completes
   private onConstructionComplete(world: WorldState, entity: Entity, _playerId: PlayerId): void {
-    spatialGrid.syncBuildingCapture(entity);
-
-    // Handle building-specific completion
-    if (entity.buildingType === 'solar' && entity.ownership) {
-      startSolarCollectorClosed(world, entity);
-    }
-
+    applyCompletedBuildingEffects(world, entity);
     // Factory - waypoints are already set up during creation
   }
 }

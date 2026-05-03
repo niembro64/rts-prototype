@@ -41,6 +41,7 @@ export type MirrorPanelMount = {
 };
 
 const ARM_THICKNESS_FRAC = 0.18;
+const ARM_PANEL_GAP_FRAC = 0.035;
 
 export function buildMirrorMesh3D(
   parent: THREE.Group,
@@ -75,6 +76,11 @@ export function buildMirrorMesh3D(
   const armMeshes: THREE.Mesh[] = [];
   const side = Math.max(panelHalfSide * 2, 1);
   const armThickness = Math.max(panelHalfSide * ARM_THICKNESS_FRAC, 0.5);
+  const panelGap = Math.min(
+    Math.max(panelHalfSide * ARM_PANEL_GAP_FRAC, 0.25),
+    Math.max(panelArmLength * 0.2, 0),
+  );
+  const visibleArmLength = Math.max(panelArmLength - panelGap, 0.1);
 
   for (let i = 0; i < panels.length; i++) {
     // Attachment cylinder — runs from the turret body center
@@ -83,11 +89,13 @@ export function buildMirrorMesh3D(
     // facing direction). The default CylinderGeometry has its axis
     // along +Y of unit length; rotate around +Z by -π/2 so its axis
     // points along +X, then translate the midpoint to half the arm
-    // length and scale to (length, thickness, thickness).
+    // length and scale to (length, thickness, thickness). Stop short
+    // of the mirror plane so the cylinder never peeks through the
+    // flat square at glancing camera angles.
     const arm = new THREE.Mesh(armGeom, armMaterial);
     arm.rotation.z = -Math.PI / 2;
-    arm.scale.set(armThickness, panelArmLength, armThickness);
-    arm.position.set(panelArmLength / 2, panelCenterY, 0);
+    arm.scale.set(armThickness, visibleArmLength, armThickness);
+    arm.position.set(visibleArmLength / 2, panelCenterY, 0);
     root.add(arm);
     armMeshes.push(arm);
 

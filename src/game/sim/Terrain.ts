@@ -220,13 +220,13 @@ export function getTerrainTeamCount(): number {
 // ── METAL-DEPOSIT FLAT ZONES ─────────────────────────────────────
 //
 // Each zone is a circle on the map where the terrain is forced to a
-// fixed height (`height`) so an extractor can sit on a level pad.
+// fixed height (`height`) so an extractor has a clean buildable pad.
+// This flat pad is intentionally independent from the logical
+// metal-producing resource square.
 // height=0 stays at ground level; positive values raise the pad above
-// natural terrain (a knoll); negative cuts a pit. Outside the zone's
-// `flatRadius` the natural terrain (ripple + ridge) takes back over;
-// between `flatRadius` and `flatRadius + blendRadius` the result
-// blends smoothly between the deposit height and natural so there's
-// no visible cliff.
+// natural terrain (a knoll); negative cuts a pit. Outside the circular
+// radius the natural terrain (ripple + ridge) takes back over; the
+// blend band eases from the circle edge outward.
 //
 // Set once at world init via `setMetalDepositFlatZones`; reads on
 // the heightmap hot path. Empty list (default) = no flattening.
@@ -234,7 +234,7 @@ export function getTerrainTeamCount(): number {
 type FlatZone = {
   x: number;
   y: number;
-  flatRadius: number;
+  radius: number;
   height: number;
   blendRadius: number;
 };
@@ -264,10 +264,10 @@ function depositOverride(
     const dx = x - z.x;
     const dy = y - z.y;
     const d = Math.sqrt(dx * dx + dy * dy);
-    if (d <= z.flatRadius) return { weight: 0, height: z.height };
+    if (d <= z.radius) return { weight: 0, height: z.height };
     const blendRadius = Math.max(0, z.blendRadius);
-    if (blendRadius > 0 && d < z.flatRadius + blendRadius) {
-      const t = (d - z.flatRadius) / blendRadius;
+    if (blendRadius > 0 && d < z.radius + blendRadius) {
+      const t = (d - z.radius) / blendRadius;
       const w = (1 - Math.cos(t * Math.PI)) * 0.5;
       if (w < minWeight) {
         minWeight = w;
@@ -418,7 +418,7 @@ export function getTerrainHeight(
   const terraced = applyTerrainPlateaus(natural);
 
   // Metal-deposit flat zones override BOTH ripple and ridge: inside
-  // each deposit's flat radius the terrain is forced to the ring's
+  // each circular flat pad the terrain is forced to the ring's
   // dTerrain-derived `height`. Outside the falloff band the weight is
   // 1 (terraced terrain), so this is a pass-through for every map
   // sample that isn't near a deposit.

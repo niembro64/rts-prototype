@@ -12,6 +12,11 @@
 // 2 = a full turn. Use this to keep rings from lining up on the same
 // radial spokes.
 //
+// Each deposit owns a square logical resource footprint on the fine
+// build grid. The extractor building reads the same resource-cell
+// config, while terrain flattening reads a separate flat-pad config.
+// Resource coverage is exact and cell-based rather than radius-based.
+//
 // Each ring also carries `dTerrainLevels`: a signed integer count of
 // TERRAIN_D_TERRAIN steps above/below world height 0, before terrain
 // CENTER polarity is applied. LAKE inverts the level count, MOUNTAIN
@@ -24,7 +29,12 @@
 
 import { getPlayerBaseAngle } from './game/sim/spawn';
 import { TERRAIN_D_TERRAIN } from './game/sim/Terrain';
+import { GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/grid';
 import { terrainShapeSign, type TerrainShape } from './types/terrain';
+import {
+  METAL_DEPOSIT_FLAT_PAD_CELLS,
+  METAL_DEPOSIT_RESOURCE_CELLS,
+} from './config';
 
 export type DepositRing = {
   /** Distance from map center as a fraction of (mapMinExtent/2 - margin).
@@ -40,15 +50,12 @@ export type DepositRing = {
   /** Absolute raw angular offset in radians, added after `phaseOffset`.
    *  Prefer `phaseOffset` for config values that should read in π units. */
   rotationOffset: number;
-  /** World-unit radius around each deposit where terrain is forced to
-   *  the ring's `height`. Tune up if the extractor's grid footprint
-   *  doesn't clear the blend edge. */
-  flatRadius: number;
   /** Signed count of TERRAIN_D_TERRAIN steps before CENTER polarity. */
   dTerrainLevels: number;
-  /** Optional world-unit blend width outside `flatRadius`. Defaults to
-   *  METAL_DEPOSIT_CONFIG.terrainBlendRadius. Larger values make the
-   *  deposit pad integrate more gradually with surrounding terrain. */
+  /** Optional world-unit blend width outside the circular flat pad.
+   *  Defaults to METAL_DEPOSIT_CONFIG.terrainBlendRadius. Larger values
+   *  make the deposit pad integrate more gradually with surrounding
+   *  terrain. */
   blendRadius?: number;
 };
 
@@ -57,15 +64,25 @@ export const METAL_DEPOSIT_CONFIG = {
    *  deposit ring. Keeps deposits from clipping into commander spawns. */
   edgeMarginPx: 200,
 
-  /** Visual marker radius — the disc rendered on the ground at each
-   *  deposit's center. Sized so it's clearly readable at zoom-out
-   *  without dominating the terrain. */
-  markerRadius: 50,
+  /** Full visual coin thickness in world units. The renderer draws the
+   *  upper half above the terrain and treats the equator as the ground
+   *  contact edge, so no underside leaks through at grazing angles.
+   *  Purely cosmetic — collision and pad height are unaffected. */
+  coinHeight: 10,
+
+  /** Square logical metal-producing footprint, in fine building cells.
+   *  The extractor building footprint and visual deposit size use this. */
+  resourceCells: METAL_DEPOSIT_RESOURCE_CELLS,
+
+  /** Circular terrain-flattening diameter, in fine building cells. This
+   *  can be larger than `resourceCells` to give the extractor a clean
+   *  buildable pad without increasing production area. */
+  flatPadCells: METAL_DEPOSIT_FLAT_PAD_CELLS,
 
   /** World-unit width outside each deposit's flat pad where terrain
    *  eases back to the natural heightmap. Keep this larger than a grid
    *  cell when deposits sit far above/below the surrounding land. */
-  terrainBlendRadius: 180,
+  terrainBlendRadius: 75,
 
   /** Concentric rings of deposits. Order doesn't matter — the renderer
    *  and placement validator iterate over all of them. */
@@ -75,7 +92,6 @@ export const METAL_DEPOSIT_CONFIG = {
       countPerPlayer: 1,
       phaseOffset: 3,
       rotationOffset: 0.2,
-      flatRadius: 200,
       dTerrainLevels: 1,
     },
     // {
@@ -83,7 +99,6 @@ export const METAL_DEPOSIT_CONFIG = {
     //   countPerPlayer: 2,
     //   phaseOffset: 0.25,
     //   rotationOffset: 0,
-    //   flatRadius: 120,
     //   dTerrainLevels: 3,
     // },
     {
@@ -91,7 +106,6 @@ export const METAL_DEPOSIT_CONFIG = {
       countPerPlayer: 1,
       phaseOffset: -0.22,
       rotationOffset: 0,
-      flatRadius: 200,
       dTerrainLevels: 2,
     },
     {
@@ -99,7 +113,6 @@ export const METAL_DEPOSIT_CONFIG = {
       countPerPlayer: 2,
       phaseOffset: 0.125,
       rotationOffset: 0,
-      flatRadius: 120,
       dTerrainLevels: 1,
     },
     {
@@ -107,7 +120,6 @@ export const METAL_DEPOSIT_CONFIG = {
       countPerPlayer: 2,
       phaseOffset: -0.15,
       rotationOffset: 0,
-      flatRadius: 200,
       dTerrainLevels: 1,
     },
   ] as DepositRing[],
@@ -116,20 +128,31 @@ export const METAL_DEPOSIT_CONFIG = {
 export type MetalDeposit = {
   /** Stable index — same number across all clients/peers in a session. */
   id: number;
-  /** World-space center of the deposit. */
+  /** World-space center shared by the resource square and flat terrain pad. */
   x: number;
   y: number;
-  /** Radius around the center where terrain is flat at `height` and
-   *  an extractor may be placed. Copied from the ring at gen time. */
-  flatRadius: number;
+  /** Top-left build cell of the logical resource square. */
+  gridX: number;
+  gridY: number;
+  /** Number of build cells on each side of the logical resource square. */
+  resourceCells: number;
+  /** Half-size of the logical resource square in world units. */
+  resourceHalfSize: number;
+  /** Radius of the circular flat terrain pad in world units. */
+  flatPadRadius: number;
   /** Signed count of TERRAIN_D_TERRAIN steps after CENTER polarity. */
   dTerrainLevels: number;
   /** Signed z elevation (sim units) of this deposit's flat pad. */
   height: number;
-  /** World-unit blend width outside `flatRadius` before natural terrain
-   *  fully takes over. */
+  /** World-unit blend width outside the circular flat pad before natural
+   *  terrain fully takes over. */
   blendRadius: number;
 };
+
+type MetalDepositPlacement = Pick<
+  MetalDeposit,
+  'x' | 'y' | 'gridX' | 'gridY' | 'resourceCells' | 'resourceHalfSize' | 'flatPadRadius'
+>;
 
 /**
  * Compute the deterministic deposit list for a map of given size and
@@ -170,9 +193,7 @@ export function generateMetalDeposits(
     if (ring.radiusFraction <= 1e-6) {
       deposits.push({
         id: id++,
-        x: cx,
-        y: cy,
-        flatRadius: ring.flatRadius,
+        ...makeMetalDepositPlacement(cx, cy),
         dTerrainLevels,
         height,
         blendRadius,
@@ -192,9 +213,7 @@ export function generateMetalDeposits(
         const y = cy + Math.sin(angle) * ringRadius;
         deposits.push({
           id: id++,
-          x,
-          y,
-          flatRadius: ring.flatRadius,
+          ...makeMetalDepositPlacement(x, y),
           dTerrainLevels,
           height,
           blendRadius,
@@ -204,6 +223,32 @@ export function generateMetalDeposits(
   }
 
   return deposits;
+}
+
+function makeMetalDepositPlacement(
+  rawX: number,
+  rawY: number,
+): MetalDepositPlacement {
+  const resourceCells = METAL_DEPOSIT_CONFIG.resourceCells;
+  const flatPadCells = METAL_DEPOSIT_CONFIG.flatPadCells;
+  const resourceHalfSize = (resourceCells * GRID_CELL_SIZE) / 2;
+  const flatPadRadius = (flatPadCells * GRID_CELL_SIZE) / 2;
+  const resourceHalfDiagonal = Math.SQRT2 * resourceHalfSize;
+  if (flatPadRadius < resourceHalfDiagonal) {
+    throw new Error(
+      `METAL_DEPOSIT_CONFIG.flatPadCells (${flatPadCells}) must produce a circular radius >= the resource square half-diagonal (${resourceHalfDiagonal.toFixed(2)} world units)`,
+    );
+  }
+  const snapped = snapBuildingToGrid(rawX, rawY, resourceCells, resourceCells);
+  return {
+    x: snapped.x,
+    y: snapped.y,
+    gridX: snapped.gridX,
+    gridY: snapped.gridY,
+    resourceCells,
+    resourceHalfSize,
+    flatPadRadius,
+  };
 }
 
 function signedMetalDepositDTerrainLevels(levels: number, terrainSign: -1 | 0 | 1): number {

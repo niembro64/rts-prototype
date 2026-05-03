@@ -67,9 +67,9 @@ export async function createBackgroundBattle(
   // local commander corresponds to the player's lobby slot.
   let demoPlayerIds: PlayerId[];
   if (playerIds && playerIds.length > 0) {
-    demoPlayerIds = playerIds.slice(0, 6);
+    demoPlayerIds = playerIds.slice();
   } else {
-    const fallbackCount = Math.max(1, Math.min(6, Math.floor(DEMO_CONFIG.playerCount)));
+    const fallbackCount = Math.max(1, Math.floor(DEMO_CONFIG.playerCount));
     demoPlayerIds = [];
     for (let i = 1; i <= fallbackCount; i++) demoPlayerIds.push(i as PlayerId);
   }

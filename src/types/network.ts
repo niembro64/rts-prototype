@@ -425,7 +425,6 @@ export type NetworkServerSnapshotEntity = {
      *  `push` stay on `collider`). */
     bodyRadius?: number;
     bodyCenterHeight?: number;
-    moveSpeed?: number;
     mass?: number;
     velocity: Vec3;
     turretRotation?: number;
@@ -445,6 +444,8 @@ export type NetworkServerSnapshotEntity = {
     dim?: Vec2;
     hp: { curr: number; max: number };
     build: { progress: number; complete: boolean };
+    /** Extractor output in metal/sec after footprint coverage is applied. */
+    metalExtractionRate?: number;
     solar?: {
       open: boolean;
     };

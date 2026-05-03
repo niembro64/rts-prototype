@@ -22,6 +22,7 @@ export type {
   ActionType,
   BuildingType,
   UnitAction,
+  UnitLocomotion,
   SolarCollectorState,
   Unit,
   Building,
@@ -89,66 +90,77 @@ function pidToSlot(pid: PlayerId): PlayerId {
 
 const _playerColorCache = new Map<PlayerId, PlayerColors>();
 
-/** Map a hue (degrees, 0–360) to the closest canonical color name on a
- *  12-slot wheel. Used so the displayed team name always matches what
- *  the player actually sees on screen, regardless of how many players
- *  are in the lobby (the wheel divides differently each time, so a
- *  hardcoded "slot N → name" table would lie). */
-const _HUE_NAMES: ReadonlyArray<readonly [number, string]> = [
-  [0,   'Red'],
-  [30,  'Orange'],
-  [60,  'Yellow'],
-  [90,  'Lime'],
-  [120, 'Green'],
-  [150, 'Mint'],
-  [180, 'Cyan'],
-  [210, 'Sky'],
-  [240, 'Blue'],
-  [270, 'Purple'],
-  [300, 'Magenta'],
-  [330, 'Pink'],
-];
-function hueToName(hueDeg: number): string {
-  const h = ((hueDeg % 360) + 360) % 360;
-  let bestName = 'Red';
-  let bestDist = 360;
-  for (const [target, name] of _HUE_NAMES) {
-    const raw = Math.abs(h - target);
-    const d = Math.min(raw, 360 - raw);
-    if (d < bestDist) {
-      bestDist = d;
-      bestName = name;
-    }
-  }
-  return bestName;
+/** OKLCH → linear sRGB. Björn Ottosson's OKLab matrices, polar form
+ *  (`a = C·cos(H)`, `b = C·sin(H)`). Output is linear-light sRGB; the
+ *  caller still has to gamma-encode and clamp to 8-bit. */
+function oklchToLinearRgb(L: number, C: number, hueDeg: number): { r: number; g: number; b: number } {
+  const hRad = hueDeg * (Math.PI / 180);
+  const a = C * Math.cos(hRad);
+  const b = C * Math.sin(hRad);
+  // OKLab → LMS' (cube-root LMS).
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548  * b;
+  // Cube to true LMS, then mix into linear sRGB.
+  const lms_l = l_ * l_ * l_;
+  const lms_m = m_ * m_ * m_;
+  const lms_s = s_ * s_ * s_;
+  return {
+    r:  4.0767416621 * lms_l - 3.3077115913 * lms_m + 0.2309699292 * lms_s,
+    g: -1.2684380046 * lms_l + 2.6097574011 * lms_m - 0.3413193965 * lms_s,
+    b: -0.0041960863 * lms_l - 0.7034186147 * lms_m + 1.7076147010 * lms_s,
+  };
 }
 
-/** Convert HSL (h ∈ [0, 360), s/l ∈ [0, 1]) to a 0xRRGGBB hex int. */
-function hslToHex(h: number, s: number, l: number): number {
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const hp = ((h % 360) + 360) % 360 / 60;
-  const x = c * (1 - Math.abs((hp % 2) - 1));
-  let r = 0, g = 0, b = 0;
-  if      (hp < 1) { r = c; g = x; b = 0; }
-  else if (hp < 2) { r = x; g = c; b = 0; }
-  else if (hp < 3) { r = 0; g = c; b = x; }
-  else if (hp < 4) { r = 0; g = x; b = c; }
-  else if (hp < 5) { r = x; g = 0; b = c; }
-  else             { r = c; g = 0; b = x; }
-  const m = l - c / 2;
-  const ri = Math.max(0, Math.min(255, Math.round((r + m) * 255)));
-  const gi = Math.max(0, Math.min(255, Math.round((g + m) * 255)));
-  const bi = Math.max(0, Math.min(255, Math.round((b + m) * 255)));
+/** Linear-light sRGB component → gamma-encoded sRGB byte (0..255). */
+function linearToSrgbByte(c: number): number {
+  const clipped = c <= 0 ? 0 : c >= 1 ? 1 : c;
+  const gamma = clipped <= 0.0031308
+    ? clipped * 12.92
+    : 1.055 * Math.pow(clipped, 1 / 2.4) - 0.055;
+  return Math.max(0, Math.min(255, Math.round(gamma * 255)));
+}
+
+/** Convert OKLCH (L ∈ [0, 1], C ≥ 0, hueDeg ∈ [0, 360)) to a 0xRRGGBB
+ *  hex int. Out-of-gamut values get clamped per channel — at the
+ *  L/C used for player colors below, every hue stays comfortably
+ *  inside sRGB so clamping is rare and visually invisible. */
+function oklchToHex(L: number, C: number, hueDeg: number): number {
+  const lin = oklchToLinearRgb(L, C, hueDeg);
+  const ri = linearToSrgbByte(lin.r);
+  const gi = linearToSrgbByte(lin.g);
+  const bi = linearToSrgbByte(lin.b);
   return (ri << 16) | (gi << 8) | bi;
 }
 
-/** Resolve a player's color triplet (primary / secondary / display name).
- *  Hues are evenly distributed around the color wheel based on the
- *  total player count: with N players, slot k is at hue
- *  ((k − 1) / N) × 360°. Slot 1 = Red (always, regardless of N), and
- *  slot 1 + floor(N/2) sits at "anti-red" (180° = Cyan). Saturation
- *  and lightness are fixed for a cohesive palette. Player ids map
- *  directly to slots so all clients see the same team colors. */
+/** Format a 0xRRGGBB int as a `#RRGGBB` upper-case hex string. */
+function hexToHashString(hex: number): string {
+  return '#' + hex.toString(16).padStart(6, '0').toUpperCase();
+}
+
+/** Perceptual lightness used for the primary player color. OKLab L is
+ *  perceptually uniform: every hue looks equally bright at this value,
+ *  which the old HSL path couldn't do (yellow at L=0.62 looks far
+ *  brighter than blue at the same L). 0.72 = bright but readable. */
+const PLAYER_PRIMARY_OKLCH_L = 0.5;
+/** Chroma (= colorfulness in OKLab). Low enough that every hue stays
+ *  inside sRGB without gamut clipping at the chosen lightness. */
+const PLAYER_PRIMARY_OKLCH_C = 0.12;
+const PLAYER_SECONDARY_OKLCH_L = 0.3;
+const PLAYER_SECONDARY_OKLCH_C = 0.05;
+
+/** Resolve a player's color triplet (primary / secondary / display
+ *  name). Hues are evenly distributed around the color wheel based
+ *  on the total player count: with N players, slot k lands at hue
+ *  ((k − 1) / N) × 360°. The wheel divides for ANY N — there's no
+ *  hardcoded slot table, so a 10-player or 20-player lobby works
+ *  the same way a 6-player lobby does.
+ *
+ *  The primary/secondary pair uses OKLCH at fixed L and C, varying
+ *  only hue, so every player has the SAME perceptual brightness and
+ *  saturation regardless of which slot they got. Player names are
+ *  the primary color's hex string (`#RRGGBB`) so the name always
+ *  matches exactly what's on screen. */
 export function getPlayerColors(playerId: PlayerId): PlayerColors {
   const slot = pidToSlot(playerId);
   let cached = _playerColorCache.get(slot);
@@ -158,11 +170,9 @@ export function getPlayerColors(playerId: PlayerId): PlayerColors {
   // hue without divide-by-zero or wrap weirdness.
   const total = Math.max(_playerCountForColors, slot);
   const hue = ((slot - 1) / total) * 360;
-  cached = {
-    primary: hslToHex(hue, 0.65, 0.62),
-    secondary: hslToHex(hue, 0.55, 0.45),
-    name: hueToName(hue),
-  };
+  const primary = oklchToHex(PLAYER_PRIMARY_OKLCH_L, PLAYER_PRIMARY_OKLCH_C, hue);
+  const secondary = oklchToHex(PLAYER_SECONDARY_OKLCH_L, PLAYER_SECONDARY_OKLCH_C, hue);
+  cached = { primary, secondary, name: hexToHashString(primary) };
   _playerColorCache.set(slot, cached);
   return cached;
 }

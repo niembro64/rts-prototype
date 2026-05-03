@@ -246,7 +246,7 @@ export class GameServer {
       deposits.map((d) => ({
         x: d.x,
         y: d.y,
-        flatRadius: d.flatRadius,
+        radius: d.flatPadRadius,
         height: d.height,
         blendRadius: d.blendRadius,
       })),
@@ -600,15 +600,19 @@ export class GameServer {
       entity.transform.y = body.y;
       entity.transform.z = body.z;
 
-      // Action-system thrust target — a HORIZONTAL direction at the
-      // unit's chosen `moveSpeed`. Sloped terrain gets the direction
-      // projected onto the local surface tangent below so units climb
-      // / descend along the actual ground instead of trying to push
-      // straight through it. velocityX/Y/Z is authoritative physics,
-      // not touched here.
+      // Action-system thrust target — a HORIZONTAL desired direction.
+      // Locomotion owns propulsion: driveForce is the authored motor
+      // strength and traction is how much of that force couples into
+      // the ground. Sloped terrain projects the direction onto the
+      // local surface tangent below so units climb / descend along the
+      // actual ground instead of trying to push straight through it.
+      // velocityX/Y/Z is authoritative physics, not touched here.
       const dirX = entity.unit.thrustDirX ?? 0;
       const dirY = entity.unit.thrustDirY ?? 0;
       const dirMag = magnitude(dirX, dirY);
+      const locomotion = entity.unit.locomotion;
+      const rawDriveForce = locomotion.driveForce * this.world.thrustMultiplier;
+      const tractionDriveForce = rawDriveForce * locomotion.traction;
 
       // Sleeping units that aren't being asked to thrust short-circuit
       // BEFORE the accumulator probe — `hasForce` is a single Map.has
@@ -685,7 +689,7 @@ export class GameServer {
         if (hasOutDir) {
           // 3× normal thrust strength — feels like a hard wall pushing
           // the unit out, not a gentle current.
-          const wallPush = 3 * (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
+          const wallPush = 3 * (rawDriveForce * entity.unit.mass) / MATTER_FORCE_SCALE;
           thrustForceX = this._waterOutX * wallPush;
           thrustForceY = this._waterOutY * wallPush;
           // No z thrust — water surface is flat, no slope to climb out of.
@@ -726,7 +730,7 @@ export class GameServer {
         }
 
         if (useDirX !== 0 || useDirY !== 0) {
-          const thrustMagnitude = (entity.unit.moveSpeed * this.world.thrustMultiplier * entity.unit.mass) / MATTER_FORCE_SCALE;
+          const thrustMagnitude = (tractionDriveForce * entity.unit.mass) / MATTER_FORCE_SCALE;
           // Project horizontal thrust onto the slope tangent so
           // hill-climbing produces the right z-aware force. Slope
           // normal is land-only (Terrain.getSurfaceNormal excludes

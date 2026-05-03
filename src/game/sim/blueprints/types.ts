@@ -31,6 +31,7 @@ export type {
   TreadConfig,
   LegConfig,
   LegStyle,
+  LocomotionPhysics,
   UnitBodyShape,
   UnitBodyShapePart,
   LocomotionBlueprint,

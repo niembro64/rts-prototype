@@ -1,10 +1,11 @@
 // MetalDepositRenderer3D — chunky low 3D ore deposits at each metal
 // deposit. The terrain has been pre-flattened to each deposit's
-// configured height inside flatRadius (see Terrain.setMetalDepositFlatZones),
-// so the deposits sit cleanly on a level pad.
+// configured height inside its circular flat pad
+// (see Terrain.setMetalDepositFlatZones), while the visual marker
+// shares the logical square resource footprint.
 //
-// The gameplay/logical area remains the circular flatRadius; this renderer
-// draws one flattened irregular cylindrical "coin" mesh. Higher LODs keep
+// The gameplay/logical area is a square build-cell footprint; this renderer
+// draws one flattened irregular ore marker. Higher LODs keep
 // more of the same deterministic perimeter samples, so the outline refines
 // without adding a second mound/cap shape.
 
@@ -43,7 +44,6 @@ const DEPOSIT_MAX_RADIAL_SEGMENTS = 64;
 const DEPOSIT_BASE = new THREE.Color(0x272b2e);
 const DEPOSIT_DARK = new THREE.Color(0x111416);
 const DEPOSIT_LIGHT = new THREE.Color(0x6f7678);
-const DEPOSIT_COIN_HEIGHT = 4.5;
 const DEPOSIT_LOD_TIERS: readonly ConcreteGraphicsQuality[] = [
   'min',
   'low',
@@ -134,14 +134,18 @@ export class MetalDepositRenderer3D {
   private buildDepositNode(index: number, tier: ConcreteGraphicsQuality): THREE.Group {
     const d = this.deposits[index];
     const lod = PLAYER_CLIENT_DEPOSIT_LOD[tier];
-    const r = METAL_DEPOSIT_CONFIG.markerRadius * lod.radiusScale;
+    const r = d.resourceHalfSize * lod.radiusScale;
+    const coinHeight = METAL_DEPOSIT_CONFIG.coinHeight;
     const node = new THREE.Group();
     const mesh = new THREE.Mesh(
-      makeDepositCoinGeometry(d.id, r, lod.radialStep, DEPOSIT_COIN_HEIGHT),
+      makeDepositCoinGeometry(d.id, r, lod.radialStep, coinHeight),
       this.getMaterial(lod.material),
     );
     node.add(mesh);
-    node.position.set(d.x, d.height + 0.08, d.y);
+    // The mesh contains only the above-ground crown. Relying on the
+    // terrain surface to hide below-ground triangles leaks at grazing
+    // camera angles because the terrain is a surface, not a solid mask.
+    node.position.set(d.x, d.height + 0.04, d.y);
     node.rotation.y = seededNoise(d.id * 991 + 13) * Math.PI * 2;
     node.userData.graphicsTier = tier;
     return node;
@@ -223,37 +227,27 @@ function makeDepositCoinGeometry(
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
+  const visibleHeight = height * 0.5;
 
-  // Center vertices for the top and bottom flat-disk fans.
+  // Center vertex for the above-ground top flat-disk fan.
   const topCenter = 0;
-  const bottomCenter = 1;
-  positions.push(0, height, 0, 0, 0, 0);
+  positions.push(0, visibleHeight, 0);
   pushDepositColor(colors, seed, 0, 0.78);
-  pushDepositColor(colors, seed, 1, 0.1);
 
-  // Top rim — flat disk at y=height, inset to COIN_FLAT_RADIUS_FRAC.
+  // Top rim — flat disk at y=visibleHeight, inset to COIN_FLAT_RADIUS_FRAC.
   const topStart = positions.length / 3;
   for (const i of radialIndices) {
     const p = coinPerimeterPoint(seed, radius * COIN_FLAT_RADIUS_FRAC, i);
-    positions.push(p.x, height, p.z);
+    positions.push(p.x, visibleHeight, p.z);
     pushDepositColor(colors, seed, 1000 + i, 0.7 + seededNoise(seed * 521 + i * 31) * 0.18);
   }
 
-  // Equator ridge — the SHARP outermost edge at half height. This is
-  // the silhouette ring you see from a camera at any horizontal angle.
+  // Ground ridge — the widest edge sits just above the terrain pad.
   const equatorStart = positions.length / 3;
   for (const i of radialIndices) {
     const p = coinPerimeterPoint(seed, radius, i);
-    positions.push(p.x, height / 2, p.z);
-    pushDepositColor(colors, seed, 1500 + i, 0.45 + seededNoise(seed * 467 + i * 23) * 0.2);
-  }
-
-  // Bottom rim — flat disk at y=0, inset to COIN_FLAT_RADIUS_FRAC.
-  const bottomStart = positions.length / 3;
-  for (const i of radialIndices) {
-    const p = coinPerimeterPoint(seed, radius * COIN_FLAT_RADIUS_FRAC, i);
     positions.push(p.x, 0, p.z);
-    pushDepositColor(colors, seed, 2000 + i, 0.08 + seededNoise(seed * 613 + i * 19) * 0.12);
+    pushDepositColor(colors, seed, 1500 + i, 0.45 + seededNoise(seed * 467 + i * 23) * 0.2);
   }
 
   const n = radialIndices.length;
@@ -263,20 +257,13 @@ function makeDepositCoinGeometry(
     const topB = topStart + next;
     const eqA = equatorStart + i;
     const eqB = equatorStart + next;
-    const botA = bottomStart + i;
-    const botB = bottomStart + next;
 
     // Top flat fan — face normal +Y.
     indices.push(topCenter, topB, topA);
     // Upper bevel — slants from the inset top rim down-and-out to
-    // the equator ridge. Two triangles per segment, wound so the
-    // normal points up-and-outward.
+    // the ground ridge. Two triangles per segment, wound so the normal
+    // points up-and-outward.
     indices.push(topA, topB, eqA, topB, eqB, eqA);
-    // Lower bevel — equator down-and-in to the inset bottom rim,
-    // normal points down-and-outward.
-    indices.push(eqA, eqB, botA, eqB, botB, botA);
-    // Bottom flat fan — face normal −Y.
-    indices.push(bottomCenter, botA, botB);
   }
 
   const indexed = new THREE.BufferGeometry();
@@ -306,7 +293,7 @@ function coinPerimeterPoint(seed: number, radius: number, i: number): { x: numbe
   const chip = seededNoise(seed * 397 + i * 31) > 0.84
     ? 0.78 + seededNoise(seed * 571 + i * 11) * 0.16
     : 1;
-  const rr = Math.max(0.76, Math.min(1.1, rough * chip));
+  const rr = Math.max(0.76, Math.min(1, rough * chip));
   return {
     x: Math.cos(a) * radius * rr,
     z: Math.sin(a) * radius * rr,

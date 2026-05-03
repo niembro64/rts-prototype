@@ -444,7 +444,7 @@ export class RtsScene3D {
       metalDeposits.map((d) => ({
         x: d.x,
         y: d.y,
-        flatRadius: d.flatRadius,
+        radius: d.flatPadRadius,
         height: d.height,
         blendRadius: d.blendRadius,
       })),

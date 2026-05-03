@@ -132,6 +132,8 @@ export const RANGE_TYPES: RangeType[] = [
   'trackRelease',
   'engageAcquire',
   'engageRelease',
+  'engageMinAcquire',
+  'engageMinRelease',
   'build',
 ];
 
@@ -402,6 +404,8 @@ const currentRangeToggles: Record<RangeType, boolean> = {
   trackRelease: _cd.rangeToggles.default,
   engageAcquire: _cd.rangeToggles.default,
   engageRelease: _cd.rangeToggles.default,
+  engageMinAcquire: _cd.rangeToggles.default,
+  engageMinRelease: _cd.rangeToggles.default,
   build: _cd.rangeToggles.default,
 };
 const currentProjRangeToggles: Record<ProjRangeType, boolean> = {

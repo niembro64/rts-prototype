@@ -21,6 +21,7 @@ import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE, snapBuildingToGrid } from '../../sim/grid';
 import {
   findDepositContainingPoint,
+  getMetalDepositGridCells,
   getMetalDepositFootprintCoverage,
 } from '../../sim/metalDeposits';
 import { getTerrainPlateauLevelAt, isBuildableTerrainFootprint } from '../../sim/Terrain';
@@ -54,6 +55,7 @@ export type BuildPlacementDiagnostics = {
   metalFraction?: number;
   metalCoveredCells?: number;
   metalTotalCells?: number;
+  metalDepositCells?: BuildPlacementCellDiagnostic[];
 };
 
 function cellKey(gx: number, gy: number): string {
@@ -84,10 +86,9 @@ export function getOccupiedBuildingCells(buildings: Entity[]): ReadonlySet<strin
  *  getSnappedBuildPosition); passing raw mouse coords is fine but the
  *  result will be noisier at cell boundaries.
  *
- *  Extractors additionally require at least one footprint cell whose
- *  center overlaps a metal deposit. Pass the deposit list
- *  (deterministic per map) so this check matches the server-side
- *  validation in construction.startBuilding. */
+ *  Extractors additionally report square metal-deposit cells for the
+ *  build ghost. Pass the deposit list (deterministic per map) so this
+ *  preview matches the server-side extraction coverage. */
 export function canPlaceBuildingAt(
   candidateType: BuildingType,
   centerX: number,
@@ -206,8 +207,14 @@ export function getBuildingPlacementDiagnostics(
     }
   }
 
+  // Extractors can be placed ANYWHERE that satisfies the normal
+  // placement rules; deposit coverage is reported for the build-ghost
+  // overlay (so the player can preview expected metal yield) but no
+  // longer gates placement. 0 covered cells = 0 metal/sec, but the
+  // build still succeeds.
   let metalFraction: number | undefined;
   let metalTotalCells: number | undefined;
+  let metalDepositCells: BuildPlacementCellDiagnostic[] | undefined;
   if (candidateType === 'extractor') {
     const coverage = getMetalDepositFootprintCoverage(
       metalDeposits,
@@ -220,10 +227,16 @@ export function getBuildingPlacementDiagnostics(
     metalFraction = coverage.fraction;
     metalCoveredCells = coverage.coveredCells;
     metalTotalCells = coverage.totalCells;
-    if (coverage.coveredCells <= 0) {
-      missingRequiredMetal = true;
-      failureReason ??= 'noMetal';
-    }
+    metalDepositCells = getMetalDepositGridCells(metalDeposits).map((cell) => ({
+      gx: cell.gx,
+      gy: cell.gy,
+      x: cell.x,
+      y: cell.y,
+      reason: 'metal',
+      blocking: false,
+      metalCovered: true,
+      depositId: cell.depositId,
+    }));
   }
 
   return {
@@ -233,6 +246,7 @@ export function getBuildingPlacementDiagnostics(
     metalFraction,
     metalCoveredCells,
     metalTotalCells,
+    metalDepositCells,
   };
 }
 

@@ -1,8 +1,8 @@
-import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileType } from './types';
+import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileType, UnitLocomotion } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
-import { getUnitBlueprint } from './blueprints';
+import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
 import {
   MAX_TOTAL_UNITS,
@@ -471,7 +471,7 @@ export class WorldState {
     unitRadiusCollider: { shot: number; push: number } = { shot: 15, push: 15 },
     bodyRadius: number = 15,
     bodyCenterHeight: number = unitRadiusCollider.push,
-    moveSpeed: number = 100,
+    locomotion: UnitLocomotion = getUnitLocomotion(unitType),
     mass: number = 25,
     hp: number = 100,
   ): Entity {
@@ -492,7 +492,7 @@ export class WorldState {
       ownership: { playerId },
       unit: {
         unitType,
-        moveSpeed,
+        locomotion: { ...locomotion },
         unitRadiusCollider: { ...unitRadiusCollider },
         bodyRadius,
         bodyCenterHeight,
@@ -523,7 +523,7 @@ export class WorldState {
       bp.unitRadiusCollider,
       bp.bodyRadius,
       bp.bodyCenterHeight,
-      bp.moveSpeed,
+      getUnitLocomotion(unitId),
       bp.mass,
       bp.hp * UNIT_HP_MULTIPLIER,
     );
@@ -566,7 +566,7 @@ export class WorldState {
     playerId: PlayerId,
     unitType: string = 'jackal',
     radiusColliderUnitShot: number = 15,
-    moveSpeed: number = 100,
+    driveForce: number = 100,
     mass: number = 25,
     turretTurnAccel?: number,
     turretDrag?: number,
@@ -585,7 +585,7 @@ export class WorldState {
       { shot: radiusColliderUnitShot, push: radiusColliderUnitShot },
       radiusColliderUnitShot,
       radiusColliderUnitShot,
-      moveSpeed,
+      { ...getUnitLocomotion(unitType), driveForce },
       mass,
       100,
     );
