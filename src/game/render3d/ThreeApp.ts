@@ -108,17 +108,18 @@ export class ThreeApp {
     this._skyTexture = makeSkyGradientTexture();
     this.scene.background = this._skyTexture;
 
-    // `logarithmicDepthBuffer: true` distributes z-buffer precision
-    // evenly across the entire near → far range instead of concentrating
-    // it near the near plane. With our ~1:2000 ratio (near=50,
-    // far=100000) the linear-z mode would still leave ~10 wu of
-    // precision per ULP at the far plane; log-z gives ~32-bit-equivalent
-    // precision throughout, which is what kills the shoreline z-fight
-    // shimmer on the water plane during slow camera motion.
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      logarithmicDepthBuffer: true,
-    });
+    // `logarithmicDepthBuffer` was enabled here briefly but had to come
+    // off: every custom THREE.ShaderMaterial in this codebase (beams,
+    // explosions, force fields, smoke trails, spray, ...) writes
+    // linear-space gl_FragDepth, while the log-depth framebuffer
+    // expects log-space depth, so all of those effects depth-tested
+    // against the wrong reference and disappeared. Re-enabling log-z
+    // would require patching each of those shaders to include
+    // Three's <logdepthbuf_*> chunks; for now the linear-z precision
+    // is good enough for shoreline z-fight given the bumped near
+    // plane (5 → 50 below, ~10× precision win at distance) and the
+    // pure-units water polygon offset.
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
     const mobileLike = isMobileLikeBrowser();
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
     this._dynamicPixelRatioEnabled = !mobileLike;
