@@ -1,38 +1,3 @@
 This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. 
 
 #####################################################
-
-  1. Body-height authoring logic is duplicated
-      - Shared logic exists in src/game/math/BodyDimensions.ts.
-      - Local duplicates exist in src/game/sim/blueprints/units.ts: wheelBodyCenterHeight,
-        treadBodyCenterHeight, legBodyCenterHeight.
-      - Recommendation: move all authoring helpers into BodyDimensions.ts and have blueprints
-        call only shared helpers.
-  2. Body-shape top/center math is duplicated
-      - BodyDimensions.ts computes body top/center.
-      - src/game/render3d/BodyShape3D.ts separately computes topY while building geometry.
-      - Recommendation: BodyShape3D should use getBodyTopFrac/getBodyTopY for topY, so render
-        geometry cannot drift from sim-safe dimension math.
-  3. Fallback arachnid body shape is defined three times
-      - src/game/render3d/BodyShape3D.ts
-      - src/game/render3d/Render3DEntities.ts
-      - src/game/render3d/Debris3D.ts
-      - Recommendation: export one FALLBACK_UNIT_BODY_SHAPE, or better, fail fast if a unit
-        blueprint is missing.
-  4. Legacy WorldState.createUnit() bypasses blueprint mounts
-      - src/game/sim/WorldState.ts still has deprecated createUnit() constructing a turret
-        mount manually.
-      - Search suggests active code uses createUnitFromBlueprint, but this method violates
-        the “without exception” rule if reused.
-      - Recommendation: delete it or make it delegate fully to createUnitFromBlueprint.
-  5. Network still has legacy turret.pos.offset
-      - src/types/network.ts still defines pos.offset.
-      - Serializer writes src.mount.x/y into that field.
-      - Since clients rebuild canonical mounts from blueprints, this is compatibility data
-        now, not source-of-truth. Still, it is a duplicate representation.
-      - Recommendation: remove it when wire compatibility allows, or rename/deprecate
-        clearly.
-  6. Tread height is duplicated in debris
-      - src/game/render3d/Debris3D.ts has TREAD_HEIGHT = 10.
-      - Shared value exists as TREAD_CHASSIS_LIFT_Y.
-      - Recommendation: import the shared constant.

@@ -7,6 +7,7 @@ export type { TurretAudioId } from '@/types/combat';
 // Re-export all combat types
 export type {
   ImpactContext,
+  SimEventSourceType,
   SimDeathContext,
   SimEvent,
   ProjectileSpawnEvent,

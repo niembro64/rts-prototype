@@ -5,6 +5,7 @@ import type { DeathContext } from './damage';
 import type { Vec2, Vec3 } from './vec2';
 
 export type TurretAudioId = string;
+export type SimEventSourceType = 'turret' | 'unit' | 'building' | 'system';
 
 export type ImpactContext = {
   collisionRadius: number;
@@ -58,7 +59,14 @@ export type SimEvent = {
     | 'forceFieldStart'
     | 'forceFieldStop'
     | 'projectileExpire';
+  /** Weapon/audio routing key. This is a turret id for weapon events;
+   *  non-weapon events should use sourceType/sourceKey instead of
+   *  overloading this field with unit or building ids. */
   turretId: TurretAudioId;
+  /** Explicit provenance for sim events. `turretId` remains the audio
+   *  key; this pair describes what authored the event. */
+  sourceType?: SimEventSourceType;
+  sourceKey?: string;
   /** Event origin in full 3D sim coords. For a shell hitting the
    *  ground the z is 0; for an airburst it's the projectile's
    *  altitude at detonation; for a death event it's the dying

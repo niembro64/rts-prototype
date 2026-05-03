@@ -32,12 +32,15 @@ import {
   selectEntitiesInScreenRect,
   SelectionChangeTracker,
   LinePathAccumulator,
+  buildAttackCommandForTarget,
   buildAttackCommandAt,
   buildLinePathMoveCommand,
   buildRepairCommandAt,
   buildFactoryWaypointCommands,
   handleEscape,
   CommanderModeController,
+  getBuildModeBuildingTypeByIndex,
+  getDefaultBuildModeBuildingType,
   type BuildPlacementDiagnostics,
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
@@ -329,26 +332,25 @@ export class Input3DManager {
     ) return;
 
     // Mirror the 2D hotkeys one-for-one. M/F/H switch waypoint mode;
-    // B/1/2/D drive the commander mode state machine; Escape runs
+    // B/number/D drive the commander mode state machine; Escape runs
     // the shared cancel-mode-or-clear-selection convention.
+    const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
+    if (numericBuildHotkey >= 0) {
+      const buildingType = getBuildModeBuildingTypeByIndex(numericBuildHotkey);
+      if (buildingType && (this.mode.isInBuildMode || this.hasSelectedCommander())) {
+        this.mode.enterBuildMode(buildingType);
+      }
+      return;
+    }
+
     switch (e.key.toLowerCase()) {
       case 'm': this.setWaypointMode('move'); break;
       case 'f': this.setWaypointMode('fight'); break;
       case 'h': this.setWaypointMode('patrol'); break;
       case 'b':
         if (!this.hasSelectedCommander()) break;
-        if (!this.mode.isInBuildMode) this.mode.enterBuildMode('solar');
+        if (!this.mode.isInBuildMode) this.mode.enterBuildMode(getDefaultBuildModeBuildingType());
         else this.mode.cycleBuildingType();
-        break;
-      case '1':
-        if (this.mode.isInBuildMode || this.hasSelectedCommander()) {
-          this.mode.enterBuildMode('solar');
-        }
-        break;
-      case '2':
-        if (this.mode.isInBuildMode || this.hasSelectedCommander()) {
-          this.mode.enterBuildMode('factory');
-        }
         break;
       case 'd':
         if (this.hasSelectedCommander()) this.mode.toggleDGunMode();
@@ -738,6 +740,33 @@ export class Input3DManager {
     //   3. units selected → start line-path for group move
     //   4. no units, factories selected → start factory-waypoint drag
     const selectedUnits = this.entitySource.getSelectedUnits();
+    const tick = this.context.getTick();
+    const entityHitId = this.raycastEntity(e.clientX, e.clientY);
+    const entityHit = entityHitId !== null
+      ? this.entitySource.getEntity(entityHitId)
+      : null;
+
+    // Prefer exact 3D mesh hits for direct attack. Buildings are tall
+    // meshes, so the terrain point under the cursor can land outside
+    // their footprint even though the player clearly clicked the
+    // building itself.
+    const meshAttackCmd = buildAttackCommandForTarget(
+      entityHit,
+      selectedUnits,
+      this.context.activePlayerId,
+      tick,
+      e.shiftKey,
+    );
+    if (meshAttackCmd) {
+      debugLog(
+        GAME_DIAGNOSTICS.commandPlans,
+        '[click] attack-mesh: hit target #%d, %d unit(s)',
+        meshAttackCmd.targetId, selectedUnits.length,
+      );
+      this.localCommandQueue.enqueue(meshAttackCmd);
+      return;
+    }
+
     const world = this.raycastGround(e.clientX, e.clientY);
     if (!world) return;
 
@@ -745,7 +774,7 @@ export class Input3DManager {
       this.entitySource,
       world.x, world.y,
       this.getSelectedCommander(),
-      this.context.getTick(),
+      tick,
       e.shiftKey,
     );
     if (repairCmd) {
@@ -766,7 +795,7 @@ export class Input3DManager {
         world.x, world.y,
         selectedUnits,
         this.context.activePlayerId,
-        this.context.getTick(),
+        tick,
         e.shiftKey,
       );
       if (attackCmd) {

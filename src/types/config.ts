@@ -124,11 +124,6 @@ export type MountPoint = {
   y: number;
 };
 
-export type BuildingStatEntry = {
-  resourceCost: number;
-  hp: number;
-};
-
 export type MapSize = {
   width: number;
   height: number;

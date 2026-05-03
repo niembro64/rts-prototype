@@ -32,7 +32,6 @@ function createPooledTurret(): NetworkServerSnapshotTurret {
       id: '',
       ranges: { tracking: null, fire: { min: null, max: { acquire: 0, release: 0 } } },
       angular: { rot: 0, vel: 0, acc: 0, drag: 0, pitch: 0 },
-      pos: { offset: { x: 0, y: 0 } },
     },
     targetId: undefined,
     state: 0,
@@ -157,6 +156,8 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
   const event: PooledSimEvent = {
     type: 'fire',
     turretId: '',
+    sourceType: undefined,
+    sourceKey: undefined,
     pos: { x: 0, y: 0, z: 0 },
     entityId: undefined,
     deathContext: undefined,
@@ -960,6 +961,8 @@ export function serializeGameState(
       const out = getPooledSimEvent();
       out.type = ae.type;
       out.turretId = ae.turretId;
+      out.sourceType = ae.sourceType;
+      out.sourceKey = ae.sourceKey;
       out._pos.x = ae.pos.x;
       out._pos.y = ae.pos.y;
       out._pos.z = ae.pos.z;
@@ -1318,8 +1321,6 @@ function serializeEntity(
           t.angular.acc = src.turnAccel;
           t.angular.drag = src.drag;
           t.angular.pitch = qRot(src.pitch);
-          t.pos.offset.x = src.mount.x;
-          t.pos.offset.y = src.mount.y;
           dst.targetId = src.target ?? undefined;
           dst.state = turretStateToCode(src.state);
           dst.currentForceFieldRange = src.forceField?.range;

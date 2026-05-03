@@ -20,19 +20,12 @@
 
 import * as THREE from 'three';
 import type { TurretMount, UnitBodyShape } from '@/types/blueprints';
-import { getUnitBlueprint } from '../sim/blueprints';
+import { FALLBACK_UNIT_BODY_SHAPE, getUnitBlueprint } from '../sim/blueprints';
 import {
   getBodyMountTopY as getBodyMountTopYShared,
+  getBodyTopFrac,
   getTurretRootY as getTurretRootYShared,
 } from '../math/BodyDimensions';
-
-const FALLBACK_BODY_SHAPE: UnitBodyShape = {
-  kind: 'composite',
-  parts: [
-    { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
-    { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
-  ],
-};
 
 /** One mesh that makes up a unit body. Positions and scales are in
  *  unit-radius-1 space — the caller multiplies both by the unit's
@@ -108,6 +101,7 @@ function buildOvalSpec(part: { xFrac: number; yFrac: number; zFrac: number; offs
 }
 
 function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
+  const topY = getBodyTopFrac(spec);
   if (spec.kind === 'polygon') {
     const h = spec.heightFrac;
     const shape = buildPolygonShape(spec.sides, 1, spec.rotation);
@@ -125,7 +119,7 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
         x: 0, y: 0, z: 0,
         scaleX: spec.radiusFrac, scaleY: 1, scaleZ: spec.radiusFrac,
       }],
-      topY: h,
+      topY,
       isSmooth: false,
     };
   }
@@ -144,30 +138,27 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
         x: 0, y: 0, z: 0,
         scaleX: spec.lengthFrac, scaleY: 1, scaleZ: spec.widthFrac,
       }],
-      topY: h,
+      topY,
       isSmooth: false,
     };
   }
   if (spec.kind === 'circle') {
     const part = buildCircleSpec(spec);
-    return { parts: [part], topY: part.y + part.scaleY, isSmooth: true };
+    return { parts: [part], topY, isSmooth: true };
   }
   if (spec.kind === 'oval') {
     const part = buildOvalSpec(spec);
-    return { parts: [part], topY: part.y + part.scaleY, isSmooth: true };
+    return { parts: [part], topY, isSmooth: true };
   }
   // composite: each segment is its own sphere/spheroid.
   const parts: BodyMeshPart[] = [];
-  let topY = 0;
   for (const p of spec.parts) {
     if (p.kind === 'circle') {
       const part = buildCircleSpec(p);
       parts.push(part);
-      topY = Math.max(topY, part.y + part.scaleY);
     } else {
       const part = buildOvalSpec(p);
       parts.push(part);
-      topY = Math.max(topY, part.y + part.scaleY);
     }
   }
   return { parts, topY, isSmooth: true };
@@ -181,7 +172,7 @@ function cacheKey(shape: UnitBodyShape): string {
 
 function getBlueprintBodyShape(unitType: string): UnitBodyShape {
   try { return getUnitBlueprint(unitType).bodyShape; }
-  catch { return FALLBACK_BODY_SHAPE; }
+  catch { return FALLBACK_UNIT_BODY_SHAPE; }
 }
 
 /** Look up or build the 3D chassis geometry for a 2D renderer ID.
@@ -199,13 +190,6 @@ export function getBodyGeom(bodyShape: UnitBodyShape): BodyGeomEntry {
 
 export function getBodyGeomForUnit(unitType: string): BodyGeomEntry {
   return getBodyGeom(getBlueprintBodyShape(unitType));
-}
-
-/** World-space Y of the body top for the given renderer + unit radius.
- *  Used by the turret-mount path so each unit type's turret sits on
- *  its own body instead of a shared CHASSIS_HEIGHT constant. */
-export function getBodyTopY(bodyShape: UnitBodyShape, unitRadius: number): number {
-  return getBodyGeom(bodyShape).topY * unitRadius;
 }
 
 /** World-space Y of the body top AT the chassis-local (mountX, mountZ)

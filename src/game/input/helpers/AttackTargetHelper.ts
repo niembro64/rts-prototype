@@ -6,6 +6,16 @@ import { magnitude } from '../../math';
 export type { AttackEntitySource } from '@/types/input';
 import type { AttackEntitySource } from '@/types/input';
 
+export function isAttackableEnemyTarget(
+  entity: Entity | null | undefined,
+  playerId: PlayerId,
+): entity is Entity {
+  if (!entity?.ownership || entity.ownership.playerId === playerId) return false;
+  if (entity.unit) return entity.unit.hp > 0;
+  if (entity.building) return entity.building.hp > 0;
+  return false;
+}
+
 // Find an enemy unit at a world position
 function findEnemyUnitAt(
   entitySource: AttackEntitySource,
@@ -17,8 +27,7 @@ function findEnemyUnitAt(
   let closestDist = Infinity;
 
   for (const unit of entitySource.getUnits()) {
-    if (!unit.ownership || unit.ownership.playerId === playerId) continue;
-    if (!unit.unit || unit.unit.hp <= 0) continue;
+    if (!isAttackableEnemyTarget(unit, playerId) || !unit.unit) continue;
 
     const dx = unit.transform.x - worldX;
     const dy = unit.transform.y - worldY;
@@ -40,21 +49,28 @@ function findEnemyBuildingAt(
   worldY: number,
   playerId: PlayerId
 ): Entity | null {
-  for (const building of entitySource.getBuildings()) {
-    if (!building.ownership || building.ownership.playerId === playerId) continue;
-    if (!building.building || building.building.hp <= 0) continue;
+  let closest: Entity | null = null;
+  let closestDist = Infinity;
 
+  for (const building of entitySource.getBuildings()) {
+    if (!isAttackableEnemyTarget(building, playerId) || !building.building) continue;
     const { x, y } = building.transform;
     const halfW = building.building.width / 2;
     const halfH = building.building.height / 2;
 
     if (worldX >= x - halfW && worldX <= x + halfW &&
         worldY >= y - halfH && worldY <= y + halfH) {
-      return building;
+      const dx = x - worldX;
+      const dy = y - worldY;
+      const dist = magnitude(dx, dy);
+      if (dist < closestDist) {
+        closest = building;
+        closestDist = dist;
+      }
     }
   }
 
-  return null;
+  return closest;
 }
 
 // Find an attackable enemy target at a world position

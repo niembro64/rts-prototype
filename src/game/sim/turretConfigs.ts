@@ -87,22 +87,3 @@ export function getTurretConfig(id: string): TurretConfig {
   }
   return { ...config }; // Return a copy
 }
-
-// Helper to create a custom turret config
-export function createTurretConfig(
-  base: Partial<TurretConfig> & {
-    id: string;
-    angular: { turnAccel: number; drag: number };
-    rangeOverrides: TurretConfig['rangeOverrides'];
-  },
-): TurretConfig {
-  return {
-    range: 100,
-    cooldown: 1000,
-    color: 0xffffff,
-    eventsSmooth: false,
-    shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5 } },
-    ...base,
-  };
-}
-

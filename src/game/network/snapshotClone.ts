@@ -67,7 +67,6 @@ function cloneTurret(t: NetworkServerSnapshotTurret): NetworkServerSnapshotTurre
         drag: t.turret.angular.drag,
         pitch: t.turret.angular.pitch,
       },
-      pos: { offset: { x: t.turret.pos.offset.x, y: t.turret.pos.offset.y } },
     },
     targetId: t.targetId,
     state: t.state,
@@ -153,6 +152,8 @@ function cloneSimEvent(e: NetworkServerSnapshotSimEvent): NetworkServerSnapshotS
   return {
     type: e.type,
     turretId: e.turretId,
+    sourceType: e.sourceType,
+    sourceKey: e.sourceKey,
     pos: { x: e.pos.x, y: e.pos.y, z: e.pos.z },
     entityId: e.entityId,
     deathContext: e.deathContext ? { ...e.deathContext } : undefined,
@@ -335,8 +336,6 @@ function copyTurretInto(
   dst.turret.angular.acc = src.turret.angular.acc;
   dst.turret.angular.drag = src.turret.angular.drag;
   dst.turret.angular.pitch = src.turret.angular.pitch;
-  dst.turret.pos.offset.x = src.turret.pos.offset.x;
-  dst.turret.pos.offset.y = src.turret.pos.offset.y;
   dst.targetId = src.targetId;
   dst.state = src.state;
   dst.currentForceFieldRange = src.currentForceFieldRange;
@@ -352,7 +351,6 @@ function createReusableTurret(): NetworkServerSnapshotTurret {
         fire: { min: null, max: { acquire: 0, release: 0 } },
       },
       angular: { rot: 0, vel: 0, acc: 0, drag: 0, pitch: 0 },
-      pos: { offset: { x: 0, y: 0 } },
     },
     state: 0,
   };
@@ -569,7 +567,13 @@ function copySprayInto(
 }
 
 function createReusableSimEvent(): NetworkServerSnapshotSimEvent {
-  return { type: 'fire', turretId: '', pos: { x: 0, y: 0, z: 0 } };
+  return {
+    type: 'fire',
+    turretId: '',
+    sourceType: undefined,
+    sourceKey: undefined,
+    pos: { x: 0, y: 0, z: 0 },
+  };
 }
 
 function copySimEventInto(
@@ -578,6 +582,8 @@ function copySimEventInto(
 ): NetworkServerSnapshotSimEvent {
   dst.type = src.type;
   dst.turretId = src.turretId;
+  dst.sourceType = src.sourceType;
+  dst.sourceKey = src.sourceKey;
   dst.pos.x = src.pos.x;
   dst.pos.y = src.pos.y;
   dst.pos.z = src.pos.z;

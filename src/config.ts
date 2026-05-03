@@ -22,7 +22,6 @@ export type {
   SpinConfig,
   BarrelShape,
   MountPoint,
-  BuildingStatEntry,
   MapSize,
 } from './types/config';
 
@@ -33,7 +32,6 @@ import type {
   KnockbackConfig,
   ForceFieldVisualConfig,
   ForceFieldTurretConfig,
-  BuildingStatEntry,
   MapSize,
 } from './types/config';
 
@@ -665,25 +663,6 @@ export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
 // LEG_CONFIG removed — now in blueprints
 // TREAD_CONFIG removed — now in blueprints
 // WHEEL_CONFIG removed — now in blueprints
-
-export const BUILDING_STATS: Record<string, BuildingStatEntry> = {
-  solar: {
-    resourceCost: 100, // Unified energy/mana/metal cost (before multiplier)
-    hp: 200,
-  },
-  wind: {
-    resourceCost: 60,
-    hp: 100,
-  },
-  factory: {
-    resourceCost: 300,
-    hp: 800,
-  },
-  extractor: {
-    resourceCost: 80,
-    hp: 250,
-  },
-};
 
 // COMMANDER_STATS removed — now in blueprints
 

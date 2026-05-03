@@ -1,7 +1,6 @@
 import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileType, UnitLocomotion } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { EntityCacheManager } from './EntityCacheManager';
-import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { createTurretsFromDefinition } from './unitDefinitions';
 import {
@@ -471,9 +470,10 @@ export class WorldState {
     this.activePlayerId = playerId;
   }
 
-  // Create a base unit entity without turrets (turrets set separately)
-  // Use this when you need to set up custom turrets arrays
-  createUnitBase(
+  // Internal shell used only by createUnitFromBlueprint. Public callers
+  // must go through blueprints so stats, mounts, locomotion, and body
+  // heights cannot drift from the authored unit data.
+  private createUnitBase(
     x: number,
     y: number,
     playerId: PlayerId,
@@ -564,58 +564,6 @@ export class WorldState {
         dgunEnergyCost: bp.dgun.energyCost,
       };
     }
-
-    return entity;
-  }
-
-  // Legacy: Create a unit entity with a single weapon using unit type
-  // @deprecated Use createUnitFromBlueprint instead
-  createUnit(
-    x: number,
-    y: number,
-    playerId: PlayerId,
-    unitType: string = 'jackal',
-    radiusColliderUnitShot: number = 15,
-    driveForce: number = 100,
-    mass: number = 25,
-    turretTurnAccel?: number,
-    turretDrag?: number,
-  ): Entity {
-    const bp = getUnitBlueprint(unitType);
-    const turretType = bp?.turrets[0]?.turretId ?? 'lightTurret';
-    const turretConfig = getTurretConfig(turretType);
-
-    const ranges = computeTurretRanges(turretConfig);
-
-    const accel = turretTurnAccel ?? turretConfig.angular.turnAccel;
-    const drag = turretDrag ?? turretConfig.angular.drag;
-
-    const entity = this.createUnitBase(
-      x, y, playerId, unitType,
-      { shot: radiusColliderUnitShot, push: radiusColliderUnitShot },
-      radiusColliderUnitShot,
-      radiusColliderUnitShot,
-      { ...getUnitLocomotion(unitType), driveForce },
-      mass,
-      100,
-    );
-
-    entity.turrets = [{
-      config: turretConfig,
-      cooldown: 0,
-      target: null,
-      ranges,
-      state: 'idle',
-      rotation: 0,
-      pitch: 0,
-      angularVelocity: 0,
-      pitchVelocity: 0,
-      turnAccel: accel,
-      drag: drag,
-      mount: { x: 0, y: 0, z: radiusColliderUnitShot },
-      worldPos: { x: 0, y: 0, z: 0 },
-      worldVelocity: { x: 0, y: 0, z: 0 },
-    }];
 
     return entity;
   }

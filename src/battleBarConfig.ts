@@ -8,18 +8,18 @@ const clean = (x: number) => {
 
 export const BATTLE_CONFIG = {
   units: {
-    jackal: { shortName: 'JKL', default: false },
+    jackal: { shortName: 'JKL', default: true },
     lynx: { shortName: 'LNX', default: true },
     daddy: { shortName: 'DDY', default: false },
     badger: { shortName: 'BDG', default: true },
     mongoose: { shortName: 'MGS', default: true },
     tick: { shortName: 'TCK', default: true },
-    mammoth: { shortName: 'MMT', default: false },
+    mammoth: { shortName: 'MMT', default: true },
     widow: { shortName: 'WDW', default: true },
     formik: { shortName: 'FMK', default: true },
     hippo: { shortName: 'HPO', default: true },
-    tarantula: { shortName: 'TRN', default: false },
-    loris: { shortName: 'LRS', default: false },
+    tarantula: { shortName: 'TRN', default: true },
+    loris: { shortName: 'LRS', default: true },
     commander: { shortName: 'CMD', default: true },
   } as Record<string, { shortName: string; default: boolean }>,
   cap: {

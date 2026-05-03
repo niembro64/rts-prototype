@@ -4,12 +4,12 @@
 import type { Turret } from './types';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
+import type { UnitBlueprint } from './blueprints/types';
 import { createRuntimeTurretMount } from './turretMounts';
 
 // Re-export types (still used by many files)
 export type { LegStyle } from './blueprints/types';
-export type UnitType = 'jackal' | 'lynx' | 'daddy' | 'badger' | 'mongoose'
-  | 'tick' | 'mammoth' | 'widow' | 'formik' | 'hippo' | 'tarantula' | 'commander';
+export type UnitType = keyof typeof UNIT_BLUEPRINTS;
 export type LocomotionType = 'wheels' | 'treads' | 'legs';
 
 // Create turrets for a unit using its blueprint
@@ -47,14 +47,16 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
   return turrets;
 }
 
-// Backward-compatible lookup helpers
-export function getUnitDefinition(unitId: string) {
-  const bp = UNIT_BLUEPRINTS[unitId];
-  if (!bp) return undefined;
+function projectUnitBlueprint(bp: UnitBlueprint) {
+  const turrets = bp.turrets.map((turret) => ({
+    turretId: turret.turretId,
+    mount: { ...turret.mount },
+  }));
   return {
     id: bp.id as UnitType,
     name: bp.name,
-    weaponType: bp.turrets[0]?.turretId ?? 'lightTurret',
+    turretIds: turrets.map((turret) => turret.turretId),
+    turrets,
     hp: bp.hp,
     locomotionPhysics: { ...bp.locomotion.physics },
     unitRadiusCollider: { ...bp.unitRadiusCollider },
@@ -66,18 +68,14 @@ export function getUnitDefinition(unitId: string) {
   };
 }
 
+// Backward-compatible lookup helpers. These now project the full unit
+// blueprint instead of collapsing a multi-turret unit to one weapon id.
+export function getUnitDefinition(unitId: string) {
+  const bp = UNIT_BLUEPRINTS[unitId];
+  if (!bp) return undefined;
+  return projectUnitBlueprint(bp);
+}
+
 export function getAllUnitDefinitions() {
-  return Object.values(UNIT_BLUEPRINTS).map(bp => ({
-    id: bp.id as UnitType,
-    name: bp.name,
-    weaponType: bp.turrets[0]?.turretId ?? 'lightTurret',
-    hp: bp.hp,
-    locomotionPhysics: { ...bp.locomotion.physics },
-    unitRadiusCollider: { ...bp.unitRadiusCollider },
-    bodyRadius: bp.bodyRadius,
-    bodyCenterHeight: bp.bodyCenterHeight,
-    resourceCost: bp.resourceCost,
-    locomotion: bp.locomotion.type as LocomotionType,
-    legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,
-  }));
+  return Object.values(UNIT_BLUEPRINTS).map(projectUnitBlueprint);
 }

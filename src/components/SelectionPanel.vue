@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { BuildingType, WaypointType } from '../game/sim/types';
-import { getUnitBlueprint } from '../game/sim/blueprints';
-import { BUILDING_CONFIGS } from '../game/sim/buildConfigs';
+import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../game/sim/blueprints';
+import { getAllBuildings } from '../game/sim/buildConfigs';
 import { COST_MULTIPLIER } from '../config';
 
 export type { QueueItem, SelectionInfo, SelectionActions } from '@/types/ui';
@@ -28,39 +28,25 @@ const waypointModes: { mode: WaypointType; label: string; key: string; color: st
   { mode: 'patrol', label: 'Patrol', key: 'H', color: '#0088ff' },
 ];
 
-function bldCost(type: BuildingType) {
-  return { cost: BUILDING_CONFIGS[type].resourceCost };
-}
+const buildingOptions = getAllBuildings().map((building, index) => ({
+  type: building.id as BuildingType,
+  label: building.name,
+  key: `${index + 1}`,
+  cost: building.resourceCost,
+}));
 
-const buildingOptions = [
-  { type: 'solar' as const, label: 'Solar', key: '1', ...bldCost('solar') },
-  { type: 'wind' as const, label: 'Wind', key: '2', ...bldCost('wind') },
-  { type: 'factory' as const, label: 'Fabricator', key: '3', ...bldCost('factory') },
-  { type: 'extractor' as const, label: 'Extractor', key: '4', ...bldCost('extractor') },
-];
+const unitOptions = BUILDABLE_UNIT_IDS.map((id) => {
+  const bp = getUnitBlueprint(id);
+  return {
+    unitId: bp.id,
+    label: bp.name,
+    cost: bp.resourceCost * COST_MULTIPLIER,
+    locomotion: bp.locomotion.type,
+  };
+});
 
-function unitCost(id: string) {
-  return { cost: getUnitBlueprint(id).resourceCost * COST_MULTIPLIER };
-}
-
-// Vehicles (treads/wheels)
-const vehicleOptions = [
-  { unitId: 'jackal', label: 'Jackal', ...unitCost('jackal') },
-  { unitId: 'lynx', label: 'Lynx', ...unitCost('lynx') },
-  { unitId: 'badger', label: 'Badger', ...unitCost('badger') },
-  { unitId: 'mongoose', label: 'Mongoose', ...unitCost('mongoose') },
-  { unitId: 'mammoth', label: 'Mammoth', ...unitCost('mammoth') },
-  { unitId: 'hippo', label: 'Hippo', ...unitCost('hippo') },
-];
-
-// Bots (legs)
-const botOptions = [
-  { unitId: 'tick', label: 'Tick', ...unitCost('tick') },
-  { unitId: 'tarantula', label: 'Tarantula', ...unitCost('tarantula') },
-  { unitId: 'daddy', label: 'Daddy', ...unitCost('daddy') },
-  { unitId: 'widow', label: 'Widow', ...unitCost('widow') },
-  { unitId: 'formik', label: 'Formik', ...unitCost('formik') },
-];
+const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
+const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
 // Queue units with modifier key support (Shift=5, Ctrl=100)
 function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: string) {

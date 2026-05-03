@@ -21,15 +21,17 @@
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import {
+  DEFAULT_BUILDING_VISUAL_HEIGHT,
   FACTORY_BASE_VISUAL_HEIGHT,
   EXTRACTOR_BUILDING_VISUAL_HEIGHT,
   SOLAR_BUILDING_VISUAL_HEIGHT,
   WIND_BUILDING_VISUAL_HEIGHT,
-} from '../sim/buildingAnchors';
+} from '../sim/blueprints';
+import type { BuildingRenderProfile } from '../sim/types';
 
 /** Short building types we have art for. Unknown types fall back to a
  *  plain primary-color slab (same as before). */
-export type BuildingShapeType = 'solar' | 'wind' | 'factory' | 'extractor' | 'unknown';
+export type BuildingShapeType = BuildingRenderProfile;
 
 export type BuildingDetailRole =
   | 'static'
@@ -104,7 +106,7 @@ export type BuildingShape = {
 
 // ── Standard dimensions ────────────────────────────────────────────────
 /** Default fallback block height for unknown buildings. */
-const DEFAULT_HEIGHT = 120;
+const DEFAULT_HEIGHT = DEFAULT_BUILDING_VISUAL_HEIGHT;
 /** Solar collector silhouette is a squat opened pyramid, but tall enough
  *  for the photovoltaic faces to read as the main structure. */
 const SOLAR_HEIGHT = SOLAR_BUILDING_VISUAL_HEIGHT;

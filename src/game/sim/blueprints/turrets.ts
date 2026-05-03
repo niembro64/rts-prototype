@@ -83,7 +83,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     id: 'salvoRocketTurret',
     projectileId: 'lightRocket',
     range: 360,
-    cooldown: 1000,
+    cooldown: 2000,
     launchForce: 1500,
     turretTurnAccel: 20,
     turretDrag: 0.15,
@@ -110,7 +110,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // 90° max deviation from vertical — rockets launch anywhere from
     // straight up to horizontal; homing then bends each one onto the
     // target's line.
-    spread: { angle: Math.PI / 2, pelletCount: 1 },
+    spread: { angle: Math.PI / 2, pelletCount: 3 },
     // spread: { angle: Math.PI / 2, pelletCount: 1 },
     bodyRadius: 8,
     audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
@@ -119,9 +119,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   cannonTurret: {
     id: 'cannonTurret',
     projectileId: 'heavyShot',
-    range: 610,
+    range: 600,
     cooldown: 2300,
-    launchForce: 12_000,
+    launchForce: 30_000,
     turretTurnAccel: 200,
     turretDrag: 0.5,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 1.4 },
@@ -140,7 +140,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'mortarShot',
     range: 600,
     cooldown: 6000,
-    launchForce: 30_000,
+    launchForce: 20_000,
     turretTurnAccel: 90,
     turretDrag: 0.4,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
@@ -164,8 +164,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     id: 'pulseTurret',
     projectileId: 'mediumShot',
     range: 160,
-    cooldown: 2_000,
-    launchForce: 4_000,
+    cooldown: 1_000,
+    launchForce: 2_000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
     barrel: {
@@ -182,8 +182,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     }),
     eventsSmooth: true,
     color: COLOR_WHITE,
-    spread: { angle: Math.PI / 4 },
-    burst: { count: 4, delay: 50 },
+    spread: { angle: Math.PI / 8 },
+    burst: { count: 4, delay: 100 },
     bodyRadius: 7,
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
     highArc: false,
@@ -195,9 +195,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   gatlingMortarTurret: {
     id: 'gatlingMortarTurret',
     projectileId: 'mortarShot',
-    range: 3000,
+    range: 1000,
     cooldown: 200,
-    launchForce: 72_000,
+    launchForce: 8_000,
     turretTurnAccel: 80,
     turretDrag: 0.4,
     barrel: {
@@ -275,32 +275,11 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     bodyRadius: 7,
     audio: { fireSound: AUDIO.event.fire.dgunTurret },
   },
-  laserTurret: {
-    id: 'laserTurret',
-    projectileId: 'laserShot',
-    range: 100,
-    cooldown: 1500,
-    turretTurnAccel: 100,
-    turretDrag: 0.6,
-    barrel: {
-      type: 'simpleSingleBarrel',
-      barrelLength: 0.5,
-    },
-    rangeMultiplierOverrides: fireEnvelope({
-      engageRangeMin: null,
-      trackingRange: null,
-    }),
-    eventsSmooth: false,
-    color: COLOR_WHITE,
-    spread: { angle: 0 },
-    bodyRadius: 5,
-    audio: { fireSound: AUDIO.event.fire.laserTurret },
-  },
   mirrorTurret: {
     id: 'mirrorTurret',
     projectileId: 'beamShot',
     range: 300,
-    turretTurnAccel: 50,
+    turretTurnAccel: 60,
     turretDrag: 1,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
     passive: true,
@@ -329,6 +308,27 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // a count of 1 so the cache builder emits one panel per host.
     mirrorPanels: [{ offsetX: 0, offsetY: 0, angle: 0 }],
   },
+  laserTurret: {
+    id: 'laserTurret',
+    projectileId: 'laserShot',
+    range: 100,
+    cooldown: 1500,
+    turretTurnAccel: 100,
+    turretDrag: 0.6,
+    barrel: {
+      type: 'simpleSingleBarrel',
+      barrelLength: 0.5,
+    },
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
+    eventsSmooth: false,
+    color: COLOR_WHITE,
+    spread: { angle: 0 },
+    bodyRadius: 5,
+    audio: { fireSound: AUDIO.event.fire.laserTurret },
+  },
   beamTurret: {
     id: 'beamTurret',
     projectileId: 'beamShot',
@@ -352,16 +352,15 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
   },
   // megaBeamTurret — bigger beam mount for "boss" beam units. Same
-  // direction as beamTurret but a much thicker head sphere and
-  // longer barrel so it visually reads as a heavy weapon and
-  // naturally fills a head slot when the host's body head segment
-  // is removed (see widow body shape). Fires the megaBeamShot, which
-  // does roughly 3× the dps and a wider beam radius.
+  // direction as beamTurret but a much thicker head sphere and longer
+  // barrel so it visually reads as a heavy back-mounted weapon. Fires
+  // the megaBeamShot, which does roughly 3× the dps and a wider beam
+  // radius.
   megaBeamTurret: {
     id: 'megaBeamTurret',
     projectileId: 'megaBeamShot',
     range: 350,
-    turretTurnAccel: 60,
+    turretTurnAccel: 100,
     turretDrag: 0.5,
     barrel: {
       type: 'simpleSingleBarrel',
@@ -417,4 +416,12 @@ export function getTurretBlueprint(id: string): TurretBlueprint {
   const turretBlueprint = TURRET_BLUEPRINTS[id];
   if (!turretBlueprint) throw new Error(`Unknown weapon blueprint: ${id}`);
   return turretBlueprint;
+}
+
+for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
+  if (blueprint.id !== id) {
+    throw new Error(
+      `Turret blueprint key/id mismatch: ${id} contains ${blueprint.id}`,
+    );
+  }
 }

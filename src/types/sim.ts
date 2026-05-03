@@ -116,6 +116,8 @@ export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair' | 'att
 
 // Building type identifiers
 export type BuildingType = 'solar' | 'wind' | 'factory' | 'extractor';
+export type BuildingRenderProfile = BuildingType | 'unknown';
+export type BuildingAnchorProfile = 'constantVisualTop' | 'factoryTower' | 'collisionDepth';
 
 // Unified action for any unit command. Altitude (`z`) carries the
 // actual 3D ground point the user clicked (from CursorGround.pickSim
@@ -604,6 +606,9 @@ export type BuildingConfig = {
   energyProduction?: number;
   metalProduction?: number;
   maxEnergyUseRate?: number;
+  renderProfile: BuildingRenderProfile;
+  visualHeight: number;
+  anchorProfile: BuildingAnchorProfile;
 };
 
 // Unit build configuration

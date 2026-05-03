@@ -21,6 +21,7 @@ import {
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
 import { getGroundNormal } from '../sim/Terrain';
+import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   buildLocomotion,
@@ -2337,13 +2338,7 @@ export class Render3DEntities {
         try { bp = getUnitBlueprint(e.unit!.unitType); }
         catch { /* leave undefined; fallback handled below */ }
         const rendererId = bp?.renderer ?? 'arachnid';
-        const bodyShape = bp?.bodyShape ?? {
-          kind: 'composite',
-          parts: [
-            { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
-            { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
-          ],
-        } satisfies UnitBodyShape;
+        const bodyShape = bp?.bodyShape ?? FALLBACK_UNIT_BODY_SHAPE;
         const bodyEntry = getBodyGeom(bodyShape);
         const hideChassis = bp?.hideChassis === true;
         // The chassis is a group so composite bodies (arachnid, beam,
@@ -3260,12 +3255,9 @@ export class Render3DEntities {
       const markerOnly = objectTier === 'marker';
       const tier = markerOnly ? 'min' : objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
       const pid = e.ownership?.playerId;
-      // Building type drives the per-type shape (factory, solar, …) —
-      // fallback to 'unknown' for anything the art doesn't cover yet.
-      const shapeType: BuildingShapeType =
-        e.buildingType === 'factory' || e.buildingType === 'solar' || e.buildingType === 'wind' || e.buildingType === 'extractor'
-          ? e.buildingType
-          : 'unknown';
+      const shapeType: BuildingShapeType = e.buildingType
+        ? getBuildingConfig(e.buildingType).renderProfile
+        : 'unknown';
       const w = e.building?.width ?? 100;
       const d = e.building?.height ?? 100;
 

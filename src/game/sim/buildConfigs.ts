@@ -1,60 +1,32 @@
 import type { BuildingConfig, BuildingType } from './types';
-import {
-  COST_MULTIPLIER,
-  BUILDING_STATS,
-  SOLAR_ENERGY_PER_SECOND,
-  WIND_ENERGY_PER_SECOND,
-  EXTRACTOR_METAL_PER_SECOND,
-  METAL_DEPOSIT_RESOURCE_CELLS,
-} from '../../config';
-import { getUnitBlueprint, BUILDABLE_UNIT_IDS } from './blueprints';
+import { COST_MULTIPLIER } from '../../config';
+import { BUILDING_BLUEPRINTS, getUnitBlueprint, BUILDABLE_UNIT_IDS } from './blueprints';
 
-// Building configurations (costs are multiplied by COST_MULTIPLIER)
+function buildBuildingConfig(type: BuildingType): BuildingConfig {
+  const bp = BUILDING_BLUEPRINTS[type];
+  return {
+    id: bp.id,
+    name: bp.name,
+    gridWidth: bp.gridWidth,
+    gridHeight: bp.gridHeight,
+    gridDepth: bp.gridDepth,
+    hp: bp.hp,
+    resourceCost: bp.resourceCost * COST_MULTIPLIER,
+    energyProduction: bp.energyProduction,
+    metalProduction: bp.metalProduction,
+    maxEnergyUseRate: bp.maxEnergyUseRate,
+    renderProfile: bp.renderProfile,
+    visualHeight: bp.visualHeight,
+    anchorProfile: bp.anchorProfile,
+  };
+}
+
+// Building configurations derived from BUILDING_BLUEPRINTS.
 export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
-  solar: {
-    id: 'solar',
-    name: 'Solar',
-    gridWidth: 3,
-    gridHeight: 3,
-    // Solar panels are short and low-slung — a single cell tall.
-    gridDepth: 1,
-    hp: BUILDING_STATS.solar.hp,
-    resourceCost: BUILDING_STATS.solar.resourceCost * COST_MULTIPLIER,
-    energyProduction: SOLAR_ENERGY_PER_SECOND,
-  },
-  wind: {
-    id: 'wind',
-    name: 'Wind',
-    gridWidth: 2,
-    gridHeight: 2,
-    gridDepth: 5,
-    hp: BUILDING_STATS.wind.hp,
-    resourceCost: BUILDING_STATS.wind.resourceCost * COST_MULTIPLIER,
-    energyProduction: WIND_ENERGY_PER_SECOND,
-  },
-  factory: {
-    id: 'factory',
-    name: 'Fabricator',
-    // Fabricators are just their construction tower. Units are assembled
-    // outside this small blocking footprint, not inside a reserved yard.
-    gridWidth: 2,
-    gridHeight: 2,
-    gridDepth: 6,
-    hp: BUILDING_STATS.factory.hp,
-    resourceCost: BUILDING_STATS.factory.resourceCost * COST_MULTIPLIER,
-    maxEnergyUseRate: 100,
-  },
-  extractor: {
-    id: 'extractor',
-    name: 'Extractor',
-    // Matches the logical square metal-deposit footprint exactly.
-    gridWidth: METAL_DEPOSIT_RESOURCE_CELLS,
-    gridHeight: METAL_DEPOSIT_RESOURCE_CELLS,
-    gridDepth: 2,
-    hp: BUILDING_STATS.extractor.hp,
-    resourceCost: BUILDING_STATS.extractor.resourceCost * COST_MULTIPLIER,
-    metalProduction: EXTRACTOR_METAL_PER_SECOND,
-  },
+  solar: buildBuildingConfig('solar'),
+  wind: buildBuildingConfig('wind'),
+  factory: buildBuildingConfig('factory'),
+  extractor: buildBuildingConfig('extractor'),
 };
 
 // Helper to get building config
@@ -68,7 +40,7 @@ export function getUnitBuildConfig(unitId: string) {
   const bp = getUnitBlueprint(unitId);
   if (!bp) return undefined;
   return {
-    unitId: bp.turrets[0]?.turretId ?? 'lightTurret',
+    unitId: bp.id,
     name: bp.name,
     resourceCost: bp.resourceCost * COST_MULTIPLIER,
     unitRadiusCollider: { ...bp.unitRadiusCollider },

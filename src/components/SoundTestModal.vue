@@ -89,13 +89,8 @@ function stopContinuous() {
 }
 
 function label(s: UniqueSound): string {
-  // Collapse beamTurret0-13 / beamShot0-13 ranges
   const ids = s.ids;
   if (ids.length === 1) return ids[0];
-  const beamMatch = ids[0].match(/^(beamTurret|beamShot)(\d+)$/);
-  if (beamMatch && ids.length > 3) {
-    return `${beamMatch[1]}[0-${ids.length - 1}]`;
-  }
   return ids.join(', ');
 }
 </script>

@@ -16,7 +16,7 @@ import type {
   MoveCommand,
   WaypointTarget,
 } from '../../sim/commands';
-import { findAttackTargetAt } from './AttackTargetHelper';
+import { findAttackTargetAt, isAttackableEnemyTarget } from './AttackTargetHelper';
 import type { AttackEntitySource } from './AttackTargetHelper';
 import { getPathLength, assignUnitsToTargets } from './PathDistribution';
 import type { LinePathAccumulator } from './LinePathAccumulator';
@@ -25,6 +25,28 @@ import type { LinePathAccumulator } from './LinePathAccumulator';
  *  user probably meant "click here" rather than a micro-drag, so
  *  spreading units across a 5-world-unit line feels wrong. */
 const LINE_PATH_MIN_LENGTH = 20;
+
+/** Build an attack command against a concrete entity already resolved
+ *  by the caller. This is the canonical path for 3D mesh hits; the
+ *  ground-point helper below delegates here after resolving by
+ *  footprint. */
+export function buildAttackCommandForTarget(
+  target: Entity | null | undefined,
+  selectedUnits: readonly Entity[],
+  playerId: PlayerId,
+  tick: number,
+  queue: boolean,
+): AttackCommand | null {
+  if (selectedUnits.length === 0) return null;
+  if (!isAttackableEnemyTarget(target, playerId)) return null;
+  return {
+    type: 'attack',
+    tick,
+    entityIds: selectedUnits.map((u) => u.id),
+    targetId: target.id,
+    queue,
+  };
+}
 
 /** Build an attack command if an enemy (unit or building) is under
  *  the given world point, else return null. The caller decides how
@@ -40,16 +62,8 @@ export function buildAttackCommandAt(
   tick: number,
   queue: boolean,
 ): AttackCommand | null {
-  if (selectedUnits.length === 0) return null;
   const target = findAttackTargetAt(source, worldX, worldY, playerId);
-  if (!target) return null;
-  return {
-    type: 'attack',
-    tick,
-    entityIds: selectedUnits.map((u) => u.id),
-    targetId: target.id,
-    queue,
-  };
+  return buildAttackCommandForTarget(target, selectedUnits, playerId, tick, queue);
 }
 
 /** Turn a finished line path into a MoveCommand. Short paths

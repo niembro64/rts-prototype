@@ -162,6 +162,8 @@ function createBufferedSimEvent(): BufferedSimEvent {
   const event: BufferedSimEvent = {
     type: 'fire',
     turretId: '',
+    sourceType: undefined,
+    sourceKey: undefined,
     pos: { x: 0, y: 0, z: 0 },
     _pos: { x: 0, y: 0, z: 0 },
   };
@@ -172,6 +174,8 @@ function createBufferedSimEvent(): BufferedSimEvent {
 function copySimEventInto(src: NetworkServerSnapshotSimEvent, dst: BufferedSimEvent): BufferedSimEvent {
   dst.type = src.type;
   dst.turretId = src.turretId;
+  dst.sourceType = src.sourceType;
+  dst.sourceKey = src.sourceKey;
   dst._pos.x = src.pos.x;
   dst._pos.y = src.pos.y;
   dst._pos.z = src.pos.z;

@@ -21,6 +21,8 @@ export type {
   Waypoint,
   ActionType,
   BuildingType,
+  BuildingRenderProfile,
+  BuildingAnchorProfile,
   UnitAction,
   UnitLocomotion,
   SolarCollectorState,

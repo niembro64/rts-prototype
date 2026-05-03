@@ -13,11 +13,15 @@ const BEAM_RECOIL_AND_HIT_FORCE = 3000;
 const FIRE_EXPLOSION_RADIUS_MULTIPLIER = 3;
 const BEAM_DAMAGE_SPHERE_RADIUS = BEAM_WIDTH * 1.5;
 
+const SHOT_MASS_LIGHT: number = 4;
+const SHOT_MASS_MEDIUM: number = 10;
+const SHOT_MASS_HEAVY: number = 30;
+
 export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
     type: 'projectile',
     id: 'lightShot',
-    mass: 3,
+    mass: SHOT_MASS_LIGHT,
     collision: { radius: 1.6 },
     // Single boolean explosion sphere. Anything whose shot collider
     // intersects this radius takes the FULL damage and force; nothing
@@ -35,7 +39,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   mediumShot: {
     type: 'projectile',
     id: 'mediumShot',
-    mass: 8,
+    mass: SHOT_MASS_MEDIUM,
     collision: { radius: 2.2 },
     explosion: {
       radius: 8 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
@@ -57,7 +61,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightRocket: {
     type: 'projectile',
     id: 'lightRocket',
-    mass: 8,
+    mass: SHOT_MASS_MEDIUM,
     collision: { radius: 2.5 },
     explosion: {
       radius: 10 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
@@ -67,7 +71,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     detonateOnExpiry: true,
     lifespan: 5500,
     ignoresGravity: true,
-    homingTurnRate: 2,
+    homingTurnRate: 1,
     // Render as a velocity-aligned cylinder (purely cosmetic — sim
     // collision is still sphere-based via collision.radius).
     shape: 'cylinder',
@@ -88,7 +92,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   heavyShot: {
     type: 'projectile',
     id: 'heavyShot',
-    mass: 30,
+    mass: SHOT_MASS_HEAVY,
     collision: { radius: 4 },
     explosion: {
       radius: 25 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
@@ -96,7 +100,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       force: 7_000,
     },
     detonateOnExpiry: true,
-    lifespan: 4000,
+    lifespan: 10_000,
     hitSound: AUDIO.event.hit.heavyShot,
   },
   // Cluster mortar — carries `mortarShot`s as submunitions. The
@@ -105,13 +109,45 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   // it then runs mortarShot's own submunition chain (5 mediumShot
   // fragments) when it lands. Net effect: one trigger pull creates
   // 5 mortar bursts spread around the impact zone.
+  mortarShot: {
+    type: 'projectile',
+    id: 'mortarShot',
+    // Mortar is a pure carrier: it does no damage of its own and has
+    // no splash explosion. Its only job is to fly to a point and
+    // release submunitions on impact / lifespan expiry. All damage
+    // comes from the mediumShot fragments sprayed below.
+    mass: SHOT_MASS_MEDIUM * 3,
+    collision: { radius: 4 },
+    detonateOnExpiry: true,
+    lifespan: 2000,
+    // Per projectile instance, roll max lifespan within +/-20% of lifespan.
+    lifespanVariance: 0.2,
+    hitSound: AUDIO.event.hit.mortarShot,
+    submunitions: {
+      shotId: 'heavyShot',
+      count: 3,
+      // Wide horizontal sweep, lower vertical jitter so fragments
+      // arc outward instead of fountaining mostly upward. Bump
+      // horizontal for a wider fan, vertical for a more chaotic
+      // mix of launch angles.
+      randomSpreadSpeedHorizontal: 20,
+      randomSpreadSpeedVertical: 20,
+      // Soft bounce — submunitions retain 40% of the carrier's
+      // reflected velocity so the burst still reads as a bounce off
+      // the surface, without launching the fragments so far that
+      // they leave the AOE the player expected. Tune up toward 1.0
+      // for a more energetic bounce, down toward 0.0 to absorb the
+      // momentum entirely.
+      reflectedVelocityDamper: 0.4,
+    },
+  },
   advancedMortarShot: {
     type: 'projectile',
     id: 'advancedMortarShot',
     // Same physics profile as a single mortarShot — pure carrier, no
     // damage of its own, no splash. Slightly heavier so the arc
     // matches a "bigger payload" look.
-    mass: 80,
+    mass: SHOT_MASS_MEDIUM * 9,
     collision: { radius: 6 },
     detonateOnExpiry: true,
     lifespan: 2000,
@@ -127,38 +163,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       // to land in a ring around the original aim point.
       randomSpreadSpeedHorizontal: 20,
       randomSpreadSpeedVertical: 20,
-      reflectedVelocityDamper: 0.4,
-    },
-  },
-  mortarShot: {
-    type: 'projectile',
-    id: 'mortarShot',
-    // Mortar is a pure carrier: it does no damage of its own and has
-    // no splash explosion. Its only job is to fly to a point and
-    // release submunitions on impact / lifespan expiry. All damage
-    // comes from the mediumShot fragments sprayed below.
-    mass: 60,
-    collision: { radius: 4 },
-    detonateOnExpiry: true,
-    lifespan: 2000,
-    // Per projectile instance, roll max lifespan within +/-20% of lifespan.
-    lifespanVariance: 0.2,
-    hitSound: AUDIO.event.hit.mortarShot,
-    submunitions: {
-      shotId: 'mediumShot',
-      count: 3,
-      // Wide horizontal sweep, lower vertical jitter so fragments
-      // arc outward instead of fountaining mostly upward. Bump
-      // horizontal for a wider fan, vertical for a more chaotic
-      // mix of launch angles.
-      randomSpreadSpeedHorizontal: 20,
-      randomSpreadSpeedVertical: 20,
-      // Soft bounce — submunitions retain 40% of the carrier's
-      // reflected velocity so the burst still reads as a bounce off
-      // the surface, without launching the fragments so far that
-      // they leave the AOE the player expected. Tune up toward 1.0
-      // for a more energetic bounce, down toward 0.0 to absorb the
-      // momentum entirely.
       reflectedVelocityDamper: 0.4,
     },
   },
@@ -220,4 +224,10 @@ export function getShotBlueprint(id: string): ShotBlueprint {
   const shotBlueprint = SHOT_BLUEPRINTS[id];
   if (!shotBlueprint) throw new Error(`Unknown projectile blueprint: ${id}`);
   return shotBlueprint;
+}
+
+for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
+  if (blueprint.id !== id) {
+    throw new Error(`Shot blueprint key/id mismatch: ${id} contains ${blueprint.id}`);
+  }
 }

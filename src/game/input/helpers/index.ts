@@ -25,13 +25,19 @@ export { SelectionChangeTracker } from './SelectionChangeTracker';
 export { LinePathAccumulator } from './LinePathAccumulator';
 
 export {
+  buildAttackCommandForTarget,
   buildAttackCommandAt,
   buildLinePathMoveCommand,
 } from './RightClickCommands';
 
 export { type ModeCancel, handleEscape } from './EscapeHandler';
 
-export { CommanderModeController } from './CommanderModeController';
+export {
+  CommanderModeController,
+  getBuildModeBuildingTypeByIndex,
+  getBuildModeBuildingTypes,
+  getDefaultBuildModeBuildingType,
+} from './CommanderModeController';
 
 export {
   buildRepairCommandAt,

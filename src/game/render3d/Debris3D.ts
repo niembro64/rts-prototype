@@ -21,22 +21,22 @@
 import * as THREE from 'three';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SimDeathContext } from '@/types/combat';
-import type { UnitBodyShape } from '@/types/blueprints';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { MAP_BG_COLOR, GRAVITY, MIRROR_EXTRA_HEIGHT } from '../../config';
-import { getUnitBlueprint } from '../sim/blueprints';
+import { MAP_BG_COLOR, GRAVITY, MIRROR_EXTRA_HEIGHT, TURRET_HEIGHT } from '../../config';
+import { FALLBACK_UNIT_BODY_SHAPE, getUnitBlueprint } from '../sim/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { MIRROR_ARM_LENGTH_FRAC } from '../sim/mirrorPanelCache';
 import { getShotBlueprint } from '../sim/blueprints/shots';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import {
+  TREAD_CHASSIS_LIFT_Y,
   getBodyMountTopY,
   getBodyTopY,
   getChassisLiftY,
   getSegmentMidYAt,
 } from '../math/BodyDimensions';
-import { turretHeadRadiusFromBodyRadius } from '../math';
+import { TURRET_BARREL_MIN_DIAMETER, turretHeadRadiusFromBodyRadius } from '../math';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -54,16 +54,12 @@ const STYLE_STRIDE: Record<DebrisStyle, number> = {
 // Must match the values in Render3DEntities for sizes to line up with the
 // source parts. Head sphere radius and per-turret column height come
 // from getTurretHeadRadius (per-turret bodyRadius wins, falling back to
-// the unit-scale default). TURRET_HEIGHT survives only as the legacy
-// orbit-cone safety clamp on auto-derived `tipOrbit` — same value the
-// renderer uses, so the two stay locked.
-const TURRET_HEIGHT = 16;
-const BARREL_MIN_THICKNESS = 2;
+// the unit-scale default). TURRET_HEIGHT is imported from config so
+// the debris cone-barrel clamp stays locked to the renderer.
 
-// Must match Locomotion3D. Hip Y is per-leg now (mid-height of the
-// body segment the leg attaches to), resolved via getSegmentMidYAt.
-const TREAD_HEIGHT = 10;
-const TREAD_Y = TREAD_HEIGHT / 2;
+// Must match Locomotion3D. Tread height and chassis lift share one value;
+// hip Y is per-leg now and resolved via getSegmentMidYAt.
+const TREAD_Y = TREAD_CHASSIS_LIFT_Y / 2;
 const FOOT_Y = 1;
 
 // Global cap on simultaneous pieces across the scene — generous since most
@@ -544,7 +540,7 @@ export class Debris3D {
           shape: 'box',
           x: 0, y: TREAD_Y, z: side * offset,
           yaw: 0,
-          sx: length, sy: TREAD_HEIGHT, sz: width,
+          sx: length, sy: TREAD_CHASSIS_LIFT_Y, sz: width,
           color: TREAD_COLOR,
         });
       }
@@ -719,7 +715,7 @@ export class Debris3D {
         // Barrels — one cylinder per physical barrel. Diameter mirrors
         // Render3DEntities' barrel cylinder: for line shots (beam/laser)
         // the diameter is shot.width; otherwise barrelThickness. Falls
-        // through to BARREL_MIN_THICKNESS only when neither is set.
+        // through to TURRET_BARREL_MIN_DIAMETER only when neither is set.
         const bs = tb.barrel;
         if (!bs) continue;
         let shotWidth: number | undefined;
@@ -756,15 +752,15 @@ export class Debris3D {
         if (bs.type === 'simpleSingleBarrel') {
           const len = r * bs.barrelLength;
           if (len < 1) continue;
-          const diameter = (shotWidth ?? bs.barrelThickness ?? BARREL_MIN_THICKNESS);
-          const thick = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
+          const diameter = (shotWidth ?? bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER);
+          const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
           emitBarrel(0, 0, 0, len, 0, 0, thick);
         } else if (bs.type === 'simpleMultiBarrel') {
           // Parallel cluster of cylinders — base orbit = tip orbit.
           const len = r * bs.barrelLength;
           if (len < 1) continue;
-          const diameter = bs.barrelThickness ?? BARREL_MIN_THICKNESS;
-          const thick = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
+          const diameter = bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER;
+          const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
           const n = bs.barrelCount;
           const orbit = bs.orbitRadius * r;
           // Renderer's `oy` is along three.js Y (vertical = sim Z),
@@ -784,8 +780,8 @@ export class Debris3D {
           // therefore tilts outward.
           const len = r * bs.barrelLength;
           if (len < 1) continue;
-          const diameter = bs.barrelThickness ?? BARREL_MIN_THICKNESS;
-          const thick = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
+          const diameter = bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER;
+          const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
           const n = bs.barrelCount;
           const baseOrbitR = bs.baseOrbit * r;
           const tipOrbitR = bs.tipOrbit !== undefined
@@ -887,15 +883,7 @@ export class Debris3D {
     const sides = 8;
     const poly = r * 0.7;
     const edgeLen = 2 * poly * Math.sin(Math.PI / sides);
-    // Fallback chassis height: arachnid-ish big sphere top.
-    const fallbackShape: UnitBodyShape = {
-      kind: 'composite',
-      parts: [
-        { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
-        { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
-      ],
-    };
-    const fallbackH = getBodyTopY(fallbackShape, r);
+    const fallbackH = getBodyTopY(FALLBACK_UNIT_BODY_SHAPE, r);
     for (let i = 0; i < sides; i++) {
       const a = ((i + 0.5) / sides) * Math.PI * 2;
       out.push({

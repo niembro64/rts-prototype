@@ -6,6 +6,8 @@ export * from './types';
 export * from './shots';
 export * from './turrets';
 export * from './units';
+export * from './buildings';
+export * from './fallbacks';
 
 import type {
   BeamShot,
@@ -18,8 +20,73 @@ import type {
 } from '../types';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
+import { UNIT_BLUEPRINTS } from './units';
+import { BUILDING_BLUEPRINTS } from './buildings';
 import type { ShotBlueprint, ForceFieldZoneRatioConfig, TurretBlueprint } from './types';
 import { BARREL_THICKNESS_MULTIPLIER } from '../../../config';
+import {
+  buildingTypeToCode,
+  codeToBuildingType,
+  codeToUnitType,
+  getNetworkBuildingTypeIds,
+  getNetworkUnitTypeIds,
+  unitTypeToCode,
+  BUILDING_TYPE_UNKNOWN,
+  UNIT_TYPE_UNKNOWN,
+} from '../../../types/network';
+
+function validateStableWireIds(
+  label: string,
+  blueprintIds: readonly string[],
+  wireIds: readonly string[],
+  toCode: (id: string) => number,
+  fromCode: (code: number) => string,
+  unknownCode: number,
+): void {
+  const blueprintSet = new Set(blueprintIds);
+  const seenWireIds = new Set<string>();
+
+  for (let code = 0; code < wireIds.length; code++) {
+    const id = wireIds[code];
+    if (seenWireIds.has(id)) {
+      throw new Error(`Duplicate ${label} network wire id '${id}'`);
+    }
+    seenWireIds.add(id);
+    if (!blueprintSet.has(id)) {
+      throw new Error(`Stale ${label} network wire id '${id}' has no matching blueprint`);
+    }
+    const encoded = toCode(id);
+    if (encoded === unknownCode || encoded !== code || fromCode(encoded) !== id) {
+      throw new Error(
+        `Invalid ${label} network wire mapping for '${id}': expected code ${code}, got ${encoded}`,
+      );
+    }
+  }
+
+  for (const id of blueprintIds) {
+    if (!seenWireIds.has(id)) {
+      throw new Error(`Missing ${label} network wire id for blueprint '${id}'`);
+    }
+  }
+}
+
+validateStableWireIds(
+  'unit',
+  Object.keys(UNIT_BLUEPRINTS),
+  getNetworkUnitTypeIds(),
+  unitTypeToCode,
+  codeToUnitType,
+  UNIT_TYPE_UNKNOWN,
+);
+
+validateStableWireIds(
+  'building',
+  Object.keys(BUILDING_BLUEPRINTS),
+  getNetworkBuildingTypeIds(),
+  buildingTypeToCode,
+  codeToBuildingType,
+  BUILDING_TYPE_UNKNOWN,
+);
 
 function assertFiniteRangeMultiplier(
   turretId: string,

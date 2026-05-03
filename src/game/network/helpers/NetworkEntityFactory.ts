@@ -2,7 +2,7 @@
 
 import type { Entity, BuildingType, Turret, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
-import { codeToActionType, codeToTurretState, codeToUnitType, codeToBuildingType, codeToProjectileType } from '../../../types/network';
+import { codeToActionType, codeToTurretState, codeToUnitType, codeToBuildingType, buildingTypeToCode, codeToProjectileType } from '../../../types/network';
 import { getTurretConfig } from '../../sim/turretConfigs';
 import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
@@ -16,6 +16,12 @@ function isFiniteNumber(value: unknown): value is number {
 
 function decodeNetworkUnitType(unitType: unknown): string {
   return isFiniteNumber(unitType) ? codeToUnitType(unitType) : 'jackal';
+}
+
+function decodeNetworkBuildingType(buildingType: unknown): BuildingType | null {
+  if (!isFiniteNumber(buildingType)) return null;
+  const decoded = codeToBuildingType(buildingType) as BuildingType;
+  return buildingTypeToCode(decoded) === buildingType ? decoded : null;
 }
 
 function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret): void {
@@ -204,51 +210,45 @@ function createBuildingFromNetwork(
   y: number,
   rotation: number,
   playerId: number
-): Entity {
+): Entity | null {
   const b = netEntity.building;
+  const buildingType = decodeNetworkBuildingType(b?.type);
+  if (!b || !buildingType) return null;
 
-  // Buildings derive depth client-side from their blueprint. The wire
-  // sends only the footprint (dim.x × dim.y) since all instances of a
-  // given building type share the same vertical extent — saving a
-  // field per entity per snapshot. Client looks up gridDepth by type.
-  let depth = 100;
-  try {
-    if (b?.type !== undefined) {
-      const bc = getBuildingConfig(codeToBuildingType(b.type) as BuildingType);
-      depth = bc.gridDepth * GRID_CELL_SIZE;
-    }
-  } catch { /* unknown type — keep default depth */ }
+  // Static building facts are blueprint-derived on the client. The
+  // snapshot overlays only dynamic state (hp, build progress, factory
+  // queue, solar open state, extraction rate).
+  const config = getBuildingConfig(buildingType);
+  const width = config.gridWidth * GRID_CELL_SIZE;
+  const height = config.gridHeight * GRID_CELL_SIZE;
+  const depth = config.gridDepth * GRID_CELL_SIZE;
   const entity: Entity = {
     id,
     type: 'building',
     transform: { x, y, z: netEntity.pos.z, rotation },
     ownership: { playerId },
     selectable: { selected: false },
-    building: (() => {
-      const w = b?.dim?.x ?? 100;
-      const h = b?.dim?.y ?? 100;
-      return {
-        width: w,
-        height: h,
-        depth,
-        hp: b?.hp.curr ?? 500,
-        maxHp: b?.hp.max ?? 500,
-        targetRadius: Math.sqrt(w * w + h * h) / 2,
-        solar: b?.type !== undefined && codeToBuildingType(b.type) === 'solar'
-          ? { open: b.solar?.open ?? false, producing: false, reopenDelayMs: 0 }
-          : undefined,
-      };
-    })(),
+    building: {
+      width,
+      height,
+      depth,
+      hp: b.hp?.curr ?? config.hp,
+      maxHp: b.hp?.max ?? config.hp,
+      targetRadius: Math.sqrt(width * width + height * height) / 2,
+      solar: buildingType === 'solar'
+        ? { open: b.solar?.open ?? false, producing: false, reopenDelayMs: 0 }
+        : undefined,
+    },
     buildable: {
-      buildProgress: b?.build.progress ?? 1,
-      isComplete: b?.build.complete ?? true,
-      resourceCost: 100,
+      buildProgress: b.build?.progress ?? 1,
+      isComplete: b.build?.complete ?? true,
+      resourceCost: config.resourceCost,
       isGhost: false,
     },
-    buildingType: b?.type !== undefined
-      ? (codeToBuildingType(b.type) as BuildingType)
+    buildingType,
+    metalExtractionRate: buildingType === 'extractor'
+      ? b.metalExtractionRate ?? 0
       : undefined,
-    metalExtractionRate: b?.metalExtractionRate,
   };
 
   const f = b?.factory;
@@ -282,8 +282,27 @@ function createProjectileFromNetwork(
   y: number,
   rotation: number,
   playerId: number
-): Entity {
+): Entity | null {
   const s = netEntity.shot;
+  if (!s?.turretId) return null;
+
+  let config: ReturnType<typeof getTurretConfig>;
+  try {
+    config = { ...getTurretConfig(s.turretId), turretIndex: s.turretIndex };
+  } catch {
+    return null;
+  }
+
+  if (config.shot.type === 'force') return null;
+
+  const projectileType = s.type !== undefined
+    ? codeToProjectileType(s.type)
+    : config.shot.type;
+  const maxLifespan = config.shot.type === 'beam'
+    ? Infinity
+    : config.shot.type === 'laser'
+      ? config.shot.duration
+      : config.shot.lifespan ?? 2000;
 
   return {
     id,
@@ -292,27 +311,13 @@ function createProjectileFromNetwork(
     projectile: {
       ownerId: playerId,
       sourceEntityId: s?.source ?? 0,
-      config: s?.turretId
-        ? { ...getTurretConfig(s.turretId), turretIndex: s.turretIndex }
-        : {
-          id: 'unknown',
-          angular: { turnAccel: 0, drag: 0 },
-          rangeOverrides: {
-            engageRangeMax: { acquire: 0, release: 0 },
-            engageRangeMin: null,
-            trackingRange: null,
-          },
-          eventsSmooth: false,
-          shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5 } },
-          range: 100,
-          cooldown: 1000,
-        },
-      projectileType: s?.type !== undefined ? codeToProjectileType(s.type) : 'projectile',
+      config,
+      projectileType,
       velocityX: s?.velocity?.x ?? 0,
       velocityY: s?.velocity?.y ?? 0,
       velocityZ: s?.velocity?.z ?? 0,
       timeAlive: 0,
-      maxLifespan: 2000,
+      maxLifespan,
       hitEntities: new Set(),
       maxHits: 1,
       points: netEntity.posEnd ? [

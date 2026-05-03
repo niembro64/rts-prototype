@@ -627,16 +627,16 @@ export class Simulation {
   // collision-handler path (force-field DoT, anything that mutates hp
   // directly). Delegates to the shared buildUnitDeathEvent /
   // buildBuildingDeathEvent so the shape can't drift from the damage-
-  // path kills. Uses the entity's own type id as the turretId since
-  // there's no attacker config to credit.
+  // path kills. There is no turret to credit here, so provenance lives
+  // in sourceType/sourceKey and turretId remains a weapon/audio key.
   private emitSyntheticDeathEvent(entity: Entity): void {
     if (entity.unit) {
       this.pendingSimEvents.push(
-        buildUnitDeathEvent(entity, entity.id, entity.unit.unitType ?? '', undefined),
+        buildUnitDeathEvent(entity, entity.id, entity.unit.unitType ?? '', undefined, 'unit'),
       );
     } else if (entity.building) {
       this.pendingSimEvents.push(
-        buildBuildingDeathEvent(entity, entity.id, entity.buildingType ?? ''),
+        buildBuildingDeathEvent(entity, entity.id, entity.buildingType ?? '', 'building'),
       );
     }
   }

@@ -85,7 +85,7 @@ export const METAL_DEPOSIT_CONFIG = {
   /** World-unit width outside each deposit's flat pad where terrain
    *  eases back to the natural heightmap. Keep this larger than a grid
    *  cell when deposits sit far above/below the surrounding land. */
-  terrainBlendRadius: 75,
+  terrainBlendRadius: 300,
 
   /** Concentric rings of deposits. Order doesn't matter — the renderer
    *  and placement validator iterate over all of them. */
@@ -93,30 +93,23 @@ export const METAL_DEPOSIT_CONFIG = {
     {
       radiusFraction: 0.2,
       countPerPlayer: 1,
-      // Shifted into the opposite-spoke region; 5-player calibration
-      // value (translated from old phaseOffset:3, rotationOffset:0.2).
       sliceOffset: 2.66,
       dTerrainLevels: 1,
     },
-    // {
-    //   radiusFraction: 0.3,
-    //   countPerPlayer: 2,
-    //   sliceOffset: 0.625,
-    //   dTerrainLevels: 3,
-    // },
     {
-      radiusFraction: 0.5,
+      radiusFraction: 0.4,
       countPerPlayer: 1,
       sliceOffset: -0.55,
       dTerrainLevels: 2,
     },
     {
-      radiusFraction: 0.75,
+      radiusFraction: 0.6,
       countPerPlayer: 2,
+      sliceOffset: 0.0,
       dTerrainLevels: 1,
     },
     {
-      radiusFraction: 0.85,
+      radiusFraction: 0.9,
       countPerPlayer: 2,
       sliceOffset: -0.375,
       dTerrainLevels: 1,
@@ -150,7 +143,13 @@ export type MetalDeposit = {
 
 type MetalDepositPlacement = Pick<
   MetalDeposit,
-  'x' | 'y' | 'gridX' | 'gridY' | 'resourceCells' | 'resourceHalfSize' | 'flatPadRadius'
+  | 'x'
+  | 'y'
+  | 'gridX'
+  | 'gridY'
+  | 'resourceCells'
+  | 'resourceHalfSize'
+  | 'flatPadRadius'
 >;
 
 /**
@@ -252,16 +251,23 @@ function makeMetalDepositPlacement(
   };
 }
 
-function signedMetalDepositDTerrainLevels(levels: number, terrainSign: -1 | 0 | 1): number {
+function signedMetalDepositDTerrainLevels(
+  levels: number,
+  terrainSign: -1 | 0 | 1,
+): number {
   if (!Number.isFinite(levels) || !Number.isInteger(levels)) {
-    throw new Error(`Metal deposit dTerrainLevels must be a finite integer; received ${levels}`);
+    throw new Error(
+      `Metal deposit dTerrainLevels must be a finite integer; received ${levels}`,
+    );
   }
   return levels * terrainSign;
 }
 
 function metalDepositHeightForDTerrainLevels(levels: number): number {
   if (!Number.isFinite(levels) || !Number.isInteger(levels)) {
-    throw new Error(`Metal deposit dTerrainLevels must be a finite integer; received ${levels}`);
+    throw new Error(
+      `Metal deposit dTerrainLevels must be a finite integer; received ${levels}`,
+    );
   }
   return levels * TERRAIN_D_TERRAIN;
 }

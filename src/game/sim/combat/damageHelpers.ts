@@ -5,7 +5,7 @@ import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, BeamShot, LaserShot } from '../types';
 import { getPlayerPrimaryColor, isLineShot } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { SimEvent, ImpactContext } from './types';
+import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types';
 import type { TurretConfig, Projectile } from '../types';
@@ -69,15 +69,16 @@ export function buildImpactContext(
  * kill, safety-net cleanup, and the no-ctx fallback) so the
  * deathContext fields can't drift between paths.
  *
- * `turretOrUnitId` is the turret id that caused the kill (for audio
- * routing) when available, or the unit's own type id when we're
- * emitting a synthetic event from the cleanup pass.
+ * `sourceKey` is the turret id that caused the kill for normal combat,
+ * or the unit/building/system key for non-weapon synthetic deaths.
+ * `turretId` stays reserved for weapon/audio routing.
  */
 export function buildUnitDeathEvent(
   target: Entity | undefined,
   id: EntityId,
-  turretOrUnitId: string,
+  sourceKey: string,
   ctx: DeathContext | undefined,
+  sourceType: SimEventSourceType = 'turret',
 ): SimEvent {
   const playerColor = getPlayerPrimaryColor(target?.ownership?.playerId);
   const unitVel = {
@@ -138,7 +139,9 @@ export function buildUnitDeathEvent(
       };
   return {
     type: 'death',
-    turretId: turretOrUnitId,
+    turretId: sourceType === 'turret' ? sourceKey : '',
+    sourceType,
+    sourceKey,
     pos: {
       x: deathX,
       y: deathY,
@@ -158,7 +161,8 @@ export function buildUnitDeathEvent(
 export function buildBuildingDeathEvent(
   building: Entity | undefined,
   id: EntityId,
-  turretOrBuildingId: string,
+  sourceKey: string,
+  sourceType: SimEventSourceType = 'turret',
 ): SimEvent {
   const playerColor = getPlayerPrimaryColor(building?.ownership?.playerId);
   const footprintRadius = Math.hypot(
@@ -173,7 +177,9 @@ export function buildBuildingDeathEvent(
   const deathZ = building?.body?.physicsBody.z ?? building?.transform.z ?? 0;
   return {
     type: 'death',
-    turretId: turretOrBuildingId,
+    turretId: sourceType === 'turret' ? sourceKey : '',
+    sourceType,
+    sourceKey,
     pos: {
       x: deathX,
       y: deathY,

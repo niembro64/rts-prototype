@@ -1,23 +1,15 @@
 import type { Entity, Turret } from '../sim/types';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getBodyTopY, getChassisLiftY } from '../math/BodyDimensions';
-import { getTurretHeadRadius } from '../math';
+import { getTurretBarrelDiameter, getTurretHeadRadius } from '../math';
 import { TURRET_HEIGHT } from '../../config';
 import { getBuildingVisualTopZ } from '../sim/buildingAnchors';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 
-const BARREL_MIN_THICKNESS = 2;
-
 function getBarrelRadius(turret: Turret): number {
   const barrel = turret.config.barrel;
   if (!barrel || barrel.type === 'complexSingleEmitter') return 0;
-  const shot = turret.config.shot;
-  const shotWidth =
-    barrel.type === 'simpleSingleBarrel' && (shot.type === 'beam' || shot.type === 'laser')
-      ? shot.width
-      : undefined;
-  const diameter = shotWidth ?? barrel.barrelThickness ?? BARREL_MIN_THICKNESS;
-  return Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
+  return getTurretBarrelDiameter(turret.config) / 2;
 }
 
 function getBarrelTopAboveGround(turret: Turret, unitRadius: number, mountY: number): number {

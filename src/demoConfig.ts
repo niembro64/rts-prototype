@@ -55,7 +55,7 @@ export const DEMO_CONFIG = {
    * commanderGapCells / rowGapCells if buildings start crowding the
    * map center.
    */
-  commanderRadiusFraction: 0.85,
+  commanderRadiusFraction: 0.75,
 
   /**
    * DEMO BATTLE initial-spawn unit order type. 'fight' makes the

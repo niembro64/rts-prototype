@@ -12,9 +12,23 @@
 
 import type { Entity, BuildingType } from '../../sim/types';
 import type { StartBuildCommand, FireDGunCommand } from '../../sim/commands';
+import { getAllBuildings } from '../../sim/buildConfigs';
 import { getSnappedBuildPosition } from './BuildPlacementValidator';
 
-const BUILDING_TYPES: readonly BuildingType[] = ['solar', 'factory'];
+const BUILDING_TYPES = getAllBuildings().map((building) => building.id);
+const DEFAULT_BUILDING_TYPE: BuildingType = BUILDING_TYPES[0] ?? 'solar';
+
+export function getBuildModeBuildingTypes(): readonly BuildingType[] {
+  return BUILDING_TYPES;
+}
+
+export function getDefaultBuildModeBuildingType(): BuildingType {
+  return DEFAULT_BUILDING_TYPE;
+}
+
+export function getBuildModeBuildingTypeByIndex(index: number): BuildingType | null {
+  return BUILDING_TYPES[index] ?? null;
+}
 
 export class CommanderModeController {
   private _buildType: BuildingType | null = null;
@@ -73,6 +87,7 @@ export class CommanderModeController {
    *  already in build mode (wouldn't know what to cycle from). */
   cycleBuildingType(): void {
     if (this._buildType === null) return;
+    if (BUILDING_TYPES.length === 0) return;
     const idx = (BUILDING_TYPES.indexOf(this._buildType) + 1) % BUILDING_TYPES.length;
     const next = BUILDING_TYPES[idx];
     if (next === this._buildType) return;

@@ -53,6 +53,30 @@ export function getBodyCenterLocalY(
   return getBodyTopY(bodyShape, unitRadius) * 0.5;
 }
 
+export function getWheelBodyCenterHeightY(
+  bodyShape: UnitBodyShape,
+  unitRadius: number,
+  wheelRadiusFrac: number,
+): number {
+  return Math.max(1, unitRadius * wheelRadiusFrac) * 2
+    + getBodyCenterLocalY(bodyShape, unitRadius);
+}
+
+export function getTreadBodyCenterHeightY(
+  bodyShape: UnitBodyShape,
+  unitRadius: number,
+): number {
+  return TREAD_CHASSIS_LIFT_Y + getBodyCenterLocalY(bodyShape, unitRadius);
+}
+
+export function getLegBodyCenterHeightY(
+  bodyShape: UnitBodyShape,
+  unitRadius: number,
+): number {
+  return unitRadius * LEG_BODY_LIFT_FRAC
+    + getBodyCenterLocalY(bodyShape, unitRadius);
+}
+
 /** Default body center height implied by the locomotion rig and body
  *  shape. Unit blueprints should normally author this value directly
  *  (or use this helper) so simulation center, renderer center, and

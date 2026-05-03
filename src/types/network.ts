@@ -61,6 +61,9 @@ const _UNIT_TYPES: readonly string[] = [
   'tick', 'tarantula', 'loris', 'daddy', 'widow',
   'formik', 'hippo', 'commander',
 ];
+export function getNetworkUnitTypeIds(): readonly string[] {
+  return _UNIT_TYPES;
+}
 const _UNIT_TYPE_TO_CODE: Record<string, number> = {};
 for (let i = 0; i < _UNIT_TYPES.length; i++) _UNIT_TYPE_TO_CODE[_UNIT_TYPES[i]] = i;
 // Sentinel for "type not in the table" — clients fall back to
@@ -78,6 +81,9 @@ export function codeToUnitType(c: number): string {
 const _BUILDING_TYPES: readonly string[] = [
   'solar', 'wind', 'factory', 'extractor',
 ];
+export function getNetworkBuildingTypeIds(): readonly string[] {
+  return _BUILDING_TYPES;
+}
 const _BUILDING_TYPE_TO_CODE: Record<string, number> = {};
 for (let i = 0; i < _BUILDING_TYPES.length; i++) _BUILDING_TYPE_TO_CODE[_BUILDING_TYPES[i]] = i;
 export const BUILDING_TYPE_UNKNOWN = 0xff;
@@ -109,7 +115,7 @@ export function codeToProjectileType(c: number): 'projectile' | 'beam' | 'laser'
   return _CODE_TO_PROJECTILE_TYPE[c] ?? 'projectile';
 }
 import type { Command } from './commands';
-import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
+import type { TurretAudioId, ImpactContext, SimDeathContext, SimEventSourceType } from './combat';
 import type { Vec2, Vec3 } from './vec2';
 import type { TerrainMapShape, TerrainShape } from './terrain';
 
@@ -182,6 +188,8 @@ export type NetworkServerSnapshotSimEvent = {
     | 'forceFieldStop'
     | 'projectileExpire';
   turretId: TurretAudioId;
+  sourceType?: SimEventSourceType;
+  sourceKey?: string;
   /** Event origin in 3D sim coords. See SimEvent in types/combat.ts. */
   pos: Vec3;
   entityId?: number;
@@ -376,9 +384,6 @@ export type NetworkServerSnapshotTurret = {
       drag: number;
       /** Pitch (vertical aim, elevation angle). */
       pitch: number;
-    };
-    pos: {
-      offset: Vec2;
     };
   };
   targetId?: number;

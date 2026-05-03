@@ -1,10 +1,9 @@
 import type { Entity } from './types';
-
-export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
-export const SOLAR_BUILDING_VISUAL_HEIGHT = 52;
-export const WIND_BUILDING_VISUAL_HEIGHT = 250;
-export const FACTORY_BASE_VISUAL_HEIGHT = 30;
-export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 50;
+import {
+  DEFAULT_BUILDING_VISUAL_HEIGHT,
+  FACTORY_BASE_VISUAL_HEIGHT,
+  getBuildingBlueprint,
+} from './blueprints';
 
 function factoryVisualTopAboveGround(width: number, depth: number): number {
   const minDim = Math.min(width, depth);
@@ -24,17 +23,19 @@ export function getBuildingBaseZ(entity: Entity): number {
 export function getBuildingVisualTopAboveGround(entity: Entity): number {
   const width = entity.building?.width ?? 100;
   const depth = entity.building?.height ?? 100;
-  switch (entity.buildingType) {
-    case 'solar':
-      return SOLAR_BUILDING_VISUAL_HEIGHT;
-    case 'wind':
-      return WIND_BUILDING_VISUAL_HEIGHT;
-    case 'factory':
+  if (!entity.buildingType) {
+    return entity.building?.depth ?? DEFAULT_BUILDING_VISUAL_HEIGHT;
+  }
+  const blueprint = getBuildingBlueprint(entity.buildingType);
+  switch (blueprint.anchorProfile) {
+    case 'constantVisualTop':
+      return blueprint.visualHeight;
+    case 'factoryTower':
       return factoryVisualTopAboveGround(width, depth);
-    case 'extractor':
-      return EXTRACTOR_BUILDING_VISUAL_HEIGHT;
+    case 'collisionDepth':
+      return entity.building?.depth ?? blueprint.visualHeight;
     default:
-      return entity.building?.depth ?? DEFAULT_BUILDING_VISUAL_HEIGHT;
+      return blueprint.visualHeight;
   }
 }
 
