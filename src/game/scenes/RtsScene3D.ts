@@ -1737,6 +1737,14 @@ export class RtsScene3D {
     return this.localPlayerId;
   }
 
+  /** The OrbitCamera instance driving the rendered camera. Exposed
+   *  for read-only consumers (e.g. CameraTutorial) that need to
+   *  watch yaw / target / distance for input-detection — keeps
+   *  ThreeApp itself private to the scene. */
+  public getOrbitCamera(): import('../render3d/OrbitCamera').OrbitCamera {
+    return this.threeApp.orbit;
+  }
+
   public markSelectionDirty(): void {
     this.selectionDirty = true;
     this._selectedEntityCacheDirty = true;

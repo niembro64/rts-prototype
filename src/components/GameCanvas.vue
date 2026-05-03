@@ -20,6 +20,8 @@ import SelectionPanel, {
 import TopBar, { type EconomyInfo } from './TopBar.vue';
 import Minimap from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
+import CameraTutorial from './CameraTutorial.vue';
+import { persist, readPersisted } from '../persistence';
 import SoundTestModal from './SoundTestModal.vue';
 import type { MinimapData } from '@/types/ui';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
@@ -270,6 +272,23 @@ const localPlayerId = ref<PlayerId>(1);
 const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
+
+// Camera tutorial — shown the first time the player enters a real
+// game. Three flashing cards (ZOOM / PAN / ROTATE) clear themselves
+// when the player performs each input. Once all three are cleared
+// the completion is persisted and the overlay never shows again.
+// Persistence key uses the same prefix as other RTS settings so a
+// localStorage clear wipes it alongside the rest of the user's
+// preferences. Reset by clearing the key from devtools.
+const CAMERA_TUTORIAL_DONE_KEY = 'rts-camera-tutorial-done';
+const cameraTutorialDone = ref(readPersisted(CAMERA_TUTORIAL_DONE_KEY) === 'true');
+function handleCameraTutorialDone(): void {
+  cameraTutorialDone.value = true;
+  persist(CAMERA_TUTORIAL_DONE_KEY, 'true');
+}
+function getActiveOrbitCamera(): import('../game/render3d/OrbitCamera').OrbitCamera | null {
+  return gameInstance?.getScene()?.getOrbitCamera() ?? null;
+}
 const networkRole = ref<NetworkRole | null>(null);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 const networkNotice = ref<string | null>(null);
@@ -3240,6 +3259,16 @@ onUnmounted(() => {
       @set-mirrors-enabled="(e) => setMirrorsEnabled(e)"
       @set-force-fields-enabled="(e) => setForceFieldsEnabled(e)"
       @reset-defaults="resetDemoDefaults"
+    />
+
+    <!-- Camera tutorial — only shown during a REAL game and only
+         until the player has performed all three movements once.
+         pointer-events are off on the overlay so it never blocks
+         clicks on units or terrain underneath. -->
+    <CameraTutorial
+      v-if="gameStarted && currentBattleMode === 'real' && !cameraTutorialDone"
+      :get-orbit="getActiveOrbitCamera"
+      @done="handleCameraTutorialDone"
     />
 
     <!-- Spectate mode toggle — restored. When the user has hidden
