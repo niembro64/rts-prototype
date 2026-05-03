@@ -83,29 +83,12 @@ export const TREAD_HEIGHT = TREAD_CHASSIS_LIFT_Y;
 const TREAD_Y = TREAD_HEIGHT / 2;
 
 /** Vertical offset (world units) by which the unit's BODY (chassis,
- *  turrets, mirrors, force-field) sits above the ground plane —
- *  the LOWEST visible parts (treads / wheels / feet) touch the
- *  ground at y ≈ 0, the body hovers above so the locomotion looks
- *  like it's actually carrying the chassis instead of being embedded
- *  in it.
+ *  turrets, mirrors, force-field) sits above the ground plane.
  *
- *    treads → TREAD_HEIGHT (chassis sits on top of the slab)
- *    wheels → 2 · wheel_radius (chassis sits on top of the wheels)
- *    legs   → unitRadius · LEG_BODY_LIFT_FRAC (body floats above the
- *             feet so the spider-style "body suspended on legs" look
- *             reads — without this the body sphere's bottom touches
- *             the ground at the same height as the feet, and
- *             nothing visibly distinguishes the body from the
- *             locomotion). The hip joint stays at the body segment's
- *             mid-Y in chassis-local coords (legs use their own
- *             worldGroup math, unaffected by liftGroup), so after
- *             the lift the hip falls naturally inside the lower
- *             half of the body sphere — legs read as emerging from
- *             the body's underside, which is the natural
- *             quadruped / arachnid look.
- *             Weapon-as-body units can author bodyCenterHeight plus
- *             legAttachHeightFrac to pin the hip directly to the visible
- *             turret body's underside.
+ *  Runtime rule: the unit blueprint's `bodyCenterHeight` is the hard
+ *  source of truth. Chassis lift is derived from it so visual body
+ *  center, sim center, turret mounts, and locomotion attachment all
+ *  live in the same terrain-up coordinate system.
  *
  *  Returned in WORLD UNITS — used as `liftGroup.position.y` in
  *  Render3DEntities. */
@@ -116,23 +99,6 @@ export function getChassisLift(
   return getChassisLiftY(blueprint, unitRadius);
 }
 const WHEEL_COLOR = 0x2a2f36;
-
-function getLegHipLiftY(
-  blueprint: import('@/types/blueprints').UnitBlueprint,
-  unitRadius: number,
-): number {
-  if (
-    blueprint.hideChassis === true &&
-    blueprint.legAttachHeightFrac !== undefined &&
-    blueprint.bodyCenterHeight !== undefined
-  ) {
-    const replacementHead = blueprint.turrets.find((t) => t.headCenterHeightFrac !== undefined);
-    if (replacementHead?.headCenterHeightFrac !== undefined) {
-      return blueprint.bodyCenterHeight - replacementHead.headCenterHeightFrac * unitRadius;
-    }
-  }
-  return 0;
-}
 
 // Vertical layout for legs. Feet stay on the ground, hips attach at
 // each leg's per-body-segment midpoint — computed once when the leg
@@ -450,10 +416,10 @@ export function buildLocomotion(
       return mesh;
     }
     case 'legs': {
-      const hipLiftY = getLegHipLiftY(bp, unitRadius);
+      const chassisLiftY = getChassisLift(bp, unitRadius);
       const mesh = buildLegs(
         worldGroup, entity, unitRadius, loc.style, loc.config,
-        gfx.legs, bp.bodyShape, hipLiftY, bp.legAttachHeightFrac, mapWidth, mapHeight, legRenderer,
+        gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac, mapWidth, mapHeight, legRenderer,
       );
       if (mesh) mesh.lodKey = lodKey;
       return mesh;
@@ -585,7 +551,7 @@ function buildLegs(
   cfg: BlueprintLegConfig,
   legLod: LegLod,
   bodyShape: UnitBodyShape,
-  hipLiftY: number,
+  chassisLiftY: number,
   legAttachHeightFrac: number | undefined,
   mapWidth: number,
   mapHeight: number,
@@ -660,14 +626,13 @@ function buildLegs(
       footJointSlot = legRenderer.allocJoint();
     }
 
-    // Hip Y defaults to the vertical mid-point of whichever body
+    // Hip Y defaults to the lifted vertical mid-point of whichever body
     // segment the leg sits under. Units whose visible body is a turret
-    // can author legAttachHeightFrac so legs attach to that visible body's
-    // underside instead of the hidden logical chassis segment.
-    const attachY = legAttachHeightFrac !== undefined
+    // can author legAttachHeightFrac as an absolute terrain-up height
+    // fraction, in the same coordinate system as turret mount.z.
+    const hipY = legAttachHeightFrac !== undefined
       ? legAttachHeightFrac * r
-      : getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
-    const hipY = hipLiftY + attachY;
+      : chassisLiftY + getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
 
     legs.push({
       config: legCfg,
@@ -709,7 +674,10 @@ function buildLegs(
   // there's no first-frame flicker from (0,0,0). Each leg's
   // phaseShift01 (set just above) decides whether it starts AT rest
   // or a full stepRadius backward of rest — see initializeLegAt.
-  for (const leg of legs) initializeLegAt(leg, entity, r, mapWidth, mapHeight, stepRadius);
+  const bodyCenterHeight = getUnitBodyCenterHeight(entity.unit);
+  for (const leg of legs) {
+    initializeLegAt(leg, entity, bodyCenterHeight, mapWidth, mapHeight, stepRadius);
+  }
 
   return {
     type: 'legs',

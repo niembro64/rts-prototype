@@ -1,7 +1,7 @@
 // Simulation entity types extracted from game/sim/types.ts
 
 import type { BarrelShape } from './config';
-import type { Vec2, Vec3 } from './vec2';
+import type { Vec3 } from './vec2';
 
 // Entity ID type for deterministic identification
 export type EntityId = number;
@@ -200,7 +200,7 @@ export type Unit = {
    *  here, but it was the unit's authored body size, not a collider. */
   unitRadiusCollider: { shot: number; push: number };
   /** Authored body radius (world units) — the unit's visible chassis
-   *  size. Drives turret head defaults, chassis-mount offsets,
+   *  size. Drives turret head defaults, turret mount scaling,
    *  mirror-panel sizing, click hit radius, and barrel placement. */
   bodyRadius: number;
   /** World-space height of the unit's authored body center above terrain.
@@ -430,16 +430,20 @@ export type Turret = {
   pitchVelocity: number;
   turnAccel: number;
   drag: number;
-  offset: Vec2;
+  /** Chassis-local 3D weapon pivot in world units. Derived once from
+   *  the owning unit blueprint's `turrets[i].mount` and used as the
+   *  source of truth for sim targeting/firing and client rendering. */
+  mount: Vec3;
   /** Cached authoritative world-space mount position, written only by
    *  updateWeaponWorldKinematics. This is sim-only hot-path state;
-   *  snapshots still serialize offset/rotation/pitch, not this derived
+   *  snapshots still serialize mount x/y compatibility data plus
+   *  rotation/pitch, not this derived
    *  value. */
   worldPos?: Vec3;
   /** Cached world-space mount velocity computed by
    *  updateWeaponWorldKinematics from worldPos deltas when current, or
    *  from the carrier's velocity as a stale/first-tick fallback. This is
-   *  the turret's own 3D motion, so moving/tilted/offset mounts feed
+   *  the turret's own 3D motion, so moving/tilted/lateral mounts feed
    *  projectile lead and inherited muzzle velocity correctly. */
   worldVelocity?: Vec3;
   /** Simulation tick corresponding to worldPos/worldVelocity. */

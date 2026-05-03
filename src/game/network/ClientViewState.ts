@@ -65,6 +65,10 @@ const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 // Gravity imported from config.ts — single value shared with server
 // sim and every other falling-thing system.
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 // Reusable buffer for client-side force field prediction (avoids allocations per frame)
 type ActiveForceField = {
   weaponX: number;
@@ -579,7 +583,7 @@ export class ClientViewState {
     if (
       cf == null ||
       (cf & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0 ||
-      server.unit?.turrets !== undefined
+      Array.isArray(server.unit?.turrets)
     ) {
       this.activeUnitPredictionIds.add(server.id);
       this.dirtyUnitRenderIds.add(server.id);
@@ -971,8 +975,8 @@ export class ClientViewState {
         entity.unit.unitRadiusCollider.shot = su.collider.shot;
         entity.unit.unitRadiusCollider.push = su.collider.push;
       }
-      if (su.bodyRadius !== undefined) entity.unit.bodyRadius = su.bodyRadius;
-      if (su.bodyCenterHeight !== undefined) {
+      if (isFiniteNumber(su.bodyRadius)) entity.unit.bodyRadius = su.bodyRadius;
+      if (isFiniteNumber(su.bodyCenterHeight)) {
         entity.unit.bodyCenterHeight = su.bodyCenterHeight;
       }
       if (typeof su.unitType === 'number') {
@@ -980,7 +984,7 @@ export class ClientViewState {
         entity.unit.unitType = unitType;
         entity.unit.locomotion = getUnitLocomotion(unitType);
       }
-      if (su.mass !== undefined) entity.unit.mass = su.mass;
+      if (isFiniteNumber(su.mass)) entity.unit.mass = su.mass;
 
       // On full keyframes, turret mounts/configs are static blueprint
       // data. Rebuild them from the unit type + body radius and then
@@ -1501,7 +1505,7 @@ export class ClientViewState {
         const mount = getTurretWorldMount(
           entity.transform.x, entity.transform.y, unitGroundZ,
           unitCos, unitSin,
-          weapon.offset.x, weapon.offset.y, getTurretMountHeight(entity, i),
+          weapon.mount.x, weapon.mount.y, getTurretMountHeight(entity, i),
           getSurfaceNormal(
             entity.transform.x, entity.transform.y,
             this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE,
@@ -1962,7 +1966,7 @@ export class ClientViewState {
         const mount = getTurretWorldMount(
           source.transform.x, source.transform.y, unitGroundZ,
           unitCos, unitSin,
-          weapon.offset.x, weapon.offset.y, getTurretMountHeight(source, spawn.turretIndex),
+          weapon.mount.x, weapon.mount.y, getTurretMountHeight(source, spawn.turretIndex),
           sn,
         );
         const tip = getBarrelTip(

@@ -4,6 +4,7 @@
 import type { Turret } from './types';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
+import { createRuntimeTurretMount } from './turretMounts';
 
 // Re-export types (still used by many files)
 export type { LegStyle } from './blueprints/types';
@@ -15,7 +16,6 @@ export type LocomotionType = 'wheels' | 'treads' | 'legs';
 export function createTurretsFromDefinition(unitId: string, radius: number): Turret[] {
   const bp = getUnitBlueprint(unitId);
   const turrets: Turret[] = [];
-  const mounts = bp.chassisMounts;
 
   for (let i = 0; i < bp.turrets.length; i++) {
     const mount = bp.turrets[i];
@@ -24,11 +24,7 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
     const turnAccel = turretConfig.angular.turnAccel;
     const drag = turretConfig.angular.drag;
 
-    // For multi-turret units (widow), offsets come from chassisMounts (world-space fractions of radius)
-    // For single-turret units, offsets are 0,0
-    const chassisMount = mounts[Math.min(i, mounts.length - 1)];
-    const offsetX = chassisMount.x * radius;
-    const offsetY = chassisMount.y * radius;
+    const localMount = createRuntimeTurretMount(mount, radius);
 
     turrets.push({
       config: { ...turretConfig },
@@ -42,7 +38,7 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
       pitchVelocity: 0,
       turnAccel,
       drag,
-      offset: { x: offsetX, y: offsetY },
+      mount: localMount,
       worldPos: { x: 0, y: 0, z: 0 },
       worldVelocity: { x: 0, y: 0, z: 0 },
     });

@@ -633,13 +633,13 @@ export class Debris3D {
     const hostHeadRadiusForStack = unitHasMirrorsHere
       ? turretHeadRadiusFromBodyRadius(r, hostTurretBlueprint?.bodyRadius)
       : 0;
-    const hostChassisMount = bp.chassisMounts[0] ?? { x: 0, y: 0 };
+    const hostTurretMount = bp.turrets[0]?.mount ?? { x: 0, y: 0, z: bp.bodyCenterHeight / r };
     const hostBodyTopYForStack = unitHasMirrorsHere && bp.turrets[0]
       ? getBodyMountTopY(
           bodyShape,
           r,
-          hostChassisMount.x * r,
-          hostChassisMount.y * r,
+          hostTurretMount.x * r,
+          hostTurretMount.y * r,
         )
       : bodyTopY;
 
@@ -676,10 +676,9 @@ export class Debris3D {
       const mount = bp.turrets[ti];
       let tb;
       try { tb = getTurretBlueprint(mount.turretId); } catch { continue; }
-      const chassisMount = bp.chassisMounts[Math.min(ti, bp.chassisMounts.length - 1)]
-        ?? { x: 0, y: 0 };
-      const tox = chassisMount.x * r;
-      const toz = chassisMount.y * r;
+      const localMount = mount.mount;
+      const tox = localMount.x * r;
+      const toz = localMount.y * r;
       // Live turret pose at death (when supplied by the death event
       // handler). Without it we fall back to chassis-aligned, which
       // is only correct when the turret happened to be facing
@@ -695,14 +694,10 @@ export class Debris3D {
       // same vertical span. Per-turret bodyRadius takes precedence over
       // the auto-derived default — matches Render3DEntities.buildTurretMesh.
       const headR = turretHeadRadiusFromBodyRadius(r, tb.bodyRadius);
-      // Turret head sphere is centered on the unit body center —
-      // matches Render3DEntities. mountY = bodyCenterHeight − lift −
-      // headR puts the head sphere center at world y = bodyCenterHeight.
-      const bodyMountTopY = bp.bodyCenterHeight - chassisLiftY - headR;
-      const turretMountY = unitHasMirrorsHere && ti > 0
-        ? hostBodyTopYForStack + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT
-        : bodyMountTopY;
-      const shotHeight = chassisLiftY + turretMountY + headR;
+      const stackedMirrorHeight = hostBodyTopYForStack + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT;
+      const shotHeight = unitHasMirrorsHere && ti > 0
+        ? chassisLiftY + stackedMirrorHeight
+        : localMount.z * r;
 
       // Skip the head + barrels for the mirror-host turret — its visible
       // body IS the mirror panels, not a separate cylinder. Render3DEntities
@@ -820,12 +815,13 @@ export class Debris3D {
       // here (1-wu Z thickness on the panel for mid-tumble visibility,
       // a long thin box for the arm). Same liftGroup convention as
       // Render3DEntities: subtract chassisLift so the live world-y
-      // lands at bp.bodyCenterHeight after debris adds chassisLiftY.
+      // lands at the blueprint-authored mirror turret mount after debris
+      // adds chassisLiftY.
       if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
         const side = r * 2;
         const armLength = r * MIRROR_ARM_LENGTH_FRAC;
         const armThickness = Math.max(r * 0.18, 0.5);
-        const panelCenterY = bp.bodyCenterHeight - chassisLiftY;
+        const panelCenterY = localMount.z * r - chassisLiftY;
         const cY = Math.cos(chassisYaw);
         const sY = Math.sin(chassisYaw);
         for (let pi = 0; pi < tb.mirrorPanels.length; pi++) {

@@ -9,8 +9,9 @@
 // at ARM'S LENGTH from the turret body sphere along the turret's
 // facing direction. The arm length is also `bodyRadius` — so the
 // panel's near edge touches the unit body and the panel center sits
-// at the body's outer edge. Vertical position is `bodyCenterHeight`
-// so the panel center aligns horizontally with the turret head.
+// at the body's outer edge. Vertical position comes from the mirror
+// turret's blueprint-authored 3D mount so panel collision and visuals
+// stay attached to the same pivot as the turret.
 // Attachment cylinder + offset are rendered together; the sim only
 // needs the panel center offset (offsetX = bodyRadius, offsetY = 0)
 // and angle = 0 (panel normal = turret yaw direction).
@@ -35,14 +36,14 @@ export function buildMirrorPanelCache(
   const unitBodyRadius = bp.bodyRadius;
   const halfSide = unitBodyRadius;
   const armLength = unitBodyRadius * MIRROR_ARM_LENGTH_FRAC;
-  const centerY = bp.bodyCenterHeight;
-  const baseY = centerY - halfSide;
-  const topY = centerY + halfSide;
   let mirrorBoundRadius = 0;
 
   for (const mount of bp.turrets) {
     const tb = getTurretBlueprint(mount.turretId);
     if (!tb.mirrorPanels) continue;
+    const centerY = mount.mount.z * unitBodyRadius;
+    const baseY = centerY - halfSide;
+    const topY = centerY + halfSide;
 
     for (let i = 0; i < tb.mirrorPanels.length; i++) {
       panelsOut.push({

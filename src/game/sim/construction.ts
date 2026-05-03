@@ -4,7 +4,10 @@ import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
 import { isBuildableTerrainFootprint } from './Terrain';
-import { REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../config';
+import {
+  REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
+  REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+} from '../../config';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { ensureSolarCollectorState } from './solarCollector';
 import { applyCompletedBuildingEffects, removeCompletedBuildingEffects } from './buildingCompletion';
@@ -187,7 +190,13 @@ export class ConstructionSystem {
 
     // Add factory component if it's a factory
     if (buildingType === 'factory') {
-      const wp = computeFactoryWaypoint(worldPos.x, worldPos.y, world.mapWidth, world.mapHeight, 0.5);
+      const wp = computeFactoryWaypoint(
+        worldPos.x,
+        worldPos.y,
+        world.mapWidth,
+        world.mapHeight,
+        REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
+      );
       entity.factory = {
         buildQueue: [],
         currentBuildProgress: 0,

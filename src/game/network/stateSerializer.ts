@@ -733,109 +733,21 @@ function getPooledVelocityUpdate(): PooledVelocityUpdate {
   return update;
 }
 
-export type SnapshotInterest = (entity: Entity) => boolean;
-
-export type SnapshotInterestBounds2D = {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-  hasOwnedEntity?: boolean;
-};
-
 export type SerializeGameStateOptions = {
   /**
-   * Delta histories are per recipient. Without this, AOI-filtered
-   * snapshots would leak prev-state/removal bookkeeping across players.
+   * Delta histories are per recipient so prev-state/removal bookkeeping
+   * does not leak across players.
    */
   trackingKey?: string | number;
   dirtyEntityIds?: readonly EntityId[];
   dirtyEntityFields?: readonly number[];
   removedEntityIds?: readonly EntityId[];
-  interest?: SnapshotInterest;
-  /**
-   * Entities that may have entered this recipient's interest set even if
-   * they did not mutate this tick. Used to discover AOI entrants without
-   * hashing the whole world in the serializer.
-   */
-  candidateEntityIds?: readonly EntityId[];
-  /**
-   * Same AOI rectangle used for entity interest. Side-channel visual
-   * streams use this to avoid sending off-screen/off-AOI transient
-   * effects to each recipient.
-   */
-  interestBounds?: SnapshotInterestBounds2D;
   /**
    * Recipient used for owner-aware diff resolution. Owned entities keep
    * baseline precision; observed entities can use coarser thresholds.
    */
   recipientPlayerId?: PlayerId;
 };
-
-function boundsContainsPoint2D(
-  bounds: SnapshotInterestBounds2D | undefined,
-  x: number,
-  y: number,
-): boolean {
-  return !bounds ||
-    (bounds.hasOwnedEntity !== false &&
-      x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY);
-}
-
-function segmentIntersectsBounds2D(
-  bounds: SnapshotInterestBounds2D | undefined,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-): boolean {
-  if (!bounds) return true;
-  if (bounds.hasOwnedEntity === false) return false;
-  if (boundsContainsPoint2D(bounds, x1, y1) || boundsContainsPoint2D(bounds, x2, y2)) return true;
-  if (
-    Math.max(x1, x2) < bounds.minX ||
-    Math.min(x1, x2) > bounds.maxX ||
-    Math.max(y1, y2) < bounds.minY ||
-    Math.min(y1, y2) > bounds.maxY
-  ) {
-    return false;
-  }
-
-  let t0 = 0;
-  let t1 = 1;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const clip = (p: number, q: number): boolean => {
-    if (p === 0) return q >= 0;
-    const t = q / p;
-    if (p < 0) {
-      if (t > t1) return false;
-      if (t > t0) t0 = t;
-    } else {
-      if (t < t0) return false;
-      if (t < t1) t1 = t;
-    }
-    return true;
-  };
-
-  return clip(-dx, x1 - bounds.minX) &&
-    clip(dx, bounds.maxX - x1) &&
-    clip(-dy, y1 - bounds.minY) &&
-    clip(dy, bounds.maxY - y1);
-}
-
-function beamPathIntersectsBounds2D(
-  bounds: SnapshotInterestBounds2D | undefined,
-  points: readonly { x: number; y: number }[],
-): boolean {
-  if (points.length < 2) return false;
-  for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1];
-    const b = points[i];
-    if (segmentIntersectsBounds2D(bounds, a.x, a.y, b.x, b.y)) return true;
-  }
-  return false;
-}
 
 // Serialize WorldState to network format.
 // When isDelta=true, only changed/new entities are included plus removedEntityIds.
@@ -856,8 +768,6 @@ export function serializeGameState(
   options?: SerializeGameStateOptions
 ): NetworkServerSnapshot {
   const tracking = getDeltaTrackingState(options?.trackingKey);
-  const interest = options?.interest;
-  const interestBounds = options?.interestBounds;
   const recipientPlayerId = options?.recipientPlayerId;
   const tick = world.getTick();
 
@@ -876,31 +786,7 @@ export function serializeGameState(
   // Serialize units and buildings (projectiles handled via spawn/despawn events)
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
   const acceptsEntity = (entity: Entity): boolean =>
-    (entity.type === 'unit' || entity.type === 'building') &&
-    (!interest || interest(entity));
-  const acceptsEntityId = (id: EntityId | undefined): boolean => {
-    if (id === undefined) return false;
-    const entity = world.getEntity(id);
-    return !!entity && acceptsEntity(entity);
-  };
-  const acceptsProjectileSpawn = (spawn: ProjectileSpawnEvent): boolean => {
-    if (!interestBounds) return true;
-    if (acceptsEntityId(spawn.sourceEntityId) || acceptsEntityId(spawn.targetEntityId)) return true;
-    if (boundsContainsPoint2D(interestBounds, spawn.pos.x, spawn.pos.y)) return true;
-    if (
-      spawn.beam &&
-      segmentIntersectsBounds2D(
-        interestBounds,
-        spawn.beam.start.x,
-        spawn.beam.start.y,
-        spawn.beam.end.x,
-        spawn.beam.end.y,
-      )
-    ) {
-      return true;
-    }
-    return false;
-  };
+    entity.type === 'unit' || entity.type === 'building';
 
   const forgetTrackedEntity = (id: EntityId, emitRemoval: boolean): void => {
     const wasVisible = tracking.prevEntityIds.delete(id);
@@ -928,17 +814,6 @@ export function serializeGameState(
       }
     }
 
-    // AOI departures are client-local removals: the entity still exists
-    // in the world, but this recipient should stop retaining it.
-    if (interest) {
-      for (const id of tracking.prevEntityIds) {
-        const entity = world.getEntity(id);
-        if (!entity || !acceptsEntity(entity)) {
-          forgetTrackedEntity(id, true);
-        }
-      }
-    }
-
     const dirtyIds = options?.dirtyEntityIds;
     const dirtyFieldsList = options?.dirtyEntityFields;
     if (!dirtyIds) {
@@ -963,23 +838,6 @@ export function serializeGameState(
         const netEntity = serializeEntity(entity, changedFields, tracking.protocolSeeded);
         if (netEntity) _entityBuf.push(netEntity);
         copyPrevState(_nextStateScratch, prev);
-      }
-    }
-
-    // New AOI entrants may not be dirty (for example, an idle enemy that
-    // became relevant because this player's front line moved). Candidate
-    // lists let the server discover those without hashing every entity.
-    if (interest && options?.candidateEntityIds) {
-      for (let i = 0; i < options.candidateEntityIds.length; i++) {
-        const id = options.candidateEntityIds[i];
-        if (tracking.prevEntityIds.has(id)) continue;
-        const entity = world.getEntity(id);
-        if (!entity || !acceptsEntity(entity)) continue;
-        tracking.prevEntityIds.add(id);
-        const prev = getPrevState(tracking, id);
-        captureEntityState(entity, prev);
-        const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded);
-        if (netEntity) _entityBuf.push(netEntity);
       }
     }
   } else {
@@ -1019,8 +877,7 @@ export function serializeGameState(
     for (const id of tracking.currentEntityIds) {
       tracking.prevEntityIds.add(id);
     }
-    // Clean up prevStates for entities that no longer exist or are
-    // outside this recipient's AOI after a keyframe.
+    // Clean up prevStates for entities that no longer exist after a keyframe.
     for (const id of tracking.prevStates.keys()) {
       if (!tracking.currentEntityIds.has(id)) {
         tracking.prevStates.delete(id);
@@ -1038,7 +895,8 @@ export function serializeGameState(
     delete _economyBuf[key];
   }
   _economyKeys.length = 0;
-  for (let playerId = 1; playerId <= 6; playerId++) {
+  const economyPlayerCount = Math.max(0, Math.floor(world.playerCount));
+  for (let playerId = 1; playerId <= economyPlayerCount; playerId++) {
     if (recipientPlayerId !== undefined && playerId !== recipientPlayerId) continue;
     const eco = economyManager.getEconomy(playerId as PlayerId);
     if (eco) {
@@ -1068,13 +926,6 @@ export function serializeGameState(
     _sprayBuf.length = 0;
     for (let i = 0; i < sprayTargets.length; i++) {
       const st = sprayTargets[i];
-      if (
-        interestBounds &&
-        !boundsContainsPoint2D(interestBounds, st.source.pos.x, st.source.pos.y) &&
-        !boundsContainsPoint2D(interestBounds, st.target.pos.x, st.target.pos.y)
-      ) {
-        continue;
-      }
       const out = getPooledSprayTarget();
       out.source.id = st.source.id;
       out._sourcePos.x = st.source.pos.x;
@@ -1106,13 +957,6 @@ export function serializeGameState(
     _audioBuf.length = 0;
     for (let i = 0; i < audioEvents.length; i++) {
       const ae = audioEvents[i];
-      if (
-        interestBounds &&
-        !boundsContainsPoint2D(interestBounds, ae.pos.x, ae.pos.y) &&
-        !acceptsEntityId(ae.entityId)
-      ) {
-        continue;
-      }
       const out = getPooledSimEvent();
       out.type = ae.type;
       out.turretId = ae.turretId;
@@ -1133,7 +977,6 @@ export function serializeGameState(
     _spawnBuf.length = 0;
     for (let i = 0; i < projectileSpawns.length; i++) {
       const ps = projectileSpawns[i];
-      if (!acceptsProjectileSpawn(ps)) continue;
       const out = getPooledProjectileSpawn();
       out.id = ps.id;
       out._pos.x = ps.pos.x;
@@ -1190,7 +1033,6 @@ export function serializeGameState(
       const vu = projectileVelocityUpdates[i];
       const projectile = world.getEntity(vu.id)?.projectile;
       if (!shouldSendProjectileSideChannel(projectile?.ownerId, recipientPlayerId, tick)) continue;
-      if (interestBounds && !boundsContainsPoint2D(interestBounds, vu.pos.x, vu.pos.y)) continue;
       const out = getPooledVelocityUpdate();
       out.id = vu.id;
       out._pos.x = vu.pos.x;
@@ -1222,7 +1064,6 @@ export function serializeGameState(
       if (!shouldSendProjectileSideChannel(proj.ownerId, recipientPlayerId, tick)) continue;
       const srcPts = proj.points;
       if (!srcPts || srcPts.length < 2) continue;
-      if (interestBounds && !beamPathIntersectsBounds2D(interestBounds, srcPts)) continue;
 
       const update = getPooledBeamUpdate();
       update.id = entity.id;
@@ -1477,8 +1318,8 @@ function serializeEntity(
           t.angular.acc = src.turnAccel;
           t.angular.drag = src.drag;
           t.angular.pitch = qRot(src.pitch);
-          t.pos.offset.x = src.offset.x;
-          t.pos.offset.y = src.offset.y;
+          t.pos.offset.x = src.mount.x;
+          t.pos.offset.y = src.mount.y;
           dst.targetId = src.target ?? undefined;
           dst.state = turretStateToCode(src.state);
           dst.currentForceFieldRange = src.forceField?.range;

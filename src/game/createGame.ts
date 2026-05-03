@@ -30,6 +30,7 @@ export function createGame(config: GameConfig): GameInstance {
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
       terrainCenter: config.terrainCenter,
+      terrainDividers: config.terrainDividers,
       terrainMapShape: config.terrainMapShape,
       backgroundMode,
       lobbyPreview,

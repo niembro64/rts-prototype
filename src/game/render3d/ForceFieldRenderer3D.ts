@@ -17,7 +17,6 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, Turret } from '../sim/types';
-import { getBodyMountTopY } from './BodyShape3D';
 import { getChassisLiftY } from '../math/BodyDimensions';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
@@ -113,8 +112,8 @@ type FieldMesh = {
   mountRadius: number;
   mountOffsetX: number;
   mountOffsetY: number;
+  mountZ: number;
   mountLiftY: number;
-  mountHeadCenterHeightFrac: number;
   localX: number;
   localY: number;
   localZ: number;
@@ -325,8 +324,8 @@ export class ForceFieldRenderer3D {
       mountRadius: -1,
       mountOffsetX: NaN,
       mountOffsetY: NaN,
+      mountZ: NaN,
       mountLiftY: NaN,
-      mountHeadCenterHeightFrac: NaN,
       localX: 0,
       localY: 0,
       localZ: 0,
@@ -338,49 +337,33 @@ export class ForceFieldRenderer3D {
   private updateMountCache(field: FieldMesh, unit: Entity, turret: Turret): void {
     const unitData = unit.unit!;
     const unitRadius = unitData.bodyRadius;
-    const offsetX = turret.offset.x;
-    const offsetY = turret.offset.y;
+    const offsetX = turret.mount.x;
+    const offsetY = turret.mount.y;
+    const mountZ = turret.mount.z;
     const unitType = unitData.unitType;
     let bp;
     try { bp = getUnitBlueprint(unitType); }
     catch { /* keep fallback */ }
     const mountLiftY = getChassisLiftY(bp, unitRadius);
-    const turretIndex = unit.turrets?.indexOf(turret) ?? -1;
-    const mountHeadCenterHeightFrac = bp?.turrets[turretIndex]?.headCenterHeightFrac ?? NaN;
     if (
       field.mountUnitType === unitType &&
       field.mountRadius === unitRadius &&
       field.mountOffsetX === offsetX &&
       field.mountOffsetY === offsetY &&
-      field.mountLiftY === mountLiftY &&
-      Object.is(field.mountHeadCenterHeightFrac, mountHeadCenterHeightFrac)
+      field.mountZ === mountZ &&
+      field.mountLiftY === mountLiftY
     ) {
       return;
     }
 
-    const mountTopY = Number.isFinite(mountHeadCenterHeightFrac)
-      ? mountHeadCenterHeightFrac * unitRadius
-      : bp?.hideChassis === true && unitData.bodyCenterHeight !== undefined
-      ? unitData.bodyCenterHeight - mountLiftY
-      : getBodyMountTopY(
-          bp?.bodyShape ?? {
-            kind: 'composite',
-            parts: [
-              { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
-              { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
-            ],
-          },
-          unitRadius,
-          offsetX, offsetY,
-        );
     field.mountUnitType = unitType;
     field.mountRadius = unitRadius;
     field.mountOffsetX = offsetX;
     field.mountOffsetY = offsetY;
+    field.mountZ = mountZ;
     field.mountLiftY = mountLiftY;
-    field.mountHeadCenterHeightFrac = mountHeadCenterHeightFrac;
     field.localX = offsetX;
-    field.localY = mountTopY + INSET_DEPTH_BELOW_DOME;
+    field.localY = mountZ - mountLiftY + INSET_DEPTH_BELOW_DOME;
     field.localZ = offsetY;
   }
 
@@ -621,16 +604,14 @@ export class ForceFieldRenderer3D {
         this.updateMountCache(field, unit, turret);
 
         // Chassis-local mount position. Force-field emitters are their
-        // visible turret body: authored head-center mounts are honored
-        // directly, otherwise the emitter sits on top of the nearest
-        // body segment selected by the chassisMount.
+        // visible turret body, and their pivot comes directly from the
+        // unit blueprint's authored 3D turret mount.
         //
-        // turret.offset is already in world units (chassisMount.{x,y}
-        // × radius, baked at unit-creation time). yawGroup has scale
-        // 1, so its local space is in world units relative to the
-        // chassis-bottom origin — these chassis-local coords write
-        // straight into emitter / zone / particle / arc positions
-        // and the scenegraph chain places them in world.
+        // turret.mount is already in world units, baked from the unit
+        // blueprint's 3D mount at unit-creation time. yawGroup has scale
+        // 1, so these chassis-local coords write straight into emitter /
+        // zone / particle / arc positions and the scenegraph chain
+        // places them in world.
         const localX = field.localX;
         const localY = field.localY;
         const localZ = field.localZ;

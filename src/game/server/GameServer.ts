@@ -7,7 +7,7 @@ import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities, spawnInitialBases, spawnMetalExtractorsOnDeposits, FIRST_PLAYER_ANGLE } from '../sim/spawn';
 import { CAPTURE_CONFIG } from '../../captureConfig';
 import { serializeGameState, resetDeltaTracking, resetDeltaTrackingForKey, resetProtocolSeeded } from '../network/stateSerializer';
-import type { SerializeGameStateOptions, SnapshotInterest } from '../network/stateSerializer';
+import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import type { NetworkServerSnapshot, NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -50,7 +50,7 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
-import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape } from '../sim/Terrain';
+import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape, setTerrainCenterShape, setTerrainDividersShape } from '../sim/Terrain';
 import { generateMetalDeposits } from '../../metalDepositConfig';
 
 export type { GameServerConfig } from '@/types/game';
@@ -76,13 +76,9 @@ const WATER_OUT_CACHE_BUCKET_SCALE = 10;
 // physics tick.
 const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
 type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
-const SNAPSHOT_AOI_PADDING = 1200;
-// FOW is not implemented yet, so AOI must not decide entity membership.
-// Keep this off until the game has a real visibility model. Per-recipient
-// snapshots still reduce fidelity through owner-aware delta thresholds
-// (`ownedEntityDelta` vs `observedEntityDelta`) and projectile side-channel
-// cadence, but every unit/building remains present in keyframes/deltas.
-const SNAPSHOT_ENTITY_AOI_CULLING_ENABLED = false;
+// Fog-of-war visibility is not implemented yet. Per-recipient snapshots
+// only reduce fidelity through owner-aware delta thresholds and projectile
+// side-channel cadence; every unit/building remains present in snapshots.
 const GRID_DEBUG_KEY_BIAS = 10000;
 const GRID_DEBUG_KEY_BASE = 20000;
 const GRID_DEBUG_KEY_Y_MULT = GRID_DEBUG_KEY_BASE;
@@ -95,20 +91,6 @@ type SnapshotListenerEntry = {
   playerId?: PlayerId;
   trackingKey: string;
   deltaTrackingKey: string;
-};
-
-type SnapshotInterestPlan = {
-  predicate?: SnapshotInterest;
-  candidateEntityIds?: EntityId[];
-  bounds?: SnapshotInterestBounds;
-};
-
-type SnapshotInterestBounds = {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-  hasOwnedEntity: boolean;
 };
 
 export class GameServer {
@@ -148,13 +130,6 @@ export class GameServer {
   private snapshotDirtyIdsBuf: EntityId[] = [];
   private snapshotDirtyFieldsBuf: number[] = [];
   private snapshotRemovedIdsBuf: EntityId[] = [];
-  private snapshotInterestPlansByPlayer: Map<PlayerId, SnapshotInterestPlan> = new Map();
-  private snapshotInterestBoundsByPlayer: Map<PlayerId, SnapshotInterestBounds> = new Map();
-  private snapshotInterestCandidateIdsByPlayer: Map<PlayerId, EntityId[]> = new Map();
-  private snapshotInterestPlayerIdsBuf: PlayerId[] = [];
-  private snapshotInterestBuildingIdsBuf: EntityId[] = [];
-  private snapshotInterestBuildingBoundsByPlayer: Map<PlayerId, SnapshotInterestBounds> = new Map();
-  private snapshotInterestBuildingCacheVersion: number = -1;
   private gridDebugCellsCache: NetworkServerSnapshotGridCell[] = [];
   private gridDebugSearchCellsCache: NetworkServerSnapshotGridCell[] = [];
   private gridDebugCellPool: NetworkServerSnapshotGridCell[] = [];
@@ -248,6 +223,8 @@ export class GameServer {
     // (which bakes terrain geometry once at construction) so every
     // downstream consumer reads the same surface.
     setTerrainTeamCount(this.playerIds.length);
+    setTerrainCenterShape(config.terrainCenter ?? 'lake');
+    setTerrainDividersShape(config.terrainDividers ?? 'lake');
     setTerrainMapShape(config.terrainMapShape ?? 'circle');
 
     // Metal deposits — same set across all clients (deterministic from
@@ -274,6 +251,7 @@ export class GameServer {
     // The physics engine is now fully 3D — same module for every path.
     this.physics = physics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     this.world = new WorldState(42, mapWidth, mapHeight);
+    this.world.playerCount = this.playerIds.length;
     this.world.metalDeposits = deposits;
     // Wire the heightmap into physics so ground contacts settle units
     // on top of their terrain cube tile AND project their velocity
@@ -338,29 +316,27 @@ export class GameServer {
     // AI player configuration
     const aiPlayerIds = config.aiPlayerIds ?? (this.backgroundMode ? [...this.playerIds] : []);
 
-    // Spawn initial entities
-    if (aiPlayerIds.length > 0) {
-      // AI game: full base with factories, solars, and commander per player
+    // Spawn initial entities. Only background/demo battles get full
+    // bases; real games, including offline games with AI players,
+    // start from commanders so their spawn layout matches hosted
+    // network games.
+    if (this.backgroundMode && aiPlayerIds.length > 0) {
       const constructionSystem = this.simulation.getConstructionSystem();
-      const entities = spawnInitialBases(this.world, constructionSystem, this.playerIds);
-      if (this.backgroundMode) {
-        entities.push(...spawnMetalExtractorsOnDeposits(this.world, constructionSystem, this.playerIds));
-      }
+      const entities = spawnInitialBases(this.world, constructionSystem, this.playerIds, 'demo');
+      entities.push(...spawnMetalExtractorsOnDeposits(this.world, constructionSystem, this.playerIds));
       this.createPhysicsBodies(entities);
-      this.simulation.setAiPlayerIds(aiPlayerIds);
 
       // Background mode: spawn a cluster of units near center for immediate combat
-      if (this.backgroundMode) {
-        spawnBackgroundUnitsStandalone(
-          this.world, this.physics, true,
-          constructionSystem.getGrid(),
-          this.backgroundAllowedTypes,
-        );
-      }
+      spawnBackgroundUnitsStandalone(
+        this.world, this.physics, true,
+        constructionSystem.getGrid(),
+        this.backgroundAllowedTypes,
+      );
     } else {
       const entities = spawnInitialEntities(this.world, this.playerIds);
       this.createPhysicsBodies(entities);
     }
+    this.simulation.setAiPlayerIds(aiPlayerIds);
   }
 
   private setupSimulationCallbacks(): void {
@@ -1055,18 +1031,12 @@ export class GameServer {
     const gridSearchCells = includeGridDebug ? this.gridDebugSearchCellsCache : undefined;
     const gridCellSize = includeGridDebug ? spatialGrid.getCellSize() : undefined;
 
-    this.prepareSnapshotInterestPlans();
-
     const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
-      const interest = this.getSnapshotInterestPlan(listener.playerId);
       const serializeOptions: SerializeGameStateOptions = {
         trackingKey: listener.deltaTrackingKey,
         dirtyEntityIds: this.snapshotDirtyIdsBuf,
         dirtyEntityFields: this.snapshotDirtyFieldsBuf,
         removedEntityIds: this.snapshotRemovedIdsBuf,
-        interest: interest.predicate,
-        candidateEntityIds: interest.candidateEntityIds,
-        interestBounds: interest.bounds,
         recipientPlayerId: listener.playerId,
       };
       const state = serializeGameState(
@@ -1195,188 +1165,6 @@ export class GameServer {
         }
       }
       this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
-    }
-  }
-
-  private getSnapshotInterestPlan(playerId?: PlayerId): SnapshotInterestPlan {
-    if (!SNAPSHOT_ENTITY_AOI_CULLING_ENABLED || playerId === undefined || this.backgroundMode) {
-      return {};
-    }
-    return this.snapshotInterestPlansByPlayer.get(playerId) ?? {};
-  }
-
-  private getSnapshotInterestBounds(playerId: PlayerId): SnapshotInterestBounds {
-    let bounds = this.snapshotInterestBoundsByPlayer.get(playerId);
-    if (!bounds) {
-      bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, hasOwnedEntity: false };
-      this.snapshotInterestBoundsByPlayer.set(playerId, bounds);
-    } else {
-      bounds.minX = Infinity;
-      bounds.minY = Infinity;
-      bounds.maxX = -Infinity;
-      bounds.maxY = -Infinity;
-      bounds.hasOwnedEntity = false;
-    }
-    return bounds;
-  }
-
-  private getSnapshotInterestCandidates(playerId: PlayerId): EntityId[] {
-    let candidates = this.snapshotInterestCandidateIdsByPlayer.get(playerId);
-    if (!candidates) {
-      candidates = [];
-      this.snapshotInterestCandidateIdsByPlayer.set(playerId, candidates);
-    } else {
-      candidates.length = 0;
-    }
-    return candidates;
-  }
-
-  private expandSnapshotBounds(bounds: SnapshotInterestBounds, entity: Entity): void {
-    bounds.hasOwnedEntity = true;
-    const x = entity.transform.x;
-    const y = entity.transform.y;
-    if (x < bounds.minX) bounds.minX = x;
-    if (x > bounds.maxX) bounds.maxX = x;
-    if (y < bounds.minY) bounds.minY = y;
-    if (y > bounds.maxY) bounds.maxY = y;
-  }
-
-  private mergeSnapshotBounds(dst: SnapshotInterestBounds, src: SnapshotInterestBounds): void {
-    if (!src.hasOwnedEntity) return;
-    dst.hasOwnedEntity = true;
-    if (src.minX < dst.minX) dst.minX = src.minX;
-    if (src.maxX > dst.maxX) dst.maxX = src.maxX;
-    if (src.minY < dst.minY) dst.minY = src.minY;
-    if (src.maxY > dst.maxY) dst.maxY = src.maxY;
-  }
-
-  private getSnapshotInterestBuildingBounds(playerId: PlayerId): SnapshotInterestBounds {
-    let bounds = this.snapshotInterestBuildingBoundsByPlayer.get(playerId);
-    if (!bounds) {
-      bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, hasOwnedEntity: false };
-      this.snapshotInterestBuildingBoundsByPlayer.set(playerId, bounds);
-    }
-    return bounds;
-  }
-
-  private prepareSnapshotInterestBuildingCache(): void {
-    const buildingVersion = this.world.getBuildingVersion();
-    if (buildingVersion === this.snapshotInterestBuildingCacheVersion) return;
-
-    this.snapshotInterestBuildingIdsBuf.length = 0;
-    this.snapshotInterestBuildingBoundsByPlayer.clear();
-    for (const building of this.world.getBuildings()) {
-      this.snapshotInterestBuildingIdsBuf.push(building.id);
-      const playerId = building.ownership?.playerId;
-      if (playerId !== undefined) {
-        this.expandSnapshotBounds(this.getSnapshotInterestBuildingBounds(playerId), building);
-      }
-    }
-    this.snapshotInterestBuildingCacheVersion = buildingVersion;
-  }
-
-  // Reusable scratch buffers for prepareSnapshotInterestPlans. Hoisted
-  // out so the units×players inner loop reads from local arrays instead
-  // of calling Map.get() per (unit, player) — at 1000 units × 4 players
-  // that's 4k Map lookups per snapshot we used to pay every tick.
-  private _aoiBoundsBuf: SnapshotInterestBounds[] = [];
-  private _aoiCandidatesBuf: EntityId[][] = [];
-
-  private prepareSnapshotInterestPlans(): void {
-    this.snapshotInterestPlansByPlayer.clear();
-    if (!SNAPSHOT_ENTITY_AOI_CULLING_ENABLED || this.backgroundMode) return;
-
-    const targetPlayerIds = this.snapshotInterestPlayerIdsBuf;
-    targetPlayerIds.length = 0;
-    for (const listener of this.snapshotListeners) {
-      const playerId = listener.playerId;
-      if (playerId === undefined || targetPlayerIds.includes(playerId)) continue;
-      targetPlayerIds.push(playerId);
-    }
-    if (targetPlayerIds.length === 0) return;
-
-    this.prepareSnapshotInterestBuildingCache();
-
-    const playerCount = targetPlayerIds.length;
-    const boundsBuf = this._aoiBoundsBuf;
-    const candidatesBuf = this._aoiCandidatesBuf;
-    boundsBuf.length = playerCount;
-    candidatesBuf.length = playerCount;
-
-    for (let i = 0; i < playerCount; i++) {
-      const playerId = targetPlayerIds[i];
-      const bounds = this.getSnapshotInterestBounds(playerId);
-      const buildingBounds = this.snapshotInterestBuildingBoundsByPlayer.get(playerId);
-      if (buildingBounds) this.mergeSnapshotBounds(bounds, buildingBounds);
-      boundsBuf[i] = bounds;
-      candidatesBuf[i] = this.getSnapshotInterestCandidates(playerId);
-    }
-
-    for (let i = 0; i < playerCount; i++) {
-      const ownedUnits = this.world.getUnitsByPlayer(targetPlayerIds[i]);
-      const bounds = boundsBuf[i];
-      for (let j = 0; j < ownedUnits.length; j++) {
-        this.expandSnapshotBounds(bounds, ownedUnits[j]);
-      }
-    }
-
-    for (let i = 0; i < playerCount; i++) {
-      const bounds = boundsBuf[i];
-      if (!bounds.hasOwnedEntity) continue;
-      bounds.minX -= SNAPSHOT_AOI_PADDING;
-      bounds.minY -= SNAPSHOT_AOI_PADDING;
-      bounds.maxX += SNAPSHOT_AOI_PADDING;
-      bounds.maxY += SNAPSHOT_AOI_PADDING;
-    }
-
-    // AOI candidate lists are built from the same land/spatial grid the
-    // sim already maintains. Owned units are included from the per-player
-    // cache; non-owned units come from a 2D bounds query instead of a
-    // full-unit scan per player snapshot.
-    for (let i = 0; i < playerCount; i++) {
-      const playerId = targetPlayerIds[i];
-      const bounds = boundsBuf[i];
-      const candidates = candidatesBuf[i];
-      const ownedUnits = this.world.getUnitsByPlayer(playerId);
-      for (let j = 0; j < ownedUnits.length; j++) {
-        candidates.push(ownedUnits[j].id);
-      }
-      if (!bounds.hasOwnedEntity) continue;
-      const nearbyUnits = spatialGrid.queryUnitsInBounds2D(
-        bounds.minX,
-        bounds.minY,
-        bounds.maxX,
-        bounds.maxY,
-        playerId,
-      );
-      for (let j = 0; j < nearbyUnits.length; j++) {
-        candidates.push(nearbyUnits[j].id);
-      }
-    }
-
-    const buildingIds = this.snapshotInterestBuildingIdsBuf;
-    const buildingCount = buildingIds.length;
-    for (let i = 0; i < playerCount; i++) {
-      const candidates = candidatesBuf[i];
-      for (let j = 0; j < buildingCount; j++) candidates.push(buildingIds[j]);
-    }
-
-    for (let i = 0; i < playerCount; i++) {
-      const playerId = targetPlayerIds[i];
-      const bounds = boundsBuf[i];
-      const candidates = candidatesBuf[i];
-      // Predicate captures the per-player bounds object directly so
-      // the serializer's per-entity test costs 4 comparisons + 1
-      // ownership read — no Map lookups in the inner loop.
-      const predicate: SnapshotInterest = (entity) => {
-        if (entity.type === 'building') return true;
-        if (entity.ownership?.playerId === playerId) return true;
-        if (!bounds.hasOwnedEntity) return false;
-        const x = entity.transform.x;
-        const y = entity.transform.y;
-        return x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY;
-      };
-      this.snapshotInterestPlansByPlayer.set(playerId, { predicate, candidateEntityIds: candidates, bounds });
     }
   }
 

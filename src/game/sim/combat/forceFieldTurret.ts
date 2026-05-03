@@ -153,10 +153,7 @@ export function applyForceFieldDamage(
 
       // Force fields are always 360° — no angle checks needed.
       // Center the gameplay sphere on the same 3D turret mount used by
-      // targeting, firing, and the renderer. Weapon-as-body units use
-      // bodyCenterHeight/headCenterHeightFrac, so using the unit altitude
-      // here makes the backend sphere disagree with the frontend
-      // emitter/body sphere.
+      // targeting, firing, and the renderer.
       const mount = updateWeaponWorldKinematics(
         unit, weapon, weaponIndex,
         unitCos, unitSin,

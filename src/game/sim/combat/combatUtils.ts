@@ -5,6 +5,7 @@ import { distance, normalizeAngle, magnitude } from '../../math';
 import { getTurretWorldMount } from '../../math/MountGeometry';
 import type { Vec3 } from '@/types/vec2';
 import { getUnitGroundZ } from '../unitGeometry';
+import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMounts';
 
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
@@ -71,9 +72,9 @@ export function resolveWeaponWorldMount(
   turret: {
     worldPos?: Vec3;
     worldPosTick?: number;
-    offset: { x: number; y: number };
+    mount: Vec3;
   },
-  turretIndex: number,
+  _turretIndex: number,
   cos: number,
   sin: number,
   options?: {
@@ -94,10 +95,11 @@ export function resolveWeaponWorldMount(
   }
 
   const unitGroundZ = options?.unitGroundZ ?? getUnitGroundZ(unit);
+  const localMount = getRuntimeTurretMount(turret);
   const mount = getTurretWorldMount(
     unit.transform.x, unit.transform.y, unitGroundZ,
     cos, sin,
-    turret.offset.x, turret.offset.y, getTurretMountHeight(unit, turretIndex),
+    localMount.x, localMount.y, localMount.z,
     options?.surfaceN ?? FLAT_SURFACE_NORMAL,
   );
   out.x = mount.x;
@@ -117,7 +119,7 @@ export function resolveWeaponWorldMount(
 export function updateWeaponWorldKinematics(
   unit: Entity,
   turret: Turret,
-  turretIndex: number,
+  _turretIndex: number,
   cos: number,
   sin: number,
   options: WeaponKinematicsOptions = {},
@@ -134,10 +136,11 @@ export function updateWeaponWorldKinematics(
   }
 
   const unitGroundZ = options.unitGroundZ ?? getUnitGroundZ(unit);
+  const localMount = getRuntimeTurretMount(turret);
   const mount = getTurretWorldMount(
     unit.transform.x, unit.transform.y, unitGroundZ,
     cos, sin,
-    turret.offset.x, turret.offset.y, getTurretMountHeight(unit, turretIndex),
+    localMount.x, localMount.y, localMount.z,
     options.surfaceN ?? FLAT_SURFACE_NORMAL,
   );
 
@@ -172,27 +175,13 @@ export function updateWeaponWorldKinematics(
   return out;
 }
 
-/** Per-turret mount height — distance above the unit's ground
- *  footprint at which the turret pivots (and shots spawn) at pitch=0.
- *
- *  ONE RULE for every turret on every unit: the mount sits at the
- *  unit's authored body center. That puts:
- *
- *    – the turret head sphere centered on body center
- *    – the barrel pivot at body center
- *    – the muzzle at `body center + barrelLength × bodyRadius` along
- *      the firing direction
- *
- *  matching the renderer's "head sphere centered on body center"
- *  layout exactly. No bodyShape branching, no chassis-top arithmetic,
- *  no mirror stacking — every shape gets the same simple anchor.
- *
- *  `turretIndex` is unused; kept on the signature so call sites read
- *  naturally as `getTurretMountHeight(unit, i)` and stay future-proof
- *  if per-turret overrides ever come back.
- */
-export function getTurretMountHeight(unit: Entity, _turretIndex: number): number {
-  return unit.unit?.bodyCenterHeight ?? 0;
+/** Per-turret mount height above the unit's ground footprint. Runtime
+ *  turrets derive this from the unit blueprint's `turrets[i].mount.z`,
+ *  so the server's targeting/firing path and the client renderer share
+ *  the same authored 3D pivot. */
+export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
+  const turret = unit.turrets?.[turretIndex];
+  return turret ? getRuntimeTurretMountHeight(turret) : (unit.unit?.bodyCenterHeight ?? 0);
 }
 
 export function getEntityVelocity3(entity: Entity, out: Vec3): Vec3 {

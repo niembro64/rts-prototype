@@ -26,6 +26,7 @@ export type {
   ShotBlueprint,
   MirrorPanel,
   TurretBlueprint,
+  UnitTurretMountPoint,
   TurretMount,
   WheelConfig,
   TreadConfig,

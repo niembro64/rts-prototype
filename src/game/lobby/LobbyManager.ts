@@ -125,6 +125,7 @@ export async function createBackgroundBattle(
   const server = await GameServer.create({
     playerIds: demoPlayerIds,
     terrainCenter,
+    terrainDividers,
     terrainMapShape,
     backgroundMode: true,
     initialAllowedTypes,
@@ -170,6 +171,7 @@ export async function createBackgroundBattle(
     mapWidth: getMapSize(true).width,
     mapHeight: getMapSize(true).height,
     terrainCenter,
+    terrainDividers,
     terrainMapShape,
     backgroundMode: true,
     lobbyPreview: isLobbyPreview,

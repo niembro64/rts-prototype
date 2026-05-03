@@ -5,7 +5,7 @@
 //
 //   <BarControlGroup label="CENTER:">
 //     <BarButtonGroup>
-//       <BarButton :active="...">LAKE</BarButton>
+//       <BarButton :active="...">VALLEY</BarButton>
 //       …
 //     </BarButtonGroup>
 //   </BarControlGroup>

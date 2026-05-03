@@ -1,6 +1,5 @@
 import type { Entity, Turret } from '../sim/types';
 import { getUnitBlueprint } from '../sim/blueprints';
-import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import { getBodyTopY, getChassisLiftY } from '../math/BodyDimensions';
 import { getTurretHeadRadius } from '../math';
 import { TURRET_HEIGHT } from '../../config';
@@ -72,7 +71,7 @@ export function getUnitHudTopY(unit: Entity): number {
     const turret = turrets[i];
     const isForceField = turret.config.barrel?.type === 'complexSingleEmitter';
     const isMirrorHost = hasMirrors && i === 0;
-    const mountY = getTurretMountHeight(unit, i);
+    const mountY = turret.mount.z;
     const headRadius = getTurretHeadRadius(unitRadius, turret.config);
     if (!isForceField && !isMirrorHost) {
       topAboveGround = Math.max(topAboveGround, mountY + headRadius);

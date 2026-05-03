@@ -420,7 +420,7 @@ export type NetworkServerSnapshotEntity = {
     hp: { curr: number; max: number };
     collider?: { shot: number; push: number };
     /** Authored body radius — the unit's visible-chassis size. Drives
-     *  turret head defaults, chassis-mount offsets, mirror-panel sizing,
+     *  turret head defaults, blueprint mount scaling, mirror-panel sizing,
      *  click hit radius, etc. Was historically `collider.scale`; lifted
      *  to its own field so it isn't conflated with collision (`shot` /
      *  `push` stay on `collider`). */

@@ -7,8 +7,14 @@
  */
 
 import { AUDIO } from '../../../audioConfig';
-import type { UnitBlueprint, MountPoint, TurretMount, UnitBodyShape, LocomotionPhysics } from './types';
+import type { UnitBlueprint, UnitTurretMountPoint, TurretMount, UnitBodyShape, LocomotionPhysics } from './types';
 import type { UnitLocomotion } from '../types';
+import {
+  getBodyCenterLocalY,
+  getExpectedUnitBodyCenterHeightY,
+  LEG_BODY_LIFT_FRAC,
+  TREAD_CHASSIS_LIFT_Y,
+} from '../../math/BodyDimensions';
 
 const LOCOMOTION_TRACTION = {
   wheels: 0.45,
@@ -24,6 +30,30 @@ function locomotionPhysics(
     driveForce,
     traction: LOCOMOTION_TRACTION[type],
   };
+}
+
+function wheelBodyCenterHeight(
+  bodyShape: UnitBodyShape,
+  bodyRadius: number,
+  wheelRadiusFrac: number,
+): number {
+  return Math.max(1, bodyRadius * wheelRadiusFrac) * 2
+    + getBodyCenterLocalY(bodyShape, bodyRadius);
+}
+
+function treadBodyCenterHeight(
+  bodyShape: UnitBodyShape,
+  bodyRadius: number,
+): number {
+  return TREAD_CHASSIS_LIFT_Y + getBodyCenterLocalY(bodyShape, bodyRadius);
+}
+
+function legBodyCenterHeight(
+  bodyShape: UnitBodyShape,
+  bodyRadius: number,
+): number {
+  return bodyRadius * LEG_BODY_LIFT_FRAC
+    + getBodyCenterLocalY(bodyShape, bodyRadius);
 }
 
 const BODY_SHAPES = {
@@ -154,32 +184,37 @@ const WIDOW_ABDOMEN_FORWARD_FRAC = -1.1;
 const WIDOW_HEAD_FORWARD_FRAC = 0.3;
 const TARANTULA_ABDOMEN_FORWARD_FRAC = -0.65;
 const FORMIK_BACK_SEGMENT_FORWARD_FRAC = -0.85;
-const TICK_REPLACED_HEAD_CENTER_HEIGHT_FRAC = 0.37;
+const TICK_BODY_CENTER_HEIGHT = 8;
+const TICK_TURRET_Z_FRAC = TICK_BODY_CENTER_HEIGHT / 10;
 const DADDY_VISUAL_RADIUS = 13;
 const DADDY_PUSH_RADIUS = 15;
-const DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC = 0.55;
+const DADDY_BODY_CENTER_HEIGHT = 60;
+const DADDY_LASER_TURRET_Z_FRAC =
+  DADDY_BODY_CENTER_HEIGHT / DADDY_VISUAL_RADIUS;
 // Daddy's main body is authored high above the ground; this force-field
 // mount intentionally uses a >1 radius fraction to sit on its underside.
-const DADDY_FORCE_FIELD_CENTER_HEIGHT_FRAC = 49 / DADDY_VISUAL_RADIUS;
-const DADDY_REPLACEMENT_HEAD_RADIUS_FRAC = 5 / 13;
-const DADDY_LEG_ATTACH_HEIGHT_FRAC =
-  DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC - DADDY_REPLACEMENT_HEAD_RADIUS_FRAC;
+const DADDY_FORCE_FIELD_TURRET_Z_FRAC = 49 / DADDY_VISUAL_RADIUS;
+const DADDY_LEG_ATTACH_HEIGHT_FRAC = DADDY_FORCE_FIELD_TURRET_Z_FRAC;
+const LORIS_BODY_CENTER_HEIGHT = 24;
+const LORIS_MIRROR_TURRET_Z_FRAC = LORIS_BODY_CENTER_HEIGHT / 10;
 
 function turretMount(
   turretId: string,
-  headCenterHeightFrac?: number,
+  mount: UnitTurretMountPoint,
 ): TurretMount {
-  return headCenterHeightFrac === undefined
-    ? { turretId }
-    : { turretId, headCenterHeightFrac };
+  return { turretId, mount };
+}
+
+function mountPoint(x: number, y: number, z: number): UnitTurretMountPoint {
+  return { x, y, z };
 }
 
 // Compute widow's mount points: 4 light turrets on the abdomen edge,
 // the megaBeam centered on top of the rear abdomen segment, and the
 // force-field emitter on top of the forward head segment. Order
 // matches the `turrets` array on the widow blueprint below.
-function computeWidowMounts(): MountPoint[] {
-  const mounts: MountPoint[] = [];
+function computeWidowMounts(z: number): UnitTurretMountPoint[] {
+  const mounts: UnitTurretMountPoint[] = [];
   for (let i = 0; i < 4; i++) {
     const angle = Math.PI / 4 + (i * Math.PI) / 2;
     mounts.push({
@@ -187,13 +222,26 @@ function computeWidowMounts(): MountPoint[] {
         Math.cos(angle) * WIDOW_ABDOMEN_RADIUS_FRAC +
         WIDOW_ABDOMEN_FORWARD_FRAC,
       y: Math.sin(angle) * WIDOW_ABDOMEN_RADIUS_FRAC,
+      z,
     });
   }
   // megaBeam: rear abdomen segment center top.
-  mounts.push({ x: WIDOW_ABDOMEN_FORWARD_FRAC, y: 0 });
+  mounts.push({ x: WIDOW_ABDOMEN_FORWARD_FRAC, y: 0, z });
   // forceTurret: forward prosoma/head segment center top.
-  mounts.push({ x: WIDOW_HEAD_FORWARD_FRAC, y: 0 });
+  mounts.push({ x: WIDOW_HEAD_FORWARD_FRAC, y: 0, z });
   return mounts;
+}
+
+function computeWidowTurrets(z: number): TurretMount[] {
+  const mounts = computeWidowMounts(z);
+  return [
+    turretMount('lightTurret', mounts[0]), // front-left abdomen edge
+    turretMount('lightTurret', mounts[1]), // back-left abdomen edge
+    turretMount('lightTurret', mounts[2]), // back-right abdomen edge
+    turretMount('lightTurret', mounts[3]), // front-right abdomen edge
+    turretMount('megaBeamTurret', mounts[4]), // abdomen center
+    turretMount('forceTurret', mounts[5]), // head center
+  ];
 }
 
 export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
@@ -204,11 +252,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 55,
     unitRadiusCollider: { shot: 6, push: 8 * 1.2 },
     bodyRadius: 8,
-    bodyCenterHeight: 8 * 1.2,
+    bodyCenterHeight: wheelBodyCenterHeight(BODY_SHAPES.scout, 8, 0.28),
     mass: 30,
     resourceCost: 50,
-    turrets: [turretMount('lightTurret')],
-    chassisMounts: [{ x: 0, y: 0 }],
+    turrets: [turretMount('lightTurret', mountPoint(0, 0, 1.2))],
     bodyShape: BODY_SHAPES.scout,
     locomotion: {
       type: 'wheels',
@@ -233,11 +280,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 60,
     unitRadiusCollider: { shot: 7, push: 10 * 1.3 },
     bodyRadius: 10,
-    bodyCenterHeight: 10 * 1.3,
+    bodyCenterHeight: treadBodyCenterHeight(BODY_SHAPES.burst, 10),
     mass: 40,
     resourceCost: 90,
-    turrets: [turretMount('pulseTurret')],
-    chassisMounts: [{ x: 0, y: 0 }],
+    turrets: [turretMount('pulseTurret', mountPoint(0, 0, 1.3))],
     bodyShape: BODY_SHAPES.burst,
     locomotion: {
       type: 'treads',
@@ -264,16 +310,12 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       push: DADDY_PUSH_RADIUS,
     },
     bodyRadius: DADDY_VISUAL_RADIUS,
-    bodyCenterHeight: 60,
+    bodyCenterHeight: DADDY_BODY_CENTER_HEIGHT,
     mass: 30,
     resourceCost: 350,
     turrets: [
-      turretMount('laserTurret', DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC),
-      turretMount('forceTurret', DADDY_FORCE_FIELD_CENTER_HEIGHT_FRAC),
-    ],
-    chassisMounts: [
-      { x: 0, y: 0 }, // laser body
-      { x: 0, y: 0 }, // center force field
+      turretMount('laserTurret', mountPoint(0, 0, DADDY_LASER_TURRET_Z_FRAC)),
+      turretMount('forceTurret', mountPoint(0, 0, DADDY_FORCE_FIELD_TURRET_Z_FRAC)),
     ],
     bodyShape: BODY_SHAPES.forceField,
     hideChassis: true,
@@ -302,11 +344,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 300,
     unitRadiusCollider: { shot: 13, push: 16 * 1.4 },
     bodyRadius: 16,
-    bodyCenterHeight: 16 * 1.4,
+    bodyCenterHeight: treadBodyCenterHeight(BODY_SHAPES.brawl, 16),
     mass: 300,
     resourceCost: 300,
-    turrets: [turretMount('salvoRocketTurret')],
-    chassisMounts: [{ x: 0, y: 0 }],
+    turrets: [turretMount('salvoRocketTurret', mountPoint(0, 0, 1.4))],
     bodyShape: BODY_SHAPES.brawl,
     locomotion: {
       type: 'treads',
@@ -330,11 +371,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 200,
     unitRadiusCollider: { shot: 12, push: 20 * 1.2 },
     bodyRadius: 20,
-    bodyCenterHeight: 20 * 1.2,
+    bodyCenterHeight: wheelBodyCenterHeight(BODY_SHAPES.mortar, 20, 0.22),
     mass: 200,
     resourceCost: 220,
-    turrets: [turretMount('mortarTurret')],
-    chassisMounts: [{ x: 0, y: 0 }],
+    turrets: [turretMount('mortarTurret', mountPoint(0, 0, 1.2))],
     bodyShape: BODY_SHAPES.mortar,
     locomotion: {
       type: 'wheels',
@@ -359,13 +399,12 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 55,
     unitRadiusCollider: { shot: 8, push: 11 * 1.1 },
     bodyRadius: 10,
-    bodyCenterHeight: 8,
+    bodyCenterHeight: TICK_BODY_CENTER_HEIGHT,
     mass: 5,
     resourceCost: 35,
     turrets: [
-      turretMount('laserTurret', TICK_REPLACED_HEAD_CENTER_HEIGHT_FRAC),
+      turretMount('laserTurret', mountPoint(0, 0, TICK_TURRET_Z_FRAC)),
     ],
-    chassisMounts: [{ x: 0, y: 0 }],
     bodyShape: BODY_SHAPES.snipe,
     hideChassis: true,
     locomotion: {
@@ -392,11 +431,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 900,
     unitRadiusCollider: { shot: 24, push: 24 * 1.5 },
     bodyRadius: 24,
-    bodyCenterHeight: 24 * 1.5,
+    bodyCenterHeight: treadBodyCenterHeight(BODY_SHAPES.tank, 24),
     mass: 1000,
     resourceCost: 1200,
-    turrets: [turretMount('cannonTurret')],
-    chassisMounts: [{ x: 0, y: 0 }],
+    turrets: [turretMount('cannonTurret', mountPoint(0, 0, 1.5))],
     bodyShape: BODY_SHAPES.tank,
     locomotion: {
       type: 'treads',
@@ -421,15 +459,14 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 3200,
     unitRadiusCollider: { shot: 50, push: 50 * 1.3 },
     bodyRadius: 40,
-    bodyCenterHeight: 50 * 1.3,
+    bodyCenterHeight: legBodyCenterHeight(BODY_SHAPES.formik, 40),
     mass: 2500,
     resourceCost: 4000,
     turrets: [
-      turretMount('gatlingMortarTurret'),
+      turretMount('gatlingMortarTurret', mountPoint(FORMIK_BACK_SEGMENT_FORWARD_FRAC, 0, 1.7)),
     ],
     // Mount on the top of the rear abdomen/back segment. The forward
     // head sphere remains a body part, not a turret replacement.
-    chassisMounts: [{ x: FORMIK_BACK_SEGMENT_FORWARD_FRAC, y: 0 }],
     bodyShape: BODY_SHAPES.formik,
     locomotion: {
       type: 'legs',
@@ -458,21 +495,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 2400,
     unitRadiusCollider: { shot: 40, push: 40 * 1.3 },
     bodyRadius: 30,
-    bodyCenterHeight: 40 * 1.3,
+    bodyCenterHeight: legBodyCenterHeight(BODY_SHAPES.arachnid, 30),
     mass: 1000,
     resourceCost: 3000,
-    turrets: [
-      turretMount('lightTurret'), // front-left abdomen edge
-      turretMount('lightTurret'), // back-left abdomen edge
-      turretMount('lightTurret'), // back-right abdomen edge
-      turretMount('lightTurret'), // front-right abdomen edge
-      // Mega beam mounts on top of the rear abdomen segment; the forward
-      // head sphere stays visible underneath the force-field emitter.
-      turretMount('megaBeamTurret'), // abdomen center top
-      // Force-field emitter on top of the forward prosoma/head segment.
-      turretMount('forceTurret'), // head center top
-    ],
-    chassisMounts: computeWidowMounts(),
+    turrets: computeWidowTurrets((40 * 1.3) / 30),
     bodyShape: BODY_SHAPES.arachnid,
     locomotion: {
       type: 'legs',
@@ -498,11 +524,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 1500,
     unitRadiusCollider: { shot: 27, push: 45 * 1.2 },
     bodyRadius: 30,
-    bodyCenterHeight: 45 * 1.2,
+    bodyCenterHeight: treadBodyCenterHeight(BODY_SHAPES.hippo, 30),
     mass: 1500,
     resourceCost: 2500,
-    turrets: [turretMount('hippoGatlingTurret')],
-    chassisMounts: [{ x: 0.2, y: 0 }],
+    turrets: [turretMount('hippoGatlingTurret', mountPoint(0.2, 0, 1.8))],
     bodyShape: BODY_SHAPES.hippo,
     locomotion: {
       type: 'treads',
@@ -526,15 +551,14 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 100,
     unitRadiusCollider: { shot: 13, push: 11 * 1.8 },
     bodyRadius: 11,
-    bodyCenterHeight: 11 * 1.8,
+    bodyCenterHeight: legBodyCenterHeight(BODY_SHAPES.beam, 11),
     mass: 18,
     resourceCost: 300,
     turrets: [
-      turretMount('beamTurret'),
+      turretMount('beamTurret', mountPoint(TARANTULA_ABDOMEN_FORWARD_FRAC, 0, 1.8)),
     ],
     // Mount the beam turret on the rear abdomen segment; the forward
     // head body sphere stays in place.
-    chassisMounts: [{ x: TARANTULA_ABDOMEN_FORWARD_FRAC, y: 0 }],
     bodyShape: BODY_SHAPES.beam,
     locomotion: {
       type: 'legs',
@@ -560,11 +584,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 200,
     unitRadiusCollider: { shot: 8, push: 24 },
     bodyRadius: 10,
-    bodyCenterHeight: 24,
+    bodyCenterHeight: LORIS_BODY_CENTER_HEIGHT,
     mass: 20,
     resourceCost: 190,
-    turrets: [turretMount('mirrorTurret')],
-    chassisMounts: [{ x: 0, y: 0 }],
+    turrets: [turretMount('mirrorTurret', mountPoint(0, 0, LORIS_MIRROR_TURRET_Z_FRAC))],
     bodyShape: BODY_SHAPES.loris,
     hideChassis: true,
     locomotion: {
@@ -589,16 +612,12 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 500,
     unitRadiusCollider: { shot: 20, push: 20 },
     bodyRadius: 20,
-    bodyCenterHeight: 20,
+    bodyCenterHeight: legBodyCenterHeight(BODY_SHAPES.commander, 20),
     mass: 60,
     resourceCost: 400,
     turrets: [
-      turretMount('beamTurret'),
-      turretMount('dgunTurret'),
-    ],
-    chassisMounts: [
-      { x: 0.36, y: -0.42 },
-      { x: 0.36, y: 0.42 },
+      turretMount('beamTurret', mountPoint(0.36, -0.42, 1)),
+      turretMount('dgunTurret', mountPoint(0.36, 0.42, 1)),
     ],
     bodyShape: BODY_SHAPES.commander,
     locomotion: {
@@ -621,6 +640,32 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     fightStopEngagedRatio: 0.9,
   },
 };
+
+for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+  const expectedBodyCenterHeight = getExpectedUnitBodyCenterHeightY(bp, bp.bodyRadius);
+  if (
+    !Number.isFinite(bp.bodyCenterHeight) ||
+    Math.abs(bp.bodyCenterHeight - expectedBodyCenterHeight) > 1e-6
+  ) {
+    throw new Error(
+      `Invalid bodyCenterHeight for ${bp.id}: expected ${expectedBodyCenterHeight}, got ${bp.bodyCenterHeight}`,
+    );
+  }
+
+  for (let i = 0; i < bp.turrets.length; i++) {
+    const turret = bp.turrets[i];
+    const mount = turret.mount;
+    if (
+      !Number.isFinite(mount.x) ||
+      !Number.isFinite(mount.y) ||
+      !Number.isFinite(mount.z)
+    ) {
+      throw new Error(
+        `Invalid turret mount for ${bp.id}[${i}] ${turret.turretId}: mount x/y/z must be finite`,
+      );
+    }
+  }
+}
 
 // Ordered list for build bar (excludes commander — not buildable)
 export const BUILDABLE_UNIT_IDS = [

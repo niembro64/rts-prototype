@@ -7,9 +7,9 @@
 // pitchGroup.rotation.z (pitch) and spinGroup.rotation.x (gatling
 // spin); barrel positions/orientations are baked at build time.
 //
-// Vertical layout matches the sim's getTurretMountHeight: the head
-// sphere bottom touches the chassis top (head center at y=headRadius),
-// and barrels pivot through the head center (y=headRadius).
+// Vertical layout assumes the parent places root at
+// blueprintMount.z - headRadius: the head center and barrels pivot at
+// y=headRadius inside this root.
 
 import * as THREE from 'three';
 import type { Turret } from '../sim/types';

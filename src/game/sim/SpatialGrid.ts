@@ -3,7 +3,6 @@ import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import {
   CANONICAL_LAND_CELL_SIZE,
   assertCanonicalLandCellSize,
-  packLandCellKey,
   spatialCubeKeyToLandCellKey,
 } from '../landGrid';
 
@@ -547,45 +546,6 @@ export class SpatialGrid {
         const dz = unit.transform.z - z;
         if (dx * dx + dy * dy + dz * dz <= radiusSq) {
           this.queryResultUnits.push(unit);
-        }
-      }
-    }
-
-    return this.queryResultUnits;
-  }
-
-  /**
-   * Query units whose XY position falls inside an axis-aligned land
-   * rectangle. This is a 2D broadphase for systems such as snapshot AOI
-   * that care about ground relevance, not altitude. Returns a reused
-   * array — DO NOT STORE THE REFERENCE.
-   */
-  queryUnitsInBounds2D(
-    minX: number,
-    minY: number,
-    maxX: number,
-    maxY: number,
-    excludePlayerId?: PlayerId,
-  ): Entity[] {
-    this.queryResultUnits.length = 0;
-
-    const minCx = Math.floor(minX / this.cellSize);
-    const maxCx = Math.floor(maxX / this.cellSize);
-    const minCy = Math.floor(minY / this.cellSize);
-    const maxCy = Math.floor(maxY / this.cellSize);
-
-    for (let cx = minCx; cx <= maxCx; cx++) {
-      for (let cy = minCy; cy <= maxCy; cy++) {
-        const units = this.landUnitCells.get(packLandCellKey(cx, cy));
-        if (!units) continue;
-        for (let i = 0; i < units.length; i++) {
-          const unit = units[i];
-          if (excludePlayerId !== undefined && unit.ownership?.playerId === excludePlayerId) continue;
-          const x = unit.transform.x;
-          const y = unit.transform.y;
-          if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-            this.queryResultUnits.push(unit);
-          }
         }
       }
     }

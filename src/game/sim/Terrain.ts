@@ -52,7 +52,7 @@ export const TILE_FLOOR_Y = -1200;
  *  to the ground plane. Read once at module load — runtime tweaks
  *  to the config should reload the page so client and server agree
  *  on the same surface. */
-export const WATER_LEVEL_FRACTION = 0.6;
+export const WATER_LEVEL_FRACTION = 0.7;
 
 /** Water surface elevation in sim units. Linear interpolation:
  *  fraction=0 → TILE_FLOOR_Y, fraction=1 → 0. Anywhere the heightmap

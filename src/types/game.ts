@@ -22,6 +22,8 @@ export type GameConfig = {
   /** CENTER terrain shape used for the central terrain heightmap and
    *  terrain-polarized metal-deposit dTerrain levels. */
   terrainCenter?: TerrainShape;
+  /** DIVIDERS terrain shape used for team-separator ridges/trenches. */
+  terrainDividers?: TerrainShape;
   terrainMapShape?: TerrainMapShape;
   backgroundMode?: boolean;
   /** Lobby-preview rendering: skip the usual demo zoom + base spawn
@@ -69,6 +71,8 @@ export type GameServerConfig = {
   playerIds: PlayerId[];
   /** CENTER terrain shape selected by the host/lobby. */
   terrainCenter?: TerrainShape;
+  /** DIVIDERS terrain shape selected by the host/lobby. */
+  terrainDividers?: TerrainShape;
   terrainMapShape?: TerrainMapShape;
   backgroundMode?: boolean;
   aiPlayerIds?: PlayerId[];

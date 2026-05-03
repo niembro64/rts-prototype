@@ -3,7 +3,7 @@
 import type { Entity, BuildingType, Turret, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import { codeToActionType, codeToTurretState, codeToUnitType, codeToBuildingType, codeToProjectileType } from '../../../types/network';
-import { computeTurretRanges, getTurretConfig } from '../../sim/turretConfigs';
+import { getTurretConfig } from '../../sim/turretConfigs';
 import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
@@ -20,6 +20,7 @@ function decodeNetworkUnitType(unitType: unknown): string {
 
 function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret): void {
   const wire = nw.turret;
+  if (typeof wire.id === 'string' && wire.id !== turret.config.id) return;
   if (wire.ranges) {
     turret.ranges = {
       tracking: wire.ranges.tracking ? { ...wire.ranges.tracking } : null,
@@ -42,41 +43,6 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
     : undefined;
 }
 
-function createFallbackTurretFromNetwork(nw: NetworkServerSnapshotTurret): Turret {
-  const wire = nw.turret;
-  const config = getTurretConfig(typeof wire.id === 'string' ? wire.id : 'lightTurret');
-  const ranges = wire.ranges
-    ? {
-        tracking: wire.ranges.tracking ? { ...wire.ranges.tracking } : null,
-        fire: {
-          min: wire.ranges.fire.min ? { ...wire.ranges.fire.min } : null,
-          max: { ...wire.ranges.fire.max },
-        },
-      }
-    : computeTurretRanges(config);
-  const turret: Turret = {
-    config,
-    cooldown: 0,
-    target: null,
-    ranges,
-    state: 'idle',
-    rotation: 0,
-    pitch: 0,
-    angularVelocity: 0,
-    pitchVelocity: 0,
-    turnAccel: config.angular.turnAccel,
-    drag: config.angular.drag,
-    offset: {
-      x: isFiniteNumber(wire.pos?.offset?.x) ? wire.pos.offset.x : 0,
-      y: isFiniteNumber(wire.pos?.offset?.y) ? wire.pos.offset.y : 0,
-    },
-    worldPos: { x: 0, y: 0, z: 0 },
-    worldVelocity: { x: 0, y: 0, z: 0 },
-  };
-  applyNetworkTurretState(turret, nw);
-  return turret;
-}
-
 export function createTurretsFromNetwork(
   unitType: string,
   bodyRadius: number,
@@ -84,27 +50,15 @@ export function createTurretsFromNetwork(
 ): Turret[] | undefined {
   if (!Array.isArray(netTurrets) || netTurrets.length === 0) return undefined;
 
-  let canonical: Turret[] | undefined;
   try {
-    canonical = createTurretsFromDefinition(unitType, bodyRadius);
+    const canonical = createTurretsFromDefinition(unitType, bodyRadius);
+    for (let i = 0; i < netTurrets.length && i < canonical.length; i++) {
+      applyNetworkTurretState(canonical[i], netTurrets[i]);
+    }
+    return canonical;
   } catch {
-    canonical = undefined;
+    return undefined;
   }
-
-  const canonicalMatchesWire =
-    canonical !== undefined &&
-    canonical.length === netTurrets.length &&
-    canonical.every((turret, i) => turret.config.id === netTurrets[i]?.turret?.id);
-
-  const turrets = canonicalMatchesWire
-    ? canonical!
-    : netTurrets.map(createFallbackTurretFromNetwork);
-
-  for (let i = 0; i < netTurrets.length && i < turrets.length; i++) {
-    applyNetworkTurretState(turrets[i], netTurrets[i]);
-  }
-
-  return turrets;
 }
 
 export function refreshUnitTurretsFromNetwork(

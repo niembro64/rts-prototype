@@ -5,12 +5,9 @@
 // proportional to the horizontal dimensions — see BodyShape3D.ts for
 // the render-side implementation.
 //
-// This module exposes just the dimension math: given a 2D renderer id
-// and a unit radius, return the world-space top Y of the unit's body.
-// The sim code uses that to compute per-unit muzzle altitudes (turret
-// sits on top of the body, barrel mid-height is the visible tip) so
-// projectile spawn Z lines up with the drawn barrel tip regardless of
-// how tall the unit's body happens to be.
+// This module exposes body dimension math for chassis, legs, debris,
+// and fallback helpers. Authoritative turret pivots are authored
+// directly in unit blueprints as 3D mount points.
 
 import type { TurretMount, UnitBlueprint, UnitBodyShape, UnitBodyShapePart } from '@/types/blueprints';
 
@@ -24,15 +21,15 @@ const BODY_PART_CONTAIN_EPS = 1e-6;
 export const TREAD_CHASSIS_LIFT_Y = 10;
 export const LEG_BODY_LIFT_FRAC = 0.5;
 
-/** World-space lift applied to the visible body/chassis above the unit's
- *  ground footprint. This is shared by sim muzzle math and renderer
- *  scenegraph layout so projectiles leave the visual turret, not the old
- *  unlifted chassis position. */
-export function getChassisLiftY(
-  blueprint: Pick<UnitBlueprint, 'locomotion'> | undefined,
+/** Default locomotion clearance under a body whose center height has
+ *  not been explicitly authored. This is only a blueprint-authoring
+ *  helper; runtime layout must use bodyCenterHeight as the source of
+ *  truth via getChassisLiftY. */
+export function getDefaultLocomotionBodyLiftY(
+  locomotion: UnitBlueprint['locomotion'] | undefined,
   unitRadius: number,
 ): number {
-  const loc = blueprint?.locomotion;
+  const loc = locomotion;
   if (!loc) return 0;
   switch (loc.type) {
     case 'treads':
@@ -44,6 +41,54 @@ export function getChassisLiftY(
     case 'legs':
       return unitRadius * LEG_BODY_LIFT_FRAC;
   }
+}
+
+/** Chassis-local Y of the visible body's vertical center. Unit body
+ *  shapes are built from terrain-up: bottoms at local Y=0 and tops at
+ *  getBodyTopY, so the center is the midpoint of that authored volume. */
+export function getBodyCenterLocalY(
+  bodyShape: UnitBodyShape,
+  unitRadius: number,
+): number {
+  return getBodyTopY(bodyShape, unitRadius) * 0.5;
+}
+
+/** Default body center height implied by the locomotion rig and body
+ *  shape. Unit blueprints should normally author this value directly
+ *  (or use this helper) so simulation center, renderer center, and
+ *  locomotion attachment stay in one coordinate system. */
+export function getDefaultUnitBodyCenterHeightY(
+  blueprint: Pick<UnitBlueprint, 'locomotion' | 'bodyShape'>,
+  unitRadius: number,
+): number {
+  return getDefaultLocomotionBodyLiftY(blueprint.locomotion, unitRadius)
+    + getBodyCenterLocalY(blueprint.bodyShape, unitRadius);
+}
+
+/** Expected visible-body center for validation. Hidden-chassis units
+ *  visually replace the body with their first turret, so the first
+ *  turret mount becomes the visible center. Normal units use the
+ *  locomotion + body-shape default. */
+export function getExpectedUnitBodyCenterHeightY(
+  blueprint: Pick<UnitBlueprint, 'hideChassis' | 'turrets' | 'locomotion' | 'bodyShape'>,
+  unitRadius: number,
+): number {
+  if (blueprint.hideChassis === true && blueprint.turrets.length > 0) {
+    return blueprint.turrets[0].mount.z * unitRadius;
+  }
+  return getDefaultUnitBodyCenterHeightY(blueprint, unitRadius);
+}
+
+/** World-space lift applied to the visible body/chassis above the unit's
+ *  ground footprint. This is derived from bodyCenterHeight so the
+ *  authored unit center is a hard contract shared by simulation,
+ *  targeting, low-LOD imposters, chassis rendering, and locomotion. */
+export function getChassisLiftY(
+  blueprint: Pick<UnitBlueprint, 'locomotion' | 'bodyShape' | 'bodyCenterHeight'> | undefined,
+  unitRadius: number,
+): number {
+  if (!blueprint) return 0;
+  return blueprint.bodyCenterHeight - getBodyCenterLocalY(blueprint.bodyShape, unitRadius);
 }
 
 /** Body-top height in unit-radius-1 space for the given renderer id.
@@ -134,21 +179,19 @@ export function getBodyMountTopY(
   return bodyPartTopFrac(best) * unitRadius;
 }
 
-/** Chassis-local Y where a turret root should be placed. Most turrets
- *  rest on the body segment under their horizontal mount. Some units
- *  intentionally remove a body segment and replace it with a turret
- *  head; those mounts can pin the turret-head center to the removed
- *  segment's old center height through headCenterHeightFrac. */
+/** Chassis-local Y where a turret root should be placed. Blueprint
+ *  turret mounts can pin the turret-head center directly; callers pass
+ *  headRadius so root + headRadius lands on the authored 3D mount. */
 export function getTurretRootY(
   bodyShape: UnitBodyShape,
   unitRadius: number,
   mountX: number,
   mountY: number,
   headRadius: number,
-  mount?: Pick<TurretMount, 'headCenterHeightFrac'>,
+  mount?: Pick<TurretMount, 'mount'>,
 ): number {
-  if (mount?.headCenterHeightFrac !== undefined) {
-    return mount.headCenterHeightFrac * unitRadius - headRadius;
+  if (mount?.mount !== undefined) {
+    return mount.mount.z * unitRadius - headRadius;
   }
   return getBodyMountTopY(bodyShape, unitRadius, mountX, mountY);
 }
@@ -162,7 +205,7 @@ export function getTurretHeadCenterY(
   mountX: number,
   mountY: number,
   headRadius: number,
-  mount?: Pick<TurretMount, 'headCenterHeightFrac'>,
+  mount?: Pick<TurretMount, 'mount'>,
 ): number {
   return getTurretRootY(bodyShape, unitRadius, mountX, mountY, headRadius, mount) + headRadius;
 }

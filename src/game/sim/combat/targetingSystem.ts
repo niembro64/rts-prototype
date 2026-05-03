@@ -426,7 +426,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         needsAnyQuery = true;
         const acquireRange = outermostAcquireDistance(weapon.ranges);
         if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
-        const offset = Math.abs(weapon.offset.x) + Math.abs(weapon.offset.y);
+        const offset = Math.hypot(weapon.mount.x, weapon.mount.y);
         if (offset > maxWeaponOffset) maxWeaponOffset = offset;
       }
     }

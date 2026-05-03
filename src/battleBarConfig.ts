@@ -41,15 +41,13 @@ export const BATTLE_CONFIG = {
   forceFieldsEnabled: { default: true },
   // Terrain shape — applied at game-construction time via
   // setTerrainCenterShape / setTerrainDividersShape (Terrain.ts).
-  // Default 'lake' for both: the central basin floods to a body of
-  // water and the team-separator slices become trenches between
-  // teams. The host's choice is read from localStorage when the
-  // demo battle starts and again when the host launches the real
-  // battle.
+  // User-facing "VALLEY" options still map to the internal "lake"
+  // terrain shape so persisted settings and generation code remain
+  // stable while the UI uses the broader terrain language.
   center: {
     default: 'flat',
     options: [
-      { value: 'lake', label: 'LAKE' },
+      { value: 'lake', label: 'VALLEY' },
       { value: 'mountain', label: 'MOUNTAIN' },
       { value: 'flat', label: 'FLAT' },
     ],
@@ -57,7 +55,7 @@ export const BATTLE_CONFIG = {
   dividers: {
     default: 'lake',
     options: [
-      { value: 'lake', label: 'LAKES' },
+      { value: 'lake', label: 'VALLEYS' },
       { value: 'mountain', label: 'MOUNTAINS' },
       { value: 'flat', label: 'FLAT' },
     ],

@@ -1,9 +1,9 @@
 // Render3DEntities — extrudes the 2D sim primitives into 3D shapes.
 //
 // - Units:        cylinder (radius from unit.bodyRadius, height ∝ radius)
-// - Turrets:      one per entry in entity.turrets, positioned at chassis-local
-//                 offset, rotated to the turret's firing angle, with white
-//                 barrel cylinders whose length comes from config.barrel.
+// - Turrets:      one per entry in entity.turrets, positioned at the
+//                 blueprint-authored chassis-local 3D mount, rotated to
+//                 the turret's firing angle, with white barrel cylinders.
 // - Buildings:    box (width/height from building component, y-depth ∝ scale)
 // - Projectiles:  small sphere (radius from projectile collision)
 //
@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import type { TurretMount, UnitBodyShape } from '@/types/blueprints';
+import type { UnitBodyShape } from '@/types/blueprints';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
@@ -247,7 +247,6 @@ type EntityMesh = {
   rendererId: string;
   bodyShape?: UnitBodyShape;
   hideChassis?: boolean;
-  turretMounts?: TurretMount[];
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;
@@ -1256,7 +1255,7 @@ export class Render3DEntities {
           : getTurretWorldMount(
               ux, uy, getUnitGroundZ(entity),
               cos, sin,
-              weapon.offset.x, weapon.offset.y, getTurretMountHeight(entity, i),
+              weapon.mount.x, weapon.mount.y, getTurretMountHeight(entity, i),
               getGroundNormal(
                 ux, uy,
                 this.clientViewState.getMapWidth(),
@@ -1746,15 +1745,14 @@ export class Render3DEntities {
       const radius = e.unit?.bodyRadius
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;
-      const bodyCenterHeight = getUnitBodyCenterHeight(e.unit);
-
       if (this.shouldUpdateUnitInstancedMatrix(e, objectTier, slotWasNew, wasHidden)) {
-        // Mirror of the per-unit Mesh path: group at (x, groundZ, y),
-        // chassis at origin, sphere at chassis-local y=1 with chassis
-        // scaled by radius. Composed into a single matrix here.
+        // Low-detail imposter sphere is centered on the same authored
+        // unit body center as simulation targeting and the rich body
+        // renderer. Do not infer this from radius; tall/low rigs can
+        // have body centers that intentionally differ from body radius.
         this._instPos.set(
           e.transform.x,
-          e.transform.z - bodyCenterHeight + radius,
+          e.transform.z,
           e.transform.y,
         );
         this._instQuat.setFromAxisAngle(_INST_UP, -e.transform.rotation);
@@ -2520,7 +2518,6 @@ export class Render3DEntities {
         m = {
           group, yawGroup, liftGroup, chassis, chassisMeshes, rendererId, bodyShape,
           hideChassis,
-          turretMounts: bp?.turrets,
           turrets: turretMeshes, lodKey: unitLodKey,
           constructionEmitter,
           smoothChassisSlots,
@@ -2843,9 +2840,10 @@ export class Render3DEntities {
         m.constructionEmitter.group.rotation.y = this._lastSpinMs / 900;
       }
 
-      // Per-turret placement. Turret offset is chassis-local in sim coords
-      // (x, y) which map to (x, z) in three. Root Y sits at the top of the
-      // chassis; the head + barrels extend upward from there inside the root.
+      // Per-turret placement. The runtime 3D mount is derived from the
+      // unit blueprint's `turrets[i].mount` in body-radius fractions.
+      // Sim coords (x, y, z) map to Three local (x, y, z) as
+      // forward, height, lateral.
       // On mirror-host units (e.g. Loris) turret[0] owns the mirror panel
       // and the visible host turret body.
       const spinState = this.barrelSpins.get(e.id);
@@ -2853,20 +2851,12 @@ export class Render3DEntities {
         const tm = m.turrets[i];
         const t = turrets[i];
         const headRadius = tm.headRadius ?? getTurretHeadRadius(radius, t.config);
-        // ONE rule for every turret on every unit: head sphere center
-        // sits at the unit's authored body center (same point the
-        // UNIT RAD: SCAL debug sphere draws at). Mount root sits one
-        // head-radius below body center so that root + headRadius =
-        // bodyCenterHeight in world frame; the chassisLift subtraction
-        // puts that into the liftGroup-local frame the per-tick matrix
-        // composer uses. Sim's getTurretMountHeight returns
-        // bodyCenterHeight, so spawn altitude and visible head stay
-        // locked together for every turret size on every body shape.
-        const turretMountY = (e.unit?.bodyCenterHeight ?? 0) - (m.chassisLift ?? 0) - headRadius;
-        tm.root.position.set(t.offset.x, turretMountY, t.offset.y);
+        const turretHeadCenterY = getTurretMountHeight(e, i);
+        const turretMountY = turretHeadCenterY - (m.chassisLift ?? 0) - headRadius;
+        tm.root.position.set(t.mount.x, turretMountY, t.mount.y);
 
         // Head InstancedMesh write — the head sphere's chassis-local
-        // position is (offset.x, mountY + headRadius, offset.y) inside
+        // position is (mount.x, mountY + headRadius, mount.y) inside
         // liftGroup, which world-transforms via:
         //   worldPos = groupPos + R(tilt·yaw)·(localX, lift + localY, localZ)
         //   matrix   = T(worldPos) · S(headRadius)
@@ -2888,9 +2878,9 @@ export class Render3DEntities {
           // explicitly here so we go from raw m.group.position, not
           // from liftedPos, to avoid double-counting lift.
           this._smoothPartLocalPos.set(
-            t.offset.x,
+            t.mount.x,
             lift + turretMountY + tm.headRadius,
-            t.offset.y,
+            t.mount.y,
           );
           this._smoothPartLocalPos.applyQuaternion(this._smoothParentQuat);
           this._smoothLiftedPos

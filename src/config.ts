@@ -190,7 +190,7 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
   },
 
   /** Entities owned by other players can use coarser diff precision.
-   *  This preserves keyframes/AOI correctness while cutting remote
+   *  This preserves keyframe/delta correctness while cutting remote
    *  movement + turret churn from every recipient's delta stream. */
   observedEntityDelta: {
     positionThresholdMultiplier: 4,
@@ -315,6 +315,7 @@ export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
  *  player-built factories/fabricators. Demo-battle factories use
  *  DEMO_CONFIG.factoryWaypointType instead. */
 export const REAL_BATTLE_FACTORY_WAYPOINT_TYPE = 'fight' as const;
+export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE = 0.5;
 
 /** REAL BATTLE commander placement radius as a fraction of the outer
  *  spawn circle (mapMin/2 − spawnMarginPx). 1.0 plants each commander

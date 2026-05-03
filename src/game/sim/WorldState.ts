@@ -612,7 +612,7 @@ export class WorldState {
       pitchVelocity: 0,
       turnAccel: accel,
       drag: drag,
-      offset: { x: 0, y: 0 },
+      mount: { x: 0, y: 0, z: radiusColliderUnitShot },
       worldPos: { x: 0, y: 0, z: 0 },
       worldVelocity: { x: 0, y: 0, z: 0 },
     }];

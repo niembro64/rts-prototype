@@ -71,6 +71,8 @@ import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
 import {
   getTerrainMeshHeight,
   setTerrainTeamCount,
+  setTerrainCenterShape,
+  setTerrainDividersShape,
   setTerrainMapShape,
   setMetalDepositFlatZones,
   TERRAIN_MAX_RENDER_Y,
@@ -134,6 +136,7 @@ export type RtsScene3DConfig = {
   mapWidth: number;
   mapHeight: number;
   terrainCenter?: TerrainShape;
+  terrainDividers?: TerrainShape;
   terrainMapShape?: TerrainMapShape;
   backgroundMode: boolean;
   /** GAME LOBBY preview pane — uses the dedicated wider zoom and
@@ -261,6 +264,7 @@ export class RtsScene3D {
   private mapWidth: number;
   private mapHeight: number;
   private terrainCenter: TerrainShape;
+  private terrainDividers: TerrainShape;
   private terrainMapShape: TerrainMapShape;
   private backgroundMode: boolean;
   private lobbyPreview: boolean;
@@ -415,6 +419,7 @@ export class RtsScene3D {
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
     this.terrainCenter = config.terrainCenter ?? 'lake';
+    this.terrainDividers = config.terrainDividers ?? 'lake';
     this.terrainMapShape = config.terrainMapShape ?? 'circle';
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
@@ -428,6 +433,8 @@ export class RtsScene3D {
     // EVERY scene init makes the local Terrain module agree with
     // the lobby's player count regardless of role.
     setTerrainTeamCount(this.playerIds.length);
+    setTerrainCenterShape(this.terrainCenter);
+    setTerrainDividersShape(this.terrainDividers);
     setTerrainMapShape(this.terrainMapShape);
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;

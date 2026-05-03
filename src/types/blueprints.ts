@@ -299,14 +299,19 @@ export type TurretBlueprint = {
   groundAimFraction?: number;
 };
 
+/** Chassis-local 3D turret mount, authored in body-radius fractions.
+ *  x = forward, y = lateral/left, z = height above terrain. The z value
+ *  is the weapon pivot / turret-head center used by both authoritative
+ *  firing math and 3D rendering. */
+export type UnitTurretMountPoint = {
+  x: number;
+  y: number;
+  z: number;
+};
+
 export type TurretMount = {
   turretId: string;
-  /** Optional chassis-local Y center for the visible turret head,
-   *  expressed in unit-radius fractions. Use this when a turret is
-   *  replacing a removed body segment and its center needs to occupy
-   *  that old segment center instead of sitting on top of the nearest
-   *  remaining body part. */
-  headCenterHeightFrac?: number;
+  mount: UnitTurretMountPoint;
 };
 
 export type WheelConfig = {
@@ -394,29 +399,29 @@ export type UnitBlueprint = {
    *  `unitRadiusCollider.scale` but are independent values now. */
   unitRadiusCollider: { shot: number; push: number };
   /** Authored body radius (world units) — the visible chassis size.
-   *  Drives turret head defaults, chassis mount offsets, mirror-panel
+   *  Drives turret head defaults, turret mount scaling, mirror-panel
    *  sizing, barrel placement, and click hit radius. Used to live as
    *  `unitRadiusCollider.scale` but it was never a collider field. */
   bodyRadius: number;
   /** World-space height of the authored unit body center above terrain.
-   *  This is intentionally separate from collider radii so visuals,
-   *  turret mounts, legs, and physics rest altitude can move without
-   *  changing push/collision behavior. */
+   *  Hard vertical contract for the unit: physics rest altitude,
+   *  targeting center, low-LOD imposter center, chassis lift, turret
+   *  mounts, and locomotion attachment must all resolve against this
+   *  same terrain-up coordinate system. */
   bodyCenterHeight: number;
   mass: number;
   resourceCost: number;
   turrets: TurretMount[];
-  chassisMounts: MountPoint[];
   /** 3D chassis/body shape in unit-radius-1 space. */
   bodyShape: UnitBodyShape;
   /** Hide the rendered chassis while keeping bodyShape for logical
    *  mount/leg/debris math. Used by units whose weapon turret is meant
    *  to visually replace the whole body. */
   hideChassis?: boolean;
-  /** Optional leg hip/attach height in unitRadius fractions, before
-   *  any weapon-as-body vertical offset is applied. Use for units
-   *  whose visible body is a turret or custom rig rather than the
-   *  logical bodyShape segment. */
+  /** Optional absolute leg hip/attach height in bodyRadius fractions,
+   *  measured from terrain in the same coordinate system as turret
+   *  mount.z. Use only for units whose visible body is a turret or
+   *  custom rig rather than the logical bodyShape segment. */
   legAttachHeightFrac?: number;
   locomotion: LocomotionBlueprint;
   renderer: string;

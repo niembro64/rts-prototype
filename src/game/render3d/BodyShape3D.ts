@@ -9,8 +9,8 @@
 // Heights are proportional to each shape's horizontal dimensions — a
 // wide unit is taller than a narrow one, a spherical unit's height is
 // its own diameter, a flat pentagon's height is its inscribed-circle
-// diameter. The turret mount-point for each renderer is the top of the
-// tallest body segment, exposed via `getBodyTopY(renderer, unitRadius)`.
+// diameter. Turret mount points are authored directly on unit blueprints;
+// this module only exposes body dimensions for chassis/leg/debris helpers.
 //
 // All geometry is built in unit-radius-1 space. Callers scale the parent
 // group by the unit's render radius uniformly, which multiplies both
@@ -218,9 +218,8 @@ export function getBodyTopY(bodyShape: UnitBodyShape, unitRadius: number): numbe
  *  `getBodyTopY`).
  *
  *  `mountX` / `mountZ` are CHASSIS-LOCAL forward / lateral offsets in
- *  WORLD units (i.e. already multiplied by unitRadius — same units as
- *  `turret.offset.x` / `turret.offset.y` after `unitDefinitions.ts`
- *  scales `chassisMount.{x,y} * radius`). */
+ *  WORLD units (already multiplied by unitRadius from the unit
+ *  blueprint's `turrets[i].mount`). */
 export function getBodyMountTopY(
   bodyShape: UnitBodyShape,
   unitRadius: number,
@@ -239,7 +238,7 @@ export function getTurretRootY(
   mountX: number,
   mountZ: number,
   headRadius: number,
-  mount?: Pick<TurretMount, 'headCenterHeightFrac'>,
+  mount?: Pick<TurretMount, 'mount'>,
 ): number {
   return getTurretRootYShared(bodyShape, unitRadius, mountX, mountZ, headRadius, mount);
 }
