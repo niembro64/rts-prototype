@@ -1,9 +1,32 @@
-// WaterRenderer3D — optimized water patches at WATER_LEVEL.
+// WaterRenderer3D — flat, static water at WATER_LEVEL.
 //
-// The previous water renderer drew one transparent plane over the entire
-// map. That is a lot of fill-rate and blending work even when most pixels
-// are land. This renderer bakes one geometry containing only cells whose
-// terrain dips below WATER_LEVEL, then applies the same cheap shader waves.
+// Geometry is two pieces sharing one mesh / material / draw call:
+//
+//   1) The INNER patches — one flat quad per land-grid cell whose
+//      terrain dips below WATER_LEVEL (or is adjacent to one that
+//      does, so shorelines have a one-cell skirt of water). Limits
+//      fill rate to actual lakes instead of pasting a full-map
+//      transparent plane over dry ground.
+//
+//   2) The OUTER frame — four flat quads at WATER_LEVEL forming an
+//      L-frame around the map's outer rectangle, extending out to
+//      `WATER_OUTER_EXTEND` past every edge. From inside the map the
+//      frame sits behind / below the terrain panels and never reads.
+//      From outside the map (camera pulled back past the perimeter)
+//      it fills the visible area beyond the map with continuous
+//      water, so the inner patches don't end on a paper-thin sheet.
+//
+// Both pieces are HORIZONTAL at exactly WATER_LEVEL; they share
+// edges but never overlap each other (the frame lives strictly
+// outside the map rectangle, the patches strictly inside) so there's
+// no coplanar z-fighting between them. The frame is also outside the
+// terrain panels, so it doesn't fight those either.
+//
+// The water surface is FLAT and STATIC — no waves, no LOD, no
+// per-frame work. Geometry is built once on the first update() and
+// never rebuilt. The wave shader, time uniform, amplitude uniform,
+// per-cell subdivision count, and frame-stride update gate are all
+// gone.
 
 import * as THREE from 'three';
 import { getTerrainHeight, TERRAIN_MESH_SUBDIV, WATER_LEVEL } from '../sim/Terrain';
@@ -11,32 +34,14 @@ import type { GraphicsConfig } from '@/types/graphics';
 import type { Lod3DState } from './Lod3D';
 import { makeLandGridMetrics, writeLandCellBounds, type LandCellBounds } from '../landGrid';
 
-const WAVE_LAMBDA_X = 240;
-const WAVE_LAMBDA_Z = 320;
-const WAVE_OMEGA_X = 0.6;
-const WAVE_OMEGA_Z = 0.45;
 const WATER_COLOR = 0x4aa3df;
 
-/** Depth (world units) the water surface drops down at the MAP EDGE
- *  to close off the side. Without this skirt, panning the camera
- *  outside the map shows the water as a paper-thin sheet ending in
- *  thin air. With it, every water cell whose footprint touches the
- *  map's outer rectangle gets a vertical wall going down to
- *  `WATER_LEVEL − WATER_EDGE_SKIRT_DEPTH`, so the water reads as a
- *  proper basin from oblique angles. The skirt is part of the SAME
- *  BufferGeometry / mesh / material as the flat water cells —
- *  vertical normals so there's no chance of coplanar z-fighting,
- *  one extra draw call avoided.
- *
- *  600 wu is well past where the camera can pull back in normal
- *  gameplay; the skirt's bottom never reads as a visible seam.  */
-const WATER_EDGE_SKIRT_DEPTH = 600;
-/** Slack on the "is this cell at the map edge?" test. Cells were
- *  built off `landGrid` cell bounds so x0 / x1 / z0 / z1 land on
- *  exact integer multiples of the cell size; 0.5 wu absorbs any
- *  floating-point drift from the grid metrics math without
- *  accidentally tagging interior cells as edge cells.  */
-const MAP_EDGE_EPS = 0.5;
+/** How far past every map edge the outer frame extends. The frame's
+ *  only job is to make the water LOOK CONTINUOUS when the camera
+ *  pans past the map's outer rectangle, so this just needs to be
+ *  bigger than the camera's furthest pull-out. 8000 wu is far past
+ *  the OrbitCamera's max distance on either map size. */
+const WATER_OUTER_EXTEND = 8000;
 
 type WaterCell = {
   x0: number;
@@ -49,14 +54,11 @@ export class WaterRenderer3D {
   private mesh: THREE.Mesh;
   private geometry: THREE.BufferGeometry;
   private material: THREE.MeshLambertMaterial;
-  private timeUniform = { value: 0 };
-  private amplitudeUniform = { value: 0 };
   private mapWidth: number;
   private mapHeight: number;
-  private terrainLodKey = '';
   private hasWaterGeometry = false;
   private waterCellCache: WaterCell[] | null = null;
-  private frameIndex = 0;
+  private built = false;
 
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
@@ -70,40 +72,10 @@ export class WaterRenderer3D {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    this.material.onBeforeCompile = (shader) => {
-      shader.uniforms.uWaterTime = this.timeUniform;
-      shader.uniforms.uWaterAmplitude = this.amplitudeUniform;
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <common>',
-        `
-        uniform float uWaterTime;
-        uniform float uWaterAmplitude;
-        #include <common>
-        `,
-      );
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `
-        vec3 transformed = vec3(position);
-        float phaseX = position.x * (6.2831853 / ${WAVE_LAMBDA_X.toFixed(1)})
-                     + uWaterTime * ${WAVE_OMEGA_X.toFixed(3)};
-        float phaseZ = position.z * (6.2831853 / ${WAVE_LAMBDA_Z.toFixed(1)})
-                     + uWaterTime * ${WAVE_OMEGA_Z.toFixed(3)};
-        transformed.y += uWaterAmplitude * (
-          sin(phaseX) * 0.6 + cos(phaseZ) * 0.4
-        );
-        `,
-      );
-    };
 
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.renderOrder = 3;
     parent.add(this.mesh);
-  }
-
-  private perCellSubdiv(globalSubdivisions: number): number {
-    if (globalSubdivisions <= 1) return 1;
-    return Math.max(1, Math.min(4, Math.ceil(globalSubdivisions / 32)));
   }
 
   private isWaterCell(x0: number, z0: number, x1: number, z1: number): boolean {
@@ -169,128 +141,84 @@ export class WaterRenderer3D {
     return waterCells;
   }
 
-  private waterLodKey(graphicsConfig: GraphicsConfig): string {
-    // Water is an environmental surface, not an object graph. Tying its
-    // geometry subdivisions to camera-sphere cells caused large typed-array
-    // rebuilds while panning. Keep mesh density global by PLAYER CLIENT LOD;
-    // camera/object LOD still controls units/buildings/deposits/tiles.
-    return [
-      graphicsConfig.tier,
-      graphicsConfig.waterSubdivisions,
-    ].join('|');
-  }
-
-  private rebuildGeometryIfNeeded(graphicsConfig: GraphicsConfig): void {
-    const nextKey = this.waterLodKey(graphicsConfig);
-    if (nextKey === this.terrainLodKey) return;
-    this.terrainLodKey = nextKey;
-
+  private buildGeometry(): void {
     const waterCells = this.getWaterCells();
     const positions: number[] = [];
     const normals: number[] = [];
     const indices: number[] = [];
 
-    const skirtBottomY = WATER_LEVEL - WATER_EDGE_SKIRT_DEPTH;
-    const mapEdgeEastX = this.mapWidth - MAP_EDGE_EPS;
-    const mapEdgeSouthZ = this.mapHeight - MAP_EDGE_EPS;
-    /** Push one vertical skirt quad along a map-edge segment from
-     *  `WATER_LEVEL` down to `skirtBottomY`, with a constant outward
-     *  normal. Two triangles per quad; geometry is double-sided on
-     *  the material side so winding doesn't matter for visibility. */
-    const pushSkirtQuad = (
-      x0: number, z0: number, x1: number, z1: number,
-      nx: number, nz: number,
-    ): void => {
+    /** Push one flat horizontal quad at WATER_LEVEL spanning the
+     *  rectangle (x0, z0) → (x1, z1). Top normal +Y; geometry is
+     *  double-sided on the material so the bottom face renders too
+     *  (camera pulled UNDER WATER_LEVEL — rare but possible — still
+     *  sees water from below instead of seeing through to nothing). */
+    const pushFlatQuad = (x0: number, z0: number, x1: number, z1: number): void => {
       const v = positions.length / 3;
-      // Top-left, top-right, bottom-right, bottom-left.
       positions.push(x0, WATER_LEVEL, z0);
+      positions.push(x1, WATER_LEVEL, z0);
       positions.push(x1, WATER_LEVEL, z1);
-      positions.push(x1, skirtBottomY, z1);
-      positions.push(x0, skirtBottomY, z0);
-      for (let i = 0; i < 4; i++) normals.push(nx, 0, nz);
+      positions.push(x0, WATER_LEVEL, z1);
+      for (let i = 0; i < 4; i++) normals.push(0, 1, 0);
       indices.push(v, v + 1, v + 2, v, v + 2, v + 3);
     };
 
+    // Inner patches — one flat quad per wet cell. No subdivision;
+    // the surface is static so every cell only ever needs four
+    // corners.
     for (let c = 0; c < waterCells.length; c++) {
       const cell = waterCells[c];
-      const subdiv = this.perCellSubdiv(graphicsConfig.waterSubdivisions);
-      const vBase = positions.length / 3;
-      const idx = (ix: number, iz: number) => iz * (subdiv + 1) + ix;
-
-      for (let iz = 0; iz <= subdiv; iz++) {
-        const z = cell.z0 + ((cell.z1 - cell.z0) * iz) / subdiv;
-        for (let ix = 0; ix <= subdiv; ix++) {
-          const x = cell.x0 + ((cell.x1 - cell.x0) * ix) / subdiv;
-          positions.push(x, WATER_LEVEL, z);
-          normals.push(0, 1, 0);
-        }
-      }
-
-      for (let iz = 0; iz < subdiv; iz++) {
-        for (let ix = 0; ix < subdiv; ix++) {
-          const a = vBase + idx(ix, iz);
-          const b = vBase + idx(ix + 1, iz);
-          const d = vBase + idx(ix, iz + 1);
-          const e = vBase + idx(ix + 1, iz + 1);
-          indices.push(a, b, e, a, e, d);
-        }
-      }
-
-      // Map-edge skirts. Only emitted for cells whose footprint
-      // actually touches the map perimeter rectangle; interior cells
-      // skip the test. Each emitted side is a single quad regardless
-      // of `waterSubdivisions` — the side is a vertical band, not a
-      // height field, so subdividing it would just spend verts on
-      // identical positions.
-      if (cell.x0 <= MAP_EDGE_EPS) {
-        // West edge — outward normal points −X, run along +Z so
-        // the front face looks at a camera outside the map.
-        pushSkirtQuad(cell.x0, cell.z1, cell.x0, cell.z0, -1, 0);
-      }
-      if (cell.x1 >= mapEdgeEastX) {
-        // East edge — outward normal +X.
-        pushSkirtQuad(cell.x1, cell.z0, cell.x1, cell.z1, 1, 0);
-      }
-      if (cell.z0 <= MAP_EDGE_EPS) {
-        // North edge — outward normal −Z.
-        pushSkirtQuad(cell.x0, cell.z0, cell.x1, cell.z0, 0, -1);
-      }
-      if (cell.z1 >= mapEdgeSouthZ) {
-        // South edge — outward normal +Z.
-        pushSkirtQuad(cell.x1, cell.z1, cell.x0, cell.z1, 0, 1);
-      }
+      pushFlatQuad(cell.x0, cell.z0, cell.x1, cell.z1);
     }
+
+    // Outer frame — four flat rectangles surrounding the map's
+    // outer rectangle, all at WATER_LEVEL. They share edges with the
+    // inner patches but never overlap them, so no coplanar
+    // z-fighting between water and water. They sit OUTSIDE the
+    // terrain panels (whose footprint is bounded by the map
+    // rectangle), so no fight with the panels' tops or side walls
+    // either.
+    //
+    //   ┌───────────── north (full width × OUTER_EXTEND) ─────────────┐
+    //   │                                                              │
+    //   │ west │   <map rectangle, inner patches live in here>   │ east│
+    //   │      │                                                  │     │
+    //   └───────────── south (full width × OUTER_EXTEND) ─────────────┘
+    const outer = WATER_OUTER_EXTEND;
+    const W = this.mapWidth;
+    const H = this.mapHeight;
+    // North band: spans full extended width × the outer extent above z=0.
+    pushFlatQuad(-outer, -outer, W + outer, 0);
+    // South band: full extended width × outer extent below z=H.
+    pushFlatQuad(-outer, H, W + outer, H + outer);
+    // West band: outer extent west of x=0 × inner-rectangle z-span.
+    pushFlatQuad(-outer, 0, 0, H);
+    // East band: outer extent east of x=W × inner-rectangle z-span.
+    pushFlatQuad(W, 0, W + outer, H);
 
     this.geometry.dispose();
     this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
     this.geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
     this.geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
     this.geometry.computeBoundingSphere();
-    this.hasWaterGeometry = waterCells.length > 0;
-    this.mesh.visible = this.hasWaterGeometry;
+    // The outer frame is always emitted, so geometry is non-empty
+    // even for fully-dry maps. This stays true once built.
+    this.hasWaterGeometry = true;
+    this.built = true;
   }
 
   update(
-    dtSec: number,
+    _dtSec: number,
     graphicsConfig: GraphicsConfig,
     _lod?: Lod3DState,
     _sharedLodGrid?: unknown,
   ): void {
-    this.frameIndex = (this.frameIndex + 1) & 0x3fffffff;
     this.material.opacity = graphicsConfig.waterOpacity;
-    this.amplitudeUniform.value = graphicsConfig.waterWaveAmplitude;
     if (graphicsConfig.waterOpacity <= 0) {
       this.mesh.visible = false;
       return;
     }
-
-    this.rebuildGeometryIfNeeded(graphicsConfig);
+    if (!this.built) this.buildGeometry();
     this.mesh.visible = this.hasWaterGeometry;
-    if (!this.mesh.visible || graphicsConfig.waterOpacity <= 0) return;
-
-    const stride = Math.max(1, graphicsConfig.waterFrameStride | 0);
-    if (stride > 1 && this.frameIndex % stride !== 0) return;
-    this.timeUniform.value += dtSec;
   }
 
   destroy(): void {

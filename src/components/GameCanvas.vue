@@ -51,6 +51,8 @@ import {
   saveTerrainCenter,
   loadStoredTerrainDividers,
   saveTerrainDividers,
+  loadStoredTerrainMapShape,
+  saveTerrainMapShape,
   getDefaultDemoUnits,
   loadStoredDemoBarsCollapsed,
   saveDemoBarsCollapsed,
@@ -58,8 +60,8 @@ import {
   saveRealBarsCollapsed,
   type BattleMode,
 } from '../battleBarConfig';
-import { setTerrainCenterShape, setTerrainDividersShape } from '../game/sim/Terrain';
-import type { TerrainShape } from '../types/terrain';
+import { setTerrainCenterShape, setTerrainDividersShape, setTerrainMapShape } from '../game/sim/Terrain';
+import type { TerrainMapShape, TerrainShape } from '../types/terrain';
 import {
   SERVER_CONFIG,
   saveSnapshotRate,
@@ -359,6 +361,7 @@ const demoUnitTypes = BACKGROUND_UNIT_TYPES;
 // refs from the real-battle keys at that point.
 const terrainCenter = ref<TerrainShape>(loadStoredTerrainCenter('demo'));
 const terrainDividers = ref<TerrainShape>(loadStoredTerrainDividers('demo'));
+const terrainMapShape = ref<TerrainMapShape>(loadStoredTerrainMapShape('demo'));
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<ConcreteGraphicsQuality>(
   getEffectiveQuality(),
@@ -693,6 +696,7 @@ const currentBattleMode = computed<BattleMode>(
 watch(currentBattleMode, (mode) => {
   terrainCenter.value = loadStoredTerrainCenter(mode);
   terrainDividers.value = loadStoredTerrainDividers(mode);
+  terrainMapShape.value = loadStoredTerrainMapShape(mode);
   if (!gameStarted.value) {
     stopBackgroundBattle();
     nextTick(() => {
@@ -1040,6 +1044,30 @@ function applyTerrainShape(
     networkManager.broadcastLobbySettings({
       terrainCenter: terrainCenter.value,
       terrainDividers: terrainDividers.value,
+      terrainMapShape: terrainMapShape.value,
+    });
+  }
+}
+
+function applyTerrainMapShape(shape: TerrainMapShape, broadcast = true): void {
+  const mode = currentBattleMode.value;
+  terrainMapShape.value = shape;
+  saveTerrainMapShape(shape, mode);
+  if (!gameStarted.value) {
+    stopBackgroundBattle();
+    nextTick(() => {
+      startBackgroundBattle();
+    });
+  }
+  if (
+    broadcast &&
+    networkRole.value === 'host' &&
+    roomCode.value !== ''
+  ) {
+    networkManager.broadcastLobbySettings({
+      terrainCenter: terrainCenter.value,
+      terrainDividers: terrainDividers.value,
+      terrainMapShape: terrainMapShape.value,
     });
   }
 }
@@ -1072,11 +1100,18 @@ function resetDemoDefaults(): void {
   // janky for a no-op click on RESET DEFAULTS.
   const centerDefault = BATTLE_CONFIG.center.default;
   const dividersDefault = BATTLE_CONFIG.dividers.default;
-  if (terrainCenter.value !== centerDefault || terrainDividers.value !== dividersDefault) {
+  const mapShapeDefault = BATTLE_CONFIG.mapShape.default;
+  if (
+    terrainCenter.value !== centerDefault ||
+    terrainDividers.value !== dividersDefault ||
+    terrainMapShape.value !== mapShapeDefault
+  ) {
     terrainCenter.value = centerDefault;
     terrainDividers.value = dividersDefault;
+    terrainMapShape.value = mapShapeDefault;
     saveTerrainCenter(centerDefault, mode);
     saveTerrainDividers(dividersDefault, mode);
+    saveTerrainMapShape(mapShapeDefault, mode);
     if (!gameStarted.value) {
       stopBackgroundBattle();
       nextTick(() => {
@@ -1638,6 +1673,9 @@ function setupNetworkCallbacks(): void {
     networkNotice.value = null;
     roomCode.value = handoff.roomCode;
     lobbyPlayers.value = handoff.players.map((player) => ({ ...player }));
+    if (handoff.settings) {
+      applyLobbySettingsFromHost(handoff.settings);
+    }
     startGameWithPlayers(handoff.playerIds);
   };
 
@@ -1673,6 +1711,7 @@ function setupNetworkCallbacks(): void {
   networkManager.getLobbySettings = () => ({
     terrainCenter: terrainCenter.value,
     terrainDividers: terrainDividers.value,
+    terrainMapShape: terrainMapShape.value,
   });
   networkManager.onLobbySettings = (settings) => {
     applyLobbySettingsFromHost(settings);
@@ -1682,17 +1721,22 @@ function setupNetworkCallbacks(): void {
 function applyLobbySettingsFromHost(settings: {
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
+  terrainMapShape: TerrainMapShape;
 }): void {
   const changed =
     settings.terrainCenter !== terrainCenter.value ||
-    settings.terrainDividers !== terrainDividers.value;
+    settings.terrainDividers !== terrainDividers.value ||
+    settings.terrainMapShape !== terrainMapShape.value;
 
   terrainCenter.value = settings.terrainCenter;
   terrainDividers.value = settings.terrainDividers;
+  terrainMapShape.value = settings.terrainMapShape;
   saveTerrainCenter(settings.terrainCenter, 'real');
   saveTerrainDividers(settings.terrainDividers, 'real');
+  saveTerrainMapShape(settings.terrainMapShape, 'real');
   setTerrainCenterShape(settings.terrainCenter);
   setTerrainDividersShape(settings.terrainDividers);
+  setTerrainMapShape(settings.terrainMapShape);
 
   if (changed && !gameStarted.value && currentBattleMode.value === 'real') {
     stopBackgroundBattle();
@@ -1731,12 +1775,19 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
     // same namespace before baking their terrain mesh.
     const realTerrainCenter = loadStoredTerrainCenter('real');
     const realTerrainDividers = loadStoredTerrainDividers('real');
+    const realTerrainMapShape = loadStoredTerrainMapShape('real');
     setTerrainCenterShape(realTerrainCenter);
     setTerrainDividersShape(realTerrainDividers);
+    setTerrainMapShape(realTerrainMapShape);
 
     if (networkRole.value !== 'client') {
       // Create GameServer for host/offline (WASM physics)
-      const createdServer = await GameServer.create({ playerIds, aiPlayerIds, terrainCenter: realTerrainCenter });
+      const createdServer = await GameServer.create({
+        playerIds,
+        aiPlayerIds,
+        terrainCenter: realTerrainCenter,
+        terrainMapShape: realTerrainMapShape,
+      });
       if (startGen !== realBattleStartGen || !gameStarted.value || !containerRef.value) {
         createdServer.stop();
         return;
@@ -1827,6 +1878,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       mapWidth: getMapSize(false).width,
       mapHeight: getMapSize(false).height,
       terrainCenter: realTerrainCenter,
+      terrainMapShape: realTerrainMapShape,
       backgroundMode: false,
     });
     setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
@@ -2212,6 +2264,19 @@ onUnmounted(() => {
                 :active="terrainDividers === opt.value"
                 :title="`Set the team-separator ridges to ${opt.label.toLowerCase()}`"
                 @click="applyTerrainShape('dividers', opt.value)"
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup v-if="!gameStarted">
+            <BarDivider />
+            <BarLabel>MAP:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                v-for="opt in BATTLE_CONFIG.mapShape.options"
+                :key="opt.value"
+                :active="terrainMapShape === opt.value"
+                :title="`Set the map boundary to ${opt.label.toLowerCase()}`"
+                @click="applyTerrainMapShape(opt.value)"
               >{{ opt.label }}</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
@@ -3119,6 +3184,7 @@ onUnmounted(() => {
       :is-connecting="isConnecting"
       :terrain-center="terrainCenter"
       :terrain-dividers="terrainDividers"
+      :terrain-map-shape="terrainMapShape"
       @host="handleHost"
       @join="handleJoin"
       @start="handleLobbyStart"
@@ -3127,6 +3193,7 @@ onUnmounted(() => {
       @spectate="toggleSpectateMode"
       @set-terrain-center="(s) => applyTerrainShape('center', s)"
       @set-terrain-dividers="(s) => applyTerrainShape('dividers', s)"
+      @set-terrain-map-shape="(s) => applyTerrainMapShape(s)"
     />
 
     <!-- Spectate mode toggle — restored. When the user has hidden

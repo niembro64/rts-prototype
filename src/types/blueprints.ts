@@ -133,6 +133,15 @@ export type ProjectileShotBlueprint = {
    *  homing — a gravity-less projectile without homing flies in a
    *  perfectly straight line until it hits something. */
   ignoresGravity?: boolean;
+  /** Maximum yaw rate (radians / sec) the projectile applies while
+   *  steering toward an acquired target. Property of the ROCKET, not
+   *  the turret — different turrets that fire the same rocket
+   *  produce projectiles that turn at the same rate. Omit / 0 = no
+   *  homing (the projectile flies straight; pairs with `ignoresGravity`
+   *  for railgun-style shots). When set, the firing turret hands the
+   *  rocket its current target at spawn time and the rocket bends its
+   *  velocity toward that target each tick at this rate. */
+  homingTurnRate?: number;
   /** Cosmetic — declares this projectile leaves a fading smoke trail
    *  in the 3D renderer. Presence of this field turns the trail on;
    *  every individual property has an engine-wide default so authors
@@ -237,7 +246,6 @@ export type TurretBlueprint = {
   rangeMultiplierOverrides: TurretRangeOverrides;
   /** Smooth this turret's projectile spawn events across snapshot intervals. */
   eventsSmooth: boolean;
-  homingTurnRate?: number;
   launchForce?: number;
   isManualFire?: boolean;
   passive?: boolean;

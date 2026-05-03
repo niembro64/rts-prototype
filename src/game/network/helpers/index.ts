@@ -1,3 +1,6 @@
 // Network helpers - re-exports
 
-export { createEntityFromNetwork } from './NetworkEntityFactory';
+export {
+  createEntityFromNetwork,
+  refreshUnitTurretsFromNetwork,
+} from './NetworkEntityFactory';

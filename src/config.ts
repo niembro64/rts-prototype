@@ -61,6 +61,12 @@ export const METAL_DEPOSIT_FLAT_PAD_CELLS = 20;
 // terrain height; this only controls where the visual tile mesh sits.
 export const MANA_TILE_GROUND_LIFT = -5;
 
+// Mana/capture terrain tiles whose sampled height range is at or below
+// this value are rendered with the cheapest possible interior mesh.
+// Shared edges still inherit neighbor resolution so adjacent sloped tiles
+// remain crack-free and visually continuous.
+export const MANA_TILE_FLAT_HEIGHT_THRESHOLD = 1;
+
 // 3D waypoint visual lift above the sampled terrain surface. This is
 // render-only: command positions and pathfinding still use the actual
 // terrain height, while dots/lines/flags float this many world units up
@@ -260,24 +266,34 @@ export const FRAME_TIMING_EMA = {
  * Rate trackers (FPS/TPS/SPS): high number = good performance.
  * Ms trackers (frame/render/logic): low number = good performance.
  *
- * Both HOST SERVER and PLAYER CLIENT auto-LOD ladders feed off these
- * values until real samples arrive. Initialize EVERY tracker at
- * "0% performance" so the game opens at MIN tier and the LOD climbs
- * up only as measured headroom appears — instead of opening at MAX
- * and having a visible spike of work in the first second while the
- * EMA catches up to the real load.
+ * For LOD-feeding trackers, the seed targets a NORMALIZED RATIO of 0.5
+ * (the midpoint between MIN and MAX tier). Starting at 0.0 (e.g. fps=0,
+ * tickMs=budget) opens the game at MIN, which looks bad. Starting at 1.0
+ * (everything full quality) risks freezing on load while the EMA catches
+ * up to the real load. 0.5 splits the difference: the game opens at a
+ * mid-tier and migrates to whatever the measured performance supports
+ * within the EMA's first few samples.
+ *
+ * Display-only trackers (the per-frame ms bars in PLAYER CLIENT) are
+ * still seeded at frame budget so the bars fill fully red until real
+ * samples arrive — they don't feed LOD selection so the visual cue
+ * trumps the ratio rule there.
  */
 const FRAME_BUDGET_MS_60HZ = 1000 / 60;
 export const EMA_INITIAL_VALUES = {
-  // Rate trackers — start pessimistic (0 ticks/frames/snapshots/sec).
-  // LOD ratio = actual / target, so 0 → ratio 0 → MIN tier.
+  // FPS feeds the PLAYER CLIENT auto-LOD ladder via fps / 60. 30 → 0.5
+  // ratio → mid-tier seed. tps and snaps are not consumed here: the
+  // server recomputes its TPS/CPU seeds in its constructor (they depend
+  // on the configured tickRateHz, which this config can't see).
   tps: 0,
-  fps: 0,
+  fps: 30,
   snaps: 0,
 
-  // Ms trackers — start pessimistic (at the 60Hz frame budget).
-  // The msBarStyle UI fills fully red at budget, and on the server side
-  // the CPU-load LOD signal saturates at 100% load → 0 headroom → MIN.
+  // Ms trackers — seed at the 60Hz frame budget. These drive the
+  // msBarStyle UI in the client bar (CPU/GPU/FRAME/longtask), which
+  // should fill fully red until real samples arrive. None of these feed
+  // a client-side LOD ratio, so the display-friendly seed wins over the
+  // 0.5-ratio rule.
   frameMs: FRAME_BUDGET_MS_60HZ,
   renderMs: FRAME_BUDGET_MS_60HZ,
   logicMs: FRAME_BUDGET_MS_60HZ,
@@ -485,6 +501,10 @@ export const MAP_GRID_COLOR = MAP_BG_COLOR;
  *  value preserves the previous `mmult = 0.02` broad-stroke period.
  */
 export const MANA_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.2;
+/** Static baked mana-surface texture resolution. Higher values preserve
+ *  more procedural texture detail without requiring more terrain
+ *  triangles; cost is one small GPU texture per map. */
+export const MANA_TILE_TEXTURE_PIXELS_PER_TILE = 32;
 
 const manaTileWaveScale = (tileWidths: number): number =>
   (Math.PI * 2) /
@@ -788,7 +808,7 @@ export const ZOOM_MAX = 40.0;
 export const ZOOM_STEP_FRACTION = 0.2;
 
 /** Initial zoom level for the demo game (zoomed out overview) */
-export const ZOOM_INITIAL_DEMO = 1.5;
+export const ZOOM_INITIAL_DEMO = 3.5;
 
 /** Initial zoom level when a real game starts. Higher = closer.
  *  3.0 frames the local commander as a clearly visible sphere

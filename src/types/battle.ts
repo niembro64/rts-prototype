@@ -1,5 +1,5 @@
 import type { BooleanSetting, LabeledOptionsConfig, OptionsConfig } from './bars';
-import type { TerrainShape } from './terrain';
+import type { TerrainMapShape, TerrainShape } from './terrain';
 
 export type UnitToggleConfig = {
   readonly shortName: string;
@@ -17,4 +17,6 @@ export type BattleBarConfig = {
   readonly center: LabeledOptionsConfig<TerrainShape>;
   /** Shape of the team-separator ridges (DIVIDERS button group). */
   readonly dividers: LabeledOptionsConfig<TerrainShape>;
+  /** Overall map boundary shape: full square map or circular island. */
+  readonly mapShape: LabeledOptionsConfig<TerrainMapShape>;
 };

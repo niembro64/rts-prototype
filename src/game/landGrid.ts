@@ -1,8 +1,9 @@
-import { LAND_CELL_SIZE } from '../config';
+import { LAND_CELL_SIZE, MANA_TILE_SIZE, SPATIAL_GRID_CELL_SIZE } from '../config';
 
 export const LAND_CELL_AXIS_BIAS = 32768;
 export const LAND_CELL_AXIS_MASK = 0xffff;
 export const LAND_CELL_KEY_MULT = 0x10000;
+export const CANONICAL_LAND_CELL_SIZE = normalizeLandCellSize(LAND_CELL_SIZE);
 
 export type LandGridMetrics = {
   mapWidth: number;
@@ -21,6 +22,23 @@ export type LandCellBounds = {
 
 export function normalizeLandCellSize(cellSize: number = LAND_CELL_SIZE): number {
   return Math.max(1, Math.floor(cellSize > 0 ? cellSize : LAND_CELL_SIZE));
+}
+
+export function assertCanonicalLandCellSize(label: string, cellSize: number): void {
+  const normalized = normalizeLandCellSize(cellSize);
+  if (normalized !== CANONICAL_LAND_CELL_SIZE) {
+    throw new Error(
+      `${label} (${normalized}) must equal canonical LAND_CELL_SIZE (${CANONICAL_LAND_CELL_SIZE})`,
+    );
+  }
+}
+
+export function assertCanonicalLandGridSymmetry(
+  objectLodCellSize: number = CANONICAL_LAND_CELL_SIZE,
+): void {
+  assertCanonicalLandCellSize('SPATIAL_GRID_CELL_SIZE', SPATIAL_GRID_CELL_SIZE);
+  assertCanonicalLandCellSize('MANA_TILE_SIZE', MANA_TILE_SIZE);
+  assertCanonicalLandCellSize('PLAYER_CLIENT objectLodCellSize', objectLodCellSize);
 }
 
 export function landCellCountForSpan(span: number, cellSize: number = LAND_CELL_SIZE): number {
@@ -68,6 +86,29 @@ export function landCellIndexForSize(coord: number, normalizedCellSize: number):
 
 export function landCellCenterForSize(index: number, normalizedCellSize: number): number {
   return (index + 0.5) * normalizedCellSize;
+}
+
+export function landCellBoundaryFloor(coord: number, normalizedCellSize: number): number {
+  return landCellMinForSize(landCellIndexForSize(coord, normalizedCellSize), normalizedCellSize);
+}
+
+export function landCellBoundaryCeil(coord: number, normalizedCellSize: number): number {
+  return Math.ceil(coord / normalizedCellSize) * normalizedCellSize;
+}
+
+export function landCellKeyForIndex(cx: number, cy: number): number {
+  return packLandCellKey(cx, cy);
+}
+
+export function landCellKeyForWorld(
+  x: number,
+  y: number,
+  normalizedCellSize: number = CANONICAL_LAND_CELL_SIZE,
+): number {
+  return packLandCellKey(
+    landCellIndexForSize(x, normalizedCellSize),
+    landCellIndexForSize(y, normalizedCellSize),
+  );
 }
 
 export function writeLandCellBounds(

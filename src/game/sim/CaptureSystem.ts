@@ -9,6 +9,7 @@ import type { TileState, NetworkCaptureTile } from '@/types/capture';
 import { CAPTURE_CONFIG } from '../../captureConfig';
 import { getManaTileProductionPerSecond } from './manaProduction';
 import {
+  assertCanonicalLandCellSize,
   landCellCenterXForMetrics,
   landCellCenterYForMetrics,
   makeLandGridMetrics,
@@ -46,6 +47,7 @@ export class CaptureSystem {
    *  rates can be computed. Must be called before update() runs.
    *  Idempotent — safe to call once at construction. */
   setMapSize(mapWidth: number, mapHeight: number, cellSize: number): void {
+    assertCanonicalLandCellSize('CaptureSystem cell size', cellSize);
     if (
       this.mapWidth !== mapWidth ||
       this.mapHeight !== mapHeight ||

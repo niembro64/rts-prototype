@@ -9,7 +9,7 @@ import { AUDIO } from '../../../audioConfig';
 import type { ShotBlueprint } from './types';
 
 const BEAM_WIDTH = 6;
-const BEAM_RECOIL = 2000;
+const BEAM_RECOIL_AND_HIT_FORCE = 3000;
 const FIRE_EXPLOSION_RADIUS_MULTIPLIER = 3;
 const BEAM_DAMAGE_SPHERE_RADIUS = BEAM_WIDTH * 1.5;
 
@@ -47,11 +47,13 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     hitSound: AUDIO.event.hit.mediumShot,
   },
   // Rocket-class projectile. Flies in a straight line on pure thrust
-  // (ignoresGravity=true) and is bent only by homing — every salvo-
-  // rocket turret pairs this shot with a homingTurnRate so the rocket
-  // tracks its locked target. detonateOnExpiry=true gives the volley a
-  // "dumb-fire detonates at end of lifespan" fallback when the seeker
-  // loses lock (target dies mid-flight).
+  // (ignoresGravity=true) and is bent only by homing — `homingTurnRate`
+  // is a property of the rocket itself (yaw rad/sec the rocket can
+  // bend toward its target), not of the turret that fires it. Any
+  // turret that fires this shot produces a rocket that turns at this
+  // rate. detonateOnExpiry=true gives the volley a "dumb-fire
+  // detonates at end of lifespan" fallback when the seeker loses
+  // lock (target dies mid-flight).
   lightRocket: {
     type: 'projectile',
     id: 'lightRocket',
@@ -65,6 +67,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     detonateOnExpiry: true,
     lifespan: 5500,
     ignoresGravity: true,
+    homingTurnRate: 1,
     // Render as a velocity-aligned cylinder (purely cosmetic — sim
     // collision is still sphere-based via collision.radius).
     shape: 'cylinder',
@@ -177,8 +180,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     type: 'laser',
     id: 'laserShot',
     dps: 10 / (300 / 1000), // collision.damage / (beamDuration/1000) ≈ 33.3 dps
-    force: 2500,
-    recoil: BEAM_RECOIL,
+    force: BEAM_RECOIL_AND_HIT_FORCE,
+    recoil: BEAM_RECOIL_AND_HIT_FORCE,
     radius: BEAM_WIDTH / 2,
     width: BEAM_WIDTH,
     damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS },
@@ -189,8 +192,8 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     type: 'beam',
     id: 'beamShot',
     dps: 30,
-    force: 2000,
-    recoil: BEAM_RECOIL,
+    force: BEAM_RECOIL_AND_HIT_FORCE,
+    recoil: BEAM_RECOIL_AND_HIT_FORCE,
     radius: BEAM_WIDTH / 2,
     width: BEAM_WIDTH,
     damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS },
@@ -205,7 +208,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     id: 'megaBeamShot',
     dps: 90,
     force: 4000,
-    recoil: BEAM_RECOIL,
+    recoil: BEAM_RECOIL_AND_HIT_FORCE,
     radius: BEAM_WIDTH,
     width: BEAM_WIDTH * 2,
     damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS * 1.6 },

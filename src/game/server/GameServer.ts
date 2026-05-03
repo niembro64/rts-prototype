@@ -38,7 +38,6 @@ import {
   SNAPSHOT_CONFIG,
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
-  EMA_INITIAL_VALUES,
   MANA_TILE_SIZE,
   MAX_TICK_DT_MS,
   SERVER_GRID_DEBUG_INTERVAL_MS,
@@ -51,7 +50,7 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
-import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion } from '../sim/Terrain';
+import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape } from '../sim/Terrain';
 import { generateMetalDeposits } from '../../metalDepositConfig';
 
 export type { GameServerConfig } from '@/types/game';
@@ -78,6 +77,12 @@ const WATER_OUT_CACHE_BUCKET_SCALE = 10;
 const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
 type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
 const SNAPSHOT_AOI_PADDING = 1200;
+// FOW is not implemented yet, so AOI must not decide entity membership.
+// Keep this off until the game has a real visibility model. Per-recipient
+// snapshots still reduce fidelity through owner-aware delta thresholds
+// (`ownedEntityDelta` vs `observedEntityDelta`) and projectile side-channel
+// cadence, but every unit/building remains present in keyframes/deltas.
+const SNAPSHOT_ENTITY_AOI_CULLING_ENABLED = false;
 const GRID_DEBUG_KEY_BIAS = 10000;
 const GRID_DEBUG_KEY_BASE = 20000;
 const GRID_DEBUG_KEY_Y_MULT = GRID_DEBUG_KEY_BASE;
@@ -165,10 +170,13 @@ export class GameServer {
   // Game over tracking
   private isGameOver: boolean = false;
 
-  // Tick rate tracking (EMA-based, start pessimistic at 0 ticks/sec so
-  // the host LOD opens at MIN and climbs as measured headroom appears).
-  private tpsAvg: number = EMA_INITIAL_VALUES.tps;
-  private tpsLow: number = EMA_INITIAL_VALUES.tps;
+  // Tick rate tracking (EMA-based). Seeded in the constructor body to
+  // half of `tickRateHz` so the LOD signal `tps / tickRateHz` opens at
+  // 0.5 (mid-tier) — see the EMA_INITIAL_VALUES comment in config.ts
+  // for the rationale. The placeholder `0` here is overwritten before
+  // any LOD read; tickRateHz isn't known at field-init time.
+  private tpsAvg: number = 0;
+  private tpsLow: number = 0;
   private tpsInitialized: boolean = true;
 
   // Per-tick CPU cost tracking (ms). EMA-smoothed average and "hi" spike
@@ -177,14 +185,11 @@ export class GameServer {
   // via NetworkServerSnapshotMeta.cpu so both host and remote clients can
   // see how saturated the simulation is relative to the tick budget.
   //
-  // Initialize at the frame budget (≈16.67ms at 60Hz) and mark as
-  // initialized — same "start pessimistic" stance as the rate
-  // trackers. Pre-initialization the CPU-load LOD signal would have
-  // resolved to 0% load → max headroom (optimistic); the budget seed
-  // saturates load to ~100% → 0 headroom → MIN tier from the first
-  // sample, climbing as real ticks come in below budget.
-  private tickMsAvg: number = EMA_INITIAL_VALUES.frameMs;
-  private tickMsHi: number = EMA_INITIAL_VALUES.frameMs;
+  // Seeded in the constructor body to half of `tickBudgetMs` so the LOD
+  // signal `1 − tickMs/budget` opens at 0.5 (mid-tier). The placeholder
+  // `0` here is overwritten before any LOD read.
+  private tickMsAvg: number = 0;
+  private tickMsHi: number = 0;
   private tickMsInitialized: boolean = true;
 
   // Delta snapshot keyframe ratio tracking
@@ -213,6 +218,19 @@ export class GameServer {
     this.backgroundMode = config.backgroundMode ?? false;
     this.tickRateHz = 60;
     this.userTickRateHz = 60;
+
+    // Seed the TPS/CPU EMAs at a 0.5 LOD ratio (mid-tier). The TPS
+    // ratio is `tpsAvg / tickRateHz`, so half-rate is half. The CPU
+    // ratio is `1 − tickMsAvg / tickBudgetMs`, so half-budget is also
+    // half. Done here (not as a class-field initializer) because both
+    // expressions depend on `this.tickRateHz`, which is only valid
+    // from this point on.
+    const halfTickRateHz = 0.5 * this.tickRateHz;
+    const halfTickBudgetMs = 0.5 * (1000 / this.tickRateHz);
+    this.tpsAvg = halfTickRateHz;
+    this.tpsLow = halfTickRateHz;
+    this.tickMsAvg = halfTickBudgetMs;
+    this.tickMsHi = halfTickBudgetMs;
     const maxSnaps = config.maxSnapshotsPerSec ?? 30;
     this.maxSnapshotIntervalMs = maxSnaps > 0 ? 1000 / maxSnaps : 0;
     this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
@@ -230,6 +248,7 @@ export class GameServer {
     // (which bakes terrain geometry once at construction) so every
     // downstream consumer reads the same surface.
     setTerrainTeamCount(this.playerIds.length);
+    setTerrainMapShape(config.terrainMapShape ?? 'square');
 
     // Metal deposits — same set across all clients (deterministic from
     // map size + player count + CENTER terrain polarity). Push their
@@ -365,7 +384,7 @@ export class GameServer {
           if (entity.body?.physicsBody) {
             this.physics.removeBody(entity.body.physicsBody);
           }
-          constructionSystem.onBuildingDestroyed(entity);
+          constructionSystem.onBuildingDestroyed(this.world, entity);
         }
         this.world.removeEntity(id);
       }
@@ -562,7 +581,7 @@ export class GameServer {
     const captureStride = Math.max(1, getSimDetailConfig().captureStride | 0);
     if (captureStride === 1 || this.world.getTick() % captureStride === 0) {
       this.captureSystem.update(
-        spatialGrid.getOccupiedCellsForCapture(this.captureSystem.getCellSize()),
+        spatialGrid.getOccupiedCellsForCapture(),
         dtSec * captureStride,
       );
     }
@@ -1180,7 +1199,9 @@ export class GameServer {
   }
 
   private getSnapshotInterestPlan(playerId?: PlayerId): SnapshotInterestPlan {
-    if (playerId === undefined || this.backgroundMode) return {};
+    if (!SNAPSHOT_ENTITY_AOI_CULLING_ENABLED || playerId === undefined || this.backgroundMode) {
+      return {};
+    }
     return this.snapshotInterestPlansByPlayer.get(playerId) ?? {};
   }
 
@@ -1263,7 +1284,7 @@ export class GameServer {
 
   private prepareSnapshotInterestPlans(): void {
     this.snapshotInterestPlansByPlayer.clear();
-    if (this.backgroundMode) return;
+    if (!SNAPSHOT_ENTITY_AOI_CULLING_ENABLED || this.backgroundMode) return;
 
     const targetPlayerIds = this.snapshotInterestPlayerIdsBuf;
     targetPlayerIds.length = 0;

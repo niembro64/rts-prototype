@@ -7,7 +7,7 @@ import CommanderAvatar from './CommanderAvatar.vue';
 import BarControlGroup from './BarControlGroup.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarButton from './BarButton.vue';
-import type { TerrainShape } from '@/types/terrain';
+import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 
 export type { LobbyPlayer } from '@/types/ui';
 import type { LobbyPlayer } from '@/types/ui';
@@ -22,6 +22,7 @@ const props = defineProps<{
   isConnecting: boolean;
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
+  terrainMapShape: TerrainMapShape;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +33,7 @@ const emit = defineEmits<{
   (e: 'spectate'): void;
   (e: 'setTerrainCenter', shape: TerrainShape): void;
   (e: 'setTerrainDividers', shape: TerrainShape): void;
+  (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
 }>();
 
 // Surface the labeled-options arrays to the template. The host
@@ -39,6 +41,7 @@ const emit = defineEmits<{
 // click handler is gated on isHost so only the host can change it.
 const centerOptions = BATTLE_CONFIG.center.options;
 const dividersOptions = BATTLE_CONFIG.dividers.options;
+const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
 
 function pickTerrainCenter(shape: TerrainShape): void {
   if (!props.isHost) return;
@@ -48,6 +51,11 @@ function pickTerrainCenter(shape: TerrainShape): void {
 function pickTerrainDividers(shape: TerrainShape): void {
   if (!props.isHost) return;
   emit('setTerrainDividers', shape);
+}
+
+function pickTerrainMapShape(shape: TerrainMapShape): void {
+  if (!props.isHost) return;
+  emit('setTerrainMapShape', shape);
 }
 
 const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -367,6 +375,17 @@ const terrainSectionVars = computed(() =>
                   :active="terrainDividers === opt.value"
                   :title="isHost ? `Set the team-separator ridges to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
                   @click="pickTerrainDividers(opt.value)"
+                >{{ opt.label }}</BarButton>
+              </BarButtonGroup>
+            </BarControlGroup>
+            <BarControlGroup label="MAP:">
+              <BarButtonGroup>
+                <BarButton
+                  v-for="opt in mapShapeOptions"
+                  :key="opt.value"
+                  :active="terrainMapShape === opt.value"
+                  :title="isHost ? `Set the map boundary to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                  @click="pickTerrainMapShape(opt.value)"
                 >{{ opt.label }}</BarButton>
               </BarButtonGroup>
             </BarControlGroup>

@@ -75,9 +75,19 @@ export class WorldState {
   public readonly mapHeight: number;
 
   // Metal deposits — fixed map features generated at world init.
-  // Same list across all clients (deterministic from map size). Extractor
-  // income is based on the fraction of occupied cells that overlap deposits.
+  // Same list across all clients (deterministic from map size).
   public metalDeposits: MetalDeposit[] = [];
+
+  // Binary deposit-ownership map. Key = depositId, value = the
+  // EntityId of the COMPLETED extractor that has claimed this
+  // deposit. A deposit is "free" iff not present in the map. Each
+  // deposit can be owned by at most one extractor at a time; only
+  // the owner produces metal income (and visually spins). When the
+  // owner is destroyed, ownership is released and any other completed
+  // extractor whose footprint still overlaps the deposit gets
+  // promoted to the new owner. See metalDepositOwnership.ts for the
+  // claim / release / transfer helpers.
+  public depositOwners: Map<number, EntityId> = new Map();
 
   // Runtime thrust multiplier (set by GameServer based on game/demo mode)
   public thrustMultiplier: number = 8.0;

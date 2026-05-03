@@ -111,7 +111,7 @@ export function codeToProjectileType(c: number): 'projectile' | 'beam' | 'laser'
 import type { Command } from './commands';
 import type { TurretAudioId, ImpactContext, SimDeathContext } from './combat';
 import type { Vec2, Vec3 } from './vec2';
-import type { TerrainShape } from './terrain';
+import type { TerrainMapShape, TerrainShape } from './terrain';
 
 export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v1' as const;
 
@@ -145,6 +145,7 @@ export type NetworkPlayerActionMessage =
 export type LobbySettings = {
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
+  terrainMapShape: TerrainMapShape;
 };
 
 // Server → Client
@@ -514,6 +515,7 @@ export type BattleHandoff = {
   hostPlayerId: PlayerId;
   playerIds: PlayerId[];
   players: LobbyPlayer[];
+  settings?: LobbySettings;
 };
 
 export type NetworkRole = 'host' | 'client';

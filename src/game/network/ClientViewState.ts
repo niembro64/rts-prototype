@@ -20,7 +20,7 @@ import type { BeamPoint } from '../../types/sim';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkCaptureTile } from '@/types/capture';
 import { economyManager } from '../sim/economy';
-import { createEntityFromNetwork } from './helpers';
+import { createEntityFromNetwork, refreshUnitTurretsFromNetwork } from './helpers';
 import { getTurretConfig, TURRET_CONFIGS } from '../sim/turretConfigs';
 import { getUnitLocomotion } from '../sim/blueprints';
 import { getEntityVelocity3, getTurretMountHeight } from '../sim/combat/combatUtils';
@@ -726,7 +726,7 @@ export class ClientViewState {
               target.turrets[i].rotation = nw[i].turret.angular.rot;
               target.turrets[i].angularVelocity = nw[i].turret.angular.vel;
               target.turrets[i].pitch = nw[i].turret.angular.pitch;
-              target.turrets[i].forceFieldRange = nw[i].currentForceFieldRange;
+              target.turrets[i].forceFieldRange = nw[i].currentForceFieldRange ?? undefined;
             }
           } else if (isFull) {
             target.turrets.length = 0;
@@ -975,8 +975,26 @@ export class ClientViewState {
       if (su.bodyCenterHeight !== undefined) {
         entity.unit.bodyCenterHeight = su.bodyCenterHeight;
       }
-      if (su.unitType !== undefined) entity.unit.locomotion = getUnitLocomotion(codeToUnitType(su.unitType));
+      if (typeof su.unitType === 'number') {
+        const unitType = codeToUnitType(su.unitType);
+        entity.unit.unitType = unitType;
+        entity.unit.locomotion = getUnitLocomotion(unitType);
+      }
       if (su.mass !== undefined) entity.unit.mass = su.mass;
+
+      // On full keyframes, turret mounts/configs are static blueprint
+      // data. Rebuild them from the unit type + body radius and then
+      // apply only dynamic network state. This keeps remote MessagePack
+      // full snaps from moving turret mounts if pooled/static wire data
+      // gets stale or decoded oddly.
+      if (isFull && Array.isArray(su.turrets)) {
+        refreshUnitTurretsFromNetwork(
+          entity,
+          entity.unit.unitType,
+          entity.unit.bodyRadius ?? entity.unit.unitRadiusCollider.push,
+          su.turrets,
+        );
+      }
 
       if ((isFull || cf! & ENTITY_CHANGED_ACTIONS) && su.actions) {
         const src = su.actions;

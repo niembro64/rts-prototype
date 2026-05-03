@@ -351,7 +351,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     unitRadiusCollider: { shot: 8, push: 11 * 1.1 },
     bodyRadius: 10,
     bodyCenterHeight: 8,
-    mass: 30,
+    mass: 5,
     resourceCost: 35,
     turrets: [
       turretMount('laserTurret', TICK_REPLACED_HEAD_CENTER_HEIGHT_FRAC),

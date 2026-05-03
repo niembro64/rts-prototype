@@ -568,6 +568,7 @@ export class NetworkManager {
       hostPlayerId: 1 as PlayerId,
       playerIds: normalizedPlayerIds,
       players,
+      settings: this.getLobbySettings?.(),
     };
   }
 
@@ -985,12 +986,14 @@ export class NetworkManager {
     this.gameStarted = true;
     this.clearSignalingReconnect();
 
-    let playerIds = this.getGamePlayerIds();
+    const playerIds = this.getGamePlayerIds();
 
-    // Single player mode: spawn 2 commanders so player can toggle between sides
-    if (playerIds.length === 1) {
-      playerIds = [1, 2];
-    }
+    // 1-player real games are first-class — they spawn exactly one
+    // commander, one base, one team. The same code path that handles
+    // 2/4/6/N players runs here too; no fork that injects a fake
+    // second team / second commander. The host's real-battle preview
+    // (LobbyManager → spawnInitialBases) already iterates `playerIds`
+    // unconditionally, so a single id produces a single base.
 
     const handoff = this.buildBattleHandoff(playerIds);
     this.applyBattleHandoff(handoff);

@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
-import type { TerrainShape } from '@/types/terrain';
+import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import {
   buildSelectionInfo,
@@ -71,6 +71,7 @@ import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
 import {
   getTerrainMeshHeight,
   setTerrainTeamCount,
+  setTerrainMapShape,
   setMetalDepositFlatZones,
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
@@ -133,6 +134,7 @@ export type RtsScene3DConfig = {
   mapWidth: number;
   mapHeight: number;
   terrainCenter?: TerrainShape;
+  terrainMapShape?: TerrainMapShape;
   backgroundMode: boolean;
   /** GAME LOBBY preview pane — uses the dedicated wider zoom and
    *  expects the GameServer to have spawned commanders only (no
@@ -259,6 +261,7 @@ export class RtsScene3D {
   private mapWidth: number;
   private mapHeight: number;
   private terrainCenter: TerrainShape;
+  private terrainMapShape: TerrainMapShape;
   private backgroundMode: boolean;
   private lobbyPreview: boolean;
 
@@ -412,6 +415,7 @@ export class RtsScene3D {
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
     this.terrainCenter = config.terrainCenter ?? 'lake';
+    this.terrainMapShape = config.terrainMapShape ?? 'square';
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
     setPlayerCountForColors(this.playerIds.length);
@@ -424,6 +428,7 @@ export class RtsScene3D {
     // EVERY scene init makes the local Terrain module agree with
     // the lobby's player count regardless of role.
     setTerrainTeamCount(this.playerIds.length);
+    setTerrainMapShape(this.terrainMapShape);
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;
     this.backgroundMode = config.backgroundMode;

@@ -1,5 +1,5 @@
 import type { BattleBarConfig } from './types/battle';
-import type { TerrainShape } from './types/terrain';
+import type { TerrainMapShape, TerrainShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 
 const clean = (x: number) => {
@@ -60,6 +60,13 @@ export const BATTLE_CONFIG = {
       { value: 'lake', label: 'LAKES' },
       { value: 'mountain', label: 'MOUNTAINS' },
       { value: 'flat', label: 'FLAT' },
+    ],
+  },
+  mapShape: {
+    default: 'square',
+    options: [
+      { value: 'square', label: 'SQUARE' },
+      { value: 'circle', label: 'CIRCLE' },
     ],
   },
 } as const satisfies BattleBarConfig;
@@ -123,6 +130,8 @@ const STORAGE_DEMO_TERRAIN_CENTER = 'demo-battle-terrain-center';
 const STORAGE_REAL_TERRAIN_CENTER = 'real-battle-terrain-center';
 const STORAGE_DEMO_TERRAIN_DIVIDERS = 'demo-battle-terrain-dividers';
 const STORAGE_REAL_TERRAIN_DIVIDERS = 'real-battle-terrain-dividers';
+const STORAGE_DEMO_TERRAIN_MAP_SHAPE = 'demo-battle-terrain-map-shape';
+const STORAGE_REAL_TERRAIN_MAP_SHAPE = 'real-battle-terrain-map-shape';
 // Bottom-bars collapsed state. Persisted PER MODE so the user can
 // keep the bars expanded in demo (where they tune sim/visual
 // settings) and collapsed in real-battle (where map real estate
@@ -143,6 +152,7 @@ const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-force-fields-enabled', STORAGE_DEMO_FORCE_FIELDS_ENABLED],
   ['rts-terrain-center', STORAGE_DEMO_TERRAIN_CENTER],
   ['rts-terrain-dividers', STORAGE_DEMO_TERRAIN_DIVIDERS],
+  ['rts-terrain-map-shape', STORAGE_DEMO_TERRAIN_MAP_SHAPE],
 ];
 
 let _battleMigrationsRun = false;
@@ -384,6 +394,11 @@ function parseTerrainShape(s: string | null): TerrainShape | null {
   return null;
 }
 
+function parseTerrainMapShape(s: string | null): TerrainMapShape | null {
+  if (s === 'square' || s === 'circle') return s;
+  return null;
+}
+
 export function loadStoredTerrainCenter(mode: BattleMode): TerrainShape {
   ensureBattleMigrations();
   const primary = parseTerrainShape(
@@ -437,6 +452,37 @@ export function saveTerrainDividers(
     mode === 'real'
       ? STORAGE_REAL_TERRAIN_DIVIDERS
       : STORAGE_DEMO_TERRAIN_DIVIDERS,
+    shape,
+  );
+}
+
+export function loadStoredTerrainMapShape(mode: BattleMode): TerrainMapShape {
+  ensureBattleMigrations();
+  const primary = parseTerrainMapShape(
+    readPersisted(
+      mode === 'real'
+        ? STORAGE_REAL_TERRAIN_MAP_SHAPE
+        : STORAGE_DEMO_TERRAIN_MAP_SHAPE,
+    ),
+  );
+  if (primary !== null) return primary;
+  if (mode === 'real') {
+    const demoFallback = parseTerrainMapShape(
+      readPersisted(STORAGE_DEMO_TERRAIN_MAP_SHAPE),
+    );
+    if (demoFallback !== null) return demoFallback;
+  }
+  return BATTLE_CONFIG.mapShape.default;
+}
+
+export function saveTerrainMapShape(
+  shape: TerrainMapShape,
+  mode: BattleMode,
+): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_TERRAIN_MAP_SHAPE
+      : STORAGE_DEMO_TERRAIN_MAP_SHAPE,
     shape,
   );
 }

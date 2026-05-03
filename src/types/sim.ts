@@ -661,9 +661,19 @@ export type Entity = {
   commander?: Commander;
   dgunProjectile?: DGunProjectile;
   buildingType?: BuildingType;
-  /** For extractors only — the id of the metal deposit this building
-   *  mostly overlaps. Kept for debug/UI; production is cell-fractional. */
-  metalDepositId?: number;
-  /** For extractors only — actual metal/sec produced from covered deposit cells. */
+  /** For extractors only — every deposit whose ownership this
+   *  extractor currently HOLDS. The deposit-claim system is binary:
+   *  a deposit can be owned by at most one extractor at a time, and
+   *  only the owner produces metal (and visually spins). An extractor
+   *  whose footprint overlaps a deposit that is ALREADY owned by
+   *  another extractor will not appear in this list — it becomes the
+   *  fallback owner only when the original is destroyed.
+   *  Empty/undefined = inactive (no metal income, no rotor spin). */
+  ownedDepositIds?: number[];
+  /** For extractors only — actual metal/sec this extractor is
+   *  producing right now: `ownedDepositIds.length × baseProduction`
+   *  when active, 0 when inactive. Kept as a stored field (not
+   *  derived) so the renderer's spin animator and the wire format
+   *  can read it without re-running the ownership math each frame. */
   metalExtractionRate?: number;
 };

@@ -8,6 +8,7 @@
  *    - 'flat'     → zero amplitude: that component is suppressed,
  *                   leaving featureless ground. */
 export type TerrainShape = 'lake' | 'mountain' | 'flat';
+export type TerrainMapShape = 'square' | 'circle';
 
 /** Shared sign convention for terrain-shaped height features.
  *  LAKE cuts below ground, MOUNTAIN rises above ground, FLAT removes

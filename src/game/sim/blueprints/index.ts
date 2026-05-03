@@ -109,11 +109,15 @@ function computeZoneConfig(
   };
 }
 
-/** Build a ShotConfig from a ShotBlueprint + turret blueprint data */
+/** Build a ShotConfig from a ShotBlueprint + turret blueprint data.
+ *
+ *  `homingTurnRate` lives on the SHOT BLUEPRINT (it's a property of
+ *  the rocket, not the turret), so it doesn't appear here as a
+ *  parameter — `buildShotConfig` pulls it directly from
+ *  `shotBlueprint.homingTurnRate` for projectile shots. */
 function buildShotConfig(
   shotBlueprint: ShotBlueprint,
   launchForce?: number,
-  homingTurnRate?: number,
 ): ShotConfig {
   if (shotBlueprint.type === 'beam') {
     const shot: BeamShot = {
@@ -155,7 +159,7 @@ function buildShotConfig(
     detonateOnExpiry: shotBlueprint.detonateOnExpiry || undefined,
     lifespan: shotBlueprint.lifespan,
     lifespanVariance: shotBlueprint.lifespanVariance,
-    homingTurnRate: homingTurnRate,
+    homingTurnRate: shotBlueprint.homingTurnRate,
     submunitions: shotBlueprint.submunitions,
     ignoresGravity: shotBlueprint.ignoresGravity,
     smokeTrail: shotBlueprint.smokeTrail,
@@ -233,11 +237,7 @@ export function buildTurretConfig(turretId: string): TurretConfig {
       throw new Error(
         `Unknown projectile in turret ${turretId}: ${turretBlueprint.projectileId}`,
       );
-    shot = buildShotConfig(
-      shotBlueprint,
-      turretBlueprint.launchForce,
-      turretBlueprint.homingTurnRate,
-    );
+    shot = buildShotConfig(shotBlueprint, turretBlueprint.launchForce);
   } else {
     throw new Error(`Turret ${turretId} has neither projectileId nor forceField`);
   }

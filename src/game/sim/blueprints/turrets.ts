@@ -83,9 +83,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     id: 'salvoRocketTurret',
     projectileId: 'lightRocket',
     range: 360,
-    cooldown: 1_500,
-    launchForce: 1000,
-    homingTurnRate: 1,
+    cooldown: 1000,
+    launchForce: 400,
     turretTurnAccel: 20,
     turretDrag: 0.15,
     barrel: {
@@ -111,7 +110,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // 90° max deviation from vertical — rockets launch anywhere from
     // straight up to horizontal; homing then bends each one onto the
     // target's line.
-    spread: { angle: Math.PI / 2, pelletCount: 3 },
+    spread: { angle: Math.PI / 4, pelletCount: 1 },
+    // spread: { angle: Math.PI / 2, pelletCount: 1 },
     bodyRadius: 8,
     audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
     verticalLauncher: true,

@@ -1,13 +1,139 @@
 // Network entity creation helpers
 
-import type { Entity, BuildingType, UnitAction } from '../../sim/types';
-import type { NetworkServerSnapshotEntity } from '../NetworkManager';
+import type { Entity, BuildingType, Turret, UnitAction } from '../../sim/types';
+import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import { codeToActionType, codeToTurretState, codeToUnitType, codeToBuildingType, codeToProjectileType } from '../../../types/network';
-import { getTurretConfig } from '../../sim/turretConfigs';
+import { computeTurretRanges, getTurretConfig } from '../../sim/turretConfigs';
 import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
 import { buildMirrorPanelCache } from '../../sim/mirrorPanelCache';
+import { createTurretsFromDefinition } from '../../sim/unitDefinitions';
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function decodeNetworkUnitType(unitType: unknown): string {
+  return isFiniteNumber(unitType) ? codeToUnitType(unitType) : 'jackal';
+}
+
+function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret): void {
+  const wire = nw.turret;
+  if (wire.ranges) {
+    turret.ranges = {
+      tracking: wire.ranges.tracking ? { ...wire.ranges.tracking } : null,
+      fire: {
+        min: wire.ranges.fire.min ? { ...wire.ranges.fire.min } : null,
+        max: { ...wire.ranges.fire.max },
+      },
+    };
+  }
+  turret.target = nw.targetId ?? null;
+  turret.state = codeToTurretState(nw.state);
+  turret.rotation = wire.angular.rot;
+  turret.pitch = wire.angular.pitch;
+  turret.angularVelocity = wire.angular.vel;
+  turret.pitchVelocity = 0;
+  turret.turnAccel = wire.angular.acc;
+  turret.drag = wire.angular.drag;
+  turret.forceField = nw.currentForceFieldRange !== undefined && nw.currentForceFieldRange !== null
+    ? { range: nw.currentForceFieldRange, transition: turret.forceField?.transition ?? 0 }
+    : undefined;
+}
+
+function createFallbackTurretFromNetwork(nw: NetworkServerSnapshotTurret): Turret {
+  const wire = nw.turret;
+  const config = getTurretConfig(typeof wire.id === 'string' ? wire.id : 'lightTurret');
+  const ranges = wire.ranges
+    ? {
+        tracking: wire.ranges.tracking ? { ...wire.ranges.tracking } : null,
+        fire: {
+          min: wire.ranges.fire.min ? { ...wire.ranges.fire.min } : null,
+          max: { ...wire.ranges.fire.max },
+        },
+      }
+    : computeTurretRanges(config);
+  const turret: Turret = {
+    config,
+    cooldown: 0,
+    target: null,
+    ranges,
+    state: 'idle',
+    rotation: 0,
+    pitch: 0,
+    angularVelocity: 0,
+    pitchVelocity: 0,
+    turnAccel: config.angular.turnAccel,
+    drag: config.angular.drag,
+    offset: {
+      x: isFiniteNumber(wire.pos?.offset?.x) ? wire.pos.offset.x : 0,
+      y: isFiniteNumber(wire.pos?.offset?.y) ? wire.pos.offset.y : 0,
+    },
+    worldPos: { x: 0, y: 0, z: 0 },
+    worldVelocity: { x: 0, y: 0, z: 0 },
+  };
+  applyNetworkTurretState(turret, nw);
+  return turret;
+}
+
+export function createTurretsFromNetwork(
+  unitType: string,
+  bodyRadius: number,
+  netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
+): Turret[] | undefined {
+  if (!Array.isArray(netTurrets) || netTurrets.length === 0) return undefined;
+
+  let canonical: Turret[] | undefined;
+  try {
+    canonical = createTurretsFromDefinition(unitType, bodyRadius);
+  } catch {
+    canonical = undefined;
+  }
+
+  const canonicalMatchesWire =
+    canonical !== undefined &&
+    canonical.length === netTurrets.length &&
+    canonical.every((turret, i) => turret.config.id === netTurrets[i]?.turret?.id);
+
+  const turrets = canonicalMatchesWire
+    ? canonical!
+    : netTurrets.map(createFallbackTurretFromNetwork);
+
+  for (let i = 0; i < netTurrets.length && i < turrets.length; i++) {
+    applyNetworkTurretState(turrets[i], netTurrets[i]);
+  }
+
+  return turrets;
+}
+
+export function refreshUnitTurretsFromNetwork(
+  entity: Entity,
+  unitType: string,
+  bodyRadius: number,
+  netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
+): void {
+  const previous = entity.turrets;
+  const turrets = createTurretsFromNetwork(unitType, bodyRadius, netTurrets);
+  if (!turrets) {
+    entity.turrets = undefined;
+    return;
+  }
+
+  if (previous) {
+    for (let i = 0; i < turrets.length && i < previous.length; i++) {
+      const prev = previous[i];
+      const next = turrets[i];
+      next.cooldown = prev.cooldown;
+      next.pitchVelocity = prev.pitchVelocity;
+      next.barrelFireIndex = prev.barrelFireIndex;
+      if (next.forceField && prev.forceField) {
+        next.forceField.transition = prev.forceField.transition;
+      }
+    }
+  }
+  entity.turrets = turrets;
+}
 
 /**
  * Create an Entity from NetworkServerSnapshotEntity data
@@ -61,6 +187,7 @@ function createUnitFromNetwork(
   }
 
   const defaultRadius = 15;
+  const unitType = decodeNetworkUnitType(u?.unitType);
   const entity: Entity = {
     id,
     type: 'unit',
@@ -68,7 +195,7 @@ function createUnitFromNetwork(
     ownership: { playerId },
     selectable: { selected: false },
     unit: {
-      unitType: u?.unitType !== undefined ? codeToUnitType(u.unitType) : 'jackal',
+      unitType,
       hp: u?.hp.curr ?? 100,
       maxHp: u?.hp.max ?? 100,
       unitRadiusCollider: {
@@ -77,7 +204,7 @@ function createUnitFromNetwork(
       },
       bodyRadius: u?.bodyRadius ?? defaultRadius,
       bodyCenterHeight: u?.bodyCenterHeight ?? u?.collider?.push ?? defaultRadius,
-      locomotion: getUnitLocomotion(u?.unitType !== undefined ? codeToUnitType(u.unitType) : 'jackal'),
+      locomotion: getUnitLocomotion(unitType),
       mass: u?.mass ?? 25,
       actions,
       patrolStartIndex: null,
@@ -89,41 +216,7 @@ function createUnitFromNetwork(
     },
   };
 
-  if (u?.turrets && u.turrets.length > 0) {
-    const turrets = [];
-    for (let i = 0; i < u.turrets.length; i++) {
-      const nw = u.turrets[i];
-      const t = nw.turret;
-      turrets.push({
-        config: getTurretConfig(t.id),
-        cooldown: 0,
-        target: nw.targetId ?? null,
-        ranges: {
-          tracking: t.ranges.tracking ? { ...t.ranges.tracking } : null,
-          fire: {
-            min: t.ranges.fire.min ? { ...t.ranges.fire.min } : null,
-            max: { ...t.ranges.fire.max },
-          },
-        },
-        state: codeToTurretState(nw.state),
-        rotation: t.angular.rot,
-        pitch: t.angular.pitch,
-        angularVelocity: t.angular.vel,
-        // Pitch velocity isn't synced over the wire (one more float
-        // per turret per snapshot isn't worth it); the client
-        // reconstructs it locally as the damper integrates toward
-        // the authoritative pitch values that DO stream in.
-        pitchVelocity: 0,
-        turnAccel: t.angular.acc,
-        drag: t.angular.drag,
-        offset: { x: t.pos.offset.x, y: t.pos.offset.y },
-        forceField: nw.currentForceFieldRange !== undefined
-          ? { range: nw.currentForceFieldRange, transition: 0 }
-          : undefined,
-      });
-    }
-    entity.turrets = turrets;
-  }
+  entity.turrets = createTurretsFromNetwork(unitType, entity.unit!.bodyRadius, u?.turrets);
 
   // Cache mirror panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the

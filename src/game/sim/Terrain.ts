@@ -1,4 +1,4 @@
-import { terrainShapeSign, type TerrainShape } from '@/types/terrain';
+import { terrainShapeSign, type TerrainMapShape, type TerrainShape } from '@/types/terrain';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 export type { TerrainShape } from '@/types/terrain';
 
@@ -80,6 +80,12 @@ export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
  *  deposit rings store signed multiples of this value so extractor pads
  *  stay aligned with the same dTerrain scale as future terraced terrain. */
 export const TERRAIN_D_TERRAIN = 100 * (TERRAIN_SHAPE_MAGNITUDE / 800);
+/** Circular-map boundary radii as fractions of min(mapWidth, mapHeight).
+ *  The external radius is clamped to the square's side-edge radius at
+ *  runtime, so every perimeter edge remains underwater in CIRCLE mode. */
+export const TERRAIN_CIRCLE_INTERNAL_START_RADIUS_FRACTION = 0.42;
+export const TERRAIN_CIRCLE_EXTERNAL_END_RADIUS_FRACTION = 0.49;
+export const TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
 
 export const TERRAIN_PLATEAU_CONFIG = {
   enabled: true,
@@ -106,6 +112,7 @@ let mountainRippleAmplitude = TERRAIN_SHAPE_MAGNITUDE;
  *  sign convention as the central ripple. Default 'lake'. Set via
  *  `setTerrainDividersShape`. */
 let mountainSeparatorAmplitude = TERRAIN_SHAPE_MAGNITUDE;
+let terrainMapShape: TerrainMapShape = 'square';
 
 function shapeToAmplitude(shape: TerrainShape): number {
   return terrainShapeSign(shape) * TERRAIN_SHAPE_MAGNITUDE;
@@ -141,6 +148,15 @@ export function setTerrainDividersShape(shape: TerrainShape): void {
   const next = shapeToAmplitude(shape);
   if (next === mountainSeparatorAmplitude) return;
   mountainSeparatorAmplitude = next;
+  _terrainVersion++;
+}
+
+export function setTerrainMapShape(shape: TerrainMapShape): void {
+  if (shape !== 'square' && shape !== 'circle') {
+    throw new Error(`Unknown terrain map shape: ${shape as string}`);
+  }
+  if (shape === terrainMapShape) return;
+  terrainMapShape = shape;
   _terrainVersion++;
 }
 
@@ -323,6 +339,41 @@ function applyTerrainPlateaus(height: number): number {
   return (lowerLevel + plateauRampCurve(rampT)) * step;
 }
 
+function applyTerrainMapBoundary(
+  height: number,
+  x: number,
+  y: number,
+  mapWidth: number,
+  mapHeight: number,
+): number {
+  if (terrainMapShape !== 'circle') return height;
+
+  const minDim = Math.min(mapWidth, mapHeight);
+  const maxEndRadius = minDim * 0.5;
+  const endRadius = Math.max(
+    1,
+    Math.min(
+      maxEndRadius,
+      minDim * TERRAIN_CIRCLE_EXTERNAL_END_RADIUS_FRACTION,
+    ),
+  );
+  const startRadius = Math.min(
+    endRadius - 1,
+    Math.max(0, minDim * TERRAIN_CIRCLE_INTERNAL_START_RADIUS_FRACTION),
+  );
+  const dx = x - mapWidth / 2;
+  const dy = y - mapHeight / 2;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist <= startRadius) return height;
+
+  const targetHeight = Math.min(height, TERRAIN_CIRCLE_UNDERWATER_HEIGHT);
+  if (dist >= endRadius) return targetHeight;
+
+  const t = (dist - startRadius) / (endRadius - startRadius);
+  const w = smootherstep(clamp01(t));
+  return height + (targetHeight - height) * w;
+}
+
 /** Final authored terrain height at world point (x, y): natural
  *  central ripple disc + radial team-separation ridges, terraced into
  *  dTerrain plateaus, then locally overridden by special flat zones. */
@@ -425,13 +476,20 @@ export function getTerrainHeight(
   const override = depositOverride(x, y);
   const blended =
     override.height * (1 - override.weight) + terraced * override.weight;
+  const boundaryShaped = applyTerrainMapBoundary(
+    blended,
+    x,
+    y,
+    mapWidth,
+    mapHeight,
+  );
 
   // Clamp to the tile floor — the heightmap defines the TOP of every
   // 3D tile cube and tiles can't physically extend below their floor.
   // Without this clamp, a strongly-negative amplitude (e.g. carved
   // trenches) would invert the tile geometry: top vertex lower than
   // floor vertex, faces flipped, sides facing inward.
-  return Math.max(TILE_FLOOR_Y, blended);
+  return Math.max(TILE_FLOOR_Y, boundaryShaped);
 }
 
 type TerrainMeshSample = {

@@ -1,10 +1,10 @@
 import type { Entity, EntityId, PlayerId } from './types';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import {
+  CANONICAL_LAND_CELL_SIZE,
+  assertCanonicalLandCellSize,
   packLandCellKey,
   spatialCubeKeyToLandCellKey,
-  unpackLandCellX,
-  unpackLandCellY,
 } from '../landGrid';
 
 // Maximum shot collider radius any unit can have (hippo = 45). Used to pad cell search
@@ -51,7 +51,6 @@ type GridCell = {
   units: Entity[];
   buildings: Entity[];
   projectiles: Entity[];
-  landKey: number;
 };
 
 export type CaptureCell = { key: number; players: PlayerId[] };
@@ -105,8 +104,9 @@ export class SpatialGrid {
   private readonly nearbyCells: number[] = [];
 
   constructor(cellSize: number = SPATIAL_GRID_CELL_SIZE) {
-    this.cellSize = cellSize;
-    this.halfCellSize = cellSize / 2;
+    assertCanonicalLandCellSize('SpatialGrid cell size', cellSize);
+    this.cellSize = CANONICAL_LAND_CELL_SIZE;
+    this.halfCellSize = this.cellSize / 2;
   }
 
   /**
@@ -143,7 +143,6 @@ export class SpatialGrid {
         units: [],
         buildings: [],
         projectiles: [],
-        landKey: spatialCubeKeyToLandCellKey(key),
       };
       this.cells.set(key, cell);
     }
@@ -989,9 +988,7 @@ export class SpatialGrid {
    * Get all occupied mana tiles with one player entry per unit/building (for capture system).
    * Unlike getOccupiedCells(), players are NOT deduplicated — 3 red units
    * on a tile yield [1,1,1] so the capture system can count them.
-   * Buildings contribute one vote per spatial cell they span. Capture
-   * tile size is normally the same as the spatial-grid XY size; the
-   * aggregation path remains for diagnostics or future map variants.
+   * Buildings contribute one vote per spatial cell they span.
    *
    * Territory capture is a GROUND concept: a tile is the XY footprint
    * of one or more columns of cubes. Units stacked in the air above the
@@ -1002,95 +999,21 @@ export class SpatialGrid {
    * gets answered, gate the unit/building loop here on the unit's
    * altitude instead of changing the key shape.
    *
-   * In the normal LAND_CELL_SIZE path this returns the incrementally
-   * maintained capture map. The scan below is only for non-canonical
-   * capture sizes.
+   * The capture tile, mana tile, spatial-grid XY column, and client LOD
+   * cell are now the same canonical LAND_CELL_SIZE. That lets capture
+   * consume the incrementally maintained occupancy map directly instead
+   * of scanning and aggregating populated 3D cubes every tick.
    *
    * Returns a reusable array — do NOT store the reference.
    */
-  getOccupiedCellsForCapture(captureCellSize: number = this.cellSize): CaptureCell[] {
-    const tileCellSize = captureCellSize > 0 ? captureCellSize : this.cellSize;
-    if (tileCellSize === this.cellSize) {
-      this.captureResult.length = 0;
-      for (const entry of this.captureByLandCell.values()) {
-        if (entry.players.length > 0) this.captureResult.push(entry);
-      }
-      return this.captureResult;
+  getOccupiedCellsForCapture(): CaptureCell[] {
+    this.captureResult.length = 0;
+    for (const entry of this.captureByLandCell.values()) {
+      if (entry.players.length > 0) this.captureResult.push(entry);
     }
-
-    // Return last tick's entries (and their inner players arrays) to
-    // the pool — both get reused on this tick instead of reallocated.
-    for (const c of _captureCells) _capturePool.push(c);
-    _captureCells.length = 0;
-
-    // Aggregate by 2D mana-tile key, summing contributions from every
-    // cube in the Z column. With the canonical land-cell setup this is
-    // a one-to-one XY mapping; if a caller passes a larger capture size,
-    // fold several spatial columns into the same capture key.
-    const byTile: Map<number, { key: number; players: PlayerId[] }> = _captureByTile;
-    byTile.clear();
-    const sameLandCellSize = tileCellSize === this.cellSize;
-    const tileScale = sameLandCellSize ? 1 : this.cellSize / tileCellSize;
-
-    for (const cell of this.cells.values()) {
-      if (cell.units.length === 0 && cell.buildings.length === 0) continue;
-
-      const tileKey = sameLandCellSize
-        ? cell.landKey
-        : packLandCellKey(
-          Math.floor(unpackLandCellX(cell.landKey) * tileScale),
-          Math.floor(unpackLandCellY(cell.landKey) * tileScale),
-        );
-
-      let entry = byTile.get(tileKey);
-      if (!entry) {
-        entry = _capturePool.pop() ?? { key: 0, players: [] };
-        entry.players.length = 0;
-        entry.key = tileKey;
-        byTile.set(tileKey, entry);
-      }
-
-      for (const unit of cell.units) {
-        if (unit.ownership?.playerId && unit.unit && unit.unit.hp > 0) {
-          entry.players.push(unit.ownership.playerId);
-        }
-      }
-      for (const b of cell.buildings) {
-        // Only fully-built buildings contribute to tile ownership.
-        // Ghost / under-construction buildings are visual placeholders
-        // — they shouldn't paint territory until they actually become
-        // a real, working building.
-        if (
-          b.ownership?.playerId
-          && b.building && b.building.hp > 0
-          && b.buildable?.isComplete
-        ) {
-          entry.players.push(b.ownership.playerId);
-        }
-      }
-    }
-
-    for (const entry of byTile.values()) {
-      if (entry.players.length > 0) {
-        _captureCells.push(entry);
-      } else {
-        _capturePool.push(entry);
-      }
-    }
-    byTile.clear();
-    return _captureCells;
+    return this.captureResult;
   }
 }
-
-const _captureCells: { key: number; players: PlayerId[] }[] = [];
-// Spare entries + inner players arrays, reused across calls. Grows to
-// the peak occupied-cell count then stops; eliminates per-tick array
-// allocations in the capture-tick hot path.
-const _capturePool: { key: number; players: PlayerId[] }[] = [];
-// Reusable XY-tile aggregator used by getOccupiedCellsForCapture to
-// merge multiple Z-cubes that share an XY footprint into one capture
-// tile entry. Cleared at the start of every call.
-const _captureByTile: Map<number, { key: number; players: PlayerId[] }> = new Map();
 
 // Singleton instance for the game
 export const spatialGrid = new SpatialGrid();

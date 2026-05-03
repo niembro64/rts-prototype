@@ -13,10 +13,11 @@ import {
   loadStoredDemoCap,
   loadStoredTerrainCenter,
   loadStoredTerrainDividers,
+  loadStoredTerrainMapShape,
   getDefaultDemoUnits,
   type BattleMode,
 } from '../../battleBarConfig';
-import { setTerrainCenterShape, setTerrainDividersShape } from '../sim/Terrain';
+import { setTerrainCenterShape, setTerrainDividersShape, setTerrainMapShape } from '../sim/Terrain';
 import type { PlayerId } from '../sim/types';
 import type { GameInstance } from '@/types/game';
 import { applyStoredBattleServerSettings } from '../server/battleServerSettings';
@@ -86,8 +87,10 @@ export async function createBackgroundBattle(
   // default.
   const terrainCenter = loadStoredTerrainCenter(mode);
   const terrainDividers = loadStoredTerrainDividers(mode);
+  const terrainMapShape = loadStoredTerrainMapShape(mode);
   setTerrainCenterShape(terrainCenter);
   setTerrainDividersShape(terrainDividers);
+  setTerrainMapShape(terrainMapShape);
 
   // GAME LOBBY preview = a stripped-down background battle showing
   // only commanders. Passing `aiPlayerIds: []` flips GameServer's
@@ -122,6 +125,7 @@ export async function createBackgroundBattle(
   const server = await GameServer.create({
     playerIds: demoPlayerIds,
     terrainCenter,
+    terrainMapShape,
     backgroundMode: true,
     initialAllowedTypes,
     initialMaxTotalUnits: loadStoredDemoCap(),
@@ -166,6 +170,7 @@ export async function createBackgroundBattle(
     mapWidth: getMapSize(true).width,
     mapHeight: getMapSize(true).height,
     terrainCenter,
+    terrainMapShape,
     backgroundMode: true,
     lobbyPreview: isLobbyPreview,
   });

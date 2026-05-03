@@ -1,25 +1,36 @@
-export const MIN_LOD_CELL_SIZE = 16;
+import {
+  CANONICAL_LAND_CELL_SIZE,
+  assertCanonicalLandCellSize,
+  landCellBoundaryCeil,
+  landCellBoundaryFloor,
+  landCellCenterForSize,
+  landCellIndexForSize,
+  landCellMinForSize,
+} from './landGrid';
+
+export const MIN_LOD_CELL_SIZE = CANONICAL_LAND_CELL_SIZE;
 
 export function normalizeLodCellSize(cellSize: number): number {
-  return Math.max(MIN_LOD_CELL_SIZE, Math.floor(cellSize));
+  assertCanonicalLandCellSize('object LOD cell size', cellSize);
+  return CANONICAL_LAND_CELL_SIZE;
 }
 
 export function lodCellIndex(coord: number, cellSize: number): number {
-  return Math.floor(coord / cellSize);
+  return landCellIndexForSize(coord, normalizeLodCellSize(cellSize));
 }
 
 export function lodCellMin(index: number, cellSize: number): number {
-  return index * cellSize;
+  return landCellMinForSize(index, normalizeLodCellSize(cellSize));
 }
 
 export function lodCellCenter(index: number, cellSize: number): number {
-  return (index + 0.5) * cellSize;
+  return landCellCenterForSize(index, normalizeLodCellSize(cellSize));
 }
 
 export function lodCellBoundaryFloor(coord: number, cellSize: number): number {
-  return lodCellMin(lodCellIndex(coord, cellSize), cellSize);
+  return landCellBoundaryFloor(coord, normalizeLodCellSize(cellSize));
 }
 
 export function lodCellBoundaryCeil(coord: number, cellSize: number): number {
-  return Math.ceil(coord / cellSize) * cellSize;
+  return landCellBoundaryCeil(coord, normalizeLodCellSize(cellSize));
 }

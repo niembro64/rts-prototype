@@ -1,14 +1,16 @@
 import type { WorldState } from './WorldState';
 import type { Entity } from './types';
-import { getBuildingConfig } from './buildConfigs';
 import { economyManager } from './economy';
 import { deactivateSolarCollector, startSolarCollectorClosed } from './solarCollector';
 import { spatialGrid } from './SpatialGrid';
+import {
+  claimDepositsForExtractor,
+  releaseDepositsForExtractor,
+} from './metalDepositOwnership';
 
 export function getExtractorMetalRate(entity: Entity): number {
   if (entity.buildingType !== 'extractor') return 0;
-  const fallback = getBuildingConfig('extractor').metalProduction ?? 0;
-  return entity.metalExtractionRate ?? fallback;
+  return entity.metalExtractionRate ?? 0;
 }
 
 export function applyCompletedBuildingEffects(world: WorldState, entity: Entity): void {
@@ -19,22 +21,35 @@ export function applyCompletedBuildingEffects(world: WorldState, entity: Entity)
   }
 
   if (entity.buildingType === 'extractor' && entity.ownership) {
-    const amount = getExtractorMetalRate(entity);
-    if (amount > 0) {
-      economyManager.addMetalExtraction(entity.ownership.playerId, amount);
+    // Binary deposit-claim system. Walk every deposit the extractor
+    // footprint overlaps; each currently-free deposit becomes owned
+    // by this extractor. Already-owned deposits stay where they are.
+    // The returned amount is the post-claim rate (extractor was
+    // inactive before this call), which is what we add to the
+    // player's income.
+    const claimedRate = claimDepositsForExtractor(world, entity);
+    if (claimedRate > 0) {
+      economyManager.addMetalExtraction(entity.ownership.playerId, claimedRate);
     }
   }
 }
 
-export function removeCompletedBuildingEffects(entity: Entity): void {
+export function removeCompletedBuildingEffects(world: WorldState, entity: Entity): void {
   if (entity.buildingType === 'solar' && entity.ownership && entity.buildable?.isComplete) {
     deactivateSolarCollector(entity);
   }
 
   if (entity.buildingType === 'extractor' && entity.ownership && entity.buildable?.isComplete) {
-    const amount = getExtractorMetalRate(entity);
-    if (amount > 0) {
-      economyManager.removeMetalExtraction(entity.ownership.playerId, amount);
+    // Release every owned deposit. For each released deposit the
+    // helper looks for a surviving completed extractor whose
+    // footprint still covers it and promotes that extractor to the
+    // new owner — adding ITS income delta to ITS player's tally
+    // directly via economyManager (so the destroyed extractor's
+    // player loses everything, but a successor's player may gain
+    // back per-deposit income on the same tick).
+    const lostIncome = releaseDepositsForExtractor(world, entity);
+    if (lostIncome > 0) {
+      economyManager.removeMetalExtraction(entity.ownership.playerId, lostIncome);
     }
   }
 }

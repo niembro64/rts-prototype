@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import {
-  lodCellBoundaryCeil,
-  lodCellIndex,
-  lodCellMin,
-  normalizeLodCellSize,
-} from '../lodGridMath';
+  landCellBoundaryCeil,
+  landCellIndexForSize,
+  landCellMinForSize,
+  normalizeLandCellSize,
+  assertCanonicalLandCellSize,
+} from '../landGrid';
 
 const STYLE = {
   initialLineCap: 4096,
@@ -59,11 +60,12 @@ export class LodGridCells2D {
       return;
     }
 
-    const size = normalizeLodCellSize(cellSize);
-    const x0 = lodCellMin(lodCellIndex(0, size), size);
-    const x1 = lodCellBoundaryCeil(this.mapWidth, size);
-    const z0 = lodCellMin(lodCellIndex(0, size), size);
-    const z1 = lodCellBoundaryCeil(this.mapHeight, size);
+    assertCanonicalLandCellSize('LOD grid border cell size', cellSize);
+    const size = normalizeLandCellSize(cellSize);
+    const x0 = landCellMinForSize(landCellIndexForSize(0, size), size);
+    const x1 = landCellBoundaryCeil(this.mapWidth, size);
+    const z0 = landCellMinForSize(landCellIndexForSize(0, size), size);
+    const z1 = landCellBoundaryCeil(this.mapHeight, size);
     const key = `${x0}|${x1}|${z0}|${z1}|${size}`;
     if (key === this.lastKey) {
       this.lineMesh.visible = true;

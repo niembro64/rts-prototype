@@ -22,8 +22,14 @@ import { getUnitGroundZ } from '../sim/unitGeometry';
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
 const RESOURCE_CELL_Y = 1.1;
 const CELL_Y = 1.25;
+const CELL_BORDER_Y = 1.38;
 const RANGE_Y = 0.6;
 type GroundHeightLookup = (x: number, y: number) => number;
+
+type CellMaterialPair = {
+  fill: THREE.MeshBasicMaterial;
+  border: THREE.LineBasicMaterial;
+};
 
 export class BuildGhost3D {
   private world: THREE.Group;
@@ -39,8 +45,11 @@ export class BuildGhost3D {
   private rangeLineGeom: THREE.BufferGeometry;
   /** Per-footprint-cell diagnostic tiles. */
   private cellGeom: THREE.PlaneGeometry;
+  private cellBorderGeom: THREE.BufferGeometry;
   private cellMeshes: THREE.Mesh[] = [];
+  private cellBorders: THREE.LineSegments[] = [];
   private depositCellMeshes: THREE.Mesh[] = [];
+  private depositCellBorders: THREE.LineSegments[] = [];
   private lastTargetKey = '';
   private lastDiagnostics?: BuildPlacementDiagnostics;
 
@@ -52,6 +61,10 @@ export class BuildGhost3D {
   private cellMatMetal: THREE.MeshBasicMaterial;
   private cellMatMetalDeposit: THREE.MeshBasicMaterial;
   private cellMatBad: THREE.MeshBasicMaterial;
+  private cellBorderMatOk: THREE.LineBasicMaterial;
+  private cellBorderMatMetal: THREE.LineBasicMaterial;
+  private cellBorderMatMetalDeposit: THREE.LineBasicMaterial;
+  private cellBorderMatBad: THREE.LineBasicMaterial;
   private ringMat: THREE.MeshBasicMaterial;
   private lineMat: THREE.LineBasicMaterial;
 
@@ -77,32 +90,55 @@ export class BuildGhost3D {
       side: THREE.DoubleSide,
     });
     this.cellMatOk = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
+      color: 0x006600,
       transparent: false,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
     this.cellMatMetal = new THREE.MeshBasicMaterial({
-      color: 0x006dff,
+      color: 0x003a99,
       transparent: false,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
     this.cellMatMetalDeposit = new THREE.MeshBasicMaterial({
-      color: 0x00baff,
-      transparent: true,
-      opacity: 0.72,
+      color: 0x005566,
+      transparent: false,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
     this.cellMatBad = new THREE.MeshBasicMaterial({
-      color: 0xff0000,
+      color: 0x770000,
       transparent: false,
       depthWrite: false,
       side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    this.cellBorderMatOk = new THREE.LineBasicMaterial({
+      color: 0x00ff00,
+      transparent: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.cellBorderMatMetal = new THREE.LineBasicMaterial({
+      color: 0x0096ff,
+      transparent: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.cellBorderMatMetalDeposit = new THREE.LineBasicMaterial({
+      color: 0x00d8ff,
+      transparent: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.cellBorderMatBad = new THREE.LineBasicMaterial({
+      color: 0xff0000,
+      transparent: false,
+      depthWrite: false,
       toneMapped: false,
     });
 
@@ -144,6 +180,7 @@ export class BuildGhost3D {
     this.rangeLine = new THREE.Line(this.rangeLineGeom, this.lineMat);
     this.group.add(this.rangeLine);
     this.cellGeom = new THREE.PlaneGeometry(GRID_CELL_SIZE, GRID_CELL_SIZE);
+    this.cellBorderGeom = BuildGhost3D.makeCellBorderGeometry();
 
     this.group.visible = false;
     this.world.add(this.group);
@@ -228,10 +265,23 @@ export class BuildGhost3D {
     this.lastDiagnostics = undefined;
   }
 
-  private materialForCell(cell: BuildPlacementCellDiagnostic): THREE.Material {
-    if (cell.blocking) return this.cellMatBad;
-    if (cell.reason === 'metal') return this.cellMatMetal;
-    return this.cellMatOk;
+  private static makeCellBorderGeometry(): THREE.BufferGeometry {
+    const h = GRID_CELL_SIZE / 2;
+    const positions = new Float32Array([
+      -h, -h, 0, h, -h, 0,
+      h, -h, 0, h, h, 0,
+      h, h, 0, -h, h, 0,
+      -h, h, 0, -h, -h, 0,
+    ]);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return geometry;
+  }
+
+  private materialForCell(cell: BuildPlacementCellDiagnostic): CellMaterialPair {
+    if (cell.blocking) return { fill: this.cellMatBad, border: this.cellBorderMatBad };
+    if (cell.reason === 'metal') return { fill: this.cellMatMetal, border: this.cellBorderMatMetal };
+    return { fill: this.cellMatOk, border: this.cellBorderMatOk };
   }
 
   private updateDiagnosticCells(diagnostics?: BuildPlacementDiagnostics): boolean {
@@ -243,19 +293,33 @@ export class BuildGhost3D {
       mesh.renderOrder = 30;
       this.group.add(mesh);
       this.cellMeshes.push(mesh);
+
+      const border = new THREE.LineSegments(this.cellBorderGeom, this.cellBorderMatOk);
+      border.rotation.x = -Math.PI / 2;
+      border.renderOrder = 31;
+      this.group.add(border);
+      this.cellBorders.push(border);
     }
 
     for (let i = 0; i < this.cellMeshes.length; i++) {
       const mesh = this.cellMeshes[i];
+      const border = this.cellBorders[i];
       const cell = cells[i];
       if (!cell) {
         mesh.visible = false;
+        if (border) border.visible = false;
         continue;
       }
       const y = this.getGroundHeight(cell.x, cell.y);
       mesh.position.set(cell.x, y + CELL_Y, cell.y);
-      mesh.material = this.materialForCell(cell);
+      const materials = this.materialForCell(cell);
+      mesh.material = materials.fill;
       mesh.visible = true;
+      if (border) {
+        border.position.set(cell.x, y + CELL_BORDER_Y, cell.y);
+        border.material = materials.border;
+        border.visible = true;
+      }
     }
     return cells.length > 0;
   }
@@ -268,18 +332,30 @@ export class BuildGhost3D {
       mesh.renderOrder = 28;
       this.group.add(mesh);
       this.depositCellMeshes.push(mesh);
+
+      const border = new THREE.LineSegments(this.cellBorderGeom, this.cellBorderMatMetalDeposit);
+      border.rotation.x = -Math.PI / 2;
+      border.renderOrder = 29;
+      this.group.add(border);
+      this.depositCellBorders.push(border);
     }
 
     for (let i = 0; i < this.depositCellMeshes.length; i++) {
       const mesh = this.depositCellMeshes[i];
+      const border = this.depositCellBorders[i];
       const cell = depositCells[i];
       if (!cell) {
         mesh.visible = false;
+        if (border) border.visible = false;
         continue;
       }
       const y = this.getGroundHeight(cell.x, cell.y);
       mesh.position.set(cell.x, y + RESOURCE_CELL_Y, cell.y);
       mesh.visible = true;
+      if (border) {
+        border.position.set(cell.x, y + RESOURCE_CELL_Y + 0.12, cell.y);
+        border.visible = true;
+      }
     }
   }
 
@@ -288,6 +364,7 @@ export class BuildGhost3D {
     (this.footprint.geometry as THREE.BufferGeometry).dispose();
     (this.rangeRing.geometry as THREE.BufferGeometry).dispose();
     this.cellGeom.dispose();
+    this.cellBorderGeom.dispose();
     this.rangeLineGeom.dispose();
     this.footMatOk.dispose();
     this.footMatBad.dispose();
@@ -295,6 +372,10 @@ export class BuildGhost3D {
     this.cellMatMetal.dispose();
     this.cellMatMetalDeposit.dispose();
     this.cellMatBad.dispose();
+    this.cellBorderMatOk.dispose();
+    this.cellBorderMatMetal.dispose();
+    this.cellBorderMatMetalDeposit.dispose();
+    this.cellBorderMatBad.dispose();
     this.ringMat.dispose();
     this.lineMat.dispose();
   }

@@ -3,7 +3,6 @@ import type { Entity, EntityId, PlayerId, BuildingType } from './types';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
-import { getMetalDepositFootprintCoverage } from './metalDeposits';
 import { isBuildableTerrainFootprint } from './Terrain';
 import { REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../config';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
@@ -124,25 +123,15 @@ export class ConstructionSystem {
     const halfH = (config.gridHeight * GRID_CELL_SIZE) / 2;
 
     // Extractors can be placed ANYWHERE that satisfies the normal
-    // building placement rules — there's no longer a "must overlap a
-    // deposit" gate. Production AND visual rotor speed both scale with
-    // the fraction of extractor footprint cells that overlap logical
-    // metal resource cells: 0 covered cells → 0 metal/sec and a
-    // stationary rotor; full coverage → full config rate.
-    let depositId: number | undefined;
-    let metalExtractionRate = 0;
-    if (buildingType === 'extractor') {
-      const coverage = getMetalDepositFootprintCoverage(
-        world.metalDeposits,
-        worldPos.x,
-        worldPos.y,
-        halfW,
-        halfH,
-        GRID_CELL_SIZE,
-      );
-      depositId = coverage.primaryDepositId;
-      metalExtractionRate = (config.metalProduction ?? 0) * coverage.fraction;
-    }
+    // building placement rules — there's no longer a "must overlap
+    // a deposit" gate. Production is BINARY per deposit: when the
+    // extractor finishes building, applyCompletedBuildingEffects
+    // tries to claim every deposit its footprint overlaps. Each
+    // deposit can be owned by at most one extractor at a time, so
+    // a second extractor on the same deposit just sits inert until
+    // the first is destroyed (then it inherits ownership). No
+    // production / claim work happens at startBuilding — those
+    // fields stay zero / empty until completion.
 
     // Reject placements off the flat dTerrain shelves. Ramps between
     // shelves remain valid movement terrain, but buildings require a
@@ -182,12 +171,12 @@ export class ConstructionSystem {
       ensureSolarCollectorState(entity);
     }
     if (buildingType === 'extractor') {
-      // depositId is undefined when the extractor sits on bare ground
-      // (no covered cells); the rate is 0 in that case but we still
-      // record the field so renderers/economy code never have to
-      // distinguish "extractor on deposits" from "extractor on dirt".
-      if (depositId !== undefined) entity.metalDepositId = depositId;
-      entity.metalExtractionRate = metalExtractionRate;
+      // Inactive at construction start. The completion handler runs
+      // claimDepositsForExtractor, which fills `ownedDepositIds` and
+      // sets `metalExtractionRate` based on which deposits are still
+      // free at that moment.
+      entity.ownedDepositIds = [];
+      entity.metalExtractionRate = 0;
     }
 
     // Set max HP from config
@@ -274,11 +263,11 @@ export class ConstructionSystem {
   }
 
   // Handle building destruction
-  onBuildingDestroyed(entity: Entity): void {
+  onBuildingDestroyed(world: WorldState, entity: Entity): void {
     // Remove from grid
     this.buildingGrid.removeByEntityId(entity.id);
 
-    removeCompletedBuildingEffects(entity);
+    removeCompletedBuildingEffects(world, entity);
   }
 
   // Assign a builder to a construction site

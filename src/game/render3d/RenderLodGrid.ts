@@ -1,6 +1,11 @@
 import type { GraphicsConfig } from '@/types/graphics';
-import { normalizeLodCellSize } from '../lodGridMath';
-import { landCellCenterForSize, landCellIndexForSize, packLandCellKey } from '../landGrid';
+import {
+  CANONICAL_LAND_CELL_SIZE,
+  assertCanonicalLandGridSymmetry,
+  landCellCenterForSize,
+  landCellIndexForSize,
+  landCellKeyForIndex,
+} from '../landGrid';
 import type { RenderViewLodState } from './Lod3D';
 import {
   getRenderObjectLodShellDistances,
@@ -30,7 +35,8 @@ export class RenderLodGrid {
 
   beginFrame(view: RenderViewLodState, gfx: GraphicsConfig): void {
     this.view = view;
-    this.cellSize = normalizeLodCellSize(gfx.objectLodCellSize);
+    assertCanonicalLandGridSymmetry(gfx.objectLodCellSize);
+    this.cellSize = CANONICAL_LAND_CELL_SIZE;
     this.shells = getRenderObjectLodShellDistances(gfx);
     this.shellDistanceSq.rich = this.shells.rich * this.shells.rich;
     this.shellDistanceSq.simple = this.shells.simple * this.shells.simple;
@@ -53,13 +59,19 @@ export class RenderLodGrid {
   }
 
   resolve(worldX: number, _worldY: number, worldZ: number): RenderObjectLodTier {
+    const size = this.cellSize;
+    return this.resolveCell(
+      landCellIndexForSize(worldX, size),
+      landCellIndexForSize(worldZ, size),
+    );
+  }
+
+  resolveCell(ix: number, iz: number): RenderObjectLodTier {
     const view = this.view;
     if (!view) return 'marker';
 
     const size = this.cellSize;
-    const ix = landCellIndexForSize(worldX, size);
-    const iz = landCellIndexForSize(worldZ, size);
-    const key = packLandCellKey(ix, iz);
+    const key = landCellKeyForIndex(ix, iz);
     if (this.cellFrames.get(key) === this.frameId) {
       return this.cellTiers.get(key) ?? 'marker';
     }
