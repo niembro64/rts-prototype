@@ -4,9 +4,9 @@ import { PLAYER_COLORS, getPlayerColors, setPlayerCountForColors, type PlayerId 
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
 import CommanderAvatar from './CommanderAvatar.vue';
-import BarControlGroup from './BarControlGroup.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarButton from './BarButton.vue';
+import { getUnitBlueprint } from '../game/sim/blueprints';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 
 export type { LobbyPlayer } from '@/types/ui';
@@ -23,6 +23,13 @@ const props = defineProps<{
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
   terrainMapShape: TerrainMapShape;
+  unitTypes: readonly string[];
+  allowedUnits: readonly string[];
+  unitCap: number;
+  ffAccelUnits: boolean;
+  ffAccelShots: boolean;
+  mirrorsEnabled: boolean;
+  forceFieldsEnabled: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -34,6 +41,13 @@ const emit = defineEmits<{
   (e: 'setTerrainCenter', shape: TerrainShape): void;
   (e: 'setTerrainDividers', shape: TerrainShape): void;
   (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
+  (e: 'toggleUnit', unitType: string): void;
+  (e: 'toggleAllUnits'): void;
+  (e: 'setUnitCap', cap: number): void;
+  (e: 'setFfAccelUnits', enabled: boolean): void;
+  (e: 'setFfAccelShots', enabled: boolean): void;
+  (e: 'setMirrorsEnabled', enabled: boolean): void;
+  (e: 'setForceFieldsEnabled', enabled: boolean): void;
 }>();
 
 // Surface the labeled-options arrays to the template. The host
@@ -42,6 +56,11 @@ const emit = defineEmits<{
 const centerOptions = BATTLE_CONFIG.center.options;
 const dividersOptions = BATTLE_CONFIG.dividers.options;
 const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
+const capOptions = BATTLE_CONFIG.cap.options;
+
+const allUnitsActive = computed(() =>
+  props.unitTypes.every((ut) => props.allowedUnits.includes(ut)),
+);
 
 function pickTerrainCenter(shape: TerrainShape): void {
   if (!props.isHost) return;
@@ -56,6 +75,49 @@ function pickTerrainDividers(shape: TerrainShape): void {
 function pickTerrainMapShape(shape: TerrainMapShape): void {
   if (!props.isHost) return;
   emit('setTerrainMapShape', shape);
+}
+
+function pickToggleUnit(unitType: string): void {
+  if (!props.isHost) return;
+  emit('toggleUnit', unitType);
+}
+
+function pickToggleAllUnits(): void {
+  if (!props.isHost) return;
+  emit('toggleAllUnits');
+}
+
+function pickUnitCap(cap: number): void {
+  if (!props.isHost) return;
+  emit('setUnitCap', cap);
+}
+
+function pickFfAccelUnits(enabled: boolean): void {
+  if (!props.isHost) return;
+  emit('setFfAccelUnits', enabled);
+}
+
+function pickFfAccelShots(enabled: boolean): void {
+  if (!props.isHost) return;
+  emit('setFfAccelShots', enabled);
+}
+
+function pickMirrors(enabled: boolean): void {
+  if (!props.isHost) return;
+  emit('setMirrorsEnabled', enabled);
+}
+
+function pickForceFields(enabled: boolean): void {
+  if (!props.isHost) return;
+  emit('setForceFieldsEnabled', enabled);
+}
+
+function unitShortName(unitType: string): string {
+  try {
+    return getUnitBlueprint(unitType).shortName;
+  } catch {
+    return unitType.toUpperCase().slice(0, 3);
+  }
 }
 
 const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -338,12 +400,9 @@ const terrainSectionVars = computed(() =>
         </div>
 
         <div class="lobby-right">
-          <!-- Terrain controls — uses the shared bar-control
-               component family (BarControlGroup + BarButtonGroup +
-               BarButton) so styling stays in lockstep with the
-               bottom bars. The same components could replace the
-               bottom bars' bare HTML incrementally; the global
-               stylesheet supports both forms. -->
+          <!-- Terrain controls use the shared button components, but
+               keep lobby-specific labels in a fixed-width column
+               instead of reusing the compact bottom-bar label row. -->
           <!-- Non-host: use the SAME `bar-readonly` pattern as the
                bottom BATTLE bar (pointer-events: none, cursor: default
                on every .control-btn). Avoids the per-button `:disabled`
@@ -356,39 +415,115 @@ const terrainSectionVars = computed(() =>
             :class="{ 'bar-readonly': !isHost }"
             :style="terrainSectionVars"
           >
-            <BarControlGroup label="CENTER:">
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">CENTER:</div>
               <BarButtonGroup>
                 <BarButton
                   v-for="opt in centerOptions"
                   :key="opt.value"
+                  size="large"
                   :active="terrainCenter === opt.value"
                   :title="isHost ? `Set the central ripple to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
                   @click="pickTerrainCenter(opt.value)"
                 >{{ opt.label }}</BarButton>
               </BarButtonGroup>
-            </BarControlGroup>
-            <BarControlGroup label="DIVIDERS:">
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">DIVIDERS:</div>
               <BarButtonGroup>
                 <BarButton
                   v-for="opt in dividersOptions"
                   :key="opt.value"
+                  size="large"
                   :active="terrainDividers === opt.value"
                   :title="isHost ? `Set the team-separator ridges to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
                   @click="pickTerrainDividers(opt.value)"
                 >{{ opt.label }}</BarButton>
               </BarButtonGroup>
-            </BarControlGroup>
-            <BarControlGroup label="PERIMETER:">
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">PERIMETER:</div>
               <BarButtonGroup>
                 <BarButton
                   v-for="opt in mapShapeOptions"
                   :key="opt.value"
+                  size="large"
                   :active="terrainMapShape === opt.value"
                   :title="isHost ? `Set the map perimeter to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
                   @click="pickTerrainMapShape(opt.value)"
                 >{{ opt.label }}</BarButton>
               </BarButtonGroup>
-            </BarControlGroup>
+            </div>
+            <!-- Real-battle config rows. These were previously editable
+                 mid-battle on the bottom BATTLE bar; that bar is now
+                 demo-only, so the lobby is the single place to set
+                 them for an upcoming real game. -->
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">UNITS:</div>
+              <BarButtonGroup>
+                <BarButton
+                  size="large"
+                  :active="allUnitsActive"
+                  :title="isHost ? 'Toggle all unit types on/off' : 'Only the host can change battle settings'"
+                  @click="pickToggleAllUnits"
+                >ALL</BarButton>
+                <BarButton
+                  v-for="ut in unitTypes"
+                  :key="ut"
+                  size="large"
+                  :active="allowedUnits.includes(ut)"
+                  :title="isHost ? `Toggle ${ut}` : 'Only the host can change battle settings'"
+                  @click="pickToggleUnit(ut)"
+                >{{ unitShortName(ut) }}</BarButton>
+              </BarButtonGroup>
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">CAP:</div>
+              <BarButtonGroup>
+                <BarButton
+                  v-for="opt in capOptions"
+                  :key="opt"
+                  size="large"
+                  :active="unitCap === opt"
+                  :title="isHost ? `Max ${opt} total units` : 'Only the host can change battle settings'"
+                  @click="pickUnitCap(opt)"
+                >{{ opt.toLocaleString() }}</BarButton>
+              </BarButtonGroup>
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">FF:</div>
+              <BarButtonGroup>
+                <BarButton
+                  size="large"
+                  :active="ffAccelUnits"
+                  :title="isHost ? 'Force field accelerates enemy units' : 'Only the host can change battle settings'"
+                  @click="pickFfAccelUnits(!ffAccelUnits)"
+                >UNIT-ACC</BarButton>
+                <BarButton
+                  size="large"
+                  :active="ffAccelShots"
+                  :title="isHost ? 'Force field accelerates enemy projectiles' : 'Only the host can change battle settings'"
+                  @click="pickFfAccelShots(!ffAccelShots)"
+                >SHOT-ACC</BarButton>
+              </BarButtonGroup>
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">SYSTEM:</div>
+              <BarButtonGroup>
+                <BarButton
+                  size="large"
+                  :active="mirrorsEnabled"
+                  :title="isHost ? 'Enable mirror turrets and laser/beam reflections' : 'Only the host can change battle settings'"
+                  @click="pickMirrors(!mirrorsEnabled)"
+                >MIRROR</BarButton>
+                <BarButton
+                  size="large"
+                  :active="forceFieldsEnabled"
+                  :title="isHost ? 'Enable force-field turrets, force-field simulation, and force-field rendering' : 'Only the host can change battle settings'"
+                  @click="pickForceFields(!forceFieldsEnabled)"
+                >FIELD</BarButton>
+              </BarButtonGroup>
+            </div>
           </div>
         </div>
 
@@ -901,24 +1036,29 @@ const terrainSectionVars = computed(() =>
   padding: 14px 20px;
 }
 
-/* Terrain CENTER / DIVIDERS controls — visual rules now live in
- * `src/styles/barControls.css` (single source of truth shared
- * with the bottom bars). All this scoped block does is the
- * vertical stack + a small label-width tweak so the two rows
- * align nicely in the lobby's right column. */
+/* Terrain controls use large shared buttons plus a lobby-specific
+ * fixed label column so every row starts at the same x-position. */
 .terrain-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
-.terrain-section .control-group {
-  gap: 10px;
+.terrain-control-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
 }
 
-.terrain-section .control-label {
-  width: 80px;
-  flex-shrink: 0;
+.terrain-control-label {
+  color: #aaa;
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .terrain-section .button-group {

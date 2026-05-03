@@ -937,6 +937,28 @@ const allDemoUnitsActive = computed(() => {
   return demoUnitTypes.every((ut) => allowed.includes(ut));
 });
 
+// Mirror the bar's per-setting reads for the LobbyModal so the
+// modal's UNITS / CAP / FF / SYSTEM rows reflect what's stored in
+// snapshot meta (the host's authoritative state) with the same
+// config-default fallbacks the bar uses.
+const lobbyAllowedUnits = computed<readonly string[]>(
+  () =>
+    serverMetaFromSnapshot.value?.units.allowed ??
+    demoUnitTypes.filter((ut) => BATTLE_CONFIG.units[ut]?.default ?? false),
+);
+const lobbyFfAccelUnits = computed(
+  () => serverMetaFromSnapshot.value?.ffAccel.units ?? BATTLE_CONFIG.ffAccelUnits.default,
+);
+const lobbyFfAccelShots = computed(
+  () => serverMetaFromSnapshot.value?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default,
+);
+const lobbyMirrorsEnabled = computed(
+  () => serverMetaFromSnapshot.value?.mirrorsEnabled ?? BATTLE_CONFIG.mirrorsEnabled.default,
+);
+const lobbyForceFieldsEnabled = computed(
+  () => serverMetaFromSnapshot.value?.forceFieldsEnabled ?? BATTLE_CONFIG.forceFieldsEnabled.default,
+);
+
 function toggleDemoUnitType(unitType: string): void {
   const current =
     serverMetaFromSnapshot.value?.units.allowed?.includes(unitType) ??
@@ -1337,8 +1359,7 @@ async function handleJoin(code: string): Promise<void> {
     // `localPlayerId.value` never gets the assigned seat. The joiner
     // would then build their scene with the default `localPlayerId=1`,
     // and centerCameraOnCommander would look for player 1's commander
-    // (which isn't in the joiner's per-player AOI) — leaving the
-    // joiner staring at empty terrain with no commander on screen.
+    // instead of the joiner's assigned commander.
     networkRole.value = 'client';
     setupNetworkCallbacks();
 
@@ -1674,7 +1695,7 @@ function setupNetworkCallbacks(): void {
     roomCode.value = handoff.roomCode;
     lobbyPlayers.value = handoff.players.map((player) => ({ ...player }));
     if (handoff.settings) {
-      applyLobbySettingsFromHost(handoff.settings);
+      applyLobbySettingsFromHost(handoff.settings, { restartPreview: false });
     }
     startGameWithPlayers(handoff.playerIds);
   };
@@ -1722,7 +1743,7 @@ function applyLobbySettingsFromHost(settings: {
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
   terrainMapShape: TerrainMapShape;
-}): void {
+}, options: { restartPreview?: boolean } = {}): void {
   const changed =
     settings.terrainCenter !== terrainCenter.value ||
     settings.terrainDividers !== terrainDividers.value ||
@@ -1738,7 +1759,8 @@ function applyLobbySettingsFromHost(settings: {
   setTerrainDividersShape(settings.terrainDividers);
   setTerrainMapShape(settings.terrainMapShape);
 
-  if (changed && !gameStarted.value && currentBattleMode.value === 'real') {
+  const restartPreview = options.restartPreview ?? true;
+  if (restartPreview && changed && !gameStarted.value && currentBattleMode.value === 'real') {
     stopBackgroundBattle();
     nextTick(() => {
       startBackgroundBattle();
@@ -1786,6 +1808,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         playerIds,
         aiPlayerIds,
         terrainCenter: realTerrainCenter,
+        terrainDividers: realTerrainDividers,
         terrainMapShape: realTerrainMapShape,
       });
       if (startGen !== realBattleStartGen || !gameStarted.value || !containerRef.value) {
@@ -1797,8 +1820,8 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
       // If hosting, send each remote client its own authoritative
       // real-battle snapshot. Scoped listeners let the server apply
-      // per-player AOI and per-recipient delta history instead of
-      // pushing the same full-world diff stream to every peer.
+      // per-recipient delta history and fidelity thresholds instead of
+      // sharing one global diff history across peers.
       //
       // The PeerJS peer instance + every connection established
       // during the lobby phase persist into the real battle — we
@@ -1826,8 +1849,8 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
       // Create LocalGameConnection for the local player. In hosted
       // real battles, scope the host's own client exactly like remote
-      // clients so red does not process the full global snapshot stream
-      // while every other player gets the fast per-player AOI path.
+      // clients so red uses the same per-recipient delta history and
+      // fidelity thresholds as every other player.
       const localConnection = new LocalGameConnection(
         currentServer,
         networkRole.value === 'host' ? localPlayerId.value : undefined,
@@ -1878,6 +1901,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       mapWidth: getMapSize(false).width,
       mapHeight: getMapSize(false).height,
       terrainCenter: realTerrainCenter,
+      terrainDividers: realTerrainDividers,
       terrainMapShape: realTerrainMapShape,
       backgroundMode: false,
     });
@@ -2179,9 +2203,17 @@ onUnmounted(() => {
       </button>
 
       <div v-show="isMobile || !bottomBarsCollapsed" class="bottom-controls">
-        <!-- BATTLE CONTROLS -->
+        <!-- BATTLE CONTROLS — DEMO BATTLE only. The REAL BATTLE bar
+             was retired: every config item it carried (UNITS, CAP,
+             CENTER/DIVIDERS/PERIMETER, FF, SYSTEM) is now decided in
+             the GAME LOBBY before the real battle starts and is locked
+             in once the host clicks Start. The lobby modal carries
+             matching controls; this bar stays clickable any time during
+             the demo battle. `currentBattleMode === 'real'` covers both
+             the lobby preview (modal already covers the bar) and the
+             live real battle (bar simply hidden). -->
         <div
-          v-if="showServerControls"
+          v-if="showServerControls && currentBattleMode === 'demo'"
           class="control-bar"
           :class="{ 'bar-readonly': serverBarReadonly }"
           :style="battleBarVars"
@@ -3185,6 +3217,13 @@ onUnmounted(() => {
       :terrain-center="terrainCenter"
       :terrain-dividers="terrainDividers"
       :terrain-map-shape="terrainMapShape"
+      :unit-types="demoUnitTypes"
+      :allowed-units="lobbyAllowedUnits"
+      :unit-cap="displayUnitCap"
+      :ff-accel-units="lobbyFfAccelUnits"
+      :ff-accel-shots="lobbyFfAccelShots"
+      :mirrors-enabled="lobbyMirrorsEnabled"
+      :force-fields-enabled="lobbyForceFieldsEnabled"
       @host="handleHost"
       @join="handleJoin"
       @start="handleLobbyStart"
@@ -3194,6 +3233,13 @@ onUnmounted(() => {
       @set-terrain-center="(s) => applyTerrainShape('center', s)"
       @set-terrain-dividers="(s) => applyTerrainShape('dividers', s)"
       @set-terrain-map-shape="(s) => applyTerrainMapShape(s)"
+      @toggle-unit="(ut) => toggleDemoUnitType(ut)"
+      @toggle-all-units="toggleAllDemoUnits"
+      @set-unit-cap="(c) => changeMaxTotalUnits(c)"
+      @set-ff-accel-units="(e) => setFfAccelUnits(e)"
+      @set-ff-accel-shots="(e) => setFfAccelShots(e)"
+      @set-mirrors-enabled="(e) => setMirrorsEnabled(e)"
+      @set-force-fields-enabled="(e) => setForceFieldsEnabled(e)"
     />
 
     <!-- Spectate mode toggle — restored. When the user has hidden
