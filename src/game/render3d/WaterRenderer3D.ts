@@ -14,9 +14,15 @@ import type { Lod3DState } from './Lod3D';
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
 // gameplay/readability, but the fragments are pushed slightly behind
 // terrain in the depth buffer so shoreline faces do not shimmer as
-// the camera eases in and out.
-const WATER_DEPTH_OFFSET_FACTOR = 1;
-const WATER_DEPTH_OFFSET_UNITS = 2;
+// the camera eases in and out. The `units` term is multiplied by the
+// depth buffer's smallest resolvable difference, which GROWS with
+// scene depth (1/z² precision distribution), so a generous value here
+// keeps the offset above 1 ULP even when the camera is fully zoomed
+// out (z near the far plane). The previous 1/2 setting let camera
+// motion at the EMA tail produce sub-ULP wobble at the shoreline; 8/32
+// stays well above 1 ULP across the whole near→far range.
+const WATER_DEPTH_OFFSET_FACTOR = 8;
+const WATER_DEPTH_OFFSET_UNITS = 32;
 
 /** Large enough to cover the camera's far plane from any legal map
  *  camera state. Three.js has no literal infinite plane here, so this
