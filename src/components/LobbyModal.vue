@@ -348,6 +348,23 @@ const terrainSectionVars = computed(() =>
            visually park it in the right column regardless. -->
       <template v-else-if="isInLobby">
         <div class="lobby-left">
+          <!-- Lobby actions pinned to the top of the left column.
+               Start + Leave used to live in the footer; pulled up here
+               so the host's primary action is anchored against the
+               same edge of the screen as the lobby title and player
+               list. Tauri's Exit and the error banner stay in the
+               footer (less frequent / more passive). -->
+          <div class="lobby-actions-row">
+            <button class="lobby-btn cancel-btn" @click="handleCancel">Leave</button>
+            <button
+              v-if="isHost"
+              class="lobby-btn start-btn"
+              :disabled="!canStart"
+              @click="handleStart"
+            >Start</button>
+            <span v-else class="waiting-text">Waiting for host...</span>
+          </div>
+
           <div class="room-code-display">
             <h1 class="title">GAME LOBBY CODE:</h1>
             <div class="room-code-row" @click="copyCode">
@@ -530,28 +547,33 @@ const terrainSectionVars = computed(() =>
                 >FIELD</BarButton>
               </BarButtonGroup>
             </div>
+            <!-- Reset row sits inside the same options block as the
+                 settings it resets, so all battle config — including
+                 the "go back to defaults" affordance — is contained in
+                 one section. Host-only; non-host viewers don't see the
+                 row at all. -->
+            <div v-if="isHost" class="terrain-control-row">
+              <div class="terrain-control-label">DEFAULTS:</div>
+              <BarButtonGroup>
+                <BarButton
+                  size="large"
+                  title="Reset every battle setting (units, cap, terrain, FF, system) to its default value"
+                  @click="pickResetDefaults"
+                >RESET ALL</BarButton>
+              </BarButtonGroup>
+            </div>
           </div>
         </div>
 
         <div v-if="error" class="error-message">{{ error }}</div>
 
-        <div class="footer-row">
-          <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">Exit</button>
-          <button class="lobby-btn cancel-btn" @click="handleCancel">Leave</button>
-          <button
-            v-if="isHost"
-            class="lobby-btn defaults-btn"
-            title="Reset every battle setting (units, cap, terrain, FF, system) to its default value"
-            @click="pickResetDefaults"
-          >Defaults</button>
-          <div class="footer-spacer"></div>
-          <button
-            v-if="isHost"
-            class="lobby-btn start-btn"
-            :disabled="!canStart"
-            @click="handleStart"
-          >Start</button>
-          <span v-else class="waiting-text">Waiting for host...</span>
+        <!-- Footer carries only Tauri's Exit now that Start / Leave
+             moved up to the left column and Defaults moved into the
+             options section. Hidden entirely on web (no Exit button to
+             show) so the lobby grid doesn't reserve a footer band for
+             nothing. -->
+        <div v-if="isTauri" class="footer-row">
+          <button class="lobby-btn exit-btn" @click="exitApp">Exit</button>
         </div>
       </template>
     </div>
@@ -593,12 +615,14 @@ const terrainSectionVars = computed(() =>
  *   [ left  ] [ TERRAIN ]
  *   [        FOOTER       ]
  *
- * Left column (title / share code / players list) spans the top
- * two grid rows; the preview-pane and terrain options stack in the
- * right column; footer (Exit / Leave / Start) spans both. The
- * preview-pane is a stable always-mounted child of `.lobby-modal`
- * — Grid's named areas place it visually without needing to move
- * its DOM position. */
+ * Left column (title / share code / players list / actions row at
+ * top) spans the top two grid rows; the preview-pane and options
+ * stack in the right column; footer (Tauri Exit only) spans both.
+ * Row sizing rule: the OPTIONS row sizes to its content (auto), so
+ * adding more battle-config rows always claims the space it needs;
+ * the PREVIEW row gets the remaining 1fr — i.e. whatever vertical
+ * space is left over. The lobby simulation can never push the
+ * options off-screen, only the other way around. */
 .lobby-modal.in-lobby {
   display: grid;
   grid-template-columns: minmax(360px, 1fr) minmax(480px, 1.6fr);
@@ -632,6 +656,16 @@ const terrainSectionVars = computed(() =>
   overflow: hidden;
 }
 
+/* Top-of-left-column action row. Leave + Start (or "Waiting for
+ * host..." span). Same lobby-btn classes as before — only their
+ * position moved. */
+.lobby-actions-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
 .lobby-modal.in-lobby > .lobby-right {
   grid-area: terrain;
   display: flex;
@@ -644,16 +678,18 @@ const terrainSectionVars = computed(() =>
 }
 
 /* When in fullscreen lobby mode the preview-pane lives in the
- * grid's "preview" cell; override its fixed 480x270 default so it
- * fills the cell while keeping a 16:9 aspect (clamped by max-
- * height so the right column stays room for the terrain options). */
+ * grid's "preview" cell. Fill the cell exactly — no aspect-ratio
+ * constraint and no hardcoded max-height — so the preview always
+ * yields whatever vertical space the options row needs. The 3D
+ * scene inside resizes to whatever container size it finds, so a
+ * non-16:9 cell just renders at the cell's actual ratio rather
+ * than overflowing into (or stealing space from) the options. */
 .lobby-modal.in-lobby > .preview-pane {
   grid-area: preview;
   width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 9;
-  max-height: calc(100vh - 320px);
+  height: 100%;
   margin: 0;
+  min-height: 0;
 }
 
 /* Players list in fullscreen mode gets vertical scroll if many
@@ -795,15 +831,6 @@ const terrainSectionVars = computed(() =>
   background: #777;
 }
 
-.defaults-btn {
-  background: #555;
-  color: white;
-}
-
-.defaults-btn:hover:not(:disabled) {
-  background: #666;
-}
-
 .exit-btn {
   background: rgba(255, 40, 40, 0.15);
   color: #ff6666;
@@ -846,10 +873,6 @@ const terrainSectionVars = computed(() =>
   align-items: center;
   justify-content: center;
   margin-top: 20px;
-}
-
-.footer-spacer {
-  flex: 1;
 }
 
 .room-code-display {
