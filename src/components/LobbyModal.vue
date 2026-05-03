@@ -48,6 +48,7 @@ const emit = defineEmits<{
   (e: 'setFfAccelShots', enabled: boolean): void;
   (e: 'setMirrorsEnabled', enabled: boolean): void;
   (e: 'setForceFieldsEnabled', enabled: boolean): void;
+  (e: 'resetDefaults'): void;
 }>();
 
 // Surface the labeled-options arrays to the template. The host
@@ -118,6 +119,11 @@ function unitShortName(unitType: string): string {
   } catch {
     return unitType.toUpperCase().slice(0, 3);
   }
+}
+
+function pickResetDefaults(): void {
+  if (!props.isHost) return;
+  emit('resetDefaults');
 }
 
 const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -532,6 +538,12 @@ const terrainSectionVars = computed(() =>
         <div class="footer-row">
           <button v-if="isTauri" class="lobby-btn exit-btn" @click="exitApp">Exit</button>
           <button class="lobby-btn cancel-btn" @click="handleCancel">Leave</button>
+          <button
+            v-if="isHost"
+            class="lobby-btn defaults-btn"
+            title="Reset every battle setting (units, cap, terrain, FF, system) to its default value"
+            @click="pickResetDefaults"
+          >Defaults</button>
           <div class="footer-spacer"></div>
           <button
             v-if="isHost"
@@ -781,6 +793,15 @@ const terrainSectionVars = computed(() =>
 
 .cancel-btn:hover {
   background: #777;
+}
+
+.defaults-btn {
+  background: #555;
+  color: white;
+}
+
+.defaults-btn:hover:not(:disabled) {
+  background: #666;
 }
 
 .exit-btn {

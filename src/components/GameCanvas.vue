@@ -3240,6 +3240,7 @@ onUnmounted(() => {
       @set-ff-accel-shots="(e) => setFfAccelShots(e)"
       @set-mirrors-enabled="(e) => setMirrorsEnabled(e)"
       @set-force-fields-enabled="(e) => setForceFieldsEnabled(e)"
+      @reset-defaults="resetDemoDefaults"
     />
 
     <!-- Spectate mode toggle — restored. When the user has hidden
