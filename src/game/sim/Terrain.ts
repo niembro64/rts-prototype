@@ -82,8 +82,16 @@ export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 export const TERRAIN_D_TERRAIN = 100 * (TERRAIN_SHAPE_MAGNITUDE / 800);
 /** Circular-map boundary radii as fractions of min(mapWidth, mapHeight).
  *  The external radius is clamped to the square's side-edge radius at
- *  runtime, so every perimeter edge remains underwater in CIRCLE mode. */
-export const TERRAIN_CIRCLE_INTERNAL_START_RADIUS_FRACTION = 0.42;
+ *  runtime, so every perimeter edge remains underwater in CIRCLE mode.
+ *
+ *  The gap between INTERNAL_START and EXTERNAL_END defines the WIDTH of
+ *  the smootherstep ramp from natural terrain down to the underwater
+ *  flat — a wider gap makes the shoreline gradient span more of the
+ *  map's radial distance, so the transition reads as a long beach
+ *  rather than an abrupt edge. INTERNAL_START is the only end of the
+ *  band that's freely tunable; EXTERNAL_END is locked to ~0.5 by the
+ *  runtime clamp to keep the side-edge midpoints underwater. */
+export const TERRAIN_CIRCLE_INTERNAL_START_RADIUS_FRACTION = 0.3;
 export const TERRAIN_CIRCLE_EXTERNAL_END_RADIUS_FRACTION = 0.49;
 export const TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
 
