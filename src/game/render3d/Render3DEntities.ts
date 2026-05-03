@@ -415,6 +415,12 @@ export class Render3DEntities {
   // turret-head sphere because at low tiers we trade detail for draw
   // speed and the unit count is what hurts.
   private unitSphereLowGeom = new THREE.SphereGeometry(1, 10, 8);
+  /** Unit box used as the BUILDING marker mesh at the lowest LOD tier.
+   *  Scaled per-frame to the building's logical sim cuboid
+   *  (width × depth × height) so the building still reads as a building
+   *  on the ground at marker tier — same volume the host sim uses for
+   *  its static collider, same volume the high-LOD primary occupies. */
+  private buildingMarkerBoxGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   /** Velocity-aligned body for rocket-style projectiles (shot.shape ===
@@ -3378,20 +3384,25 @@ export class Render3DEntities {
         primary.scale.set(w, renderH, d);
         primary.visible = !markerOnly;
         if (!m.lodMarker) {
-          const marker = new THREE.Mesh(this.unitSphereLowGeom, this.getPrimaryMat(pid));
+          const marker = new THREE.Mesh(this.buildingMarkerBoxGeom, this.getPrimaryMat(pid));
           marker.userData.entityId = e.id;
           m.group.add(marker);
           m.lodMarker = marker;
         } else {
           m.lodMarker.material = this.getPrimaryMat(pid);
         }
-        const markerRadius = Math.max(
-          e.buildingType === 'extractor' ? 18 : 12,
-          Math.min(48, Math.hypot(w, d) * 0.16),
-        );
+        // At marker tier the type-specific primary mesh and the accent
+        // details are all hidden, so without a stand-in the building
+        // would collapse to nothing. Show a simple team-colored box
+        // sized to the building's LOGICAL sim cuboid (width × depth ×
+        // height — identical to the static collider on the host) so it
+        // still reads as a building on the ground. Same volume the
+        // high-LOD primary occupies, just one cube instead of a bespoke
+        // shape.
+        const markerHeight = e.building?.depth ?? (m.buildingHeight ?? BUILDING_HEIGHT);
         m.lodMarker.visible = markerOnly;
-        m.lodMarker.position.set(0, markerRadius, 0);
-        m.lodMarker.scale.setScalar(markerRadius);
+        m.lodMarker.position.set(0, markerHeight / 2, 0);
+        m.lodMarker.scale.set(w, markerHeight, d);
         if (m.buildingDetails) {
           for (const detail of m.buildingDetails) {
             const visible = detailsReady && buildingDetailVisible(detail, tier);

@@ -632,12 +632,13 @@ export class RtsScene3D {
       this.metalDeposits,
       getGraphicsConfig().tier,
     );
-    // Transparent horizon water sits at WATER_LEVEL with a cheap
-    // submerged off-map frame underneath it. Terrain above the plane
-    // hides it via depth testing; terrain below the plane reads as
-    // submerged. Physics treats the water surface as the walkable
-    // ground (Terrain.getSurfaceHeight clamps UP to WATER_LEVEL), so
-    // units never enter the water.
+    // Transparent horizon water sits at WATER_LEVEL. The submerged
+    // off-map continuation is part of the terrain mesh itself, so the
+    // map edge and infinity shelf share the same material/color path.
+    // Terrain above the plane hides it via depth testing; terrain
+    // below the plane reads as submerged. Physics treats the water
+    // surface as the walkable ground (Terrain.getSurfaceHeight clamps
+    // UP to WATER_LEVEL), so units never enter the water.
     this.waterRenderer = new WaterRenderer3D(
       this.threeApp.world,
       this.mapWidth,

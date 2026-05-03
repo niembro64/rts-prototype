@@ -20,7 +20,13 @@ import {
   MANA_TILE_GROUND_LIFT,
   MANA_TILE_FLAT_HEIGHT_THRESHOLD,
 } from '../../config';
-import { getTerrainMapBoundaryFade, getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
+import {
+  getTerrainMapBoundaryFade,
+  getTerrainHeight,
+  TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
+  TERRAIN_MESH_SUBDIV,
+  TILE_FLOOR_Y,
+} from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
 import {
   CANONICAL_LAND_CELL_SIZE,
@@ -42,6 +48,8 @@ const TERRAIN_LOD_REBUILD_CELL_MULTIPLIER = 4;
 const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING = 24;
 const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
+const TERRAIN_INFINITY_EXTEND = 60000;
+const SIDE_WALL_TERRAIN_SHADE = 0.68;
 
 const NEUTRAL_R_BYTE = (MAP_BG_COLOR >> 16) & 0xff;
 const NEUTRAL_G_BYTE = (MAP_BG_COLOR >> 8) & 0xff;
@@ -254,6 +262,7 @@ export class CaptureTileRenderer3D {
           [
             'attribute vec2 captureUv;',
             'attribute float captureMask;',
+            'attribute float terrainShade;',
             'varying vec2 vCaptureUv;',
             'varying float vCaptureMask;',
             'varying vec3 vManaWorldPos;',
@@ -268,7 +277,7 @@ export class CaptureTileRenderer3D {
             'vCaptureUv = captureUv;',
             'vCaptureMask = captureMask;',
             'vManaWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
-            'vManaShade = mix(0.68, 1.0, captureMask);',
+            'vManaShade = terrainShade;',
           ].join('\n'),
         );
       shader.fragmentShader = shader.fragmentShader
@@ -304,7 +313,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'capture-tile-single-surface-v3';
+    this.terrainMaterial.customProgramCacheKey = () => 'capture-tile-single-surface-v4';
   }
 
   private makeOverlayTexture(width: number, height: number): THREE.DataTexture {
@@ -671,6 +680,7 @@ export class CaptureTileRenderer3D {
     const terrainNormals: number[] = [];
     const terrainCaptureUvs: number[] = [];
     const terrainCaptureMasks: number[] = [];
+    const terrainShades: number[] = [];
     const terrainIndices: number[] = [];
 
     const eps = 1;
@@ -710,6 +720,7 @@ export class CaptureTileRenderer3D {
           terrainPositions.push(wx, h, wz);
           terrainCaptureUvs.push(tileU, tileV);
           terrainCaptureMasks.push(1);
+          terrainShades.push(1);
 
           const hxp = getTerrainHeight(wx + eps, wz, this.mapWidth, this.mapHeight);
           const hxm = getTerrainHeight(wx - eps, wz, this.mapWidth, this.mapHeight);
@@ -960,6 +971,7 @@ export class CaptureTileRenderer3D {
             terrainNormals.push(nx, 0, nz);
             terrainCaptureUvs.push(tileU, tileV);
             terrainCaptureMasks.push(0);
+            terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
             return idx;
           };
           const copyWallTopVertex = (localIdx: number, nx: number, nz: number): number => {
@@ -1020,11 +1032,48 @@ export class CaptureTileRenderer3D {
       }
     }
 
+    const addInfinityShelf = (): void => {
+      const sideMidpointsAreShelf =
+        getTerrainMapBoundaryFade(this.mapWidth * 0.5, 0, this.mapWidth, this.mapHeight) >= 1 &&
+        getTerrainMapBoundaryFade(this.mapWidth, this.mapHeight * 0.5, this.mapWidth, this.mapHeight) >= 1 &&
+        getTerrainMapBoundaryFade(this.mapWidth * 0.5, this.mapHeight, this.mapWidth, this.mapHeight) >= 1 &&
+        getTerrainMapBoundaryFade(0, this.mapHeight * 0.5, this.mapWidth, this.mapHeight) >= 1;
+      if (!sideMidpointsAreShelf) return;
+
+      const y = TERRAIN_CIRCLE_UNDERWATER_HEIGHT + MANA_TILE_GROUND_LIFT;
+      const outer = TERRAIN_INFINITY_EXTEND;
+      const W = this.mapWidth;
+      const H = this.mapHeight;
+      const pushShelfQuad = (
+        x0: number,
+        z0: number,
+        x1: number,
+        z1: number,
+      ): void => {
+        const base = terrainPositions.length / 3;
+        terrainPositions.push(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1);
+        for (let i = 0; i < 4; i++) {
+          terrainNormals.push(0, 1, 0);
+          terrainCaptureUvs.push(0, 0);
+          terrainCaptureMasks.push(0);
+          terrainShades.push(1);
+        }
+        terrainIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      };
+
+      pushShelfQuad(-outer, -outer, W + outer, 0);
+      pushShelfQuad(-outer, H, W + outer, H + outer);
+      pushShelfQuad(-outer, 0, 0, H);
+      pushShelfQuad(W, 0, W + outer, H);
+    };
+    addInfinityShelf();
+
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
     geometry.setAttribute('captureUv', new THREE.BufferAttribute(new Float32Array(terrainCaptureUvs), 2));
     geometry.setAttribute('captureMask', new THREE.BufferAttribute(new Float32Array(terrainCaptureMasks), 1));
+    geometry.setAttribute('terrainShade', new THREE.BufferAttribute(new Float32Array(terrainShades), 1));
     geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
     geometry.computeBoundingSphere();
     this.cacheTerrainGeometry(nextTerrainLodKey, geometry);

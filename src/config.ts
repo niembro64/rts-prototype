@@ -488,6 +488,29 @@ export const MAP_OOB_COLOR = 0x08080f; // out-of-bounds background
 export const MAP_CAMERA_BG = 0x0a0a14; // camera clear color
 export const MAP_GRID_COLOR = MAP_BG_COLOR;
 
+// Render-only water surface tuning. `color` is the tint of the flat
+// horizon water plane; `opacityByLod` is the material alpha per PLAYER
+// CLIENT LOD tier. Lower opacity = more transparent.
+export const WATER_RENDER_CONFIG = {
+  color: 0x2f7f9f,
+  opacityByLod: {
+    min: 0.28,
+    low: 0.32,
+    medium: 0.36,
+    high: 0.4,
+    max: 0.44,
+  },
+} as const;
+
+// Static sky background gradient. Generated once as a tiny canvas
+// texture by ThreeApp, then reused as the scene background.
+export const SKY_RENDER_CONFIG = {
+  topColor: '#82b9e4',
+  midColor: '#bdddf0',
+  horizonColor: '#e7f2f7',
+  midStop: 0.58,
+} as const;
+
 // Seam-safe mana tile terrain texture. These waves are evaluated from
 // world-space X/Z only, so adjacent mana tiles share exact vertex colors
 // on shared edges and corners.

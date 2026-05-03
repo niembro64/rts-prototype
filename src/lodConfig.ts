@@ -1,4 +1,4 @@
-import { LAND_CELL_SIZE, ZOOM_MIN, ZOOM_MAX } from './config';
+import { LAND_CELL_SIZE, WATER_RENDER_CONFIG, ZOOM_MIN, ZOOM_MAX } from './config';
 import type {
   LodAutoModeConfig,
   LodHysteresis,
@@ -315,11 +315,11 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 6,
   },
   WATER_OPACITY: {
-    min: 0.28,
-    low: 0.32,
-    medium: 0.36,
-    high: 0.4,
-    max: 0.44,
+    min: WATER_RENDER_CONFIG.opacityByLod.min,
+    low: WATER_RENDER_CONFIG.opacityByLod.low,
+    medium: WATER_RENDER_CONFIG.opacityByLod.medium,
+    high: WATER_RENDER_CONFIG.opacityByLod.high,
+    max: WATER_RENDER_CONFIG.opacityByLod.max,
   },
 
   // Unit body shape rendering

@@ -11,6 +11,7 @@ import {
   CAMERA_PAN_MULTIPLIER,
   CAMERA_MIN_TERRAIN_CLEARANCE,
   CAMERA_TARGET_TERRAIN_BAND,
+  SKY_RENDER_CONFIG,
   ZOOM_STEP_FRACTION,
   ZOOM_MIN,
   ZOOM_MAX,
@@ -18,9 +19,6 @@ import {
 
 const MOBILE_PIXEL_RATIO_CAP = 2;
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
-const SKY_TOP_COLOR = '#82b9e4';
-const SKY_MID_COLOR = '#bdddf0';
-const SKY_HORIZON_COLOR = '#e7f2f7';
 const CAMERA_NEAR_PLANE = 5;
 const CAMERA_FAR_PLANE = 50000;
 
@@ -33,9 +31,9 @@ function makeSkyGradientTexture(): THREE.CanvasTexture {
     throw new Error('Unable to create sky gradient texture');
   }
   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, SKY_TOP_COLOR);
-  gradient.addColorStop(0.58, SKY_MID_COLOR);
-  gradient.addColorStop(1, SKY_HORIZON_COLOR);
+  gradient.addColorStop(0, SKY_RENDER_CONFIG.topColor);
+  gradient.addColorStop(SKY_RENDER_CONFIG.midStop, SKY_RENDER_CONFIG.midColor);
+  gradient.addColorStop(1, SKY_RENDER_CONFIG.horizonColor);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
