@@ -931,38 +931,38 @@ const displayServerIp = computed(
   () => serverMetaFromSnapshot.value?.server.ip ?? '',
 );
 
-const allDemoUnitsActive = computed(() => {
-  const allowed = serverMetaFromSnapshot.value?.units.allowed;
-  if (!allowed) return demoUnitTypes.every((ut) => BATTLE_CONFIG.units[ut]?.default);
-  return demoUnitTypes.every((ut) => allowed.includes(ut));
-});
-
-// Mirror the bar's per-setting reads for the LobbyModal so the
-// modal's UNITS / CAP / FF / SYSTEM rows reflect what's stored in
-// snapshot meta (the host's authoritative state) with the same
-// config-default fallbacks the bar uses.
-const lobbyAllowedUnits = computed<readonly string[]>(
+// Single source of truth for "the current value of every battle
+// setting on the host" — `serverMetaFromSnapshot` (snapshot meta is
+// authoritative) with `BATTLE_CONFIG` defaults as the only fallback
+// when no snapshot has arrived yet. The bottom BATTLE bar template,
+// the LobbyModal, the toggle/setter functions below, and any read
+// elsewhere all consume these computeds rather than re-deriving the
+// same fallback chain inline. Add a new battle-config field and you
+// touch this block once instead of every consumer.
+const currentAllowedUnits = computed<readonly string[]>(
   () =>
     serverMetaFromSnapshot.value?.units.allowed ??
     demoUnitTypes.filter((ut) => BATTLE_CONFIG.units[ut]?.default ?? false),
 );
-const lobbyFfAccelUnits = computed(
+const allDemoUnitsActive = computed(() =>
+  demoUnitTypes.every((ut) => currentAllowedUnits.value.includes(ut)),
+);
+const currentFfAccelUnits = computed(
   () => serverMetaFromSnapshot.value?.ffAccel.units ?? BATTLE_CONFIG.ffAccelUnits.default,
 );
-const lobbyFfAccelShots = computed(
+const currentFfAccelShots = computed(
   () => serverMetaFromSnapshot.value?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default,
 );
-const lobbyMirrorsEnabled = computed(
+const currentMirrorsEnabled = computed(
   () => serverMetaFromSnapshot.value?.mirrorsEnabled ?? BATTLE_CONFIG.mirrorsEnabled.default,
 );
-const lobbyForceFieldsEnabled = computed(
+const currentForceFieldsEnabled = computed(
   () => serverMetaFromSnapshot.value?.forceFieldsEnabled ?? BATTLE_CONFIG.forceFieldsEnabled.default,
 );
 
 function toggleDemoUnitType(unitType: string): void {
-  const current =
-    serverMetaFromSnapshot.value?.units.allowed?.includes(unitType) ??
-    (BATTLE_CONFIG.units[unitType]?.default ?? false);
+  const allowed = currentAllowedUnits.value;
+  const current = allowed.includes(unitType);
   activeConnection?.sendCommand({
     type: 'setBackgroundUnitType',
     tick: 0,
@@ -971,10 +971,9 @@ function toggleDemoUnitType(unitType: string): void {
   });
 
   // Persist updated unit list to localStorage
-  const currentList = serverMetaFromSnapshot.value?.units.allowed ?? getDefaultDemoUnits();
   const newList = current
-    ? currentList.filter((ut) => ut !== unitType)
-    : [...currentList, unitType];
+    ? allowed.filter((ut) => ut !== unitType)
+    : [...allowed, unitType];
   saveDemoUnits(newList);
 }
 
@@ -2246,7 +2245,7 @@ onUnmounted(() => {
               <BarButton
                 v-for="ut in demoUnitTypes"
                 :key="ut"
-                :active="serverMetaFromSnapshot?.units.allowed?.includes(ut) ?? (BATTLE_CONFIG.units[ut]?.default ?? false)"
+                :active="currentAllowedUnits.includes(ut)"
                 :title="`Toggle ${ut} units in demo battle`"
                 @click="toggleDemoUnitType(ut)"
               >{{ getUnitBlueprint(ut).shortName }}</BarButton>
@@ -2259,7 +2258,7 @@ onUnmounted(() => {
               <BarButton
                 v-for="opt in BATTLE_CONFIG.cap.options"
                 :key="opt"
-                :active="serverMetaFromSnapshot?.units.max === opt"
+                :active="displayUnitCap === opt"
                 :title="`Max ${opt} total units`"
                 @click="changeMaxTotalUnits(opt)"
               >{{ opt.toLocaleString() }}</BarButton>
@@ -2335,14 +2334,14 @@ onUnmounted(() => {
             <BarLabel>FF:</BarLabel>
             <BarButtonGroup>
               <BarButton
-                :active="serverMetaFromSnapshot?.ffAccel.units ?? BATTLE_CONFIG.ffAccelUnits.default"
+                :active="currentFfAccelUnits"
                 title="Force field accelerates enemy units"
-                @click="setFfAccelUnits(!(serverMetaFromSnapshot?.ffAccel.units ?? BATTLE_CONFIG.ffAccelUnits.default))"
+                @click="setFfAccelUnits(!currentFfAccelUnits)"
               >UNIT-ACC</BarButton>
               <BarButton
-                :active="serverMetaFromSnapshot?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default"
+                :active="currentFfAccelShots"
                 title="Force field accelerates enemy projectiles"
-                @click="setFfAccelShots(!(serverMetaFromSnapshot?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default))"
+                @click="setFfAccelShots(!currentFfAccelShots)"
               >SHOT-ACC</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
@@ -2351,14 +2350,14 @@ onUnmounted(() => {
             <BarLabel>SYSTEM:</BarLabel>
             <BarButtonGroup>
               <BarButton
-                :active="serverMetaFromSnapshot?.mirrorsEnabled ?? BATTLE_CONFIG.mirrorsEnabled.default"
+                :active="currentMirrorsEnabled"
                 title="Enable mirror turrets and laser/beam reflections"
-                @click="setMirrorsEnabled(!(serverMetaFromSnapshot?.mirrorsEnabled ?? BATTLE_CONFIG.mirrorsEnabled.default))"
+                @click="setMirrorsEnabled(!currentMirrorsEnabled)"
               >MIRROR</BarButton>
               <BarButton
-                :active="serverMetaFromSnapshot?.forceFieldsEnabled ?? BATTLE_CONFIG.forceFieldsEnabled.default"
+                :active="currentForceFieldsEnabled"
                 title="Enable force-field turrets, force-field simulation, and force-field rendering"
-                @click="setForceFieldsEnabled(!(serverMetaFromSnapshot?.forceFieldsEnabled ?? BATTLE_CONFIG.forceFieldsEnabled.default))"
+                @click="setForceFieldsEnabled(!currentForceFieldsEnabled)"
               >FIELD</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
@@ -3218,12 +3217,12 @@ onUnmounted(() => {
       :terrain-dividers="terrainDividers"
       :terrain-map-shape="terrainMapShape"
       :unit-types="demoUnitTypes"
-      :allowed-units="lobbyAllowedUnits"
+      :allowed-units="currentAllowedUnits"
       :unit-cap="displayUnitCap"
-      :ff-accel-units="lobbyFfAccelUnits"
-      :ff-accel-shots="lobbyFfAccelShots"
-      :mirrors-enabled="lobbyMirrorsEnabled"
-      :force-fields-enabled="lobbyForceFieldsEnabled"
+      :ff-accel-units="currentFfAccelUnits"
+      :ff-accel-shots="currentFfAccelShots"
+      :mirrors-enabled="currentMirrorsEnabled"
+      :force-fields-enabled="currentForceFieldsEnabled"
       @host="handleHost"
       @join="handleJoin"
       @start="handleLobbyStart"

@@ -5,11 +5,34 @@ import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
 import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
-import { DEMO_CONFIG } from '../../demoConfig';
-import { REAL_BATTLE_COMMANDER_RADIUS_FRACTION } from '../../config';
+import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
+import {
+  REAL_BATTLE_COMMANDER_RADIUS_FRACTION,
+  REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
+  REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+} from '../../config';
 import { isWaterAt } from './Terrain';
 import { ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
+
+type InitialBaseMode = 'demo' | 'real';
+
+type InitialFactoryWaypointConfig = {
+  type: DemoBattleWaypointType;
+  distance: number;
+};
+
+function getInitialFactoryWaypointConfig(mode: InitialBaseMode): InitialFactoryWaypointConfig {
+  return mode === 'real'
+    ? {
+        type: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+        distance: REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
+      }
+    : {
+        type: DEMO_CONFIG.factoryWaypointType,
+        distance: DEMO_CONFIG.factoryWaypointDistance,
+      };
+}
 
 /**
  * Compute a factory's default waypoint along the factory -> map-center axis.
@@ -68,6 +91,21 @@ export function getPlayerBaseAngle(i: number, playerCount: number): number {
   return (i / playerCount) * Math.PI * 2 + FIRST_PLAYER_ANGLE;
 }
 
+/** Real-battle commander placement radius for a map of the given
+ *  dimensions. Single source of truth for the formula
+ *  `(mapMin/2 − spawnMarginPx) × REAL_BATTLE_COMMANDER_RADIUS_FRACTION`,
+ *  so the actual sim spawn (`getSpawnPositions`) and the stateless
+ *  camera pre-framing helper (`getSpawnPositionForSeat`) can never
+ *  drift apart — change the fraction or the margin in config and
+ *  both call sites pick it up. The DEMO BATTLE path
+ *  (`spawnInitialBases`) does its own thing because it also has
+ *  solar/factory rings to keep aligned with its own
+ *  `DEMO_CONFIG.commanderRadiusFraction`. */
+function realBattleCommanderRadius(mapWidth: number, mapHeight: number): number {
+  const spawnRadius = Math.min(mapWidth, mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
+  return spawnRadius * REAL_BATTLE_COMMANDER_RADIUS_FRACTION;
+}
+
 /** World-space spawn position for seat `i` of a `playerCount`-player
  *  game on a map of the given dimensions. Stateless mirror of the
  *  internal `getSpawnPositions` helper, exposed so the 3D scene can
@@ -83,8 +121,7 @@ export function getSpawnPositionForSeat(
   mapWidth: number,
   mapHeight: number,
 ): { x: number; y: number } {
-  const spawnRadius = Math.min(mapWidth, mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
-  const radius = spawnRadius * REAL_BATTLE_COMMANDER_RADIUS_FRACTION;
+  const radius = realBattleCommanderRadius(mapWidth, mapHeight);
   const angle = getPlayerBaseAngle(seatIndex, Math.max(1, playerCount));
   return {
     x: mapWidth / 2 + Math.cos(angle) * radius,
@@ -94,21 +131,20 @@ export function getSpawnPositionForSeat(
 
 // Calculate spawn positions on the spawn circle for N players. Used
 // for the REAL BATTLE flow (just commanders); demo battle goes through
-// `spawnInitialBases` which has its own commanderRadiusFraction. Pulls
-// the commander inward by REAL_BATTLE_COMMANDER_RADIUS_FRACTION so it
-// doesn't sit pinned to the edge of the playable area.
+// `spawnInitialBases` which has its own commanderRadiusFraction.
 function getSpawnPositions(
   world: WorldState,
   playerCount: number
 ): { x: number; y: number; facingAngle: number }[] {
-  const c = getDemoCircle(world);
-  const commanderRadius = c.radius * REAL_BATTLE_COMMANDER_RADIUS_FRACTION;
+  const cx = world.mapWidth / 2;
+  const cy = world.mapHeight / 2;
+  const radius = realBattleCommanderRadius(world.mapWidth, world.mapHeight);
   const positions: { x: number; y: number; facingAngle: number }[] = [];
   for (let i = 0; i < playerCount; i++) {
     const angle = getPlayerBaseAngle(i, playerCount);
-    const x = c.cx + Math.cos(angle) * commanderRadius;
-    const y = c.cy + Math.sin(angle) * commanderRadius;
-    positions.push({ x, y, facingAngle: Math.atan2(c.cy - y, c.cx - x) });
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    positions.push({ x, y, facingAngle: Math.atan2(cy - y, cx - x) });
   }
   return positions;
 }
@@ -121,6 +157,7 @@ function placeCompleteBuilding(
   worldX: number,
   worldY: number,
   playerId: PlayerId,
+  factoryWaypoint: InitialFactoryWaypointConfig,
 ): Entity | null {
   const config = getBuildingConfig(buildingType);
   const grid = construction.getGrid();
@@ -171,8 +208,20 @@ function placeCompleteBuilding(
   }
 
   if (buildingType === 'factory') {
-    const wp = computeFactoryWaypoint(center.x, center.y, world.mapWidth, world.mapHeight, DEMO_CONFIG.factoryWaypointDistance);
-    const rally = computeFactoryWaypoint(center.x, center.y, world.mapWidth, world.mapHeight, 0.5);
+    const wp = computeFactoryWaypoint(
+      center.x,
+      center.y,
+      world.mapWidth,
+      world.mapHeight,
+      factoryWaypoint.distance,
+    );
+    const rally = computeFactoryWaypoint(
+      center.x,
+      center.y,
+      world.mapWidth,
+      world.mapHeight,
+      REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
+    );
     entity.factory = {
       buildQueue: [],
       currentBuildProgress: 0,
@@ -180,7 +229,7 @@ function placeCompleteBuilding(
       rallyX: rally.x,
       rallyY: rally.y,
       isProducing: false,
-      waypoints: [{ x: wp.x, y: wp.y, type: DEMO_CONFIG.factoryWaypointType }],
+      waypoints: [{ x: wp.x, y: wp.y, type: factoryWaypoint.type }],
     };
   }
 
@@ -236,6 +285,7 @@ function placeArcRow(
   baseAngle: number,
   sectorAngle: number,
   playerId: PlayerId,
+  factoryWaypoint: InitialFactoryWaypointConfig,
 ): Entity[] {
   if (count <= 0) return [];
   const entities: Entity[] = [];
@@ -245,7 +295,15 @@ function placeArcRow(
     const a = count > 1 ? startAngle + j * angularStep : baseAngle;
     const wx = centerX + Math.cos(a) * radius;
     const wy = centerY + Math.sin(a) * radius;
-    const e = placeCompleteBuilding(world, construction, buildingType, wx, wy, playerId);
+    const e = placeCompleteBuilding(
+      world,
+      construction,
+      buildingType,
+      wx,
+      wy,
+      playerId,
+      factoryWaypoint,
+    );
     if (e) entities.push(e);
   }
   return entities;
@@ -261,6 +319,7 @@ function placePowerArcRow(
   baseAngle: number,
   sectorAngle: number,
   playerId: PlayerId,
+  factoryWaypoint: InitialFactoryWaypointConfig,
 ): Entity[] {
   if (count <= 0) return [];
   const entities: Entity[] = [];
@@ -277,7 +336,15 @@ function placePowerArcRow(
     const a = count > 1 ? startAngle + j * angularStep : baseAngle;
     const wx = centerX + Math.cos(a) * radius;
     const wy = centerY + Math.sin(a) * radius;
-    const e = placeCompleteBuilding(world, construction, buildingType, wx, wy, playerId);
+    const e = placeCompleteBuilding(
+      world,
+      construction,
+      buildingType,
+      wx,
+      wy,
+      playerId,
+      factoryWaypoint,
+    );
     if (e) entities.push(e);
   }
   return entities;
@@ -302,6 +369,7 @@ export function spawnInitialBases(
   world: WorldState,
   construction: ConstructionSystem,
   playerIds: PlayerId[],
+  mode: InitialBaseMode = 'demo',
 ): Entity[] {
   const entities: Entity[] = [];
 
@@ -313,6 +381,7 @@ export function spawnInitialBases(
 
   const playerCount = playerIds.length;
   const { cx, cy, radius: spawnRadius } = getDemoCircle(world);
+  const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
 
   const solarConfig = getBuildingConfig('solar');
   const factoryConfig = getBuildingConfig('factory');
@@ -354,13 +423,13 @@ export function spawnInitialBases(
     // between solar collectors and wind turbines.
     entities.push(...placePowerArcRow(
       world, construction, DEMO_CONFIG.solarCount,
-      cx, cy, solarRadius, baseAngle, sectorAngle, playerId,
+      cx, cy, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
     // Factory arc (closest to center).
     entities.push(...placeArcRow(
       world, construction, 'factory', DEMO_CONFIG.factoryCount,
-      cx, cy, factoryRadius, baseAngle, sectorAngle, playerId,
+      cx, cy, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
   }
 
