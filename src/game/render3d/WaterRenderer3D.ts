@@ -14,15 +14,23 @@ import type { Lod3DState } from './Lod3D';
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
 // gameplay/readability, but the fragments are pushed slightly behind
 // terrain in the depth buffer so shoreline faces do not shimmer as
-// the camera eases in and out. The `units` term is multiplied by the
-// depth buffer's smallest resolvable difference, which GROWS with
-// scene depth (1/z² precision distribution), so a generous value here
-// keeps the offset above 1 ULP even when the camera is fully zoomed
-// out (z near the far plane). The previous 1/2 setting let camera
-// motion at the EMA tail produce sub-ULP wobble at the shoreline; 8/32
-// stays well above 1 ULP across the whole near→far range.
-const WATER_DEPTH_OFFSET_FACTOR = 8;
-const WATER_DEPTH_OFFSET_UNITS = 32;
+// the camera eases in and out.
+//
+// Keep `factor=0` so the bias is pure constant offset, not slope-
+// coupled. The OpenGL formula is `factor × max(|dz/dx|, |dz/dy|) +
+// units × ULP_at_z`. The `factor × slope` term re-evaluates every
+// frame the camera angle changes — even sub-pixel — so each frame's
+// offset value is slightly different. That itself causes flicker
+// during camera motion: the bias amount oscillates across ULP
+// boundaries even with the camera "settled" by the eye.
+//
+// Pure `units` is constant per frame, so the bias is rock-steady
+// while the camera moves. With `logarithmicDepthBuffer` on the
+// renderer (see ThreeApp.ts), 64 ULPs is comfortably above 1 ULP
+// across the whole near → far range without the slope-coupled
+// jitter.
+const WATER_DEPTH_OFFSET_FACTOR = 0;
+const WATER_DEPTH_OFFSET_UNITS = 64;
 
 /** Large enough to cover the camera's far plane from any legal map
  *  camera state. Three.js has no literal infinite plane here, so this

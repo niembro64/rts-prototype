@@ -19,8 +19,21 @@ import {
 
 const MOBILE_PIXEL_RATIO_CAP = 2;
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
-const CAMERA_NEAR_PLANE = 5;
-const CAMERA_FAR_PLANE = 50000;
+// CAMERA_NEAR_PLANE bumped 5 → 50: depth-buffer precision is dominated
+// by 1/near, so 10× near gives 10× better precision everywhere. The
+// game's units have ~10–20 wu radius and the camera's altitude clamp
+// keeps it well above the surface, so 50 is safe — nothing legitimately
+// renders closer to the camera than that.
+//
+// CAMERA_FAR_PLANE raised 50000 → 100000 so the water plane (which
+// extends `WATER_HORIZON_EXTEND` past every map edge) doesn't get
+// clipped at low-pitch / high-altitude views. The bigger far-plane
+// is paid for by `logarithmicDepthBuffer: true` on the renderer
+// below — log depth distributes precision evenly across the whole
+// near→far range, so widening the range is roughly free for
+// shoreline z-fight.
+const CAMERA_NEAR_PLANE = 50;
+const CAMERA_FAR_PLANE = 100000;
 
 function makeSkyGradientTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -95,7 +108,17 @@ export class ThreeApp {
     this._skyTexture = makeSkyGradientTexture();
     this.scene.background = this._skyTexture;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // `logarithmicDepthBuffer: true` distributes z-buffer precision
+    // evenly across the entire near → far range instead of concentrating
+    // it near the near plane. With our ~1:2000 ratio (near=50,
+    // far=100000) the linear-z mode would still leave ~10 wu of
+    // precision per ULP at the far plane; log-z gives ~32-bit-equivalent
+    // precision throughout, which is what kills the shoreline z-fight
+    // shimmer on the water plane during slow camera motion.
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      logarithmicDepthBuffer: true,
+    });
     const mobileLike = isMobileLikeBrowser();
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
     this._dynamicPixelRatioEnabled = !mobileLike;
