@@ -289,10 +289,10 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: true,
     max: true,
   },
-  // Full-map translucent water is mostly GPU/fill-rate pressure. Tie
-  // mesh density, uniform update cadence, wave amplitude, and opacity
-  // to the same PLAYER CLIENT tier so low LODs stop paying MAX-water
-  // costs while still keeping lakes readable.
+  // Water is currently an opaque single horizon plane. The legacy
+  // subdivision/wave/stride knobs are kept in the resolved graphics
+  // config for compatibility with older renderer call sites, but the
+  // renderer now treats opacity as an on/off visibility gate.
   WATER_SUBDIVISIONS: {
     min: 1,
     low: 8,
@@ -315,11 +315,11 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 6,
   },
   WATER_OPACITY: {
-    min: 0.28,
-    low: 0.34,
-    medium: 0.42,
-    high: 0.5,
-    max: 0.55,
+    min: 1,
+    low: 1,
+    medium: 1,
+    high: 1,
+    max: 1,
   },
 
   // Unit body shape rendering

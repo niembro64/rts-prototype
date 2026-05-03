@@ -57,7 +57,7 @@ export const WATER_LEVEL_FRACTION = 0.6;
 /** Water surface elevation in sim units. Linear interpolation:
  *  fraction=0 → TILE_FLOOR_Y, fraction=1 → 0. Anywhere the heightmap
  *  dips below this level, water is what's actually visible
- *  (semi-transparent plane drawn by WaterRenderer3D); units cannot
+ *  (opaque plane drawn by WaterRenderer3D); units cannot
  *  enter those cells — `isWaterAt` flags them as impassable so the
  *  thrust-application step zeros horizontal force pointing into
  *  water. */
@@ -112,7 +112,7 @@ let mountainRippleAmplitude = TERRAIN_SHAPE_MAGNITUDE;
  *  sign convention as the central ripple. Default 'lake'. Set via
  *  `setTerrainDividersShape`. */
 let mountainSeparatorAmplitude = TERRAIN_SHAPE_MAGNITUDE;
-let terrainMapShape: TerrainMapShape = 'square';
+let terrainMapShape: TerrainMapShape = 'circle';
 
 function shapeToAmplitude(shape: TerrainShape): number {
   return terrainShapeSign(shape) * TERRAIN_SHAPE_MAGNITUDE;
@@ -828,7 +828,7 @@ export function applySurfaceTilt(
  *
  *  The RENDERER (CaptureTileRenderer3D) reads `getTerrainHeight`
  *  directly so it can draw the actual carved terrain below the
- *  water; WaterRenderer3D draws a translucent flat plane on top at
+ *  water; WaterRenderer3D draws an opaque flat plane on top at
  *  WATER_LEVEL. The combination gives the visual: deep terrain
  *  → submerged below water; shallow / above-water terrain → dry
  *  land. Physics treats both cases uniformly: the unit's "ground"

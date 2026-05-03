@@ -248,7 +248,7 @@ export class GameServer {
     // (which bakes terrain geometry once at construction) so every
     // downstream consumer reads the same surface.
     setTerrainTeamCount(this.playerIds.length);
-    setTerrainMapShape(config.terrainMapShape ?? 'square');
+    setTerrainMapShape(config.terrainMapShape ?? 'circle');
 
     // Metal deposits — same set across all clients (deterministic from
     // map size + player count + CENTER terrain polarity). Push their

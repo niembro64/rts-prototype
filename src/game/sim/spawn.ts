@@ -315,8 +315,11 @@ export function spawnInitialBases(
   const factoryDepth = factoryConfig.gridHeight * GRID_CELL_SIZE;
 
   // Three concentric radii — same radial order as the original square
-  // layout (commander outermost, then solars, then factories).
-  const commanderRadius = spawnRadius;
+  // layout (commander outermost, then solars, then factories). The
+  // commander sits at a fraction of the spawn circle so it's not
+  // pinned to the very edge; the solar/factory arcs follow inward
+  // from that point.
+  const commanderRadius = spawnRadius * DEMO_CONFIG.commanderRadiusFraction;
   const solarRadius = commanderRadius - commanderGap - solarDepth / 2;
   const factoryRadius = solarRadius - solarDepth / 2 - cellGap - factoryDepth / 2;
 

@@ -63,7 +63,7 @@ export const BATTLE_CONFIG = {
     ],
   },
   mapShape: {
-    default: 'square',
+    default: 'circle',
     options: [
       { value: 'square', label: 'SQUARE' },
       { value: 'circle', label: 'CIRCLE' },

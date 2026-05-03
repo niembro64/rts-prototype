@@ -378,13 +378,13 @@ const terrainSectionVars = computed(() =>
                 >{{ opt.label }}</BarButton>
               </BarButtonGroup>
             </BarControlGroup>
-            <BarControlGroup label="MAP:">
+            <BarControlGroup label="PERIMETER:">
               <BarButtonGroup>
                 <BarButton
                   v-for="opt in mapShapeOptions"
                   :key="opt.value"
                   :active="terrainMapShape === opt.value"
-                  :title="isHost ? `Set the map boundary to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                  :title="isHost ? `Set the map perimeter to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
                   @click="pickTerrainMapShape(opt.value)"
                 >{{ opt.label }}</BarButton>
               </BarButtonGroup>

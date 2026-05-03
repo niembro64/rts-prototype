@@ -46,6 +46,18 @@ export const DEMO_CONFIG = {
   spawnMarginPx: 100,
 
   /**
+   * Commander placement radius as a fraction of the outer spawn circle.
+   * 1.0 = commander sits at the outer edge of the spawn circle (the
+   * legacy behavior); <1.0 pulls each commander inward toward map
+   * center, leaving open ground behind the base. The solar/factory
+   * arcs are spaced INWARD of the commander, so dropping this also
+   * pulls those rows in by the same delta — pair with smaller
+   * commanderGapCells / rowGapCells if buildings start crowding the
+   * map center.
+   */
+  commanderRadiusFraction: 0.85,
+
+  /**
    * DEMO BATTLE initial-spawn unit order type. 'fight' makes the
    * launch waves engage opportunistically en route to their assigned
    * waypoint instead of barreling straight through enemy lines —

@@ -2269,13 +2269,13 @@ onUnmounted(() => {
           </BarControlGroup>
           <BarControlGroup v-if="!gameStarted">
             <BarDivider />
-            <BarLabel>MAP:</BarLabel>
+            <BarLabel>PERIMETER:</BarLabel>
             <BarButtonGroup>
               <BarButton
                 v-for="opt in BATTLE_CONFIG.mapShape.options"
                 :key="opt.value"
                 :active="terrainMapShape === opt.value"
-                :title="`Set the map boundary to ${opt.label.toLowerCase()}`"
+                :title="`Set the map perimeter to ${opt.label.toLowerCase()}`"
                 @click="applyTerrainMapShape(opt.value)"
               >{{ opt.label }}</BarButton>
             </BarButtonGroup>

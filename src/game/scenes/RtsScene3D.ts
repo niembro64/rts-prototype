@@ -415,7 +415,7 @@ export class RtsScene3D {
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
     this.terrainCenter = config.terrainCenter ?? 'lake';
-    this.terrainMapShape = config.terrainMapShape ?? 'square';
+    this.terrainMapShape = config.terrainMapShape ?? 'circle';
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
     setPlayerCountForColors(this.playerIds.length);
@@ -632,14 +632,11 @@ export class RtsScene3D {
       this.metalDeposits,
       getGraphicsConfig().tier,
     );
-    // Translucent water plane sits at WATER_LEVEL (the halfway point
-    // between the tile-cube floor and the building-zero ground), so
-    // any terrain that dips below WATER_LEVEL reads as submerged
-    // through the blue tint. Physics treats the water surface as the
+    // Opaque horizon water sits at WATER_LEVEL. Terrain above that
+    // plane hides it via depth testing; terrain below that plane
+    // reads as submerged. Physics treats the water surface as the
     // walkable ground (Terrain.getSurfaceHeight clamps UP to
-    // WATER_LEVEL), so units never enter the water — they walk on
-    // top of it. GPU-driven sin/cos wave displacement, no per-frame
-    // CPU buffer churn.
+    // WATER_LEVEL), so units never enter the water.
     this.waterRenderer = new WaterRenderer3D(
       this.threeApp.world,
       this.mapWidth,
@@ -989,9 +986,8 @@ export class RtsScene3D {
     // explosions apply their PLAYER CLIENT LOD physics-frame skip internally;
     // burn marks sample live beams to trace scorches on the ground. We feed
     // the scheduler's clamped dt so backgrounded tabs don't jump-forward.
-    // Advance the water-surface time uniform — the actual GPU draw
-    // happens on the next render pass, this just nudges the wave
-    // phase. Cheap (single uniform write), no buffer upload.
+    // Water is static and opaque; update is now just a visibility /
+    // lazy-geometry check.
     this.waterRenderer.update(
       effectDt / 1000,
       graphicsConfig,
