@@ -20,7 +20,7 @@ import {
   MANA_TILE_GROUND_LIFT,
   MANA_TILE_FLAT_HEIGHT_THRESHOLD,
 } from '../../config';
-import { getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
+import { getTerrainMapBoundaryFade, getTerrainHeight, TERRAIN_MESH_SUBDIV, TILE_FLOOR_Y } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
 import {
   CANONICAL_LAND_CELL_SIZE,
@@ -72,7 +72,18 @@ function writeManaTerrainColorBytes(
   offset: number,
   wx: number,
   wz: number,
+  mapWidth: number,
+  mapHeight: number,
 ): void {
+  const boundaryFade = getTerrainMapBoundaryFade(wx, wz, mapWidth, mapHeight);
+  if (boundaryFade >= 1) {
+    out[offset] = NEUTRAL_R_BYTE;
+    out[offset + 1] = NEUTRAL_G_BYTE;
+    out[offset + 2] = NEUTRAL_B_BYTE;
+    out[offset + 3] = 255;
+    return;
+  }
+
   const xWaves =
     Math.sin(wx * MANA_TILE_TEXTURE.xWaves[0].scale + MANA_TILE_TEXTURE.xWaves[0].phase) * MANA_TILE_TEXTURE.xWaves[0].amplitude +
     Math.sin(wx * MANA_TILE_TEXTURE.xWaves[1].scale + MANA_TILE_TEXTURE.xWaves[1].phase) * MANA_TILE_TEXTURE.xWaves[1].amplitude;
@@ -120,9 +131,17 @@ function writeManaTerrainColorBytes(
     MANA_TILE_TEXTURE.tone.neutral + signedTexture * MANA_TILE_TEXTURE.tone.contrast,
   );
   const mix = clamp01(MANA_TILE_TEXTURE.tone.mix);
-  out[offset] = Math.round(clamp01(lerpColorChannel(baseR, grayTone, mix)) * 255);
-  out[offset + 1] = Math.round(clamp01(lerpColorChannel(baseG, grayTone, mix)) * 255);
-  out[offset + 2] = Math.round(clamp01(lerpColorChannel(baseB, grayTone, mix)) * 255);
+  let r = clamp01(lerpColorChannel(baseR, grayTone, mix)) * 255;
+  let g = clamp01(lerpColorChannel(baseG, grayTone, mix)) * 255;
+  let b = clamp01(lerpColorChannel(baseB, grayTone, mix)) * 255;
+  if (boundaryFade > 0) {
+    r = lerpColorChannel(r, NEUTRAL_R_BYTE, boundaryFade);
+    g = lerpColorChannel(g, NEUTRAL_G_BYTE, boundaryFade);
+    b = lerpColorChannel(b, NEUTRAL_B_BYTE, boundaryFade);
+  }
+  out[offset] = Math.round(clamp01(r / 255) * 255);
+  out[offset + 1] = Math.round(clamp01(g / 255) * 255);
+  out[offset + 2] = Math.round(clamp01(b / 255) * 255);
   out[offset + 3] = 255;
 }
 
@@ -317,7 +336,14 @@ export class CaptureTileRenderer3D {
       const wz = ((py + 0.5) / safeHeight) * mapHeight;
       for (let px = 0; px < safeWidth; px++) {
         const wx = ((px + 0.5) / safeWidth) * mapWidth;
-        writeManaTerrainColorBytes(pixels, (py * safeWidth + px) * 4, wx, wz);
+        writeManaTerrainColorBytes(
+          pixels,
+          (py * safeWidth + px) * 4,
+          wx,
+          wz,
+          mapWidth,
+          mapHeight,
+        );
       }
     }
     const texture = new THREE.DataTexture(pixels, safeWidth, safeHeight, THREE.RGBAFormat);
@@ -974,10 +1000,22 @@ export class CaptureTileRenderer3D {
           // outer map boundary gets side walls; this removes hidden
           // back-to-back internal walls and avoids unnecessary sharp
           // seams between terrain pieces.
-          if (cy === 0) addWall(edgeNorth, 0, -1);
-          if (cx === cellsX - 1) addWall(edgeEast, 1, 0);
-          if (cy === cellsY - 1) addWall(edgeSouth, 0, 1);
-          if (cx === 0) addWall(edgeWest, -1, 0);
+          const northIsSubmergedShelf =
+            getTerrainMapBoundaryFade(x0, z0, this.mapWidth, this.mapHeight) >= 1 &&
+            getTerrainMapBoundaryFade(x0 + cellWidth, z0, this.mapWidth, this.mapHeight) >= 1;
+          const eastIsSubmergedShelf =
+            getTerrainMapBoundaryFade(x0 + cellWidth, z0, this.mapWidth, this.mapHeight) >= 1 &&
+            getTerrainMapBoundaryFade(x0 + cellWidth, z0 + cellDepth, this.mapWidth, this.mapHeight) >= 1;
+          const southIsSubmergedShelf =
+            getTerrainMapBoundaryFade(x0, z0 + cellDepth, this.mapWidth, this.mapHeight) >= 1 &&
+            getTerrainMapBoundaryFade(x0 + cellWidth, z0 + cellDepth, this.mapWidth, this.mapHeight) >= 1;
+          const westIsSubmergedShelf =
+            getTerrainMapBoundaryFade(x0, z0, this.mapWidth, this.mapHeight) >= 1 &&
+            getTerrainMapBoundaryFade(x0, z0 + cellDepth, this.mapWidth, this.mapHeight) >= 1;
+          if (cy === 0 && !northIsSubmergedShelf) addWall(edgeNorth, 0, -1);
+          if (cx === cellsX - 1 && !eastIsSubmergedShelf) addWall(edgeEast, 1, 0);
+          if (cy === cellsY - 1 && !southIsSubmergedShelf) addWall(edgeSouth, 0, 1);
+          if (cx === 0 && !westIsSubmergedShelf) addWall(edgeWest, -1, 0);
         }
       }
     }
@@ -1011,7 +1049,18 @@ export class CaptureTileRenderer3D {
     const cy = tile.cy;
     if (cx < 0 || cx >= this.gridCellsX || cy < 0 || cy >= this.gridCellsY) return;
     const idx = (cy * this.gridCellsX + cx) * 4;
-    if (!hasCaptureHeight(tile.heights) || intensity <= 0) {
+    const wx = (cx + 0.5) * cellSize;
+    const wz = (cy + 0.5) * cellSize;
+    const boundaryFade = getTerrainMapBoundaryFade(wx, wz, this.mapWidth, this.mapHeight);
+    const localIntensity = intensity * (1 - boundaryFade);
+    if (localIntensity <= 0) {
+      this.overlayPixels[idx] = 0;
+      this.overlayPixels[idx + 1] = 0;
+      this.overlayPixels[idx + 2] = 0;
+      this.overlayPixels[idx + 3] = 0;
+      return;
+    }
+    if (!hasCaptureHeight(tile.heights)) {
       this.overlayPixels[idx] = 0;
       this.overlayPixels[idx + 1] = 0;
       this.overlayPixels[idx + 2] = 0;
@@ -1026,7 +1075,7 @@ export class CaptureTileRenderer3D {
       cellSize,
       this.mapWidth,
       this.mapHeight,
-      intensity,
+      localIntensity,
       NEUTRAL_R_BYTE,
       NEUTRAL_G_BYTE,
       NEUTRAL_B_BYTE,

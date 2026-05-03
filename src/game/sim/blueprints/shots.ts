@@ -67,7 +67,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     detonateOnExpiry: true,
     lifespan: 5500,
     ignoresGravity: true,
-    homingTurnRate: 1,
+    homingTurnRate: 2,
     // Render as a velocity-aligned cylinder (purely cosmetic — sim
     // collision is still sphere-based via collision.radius).
     shape: 'cylinder',

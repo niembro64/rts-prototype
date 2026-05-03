@@ -339,6 +339,48 @@ function applyTerrainPlateaus(height: number): number {
   return (lowerLevel + plateauRampCurve(rampT)) * step;
 }
 
+function getTerrainCircleEndRadius(mapWidth: number, mapHeight: number): number {
+  const minDim = Math.min(mapWidth, mapHeight);
+  const maxEndRadius = minDim * 0.5;
+  return Math.max(
+    1,
+    Math.min(
+      maxEndRadius,
+      minDim * TERRAIN_CIRCLE_EXTERNAL_END_RADIUS_FRACTION,
+    ),
+  );
+}
+
+function getTerrainCircleStartRadius(
+  mapWidth: number,
+  mapHeight: number,
+  endRadius: number,
+): number {
+  const minDim = Math.min(mapWidth, mapHeight);
+  return Math.min(
+    endRadius - 1,
+    Math.max(0, minDim * TERRAIN_CIRCLE_INTERNAL_START_RADIUS_FRACTION),
+  );
+}
+
+export function getTerrainMapBoundaryFade(
+  x: number,
+  y: number,
+  mapWidth: number,
+  mapHeight: number,
+): number {
+  if (terrainMapShape !== 'circle') return 0;
+  const endRadius = getTerrainCircleEndRadius(mapWidth, mapHeight);
+  const startRadius = getTerrainCircleStartRadius(mapWidth, mapHeight, endRadius);
+  const dx = x - mapWidth / 2;
+  const dy = y - mapHeight / 2;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist <= startRadius) return 0;
+  if (dist >= endRadius) return 1;
+
+  return smootherstep(clamp01((dist - startRadius) / (endRadius - startRadius)));
+}
+
 function applyTerrainMapBoundary(
   height: number,
   x: number,
@@ -346,32 +388,10 @@ function applyTerrainMapBoundary(
   mapWidth: number,
   mapHeight: number,
 ): number {
-  if (terrainMapShape !== 'circle') return height;
-
-  const minDim = Math.min(mapWidth, mapHeight);
-  const maxEndRadius = minDim * 0.5;
-  const endRadius = Math.max(
-    1,
-    Math.min(
-      maxEndRadius,
-      minDim * TERRAIN_CIRCLE_EXTERNAL_END_RADIUS_FRACTION,
-    ),
-  );
-  const startRadius = Math.min(
-    endRadius - 1,
-    Math.max(0, minDim * TERRAIN_CIRCLE_INTERNAL_START_RADIUS_FRACTION),
-  );
-  const dx = x - mapWidth / 2;
-  const dy = y - mapHeight / 2;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist <= startRadius) return height;
-
-  const targetHeight = Math.min(height, TERRAIN_CIRCLE_UNDERWATER_HEIGHT);
-  if (dist >= endRadius) return targetHeight;
-
-  const t = (dist - startRadius) / (endRadius - startRadius);
-  const w = smootherstep(clamp01(t));
-  return height + (targetHeight - height) * w;
+  const w = getTerrainMapBoundaryFade(x, y, mapWidth, mapHeight);
+  if (w <= 0) return height;
+  if (w >= 1) return TERRAIN_CIRCLE_UNDERWATER_HEIGHT;
+  return height + (TERRAIN_CIRCLE_UNDERWATER_HEIGHT - height) * w;
 }
 
 /** Final authored terrain height at world point (x, y): natural
@@ -468,26 +488,6 @@ export function getTerrainHeight(
   const natural = ripple + ridge;
   const terraced = applyTerrainPlateaus(natural);
 
-  // Apply the map-boundary shaping (e.g. circle perimeter sinking the
-  // edge below water) to the NATURAL terraced terrain BEFORE the
-  // deposit override blend. Doing this in the other order — boundary
-  // shaping after the deposit blend — would distort any pad whose
-  // center sits past `startRadius`, pulling its samples toward the
-  // underwater target. That made `isBuildableTerrainFootprint` reject
-  // outermost extractors (samples on a single pad coming back at
-  // varying heights → no consistent plateau level), so the demo
-  // battle never built extractors on the outer deposit ring under
-  // the circle perimeter. Applying the boundary first, then blending
-  // the deposit pad over it, lets the pad's exact authored height
-  // win inside its radius regardless of perimeter shape.
-  const terracedShaped = applyTerrainMapBoundary(
-    terraced,
-    x,
-    y,
-    mapWidth,
-    mapHeight,
-  );
-
   // Metal-deposit flat zones override BOTH ripple and ridge: inside
   // each circular flat pad the terrain is forced to the ring's
   // dTerrain-derived `height`. Outside the falloff band the weight is
@@ -495,14 +495,21 @@ export function getTerrainHeight(
   // sample that isn't near a deposit.
   const override = depositOverride(x, y);
   const blended =
-    override.height * (1 - override.weight) + terracedShaped * override.weight;
+    override.height * (1 - override.weight) + terraced * override.weight;
+  const boundaryShaped = applyTerrainMapBoundary(
+    blended,
+    x,
+    y,
+    mapWidth,
+    mapHeight,
+  );
 
   // Clamp to the tile floor — the heightmap defines the TOP of every
   // 3D tile cube and tiles can't physically extend below their floor.
   // Without this clamp, a strongly-negative amplitude (e.g. carved
   // trenches) would invert the tile geometry: top vertex lower than
   // floor vertex, faces flipped, sides facing inward.
-  return Math.max(TILE_FLOOR_Y, blended);
+  return Math.max(TILE_FLOOR_Y, boundaryShaped);
 }
 
 type TerrainMeshSample = {

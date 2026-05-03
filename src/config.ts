@@ -622,17 +622,6 @@ export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
     thickness: 1.5,
     reversePhase: true,
   },
-  megaForceField: {
-    shape: 'circle',
-    count: 7,
-    length: 0.0,
-    width: 0.25,
-    taper: 0.7,
-    baseOffset: 0.0,
-    originOffset: 0.0,
-    thickness: 4.5,
-    reversePhase: true,
-  },
 };
 
 // =============================================================================

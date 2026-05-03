@@ -289,10 +289,10 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: true,
     max: true,
   },
-  // Water is currently an opaque single horizon plane. The legacy
+  // Water is a static transparent horizon plane. The legacy
   // subdivision/wave/stride knobs are kept in the resolved graphics
-  // config for compatibility with older renderer call sites, but the
-  // renderer now treats opacity as an on/off visibility gate.
+  // config for compatibility with older renderer call sites, while
+  // opacity controls the one cheap water draw.
   WATER_SUBDIVISIONS: {
     min: 1,
     low: 8,
@@ -315,11 +315,11 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 6,
   },
   WATER_OPACITY: {
-    min: 1,
-    low: 1,
-    medium: 1,
-    high: 1,
-    max: 1,
+    min: 0.28,
+    low: 0.32,
+    medium: 0.36,
+    high: 0.4,
+    max: 0.44,
   },
 
   // Unit body shape rendering

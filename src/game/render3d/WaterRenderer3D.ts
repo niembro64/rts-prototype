@@ -1,18 +1,21 @@
-// WaterRenderer3D — opaque, flat water at WATER_LEVEL.
+// WaterRenderer3D — transparent, flat water at WATER_LEVEL.
 //
-// Water is one large horizontal plane. That is intentional: opaque
-// water does not need the old wet-cell patch mesh that existed to
-// reduce transparent fill-rate. Terrain above WATER_LEVEL naturally
-// hides the plane through depth testing, while submerged terrain is
-// covered by the plane. Extending the quad far past the playable map
-// gives the camera a continuous water horizon without per-frame work.
+// Water is one large horizontal plane plus a four-quad submerged
+// seafloor outside the playable square. Terrain above WATER_LEVEL
+// naturally hides the plane through depth testing, while submerged
+// terrain remains visible through the water. In CIRCLE perimeter mode
+// the playable terrain reaches the same underwater base height at the
+// map edge, so the extra seafloor continues that land outward without
+// needing a high-density off-map terrain mesh.
 
 import * as THREE from 'three';
-import { WATER_LEVEL } from '../sim/Terrain';
+import { TERRAIN_CIRCLE_UNDERWATER_HEIGHT, WATER_LEVEL } from '../sim/Terrain';
+import { MANA_TILE_GROUND_LIFT, MAP_BG_COLOR } from '../../config';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { Lod3DState } from './Lod3D';
 
 const WATER_COLOR = 0x2f7f9f;
+const SEAFLOOR_COLOR = MAP_BG_COLOR;
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
 // gameplay/readability, but the fragments are pushed slightly behind
 // terrain in the depth buffer so shoreline faces do not shimmer as
@@ -26,9 +29,12 @@ const WATER_DEPTH_OFFSET_UNITS = 2;
 const WATER_HORIZON_EXTEND = 60000;
 
 export class WaterRenderer3D {
-  private mesh: THREE.Mesh;
-  private geometry: THREE.BufferGeometry;
-  private material: THREE.MeshBasicMaterial;
+  private waterMesh: THREE.Mesh;
+  private waterGeometry: THREE.BufferGeometry;
+  private waterMaterial: THREE.MeshBasicMaterial;
+  private seafloorMesh: THREE.Mesh;
+  private seafloorGeometry: THREE.BufferGeometry;
+  private seafloorMaterial: THREE.MeshBasicMaterial;
   private mapWidth: number;
   private mapHeight: number;
   private built = false;
@@ -36,23 +42,36 @@ export class WaterRenderer3D {
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
-    this.geometry = new THREE.BufferGeometry();
-    this.material = new THREE.MeshBasicMaterial({
+    this.waterGeometry = new THREE.BufferGeometry();
+    this.waterMaterial = new THREE.MeshBasicMaterial({
       color: WATER_COLOR,
-      transparent: false,
-      opacity: 1,
-      depthWrite: true,
+      transparent: true,
+      opacity: 0.36,
+      depthWrite: false,
       depthTest: true,
       polygonOffset: true,
       polygonOffsetFactor: WATER_DEPTH_OFFSET_FACTOR,
       polygonOffsetUnits: WATER_DEPTH_OFFSET_UNITS,
       side: THREE.DoubleSide,
     });
+    this.seafloorGeometry = new THREE.BufferGeometry();
+    this.seafloorMaterial = new THREE.MeshBasicMaterial({
+      color: SEAFLOOR_COLOR,
+      transparent: false,
+      depthWrite: true,
+      depthTest: true,
+      side: THREE.DoubleSide,
+    });
 
-    this.mesh = new THREE.Mesh(this.geometry, this.material);
-    this.mesh.renderOrder = 3;
-    this.mesh.frustumCulled = false;
-    parent.add(this.mesh);
+    this.seafloorMesh = new THREE.Mesh(this.seafloorGeometry, this.seafloorMaterial);
+    this.seafloorMesh.renderOrder = 2;
+    this.seafloorMesh.frustumCulled = false;
+    parent.add(this.seafloorMesh);
+
+    this.waterMesh = new THREE.Mesh(this.waterGeometry, this.waterMaterial);
+    this.waterMesh.renderOrder = 3;
+    this.waterMesh.frustumCulled = false;
+    parent.add(this.waterMesh);
   }
 
   private buildGeometry(): void {
@@ -62,25 +81,51 @@ export class WaterRenderer3D {
     const x1 = this.mapWidth + outer;
     const z1 = this.mapHeight + outer;
 
-    const positions = new Float32Array([
+    const waterPositions = new Float32Array([
       x0, WATER_LEVEL, z0,
       x1, WATER_LEVEL, z0,
       x1, WATER_LEVEL, z1,
       x0, WATER_LEVEL, z1,
     ]);
-    const normals = new Float32Array([
+    const waterNormals = new Float32Array([
       0, 1, 0,
       0, 1, 0,
       0, 1, 0,
       0, 1, 0,
     ]);
-    const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
+    const waterIndices = new Uint16Array([0, 1, 2, 0, 2, 3]);
 
-    this.geometry.dispose();
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    this.geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-    this.geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-    this.geometry.computeBoundingSphere();
+    const W = this.mapWidth;
+    const H = this.mapHeight;
+    const y = TERRAIN_CIRCLE_UNDERWATER_HEIGHT + MANA_TILE_GROUND_LIFT;
+    const seafloorPositions = new Float32Array([
+      -outer, y, -outer, W + outer, y, -outer, W + outer, y, 0, -outer, y, 0,
+      -outer, y, H, W + outer, y, H, W + outer, y, H + outer, -outer, y, H + outer,
+      -outer, y, 0, 0, y, 0, 0, y, H, -outer, y, H,
+      W, y, 0, W + outer, y, 0, W + outer, y, H, W, y, H,
+    ]);
+    const seafloorNormals = new Float32Array(16 * 3);
+    for (let i = 0; i < 16; i++) {
+      seafloorNormals[i * 3 + 1] = 1;
+    }
+    const seafloorIndices = new Uint16Array([
+      0, 1, 2, 0, 2, 3,
+      4, 5, 6, 4, 6, 7,
+      8, 9, 10, 8, 10, 11,
+      12, 13, 14, 12, 14, 15,
+    ]);
+
+    this.waterGeometry.dispose();
+    this.waterGeometry.setAttribute('position', new THREE.BufferAttribute(waterPositions, 3));
+    this.waterGeometry.setAttribute('normal', new THREE.BufferAttribute(waterNormals, 3));
+    this.waterGeometry.setIndex(new THREE.BufferAttribute(waterIndices, 1));
+    this.waterGeometry.computeBoundingSphere();
+
+    this.seafloorGeometry.dispose();
+    this.seafloorGeometry.setAttribute('position', new THREE.BufferAttribute(seafloorPositions, 3));
+    this.seafloorGeometry.setAttribute('normal', new THREE.BufferAttribute(seafloorNormals, 3));
+    this.seafloorGeometry.setIndex(new THREE.BufferAttribute(seafloorIndices, 1));
+    this.seafloorGeometry.computeBoundingSphere();
     this.built = true;
   }
 
@@ -91,16 +136,22 @@ export class WaterRenderer3D {
     _sharedLodGrid?: unknown,
   ): void {
     if (graphicsConfig.waterOpacity <= 0) {
-      this.mesh.visible = false;
+      this.waterMesh.visible = false;
+      this.seafloorMesh.visible = false;
       return;
     }
     if (!this.built) this.buildGeometry();
-    this.mesh.visible = true;
+    this.waterMaterial.opacity = graphicsConfig.waterOpacity;
+    this.waterMesh.visible = true;
+    this.seafloorMesh.visible = true;
   }
 
   destroy(): void {
-    this.mesh.parent?.remove(this.mesh);
-    this.geometry.dispose();
-    this.material.dispose();
+    this.waterMesh.parent?.remove(this.waterMesh);
+    this.seafloorMesh.parent?.remove(this.seafloorMesh);
+    this.waterGeometry.dispose();
+    this.seafloorGeometry.dispose();
+    this.waterMaterial.dispose();
+    this.seafloorMaterial.dispose();
   }
 }

@@ -148,6 +148,10 @@ const BODY_SHAPES = {
 
 const WIDOW_ABDOMEN_RADIUS_FRAC = 1.15;
 const WIDOW_ABDOMEN_FORWARD_FRAC = -1.1;
+// Forward prosoma (head) sphere — must match BODY_SHAPES.arachnid's
+// front-circle offsetForward. Mounting the force-field turret here
+// lands its emitter on top of the head sphere.
+const WIDOW_HEAD_FORWARD_FRAC = 0.3;
 const TARANTULA_ABDOMEN_FORWARD_FRAC = -0.65;
 const FORMIK_BACK_SEGMENT_FORWARD_FRAC = -0.85;
 const TICK_REPLACED_HEAD_CENTER_HEIGHT_FRAC = 0.37;
@@ -170,8 +174,10 @@ function turretMount(
     : { turretId, headCenterHeightFrac };
 }
 
-// Compute widow's mount points: 4 light turrets on abdomen edge,
-// force-field emitter centered on top of the rear abdomen segment.
+// Compute widow's mount points: 4 light turrets on the abdomen edge,
+// the megaBeam centered on top of the rear abdomen segment, and the
+// force-field emitter on top of the forward head segment. Order
+// matches the `turrets` array on the widow blueprint below.
 function computeWidowMounts(): MountPoint[] {
   const mounts: MountPoint[] = [];
   for (let i = 0; i < 4; i++) {
@@ -183,7 +189,10 @@ function computeWidowMounts(): MountPoint[] {
       y: Math.sin(angle) * WIDOW_ABDOMEN_RADIUS_FRAC,
     });
   }
+  // megaBeam: rear abdomen segment center top.
   mounts.push({ x: WIDOW_ABDOMEN_FORWARD_FRAC, y: 0 });
+  // forceTurret: forward prosoma/head segment center top.
+  mounts.push({ x: WIDOW_HEAD_FORWARD_FRAC, y: 0 });
   return mounts;
 }
 
@@ -260,7 +269,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     resourceCost: 350,
     turrets: [
       turretMount('laserTurret', DADDY_REPLACEMENT_HEAD_CENTER_HEIGHT_FRAC),
-      turretMount('forceTurretLarge', DADDY_FORCE_FIELD_CENTER_HEIGHT_FRAC),
+      turretMount('forceTurret', DADDY_FORCE_FIELD_CENTER_HEIGHT_FRAC),
     ],
     chassisMounts: [
       { x: 0, y: 0 }, // laser body
@@ -453,13 +462,15 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 1000,
     resourceCost: 3000,
     turrets: [
-      turretMount('lightTurret'), // front-left
-      turretMount('lightTurret'), // back-left
-      turretMount('lightTurret'), // back-right
-      turretMount('lightTurret'), // front-right
-      // Force-field emitter sits on top of the rear abdomen segment; the
-      // forward prosoma/head body sphere remains visible.
-      turretMount('forceTurretMedium'), // abdomen top
+      turretMount('lightTurret'), // front-left abdomen edge
+      turretMount('lightTurret'), // back-left abdomen edge
+      turretMount('lightTurret'), // back-right abdomen edge
+      turretMount('lightTurret'), // front-right abdomen edge
+      // Mega beam mounts on top of the rear abdomen segment; the forward
+      // head sphere stays visible underneath the force-field emitter.
+      turretMount('megaBeamTurret'), // abdomen center top
+      // Force-field emitter on top of the forward prosoma/head segment.
+      turretMount('forceTurret'), // head center top
     ],
     chassisMounts: computeWidowMounts(),
     bodyShape: BODY_SHAPES.arachnid,

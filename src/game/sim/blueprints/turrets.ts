@@ -84,7 +84,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'lightRocket',
     range: 360,
     cooldown: 1000,
-    launchForce: 400,
+    launchForce: 1500,
     turretTurnAccel: 20,
     turretDrag: 0.15,
     barrel: {
@@ -110,7 +110,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     // 90° max deviation from vertical — rockets launch anywhere from
     // straight up to horizontal; homing then bends each one onto the
     // target's line.
-    spread: { angle: Math.PI / 4, pelletCount: 1 },
+    spread: { angle: Math.PI / 2, pelletCount: 1 },
     // spread: { angle: Math.PI / 2, pelletCount: 1 },
     bodyRadius: 8,
     audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
@@ -380,8 +380,13 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       laserSound: AUDIO.event.laser.megaBeamTurret,
     },
   },
-  forceTurretLarge: {
-    id: 'forceTurretLarge',
+  // Single force-field turret used by every unit that mounts one.
+  // Previously split into forceTurretLarge / forceTurretMedium with
+  // slightly different ranges, transition times, emitter grates, and
+  // audio playSpeed; the variation wasn't carrying its weight, so
+  // we collapsed to one entry here.
+  forceTurret: {
+    id: 'forceTurret',
     range: SPATIAL_GRID_CELL_SIZE * 3 * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
@@ -404,31 +409,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       transitionTime: 500,
       push: { ...FORCE_PUSH },
     },
-    audio: { fireSound: AUDIO.event.fire.forceTurretLarge },
-  },
-  forceTurretMedium: {
-    id: 'forceTurretMedium',
-    range: SPATIAL_GRID_CELL_SIZE * 2 * 0.9,
-    turretTurnAccel: 30,
-    turretDrag: 0.5,
-    barrel: {
-      type: 'complexSingleEmitter',
-      grate: FORCE_FIELD_TURRET.megaForceField,
-    },
-    rangeMultiplierOverrides: fireEnvelope({
-      engageRangeMin: null,
-      trackingRange: null,
-    }),
-    eventsSmooth: false,
-    color: COLOR_WHITE,
-    // Force-field emitter — head is hidden, see forceTurretLarge.
-    bodyRadius: 10,
-    forceField: {
-      angle: Math.PI * 2,
-      transitionTime: 1000,
-      push: { ...FORCE_PUSH },
-    },
-    audio: { fireSound: AUDIO.event.fire.forceTurretMedium },
+    audio: { fireSound: AUDIO.event.fire.forceTurret },
   },
 };
 

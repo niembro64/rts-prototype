@@ -113,15 +113,10 @@ export const AUDIO = {
         playSpeed: 0.6,
       },
       ..._beamFire,
-      forceTurretLarge: {
+      forceTurret: {
         synth: 'force-field' as SynthId,
         volume: 0.5,
         playSpeed: 1.0,
-      },
-      forceTurretMedium: {
-        synth: 'force-field' as SynthId,
-        volume: 0.5,
-        playSpeed: 2.0,
       },
       disruptorTurret: {
         synth: 'cannon' as SynthId,
