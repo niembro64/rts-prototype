@@ -78,7 +78,6 @@ export type GraphicsDetailConfig = {
   WATER_SUBDIVISIONS: LodTierMap<number>;
   WATER_FRAME_STRIDE: LodTierMap<number>;
   WATER_WAVE_AMPLITUDE: LodTierMap<number>;
-  WATER_OPACITY: LodTierMap<number>;
   UNIT_SHAPE: LodTierMap<UnitShape>;
   CIRCLES_DRAW_PUSH: boolean;
   CIRCLES_DRAW_SHOT: boolean;

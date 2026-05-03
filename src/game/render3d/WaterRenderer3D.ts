@@ -38,7 +38,7 @@ export class WaterRenderer3D {
     this.waterMaterial = new THREE.MeshBasicMaterial({
       color: WATER_RENDER_CONFIG.color,
       transparent: true,
-      opacity: WATER_RENDER_CONFIG.opacityByLod.medium,
+      opacity: WATER_RENDER_CONFIG.opacity,
       depthWrite: false,
       depthTest: true,
       polygonOffset: true,

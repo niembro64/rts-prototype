@@ -6,6 +6,7 @@ import { aimTurretsToward } from './turretInit';
 import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
 import { DEMO_CONFIG } from '../../demoConfig';
+import { REAL_BATTLE_COMMANDER_RADIUS_FRACTION } from '../../config';
 import { isWaterAt } from './Terrain';
 import { ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
@@ -82,7 +83,8 @@ export function getSpawnPositionForSeat(
   mapWidth: number,
   mapHeight: number,
 ): { x: number; y: number } {
-  const radius = Math.min(mapWidth, mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
+  const spawnRadius = Math.min(mapWidth, mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
+  const radius = spawnRadius * REAL_BATTLE_COMMANDER_RADIUS_FRACTION;
   const angle = getPlayerBaseAngle(seatIndex, Math.max(1, playerCount));
   return {
     x: mapWidth / 2 + Math.cos(angle) * radius,
@@ -90,17 +92,22 @@ export function getSpawnPositionForSeat(
   };
 }
 
-// Calculate spawn positions on the spawn circle for N players.
+// Calculate spawn positions on the spawn circle for N players. Used
+// for the REAL BATTLE flow (just commanders); demo battle goes through
+// `spawnInitialBases` which has its own commanderRadiusFraction. Pulls
+// the commander inward by REAL_BATTLE_COMMANDER_RADIUS_FRACTION so it
+// doesn't sit pinned to the edge of the playable area.
 function getSpawnPositions(
   world: WorldState,
   playerCount: number
 ): { x: number; y: number; facingAngle: number }[] {
   const c = getDemoCircle(world);
+  const commanderRadius = c.radius * REAL_BATTLE_COMMANDER_RADIUS_FRACTION;
   const positions: { x: number; y: number; facingAngle: number }[] = [];
   for (let i = 0; i < playerCount; i++) {
     const angle = getPlayerBaseAngle(i, playerCount);
-    const x = c.cx + Math.cos(angle) * c.radius;
-    const y = c.cy + Math.sin(angle) * c.radius;
+    const x = c.cx + Math.cos(angle) * commanderRadius;
+    const y = c.cy + Math.sin(angle) * commanderRadius;
     positions.push({ x, y, facingAngle: Math.atan2(c.cy - y, c.cx - x) });
   }
   return positions;

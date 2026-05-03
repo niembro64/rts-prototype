@@ -316,6 +316,15 @@ export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
  *  DEMO_CONFIG.factoryWaypointType instead. */
 export const REAL_BATTLE_FACTORY_WAYPOINT_TYPE = 'fight' as const;
 
+/** REAL BATTLE commander placement radius as a fraction of the outer
+ *  spawn circle (mapMin/2 − spawnMarginPx). 1.0 plants each commander
+ *  exactly on the outer ring (the legacy behavior); <1.0 pulls them
+ *  inward so they're not pinned to the very edge of the playable
+ *  area. Demo battle has its own knob (DEMO_CONFIG.commanderRadiusFraction).
+ *  This value is also read by `getSpawnPositionForSeat`, so the 3D
+ *  scene's pre-snapshot camera framing matches the real spawn point. */
+export const REAL_BATTLE_COMMANDER_RADIUS_FRACTION = 0.85;
+
 // =============================================================================
 // VISUAL DIMENSIONS (shared sim + render)
 // =============================================================================
@@ -489,25 +498,19 @@ export const MAP_CAMERA_BG = 0x0a0a14; // camera clear color
 export const MAP_GRID_COLOR = MAP_BG_COLOR;
 
 // Render-only water surface tuning. `color` is the tint of the flat
-// horizon water plane; `opacityByLod` is the material alpha per PLAYER
-// CLIENT LOD tier. Lower opacity = more transparent.
+// horizon water plane; `opacity` is material alpha. Lower opacity =
+// more transparent.
 export const WATER_RENDER_CONFIG = {
-  color: 0x2f7f9f,
-  opacityByLod: {
-    min: 0.28,
-    low: 0.32,
-    medium: 0.36,
-    high: 0.4,
-    max: 0.44,
-  },
+  color: 0x459,
+  opacity: 0.3,
 } as const;
 
 // Static sky background gradient. Generated once as a tiny canvas
 // texture by ThreeApp, then reused as the scene background.
 export const SKY_RENDER_CONFIG = {
-  topColor: '#82b9e4',
-  midColor: '#bdddf0',
-  horizonColor: '#e7f2f7',
+  topColor: '#5e84a2',
+  midColor: '#87a0ae',
+  horizonColor: '#abbec7',
   midStop: 0.58,
 } as const;
 

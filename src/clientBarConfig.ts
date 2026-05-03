@@ -26,7 +26,7 @@ import type {
   UnitRadiusType,
   WaypointDetail,
 } from './types/client';
-import { MAX_TOTAL_UNITS } from './config';
+import { MAX_TOTAL_UNITS, WATER_RENDER_CONFIG } from './config';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import {
   PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
@@ -165,7 +165,7 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     waterSubdivisions: D.WATER_SUBDIVISIONS.min,
     waterFrameStride: D.WATER_FRAME_STRIDE.min,
     waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.min,
-    waterOpacity: D.WATER_OPACITY.min,
+    waterOpacity: WATER_RENDER_CONFIG.opacity,
     unitShape: D.UNIT_SHAPE.min as UnitShape,
     legs: D.LEGS.min as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.min,
@@ -201,7 +201,7 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     waterSubdivisions: D.WATER_SUBDIVISIONS.low,
     waterFrameStride: D.WATER_FRAME_STRIDE.low,
     waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.low,
-    waterOpacity: D.WATER_OPACITY.low,
+    waterOpacity: WATER_RENDER_CONFIG.opacity,
     unitShape: D.UNIT_SHAPE.low as UnitShape,
     legs: D.LEGS.low as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.low,
@@ -237,7 +237,7 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     waterSubdivisions: D.WATER_SUBDIVISIONS.medium,
     waterFrameStride: D.WATER_FRAME_STRIDE.medium,
     waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.medium,
-    waterOpacity: D.WATER_OPACITY.medium,
+    waterOpacity: WATER_RENDER_CONFIG.opacity,
     unitShape: D.UNIT_SHAPE.medium as UnitShape,
     legs: D.LEGS.medium as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.medium,
@@ -273,7 +273,7 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     waterSubdivisions: D.WATER_SUBDIVISIONS.high,
     waterFrameStride: D.WATER_FRAME_STRIDE.high,
     waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.high,
-    waterOpacity: D.WATER_OPACITY.high,
+    waterOpacity: WATER_RENDER_CONFIG.opacity,
     unitShape: D.UNIT_SHAPE.high as UnitShape,
     legs: D.LEGS.high as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.high,
@@ -309,7 +309,7 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     waterSubdivisions: D.WATER_SUBDIVISIONS.max,
     waterFrameStride: D.WATER_FRAME_STRIDE.max,
     waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.max,
-    waterOpacity: D.WATER_OPACITY.max,
+    waterOpacity: WATER_RENDER_CONFIG.opacity,
     unitShape: D.UNIT_SHAPE.max as UnitShape,
     legs: D.LEGS.max as LegStyle,
     treadsAnimated: D.TREADS_ANIMATED.max,
