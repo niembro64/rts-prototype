@@ -26,6 +26,7 @@ import type { TurretConfig } from '../sim/types';
  *  computes shot spawn positions) agree on where the head ENDS and
  *  the barrel BEGINS. */
 export const TURRET_HEAD_FOOTPRINT_FRAC = 0.42;
+export const TURRET_BARREL_MIN_DIAMETER = 2;
 
 /** Radius of the spherical turret head for a unit of the given body
  *  radius. Floored to TURRET_HEIGHT / 2 so very small units still get
@@ -75,6 +76,23 @@ export function countBarrels(config: TurretConfig): number {
   if (b.type === 'simpleSingleBarrel') return 1;
   if (b.type === 'complexSingleEmitter') return 1;
   return b.barrelCount;
+}
+
+export function getTurretBarrelDiameter(
+  config: Pick<TurretConfig, 'barrel' | 'shot'>,
+): number {
+  const barrel = config.barrel;
+  if (!barrel || barrel.type === 'complexSingleEmitter') return 0;
+
+  const shot = config.shot;
+  const lineShotWidth = shot.type === 'beam' || shot.type === 'laser'
+    ? shot.width
+    : undefined;
+  const diameter =
+    (barrel.type === 'simpleSingleBarrel' ? lineShotWidth : undefined)
+    ?? barrel.barrelThickness
+    ?? TURRET_BARREL_MIN_DIAMETER;
+  return Math.max(diameter, TURRET_BARREL_MIN_DIAMETER);
 }
 
 /** Compute the 3D tip position and firing direction for a specific
@@ -128,7 +146,17 @@ export function getBarrelTip(
   // visible cylinder runs from the head's interior outward through
   // the surface. (Anything inside the sphere is occluded by the
   // head mesh, so visually you only see the protruding portion.)
-  const barrelLen = unitBodyRadius * b.barrelLength;
+  //
+  // `barrelLength` is authored as a fraction of the TURRET HEAD
+  // radius, not the host unit's body radius — same multiplier the
+  // renderer (TurretMesh3D) uses for the visible barrel mesh, so
+  // a unit-agnostic turret blueprint produces a unit-agnostic
+  // muzzle position. `getTurretHeadRadius` returns the turret's
+  // configured `bodyRadius` when set; otherwise it falls back to a
+  // unit-scaled value, which preserves legacy behavior for any
+  // turret that hasn't been tuned to the new contract yet.
+  const headRadius = getTurretHeadRadius(unitBodyRadius, config);
+  const barrelLen = headRadius * b.barrelLength;
 
   // Single-barrel and multi-barrel weapons both fire from the centerline.
   // The renderer owns the visible per-barrel offsets and spin; the sim owns

@@ -14,10 +14,8 @@
 import * as THREE from 'three';
 import type { Turret } from '../sim/types';
 import type { GraphicsConfig } from '@/types/graphics';
-import { getTurretHeadRadius } from '../math';
+import { getTurretBarrelDiameter, getTurretHeadRadius } from '../math';
 import { TURRET_HEIGHT } from '../../config';
-
-const BARREL_MIN_THICKNESS = 2;
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -149,19 +147,11 @@ export function buildTurretMesh3D(
   // local space is the head radius.
   const barrelCenterY = headRadius;
 
-  // Barrel thickness is the shot width (for line shots) falling back to the
-  // blueprint-derived barrelThickness. Matches the 2D single-barrel path.
-  const shot = turret.config.shot;
-  const shotWidth =
-    shot && (shot.type === 'beam' || shot.type === 'laser')
-      ? shot.width
-      : undefined;
-  const diameter =
-    (barrel.type === 'simpleSingleBarrel' ? shotWidth : undefined)
-    ?? barrel.barrelThickness
-    ?? BARREL_MIN_THICKNESS;
+  // Barrel thickness resolves from the runtime turret config, whose
+  // shot and barrel were built from the turret + shot blueprints.
+  const diameter = getTurretBarrelDiameter(turret.config);
   // CylinderGeometry is unit radius = 1, so physical radius = scale.x = diameter/2.
-  const cylRadius = Math.max(diameter, BARREL_MIN_THICKNESS) / 2;
+  const cylRadius = diameter / 2;
 
   // Two nested pivots so pitch and spin don't fight each other:
   //
@@ -215,7 +205,16 @@ export function buildTurretMesh3D(
     barrels.push(m);
   };
 
-  const length = unitRadius * barrel.barrelLength;
+  // Barrel length and multi-barrel orbits are authored as fractions of
+  // the TURRET HEAD radius, not the host unit's body radius. That keeps
+  // every instance of the same turret blueprint rendering at the same
+  // size regardless of which unit mounts it — a `lightTurret` looks
+  // identical on a jackal, a widow, or anything else. Turrets without
+  // a per-blueprint `bodyRadius` fall back to a unit-radius-scaled
+  // head (see `getTurretHeadRadius`), so for them the per-unit scaling
+  // is preserved end-to-end.
+  const barrelScale = headRadius;
+  const length = barrelScale * barrel.barrelLength;
   // barrelLength=0 (e.g. commander's d-gun "emitter") → no visible barrel.
   if (length < 1e-4) {
     parent.add(root);
@@ -226,7 +225,7 @@ export function buildTurretMesh3D(
     pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
   } else if (barrel.type === 'simpleMultiBarrel') {
     // Parallel barrels arranged in a YZ circle around the firing axis.
-    const orbitR = Math.min(barrel.orbitRadius * unitRadius, TURRET_HEIGHT * 0.45);
+    const orbitR = Math.min(barrel.orbitRadius * barrelScale, TURRET_HEIGHT * 0.45);
     const n = barrel.barrelCount;
     for (let i = 0; i < n; i++) {
       const a = (i + 0.5) / n * Math.PI * 2;
@@ -236,9 +235,9 @@ export function buildTurretMesh3D(
     }
   } else if (barrel.type === 'coneMultiBarrel') {
     // Barrels diverge from base orbit to a wider tip orbit.
-    const baseOrbitR = Math.min(barrel.baseOrbit * unitRadius, TURRET_HEIGHT * 0.35);
+    const baseOrbitR = Math.min(barrel.baseOrbit * barrelScale, TURRET_HEIGHT * 0.35);
     const tipOrbitR = barrel.tipOrbit !== undefined
-      ? barrel.tipOrbit * unitRadius
+      ? barrel.tipOrbit * barrelScale
       : Math.min(
           baseOrbitR + length * Math.tan((turret.config.spread?.angle ?? Math.PI / 5) / 2),
           TURRET_HEIGHT * 0.9,
