@@ -6,17 +6,17 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { ProjectileVelocityUpdateEvent } from './types';
 import { getTransformCosSin } from '../../math';
-import { getTurretWorldMount } from '../../math/MountGeometry';
 import { spatialGrid } from '../SpatialGrid';
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG } from '../../../config';
 import { getSimDetailConfig } from '../simQuality';
-import { getTurretMountHeight } from './combatUtils';
+import { updateWeaponWorldKinematics } from './combatUtils';
 import { getUnitGroundZ } from '../unitGeometry';
 
 // Module-level dedup map: keyed by projectile entity ID, keeps only the last velocity state
 // when a projectile is affected by multiple force fields in the same tick.
 const _velocityUpdateMap = new Map<number, ProjectileVelocityUpdateEvent>();
 const _velocityUpdateResult: ProjectileVelocityUpdateEvent[] = [];
+const _forceFieldMount = { x: 0, y: 0, z: 0 };
 
 // Compact list of force field weapons with progress > 0, built by
 // updateForceFieldState() and consumed by applyForceFieldDamage().
@@ -157,26 +157,20 @@ export function applyForceFieldDamage(
       // bodyCenterHeight/headCenterHeightFrac, so using the unit altitude
       // here makes the backend sphere disagree with the frontend
       // emitter/body sphere.
-      let weaponX: number;
-      let weaponY: number;
-      let weaponZ: number;
-      if (weapon.worldPos) {
-        weaponX = weapon.worldPos.x;
-        weaponY = weapon.worldPos.y;
-        weaponZ = weapon.worldPos.z;
-      } else {
-        const unitGroundZ = getUnitGroundZ(unit);
-        const surfaceN = world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y);
-        const mount = getTurretWorldMount(
-          unit.transform.x, unit.transform.y, unitGroundZ,
-          unitCos, unitSin,
-          weapon.offset.x, weapon.offset.y, getTurretMountHeight(unit, weaponIndex),
-          surfaceN,
-        );
-        weaponX = mount.x;
-        weaponY = mount.y;
-        weaponZ = mount.z;
-      }
+      const mount = updateWeaponWorldKinematics(
+        unit, weapon, weaponIndex,
+        unitCos, unitSin,
+        {
+          currentTick: world.getTick(),
+          dtMs,
+          unitGroundZ: getUnitGroundZ(unit),
+          surfaceN: world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y),
+        },
+        _forceFieldMount,
+      );
+      const weaponX = mount.x;
+      const weaponY = mount.y;
+      const weaponZ = mount.z;
 
       // Single combined cell sweep when BOTH unit and projectile pushes
       // are enabled — saves rebuilding `nearbyCells` twice for the same

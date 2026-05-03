@@ -75,9 +75,8 @@ export class WorldState {
   public readonly mapHeight: number;
 
   // Metal deposits — fixed map features generated at world init.
-  // Same list across all clients (deterministic from map size). Each
-  // deposit can host at most one extractor; extractors track which
-  // deposit they sit on via `entity.metalDepositId`.
+  // Same list across all clients (deterministic from map size). Extractor
+  // income is based on the fraction of occupied cells that overlap deposits.
   public metalDeposits: MetalDeposit[] = [];
 
   // Runtime thrust multiplier (set by GameServer based on game/demo mode)
@@ -469,7 +468,8 @@ export class WorldState {
     y: number,
     playerId: PlayerId,
     unitType: string,
-    unitRadiusCollider: { scale: number; shot: number; push: number } = { scale: 15, shot: 15, push: 15 },
+    unitRadiusCollider: { shot: number; push: number } = { shot: 15, push: 15 },
+    bodyRadius: number = 15,
     bodyCenterHeight: number = unitRadiusCollider.push,
     moveSpeed: number = 100,
     mass: number = 25,
@@ -494,6 +494,7 @@ export class WorldState {
         unitType,
         moveSpeed,
         unitRadiusCollider: { ...unitRadiusCollider },
+        bodyRadius,
         bodyCenterHeight,
         mass,
         hp,
@@ -520,6 +521,7 @@ export class WorldState {
     const entity = this.createUnitBase(
       x, y, playerId, unitId,
       bp.unitRadiusCollider,
+      bp.bodyRadius,
       bp.bodyCenterHeight,
       bp.moveSpeed,
       bp.mass,
@@ -527,7 +529,7 @@ export class WorldState {
     );
 
     // Create turrets from blueprint definition
-    entity.turrets = createTurretsFromDefinition(unitId, bp.unitRadiusCollider.scale);
+    entity.turrets = createTurretsFromDefinition(unitId, bp.bodyRadius);
 
     // Cache mirror panels for fast beam collision checks. Same helper
     // runs on the client (NetworkEntityFactory) so authoritative and
@@ -580,7 +582,8 @@ export class WorldState {
 
     const entity = this.createUnitBase(
       x, y, playerId, unitType,
-      { scale: radiusColliderUnitShot, shot: radiusColliderUnitShot, push: radiusColliderUnitShot },
+      { shot: radiusColliderUnitShot, push: radiusColliderUnitShot },
+      radiusColliderUnitShot,
       radiusColliderUnitShot,
       moveSpeed,
       mass,
@@ -767,12 +770,14 @@ export class WorldState {
     entity.transform.z = beamZ;
 
     if (entity.projectile) {
-      entity.projectile.startX = startX;
-      entity.projectile.startY = startY;
-      entity.projectile.startZ = beamZ;
-      entity.projectile.endX = endX;
-      entity.projectile.endY = endY;
-      entity.projectile.endZ = beamZ;
+      // Seed a 2-point polyline (start, end). The per-tick beam handler
+      // will overwrite positions and append/remove reflection vertices
+      // each re-trace; we own these objects in place so the array
+      // reference is stable across the projectile's lifetime.
+      entity.projectile.points = [
+        { x: startX, y: startY, z: beamZ, vx: 0, vy: 0, vz: 0 },
+        { x: endX, y: endY, z: beamZ, vx: 0, vy: 0, vz: 0 },
+      ];
     }
 
     return entity;

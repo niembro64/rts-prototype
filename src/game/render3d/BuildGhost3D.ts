@@ -1,7 +1,8 @@
 // BuildGhost3D — translucent footprint preview for build mode in the
-// 3D scene. Mirrors the 2D BuildingPlacementController.drawBuildGhost
-// (green when placeable, red when out of the commander's build range)
-// so the two renderers give the same affordance.
+// 3D scene. Ground-cell colors describe only placement/resource facts:
+// green = buildable flat ground, red = blocked/unbuildable ground,
+// blue = required resource/special build cells. Commander range is
+// shown separately because the commander can walk to the site.
 //
 // Ownership: Input3DManager drives it (call setTarget on mouse move,
 // hide on mode exit). The meshes are parented to the world group so
@@ -11,10 +12,15 @@ import * as THREE from 'three';
 import type { Entity, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../sim/grid';
-import { getSnappedBuildPosition } from '../input/helpers';
+import {
+  type BuildPlacementCellDiagnostic,
+  type BuildPlacementDiagnostics,
+  getSnappedBuildPosition,
+} from '../input/helpers';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
+const CELL_Y = 1.25;
 const RANGE_Y = 0.6;
 type GroundHeightLookup = (x: number, y: number) => number;
 
@@ -30,11 +36,17 @@ export class BuildGhost3D {
   /** Warning line from commander to ghost, shown only when out of range. */
   private rangeLine: THREE.Line;
   private rangeLineGeom: THREE.BufferGeometry;
+  /** Per-footprint-cell diagnostic tiles. */
+  private cellGeom: THREE.PlaneGeometry;
+  private cellMeshes: THREE.Mesh[] = [];
 
   // Materials kept as fields so we can swap colors without re-creating
   // the meshes on every frame.
   private footMatOk: THREE.MeshBasicMaterial;
   private footMatBad: THREE.MeshBasicMaterial;
+  private cellMatOk: THREE.MeshBasicMaterial;
+  private cellMatMetal: THREE.MeshBasicMaterial;
+  private cellMatBad: THREE.MeshBasicMaterial;
   private ringMat: THREE.MeshBasicMaterial;
   private lineMat: THREE.LineBasicMaterial;
 
@@ -59,12 +71,34 @@ export class BuildGhost3D {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
+    this.cellMatOk = new THREE.MeshBasicMaterial({
+      color: 0x00ff00,
+      transparent: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    this.cellMatMetal = new THREE.MeshBasicMaterial({
+      color: 0x006dff,
+      transparent: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    this.cellMatBad = new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      transparent: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
 
     // Plane geometry of unit size, scaled per-building on setTarget.
     const footGeom = new THREE.PlaneGeometry(1, 1);
     this.footprint = new THREE.Mesh(footGeom, this.footMatOk);
     this.footprint.rotation.x = -Math.PI / 2;
     this.footprint.position.y = GHOST_Y;
+    this.footprint.renderOrder = 20;
     this.group.add(this.footprint);
 
     // Thin ring at commander build-range radius. Inner radius set to
@@ -96,6 +130,7 @@ export class BuildGhost3D {
     );
     this.rangeLine = new THREE.Line(this.rangeLineGeom, this.lineMat);
     this.group.add(this.rangeLine);
+    this.cellGeom = new THREE.PlaneGeometry(GRID_CELL_SIZE, GRID_CELL_SIZE);
 
     this.group.visible = false;
     this.world.add(this.group);
@@ -105,14 +140,16 @@ export class BuildGhost3D {
    *  the ground plane. Pass a freshly selected commander so the
    *  range circle + in-range check reflect the current selection.
    *  `canPlace` comes from the client-side placement validator
-   *  (overlap + map bounds) — the footprint turns red if the ghost
-   *  is out of range OR the placement would fail server-side. */
+   *  (terrain/resource/overlap/map bounds). Commander range is drawn
+   *  with the range ring/line only; it never changes the ground-cell
+   *  diagnostic colors. */
   setTarget(
     buildingType: BuildingType,
     worldX: number,
     worldY: number,
     commander: Entity | null,
     canPlace: boolean,
+    diagnostics?: BuildPlacementDiagnostics,
   ): void {
     const snapped = getSnappedBuildPosition(worldX, worldY, buildingType);
     const config = getBuildingConfig(buildingType);
@@ -126,11 +163,12 @@ export class BuildGhost3D {
       inRange = Math.hypot(dx, dy) <= commander.builder.buildRange;
     }
 
-    const okVisually = inRange && canPlace;
+    const okVisually = canPlace;
     const targetGroundY = this.getGroundHeight(snapped.x, snapped.y);
     this.footprint.scale.set(width, depth, 1);
     this.footprint.position.set(snapped.x, targetGroundY + GHOST_Y, snapped.y);
     this.footprint.material = okVisually ? this.footMatOk : this.footMatBad;
+    this.footprint.visible = !this.updateDiagnosticCells(diagnostics);
 
     if (commander?.builder) {
       const commanderGroundY = getUnitGroundZ(commander);
@@ -162,13 +200,48 @@ export class BuildGhost3D {
     this.group.visible = false;
   }
 
+  private materialForCell(cell: BuildPlacementCellDiagnostic): THREE.Material {
+    if (cell.blocking) return this.cellMatBad;
+    if (cell.reason === 'metal') return this.cellMatMetal;
+    return this.cellMatOk;
+  }
+
+  private updateDiagnosticCells(diagnostics?: BuildPlacementDiagnostics): boolean {
+    const cells = diagnostics?.cells ?? [];
+    while (this.cellMeshes.length < cells.length) {
+      const mesh = new THREE.Mesh(this.cellGeom, this.cellMatOk);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.renderOrder = 30;
+      this.group.add(mesh);
+      this.cellMeshes.push(mesh);
+    }
+
+    for (let i = 0; i < this.cellMeshes.length; i++) {
+      const mesh = this.cellMeshes[i];
+      const cell = cells[i];
+      if (!cell) {
+        mesh.visible = false;
+        continue;
+      }
+      const y = this.getGroundHeight(cell.x, cell.y);
+      mesh.position.set(cell.x, y + CELL_Y, cell.y);
+      mesh.material = this.materialForCell(cell);
+      mesh.visible = true;
+    }
+    return cells.length > 0;
+  }
+
   destroy(): void {
     this.world.remove(this.group);
     (this.footprint.geometry as THREE.BufferGeometry).dispose();
     (this.rangeRing.geometry as THREE.BufferGeometry).dispose();
+    this.cellGeom.dispose();
     this.rangeLineGeom.dispose();
     this.footMatOk.dispose();
     this.footMatBad.dispose();
+    this.cellMatOk.dispose();
+    this.cellMatMetal.dispose();
+    this.cellMatBad.dispose();
     this.ringMat.dispose();
     this.lineMat.dispose();
   }

@@ -9,7 +9,7 @@ import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } 
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY } from '../../../config';
-import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, resolveWeaponWorldPos, getTurretMountHeight, turretMaskIncludes } from './combatUtils';
+import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, turretMaskIncludes, updateWeaponWorldKinematics } from './combatUtils';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
@@ -89,6 +89,8 @@ let _packedProjectileHasGravity = new Uint8Array(0);
 const _packedProjectileEntities: Entity[] = [];
 const _packedProjectileSlots = new Map<EntityId, number>();
 const _fireMuzzleVelocity = { x: 0, y: 0, z: 0 };
+const _fireWeaponMount = { x: 0, y: 0, z: 0 };
+const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
 const FIRE_YAW_TOLERANCE = 0.16;
@@ -236,6 +238,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
     const playerId = unit.ownership.playerId;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
     const firingMask = unit.unit.firingTurretMask;
+    const currentTick = world.getTick();
+    const unitGroundZ = getUnitGroundZ(unit);
 
     // Fire each weapon independently
     for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
@@ -246,6 +250,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (shot.type === 'force') continue; // Force fields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);
+      if (shot.type === 'projectile' && shot.ignoresGravity !== true && weapon.ballisticAimInRange === false) {
+        continue;
+      }
 
       // Skip if weapon is not engaged (target not in range or no target)
       if (weapon.state !== 'engaged') continue;
@@ -268,9 +275,17 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       }
       if (!isWeaponAimedForFire(weapon)) continue;
 
-      // Use cached weapon world position from targeting phase
-      const weaponWP = resolveWeaponWorldPos(weapon, unit.transform.x, unit.transform.y, unitCos, unitSin);
-      const weaponX = weaponWP.x, weaponY = weaponWP.y;
+      // Use the canonical 3D turret mount cache. Targeting normally
+      // wrote it earlier this tick; this call is an O(1) cache read in
+      // that case, and a full refresh only for first-frame/manual edges.
+      const weaponMount = updateWeaponWorldKinematics(
+        unit, weapon, weaponIndex,
+        unitCos, unitSin,
+        { currentTick, dtMs, unitGroundZ },
+        _fireWeaponMount,
+      );
+      const weaponX = weaponMount.x;
+      const weaponY = weaponMount.y;
 
       // Check cooldown / active beam. Beam weapons gate purely on whether
       // their existing beam is still alive; non-beam weapons gate on
@@ -309,26 +324,12 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
       }
 
-      // Fire-event position will be set to the first-fired muzzle tip
-      // below so the muzzle-flash visual and audio come out of the
-      // same centerline point the projectile did. `muzzleAboveGround`
-      // here is still the shared barrel-pivot altitude everything
-      // derives from.
-      const muzzleAboveGround = getTurretMountHeight(unit, weaponIndex);
-
       // Fire the weapon along the turret's full 3D aim (yaw + pitch).
       const turretAngle = weapon.rotation;
       const turretPitch = weapon.pitch;
 
-      // Turret mount point in world (full XYZ from cached weaponWP).
-      // Targeting wrote the tilt-rotated mount into worldPos.z each
-      // tick, so the fire path lifts straight from there — projectile
-      // spawn and the rendered turret base agree pixel-perfect on
-      // sloped ground. Fallback (no cache) recomputes the flat-ground
-      // height for parity with the legacy path.
-      const unitGroundZ = getUnitGroundZ(unit);
-      const mountZ = weapon.worldPos?.z ?? (unitGroundZ + muzzleAboveGround);
-      void muzzleAboveGround; // kept for fallback above; eslint-pleasing
+      // Turret mount point in world (full XYZ from the resolver above).
+      const mountZ = weaponMount.z;
 
       const pellets = config.spread?.pelletCount ?? 1;
       const spreadAngle = config.spread?.angle ?? 0;
@@ -357,7 +358,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           weaponX, weaponY, mountZ,
           turretAngle, turretPitch,
           config,
-          unit.unit.unitRadiusCollider.scale,
+          unit.unit.bodyRadius,
           0,
         );
         const spawnX = tip.x;
@@ -429,7 +430,10 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           const beam = world.createBeam(spawnX, spawnY, spawnZ, endX, endY, playerId, unit.id, config, beamProjectileType);
           if (beam.projectile) {
             beam.projectile.sourceEntityId = unit.id;
-            beam.projectile.endZ = endZ;
+            // createBeam seeds both polyline vertices at spawnZ; the
+            // pitched end actually sits at endZ (= spawnZ + dirZ * range).
+            const pts = beam.projectile.points;
+            if (pts && pts.length >= 2) pts[pts.length - 1].z = endZ;
           }
           // Register beam in index immediately (no need for full rebuild)
           beamIndex.addBeam(unit.id, weaponIndex, beam.id);
@@ -848,24 +852,40 @@ export function updateProjectiles(
         const turretAngle = weapon.rotation;
         const turretPitch = weapon.pitch;
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
-        const beamWP = resolveWeaponWorldPos(weapon, source.transform.x, source.transform.y, srcCos, srcSin);
+        const currentTick = world.getTick();
         const unitGroundZ = getUnitGroundZ(source);
-        // Same tilt-aware lift as the projectile spawn path above —
-        // beams emerge from the same world mount the turret renders at.
-        const mountZ = weapon.worldPos?.z ?? (unitGroundZ + getTurretMountHeight(source, weaponIndex));
+        const beamMount = updateWeaponWorldKinematics(
+          source, weapon, weaponIndex,
+          srcCos, srcSin,
+          {
+            currentTick,
+            dtMs,
+            unitGroundZ,
+            surfaceN: world.getCachedSurfaceNormal(source.transform.x, source.transform.y),
+          },
+          _beamWeaponMount,
+        );
         const tip = getBarrelTip(
-          beamWP.x, beamWP.y, mountZ,
+          beamMount.x, beamMount.y, beamMount.z,
           turretAngle, turretPitch,
           proj.config,
-          source.unit.unitRadiusCollider.scale,
+          source.unit.bodyRadius,
           0,
         );
+        // Ensure points polyline exists (createBeam seeds 2-point line at
+        // spawn; defensive-init covers any path that forgot to).
+        const points = proj.points ?? (proj.points = [
+          { x: tip.x, y: tip.y, z: tip.z, vx: 0, vy: 0, vz: 0 },
+          { x: tip.x, y: tip.y, z: tip.z, vx: 0, vy: 0, vz: 0 },
+        ]);
+
         // Start-point velocity = (current start − last tick's start) / dt.
         // Updated every tick because the start follows the muzzle (which
         // moves with the unit body + turret yaw/pitch every tick). On
         // the FIRST tick the prevStart fields are undefined → velocity
         // resolves to 0, which is the correct semantic ("just spawned,
         // no history yet").
+        const startPoint = points[0];
         if (
           dtSec > 0 &&
           proj.prevStartX !== undefined &&
@@ -873,25 +893,28 @@ export function updateProjectiles(
           proj.prevStartZ !== undefined
         ) {
           const inv = 1 / dtSec;
-          proj.startVelX = (tip.x - proj.prevStartX) * inv;
-          proj.startVelY = (tip.y - proj.prevStartY) * inv;
-          proj.startVelZ = (tip.z - proj.prevStartZ) * inv;
+          startPoint.vx = (tip.x - proj.prevStartX) * inv;
+          startPoint.vy = (tip.y - proj.prevStartY) * inv;
+          startPoint.vz = (tip.z - proj.prevStartZ) * inv;
         } else {
-          proj.startVelX = 0;
-          proj.startVelY = 0;
-          proj.startVelZ = 0;
+          startPoint.vx = 0;
+          startPoint.vy = 0;
+          startPoint.vz = 0;
         }
         proj.prevStartX = tip.x;
         proj.prevStartY = tip.y;
         proj.prevStartZ = tip.z;
-        proj.startX = tip.x;
-        proj.startY = tip.y;
-        proj.startZ = tip.z;
+        startPoint.x = tip.x;
+        startPoint.y = tip.y;
+        startPoint.z = tip.z;
+        startPoint.mirrorEntityId = undefined;
 
-        // Per-tick re-trace uses the firing turret's own range as the
-        // total polyline budget — see the spawn site above for the
-        // semantics. findBeamPath subtracts each segment's distance
-        // from the remainder so reflections stay inside the sphere.
+        // Per-tick re-trace. The beam is bounded by a SPHERE of radius
+        // `range` centered at the muzzle: the first segment runs out
+        // to `start + dir × range` (where the sphere boundary lies in
+        // that direction), and findBeamPath re-clips every reflected
+        // segment against the same sphere so a bouncing beam can keep
+        // travelling as long as it stays inside the muzzle's range.
         const beamLength = proj.config.range;
         const fullEndX = tip.x + tip.dirX * beamLength;
         const fullEndY = tip.y + tip.dirY * beamLength;
@@ -902,24 +925,82 @@ export function updateProjectiles(
         // re-traces every tick, MIN every 8. Beam visuals tolerate
         // slight staleness so the trade is mostly invisible until
         // pretty low tiers.
-        const currentTick = world.getTick();
         const collisionRadius = isLineShot(proj.config.shot) ? proj.config.shot.radius : 2;
         const beamStride = Math.max(1, simDetail.beamPathStride | 0);
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= beamStride) {
           if (beamTracesThisTick < beamTraceBudget) {
             beamTracesThisTick++;
             const beamPath = damageSystem.findBeamPath(
-              proj.startX, proj.startY, proj.startZ,
+              startPoint.x, startPoint.y, startPoint.z,
               fullEndX, fullEndY, fullEndZ,
               proj.sourceEntityId,
               collisionRadius
             );
+
+            // Resize the polyline to [start, ...reflections, end] and
+            // reuse existing point objects in place where possible.
+            const refs = beamPath.reflections;
+            const newLen = 2 + refs.length;
+            while (points.length < newLen) {
+              points.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 });
+            }
+            if (points.length > newLen) points.length = newLen;
+
+            // Reflection points: finite-diff per-mirror against the
+            // previous trace so each reflection vertex carries its own
+            // instantaneous velocity (for client-side extrapolation
+            // between re-trace strides).
+            const prevRefs = proj.prevReflectionPoints;
+            for (let r = 0; r < refs.length; r++) {
+              const refl = refs[r];
+              const point = points[1 + r];
+              point.x = refl.x;
+              point.y = refl.y;
+              point.z = refl.z;
+              point.mirrorEntityId = refl.mirrorEntityId;
+              let vx = 0, vy = 0, vz = 0;
+              if (prevRefs && dtSec > 0) {
+                for (let p = 0; p < prevRefs.length; p++) {
+                  const pr = prevRefs[p];
+                  if (pr.mirrorEntityId !== refl.mirrorEntityId) continue;
+                  const tickDelta = currentTick - pr.tick;
+                  if (tickDelta > 0) {
+                    const inv = 1 / (tickDelta * dtSec);
+                    vx = (refl.x - pr.x) * inv;
+                    vy = (refl.y - pr.y) * inv;
+                    vz = (refl.z - pr.z) * inv;
+                  }
+                  break;
+                }
+              }
+              point.vx = vx;
+              point.vy = vy;
+              point.vz = vz;
+            }
+
+            // Cache this trace's reflections (by mirrorEntityId) for
+            // the next finite-diff. Reuse the array's slots in place
+            // to avoid GC churn on every re-trace.
+            const cache = proj.prevReflectionPoints ?? (proj.prevReflectionPoints = []);
+            while (cache.length < refs.length) {
+              cache.push({ mirrorEntityId: 0 as EntityId, x: 0, y: 0, z: 0, tick: 0 });
+            }
+            if (cache.length > refs.length) cache.length = refs.length;
+            for (let r = 0; r < refs.length; r++) {
+              const refl = refs[r];
+              const slot = cache[r];
+              slot.mirrorEntityId = refl.mirrorEntityId;
+              slot.x = refl.x;
+              slot.y = refl.y;
+              slot.z = refl.z;
+              slot.tick = currentTick;
+            }
+
             // End-point velocity = (current end − previous trace's end)
-            // / elapsed seconds since the previous trace. Updated only
-            // on re-trace ticks because end position itself only
-            // changes then; the value stays stable across the trace
-            // stride so the client can extrapolate using a meaningful
-            // average velocity over each stride window.
+            // / elapsed seconds since the previous trace. Stays stable
+            // across the trace stride so the client can extrapolate
+            // using a meaningful average over each stride window.
+            const endPoint = points[newLen - 1];
             if (
               proj.prevEndX !== undefined &&
               proj.prevEndY !== undefined &&
@@ -928,56 +1009,40 @@ export function updateProjectiles(
             ) {
               const tickDelta = currentTick - proj.prevEndTick;
               if (tickDelta > 0 && dtSec > 0) {
-                const elapsed = tickDelta * dtSec;
-                const inv = 1 / elapsed;
-                proj.endVelX = (beamPath.endX - proj.prevEndX) * inv;
-                proj.endVelY = (beamPath.endY - proj.prevEndY) * inv;
-                proj.endVelZ = (beamPath.endZ - proj.prevEndZ) * inv;
+                const inv = 1 / (tickDelta * dtSec);
+                endPoint.vx = (beamPath.endX - proj.prevEndX) * inv;
+                endPoint.vy = (beamPath.endY - proj.prevEndY) * inv;
+                endPoint.vz = (beamPath.endZ - proj.prevEndZ) * inv;
               } else {
-                proj.endVelX = 0;
-                proj.endVelY = 0;
-                proj.endVelZ = 0;
+                endPoint.vx = 0;
+                endPoint.vy = 0;
+                endPoint.vz = 0;
               }
             } else {
-              proj.endVelX = 0;
-              proj.endVelY = 0;
-              proj.endVelZ = 0;
+              endPoint.vx = 0;
+              endPoint.vy = 0;
+              endPoint.vz = 0;
             }
+            endPoint.x = beamPath.endX;
+            endPoint.y = beamPath.endY;
+            endPoint.z = beamPath.endZ;
+            endPoint.mirrorEntityId = undefined;
             proj.prevEndX = beamPath.endX;
             proj.prevEndY = beamPath.endY;
             proj.prevEndZ = beamPath.endZ;
             proj.prevEndTick = currentTick;
-            proj.endX = beamPath.endX;
-            proj.endY = beamPath.endY;
-            proj.endZ = beamPath.endZ;
             proj.obstructionT = beamPath.obstructionT;
-            proj.reflections = beamPath.reflections.length > 0
-              ? beamPath.reflections
-              : undefined;
             proj.obstructionTick = currentTick;
-          } else if (proj.endX === undefined) {
-            proj.endX = fullEndX;
-            proj.endY = fullEndY;
-            proj.endZ = fullEndZ;
-            proj.endVelX = 0;
-            proj.endVelY = 0;
-            proj.endVelZ = 0;
           }
-        } else {
-          if (proj.endX === undefined) {
-            proj.endX = fullEndX;
-            proj.endY = fullEndY;
-            proj.endZ = fullEndZ;
-            proj.endVelX = 0;
-            proj.endVelY = 0;
-            proj.endVelZ = 0;
-          }
+          // else: no trace budget this tick — keep the previous polyline.
+          // createBeam seeded a 2-point start→range line at spawn so the
+          // renderer always has something to draw.
         }
 
         // Update entity transform to match beam start (for visual reference).
-        entity.transform.x = proj.startX;
-        entity.transform.y = proj.startY;
-        entity.transform.z = proj.startZ;
+        entity.transform.x = startPoint.x;
+        entity.transform.y = startPoint.y;
+        entity.transform.z = startPoint.z;
         entity.transform.rotation = turretAngle;
       }
     }

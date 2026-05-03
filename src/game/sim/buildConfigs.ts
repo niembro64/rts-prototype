@@ -72,6 +72,7 @@ export function getUnitBuildConfig(unitId: string) {
     name: bp.name,
     resourceCost: bp.resourceCost * COST_MULTIPLIER,
     unitRadiusCollider: { ...bp.unitRadiusCollider },
+    bodyRadius: bp.bodyRadius,
     bodyCenterHeight: bp.bodyCenterHeight,
     moveSpeed: bp.moveSpeed,
     mass: bp.mass,

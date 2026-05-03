@@ -3,12 +3,11 @@
 import type { WorldState } from '../WorldState';
 import type { Entity, HysteresisRange, Turret, TurretRanges } from '../types';
 import { isLineShot } from '../types';
-import { getTargetRadius, getTurretMountHeight, turretBit } from './combatUtils';
+import { getTargetRadius, turretBit, updateWeaponWorldKinematics } from './combatUtils';
 import { distanceSquared3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
-import { getTurretWorldMount } from '../../math/MountGeometry';
 import { getUnitGroundZ } from '../unitGeometry';
 
 const _activeCombatUnits: Entity[] = [];
@@ -77,7 +76,12 @@ function maxRangeWithTargetSq(range: HysteresisRange, edge: 'acquire' | 'release
   return r * r;
 }
 
-function minRangeAllowsTargetSq(range: HysteresisRange | undefined, edge: 'acquire' | 'release', targetRadius: number, distSq: number): boolean {
+function minRangeAllowsTargetSq(
+  range: HysteresisRange | null,
+  edge: 'acquire' | 'release',
+  targetRadius: number,
+  distSq: number,
+): boolean {
   if (!range) return true;
   const minRange = rangeEdgeValue(range, edge);
   if (minRange <= 0) return true;
@@ -99,16 +103,28 @@ function withinFireEnvelopeSq(
   distSq: number,
   targetRadius: number,
 ): boolean {
-  const fire = ranges.fire;
-  const max = fire?.max ?? ranges.engage;
   return (
-    minRangeAllowsTargetSq(fire?.min, edge, targetRadius, distSq) &&
-    distSq <= maxRangeWithTargetSq(max, edge, targetRadius)
+    minRangeAllowsTargetSq(ranges.fire.min, edge, targetRadius, distSq) &&
+    distSq <= maxRangeWithTargetSq(ranges.fire.max, edge, targetRadius)
   );
 }
 
+/** Outermost release boundary for the targeting FSM. When the turret
+ *  has a tracking shell, that's the lock-loss radius; otherwise the
+ *  fire envelope IS the only shell and its `max` release boundary
+ *  doubles as the target-drop radius. */
+function outermostReleaseRange(ranges: TurretRanges): HysteresisRange {
+  return ranges.tracking ?? ranges.fire.max;
+}
+
+/** Outermost acquire boundary used for the spatial-grid acquisition
+ *  query. Returns the `acquire` numeric value of the outermost shell. */
+function outermostAcquireDistance(ranges: TurretRanges): number {
+  return (ranges.tracking ?? ranges.fire.max).acquire;
+}
+
 function outsideTrackingReleaseSq(ranges: TurretRanges, distSq: number, targetRadius: number): boolean {
-  return distSq > maxRangeWithTargetSq(ranges.tracking, 'release', targetRadius);
+  return distSq > maxRangeWithTargetSq(outermostReleaseRange(ranges), 'release', targetRadius);
 }
 
 // Density-cap thresholds + stride for the dense-crowd fallback used
@@ -259,18 +275,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
     unitState.nextCombatProbeTick = undefined;
 
-    // Pass 0: Compute weapon world positions (needed for both modes).
-    // All three axes are cached PER TURRET — altitude is that turret's
-    // own mount Z (unit ground footprint + per-turret muzzle height),
-    // the same point the ballistic solver and projectile spawn use.
-    // Using a unit-wide mount Z breaks mirror-host units (Loris) where
-    // turret 0 sits at the chassis top and turret 1+ sits lifted on top
-    // of the mirror panels — range checks must match the real firing Z.
-    //
-    // Surface normal sampled ONCE per unit per tick — every turret
-    // on the unit reuses it through the shared getTurretWorldMount
-    // helper. Flat ground takes the early-return inside the helper
-    // and the math collapses to the legacy yaw-only path.
+    // Pass 0: Compute authoritative per-turret mount kinematics once.
+    // Targeting, aiming, firing, force fields, and beam retracing all
+    // read the same cached 3D mount pose/velocity through combatUtils.
     const unitGroundZ = getUnitGroundZ(unit);
     const surfaceN = world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y);
     for (let i = 0; i < weapons.length; i++) {
@@ -280,30 +287,11 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         weapon.state = 'idle';
         continue;
       }
-      const mount = getTurretWorldMount(
-        unit.transform.x, unit.transform.y, unitGroundZ,
+      updateWeaponWorldKinematics(
+        unit, weapon, i,
         cos, sin,
-        weapon.offset.x, weapon.offset.y, getTurretMountHeight(unit, i),
-        surfaceN,
+        { currentTick: tick, dtMs, unitGroundZ, surfaceN },
       );
-      const worldPos = weapon.worldPos!;
-      const worldVel = weapon.worldVelocity!;
-      const prevTick = weapon.worldPosTick;
-      const ticksElapsed = prevTick !== undefined ? tick - prevTick : 0;
-      if (ticksElapsed === 1 && dtMs > 0) {
-        const invElapsedSec = 1000 / dtMs;
-        worldVel.x = (mount.x - worldPos.x) * invElapsedSec;
-        worldVel.y = (mount.y - worldPos.y) * invElapsedSec;
-        worldVel.z = (mount.z - worldPos.z) * invElapsedSec;
-      } else {
-        worldVel.x = unit.unit.velocityX ?? 0;
-        worldVel.y = unit.unit.velocityY ?? 0;
-        worldVel.z = unit.unit.velocityZ ?? 0;
-      }
-      worldPos.x = mount.x;
-      worldPos.y = mount.y;
-      worldPos.z = mount.z;
-      weapon.worldPosTick = tick;
     }
 
     // Check for attack command priority target
@@ -436,7 +424,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       // (tracking weapons should re-evaluate for a closer engageable target)
       if (weapon.target === null || weapon.state === 'tracking') {
         needsAnyQuery = true;
-        const acquireRange = weapon.ranges.tracking.acquire;
+        const acquireRange = outermostAcquireDistance(weapon.ranges);
         if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
         const offset = Math.abs(weapon.offset.x) + Math.abs(weapon.offset.y);
         if (offset > maxWeaponOffset) maxWeaponOffset = offset;
@@ -470,7 +458,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
       const candidates = batchedEnemies
         ? batchedEnemies
-        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, r.tracking.acquire, playerId);
+        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, outermostAcquireDistance(r), playerId);
 
       let closestEngageable: Entity | null = null;
       let closestDistSq = Infinity;
@@ -516,7 +504,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       // per-weapon query if this path is reached without a unit batch.
       const candidates = batchedEnemies
         ? batchedEnemies
-        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, r.tracking.acquire, playerId);
+        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, outermostAcquireDistance(r), playerId);
 
       let closestEnemy: Entity | null = null;
       let closestDistSq = Infinity;
@@ -535,7 +523,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           enemy.transform.x, enemy.transform.y, enemy.transform.z,
         );
 
-        if (distSq <= maxRangeWithTargetSq(r.tracking, 'acquire', enemyRadius) && distSq < closestDistSq) {
+        if (
+          distSq <= maxRangeWithTargetSq((r.tracking ?? r.fire.max), 'acquire', enemyRadius)
+          && distSq < closestDistSq
+        ) {
           closestDistSq = distSq;
           closestEnemy = enemy;
         }

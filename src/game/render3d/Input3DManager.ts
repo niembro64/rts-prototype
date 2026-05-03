@@ -38,7 +38,9 @@ import {
   buildFactoryWaypointCommands,
   handleEscape,
   CommanderModeController,
-  canPlaceBuildingAt,
+  type BuildPlacementDiagnostics,
+  getBuildingPlacementDiagnostics,
+  getOccupiedBuildingCells,
   getSnappedBuildPosition,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
@@ -75,6 +77,7 @@ type EntitySource = {
   getSelectedBuildings: () => Entity[];
   getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
   getUnitsByPlayer: (playerId: PlayerId) => Entity[];
+  getEntitySetVersion?: () => number;
 };
 
 export class Input3DManager {
@@ -104,6 +107,9 @@ export class Input3DManager {
   private lastHoverClientY = Number.NaN;
   private buildGhostValidationKey = '';
   private buildGhostCanPlace = false;
+  private buildGhostDiagnostics: BuildPlacementDiagnostics | undefined;
+  private buildOccupancyVersion = '';
+  private buildOccupiedCells: ReadonlySet<string> | undefined;
 
   // Optional preview renderer driven on mouse-move-in-build-mode;
   // scene injects one via setBuildGhost. Stays null in the demo /
@@ -208,7 +214,12 @@ export class Input3DManager {
     // hide the build ghost whenever build mode exits.
     this.mode.onBuildModeChange = (type) => {
       this.buildGhostValidationKey = '';
-      if (type === null) this.buildGhost?.hide();
+      this.buildGhostCanPlace = false;
+      this.buildGhostDiagnostics = undefined;
+      if (type === null) {
+        this.canvas.style.cursor = '';
+        this.buildGhost?.hide();
+      }
       this.onBuildModeChange?.(type);
     };
     this.mode.onDGunModeChange = (active) => this.onDGunModeChange?.(active);
@@ -465,6 +476,26 @@ export class Input3DManager {
     }
     const world = this.raycastGround(e.clientX, e.clientY);
     if (!world) return;
+    const buildType = this.mode.buildingType;
+    if (buildType === null) return;
+    const diagnostics = this.validateBuildPlacement(buildType, world.x, world.y);
+    this.canvas.style.cursor = diagnostics.canPlace ? 'crosshair' : 'not-allowed';
+    if (this.buildGhost) {
+      this.buildGhost.setTarget(
+        buildType, world.x, world.y,
+        commander,
+        diagnostics.canPlace,
+        diagnostics,
+      );
+    }
+    if (!diagnostics.canPlace) {
+      debugLog(GAME_DIAGNOSTICS.commandPlans, 'Blocked invalid build placement', {
+        buildingType: buildType,
+        reason: diagnostics.failureReason,
+        metalFraction: diagnostics.metalFraction,
+      });
+      return;
+    }
     const cmd = this.mode.buildStartBuildCommand(
       commander, world.x, world.y,
       this.context.getTick(), e.shiftKey,
@@ -474,6 +505,41 @@ export class Input3DManager {
 
     // Shift = keep placing same building type; no-shift = exit build mode.
     if (!e.shiftKey) this.mode.exitBuildMode();
+  }
+
+  private validateBuildPlacement(
+    buildType: BuildingType,
+    worldX: number,
+    worldY: number,
+  ): BuildPlacementDiagnostics {
+    const snapped = getSnappedBuildPosition(worldX, worldY, buildType);
+    const buildings = this.entitySource.getBuildings();
+    const entitySetVersion = this.entitySource.getEntitySetVersion?.() ?? buildings.length;
+    const occupancyVersion = `${entitySetVersion}`;
+    if (occupancyVersion !== this.buildOccupancyVersion || !this.buildOccupiedCells) {
+      this.buildOccupancyVersion = occupancyVersion;
+      this.buildOccupiedCells = getOccupiedBuildingCells(buildings);
+    }
+    const validationKey = [
+      buildType,
+      snapped.gridX,
+      snapped.gridY,
+      this.mapWidth,
+      this.mapHeight,
+      entitySetVersion,
+    ].join(':');
+    if (validationKey !== this.buildGhostValidationKey || !this.buildGhostDiagnostics) {
+      this.buildGhostValidationKey = validationKey;
+      this.buildGhostDiagnostics = getBuildingPlacementDiagnostics(
+        buildType, snapped.x, snapped.y,
+        this.mapWidth, this.mapHeight,
+        buildings,
+        this.metalDeposits,
+        this.buildOccupiedCells,
+      );
+      this.buildGhostCanPlace = this.buildGhostDiagnostics.canPlace;
+    }
+    return this.buildGhostDiagnostics;
   }
 
   /** Fire the D-gun at the clicked ground point. Stays in D-gun
@@ -506,22 +572,16 @@ export class Input3DManager {
     if (buildType !== null && this.buildGhost) {
       const world = this.raycastGround(e.clientX, e.clientY);
       if (world) {
-        const snapped = getSnappedBuildPosition(world.x, world.y, buildType);
-        const validationKey = `${buildType}:${snapped.x}:${snapped.y}:${this.mapWidth}:${this.mapHeight}`;
-        if (validationKey !== this.buildGhostValidationKey) {
-          this.buildGhostValidationKey = validationKey;
-          this.buildGhostCanPlace = canPlaceBuildingAt(
-            buildType, snapped.x, snapped.y,
-            this.mapWidth, this.mapHeight,
-            this.entitySource.getBuildings(),
-            this.metalDeposits,
-          );
-        }
+        const diagnostics = this.validateBuildPlacement(buildType, world.x, world.y);
+        this.canvas.style.cursor = diagnostics.canPlace ? 'crosshair' : 'not-allowed';
         this.buildGhost.setTarget(
           buildType, world.x, world.y,
           this.getSelectedCommander(),
           this.buildGhostCanPlace,
+          diagnostics,
         );
+      } else {
+        this.canvas.style.cursor = 'not-allowed';
       }
     }
 
@@ -900,6 +960,7 @@ export class Input3DManager {
     window.removeEventListener('mousemove', this.onMouseMove);
     window.removeEventListener('mouseup', this.onMouseUp);
     window.removeEventListener('keydown', this.onKeyDown);
+    this.canvas.style.cursor = '';
     this.onWaypointModeChange = undefined;
     this.onBuildModeChange = undefined;
     this.onDGunModeChange = undefined;

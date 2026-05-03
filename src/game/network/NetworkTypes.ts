@@ -8,7 +8,7 @@ export type {
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotVelocityUpdate,
-  NetworkServerSnapshotBeamReflection,
+  NetworkServerSnapshotBeamPoint,
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,

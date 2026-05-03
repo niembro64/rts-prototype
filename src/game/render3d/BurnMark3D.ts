@@ -226,8 +226,11 @@ export class BurnMark3D {
       const key = beamStateKey(proj.sourceEntityId, turretIndex);
       this._seenBeamKeys.add(key);
 
-      const ex = proj.endX ?? e.transform.x;
-      const ez = proj.endY ?? e.transform.y;
+      const lastPoint = proj.points && proj.points.length >= 2
+        ? proj.points[proj.points.length - 1]
+        : undefined;
+      const ex = lastPoint?.x ?? e.transform.x;
+      const ez = lastPoint?.y ?? e.transform.y;
       // Scope gate — skip the beam entirely when the endpoint is off-
       // scope. We use generous padding (200) since the endpoint can
       // drift quickly and a strict rect would drop marks mid-sweep.

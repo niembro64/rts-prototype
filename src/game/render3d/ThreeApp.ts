@@ -180,6 +180,19 @@ export class ThreeApp {
     return this._renderEnabled;
   }
 
+  /** Force every material currently in the scene to compile its shader
+   *  program synchronously NOW, instead of paying for the compile + the
+   *  blocking getProgramInfoLog read on the frame the material first
+   *  shows up. Profiles caught the lazy version of this stalling the
+   *  first frame a new material variant appeared (e.g. the first
+   *  explosion / beam / force field of a battle) — call this after the
+   *  scene has been populated with one of every material we expect to
+   *  use, and any subsequent on-demand additions sharing a program will
+   *  hit the cache instead of blocking. */
+  precompileShaders(): void {
+    this.renderer.compile(this.scene, this.camera);
+  }
+
   start(): void {
     if (this._running) return;
     this._running = true;

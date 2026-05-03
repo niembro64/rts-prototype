@@ -11,18 +11,42 @@ import {
   FORCE_PUSH,
 } from '../../../config';
 import { AUDIO } from '../../../audioConfig';
+import type { HysteresisRangeMultiplier } from '../../../types/sim';
 import type { TurretBlueprint } from './types';
 
 const COLOR_WHITE = 0xffffff;
-const STANDARD_MAX_FIRE_RANGE = { acquire: 0.9, release: 0.95 };
-const NO_MINIMUM_FIRE_RANGE = { acquire: 0, release: 0 };
 
-function fireEnvelope(
-  engageRangeMin = NO_MINIMUM_FIRE_RANGE,
-): TurretBlueprint['rangeMultiplierOverrides'] {
+/** Outer awareness shell for turrets that need to rotate toward
+ *  enemies BEFORE the enemy enters fire range. Multiplied by the
+ *  turret's base `range`, so 1.1/1.2 = 110% acquire / 120% release —
+ *  strictly outside the standard 0.9/0.95 fire envelope. Currently
+ *  used only by the mirror turret, which has to be already pointed
+ *  when an incoming beam crosses its fire boundary. */
+const RANGE_TRACK: HysteresisRangeMultiplier = {
+  acquire: 1.1,
+  release: 1.2,
+};
+
+const RANGE_FIRE_MAX: HysteresisRangeMultiplier = {
+  acquire: 0.95,
+  release: 1.0,
+};
+
+const RANGE_FIRE_MIN: HysteresisRangeMultiplier = {
+  acquire: 0.4,
+  release: 0.35,
+};
+
+function fireEnvelope(params: {
+  engageRangeMin: HysteresisRangeMultiplier | null;
+  trackingRange: HysteresisRangeMultiplier | null;
+}): TurretBlueprint['rangeMultiplierOverrides'] {
+  const { engageRangeMin, trackingRange } = params;
+
   return {
-    engageRangeMax: { ...STANDARD_MAX_FIRE_RANGE },
-    engageRangeMin: { ...engageRangeMin },
+    engageRangeMax: { ...RANGE_FIRE_MAX },
+    engageRangeMin: engageRangeMin ? { ...engageRangeMin } : null,
+    trackingRange: trackingRange ? { ...trackingRange } : null,
   };
 }
 
@@ -32,16 +56,20 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'lightShot',
     range: 120,
     cooldown: 450,
-    launchForce: 380,
+    launchForce: 456,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.2 },
-    rangeMultiplierOverrides: fireEnvelope(),
+    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.8 },
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
     bodyRadius: 4,
     audio: { fireSound: AUDIO.event.fire.lightTurret },
+    highArc: true,
   },
   // Salvo rocket pod — vertical-launch system. The turret is pinned
   // pointing straight up (verticalLauncher=true → turretSystem locks
@@ -74,7 +102,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       depthScale: 0.02,
       spin: { idle: 2, max: 20, accel: 10, decel: 5 },
     },
-    rangeMultiplierOverrides: fireEnvelope({ acquire: 0.3, release: 0.15 }),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: RANGE_FIRE_MIN,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     // 90° max deviation from vertical — rockets launch anywhere from
@@ -90,11 +121,14 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'heavyShot',
     range: 610,
     cooldown: 2300,
-    launchForce: 10_000,
+    launchForce: 12_000,
     turretTurnAccel: 200,
     turretDrag: 0.5,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 1.4 },
-    rangeMultiplierOverrides: fireEnvelope({ acquire: 0.3, release: 0.25 }),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: RANGE_FIRE_MIN,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
@@ -106,13 +140,14 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'mortarShot',
     range: 600,
     cooldown: 6000,
-    launchForce: 25000,
+    launchForce: 30_000,
     turretTurnAccel: 90,
     turretDrag: 0.4,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
-    // Artillery keeps tracking close enemies, but only fires once
-    // the target intersects this inner/outer fire annulus.
-    rangeMultiplierOverrides: fireEnvelope({ acquire: 0.5, release: 0.45 }),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: RANGE_FIRE_MIN,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
@@ -129,8 +164,8 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     id: 'pulseTurret',
     projectileId: 'mediumShot',
     range: 160,
-    cooldown: 1_400,
-    launchForce: 4_200,
+    cooldown: 2_000,
+    launchForce: 4_000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
     barrel: {
@@ -141,13 +176,17 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       depthScale: 0.1,
       spin: { idle: 2, max: 30, accel: 80, decel: 30 },
     },
-    rangeMultiplierOverrides: fireEnvelope(),
-    eventsSmooth: false,
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
+    eventsSmooth: true,
     color: COLOR_WHITE,
-    spread: { angle: Math.PI / 32 },
-    burst: { count: 2, delay: 80 },
+    spread: { angle: Math.PI / 4 },
+    burst: { count: 4, delay: 50 },
     bodyRadius: 7,
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
+    highArc: false,
   },
   // Gatling mortar — multi-barrel rotating cluster that lobs
   // mortarShot carrier rounds. Each carrier releases 5 mediumShot
@@ -158,7 +197,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'mortarShot',
     range: 3000,
     cooldown: 200,
-    launchForce: 30000,
+    launchForce: 72_000,
     turretTurnAccel: 80,
     turretDrag: 0.4,
     barrel: {
@@ -169,16 +208,18 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       depthScale: 0.12,
       spin: { idle: 2, max: 18, accel: 80, decel: 10 },
     },
-    // Keep only a short safety dead zone. This turret's very long
-    // base range makes artillery-style ratios create a huge no-fire
-    // annulus that looks like broken targeting in dense battles.
-    rangeMultiplierOverrides: fireEnvelope({ acquire: 0.08, release: 0.06 }),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: RANGE_FIRE_MIN,
+      trackingRange: null,
+    }),
     eventsSmooth: true,
     color: COLOR_WHITE,
     spread: { angle: 0 },
     bodyRadius: 14,
     audio: { fireSound: AUDIO.event.fire.gatlingMortarTurret },
-    // Uses the low ballistic solution; the submunitions do the area spread.
+    // Fast low-arc carrier. The submunitions do the area spread; a
+    // high arc makes the carrier spend too long in flight for a gatling
+    // role and amplifies recoil/moving-target error.
     highArc: true,
     // Aim directly at the target group; the carrier's fragment spray
     // creates the area coverage.
@@ -189,7 +230,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'mediumShot',
     range: 300,
     cooldown: 50,
-    launchForce: 4_200,
+    launchForce: 5_040,
     turretTurnAccel: 100,
     turretDrag: 0.4,
     barrel: {
@@ -200,7 +241,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       depthScale: 0.1,
       spin: { idle: 2, max: 20, accel: 100, decel: 10 },
     },
-    rangeMultiplierOverrides: fireEnvelope(),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: RANGE_FIRE_MIN,
+      trackingRange: null,
+    }),
     eventsSmooth: true,
     color: COLOR_WHITE,
     spread: { angle: Math.PI / 16 },
@@ -213,7 +257,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     projectileId: 'disruptorShot',
     range: 150,
     cooldown: 0,
-    launchForce: 7000,
+    launchForce: 8_400,
     turretTurnAccel: 40,
     turretDrag: 0.15,
     barrel: {
@@ -222,7 +266,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       barrelThickness: 8,
     },
     isManualFire: true,
-    rangeMultiplierOverrides: fireEnvelope(),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: 0xff8800,
     bodyRadius: 7,
@@ -239,8 +286,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       type: 'simpleSingleBarrel',
       barrelLength: 0.5,
     },
-    launchForce: 1000,
-    rangeMultiplierOverrides: fireEnvelope(),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
@@ -250,28 +299,35 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   mirrorTurret: {
     id: 'mirrorTurret',
     projectileId: 'beamShot',
-    range: 400,
+    range: 300,
     turretTurnAccel: 50,
     turretDrag: 1,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
-    launchForce: 0,
     passive: true,
     spread: { angle: Math.PI / 2 },
-    rangeMultiplierOverrides: fireEnvelope(),
+    // Mirror turrets need to be already pointed when an enemy beam
+    // arrives, so they get an awareness shell strictly outside their
+    // fire envelope. The targeting system rotates the panel toward
+    // any tracked enemy without triggering fire, then drops it back
+    // to idle when the enemy leaves the tracking-release distance.
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: RANGE_TRACK,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     // The mirror-host turret's head sphere is hidden (panels are the
     // visual), so bodyRadius is set for consistency with sibling
     // turrets but has no rendered effect.
     bodyRadius: 5,
-    // Single forward-facing square reflector. angle=0 ⇒ panel normal
-    // points along the turret's facing direction; the panel's edge runs
-    // left-right across the turret's front. Size is regularized — the
-    // panel is always a perfect square whose side equals its vertical
-    // extent (topY − baseY = bodyTop + 2·hostHeadRadius +
-    // MIRROR_EXTRA_HEIGHT − MIRROR_BASE_Y), so sim collision and the
-    // visible mesh share one canonical rectangle.
-    mirrorPanels: [{ offsetX: 18, offsetY: 0, angle: 0 }],
+    // Single fully-regularized square reflector. The panel ATTACHMENT
+    // POINT is the unit/turret center (offsetX = offsetY = 0); the
+    // panel's normal points along the turret's facing direction
+    // (angle = 0); the panel size is `2 × bodyRadius` square,
+    // vertically centered on `bodyCenterHeight`. mirrorPanelCache
+    // ignores these per-panel fields entirely — they're declared as
+    // a count of 1 so the cache builder emits one panel per host.
+    mirrorPanels: [{ offsetX: 0, offsetY: 0, angle: 0 }],
   },
   beamTurret: {
     id: 'beamTurret',
@@ -283,8 +339,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       type: 'simpleSingleBarrel',
       barrelLength: 0.6,
     },
-    launchForce: 1000,
-    rangeMultiplierOverrides: fireEnvelope(),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     bodyRadius: 6,
@@ -310,8 +368,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       barrelLength: 0.6,
       barrelThickness: 8,
     },
-    launchForce: 1500,
-    rangeMultiplierOverrides: fireEnvelope(),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     bodyRadius: 14,
@@ -329,7 +389,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       type: 'complexSingleEmitter',
       grate: FORCE_FIELD_TURRET.forceField,
     },
-    rangeMultiplierOverrides: fireEnvelope(),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     // Force-field emitters render via ForceFieldRenderer3D's glowing
@@ -352,7 +415,10 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       type: 'complexSingleEmitter',
       grate: FORCE_FIELD_TURRET.megaForceField,
     },
-    rangeMultiplierOverrides: fireEnvelope(),
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
     eventsSmooth: false,
     color: COLOR_WHITE,
     // Force-field emitter — head is hidden, see forceTurretLarge.

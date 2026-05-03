@@ -39,11 +39,10 @@ function validateTurretRangeMultipliers(
 ): void {
   const max = ranges.engageRangeMax;
   const min = ranges.engageRangeMin;
+  const tracking = ranges.trackingRange;
 
   assertFiniteRangeMultiplier(turretId, 'engageRangeMax.acquire', max.acquire);
   assertFiniteRangeMultiplier(turretId, 'engageRangeMax.release', max.release);
-  assertFiniteRangeMultiplier(turretId, 'engageRangeMin.acquire', min.acquire);
-  assertFiniteRangeMultiplier(turretId, 'engageRangeMin.release', min.release);
 
   if (max.release <= max.acquire) {
     throw new Error(
@@ -51,15 +50,43 @@ function validateTurretRangeMultipliers(
     );
   }
 
-  // `{ acquire: 0, release: 0 }` is the canonical "no minimum fire
-  // range" envelope. Any positive minimum range still needs hysteresis:
-  // acquire must be farther out than release, so the turret does not
-  // flicker when targets sit on the inner boundary.
-  const minDisabled = min.acquire === 0 && min.release === 0;
-  if (!minDisabled && min.acquire <= min.release) {
-    throw new Error(
-      `Invalid turret range multipliers for ${turretId}: engageRangeMin.acquire (${min.acquire}) must be greater than engageRangeMin.release (${min.release})`,
-    );
+  // engageRangeMin is `null` when the turret has no minimum firing
+  // distance (most direct-fire weapons). When set, both edges must be
+  // finite and acquire must be farther out than release so the turret
+  // doesn't flicker when targets sit on the inner boundary.
+  if (min) {
+    assertFiniteRangeMultiplier(turretId, 'engageRangeMin.acquire', min.acquire);
+    assertFiniteRangeMultiplier(turretId, 'engageRangeMin.release', min.release);
+    if (min.acquire <= min.release) {
+      throw new Error(
+        `Invalid turret range multipliers for ${turretId}: engageRangeMin.acquire (${min.acquire}) must be greater than engageRangeMin.release (${min.release})`,
+      );
+    }
+  }
+
+  // trackingRange is `null` when the turret only ever cares about its
+  // fire envelope (acquires + engages on contact). When set, the
+  // tracking shell MUST sit strictly outside engageRangeMax — its
+  // whole purpose is pre-rotation toward enemies that aren't yet in
+  // fire range.
+  if (tracking) {
+    assertFiniteRangeMultiplier(turretId, 'trackingRange.acquire', tracking.acquire);
+    assertFiniteRangeMultiplier(turretId, 'trackingRange.release', tracking.release);
+    if (tracking.release <= tracking.acquire) {
+      throw new Error(
+        `Invalid turret range multipliers for ${turretId}: trackingRange.release (${tracking.release}) must be greater than trackingRange.acquire (${tracking.acquire})`,
+      );
+    }
+    if (tracking.acquire <= max.acquire) {
+      throw new Error(
+        `Invalid turret range multipliers for ${turretId}: trackingRange.acquire (${tracking.acquire}) must sit OUTSIDE engageRangeMax.acquire (${max.acquire})`,
+      );
+    }
+    if (tracking.release <= max.release) {
+      throw new Error(
+        `Invalid turret range multipliers for ${turretId}: trackingRange.release (${tracking.release}) must sit OUTSIDE engageRangeMax.release (${max.release})`,
+      );
+    }
   }
 }
 
@@ -97,6 +124,7 @@ function buildShotConfig(
       recoil: shotBlueprint.recoil,
       radius: shotBlueprint.radius,
       width: shotBlueprint.width,
+      damageSphere: { radius: shotBlueprint.damageSphere.radius },
     };
     return shot;
   }
@@ -110,6 +138,7 @@ function buildShotConfig(
       recoil: shotBlueprint.recoil,
       radius: shotBlueprint.radius,
       width: shotBlueprint.width,
+      damageSphere: { radius: shotBlueprint.damageSphere.radius },
       duration: shotBlueprint.duration,
     };
     return shot;
@@ -166,7 +195,8 @@ export function getSubmunitionTurretConfig(childShotId: string): TurretConfig {
     angular: { turnAccel: 0, drag: 0 },
     rangeOverrides: {
       engageRangeMax: { acquire: 0, release: 0 },
-      engageRangeMin: { acquire: 0, release: 0 },
+      engageRangeMin: null,
+      trackingRange: null,
     },
     eventsSmooth: false,
     shot,

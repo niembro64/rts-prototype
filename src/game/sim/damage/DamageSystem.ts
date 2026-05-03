@@ -95,6 +95,10 @@ export function resetDamageBuffers(): void {
 // reflection formula in findBeamPath).
 const _segHit = { t: 0, x: 0, y: 0, z: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, normalZ: 0, panelIndex: -1 };
 
+const BEAM_GROUND_HIT_STEPS = 12;
+const BEAM_GROUND_HIT_BISECT_STEPS = 6;
+const BEAM_GROUND_EPSILON = 0.25;
+
 
 export class DamageSystem {
   constructor(private world: WorldState) {}
@@ -169,6 +173,14 @@ export class DamageSystem {
 
   // Find beam path with reflections off mirror units — full 3D.
   //
+  // The beam terminates at the first of: a unit hit, a building hit,
+  // a ground hit, or the firing turret's RANGE SPHERE — a sphere of
+  // radius `range` centered at the muzzle (`startX/Y/Z`). Mirrors
+  // bounce; every segment after a reflection is also clipped at the
+  // same range sphere, so the beam can travel any distance along its
+  // bouncing polyline as long as the current segment hasn't exited the
+  // sphere.
+  //
   // Mirror panels are upright rectangles (vertical slab, horizontal
   // yaw-only normal). A beam tilted up into the sky genuinely misses a
   // low panel even if its horizontal projection would cross the panel's
@@ -189,6 +201,13 @@ export class DamageSystem {
     reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[];
   } {
     const reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[] = [];
+    // Range sphere — every bounced segment is clipped at this boundary
+    // so the beam never travels further than `range` from the muzzle,
+    // regardless of how many mirrors it bounces off. Caller passes the
+    // initial endpoint as `start + dir × range`, which gives us the
+    // sphere radius for free.
+    const range = Math.hypot(endX - startX, endY - startY, endZ - startZ);
+    const rangeSq = range * range;
     let curSX = startX, curSY = startY, curSZ = startZ;
     let curEX = endX, curEY = endY, curEZ = endZ;
     let excludeEntityId = sourceEntityId;
@@ -230,14 +249,28 @@ export class DamageSystem {
       const reflDirX = beamDirX - 2 * dotDN * hit.normalX;
       const reflDirY = beamDirY - 2 * dotDN * hit.normalY;
       const reflDirZ = beamDirZ - 2 * dotDN * hit.normalZ;
-      const remaining = segLen * (1 - hit.t);
+
+      // Reflected segment runs from the bounce point outward to wherever
+      // the ray exits the firing turret's range sphere. Ray–sphere
+      // exit: solve |hit + t·refl − origin|² = range² for the FAR
+      // (positive) root with origin = startX/Y/Z and dir already unit.
+      // The bounce point is at distance ≤ range from the origin, so the
+      // discriminant is always non-negative and t_far ≥ 0.
+      const ex = hit.x - startX;
+      const ey = hit.y - startY;
+      const ez = hit.z - startZ;
+      const b = ex * reflDirX + ey * reflDirY + ez * reflDirZ;
+      const c = ex * ex + ey * ey + ez * ez - rangeSq;
+      const disc = b * b - c;
+      const tFar = disc > 0 ? -b + Math.sqrt(disc) : 0;
+      if (tFar <= 0) break;
 
       curSX = hit.x;
       curSY = hit.y;
       curSZ = hit.z;
-      curEX = hit.x + reflDirX * remaining;
-      curEY = hit.y + reflDirY * remaining;
-      curEZ = hit.z + reflDirZ * remaining;
+      curEX = hit.x + reflDirX * tFar;
+      curEY = hit.y + reflDirY * tFar;
+      curEZ = hit.z + reflDirZ * tFar;
       excludeEntityId = hit.entityId;
       excludePanelIndex = hit.panelIndex;
     }
@@ -249,6 +282,41 @@ export class DamageSystem {
   // entity colliders, all in 3D.
   //   excludeEntityId: on bounce 0 = source (don't hit self), on bounce N = last mirror hit
   //   excludePanelIndex: -1 = exclude entire entity, >= 0 = exclude only that panel
+  private findGroundSegmentT(
+    startX: number, startY: number, startZ: number,
+    endX: number, endY: number, endZ: number,
+  ): number | null {
+    const sampleClearance = (t: number): number => {
+      const x = startX + (endX - startX) * t;
+      const y = startY + (endY - startY) * t;
+      const z = startZ + (endZ - startZ) * t;
+      return z - this.world.getGroundZ(x, y);
+    };
+
+    let prevT = 0;
+    let prevClear = sampleClearance(0);
+    if (prevClear < -BEAM_GROUND_EPSILON) return 0;
+
+    for (let i = 1; i <= BEAM_GROUND_HIT_STEPS; i++) {
+      const t = i / BEAM_GROUND_HIT_STEPS;
+      const clear = sampleClearance(t);
+      if (clear <= BEAM_GROUND_EPSILON && prevClear > BEAM_GROUND_EPSILON) {
+        let lo = prevT;
+        let hi = t;
+        for (let b = 0; b < BEAM_GROUND_HIT_BISECT_STEPS; b++) {
+          const mid = (lo + hi) * 0.5;
+          if (sampleClearance(mid) <= BEAM_GROUND_EPSILON) hi = mid;
+          else lo = mid;
+        }
+        return hi;
+      }
+      prevT = t;
+      prevClear = clear;
+    }
+
+    return null;
+  }
+
   private findBeamSegmentHit(
     startX: number, startY: number, startZ: number,
     endX: number, endY: number, endZ: number,
@@ -368,6 +436,19 @@ export class DamageSystem {
         _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
         _segHit.panelIndex = -1;
       }
+    }
+
+    const groundT = this.findGroundSegmentT(startX, startY, startZ, endX, endY, endZ);
+    if (groundT !== null && groundT < bestT) {
+      bestT = groundT; found = true;
+      _segHit.t = groundT;
+      _segHit.x = startX + groundT * dx;
+      _segHit.y = startY + groundT * dy;
+      _segHit.z = this.world.getGroundZ(_segHit.x, _segHit.y);
+      _segHit.entityId = 0 as EntityId;
+      _segHit.isMirror = false;
+      _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 1;
+      _segHit.panelIndex = -1;
     }
 
     return found ? _segHit : null;

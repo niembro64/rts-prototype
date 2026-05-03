@@ -95,6 +95,7 @@ type SnapshotListenerEntry = {
 type SnapshotInterestPlan = {
   predicate?: SnapshotInterest;
   candidateEntityIds?: EntityId[];
+  bounds?: SnapshotInterestBounds;
 };
 
 type SnapshotInterestBounds = {
@@ -1042,6 +1043,8 @@ export class GameServer {
         removedEntityIds: this.snapshotRemovedIdsBuf,
         interest: interest.predicate,
         candidateEntityIds: interest.candidateEntityIds,
+        interestBounds: interest.bounds,
+        recipientPlayerId: listener.playerId,
       };
       const state = serializeGameState(
         this.world,
@@ -1301,44 +1304,28 @@ export class GameServer {
       bounds.maxY += SNAPSHOT_AOI_PADDING;
     }
 
-    // Hot loop: with bounds + candidates pre-fetched into parallel
-    // arrays, per-(unit, player) cost is 4 comparisons + 1 push, no
-    // Map lookups. Single-player fast path skips the inner loop.
-    if (playerCount === 1) {
-      const playerId = targetPlayerIds[0];
-      const bounds = boundsBuf[0];
-      const candidates = candidatesBuf[0];
-      const includeOthers = bounds.hasOwnedEntity;
+    // AOI candidate lists are built from the same land/spatial grid the
+    // sim already maintains. Owned units are included from the per-player
+    // cache; non-owned units come from a 2D bounds query instead of a
+    // full-unit scan per player snapshot.
+    for (let i = 0; i < playerCount; i++) {
+      const playerId = targetPlayerIds[i];
+      const bounds = boundsBuf[i];
+      const candidates = candidatesBuf[i];
       const ownedUnits = this.world.getUnitsByPlayer(playerId);
-      for (let i = 0; i < ownedUnits.length; i++) {
-        candidates.push(ownedUnits[i].id);
+      for (let j = 0; j < ownedUnits.length; j++) {
+        candidates.push(ownedUnits[j].id);
       }
-      for (const unit of this.world.getUnits()) {
-        const unitPlayerId = unit.ownership?.playerId;
-        if (unitPlayerId === playerId) continue;
-        if (!includeOthers) continue;
-        const x = unit.transform.x;
-        const y = unit.transform.y;
-        if (x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY) {
-          candidates.push(unit.id);
-        }
-      }
-    } else {
-      for (const unit of this.world.getUnits()) {
-        const unitPlayerId = unit.ownership?.playerId;
-        const x = unit.transform.x;
-        const y = unit.transform.y;
-        for (let i = 0; i < playerCount; i++) {
-          const bounds = boundsBuf[i];
-          if (unitPlayerId === targetPlayerIds[i]) {
-            candidatesBuf[i].push(unit.id);
-            continue;
-          }
-          if (!bounds.hasOwnedEntity) continue;
-          if (x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY) {
-            candidatesBuf[i].push(unit.id);
-          }
-        }
+      if (!bounds.hasOwnedEntity) continue;
+      const nearbyUnits = spatialGrid.queryUnitsInBounds2D(
+        bounds.minX,
+        bounds.minY,
+        bounds.maxX,
+        bounds.maxY,
+        playerId,
+      );
+      for (let j = 0; j < nearbyUnits.length; j++) {
+        candidates.push(nearbyUnits[j].id);
       }
     }
 
@@ -1364,7 +1351,7 @@ export class GameServer {
         const y = entity.transform.y;
         return x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY;
       };
-      this.snapshotInterestPlansByPlayer.set(playerId, { predicate, candidateEntityIds: candidates });
+      this.snapshotInterestPlansByPlayer.set(playerId, { predicate, candidateEntityIds: candidates, bounds });
     }
   }
 
@@ -1710,12 +1697,14 @@ export class GameServer {
       const playerMask = this.playerGridDebugMask(playerId);
       if (playerMask === 0) continue;
 
-      // Find max tracking range across all weapons
+      // Find max see-range across all weapons. Use the tracking shell
+      // when present (turret can be aware further than it can fire);
+      // otherwise the fire envelope's max release IS the awareness shell.
       let maxSeeRange = 0;
       for (let i = 0; i < unit.turrets.length; i++) {
-        if (unit.turrets[i].ranges.tracking.release > maxSeeRange) {
-          maxSeeRange = unit.turrets[i].ranges.tracking.release;
-        }
+        const r = unit.turrets[i].ranges;
+        const seeRange = (r.tracking ?? r.fire.max).release;
+        if (seeRange > maxSeeRange) maxSeeRange = seeRange;
       }
       if (maxSeeRange <= 0) continue;
 

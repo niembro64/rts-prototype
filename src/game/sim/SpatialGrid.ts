@@ -76,6 +76,8 @@ export class SpatialGrid {
 
   // Track which cell each unit is in (single cell per unit)
   private unitCellKey: Map<EntityId, number> = new Map();
+  private unitLandCellKey: Map<EntityId, number> = new Map();
+  private landUnitCells: Map<number, Entity[]> = new Map();
 
   // Track which cells each building spans (may span multiple cells)
   private buildingCellKeys: Map<EntityId, number[]> = new Map();
@@ -258,6 +260,8 @@ export class SpatialGrid {
   clear(): void {
     this.cells.clear();
     this.unitCellKey.clear();
+    this.unitLandCellKey.clear();
+    this.landUnitCells.clear();
     this.buildingCellKeys.clear();
     this.projectileCellKey.clear();
     this.captureByLandCell.clear();
@@ -313,6 +317,55 @@ export class SpatialGrid {
     return newKey;
   }
 
+  private syncUnitLandCell(entity: Entity, cubeKey: number): void {
+    const nextLandKey = spatialCubeKeyToLandCellKey(cubeKey);
+    const prevLandKey = this.unitLandCellKey.get(entity.id);
+    if (prevLandKey === nextLandKey) return;
+
+    if (prevLandKey !== undefined) {
+      const prevUnits = this.landUnitCells.get(prevLandKey);
+      if (prevUnits) {
+        let idx = -1;
+        for (let i = 0; i < prevUnits.length; i++) {
+          if (prevUnits[i].id === entity.id) { idx = i; break; }
+        }
+        if (idx >= 0) {
+          const last = prevUnits.length - 1;
+          if (idx !== last) prevUnits[idx] = prevUnits[last];
+          prevUnits.pop();
+        }
+        if (prevUnits.length === 0) this.landUnitCells.delete(prevLandKey);
+      }
+    }
+
+    let nextUnits = this.landUnitCells.get(nextLandKey);
+    if (!nextUnits) {
+      nextUnits = [];
+      this.landUnitCells.set(nextLandKey, nextUnits);
+    }
+    nextUnits.push(entity);
+    this.unitLandCellKey.set(entity.id, nextLandKey);
+  }
+
+  private removeUnitLandCell(id: EntityId): void {
+    const landKey = this.unitLandCellKey.get(id);
+    if (landKey === undefined) return;
+    const units = this.landUnitCells.get(landKey);
+    if (units) {
+      let idx = -1;
+      for (let i = 0; i < units.length; i++) {
+        if (units[i].id === id) { idx = i; break; }
+      }
+      if (idx >= 0) {
+        const last = units.length - 1;
+        if (idx !== last) units[idx] = units[last];
+        units.pop();
+      }
+      if (units.length === 0) this.landUnitCells.delete(landKey);
+    }
+    this.unitLandCellKey.delete(id);
+  }
+
   private removeSingleCellEntity(
     id: EntityId,
     keyMap: Map<EntityId, number>,
@@ -335,6 +388,7 @@ export class SpatialGrid {
       return;
     }
     const cellKey = this.updateSingleCellEntity(entity, this.unitCellKey, SpatialGrid._pickUnits);
+    this.syncUnitLandCell(entity, cellKey);
     this.syncUnitCaptureVote(entity, cellKey);
   }
 
@@ -343,6 +397,7 @@ export class SpatialGrid {
    */
   removeUnit(id: EntityId): void {
     this.removeUnitCaptureVote(id);
+    this.removeUnitLandCell(id);
     this.removeSingleCellEntity(id, this.unitCellKey, SpatialGrid._pickUnits);
   }
 
@@ -493,6 +548,45 @@ export class SpatialGrid {
         const dz = unit.transform.z - z;
         if (dx * dx + dy * dy + dz * dz <= radiusSq) {
           this.queryResultUnits.push(unit);
+        }
+      }
+    }
+
+    return this.queryResultUnits;
+  }
+
+  /**
+   * Query units whose XY position falls inside an axis-aligned land
+   * rectangle. This is a 2D broadphase for systems such as snapshot AOI
+   * that care about ground relevance, not altitude. Returns a reused
+   * array — DO NOT STORE THE REFERENCE.
+   */
+  queryUnitsInBounds2D(
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+    excludePlayerId?: PlayerId,
+  ): Entity[] {
+    this.queryResultUnits.length = 0;
+
+    const minCx = Math.floor(minX / this.cellSize);
+    const maxCx = Math.floor(maxX / this.cellSize);
+    const minCy = Math.floor(minY / this.cellSize);
+    const maxCy = Math.floor(maxY / this.cellSize);
+
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        const units = this.landUnitCells.get(packLandCellKey(cx, cy));
+        if (!units) continue;
+        for (let i = 0; i < units.length; i++) {
+          const unit = units[i];
+          if (excludePlayerId !== undefined && unit.ownership?.playerId === excludePlayerId) continue;
+          const x = unit.transform.x;
+          const y = unit.transform.y;
+          if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+            this.queryResultUnits.push(unit);
+          }
         }
       }
     }
@@ -756,6 +850,20 @@ export class SpatialGrid {
     lineWidth: number,
   ): void {
     this.nearbyCells.length = 0;
+
+    // A non-finite input (NaN/±Infinity) — usually a projectile whose
+    // prev or current transform got corrupted by an upstream divide-
+    // by-zero — turns the inclusive integer loop below into a 4-billion
+    // iteration runaway, which then crashes the host with
+    // RangeError: Invalid array length the moment Array.push tries to
+    // grow nearbyCells past 2^32. Bail early so the bad query just
+    // returns no cells (the projectile's collision is silently skipped
+    // for this tick) instead of taking the host down.
+    if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(z1)
+      || !Number.isFinite(x2) || !Number.isFinite(y2) || !Number.isFinite(z2)
+      || !Number.isFinite(lineWidth)) {
+      return;
+    }
 
     const halfWidth = lineWidth / 2;
     const minX = Math.min(x1, x2) - halfWidth;

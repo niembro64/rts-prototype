@@ -1,16 +1,24 @@
-// Mirror panel mesh builder (3D). The panel is a flat square plane;
-// its rotation/pitch are applied by the per-tick update path in
-// EntityRenderer (rotation.y on the parent root, rotation.x on each
-// panel). All this builder does is stamp the right-sized planes at
-// the right offsets.
+// Mirror panel mesh builder (3D). The panel is a flat SQUARE plane
+// mounted at ARM'S LENGTH out from the turret body sphere along the
+// turret's facing direction, connected to the turret center by a
+// rendered cylinder. Rotation/pitch are applied by the per-tick
+// update path in EntityRenderer (rotation.y on the parent root,
+// rotation.x on each panel). Pitching the panel around its edge axis
+// after the yaw flip rotates the panel face independently of the
+// arm — the arm itself does not pitch.
 
 import * as THREE from 'three';
-import { MIRROR_BASE_Y } from '../../config';
 
 export type MirrorMesh = {
   /** Rotates with the turret (children of this rotate in turret frame). */
   root: THREE.Group;
   panels: THREE.Mesh[];
+  /** Attachment cylinders, one per panel, sharing the same parent as
+   *  the panels. The renderer doesn't currently route these through
+   *  any InstancedMesh — they're per-Mesh on the `root` group either
+   *  way (the per-mirror cap is small, so a few static cylinders cost
+   *  nothing). */
+  arms: THREE.Mesh[];
   /** Slot indices into Render3DEntities.mirrorPanelInstanced when the
    *  panels are routed through the shared InstancedMesh (one slot per
    *  panel, parallel to `panels`). Empty / undefined when the per-Mesh
@@ -20,51 +28,86 @@ export type MirrorMesh = {
 };
 
 export type MirrorPanelMount = {
+  /** Authored chassis-local offset of the panel center along the
+   *  turret's local +X (forward). For the arm-mounted mirror this is
+   *  the arm length (= bodyRadius × MIRROR_ARM_LENGTH_FRAC). */
   offsetX: number;
+  /** Lateral chassis-local offset; always 0 for the regularized
+   *  single-arm mirror. */
   offsetY: number;
+  /** Extra panel yaw on top of the turret rotation; always 0 — the
+   *  panel face is perpendicular to the arm. */
   angle: number;
 };
+
+const ARM_THICKNESS_FRAC = 0.18;
 
 export function buildMirrorMesh3D(
   parent: THREE.Group,
   panels: readonly MirrorPanelMount[],
-  panelTopY: number,
-  geom: THREE.PlaneGeometry,
-  material: THREE.Material,
+  /** World-space (chassis-local) y of the panel center — the host
+   *  unit's body center. The cache uses bp.bodyCenterHeight; pass the
+   *  same value here so visual and sim panels share one center. */
+  panelCenterY: number,
+  /** Half the square's edge length (= bodyRadius). Same value the sim
+   *  cache stores in halfWidth/halfHeight. */
+  panelHalfSide: number,
+  /** Forward arm length from the turret body sphere center to the
+   *  panel center (chassis-local, along turret +X). Matches the sim
+   *  cache's `panel.offsetX`. */
+  panelArmLength: number,
+  panelGeom: THREE.PlaneGeometry,
+  armGeom: THREE.CylinderGeometry,
+  panelMaterial: THREE.Material,
+  armMaterial: THREE.Material,
   /** When true, panel Meshes are BUILT (so .position / .rotation /
    *  .scale carry the per-panel base transform) but NOT added to
    *  `root` — the caller is rendering panels through the shared
    *  InstancedMesh and reads each Mesh's transform as data. Same
-   *  shape as TurretMesh3D's `skipBarrels` pattern. */
+   *  shape as TurretMesh3D's `skipBarrels` pattern. The ARM cylinder
+   *  always attaches per-Mesh; the cap-bound shared instance is for
+   *  panels only. */
   skipPerMesh: boolean = false,
 ): MirrorMesh {
   const root = new THREE.Group();
   parent.add(root);
-  const meshes: THREE.Mesh[] = [];
-  const mirrorHeight = Math.max(panelTopY - MIRROR_BASE_Y, 1);
-  // Square panel: edge length = vertical extent. Single source of
-  // truth for both axes, matching the sim's CachedMirrorPanel which
-  // sets halfWidth = halfHeight = (topY − baseY) / 2.
-  const side = mirrorHeight;
+  const panelMeshes: THREE.Mesh[] = [];
+  const armMeshes: THREE.Mesh[] = [];
+  const side = Math.max(panelHalfSide * 2, 1);
+  const armThickness = Math.max(panelHalfSide * ARM_THICKNESS_FRAC, 0.5);
 
   for (let i = 0; i < panels.length; i++) {
-    const p = panels[i];
-    const m = new THREE.Mesh(geom, material);
-    // PlaneGeometry default lies in the XY plane with normal +Z.
-    // Rotate around local Y by -(angle + π/2) so the combined
-    // chassis → mirrorRoot → panel transforms put the panel's
-    // EDGE direction (originally +X) along world (turret.rotation +
-    // angle + π/2), and its NORMAL (originally +Z) along world
-    // (turret.rotation + angle). Pitch (rotation.x = -mirrorPitch)
-    // is applied AFTER the yaw flip in YXZ order so it rotates the
-    // panel around its edge axis — same convention the sim uses for
-    // panel orientation in MirrorPanelHit.
+    // Attachment cylinder — runs from the turret body center
+    // (root-local origin) out to the panel center along chassis-local
+    // +X (which the parent yawGroup later rotates to the turret's
+    // facing direction). The default CylinderGeometry has its axis
+    // along +Y of unit length; rotate around +Z by -π/2 so its axis
+    // points along +X, then translate the midpoint to half the arm
+    // length and scale to (length, thickness, thickness).
+    const arm = new THREE.Mesh(armGeom, armMaterial);
+    arm.rotation.z = -Math.PI / 2;
+    arm.scale.set(armThickness, panelArmLength, armThickness);
+    arm.position.set(panelArmLength / 2, panelCenterY, 0);
+    root.add(arm);
+    armMeshes.push(arm);
+
+    // Panel face — square plane perpendicular to the arm. PlaneGeometry
+    // default lies in the XY plane with normal +Z. Rotating around
+    // local Y by -π/2 puts the panel's EDGE (originally +X) along
+    // world (turret.rotation + π/2) and its NORMAL (originally +Z)
+    // along world turret.rotation, so the face looks BACK along the
+    // arm. Pitch (rotation.x = -mirrorPitch) is applied AFTER the yaw
+    // flip in YXZ order so it rotates the panel around its edge axis
+    // — same convention the sim uses for panel orientation in
+    // MirrorPanelHit.
+    const m = new THREE.Mesh(panelGeom, panelMaterial);
     m.rotation.order = 'YXZ';
-    m.rotation.y = -(p.angle + Math.PI / 2);
+    m.rotation.y = -Math.PI / 2;
     m.scale.set(side, side, 1);
-    m.position.set(p.offsetX, MIRROR_BASE_Y + mirrorHeight / 2, p.offsetY);
+    // Panel center sits at the END of the arm.
+    m.position.set(panelArmLength, panelCenterY, 0);
     if (!skipPerMesh) root.add(m);
-    meshes.push(m);
+    panelMeshes.push(m);
   }
-  return { root, panels: meshes };
+  return { root, panels: panelMeshes, arms: armMeshes };
 }

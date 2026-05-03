@@ -1,11 +1,22 @@
 // Types extracted from src/config.ts
 
+export type SnapshotDeltaResolutionConfig = {
+  positionThresholdMultiplier: number;
+  velocityThresholdMultiplier: number;
+  rotationPositionThresholdMultiplier: number;
+  rotationVelocityThresholdMultiplier: number;
+};
+
 export type SnapshotConfig = {
   deltaEnabled: boolean;
   positionThreshold: number;
   velocityThreshold: number;
   rotationPositionThreshold: number;
   rotationVelocityThreshold: number;
+  ownedEntityDelta: SnapshotDeltaResolutionConfig;
+  observedEntityDelta: SnapshotDeltaResolutionConfig;
+  ownedProjectileUpdateStride: number;
+  observedProjectileUpdateStride: number;
 };
 
 export type EmaLowConfig = {

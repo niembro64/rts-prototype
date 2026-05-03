@@ -27,30 +27,42 @@ export type HysteresisRangeMultiplier = {
   release: number;
 };
 
-// Computed absolute firing envelope. `max` is the outer fire range; `min`
-// is the optional dead zone for mortars or other close-range-limited weapons.
-// Defaults to 0/0, which means no minimum.
+// Computed absolute firing envelope. `max` is the outer fire range;
+// `min` is the optional dead zone for mortars and other close-range-
+// limited weapons — explicitly `null` when the turret can fire all the
+// way down to point-blank.
 export type FireEnvelope = {
-  min: HysteresisRange;
+  min: HysteresisRange | null;
   max: HysteresisRange;
 };
 
-// Computed absolute ranges for weapon states (in world units)
+// Computed absolute ranges for weapon states (in world units).
+//
+// `fire` is the firing envelope and is always present. `tracking` is
+// the OPTIONAL outer awareness shell — when present, the turret will
+// rotate toward an enemy that has entered tracking range even before
+// the enemy enters the fire envelope. Set explicitly to `null` for
+// turrets that don't need pre-rotation (most weapons).
 export type TurretRanges = {
-  /** Acquisition / lock / awareness range. */
-  tracking: HysteresisRange;
-  /** Legacy name for maximum fire range, kept for snapshots/UI labels. */
-  engage: HysteresisRange;
-  /** Canonical fire envelope used by targeting/firing logic. */
-  fire?: FireEnvelope;
+  tracking: HysteresisRange | null;
+  fire: FireEnvelope;
 };
 
 // Per-weapon fire-envelope multipliers authored directly on each turret
-// blueprint. Tracking is intentionally derived from the turret's base range;
-// blueprints define only where the weapon can actually fire.
+// blueprint.
+//
+// `engageRangeMin` is `null` when the weapon has no minimum firing
+// distance (most direct-fire weapons). `trackingRange` is `null` when
+// the turret only ever cares about the fire envelope (acquires +
+// engages on contact); set non-null when the turret should be aware of
+// — and rotate toward — enemies BEYOND its fire range, e.g. mirror
+// turrets that need to be already pointed when an incoming beam lands.
+// Tracking-range multipliers MUST exceed `engageRangeMax` so the
+// tracking shell sits strictly outside the fire envelope.
 export type TurretRangeOverrides = {
   engageRangeMax: HysteresisRangeMultiplier;
-  engageRangeMin: HysteresisRangeMultiplier;
+  engageRangeMin: HysteresisRangeMultiplier | null;
+  trackingRange: HysteresisRangeMultiplier | null;
 };
 
 // Transform component - position and rotation in world space.
@@ -171,7 +183,15 @@ export type CachedMirrorPanel = {
 export type Unit = {
   unitType: string;
   moveSpeed: number;
-  unitRadiusCollider: { scale: number; shot: number; push: number };
+  /** Hit/push radii. `shot` is the projectile-vs-unit collider; `push`
+   *  is the unit-vs-unit physics radius. Visual body size is the
+   *  separate `bodyRadius` field below — historically `scale` lived
+   *  here, but it was the unit's authored body size, not a collider. */
+  unitRadiusCollider: { shot: number; push: number };
+  /** Authored body radius (world units) — the unit's visible chassis
+   *  size. Drives turret head defaults, chassis-mount offsets,
+   *  mirror-panel sizing, click hit radius, and barrel placement. */
+  bodyRadius: number;
   /** World-space height of the unit's authored body center above terrain.
    *  `unitRadiusCollider.push` remains the push/collision radius. */
   bodyCenterHeight: number;
@@ -292,8 +312,12 @@ export type BeamShot = {
   dps: number;
   force: number;
   recoil: number;
+  /** Thin beam body radius used for obstruction/path tracing. */
   radius: number;
   width: number;
+  /** Endpoint damage sphere. The beam line only chooses the terminal
+   *  point; this sphere is the actual area that deals damage. */
+  damageSphere: { radius: number };
 };
 
 // Laser shot — pulsed line weapon with duration + cooldown
@@ -303,8 +327,12 @@ export type LaserShot = {
   dps: number;
   force: number;
   recoil: number;
+  /** Thin laser body radius used for obstruction/path tracing. */
   radius: number;
   width: number;
+  /** Endpoint damage sphere. The laser line only chooses the terminal
+   *  point; this sphere is the actual area that deals damage. */
+  damageSphere: { radius: number };
   duration: number;
 };
 
@@ -392,14 +420,16 @@ export type Turret = {
   turnAccel: number;
   drag: number;
   offset: Vec2;
-  /** Cached authoritative world-space mount position, written by the
-   *  server targeting pass. This is sim-only hot-path state; snapshots
-   *  still serialize offset/rotation/pitch, not this derived value. */
+  /** Cached authoritative world-space mount position, written only by
+   *  updateWeaponWorldKinematics. This is sim-only hot-path state;
+   *  snapshots still serialize offset/rotation/pitch, not this derived
+   *  value. */
   worldPos?: Vec3;
-  /** Cached world-space mount velocity computed from worldPos deltas.
-   *  This is the turret's own 3D motion, not just the carrier unit's
-   *  velocity, so moving/tilted/offset mounts feed projectile lead and
-   *  inherited muzzle velocity correctly. */
+  /** Cached world-space mount velocity computed by
+   *  updateWeaponWorldKinematics from worldPos deltas when current, or
+   *  from the carrier's velocity as a stale/first-tick fallback. This is
+   *  the turret's own 3D motion, so moving/tilted/offset mounts feed
+   *  projectile lead and inherited muzzle velocity correctly. */
   worldVelocity?: Vec3;
   /** Simulation tick corresponding to worldPos/worldVelocity. */
   worldPosTick?: number;
@@ -410,6 +440,10 @@ export type Turret = {
   aimTargetPitch?: number;
   aimErrorYaw?: number;
   aimErrorPitch?: number;
+  /** False when the current ballistic projectile aim has no exact
+   *  gravity solution. The turret can keep tracking, but firing is held
+   *  so it does not spend shells on guaranteed-short fallback shots. */
+  ballisticAimInRange?: boolean;
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
   /** Round-robin pointer across the physical barrels on this turret.
@@ -423,12 +457,31 @@ export type Turret = {
 // Projectile travel types
 export type ProjectileType = 'projectile' | 'beam' | 'laser';
 
+/** One vertex of a beam/laser polyline. The same shape covers the
+ *  start (muzzle), each mirror reflection, and the end (range
+ *  truncation, ground hit, or unit hit). Each point carries its
+ *  instantaneous 3D velocity in the world frame so the client can
+ *  extrapolate every vertex independently between snapshots — no
+ *  separate startVel/endVel fields, no separate reflections list.
+ *  Intermediate (reflection) points carry the redirecting mirror's
+ *  entityId; start and end leave it undefined. */
+export type BeamPoint = {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  mirrorEntityId?: EntityId;
+};
+
 // Projectile component. Fully 3D: velocity + prev/start/end points
 // all carry altitude. Projectile gravity is applied in the sim's
 // projectile system each tick (ballistic arc); beams and lasers
 // ignore vz and gravity (they're instantaneous line weapons).
-// Reflection points (mirror beams) also preserve z for 3D laser
-// tracing.
+// Beam polylines (start → reflections → end) live in `points`; each
+// point carries its own (vx, vy, vz) so reflected/redirected beams
+// can extrapolate every vertex on the client between snapshots.
 export type Projectile = {
   ownerId: PlayerId;
   sourceEntityId: EntityId;
@@ -445,39 +498,31 @@ export type Projectile = {
   collisionStartZ?: number;
   timeAlive: number;
   maxLifespan: number;
-  startX?: number;
-  startY?: number;
-  startZ?: number;
-  endX?: number;
-  endY?: number;
-  endZ?: number;
-  /** Beam start-point velocity (wu/sec, world frame). Sim-only field
-   *  written by the per-tick beam handler; serialized on every beam
-   *  snapshot so the client can extrapolate the start position
-   *  between snapshots. */
-  startVelX?: number;
-  startVelY?: number;
-  startVelZ?: number;
-  /** Beam end-point velocity (wu/sec, world frame). Same role as
-   *  startVel for the truncated/reflected end point — but updated only
-   *  when the host re-traces the beam path (LOD-strided), so it
-   *  represents (current − previous-trace) / elapsed-trace-seconds. */
-  endVelX?: number;
-  endVelY?: number;
-  endVelZ?: number;
+  /** Beam/laser polyline. Index 0 = start (muzzle), last = end
+   *  (range/hit/ground), middles = reflections (each carries its own
+   *  mirrorEntityId). Undefined on non-line projectiles. Mutated in
+   *  place — each re-trace resizes the array length and overwrites
+   *  the per-vertex fields, so the array reference is stable. */
+  points?: BeamPoint[];
   /** Internal: previous tick's start position. Used to compute the
-   *  per-tick start-point velocity. Not serialized. */
+   *  per-tick start-point velocity (points[0].vx/vy/vz). Not
+   *  serialized. */
   prevStartX?: number;
   prevStartY?: number;
   prevStartZ?: number;
   /** Internal: previous re-trace tick's end position. Used to compute
-   *  endVel across the re-trace stride. Not serialized. */
+   *  the end-point velocity across the re-trace stride. Not
+   *  serialized. */
   prevEndX?: number;
   prevEndY?: number;
   prevEndZ?: number;
   /** Internal: tick at which prevEnd* was captured, used as the dt for
    *  the next end-velocity finite difference. Not serialized. */
   prevEndTick?: number;
+  /** Internal: previous re-trace tick's reflection points keyed by
+   *  mirrorEntityId. Used to finite-diff each reflection point's
+   *  velocity across the re-trace stride. Not serialized. */
+  prevReflectionPoints?: { mirrorEntityId: EntityId; x: number; y: number; z: number; tick: number }[];
   targetEntityId?: EntityId;
   obstructionT?: number;
   obstructionTick?: number;
@@ -487,7 +532,6 @@ export type Projectile = {
   hasLeftSource?: boolean;
   homingTargetId?: EntityId;
   homingTurnRate?: number;
-  reflections?: { x: number; y: number; z: number; mirrorEntityId: EntityId }[];
   lastSentVelX?: number;
   lastSentVelY?: number;
   lastSentVelZ?: number;
@@ -552,7 +596,8 @@ export type UnitBuildConfig = {
   unitId: string;
   name: string;
   resourceCost: number;
-  unitRadiusCollider: { scale: number; shot: number; push: number };
+  unitRadiusCollider: { shot: number; push: number };
+  bodyRadius: number;
   bodyCenterHeight: number;
   moveSpeed: number;
   mass: number;
@@ -606,6 +651,8 @@ export type Entity = {
   dgunProjectile?: DGunProjectile;
   buildingType?: BuildingType;
   /** For extractors only — the id of the metal deposit this building
-   *  occupies. Used to free the deposit on destruction. */
+   *  mostly overlaps. Kept for debug/UI; production is cell-fractional. */
   metalDepositId?: number;
+  /** For extractors only — actual metal/sec produced from covered deposit cells. */
+  metalExtractionRate?: number;
 };

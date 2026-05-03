@@ -1,6 +1,6 @@
 // Render3DEntities — extrudes the 2D sim primitives into 3D shapes.
 //
-// - Units:        cylinder (radius from unitRadiusCollider.scale, height ∝ radius)
+// - Units:        cylinder (radius from unit.bodyRadius, height ∝ radius)
 // - Turrets:      one per entry in entity.turrets, positioned at chassis-local
 //                 offset, rotated to the turret's firing angle, with white
 //                 barrel cylinders whose length comes from config.barrel.
@@ -17,7 +17,6 @@ import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
 import type { SpinConfig } from '../../config';
 import {
-  MIRROR_EXTRA_HEIGHT,
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
@@ -42,7 +41,7 @@ import {
   type RenderObjectLodTier,
 } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
-import { getBodyGeom, getTurretRootY, disposeBodyGeoms } from './BodyShape3D';
+import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
 import {
   buildBuildingShape,
   buildConstructionEmitterRig,
@@ -62,7 +61,9 @@ import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getFactoryBuildSpot, getFactoryConstructionRadius, type FactoryBuildSpot } from '../sim/factoryConstructionSite';
 import { getDriftMode, getGraphicsConfigFor, getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
 import { getDriftPreset, halfLifeBlend } from '../network/driftEma';
-import { getWeaponWorldPosition, getTurretHeadRadius, lerp, lerpAngle } from '../math';
+import { getTurretHeadRadius, lerp, lerpAngle } from '../math';
+import { getTurretWorldMount } from '../math/MountGeometry';
+import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import { normalizeLodCellSize } from '../lodGridMath';
 import { landCellIndexForSize } from '../landGrid';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
@@ -1118,7 +1119,7 @@ export class Render3DEntities {
     }
 
     const collider = entity.unit?.unitRadiusCollider;
-    if (!collider) return;
+    if (!entity.unit || !collider) return;
 
     const rings = m.radiusRings ?? (m.radiusRings = {});
 
@@ -1131,7 +1132,7 @@ export class Render3DEntities {
 
     this.setUnitRadiusSphere(
       rings, 'scale', showScale, m.group,
-      centerY, collider.scale, this.radiusMatScale,
+      centerY, entity.unit.bodyRadius, this.radiusMatScale,
     );
     this.setUnitRadiusSphere(
       rings, 'shot', showShot, m.group,
@@ -1211,27 +1212,44 @@ export class Render3DEntities {
         const weapon = entity.turrets[i];
         const tm = m.turrets[i];
         if (!tm) continue;
-        const wp = getWeaponWorldPosition(ux, uy, cos, sin, weapon.offset.x, weapon.offset.y);
-        // Mount Z was cached on weapon.worldPos by targetingSystem;
-        // fall back to unit-sphere-center when targeting hasn't run
-        // yet this tick (new units).
-        const mountZ = weapon.worldPos?.z ?? uz;
+        const cachedMount = weapon.worldPos;
+        const fallbackMount = cachedMount
+          ? undefined
+          : getTurretWorldMount(
+              ux, uy, getUnitGroundZ(entity),
+              cos, sin,
+              weapon.offset.x, weapon.offset.y, getTurretMountHeight(entity, i),
+              getGroundNormal(
+                ux, uy,
+                this.clientViewState.getMapWidth(),
+                this.clientViewState.getMapHeight(),
+              ),
+            );
+        const mountX = cachedMount?.x ?? fallbackMount!.x;
+        const mountY = cachedMount?.y ?? fallbackMount!.y;
+        // Use the same full 3D mount cache that the sim targeting path
+        // writes. This keeps debug range spheres centered on rearranged
+        // rear/side turrets instead of mixing old flat XY math with a
+        // newer mount Z.
+        const mountZ = cachedMount?.z ?? fallbackMount!.z;
 
+        // Tracking shell only renders when this turret actually has
+        // one — most weapons don't (engage = acquire on contact).
         this.setRangeSphere(
-          tm, 'trackAcquire', showTrackAcquire, wp.x, wp.y, mountZ,
-          weapon.ranges.tracking.acquire, this.ringMatTrackAcquire,
+          tm, 'trackAcquire', showTrackAcquire, mountX, mountY, mountZ,
+          weapon.ranges.tracking?.acquire ?? null, this.ringMatTrackAcquire,
         );
         this.setRangeSphere(
-          tm, 'trackRelease', showTrackRelease, wp.x, wp.y, mountZ,
-          weapon.ranges.tracking.release, this.ringMatTrackRelease,
+          tm, 'trackRelease', showTrackRelease, mountX, mountY, mountZ,
+          weapon.ranges.tracking?.release ?? null, this.ringMatTrackRelease,
         );
         this.setRangeSphere(
-          tm, 'engageAcquire', showEngageAcquire, wp.x, wp.y, mountZ,
-          weapon.ranges.engage.acquire, this.ringMatEngageAcquire,
+          tm, 'engageAcquire', showEngageAcquire, mountX, mountY, mountZ,
+          weapon.ranges.fire.max.acquire, this.ringMatEngageAcquire,
         );
         this.setRangeSphere(
-          tm, 'engageRelease', showEngageRelease, wp.x, wp.y, mountZ,
-          weapon.ranges.engage.release, this.ringMatEngageRelease,
+          tm, 'engageRelease', showEngageRelease, mountX, mountY, mountZ,
+          weapon.ranges.fire.max.release, this.ringMatEngageRelease,
         );
       }
     } else if (m.rangeRingsVisible) {
@@ -1280,12 +1298,15 @@ export class Render3DEntities {
     key: 'trackAcquire' | 'trackRelease' | 'engageAcquire' | 'engageRelease',
     want: boolean,
     cx: number, cy: number, cz: number,
-    radius: number,
+    /** Radius in world units, or `null` when this turret has no shell
+     *  for this channel (e.g. tracking radius on a turret without a
+     *  tracking range). Null hides any existing ring without erroring. */
+    radius: number | null,
     mat: THREE.LineBasicMaterial,
   ): void {
     const rings = tm.rangeRings ?? (tm.rangeRings = {});
     let ring = rings[key];
-    if (want) {
+    if (want && radius !== null) {
       if (!ring) {
         ring = new THREE.LineSegments(this.radiusSphereGeom, mat);
         this.world.add(ring);
@@ -1658,7 +1679,7 @@ export class Render3DEntities {
       }
       const wasHidden = this.unitInstancedHiddenIds.delete(e.id);
 
-      const radius = e.unit?.unitRadiusCollider.scale
+      const radius = e.unit?.bodyRadius
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;
       const bodyCenterHeight = getUnitBodyCenterHeight(e.unit);
@@ -2207,7 +2228,7 @@ export class Render3DEntities {
       // footprint, matching the 2D renderer. Body height is per-unit
       // (see BodyShape3D / BodyDimensions); turrets mount on top of
       // whatever height the body resolves to.
-      const radius = e.unit?.unitRadiusCollider.scale
+      const radius = e.unit?.bodyRadius
         ?? e.unit?.unitRadiusCollider.shot
         ?? 15;
       const pid = e.ownership?.playerId;
@@ -2463,24 +2484,22 @@ export class Render3DEntities {
         );
 
 
-        // Mirror panels (e.g. Loris): standing slabs that track the turret.
+        // Mirror panels (e.g. Loris): square slabs mounted at arm's
+        // length out from the turret body sphere. The panel offset
+        // (= arm length) lives on each panel's `offsetX` from
+        // mirrorPanelCache; we use the first panel's value here so the
+        // visual arm + panel match the sim's collision rectangle.
         const mirrorPanels = e.unit?.mirrorPanels;
-        if (mirrorPanels && mirrorPanels.length > 0) {
-          // Panel column rises 2 × hostHeadRadius above the chassis top
-          // — the same span the host turret's spherical head would
-          // occupy if it weren't hidden — plus MIRROR_EXTRA_HEIGHT so
-          // the panels read as taller than the head they replace. Host
-          // turret is index 0; its bodyRadius (when set) wins.
-          const hostHeadRadius = getTurretHeadRadius(radius, turrets[0]?.config);
-          const hostRootY = getTurretRootY(
-            bodyShape,
-            radius,
-            turrets[0]?.offset.x ?? 0,
-            turrets[0]?.offset.y ?? 0,
-            hostHeadRadius,
-            bp?.turrets[0],
-          );
-          const panelTopY = hostRootY + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
+        if (mirrorPanels && mirrorPanels.length > 0 && e.unit) {
+          const panelHalfSide = e.unit.bodyRadius;
+          const panelArmLength = mirrorPanels[0].offsetX;
+          // Panel world-y should be the unit's bodyCenterHeight; the
+          // mesh is parented to liftGroup at y = chassisLift, so the
+          // panel-local y must subtract chassisLift to land at
+          // bodyCenterHeight in world space — same trick the turret
+          // head root uses.
+          const panelCenterY =
+            getUnitBodyCenterHeight(e.unit) - liftGroup.position.y;
           // Mirror panels parent to liftGroup like turrets — they're
           // physically attached to the chassis. Try to alloc one
           // slot per panel through the shared mirrorPanelInstanced
@@ -2505,8 +2524,10 @@ export class Render3DEntities {
             }
           }
           m.mirrors = buildMirrorMesh3D(
-            liftGroup, mirrorPanels, panelTopY,
-            this.mirrorGeom, this.getMirrorShinyMat(pid),
+            liftGroup, mirrorPanels,
+            panelCenterY, panelHalfSide, panelArmLength,
+            this.mirrorGeom, this.barrelGeom,
+            this.getMirrorShinyMat(pid), this.barrelMat,
             allMirrorAlloc, // skipPerMesh when instancing is on
           );
           if (allMirrorAlloc) m.mirrors.panelSlots = allocedPanelSlots;
@@ -2703,12 +2724,6 @@ export class Render3DEntities {
         }
       }
 
-      // Turrets now mount on top of the per-unit body instead of a
-      // shared CHASSIS_HEIGHT constant. Spheroid-bodied units like the
-      // arachnid get a tall mount; squat polygons (scout, burst) get a
-      // lower one.
-      const bodyTopY = bodyEntry.topY * radius;
-
       // Selection halo — low torus wrapping the unit's base. Material
       // is the renderer-owned shared instance; the mesh is per-unit
       // so its scale tracks the unit's render radius.
@@ -2750,45 +2765,20 @@ export class Render3DEntities {
       // shooting turrets after it sit on top of the mirror stack, matching
       // getTurretMountHeight() on the sim side.
       const spinState = this.barrelSpins.get(e.id);
-      const unitHasMirrorsHere = (e.unit?.mirrorPanels?.length ?? 0) > 0;
-      const hostHeadRadiusForStack = unitHasMirrorsHere
-        ? getTurretHeadRadius(radius, turrets[0]?.config)
-        : 0;
-      const hostBodyTopYForStack = unitHasMirrorsHere
-        ? getTurretRootY(
-            m.bodyShape!,
-            radius,
-            turrets[0]?.offset.x ?? 0,
-            turrets[0]?.offset.y ?? 0,
-            hostHeadRadiusForStack,
-            m.turretMounts?.[0],
-          )
-        : bodyTopY;
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
         const headRadius = tm.headRadius ?? getTurretHeadRadius(radius, t.config);
-        const mount = m.turretMounts?.[i];
-        const bodyMountTopY = (
-          m.hideChassis === true &&
-          mount?.headCenterHeightFrac !== undefined &&
-          e.unit?.bodyCenterHeight !== undefined
-        )
-          ? e.unit.bodyCenterHeight - (m.chassisLift ?? 0) - headRadius
-          : getTurretRootY(
-              m.bodyShape!,
-              radius,
-              t.offset.x,
-              t.offset.y,
-              headRadius,
-              mount,
-            );
-        // Non-mirror turrets on mirror-host units sit ON TOP of the
-        // mirror panel stack: root Y = panel top in chassis-local
-        // coords = hostBodyTopY + 2·hostHeadRadius + MIRROR_EXTRA_HEIGHT.
-        const turretMountY = unitHasMirrorsHere && i > 0
-          ? hostBodyTopYForStack + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT
-          : bodyMountTopY;
+        // ONE rule for every turret on every unit: head sphere center
+        // sits at the unit's authored body center (same point the
+        // UNIT RAD: SCAL debug sphere draws at). Mount root sits one
+        // head-radius below body center so that root + headRadius =
+        // bodyCenterHeight in world frame; the chassisLift subtraction
+        // puts that into the liftGroup-local frame the per-tick matrix
+        // composer uses. Sim's getTurretMountHeight returns
+        // bodyCenterHeight, so spawn altitude and visible head stay
+        // locked together for every turret size on every body shape.
+        const turretMountY = (e.unit?.bodyCenterHeight ?? 0) - (m.chassisLift ?? 0) - headRadius;
         tm.root.position.set(t.offset.x, turretMountY, t.offset.y);
 
         // Head InstancedMesh write — the head sphere's chassis-local
@@ -3606,7 +3596,7 @@ export class Render3DEntities {
     if (queuedUnitType) {
       try {
         const bp = getUnitBlueprint(queuedUnitType);
-        blueprintRadius = bp.unitRadiusCollider.scale;
+        blueprintRadius = bp.bodyRadius;
         buildSpotRadius = bp.unitRadiusCollider.push;
       } catch {
         // Unknown queue ids should not break rendering; keep the generic bay ghost.

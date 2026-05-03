@@ -11,6 +11,7 @@ import type { ShotBlueprint } from './types';
 const BEAM_WIDTH = 6;
 const BEAM_RECOIL = 2000;
 const FIRE_EXPLOSION_RADIUS_MULTIPLIER = 3;
+const BEAM_DAMAGE_SPHERE_RADIUS = BEAM_WIDTH * 1.5;
 
 export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightShot: {
@@ -180,6 +181,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     recoil: BEAM_RECOIL,
     radius: BEAM_WIDTH / 2,
     width: BEAM_WIDTH,
+    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS },
     duration: 300,
     hitSound: AUDIO.event.hit.laserShot,
   },
@@ -191,6 +193,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     recoil: BEAM_RECOIL,
     radius: BEAM_WIDTH / 2,
     width: BEAM_WIDTH,
+    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS },
     hitSound: AUDIO.event.hit.beamShot,
   },
   // megaBeam — beefy single-emitter beam used by the widow head and
@@ -205,6 +208,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     recoil: BEAM_RECOIL,
     radius: BEAM_WIDTH,
     width: BEAM_WIDTH * 2,
+    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS * 1.6 },
     hitSound: AUDIO.event.hit.megaBeamShot,
   },
 };

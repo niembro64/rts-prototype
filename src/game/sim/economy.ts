@@ -71,7 +71,29 @@ export class EconomyManager {
 
   // Set full economy state for a player (used for network sync)
   setEconomyState(playerId: PlayerId, state: EconomyState): void {
-    this.economies.set(playerId, { ...state });
+    let economy = this.economies.get(playerId);
+    if (!economy) {
+      economy = createEconomyState();
+      this.economies.set(playerId, economy);
+    }
+
+    economy.stockpile.curr = state.stockpile.curr;
+    economy.stockpile.max = state.stockpile.max;
+    economy.income.base = state.income.base;
+    economy.income.production = state.income.production;
+    economy.expenditure = state.expenditure;
+
+    economy.mana.stockpile.curr = state.mana.stockpile.curr;
+    economy.mana.stockpile.max = state.mana.stockpile.max;
+    economy.mana.income.base = state.mana.income.base;
+    economy.mana.income.territory = state.mana.income.territory;
+    economy.mana.expenditure = state.mana.expenditure;
+
+    economy.metal.stockpile.curr = state.metal.stockpile.curr;
+    economy.metal.stockpile.max = state.metal.stockpile.max;
+    economy.metal.income.base = state.metal.income.base;
+    economy.metal.income.extraction = state.metal.income.extraction;
+    economy.metal.expenditure = state.metal.expenditure;
   }
 
   // Set energy production (called when solar panels change)

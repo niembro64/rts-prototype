@@ -77,10 +77,9 @@ const BODY_SHAPES = {
   },
   formik: {
     kind: 'composite',
-    // Head sphere intentionally removed — the turret head sphere now
-    // sits at offsetForward=0.78 (chassisMount below) and visually
-    // replaces the old body head, so a separate body sphere there
-    // would just clip through the turret.
+    // Formik keeps a small forward head sphere. Its combat turret
+    // lives on the raised rear abdomen/back segment instead of
+    // replacing the head silhouette.
     parts: [
       {
         kind: 'oval',
@@ -96,6 +95,7 @@ const BODY_SHAPES = {
         yFrac: 0.72,
         zFrac: 0.55,
       },
+      { kind: 'circle', offsetForward: 0.78, radiusFrac: 0.42, yFrac: 0.42 },
     ],
   },
   snipe: { kind: 'oval', xFrac: 0.5, yFrac: (0.5 + 0.35) / 2, zFrac: 0.35 },
@@ -132,8 +132,7 @@ const BODY_SHAPES = {
 const WIDOW_ABDOMEN_RADIUS_FRAC = 1.15;
 const WIDOW_ABDOMEN_FORWARD_FRAC = -1.1;
 const TARANTULA_ABDOMEN_FORWARD_FRAC = -0.65;
-const FORMIK_REPLACED_HEAD_FORWARD_FRAC = 0.78;
-const FORMIK_REPLACED_HEAD_CENTER_HEIGHT_FRAC = 0.42;
+const FORMIK_BACK_SEGMENT_FORWARD_FRAC = -0.85;
 const TICK_REPLACED_HEAD_CENTER_HEIGHT_FRAC = 0.37;
 const DADDY_VISUAL_RADIUS = 13;
 const DADDY_PUSH_RADIUS = 15;
@@ -175,7 +174,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'JKL',
     hp: 55,
     moveSpeed: 300,
-    unitRadiusCollider: { scale: 8, shot: 6, push: 8 * 1.2 },
+    unitRadiusCollider: { shot: 6, push: 8 * 1.2 },
+    bodyRadius: 8,
     bodyCenterHeight: 8 * 1.2,
     mass: 30,
     resourceCost: 50,
@@ -203,7 +203,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'LNX',
     hp: 60,
     moveSpeed: 170,
-    unitRadiusCollider: { scale: 10, shot: 7, push: 10 * 1.3 },
+    unitRadiusCollider: { shot: 7, push: 10 * 1.3 },
+    bodyRadius: 10,
     bodyCenterHeight: 10 * 1.3,
     mass: 40,
     resourceCost: 90,
@@ -231,10 +232,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 200,
     moveSpeed: 200,
     unitRadiusCollider: {
-      scale: DADDY_VISUAL_RADIUS,
       shot: 9,
       push: DADDY_PUSH_RADIUS,
     },
+    bodyRadius: DADDY_VISUAL_RADIUS,
     bodyCenterHeight: 60,
     mass: 30,
     resourceCost: 350,
@@ -271,7 +272,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'BDG',
     hp: 300,
     moveSpeed: 200,
-    unitRadiusCollider: { scale: 16, shot: 13, push: 16 * 1.4 },
+    unitRadiusCollider: { shot: 13, push: 16 * 1.4 },
+    bodyRadius: 16,
     bodyCenterHeight: 16 * 1.4,
     mass: 300,
     resourceCost: 300,
@@ -298,7 +300,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'MGS',
     hp: 200,
     moveSpeed: 220,
-    unitRadiusCollider: { scale: 20, shot: 12, push: 20 * 1.2 },
+    unitRadiusCollider: { shot: 12, push: 20 * 1.2 },
+    bodyRadius: 20,
     bodyCenterHeight: 20 * 1.2,
     mass: 200,
     resourceCost: 220,
@@ -326,8 +329,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'TCK',
     hp: 55,
     moveSpeed: 120,
-    unitRadiusCollider: { scale: 10, shot: 8, push: 11 * 1.1 },
-    bodyCenterHeight: 11 * 1.1,
+    unitRadiusCollider: { shot: 8, push: 11 * 1.1 },
+    bodyRadius: 10,
+    bodyCenterHeight: 8,
     mass: 30,
     resourceCost: 35,
     turrets: [
@@ -358,7 +362,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'MMT',
     hp: 900,
     moveSpeed: 60,
-    unitRadiusCollider: { scale: 24, shot: 24, push: 24 * 1.5 },
+    unitRadiusCollider: { shot: 24, push: 24 * 1.5 },
+    bodyRadius: 24,
     bodyCenterHeight: 24 * 1.5,
     mass: 1000,
     resourceCost: 1200,
@@ -386,17 +391,17 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     // Larger than Widow (scale 30 → 40) and tougher to match.
     hp: 3200,
     moveSpeed: 60,
-    unitRadiusCollider: { scale: 40, shot: 50, push: 50 * 1.3 },
+    unitRadiusCollider: { shot: 50, push: 50 * 1.3 },
+    bodyRadius: 40,
     bodyCenterHeight: 50 * 1.3,
-    mass: 500,
+    mass: 2500,
     resourceCost: 4000,
     turrets: [
-      turretMount('gatlingMortarTurret', FORMIK_REPLACED_HEAD_CENTER_HEIGHT_FRAC),
+      turretMount('gatlingMortarTurret'),
     ],
-    // Mount sits at the same forward position as the (removed) head
-    // sphere — so the turret's head visually takes the head's place
-    // on the silhouette instead of perched between thorax and head.
-    chassisMounts: [{ x: FORMIK_REPLACED_HEAD_FORWARD_FRAC, y: 0 }],
+    // Mount on the top of the rear abdomen/back segment. The forward
+    // head sphere remains a body part, not a turret replacement.
+    chassisMounts: [{ x: FORMIK_BACK_SEGMENT_FORWARD_FRAC, y: 0 }],
     bodyShape: BODY_SHAPES.formik,
     locomotion: {
       type: 'legs',
@@ -423,9 +428,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'WDW',
     hp: 2400,
     moveSpeed: 70,
-    unitRadiusCollider: { scale: 30, shot: 40, push: 40 * 1.3 },
+    unitRadiusCollider: { shot: 40, push: 40 * 1.3 },
+    bodyRadius: 30,
     bodyCenterHeight: 40 * 1.3,
-    mass: 200,
+    mass: 1000,
     resourceCost: 3000,
     turrets: [
       turretMount('lightTurret'), // front-left
@@ -460,7 +466,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'HPO',
     hp: 1500,
     moveSpeed: 55,
-    unitRadiusCollider: { scale: 30, shot: 27, push: 45 * 1.2 },
+    unitRadiusCollider: { shot: 27, push: 45 * 1.2 },
+    bodyRadius: 30,
     bodyCenterHeight: 45 * 1.2,
     mass: 1500,
     resourceCost: 2500,
@@ -487,7 +494,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'TRN',
     hp: 100,
     moveSpeed: 200,
-    unitRadiusCollider: { scale: 11, shot: 13, push: 11 * 1.8 },
+    unitRadiusCollider: { shot: 13, push: 11 * 1.8 },
+    bodyRadius: 11,
     bodyCenterHeight: 11 * 1.8,
     mass: 18,
     resourceCost: 300,
@@ -520,7 +528,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'LRS',
     hp: 200,
     moveSpeed: 160,
-    unitRadiusCollider: { scale: 10, shot: 8, push: 24 },
+    unitRadiusCollider: { shot: 8, push: 24 },
+    bodyRadius: 10,
     bodyCenterHeight: 24,
     mass: 20,
     resourceCost: 190,
@@ -547,7 +556,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'CMD',
     hp: 500,
     moveSpeed: 200,
-    unitRadiusCollider: { scale: 20, shot: 20, push: 20 },
+    unitRadiusCollider: { shot: 20, push: 20 },
+    bodyRadius: 20,
     bodyCenterHeight: 20,
     mass: 60,
     resourceCost: 400,

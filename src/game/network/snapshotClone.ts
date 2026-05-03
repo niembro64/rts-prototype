@@ -45,17 +45,19 @@ function cloneAction(a: NetworkServerSnapshotAction): NetworkServerSnapshotActio
 }
 
 function cloneTurret(t: NetworkServerSnapshotTurret): NetworkServerSnapshotTurret {
+  const tr = t.turret.ranges.tracking;
+  const fmin = t.turret.ranges.fire.min;
   return {
     turret: {
       id: t.turret.id,
       ranges: {
-        tracking: {
-          acquire: t.turret.ranges.tracking.acquire,
-          release: t.turret.ranges.tracking.release,
-        },
-        engage: {
-          acquire: t.turret.ranges.engage.acquire,
-          release: t.turret.ranges.engage.release,
+        tracking: tr ? { acquire: tr.acquire, release: tr.release } : null,
+        fire: {
+          min: fmin ? { acquire: fmin.acquire, release: fmin.release } : null,
+          max: {
+            acquire: t.turret.ranges.fire.max.acquire,
+            release: t.turret.ranges.fire.max.release,
+          },
         },
       },
       angular: {
@@ -86,10 +88,10 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       unitType: e.unit.unitType,
       hp: { curr: e.unit.hp.curr, max: e.unit.hp.max },
       collider: e.unit.collider ? {
-        scale: e.unit.collider.scale,
         shot: e.unit.collider.shot,
         push: e.unit.collider.push,
       } : undefined,
+      bodyRadius: e.unit.bodyRadius,
       bodyCenterHeight: e.unit.bodyCenterHeight,
       moveSpeed: e.unit.moveSpeed,
       mass: e.unit.mass,
@@ -193,16 +195,15 @@ function cloneVelocityUpdate(v: NetworkServerSnapshotVelocityUpdate): NetworkSer
 function cloneBeamUpdate(b: NetworkServerSnapshotBeamUpdate): NetworkServerSnapshotBeamUpdate {
   return {
     id: b.id,
-    start: { x: b.start.x, y: b.start.y, z: b.start.z },
-    end: { x: b.end.x, y: b.end.y, z: b.end.z },
-    startVel: { x: b.startVel.x, y: b.startVel.y, z: b.startVel.z },
-    endVel: { x: b.endVel.x, y: b.endVel.y, z: b.endVel.z },
     obstructionT: b.obstructionT,
-    reflections: b.reflections?.map((r) => ({
-      x: r.x,
-      y: r.y,
-      z: r.z,
-      mirrorEntityId: r.mirrorEntityId,
+    points: b.points.map((p) => ({
+      x: p.x,
+      y: p.y,
+      z: p.z,
+      vx: p.vx,
+      vy: p.vy,
+      vz: p.vz,
+      mirrorEntityId: p.mirrorEntityId,
     })),
   };
 }
@@ -310,10 +311,25 @@ function copyTurretInto(
   dst: NetworkServerSnapshotTurret,
 ): NetworkServerSnapshotTurret {
   dst.turret.id = src.turret.id;
-  dst.turret.ranges.tracking.acquire = src.turret.ranges.tracking.acquire;
-  dst.turret.ranges.tracking.release = src.turret.ranges.tracking.release;
-  dst.turret.ranges.engage.acquire = src.turret.ranges.engage.acquire;
-  dst.turret.ranges.engage.release = src.turret.ranges.engage.release;
+  // Tracking shell — null when the turret only uses fire range.
+  if (src.turret.ranges.tracking) {
+    dst.turret.ranges.tracking = dst.turret.ranges.tracking ?? { acquire: 0, release: 0 };
+    dst.turret.ranges.tracking.acquire = src.turret.ranges.tracking.acquire;
+    dst.turret.ranges.tracking.release = src.turret.ranges.tracking.release;
+  } else {
+    dst.turret.ranges.tracking = null;
+  }
+  // Fire envelope max — always present.
+  dst.turret.ranges.fire.max.acquire = src.turret.ranges.fire.max.acquire;
+  dst.turret.ranges.fire.max.release = src.turret.ranges.fire.max.release;
+  // Fire envelope min — null when no dead zone.
+  if (src.turret.ranges.fire.min) {
+    dst.turret.ranges.fire.min = dst.turret.ranges.fire.min ?? { acquire: 0, release: 0 };
+    dst.turret.ranges.fire.min.acquire = src.turret.ranges.fire.min.acquire;
+    dst.turret.ranges.fire.min.release = src.turret.ranges.fire.min.release;
+  } else {
+    dst.turret.ranges.fire.min = null;
+  }
   dst.turret.angular.rot = src.turret.angular.rot;
   dst.turret.angular.vel = src.turret.angular.vel;
   dst.turret.angular.acc = src.turret.angular.acc;
@@ -332,8 +348,8 @@ function createReusableTurret(): NetworkServerSnapshotTurret {
     turret: {
       id: '',
       ranges: {
-        tracking: { acquire: 0, release: 0 },
-        engage: { acquire: 0, release: 0 },
+        tracking: null,
+        fire: { min: null, max: { acquire: 0, release: 0 } },
       },
       angular: { rot: 0, vel: 0, acc: 0, drag: 0, pitch: 0 },
       pos: { offset: { x: 0, y: 0 } },
@@ -354,13 +370,13 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
   dst.hp.curr = src.hp.curr;
   dst.hp.max = src.hp.max;
   if (src.collider) {
-    if (!dst.collider) dst.collider = { scale: 0, shot: 0, push: 0 };
-    dst.collider.scale = src.collider.scale;
+    if (!dst.collider) dst.collider = { shot: 0, push: 0 };
     dst.collider.shot = src.collider.shot;
     dst.collider.push = src.collider.push;
   } else {
     dst.collider = undefined;
   }
+  dst.bodyRadius = src.bodyRadius;
   dst.bodyCenterHeight = src.bodyCenterHeight;
   dst.moveSpeed = src.moveSpeed;
   dst.mass = src.mass;
@@ -642,13 +658,7 @@ function createReusableVelocity(): NetworkServerSnapshotVelocityUpdate {
 }
 
 function createReusableBeam(): NetworkServerSnapshotBeamUpdate {
-  return {
-    id: 0,
-    start: { x: 0, y: 0, z: 0 },
-    end: { x: 0, y: 0, z: 0 },
-    startVel: { x: 0, y: 0, z: 0 },
-    endVel: { x: 0, y: 0, z: 0 },
-  };
+  return { id: 0, points: [] };
 }
 
 function copyBeamInto(
@@ -656,36 +666,19 @@ function copyBeamInto(
   dst: NetworkServerSnapshotBeamUpdate,
 ): NetworkServerSnapshotBeamUpdate {
   dst.id = src.id;
-  dst.start.x = src.start.x;
-  dst.start.y = src.start.y;
-  dst.start.z = src.start.z;
-  dst.end.x = src.end.x;
-  dst.end.y = src.end.y;
-  dst.end.z = src.end.z;
-  dst.startVel.x = src.startVel.x;
-  dst.startVel.y = src.startVel.y;
-  dst.startVel.z = src.startVel.z;
-  dst.endVel.x = src.endVel.x;
-  dst.endVel.y = src.endVel.y;
-  dst.endVel.z = src.endVel.z;
   dst.obstructionT = src.obstructionT;
-  if (src.reflections && src.reflections.length > 0) {
-    const reflections = dst.reflections ?? (dst.reflections = []);
-    reflections.length = src.reflections.length;
-    for (let i = 0; i < src.reflections.length; i++) {
-      const sr = src.reflections[i];
-      let dr = reflections[i];
-      if (!dr) {
-        dr = { x: 0, y: 0, z: 0, mirrorEntityId: 0 };
-        reflections[i] = dr;
-      }
-      dr.x = sr.x;
-      dr.y = sr.y;
-      dr.z = sr.z;
-      dr.mirrorEntityId = sr.mirrorEntityId;
+  const dstPts = dst.points;
+  dstPts.length = src.points.length;
+  for (let i = 0; i < src.points.length; i++) {
+    const sp = src.points[i];
+    let dp = dstPts[i];
+    if (!dp) {
+      dp = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+      dstPts[i] = dp;
     }
-  } else {
-    dst.reflections = undefined;
+    dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
+    dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
+    dp.mirrorEntityId = sp.mirrorEntityId;
   }
   return dst;
 }

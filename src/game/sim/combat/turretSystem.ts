@@ -22,12 +22,11 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
-import { getMovementAngle, resolveWeaponWorldPos, getTurretMountHeight, turretMaskIncludes } from './combatUtils';
+import { getMovementAngle, resolveWeaponWorldMount, turretBit, turretMaskIncludes } from './combatUtils';
 import { getTransformCosSin, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 import { createDirectTurretAimScratch, createProjectileTurretAimScratch, solveDirectTurretAim, solveProjectileTurretAim } from './aimSolver';
-import { getUnitGroundZ } from '../unitGeometry';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
  *  renderer's pitch range and keeps the ballistic solver from driving
@@ -36,6 +35,7 @@ const PITCH_MIN = -Math.PI / 2;
 const PITCH_MAX = Math.PI / 2;
 const _directAim = createDirectTurretAimScratch();
 const _projectileAim = createProjectileTurretAimScratch();
+const _turretMount = { x: 0, y: 0, z: 0 };
 
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedUnits()): void {
   const dtSec = dtMs / 1000;
@@ -46,6 +46,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
 
     const { cos, sin } = getTransformCosSin(unit.transform);
     const activeMask = unit.unit.activeTurretMask;
+    const currentTick = world.getTick();
+    const unitGroundZ = unit.transform.z - unit.unit.bodyCenterHeight;
 
     for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
       if (!turretMaskIncludes(activeMask, weaponIndex)) continue;
@@ -67,6 +69,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         weapon.aimTargetPitch = Math.PI / 2;
         weapon.aimErrorYaw = 0;
         weapon.aimErrorPitch = 0;
+        weapon.ballisticAimInRange = true;
         continue;
       }
 
@@ -74,42 +77,39 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       let targetAngle: number | null = null;
       let targetPitch = 0;
       let hasActiveTarget = false;
+      weapon.ballisticAimInRange = true;
 
       if (weapon.target !== null) {
         const target = world.getEntity(weapon.target);
         if (target) {
           // Origin (weapon mount) in true 3D world coords. The
           // targeting system runs earlier in the same tick and
-          // populates `weapon.worldPos.{x,y,z}` via getTurretWorldMount,
-          // which applies the chassis tilt to the chassis-local mount
+          // populates `weapon.worldPos.{x,y,z}` through
+          // updateWeaponWorldKinematics, which applies the chassis tilt
+          // to the chassis-local mount
           // — exactly the same point projectile spawn and beam tracer
           // use. Reading those three numbers here keeps aim, fire,
           // and the rendered barrel locked together on slopes; if for
           // any reason worldPos isn't populated (very first tick on a
           // newly spawned unit) we fall back to the upright math.
-          const unitGroundZ = getUnitGroundZ(unit);
-          let weaponX: number;
-          let weaponY: number;
-          let mountZ: number;
-          if (weapon.worldPos) {
-            weaponX = weapon.worldPos.x;
-            weaponY = weapon.worldPos.y;
-            mountZ = weapon.worldPos.z;
-          } else {
-            const wp = resolveWeaponWorldPos(weapon, unit.transform.x, unit.transform.y, cos, sin);
-            weaponX = wp.x;
-            weaponY = wp.y;
-            mountZ = unitGroundZ + getTurretMountHeight(unit, weaponIndex);
-          }
+          const mount = resolveWeaponWorldMount(
+            unit, weapon, weaponIndex,
+            cos, sin,
+            { currentTick, unitGroundZ },
+            _turretMount,
+          );
+          const weaponX = mount.x;
+          const weaponY = mount.y;
+          const mountZ = mount.z;
 
           const shot = weapon.config.shot;
-          const unitScale = unit.unit.unitRadiusCollider.scale;
+          const unitBodyRadius = unit.unit.bodyRadius;
           const directAim = solveDirectTurretAim(
             target,
             weaponX, weaponY, mountZ,
             weapon.pitch,
             weapon.config,
-            unitScale,
+            unitBodyRadius,
             _directAim,
           );
           targetAngle = directAim.yaw;
@@ -126,6 +126,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               unit, weapon, target,
               weaponX, weaponY, unitGroundZ,
               targetAngle ?? 0,
+              currentTick,
             );
             if (aim) {
               targetAngle = aim.targetAngle;
@@ -144,11 +145,18 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               target,
               weaponX, weaponY, mountZ,
               weapon.pitch,
-              unitScale,
+              unitBodyRadius,
               true,
               (x, y) => world.getGroundZ(x, y),
               _projectileAim,
             );
+            weapon.ballisticAimInRange = solved.hasBallisticSolution;
+            if (!solved.hasBallisticSolution) {
+              const bit = turretBit(weaponIndex);
+              if (bit !== 0 && unit.unit.firingTurretMask !== undefined && unit.unit.firingTurretMask >= 0) {
+                unit.unit.firingTurretMask &= ~bit;
+              }
+            }
             targetAngle = solved.yaw;
             targetPitch = solved.pitch;
           }

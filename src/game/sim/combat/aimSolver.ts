@@ -1,6 +1,6 @@
 import type { Vec3 } from '@/types/vec2';
 import type { Entity, ProjectileShot, Turret, TurretConfig } from '../types';
-import { computeInterceptTime, getBarrelTip, solveBallisticPitch } from '../../math';
+import { ballisticSolutions, computeInterceptTime, getBarrelTip, solveBallisticPitch } from '../../math';
 import type { BarrelEndpoint } from '../../math/BarrelGeometry';
 import { GRAVITY } from '../../../config';
 import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed } from './combatUtils';
@@ -17,6 +17,7 @@ export type DirectTurretAim = {
 export type ProjectileTurretAim = DirectTurretAim & {
   targetVelocity: Vec3;
   muzzleVelocity: Vec3;
+  hasBallisticSolution: boolean;
 };
 
 export function createDirectTurretAimScratch(): DirectTurretAim {
@@ -33,6 +34,7 @@ export function createProjectileTurretAimScratch(): ProjectileTurretAim {
     ...createDirectTurretAimScratch(),
     targetVelocity: { x: 0, y: 0, z: 0 },
     muzzleVelocity: { x: 0, y: 0, z: 0 },
+    hasBallisticSolution: true,
   };
 }
 
@@ -211,11 +213,18 @@ export function solveProjectileTurretAim(
   const horizDist = Math.hypot(out.aim.x - tip.x, out.aim.y - tip.y);
   const heightDiff = out.aim.z - tip.z;
   out.yaw = yaw;
-  out.pitch = shot.ignoresGravity
-    ? Math.atan2(heightDiff, horizDist)
-    : solveBallisticPitch(
-        horizDist, heightDiff, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
-      );
+  if (shot.ignoresGravity) {
+    out.hasBallisticSolution = true;
+    out.pitch = Math.atan2(heightDiff, horizDist);
+  } else {
+    const solutions = ballisticSolutions(horizDist, heightDiff, launchSpeed, GRAVITY);
+    out.hasBallisticSolution = solutions !== null;
+    out.pitch = solutions
+      ? (weapon.config.highArc ? solutions.high : solutions.low)
+      : solveBallisticPitch(
+          horizDist, heightDiff, launchSpeed, GRAVITY, weapon.config.highArc ?? false,
+        );
+  }
   out.tip = tip;
   return out;
 }

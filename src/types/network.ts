@@ -226,30 +226,31 @@ export type NetworkServerSnapshotVelocityUpdate = {
   velocity: Vec3;
 };
 
-export type NetworkServerSnapshotBeamReflection = {
+/** Wire-format vertex of a beam/laser polyline. The full beam is
+ *  `points = [start, ...reflections, end]`. Each vertex carries its
+ *  own instantaneous 3D velocity in the world frame so the client can
+ *  extrapolate every vertex independently between snapshots; the
+ *  middles set `mirrorEntityId` to the redirecting mirror unit (start
+ *  and end leave it undefined). */
+export type NetworkServerSnapshotBeamPoint = {
   x: number;
   y: number;
   z: number;
-  mirrorEntityId: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  mirrorEntityId?: number;
 };
 
 export type NetworkServerSnapshotBeamUpdate = {
   id: number;
-  start: Vec3;
-  end: Vec3;
-  /** Instantaneous 3D velocity of the start point (muzzle), in wu/sec.
-   *  Lets the client extrapolate the beam between snapshots — same role
-   *  the per-turret rotation+angularVelocity pair plays for turret pose
-   *  prediction. Computed on the host as (start − prevStart) / dt. */
-  startVel: Vec3;
-  /** Instantaneous 3D velocity of the end point, in wu/sec. End position
-   *  is recomputed on a (LOD-strided) re-trace cadence, so this carries
-   *  the per-trace delta divided by the trace stride's elapsed time —
-   *  client-side extrapolation is then accurate even when end position
-   *  itself isn't refreshed every snapshot. */
-  endVel: Vec3;
+  /** Polyline vertices (≥ 2). Index 0 = start (muzzle), last = end
+   *  (range / hit / ground), middles = reflections. Each carries its
+   *  own (vx, vy, vz) — the start finite-diffs every tick, the end
+   *  and reflections finite-diff across the (LOD-strided) re-trace
+   *  cadence. */
+  points: NetworkServerSnapshotBeamPoint[];
   obstructionT?: number;
-  reflections?: NetworkServerSnapshotBeamReflection[];
 };
 
 export type NetworkServerSnapshotGridCell = {
@@ -416,7 +417,13 @@ export type NetworkServerSnapshotEntity = {
      *  Numeric wire ID — see UNIT_TYPE_* / unitTypeToCode helpers. */
     unitType?: number;
     hp: { curr: number; max: number };
-    collider?: { scale: number; shot: number; push: number };
+    collider?: { shot: number; push: number };
+    /** Authored body radius — the unit's visible-chassis size. Drives
+     *  turret head defaults, chassis-mount offsets, mirror-panel sizing,
+     *  click hit radius, etc. Was historically `collider.scale`; lifted
+     *  to its own field so it isn't conflated with collision (`shot` /
+     *  `push` stay on `collider`). */
+    bodyRadius?: number;
     bodyCenterHeight?: number;
     moveSpeed?: number;
     mass?: number;

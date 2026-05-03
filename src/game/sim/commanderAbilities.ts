@@ -24,11 +24,11 @@ export class CommanderAbilitiesSystem {
       const buildRange = commander.builder.buildRange;
       const commanderX = commander.transform.x;
       const commanderY = commander.transform.y;
-      const constructionEmitterOffset = -commander.unit.unitRadiusCollider.scale * 0.42;
+      const constructionEmitterOffset = -commander.unit.bodyRadius * 0.42;
       const commanderSprayX = commanderX + Math.cos(commander.transform.rotation) * constructionEmitterOffset;
       const commanderSprayY = commanderY + Math.sin(commander.transform.rotation) * constructionEmitterOffset;
       const commanderSprayZ = commander.transform.z +
-        (commander.unit.unitRadiusCollider.scale * 1.75);
+        (commander.unit.bodyRadius * 1.75);
 
       // Get current target from queue (only work on ONE thing at a time)
       const currentTarget = this.getCurrentTarget(world, commander, buildRange);

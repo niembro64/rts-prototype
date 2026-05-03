@@ -50,4 +50,12 @@ export {
   findAttackTargetAt,
 } from './AttackTargetHelper';
 
-export { canPlaceBuildingAt, getSnappedBuildPosition } from './BuildPlacementValidator';
+export {
+  type BuildPlacementCellDiagnostic,
+  type BuildPlacementCellReason,
+  type BuildPlacementDiagnostics,
+  canPlaceBuildingAt,
+  getBuildingPlacementDiagnostics,
+  getOccupiedBuildingCells,
+  getSnappedBuildPosition,
+} from './BuildPlacementValidator';

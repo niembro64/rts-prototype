@@ -1,12 +1,13 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamReflection, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
 import type { Vec2, Vec3 } from '../../types/vec2';
 import type { GamePhase } from '../../types/network';
+import type { SnapshotDeltaResolutionConfig } from '../../types/config';
 import {
   ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
@@ -29,7 +30,7 @@ function createPooledTurret(): NetworkServerSnapshotTurret {
   return {
     turret: {
       id: '',
-      ranges: { tracking: { acquire: 0, release: 0 }, engage: { acquire: 0, release: 0 } },
+      ranges: { tracking: null, fire: { min: null, max: { acquire: 0, release: 0 } } },
       angular: { rot: 0, vel: 0, acc: 0, drag: 0, pitch: 0 },
       pos: { offset: { x: 0, y: 0 } },
     },
@@ -82,7 +83,7 @@ type PooledEntry = {
   /** Persistent collider object reused across snapshots — unitSub.collider
    *  swaps between this and undefined depending on whether the entity
    *  needs a static-fields seed. */
-  unitCollider: { scale: number; shot: number; push: number };
+  unitCollider: { shot: number; push: number };
   /** Persistent building dim reused across snapshots — same swap rule. */
   buildingDim: { x: number; y: number };
   solarSub: { open: boolean };
@@ -118,17 +119,13 @@ function qRot(n: number): number {
 function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
   return {
     id: 0,
-    start: { x: 0, y: 0, z: 0 },
-    end: { x: 0, y: 0, z: 0 },
-    startVel: { x: 0, y: 0, z: 0 },
-    endVel: { x: 0, y: 0, z: 0 },
+    points: [],
     obstructionT: undefined,
-    reflections: undefined,
   };
 }
 
-function createPooledBeamReflection(): NetworkServerSnapshotBeamReflection {
-  return { x: 0, y: 0, z: 0, mirrorEntityId: 0 };
+function createPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
+  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
 }
 
 type PooledSprayTarget = NetworkServerSnapshotSprayTarget & {
@@ -243,11 +240,12 @@ function createPooledEntry(): PooledEntry {
       unitSub: {
         unitType: undefined, hp: { curr: 0, max: 0 },
         collider: undefined,
+        bodyRadius: undefined,
         bodyCenterHeight: undefined,
         moveSpeed: undefined, mass: undefined, velocity: { x: 0, y: 0, z: 0 },
       turretRotation: 0,
     },
-    unitCollider: { scale: 0, shot: 0, push: 0 },
+    unitCollider: { shot: 0, push: 0 },
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
     buildingSub: {
@@ -397,11 +395,38 @@ function getPrevState(tracking: DeltaTrackingState, entityId: number): PrevEntit
   return prev;
 }
 
-function getChangedFields(entity: Entity, prev: PrevEntityState, next: PrevEntityState): number {
-  const posTh = SNAPSHOT_CONFIG.positionThreshold;
-  const velTh = SNAPSHOT_CONFIG.velocityThreshold;
-  const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold;
-  const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold;
+function getDeltaResolution(
+  entity: Entity,
+  recipientPlayerId: PlayerId | undefined,
+): SnapshotDeltaResolutionConfig {
+  if (recipientPlayerId === undefined) return SNAPSHOT_CONFIG.ownedEntityDelta;
+  return entity.ownership?.playerId === recipientPlayerId
+    ? SNAPSHOT_CONFIG.ownedEntityDelta
+    : SNAPSHOT_CONFIG.observedEntityDelta;
+}
+
+function shouldSendProjectileSideChannel(
+  ownerId: PlayerId | undefined,
+  recipientPlayerId: PlayerId | undefined,
+  tick: number,
+): boolean {
+  const rawStride = recipientPlayerId === undefined || ownerId === recipientPlayerId
+    ? SNAPSHOT_CONFIG.ownedProjectileUpdateStride
+    : SNAPSHOT_CONFIG.observedProjectileUpdateStride;
+  const stride = Math.max(1, Math.floor(rawStride));
+  return stride <= 1 || tick % stride === 0;
+}
+
+function getChangedFields(
+  entity: Entity,
+  prev: PrevEntityState,
+  next: PrevEntityState,
+  resolution: SnapshotDeltaResolutionConfig,
+): number {
+  const posTh = SNAPSHOT_CONFIG.positionThreshold * resolution.positionThresholdMultiplier;
+  const velTh = SNAPSHOT_CONFIG.velocityThreshold * resolution.velocityThresholdMultiplier;
+  const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier;
+  const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold * resolution.rotationVelocityThresholdMultiplier;
 
   let mask = 0;
 
@@ -592,14 +617,14 @@ const _despawnPool: NetworkServerSnapshotProjectileDespawn[] = [];
 const _velUpdatePool: NetworkServerSnapshotVelocityUpdate[] = [];
 const _beamUpdateBuf: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamUpdatePool: NetworkServerSnapshotBeamUpdate[] = [];
-const _beamReflectionPool: NetworkServerSnapshotBeamReflection[] = [];
+const _beamPointPool: NetworkServerSnapshotBeamPoint[] = [];
 let _sprayPoolIndex = 0;
 let _audioPoolIndex = 0;
 let _spawnPoolIndex = 0;
 let _despawnPoolIndex = 0;
 let _velUpdatePoolIndex = 0;
 let _beamUpdatePoolIndex = 0;
-let _beamReflectionPoolIndex = 0;
+let _beamPointPoolIndex = 0;
 const _economyBuf: Record<PlayerId, NetworkServerSnapshotEconomy> = {} as Record<PlayerId, NetworkServerSnapshotEconomy>;
 const _economyKeys: PlayerId[] = [];
 
@@ -641,19 +666,20 @@ function getPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
     _beamUpdatePool[_beamUpdatePoolIndex] = update;
   }
   _beamUpdatePoolIndex++;
-  if (update.reflections) update.reflections.length = 0;
+  update.points.length = 0;
   update.obstructionT = undefined;
   return update;
 }
 
-function getPooledBeamReflection(): NetworkServerSnapshotBeamReflection {
-  let reflection = _beamReflectionPool[_beamReflectionPoolIndex];
-  if (!reflection) {
-    reflection = createPooledBeamReflection();
-    _beamReflectionPool[_beamReflectionPoolIndex] = reflection;
+function getPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
+  let point = _beamPointPool[_beamPointPoolIndex];
+  if (!point) {
+    point = createPooledBeamPoint();
+    _beamPointPool[_beamPointPoolIndex] = point;
   }
-  _beamReflectionPoolIndex++;
-  return reflection;
+  _beamPointPoolIndex++;
+  point.mirrorEntityId = undefined;
+  return point;
 }
 
 function getPooledSprayTarget(): PooledSprayTarget {
@@ -708,6 +734,14 @@ function getPooledVelocityUpdate(): PooledVelocityUpdate {
 
 export type SnapshotInterest = (entity: Entity) => boolean;
 
+export type SnapshotInterestBounds2D = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  hasOwnedEntity?: boolean;
+};
+
 export type SerializeGameStateOptions = {
   /**
    * Delta histories are per recipient. Without this, AOI-filtered
@@ -724,7 +758,83 @@ export type SerializeGameStateOptions = {
    * hashing the whole world in the serializer.
    */
   candidateEntityIds?: readonly EntityId[];
+  /**
+   * Same AOI rectangle used for entity interest. Side-channel visual
+   * streams use this to avoid sending off-screen/off-AOI transient
+   * effects to each recipient.
+   */
+  interestBounds?: SnapshotInterestBounds2D;
+  /**
+   * Recipient used for owner-aware diff resolution. Owned entities keep
+   * baseline precision; observed entities can use coarser thresholds.
+   */
+  recipientPlayerId?: PlayerId;
 };
+
+function boundsContainsPoint2D(
+  bounds: SnapshotInterestBounds2D | undefined,
+  x: number,
+  y: number,
+): boolean {
+  return !bounds ||
+    (bounds.hasOwnedEntity !== false &&
+      x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY);
+}
+
+function segmentIntersectsBounds2D(
+  bounds: SnapshotInterestBounds2D | undefined,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): boolean {
+  if (!bounds) return true;
+  if (bounds.hasOwnedEntity === false) return false;
+  if (boundsContainsPoint2D(bounds, x1, y1) || boundsContainsPoint2D(bounds, x2, y2)) return true;
+  if (
+    Math.max(x1, x2) < bounds.minX ||
+    Math.min(x1, x2) > bounds.maxX ||
+    Math.max(y1, y2) < bounds.minY ||
+    Math.min(y1, y2) > bounds.maxY
+  ) {
+    return false;
+  }
+
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const clip = (p: number, q: number): boolean => {
+    if (p === 0) return q >= 0;
+    const t = q / p;
+    if (p < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
+    }
+    return true;
+  };
+
+  return clip(-dx, x1 - bounds.minX) &&
+    clip(dx, bounds.maxX - x1) &&
+    clip(-dy, y1 - bounds.minY) &&
+    clip(dy, bounds.maxY - y1);
+}
+
+function beamPathIntersectsBounds2D(
+  bounds: SnapshotInterestBounds2D | undefined,
+  points: readonly { x: number; y: number }[],
+): boolean {
+  if (points.length < 2) return false;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    if (segmentIntersectsBounds2D(bounds, a.x, a.y, b.x, b.y)) return true;
+  }
+  return false;
+}
 
 // Serialize WorldState to network format.
 // When isDelta=true, only changed/new entities are included plus removedEntityIds.
@@ -746,6 +856,9 @@ export function serializeGameState(
 ): NetworkServerSnapshot {
   const tracking = getDeltaTrackingState(options?.trackingKey);
   const interest = options?.interest;
+  const interestBounds = options?.interestBounds;
+  const recipientPlayerId = options?.recipientPlayerId;
+  const tick = world.getTick();
 
   // Reset entity pool for this frame
   _poolIndex = 0;
@@ -755,7 +868,7 @@ export function serializeGameState(
   _despawnPoolIndex = 0;
   _velUpdatePoolIndex = 0;
   _beamUpdatePoolIndex = 0;
-  _beamReflectionPoolIndex = 0;
+  _beamPointPoolIndex = 0;
   _entityBuf.length = 0;
   _removedIdsBuf.length = 0;
 
@@ -764,6 +877,29 @@ export function serializeGameState(
   const acceptsEntity = (entity: Entity): boolean =>
     (entity.type === 'unit' || entity.type === 'building') &&
     (!interest || interest(entity));
+  const acceptsEntityId = (id: EntityId | undefined): boolean => {
+    if (id === undefined) return false;
+    const entity = world.getEntity(id);
+    return !!entity && acceptsEntity(entity);
+  };
+  const acceptsProjectileSpawn = (spawn: ProjectileSpawnEvent): boolean => {
+    if (!interestBounds) return true;
+    if (acceptsEntityId(spawn.sourceEntityId) || acceptsEntityId(spawn.targetEntityId)) return true;
+    if (boundsContainsPoint2D(interestBounds, spawn.pos.x, spawn.pos.y)) return true;
+    if (
+      spawn.beam &&
+      segmentIntersectsBounds2D(
+        interestBounds,
+        spawn.beam.start.x,
+        spawn.beam.start.y,
+        spawn.beam.end.x,
+        spawn.beam.end.y,
+      )
+    ) {
+      return true;
+    }
+    return false;
+  };
 
   const forgetTrackedEntity = (id: EntityId, emitRemoval: boolean): void => {
     const wasVisible = tracking.prevEntityIds.delete(id);
@@ -820,7 +956,7 @@ export function serializeGameState(
       captureEntityState(entity, _nextStateScratch);
       const changedFields = isNew
         ? undefined
-        : getChangedFields(entity, prev, _nextStateScratch) |
+        : getChangedFields(entity, prev, _nextStateScratch, getDeltaResolution(entity, recipientPlayerId)) |
           (dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS);
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntity(entity, changedFields, tracking.protocolSeeded);
@@ -892,12 +1028,17 @@ export function serializeGameState(
     }
   }
 
-  // Serialize economy for all players (reuse object to avoid per-snapshot allocation)
+  // Serialize economy (reuse object to avoid per-snapshot allocation).
+  // Unscoped/local streams keep the full table for debug/sandbox player
+  // toggling. Per-player network streams only need the recipient's
+  // economy for the top bar; enemy economy is neither rendered nor a
+  // useful thing to leak over the wire every snapshot.
   for (const key of _economyKeys) {
     delete _economyBuf[key];
   }
   _economyKeys.length = 0;
   for (let playerId = 1; playerId <= 6; playerId++) {
+    if (recipientPlayerId !== undefined && playerId !== recipientPlayerId) continue;
     const eco = economyManager.getEconomy(playerId as PlayerId);
     if (eco) {
       const pid = playerId as PlayerId;
@@ -926,6 +1067,13 @@ export function serializeGameState(
     _sprayBuf.length = 0;
     for (let i = 0; i < sprayTargets.length; i++) {
       const st = sprayTargets[i];
+      if (
+        interestBounds &&
+        !boundsContainsPoint2D(interestBounds, st.source.pos.x, st.source.pos.y) &&
+        !boundsContainsPoint2D(interestBounds, st.target.pos.x, st.target.pos.y)
+      ) {
+        continue;
+      }
       const out = getPooledSprayTarget();
       out.source.id = st.source.id;
       out._sourcePos.x = st.source.pos.x;
@@ -948,7 +1096,7 @@ export function serializeGameState(
       out.intensity = st.intensity;
       _sprayBuf.push(out);
     }
-    netSprayTargets = _sprayBuf;
+    if (_sprayBuf.length > 0) netSprayTargets = _sprayBuf;
   }
 
   // Serialize audio events (reuse buffer)
@@ -957,6 +1105,13 @@ export function serializeGameState(
     _audioBuf.length = 0;
     for (let i = 0; i < audioEvents.length; i++) {
       const ae = audioEvents[i];
+      if (
+        interestBounds &&
+        !boundsContainsPoint2D(interestBounds, ae.pos.x, ae.pos.y) &&
+        !acceptsEntityId(ae.entityId)
+      ) {
+        continue;
+      }
       const out = getPooledSimEvent();
       out.type = ae.type;
       out.turretId = ae.turretId;
@@ -968,7 +1123,7 @@ export function serializeGameState(
       out.impactContext = ae.impactContext;
       _audioBuf.push(out);
     }
-    netAudioEvents = _audioBuf;
+    if (_audioBuf.length > 0) netAudioEvents = _audioBuf;
   }
 
   // Serialize projectile spawns (reuse buffer)
@@ -977,6 +1132,7 @@ export function serializeGameState(
     _spawnBuf.length = 0;
     for (let i = 0; i < projectileSpawns.length; i++) {
       const ps = projectileSpawns[i];
+      if (!acceptsProjectileSpawn(ps)) continue;
       const out = getPooledProjectileSpawn();
       out.id = ps.id;
       out._pos.x = ps.pos.x;
@@ -1010,7 +1166,7 @@ export function serializeGameState(
       out.homingTurnRate = ps.homingTurnRate;
       _spawnBuf.push(out);
     }
-    netProjectileSpawns = _spawnBuf;
+    if (_spawnBuf.length > 0) netProjectileSpawns = _spawnBuf;
   }
 
   // Serialize projectile despawns (reuse buffer)
@@ -1031,6 +1187,9 @@ export function serializeGameState(
     _velUpdateBuf.length = 0;
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
+      const projectile = world.getEntity(vu.id)?.projectile;
+      if (!shouldSendProjectileSideChannel(projectile?.ownerId, recipientPlayerId, tick)) continue;
+      if (interestBounds && !boundsContainsPoint2D(interestBounds, vu.pos.x, vu.pos.y)) continue;
       const out = getPooledVelocityUpdate();
       out.id = vu.id;
       out._pos.x = vu.pos.x;
@@ -1041,13 +1200,16 @@ export function serializeGameState(
       out._velocity.z = vu.velocity.z;
       _velUpdateBuf.push(out);
     }
-    netVelocityUpdates = _velUpdateBuf;
+    if (_velUpdateBuf.length > 0) netVelocityUpdates = _velUpdateBuf;
   }
 
   // Serialize authoritative live beam/laser paths. Spawns only carry
   // the initial line; reflected beams move every tick with turret aim
   // and mirror intersections, so clients need the current path in
-  // snapshots to draw without re-running beam tracing locally.
+  // snapshots to draw without re-running beam tracing locally. Each
+  // beam is one polyline (start, ...reflections, end) with per-vertex
+  // velocity — clients extrapolate every vertex independently between
+  // snapshots, mirroring the turret rotation+angularVelocity pattern.
   let netBeamUpdates: NetworkServerSnapshotBeamUpdate[] | undefined;
   const lineProjectiles = world.getLineProjectiles();
   if (lineProjectiles.length > 0) {
@@ -1056,51 +1218,31 @@ export function serializeGameState(
       const entity = lineProjectiles[i];
       const proj = entity.projectile;
       if (!proj) continue;
-      const startX = proj.startX ?? entity.transform.x;
-      const startY = proj.startY ?? entity.transform.y;
-      const startZ = proj.startZ ?? entity.transform.z;
-      const endX = proj.endX;
-      const endY = proj.endY;
-      const endZ = proj.endZ;
-      if (endX === undefined || endY === undefined || endZ === undefined) continue;
+      if (!shouldSendProjectileSideChannel(proj.ownerId, recipientPlayerId, tick)) continue;
+      const srcPts = proj.points;
+      if (!srcPts || srcPts.length < 2) continue;
+      if (interestBounds && !beamPathIntersectsBounds2D(interestBounds, srcPts)) continue;
 
       const update = getPooledBeamUpdate();
       update.id = entity.id;
-      update.start.x = qPos(startX);
-      update.start.y = qPos(startY);
-      update.start.z = qPos(startZ);
-      update.end.x = qPos(endX);
-      update.end.y = qPos(endY);
-      update.end.z = qPos(endZ);
-      // Velocities are quantized at the same precision as projectile
-      // velocities (qVel = 0.1 wu/sec). Same role too — the client
-      // extrapolates start and end positions between snapshots using
-      // these, just like turret rotation prediction uses the
-      // angularVelocity field.
-      update.startVel.x = qVel(proj.startVelX ?? 0);
-      update.startVel.y = qVel(proj.startVelY ?? 0);
-      update.startVel.z = qVel(proj.startVelZ ?? 0);
-      update.endVel.x = qVel(proj.endVelX ?? 0);
-      update.endVel.y = qVel(proj.endVelY ?? 0);
-      update.endVel.z = qVel(proj.endVelZ ?? 0);
       update.obstructionT = proj.obstructionT === undefined ? undefined : qRot(proj.obstructionT);
-
-      const reflections = proj.reflections;
-      if (reflections && reflections.length > 0) {
-        const dst = update.reflections ?? [];
-        dst.length = reflections.length;
-        for (let r = 0; r < reflections.length; r++) {
-          const src = reflections[r];
-          const out = getPooledBeamReflection();
-          out.x = qPos(src.x);
-          out.y = qPos(src.y);
-          out.z = qPos(src.z);
-          out.mirrorEntityId = src.mirrorEntityId;
-          dst[r] = out;
-        }
-        update.reflections = dst;
-      } else {
-        update.reflections = undefined;
+      const dstPts = update.points;
+      dstPts.length = srcPts.length;
+      for (let p = 0; p < srcPts.length; p++) {
+        const sp = srcPts[p];
+        const out = getPooledBeamPoint();
+        out.x = qPos(sp.x);
+        out.y = qPos(sp.y);
+        out.z = qPos(sp.z);
+        // Velocities are quantized at the same precision as projectile
+        // velocities (qVel = 0.1 wu/sec). Lets the client extrapolate
+        // each vertex between snapshots — same role the turret
+        // rotation+angularVelocity pair plays for turret pose.
+        out.vx = qVel(sp.vx);
+        out.vy = qVel(sp.vy);
+        out.vz = qVel(sp.vz);
+        out.mirrorEntityId = sp.mirrorEntityId;
+        dstPts[p] = out;
       }
 
       _beamUpdateBuf.push(update);
@@ -1129,7 +1271,7 @@ export function serializeGameState(
   _gameStateBuf.winnerId = winnerId;
 
   // Reuse snapshot object
-  _snapshotBuf.tick = world.getTick();
+  _snapshotBuf.tick = tick;
   _snapshotBuf.entities = _entityBuf;
   _snapshotBuf.economy = _economyBuf;
   _snapshotBuf.sprayTargets = netSprayTargets;
@@ -1206,9 +1348,9 @@ function serializeEntity(
       if (isFull) {
         u.unitType = unitTypeToCode(entity.unit.unitType);
         u.collider = pool.unitCollider;
-        u.collider.scale = entity.unit.unitRadiusCollider.scale;
         u.collider.shot = entity.unit.unitRadiusCollider.shot;
         u.collider.push = entity.unit.unitRadiusCollider.push;
+        u.bodyRadius = entity.unit.bodyRadius;
         u.bodyCenterHeight = entity.unit.bodyCenterHeight;
         u.moveSpeed = entity.unit.moveSpeed;
         u.mass = entity.unit.mass;
@@ -1217,6 +1359,7 @@ function serializeEntity(
       } else {
         u.unitType = undefined;
         u.collider = undefined;
+        u.bodyRadius = undefined;
         u.bodyCenterHeight = undefined;
         u.moveSpeed = undefined;
         u.mass = undefined;
@@ -1309,8 +1452,27 @@ function serializeEntity(
           const t = dst.turret;
           t.id = src.config.id;
           const sr = src.ranges; const dr = t.ranges;
-          dr.tracking.acquire = sr.tracking.acquire; dr.tracking.release = sr.tracking.release;
-          dr.engage.acquire = sr.engage.acquire; dr.engage.release = sr.engage.release;
+          // Tracking shell: null when the turret only uses its fire
+          // envelope. Mirror tracking pool slot so receivers see the
+          // same shape on every frame.
+          if (sr.tracking) {
+            dr.tracking = dr.tracking ?? { acquire: 0, release: 0 };
+            dr.tracking.acquire = sr.tracking.acquire;
+            dr.tracking.release = sr.tracking.release;
+          } else {
+            dr.tracking = null;
+          }
+          // Fire envelope max: always present.
+          dr.fire.max.acquire = sr.fire.max.acquire;
+          dr.fire.max.release = sr.fire.max.release;
+          // Fire envelope min: null when the turret can fire at point-blank.
+          if (sr.fire.min) {
+            dr.fire.min = dr.fire.min ?? { acquire: 0, release: 0 };
+            dr.fire.min.acquire = sr.fire.min.acquire;
+            dr.fire.min.release = sr.fire.min.release;
+          } else {
+            dr.fire.min = null;
+          }
           t.angular.rot = qRot(src.rotation);
           t.angular.vel = qRot(src.angularVelocity);
           t.angular.acc = src.turnAccel;

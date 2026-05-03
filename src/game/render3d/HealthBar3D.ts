@@ -159,7 +159,7 @@ export class HealthBar3D {
     const bar = this.acquire(this._used++);
     this.repaintIfChanged(bar, ratio, mode);
 
-    const worldWidth = u.unit.unitRadiusCollider.scale * 2;
+    const worldWidth = u.unit.bodyRadius * 2;
     bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
     bar.sprite.position.set(worldX, worldY, worldZ);
     if (this._frustum) {

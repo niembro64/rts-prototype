@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { getTerrainMeshHeight, WATER_LEVEL } from '@/game/sim/Terrain';
+import { getTerrainHeight, WATER_LEVEL } from '@/game/sim/Terrain';
 import { MAP_BG_COLOR } from '@/config';
 import { getCaptureTileDisplayColor } from '@/game/sim/manaProduction';
 import { minimapPointerToWorld } from './minimapHelpers';
@@ -193,12 +193,19 @@ function drawBackgroundLayer(): void {
       }
     }
   } else {
+    // Water is a flat plane at WATER_LEVEL — a pixel is "wet" iff the
+    // continuous heightmap underneath it dips below that plane. The
+    // mesh-aware 4-sample interpolation we used to call here is only
+    // useful for matching the exact triangle mesh CaptureTileRenderer3D
+    // draws; for a binary water/land paint at minimap resolution the
+    // raw analytical height is indistinguishable and ~4× cheaper —
+    // dropped a profiled 31ms drawBackgroundLayer pass to single digits.
     for (let py = 0; py < h; py++) {
       const worldY = py / scaleY;
       const ty = overlayActive ? Math.floor(worldY / captureCellSize) : 0;
       for (let px = 0; px < w; px++, pi += 4) {
         const worldX = px / scaleX;
-        const height = getTerrainMeshHeight(worldX, worldY, mapWidth, mapHeight);
+        const height = getTerrainHeight(worldX, worldY, mapWidth, mapHeight);
         const wet = height < WATER_LEVEL;
         let outR: number, outG: number, outB: number;
         if (wet) {

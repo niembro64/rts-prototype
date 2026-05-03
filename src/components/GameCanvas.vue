@@ -231,6 +231,7 @@ let currentServer: GameServer | null = null;
 let realBattleStartGen = 0;
 let realBattleStartTimeout: ReturnType<typeof setTimeout> | null = null;
 let recoveryKeyframeTimeouts: ReturnType<typeof setTimeout>[] = [];
+const realBattleSnapshotListenerKeys = new Map<PlayerId, string>();
 
 function clearRealBattleTimeouts(): void {
   realBattleStartGen++;
@@ -240,6 +241,22 @@ function clearRealBattleTimeouts(): void {
   }
   for (const timeout of recoveryKeyframeTimeouts) clearTimeout(timeout);
   recoveryKeyframeTimeouts = [];
+}
+
+function removeRealBattleSnapshotListener(playerId: PlayerId): void {
+  const key = realBattleSnapshotListenerKeys.get(playerId);
+  if (!key) return;
+  currentServer?.removeSnapshotListener(key);
+  realBattleSnapshotListenerKeys.delete(playerId);
+}
+
+function clearRealBattleSnapshotListeners(): void {
+  if (currentServer) {
+    for (const key of realBattleSnapshotListenerKeys.values()) {
+      currentServer.removeSnapshotListener(key);
+    }
+  }
+  realBattleSnapshotListenerKeys.clear();
 }
 
 // Lobby state
@@ -253,6 +270,19 @@ const isConnecting = ref(false);
 const gameStarted = ref(false);
 const networkRole = ref<NetworkRole | null>(null);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
+const networkNotice = ref<string | null>(null);
+
+const networkStatus = computed(() => {
+  if (networkRole.value === 'host') {
+    const players = lobbyPlayers.value.length > 0 ? ` ${lobbyPlayers.value.length}P` : '';
+    return roomCode.value ? `HOST ${roomCode.value}${players}` : `HOST${players}`;
+  }
+  if (networkRole.value === 'client') {
+    return roomCode.value ? `CLIENT ${roomCode.value}` : 'CLIENT';
+  }
+  if (gameStarted.value) return 'OFFLINE';
+  return networkNotice.value ? 'NETWORK' : '';
+});
 
 // When the user switches between demo battle and real battle, restore
 // THAT mode's saved bottom-bars collapse preference. Persistence
@@ -1155,9 +1185,12 @@ function restartGame(): void {
   networkRole.value = null;
   lobbyPlayers.value = [];
   roomCode.value = '';
+  lobbyError.value = null;
+  networkNotice.value = null;
 
   // Stop current server
   if (currentServer) {
+    clearRealBattleSnapshotListeners();
     currentServer.stop();
     currentServer = null;
   }
@@ -1209,6 +1242,7 @@ async function handleHost(): Promise<void> {
   try {
     isConnecting.value = true;
     lobbyError.value = null;
+    networkNotice.value = null;
 
     await networkManager.hostGame();
     roomCode.value = networkManager.getRoomCode();
@@ -1245,6 +1279,7 @@ async function handleHost(): Promise<void> {
     isConnecting.value = false;
   } catch (err) {
     lobbyError.value = (err as Error).message || 'Failed to host game';
+    networkNotice.value = lobbyError.value;
     isConnecting.value = false;
   }
 }
@@ -1253,6 +1288,7 @@ async function handleJoin(code: string): Promise<void> {
   try {
     isConnecting.value = true;
     lobbyError.value = null;
+    networkNotice.value = null;
 
     // Wire callbacks BEFORE joining. The host sends `playerAssignment`
     // immediately on `conn.on('open')`, so the message can land in
@@ -1286,6 +1322,7 @@ async function handleJoin(code: string): Promise<void> {
     isConnecting.value = false;
   } catch (err) {
     lobbyError.value = (err as Error).message || 'Failed to join game';
+    networkNotice.value = lobbyError.value;
     isConnecting.value = false;
   }
 }
@@ -1302,12 +1339,14 @@ function handleLobbyCancel(): void {
   isHost.value = false;
   lobbyPlayers.value = [];
   lobbyError.value = null;
+  networkNotice.value = null;
   isConnecting.value = false;
 }
 
 function handleOffline(): void {
   // Start game in offline mode — 4-player AI game, user controls player 1
   networkRole.value = null;
+  networkNotice.value = null;
   localPlayerId.value = 1;
 
   nextTick(() => {
@@ -1566,6 +1605,7 @@ function updateFPSStats(): void {
 
 function setupNetworkCallbacks(): void {
   networkManager.onPlayerJoined = (player: LobbyPlayer) => {
+    networkNotice.value = null;
     // Check if already in list
     const existing = lobbyPlayers.value.find(
       (p) => p.playerId === player.playerId,
@@ -1576,17 +1616,24 @@ function setupNetworkCallbacks(): void {
   };
 
   networkManager.onPlayerLeft = (playerId: PlayerId) => {
+    const playerName = getPlayerName(playerId);
     lobbyPlayers.value = lobbyPlayers.value.filter(
       (p) => p.playerId !== playerId,
     );
+    removeRealBattleSnapshotListener(playerId);
+    if (gameStarted.value) {
+      networkNotice.value = `${playerName} disconnected`;
+    }
   };
 
   networkManager.onPlayerAssignment = (playerId: PlayerId) => {
+    networkNotice.value = null;
     localPlayerId.value = playerId;
     activePlayer.value = playerId;
   };
 
   networkManager.onGameStart = (handoff: BattleHandoff) => {
+    networkNotice.value = null;
     roomCode.value = handoff.roomCode;
     lobbyPlayers.value = handoff.players.map((player) => ({ ...player }));
     startGameWithPlayers(handoff.playerIds);
@@ -1594,6 +1641,7 @@ function setupNetworkCallbacks(): void {
 
   networkManager.onError = (error: string) => {
     lobbyError.value = error;
+    networkNotice.value = error;
   };
 
   // Player IP + location reports flow in here for both the host
@@ -1691,14 +1739,13 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         createdServer.stop();
         return;
       }
+      realBattleSnapshotListenerKeys.clear();
       currentServer = createdServer;
 
-      // If hosting, broadcast the authoritative real-battle snapshot
-      // to every connected client. Keep this on the pre-lobby-info
-      // transport path: one unfiltered server snapshot, one msgpack
-      // encode, all peers receive the same state. The per-player AOI
-      // listener path is useful later, but it changed the actual
-      // internet battle protocol and made remote play fragile.
+      // If hosting, send each remote client its own authoritative
+      // real-battle snapshot. Scoped listeners let the server apply
+      // per-player AOI and per-recipient delta history instead of
+      // pushing the same full-world diff stream to every peer.
       //
       // The PeerJS peer instance + every connection established
       // during the lobby phase persist into the real battle — we
@@ -1710,9 +1757,13 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       // re-handshake.
       //
       if (networkRole.value === 'host') {
-        currentServer.addSnapshotListener((state) => {
-          networkManager.broadcastState(state);
-        });
+        for (const playerId of networkManager.getConnectedPlayerIds()) {
+          const trackingKey = currentServer.addSnapshotListener((state) => {
+            const sent = networkManager.sendStateTo(playerId, state);
+            if (!sent) currentServer?.forceNextSnapshotKeyframe();
+          }, playerId);
+          realBattleSnapshotListenerKeys.set(playerId, trackingKey);
+        }
 
         // Receive commands from remote clients
         networkManager.onCommandReceived = (command, _fromPlayerId) => {
@@ -1967,6 +2018,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleSoundTestKeydown);
   // Stop servers
   if (currentServer) {
+    clearRealBattleSnapshotListeners();
     currentServer.stop();
     currentServer = null;
   }
@@ -1992,6 +2044,8 @@ onUnmounted(() => {
         :player-color="getPlayerColor(activePlayer)"
         :can-toggle-player="showPlayerToggle"
         :direction-data="minimapData"
+        :network-status="networkStatus"
+        :network-warning="networkNotice"
         @toggle-player="togglePlayer"
       />
     </div>
@@ -2984,7 +3038,7 @@ onUnmounted(() => {
             <BarButtonGroup>
               <BarButton
                 :active="unitRadiusToggles.visual"
-                title="Show unit scale radius (unitRadiusCollider.scale — rendering &amp; click detection)"
+                title="Show unit body radius (unit.bodyRadius — visible chassis size, click detection)"
                 @click="toggleUnitRadius('visual')"
               >SCAL</BarButton>
               <BarButton

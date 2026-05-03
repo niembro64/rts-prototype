@@ -184,8 +184,12 @@ export type BeamShotBlueprint = {
   dps: number;
   force: number;
   recoil: number;
+  /** Thin beam body radius used for obstruction/path tracing. */
   radius: number;
   width: number;
+  /** Endpoint damage sphere radius. The line chooses where the beam
+   *  terminates; this sphere determines damage at that endpoint. */
+  damageSphere: { radius: number };
   hitSound?: SoundEntry;
 };
 
@@ -195,8 +199,12 @@ export type LaserShotBlueprint = {
   dps: number;
   force: number;
   recoil: number;
+  /** Thin laser body radius used for obstruction/path tracing. */
   radius: number;
   width: number;
+  /** Endpoint damage sphere radius. The line chooses where the laser
+   *  terminates; this sphere determines damage at that endpoint. */
+  damageSphere: { radius: number };
   duration: number;
   hitSound?: SoundEntry;
 };
@@ -244,12 +252,13 @@ export type TurretBlueprint = {
   mirrorPanels?: MirrorPanel[];
   audio?: { fireSound?: SoundEntry; laserSound?: SoundEntry };
   /** World-space radius of the spherical turret-head visual. Overrides
-   *  the auto-computed default (max(unitScale × TURRET_HEAD_FOOTPRINT_FRAC,
-   *  TURRET_HEIGHT/2)). Use this when a specific turret needs a chunkier
-   *  or daintier head than the unit's render size would imply — e.g. a
-   *  light AA turret on a heavy chassis, or a hulking rocket pod on a
-   *  small frame. Cosmetic only: shot spawn position uses barrelLength
-   *  × unitScale and is independent of the head radius. */
+   *  the auto-computed default (max(host.bodyRadius ×
+   *  TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT/2)). Use this when a
+   *  specific turret needs a chunkier or daintier head than the unit's
+   *  body radius would imply — e.g. a light AA turret on a heavy
+   *  chassis, or a hulking rocket pod on a small frame. Cosmetic only:
+   *  shot spawn position uses barrelLength × host.bodyRadius and is
+   *  independent of the head radius. */
   bodyRadius?: number;
   /** Ballistic arc preference for the aim solver. Two solutions exist
    *  for any in-range target under gravity — a low flat arc and a
@@ -359,7 +368,15 @@ export type UnitBlueprint = {
   shortName: string;
   hp: number;
   moveSpeed: number;
-  unitRadiusCollider: { scale: number; shot: number; push: number };
+  /** Hit/push radii. Visual body size is the separate `bodyRadius`
+   *  field below; the two used to be conflated under
+   *  `unitRadiusCollider.scale` but are independent values now. */
+  unitRadiusCollider: { shot: number; push: number };
+  /** Authored body radius (world units) — the visible chassis size.
+   *  Drives turret head defaults, chassis mount offsets, mirror-panel
+   *  sizing, barrel placement, and click hit radius. Used to live as
+   *  `unitRadiusCollider.scale` but it was never a collider field. */
+  bodyRadius: number;
   /** World-space height of the authored unit body center above terrain.
    *  This is intentionally separate from collider radii so visuals,
    *  turret mounts, legs, and physics rest altitude can move without

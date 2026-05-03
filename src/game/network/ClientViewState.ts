@@ -13,10 +13,10 @@ import type {
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotBeamUpdate,
-  NetworkServerSnapshotBeamReflection,
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,
 } from './NetworkManager';
+import type { BeamPoint } from '../../types/sim';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkCaptureTile } from '@/types/capture';
 import { economyManager } from '../sim/economy';
@@ -142,26 +142,28 @@ function createServerTarget(): ServerTarget {
 }
 
 type BeamPathTarget = {
-  start: { x: number; y: number; z: number };
-  end: { x: number; y: number; z: number };
-  /** Authoritative per-snapshot velocities for the start and end
-   *  points. Mirrors the per-turret rotation+angularVelocity
-   *  prediction path: the snapshot carries an instant + a velocity,
-   *  the renderer extrapolates between snapshots. */
-  startVel: { x: number; y: number; z: number };
-  endVel: { x: number; y: number; z: number };
-  reflections: NetworkServerSnapshotBeamReflection[];
+  /** Authoritative per-snapshot polyline (start, ...reflections, end).
+   *  Each vertex carries (vx, vy, vz) in world frame; the per-frame
+   *  predictor advances every vertex by its own velocity AND eases
+   *  toward the snapshot value, mirroring the turret rotation +
+   *  angularVelocity prediction pattern. Owned in place — the array
+   *  reference is stable, slots get reused/resized as the host's
+   *  reflection count changes. */
+  points: BeamPoint[];
   obstructionT?: number;
 };
 
 function createBeamPathTarget(): BeamPathTarget {
-  return {
-    start: { x: 0, y: 0, z: 0 },
-    end: { x: 0, y: 0, z: 0 },
-    startVel: { x: 0, y: 0, z: 0 },
-    endVel: { x: 0, y: 0, z: 0 },
-    reflections: [],
-  };
+  return { points: [] };
+}
+
+function ensureBeamPoint(arr: BeamPoint[], i: number): BeamPoint {
+  let p = arr[i];
+  if (!p) {
+    p = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+    arr[i] = p;
+  }
+  return p;
 }
 
 type QueuedProjectileSpawn = {
@@ -242,6 +244,13 @@ export type PredictionLodContext = {
   /** PLAYER CLIENT LOD global cadence: frames to skip before
    *  another client prediction step. 0 means every render frame. */
   physicsPredictionFramesSkip: number;
+  /**
+   * Optional shared frame resolver. When supplied, prediction uses the
+   * same cell/tier cache as rendering instead of recomputing camera
+   * sphere membership inside ClientViewState. Coordinates are Three.js
+   * world axes: x, height/y, z.
+   */
+  resolveTier?: (worldX: number, worldY: number, worldZ: number) => PredictionLodTier;
 };
 
 type PredictionLodCellKey = number;
@@ -958,10 +967,10 @@ export class ClientViewState {
       // from ordinary deltas. Read whenever they're present; they do
       // not change after spawn, so re-applying them is a no-op.
       if (su.collider) {
-        entity.unit.unitRadiusCollider.scale = su.collider.scale;
         entity.unit.unitRadiusCollider.shot = su.collider.shot;
         entity.unit.unitRadiusCollider.push = su.collider.push;
       }
+      if (su.bodyRadius !== undefined) entity.unit.bodyRadius = su.bodyRadius;
       if (su.bodyCenterHeight !== undefined) {
         entity.unit.bodyCenterHeight = su.bodyCenterHeight;
       }
@@ -1099,62 +1108,55 @@ export class ClientViewState {
       target = createBeamPathTarget();
       this.beamPathTargets.set(update.id, target);
     }
-    target.start.x = update.start.x;
-    target.start.y = update.start.y;
-    target.start.z = update.start.z;
-    target.end.x = update.end.x;
-    target.end.y = update.end.y;
-    target.end.z = update.end.z;
-    target.startVel.x = update.startVel.x;
-    target.startVel.y = update.startVel.y;
-    target.startVel.z = update.startVel.z;
-    target.endVel.x = update.endVel.x;
-    target.endVel.y = update.endVel.y;
-    target.endVel.z = update.endVel.z;
     target.obstructionT = update.obstructionT;
 
-    const reflections = update.reflections;
-    if (reflections && reflections.length > 0) {
-      const dst = target.reflections;
-      dst.length = reflections.length;
-      for (let i = 0; i < reflections.length; i++) {
-        const src = reflections[i];
-        const item = dst[i] ?? { x: 0, y: 0, z: 0, mirrorEntityId: 0 };
-        item.x = src.x;
-        item.y = src.y;
-        item.z = src.z;
-        item.mirrorEntityId = src.mirrorEntityId;
-        dst[i] = item;
-      }
-    } else {
-      target.reflections.length = 0;
+    // Mirror the host's polyline length and per-vertex fields into the
+    // target buffer. Keep the array reference stable (mutate in place)
+    // so per-frame prediction can hold onto its own ref between
+    // snapshots.
+    const srcPts = update.points;
+    const dstTarget = target.points;
+    dstTarget.length = srcPts.length;
+    for (let i = 0; i < srcPts.length; i++) {
+      const sp = srcPts[i];
+      const dp = ensureBeamPoint(dstTarget, i);
+      dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
+      dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
+      dp.mirrorEntityId = sp.mirrorEntityId;
     }
 
-    if (proj.startX === undefined || proj.startY === undefined || proj.endX === undefined || proj.endY === undefined) {
-      proj.startX = update.start.x;
-      proj.startY = update.start.y;
-      proj.startZ = update.start.z;
-      proj.endX = update.end.x;
-      proj.endY = update.end.y;
-      proj.endZ = update.end.z;
-      entity.transform.x = update.start.x;
-      entity.transform.y = update.start.y;
-      entity.transform.z = update.start.z;
-    }
-    if (reflections && reflections.length > 0) {
-      const current = proj.reflections ?? [];
-      current.length = reflections.length;
-      for (let i = 0; i < reflections.length; i++) {
-        const src = reflections[i];
-        let item = current[i];
-        if (!item) {
-          item = { x: src.x, y: src.y, z: src.z, mirrorEntityId: src.mirrorEntityId };
-          current[i] = item;
-        }
+    // Seed proj.points on first arrival. Subsequent updates ride
+    // through applyBeamPathPrediction (per-vertex easing toward target).
+    const projPts = proj.points ?? (proj.points = []);
+    if (projPts.length === 0) {
+      projPts.length = srcPts.length;
+      for (let i = 0; i < srcPts.length; i++) {
+        const sp = srcPts[i];
+        const pp = ensureBeamPoint(projPts, i);
+        pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
+        pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
+        pp.mirrorEntityId = sp.mirrorEntityId;
       }
-      proj.reflections = current;
-    } else {
-      proj.reflections = undefined;
+      if (srcPts.length > 0) {
+        const start = srcPts[0];
+        entity.transform.x = start.x;
+        entity.transform.y = start.y;
+        entity.transform.z = start.z;
+      }
+    } else if (projPts.length !== srcPts.length) {
+      // Length changed (reflection count differs from last snapshot).
+      // Pop or grow proj.points so the predictor steps in sync; new
+      // slots seed at the snapshot value (no easing for vertices we
+      // didn't have last frame).
+      const oldLen = projPts.length;
+      projPts.length = srcPts.length;
+      for (let i = oldLen; i < srcPts.length; i++) {
+        const sp = srcPts[i];
+        const pp = ensureBeamPoint(projPts, i);
+        pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
+        pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
+        pp.mirrorEntityId = sp.mirrorEntityId;
+      }
     }
     proj.obstructionT = update.obstructionT;
     this.activeBeamPathIds.add(update.id);
@@ -1170,111 +1172,83 @@ export class ClientViewState {
   ): boolean {
     const proj = entity.projectile;
     if (!proj) return false;
+    const tgtPts = target.points;
+    if (tgtPts.length === 0) return false;
 
     const blend = halfLifeBlend(deltaMs / 1000, preset.movement.pos);
     const dt = deltaMs / 1000;
     let changed = false;
 
-    // Advance the snapshot target itself by its velocity each frame so
-    // the beam tracks the host's anticipated position between snapshots
-    // — same role the per-turret rotation+angularVelocity prediction
-    // plays for turret pose. The existing exponential blend below keeps
-    // proj.start/end easing toward the moving target so a fresh
-    // snapshot doesn't pop the beam if its corrected position differs
-    // from the extrapolated one.
-    target.start.x += target.startVel.x * dt;
-    target.start.y += target.startVel.y * dt;
-    target.start.z += target.startVel.z * dt;
-    target.end.x += target.endVel.x * dt;
-    target.end.y += target.endVel.y * dt;
-    target.end.z += target.endVel.z * dt;
-
-    const startX = proj.startX ?? target.start.x;
-    const startY = proj.startY ?? target.start.y;
-    const startZ = proj.startZ ?? target.start.z;
-    const endX = proj.endX ?? target.end.x;
-    const endY = proj.endY ?? target.end.y;
-    const endZ = proj.endZ ?? target.end.z;
-
-    const nextStartX = lerp(startX, target.start.x, blend);
-    const nextStartY = lerp(startY, target.start.y, blend);
-    const nextStartZ = lerp(startZ, target.start.z, blend);
-    const nextEndX = lerp(endX, target.end.x, blend);
-    const nextEndY = lerp(endY, target.end.y, blend);
-    const nextEndZ = lerp(endZ, target.end.z, blend);
-
-    if (
-      Math.abs(nextStartX - startX) > 1e-4 ||
-      Math.abs(nextStartY - startY) > 1e-4 ||
-      Math.abs(nextStartZ - startZ) > 1e-4 ||
-      Math.abs(nextEndX - endX) > 1e-4 ||
-      Math.abs(nextEndY - endY) > 1e-4 ||
-      Math.abs(nextEndZ - endZ) > 1e-4
-    ) {
+    // Mirror the target's polyline length onto proj.points. Length
+    // changes (reflection count drift) snap the new vertices to the
+    // target value — easing only applies to vertices we held last
+    // frame.
+    const projPts = proj.points ?? (proj.points = []);
+    const oldLen = projPts.length;
+    if (oldLen !== tgtPts.length) {
+      projPts.length = tgtPts.length;
       changed = true;
     }
 
-    proj.startX = nextStartX;
-    proj.startY = nextStartY;
-    proj.startZ = nextStartZ;
-    proj.endX = nextEndX;
-    proj.endY = nextEndY;
-    proj.endZ = nextEndZ;
+    // Advance every target vertex by its own velocity each frame so the
+    // beam tracks the host's anticipated polyline between snapshots —
+    // same role the per-turret rotation+angularVelocity prediction
+    // plays for turret pose.
+    for (let i = 0; i < tgtPts.length; i++) {
+      const tp = tgtPts[i];
+      tp.x += tp.vx * dt;
+      tp.y += tp.vy * dt;
+      tp.z += tp.vz * dt;
+    }
+
+    for (let i = 0; i < tgtPts.length; i++) {
+      const tp = tgtPts[i];
+      let pp = projPts[i];
+      if (!pp || i >= oldLen) {
+        pp = ensureBeamPoint(projPts, i);
+        pp.x = tp.x; pp.y = tp.y; pp.z = tp.z;
+        pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
+        pp.mirrorEntityId = tp.mirrorEntityId;
+        changed = true;
+        continue;
+      }
+      const px = pp.x, py = pp.y, pz = pp.z;
+      const nx = lerp(px, tp.x, blend);
+      const ny = lerp(py, tp.y, blend);
+      const nz = lerp(pz, tp.z, blend);
+      if (
+        Math.abs(nx - px) > 1e-4 ||
+        Math.abs(ny - py) > 1e-4 ||
+        Math.abs(nz - pz) > 1e-4 ||
+        pp.mirrorEntityId !== tp.mirrorEntityId
+      ) {
+        changed = true;
+      }
+      pp.x = nx;
+      pp.y = ny;
+      pp.z = nz;
+      pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
+      pp.mirrorEntityId = tp.mirrorEntityId;
+    }
     proj.obstructionT = target.obstructionT;
 
-    const targetRefs = target.reflections;
-    if (targetRefs.length > 0) {
-      const refs = proj.reflections ?? [];
-      if (refs.length !== targetRefs.length) changed = true;
-      refs.length = targetRefs.length;
-      for (let i = 0; i < targetRefs.length; i++) {
-        const tr = targetRefs[i];
-        let r = refs[i];
-        if (!r) {
-          r = { x: tr.x, y: tr.y, z: tr.z, mirrorEntityId: tr.mirrorEntityId };
-          refs[i] = r;
-          continue;
-        }
-        const rx = r.x;
-        const ry = r.y;
-        const rz = r.z;
-        const nextX = lerp(rx, tr.x, blend);
-        const nextY = lerp(ry, tr.y, blend);
-        const nextZ = lerp(rz, tr.z, blend);
-        if (
-          Math.abs(nextX - rx) > 1e-4 ||
-          Math.abs(nextY - ry) > 1e-4 ||
-          Math.abs(nextZ - rz) > 1e-4 ||
-          r.mirrorEntityId !== tr.mirrorEntityId
-        ) {
-          changed = true;
-        }
-        r.x = nextX;
-        r.y = nextY;
-        r.z = nextZ;
-        r.mirrorEntityId = tr.mirrorEntityId;
-      }
-      proj.reflections = refs;
-    } else if (proj.reflections && proj.reflections.length > 0) {
-      proj.reflections = undefined;
-      changed = true;
-    }
-
-    const firstRef = proj.reflections?.[0];
-    const firstEndX = firstRef?.x ?? proj.endX ?? target.end.x;
-    const firstEndY = firstRef?.y ?? proj.endY ?? target.end.y;
-    const nextRotation = Math.atan2(firstEndY - nextStartY, firstEndX - nextStartX);
+    // Update entity transform to track the start vertex; rotation
+    // points down the first segment so HUD/audio readouts match the
+    // beam's outgoing direction.
+    const start = projPts[0];
+    const second = projPts[1] ?? start;
+    const nextRotation = Math.atan2(second.y - start.y, second.x - start.x);
     if (
-      Math.abs(entity.transform.x - nextStartX) > 1e-4 ||
-      Math.abs(entity.transform.y - nextStartY) > 1e-4 ||
-      Math.abs(entity.transform.z - nextStartZ) > 1e-4 ||
+      Math.abs(entity.transform.x - start.x) > 1e-4 ||
+      Math.abs(entity.transform.y - start.y) > 1e-4 ||
+      Math.abs(entity.transform.z - start.z) > 1e-4 ||
       angleDeltaAbs(entity.transform.rotation, nextRotation) > 1e-4
     ) {
       changed = true;
     }
-    entity.transform.x = nextStartX;
-    entity.transform.y = nextStartY;
-    entity.transform.z = nextStartZ;
+    entity.transform.x = start.x;
+    entity.transform.y = start.y;
+    entity.transform.z = start.z;
     entity.transform.rotation = nextRotation;
     return changed;
   }
@@ -1284,6 +1258,13 @@ export class ClientViewState {
     lod: PredictionLodContext | undefined,
   ): PredictionLodTier {
     if (!lod) return 'rich';
+    if (lod.resolveTier) {
+      return lod.resolveTier(
+        entity.transform.x,
+        entity.transform.z,
+        entity.transform.y,
+      );
+    }
 
     const size = this.predictionLodCellSize;
     // LOD grouping is intentionally 2D: sim x/y on the ground plane.
@@ -1578,7 +1559,9 @@ export class ClientViewState {
     if (this.frameCounter === 0) {
       this.frameCounter = 1;
     }
-    this.predictionLodCells.clear();
+    if (!lod?.resolveTier) {
+      this.predictionLodCells.clear();
+    }
 
     // Frame-rate independent blend factors (driven by drift mode half-lives)
     const preset = getDriftPreset(getDriftMode());
@@ -1830,16 +1813,16 @@ export class ClientViewState {
         entity.transform.x += entity.projectile.velocityX * dt;
         entity.transform.y += entity.projectile.velocityY * dt;
         entity.transform.z += entity.projectile.velocityZ * dt;
-        // Don't let the visual sink through the ground — the server
-        // will despawn-and-explode the projectile on its next tick,
-        // but the client may run a few prediction frames ahead.
-        // Clamp to the local terrain height so projectiles arcing
-        // toward a raised cube tile rest on its top face instead of
-        // burrowing into z=0 underneath the cube.
+        // Terrain impact is terminal for traveling projectiles on the
+        // server. Do the same in client prediction: the old clamp kept
+        // the shell alive with horizontal velocity until the despawn
+        // side-channel arrived, which made fast falling rounds visibly
+        // skate along the ground for one frame.
         const groundZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE);
-        if (entity.transform.z < groundZ) {
+        if (entity.transform.z <= groundZ && entity.projectile.velocityZ <= 0) {
           entity.transform.z = groundZ;
-          if (entity.projectile.velocityZ < 0) entity.projectile.velocityZ = 0;
+          this.deleteEntityLocalState(entity.id);
+          continue;
         }
 
         // Auto-remove if projectile has left the map bounds
@@ -1963,7 +1946,7 @@ export class ClientViewState {
           mount.x, mount.y, mount.z,
           weapon.rotation, weapon.pitch,
           config,
-          source.unit.unitRadiusCollider.scale,
+          source.unit.bodyRadius,
           0,
         );
         spawnX = tip.x;
@@ -1996,12 +1979,16 @@ export class ClientViewState {
                 : 2000,
         hitEntities: new Set(),
         maxHits: 1,
-        startX: spawn.beam?.start.x,
-        startY: spawn.beam?.start.y,
-        startZ: spawn.beam?.start.z,
-        endX: spawn.beam?.end.x,
-        endY: spawn.beam?.end.y,
-        endZ: spawn.beam?.end.z,
+        points: spawn.beam ? [
+          {
+            x: spawn.beam.start.x, y: spawn.beam.start.y, z: spawn.beam.start.z,
+            vx: 0, vy: 0, vz: 0,
+          },
+          {
+            x: spawn.beam.end.x, y: spawn.beam.end.y, z: spawn.beam.end.z,
+            vx: 0, vy: 0, vz: 0,
+          },
+        ] : undefined,
       },
     };
     if (spawn.isDGun) {
@@ -2213,7 +2200,7 @@ export class ClientViewState {
       if (playerId !== undefined && entity.ownership?.playerId !== playerId)
         continue;
 
-      const radius = entity.unit?.unitRadiusCollider.scale ?? 15;
+      const radius = entity.unit?.bodyRadius ?? 15;
       const dx = entity.transform.x - x;
       const dy = entity.transform.y - y;
       if (dx * dx + dy * dy <= radius * radius) {

@@ -73,13 +73,13 @@ export const TERRAIN_MESH_SUBDIV = 4;
  *  Magnitude only — the sign is picked from the shape. Tuned so a
  *  lake is deep enough to flood meaningfully under WATER_LEVEL=0.5
  *  and a mountain is tall enough to actually block sightlines. */
-const TERRAIN_SHAPE_MAGNITUDE = 800;
+const TERRAIN_SHAPE_MAGNITUDE = 600;
 export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 
 /** Vertical spacing between authored terrain plateau levels. Metal
  *  deposit rings store signed multiples of this value so extractor pads
  *  stay aligned with the same dTerrain scale as future terraced terrain. */
-export const TERRAIN_D_TERRAIN = 200;
+export const TERRAIN_D_TERRAIN = 100 * (TERRAIN_SHAPE_MAGNITUDE / 800);
 
 export const TERRAIN_PLATEAU_CONFIG = {
   enabled: true,
@@ -231,15 +231,19 @@ export function getTerrainTeamCount(): number {
 // Set once at world init via `setMetalDepositFlatZones`; reads on
 // the heightmap hot path. Empty list (default) = no flattening.
 
-type FlatZone = { x: number; y: number; flatRadius: number; height: number; blendRadius: number };
+type FlatZone = {
+  x: number;
+  y: number;
+  flatRadius: number;
+  height: number;
+  blendRadius: number;
+};
 let depositFlatZones: ReadonlyArray<FlatZone> = [];
 
 /** Install the flat zones for the current map. Call once after
  *  metal deposits are generated and BEFORE the renderer bakes its
  *  tile geometry. Pass `[]` to clear (e.g. on world reset). */
-export function setMetalDepositFlatZones(
-  zones: ReadonlyArray<FlatZone>,
-): void {
+export function setMetalDepositFlatZones(zones: ReadonlyArray<FlatZone>): void {
   depositFlatZones = zones.slice();
   _terrainVersion++;
 }
@@ -249,7 +253,10 @@ export function setMetalDepositFlatZones(
  *  and the deposit's target height. When no zone affects the sample,
  *  weight is 1 and height is irrelevant — the caller uses the
  *  natural value untouched. */
-function depositOverride(x: number, y: number): { weight: number; height: number } {
+function depositOverride(
+  x: number,
+  y: number,
+): { weight: number; height: number } {
   if (depositFlatZones.length === 0) return { weight: 1, height: 0 };
   let minWeight = 1;
   let bestHeight = 0;
@@ -297,7 +304,8 @@ function plateauRampCurve(t: number): number {
 }
 
 function applyTerrainPlateaus(height: number): number {
-  if (!TERRAIN_PLATEAU_CONFIG.enabled || !Number.isFinite(height)) return height;
+  if (!TERRAIN_PLATEAU_CONFIG.enabled || !Number.isFinite(height))
+    return height;
   const step = TERRAIN_D_TERRAIN;
   if (step <= 0) return height;
 
@@ -319,8 +327,10 @@ function applyTerrainPlateaus(height: number): number {
  *  central ripple disc + radial team-separation ridges, terraced into
  *  dTerrain plateaus, then locally overridden by special flat zones. */
 export function getTerrainHeight(
-  x: number, y: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  y: number,
+  mapWidth: number,
+  mapHeight: number,
 ): number {
   const cxw = mapWidth / 2;
   const cyw = mapHeight / 2;
@@ -341,7 +351,7 @@ export function getTerrainHeight(
     const a = Math.cos(dist / RIPPLE_W1);
     const b = Math.cos(dist / RIPPLE_W2 + RIPPLE_PHASE);
     const c = Math.sin((dx + dy) / RIPPLE_W3);
-    const sum = (a * 0.5 + b * 0.3 + c * 0.2);
+    const sum = a * 0.5 + b * 0.3 + c * 0.2;
     const norm = (sum + 1) * 0.5;
     ripple = mountainRippleAmplitude * fade * norm;
   }
@@ -413,7 +423,8 @@ export function getTerrainHeight(
   // 1 (terraced terrain), so this is a pass-through for every map
   // sample that isn't near a deposit.
   const override = depositOverride(x, y);
-  const blended = override.height * (1 - override.weight) + terraced * override.weight;
+  const blended =
+    override.height * (1 - override.weight) + terraced * override.weight;
 
   // Clamp to the tile floor — the heightmap defines the TOP of every
   // 3D tile cube and tiles can't physically extend below their floor.
@@ -434,10 +445,16 @@ type TerrainMeshSample = {
 };
 
 function terrainCellSize(cellSize: number | undefined): number {
-  return cellSize !== undefined && cellSize > 0 ? cellSize : SPATIAL_GRID_CELL_SIZE;
+  return cellSize !== undefined && cellSize > 0
+    ? cellSize
+    : SPATIAL_GRID_CELL_SIZE;
 }
 
-function clampToMeshExtent(value: number, cells: number, cellSize: number): number {
+function clampToMeshExtent(
+  value: number,
+  cells: number,
+  cellSize: number,
+): number {
   const max = cells * cellSize;
   if (value <= 0) return 0;
   if (value >= max) return max;
@@ -445,8 +462,10 @@ function clampToMeshExtent(value: number, cells: number, cellSize: number): numb
 }
 
 function getTerrainMeshSample(
-  x: number, z: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
   cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): TerrainMeshSample {
   const size = terrainCellSize(cellSize);
@@ -493,7 +512,11 @@ function terrainMeshHeightFromSample(sample: TerrainMeshSample): number {
   return (1 - v) * h00 + u * h11 + (v - u) * h01;
 }
 
-function terrainMeshNormalFromSample(sample: TerrainMeshSample): { nx: number; ny: number; nz: number } {
+function terrainMeshNormalFromSample(sample: TerrainMeshSample): {
+  nx: number;
+  ny: number;
+  nz: number;
+} {
   const { u, v, subSize, h00, h10, h11, h01 } = sample;
   const dHdx = u >= v ? (h10 - h00) / subSize : (h11 - h01) / subSize;
   const dHdz = u >= v ? (h11 - h10) / subSize : (h01 - h00) / subSize;
@@ -508,8 +531,10 @@ function terrainMeshNormalFromSample(sample: TerrainMeshSample): { nx: number; n
  *  CaptureTileRenderer3D. Use this when code needs the rendered
  *  ground surface instead of the underlying continuous height field. */
 export function getTerrainMeshHeight(
-  x: number, z: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
   cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): number {
   return terrainMeshHeightFromSample(
@@ -518,8 +543,10 @@ export function getTerrainMeshHeight(
 }
 
 export function getTerrainMeshNormal(
-  x: number, z: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
   cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): { nx: number; ny: number; nz: number } {
   return terrainMeshNormalFromSample(
@@ -528,8 +555,10 @@ export function getTerrainMeshNormal(
 }
 
 export function getTerrainPlateauLevelAt(
-  x: number, z: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
   cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): number | null {
   if (!TERRAIN_PLATEAU_CONFIG.enabled) return 0;
@@ -537,7 +566,8 @@ export function getTerrainPlateauLevelAt(
   if (step <= 0) return 0;
   const height = getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
   const level = Math.round(height / step);
-  return Math.abs(height - level * step) <= TERRAIN_PLATEAU_CONFIG.buildHeightEpsilon
+  return Math.abs(height - level * step) <=
+    TERRAIN_PLATEAU_CONFIG.buildHeightEpsilon
     ? level
     : null;
 }
@@ -572,7 +602,13 @@ export function isBuildableTerrainFootprint(
   let footprintLevel: number | null = null;
   for (const [sx, sz] of samples) {
     if (isWaterAt(sx, sz, mapWidth, mapHeight, cellSize)) return false;
-    const level = getTerrainPlateauLevelAt(sx, sz, mapWidth, mapHeight, cellSize);
+    const level = getTerrainPlateauLevelAt(
+      sx,
+      sz,
+      mapWidth,
+      mapHeight,
+      cellSize,
+    );
     if (level === null) return false;
     if (footprintLevel === null) {
       footprintLevel = level;
@@ -606,8 +642,10 @@ const NORMAL_GRADIENT_EPS = 1;
  *  Outside the ripple disc the sampled mesh is exactly flat, so the
  *  normal collapses to (0, 0, 1) immediately. */
 export function getSurfaceNormal(
-  x: number, z: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
   cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): { nx: number; ny: number; nz: number } {
   const sample = getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize);
@@ -642,8 +680,10 @@ export function getSurfaceNormal(
  *  them, never with the water above. Sim/physics paths must KEEP
  *  using `getSurfaceNormal`; only renderers should call this. */
 export function getGroundNormal(
-  x: number, z: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
 ): { nx: number; ny: number; nz: number } {
   const eps = NORMAL_GRADIENT_EPS;
   const hxp = getTerrainHeight(x + eps, z, mapWidth, mapHeight);
@@ -673,10 +713,11 @@ export function getGroundNormal(
  *  direction the action system wants — the magnitude returned here
  *  is always 1, and the caller multiplies by `thrustMagnitude`. */
 export function projectHorizontalOntoSlope(
-  hx: number, hy: number,
+  hx: number,
+  hy: number,
   n: { nx: number; ny: number; nz: number },
 ): { x: number; y: number; z: number } {
-  const dot = hx * n.nx + hy * n.ny;  // horizontal hz = 0 cancels out
+  const dot = hx * n.nx + hy * n.ny; // horizontal hz = 0 cancels out
   const tx = hx - dot * n.nx;
   const ty = hy - dot * n.ny;
   const tz = -dot * n.nz;
@@ -695,7 +736,9 @@ export function projectHorizontalOntoSlope(
  *  early-returns on |sin θ|² < epsilon so units outside the ripple
  *  disc pay nothing. */
 export function applySurfaceTilt(
-  vx: number, vy: number, vz: number,
+  vx: number,
+  vy: number,
+  vz: number,
   n: { nx: number; ny: number; nz: number },
 ): { x: number; y: number; z: number } {
   const sinT2 = n.nx * n.nx + n.ny * n.ny;
@@ -737,11 +780,16 @@ export function applySurfaceTilt(
  *  CaptureTileRenderer3D; callers normally pass SPATIAL_GRID_CELL_SIZE
  *  or omit it for that default. */
 export function getSurfaceHeight(
-  x: number, z: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
   cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): number {
-  return Math.max(WATER_LEVEL, getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize));
+  return Math.max(
+    WATER_LEVEL,
+    getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize),
+  );
 }
 
 /** True iff (x, z) is over water — i.e. the rendered terrain mesh
@@ -750,11 +798,15 @@ export function getSurfaceHeight(
  *  WATER_LEVEL_FRACTION=0 (water at the tile floor) this always
  *  returns false. */
 export function isWaterAt(
-  x: number, z: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
   cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): boolean {
-  return getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize) < WATER_LEVEL;
+  return (
+    getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize) < WATER_LEVEL
+  );
 }
 
 /** Number of cardinal points sampled around the candidate when
@@ -768,8 +820,10 @@ const WATER_CLEARANCE_SAMPLES = 8;
  *  radius + a little slack). With WATER_LEVEL_FRACTION=0 this
  *  collapses to "always true" since `isWaterAt` is always false. */
 export function isFarFromWater(
-  x: number, z: number,
-  mapWidth: number, mapHeight: number,
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
   bufferPx: number,
 ): boolean {
   if (isWaterAt(x, z, mapWidth, mapHeight)) return false;

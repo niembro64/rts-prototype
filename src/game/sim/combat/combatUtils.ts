@@ -1,11 +1,10 @@
 // Combat utility functions
 
-import type { Entity, ProjectileShot } from '../types';
-import { distance, normalizeAngle, magnitude, getWeaponWorldPosition, getTurretHeadRadius } from '../../math';
-import { getChassisLiftY, getTurretRootY } from '../../math/BodyDimensions';
-import { getUnitBlueprint } from '../blueprints';
-import { MIRROR_EXTRA_HEIGHT } from '../../../config';
+import type { Entity, ProjectileShot, Turret } from '../types';
+import { distance, normalizeAngle, magnitude } from '../../math';
+import { getTurretWorldMount } from '../../math/MountGeometry';
 import type { Vec3 } from '@/types/vec2';
+import { getUnitGroundZ } from '../unitGeometry';
 
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
@@ -57,92 +56,143 @@ export function getProjectileLaunchSpeed(shot: Pick<ProjectileShot, 'launchForce
   return shot.launchForce / shot.mass;
 }
 
-// Resolve turret world position, using cached values if available
-const _rwpOut = { x: 0, y: 0 };
-export function resolveWeaponWorldPos(
-  turret: { worldPos?: { x: number; y: number }; offset: { x: number; y: number } },
-  entityX: number, entityY: number, cos: number, sin: number,
-): { x: number; y: number } {
-  if (turret.worldPos) {
-    _rwpOut.x = turret.worldPos.x;
-    _rwpOut.y = turret.worldPos.y;
-    return _rwpOut;
+const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
+const _rwmOut: Vec3 = { x: 0, y: 0, z: 0 };
+
+export type WeaponKinematicsOptions = {
+  currentTick?: number;
+  dtMs?: number;
+  unitGroundZ?: number;
+  surfaceN?: { nx: number; ny: number; nz: number };
+};
+
+export function resolveWeaponWorldMount(
+  unit: Entity,
+  turret: {
+    worldPos?: Vec3;
+    worldPosTick?: number;
+    offset: { x: number; y: number };
+  },
+  turretIndex: number,
+  cos: number,
+  sin: number,
+  options?: {
+    currentTick?: number;
+    unitGroundZ?: number;
+    surfaceN?: { nx: number; ny: number; nz: number };
+  },
+  out: Vec3 = _rwmOut,
+): Vec3 {
+  if (
+    turret.worldPos &&
+    (options?.currentTick === undefined || turret.worldPosTick === options.currentTick)
+  ) {
+    out.x = turret.worldPos.x;
+    out.y = turret.worldPos.y;
+    out.z = turret.worldPos.z;
+    return out;
   }
-  return getWeaponWorldPosition(entityX, entityY, cos, sin, turret.offset.x, turret.offset.y);
+
+  const unitGroundZ = options?.unitGroundZ ?? getUnitGroundZ(unit);
+  const mount = getTurretWorldMount(
+    unit.transform.x, unit.transform.y, unitGroundZ,
+    cos, sin,
+    turret.offset.x, turret.offset.y, getTurretMountHeight(unit, turretIndex),
+    options?.surfaceN ?? FLAT_SURFACE_NORMAL,
+  );
+  out.x = mount.x;
+  out.y = mount.y;
+  out.z = mount.z;
+  return out;
+}
+
+/** Authoritative per-turret mount kinematics.
+ *
+ *  This is the single place that writes `turret.worldPos`,
+ *  `turret.worldVelocity`, and `turret.worldPosTick`. Callers that need
+ *  a current turret position should use this before aim/fire/field
+ *  math; callers that only need to read an already-current value can use
+ *  resolveWeaponWorldMount.
+ */
+export function updateWeaponWorldKinematics(
+  unit: Entity,
+  turret: Turret,
+  turretIndex: number,
+  cos: number,
+  sin: number,
+  options: WeaponKinematicsOptions = {},
+  out: Vec3 = _rwmOut,
+): Vec3 {
+  const worldPos = turret.worldPos ?? (turret.worldPos = { x: 0, y: 0, z: 0 });
+  const worldVel = turret.worldVelocity ?? (turret.worldVelocity = { x: 0, y: 0, z: 0 });
+  const currentTick = options.currentTick;
+  if (currentTick !== undefined && turret.worldPosTick === currentTick) {
+    out.x = worldPos.x;
+    out.y = worldPos.y;
+    out.z = worldPos.z;
+    return out;
+  }
+
+  const unitGroundZ = options.unitGroundZ ?? getUnitGroundZ(unit);
+  const mount = getTurretWorldMount(
+    unit.transform.x, unit.transform.y, unitGroundZ,
+    cos, sin,
+    turret.offset.x, turret.offset.y, getTurretMountHeight(unit, turretIndex),
+    options.surfaceN ?? FLAT_SURFACE_NORMAL,
+  );
+
+  const prevTick = turret.worldPosTick;
+  const ticksElapsed = currentTick !== undefined && prevTick !== undefined
+    ? currentTick - prevTick
+    : 0;
+
+  if (ticksElapsed === 1 && options.dtMs !== undefined && options.dtMs > 0) {
+    const invElapsedSec = 1000 / options.dtMs;
+    worldVel.x = (mount.x - worldPos.x) * invElapsedSec;
+    worldVel.y = (mount.y - worldPos.y) * invElapsedSec;
+    worldVel.z = (mount.z - worldPos.z) * invElapsedSec;
+  } else if (unit.unit) {
+    worldVel.x = unit.unit.velocityX ?? 0;
+    worldVel.y = unit.unit.velocityY ?? 0;
+    worldVel.z = unit.unit.velocityZ ?? 0;
+  } else {
+    worldVel.x = 0;
+    worldVel.y = 0;
+    worldVel.z = 0;
+  }
+
+  worldPos.x = mount.x;
+  worldPos.y = mount.y;
+  worldPos.z = mount.z;
+  if (currentTick !== undefined) turret.worldPosTick = currentTick;
+
+  out.x = mount.x;
+  out.y = mount.y;
+  out.z = mount.z;
+  return out;
 }
 
 /** Per-turret mount height — distance above the unit's ground
- *  footprint at which the barrel pivots (and shots spawn) at pitch=0.
+ *  footprint at which the turret pivots (and shots spawn) at pitch=0.
  *
- *  Vertical layout for an ordinary turret:
+ *  ONE RULE for every turret on every unit: the mount sits at the
+ *  unit's authored body center. That puts:
  *
- *    chassis lift + bodyTopY              ← head sphere bottom
- *    chassis lift + bodyTopY + headRadius ← head sphere center  ← muzzle
- *    chassis lift + bodyTopY + 2 × headRadius ← head sphere top
+ *    – the turret head sphere centered on body center
+ *    – the barrel pivot at body center
+ *    – the muzzle at `body center + barrelLength × bodyRadius` along
+ *      the firing direction
  *
- *  Each turret's `bodyRadius` field drives `headRadius`; the renderer
- *  uses the SAME number to anchor the visible head sphere, so spawn
- *  altitude and visible barrel tip stay locked together at every
- *  turret size.
+ *  matching the renderer's "head sphere centered on body center"
+ *  layout exactly. No bodyShape branching, no chassis-top arithmetic,
+ *  no mirror stacking — every shape gets the same simple anchor.
  *
- *  On mirror-host units (e.g. Loris) the non-mirror turret sits ON TOP
- *  OF the panel stack:
- *
- *    chassis top + 2 × hostHeadRadius  + MIRROR_EXTRA_HEIGHT
- *      ← stacked turret's chassis-top equivalent
- *      ← + headRadius                  ← stacked turret muzzle
+ *  `turretIndex` is unused; kept on the signature so call sites read
+ *  naturally as `getTurretMountHeight(unit, i)` and stay future-proof
+ *  if per-turret overrides ever come back.
  */
-export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
-  if (!unit.unit) return 0;
-  const unitRadius = unit.unit.unitRadiusCollider.scale;
-  let bp;
-  try { bp = getUnitBlueprint(unit.unit.unitType); }
-  catch { /* keep fallback */ }
-  const chassisLift = bp ? getChassisLiftY(bp, unitRadius) : 0;
-
-  const turret = unit.turrets?.[turretIndex];
-  const headRadius = getTurretHeadRadius(unitRadius, turret?.config);
-  const turretMount = bp?.turrets[turretIndex];
-  if (
-    bp?.hideChassis === true &&
-    turretMount?.headCenterHeightFrac !== undefined &&
-    unit.unit.bodyCenterHeight !== undefined
-  ) {
-    return unit.unit.bodyCenterHeight - headRadius;
-  }
-  const bodyTop = chassisLift + (bp
-    ? getTurretRootY(
-        bp.bodyShape,
-        unitRadius,
-        turret?.offset.x ?? 0,
-        turret?.offset.y ?? 0,
-        headRadius,
-        turretMount,
-      )
-    : 2.3 * unitRadius);
-
-  const hasMirrors = (unit.unit.mirrorPanels?.length ?? 0) > 0;
-  if (hasMirrors && turretIndex > 0) {
-    // Stacked turret rests on top of the mirror panel stack. Panel
-    // top is derived from the host turret's (index 0) own body
-    // radius — so a Loris with a chunkier mirror host has a
-    // proportionally taller panel column.
-    const hostTurret = unit.turrets?.[0];
-    const hostHeadRadius = getTurretHeadRadius(unitRadius, hostTurret?.config);
-    const hostBodyTop = chassisLift + (bp
-      ? getTurretRootY(
-          bp.bodyShape,
-          unitRadius,
-          hostTurret?.offset.x ?? 0,
-          hostTurret?.offset.y ?? 0,
-          hostHeadRadius,
-          bp.turrets[0],
-        )
-      : 2.3 * unitRadius);
-    const panelTop = hostBodyTop + 2 * hostHeadRadius + MIRROR_EXTRA_HEIGHT;
-    return panelTop + headRadius;
-  }
-  return bodyTop + headRadius;
+export function getTurretMountHeight(unit: Entity, _turretIndex: number): number {
+  return unit.unit?.bodyCenterHeight ?? 0;
 }
 
 export function getEntityVelocity3(entity: Entity, out: Vec3): Vec3 {

@@ -18,6 +18,8 @@ const props = defineProps<{
   playerColor: string;
   canTogglePlayer: boolean;
   directionData: Pick<MinimapData, 'cameraYaw' | 'wind'>;
+  networkStatus?: string;
+  networkWarning?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -88,6 +90,16 @@ function flowColor(n: number): string {
       <span class="player-dot" :style="{ backgroundColor: playerColor }"></span>
       <span class="player-name">{{ playerName }}</span>
     </button>
+
+    <div
+      v-if="networkStatus || networkWarning"
+      class="network-section"
+      :class="{ warning: !!networkWarning }"
+      :title="networkWarning || networkStatus"
+    >
+      <span class="network-label">NET</span>
+      <span class="network-value">{{ networkWarning || networkStatus }}</span>
+    </div>
 
     <!-- Units + Buildings -->
     <div class="counts-section">
@@ -266,6 +278,37 @@ function flowColor(n: number): string {
   text-transform: uppercase;
   width: 50px;
   text-align: left;
+}
+
+.network-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 92px;
+  max-width: 170px;
+  padding-right: 12px;
+  border-right: 1px solid color-mix(in srgb, var(--player-color) 28%, transparent);
+  overflow: hidden;
+}
+
+.network-label {
+  font-size: 9px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.network-value {
+  font-size: 11px;
+  font-weight: bold;
+  color: rgba(220, 245, 255, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.network-section.warning .network-label,
+.network-section.warning .network-value {
+  color: #ff7777;
 }
 
 /* ── Resource blocks (Energy / Mana) ── */

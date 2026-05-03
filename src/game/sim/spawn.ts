@@ -408,8 +408,9 @@ export function spawnMetalExtractorsOnDeposits(
       extractor.buildable.buildProgress = 1;
       extractor.buildable.isComplete = true;
     }
-    if (config.metalProduction) {
-      economyManager.addMetalExtraction(ownerId, config.metalProduction);
+    const amount = extractor.metalExtractionRate ?? config.metalProduction ?? 0;
+    if (amount > 0) {
+      economyManager.addMetalExtraction(ownerId, amount);
     }
     entities.push(extractor);
   }

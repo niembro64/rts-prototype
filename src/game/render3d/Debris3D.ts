@@ -23,9 +23,10 @@ import type { GraphicsConfig } from '@/types/graphics';
 import type { SimDeathContext } from '@/types/combat';
 import type { UnitBodyShape } from '@/types/blueprints';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { MAP_BG_COLOR, GRAVITY, MIRROR_BASE_Y, MIRROR_EXTRA_HEIGHT } from '../../config';
+import { MAP_BG_COLOR, GRAVITY, MIRROR_EXTRA_HEIGHT } from '../../config';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
+import { MIRROR_ARM_LENGTH_FRAC } from '../sim/mirrorPanelCache';
 import { getShotBlueprint } from '../sim/blueprints/shots';
 import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
@@ -34,7 +35,6 @@ import {
   getBodyTopY,
   getChassisLiftY,
   getSegmentMidYAt,
-  getTurretRootY,
 } from '../math/BodyDimensions';
 import { turretHeadRadiusFromBodyRadius } from '../math';
 
@@ -695,13 +695,10 @@ export class Debris3D {
       // same vertical span. Per-turret bodyRadius takes precedence over
       // the auto-derived default — matches Render3DEntities.buildTurretMesh.
       const headR = turretHeadRadiusFromBodyRadius(r, tb.bodyRadius);
-      const bodyMountTopY = (
-        bp.hideChassis === true &&
-        mount.headCenterHeightFrac !== undefined &&
-        bp.bodyCenterHeight !== undefined
-      )
-        ? bp.bodyCenterHeight - chassisLiftY - headR
-        : getTurretRootY(bodyShape, r, tox, toz, headR, mount);
+      // Turret head sphere is centered on the unit body center —
+      // matches Render3DEntities. mountY = bodyCenterHeight − lift −
+      // headR puts the head sphere center at world y = bodyCenterHeight.
+      const bodyMountTopY = bp.bodyCenterHeight - chassisLiftY - headR;
       const turretMountY = unitHasMirrorsHere && ti > 0
         ? hostBodyTopYForStack + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT
         : bodyMountTopY;
@@ -816,39 +813,50 @@ export class Debris3D {
       }
 
       // Mirror panels — emit one slab per panel matching what
-      // Render3DEntities draws: a square plane (edge = vertical span)
-      // centered at chassis-local (mount + panel.offset), running from
-      // MIRROR_BASE_Y to bodyTop + 2·headR + MIRROR_EXTRA_HEIGHT, yawed
-      // by -(panel.angle + π/2) to align the edge with the rendered
-      // mesh. A small Z thickness is applied to the debris box ONLY
-      // (the live mesh is a flat plane); shattering paper-thin slivers
-      // would be invisible mid-tumble, so debris pieces get a token
-      // 1-wu thickness for visibility.
+      // Render3DEntities draws: a square panel of side `2 × bodyRadius`
+      // mounted at ARM'S LENGTH out from the turret body sphere along
+      // the turret's facing direction, with a thin attachment cylinder
+      // bridging the gap. Both pieces shed as separate debris boxes
+      // here (1-wu Z thickness on the panel for mid-tumble visibility,
+      // a long thin box for the arm). Same liftGroup convention as
+      // Render3DEntities: subtract chassisLift so the live world-y
+      // lands at bp.bodyCenterHeight after debris adds chassisLiftY.
       if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
-        const panelTop = turretMountY + 2 * headR + MIRROR_EXTRA_HEIGHT;
-        const mirrorH = Math.max(panelTop - MIRROR_BASE_Y, 1);
-        const panelCenterY = chassisLiftY + MIRROR_BASE_Y + mirrorH / 2;
-        const side = mirrorH;
-        // Mirror panels track the host turret's yaw — when the mirror
-        // is aimed off the chassis +X, every panel pivots around the
-        // mount with it. Rotate each panel offset by chassisYaw and
-        // bake the same yaw into the debris box's `yaw` so the slab
-        // tumbles in the orientation it had at death (not the
-        // chassis-aligned default).
+        const side = r * 2;
+        const armLength = r * MIRROR_ARM_LENGTH_FRAC;
+        const armThickness = Math.max(r * 0.18, 0.5);
+        const panelCenterY = bp.bodyCenterHeight - chassisLiftY;
         const cY = Math.cos(chassisYaw);
         const sY = Math.sin(chassisYaw);
-        for (const panel of tb.mirrorPanels) {
-          const px = panel.offsetX;
-          const py = panel.offsetY;
+        for (let pi = 0; pi < tb.mirrorPanels.length; pi++) {
+          // Panel — at arm's end, perpendicular to the arm. Local
+          // chassis-frame position is (armLength, panelCenterY, 0)
+          // rotated by chassisYaw around +Y.
           out.push({
             shape: 'box',
-            x: tox + px * cY - py * sY,
+            x: armLength * cY,
             y: panelCenterY,
-            z: toz + px * sY + py * cY,
-            yaw: -(panel.angle + Math.PI / 2) + chassisYaw,
+            z: armLength * sY,
+            yaw: -Math.PI / 2 + chassisYaw,
             sx: side,
             sy: side,
             sz: 1,
+            color: primary,
+          });
+          // Arm cylinder rendered as a long thin box (debris doesn't
+          // care about cylinder vs box silhouette mid-tumble). Center
+          // at half the arm length along chassis +X, rotated by
+          // chassisYaw — so its long axis points along the same
+          // direction as the live arm cylinder.
+          out.push({
+            shape: 'box',
+            x: (armLength / 2) * cY,
+            y: panelCenterY,
+            z: (armLength / 2) * sY,
+            yaw: chassisYaw,
+            sx: armLength,
+            sy: armThickness,
+            sz: armThickness,
             color: primary,
           });
         }

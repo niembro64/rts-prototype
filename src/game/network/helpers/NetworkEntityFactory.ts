@@ -72,10 +72,10 @@ function createUnitFromNetwork(
       hp: u?.hp.curr ?? 100,
       maxHp: u?.hp.max ?? 100,
       unitRadiusCollider: {
-        scale: u?.collider?.scale ?? defaultRadius,
         shot: u?.collider?.shot ?? defaultRadius,
         push: u?.collider?.push ?? defaultRadius,
       },
+      bodyRadius: u?.bodyRadius ?? defaultRadius,
       bodyCenterHeight: u?.bodyCenterHeight ?? u?.collider?.push ?? defaultRadius,
       moveSpeed: u?.moveSpeed ?? 100,
       mass: u?.mass ?? 25,
@@ -99,8 +99,11 @@ function createUnitFromNetwork(
         cooldown: 0,
         target: nw.targetId ?? null,
         ranges: {
-          tracking: { ...t.ranges.tracking },
-          engage: { ...t.ranges.engage },
+          tracking: t.ranges.tracking ? { ...t.ranges.tracking } : null,
+          fire: {
+            min: t.ranges.fire.min ? { ...t.ranges.fire.min } : null,
+            max: { ...t.ranges.fire.max },
+          },
         },
         state: codeToTurretState(nw.state),
         rotation: t.angular.rot,
@@ -248,7 +251,8 @@ function createProjectileFromNetwork(
           angular: { turnAccel: 0, drag: 0 },
           rangeOverrides: {
             engageRangeMax: { acquire: 0, release: 0 },
-            engageRangeMin: { acquire: 0, release: 0 },
+            engageRangeMin: null,
+            trackingRange: null,
           },
           eventsSmooth: false,
           shot: { type: 'projectile' as const, id: 'unknown', mass: 1, launchForce: 100, collision: { radius: 5 } },
@@ -263,12 +267,15 @@ function createProjectileFromNetwork(
       maxLifespan: 2000,
       hitEntities: new Set(),
       maxHits: 1,
-      startX: x,
-      startY: y,
-      startZ: netEntity.pos.z,
-      endX: netEntity.posEnd?.x,
-      endY: netEntity.posEnd?.y,
-      endZ: netEntity.posEnd?.z,
+      points: netEntity.posEnd ? [
+        { x, y, z: netEntity.pos.z, vx: 0, vy: 0, vz: 0 },
+        {
+          x: netEntity.posEnd.x,
+          y: netEntity.posEnd.y,
+          z: netEntity.posEnd.z,
+          vx: 0, vy: 0, vz: 0,
+        },
+      ] : undefined,
     },
   };
 }

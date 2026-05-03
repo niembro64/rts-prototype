@@ -11,7 +11,6 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { BEAM_MAX_LENGTH } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { BeamStyle, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
 import { getGraphicsConfig } from '@/clientBarConfig';
@@ -20,12 +19,7 @@ import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjec
 import { RenderLodGrid } from './RenderLodGrid';
 import { normalizeLodCellSize } from '../lodGridMath';
 import { landCellIndexForSize } from '../landGrid';
-
-// Fallback altitude for beams whose proj.startZ / endZ haven't been
-// populated yet (a single frame gap before the tracer runs). Matches the
-// old flat-beam height so a first-frame beam renders at the same Y it
-// did pre-3D, rather than snapping to 0.
-const SHOT_HEIGHT = 28 + 16 / 2;
+import { getLineShotDamageSphereRadius } from '../sim/combat/lineShotUtils';
 
 // Cylinder radius is the sim's `shot.radius` (= shot.width / 2), scaled
 // down and floored so a very-thin beam still renders as a visible line.
@@ -40,6 +34,10 @@ const BEAM_RADIUS_SCALE = 0.55;
 const BEAM_OPACITY = 0.16;
 const LASER_OPACITY_MAX = 0.24;
 const BEAM_SEGMENT_CAP = 8192;
+const BEAM_ENDPOINT_CAP = 4096;
+const ENDPOINT_OPACITY = 0.18;
+const LASER_ENDPOINT_OPACITY = 0.26;
+const ENDPOINT_MIN_RADIUS = 2.5;
 
 const BEAM_LOD_ORDER: Record<RenderObjectLodTier, number> = {
   marker: 0,
@@ -118,6 +116,28 @@ void main() {
 }
 `;
 
+const ENDPOINT_VERTEX_SHADER = `
+attribute float aAlpha;
+attribute float aPhase;
+varying float vAlpha;
+varying float vPhase;
+void main() {
+  vAlpha = aAlpha;
+  vPhase = aPhase;
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+}
+`;
+
+const ENDPOINT_FRAGMENT_SHADER = `
+uniform float uTime;
+varying float vAlpha;
+varying float vPhase;
+void main() {
+  float pulse = 0.78 + 0.22 * sin(uTime * 10.0 + vPhase * 6.2831853);
+  gl_FragColor = vec4(vec3(1.0), vAlpha * pulse);
+}
+`;
+
 export class BeamRenderer3D {
   private root: THREE.Group;
   // Unit cylinder along +Y; rotated/positioned to span each segment
@@ -130,6 +150,14 @@ export class BeamRenderer3D {
   private segmentFlowAttr: THREE.InstancedBufferAttribute;
   private flowTimeUniform = { value: 0 };
   private activeSegmentCount = 0;
+  private endpointGeom = new THREE.SphereGeometry(1, 12, 10);
+  private endpointMesh: THREE.InstancedMesh;
+  private endpointMat: THREE.ShaderMaterial;
+  private endpointAlpha = new Float32Array(BEAM_ENDPOINT_CAP);
+  private endpointPhase = new Float32Array(BEAM_ENDPOINT_CAP);
+  private endpointAlphaAttr: THREE.InstancedBufferAttribute;
+  private endpointPhaseAttr: THREE.InstancedBufferAttribute;
+  private activeEndpointCount = 0;
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
@@ -182,6 +210,33 @@ export class BeamRenderer3D {
     this.segmentMesh.renderOrder = 12;
     this.segmentMesh.count = 0;
     this.root.add(this.segmentMesh);
+
+    this.endpointAlphaAttr = new THREE.InstancedBufferAttribute(this.endpointAlpha, 1);
+    this.endpointAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+    this.endpointPhaseAttr = new THREE.InstancedBufferAttribute(this.endpointPhase, 1);
+    this.endpointPhaseAttr.setUsage(THREE.DynamicDrawUsage);
+    this.endpointGeom.setAttribute('aAlpha', this.endpointAlphaAttr);
+    this.endpointGeom.setAttribute('aPhase', this.endpointPhaseAttr);
+    this.endpointMat = new THREE.ShaderMaterial({
+      vertexShader: ENDPOINT_VERTEX_SHADER,
+      fragmentShader: ENDPOINT_FRAGMENT_SHADER,
+      uniforms: {
+        uTime: this.flowTimeUniform,
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+    });
+    this.endpointMesh = new THREE.InstancedMesh(
+      this.endpointGeom,
+      this.endpointMat,
+      BEAM_ENDPOINT_CAP,
+    );
+    this.endpointMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.endpointMesh.frustumCulled = false;
+    this.endpointMesh.renderOrder = 13;
+    this.endpointMesh.count = 0;
+    this.root.add(this.endpointMesh);
   }
 
   private resolvePointLod(simX: number, simY: number, simZ: number): RenderObjectLodTier {
@@ -259,6 +314,24 @@ export class BeamRenderer3D {
     return true;
   }
 
+  private writeEndpoint(
+    slot: number,
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    alpha: number,
+    phase: number,
+  ): boolean {
+    if (slot >= BEAM_ENDPOINT_CAP || alpha <= 0.001 || radius <= 0.001) return false;
+    this._matrix.makeScale(radius, radius, radius);
+    this._matrix.setPosition(simX, simZ, simY);
+    this.endpointMesh.setMatrixAt(slot, this._matrix);
+    this.endpointAlpha[slot] = alpha;
+    this.endpointPhase[slot] = phase;
+    return true;
+  }
+
   private flowPhase(entityId: number, segmentIndex: number): number {
     const v = Math.sin(entityId * 12.9898 + segmentIndex * 78.233) * 43758.5453;
     return v - Math.floor(v);
@@ -291,7 +364,7 @@ export class BeamRenderer3D {
     sharedLodGrid?: RenderLodGrid,
     contentVersion?: number,
   ): void {
-    if (projectiles.length === 0 && this.activeSegmentCount === 0) return;
+    if (projectiles.length === 0 && this.activeSegmentCount === 0 && this.activeEndpointCount === 0) return;
     this.flowTimeUniform.value = performance.now() * 0.001;
     this.frameGfx = graphicsConfig ?? getGraphicsConfig();
     this.lodActive = lod !== undefined;
@@ -311,34 +384,31 @@ export class BeamRenderer3D {
     this.lastRenderKey = renderKey;
 
     let segIdx = 0;
+    let endpointIdx = 0;
 
     for (const e of projectiles) {
       const pt = e.projectile?.projectileType;
       if (pt !== 'beam' && pt !== 'laser') continue;
 
       const proj = e.projectile!;
-      const startX = proj.startX;
-      const startY = proj.startY;
-      const endX = proj.endX;
-      const endY = proj.endY;
-      if (
-        startX === undefined || startY === undefined ||
-        endX === undefined || endY === undefined
-      ) continue;
+      const points = proj.points;
+      if (!points || points.length < 2) continue;
+      const startPoint = points[0];
+      const endPoint = points[points.length - 1];
       // Scope gate before any LOD-grid work. Off-screen beam segments
       // can be numerous in large fights, and resolving their camera
       // sphere tier is wasted if both endpoints are outside the active
       // render footprint.
-      const startIn = this.scope.inScope(startX, startY, 200);
-      const endIn = this.scope.inScope(endX, endY, 200);
+      const startIn = this.scope.inScope(startPoint.x, startPoint.y, 200);
+      const endIn = this.scope.inScope(endPoint.x, endPoint.y, 200);
       if (!startIn && !endIn) continue;
 
-      // Vertical endpoints come from the 3D beam tracer; fall back to
-      // SHOT_HEIGHT for beams that predate the z-aware path (e.g. a
-      // keyframe where start/endZ wasn't populated yet).
-      const startZ = proj.startZ ?? SHOT_HEIGHT;
-      const endZ = proj.endZ ?? SHOT_HEIGHT;
-      const objectTier = this.resolveBeamLod(startX, startY, startZ, endX, endY, endZ);
+      // Vertical endpoints come from the 3D beam tracer; the polyline
+      // points already carry their own z (per-vertex 3D position).
+      const objectTier = this.resolveBeamLod(
+        startPoint.x, startPoint.y, startPoint.z,
+        endPoint.x, endPoint.y, endPoint.z,
+      );
       const graphicsTier = objectLodToGraphicsTier(objectTier, this.frameGfx.tier);
       const opacityMul = BEAM_OPACITY_BY_TIER[graphicsTier];
       const radiusMul = BEAM_RADIUS_BY_TIER[graphicsTier];
@@ -355,75 +425,61 @@ export class BeamRenderer3D {
       // shot.radius already equals shot.width / 2 for line shots, so using it
       // directly as the cylinder scale makes the diameter = shot.width.
       let cylRadius = BEAM_MIN_RADIUS;
+      let damageSphereRadius = ENDPOINT_MIN_RADIUS;
       if (shot && (shot.type === 'beam' || shot.type === 'laser')) {
         cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius * BEAM_RADIUS_SCALE * radiusMul);
+        damageSphereRadius = Math.max(
+          ENDPOINT_MIN_RADIUS,
+          getLineShotDamageSphereRadius(shot),
+        );
       }
       const baseAlpha = pt === 'laser' ? LASER_OPACITY_MAX : BEAM_OPACITY;
 
-      // Build the path: start → reflections[0..n-1] → end. Each
-      // consecutive pair is one cylinder segment. Each reflection
-      // carries its own z so pitched beams bouncing off vertical
-      // mirrors trace the correct 3D polyline. Cumulative distance
-      // along the polyline drives a linear alpha fade so the beam
-      // visually "decays" with range — fully bright at the muzzle,
-      // fading to invisible at BEAM_MAX_LENGTH. This is a pure visual
-      // reference now; the sim no longer caps beams at this length.
-      // Each beam expires at the firing turret's own `range` (its
-      // bounded polyline budget), and the renderer fade just keeps
-      // long-reach beams from being uniformly bright across the map.
-      let prevX = startX;
-      let prevY = startY;
-      let prevZ = startZ;
-      let cumDist = 0;
-      const reflections = proj.reflections;
-      if (reflections && drawReflections) {
-        for (let i = 0; i < reflections.length; i++) {
-          const r = reflections[i];
-          const dx = r.x - prevX;
-          const dy = r.y - prevY;
-          const dz = r.z - prevZ;
-          const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          const midDist = cumDist + segLen / 2;
-          const alpha = baseAlpha * Math.max(0, 1 - midDist / BEAM_MAX_LENGTH) * opacityMul;
-          if (this.writeSegment(
-            segIdx,
-            prevX, prevY, prevZ,
-            r.x, r.y, r.z,
-            cylRadius,
-            alpha,
-            segLen,
-            flowStrength,
-            this.flowRepeats(segLen, flowCfg.spacing),
-            this.flowPhase(e.id, segIdx),
-            flowSpeed,
-          )) {
-            segIdx++;
-          }
-          prevX = r.x;
-          prevY = r.y;
-          prevZ = r.z;
-          cumDist += segLen;
+      // Walk the polyline pairwise and draw one cylinder per segment.
+      // Each reflection vertex carries its own (x, y, z), so pitched
+      // beams bouncing off vertical mirrors trace the correct 3D path.
+      // Every segment renders at the same uniform alpha — the beam
+      // already expires at the firing turret's `range` or wherever it
+      // hit / reflected, so no global length-based fade is needed.
+      // At low render LODs we collapse the polyline to a single
+      // start→end segment (skip drawing reflections).
+      const segAlpha = baseAlpha * opacityMul;
+      const lastIdx = points.length - 1;
+      const stride = drawReflections ? 1 : lastIdx;
+      for (let i = 0; i < lastIdx; i += stride) {
+        const a = points[i];
+        const b = points[Math.min(i + stride, lastIdx)];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dz = b.z - a.z;
+        const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (this.writeSegment(
+          segIdx,
+          a.x, a.y, a.z,
+          b.x, b.y, b.z,
+          cylRadius,
+          segAlpha,
+          segLen,
+          flowStrength,
+          this.flowRepeats(segLen, flowCfg.spacing),
+          this.flowPhase(e.id, segIdx),
+          flowSpeed,
+        )) {
+          segIdx++;
         }
       }
-      const finalDx = endX - prevX;
-      const finalDy = endY - prevY;
-      const finalDz = endZ - prevZ;
-      const finalLen = Math.sqrt(finalDx * finalDx + finalDy * finalDy + finalDz * finalDz);
-      const finalMid = cumDist + finalLen / 2;
-      const finalAlpha = baseAlpha * Math.max(0, 1 - finalMid / BEAM_MAX_LENGTH) * opacityMul;
-      if (this.writeSegment(
-        segIdx,
-        prevX, prevY, prevZ,
-        endX, endY, endZ,
-        cylRadius,
-        finalAlpha,
-        finalLen,
-        flowStrength,
-        this.flowRepeats(finalLen, flowCfg.spacing),
-        this.flowPhase(e.id, segIdx),
-        flowSpeed,
+
+      const endpointAlpha = (pt === 'laser' ? LASER_ENDPOINT_OPACITY : ENDPOINT_OPACITY) * opacityMul;
+      if (this.writeEndpoint(
+        endpointIdx,
+        endPoint.x,
+        endPoint.y,
+        endPoint.z,
+        damageSphereRadius,
+        endpointAlpha,
+        this.flowPhase(e.id, 997),
       )) {
-        segIdx++;
+        endpointIdx++;
       }
     }
 
@@ -440,6 +496,20 @@ export class BeamRenderer3D {
       this.segmentFlowAttr.needsUpdate = true;
     }
     this.activeSegmentCount = segIdx;
+
+    this.endpointMesh.count = endpointIdx;
+    if (endpointIdx > 0) {
+      this.endpointMesh.instanceMatrix.clearUpdateRanges();
+      this.endpointMesh.instanceMatrix.addUpdateRange(0, endpointIdx * 16);
+      this.endpointMesh.instanceMatrix.needsUpdate = true;
+      this.endpointAlphaAttr.clearUpdateRanges();
+      this.endpointAlphaAttr.addUpdateRange(0, endpointIdx);
+      this.endpointAlphaAttr.needsUpdate = true;
+      this.endpointPhaseAttr.clearUpdateRanges();
+      this.endpointPhaseAttr.addUpdateRange(0, endpointIdx);
+      this.endpointPhaseAttr.needsUpdate = true;
+    }
+    this.activeEndpointCount = endpointIdx;
   }
 
   destroy(): void {
@@ -447,6 +517,10 @@ export class BeamRenderer3D {
     this.segmentMesh.dispose();
     this.segmentMat.dispose();
     this.segmentGeom.dispose();
+    this.root.remove(this.endpointMesh);
+    this.endpointMesh.dispose();
+    this.endpointMat.dispose();
+    this.endpointGeom.dispose();
     this.root.parent?.remove(this.root);
   }
 }

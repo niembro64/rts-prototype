@@ -16,6 +16,7 @@ import { getSimDetailConfig } from '../simQuality';
 import { spatialGrid } from '../SpatialGrid';
 import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
 import { getUnitGroundZ } from '../unitGeometry';
+import { getLineShotDamageSphereRadius } from './lineShotUtils';
 
 const MIRROR_PROJECTILE_QUERY_PAD = 96;
 
@@ -466,10 +467,14 @@ export function checkProjectileCollisions(
         }
         // Beam/laser damage: single area zone at truncated endpoint
         const beamShot = config.shot as BeamShot | LaserShot;
-      const impactX = proj.endX ?? projEntity.transform.x;
-      const impactY = proj.endY ?? projEntity.transform.y;
-      const impactZ = proj.endZ ?? projEntity.transform.z;
+      const points = proj.points;
+      const lastPoint = points && points.length >= 2 ? points[points.length - 1] : undefined;
+      const impactX = lastPoint?.x ?? projEntity.transform.x;
+      const impactY = lastPoint?.y ?? projEntity.transform.y;
+      const impactZ = lastPoint?.z ?? projEntity.transform.z;
       const dtSec = collisionDtMs / 1000;
+
+      const damageSphereRadius = getLineShotDamageSphereRadius(beamShot);
 
       // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
       const tickDamage = beamShot.dps * dtSec;
@@ -480,10 +485,17 @@ export function checkProjectileCollisions(
       const beamDirX = Math.cos(beamAngle);
       const beamDirY = Math.sin(beamAngle);
 
-      // Reflected beams: attribute damage/kills to the last mirror unit that redirected it
-      const damageSourceId = proj.reflections && proj.reflections.length > 0
-        ? proj.reflections[proj.reflections.length - 1].mirrorEntityId
-        : proj.sourceEntityId;
+      // Reflected beams: attribute damage/kills to the last mirror unit
+      // that redirected the beam (= last polyline vertex with a
+      // mirrorEntityId). Points layout: [start, ...reflections, end].
+      let lastMirrorEntityId: EntityId | undefined;
+      if (points) {
+        for (let i = points.length - 2; i >= 1; i--) {
+          const mid = points[i].mirrorEntityId;
+          if (mid !== undefined) { lastMirrorEntityId = mid; break; }
+        }
+      }
+      const damageSourceId = lastMirrorEntityId ?? proj.sourceEntityId;
 
       const result = damageSystem.applyDamage({
         type: 'area',
@@ -492,34 +504,33 @@ export function checkProjectileCollisions(
         damage: tickDamage,
         excludeEntities: _emptyExcludeSet,
         center: { x: impactX, y: impactY, z: impactZ },
-        radius: beamShot.radius,
+        radius: damageSphereRadius,
         knockbackForce: tickForce,
       });
 
       applyKnockbackForces(result.knockbacks, forceAccumulator);
 
-      // Apply beam force (knockback only, no damage) to each mirror entity
-      if (proj.reflections && proj.reflections.length > 0 && forceAccumulator) {
-        const startX = proj.startX ?? projEntity.transform.x;
-        const startY = proj.startY ?? projEntity.transform.y;
-        let prevX = startX;
-        let prevY = startY;
-        for (const refl of proj.reflections) {
-          // Beam direction at this mirror is from previous point toward reflection point
-          const segDx = refl.x - prevX;
-          const segDy = refl.y - prevY;
+      // Apply beam force (knockback only, no damage) to each mirror entity.
+      // Walk segment-by-segment along the polyline; whenever a vertex
+      // carries a mirrorEntityId, the segment ENTERING that vertex is
+      // the incoming beam direction at that mirror.
+      if (points && points.length > 2 && forceAccumulator) {
+        for (let i = 1; i < points.length - 1; i++) {
+          const refl = points[i];
+          if (refl.mirrorEntityId === undefined) continue;
+          const prev = points[i - 1];
+          const segDx = refl.x - prev.x;
+          const segDy = refl.y - prev.y;
           const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
           if (segLen > 0) {
             const dirX = segDx / segLen;
             const dirY = segDy / segLen;
             forceAccumulator.addForce(refl.mirrorEntityId, dirX * tickForce, dirY * tickForce, 'beam');
           }
-          prevX = refl.x;
-          prevY = refl.y;
         }
       }
 
-      emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, beamShot.radius, audioEvents);
+      emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
       collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
 
       // Note: beam recoil is applied in fireTurrets() based on weapon.state

@@ -1,13 +1,13 @@
 // Mirror-turret aim solver. A passive ("mirror") turret doesn't fire
 // — its job is to ORIENT a flat reflector so an enemy beam fired at
-// the mirror-bearing unit reflects toward a chosen victim.
+// the mirror-bearing unit reflects BACK at the firing source's body.
 //
 // Inputs (per tick, per mirror turret):
 //   - unit            — the mirror-bearing unit
 //   - weapon          — the mirror turret on `unit`
 //   - target          — the LOCKED-ON enemy unit (already chosen by
 //                       targetingSystem because it has a non-passive
-//                       beam/laser turret)
+//                       beam/laser turret); also the redirect victim.
 //   - weaponX/Y       — turret mount world position (chassis-local
 //                       offset already resolved)
 //   - unitGroundZ     — unit's ground footprint Z
@@ -19,31 +19,26 @@
 // downstream consumers. Returns null when `target` carries no
 // beam/laser turret to reflect (caller falls back to normal aim).
 //
-// Geometry: flat-panel reflection r = d − 2(d · n) n. For a beam
-// from S to bend through panel point P toward V, the normal n must
-// BISECT the angle between (P→S) and (P→V):
+// Geometry: flat-panel reflection r = d − 2(d · n) n. To bend an
+// incoming beam from S onto V the panel normal n must BISECT the
+// angle between (P→S) and (P→V):
 //
 //     n  ∝  (S − P) / |S − P|  +  (V − P) / |V − P|
 //
 // Yaw α = atan2(n.y, n.x), pitch β = atan2(n.z, hypot(n.x, n.y)).
-// P depends on α (the panel sits at offsetX in front of the turret),
-// so we run two fixed-point iterations: P₀=mount, then P₁=mount +
-// offset·(cos α₀, sin α₀). That drives the residual under 0.02°,
-// well inside any unit body radius. Vertical P is independent of
-// pitch (panel rotates around its center) so no β iteration.
 //
-// Victim selection: nearest enemy unit to the mirror by spatial-grid
-// query, filtered by the same-side test (P→S)·(P→V) > 0 so we never
-// try to reflect through the panel's back face. The source's own
-// host always passes the test (P→S and P→target are co-linear up to
-// the source barrel offset), so a valid V exists whenever S exists.
+// The panel center P is mounted at ARM'S LENGTH out in front of the
+// turret (panel `offsetX` chassis-local), so P depends on α — moving
+// the bisector yaw moves the panel sideways, which moves the bisector
+// yaw. We solve with three fixed-point iterations (P_{i+1} = weaponMount
+// + offsetX · (cos α_i, sin α_i)). The residual collapses well below
+// 0.01° after the third pass for any reasonable arm length / target
+// distance combination. Vertical P is independent of pitch (panel
+// rotates around its horizontal edge axis) so no β iteration.
 
 import type { Entity, Turret } from '../types';
-import { getTransformCosSin, getBarrelTip, getWeaponWorldPosition } from '../../math';
-import { getTurretMountHeight } from './combatUtils';
-import { spatialGrid } from '../SpatialGrid';
-import { getSimDetailConfig } from '../simQuality';
-import { getUnitGroundZ } from '../unitGeometry';
+import { getTransformCosSin, getBarrelTip } from '../../math';
+import { resolveWeaponWorldMount } from './combatUtils';
 
 export type MirrorAim = {
   targetAngle: number;
@@ -53,14 +48,17 @@ export type MirrorAim = {
   aimZ: number;
 };
 
+const _enemyBeamMount = { x: 0, y: 0, z: 0 };
+
 export function solveMirrorAim(
   unit: Entity,
-  weapon: Turret,
+  _weapon: Turret,
   target: Entity,
   weaponX: number,
   weaponY: number,
   unitGroundZ: number,
   fallbackYaw: number,
+  currentTick?: number,
 ): MirrorAim | null {
   if (!target.turrets || !unit.unit) return null;
 
@@ -75,88 +73,42 @@ export function solveMirrorAim(
     // chassis lift and slope tilt; fall back to upright mount math for
     // first-frame/stale targets.
     const tCS = getTransformCosSin(target.transform);
-    const eGroundZ = getUnitGroundZ(target);
-    const ewp = enemyTurret.worldPos ?? getWeaponWorldPosition(
-      target.transform.x, target.transform.y,
+    const ewp = resolveWeaponWorldMount(
+      target, enemyTurret, ti,
       tCS.cos, tCS.sin,
-      enemyTurret.offset.x, enemyTurret.offset.y,
+      currentTick === undefined ? undefined : { currentTick },
+      _enemyBeamMount,
     );
-    const eMountZ = enemyTurret.worldPos?.z ?? (eGroundZ + getTurretMountHeight(target, ti));
     const eTip = getBarrelTip(
-      ewp.x, ewp.y, eMountZ,
+      ewp.x, ewp.y, ewp.z,
       enemyTurret.rotation, enemyTurret.pitch,
       enemyTurret.config,
-      target.unit?.unitRadiusCollider.scale ?? 15,
+      target.unit?.bodyRadius ?? 15,
       0,
     );
 
     const panels = unit.unit.mirrorPanels;
-    const panelCenterZ = panels.length > 0
-      ? unitGroundZ + (panels[0].baseY + panels[0].topY) / 2
-      : unitGroundZ;
-    const panelOffsetX = panels.length > 0 ? panels[0].offsetX : 0;
+    if (panels.length === 0) return null;
+    const panel = panels[0];
+    const panelCenterZ = unitGroundZ + (panel.baseY + panel.topY) / 2;
+    const armLength = panel.offsetX;
 
-    // P (panel center) is computed below as
-    //   P = weaponMount + offsetX · (cos α, sin α)
-    // where α is the solved bisector yaw. This matches the sim's
-    // panel-center formula
-    //   P_sim = unitCenter + offsetX · (cos mirrorRot, sin mirrorRot)
-    //         + offsetY · (-sin mirrorRot, cos mirrorRot)
-    // ONLY when (a) the mirror panel's blueprint offsetY is 0 (panel
-    // sits on the turret's forward axis, no lateral shift) AND
-    // (b) the mirror turret itself is mounted at chassis-local (0, 0).
-    // The current Loris blueprint satisfies both. If a future mirror
-    // turret is mounted off-center on the chassis, weaponMount diverges
-    // from unitCenter and the bisector P would track the turret instead
-    // of the actual panel — a small mismatch but worth knowing about.
-    const seedPx = weaponX + Math.cos(weapon.rotation) * panelOffsetX;
-    const seedPy = weaponY + Math.sin(weapon.rotation) * panelOffsetX;
-    const sSeedX = eTip.x - seedPx;
-    const sSeedY = eTip.y - seedPy;
-    const sSeedZ = eTip.z - panelCenterZ;
-    const sSeedLen = Math.hypot(sSeedX, sSeedY, sSeedZ);
-    let victim: Entity = target;
-    let victimDist = Infinity;
-    if (sSeedLen > 1e-6 && unit.ownership) {
-      const enemies = spatialGrid.queryEnemyEntitiesInRadius(
-        weaponX, weaponY, unitGroundZ,
-        weapon.ranges.tracking.acquire,
-        unit.ownership.playerId,
-      );
-      for (const enemy of enemies) {
-        if (!enemy.unit || enemy.unit.hp <= 0) continue;
-        const vX = enemy.transform.x - seedPx;
-        const vY = enemy.transform.y - seedPy;
-        const vZ = enemy.transform.z - panelCenterZ;
-        const vLen = Math.hypot(vX, vY, vZ);
-        if (vLen <= 1e-6) continue;
-        const dot = sSeedX * vX + sSeedY * vY + sSeedZ * vZ;
-        if (dot <= 0) continue;
-        if (vLen < victimDist) {
-          victimDist = vLen;
-          victim = enemy;
-        }
-      }
-    }
-
-    // Two-pass fixed-point iteration on P.
-    let pcx = weaponX;
-    let pcy = weaponY;
+    // Three fixed-point iterations on the panel center P. Seed P_0
+    // with the panel's CURRENT yaw (the weapon's last solved rotation)
+    // so we converge fast even when the target is moving sideways.
     let bisectorYaw = fallbackYaw;
-    let bisectorPitch: number | null = null;
+    let bisectorPitch = 0;
     let valid = false;
-    // Iteration count comes from the HOST SERVER LOD tier. 2 iters
-    // ⇒ ≤0.02° residual (well inside body radius); 1 iter ⇒ ≤1°
-    // (still hits inside the unit body in normal engagements).
-    const iters = Math.max(1, getSimDetailConfig().mirrorBisectorIterations | 0);
-    for (let iter = 0; iter < iters; iter++) {
+    let pcx = weaponX + Math.cos(fallbackYaw) * armLength;
+    let pcy = weaponY + Math.sin(fallbackYaw) * armLength;
+    for (let iter = 0; iter < 3; iter++) {
       const sX = eTip.x - pcx;
       const sY = eTip.y - pcy;
       const sZ = eTip.z - panelCenterZ;
       const sLen = Math.hypot(sX, sY, sZ);
-      const cX = victim.transform.x - pcx;
-      const cY = victim.transform.y - pcy;
-      const cZ = victim.transform.z - panelCenterZ;
+      const cX = target.transform.x - pcx;
+      const cY = target.transform.y - pcy;
+      const cZ = target.transform.z - panelCenterZ;
       const cLen = Math.hypot(cX, cY, cZ);
       if (sLen <= 1e-6 || cLen <= 1e-6) break;
       const nx = sX / sLen + cX / cLen;
@@ -167,22 +119,24 @@ export function solveMirrorAim(
       bisectorYaw = Math.atan2(ny, nx);
       bisectorPitch = Math.atan2(nz / nLen, Math.hypot(nx / nLen, ny / nLen));
       valid = true;
-      pcx = weaponX + Math.cos(bisectorYaw) * panelOffsetX;
-      pcy = weaponY + Math.sin(bisectorYaw) * panelOffsetX;
+      // Re-anchor P at the new yaw — panel sits arm's length forward
+      // along the just-solved bisector direction.
+      pcx = weaponX + Math.cos(bisectorYaw) * armLength;
+      pcy = weaponY + Math.sin(bisectorYaw) * armLength;
     }
 
-    if (valid && bisectorPitch !== null) {
+    if (valid) {
       return {
         targetAngle: bisectorYaw,
         mirrorPitch: bisectorPitch,
-        aimX: victim.transform.x,
-        aimY: victim.transform.y,
-        aimZ: victim.transform.z,
+        aimX: target.transform.x,
+        aimY: target.transform.y,
+        aimZ: target.transform.z,
       };
     }
-    // Found a beam turret but bisector was degenerate — give up
-    // rather than scanning further turrets on the same target; the
-    // damper will just hold its current pose.
+    // Bisector degenerate (S, V, or n collapsed) — give up rather
+    // than scanning further turrets on the same target; the damper
+    // just holds its current pose.
     return null;
   }
 

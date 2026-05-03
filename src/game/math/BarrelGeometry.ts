@@ -21,37 +21,36 @@ import { TURRET_HEIGHT } from '../../config';
 import type { TurretConfig } from '../sim/types';
 
 /** X/Z footprint of the spherical turret head as a fraction of the
- *  unit's render radius. Mirrors the constant in Render3DEntities so
- *  the renderer (which draws the sphere) and the sim (which computes
- *  shot spawn positions) agree on where the head ENDS and the barrel
- *  BEGINS. */
+ *  host unit's body radius. Mirrors the constant in Render3DEntities
+ *  so the renderer (which draws the sphere) and the sim (which
+ *  computes shot spawn positions) agree on where the head ENDS and
+ *  the barrel BEGINS. */
 export const TURRET_HEAD_FOOTPRINT_FRAC = 0.42;
 
-/** Radius of the spherical turret head for a unit of the given render
- *  scale. Floored to TURRET_HEIGHT / 2 so very small units still get
+/** Radius of the spherical turret head for a unit of the given body
+ *  radius. Floored to TURRET_HEIGHT / 2 so very small units still get
  *  a visible head sphere. A turret blueprint can override this with
  *  its own `bodyRadius` field — passing the config lets the renderer
  *  prefer the per-turret value when present. */
 export function getTurretHeadRadius(
-  unitScale: number,
+  unitBodyRadius: number,
   config?: TurretConfig,
 ): number {
   if (config?.bodyRadius !== undefined && config.bodyRadius > 0) {
     return config.bodyRadius;
   }
-  return Math.max(unitScale * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
+  return Math.max(unitBodyRadius * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
 }
 
-/** Same as getTurretHeadRadius but takes the bodyRadius value directly,
- *  so blueprint-side callers (which only have a `bodyRadius?: number`
- *  field, not a full TurretConfig) don't have to forge a config stub
- *  via `{ bodyRadius } as unknown as TurretConfig`. */
+/** Same as getTurretHeadRadius but takes the per-turret bodyRadius
+ *  value directly — for blueprint-side callers that only have a
+ *  `bodyRadius?: number` field rather than a full TurretConfig. */
 export function turretHeadRadiusFromBodyRadius(
-  unitScale: number,
-  bodyRadius: number | undefined,
+  unitBodyRadius: number,
+  turretBodyRadius: number | undefined,
 ): number {
-  if (bodyRadius !== undefined && bodyRadius > 0) return bodyRadius;
-  return Math.max(unitScale * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
+  if (turretBodyRadius !== undefined && turretBodyRadius > 0) return turretBodyRadius;
+  return Math.max(unitBodyRadius * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
 }
 
 /** World-space 3D position + unit-vector firing direction for a single
@@ -88,7 +87,8 @@ export function countBarrels(config: TurretConfig): number {
  *  turretPitch — elevation above horizontal (radians; +π/2 = straight up).
  *  config     — the turret blueprint; emitters fire from the mount,
  *               barrel configs fire from their centerline tip.
- *  unitScale  — unit radius that `barrelLength` is a fraction of.
+ *  unitBodyRadius — host unit's body radius (`Unit.bodyRadius`); the
+ *               authored `barrelLength` is a fraction of it.
  *  barrelIndex — retained for call-site compatibility and fire metadata.
  *                Multi-barrel physics no longer varies by index; shots
  *                come from the center point between the barrels.
@@ -99,7 +99,7 @@ export function getBarrelTip(
   mountX: number, mountY: number, mountZ: number,
   turretYaw: number, turretPitch: number,
   config: TurretConfig,
-  unitScale: number,
+  unitBodyRadius: number,
   _barrelIndex: number = 0,
   _spinAngle: number = 0,
 ): BarrelEndpoint {
@@ -128,7 +128,7 @@ export function getBarrelTip(
   // visible cylinder runs from the head's interior outward through
   // the surface. (Anything inside the sphere is occluded by the
   // head mesh, so visually you only see the protruding portion.)
-  const barrelLen = unitScale * b.barrelLength;
+  const barrelLen = unitBodyRadius * b.barrelLength;
 
   // Single-barrel and multi-barrel weapons both fire from the centerline.
   // The renderer owns the visible per-barrel offsets and spin; the sim owns

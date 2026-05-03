@@ -85,7 +85,7 @@ export function buildUnitDeathEvent(
     y: target?.body?.physicsBody.vy ?? 0,
   };
   const collider = target?.unit?.unitRadiusCollider;
-  const visualRadius = collider?.scale ?? collider?.shot ?? 15;
+  const visualRadius = target?.unit?.bodyRadius ?? collider?.shot ?? 15;
   const pushRadius = collider?.push ?? collider?.shot ?? visualRadius;
   const bodyCenterHeight = getUnitBodyCenterHeight(target?.unit);
   const radius = collider?.shot ?? visualRadius;

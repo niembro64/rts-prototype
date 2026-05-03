@@ -6,17 +6,15 @@ import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
 import { magnitude, getTransformCosSin, getBarrelTip } from '../math';
-import { getTurretWorldMount } from '../math/MountGeometry';
-import { computeTurretPointVelocity, getProjectileLaunchSpeed, getTurretMountHeight } from './combat/combatUtils';
+import { computeTurretPointVelocity, getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions } from './Pathfinder';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { getEntityTargetPoint } from './buildingAnchors';
-import { getUnitGroundZ } from './unitGeometry';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
-const _dgunFallbackMountVelocity = { x: 0, y: 0, z: 0 };
+const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMuzzleVelocity = { x: 0, y: 0, z: 0 };
 
 export type { CommandContext } from '@/types/ui';
@@ -264,22 +262,20 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // primitive — exactly the same call AI turrets use — so the
   // commander-fired shot emerges from the same point and axis the
   // renderer draws.
-  const commanderGroundZ = getUnitGroundZ(commander);
   const surfaceN = ctx.world.getCachedSurfaceNormal(
     commander.transform.x, commander.transform.y,
   );
-  const mount = getTurretWorldMount(
-    commander.transform.x, commander.transform.y, commanderGroundZ,
+  const mount = updateWeaponWorldKinematics(
+    commander, dgunTurret, dgunIdx,
     cos, sin,
-    dgunTurret.offset.x, dgunTurret.offset.y,
-    getTurretMountHeight(commander, dgunIdx),
-    surfaceN,
+    { currentTick: ctx.world.getTick(), surfaceN },
+    _dgunMount,
   );
   const tip = getBarrelTip(
     mount.x, mount.y, mount.z,
     fireAngle, dgunTurret.pitch,
     dgunTurret.config,
-    commander.unit!.unitRadiusCollider.scale,
+    commander.unit!.bodyRadius,
     0,
   );
   const spawnX = tip.x;
@@ -293,19 +289,14 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   let velocityY = tip.dirY * speed;
   let velocityZ = tip.dirZ * speed;
   if (commander.unit) {
-    // Manual D-gun shots may not have passed through the normal
-    // targeting cache this tick, so fall back to the commander body's
-    // current 3D velocity for the mount and still add the turret's own
-    // yaw/pitch tangential muzzle motion.
-    _dgunFallbackMountVelocity.x = commander.unit.velocityX ?? 0;
-    _dgunFallbackMountVelocity.y = commander.unit.velocityY ?? 0;
-    _dgunFallbackMountVelocity.z = commander.unit.velocityZ ?? 0;
+    // Manual D-gun shots update the same turret kinematics cache used
+    // by automated weapons above, so inherited velocity is the turret's
+    // own 3D motion plus yaw/pitch tangential muzzle motion.
     const inherited = computeTurretPointVelocity(
       dgunTurret,
       mount.x, mount.y, mount.z,
       tip.x, tip.y, tip.z,
       _dgunMuzzleVelocity,
-      _dgunFallbackMountVelocity,
     );
     velocityX += inherited.x;
     velocityY += inherited.y;

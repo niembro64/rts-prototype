@@ -31,7 +31,7 @@ export function findClosestUnitToPoint(
     const dist = magnitude(dx, dy);
 
     // Must be within collision radius
-    if (dist < entity.unit.unitRadiusCollider.scale) {
+    if (dist < entity.unit.bodyRadius) {
       if (!closest || dist < closest.dist) {
         closest = { id: entity.id, dist };
       }

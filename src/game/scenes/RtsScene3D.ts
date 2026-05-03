@@ -234,6 +234,10 @@ export class RtsScene3D {
   private lodShellGround3D: LodShellGround3D | null = null;
   private lodGridCells2D: LodGridCells2D | null = null;
   private renderLodGrid = new RenderLodGrid();
+  private readonly predictionLodResolver = (worldX: number, worldY: number, worldZ: number) => {
+    const tier = this.renderLodGrid.resolve(worldX, worldY, worldZ);
+    return tier === 'hero' ? 'rich' : tier;
+  };
 
   // Camera frustum cached once per frame and shared with the HUD
   // renderers so they can skip the bake / position update for every
@@ -260,6 +264,13 @@ export class RtsScene3D {
 
   private isGameOver = false;
   private hasCenteredCamera = false;
+  /** Frame counter used to drive the one-shot shader precompile sweep
+   *  during early gameplay. THREE compiles shaders lazily — sweeping
+   *  the first ~60 update frames catches most material variants
+   *  (units, buildings, beams, force fields, explosions, debris,
+   *  smoke, sprays) right after they're added to the scene, instead
+   *  of paying a 100-150ms getProgramInfoLog stall mid-battle. */
+  private precompileFramesRemaining = 60;
 
   // Performance trackers (mirror RtsScene)
   private fpsTracker = new EmaTracker(EMA_CONFIG.fps, EMA_INITIAL_VALUES.fps);
@@ -339,6 +350,7 @@ export class RtsScene3D {
     getSelectedBuildings: () => Entity[];
     getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
     getUnitsByPlayer: (playerId: PlayerId) => Entity[];
+    getEntitySetVersion: () => number;
   };
   private _cachedSelectedUnits: Entity[] = [];
   private _cachedSelectedBuildings: Entity[] = [];
@@ -563,6 +575,7 @@ export class RtsScene3D {
       getSelectedBuildings: () => this._cachedSelectedBuildings,
       getBuildingsByPlayer: (pid) => this.clientViewState.getBuildingsByPlayer(pid),
       getUnitsByPlayer: (pid) => this.clientViewState.getUnitsByPlayer(pid),
+      getEntitySetVersion: () => this.clientViewState.getEntitySetVersion(),
     };
 
     this.snapshotBuffer.attach(this.gameConnection);
@@ -852,29 +865,11 @@ export class RtsScene3D {
 
     this.rebuildSelectedEntityCachesIfNeeded();
 
-    // Dead-reckon + drift by the same camera-sphere cells that drive
-    // render object LOD. Near entities predict every frame; far cells
-    // update on sparse staggered strides.
-    const predictionGraphicsConfig = getGraphicsConfig();
-    const predictionLodShells = getRenderObjectLodShellDistances(predictionGraphicsConfig);
-    this.clientViewState.applyPrediction(delta, {
-      cameraX: this.threeApp.camera.position.x,
-      cameraY: this.threeApp.camera.position.y,
-      cameraZ: this.threeApp.camera.position.z,
-      richDistance: predictionLodShells.rich,
-      simpleDistance: predictionLodShells.simple,
-      massDistance: predictionLodShells.mass,
-      impostorDistance: predictionLodShells.impostor,
-      cellSize: predictionGraphicsConfig.objectLodCellSize,
-      physicsPredictionFramesSkip: predictionGraphicsConfig.clientPhysicsPredictionFramesSkip,
-    });
-
-    // Render phase
-    const renderStart = performance.now();
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
     // Camera smoothing must step BEFORE visibility scope and view-LOD
-    // decisions. Otherwise CPU culling and rich-unit selection trail
-    // the rendered camera by one frame during dolly/pan.
+    // decisions. Otherwise CPU culling, prediction cadence, and
+    // rich-unit selection trail the rendered camera by one frame
+    // during dolly/pan.
     const effectNow = performance.now();
     const effectDt = this.lastEffectsTickMs === 0
       ? 0
@@ -903,6 +898,25 @@ export class RtsScene3D {
     const renderLod = snapshotLod(this.threeApp.camera, viewportHeightPx);
     const graphicsConfig = renderLod.gfx;
     this.renderLodGrid.beginFrame(renderLod.view, graphicsConfig);
+
+    // Dead-reckon + drift through the exact same camera-sphere cell
+    // resolver used by renderers this frame. Near entities predict
+    // every frame; far cells update on sparse staggered strides.
+    this.clientViewState.applyPrediction(delta, {
+      cameraX: renderLod.view.cameraX,
+      cameraY: renderLod.view.cameraY,
+      cameraZ: renderLod.view.cameraZ,
+      richDistance: 0,
+      simpleDistance: 0,
+      massDistance: 0,
+      impostorDistance: 0,
+      cellSize: graphicsConfig.objectLodCellSize,
+      physicsPredictionFramesSkip: graphicsConfig.clientPhysicsPredictionFramesSkip,
+      resolveTier: this.predictionLodResolver,
+    });
+
+    // Render phase
+    const renderStart = performance.now();
     const lodShells = getRenderObjectLodShellDistances(graphicsConfig);
     this.lodShellGround3D?.update(
       this.threeApp.camera,
@@ -952,7 +966,9 @@ export class RtsScene3D {
       this.renderLodGrid,
     );
     const lineProjectiles = this.clientViewState.collectLineProjectiles(this._lineProjectilesScratch);
-    const smokeTrailProjectiles = this.clientViewState.collectSmokeTrailProjectiles(this._smokeTrailProjectilesScratch);
+    const smokeTrailProjectiles = updateEffectsThisFrame
+      ? this.clientViewState.collectSmokeTrailProjectiles(this._smokeTrailProjectilesScratch)
+      : this._smokeTrailProjectilesScratch;
     this.beamRenderer.update(
       lineProjectiles,
       graphicsConfig,
@@ -1090,6 +1106,20 @@ export class RtsScene3D {
         this._cachedSelectedUnits,
         this._cachedSelectedBuildings,
       );
+    }
+
+    // Shader precompile sweep — every per-frame renderer above has had
+    // a chance to add its current materials to the scene by now. THREE
+    // compiles shaders lazily on first render of each program, and the
+    // sync getProgramInfoLog read after compile blocks the frame for
+    // 100-150ms (caught in the wild on a 144ms profile). Sweeping the
+    // first ~60 frames forces every just-added material's program
+    // through the compiler at a known time, so first-of-its-kind
+    // beams / explosions / debris / force fields don't stall the frame
+    // they appear on. compile() is a no-op for already-cached programs.
+    if (this.precompileFramesRemaining > 0) {
+      this.threeApp.precompileShaders();
+      this.precompileFramesRemaining--;
     }
     const renderEnd = performance.now();
 
@@ -1417,7 +1447,7 @@ export class RtsScene3D {
       if (!ctx && ent) {
         const pid = ent.ownership?.playerId;
         const tcol = getPlayerPrimaryColor(pid);
-        const visualRadius = ent.unit?.unitRadiusCollider.scale
+        const visualRadius = ent.unit?.bodyRadius
           ?? ent.unit?.unitRadiusCollider.shot
           ?? 15;
         const pushRadius = ent.unit ? getUnitBodyCenterHeight(ent.unit) : visualRadius;
@@ -1439,7 +1469,7 @@ export class RtsScene3D {
         };
       }
       if (ctx && ent?.unit) {
-        const visualRadius = ent.unit.unitRadiusCollider.scale
+        const visualRadius = ent.unit.bodyRadius
           ?? ent.unit.unitRadiusCollider.shot
           ?? ctx.visualRadius
           ?? ctx.radius;

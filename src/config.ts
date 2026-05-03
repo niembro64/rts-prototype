@@ -10,6 +10,7 @@
 
 export type {
   SnapshotConfig,
+  SnapshotDeltaResolutionConfig,
   EmaLowConfig,
   EmaTierConfig,
   EmaHighConfig,
@@ -161,6 +162,32 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
    *    HIGH resolution — 0.01 rad/s
    *      Every micro-correction; turret feels glued to the target. */
   rotationVelocityThreshold: 0.1,
+
+  /** Recipient-owned entities keep the baseline diff precision so the
+   *  player sees their own orders, collision correction, and turret aim
+   *  at full fidelity. */
+  ownedEntityDelta: {
+    positionThresholdMultiplier: 1,
+    velocityThresholdMultiplier: 1,
+    rotationPositionThresholdMultiplier: 1,
+    rotationVelocityThresholdMultiplier: 1,
+  },
+
+  /** Entities owned by other players can use coarser diff precision.
+   *  This preserves keyframes/AOI correctness while cutting remote
+   *  movement + turret churn from every recipient's delta stream. */
+  observedEntityDelta: {
+    positionThresholdMultiplier: 4,
+    velocityThresholdMultiplier: 4,
+    rotationPositionThresholdMultiplier: 4,
+    rotationVelocityThresholdMultiplier: 4,
+  },
+
+  /** Projectile side-channel cadence in emitted snapshots. Spawns and
+   *  despawns always ship immediately; this only gates live velocity
+   *  corrections and authoritative beam path updates. */
+  ownedProjectileUpdateStride: 1,
+  observedProjectileUpdateStride: 3,
 };
 
 // Re-export bar config values used by sim/server code
@@ -179,7 +206,8 @@ export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
 export const DEFAULT_FF_ACCEL_UNITS = BATTLE_CONFIG.ffAccelUnits.default;
 export const DEFAULT_FF_ACCEL_SHOTS = BATTLE_CONFIG.ffAccelShots.default;
 export const DEFAULT_MIRRORS_ENABLED = BATTLE_CONFIG.mirrorsEnabled.default;
-export const DEFAULT_FORCE_FIELDS_ENABLED = BATTLE_CONFIG.forceFieldsEnabled.default;
+export const DEFAULT_FORCE_FIELDS_ENABLED =
+  BATTLE_CONFIG.forceFieldsEnabled.default;
 export const BAR_COLORS = BAR_THEMES;
 
 // =============================================================================
@@ -292,19 +320,6 @@ export const MIRROR_BASE_Y = 2;
  *  units (they sit on top of the panel stack). */
 export const MIRROR_EXTRA_HEIGHT = 15;
 
-/** Renderer-only reference length for the beam alpha fade.
- *  The sim no longer caps beam length here — each beam's total
- *  polyline budget is the firing turret's own `range`, and the trace
- *  in findBeamPath subtracts each segment's distance from that
- *  remainder so a beam expires at its sphere boundary regardless of
- *  how many mirror bounces happened along the way. This constant is
- *  used by BeamRenderer3D's per-segment alpha fade only — long-reach
- *  beams ease toward invisible as cumulative drawn distance
- *  approaches this value, so a stray uncontested beam doesn't render
- *  uniformly bright across the whole map. About half the 3000-wu map
- *  width. */
-export const BEAM_MAX_LENGTH = 1500;
-
 /** Universal gravity acceleration (world units / s², pulling −z).
  *  Single source of truth for every falling thing — physics engine's
  *  unit bodies, projectile ballistic integration, debris chunks,
@@ -312,7 +327,7 @@ export const BEAM_MAX_LENGTH = 1500;
  *  RTS-scale ballistics rather than real-world 9.8 m/s²; the map is
  *  ~3000 wu wide and shots travel hundreds of units per second, so
  *  heavier gravity would flatten every arc into a short lob. */
-export const GRAVITY = 200;
+export const GRAVITY = 400;
 
 // =============================================================================
 // ECONOMY & RESOURCES
@@ -462,11 +477,8 @@ export const MAP_GRID_COLOR = MAP_BG_COLOR;
 export const MANA_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.2;
 
 const manaTileWaveScale = (tileWidths: number): number =>
-  (Math.PI * 2) / (
-    MANA_TILE_SIZE *
-    tileWidths *
-    MANA_TILE_TEXTURE_PERIOD_MULTIPLIER
-  );
+  (Math.PI * 2) /
+  (MANA_TILE_SIZE * tileWidths * MANA_TILE_TEXTURE_PERIOD_MULTIPLIER);
 
 export const MANA_TILE_TEXTURE = {
   xWaves: [

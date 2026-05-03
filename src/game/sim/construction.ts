@@ -1,39 +1,16 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId, BuildingType } from './types';
-import type { MetalDeposit } from '../../metalDepositConfig';
 import { magnitude3 } from '../math';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
-import { findDepositCoveringFootprint } from './metalDeposits';
+import { getMetalDepositFootprintCoverage } from './metalDeposits';
 import { isBuildableTerrainFootprint } from './Terrain';
 import { REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../config';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { deactivateSolarCollector, ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 import { economyManager } from './economy';
 import { spatialGrid } from './SpatialGrid';
-
-// Find the deposit (if any) whose flat zone covers the candidate footprint.
-// Used by both extractor placement validation and the user-facing
-// "is this a valid extractor spot?" cursor check.
-export function findDepositAt(
-  world: WorldState,
-  x: number,
-  y: number,
-  halfWidth = 0,
-  halfHeight = 0,
-): MetalDeposit | null {
-  return findDepositCoveringFootprint(world.metalDeposits, x, y, halfWidth, halfHeight);
-}
-
-// True iff some completed-or-in-progress extractor already occupies
-// the given deposit. Each deposit hosts at most one extractor.
-function isDepositOccupied(world: WorldState, depositId: number): boolean {
-  for (const b of world.getBuildings()) {
-    if (b.buildingType === 'extractor' && b.metalDepositId === depositId) return true;
-  }
-  return false;
-}
 
 // Construction system - handles building progress and energy consumption
 export class ConstructionSystem {
@@ -133,8 +110,9 @@ export class ConstructionSystem {
     // Extractor completion — start producing metal income for the owner.
     if (entity.buildingType === 'extractor' && entity.ownership) {
       const cfg = getBuildingConfig('extractor');
-      if (cfg.metalProduction) {
-        economyManager.addMetalExtraction(entity.ownership.playerId, cfg.metalProduction);
+      const amount = entity.metalExtractionRate ?? cfg.metalProduction ?? 0;
+      if (amount > 0) {
+        economyManager.addMetalExtraction(entity.ownership.playerId, amount);
       }
     }
   }
@@ -160,13 +138,23 @@ export class ConstructionSystem {
     const halfW = (config.gridWidth * GRID_CELL_SIZE) / 2;
     const halfH = (config.gridHeight * GRID_CELL_SIZE) / 2;
 
-    // Extractors REQUIRE an unoccupied deposit within reach. Any other
-    // building type silently bypasses this check.
-    let depositId: number | undefined = undefined;
+    // Extractors produce from the fraction of their footprint cells
+    // whose centers land inside metal deposits. They no longer require
+    // the whole building to fit inside one deposit circle.
+    let depositId: number | undefined;
+    let metalExtractionRate = 0;
     if (buildingType === 'extractor') {
-      const deposit = findDepositAt(world, worldPos.x, worldPos.y, halfW, halfH);
-      if (!deposit || isDepositOccupied(world, deposit.id)) return null;
-      depositId = deposit.id;
+      const coverage = getMetalDepositFootprintCoverage(
+        world.metalDeposits,
+        worldPos.x,
+        worldPos.y,
+        halfW,
+        halfH,
+        GRID_CELL_SIZE,
+      );
+      if (coverage.coveredCells <= 0) return null;
+      depositId = coverage.primaryDepositId;
+      metalExtractionRate = (config.metalProduction ?? 0) * coverage.fraction;
     }
 
     // Reject placements off the flat dTerrain shelves. Ramps between
@@ -208,6 +196,7 @@ export class ConstructionSystem {
     }
     if (buildingType === 'extractor' && depositId !== undefined) {
       entity.metalDepositId = depositId;
+      entity.metalExtractionRate = metalExtractionRate;
     }
 
     // Set max HP from config
@@ -306,8 +295,9 @@ export class ConstructionSystem {
     // If it was an extractor, stop its metal income contribution.
     if (entity.buildingType === 'extractor' && entity.ownership && entity.buildable?.isComplete) {
       const cfg = getBuildingConfig('extractor');
-      if (cfg.metalProduction) {
-        economyManager.removeMetalExtraction(entity.ownership.playerId, cfg.metalProduction);
+      const amount = entity.metalExtractionRate ?? cfg.metalProduction ?? 0;
+      if (amount > 0) {
+        economyManager.removeMetalExtraction(entity.ownership.playerId, amount);
       }
     }
   }
