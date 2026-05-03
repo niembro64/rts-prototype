@@ -7,10 +7,13 @@
 // across it. So a 6-player map with `countPerPlayer: 2` yields 12
 // deposits in that ring; the same ring on a 4-player map yields 8.
 //
-// Rings can be phase-shifted independently with `phaseOffset`, expressed
-// as a multiple of π radians. For example, 0.5 = π/2, 1 = π, and
-// 2 = a full turn. Use this to keep rings from lining up on the same
-// radial spokes.
+// Rings can be phase-shifted independently with `sliceOffset`, expressed
+// as a fraction of one player's slice width (= 2π / playerCount). The
+// shift therefore SCALES with the number of map divisions: 0.25 = a
+// quarter-slice (24° at 3 players, 18° at 5), 1.0 = one full slice (the
+// next player's spoke), 0.5 = half a slice. Keeps rings from lining up
+// on the same radial spokes without baking a player-count-specific
+// radian value into config.
 //
 // Each deposit owns a square logical resource footprint on the fine
 // build grid. The extractor building reads the same resource-cell
@@ -44,12 +47,12 @@ export type DepositRing = {
    *  Total deposits per ring = countPerPlayer × playerCount (with the
    *  center ring as a special case — always 1 regardless). */
   countPerPlayer: number;
-  /** Angular phase offset as a multiple of π radians. 0.5 = π/2,
-   *  1 = π, 2 = full turn; negative values work too. */
-  phaseOffset?: number;
-  /** Absolute raw angular offset in radians, added after `phaseOffset`.
-   *  Prefer `phaseOffset` for config values that should read in π units. */
-  rotationOffset: number;
+  /** Angular phase offset as a fraction of one player's slice width
+   *  (= 2π / playerCount). 0.5 shifts the ring's deposits by half a
+   *  slice, 1.0 by a full slice (i.e. into the neighboring player's
+   *  spoke). Scales automatically with player count: 0.25 means 30° at
+   *  3 players, 18° at 5. Negative values rotate the other way. */
+  sliceOffset?: number;
   /** Signed count of TERRAIN_D_TERRAIN steps before CENTER polarity. */
   dTerrainLevels: number;
   /** Optional world-unit blend width outside the circular flat pad.
@@ -90,36 +93,32 @@ export const METAL_DEPOSIT_CONFIG = {
     {
       radiusFraction: 0.2,
       countPerPlayer: 1,
-      phaseOffset: 3,
-      rotationOffset: 0.2,
+      // Shifted into the opposite-spoke region; 5-player calibration
+      // value (translated from old phaseOffset:3, rotationOffset:0.2).
+      sliceOffset: 2.66,
       dTerrainLevels: 1,
     },
     // {
     //   radiusFraction: 0.3,
     //   countPerPlayer: 2,
-    //   phaseOffset: 0.25,
-    //   rotationOffset: 0,
+    //   sliceOffset: 0.625,
     //   dTerrainLevels: 3,
     // },
     {
       radiusFraction: 0.5,
       countPerPlayer: 1,
-      phaseOffset: -0.22,
-      rotationOffset: 0,
+      sliceOffset: -0.55,
       dTerrainLevels: 2,
     },
     {
       radiusFraction: 0.75,
       countPerPlayer: 2,
-      phaseOffset: 0.0,
-      rotationOffset: 0,
       dTerrainLevels: 1,
     },
     {
       radiusFraction: 0.85,
       countPerPlayer: 2,
-      phaseOffset: -0.15,
-      rotationOffset: 0,
+      sliceOffset: -0.375,
       dTerrainLevels: 1,
     },
   ] as DepositRing[],
@@ -186,8 +185,10 @@ export function generateMetalDeposits(
       terrainSign,
     );
     const height = metalDepositHeightForDTerrainLevels(dTerrainLevels);
-    const ringAngularOffset =
-      (ring.phaseOffset ?? 0) * Math.PI + ring.rotationOffset;
+    // Slice-fraction offset: scaled by the player's slice width so the
+    // configured value means the same thing (a fraction of one slice)
+    // regardless of how many players are dividing the map.
+    const ringAngularOffset = (ring.sliceOffset ?? 0) * sliceWidth;
 
     // Center: one deposit, regardless of countPerPlayer.
     if (ring.radiusFraction <= 1e-6) {
