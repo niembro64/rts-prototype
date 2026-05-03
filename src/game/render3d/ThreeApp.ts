@@ -18,6 +18,34 @@ import {
 
 const MOBILE_PIXEL_RATIO_CAP = 2;
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
+const SKY_TOP_COLOR = '#82b9e4';
+const SKY_MID_COLOR = '#bdddf0';
+const SKY_HORIZON_COLOR = '#e7f2f7';
+const CAMERA_NEAR_PLANE = 5;
+const CAMERA_FAR_PLANE = 50000;
+
+function makeSkyGradientTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Unable to create sky gradient texture');
+  }
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, SKY_TOP_COLOR);
+  gradient.addColorStop(0.58, SKY_MID_COLOR);
+  gradient.addColorStop(1, SKY_HORIZON_COLOR);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  return texture;
+}
 
 function isMobileLikeBrowser(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -54,6 +82,7 @@ export class ThreeApp {
   private _lastCssWidth = 0;
   private _lastCssHeight = 0;
   private _environmentTexture: THREE.Texture | null = null;
+  private _skyTexture: THREE.Texture | null = null;
   private _renderEnabled = true;
 
   constructor(
@@ -65,7 +94,8 @@ export class ThreeApp {
     backgroundColor: string,
   ) {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(backgroundColor);
+    this._skyTexture = makeSkyGradientTexture();
+    this.scene.background = this._skyTexture;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     const mobileLike = isMobileLikeBrowser();
@@ -75,7 +105,12 @@ export class ThreeApp {
       ? Math.min(this._nativePixelRatio, MOBILE_PIXEL_RATIO_CAP)
       : this._nativePixelRatio;
     this.renderer.setPixelRatio(this._activePixelRatio);
-    this.camera = new THREE.PerspectiveCamera(50, width / height, 1, 50000);
+    this.camera = new THREE.PerspectiveCamera(
+      50,
+      width / height,
+      CAMERA_NEAR_PLANE,
+      CAMERA_FAR_PLANE,
+    );
     this.resizeRenderer(width, height);
     this.renderer.shadowMap.enabled = false;
     parent.appendChild(this.renderer.domElement);
@@ -282,8 +317,11 @@ export class ThreeApp {
     this._resizeObserver.disconnect();
     this.gpuTimer.destroy();
     this.scene.environment = null;
+    this.scene.background = null;
     this._environmentTexture?.dispose();
     this._environmentTexture = null;
+    this._skyTexture?.dispose();
+    this._skyTexture = null;
     this.renderer.renderLists.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {

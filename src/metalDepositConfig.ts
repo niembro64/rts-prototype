@@ -111,12 +111,12 @@ export const METAL_DEPOSIT_CONFIG = {
     {
       radiusFraction: 0.75,
       countPerPlayer: 2,
-      phaseOffset: 0.125,
+      phaseOffset: 0.0,
       rotationOffset: 0,
       dTerrainLevels: 1,
     },
     {
-      radiusFraction: 0.95,
+      radiusFraction: 0.9,
       countPerPlayer: 2,
       phaseOffset: -0.15,
       rotationOffset: 0,

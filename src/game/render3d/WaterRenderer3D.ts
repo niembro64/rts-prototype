@@ -12,7 +12,13 @@ import { WATER_LEVEL } from '../sim/Terrain';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { Lod3DState } from './Lod3D';
 
-const WATER_COLOR = 0x4aa3df;
+const WATER_COLOR = 0x2f7f9f;
+// Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
+// gameplay/readability, but the fragments are pushed slightly behind
+// terrain in the depth buffer so shoreline faces do not shimmer as
+// the camera eases in and out.
+const WATER_DEPTH_OFFSET_FACTOR = 1;
+const WATER_DEPTH_OFFSET_UNITS = 2;
 
 /** Large enough to cover the camera's far plane from any legal map
  *  camera state. Three.js has no literal infinite plane here, so this
@@ -22,7 +28,7 @@ const WATER_HORIZON_EXTEND = 60000;
 export class WaterRenderer3D {
   private mesh: THREE.Mesh;
   private geometry: THREE.BufferGeometry;
-  private material: THREE.MeshLambertMaterial;
+  private material: THREE.MeshBasicMaterial;
   private mapWidth: number;
   private mapHeight: number;
   private built = false;
@@ -31,13 +37,15 @@ export class WaterRenderer3D {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.geometry = new THREE.BufferGeometry();
-    this.material = new THREE.MeshLambertMaterial({
+    this.material = new THREE.MeshBasicMaterial({
       color: WATER_COLOR,
-      emissive: 0x071a2a,
       transparent: false,
       opacity: 1,
       depthWrite: true,
       depthTest: true,
+      polygonOffset: true,
+      polygonOffsetFactor: WATER_DEPTH_OFFSET_FACTOR,
+      polygonOffsetUnits: WATER_DEPTH_OFFSET_UNITS,
       side: THREE.DoubleSide,
     });
 

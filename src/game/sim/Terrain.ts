@@ -468,6 +468,26 @@ export function getTerrainHeight(
   const natural = ripple + ridge;
   const terraced = applyTerrainPlateaus(natural);
 
+  // Apply the map-boundary shaping (e.g. circle perimeter sinking the
+  // edge below water) to the NATURAL terraced terrain BEFORE the
+  // deposit override blend. Doing this in the other order — boundary
+  // shaping after the deposit blend — would distort any pad whose
+  // center sits past `startRadius`, pulling its samples toward the
+  // underwater target. That made `isBuildableTerrainFootprint` reject
+  // outermost extractors (samples on a single pad coming back at
+  // varying heights → no consistent plateau level), so the demo
+  // battle never built extractors on the outer deposit ring under
+  // the circle perimeter. Applying the boundary first, then blending
+  // the deposit pad over it, lets the pad's exact authored height
+  // win inside its radius regardless of perimeter shape.
+  const terracedShaped = applyTerrainMapBoundary(
+    terraced,
+    x,
+    y,
+    mapWidth,
+    mapHeight,
+  );
+
   // Metal-deposit flat zones override BOTH ripple and ridge: inside
   // each circular flat pad the terrain is forced to the ring's
   // dTerrain-derived `height`. Outside the falloff band the weight is
@@ -475,21 +495,14 @@ export function getTerrainHeight(
   // sample that isn't near a deposit.
   const override = depositOverride(x, y);
   const blended =
-    override.height * (1 - override.weight) + terraced * override.weight;
-  const boundaryShaped = applyTerrainMapBoundary(
-    blended,
-    x,
-    y,
-    mapWidth,
-    mapHeight,
-  );
+    override.height * (1 - override.weight) + terracedShaped * override.weight;
 
   // Clamp to the tile floor — the heightmap defines the TOP of every
   // 3D tile cube and tiles can't physically extend below their floor.
   // Without this clamp, a strongly-negative amplitude (e.g. carved
   // trenches) would invert the tile geometry: top vertex lower than
   // floor vertex, faces flipped, sides facing inward.
-  return Math.max(TILE_FLOOR_Y, boundaryShaped);
+  return Math.max(TILE_FLOOR_Y, blended);
 }
 
 type TerrainMeshSample = {
