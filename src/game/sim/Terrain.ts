@@ -80,19 +80,24 @@ export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
  *  deposit rings store signed multiples of this value so extractor pads
  *  stay aligned with the same dTerrain scale as future terraced terrain. */
 export const TERRAIN_D_TERRAIN = 100 * (TERRAIN_SHAPE_MAGNITUDE / 800);
-/** Circular-map boundary radii as fractions of min(mapWidth, mapHeight).
- *  The external radius is clamped to the square's side-edge radius at
- *  runtime, so every perimeter edge remains underwater in CIRCLE mode.
+/** CIRCLE-perimeter shoreline tuning (as fractions of mapMin).
  *
- *  The gap between INTERNAL_START and EXTERNAL_END defines the WIDTH of
- *  the smootherstep ramp from natural terrain down to the underwater
- *  flat — a wider gap makes the shoreline gradient span more of the
- *  map's radial distance, so the transition reads as a long beach
- *  rather than an abrupt edge. INTERNAL_START is the only end of the
- *  band that's freely tunable; EXTERNAL_END is locked to ~0.5 by the
- *  runtime clamp to keep the side-edge midpoints underwater. */
-export const TERRAIN_CIRCLE_INTERNAL_START_RADIUS_FRACTION = 0.3;
-export const TERRAIN_CIRCLE_EXTERNAL_END_RADIUS_FRACTION = 0.49;
+ *  The transition band is a smootherstep ramp from natural terrain
+ *  down to TERRAIN_CIRCLE_UNDERWATER_HEIGHT. It ENDS at the
+ *  inscribed-circle radius (≤0.5 × mapMin, set by `EDGE_FRACTION`,
+ *  clamped at runtime to 0.5 so every side-edge midpoint of the
+ *  square map sits at the underwater height in CIRCLE mode). The
+ *  band runs INWARD from there by `WIDTH_FRACTION` × mapMin.
+ *
+ *  This is the single knob to tune the shoreline feel:
+ *    0.05  — sharp / abrupt edge.
+ *    0.10  — mild gradient, default.
+ *    0.20+ — long gradual beach (eats into the playable area).
+ *
+ *  The runtime clamps width to (0, 0.5 × mapMin] so a misconfigured
+ *  value can't push start outside the map or invert the band. */
+export const TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION = 0.49;
+export const TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION = 0.10;
 export const TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
 
 export const TERRAIN_PLATEAU_CONFIG = {
@@ -354,7 +359,7 @@ function getTerrainCircleEndRadius(mapWidth: number, mapHeight: number): number 
     1,
     Math.min(
       maxEndRadius,
-      minDim * TERRAIN_CIRCLE_EXTERNAL_END_RADIUS_FRACTION,
+      minDim * TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION,
     ),
   );
 }
@@ -365,10 +370,14 @@ function getTerrainCircleStartRadius(
   endRadius: number,
 ): number {
   const minDim = Math.min(mapWidth, mapHeight);
-  return Math.min(
-    endRadius - 1,
-    Math.max(0, minDim * TERRAIN_CIRCLE_INTERNAL_START_RADIUS_FRACTION),
-  );
+  // Width derived from the single tuning knob. Clamp to (0,
+  // endRadius − 1] so a misconfigured value can't invert the band
+  // or push start outside the map.
+  const maxWidth = Math.max(0, endRadius - 1);
+  const desiredWidth =
+    minDim * Math.max(0, TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION);
+  const width = Math.min(maxWidth, desiredWidth);
+  return Math.max(0, endRadius - width);
 }
 
 export function getTerrainMapBoundaryFade(
