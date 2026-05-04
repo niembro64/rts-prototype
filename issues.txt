@@ -8,8 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   4) DEAD CODE
   ---------------------------------------------------
 
-  [MEDIUM] src/types/blueprintIds.ts:55-57 `isBuildingTypeId` (and
-    effectively `BuildingTypeId`) is unused.
   [MEDIUM] src/game/sim/buildableHelpers.ts:17 `makeUniformResourceCost`
     is exported but never called.
 
