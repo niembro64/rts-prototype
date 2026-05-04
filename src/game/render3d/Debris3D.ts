@@ -50,6 +50,7 @@ import {
   getTurretBarrelCenterToTipLength,
   turretHeadRadiusFromBodyRadius,
 } from '../math';
+import { BARREL_ORBIT_CLAMP_FRAC } from '../math/BarrelGeometry';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -794,12 +795,12 @@ export class Debris3D {
           const diameter = bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER;
           const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
           const n = bs.barrelCount;
-          const baseOrbitR = bs.baseOrbit * headR;
+          const baseOrbitR = Math.min(bs.baseOrbit * headR, TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneBase);
           const tipOrbitR = bs.tipOrbit !== undefined
             ? bs.tipOrbit * headR
             : Math.min(
                 baseOrbitR + len * Math.tan(((tb.spread?.angle ?? Math.PI / 5)) / 2),
-                TURRET_HEIGHT * 0.9,
+                TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneTip,
               );
           for (let i = 0; i < n; i++) {
             const a = ((i + 0.5) / n) * Math.PI * 2;

@@ -12,16 +12,32 @@
 // The firing-frame forward vector lines up 1-to-1 with the renderer's
 // nested pitchGroup hierarchy:
 //   forward = barrel axis (the direction a shot leaves in)
-// Multi-barrel turrets still render and spin their physical barrel clusters,
-// but authoritative firing uses the shared center point between the barrels.
-// That keeps projectile, beam, and ballistic math stable while the visual
-// round-robin can continue independently.
+// Multi-barrel turrets use the same per-barrel local offsets as
+// TurretMesh3D, so the barrelIndex carried in projectile spawn events is
+// real muzzle metadata rather than just visual cadence.
 
 import { TURRET_HEIGHT } from '../../config';
 import type { BarrelShape } from '@/types/blueprints';
 import type { ActiveProjectileShot, ShotConfig, TurretConfig } from '../sim/types';
 
 export const TURRET_BARREL_MIN_DIAMETER = 2;
+
+/** Maximum barrel orbit radius — fractions of TURRET_HEIGHT — applied
+ *  to the authored blueprint orbit values so a turret head with an
+ *  oversize blueprint orbit doesn't fan barrels past the turret silhouette.
+ *  Three call sites (BarrelGeometry's tip computation, TurretMesh3D's
+ *  mesh emission, HudAnchor's barrel-top probe) all use the same
+ *  clamp values; importing from here keeps them locked together. */
+export const BARREL_ORBIT_CLAMP_FRAC = {
+  /** simpleMultiBarrel — single orbit ring of parallel barrels. */
+  parallel: 0.45,
+  /** coneMultiBarrel — base end of the diverging cone. */
+  coneBase: 0.35,
+  /** coneMultiBarrel — tip end of the diverging cone (when the
+   *  blueprint doesn't author `tipOrbit` explicitly and we derive
+   *  it from spread + length). */
+  coneTip: 0.9,
+} as const;
 
 /** Radius of the spherical turret head. Read directly from the
  *  turret blueprint's `bodyRadius`; turrets are unit-agnostic by
@@ -30,7 +46,10 @@ export const TURRET_BARREL_MIN_DIAMETER = 2;
  *  turret blueprint is required to declare it. */
 type TurretRadiusSource = { id?: string; bodyRadius?: number };
 type TurretBarrelSource = TurretRadiusSource & { barrel?: BarrelShape };
-type BarrelShotSource = TurretBarrelSource & { shot: ShotConfig | ActiveProjectileShot };
+type BarrelShotSource = TurretBarrelSource & {
+  shot: ShotConfig | ActiveProjectileShot;
+  spread?: TurretConfig['spread'];
+};
 
 export function getTurretHeadRadius(config: TurretRadiusSource): number {
   const r = config.bodyRadius;
@@ -86,9 +105,8 @@ export type BarrelEndpoint = {
 
 /** How many physical barrels a turret config has. Single-barrel and
  *  force-field emitters report 1; gatlings and cone shotguns report
- *  their `barrelCount`. Used by the firing round-robin and visual
- *  metadata to pick barrelIndex = fireCount mod N. Authoritative
- *  multi-barrel shots still spawn from the cluster centerline. */
+ *  their `barrelCount`. Used by the firing round-robin to pick
+ *  barrelIndex = fireCount mod N. */
 export function countBarrels(config: Pick<TurretConfig, 'barrel'>): number {
   const b = config.barrel;
   if (!b) return 1;
@@ -126,19 +144,18 @@ export function getTurretBarrelDiameter(
  *  turretYaw  — absolute world yaw of the turret (radians).
  *  turretPitch — elevation above horizontal (radians; +π/2 = up).
  *  config     — the turret blueprint; emitters fire from the mount,
- *               barrel configs fire from the centerline tip.
- *  barrelIndex — retained for call-site compatibility and fire metadata.
- *                Multi-barrel physics no longer varies by index; shots
- *                come from the center point between the barrels.
- *  spinAngle   — retained for compatibility with callers that know about
- *                visual gatling spin. Authoritative firing ignores it.
+ *               barrel configs fire from the indexed barrel tip.
+ *  barrelIndex — physical barrel in the authored cluster. The same
+ *                index is serialized to clients for spawn correction.
+ *  spinAngle   — optional barrel-cluster rotation around the firing
+ *                axis. Defaults to the unspun authored cluster.
  */
 export function getBarrelTip(
   mountX: number, mountY: number, mountZ: number,
   turretYaw: number, turretPitch: number,
   config: BarrelShotSource,
-  _barrelIndex: number = 0,
-  _spinAngle: number = 0,
+  barrelIndex: number = 0,
+  spinAngle: number = 0,
 ): BarrelEndpoint {
   const yawCos = Math.cos(turretYaw);
   const yawSin = Math.sin(turretYaw);
@@ -149,6 +166,12 @@ export function getBarrelTip(
   const fwdX = yawCos * pitchCos;
   const fwdY = yawSin * pitchCos;
   const fwdZ = pitchSin;
+  const upX = -yawCos * pitchSin;
+  const upY = -yawSin * pitchSin;
+  const upZ = pitchCos;
+  const sideX = -yawSin;
+  const sideY = yawCos;
+  const sideZ = 0;
 
   const b = config.barrel;
   if (!b || b.type === 'complexSingleEmitter') {
@@ -170,13 +193,75 @@ export function getBarrelTip(
   // the muzzle stays at the visible barrel tip.
   const barrelLen = getTurretBarrelCenterToTipLength(config);
 
-  // Single-barrel and multi-barrel weapons both fire from the centerline.
-  // The renderer owns the visible per-barrel offsets and spin; the sim owns
-  // one stable muzzle point for projectile, beam, and aim math.
+  if (b.type === 'simpleSingleBarrel') {
+    return {
+      x: mountX + fwdX * barrelLen,
+      y: mountY + fwdY * barrelLen,
+      z: mountZ + fwdZ * barrelLen,
+      dirX: fwdX, dirY: fwdY, dirZ: fwdZ,
+    };
+  }
+
+  const n = Math.max(1, b.barrelCount);
+  const idx = ((Math.floor(barrelIndex) % n) + n) % n;
+  const orbitAngle = ((idx + 0.5) / n) * Math.PI * 2;
+  const spinCos = Math.cos(spinAngle);
+  const spinSin = Math.sin(spinAngle);
+  let baseOrbitR: number;
+  let tipOrbitR: number;
+
+  if (b.type === 'simpleMultiBarrel') {
+    baseOrbitR = tipOrbitR = Math.min(
+      b.orbitRadius * getTurretHeadRadius(config),
+      TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.parallel,
+    );
+  } else {
+    baseOrbitR = Math.min(
+      b.baseOrbit * getTurretHeadRadius(config),
+      TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneBase,
+    );
+    tipOrbitR = b.tipOrbit !== undefined
+      ? b.tipOrbit * getTurretHeadRadius(config)
+      : Math.min(
+          baseOrbitR + barrelLen * Math.tan((config.spread?.angle ?? Math.PI / 5) / 2),
+          TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneTip,
+        );
+  }
+
+  const cosA = Math.cos(orbitAngle);
+  const sinA = Math.sin(orbitAngle);
+  const baseLocalY = cosA * baseOrbitR;
+  const baseLocalZ = sinA * baseOrbitR;
+  const tipLocalY = cosA * tipOrbitR;
+  const tipLocalZ = sinA * tipOrbitR;
+  const baseY = baseLocalY * spinCos - baseLocalZ * spinSin;
+  const baseZ = baseLocalY * spinSin + baseLocalZ * spinCos;
+  const tipY = tipLocalY * spinCos - tipLocalZ * spinSin;
+  const tipZ = tipLocalY * spinSin + tipLocalZ * spinCos;
+
+  const x = mountX + fwdX * barrelLen + upX * tipY + sideX * tipZ;
+  const y = mountY + fwdY * barrelLen + upY * tipY + sideY * tipZ;
+  const z = mountZ + fwdZ * barrelLen + upZ * tipY + sideZ * tipZ;
+  let dirX = fwdX * barrelLen + upX * (tipY - baseY) + sideX * (tipZ - baseZ);
+  let dirY = fwdY * barrelLen + upY * (tipY - baseY) + sideY * (tipZ - baseZ);
+  let dirZ = fwdZ * barrelLen + upZ * (tipY - baseY) + sideZ * (tipZ - baseZ);
+  const dirLen = Math.hypot(dirX, dirY, dirZ);
+  if (dirLen > 1e-6) {
+    dirX /= dirLen;
+    dirY /= dirLen;
+    dirZ /= dirLen;
+  } else {
+    dirX = fwdX;
+    dirY = fwdY;
+    dirZ = fwdZ;
+  }
+
   return {
-    x: mountX + fwdX * barrelLen,
-    y: mountY + fwdY * barrelLen,
-    z: mountZ + fwdZ * barrelLen,
-    dirX: fwdX, dirY: fwdY, dirZ: fwdZ,
+    x,
+    y,
+    z,
+    dirX,
+    dirY,
+    dirZ,
   };
 }
