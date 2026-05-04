@@ -83,7 +83,17 @@ export class EntityCacheManager {
           if (entity.ownership?.playerId !== undefined) {
             this.getOrCreateUnitsByPlayer(entity.ownership.playerId).push(entity);
           }
-          if (entity.unit && entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp) {
+          // Damaged-or-shell list: feeds HealthBar3D.perUnit. A unit
+          // shell (incomplete buildable) belongs here too even though
+          // its hp is 0 at spawn — the bar renderer needs to draw the
+          // 3 resource bars regardless of HP.
+          if (
+            entity.unit
+            && (
+              (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
+              || (entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost)
+            )
+          ) {
             this.cachedDamagedUnits.push(entity);
           }
           if (entity.turrets) {
@@ -110,10 +120,17 @@ export class EntityCacheManager {
           if (entity.ownership?.playerId !== undefined) {
             this.getOrCreateBuildingsByPlayer(entity.ownership.playerId).push(entity);
           }
+          // Same logic as cachedDamagedUnits — a building shell starts
+          // at hp=0 (shellHpSync drives hp from avgFill * maxHp), so
+          // the original `hp > 0 && hp < maxHp` gate excluded freshly
+          // spawned shells. Now: include any shell, plus damaged
+          // complete buildings.
           if (
-            entity.building &&
-            entity.building.hp > 0 &&
-            (entity.building.hp < entity.building.maxHp || (entity.buildable && !entity.buildable.isComplete))
+            entity.building
+            && (
+              (entity.building.hp > 0 && entity.building.hp < entity.building.maxHp)
+              || (entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost)
+            )
           ) {
             this.cachedHealthBarBuildings.push(entity);
           }

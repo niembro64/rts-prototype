@@ -268,12 +268,11 @@ export class HealthBar3D {
     const worldWidth = b.building.width;
     let stack = 0;
     if (showHp) {
+      // HP is its own thing — green/red by ratio, never the legacy
+      // single-bar 'build' color. The user wants the three resource
+      // bars to be the "build progress", not a combined ratio.
       const ratio = Math.max(0, Math.min(1, hp / maxHp));
-      const mode: BarMode = buildable
-        ? 'build'
-        : ratio < STYLE.lowThreshold
-          ? 'healthLow'
-          : 'healthHigh';
+      const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
       this.placeBar(ratio, mode, worldX, worldY, worldZ, worldWidth, stack);
       stack++;
     }

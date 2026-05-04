@@ -16,6 +16,7 @@ import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
+import { applyShellOverride } from './ShellMaterial';
 import type { SpinConfig } from '../../config';
 import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
@@ -2284,6 +2285,13 @@ export class Render3DEntities {
       if (existing) {
         existing.group.position.set(tx, getUnitGroundZ(e), ty);
         if (existing.yawGroup) existing.yawGroup.rotation.set(0, -tRot, 0);
+        // Shell-state visual: incomplete buildable → swap every Mesh
+        // material on the unit's group to the shared transparent gray
+        // shell material; restore originals on completion. Idempotent.
+        applyShellOverride(
+          existing.group,
+          !!(e.buildable && !e.buildable.isComplete && !e.buildable.isGhost),
+        );
       }
       // The expensive per-frame work below (terrain normal, slope tilt,
       // locomotion, mirror tracking, range rings, turret-aim math) IS
@@ -3355,6 +3363,13 @@ export class Render3DEntities {
         // terrain height the server used when creating their collider.
         m.group.position.set(e.transform.x, buildingBaseY, e.transform.y);
         m.group.rotation.y = -e.transform.rotation;
+        // Shell-state visual — same logic as units: while the
+        // building's buildable is incomplete, every mesh inside the
+        // group flips to the shared transparent gray shell material.
+        applyShellOverride(
+          m.group,
+          !!(e.buildable && !e.buildable.isComplete && !e.buildable.isGhost),
+        );
         const h = m.buildingHeight ?? BUILDING_HEIGHT;
 
         // Build-progress visual — mirrors the 2D BuildingRenderer's
