@@ -12,7 +12,7 @@ export * from './fallbacks';
 
 import type {
   BeamShot,
-  ForceFieldZoneConfig,
+  ForceFieldBarrierConfig,
   ForceShot,
   LaserShot,
   ActiveProjectileShot,
@@ -20,11 +20,13 @@ import type {
   ShotConfig,
   TurretConfig,
 } from '../types';
+import { isLineShotBlueprint } from '@/types/blueprints';
+import type { ShotId, TurretId } from '../../../types/blueprintIds';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_BLUEPRINTS } from './units';
 import { BUILDING_BLUEPRINTS } from './buildings';
-import type { ShotBlueprint, ForceFieldZoneRatioConfig, TurretBlueprint } from './types';
+import type { ShotBlueprint, ForceFieldBarrierRatioConfig, TurretBlueprint } from './types';
 import { BARREL_THICKNESS_MULTIPLIER } from '../../../config';
 import {
   buildingTypeToCode,
@@ -185,22 +187,21 @@ function validateTurretRangeMultipliers(
   }
 }
 
-/** Compute a ForceFieldZoneConfig from ratio-based blueprint data and weapon range */
-function computeZoneConfig(
-  zone: ForceFieldZoneRatioConfig | undefined,
+/** Compute a ForceFieldBarrierConfig from ratio-based blueprint data and weapon range. */
+function computeBarrierConfig(
+  barrier: ForceFieldBarrierRatioConfig | undefined,
   range: number,
-): ForceFieldZoneConfig | null {
-  if (!zone) return null;
-  const outerRange = zone.rimWidth != null
-    ? zone.rimWidth
-    : range * (zone.outerRatio ?? 1);
+): ForceFieldBarrierConfig | null {
+  if (!barrier) return null;
+  const outerRange = barrier.rimWidth != null
+    ? barrier.rimWidth
+    : range * (barrier.outerRatio ?? 1);
   return {
     innerRange: 0,
     outerRange,
-    color: zone.color,
-    alpha: zone.alpha,
-    particleAlpha: zone.particleAlpha,
-    power: zone.power,
+    color: barrier.color,
+    alpha: barrier.alpha,
+    particleAlpha: barrier.particleAlpha,
   };
 }
 
@@ -243,9 +244,9 @@ function buildShotConfig(
     return shot;
   }
 
-  // Projectile shot
+  // Traveling projectile / rocket shot
   const shot: ProjectileShot = {
-    type: 'projectile',
+    type: shotBlueprint.type,
     id: shotBlueprint.id,
     mass: shotBlueprint.mass,
     launchForce: launchForce ?? 0,
@@ -256,7 +257,9 @@ function buildShotConfig(
     lifespanVariance: shotBlueprint.lifespanVariance,
     homingTurnRate: shotBlueprint.homingTurnRate,
     submunitions: shotBlueprint.submunitions,
-    ignoresGravity: shotBlueprint.ignoresGravity,
+    ignoresGravity: shotBlueprint.type === 'rocket'
+      ? (shotBlueprint.ignoresGravity ?? true)
+      : shotBlueprint.ignoresGravity,
     smokeTrail: shotBlueprint.smokeTrail,
     shape: shotBlueprint.shape,
     cylinderShape: shotBlueprint.cylinderShape,
@@ -265,7 +268,7 @@ function buildShotConfig(
 }
 
 export function buildProjectileShotConfig(
-  shotId: string,
+  shotId: ShotId,
   launchForce?: number,
 ): ActiveProjectileShot {
   const shotBlueprint = SHOT_BLUEPRINTS[shotId];
@@ -280,8 +283,8 @@ export function buildProjectileShotConfig(
 /**
  * Build a TurretConfig (for runtime sim) from a TurretBlueprint.
  */
-export function buildTurretConfig(turretId: string): TurretConfig {
-  const turretBlueprint = TURRET_BLUEPRINTS[turretId];
+export function buildTurretConfig(turretId: TurretId): TurretConfig {
+  const turretBlueprint: TurretBlueprint = TURRET_BLUEPRINTS[turretId];
   if (!turretBlueprint) throw new Error(`Unknown turret blueprint: ${turretId}`);
   validateTurretRangeMultipliers(turretId, turretBlueprint.rangeMultiplierOverrides);
 
@@ -289,13 +292,12 @@ export function buildTurretConfig(turretId: string): TurretConfig {
   let shot: ShotConfig;
 
   if (turretBlueprint.forceField) {
-    // Force field turret: build ForceShot
+    // Force field turret: build a classic projectile barrier.
     const fieldShot: ForceShot = {
       type: 'force',
       angle: turretBlueprint.forceField.angle ?? Math.PI * 2,
       transitionTime: turretBlueprint.forceField.transitionTime ?? 1000,
-      push: computeZoneConfig(turretBlueprint.forceField.push, turretBlueprint.range) ?? undefined,
-      pull: computeZoneConfig(turretBlueprint.forceField.pull, turretBlueprint.range) ?? undefined,
+      barrier: computeBarrierConfig(turretBlueprint.forceField.barrier, turretBlueprint.range) ?? undefined,
     };
     shot = fieldShot;
   } else if (turretBlueprint.projectileId) {
@@ -336,8 +338,8 @@ export function buildTurretConfig(turretId: string): TurretConfig {
     config.barrel &&
     config.barrel.type !== 'complexSingleEmitter'
   ) {
-    const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.projectileId];
-    const rawThickness = shotBlueprint.type === 'beam' || shotBlueprint.type === 'laser'
+    const shotBlueprint: ShotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.projectileId];
+    const rawThickness = isLineShotBlueprint(shotBlueprint)
       ? shotBlueprint.width
       : (shotBlueprint.collision.radius > 0 ? shotBlueprint.collision.radius * 2 : 2);
     config.barrel = {
@@ -361,9 +363,9 @@ export function buildTurretConfig(turretId: string): TurretConfig {
 /**
  * Build all turret configs from blueprints.
  */
-export function buildAllTurretConfigs(): Record<string, TurretConfig> {
-  const result: Record<string, TurretConfig> = {};
-  for (const id of Object.keys(TURRET_BLUEPRINTS)) {
+export function buildAllTurretConfigs(): Record<TurretId, TurretConfig> {
+  const result = {} as Record<TurretId, TurretConfig>;
+  for (const id of Object.keys(TURRET_BLUEPRINTS) as TurretId[]) {
     result[id] = buildTurretConfig(id);
   }
   return result;

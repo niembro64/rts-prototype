@@ -2,6 +2,7 @@
 // Used by both WorldState (server) and ClientViewState (client)
 
 import type { Entity, EntityId, PlayerId } from './types';
+import { isLineShotType, isProjectileShot } from './types';
 
 const EMPTY_ENTITIES: Entity[] = [];
 
@@ -120,11 +121,9 @@ export class EntityCacheManager {
           if (entity.ownership?.playerId !== undefined) {
             this.getOrCreateBuildingsByPlayer(entity.ownership.playerId).push(entity);
           }
-          // Same logic as cachedDamagedUnits — a building shell starts
-          // at hp=0 (shellHpSync drives hp from avgFill * maxHp), so
-          // the original `hp > 0 && hp < maxHp` gate excluded freshly
-          // spawned shells. Now: include any shell, plus damaged
-          // complete buildings.
+          // Same logic as cachedDamagedUnits: include any construction
+          // shell, plus damaged complete buildings, so the shared
+          // construction lifecycle always has visible progress bars.
           if (
             entity.building
             && (
@@ -146,10 +145,10 @@ export class EntityCacheManager {
           if (entity.projectile?.projectileType === 'projectile') {
             this.cachedTravelingProjectiles.push(entity);
             const shot = entity.projectile.config.shot;
-            if (shot.type === 'projectile' && shot.smokeTrail) {
+            if (isProjectileShot(shot) && shot.smokeTrail) {
               this.cachedSmokeTrailProjectiles.push(entity);
             }
-          } else if (entity.projectile?.projectileType === 'beam' || entity.projectile?.projectileType === 'laser') {
+          } else if (entity.projectile && isLineShotType(entity.projectile.projectileType)) {
             this.cachedLineProjectiles.push(entity);
           }
           break;

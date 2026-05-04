@@ -28,7 +28,7 @@ export type {
   SolarCollectorState,
   Unit,
   Building,
-  ForceFieldZoneConfig,
+  ForceFieldBarrierConfig,
   ProjectileShot,
   BeamShot,
   LaserShot,
@@ -55,7 +55,7 @@ export type {
   Entity,
 } from '@/types/sim';
 
-export { isLineShot } from '@/types/sim';
+export { isLineShot, isLineShotType, isProjectileShot, getShotMaxLifespan } from '@/types/sim';
 
 import type { PlayerId } from '@/types/sim';
 

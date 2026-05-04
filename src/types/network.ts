@@ -1,5 +1,12 @@
 // Network types extracted from game/network/NetworkTypes.ts
 
+import {
+  BUILDING_TYPE_IDS,
+  SHOT_IDS,
+  TURRET_IDS,
+  UNIT_TYPE_IDS,
+} from './blueprintIds';
+import type { ShotId, TurretId } from './blueprintIds';
 import type { EntityType, PlayerId, TurretState } from './sim';
 
 // ── Bit-packed enum codes for the wire format ─────────────────────
@@ -56,11 +63,7 @@ export function codeToActionType(c: number): string {
 // keep decoding correctly. The string form lives at runtime (entity
 // .unit.unitType) and on the client side after decode — only the
 // serializer / deserializer touches the int form.
-const _UNIT_TYPES: readonly string[] = [
-  'jackal', 'lynx', 'badger', 'mongoose', 'mammoth',
-  'tick', 'tarantula', 'loris', 'daddy', 'widow',
-  'formik', 'hippo', 'commander',
-];
+const _UNIT_TYPES = UNIT_TYPE_IDS;
 export function getNetworkUnitTypeIds(): readonly string[] {
   return _UNIT_TYPES;
 }
@@ -79,9 +82,7 @@ export function codeToUnitType(c: number): string | null {
 }
 
 // ── Building type codes ────────────────────────────────────────────
-const _BUILDING_TYPES: readonly string[] = [
-  'solar', 'wind', 'factory', 'extractor',
-];
+const _BUILDING_TYPES = BUILDING_TYPE_IDS;
 export function getNetworkBuildingTypeIds(): readonly string[] {
   return _BUILDING_TYPES;
 }
@@ -117,19 +118,17 @@ export function codeToProjectileType(c: number): 'projectile' | 'beam' | 'laser'
   return _CODE_TO_PROJECTILE_TYPE[c] ?? null;
 }
 
+/** Code-form sibling of `isLineShotType` from types/sim.ts — true for
+ *  the projectile-type codes that correspond to line shots (beam +
+ *  laser). Adding a new line-shot type means extending both
+ *  LINE_SHOT_TYPES (string side) and this code list. */
+export function isLineProjectileTypeCode(code: ProjectileTypeCode): boolean {
+  return code === PROJECTILE_TYPE_BEAM || code === PROJECTILE_TYPE_LASER;
+}
+
 // ── Shot blueprint codes ───────────────────────────────────────────
 // Append-only, validated against SHOT_BLUEPRINTS at startup.
-const _SHOT_TYPES: readonly string[] = [
-  'lightShot',
-  'mediumShot',
-  'lightRocket',
-  'heavyShot',
-  'mortarShot',
-  'disruptorShot',
-  'laserShot',
-  'beamShot',
-  'megaBeamShot',
-];
+const _SHOT_TYPES = SHOT_IDS;
 export type ShotTypeCode = number;
 export const SHOT_ID_UNKNOWN = 0xff;
 export function getNetworkShotIds(): readonly string[] {
@@ -141,27 +140,13 @@ export function shotIdToCode(s: string): ShotTypeCode {
   const code = _SHOT_TYPE_TO_CODE[s];
   return code === undefined ? SHOT_ID_UNKNOWN : code;
 }
-export function codeToShotId(c: number): string | null {
+export function codeToShotId(c: number): ShotId | null {
   return _SHOT_TYPES[c] ?? null;
 }
 
 // ── Turret blueprint codes ─────────────────────────────────────────
 // Append-only, validated against TURRET_BLUEPRINTS at startup.
-const _TURRET_TYPES: readonly string[] = [
-  'lightTurret',
-  'salvoRocketTurret',
-  'cannonTurret',
-  'mortarTurret',
-  'pulseTurret',
-  'gatlingMortarTurret',
-  'hippoGatlingTurret',
-  'dgunTurret',
-  'mirrorTurret',
-  'laserTurret',
-  'beamTurret',
-  'megaBeamTurret',
-  'forceTurret',
-];
+const _TURRET_TYPES = TURRET_IDS;
 export type TurretTypeCode = number;
 export const TURRET_ID_UNKNOWN = 0xff;
 export function getNetworkTurretIds(): readonly string[] {
@@ -173,11 +158,11 @@ export function turretIdToCode(s: string): TurretTypeCode {
   const code = _TURRET_TYPE_TO_CODE[s];
   return code === undefined ? TURRET_ID_UNKNOWN : code;
 }
-export function codeToTurretId(c: number): string | null {
+export function codeToTurretId(c: number): TurretId | null {
   return _TURRET_TYPES[c] ?? null;
 }
 import type { Command } from './commands';
-import type { TurretAudioId, ImpactContext, SimDeathContext, SimEventSourceType } from './combat';
+import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ForceFieldImpactContext } from './combat';
 import type { Vec2, Vec3 } from './vec2';
 import type { TerrainMapShape, TerrainShape } from './terrain';
 
@@ -271,8 +256,9 @@ export type NetworkServerSnapshotSimEvent = {
     | 'laserStop'
     | 'forceFieldStart'
     | 'forceFieldStop'
+    | 'forceFieldImpact'
     | 'projectileExpire';
-  turretId: TurretAudioId;
+  turretId: SimEventAudioKey;
   sourceType?: SimEventSourceType;
   sourceKey?: string;
   /** Event origin in 3D sim coords. See SimEvent in types/combat.ts. */
@@ -280,6 +266,7 @@ export type NetworkServerSnapshotSimEvent = {
   entityId?: number;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;
+  forceFieldImpact?: ForceFieldImpactContext;
 };
 
 export type NetworkServerSnapshotProjectileSpawn = {
@@ -370,7 +357,6 @@ export type NetworkServerSnapshotMeta = {
   server: { time: string; ip: string };
   grid: boolean;
   units: { allowed?: string[]; max?: number; count?: number };
-  ffAccel: { units?: boolean; shots?: boolean };
   mirrorsEnabled?: boolean;
   forceFieldsEnabled?: boolean;
   /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).

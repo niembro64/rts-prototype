@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
-import { isLineShot } from '../types';
+import { isLineShot, isLineShotType, isProjectileShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
@@ -148,7 +148,7 @@ function isPackedProjectileEligible(entity: Entity): boolean {
   if (!proj || proj.projectileType !== 'projectile') return false;
   if (entity.dgunProjectile) return false;
   const shot = proj.config.shot;
-  if (shot.type !== 'projectile') return false;
+  if (!isProjectileShot(shot)) return false;
   if ((shot.homingTurnRate ?? 0) > 0 || proj.homingTargetId !== undefined) return false;
   if (proj.maxHits !== 1) return false;
   return true;
@@ -254,7 +254,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (shot.type === 'force') continue; // Force fields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);
-      if (shot.type === 'projectile' && shot.ignoresGravity !== true && weapon.ballisticAimInRange === false) {
+      if (isProjectileShot(shot) && shot.ignoresGravity !== true && weapon.ballisticAimInRange === false) {
         continue;
       }
 
@@ -341,9 +341,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const fireBaseIndex = weapon.barrelFireIndex ?? 0;
 
       for (let i = 0; i < pellets; i++) {
-        // Keep the round-robin barrel index for visual/audio metadata,
-        // while the authoritative shot itself comes from the stable
-        // center point between the barrels.
+        // Keep the round-robin barrel index as real muzzle metadata:
+        // the same index feeds the authoritative spawn and the client
+        // correction path.
         const barrelIndex = (fireBaseIndex + i) % barrelCount;
 
         // Optional random yaw jitter for cone-shotgun spread. Applied
@@ -360,7 +360,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           weaponX, weaponY, mountZ,
           turretAngle, turretPitch,
           config,
-          0,
+          barrelIndex,
         );
         const spawnX = tip.x;
         const spawnY = tip.y;
@@ -429,6 +429,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
           const beam = world.createBeam(spawnX, spawnY, spawnZ, endX, endY, playerId, unit.id, projectileConfig, beamProjectileType);
           if (beam.projectile) {
+            beam.projectile.sourceBarrelIndex = barrelIndex;
             beam.projectile.sourceEntityId = unit.id;
             // createBeam seeds both polyline vertices at spawnZ; the
             // pitched end actually sits at endZ (= spawnZ + dirZ * range).
@@ -554,9 +555,9 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
       continue;
     }
 
-    // Force fields and other systems may mutate velocity before the
-    // projectile integration pass. Pull those object-side velocities
-    // back into the dense sidecar so packed shots stay authoritative.
+    // Other systems may mutate velocity before the projectile
+    // integration pass. Pull those object-side velocities back into
+    // the dense sidecar so packed shots stay authoritative.
     let vx = proj.velocityX;
     let vy = proj.velocityY;
     let vz = proj.velocityZ;
@@ -645,7 +646,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // opt out via `ignoresGravity`, so they travel in a straight
     // line on thrust alone and are steered purely by homing.
     const shotCfg = proj.config.shot;
-    const ignoresGravity = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
+    const ignoresGravity = isProjectileShot(shotCfg) && shotCfg.ignoresGravity === true;
     if (!ignoresGravity) {
       proj.velocityZ -= GRAVITY * dtSec;
     }
@@ -663,7 +664,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         const dy = proj.prevY - source.transform.y;
         const dz = (proj.prevZ ?? 0) - source.transform.z;
         const distSq = dx * dx + dy * dy + dz * dz;
-        const clearance = source.unit.unitRadiusCollider.shot + (proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5) + 2;
+        const clearance = source.unit.unitRadiusCollider.shot + (isProjectileShot(proj.config.shot) ? proj.config.shot.collision.radius : 5) + 2;
         if (distSq > clearance * clearance) {
           proj.hasLeftSource = true;
         }
@@ -689,7 +690,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       const targetValid = homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0));
       if (!targetValid) {
         const shotCfgForSeek = proj.config.shot;
-        const isRocket = shotCfgForSeek.type === 'projectile' && shotCfgForSeek.ignoresGravity === true;
+        const isRocket = isProjectileShot(shotCfgForSeek) && shotCfgForSeek.ignoresGravity === true;
         if (isRocket) {
           const reacquired = findNearestEnemyForRocket(world, entity, proj.ownerId);
           if (reacquired) {
@@ -802,7 +803,7 @@ export function updateProjectiles(
     const proj = entity.projectile;
 
     // Update beam/laser positions to follow turret direction
-    if (proj.projectileType === 'beam' || proj.projectileType === 'laser') {
+    if (isLineShotType(proj.projectileType)) {
       proj.timeAlive += dtMs;
       const source = world.getEntity(proj.sourceEntityId);
 
@@ -874,7 +875,7 @@ export function updateProjectiles(
           beamMount.x, beamMount.y, beamMount.z,
           turretAngle, turretPitch,
           proj.config,
-          0,
+          proj.sourceBarrelIndex ?? 0,
         );
         // Ensure points polyline exists (createBeam seeds 2-point line at
         // spawn; defensive-init covers any path that forgot to).

@@ -24,11 +24,12 @@ import type { SimDeathContext } from '@/types/combat';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { MAP_BG_COLOR, GRAVITY, MIRROR_EXTRA_HEIGHT, TURRET_HEIGHT } from '../../config';
 import { FALLBACK_UNIT_BODY_SHAPE, getUnitBlueprint } from '../sim/blueprints';
+import { isLineShotBlueprint } from '@/types/blueprints';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { MIRROR_ARM_LENGTH_FRAC } from '../sim/mirrorPanelCache';
 import { getShotBlueprint } from '../sim/blueprints/shots';
-import { leftSideConfigsForStyle } from './Locomotion3D';
 import { getBodyEdgeTemplates } from './BodyShape3D';
+import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {
   TREAD_CHASSIS_LIFT_Y,
   getBodyMountTopY,
@@ -572,21 +573,17 @@ export class Debris3D {
       // One cylinder per upper segment + one per lower segment, placed at
       // their rest-pose hip/knee/foot positions — same math Locomotion3D
       // uses to initialize legs.
-      const left = leftSideConfigsForStyle(loc.style, r);
-      const right = left.map((c) => ({
-        ...c,
-        attachOffsetY: -c.attachOffsetY,
-        snapTargetAngle: -c.snapTargetAngle,
-      }));
-      const all = [...left, ...right];
+      const { all } = resolveMirroredLegConfigs(loc.config, r);
       const upperThick = Math.max(1, loc.config.upperThickness) * 0.6;
       const lowerThick = Math.max(1, loc.config.lowerThickness) * 0.6;
       for (const lc of all) {
         const hipX = lc.attachOffsetX;
         const hipZ = lc.attachOffsetY;
-        // Hip Y matches Locomotion3D: mid-height of whichever body
-        // segment this leg attaches to.
-        const hipY = getSegmentMidYAt(bp.bodyShape, r, hipX);
+        // Hip Y matches Locomotion3D: either an authored absolute
+        // attach height or the lifted midpoint of the body segment.
+        const hipY = bp.legAttachHeightFrac !== undefined
+          ? bp.legAttachHeightFrac * r
+          : chassisLiftY + getSegmentMidYAt(bp.bodyShape, r, hipX);
         const restDist =
           (lc.upperLegLength + lc.lowerLegLength) * lc.snapDistanceMultiplier;
         const footA = lc.snapTargetAngle;
@@ -726,7 +723,7 @@ export class Debris3D {
         if (tb.projectileId) {
           try {
             const sb = getShotBlueprint(tb.projectileId);
-            if (sb.type === 'beam' || sb.type === 'laser') {
+            if (isLineShotBlueprint(sb)) {
               shotWidth = sb.width;
             }
           } catch { /* unknown shot id — fall through to barrelThickness */ }

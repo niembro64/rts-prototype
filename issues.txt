@@ -8,26 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   1) DUPLICATE PREDICATES / HELPERS
   ---------------------------------------------------
 
-  [HIGH] Line-shot type discrimination is re-implemented in 4+ places.
-    The canonical predicate is `isLineShotType` / `isLineShot` in
-    src/types/sim.ts, but literal `=== 'beam' || === 'laser'` checks
-    appear in:
-      - src/game/network/ClientViewState.ts:321-329
-        (defines local isLineProjectileEntity / isLineProjectileCode)
-      - src/game/network/ClientViewState.ts:1755-1756
-      - src/game/network/ClientViewState.ts:2042-2047
-      - src/game/network/helpers/NetworkEntityFactory.ts:353-357
-      - src/game/sim/WorldState.ts:662-665
-      - src/game/sim/combat/projectileSystem.ts:806, 842-843, 933
-      - src/game/sim/combat/ProjectileCollisionHandler.ts:516, 779
-      - src/game/render3d/BeamRenderer3D.ts:429
-      - src/game/render3d/Debris3D.ts:725
-      - src/game/sim/EntityCacheManager.ts:107, 151
-      - src/game/sim/blueprints/index.ts:341
-    Action: replace all literal checks with isLineShotType / isLineShot.
-    Add a code-form predicate (isLineProjectileTypeCode) in types/sim.ts
-    for the PROJECTILE_TYPE_BEAM/LASER variant ClientViewState uses.
-
   [LOW] src/game/sim/combat/lineShotUtils.ts exports
     `getLineShotDamageSphereRadius(shot) => shot.damageSphere.radius` —
     a trivial wrapper used 2x (ProjectileCollisionHandler.ts:536,

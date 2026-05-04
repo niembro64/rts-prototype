@@ -1,6 +1,8 @@
 // Network entity creation helpers
 
 import type { Entity, BuildingType, Turret, ProjectileConfig, UnitAction } from '../../sim/types';
+import { isProjectileShot } from '../../sim/types';
+import { getShotMaxLifespan } from '@/types/sim';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import {
   codeToActionType,
@@ -19,6 +21,7 @@ import { GRID_CELL_SIZE } from '../../sim/grid';
 import { COST_MULTIPLIER } from '../../../config';
 import { buildMirrorPanelCache } from '../../sim/mirrorPanelCache';
 import { createTurretsFromDefinition } from '../../sim/unitDefinitions';
+import { createBuildable } from '../../sim/buildableHelpers';
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -204,7 +207,7 @@ function createUnitFromNetwork(
     if (unitBlueprint?.builder) {
       entity.builder = {
         buildRange: unitBlueprint.builder.buildRange,
-        maxEnergyUseRate: unitBlueprint.builder.maxEnergyUseRate,
+        constructionRate: unitBlueprint.builder.constructionRate,
         currentBuildTarget: u.buildTargetId ?? null,
       };
     }
@@ -212,21 +215,18 @@ function createUnitFromNetwork(
 
   // Shell construction state — `required` is re-derived from the
   // blueprint COST_MULTIPLIER product, identical to the server.
-  if (u?.build && unitBlueprint) {
-    entity.buildable = {
-      paid: {
-        energy: u.build.paid.energy,
-        mana: u.build.paid.mana,
-        metal: u.build.paid.metal,
-      },
-      required: {
+  if (u?.build && !u.build.complete && unitBlueprint) {
+    entity.buildable = createBuildable(
+      {
         energy: unitBlueprint.cost.energy * COST_MULTIPLIER,
         mana: unitBlueprint.cost.mana * COST_MULTIPLIER,
         metal: unitBlueprint.cost.metal * COST_MULTIPLIER,
       },
-      isComplete: u.build.complete,
-      isGhost: false,
-    };
+      {
+        paid: u.build.paid,
+        healthBuildFraction: u.build.progress,
+      },
+    );
   }
 
   return entity;
@@ -268,24 +268,21 @@ function createBuildingFromNetwork(
         ? { open: b.solar?.open ?? false, producing: false, reopenDelayMs: 0 }
         : undefined,
     },
-    buildable: {
-      // required is re-derived from the local building config — it's
-      // a pure function of buildingType and never changes after spawn,
-      // so no need to ship it on the wire.
-      required: { ...config.cost },
-      paid: {
-        energy: b.build?.paid.energy ?? config.cost.energy,
-        mana: b.build?.paid.mana ?? config.cost.mana,
-        metal: b.build?.paid.metal ?? config.cost.metal,
-      },
-      isComplete: b.build?.complete ?? true,
-      isGhost: false,
-    },
     buildingType,
     metalExtractionRate: buildingType === 'extractor'
       ? b.metalExtractionRate ?? 0
       : undefined,
   };
+
+  if (b.build && !b.build.complete) {
+    // required is re-derived from the local building config — it's a
+    // pure function of buildingType and never changes after spawn, so
+    // no need to ship it on the wire.
+    entity.buildable = createBuildable(config.cost, {
+      paid: b.build.paid,
+      healthBuildFraction: b.build.progress,
+    });
+  }
 
   const f = b?.factory;
   if (f) {
@@ -350,13 +347,11 @@ function createProjectileFromNetwork(
 
   const projectileType = s.type !== undefined
     ? codeToProjectileType(s.type)
-    : config.shot.type;
+    : isProjectileShot(config.shot)
+      ? 'projectile'
+      : config.shot.type;
   if (!projectileType) return null;
-  const maxLifespan = config.shot.type === 'beam'
-    ? Infinity
-    : config.shot.type === 'laser'
-      ? config.shot.duration
-      : config.shot.lifespan ?? 2000;
+  const maxLifespan = getShotMaxLifespan(config.shot);
 
   return {
     id,

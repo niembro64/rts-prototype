@@ -1,13 +1,14 @@
 import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, UnitLocomotion } from './types';
+import { isProjectileShot } from './types';
+import { getShotMaxLifespan } from '@/types/sim';
 import type { MetalDeposit } from '../../metalDepositConfig';
+import type { ShotId, TurretId } from '../../types/blueprintIds';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { cloneUnitLocomotion } from './locomotion';
 import { createTurretsFromDefinition } from './unitDefinitions';
 import {
   MAX_TOTAL_UNITS,
-  DEFAULT_FF_ACCEL_UNITS,
-  DEFAULT_FF_ACCEL_SHOTS,
   DEFAULT_MIRRORS_ENABLED,
   DEFAULT_FORCE_FIELDS_ENABLED,
   UNIT_HP_MULTIPLIER,
@@ -96,10 +97,6 @@ export class WorldState {
   // Configurable unit cap (can be changed at runtime via command)
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 
-  // Whether force fields accelerate enemy units
-  public ffAccelUnits: boolean = DEFAULT_FF_ACCEL_UNITS;
-  // Whether force fields accelerate enemy projectiles
-  public ffAccelShots: boolean = DEFAULT_FF_ACCEL_SHOTS;
   // Whether mirror turrets/panels participate in targeting and reflections
   public mirrorsEnabled: boolean = DEFAULT_MIRRORS_ENABLED;
   // Whether force-field turrets participate in targeting, simulation, and rendering
@@ -554,7 +551,7 @@ export class WorldState {
     if (bp.builder) {
       entity.builder = {
         buildRange: bp.builder.buildRange,
-        maxEnergyUseRate: bp.builder.maxEnergyUseRate,
+        constructionRate: bp.builder.constructionRate,
         currentBuildTarget: null,
       };
     }
@@ -654,29 +651,23 @@ export class WorldState {
     sourceEntityId: EntityId,
     config: ProjectileConfig,
     projectileType: ProjectileType = 'projectile',
-    provenance?: { shotId?: string; sourceTurretId?: string },
+    provenance?: { shotId?: ShotId; sourceTurretId?: TurretId },
   ): Entity {
     const id = this.generateEntityId();
 
     // Calculate rotation from velocity
     const rotation = Math.atan2(velocityY, velocityX);
 
-    // Determine max lifespan based on shot type
-    let maxLifespan: number;
-    if (config.shot.type === 'beam') {
-      maxLifespan = Infinity;
-    } else if (config.shot.type === 'laser') {
-      maxLifespan = config.shot.duration;
-    } else if (config.shot.type === 'projectile') {
-      const baseLifespan = config.shot.lifespan ?? 2000;
+    // Static (no-RNG) lifespan from shot type, then apply per-instance
+    // variance for projectiles/rockets so each spawn gets a slightly
+    // different fuse.
+    let maxLifespan = getShotMaxLifespan(config.shot);
+    if (isProjectileShot(config.shot)) {
       const variance = Math.max(0, config.shot.lifespanVariance ?? 0);
-      maxLifespan = baseLifespan;
       if (variance > 0) {
         const factor = 1 + (this.rng.next() * 2 - 1) * variance;
-        maxLifespan = Math.max(0, baseLifespan * factor);
+        maxLifespan = Math.max(0, maxLifespan * factor);
       }
-    } else {
-      maxLifespan = 2000;
     }
 
     // Always single hit (DGun overrides maxHits to Infinity after creation)

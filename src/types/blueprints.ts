@@ -7,7 +7,9 @@ import type {
   SpinConfig,
 } from './config';
 import type { SoundEntry } from './audio';
+import type { ShotId, TurretId, UnitTypeId } from './blueprintIds';
 import type { TurretRangeOverrides, ResourceCost } from './sim';
+import { isLineShotType } from './sim';
 
 // Re-export for consumers
 export type {
@@ -19,13 +21,12 @@ export type {
   TurretRangeOverrides,
 };
 
-export type ForceFieldZoneRatioConfig = {
+export type ForceFieldBarrierRatioConfig = {
   outerRatio?: number;       // percentage of range (ignored if rimWidth set)
   rimWidth?: number;         // fixed world-space outer radius
   color: number;
   alpha: number;
   particleAlpha: number;
-  power: number | null;
 };
 
 export type ShotCollision = {
@@ -63,7 +64,7 @@ export type ShotExplosion = {
  */
 export type SubmunitionSpec = {
   /** Shot blueprint ID for each spawned child. Must be a 'projectile' shot. */
-  shotId: string;
+  shotId: ShotId;
   /** Number of children spawned per parent explosion. */
   count: number;
   /** Horizontal random-spread magnitude (XY plane). Each submunition's
@@ -102,9 +103,11 @@ export type SubmunitionSpec = {
   reflectedVelocityDamper?: number;
 };
 
+export type ProjectileShotKind = 'projectile' | 'rocket';
+
 export type ProjectileShotBlueprint = {
-  type: 'projectile';
-  id: string;
+  type: ProjectileShotKind;
+  id: ShotId;
   mass: number;
   collision: ShotCollision;
   /** Optional. Omit for "pure carrier" shots (e.g. a cluster mortar
@@ -128,8 +131,8 @@ export type ProjectileShotBlueprint = {
   /** Cluster behavior — see {@link SubmunitionSpec}. */
   submunitions?: SubmunitionSpec;
   /** When true, gravity is NOT applied to this projectile's vertical
-   *  velocity each tick. Use for rockets / missiles / railgun slugs
-   *  that travel by thrust rather than ballistic arc. Orthogonal to
+   *  velocity each tick. Rocket shot blueprints normally set this so
+   *  they travel by thrust rather than ballistic arc. Orthogonal to
    *  homing — a gravity-less projectile without homing flies in a
    *  perfectly straight line until it hits something. */
   ignoresGravity?: boolean;
@@ -189,7 +192,7 @@ export type SmokeTrailSpec = {
 
 export type BeamShotBlueprint = {
   type: 'beam';
-  id: string;
+  id: ShotId;
   dps: number;
   force: number;
   recoil: number;
@@ -204,7 +207,7 @@ export type BeamShotBlueprint = {
 
 export type LaserShotBlueprint = {
   type: 'laser';
-  id: string;
+  id: ShotId;
   dps: number;
   force: number;
   recoil: number;
@@ -219,6 +222,14 @@ export type LaserShotBlueprint = {
 };
 
 export type ShotBlueprint = ProjectileShotBlueprint | BeamShotBlueprint | LaserShotBlueprint;
+export type LineShotBlueprint = BeamShotBlueprint | LaserShotBlueprint;
+
+/** Blueprint-side counterpart of `isLineShot` from types/sim.ts. Both
+ *  predicates share the same underlying type list (`LINE_SHOT_TYPES`)
+ *  so adding a new line-shot variety only changes one place. */
+export function isLineShotBlueprint(sb: ShotBlueprint): sb is LineShotBlueprint {
+  return isLineShotType(sb.type);
+}
 
 /** A reflective mirror panel mount on a turret. The panel itself is a
  *  PERFECT SQUARE flat plane — its side length is derived from the
@@ -235,8 +246,8 @@ export type MirrorPanel = {
 };
 
 export type TurretBlueprint = {
-  id: string;
-  projectileId?: string;
+  id: TurretId;
+  projectileId?: ShotId;
   range: number;
   cooldown?: number;
   color: number;
@@ -254,8 +265,7 @@ export type TurretBlueprint = {
   forceField?: {
     angle?: number;
     transitionTime?: number;
-    push?: ForceFieldZoneRatioConfig;
-    pull?: ForceFieldZoneRatioConfig;
+    barrier?: ForceFieldBarrierRatioConfig;
   };
   mirrorPanels?: MirrorPanel[];
   audio?: { fireSound?: SoundEntry; laserSound?: SoundEntry };
@@ -293,9 +303,9 @@ export type TurretBlueprint = {
    *      aim = weapon + groundAimFraction × (target − weapon)
    *      aim.z = 0
    *
-   *  `0.667` means "land 2/3 of the way to the target"; the
-   *  fragment cluster's reflected velocity pushes the lightShots
-   *  the remaining third. Omit / set to undefined for the normal
+   *  `0.667` means "land 2/3 of the way to the target"; the child
+   *  submunitions' reflected velocity carries the burst the remaining
+   *  third. Omit / set to undefined for the normal
    *  "aim AT the target" behaviour. Only meaningful for
    *  ballistic projectile turrets — beams / lasers / vertical
    *  launchers ignore it. */
@@ -313,7 +323,7 @@ export type UnitTurretMountPoint = {
 };
 
 export type TurretMount = {
-  turretId: string;
+  turretId: TurretId;
   mount: UnitTurretMountPoint;
 };
 
@@ -341,9 +351,22 @@ export type LegConfig = {
   kneeRadius: number;
   footRadius: number;
   lerpDuration: number;
+  /** Left-side authored leg geometry in body-radius fractions. Runtime
+   *  code mirrors this list to the right side so units define their
+   *  actual attach pattern here rather than by renderer-owned style id. */
+  leftSide: LegLayoutEntry[];
 };
 
-export type LegStyle = 'widow' | 'formik' | 'daddy' | 'tarantula' | 'tick' | 'commander';
+export type LegLayoutEntry = {
+  attachOffsetXFrac: number;
+  attachOffsetYFrac: number;
+  upperLegLengthFrac: number;
+  lowerLegLengthFrac: number;
+  snapTriggerAngle: number;
+  snapTargetAngle: number;
+  snapDistanceMultiplier: number;
+  extensionThreshold: number;
+};
 
 export type LocomotionPhysics = {
   /** Authored propulsion force scalar. The server turns this into a
@@ -362,7 +385,7 @@ export type LocomotionPhysics = {
 export type LocomotionBlueprint =
   | { type: 'wheels'; physics: LocomotionPhysics; config: WheelConfig }
   | { type: 'treads'; physics: LocomotionPhysics; config: TreadConfig }
-  | { type: 'legs'; style: LegStyle; physics: LocomotionPhysics; config: LegConfig };
+  | { type: 'legs'; physics: LocomotionPhysics; config: LegConfig };
 
 export type UnitBodyShapePart =
   | {
@@ -393,7 +416,7 @@ export type UnitBodyShape =
   | { kind: 'composite'; parts: UnitBodyShapePart[] };
 
 export type UnitBlueprint = {
-  id: string;
+  id: UnitTypeId;
   name: string;
   shortName: string;
   hp: number;
@@ -431,7 +454,7 @@ export type UnitBlueprint = {
   legAttachHeightFrac?: number;
   locomotion: LocomotionBlueprint;
   builder?: { buildRange: number; constructionRate: number };
-  dgun?: { turretId: string; energyCost: number };
+  dgun?: { turretId: TurretId; energyCost: number };
   deathSound?: SoundEntry;
   fightStopEngagedRatio: number;
 };

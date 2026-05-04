@@ -7,7 +7,9 @@
  * - Smooth at any snapshot rate, from 1/sec to 60/sec
  */
 
-import type { Entity, PlayerId, EntityId, BuildingType, ForceShot } from '../sim/types';
+import type { Buildable, Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
+import { isProjectileShot } from '../sim/types';
+import { isLineShotType, getShotMaxLifespan } from '@/types/sim';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
@@ -17,13 +19,15 @@ import type {
   NetworkServerSnapshotMeta,
 } from './NetworkManager';
 import type { BeamPoint } from '../../types/sim';
+import type { ShotId, TurretId } from '../../types/blueprintIds';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkCaptureTile } from '@/types/capture';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork, refreshUnitTurretsFromNetwork } from './helpers';
 import { TURRET_CONFIGS } from '../sim/turretConfigs';
 import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
-import { getUnitLocomotion } from '../sim/blueprints';
+import { getUnitBlueprint, getUnitLocomotion } from '../sim/blueprints';
+import { getBuildingConfig } from '../sim/buildConfigs';
 import { getEntityVelocity3, getTurretMountHeight } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import { getBarrelTip } from '../math';
@@ -43,9 +47,8 @@ import {
   codeToShotId,
   codeToTurretId,
   PROJECTILE_TYPE_PROJECTILE,
-  PROJECTILE_TYPE_BEAM,
-  PROJECTILE_TYPE_LASER,
   TURRET_ID_UNKNOWN,
+  isLineProjectileTypeCode,
 } from '../../types/network';
 
 import {
@@ -54,7 +57,7 @@ import {
   applyHomingSteering,
   computeInterceptTime,
 } from '../math';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, GRAVITY } from '../../config';
+import { COST_MULTIPLIER, GRAVITY } from '../../config';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
@@ -62,6 +65,7 @@ import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
 import { landCellCenterForSize, landCellIndexForSize, packLandCellKey } from '../landGrid';
+import { createBuildable } from '../sim/buildableHelpers';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -73,48 +77,70 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-// Reusable buffer for client-side force field prediction (avoids allocations per frame)
-type ActiveForceField = {
-  weaponX: number;
-  weaponY: number;
-  weaponZ: number;
-  playerId: PlayerId;
-  pushInner: number;
-  pushOuter: number;
-  pushPower: number;
+type NetworkBuildState = {
+  complete: boolean;
+  progress?: number;
+  paid: Buildable['paid'];
 };
-const _forceFields: ActiveForceField[] = [];
-let _forceFieldCount = 0;
+
+function getUnitBuildRequired(unitType: string | undefined): Buildable['required'] | undefined {
+  if (!unitType) return undefined;
+  try {
+    const bp = getUnitBlueprint(unitType);
+    return {
+      energy: bp.cost.energy * COST_MULTIPLIER,
+      mana: bp.cost.mana * COST_MULTIPLIER,
+      metal: bp.cost.metal * COST_MULTIPLIER,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function getBuildingBuildRequired(buildingType: BuildingType | undefined): Buildable['required'] | undefined {
+  if (!buildingType) return undefined;
+  try {
+    return { ...getBuildingConfig(buildingType).cost };
+  } catch {
+    return undefined;
+  }
+}
+
+function applyNetworkBuildState(
+  entity: Entity,
+  build: NetworkBuildState | undefined,
+  required: Buildable['required'] | undefined,
+): boolean {
+  if (!build || build.complete) {
+    if (!entity.buildable) return false;
+    delete entity.buildable;
+    return true;
+  }
+
+  if (!required) return false;
+  let buildable = entity.buildable;
+  if (!buildable) {
+    entity.buildable = createBuildable(required, {
+      paid: build.paid,
+      healthBuildFraction: build.progress,
+    });
+    return true;
+  }
+
+  buildable.required.energy = required.energy;
+  buildable.required.mana = required.mana;
+  buildable.required.metal = required.metal;
+  buildable.paid.energy = build.paid.energy;
+  buildable.paid.mana = build.paid.mana;
+  buildable.paid.metal = build.paid.metal;
+  buildable.isComplete = false;
+  buildable.isGhost = false;
+  buildable.healthBuildFraction = build.progress;
+  return true;
+}
+
 const _clientHomingAimPoint = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
-
-function pushClientForceField(
-  weaponX: number,
-  weaponY: number,
-  weaponZ: number,
-  playerId: PlayerId,
-  shot: ForceShot,
-  progress: number,
-): void {
-  const push = shot.push;
-  if (!push || push.power == null || push.outerRange <= 0 || progress <= 0) return;
-
-  let field = _forceFields[_forceFieldCount];
-  const pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
-  if (!field) {
-    field = { weaponX, weaponY, weaponZ, playerId, pushInner, pushOuter: push.outerRange, pushPower: push.power };
-    _forceFields[_forceFieldCount] = field;
-  } else {
-    field.weaponX = weaponX;
-    field.weaponY = weaponY;
-    field.weaponZ = weaponZ;
-    field.playerId = playerId;
-    field.pushInner = pushInner;
-    field.pushOuter = push.outerRange;
-    field.pushPower = push.power;
-  }
-  _forceFieldCount++;
-}
 
 // Drift half-lives (seconds). How long to close 50% of the gap to the server value.
 // Smaller = snappier correction, larger = smoother/lazier.
@@ -292,19 +318,16 @@ function captureHeightsEmpty(heights: NetworkCaptureTile['heights']): boolean {
   return true;
 }
 
+/** True when this entity is a beam/laser projectile. Thin convenience
+ *  wrapper around the canonical {@link isLineShotType} predicate that
+ *  also handles the `entity.projectile` undefined case. */
 function isLineProjectileEntity(entity: Entity): boolean {
-  return entity.projectile?.projectileType === 'beam' ||
-    entity.projectile?.projectileType === 'laser';
-}
-
-function isLineProjectileCode(projectileType: number): boolean {
-  return projectileType === PROJECTILE_TYPE_BEAM ||
-    projectileType === PROJECTILE_TYPE_LASER;
+  return entity.projectile !== undefined && isLineShotType(entity.projectile.projectileType);
 }
 
 function decodeProjectileSourceTurretId(
   spawn: NetworkServerSnapshotProjectileSpawn,
-): string | undefined {
+): TurretId | undefined {
   const sourceTurretId = spawn.sourceTurretId !== undefined
     ? codeToTurretId(spawn.sourceTurretId) ?? undefined
     : undefined;
@@ -314,7 +337,7 @@ function decodeProjectileSourceTurretId(
 
 function decodeProjectileShotId(
   spawn: NetworkServerSnapshotProjectileSpawn,
-): string | undefined {
+): ShotId | undefined {
   return spawn.shotId !== undefined
     ? codeToShotId(spawn.shotId) ?? undefined
     : undefined;
@@ -542,7 +565,7 @@ export class ClientViewState {
       const entity = this.createProjectileFromSpawn(spawn);
       this.markEntitySetChanged(false);
       this.entities.set(spawn.id, entity);
-      if (isLineProjectileCode(spawn.projectileType)) {
+      if (isLineProjectileTypeCode(spawn.projectileType)) {
         this.activeBeamPathIds.add(spawn.id);
         this.markLineProjectilesChanged();
       } else {
@@ -622,7 +645,7 @@ export class ClientViewState {
     server: NetworkServerSnapshotEntity,
   ): boolean {
     const cf = server.changedFields;
-    if (entity.unit && (cf == null || (cf & ENTITY_CHANGED_HP))) {
+    if (entity.unit && (cf == null || (cf & (ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING)))) {
       return this.unitHealthBarCacheMembership(entity) !==
         this.networkUnitHealthBarCacheMembership(entity, server);
     }
@@ -638,7 +661,9 @@ export class ClientViewState {
 
   private unitHealthBarCacheMembership(entity: Entity): boolean {
     const unit = entity.unit;
-    return !!unit && unit.hp > 0 && unit.hp < unit.maxHp;
+    if (!unit) return false;
+    return unit.hp < unit.maxHp ||
+      !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
   }
 
   private networkUnitHealthBarCacheMembership(
@@ -646,15 +671,19 @@ export class ClientViewState {
     server: NetworkServerSnapshotEntity,
   ): boolean {
     const hp = server.unit?.hp;
-    if (!hp) return this.unitHealthBarCacheMembership(entity);
-    return hp.curr > 0 && hp.curr < hp.max;
+    const build = server.unit?.build;
+    const curr = hp?.curr ?? entity.unit?.hp ?? 0;
+    const max = hp?.max ?? entity.unit?.maxHp ?? 0;
+    const complete = build?.complete ?? entity.buildable?.isComplete ?? true;
+    return curr < max ||
+      !!(entity.buildable && !entity.buildable.isGhost && !complete);
   }
 
   private buildingHealthBarCacheMembership(entity: Entity): boolean {
     const building = entity.building;
-    if (!building || building.hp <= 0) return false;
+    if (!building) return false;
     return building.hp < building.maxHp ||
-      !!(entity.buildable && !entity.buildable.isComplete);
+      !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
   }
 
   private networkBuildingHealthBarCacheMembership(
@@ -666,9 +695,9 @@ export class ClientViewState {
     const build = server.building?.build;
     const curr = hp?.curr ?? building?.hp ?? 0;
     const max = hp?.max ?? building?.maxHp ?? 0;
-    if (curr <= 0) return false;
     const complete = build?.complete ?? entity.buildable?.isComplete ?? true;
-    return curr < max || !!(entity.buildable && !complete);
+    return curr < max ||
+      !!(entity.buildable && !entity.buildable.isGhost && !complete);
   }
 
   private rebuildCachesIfNeeded(includeProjectileChanges = false): void {
@@ -841,7 +870,7 @@ export class ClientViewState {
       }
     }
 
-    // Process projectile velocity updates (force field deflection / homing correction)
+    // Process projectile velocity updates (homing / server correction)
     // Store as drift targets — client-side prediction should already be close
     if (state.projectiles?.velocityUpdates) {
       for (const vu of state.projectiles.velocityUpdates) {
@@ -990,21 +1019,22 @@ export class ClientViewState {
     const cf = server.changedFields;
     const isFull = cf == null;
     const su = server.unit;
+    let cacheDirty = false;
     if (entity.unit && su) {
       if (isFull || cf! & ENTITY_CHANGED_HP) {
         entity.unit.hp = su.hp.curr;
         entity.unit.maxHp = su.hp.max;
+        cacheDirty = true;
       }
-      // Unit-shell construction state. The buildable component is
-      // already attached client-side at spawn (NetworkEntityFactory).
-      // On every BUILDING-bit delta we copy the three paid counters
-      // and the complete flag — `required` is static, derived from
-      // the local blueprint at spawn.
-      if ((isFull || cf! & ENTITY_CHANGED_BUILDING) && su.build && entity.buildable) {
-        entity.buildable.paid.energy = su.build.paid.energy;
-        entity.buildable.paid.mana = su.build.paid.mana;
-        entity.buildable.paid.metal = su.build.paid.metal;
-        entity.buildable.isComplete = su.build.complete;
+      // Buildable means "currently under construction." A full
+      // record or BUILDING-bit delta with no incomplete build payload
+      // removes stale construction state from completed shells.
+      if (isFull || cf! & ENTITY_CHANGED_BUILDING) {
+        cacheDirty = applyNetworkBuildState(
+          entity,
+          su.build,
+          getUnitBuildRequired(entity.unit.unitType),
+        ) || cacheDirty;
       }
       // Static fields are present on full records and may be omitted
       // from ordinary deltas. Read whenever they're present; they do
@@ -1115,13 +1145,15 @@ export class ClientViewState {
     if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_HP)) {
       entity.building.hp = sb.hp.curr;
       entity.building.maxHp = sb.hp.max;
+      cacheDirty = true;
     }
 
-    if (entity.buildable && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
-      entity.buildable.paid.energy = sb.build.paid.energy;
-      entity.buildable.paid.mana = sb.build.paid.mana;
-      entity.buildable.paid.metal = sb.build.paid.metal;
-      entity.buildable.isComplete = sb.build.complete;
+    if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
+      cacheDirty = applyNetworkBuildState(
+        entity,
+        sb.build,
+        getBuildingBuildRequired(entity.buildingType),
+      ) || cacheDirty;
     }
 
     if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
@@ -1173,6 +1205,8 @@ export class ClientViewState {
         };
       }
     }
+
+    if (cacheDirty) this.cache.invalidate();
 
     // Projectiles are no longer in server snapshots — handled via spawn/despawn events
   }
@@ -1550,28 +1584,6 @@ export class ClientViewState {
         weapon.forceField.range = next;
       }
 
-      if (next > 0 && entity.ownership) {
-        const unitCos = Math.cos(entity.transform.rotation);
-        const unitSin = Math.sin(entity.transform.rotation);
-        const unitGroundZ = getUnitGroundZ(entity);
-        const mount = getTurretWorldMount(
-          entity.transform.x, entity.transform.y, unitGroundZ,
-          unitCos, unitSin,
-          weapon.mount.x, weapon.mount.y, getTurretMountHeight(entity, i),
-          getSurfaceNormal(
-            entity.transform.x, entity.transform.y,
-            this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE,
-          ),
-        );
-        pushClientForceField(
-          mount.x,
-          mount.y,
-          mount.z,
-          entity.ownership.playerId,
-          fieldShot,
-          next,
-        );
-      }
     }
   }
 
@@ -1663,9 +1675,6 @@ export class ClientViewState {
       this.predictionLodCellSize = 1;
     }
 
-    // Collect active force fields for client-side projectile prediction.
-    // The backing objects stay pooled at the session high-water mark.
-    _forceFieldCount = 0;
     this.forceFieldsEnabledForPrediction = this.serverMeta?.forceFieldsEnabled ?? true;
 
     let beamPathsChanged = false;
@@ -1739,10 +1748,7 @@ export class ClientViewState {
       const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
       const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
 
-      if (
-        entity.projectile.projectileType === 'beam' ||
-        entity.projectile.projectileType === 'laser'
-      ) {
+      if (isLineShotType(entity.projectile.projectileType)) {
         this.activeBeamPathIds.add(id);
         this.activeProjectilePredictionIds.delete(id);
       } else {
@@ -1760,7 +1766,7 @@ export class ClientViewState {
           let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
           if (!targetValid) {
             const shotCfg = proj.config.shot;
-            const isRocket = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
+            const isRocket = isProjectileShot(shotCfg) && shotCfg.ignoresGravity === true;
             if (isRocket && entity.ownership) {
               homingTarget = this.findNearestEnemyForRocketClient(entity, entity.ownership.playerId) ?? undefined;
               if (homingTarget) {
@@ -1818,38 +1824,10 @@ export class ClientViewState {
             entity.transform.rotation = steered.rotation;
           }
         }
-        // Client-side force field prediction: apply same deflection physics as server
-        if (_forceFieldCount > 0 && entity.ownership) {
-          const projOwnerId = entity.ownership.playerId;
-          const projRadius = proj.config.shot.type === 'projectile'
-            ? proj.config.shot.collision.radius : 5;
-          const projMass = (proj.config.shot.type === 'projectile'
-            ? proj.config.shot.mass : 1) * PROJECTILE_MASS_MULTIPLIER;
-          for (let fi = 0; fi < _forceFieldCount; fi++) {
-            const ff = _forceFields[fi];
-            if (ff.playerId === projOwnerId) continue; // Only deflect enemy projectiles
-            const dx = entity.transform.x - ff.weaponX;
-            const dy = entity.transform.y - ff.weaponY;
-            const dz = entity.transform.z - ff.weaponZ;
-            const distSq = dx * dx + dy * dy + dz * dz;
-            const maxDist = ff.pushOuter + projRadius;
-            if (distSq > maxDist * maxDist) continue;
-            const dist = Math.sqrt(distSq);
-            if (ff.pushInner > 0 && dist + projRadius < ff.pushInner) continue;
-            const pushAccel = (ff.pushPower * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER) / projMass;
-            const dirX = dist > 0 ? dx / dist : 0;
-            const dirY = dist > 0 ? dy / dist : 0;
-            const dirZ = dist > 0 ? dz / dist : 0;
-            proj.velocityX += dirX * pushAccel * dt;  // push outward
-            proj.velocityY += dirY * pushAccel * dt;
-            proj.velocityZ += dirZ * pushAccel * dt;
-            entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
-          }
-        }
         // Drift projectile position + velocity toward server target
         // (smooth correction). Z is drifted too now that server
-        // velocity updates carry a vz — force-field deflections and
-        // homing corrections in the vertical axis propagate instead
+        // velocity updates carry a vz — homing corrections in the
+        // vertical axis propagate instead
         // of being lost.
         //
         // The server only emits velocity-update events on homing /
@@ -1863,7 +1841,7 @@ export class ClientViewState {
         // shells stop flying up forever.
         if (target) {
           const targetShotCfg = entity.projectile.config.shot;
-          const targetIgnoresGravity = targetShotCfg.type === 'projectile' && targetShotCfg.ignoresGravity === true;
+          const targetIgnoresGravity = isProjectileShot(targetShotCfg) && targetShotCfg.ignoresGravity === true;
           if (!targetIgnoresGravity) {
             target.velocityZ -= GRAVITY * targetDt;
           }
@@ -1885,7 +1863,7 @@ export class ClientViewState {
         // are bent only by homing — mirrors the server path so
         // predicted arcs match authoritative arcs.
         const shotCfg = entity.projectile.config.shot;
-        const ignoresGravity = shotCfg.type === 'projectile' && shotCfg.ignoresGravity === true;
+        const ignoresGravity = isProjectileShot(shotCfg) && shotCfg.ignoresGravity === true;
         if (!ignoresGravity) {
           entity.projectile.velocityZ -= GRAVITY * dt;
         }
@@ -1999,11 +1977,10 @@ export class ClientViewState {
     // slightly-stale position and then the projectile would race to
     // catch up with the visibly-moved barrel cluster. We delegate the
     // turret-rotation chain (unit yaw → turret yaw+pitch) to the shared
-    // primitive, so multi-barrel shots use the same centerline spawn on
-    // both sides.
+    // primitive, including the server's barrelIndex, so multi-barrel
+    // shots are corrected to the same physical muzzle on both sides.
     if (
-      spawn.projectileType !== PROJECTILE_TYPE_BEAM &&
-      spawn.projectileType !== PROJECTILE_TYPE_LASER &&
+      !isLineProjectileTypeCode(spawn.projectileType) &&
       !spawn.fromParentDetonation
     ) {
       const source = this.entities.get(spawn.sourceEntityId);
@@ -2027,7 +2004,7 @@ export class ClientViewState {
           mount.x, mount.y, mount.z,
           weapon.rotation, weapon.pitch,
           config,
-          0,
+          spawn.barrelIndex,
         );
         spawnX = tip.x;
         spawnY = tip.y;
@@ -2055,12 +2032,7 @@ export class ClientViewState {
         velocityY: spawn.velocity.y,
         velocityZ: spawn.velocity.z,
         timeAlive: 0,
-        maxLifespan:
-          config.shot.type === 'beam'
-            ? Infinity
-            : config.shot.type === 'laser'
-              ? config.shot.duration
-              : (spawn.maxLifespan ?? config.shot.lifespan ?? 2000),
+        maxLifespan: spawn.maxLifespan ?? getShotMaxLifespan(config.shot),
         hitEntities: new Set(),
         maxHits: 1,
         points: spawn.beam ? [
@@ -2170,7 +2142,7 @@ export class ClientViewState {
     for (const id of this.activeProjectilePredictionIds) {
       const entity = this.entities.get(id);
       const shot = entity?.projectile?.config.shot;
-      if (entity?.projectile?.projectileType === 'projectile' && shot?.type === 'projectile' && shot.smokeTrail) {
+      if (entity?.projectile?.projectileType === 'projectile' && shot && isProjectileShot(shot) && shot.smokeTrail) {
         out.push(entity);
       }
     }

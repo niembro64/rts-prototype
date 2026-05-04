@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
+import { isLineShot, isLineShotType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { BeamStyle, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
 import { getGraphicsConfig } from '@/clientBarConfig';
@@ -388,7 +389,7 @@ export class BeamRenderer3D {
 
     for (const e of projectiles) {
       const pt = e.projectile?.projectileType;
-      if (pt !== 'beam' && pt !== 'laser') continue;
+      if (!pt || !isLineShotType(pt)) continue;
 
       const proj = e.projectile!;
       const points = proj.points;
@@ -426,7 +427,7 @@ export class BeamRenderer3D {
       // directly as the cylinder scale makes the diameter = shot.width.
       let cylRadius = BEAM_MIN_RADIUS;
       let damageSphereRadius = ENDPOINT_MIN_RADIUS;
-      if (shot && (shot.type === 'beam' || shot.type === 'laser')) {
+      if (shot && isLineShot(shot)) {
         cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius * BEAM_RADIUS_SCALE * radiusMul);
         damageSphereRadius = Math.max(
           ENDPOINT_MIN_RADIUS,

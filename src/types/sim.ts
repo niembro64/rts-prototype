@@ -1,7 +1,9 @@
 // Simulation entity types extracted from game/sim/types.ts
 
 import type { BarrelShape } from './config';
+import type { ShotId, TurretId } from './blueprintIds';
 import type { Vec3 } from './vec2';
+import type { ProjectileShotKind } from './blueprints';
 
 // Entity ID type for deterministic identification
 export type EntityId = number;
@@ -269,20 +271,20 @@ export type Building = {
   solar?: SolarCollectorState;
 };
 
-// Force field zone configuration (push or pull)
-export type ForceFieldZoneConfig = {
+// Force field barrier configuration: a visual/interception sphere,
+// not a unit or projectile acceleration volume.
+export type ForceFieldBarrierConfig = {
   innerRange: number;
   outerRange: number;
   color: number;
   alpha: number;
   particleAlpha: number;
-  power: number | null;
 };
 
 // Projectile shot — fire-and-forget, has mass, single-tick impact
 export type ProjectileShot = {
-  type: 'projectile';
-  id: string;
+  type: ProjectileShotKind;
+  id: ShotId;
   mass: number;
   launchForce: number;
   collision: { radius: number };
@@ -321,7 +323,7 @@ export type ProjectileShot = {
 // Beam shot — continuous line from turret, per-tick damage (no cooldown)
 export type BeamShot = {
   type: 'beam';
-  id: string;
+  id: ShotId;
   dps: number;
   force: number;
   recoil: number;
@@ -336,7 +338,7 @@ export type BeamShot = {
 // Laser shot — pulsed line weapon with duration + cooldown
 export type LaserShot = {
   type: 'laser';
-  id: string;
+  id: ShotId;
   dps: number;
   force: number;
   recoil: number;
@@ -391,21 +393,35 @@ export function isLineShot(shot: ShotConfig): shot is LineShot {
   return isLineShotType(shot.type);
 }
 
-// Force shot — continuous area effect around turret (pie-slice push/pull zones)
+// Force shot — continuous spherical barrier around turret.
 export type ForceShot = {
   type: 'force';
   angle: number;
   transitionTime: number;
-  push?: ForceFieldZoneConfig;
-  pull?: ForceFieldZoneConfig;
+  barrier?: ForceFieldBarrierConfig;
 };
 
 // Discriminated union of all shot types
 export type ShotConfig = ProjectileShot | BeamShot | LaserShot | ForceShot;
 
+export function isProjectileShot(shot: ShotConfig): shot is ProjectileShot {
+  return shot.type === 'projectile' || shot.type === 'rocket';
+}
+
+/** Static (no-RNG) max lifespan for a shot. Beams are Infinity
+ *  (continuous), lasers use their fixed duration, projectiles and
+ *  rockets use their config `lifespan` with the supplied fallback.
+ *  WorldState additionally applies `lifespanVariance` on top of this. */
+export function getShotMaxLifespan(shot: ShotConfig, fallbackLifespan: number = 2000): number {
+  if (shot.type === 'beam') return Infinity;
+  if (shot.type === 'laser') return shot.duration;
+  if (shot.type === 'projectile' || shot.type === 'rocket') return shot.lifespan ?? fallbackLifespan;
+  return fallbackLifespan;
+}
+
 // Turret configuration (compiled turret definition)
 export type TurretConfig = {
-  id: string;
+  id: TurretId;
   range: number;
   cooldown: number;
   color?: number;
@@ -448,7 +464,7 @@ export type TurretConfig = {
 export type ProjectileConfig = {
   shot: ActiveProjectileShot;
   /** Real turret blueprint that authored this projectile, when one exists. */
-  sourceTurretId?: string;
+  sourceTurretId?: TurretId;
   /** Source-turret range. Used by active beam retracing; 0 for shot-only children. */
   range: number;
   /** Source-turret cooldown. Used when laser projectiles expire. */
@@ -561,10 +577,10 @@ export type Projectile = {
   config: ProjectileConfig;
   /** Actual shot blueprint id. For normal shots this equals config.shot.id;
    *  for submunitions it is the child shot id. */
-  shotId: string;
+  shotId: ShotId;
   /** Real turret blueprint id that ultimately authored this projectile.
    *  Submunitions inherit this from their parent projectile. */
-  sourceTurretId?: string;
+  sourceTurretId?: TurretId;
   projectileType: ProjectileType;
   velocityX: number;
   velocityY: number;

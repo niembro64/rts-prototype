@@ -2,9 +2,11 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot } from '../types';
+import { isLineShotType, isProjectileShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, CollisionResult, ProjectileDespawnEvent, ProjectileSpawnEvent, SimEventSourceType } from './types';
+import type { TurretId } from '../../../types/blueprintIds';
 import { beamIndex } from '../BeamIndex';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
@@ -16,6 +18,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getLineShotDamageSphereRadius } from './lineShotUtils';
+import { findForceFieldProjectileIntersection } from './forceFieldTurret';
 
 const MIRROR_PROJECTILE_QUERY_PAD = 96;
 
@@ -102,7 +105,7 @@ function spawnSubmunitions(
   surfaceNormalZ: number | undefined,
   ownerId: number,
   sourceEntityId: EntityId,
-  sourceTurretId: string | undefined,
+  sourceTurretId: TurretId | undefined,
   outProjectiles: Entity[],
   outSpawnEvents: ProjectileSpawnEvent[],
 ): void {
@@ -264,13 +267,19 @@ export function checkProjectileCollisions(
     const damageSourceKey = proj.sourceTurretId ?? shotId;
     const damageSourceType: SimEventSourceType = proj.sourceTurretId ? 'turret' : 'system';
 
-    // Mirror-panel impact — a traveling projectile whose flight path
-    // this tick crosses any reflective panel detonates at the panel,
-    // exactly like a ground hit. Same termination flow (splash on
-    // expiry → projectileExpire event → remove). Skipped for beams/
-    // lasers (they bounce off mirrors via the beam tracer, not here).
+    // Barrier impacts — a traveling projectile whose flight path this
+    // tick crosses a mirror panel or enters a force-field sphere
+    // detonates at the first barrier intersection. Same termination
+    // flow as ground impact: splash/submunitions if the shot supports
+    // them, otherwise projectileExpire visual + despawn. Beams/lasers
+    // are handled by their own line path.
     let hitMirrorPanel = false;
-    if (world.mirrorsEnabled && processCollision && proj.projectileType === 'projectile') {
+    let hitForceField = false;
+    let forceFieldNormalX: number | undefined;
+    let forceFieldNormalY: number | undefined;
+    let forceFieldNormalZ: number | undefined;
+    let forceFieldPlayerId: number | undefined;
+    if (processCollision && proj.projectileType === 'projectile') {
       const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
       const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
       const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
@@ -279,8 +288,8 @@ export function checkProjectileCollisions(
       const curZ = projEntity.transform.z;
       let bestT = Infinity;
       let bestX = 0, bestY = 0, bestZ = 0;
-      if (world.getMirrorUnits().length > 0) {
-        const projectileRadius = config.shot.type === 'projectile'
+      if (world.mirrorsEnabled && world.getMirrorUnits().length > 0) {
+        const projectileRadius = isProjectileShot(config.shot)
           ? config.shot.collision.radius
           : 5;
         const mirrorCandidates = spatialGrid.queryUnitsAlongLine(
@@ -314,11 +323,30 @@ export function checkProjectileCollisions(
           }
         }
       }
+      const shieldHit = world.forceFieldsEnabled
+        ? findForceFieldProjectileIntersection(
+            world,
+            prevX, prevY, prevZ,
+            curX, curY, curZ,
+          )
+        : null;
+      if (shieldHit && shieldHit.t < bestT) {
+        bestT = shieldHit.t;
+        bestX = shieldHit.x;
+        bestY = shieldHit.y;
+        bestZ = shieldHit.z;
+        forceFieldNormalX = shieldHit.nx;
+        forceFieldNormalY = shieldHit.ny;
+        forceFieldNormalZ = shieldHit.nz;
+        forceFieldPlayerId = shieldHit.playerId;
+        hitMirrorPanel = false;
+        hitForceField = true;
+      }
       if (bestT < Infinity) {
         projEntity.transform.x = bestX;
         projEntity.transform.y = bestY;
         projEntity.transform.z = bestZ;
-        hitMirrorPanel = true;
+        if (!hitForceField) hitMirrorPanel = true;
       }
     }
 
@@ -334,21 +362,41 @@ export function checkProjectileCollisions(
     const groundZAtProj = world.getGroundZ(projEntity.transform.x, projEntity.transform.y);
     const hitGround =
       !hitMirrorPanel &&
+      !hitForceField &&
       proj.projectileType === 'projectile' &&
       projEntity.transform.z <= groundZAtProj;
     if (hitGround) {
       projEntity.transform.z = groundZAtProj;
     }
 
-    // Check if projectile expired (lifespan OR ground impact OR mirror hit)
-    if (proj.timeAlive >= proj.maxLifespan || hitGround || hitMirrorPanel) {
+    // Check if projectile expired (lifespan OR ground/barrier impact)
+    if (proj.timeAlive >= proj.maxLifespan || hitGround || hitMirrorPanel || hitForceField) {
       // Beam audio is handled by updateLaserSounds based on targeting state
+      if (
+        hitForceField &&
+        forceFieldNormalX !== undefined &&
+        forceFieldNormalY !== undefined &&
+        forceFieldNormalZ !== undefined &&
+        forceFieldPlayerId !== undefined
+      ) {
+        audioEvents.push({
+          type: 'forceFieldImpact',
+          turretId: 'forceTurret',
+          sourceType: 'turret',
+          sourceKey: 'forceTurret',
+          pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+          forceFieldImpact: {
+            normal: { x: forceFieldNormalX, y: forceFieldNormalY, z: forceFieldNormalZ },
+            playerId: forceFieldPlayerId,
+          },
+        });
+      }
 
       // Detonate on lifespan expiry when detonateOnExpiry is set AND the
       // shot has something to do at the apex (an explosion, submunitions,
       // or both). A pure carrier (no explosion, only submunitions) still
       // fragments here.
-      if (config.shot.type === 'projectile' && config.shot.detonateOnExpiry && !proj.hasExploded) {
+      if (isProjectileShot(config.shot) && config.shot.detonateOnExpiry && !proj.hasExploded) {
         const projShot = config.shot;
         const hasSplash = !!projShot.explosion?.radius;
         const hasSubs = !!projShot.submunitions;
@@ -418,7 +466,11 @@ export function checkProjectileCollisions(
             let surfaceNormalX: number | undefined;
             let surfaceNormalY: number | undefined;
             let surfaceNormalZ: number | undefined;
-            if (hitGround) {
+            if (hitForceField) {
+              surfaceNormalX = forceFieldNormalX;
+              surfaceNormalY = forceFieldNormalY;
+              surfaceNormalZ = forceFieldNormalZ;
+            } else if (hitGround) {
               const n = getSurfaceNormal(
                 projEntity.transform.x, projEntity.transform.y,
                 world.mapWidth, world.mapHeight, SPATIAL_GRID_CELL_SIZE,
@@ -442,7 +494,7 @@ export function checkProjectileCollisions(
       // Add projectile expire event for traveling projectiles (not beams)
       // This creates an explosion effect at projectile termination point
       if (proj.projectileType === 'projectile' && !proj.hasExploded) {
-        const projRadius = config.shot.type === 'projectile' ? config.shot.collision.radius : 5;
+        const projRadius = isProjectileShot(config.shot) ? config.shot.collision.radius : 5;
         audioEvents.push({
           type: 'projectileExpire',
           turretId: shotId,
@@ -461,7 +513,7 @@ export function checkProjectileCollisions(
     }
 
     // Handle different projectile types with unified damage system
-    if (proj.projectileType === 'beam' || proj.projectileType === 'laser') {
+    if (isLineShotType(proj.projectileType)) {
       if (!processCollision) {
         // Beam endpoints still update every tick in updateProjectiles();
         // only the expensive damage query is staggered under server LOD.
@@ -724,7 +776,7 @@ export function checkProjectileCollisions(
   // Remove expired projectiles (and clean up beam index for any beams)
   for (const id of projectilesToRemove) {
     const entity = world.getEntity(id);
-    if (entity?.projectile?.projectileType === 'beam' || entity?.projectile?.projectileType === 'laser') {
+    if (entity?.projectile && isLineShotType(entity.projectile.projectileType)) {
       const proj = entity.projectile;
       const weaponIdx = proj.config.turretIndex ?? 0;
       beamIndex.removeBeam(proj.sourceEntityId, weaponIdx);
