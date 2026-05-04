@@ -1,49 +1,47 @@
-// Per-instance alpha for THREE.InstancedMesh — the only practical way
-// to render a SUBSET of instances translucent without splitting them
-// into a separate mesh.
+// Per-instance "shell flag" for THREE.InstancedMesh — paints flagged
+// instances as flat unlit pale gray while leaving every other
+// instance to render normally (lit, team-colored, full material
+// pipeline).
 //
-// How it works:
-//   1. attachInstanceAlphaBuffer(mesh, capacity) adds a Float32 buffer
-//      attribute named `instanceAlpha` (one float per instance, 1.0 by
-//      default = fully opaque).
-//   2. enableInstanceAlphaOnMaterial(mat) patches the shader via
-//      onBeforeCompile so the fragment shader multiplies gl_FragColor.a
-//      by the per-instance value, and flips the material into
-//      transparent + depthWrite-off mode.
-//   3. setInstanceAlphaSlot(mesh, slot, alpha) writes the per-slot
-//      value and marks the buffer dirty.
+// The attribute is still named `instanceAlpha` for backwards-compat
+// (legs, joints, and Render3DEntities all wrote into it under that
+// name), and still carries a float per instance, but the values are
+// now used as a binary flag:
+//   - 1.0  → render normally (full Lambert / Standard / Basic shading,
+//            instanceColor → team primary, etc).
+//   - <1.0 → ignore lighting, paint with SHELL_PALE_RGB.
 //
-// Used by Render3DEntities (smoothChassis / polyChassis / turret-head /
-// barrel / mirror-panel / mass-unit InstancedMeshes) and by
-// LegInstancedRenderer / Locomotion3D so a unit shell is uniformly
-// translucent across every part regardless of which renderer drew it.
+// Switching from "translucent ghost" to "flat unlit pale" sidesteps
+// every transparency-related artefact (z-fighting, transparent-pass
+// sort order, shared-material depth-write conflicts) — material stays
+// opaque + depthWrite=true and completed instances render exactly as
+// they did before per-instance shell support landed.
 //
-// Tunables (the actual SHELL alpha value, color tint, etc.) live in
-// @/shellConfig — this module is shape-only.
+// Tunables live in @/shellConfig — this module is shape-only.
 
 import * as THREE from 'three';
+import { SHELL_PALE_RGB } from '@/shellConfig';
 
 const _PATCHED_MATERIALS = new WeakSet<THREE.Material>();
 
+/** Inline GLSL constant for the shell pale color. Built from
+ *  @/shellConfig at module load so a single tweak to SHELL_PALE_RGB
+ *  flows through every patched material. */
+const _SHELL_PALE_GLSL =
+  `vec3(${SHELL_PALE_RGB[0].toFixed(4)}, ${SHELL_PALE_RGB[1].toFixed(4)}, ${SHELL_PALE_RGB[2].toFixed(4)})`;
+
 /** Patch a Material to read a per-instance `instanceAlpha` attribute
- *  and use it as a DITHERED-DISCARD threshold. Each fragment with
- *  `instanceAlpha < 1` may be discarded probabilistically based on a
- *  position-stable hash of its screen coordinate; fragments with
- *  `instanceAlpha == 1` always pass through.
+ *  and, for any instance whose value is below 1.0, override the final
+ *  fragment color with SHELL_PALE_RGB — flat, unlit, no team tint, no
+ *  reflection / specular contribution. Idempotent.
  *
- *  Why dither and not alpha blending: alpha blending would force the
- *  shared material into THREE's transparent render pass with
- *  depthWrite OFF for ALL instances — even fully-opaque "complete"
- *  units. The result is z-fighting between completed units (they all
- *  draw in slot order, ignoring depth) and faint translucency
- *  artifacts on completed units. Dither lets the material stay opaque
- *  + depthWrite ON, so completed units render correctly while shells
- *  appear semi-transparent through fragment discard. Idempotent. */
+ *  Material settings stay at their defaults (opaque, depthWrite=true,
+ *  transparent=false). Completed instances render through the
+ *  unmodified standard pipeline, so depth + sort + lighting all match
+ *  what they did before per-instance shell support landed. */
 export function enableInstanceAlphaOnMaterial(material: THREE.Material): void {
   if (_PATCHED_MATERIALS.has(material)) return;
   _PATCHED_MATERIALS.add(material);
-  // Material stays opaque-by-default — see header comment for why we
-  // intentionally don't flip `transparent` / `depthWrite` here.
 
   const previousOnBefore = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
@@ -54,32 +52,31 @@ export function enableInstanceAlphaOnMaterial(material: THREE.Material): void {
         '#include <begin_vertex>',
         '#include <begin_vertex>\n  vInstanceAlpha = instanceAlpha;',
       );
-    // Dithered-discard fragment pass. Hash the screen coordinate to a
-    // pseudo-random [0..1] threshold; if `vInstanceAlpha` falls below
-    // it, discard. For instances at alpha=1 the comparison is always
-    // true (1 >= h) so nothing discards — completed units render fully
-    // opaque, write depth, and sort correctly with each other.
+    // After the standard fragment pipeline has finalised gl_FragColor
+    // (with all the lighting / envmap / colorspace / tonemapping
+    // chunks done), branch on the shell flag and replace with a flat
+    // pale color when the instance is a shell. Completed instances
+    // (vInstanceAlpha == 1.0) untouched.
     shader.fragmentShader =
       'varying float vInstanceAlpha;\n' + shader.fragmentShader;
-    const ditherSnippet =
-      '  {\n'
-      + '    float _shellH = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);\n'
-      + '    if (vInstanceAlpha < _shellH) discard;\n'
+    const overrideSnippet =
+      '  if (vInstanceAlpha < 1.0) {\n'
+      + `    gl_FragColor = vec4(${_SHELL_PALE_GLSL}, 1.0);\n`
       + '  }\n';
     if (shader.fragmentShader.includes('#include <opaque_fragment>')) {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <opaque_fragment>',
-        ditherSnippet + '#include <opaque_fragment>',
+        '#include <opaque_fragment>\n' + overrideSnippet,
       );
     } else if (shader.fragmentShader.includes('#include <output_fragment>')) {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <output_fragment>',
-        ditherSnippet + '#include <output_fragment>',
+        '#include <output_fragment>\n' + overrideSnippet,
       );
     } else {
       shader.fragmentShader = shader.fragmentShader.replace(
-        'void main() {',
-        'void main() {\n' + ditherSnippet,
+        /\}\s*$/,
+        overrideSnippet + '}',
       );
     }
   };

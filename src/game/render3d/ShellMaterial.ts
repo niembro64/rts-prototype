@@ -1,28 +1,26 @@
-// Per-entity "shell" material — a single shared gray translucent
+// Per-entity "shell" material — a single shared FLAT UNLIT pale
 // THREE.Material that we swap onto every Mesh inside a shell's group
 // for the duration of construction. The original material is cached on
 // each mesh's userData and restored when the shell completes (or is
-// destroyed). All entities share one SHELL_MATERIAL instance, which
-// means a half-built unit reads as a uniform gray ghost regardless of
-// player color or chassis detail — matching the "colorless and halfway
-// transparent" intent.
+// destroyed). MeshBasicMaterial is unlit by definition — same flat
+// color regardless of sun direction, normals, or material setup —
+// which is exactly the "no reflections / no shading / no team color"
+// look we want for an in-progress shell. Opaque + depthWrite=true so
+// shells don't introduce any sort or z-fighting artefacts.
 //
-// Tunables (color, opacity) live in @/shellConfig so the shell visuals
-// stay consistent across this per-Mesh override path AND the
-// per-instance alpha path (instanceAlpha.ts) used by InstancedMeshes.
+// All shell-render colour tuning lives in @/shellConfig so the
+// per-Mesh override here and the per-instance shader injection in
+// instanceAlpha.ts paint the exact same pale tone.
 
 import * as THREE from 'three';
-import { SHELL_OPACITY, SHELL_COLOR_HEX } from '@/shellConfig';
+import { SHELL_PALE_HEX } from '@/shellConfig';
 
 const _shellMaterial = new THREE.MeshBasicMaterial({
-  color: SHELL_COLOR_HEX,
-  transparent: true,
-  opacity: SHELL_OPACITY,
-  // depthWrite OFF so the shell doesn't punch a hole in the depth
-  // buffer that fully-built neighbours would clip against.
-  depthWrite: false,
-  // A visible silhouette from any angle (interior + exterior of a
-  // body sphere reads consistently when transparent).
+  color: SHELL_PALE_HEX,
+  transparent: false,
+  // Render BOTH sides of every face — chassis sphere geometries are
+  // single-sided, but with the shell material's flat colour both
+  // sides reading the same is the cleaner visual.
   side: THREE.DoubleSide,
 });
 

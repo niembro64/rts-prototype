@@ -36,6 +36,7 @@
 
 import * as THREE from 'three';
 import { makeInstanceAlphaCapable, setInstanceAlphaSlot } from './instanceAlpha';
+import { SHELL_PALE_RGB } from '@/shellConfig';
 
 /** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
  *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
@@ -100,11 +101,12 @@ vec3 objectNormal = normalize(
 
 function makeInstancedLegMaterial(color: number): THREE.MeshLambertMaterial {
   const material = new THREE.MeshLambertMaterial({ color });
-  // Per-leg-slot `instanceAlpha` drives a dithered-discard so completed
-  // units' legs stay fully opaque (depthWrite + opaque pass) and shell
-  // legs read as semi-transparent without dragging the shared material
-  // into the transparent render queue. See instanceAlpha.ts for the
-  // rationale. Material stays opaque + depthWrite=true.
+  // Per-leg-slot `instanceAlpha` is a binary shell flag: <1.0 paints
+  // the leg flat pale (unlit), >=1.0 lets the standard Lambert path
+  // render normally. See instanceAlpha.ts for the same approach
+  // applied to chassis / turret / barrel / mirror InstancedMeshes.
+  // Material stays opaque + depthWrite=true.
+  const palerStr = `vec3(${SHELL_PALE_RGB[0].toFixed(4)}, ${SHELL_PALE_RGB[1].toFixed(4)}, ${SHELL_PALE_RGB[2].toFixed(4)})`;
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
@@ -121,11 +123,10 @@ function makeInstancedLegMaterial(color: number): THREE.MeshLambertMaterial {
     shader.fragmentShader =
       'varying float vInstanceAlpha;\n' + shader.fragmentShader.replace(
         '#include <opaque_fragment>',
-        '  {\n'
-        + '    float _shellH = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);\n'
-        + '    if (vInstanceAlpha < _shellH) discard;\n'
-        + '  }\n'
-        + '#include <opaque_fragment>',
+        '#include <opaque_fragment>\n'
+        + '  if (vInstanceAlpha < 1.0) {\n'
+        + `    gl_FragColor = vec4(${palerStr}, 1.0);\n`
+        + '  }\n',
       );
   };
   return material;

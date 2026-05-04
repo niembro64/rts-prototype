@@ -10,34 +10,34 @@
 // Every tunable knob for that look-and-feel lives here. Renderers and
 // the per-tick HP-sync pass import from this single source.
 
-/** Halfway-translucent opacity used by both the per-Mesh shell-material
- *  override (treads, per-unit chassis, buildings) and the per-instance
- *  shell-alpha shader injection (smooth/poly chassis, turret heads,
- *  barrels, mirror panels, leg / wheel / joint instances). 0 = fully
- *  invisible, 1 = fully opaque. */
-export const SHELL_OPACITY = 0.45;
+/** Per-instance "shell flag" passed in via the `instanceAlpha`
+ *  attribute. The shader treats anything < 1.0 as "render flat pale,
+ *  unlit"; anything == 1.0 as "render normally (lit, team-colored)".
+ *  Values are intentionally binary even though the attribute is a
+ *  float — leaves the door open for graded fades later but keeps the
+ *  current visual contract simple ("a shell is a shell"). */
+export const SHELL_FLAG_VALUE = 0.0;
+export const NORMAL_FLAG_VALUE = 1.0;
 
-/** Uniform gray tint used when we replace an entity's per-Mesh
- *  material wholesale (per-unit chassis parts that aren't routed
- *  through an InstancedMesh, all building chassis meshes). RGB ∈ [0..1]. */
-export const SHELL_COLOR_HEX = 0xb8b8b8;
+/** Backwards-compatible aliases — older callers still import these.
+ *  Same numeric values as above. */
+export const SHELL_OPACITY = SHELL_FLAG_VALUE;
+export const NORMAL_OPACITY = NORMAL_FLAG_VALUE;
 
-/** Same color, normalized, used by the per-instance alpha shader to
- *  desaturate instanced parts toward gray during construction. The
- *  shader lerps from the slot's existing instanceColor to this color
- *  by the SHELL_DESATURATION amount. */
-export const SHELL_TINT_RGB: readonly [number, number, number] = [0.72, 0.72, 0.72];
+/** The flat unlit color every shell mesh and every shell-flagged
+ *  instance is painted in. Picked to read as "placeholder, not real
+ *  yet" — pale gray, no reflections, no shading, no team tint. RGB ∈
+ *  [0..1] in linear color space. */
+export const SHELL_PALE_RGB: readonly [number, number, number] = [0.88, 0.88, 0.88];
 
-/** 0 = leave instanceColor unchanged for shells (only translucency
- *  reads "ghost"); 1 = full gray override. */
-export const SHELL_DESATURATION = 0.85;
+/** Same color as a 0xRRGGBB hex literal — keeps Three's Color
+ *  constructors that expect a number happy. Must agree with
+ *  SHELL_PALE_RGB rounded to 8-bit per channel. */
+export const SHELL_PALE_HEX = 0xe0e0e0;
 
-/** True opacity to use for the per-instance alpha attribute when an
- *  entity is NOT a shell. Kept separately so an integrator can keep a
- *  global instanceAlpha attribute on a material and still flip
- *  individual slots without writing different default values per
- *  caller. */
-export const NORMAL_OPACITY = 1.0;
+/** Legacy aliases — older callers import these names. */
+export const SHELL_COLOR_HEX = SHELL_PALE_HEX;
+export const SHELL_TINT_RGB = SHELL_PALE_RGB;
 
 /** Build-bar palette + layout. The HP bar uses the legacy health
  *  green/red and isn't configured here; only the three resource bars
