@@ -3,13 +3,34 @@ import type { Buildable, Entity, ResourceCost } from './types';
 export type ResourceKind = keyof ResourceCost;
 
 export const RESOURCE_KINDS: ReadonlyArray<ResourceKind> = ['energy', 'mana', 'metal'];
+export const BUILDABLE_INITIAL_HP = 1;
 
 export function makeZeroResourceCost(): ResourceCost {
   return { energy: 0, mana: 0, metal: 0 };
 }
 
-export function makeUniformResourceCost(amount: number): ResourceCost {
-  return { energy: amount, mana: amount, metal: amount };
+export function getInitialBuildHp(maxHp: number): number {
+  if (!Number.isFinite(maxHp) || maxHp <= 0) return 0;
+  return Math.min(BUILDABLE_INITIAL_HP, maxHp);
+}
+
+export type BuildableState = {
+  paid?: ResourceCost;
+  isGhost?: boolean;
+  healthBuildFraction?: number;
+};
+
+/** Canonical construction-component factory. Buildable means "this
+ *  entity is currently under construction"; callers should delete it
+ *  on activation instead of creating completed Buildables. */
+export function createBuildable(required: ResourceCost, state: BuildableState = {}): Buildable {
+  return {
+    paid: state.paid ? cloneResourceCost(state.paid) : makeZeroResourceCost(),
+    required: cloneResourceCost(required),
+    isComplete: false,
+    isGhost: state.isGhost ?? false,
+    healthBuildFraction: state.healthBuildFraction ?? 0,
+  };
 }
 
 /** Per-resource fill ratio of a Buildable (0..1). A required value of
