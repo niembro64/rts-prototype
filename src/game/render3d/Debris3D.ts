@@ -30,7 +30,7 @@ import {
   getUnitBlueprint,
 } from '../sim/blueprints';
 import { isLineShotBlueprint } from '@/types/blueprints';
-import { MIRROR_ARM_LENGTH_MULT, getMirrorPanelCenter } from '../sim/mirrorPanelCache';
+import { MIRROR_ARM_LENGTH_MULT, MIRROR_PANEL_SIZE_MULT, getMirrorPanelCenter } from '../sim/mirrorPanelCache';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {
@@ -820,7 +820,11 @@ export class Debris3D {
       // lands at the blueprint-authored mirror turret mount after debris
       // adds chassisLiftY.
       if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
-        const side = r * 2;
+        // Match the live mirrorPanelCache sizing so debris panels
+        // tumble at the same scale they had while alive — bumping
+        // MIRROR_PANEL_SIZE_MULT in mirrorPanelCache feeds through here
+        // automatically.
+        const side = r * MIRROR_PANEL_SIZE_MULT * 2;
         const armLength = r * MIRROR_ARM_LENGTH_MULT;
         const armThickness = Math.max(r * 0.18, 0.5);
         const panelCenterY = localMount.z * r - chassisLiftY;

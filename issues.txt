@@ -12,14 +12,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   7) CONFIGURATION KNOB FRAGMENTATION
   ---------------------------------------------------
 
-  [HIGH] src/game/render3d/Debris3D.ts:815 hardcodes `const side = r * 2`
-    for mirror-panel debris while the live system uses
-    `r * MIRROR_PANEL_SIZE_MULT * 2`. With MIRROR_PANEL_SIZE_MULT
-    currently > 1, the debris panel is 1/MIRROR_PANEL_SIZE_MULT the
-    size of the alive panel — visible mismatch on death. Import
-    MIRROR_PANEL_SIZE_MULT from mirrorPanelCache.ts (Debris3D already
-    imports MIRROR_ARM_LENGTH_MULT from there).
-
   [MEDIUM] src/game/render3d/HealthBar3D.ts:32-52 hardcodes
     worldOffsetAbove: 12, lowThreshold: 0.3, fgColorHigh: '#44dd44',
     fgColorLow: '#ff4444', fgColorBuild: '#4488ff'. Bar tunables
@@ -60,3 +52,11 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
       depthScale: 0.002,
 
 Figure out a better way to name or define the barrel geometry for this barrel type in the blueprint. 
+
+
+11)   Heads-up worth noting: the single call site
+  (commandExecution.ts dgun gate) calls canAfford followed by spendInstant (which only
+  deducts from energy). So the gate currently requires the player to hold dgunCost in all
+  three pools even though only energy is actually spent. Looks like an asymmetry, possibly a
+  leftover from when the economy was uniform. Worth a separate look later if you want — happy
+   to add a bullet to issues.txt if you'd like to track it.
