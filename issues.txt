@@ -5,16 +5,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   Findings
 
   ---------------------------------------------------
-  1) DUPLICATE PREDICATES / HELPERS
-  ---------------------------------------------------
-
-  [LOW] src/game/sim/combat/targetIndex.ts:40,88 use bare `=== 'beam'`
-    and the comment lumps "laser-pulse" with "projectile/force" — that
-    framing is misleading because lasers ARE line shots. Either fold
-    lasers into the index or rewrite the comment to explain why they
-    are intentionally excluded.
-
-  ---------------------------------------------------
   2) CROSS-POLLUTION BETWEEN BLUEPRINT DOMAINS
   ---------------------------------------------------
 

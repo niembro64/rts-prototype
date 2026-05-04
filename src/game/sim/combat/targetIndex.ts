@@ -7,9 +7,17 @@
 // O(units × weapons) full-world scan emitLaserStopsForTarget used to
 // run.
 //
-// Only BEAM weapons are indexed. Projectile / laser pulse / force
-// weapons can change target freely without paying the bookkeeping
-// cost; emitLaserStopsForTarget doesn't care about those.
+// ONLY `shot.type === 'beam'` is indexed — not the broader line-shot
+// family (beam + laser). Beams are the only weapon type with a
+// CONTINUOUS visual+audio link to a specific target that needs to be
+// explicitly stopped when the target dies; the other types don't need
+// the index because:
+//   - laser: pulsed line shot. Auto-expires after `duration`, so a
+//     dead target just means the pulse hits empty space and despawns.
+//   - projectile / rocket: fire-and-forget. No persistent owner-target
+//     relationship to clean up.
+//   - force: spherical barrier around the firing turret with no
+//     specific target.
 
 import type { Entity, EntityId, Turret } from '../types';
 
@@ -34,9 +42,8 @@ export function setWeaponTarget(
   const oldTarget = weapon.target;
   if (oldTarget === newTarget) return;
 
-  // Only beam weapons are tracked; projectile / laser-pulse / force
-  // weapons change targets often and don't drive the death-handler
-  // scan that motivated this index.
+  // Beam-only — see file header for why laser/projectile/force aren't
+  // indexed.
   if (weapon.config.shot.type === 'beam') {
     if (oldTarget !== null) {
       const list = _beamTargetIndex.get(oldTarget);
