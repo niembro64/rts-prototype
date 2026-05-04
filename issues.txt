@@ -12,13 +12,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   7) CONFIGURATION KNOB FRAGMENTATION
   ---------------------------------------------------
 
-  [MEDIUM] src/game/render3d/HealthBar3D.ts:32-52 hardcodes
-    worldOffsetAbove: 12, lowThreshold: 0.3, fgColorHigh: '#44dd44',
-    fgColorLow: '#ff4444', fgColorBuild: '#4488ff'. Bar tunables
-    belong in shellConfig.ts (or a sibling barTheme.ts) so all bar
-    knobs live together — shell-resource tints are already centralized
-    there; HP / build colours are not.
-
   [MEDIUM] src/game/render3d/NameLabel3D.ts:23-48 STYLE block
     hardcodes worldHeight: 8, worldOffsetAbove: 28, font config,
     stroke widths, worldWidthPerChar: 5. Comment says "Kept local

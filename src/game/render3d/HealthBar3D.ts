@@ -24,28 +24,29 @@ import {
   SHELL_BAR_CANVAS_WIDTH,
   SHELL_BAR_CANVAS_HEIGHT,
   SHELL_BAR_HIDE_AT_FULL,
+  BAR_WORLD_OFFSET_ABOVE,
+  HP_BAR_COLOR_HIGH,
+  HP_BAR_COLOR_LOW,
+  HP_BAR_COLOR_BUILD,
+  HP_BAR_LOW_THRESHOLD,
 } from '@/shellConfig';
 
-// Visual constants. Three-resource bar tints + dimensions are imported
-// from @/shellConfig so the unit/building shell rendering can stay
-// consistent in one place.
+// Every visual knob lives in @/shellConfig so the HP bar + the
+// three construction-resource bars stay tunable in one place.
 const STYLE = {
   worldHeight: SHELL_BAR_WORLD_HEIGHT,
-  /** Distance above the entity's top in world units where the bar
-   *  centerline sits. */
-  worldOffsetAbove: 12,
+  worldOffsetAbove: BAR_WORLD_OFFSET_ABOVE,
   bgColor: SHELL_BAR_BG_COLOR,
   bgAlpha: SHELL_BAR_BG_ALPHA,
-  fgColorHigh: '#44dd44',
-  fgColorLow: '#ff4444',
-  fgColorBuild: '#4488ff',
+  fgColorHigh: HP_BAR_COLOR_HIGH,
+  fgColorLow: HP_BAR_COLOR_LOW,
+  fgColorBuild: HP_BAR_COLOR_BUILD,
   fgColorEnergy: SHELL_BAR_COLORS.energy,
   fgColorMana: SHELL_BAR_COLORS.mana,
   fgColorMetal: SHELL_BAR_COLORS.metal,
   fgAlpha: SHELL_BAR_FG_ALPHA,
   worldStackGap: SHELL_BAR_STACK_GAP,
-  /** Below this HP fraction, switch to the low-health color. */
-  lowThreshold: 0.3,
+  lowThreshold: HP_BAR_LOW_THRESHOLD,
   hideAtFull: SHELL_BAR_HIDE_AT_FULL,
   canvasWidth: SHELL_BAR_CANVAS_WIDTH,
   canvasHeight: SHELL_BAR_CANVAS_HEIGHT,
@@ -190,10 +191,10 @@ export class HealthBar3D {
   }
 
   /** Stack the three per-resource bars on top of the HP bar when a
-   *  buildable is in progress. Each bar is shown ONLY if its value
-   *  is below 100% — same rule as the legacy health bar. Order from
-   *  the bottom: HP, energy, mana, metal. Returns the next stack
-   *  index (1 + the highest index used). */
+   *  buildable is in progress. Construction uses a fixed four-row
+   *  layout until completion so full resource rows do not disappear
+   *  and visually reflow the remaining bars. Order from the bottom:
+   *  HP, energy, mana, metal. Returns the next stack index. */
   private placeResourceBars(
     buildable: Buildable,
     worldX: number,
@@ -204,20 +205,14 @@ export class HealthBar3D {
   ): number {
     let stack = stackStart;
     const e = getResourceFillRatio(buildable, 'energy');
-    if (e < 1) {
-      this.placeBar(e, 'energyBar', worldX, worldBaseY, worldZ, worldWidth, stack);
-      stack++;
-    }
+    this.placeBar(e, 'energyBar', worldX, worldBaseY, worldZ, worldWidth, stack);
+    stack++;
     const m = getResourceFillRatio(buildable, 'mana');
-    if (m < 1) {
-      this.placeBar(m, 'manaBar', worldX, worldBaseY, worldZ, worldWidth, stack);
-      stack++;
-    }
+    this.placeBar(m, 'manaBar', worldX, worldBaseY, worldZ, worldWidth, stack);
+    stack++;
     const t = getResourceFillRatio(buildable, 'metal');
-    if (t < 1) {
-      this.placeBar(t, 'metalBar', worldX, worldBaseY, worldZ, worldWidth, stack);
-      stack++;
-    }
+    this.placeBar(t, 'metalBar', worldX, worldBaseY, worldZ, worldWidth, stack);
+    stack++;
     return stack;
   }
 
@@ -233,7 +228,11 @@ export class HealthBar3D {
     const buildable = u.buildable && !u.buildable.isComplete && !u.buildable.isGhost
       ? u.buildable
       : null;
-    const showHp = hp > 0 && (forceVisible || !STYLE.hideAtFull || hp < maxHp);
+    const showHp = maxHp > 0 && (
+      buildable
+        ? true
+        : hp > 0 && (forceVisible || !STYLE.hideAtFull || hp < maxHp)
+    );
     if (!showHp && !buildable) return;
     this._seenEntityFrame.set(u.id, this._frameToken);
     const worldX = u.transform.x;
@@ -261,7 +260,11 @@ export class HealthBar3D {
     const buildable = b.buildable && !b.buildable.isComplete && !b.buildable.isGhost
       ? b.buildable
       : null;
-    const showHp = hp > 0 && (forceVisible || !STYLE.hideAtFull || hp < maxHp);
+    const showHp = maxHp > 0 && (
+      buildable
+        ? true
+        : hp > 0 && (forceVisible || !STYLE.hideAtFull || hp < maxHp)
+    );
     if (!showHp && !buildable) return;
     this._seenEntityFrame.set(b.id, this._frameToken);
     const worldX = b.transform.x;

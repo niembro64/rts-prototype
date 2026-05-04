@@ -68,9 +68,9 @@ export const BUILD_BUBBLE_SPARK_OPACITY = 0.9;
  *  progress (eased), with a small pulse modulation for life. */
 export const BUILD_BUBBLE_RADIUS_PUSH_MULT = 2;
 
-/** Build-bar palette + layout. The HP bar uses the legacy health
- *  green/red and isn't configured here; only the three resource bars
- *  added during construction are. */
+/** Bar palette + layout. Both the HP bar (with its build-mode overlay)
+ *  and the three construction-resource bars (energy / mana / metal)
+ *  read these knobs so all bar tunables live in one place. */
 export const SHELL_BAR_COLORS = {
   energy: '#f5d442',
   mana: '#7ad7ff',
@@ -100,3 +100,18 @@ export const SHELL_BAR_CANVAS_HEIGHT = 16;
  *  rule of disappearing on full HP. Always true for resource bars in
  *  this codebase; configurable here so a debug overlay can flip it. */
 export const SHELL_BAR_HIDE_AT_FULL = true;
+
+/** World-units distance from the entity's anchor top to the bar
+ *  group's centerline. Applies to the whole stack — HP bar + the
+ *  three construction-resource bars below it. */
+export const BAR_WORLD_OFFSET_ABOVE = 12;
+
+/** HP-bar foreground colors. The bar switches from "high" to "low" at
+ *  HP_BAR_LOW_THRESHOLD; while a unit is shell-state, every bar in the
+ *  group renders in BUILD instead. */
+export const HP_BAR_COLOR_HIGH = '#44dd44';
+export const HP_BAR_COLOR_LOW = '#ff4444';
+export const HP_BAR_COLOR_BUILD = '#4488ff';
+
+/** HP fraction below which the HP bar switches to HP_BAR_COLOR_LOW. */
+export const HP_BAR_LOW_THRESHOLD = 0.3;
