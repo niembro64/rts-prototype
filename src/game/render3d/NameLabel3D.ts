@@ -16,35 +16,32 @@
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingHudTopY, getUnitHudTopY } from './HudAnchor';
+import {
+  NAME_LABEL_WORLD_HEIGHT,
+  NAME_LABEL_WORLD_OFFSET_ABOVE,
+  NAME_LABEL_CANVAS_WIDTH,
+  NAME_LABEL_CANVAS_HEIGHT,
+  NAME_LABEL_FONT_PX,
+  NAME_LABEL_FONT_FAMILY,
+  NAME_LABEL_FILL_COLOR,
+  NAME_LABEL_STROKE_COLOR,
+  NAME_LABEL_STROKE_WIDTH_PX,
+  NAME_LABEL_WORLD_WIDTH_PER_CHAR,
+} from '@/nameLabelConfig';
 
-/** Visual constants. Kept local rather than in shellConfig because the
- *  label is a generic naming surface, not a shell-specific affordance —
- *  it shows on completed commanders too. */
+// Local short-name alias for the imported config — keeps call sites
+// terse while every tunable lives in @/nameLabelConfig.
 const STYLE = {
-  /** World-space height of the label's bounding box (used for sprite
-   *  Y-extent). Width is data-driven from the rendered text length. */
-  worldHeight: 8,
-  /** Distance above the entity's HUD top in world units. Sits ABOVE
-   *  the bar stack (HP + 3 resource bars) so a fresh shell shows
-   *  bars + name without stacking math. */
-  worldOffsetAbove: 28,
-  /** Texture canvas size — wide enough for ~24 chars at the chosen
-   *  font, kept square-ish for a compact GPU footprint. */
-  canvasWidth: 256,
-  canvasHeight: 32,
-  /** Font: pixel-aligned, no anti-aliasing fuzz. Drawn at 2× canvas
-   *  size for retina-clean edges; the sprite scale handles world fit. */
-  fontPx: 22,
-  fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  fillColor: '#ffffff',
-  strokeColor: '#000000',
-  strokeWidthPx: 4,
-  /** Constant world-space width per character. Sprite scale.x is
-   *  `chars × widthPerChar` so the label keeps the text crisp at any
-   *  zoom — billboard sprites pixelate when scaled past their texture
-   *  resolution, so we set a sensible cap rather than reading the
-   *  measured pixel width back out of the canvas every frame. */
-  worldWidthPerChar: 5,
+  worldHeight: NAME_LABEL_WORLD_HEIGHT,
+  worldOffsetAbove: NAME_LABEL_WORLD_OFFSET_ABOVE,
+  canvasWidth: NAME_LABEL_CANVAS_WIDTH,
+  canvasHeight: NAME_LABEL_CANVAS_HEIGHT,
+  fontPx: NAME_LABEL_FONT_PX,
+  fontFamily: NAME_LABEL_FONT_FAMILY,
+  fillColor: NAME_LABEL_FILL_COLOR,
+  strokeColor: NAME_LABEL_STROKE_COLOR,
+  strokeWidthPx: NAME_LABEL_STROKE_WIDTH_PX,
+  worldWidthPerChar: NAME_LABEL_WORLD_WIDTH_PER_CHAR,
 };
 
 type Label = {
