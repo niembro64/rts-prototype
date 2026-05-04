@@ -3949,7 +3949,6 @@ export class Render3DEntities {
     if (!active) {
       rig.unitGhost.visible = false;
       rig.unitCore.visible = false;
-      for (const buildPulse of rig.buildPulses) buildPulse.visible = false;
       for (const spark of rig.sparks) spark.visible = false;
       // Keep showers visible while the smoothed rate hasn't decayed
       // to ~0 yet so the fade-out reads. Once they're effectively
@@ -4042,29 +4041,6 @@ export class Render3DEntities {
     rig.unitCore.visible = buildingTierAtLeast(tier, 'high');
     rig.unitCore.position.set(localSpotX, centerY + radius * 0.08, localSpotZ);
     rig.unitCore.scale.setScalar(Math.max(3, radius * 0.18));
-
-    const showBuildPulses = tier === 'medium';
-    const sourceX = rig.nozzleLocal.x;
-    const sourceY = rig.nozzleLocal.y;
-    const sourceZ = rig.nozzleLocal.z;
-    const targetY = centerY + radius * 0.06;
-    const pulseTravel = (timeSec * 0.92 + e.id * 0.071) % 1;
-    for (let i = 0; i < rig.buildPulses.length; i++) {
-      const buildPulse = rig.buildPulses[i];
-      buildPulse.visible = showBuildPulses;
-      if (!showBuildPulses) continue;
-
-      const t = (i + 0.5 + pulseTravel) / rig.buildPulses.length;
-      const wrappedT = t > 1 ? t - 1 : t;
-      const arc = Math.sin(wrappedT * Math.PI);
-      const wobble = Math.sin((wrappedT * 2.0 + phase * 0.19 + i * 0.31) * Math.PI * 2);
-      buildPulse.position.set(
-        sourceX + (localSpotX - sourceX) * wrappedT + wobble * radius * 0.035,
-        sourceY + (targetY - sourceY) * wrappedT + arc * Math.max(8, radius * 0.38),
-        sourceZ + (localSpotZ - sourceZ) * wrappedT - wobble * radius * 0.035,
-      );
-      buildPulse.scale.setScalar(Math.max(2.3, radius * (0.08 + arc * 0.035)));
-    }
 
     // Three colored build sprays — one per pylon top to the build
     // spot, intensity gated by that resource's smoothed transfer rate.

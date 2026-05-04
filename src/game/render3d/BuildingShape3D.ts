@@ -52,7 +52,6 @@ export type BuildingDetailRole =
   | 'extractorRotor'
   | 'factoryUnitGhost'
   | 'factoryUnitCore'
-  | 'factoryBuildPulse'
   | 'factorySpark'
   | 'factoryShower';
 
@@ -79,8 +78,10 @@ export type SolarPetalAnimation = {
 export type FactoryConstructionRig = {
   unitGhost: THREE.Mesh;
   unitCore: THREE.Mesh;
-  buildPulses: THREE.Mesh[];
   sparks: THREE.Mesh[];
+  /** Legacy pivot point in chassis-local frame. Per-resource sprays
+   *  use `pylonTopsLocal` directly; this stays as a sensible "centre
+   *  of the emitter" anchor for any straggling caller. */
   nozzleLocal: THREE.Vector3;
   bayBaseY: number;
   /** The three resource "showers" — translucent cylinders surrounding
@@ -996,8 +997,26 @@ function buildWind(
   };
 }
 
-/** Factory: compact radial construction tower. No yard geometry is
- *  drawn; only the small tower footprint exists visually/gameplay-wise. */
+/** Factory: compact radial construction tower.
+ *
+ *  The tower is JUST the three resource pylons (energy / mana / metal)
+ *  plus their shower cylinders. No central pillar, collar ring, hazard
+ *  stripe cap, nozzle sphere, or build-pulse orbs — those legacy
+ *  central pieces were removed so the three pylons own the entire
+ *  silhouette at every LOD. The unitGhost + unitCore + sparks remain
+ *  because they live at the BUILD SPOT (not on the tower), visualizing
+ *  the forming unit.
+ *
+ *  TODO[shared-build-emitter]: this rig and `buildConstructionEmitterRig`
+ *  (the commander's build turret) should reuse a single helper that
+ *  emits the pylon trio, the showers, and the per-resource colored
+ *  sprays. They currently duplicate the geometry in two places and
+ *  the per-frame update in two more (`updateFactoryConstructionRig`
+ *  + `updateCommanderEmitter` in Render3DEntities). The commander's
+ *  build turret should always look + function the same as the
+ *  fabricator building — when one updates, the other should update
+ *  by construction. Lift the shared bits into a `buildResourcePylonTrio`
+ *  helper next to this file when next touching either path. */
 function buildFactory(
   width: number,
   depth: number,
@@ -1008,23 +1027,17 @@ function buildFactory(
 
   const metrics = getFactoryBuildingVisualMetrics(width, depth);
 
-  details.push(detail(
-    makeCylinder(hazardStripeMat, metrics.collarRadius, 10, 0, metrics.baseHeight + 5, 0, hexCylinderGeom),
-    'low',
-  ));
-
-  // 3 structural pylons evenly spaced around the tower — one per
-  // resource (energy / mana / metal). Each is a thin inner cylinder
+  // 3 structural pylons evenly spaced around the footprint — one per
+  // resource (energy / mana / metal). Each is an inner cylinder
   // wrapped by a thicker translucent "shower" cylinder that fills
   // bottom-up with the live transfer rate, and emits a same-colored
   // build spray from its top toward the build spot (driven per-frame
-  // in updateFactoryConstructionRig). The central tower / chimney is
-  // intentionally absent — the three pylons ARE the tower.
+  // in updateFactoryConstructionRig).
   const showerMats = [factoryEnergyShowerMat, factoryManaShowerMat, factoryMetalShowerMat];
   const showers: THREE.Mesh[] = [];
   const pylonTopsLocal: THREE.Vector3[] = [];
-  const innerPylonRadius = metrics.pylonRadius * 0.45;
-  const showerRadius = metrics.pylonRadius * 1.85;
+  const innerPylonRadius = metrics.pylonRadius * 0.85;
+  const showerRadius = innerPylonRadius * 2.5;
   const pylonBaseY = metrics.towerBaseY;
   const pylonTopY = pylonBaseY + metrics.pylonHeight;
   for (let i = 0; i < 3; i++) {
@@ -1059,45 +1072,12 @@ function buildFactory(
     pylonTopsLocal.push(new THREE.Vector3(px, pylonTopY, pz));
   }
 
-  details.push(detail(
-    makeCylinder(
-      hazardStripeMat,
-      metrics.collarRadius * 0.82,
-      8,
-      0,
-      metrics.towerBaseY + metrics.towerHeight * 0.56,
-      0,
-      hexCylinderGeom,
-    ),
-    'medium',
-  ));
-
-  details.push(detail(
-    makeCylinder(hazardStripeMat, metrics.collarRadius * 0.72, 10, 0, metrics.capY, 0, hexCylinderGeom),
-    'medium',
-  ));
-
-  const nozzle = makeSphere(
-    constructionCoreMat,
-    metrics.nozzleRadius,
-    0,
-    metrics.nozzleY,
-    0,
-  );
-  details.push(detail(nozzle, 'medium'));
-  details.push(detail(
-    makeCylinder(
-      hazardStripeMat,
-      metrics.nozzleRadius * 1.18,
-      5,
-      0,
-      metrics.nozzleY - metrics.nozzleRadius * 0.62,
-      0,
-      hexCylinderGeom,
-    ),
-    'medium',
-  ));
-
+  // Build-spot visuals. These follow the FORMING UNIT (not the tower)
+  // so they stay even after the central tower pieces were removed.
+  // The legacy buildPulses (orbs that travelled from the now-deleted
+  // central nozzle to the build spot) are gone — the per-pylon
+  // colored sprays carry the same "stuff is flowing into the build
+  // spot" read.
   const unitGhost = new THREE.Mesh(constructionOrbGeom, constructionGhostMat);
   unitGhost.visible = false;
   details.push(detail(unitGhost, 'medium', undefined, 'factoryUnitGhost'));
@@ -1105,14 +1085,6 @@ function buildFactory(
   const unitCore = new THREE.Mesh(constructionOrbGeom, constructionCoreMat);
   unitCore.visible = false;
   details.push(detail(unitCore, 'high', undefined, 'factoryUnitCore'));
-
-  const buildPulses: THREE.Mesh[] = [];
-  for (let i = 0; i < 5; i++) {
-    const pulse = new THREE.Mesh(constructionOrbGeom, constructionPulseMat);
-    pulse.visible = false;
-    buildPulses.push(pulse);
-    details.push(detail(pulse, 'medium', 'medium', 'factoryBuildPulse'));
-  }
 
   const sparks: THREE.Mesh[] = [];
   for (let i = 0; i < 5; i++) {
@@ -1129,13 +1101,12 @@ function buildFactory(
     factoryRig: {
       unitGhost,
       unitCore,
-      buildPulses,
       sparks,
-      nozzleLocal: new THREE.Vector3(
-        nozzle.position.x,
-        nozzle.position.y,
-        nozzle.position.z,
-      ),
+      // Legacy field, kept on the type for any straggling caller —
+      // the per-pylon sprays use pylonTopsLocal as their actual
+      // sources. Points to the average pylon top so it remains a
+      // sensible "center point of the emitter" anchor.
+      nozzleLocal: new THREE.Vector3(0, pylonTopY, 0),
       bayBaseY: 0,
       showers,
       showerRadius,
@@ -1147,24 +1118,27 @@ function buildFactory(
   };
 }
 
+/** Commander's build turret. The visual contract is intentionally
+ *  identical to the factory's tower: three resource pylons + showers
+ *  + per-resource colored sprays. No central base, no mast, no head
+ *  sphere — just the three towers, exactly like buildFactory above.
+ *
+ *  TODO[shared-build-emitter]: see the matching note on `buildFactory`.
+ *  The two rigs duplicate the pylon-trio geometry + the per-frame
+ *  shower / spray update. They should share a single helper so
+ *  changes here always flow to the factory and vice versa — the
+ *  user's directive is "the build turret on the commander should
+ *  always look + function similar to the fabricator building." */
 export function buildConstructionEmitterRig(scale: number): ConstructionEmitterRig {
   const root = new THREE.Group();
-  const baseRadius = Math.max(3, scale * 0.72);
-  const baseHeight = Math.max(4, scale * 0.22);
   const pylonHeight = Math.max(8, scale * 1.4);
-  const pylonOffset = baseRadius * 0.65;
-  const innerPylonRadius = Math.max(0.6, scale * 0.09);
-  const showerRadius = innerPylonRadius * 4.1;
-  const pylonBaseY = baseHeight;
+  const pylonOffset = Math.max(3, scale * 0.55);
+  const innerPylonRadius = Math.max(1.0, scale * 0.18);
+  const showerRadius = innerPylonRadius * 2.5;
+  const pylonBaseY = 0;
   const pylonTopY = pylonBaseY + pylonHeight;
 
-  root.add(makeCylinder(hazardStripeMat, baseRadius, baseHeight, 0, baseHeight / 2, 0, hexCylinderGeom));
-
-  // Same energy / mana / metal trio as the factory: three thin
-  // structural pylons + a translucent shower cylinder around each
-  // that fills bottom-up from the live (smoothed) transfer rate.
-  // The central tower is intentionally absent — the three pylons ARE
-  // the tower.
+  // Same energy / mana / metal trio as the factory; nothing else.
   const showerMats = [factoryEnergyShowerMat, factoryManaShowerMat, factoryMetalShowerMat];
   const showers: THREE.Mesh[] = [];
   const pylonTopsLocal: THREE.Vector3[] = [];
@@ -1197,8 +1171,9 @@ export function buildConstructionEmitterRig(scale: number): ConstructionEmitterR
 
   return {
     group: root,
-    // Kept for legacy callers; the per-resource sprays use
-    // pylonTopsLocal as their actual sources.
+    // Legacy field — points to the centroid of the three pylon tops.
+    // Per-resource sprays use pylonTopsLocal directly; this exists
+    // only for callers that still expect a single emitter point.
     nozzleLocal: new THREE.Vector3(0, pylonTopY, 0),
     showers,
     showerRadius,
