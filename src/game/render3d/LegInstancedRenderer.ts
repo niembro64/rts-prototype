@@ -83,29 +83,11 @@ vec3 transformed = _segMid
   + _segFwd * position.z * instThickness;
 `;
 
-const INSTANCE_BEGIN_NORMAL = `
-vec3 _nAxis = instEnd - instStart;
-float _nLen = length(_nAxis);
-vec3 _nUp = _nLen > 0.001 ? _nAxis / _nLen : vec3(0.0, 1.0, 0.0);
-vec3 _nRight;
-if (abs(_nUp.y) > 0.999) {
-  _nRight = vec3(1.0, 0.0, 0.0);
-} else {
-  _nRight = normalize(cross(vec3(0.0, 1.0, 0.0), _nUp));
-}
-vec3 _nFwd = cross(_nUp, _nRight);
-vec3 objectNormal = normalize(
-  _nRight * normal.x + _nUp * normal.y + _nFwd * normal.z
-);
-`;
-
-function makeInstancedLegMaterial(color: number): THREE.MeshLambertMaterial {
-  const material = new THREE.MeshLambertMaterial({ color });
-  // Per-leg-slot `instanceAlpha` is a binary shell flag: <1.0 paints
-  // the leg flat pale (unlit), >=1.0 lets the standard Lambert path
-  // render normally. See instanceAlpha.ts for the same approach
-  // applied to chassis / turret / barrel / mirror InstancedMeshes.
-  // Material stays opaque + depthWrite=true.
+function makeInstancedLegMaterial(color: number): THREE.MeshBasicMaterial {
+  const material = new THREE.MeshBasicMaterial({ color });
+  // Per-leg-slot `instanceAlpha` is a binary shell flag. Unit legs are
+  // intentionally MeshBasicMaterial so Windows/ANGLE never depends on
+  // driver-specific normal interpolation for the main unit silhouette.
   const palerStr = `vec3(${SHELL_PALE_RGB[0].toFixed(4)}, ${SHELL_PALE_RGB[1].toFixed(4)}, ${SHELL_PALE_RGB[2].toFixed(4)})`;
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
@@ -115,10 +97,6 @@ function makeInstancedLegMaterial(color: number): THREE.MeshLambertMaterial {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
       INSTANCE_BEGIN_VERTEX + '\n  vInstanceAlpha = instanceAlpha;',
-    );
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <beginnormal_vertex>',
-      INSTANCE_BEGIN_NORMAL,
     );
     shader.fragmentShader =
       'varying float vInstanceAlpha;\n' + shader.fragmentShader.replace(
@@ -270,7 +248,7 @@ class JointSpherePool {
 
   constructor(parent: THREE.Group, color: number) {
     const geom = new THREE.SphereGeometry(1, 8, 6);
-    const material = new THREE.MeshLambertMaterial({ color });
+    const material = new THREE.MeshBasicMaterial({ color });
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;

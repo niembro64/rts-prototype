@@ -18,7 +18,11 @@ import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { applyShellOverride } from './ShellMaterial';
-import { makeInstanceAlphaCapable, setInstanceAlphaSlot } from './instanceAlpha';
+import {
+  copyInstanceAlphaSlot,
+  makeInstanceAlphaCapable,
+  setInstanceAlphaSlot,
+} from './instanceAlpha';
 import {
   SHELL_OPACITY,
   NORMAL_OPACITY,
@@ -32,6 +36,7 @@ import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
+import { CONSTRUCTION_TOWER_SPIN_CONFIG } from '@/constructionVisualConfig';
 import { getGroundNormal } from '../sim/Terrain';
 import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -97,6 +102,11 @@ import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 
 const BUILDING_HEIGHT = 120;
 
+type ConstructionTowerSpinRig = Pick<
+  FactoryConstructionRig,
+  'towerOrbitParts' | 'towerSpinAmount' | 'towerSpinPhase' | 'pylonTopsLocal' | 'pylonTopBaseLocals'
+>;
+
 // Per-resource spray colors for the factory + commander build emitters.
 // Same palette as SHELL_BAR_COLORS so the colored spray reads as the
 // same resource the HP-side bar shows. Pre-baked into 0..1 RGB floats
@@ -128,6 +138,9 @@ const INV_EXTRACTOR_BASE_PRODUCTION = (() => {
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
 const MIRROR_PANEL_COLOR = 0xffffff;
+const MIRROR_PANEL_METALNESS = 0.12;
+const MIRROR_PANEL_ROUGHNESS = 0.58;
+const MIRROR_PANEL_ENV_INTENSITY = 0.22;
 
 const PROJECTILE_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
   min: 0.7,
@@ -434,6 +447,11 @@ export class Render3DEntities {
   // around, letting pitch aim up toward AA targets without the
   // barrels clipping through a flat cylinder top.
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
+  /** Instanced-only clone. `makeInstanceAlphaCapable()` adds an
+   *  InstancedBufferAttribute to the geometry; keep that mutation away
+   *  from regular per-Mesh fallback turret heads for cross-driver
+   *  stability. */
+  private turretHeadInstancedGeom = this.turretHeadGeom.clone();
   private commanderBoxGeom = new THREE.BoxGeometry(1, 1, 1);
   private commanderCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 18);
   private commanderDomeGeom = new THREE.SphereGeometry(1, 14, 10);
@@ -449,6 +467,7 @@ export class Render3DEntities {
    *  its static collider, same volume the high-LOD primary occupies. */
   private buildingMarkerBoxGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
+  private barrelInstancedGeom = this.barrelGeom.clone();
   private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   /** Velocity-aligned body for rocket-style projectiles (shot.shape ===
    *  'cylinder'). Geometry has its long axis on Y; per-frame orientation
@@ -492,7 +511,12 @@ export class Render3DEntities {
   private projectileSphereInstanced: THREE.InstancedMesh | null = null;
   private projectileCylinderInstanced: THREE.InstancedMesh | null = null;
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
-  private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
+  private barrelMat = new THREE.MeshBasicMaterial({ color: BARREL_COLOR });
+  /** Instanced barrels need a patched material. Regular fallback
+   *  barrels keep using `barrelMat`; sharing a patched material with
+   *  non-instanced meshes can produce undefined attribute reads on
+   *  some Windows/ANGLE drivers. */
+  private barrelInstancedMat = this.barrelMat.clone();
   // Mirror panel = flat unit square plane. Default orientation: face
   // in XY plane with normal +Z; we rotate it into the panel-local frame
   // (edge → +Z, normal → +X) per panel below. Plane has zero physical
@@ -500,6 +524,9 @@ export class Render3DEntities {
   // on EXACTLY the same surface — no front/back offset where a beam
   // could appear to clip the visible chrome but miss the sim plane.
   private mirrorGeom = new THREE.PlaneGeometry(1, 1);
+  /** Instanced-only clone for the same reason as turret heads/barrels:
+   *  the instance-alpha attribute is renderer-private state. */
+  private mirrorInstancedGeom = this.mirrorGeom.clone();
   private mirrorFrameGeom = new THREE.BoxGeometry(1, 1, 1);
   // Selection-indicator halo. A low torus reads as a real 3D donut
   // around the unit instead of a flat 2D strip or billboarded band.
@@ -561,20 +588,23 @@ export class Render3DEntities {
   private projMatExplosion = new THREE.LineBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.35, depthWrite: false });
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
+  private unitPrimaryMats = new Map<PlayerId, THREE.MeshBasicMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
-  // Super-shiny PBR material for mirror panels. metalness=1 + near-zero
-  // roughness turns the white panel into chrome that reflects the
-  // scene's PMREM-processed RoomEnvironment cube set on the scene in
-  // ThreeApp. The support arm remains team-colored; the reflective
-  // panel itself is intentionally owner-agnostic.
-  // DoubleSide so the flat plane is visible from either side — beams
-  // can come from any angle, and a single-sided plane would silently
-  // disappear when viewed from behind.
+  private unitNeutralMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+  // Stable white PBR material for mirror panels. Keep a small amount
+  // of environment response so the panel still reads as reflective,
+  // but avoid perfect chrome (roughness=0/metalness=1) because that
+  // aliases badly on some Windows/ANGLE GPU paths and shows up as
+  // sparkling.
   private mirrorShinyNeutralMat = new THREE.MeshStandardMaterial({
-    color: MIRROR_PANEL_COLOR, metalness: 1.0, roughness: 0.0, side: THREE.DoubleSide,
+    color: MIRROR_PANEL_COLOR,
+    metalness: MIRROR_PANEL_METALNESS,
+    roughness: MIRROR_PANEL_ROUGHNESS,
+    envMapIntensity: MIRROR_PANEL_ENV_INTENSITY,
+    side: THREE.DoubleSide,
   });
-  private commanderArmorMat = new THREE.MeshLambertMaterial({ color: 0x232830 });
-  private commanderTrimMat = new THREE.MeshLambertMaterial({ color: 0xc8d0da });
+  private commanderArmorMat = new THREE.MeshBasicMaterial({ color: 0x232830 });
+  private commanderTrimMat = new THREE.MeshBasicMaterial({ color: 0xc8d0da });
   private commanderLensMat = new THREE.MeshBasicMaterial({
     color: 0x73e9ff,
     transparent: true,
@@ -857,7 +887,7 @@ export class Render3DEntities {
     // white because per-instance colour comes from the InstancedMesh
     // colour attribute (setColorAt). DynamicDrawUsage hints to the
     // driver that the matrix buffer changes every frame.
-    const baseMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const baseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     this.unitInstanced = new THREE.InstancedMesh(
       this.unitSphereLowGeom,
       baseMat,
@@ -902,7 +932,7 @@ export class Render3DEntities {
     // 24×16 tessellation matches the per-Mesh smooth-body sphere from
     // BodyShape3D so the visual is byte-for-byte identical when the LOD
     // routing flips a unit between paths.
-    const smoothMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const smoothMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     this.smoothChassis = new THREE.InstancedMesh(
       this.smoothChassisGeom,
       smoothMat,
@@ -928,14 +958,14 @@ export class Render3DEntities {
     makeInstanceAlphaCapable(this.smoothChassis, Render3DEntities.SMOOTH_CHASSIS_CAP);
     this.world.add(this.smoothChassis);
 
-    // Turret-head InstancedMesh — reuses the existing turretHeadGeom
-    // (16×12 unit sphere). Per-instance team color via instanceColor
+    // Turret-head InstancedMesh — uses an instanced-only clone of the
+    // 16×12 unit sphere. Per-instance team color via instanceColor
     // modulates against the white shared MeshLambertMaterial — same
     // pattern smoothChassis uses, so team-changes are picked up by
     // the per-frame setColorAt without touching any material.
-    const headMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const headMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     this.turretHeadInstanced = new THREE.InstancedMesh(
-      this.turretHeadGeom,
+      this.turretHeadInstancedGeom,
       headMat,
       Render3DEntities.TURRET_HEAD_CAP,
     );
@@ -953,18 +983,13 @@ export class Render3DEntities {
     makeInstanceAlphaCapable(this.turretHeadInstanced, Render3DEntities.TURRET_HEAD_CAP);
     this.world.add(this.turretHeadInstanced);
 
-    // Barrel InstancedMesh — reuses the existing barrelGeom
+    // Barrel InstancedMesh — uses instanced-only geometry/material
     // (10-segment cylinder, radius 1, height 1; the per-instance
-    // scale shapes it to (cylRadius, length, cylRadius)). Material
-    // is the same shared white barrelMat the per-Mesh path used —
-    // not a new MeshLambertMaterial — so team-color updates AREN'T
-    // applied (barrels stay white across teams, matching the
-    // existing visual contract). We still allocate instanceColor so
-    // a future per-instance tint hook can land without recreating
-    // the mesh.
+    // scale shapes it to (cylRadius, length, cylRadius)). Barrels stay
+    // white across teams, matching the existing visual contract.
     this.barrelInstanced = new THREE.InstancedMesh(
-      this.barrelGeom,
-      this.barrelMat,
+      this.barrelInstancedGeom,
+      this.barrelInstancedMat,
       Render3DEntities.BARREL_CAP,
     );
     this.barrelInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -979,18 +1004,18 @@ export class Render3DEntities {
     makeInstanceAlphaCapable(this.barrelInstanced, Render3DEntities.BARREL_CAP);
     this.world.add(this.barrelInstanced);
 
-    // Mirror-panel InstancedMesh — one shared chrome-shiny material
-    // (metalness=1, roughness=0, double-sided so the panel reads
-    // from either side; PMREM environment is set on the scene), with
-    // a fixed white panel color for every owner.
+    // Mirror-panel InstancedMesh — one shared stable white material
+    // with muted environment response, double-sided so the panel reads
+    // from either side, and a fixed white panel color for every owner.
     const mirrorMat = new THREE.MeshStandardMaterial({
       color: MIRROR_PANEL_COLOR,
-      metalness: 1.0,
-      roughness: 0.0,
+      metalness: MIRROR_PANEL_METALNESS,
+      roughness: MIRROR_PANEL_ROUGHNESS,
+      envMapIntensity: MIRROR_PANEL_ENV_INTENSITY,
       side: THREE.DoubleSide,
     });
     this.mirrorPanelInstanced = new THREE.InstancedMesh(
-      this.mirrorGeom,
+      this.mirrorInstancedGeom,
       mirrorMat,
       Render3DEntities.MIRROR_PANEL_CAP,
     );
@@ -1038,6 +1063,16 @@ export class Render3DEntities {
     if (!mat) {
       mat = new THREE.MeshLambertMaterial({ color: getPlayerColors(pid).primary });
       this.primaryMats.set(pid, mat);
+    }
+    return mat;
+  }
+
+  private getUnitPrimaryMat(pid: PlayerId | undefined): THREE.MeshBasicMaterial {
+    if (pid === undefined) return this.unitNeutralMat;
+    let mat = this.unitPrimaryMats.get(pid);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({ color: getPlayerColors(pid).primary });
+      this.unitPrimaryMats.set(pid, mat);
     }
     return mat;
   }
@@ -1494,6 +1529,8 @@ export class Render3DEntities {
       im.getMatrixAt(tailSlot, this._instMatrix);
       im.setMatrixAt(freeSlot, this._instMatrix);
       im.setMatrixAt(tailSlot, Render3DEntities._ZERO_MATRIX);
+      copyInstanceAlphaSlot(im, tailSlot, freeSlot);
+      setInstanceAlphaSlot(im, tailSlot, NORMAL_OPACITY);
       if (im.instanceColor) {
         im.getColorAt(tailSlot, this._instColor);
         im.setColorAt(freeSlot, this._instColor);
@@ -1552,6 +1589,7 @@ export class Render3DEntities {
   ): void {
     if (slot === undefined || this.unitInstancedHiddenIds.has(entityId)) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     this.unitInstancedHiddenIds.add(entityId);
     if (slot < dirty.matrixMinSlot) dirty.matrixMinSlot = slot;
     if (slot > dirty.matrixMaxSlot) dirty.matrixMaxSlot = slot;
@@ -1755,6 +1793,13 @@ export class Render3DEntities {
         slotWasNew = true;
       }
       const wasHidden = this.unitInstancedHiddenIds.delete(e.id);
+      setInstanceAlphaSlot(
+        im,
+        slot,
+        e.buildable && !e.buildable.isComplete && !e.buildable.isGhost
+          ? SHELL_OPACITY
+          : NORMAL_OPACITY,
+      );
 
       const radius = e.unit?.radius.body
         ?? e.unit?.radius.shot
@@ -1845,6 +1890,7 @@ export class Render3DEntities {
     if (!im) return;
     for (const slot of this.unitInstancedSlot.values()) {
       im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+      setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     }
     this.unitInstancedSlot.clear();
     this.unitInstancedEntityBySlot.length = 0;
@@ -1905,6 +1951,7 @@ export class Render3DEntities {
     if (!slots) return;
     for (const slot of slots) {
       im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+      setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
       this.smoothChassisFreeSlots.push(slot);
     }
     this.smoothChassisSlots.delete(eid);
@@ -1918,7 +1965,10 @@ export class Render3DEntities {
     const im = this.smoothChassis;
     if (!im) return;
     for (const slots of this.smoothChassisSlots.values()) {
-      for (const slot of slots) im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+      for (const slot of slots) {
+        im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+        setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
+      }
     }
     this.smoothChassisSlots.clear();
     this.smoothChassisColorKey.clear();
@@ -1929,10 +1979,12 @@ export class Render3DEntities {
   }
 
   /** Look up or lazily create the InstancedMesh pool for a polygonal /
-   *  rect body shape. The geometry is BodyShape3D's cached
-   *  ExtrudeGeometry, so we just take a reference. Material is a
-   *  private MeshLambertMaterial owned by the pool; per-instance team
-   *  color modulates against its white base. */
+   *  rect body shape. The source geometry comes from BodyShape3D's
+   *  cache, but the instanced pool owns a clone because
+   *  makeInstanceAlphaCapable() attaches instanced-only attributes.
+   *  Regular fallback meshes must never share that mutated geometry.
+   *  The material is unlit MeshBasicMaterial: unit body color should be
+   *  deterministic and not depend on per-driver normal interpolation. */
   private getOrCreatePolyPool(
     bodyShapeKey: string,
     geom: THREE.BufferGeometry,
@@ -1946,9 +1998,10 @@ export class Render3DEntities {
   } {
     let pool = this.polyChassis.get(bodyShapeKey);
     if (pool) return pool;
-    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const instancedGeom = geom.clone();
     const mesh = new THREE.InstancedMesh(
-      geom,
+      instancedGeom,
       mat,
       Render3DEntities.POLY_CHASSIS_CAP,
     );
@@ -2014,6 +2067,7 @@ export class Render3DEntities {
     const slot = pool.slots.get(eid);
     if (slot === undefined) return;
     pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    setInstanceAlphaSlot(pool.mesh, slot, NORMAL_OPACITY);
     pool.freeSlots.push(slot);
     pool.slots.delete(eid);
     pool.colorKeys.delete(eid);
@@ -2041,6 +2095,7 @@ export class Render3DEntities {
     const im = this.turretHeadInstanced;
     if (!im || slot < 0) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     this.turretHeadFreeSlots.push(slot);
     this.turretHeadColorKey.delete(slot);
     im.instanceMatrix.needsUpdate = true;
@@ -2053,6 +2108,7 @@ export class Render3DEntities {
     if (!im) return;
     for (let i = 0; i < this.turretHeadNextSlot; i++) {
       im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+      setInstanceAlphaSlot(im, i, NORMAL_OPACITY);
     }
     this.turretHeadFreeSlots.length = 0;
     this.turretHeadColorKey.clear();
@@ -2082,6 +2138,7 @@ export class Render3DEntities {
     const im = this.barrelInstanced;
     if (!im || slot < 0) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     this.barrelFreeSlots.push(slot);
     im.instanceMatrix.needsUpdate = true;
   }
@@ -2093,6 +2150,7 @@ export class Render3DEntities {
     if (!im) return;
     for (let i = 0; i < this.barrelNextSlot; i++) {
       im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+      setInstanceAlphaSlot(im, i, NORMAL_OPACITY);
     }
     this.barrelFreeSlots.length = 0;
     this.barrelNextSlot = 0;
@@ -2116,6 +2174,7 @@ export class Render3DEntities {
     const im = this.mirrorPanelInstanced;
     if (!im || slot < 0) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+    setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     this.mirrorPanelFreeSlots.push(slot);
     this.mirrorPanelColorKey.delete(slot);
     im.instanceMatrix.needsUpdate = true;
@@ -2126,6 +2185,7 @@ export class Render3DEntities {
     if (!im) return;
     for (let i = 0; i < this.mirrorPanelNextSlot; i++) {
       im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
+      setInstanceAlphaSlot(im, i, NORMAL_OPACITY);
     }
     this.mirrorPanelFreeSlots.length = 0;
     this.mirrorPanelColorKey.clear();
@@ -2142,6 +2202,7 @@ export class Render3DEntities {
     for (const pool of this.polyChassis.values()) {
       for (const slot of pool.slots.values()) {
         pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
+        setInstanceAlphaSlot(pool.mesh, slot, NORMAL_OPACITY);
       }
       pool.slots.clear();
       pool.colorKeys.clear();
@@ -2478,7 +2539,7 @@ export class Render3DEntities {
         }
         if (!hideChassis && !smoothChassisSlots && polyChassisSlot === undefined) {
           for (const part of bodyEntry.parts) {
-            const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(pid));
+            const mesh = new THREE.Mesh(part.geometry, this.getUnitPrimaryMat(pid));
             mesh.position.set(part.x, part.y, part.z);
             mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
             mesh.userData.entityId = e.id;
@@ -2544,7 +2605,7 @@ export class Render3DEntities {
             headGeom: this.turretHeadGeom,
             barrelGeom: this.barrelGeom,
             barrelMat: this.barrelMat,
-            primaryMat: this.getPrimaryMat(pid),
+            primaryMat: this.getUnitPrimaryMat(pid),
             skipHead: headSlot !== undefined,
             skipBarrels: false, // try to attach for fallback safety
           });
@@ -2585,7 +2646,7 @@ export class Render3DEntities {
         }
 
         const constructionEmitter = e.commander && e.builder
-          ? buildConstructionEmitterRig(Math.max(5, radius * 0.34))
+          ? buildConstructionEmitterRig(Math.max(5, radius * 0.34), this.getUnitPrimaryMat(pid))
           : undefined;
         if (constructionEmitter) {
           constructionEmitter.group.userData.entityId = e.id;
@@ -2693,7 +2754,7 @@ export class Render3DEntities {
             liftGroup, mirrorPanels,
             panelCenterY, panelHalfSide, panelArmLength,
             this.mirrorGeom, this.mirrorFrameGeom,
-            this.getMirrorShinyMat(), this.getPrimaryMat(pid),
+            this.getMirrorShinyMat(), this.getUnitPrimaryMat(pid),
             allMirrorAlloc, // skipPerMesh when instancing is on
           );
           if (allMirrorAlloc) m.mirrors.panelSlots = allocedPanelSlots;
@@ -2705,6 +2766,11 @@ export class Render3DEntities {
           }
         }
 
+        const isShellState = !!(
+          e.buildable && !e.buildable.isComplete && !e.buildable.isGhost
+        );
+        applyShellOverride(group, isShellState);
+        this.updateShellAlphas(e, m);
         this.unitMeshes.set(e.id, m);
       } else {
         // Per-frame team-color refresh for the per-Mesh paths
@@ -2721,10 +2787,10 @@ export class Render3DEntities {
           e.buildable && !e.buildable.isComplete && !e.buildable.isGhost
         );
         if (!isShellState) {
-          const primaryMat = this.getPrimaryMat(pid);
+          const primaryMat = this.getUnitPrimaryMat(pid);
           for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
           for (const tm of m.turrets) {
-            if (tm.head) tm.head.material = this.getPrimaryMat(pid);
+            if (tm.head) tm.head.material = this.getUnitPrimaryMat(pid);
           }
           if (m.mirrors) {
             for (const arm of m.mirrors.arms) arm.material = primaryMat;
@@ -2942,7 +3008,6 @@ export class Render3DEntities {
       this.updateRangeRings(m, e);
       if (m.constructionEmitter) {
         m.constructionEmitter.group.visible = buildingTierAtLeast(unitGraphicsTier, 'low');
-        m.constructionEmitter.group.rotation.y = this._lastSpinMs / 900;
         this.updateCommanderEmitter(m.constructionEmitter, e, unitGraphicsTier);
       }
 
@@ -3804,6 +3869,44 @@ export class Render3DEntities {
     m.windRig.rotor.rotation.z = this.windRotorPhase;
   }
 
+  private updateConstructionTowerSpin(
+    rig: ConstructionTowerSpinRig,
+    active: boolean,
+    dtSec: number,
+  ): void {
+    if (rig.towerOrbitParts.length === 0) return;
+    const preset = getDriftPreset(getDriftMode());
+    const alpha = halfLifeBlend(
+      dtSec,
+      preset.rotation.vel * CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
+    );
+    const target = active ? 1 : 0;
+    rig.towerSpinAmount += (target - rig.towerSpinAmount) * alpha;
+    if (!active && rig.towerSpinAmount < 0.001) {
+      rig.towerSpinAmount = 0;
+    }
+    if (rig.towerSpinAmount > 0) {
+      rig.towerSpinPhase =
+        (rig.towerSpinPhase + dtSec * CONSTRUCTION_TOWER_SPIN_CONFIG.radPerSec * rig.towerSpinAmount)
+        % (Math.PI * 2);
+    }
+    const c = Math.cos(rig.towerSpinPhase);
+    const s = Math.sin(rig.towerSpinPhase);
+    for (let i = 0; i < rig.towerOrbitParts.length; i++) {
+      const part = rig.towerOrbitParts[i];
+      part.mesh.position.x = part.baseX * c - part.baseZ * s;
+      part.mesh.position.z = part.baseX * s + part.baseZ * c;
+      part.mesh.rotation.y = part.baseRotationY + rig.towerSpinPhase;
+    }
+    for (let i = 0; i < rig.pylonTopsLocal.length && i < rig.pylonTopBaseLocals.length; i++) {
+      const base = rig.pylonTopBaseLocals[i];
+      const current = rig.pylonTopsLocal[i];
+      current.x = base.x * c - base.z * s;
+      current.y = base.y;
+      current.z = base.x * s + base.z * c;
+    }
+  }
+
 
   /** Drive the commander build emitter: EMA the per-resource transfer
    *  rates derived from the build target's `buildable.paid` deltas,
@@ -3824,10 +3927,12 @@ export class Render3DEntities {
     let targetRateE = 0;
     let targetRateM = 0;
     let targetRateT = 0;
+    let spinActive = false;
     if (targetId !== null && commander.builder && dtSec > 0) {
       const target = this.clientViewState.getEntity(targetId);
       const buildable = target?.buildable;
       if (target && buildable && !buildable.isComplete) {
+        spinActive = true;
         // Reset baseline on target switch — otherwise the first frame
         // would see a giant delta and spike all three showers.
         if (rig.lastPaidTargetId !== targetId) {
@@ -3855,6 +3960,8 @@ export class Render3DEntities {
       // build starts cleanly.
       rig.lastPaidTargetId = null;
     }
+
+    this.updateConstructionTowerSpin(rig, spinActive, dtSec);
 
     rig.smoothedRates.energy += (targetRateE - rig.smoothedRates.energy) * rateAlpha;
     rig.smoothedRates.mana   += (targetRateM - rig.smoothedRates.mana)   * rateAlpha;
@@ -3930,7 +4037,7 @@ export class Render3DEntities {
     const active = detailsReady
       && !!factory
       && !!queuedUnitType
-      && (factory.isProducing || progress > 0);
+      && factory.isProducing;
 
     // EMA the live per-resource rate fractions toward the smoothed
     // values stored on the rig. Targets are 0 when the factory isn't
@@ -3942,6 +4049,7 @@ export class Render3DEntities {
     const targetEnergy = active ? Math.max(0, Math.min(1, factory?.energyRateFraction ?? 0)) : 0;
     const targetMana   = active ? Math.max(0, Math.min(1, factory?.manaRateFraction   ?? 0)) : 0;
     const targetMetal  = active ? Math.max(0, Math.min(1, factory?.metalRateFraction  ?? 0)) : 0;
+    this.updateConstructionTowerSpin(rig, active, dtSec);
     rig.smoothedRates.energy += (targetEnergy - rig.smoothedRates.energy) * rateAlpha;
     rig.smoothedRates.mana   += (targetMana   - rig.smoothedRates.mana)   * rateAlpha;
     rig.smoothedRates.metal  += (targetMetal  - rig.smoothedRates.metal)  * rateAlpha;
@@ -4393,13 +4501,13 @@ export class Render3DEntities {
     this.projectileRadiusMeshPool.length = 0;
     this.factorySprayTargets.length = 0;
     this.factorySprayTargetPool.length = 0;
-    // Polygonal-chassis pools must tear down BEFORE disposeBodyGeoms()
-    // — their InstancedMeshes reference the BodyShape3D-owned per-
-    // renderer ExtrudeGeometry objects that disposeBodyGeoms() releases.
-    // Don't dispose the geometry here; that's BodyShape3D's
-    // responsibility (called immediately below).
+    // Polygonal-chassis pools must tear down BEFORE disposeBodyGeoms().
+    // Each pool owns an instanced-only clone of the BodyShape3D cached
+    // geometry, so dispose that clone here; BodyShape3D still disposes
+    // the original cached geometry immediately below.
     for (const pool of this.polyChassis.values()) {
       this.world.remove(pool.mesh);
+      pool.mesh.geometry.dispose();
       (pool.mesh.material as THREE.Material).dispose();
       pool.mesh.dispose();
     }
@@ -4438,7 +4546,9 @@ export class Render3DEntities {
     this.commanderLensMat.dispose();
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
+    for (const m of this.unitPrimaryMats.values()) m.dispose();
     this.neutralMat.dispose();
+    this.unitNeutralMat.dispose();
     if (this.unitInstanced) {
       this.world.remove(this.unitInstanced);
       // The InstancedMesh's geometry (unitSphereLowGeom) is also held
@@ -4480,11 +4590,8 @@ export class Render3DEntities {
     this.smoothChassisFreeSlots.length = 0;
     if (this.turretHeadInstanced) {
       this.world.remove(this.turretHeadInstanced);
-      // Same pattern as smoothChassis — material is a private
-      // MeshLambertMaterial owned by the InstancedMesh; dispose via
-      // the mesh. Geometry is `turretHeadGeom` (still owned by this
-      // class as a per-Mesh head fallback for cap-exhaust units, so
-      // don't dispose here).
+      // Material and geometry are private to the InstancedMesh.
+      this.turretHeadInstanced.geometry.dispose();
       (this.turretHeadInstanced.material as THREE.Material).dispose();
       this.turretHeadInstanced.dispose();
       this.turretHeadInstanced = null;
@@ -4493,22 +4600,18 @@ export class Render3DEntities {
     this.turretHeadColorKey.clear();
     if (this.barrelInstanced) {
       this.world.remove(this.barrelInstanced);
-      // Material is the SHARED `this.barrelMat` — already disposed
-      // above by the existing `this.barrelMat.dispose()` call. We
-      // disposed it at the unitMeshes-clear point upstream so the
-      // InstancedMesh just dispose()s its own internal buffers
-      // (instanceMatrix / instanceColor) without touching the
-      // shared material. Geometry `barrelGeom` is also a class
-      // field disposed below by `this.barrelGeom.dispose()`.
+      // Instanced barrels own their cloned geometry and patched
+      // material; per-Mesh fallback barrels use barrelGeom/barrelMat.
+      this.barrelInstanced.geometry.dispose();
+      (this.barrelInstanced.material as THREE.Material).dispose();
       this.barrelInstanced.dispose();
       this.barrelInstanced = null;
     }
     this.barrelFreeSlots.length = 0;
     if (this.mirrorPanelInstanced) {
       this.world.remove(this.mirrorPanelInstanced);
-      // Material is a private MeshStandardMaterial owned by this
-      // InstancedMesh — dispose via the mesh. Geometry is
-      // `this.mirrorGeom`, disposed earlier in destroy().
+      // Material and geometry are private to the InstancedMesh.
+      this.mirrorPanelInstanced.geometry.dispose();
       (this.mirrorPanelInstanced.material as THREE.Material).dispose();
       this.mirrorPanelInstanced.dispose();
       this.mirrorPanelInstanced = null;

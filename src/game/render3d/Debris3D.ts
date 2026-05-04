@@ -33,7 +33,6 @@ import { isLineShotBlueprint } from '@/types/blueprints';
 import {
   MIRROR_ARM_LENGTH_MULT,
   MIRROR_PANEL_SIZE_MULT,
-  MIRROR_ARM_THICKNESS_FRAC,
   getMirrorPanelCenter,
 } from '../sim/mirrorPanelCache';
 import { getBodyEdgeTemplates } from './BodyShape3D';
@@ -788,15 +787,12 @@ export class Debris3D {
       }
 
       // Mirror panels — emit one slab per panel matching what
-      // Render3DEntities draws: a square panel of side `2 × radius.body`
-      // mounted at ARM'S LENGTH out from the turret body sphere along
-      // the turret's facing direction, with a thin attachment cylinder
-      // bridging the gap. Both pieces shed as separate debris boxes
-      // here (1-wu Z thickness on the panel for mid-tumble visibility,
-      // a long thin box for the arm). Same liftGroup convention as
-      // Render3DEntities: subtract chassisLift so the live world-y
-      // lands at the blueprint-authored mirror turret mount after debris
-      // adds chassisLiftY.
+      // Render3DEntities draws: a square panel mounted at ARM'S LENGTH
+      // out from the turret body sphere, plus the two side support rails
+      // that run from the mirror-frame tabs back to the turret pivot.
+      // Same liftGroup convention as Render3DEntities: subtract
+      // chassisLift so the live world-y lands at the blueprint-authored
+      // mirror turret mount after debris adds chassisLiftY.
       if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
         // Match the live mirrorPanelCache sizing so debris panels
         // tumble at the same scale they had while alive — bumping
@@ -804,12 +800,12 @@ export class Debris3D {
         // automatically.
         const side = r * MIRROR_PANEL_SIZE_MULT * 2;
         const armLength = r * MIRROR_ARM_LENGTH_MULT;
-        // Match the live arm's thickness formula in MirrorMesh3D
-        // (panelHalfSide × thickness fraction). Without the
-        // MIRROR_PANEL_SIZE_MULT factor the debris arm renders 1/MULT
-        // thinner than the alive arm.
         const panelHalfSide = r * MIRROR_PANEL_SIZE_MULT;
-        const armThickness = Math.max(panelHalfSide * MIRROR_ARM_THICKNESS_FRAC, 0.5);
+        const frameThickness = Math.max(panelHalfSide * 0.055, 0.25);
+        const frameDepth = Math.max(panelHalfSide * 0.075, 0.34);
+        const frameSegmentLength = side / 3;
+        const frameZ = panelHalfSide + frameThickness / 2;
+        const armAnchorX = Math.max(armLength - frameDepth / 2, 0.1);
         const panelCenterY = localMount.z * r - chassisLiftY;
         const cY = Math.cos(chassisYaw);
         const sY = Math.sin(chassisYaw);
@@ -831,22 +827,26 @@ export class Debris3D {
             sz: 1,
             color: primary,
           });
-          // Arm cylinder rendered as a long thin box (debris doesn't
-          // care about cylinder vs box silhouette mid-tumble). Center
-          // at half the arm length along chassis +X, rotated by
-          // chassisYaw — so its long axis points along the same
-          // direction as the live arm cylinder.
-          out.push({
-            shape: 'box',
-            x: (armLength / 2) * cY,
-            y: panelCenterY,
-            z: (armLength / 2) * sY,
-            yaw: chassisYaw,
-            sx: armLength,
-            sy: armThickness,
-            sz: armThickness,
-            color: primary,
-          });
+          // Side support rails — same dimensions as MirrorMesh3D's
+          // frame-tab extrusion, rotated in the chassis plane so each
+          // rail runs from the turret pivot to a side-frame tab.
+          for (const sign of [-1, 1] as const) {
+            const localZ = frameZ * sign;
+            const railLength = Math.hypot(armAnchorX, localZ);
+            const cx = armAnchorX / 2;
+            const cz = localZ / 2;
+            out.push({
+              shape: 'box',
+              x: cx * cY - cz * sY,
+              y: panelCenterY,
+              z: cx * sY + cz * cY,
+              yaw: chassisYaw + Math.atan2(localZ, armAnchorX),
+              sx: railLength,
+              sy: frameSegmentLength,
+              sz: frameThickness,
+              color: primary,
+            });
+          }
         }
       }
     }

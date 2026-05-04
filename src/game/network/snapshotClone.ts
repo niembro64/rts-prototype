@@ -294,6 +294,7 @@ type ReusableEntityUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
 type ReusableEntityShot = NonNullable<NetworkServerSnapshotEntity['shot']>;
 type ReusableFactory = NonNullable<ReusableEntityBuilding['factory']>;
+type ReusableBuildState = NonNullable<ReusableEntityUnit['build']>;
 
 function copyActionInto(
   src: NetworkServerSnapshotAction,
@@ -353,6 +354,26 @@ function createReusableUnit(): ReusableEntityUnit {
   };
 }
 
+function copyBuildStateInto(
+  src: ReusableBuildState,
+  dst: ReusableBuildState,
+): ReusableBuildState {
+  dst.progress = src.progress;
+  dst.complete = src.complete;
+  dst.paid.energy = src.paid.energy;
+  dst.paid.mana = src.paid.mana;
+  dst.paid.metal = src.paid.metal;
+  return dst;
+}
+
+function createReusableBuildState(): ReusableBuildState {
+  return {
+    progress: 0,
+    complete: false,
+    paid: { energy: 0, mana: 0, metal: 0 },
+  };
+}
+
 function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): ReusableEntityUnit {
   dst.unitType = src.unitType;
   dst.hp.curr = src.hp.curr;
@@ -372,6 +393,9 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
   dst.velocity.z = src.velocity.z;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
+  dst.build = src.build
+    ? copyBuildStateInto(src.build, dst.build ?? createReusableBuildState())
+    : undefined;
 
   if (src.actions) {
     const actions = dst.actions ?? (dst.actions = []);
@@ -445,8 +469,7 @@ function copyBuildingInto(
   }
   dst.hp.curr = src.hp.curr;
   dst.hp.max = src.hp.max;
-  dst.build.progress = src.build.progress;
-  dst.build.complete = src.build.complete;
+  copyBuildStateInto(src.build, dst.build);
   dst.metalExtractionRate = src.metalExtractionRate;
   if (src.solar) {
     if (!dst.solar) dst.solar = { open: true };

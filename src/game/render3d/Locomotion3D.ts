@@ -239,15 +239,15 @@ const restSphereMat = new THREE.LineBasicMaterial({
   depthWrite: false,
 });
 
-const treadMat = new THREE.MeshLambertMaterial({ color: TREAD_COLOR });
-const wheelMat = new THREE.MeshLambertMaterial({ color: WHEEL_COLOR });
+const treadMat = new THREE.MeshBasicMaterial({ color: TREAD_COLOR });
+const wheelMat = new THREE.MeshBasicMaterial({ color: WHEEL_COLOR });
 // Leg cylinders + joint spheres now live in LegInstancedRenderer's
 // shared pools; their materials are owned there. No module-level
 // legMat remains.
 // Lighter gray for the animated cleats, mirroring the 2D drawAnimatedTread
 // track-line color (`GRAY_LIGHT`) so the moving highlights read over the
 // dark tread slab.
-const cleatMat = new THREE.MeshLambertMaterial({ color: 0x5a636d });
+const cleatMat = new THREE.MeshBasicMaterial({ color: 0x5a636d });
 
 export function lodKeyFor(gfx: GraphicsConfig): string {
   return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;

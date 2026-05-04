@@ -95,7 +95,7 @@ export const TURRET_BLUEPRINTS = {
     color: COLOR_WHITE,
     spread: { angle: Math.PI / 8 },
     burst: { count: 4, delay: 100 },
-    radius: { body: 6 },
+    radius: { body: 7 },
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
     highArc: false,
   },
@@ -316,7 +316,7 @@ export const TURRET_BLUEPRINTS = {
     idlePitch: Math.PI / 2,
     // The mirror-host turret's head sphere is hidden; radius.body
     // defines the panel half-side used by the mirror visual/collision.
-    radius: { body: 5 },
+    radius: { body: 8 },
     // Single fully-regularized square reflector. The panel ATTACHMENT
     // POINT is the unit/turret center (offsetX = offsetY = 0); the
     // panel's normal points along the turret's facing direction
@@ -344,7 +344,7 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
-    radius: { body: 8 },
+    radius: { body: 4 },
     audio: { fireSound: AUDIO.event.fire.laserTurret },
   },
   beamTurret: {

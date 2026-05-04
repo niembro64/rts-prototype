@@ -119,7 +119,11 @@ export class ThreeApp {
     // is good enough for shoreline z-fight given the bumped near
     // plane (5 → 50 below, ~10× precision win at distance) and the
     // pure-units water polygon offset.
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      precision: 'highp',
+      powerPreference: 'high-performance',
+    });
     const mobileLike = isMobileLikeBrowser();
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
     this._dynamicPixelRatioEnabled = !mobileLike;

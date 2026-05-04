@@ -127,3 +127,22 @@ export function setInstanceAlphaSlot(
   arr[slot] = alpha;
   attr.needsUpdate = true;
 }
+
+/** Move the shell/normal flag when an InstancedMesh slot is compacted.
+ *  Matrix + color copies alone are not enough: a reused slot that
+ *  previously belonged to a construction shell can otherwise keep the
+ *  pale-shell flag while drawing a completed unit. */
+export function copyInstanceAlphaSlot(
+  mesh: THREE.InstancedMesh,
+  fromSlot: number,
+  toSlot: number,
+): void {
+  const attr = mesh.geometry.attributes.instanceAlpha as
+    | THREE.InstancedBufferAttribute
+    | undefined;
+  if (!attr) return;
+  const arr = attr.array as Float32Array;
+  if (arr[toSlot] === arr[fromSlot]) return;
+  arr[toSlot] = arr[fromSlot];
+  attr.needsUpdate = true;
+}
