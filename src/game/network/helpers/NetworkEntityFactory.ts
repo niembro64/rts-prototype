@@ -53,7 +53,7 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
     : undefined;
 }
 
-export function createTurretsFromNetwork(
+function createTurretsFromNetwork(
   unitType: string,
   bodyRadius: number,
   netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
