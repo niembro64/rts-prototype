@@ -6,9 +6,7 @@
 //
 // Today the only source is "this entity is a commander, so use its
 // owner's player name". The resolver returns null for everything else
-// so NameLabel3D simply doesn't draw a label there. Future sources are
-// listed in priority order in `resolveEntityDisplayName` below — earlier
-// entries win.
+// so NameLabel3D simply doesn't draw a label there.
 //
 // The resolver intentionally takes a `lookupPlayerName` callback rather
 // than the lobby roster directly, so the simulation layer doesn't need
@@ -16,51 +14,19 @@
 // thin closure that reads from ClientViewState's player table; tests
 // can pass `() => null` for a no-op.
 
-import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { Entity, PlayerId } from '../sim/types';
 
 export type PlayerNameLookup = (playerId: PlayerId) => string | null;
 
-/** Per-entity name override registry. Stored OUT-of-entity-state so the
- *  network protocol doesn't have to ship a string per entity until the
- *  rename feature actually lands; the override survives client-side as
- *  long as the entity exists. Future "rename your factory / unit" UI
- *  writes here via `setEntityNameOverride`; the resolver checks here
- *  first. */
-const _entityNameOverrides = new Map<EntityId, string>();
-
-export function setEntityNameOverride(id: EntityId, name: string | null): void {
-  if (name === null || name.trim().length === 0) {
-    _entityNameOverrides.delete(id);
-  } else {
-    _entityNameOverrides.set(id, name.trim());
-  }
-}
-
-export function getEntityNameOverride(id: EntityId): string | null {
-  return _entityNameOverrides.get(id) ?? null;
-}
-
-export function clearEntityNameOverrides(): void {
-  _entityNameOverrides.clear();
-}
-
 /** Returns the string we should render above an entity, or null when
- *  no label should appear. Priority order:
- *    1. Per-entity rename (if the user / a future system has set one).
- *    2. Owner's player name, but only for COMMANDERS — labelling every
- *       unit by its owner would clutter the screen with redundant
- *       team-color text.
- *    3. null — no label.
- *  Building names follow the same rule: if a future "factory rename"
- *  feature lands it sets an override and this function picks it up
- *  automatically. */
+ *  no label should appear. Today the only positive case is "labels
+ *  on commanders show their owner's player name." Add new sources
+ *  here in priority order if/when a per-entity rename or capture-tag
+ *  branding feature actually lands. */
 export function resolveEntityDisplayName(
   entity: Entity,
   lookupPlayerName: PlayerNameLookup,
 ): string | null {
-  const override = _entityNameOverrides.get(entity.id);
-  if (override !== undefined) return override;
-
   if (entity.commander && entity.ownership) {
     const playerName = lookupPlayerName(entity.ownership.playerId);
     if (playerName !== null && playerName !== undefined && playerName.length > 0) {
