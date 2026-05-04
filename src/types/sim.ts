@@ -428,6 +428,9 @@ export type TurretConfig = {
    *  into a random cone around vertical. See TurretBlueprint
    *  .verticalLauncher. */
   verticalLauncher?: boolean;
+  /** Initial-spawn pitch in radians applied once at turret creation.
+   *  See TurretBlueprint.idlePitch. */
+  idlePitch?: number;
   /** Aim a fraction of the way to the target on the ground rather
    *  than at the target itself; the round detonates short and its
    *  submunitions (if any) bounce + spread the rest of the way. See
@@ -519,9 +522,8 @@ export type Turret = {
   forceField?: { transition: number; range: number };
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet) %
-   *  barrelCount, then the pointer advances by the pellet count. Gives
-   *  gatlings a visible per-shot barrel cycle without any floating
-   *  spin-angle sync. Single-barrel turrets always see barrelIndex = 0. */
+   *  barrelCount, then the pointer advances by the pellet count.
+   *  Single-barrel turrets always see barrelIndex = 0. */
   barrelFireIndex?: number;
 };
 
@@ -581,6 +583,11 @@ export type Projectile = {
    *  place — each re-trace resizes the array length and overwrites
    *  the per-vertex fields, so the array reference is stable. */
   points?: BeamPoint[];
+  /** Physical source barrel for persistent beam/laser muzzle updates.
+   *  Normal projectile spawns carry barrelIndex on their spawn event;
+   *  beams need to remember it because their start point is re-traced
+   *  every tick while the source turret moves. */
+  sourceBarrelIndex?: number;
   /** Internal: previous tick's start position. Used to compute the
    *  per-tick start-point velocity (points[0].vx/vy/vz). Not
    *  serialized. */
@@ -645,8 +652,9 @@ export type ResourceCost = {
 
 // Buildable component. While a unit/building is under construction it
 // lives in the world as an inert "shell" — `paid.{e,m,m}` accumulate
-// from the owner's stockpiles toward `required.{e,m,m}`, and the
-// entity flips active when all three reach their target. During
+// from the owner's stockpiles toward `required.{e,m,m}`. This
+// component exists only while the entity is under construction; once
+// activation succeeds, constructionLifecycle removes it. During
 // construction, HP grows by the positive delta in average fill ratio;
 // it is never reset upward to the current fill target, so damage taken
 // while building remains damage.
@@ -661,7 +669,10 @@ export type Buildable = {
 // Builder component
 export type Builder = {
   buildRange: number;
-  maxEnergyUseRate: number;
+  /** Max resource units per second this builder can add to each
+   *  construction resource lane. Repair uses the same work-rate cap
+   *  for its energy cost. */
+  constructionRate: number;
   currentBuildTarget: EntityId | null;
 };
 
@@ -680,7 +691,9 @@ export type BuildingConfig = {
   cost: ResourceCost;
   energyProduction?: number;
   metalProduction?: number;
-  maxEnergyUseRate?: number;
+  /** Max resource units per second this building can add to each
+   *  construction resource lane of its active shell. */
+  constructionRate?: number;
   renderProfile: BuildingRenderProfile;
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;

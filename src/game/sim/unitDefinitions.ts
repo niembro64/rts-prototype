@@ -28,6 +28,10 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
 
     const localMount = createRuntimeTurretMount(mount, radius);
 
+    // Initial pitch comes from the blueprint's `idlePitch` knob (e.g.
+    // mirror turrets rest pointing straight up at π/2). Once the aim
+    // solver runs, this is overwritten per-tick and the damper takes
+    // over — `idlePitch` only governs the spawn pose.
     turrets.push({
       config: { ...turretConfig },
       cooldown: 0,
@@ -35,7 +39,7 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
       ranges,
       state: 'idle',
       rotation: 0,
-      pitch: 0,
+      pitch: turretConfig.idlePitch ?? 0,
       angularVelocity: 0,
       pitchVelocity: 0,
       turnAccel,

@@ -277,6 +277,14 @@ export type TurretBlueprint = {
    *  homing-guided rocket is expected to take over from there. Pairs
    *  with the rocket-class shot flag `ignoresGravity`. */
   verticalLauncher?: boolean;
+  /** Spawn pitch in radians, applied once when the turret instance is
+   *  created (createTurretsFromDefinition). Default 0 = barrel
+   *  horizontal. Useful for passive / mirror turrets that should rest
+   *  pointed at the sky until they actually acquire a target — once
+   *  the aim solver runs, this initial value is overwritten by the
+   *  per-tick solution and the damper takes over. Pitch is clamped
+   *  to [-π/2, +π/2] by turretSystem; pass π/2 for "straight up". */
+  idlePitch?: number;
   /** Aim short of the target so the round lands on the ground at
    *  this fraction of the weapon→target distance, and let the
    *  submunition bounce/spread carry the rest. The aim point is
@@ -422,8 +430,7 @@ export type UnitBlueprint = {
    *  custom rig rather than the logical bodyShape segment. */
   legAttachHeightFrac?: number;
   locomotion: LocomotionBlueprint;
-  renderer: string;
-  builder?: { buildRange: number; maxEnergyUseRate: number };
+  builder?: { buildRange: number; constructionRate: number };
   dgun?: { turretId: string; energyCost: number };
   deathSound?: SoundEntry;
   fightStopEngagedRatio: number;

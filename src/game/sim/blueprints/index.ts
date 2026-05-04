@@ -5,6 +5,7 @@
 export * from './types';
 export * from './shots';
 export * from './turrets';
+export * from './unitRoster';
 export * from './units';
 export * from './buildings';
 export * from './fallbacks';
@@ -324,6 +325,7 @@ export function buildTurretConfig(turretId: string): TurretConfig {
     shot,
     highArc: turretBlueprint.highArc ?? false,
     verticalLauncher: turretBlueprint.verticalLauncher ?? false,
+    idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction,
     bodyRadius: turretBlueprint.bodyRadius,
   };

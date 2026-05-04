@@ -33,8 +33,8 @@ const RANGE_FIRE_MAX: HysteresisRangeMultiplier = {
 };
 
 const RANGE_FIRE_MIN: HysteresisRangeMultiplier = {
-  acquire: 0.4,
-  release: 0.35,
+  acquire: 0.5,
+  release: 0.45,
 };
 
 function fireEnvelope(params: {
@@ -227,9 +227,9 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
   },
   hippoGatlingTurret: {
     id: 'hippoGatlingTurret',
-    projectileId: 'mediumShot',
+    projectileId: 'lightShot',
     range: 300,
-    cooldown: 50,
+    cooldown: 30,
     launchForce: 5_040,
     turretTurnAccel: 100,
     turretDrag: 0.4,
@@ -242,7 +242,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       spin: { idle: 2, max: 20, accel: 100, decel: 10 },
     },
     rangeMultiplierOverrides: fireEnvelope({
-      engageRangeMin: RANGE_FIRE_MIN,
+      engageRangeMin: null,
       trackingRange: null,
     }),
     eventsSmooth: true,
@@ -295,6 +295,11 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     }),
     eventsSmooth: false,
     color: COLOR_WHITE,
+    // Rest pose: panel pitched straight up so a freshly-spawned mirror
+    // unit reads as "scanning the sky" until it acquires an actual
+    // line-shot threat. As soon as the aim solver runs, the damper
+    // takes over and pitches the panel to the bisector solution.
+    idlePitch: Math.PI / 2,
     // The mirror-host turret's head sphere is hidden (panels are the
     // visual), so bodyRadius is set for consistency with sibling
     // turrets but has no rendered effect.
