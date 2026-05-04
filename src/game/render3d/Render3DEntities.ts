@@ -18,7 +18,7 @@ import { getPlayerColors } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { applyShellOverride } from './ShellMaterial';
 import { makeInstanceAlphaCapable, setInstanceAlphaSlot } from './instanceAlpha';
-import { SHELL_OPACITY, NORMAL_OPACITY } from '@/shellConfig';
+import { SHELL_OPACITY, NORMAL_OPACITY, SHELL_TINT_RGB } from '@/shellConfig';
 import type { SpinConfig } from '../../config';
 import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
@@ -2182,6 +2182,9 @@ export class Render3DEntities {
     destroyLocomotion(m.locomotion, this.legRenderer);
     this.world.remove(m.group);
     this.disposeWorldParentedOverlays(m);
+    // Drop the shell-color tracking entry so a re-spawned entity at
+    // the same id starts in the "no shell color applied" state.
+    this.shellColorAppliedIds.delete(id);
     if (m.smoothChassisSlots) this.freeSmoothChassisSlotsForEntity(id);
     if (m.polyChassisSlot !== undefined) this.freePolyChassisSlotForEntity(m.rendererId, id);
     for (const tm of m.turrets) {
@@ -2241,27 +2244,74 @@ export class Render3DEntities {
     );
   }
 
-  /** Per-frame: write SHELL_OPACITY to every InstancedMesh slot the
-   *  entity occupies when it's an in-progress shell, and NORMAL_OPACITY
-   *  when it's complete. Touches:
+  /** Tracks which entities currently have their instanceColor
+   *  overridden to the shell-tint gray. Lets us avoid per-frame color
+   *  writes — we only touch instanceColor on the shell ↔ complete
+   *  transition, which is at most twice per entity over its lifetime
+   *  (alloc → flip-to-gray when shell appears → flip-to-team when
+   *  shell completes). */
+  private shellColorAppliedIds = new Set<EntityId>();
+
+  /** Per-frame: write SHELL_OPACITY (and the gray shell tint) to every
+   *  InstancedMesh slot the entity occupies when it's an in-progress
+   *  shell, and NORMAL_OPACITY (with the team primary restored) when
+   *  it's complete. Touches:
    *    - unitInstanced (MIN-tier mass sphere)
    *    - smoothChassis / polyChassis (unit body)
    *    - turretHeadInstanced + barrelInstanced (turret heads & barrels)
    *    - mirrorPanelInstanced (mirror panels)
    *  Treads & per-Mesh chassis fallbacks are handled separately by the
-   *  per-Mesh material override (applyShellOverride). */
+   *  per-Mesh material override (applyShellOverride).
+   *
+   *  Color is only rewritten on a shell↔complete TRANSITION — alpha is
+   *  cheap (idempotent setter inside instanceAlpha.ts) but
+   *  setColorAt + needsUpdate is heavier, and per-instance writers
+   *  for ownership/team-changes would clobber a per-frame gray write
+   *  anyway. */
   private updateShellAlphas(e: Entity, m: EntityMesh): void {
     const isShell = !!(e.buildable && !e.buildable.isComplete && !e.buildable.isGhost);
     const alpha = isShell ? SHELL_OPACITY : NORMAL_OPACITY;
 
+    // Color transition: gray when entering shell state; team primary
+    // restored when leaving it. The teamColor lookup happens once per
+    // transition so getPlayerColors isn't called for every frame of a
+    // long-running build.
+    const wasShellApplied = this.shellColorAppliedIds.has(e.id);
+    let writeColor = false;
+    if (isShell && !wasShellApplied) {
+      this.shellColorAppliedIds.add(e.id);
+      writeColor = true;
+    } else if (!isShell && wasShellApplied) {
+      this.shellColorAppliedIds.delete(e.id);
+      writeColor = true;
+    }
+    if (writeColor) {
+      const pid = e.ownership?.playerId;
+      if (isShell) {
+        this._instColor.setRGB(SHELL_TINT_RGB[0], SHELL_TINT_RGB[1], SHELL_TINT_RGB[2]);
+      } else if (pid !== undefined) {
+        this._instColor.set(getPlayerColors(pid).primary);
+      } else {
+        this._instColor.set(0xffffff);
+      }
+    }
+
+    const writeColorTo = (mesh: THREE.InstancedMesh | null, slot: number): void => {
+      if (!mesh || !writeColor) return;
+      mesh.setColorAt(slot, this._instColor);
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    };
+
     const massSlot = this.unitInstancedSlot.get(e.id);
     if (this.unitInstanced && massSlot !== undefined) {
       setInstanceAlphaSlot(this.unitInstanced, massSlot, alpha);
+      writeColorTo(this.unitInstanced, massSlot);
     }
 
     if (this.smoothChassis && m.smoothChassisSlots) {
       for (const slot of m.smoothChassisSlots) {
         setInstanceAlphaSlot(this.smoothChassis, slot, alpha);
+        writeColorTo(this.smoothChassis, slot);
       }
     }
 
@@ -2269,6 +2319,7 @@ export class Render3DEntities {
       const pool = this.polyChassis.get(m.rendererId);
       if (pool) {
         setInstanceAlphaSlot(pool.mesh, m.polyChassisSlot, alpha);
+        writeColorTo(pool.mesh, m.polyChassisSlot);
       }
     }
 
@@ -2276,10 +2327,12 @@ export class Render3DEntities {
       for (const tm of m.turrets) {
         if (tm.headSlot !== undefined && this.turretHeadInstanced) {
           setInstanceAlphaSlot(this.turretHeadInstanced, tm.headSlot, alpha);
+          writeColorTo(this.turretHeadInstanced, tm.headSlot);
         }
         if (tm.barrelSlots && this.barrelInstanced) {
           for (const slot of tm.barrelSlots) {
             setInstanceAlphaSlot(this.barrelInstanced, slot, alpha);
+            writeColorTo(this.barrelInstanced, slot);
           }
         }
       }
@@ -2288,6 +2341,7 @@ export class Render3DEntities {
     if (m.mirrors?.panelSlots && this.mirrorPanelInstanced) {
       for (const slot of m.mirrors.panelSlots) {
         setInstanceAlphaSlot(this.mirrorPanelInstanced, slot, alpha);
+        writeColorTo(this.mirrorPanelInstanced, slot);
       }
     }
   }
