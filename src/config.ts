@@ -17,6 +17,7 @@ export type {
   EmaMsConfig,
   KnockbackConfig,
   ForceFieldVisualConfig,
+  ForceFieldImpactVisualConfig,
   ForceFieldTurretShape,
   ForceFieldTurretConfig,
   SpinConfig,
@@ -31,6 +32,7 @@ import type {
   EmaMsConfig,
   KnockbackConfig,
   ForceFieldVisualConfig,
+  ForceFieldImpactVisualConfig,
   ForceFieldTurretConfig,
   MapSize,
 } from './types/config';
@@ -217,8 +219,6 @@ export const KEYFRAME_RATIO_OPTIONS = SERVER_CONFIG.keyframe.options;
 export const DEFAULT_SNAPSHOT_RATE = SERVER_CONFIG.snapshot.default;
 export const SNAPSHOT_RATE_OPTIONS = SERVER_CONFIG.snapshot.options;
 export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
-export const DEFAULT_FF_ACCEL_UNITS = BATTLE_CONFIG.ffAccelUnits.default;
-export const DEFAULT_FF_ACCEL_SHOTS = BATTLE_CONFIG.ffAccelShots.default;
 export const DEFAULT_MIRRORS_ENABLED = BATTLE_CONFIG.mirrorsEnabled.default;
 export const DEFAULT_FORCE_FIELDS_ENABLED =
   BATTLE_CONFIG.forceFieldsEnabled.default;
@@ -339,19 +339,12 @@ export const REAL_BATTLE_COMMANDER_RADIUS_FRACTION = 0.85;
  *  in getUnitMuzzleHeight (sim/combat/combatUtils.ts). */
 export const TURRET_HEIGHT = 16;
 
-/** World-y of the bottom edge of a mirror-unit's reflective panels,
- *  measured above the unit's ground footprint. Shared sim + render
- *  constant so beam reflection (which needs the panel's vertical span)
- *  and the 3D renderer draw the exact same rectangle. A small positive
- *  value keeps the panel off the ground tile to avoid z-fighting. */
-export const MIRROR_BASE_Y = 2;
-
-/** Extra vertical height added above the unit's turret top when sizing
- *  mirror panels. Tuned so mirrorHeight (= bodyTop + TURRET_HEIGHT +
- *  this − MIRROR_BASE_Y) matches the panel's edge length on a Loris,
- *  giving a square front face (≈ 40 wu). Shared sim + render constant —
- *  also drives the lift applied to non-mirror turrets on mirror-host
- *  units (they sit on top of the panel stack). */
+/** Extra vertical height added above a mirror-host unit's turret top
+ *  when stacking other turrets on a mirror unit (they sit ON TOP of
+ *  the panel stack, so they need to be lifted clear of it). Currently
+ *  read by Debris3D's stacked-mirror computation; pure render-side
+ *  knob — sim panel collision uses `mount.z * unitBodyRadius ± halfSide`
+ *  from mirrorPanelCache, no extra-height term. */
 export const MIRROR_EXTRA_HEIGHT = 15;
 
 /** Universal gravity acceleration (world units / s², pulling −z).
@@ -471,7 +464,6 @@ export const COST_MULTIPLIER = 1.0;
  * Beam/railgun knockback uses momentum-based force (mass × velocity × PROJECTILE_MASS_MULTIPLIER).
  */
 export const KNOCKBACK: KnockbackConfig = {
-  FORCE_FIELD_PULL_MULTIPLIER: 2.0, // Multiplier applied to each weapon's pullPower
   SPLASH: 250, // Knockback multiplier for area/splash explosions (mortar/disruptor)
 };
 
@@ -597,13 +589,12 @@ export const BURN_COLOR_COOL = MAP_BG_COLOR; // fades to background
 export const BURN_COLOR_TAU = 200; // color decay: red → black (ms), fast
 export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slow
 
-export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRatioConfig =
+export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFieldBarrierRatioConfig =
   {
     outerRatio: 0.5,
     color: 0x3366ff,
     alpha: 0.05,
     particleAlpha: 0.2,
-    power: 1400,
   };
 
 /**
@@ -611,6 +602,10 @@ export const FORCE_PUSH: import('./game/sim/blueprints/types').ForceFieldZoneRat
  * Controls the pie-slice zone, concentric wave arcs, and inward-moving particle lines.
  */
 export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig = {
+  colorMode: 'player',
+  fallbackColor: 0x3366ff,
+  emitterIdleColor: 0xf0f0f0,
+
   // --- Particle lines (radial dashes moving inward) ---
   particleCount: 20, // Number of radial particle lines around full circle
   particleSpeed: 10, // Inward travel speed
@@ -629,6 +624,29 @@ export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig = {
   trailSegments: 3, // Number of trailing ghost segments behind each particle
   trailSpacing: 0.6, // Spacing between trail segments as fraction of dashLen
   trailFalloff: 0.45, // Opacity multiplier per successive trail segment
+};
+
+/** Force-field projectile interception visual.
+ *  The burst is a flat tangent-plane pulse at the sphere intersection:
+ *  its plane normal is the shield surface normal, so the expanding ring
+ *  lies 90 degrees from the impact normal. */
+export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig = {
+  style: 'tangentRingPulse',
+  colorMode: 'player',
+  fallbackColor: 0x3366ff,
+  maxImpacts: 192,
+  durationMs: 420,
+  ringCount: 3,
+  ringSegments: 48,
+  ringDelayMs: 55,
+  startRadius: 5,
+  endRadius: 38,
+  ringInnerRadiusFrac: 0.78,
+  ringOpacity: 0.82,
+  coreRadiusFrac: 0.42,
+  coreOpacity: 0.22,
+  coreDurationFrac: 0.45,
+  surfaceOffset: 1.2,
 };
 
 /**
@@ -680,7 +698,7 @@ export const UNIT_MASS_MULTIPLIER = 10.0;
 
 /**
  * Global mass multiplier for all projectiles.
- * Scales recoil on shooter, knockback on target, and resistance to force field pull.
+ * Scales recoil on shooter and knockback on target.
  * 1.0 = use raw mass values from PROJECTILE_STATS
  * Higher = more recoil/knockback, lower = less
  */

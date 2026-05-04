@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
+import { isProjectileShot } from '../sim/types';
 import type { UnitBodyShape } from '@/types/blueprints';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
@@ -185,17 +186,12 @@ const _invTiltQuat = new THREE.Quaternion();
 // math each frame.
 const _aimDir = new THREE.Vector3();
 
-// Mirror panels (reflective mirror-unit armor plates): standing rectangular
-// slabs positioned in the unit's TURRET frame (not chassis frame), since the
-// turret/mirror rotates independently of the hull.
-// Mirror panels span at least the full unit silhouette so they actually
-// read as deflector armor. Start just above the ground to avoid clipping
-// into the tile layer, end at the unit's body top + TURRET_HEIGHT so the
-// top of the panel is flush with the top of the turret head (which is the
-// tallest part of the unit). The top is computed per-unit now that body
-// heights vary.
-// MIRROR_BASE_Y comes from src/config.ts — same value the sim uses so
-// the beam-reflection tracer and the rendered panel mesh line up.
+// Mirror panels (reflective mirror-unit armor plates) are square slabs
+// mounted at the rigid mirror-arm's far end. The cache in
+// mirrorPanelCache.ts computes baseY/topY/halfWidth from the turret's
+// mount.z + bodyRadius scaled by MIRROR_PANEL_SIZE_MULT; both the
+// renderer and the sim's beam-reflection tracer read those cached
+// fields so the visible mesh and the collision rectangle stay in sync.
 
 type EntityMesh = {
   group: THREE.Group;
@@ -699,12 +695,10 @@ export class Render3DEntities {
    *  spinGroup is composed progressively into `_barrelParentMat`
    *  per turret, then each barrel's `T·R·S` local matrix is
    *  multiplied in to produce the final world matrix. `_barrelOneVec`
-   *  / `_barrelZeroVec` / `_barrelLiftVec` are immutable / overwritten-
-   *  each-step scratch Vector3s so the inner loop allocates nothing. */
+   *  is immutable scratch so the inner loop allocates nothing. */
   private _barrelParentMat = new THREE.Matrix4();
   private _barrelStepMat = new THREE.Matrix4();
   private _barrelOneVec = new THREE.Vector3(1, 1, 1);
-  private _barrelZeroVec = new THREE.Vector3(0, 0, 0);
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
@@ -3979,12 +3973,12 @@ export class Render3DEntities {
       const shot = e.projectile?.config.shot;
       // Projectile shots have collision.radius
       let radius = 4;
-      if (shot && shot.type === 'projectile') radius = shot.collision.radius;
+      if (shot && isProjectileShot(shot)) radius = shot.collision.radius;
       const radiusScale = PROJECTILE_RADIUS_BY_TIER[projectileGraphicsTier];
       const visualRadius = radius * radiusScale;
       const isCylinder = richProjectile
         && shot
-        && shot.type === 'projectile'
+        && isProjectileShot(shot)
         && shot.shape === 'cylinder';
 
       // Projectile altitude is authoritative sim state (arcs through
@@ -4007,7 +4001,7 @@ export class Render3DEntities {
         // collision footprint stays a sphere of collision.radius —
         // this is purely a render hint.
         const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
-        const cylSpec = (shot && shot.type === 'projectile') ? shot.cylinderShape : undefined;
+        const cylSpec = (shot && isProjectileShot(shot)) ? shot.cylinderShape : undefined;
         const lengthMult = cylSpec?.lengthMult ?? Render3DEntities._PROJ_CYL_LENGTH_MULT_DEFAULT;
         const diameterMult = cylSpec?.diameterMult ?? Render3DEntities._PROJ_CYL_DIAMETER_MULT_DEFAULT;
         const length = r * lengthMult;
@@ -4094,7 +4088,7 @@ export class Render3DEntities {
     const proj = entity.projectile;
     if (!proj) return;
     const shot = proj.config.shot;
-    if (shot.type !== 'projectile') return;
+    if (!isProjectileShot(shot)) return;
 
     const wantCol = getProjRangeToggle('collision');
     const wantExp = getProjRangeToggle('explosion');

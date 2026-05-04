@@ -8,9 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   4) DEAD CODE
   ---------------------------------------------------
 
-  [MEDIUM] src/config.ts:347 `MIRROR_BASE_Y = 2` exported but never
-    imported. Two stale comments at types/sim.ts:161 and
-    Render3DEntities.ts:198 still reference it.
   [MEDIUM] src/game/math/MathHelpers.ts:111-131 `normalizeAndScale`,
     `directionTo`, and :146 `getWeaponWorldPosition` are exported via
     math/index.ts but never imported. The 2D `getWeaponWorldPosition`
@@ -58,8 +55,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
     / `resolveWeaponWorldMount`.
 
   [MEDIUM] src/game/render3d/Render3DEntities.ts:84-88 repeats the
-    `getUnitMuzzleHeight` reference; comment block 189-199 still
-    references the deprecated MIRROR_BASE_Y-based panel sizing model.
+    `getUnitMuzzleHeight` reference (function doesn't exist).
 
   [MEDIUM] src/game/render3d/Render3DEntities.ts:3475-3480 says "mirrors
     the 2D BuildingRenderer's bottom-up fill" — there is no 2D
