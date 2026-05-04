@@ -33,6 +33,13 @@ export type GameConfig = {
    *  (empty `aiPlayerIds`, etc.) so the simulation matches what
    *  the renderer expects. Defaults to false. */
   lobbyPreview?: boolean;
+  /** Resolves a player ID to its display name. Hooked up by the host
+   *  app from the lobby roster (LobbyPlayer.name); render-side passes
+   *  the result to NameLabel3D so commander labels track edits the
+   *  user makes in the TopBar without having to plumb the entire
+   *  roster through the scene. Returns null when the player isn't in
+   *  the roster (renderer falls back to a deterministic funny default). */
+  lookupPlayerName?: (playerId: PlayerId) => string | null;
 };
 
 export type GameScene = import('../game/scenes/RtsScene3D').RtsScene3D;

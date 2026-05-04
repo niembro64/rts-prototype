@@ -89,8 +89,12 @@ import {
   statBarStyle,
   msBarStyle,
   getPlayerColor,
-  getPlayerName,
 } from './uiUtils';
+import {
+  getInitialLocalUsername,
+  getDefaultPlayerName,
+  saveUsername,
+} from '@/playerNamesConfig';
 import { GameServer } from '../game/server/GameServer';
 import { LocalGameConnection } from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
@@ -271,6 +275,54 @@ const isHost = ref(false);
 const roomCode = ref('');
 const lobbyPlayers = ref<LobbyPlayer[]>([]);
 const localPlayerId = ref<PlayerId>(1);
+// LOCAL user's username — persisted in localStorage by playerNamesConfig.
+// Single source of truth for "what does the local user call themselves
+// in BOTH demo and real battle". The lobby roster (lobbyPlayers) holds
+// it for real battle once networking is up; this ref stays the
+// canonical local copy and is what TopBar's editable input is bound to.
+const localUsername = ref<string>(getInitialLocalUsername());
+
+/** Resolves a playerId to the name to render in the UI (TopBar) or
+ *  above a commander in 3D (NameLabel3D). Lookup priority:
+ *    1. lobbyPlayers (real battle): roster name kept in sync by
+ *       NetworkManager via playerInfoUpdate.
+ *    2. localUsername (when asked for the local player and the roster
+ *       hasn't seeded yet — covers DEMO BATTLE and the brief window
+ *       between hostGame() and the first roster mirror).
+ *    3. Funny default keyed by playerId so every viewer agrees on what
+ *       to call AI seats with no host-side rename. */
+function resolvePlayerName(pid: PlayerId): string {
+  const roster = lobbyPlayers.value.find((p) => p.playerId === pid);
+  if (roster && roster.name && roster.name.length > 0) return roster.name;
+  if (pid === localPlayerId.value) return localUsername.value;
+  return getDefaultPlayerName(pid);
+}
+
+/** Same lookup used by RtsScene3D for commander labels. Differs only in
+ *  return type (null when "no roster yet, fall back to default") so the
+ *  scene's optional-callback contract stays simple. */
+function lookupPlayerNameForScene(pid: PlayerId): string | null {
+  const roster = lobbyPlayers.value.find((p) => p.playerId === pid);
+  if (roster && roster.name && roster.name.length > 0) return roster.name;
+  if (pid === localPlayerId.value) return localUsername.value;
+  return null;
+}
+
+/** Commit a TopBar rename — updates the local ref, persists to
+ *  localStorage, and (in real battle) hands off to NetworkManager
+ *  which broadcasts the change to every other client. */
+function onPlayerNameChange(name: string): void {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return;
+  localUsername.value = trimmed;
+  saveUsername(trimmed);
+  // Real-battle: NetworkManager owns the lobby roster broadcast.
+  // Demo: no networking, the localUsername ref is the only state we
+  // need to update — resolvePlayerName picks it up automatically.
+  if (currentBattleMode.value === 'real') {
+    networkManager.setLocalPlayerName(trimmed);
+  }
+}
 const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
@@ -1703,7 +1755,10 @@ function setupNetworkCallbacks(): void {
   };
 
   networkManager.onPlayerLeft = (playerId: PlayerId) => {
-    const playerName = getPlayerName(playerId);
+    // Resolve BEFORE removing from the roster — once the entry is
+    // gone, resolvePlayerName falls back to the funny-default which
+    // would not match the displayed name in the leaving notice.
+    const playerName = resolvePlayerName(playerId);
     lobbyPlayers.value = lobbyPlayers.value.filter(
       (p) => p.playerId !== playerId,
     );
@@ -1933,6 +1988,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       terrainDividers: realTerrainDividers,
       terrainMapShape: realTerrainMapShape,
       backgroundMode: false,
+      lookupPlayerName: lookupPlayerNameForScene,
     });
     setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
 
@@ -2151,13 +2207,14 @@ onUnmounted(() => {
     >
       <TopBar
         :economy="economyInfo"
-        :player-name="getPlayerName(activePlayer)"
+        :player-name="resolvePlayerName(activePlayer)"
         :player-color="getPlayerColor(activePlayer)"
         :can-toggle-player="showPlayerToggle"
         :direction-data="minimapData"
         :network-status="networkStatus"
         :network-warning="networkNotice"
         @toggle-player="togglePlayer"
+        @player-name-change="onPlayerNameChange"
       />
     </div>
 
@@ -3327,7 +3384,7 @@ onUnmounted(() => {
           class="winner-text"
           :style="{ color: getPlayerColor(gameOverWinner) }"
         >
-          {{ getPlayerName(gameOverWinner).toUpperCase() }} WINS!
+          {{ resolvePlayerName(gameOverWinner).toUpperCase() }} WINS!
         </h1>
         <p class="loser-text">All other commanders were destroyed</p>
         <div class="game-over-actions">

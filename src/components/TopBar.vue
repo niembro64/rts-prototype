@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import WorldDirectionHud from './WorldDirectionHud.vue';
+import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 
 export type { EconomyInfo } from '@/types/ui';
 import type { EconomyInfo, MinimapData } from '@/types/ui';
@@ -24,7 +25,41 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   togglePlayer: [];
+  /** Fires when the user finishes editing their username (blur or
+   *  Enter). Trimmed value; receivers persist via NetworkManager
+   *  setLocalPlayerName which writes to localStorage and broadcasts. */
+  playerNameChange: [name: string];
 }>();
+
+// Local mirror of the prop so the user's keystrokes don't fight the
+// inbound playerName during typing. We commit (emit) on blur/Enter,
+// resync from the prop when it changes externally (network rename, AI
+// switch), and never push every keystroke into props.
+const editingName = ref(props.playerName);
+watch(() => props.playerName, (next) => {
+  editingName.value = next;
+});
+
+function commitName(): void {
+  const trimmed = editingName.value.trim().slice(0, MAX_NAME_LENGTH);
+  if (trimmed.length === 0) {
+    // Empty input: revert visible field to the existing prop value
+    // and don't emit. Avoids "I cleared my name and now I'm Player 1".
+    editingName.value = props.playerName;
+    return;
+  }
+  if (trimmed !== props.playerName) emit('playerNameChange', trimmed);
+  editingName.value = trimmed;
+}
+
+function onNameKey(e: KeyboardEvent): void {
+  if (e.key === 'Enter') {
+    (e.target as HTMLInputElement).blur();
+  } else if (e.key === 'Escape') {
+    editingName.value = props.playerName;
+    (e.target as HTMLInputElement).blur();
+  }
+}
 
 // Unsigned magnitude format. Used for the +income/-expenditure
 // columns where the sign is rendered as a separate prefix.
@@ -80,16 +115,31 @@ function flowColor(n: number): string {
       @click="exitApp"
     >EXIT</button>
 
-    <!-- Player -->
-    <button
-      class="player-section"
-      :class="{ clickable: canTogglePlayer }"
-      :title="canTogglePlayer ? 'Click to switch player' : ''"
-      @click="canTogglePlayer && emit('togglePlayer')"
-    >
-      <span class="player-dot" :style="{ backgroundColor: playerColor }"></span>
-      <span class="player-name">{{ playerName }}</span>
-    </button>
+    <!-- Player. The dot toggles the active player (demo only); the
+         name is an editable text input that persists every commit
+         to localStorage via the parent's playerNameChange handler. -->
+    <div class="player-section">
+      <button
+        class="player-dot-btn"
+        :class="{ clickable: canTogglePlayer }"
+        :title="canTogglePlayer ? 'Click to switch player' : ''"
+        :disabled="!canTogglePlayer"
+        @click="emit('togglePlayer')"
+      >
+        <span class="player-dot" :style="{ backgroundColor: playerColor }"></span>
+      </button>
+      <input
+        class="player-name player-name-input"
+        type="text"
+        v-model="editingName"
+        :maxlength="MAX_NAME_LENGTH"
+        :title="`Your username (saved on Enter / blur)`"
+        spellcheck="false"
+        autocomplete="off"
+        @keydown="onNameKey"
+        @blur="commitName"
+      />
+    </div>
 
     <div
       v-if="networkStatus || networkWarning"
@@ -276,8 +326,48 @@ function flowColor(n: number): string {
   font-weight: bold;
   font-size: 13px;
   text-transform: uppercase;
-  width: 50px;
+  width: 130px;
   text-align: left;
+}
+
+.player-dot-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: default;
+}
+.player-dot-btn.clickable {
+  cursor: pointer;
+}
+.player-dot-btn.clickable:hover .player-dot {
+  border-color: white;
+}
+
+/* Editable player name — looks like the old static span until you
+ * focus it, then a faint outline + readable cursor appears. */
+.player-name-input {
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font-family: inherit;
+  font-weight: inherit;
+  font-size: inherit;
+  text-transform: inherit;
+  padding: 1px 4px;
+  border-radius: 3px;
+  outline: none;
+  caret-color: var(--player-color);
+}
+.player-name-input:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.player-name-input:focus {
+  border-color: var(--player-color);
+  background: rgba(0, 0, 0, 0.25);
 }
 
 .network-section {

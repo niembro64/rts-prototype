@@ -68,6 +68,7 @@ import {
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
+import { getTerrainDividerTeamCount } from '../sim/playerLayout';
 import {
   getTerrainMeshHeight,
   setTerrainTeamCount,
@@ -83,6 +84,9 @@ import {
 } from '../lodGridMath';
 import { landCellCenterForSize, landCellIndexForSize } from '../landGrid';
 import { HealthBar3D } from '../render3d/HealthBar3D';
+import { NameLabel3D } from '../render3d/NameLabel3D';
+import { resolveEntityDisplayName } from '../render3d/EntityName';
+import { getDefaultPlayerName } from '@/playerNamesConfig';
 import { Waypoint3D } from '../render3d/Waypoint3D';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 
@@ -144,6 +148,12 @@ export type RtsScene3DConfig = {
    *  AI, no buildings, no background units). Set by the lobby
    *  preview path; everywhere else this stays false. */
   lobbyPreview?: boolean;
+  /** Resolves a player ID to its display name. Powered by the host
+   *  app's lobby roster; the scene uses it to label commanders via
+   *  NameLabel3D. Null result → fall back to the deterministic
+   *  funny-name default. Optional for back-compat with callers that
+   *  don't yet pass it (lobby preview, demo standalones). */
+  lookupPlayerName?: (playerId: PlayerId) => string | null;
 };
 
 // Mini "camera" accessor that PhaserCanvas.vue reads for zoom display. We derive
@@ -235,6 +245,13 @@ export class RtsScene3D {
   private currentBuildType: BuildingType | null = null;
   private currentDGunActive = false;
   private healthBar3D: HealthBar3D | null = null;
+  private nameLabel3D: NameLabel3D | null = null;
+  /** Resolves a player ID to its display name. Hooked up via
+   *  RtsScene3DConfig.lookupPlayerName; null result falls back to
+   *  `getDefaultPlayerName(playerId)` so commander labels still
+   *  render with a stable funny default in single-player / demo /
+   *  lobby-preview contexts that don't have a roster wired up. */
+  private lookupPlayerName: (id: PlayerId) => string | null = () => null;
   private waypoint3D: Waypoint3D | null = null;
   private lodShellGround3D: LodShellGround3D | null = null;
   private lodGridCells2D: LodGridCells2D | null = null;
@@ -418,21 +435,18 @@ export class RtsScene3D {
     this.clientRenderEnabled = threeApp.isRenderEnabled();
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
+    if (config.lookupPlayerName) this.lookupPlayerName = config.lookupPlayerName;
     this.terrainCenter = config.terrainCenter ?? 'lake';
     this.terrainDividers = config.terrainDividers ?? 'lake';
     this.terrainMapShape = config.terrainMapShape ?? 'circle';
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
     setPlayerCountForColors(this.playerIds.length);
-    // Also seed the heightmap's team-separator count from the same
-    // source. The host's GameServer constructor sets this too, but
-    // remote clients don't construct a GameServer locally — without
-    // this call the joiner's `getTerrainHeight` would default to 0
-    // separator ridges (or carry over the demo's count) and the
-    // baked tile mesh would diverge from the host's. Setting it on
-    // EVERY scene init makes the local Terrain module agree with
-    // the lobby's player count regardless of role.
-    setTerrainTeamCount(this.playerIds.length);
+    // Also seed the heightmap's divider count from the same source.
+    // The same radial-slice math is used for every player count,
+    // including one-player maps. The host's GameServer sets this too,
+    // but remote clients only construct the renderer.
+    setTerrainTeamCount(getTerrainDividerTeamCount(this.playerIds.length));
     setTerrainCenterShape(this.terrainCenter);
     setTerrainDividersShape(this.terrainDividers);
     setTerrainMapShape(this.terrainMapShape);
@@ -699,6 +713,7 @@ export class RtsScene3D {
       // depth-occlusion against the terrain (a unit behind a hill
       // has its bar/waypoint markers naturally clipped).
       this.healthBar3D = new HealthBar3D(this.threeApp.world);
+      this.nameLabel3D = new NameLabel3D(this.threeApp.world);
       this.waypoint3D = new Waypoint3D(
         this.threeApp.world,
         this.mapWidth, this.mapHeight,
@@ -1107,6 +1122,28 @@ export class RtsScene3D {
         this.healthBar3D.perBuilding(hoveredEntity, true);
       }
       this.healthBar3D.endFrame();
+    }
+
+    // Player-name labels above commanders. Powered by the same
+    // ClientViewState.getUnits() walk the rest of the per-unit
+    // renderers iterate; the resolver returns null for non-commander
+    // units so most calls are a one-Map-lookup no-op. Same fallback
+    // story as the rest of the renderer — if no roster lookup was
+    // wired up, getDefaultPlayerName(pid) gives a stable funny name
+    // keyed by player id.
+    if (this.nameLabel3D) {
+      this.nameLabel3D.beginFrame(hudFrustum);
+      const lookup = (pid: PlayerId): string | null =>
+        this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
+      for (const u of this.clientViewState.getUnits()) {
+        const name = resolveEntityDisplayName(u, lookup);
+        if (name !== null) this.nameLabel3D.perEntity(u, name);
+      }
+      for (const b of this.clientViewState.getBuildings()) {
+        const name = resolveEntityDisplayName(b, lookup);
+        if (name !== null) this.nameLabel3D.perEntity(b, name);
+      }
+      this.nameLabel3D.endFrame();
     }
     // Waypoint markers stay gated — their world points are fixed
     // command goals (move target, build site, rally point), not
@@ -1887,6 +1924,8 @@ export class RtsScene3D {
     this.inputManager = null;
     this.healthBar3D?.destroy();
     this.healthBar3D = null;
+    this.nameLabel3D?.destroy();
+    this.nameLabel3D = null;
     this.waypoint3D?.destroy();
     this.waypoint3D = null;
     this.lodShellGround3D?.destroy();

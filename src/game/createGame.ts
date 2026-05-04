@@ -34,6 +34,7 @@ export function createGame(config: GameConfig): GameInstance {
       terrainMapShape: config.terrainMapShape,
       backgroundMode,
       lobbyPreview,
+      lookupPlayerName: config.lookupPlayerName,
     });
 
   let scene = buildScene();

@@ -190,7 +190,16 @@ export type NetworkPlayerActionMessage =
   // The host updates the local LobbyPlayer record and re-broadcasts
   // (see `playerInfoUpdate` below) so every connected client sees
   // the same player list with IP + location columns populated.
-  | { type: 'playerInfo'; gameId?: string; ipAddress?: string; location?: string; timezone?: string }
+  | {
+      type: 'playerInfo';
+      gameId?: string;
+      ipAddress?: string;
+      location?: string;
+      timezone?: string;
+      /** Optional rename — set when the local user types a new value
+       *  in the TopBar. Host re-broadcasts via `playerInfoUpdate`. */
+      name?: string;
+    }
   // Heartbeat ping. Both directions (client→host AND host→client)
   // — every peer sends one every couple seconds while the GAME
   // LOBBY is alive, and every peer monitors what it's received
@@ -234,7 +243,21 @@ export type NetworkServerSnapshotMessage =
   // client (whoever just resolved their ipapi.co lookup, or a
   // back-fill on `playerJoined` for late-joiners). Carries
   // playerId so receivers can match it to their player list.
-  | { type: 'playerInfoUpdate'; gameId?: string; playerId: PlayerId; ipAddress?: string; location?: string; timezone?: string };
+  | {
+      type: 'playerInfoUpdate';
+      gameId?: string;
+      playerId: PlayerId;
+      ipAddress?: string;
+      location?: string;
+      timezone?: string;
+      /** Optional rename. Sent by the host whenever a player's
+       *  username changes (the local player typed something into the
+       *  TopBar field, the host received their `playerInfo` rename,
+       *  etc). Receivers update the matching LobbyPlayer.name in
+       *  place. Absent on IP/location-only updates so the existing
+       *  fan-out doesn't unnecessarily clobber names. */
+      name?: string;
+    };
 
 // Combined (transport envelope)
 export type NetworkMessage = NetworkPlayerActionMessage | NetworkServerSnapshotMessage;

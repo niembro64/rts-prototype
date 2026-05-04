@@ -3,6 +3,12 @@ import { encode as msgpackEncode, decode as msgpackDecode } from '@msgpack/msgpa
 import type { PlayerId } from '../sim/types';
 import type { Command } from '../sim/commands';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
+import {
+  getDefaultPlayerName,
+  getInitialLocalUsername,
+  saveUsername,
+  MAX_NAME_LENGTH,
+} from '@/playerNamesConfig';
 
 // Re-export types from NetworkTypes for backward compatibility
 export type {
@@ -59,10 +65,10 @@ function roomCodeToGameId(roomCode: string): string {
   return `ba-${normalizeRoomCode(roomCode)}`;
 }
 
-function getDefaultPlayerName(playerId: PlayerId): string {
-  const colorNames = ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange'];
-  return colorNames[playerId - 1] || `Player ${playerId}`;
-}
+// Player-name policy lives in @/playerNamesConfig — single source of
+// truth for both seeding (random funny name keyed by playerId) and the
+// LOCAL player's persisted username (saved to localStorage on every
+// edit, restored on next page load).
 
 const PEER_OPTIONS: PeerOptions = {
   debug: 0,
@@ -205,10 +211,15 @@ export class NetworkManager {
     this.players.clear();
     this.connections.clear();
 
-    // Add host as player 1
+    // Add host as player 1. The host IS the local player when hosting,
+    // so seed with whatever username is persisted in localStorage (or a
+    // fresh random funny pick if this is a first-time visitor — which
+    // gets persisted immediately so subsequent loads are stable). The
+    // user can edit this from the TopBar; setLocalPlayerName below
+    // persists + broadcasts the change.
     const hostPlayer: LobbyPlayer = {
       playerId: 1,
-      name: 'Red', // First color
+      name: getInitialLocalUsername(),
       isHost: true,
     };
     this.players.set(1, hostPlayer);
@@ -652,18 +663,23 @@ export class NetworkManager {
         break;
 
       case 'playerInfo':
-        // Host: a client just resolved its own IP/location/tz
-        // lookup and is reporting in. Stamp the values on our
-        // player record + fan out to every connected client
-        // (including the originator — keeps every end pulling
-        // from one canonical record set, no special-casing).
+        // Host: a client is reporting its own IP/location/tz lookup
+        // and/or a username rename. Stamp the values on our player
+        // record + fan out to every connected client (including the
+        // originator — keeps every end pulling from one canonical
+        // record set, no special-casing). Field-by-field nullable so
+        // a rename-only message doesn't accidentally clobber an
+        // already-resolved IP.
         if (this.role === 'host') {
           if (!this.isMessageForCurrentGame(message)) return;
           const player = this.players.get(fromPlayerId);
           if (player) {
-            player.ipAddress = message.ipAddress;
-            player.location = message.location;
-            player.timezone = message.timezone;
+            if (message.ipAddress !== undefined) player.ipAddress = message.ipAddress;
+            if (message.location !== undefined) player.location = message.location;
+            if (message.timezone !== undefined) player.timezone = message.timezone;
+            if (message.name !== undefined && message.name.length > 0) {
+              player.name = message.name.slice(0, MAX_NAME_LENGTH);
+            }
             this.onPlayerInfoUpdate?.(player);
             this.broadcast({
               type: 'playerInfoUpdate',
@@ -672,6 +688,7 @@ export class NetworkManager {
               ipAddress: message.ipAddress,
               location: message.location,
               timezone: message.timezone,
+              name: message.name,
             });
           }
         }
@@ -720,16 +737,21 @@ export class NetworkManager {
         break;
 
       case 'playerInfoUpdate':
-        // Client: host is fanning out a player's IP/location/tz.
-        // Update the matching record so every client's player
-        // list stays in sync.
+        // Client: host is fanning out a player's IP/location/tz/name
+        // change. Update the matching record so every client's player
+        // list stays in sync. Field-by-field nullable matches the
+        // host-side handler — a rename-only update doesn't clobber an
+        // already-known IP.
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message)) return;
           const target = this.players.get(message.playerId);
           if (target) {
-            target.ipAddress = message.ipAddress;
-            target.location = message.location;
-            target.timezone = message.timezone;
+            if (message.ipAddress !== undefined) target.ipAddress = message.ipAddress;
+            if (message.location !== undefined) target.location = message.location;
+            if (message.timezone !== undefined) target.timezone = message.timezone;
+            if (message.name !== undefined && message.name.length > 0) {
+              target.name = message.name.slice(0, MAX_NAME_LENGTH);
+            }
             this.onPlayerInfoUpdate?.(target);
           }
         }
@@ -847,6 +869,49 @@ export class NetworkManager {
         });
       }
     }
+  }
+
+  /** Set the LOCAL player's username. Persists to localStorage so it
+   *  survives reloads, updates the local roster, and (when networked)
+   *  broadcasts the new value via `playerInfoUpdate` so every other
+   *  connected client sees the change. Trims + length-caps the input
+   *  to match the same rules saveUsername applies, so a value typed
+   *  here matches what eventually lands in storage. */
+  setLocalPlayerName(name: string): void {
+    const trimmed = name.trim().slice(0, MAX_NAME_LENGTH);
+    if (trimmed.length === 0) return;
+    saveUsername(trimmed);
+    const self = this.players.get(this.localPlayerId);
+    if (self && self.name !== trimmed) {
+      self.name = trimmed;
+      this.onPlayerInfoUpdate?.(self);
+    }
+    if (this.role === 'host') {
+      this.broadcast({
+        type: 'playerInfoUpdate',
+        gameId: this.getUniversalGameId(),
+        playerId: this.localPlayerId,
+        name: trimmed,
+      });
+    } else if (this.role === 'client') {
+      const hostConn = this.connections.get(1);
+      if (hostConn) {
+        this.safeSend(hostConn, {
+          type: 'playerInfo',
+          gameId: this.getUniversalGameId(),
+          name: trimmed,
+        });
+      }
+    }
+  }
+
+  /** Convenience for read-only consumers (TopBar) — returns whatever
+   *  the local player is currently called, falling back to the
+   *  deterministic-by-id default if for some reason the roster hasn't
+   *  been populated yet. */
+  getLocalPlayerName(): string {
+    return this.players.get(this.localPlayerId)?.name
+      ?? getDefaultPlayerName(this.localPlayerId);
   }
 
   // Send message to specific player (host only)
