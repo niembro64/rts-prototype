@@ -3128,71 +3128,48 @@ export class Render3DEntities {
         if (this.mirrorsEnabled) {
           const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
           const mirrorPitch = turrets[0]?.pitch ?? 0;
-          // Mirror root is a child of yawGroup (rigid hull) — same
-          // tilt-compensated yaw the turret-aim path above uses. The
-          // panel-pitch (rotation.x per panel) operates in the
-          // tilt-corrected parent frame, so it still reads as a world-
-          // horizontal-axis tilt of the panel surface.
+          // SINGLE JOINT at the turret attachment point. The whole
+          // rigid arm + panel assembly is parented to mirrors.root,
+          // and ALL rotation lives there. Yaw + pitch are two
+          // descriptions of one ball-joint orientation — applied as
+          // one Euler 'YZX' (yaw first around world Y, then pitch
+          // around the post-yaw side axis Z). No per-arm or per-panel
+          // rotation; the arms and panels keep their static
+          // build-time transforms (arm at visibleArmLength/2 forward,
+          // panel at panelArmLength forward, both at panelCenterY up)
+          // and sweep through 3D as one body when root rotates.
           _aimDir.set(Math.cos(mirrorRot), 0, Math.sin(mirrorRot));
           if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
           const mCombinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
-          m.mirrors.root.rotation.y = mCombinedYaw + e.transform.rotation;
-          // Rigid pitch: the entire arm + panel assembly swings as
-          // one body around the turret pivot. Update positions AND
-          // rotations of the arms + panels so the visual matches the
-          // sim's full-3D panel center (MirrorPanelHit pcz now
-          // includes the sin(pitch)·armLength term, MirrorAimSolver
-          // iterates panel center in 3D — same arm-direction vector).
-          // Three coords in the mirror root's frame: +X = forward
-          // (along yawed arm direction at zero pitch), +Y = up, +Z =
-          // side. Pitching `up` rotates the +X-pointing arm toward
-          // +Y around the +Z axis, so each part's per-frame rotation
-          // includes a Z-axis tilt of `mirrorPitch`.
-          const cosPitch = Math.cos(mirrorPitch);
-          const sinPitch = Math.sin(mirrorPitch);
-          const panelArmLength = m.mirrors.panelArmLength;
-          const visibleArmLength = m.mirrors.visibleArmLength;
-          const panelCenterY = m.mirrors.panelCenterY;
-          for (const arm of m.mirrors.arms) {
-            // Arm midpoint at half-length along the pitched arm dir.
-            arm.position.set(
-              cosPitch * visibleArmLength / 2,
-              panelCenterY + sinPitch * visibleArmLength / 2,
-              0,
-            );
-            // Cylinder default is along +Y; original Z(-π/2) aligned
-            // it with +X. Add the pitch rotation around +Z and the
-            // cylinder follows the pitched arm direction exactly.
-            arm.rotation.set(0, 0, -Math.PI / 2 + mirrorPitch);
-          }
-          for (const panel of m.mirrors.panels) {
-            panel.position.set(
-              cosPitch * panelArmLength,
-              panelCenterY + sinPitch * panelArmLength,
-              0,
-            );
-            // Panel default lies in XY plane (normal +Z). Y(-π/2)
-            // takes normal to +X (forward); Z(pitch) tilts the whole
-            // panel up so its normal becomes (cos pitch, sin pitch,
-            // 0) in this frame — same direction as the arm.
-            panel.rotation.set(0, -Math.PI / 2, mirrorPitch, 'YZX');
-          }
+          m.mirrors.root.rotation.set(
+            0,
+            mCombinedYaw + e.transform.rotation,
+            mirrorPitch,
+            'YZX',
+          );
 
-          // Mirror-panel InstancedMesh write — same chain-compose
-          // pattern as barrels (group · yawGroup · liftGroup · mirrors.root),
-          // multiplied by each panel's local T·R·S. Even when
-          // skipPerMesh detached the per-Mesh panels from `mirrors.root`,
-          // each panel's .position / .rotation / .scale are still set
-          // (rotation.x just got the per-frame pitch update above), so
-          // the InstancedMesh writer reads them as data.
+          // Mirror-panel InstancedMesh write. parentMat = group ·
+          // yawGroup · liftGroup · mirrors.root — first three groups
+          // come from the cached unit chain, mirrors.root contributes
+          // the full ball-joint rotation. Reading the root's full
+          // quaternion (auto-synced from .rotation by Three) instead
+          // of building a yaw-only quat is what makes the panel
+          // render where the sim collides: pitch sweeps the panel
+          // through 3D via the parent matrix, not by per-mesh
+          // post-rotations.
           if (m.mirrors.panelSlots && this.mirrorPanelInstanced) {
-            // parentMat = group · yawGroup · liftGroup · mirrors.root —
-            // first three groups are the cached unit chain.
+            // parentMat = group · yawGroup · liftGroup · root.local.
+            // root.local is now T(0, panelCenterY, 0) · R(quaternion)
+            // — the translation lifts the joint to the body-center
+            // height, the quaternion is the single ball-joint
+            // rotation. Compose with root's actual position (not
+            // zero) so the writer agrees with the scene-graph that
+            // would render the per-Mesh fallback path.
             this._barrelParentMat.copy(this._unitChainMat);
-            // Mirror root rotation around Y in the lift-space frame.
-            this._smoothYawQuat.setFromAxisAngle(_INST_UP, m.mirrors.root.rotation.y);
             this._barrelStepMat.compose(
-              this._barrelZeroVec, this._smoothYawQuat, this._barrelOneVec,
+              m.mirrors.root.position,
+              m.mirrors.root.quaternion,
+              this._barrelOneVec,
             );
             this._barrelParentMat.multiply(this._barrelStepMat);
 

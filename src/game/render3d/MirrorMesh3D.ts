@@ -1,20 +1,20 @@
-// Mirror panel mesh builder (3D). The panel + arm form a RIGID
-// assembly: when the turret pitches, the arm AND panel swing through
-// 3D space together. The arm direction is
-//
-//     a(α, β) = (cos α · cos β,  sin α · cos β,  sin β)
-//
-// from the turret pivot (`root` group origin), the panel center sits
-// at arm's length out along that direction, and the panel face is
-// perpendicular to the arm. Yaw lives on `root.rotation.y`; pitch is
-// applied per-frame by the EntityRenderer to each arm + panel pair
-// (positions + rotations recomputed from `panelArmLength` /
-// `visibleArmLength` / `panelCenterY` stored on this struct).
+// Mirror panel mesh builder (3D). The mirror is a SINGLE RIGID
+// assembly attached to the unit at one ball-joint — the turret's
+// attachment point, located at the host unit's body-center height
+// above the chassis lift. The joint is the `root` THREE.Group:
+// `root.position` lifts to the attachment height, `root.quaternion`
+// is the only rotation in the entire mirror system (yaw + pitch
+// combined). The arm cylinder and panel mesh sit at static positions
+// in `root`'s local frame and sweep through 3D as one body when
+// `root` rotates. No per-mesh, per-frame rotation.
 
 import * as THREE from 'three';
 
 export type MirrorMesh = {
-  /** Rotates with the turret (children of this rotate in turret frame). */
+  /** The ball-joint. Position is the attachment point in liftGroup's
+   *  frame; quaternion is the full yaw+pitch orientation written
+   *  per-frame by the EntityRenderer. Children (arms + panels) sit
+   *  at static local positions and share root's transform. */
   root: THREE.Group;
   panels: THREE.Mesh[];
   /** Attachment cylinders, one per panel, sharing the same parent as
@@ -29,13 +29,6 @@ export type MirrorMesh = {
    *  fallback is in use (cap exhausted). The caller (Render3DEntities)
    *  sets this after build. */
   panelSlots?: number[];
-  /** Geometry references the per-frame pitch updater needs to keep
-   *  the rigid arm + panel assembly aligned with the turret's pitch.
-   *  These mirror the build-time inputs so the renderer doesn't have
-   *  to re-thread blueprint values through a long call chain. */
-  panelArmLength: number;
-  visibleArmLength: number;
-  panelCenterY: number;
 };
 
 export type MirrorPanelMount = {
@@ -81,7 +74,17 @@ export function buildMirrorMesh3D(
    *  panels only. */
   skipPerMesh: boolean = false,
 ): MirrorMesh {
+  // The mirror is a ball-joint at the turret attachment point. The
+  // joint's location in the parent's (liftGroup) frame is at chassis
+  // X/Z = 0 and Y = panelCenterY (the host unit's body-center height
+  // above the parent). We position `root` THERE rather than at the
+  // parent's origin so that root's own rotation pivots around the
+  // attachment point. Arms and panels then live at Y = 0 in root's
+  // local frame; the only rotation in the entire mirror assembly is
+  // root's own quaternion, written each frame by the renderer to a
+  // single combined yaw + pitch.
   const root = new THREE.Group();
+  root.position.set(0, panelCenterY, 0);
   parent.add(root);
   const panelMeshes: THREE.Mesh[] = [];
   const armMeshes: THREE.Mesh[] = [];
@@ -94,37 +97,29 @@ export function buildMirrorMesh3D(
   const visibleArmLength = Math.max(panelArmLength - panelGap, 0.1);
 
   for (let i = 0; i < panels.length; i++) {
-    // Attachment cylinder — runs from the turret body center
-    // (root-local origin) out to the panel center along chassis-local
-    // +X (which the parent yawGroup later rotates to the turret's
-    // facing direction). The default CylinderGeometry has its axis
-    // along +Y of unit length; rotate around +Z by -π/2 so its axis
-    // points along +X, then translate the midpoint to half the arm
-    // length and scale to (length, thickness, thickness). Stop short
-    // of the mirror plane so the cylinder never peeks through the
-    // flat square at glancing camera angles.
+    // Attachment cylinder — runs from the joint (root-local origin)
+    // out along root-local +X. Default CylinderGeometry axis is +Y;
+    // rotate Z(-π/2) once to align it with +X, then translate the
+    // midpoint to half-arm-length forward. Both arm and panel sit at
+    // root-local Y = 0; pitch is delivered by root's quaternion, not
+    // by per-mesh rotation.
     const arm = new THREE.Mesh(armGeom, armMaterial);
     arm.rotation.z = -Math.PI / 2;
     arm.scale.set(armThickness, visibleArmLength, armThickness);
-    arm.position.set(visibleArmLength / 2, panelCenterY, 0);
+    arm.position.set(visibleArmLength / 2, 0, 0);
     root.add(arm);
     armMeshes.push(arm);
 
     // Panel face — square plane perpendicular to the arm. PlaneGeometry
-    // default lies in the XY plane with normal +Z. Rotating around
-    // local Y by -π/2 puts the panel's EDGE (originally +X) along
-    // world (turret.rotation + π/2) and its NORMAL (originally +Z)
-    // along world turret.rotation, so the face looks BACK along the
-    // arm. Pitch (rotation.x = -mirrorPitch) is applied AFTER the yaw
-    // flip in YXZ order so it rotates the panel around its edge axis
-    // — same convention the sim uses for panel orientation in
-    // MirrorPanelHit.
+    // default lies in the XY plane with normal +Z. Rotating Y(-π/2)
+    // takes the normal to +X (along the arm). The whole assembly's
+    // pitch comes from root's quaternion, so the panel keeps a
+    // static local rotation here.
     const m = new THREE.Mesh(panelGeom, panelMaterial);
-    m.rotation.order = 'YXZ';
     m.rotation.y = -Math.PI / 2;
     m.scale.set(side, side, 1);
-    // Panel center sits at the END of the arm.
-    m.position.set(panelArmLength, panelCenterY, 0);
+    // Panel center at the END of the arm, root-local Y = 0.
+    m.position.set(panelArmLength, 0, 0);
     if (!skipPerMesh) root.add(m);
     panelMeshes.push(m);
   }
@@ -132,8 +127,5 @@ export function buildMirrorMesh3D(
     root,
     panels: panelMeshes,
     arms: armMeshes,
-    panelArmLength,
-    visibleArmLength,
-    panelCenterY,
   };
 }
