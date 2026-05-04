@@ -1,46 +1,227 @@
-This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. 
+This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed.
 
 #####################################################
 
   Findings
 
-  1. Barrel metadata says “specific barrel,” but firing math intentionally uses centerline.
-     barrelIndex is serialized and documented as exact physical barrel metadata, but
-     getBarrelTip ignores it and fires multi-barrel weapons from the centerline. That may be
-     correct, but the data contract and behavior disagree.
-     Refs: src/types/network.ts:220, src/game/math/BarrelGeometry.ts:115, src/game/sim/
-     combat/projectileSystem.ts:339
-  2. Factory/building visual anchors duplicate renderer formulas.
-     buildingAnchors.ts recomputes the factory tower/nozzle height using copied numbers from
-     BuildingShape3D. If the factory visual changes, hover bars, target points, and attack
-     waypoints can drift unless both files are updated.
-     Refs: src/game/sim/buildingAnchors.ts:8, src/game/render3d/BuildingShape3D.ts:707
-  3. Unit render identity is duplicated as bodyShape plus renderer.
-     Blueprints define both the actual bodyShape and a separate string renderer. Those can
-     drift. The renderer string is mostly a pool/cache key now, so it should likely be
-     derived or validated against body shape.
-     Refs: src/game/sim/blueprints/units.ts:251, src/types/blueprints.ts:410, src/game/
-     render3d/Render3DEntities.ts:2331
-  4. Buildable unit inventory is manually duplicated.
-     BUILDABLE_UNIT_IDS and BATTLE_CONFIG.units are separate manual lists. A new unit can be
-     in blueprints but missing from production/UI toggles.
-     Refs: src/game/sim/blueprints/units.ts:672, src/battleBarConfig.ts:9
-  5. Leg styles are renderer-owned strings, not data-owned geometry.
-     LegStyle is a manual union, and leg layout lives in Locomotion3D. The unit blueprint
-     chooses a style, but the actual attach pattern is not authored with the unit. This is a
-     drift risk for new legged units.
-     Refs: src/types/blueprints.ts:338, src/game/render3d/Locomotion3D.ts:327
-  6. Audio ids are still plain strings and duplicated.
-     TurretAudioId = string exists in both combat and audio code. Audio lookups are
-     blueprint-backed at runtime, which is good, but the type system does not prevent stale
-     audio ids.
-     Refs: src/types/combat.ts:7, src/game/audio/AudioManager.ts:20
-  7. Some comments are stale around current unit/turret relationships.
-     Examples: megaBeamShot says widow head, but the requested design moved it to the back;
-     mortar comments describe old fragment behavior. These are not runtime bugs, but they are
-     dangerous in a blueprint-heavy architecture.
-     Refs: src/game/sim/blueprints/shots.ts:106, src/game/sim/blueprints/shots.ts:181, src/
-     game/sim/blueprints/turrets.ts:191
+  ---------------------------------------------------
+  1) DUPLICATE PREDICATES / HELPERS
+  ---------------------------------------------------
 
-  The biggest remaining architectural cleanup target is barrel metadata: either make
-  barrelIndex physically exact again, or rename/document it as visual fire cadence metadata.
+  [HIGH] Line-shot type discrimination is re-implemented in 4+ places.
+    The canonical predicate is `isLineShotType` / `isLineShot` in
+    src/types/sim.ts, but literal `=== 'beam' || === 'laser'` checks
+    appear in:
+      - src/game/network/ClientViewState.ts:321-329
+        (defines local isLineProjectileEntity / isLineProjectileCode)
+      - src/game/network/ClientViewState.ts:1755-1756
+      - src/game/network/ClientViewState.ts:2042-2047
+      - src/game/network/helpers/NetworkEntityFactory.ts:353-357
+      - src/game/sim/WorldState.ts:662-665
+      - src/game/sim/combat/projectileSystem.ts:806, 842-843, 933
+      - src/game/sim/combat/ProjectileCollisionHandler.ts:516, 779
+      - src/game/render3d/BeamRenderer3D.ts:429
+      - src/game/render3d/Debris3D.ts:725
+      - src/game/sim/EntityCacheManager.ts:107, 151
+      - src/game/sim/blueprints/index.ts:341
+    Action: replace all literal checks with isLineShotType / isLineShot.
+    Add a code-form predicate (isLineProjectileTypeCode) in types/sim.ts
+    for the PROJECTILE_TYPE_BEAM/LASER variant ClientViewState uses.
+
+  [LOW] src/game/sim/combat/lineShotUtils.ts exports
+    `getLineShotDamageSphereRadius(shot) => shot.damageSphere.radius` —
+    a trivial wrapper used 2x (ProjectileCollisionHandler.ts:536,
+    BeamRenderer3D.ts:433). Inline the field access; delete the helper.
+
+  [LOW] src/game/sim/combat/targetIndex.ts:40,88 use bare `=== 'beam'`
+    and the comment lumps "laser-pulse" with "projectile/force" — that
+    framing is misleading because lasers ARE line shots. Either fold
+    lasers into the index or rewrite the comment to explain why they
+    are intentionally excluded.
+
+  ---------------------------------------------------
+  2) CROSS-POLLUTION BETWEEN BLUEPRINT DOMAINS
+  ---------------------------------------------------
+
+  [MEDIUM] src/game/sim/blueprints/units.ts:20 imports `getTurretBlueprint`
+    from sibling './turrets'. The only sibling cross-import in
+    blueprints/. If we want strict atomicity, move the validation that
+    "this unit's mount turretId resolves" to the blueprints/index.ts
+    aggregation pass instead of having units.ts reach into turrets.
+
+  [LOW] Inconsistent import path for blueprint accessors:
+      - src/game/sim/Simulation.ts:42 deep-imports './blueprints/units'
+      - src/game/render3d/Debris3D.ts:27,29 deep-imports
+        './blueprints/turrets' and './blueprints/shots'
+    Every other consumer goes through './blueprints' (the index). Pick
+    one path and apply consistently.
+
+  ---------------------------------------------------
+  3) MULTIPLE WAYS TO DO THE SAME THING
+  ---------------------------------------------------
+
+  [HIGH] Player-name resolution has an orphan path. The active resolver
+    is `resolvePlayerName` (GameCanvas.vue:292) + `getDefaultPlayerName`
+    (playerNamesConfig.ts). But src/components/uiUtils.ts:97-99 still
+    exports `getPlayerName(playerId)` — never imported. Delete it.
+
+  [MEDIUM] src/components/GameCanvas.vue defines two near-identical
+    name resolvers: `resolvePlayerName` (line 292) and
+    `lookupPlayerNameForScene` (line 302). Both walk roster →
+    localUsername (if local) → fallback. Merge into one function with
+    a `fallback?: string | null` parameter.
+
+  [MEDIUM] Mirror panel-center math is computed in THREE sites with
+    drift risk:
+      - src/game/sim/combat/MirrorAimSolver.ts:175-204
+        (uses resolveWeaponWorldMount + armLength * (cos α cos β,
+        sin α cos β, sin β))
+      - src/game/sim/combat/MirrorPanelHit.ts:94-100
+        (uses unit-relative pivot from panel.offsetY + body-mid Z, then
+        armLength * (fwdX cosPitch, fwdY cosPitch, sinPitch))
+      - src/game/render3d/Debris3D.ts:816-851
+        (uses chassis-yaw rotated armLength * cY/sY only — no pitch)
+    Each computes pivot differently. Risk: future change to one
+    formula breaks the others silently. Extract a single
+    `getMirrorPanelCenter(unitX, unitY, unitGroundZ, panel, mirrorYaw,
+    mirrorPitch)` helper next to mirrorPanelCache.ts.
+
+  ---------------------------------------------------
+  4) DEAD CODE
+  ---------------------------------------------------
+
+  [HIGH] src/components/uiUtils.ts:97-99 `getPlayerName` — unused.
+  [HIGH] src/game/sim/unitDefinitions.ts:55-89 `projectUnitBlueprint`,
+    `getUnitDefinition`, `getAllUnitDefinitions`, `UnitType`,
+    `LocomotionType` are unused outside the file. Only
+    `createTurretsFromDefinition` is consumed externally. The
+    "Kept for backward compatibility" header is now half-stale — most
+    of what it preserves is dead.
+  [HIGH] src/game/render3d/EntityName.ts:31-44 `setEntityNameOverride`,
+    `getEntityNameOverride`, `clearEntityNameOverrides` exported but
+    never imported. Speculative future-feature surface area.
+
+  [MEDIUM] src/types/blueprints.ts:262 `audio?.laserSound` is set on
+    beamTurret + megaBeamTurret blueprints (turrets.ts:365, :393) but
+    never read anywhere. AudioManager.ts:92 only reads
+    `audio?.fireSound`. Also kills the AUDIO.event.laser.* entries in
+    audioConfig.ts.
+  [MEDIUM] src/types/sim.ts:165 `CachedMirrorPanel.halfHeight` is set
+    by mirrorPanelCache.ts:65 but never read; the comment at lines
+    156-158 even labels it "legacy 2D thickness value… unused in 3D
+    collision". Delete the field.
+  [MEDIUM] src/config.ts:347 `MIRROR_BASE_Y = 2` exported but never
+    imported. Two stale comments at types/sim.ts:161 and
+    Render3DEntities.ts:198 still reference it.
+  [MEDIUM] src/game/math/MathHelpers.ts:111-131 `normalizeAndScale`,
+    `directionTo`, and :146 `getWeaponWorldPosition` are exported via
+    math/index.ts but never imported. The 2D `getWeaponWorldPosition`
+    was superseded by `getTurretWorldMount` / `resolveWeaponWorldMount`.
+  [MEDIUM] src/game/sim/turretConfigs.ts:5 `WeaponId` and :11
+    `refreshHysteresisRangeSquares` exported but unused outside the file.
+  [MEDIUM] src/types/blueprintIds.ts:55-57 `isBuildingTypeId` (and
+    effectively `BuildingTypeId`) is unused.
+  [MEDIUM] src/game/sim/buildableHelpers.ts:17 `makeUniformResourceCost`
+    is exported but never called.
+
+  [LOW] src/shellConfig.ts:24-25, 38-40 — explicit "Backwards-compatible
+    aliases" / "Legacy aliases":
+      - SHELL_OPACITY, NORMAL_OPACITY: still used by Render3DEntities.ts:22
+        (keep)
+      - SHELL_COLOR_HEX, SHELL_TINT_RGB: NOT used anywhere — drop them.
+  [LOW] src/playerNamesConfig.ts:21,44,49 `FUNNY_DEMO_NAMES`,
+    `FunnyName`, `pickFunnyName` are exported but only used inside the
+    same module. Remove the `export`.
+  [LOW] src/game/network/helpers/NetworkEntityFactory.ts:55
+    `createTurretsFromNetwork` is exported (also re-exported via
+    helpers/index.ts) but only used inside NetworkEntityFactory.ts.
+    Drop the export.
+
+  ---------------------------------------------------
+  5) NAMING INCONSISTENCIES
+  ---------------------------------------------------
+
+  [LOW] src/game/sim/mirrorPanelCache.ts:31 `MIRROR_ARM_LENGTH_FRAC`
+    vs :41 `MIRROR_PANEL_SIZE_MULT` — both are scalar multipliers of
+    bodyRadius. `_FRAC` and `_MULT` for the same concept. Pick one.
+
+  [LOW] Three names for closely-related mount concepts in
+    src/types/blueprints.ts: `MountPoint` (legacy 2D shape, re-exported
+    from config.ts), `UnitTurretMountPoint` (new 3D), `TurretMount`
+    ({turretId, mount}). Worth a rename pass for clarity.
+
+  ---------------------------------------------------
+  6) OUTDATED / STALE COMMENTS
+  ---------------------------------------------------
+
+  [MEDIUM] src/types/sim.ts:154-162 — `CachedMirrorPanel` doc references
+    `MIRROR_BASE_Y`, `TURRET_HEIGHT`, "2D thickness". Current
+    mirrorPanelCache.ts derives baseY/topY from
+    `mount.z * unitBodyRadius ± halfSide` — none of those constants
+    are involved. Multi-refactor stale.
+
+  [MEDIUM] src/config.ts:336-339 — `TURRET_HEIGHT` doc points to
+    `getUnitMuzzleHeight` in `combatUtils.ts`. That function does not
+    exist. Spawn altitude now comes from `BarrelGeometry.getBarrelTip`
+    / `resolveWeaponWorldMount`.
+
+  [MEDIUM] src/game/render3d/Render3DEntities.ts:84-88 repeats the
+    `getUnitMuzzleHeight` reference; comment block 189-199 still
+    references the deprecated MIRROR_BASE_Y-based panel sizing model.
+
+  [MEDIUM] src/game/render3d/Render3DEntities.ts:3475-3480 says "mirrors
+    the 2D BuildingRenderer's bottom-up fill" — there is no 2D
+    BuildingRenderer in the codebase any more. Also says "scales
+    vertically by buildProgress" but the local field is now `progress`
+    (avg of three computed from paid/required).
+
+  [MEDIUM] src/types/sim.ts:629-630 — "Economy state per player.
+    `resourceCost` on a buildable is the SAME number for energy + mana
+    + metal" is wrong post-refactor; per-resource costs are now
+    independent (`{ energy, mana, metal }` triple).
+
+  [LOW] src/game/sim/economy.ts:155 — `canAfford(playerId, resourceCost:
+    number)` parameter still named `resourceCost`, but it's a single
+    scalar applied to EACH resource. Misleading given that
+    `ResourceCost` is the type for a triple. Rename to
+    `perResourceAmount` or change the signature to take a `ResourceCost`.
+
+  ---------------------------------------------------
+  7) CONFIGURATION KNOB FRAGMENTATION
+  ---------------------------------------------------
+
+  [HIGH] src/game/render3d/Debris3D.ts:815 hardcodes `const side = r * 2`
+    for mirror-panel debris while the live system uses
+    `r * MIRROR_PANEL_SIZE_MULT * 2`. With MIRROR_PANEL_SIZE_MULT
+    currently > 1, the debris panel is 1/MIRROR_PANEL_SIZE_MULT the
+    size of the alive panel — visible mismatch on death. Import
+    MIRROR_PANEL_SIZE_MULT from mirrorPanelCache.ts (Debris3D already
+    imports MIRROR_ARM_LENGTH_FRAC from there).
+
+  [MEDIUM] src/game/render3d/HealthBar3D.ts:32-52 hardcodes
+    worldOffsetAbove: 12, lowThreshold: 0.3, fgColorHigh: '#44dd44',
+    fgColorLow: '#ff4444', fgColorBuild: '#4488ff'. Bar tunables
+    belong in shellConfig.ts (or a sibling barTheme.ts) so all bar
+    knobs live together — shell-resource tints are already centralized
+    there; HP / build colours are not.
+
+  [MEDIUM] src/game/render3d/NameLabel3D.ts:23-48 STYLE block
+    hardcodes worldHeight: 8, worldOffsetAbove: 28, font config,
+    stroke widths, worldWidthPerChar: 5. Comment says "Kept local
+    rather than in shellConfig because the label is a generic naming
+    surface". Fair — but then host the knobs in a dedicated
+    nameLabelConfig.ts rather than inside the renderer.
+
+  [MEDIUM] src/game/render3d/MirrorMesh3D.ts:47-48 `ARM_THICKNESS_FRAC`
+    = 0.18 and `ARM_PANEL_GAP_FRAC` = 0.035 are mirror-system
+    tunables that should sit next to MIRROR_ARM_LENGTH_FRAC /
+    MIRROR_PANEL_SIZE_MULT in mirrorPanelCache.ts.
+
+  [LOW] Same magic-fraction trio for barrel orbit clamps appears at
+    three sites:
+      - src/game/render3d/TurretMesh3D.ts:227, 237, 242
+        (TURRET_HEIGHT * 0.45 / * 0.35 / * 0.9)
+      - src/game/math/BarrelGeometry.ts:197, 199, 204
+      - src/game/render3d/HudAnchor.ts:30, 33, 38
+    Extract to a single BARREL_ORBIT_CLAMP_FRACTIONS constant or a
+    shared helper.
