@@ -26,6 +26,19 @@ import { getTurretBlueprint } from './blueprints';
  *  flush against the body's outer surface. */
 export const MIRROR_ARM_LENGTH_FRAC = 1.0;
 
+/** Mirror panel size multiplier. Scales BOTH the sim collision
+ *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
+ *  Render3DEntities reads `mirrorPanels[0].halfWidth` directly so a
+ *  bump here flows through to the visual panel without any other
+ *  edit. 1.0 = legacy "panel side = 2 × bodyRadius"; 2.0 = doubles
+ *  every linear dimension (4× area), the current value the user
+ *  asked for. The arm length doesn't scale with this — the panel
+ *  center still sits at the body's outer edge — so a >1 multiplier
+ *  intentionally lets the panel near-edge cross into the body
+ *  silhouette, which is what gives the bigger panel its extra reach
+ *  without floating off into space. */
+export const MIRROR_PANEL_SIZE_MULT = 2.0;
+
 /** Mutates `panelsOut` (push), returns the bound radius the caller
  *  should assign to `unit.mirrorBoundRadius`. Returns 0 when the
  *  blueprint declares no mirror-bearing turrets. */
@@ -34,7 +47,7 @@ export function buildMirrorPanelCache(
   panelsOut: CachedMirrorPanel[],
 ): number {
   const unitBodyRadius = bp.bodyRadius;
-  const halfSide = unitBodyRadius;
+  const halfSide = unitBodyRadius * MIRROR_PANEL_SIZE_MULT;
   const armLength = unitBodyRadius * MIRROR_ARM_LENGTH_FRAC;
   let mirrorBoundRadius = 0;
 

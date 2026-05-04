@@ -50,6 +50,7 @@ import {
 } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
+import { getUnitBodyShapeKey } from '../math/BodyDimensions';
 import {
   buildBuildingShape,
   buildConstructionEmitterRig,
@@ -240,18 +241,15 @@ type EntityMesh = {
    *  polygon / rect bodies (which use polyChassisSlot) and at MIN tier
    *  (where the LOW-tier `unitInstanced` path takes over entirely). */
   smoothChassisSlots?: number[];
-  /** Single slot index into the per-renderer polygonal-chassis
-   *  InstancedMesh (one InstancedMesh per polygon / rect renderer:
-   *  scout, brawl, tank, burst, mortar, hippo). Present on polygon /
-   *  rect units at LOW+ tier; undefined for smooth bodies (which use
-   *  smoothChassisSlots) and at MIN tier. The pool that owns the slot
-   *  is keyed by `rendererId`. */
+  /** Single slot index into the body-shape keyed polygonal-chassis
+   *  InstancedMesh pool. Present on polygon / rect units at LOW+ tier;
+   *  undefined for smooth bodies (which use smoothChassisSlots) and at
+   *  MIN tier. */
   polyChassisSlot?: number;
-  /** Cached renderer id (e.g. 'arachnid', 'tank') resolved once at
-   *  mesh-build time. Unit-blueprint lookups in the per-frame update
-   *  loop are wasted work — the unitType never changes for a live
-   *  entity, so we stash the result here. */
-  rendererId: string;
+  /** Cached body-shape key resolved once at mesh-build time. The unit's
+   *  bodyShape is the authored source; this key only identifies the
+   *  matching instanced geometry pool. */
+  bodyShapeKey: string;
   bodyShape?: UnitBodyShape;
   hideChassis?: boolean;
   turrets: TurretMesh[];
@@ -407,7 +405,7 @@ export class Render3DEntities {
   private lod: Lod3DState = snapshotLod();
 
   // Shared geometries & per-team materials (avoid per-entity allocation).
-  // Unit chassis geometries are per-renderer extrusions handled by BodyShape3D.
+  // Unit chassis geometries are body-shape keyed and handled by BodyShape3D.
   // Sphere (not cylinder) so the barrels can pivot freely in any
   // direction — the head reads as a turret ball the barrels swing
   // around, letting pitch aim up toward AA targets without the
@@ -717,21 +715,18 @@ export class Render3DEntities {
   private _unitChainMat = new THREE.Matrix4();
 
   // ── LOW+ tier polygonal/rect chassis InstancedMeshes ──────────────
-  // One InstancedMesh per polygonal renderer (scout / brawl / tank /
-  // burst / mortar — all ExtrudeGeometry from BodyShape3D's per-
-  // renderer cache) plus one for the rect renderer (hippo). Lazily
-  // created the first time a unit of that renderer enters the scene,
-  // because the geometry isn't built until BodyShape3D's
-  // `getBodyGeom(renderer)` is called. Each pool's mesh references the
-  // SAME geometry object that BodyShape3D's CACHE owns — disposed by
-  // BodyShape3D's `disposeBodyGeoms()` in destroy(), not by us, so we
-  // tear down `polyChassis` pool meshes BEFORE that call.
+  // One InstancedMesh per polygon / rect body shape. Lazily created
+  // the first time a unit with that bodyShape enters the scene because
+  // the geometry isn't built until BodyShape3D's `getBodyGeom(shape)`
+  // is called. Each pool's mesh references the SAME geometry object
+  // that BodyShape3D's CACHE owns — disposed by BodyShape3D's
+  // `disposeBodyGeoms()` in destroy(), not by us, so we tear down
+  // `polyChassis` pool meshes BEFORE that call.
   //
   // Polygonal bodies always have parts.length === 1 (single
-  // ExtrudeGeometry per renderer), so each unit takes exactly one slot
-  // in its renderer's pool. Composite-or-multi-part polygonal bodies
-  // would need a slot list like smoothChassisSlots — for now the
-  // BodyShape3D shapes guarantee single-part.
+  // Extruded polygonal bodies are single-part today, so each unit takes
+  // exactly one slot in its body-shape pool. Composite-or-multi-part
+  // polygonal bodies would need a slot list like smoothChassisSlots.
   private static readonly POLY_CHASSIS_CAP = 4096;
   private polyChassis = new Map<string, {
     mesh: THREE.InstancedMesh;
@@ -1929,12 +1924,12 @@ export class Render3DEntities {
   }
 
   /** Look up or lazily create the InstancedMesh pool for a polygonal /
-   *  rect renderer. The geometry is BodyShape3D's per-renderer
-   *  ExtrudeGeometry — already cached and shared, so we just take a
-   *  reference. Material is a private MeshLambertMaterial owned by the
-   *  pool; per-instance team color modulates against its white base. */
+   *  rect body shape. The geometry is BodyShape3D's cached
+   *  ExtrudeGeometry, so we just take a reference. Material is a
+   *  private MeshLambertMaterial owned by the pool; per-instance team
+   *  color modulates against its white base. */
   private getOrCreatePolyPool(
-    rendererId: string,
+    bodyShapeKey: string,
     geom: THREE.BufferGeometry,
   ): {
     mesh: THREE.InstancedMesh;
@@ -1944,7 +1939,7 @@ export class Render3DEntities {
     freeSlots: number[];
     nextSlot: number;
   } {
-    let pool = this.polyChassis.get(rendererId);
+    let pool = this.polyChassis.get(bodyShapeKey);
     if (pool) return pool;
     const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     const mesh = new THREE.InstancedMesh(
@@ -1977,19 +1972,19 @@ export class Render3DEntities {
       freeSlots: [],
       nextSlot: 0,
     };
-    this.polyChassis.set(rendererId, pool);
+    this.polyChassis.set(bodyShapeKey, pool);
     return pool;
   }
 
-  /** Reserve one slot for entity `eid` in the per-renderer poly pool.
+  /** Reserve one slot for entity `eid` in the body-shape poly pool.
    *  Returns the slot index, or null when the cap is exhausted (caller
    *  falls back to per-Mesh chassis). */
   private allocPolyChassisSlot(
     eid: EntityId,
-    rendererId: string,
+    bodyShapeKey: string,
     geom: THREE.BufferGeometry,
   ): number | null {
-    const pool = this.getOrCreatePolyPool(rendererId, geom);
+    const pool = this.getOrCreatePolyPool(bodyShapeKey, geom);
     let slot: number;
     if (pool.freeSlots.length > 0) {
       slot = pool.freeSlots.pop()!;
@@ -2002,14 +1997,14 @@ export class Render3DEntities {
     return slot;
   }
 
-  /** Release entity `eid`'s slot in renderer `rendererId`'s pool back
+  /** Release entity `eid`'s slot in the body-shape pool back
    *  to the free list. Called from the per-frame seen-pruning loop on
    *  unit despawn. */
   private freePolyChassisSlotForEntity(
-    rendererId: string,
+    bodyShapeKey: string,
     eid: EntityId,
   ): void {
-    const pool = this.polyChassis.get(rendererId);
+    const pool = this.polyChassis.get(bodyShapeKey);
     if (!pool) return;
     const slot = pool.slots.get(eid);
     if (slot === undefined) return;
@@ -2135,7 +2130,7 @@ export class Render3DEntities {
     im.instanceMatrix.needsUpdate = true;
   }
 
-  /** Wipe every active polygonal-chassis slot across every per-renderer
+  /** Wipe every active polygonal-chassis slot across every body-shape
    *  pool (LOD flip). The pool meshes stay in the scene with count = 0
    *  (no GPU draw work) until the next allocation refills them. */
   private releaseAllPolyChassisSlots(): void {
@@ -2183,7 +2178,7 @@ export class Render3DEntities {
     this.world.remove(m.group);
     this.disposeWorldParentedOverlays(m);
     if (m.smoothChassisSlots) this.freeSmoothChassisSlotsForEntity(id);
-    if (m.polyChassisSlot !== undefined) this.freePolyChassisSlotForEntity(m.rendererId, id);
+    if (m.polyChassisSlot !== undefined) this.freePolyChassisSlotForEntity(m.bodyShapeKey, id);
     for (const tm of m.turrets) {
       if (tm.headSlot !== undefined) this.freeTurretHeadSlot(tm.headSlot);
       if (tm.barrelSlots) {
@@ -2270,8 +2265,8 @@ export class Render3DEntities {
       }
     }
 
-    if (m.polyChassisSlot !== undefined && m.rendererId) {
-      const pool = this.polyChassis.get(m.rendererId);
+    if (m.polyChassisSlot !== undefined && m.bodyShapeKey) {
+      const pool = this.polyChassis.get(m.bodyShapeKey);
       if (pool) {
         setInstanceAlphaSlot(pool.mesh, m.polyChassisSlot, flag);
       }
@@ -2412,15 +2407,15 @@ export class Render3DEntities {
       const meshWasBuilt = !m;
       if (!m) {
         const group = new THREE.Group();
-        // Pull the 2D renderer id from the unit blueprint and use the
-        // matching 3D body (scout=diamond, tank=pentagon, arachnid=big
-        // sphere + small sphere, etc.). Falls back to arachnid for
-        // unknown renderers.
-        let bp;
+        // Pull the authored body shape from the unit blueprint and use
+        // it for both the visible chassis geometry and the instanced
+        // pool key. Falls back to the shared body-shape fallback for
+        // unknown unit types.
+        let bp: ReturnType<typeof getUnitBlueprint> | undefined;
         try { bp = getUnitBlueprint(e.unit!.unitType); }
         catch { /* leave undefined; fallback handled below */ }
-        const rendererId = bp?.renderer ?? 'arachnid';
         const bodyShape = bp?.bodyShape ?? FALLBACK_UNIT_BODY_SHAPE;
+        const bodyShapeKey = getUnitBodyShapeKey(bodyShape);
         const bodyEntry = getBodyGeom(bodyShape);
         const hideChassis = bp?.hideChassis === true;
         // The chassis is a group so composite bodies (arachnid, beam,
@@ -2458,8 +2453,8 @@ export class Render3DEntities {
         // Chassis routing — three paths in priority order:
         //   1. Smooth body  → `smoothChassis` InstancedMesh (one shared
         //      sphere geometry, multiple slots per composite).
-        //   2. Polygon / rect → per-renderer `polyChassis` pool (one
-        //      InstancedMesh per renderer ID, single slot per unit
+        //   2. Polygon / rect → body-shape `polyChassis` pool (one
+        //      InstancedMesh per body-shape key, single slot per unit
         //      because polygonal bodies are single-part).
         //   3. Cap exhausted → fall back to per-Mesh chassis (one Mesh
         //      per part, shared team-primary material).
@@ -2472,7 +2467,7 @@ export class Render3DEntities {
           smoothChassisSlots = this.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
         } else if (!hideChassis && !bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
           const allocated = this.allocPolyChassisSlot(
-            e.id, rendererId, bodyEntry.parts[0].geometry,
+            e.id, bodyShapeKey, bodyEntry.parts[0].geometry,
           );
           if (allocated !== null) polyChassisSlot = allocated;
         }
@@ -2600,7 +2595,7 @@ export class Render3DEntities {
 
         this.world.add(group);
         m = {
-          group, yawGroup, liftGroup, chassis, chassisMeshes, rendererId, bodyShape,
+          group, yawGroup, liftGroup, chassis, chassisMeshes, bodyShapeKey, bodyShape,
           hideChassis,
           turrets: turretMeshes, lodKey: unitLodKey,
           constructionEmitter,
@@ -2653,7 +2648,11 @@ export class Render3DEntities {
         // visual arm + panel match the sim's collision rectangle.
         const mirrorPanels = e.unit?.mirrorPanels;
         if (mirrorPanels && mirrorPanels.length > 0 && e.unit) {
-          const panelHalfSide = e.unit.bodyRadius;
+          // Read panel size from the cached collision rectangle so
+          // the visual panel and the sim panel are guaranteed to
+          // agree — bumping MIRROR_PANEL_SIZE_MULT in
+          // mirrorPanelCache.ts flows through here automatically.
+          const panelHalfSide = mirrorPanels[0].halfWidth;
           const panelArmLength = mirrorPanels[0].offsetX;
           // Panel world-y should be the unit's bodyCenterHeight; the
           // mesh is parented to liftGroup at y = chassisLift, so the
@@ -2827,7 +2826,7 @@ export class Render3DEntities {
             this.smoothChassis.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
           }
         } else if (m.polyChassisSlot !== undefined) {
-          const pool = this.polyChassis.get(m.rendererId);
+          const pool = this.polyChassis.get(m.bodyShapeKey);
           if (pool) pool.mesh.setMatrixAt(m.polyChassisSlot, Render3DEntities._ZERO_MATRIX);
         }
       } else if (m.smoothChassisSlots && this.smoothChassis) {
@@ -2869,7 +2868,7 @@ export class Render3DEntities {
       } else if (m.polyChassisSlot !== undefined) {
         // Polygonal/rect chassis: same parentMat × partMat composition
         // as the smooth path, including the lift translation.
-        const pool = this.polyChassis.get(m.rendererId);
+        const pool = this.polyChassis.get(m.bodyShapeKey);
         if (pool) {
           // Same per-unit chain as smooth chassis — reuse cached
           // parentQuat / liftedPos.
@@ -3221,11 +3220,11 @@ export class Render3DEntities {
         // back to the pool so future smooth-body units can recycle the
         // slot indices.
         if (m.smoothChassisSlots) this.freeSmoothChassisSlotsForEntity(id);
-        // Polygonal-chassis slot lives in the per-renderer pool keyed
-        // by m.rendererId — release it back so a future unit of the
-        // same renderer can take the slot.
+        // Polygonal-chassis slot lives in the body-shape pool keyed by
+        // m.bodyShapeKey — release it back so a future unit with the
+        // same body shape can take the slot.
         if (m.polyChassisSlot !== undefined) {
-          this.freePolyChassisSlotForEntity(m.rendererId, id);
+          this.freePolyChassisSlotForEntity(m.bodyShapeKey, id);
         }
         // Turret-head slots — one per turret on the unit that had a
         // visible head routed through the InstancedMesh path.
@@ -3288,10 +3287,10 @@ export class Render3DEntities {
         }
       }
     }
-    // Same for every per-renderer polygonal pool. count rides on
+    // Same for every body-shape polygonal pool. count rides on
     // each pool's nextSlot independently so a pool serving 50 units
     // doesn't get stuck running 4096 VS invocations per frame just
-    // because it shares the architecture with a busier renderer.
+    // because it shares the architecture with a busier body shape.
     for (const pool of this.polyChassis.values()) {
       pool.mesh.count = pool.nextSlot;
       if (pool.slots.size === 0) continue;
@@ -3390,11 +3389,11 @@ export class Render3DEntities {
           group,
           chassis,
           chassisMeshes: [shape.primary],
-          // Buildings don't use a unit-renderer body shape (they have
+          // Buildings don't use unit body-shape pools (they have
           // their own BuildingShape3D path), so the field is unused
           // here — empty string is fine since the unit-update loop
           // never reaches a building.
-          rendererId: '',
+          bodyShapeKey: '',
           turrets: [],
           lodKey: this.lod.key,
           // Store the accent meshes separately so the LOD-key rebuild
