@@ -8,14 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   6) OUTDATED / STALE COMMENTS
   ---------------------------------------------------
 
-  [MEDIUM] src/config.ts:336-339 — `TURRET_HEIGHT` doc points to
-    `getUnitMuzzleHeight` in `combatUtils.ts`. That function does not
-    exist. Spawn altitude now comes from `BarrelGeometry.getBarrelTip`
-    / `resolveWeaponWorldMount`.
-
-  [MEDIUM] src/game/render3d/Render3DEntities.ts:84-88 repeats the
-    `getUnitMuzzleHeight` reference (function doesn't exist).
-
   [MEDIUM] src/game/render3d/Render3DEntities.ts:3475-3480 says "mirrors
     the 2D BuildingRenderer's bottom-up fill" — there is no 2D
     BuildingRenderer in the codebase any more. Also says "scales

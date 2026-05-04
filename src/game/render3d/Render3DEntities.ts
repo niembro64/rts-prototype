@@ -83,9 +83,10 @@ import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
-// The sim's projectile-spawn code (getUnitMuzzleHeight in
-// combat/combatUtils.ts) derives muzzle altitude from the same body-top
-// value so visual barrel tip and sim muzzle stay locked together.
+// The sim's projectile-spawn point is derived by getBarrelTip
+// (src/game/math/BarrelGeometry.ts) pivoted at the world mount returned
+// by resolveWeaponWorldMount (sim/combat/combatUtils.ts), so visual
+// barrel tip and sim muzzle stay locked together.
 
 const BUILDING_HEIGHT = 120;
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;

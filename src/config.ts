@@ -332,10 +332,14 @@ export const REAL_BATTLE_COMMANDER_RADIUS_FRACTION = 0.85;
 // shape — see src/game/math/BodyDimensions.ts), so the only shared
 // vertical constant left here is the turret head extent.
 
-/** Vertical extent of a turret's head (barrel cluster sits at
- *  mid-height of the turret head). Projectile spawn altitude =
- *  bodyTopY(renderer, radius) + TURRET_HEIGHT/2, computed per-unit
- *  in getUnitMuzzleHeight (sim/combat/combatUtils.ts). */
+/** Vertical extent of a turret's head (the barrel cluster sits at
+ *  mid-height of the turret head). The projectile spawn point is
+ *  computed per-shot by `getBarrelTip` in `src/game/math/BarrelGeometry`
+ *  (which walks the barrel cluster geometry), with the world-space
+ *  mount it pivots from coming from `resolveWeaponWorldMount` in
+ *  `combat/combatUtils.ts`. TURRET_HEIGHT itself is now used only as
+ *  a barrel-orbit clamp inside that geometry path; sim spawn math
+ *  doesn't reference it directly. */
 export const TURRET_HEIGHT = 16;
 
 /** Extra vertical height added above a mirror-host unit's turret top
