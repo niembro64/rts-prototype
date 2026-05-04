@@ -306,13 +306,9 @@ export class RtsScene3D {
   //
   // No initialValue passed on purpose — the EMA's "wait for first
   // sample" mode seeds at the actual rate as soon as a real interval
-  // is observed. Using the same optimistic 60-fps init that SPS gets
-  // would produce a multi-minute convergence problem on this signal:
-  // FSPS samples arrive at ~0.5 Hz (default keyframe ratio = 1/64 of
-  // 32 SPS), so an EMA with α = 0.01 takes ~100 samples × 2s = ~200
-  // seconds to decay from 60 down to the real reading — long enough
-  // that the user sees FSPS displayed higher than SPS, which is
-  // logically impossible (FSPS is a strict subset of SPS).
+  // is observed. FSPS samples arrive at ~0.5 Hz by default, so even a
+  // small nonzero seed can linger too long and make FSPS look higher
+  // than SPS, which is logically impossible.
   private fullSnapTracker = new EmaTracker(EMA_CONFIG.snaps);
   private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs, EMA_INITIAL_VALUES.frameMs);
   private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
@@ -440,8 +436,8 @@ export class RtsScene3D {
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
     if (config.lookupPlayerName) this.lookupPlayerName = config.lookupPlayerName;
-    this.terrainCenter = config.terrainCenter ?? 'lake';
-    this.terrainDividers = config.terrainDividers ?? 'lake';
+    this.terrainCenter = config.terrainCenter ?? 'valley';
+    this.terrainDividers = config.terrainDividers ?? 'valley';
     this.terrainMapShape = config.terrainMapShape ?? 'circle';
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
@@ -691,7 +687,7 @@ export class RtsScene3D {
     // an artificial floor for zoom-in (camera couldn't dip below
     // water + clearance, even though the real basin extends down
     // to TILE_FLOOR_Y). Raw mesh terrain lets the player zoom toward
-    // the actual lake bed; the heightmap's own TILE_FLOOR_Y clamp
+    // the actual valley bed; the heightmap's own TILE_FLOOR_Y clamp
     // is the true world floor.
     this.threeApp.orbit.setTerrainSampler((x, z) =>
       getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight)

@@ -400,7 +400,7 @@ function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void
   //
   // Route through pathfinding so the commander walks AROUND water
   // to reach the repair target — straight lines toward a target
-  // across a lake used to push the commander into the shore. The
+  // across a valley used to push the commander into the shore. The
   // final waypoint keeps targetId so the repair handler fires when
   // the commander arrives.
   const targetPoint = getEntityTargetPoint(target);
@@ -432,7 +432,7 @@ function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void
     // AROUND water / mountains to reach the attack target. Without
     // this, an `attack` action whose (x, y) is the target's
     // position bee-lined the unit straight at the target — even
-    // through a lake — leaving the visualized line cutting across
+    // through a valley — leaving the visualized line cutting across
     // water while the unit pressed into the shore. The final
     // waypoint keeps targetId so the targeting handler engages
     // the right entity once the unit is in range.
@@ -496,7 +496,7 @@ function addPathActions(
   // the connecting chord between consecutive queued goals would
   // never get pathfinder-checked. That manifests as the visualised
   // chain dipping through water between two queued goals on
-  // opposite sides of a divider lake (each individual segment was
+  // opposite sides of a divider valley (each individual segment was
   // planned correctly, but the connecting hop between them was
   // never planned at all).
   let planStartX = unit.transform.x;
@@ -563,7 +563,7 @@ function addPathActions(
  *  Why this matters: a `repair` / `attack` / `build` action whose
  *  (x, y) is across water made the unit press into the shoreline
  *  with the water-pusher catching them, while the visualized line
- *  cut straight across the lake — exactly the "paths over water"
+ *  cut straight across the valley — exactly the "paths over water"
  *  artifact the user reported. Routing through `expandPathActions`
  *  here makes the planner do its job (water/building/mountain
  *  avoidance) and the visualized path matches what the unit

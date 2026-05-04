@@ -142,8 +142,9 @@ export class ThreeApp {
     parent.appendChild(this.renderer.domElement);
 
     // Prebuilt environment map for any PBR (MeshStandardMaterial) meshes in
-    // the scene — mirror panels at MED+ LOD become metalness=1 chrome, and
-    // `scene.environment` is the cube they reflect. RoomEnvironment ships
+    // the scene — mirror panels use a chrome variant and metal
+    // extractor blades use shiny-gray metal; `scene.environment` is
+    // the cube they reflect. RoomEnvironment ships
     // with three.js and gives a varied lights-and-walls IBL cube; PMREM
     // preprocesses it for the renderer. One-shot cost at scene init; zero
     // per-frame overhead.

@@ -28,6 +28,7 @@ import {
   getFactoryBuildingVisualMetrics,
 } from '../sim/blueprints';
 import type { BuildingRenderProfile } from '../sim/types';
+import { BUILDING_PALETTE, SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import {
   BUILD_BUBBLE_GHOST_COLOR_HEX,
   BUILD_BUBBLE_GHOST_OPACITY,
@@ -229,23 +230,11 @@ const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
 const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
 const windBladeGeom = createWindBladeGeometry();
 
-const BUILDING_PALETTE = {
-  structureDark: 0x172331,
-  structureMid: 0x34414d,
-  structureLight: 0xc8d4dd,
-  photovoltaic: 0x123a58,
-  photovoltaicBack: 0x26313a,
-  cyanGlow: 0x73ddeb,
-  cyanGlass: 0x82dce9,
-  constructionAmber: 0xe8cd72,
-  constructionSpark: 0xdbe9ee,
-} as const;
-
 // Shared blue-gray structure used by non-team building frames.
 const chimneyMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
-// Solar-panel glass uses the same PBR trick as mirror panels: metalness=1
-// and near-zero roughness reflect the scene PMREM, while the dark blue
-// base tint keeps it reading as photovoltaic glass.
+// Solar-panel glass uses high metalness and low roughness to reflect
+// the scene PMREM, while the dark blue base tint keeps it reading as
+// photovoltaic glass.
 const solarCellMat = new THREE.MeshStandardMaterial({
   color: BUILDING_PALETTE.photovoltaic,
   metalness: 1.0,
@@ -297,11 +286,7 @@ const windGlowMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
 });
 const extractorDarkMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
-const extractorBladeMat = new THREE.MeshStandardMaterial({
-  color: BUILDING_PALETTE.structureLight,
-  metalness: 0.78,
-  roughness: 0.18,
-});
+const extractorBladeMat = new THREE.MeshStandardMaterial(SHINY_GRAY_METAL_MATERIAL);
 const extractorGlowMat = new THREE.MeshBasicMaterial({
   color: BUILDING_PALETTE.cyanGlow,
   transparent: true,

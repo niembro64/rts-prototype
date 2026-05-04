@@ -92,6 +92,7 @@ import { normalizeLodCellSize } from '../lodGridMath';
 import { landCellIndexForSize } from '../landGrid';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
+import { MIRROR_CHROME_MATERIAL } from './BuildingVisualPalette';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -137,10 +138,10 @@ const INV_EXTRACTOR_BASE_PRODUCTION = (() => {
 })();
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
-const MIRROR_PANEL_COLOR = 0xffffff;
-const MIRROR_PANEL_METALNESS = 0.12;
-const MIRROR_PANEL_ROUGHNESS = 0.58;
-const MIRROR_PANEL_ENV_INTENSITY = 0.22;
+const MIRROR_PANEL_COLOR = MIRROR_CHROME_MATERIAL.color;
+const MIRROR_PANEL_METALNESS = MIRROR_CHROME_MATERIAL.metalness;
+const MIRROR_PANEL_ROUGHNESS = MIRROR_CHROME_MATERIAL.roughness;
+const MIRROR_PANEL_ENV_INTENSITY = MIRROR_CHROME_MATERIAL.envMapIntensity;
 // Detailed unit parts use shared instanced pools by default. The
 // per-mesh path remains only as an allocation fallback, not as the
 // normal rendering route.
@@ -525,7 +526,7 @@ export class Render3DEntities {
   // (edge → +Z, normal → +X) per panel below. Plane has zero physical
   // thickness so the visible mesh and the sim collision rectangle live
   // on EXACTLY the same surface — no front/back offset where a beam
-  // could appear to clip the visible chrome but miss the sim plane.
+  // could appear to clip the visible mirror but miss the sim plane.
   private mirrorGeom = new THREE.PlaneGeometry(1, 1);
   /** Instanced-only clone for the same reason as turret heads/barrels:
    *  the instance-alpha attribute is renderer-private state. */
@@ -592,9 +593,7 @@ export class Render3DEntities {
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
-  // Stable white PBR material for mirror panels. Keep a small amount
-  // of environment response so the panel reads as reflective without
-  // becoming a noisy chrome surface.
+  // Chrome variant of the extractor-blade shiny gray base color.
   private mirrorShinyNeutralMat = new THREE.MeshStandardMaterial({
     color: MIRROR_PANEL_COLOR,
     metalness: MIRROR_PANEL_METALNESS,
@@ -847,13 +846,13 @@ export class Render3DEntities {
   private barrelNextSlot = 0;
 
   // ── LOW+ tier mirror-panel InstancedMesh ────────────────────────
-  // Loris-only feature, but each Loris carries 4 panels and chrome-
+  // Loris-only feature, but each Loris carries 4 panels and chrome
   // PBR each — so a 100-Loris scene is 400 separate MeshStandardMaterial
   // draws today. Routing them through ONE shared InstancedMesh with
-  // one white per-instance color collapses that to 1 draw call.
-  // metalness=1 + roughness=0 are material-level uniforms so they
+  // one shared per-instance color collapses that to 1 draw call.
+  // metalness + roughness are material-level uniforms so they
   // stay shared across panels; mirror arms still carry team color.
-  // The PMREM environment map for chrome reflection is set on the
+  // The PMREM environment map for metal reflection is set on the
   // scene, not the material, so it applies to all instances.
   private static readonly MIRROR_PANEL_CAP = 1024;
   private mirrorPanelInstanced: THREE.InstancedMesh | null = null;
@@ -1003,9 +1002,9 @@ export class Render3DEntities {
     makeInstanceAlphaCapable(this.barrelInstanced, Render3DEntities.BARREL_CAP);
     this.world.add(this.barrelInstanced);
 
-    // Mirror-panel InstancedMesh — one shared stable white material
-    // with muted environment response, double-sided so the panel reads
-    // from either side, and a fixed white panel color for every owner.
+    // Mirror-panel InstancedMesh — one shared chrome material,
+    // double-sided so the panel reads from either side, with a fixed
+    // owner-agnostic panel color.
     const mirrorMat = new THREE.MeshStandardMaterial({
       color: MIRROR_PANEL_COLOR,
       metalness: MIRROR_PANEL_METALNESS,
@@ -3197,7 +3196,7 @@ export class Render3DEntities {
       // X axis (its width axis, before the Y flip). For our Y rotation
       // of -(angle + π/2) the right sign is +mirrorPitch — using -mirrorPitch
       // would tilt the visible panel forward while the sim treats it as
-      // tilting backward, so the rendered chrome would lean opposite to
+      // tilting backward, so the rendered panel would lean opposite to
       // where the sim's reflection plane actually sits.
       if (m.mirrors) {
         m.mirrors.root.visible = this.mirrorsEnabled;
@@ -3408,7 +3407,7 @@ export class Render3DEntities {
         this.barrelInstanced.instanceMatrix.needsUpdate = true;
       }
     }
-    // Mirror panels — one shared chrome PBR draw call.
+    // Mirror panels — one shared shiny-gray PBR draw call.
     if (this.mirrorPanelInstanced) {
       this.mirrorPanelInstanced.count = this.mirrorsEnabled ? this.mirrorPanelNextSlot : 0;
       if (this.mirrorPanelNextSlot > 0) {

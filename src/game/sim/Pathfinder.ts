@@ -69,7 +69,7 @@ const SLOPE_BLOCK_NZ = 0.34;
 
 /** Snap radius for blocked endpoints, in cells. 32 cells = 640 wu;
  *  enough to find a shore from the deepest part of the demo's
- *  central lake. */
+ *  central valley. */
 const SNAP_RADIUS_CELLS = 32;
 
 /** Hard cap on A* expansions per query. With the CC pre-flight

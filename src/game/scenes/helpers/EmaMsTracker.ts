@@ -6,7 +6,8 @@
 //   - lo  : floor tracker — fast adopt on a new minimum, slow drift up
 //           (for "best frame we've ever hit" as a self-calibrating
 //           frame-budget on displays of any refresh rate)
-// Starts at an optimistic initial value so LOD begins at MAX quality.
+// Starts from the caller-provided seed. The current performance HUD
+// seeds visible ms stats at 0.0 so they climb from an empty baseline.
 
 import type { EmaMsConfig } from '@/types/config';
 
@@ -21,8 +22,8 @@ export class EmaMsTracker {
    *   the `hi` tracker (high new value → spike, otherwise → slow decay)
    *   and the `lo` tracker in reverse (low new value → fast drop,
    *   otherwise → slow rise).
-   * @param initialValue Optimistic starting value (e.g. 1 for ms timings).
-   *   If provided, EMA starts "low" and real samples pull it up.
+   * @param initialValue Starting value.
+   *   If provided, EMA starts from that exact value.
    *   If omitted, waits for first sample (legacy behavior).
    */
   constructor(private config: EmaMsConfig, initialValue?: number) {

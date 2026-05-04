@@ -253,7 +253,7 @@ export class Input3DManager {
     width: number,
     height: number,
     playerCount: number,
-    terrainCenter: TerrainShape = 'lake',
+    terrainCenter: TerrainShape = 'valley',
   ): void {
     this.mapWidth = width;
     this.mapHeight = height;

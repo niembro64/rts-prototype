@@ -230,22 +230,22 @@ export const BAR_COLORS = BAR_THEMES;
 export const EMA_CONFIG: Record<string, EmaTierConfig> = {
   tps: {
     avg: 0.01,
-    low: { drop: 0.5, recovery: 0.001 },
+    low: { drop: 0.01, recovery: 0.001 },
   },
   fps: {
     avg: 0.01,
-    low: { drop: 0.5, recovery: 0.001 },
+    low: { drop: 0.01, recovery: 0.001 },
   },
   snaps: {
     avg: 0.01,
-    low: { drop: 0.5, recovery: 0.001 },
+    low: { drop: 0.01, recovery: 0.001 },
   },
 };
 
 // Frame timing EMA config (tracks durations in ms — uses "hi" instead of "low")
 const FRAME_MS_EMA: EmaMsConfig = {
   avg: 0.01,
-  hi: { spike: 0.5, recovery: 0.001 },
+  hi: { spike: 0.01, recovery: 0.001 },
 };
 export const FRAME_TIMING_EMA = {
   frameMs: FRAME_MS_EMA,
@@ -263,37 +263,23 @@ export const FRAME_TIMING_EMA = {
  * Rate trackers (FPS/TPS/SPS): high number = good performance.
  * Ms trackers (frame/render/logic): low number = good performance.
  *
- * For LOD-feeding trackers, the seed targets a NORMALIZED RATIO of 0.5
- * (the midpoint between MIN and MAX tier). Starting at 0.0 (e.g. fps=0,
- * tickMs=budget) opens the game at MIN, which looks bad. Starting at 1.0
- * (everything full quality) risks freezing on load while the EMA catches
- * up to the real load. 0.5 splits the difference: the game opens at a
- * mid-tier and migrates to whatever the measured performance supports
- * within the EMA's first few samples.
- *
- * Display-only trackers (the per-frame ms bars in PLAYER CLIENT) are
- * still seeded at frame budget so the bars fill fully red until real
- * samples arrive — they don't feed LOD selection so the visual cue
- * trumps the ratio rule there.
+ * We seed visible EMA stats at 0.0 so the bottom bars start from an
+ * honest empty baseline and climb as real samples arrive. This also
+ * means auto-LOD begins pessimistically for FPS/TPS-driven signals
+ * instead of assuming a healthy mid-tier before measurement.
  */
-const FRAME_BUDGET_MS_60HZ = 1000 / 60;
 export const EMA_INITIAL_VALUES = {
-  // FPS feeds the PLAYER CLIENT auto-LOD ladder via fps / 60. 30 → 0.5
-  // ratio → mid-tier seed. tps and snaps are not consumed here: the
-  // server recomputes its TPS/CPU seeds in its constructor (they depend
-  // on the configured tickRateHz, which this config can't see).
+  // FPS feeds the PLAYER CLIENT auto-LOD ladder via fps / 60.
+  // TPS/CPU host seeds live in GameServer because they depend on the
+  // configured tickRateHz.
   tps: 0,
-  fps: 30,
+  fps: 0,
   snaps: 0,
 
-  // Ms trackers — seed at the 60Hz frame budget. These drive the
-  // msBarStyle UI in the client bar (CPU/GPU/FRAME/longtask), which
-  // should fill fully red until real samples arrive. None of these feed
-  // a client-side LOD ratio, so the display-friendly seed wins over the
-  // 0.5-ratio rule.
-  frameMs: FRAME_BUDGET_MS_60HZ,
-  renderMs: FRAME_BUDGET_MS_60HZ,
-  logicMs: FRAME_BUDGET_MS_60HZ,
+  // Ms trackers drive CPU/GPU/FRAME bars. 0 ms means no measured work yet.
+  frameMs: 0,
+  renderMs: 0,
+  logicMs: 0,
 };
 
 // =============================================================================

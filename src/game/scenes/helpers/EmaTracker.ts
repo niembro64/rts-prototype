@@ -1,6 +1,7 @@
 // Generic EMA (Exponential Moving Average) tracker for real-time metrics.
 // Used for FPS and snapshot rate tracking with asymmetric drop/recovery.
-// Starts at an optimistic initial value so LOD begins at MAX quality.
+// Starts from the caller-provided seed. The current performance HUD
+// seeds visible stats at 0.0 so they climb from an empty baseline.
 
 export type { EmaConfig } from '@/types/game';
 import type { EmaConfig } from '@/types/game';
@@ -12,8 +13,8 @@ export class EmaTracker {
 
   /**
    * @param config EMA alpha values
-   * @param initialValue Optimistic starting value (e.g. 60 for FPS).
-   *   If provided, EMA starts "full" and real samples pull it down.
+   * @param initialValue Starting value.
+   *   If provided, EMA starts from that exact value.
    *   If omitted, waits for first sample (legacy behavior).
    */
   constructor(private config: EmaConfig, initialValue?: number) {

@@ -11,17 +11,17 @@
 //   sim.z  = three.y     (altitude / height)
 //
 // SUBMERGED-HIT FALLBACK. The terrain mesh is a heightmap that dips
-// DOWN to TILE_FLOOR_Y in lake basins. The water plane is a separate
+// DOWN to TILE_FLOOR_Y in valley basins. The water plane is a separate
 // translucent mesh layered on top at WATER_LEVEL — it does NOT
 // participate in the raycast. So for a typical RTS camera pitch
 // (~50°), a click on what visually appears to be the FAR shore of a
-// lake casts a ray that enters the basin from above and hits the
+// valley casts a ray that enters the basin from above and hits the
 // near-side SUBMERGED basin slope FIRST (it's closer to the camera
 // than the far shore). The terrain hit's three.y is below
 // WATER_LEVEL — literally underground. If we returned that point,
-// move commands resolve to a goal cell INSIDE the lake, the
+// move commands resolve to a goal cell INSIDE the valley, the
 // pathfinder snaps it to the nearest open cell (often the unit's
-// own side of the lake), and the unit walks a tiny distance instead
+// own side of the valley), and the unit walks a tiny distance instead
 // of crossing.
 //
 // Fix: when the terrain hit is submerged, fall back to a flat-ground
@@ -92,7 +92,7 @@ export class CursorGround {
 
     // First try the terrain mesh raycast. Use the hit only if it's
     // ABOVE water level — otherwise the user clicked "through" a
-    // lake and the hit is on the near-side basin floor, which is
+    // valley and the hit is on the near-side basin floor, which is
     // not what they were pointing at.
     const mesh = this.getTerrainMesh();
     if (mesh) {

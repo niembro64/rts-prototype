@@ -187,6 +187,6 @@ export const SERVER_SIM_HYSTERESIS: ServerSimHysteresis = {
 //   - cpu 'avg' = steady CPU load, 'low' = pessimistic high CPU load
 //     converted into lower headroom for the LOD ladder.
 export const SERVER_SIM_LOD_EMA_SOURCE: ServerSimEmaSource = {
-  tps: 'avg',
-  cpu: 'avg',
+  tps: 'low',
+  cpu: 'low',
 };

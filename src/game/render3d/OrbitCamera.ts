@@ -567,7 +567,7 @@ export class OrbitCamera {
       // Bound the Y blend's accumulated drift. Without this clamp,
       // zoom-OUT (α > 1) pushes target.y AWAY from anchor.y by a
       // factor of ~(1+f) per click, so a few cycles of "zoom in
-      // on a mountain, then zoom out over the lake" can leave
+      // on a mountain, then zoom out over the valley" can leave
       // toTargetY hundreds of wu above any real surface. At that
       // point `cameraY = toTargetY + d·cosP` gets driven into the
       // altitudeMax/Min clamp at small `d`, which inverts the

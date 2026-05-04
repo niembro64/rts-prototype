@@ -112,7 +112,7 @@ function spawnUnit(
   if (unit.unit) {
     // Demo order type is data-driven so initial waves can use cheap
     // normal move while still keeping the path expansion that routes
-    // around lakes / mountains / building lines.
+    // around valleys / mountains / building lines.
     unit.unit.actions = expandPathActions(
       x, y, targetX, targetY, waypointType,
       world.mapWidth, world.mapHeight, buildingGrid,

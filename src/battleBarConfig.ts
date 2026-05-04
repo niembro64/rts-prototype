@@ -53,21 +53,18 @@ export const BATTLE_CONFIG = {
   forceFieldsEnabled: { default: true },
   // Terrain shape — applied at game-construction time via
   // setTerrainCenterShape / setTerrainDividersShape (Terrain.ts).
-  // User-facing "VALLEY" options still map to the internal "lake"
-  // terrain shape so persisted settings and generation code remain
-  // stable while the UI uses the broader terrain language.
   center: {
     default: 'flat',
     options: [
-      { value: 'lake', label: 'VALLEY' },
+      { value: 'valley', label: 'VALLEY' },
       { value: 'mountain', label: 'MOUNTAIN' },
       { value: 'flat', label: 'FLAT' },
     ],
   },
   dividers: {
-    default: 'lake',
+    default: 'valley',
     options: [
-      { value: 'lake', label: 'VALLEYS' },
+      { value: 'valley', label: 'VALLEYS' },
       { value: 'mountain', label: 'MOUNTAINS' },
       { value: 'flat', label: 'FLAT' },
     ],
@@ -362,7 +359,8 @@ export function saveForceFieldsEnabled(enabled: boolean, mode: BattleMode): void
  *  else (corrupted localStorage, removed value) returns null so the
  *  caller falls back to the config default. */
 function parseTerrainShape(s: string | null): TerrainShape | null {
-  if (s === 'lake' || s === 'mountain' || s === 'flat') return s;
+  if (s === 'lake') return 'valley';
+  if (s === 'valley' || s === 'mountain' || s === 'flat') return s;
   return null;
 }
 

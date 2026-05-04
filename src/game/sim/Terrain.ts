@@ -70,9 +70,9 @@ export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 // interpolation instead of each module carrying its own copy.
 export const TERRAIN_MESH_SUBDIV = 4;
 
-/** |amplitude| in sim units when shape is 'lake' or 'mountain'.
+/** |amplitude| in sim units when shape is 'valley' or 'mountain'.
  *  Magnitude only — the sign is picked from the shape. Tuned so a
- *  lake is deep enough to flood meaningfully under WATER_LEVEL=0.5
+ *  valley is deep enough to flood meaningfully under WATER_LEVEL=0.5
  *  and a mountain is tall enough to actually block sightlines. */
 const TERRAIN_SHAPE_MAGNITUDE = 600;
 export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
@@ -117,13 +117,13 @@ export const TERRAIN_PLATEAU_CONFIG = {
 } as const;
 
 /** Mutable amplitude for the central ripple zone. Negative = basin
- *  (lake), positive = peak (mountain), 0 = flat. Default 'lake'.
+ *  (valley), positive = peak (mountain), 0 = flat. Default 'valley'.
  *  Set via `setTerrainCenterShape`; read on the heightmap hot path
  *  by `getTerrainHeight`. */
 let mountainRippleAmplitude = TERRAIN_SHAPE_MAGNITUDE;
 
 /** Mutable peak amplitude for the team-separator ridges. Same
- *  sign convention as the central ripple. Default 'lake'. Set via
+ *  sign convention as the central ripple. Default 'valley'. Set via
  *  `setTerrainDividersShape`. */
 let mountainSeparatorAmplitude = TERRAIN_SHAPE_MAGNITUDE;
 let terrainMapShape: TerrainMapShape = 'circle';
@@ -809,7 +809,7 @@ const NORMAL_GRADIENT_EPS = 1;
  *  on water or land, so the gradient flickers and the unit's
  *  rendered chassis jitters between "leaning down toward water"
  *  and "level with water". The user's complaint: a unit on the
- *  rim of a lake never wants to tilt because of the water; if it
+ *  rim of a valley never wants to tilt because of the water; if it
  *  has a tilt at all it should reflect the LAND alone.
  *
  *  Outside the ripple disc the sampled mesh is exactly flat, so the

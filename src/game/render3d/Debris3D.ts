@@ -35,6 +35,7 @@ import {
   MIRROR_PANEL_SIZE_MULT,
   getMirrorPanelCenter,
 } from '../sim/mirrorPanelCache';
+import { SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {
@@ -115,6 +116,7 @@ const TREAD_COLOR = 0x1a1d22;
 const WHEEL_COLOR = 0x2a2f36;
 const LEG_COLOR = 0x2a2f36;
 const BARREL_COLOR = 0xffffff;
+const MIRROR_PANEL_DEBRIS_COLOR = SHINY_GRAY_METAL_MATERIAL.color;
 
 // ── Lambert + per-instance alpha/color shader patch ─────────────
 // We keep MeshLambertMaterial (so debris shades under scene ambient
@@ -622,11 +624,9 @@ export class Debris3D {
     // One piece per mounted turret head, plus one piece per barrel in each
     // turret's barrel config. Turret-local Y sits on top of the unit's
     // per-renderer body (tall-bodied units => turret debris spawns higher).
-    // The turret head and mirror panels use the same `primary` color as
-    // the chassis — Render3DEntities now does the same so unit body and
-    // turret read as one solid color at one saturation. (lookupSecondary-
-    // Color is unused here now but kept around in case someone wants a
-    // contrasting tint later.)
+    // Turret heads use the same `primary` color as the chassis. Mirror
+    // panel debris uses the live mirror panel's shared shiny-gray base
+    // color; support rails remain player-colored.
     const bodyShape = bp.bodyShape;
 
     // Each barrel template is built in chassis-local coords assuming
@@ -825,7 +825,7 @@ export class Debris3D {
             sx: side,
             sy: side,
             sz: 1,
-            color: primary,
+            color: MIRROR_PANEL_DEBRIS_COLOR,
           });
           // Side support rails — same dimensions as MirrorMesh3D's
           // frame-tab extrusion, rotated in the chassis plane so each

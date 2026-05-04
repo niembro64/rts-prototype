@@ -109,8 +109,8 @@ function drawBackgroundLayer(): void {
   if (nextKey === backgroundKey) return;
   backgroundKey = nextKey;
 
-  // Lake / background — single pass over every minimap pixel, sample
-  // the heightmap once per pixel, write either lake-blue or the dark
+  // Water / background — single pass over every minimap pixel, sample
+  // the heightmap once per pixel, write either water-blue or the dark
   // background color into a single ImageData buffer with full alpha,
   // then putImageData stamps the whole tile in one shot. The minimap
   // is at most 180×180, so this is ~32K terrain samples (each a
@@ -172,11 +172,11 @@ function drawBackgroundLayer(): void {
     }
   }
 
-  const lakeImg = ctx.createImageData(w, h);
-  const lakePixels = lakeImg.data;
-  // Lake color same family as the 3D water plane; background mirrors
+  const waterImg = ctx.createImageData(w, h);
+  const waterPixels = waterImg.data;
+  // Water color same family as the 3D water plane; background mirrors
   // the previous fillStyle = '#1a1a2e' (= NEUTRAL_*).
-  const lakeR = 0x2a, lakeG = 0x55, lakeB = 0x9a;
+  const waterR = 0x2a, waterG = 0x55, waterB = 0x9a;
   let pi = 0;
   if (!showTerrain) {
     // GRID = OFF: 3D scene hides the capture-tile mesh entirely (no
@@ -186,10 +186,10 @@ function drawBackgroundLayer(): void {
     // canvas-render path.
     for (let py = 0; py < h; py++) {
       for (let px = 0; px < w; px++, pi += 4) {
-        lakePixels[pi]     = NEUTRAL_R;
-        lakePixels[pi + 1] = NEUTRAL_G;
-        lakePixels[pi + 2] = NEUTRAL_B;
-        lakePixels[pi + 3] = 0xff;
+        waterPixels[pi]     = NEUTRAL_R;
+        waterPixels[pi + 1] = NEUTRAL_G;
+        waterPixels[pi + 2] = NEUTRAL_B;
+        waterPixels[pi + 3] = 0xff;
       }
     }
   } else {
@@ -209,7 +209,7 @@ function drawBackgroundLayer(): void {
         const wet = height < WATER_LEVEL;
         let outR: number, outG: number, outB: number;
         if (wet) {
-          outR = lakeR; outG = lakeG; outB = lakeB;
+          outR = waterR; outG = waterG; outB = waterB;
         } else {
           outR = NEUTRAL_R; outG = NEUTRAL_G; outB = NEUTRAL_B;
           if (overlayActive && tileFinalR && tileFinalG && tileFinalB && tileHasColor) {
@@ -224,14 +224,14 @@ function drawBackgroundLayer(): void {
             }
           }
         }
-        lakePixels[pi]     = outR;
-        lakePixels[pi + 1] = outG;
-        lakePixels[pi + 2] = outB;
-        lakePixels[pi + 3] = 0xff;
+        waterPixels[pi]     = outR;
+        waterPixels[pi + 1] = outG;
+        waterPixels[pi + 2] = outB;
+        waterPixels[pi + 3] = 0xff;
       }
     }
   }
-  ctx.putImageData(lakeImg, 0, 0);
+  ctx.putImageData(waterImg, 0, 0);
 }
 
 function drawEntityLayer(): void {

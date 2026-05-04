@@ -22,7 +22,7 @@
 //
 // Each ring also carries `dTerrainLevels`: a signed integer count of
 // TERRAIN_D_TERRAIN steps above/below world height 0, before terrain
-// CENTER polarity is applied. LAKE inverts the level count, MOUNTAIN
+// CENTER polarity is applied. VALLEY inverts the level count, MOUNTAIN
 // preserves it, and FLAT collapses it to 0. Around each pad the terrain
 // blends smoothly from that derived height back to natural over
 // `terrainBlendRadius` unless a ring overrides it with `blendRadius`.
@@ -163,7 +163,7 @@ export function generateMetalDeposits(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
-  terrainCenterShape: TerrainShape = 'lake',
+  terrainCenterShape: TerrainShape = 'valley',
 ): MetalDeposit[] {
   const deposits: MetalDeposit[] = [];
   const halfExtent =

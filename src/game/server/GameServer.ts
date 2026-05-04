@@ -147,11 +147,7 @@ export class GameServer {
   // Game over tracking
   private isGameOver: boolean = false;
 
-  // Tick rate tracking (EMA-based). Seeded in the constructor body to
-  // half of `tickRateHz` so the LOD signal `tps / tickRateHz` opens at
-  // 0.5 (mid-tier) — see the EMA_INITIAL_VALUES comment in config.ts
-  // for the rationale. The placeholder `0` here is overwritten before
-  // any LOD read; tickRateHz isn't known at field-init time.
+  // Tick rate tracking (EMA-based). Seeded in the constructor body.
   private tpsAvg: number = 0;
   private tpsLow: number = 0;
   private tpsInitialized: boolean = true;
@@ -162,9 +158,7 @@ export class GameServer {
   // via NetworkServerSnapshotMeta.cpu so both host and remote clients can
   // see how saturated the simulation is relative to the tick budget.
   //
-  // Seeded in the constructor body to half of `tickBudgetMs` so the LOD
-  // signal `1 − tickMs/budget` opens at 0.5 (mid-tier). The placeholder
-  // `0` here is overwritten before any LOD read.
+  // Seeded in the constructor body.
   private tickMsAvg: number = 0;
   private tickMsHi: number = 0;
   private tickMsInitialized: boolean = true;
@@ -196,18 +190,12 @@ export class GameServer {
     this.tickRateHz = 60;
     this.userTickRateHz = 60;
 
-    // Seed the TPS/CPU EMAs at a 0.5 LOD ratio (mid-tier). The TPS
-    // ratio is `tpsAvg / tickRateHz`, so half-rate is half. The CPU
-    // ratio is `1 − tickMsAvg / tickBudgetMs`, so half-budget is also
-    // half. Done here (not as a class-field initializer) because both
-    // expressions depend on `this.tickRateHz`, which is only valid
-    // from this point on.
-    const halfTickRateHz = 0.5 * this.tickRateHz;
-    const halfTickBudgetMs = 0.5 * (1000 / this.tickRateHz);
-    this.tpsAvg = halfTickRateHz;
-    this.tpsLow = halfTickRateHz;
-    this.tickMsAvg = halfTickBudgetMs;
-    this.tickMsHi = halfTickBudgetMs;
+    // Start visible host TPS/CPU EMAs at 0.0. TPS climbs as ticks are
+    // measured; CPU load starts at 0% measured work.
+    this.tpsAvg = 0;
+    this.tpsLow = 0;
+    this.tickMsAvg = 0;
+    this.tickMsHi = 0;
     const maxSnaps = config.maxSnapshotsPerSec ?? 30;
     this.maxSnapshotIntervalMs = maxSnaps > 0 ? 1000 / maxSnaps : 0;
     this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
@@ -225,8 +213,8 @@ export class GameServer {
     // branches on "solo". Set BEFORE WorldState, deposit flattening,
     // and renderer mesh baking so every consumer reads the same surface.
     setTerrainTeamCount(getTerrainDividerTeamCount(this.playerIds.length));
-    setTerrainCenterShape(config.terrainCenter ?? 'lake');
-    setTerrainDividersShape(config.terrainDividers ?? 'lake');
+    setTerrainCenterShape(config.terrainCenter ?? 'valley');
+    setTerrainDividersShape(config.terrainDividers ?? 'valley');
     setTerrainMapShape(config.terrainMapShape ?? 'circle');
 
     // Metal deposits — same set across all clients (deterministic from
@@ -676,7 +664,7 @@ export class GameServer {
 
       if (inWater) {
         // ESCAPE FORCE — push toward dry land. Try expanding probe
-        // radii so even a unit teleported deep into a lake gets a
+        // radii so even a unit teleported deep into a valley gets a
         // valid outward direction.
         let hasOutDir = false;
         for (let i = 0; i < WATER_ESCAPE_PROBE_MULTS.length; i++) {
