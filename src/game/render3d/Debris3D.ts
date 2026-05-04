@@ -23,11 +23,14 @@ import type { GraphicsConfig } from '@/types/graphics';
 import type { SimDeathContext } from '@/types/combat';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { MAP_BG_COLOR, GRAVITY, MIRROR_EXTRA_HEIGHT, TURRET_HEIGHT } from '../../config';
-import { FALLBACK_UNIT_BODY_SHAPE, getUnitBlueprint } from '../sim/blueprints';
+import {
+  FALLBACK_UNIT_BODY_SHAPE,
+  getShotBlueprint,
+  getTurretBlueprint,
+  getUnitBlueprint,
+} from '../sim/blueprints';
 import { isLineShotBlueprint } from '@/types/blueprints';
-import { getTurretBlueprint } from '../sim/blueprints/turrets';
 import { MIRROR_ARM_LENGTH_FRAC } from '../sim/mirrorPanelCache';
-import { getShotBlueprint } from '../sim/blueprints/shots';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {

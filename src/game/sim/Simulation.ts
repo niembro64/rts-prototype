@@ -1,6 +1,6 @@
 import { WorldState } from './WorldState';
 import { CommandQueue } from './commands';
-import type { Entity, EntityId, PlayerId } from './types';
+import type { Entity, EntityId, PlayerId, UnitAction } from './types';
 import { buildUnitDeathEvent, buildBuildingDeathEvent } from './combat/damageHelpers';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
@@ -15,7 +15,6 @@ import {
   emitForceFieldStopsForEntity,
   fireTurrets,
   updateForceFieldState,
-  applyForceFieldDamage,
   resetForceFieldBuffers,
   registerPackedProjectile,
   unregisterPackedProjectile,
@@ -35,12 +34,12 @@ import { DamageSystem } from './damage';
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
-import { syncShellHpToBuildFraction } from './shellHpSync';
+import { updateConstructionLifecycle } from './constructionLifecycle';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
-import { getUnitBlueprint } from './blueprints/units';
+import { getUnitBlueprint } from './blueprints';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS } from '@/types/network';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
@@ -296,14 +295,11 @@ export class Simulation {
     // Distribute energy equally among all active consumers (factories, construction, commander)
     distributeEnergy(this.world, dtMs, this.energyBuffers);
 
-    // Update HP of every in-progress shell to track its avg-fill ratio.
-    // The shell entity is fully built mesh-wise but its hp must follow
-    // the bars so a half-built shell sits at half HP and the four bars
-    // (3 resource + HP) tell a consistent story.
-    syncShellHpToBuildFraction(this.world);
-
-    // Check construction completion
-    this.constructionSystem.update(this.world, dtMs);
+    // Shared construction lifecycle for both building shells and
+    // factory unit shells: HP growth, paid-full completion, building
+    // completion effects, and dirty flags all flow through one pass.
+    const constructionResult = updateConstructionLifecycle(this.world);
+    this.advanceCompletedConstructionActions(constructionResult.completedBuildings);
 
     // AI auto-queues units at idle factories
     updateAiProduction(this.world, this.aiPlayerIds, this.aiAllowedUnitTypes);
@@ -345,7 +341,7 @@ export class Simulation {
     // updateUnits() to avoid another full unit walk.
     this.updateSpatialGrid();
 
-    // Update combat systems (adds external forces like force field pull)
+    // Update combat systems (targeting, firing, projectile collisions)
     this.updateCombat(dtMs);
 
     // Finalize force accumulator (sums all contributions)
@@ -370,9 +366,8 @@ export class Simulation {
       this.spatialGridBuildingVersion = buildingVersion;
     }
 
-    // Update traveling projectile positions for force-field spatial
-    // queries. Beam/laser line shots are handled by beam pathing and
-    // do not participate as pushable projectile bodies.
+    // Update traveling projectile positions for projectile broadphase
+    // queries. Beam/laser line shots are handled by beam pathing.
     for (const proj of this.world.getTravelingProjectiles()) {
       spatialGrid.updateProjectile(proj);
     }
@@ -457,15 +452,8 @@ export class Simulation {
     // Update force field state (range transitions)
     if (forceFieldUnits && forceFieldUnits.length > 0) {
       updateForceFieldState(this.world, dtMs);
-    }
-
-    // Apply force field knockback (force fields no longer deal damage,
-    // only push enemy units / projectiles).
-    if (forceFieldUnits && forceFieldUnits.length > 0) {
-      const forceFieldVelocityUpdates = applyForceFieldDamage(this.world, dtMs, this.damageSystem, this.forceAccumulator);
-      for (const event of forceFieldVelocityUpdates) {
-        this.pendingProjectileVelocityUpdates.set(event.id, event);
-      }
+    } else {
+      resetForceFieldBuffers();
     }
 
     for (const unit of activeCombatUnits) {
@@ -604,7 +592,7 @@ export class Simulation {
           }
           // Synthesize a death SimEvent so the renderer still fires a
           // material explosion for units killed outside the normal
-          // damage-pass path (e.g. force-field DoT, bleed-out, anything
+          // damage-pass path (e.g. bleed-out, anything
           // that sets hp<=0 without going through collectKills*).
           // Without this, the unit just vanishes silently.
           this.emitSyntheticDeathEvent(entity);
@@ -631,7 +619,7 @@ export class Simulation {
   }
 
   // Build a death SimEvent for entities dying outside the normal
-  // collision-handler path (force-field DoT, anything that mutates hp
+  // collision-handler path (anything that mutates hp
   // directly). Delegates to the shared buildUnitDeathEvent /
   // buildBuildingDeathEvent so the shape can't drift from the damage-
   // path kills. There is no turret to credit here, so provenance lives
@@ -681,20 +669,11 @@ export class Simulation {
       // Clear priority target — re-set below if current action is attack
       unit.priorityTargetId = undefined;
 
-      // Sweep queued attack actions whose targets are dead/gone
-      let actionsChanged = false;
-      for (let i = unit.actions.length - 1; i >= 0; i--) {
-        const a = unit.actions[i];
-        if (a.type !== 'attack' || a.targetId === undefined) continue;
-        const t = this.world.getEntity(a.targetId);
-        const alive = t &&
-          ((t.unit && t.unit.hp > 0) || (t.building && t.building.hp > 0));
-        if (!alive) {
-          unit.actions.splice(i, 1);
-          actionsChanged = true;
-        }
-      }
-      if (actionsChanged) {
+      // Sweep targeted intents whose target disappeared or no longer
+      // needs work. Pathfinding stores intermediate `move` waypoints
+      // before the final attack/build/repair action, so remove that
+      // whole local path segment with the stale final action.
+      if (this.sweepInvalidTargetActions(entity)) {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
 
@@ -806,6 +785,82 @@ export class Simulation {
     this.evaluateStuckAndReplan(movingUnits);
   }
 
+  private sweepInvalidTargetActions(entity: Entity): boolean {
+    const unit = entity.unit;
+    if (!unit) return false;
+
+    let changed = false;
+    const actions = unit.actions;
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      if (!this.isTargetedActionInvalid(action)) continue;
+
+      const targetId = this.getActionTargetId(action);
+      const removeStart = this.getPathIntentStart(actions, i);
+      actions.splice(removeStart, i - removeStart + 1);
+      if (targetId !== undefined && entity.builder?.currentBuildTarget === targetId) {
+        entity.builder.currentBuildTarget = null;
+      }
+      changed = true;
+      i = removeStart - 1;
+    }
+
+    if (changed) {
+      const patrolStartIndex = actions.findIndex((action) => action.type === 'patrol');
+      unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
+    }
+    return changed;
+  }
+
+  private getPathIntentStart(actions: readonly UnitAction[], finalActionIndex: number): number {
+    let start = finalActionIndex;
+    while (start > 0 && actions[start - 1].isPathExpansion) start--;
+    return start;
+  }
+
+  private getActionTargetId(action: UnitAction): EntityId | undefined {
+    if (action.type === 'build') return action.buildingId;
+    if (action.type === 'attack' || action.type === 'repair') return action.targetId;
+    return undefined;
+  }
+
+  private isTargetedActionInvalid(action: UnitAction): boolean {
+    if (action.type !== 'attack' && action.type !== 'build' && action.type !== 'repair') {
+      return false;
+    }
+
+    const targetId = this.getActionTargetId(action);
+    const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
+    if (!target) return true;
+
+    if (action.type === 'attack') {
+      return !this.isAliveAttackTarget(target);
+    }
+
+    if (action.type === 'build') {
+      return !this.isIncompleteBuildableTarget(target);
+    }
+
+    return !this.isIncompleteBuildableTarget(target) && !this.isDamagedRepairUnit(target);
+  }
+
+  private isAliveAttackTarget(target: Entity): boolean {
+    return !!((target.unit && target.unit.hp > 0) ||
+      (target.building && target.building.hp > 0));
+  }
+
+  private isIncompleteBuildableTarget(target: Entity): boolean {
+    return !!(target.buildable &&
+      !target.buildable.isComplete &&
+      !target.buildable.isGhost &&
+      ((target.building && target.building.hp > 0) ||
+        (target.unit && target.unit.hp > 0)));
+  }
+
+  private isDamagedRepairUnit(target: Entity): boolean {
+    return !!(target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp);
+  }
+
   private promoteReachableBuildAction(entity: Entity): void {
     const unit = entity.unit;
     if (!unit || !entity.builder || unit.actions.length === 0) return;
@@ -827,6 +882,26 @@ export class Simulation {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
       return;
+    }
+  }
+
+  private advanceCompletedConstructionActions(completedBuildings: readonly Entity[]): void {
+    if (completedBuildings.length === 0) return;
+    for (const completed of completedBuildings) {
+      const completedId = completed.id;
+      for (const entity of this.world.getBuilderUnits()) {
+        const unit = entity.unit;
+        if (!unit || unit.actions.length === 0) continue;
+        const action = unit.actions[0];
+        const targetId = action.type === 'build'
+          ? action.buildingId
+          : action.type === 'repair'
+            ? action.targetId
+            : undefined;
+        if (targetId === completedId) {
+          this.advanceAction(entity);
+        }
+      }
     }
   }
 

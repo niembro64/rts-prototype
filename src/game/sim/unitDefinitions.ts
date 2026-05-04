@@ -4,13 +4,12 @@
 import type { Turret } from './types';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
-import type { UnitBlueprint } from './blueprints/types';
+import type { UnitBlueprint } from './blueprints';
 import { createUnitLocomotion } from './locomotion';
 import type { LocomotionType } from './locomotion';
 import { createRuntimeTurretMount } from './turretMounts';
 
 // Re-export types (still used by many files)
-export type { LegStyle } from './blueprints/types';
 export type UnitType = keyof typeof UNIT_BLUEPRINTS;
 export type { LocomotionType } from './locomotion';
 
@@ -74,7 +73,6 @@ function projectUnitBlueprint(bp: UnitBlueprint) {
     bodyCenterHeight: bp.bodyCenterHeight,
     cost: { ...bp.cost },
     locomotion: locomotion.type as LocomotionType,
-    legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,
   };
 }
 
