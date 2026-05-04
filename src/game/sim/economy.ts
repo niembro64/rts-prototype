@@ -152,18 +152,11 @@ export class EconomyManager {
     return actualSpend;
   }
 
-  /** True iff every resource pool (energy, mana, metal) holds at
-   *  least `perResourceAmount`. Used by the dgun gate, where the same
-   *  scalar threshold applies uniformly to each pool. Distinct from a
-   *  `ResourceCost` triple — `ResourceCost` lets each pool have its
-   *  own cost, this checks the same number against all three. */
-  canAfford(playerId: PlayerId, perResourceAmount: number): boolean {
-    const economy = this.getOrCreateEconomy(playerId);
-    return (
-      economy.stockpile.curr >= perResourceAmount &&
-      economy.mana.stockpile.curr >= perResourceAmount &&
-      economy.metal.stockpile.curr >= perResourceAmount
-    );
+  /** True iff the player's energy pool holds at least `amount`. The
+   *  dgun gate uses this — the dgun is paid in ENERGY only (see
+   *  `spendInstant` below) so the gate must read the same pool. */
+  canAffordEnergy(playerId: PlayerId, amount: number): boolean {
+    return this.getOrCreateEconomy(playerId).stockpile.curr >= amount;
   }
 
   // Spend energy instantly (for things like D-gun)

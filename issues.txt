@@ -15,9 +15,3 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
 
 
-11)   Heads-up worth noting: the single call site
-  (commandExecution.ts dgun gate) calls canAfford followed by spendInstant (which only
-  deducts from energy). So the gate currently requires the player to hold dgunCost in all
-  three pools even though only energy is actually spent. Looks like an asymmetry, possibly a
-  leftover from when the economy was uniform. Worth a separate look later if you want — happy
-   to add a bullet to issues.txt if you'd like to track it.

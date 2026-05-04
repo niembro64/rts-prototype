@@ -3,6 +3,7 @@
 
 import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, RepairCommand, AttackCommand } from './commands';
 import type { Entity, UnitAction } from './types';
+import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
 import { magnitude, getTransformCosSin, getBarrelTip } from '../math';
@@ -14,6 +15,7 @@ import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS 
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
+import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMuzzleVelocity = { x: 0, y: 0, z: 0 };
@@ -243,7 +245,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   // Check if we have enough energy
   const dgunCost = commander.commander.dgunEnergyCost;
-  if (!economyManager.canAfford(playerId, dgunCost)) {
+  if (!economyManager.canAffordEnergy(playerId, dgunCost)) {
     return;
   }
 
@@ -269,7 +271,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   // Snap dgun turret to target direction
   dgunTurret.rotation = fireAngle;
+  dgunTurret.pitch = 0;
   dgunTurret.angularVelocity = 0;
+  dgunTurret.pitchVelocity = 0;
   ctx.world.markSnapshotDirty(commander.id, ENTITY_CHANGED_TURRETS);
 
   const { cos, sin } = getTransformCosSin(commander.transform);
@@ -289,20 +293,24 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   );
   const tip = getBarrelTip(
     mount.x, mount.y, mount.z,
-    fireAngle, dgunTurret.pitch,
+    fireAngle, 0,
     dgunTurret.config,
     0,
   );
   const spawnX = tip.x;
   const spawnY = tip.y;
-  const dgunFireZ = tip.z;
+  const dgunFireZ = ctx.world.getGroundZ(spawnX, spawnY) + DGUN_TERRAIN_FOLLOW_HEIGHT;
 
-  // Calculate velocity with turret-tip inheritance
+  // D-gun is a terrain-following wave: it travels horizontally in the
+  // commanded direction and snaps to local terrain height during
+  // integration. Keep horizontal muzzle inheritance so firing from a
+  // moving commander still uses the turret's own motion, but never let
+  // vertical muzzle velocity turn it into a ballistic shell.
   const dgunShot = dgunTurret.config.shot;
-  const speed = dgunShot.type === 'projectile' ? getProjectileLaunchSpeed(dgunShot) : 350;
-  let velocityX = tip.dirX * speed;
-  let velocityY = tip.dirY * speed;
-  let velocityZ = tip.dirZ * speed;
+  const speed = isProjectileShot(dgunShot) ? getProjectileLaunchSpeed(dgunShot) : 350;
+  let velocityX = Math.cos(fireAngle) * speed;
+  let velocityY = Math.sin(fireAngle) * speed;
+  let velocityZ = 0;
   if (commander.unit) {
     // Manual D-gun shots update the same turret kinematics cache used
     // by automated weapons above, so inherited velocity is the turret's
@@ -315,7 +323,6 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     );
     velocityX += inherited.x;
     velocityY += inherited.y;
-    velocityZ += inherited.z;
   }
 
   // Create D-gun projectile
@@ -340,6 +347,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // Emit projectile spawn event for D-gun. Spawn pos + altitude came
   // from the shared BarrelGeometry primitive (see getBarrelTip call
   // above) so the event lines up with the visible barrel tip.
+  if (dgunShot.type === 'force') {
+    throw new Error('D-gun turret cannot use a force shot');
+  }
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },
@@ -348,7 +358,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     projectileType: 'projectile',
     maxLifespan: projectile.projectile?.maxLifespan,
     turretId: dgunTurret.config.id,
-    shotId: dgunTurret.config.shot.type === 'force' ? dgunTurret.config.id : dgunTurret.config.shot.id,
+    shotId: dgunShot.id,
     sourceTurretId: dgunTurret.config.id,
     playerId,
     sourceEntityId: commander.id,
