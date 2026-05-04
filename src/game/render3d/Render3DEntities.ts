@@ -3468,12 +3468,13 @@ export class Render3DEntities {
         );
         const h = m.buildingHeight ?? BUILDING_HEIGHT;
 
-        // Build-progress visual — mirrors the 2D BuildingRenderer's
-        // bottom-up fill. Primary body scales vertically by buildProgress
-        // (clamped to a small minimum so a 0% building still catches
-        // light and is clickable); accent meshes (chimney, solar cells)
-        // stay hidden until the building is complete so they don't pop
-        // out of an incomplete silhouette.
+        // Build-progress visual — bottom-up fill. Primary body scales
+        // vertically by `progress` (the average fill across the three
+        // resource axes computed from paid / required, clamped to a
+        // small minimum so a 0% building still catches light and is
+        // clickable); accent meshes (chimney, solar cells) stay hidden
+        // until the building is complete so they don't pop out of an
+        // incomplete silhouette.
         const renderH = h * progress;
         // Buildings own the single primary body at chassisMeshes[0]; scale
         // it directly instead of the chassis wrapper group (which stays
