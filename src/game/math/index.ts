@@ -14,9 +14,6 @@ export {
   lerp,
   angleDiff,
   lerpAngle,
-  normalizeAndScale,
-  directionTo,
-  getWeaponWorldPosition,
   getTransformCosSin,
 } from './MathHelpers';
 

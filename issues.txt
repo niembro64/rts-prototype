@@ -8,10 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   4) DEAD CODE
   ---------------------------------------------------
 
-  [MEDIUM] src/game/math/MathHelpers.ts:111-131 `normalizeAndScale`,
-    `directionTo`, and :146 `getWeaponWorldPosition` are exported via
-    math/index.ts but never imported. The 2D `getWeaponWorldPosition`
-    was superseded by `getTurretWorldMount` / `resolveWeaponWorldMount`.
   [MEDIUM] src/game/sim/turretConfigs.ts:5 `WeaponId` and :11
     `refreshHysteresisRangeSquares` exported but unused outside the file.
   [MEDIUM] src/types/blueprintIds.ts:55-57 `isBuildingTypeId` (and
