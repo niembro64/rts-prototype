@@ -52,7 +52,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
     currently > 1, the debris panel is 1/MIRROR_PANEL_SIZE_MULT the
     size of the alive panel — visible mismatch on death. Import
     MIRROR_PANEL_SIZE_MULT from mirrorPanelCache.ts (Debris3D already
-    imports MIRROR_ARM_LENGTH_FRAC from there).
+    imports MIRROR_ARM_LENGTH_MULT from there).
 
   [MEDIUM] src/game/render3d/HealthBar3D.ts:32-52 hardcodes
     worldOffsetAbove: 12, lowThreshold: 0.3, fgColorHigh: '#44dd44',
@@ -70,7 +70,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
   [MEDIUM] src/game/render3d/MirrorMesh3D.ts:47-48 `ARM_THICKNESS_FRAC`
     = 0.18 and `ARM_PANEL_GAP_FRAC` = 0.035 are mirror-system
-    tunables that should sit next to MIRROR_ARM_LENGTH_FRAC /
+    tunables that should sit next to MIRROR_ARM_LENGTH_MULT /
     MIRROR_PANEL_SIZE_MULT in mirrorPanelCache.ts.
 
   [LOW] Same magic-fraction trio for barrel orbit clamps appears at
