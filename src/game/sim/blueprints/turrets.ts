@@ -101,7 +101,7 @@ export const TURRET_BLUEPRINTS = {
       barrelCount: 3,
       barrelLength: 0.01,
       baseOrbit: 0.00,
-      tipOrbit: 2.5,
+      tipOrbit: 0.9,
       spin: { idle: 2, max: 20, accel: 10, decel: 5 },
     },
     rangeMultiplierOverrides: fireEnvelope({
@@ -118,6 +118,12 @@ export const TURRET_BLUEPRINTS = {
     bodyRadius: 8,
     audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
     verticalLauncher: true,
+    // Spawn pointing straight up. verticalLauncher pins pitch to π/2
+    // every tick once combat runs, but during construction (shell
+    // state) and the first frame before turretSystem ticks the pose
+    // comes from idlePitch — without this the cluster spawned aimed
+    // forward and snapped up on first activate.
+    idlePitch: Math.PI / 2,
   },
   cannonTurret: {
     id: 'cannonTurret',
