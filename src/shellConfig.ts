@@ -39,6 +39,39 @@ export const SHELL_PALE_HEX = 0xe0e0e0;
 export const SHELL_COLOR_HEX = SHELL_PALE_HEX;
 export const SHELL_TINT_RGB = SHELL_PALE_RGB;
 
+// ── Build-bubble visuals ─────────────────────────────────────────
+// The "build bubble" is the cluster of orbs the factory's
+// FactoryConstructionRig emits while a unit is forming at the build
+// spot — outer ghost shell, inner glowing core, travelling pulses
+// from the nozzle, orbiting sparks. Per user direction the palette is
+// strictly whitish / grayish (no team color, no amber, no cyan
+// glass), and the outer ghost shell sizes off the queued unit's PUSH
+// collider (not its body radius).
+
+/** Outer ghost shell — the big translucent bubble centered on the
+ *  build spot. */
+export const BUILD_BUBBLE_GHOST_COLOR_HEX = 0xd8d8d8;
+export const BUILD_BUBBLE_GHOST_OPACITY = 0.45;
+
+/** Small inner core orb — the bright center inside the ghost. */
+export const BUILD_BUBBLE_CORE_COLOR_HEX = 0xf4f4f4;
+export const BUILD_BUBBLE_CORE_OPACITY = 0.85;
+
+/** Travelling pulses that arc from the factory nozzle to the build
+ *  spot. Slightly cooler / more saturated than core so they read as
+ *  "energy being delivered". Still strictly grayscale. */
+export const BUILD_BUBBLE_PULSE_COLOR_HEX = 0xc8c8c8;
+export const BUILD_BUBBLE_PULSE_OPACITY = 0.7;
+
+/** Tiny sparks orbiting the bubble at MAX tier. */
+export const BUILD_BUBBLE_SPARK_COLOR_HEX = 0xffffff;
+export const BUILD_BUBBLE_SPARK_OPACITY = 0.9;
+
+/** Outer-ghost-shell radius as a multiplier of the queued unit's
+ *  PUSH collider radius. The bubble grows toward this size with build
+ *  progress (eased), with a small pulse modulation for life. */
+export const BUILD_BUBBLE_RADIUS_PUSH_MULT = 1.5;
+
 /** Build-bar palette + layout. The HP bar uses the legacy health
  *  green/red and isn't configured here; only the three resource bars
  *  added during construction are. */

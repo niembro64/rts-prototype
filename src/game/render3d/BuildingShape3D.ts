@@ -28,6 +28,16 @@ import {
   WIND_BUILDING_VISUAL_HEIGHT,
 } from '../sim/blueprints';
 import type { BuildingRenderProfile } from '../sim/types';
+import {
+  BUILD_BUBBLE_GHOST_COLOR_HEX,
+  BUILD_BUBBLE_GHOST_OPACITY,
+  BUILD_BUBBLE_CORE_COLOR_HEX,
+  BUILD_BUBBLE_CORE_OPACITY,
+  BUILD_BUBBLE_PULSE_COLOR_HEX,
+  BUILD_BUBBLE_PULSE_OPACITY,
+  BUILD_BUBBLE_SPARK_COLOR_HEX,
+  BUILD_BUBBLE_SPARK_OPACITY,
+} from '@/shellConfig';
 
 /** Short building types we have art for. Unknown types fall back to a
  *  plain primary-color slab (same as before). */
@@ -53,8 +63,16 @@ export type BuildingDetailMesh = {
 };
 
 export type SolarPetalAnimation = {
-  openMatrix: THREE.Matrix4;
-  closedMatrix: THREE.Matrix4;
+  width: number;
+  length: number;
+  hinge: THREE.Vector3;
+  tangent: THREE.Vector3;
+  openDirection: THREE.Vector3;
+  closedDirection: THREE.Vector3;
+  panelSideHint: THREE.Vector3;
+  inset: number;
+  normalOffset: number;
+  thickness: number;
 };
 
 export type FactoryConstructionRig = {
@@ -139,6 +157,8 @@ const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape
   bevelEnabled: false,
   steps: 1,
 });
+const solarPanelCoarseLineGeom = createSolarPanelLineGeometry([0.36, 0.62]);
+const solarPanelFineLineGeom = createSolarPanelLineGeometry([0.22, 0.38, 0.54, 0.70, 0.84]);
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
 const extractorPyramidGeom = createHexFrustumGeometry();
@@ -174,6 +194,20 @@ const solarCellMat = new THREE.MeshStandardMaterial({
 });
 const solarPetalBackMat = new THREE.MeshLambertMaterial({
   color: BUILDING_PALETTE.photovoltaicBack,
+  side: THREE.DoubleSide,
+});
+const solarPanelCoarseLineMat = new THREE.MeshBasicMaterial({
+  color: 0x77c8d8,
+  transparent: true,
+  opacity: 0.34,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+const solarPanelFineLineMat = new THREE.MeshBasicMaterial({
+  color: 0xd4eef4,
+  transparent: true,
+  opacity: 0.46,
+  depthWrite: false,
   side: THREE.DoubleSide,
 });
 const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
@@ -218,22 +252,36 @@ const invisibleMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
 });
 const factoryFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
-const constructionGhostMat = new THREE.MeshLambertMaterial({
-  color: BUILDING_PALETTE.cyanGlass,
+// Build-bubble materials. Strictly whitish/grayish per shellConfig —
+// no team color, no amber, no cyan glass. All four mats are kept as
+// separate THREE.Material instances so the four roles (ghost shell,
+// core orb, travelling pulses, sparks) can be tuned independently
+// from shellConfig without recompiling shaders.
+const constructionGhostMat = new THREE.MeshBasicMaterial({
+  color: BUILD_BUBBLE_GHOST_COLOR_HEX,
   transparent: true,
-  opacity: 0.5,
+  opacity: BUILD_BUBBLE_GHOST_OPACITY,
   depthWrite: false,
 });
 const constructionCoreMat = new THREE.MeshBasicMaterial({
-  color: BUILDING_PALETTE.constructionAmber,
+  color: BUILD_BUBBLE_CORE_COLOR_HEX,
   transparent: true,
-  opacity: 0.8,
+  opacity: BUILD_BUBBLE_CORE_OPACITY,
+  depthWrite: false,
+});
+// Pulses get their own material so the travelling-orb tint can drift
+// from the static-core tint without one knob driving both. (Same
+// pattern factory had before the rename to whitish-only.)
+const constructionPulseMat = new THREE.MeshBasicMaterial({
+  color: BUILD_BUBBLE_PULSE_COLOR_HEX,
+  transparent: true,
+  opacity: BUILD_BUBBLE_PULSE_OPACITY,
   depthWrite: false,
 });
 const constructionSparkMat = new THREE.MeshBasicMaterial({
-  color: BUILDING_PALETTE.constructionSpark,
+  color: BUILD_BUBBLE_SPARK_COLOR_HEX,
   transparent: true,
-  opacity: 0.85,
+  opacity: BUILD_BUBBLE_SPARK_OPACITY,
   depthWrite: false,
 });
 const constructionOrbGeom = new THREE.SphereGeometry(1, 12, 8);
@@ -255,6 +303,43 @@ void main() {
 }
 `,
 });
+
+const _solarPetalTangent = new THREE.Vector3();
+const _solarPetalDirection = new THREE.Vector3();
+const _solarPetalNormal = new THREE.Vector3();
+const _solarPetalOrigin = new THREE.Vector3();
+const _solarPetalXAxis = new THREE.Vector3();
+const _solarPetalYAxis = new THREE.Vector3();
+const _solarPetalZAxis = new THREE.Vector3();
+
+function createSolarPanelLineGeometry(crossbars: readonly number[]): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const addRect = (x0: number, y0: number, x1: number, y1: number): void => {
+    positions.push(
+      x0, y0, 0,
+      x1, y0, 0,
+      x1, y1, 0,
+      x0, y0, 0,
+      x1, y1, 0,
+      x0, y1, 0,
+    );
+  };
+
+  addRect(-0.014, 0.12, 0.014, 0.90);
+  for (const y of crossbars) {
+    const halfWidth = (1 - y) * 0.5;
+    const margin = Math.max(0.035, halfWidth * 0.1);
+    const x0 = -halfWidth + margin;
+    const x1 = halfWidth - margin;
+    if (x1 <= x0) continue;
+    addRect(x0, y - 0.010, x1, y + 0.010);
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.computeVertexNormals();
+  return geom;
+}
 
 export function getConstructionHazardMaterial(): THREE.Material {
   return hazardStripeMat;
@@ -408,9 +493,16 @@ function buildExtractor(
 
 // ── Per-type builders ──────────────────────────────────────────────────
 
-/** Solar collector: a static pyramid-flower silhouette. The primary
- *  body is one wide photovoltaic pyramid. LOW+ detail adds four
- *  opened photovoltaic leaves attached at the pyramid base. */
+/** Solar collector LOD ladder:
+ *    marker — cheap team box handled by Render3DEntities
+ *    min    — single photovoltaic pyramid
+ *    low    — animated solid petals + solar faces
+ *    medium — team-color backing panels on petal exteriors
+ *    high   — coarse photovoltaic cell lines
+ *    max    — denser/brighter photovoltaic cell lines
+ *
+ *  Every petal-attached detail carries the same hinge animation data
+ *  so closed/open transitions move as one rigid collector assembly. */
 function buildSolar(
   width: number,
   depth: number,
@@ -439,6 +531,37 @@ function buildSolar(
 
   for (const sign of [-1, 1]) {
     const frontBackClosedDir = new THREE.Vector3(0, SOLAR_HEIGHT, -sign * frontBackZ);
+    const frontBackPanelSide = new THREE.Vector3(0, 0, -sign);
+    const frontBackPyramidPanelSide = new THREE.Vector3(0, 0, sign);
+    const frontBackPyramidDir = new THREE.Vector3(0, SOLAR_HEIGHT, -sign * frontBackZ);
+    details.push(detail(makeSolarStaticPanelOverlay(
+      solarPanelCoarseLineGeom,
+      solarPanelCoarseLineMat,
+      frontBackSpan,
+      frontBackLen,
+      0,
+      petalHingeY,
+      sign * frontBackZ,
+      1,
+      0,
+      frontBackPyramidDir,
+      1.1,
+      frontBackPyramidPanelSide,
+    ), 'high', 'high', 'solarPanel'));
+    details.push(detail(makeSolarStaticPanelOverlay(
+      solarPanelFineLineGeom,
+      solarPanelFineLineMat,
+      frontBackSpan,
+      frontBackLen,
+      0,
+      petalHingeY,
+      sign * frontBackZ,
+      1,
+      0,
+      frontBackPyramidDir,
+      1.25,
+      frontBackPyramidPanelSide,
+    ), 'max', undefined, 'solarPanel'));
     details.push(detail(makeHingeBar(
       solarPetalBackMat,
       frontBackSpan,
@@ -465,6 +588,7 @@ function buildSolar(
       0,
       petalThickness,
       frontBackClosedDir,
+      frontBackPanelSide,
     ), 'low', undefined, 'solarLeaf'));
     details.push(detail(makeTrianglePetal(
       primaryMat,
@@ -482,6 +606,7 @@ function buildSolar(
       teamAccentOffset,
       teamAccentThickness,
       frontBackClosedDir,
+      frontBackPanelSide,
     ), 'medium', undefined, 'solarTeamAccent'));
     details.push(detail(makeTrianglePetal(
       solarCellMat,
@@ -499,9 +624,77 @@ function buildSolar(
       petalFaceOffset,
       0,
       frontBackClosedDir,
+      frontBackPanelSide,
     ), 'low', undefined, 'solarPanel'));
+    details.push(detail(makeSolarPetalOverlay(
+      solarPanelCoarseLineGeom,
+      solarPanelCoarseLineMat,
+      frontBackSpan,
+      frontBackLen,
+      0,
+      petalHingeY,
+      sign * frontBackZ,
+      1,
+      0,
+      0,
+      sign,
+      petalTilt,
+      0,
+      petalFaceOffset + 0.65,
+      frontBackClosedDir,
+      frontBackPanelSide,
+    ), 'high', 'high', 'solarPanel'));
+    details.push(detail(makeSolarPetalOverlay(
+      solarPanelFineLineGeom,
+      solarPanelFineLineMat,
+      frontBackSpan,
+      frontBackLen,
+      0,
+      petalHingeY,
+      sign * frontBackZ,
+      1,
+      0,
+      0,
+      sign,
+      petalTilt,
+      0,
+      petalFaceOffset + 0.8,
+      frontBackClosedDir,
+      frontBackPanelSide,
+    ), 'max', undefined, 'solarPanel'));
 
     const sideClosedDir = new THREE.Vector3(-sign * sideX, SOLAR_HEIGHT, 0);
+    const sidePanelSide = new THREE.Vector3(-sign, 0, 0);
+    const sidePyramidPanelSide = new THREE.Vector3(sign, 0, 0);
+    const sidePyramidDir = new THREE.Vector3(-sign * sideX, SOLAR_HEIGHT, 0);
+    details.push(detail(makeSolarStaticPanelOverlay(
+      solarPanelCoarseLineGeom,
+      solarPanelCoarseLineMat,
+      sideSpan,
+      sideLen,
+      sign * sideX,
+      petalHingeY,
+      0,
+      0,
+      1,
+      sidePyramidDir,
+      1.1,
+      sidePyramidPanelSide,
+    ), 'high', 'high', 'solarPanel'));
+    details.push(detail(makeSolarStaticPanelOverlay(
+      solarPanelFineLineGeom,
+      solarPanelFineLineMat,
+      sideSpan,
+      sideLen,
+      sign * sideX,
+      petalHingeY,
+      0,
+      0,
+      1,
+      sidePyramidDir,
+      1.25,
+      sidePyramidPanelSide,
+    ), 'max', undefined, 'solarPanel'));
     details.push(detail(makeHingeBar(
       solarPetalBackMat,
       sideSpan,
@@ -528,6 +721,7 @@ function buildSolar(
       0,
       petalThickness,
       sideClosedDir,
+      sidePanelSide,
     ), 'low', undefined, 'solarLeaf'));
     details.push(detail(makeTrianglePetal(
       primaryMat,
@@ -545,6 +739,7 @@ function buildSolar(
       teamAccentOffset,
       teamAccentThickness,
       sideClosedDir,
+      sidePanelSide,
     ), 'medium', undefined, 'solarTeamAccent'));
     details.push(detail(makeTrianglePetal(
       solarCellMat,
@@ -562,7 +757,44 @@ function buildSolar(
       petalFaceOffset,
       0,
       sideClosedDir,
+      sidePanelSide,
     ), 'low', undefined, 'solarPanel'));
+    details.push(detail(makeSolarPetalOverlay(
+      solarPanelCoarseLineGeom,
+      solarPanelCoarseLineMat,
+      sideSpan,
+      sideLen,
+      sign * sideX,
+      petalHingeY,
+      0,
+      0,
+      1,
+      sign,
+      0,
+      petalTilt,
+      0,
+      petalFaceOffset + 0.65,
+      sideClosedDir,
+      sidePanelSide,
+    ), 'high', 'high', 'solarPanel'));
+    details.push(detail(makeSolarPetalOverlay(
+      solarPanelFineLineGeom,
+      solarPanelFineLineMat,
+      sideSpan,
+      sideLen,
+      sign * sideX,
+      petalHingeY,
+      0,
+      0,
+      1,
+      sign,
+      0,
+      petalTilt,
+      0,
+      petalFaceOffset + 0.8,
+      sideClosedDir,
+      sidePanelSide,
+    ), 'max', undefined, 'solarPanel'));
   }
 
   return { primary, details, height: SOLAR_HEIGHT, primaryMaterialLocked: true };
@@ -773,7 +1005,7 @@ function buildFactory(
 
   const buildPulses: THREE.Mesh[] = [];
   for (let i = 0; i < 5; i++) {
-    const pulse = new THREE.Mesh(constructionOrbGeom, constructionCoreMat);
+    const pulse = new THREE.Mesh(constructionOrbGeom, constructionPulseMat);
     pulse.visible = false;
     buildPulses.push(pulse);
     details.push(detail(pulse, 'medium', 'medium', 'factoryBuildPulse'));
@@ -1031,6 +1263,7 @@ function makeTrianglePetal(
   normalOffset = 0,
   thickness = 0,
   closedDirection?: THREE.Vector3,
+  panelSideHint = new THREE.Vector3(0, 1, 0),
 ): THREE.Mesh {
   const hinge = new THREE.Vector3(hingeX, hingeY, hingeZ);
   const tangent = new THREE.Vector3(tangentX, 0, tangentZ);
@@ -1049,22 +1282,105 @@ function makeTrianglePetal(
     inset,
     normalOffset,
     thickness,
+    panelSideHint,
   );
   if (closedDirection) {
     mesh.userData.solarPetal = {
-      openMatrix: mesh.matrix.clone(),
-      closedMatrix: makeTrianglePlateMatrix(
-        width,
-        length,
-        hinge,
-        tangent,
-        closedDirection,
-        inset,
-        normalOffset,
-        thickness,
-      ),
+      width,
+      length,
+      hinge: hinge.clone(),
+      tangent: tangent.clone(),
+      openDirection: openDirection.clone(),
+      closedDirection: closedDirection.clone(),
+      panelSideHint: panelSideHint.clone(),
+      inset,
+      normalOffset,
+      thickness,
     } satisfies SolarPetalAnimation;
   }
+  return mesh;
+}
+
+function makeSolarPetalOverlay(
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material,
+  width: number,
+  length: number,
+  hingeX: number,
+  hingeY: number,
+  hingeZ: number,
+  tangentX: number,
+  tangentZ: number,
+  outwardX: number,
+  outwardZ: number,
+  openAngle: number,
+  inset: number,
+  normalOffset: number,
+  closedDirection: THREE.Vector3,
+  panelSideHint: THREE.Vector3,
+): THREE.Mesh {
+  const hinge = new THREE.Vector3(hingeX, hingeY, hingeZ);
+  const tangent = new THREE.Vector3(tangentX, 0, tangentZ);
+  const openDirection = new THREE.Vector3(
+    outwardX * Math.cos(openAngle),
+    Math.sin(openAngle),
+    outwardZ * Math.cos(openAngle),
+  );
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.matrixAutoUpdate = false;
+  mesh.matrix.copy(makeTrianglePlateMatrix(
+    width,
+    length,
+    hinge,
+    tangent,
+    openDirection,
+    inset,
+    normalOffset,
+    0,
+    panelSideHint,
+  ));
+  mesh.userData.solarPetal = {
+    width,
+    length,
+    hinge: hinge.clone(),
+    tangent: tangent.clone(),
+    openDirection: openDirection.clone(),
+    closedDirection: closedDirection.clone(),
+    panelSideHint: panelSideHint.clone(),
+    inset,
+    normalOffset,
+    thickness: 0,
+  } satisfies SolarPetalAnimation;
+  return mesh;
+}
+
+function makeSolarStaticPanelOverlay(
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material,
+  width: number,
+  length: number,
+  hingeX: number,
+  hingeY: number,
+  hingeZ: number,
+  tangentX: number,
+  tangentZ: number,
+  panelDirection: THREE.Vector3,
+  normalOffset: number,
+  panelSideHint: THREE.Vector3,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.matrixAutoUpdate = false;
+  mesh.matrix.copy(makeTrianglePlateMatrix(
+    width,
+    length,
+    new THREE.Vector3(hingeX, hingeY, hingeZ),
+    new THREE.Vector3(tangentX, 0, tangentZ),
+    panelDirection,
+    0,
+    normalOffset,
+    0,
+    panelSideHint,
+  ));
   return mesh;
 }
 
@@ -1078,10 +1394,11 @@ function makeTrianglePlate(
   inset = 0,
   normalOffset = 0,
   thickness = 0,
+  panelSideHint?: THREE.Vector3,
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(thickness > 0 ? solarTrianglePetalGeom : solarTrianglePanelGeom, material);
   mesh.matrixAutoUpdate = false;
-  mesh.matrix.copy(makeTrianglePlateMatrix(width, length, hinge, tangent, petalDirection, inset, normalOffset, thickness));
+  mesh.matrix.copy(makeTrianglePlateMatrix(width, length, hinge, tangent, petalDirection, inset, normalOffset, thickness, panelSideHint));
   return mesh;
 }
 
@@ -1094,21 +1411,52 @@ function makeTrianglePlateMatrix(
   inset = 0,
   normalOffset = 0,
   thickness = 0,
+  panelSideHint?: THREE.Vector3,
 ): THREE.Matrix4 {
-  const tangentDir = tangent.clone().normalize();
-  const petalDir = petalDirection.clone().normalize();
-  const normal = new THREE.Vector3().crossVectors(tangentDir, petalDir).normalize();
-  if (normal.y < 0) normal.multiplyScalar(-1);
-  const origin = hinge.clone()
+  const matrix = new THREE.Matrix4();
+  writeSolarPetalMatrix(
+    matrix,
+    width,
+    length,
+    hinge,
+    tangent,
+    petalDirection,
+    inset,
+    normalOffset,
+    thickness,
+    panelSideHint,
+  );
+  return matrix;
+}
+
+export function writeSolarPetalMatrix(
+  matrix: THREE.Matrix4,
+  width: number,
+  length: number,
+  hinge: THREE.Vector3,
+  tangent: THREE.Vector3,
+  petalDirection: THREE.Vector3,
+  inset = 0,
+  normalOffset = 0,
+  thickness = 0,
+  panelSideHint?: THREE.Vector3,
+): void {
+  const tangentDir = _solarPetalTangent.copy(tangent).normalize();
+  const petalDir = _solarPetalDirection.copy(petalDirection).normalize();
+  const normal = _solarPetalNormal.crossVectors(tangentDir, petalDir).normalize();
+  if (panelSideHint) {
+    if (normal.dot(panelSideHint) < 0) normal.multiplyScalar(-1);
+  } else if (normal.y < 0) {
+    normal.multiplyScalar(-1);
+  }
+  const origin = _solarPetalOrigin.copy(hinge)
     .addScaledVector(petalDir, inset)
     .addScaledVector(normal, normalOffset);
-  const xAxis = tangentDir.multiplyScalar(width);
-  const yAxis = petalDir.multiplyScalar(Math.max(1, length - inset));
-  const zAxis = normal.multiplyScalar(Math.max(1, thickness));
-  const matrix = new THREE.Matrix4();
+  const xAxis = _solarPetalXAxis.copy(tangentDir).multiplyScalar(width);
+  const yAxis = _solarPetalYAxis.copy(petalDir).multiplyScalar(Math.max(1, length - inset));
+  const zAxis = _solarPetalZAxis.copy(normal).multiplyScalar(Math.max(1, thickness));
   matrix.makeBasis(xAxis, yAxis, zAxis);
   matrix.setPosition(origin);
-  return matrix;
 }
 
 function makeHingeBar(
@@ -1202,6 +1550,8 @@ export function disposeBuildingGeoms(): void {
   solarPanelPyramidGeom.dispose();
   solarTrianglePanelGeom.dispose();
   solarTrianglePetalGeom.dispose();
+  solarPanelCoarseLineGeom.dispose();
+  solarPanelFineLineGeom.dispose();
   cylinderGeom.dispose();
   hexCylinderGeom.dispose();
   extractorPyramidGeom.dispose();
@@ -1212,6 +1562,8 @@ export function disposeBuildingGeoms(): void {
   chimneyMat.dispose();
   solarCellMat.dispose();
   solarPetalBackMat.dispose();
+  solarPanelCoarseLineMat.dispose();
+  solarPanelFineLineMat.dispose();
   windTowerMat.dispose();
   windTrimMat.dispose();
   windNacelleMat.dispose();
@@ -1226,5 +1578,6 @@ export function disposeBuildingGeoms(): void {
   hazardStripeMat.dispose();
   constructionGhostMat.dispose();
   constructionCoreMat.dispose();
+  constructionPulseMat.dispose();
   constructionSparkMat.dispose();
 }

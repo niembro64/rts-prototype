@@ -18,7 +18,7 @@ import { getPlayerColors } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { applyShellOverride } from './ShellMaterial';
 import { makeInstanceAlphaCapable, setInstanceAlphaSlot } from './instanceAlpha';
-import { SHELL_OPACITY, NORMAL_OPACITY } from '@/shellConfig';
+import { SHELL_OPACITY, NORMAL_OPACITY, BUILD_BUBBLE_RADIUS_PUSH_MULT } from '@/shellConfig';
 import type { SpinConfig } from '../../config';
 import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
@@ -3807,17 +3807,33 @@ export class Render3DEntities {
       }
     }
 
+    // Outer ghost shell ("build bubble") — sized as a SPHERE at
+    // BUILD_BUBBLE_RADIUS_PUSH_MULT × the queued unit's PUSH collider
+    // radius, easing in with build progress and modulated by a small
+    // breathing pulse for life. The original implementation grew the
+    // bubble off the unit's body radius and stretched it into a flat
+    // ellipsoid; the user pinned it to the push collider so the bubble
+    // visually matches the footprint the unit will occupy after it
+    // exits the factory bay.
+    const targetGhostRadius = Math.max(8, buildSpotRadius * BUILD_BUBBLE_RADIUS_PUSH_MULT);
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    const ghostScaleProgress = 0.28 + easedProgress * 0.72;
+    const timeSec = this._lastSpinMs / 1000;
+    const phase = timeSec * 4.7 + e.id * 0.19;
+    const pulse = 1 + Math.sin(phase * 1.7) * 0.035;
+    const ghostRadius = targetGhostRadius * ghostScaleProgress * pulse;
+    // The remaining rig elements (core orb, travelling pulses,
+    // sparks) keep their old per-blueprint sizing for now — they're
+    // small relative to the outer shell, and locking them to the push
+    // multiplier would visually swamp small units. `radius` below is
+    // the legacy "rig radius" they lerp against.
     const maxBayRadius = Math.max(
       12,
       Math.min(getFactoryConstructionRadius() * 0.34, blueprintRadius * 1.35),
     );
     const baseRadius = Math.max(8, Math.min(maxBayRadius, blueprintRadius * 1.15));
-    const easedProgress = progress * progress * (3 - 2 * progress);
     const radius = baseRadius * (0.28 + easedProgress * 0.72);
-    const timeSec = this._lastSpinMs / 1000;
-    const phase = timeSec * 4.7 + e.id * 0.19;
-    const pulse = 1 + Math.sin(phase * 1.7) * 0.035;
-    const centerY = rig.bayBaseY + Math.max(5, radius * 0.68);
+    const centerY = rig.bayBaseY + Math.max(5, ghostRadius * 0.68);
     const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
       mapWidth: this.clientViewState.getMapWidth(),
       mapHeight: this.clientViewState.getMapHeight(),
@@ -3831,7 +3847,7 @@ export class Render3DEntities {
 
     rig.unitGhost.visible = buildingTierAtLeast(tier, 'medium');
     rig.unitGhost.position.set(localSpotX, centerY, localSpotZ);
-    rig.unitGhost.scale.set(radius * 1.22 * pulse, Math.max(5, radius * 0.64), radius * pulse);
+    rig.unitGhost.scale.setScalar(ghostRadius);
 
     rig.unitCore.visible = buildingTierAtLeast(tier, 'high');
     rig.unitCore.position.set(localSpotX, centerY + radius * 0.08, localSpotZ);
