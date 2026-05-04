@@ -28,14 +28,14 @@ import { getTurretBlueprint } from './blueprints';
  *  ball-joint math (MirrorAimSolver, MirrorPanelHit, the renderer's
  *  single-quaternion root rotation) all agree on where the panel
  *  ends up in 3D. Dial back when you're done verifying. */
-export const MIRROR_ARM_LENGTH_FRAC = 1.2;
+export const MIRROR_ARM_LENGTH_MULT = 1.2;
 
 /** Mirror panel size multiplier. Scales BOTH the sim collision
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
  *  Render3DEntities reads `mirrorPanels[0].halfWidth` directly so a
  *  bump here flows through to the visual panel without any other
  *  edit. 1.0 = legacy "panel side = 2 × bodyRadius". Cranked to 4
- *  for the same debug-visibility reason as MIRROR_ARM_LENGTH_FRAC:
+ *  for the same debug-visibility reason as MIRROR_ARM_LENGTH_MULT:
  *  a panel that's 8 × bodyRadius on a side is impossible to miss
  *  during yaw / pitch sweeps. */
 export const MIRROR_PANEL_SIZE_MULT = 4.0;
@@ -84,7 +84,7 @@ export function buildMirrorPanelCache(
 ): number {
   const unitBodyRadius = bp.bodyRadius;
   const halfSide = unitBodyRadius * MIRROR_PANEL_SIZE_MULT;
-  const armLength = unitBodyRadius * MIRROR_ARM_LENGTH_FRAC;
+  const armLength = unitBodyRadius * MIRROR_ARM_LENGTH_MULT;
   let mirrorBoundRadius = 0;
 
   for (const mount of bp.turrets) {

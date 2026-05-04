@@ -5,16 +5,8 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   Findings
 
   ---------------------------------------------------
-  4) DEAD CODE
-  ---------------------------------------------------
-
-  ---------------------------------------------------
   5) NAMING INCONSISTENCIES
   ---------------------------------------------------
-
-  [LOW] src/game/sim/mirrorPanelCache.ts:31 `MIRROR_ARM_LENGTH_FRAC`
-    vs :41 `MIRROR_PANEL_SIZE_MULT` — both are scalar multipliers of
-    bodyRadius. `_FRAC` and `_MULT` for the same concept. Pick one.
 
   [LOW] Three names for closely-related mount concepts in
     src/types/blueprints.ts: `MountPoint` (legacy 2D shape, re-exported

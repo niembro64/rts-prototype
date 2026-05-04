@@ -156,7 +156,7 @@ export type UnitAction = {
 //             value is used for both the horizontal-edge half and the
 //             vertical-edge half via `(topY - baseY) / 2`).
 // offsetX  — distance from turret pivot to panel center along the rigid
-//            arm's forward direction (≈ unitBodyRadius * MIRROR_ARM_LENGTH_FRAC).
+//            arm's forward direction (≈ unitBodyRadius * MIRROR_ARM_LENGTH_MULT).
 // offsetY  — lateral pivot offset (zero for current single-arm panels;
 //            non-zero would mount the arm off-center on the chassis).
 // angle    — panel-yaw offset relative to mirror turret yaw (zero today;
@@ -765,6 +765,8 @@ export type Commander = {
 // D-gun projectile marker
 export type DGunProjectile = {
   isDGun: boolean;
+  terrainFollow?: boolean;
+  groundOffset?: number;
 };
 
 // Entity type discriminator

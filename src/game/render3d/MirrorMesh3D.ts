@@ -34,7 +34,7 @@ export type MirrorMesh = {
 export type MirrorPanelMount = {
   /** Authored chassis-local offset of the panel center along the
    *  turret's local +X (forward). For the arm-mounted mirror this is
-   *  the arm length (= bodyRadius × MIRROR_ARM_LENGTH_FRAC). */
+   *  the arm length (= bodyRadius × MIRROR_ARM_LENGTH_MULT). */
   offsetX: number;
   /** Lateral chassis-local offset; always 0 for the regularized
    *  single-arm mirror. */

@@ -30,7 +30,7 @@ import {
   getUnitBlueprint,
 } from '../sim/blueprints';
 import { isLineShotBlueprint } from '@/types/blueprints';
-import { MIRROR_ARM_LENGTH_FRAC, getMirrorPanelCenter } from '../sim/mirrorPanelCache';
+import { MIRROR_ARM_LENGTH_MULT, getMirrorPanelCenter } from '../sim/mirrorPanelCache';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {
@@ -821,7 +821,7 @@ export class Debris3D {
       // adds chassisLiftY.
       if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
         const side = r * 2;
-        const armLength = r * MIRROR_ARM_LENGTH_FRAC;
+        const armLength = r * MIRROR_ARM_LENGTH_MULT;
         const armThickness = Math.max(r * 0.18, 0.5);
         const panelCenterY = localMount.z * r - chassisLiftY;
         const cY = Math.cos(chassisYaw);
