@@ -141,6 +141,12 @@ const MIRROR_PANEL_COLOR = 0xffffff;
 const MIRROR_PANEL_METALNESS = 0.12;
 const MIRROR_PANEL_ROUGHNESS = 0.58;
 const MIRROR_PANEL_ENV_INTENSITY = 0.22;
+// Windows/ANGLE has shown unstable output on the detailed unit pools
+// that render a white shared material recolored through instanceColor.
+// Mirror arms and buildings are stable because they use direct
+// per-player materials, so detailed units take that same direct-mesh
+// path. The far mass-sphere path stays instanced for high unit counts.
+const USE_DETAILED_UNIT_INSTANCING = false;
 
 const PROJECTILE_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
   min: 0.7,
@@ -2533,9 +2539,19 @@ export class Render3DEntities {
         // by the scenegraph chain like before.
         let smoothChassisSlots: number[] | undefined;
         let polyChassisSlot: number | undefined;
-        if (!hideChassis && bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
+        if (
+          USE_DETAILED_UNIT_INSTANCING &&
+          !hideChassis &&
+          bodyEntry.isSmooth &&
+          bodyEntry.parts.length > 0
+        ) {
           smoothChassisSlots = this.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
-        } else if (!hideChassis && !bodyEntry.isSmooth && bodyEntry.parts.length > 0) {
+        } else if (
+          USE_DETAILED_UNIT_INSTANCING &&
+          !hideChassis &&
+          !bodyEntry.isSmooth &&
+          bodyEntry.parts.length > 0
+        ) {
           const allocated = this.allocPolyChassisSlot(
             e.id, bodyShapeKey, bodyEntry.parts[0].geometry,
           );
@@ -2577,7 +2593,7 @@ export class Render3DEntities {
           const isForceField = (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
           const hideHead = turretOff || isForceField;
           let headSlot: number | undefined;
-          if (!hideHead && !isCommanderUnit) {
+          if (USE_DETAILED_UNIT_INSTANCING && !hideHead && !isCommanderUnit) {
             const allocated = this.allocTurretHeadSlot();
             if (allocated !== null) headSlot = allocated;
           }
@@ -2626,7 +2642,7 @@ export class Render3DEntities {
           // Try to allocate one barrel slot per barrel. All-or-nothing:
           // partial allocations get freed and we leave the per-Mesh
           // barrels in the scene as the fallback.
-          if (tm.barrels.length > 0 && this.barrelInstanced) {
+          if (USE_DETAILED_UNIT_INSTANCING && tm.barrels.length > 0 && this.barrelInstanced) {
             const barrelSlots: number[] = [];
             let allAlloc = true;
             for (let bi = 0; bi < tm.barrels.length; bi++) {
@@ -2742,7 +2758,10 @@ export class Render3DEntities {
           // to the slot).
           const panelCount = mirrorPanels.length;
           const allocedPanelSlots: number[] = [];
-          let allMirrorAlloc = panelCount > 0 && this.mirrorPanelInstanced !== null;
+          let allMirrorAlloc =
+            USE_DETAILED_UNIT_INSTANCING &&
+            panelCount > 0 &&
+            this.mirrorPanelInstanced !== null;
           if (allMirrorAlloc) {
             for (let pi = 0; pi < panelCount; pi++) {
               const slot = this.allocMirrorPanelSlot();
