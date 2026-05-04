@@ -1,11 +1,15 @@
-// Mirror panel mesh builder (3D). The panel is a flat SQUARE plane
-// mounted at ARM'S LENGTH out from the turret body sphere along the
-// turret's facing direction, connected to the turret center by a
-// rendered cylinder. Rotation/pitch are applied by the per-tick
-// update path in EntityRenderer (rotation.y on the parent root,
-// rotation.x on each panel). Pitching the panel around its edge axis
-// after the yaw flip rotates the panel face independently of the
-// arm — the arm itself does not pitch.
+// Mirror panel mesh builder (3D). The panel + arm form a RIGID
+// assembly: when the turret pitches, the arm AND panel swing through
+// 3D space together. The arm direction is
+//
+//     a(α, β) = (cos α · cos β,  sin α · cos β,  sin β)
+//
+// from the turret pivot (`root` group origin), the panel center sits
+// at arm's length out along that direction, and the panel face is
+// perpendicular to the arm. Yaw lives on `root.rotation.y`; pitch is
+// applied per-frame by the EntityRenderer to each arm + panel pair
+// (positions + rotations recomputed from `panelArmLength` /
+// `visibleArmLength` / `panelCenterY` stored on this struct).
 
 import * as THREE from 'three';
 
@@ -25,6 +29,13 @@ export type MirrorMesh = {
    *  fallback is in use (cap exhausted). The caller (Render3DEntities)
    *  sets this after build. */
   panelSlots?: number[];
+  /** Geometry references the per-frame pitch updater needs to keep
+   *  the rigid arm + panel assembly aligned with the turret's pitch.
+   *  These mirror the build-time inputs so the renderer doesn't have
+   *  to re-thread blueprint values through a long call chain. */
+  panelArmLength: number;
+  visibleArmLength: number;
+  panelCenterY: number;
 };
 
 export type MirrorPanelMount = {
@@ -117,5 +128,12 @@ export function buildMirrorMesh3D(
     if (!skipPerMesh) root.add(m);
     panelMeshes.push(m);
   }
-  return { root, panels: panelMeshes, arms: armMeshes };
+  return {
+    root,
+    panels: panelMeshes,
+    arms: armMeshes,
+    panelArmLength,
+    visibleArmLength,
+    panelCenterY,
+  };
 }

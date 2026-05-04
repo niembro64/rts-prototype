@@ -1,9 +1,23 @@
 // Mirror-panel hit testing — shared by server beam tracing and
 // projectile collision. Computes the closest hit of a 3D ray segment
-// against a unit's reflective panels,
-// honoring both YAW (turret rotation) and PITCH (turret pitch) so the
-// panel can redirect both horizontal and vertical components of an
-// incoming beam / shot.
+// against a unit's reflective panels.
+//
+// The mirror is RIGID with the turret arm: yawing the assembly
+// swings the panel sideways, pitching it swings the panel up/down.
+// So the panel center is at arm's length out along the arm
+// direction
+//
+//     a(α, β) = (cos α · cos β,  sin α · cos β,  sin β)
+//
+// from the turret pivot — pitch displaces the panel vertically AND
+// pulls it horizontally toward the chassis as β → π/2. The panel
+// NORMAL is also a(α, β) (panel face is perpendicular to the arm),
+// and the panel rotates around its horizontal edge axis as pitch
+// changes — that part of the math (handed to rayTiltedRectIntersectionT
+// via `edge axis` + the implicit `normal × edge`) was already there.
+// Pre-fix the pcx/pcy/pcz computation was the bug: panel offsetX was
+// applied flat in XY and pcz was a fixed body-mid Z, so a panel
+// pitched up still collided where it was when horizontal.
 
 import { rayTiltedRectIntersectionT } from '../../math';
 import type { CachedMirrorPanel } from '../../../types/sim';
@@ -70,18 +84,27 @@ export function findClosestPanelHit(
     if (pi === excludePanelIndex) continue;
     const panel = panels[pi];
 
-    // Panel center in world: chassis + chassis-local offset, vertical
-    // midpoint of (baseY, topY) above unit ground.
-    const pcx = unitX + fwdX * panel.offsetX + perpX * panel.offsetY;
-    const pcy = unitY + fwdY * panel.offsetX + perpY * panel.offsetY;
-    const pcz = unitGroundZ + (panel.baseY + panel.topY) / 2;
+    // Panel center in world. The rigid arm starts at the turret
+    // pivot — which sits at the unit center (xy) + panel.offsetY
+    // sideways (perpY-aligned) — and extends `armLength = offsetX`
+    // along the 3D arm direction (cos α cos β, sin α cos β, sin β).
+    // unitGroundZ + (baseY+topY)/2 is the pivot's Z (the panel's
+    // baseY/topY are authored at zero pitch, so their midpoint IS
+    // the pivot height regardless of pitch).
+    const armLength = panel.offsetX;
+    const pivotX = unitX + perpX * panel.offsetY;
+    const pivotY = unitY + perpY * panel.offsetY;
+    const pivotZ = unitGroundZ + (panel.baseY + panel.topY) / 2;
+    const pcx = pivotX + fwdX * cosPitch * armLength;
+    const pcy = pivotY + fwdY * cosPitch * armLength;
+    const pcz = pivotZ + sinPitch * armLength;
 
     // Yaw of the panel itself = turret yaw + panel's blueprint angle.
     const panelYaw = mirrorRot + panel.angle;
     const yawCos = Math.cos(panelYaw);
     const yawSin = Math.sin(panelYaw);
 
-    // 3D normal: yaw rotated then pitched up.
+    // 3D normal = arm direction (panel face perpendicular to arm).
     const nx = yawCos * cosPitch;
     const ny = yawSin * cosPitch;
     const nz = sinPitch;

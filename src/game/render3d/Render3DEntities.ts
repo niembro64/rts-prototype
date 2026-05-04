@@ -3137,8 +3137,45 @@ export class Render3DEntities {
           if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
           const mCombinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
           m.mirrors.root.rotation.y = mCombinedYaw + e.transform.rotation;
+          // Rigid pitch: the entire arm + panel assembly swings as
+          // one body around the turret pivot. Update positions AND
+          // rotations of the arms + panels so the visual matches the
+          // sim's full-3D panel center (MirrorPanelHit pcz now
+          // includes the sin(pitch)·armLength term, MirrorAimSolver
+          // iterates panel center in 3D — same arm-direction vector).
+          // Three coords in the mirror root's frame: +X = forward
+          // (along yawed arm direction at zero pitch), +Y = up, +Z =
+          // side. Pitching `up` rotates the +X-pointing arm toward
+          // +Y around the +Z axis, so each part's per-frame rotation
+          // includes a Z-axis tilt of `mirrorPitch`.
+          const cosPitch = Math.cos(mirrorPitch);
+          const sinPitch = Math.sin(mirrorPitch);
+          const panelArmLength = m.mirrors.panelArmLength;
+          const visibleArmLength = m.mirrors.visibleArmLength;
+          const panelCenterY = m.mirrors.panelCenterY;
+          for (const arm of m.mirrors.arms) {
+            // Arm midpoint at half-length along the pitched arm dir.
+            arm.position.set(
+              cosPitch * visibleArmLength / 2,
+              panelCenterY + sinPitch * visibleArmLength / 2,
+              0,
+            );
+            // Cylinder default is along +Y; original Z(-π/2) aligned
+            // it with +X. Add the pitch rotation around +Z and the
+            // cylinder follows the pitched arm direction exactly.
+            arm.rotation.set(0, 0, -Math.PI / 2 + mirrorPitch);
+          }
           for (const panel of m.mirrors.panels) {
-            panel.rotation.x = mirrorPitch;
+            panel.position.set(
+              cosPitch * panelArmLength,
+              panelCenterY + sinPitch * panelArmLength,
+              0,
+            );
+            // Panel default lies in XY plane (normal +Z). Y(-π/2)
+            // takes normal to +X (forward); Z(pitch) tilts the whole
+            // panel up so its normal becomes (cos pitch, sin pitch,
+            // 0) in this frame — same direction as the arm.
+            panel.rotation.set(0, -Math.PI / 2, mirrorPitch, 'YZX');
           }
 
           // Mirror-panel InstancedMesh write — same chain-compose

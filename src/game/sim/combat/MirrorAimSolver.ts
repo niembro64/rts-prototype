@@ -2,17 +2,32 @@
 // — its job is to ORIENT a flat reflector so an enemy beam fired at
 // the mirror-bearing unit reflects BACK at the firing source's body.
 //
+// The mirror turret is a RIGID ASSEMBLY: turret base, arm cylinder,
+// and panel rotate as one body. Yawing or pitching the turret swings
+// the panel through 3D space — the panel CENTER sits at arm's length
+// out along the arm direction, and the panel NORMAL is also that
+// arm direction. So solving "where to aim the panel" simultaneously
+// solves "where the panel ends up in 3D" — they're the same vector.
+//
 // Inputs (per tick, per mirror turret):
 //   - unit            — the mirror-bearing unit
 //   - weapon          — the mirror turret on `unit`
 //   - target          — the LOCKED-ON enemy unit (already chosen by
 //                       targetingSystem because it has a non-passive
 //                       beam/laser turret); also the redirect victim.
-//   - weaponX/Y       — turret mount world position (chassis-local
-//                       offset already resolved)
-//   - unitGroundZ     — unit's ground footprint Z
+//   - weaponX/Y/Z     — turret mount world position (the rigid
+//                       assembly's pivot point; the arm extends from
+//                       here along the bisector direction)
+//   - unitGroundZ     — unit's ground footprint Z (kept for caller
+//                       symmetry with non-passive solvers; not used
+//                       directly any more — the assembly pivot is
+//                       weaponZ).
 //   - fallbackYaw     — current desired yaw to use if the bisector
 //                       can't be solved (degenerate input vectors)
+//   - fallbackPitch   — current pitch to seed the iteration from;
+//                       lets the solver converge in one pass when
+//                       the target moves slowly relative to the
+//                       previous solution.
 //
 // Output: { targetAngle, mirrorPitch, aim{X,Y,Z} } — yaw + pitch the
 // turret damper should drive toward, plus a sensible aim point for
@@ -27,14 +42,18 @@
 //
 // Yaw α = atan2(n.y, n.x), pitch β = atan2(n.z, hypot(n.x, n.y)).
 //
-// The panel center P is mounted at ARM'S LENGTH out in front of the
-// turret (panel `offsetX` chassis-local), so P depends on α — moving
-// the bisector yaw moves the panel sideways, which moves the bisector
-// yaw. We solve with three fixed-point iterations (P_{i+1} = weaponMount
-// + offsetX · (cos α_i, sin α_i)). The residual collapses well below
-// 0.01° after the third pass for any reasonable arm length / target
-// distance combination. Vertical P is independent of pitch (panel
-// rotates around its horizontal edge axis) so no β iteration.
+// The panel center P is mounted at arm's length out from the turret
+// pivot ALONG THE ARM, which has direction
+//
+//     a(α, β) = (cos α · cos β,  sin α · cos β,  sin β)
+//
+// So P(α, β) = pivot + armLength · a(α, β). When yaw or pitch
+// updates, the panel center sweeps through 3D. Both axes feed back:
+// changing α moves the panel sideways AND tilts the bisector;
+// changing β moves the panel up/down AND pitches the bisector. We
+// solve the coupled system with three fixed-point iterations. The
+// residual collapses well below 0.01° after the third pass for any
+// realistic arm length / target distance combo.
 
 import type { Entity, Turret } from '../types';
 import { isLineShot } from '../types';
@@ -97,8 +116,9 @@ export function solveMirrorAim(
   target: Entity,
   weaponX: number,
   weaponY: number,
-  unitGroundZ: number,
+  weaponZ: number,
   fallbackYaw: number,
+  fallbackPitch: number,
   currentTick?: number,
 ): MirrorAim | null {
   if (!target.turrets || !unit.unit) return null;
@@ -137,25 +157,32 @@ export function solveMirrorAim(
   const panels = unit.unit.mirrorPanels;
   if (panels.length === 0) return null;
   const panel = panels[0];
-  const panelCenterZ = unitGroundZ + (panel.baseY + panel.topY) / 2;
   const armLength = panel.offsetX;
 
-  // Three fixed-point iterations on the panel center P. Seed P_0
-  // with the panel's CURRENT yaw (the weapon's last solved rotation)
-  // so we converge fast even when the target is moving sideways.
+  // Three fixed-point iterations on the panel center P (now full 3D).
+  // P(α, β) = (weaponX, weaponY, weaponZ) + armLength · a(α, β)
+  // where a(α, β) = (cos α · cos β,  sin α · cos β,  sin β) is the
+  // arm direction vector. Seed (α, β) from the weapon's last solved
+  // pose so the residual is sub-degree after one iter for nearly-
+  // stationary targets.
   let bisectorYaw = fallbackYaw;
-  let bisectorPitch = 0;
+  let bisectorPitch = fallbackPitch;
   let valid = false;
-  let pcx = weaponX + Math.cos(fallbackYaw) * armLength;
-  let pcy = weaponY + Math.sin(fallbackYaw) * armLength;
+  let cosA = Math.cos(bisectorYaw);
+  let sinA = Math.sin(bisectorYaw);
+  let cosB = Math.cos(bisectorPitch);
+  let sinB = Math.sin(bisectorPitch);
+  let pcx = weaponX + cosA * cosB * armLength;
+  let pcy = weaponY + sinA * cosB * armLength;
+  let pcz = weaponZ + sinB * armLength;
   for (let iter = 0; iter < 3; iter++) {
     const sX = eTip.x - pcx;
     const sY = eTip.y - pcy;
-    const sZ = eTip.z - panelCenterZ;
+    const sZ = eTip.z - pcz;
     const sLen = Math.hypot(sX, sY, sZ);
     const cX = target.transform.x - pcx;
     const cY = target.transform.y - pcy;
-    const cZ = target.transform.z - panelCenterZ;
+    const cZ = target.transform.z - pcz;
     const cLen = Math.hypot(cX, cY, cZ);
     if (sLen <= 1e-6 || cLen <= 1e-6) break;
     const nx = sX / sLen + cX / cLen;
@@ -166,10 +193,15 @@ export function solveMirrorAim(
     bisectorYaw = Math.atan2(ny, nx);
     bisectorPitch = Math.atan2(nz / nLen, Math.hypot(nx / nLen, ny / nLen));
     valid = true;
-    // Re-anchor P at the new yaw — panel sits arm's length forward
-    // along the just-solved bisector direction.
-    pcx = weaponX + Math.cos(bisectorYaw) * armLength;
-    pcy = weaponY + Math.sin(bisectorYaw) * armLength;
+    // Re-anchor P at the just-solved bisector direction. Both yaw
+    // and pitch feed back into the new panel center.
+    cosA = Math.cos(bisectorYaw);
+    sinA = Math.sin(bisectorYaw);
+    cosB = Math.cos(bisectorPitch);
+    sinB = Math.sin(bisectorPitch);
+    pcx = weaponX + cosA * cosB * armLength;
+    pcy = weaponY + sinA * cosB * armLength;
+    pcz = weaponZ + sinB * armLength;
   }
 
   if (!valid) {

@@ -123,10 +123,17 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           // the solved overrides.
           let mirrorPitchOverride: number | null = null;
           if (weapon.config.passive && world.mirrorsEnabled) {
+            // Pass the FULL 3D turret pivot (mountZ, not just
+            // unitGroundZ) and the weapon's CURRENT pitch as the
+            // iteration seed — the rigid-arm bisector solver couples
+            // yaw + pitch through the panel center, so the seed pose
+            // matters for both axes (stale fallback = noisier first
+            // pass).
             const aim = solveMirrorAim(
               unit, weapon, target,
-              weaponX, weaponY, unitGroundZ,
-              targetAngle ?? 0,
+              weaponX, weaponY, mountZ,
+              targetAngle ?? weapon.rotation,
+              weapon.pitch,
               currentTick,
             );
             if (aim) {
