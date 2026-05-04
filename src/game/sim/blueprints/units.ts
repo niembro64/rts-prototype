@@ -246,7 +246,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 1,
     bodyCenterHeight: getWheelBodyCenterHeightY(BODY_SHAPES.scout, 8, 0.28),
     mass: 30,
-    resourceCost: 50,
+    cost: { energy: 50, mana: 50, metal: 50 },
     turrets: [turretMount('lightTurret', mountPoint(0, 0, 1.2))],
     bodyShape: BODY_SHAPES.scout,
     locomotion: {
@@ -274,7 +274,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 10,
     bodyCenterHeight: getTreadBodyCenterHeightY(BODY_SHAPES.burst, 10),
     mass: 40,
-    resourceCost: 90,
+    cost: { energy: 90, mana: 90, metal: 90 },
     turrets: [turretMount('pulseTurret', mountPoint(0, 0, 1.3))],
     bodyShape: BODY_SHAPES.burst,
     locomotion: {
@@ -304,7 +304,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: DADDY_VISUAL_RADIUS,
     bodyCenterHeight: DADDY_BODY_CENTER_HEIGHT,
     mass: 30,
-    resourceCost: 350,
+    cost: { energy: 350, mana: 350, metal: 350 },
     turrets: [
       turretMount('laserTurret', mountPoint(0, 0, DADDY_LASER_TURRET_Z_FRAC)),
       turretMount('forceTurret', mountPoint(0, 0, DADDY_FORCE_FIELD_TURRET_Z_FRAC)),
@@ -338,7 +338,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 16,
     bodyCenterHeight: getTreadBodyCenterHeightY(BODY_SHAPES.brawl, 16),
     mass: 300,
-    resourceCost: 300,
+    cost: { energy: 300, mana: 300, metal: 300 },
     turrets: [turretMount('salvoRocketTurret', mountPoint(0, 0, 1.4))],
     bodyShape: BODY_SHAPES.brawl,
     locomotion: {
@@ -365,7 +365,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 20,
     bodyCenterHeight: getWheelBodyCenterHeightY(BODY_SHAPES.mortar, 20, 0.22),
     mass: 200,
-    resourceCost: 220,
+    cost: { energy: 220, mana: 220, metal: 220 },
     turrets: [turretMount('mortarTurret', mountPoint(0, 0, 1.2))],
     bodyShape: BODY_SHAPES.mortar,
     locomotion: {
@@ -393,7 +393,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 10,
     bodyCenterHeight: TICK_BODY_CENTER_HEIGHT,
     mass: 20,
-    resourceCost: 35,
+    cost: { energy: 35, mana: 35, metal: 35 },
     turrets: [
       turretMount('laserTurret', mountPoint(0, 0, TICK_TURRET_Z_FRAC)),
     ],
@@ -425,7 +425,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 24,
     bodyCenterHeight: getTreadBodyCenterHeightY(BODY_SHAPES.tank, 24),
     mass: 1000,
-    resourceCost: 1200,
+    cost: { energy: 1200, mana: 1200, metal: 1200 },
     turrets: [turretMount('cannonTurret', mountPoint(0, 0, 1.5))],
     bodyShape: BODY_SHAPES.tank,
     locomotion: {
@@ -453,7 +453,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 40,
     bodyCenterHeight: getLegBodyCenterHeightY(BODY_SHAPES.formik, 40),
     mass: 2500,
-    resourceCost: 4000,
+    cost: { energy: 4000, mana: 4000, metal: 4000 },
     turrets: [
       turretMount('gatlingMortarTurret', mountPoint(FORMIK_BACK_SEGMENT_FORWARD_FRAC, 0, 1.7)),
     ],
@@ -489,7 +489,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: WIDOW_BODY_RADIUS,
     bodyCenterHeight: getLegBodyCenterHeightY(BODY_SHAPES.arachnid, WIDOW_BODY_RADIUS),
     mass: 1000,
-    resourceCost: 3000,
+    cost: { energy: 3000, mana: 3000, metal: 3000 },
     turrets: computeWidowTurrets(),
     bodyShape: BODY_SHAPES.arachnid,
     locomotion: {
@@ -518,7 +518,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 30,
     bodyCenterHeight: getTreadBodyCenterHeightY(BODY_SHAPES.hippo, 30),
     mass: 1500,
-    resourceCost: 2500,
+    cost: { energy: 2500, mana: 2500, metal: 2500 },
     turrets: [turretMount('hippoGatlingTurret', mountPoint(0.2, 0, 1.8))],
     bodyShape: BODY_SHAPES.hippo,
     locomotion: {
@@ -545,7 +545,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 11,
     bodyCenterHeight: getLegBodyCenterHeightY(BODY_SHAPES.beam, 11),
     mass: 30,
-    resourceCost: 300,
+    cost: { energy: 300, mana: 300, metal: 300 },
     turrets: [
       turretMount('beamTurret', mountPoint(TARANTULA_ABDOMEN_FORWARD_FRAC, 0, 1.8)),
     ],
@@ -578,7 +578,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 10,
     bodyCenterHeight: LORIS_BODY_CENTER_HEIGHT,
     mass: 90,
-    resourceCost: 190,
+    cost: { energy: 190, mana: 190, metal: 190 },
     turrets: [turretMount('mirrorTurret', mountPoint(0, 0, LORIS_MIRROR_TURRET_Z_FRAC))],
     bodyShape: BODY_SHAPES.loris,
     hideChassis: true,
@@ -606,7 +606,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyRadius: 20,
     bodyCenterHeight: getLegBodyCenterHeightY(BODY_SHAPES.commander, 20),
     mass: 300,
-    resourceCost: 400,
+    cost: { energy: 400, mana: 400, metal: 400 },
     turrets: [
       turretMount('beamTurret', mountPoint(0.36, -0.42, 1)),
       turretMount('dgunTurret', mountPoint(0.36, 0.42, 1)),
@@ -699,9 +699,14 @@ export function getAllUnitBlueprints(): UnitBlueprint[] {
   return Object.values(UNIT_BLUEPRINTS);
 }
 
-// Normalized cost: resourceCost / max(resourceCost across buildables).
-// One resource pool, one normalization — used for UI rank/scale display.
+// Normalized cost: total per-build cost / max total across buildables.
+// "Total" is the sum across the three resource axes — gives a single
+// scalar for UI rank/scale display while honouring per-resource costs.
 let _costNormCache: { max: number } | null = null;
+
+function totalCost(c: { energy: number; mana: number; metal: number }): number {
+  return c.energy + c.mana + c.metal;
+}
 
 function getCostNorm(): { max: number } {
   if (_costNormCache) return _costNormCache;
@@ -709,13 +714,14 @@ function getCostNorm(): { max: number } {
   for (const id of BUILDABLE_UNIT_IDS) {
     const unitBlueprint = UNIT_BLUEPRINTS[id];
     if (!unitBlueprint) continue;
-    if (unitBlueprint.resourceCost > max) max = unitBlueprint.resourceCost;
+    const t = totalCost(unitBlueprint.cost);
+    if (t > max) max = t;
   }
   _costNormCache = { max };
   return _costNormCache;
 }
 
-export function getNormalizedUnitCost(unitBlueprint: { resourceCost: number }): number {
+export function getNormalizedUnitCost(unitBlueprint: { cost: { energy: number; mana: number; metal: number } }): number {
   const { max } = getCostNorm();
-  return max > 0 ? unitBlueprint.resourceCost / max : 0;
+  return max > 0 ? totalCost(unitBlueprint.cost) / max : 0;
 }

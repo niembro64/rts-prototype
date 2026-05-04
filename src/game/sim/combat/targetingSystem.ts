@@ -212,6 +212,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   for (const unit of world.getArmedUnits()) {
     if (!unit.ownership || !unit.unit || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
+    // Inert shells skip targeting until construction completes.
+    if (unit.buildable && !unit.buildable.isComplete) continue;
     const unitState = unit.unit;
     unit.unit.activeTurretMask = 0;
     unit.unit.firingTurretMask = 0;

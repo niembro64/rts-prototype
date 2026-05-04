@@ -7,7 +7,7 @@ import type {
   SpinConfig,
 } from './config';
 import type { SoundEntry } from './audio';
-import type { TurretRangeOverrides } from './sim';
+import type { TurretRangeOverrides, ResourceCost } from './sim';
 
 // Re-export for consumers
 export type {
@@ -405,7 +405,10 @@ export type UnitBlueprint = {
    *  same terrain-up coordinate system. */
   bodyCenterHeight: number;
   mass: number;
-  resourceCost: number;
+  /** Per-resource build cost (authored). BUILDING/UNIT configs apply
+   *  COST_MULTIPLIER on top. Each resource fills its own bar
+   *  independently from the owner's stockpile. */
+  cost: ResourceCost;
   turrets: TurretMount[];
   /** 3D chassis/body shape in unit-radius-1 space. */
   bodyShape: UnitBodyShape;

@@ -235,6 +235,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
   for (const unit of units) {
     if (!unit.ownership || !unit.unit || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
+    // Inert shells don't fire — every active behavior is gated on
+    // buildable.isComplete.
+    if (unit.buildable && !unit.buildable.isComplete) continue;
 
     const playerId = unit.ownership.playerId;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);

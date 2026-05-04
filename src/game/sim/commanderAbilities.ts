@@ -3,6 +3,7 @@ import type { Entity, EntityId, PlayerId } from './types';
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
+import { isBuildFullyPaid, getBuildFraction } from './buildableHelpers';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -38,19 +39,22 @@ export class CommanderAbilitiesSystem {
       // Check what type of target this is
       if (currentTarget.buildable && !currentTarget.buildable.isComplete) {
         // Building an incomplete building - check if complete (progress set by energy system)
-        if (currentTarget.buildable.buildProgress >= 1) {
-          currentTarget.buildable.buildProgress = 1;
+        if (isBuildFullyPaid(currentTarget.buildable)) {
+          currentTarget.buildable.paid = { ...currentTarget.buildable.required };
           currentTarget.buildable.isComplete = true;
           world.markSnapshotDirty(currentTarget.id, ENTITY_CHANGED_BUILDING);
           this.onConstructionComplete(world, currentTarget, playerId);
           completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
         }
 
-        // Spray effect - intensity based on whether we're actively building
-        const intensity = currentTarget.buildable.buildProgress < 1 ? 1 : 0;
+        // Spray effect — driven off the unified build fraction (avg
+        // of the three resource bars) so the commander's spray fades
+        // out cleanly as the shell finishes filling.
+        const buildFraction = getBuildFraction(currentTarget.buildable);
+        const intensity = buildFraction < 1 ? 1 : 0;
         const targetZ = currentTarget.building
           ? currentTarget.transform.z - currentTarget.building.depth / 2 +
-            currentTarget.building.depth * Math.max(0.1, currentTarget.buildable.buildProgress)
+            currentTarget.building.depth * Math.max(0.1, buildFraction)
           : currentTarget.transform.z;
         sprayTargets.push({
           source: { id: commander.id, pos: { x: commanderSprayX, y: commanderSprayY }, z: commanderSprayZ, playerId },

@@ -193,7 +193,9 @@ function executeCancelQueueItemCommand(ctx: CommandContext, command: CancelQueue
   const factory = ctx.world.getEntity(command.factoryId);
   if (!factory?.factory) return;
 
-  if (factoryProductionSystem.dequeueUnit(factory, command.index)) {
+  // Pass `world` so dequeueing the head with an active shell tears the
+  // shell down and refunds the resources already paid in.
+  if (factoryProductionSystem.dequeueUnit(factory, command.index, ctx.world)) {
     ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
   }
 }

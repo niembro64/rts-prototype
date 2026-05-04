@@ -7,26 +7,55 @@ import { COST_MULTIPLIER } from '../../config';
 import { expandPathActions } from './Pathfinder';
 import { ENTITY_CHANGED_FACTORY } from '../../types/network';
 import { getFactoryBuildSpot } from './factoryConstructionSite';
+import { economyManager } from './economy';
+import { getBuildFraction, makeZeroResourceCost } from './buildableHelpers';
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
 
 // Factory production system
 export class FactoryProductionSystem {
-  // Update all factories. Iterates the cached factory subset instead
-  // of scanning all buildings every tick.
+  // Update all factories. The factory's job is now (a) spawning a
+  // shell of the queued unit at its build spot when work begins, and
+  // (b) detecting completion of the shell and finishing the activation
+  // (waypoints + turret aim). Resource transfer into the shell is
+  // handled by energyDistribution, the same path that funds buildings.
   update(world: WorldState, _dtMs: number, buildingGrid: BuildingGrid): FactoryProductionResult {
     const completedUnits: Entity[] = [];
 
     for (const factory of world.getFactoryBuildings()) {
-      // Skip if not complete
+      // Factory itself must be complete and owned.
       if (!factory.factory || !factory.buildable?.isComplete) continue;
       if (!factory.ownership) continue;
 
       const factoryComp = factory.factory;
       const playerId = factory.ownership.playerId;
 
-      // Check if we have something to build
+      // (1) If we already have a shell in progress, check if it's done.
+      if (factoryComp.currentShellId !== null) {
+        const shell = world.getEntity(factoryComp.currentShellId);
+        if (!shell) {
+          // Shell vanished (destroyed mid-build). Reset and try next tick.
+          factoryComp.currentShellId = null;
+          factoryComp.isProducing = false;
+          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+          continue;
+        }
+        if (shell.buildable?.isComplete) {
+          // Activation: copy waypoints, aim turrets, mark dirty.
+          this.activateShell(world, factory, shell, buildingGrid);
+          completedUnits.push(shell);
+          factoryComp.buildQueue.shift();
+          factoryComp.currentShellId = null;
+          factoryComp.isProducing = false;
+          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+        }
+        // Otherwise the shell is still filling — energyDistribution
+        // pours resources into it; nothing to do here.
+        continue;
+      }
+
+      // (2) No shell in progress — try to spawn the head of the queue.
       if (factoryComp.buildQueue.length === 0) {
         if (factoryComp.isProducing) {
           factoryComp.isProducing = false;
@@ -34,97 +63,89 @@ export class FactoryProductionSystem {
         }
         continue;
       }
-
-      // Get current build item (unit type ID)
       const currentUnitType = factoryComp.buildQueue[0];
-      const bp = getUnitBlueprint(currentUnitType);
-
+      let bp;
+      try {
+        bp = getUnitBlueprint(currentUnitType);
+      } catch {
+        bp = undefined;
+      }
       if (!bp) {
-        // Invalid unit, remove from queue
+        // Invalid unit, drop it.
         factoryComp.buildQueue.shift();
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
         continue;
       }
-
-      // Initialize production if not started
-      if (!factoryComp.isProducing) {
-        factoryComp.isProducing = true;
-        factoryComp.currentBuildProgress = 0;
-        factoryComp.currentBuildResourceCost = bp.resourceCost * COST_MULTIPLIER;
-        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-      }
-
-      // Energy spending is handled by the shared energy distribution system.
-      // Factory progress is advanced there; we just check for completion here.
-
-      // Check if unit is complete
-      if (factoryComp.currentBuildProgress >= 1) {
-        // Check unit cap before creating
-        if (!world.canPlayerBuildUnit(playerId)) {
-          // At unit cap - pause production (don't remove from queue)
+      // Honour the unit cap at SHELL SPAWN time — once a shell is in
+      // the world it counts toward the cap.
+      if (!world.canPlayerBuildUnit(playerId)) {
+        if (factoryComp.isProducing) {
           factoryComp.isProducing = false;
-          factoryComp.currentBuildProgress = 1; // Keep at 100% ready
           world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-          continue;
         }
-
-        // Create the unit
-        const unit = this.createUnit(world, factory, currentUnitType, buildingGrid);
-        if (unit) {
-          completedUnits.push(unit);
-        }
-
-        // Remove from queue
-        factoryComp.buildQueue.shift();
-        factoryComp.isProducing = false;
-        factoryComp.currentBuildProgress = 0;
-        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+        continue;
       }
+      const shell = this.spawnUnitShell(world, factory, currentUnitType);
+      if (!shell) continue;
+      factoryComp.currentShellId = shell.id;
+      factoryComp.isProducing = true;
+      world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
     }
 
     return { completedUnits };
   }
 
-  // Create a completed unit from factory using blueprints
-  private createUnit(
-    world: WorldState, factory: Entity, unitType: string,
-    buildingGrid: BuildingGrid,
-  ): Entity | null {
-    if (!factory.ownership || !factory.factory) return null;
-
-    const factoryComp = factory.factory;
-
+  // Spawn an inert shell of `unitType` at the factory's build spot.
+  // The shell starts at 0/0/0 paid; energyDistribution fills it. The
+  // unit is fully constructed (renderer-ready), but its
+  // buildable.isComplete=false flag suppresses combat/movement until
+  // each resource bar tops up.
+  private spawnUnitShell(world: WorldState, factory: Entity, unitType: string): Entity | null {
+    if (!factory.ownership) return null;
     const bp = getUnitBlueprint(unitType);
     const spawn = getFactoryBuildSpot(factory, bp.unitRadiusCollider.push, {
       mapWidth: world.mapWidth,
       mapHeight: world.mapHeight,
     });
-    const spawnX = spawn.x;
-    const spawnY = spawn.y;
+    const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitType);
+    unit.buildable = {
+      paid: makeZeroResourceCost(),
+      required: {
+        energy: bp.cost.energy * COST_MULTIPLIER,
+        mana: bp.cost.mana * COST_MULTIPLIER,
+        metal: bp.cost.metal * COST_MULTIPLIER,
+      },
+      isComplete: false,
+      isGhost: false,
+    };
+    // Start the shell at 0 HP — it grows toward maxHp as the avg fill
+    // ratio climbs (driven from the construction-HP pass each tick).
+    if (unit.unit) {
+      unit.unit.hp = 0;
+    }
+    world.addEntity(unit);
+    return unit;
+  }
 
-    // Create unit from blueprint
-    const unit = world.createUnitFromBlueprint(spawnX, spawnY, factory.ownership.playerId, unitType);
-
-    // Copy factory's waypoints to the new unit, but with each leg
-    // expanded into a multi-waypoint path that routes around water /
-    // mountains / building lines. Anchor for the first leg is the
-    // factory build spot outside the tower footprint. Each successive leg's
-    // anchor is the previous waypoint, so the unit's intent stays
-    // "go from W[i] to W[i+1]" while the route avoids obstacles.
+  // Called when a unit shell completes. Stamps the rally waypoints
+  // onto the unit (expanded into pathfinder legs) and aims the turret.
+  private activateShell(
+    world: WorldState,
+    factory: Entity,
+    unit: Entity,
+    buildingGrid: BuildingGrid,
+  ): void {
+    if (!factory.factory) return;
+    const factoryComp = factory.factory;
+    const spawnX = unit.transform.x;
+    const spawnY = unit.transform.y;
     if (unit.unit && factoryComp.waypoints.length > 0) {
       const actions: UnitAction[] = [];
       let anchorX = spawnX;
       let anchorY = spawnY;
-      // Patrol-loop start needs to point at the first action that
-      // came from a patrol-typed factory waypoint, even though each
-      // factory waypoint may now expand to multiple actions.
       let patrolStartActionIndex = -1;
       for (let w = 0; w < factoryComp.waypoints.length; w++) {
         const wp = factoryComp.waypoints[w];
-        // wp.z is the player's click altitude (preserved by
-        // SetFactoryWaypointsCommand) — feed it through so the leg's
-        // final waypoint inherits the same altitude the player saw
-        // when placing the rally point.
         const leg = expandPathActions(
           anchorX, anchorY, wp.x, wp.y, wp.type,
           world.mapWidth, world.mapHeight, buildingGrid,
@@ -142,14 +163,7 @@ export class FactoryProductionSystem {
         unit.unit.patrolStartIndex = patrolStartActionIndex;
       }
     }
-
-    // Aim turrets toward map center
     aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
-
-    // Add to world
-    world.addEntity(unit);
-
-    return unit;
   }
 
   // Add a unit to factory's build queue (cap-checked externally via canPlayerQueueUnit)
@@ -157,59 +171,86 @@ export class FactoryProductionSystem {
     if (!factory.factory || !factory.buildable?.isComplete) {
       return false;
     }
-
-    // Validate unit type exists in blueprints
     try {
       getUnitBlueprint(unitTypeId);
     } catch {
       return false;
     }
-
     factory.factory.buildQueue.push(unitTypeId);
     return true;
   }
 
-  // Remove a unit from factory's build queue
-  dequeueUnit(factory: Entity, index: number): boolean {
+  // Remove a unit from factory's build queue. Removing the head
+  // (index 0) when a shell is already spawned destroys the shell and
+  // refunds the resources already paid into it.
+  dequeueUnit(factory: Entity, index: number, world?: WorldState): boolean {
     if (!factory.factory) return false;
-
-    if (index < 0 || index >= factory.factory.buildQueue.length) {
+    const factoryComp = factory.factory;
+    if (index < 0 || index >= factoryComp.buildQueue.length) {
       return false;
     }
-
-    factory.factory.buildQueue.splice(index, 1);
-
-    // If we removed the first item (currently building), reset production
-    if (index === 0) {
-      factory.factory.currentBuildProgress = 0;
-      factory.factory.isProducing = factory.factory.buildQueue.length > 0;
+    if (index === 0 && factoryComp.currentShellId !== null && world) {
+      this.cancelCurrentShell(world, factory);
     }
-
+    factoryComp.buildQueue.splice(index, 1);
+    if (index === 0) {
+      factoryComp.isProducing = factoryComp.buildQueue.length > 0;
+    }
     return true;
   }
 
-  // Cancel current production (loses progress)
-  cancelCurrent(factory: Entity): boolean {
-    if (!factory.factory || !factory.factory.isProducing) {
-      return false;
+  // Cancel current production (destroys the shell, refunds paid).
+  cancelCurrent(factory: Entity, world?: WorldState): boolean {
+    if (!factory.factory || !factory.factory.isProducing) return false;
+    if (factory.factory.currentShellId !== null && world) {
+      this.cancelCurrentShell(world, factory);
     }
-
     factory.factory.buildQueue.shift();
     factory.factory.isProducing = false;
-    factory.factory.currentBuildProgress = 0;
+    factory.factory.currentShellId = null;
     return true;
   }
 
-  // Get build queue for display
-  getBuildQueue(factory: Entity): { unitId: string; progress: number }[] {
-    if (!factory.factory) return [];
+  // Tear down the in-progress shell and refund 100% of paid resources
+  // back to the player's stockpiles.
+  private cancelCurrentShell(world: WorldState, factory: Entity): void {
+    const factoryComp = factory.factory!;
+    const shellId = factoryComp.currentShellId;
+    if (shellId === null) return;
+    const shell = world.getEntity(shellId);
+    if (shell?.buildable && shell.ownership) {
+      const economy = economyManager.getEconomy(shell.ownership.playerId);
+      if (economy) {
+        economy.stockpile.curr = Math.min(
+          economy.stockpile.max,
+          economy.stockpile.curr + shell.buildable.paid.energy,
+        );
+        economy.mana.stockpile.curr = Math.min(
+          economy.mana.stockpile.max,
+          economy.mana.stockpile.curr + shell.buildable.paid.mana,
+        );
+        economy.metal.stockpile.curr = Math.min(
+          economy.metal.stockpile.max,
+          economy.metal.stockpile.curr + shell.buildable.paid.metal,
+        );
+      }
+      world.removeEntity(shellId);
+    }
+    factoryComp.currentShellId = null;
+  }
 
-    return factory.factory.buildQueue.map((unitId, index) => ({
-      unitId,
-      progress: index === 0 && factory.factory!.isProducing
-        ? factory.factory!.currentBuildProgress
-        : 0,
-    }));
+  // Get build queue for display. The head's progress comes from the
+  // shell entity (avg of the three resource bars).
+  getBuildQueue(factory: Entity, world?: WorldState): { unitId: string; progress: number }[] {
+    if (!factory.factory) return [];
+    return factory.factory.buildQueue.map((unitId, index) => {
+      if (index !== 0 || factory.factory!.currentShellId === null || !world) {
+        return { unitId, progress: 0 };
+      }
+      const shell = world.getEntity(factory.factory!.currentShellId);
+      const progress = shell?.buildable ? getBuildFraction(shell.buildable) : 0;
+      return { unitId, progress };
+    });
   }
 }
 

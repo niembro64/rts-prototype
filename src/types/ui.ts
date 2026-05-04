@@ -213,8 +213,14 @@ export type EnergyBuffers = {
 };
 
 export type EnergyConsumer = {
+  /** For 'build', the entity holding the in-progress Buildable (a
+   *  unit shell from a factory, or a building under construction
+   *  funded by a builder/commander). For 'heal', the unit being
+   *  healed. */
   entity: Entity;
-  type: 'factory' | 'building' | 'heal';
+  type: 'build' | 'heal';
+  /** Remaining energy this consumer needs to finish (used for
+   *  per-consumer rate clamping and proportional fairness). */
   remainingCost: number;
   playerId: PlayerId;
   maxEnergyPerTick: number;

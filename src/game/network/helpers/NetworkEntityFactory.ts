@@ -16,6 +16,7 @@ import { getProjectileConfigForSpawn } from '../../sim/projectileConfigs';
 import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
+import { COST_MULTIPLIER } from '../../../config';
 import { buildMirrorPanelCache } from '../../sim/mirrorPanelCache';
 import { createTurretsFromDefinition } from '../../sim/unitDefinitions';
 
@@ -209,6 +210,25 @@ function createUnitFromNetwork(
     }
   }
 
+  // Shell construction state — `required` is re-derived from the
+  // blueprint COST_MULTIPLIER product, identical to the server.
+  if (u?.build && unitBlueprint) {
+    entity.buildable = {
+      paid: {
+        energy: u.build.paid.energy,
+        mana: u.build.paid.mana,
+        metal: u.build.paid.metal,
+      },
+      required: {
+        energy: unitBlueprint.cost.energy * COST_MULTIPLIER,
+        mana: unitBlueprint.cost.mana * COST_MULTIPLIER,
+        metal: unitBlueprint.cost.metal * COST_MULTIPLIER,
+      },
+      isComplete: u.build.complete,
+      isGhost: false,
+    };
+  }
+
   return entity;
 }
 
@@ -249,9 +269,16 @@ function createBuildingFromNetwork(
         : undefined,
     },
     buildable: {
-      buildProgress: b.build?.progress ?? 1,
+      // required is re-derived from the local building config — it's
+      // a pure function of buildingType and never changes after spawn,
+      // so no need to ship it on the wire.
+      required: { ...config.cost },
+      paid: {
+        energy: b.build?.paid.energy ?? config.cost.energy,
+        mana: b.build?.paid.mana ?? config.cost.mana,
+        metal: b.build?.paid.metal ?? config.cost.metal,
+      },
       isComplete: b.build?.complete ?? true,
-      resourceCost: config.resourceCost,
       isGhost: false,
     },
     buildingType,
@@ -277,8 +304,12 @@ function createBuildingFromNetwork(
     }
     entity.factory = {
       buildQueue,
+      // Client-side currentShellId stays null — the actual shell entity
+      // is in the world separately. currentBuildProgress mirrors the
+      // wire's avg-fill so the UI can draw the build-queue strip
+      // without looking up the shell.
+      currentShellId: null,
       currentBuildProgress: f.progress ?? 0,
-      currentBuildResourceCost: 0,
       rallyX: rally?.pos.x ?? x,
       rallyY: rally?.pos.y ?? y + 100,
       isProducing: f.producing ?? false,

@@ -504,6 +504,15 @@ export type NetworkServerSnapshotEntity = {
     buildTargetId?: number;
     actions?: NetworkServerSnapshotAction[];
     turrets?: NetworkServerSnapshotTurret[];
+    /** Unit shell construction state. Present whenever the unit was
+     *  spawned by a factory and is still being funded by it. Same
+     *  shape as `building.build`. Omitted (or `complete: true`) once
+     *  the unit becomes active. */
+    build?: {
+      progress: number;
+      complete: boolean;
+      paid: { energy: number; mana: number; metal: number };
+    };
   };
   building?: {
     /** type / dim are present on full records and omitted from
@@ -515,7 +524,16 @@ export type NetworkServerSnapshotEntity = {
      *  here — clients re-derive it from the blueprint. */
     dim?: Vec2;
     hp: { curr: number; max: number };
-    build: { progress: number; complete: boolean };
+    /** `progress` is the avg-of-three fill ratio (legacy convenience
+     *  for renderers that just need a single number). `paid.{e,m,m}`
+     *  carries the per-resource accumulator so the client can render
+     *  three independent build bars; `required` is omitted because
+     *  the client re-derives it from the entity's blueprint. */
+    build: {
+      progress: number;
+      complete: boolean;
+      paid: { energy: number; mana: number; metal: number };
+    };
     /** Extractor output in metal/sec after footprint coverage is applied. */
     metalExtractionRate?: number;
     solar?: {
@@ -524,6 +542,10 @@ export type NetworkServerSnapshotEntity = {
     factory?: {
       /** Queue of unit type codes (see UNIT_TYPE_* / unitTypeToCode). */
       queue: number[];
+      /** Avg-of-three fill of the factory's currentShellId, or 0 if
+       *  the factory hasn't spawned a shell yet. The client re-derives
+       *  per-resource bars from the shell entity itself; this field is
+       *  kept as a convenience for the build-queue UI strip. */
       progress: number;
       producing: boolean;
       /** `posZ` carries the click-altitude of the player-issued

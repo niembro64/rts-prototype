@@ -68,7 +68,7 @@ function projectUnitBlueprint(bp: UnitBlueprint) {
     unitRadiusCollider: { ...bp.unitRadiusCollider },
     bodyRadius: bp.bodyRadius,
     bodyCenterHeight: bp.bodyCenterHeight,
-    resourceCost: bp.resourceCost,
+    cost: { ...bp.cost },
     locomotion: locomotion.type as LocomotionType,
     legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,
   };

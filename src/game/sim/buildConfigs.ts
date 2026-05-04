@@ -11,7 +11,11 @@ function buildBuildingConfig(type: BuildingType): BuildingConfig {
     gridHeight: bp.gridHeight,
     gridDepth: bp.gridDepth,
     hp: bp.hp,
-    resourceCost: bp.resourceCost * COST_MULTIPLIER,
+    cost: {
+      energy: bp.cost.energy * COST_MULTIPLIER,
+      mana: bp.cost.mana * COST_MULTIPLIER,
+      metal: bp.cost.metal * COST_MULTIPLIER,
+    },
     energyProduction: bp.energyProduction,
     metalProduction: bp.metalProduction,
     maxEnergyUseRate: bp.maxEnergyUseRate,
@@ -42,7 +46,11 @@ export function getUnitBuildConfig(unitId: string) {
   return {
     unitId: bp.id,
     name: bp.name,
-    resourceCost: bp.resourceCost * COST_MULTIPLIER,
+    cost: {
+      energy: bp.cost.energy * COST_MULTIPLIER,
+      mana: bp.cost.mana * COST_MULTIPLIER,
+      metal: bp.cost.metal * COST_MULTIPLIER,
+    },
     unitRadiusCollider: { ...bp.unitRadiusCollider },
     bodyRadius: bp.bodyRadius,
     bodyCenterHeight: bp.bodyCenterHeight,

@@ -995,6 +995,17 @@ export class ClientViewState {
         entity.unit.hp = su.hp.curr;
         entity.unit.maxHp = su.hp.max;
       }
+      // Unit-shell construction state. The buildable component is
+      // already attached client-side at spawn (NetworkEntityFactory).
+      // On every BUILDING-bit delta we copy the three paid counters
+      // and the complete flag — `required` is static, derived from
+      // the local blueprint at spawn.
+      if ((isFull || cf! & ENTITY_CHANGED_BUILDING) && su.build && entity.buildable) {
+        entity.buildable.paid.energy = su.build.paid.energy;
+        entity.buildable.paid.mana = su.build.paid.mana;
+        entity.buildable.paid.metal = su.build.paid.metal;
+        entity.buildable.isComplete = su.build.complete;
+      }
       // Static fields are present on full records and may be omitted
       // from ordinary deltas. Read whenever they're present; they do
       // not change after spawn, so re-applying them is a no-op.
@@ -1107,7 +1118,9 @@ export class ClientViewState {
     }
 
     if (entity.buildable && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
-      entity.buildable.buildProgress = sb.build.progress;
+      entity.buildable.paid.energy = sb.build.paid.energy;
+      entity.buildable.paid.mana = sb.build.paid.mana;
+      entity.buildable.paid.metal = sb.build.paid.metal;
       entity.buildable.isComplete = sb.build.complete;
     }
 
@@ -1136,6 +1149,12 @@ export class ClientViewState {
         const unitType = codeToUnitType(src[i]);
         if (unitType) dst.push(unitType);
       }
+      // Wire `progress` is the avg-fill of the factory's currentShellId
+      // (server-derived). Client-side currentShellId stays null on the
+      // viewstate-projected entity — the shell entity itself is in the
+      // world separately, and currentBuildProgress mirrors the wire so
+      // the build-queue UI strip can draw without looking up the shell.
+      entity.factory.currentShellId = null;
       entity.factory.currentBuildProgress = sf.progress;
       entity.factory.isProducing = sf.producing;
       // waypoints[0] = rally point, rest = user-set waypoints

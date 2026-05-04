@@ -192,8 +192,8 @@ function placeCompleteBuilding(
   );
 
   entity.buildable = {
-    buildProgress: 1,
-    resourceCost: config.resourceCost,
+    paid: { ...config.cost },
+    required: { ...config.cost },
     isComplete: true,
     isGhost: false,
   };
@@ -224,8 +224,8 @@ function placeCompleteBuilding(
     );
     entity.factory = {
       buildQueue: [],
+      currentShellId: null,
       currentBuildProgress: 0,
-      currentBuildResourceCost: 0,
       rallyX: rally.x,
       rallyY: rally.y,
       isProducing: false,
@@ -485,7 +485,10 @@ export function spawnMetalExtractorsOnDeposits(
     if (!extractor) continue;
 
     if (extractor.buildable) {
-      extractor.buildable.buildProgress = 1;
+      // Pre-built extractor at game start — paid in full so HP /
+      // bars / activity flip directly to "complete" without going
+      // through the construction loop.
+      extractor.buildable.paid = { ...extractor.buildable.required };
       extractor.buildable.isComplete = true;
     }
     applyCompletedBuildingEffects(world, extractor);

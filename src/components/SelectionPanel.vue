@@ -32,7 +32,9 @@ const buildingOptions = getAllBuildings().map((building, index) => ({
   type: building.id as BuildingType,
   label: building.name,
   key: `${index + 1}`,
-  cost: building.resourceCost,
+  // Buildings now author per-resource costs; the panel shows total
+  // across the three axes (energy + mana + metal).
+  cost: building.cost.energy + building.cost.mana + building.cost.metal,
 }));
 
 const unitOptions = BUILDABLE_UNIT_IDS.map((id) => {
@@ -40,7 +42,7 @@ const unitOptions = BUILDABLE_UNIT_IDS.map((id) => {
   return {
     unitId: bp.id,
     label: bp.name,
-    cost: bp.resourceCost * COST_MULTIPLIER,
+    cost: (bp.cost.energy + bp.cost.mana + bp.cost.metal) * COST_MULTIPLIER,
     locomotion: bp.locomotion.type,
   };
 });

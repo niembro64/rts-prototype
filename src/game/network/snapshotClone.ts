@@ -85,12 +85,29 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       buildTargetId: e.unit.buildTargetId,
       actions: e.unit.actions?.map(cloneAction),
       turrets: e.unit.turrets?.map(cloneTurret),
+      build: e.unit.build ? {
+        progress: e.unit.build.progress,
+        complete: e.unit.build.complete,
+        paid: {
+          energy: e.unit.build.paid.energy,
+          mana: e.unit.build.paid.mana,
+          metal: e.unit.build.paid.metal,
+        },
+      } : undefined,
     } : undefined,
     building: e.building ? {
       type: e.building.type,
       dim: e.building.dim ? { x: e.building.dim.x, y: e.building.dim.y } : undefined,
       hp: { curr: e.building.hp.curr, max: e.building.hp.max },
-      build: { progress: e.building.build.progress, complete: e.building.build.complete },
+      build: {
+        progress: e.building.build.progress,
+        complete: e.building.build.complete,
+        paid: {
+          energy: e.building.build.paid.energy,
+          mana: e.building.build.paid.mana,
+          metal: e.building.build.paid.metal,
+        },
+      },
       metalExtractionRate: e.building.metalExtractionRate,
       solar: e.building.solar ? { open: e.building.solar.open } : undefined,
       factory: e.building.factory ? {
@@ -374,7 +391,11 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
 function createReusableBuilding(): ReusableEntityBuilding {
   return {
     hp: { curr: 0, max: 0 },
-    build: { progress: 0, complete: false },
+    build: {
+      progress: 0,
+      complete: false,
+      paid: { energy: 0, mana: 0, metal: 0 },
+    },
   };
 }
 

@@ -599,12 +599,24 @@ export type EconomyState = {
   };
 };
 
-// Buildable component. `resourceCost` is the unified cost — the
-// build pulls this number of energy AND this number of mana AND this
-// number of metal to complete. See EconomyState above.
+// Three-resource cost vector. Every buildable thing (unit + building)
+// authors its own per-resource cost in its blueprint; the build is
+// gated by whichever pool is most scarce, but each pool fills its own
+// `paid` accumulator independently.
+export type ResourceCost = {
+  energy: number;
+  mana: number;
+  metal: number;
+};
+
+// Buildable component. While a unit/building is under construction it
+// lives in the world as an inert "shell" — `paid.{e,m,m}` accumulate
+// from the owner's stockpiles toward `required.{e,m,m}`, and the
+// entity flips active when all three reach their target. HP is
+// driven externally to track the average fill ratio.
 export type Buildable = {
-  buildProgress: number;
-  resourceCost: number;
+  paid: ResourceCost;
+  required: ResourceCost;
   isComplete: boolean;
   isGhost: boolean;
 };
@@ -628,7 +640,7 @@ export type BuildingConfig = {
   gridHeight: number;
   gridDepth: number;
   hp: number;
-  resourceCost: number;
+  cost: ResourceCost;
   energyProduction?: number;
   metalProduction?: number;
   maxEnergyUseRate?: number;
@@ -641,7 +653,7 @@ export type BuildingConfig = {
 export type UnitBuildConfig = {
   unitId: string;
   name: string;
-  resourceCost: number;
+  cost: ResourceCost;
   unitRadiusCollider: { shot: number; push: number };
   bodyRadius: number;
   bodyCenterHeight: number;
@@ -651,13 +663,23 @@ export type UnitBuildConfig = {
   fireRange?: number;
 };
 
-// Factory component. `currentBuildResourceCost` is the unified cost
-// of the unit currently in production (same number drawn from each
-// of the three pools).
+// Factory component. The factory spawns the head of `buildQueue` as a
+// shell entity at its build spot the moment production starts; the
+// shell then absorbs resources from the player's stockpiles via
+// energyDistribution. `currentShellId` is the shell currently being
+// funded (null while the queue is empty or while the build spot is
+// blocked). Once the shell flips `isComplete`, it leaves the spot and
+// the factory clears `currentShellId` to take the next queue entry.
+//
+// `currentBuildProgress` is the avg-of-three fill ratio of that shell,
+// kept as a pure UI mirror so the build-queue strip can draw a single
+// progress fraction without looking up the shell entity. On the server
+// it stays 0 (the truth lives on shell.buildable); on the client it's
+// populated from the wire's f.progress field.
 export type Factory = {
   buildQueue: string[];
+  currentShellId: EntityId | null;
   currentBuildProgress: number;
-  currentBuildResourceCost: number;
   rallyX: number;
   rallyY: number;
   isProducing: boolean;

@@ -43,6 +43,9 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
   for (const unit of units) {
     if (!unit.unit || !unit.ownership || !unit.turrets) continue;
     if (unit.unit.hp <= 0) continue;
+    // Inert shells (in-progress buildable) skip combat entirely until
+    // every resource bar tops up.
+    if (unit.buildable && !unit.buildable.isComplete) continue;
 
     const { cos, sin } = getTransformCosSin(unit.transform);
     const activeMask = unit.unit.activeTurretMask;

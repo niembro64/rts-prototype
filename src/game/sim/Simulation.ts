@@ -35,6 +35,7 @@ import { DamageSystem } from './damage';
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
+import { syncShellHpToBuildFraction } from './shellHpSync';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
@@ -294,6 +295,12 @@ export class Simulation {
 
     // Distribute energy equally among all active consumers (factories, construction, commander)
     distributeEnergy(this.world, dtMs, this.energyBuffers);
+
+    // Update HP of every in-progress shell to track its avg-fill ratio.
+    // The shell entity is fully built mesh-wise but its hp must follow
+    // the bars so a half-built shell sits at half HP and the four bars
+    // (3 resource + HP) tell a consistent story.
+    syncShellHpToBuildFraction(this.world);
 
     // Check construction completion
     this.constructionSystem.update(this.world, dtMs);
@@ -656,6 +663,16 @@ export class Simulation {
       if (!entity.unit || !entity.body) continue;
 
       const { unit, transform } = entity;
+
+      // Inert shells stay put — zero thrust, no actions, no priority
+      // target. The shell occupies its build-spot footprint until it
+      // completes or is destroyed.
+      if (entity.buildable && !entity.buildable.isComplete) {
+        unit.thrustDirX = 0;
+        unit.thrustDirY = 0;
+        unit.priorityTargetId = undefined;
+        continue;
+      }
 
       // Default: no thrust (friction will slow the unit)
       unit.thrustDirX = 0;

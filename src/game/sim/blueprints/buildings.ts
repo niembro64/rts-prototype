@@ -6,7 +6,7 @@
  * from this table.
  */
 
-import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingType } from '../types';
+import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingType, ResourceCost } from '../types';
 import {
   EXTRACTOR_METAL_PER_SECOND,
   METAL_DEPOSIT_RESOURCE_CELLS,
@@ -21,8 +21,10 @@ export type BuildingBlueprint = {
   gridHeight: number;
   gridDepth: number;
   hp: number;
-  /** Authored base resource cost. BUILDING_CONFIGS applies COST_MULTIPLIER. */
-  resourceCost: number;
+  /** Authored per-resource build cost. BUILDING_CONFIGS applies
+   *  COST_MULTIPLIER. Each resource bar fills independently from the
+   *  owner's stockpile. */
+  cost: ResourceCost;
   energyProduction?: number;
   metalProduction?: number;
   maxEnergyUseRate?: number;
@@ -46,7 +48,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     gridHeight: 3,
     gridDepth: 1,
     hp: 200,
-    resourceCost: 100,
+    cost: { energy: 100, mana: 100, metal: 100 },
     energyProduction: SOLAR_ENERGY_PER_SECOND,
     renderProfile: 'solar',
     visualHeight: SOLAR_BUILDING_VISUAL_HEIGHT,
@@ -59,7 +61,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     gridHeight: 2,
     gridDepth: 5,
     hp: 100,
-    resourceCost: 60,
+    cost: { energy: 60, mana: 60, metal: 60 },
     energyProduction: WIND_ENERGY_PER_SECOND,
     renderProfile: 'wind',
     visualHeight: WIND_BUILDING_VISUAL_HEIGHT,
@@ -74,7 +76,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     gridHeight: 2,
     gridDepth: 6,
     hp: 800,
-    resourceCost: 300,
+    cost: { energy: 300, mana: 300, metal: 300 },
     maxEnergyUseRate: 100,
     renderProfile: 'factory',
     visualHeight: FACTORY_BASE_VISUAL_HEIGHT,
@@ -88,7 +90,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     gridHeight: METAL_DEPOSIT_RESOURCE_CELLS,
     gridDepth: 2,
     hp: 250,
-    resourceCost: 80,
+    cost: { energy: 80, mana: 80, metal: 80 },
     metalProduction: EXTRACTOR_METAL_PER_SECOND,
     renderProfile: 'extractor',
     visualHeight: EXTRACTOR_BUILDING_VISUAL_HEIGHT,

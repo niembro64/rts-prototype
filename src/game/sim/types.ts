@@ -43,6 +43,7 @@ export type {
   ProjectileType,
   Projectile,
   EconomyState,
+  ResourceCost,
   Buildable,
   Builder,
   BuildingConfig,

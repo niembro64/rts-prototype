@@ -12,6 +12,7 @@ import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/net
 import { ensureSolarCollectorState } from './solarCollector';
 import { applyCompletedBuildingEffects, removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
+import { isBuildFullyPaid, makeZeroResourceCost } from './buildableHelpers';
 
 // Construction system - handles building progress and energy consumption
 export class ConstructionSystem {
@@ -71,11 +72,11 @@ export class ConstructionSystem {
       if (!builders || builders.length === 0) continue;
 
       // Energy spending is handled by the shared energy distribution system.
-      // Construction system just checks for completion here.
-
-      // Check if complete
-      if (buildable.buildProgress >= 1) {
-        buildable.buildProgress = 1;
+      // Construction system just checks for completion here. Each of the
+      // three resource bars must be fully paid before the entity flips
+      // to active.
+      if (isBuildFullyPaid(buildable)) {
+        buildable.paid = { ...buildable.required };
         buildable.isComplete = true;
         world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
         this.onConstructionComplete(world, entity);
@@ -160,10 +161,12 @@ export class ConstructionSystem {
       playerId
     );
 
-    // Add buildable component
+    // Add buildable component — paid starts at zero on every axis;
+    // resources flow in from the player's stockpile until each axis
+    // reaches required.
     entity.buildable = {
-      buildProgress: 0,
-      resourceCost: config.resourceCost,
+      paid: makeZeroResourceCost(),
+      required: { ...config.cost },
       isComplete: false,
       isGhost: false,
     };
@@ -199,8 +202,8 @@ export class ConstructionSystem {
       );
       entity.factory = {
         buildQueue: [],
+        currentShellId: null,
         currentBuildProgress: 0,
-        currentBuildResourceCost: 0,
         rallyX: wp.x,
         rallyY: wp.y,
         isProducing: false,
@@ -251,8 +254,8 @@ export class ConstructionSystem {
     );
 
     entity.buildable = {
-      buildProgress: 0,
-      resourceCost: config.resourceCost,
+      paid: makeZeroResourceCost(),
+      required: { ...config.cost },
       isComplete: false,
       isGhost: true,
     };

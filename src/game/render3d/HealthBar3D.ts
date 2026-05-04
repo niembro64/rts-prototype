@@ -12,6 +12,8 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { getBuildingHudTopY, getUnitHudTopY } from './HudAnchor';
+import { getResourceFillRatio } from '../sim/buildableHelpers';
+import type { Buildable } from '../sim/types';
 
 const STYLE = {
   /** Height of the bar in world units. The bar's WIDTH is keyed to
@@ -26,7 +28,17 @@ const STYLE = {
   fgColorHigh: '#44dd44',
   fgColorLow: '#ff4444',
   fgColorBuild: '#4488ff',
+  /** Per-resource build-bar tints. Each of the three resources fills
+   *  independently, so the user can see at a glance which axis is
+   *  starved (the slow bar). */
+  fgColorEnergy: '#f5d442',
+  fgColorMana: '#7ad7ff',
+  fgColorMetal: '#d09060',
   fgAlpha: 0.9,
+  /** Vertical separation between stacked bars (HP + 3 resource bars
+   *  during construction). Just above STYLE.worldHeight so they don't
+   *  visually merge. */
+  worldStackGap: 5,
   /** Below this HP fraction, switch to the low-health color. */
   lowThreshold: 0.3,
   /** Hide the bar entirely at full HP. */
@@ -37,7 +49,13 @@ const STYLE = {
   canvasHeight: 16,
 };
 
-type BarMode = 'healthHigh' | 'healthLow' | 'build';
+type BarMode =
+  | 'healthHigh'
+  | 'healthLow'
+  | 'build'
+  | 'energyBar'
+  | 'manaBar'
+  | 'metalBar';
 
 type Bar = {
   sprite: THREE.Sprite;
@@ -107,6 +125,9 @@ export class HealthBar3D {
     const fg =
       mode === 'build' ? STYLE.fgColorBuild :
       mode === 'healthLow' ? STYLE.fgColorLow :
+      mode === 'energyBar' ? STYLE.fgColorEnergy :
+      mode === 'manaBar' ? STYLE.fgColorMana :
+      mode === 'metalBar' ? STYLE.fgColorMetal :
       STYLE.fgColorHigh;
     ctx.globalAlpha = STYLE.fgAlpha;
     ctx.fillStyle = fg;
@@ -141,79 +162,123 @@ export class HealthBar3D {
     this._frustum = frustum ?? null;
   }
 
-  /** Fused-iteration entry: process one unit. Caller's outer loop
-   *  walks `getUnits()` once and dispatches here (and to other
-   *  per-unit renderers like ForceFieldRenderer3D). */
-  perUnit(u: Entity, forceVisible = false): void {
-    if (!u.unit) return;
-    // Cheap guards FIRST — already-seen check (a single Map.get) +
-    // hp dead/full skip — before pulling HP / radius / ground-Y. The
-    // fused outer loop in RtsScene3D dispatches every unit to multiple
-    // per-unit renderers, so HealthBar3D often gets the same unit
-    // twice via different entry points; bailing early on the dedup
-    // check saves the rest of this body for those duplicate calls.
-    if (this._seenEntityFrame.get(u.id) === this._frameToken) return;
-    const unit = u.unit;
-    const hp = unit.hp;
-    const maxHp = unit.maxHp;
-    if (hp <= 0 || (!forceVisible && STYLE.hideAtFull && hp >= maxHp)) return;
-    this._seenEntityFrame.set(u.id, this._frameToken);
-    const worldX = u.transform.x;
-    const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
-    const worldZ = u.transform.y;
-    const ratio = Math.max(0, Math.min(1, hp / maxHp));
-    const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
+  /** Place a single bar at a given world position with `stackIndex`
+   *  vertical offset (0 = bottom row). Returns true if drawn. */
+  private placeBar(
+    ratio: number,
+    mode: BarMode,
+    worldX: number,
+    worldBaseY: number,
+    worldZ: number,
+    worldWidth: number,
+    stackIndex: number,
+  ): void {
     const bar = this.acquire(this._used++);
     this.repaintIfChanged(bar, ratio, mode);
-
-    const worldWidth = unit.bodyRadius * 2;
+    const yOffset = stackIndex * (STYLE.worldHeight + STYLE.worldStackGap);
     bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
-    bar.sprite.position.set(worldX, worldY, worldZ);
+    bar.sprite.position.set(worldX, worldBaseY + yOffset, worldZ);
     if (this._frustum) {
       const probe = HealthBar3D._probeVec;
-      probe.set(worldX, worldY, worldZ);
+      probe.set(worldX, worldBaseY + yOffset, worldZ);
       bar.sprite.visible = this._frustum.containsPoint(probe);
     } else {
       bar.sprite.visible = true;
     }
   }
 
+  /** Stack the three per-resource bars on top of the HP bar when a
+   *  buildable is in progress. Each bar is shown ONLY if its value
+   *  is below 100% — same rule as the legacy health bar. Order from
+   *  the bottom: HP, energy, mana, metal. Returns the next stack
+   *  index (1 + the highest index used). */
+  private placeResourceBars(
+    buildable: Buildable,
+    worldX: number,
+    worldBaseY: number,
+    worldZ: number,
+    worldWidth: number,
+    stackStart: number,
+  ): number {
+    let stack = stackStart;
+    const e = getResourceFillRatio(buildable, 'energy');
+    if (e < 1) {
+      this.placeBar(e, 'energyBar', worldX, worldBaseY, worldZ, worldWidth, stack);
+      stack++;
+    }
+    const m = getResourceFillRatio(buildable, 'mana');
+    if (m < 1) {
+      this.placeBar(m, 'manaBar', worldX, worldBaseY, worldZ, worldWidth, stack);
+      stack++;
+    }
+    const t = getResourceFillRatio(buildable, 'metal');
+    if (t < 1) {
+      this.placeBar(t, 'metalBar', worldX, worldBaseY, worldZ, worldWidth, stack);
+      stack++;
+    }
+    return stack;
+  }
+
+  /** Fused-iteration entry: process one unit. Caller's outer loop
+   *  walks `getUnits()` once and dispatches here (and to other
+   *  per-unit renderers like ForceFieldRenderer3D). */
+  perUnit(u: Entity, forceVisible = false): void {
+    if (!u.unit) return;
+    if (this._seenEntityFrame.get(u.id) === this._frameToken) return;
+    const unit = u.unit;
+    const hp = unit.hp;
+    const maxHp = unit.maxHp;
+    const buildable = u.buildable && !u.buildable.isComplete && !u.buildable.isGhost
+      ? u.buildable
+      : null;
+    const showHp = hp > 0 && (forceVisible || !STYLE.hideAtFull || hp < maxHp);
+    if (!showHp && !buildable) return;
+    this._seenEntityFrame.set(u.id, this._frameToken);
+    const worldX = u.transform.x;
+    const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
+    const worldZ = u.transform.y;
+    const worldWidth = unit.bodyRadius * 2;
+    let stack = 0;
+    if (showHp) {
+      const ratio = Math.max(0, Math.min(1, hp / maxHp));
+      const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
+      this.placeBar(ratio, mode, worldX, worldY, worldZ, worldWidth, stack);
+      stack++;
+    }
+    if (buildable) {
+      this.placeResourceBars(buildable, worldX, worldY, worldZ, worldWidth, stack);
+    }
+  }
+
   /** Fused-iteration entry: process one building. */
   perBuilding(b: Entity, forceVisible = false): void {
     if (!b.building) return;
-    // Already-seen guard FIRST — see perUnit for rationale. Avoids
-    // doing the build-progress / HP ratio math twice when the fused
-    // outer loop dispatches a building to multiple per-entity
-    // renderers in the same frame.
     if (this._seenEntityFrame.get(b.id) === this._frameToken) return;
-    let ratio: number;
-    let mode: BarMode;
-    if (b.buildable && !b.buildable.isComplete) {
-      ratio = Math.max(0, Math.min(1, b.buildable.buildProgress));
-      mode = 'build';
-    } else {
-      const hp = b.building.hp;
-      const maxHp = b.building.maxHp;
-      if (hp <= 0 || (!forceVisible && STYLE.hideAtFull && hp >= maxHp)) return;
-      ratio = Math.max(0, Math.min(1, hp / maxHp));
-      mode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
-    }
+    const hp = b.building.hp;
+    const maxHp = b.building.maxHp;
+    const buildable = b.buildable && !b.buildable.isComplete && !b.buildable.isGhost
+      ? b.buildable
+      : null;
+    const showHp = hp > 0 && (forceVisible || !STYLE.hideAtFull || hp < maxHp);
+    if (!showHp && !buildable) return;
     this._seenEntityFrame.set(b.id, this._frameToken);
     const worldX = b.transform.x;
     const worldY = getBuildingHudTopY(b) + STYLE.worldOffsetAbove;
     const worldZ = b.transform.y;
-    const bar = this.acquire(this._used++);
-    this.repaintIfChanged(bar, ratio, mode);
-
     const worldWidth = b.building.width;
-    bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
-    bar.sprite.position.set(worldX, worldY, worldZ);
-    if (this._frustum) {
-      const probe = HealthBar3D._probeVec;
-      probe.set(worldX, worldY, worldZ);
-      bar.sprite.visible = this._frustum.containsPoint(probe);
-    } else {
-      bar.sprite.visible = true;
+    let stack = 0;
+    if (showHp) {
+      const ratio = Math.max(0, Math.min(1, hp / maxHp));
+      const mode: BarMode = buildable
+        ? 'build'
+        : ratio < STYLE.lowThreshold
+          ? 'healthLow'
+          : 'healthHigh';
+      this.placeBar(ratio, mode, worldX, worldY, worldZ, worldWidth, stack);
+      stack++;
+    }
+    if (buildable) {
+      this.placeResourceBars(buildable, worldX, worldY, worldZ, worldWidth, stack);
     }
   }
 

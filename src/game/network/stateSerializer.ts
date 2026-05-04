@@ -1,6 +1,7 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
+import { getBuildFraction } from '../sim/buildableHelpers';
 import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
@@ -253,7 +254,11 @@ function createPooledEntry(): PooledEntry {
     solarSub: { open: false },
     buildingSub: {
       type: undefined, dim: undefined, hp: { curr: 0, max: 0 },
-      build: { progress: 0, complete: false },
+      build: {
+        progress: 0,
+        complete: false,
+        paid: { energy: 0, mana: 0, metal: 0 },
+      },
       metalExtractionRate: undefined,
     },
     factorySub: {
@@ -453,6 +458,12 @@ function getChangedFields(
     if (next.actionCount !== prev.actionCount || next.actionHash !== prev.actionHash) {
       mask |= ENTITY_CHANGED_ACTIONS;
     }
+    // Unit shells need the building-change bit to ship per-tick paid
+    // updates. `buildProgress` here is the avg-of-three fill stored in
+    // captureEntityState — even small changes cross the != check.
+    if (entity.buildable && next.buildProgress !== prev.buildProgress) {
+      mask |= ENTITY_CHANGED_BUILDING;
+    }
 
     if (entity.turrets) {
       if (next.weaponCount !== prev.weaponCount) {
@@ -547,9 +558,15 @@ function captureEntityState(entity: Entity, prev: PrevEntityState): void {
     }
   }
 
-  prev.buildProgress = entity.buildable?.buildProgress ?? 0;
+  prev.buildProgress = entity.buildable ? getBuildFraction(entity.buildable) : 0;
   prev.solarOpen = entity.building?.solar?.open === false ? 0 : 1;
-  prev.factoryProgress = entity.factory?.currentBuildProgress ?? 0;
+  // Factory's progress is now derived from the shell entity, which
+  // captureEntityState can't reach without the world. Energy
+  // distribution explicitly marks the factory dirty when its shell's
+  // paid advances (see updateFactoryProgressDirty in
+  // factoryProduction.ts), so dirty-mask precision is preserved
+  // without needing to read the shell here.
+  prev.factoryProgress = 0;
   prev.isProducing = entity.factory?.isProducing ? 1 : 0;
   prev.buildQueueLen = entity.factory?.buildQueue.length ?? 0;
 }
@@ -838,7 +855,7 @@ export function serializeGameState(
         : getChangedFields(entity, prev, _nextStateScratch, getDeltaResolution(entity, recipientPlayerId)) |
           (dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS);
       if (isNew || changedFields! > 0) {
-        const netEntity = serializeEntity(entity, changedFields, tracking.protocolSeeded);
+        const netEntity = serializeEntity(entity, changedFields, tracking.protocolSeeded, world);
         if (netEntity) _entityBuf.push(netEntity);
         copyPrevState(_nextStateScratch, prev);
       }
@@ -861,7 +878,7 @@ export function serializeGameState(
         const entity = source[i];
         if (!acceptsEntity(entity)) continue;
         tracking.currentEntityIds.add(entity.id);
-        const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded);
+        const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded, world);
         if (netEntity) _entityBuf.push(netEntity);
         const prev = getPrevState(tracking, entity.id);
         captureEntityState(entity, prev);
@@ -1142,6 +1159,7 @@ function serializeEntity(
   entity: Entity,
   changedFields: number | undefined,
   protocolSeeded: Set<number>,
+  world: WorldState,
 ): NetworkServerSnapshotEntity | null {
   const pool = getPooledEntry();
   const ne = pool.entity;
@@ -1184,7 +1202,10 @@ function serializeEntity(
     // even while the unit is mid-traverse below the change threshold.
     const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
       ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS |
-      ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT;
+      ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT |
+      // Unit shells now ride the building-change bit so each tick of
+      // resource flow into a shell's `paid.{e,m,m}` ships to clients.
+      ENTITY_CHANGED_BUILDING;
     const hasUnitFields = isFull || (changedFields! & unitFieldMask);
 
     if (hasUnitFields) {
@@ -1228,6 +1249,22 @@ function serializeEntity(
       if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {
         u.hp.curr = entity.unit.hp;
         u.hp.max = entity.unit.maxHp;
+      }
+
+      // Unit shell construction state — same shape as building.build,
+      // included on full records and on ENTITY_CHANGED_BUILDING deltas
+      // so the client can render the three resource bars + HP bar.
+      u.build = undefined;
+      if ((isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) && entity.buildable) {
+        u.build = {
+          progress: getBuildFraction(entity.buildable),
+          complete: entity.buildable.isComplete,
+          paid: {
+            energy: entity.buildable.paid.energy,
+            mana: entity.buildable.paid.mana,
+            metal: entity.buildable.paid.metal,
+          },
+        };
       }
 
       // Actions
@@ -1346,11 +1383,18 @@ function serializeEntity(
       // Build progress
       if (isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) {
         if (entity.buildable) {
-          b.build.progress = entity.buildable.buildProgress;
-          b.build.complete = entity.buildable.isComplete;
+          const buildable = entity.buildable;
+          b.build.progress = getBuildFraction(buildable);
+          b.build.complete = buildable.isComplete;
+          b.build.paid.energy = buildable.paid.energy;
+          b.build.paid.mana = buildable.paid.mana;
+          b.build.paid.metal = buildable.paid.metal;
         } else {
           b.build.progress = 1;
           b.build.complete = true;
+          b.build.paid.energy = 0;
+          b.build.paid.mana = 0;
+          b.build.paid.metal = 0;
         }
         if (entity.building.solar) {
           const s = pool.solarSub;
@@ -1373,7 +1417,15 @@ function serializeEntity(
         }
         f.queue = pool.buildQueue;
 
-        f.progress = entity.factory.currentBuildProgress;
+        // Factory progress now derives from the shell entity. Look it
+        // up in the world — null when no shell is in flight (queue
+        // not yet popped, or stalled at unit cap).
+        if (entity.factory.currentShellId != null) {
+          const shell = world.getEntity(entity.factory.currentShellId);
+          f.progress = shell?.buildable ? getBuildFraction(shell.buildable) : 0;
+        } else {
+          f.progress = 0;
+        }
         f.producing = entity.factory.isProducing;
 
         // waypoints[0] = rally point, rest = user-set waypoints

@@ -15,6 +15,7 @@ import type { UnitBodyShape } from '@/types/blueprints';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
+import { getBuildFraction } from '../sim/buildableHelpers';
 import type { SpinConfig } from '../../config';
 import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
@@ -3318,7 +3319,7 @@ export class Render3DEntities {
       const buildable = e.buildable;
       const progress =
         buildable && !buildable.isComplete
-          ? Math.max(0.05, Math.min(1, buildable.buildProgress))
+          ? Math.max(0.05, Math.min(1, getBuildFraction(buildable)))
           : 1;
       const selected = e.selectable?.selected === true;
       const buildingBaseY = e.building ? e.transform.z - e.building.depth / 2 : 0;
