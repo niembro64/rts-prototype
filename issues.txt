@@ -13,8 +13,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   ---------------------------------------------------
 
 
-9) the names above the commanders seem vertically squished. Make sure that for whatever text length that we have that we don't have squished letters. If there is no clean way to do that, then let's use monospace fixed size font and do the math, but ideally there would be an elegant way to use a non-fixed-sized font. 
-
 10) it is unclear what the following do to define the barrels for this turret type:
 
       barrelLength: 0.01,

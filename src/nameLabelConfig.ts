@@ -1,23 +1,14 @@
 // Name-label visuals — billboarded text labels NameLabel3D paints
-// above commanders (and any future per-entity rename targets). Kept
-// separate from shellConfig because the label is a generic naming
-// surface, not a shell-specific affordance — it shows on completed
-// commanders, not just construction shells.
+// above commanders and selected entities. Vertical placement is owned
+// by unit/building blueprint `hud` blocks, not by this generic visual
+// style file.
 
-/** World-space height of the label's bounding box (sprite Y-extent).
- *  Width is data-driven from the rendered text length, capped by
- *  NAME_LABEL_WORLD_WIDTH_PER_CHAR × text.length. */
+/** World-space height of the label sprite. The renderer measures each
+ *  text's pixel width on a per-paint basis, sizes the canvas to fit
+ *  exactly, and scales the sprite so its world aspect matches the
+ *  canvas aspect. That's how characters keep consistent proportions
+ *  whether the name is 3 chars or 20. */
 export const NAME_LABEL_WORLD_HEIGHT = 8;
-
-/** Distance above the entity's HUD top in world units. Sits ABOVE
- *  the bar stack (HP + 3 resource bars) so a fresh shell shows bars
- *  + name without stacking math. */
-export const NAME_LABEL_WORLD_OFFSET_ABOVE = 28;
-
-/** Texture canvas size — wide enough for ~24 chars at the chosen
- *  font, kept square-ish for a compact GPU footprint. */
-export const NAME_LABEL_CANVAS_WIDTH = 256;
-export const NAME_LABEL_CANVAS_HEIGHT = 32;
 
 /** Font: pixel-aligned, no anti-aliasing fuzz. Drawn at 2× canvas
  *  size for retina-clean edges; the sprite scale handles world fit. */
@@ -28,9 +19,13 @@ export const NAME_LABEL_FILL_COLOR = '#ffffff';
 export const NAME_LABEL_STROKE_COLOR = '#000000';
 export const NAME_LABEL_STROKE_WIDTH_PX = 4;
 
-/** Constant world-space width per character. Sprite scale.x is
- *  `chars × widthPerChar` so the label keeps the text crisp at any
- *  zoom — billboard sprites pixelate when scaled past their texture
- *  resolution, so we set a sensible cap rather than reading the
- *  measured pixel width back out of the canvas every frame. */
-export const NAME_LABEL_WORLD_WIDTH_PER_CHAR = 5;
+/** Per-paint canvas padding around the rendered text, in canvas
+ *  pixels. The horizontal pad keeps the stroke from touching the
+ *  texture edge; the vertical pad is the descender / ascender headroom
+ *  above and below the glyph row. */
+export const NAME_LABEL_CANVAS_PAD_X = 6;
+export const NAME_LABEL_CANVAS_PAD_Y = 5;
+
+/** Floor on the per-text canvas width so a single-character label
+ *  doesn't render as a microscopic dot at typical zoom. */
+export const NAME_LABEL_CANVAS_MIN_WIDTH = 32;

@@ -15,34 +15,35 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
-import { getBuildingHudTopY, getUnitHudTopY } from './HudAnchor';
+import { getBuildingHudNameY, getUnitHudNameY } from './HudAnchor';
 import {
   NAME_LABEL_WORLD_HEIGHT,
-  NAME_LABEL_WORLD_OFFSET_ABOVE,
-  NAME_LABEL_CANVAS_WIDTH,
-  NAME_LABEL_CANVAS_HEIGHT,
   NAME_LABEL_FONT_PX,
   NAME_LABEL_FONT_FAMILY,
   NAME_LABEL_FILL_COLOR,
   NAME_LABEL_STROKE_COLOR,
   NAME_LABEL_STROKE_WIDTH_PX,
-  NAME_LABEL_WORLD_WIDTH_PER_CHAR,
+  NAME_LABEL_CANVAS_PAD_X,
+  NAME_LABEL_CANVAS_PAD_Y,
+  NAME_LABEL_CANVAS_MIN_WIDTH,
 } from '@/nameLabelConfig';
 
 // Local short-name alias for the imported config — keeps call sites
 // terse while every tunable lives in @/nameLabelConfig.
 const STYLE = {
   worldHeight: NAME_LABEL_WORLD_HEIGHT,
-  worldOffsetAbove: NAME_LABEL_WORLD_OFFSET_ABOVE,
-  canvasWidth: NAME_LABEL_CANVAS_WIDTH,
-  canvasHeight: NAME_LABEL_CANVAS_HEIGHT,
   fontPx: NAME_LABEL_FONT_PX,
   fontFamily: NAME_LABEL_FONT_FAMILY,
   fillColor: NAME_LABEL_FILL_COLOR,
   strokeColor: NAME_LABEL_STROKE_COLOR,
   strokeWidthPx: NAME_LABEL_STROKE_WIDTH_PX,
-  worldWidthPerChar: NAME_LABEL_WORLD_WIDTH_PER_CHAR,
+  canvasPadX: NAME_LABEL_CANVAS_PAD_X,
+  canvasPadY: NAME_LABEL_CANVAS_PAD_Y,
+  canvasMinWidth: NAME_LABEL_CANVAS_MIN_WIDTH,
 };
+
+const FONT_STRING = `bold ${STYLE.fontPx}px ${STYLE.fontFamily}`;
+const CANVAS_HEIGHT_PX = STYLE.fontPx + 2 * STYLE.canvasPadY;
 
 type Label = {
   sprite: THREE.Sprite;
@@ -50,9 +51,13 @@ type Label = {
   ctx: CanvasRenderingContext2D;
   texture: THREE.CanvasTexture;
   material: THREE.SpriteMaterial;
-  /** Last-baked text. The canvas re-paints only when this changes.
-   *  Same memoization trick HealthBar3D uses on its (mode, ratioPx). */
+  /** Last-baked text. The canvas re-paints only when this changes. */
   lastText: string;
+  /** Last-baked canvas dimensions in pixels. The sprite's world width
+   *  is `(canvasW / canvasH) × worldHeight`, so character proportions
+   *  stay uniform regardless of text length. */
+  lastCanvasW: number;
+  lastCanvasH: number;
 };
 
 export class NameLabel3D {
@@ -103,18 +108,19 @@ export class NameLabel3D {
 
     const worldX = entity.transform.x;
     const worldY = isUnit
-      ? getUnitHudTopY(entity) + STYLE.worldOffsetAbove
-      : getBuildingHudTopY(entity) + STYLE.worldOffsetAbove;
+      ? getUnitHudNameY(entity)
+      : getBuildingHudNameY(entity);
     const worldZ = entity.transform.y;
 
     const label = this.acquire(this._used++);
     this.repaintIfChanged(label, text);
 
-    const worldWidth = Math.max(
-      STYLE.worldWidthPerChar * 4,
-      STYLE.worldWidthPerChar * text.length,
-    );
-    label.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
+    // Sprite's world aspect = canvas aspect, so text proportions stay
+    // uniform: short names render small, long names render long, and
+    // each character claims the same world height across all labels.
+    const worldHeight = STYLE.worldHeight;
+    const worldWidth = (label.lastCanvasW / label.lastCanvasH) * worldHeight;
+    label.sprite.scale.set(worldWidth, worldHeight, 1);
     label.sprite.position.set(worldX, worldY, worldZ);
     if (this._frustum) {
       const probe = NameLabel3D._probeVec;
@@ -148,9 +154,12 @@ export class NameLabel3D {
   private acquire(i: number): Label {
     let label = this.pool[i];
     if (!label) {
+      // Initial canvas size is provisional — the first repaint will
+      // resize to fit the actual text. Setting some non-zero starter
+      // dimensions keeps Three's CanvasTexture happy on first upload.
       const canvas = document.createElement('canvas');
-      canvas.width = STYLE.canvasWidth;
-      canvas.height = STYLE.canvasHeight;
+      canvas.width = STYLE.canvasMinWidth;
+      canvas.height = CANVAS_HEIGHT_PX;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('NameLabel3D: 2d canvas context unavailable');
       const texture = new THREE.CanvasTexture(canvas);
@@ -164,7 +173,12 @@ export class NameLabel3D {
       });
       const sprite = new THREE.Sprite(material);
       this.parent.add(sprite);
-      label = { sprite, canvas, ctx, texture, material, lastText: '' };
+      label = {
+        sprite, canvas, ctx, texture, material,
+        lastText: '',
+        lastCanvasW: canvas.width,
+        lastCanvasH: canvas.height,
+      };
       this.pool.push(label);
     }
     label.sprite.visible = true;
@@ -175,18 +189,28 @@ export class NameLabel3D {
     if (label.lastText === text) return;
     label.lastText = text;
     const ctx = label.ctx;
-    const w = STYLE.canvasWidth;
-    const h = STYLE.canvasHeight;
-    ctx.clearRect(0, 0, w, h);
-    ctx.font = `bold ${STYLE.fontPx}px ${STYLE.fontFamily}`;
+    const canvas = label.canvas;
+
+    // Measure first (font must be set before measureText). Then resize
+    // the canvas to fit the text exactly + padding. Resizing wipes the
+    // canvas + all context state, so re-set context props after.
+    ctx.font = FONT_STRING;
+    const measured = Math.ceil(ctx.measureText(text).width);
+    const newW = Math.max(STYLE.canvasMinWidth, measured + 2 * STYLE.canvasPadX);
+    const newH = CANVAS_HEIGHT_PX;
+    if (canvas.width !== newW) canvas.width = newW;
+    if (canvas.height !== newH) canvas.height = newH;
+    ctx.font = FONT_STRING;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     ctx.lineWidth = STYLE.strokeWidthPx;
     ctx.strokeStyle = STYLE.strokeColor;
     ctx.fillStyle = STYLE.fillColor;
-    ctx.strokeText(text, w / 2, h / 2);
-    ctx.fillText(text, w / 2, h / 2);
+    ctx.strokeText(text, newW / 2, newH / 2);
+    ctx.fillText(text, newW / 2, newH / 2);
     label.texture.needsUpdate = true;
+    label.lastCanvasW = newW;
+    label.lastCanvasH = newH;
   }
 }
