@@ -370,3 +370,25 @@ export function buildAllTurretConfigs(): Record<TurretId, TurretConfig> {
   }
   return result;
 }
+
+// Cross-blueprint validation: every turretId referenced by a unit
+// blueprint must resolve to a real turret blueprint. Runs at module-
+// load so a missing/typoed reference throws immediately on import,
+// not deep inside a runtime call. units.ts can't do this itself
+// without a sibling import into turrets — that's why the check lives
+// here in the aggregation file.
+for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+  for (let i = 0; i < bp.turrets.length; i++) {
+    const turretId = bp.turrets[i].turretId;
+    if (!TURRET_BLUEPRINTS[turretId]) {
+      throw new Error(
+        `Invalid turret reference for ${bp.id}[${i}]: unknown turretId "${turretId}"`,
+      );
+    }
+  }
+  if (bp.dgun && !TURRET_BLUEPRINTS[bp.dgun.turretId]) {
+    throw new Error(
+      `Invalid dgun turret reference for ${bp.id}: unknown turretId "${bp.dgun.turretId}"`,
+    );
+  }
+}

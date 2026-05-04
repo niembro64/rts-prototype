@@ -8,12 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   2) CROSS-POLLUTION BETWEEN BLUEPRINT DOMAINS
   ---------------------------------------------------
 
-  [MEDIUM] src/game/sim/blueprints/units.ts:20 imports `getTurretBlueprint`
-    from sibling './turrets'. The only sibling cross-import in
-    blueprints/. If we want strict atomicity, move the validation that
-    "this unit's mount turretId resolves" to the blueprints/index.ts
-    aggregation pass instead of having units.ts reach into turrets.
-
   [LOW] Inconsistent import path for blueprint accessors:
       - src/game/sim/Simulation.ts:42 deep-imports './blueprints/units'
       - src/game/render3d/Debris3D.ts:27,29 deep-imports

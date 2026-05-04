@@ -7,9 +7,21 @@
  */
 
 import { AUDIO } from '../../../audioConfig';
-import type { UnitBlueprint, UnitTurretMountPoint, TurretMount, UnitBodyShape } from './types';
+import type { TurretId } from '../../../types/blueprintIds';
+import type {
+  LegLayoutEntry,
+  UnitBlueprint,
+  UnitTurretMountPoint,
+  TurretMount,
+  UnitBodyShape,
+} from './types';
 import type { UnitLocomotion } from '../types';
 import { createLocomotionPhysics, createUnitLocomotion } from '../locomotion';
+// One legitimate cross-domain dependency: the widow's top-mounted
+// turret Z-fraction is computed from the turret's own bodyRadius
+// (`widowTopMountedTurretZFrac` below). Cross-blueprint *validation*
+// (every turretId on every unit resolves) lives in blueprints/index.ts
+// instead, so this is the ONLY thing units.ts pulls from turrets.
 import { getTurretBlueprint } from './turrets';
 import {
   LEG_BODY_LIFT_FRAC,
@@ -18,6 +30,8 @@ import {
   getTreadBodyCenterHeightY,
   getWheelBodyCenterHeightY,
 } from '../../math/BodyDimensions';
+export { BUILDABLE_UNIT_IDS, type BuildableUnitId } from './unitRoster';
+import { BUILDABLE_UNIT_IDS } from './unitRoster';
 
 const WIDOW_BODY_RADIUS = 30;
 const WIDOW_ABDOMEN_RADIUS_FRAC = 1.15;
@@ -27,16 +41,19 @@ const WIDOW_HEAD_RADIUS_FRAC = 0.55;
 // combat turrets that are meant to read as rear/back weapons should not
 // reuse this mount.
 const WIDOW_HEAD_FORWARD_FRAC = 0.3;
-const WIDOW_ABDOMEN_TOP_Z_FRAC = LEG_BODY_LIFT_FRAC + WIDOW_ABDOMEN_RADIUS_FRAC * 2;
+const WIDOW_ABDOMEN_TOP_Z_FRAC =
+  LEG_BODY_LIFT_FRAC + WIDOW_ABDOMEN_RADIUS_FRAC * 2;
 const WIDOW_HEAD_TOP_Z_FRAC = LEG_BODY_LIFT_FRAC + WIDOW_HEAD_RADIUS_FRAC * 2;
 
 function widowTopMountedTurretZFrac(
-  turretId: string,
+  turretId: TurretId,
   bodyTopZFrac: number,
 ): number {
   const turretRadius = getTurretBlueprint(turretId).bodyRadius;
   if (turretRadius === undefined) {
-    throw new Error(`Widow top-mounted turret ${turretId} must define bodyRadius`);
+    throw new Error(
+      `Widow top-mounted turret ${turretId} must define bodyRadius`,
+    );
   }
   return bodyTopZFrac + turretRadius / WIDOW_BODY_RADIUS;
 }
@@ -161,15 +178,103 @@ const BODY_SHAPES = {
       { kind: 'circle', offsetForward: 0.64, radiusFrac: 0.38, yFrac: 0.42 },
     ],
   },
-  // Daddy used to have a single dome-sized body sphere here that
-  // overlapped the central force-field turret's emitter — the emitter
-  // and the body read as two stacked spheres. Drop the body to a thin
-  // platform (still wide enough for the leg hips to land sensibly) so
-  // the central force-field emitter is the unit's visible head, same
-  // intent as removing the head sphere on formik / tarantula.
+  // Daddy uses a thin central platform under its force-field emitter.
+  // Keeping the chassis low and broad gives the leg hips a sensible
+  // attachment surface while leaving the emitter visually dominant.
   forceField: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.12 },
   loris: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.55 },
 } satisfies Record<string, UnitBodyShape>;
+
+type LegGaitPreset = {
+  snapTriggerAnglePi: number;
+  snapTargetAnglePi: number;
+  snapDistanceMultiplier: number;
+  extensionThreshold: number;
+};
+
+const LEG_GAIT_FRONT: LegGaitPreset = {
+  snapTriggerAnglePi: 0.46,
+  snapTargetAnglePi: -0.31,
+  snapDistanceMultiplier: 0.74,
+  extensionThreshold: 0.96,
+};
+
+const LEG_GAIT_REAR: LegGaitPreset = {
+  snapTriggerAnglePi: 0.99,
+  snapTargetAnglePi: -0.58,
+  snapDistanceMultiplier: 0.5,
+  extensionThreshold: 0.99,
+};
+
+const FORMIK_GAITS: [LegGaitPreset, LegGaitPreset, LegGaitPreset] = [
+  {
+    snapTriggerAnglePi: 0.42,
+    snapTargetAnglePi: -0.28,
+    snapDistanceMultiplier: 0.7,
+    extensionThreshold: 0.96,
+  },
+  {
+    snapTriggerAnglePi: 0.72,
+    snapTargetAnglePi: -0.45,
+    snapDistanceMultiplier: 0.62,
+    extensionThreshold: 0.98,
+  },
+  {
+    snapTriggerAnglePi: 1.02,
+    snapTargetAnglePi: -0.62,
+    snapDistanceMultiplier: 0.54,
+    extensionThreshold: 0.99,
+  },
+];
+
+function legLayoutEntry(
+  attachOffsetXFrac: number,
+  attachOffsetYFrac: number,
+  legLengthFrac: number,
+  upperLengthRatio: number,
+  lowerLengthToUpperRatio: number,
+  gait: LegGaitPreset,
+): LegLayoutEntry {
+  const upperLegLengthFrac = legLengthFrac * upperLengthRatio;
+  return {
+    attachOffsetXFrac,
+    attachOffsetYFrac,
+    upperLegLengthFrac,
+    lowerLegLengthFrac: upperLegLengthFrac * lowerLengthToUpperRatio,
+    snapTriggerAngle: Math.PI * gait.snapTriggerAnglePi,
+    snapTargetAngle: Math.PI * gait.snapTargetAnglePi,
+    snapDistanceMultiplier: gait.snapDistanceMultiplier,
+    extensionThreshold: gait.extensionThreshold,
+  };
+}
+
+const LEG_LAYOUTS: Record<string, LegLayoutEntry[]> = {
+  daddy: [
+    legLayoutEntry(0.3, -0.2, 10, 0.45, 1.2, LEG_GAIT_FRONT),
+    legLayoutEntry(-0.3, -0.3, 10, 0.45, 1.2, LEG_GAIT_REAR),
+  ],
+  formik: [
+    legLayoutEntry(0.42, -0.28, 1.75, 0.52, 1.16, FORMIK_GAITS[0]),
+    legLayoutEntry(0.02, -0.36, 1.75, 0.52, 1.16, FORMIK_GAITS[1]),
+    legLayoutEntry(-0.48, -0.3, 1.75, 0.52, 1.16, FORMIK_GAITS[2]),
+  ],
+  tick: [
+    legLayoutEntry(0.25, -0.15, 1.0, 0.5, 1.1, LEG_GAIT_FRONT),
+    legLayoutEntry(-0.25, -0.15, 1.0, 0.5, 1.1, LEG_GAIT_REAR),
+  ],
+  commander: [
+    legLayoutEntry(0.4, -0.5, 2.2, 0.5, 1.2, LEG_GAIT_FRONT),
+    legLayoutEntry(-0.4, -0.5, 2.2, 0.5, 1.2, LEG_GAIT_REAR),
+  ],
+  tarantula: [
+    legLayoutEntry(0.3, -0.2, 1.9, 0.55, 1.2, LEG_GAIT_FRONT),
+    legLayoutEntry(-0.3, -0.2, 1.9, 0.55, 1.2, LEG_GAIT_REAR),
+  ],
+  widow: [
+    legLayoutEntry(0.4, -0.4, 1.9, 0.55, 1.2, LEG_GAIT_FRONT),
+    legLayoutEntry(-0.4, -0.4, 1.9, 0.55, 1.2, LEG_GAIT_REAR),
+  ],
+};
 
 const TARANTULA_ABDOMEN_FORWARD_FRAC = -0.65;
 const FORMIK_BACK_SEGMENT_FORWARD_FRAC = -0.85;
@@ -188,7 +293,7 @@ const LORIS_BODY_CENTER_HEIGHT = 24;
 const LORIS_MIRROR_TURRET_Z_FRAC = LORIS_BODY_CENTER_HEIGHT / 10;
 
 function turretMount(
-  turretId: string,
+  turretId: TurretId,
   mount: UnitTurretMountPoint,
 ): TurretMount {
   return { turretId, mount };
@@ -204,9 +309,18 @@ function mountPoint(x: number, y: number, z: number): UnitTurretMountPoint {
 // matches the `turrets` array on the widow blueprint below.
 function computeWidowMounts(): UnitTurretMountPoint[] {
   const mounts: UnitTurretMountPoint[] = [];
-  const lightZ = widowTopMountedTurretZFrac('lightTurret', WIDOW_ABDOMEN_TOP_Z_FRAC);
-  const megaBeamZ = widowTopMountedTurretZFrac('megaBeamTurret', WIDOW_ABDOMEN_TOP_Z_FRAC);
-  const forceFieldZ = widowTopMountedTurretZFrac('forceTurret', WIDOW_HEAD_TOP_Z_FRAC);
+  const lightZ = widowTopMountedTurretZFrac(
+    'lightTurret',
+    WIDOW_ABDOMEN_TOP_Z_FRAC,
+  );
+  const megaBeamZ = widowTopMountedTurretZFrac(
+    'megaBeamTurret',
+    WIDOW_ABDOMEN_TOP_Z_FRAC,
+  );
+  const forceFieldZ = widowTopMountedTurretZFrac(
+    'forceTurret',
+    WIDOW_HEAD_TOP_Z_FRAC,
+  );
   for (let i = 0; i < 4; i++) {
     const angle = Math.PI / 4 + (i * Math.PI) / 2;
     mounts.push({
@@ -243,7 +357,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'JKL',
     hp: 55,
     unitRadiusCollider: { shot: 6, push: 8 * 1.2 },
-    bodyRadius: 1,
+    bodyRadius: 8,
     bodyCenterHeight: getWheelBodyCenterHeightY(BODY_SHAPES.scout, 8, 0.28),
     mass: 30,
     cost: { energy: 50, mana: 50, metal: 50 },
@@ -261,7 +375,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         rotationSpeed: 1.0,
       },
     },
-    renderer: 'scout',
     deathSound: AUDIO.event.death.jackal,
     fightStopEngagedRatio: 0.9,
   },
@@ -288,7 +401,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         rotationSpeed: 1.0,
       },
     },
-    renderer: 'burst',
     deathSound: AUDIO.event.death.lynx,
     fightStopEngagedRatio: 0.9,
   },
@@ -307,14 +419,16 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     cost: { energy: 350, mana: 350, metal: 350 },
     turrets: [
       turretMount('laserTurret', mountPoint(0, 0, DADDY_LASER_TURRET_Z_FRAC)),
-      turretMount('forceTurret', mountPoint(0, 0, DADDY_FORCE_FIELD_TURRET_Z_FRAC)),
+      turretMount(
+        'forceTurret',
+        mountPoint(0, 0, DADDY_FORCE_FIELD_TURRET_Z_FRAC),
+      ),
     ],
     bodyShape: BODY_SHAPES.forceField,
     hideChassis: true,
     legAttachHeightFrac: DADDY_LEG_ATTACH_HEIGHT_FRAC,
     locomotion: {
       type: 'legs',
-      style: 'daddy',
       physics: createLocomotionPhysics('legs', 200),
       config: {
         upperThickness: 2.5,
@@ -323,9 +437,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         kneeRadius: 0.8,
         footRadius: 1.8,
         lerpDuration: 200,
+        leftSide: LEG_LAYOUTS.daddy,
       },
     },
-    renderer: 'forceField',
     deathSound: AUDIO.event.death.daddy,
     fightStopEngagedRatio: 0.1,
   },
@@ -352,7 +466,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         rotationSpeed: 1.0,
       },
     },
-    renderer: 'brawl',
     deathSound: AUDIO.event.death.badger,
     fightStopEngagedRatio: 0.9,
   },
@@ -380,7 +493,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         rotationSpeed: 1.0,
       },
     },
-    renderer: 'mortar',
     deathSound: AUDIO.event.death.mongoose,
     fightStopEngagedRatio: 0.9,
   },
@@ -394,14 +506,11 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyCenterHeight: TICK_BODY_CENTER_HEIGHT,
     mass: 20,
     cost: { energy: 35, mana: 35, metal: 35 },
-    turrets: [
-      turretMount('laserTurret', mountPoint(0, 0, TICK_TURRET_Z_FRAC)),
-    ],
+    turrets: [turretMount('laserTurret', mountPoint(0, 0, TICK_TURRET_Z_FRAC))],
     bodyShape: BODY_SHAPES.snipe,
     hideChassis: true,
     locomotion: {
       type: 'legs',
-      style: 'tick',
       physics: createLocomotionPhysics('legs', 120),
       config: {
         upperThickness: 2,
@@ -410,9 +519,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         kneeRadius: 1.5,
         footRadius: 1,
         lerpDuration: 100,
+        leftSide: LEG_LAYOUTS.tick,
       },
     },
-    renderer: 'snipe',
     deathSound: AUDIO.event.death.tick,
     fightStopEngagedRatio: 0.9,
   },
@@ -439,7 +548,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         rotationSpeed: 1.0,
       },
     },
-    renderer: 'tank',
     deathSound: AUDIO.event.death.mammoth,
     fightStopEngagedRatio: 0.9,
   },
@@ -455,14 +563,16 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 2500,
     cost: { energy: 4000, mana: 4000, metal: 4000 },
     turrets: [
-      turretMount('gatlingMortarTurret', mountPoint(FORMIK_BACK_SEGMENT_FORWARD_FRAC, 0, 1.7)),
+      turretMount(
+        'gatlingMortarTurret',
+        mountPoint(FORMIK_BACK_SEGMENT_FORWARD_FRAC, 0, 1.7),
+      ),
     ],
     // Mount on the top of the rear abdomen/back segment. The forward
     // head sphere remains a body part, not a turret replacement.
     bodyShape: BODY_SHAPES.formik,
     locomotion: {
       type: 'legs',
-      style: 'formik',
       physics: createLocomotionPhysics('legs', 60),
       config: {
         // Bigger thorax = beefier legs. Bumped over widow's
@@ -474,9 +584,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         kneeRadius: 7.5,
         footRadius: 4.5,
         lerpDuration: 320,
+        leftSide: LEG_LAYOUTS.formik,
       },
     },
-    renderer: 'formik',
     deathSound: AUDIO.event.death.formik,
     fightStopEngagedRatio: 0.9,
   },
@@ -487,14 +597,16 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hp: 2400,
     unitRadiusCollider: { shot: 40, push: 40 * 1.3 },
     bodyRadius: WIDOW_BODY_RADIUS,
-    bodyCenterHeight: getLegBodyCenterHeightY(BODY_SHAPES.arachnid, WIDOW_BODY_RADIUS),
+    bodyCenterHeight: getLegBodyCenterHeightY(
+      BODY_SHAPES.arachnid,
+      WIDOW_BODY_RADIUS,
+    ),
     mass: 1000,
     cost: { energy: 3000, mana: 3000, metal: 3000 },
     turrets: computeWidowTurrets(),
     bodyShape: BODY_SHAPES.arachnid,
     locomotion: {
       type: 'legs',
-      style: 'widow',
       physics: createLocomotionPhysics('legs', 70),
       config: {
         upperThickness: 7,
@@ -503,9 +615,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         kneeRadius: 6,
         footRadius: 3.5,
         lerpDuration: 300,
+        leftSide: LEG_LAYOUTS.widow,
       },
     },
-    renderer: 'arachnid',
     deathSound: AUDIO.event.death.widow,
     fightStopEngagedRatio: 0.9,
   },
@@ -532,7 +644,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         rotationSpeed: 1.0,
       },
     },
-    renderer: 'hippo',
     deathSound: AUDIO.event.death.hippo,
     fightStopEngagedRatio: 0.9,
   },
@@ -547,14 +658,16 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 30,
     cost: { energy: 300, mana: 300, metal: 300 },
     turrets: [
-      turretMount('beamTurret', mountPoint(TARANTULA_ABDOMEN_FORWARD_FRAC, 0, 1.8)),
+      turretMount(
+        'beamTurret',
+        mountPoint(TARANTULA_ABDOMEN_FORWARD_FRAC, 0, 1.8),
+      ),
     ],
     // Mount the beam turret on the rear abdomen segment; the forward
     // head body sphere stays in place.
     bodyShape: BODY_SHAPES.beam,
     locomotion: {
       type: 'legs',
-      style: 'tarantula',
       physics: createLocomotionPhysics('legs', 200),
       config: {
         upperThickness: 6.5,
@@ -563,9 +676,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         kneeRadius: 6,
         footRadius: 1.5,
         lerpDuration: 200,
+        leftSide: LEG_LAYOUTS.tarantula,
       },
     },
-    renderer: 'beam',
     deathSound: AUDIO.event.death.tarantula,
     fightStopEngagedRatio: 0.9,
   },
@@ -579,7 +692,9 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyCenterHeight: LORIS_BODY_CENTER_HEIGHT,
     mass: 90,
     cost: { energy: 190, mana: 190, metal: 190 },
-    turrets: [turretMount('mirrorTurret', mountPoint(0, 0, LORIS_MIRROR_TURRET_Z_FRAC))],
+    turrets: [
+      turretMount('mirrorTurret', mountPoint(0, 0, LORIS_MIRROR_TURRET_Z_FRAC)),
+    ],
     bodyShape: BODY_SHAPES.loris,
     hideChassis: true,
     locomotion: {
@@ -593,7 +708,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         rotationSpeed: 1.0,
       },
     },
-    renderer: 'loris',
     deathSound: AUDIO.event.death.loris,
     fightStopEngagedRatio: 0.9,
   },
@@ -614,7 +728,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.commander,
     locomotion: {
       type: 'legs',
-      style: 'commander',
       physics: createLocomotionPhysics('legs', 200),
       config: {
         upperThickness: 8,
@@ -623,10 +736,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         kneeRadius: 7,
         footRadius: 5,
         lerpDuration: 200,
+        leftSide: LEG_LAYOUTS.commander,
       },
     },
-    renderer: 'commander',
-    builder: { buildRange: 150, maxEnergyUseRate: 50 },
+    builder: { buildRange: 150, constructionRate: 50 },
     dgun: { turretId: 'dgunTurret', energyCost: 200 },
     deathSound: AUDIO.event.death.commander,
     fightStopEngagedRatio: 0.9,
@@ -634,7 +747,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
 };
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
-  const expectedBodyCenterHeight = getExpectedUnitBodyCenterHeightY(bp, bp.bodyRadius);
+  const expectedBodyCenterHeight = getExpectedUnitBodyCenterHeightY(
+    bp,
+    bp.bodyRadius,
+  );
   if (
     !Number.isFinite(bp.bodyCenterHeight) ||
     Math.abs(bp.bodyCenterHeight - expectedBodyCenterHeight) > 1e-6
@@ -644,9 +760,50 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     );
   }
 
+  if (bp.locomotion.type === 'legs') {
+    const legs = bp.locomotion.config.leftSide;
+    if (!Array.isArray(legs) || legs.length === 0) {
+      throw new Error(
+        `Invalid leg layout for ${bp.id}: leftSide must define at least one leg`,
+      );
+    }
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      const values = [
+        ['attachOffsetXFrac', leg.attachOffsetXFrac],
+        ['attachOffsetYFrac', leg.attachOffsetYFrac],
+        ['upperLegLengthFrac', leg.upperLegLengthFrac],
+        ['lowerLegLengthFrac', leg.lowerLegLengthFrac],
+        ['snapTriggerAngle', leg.snapTriggerAngle],
+        ['snapTargetAngle', leg.snapTargetAngle],
+        ['snapDistanceMultiplier', leg.snapDistanceMultiplier],
+        ['extensionThreshold', leg.extensionThreshold],
+      ] as const;
+      for (const [name, value] of values) {
+        if (!Number.isFinite(value)) {
+          throw new Error(
+            `Invalid leg layout for ${bp.id}[${i}]: ${name} must be finite`,
+          );
+        }
+      }
+      if (leg.upperLegLengthFrac <= 0 || leg.lowerLegLengthFrac <= 0) {
+        throw new Error(
+          `Invalid leg layout for ${bp.id}[${i}]: leg lengths must be positive`,
+        );
+      }
+      if (leg.snapDistanceMultiplier <= 0 || leg.extensionThreshold <= 0) {
+        throw new Error(
+          `Invalid leg layout for ${bp.id}[${i}]: snapDistanceMultiplier and extensionThreshold must be positive`,
+        );
+      }
+    }
+  }
+
+  // Mount-finiteness only — cross-blueprint turret-ID validation runs
+  // in blueprints/index.ts where both UNIT_BLUEPRINTS and
+  // TURRET_BLUEPRINTS are visible.
   for (let i = 0; i < bp.turrets.length; i++) {
     const turret = bp.turrets[i];
-    getTurretBlueprint(turret.turretId);
     const mount = turret.mount;
     if (
       !Number.isFinite(mount.x) ||
@@ -660,7 +817,6 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   }
 
   if (bp.dgun) {
-    getTurretBlueprint(bp.dgun.turretId);
     if (!bp.turrets.some((turret) => turret.turretId === bp.dgun!.turretId)) {
       throw new Error(
         `Invalid dgun turret for ${bp.id}: ${bp.dgun.turretId} is not mounted on the unit`,
@@ -668,22 +824,6 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     }
   }
 }
-
-// Ordered list for build bar (excludes commander — not buildable)
-export const BUILDABLE_UNIT_IDS = [
-  'jackal',
-  'lynx',
-  'badger',
-  'mongoose',
-  'mammoth',
-  'tick',
-  'tarantula',
-  'loris',
-  'daddy',
-  'widow',
-  'formik',
-  'hippo',
-];
 
 export function getUnitBlueprint(id: string): UnitBlueprint {
   const unitBlueprint = UNIT_BLUEPRINTS[id];
@@ -721,7 +861,9 @@ function getCostNorm(): { max: number } {
   return _costNormCache;
 }
 
-export function getNormalizedUnitCost(unitBlueprint: { cost: { energy: number; mana: number; metal: number } }): number {
+export function getNormalizedUnitCost(unitBlueprint: {
+  cost: { energy: number; mana: number; metal: number };
+}): number {
   const { max } = getCostNorm();
   return max > 0 ? totalCost(unitBlueprint.cost) / max : 0;
 }
