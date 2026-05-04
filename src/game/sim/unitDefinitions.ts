@@ -1,19 +1,15 @@
-// Unit Definitions — now delegates to the blueprint system
-// Kept for backward compatibility of type exports and createTurretsFromDefinition
+// Single helper that materializes the runtime turret list for a unit
+// from its blueprint. The rest of what used to live here
+// (projectUnitBlueprint, getUnitDefinition, getAllUnitDefinitions,
+// the UnitType/LocomotionType re-exports) was a back-compat layer
+// nobody imported any more — readers want UNIT_BLUEPRINTS or
+// getUnitBlueprint() directly from ./blueprints now.
 
 import type { Turret } from './types';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
-import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
-import type { UnitBlueprint } from './blueprints';
-import { createUnitLocomotion } from './locomotion';
-import type { LocomotionType } from './locomotion';
+import { getUnitBlueprint } from './blueprints';
 import { createRuntimeTurretMount } from './turretMounts';
 
-// Re-export types (still used by many files)
-export type UnitType = keyof typeof UNIT_BLUEPRINTS;
-export type { LocomotionType } from './locomotion';
-
-// Create turrets for a unit using its blueprint
 export function createTurretsFromDefinition(unitId: string, radius: number): Turret[] {
   const bp = getUnitBlueprint(unitId);
   const turrets: Turret[] = [];
@@ -50,40 +46,4 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
   }
 
   return turrets;
-}
-
-function projectUnitBlueprint(bp: UnitBlueprint) {
-  const locomotion = createUnitLocomotion(bp.locomotion);
-  const turrets = bp.turrets.map((turret) => ({
-    turretId: turret.turretId,
-    mount: { ...turret.mount },
-  }));
-  return {
-    id: bp.id as UnitType,
-    name: bp.name,
-    turretIds: turrets.map((turret) => turret.turretId),
-    turrets,
-    hp: bp.hp,
-    locomotionPhysics: {
-      driveForce: locomotion.driveForce,
-      traction: locomotion.traction,
-    },
-    unitRadiusCollider: { ...bp.unitRadiusCollider },
-    bodyRadius: bp.bodyRadius,
-    bodyCenterHeight: bp.bodyCenterHeight,
-    cost: { ...bp.cost },
-    locomotion: locomotion.type as LocomotionType,
-  };
-}
-
-// Backward-compatible lookup helpers. These now project the full unit
-// blueprint instead of collapsing a multi-turret unit to one weapon id.
-export function getUnitDefinition(unitId: string) {
-  const bp = UNIT_BLUEPRINTS[unitId];
-  if (!bp) return undefined;
-  return projectUnitBlueprint(bp);
-}
-
-export function getAllUnitDefinitions() {
-  return Object.values(UNIT_BLUEPRINTS).map(projectUnitBlueprint);
 }

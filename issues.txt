@@ -5,20 +5,9 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   Findings
 
   ---------------------------------------------------
-  3) MULTIPLE WAYS TO DO THE SAME THING
-  ---------------------------------------------------
-
-  ---------------------------------------------------
   4) DEAD CODE
   ---------------------------------------------------
 
-  [HIGH] src/components/uiUtils.ts:97-99 `getPlayerName` — unused.
-  [HIGH] src/game/sim/unitDefinitions.ts:55-89 `projectUnitBlueprint`,
-    `getUnitDefinition`, `getAllUnitDefinitions`, `UnitType`,
-    `LocomotionType` are unused outside the file. Only
-    `createTurretsFromDefinition` is consumed externally. The
-    "Kept for backward compatibility" header is now half-stale — most
-    of what it preserves is dead.
   [HIGH] src/game/render3d/EntityName.ts:31-44 `setEntityNameOverride`,
     `getEntityNameOverride`, `clearEntityNameOverrides` exported but
     never imported. Speculative future-feature surface area.
