@@ -22,10 +22,10 @@ import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
-  FACTORY_BASE_VISUAL_HEIGHT,
   EXTRACTOR_BUILDING_VISUAL_HEIGHT,
   SOLAR_BUILDING_VISUAL_HEIGHT,
   WIND_BUILDING_VISUAL_HEIGHT,
+  getFactoryBuildingVisualMetrics,
 } from '../sim/blueprints';
 import type { BuildingRenderProfile } from '../sim/types';
 import {
@@ -53,7 +53,8 @@ export type BuildingDetailRole =
   | 'factoryUnitGhost'
   | 'factoryUnitCore'
   | 'factoryBuildPulse'
-  | 'factorySpark';
+  | 'factorySpark'
+  | 'factoryShower';
 
 export type BuildingDetailMesh = {
   mesh: THREE.Mesh;
@@ -82,6 +83,19 @@ export type FactoryConstructionRig = {
   sparks: THREE.Mesh[];
   nozzleLocal: THREE.Vector3;
   bayBaseY: number;
+  /** The three resource "showers" — translucent cylinders surrounding
+   *  the factory's three structural pylons. Each fills bottom-up with
+   *  its resource's transfer-rate fraction (0..1):
+   *    showers[0] = energy (yellow)
+   *    showers[1] = mana   (cyan)
+   *    showers[2] = metal  (copper)
+   *  `pylonHeight` and `pylonBaseY` (the pylon's bottom edge in
+   *  chassis-local Y) are stored so the per-frame update can scale
+   *  each shower with the live rate without re-deriving metrics. */
+  showers: THREE.Mesh[];
+  showerRadius: number;
+  pylonHeight: number;
+  pylonBaseY: number;
 };
 
 export type WindTurbineRig = {
@@ -130,9 +144,6 @@ const DEFAULT_HEIGHT = DEFAULT_BUILDING_VISUAL_HEIGHT;
 const SOLAR_HEIGHT = SOLAR_BUILDING_VISUAL_HEIGHT;
 const WIND_HEIGHT = WIND_BUILDING_VISUAL_HEIGHT;
 const EXTRACTOR_VISUAL_HEIGHT = EXTRACTOR_BUILDING_VISUAL_HEIGHT;
-/** Factory primary is the compact cylindrical base of the tower. */
-const FACTORY_BASE_HEIGHT = FACTORY_BASE_VISUAL_HEIGHT;
-
 // ── Shared cached geometries ───────────────────────────────────────────
 // Unit box reused for all building slabs + accents; each caller scales
 // it to the right dimensions. Shared across instances so every factory
@@ -252,6 +263,24 @@ const invisibleMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
 });
 const factoryFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
+
+// Resource-shower cylinders that surround each of the factory's three
+// pylons. Color matches the shell-bar palette so a glance reads
+// "yellow = energy, cyan = mana, copper = metal" the same way the
+// shell HUD does. Translucent + additive so the pylon underneath
+// stays legible when the shower is at full height.
+function makeFactoryShowerMat(hex: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color: hex,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+}
+const factoryEnergyShowerMat = makeFactoryShowerMat(0xf5d442);
+const factoryManaShowerMat = makeFactoryShowerMat(0x7ad7ff);
+const factoryMetalShowerMat = makeFactoryShowerMat(0xd09060);
 // Build-bubble materials. Strictly whitish/grayish per shellConfig —
 // no team color, no amber, no cyan glass. All four mats are kept as
 // separate THREE.Material instances so the four roles (ghost shell,
@@ -936,62 +965,100 @@ function buildFactory(
   const primary = new THREE.Mesh(cylinderGeom, primaryMat);
   const details: BuildingDetailMesh[] = [];
 
-  const minDim = Math.min(width, depth);
-  const towerRadius = Math.max(7, minDim * 0.22);
-  const collarRadius = Math.max(towerRadius * 1.35, minDim * 0.34);
-  const towerH = Math.max(78, minDim * 1.9);
-  const towerBaseY = FACTORY_BASE_HEIGHT;
+  const metrics = getFactoryBuildingVisualMetrics(width, depth);
 
   details.push(detail(
-    makeCylinder(hazardStripeMat, collarRadius, 10, 0, FACTORY_BASE_HEIGHT + 5, 0, hexCylinderGeom),
+    makeCylinder(hazardStripeMat, metrics.collarRadius, 10, 0, metrics.baseHeight + 5, 0, hexCylinderGeom),
     'low',
   ));
   details.push(detail(
-    makeCylinder(chimneyMat, towerRadius, towerH, 0, towerBaseY + towerH / 2, 0),
+    makeCylinder(
+      chimneyMat,
+      metrics.towerRadius,
+      metrics.towerHeight,
+      0,
+      metrics.towerBaseY + metrics.towerHeight / 2,
+      0,
+    ),
     'low',
   ));
 
-  const pylonRadius = Math.max(2.3, minDim * 0.055);
-  const pylonOffset = Math.min(minDim * 0.38, collarRadius * 1.15);
-  const pylonH = towerH * 0.66;
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
+  // 3 structural pylons evenly spaced around the tower — one per
+  // resource (energy / mana / metal). Each gets a translucent shower
+  // cylinder around it that fills bottom-up with the live transfer
+  // rate. The shower starts at zero scale and the per-frame updater
+  // in Render3DEntities scales it.
+  const showerMats = [factoryEnergyShowerMat, factoryManaShowerMat, factoryMetalShowerMat];
+  const showers: THREE.Mesh[] = [];
+  const showerRadius = metrics.pylonRadius * 1.85;
+  const pylonBaseY = metrics.towerBaseY;
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const px = Math.cos(a) * metrics.pylonOffset;
+    const pz = Math.sin(a) * metrics.pylonOffset;
     details.push(detail(
       makeCylinder(
         factoryFrameMat,
-        pylonRadius,
-        pylonH,
-        Math.cos(a) * pylonOffset,
-        towerBaseY + pylonH / 2,
-        Math.sin(a) * pylonOffset,
+        metrics.pylonRadius,
+        metrics.pylonHeight,
+        px,
+        pylonBaseY + metrics.pylonHeight / 2,
+        pz,
       ),
       'medium',
     ));
+    // Shower starts hidden + zero-height; updateFactoryConstructionRig
+    // scales scale.y and offsets position.y per resource rate fraction.
+    const shower = makeCylinder(
+      showerMats[i],
+      showerRadius,
+      1, // unit height — driver rescales per-frame
+      px,
+      pylonBaseY,
+      pz,
+    );
+    shower.visible = false;
+    shower.renderOrder = 6;
+    showers.push(shower);
+    details.push(detail(shower, 'medium', undefined, 'factoryShower'));
   }
 
   details.push(detail(
-    makeCylinder(hazardStripeMat, collarRadius * 0.82, 8, 0, towerBaseY + towerH * 0.56, 0, hexCylinderGeom),
+    makeCylinder(
+      hazardStripeMat,
+      metrics.collarRadius * 0.82,
+      8,
+      0,
+      metrics.towerBaseY + metrics.towerHeight * 0.56,
+      0,
+      hexCylinderGeom,
+    ),
     'medium',
   ));
 
-  const capY = towerBaseY + towerH + 5;
   details.push(detail(
-    makeCylinder(hazardStripeMat, collarRadius * 0.72, 10, 0, capY, 0, hexCylinderGeom),
+    makeCylinder(hazardStripeMat, metrics.collarRadius * 0.72, 10, 0, metrics.capY, 0, hexCylinderGeom),
     'medium',
   ));
 
-  const nozzleRadius = Math.max(6, towerRadius * 0.95);
-  const nozzleY = capY + 5 + nozzleRadius * 0.45;
   const nozzle = makeSphere(
     constructionCoreMat,
-    nozzleRadius,
+    metrics.nozzleRadius,
     0,
-    nozzleY,
+    metrics.nozzleY,
     0,
   );
   details.push(detail(nozzle, 'medium'));
   details.push(detail(
-    makeCylinder(hazardStripeMat, nozzleRadius * 1.18, 5, 0, nozzleY - nozzleRadius * 0.62, 0, hexCylinderGeom),
+    makeCylinder(
+      hazardStripeMat,
+      metrics.nozzleRadius * 1.18,
+      5,
+      0,
+      metrics.nozzleY - metrics.nozzleRadius * 0.62,
+      0,
+      hexCylinderGeom,
+    ),
     'medium',
   ));
 
@@ -1022,7 +1089,7 @@ function buildFactory(
   return {
     primary,
     details,
-    height: FACTORY_BASE_HEIGHT,
+    height: metrics.baseHeight,
     factoryRig: {
       unitGhost,
       unitCore,
@@ -1034,6 +1101,10 @@ function buildFactory(
         nozzle.position.z,
       ),
       bayBaseY: 0,
+      showers,
+      showerRadius,
+      pylonHeight: metrics.pylonHeight,
+      pylonBaseY,
     },
   };
 }

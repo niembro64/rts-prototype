@@ -73,11 +73,11 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
     unit: e.unit ? {
       unitType: e.unit.unitType,
       hp: { curr: e.unit.hp.curr, max: e.unit.hp.max },
-      collider: e.unit.collider ? {
-        shot: e.unit.collider.shot,
-        push: e.unit.collider.push,
+      radius: e.unit.radius ? {
+        body: e.unit.radius.body,
+        shot: e.unit.radius.shot,
+        push: e.unit.radius.push,
       } : undefined,
-      bodyRadius: e.unit.bodyRadius,
       bodyCenterHeight: e.unit.bodyCenterHeight,
       mass: e.unit.mass,
       velocity: { x: e.unit.velocity.x, y: e.unit.velocity.y, z: e.unit.velocity.z },
@@ -114,6 +114,9 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
         queue: e.building.factory.queue.slice(),
         progress: e.building.factory.progress,
         producing: e.building.factory.producing,
+        energyRate: e.building.factory.energyRate,
+        manaRate: e.building.factory.manaRate,
+        metalRate: e.building.factory.metalRate,
         waypoints: e.building.factory.waypoints.map((w) => ({
           pos: { x: w.pos.x, y: w.pos.y },
           posZ: w.posZ,
@@ -163,6 +166,12 @@ function cloneSimEvent(e: NetworkServerSnapshotSimEvent): NetworkServerSnapshotS
     entityId: e.entityId,
     deathContext: e.deathContext ? { ...e.deathContext } : undefined,
     impactContext: e.impactContext ? { ...e.impactContext } : undefined,
+    forceFieldImpact: e.forceFieldImpact
+      ? {
+          normal: { ...e.forceFieldImpact.normal },
+          playerId: e.forceFieldImpact.playerId,
+        }
+      : undefined,
   };
 }
 
@@ -253,7 +262,6 @@ export function cloneNetworkSnapshot(state: NetworkServerSnapshot): NetworkServe
         max: state.serverMeta.units.max,
         count: state.serverMeta.units.count,
       } : {},
-      ffAccel: { ...state.serverMeta.ffAccel },
       mirrorsEnabled: state.serverMeta.mirrorsEnabled,
       forceFieldsEnabled: state.serverMeta.forceFieldsEnabled,
       cpu: state.serverMeta.cpu ? { ...state.serverMeta.cpu } : undefined,
@@ -349,14 +357,14 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
   dst.unitType = src.unitType;
   dst.hp.curr = src.hp.curr;
   dst.hp.max = src.hp.max;
-  if (src.collider) {
-    if (!dst.collider) dst.collider = { shot: 0, push: 0 };
-    dst.collider.shot = src.collider.shot;
-    dst.collider.push = src.collider.push;
+  if (src.radius) {
+    if (!dst.radius) dst.radius = { body: 0, shot: 0, push: 0 };
+    dst.radius.body = src.radius.body;
+    dst.radius.shot = src.radius.shot;
+    dst.radius.push = src.radius.push;
   } else {
-    dst.collider = undefined;
+    dst.radius = undefined;
   }
-  dst.bodyRadius = src.bodyRadius;
   dst.bodyCenterHeight = src.bodyCenterHeight;
   dst.mass = src.mass;
   dst.velocity.x = src.velocity.x;
@@ -404,6 +412,9 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   for (let i = 0; i < src.queue.length; i++) dst.queue[i] = src.queue[i];
   dst.progress = src.progress;
   dst.producing = src.producing;
+  dst.energyRate = src.energyRate;
+  dst.manaRate = src.manaRate;
+  dst.metalRate = src.metalRate;
   dst.waypoints.length = src.waypoints.length;
   for (let i = 0; i < src.waypoints.length; i++) {
     const sw = src.waypoints[i];
@@ -444,7 +455,17 @@ function copyBuildingInto(
     dst.solar = undefined;
   }
   if (src.factory) {
-    if (!dst.factory) dst.factory = { queue: [], progress: 0, producing: false, waypoints: [] };
+    if (!dst.factory) {
+      dst.factory = {
+        queue: [],
+        progress: 0,
+        producing: false,
+        energyRate: 0,
+        manaRate: 0,
+        metalRate: 0,
+        waypoints: [],
+      };
+    }
     copyFactoryInto(src.factory, dst.factory);
   } else {
     dst.factory = undefined;
@@ -560,6 +581,7 @@ function createReusableSimEvent(): NetworkServerSnapshotSimEvent {
     sourceType: undefined,
     sourceKey: undefined,
     pos: { x: 0, y: 0, z: 0 },
+    forceFieldImpact: undefined,
   };
 }
 
@@ -577,6 +599,12 @@ function copySimEventInto(
   dst.entityId = src.entityId;
   dst.deathContext = src.deathContext ? { ...src.deathContext } : undefined;
   dst.impactContext = src.impactContext ? { ...src.impactContext } : undefined;
+  dst.forceFieldImpact = src.forceFieldImpact
+    ? {
+        normal: { ...src.forceFieldImpact.normal },
+        playerId: src.forceFieldImpact.playerId,
+      }
+    : undefined;
   return dst;
 }
 
@@ -847,7 +875,6 @@ export class ReusableNetworkSnapshotCloner {
         max: state.serverMeta.units.max,
         count: state.serverMeta.units.count,
       } : {},
-      ffAccel: { ...state.serverMeta.ffAccel },
       mirrorsEnabled: state.serverMeta.mirrorsEnabled,
       forceFieldsEnabled: state.serverMeta.forceFieldsEnabled,
       cpu: state.serverMeta.cpu ? { ...state.serverMeta.cpu } : undefined,

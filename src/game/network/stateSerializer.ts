@@ -81,10 +81,10 @@ type ShotSub = NonNullable<NetworkServerSnapshotEntity['shot']>;
 type PooledEntry = {
   entity: NetworkServerSnapshotEntity;
   unitSub: UnitSub;
-  /** Persistent collider object reused across snapshots — unitSub.collider
+  /** Persistent radius object reused across snapshots — unitSub.radius
    *  swaps between this and undefined depending on whether the entity
    *  needs a static-fields seed. */
-  unitCollider: { shot: number; push: number };
+  unitRadius: { body: number; shot: number; push: number };
   /** Persistent building dim reused across snapshots — same swap rule. */
   buildingDim: { x: number; y: number };
   solarSub: { open: boolean };
@@ -164,6 +164,7 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
     entityId: undefined,
     deathContext: undefined,
     impactContext: undefined,
+    forceFieldImpact: undefined,
     _pos: { x: 0, y: 0, z: 0 },
   };
   event.pos = event._pos;
@@ -244,12 +245,11 @@ function createPooledEntry(): PooledEntry {
     entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
       unitSub: {
         unitType: undefined, hp: { curr: 0, max: 0 },
-        collider: undefined,
-        bodyRadius: undefined,
+        radius: undefined,
         bodyCenterHeight: undefined,
         mass: undefined, velocity: { x: 0, y: 0, z: 0 },
     },
-    unitCollider: { shot: 0, push: 0 },
+    unitRadius: { body: 0, shot: 0, push: 0 },
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
     buildingSub: {
@@ -263,6 +263,7 @@ function createPooledEntry(): PooledEntry {
     },
     factorySub: {
       queue: [], progress: 0, producing: false,
+      energyRate: 0, manaRate: 0, metalRate: 0,
       waypoints: [],
     },
     shotSub: {
@@ -371,7 +372,7 @@ const SNAPSHOT_DIRTY_FORCE_FIELDS =
 
 /** Entities that have already had their static (never-changes-after-
  *  spawn) fields shipped at least once over this session's protocol.
- *  Delta snapshots use this to avoid re-sending unit type/collider,
+ *  Delta snapshots use this to avoid re-sending unit type/radius,
  *  building type/dimensions, and turret static config after creation.
  *  Full keyframes remain self-contained so a client that missed an
  *  earlier keyframe can recover. */
@@ -560,13 +561,10 @@ function captureEntityState(entity: Entity, prev: PrevEntityState): void {
 
   prev.buildProgress = entity.buildable ? getBuildFraction(entity.buildable) : 0;
   prev.solarOpen = entity.building?.solar?.open === false ? 0 : 1;
-  // Factory's progress is now derived from the shell entity, which
-  // captureEntityState can't reach without the world. Energy
-  // distribution explicitly marks the factory dirty when its shell's
-  // paid advances (see updateFactoryProgressDirty in
-  // factoryProduction.ts), so dirty-mask precision is preserved
-  // without needing to read the shell here.
-  prev.factoryProgress = 0;
+  // Factory progress is a server-side mirror of the current shell's
+  // build fraction. energyDistribution updates it and marks the
+  // factory dirty whenever resources flow into that shell.
+  prev.factoryProgress = entity.factory?.currentBuildProgress ?? 0;
   prev.isProducing = entity.factory?.isProducing ? 1 : 0;
   prev.buildQueueLen = entity.factory?.buildQueue.length ?? 0;
 }
@@ -988,6 +986,7 @@ export function serializeGameState(
       out.entityId = ae.entityId;
       out.deathContext = ae.deathContext;
       out.impactContext = ae.impactContext;
+      out.forceFieldImpact = ae.forceFieldImpact;
       _audioBuf.push(out);
     }
     if (_audioBuf.length > 0) netAudioEvents = _audioBuf;
@@ -1214,23 +1213,22 @@ function serializeEntity(
 
       // Full records must be self-contained. Remote clients can miss
       // the first real-battle keyframe during lobby -> battle handoff;
-      // if later keyframes omit unitType/collider/commander statics,
+      // if later keyframes omit unitType/radius/commander statics,
       // the client can never create those entities and renders an
       // empty battlefield even while snapshots keep arriving.
       if (isFull) {
         u.unitType = unitTypeToCode(entity.unit.unitType);
-        u.collider = pool.unitCollider;
-        u.collider.shot = entity.unit.unitRadiusCollider.shot;
-        u.collider.push = entity.unit.unitRadiusCollider.push;
-        u.bodyRadius = entity.unit.bodyRadius;
+        u.radius = pool.unitRadius;
+        u.radius.body = entity.unit.radius.body;
+        u.radius.shot = entity.unit.radius.shot;
+        u.radius.push = entity.unit.radius.push;
         u.bodyCenterHeight = entity.unit.bodyCenterHeight;
         u.mass = entity.unit.mass;
         u.isCommander = entity.commander !== undefined ? true : undefined;
         protocolSeeded.add(entity.id);
       } else {
         u.unitType = undefined;
-        u.collider = undefined;
-        u.bodyRadius = undefined;
+        u.radius = undefined;
         u.bodyCenterHeight = undefined;
         u.mass = undefined;
         u.isCommander = undefined;
@@ -1406,46 +1404,50 @@ function serializeEntity(
       // Factory
       b.factory = undefined;
       if (isFull || (changedFields! & ENTITY_CHANGED_FACTORY)) {
-      if (entity.factory) {
-        const f = pool.factorySub;
-        b.factory = f;
+        if (entity.factory) {
+          const f = pool.factorySub;
+          b.factory = f;
 
-        const srcQueue = entity.factory.buildQueue;
-        pool.buildQueue.length = srcQueue.length;
-        for (let i = 0; i < srcQueue.length; i++) {
-          pool.buildQueue[i] = unitTypeToCode(srcQueue[i]);
-        }
-        f.queue = pool.buildQueue;
+          const srcQueue = entity.factory.buildQueue;
+          pool.buildQueue.length = srcQueue.length;
+          for (let i = 0; i < srcQueue.length; i++) {
+            pool.buildQueue[i] = unitTypeToCode(srcQueue[i]);
+          }
+          f.queue = pool.buildQueue;
 
-        // Factory progress now derives from the shell entity. Look it
-        // up in the world — null when no shell is in flight (queue
-        // not yet popped, or stalled at unit cap).
-        if (entity.factory.currentShellId != null) {
-          const shell = world.getEntity(entity.factory.currentShellId);
-          f.progress = shell?.buildable ? getBuildFraction(shell.buildable) : 0;
-        } else {
-          f.progress = 0;
-        }
-        f.producing = entity.factory.isProducing;
+          // Prefer the live shell fraction when present, and keep the
+          // mirrored progress as a fallback for delta-state tracking.
+          if (entity.factory.currentShellId != null) {
+            const shell = world.getEntity(entity.factory.currentShellId);
+            f.progress = shell?.buildable
+              ? getBuildFraction(shell.buildable)
+              : entity.factory.currentBuildProgress;
+          } else {
+            f.progress = 0;
+          }
+          f.producing = entity.factory.isProducing;
+          f.energyRate = entity.factory.energyRateFraction;
+          f.manaRate = entity.factory.manaRateFraction;
+          f.metalRate = entity.factory.metalRateFraction;
 
-        // waypoints[0] = rally point, rest = user-set waypoints
-        const wps = entity.factory.waypoints;
-        const wpCount = 1 + wps.length;
-        while (pool.waypoints.length < wpCount) pool.waypoints.push(createPooledWaypoint());
-        pool.waypoints.length = wpCount;
-        pool.waypoints[0].pos.x = entity.factory.rallyX;
-        pool.waypoints[0].pos.y = entity.factory.rallyY;
-        pool.waypoints[0].posZ = undefined;
-        pool.waypoints[0].type = 'move';
-        for (let i = 0; i < wps.length; i++) {
-          pool.waypoints[i + 1].pos.x = wps[i].x;
-          pool.waypoints[i + 1].pos.y = wps[i].y;
-          pool.waypoints[i + 1].posZ = wps[i].z;
-          pool.waypoints[i + 1].type = wps[i].type;
+          // waypoints[0] = rally point, rest = user-set waypoints
+          const wps = entity.factory.waypoints;
+          const wpCount = 1 + wps.length;
+          while (pool.waypoints.length < wpCount) pool.waypoints.push(createPooledWaypoint());
+          pool.waypoints.length = wpCount;
+          pool.waypoints[0].pos.x = entity.factory.rallyX;
+          pool.waypoints[0].pos.y = entity.factory.rallyY;
+          pool.waypoints[0].posZ = undefined;
+          pool.waypoints[0].type = 'move';
+          for (let i = 0; i < wps.length; i++) {
+            pool.waypoints[i + 1].pos.x = wps[i].x;
+            pool.waypoints[i + 1].pos.y = wps[i].y;
+            pool.waypoints[i + 1].posZ = wps[i].z;
+            pool.waypoints[i + 1].type = wps[i].type;
+          }
+          f.waypoints = pool.waypoints;
         }
-        f.waypoints = pool.waypoints;
       }
-    }
     }
   }
 

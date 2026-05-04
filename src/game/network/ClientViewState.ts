@@ -57,10 +57,9 @@ import {
   applyHomingSteering,
   computeInterceptTime,
 } from '../math';
-import { COST_MULTIPLIER, GRAVITY } from '../../config';
+import { COST_MULTIPLIER, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getTurretWorldMount } from '../math/MountGeometry';
-import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
@@ -1039,11 +1038,11 @@ export class ClientViewState {
       // Static fields are present on full records and may be omitted
       // from ordinary deltas. Read whenever they're present; they do
       // not change after spawn, so re-applying them is a no-op.
-      if (su.collider) {
-        entity.unit.unitRadiusCollider.shot = su.collider.shot;
-        entity.unit.unitRadiusCollider.push = su.collider.push;
+      if (su.radius) {
+        if (isFiniteNumber(su.radius.body)) entity.unit.radius.body = su.radius.body;
+        if (isFiniteNumber(su.radius.shot)) entity.unit.radius.shot = su.radius.shot;
+        if (isFiniteNumber(su.radius.push)) entity.unit.radius.push = su.radius.push;
       }
-      if (isFiniteNumber(su.bodyRadius)) entity.unit.bodyRadius = su.bodyRadius;
       if (isFiniteNumber(su.bodyCenterHeight)) {
         entity.unit.bodyCenterHeight = su.bodyCenterHeight;
       }
@@ -1065,7 +1064,7 @@ export class ClientViewState {
         refreshUnitTurretsFromNetwork(
           entity,
           entity.unit.unitType,
-          entity.unit.bodyRadius ?? entity.unit.unitRadiusCollider.push,
+          entity.unit.radius.body,
           su.turrets,
         );
       }
@@ -1189,6 +1188,9 @@ export class ClientViewState {
       entity.factory.currentShellId = null;
       entity.factory.currentBuildProgress = sf.progress;
       entity.factory.isProducing = sf.producing;
+      entity.factory.energyRateFraction = sf.energyRate ?? 0;
+      entity.factory.manaRateFraction = sf.manaRate ?? 0;
+      entity.factory.metalRateFraction = sf.metalRate ?? 0;
       // waypoints[0] = rally point, rest = user-set waypoints
       const wps = sf.waypoints;
       if (wps.length > 0) {
@@ -1839,15 +1841,24 @@ export class ClientViewState {
         // here so the extrapolated drift target decays exactly the
         // way the server's authoritative state does — high-arc
         // shells stop flying up forever.
+        const terrainFollow = entity.dgunProjectile?.terrainFollow === true;
+        const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
         if (target) {
           const targetShotCfg = entity.projectile.config.shot;
           const targetIgnoresGravity = isProjectileShot(targetShotCfg) && targetShotCfg.ignoresGravity === true;
-          if (!targetIgnoresGravity) {
+          if (!targetIgnoresGravity && !terrainFollow) {
             target.velocityZ -= GRAVITY * targetDt;
           }
+          const targetPrevZ = target.z;
           target.x += target.velocityX * targetDt;
           target.y += target.velocityY * targetDt;
-          target.z += target.velocityZ * targetDt;
+          if (terrainFollow) {
+            const nextZ = getSurfaceHeight(target.x, target.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE) + groundOffset;
+            target.velocityZ = targetDt > 0 ? (nextZ - targetPrevZ) / targetDt : 0;
+            target.z = nextZ;
+          } else {
+            target.z += target.velocityZ * targetDt;
+          }
           entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
           entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
           entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
@@ -1864,19 +1875,26 @@ export class ClientViewState {
         // predicted arcs match authoritative arcs.
         const shotCfg = entity.projectile.config.shot;
         const ignoresGravity = isProjectileShot(shotCfg) && shotCfg.ignoresGravity === true;
-        if (!ignoresGravity) {
+        const prevTerrainFollowZ = entity.transform.z;
+        if (!ignoresGravity && !terrainFollow) {
           entity.projectile.velocityZ -= GRAVITY * dt;
         }
         entity.transform.x += entity.projectile.velocityX * dt;
         entity.transform.y += entity.projectile.velocityY * dt;
-        entity.transform.z += entity.projectile.velocityZ * dt;
+        if (terrainFollow) {
+          const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE) + groundOffset;
+          entity.projectile.velocityZ = dt > 0 ? (nextZ - prevTerrainFollowZ) / dt : 0;
+          entity.transform.z = nextZ;
+        } else {
+          entity.transform.z += entity.projectile.velocityZ * dt;
+        }
         // Terrain impact is terminal for traveling projectiles on the
         // server. Do the same in client prediction: the old clamp kept
         // the shell alive with horizontal velocity until the despawn
         // side-channel arrived, which made fast falling rounds visibly
         // skate along the ground for one frame.
         const groundZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE);
-        if (entity.transform.z <= groundZ && entity.projectile.velocityZ <= 0) {
+        if (!terrainFollow && entity.transform.z <= groundZ && entity.projectile.velocityZ <= 0) {
           entity.transform.z = groundZ;
           this.deleteEntityLocalState(entity.id);
           continue;
@@ -1884,7 +1902,7 @@ export class ClientViewState {
 
         // Auto-remove if projectile has left the map bounds
         entity.projectile.timeAlive += entityDeltaMs;
-        if (entity.projectile.timeAlive > 10000) {
+        if (entity.projectile.timeAlive > (entity.projectile.maxLifespan ?? 10000)) {
           this.deleteEntityLocalState(entity.id);
         }
       }
@@ -2048,7 +2066,11 @@ export class ClientViewState {
       },
     };
     if (spawn.isDGun) {
-      entity.dgunProjectile = { isDGun: true };
+      entity.dgunProjectile = {
+        isDGun: true,
+        terrainFollow: true,
+        groundOffset: DGUN_TERRAIN_FOLLOW_HEIGHT,
+      };
     }
     // Store homing properties so client can predict curved trajectories
     if (spawn.targetEntityId !== undefined && spawn.homingTurnRate) {
@@ -2158,6 +2180,21 @@ export class ClientViewState {
     return out;
   }
 
+  collectBurnMarkProjectiles(out: Entity[]): Entity[] {
+    out.length = 0;
+    for (const id of this.activeBeamPathIds) {
+      const entity = this.entities.get(id);
+      if (entity?.projectile && isLineProjectileEntity(entity)) out.push(entity);
+    }
+    for (const id of this.activeProjectilePredictionIds) {
+      const entity = this.entities.get(id);
+      if (entity?.projectile?.projectileType === 'projectile' && entity.dgunProjectile?.isDGun) {
+        out.push(entity);
+      }
+    }
+    return out;
+  }
+
   getLineProjectileRenderVersion(): number {
     return this.lineProjectileRenderVersion;
   }
@@ -2256,7 +2293,7 @@ export class ClientViewState {
       if (playerId !== undefined && entity.ownership?.playerId !== playerId)
         continue;
 
-      const radius = entity.unit?.bodyRadius ?? 15;
+      const radius = entity.unit?.radius.body ?? 15;
       const dx = entity.transform.x - x;
       const dy = entity.transform.y - y;
       if (dx * dx + dy * dy <= radius * radius) {

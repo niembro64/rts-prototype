@@ -1,6 +1,6 @@
 // Render3DEntities — extrudes the 2D sim primitives into 3D shapes.
 //
-// - Units:        cylinder (radius from unit.bodyRadius, height ∝ radius)
+// - Units:        cylinder (radius from unit.radius.body, height ∝ radius)
 // - Turrets:      one per entry in entity.turrets, positioned at the
 //                 blueprint-authored chassis-local 3D mount, rotated to
 //                 the turret's firing angle, with white barrel cylinders.
@@ -102,6 +102,7 @@ const INV_EXTRACTOR_BASE_PRODUCTION = (() => {
 })();
 const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
+const MIRROR_PANEL_COLOR = 0xffffff;
 
 const PROJECTILE_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
   min: 0.7,
@@ -190,7 +191,7 @@ const _aimDir = new THREE.Vector3();
 // Mirror panels (reflective mirror-unit armor plates) are square slabs
 // mounted at the rigid mirror-arm's far end. The cache in
 // mirrorPanelCache.ts computes baseY/topY/halfWidth from the turret's
-// mount.z + bodyRadius scaled by MIRROR_PANEL_SIZE_MULT; both the
+// mount.z + radius.body scaled by MIRROR_PANEL_SIZE_MULT; both the
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
 
@@ -263,8 +264,8 @@ type EntityMesh = {
   lodMarker?: THREE.Mesh;
   /** UNIT RAD wireframe spheres. All three channels are now 3D in
    *  the sim:
-   *    - scale → pure visual horizontal footprint (no sim collision);
-   *      rendered as a sphere for visual consistency with the others.
+   *    - body  → unit.radius.body, the visible body footprint and
+   *      ground-click selection fallback radius.
    *    - shot  → 3D swept + area-damage check (lineSphereIntersectionT
    *      + sqrt(dx²+dy²+dz²) in DamageSystem).
    *    - push  → full 3D sphere-vs-sphere push in PhysicsEngine3D.
@@ -474,13 +475,14 @@ export class Render3DEntities {
   // on EXACTLY the same surface — no front/back offset where a beam
   // could appear to clip the visible chrome but miss the sim plane.
   private mirrorGeom = new THREE.PlaneGeometry(1, 1);
+  private mirrorFrameGeom = new THREE.BoxGeometry(1, 1, 1);
   // Selection-indicator halo. A low torus reads as a real 3D donut
   // around the unit instead of a flat 2D strip or billboarded band.
   // Geometry is unit-sized: major radius 1, tube radius 0.06. The
   // mesh is rotated into the XZ ground plane on creation and scaled
   // per unit below.
   private ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
-  // Unit-radius indicator wireframe spheres (SCAL/SHOT/PUSH). Unit
+  // Unit-radius indicator wireframe spheres (BODY/SHOT/PUSH). Unit
   // radius = 1 → scale per mesh to the actual collider radius. The
   // sim's hit-detection uses 3D spheres centered on transform.z, so
   // the debug viz is a matching 3D wireframe sphere (not a flat
@@ -535,16 +537,16 @@ export class Render3DEntities {
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
-  // Super-shiny PBR materials for mirror panels. metalness=1 + near-zero
-  // roughness turns the panel into team-tinted chrome that reflects the
+  // Super-shiny PBR material for mirror panels. metalness=1 + near-zero
+  // roughness turns the white panel into chrome that reflects the
   // scene's PMREM-processed RoomEnvironment cube set on the scene in
-  // ThreeApp. One material per team color (plus a neutral).
-  private mirrorShinyMats = new Map<PlayerId, THREE.MeshStandardMaterial>();
+  // ThreeApp. The support arm remains team-colored; the reflective
+  // panel itself is intentionally owner-agnostic.
   // DoubleSide so the flat plane is visible from either side — beams
   // can come from any angle, and a single-sided plane would silently
   // disappear when viewed from behind.
   private mirrorShinyNeutralMat = new THREE.MeshStandardMaterial({
-    color: 0xdddddd, metalness: 1.0, roughness: 0.0, side: THREE.DoubleSide,
+    color: MIRROR_PANEL_COLOR, metalness: 1.0, roughness: 0.0, side: THREE.DoubleSide,
   });
   private commanderArmorMat = new THREE.MeshLambertMaterial({ color: 0x232830 });
   private commanderTrimMat = new THREE.MeshLambertMaterial({ color: 0xc8d0da });
@@ -794,10 +796,9 @@ export class Render3DEntities {
   // Loris-only feature, but each Loris carries 4 panels and chrome-
   // PBR each — so a 100-Loris scene is 400 separate MeshStandardMaterial
   // draws today. Routing them through ONE shared InstancedMesh with
-  // per-instance team color (instanceColor modulates against the
-  // shared material.color = white) collapses that to 1 draw call.
+  // one white per-instance color collapses that to 1 draw call.
   // metalness=1 + roughness=0 are material-level uniforms so they
-  // stay shared across teams; only the BASE color tints per team.
+  // stay shared across panels; mirror arms still carry team color.
   // The PMREM environment map for chrome reflection is set on the
   // scene, not the material, so it applies to all instances.
   private static readonly MIRROR_PANEL_CAP = 1024;
@@ -823,7 +824,7 @@ export class Render3DEntities {
     this.camera = camera;
     this.getViewportHeight = getViewportHeight;
     // Per-team materials are created lazily on first use (see
-    // getPrimaryMat / getSecondaryMat / getMirrorShinyMat). The
+    // getPrimaryMat / getSecondaryMat). The
     // player-color generator (sim/types.getPlayerColors) supports any
     // pid, so we don't pre-allocate for a fixed table here.
 
@@ -955,10 +956,10 @@ export class Render3DEntities {
 
     // Mirror-panel InstancedMesh — one shared chrome-shiny material
     // (metalness=1, roughness=0, double-sided so the panel reads
-    // from either side; PMREM environment is set on the scene), per-
-    // instance team color via instanceColor.
+    // from either side; PMREM environment is set on the scene), with
+    // a fixed white panel color for every owner.
     const mirrorMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
+      color: MIRROR_PANEL_COLOR,
       metalness: 1.0,
       roughness: 0.0,
       side: THREE.DoubleSide,
@@ -969,7 +970,7 @@ export class Render3DEntities {
       Render3DEntities.MIRROR_PANEL_CAP,
     );
     this.mirrorPanelInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mirrorPanelInstanced.setColorAt(0, this._instColor.set(0xffffff));
+    this.mirrorPanelInstanced.setColorAt(0, this._instColor.set(MIRROR_PANEL_COLOR));
     this.mirrorPanelInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
     this.mirrorPanelInstanced.frustumCulled = false;
     for (let i = 0; i < Render3DEntities.MIRROR_PANEL_CAP; i++) {
@@ -1001,23 +1002,8 @@ export class Render3DEntities {
     this.world.add(this.projectileCylinderInstanced);
   }
 
-  private getMirrorShinyMat(pid: PlayerId | undefined): THREE.MeshStandardMaterial {
-    if (pid === undefined) return this.mirrorShinyNeutralMat;
-    let mat = this.mirrorShinyMats.get(pid);
-    if (!mat) {
-      // Mirror panels share the team's primary color (same color +
-      // saturation as the chassis); the chrome look comes from
-      // metalness=1, near-zero roughness reflecting the scene's
-      // PMREM environment, not from a desaturated secondary tint.
-      mat = new THREE.MeshStandardMaterial({
-        color: getPlayerColors(pid).primary,
-        metalness: 1.0,
-        roughness: 0.0,
-        side: THREE.DoubleSide,
-      });
-      this.mirrorShinyMats.set(pid, mat);
-    }
-    return mat;
+  private getMirrorShinyMat(): THREE.MeshStandardMaterial {
+    return this.mirrorShinyNeutralMat;
   }
 
 
@@ -1130,16 +1116,15 @@ export class Render3DEntities {
 
 
   /**
-   * Show/hide the per-unit SCAL / SHOT / PUSH radius rings, matching the 2D
+   * Show/hide the per-unit BODY / SHOT / PUSH radius rings, matching the 2D
    * renderUnitRadiusCircles toggles. Rings are lazily created on first show
    * and simply hidden (not destroyed) when toggled off, so flipping toggles
    * repeatedly doesn't churn geometry.
    *
    * Wireframe SPHERE centered at the authored unit body center above
-   * the group's ground origin. Scale is the collider
-   * value for the selected channel. Shows the actual 3D volume the
-   * sim tests against, so overlapping spheres of different colors
-   * immediately communicate which check is hitting or missing.
+   * the group's ground origin. Scale is the radius value for the
+   * selected channel. SHOT/PUSH are sim volumes; BODY is the visible
+   * chassis/body authoring radius.
    */
   private updateRadiusRings(m: EntityMesh, entity: Entity): void {
     const showScale = getUnitRadiusToggle('visual');
@@ -1155,7 +1140,7 @@ export class Render3DEntities {
       return;
     }
 
-    const collider = entity.unit?.unitRadiusCollider;
+    const collider = entity.unit?.radius;
     if (!entity.unit || !collider) return;
 
     const rings = m.radiusRings ?? (m.radiusRings = {});
@@ -1169,7 +1154,7 @@ export class Render3DEntities {
 
     this.setUnitRadiusSphere(
       rings, 'scale', showScale, m.group,
-      centerY, entity.unit.bodyRadius, this.radiusMatScale,
+      centerY, entity.unit.radius.body, this.radiusMatScale,
     );
     this.setUnitRadiusSphere(
       rings, 'shot', showShot, m.group,
@@ -1746,8 +1731,8 @@ export class Render3DEntities {
       }
       const wasHidden = this.unitInstancedHiddenIds.delete(e.id);
 
-      const radius = e.unit?.bodyRadius
-        ?? e.unit?.unitRadiusCollider.shot
+      const radius = e.unit?.radius.body
+        ?? e.unit?.radius.shot
         ?? 15;
       if (this.shouldUpdateUnitInstancedMatrix(e, objectTier, slotWasNew, wasHidden)) {
         // Low-detail imposter sphere is centered on the same authored
@@ -2148,7 +2133,7 @@ export class Render3DEntities {
    *  the scene. TURR RAD spheres (per-turret) and BLD build sphere
    *  are the only ones in this category — they represent absolute
    *  world volumes keyed to the turret mount / unit center. UNIT RAD
-   *  spheres (SCAL/SHOT/PUSH) ride the unit group and leave alongside
+   *  spheres (BODY/SHOT/PUSH) ride the unit group and leave alongside
    *  m.group. */
   private disposeWorldParentedOverlays(m: EntityMesh): void {
     if (m.buildRing) this.world.remove(m.buildRing);
@@ -2372,8 +2357,8 @@ export class Render3DEntities {
       // footprint, matching the 2D renderer. Body height is per-unit
       // (see BodyShape3D / BodyDimensions); turrets mount on top of
       // whatever height the body resolves to.
-      const radius = e.unit?.bodyRadius
-        ?? e.unit?.unitRadiusCollider.shot
+      const radius = e.unit?.radius.body
+        ?? e.unit?.radius.shot
         ?? 15;
       const pid = e.ownership?.playerId;
       const colorKey = pid ?? -1;
@@ -2682,13 +2667,16 @@ export class Render3DEntities {
           m.mirrors = buildMirrorMesh3D(
             liftGroup, mirrorPanels,
             panelCenterY, panelHalfSide, panelArmLength,
-            this.mirrorGeom, this.barrelGeom,
-            this.getMirrorShinyMat(pid), this.getPrimaryMat(pid),
+            this.mirrorGeom, this.mirrorFrameGeom, this.barrelGeom,
+            this.getMirrorShinyMat(), this.getPrimaryMat(pid),
             allMirrorAlloc, // skipPerMesh when instancing is on
           );
           if (allMirrorAlloc) m.mirrors.panelSlots = allocedPanelSlots;
           for (const panel of m.mirrors.panels) {
             panel.userData.entityId = e.id;
+          }
+          for (const frame of m.mirrors.frames) {
+            frame.userData.entityId = e.id;
           }
         }
 
@@ -2922,7 +2910,7 @@ export class Render3DEntities {
         m.ring.position.y = ringR * 0.06 + 0.8;
       }
 
-      // SCAL / SHOT / PUSH unit-radius indicator rings. The 2D renderer
+      // BODY / SHOT / PUSH unit-radius indicator rings. The 2D renderer
       // draws these as stroked circles at the respective collider radii;
       // here we mirror the same toggle → ring visibility behaviour.
       this.updateRadiusRings(m, e);
@@ -3168,13 +3156,8 @@ export class Render3DEntities {
             );
             this._barrelParentMat.multiply(this._barrelStepMat);
 
-            const writeColor = this.mirrorPanelColorKey.get(m.mirrors.panelSlots[0]) !== colorKey;
-            if (writeColor) {
-              this._instColor.set(
-                pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
-              );
-              this.mirrorPanelColorDirty = true;
-            }
+            const mirrorColorKey = MIRROR_PANEL_COLOR;
+            this._instColor.set(MIRROR_PANEL_COLOR);
             const slotCount = Math.min(
               m.mirrors.panels.length,
               m.mirrors.panelSlots.length,
@@ -3194,9 +3177,10 @@ export class Render3DEntities {
                 this._barrelParentMat, this._barrelStepMat,
               );
               this.mirrorPanelInstanced.setMatrixAt(slot, this._smoothFinalMat);
-              if (writeColor) {
+              if (this.mirrorPanelColorKey.get(slot) !== mirrorColorKey) {
                 this.mirrorPanelInstanced.setColorAt(slot, this._instColor);
-                this.mirrorPanelColorKey.set(slot, colorKey);
+                this.mirrorPanelColorKey.set(slot, mirrorColorKey);
+                this.mirrorPanelColorDirty = true;
               }
             }
           }
@@ -3815,7 +3799,31 @@ export class Render3DEntities {
       rig.unitCore.visible = false;
       for (const buildPulse of rig.buildPulses) buildPulse.visible = false;
       for (const spark of rig.sparks) spark.visible = false;
+      for (const shower of rig.showers) shower.visible = false;
       return;
+    }
+
+    // Resource transfer "showers" — three vertical cylinders around
+    // each pylon, scaled bottom-up by the live per-resource rate
+    // fraction (0..1) the sim writes onto factory each tick. 0 → hidden
+    // (zero height), 1 → fills the whole pylon. Indices match the wire
+    // payload order: energy / mana / metal.
+    const rates = [
+      factory?.energyRateFraction ?? 0,
+      factory?.manaRateFraction ?? 0,
+      factory?.metalRateFraction ?? 0,
+    ];
+    for (let i = 0; i < rig.showers.length && i < 3; i++) {
+      const shower = rig.showers[i];
+      const rate = Math.max(0, Math.min(1, rates[i]));
+      if (rate <= 0) {
+        shower.visible = false;
+        continue;
+      }
+      shower.visible = true;
+      const h = rig.pylonHeight * rate;
+      shower.scale.set(rig.showerRadius, h, rig.showerRadius);
+      shower.position.y = rig.pylonBaseY + h / 2;
     }
 
     let blueprintRadius = Math.min(footprintW, footprintD) * 0.13;
@@ -3823,8 +3831,8 @@ export class Render3DEntities {
     if (queuedUnitType) {
       try {
         const bp = getUnitBlueprint(queuedUnitType);
-        blueprintRadius = bp.bodyRadius;
-        buildSpotRadius = bp.unitRadiusCollider.push;
+        blueprintRadius = bp.radius.body;
+        buildSpotRadius = bp.radius.push;
       } catch {
         // Unknown queue ids should not break rendering; keep the generic bay ghost.
       }
@@ -4194,7 +4202,7 @@ export class Render3DEntities {
   }
 
   destroy(): void {
-    // Per-unit overlays (TURR RAD rings, BLD ring, SCAL + PUSH rings)
+    // Per-unit overlays (TURR RAD rings, BLD ring, BODY + PUSH rings)
     // are parented to the world group rather than the unit group so
     // they stay flat on the ground regardless of unit rotation /
     // altitude — destroy() has to release them explicitly.
@@ -4272,8 +4280,7 @@ export class Render3DEntities {
     this.projMatCollision.dispose();
     this.projMatExplosion.dispose();
     this.mirrorGeom.dispose();
-    for (const m of this.mirrorShinyMats.values()) m.dispose();
-    this.mirrorShinyMats.clear();
+    this.mirrorFrameGeom.dispose();
     this.mirrorShinyNeutralMat.dispose();
     this.commanderArmorMat.dispose();
     this.commanderTrimMat.dispose();

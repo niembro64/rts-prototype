@@ -3,25 +3,27 @@ import type { Entity, EntityId, PlayerId, BuildingType } from './types';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
 import { computeFactoryWaypoint } from './spawn';
-import { isBuildableTerrainFootprint } from './Terrain';
+import { getBuildingPlacementDiagnosticsForGrid } from './buildPlacementValidation';
 import {
   REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
 } from '../../config';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS } from '../../types/network';
 import { ensureSolarCollectorState } from './solarCollector';
-import { applyCompletedBuildingEffects, removeCompletedBuildingEffects } from './buildingCompletion';
+import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
-import { isBuildFullyPaid, makeZeroResourceCost } from './buildableHelpers';
+import { createBuildable, getInitialBuildHp } from './buildableHelpers';
 
-// Construction system - handles building progress and energy consumption
+// Construction system - authoritative building placement and footprint grid.
+// Runtime resource/HP/completion semantics live in constructionLifecycle.ts.
 export class ConstructionSystem {
   private buildingGrid: BuildingGrid;
-
-  // Reverse index: targetId → builders array, rebuilt once per tick
-  private buildersByTarget: Map<EntityId, Entity[]> = new Map();
+  private readonly mapWidth: number;
+  private readonly mapHeight: number;
 
   constructor(mapWidth: number, mapHeight: number) {
+    this.mapWidth = mapWidth;
+    this.mapHeight = mapHeight;
     this.buildingGrid = new BuildingGrid(mapWidth, mapHeight);
   }
 
@@ -30,80 +32,6 @@ export class ConstructionSystem {
     return this.buildingGrid;
   }
 
-  // Update all construction in the world.
-  //
-  // Two narrow passes (over `getUnits()` for builders and
-  // `getBuildings()` for buildables) instead of the previous two
-  // passes over `getAllEntities()`, which also iterated every
-  // projectile entity for fields they don't have. Net effect: the
-  // working set drops from "all entities" (units + buildings +
-  // projectiles, easily 5–10× building count in a battle) to the
-  // narrow caches that already exist on EntityCacheManager.
-  update(world: WorldState, _dtMs: number): void {
-
-    // Pass 1: reverse index of builders → targets. Builders are
-    // commander/builder units; iterating the cached builder subset is
-    // much smaller than iterating every combat unit.
-    this.buildersByTarget.clear();
-    for (const entity of world.getBuilderUnits()) {
-      const targetId = entity.builder?.currentBuildTarget;
-      if (targetId == null) continue;
-      let arr = this.buildersByTarget.get(targetId);
-      if (!arr) {
-        arr = [];
-        this.buildersByTarget.set(targetId, arr);
-      }
-      arr.push(entity);
-    }
-
-    // Pass 2: tick buildable buildings. Buildables only live on
-    // buildings, so getBuildings() is the right cache.
-    for (const entity of world.getBuildings()) {
-      if (!entity.buildable || entity.buildable.isComplete || entity.buildable.isGhost) {
-        continue;
-      }
-
-      const buildable = entity.buildable;
-      const playerId = entity.ownership?.playerId;
-      if (!playerId) continue;
-
-      // Find all builders targeting this entity — O(1) lookup
-      const builders = this.buildersByTarget.get(entity.id);
-      if (!builders || builders.length === 0) continue;
-
-      // Energy spending is handled by the shared energy distribution system.
-      // Construction system just checks for completion here. Each of the
-      // three resource bars must be fully paid before the entity flips
-      // to active.
-      if (isBuildFullyPaid(buildable)) {
-        buildable.paid = { ...buildable.required };
-        buildable.isComplete = true;
-        world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
-        this.onConstructionComplete(world, entity);
-      }
-    }
-  }
-
-  // Called when construction completes
-  private onConstructionComplete(world: WorldState, entity: Entity): void {
-    applyCompletedBuildingEffects(world, entity);
-
-    // Clear all builder targets for this entity using the reverse index (O(k) not O(n))
-    const builders = this.buildersByTarget.get(entity.id);
-    if (builders) {
-      for (const builder of builders) {
-        if (builder.builder) {
-          builder.builder.currentBuildTarget = null;
-          world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
-        }
-      }
-    }
-
-    // Factory completion - set up rally point
-    if (entity.buildingType === 'factory' && entity.factory) {
-      // Rally point is set when factory is created
-    }
-  }
 
   // Start a new building construction
   startBuilding(
@@ -116,15 +44,21 @@ export class ConstructionSystem {
   ): Entity | null {
     const config = getBuildingConfig(buildingType);
 
-    // Check if we can place
-    if (!this.buildingGrid.canPlace(gridX, gridY, config.gridWidth, config.gridHeight)) {
+    const diagnostics = getBuildingPlacementDiagnosticsForGrid(
+      buildingType,
+      gridX,
+      gridY,
+      world.mapWidth,
+      world.mapHeight,
+      world.metalDeposits,
+      (gx, gy) => this.buildingGrid.getCell(gx, gy)?.occupied === true,
+    );
+    if (!diagnostics.canPlace) {
       return null;
     }
 
     // Get world position for building center
-    const worldPos = this.buildingGrid.getBuildingCenter(gridX, gridY, config.gridWidth, config.gridHeight);
-    const halfW = (config.gridWidth * GRID_CELL_SIZE) / 2;
-    const halfH = (config.gridHeight * GRID_CELL_SIZE) / 2;
+    const worldPos = { x: diagnostics.x, y: diagnostics.y };
 
     // Extractors can be placed ANYWHERE that satisfies the normal
     // building placement rules — there's no longer a "must overlap
@@ -136,15 +70,6 @@ export class ConstructionSystem {
     // the first is destroyed (then it inherits ownership). No
     // production / claim work happens at startBuilding — those
     // fields stay zero / empty until completion.
-
-    // Reject placements off the flat dTerrain shelves. Ramps between
-    // shelves remain valid movement terrain, but buildings require a
-    // dry footprint where all sampled points sit on the same plateau.
-    const mw = world.mapWidth;
-    const mh = world.mapHeight;
-    if (!isBuildableTerrainFootprint(worldPos.x, worldPos.y, halfW, halfH, mw, mh)) {
-      return null;
-    }
 
     const physicalSize = {
       width: config.gridWidth * GRID_CELL_SIZE,
@@ -164,12 +89,7 @@ export class ConstructionSystem {
     // Add buildable component — paid starts at zero on every axis;
     // resources flow in from the player's stockpile until each axis
     // reaches required.
-    entity.buildable = {
-      paid: makeZeroResourceCost(),
-      required: { ...config.cost },
-      isComplete: false,
-      isGhost: false,
-    };
+    entity.buildable = createBuildable(config.cost);
 
     // Set building type
     entity.buildingType = buildingType;
@@ -185,9 +105,11 @@ export class ConstructionSystem {
       entity.metalExtractionRate = 0;
     }
 
-    // Set max HP from config
+    // Set max HP from config. Construction shells start barely alive
+    // and gain HP only as resources are paid in; they do not start at
+    // full durability.
     if (entity.building) {
-      entity.building.hp = config.hp;
+      entity.building.hp = getInitialBuildHp(config.hp);
       entity.building.maxHp = config.hp;
     }
 
@@ -208,6 +130,9 @@ export class ConstructionSystem {
         rallyY: wp.y,
         isProducing: false,
         waypoints: [{ x: wp.x, y: wp.y, type: REAL_BATTLE_FACTORY_WAYPOINT_TYPE }],
+        energyRateFraction: 0,
+        manaRateFraction: 0,
+        metalRateFraction: 0,
       };
     }
 
@@ -253,12 +178,7 @@ export class ConstructionSystem {
       playerId
     );
 
-    entity.buildable = {
-      paid: makeZeroResourceCost(),
-      required: { ...config.cost },
-      isComplete: false,
-      isGhost: true,
-    };
+    entity.buildable = createBuildable(config.cost, { isGhost: true });
 
     entity.buildingType = buildingType;
     if (buildingType === 'solar') {
@@ -271,7 +191,18 @@ export class ConstructionSystem {
   // Check if a building can be placed at world coordinates
   canPlaceAt(worldX: number, worldY: number, buildingType: BuildingType): boolean {
     const config = getBuildingConfig(buildingType);
-    return this.buildingGrid.canPlaceAtWorld(worldX, worldY, config.gridWidth, config.gridHeight);
+    const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
+    const gridX = Math.floor(snapped.x / GRID_CELL_SIZE);
+    const gridY = Math.floor(snapped.y / GRID_CELL_SIZE);
+    return getBuildingPlacementDiagnosticsForGrid(
+      buildingType,
+      gridX,
+      gridY,
+      this.mapWidth,
+      this.mapHeight,
+      [],
+      (gx, gy) => this.buildingGrid.getCell(gx, gy)?.occupied === true,
+    ).canPlace;
   }
 
   // Handle building destruction

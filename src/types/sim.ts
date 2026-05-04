@@ -3,7 +3,7 @@
 import type { BarrelShape } from './config';
 import type { ShotId, TurretId } from './blueprintIds';
 import type { Vec3 } from './vec2';
-import type { ProjectileShotKind } from './blueprints';
+import type { ProjectileShotKind, TurretRadiusConfig } from './blueprints';
 
 // Entity ID type for deterministic identification
 export type EntityId = number;
@@ -12,9 +12,10 @@ export type EntityId = number;
 export type PlayerId = number;
 
 // A single hysteresis pair. For outer/max ranges, acquire < release
-// prevents flicker at the far edge. For minimum fire ranges, acquire
-// is the distance required to start firing and release is the smaller
-// distance where an already-firing weapon drops back to tracking.
+// prevents flicker at the far edge. For minimum preference ranges,
+// acquire is the distance where a new target becomes preferred and
+// release is the smaller distance where an existing preferred target
+// stops being preferred.
 export type HysteresisRange = {
   acquire: number;
   release: number;
@@ -29,10 +30,10 @@ export type HysteresisRangeMultiplier = {
   release: number;
 };
 
-// Computed absolute firing envelope. `max` is the outer fire range;
-// `min` is the optional dead zone for mortars and other close-range-
-// limited weapons — explicitly `null` when the turret can fire all the
-// way down to point-blank.
+// Computed absolute targeting envelope. `max` is the hard outer fire
+// range. `min` is an optional soft inner preference: targets outside
+// min are preferred, but targets inside min remain valid fallbacks when
+// no preferred target exists.
 export type FireEnvelope = {
   min: HysteresisRange | null;
   max: HysteresisRange;
@@ -50,12 +51,12 @@ export type TurretRanges = {
   fire: FireEnvelope;
 };
 
-// Per-weapon fire-envelope multipliers authored directly on each turret
+// Per-weapon range multipliers authored directly on each turret
 // blueprint.
 //
-// `engageRangeMin` is `null` when the weapon has no minimum firing
-// distance (most direct-fire weapons). `trackingRange` is `null` when
-// the turret only ever cares about the fire envelope (acquires +
+// `engageRangeMin` is `null` when the weapon has no inner target
+// preference. `trackingRange` is `null` when the turret only ever cares
+// about the max fire envelope (acquires +
 // engages on contact); set non-null when the turret should be aware of
 // — and rotate toward — enemies BEYOND its fire range, e.g. mirror
 // turrets that need to be already pointed when an incoming beam lands.
@@ -202,17 +203,11 @@ export type UnitLocomotion = {
 export type Unit = {
   unitType: string;
   locomotion: UnitLocomotion;
-  /** Hit/push radii. `shot` is the projectile-vs-unit collider; `push`
-   *  is the unit-vs-unit physics radius. Visual body size is the
-   *  separate `bodyRadius` field below — historically `scale` lived
-   *  here, but it was the unit's authored body size, not a collider. */
-  unitRadiusCollider: { shot: number; push: number };
-  /** Authored body radius (world units) — the unit's visible chassis
-   *  size. Drives turret head defaults, turret mount scaling,
-   *  mirror-panel sizing, click hit radius, and barrel placement. */
-  bodyRadius: number;
-  /** World-space height of the unit's authored body center above terrain.
-   *  `unitRadiusCollider.push` remains the push/collision radius. */
+  /** Unit radii in world units. `body` is the visible chassis/body
+   *  authoring radius, `shot` is the projectile-vs-unit collider, and
+   *  `push` is the unit-vs-unit physics/selection spacing radius. */
+  radius: { body: number; shot: number; push: number };
+  /** World-space height of the unit's authored body center above terrain. */
   bodyCenterHeight: number;
   mass: number;
   hp: number;
@@ -456,9 +451,9 @@ export type TurretConfig = {
    *  submunitions (if any) bounce + spread the rest of the way. See
    *  TurretBlueprint.groundAimFraction. */
   groundAimFraction?: number;
-  /** World-space radius of the rendered turret-head sphere and the
-   *  source scale for barrel-tip math. See TurretBlueprint.bodyRadius. */
-  bodyRadius?: number;
+  /** World-space radius of the rendered turret body sphere and the
+   *  source scale for barrel-tip math. See TurretBlueprint.radius. */
+  radius: TurretRadiusConfig;
 };
 
 // Runtime projectile configuration. This is intentionally smaller than
@@ -475,7 +470,7 @@ export type ProjectileConfig = {
   cooldown: number;
   /** Source-turret muzzle geometry. Present only for turret-fired shots. */
   barrel?: BarrelShape;
-  bodyRadius?: number;
+  radius?: TurretRadiusConfig;
   /** Source turret slot on the owning unit. Used by active beam bookkeeping. */
   turretIndex?: number;
 };
@@ -557,7 +552,8 @@ export type ProjectileType = 'projectile' | 'beam' | 'laser';
  *  extrapolate every vertex independently between snapshots — no
  *  separate startVel/endVel fields, no separate reflections list.
  *  Intermediate (reflection) points carry the redirecting mirror's
- *  entityId; start and end leave it undefined. */
+ *  entityId; start and end leave it undefined. The field name is legacy:
+ *  force-field reflections also use it to identify the reflecting entity. */
 export type BeamPoint = {
   x: number;
   y: number;
@@ -599,7 +595,7 @@ export type Projectile = {
   maxLifespan: number;
   /** Beam/laser polyline. Index 0 = start (muzzle), last = end
    *  (range/hit/ground), middles = reflections (each carries its own
-   *  mirrorEntityId). Undefined on non-line projectiles. Mutated in
+   *  reflector id via mirrorEntityId). Undefined on non-line projectiles. Mutated in
    *  place — each re-trace resizes the array length and overwrites
    *  the per-vertex fields, so the array reference is stable. */
   points?: BeamPoint[];
@@ -719,6 +715,7 @@ export type BuildingConfig = {
   renderProfile: BuildingRenderProfile;
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
+  hud: import('./blueprints').EntityHudBlueprint;
 };
 
 // Unit build configuration
@@ -726,8 +723,7 @@ export type UnitBuildConfig = {
   unitId: string;
   name: string;
   cost: ResourceCost;
-  unitRadiusCollider: { shot: number; push: number };
-  bodyRadius: number;
+  radius: { body: number; shot: number; push: number };
   bodyCenterHeight: number;
   locomotion: UnitLocomotion;
   mass: number;
@@ -756,6 +752,14 @@ export type Factory = {
   rallyY: number;
   isProducing: boolean;
   waypoints: Waypoint[];
+  /** Per-resource transfer rate this tick, expressed as a fraction
+   *  (0..1) of the factory's `maxResourcePerTick` cap for the active
+   *  shell. Drives the three vertical "shower" cylinders around the
+   *  factory's pylons in the 3D renderer. Reset to 0 between shells
+   *  and whenever the factory isn't producing. */
+  energyRateFraction: number;
+  manaRateFraction: number;
+  metalRateFraction: number;
 };
 
 // Commander component

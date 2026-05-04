@@ -55,13 +55,13 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
 
 function createTurretsFromNetwork(
   unitType: string,
-  bodyRadius: number,
+  unitBodyRadius: number,
   netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
 ): Turret[] | undefined {
   if (!Array.isArray(netTurrets) || netTurrets.length === 0) return undefined;
 
   try {
-    const canonical = createTurretsFromDefinition(unitType, bodyRadius);
+    const canonical = createTurretsFromDefinition(unitType, unitBodyRadius);
     for (let i = 0; i < netTurrets.length && i < canonical.length; i++) {
       applyNetworkTurretState(canonical[i], netTurrets[i]);
     }
@@ -74,11 +74,11 @@ function createTurretsFromNetwork(
 export function refreshUnitTurretsFromNetwork(
   entity: Entity,
   unitType: string,
-  bodyRadius: number,
+  unitBodyRadius: number,
   netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
 ): void {
   const previous = entity.turrets;
-  const turrets = createTurretsFromNetwork(unitType, bodyRadius, netTurrets);
+  const turrets = createTurretsFromNetwork(unitType, unitBodyRadius, netTurrets);
   if (!turrets) {
     entity.turrets = undefined;
     return;
@@ -167,12 +167,12 @@ function createUnitFromNetwork(
       unitType,
       hp: u?.hp.curr ?? 100,
       maxHp: u?.hp.max ?? 100,
-      unitRadiusCollider: {
-        shot: u?.collider?.shot ?? defaultRadius,
-        push: u?.collider?.push ?? defaultRadius,
+      radius: {
+        body: u?.radius?.body ?? defaultRadius,
+        shot: u?.radius?.shot ?? defaultRadius,
+        push: u?.radius?.push ?? defaultRadius,
       },
-      bodyRadius: u?.bodyRadius ?? defaultRadius,
-      bodyCenterHeight: u?.bodyCenterHeight ?? u?.collider?.push ?? defaultRadius,
+      bodyCenterHeight: u?.bodyCenterHeight ?? u?.radius?.push ?? defaultRadius,
       locomotion: getUnitLocomotion(unitType),
       mass: u?.mass ?? 25,
       actions,
@@ -185,7 +185,7 @@ function createUnitFromNetwork(
     },
   };
 
-  entity.turrets = createTurretsFromNetwork(unitType, entity.unit!.bodyRadius, u?.turrets);
+  entity.turrets = createTurretsFromNetwork(unitType, entity.unit!.radius.body, u?.turrets);
 
   // Cache mirror panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the
@@ -311,6 +311,9 @@ function createBuildingFromNetwork(
       rallyY: rally?.pos.y ?? y + 100,
       isProducing: f.producing ?? false,
       waypoints,
+      energyRateFraction: f.energyRate ?? 0,
+      manaRateFraction: f.manaRate ?? 0,
+      metalRateFraction: f.metalRate ?? 0,
     };
   }
 

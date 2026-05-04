@@ -7,13 +7,20 @@ import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
 import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
 import {
-  REAL_BATTLE_COMMANDER_RADIUS_FRACTION,
   REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
 } from '../../config';
 import { isWaterAt } from './Terrain';
 import { ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
+import {
+  getLayoutPlayerCount,
+  getPlayerBaseAngle,
+  getPlayerBuildArcAngle,
+  normalizePlayerIds,
+} from './playerLayout';
+
+export { FIRST_PLAYER_ANGLE, getPlayerBaseAngle } from './playerLayout';
 
 type InitialBaseMode = 'demo' | 'real';
 
@@ -67,7 +74,7 @@ function spawnCommander(
 }
 
 // Map center + spawn-circle radius (margined inside the playable area).
-// Single source of truth for every demo-layout function below.
+// Single source of truth for every radial spawn-layout function below.
 function getDemoCircle(world: WorldState): { cx: number; cy: number; radius: number } {
   return {
     cx: world.mapWidth / 2,
@@ -76,34 +83,18 @@ function getDemoCircle(world: WorldState): { cx: number; cy: number; radius: num
   };
 }
 
-// Angular position of player i on the spawn circle. Players are spaced
-// evenly starting from FIRST_PLAYER_ANGLE. Anchor is rotated 45°
-// counterclockwise from the top (-π/2) so player 0 lands at -π/4 —
-// a corner of a square map (northeast in screen coords with +Y down)
-// — instead of the middle of a flat edge. With this anchor + the
-// matching terrain phase shift in `getTerrainHeight`, the team-area
-// arcs sit at the four corners and the divider ridges run along the
-// four cardinal directions, so each team's back is to a corner of
-// the map. Exported so the background-battle unit spawner can place
-// each team's units on the same arc as their base.
-export const FIRST_PLAYER_ANGLE = -Math.PI / 2 + Math.PI / 4;
-export function getPlayerBaseAngle(i: number, playerCount: number): number {
-  return (i / playerCount) * Math.PI * 2 + FIRST_PLAYER_ANGLE;
+function commanderRadiusFromOuterSpawnRadius(spawnRadius: number): number {
+  return spawnRadius * DEMO_CONFIG.commanderRadiusFraction;
 }
 
-/** Real-battle commander placement radius for a map of the given
- *  dimensions. Single source of truth for the formula
- *  `(mapMin/2 − spawnMarginPx) × REAL_BATTLE_COMMANDER_RADIUS_FRACTION`,
- *  so the actual sim spawn (`getSpawnPositions`) and the stateless
- *  camera pre-framing helper (`getSpawnPositionForSeat`) can never
- *  drift apart — change the fraction or the margin in config and
- *  both call sites pick it up. The DEMO BATTLE path
- *  (`spawnInitialBases`) does its own thing because it also has
- *  solar/factory rings to keep aligned with its own
- *  `DEMO_CONFIG.commanderRadiusFraction`. */
-function realBattleCommanderRadius(mapWidth: number, mapHeight: number): number {
+/** Commander placement radius for a map of the given dimensions.
+ *  DEMO BATTLE and REAL BATTLE intentionally share
+ *  `DEMO_CONFIG.commanderRadiusFraction`, so changing the demo
+ *  commander ring changes the real-battle ring and camera pre-framing
+ *  at the same time. */
+function commanderRadiusForMap(mapWidth: number, mapHeight: number): number {
   const spawnRadius = Math.min(mapWidth, mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
-  return spawnRadius * REAL_BATTLE_COMMANDER_RADIUS_FRACTION;
+  return commanderRadiusFromOuterSpawnRadius(spawnRadius);
 }
 
 /** World-space spawn position for seat `i` of a `playerCount`-player
@@ -121,8 +112,8 @@ export function getSpawnPositionForSeat(
   mapWidth: number,
   mapHeight: number,
 ): { x: number; y: number } {
-  const radius = realBattleCommanderRadius(mapWidth, mapHeight);
-  const angle = getPlayerBaseAngle(seatIndex, Math.max(1, playerCount));
+  const radius = commanderRadiusForMap(mapWidth, mapHeight);
+  const angle = getPlayerBaseAngle(seatIndex, playerCount);
   return {
     x: mapWidth / 2 + Math.cos(angle) * radius,
     y: mapHeight / 2 + Math.sin(angle) * radius,
@@ -130,18 +121,19 @@ export function getSpawnPositionForSeat(
 }
 
 // Calculate spawn positions on the spawn circle for N players. Used
-// for the REAL BATTLE flow (just commanders); demo battle goes through
-// `spawnInitialBases` which has its own commanderRadiusFraction.
+// for the REAL BATTLE flow (just commanders). The commander ring is
+// shared with demo battle through DEMO_CONFIG.commanderRadiusFraction.
 function getSpawnPositions(
   world: WorldState,
   playerCount: number
 ): { x: number; y: number; facingAngle: number }[] {
   const cx = world.mapWidth / 2;
   const cy = world.mapHeight / 2;
-  const radius = realBattleCommanderRadius(world.mapWidth, world.mapHeight);
+  const radius = commanderRadiusForMap(world.mapWidth, world.mapHeight);
   const positions: { x: number; y: number; facingAngle: number }[] = [];
-  for (let i = 0; i < playerCount; i++) {
-    const angle = getPlayerBaseAngle(i, playerCount);
+  const count = getLayoutPlayerCount(playerCount);
+  for (let i = 0; i < count; i++) {
+    const angle = getPlayerBaseAngle(i, count);
     const x = cx + Math.cos(angle) * radius;
     const y = cy + Math.sin(angle) * radius;
     positions.push({ x, y, facingAngle: Math.atan2(cy - y, cx - x) });
@@ -191,12 +183,6 @@ function placeCompleteBuilding(
     playerId,
   );
 
-  entity.buildable = {
-    paid: { ...config.cost },
-    required: { ...config.cost },
-    isComplete: true,
-    isGhost: false,
-  };
   entity.buildingType = buildingType;
   if (buildingType === 'solar') {
     ensureSolarCollectorState(entity);
@@ -230,6 +216,9 @@ function placeCompleteBuilding(
       rallyY: rally.y,
       isProducing: false,
       waypoints: [{ x: wp.x, y: wp.y, type: factoryWaypoint.type }],
+      energyRateFraction: 0,
+      manaRateFraction: 0,
+      metalRateFraction: 0,
     };
   }
 
@@ -249,17 +238,18 @@ function placeCompleteBuilding(
 // Spawn initial entities for the game with N players (commander only)
 export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = [1, 2]): Entity[] {
   const entities: Entity[] = [];
+  const normalizedPlayerIds = normalizePlayerIds(playerIds);
 
-  world.playerCount = playerIds.length;
+  world.playerCount = normalizedPlayerIds.length;
 
-  for (const playerId of playerIds) {
+  for (const playerId of normalizedPlayerIds) {
     economyManager.initPlayer(playerId);
   }
 
-  const spawnPositions = getSpawnPositions(world, playerIds.length);
+  const spawnPositions = getSpawnPositions(world, normalizedPlayerIds.length);
 
-  for (let i = 0; i < playerIds.length; i++) {
-    const playerId = playerIds[i];
+  for (let i = 0; i < normalizedPlayerIds.length; i++) {
+    const playerId = normalizedPlayerIds[i];
     const pos = spawnPositions[i];
     const commander = spawnCommander(world, playerId, pos.x, pos.y, pos.facingAngle);
     entities.push(commander);
@@ -373,13 +363,15 @@ export function spawnInitialBases(
 ): Entity[] {
   const entities: Entity[] = [];
 
-  world.playerCount = playerIds.length;
+  const normalizedPlayerIds = normalizePlayerIds(playerIds);
 
-  for (const playerId of playerIds) {
+  world.playerCount = normalizedPlayerIds.length;
+
+  for (const playerId of normalizedPlayerIds) {
     economyManager.initPlayer(playerId);
   }
 
-  const playerCount = playerIds.length;
+  const playerCount = normalizedPlayerIds.length;
   const { cx, cy, radius: spawnRadius } = getDemoCircle(world);
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
 
@@ -395,20 +387,19 @@ export function spawnInitialBases(
   // commander sits at a fraction of the spawn circle so it's not
   // pinned to the very edge; the solar/factory arcs follow inward
   // from that point.
-  const commanderRadius = spawnRadius * DEMO_CONFIG.commanderRadiusFraction;
+  const commanderRadius = commanderRadiusFromOuterSpawnRadius(spawnRadius);
   const solarRadius = commanderRadius - commanderGap - solarDepth / 2;
   const factoryRadius = solarRadius - solarDepth / 2 - cellGap - factoryDepth / 2;
 
   // Each player's slice of the spawn circle is ONE HALF of the
-  // 2π/N angular cycle — the other half is the team-separator
-  // barrier slice (the mountain ridge in Terrain.ts). With N=3 the
-  // map has 6 slices total: 3 team slices alternating with 3 barrier
-  // slices. arcSectorFraction trims a bit off the team slice so
-  // buildings don't kiss the barrier edges.
-  const sectorAngle = (Math.PI / playerCount) * DEMO_CONFIG.arcSectorFraction;
+  // 2π/N angular cycle — the other half is the divider terrain slice
+  // (the mountain ridge in Terrain.ts). This same formula is used for
+  // one-player maps too: one commander gets one team slice and one
+  // divider slice, rather than a special full-circle layout.
+  const sectorAngle = getPlayerBuildArcAngle(playerCount, DEMO_CONFIG.arcSectorFraction);
 
   for (let i = 0; i < playerCount; i++) {
-    const playerId = playerIds[i];
+    const playerId = normalizedPlayerIds[i];
     const baseAngle = getPlayerBaseAngle(i, playerCount);
 
     // Commander: single entity at the player's spawn point on the outer
@@ -444,7 +435,6 @@ function angleDeltaAbs(a: number, b: number): number {
 }
 
 function ownerForDeposit(world: WorldState, playerIds: PlayerId[], x: number, y: number): PlayerId {
-  if (playerIds.length <= 1) return playerIds[0] ?? (1 as PlayerId);
   const cx = world.mapWidth / 2;
   const cy = world.mapHeight / 2;
   const depositAngle = Math.atan2(y - cy, x - cx);
@@ -492,6 +482,7 @@ export function spawnMetalExtractorsOnDeposits(
       extractor.buildable.isComplete = true;
     }
     applyCompletedBuildingEffects(world, extractor);
+    delete extractor.buildable;
     entities.push(extractor);
   }
 

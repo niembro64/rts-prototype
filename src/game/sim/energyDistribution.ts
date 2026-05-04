@@ -7,12 +7,17 @@
 // "three independent bars" intent.
 
 import type { WorldState } from './WorldState';
-import type { Entity, PlayerId } from './types';
+import type { Entity, EntityId, PlayerId } from './types';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
-import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP } from '../../types/network';
+import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildTargetInRange } from './builderRange';
-import { getRemainingResource } from './buildableHelpers';
+import {
+  getBuildFraction,
+  getRemainingResource,
+  getTotalRemainingCost,
+  isEntityActive,
+} from './buildableHelpers';
 
 export type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
 import type { EnergyBuffers } from '@/types/ui';
@@ -22,7 +27,7 @@ export function createEnergyBuffers(): EnergyBuffers {
     consumers: [],
     consumersByPlayer: new Map(),
     buildTargetSet: new Set(),
-    maxEnergyUseRateByTarget: new Map(),
+    constructionRateByTarget: new Map(),
     buildingConsumerIds: new Set(),
   };
 }
@@ -31,7 +36,7 @@ export function resetEnergyBuffers(buffers: EnergyBuffers): void {
   buffers.consumers.length = 0;
   buffers.consumersByPlayer.clear();
   buffers.buildTargetSet.clear();
-  buffers.maxEnergyUseRateByTarget.clear();
+  buffers.constructionRateByTarget.clear();
   buffers.buildingConsumerIds.clear();
 }
 
@@ -51,15 +56,31 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   const buildingConsumerIds = buffers.buildingConsumerIds;
   buildingConsumerIds.clear();
 
+  // Zero every factory's per-resource rate fractions up front. The
+  // build-consumer loop below sets them on the factories that actually
+  // funded a transfer this tick; any factory not touched stays at 0,
+  // so the 3D shower cylinders correctly read empty when a queue
+  // stalls or completes between frames.
+  for (const factoryEntity of world.getFactoryBuildings()) {
+    const fc = factoryEntity.factory;
+    if (!fc) continue;
+    if (fc.energyRateFraction !== 0 || fc.manaRateFraction !== 0 || fc.metalRateFraction !== 0) {
+      fc.energyRateFraction = 0;
+      fc.manaRateFraction = 0;
+      fc.metalRateFraction = 0;
+    }
+  }
+
   const addConsumer = (
     playerId: PlayerId,
     entity: Entity,
     type: 'build' | 'heal',
     remainingCost: number,
-    maxEnergyPerTick: number,
+    maxResourcePerTick: number,
+    sourceFactoryId?: EntityId,
   ) => {
     const idx = consumers.length;
-    consumers.push({ entity, type, remainingCost, playerId, maxEnergyPerTick });
+    consumers.push({ entity, type, sourceFactoryId, remainingCost, playerId, maxResourcePerTick });
     let arr = byPlayer.get(playerId);
     if (!arr) {
       arr = [];
@@ -71,8 +92,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
 
   const buildTargets = buffers.buildTargetSet;
   buildTargets.clear();
-  const maxEnergyUseRateByTarget = buffers.maxEnergyUseRateByTarget;
-  maxEnergyUseRateByTarget.clear();
+  const constructionRateByTarget = buffers.constructionRateByTarget;
+  constructionRateByTarget.clear();
 
   // 1) Walk builder units. Aggregate their per-target rate caps so the
   //    pass below knows how fast a building can be funded.
@@ -80,8 +101,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const targetId = entity.builder?.currentBuildTarget;
     if (targetId == null) continue;
     buildTargets.add(targetId);
-    const rate = entity.builder!.maxEnergyUseRate;
-    maxEnergyUseRateByTarget.set(targetId, (maxEnergyUseRateByTarget.get(targetId) ?? 0) + rate);
+    const rate = entity.builder!.constructionRate;
+    constructionRateByTarget.set(targetId, (constructionRateByTarget.get(targetId) ?? 0) + rate);
   }
 
   // 2) Walk buildings:
@@ -90,16 +111,22 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   for (const entity of world.getBuildings()) {
     // 2a) Factory currently funding a unit shell?
     if (entity.factory?.isProducing && entity.factory.currentShellId !== null
-        && entity.ownership && entity.buildable?.isComplete) {
+        && entity.ownership && isEntityActive(entity)) {
       if (world.canPlayerBuildUnit(entity.ownership.playerId)) {
         const shell = world.getEntity(entity.factory.currentShellId);
         if (shell?.buildable && !shell.buildable.isComplete && !shell.buildable.isGhost) {
-          const remainingEnergy = getRemainingResource(shell.buildable, 'energy');
-          if (remainingEnergy > 0 || getRemainingResource(shell.buildable, 'mana') > 0
-              || getRemainingResource(shell.buildable, 'metal') > 0) {
+          const remainingCost = getTotalRemainingCost(shell.buildable);
+          if (remainingCost > 0) {
             const config = getBuildingConfig(entity.buildingType!);
-            const rateCap = (config.maxEnergyUseRate ?? Infinity) * dtSec;
-            addConsumer(entity.ownership.playerId, shell, 'build', remainingEnergy, rateCap);
+            const rateCap = (config.constructionRate ?? Infinity) * dtSec;
+            addConsumer(
+              entity.ownership.playerId,
+              shell,
+              'build',
+              remainingCost,
+              rateCap,
+              entity.id,
+            );
           }
         }
       }
@@ -113,11 +140,10 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       && entity.ownership
       && buildTargets.has(entity.id)
     ) {
-      const remainingEnergy = getRemainingResource(entity.buildable, 'energy');
-      if (remainingEnergy > 0 || getRemainingResource(entity.buildable, 'mana') > 0
-          || getRemainingResource(entity.buildable, 'metal') > 0) {
-        const rateCap = (maxEnergyUseRateByTarget.get(entity.id) ?? Infinity) * dtSec;
-        addConsumer(entity.ownership.playerId, entity, 'build', remainingEnergy, rateCap);
+      const remainingCost = getTotalRemainingCost(entity.buildable);
+      if (remainingCost > 0) {
+        const rateCap = (constructionRateByTarget.get(entity.id) ?? Infinity) * dtSec;
+        addConsumer(entity.ownership.playerId, entity, 'build', remainingCost, rateCap);
       }
     }
   }
@@ -135,14 +161,19 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const target = world.getEntity(targetId);
     if (!target) continue;
     if (!isBuildTargetInRange(commander, target)) continue;
-    const commanderRateCap = commander.builder.maxEnergyUseRate * dtSec;
+    const commanderRateCap = commander.builder.constructionRate * dtSec;
 
     if (target.buildable && !target.buildable.isComplete && !target.buildable.isGhost) {
       if (!buildingConsumerIds.has(target.id)) {
-        const remainingEnergy = getRemainingResource(target.buildable, 'energy');
-        if (remainingEnergy > 0 || getRemainingResource(target.buildable, 'mana') > 0
-            || getRemainingResource(target.buildable, 'metal') > 0) {
-          addConsumer(commander.ownership.playerId, target, 'build', remainingEnergy, commanderRateCap);
+        const remainingCost = getTotalRemainingCost(target.buildable);
+        if (remainingCost > 0) {
+          addConsumer(
+            commander.ownership.playerId,
+            target,
+            'build',
+            remainingCost,
+            commanderRateCap,
+          );
         }
       }
     } else if (target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp) {
@@ -158,10 +189,10 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // ── Per-player resource distribution ──
   // Each of the three resources flows independently. A consumer with
   // remaining > 0 in resource X pulls a share of player.X.stockpile.
-  // Energy is rate-capped per consumer; mana / metal are not (they
-  // saturate at remaining). When stockpile of one resource runs dry,
-  // that bar pauses while the others keep filling — exactly the
-  // independent-bar UX.
+  // The same construction-rate cap applies to energy, mana, and metal
+  // lanes, so no resource bar can burst to full just because it is not
+  // energy. When stockpile of one resource runs dry, that bar pauses
+  // while the others keep filling — exactly the independent-bar UX.
   for (const [playerId, indices] of byPlayer) {
     const economy = economyManager.getEconomy(playerId);
     if (!economy || indices.length === 0) continue;
@@ -193,21 +224,41 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         const remE = getRemainingResource(buildable, 'energy');
         const remM = getRemainingResource(buildable, 'mana');
         const remT = getRemainingResource(buildable, 'metal');
-        const spendE = Math.min(equalEnergyShare, remE, c.maxEnergyPerTick);
-        const spendM = Math.min(equalManaShare, remM);
-        const spendT = Math.min(equalMetalShare, remT);
+        const spendE = Math.min(equalEnergyShare, remE, c.maxResourcePerTick);
+        const spendM = Math.min(equalManaShare, remM, c.maxResourcePerTick);
+        const spendT = Math.min(equalMetalShare, remT, c.maxResourcePerTick);
         if (spendE > 0) buildable.paid.energy += spendE;
         if (spendM > 0) buildable.paid.mana += spendM;
         if (spendT > 0) buildable.paid.metal += spendT;
         if (spendE > 0 || spendM > 0 || spendT > 0) {
           world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_BUILDING);
+          if (c.sourceFactoryId !== undefined) {
+            const factory = world.getEntity(c.sourceFactoryId);
+            if (factory?.factory?.currentShellId === c.entity.id) {
+              factory.factory.currentBuildProgress = getBuildFraction(buildable);
+              // Per-resource transfer-rate fractions for the 3D
+              // "shower" cylinders. spendX <= maxResourcePerTick by
+              // construction so the divide is always 0..1.
+              const cap = c.maxResourcePerTick;
+              if (cap > 0) {
+                factory.factory.energyRateFraction = spendE / cap;
+                factory.factory.manaRateFraction = spendM / cap;
+                factory.factory.metalRateFraction = spendT / cap;
+              } else {
+                factory.factory.energyRateFraction = 0;
+                factory.factory.manaRateFraction = 0;
+                factory.factory.metalRateFraction = 0;
+              }
+              world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+            }
+          }
         }
         totalEnergySpent += spendE;
         totalManaSpent += spendM;
         totalMetalSpent += spendT;
       } else {
         // Healing — energy only.
-        const energyToSpend = Math.min(equalEnergyShare, c.remainingCost, c.maxEnergyPerTick);
+        const energyToSpend = Math.min(equalEnergyShare, c.remainingCost, c.maxResourcePerTick);
         totalEnergySpent += energyToSpend;
         const hpHealed = energyToSpend / 0.5;
         const unit = c.entity.unit!;

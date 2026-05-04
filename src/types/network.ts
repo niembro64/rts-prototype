@@ -181,8 +181,8 @@ export type NetworkPlayerActionMessage =
       ipAddress?: string;
       location?: string;
       timezone?: string;
-      /** Optional rename — set when the local user types a new value
-       *  in the TopBar. Host re-broadcasts via `playerInfoUpdate`. */
+      /** Optional rename — set when the local user edits their own
+       *  lobby player slot. Host re-broadcasts via `playerInfoUpdate`. */
       name?: string;
     }
   // Heartbeat ping. Both directions (client→host AND host→client)
@@ -236,11 +236,9 @@ export type NetworkServerSnapshotMessage =
       location?: string;
       timezone?: string;
       /** Optional rename. Sent by the host whenever a player's
-       *  username changes (the local player typed something into the
-       *  TopBar field, the host received their `playerInfo` rename,
-       *  etc). Receivers update the matching LobbyPlayer.name in
-       *  place. Absent on IP/location-only updates so the existing
-       *  fan-out doesn't unnecessarily clobber names. */
+       *  username changes from their own lobby slot, or when the host
+       *  receives a `playerInfo` rename. Receivers update the matching
+       *  LobbyPlayer.name in place. */
       name?: string;
     };
 
@@ -316,8 +314,9 @@ export type NetworkServerSnapshotVelocityUpdate = {
  *  `points = [start, ...reflections, end]`. Each vertex carries its
  *  own instantaneous 3D velocity in the world frame so the client can
  *  extrapolate every vertex independently between snapshots; the
- *  middles set `mirrorEntityId` to the redirecting mirror unit (start
- *  and end leave it undefined). */
+ *  middles set `mirrorEntityId` to the redirecting reflector entity
+ *  (legacy field name; mirrors and force fields both use it). Start
+ *  and end leave it undefined. */
 export type NetworkServerSnapshotBeamPoint = {
   x: number;
   y: number;
@@ -499,13 +498,9 @@ export type NetworkServerSnapshotEntity = {
      *  Numeric wire ID — see UNIT_TYPE_* / unitTypeToCode helpers. */
     unitType?: number;
     hp: { curr: number; max: number };
-    collider?: { shot: number; push: number };
-    /** Authored body radius — the unit's visible-chassis size. Drives
-     *  turret head defaults, blueprint mount scaling, mirror-panel sizing,
-     *  click hit radius, etc. Was historically `collider.scale`; lifted
-     *  to its own field so it isn't conflated with collision (`shot` /
-     *  `push` stay on `collider`). */
-    bodyRadius?: number;
+    /** Unit radii. Static on full records and omitted from ordinary
+     *  deltas unless the unit blueprint/runtime radius changes. */
+    radius?: { body?: number; shot?: number; push?: number };
     bodyCenterHeight?: number;
     mass?: number;
     velocity: Vec3;
@@ -557,6 +552,12 @@ export type NetworkServerSnapshotEntity = {
        *  kept as a convenience for the build-queue UI strip. */
       progress: number;
       producing: boolean;
+      /** Per-resource transfer rate this tick (0..1 fraction of the
+       *  factory's max rate cap). Drives the three "shower" cylinders
+       *  around the factory's pylons. */
+      energyRate: number;
+      manaRate: number;
+      metalRate: number;
       /** `posZ` carries the click-altitude of the player-issued
        *  factory waypoint; absent for synthetic / legacy waypoints
        *  (renderers fall back to terrain sample). */
