@@ -8,9 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   4) DEAD CODE
   ---------------------------------------------------
 
-  [LOW] src/playerNamesConfig.ts:21,44,49 `FUNNY_DEMO_NAMES`,
-    `FunnyName`, `pickFunnyName` are exported but only used inside the
-    same module. Remove the `export`.
   [LOW] src/game/network/helpers/NetworkEntityFactory.ts:55
     `createTurretsFromNetwork` is exported (also re-exported via
     helpers/index.ts) but only used inside NetworkEntityFactory.ts.

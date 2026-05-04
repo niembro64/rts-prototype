@@ -18,7 +18,7 @@ const STORAGE_KEY = 'player-client-username';
  *  flavour with a wink — fits the RTS silhouette without picking a
  *  fight with anyone in particular. The list is `as const` so callers
  *  see exact union types and IDEs autocomplete the values. */
-export const FUNNY_DEMO_NAMES = [
+const FUNNY_DEMO_NAMES = [
   'Sergeant Sandwich',
   'Captain Underpants',
   'General Mayhem',
@@ -41,12 +41,12 @@ export const FUNNY_DEMO_NAMES = [
   'Premier Pumpkin',
 ] as const;
 
-export type FunnyName = typeof FUNNY_DEMO_NAMES[number];
+type FunnyName = typeof FUNNY_DEMO_NAMES[number];
 
 /** Deterministic name pick from the pool, keyed by an integer seed.
  *  Same seed → same name across host and clients, so multiplayer rosters
  *  agree on what to call "player 3" without a round-trip. */
-export function pickFunnyName(seed: number): FunnyName {
+function pickFunnyName(seed: number): FunnyName {
   const idx = ((seed % FUNNY_DEMO_NAMES.length) + FUNNY_DEMO_NAMES.length)
     % FUNNY_DEMO_NAMES.length;
   return FUNNY_DEMO_NAMES[idx];
@@ -55,7 +55,7 @@ export function pickFunnyName(seed: number): FunnyName {
 /** Random pick from the pool. Use for "I want surprise on every page
  *  refresh" callsites — first-time real-battle joiners and any code
  *  path that doesn't have a stable seed handy. */
-export function pickRandomFunnyName(): FunnyName {
+function pickRandomFunnyName(): FunnyName {
   return pickFunnyName(Math.floor(Math.random() * FUNNY_DEMO_NAMES.length));
 }
 
