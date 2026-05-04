@@ -37,6 +37,7 @@
 // rotates around its horizontal edge axis) so no β iteration.
 
 import type { Entity, Turret } from '../types';
+import { isLineShot } from '../types';
 import { getTransformCosSin, getBarrelTip } from '../../math';
 import { resolveWeaponWorldMount } from './combatUtils';
 
@@ -62,11 +63,18 @@ export function solveMirrorAim(
 ): MirrorAim | null {
   if (!target.turrets || !unit.unit) return null;
 
+  // Walk the target's turrets and pick the first non-passive
+  // line-shot weapon to orient the panel against. `isLineShot()` is
+  // the SINGLE source of truth (in @/types/sim) for "is this a
+  // mirror-reflectable shot?" — adding a new shot type to
+  // LINE_SHOT_TYPES picks up here automatically. Today that covers
+  // the three weapons the mirror is supposed to deflect: laserShot
+  // (type='laser'), beamShot (type='beam'), and megaBeamShot
+  // (type='beam' — same family as beamShot, with bigger dps/width).
   for (let ti = 0; ti < target.turrets.length; ti++) {
     const enemyTurret = target.turrets[ti];
     if (enemyTurret.config.passive) continue;
-    const eShotType = enemyTurret.config.shot.type;
-    if (eShotType !== 'beam' && eShotType !== 'laser') continue;
+    if (!isLineShot(enemyTurret.config.shot)) continue;
 
     // Source S = the enemy beam barrel tip in world. Prefer the
     // targeting system's cached mount because it already includes

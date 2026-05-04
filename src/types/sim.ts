@@ -349,12 +349,46 @@ export type LaserShot = {
   duration: number;
 };
 
-// Shared type for beam and laser (line weapons)
+// ── Line-shot (mirror-reflectable) abstraction ───────────────────
+// SINGLE SOURCE OF TRUTH for "what does a mirror panel deflect?".
+//
+// The mirror-turret system has three responsibilities — target
+// acquisition, panel aim solving, and beam-path reflection — and each
+// needs the same yes/no answer about a given projectile / turret:
+// "is this a line shot that reflects off mirrors?"
+//
+// All three call sites key off `isLineShot()` (or its sibling
+// `isLineShotType()` for raw type strings). To add a new
+// mirror-reflectable shot type — a new beam variety, a chain-laser,
+// whatever — extend `LINE_SHOT_TYPES` here and every call site picks
+// it up automatically. The current set is `{ beam, laser }`, and that
+// covers the three weapons the user thinks of as "the laser and the
+// two beams" — `laserShot` (type='laser'), `beamShot` (type='beam'),
+// `megaBeamShot` (type='beam'). megaBeam doesn't need a new type
+// string because it's mechanically a beam variant; the bigger dps /
+// width / damage sphere are blueprint knobs on the same `beam`
+// shot family.
+
+/** The set of `shot.type` values that mirror panels reflect. Adding
+ *  one here automatically wires the new type into the aim solver,
+ *  panel hit collision, and beam-trace reflection. */
+export const LINE_SHOT_TYPES = ['beam', 'laser'] as const;
+export type LineShotType = typeof LINE_SHOT_TYPES[number];
+
+// Shared type for beam and laser (line weapons).
 export type LineShot = BeamShot | LaserShot;
 export type ActiveProjectileShot = ProjectileShot | BeamShot | LaserShot;
 
+/** Predicate on raw `shot.type` strings — used at network / projectile
+ *  layer boundaries where we have a string but not the full ShotConfig. */
+export function isLineShotType(t: string): t is LineShotType {
+  return t === 'beam' || t === 'laser';
+}
+
+/** Predicate on a full ShotConfig — preferred form (gives the type
+ *  guard a `LineShot` narrowing). */
 export function isLineShot(shot: ShotConfig): shot is LineShot {
-  return shot.type === 'beam' || shot.type === 'laser';
+  return isLineShotType(shot.type);
 }
 
 // Force shot — continuous area effect around turret (pie-slice push/pull zones)
@@ -612,13 +646,16 @@ export type ResourceCost = {
 // Buildable component. While a unit/building is under construction it
 // lives in the world as an inert "shell" — `paid.{e,m,m}` accumulate
 // from the owner's stockpiles toward `required.{e,m,m}`, and the
-// entity flips active when all three reach their target. HP is
-// driven externally to track the average fill ratio.
+// entity flips active when all three reach their target. During
+// construction, HP grows by the positive delta in average fill ratio;
+// it is never reset upward to the current fill target, so damage taken
+// while building remains damage.
 export type Buildable = {
   paid: ResourceCost;
   required: ResourceCost;
   isComplete: boolean;
   isGhost: boolean;
+  healthBuildFraction?: number;
 };
 
 // Builder component
@@ -672,10 +709,10 @@ export type UnitBuildConfig = {
 // the factory clears `currentShellId` to take the next queue entry.
 //
 // `currentBuildProgress` is the avg-of-three fill ratio of that shell,
-// kept as a pure UI mirror so the build-queue strip can draw a single
-// progress fraction without looking up the shell entity. On the server
-// it stays 0 (the truth lives on shell.buildable); on the client it's
-// populated from the wire's f.progress field.
+// kept as a pure UI/snapshot mirror so the build-queue strip can draw a
+// single progress fraction without looking up the shell entity. On the
+// server it is refreshed when resources flow into the shell; on the
+// client it is populated from the wire's f.progress field.
 export type Factory = {
   buildQueue: string[];
   currentShellId: EntityId | null;
