@@ -85,21 +85,23 @@ export const TURRET_BLUEPRINTS = {
     projectileId: 'lightRocket',
     range: 360,
     cooldown: 2000,
-    launchForce: 1500,
+    launchForce: 1000,
     turretTurnAccel: 20,
     turretDrag: 0.15,
     barrel: {
       type: 'coneMultiBarrel',
+      // 3 long tubes splayed out from the firing axis, with their tips
+      // 2.5× headRadius out to the side. The forward extension
+      // (`barrelLength`) is set to 0.01 so the cylinders run almost
+      // entirely sideways from the head — visible length is dominated
+      // by the radial spread (tipOrbit − baseOrbit), not by forward
+      // run. Authoring `tipOrbit` explicitly decouples the visible
+      // splay from `spread.angle` (which controls the random firing
+      // cone around vertical, not the rendered barrel angles).
       barrelCount: 3,
-      // Long tubes splayed out in a wide ~90° cone (45° per side from
-      // the firing axis). `tipOrbit` is specified explicitly so the
-      // visible barrel angles are decoupled from `spread.angle` — the
-      // latter governs the random firing cone around vertical, and
-      // the explicit value is no longer clamped by TURRET_HEIGHT.
-      barrelLength: 0.5,
-      baseOrbit: 0.01,
-      tipOrbit: 0.5,
-      depthScale: 0.02,
+      barrelLength: 0.01,
+      baseOrbit: 0.00,
+      tipOrbit: 2.5,
       spin: { idle: 2, max: 20, accel: 10, decel: 5 },
     },
     rangeMultiplierOverrides: fireEnvelope({
@@ -111,7 +113,7 @@ export const TURRET_BLUEPRINTS = {
     // 90° max deviation from vertical — rockets launch anywhere from
     // straight up to horizontal; homing then bends each one onto the
     // target's line.
-    spread: { angle: Math.PI / 2, pelletCount: 3 },
+    spread: { angle: Math.PI / 4, pelletCount: 3 },
     // spread: { angle: Math.PI / 2, pelletCount: 1 },
     bodyRadius: 8,
     audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
@@ -174,7 +176,6 @@ export const TURRET_BLUEPRINTS = {
       barrelCount: 2,
       barrelLength: 1.7,
       orbitRadius: 0.35,
-      depthScale: 0.1,
       spin: { idle: 2, max: 30, accel: 80, decel: 30 },
     },
     rangeMultiplierOverrides: fireEnvelope({
@@ -214,7 +215,6 @@ export const TURRET_BLUEPRINTS = {
       barrelCount: 6,
       barrelLength: 1.0,
       orbitRadius: 0.5,
-      depthScale: 0.12,
       spin: { idle: 2, max: 18, accel: 80, decel: 10 },
     },
     rangeMultiplierOverrides: fireEnvelope({
@@ -247,7 +247,6 @@ export const TURRET_BLUEPRINTS = {
       barrelCount: 5,
       barrelLength: 0.8,
       orbitRadius: 0.4,
-      depthScale: 0.1,
       spin: { idle: 2, max: 20, accel: 100, decel: 10 },
     },
     rangeMultiplierOverrides: fireEnvelope({
