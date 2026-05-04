@@ -11,6 +11,7 @@ import {
   FORCE_PUSH,
 } from '../../../config';
 import { AUDIO } from '../../../audioConfig';
+import { isTurretId, type TurretId } from '../../../types/blueprintIds';
 import type { HysteresisRangeMultiplier } from '../../../types/sim';
 import type { TurretBlueprint } from './types';
 
@@ -50,7 +51,7 @@ function fireEnvelope(params: {
   };
 }
 
-export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
+export const TURRET_BLUEPRINTS = {
   lightTurret: {
     id: 'lightTurret',
     projectileId: 'lightShot',
@@ -188,16 +189,24 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
     highArc: false,
   },
-  // Gatling mortar — multi-barrel rotating cluster that lobs
-  // mortarShot carrier rounds. Each carrier releases 5 mediumShot
-  // fragments on detonation, so the turret has high area pressure
-  // without spawning a second nested cluster tier.
+  // Gatling mortar: multi-barrel rotating cluster that lobs mortarShot
+  // carrier rounds. Each carrier releases three mediumShot children on
+  // detonation, so the turret has area pressure without a nested
+  // cluster tier.
   gatlingMortarTurret: {
     id: 'gatlingMortarTurret',
     projectileId: 'mortarShot',
     range: 1000,
     cooldown: 200,
-    launchForce: 8_000,
+    // Ballistic max range = (launchForce / mass)² / GRAVITY. With
+    // mortarShot.mass = SHOT_MASS_MEDIUM × 3 = 30 and GRAVITY = 400,
+    // a launchForce of 8 000 only reaches ~178 wu — far short of
+    // the 1000 engagement range, so solveProjectileTurretAim was
+    // returning hasBallisticSolution=false for every acquired
+    // target and the fire-gate at projectileSystem.ts:257 skipped
+    // every shot. 22 000 yields ~1344 wu max range with comfortable
+    // headroom over the 1000 cap.
+    launchForce: 22_000,
     turretTurnAccel: 80,
     turretDrag: 0.4,
     barrel: {
@@ -212,16 +221,16 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
       engageRangeMin: RANGE_FIRE_MIN,
       trackingRange: null,
     }),
-    eventsSmooth: true,
+    eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
     bodyRadius: 14,
     audio: { fireSound: AUDIO.event.fire.gatlingMortarTurret },
-    // Fast low-arc carrier. The submunitions do the area spread; a
-    // high arc makes the carrier spend too long in flight for a gatling
-    // role and amplifies recoil/moving-target error.
+    // Fast high-arc carrier. The submunitions do the area spread; this
+    // keeps the gatling role readable without adding another cluster
+    // layer.
     highArc: true,
-    // Aim directly at the target group; the carrier's fragment spray
+    // Aim directly at the target group; the carrier's submunition spray
     // creates the area coverage.
     groundAimFraction: 1.0,
   },
@@ -415,11 +424,11 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     },
     audio: { fireSound: AUDIO.event.fire.forceTurret },
   },
-};
+} satisfies Record<TurretId, TurretBlueprint>;
 
 export function getTurretBlueprint(id: string): TurretBlueprint {
+  if (!isTurretId(id)) throw new Error(`Unknown weapon blueprint: ${id}`);
   const turretBlueprint = TURRET_BLUEPRINTS[id];
-  if (!turretBlueprint) throw new Error(`Unknown weapon blueprint: ${id}`);
   return turretBlueprint;
 }
 
