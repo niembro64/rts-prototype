@@ -30,7 +30,12 @@ import {
   getUnitBlueprint,
 } from '../sim/blueprints';
 import { isLineShotBlueprint } from '@/types/blueprints';
-import { MIRROR_ARM_LENGTH_MULT, MIRROR_PANEL_SIZE_MULT, getMirrorPanelCenter } from '../sim/mirrorPanelCache';
+import {
+  MIRROR_ARM_LENGTH_MULT,
+  MIRROR_PANEL_SIZE_MULT,
+  MIRROR_ARM_THICKNESS_FRAC,
+  getMirrorPanelCenter,
+} from '../sim/mirrorPanelCache';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {
@@ -826,7 +831,12 @@ export class Debris3D {
         // automatically.
         const side = r * MIRROR_PANEL_SIZE_MULT * 2;
         const armLength = r * MIRROR_ARM_LENGTH_MULT;
-        const armThickness = Math.max(r * 0.18, 0.5);
+        // Match the live arm's thickness formula in MirrorMesh3D
+        // (panelHalfSide × thickness fraction). Without the
+        // MIRROR_PANEL_SIZE_MULT factor the debris arm renders 1/MULT
+        // thinner than the alive arm.
+        const panelHalfSide = r * MIRROR_PANEL_SIZE_MULT;
+        const armThickness = Math.max(panelHalfSide * MIRROR_ARM_THICKNESS_FRAC, 0.5);
         const panelCenterY = localMount.z * r - chassisLiftY;
         const cY = Math.cos(chassisYaw);
         const sY = Math.sin(chassisYaw);

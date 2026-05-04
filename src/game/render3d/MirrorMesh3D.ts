@@ -9,6 +9,7 @@
 // `root` rotates. No per-mesh, per-frame rotation.
 
 import * as THREE from 'three';
+import { MIRROR_ARM_THICKNESS_FRAC, MIRROR_ARM_PANEL_GAP_FRAC } from '../sim/mirrorPanelCache';
 
 export type MirrorMesh = {
   /** The ball-joint. Position is the attachment point in liftGroup's
@@ -43,9 +44,6 @@ export type MirrorPanelMount = {
    *  panel face is perpendicular to the arm. */
   angle: number;
 };
-
-const ARM_THICKNESS_FRAC = 0.18;
-const ARM_PANEL_GAP_FRAC = 0.035;
 
 export function buildMirrorMesh3D(
   parent: THREE.Group,
@@ -89,9 +87,9 @@ export function buildMirrorMesh3D(
   const panelMeshes: THREE.Mesh[] = [];
   const armMeshes: THREE.Mesh[] = [];
   const side = Math.max(panelHalfSide * 2, 1);
-  const armThickness = Math.max(panelHalfSide * ARM_THICKNESS_FRAC, 0.5);
+  const armThickness = Math.max(panelHalfSide * MIRROR_ARM_THICKNESS_FRAC, 0.5);
   const panelGap = Math.min(
-    Math.max(panelHalfSide * ARM_PANEL_GAP_FRAC, 0.25),
+    Math.max(panelHalfSide * MIRROR_ARM_PANEL_GAP_FRAC, 0.25),
     Math.max(panelArmLength * 0.2, 0),
   );
   const visibleArmLength = Math.max(panelArmLength - panelGap, 0.1);

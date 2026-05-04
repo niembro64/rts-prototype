@@ -40,6 +40,18 @@ export const MIRROR_ARM_LENGTH_MULT = 1.2;
  *  during yaw / pitch sweeps. */
 export const MIRROR_PANEL_SIZE_MULT = 4.0;
 
+/** Mirror arm thickness as a fraction of the panel half-side. The arm
+ *  is the cylinder/box bridging the turret body to the panel; this
+ *  fraction keeps it visually slender at every panel scale. Used by
+ *  both the live mesh (MirrorMesh3D) and the debris emitter (Debris3D)
+ *  so the arm thickness matches the moment the unit dies. */
+export const MIRROR_ARM_THICKNESS_FRAC = 0.18;
+
+/** Gap between the panel face and the arm's far end, as a fraction
+ *  of the panel half-side. Stops the arm cylinder from clipping into
+ *  the panel mesh. */
+export const MIRROR_ARM_PANEL_GAP_FRAC = 0.035;
+
 /** Compute the rigid mirror arm's panel CENTER in world coords by
  *  extending an arm of length `armLength` from `(pivotX, pivotY,
  *  pivotZ)` along the 3D direction

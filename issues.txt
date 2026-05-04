@@ -12,11 +12,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   7) CONFIGURATION KNOB FRAGMENTATION
   ---------------------------------------------------
 
-  [MEDIUM] src/game/render3d/MirrorMesh3D.ts:47-48 `ARM_THICKNESS_FRAC`
-    = 0.18 and `ARM_PANEL_GAP_FRAC` = 0.035 are mirror-system
-    tunables that should sit next to MIRROR_ARM_LENGTH_MULT /
-    MIRROR_PANEL_SIZE_MULT in mirrorPanelCache.ts.
-
   [LOW] Same magic-fraction trio for barrel orbit clamps appears at
     three sites:
       - src/game/render3d/TurretMesh3D.ts:227, 237, 242
