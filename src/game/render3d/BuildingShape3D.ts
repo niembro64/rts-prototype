@@ -984,12 +984,14 @@ function buildFactory(
   ));
 
   // 3 structural pylons evenly spaced around the tower — one per
-  // resource (energy / mana / metal). Each gets a translucent shower
-  // cylinder around it that fills bottom-up with the live transfer
-  // rate. The shower starts at zero scale and the per-frame updater
-  // in Render3DEntities scales it.
+  // resource (energy / mana / metal). Each is a thin inner cylinder
+  // wrapped by a thicker translucent "shower" cylinder that fills
+  // bottom-up with the live transfer rate. The inner pylon is
+  // intentionally narrower than the shower so the colored shower
+  // reads as clearly outside the structural shaft.
   const showerMats = [factoryEnergyShowerMat, factoryManaShowerMat, factoryMetalShowerMat];
   const showers: THREE.Mesh[] = [];
+  const innerPylonRadius = metrics.pylonRadius * 0.45;
   const showerRadius = metrics.pylonRadius * 1.85;
   const pylonBaseY = metrics.towerBaseY;
   for (let i = 0; i < 3; i++) {
@@ -999,7 +1001,7 @@ function buildFactory(
     details.push(detail(
       makeCylinder(
         factoryFrameMat,
-        metrics.pylonRadius,
+        innerPylonRadius,
         metrics.pylonHeight,
         px,
         pylonBaseY + metrics.pylonHeight / 2,
