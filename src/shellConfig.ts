@@ -106,3 +106,27 @@ export const HP_BAR_COLOR_BUILD = '#4488ff';
 
 /** HP fraction below which the HP bar switches to HP_BAR_COLOR_LOW. */
 export const HP_BAR_LOW_THRESHOLD = 0.3;
+
+/** Per-resource transfer-rate smoothing for the factory + commander
+ *  build emitters. The rate fractions written by the sim each tick
+ *  are noisy by nature — once-a-tick step changes whenever a stockpile
+ *  goes empty or a queue rolls over — so the renderer EMAs them
+ *  before driving the showers + colored sprays. Half-life is in
+ *  seconds; halfLifeBlend(dt, halfLife) closes 50% of the gap each
+ *  half-life, exactly the same shape as the snapshot drift EMA in
+ *  driftEma.ts.
+ *
+ *  Reference points (pick one for the active mode below):
+ *    SNAP — 0     (no smoothing; shows raw per-tick noise)
+ *    FAST — 0.05  (~50ms, snaps to gameplay changes quickly)
+ *    MID  — 0.18  (~180ms, calm but responsive — current default)
+ *    SLOW — 0.5   (~500ms, deliberately laggy / weighty look)
+ */
+export const BUILD_RATE_EMA_HALF_LIFE_SEC = {
+  snap: 0,
+  fast: 0.05,
+  mid: 0.18,
+  slow: 0.5,
+} as const;
+export type BuildRateEmaMode = keyof typeof BUILD_RATE_EMA_HALF_LIFE_SEC;
+export const BUILD_RATE_EMA_MODE: BuildRateEmaMode = 'mid';

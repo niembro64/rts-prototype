@@ -201,10 +201,15 @@ export class SprayRenderer3D {
       const count = Math.max(4, Math.floor(baseCount * scaledIntensity));
       const n = Math.min(count, MAX_PARTICLES_PER_SPRAY);
 
-      // Resolve per-spray color once. Heal sprays are always white,
-      // build sprays use the caster's team primary.
+      // Resolve per-spray color once. Per-spray colorRGB override
+      // wins (used by the factory + commander per-resource sprays so
+      // each colored stream reads as its resource regardless of
+      // team). Otherwise heal sprays are white and build sprays use
+      // the caster's team primary.
       let r: number, g: number, b: number;
-      if (spray.type === 'heal' || spray.source.playerId === undefined) {
+      if (spray.colorRGB) {
+        r = spray.colorRGB.r; g = spray.colorRGB.g; b = spray.colorRGB.b;
+      } else if (spray.type === 'heal' || spray.source.playerId === undefined) {
         r = HEAL_R; g = HEAL_G; b = HEAL_B;
       } else {
         const cached = this._teamColorCache.get(spray.source.playerId);

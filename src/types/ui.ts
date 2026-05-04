@@ -177,6 +177,12 @@ export type SprayTarget = {
   target: { id: EntityId; pos: Vec2; z?: number; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
   intensity: number;
+  /** Optional per-spray color override (RGB in [0..1]). When present
+   *  the renderer paints particles in this color instead of the
+   *  source's team-primary color. Used by the factory's per-resource
+   *  build sprays so each pylon's stream reads as its resource
+   *  (energy / mana / metal) regardless of team. */
+  colorRGB?: { r: number; g: number; b: number };
 };
 
 // Commander abilities result

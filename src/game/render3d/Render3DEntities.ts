@@ -19,7 +19,14 @@ import { getPlayerColors } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { applyShellOverride } from './ShellMaterial';
 import { makeInstanceAlphaCapable, setInstanceAlphaSlot } from './instanceAlpha';
-import { SHELL_OPACITY, NORMAL_OPACITY, BUILD_BUBBLE_RADIUS_PUSH_MULT } from '@/shellConfig';
+import {
+  SHELL_OPACITY,
+  NORMAL_OPACITY,
+  BUILD_BUBBLE_RADIUS_PUSH_MULT,
+  SHELL_BAR_COLORS,
+  BUILD_RATE_EMA_HALF_LIFE_SEC,
+  BUILD_RATE_EMA_MODE,
+} from '@/shellConfig';
 import type { SpinConfig } from '../../config';
 import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
@@ -89,6 +96,24 @@ import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 // barrel tip and sim muzzle stay locked together.
 
 const BUILDING_HEIGHT = 120;
+
+// Per-resource spray colors for the factory + commander build emitters.
+// Same palette as SHELL_BAR_COLORS so the colored spray reads as the
+// same resource the HP-side bar shows. Pre-baked into 0..1 RGB floats
+// once at module load.
+function hexStringToRgb(hex: string): { r: number; g: number; b: number } {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return {
+    r: ((n >> 16) & 0xff) / 255,
+    g: ((n >>  8) & 0xff) / 255,
+    b: ( n        & 0xff) / 255,
+  };
+}
+const RESOURCE_SPRAY_COLORS = [
+  hexStringToRgb(SHELL_BAR_COLORS.energy),
+  hexStringToRgb(SHELL_BAR_COLORS.mana),
+  hexStringToRgb(SHELL_BAR_COLORS.metal),
+] as const;
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
 const _solarPetalDirection = new THREE.Vector3();
@@ -2667,7 +2692,7 @@ export class Render3DEntities {
           m.mirrors = buildMirrorMesh3D(
             liftGroup, mirrorPanels,
             panelCenterY, panelHalfSide, panelArmLength,
-            this.mirrorGeom, this.mirrorFrameGeom, this.barrelGeom,
+            this.mirrorGeom, this.mirrorFrameGeom,
             this.getMirrorShinyMat(), this.getPrimaryMat(pid),
             allMirrorAlloc, // skipPerMesh when instancing is on
           );
@@ -3682,6 +3707,10 @@ export class Render3DEntities {
         intensity: 0,
       };
     }
+    // Recycled targets may carry a stale per-resource colorRGB from
+    // their last use. Clear it so callers that don't set one fall
+    // back to team color cleanly.
+    target.colorRGB = undefined;
     this.factorySprayTargets.push(target);
     return target;
   }
@@ -3794,29 +3823,50 @@ export class Render3DEntities {
       && !!queuedUnitType
       && (factory.isProducing || progress > 0);
 
+    // EMA the live per-resource rate fractions toward the smoothed
+    // values stored on the rig. Targets are 0 when the factory isn't
+    // producing (so the showers + sprays fade out instead of popping
+    // off). Rate fractions are 0..1.
+    const dtSec = this._currentDtMs / 1000;
+    const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];
+    const rateAlpha = halfLifeBlend(dtSec, halfLife);
+    const targetEnergy = active ? Math.max(0, Math.min(1, factory?.energyRateFraction ?? 0)) : 0;
+    const targetMana   = active ? Math.max(0, Math.min(1, factory?.manaRateFraction   ?? 0)) : 0;
+    const targetMetal  = active ? Math.max(0, Math.min(1, factory?.metalRateFraction  ?? 0)) : 0;
+    rig.smoothedRates.energy += (targetEnergy - rig.smoothedRates.energy) * rateAlpha;
+    rig.smoothedRates.mana   += (targetMana   - rig.smoothedRates.mana)   * rateAlpha;
+    rig.smoothedRates.metal  += (targetMetal  - rig.smoothedRates.metal)  * rateAlpha;
+
     if (!active) {
       rig.unitGhost.visible = false;
       rig.unitCore.visible = false;
       for (const buildPulse of rig.buildPulses) buildPulse.visible = false;
       for (const spark of rig.sparks) spark.visible = false;
-      for (const shower of rig.showers) shower.visible = false;
+      // Keep showers visible while the smoothed rate hasn't decayed
+      // to ~0 yet so the fade-out reads. Once they're effectively
+      // zero, hide entirely.
+      const smoothed = [rig.smoothedRates.energy, rig.smoothedRates.mana, rig.smoothedRates.metal];
+      for (let i = 0; i < rig.showers.length && i < 3; i++) {
+        const shower = rig.showers[i];
+        const r = smoothed[i];
+        if (r < 0.01) { shower.visible = false; continue; }
+        shower.visible = true;
+        const h = rig.pylonHeight * r;
+        shower.scale.set(rig.showerRadius, h, rig.showerRadius);
+        shower.position.y = rig.pylonBaseY + h / 2;
+      }
       return;
     }
 
     // Resource transfer "showers" — three vertical cylinders around
-    // each pylon, scaled bottom-up by the live per-resource rate
-    // fraction (0..1) the sim writes onto factory each tick. 0 → hidden
-    // (zero height), 1 → fills the whole pylon. Indices match the wire
-    // payload order: energy / mana / metal.
-    const rates = [
-      factory?.energyRateFraction ?? 0,
-      factory?.manaRateFraction ?? 0,
-      factory?.metalRateFraction ?? 0,
-    ];
+    // each pylon, scaled bottom-up by the smoothed per-resource rate
+    // fraction (0..1). 0 → hidden, 1 → fills the whole pylon. Indices
+    // match the wire payload order: energy / mana / metal.
+    const smoothed = [rig.smoothedRates.energy, rig.smoothedRates.mana, rig.smoothedRates.metal];
     for (let i = 0; i < rig.showers.length && i < 3; i++) {
       const shower = rig.showers[i];
-      const rate = Math.max(0, Math.min(1, rates[i]));
-      if (rate <= 0) {
+      const rate = smoothed[i];
+      if (rate < 0.01) {
         shower.visible = false;
         continue;
       }
@@ -3907,26 +3957,42 @@ export class Render3DEntities {
       buildPulse.scale.setScalar(Math.max(2.3, radius * (0.08 + arc * 0.035)));
     }
 
+    // Three colored build sprays — one per pylon top to the build
+    // spot, intensity gated by that resource's smoothed transfer rate.
+    // The sprays replace the single nozzle stream; each pylon now both
+    // fills its shower bottom-up AND emits its colored particles
+    // toward the forming unit.
     if (buildingTierAtLeast(tier, 'high') && e.ownership) {
       group.updateWorldMatrix(true, false);
-      this._factorySprayTargetLocal.set(localSpotX, 0, localSpotZ);
-      this._factorySprayTargetLocal.y = centerY + radius * 0.06;
-      this._factorySpraySourceWorld.copy(rig.nozzleLocal).applyMatrix4(group.matrixWorld);
+      this._factorySprayTargetLocal.set(localSpotX, centerY + radius * 0.06, localSpotZ);
       this._factorySprayTargetWorld.copy(this._factorySprayTargetLocal).applyMatrix4(group.matrixWorld);
-      const spray = this.acquireFactorySprayTarget();
-      spray.source.id = e.id;
-      spray.source.pos.x = this._factorySpraySourceWorld.x;
-      spray.source.pos.y = this._factorySpraySourceWorld.z;
-      spray.source.z = this._factorySpraySourceWorld.y;
-      spray.source.playerId = e.ownership.playerId;
-      spray.target.id = e.id;
-      spray.target.pos.x = this._factorySprayTargetWorld.x;
-      spray.target.pos.y = this._factorySprayTargetWorld.z;
-      spray.target.z = this._factorySprayTargetWorld.y;
-      spray.target.dim = undefined;
-      spray.target.radius = radius;
-      spray.type = 'build';
-      spray.intensity = Math.max(0.45, Math.min(1, 0.65 + easedProgress * 0.35));
+      const smoothed = [rig.smoothedRates.energy, rig.smoothedRates.mana, rig.smoothedRates.metal];
+      for (let i = 0; i < rig.pylonTopsLocal.length && i < 3; i++) {
+        const rate = smoothed[i];
+        if (rate < 0.05) continue;
+        this._factorySpraySourceWorld
+          .copy(rig.pylonTopsLocal[i])
+          .applyMatrix4(group.matrixWorld);
+        const spray = this.acquireFactorySprayTarget();
+        spray.source.id = e.id;
+        spray.source.pos.x = this._factorySpraySourceWorld.x;
+        spray.source.pos.y = this._factorySpraySourceWorld.z;
+        spray.source.z = this._factorySpraySourceWorld.y;
+        spray.source.playerId = e.ownership.playerId;
+        spray.target.id = e.id;
+        spray.target.pos.x = this._factorySprayTargetWorld.x;
+        spray.target.pos.y = this._factorySprayTargetWorld.z;
+        spray.target.z = this._factorySprayTargetWorld.y;
+        spray.target.dim = undefined;
+        spray.target.radius = radius;
+        spray.type = 'build';
+        // Intensity ∈ (0, 1] — rate fraction shapes the density;
+        // a small floor keeps the stream visibly active even when the
+        // pool is starved (unless rate is essentially zero, where the
+        // 0.05 cull above already skips the spray entirely).
+        spray.intensity = Math.max(0.15, Math.min(1, rate));
+        spray.colorRGB = RESOURCE_SPRAY_COLORS[i];
+      }
     }
 
     const showSparks = buildingTierAtLeast(tier, 'max');

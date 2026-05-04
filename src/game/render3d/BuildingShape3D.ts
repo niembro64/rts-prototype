@@ -96,6 +96,16 @@ export type FactoryConstructionRig = {
   showerRadius: number;
   pylonHeight: number;
   pylonBaseY: number;
+  /** Chassis-local position of each pylon's top, in the same order
+   *  as `showers` (energy / mana / metal). The per-frame update
+   *  uses these as the SOURCE of the per-resource colored build
+   *  sprays — each spray runs from a pylon top to the build spot. */
+  pylonTopsLocal: THREE.Vector3[];
+  /** Smoothed transfer-rate fractions (0..1), one per resource in
+   *  the same order as `showers`. The renderer EMAs the live sim
+   *  rates into these so the showers + sprays don't pop on per-tick
+   *  step changes. Zeroed at rig creation. */
+  smoothedRates: { energy: number; mana: number; metal: number };
 };
 
 export type WindTurbineRig = {
@@ -971,29 +981,21 @@ function buildFactory(
     makeCylinder(hazardStripeMat, metrics.collarRadius, 10, 0, metrics.baseHeight + 5, 0, hexCylinderGeom),
     'low',
   ));
-  details.push(detail(
-    makeCylinder(
-      chimneyMat,
-      metrics.towerRadius,
-      metrics.towerHeight,
-      0,
-      metrics.towerBaseY + metrics.towerHeight / 2,
-      0,
-    ),
-    'low',
-  ));
 
   // 3 structural pylons evenly spaced around the tower — one per
   // resource (energy / mana / metal). Each is a thin inner cylinder
   // wrapped by a thicker translucent "shower" cylinder that fills
-  // bottom-up with the live transfer rate. The inner pylon is
-  // intentionally narrower than the shower so the colored shower
-  // reads as clearly outside the structural shaft.
+  // bottom-up with the live transfer rate, and emits a same-colored
+  // build spray from its top toward the build spot (driven per-frame
+  // in updateFactoryConstructionRig). The central tower / chimney is
+  // intentionally absent — the three pylons ARE the tower.
   const showerMats = [factoryEnergyShowerMat, factoryManaShowerMat, factoryMetalShowerMat];
   const showers: THREE.Mesh[] = [];
+  const pylonTopsLocal: THREE.Vector3[] = [];
   const innerPylonRadius = metrics.pylonRadius * 0.45;
   const showerRadius = metrics.pylonRadius * 1.85;
   const pylonBaseY = metrics.towerBaseY;
+  const pylonTopY = pylonBaseY + metrics.pylonHeight;
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2;
     const px = Math.cos(a) * metrics.pylonOffset;
@@ -1023,6 +1025,7 @@ function buildFactory(
     shower.renderOrder = 6;
     showers.push(shower);
     details.push(detail(shower, 'medium', undefined, 'factoryShower'));
+    pylonTopsLocal.push(new THREE.Vector3(px, pylonTopY, pz));
   }
 
   details.push(detail(
@@ -1107,6 +1110,8 @@ function buildFactory(
       showerRadius,
       pylonHeight: metrics.pylonHeight,
       pylonBaseY,
+      pylonTopsLocal,
+      smoothedRates: { energy: 0, mana: 0, metal: 0 },
     },
   };
 }
