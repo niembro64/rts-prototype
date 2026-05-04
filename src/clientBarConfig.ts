@@ -13,6 +13,8 @@ import type {
   ForceTurretStyle,
   UnitShape,
   UnitRenderMode,
+  CameraSphereRadii,
+  RenderObjectLodTier,
 } from './types/graphics';
 import type { ClientBarConfig } from './types/client';
 import type {
@@ -70,6 +72,7 @@ export const CLIENT_CONFIG = {
   burnMarks: { default: false },
   lodShellRings: { default: false },
   lodGridBorders: { default: false },
+  baseLodMode: { default: false },
   driftMode: { default: 'mid' as const },
   legsRadius: { default: false },
   cameraSmooth: {
@@ -333,6 +336,53 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
   },
 };
 
+// ── BASE-mode configs ──
+// "BASE" is a PLAYER CLIENT bar toggle. When ON, the user's MIN/LOW/MED/HI/MAX
+// pick is applied UNIFORMLY to every entity on screen — the per-entity
+// camera-sphere distance resolver is bypassed entirely. Conceptually this
+// is "the truly fixed version of each tier", as opposed to today's
+// classic tiers which cap a per-entity object-tier resolved from camera
+// distance (so close units look richer than far ones even at MIN).
+//
+// Implementation:
+//   1. cameraSphereRadii is zeroed so any callsite that still walks the
+//      shells (debug rings, structural cache keys) sees "no shells active"
+//      rather than stale values from the CS variant.
+//   2. forcedObjectTier is set to the single object-tier that today's
+//      camera-sphere ladder uses as the FLOOR for that graphics tier —
+//      the inverse of MAX_GRAPHICS_TIER_BY_OBJECT in RenderObjectLod.ts.
+//      Read down the column: at graphics tier 'min' the highest object
+//      tier permitted is 'marker'; at 'low' it's 'impostor'; etc.
+//   3. The resolver (resolveRenderObjectLodForDistanceSq) and the per-
+//      frame RenderLodGrid both short-circuit on forcedObjectTier, so no
+//      distance arithmetic runs when BASE is on.
+const ZERO_CAMERA_SPHERES: CameraSphereRadii = {
+  rich: 0,
+  simple: 0,
+  mass: 0,
+  impostor: 0,
+};
+
+const BASE_FORCED_OBJECT_TIER: Record<ConcreteGraphicsQuality, RenderObjectLodTier> = {
+  min: 'marker',
+  low: 'impostor',
+  medium: 'mass',
+  high: 'simple',
+  max: 'rich',
+};
+
+const GRAPHICS_CONFIGS_BASE: Record<ConcreteGraphicsQuality, GraphicsConfig> =
+  Object.fromEntries(
+    (Object.keys(GRAPHICS_CONFIGS) as ConcreteGraphicsQuality[]).map((q) => [
+      q,
+      {
+        ...GRAPHICS_CONFIGS[q],
+        cameraSphereRadii: { ...ZERO_CAMERA_SPHERES },
+        forcedObjectTier: BASE_FORCED_OBJECT_TIER[q],
+      },
+    ]),
+  ) as Record<ConcreteGraphicsQuality, GraphicsConfig>;
+
 // ── localStorage keys (module-private) ──
 // Every key in this file is for the PLAYER CLIENT bar — namespace
 // prefix `player-client-` makes that explicit in DevTools and lets
@@ -347,6 +397,7 @@ const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
 const BURN_MARKS_STORAGE_KEY = 'player-client-burn-marks';
 const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
 const LOD_GRID_BORDERS_STORAGE_KEY = 'player-client-lod-grid-borders';
+const BASE_LOD_MODE_STORAGE_KEY = 'player-client-base-lod-mode';
 const DRIFT_MODE_STORAGE_KEY = 'player-client-drift-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'player-client-sound-toggles';
 const RANGE_TOGGLES_STORAGE_KEY = 'player-client-range-toggles';
@@ -435,6 +486,10 @@ let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLodShellRings: boolean = _cd.lodShellRings.default;
 let currentLodGridBorders: boolean = _cd.lodGridBorders.default;
+// "BASE" toggle — fixes the active graphics tier across every entity by
+// short-circuiting the camera-sphere resolver. See GRAPHICS_CONFIGS_BASE
+// above for the full picture.
+let currentBaseLodMode: boolean = _cd.baseLodMode.default;
 let currentDriftMode: DriftMode = _cd.driftMode.default;
 const currentSoundToggles: Record<SoundCategory, boolean> = {
   ..._cd.sounds.default,
@@ -558,6 +613,10 @@ function loadFromStorage(): void {
   const storedLodGridBorders = readPersisted(LOD_GRID_BORDERS_STORAGE_KEY);
   if (storedLodGridBorders !== null) {
     currentLodGridBorders = storedLodGridBorders === 'true';
+  }
+  const storedBaseLodMode = readPersisted(BASE_LOD_MODE_STORAGE_KEY);
+  if (storedBaseLodMode !== null) {
+    currentBaseLodMode = storedBaseLodMode === 'true';
   }
   const storedLegsRadius = readPersisted(LEGS_RADIUS_STORAGE_KEY);
   if (storedLegsRadius !== null) {
@@ -857,13 +916,14 @@ export function getEffectiveQuality(): ConcreteGraphicsQuality {
 }
 
 export function getGraphicsConfig(): GraphicsConfig {
-  return GRAPHICS_CONFIGS[getEffectiveQuality()];
+  const quality = getEffectiveQuality();
+  return currentBaseLodMode ? GRAPHICS_CONFIGS_BASE[quality] : GRAPHICS_CONFIGS[quality];
 }
 
 export function getGraphicsConfigFor(
   quality: ConcreteGraphicsQuality,
 ): GraphicsConfig {
-  return GRAPHICS_CONFIGS[quality];
+  return currentBaseLodMode ? GRAPHICS_CONFIGS_BASE[quality] : GRAPHICS_CONFIGS[quality];
 }
 
 export function getRenderMode(): RenderMode {
@@ -975,6 +1035,15 @@ export function getLodGridBorders(): boolean {
 export function setLodGridBorders(enabled: boolean): void {
   currentLodGridBorders = enabled;
   persist(LOD_GRID_BORDERS_STORAGE_KEY, String(enabled));
+}
+
+export function getBaseLodMode(): boolean {
+  return currentBaseLodMode;
+}
+
+export function setBaseLodMode(enabled: boolean): void {
+  currentBaseLodMode = enabled;
+  persist(BASE_LOD_MODE_STORAGE_KEY, String(enabled));
 }
 
 export function getDriftMode(): DriftMode {

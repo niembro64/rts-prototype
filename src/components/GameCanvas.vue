@@ -132,6 +132,8 @@ import {
   setLodShellRings,
   getLodGridBorders,
   setLodGridBorders,
+  getBaseLodMode,
+  setBaseLodMode,
   getDriftMode,
   setDriftMode,
   getSoundToggle,
@@ -405,6 +407,7 @@ const audioSmoothing = ref<boolean>(getAudioSmoothing());
 const burnMarks = ref<boolean>(getBurnMarks());
 const lodShellRings = ref<boolean>(getLodShellRings());
 const lodGridBorders = ref<boolean>(getLodGridBorders());
+const baseLodMode = ref<boolean>(getBaseLodMode());
 const driftMode = ref<DriftMode>(getDriftMode());
 const edgeScrollEnabled = ref(getEdgeScrollEnabled());
 const dragPanEnabled = ref(getDragPanEnabled());
@@ -1203,6 +1206,8 @@ function resetClientDefaults(): void {
   lodShellRings.value = cd.lodShellRings.default;
   setLodGridBorders(cd.lodGridBorders.default);
   lodGridBorders.value = cd.lodGridBorders.default;
+  setBaseLodMode(cd.baseLodMode.default);
+  baseLodMode.value = cd.baseLodMode.default;
   setDriftMode(cd.driftMode.default);
   driftMode.value = cd.driftMode.default;
   if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();
@@ -1554,6 +1559,12 @@ function toggleLodGridBorders(): void {
   const newValue = !lodGridBorders.value;
   setLodGridBorders(newValue);
   lodGridBorders.value = newValue;
+}
+
+function toggleBaseLodMode(): void {
+  const newValue = !baseLodMode.value;
+  setBaseLodMode(newValue);
+  baseLodMode.value = newValue;
 }
 
 function changeDriftMode(mode: DriftMode): void {
@@ -3015,6 +3026,11 @@ onUnmounted(() => {
                 @click="changeGraphicsQuality(opt.value)"
               >{{ opt.label }}</BarButton>
             </BarButtonGroup>
+            <BarButton
+              :active="baseLodMode"
+              title="BASE — when ON, the chosen MIN/LOW/MED/HI/MAX tier applies UNIFORMLY to every entity (camera-sphere distance resolution disabled). When OFF, tiers cap a per-entity object-tier resolved from camera distance, so close units render richer than far units."
+              @click="toggleBaseLodMode"
+            >BASE</BarButton>
             <BarButton
               :active="lodShellRings"
               title="Show object-LOD shell intersections on the terrain around the camera"

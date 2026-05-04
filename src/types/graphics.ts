@@ -40,6 +40,18 @@ export type CameraSphereRadii = {
   impostor: number;
 };
 
+/** Per-entity render LOD bands the LOD resolver may select. Lives in
+ *  this types module (not under render3d/) so that GraphicsConfig can
+ *  reference it without a render-into-types layering inversion.
+ *  RenderObjectLod.ts re-exports this name unchanged. */
+export type RenderObjectLodTier =
+  | 'marker'
+  | 'impostor'
+  | 'mass'
+  | 'simple'
+  | 'rich'
+  | 'hero';
+
 export type GraphicsConfig = {
   /** The concrete tier this config was resolved to. Lets renderers
    *  branch on the *level* (e.g. 3D draws units as plain spheres at
@@ -48,6 +60,14 @@ export type GraphicsConfig = {
   tier: ConcreteGraphicsQuality;
   unitRenderMode: UnitRenderMode;
   cameraSphereRadii: CameraSphereRadii;
+  /** PLAYER CLIENT "BASE" mode override. When set, every entity / cell
+   *  renders at this single tier — the per-frame LOD resolver returns
+   *  it directly instead of consulting cameraSphereRadii distances. The
+   *  shell radii in this config are all zero in that case so that any
+   *  callsite that still walks the shells (e.g. ground debug rings)
+   *  draws nothing rather than stale-but-active bands. Undefined =
+   *  classic camera-sphere-resolved behaviour. */
+  forcedObjectTier?: RenderObjectLodTier;
   objectLodCellSize: number;
   hudFrameStride: number;
   effectFrameStride: number;

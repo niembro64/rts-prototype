@@ -32,9 +32,14 @@ export class RenderLodGrid {
   private cellFrames = new Map<number, number>();
   private frameId = 0;
   private structuralKey = '';
+  // PLAYER CLIENT "BASE" mode override. When the active GraphicsConfig
+  // pins a tier, every cell returns it directly — distance + cache
+  // lookups are skipped entirely.
+  private forcedTier: RenderObjectLodTier | undefined;
 
   beginFrame(view: RenderViewLodState, gfx: GraphicsConfig): void {
     this.view = view;
+    this.forcedTier = gfx.forcedObjectTier;
     assertCanonicalLandGridSymmetry(gfx.objectLodCellSize);
     this.cellSize = CANONICAL_LAND_CELL_SIZE;
     this.shells = getRenderObjectLodShellDistances(gfx);
@@ -42,12 +47,16 @@ export class RenderLodGrid {
     this.shellDistanceSq.simple = this.shells.simple * this.shells.simple;
     this.shellDistanceSq.mass = this.shells.mass * this.shells.mass;
     this.shellDistanceSq.impostor = this.shells.impostor * this.shells.impostor;
+    // Forced tier folded into the structural key so a BASE-mode flip
+    // (or a tier change while BASE is on) invalidates the per-frame
+    // cell cache the same way a sphere-radius change does.
     const nextStructuralKey = [
       this.cellSize,
       this.shells.rich,
       this.shells.simple,
       this.shells.mass,
       this.shells.impostor,
+      this.forcedTier ?? '-',
     ].join('|');
     if (nextStructuralKey !== this.structuralKey || this.frameId >= 0x3fffffff) {
       this.cellTiers.clear();
@@ -67,6 +76,7 @@ export class RenderLodGrid {
   }
 
   resolveCell(ix: number, iz: number): RenderObjectLodTier {
+    if (this.forcedTier) return this.forcedTier;
     const view = this.view;
     if (!view) return 'marker';
 

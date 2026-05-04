@@ -48,6 +48,11 @@ export type ClientBarConfig = {
   readonly burnMarks: BooleanSetting;
   readonly lodShellRings: BooleanSetting;
   readonly lodGridBorders: BooleanSetting;
+  /** "BASE" toggle: when on, the chosen MIN/LOW/MED/HI/MAX tier is
+   *  applied to every entity uniformly (camera-sphere distance
+   *  resolution disabled). When off (default), tiers behave as today
+   *  — they cap a per-entity object-tier resolved from camera distance. */
+  readonly baseLodMode: BooleanSetting;
   readonly driftMode: DefaultSetting<DriftMode>;
   readonly legsRadius: BooleanSetting;
   readonly cameraSmooth: LabeledOptionsConfig<CameraSmoothMode>;

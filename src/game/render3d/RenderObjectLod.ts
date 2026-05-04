@@ -1,14 +1,9 @@
-import type { CameraSphereRadii, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
+import type { CameraSphereRadii, ConcreteGraphicsQuality, GraphicsConfig, RenderObjectLodTier } from '@/types/graphics';
 
-export type RenderObjectLodTier =
-  // Outside the impostor sphere. World objects draw cheap marker
-  // spheres at this tier; effects may still skip it for budget reasons.
-  | 'marker'
-  | 'impostor'
-  | 'mass'
-  | 'simple'
-  | 'rich'
-  | 'hero';
+// RenderObjectLodTier moved into @/types/graphics so GraphicsConfig
+// can carry a forced-tier override without a layering cycle. Re-export
+// preserves the historical import site for the rest of render3d/.
+export type { RenderObjectLodTier } from '@/types/graphics';
 
 const GRAPHICS_TIER_ORDER: Record<ConcreteGraphicsQuality, number> = {
   min: 0,
@@ -74,7 +69,12 @@ export function getRenderObjectLodShellDistances(gfx: GraphicsConfig): RenderObj
 export function resolveRenderObjectLodForDistanceSq(
   distanceSq: number,
   shells: RenderObjectLodShellDistances,
+  forced?: RenderObjectLodTier,
 ): RenderObjectLodTier {
+  // BASE mode short-circuit: when the active GraphicsConfig pins a
+  // forced tier, every entity gets that tier regardless of distance.
+  // Callers pass `gfx.forcedObjectTier` through to here.
+  if (forced) return forced;
   if (shells.rich > 0 && distanceSq <= shells.rich * shells.rich) return 'rich';
   if (shells.simple > 0 && distanceSq <= shells.simple * shells.simple) return 'simple';
   if (shells.mass > 0 && distanceSq <= shells.mass * shells.mass) return 'mass';

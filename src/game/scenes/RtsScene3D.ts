@@ -1355,6 +1355,7 @@ export class RtsScene3D {
     const objectTier = resolveRenderObjectLodForDistanceSq(
       dx * dx + dy * dy + dz * dz,
       shells,
+      base.forcedObjectTier,
     );
     if (objectTier === 'marker') return null;
     return getGraphicsConfigFor(objectLodToGraphicsTier(objectTier, base.tier));
