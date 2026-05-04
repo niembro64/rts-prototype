@@ -2943,6 +2943,7 @@ export class Render3DEntities {
       if (m.constructionEmitter) {
         m.constructionEmitter.group.visible = buildingTierAtLeast(unitGraphicsTier, 'low');
         m.constructionEmitter.group.rotation.y = this._lastSpinMs / 900;
+        this.updateCommanderEmitter(m.constructionEmitter, e, unitGraphicsTier);
       }
 
       // Per-turret placement. The runtime 3D mount is derived from the
@@ -3803,6 +3804,114 @@ export class Render3DEntities {
     m.windRig.rotor.rotation.z = this.windRotorPhase;
   }
 
+
+  /** Drive the commander build emitter: EMA the per-resource transfer
+   *  rates derived from the build target's `buildable.paid` deltas,
+   *  scale each shower bottom-up, and emit one colored build spray
+   *  from each pylon top toward the build target. Mirrors the factory
+   *  pattern but rates are computed render-side (no extra wire
+   *  payload) since builders already ship `paid` for every Buildable. */
+  private updateCommanderEmitter(
+    rig: import('./BuildingShape3D').ConstructionEmitterRig,
+    commander: Entity,
+    tier: ConcreteGraphicsQuality,
+  ): void {
+    const dtSec = this._currentDtMs / 1000;
+    const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];
+    const rateAlpha = halfLifeBlend(dtSec, halfLife);
+
+    const targetId = commander.builder?.currentBuildTarget ?? null;
+    let targetRateE = 0;
+    let targetRateM = 0;
+    let targetRateT = 0;
+    if (targetId !== null && commander.builder && dtSec > 0) {
+      const target = this.clientViewState.getEntity(targetId);
+      const buildable = target?.buildable;
+      if (target && buildable && !buildable.isComplete) {
+        // Reset baseline on target switch — otherwise the first frame
+        // would see a giant delta and spike all three showers.
+        if (rig.lastPaidTargetId !== targetId) {
+          rig.lastPaid.energy = buildable.paid.energy;
+          rig.lastPaid.mana = buildable.paid.mana;
+          rig.lastPaid.metal = buildable.paid.metal;
+          rig.lastPaidTargetId = targetId;
+        }
+        const dE = Math.max(0, buildable.paid.energy - rig.lastPaid.energy);
+        const dM = Math.max(0, buildable.paid.mana - rig.lastPaid.mana);
+        const dT = Math.max(0, buildable.paid.metal - rig.lastPaid.metal);
+        rig.lastPaid.energy = buildable.paid.energy;
+        rig.lastPaid.mana = buildable.paid.mana;
+        rig.lastPaid.metal = buildable.paid.metal;
+
+        const cap = commander.builder.constructionRate * dtSec;
+        if (cap > 0) {
+          targetRateE = Math.max(0, Math.min(1, dE / cap));
+          targetRateM = Math.max(0, Math.min(1, dM / cap));
+          targetRateT = Math.max(0, Math.min(1, dT / cap));
+        }
+      }
+    } else {
+      // Not actively building — drop the cached baseline so a future
+      // build starts cleanly.
+      rig.lastPaidTargetId = null;
+    }
+
+    rig.smoothedRates.energy += (targetRateE - rig.smoothedRates.energy) * rateAlpha;
+    rig.smoothedRates.mana   += (targetRateM - rig.smoothedRates.mana)   * rateAlpha;
+    rig.smoothedRates.metal  += (targetRateT - rig.smoothedRates.metal)  * rateAlpha;
+
+    const smoothed = [rig.smoothedRates.energy, rig.smoothedRates.mana, rig.smoothedRates.metal];
+    for (let i = 0; i < rig.showers.length && i < 3; i++) {
+      const shower = rig.showers[i];
+      const r = smoothed[i];
+      if (r < 0.01) {
+        shower.visible = false;
+        continue;
+      }
+      shower.visible = true;
+      const h = rig.pylonHeight * r;
+      shower.scale.set(rig.showerRadius, h, rig.showerRadius);
+      shower.position.y = rig.pylonBaseY + h / 2;
+    }
+
+    // Per-resource colored sprays from each pylon top to the build
+    // target, intensity gated by smoothed rate. Skipped at low tiers
+    // (matches factory's 'high' gate) and when no live target.
+    if (
+      buildingTierAtLeast(tier, 'high')
+      && targetId !== null
+      && commander.ownership
+    ) {
+      const target = this.clientViewState.getEntity(targetId);
+      if (!target) return;
+      rig.group.updateWorldMatrix(true, false);
+      const targetWorldX = target.transform.x;
+      const targetWorldY = target.transform.z + 8;
+      const targetWorldZ = target.transform.y;
+      for (let i = 0; i < rig.pylonTopsLocal.length && i < 3; i++) {
+        const rate = smoothed[i];
+        if (rate < 0.05) continue;
+        this._factorySpraySourceWorld
+          .copy(rig.pylonTopsLocal[i])
+          .applyMatrix4(rig.group.matrixWorld);
+        const spray = this.acquireFactorySprayTarget();
+        spray.source.id = commander.id;
+        spray.source.pos.x = this._factorySpraySourceWorld.x;
+        spray.source.pos.y = this._factorySpraySourceWorld.z;
+        spray.source.z = this._factorySpraySourceWorld.y;
+        spray.source.playerId = commander.ownership.playerId;
+        spray.target.id = target.id;
+        spray.target.pos.x = targetWorldX;
+        spray.target.pos.y = targetWorldZ;
+        spray.target.z = targetWorldY;
+        spray.target.dim = undefined;
+        spray.target.radius = 12;
+        spray.type = 'build';
+        spray.intensity = Math.max(0.15, Math.min(1, rate));
+        spray.colorRGB = RESOURCE_SPRAY_COLORS[i];
+      }
+    }
+  }
 
   private updateFactoryConstructionRig(
     rig: FactoryConstructionRig | undefined,

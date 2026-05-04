@@ -124,6 +124,24 @@ export type ExtractorRig = {
 export type ConstructionEmitterRig = {
   group: THREE.Group;
   nozzleLocal: THREE.Vector3;
+  /** Same per-resource pylon trio the factory uses — three structural
+   *  pylons evenly spaced around the emitter (energy / mana / metal),
+   *  each wrapped by a translucent shower cylinder driven by the
+   *  smoothed transfer rate. The render path EMAs rates derived from
+   *  the build target's `buildable.paid` deltas (no extra wire
+   *  payload — see Render3DEntities updateCommanderEmitter) and feeds
+   *  per-resource colored sprays from each pylon top to the target. */
+  showers: THREE.Mesh[];
+  showerRadius: number;
+  pylonHeight: number;
+  pylonBaseY: number;
+  pylonTopsLocal: THREE.Vector3[];
+  smoothedRates: { energy: number; mana: number; metal: number };
+  /** Target id we last sampled `paid` from, plus the per-resource
+   *  paid values, so the per-frame updater can compute deltas. Reset
+   *  to null when the commander stops building. */
+  lastPaidTargetId: number | null;
+  lastPaid: { energy: number; mana: number; metal: number };
 };
 
 /** What the caller receives back from `buildBuildingShape()`. */
@@ -567,6 +585,19 @@ function buildSolar(
   const sideLen = sideSpan / sideAspect;
   const sideX = width * 0.5;
   const hingeRadius = Math.max(2.2, Math.min(width, depth) * 0.035);
+  const hingeCapRadius = hingeRadius * 1.08;
+
+  for (const xSign of [-1, 1] as const) {
+    for (const zSign of [-1, 1] as const) {
+      details.push(detail(makeSphere(
+        solarPetalBackMat,
+        hingeCapRadius,
+        xSign * sideX,
+        hingeCapRadius,
+        zSign * frontBackZ,
+      ), 'low'));
+    }
+  }
 
   for (const sign of [-1, 1]) {
     const frontBackClosedDir = new THREE.Vector3(0, SOLAR_HEIGHT, -sign * frontBackZ);
@@ -1119,20 +1150,64 @@ function buildFactory(
 export function buildConstructionEmitterRig(scale: number): ConstructionEmitterRig {
   const root = new THREE.Group();
   const baseRadius = Math.max(3, scale * 0.72);
-  const mastRadius = Math.max(1.2, scale * 0.18);
-  const mastHeight = Math.max(7, scale * 1.05);
-  const headRadius = Math.max(3, scale * 0.48);
+  const baseHeight = Math.max(4, scale * 0.22);
+  const pylonHeight = Math.max(8, scale * 1.4);
+  const pylonOffset = baseRadius * 0.65;
+  const innerPylonRadius = Math.max(0.6, scale * 0.09);
+  const showerRadius = innerPylonRadius * 4.1;
+  const pylonBaseY = baseHeight;
+  const pylonTopY = pylonBaseY + pylonHeight;
 
-  root.add(makeCylinder(hazardStripeMat, baseRadius, Math.max(4, scale * 0.22), 0, scale * 0.11, 0, hexCylinderGeom));
-  root.add(makeCylinder(factoryFrameMat, mastRadius, mastHeight, 0, scale * 0.22 + mastHeight / 2, 0));
+  root.add(makeCylinder(hazardStripeMat, baseRadius, baseHeight, 0, baseHeight / 2, 0, hexCylinderGeom));
 
-  const headY = scale * 0.22 + mastHeight + headRadius * 0.78;
-  root.add(makeCylinder(hazardStripeMat, headRadius * 1.18, Math.max(3.5, scale * 0.18), 0, headY - headRadius * 0.62, 0, hexCylinderGeom));
-  root.add(makeSphere(constructionCoreMat, headRadius, 0, headY, 0));
+  // Same energy / mana / metal trio as the factory: three thin
+  // structural pylons + a translucent shower cylinder around each
+  // that fills bottom-up from the live (smoothed) transfer rate.
+  // The central tower is intentionally absent — the three pylons ARE
+  // the tower.
+  const showerMats = [factoryEnergyShowerMat, factoryManaShowerMat, factoryMetalShowerMat];
+  const showers: THREE.Mesh[] = [];
+  const pylonTopsLocal: THREE.Vector3[] = [];
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const px = Math.cos(a) * pylonOffset;
+    const pz = Math.sin(a) * pylonOffset;
+    root.add(makeCylinder(
+      factoryFrameMat,
+      innerPylonRadius,
+      pylonHeight,
+      px,
+      pylonBaseY + pylonHeight / 2,
+      pz,
+    ));
+    const shower = makeCylinder(
+      showerMats[i],
+      showerRadius,
+      1,
+      px,
+      pylonBaseY,
+      pz,
+    );
+    shower.visible = false;
+    shower.renderOrder = 6;
+    root.add(shower);
+    showers.push(shower);
+    pylonTopsLocal.push(new THREE.Vector3(px, pylonTopY, pz));
+  }
 
   return {
     group: root,
-    nozzleLocal: new THREE.Vector3(0, headY, 0),
+    // Kept for legacy callers; the per-resource sprays use
+    // pylonTopsLocal as their actual sources.
+    nozzleLocal: new THREE.Vector3(0, pylonTopY, 0),
+    showers,
+    showerRadius,
+    pylonHeight,
+    pylonBaseY,
+    pylonTopsLocal,
+    smoothedRates: { energy: 0, mana: 0, metal: 0 },
+    lastPaidTargetId: null,
+    lastPaid: { energy: 0, mana: 0, metal: 0 },
   };
 }
 
