@@ -4,14 +4,4 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
   Findings
 
-  ---------------------------------------------------
-  6) OUTDATED / STALE COMMENTS
-  ---------------------------------------------------
-
-  ---------------------------------------------------
-  7) CONFIGURATION KNOB FRAGMENTATION
-  ---------------------------------------------------
-
-
-
-
+  None.
