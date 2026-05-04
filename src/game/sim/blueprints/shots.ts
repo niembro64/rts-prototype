@@ -61,7 +61,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
   lightRocket: {
     type: 'projectile',
     id: 'lightRocket',
-    mass: SHOT_MASS_MEDIUM,
+    mass: SHOT_MASS_LIGHT,
     collision: { radius: 2.5 },
     explosion: {
       radius: 10 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
@@ -70,7 +70,7 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
     },
     detonateOnExpiry: true,
     lifespan: 5500,
-    ignoresGravity: true,
+    ignoresGravity: false,
     homingTurnRate: 1,
     // Render as a velocity-aligned cylinder (purely cosmetic — sim
     // collision is still sphere-based via collision.radius).
@@ -138,31 +138,6 @@ export const SHOT_BLUEPRINTS: Record<string, ShotBlueprint> = {
       // they leave the AOE the player expected. Tune up toward 1.0
       // for a more energetic bounce, down toward 0.0 to absorb the
       // momentum entirely.
-      reflectedVelocityDamper: 0.4,
-    },
-  },
-  advancedMortarShot: {
-    type: 'projectile',
-    id: 'advancedMortarShot',
-    // Same physics profile as a single mortarShot — pure carrier, no
-    // damage of its own, no splash. Slightly heavier so the arc
-    // matches a "bigger payload" look.
-    mass: SHOT_MASS_MEDIUM * 9,
-    collision: { radius: 6 },
-    detonateOnExpiry: true,
-    lifespan: 2000,
-    // Per projectile instance, roll max lifespan within +/-20% of lifespan.
-    lifespanVariance: 0.2,
-    hitSound: AUDIO.event.hit.advancedMortarShot,
-    submunitions: {
-      shotId: 'mortarShot',
-      count: 3,
-      // Wide horizontal sweep so the mortar children spread
-      // around the carrier's ground impact, not stack on top of
-      // each other. Vertical kick keeps them lofted long enough
-      // to land in a ring around the original aim point.
-      randomSpreadSpeedHorizontal: 20,
-      randomSpreadSpeedVertical: 20,
       reflectedVelocityDamper: 0.4,
     },
   },

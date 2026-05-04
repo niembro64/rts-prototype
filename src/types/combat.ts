@@ -89,7 +89,16 @@ export type ProjectileSpawnEvent = {
   /** Resolved per-instance max lifespan in ms. Present for projectiles
    *  whose blueprint lifespan may be randomized. */
   maxLifespan?: number;
+  /** Compatibility/source turret id. New code should use
+   *  sourceTurretId for provenance and shotId for projectile config. */
   turretId: string;
+  /** Actual shot blueprint id that should be hydrated on clients.
+   *  This is especially important for submunitions, which are shot
+   *  blueprints spawned by another projectile rather than by a turret. */
+  shotId: string;
+  /** Real turret blueprint id that ultimately authored this projectile,
+   *  inherited through submunition chains when applicable. */
+  sourceTurretId?: string;
   playerId: PlayerId;
   sourceEntityId: EntityId;
   turretIndex: number;

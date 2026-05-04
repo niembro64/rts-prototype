@@ -4,13 +4,12 @@ import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { SimEvent, CollisionResult, ProjectileDespawnEvent, ProjectileSpawnEvent } from './types';
+import type { SimEvent, CollisionResult, ProjectileDespawnEvent, ProjectileSpawnEvent, SimEventSourceType } from './types';
 import { beamIndex } from '../BeamIndex';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { findClosestPanelHit } from './MirrorPanelHit';
-import { getSubmunitionTurretConfig } from '../blueprints';
-import { encodeSubmunitionTurretId } from '../turretConfigs';
+import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal } from '../Terrain';
 import { getSimDetailConfig } from '../simQuality';
 import { spatialGrid } from '../SpatialGrid';
@@ -103,13 +102,14 @@ function spawnSubmunitions(
   surfaceNormalZ: number | undefined,
   ownerId: number,
   sourceEntityId: EntityId,
+  sourceTurretId: string | undefined,
   outProjectiles: Entity[],
   outSpawnEvents: ProjectileSpawnEvent[],
 ): void {
   const spec = parentShot.submunitions;
   if (!spec || spec.count <= 0) return;
 
-  const childCfg = getSubmunitionTurretConfig(spec.shotId);
+  const childCfg = createProjectileConfigFromShot(spec.shotId, sourceTurretId);
 
   // Reflect the parent's velocity across the surface normal:
   //   bounce = V − 2(V·N)N
@@ -205,9 +205,11 @@ function spawnSubmunitions(
       velocity: { x: launchVx, y: launchVy, z: launchVz },
       projectileType: 'projectile',
       maxLifespan: proj.projectile?.maxLifespan,
-      // Synthetic ID so the client can resolve the same TurretConfig
-      // (which just wraps the child shot blueprint) that the server used.
-      turretId: encodeSubmunitionTurretId(spec.shotId),
+      // Source/provenance remains the real turret; shotId tells the
+      // client which child projectile blueprint to hydrate.
+      turretId: sourceTurretId ?? '',
+      shotId: spec.shotId,
+      sourceTurretId,
       playerId: ownerId,
       sourceEntityId,
       turretIndex: 0,
@@ -259,6 +261,8 @@ export function checkProjectileCollisions(
       ((projEntity.id + tick) % projectileCollisionStride) === 0;
     // Projectile entities always use projectile/beam/laser shot types (never force)
     const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
+    const damageSourceKey = proj.sourceTurretId ?? shotId;
+    const damageSourceType: SimEventSourceType = proj.sourceTurretId ? 'turret' : 'system';
 
     // Mirror-panel impact — a traveling projectile whose flight path
     // this tick crosses any reflective panel detonates at the panel,
@@ -369,7 +373,10 @@ export function checkProjectileCollisions(
               knockbackForce: projShot.explosion!.force,
             });
             applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
-            collectKillsAndDeathContexts(splashResult, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+            collectKillsAndDeathContexts(
+              splashResult, world, damageSourceKey, damageSourceType,
+              unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+            );
             splashHitCount = splashResult.hitEntityIds.length;
             firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
           }
@@ -425,7 +432,7 @@ export function checkProjectileCollisions(
               projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
               proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
               surfaceNormalX, surfaceNormalY, surfaceNormalZ,
-              projEntity.ownership.playerId, proj.sourceEntityId,
+              projEntity.ownership.playerId, proj.sourceEntityId, proj.sourceTurretId,
               newProjectiles, spawnEvents,
             );
           }
@@ -531,7 +538,10 @@ export function checkProjectileCollisions(
       }
 
       emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
-      collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+      collectKillsWithDeathAudio(
+        result, world, damageSourceKey, damageSourceType,
+        unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+      );
 
       // Note: beam recoil is applied in fireTurrets() based on weapon.state
       }
@@ -604,7 +614,10 @@ export function checkProjectileCollisions(
 
       // Handle deaths from direct hit BEFORE splash (result is reusable singleton)
       const hadHits = result.hitEntityIds.length > 0;
-      collectKillsWithDeathAudio(result, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+      collectKillsWithDeathAudio(
+        result, world, damageSourceKey, damageSourceType,
+        unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+      );
 
       // Detonate on direct hit when the shot has either an explosion
       // or submunitions to release. A pure carrier (no explosion, only
@@ -631,7 +644,10 @@ export function checkProjectileCollisions(
           });
 
           applyKnockbackForces(splash.knockbacks, forceAccumulator);
-          collectKillsAndDeathContexts(splash, world, config, unitsToRemove, buildingsToRemove, audioEvents, deathContexts);
+          collectKillsAndDeathContexts(
+            splash, world, damageSourceKey, damageSourceType,
+            unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+          );
         }
 
         // Cluster flak: spawn submunitions on detonation. Surface
@@ -660,7 +676,7 @@ export function checkProjectileCollisions(
             projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
             proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
             surfaceNormalX, surfaceNormalY, surfaceNormalZ,
-            projEntity.ownership.playerId, proj.sourceEntityId,
+            projEntity.ownership.playerId, proj.sourceEntityId, proj.sourceTurretId,
             newProjectiles, spawnEvents,
           );
         }

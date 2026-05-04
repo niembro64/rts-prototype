@@ -1081,7 +1081,7 @@ export class Render3DEntities {
 
   private decorateCommanderTurret(
     tm: TurretMesh,
-    turretId: string,
+    isDgunTurret: boolean,
     tier: ConcreteGraphicsQuality,
   ): void {
     const headRadius = tm.headRadius ?? 6;
@@ -1107,13 +1107,12 @@ export class Render3DEntities {
     tm.root.add(optic);
 
     if (tm.pitchGroup && buildingTierAtLeast(tier, 'high')) {
-      const isDgun = turretId === 'dgunTurret';
-      const sleeve = new THREE.Mesh(this.commanderBoxGeom, isDgun ? this.commanderArmorMat : this.commanderTrimMat);
-      sleeve.position.set(headRadius * (isDgun ? 0.72 : 0.55), 0, 0);
+      const sleeve = new THREE.Mesh(this.commanderBoxGeom, isDgunTurret ? this.commanderArmorMat : this.commanderTrimMat);
+      sleeve.position.set(headRadius * (isDgunTurret ? 0.72 : 0.55), 0, 0);
       sleeve.scale.set(
-        headRadius * (isDgun ? 1.05 : 0.72),
-        headRadius * (isDgun ? 0.34 : 0.22),
-        headRadius * (isDgun ? 0.34 : 0.22),
+        headRadius * (isDgunTurret ? 1.05 : 0.72),
+        headRadius * (isDgunTurret ? 0.34 : 0.22),
+        headRadius * (isDgunTurret ? 0.34 : 0.22),
       );
       tm.pitchGroup.add(sleeve);
     }
@@ -2416,6 +2415,7 @@ export class Render3DEntities {
         // has an optional head + barrel cylinders matching its barrel config.
         const turretMeshes: TurretMesh[] = [];
         const turretOff = unitGfx.turretStyle === 'none';
+        const commanderDgunTurretId = isCommanderUnit ? bp?.dgun?.turretId : undefined;
         for (let ti = 0; ti < turrets.length; ti++) {
           const t = turrets[ti];
           // Decide whether to route this turret's head through the
@@ -2457,7 +2457,7 @@ export class Render3DEntities {
           // tilt so the world barrel direction still matches the
           // sim's weapon.rotation / weapon.pitch even though the
           // parent chain is tilted.
-          const tm = buildTurretMesh3D(liftGroup, t, radius, unitGfx, {
+          const tm = buildTurretMesh3D(liftGroup, t, unitGfx, {
             headGeom: this.turretHeadGeom,
             barrelGeom: this.barrelGeom,
             barrelMat: this.barrelMat,
@@ -2466,7 +2466,13 @@ export class Render3DEntities {
             skipBarrels: false, // try to attach for fallback safety
           });
           if (tm.head) tm.head.userData.entityId = e.id;
-          if (isCommanderUnit && !hideHead) this.decorateCommanderTurret(tm, t.config.id, unitGraphicsTier);
+          if (isCommanderUnit && !hideHead) {
+            this.decorateCommanderTurret(
+              tm,
+              t.config.id === commanderDgunTurretId,
+              unitGraphicsTier,
+            );
+          }
           for (const b of tm.barrels) b.userData.entityId = e.id;
           tm.headSlot = headSlot;
           // Try to allocate one barrel slot per barrel. All-or-nothing:
@@ -2845,7 +2851,7 @@ export class Render3DEntities {
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
-        const headRadius = tm.headRadius ?? getTurretHeadRadius(radius, t.config);
+        const headRadius = tm.headRadius ?? getTurretHeadRadius(t.config);
         const turretHeadCenterY = getTurretMountHeight(e, i);
         const turretMountY = turretHeadCenterY - (m.chassisLift ?? 0) - headRadius;
         tm.root.position.set(t.mount.x, turretMountY, t.mount.y);

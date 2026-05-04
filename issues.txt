@@ -1,3 +1,46 @@
 This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. 
 
 #####################################################
+
+  Findings
+
+  1. Barrel metadata says “specific barrel,” but firing math intentionally uses centerline.
+     barrelIndex is serialized and documented as exact physical barrel metadata, but
+     getBarrelTip ignores it and fires multi-barrel weapons from the centerline. That may be
+     correct, but the data contract and behavior disagree.
+     Refs: src/types/network.ts:220, src/game/math/BarrelGeometry.ts:115, src/game/sim/
+     combat/projectileSystem.ts:339
+  2. Factory/building visual anchors duplicate renderer formulas.
+     buildingAnchors.ts recomputes the factory tower/nozzle height using copied numbers from
+     BuildingShape3D. If the factory visual changes, hover bars, target points, and attack
+     waypoints can drift unless both files are updated.
+     Refs: src/game/sim/buildingAnchors.ts:8, src/game/render3d/BuildingShape3D.ts:707
+  3. Unit render identity is duplicated as bodyShape plus renderer.
+     Blueprints define both the actual bodyShape and a separate string renderer. Those can
+     drift. The renderer string is mostly a pool/cache key now, so it should likely be
+     derived or validated against body shape.
+     Refs: src/game/sim/blueprints/units.ts:251, src/types/blueprints.ts:410, src/game/
+     render3d/Render3DEntities.ts:2331
+  4. Buildable unit inventory is manually duplicated.
+     BUILDABLE_UNIT_IDS and BATTLE_CONFIG.units are separate manual lists. A new unit can be
+     in blueprints but missing from production/UI toggles.
+     Refs: src/game/sim/blueprints/units.ts:672, src/battleBarConfig.ts:9
+  5. Leg styles are renderer-owned strings, not data-owned geometry.
+     LegStyle is a manual union, and leg layout lives in Locomotion3D. The unit blueprint
+     chooses a style, but the actual attach pattern is not authored with the unit. This is a
+     drift risk for new legged units.
+     Refs: src/types/blueprints.ts:338, src/game/render3d/Locomotion3D.ts:327
+  6. Audio ids are still plain strings and duplicated.
+     TurretAudioId = string exists in both combat and audio code. Audio lookups are
+     blueprint-backed at runtime, which is good, but the type system does not prevent stale
+     audio ids.
+     Refs: src/types/combat.ts:7, src/game/audio/AudioManager.ts:20
+  7. Some comments are stale around current unit/turret relationships.
+     Examples: megaBeamShot says widow head, but the requested design moved it to the back;
+     mortar comments describe old fragment behavior. These are not runtime bugs, but they are
+     dangerous in a blueprint-heavy architecture.
+     Refs: src/game/sim/blueprints/shots.ts:106, src/game/sim/blueprints/shots.ts:181, src/
+     game/sim/blueprints/turrets.ts:191
+
+  The biggest remaining architectural cleanup target is barrel metadata: either make
+  barrelIndex physically exact again, or rename/document it as visual fire cadence metadata.

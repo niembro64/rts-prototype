@@ -83,7 +83,6 @@ export function solveMirrorAim(
       ewp.x, ewp.y, ewp.z,
       enemyTurret.rotation, enemyTurret.pitch,
       enemyTurret.config,
-      target.unit?.bodyRadius ?? 15,
       0,
     );
 

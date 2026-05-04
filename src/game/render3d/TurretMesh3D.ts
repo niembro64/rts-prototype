@@ -14,7 +14,11 @@
 import * as THREE from 'three';
 import type { Turret } from '../sim/types';
 import type { GraphicsConfig } from '@/types/graphics';
-import { getTurretBarrelDiameter, getTurretHeadRadius } from '../math';
+import {
+  getTurretBarrelCenterToTipLength,
+  getTurretBarrelDiameter,
+  getTurretHeadRadius,
+} from '../math';
 import { TURRET_HEIGHT } from '../../config';
 
 export type TurretMesh = {
@@ -98,7 +102,6 @@ const _barrelDir = new THREE.Vector3();
 export function buildTurretMesh3D(
   parent: THREE.Group,
   turret: Turret,
-  unitRadius: number,
   gfx: GraphicsConfig,
   deps: TurretMesh3DDeps,
 ): TurretMesh {
@@ -120,7 +123,7 @@ export function buildTurretMesh3D(
   // Resolved head radius drives BOTH the sphere mesh size AND its
   // attachment height. Computed up front so the barrel block can pivot
   // at the head center even when the head itself is hidden.
-  const headRadius = getTurretHeadRadius(unitRadius, turret.config);
+  const headRadius = getTurretHeadRadius(turret.config);
 
   let head: THREE.Mesh | undefined;
   if (!skipHeadMesh) {
@@ -205,17 +208,13 @@ export function buildTurretMesh3D(
     barrels.push(m);
   };
 
-  // Barrel length and multi-barrel orbits are authored as fractions of
-  // the TURRET HEAD radius, not the host unit's body radius. That keeps
+  // Barrel length and multi-barrel orbits are authored against the
+  // TURRET HEAD radius, not the host unit's body radius. That keeps
   // every instance of the same turret blueprint rendering at the same
-  // size regardless of which unit mounts it — a `lightTurret` looks
-  // identical on a jackal, a widow, or anything else. Turrets without
-  // a per-blueprint `bodyRadius` fall back to a unit-radius-scaled
-  // head (see `getTurretHeadRadius`), so for them the per-unit scaling
-  // is preserved end-to-end.
+  // size regardless of which unit mounts it.
   const barrelScale = headRadius;
-  const length = barrelScale * barrel.barrelLength;
-  // barrelLength=0 (e.g. commander's d-gun "emitter") → no visible barrel.
+  const length = getTurretBarrelCenterToTipLength(turret.config);
+  // barrelLength=0 (e.g. mirror panel host) → no visible barrel.
   if (length < 1e-4) {
     parent.add(root);
     return { root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup };

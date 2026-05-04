@@ -2,7 +2,6 @@ import type { BooleanSetting, LabeledOptionsConfig, OptionsConfig } from './bars
 import type { TerrainMapShape, TerrainShape } from './terrain';
 
 export type UnitToggleConfig = {
-  readonly shortName: string;
   readonly default: boolean;
 };
 

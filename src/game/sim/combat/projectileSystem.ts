@@ -16,6 +16,7 @@ import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { spatialGrid } from '../SpatialGrid';
 import { getSimDetailConfig } from '../simQuality';
 import { getUnitGroundZ } from '../unitGeometry';
+import { createProjectileConfigFromTurret } from '../projectileConfigs';
 
 /** Rocket seeker re-acquisition radius. When a rocket's homing target
  *  dies, it scans this radius around its current position for the
@@ -350,15 +351,12 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           yaw += (world.rng.next() - 0.5) * spreadAngle;
         }
 
-        // Scale barrel length by the same radius the 3D renderer uses
-        // to draw the barrel (`.scale`). `.shot` and `.scale` differ
-        // on most units, so using `.shot` here would place the muzzle
-        // a unit-radius-fraction away from the visible barrel tip.
+        // Barrel length comes from the turret blueprint, matching the 3D
+        // renderer's turret mesh and keeping muzzle math unit-agnostic.
         const tip = getBarrelTip(
           weaponX, weaponY, mountZ,
           turretAngle, turretPitch,
           config,
-          unit.unit.bodyRadius,
           0,
         );
         const spawnX = tip.x;
@@ -424,10 +422,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           const endY = spawnY + dirY * beamLength;
           const endZ = spawnZ + dirZ * beamLength;
 
-          // Tag config with turretIndex for beam tracking (mutate in place — each weapon has its own config copy)
-          config.turretIndex = weaponIndex;
+          const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
-          const beam = world.createBeam(spawnX, spawnY, spawnZ, endX, endY, playerId, unit.id, config, beamProjectileType);
+          const beam = world.createBeam(spawnX, spawnY, spawnZ, endX, endY, playerId, unit.id, projectileConfig, beamProjectileType);
           if (beam.projectile) {
             beam.projectile.sourceEntityId = unit.id;
             // createBeam seeds both polyline vertices at spawnZ; the
@@ -444,6 +441,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             velocity: { x: 0, y: 0, z: 0 },
             projectileType: beamProjectileType,
             turretId: config.id,
+            shotId: shot.id,
+            sourceTurretId: config.id,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
@@ -477,6 +476,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           projVx += inherited.x;
           projVy += inherited.y;
           projVz += inherited.z;
+          const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const projectile = world.createProjectile(
             spawnX,
             spawnY,
@@ -484,8 +484,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             projVy,
             playerId,
             unit.id,
-            config,
-            'projectile'
+            projectileConfig,
+            'projectile',
           );
           projectile.transform.z = spawnZ;
           if (projectile.projectile) {
@@ -506,6 +506,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             projectileType: 'projectile',
             maxLifespan: projectile.projectile?.maxLifespan,
             turretId: config.id,
+            shotId: projShot.id,
+            sourceTurretId: config.id,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
@@ -869,7 +871,6 @@ export function updateProjectiles(
           beamMount.x, beamMount.y, beamMount.z,
           turretAngle, turretPitch,
           proj.config,
-          source.unit.bodyRadius,
           0,
         );
         // Ensure points polyline exists (createBeam seeds 2-point line at

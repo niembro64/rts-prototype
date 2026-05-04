@@ -1,6 +1,6 @@
 import type { BuildingConfig, BuildingType } from './types';
 import { COST_MULTIPLIER } from '../../config';
-import { BUILDING_BLUEPRINTS, getUnitBlueprint, BUILDABLE_UNIT_IDS } from './blueprints';
+import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion, BUILDABLE_UNIT_IDS } from './blueprints';
 
 function buildBuildingConfig(type: BuildingType): BuildingConfig {
   const bp = BUILDING_BLUEPRINTS[type];
@@ -46,11 +46,7 @@ export function getUnitBuildConfig(unitId: string) {
     unitRadiusCollider: { ...bp.unitRadiusCollider },
     bodyRadius: bp.bodyRadius,
     bodyCenterHeight: bp.bodyCenterHeight,
-    locomotion: {
-      type: bp.locomotion.type,
-      driveForce: bp.locomotion.physics.driveForce,
-      traction: bp.locomotion.physics.traction,
-    },
+    locomotion: getUnitLocomotion(unitId),
     mass: bp.mass,
     hp: bp.hp,
   };

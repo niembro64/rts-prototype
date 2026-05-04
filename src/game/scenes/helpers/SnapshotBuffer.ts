@@ -17,6 +17,7 @@ import type {
 import type { GameConnection } from '../../server/GameConnection';
 import { ReusableNetworkSnapshotCloner } from '../../network/snapshotClone';
 import type { Vec3 } from '@/types/vec2';
+import { PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN } from '@/types/network';
 
 const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
@@ -48,8 +49,10 @@ function createBufferedSpawn(): BufferedSpawn {
     pos: { x: 0, y: 0, z: 0 },
     rotation: 0,
     velocity: { x: 0, y: 0, z: 0 },
-    projectileType: 0,
-    turretId: '',
+    projectileType: PROJECTILE_TYPE_UNKNOWN,
+    turretId: TURRET_ID_UNKNOWN,
+    shotId: undefined,
+    sourceTurretId: undefined,
     playerId: 1,
     sourceEntityId: 0,
     turretIndex: 0,
@@ -79,6 +82,8 @@ function copySpawnInto(src: NetworkServerSnapshotProjectileSpawn, dst: BufferedS
   dst.projectileType = src.projectileType;
   dst.maxLifespan = src.maxLifespan;
   dst.turretId = src.turretId;
+  dst.shotId = src.shotId;
+  dst.sourceTurretId = src.sourceTurretId;
   dst.playerId = src.playerId;
   dst.sourceEntityId = src.sourceEntityId;
   dst.turretIndex = src.turretIndex;

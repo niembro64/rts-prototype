@@ -259,14 +259,9 @@ export type TurretBlueprint = {
   };
   mirrorPanels?: MirrorPanel[];
   audio?: { fireSound?: SoundEntry; laserSound?: SoundEntry };
-  /** World-space radius of the spherical turret-head visual. Overrides
-   *  the auto-computed default (max(host.bodyRadius ×
-   *  TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT/2)). Use this when a
-   *  specific turret needs a chunkier or daintier head than the unit's
-   *  body radius would imply — e.g. a light AA turret on a heavy
-   *  chassis, or a hulking rocket pod on a small frame. Cosmetic only:
-   *  shot spawn position uses barrelLength × host.bodyRadius and is
-   *  independent of the head radius. */
+  /** World-space radius of this turret's spherical head. This is the
+   *  blueprint-owned source of truth for both renderer head size and
+   *  barrel-tip math; host unit body radius must not affect it. */
   bodyRadius?: number;
   /** Ballistic arc preference for the aim solver. Two solutions exist
    *  for any in-range target under gravity — a low flat arc and a

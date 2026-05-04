@@ -8,12 +8,12 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types';
-import type { TurretConfig, Projectile } from '../types';
+import type { Projectile, ProjectileConfig } from '../types';
 import { getUnitBodyCenterHeight } from '../unitGeometry';
 
 // Build an ImpactContext for hit/projectileExpire audio events
 export function buildImpactContext(
-  config: TurretConfig,
+  config: ProjectileConfig,
   projectileX: number, projectileY: number,
   projectileVelX: number, projectileVelY: number,
   collisionRadius: number,
@@ -232,7 +232,8 @@ export function applyKnockbackForces(
 export function collectKillsAndDeathContexts(
   result: DamageResult,
   world: WorldState,
-  config: TurretConfig,
+  sourceKey: string,
+  sourceType: SimEventSourceType,
   unitsToRemove: Set<EntityId>,
   buildingsToRemove: Set<EntityId>,
   audioEvents: SimEvent[],
@@ -242,14 +243,14 @@ export function collectKillsAndDeathContexts(
     if (!unitsToRemove.has(id)) {
       const target = world.getEntity(id);
       const ctx = result.deathContexts.get(id);
-      audioEvents.push(buildUnitDeathEvent(target, id, config.id, ctx));
+      audioEvents.push(buildUnitDeathEvent(target, id, sourceKey, ctx, sourceType));
       unitsToRemove.add(id);
     }
   }
   for (const id of result.killedBuildingIds) {
     if (!buildingsToRemove.has(id)) {
       const building = world.getEntity(id);
-      audioEvents.push(buildBuildingDeathEvent(building, id, config.id));
+      audioEvents.push(buildBuildingDeathEvent(building, id, sourceKey, sourceType));
       buildingsToRemove.add(id);
     }
   }
@@ -281,7 +282,7 @@ export function emitBeamHitAudio(
   hitEntityIds: EntityId[],
   world: WorldState,
   proj: Projectile,
-  config: TurretConfig,
+  config: ProjectileConfig,
   impactX: number,
   impactY: number,
   beamDirX: number,

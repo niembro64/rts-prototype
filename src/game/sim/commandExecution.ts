@@ -13,9 +13,20 @@ import { expandPathActions } from './Pathfinder';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
+import { getUnitBlueprint } from './blueprints';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMuzzleVelocity = { x: 0, y: 0, z: 0 };
+
+function getCommanderDGunTurretId(commander: Entity): string | null {
+  const unitType = commander.unit?.unitType;
+  if (!unitType) return null;
+  try {
+    return getUnitBlueprint(unitType).dgun?.turretId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export type { CommandContext } from '@/types/ui';
 import type { CommandContext } from '@/types/ui';
@@ -234,8 +245,11 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     return;
   }
 
-  // Find the dgun turret by config id
-  const dgunIdx = commander.turrets.findIndex(w => w.config.id === 'dgunTurret');
+  // Find the D-gun turret from the unit blueprint; the command path
+  // should not know or duplicate the concrete turret id string.
+  const dgunTurretId = getCommanderDGunTurretId(commander);
+  if (!dgunTurretId) return;
+  const dgunIdx = commander.turrets.findIndex(w => w.config.id === dgunTurretId);
   if (dgunIdx < 0) return;
   const dgunTurret = commander.turrets[dgunIdx];
 
@@ -275,7 +289,6 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     mount.x, mount.y, mount.z,
     fireAngle, dgunTurret.pitch,
     dgunTurret.config,
-    commander.unit!.bodyRadius,
     0,
   );
   const spawnX = tip.x;
@@ -332,7 +345,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     velocity: { x: velocityX, y: velocityY, z: velocityZ },
     projectileType: 'projectile',
     maxLifespan: projectile.projectile?.maxLifespan,
-    turretId: 'dgunTurret',
+    turretId: dgunTurret.config.id,
+    shotId: dgunTurret.config.shot.type === 'force' ? dgunTurret.config.id : dgunTurret.config.shot.id,
+    sourceTurretId: dgunTurret.config.id,
     playerId,
     sourceEntityId: commander.id,
     turretIndex: dgunIdx,
@@ -346,7 +361,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const dgunSimEvent: SimEvent = {
     type: 'fire',
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },
-    turretId: 'dgunTurret',
+    turretId: dgunTurret.config.id,
   };
   ctx.onSimEvent?.(dgunSimEvent);
   ctx.pendingSimEvents.push(dgunSimEvent);

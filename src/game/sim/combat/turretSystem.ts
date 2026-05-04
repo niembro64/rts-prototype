@@ -103,13 +103,11 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           const mountZ = mount.z;
 
           const shot = weapon.config.shot;
-          const unitBodyRadius = unit.unit.bodyRadius;
           const directAim = solveDirectTurretAim(
             target,
             weaponX, weaponY, mountZ,
             weapon.pitch,
             weapon.config,
-            unitBodyRadius,
             _directAim,
           );
           targetAngle = directAim.yaw;
@@ -145,7 +143,6 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               target,
               weaponX, weaponY, mountZ,
               weapon.pitch,
-              unitBodyRadius,
               true,
               (x, y) => world.getGroundZ(x, y),
               _projectileAim,

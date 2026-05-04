@@ -59,7 +59,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     launchForce: 456,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.8 },
+    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.5 },
     rangeMultiplierOverrides: fireEnvelope({
       engageRangeMin: null,
       trackingRange: null,
@@ -67,7 +67,7 @@ export const TURRET_BLUEPRINTS: Record<string, TurretBlueprint> = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
-    bodyRadius: 4,
+    bodyRadius: 1,
     audio: { fireSound: AUDIO.event.fire.lightTurret },
     highArc: true,
   },

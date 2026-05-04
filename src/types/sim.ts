@@ -351,6 +351,7 @@ export type LaserShot = {
 
 // Shared type for beam and laser (line weapons)
 export type LineShot = BeamShot | LaserShot;
+export type ActiveProjectileShot = ProjectileShot | BeamShot | LaserShot;
 
 export function isLineShot(shot: ShotConfig): shot is LineShot {
   return shot.type === 'beam' || shot.type === 'laser';
@@ -398,9 +399,28 @@ export type TurretConfig = {
    *  submunitions (if any) bounce + spread the rest of the way. See
    *  TurretBlueprint.groundAimFraction. */
   groundAimFraction?: number;
-  /** World-space radius of the rendered turret-head sphere. Overrides
-   *  the unit-scale-derived default. See TurretBlueprint.bodyRadius. */
+  /** World-space radius of the rendered turret-head sphere and the
+   *  source scale for barrel-tip math. See TurretBlueprint.bodyRadius. */
   bodyRadius?: number;
+};
+
+// Runtime projectile configuration. This is intentionally smaller than
+// TurretConfig: projectiles own a shot blueprint plus the small amount of
+// source-turret metadata needed for muzzle-following line weapons. A
+// submunition can therefore be a real shot without masquerading as a turret.
+export type ProjectileConfig = {
+  shot: ActiveProjectileShot;
+  /** Real turret blueprint that authored this projectile, when one exists. */
+  sourceTurretId?: string;
+  /** Source-turret range. Used by active beam retracing; 0 for shot-only children. */
+  range: number;
+  /** Source-turret cooldown. Used when laser projectiles expire. */
+  cooldown: number;
+  /** Source-turret muzzle geometry. Present only for turret-fired shots. */
+  barrel?: BarrelShape;
+  bodyRadius?: number;
+  /** Source turret slot on the owning unit. Used by active beam bookkeeping. */
+  turretIndex?: number;
 };
 
 // Turret FSM state: idle → tracking → engaged
@@ -502,7 +522,13 @@ export type BeamPoint = {
 export type Projectile = {
   ownerId: PlayerId;
   sourceEntityId: EntityId;
-  config: TurretConfig;
+  config: ProjectileConfig;
+  /** Actual shot blueprint id. For normal shots this equals config.shot.id;
+   *  for submunitions it is the child shot id. */
+  shotId: string;
+  /** Real turret blueprint id that ultimately authored this projectile.
+   *  Submunitions inherit this from their parent projectile. */
+  sourceTurretId?: string;
   projectileType: ProjectileType;
   velocityX: number;
   velocityY: number;

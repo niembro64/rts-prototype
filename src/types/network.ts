@@ -1,6 +1,6 @@
 // Network types extracted from game/network/NetworkTypes.ts
 
-import type { EntityType, PlayerId, TurretRanges, TurretState } from './sim';
+import type { EntityType, PlayerId, TurretState } from './sim';
 
 // ── Bit-packed enum codes for the wire format ─────────────────────
 // String enums compress poorly even after msgpack — every "tracking"
@@ -66,15 +66,16 @@ export function getNetworkUnitTypeIds(): readonly string[] {
 }
 const _UNIT_TYPE_TO_CODE: Record<string, number> = {};
 for (let i = 0; i < _UNIT_TYPES.length; i++) _UNIT_TYPE_TO_CODE[_UNIT_TYPES[i]] = i;
-// Sentinel for "type not in the table" — clients fall back to
-// 'jackal' when decoding so an unknown id never crashes the renderer.
+// Sentinel for "type not in the table". Decoders return null for
+// unknown codes so receivers drop/reject invalid wire data instead of
+// silently turning it into a different real gameplay object.
 export const UNIT_TYPE_UNKNOWN = 0xff;
 export function unitTypeToCode(s: string): number {
   const code = _UNIT_TYPE_TO_CODE[s];
   return code === undefined ? UNIT_TYPE_UNKNOWN : code;
 }
-export function codeToUnitType(c: number): string {
-  return _UNIT_TYPES[c] ?? 'jackal';
+export function codeToUnitType(c: number): string | null {
+  return _UNIT_TYPES[c] ?? null;
 }
 
 // ── Building type codes ────────────────────────────────────────────
@@ -91,15 +92,16 @@ export function buildingTypeToCode(s: string): number {
   const code = _BUILDING_TYPE_TO_CODE[s];
   return code === undefined ? BUILDING_TYPE_UNKNOWN : code;
 }
-export function codeToBuildingType(c: number): string {
-  return _BUILDING_TYPES[c] ?? 'solar';
+export function codeToBuildingType(c: number): string | null {
+  return _BUILDING_TYPES[c] ?? null;
 }
 
 // ── Projectile type codes ──────────────────────────────────────────
 export const PROJECTILE_TYPE_PROJECTILE = 0;
 export const PROJECTILE_TYPE_BEAM = 1;
 export const PROJECTILE_TYPE_LASER = 2;
-export type ProjectileTypeCode = 0 | 1 | 2;
+export const PROJECTILE_TYPE_UNKNOWN = 0xff;
+export type ProjectileTypeCode = number;
 const _PROJECTILE_TYPE_TO_CODE: Record<string, ProjectileTypeCode> = {
   projectile: PROJECTILE_TYPE_PROJECTILE,
   beam: PROJECTILE_TYPE_BEAM,
@@ -109,10 +111,70 @@ const _CODE_TO_PROJECTILE_TYPE: ('projectile' | 'beam' | 'laser')[] = [
   'projectile', 'beam', 'laser',
 ];
 export function projectileTypeToCode(s: string): ProjectileTypeCode {
-  return _PROJECTILE_TYPE_TO_CODE[s] ?? PROJECTILE_TYPE_PROJECTILE;
+  return _PROJECTILE_TYPE_TO_CODE[s] ?? PROJECTILE_TYPE_UNKNOWN;
 }
-export function codeToProjectileType(c: number): 'projectile' | 'beam' | 'laser' {
-  return _CODE_TO_PROJECTILE_TYPE[c] ?? 'projectile';
+export function codeToProjectileType(c: number): 'projectile' | 'beam' | 'laser' | null {
+  return _CODE_TO_PROJECTILE_TYPE[c] ?? null;
+}
+
+// ── Shot blueprint codes ───────────────────────────────────────────
+// Append-only, validated against SHOT_BLUEPRINTS at startup.
+const _SHOT_TYPES: readonly string[] = [
+  'lightShot',
+  'mediumShot',
+  'lightRocket',
+  'heavyShot',
+  'mortarShot',
+  'disruptorShot',
+  'laserShot',
+  'beamShot',
+  'megaBeamShot',
+];
+export type ShotTypeCode = number;
+export const SHOT_ID_UNKNOWN = 0xff;
+export function getNetworkShotIds(): readonly string[] {
+  return _SHOT_TYPES;
+}
+const _SHOT_TYPE_TO_CODE: Record<string, number> = {};
+for (let i = 0; i < _SHOT_TYPES.length; i++) _SHOT_TYPE_TO_CODE[_SHOT_TYPES[i]] = i;
+export function shotIdToCode(s: string): ShotTypeCode {
+  const code = _SHOT_TYPE_TO_CODE[s];
+  return code === undefined ? SHOT_ID_UNKNOWN : code;
+}
+export function codeToShotId(c: number): string | null {
+  return _SHOT_TYPES[c] ?? null;
+}
+
+// ── Turret blueprint codes ─────────────────────────────────────────
+// Append-only, validated against TURRET_BLUEPRINTS at startup.
+const _TURRET_TYPES: readonly string[] = [
+  'lightTurret',
+  'salvoRocketTurret',
+  'cannonTurret',
+  'mortarTurret',
+  'pulseTurret',
+  'gatlingMortarTurret',
+  'hippoGatlingTurret',
+  'dgunTurret',
+  'mirrorTurret',
+  'laserTurret',
+  'beamTurret',
+  'megaBeamTurret',
+  'forceTurret',
+];
+export type TurretTypeCode = number;
+export const TURRET_ID_UNKNOWN = 0xff;
+export function getNetworkTurretIds(): readonly string[] {
+  return _TURRET_TYPES;
+}
+const _TURRET_TYPE_TO_CODE: Record<string, number> = {};
+for (let i = 0; i < _TURRET_TYPES.length; i++) _TURRET_TYPE_TO_CODE[_TURRET_TYPES[i]] = i;
+export function turretIdToCode(s: string): TurretTypeCode {
+  const code = _TURRET_TYPE_TO_CODE[s];
+  return code === undefined ? TURRET_ID_UNKNOWN : code;
+}
+export function codeToTurretId(c: number): string | null {
+  return _TURRET_TYPES[c] ?? null;
 }
 import type { Command } from './commands';
 import type { TurretAudioId, ImpactContext, SimDeathContext, SimEventSourceType } from './combat';
@@ -207,7 +269,12 @@ export type NetworkServerSnapshotProjectileSpawn = {
   projectileType: ProjectileTypeCode;
   /** Resolved per-instance max lifespan in ms. */
   maxLifespan?: number;
-  turretId: string;
+  /** Compatibility/source turret wire code. Prefer sourceTurretId + shotId. */
+  turretId: TurretTypeCode;
+  /** Actual shot blueprint wire code for client hydration. */
+  shotId?: ShotTypeCode;
+  /** Real turret blueprint wire code that authored this projectile. */
+  sourceTurretId?: TurretTypeCode;
   playerId: number;
   sourceEntityId: number;
   turretIndex: number;
@@ -373,15 +440,15 @@ export type NetworkServerSnapshotAction = {
 
 export type NetworkServerSnapshotTurret = {
   turret: {
-    id: string;
-    ranges: TurretRanges;
+    /** Turret blueprint wire code for slot validation only. Static authored
+     *  data such as ranges/turn acceleration/drag stays client-local
+     *  and blueprint-derived. */
+    id: TurretTypeCode;
     angular: {
       /** Yaw (horizontal heading, rot around z-axis). */
       rot: number;
       /** Yaw angular velocity. */
       vel: number;
-      acc: number;
-      drag: number;
       /** Pitch (vertical aim, elevation angle). */
       pitch: number;
     };
@@ -433,7 +500,6 @@ export type NetworkServerSnapshotEntity = {
     bodyCenterHeight?: number;
     mass?: number;
     velocity: Vec3;
-    turretRotation?: number;
     isCommander?: boolean;
     buildTargetId?: number;
     actions?: NetworkServerSnapshotAction[];
@@ -470,7 +536,9 @@ export type NetworkServerSnapshotEntity = {
     /** Projectile type code — see PROJECTILE_TYPE_* / projectileTypeToCode. */
     type: ProjectileTypeCode;
     source: number;
-    turretId?: string;
+    turretId?: TurretTypeCode;
+    shotId?: ShotTypeCode;
+    sourceTurretId?: TurretTypeCode;
     turretIndex?: number;
     velocity?: Vec3;
   };

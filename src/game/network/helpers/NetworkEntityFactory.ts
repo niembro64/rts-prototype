@@ -1,9 +1,18 @@
 // Network entity creation helpers
 
-import type { Entity, BuildingType, Turret, UnitAction } from '../../sim/types';
+import type { Entity, BuildingType, Turret, ProjectileConfig, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
-import { codeToActionType, codeToTurretState, codeToUnitType, codeToBuildingType, buildingTypeToCode, codeToProjectileType } from '../../../types/network';
-import { getTurretConfig } from '../../sim/turretConfigs';
+import {
+  codeToActionType,
+  codeToTurretState,
+  codeToUnitType,
+  codeToBuildingType,
+  buildingTypeToCode,
+  codeToProjectileType,
+  codeToShotId,
+  codeToTurretId,
+} from '../../../types/network';
+import { getProjectileConfigForSpawn } from '../../sim/projectileConfigs';
 import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
@@ -14,36 +23,27 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-function decodeNetworkUnitType(unitType: unknown): string {
-  return isFiniteNumber(unitType) ? codeToUnitType(unitType) : 'jackal';
+function decodeNetworkUnitType(unitType: unknown): string | null {
+  return isFiniteNumber(unitType) ? codeToUnitType(unitType) : null;
 }
 
 function decodeNetworkBuildingType(buildingType: unknown): BuildingType | null {
   if (!isFiniteNumber(buildingType)) return null;
-  const decoded = codeToBuildingType(buildingType) as BuildingType;
-  return buildingTypeToCode(decoded) === buildingType ? decoded : null;
+  const decoded = codeToBuildingType(buildingType);
+  if (!decoded) return null;
+  return buildingTypeToCode(decoded) === buildingType ? decoded as BuildingType : null;
 }
 
 function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret): void {
   const wire = nw.turret;
-  if (typeof wire.id === 'string' && wire.id !== turret.config.id) return;
-  if (wire.ranges) {
-    turret.ranges = {
-      tracking: wire.ranges.tracking ? { ...wire.ranges.tracking } : null,
-      fire: {
-        min: wire.ranges.fire.min ? { ...wire.ranges.fire.min } : null,
-        max: { ...wire.ranges.fire.max },
-      },
-    };
-  }
+  const wireTurretId = codeToTurretId(wire.id);
+  if (wireTurretId !== turret.config.id) return;
   turret.target = nw.targetId ?? null;
   turret.state = codeToTurretState(nw.state);
   turret.rotation = wire.angular.rot;
   turret.pitch = wire.angular.pitch;
   turret.angularVelocity = wire.angular.vel;
   turret.pitchVelocity = 0;
-  turret.turnAccel = wire.angular.acc;
-  turret.drag = wire.angular.drag;
   turret.forceField = nw.currentForceFieldRange !== undefined && nw.currentForceFieldRange !== null
     ? { range: nw.currentForceFieldRange, transition: turret.forceField?.transition ?? 0 }
     : undefined;
@@ -123,7 +123,7 @@ function createUnitFromNetwork(
   y: number,
   rotation: number,
   playerId: number
-): Entity {
+): Entity | null {
   const u = netEntity.unit;
 
   const actions: UnitAction[] = [];
@@ -148,6 +148,11 @@ function createUnitFromNetwork(
 
   const defaultRadius = 15;
   const unitType = decodeNetworkUnitType(u?.unitType);
+  if (!unitType) return null;
+  let unitBlueprint: ReturnType<typeof getUnitBlueprint> | undefined;
+  try {
+    unitBlueprint = getUnitBlueprint(unitType);
+  } catch { /* unknown unit type fallback handled by existing defaults */ }
   const entity: Entity = {
     id,
     type: 'unit',
@@ -182,22 +187,26 @@ function createUnitFromNetwork(
   // runs on the host (WorldState.createUnitFromBlueprint) so the
   // hydrated client and the authoritative sim share one rectangle.
   try {
-    const bp = getUnitBlueprint(entity.unit!.unitType);
+    const bp = unitBlueprint ?? getUnitBlueprint(entity.unit!.unitType);
     entity.unit!.mirrorBoundRadius = buildMirrorPanelCache(
       bp, entity.unit!.mirrorPanels,
     );
   } catch { /* */ }
 
   if (u?.isCommander) {
-    entity.commander = {
-      isDGunActive: false,
-      dgunEnergyCost: 100,
-    };
-    entity.builder = {
-      buildRange: 200,
-      maxEnergyUseRate: 50,
-      currentBuildTarget: u.buildTargetId ?? null,
-    };
+    if (unitBlueprint?.dgun) {
+      entity.commander = {
+        isDGunActive: false,
+        dgunEnergyCost: unitBlueprint.dgun.energyCost,
+      };
+    }
+    if (unitBlueprint?.builder) {
+      entity.builder = {
+        buildRange: unitBlueprint.builder.buildRange,
+        maxEnergyUseRate: unitBlueprint.builder.maxEnergyUseRate,
+        currentBuildTarget: u.buildTargetId ?? null,
+      };
+    }
   }
 
   return entity;
@@ -261,8 +270,13 @@ function createBuildingFromNetwork(
       const wp = wps[i];
       waypoints.push({ x: wp.pos.x, y: wp.pos.y, z: wp.posZ, type: wp.type as 'move' | 'fight' | 'patrol' });
     }
+    const buildQueue: string[] = [];
+    for (let i = 0; i < f.queue.length; i++) {
+      const unitType = codeToUnitType(f.queue[i]);
+      if (unitType) buildQueue.push(unitType);
+    }
     entity.factory = {
-      buildQueue: f.queue.map(codeToUnitType),
+      buildQueue,
       currentBuildProgress: f.progress ?? 0,
       currentBuildResourceCost: 0,
       rallyX: rally?.pos.x ?? x,
@@ -284,20 +298,29 @@ function createProjectileFromNetwork(
   playerId: number
 ): Entity | null {
   const s = netEntity.shot;
-  if (!s?.turretId) return null;
+  if (!s) return null;
+  const sourceTurretId = s?.sourceTurretId !== undefined
+    ? codeToTurretId(s.sourceTurretId) ?? undefined
+    : s?.turretId !== undefined
+      ? codeToTurretId(s.turretId) ?? undefined
+      : undefined;
+  const shotId = s?.shotId !== undefined ? codeToShotId(s.shotId) ?? undefined : undefined;
+  if (!sourceTurretId && !shotId) return null;
 
-  let config: ReturnType<typeof getTurretConfig>;
+  let config: ProjectileConfig;
   try {
-    config = { ...getTurretConfig(s.turretId), turretIndex: s.turretIndex };
+    config = {
+      ...getProjectileConfigForSpawn(sourceTurretId, shotId, s.turretIndex),
+      turretIndex: s.turretIndex,
+    };
   } catch {
     return null;
   }
 
-  if (config.shot.type === 'force') return null;
-
   const projectileType = s.type !== undefined
     ? codeToProjectileType(s.type)
     : config.shot.type;
+  if (!projectileType) return null;
   const maxLifespan = config.shot.type === 'beam'
     ? Infinity
     : config.shot.type === 'laser'
@@ -312,6 +335,8 @@ function createProjectileFromNetwork(
       ownerId: playerId,
       sourceEntityId: s?.source ?? 0,
       config,
+      shotId: shotId ?? config.shot.id,
+      sourceTurretId: sourceTurretId ?? config.sourceTurretId,
       projectileType,
       velocityX: s?.velocity?.x ?? 0,
       velocityY: s?.velocity?.y ?? 0,

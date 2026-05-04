@@ -268,13 +268,64 @@ type FlatZone = {
   blendRadius: number;
 };
 let depositFlatZones: ReadonlyArray<FlatZone> = [];
+let depositFlatZoneBuckets = new Map<number, FlatZone[]>();
+const FLAT_ZONE_BUCKET_SIZE = SPATIAL_GRID_CELL_SIZE;
+const FLAT_ZONE_BUCKET_BIAS = 10000;
+const FLAT_ZONE_BUCKET_BASE = 20000;
+
+function flatZoneBucketKey(gx: number, gy: number): number {
+  return (gx + FLAT_ZONE_BUCKET_BIAS) * FLAT_ZONE_BUCKET_BASE
+    + (gy + FLAT_ZONE_BUCKET_BIAS);
+}
+
+function rebuildDepositFlatZoneBuckets(): void {
+  const buckets = new Map<number, FlatZone[]>();
+  const size = FLAT_ZONE_BUCKET_SIZE;
+  for (const z of depositFlatZones) {
+    const influenceRadius = z.radius + Math.max(0, z.blendRadius);
+    const minGx = Math.floor((z.x - influenceRadius) / size);
+    const maxGx = Math.floor((z.x + influenceRadius) / size);
+    const minGy = Math.floor((z.y - influenceRadius) / size);
+    const maxGy = Math.floor((z.y + influenceRadius) / size);
+    for (let gx = minGx; gx <= maxGx; gx++) {
+      for (let gy = minGy; gy <= maxGy; gy++) {
+        const key = flatZoneBucketKey(gx, gy);
+        let list = buckets.get(key);
+        if (!list) {
+          list = [];
+          buckets.set(key, list);
+        }
+        list.push(z);
+      }
+    }
+  }
+  depositFlatZoneBuckets = buckets;
+}
 
 /** Install the flat zones for the current map. Call once after
  *  metal deposits are generated and BEFORE the renderer bakes its
  *  tile geometry. Pass `[]` to clear (e.g. on world reset). */
 export function setMetalDepositFlatZones(zones: ReadonlyArray<FlatZone>): void {
   depositFlatZones = zones.slice();
+  rebuildDepositFlatZoneBuckets();
   _terrainVersion++;
+}
+
+function getDepositFlatZoneCandidates(x: number, y: number): readonly FlatZone[] {
+  if (depositFlatZoneBuckets.size === 0) return [];
+  const gx = Math.floor(x / FLAT_ZONE_BUCKET_SIZE);
+  const gy = Math.floor(y / FLAT_ZONE_BUCKET_SIZE);
+  return depositFlatZoneBuckets.get(flatZoneBucketKey(gx, gy)) ?? [];
+}
+
+function findDepositFlatZoneAt(x: number, y: number): FlatZone | null {
+  const candidates = getDepositFlatZoneCandidates(x, y);
+  for (const z of candidates) {
+    const dx = x - z.x;
+    const dy = y - z.y;
+    if (dx * dx + dy * dy <= z.radius * z.radius) return z;
+  }
+  return null;
 }
 
 /** Find the deposit override at sample point (x, y).
@@ -287,9 +338,11 @@ function depositOverride(
   y: number,
 ): { weight: number; height: number } {
   if (depositFlatZones.length === 0) return { weight: 1, height: 0 };
+  const candidates = getDepositFlatZoneCandidates(x, y);
+  if (candidates.length === 0) return { weight: 1, height: 0 };
   let minWeight = 1;
   let bestHeight = 0;
-  for (const z of depositFlatZones) {
+  for (const z of candidates) {
     const dx = x - z.x;
     const dy = y - z.y;
     const d = Math.sqrt(dx * dx + dy * dy);
@@ -673,7 +726,10 @@ export function getTerrainPlateauLevelAt(
   if (!TERRAIN_PLATEAU_CONFIG.enabled) return 0;
   const step = TERRAIN_D_TERRAIN;
   if (step <= 0) return 0;
-  const height = getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
+  const flatZone = findDepositFlatZoneAt(x, z);
+  const height = flatZone
+    ? flatZone.height
+    : getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
   const level = Math.round(height / step);
   return Math.abs(height - level * step) <=
     TERRAIN_PLATEAU_CONFIG.buildHeightEpsilon
@@ -913,6 +969,8 @@ export function isWaterAt(
   mapHeight: number,
   cellSize: number = SPATIAL_GRID_CELL_SIZE,
 ): boolean {
+  const flatZone = findDepositFlatZoneAt(x, z);
+  if (flatZone) return flatZone.height < WATER_LEVEL;
   return (
     getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize) < WATER_LEVEL
   );

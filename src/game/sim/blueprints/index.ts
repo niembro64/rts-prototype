@@ -14,6 +14,7 @@ import type {
   ForceFieldZoneConfig,
   ForceShot,
   LaserShot,
+  ActiveProjectileShot,
   ProjectileShot,
   ShotConfig,
   TurretConfig,
@@ -27,11 +28,19 @@ import { BARREL_THICKNESS_MULTIPLIER } from '../../../config';
 import {
   buildingTypeToCode,
   codeToBuildingType,
+  codeToShotId,
+  codeToTurretId,
   codeToUnitType,
   getNetworkBuildingTypeIds,
+  getNetworkShotIds,
+  getNetworkTurretIds,
   getNetworkUnitTypeIds,
+  shotIdToCode,
+  turretIdToCode,
   unitTypeToCode,
   BUILDING_TYPE_UNKNOWN,
+  SHOT_ID_UNKNOWN,
+  TURRET_ID_UNKNOWN,
   UNIT_TYPE_UNKNOWN,
 } from '../../../types/network';
 
@@ -40,7 +49,7 @@ function validateStableWireIds(
   blueprintIds: readonly string[],
   wireIds: readonly string[],
   toCode: (id: string) => number,
-  fromCode: (code: number) => string,
+  fromCode: (code: number) => string | null,
   unknownCode: number,
 ): void {
   const blueprintSet = new Set(blueprintIds);
@@ -86,6 +95,24 @@ validateStableWireIds(
   buildingTypeToCode,
   codeToBuildingType,
   BUILDING_TYPE_UNKNOWN,
+);
+
+validateStableWireIds(
+  'shot',
+  Object.keys(SHOT_BLUEPRINTS),
+  getNetworkShotIds(),
+  shotIdToCode,
+  codeToShotId,
+  SHOT_ID_UNKNOWN,
+);
+
+validateStableWireIds(
+  'turret',
+  Object.keys(TURRET_BLUEPRINTS),
+  getNetworkTurretIds(),
+  turretIdToCode,
+  codeToTurretId,
+  TURRET_ID_UNKNOWN,
 );
 
 function assertFiniteRangeMultiplier(
@@ -236,44 +263,17 @@ function buildShotConfig(
   return shot;
 }
 
-/**
- * Build a synthetic TurretConfig for spawning a child projectile as
- * a submunition. Used by the collision handler when a parent shot
- * with `submunitions` explodes. This is NOT a turret anyone owns or
- * fires — it's only a vehicle for carrying the child shot's actual
- * blueprint into world.createProjectile, so fields like range and
- * cooldown are irrelevant and left at 0.
- *
- * Cached per childShotId so repeated explosions reuse the same config
- * object (stable identity for renderers / audio that key by config).
- */
-const _submunitionConfigCache = new Map<string, TurretConfig>();
-export function getSubmunitionTurretConfig(childShotId: string): TurretConfig {
-  const cached = _submunitionConfigCache.get(childShotId);
-  if (cached) return cached;
-
-  const shotBlueprint = SHOT_BLUEPRINTS[childShotId];
-  if (!shotBlueprint) throw new Error(`Unknown submunition shot: ${childShotId}`);
-  if (shotBlueprint.type !== 'projectile') {
-    throw new Error(`Submunition must be a projectile shot: ${childShotId}`);
+export function buildProjectileShotConfig(
+  shotId: string,
+  launchForce?: number,
+): ActiveProjectileShot {
+  const shotBlueprint = SHOT_BLUEPRINTS[shotId];
+  if (!shotBlueprint) throw new Error(`Unknown shot blueprint: ${shotId}`);
+  const shot = buildShotConfig(shotBlueprint, launchForce);
+  if (shot.type === 'force') {
+    throw new Error(`Shot blueprint ${shotId} cannot build a projectile config`);
   }
-
-  const shot = buildShotConfig(shotBlueprint) as ProjectileShot;
-  const config: TurretConfig = {
-    id: `__sub:${childShotId}`,
-    range: 0,
-    cooldown: 0,
-    angular: { turnAccel: 0, drag: 0 },
-    rangeOverrides: {
-      engageRangeMax: { acquire: 0, release: 0 },
-      engageRangeMin: null,
-      trackingRange: null,
-    },
-    eventsSmooth: false,
-    shot,
-  };
-  _submunitionConfigCache.set(childShotId, config);
-  return config;
+  return shot;
 }
 
 /**

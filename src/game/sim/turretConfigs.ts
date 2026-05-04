@@ -1,18 +1,5 @@
 import type { TurretConfig, TurretRanges } from './types';
-import { buildAllTurretConfigs, getSubmunitionTurretConfig, TURRET_BLUEPRINTS } from './blueprints';
-
-/** Prefix for synthetic turret IDs emitted by the submunition/cluster
- *  system. Encoded as `__sub:<childShotId>` — submunitions just clone
- *  the child shot blueprint as-is (no per-spawn overrides), so the
- *  child shot id is the only thing that needs to ride on the wire.
- *  Both the server (to build the sim-side projectile config) and the
- *  client (to render the spawned projectiles) resolve these through
- *  getTurretConfig, which delegates to getSubmunitionTurretConfig. */
-export const SUBMUNITION_TURRET_ID_PREFIX = '__sub:';
-
-export function encodeSubmunitionTurretId(childShotId: string): string {
-  return SUBMUNITION_TURRET_ID_PREFIX + childShotId;
-}
+import { buildAllTurretConfigs, TURRET_BLUEPRINTS } from './blueprints';
 
 // Union type of all registered turret config keys (derived from blueprints)
 export type WeaponId = keyof typeof TURRET_BLUEPRINTS;
@@ -71,16 +58,8 @@ export function computeTurretRanges(config: TurretConfig): TurretRanges {
   };
 }
 
-// Helper to get a turret config by ID. Synthetic submunition IDs
-// (encoded via encodeSubmunitionTurretId) bypass TURRET_CONFIGS and
-// resolve through the blueprint-level helper, which caches by
-// childShotId so both sides of the network get the same object
-// identity.
+// Helper to get a real turret config by turret blueprint ID.
 export function getTurretConfig(id: string): TurretConfig {
-  if (id.startsWith(SUBMUNITION_TURRET_ID_PREFIX)) {
-    const childShotId = id.slice(SUBMUNITION_TURRET_ID_PREFIX.length);
-    return { ...getSubmunitionTurretConfig(childShotId) };
-  }
   const config = TURRET_CONFIGS[id];
   if (!config) {
     throw new Error(`Unknown turret config: ${id}`);

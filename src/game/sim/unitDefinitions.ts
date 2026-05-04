@@ -5,12 +5,14 @@ import type { Turret } from './types';
 import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, UNIT_BLUEPRINTS } from './blueprints';
 import type { UnitBlueprint } from './blueprints/types';
+import { createUnitLocomotion } from './locomotion';
+import type { LocomotionType } from './locomotion';
 import { createRuntimeTurretMount } from './turretMounts';
 
 // Re-export types (still used by many files)
 export type { LegStyle } from './blueprints/types';
 export type UnitType = keyof typeof UNIT_BLUEPRINTS;
-export type LocomotionType = 'wheels' | 'treads' | 'legs';
+export type { LocomotionType } from './locomotion';
 
 // Create turrets for a unit using its blueprint
 export function createTurretsFromDefinition(unitId: string, radius: number): Turret[] {
@@ -48,6 +50,7 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
 }
 
 function projectUnitBlueprint(bp: UnitBlueprint) {
+  const locomotion = createUnitLocomotion(bp.locomotion);
   const turrets = bp.turrets.map((turret) => ({
     turretId: turret.turretId,
     mount: { ...turret.mount },
@@ -58,12 +61,15 @@ function projectUnitBlueprint(bp: UnitBlueprint) {
     turretIds: turrets.map((turret) => turret.turretId),
     turrets,
     hp: bp.hp,
-    locomotionPhysics: { ...bp.locomotion.physics },
+    locomotionPhysics: {
+      driveForce: locomotion.driveForce,
+      traction: locomotion.traction,
+    },
     unitRadiusCollider: { ...bp.unitRadiusCollider },
     bodyRadius: bp.bodyRadius,
     bodyCenterHeight: bp.bodyCenterHeight,
     resourceCost: bp.resourceCost,
-    locomotion: bp.locomotion.type as LocomotionType,
+    locomotion: locomotion.type as LocomotionType,
     legStyle: bp.locomotion.type === 'legs' ? bp.locomotion.style : undefined,
   };
 }

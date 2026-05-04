@@ -97,7 +97,6 @@ export function solveDirectTurretAim(
   mountZ: number,
   currentPitch: number,
   config: TurretConfig,
-  unitScale: number,
   out: DirectTurretAim,
 ): DirectTurretAim {
   resolveTargetAimPoint(target, mountX, mountY, mountZ, out.aim);
@@ -106,10 +105,10 @@ export function solveDirectTurretAim(
   // Resolve from the actual barrel tip after yaw, because a long
   // barrel can move the origin enough to change which point on a
   // building AABB is closest.
-  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, unitScale, 0);
+  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
   resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out.aim);
   yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
-  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, unitScale, 0);
+  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
   resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out.aim);
 
   const horizDist = Math.hypot(out.aim.x - tip.x, out.aim.y - tip.y);
@@ -127,7 +126,6 @@ export function solveProjectileTurretAim(
   mountY: number,
   mountZ: number,
   currentPitch: number,
-  unitScale: number,
   inheritMuzzleVelocity: boolean,
   groundHeightAt: GroundHeightLookup,
   out: ProjectileTurretAim,
@@ -137,10 +135,10 @@ export function solveProjectileTurretAim(
 
   resolveTargetAimPoint(target, mountX, mountY, mountZ, out.aim);
   let yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
-  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, unitScale, 0);
+  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, 0);
   resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out.aim);
   yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
-  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, unitScale, 0);
+  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, 0);
   resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out.aim);
 
   const targetVelocity = getEntityVelocity3(target, out.targetVelocity);
@@ -200,14 +198,14 @@ export function solveProjectileTurretAim(
   }
 
   yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
-  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, unitScale, 0);
+  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, 0);
   if (groundAimFraction !== undefined && groundAimFraction > 0) {
     const f = groundAimFraction;
     out.aim.x = tip.x + f * (leadAimX - tip.x);
     out.aim.y = tip.y + f * (leadAimY - tip.y);
     out.aim.z = groundHeightAt(out.aim.x, out.aim.y);
     yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
-    tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, unitScale, 0);
+    tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, 0);
   }
 
   const horizDist = Math.hypot(out.aim.x - tip.x, out.aim.y - tip.y);

@@ -1,7 +1,8 @@
-import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileType, UnitLocomotion } from './types';
+import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, UnitLocomotion } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
+import { cloneUnitLocomotion } from './locomotion';
 import { createTurretsFromDefinition } from './unitDefinitions';
 import {
   MAX_TOTAL_UNITS,
@@ -15,6 +16,7 @@ import {
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
+import { createProjectileConfigFromTurret } from './projectileConfigs';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 type SurfaceNormal = { nx: number; ny: number; nz: number };
@@ -502,7 +504,7 @@ export class WorldState {
       ownership: { playerId },
       unit: {
         unitType,
-        locomotion: { ...locomotion },
+        locomotion: cloneUnitLocomotion(locomotion),
         unitRadiusCollider: { ...unitRadiusCollider },
         bodyRadius,
         bodyCenterHeight,
@@ -589,7 +591,11 @@ export class WorldState {
     sourceEntityId: EntityId,
     config: TurretConfig
   ): Entity {
-    const entity = this.createProjectile(x, y, velocityX, velocityY, ownerId, sourceEntityId, config, 'projectile');
+    const entity = this.createProjectile(
+      x, y, velocityX, velocityY, ownerId, sourceEntityId,
+      createProjectileConfigFromTurret(config),
+      'projectile',
+    );
 
     // Mark as D-gun projectile
     entity.dgunProjectile = { isDGun: true };
@@ -646,8 +652,9 @@ export class WorldState {
     velocityY: number,
     ownerId: PlayerId,
     sourceEntityId: EntityId,
-    config: TurretConfig,
-    projectileType: ProjectileType = 'projectile'
+    config: ProjectileConfig,
+    projectileType: ProjectileType = 'projectile',
+    provenance?: { shotId?: string; sourceTurretId?: string },
   ): Entity {
     const id = this.generateEntityId();
 
@@ -683,6 +690,8 @@ export class WorldState {
       ownerId,
       sourceEntityId,
       config,
+      shotId: provenance?.shotId ?? config.shot.id,
+      sourceTurretId: provenance?.sourceTurretId ?? config.sourceTurretId,
       projectileType,
       velocityX,
       velocityY,
@@ -721,7 +730,7 @@ export class WorldState {
     endY: number,
     ownerId: PlayerId,
     sourceEntityId: EntityId,
-    config: TurretConfig,
+    config: ProjectileConfig,
     projectileType: 'beam' | 'laser' = 'beam'
   ): Entity {
     const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, projectileType);

@@ -118,11 +118,6 @@ export const AUDIO = {
         volume: 0.5,
         playSpeed: 1.0,
       },
-      disruptorTurret: {
-        synth: 'cannon' as SynthId,
-        volume: 0.2,
-        playSpeed: 1.0,
-      },
       dgunTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 1.0 },
       hippoGatlingTurret: {
         synth: 'burst-rifle' as SynthId,
@@ -147,11 +142,6 @@ export const AUDIO = {
       lightRocket: { synth: 'heavy' as SynthId, volume: 0.3, playSpeed: 0.3 },
       mediumShot: { synth: 'heavy' as SynthId, volume: 0.5, playSpeed: 0.2 },
       mortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.1 },
-      advancedMortarShot: {
-        synth: 'heavy' as SynthId,
-        volume: 1.0,
-        playSpeed: 0.08,
-      },
       heavyShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.05 },
       // hippoShot: { synth: 'heavy' as SynthId, volume: 0.7, playSpeed: 0.15 },
       laserShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },

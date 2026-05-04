@@ -50,6 +50,7 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
+import { getLocomotionForceProfile } from '../sim/locomotion';
 import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape, setTerrainCenterShape, setTerrainDividersShape } from '../sim/Terrain';
 import { generateMetalDeposits } from '../../metalDepositConfig';
 
@@ -605,9 +606,12 @@ export class GameServer {
       const dirX = entity.unit.thrustDirX ?? 0;
       const dirY = entity.unit.thrustDirY ?? 0;
       const dirMag = magnitude(dirX, dirY);
-      const locomotion = entity.unit.locomotion;
-      const rawDriveForce = locomotion.driveForce * this.world.thrustMultiplier;
-      const tractionDriveForce = rawDriveForce * locomotion.traction;
+      const locomotionForce = getLocomotionForceProfile(
+        entity.unit.locomotion,
+        entity.unit.mass,
+        this.world.thrustMultiplier,
+        MATTER_FORCE_SCALE,
+      );
 
       // Sleeping units that aren't being asked to thrust short-circuit
       // BEFORE the accumulator probe — `hasForce` is a single Map.has
@@ -684,7 +688,7 @@ export class GameServer {
         if (hasOutDir) {
           // 3× normal thrust strength — feels like a hard wall pushing
           // the unit out, not a gentle current.
-          const wallPush = 3 * (rawDriveForce * entity.unit.mass) / MATTER_FORCE_SCALE;
+          const wallPush = 3 * locomotionForce.rawForceMagnitude;
           thrustForceX = this._waterOutX * wallPush;
           thrustForceY = this._waterOutY * wallPush;
           // No z thrust — water surface is flat, no slope to climb out of.
@@ -725,7 +729,7 @@ export class GameServer {
         }
 
         if (useDirX !== 0 || useDirY !== 0) {
-          const thrustMagnitude = (tractionDriveForce * entity.unit.mass) / MATTER_FORCE_SCALE;
+          const thrustMagnitude = locomotionForce.tractionForceMagnitude;
           // Project horizontal thrust onto the slope tangent so
           // hill-climbing produces the right z-aware force. Slope
           // normal is land-only (Terrain.getSurfaceNormal excludes

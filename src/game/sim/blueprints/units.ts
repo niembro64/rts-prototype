@@ -7,8 +7,9 @@
  */
 
 import { AUDIO } from '../../../audioConfig';
-import type { UnitBlueprint, UnitTurretMountPoint, TurretMount, UnitBodyShape, LocomotionPhysics } from './types';
+import type { UnitBlueprint, UnitTurretMountPoint, TurretMount, UnitBodyShape } from './types';
 import type { UnitLocomotion } from '../types';
+import { createLocomotionPhysics, createUnitLocomotion } from '../locomotion';
 import { getTurretBlueprint } from './turrets';
 import {
   LEG_BODY_LIFT_FRAC,
@@ -17,22 +18,6 @@ import {
   getTreadBodyCenterHeightY,
   getWheelBodyCenterHeightY,
 } from '../../math/BodyDimensions';
-
-const LOCOMOTION_TRACTION = {
-  wheels: 0.45,
-  treads: 0.75,
-  legs: 1.0,
-} as const;
-
-function locomotionPhysics(
-  type: keyof typeof LOCOMOTION_TRACTION,
-  driveForce: number,
-): LocomotionPhysics {
-  return {
-    driveForce,
-    traction: LOCOMOTION_TRACTION[type],
-  };
-}
 
 const WIDOW_BODY_RADIUS = 30;
 const WIDOW_ABDOMEN_RADIUS_FRAC = 1.15;
@@ -258,7 +243,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'JKL',
     hp: 55,
     unitRadiusCollider: { shot: 6, push: 8 * 1.2 },
-    bodyRadius: 8,
+    bodyRadius: 1,
     bodyCenterHeight: getWheelBodyCenterHeightY(BODY_SHAPES.scout, 8, 0.28),
     mass: 30,
     resourceCost: 50,
@@ -266,7 +251,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.scout,
     locomotion: {
       type: 'wheels',
-      physics: locomotionPhysics('wheels', 300),
+      physics: createLocomotionPhysics('wheels', 300),
       config: {
         wheelDistX: 0.6,
         wheelDistY: 0.7,
@@ -294,7 +279,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.burst,
     locomotion: {
       type: 'treads',
-      physics: locomotionPhysics('treads', 170),
+      physics: createLocomotionPhysics('treads', 170),
       config: {
         treadOffset: 0.8,
         treadLength: 1.6,
@@ -330,7 +315,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'daddy',
-      physics: locomotionPhysics('legs', 200),
+      physics: createLocomotionPhysics('legs', 200),
       config: {
         upperThickness: 2.5,
         lowerThickness: 2,
@@ -358,7 +343,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.brawl,
     locomotion: {
       type: 'treads',
-      physics: locomotionPhysics('treads', 200),
+      physics: createLocomotionPhysics('treads', 200),
       config: {
         treadOffset: 0.85,
         treadLength: 1.7,
@@ -385,7 +370,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.mortar,
     locomotion: {
       type: 'wheels',
-      physics: locomotionPhysics('wheels', 220),
+      physics: createLocomotionPhysics('wheels', 220),
       config: {
         wheelDistX: 0.65,
         wheelDistY: 0.7,
@@ -417,7 +402,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'tick',
-      physics: locomotionPhysics('legs', 120),
+      physics: createLocomotionPhysics('legs', 120),
       config: {
         upperThickness: 2,
         lowerThickness: 1.5,
@@ -445,7 +430,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.tank,
     locomotion: {
       type: 'treads',
-      physics: locomotionPhysics('treads', 60),
+      physics: createLocomotionPhysics('treads', 60),
       config: {
         treadOffset: 0.9,
         treadLength: 2.0,
@@ -478,7 +463,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'formik',
-      physics: locomotionPhysics('legs', 60),
+      physics: createLocomotionPhysics('legs', 60),
       config: {
         // Bigger thorax = beefier legs. Bumped over widow's
         // (7/6/4/6/3.5) to keep limb thickness in proportion to
@@ -510,7 +495,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'widow',
-      physics: locomotionPhysics('legs', 70),
+      physics: createLocomotionPhysics('legs', 70),
       config: {
         upperThickness: 7,
         lowerThickness: 6,
@@ -538,7 +523,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.hippo,
     locomotion: {
       type: 'treads',
-      physics: locomotionPhysics('treads', 55),
+      physics: createLocomotionPhysics('treads', 55),
       config: {
         treadOffset: 1.1,
         treadLength: 2.6,
@@ -570,7 +555,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'tarantula',
-      physics: locomotionPhysics('legs', 200),
+      physics: createLocomotionPhysics('legs', 200),
       config: {
         upperThickness: 6.5,
         lowerThickness: 6,
@@ -599,7 +584,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hideChassis: true,
     locomotion: {
       type: 'treads',
-      physics: locomotionPhysics('treads', 160),
+      physics: createLocomotionPhysics('treads', 160),
       config: {
         treadOffset: 0.85,
         treadLength: 1.7,
@@ -630,7 +615,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: {
       type: 'legs',
       style: 'commander',
-      physics: locomotionPhysics('legs', 200),
+      physics: createLocomotionPhysics('legs', 200),
       config: {
         upperThickness: 8,
         lowerThickness: 7,
@@ -707,12 +692,7 @@ export function getUnitBlueprint(id: string): UnitBlueprint {
 }
 
 export function getUnitLocomotion(id: string): UnitLocomotion {
-  const locomotion = getUnitBlueprint(id).locomotion;
-  return {
-    type: locomotion.type,
-    driveForce: locomotion.physics.driveForce,
-    traction: locomotion.physics.traction,
-  };
+  return createUnitLocomotion(getUnitBlueprint(id).locomotion);
 }
 
 export function getAllUnitBlueprints(): UnitBlueprint[] {

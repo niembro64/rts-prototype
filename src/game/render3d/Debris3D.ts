@@ -36,7 +36,11 @@ import {
   getChassisLiftY,
   getSegmentMidYAt,
 } from '../math/BodyDimensions';
-import { TURRET_BARREL_MIN_DIAMETER, turretHeadRadiusFromBodyRadius } from '../math';
+import {
+  TURRET_BARREL_MIN_DIAMETER,
+  getTurretBarrelCenterToTipLength,
+  turretHeadRadiusFromBodyRadius,
+} from '../math';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -627,7 +631,7 @@ export class Debris3D {
     } catch { /* missing host turret blueprint: no mirror stack */ }
     const unitHasMirrorsHere = (hostTurretBlueprint?.mirrorPanels?.length ?? 0) > 0;
     const hostHeadRadiusForStack = unitHasMirrorsHere
-      ? turretHeadRadiusFromBodyRadius(r, hostTurretBlueprint?.bodyRadius)
+      ? turretHeadRadiusFromBodyRadius(hostTurretBlueprint?.bodyRadius)
       : 0;
     const hostTurretMount = bp.turrets[0]?.mount ?? { x: 0, y: 0, z: bp.bodyCenterHeight / r };
     const hostBodyTopYForStack = unitHasMirrorsHere && bp.turrets[0]
@@ -687,9 +691,9 @@ export class Debris3D {
       // sphere bottom touches chassis top, sphere top is the highest point
       // of the turret. Barrels pivot through the sphere center. Mirror
       // panels (when present) replace the sphere visually but use the
-      // same vertical span. Per-turret bodyRadius takes precedence over
-      // the auto-derived default — matches Render3DEntities.buildTurretMesh.
-      const headR = turretHeadRadiusFromBodyRadius(r, tb.bodyRadius);
+      // same vertical span. Turret bodyRadius is the source scale for
+      // the rendered head and barrels — matches Render3DEntities.
+      const headR = turretHeadRadiusFromBodyRadius(tb.bodyRadius);
       const stackedMirrorHeight = hostBodyTopYForStack + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT;
       const shotHeight = unitHasMirrorsHere && ti > 0
         ? chassisLiftY + stackedMirrorHeight
@@ -749,20 +753,19 @@ export class Debris3D {
           });
         };
 
+        const len = getTurretBarrelCenterToTipLength(tb);
         if (bs.type === 'simpleSingleBarrel') {
-          const len = r * bs.barrelLength;
           if (len < 1) continue;
           const diameter = (shotWidth ?? bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER);
           const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
           emitBarrel(0, 0, 0, len, 0, 0, thick);
         } else if (bs.type === 'simpleMultiBarrel') {
           // Parallel cluster of cylinders — base orbit = tip orbit.
-          const len = r * bs.barrelLength;
           if (len < 1) continue;
           const diameter = bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER;
           const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
           const n = bs.barrelCount;
-          const orbit = bs.orbitRadius * r;
+          const orbit = bs.orbitRadius * headR;
           // Renderer's `oy` is along three.js Y (vertical = sim Z),
           // `oz` is along three.js Z (lateral = sim Y). Map both
           // accordingly so the rotated debris cylinders trace the
@@ -778,14 +781,13 @@ export class Debris3D {
           // tipOrbit (or, when unset, derived from spread.angle exactly
           // the way Render3DEntities does it). Each barrel cylinder
           // therefore tilts outward.
-          const len = r * bs.barrelLength;
           if (len < 1) continue;
           const diameter = bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER;
           const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
           const n = bs.barrelCount;
-          const baseOrbitR = bs.baseOrbit * r;
+          const baseOrbitR = bs.baseOrbit * headR;
           const tipOrbitR = bs.tipOrbit !== undefined
-            ? bs.tipOrbit * r
+            ? bs.tipOrbit * headR
             : Math.min(
                 baseOrbitR + len * Math.tan(((tb.spread?.angle ?? Math.PI / 5)) / 2),
                 TURRET_HEIGHT * 0.9,

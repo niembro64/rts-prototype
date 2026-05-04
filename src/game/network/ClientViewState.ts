@@ -21,7 +21,8 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkCaptureTile } from '@/types/capture';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork, refreshUnitTurretsFromNetwork } from './helpers';
-import { getTurretConfig, TURRET_CONFIGS } from '../sim/turretConfigs';
+import { TURRET_CONFIGS } from '../sim/turretConfigs';
+import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
 import { getUnitLocomotion } from '../sim/blueprints';
 import { getEntityVelocity3, getTurretMountHeight } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
@@ -39,9 +40,12 @@ import {
   codeToUnitType,
   codeToBuildingType,
   codeToProjectileType,
+  codeToShotId,
+  codeToTurretId,
   PROJECTILE_TYPE_PROJECTILE,
   PROJECTILE_TYPE_BEAM,
   PROJECTILE_TYPE_LASER,
+  TURRET_ID_UNKNOWN,
 } from '../../types/network';
 
 import {
@@ -183,7 +187,9 @@ function createOwnedProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
     rotation: 0,
     velocity: { x: 0, y: 0, z: 0 },
     projectileType: PROJECTILE_TYPE_PROJECTILE,
-    turretId: '',
+    turretId: TURRET_ID_UNKNOWN,
+    shotId: undefined,
+    sourceTurretId: undefined,
     playerId: 0,
     sourceEntityId: 0,
     turretIndex: 0,
@@ -206,6 +212,8 @@ function copyProjectileSpawnInto(
   dst.projectileType = src.projectileType;
   dst.maxLifespan = src.maxLifespan;
   dst.turretId = src.turretId;
+  dst.shotId = src.shotId;
+  dst.sourceTurretId = src.sourceTurretId;
   dst.playerId = src.playerId;
   dst.sourceEntityId = src.sourceEntityId;
   dst.turretIndex = src.turretIndex;
@@ -292,6 +300,24 @@ function isLineProjectileEntity(entity: Entity): boolean {
 function isLineProjectileCode(projectileType: number): boolean {
   return projectileType === PROJECTILE_TYPE_BEAM ||
     projectileType === PROJECTILE_TYPE_LASER;
+}
+
+function decodeProjectileSourceTurretId(
+  spawn: NetworkServerSnapshotProjectileSpawn,
+): string | undefined {
+  const sourceTurretId = spawn.sourceTurretId !== undefined
+    ? codeToTurretId(spawn.sourceTurretId) ?? undefined
+    : undefined;
+  if (sourceTurretId) return sourceTurretId;
+  return codeToTurretId(spawn.turretId) ?? undefined;
+}
+
+function decodeProjectileShotId(
+  spawn: NetworkServerSnapshotProjectileSpawn,
+): string | undefined {
+  return spawn.shotId !== undefined
+    ? codeToShotId(spawn.shotId) ?? undefined
+    : undefined;
 }
 
 export class ClientViewState {
@@ -496,9 +522,10 @@ export class ClientViewState {
   }
 
   private shouldSmoothProjectileSpawn(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
+    const sourceTurretId = decodeProjectileSourceTurretId(spawn);
     return spawn.projectileType === PROJECTILE_TYPE_PROJECTILE &&
       !spawn.fromParentDetonation &&
-      !!TURRET_CONFIGS[spawn.turretId]?.eventsSmooth;
+      !!(sourceTurretId && TURRET_CONFIGS[sourceTurretId]?.eventsSmooth);
   }
 
   private queueProjectileSpawn(spawn: NetworkServerSnapshotProjectileSpawn, now: number): void {
@@ -981,8 +1008,10 @@ export class ClientViewState {
       }
       if (typeof su.unitType === 'number') {
         const unitType = codeToUnitType(su.unitType);
-        entity.unit.unitType = unitType;
-        entity.unit.locomotion = getUnitLocomotion(unitType);
+        if (unitType) {
+          entity.unit.unitType = unitType;
+          entity.unit.locomotion = getUnitLocomotion(unitType);
+        }
       }
       if (isFiniteNumber(su.mass)) entity.unit.mass = su.mass;
 
@@ -1064,7 +1093,8 @@ export class ClientViewState {
     }
 
     if (entity.building && sb?.type !== undefined && isFull) {
-      entity.buildingType = codeToBuildingType(sb.type) as BuildingType;
+      const buildingType = codeToBuildingType(sb.type);
+      if (buildingType) entity.buildingType = buildingType as BuildingType;
     }
 
     if (entity.building && sb && (isFull || sb.metalExtractionRate !== undefined)) {
@@ -1101,8 +1131,11 @@ export class ClientViewState {
       // field so the conversion has to happen on the way in.
       const dst = entity.factory.buildQueue;
       const src = sf.queue;
-      dst.length = src.length;
-      for (let i = 0; i < src.length; i++) dst[i] = codeToUnitType(src[i]);
+      dst.length = 0;
+      for (let i = 0; i < src.length; i++) {
+        const unitType = codeToUnitType(src[i]);
+        if (unitType) dst.push(unitType);
+      }
       entity.factory.currentBuildProgress = sf.progress;
       entity.factory.isProducing = sf.producing;
       // waypoints[0] = rally point, rest = user-set waypoints
@@ -1924,8 +1957,10 @@ export class ClientViewState {
   private createProjectileFromSpawn(
     spawn: NetworkServerSnapshotProjectileSpawn,
   ): Entity {
+    const sourceTurretId = decodeProjectileSourceTurretId(spawn);
+    const shotId = decodeProjectileShotId(spawn);
     const config = {
-      ...getTurretConfig(spawn.turretId),
+      ...getProjectileConfigForSpawn(sourceTurretId, shotId, spawn.turretIndex),
       turretIndex: spawn.turretIndex,
     };
 
@@ -1973,7 +2008,6 @@ export class ClientViewState {
           mount.x, mount.y, mount.z,
           weapon.rotation, weapon.pitch,
           config,
-          source.unit.bodyRadius,
           0,
         );
         spawnX = tip.x;
@@ -1991,7 +2025,13 @@ export class ClientViewState {
         ownerId: spawn.playerId,
         sourceEntityId: spawn.sourceEntityId,
         config,
-        projectileType: codeToProjectileType(spawn.projectileType),
+        shotId: shotId ?? config.shot.id,
+        sourceTurretId: sourceTurretId ?? config.sourceTurretId,
+        projectileType: (() => {
+          const projectileType = codeToProjectileType(spawn.projectileType);
+          if (!projectileType) throw new Error(`Unknown projectile type code: ${spawn.projectileType}`);
+          return projectileType;
+        })(),
         velocityX: spawn.velocity.x,
         velocityY: spawn.velocity.y,
         velocityZ: spawn.velocity.z,
@@ -2001,9 +2041,7 @@ export class ClientViewState {
             ? Infinity
             : config.shot.type === 'laser'
               ? config.shot.duration
-              : config.shot.type === 'projectile'
-                ? (spawn.maxLifespan ?? config.shot.lifespan ?? 2000)
-                : 2000,
+              : (spawn.maxLifespan ?? config.shot.lifespan ?? 2000),
         hitEntities: new Set(),
         maxHits: 1,
         points: spawn.beam ? [

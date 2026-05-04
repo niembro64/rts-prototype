@@ -18,40 +18,59 @@
 // round-robin can continue independently.
 
 import { TURRET_HEIGHT } from '../../config';
-import type { TurretConfig } from '../sim/types';
+import type { BarrelShape } from '@/types/blueprints';
+import type { ActiveProjectileShot, ShotConfig, TurretConfig } from '../sim/types';
 
-/** X/Z footprint of the spherical turret head as a fraction of the
- *  host unit's body radius. Mirrors the constant in Render3DEntities
- *  so the renderer (which draws the sphere) and the sim (which
- *  computes shot spawn positions) agree on where the head ENDS and
- *  the barrel BEGINS. */
-export const TURRET_HEAD_FOOTPRINT_FRAC = 0.42;
 export const TURRET_BARREL_MIN_DIAMETER = 2;
 
-/** Radius of the spherical turret head for a unit of the given body
- *  radius. Floored to TURRET_HEIGHT / 2 so very small units still get
- *  a visible head sphere. A turret blueprint can override this with
- *  its own `bodyRadius` field — passing the config lets the renderer
- *  prefer the per-turret value when present. */
-export function getTurretHeadRadius(
-  unitBodyRadius: number,
-  config?: TurretConfig,
-): number {
-  if (config?.bodyRadius !== undefined && config.bodyRadius > 0) {
-    return config.bodyRadius;
+/** Radius of the spherical turret head. Read directly from the
+ *  turret blueprint's `bodyRadius`; turrets are unit-agnostic by
+ *  contract, so the host unit's body radius does NOT factor in.
+ *  Throws if the turret config is missing `bodyRadius` — every
+ *  turret blueprint is required to declare it. */
+type TurretRadiusSource = { id?: string; bodyRadius?: number };
+type TurretBarrelSource = TurretRadiusSource & { barrel?: BarrelShape };
+type BarrelShotSource = TurretBarrelSource & { shot: ShotConfig | ActiveProjectileShot };
+
+export function getTurretHeadRadius(config: TurretRadiusSource): number {
+  const r = config.bodyRadius;
+  if (r === undefined || r <= 0) {
+    const id = config.id ?? 'unknown-source';
+    throw new Error(
+      `Turret config '${id}' must define a positive bodyRadius`,
+    );
   }
-  return Math.max(unitBodyRadius * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
+  return Math.max(r, TURRET_HEIGHT / 2);
 }
 
 /** Same as getTurretHeadRadius but takes the per-turret bodyRadius
  *  value directly — for blueprint-side callers that only have a
  *  `bodyRadius?: number` field rather than a full TurretConfig. */
 export function turretHeadRadiusFromBodyRadius(
-  unitBodyRadius: number,
   turretBodyRadius: number | undefined,
 ): number {
-  if (turretBodyRadius !== undefined && turretBodyRadius > 0) return turretBodyRadius;
-  return Math.max(unitBodyRadius * TURRET_HEAD_FOOTPRINT_FRAC, TURRET_HEIGHT / 2);
+  if (turretBodyRadius === undefined || turretBodyRadius <= 0) {
+    throw new Error('Turret bodyRadius must be a positive number');
+  }
+  return Math.max(turretBodyRadius, TURRET_HEIGHT / 2);
+}
+
+/** Center-to-tip length of the visible/authoritative barrel. The
+ *  authored `barrelLength` is the protruding length beyond the head
+ *  surface, expressed as a fraction of the turret head radius. The
+ *  actual cylinder and muzzle tip start at the head center, so add
+ *  one radius to reach the surface first.
+ *
+ *  `barrelLength <= 0` remains the explicit "no visible barrel"
+ *  contract used by mirror-style emitters. */
+export function getTurretBarrelCenterToTipLength(
+  config: TurretBarrelSource,
+): number {
+  const barrel = config.barrel;
+  if (!barrel || barrel.type === 'complexSingleEmitter' || barrel.barrelLength <= 0) {
+    return 0;
+  }
+  return getTurretHeadRadius(config) * (1 + barrel.barrelLength);
 }
 
 /** World-space 3D position + unit-vector firing direction for a single
@@ -70,7 +89,7 @@ export type BarrelEndpoint = {
  *  their `barrelCount`. Used by the firing round-robin and visual
  *  metadata to pick barrelIndex = fireCount mod N. Authoritative
  *  multi-barrel shots still spawn from the cluster centerline. */
-export function countBarrels(config: TurretConfig): number {
+export function countBarrels(config: Pick<TurretConfig, 'barrel'>): number {
   const b = config.barrel;
   if (!b) return 1;
   if (b.type === 'simpleSingleBarrel') return 1;
@@ -79,7 +98,7 @@ export function countBarrels(config: TurretConfig): number {
 }
 
 export function getTurretBarrelDiameter(
-  config: Pick<TurretConfig, 'barrel' | 'shot'>,
+  config: BarrelShotSource,
 ): number {
   const barrel = config.barrel;
   if (!barrel || barrel.type === 'complexSingleEmitter') return 0;
@@ -96,17 +115,18 @@ export function getTurretBarrelDiameter(
 }
 
 /** Compute the 3D tip position and firing direction for a specific
- *  barrel on a turret.
+ *  barrel on a turret. Unit-agnostic: the host unit's body radius
+ *  is intentionally NOT a parameter. Barrel dimensions are derived
+ *  from the turret blueprint's own `bodyRadius`, so a turret of a
+ *  given blueprint fires from the same offset on every host that
+ *  mounts it.
  *
  *  mountX/Y/Z — world-space turret pivot (weapon's cached worldPos +
- *    unit-ground + muzzle-height). This is where every barrel's
- *    transform chain starts.
+ *    unit-ground + muzzle-height).
  *  turretYaw  — absolute world yaw of the turret (radians).
- *  turretPitch — elevation above horizontal (radians; +π/2 = straight up).
+ *  turretPitch — elevation above horizontal (radians; +π/2 = up).
  *  config     — the turret blueprint; emitters fire from the mount,
- *               barrel configs fire from their centerline tip.
- *  unitBodyRadius — host unit's body radius (`Unit.bodyRadius`); the
- *               authored `barrelLength` is a fraction of it.
+ *               barrel configs fire from the centerline tip.
  *  barrelIndex — retained for call-site compatibility and fire metadata.
  *                Multi-barrel physics no longer varies by index; shots
  *                come from the center point between the barrels.
@@ -116,8 +136,7 @@ export function getTurretBarrelDiameter(
 export function getBarrelTip(
   mountX: number, mountY: number, mountZ: number,
   turretYaw: number, turretPitch: number,
-  config: TurretConfig,
-  unitBodyRadius: number,
+  config: BarrelShotSource,
   _barrelIndex: number = 0,
   _spinAngle: number = 0,
 ): BarrelEndpoint {
@@ -144,19 +163,12 @@ export function getBarrelTip(
   // The barrel attaches at the CENTER of the spherical turret head.
   // Tip is `barrelLen` from the mount along the firing axis — the
   // visible cylinder runs from the head's interior outward through
-  // the surface. (Anything inside the sphere is occluded by the
-  // head mesh, so visually you only see the protruding portion.)
+  // the surface. (Anything inside the sphere is occluded by the head
+  // mesh, so visually you only see the protruding portion.)
   //
-  // `barrelLength` is authored as a fraction of the TURRET HEAD
-  // radius, not the host unit's body radius — same multiplier the
-  // renderer (TurretMesh3D) uses for the visible barrel mesh, so
-  // a unit-agnostic turret blueprint produces a unit-agnostic
-  // muzzle position. `getTurretHeadRadius` returns the turret's
-  // configured `bodyRadius` when set; otherwise it falls back to a
-  // unit-scaled value, which preserves legacy behavior for any
-  // turret that hasn't been tuned to the new contract yet.
-  const headRadius = getTurretHeadRadius(unitBodyRadius, config);
-  const barrelLen = headRadius * b.barrelLength;
+  // The renderer uses this exact helper when building the cylinder, so
+  // the muzzle stays at the visible barrel tip.
+  const barrelLen = getTurretBarrelCenterToTipLength(config);
 
   // Single-barrel and multi-barrel weapons both fire from the centerline.
   // The renderer owns the visible per-barrel offsets and spin; the sim owns

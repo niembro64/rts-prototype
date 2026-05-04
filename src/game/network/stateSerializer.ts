@@ -14,6 +14,8 @@ import {
   ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY,
   actionTypeToCode, turretStateToCode,
   unitTypeToCode, buildingTypeToCode, projectileTypeToCode,
+  turretIdToCode, shotIdToCode,
+  PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN,
 } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
 
@@ -29,9 +31,8 @@ const MAX_WAYPOINTS_PER_ENTITY = 16;
 function createPooledTurret(): NetworkServerSnapshotTurret {
   return {
     turret: {
-      id: '',
-      ranges: { tracking: null, fire: { min: null, max: { acquire: 0, release: 0 } } },
-      angular: { rot: 0, vel: 0, acc: 0, drag: 0, pitch: 0 },
+      id: TURRET_ID_UNKNOWN,
+      angular: { rot: 0, vel: 0, pitch: 0 },
     },
     targetId: undefined,
     state: 0,
@@ -182,9 +183,11 @@ function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
     pos: { x: 0, y: 0, z: 0 },
     rotation: 0,
     velocity: { x: 0, y: 0, z: 0 },
-    projectileType: 0,
+    projectileType: PROJECTILE_TYPE_UNKNOWN,
     maxLifespan: undefined,
-    turretId: '',
+    turretId: TURRET_ID_UNKNOWN,
+    shotId: undefined,
+    sourceTurretId: undefined,
     playerId: 1,
     sourceEntityId: 0,
     turretIndex: 0,
@@ -244,7 +247,6 @@ function createPooledEntry(): PooledEntry {
         bodyRadius: undefined,
         bodyCenterHeight: undefined,
         mass: undefined, velocity: { x: 0, y: 0, z: 0 },
-      turretRotation: 0,
     },
     unitCollider: { shot: 0, push: 0 },
     buildingDim: { x: 0, y: 0 },
@@ -259,7 +261,7 @@ function createPooledEntry(): PooledEntry {
       waypoints: [],
     },
     shotSub: {
-      type: 0 as const, source: 0,
+      type: PROJECTILE_TYPE_UNKNOWN, source: 0,
     },
     turrets,
     actions,
@@ -991,7 +993,11 @@ export function serializeGameState(
       out._velocity.z = ps.velocity.z;
       out.projectileType = projectileTypeToCode(ps.projectileType);
       out.maxLifespan = ps.maxLifespan;
-      out.turretId = ps.turretId;
+      out.turretId = turretIdToCode(ps.turretId);
+      out.shotId = shotIdToCode(ps.shotId);
+      out.sourceTurretId = ps.sourceTurretId !== undefined
+        ? turretIdToCode(ps.sourceTurretId)
+        : undefined;
       out.playerId = ps.playerId;
       out.sourceEntityId = ps.sourceEntityId;
       out.turretIndex = ps.turretIndex;
@@ -1224,20 +1230,6 @@ function serializeEntity(
         u.hp.max = entity.unit.maxHp;
       }
 
-      // Turret rotation ships only on full records or turret-dirty
-      // deltas. Active combat units mark ENTITY_CHANGED_TURRETS every
-      // tick; idle movers no longer resend turret pose just because
-      // their body position/velocity changed.
-      u.turretRotation = undefined;
-      if (isFull || (changedFields! & ENTITY_CHANGED_TURRETS)) {
-        let turretRot = entity.transform.rotation;
-        const weapons = entity.turrets ?? [];
-        for (const weapon of weapons) {
-          turretRot = weapon.rotation;
-        }
-        u.turretRotation = qRot(turretRot);
-      }
-
       // Actions
       u.actions = undefined;
       if (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS)) {
@@ -1293,33 +1285,9 @@ function serializeEntity(
           const src = weapons[i];
           const dst = pool.turrets[i];
           const t = dst.turret;
-          t.id = src.config.id;
-          const sr = src.ranges; const dr = t.ranges;
-          // Tracking shell: null when the turret only uses its fire
-          // envelope. Mirror tracking pool slot so receivers see the
-          // same shape on every frame.
-          if (sr.tracking) {
-            dr.tracking = dr.tracking ?? { acquire: 0, release: 0 };
-            dr.tracking.acquire = sr.tracking.acquire;
-            dr.tracking.release = sr.tracking.release;
-          } else {
-            dr.tracking = null;
-          }
-          // Fire envelope max: always present.
-          dr.fire.max.acquire = sr.fire.max.acquire;
-          dr.fire.max.release = sr.fire.max.release;
-          // Fire envelope min: null when the turret can fire at point-blank.
-          if (sr.fire.min) {
-            dr.fire.min = dr.fire.min ?? { acquire: 0, release: 0 };
-            dr.fire.min.acquire = sr.fire.min.acquire;
-            dr.fire.min.release = sr.fire.min.release;
-          } else {
-            dr.fire.min = null;
-          }
+          t.id = turretIdToCode(src.config.id);
           t.angular.rot = qRot(src.rotation);
           t.angular.vel = qRot(src.angularVelocity);
-          t.angular.acc = src.turnAccel;
-          t.angular.drag = src.drag;
           t.angular.pitch = qRot(src.pitch);
           dst.targetId = src.target ?? undefined;
           dst.state = turretStateToCode(src.state);

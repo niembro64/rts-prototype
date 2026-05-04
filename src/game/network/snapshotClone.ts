@@ -12,6 +12,7 @@ import type {
   NetworkServerSnapshotTurret,
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkTypes';
+import { PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN } from '@/types/network';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -45,26 +46,12 @@ function cloneAction(a: NetworkServerSnapshotAction): NetworkServerSnapshotActio
 }
 
 function cloneTurret(t: NetworkServerSnapshotTurret): NetworkServerSnapshotTurret {
-  const tr = t.turret.ranges.tracking;
-  const fmin = t.turret.ranges.fire.min;
   return {
     turret: {
       id: t.turret.id,
-      ranges: {
-        tracking: tr ? { acquire: tr.acquire, release: tr.release } : null,
-        fire: {
-          min: fmin ? { acquire: fmin.acquire, release: fmin.release } : null,
-          max: {
-            acquire: t.turret.ranges.fire.max.acquire,
-            release: t.turret.ranges.fire.max.release,
-          },
-        },
-      },
       angular: {
         rot: t.turret.angular.rot,
         vel: t.turret.angular.vel,
-        acc: t.turret.angular.acc,
-        drag: t.turret.angular.drag,
         pitch: t.turret.angular.pitch,
       },
     },
@@ -94,7 +81,6 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       bodyCenterHeight: e.unit.bodyCenterHeight,
       mass: e.unit.mass,
       velocity: { x: e.unit.velocity.x, y: e.unit.velocity.y, z: e.unit.velocity.z },
-      turretRotation: e.unit.turretRotation,
       isCommander: e.unit.isCommander,
       buildTargetId: e.unit.buildTargetId,
       actions: e.unit.actions?.map(cloneAction),
@@ -122,6 +108,8 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       type: e.shot.type,
       source: e.shot.source,
       turretId: e.shot.turretId,
+      shotId: e.shot.shotId,
+      sourceTurretId: e.shot.sourceTurretId,
       turretIndex: e.shot.turretIndex,
       velocity: e.shot.velocity ? { x: e.shot.velocity.x, y: e.shot.velocity.y, z: e.shot.velocity.z } : undefined,
     } : undefined,
@@ -170,6 +158,8 @@ function cloneSpawn(s: NetworkServerSnapshotProjectileSpawn): NetworkServerSnaps
     projectileType: s.projectileType,
     maxLifespan: s.maxLifespan,
     turretId: s.turretId,
+    shotId: s.shotId,
+    sourceTurretId: s.sourceTurretId,
     playerId: s.playerId,
     sourceEntityId: s.sourceEntityId,
     turretIndex: s.turretIndex,
@@ -312,29 +302,8 @@ function copyTurretInto(
   dst: NetworkServerSnapshotTurret,
 ): NetworkServerSnapshotTurret {
   dst.turret.id = src.turret.id;
-  // Tracking shell — null when the turret only uses fire range.
-  if (src.turret.ranges.tracking) {
-    dst.turret.ranges.tracking = dst.turret.ranges.tracking ?? { acquire: 0, release: 0 };
-    dst.turret.ranges.tracking.acquire = src.turret.ranges.tracking.acquire;
-    dst.turret.ranges.tracking.release = src.turret.ranges.tracking.release;
-  } else {
-    dst.turret.ranges.tracking = null;
-  }
-  // Fire envelope max — always present.
-  dst.turret.ranges.fire.max.acquire = src.turret.ranges.fire.max.acquire;
-  dst.turret.ranges.fire.max.release = src.turret.ranges.fire.max.release;
-  // Fire envelope min — null when no dead zone.
-  if (src.turret.ranges.fire.min) {
-    dst.turret.ranges.fire.min = dst.turret.ranges.fire.min ?? { acquire: 0, release: 0 };
-    dst.turret.ranges.fire.min.acquire = src.turret.ranges.fire.min.acquire;
-    dst.turret.ranges.fire.min.release = src.turret.ranges.fire.min.release;
-  } else {
-    dst.turret.ranges.fire.min = null;
-  }
   dst.turret.angular.rot = src.turret.angular.rot;
   dst.turret.angular.vel = src.turret.angular.vel;
-  dst.turret.angular.acc = src.turret.angular.acc;
-  dst.turret.angular.drag = src.turret.angular.drag;
   dst.turret.angular.pitch = src.turret.angular.pitch;
   dst.targetId = src.targetId;
   dst.state = src.state;
@@ -345,12 +314,8 @@ function copyTurretInto(
 function createReusableTurret(): NetworkServerSnapshotTurret {
   return {
     turret: {
-      id: '',
-      ranges: {
-        tracking: null,
-        fire: { min: null, max: { acquire: 0, release: 0 } },
-      },
-      angular: { rot: 0, vel: 0, acc: 0, drag: 0, pitch: 0 },
+      id: TURRET_ID_UNKNOWN,
+      angular: { rot: 0, vel: 0, pitch: 0 },
     },
     state: 0,
   };
@@ -380,7 +345,6 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
   dst.velocity.z = src.velocity.z;
-  dst.turretRotation = src.turretRotation;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
 
@@ -468,13 +432,15 @@ function copyBuildingInto(
 }
 
 function createReusableShot(): ReusableEntityShot {
-  return { type: 0, source: 0 };
+  return { type: PROJECTILE_TYPE_UNKNOWN, source: 0 };
 }
 
 function copyShotInto(src: ReusableEntityShot, dst: ReusableEntityShot): ReusableEntityShot {
   dst.type = src.type;
   dst.source = src.source;
   dst.turretId = src.turretId;
+  dst.shotId = src.shotId;
+  dst.sourceTurretId = src.sourceTurretId;
   dst.turretIndex = src.turretIndex;
   if (src.velocity) {
     if (!dst.velocity) dst.velocity = { x: 0, y: 0, z: 0 };
@@ -599,8 +565,10 @@ function createReusableSpawn(): NetworkServerSnapshotProjectileSpawn {
     pos: { x: 0, y: 0, z: 0 },
     rotation: 0,
     velocity: { x: 0, y: 0, z: 0 },
-    projectileType: 0,
-    turretId: '',
+    projectileType: PROJECTILE_TYPE_UNKNOWN,
+    turretId: TURRET_ID_UNKNOWN,
+    shotId: undefined,
+    sourceTurretId: undefined,
     playerId: 1,
     sourceEntityId: 0,
     turretIndex: 0,
@@ -623,6 +591,8 @@ function copySpawnInto(
   dst.projectileType = src.projectileType;
   dst.maxLifespan = src.maxLifespan;
   dst.turretId = src.turretId;
+  dst.shotId = src.shotId;
+  dst.sourceTurretId = src.sourceTurretId;
   dst.playerId = src.playerId;
   dst.sourceEntityId = src.sourceEntityId;
   dst.turretIndex = src.turretIndex;
