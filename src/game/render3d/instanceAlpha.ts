@@ -26,14 +26,24 @@ import * as THREE from 'three';
 const _PATCHED_MATERIALS = new WeakSet<THREE.Material>();
 
 /** Patch a Material to read a per-instance `instanceAlpha` attribute
- *  and use it as a multiplier on the fragment alpha. Idempotent. */
+ *  and use it as a DITHERED-DISCARD threshold. Each fragment with
+ *  `instanceAlpha < 1` may be discarded probabilistically based on a
+ *  position-stable hash of its screen coordinate; fragments with
+ *  `instanceAlpha == 1` always pass through.
+ *
+ *  Why dither and not alpha blending: alpha blending would force the
+ *  shared material into THREE's transparent render pass with
+ *  depthWrite OFF for ALL instances — even fully-opaque "complete"
+ *  units. The result is z-fighting between completed units (they all
+ *  draw in slot order, ignoring depth) and faint translucency
+ *  artifacts on completed units. Dither lets the material stay opaque
+ *  + depthWrite ON, so completed units render correctly while shells
+ *  appear semi-transparent through fragment discard. Idempotent. */
 export function enableInstanceAlphaOnMaterial(material: THREE.Material): void {
   if (_PATCHED_MATERIALS.has(material)) return;
   _PATCHED_MATERIALS.add(material);
-  material.transparent = true;
-  // depthWrite off so half-built shells don't punch a hole in the
-  // depth buffer that fully-built neighbours then clip against.
-  material.depthWrite = false;
+  // Material stays opaque-by-default — see header comment for why we
+  // intentionally don't flip `transparent` / `depthWrite` here.
 
   const previousOnBefore = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
@@ -44,31 +54,32 @@ export function enableInstanceAlphaOnMaterial(material: THREE.Material): void {
         '#include <begin_vertex>',
         '#include <begin_vertex>\n  vInstanceAlpha = instanceAlpha;',
       );
-    // THREE 0.184 uses `<opaque_fragment>` (older versions used
-     // `<output_fragment>`). Replace whichever chunk is present so the
-     // alpha multiplier lands AFTER the material has finalised
-     // `gl_FragColor`. Both chunks are unique to MeshLambert / Standard
-     // / Basic / Phong / Matcap fragment templates so collateral with
-     // non-instanced materials is impossible.
+    // Dithered-discard fragment pass. Hash the screen coordinate to a
+    // pseudo-random [0..1] threshold; if `vInstanceAlpha` falls below
+    // it, discard. For instances at alpha=1 the comparison is always
+    // true (1 >= h) so nothing discards — completed units render fully
+    // opaque, write depth, and sort correctly with each other.
     shader.fragmentShader =
       'varying float vInstanceAlpha;\n' + shader.fragmentShader;
+    const ditherSnippet =
+      '  {\n'
+      + '    float _shellH = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);\n'
+      + '    if (vInstanceAlpha < _shellH) discard;\n'
+      + '  }\n';
     if (shader.fragmentShader.includes('#include <opaque_fragment>')) {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <opaque_fragment>',
-        '#include <opaque_fragment>\n  gl_FragColor.a *= vInstanceAlpha;',
+        ditherSnippet + '#include <opaque_fragment>',
       );
     } else if (shader.fragmentShader.includes('#include <output_fragment>')) {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <output_fragment>',
-        '#include <output_fragment>\n  gl_FragColor.a *= vInstanceAlpha;',
+        ditherSnippet + '#include <output_fragment>',
       );
     } else {
-      // Last-ditch fallback: append before the final closing brace of
-      // main(). Avoids silently producing fully-opaque shells if the
-      // shader template ever changes again.
       shader.fragmentShader = shader.fragmentShader.replace(
-        /\}\s*$/,
-        '  gl_FragColor.a *= vInstanceAlpha;\n}',
+        'void main() {',
+        'void main() {\n' + ditherSnippet,
       );
     }
   };

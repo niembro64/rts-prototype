@@ -100,12 +100,11 @@ vec3 objectNormal = normalize(
 
 function makeInstancedLegMaterial(color: number): THREE.MeshLambertMaterial {
   const material = new THREE.MeshLambertMaterial({ color });
-  // Same per-instance alpha story as the chassis / turret InstancedMeshes
-  // — patches the fragment shader to multiply gl_FragColor.a by the
-  // per-leg-slot `instanceAlpha` so a unit shell's legs render at
-  // SHELL_OPACITY along with everything else.
-  material.transparent = true;
-  material.depthWrite = false;
+  // Per-leg-slot `instanceAlpha` drives a dithered-discard so completed
+  // units' legs stay fully opaque (depthWrite + opaque pass) and shell
+  // legs read as semi-transparent without dragging the shared material
+  // into the transparent render queue. See instanceAlpha.ts for the
+  // rationale. Material stays opaque + depthWrite=true.
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
@@ -122,7 +121,11 @@ function makeInstancedLegMaterial(color: number): THREE.MeshLambertMaterial {
     shader.fragmentShader =
       'varying float vInstanceAlpha;\n' + shader.fragmentShader.replace(
         '#include <opaque_fragment>',
-        '#include <opaque_fragment>\n  gl_FragColor.a *= vInstanceAlpha;',
+        '  {\n'
+        + '    float _shellH = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);\n'
+        + '    if (vInstanceAlpha < _shellH) discard;\n'
+        + '  }\n'
+        + '#include <opaque_fragment>',
       );
   };
   return material;
