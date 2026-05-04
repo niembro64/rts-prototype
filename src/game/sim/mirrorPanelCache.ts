@@ -21,23 +21,24 @@ import type { UnitBlueprint } from '../../types/blueprints';
 import { getTurretBlueprint } from './blueprints';
 
 /** Forward arm length (from turret body center to panel center) as a
- *  multiple of unit bodyRadius. 1.0 puts the panel center at the body
- *  edge — visually the arm clears the body sphere and the panel sits
- *  flush against the body's outer surface. */
-export const MIRROR_ARM_LENGTH_FRAC = 1.0;
+ *  multiple of unit bodyRadius. 1.0 puts the panel center at the
+ *  body edge; bigger values stretch the arm further out. Bumped up
+ *  to 5 as a debug knob — the longer the arm, the more visible the
+ *  rigid yaw + pitch sweep is, which makes it obvious whether the
+ *  ball-joint math (MirrorAimSolver, MirrorPanelHit, the renderer's
+ *  single-quaternion root rotation) all agree on where the panel
+ *  ends up in 3D. Dial back when you're done verifying. */
+export const MIRROR_ARM_LENGTH_FRAC = 5.0;
 
 /** Mirror panel size multiplier. Scales BOTH the sim collision
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
  *  Render3DEntities reads `mirrorPanels[0].halfWidth` directly so a
  *  bump here flows through to the visual panel without any other
- *  edit. 1.0 = legacy "panel side = 2 × bodyRadius"; 2.0 = doubles
- *  every linear dimension (4× area), the current value the user
- *  asked for. The arm length doesn't scale with this — the panel
- *  center still sits at the body's outer edge — so a >1 multiplier
- *  intentionally lets the panel near-edge cross into the body
- *  silhouette, which is what gives the bigger panel its extra reach
- *  without floating off into space. */
-export const MIRROR_PANEL_SIZE_MULT = 2.0;
+ *  edit. 1.0 = legacy "panel side = 2 × bodyRadius". Cranked to 4
+ *  for the same debug-visibility reason as MIRROR_ARM_LENGTH_FRAC:
+ *  a panel that's 8 × bodyRadius on a side is impossible to miss
+ *  during yaw / pitch sweeps. */
+export const MIRROR_PANEL_SIZE_MULT = 4.0;
 
 /** Mutates `panelsOut` (push), returns the bound radius the caller
  *  should assign to `unit.mirrorBoundRadius`. Returns 0 when the
