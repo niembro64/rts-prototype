@@ -26,6 +26,7 @@ export const harmonicSeriesBaseMultipler = 32;
 
 export type { SynthId, SoundEntry } from './types/audio';
 import type { SynthId, SoundEntry } from './types/audio';
+import type { ShotId, TurretId, UnitTypeId } from './types/blueprintIds';
 
 // Beam sound entries. Previously this generated one variant per
 // harmonic-series index so the widow's four beams played a chord;
@@ -33,7 +34,7 @@ import type { SynthId, SoundEntry } from './types/audio';
 // so the per-index variation is no longer needed. Keeps a single
 // canonical entry plus a beefier megaBeam pair for the megaBeamTurret.
 const _beamPlaySpeed = harmonicSeries[8] / harmonicSeries[6];
-const _beamFire: Record<string, SoundEntry> = {
+const _beamFire = {
   beamTurret: {
     synth: 'laser-zap' as SynthId,
     volume: 0.2,
@@ -45,22 +46,8 @@ const _beamFire: Record<string, SoundEntry> = {
     volume: 0.35,
     playSpeed: harmonicSeries[8] / harmonicSeries[1],
   },
-};
-const _beamLaser: Record<string, SoundEntry> = {
-  beamTurret: {
-    synth: 'beam-hum' as SynthId,
-    volume: 1.0,
-    playSpeed: 1,
-    freq: harmonicSeriesBaseMultipler / harmonicSeries[6],
-  },
-  megaBeamTurret: {
-    synth: 'beam-hum' as SynthId,
-    volume: 1.2,
-    playSpeed: 1,
-    freq: harmonicSeriesBaseMultipler / harmonicSeries[1],
-  },
-};
-const _beamHit: Record<string, SoundEntry> = {
+} satisfies Partial<Record<TurretId, SoundEntry>>;
+const _beamHit = {
   beamShot: {
     synth: 'sizzle' as SynthId,
     volume: 1.0,
@@ -71,7 +58,7 @@ const _beamHit: Record<string, SoundEntry> = {
     volume: 1.4,
     playSpeed: harmonicSeries[8] / harmonicSeries[1],
   },
-};
+} satisfies Partial<Record<ShotId, SoundEntry>>;
 
 export const AUDIO = {
   masterVolume: 0.99, // Global master gain (applied to AudioContext destination)
@@ -129,12 +116,7 @@ export const AUDIO = {
         volume: 0.3,
         playSpeed: 0.7,
       },
-    } as Record<string, SoundEntry>,
-
-    // Per-turret laser/continuous weapon start sounds
-    laser: {
-      ..._beamLaser,
-    } as Record<string, SoundEntry>,
+    } satisfies Partial<Record<TurretId, SoundEntry>>,
 
     // Per-projectile hit sounds
     hit: {
@@ -147,7 +129,7 @@ export const AUDIO = {
       laserShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },
       ..._beamHit,
       disruptorShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 1.0 },
-    } as Record<string, SoundEntry>,
+    } satisfies Record<ShotId, SoundEntry>,
 
     // Per-unit death sounds
     death: {
@@ -164,7 +146,7 @@ export const AUDIO = {
       commander: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       hippo: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       loris: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-    } as Record<string, SoundEntry>,
+    } satisfies Record<UnitTypeId, SoundEntry>,
   },
 
   // ==================== CONTINUOUS SOUNDS ====================

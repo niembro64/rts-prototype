@@ -8,11 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   4) DEAD CODE
   ---------------------------------------------------
 
-  [MEDIUM] src/types/blueprints.ts:262 `audio?.laserSound` is set on
-    beamTurret + megaBeamTurret blueprints (turrets.ts:365, :393) but
-    never read anywhere. AudioManager.ts:92 only reads
-    `audio?.fireSound`. Also kills the AUDIO.event.laser.* entries in
-    audioConfig.ts.
   [MEDIUM] src/types/sim.ts:165 `CachedMirrorPanel.halfHeight` is set
     by mirrorPanelCache.ts:65 but never read; the comment at lines
     156-158 even labels it "legacy 2D thickness value… unused in 3D

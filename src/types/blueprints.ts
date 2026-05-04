@@ -268,7 +268,7 @@ export type TurretBlueprint = {
     barrier?: ForceFieldBarrierRatioConfig;
   };
   mirrorPanels?: MirrorPanel[];
-  audio?: { fireSound?: SoundEntry; laserSound?: SoundEntry };
+  audio?: { fireSound?: SoundEntry };
   /** World-space radius of this turret's spherical head. This is the
    *  blueprint-owned source of truth for both renderer head size and
    *  barrel-tip math; host unit body radius must not affect it. */

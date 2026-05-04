@@ -8,7 +8,7 @@
 import {
   SPATIAL_GRID_CELL_SIZE,
   FORCE_FIELD_TURRET,
-  FORCE_PUSH,
+  FORCE_FIELD_BARRIER,
 } from '../../../config';
 import { AUDIO } from '../../../audioConfig';
 import { isTurretId, type TurretId } from '../../../types/blueprintIds';
@@ -362,7 +362,6 @@ export const TURRET_BLUEPRINTS = {
     bodyRadius: 6,
     audio: {
       fireSound: AUDIO.event.fire.beamTurret,
-      laserSound: AUDIO.event.laser.beamTurret,
     },
   },
   // megaBeamTurret — bigger beam mount for "boss" beam units. Same
@@ -390,7 +389,6 @@ export const TURRET_BLUEPRINTS = {
     bodyRadius: 14,
     audio: {
       fireSound: AUDIO.event.fire.megaBeamTurret,
-      laserSound: AUDIO.event.laser.megaBeamTurret,
     },
   },
   // Single force-field turret used by every unit that mounts one.
@@ -420,7 +418,7 @@ export const TURRET_BLUEPRINTS = {
     forceField: {
       angle: Math.PI * 2,
       transitionTime: 500,
-      push: { ...FORCE_PUSH },
+      barrier: { ...FORCE_FIELD_BARRIER },
     },
     audio: { fireSound: AUDIO.event.fire.forceTurret },
   },
