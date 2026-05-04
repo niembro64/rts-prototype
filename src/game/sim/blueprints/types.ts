@@ -8,7 +8,6 @@
 // Re-export types that consumers need (previously re-exported from config/audio/sim modules)
 export type {
   BarrelShape,
-  MountPoint,
   ForceFieldTurretConfig,
   SpinConfig,
   SoundEntry,
@@ -17,7 +16,7 @@ export type {
 
 // Re-export all blueprint types
 export type {
-  ForceFieldZoneRatioConfig,
+  ForceFieldBarrierRatioConfig,
   ShotCollision,
   ShotExplosion,
   ProjectileShotBlueprint,
@@ -26,12 +25,12 @@ export type {
   ShotBlueprint,
   MirrorPanel,
   TurretBlueprint,
-  UnitTurretMountPoint,
+  MountOffset,
   TurretMount,
   WheelConfig,
   TreadConfig,
   LegConfig,
-  LegStyle,
+  LegLayoutEntry,
   LocomotionPhysics,
   UnitBodyShape,
   UnitBodyShapePart,

@@ -11,7 +11,7 @@ import type { TurretId } from '../../../types/blueprintIds';
 import type {
   LegLayoutEntry,
   UnitBlueprint,
-  UnitTurretMountPoint,
+  MountOffset,
   TurretMount,
   UnitBodyShape,
 } from './types';
@@ -294,12 +294,12 @@ const LORIS_MIRROR_TURRET_Z_FRAC = LORIS_BODY_CENTER_HEIGHT / 10;
 
 function turretMount(
   turretId: TurretId,
-  mount: UnitTurretMountPoint,
+  mount: MountOffset,
 ): TurretMount {
   return { turretId, mount };
 }
 
-function mountPoint(x: number, y: number, z: number): UnitTurretMountPoint {
+function mountPoint(x: number, y: number, z: number): MountOffset {
   return { x, y, z };
 }
 
@@ -307,8 +307,8 @@ function mountPoint(x: number, y: number, z: number): UnitTurretMountPoint {
 // the megaBeam centered on top of the rear abdomen segment, and the
 // force-field emitter on top of the forward head segment. Order
 // matches the `turrets` array on the widow blueprint below.
-function computeWidowMounts(): UnitTurretMountPoint[] {
-  const mounts: UnitTurretMountPoint[] = [];
+function computeWidowMounts(): MountOffset[] {
+  const mounts: MountOffset[] = [];
   const lightZ = widowTopMountedTurretZFrac(
     'lightTurret',
     WIDOW_ABDOMEN_TOP_Z_FRAC,

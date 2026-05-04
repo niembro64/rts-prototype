@@ -40,11 +40,16 @@ export type EmaMsConfig = {
 };
 
 export type KnockbackConfig = {
-  FORCE_FIELD_PULL_MULTIPLIER: number;
   SPLASH: number;
 };
 
 export type ForceFieldVisualConfig = {
+  /** 'player' makes the shield inherit the owning player's primary color. */
+  colorMode: 'player' | 'config';
+  /** Fallback used when no owning player is known or colorMode='config'. */
+  fallbackColor: number;
+  /** Idle emitter color; active pulse lerps from this toward the field color. */
+  emitterIdleColor: number;
   particleCount: number;
   particleSpeed: number;
   particleLength: number;
@@ -58,6 +63,27 @@ export type ForceFieldVisualConfig = {
   trailSegments: number;
   trailSpacing: number;
   trailFalloff: number;
+};
+
+export type ForceFieldImpactVisualConfig = {
+  /** Tangent plane burst style. More styles can be added without changing events. */
+  style: 'tangentRingPulse';
+  /** Same player/config color routing as the shield bubble. */
+  colorMode: 'player' | 'config';
+  fallbackColor: number;
+  maxImpacts: number;
+  durationMs: number;
+  ringCount: number;
+  ringSegments: number;
+  ringDelayMs: number;
+  startRadius: number;
+  endRadius: number;
+  ringInnerRadiusFrac: number;
+  ringOpacity: number;
+  coreRadiusFrac: number;
+  coreOpacity: number;
+  coreDurationFrac: number;
+  surfaceOffset: number;
 };
 
 export type ForceFieldTurretShape =
@@ -118,11 +144,6 @@ export type BarrelShape =
       barrelThickness?: number;
     }
   | { type: 'complexSingleEmitter'; grate: ForceFieldTurretConfig };
-
-export type MountPoint = {
-  x: number;
-  y: number;
-};
 
 export type MapSize = {
   width: number;

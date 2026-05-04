@@ -22,7 +22,6 @@ export type {
   ForceFieldTurretConfig,
   SpinConfig,
   BarrelShape,
-  MountPoint,
   MapSize,
 } from './types/config';
 
@@ -355,6 +354,11 @@ export const MIRROR_EXTRA_HEIGHT = 15;
  *  ~3000 wu wide and shots travel hundreds of units per second, so
  *  heavier gravity would flatten every arc into a short lob. */
 export const GRAVITY = 400;
+
+/** D-gun wave altitude above local terrain. The D-gun is no longer a
+ *  ballistic shell; it rides the terrain at this offset until its
+ *  configured lifespan expires. */
+export const DGUN_TERRAIN_FOLLOW_HEIGHT = 4;
 
 // =============================================================================
 // ECONOMY & RESOURCES

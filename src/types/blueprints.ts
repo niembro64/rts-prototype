@@ -2,7 +2,6 @@
 
 import type {
   BarrelShape,
-  MountPoint,
   ForceFieldTurretConfig,
   SpinConfig,
 } from './config';
@@ -14,7 +13,6 @@ import { isLineShotType } from './sim';
 // Re-export for consumers
 export type {
   BarrelShape,
-  MountPoint,
   ForceFieldTurretConfig,
   SpinConfig,
   SoundEntry,
@@ -175,9 +173,11 @@ export type CylinderShapeSpec = {
 /** Per-shot smoke-trail tunables. Every field is optional; the
  *  3D renderer fills in engine-wide defaults for anything omitted. */
 export type SmokeTrailSpec = {
-  /** Milliseconds between consecutive puff spawns at max LOD.
-   *  Default: 30 (~33 puffs/sec). Higher LOD → faster emission. */
-  emitIntervalMs?: number;
+  /** Render frames to skip between puff spawns for this shot at the
+   *  highest-quality cadence. The active PLAYER CLIENT LOD can only
+   *  increase this skip count; it never emits more often than the shot
+   *  blueprint allows. Default: 0 (sample every render frame at MAX). */
+  emitFramesSkip?: number;
   /** Per-puff lifespan in ms at max LOD. Default: 1400. */
   lifespanMs?: number;
   /** Sphere radius the puff is born at, world units. Default: 2.5. */
@@ -312,11 +312,12 @@ export type TurretBlueprint = {
   groundAimFraction?: number;
 };
 
-/** Chassis-local 3D turret mount, authored in body-radius fractions.
- *  x = forward, y = lateral/left, z = height above terrain. The z value
- *  is the weapon pivot / turret-head center used by both authoritative
- *  firing math and 3D rendering. */
-export type UnitTurretMountPoint = {
+/** Chassis-local 3D mount offset, authored in body-radius fractions.
+ *  x = forward, y = lateral/left, z = height above terrain. The z
+ *  component is the weapon pivot / turret-head center, used by both
+ *  authoritative firing math and 3D rendering. Wrap with `TurretMount`
+ *  when pairing the offset with a turret-id. */
+export type MountOffset = {
   x: number;
   y: number;
   z: number;
@@ -324,7 +325,7 @@ export type UnitTurretMountPoint = {
 
 export type TurretMount = {
   turretId: TurretId;
-  mount: UnitTurretMountPoint;
+  mount: MountOffset;
 };
 
 export type WheelConfig = {
