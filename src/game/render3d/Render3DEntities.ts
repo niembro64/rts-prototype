@@ -2700,14 +2700,28 @@ export class Render3DEntities {
 
         this.unitMeshes.set(e.id, m);
       } else {
-        const primaryMat = this.getPrimaryMat(pid);
-        for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
-        for (const tm of m.turrets) {
-          if (tm.head) tm.head.material = this.getPrimaryMat(pid);
-        }
-        if (m.mirrors) {
+        // Per-frame team-color refresh for the per-Mesh paths
+        // (chassis-meshes fallback, non-instanced turret heads, mirror
+        // arms). These writes would clobber the per-Mesh shell-material
+        // override that applyShellOverride installs earlier in this
+        // iteration — visible as e.g. mirror-turret arms staying team-
+        // colored on a shell unit. Skip the refresh while the entity
+        // is a shell; applyShellOverride re-runs every frame so the
+        // first frame after completion will install the original
+        // material (cached on userData) and the next refresh will
+        // touch up to the latest team color.
+        const isShellState = !!(
+          e.buildable && !e.buildable.isComplete && !e.buildable.isGhost
+        );
+        if (!isShellState) {
           const primaryMat = this.getPrimaryMat(pid);
-          for (const arm of m.mirrors.arms) arm.material = primaryMat;
+          for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
+          for (const tm of m.turrets) {
+            if (tm.head) tm.head.material = this.getPrimaryMat(pid);
+          }
+          if (m.mirrors) {
+            for (const arm of m.mirrors.arms) arm.material = primaryMat;
+          }
         }
       }
       m.chassis.visible = fullUnitDetail && !m.hideChassis;
