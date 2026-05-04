@@ -680,8 +680,12 @@ export class Render3DEntities {
   ): void {
     if (!mesh.instanceColor || maxSlot < minSlot) return;
     const attr = mesh.instanceColor;
+    // Color writes are sparse compared to transform writes. Avoid
+    // partial instanceColor uploads: several Windows/ANGLE stacks have
+    // shown stale per-instance color data when a white shared material
+    // is recolored through update ranges. Uploading the full color
+    // buffer only on actual owner/color changes is the more stable path.
     attr.clearUpdateRanges();
-    attr.addUpdateRange(minSlot * 3, (maxSlot - minSlot + 1) * 3);
     attr.needsUpdate = true;
   }
 
