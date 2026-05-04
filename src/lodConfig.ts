@@ -443,6 +443,18 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 0,
   },
 
+  // Smoke puff emission cadence — render frames skipped between
+  // rocket trail samples. Frame-count gating gives stable visual
+  // spacing per LOD and avoids time-accumulator backlog bursts after
+  // slow frames.
+  SMOKE_TRAIL_FRAMES_SKIP: {
+    min: 7,
+    low: 5,
+    medium: 3,
+    high: 1,
+    max: 0,
+  },
+
   // Projectile (shot) rendering style
   // 'dot': 1 circle, 'core': 2 circles, 'trail': core + history trail,
   // 'glow': trail + glow ring + dots, 'full': glow + pulsing halo + contrails
@@ -500,15 +512,5 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     medium: 'shatter',
     high: 'detonate',
     max: 'obliterate',
-  },
-
-  // Force field visual style
-  // 'minimal': faint fill only, 'simple': fill + particles, 'enhanced': fill + particles + arcs
-  FORCE_FIELD_STYLE: {
-    min: 'minimal',
-    low: 'minimal',
-    medium: 'minimal',
-    high: 'simple',
-    max: 'enhanced',
   },
 } as const satisfies GraphicsDetailConfig;

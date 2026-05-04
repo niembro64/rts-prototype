@@ -3,7 +3,6 @@ import type {
   UnitShape,
   LegStyle,
   BeamStyle,
-  ForceFieldStyle,
   ProjectileStyle,
   FireExplosionStyle,
   DeathExplosionStyle,
@@ -93,11 +92,11 @@ export type GraphicsDetailConfig = {
   BARREL_SPIN: LodTierMap<boolean>;
   BURN_MARK_ALPHA_CUTOFF: LodTierMap<number>;
   BURN_MARK_FRAMES_SKIP: LodTierMap<number>;
+  SMOKE_TRAIL_FRAMES_SKIP: LodTierMap<number>;
   PROJECTILE_STYLE: LodTierMap<ProjectileStyle>;
   FIRE_EXPLOSION_STYLE: LodTierMap<FireExplosionStyle>;
   MATERIAL_EXPLOSION_STYLE: LodTierMap<DeathExplosionStyle>;
   MATERIAL_EXPLOSION_PIECE_BUDGET: LodTierMap<number>;
   MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP: LodTierMap<number>;
   DEATH_EXPLOSION_STYLE: LodTierMap<DeathExplosionStyle>;
-  FORCE_FIELD_STYLE: LodTierMap<ForceFieldStyle>;
 };

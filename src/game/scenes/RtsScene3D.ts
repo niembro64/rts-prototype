@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
+import { isUnitTypeId } from '@/types/blueprintIds';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import { SnapshotBuffer } from './helpers/SnapshotBuffer';
 import {
@@ -49,6 +50,7 @@ import type { FootprintBounds, FootprintQuad } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
 import { Explosion3D } from '../render3d/Explosion3D';
+import { ForceFieldImpactRenderer3D } from '../render3d/ForceFieldImpactRenderer3D';
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
@@ -212,6 +214,7 @@ export class RtsScene3D {
   private metalDepositRenderer: MetalDepositRenderer3D | null = null;
   private waterRenderer!: WaterRenderer3D;
   private explosionRenderer!: Explosion3D;
+  private forceFieldImpactRenderer!: ForceFieldImpactRenderer3D;
   private debrisRenderer!: Debris3D;
   /** Per-frame world-XY visibility footprint driven by the PLAYER
    *  CLIENT `RENDER: WIN/PAD/ALL` toggle. Populated each frame from
@@ -355,6 +358,7 @@ export class RtsScene3D {
     wind: undefined,
   };
   private _lineProjectilesScratch: Entity[] = [];
+  private _burnMarkProjectilesScratch: Entity[] = [];
   private _smokeTrailProjectilesScratch: Entity[] = [];
 
   // Snapshot-arrival tracking for snap-rate EMA
@@ -693,6 +697,7 @@ export class RtsScene3D {
       getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight)
     );
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
+    this.forceFieldImpactRenderer = new ForceFieldImpactRenderer3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(
       this.threeApp.world,
       (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
@@ -1026,9 +1031,11 @@ export class RtsScene3D {
       this.fireExplosionAccumMs = 0;
       this.debrisAccumMs = 0;
     }
+    this.forceFieldImpactRenderer.update(effectDt);
     this.burnMarkAccumMs += effectDt;
     if (updateEffectsThisFrame) {
-      this.burnMarkRenderer.update(lineProjectiles, this.burnMarkAccumMs);
+      const burnMarkProjectiles = this.clientViewState.collectBurnMarkProjectiles(this._burnMarkProjectilesScratch);
+      this.burnMarkRenderer.update(burnMarkProjectiles, this.burnMarkAccumMs);
       this.burnMarkAccumMs = 0;
     }
     // Commander build/heal spray comes from sim state; factory unit
@@ -1053,7 +1060,12 @@ export class RtsScene3D {
     // fade completes.
     this.smokeTrailAccumMs += effectDt;
     if (updateEffectsThisFrame) {
-      this.smokeTrailRenderer.update(smokeTrailProjectiles, this.smokeTrailAccumMs, this.renderScope);
+      this.smokeTrailRenderer.update(
+        smokeTrailProjectiles,
+        this.smokeTrailAccumMs,
+        this.renderFrameIndex,
+        this.renderScope,
+      );
       this.smokeTrailAccumMs = 0;
     }
     // Input selection-change bookkeeping is handled when local
@@ -1085,11 +1097,7 @@ export class RtsScene3D {
     // renderer its cached subset instead of asking every normal unit
     // to run the force-field branch. Health bars still walk broad
     // entity lists because HP/build progress are dynamic per snapshot.
-    this.forceFieldRenderer.beginFrame(
-      graphicsConfig,
-      renderLod,
-      this.renderLodGrid,
-    );
+    this.forceFieldRenderer.beginFrame(graphicsConfig);
     if (this.clientViewState.getServerMeta()?.forceFieldsEnabled ?? true) {
       for (const u of this.clientViewState.getForceFieldUnits()) {
         this.forceFieldRenderer.perUnit(u);
@@ -1124,13 +1132,10 @@ export class RtsScene3D {
       this.healthBar3D.endFrame();
     }
 
-    // Player-name labels above commanders. Powered by the same
-    // ClientViewState.getUnits() walk the rest of the per-unit
-    // renderers iterate; the resolver returns null for non-commander
-    // units so most calls are a one-Map-lookup no-op. Same fallback
-    // story as the rest of the renderer — if no roster lookup was
-    // wired up, getDefaultPlayerName(pid) gives a stable funny name
-    // keyed by player id.
+    // Entity labels: commanders show player names, selected units and
+    // buildings show their blueprint names. Same fallback story as the
+    // rest of the renderer — if no roster lookup was wired up,
+    // getDefaultPlayerName(pid) gives a stable name keyed by player id.
     if (this.nameLabel3D) {
       this.nameLabel3D.beginFrame(hudFrustum);
       const lookup = (pid: PlayerId): string | null =>
@@ -1407,6 +1412,7 @@ export class RtsScene3D {
    *   - 'hit'              → fire explosion at event.pos
    *   - 'projectileExpire' → smaller fire explosion (projectile reached max
    *                          range or hit the ground)
+   *   - 'forceFieldImpact' → tangent-plane force-field shield flash
    *   - 'death'            → fire explosion + material debris cluster
    *
    * laserStart/Stop and forceFieldStart/Stop need no visual reaction here —
@@ -1475,6 +1481,17 @@ export class RtsScene3D {
         undefined,
         effectGfx.fireExplosionStyle,
       );
+    } else if (event.type === 'forceFieldImpact') {
+      const ctx = event.forceFieldImpact;
+      if (ctx) {
+        this.forceFieldImpactRenderer.spawn(
+          event.pos.x,
+          event.pos.y,
+          event.pos.z,
+          ctx.normal,
+          ctx.playerId,
+        );
+      }
     } else if (event.type === 'death') {
       // Some kill paths (splash, bleed-out, force-field zone damage) emit
       // a death event with no deathContext. Rather than skipping the
@@ -1512,7 +1529,9 @@ export class RtsScene3D {
           pushRadius,
           baseZ: ent.unit ? getUnitGroundZ(ent) : ent.transform.z - pushRadius,
           color: tcol,
-          unitType: ent.unit?.unitType,
+          unitType: ent.unit?.unitType && isUnitTypeId(ent.unit.unitType)
+            ? ent.unit.unitType
+            : undefined,
           rotation: ent.transform.rotation,
         };
       }
@@ -1940,6 +1959,7 @@ export class RtsScene3D {
     this.captureTileRenderer?.destroy();
     this.waterRenderer?.destroy();
     this.explosionRenderer?.destroy();
+    this.forceFieldImpactRenderer?.destroy();
     this.debrisRenderer?.destroy();
     this.burnMarkRenderer?.destroy();
     this.lineDragRenderer?.destroy();

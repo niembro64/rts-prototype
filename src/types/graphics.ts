@@ -9,7 +9,6 @@ export type GraphicsQuality = AutoGraphicsQuality | ConcreteGraphicsQuality;
 export type RenderMode = 'window' | 'padded' | 'all';
 
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
-export type ForceFieldStyle = 'minimal' | 'simple' | 'normal' | 'enhanced';
 export type ProjectileStyle = 'dot' | 'core' | 'trail' | 'glow' | 'full';
 export type FireExplosionStyle =
   | 'flash'
@@ -92,7 +91,7 @@ export type GraphicsConfig = {
   antialias: boolean;
   burnMarkAlphaCutoff: number;
   burnMarkFramesSkip: number;
-  forceFieldStyle: ForceFieldStyle;
+  smokeTrailFramesSkip: number;
   projectileStyle: ProjectileStyle;
   fireExplosionStyle: FireExplosionStyle;
   materialExplosionStyle: DeathExplosionStyle;
