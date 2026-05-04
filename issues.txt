@@ -4,4 +4,273 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
   Findings
 
-  None.
+  ---------------------------------------------------
+  1) DUPLICATE PREDICATES / HELPERS
+  ---------------------------------------------------
+
+  [HIGH] `(isProjectileShot(shot) && shot.ignoresGravity === true)` is
+    re-implemented in 6 places:
+      - src/game/network/ClientViewState.ts:1771, :1848, :1877
+      - src/game/sim/combat/projectileSystem.ts:257, :651, :704
+    Semantic = "shot doesn't follow ballistic arc / rocket-class".
+    Lift to `isRocketLikeShot(shot)` predicate next to
+    `isProjectileShot` in types/sim.ts. Drift risk: a future shot
+    type that also ignoresGravity will quietly miss the rocket
+    branch in any one place if added piecemeal.
+
+  [HIGH] `isLineShot` predicate is bypassed at
+    src/game/math/BarrelGeometry.ts:174 — open-codes
+    `shot.type === 'beam' || shot.type === 'laser'`. The whole point
+    of LINE_SHOT_TYPES is centralization. Replace with isLineShot(shot)
+    so a future third reflectable shot type doesn't drop barrel-
+    diameter inheritance.
+
+  [HIGH] `e.commander !== undefined` predicate spread across 6+ files:
+      - src/game/render3d/Render3DEntities.ts:2398, :2593
+      - src/game/render3d/Input3DManager.ts:307, :314
+      - src/game/scenes/RtsScene3D.ts:1234
+      - src/game/scenes/helpers/UIUpdateManager.ts:68, :70
+      - src/game/network/stateSerializer.ts:1227
+    Add `isCommander(entity): boolean` to combat/combatUtils.ts.
+    Drift risk: switching the predicate to (commander && !isDying)
+    only catches some sites.
+
+  [MEDIUM] `Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x)` and the
+    surrounding 3-iteration `tip = getBarrelTip; resolveTargetAimPoint;
+    yaw = atan2(...)` chain appears identically in two solvers in
+    src/game/sim/combat/aimSolver.ts (lines ~102-112 and ~136-142).
+    Lift to `iterateMuzzleAim(target, mountX,Y,Z, currentPitch,
+    config, out)` returning `{ tip, yaw }`.
+
+  [MEDIUM] `unit.transform.z - unit.unit.bodyCenterHeight` open-coded
+    at src/game/sim/combat/turretSystem.ts:54. Should use
+    `getUnitGroundZ(unit)` from sim/unitGeometry.ts (the rest of the
+    codebase already does).
+
+  [MEDIUM] Local `clamp` reimplementation at
+    src/game/sim/combat/aimSolver.ts:41-43. MathHelpers.ts already
+    exports `clamp`; aimSolver should import it.
+
+  [MEDIUM] Hex-int → 0..1 RGB conversion duplicated across 8+ files.
+    Pattern `((hex >> 16) & 0xff) / 255` etc. at:
+      - src/game/render3d/SprayRenderer3D.ts:220-222
+      - src/game/render3d/Explosion3D.ts:203-205
+      - src/game/render3d/Debris3D.ts:108-110, :1023-1025
+      - src/game/render3d/Render3DEntities.ts:113-115
+      - src/game/render3d/Waypoint3D.ts:241-243, :270-272, :298-300
+      - src/game/render3d/SmokeTrail3D.ts:340-342
+      - src/game/render3d/ForceFieldRenderer3D.ts:431-433, :456-458
+    Lift `hexToRgb01(hex: number): { r, g, b }` (and an array-write
+    variant for instance buffers) into a shared colorUtils.ts.
+    Render3DEntities already has a sibling `hexStringToRgb` for the
+    string form — co-locate them.
+
+  [MEDIUM] Mirror arm-direction unit vector recomputed at the call
+    site instead of via the canonical helper. MirrorPanelHit.ts:74-79
+    and :112-114 open-code `(yawCos × cosPitch, yawSin × cosPitch,
+    sinPitch)`, the same arm direction `getMirrorPanelCenter` (in
+    mirrorPanelCache.ts) computes internally. Export
+    `getMirrorArmDirection(yaw, pitch, out)` so the panel normal in
+    findClosestPanelHit can't drift from getMirrorPanelCenter's arm.
+
+  [MEDIUM] Per-barrel orbit-angle math `((idx + 0.5) / n) * 2π` is
+    duplicated at TurretMesh3D.ts:231-235, :247-254 and
+    BarrelGeometry.ts:256, :278-283. Local frames differ (renderer
+    YZ vs sim firing-frame) but the angular step is identical. Pull
+    the angle helper into BarrelGeometry as a one-liner export.
+
+  ---------------------------------------------------
+  2) CROSS-FILE INCONSISTENCIES / SHARED-HELPER GAPS
+  ---------------------------------------------------
+
+  [HIGH] Per-frame shower-update loop duplicated 3× across the
+    construction emitters in Render3DEntities.ts:
+      - updateCommanderEmitter:3899-3910 (active path)
+      - updateFactoryConstructionRig:3993-4001 (inactive-fade path)
+      - updateFactoryConstructionRig:4010-4021 (active path)
+    All iterate rig.showers[0..3) and write the same
+    `shower.scale.set(rig.showerRadius, h, rig.showerRadius)` +
+    `shower.position.y = rig.pylonBaseY + h/2` after gating on
+    `r < 0.01`. Lift to `applyShowerFromSmoothedRates(rig, smoothed)`.
+
+  [HIGH] Per-pylon spray emission loop duplicated. Same file
+    lines 3915-3948 (commander) and 4086-4117 (factory). Both walk
+    rig.pylonTopsLocal[0..3), gate on `rate < 0.05`, project the
+    pylon-top into world via `applyMatrix4(group.matrixWorld)`,
+    acquire a spray, and set the same 13 fields. Lift to
+    `emitPylonResourceSprays(rig, group, smoothed, sourceEntity,
+    targetWorld, targetRadius)`.
+
+  [HIGH] EMA-blend update of smoothed rates duplicated at
+    Render3DEntities.ts:3894-3896 (commander) and :3981-3983
+    (factory). One-liner `blendSmoothedRates(smoothed, e, m, t,
+    alpha)`.
+
+  [HIGH] Mirror arm/frame geometry hard-coded twice with raw magic
+    numbers. MirrorMesh3D.ts:94-113 and Debris3D.ts:804-808 both
+    compute `frameThickness = max(panelHalfSide × 0.055, 0.25)`,
+    `frameDepth = max(panelHalfSide × 0.075, 0.34)`,
+    `frameSegmentLength = side / 3`,
+    `frameZ = panelHalfSide + frameThickness/2`,
+    `armAnchorX = max(panelArmLength - frameDepth/2, 0.1)`. The
+    constants 0.055 / 0.075 / 0.25 / 0.34 should be a single
+    MIRROR_FRAME_GEOMETRY block in mirrorPanelCache.ts (next to
+    MIRROR_PANEL_SIZE_MULT) exposed as
+    `getMirrorFrameGeometry(panelHalfSide, panelArmLength)`. Drift
+    risk is exactly what already bit Debris3D twice.
+
+  [HIGH] Mirror-panel pivot Z is computed two different ways across
+    sim sites. MirrorPanelHit.ts:100 uses
+    `unitGroundZ + (panel.baseY + panel.topY) / 2` (upright midpoint).
+    MirrorAimSolver.ts:102-107 uses `resolveWeaponWorldMount` (slope-
+    tilt-aware). The mirrorPanelCache.ts comment calls this out as
+    intentional, but verify on steep slopes — the panel hit-test will
+    use upright Z while the live aim uses the slope-tilted Z. At
+    minimum, fold both into the cache so a future unification is
+    trivial.
+
+  [HIGH] Commander build sprays emitted by BOTH sim AND renderer.
+    Sim: src/game/sim/commanderAbilities.ts:48-58 pushes a SprayTarget
+    using `commander * 0.42 forward + 1.75 up` (the previous central
+    nozzle position — geometry is now meaningless). Renderer:
+    Render3DEntities.ts:3915-3948 emits 3 per-pylon sprays for the
+    same commander build. They overlap visually for any active build
+    target. Pick one — likely move build sprays render-side (cheaper
+    wire, matches the factory) and keep heal sprays sim-side.
+
+  [MEDIUM] `build.progress` is shipped on the wire AND derivable
+    client-side from `paid + required`. types/network.ts:495-503,
+    514-525 ships build.progress per snapshot; the only client read
+    (ClientViewState.ts:124, :137) seeds healthBuildFraction = sim's
+    getBuildFraction(buildable) — exactly what the client could
+    compute from already-shipped `paid` + `required`. Saves a few
+    bytes per shell per snapshot AND removes the "what if these
+    disagree?" question.
+
+  ---------------------------------------------------
+  3) OPTIMIZATION TARGETS
+  ---------------------------------------------------
+
+  [MEDIUM] updateConstructionTowerSpin
+    (Render3DEntities.ts:3812-3836) writes per-mesh rotation every
+    frame even when towerSpinPhase didn't change. Could short-circuit
+    when phase delta is near-zero.
+
+  [MEDIUM] updateFactoryConstructionRig inactive-fade loop
+    (Render3DEntities.ts:3992-4001) keeps reading rates and gating
+    after smoothed rates have collapsed below 0.01. Could skip the
+    block entirely when all three are below threshold.
+
+  [MEDIUM] updateProjectiles fetches `getProjRangeToggle` per-
+    projectile inside updateProjRadiusMeshes
+    (Render3DEntities.ts:4290-4291). Toggle state is global — fetch
+    once per frame in updateProjectiles and pass it down. Real per-
+    frame win at high projectile count.
+
+  [LOW] Beam-update wire payload re-quantizes static beam-vertex
+    velocities every snapshot (stateSerializer.ts:1095, :1108-1110).
+    A mirror-anchored end on a static structure recomputes qVel(0)
+    from scratch every tick. Tier-2 nicety.
+
+  ---------------------------------------------------
+  4) PATTERN DUPLICATION ACROSS BUILD EMITTERS
+  ---------------------------------------------------
+
+  [HIGH] Move per-frame "shower fill + per-pylon spray" pattern into
+    a shared helper. Specifically
+      applyConstructionRigShowersAndSprays(
+        rig, group, sourceEntity,
+        targetEntity | targetWorld, targetRadius,
+        tier, dtMs,
+      )
+    `rig` carries smoothedRates / showers / pylonHeight /
+    pylonBaseY / showerRadius / pylonTopsLocal. Reads target.transform
+    (commander) OR uses explicit targetWorld (factory build-spot).
+    Consolidates ~70 lines duplicated across updateCommanderEmitter
+    (3892-3948) and updateFactoryConstructionRig (3980-4117).
+
+  [MEDIUM] FactoryConstructionRig.bayBaseY is always 0
+    (BuildingShape3D.ts:1278) and only read at Render3DEntities.ts:4061
+    as `centerY = rig.bayBaseY + Math.max(...)`. Drop the field.
+
+  [MEDIUM] FactoryConstructionRig.nozzleLocal and
+    ConstructionEmitterRig.nozzleLocal are set but never read
+    (BuildingShape3D.ts:86, :134, :1277, :1325). Field comment claims
+    "any straggling caller" but `grep -r nozzleLocal src` shows zero
+    consumers outside this one file. Drop both declarations + the
+    assignments that build them.
+
+  ---------------------------------------------------
+  5) DEAD EXPORTS / DEAD FIELDS
+  ---------------------------------------------------
+
+  [HIGH] NetworkServerSnapshotEntity.posEnd is read but never written.
+    Declared at types/network.ts:492, cloned through
+    snapshotClone.ts:70-72, :531-537, read at
+    NetworkEntityFactory.ts:377-382. Nothing in stateSerializer.ts
+    ever sets ne.posEnd. The branch at NetworkEntityFactory.ts:377
+    always falls into the `null` arm. Either drop the wire field, or
+    wire it up if it was supposed to ship line-shot endpoints.
+
+  [MEDIUM] Unused exports through math/index.ts:
+      - magnitudeSquared (MathHelpers.ts:22) — no external consumer.
+      - BARREL_ORBIT_CLAMP_FRAC (BarrelGeometry.ts:29) — no external
+        consumer; only used inside BarrelGeometry.
+      - clampBarrelOrbitRadius (BarrelGeometry.ts:118) — same.
+      - getTurretBodyRadius (BarrelGeometry.ts:50) — only used by
+        the alias getTurretHeadRadius in the same file.
+    Drop the exports (keep the symbols module-local where used
+    internally).
+
+  [MEDIUM] MountGeometry.getTurretWorldMount is NOT re-exported
+    through math/index.ts. Three call sites import directly:
+      - src/game/network/ClientViewState.ts:62
+      - src/game/sim/combat/combatUtils.ts:5
+      - src/game/render3d/Render3DEntities.ts:85
+    Add the re-export so math primitives have one canonical import
+    path.
+
+  [LOW] UIUpdateManager.ts:70 `dgunner = selectedUnits.find(u =>
+    u.commander !== undefined)`. Identical predicate to `commander`
+    on line 68 — every commander has a d-gun. Either rename the
+    variable (e.g. commanderForDgun) with a comment, or use
+    `commander` directly so `hasDGun: commander !== undefined`.
+
+  ---------------------------------------------------
+  6) STALE COMMENTS
+  ---------------------------------------------------
+
+  [LOW] BuildingShape3D.ts:83-86 — comment says nozzleLocal exists
+    for "any straggling caller". No such callers (grep verified).
+    Either the comment is obsolete or the field is dead (see
+    bucket 5).
+
+  [LOW] BuildingShape3D.ts:1322-1324 — comment about "callers that
+    still expect a single emitter point" referring to nozzleLocal;
+    no such callers exist.
+
+  [LOW] Render3DEntities.ts:3842-3844 — updateCommanderEmitter
+    docstring says "rates are computed render-side (no extra wire
+    payload)" — accurate, but doesn't mention that the sim ALSO
+    emits a redundant central commander spray (bucket 2 HIGH).
+    Update once that dedup lands.
+
+  ---------------------------------------------------
+  Suggested attack order
+  ---------------------------------------------------
+
+  1. Drift-prevention payoff cluster (bucket 2 HIGH): mirror-frame
+     geometry → shared helper, then the factory/commander shower-
+     and-spray helper. Both low-risk, high-readability.
+  2. Dead fields cluster (bucket 4 + 5): drop posEnd, nozzleLocal,
+     bayBaseY. Each is a ~2-line edit, no behaviour change.
+  3. Predicate cluster (bucket 1 HIGH): add isRocketLikeShot,
+     isCommander predicates; replace BarrelGeometry.ts:174-176 with
+     isLineShot.
+  4. Spray dedup (bucket 2 HIGH): pick whether commander build spray
+     lives sim-side or render-side and delete the other.
+  5. build.progress wire field (bucket 2 MEDIUM): derive client-side
+     from paid+required. Higher-risk; defer until #1-4 are in.
+  6. Color helper (bucket 1 MEDIUM): hexToRgb01 + sweep call sites.
+  7. aimSolver.iterateMuzzleAim helper (bucket 1 MEDIUM): minor
+     cleanup; do alongside any future aim-solver work.
