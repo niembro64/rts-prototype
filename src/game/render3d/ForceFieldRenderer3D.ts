@@ -1,22 +1,21 @@
 // ForceFieldRenderer3D — 3D visualization for force-field turrets.
 //
 // A force-field turret uses the `complexSingleEmitter` barrel type and carries
-// a `ForceShot` (shot.type === 'force') configured with push/pull zone ranges.
+// a `ForceShot` (shot.type === 'force') configured with a barrier sphere.
 // It animates per-tick via `turret.forceField.range` (0 → 1 progress).
 //
-// Rendering tiers (driven by gfx.forceFieldStyle, mirroring the 2D
-// ForceFieldEffect contract):
-//   minimal — translucent bubble + emitter only.
-//   simple  — bubble + emitter + radial particle motes (HI LOD).
-//   enhanced — bubble + emitter + particles + electric arcs (MAX LOD).
-//
-// Particle motes are small bright spheres distributed across the bubble's
-// 3D surface that drift radially through the field's depth. Electric arcs
-// are short jagged BufferGeometry polylines inside the bubble that
-// re-randomize every arcFlickerMs to produce a crackling read.
+// Rendering tiers (driven by gfx.forceFieldStyle):
+//   minimal / simple / normal — translucent bubble + pulsing emitter only.
+//   enhanced (MAX LOD) — adds two perpendicular slow-rotating orbital
+//   rings just inside the bubble, like a gyroscope. The rings give the
+//   field a sense of internal structure / mechanical stabilization
+//   without the visual noise of the old radial particle motes and
+//   crackling arcs (those were removed — the bubble alone reads better
+//   at every tier and the rings stay calm at MAX).
 
 import * as THREE from 'three';
 import type { Entity, EntityId, Turret } from '../sim/types';
+import { getPlayerPrimaryColor } from '../sim/types';
 import { getChassisLiftY } from '../math/BodyDimensions';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
@@ -41,35 +40,24 @@ import { RenderLodGrid } from './RenderLodGrid';
  *  emitter "sunk into the head" without disappearing entirely. */
 const INSET_DEPTH_BELOW_DOME = 0;
 
-const EMITTER_COLOR_A = 0xf0f0f0;  // idle: white
-const EMITTER_COLOR_B = 0x3366ff;  // active: blue
 const EMITTER_BASE_RADIUS = 4;
 const EMITTER_MAX_RADIUS = 10;
 
-// Per-LOD particle counts. The 3D field has 4π·r² worth of surface area
-// vs the 2D ring's 2π·r perimeter, so we emit a bit more than the 2D
-// `particleCount` baseline to keep visual density comparable.
-const PARTICLE_COUNT_SIMPLE = 28;
-const PARTICLE_COUNT_ENHANCED = 56;
-const PARTICLE_RADIUS = 1.4;   // world units per mote
-
-// MAX-only particle TRAILS — comet-style ghost segments behind each
-// main mote, mirroring the 2D enhanced look (FORCE_FIELD_VISUAL.
-// trailSegments = 3, trailFalloff = 0.45 per step). Each trail spans
-// trailFrac of the radial band behind its parent mote.
-const TRAIL_SEGMENTS = 3;
-const TRAIL_FRAC_PER_STEP = 0.045;   // of (outer − inner)
-const TRAIL_OPACITY_FALLOFF = 0.5;   // multiplier per successive trail
-const TRAIL_SCALE_FALLOFF = 0.75;    // shrink factor per successive trail
-
-// Opacity multiplier on top of push.alpha so the field reads more
-// solid in 3D than the 2D translucent fill — applied uniformly to the
-// bubble, particles, and arcs. Doubling from 1.0 to 2.0 makes the
-// effect twice as opaque visually.
+// Opacity multiplier on top of barrier.alpha so the field reads more
+// solid in 3D than the 2D translucent fill. Applied to the bubble and
+// the MAX-tier rings.
 const FIELD_OPACITY_BOOST = 2.0;
 
-// Per-LOD arc counts (enhanced only).
-const ARC_COUNT_ENHANCED = 4;
+// MAX-tier orbital rings — cosmetic ornament that signals "this field
+// is actively running" without adding any moving particles or random
+// flicker. Two rings, perpendicular planes, slowly rotating at
+// different rates. Tube radius is a fraction of the ring's orbit
+// radius so the rings stay visually thin at every bubble size.
+const RING_RADIUS_FRAC = 0.92;     // ring orbit radius = outer × this
+const RING_TUBE_FRAC = 0.018;      // tube radius = orbit radius × this
+const RING_ALPHA_MULT = 0.85;      // multiplied with barrier.alpha × FIELD_OPACITY_BOOST
+const RING_ROT_RATE_A = 0.45;      // rad/s, ring 1
+const RING_ROT_RATE_B = 0.30;      // rad/s, ring 2 (different so the two never lock)
 
 function isForceFieldTurret(t: Turret): boolean {
   return (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
@@ -78,36 +66,29 @@ function isForceFieldTurret(t: Turret): boolean {
 type FieldMesh = {
   // Emitter + zone are NEVER rendered — they're invisible per-field
   // data anchors that:
-  //   (1) the particles / trails / arcs lazy-alloc path uses to find
-  //       the field's host parent (`field.emitter.parent ?? this.root`),
-  //       so newly-created motes attach to the right yawGroup;
+  //   (1) the MAX-tier ring lazy-alloc path uses to find the field's
+  //       host parent (`field.emitter.parent ?? this.root`) so newly-
+  //       created rings attach to the right yawGroup;
   //   (2) keep the parent-identity check in _processUnit cheap
   //       (`field.emitter.parent !== yawGroup` triggers a reparent
   //       when LOD rebuilds give the unit a new yawGroup).
   // The actual emitter + zone visuals come from the shared
   // `sphereInstancedMesh` — per-frame we write transient slots for
   // each active field, so what's drawn is one InstancedMesh draw call
-  // for every emitter+zone in the scene instead of two Meshes per
-  // field. Visible flag stays false on these — they exist purely to
-  // host the particle / trail / arc children.
+  // for every emitter+zone in the scene instead of two Meshes per field.
   emitter: THREE.Mesh;
   emitterMat: THREE.MeshBasicMaterial;
   zone: THREE.Mesh;
   zoneMat: THREE.MeshBasicMaterial;
-  // Particle motes. Allocated lazily up to PARTICLE_COUNT_ENHANCED. Per
-  // frame we show only the LOD-appropriate prefix.
-  particles: THREE.Mesh[];
-  particleMat: THREE.MeshBasicMaterial;
-  // MAX-only ghost trails behind each particle. Allocated lazily;
-  // index = particleIdx × TRAIL_SEGMENTS + trailIdx. Each trail uses
-  // its own material because the opacity decays per trail step.
-  trailMeshes: THREE.Mesh[];
-  trailMats: THREE.MeshBasicMaterial[];
-  // Electric arc geometry, allocated only on first 'enhanced' frame.
-  arcGeom?: THREE.BufferGeometry;
-  arcMat?: THREE.LineBasicMaterial;
-  arcLines?: THREE.LineSegments;
-  arcLastFlickerMs: number;
+  // MAX-tier orbital rings. Lazy-allocated to two THREE.Mesh on first
+  // 'enhanced' frame; both share the renderer-owned ringGeom / ringMat
+  // (cheaper than per-field materials since every ring renders in the
+  // same field color the bubble already uses — the InstancedMesh slot
+  // for the bubble drives that color, the ring's MeshBasicMaterial just
+  // tracks it).
+  ringA?: THREE.Mesh;
+  ringB?: THREE.Mesh;
+  ringMat?: THREE.MeshBasicMaterial;
   mountUnitType: string | null;
   mountRadius: number;
   mountOffsetX: number;
@@ -133,21 +114,18 @@ function forceFieldKey(unitId: number, turretIndex: number): FieldKey {
   return `${unitId}-${turretIndex}`;
 }
 
-/** Deterministic 0..1 hash used by the particle layout + arc jitter so each
- *  field has stable angular slots without per-frame allocation. Same shape
- *  the 2D effect uses, with an additional seed mixed in. */
-function fieldHash(n: number, seed: number): number {
-  let h = (n | 0) * 2654435761 + (seed | 0) * 1597334677;
-  h = ((h >>> 16) ^ h) * 45679;
-  return ((h >>> 16) ^ h) / 4294967296 + 0.5;
+function resolveForceFieldColor(playerId: number | undefined, fallbackColor: number): number {
+  return FORCE_FIELD_VISUAL.colorMode === 'player'
+    ? getPlayerPrimaryColor(playerId)
+    : fallbackColor;
 }
 
 // Shader for the sphereInstanced pool — same shape as
 // SmokeTrail3D / Explosion3D / SprayRenderer3D. Per-instance `aAlpha`
 // + `aColor` ride on InstancedBufferAttributes; the fragment is just
 // `vec4(vColor, vAlpha)`. Both emitter and zone use this shader: the
-// emitter writes alpha=1 with a pulsing white→blue color, the zone
-// writes its push.color with the fade-in alpha.
+// emitter writes alpha=1 with a pulsing team color, the zone writes
+// the same force-field color with the fade-in alpha.
 const FIELD_SPHERE_VS = `
 attribute float aAlpha;
 attribute vec3 aColor;
@@ -168,24 +146,22 @@ void main() {
 }
 `;
 
-/** Cap on shared sphere instances. Each active force field can
- *  consume up to:
- *    - 1 emitter slot (always)
- *    - 1 zone slot (always)
- *    - particleCount (28 / 56) particle slots at HI / MAX LOD
- *    - particleCount × TRAIL_SEGMENTS trail slots at MAX LOD
- *  → up to 1 + 1 + 56 + 168 = 226 slots per field at MAX. Cap of
- *  16384 fits ~72 simultaneous MAX-tier fields, well above any
- *  realistic concurrent count (typical scenes have at most a few
- *  dozen active force fields). HI tier needs 1+1+28 = 30 slots /
- *  field → 540 fields fit. */
-const SPHERE_INSTANCED_CAP = 16384;
+/** Cap on shared sphere instances. Every active force field consumes
+ *  exactly two slots — one for the small pulsing emitter and one for
+ *  the translucent bubble. 512 fits ~256 simultaneous fields, well
+ *  above any realistic concurrent count (typical scenes have at most
+ *  a few dozen active force fields). */
+const SPHERE_INSTANCED_CAP = 512;
 
 export class ForceFieldRenderer3D {
   private root: THREE.Group;
-  // Unit sphere reused for the bubble, the emitter, and the particle motes.
+  // Unit sphere reused for the bubble and the emitter (both write
+  // into the shared sphereInstancedMesh below).
   private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
-  private particleSphereGeom = new THREE.SphereGeometry(1, 6, 4);
+  // Unit-radius torus for MAX-tier orbital rings. Tube radius is set
+  // to RING_TUBE_FRAC so the ring scale we apply per frame controls the
+  // overall ring orbit radius; the tube stays proportional.
+  private ringGeom = new THREE.TorusGeometry(1, RING_TUBE_FRAC, 8, 64);
   private fields = new Map<FieldKey, FieldMesh>();
 
   /** Shared InstancedMesh covering every emitter + zone sphere across
@@ -216,7 +192,6 @@ export class ForceFieldRenderer3D {
   private _sphereScratchPos = new THREE.Vector3();
   private _sphereScratchScale = new THREE.Vector3();
   private _sphereLocalPos = new THREE.Vector3();
-  private _sphereParticlePos = new THREE.Vector3();
   private _sphereParentQuat = new THREE.Quaternion();
   private _sphereYawQuat = new THREE.Quaternion();
   private static readonly _SPHERE_UP = new THREE.Vector3(0, 1, 0);
@@ -290,9 +265,8 @@ export class ForceFieldRenderer3D {
     const existing = this.fields.get(key);
     if (existing) return existing;
     // Emitter + zone are invisible parent-anchor Meshes (see FieldMesh
-    // doc). Allocate cheap MeshBasicMaterials with visible=false so
-    // they cost zero rasterized pixels but keep the parent-tracking
-    // path in particles / trails / arcs working unchanged.
+    // doc). They cost zero rasterized pixels but keep the parent-
+    // tracking path that the MAX-tier ring lazy-alloc reads working.
     const emitterMat = new THREE.MeshBasicMaterial({ visible: false });
     const emitter = new THREE.Mesh(this.sphereGeom, emitterMat);
     emitter.visible = false;
@@ -301,25 +275,10 @@ export class ForceFieldRenderer3D {
     const zone = new THREE.Mesh(this.sphereGeom, zoneMat);
     zone.visible = false;
     this.root.add(zone);
-    // Bright particle material, additive so motes pop over the bubble.
-    // Particles + trails + arcs are still per-Mesh; only emitter +
-    // zone visuals moved to the shared InstancedMesh path.
-    const particleMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.0,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
 
     const field: FieldMesh = {
       emitter, emitterMat,
       zone, zoneMat,
-      particles: [],
-      particleMat,
-      trailMeshes: [],
-      trailMats: [],
-      arcLastFlickerMs: 0,
       mountUnitType: null,
       mountRadius: -1,
       mountOffsetX: NaN,
@@ -367,21 +326,13 @@ export class ForceFieldRenderer3D {
     field.localZ = offsetY;
   }
 
-  // Particles + trails are no longer per-Mesh — they write into the
-  // shared `sphereInstancedMesh` slots in the per-frame loop. The
-  // previous ensureParticles / ensureTrails lazy allocators have
-  // been removed; FieldMesh.particles / trailMeshes / trailMats stay
-  // on the type for one-time cleanup of any pre-instancing-commit
-  // leftovers (see the cleanup loop in _processUnit).
-
   /** Reparent every mesh in a FieldMesh from its current parent (the
    *  renderer's `root` group on first frame, or the previous host's
    *  yawGroup after a LOD-flip rebuild) onto `target` (the current
-   *  host's yawGroup). Particles and trails are lazily allocated, so
-   *  this iterates the live arrays — newly-allocated meshes inside
-   *  ensureParticles / ensureTrails parent to `field.emitter.parent`
-   *  (which by then equals `target`), so they land in the right
-   *  group from birth. */
+   *  host's yawGroup). MAX-tier rings are lazy-allocated so they may
+   *  not exist yet — newly-allocated rings inside ensureRings parent
+   *  to `field.emitter.parent` (which by then equals `target`), so they
+   *  land in the right group from birth. */
   private reparentFieldTo(field: FieldMesh, target: THREE.Group): void {
     const move = (m: THREE.Object3D | undefined): void => {
       if (!m) return;
@@ -391,38 +342,33 @@ export class ForceFieldRenderer3D {
     };
     move(field.emitter);
     move(field.zone);
-    for (const p of field.particles) move(p);
-    for (const tr of field.trailMeshes) move(tr);
-    move(field.arcLines);
+    move(field.ringA);
+    move(field.ringB);
   }
 
-  /** Lazily allocate the arc LineSegments mesh + supporting buffers. */
-  private ensureArcs(field: FieldMesh): void {
-    if (field.arcLines) return;
-    const v = FORCE_FIELD_VISUAL;
-    // 2 endpoints per segment × arcSegments segments × ARC_COUNT vertices,
-    // 3 floats each.
-    const totalVerts = ARC_COUNT_ENHANCED * v.arcSegments * 2;
-    const positions = new Float32Array(totalVerts * 3);
-    const arcGeom = new THREE.BufferGeometry();
-    arcGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
-    const arcMat = new THREE.LineBasicMaterial({
+  /** Lazily allocate the two MAX-tier orbital ring meshes. They share
+   *  a per-field MeshBasicMaterial so a single .color set per frame
+   *  drives both rings. */
+  private ensureRings(field: FieldMesh): void {
+    if (field.ringA && field.ringB && field.ringMat) return;
+    const ringMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: v.arcOpacity,
+      opacity: 0,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
     });
-    const arcLines = new THREE.LineSegments(arcGeom, arcMat);
-    arcLines.renderOrder = 10;
-    arcLines.frustumCulled = false;
-    // Same parent rule as ensureParticles / ensureTrails — land in the
-    // host yawGroup if the field is already attached, otherwise the
-    // renderer's root (will be moved on first reparent).
-    (field.emitter.parent ?? this.root).add(arcLines);
-    field.arcGeom = arcGeom;
-    field.arcMat = arcMat;
-    field.arcLines = arcLines;
+    const ringA = new THREE.Mesh(this.ringGeom, ringMat);
+    const ringB = new THREE.Mesh(this.ringGeom, ringMat);
+    ringA.frustumCulled = false;
+    ringB.frustumCulled = false;
+    ringA.renderOrder = 8;
+    ringB.renderOrder = 8;
+    const parent = field.emitter.parent ?? this.root;
+    parent.add(ringA);
+    parent.add(ringB);
+    field.ringA = ringA;
+    field.ringB = ringB;
+    field.ringMat = ringMat;
   }
 
   // Per-frame state computed in beginFrame(), read in perUnit(),
@@ -431,14 +377,10 @@ export class ForceFieldRenderer3D {
   // renderers, instead of each renderer doing its own iteration.
   private _frameNowMs = 0;
   private _frameNowSec = 0;
-  private _frameStyle: import('@/types/graphics').FireExplosionStyle | 'minimal' | 'simple' | 'enhanced' = 'minimal';
-  private _frameWantParticles = false;
-  private _frameWantArcs = false;
-  private _frameParticleCount = 0;
+  private _frameWantRings = false;
 
   /** Begin a fused per-frame iteration. Caller follows with a series
-   *  of perUnit calls and finishes with endFrame. Recomputes LOD-
-   *  derived counts once per frame so the inner loop is tight. */
+   *  of perUnit calls and finishes with endFrame. */
   beginFrame(
     graphicsConfig: GraphicsConfig = getGraphicsConfig(),
     lod?: Lod3DState,
@@ -455,13 +397,10 @@ export class ForceFieldRenderer3D {
     if (lod) {
       if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, gfx);
     }
-    this._frameStyle = gfx.forceFieldStyle as never;
-    const style = this._frameStyle as string;
-    this._frameWantParticles = style === 'simple' || style === 'enhanced';
-    this._frameWantArcs = style === 'enhanced';
-    this._frameParticleCount = style === 'enhanced' ? PARTICLE_COUNT_ENHANCED
-      : style === 'simple' ? PARTICLE_COUNT_SIMPLE
-      : 0;
+    // Only the MAX-tier 'enhanced' style draws the orbital rings. The
+    // bubble + emitter render at every tier through the
+    // sphereInstancedMesh slots written in _processUnit.
+    this._frameWantRings = gfx.forceFieldStyle === 'enhanced';
   }
 
   /** Process one unit. Same body the previous monolithic update()
@@ -469,13 +408,13 @@ export class ForceFieldRenderer3D {
    *  here from a single fused unit walk. */
   perUnit(unit: Entity): void {
     if (!unit.turrets || !unit.unit) return;
-    // Force-field bubbles can be large (up to ~push.outerRange
+    // Force-field bubbles can be large (up to ~barrier.outerRange
     // units across), so pad generously so a turret just off-screen
     // with its bubble reaching in still updates.
     if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
     // Force fields render at every camera-sphere band, including the
     // farthest 'marker' tier. The fill is gameplay-relevant
-    // information (it tells the player there's a push field there),
+    // information (it tells the player there's a force-field barrier there),
     // not just decoration — bailing at marker made distant fields
     // pop in and out as the camera moved. The graphics-tier mapping
     // below clamps style to 'minimal' (faint fill only) at marker
@@ -520,15 +459,11 @@ export class ForceFieldRenderer3D {
       if (seen.has(key)) continue;
       field.emitter.parent?.remove(field.emitter);
       field.zone.parent?.remove(field.zone);
-      for (const p of field.particles) p.parent?.remove(p);
-      for (const tr of field.trailMeshes) tr.parent?.remove(tr);
-      field.arcLines?.parent?.remove(field.arcLines);
+      field.ringA?.parent?.remove(field.ringA);
+      field.ringB?.parent?.remove(field.ringB);
       field.emitterMat.dispose();
       field.zoneMat.dispose();
-      field.particleMat.dispose();
-      for (const tm of field.trailMats) tm.dispose();
-      if (field.arcGeom) field.arcGeom.dispose();
-      if (field.arcMat) field.arcMat.dispose();
+      field.ringMat?.dispose();
       this.fields.delete(key);
     }
   }
@@ -542,29 +477,17 @@ export class ForceFieldRenderer3D {
   }
 
   /** Internal per-unit body, extracted from the previous monolithic
-   *  update(). Reads frame state set by beginFrame(); the only thing
-   *  changed from the original is that the outer for/scope/seen-clear
-   *  was lifted up into the begin/perUnit/endFrame trio. */
+   *  update(). Reads frame state set by beginFrame(). */
   private _processUnit(unit: Entity, objectTier?: RenderObjectLodTier): void {
     const seen = this._seenFieldKeys;
-    const nowMs = this._frameNowMs;
     const nowSec = this._frameNowSec;
     const resolvedTier = objectTier ?? this.resolveUnitObjectLod(unit);
     // Intentionally render at marker tier too — see perUnit() comment.
     const effectiveGraphicsTier = objectLodToGraphicsTier(resolvedTier, this.frameGfx.tier);
     const fieldGfx = this.lodActive ? getGraphicsConfigFor(effectiveGraphicsTier) : this.frameGfx;
-    const style = (this.lodActive ? fieldGfx.forceFieldStyle : this._frameStyle) as string;
-    const wantParticles = this.lodActive
-      ? style === 'simple' || style === 'enhanced'
-      : this._frameWantParticles;
-    const wantArcs = this.lodActive
-      ? style === 'enhanced'
-      : this._frameWantArcs;
-    const particleCount = this.lodActive
-      ? style === 'enhanced' ? PARTICLE_COUNT_ENHANCED
-        : style === 'simple' ? PARTICLE_COUNT_SIMPLE
-        : 0
-      : this._frameParticleCount;
+    const wantRings = this.lodActive
+      ? fieldGfx.forceFieldStyle === 'enhanced'
+      : this._frameWantRings;
 
     // Sanity guard — perUnit already filtered, but check again so
     // _processUnit is safe to call directly. Any of these mean
@@ -575,19 +498,10 @@ export class ForceFieldRenderer3D {
     // regular turret root — the scenegraph chain (group → yawGroup →
     // field meshes) handles position + tilt + yaw automatically. If
     // the unit's mesh hasn't been built yet (off-scope at scene
-    // start) or was torn down (LOD flip mid-frame), skip; we'll
-    // re-acquire when it's back.
-    // yawGroup is the unit's mesh hierarchy node; it only exists for
-    // units rendered at the rich tier. Lower tiers (mass / impostor /
-    // marker) draw the unit as an instanced sphere with no scenegraph
-    // node — but force-field bubbles are gameplay info we want visible
-    // regardless of camera distance. The bubble (sphereInstancedMesh
-    // slots) doesn't actually need a parent; it's written in absolute
-    // world coords. So we proceed even without yawGroup, falling back
-    // to the unit's transform for the world position. The persistent
-    // particle / trail / arc meshes are gated separately on yawGroup
-    // below — they need a parent and only run at simple/enhanced
-    // styles anyway.
+    // start) or was torn down (LOD flip mid-frame), the bubble +
+    // emitter still draw via the absolute-world InstancedMesh path
+    // below; only the MAX-tier rings (per-Mesh, parent-anchored) are
+    // gated on yawGroup.
     const yawGroup = this.getYawGroup(unit.id);
 
       for (let ti = 0; ti < unit.turrets.length; ti++) {
@@ -596,7 +510,11 @@ export class ForceFieldRenderer3D {
         const progress = turret.forceField?.range ?? 0;
 
         const shot = turret.config.shot;
-        if (shot.type !== 'force' || !shot.push) continue;
+        if (shot.type !== 'force' || !shot.barrier) continue;
+        const fieldColor = resolveForceFieldColor(
+          unit.ownership?.playerId,
+          shot.barrier.color ?? FORCE_FIELD_VISUAL.fallbackColor,
+        );
 
         const key = forceFieldKey(unit.id, ti);
         seen.add(key);
@@ -630,21 +548,22 @@ export class ForceFieldRenderer3D {
           this.reparentFieldTo(field, yawGroup);
         }
 
-        // Central pulsing emitter sphere: lerp white -> blue. It stays
+        // Central pulsing emitter sphere: lerp idle color -> field color. It stays
         // visible while idle so force-field turrets read as physical
         // parts of the unit; the larger translucent field shell below
         // is still gated by active progress.
         const freq = (Math.PI * 2) / (shot.transitionTime / 1000);
         const pulse = Math.sin(nowSec * freq) * 0.5 + 0.5;
+        const idleColor = FORCE_FIELD_VISUAL.emitterIdleColor;
         const er =
-          ((EMITTER_COLOR_A >> 16) & 0xff)
-          + (((EMITTER_COLOR_B >> 16) & 0xff) - ((EMITTER_COLOR_A >> 16) & 0xff)) * pulse;
+          ((idleColor >> 16) & 0xff)
+          + (((fieldColor >> 16) & 0xff) - ((idleColor >> 16) & 0xff)) * pulse;
         const eg =
-          ((EMITTER_COLOR_A >> 8) & 0xff)
-          + (((EMITTER_COLOR_B >> 8) & 0xff) - ((EMITTER_COLOR_A >> 8) & 0xff)) * pulse;
+          ((idleColor >> 8) & 0xff)
+          + (((fieldColor >> 8) & 0xff) - ((idleColor >> 8) & 0xff)) * pulse;
         const eb =
-          (EMITTER_COLOR_A & 0xff)
-          + ((EMITTER_COLOR_B & 0xff) - (EMITTER_COLOR_A & 0xff)) * pulse;
+          (idleColor & 0xff)
+          + ((fieldColor & 0xff) - (idleColor & 0xff)) * pulse;
         const emitterVisualProgress = Math.max(progress, 0.3);
         const emitterRadius = EMITTER_BASE_RADIUS
           + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * emitterVisualProgress;
@@ -716,38 +635,29 @@ export class ForceFieldRenderer3D {
 
         if (progress <= 0) {
           field.zone.visible = false;
-          for (const p of field.particles) p.visible = false;
-          for (const tr of field.trailMeshes) tr.visible = false;
-          if (field.arcLines) field.arcLines.visible = false;
+          if (field.ringA) field.ringA.visible = false;
+          if (field.ringB) field.ringB.visible = false;
           continue;
         }
 
-        // Spherical force-field zone — scale = outerRange (= push-zone radius
-        // in sim units). Alpha fades in over the first third of progress.
-        const push = shot.push;
-        const outer = push.outerRange;
-        const inner = push.innerRange;
-        // Chassis-local field center; particles + arcs orbit relative
-        // to this. Same coords for emitter / zone / motes / arcs so
-        // they all live in the same yawGroup-local frame and the
-        // scenegraph chain transforms them together.
-        const cx = localX;
-        const cy = localY;
-        const cz = localZ;
+        // Spherical force-field barrier — scale = outerRange in sim
+        // units. Alpha fades in over the first third of progress.
+        const barrier = shot.barrier;
+        const outer = barrier.outerRange;
         if (outer <= 0) {
           field.zone.visible = false;
-          for (const p of field.particles) p.visible = false;
-          if (field.arcLines) field.arcLines.visible = false;
+          if (field.ringA) field.ringA.visible = false;
+          if (field.ringB) field.ringB.visible = false;
           continue;
         }
         const fadeIn = Math.min(progress * 3, 1);
 
-        // Write the zone slot — translucent push.color sphere with
+        // Write the zone slot — translucent team-color sphere with
         // fade-in alpha. Reuses the world position computed for the
         // emitter slot above (`_sphereScratchPos`) since emitter and
         // zone are concentric. Skip if we couldn't compose the world
         // position (off-scope unit / missing parent chain).
-        if (havePosition && this.sphereInstancedMesh && this._sphereCursor < SPHERE_INSTANCED_CAP) {
+        if (havePosition && this._sphereCursor < SPHERE_INSTANCED_CAP) {
           this._sphereScratchScale.set(outer, outer, outer);
           this._sphereScratchMat.compose(
             this._sphereScratchPos,
@@ -755,218 +665,46 @@ export class ForceFieldRenderer3D {
             this._sphereScratchScale,
           );
           this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
-          this.sphereAlphaArr[this._sphereCursor] = push.alpha * fadeIn * FIELD_OPACITY_BOOST;
-          this.sphereColorArr[this._sphereCursor * 3]     = ((push.color >> 16) & 0xff) / 255;
-          this.sphereColorArr[this._sphereCursor * 3 + 1] = ((push.color >>  8) & 0xff) / 255;
-          this.sphereColorArr[this._sphereCursor * 3 + 2] = ( push.color        & 0xff) / 255;
+          this.sphereAlphaArr[this._sphereCursor] = barrier.alpha * fadeIn * FIELD_OPACITY_BOOST;
+          this.sphereColorArr[this._sphereCursor * 3]     = ((fieldColor >> 16) & 0xff) / 255;
+          this.sphereColorArr[this._sphereCursor * 3 + 1] = ((fieldColor >>  8) & 0xff) / 255;
+          this.sphereColorArr[this._sphereCursor * 3 + 2] = ( fieldColor        & 0xff) / 255;
           this._sphereCursor++;
         }
 
-        // ── Particle motes (HI / MAX LOD) ──
-        // Each particle has a stable angular slot on the bubble's surface
-        // (random-but-deterministic theta/phi via fieldHash) and a phase
-        // that scrolls a radial fraction over time. Inner→outer travel
-        // (matches 2D's `pushOutward = false` default — particles head
-        // toward the bubble's interior). Particles + trails write into
-        // the same shared sphereInstancedMesh as emitter+zone — one
-        // shared draw call per frame regardless of LOD.
-        if (
-          wantParticles
-          && particleCount > 0
-          && havePosition
-          && this.sphereInstancedMesh
-        ) {
-          const v = FORCE_FIELD_VISUAL;
-          const seed = (unit.id * 31 + ti) | 0;
-          const speed = v.particleSpeed * (style === 'enhanced' ? 1.5 : 1);
-          const radialBand = Math.max(outer - inner, 1);
-          // Per-particle alpha + color (constant across particles in
-          // the same field this frame; per-particle radial offset
-          // changes only the matrix).
-          const particleAlpha = push.alpha * 4 * fadeIn * FIELD_OPACITY_BOOST;
-          const pColorR = ((push.color >> 16) & 0xff) / 255;
-          const pColorG = ((push.color >>  8) & 0xff) / 255;
-          const pColorB = ( push.color        & 0xff) / 255;
+        // ── MAX-tier orbital rings ──
+        // Two thin torus rings centered on the bubble, in perpendicular
+        // planes, slowly rotating at different rates. Renders in the
+        // unit's yawGroup so chassis tilt + yaw carry through; gated on
+        // having a yawGroup so we don't spawn rings on lower-tier units
+        // that lack a scenegraph node.
+        if (wantRings && yawGroup) {
+          this.ensureRings(field);
+          const ringA = field.ringA!;
+          const ringB = field.ringB!;
+          const ringMat = field.ringMat!;
+          ringA.visible = true;
+          ringB.visible = true;
+          ringMat.color.set(fieldColor);
+          ringMat.opacity = barrier.alpha * fadeIn * FIELD_OPACITY_BOOST * RING_ALPHA_MULT;
 
-          for (let pi = 0; pi < particleCount; pi++) {
-            if (this._sphereCursor >= SPHERE_INSTANCED_CAP) break;
-            // Even-ish distribution on a 2-sphere: theta ∈ [0, 2π),
-            // phi via acos(2u − 1) so we don't pole-cluster.
-            const theta = fieldHash(pi * 9181, seed) * Math.PI * 2;
-            const phi = Math.acos(2 * fieldHash(pi * 5953 + 1, seed) - 1);
-            const offset = fieldHash(pi * 2143 + 2, seed);
-            const cycle = (nowSec * speed * 0.5 + offset) % 1;
-            const rxy = Math.sin(phi);
-            const dirX = Math.cos(theta) * rxy;
-            const dirY = Math.cos(phi);
-            const dirZ = Math.sin(theta) * rxy;
-            const radius = inner + radialBand * cycle;
-
-            // World position = field-center-world + R(parentQuat) ·
-            // (dirX*r, dirY*r, dirZ*r). The radial offsets are
-            // unit-local (so the particle cloud rotates with the
-            // unit's yaw / tilt, matching the previous per-Mesh
-            // path which was parented to liftGroup).
-            this._sphereLocalPos.set(dirX * radius, dirY * radius, dirZ * radius);
-            this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
-            this._sphereParticlePos.set(
-              this._sphereScratchPos.x + this._sphereLocalPos.x,
-              this._sphereScratchPos.y + this._sphereLocalPos.y,
-              this._sphereScratchPos.z + this._sphereLocalPos.z,
-            );
-            this._sphereScratchScale.set(PARTICLE_RADIUS, PARTICLE_RADIUS, PARTICLE_RADIUS);
-            this._sphereScratchMat.compose(
-              this._sphereParticlePos,
-              ForceFieldRenderer3D._IDENTITY_QUAT,
-              this._sphereScratchScale,
-            );
-            this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
-            this.sphereAlphaArr[this._sphereCursor] = particleAlpha;
-            this.sphereColorArr[this._sphereCursor * 3]     = pColorR;
-            this.sphereColorArr[this._sphereCursor * 3 + 1] = pColorG;
-            this.sphereColorArr[this._sphereCursor * 3 + 2] = pColorB;
-            this._sphereCursor++;
-
-            // Place each ghost trail behind the mote at progressively
-            // earlier cycle fractions. Same shared instance pool —
-            // trail i for particle pi just takes the next cursor slot.
-            // MAX-LOD only (`wantArcs` doubles as "draw trails" since
-            // arcs and trails are both enhanced-tier features).
-            if (wantArcs) {
-              for (let trailIdx = 1; trailIdx <= TRAIL_SEGMENTS; trailIdx++) {
-                if (this._sphereCursor >= SPHERE_INSTANCED_CAP) break;
-                const trailFrac = ((cycle - TRAIL_FRAC_PER_STEP * trailIdx) + 1) % 1;
-                const trailRadius = inner + radialBand * trailFrac;
-                this._sphereLocalPos.set(
-                  dirX * trailRadius,
-                  dirY * trailRadius,
-                  dirZ * trailRadius,
-                );
-                this._sphereLocalPos.applyQuaternion(this._sphereParentQuat);
-                this._sphereParticlePos.set(
-                  this._sphereScratchPos.x + this._sphereLocalPos.x,
-                  this._sphereScratchPos.y + this._sphereLocalPos.y,
-                  this._sphereScratchPos.z + this._sphereLocalPos.z,
-                );
-                const trailScale = PARTICLE_RADIUS * Math.pow(TRAIL_SCALE_FALLOFF, trailIdx);
-                this._sphereScratchScale.set(trailScale, trailScale, trailScale);
-                this._sphereScratchMat.compose(
-                  this._sphereParticlePos,
-                  ForceFieldRenderer3D._IDENTITY_QUAT,
-                  this._sphereScratchScale,
-                );
-                this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
-                this.sphereAlphaArr[this._sphereCursor] =
-                  particleAlpha * Math.pow(TRAIL_OPACITY_FALLOFF, trailIdx);
-                this.sphereColorArr[this._sphereCursor * 3]     = pColorR;
-                this.sphereColorArr[this._sphereCursor * 3 + 1] = pColorG;
-                this.sphereColorArr[this._sphereCursor * 3 + 2] = pColorB;
-                this._sphereCursor++;
-              }
-            }
-          }
-        }
-        // Hide any per-Mesh particle / trail leftover from a previous
-        // tier (the InstancedMesh handles all visible particles now;
-        // any pre-existing per-Mesh particles are dead and just
-        // clutter the scenegraph). The legacy ensure paths are no
-        // longer called, but the particles[] / trailMeshes[] arrays
-        // could still hold meshes from before this commit landed —
-        // this loop is a one-time cleanup that becomes a no-op once
-        // the field is rebuilt.
-        if (field.particles.length > 0) {
-          for (const p of field.particles) {
-            p.parent?.remove(p);
-            (p.material as THREE.Material).dispose();
-          }
-          field.particles.length = 0;
-        }
-        if (field.trailMeshes.length > 0) {
-          for (let i = 0; i < field.trailMeshes.length; i++) {
-            const tr = field.trailMeshes[i];
-            tr.parent?.remove(tr);
-            field.trailMats[i]?.dispose();
-          }
-          field.trailMeshes.length = 0;
-          field.trailMats.length = 0;
-        }
-
-        // ── Electric arcs (MAX LOD only) ──
-        // Short jagged polylines inside the bubble that re-randomize every
-        // arcFlickerMs. Each arc is a chain of arcSegments line-segments
-        // (LineSegments expects 2 verts per segment, so we emit pairs of
-        // [endPrev, endCur] for s ∈ [1, segments]).
-        if (wantArcs) {
-          this.ensureArcs(field);
-          const arcLines = field.arcLines!;
-          const arcGeom = field.arcGeom!;
-          const arcMat = field.arcMat!;
-          arcLines.visible = true;
-          arcMat.color.set(push.color);
-          arcMat.opacity = FORCE_FIELD_VISUAL.arcOpacity * fadeIn * FIELD_OPACITY_BOOST;
-          const v = FORCE_FIELD_VISUAL;
-          const flickerSeed = Math.floor(nowMs / v.arcFlickerMs);
-          const positions = arcGeom.attributes.position.array as Float32Array;
-          const arcBand = Math.max(outer - inner, 1);
-          const fieldSeed = (unit.id * 31 + ti + flickerSeed * 137) | 0;
-
-          let writeIdx = 0;
-          for (let arc = 0; arc < ARC_COUNT_ENHANCED; arc++) {
-            const arcSeed = fieldSeed + arc * 1009;
-            // Pick a random axis for the arc (3D direction) and a length
-            // along the radial band. Each segment offsets the running
-            // endpoint by jitter perpendicular to the axis.
-            const axisTheta = fieldHash(arcSeed, 7) * Math.PI * 2;
-            const axisPhi = Math.acos(2 * fieldHash(arcSeed, 11) - 1);
-            const axRxy = Math.sin(axisPhi);
-            const axX = Math.cos(axisTheta) * axRxy;
-            const axY = Math.cos(axisPhi);
-            const axZ = Math.sin(axisTheta) * axRxy;
-            const r0 = inner + arcBand * fieldHash(arcSeed, 17);
-            const r1 = inner + arcBand * fieldHash(arcSeed, 23);
-            const rStart = Math.min(r0, r1);
-            const rEnd   = Math.max(r0, r1);
-            const startX = cx + axX * rStart;
-            const startY = cy + axY * rStart;
-            const startZ = cz + axZ * rStart;
-            const endX   = cx + axX * rEnd;
-            const endY   = cy + axY * rEnd;
-            const endZ   = cz + axZ * rEnd;
-
-            let prevX = startX, prevY = startY, prevZ = startZ;
-            for (let s = 1; s <= v.arcSegments; s++) {
-              const t = s / v.arcSegments;
-              const baseX = startX + (endX - startX) * t;
-              const baseY = startY + (endY - startY) * t;
-              const baseZ = startZ + (endZ - startZ) * t;
-              // Bell-shaped jitter: 0 at endpoints, max in the middle.
-              const bell = Math.sin(t * Math.PI);
-              const j1 = (fieldHash(arcSeed, 100 + s) - 0.5) * 2 * v.arcJitter * bell;
-              const j2 = (fieldHash(arcSeed, 200 + s) - 0.5) * 2 * v.arcJitter * bell;
-              // Two perpendicular axes to the arc: pick world up cross axis,
-              // then axis cross that, normalized. Cheap-but-stable basis.
-              let perp1X = -axZ, perp1Y = 0, perp1Z = axX;
-              const perp1Len = Math.hypot(perp1X, perp1Y, perp1Z) || 1;
-              perp1X /= perp1Len; perp1Z /= perp1Len;
-              const perp2X = axY * perp1Z - axZ * perp1Y;
-              const perp2Y = axZ * perp1X - axX * perp1Z;
-              const perp2Z = axX * perp1Y - axY * perp1X;
-              const px = baseX + perp1X * j1 + perp2X * j2;
-              const py = baseY + perp1Y * j1 + perp2Y * j2;
-              const pz = baseZ + perp1Z * j1 + perp2Z * j2;
-
-              positions[writeIdx++] = prevX; positions[writeIdx++] = prevY; positions[writeIdx++] = prevZ;
-              positions[writeIdx++] = px;    positions[writeIdx++] = py;    positions[writeIdx++] = pz;
-              prevX = px; prevY = py; prevZ = pz;
-            }
-          }
-          // Zero-fill any unused trailing buffer space (defensive — count
-          // is fixed so this is a no-op in steady state).
-          for (let i = writeIdx; i < positions.length; i++) positions[i] = 0;
-          arcGeom.attributes.position.needsUpdate = true;
-          field.arcLastFlickerMs = nowMs;
-        } else if (field.arcLines) {
-          field.arcLines.visible = false;
+          const ringRadius = outer * RING_RADIUS_FRAC;
+          ringA.position.set(localX, localY, localZ);
+          ringB.position.set(localX, localY, localZ);
+          ringA.scale.set(ringRadius, ringRadius, ringRadius);
+          ringB.scale.set(ringRadius, ringRadius, ringRadius);
+          // Ring A: torus default plane is XY (axis along +Z). Rotate
+          // around the chassis-local up axis (X in three.js sim convention
+          // for our parent chain — same convention every other unit-local
+          // mesh uses) so it precesses smoothly.
+          ringA.rotation.set(0, nowSec * RING_ROT_RATE_A, 0);
+          // Ring B: tilt 90° on X so it's in the perpendicular plane,
+          // then rotate around its own normal (now Y) at a different rate
+          // so the two rings never lock visually.
+          ringB.rotation.set(Math.PI / 2, nowSec * RING_ROT_RATE_B, 0);
+        } else {
+          if (field.ringA) field.ringA.visible = false;
+          if (field.ringB) field.ringB.visible = false;
         }
       }
   }
@@ -975,23 +713,19 @@ export class ForceFieldRenderer3D {
     for (const field of this.fields.values()) {
       field.emitter.parent?.remove(field.emitter);
       field.zone.parent?.remove(field.zone);
-      for (const p of field.particles) p.parent?.remove(p);
-      for (const tr of field.trailMeshes) tr.parent?.remove(tr);
-      field.arcLines?.parent?.remove(field.arcLines);
+      field.ringA?.parent?.remove(field.ringA);
+      field.ringB?.parent?.remove(field.ringB);
       field.emitterMat.dispose();
       field.zoneMat.dispose();
-      field.particleMat.dispose();
-      for (const tm of field.trailMats) tm.dispose();
-      if (field.arcGeom) field.arcGeom.dispose();
-      if (field.arcMat) field.arcMat.dispose();
+      field.ringMat?.dispose();
     }
     this.fields.clear();
-    // Tear down the shared emitter+zone InstancedMesh.
+    // Tear down the shared emitter+zone InstancedMesh + ring geometry.
     this.root.remove(this.sphereInstancedMesh);
     this.sphereInstancedMesh.dispose();
     this.sphereInstancedMat.dispose();
     this.sphereGeom.dispose();
-    this.particleSphereGeom.dispose();
+    this.ringGeom.dispose();
     this.root.parent?.remove(this.root);
   }
 }

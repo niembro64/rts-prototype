@@ -12,7 +12,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   7) CONFIGURATION KNOB FRAGMENTATION
   ---------------------------------------------------
 
-8) the flying particles and the lightning bolts in the force field rendering are unnecessary, remove them. Start with just the sphere, if you can think of another level of detail for "MAX" LOD, try to come up with something interesting.
 
 9) the names above the commanders seem vertically squished. Make sure that for whatever text length that we have that we don't have squished letters. If there is no clean way to do that, then let's use monospace fixed size font and do the math, but ideally there would be an elegant way to use a non-fixed-sized font. 
 

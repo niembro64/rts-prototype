@@ -321,7 +321,7 @@ export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE = 0.5;
  *  area. Demo battle has its own knob (DEMO_CONFIG.commanderRadiusFraction).
  *  This value is also read by `getSpawnPositionForSeat`, so the 3D
  *  scene's pre-snapshot camera framing matches the real spawn point. */
-export const REAL_BATTLE_COMMANDER_RADIUS_FRACTION = 0.85;
+export const REAL_BATTLE_COMMANDER_RADIUS_FRACTION = 0.7;
 
 // =============================================================================
 // VISUAL DIMENSIONS (shared sim + render)
@@ -605,33 +605,13 @@ export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFie
     particleAlpha: 0.2,
   };
 
-/**
- * Force field weapon visual configuration.
- * Controls the pie-slice zone, concentric wave arcs, and inward-moving particle lines.
- */
+/** Force-field shield visual configuration. The bubble + emitter
+ *  render at every tier; the MAX-tier orbital rings are tuned via
+ *  RING_* constants inside ForceFieldRenderer3D rather than here. */
 export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig = {
   colorMode: 'player',
   fallbackColor: 0x3366ff,
   emitterIdleColor: 0xf0f0f0,
-
-  // --- Particle lines (radial dashes moving inward) ---
-  particleCount: 20, // Number of radial particle lines around full circle
-  particleSpeed: 10, // Inward travel speed
-  particleLength: 0.1, // Length as fraction of maxRange (0.2 = 20%)
-  particleThickness: 1, // Line thickness (px)
-
-  // --- Enhanced-only: electric arcs ---
-  arcCount: 4, // Number of lightning arcs visible at once
-  arcSegments: 6, // Segments per arc (more = more jagged)
-  arcJitter: 15, // Max perpendicular offset per segment (px)
-  arcThickness: 1.5, // Line thickness of arcs (px)
-  arcOpacity: 0.5, // Peak opacity of arcs
-  arcFlickerMs: 80, // How often arcs re-randomize (ms) — lower = faster crackle
-
-  // --- Enhanced-only: particle trails ---
-  trailSegments: 3, // Number of trailing ghost segments behind each particle
-  trailSpacing: 0.6, // Spacing between trail segments as fraction of dashLen
-  trailFalloff: 0.45, // Opacity multiplier per successive trail segment
 };
 
 /** Force-field projectile interception visual.

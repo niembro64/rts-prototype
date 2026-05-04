@@ -50,19 +50,6 @@ export type ForceFieldVisualConfig = {
   fallbackColor: number;
   /** Idle emitter color; active pulse lerps from this toward the field color. */
   emitterIdleColor: number;
-  particleCount: number;
-  particleSpeed: number;
-  particleLength: number;
-  particleThickness: number;
-  arcCount: number;
-  arcSegments: number;
-  arcJitter: number;
-  arcThickness: number;
-  arcOpacity: number;
-  arcFlickerMs: number;
-  trailSegments: number;
-  trailSpacing: number;
-  trailFalloff: number;
 };
 
 export type ForceFieldImpactVisualConfig = {
