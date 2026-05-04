@@ -6,14 +6,16 @@
 // means a half-built unit reads as a uniform gray ghost regardless of
 // player color or chassis detail — matching the "colorless and halfway
 // transparent" intent.
+//
+// Tunables (color, opacity) live in @/shellConfig so the shell visuals
+// stay consistent across this per-Mesh override path AND the
+// per-instance alpha path (instanceAlpha.ts) used by InstancedMeshes.
 
 import * as THREE from 'three';
-
-const SHELL_OPACITY = 0.45;
-const SHELL_COLOR = 0xb8b8b8;
+import { SHELL_OPACITY, SHELL_COLOR_HEX } from '@/shellConfig';
 
 const _shellMaterial = new THREE.MeshBasicMaterial({
-  color: SHELL_COLOR,
+  color: SHELL_COLOR_HEX,
   transparent: true,
   opacity: SHELL_OPACITY,
   // depthWrite OFF so the shell doesn't punch a hole in the depth

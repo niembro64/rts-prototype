@@ -27,6 +27,7 @@ import {
 } from '../math/BodyDimensions';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
 import { getSurfaceHeight, getGroundNormal } from '../sim/Terrain';
+import { SHELL_OPACITY, NORMAL_OPACITY } from '@/shellConfig';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 
@@ -921,6 +922,19 @@ export function updateLocomotion(
   }
 
   if (mesh.type === 'legs') {
+    // Per-leg shell alpha — pushed into the LegInstancedRenderer's
+    // per-instance buffers so a half-built unit's legs / joints render
+    // at SHELL_OPACITY along with the chassis / turrets / barrels.
+    const isShell = !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
+    const legAlpha = isShell ? SHELL_OPACITY : NORMAL_OPACITY;
+    for (const leg of mesh.legs) {
+      if (leg.upperSlot >= 0) legRenderer.setUpperAlpha(leg.upperSlot, legAlpha);
+      if (leg.lowerSlot >= 0) legRenderer.setLowerAlpha(leg.lowerSlot, legAlpha);
+      if (leg.hipJointSlot >= 0) legRenderer.setJointAlpha(leg.hipJointSlot, legAlpha);
+      if (leg.kneeJointSlot >= 0) legRenderer.setJointAlpha(leg.kneeJointSlot, legAlpha);
+      if (leg.footJointSlot >= 0) legRenderer.setJointAlpha(leg.footJointSlot, legAlpha);
+    }
+
     // World-planted feet. Each foot sits at a real world XYZ point on
     // the terrain and stays there until the body has moved or yawed
     // or tilted enough that the planted foot exits the leg's REST

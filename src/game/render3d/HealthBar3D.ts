@@ -14,39 +14,41 @@ import type { Entity } from '../sim/types';
 import { getBuildingHudTopY, getUnitHudTopY } from './HudAnchor';
 import { getResourceFillRatio } from '../sim/buildableHelpers';
 import type { Buildable } from '../sim/types';
+import {
+  SHELL_BAR_COLORS,
+  SHELL_BAR_BG_COLOR,
+  SHELL_BAR_BG_ALPHA,
+  SHELL_BAR_FG_ALPHA,
+  SHELL_BAR_STACK_GAP,
+  SHELL_BAR_WORLD_HEIGHT,
+  SHELL_BAR_CANVAS_WIDTH,
+  SHELL_BAR_CANVAS_HEIGHT,
+  SHELL_BAR_HIDE_AT_FULL,
+} from '@/shellConfig';
 
+// Visual constants. Three-resource bar tints + dimensions are imported
+// from @/shellConfig so the unit/building shell rendering can stay
+// consistent in one place.
 const STYLE = {
-  /** Height of the bar in world units. The bar's WIDTH is keyed to
-   *  the entity's render radius so a bigger unit gets a bigger bar
-   *  — same convention the old SVG overlay used in screen space. */
-  worldHeight: 4,
+  worldHeight: SHELL_BAR_WORLD_HEIGHT,
   /** Distance above the entity's top in world units where the bar
    *  centerline sits. */
   worldOffsetAbove: 12,
-  bgColor: '#333333',
-  bgAlpha: 0.8,
+  bgColor: SHELL_BAR_BG_COLOR,
+  bgAlpha: SHELL_BAR_BG_ALPHA,
   fgColorHigh: '#44dd44',
   fgColorLow: '#ff4444',
   fgColorBuild: '#4488ff',
-  /** Per-resource build-bar tints. Each of the three resources fills
-   *  independently, so the user can see at a glance which axis is
-   *  starved (the slow bar). */
-  fgColorEnergy: '#f5d442',
-  fgColorMana: '#7ad7ff',
-  fgColorMetal: '#d09060',
-  fgAlpha: 0.9,
-  /** Vertical separation between stacked bars (HP + 3 resource bars
-   *  during construction). Just above STYLE.worldHeight so they don't
-   *  visually merge. */
-  worldStackGap: 5,
+  fgColorEnergy: SHELL_BAR_COLORS.energy,
+  fgColorMana: SHELL_BAR_COLORS.mana,
+  fgColorMetal: SHELL_BAR_COLORS.metal,
+  fgAlpha: SHELL_BAR_FG_ALPHA,
+  worldStackGap: SHELL_BAR_STACK_GAP,
   /** Below this HP fraction, switch to the low-health color. */
   lowThreshold: 0.3,
-  /** Hide the bar entirely at full HP. */
-  hideAtFull: true,
-  /** Texture canvas resolution. 128×16 keeps the per-sprite memory
-   *  small while remaining crisp at typical zooms. */
-  canvasWidth: 128,
-  canvasHeight: 16,
+  hideAtFull: SHELL_BAR_HIDE_AT_FULL,
+  canvasWidth: SHELL_BAR_CANVAS_WIDTH,
+  canvasHeight: SHELL_BAR_CANVAS_HEIGHT,
 };
 
 type BarMode =

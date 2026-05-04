@@ -17,6 +17,8 @@ import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { applyShellOverride } from './ShellMaterial';
+import { makeInstanceAlphaCapable, setInstanceAlphaSlot } from './instanceAlpha';
+import { SHELL_OPACITY, NORMAL_OPACITY } from '@/shellConfig';
 import type { SpinConfig } from '../../config';
 import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
@@ -53,6 +55,7 @@ import {
   buildConstructionEmitterRig,
   disposeBuildingGeoms,
   getConstructionHazardMaterial,
+  writeSolarPetalMatrix,
   type BuildingDetailMesh,
   type ConstructionEmitterRig,
   type ExtractorRig,
@@ -85,6 +88,7 @@ import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 const BUILDING_HEIGHT = 120;
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
+const _solarPetalDirection = new THREE.Vector3();
 /** Reciprocal of the extractor's configured ceiling rate, computed
  *  once at module load. The per-frame rotor loop multiplies by this
  *  instead of dividing each entity's `metalExtractionRate` by the
@@ -869,6 +873,10 @@ export class Render3DEntities {
     // DRAW BOUND.
     this.unitInstanced.count = 0;
     this.unitInstanced.instanceMatrix.needsUpdate = true;
+    // Per-instance alpha: shell entities get SHELL_OPACITY in their
+    // slot; everything else stays at NORMAL_OPACITY. Patches the
+    // shader to multiply gl_FragColor.a by the slot's instanceAlpha.
+    makeInstanceAlphaCapable(this.unitInstanced, Render3DEntities.LOW_INSTANCED_CAP);
     this.world.add(this.unitInstanced);
 
     // Smooth-body chassis InstancedMesh — one shared draw call covers
@@ -901,6 +909,7 @@ export class Render3DEntities {
     // smoothChassisNextSlot per frame in updateUnits.
     this.smoothChassis.count = 0;
     this.smoothChassis.instanceMatrix.needsUpdate = true;
+    makeInstanceAlphaCapable(this.smoothChassis, Render3DEntities.SMOOTH_CHASSIS_CAP);
     this.world.add(this.smoothChassis);
 
     // Turret-head InstancedMesh — reuses the existing turretHeadGeom
@@ -925,6 +934,7 @@ export class Render3DEntities {
     }
     this.turretHeadInstanced.count = 0;
     this.turretHeadInstanced.instanceMatrix.needsUpdate = true;
+    makeInstanceAlphaCapable(this.turretHeadInstanced, Render3DEntities.TURRET_HEAD_CAP);
     this.world.add(this.turretHeadInstanced);
 
     // Barrel InstancedMesh — reuses the existing barrelGeom
@@ -950,6 +960,7 @@ export class Render3DEntities {
     }
     this.barrelInstanced.count = 0;
     this.barrelInstanced.instanceMatrix.needsUpdate = true;
+    makeInstanceAlphaCapable(this.barrelInstanced, Render3DEntities.BARREL_CAP);
     this.world.add(this.barrelInstanced);
 
     // Mirror-panel InstancedMesh — one shared chrome-shiny material
@@ -976,6 +987,7 @@ export class Render3DEntities {
     }
     this.mirrorPanelInstanced.count = 0;
     this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
+    makeInstanceAlphaCapable(this.mirrorPanelInstanced, Render3DEntities.MIRROR_PANEL_CAP);
     this.world.add(this.mirrorPanelInstanced);
 
     this.projectileSphereInstanced = new THREE.InstancedMesh(
@@ -1955,6 +1967,7 @@ export class Render3DEntities {
     // pool.nextSlot at end-of-update.
     mesh.count = 0;
     mesh.instanceMatrix.needsUpdate = true;
+    makeInstanceAlphaCapable(mesh, Render3DEntities.POLY_CHASSIS_CAP);
     this.world.add(mesh);
     pool = {
       mesh,
@@ -2228,6 +2241,57 @@ export class Render3DEntities {
     );
   }
 
+  /** Per-frame: write SHELL_OPACITY to every InstancedMesh slot the
+   *  entity occupies when it's an in-progress shell, and NORMAL_OPACITY
+   *  when it's complete. Touches:
+   *    - unitInstanced (MIN-tier mass sphere)
+   *    - smoothChassis / polyChassis (unit body)
+   *    - turretHeadInstanced + barrelInstanced (turret heads & barrels)
+   *    - mirrorPanelInstanced (mirror panels)
+   *  Treads & per-Mesh chassis fallbacks are handled separately by the
+   *  per-Mesh material override (applyShellOverride). */
+  private updateShellAlphas(e: Entity, m: EntityMesh): void {
+    const isShell = !!(e.buildable && !e.buildable.isComplete && !e.buildable.isGhost);
+    const alpha = isShell ? SHELL_OPACITY : NORMAL_OPACITY;
+
+    const massSlot = this.unitInstancedSlot.get(e.id);
+    if (this.unitInstanced && massSlot !== undefined) {
+      setInstanceAlphaSlot(this.unitInstanced, massSlot, alpha);
+    }
+
+    if (this.smoothChassis && m.smoothChassisSlots) {
+      for (const slot of m.smoothChassisSlots) {
+        setInstanceAlphaSlot(this.smoothChassis, slot, alpha);
+      }
+    }
+
+    if (m.polyChassisSlot !== undefined && m.rendererId) {
+      const pool = this.polyChassis.get(m.rendererId);
+      if (pool) {
+        setInstanceAlphaSlot(pool.mesh, m.polyChassisSlot, alpha);
+      }
+    }
+
+    if (m.turrets) {
+      for (const tm of m.turrets) {
+        if (tm.headSlot !== undefined && this.turretHeadInstanced) {
+          setInstanceAlphaSlot(this.turretHeadInstanced, tm.headSlot, alpha);
+        }
+        if (tm.barrelSlots && this.barrelInstanced) {
+          for (const slot of tm.barrelSlots) {
+            setInstanceAlphaSlot(this.barrelInstanced, slot, alpha);
+          }
+        }
+      }
+    }
+
+    if (m.mirrors?.panelSlots && this.mirrorPanelInstanced) {
+      for (const slot of m.mirrors.panelSlots) {
+        setInstanceAlphaSlot(this.mirrorPanelInstanced, slot, alpha);
+      }
+    }
+  }
+
   private updateUnits(): void {
     const unitRenderMode = this.lod.gfx.unitRenderMode;
 
@@ -2285,13 +2349,18 @@ export class Render3DEntities {
       if (existing) {
         existing.group.position.set(tx, getUnitGroundZ(e), ty);
         if (existing.yawGroup) existing.yawGroup.rotation.set(0, -tRot, 0);
-        // Shell-state visual: incomplete buildable → swap every Mesh
-        // material on the unit's group to the shared transparent gray
-        // shell material; restore originals on completion. Idempotent.
+        // Shell-state visual — two paths must agree:
+        //   - applyShellOverride handles per-Mesh chassis fallbacks
+        //     and treads (objects that own their own material).
+        //   - updateShellAlphas handles every InstancedMesh slot the
+        //     entity occupies (smooth/poly chassis, turret heads,
+        //     barrels, mirror panels, MIN-tier mass sphere) via the
+        //     per-instance alpha shader injection in instanceAlpha.ts.
         applyShellOverride(
           existing.group,
           !!(e.buildable && !e.buildable.isComplete && !e.buildable.isGhost),
         );
+        this.updateShellAlphas(e, existing);
       }
       // The expensive per-frame work below (terrain normal, slope tilt,
       // locomotion, mirror tracking, range rings, turret-aim math) IS
@@ -3627,12 +3696,22 @@ export class Render3DEntities {
       ) continue;
       const anim = detail.mesh.userData.solarPetal as SolarPetalAnimation | undefined;
       if (!anim) continue;
-      const open = anim.openMatrix.elements;
-      const closed = anim.closedMatrix.elements;
-      const out = detail.mesh.matrix.elements;
-      for (let i = 0; i < 16; i++) {
-        out[i] = closed[i] + (open[i] - closed[i]) * t;
-      }
+      _solarPetalDirection
+        .copy(anim.closedDirection)
+        .lerp(anim.openDirection, t)
+        .normalize();
+      writeSolarPetalMatrix(
+        detail.mesh.matrix,
+        anim.width,
+        anim.length,
+        anim.hinge,
+        anim.tangent,
+        _solarPetalDirection,
+        anim.inset,
+        anim.normalOffset,
+        anim.thickness,
+        anim.panelSideHint,
+      );
       detail.mesh.matrixWorldNeedsUpdate = true;
     }
   }

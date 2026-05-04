@@ -35,6 +35,7 @@
 // after every leg has updated.
 
 import * as THREE from 'three';
+import { makeInstanceAlphaCapable, setInstanceAlphaSlot } from './instanceAlpha';
 
 /** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
  *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
@@ -99,19 +100,30 @@ vec3 objectNormal = normalize(
 
 function makeInstancedLegMaterial(color: number): THREE.MeshLambertMaterial {
   const material = new THREE.MeshLambertMaterial({ color });
+  // Same per-instance alpha story as the chassis / turret InstancedMeshes
+  // — patches the fragment shader to multiply gl_FragColor.a by the
+  // per-leg-slot `instanceAlpha` so a unit shell's legs render at
+  // SHELL_OPACITY along with everything else.
+  material.transparent = true;
+  material.depthWrite = false;
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
-      `${INSTANCE_HEADER}\n#include <common>`,
+      `${INSTANCE_HEADER}\nattribute float instanceAlpha;\nvarying float vInstanceAlpha;\n#include <common>`,
     );
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
-      INSTANCE_BEGIN_VERTEX,
+      INSTANCE_BEGIN_VERTEX + '\n  vInstanceAlpha = instanceAlpha;',
     );
     shader.vertexShader = shader.vertexShader.replace(
       '#include <beginnormal_vertex>',
       INSTANCE_BEGIN_NORMAL,
     );
+    shader.fragmentShader =
+      'varying float vInstanceAlpha;\n' + shader.fragmentShader.replace(
+        '#include <opaque_fragment>',
+        '#include <opaque_fragment>\n  gl_FragColor.a *= vInstanceAlpha;',
+      );
   };
   return material;
 }
@@ -125,6 +137,7 @@ function buildInstancedCylinderGeom(
   startBuf: THREE.InstancedBufferAttribute,
   endBuf: THREE.InstancedBufferAttribute,
   thickBuf: THREE.InstancedBufferAttribute,
+  alphaBuf: THREE.InstancedBufferAttribute,
 ): THREE.InstancedBufferGeometry {
   const base = new THREE.CylinderGeometry(1, 1, 1, 10);
   const inst = new THREE.InstancedBufferGeometry();
@@ -136,6 +149,7 @@ function buildInstancedCylinderGeom(
   inst.setAttribute('instStart', startBuf);
   inst.setAttribute('instEnd', endBuf);
   inst.setAttribute('instThickness', thickBuf);
+  inst.setAttribute('instanceAlpha', alphaBuf);
   // The base geom's bounding sphere is at origin with radius 1; our
   // instances live anywhere on the map, so disable culling. Empty
   // slots have thickness 0 and contribute zero pixels anyway.
@@ -148,6 +162,7 @@ class CylinderPool {
   private startBuf: THREE.InstancedBufferAttribute;
   private endBuf: THREE.InstancedBufferAttribute;
   private thickBuf: THREE.InstancedBufferAttribute;
+  private alphaBuf: THREE.InstancedBufferAttribute;
   private mesh: THREE.Mesh;
   private nextSlot = 0;
   private freeList: number[] = [];
@@ -162,12 +177,26 @@ class CylinderPool {
     this.thickBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP), 1,
     ).setUsage(THREE.DynamicDrawUsage);
+    // Per-instance alpha — 1.0 (fully opaque) by default; flipped to
+    // SHELL_OPACITY for shell entities by Locomotion3D.updateLocomotion.
+    const alphaArr = new Float32Array(SLOT_CAP);
+    alphaArr.fill(1.0);
+    this.alphaBuf = new THREE.InstancedBufferAttribute(alphaArr, 1)
+      .setUsage(THREE.DynamicDrawUsage);
 
-    const geom = buildInstancedCylinderGeom(this.startBuf, this.endBuf, this.thickBuf);
+    const geom = buildInstancedCylinderGeom(this.startBuf, this.endBuf, this.thickBuf, this.alphaBuf);
     const material = makeInstancedLegMaterial(color);
     this.mesh = new THREE.Mesh(geom, material);
     this.mesh.frustumCulled = false;
     parent.add(this.mesh);
+  }
+
+  setAlpha(slot: number, alpha: number): void {
+    if (slot < 0) return;
+    const arr = this.alphaBuf.array as Float32Array;
+    if (arr[slot] === alpha) return;
+    arr[slot] = alpha;
+    this.alphaBuf.needsUpdate = true;
   }
 
   alloc(): number {
@@ -244,7 +273,13 @@ class JointSpherePool {
     // Same caveat as the cylinder + chassis + particle pools — instances
     // live anywhere on the map, source-geom bounding sphere is at origin.
     this.mesh.frustumCulled = false;
+    // Per-instance alpha for shell rendering.
+    makeInstanceAlphaCapable(this.mesh, SLOT_CAP);
     parent.add(this.mesh);
+  }
+
+  setAlpha(slot: number, alpha: number): void {
+    setInstanceAlphaSlot(this.mesh, slot, alpha);
   }
 
   alloc(): number {
@@ -335,6 +370,13 @@ export class LegInstancedRenderer {
   updateJoint(slot: number, x: number, y: number, z: number, radius: number): void {
     this.joints.update(slot, x, y, z, radius);
   }
+
+  /** Per-slot alpha — 1.0 = fully opaque, < 1.0 = translucent.
+   *  Locomotion3D writes SHELL_OPACITY for shell entities so legs
+   *  read as ghosted along with the rest of the unit. */
+  setUpperAlpha(slot: number, alpha: number): void { this.upper.setAlpha(slot, alpha); }
+  setLowerAlpha(slot: number, alpha: number): void { this.lower.setAlpha(slot, alpha); }
+  setJointAlpha(slot: number, alpha: number): void { this.joints.setAlpha(slot, alpha); }
 
   /** Mark all per-instance buffers dirty — call once per frame
    *  after every leg has been updated. Cheap (just sets the dirty
