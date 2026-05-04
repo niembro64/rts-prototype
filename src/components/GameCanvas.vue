@@ -45,8 +45,6 @@ import {
   getDefaultGrid,
   loadStoredGrid,
   saveStoredGrid,
-  saveFfAccelUnits,
-  saveFfAccelShots,
   saveMirrorsEnabled,
   saveForceFieldsEnabled,
   loadStoredTerrainCenter,
@@ -276,10 +274,9 @@ const roomCode = ref('');
 const lobbyPlayers = ref<LobbyPlayer[]>([]);
 const localPlayerId = ref<PlayerId>(1);
 // LOCAL user's username — persisted in localStorage by playerNamesConfig.
-// Single source of truth for "what does the local user call themselves
-// in BOTH demo and real battle". The lobby roster (lobbyPlayers) holds
-// it for real battle once networking is up; this ref stays the
-// canonical local copy and is what TopBar's editable input is bound to.
+// The lobby is the only place the user can edit it; this ref is still
+// the demo/offline fallback and the source we hand to NetworkManager
+// when the local lobby slot commits a rename.
 const localUsername = ref<string>(getInitialLocalUsername());
 
 /** Resolves a playerId to the name to render in the UI (TopBar) or
@@ -291,25 +288,17 @@ const localUsername = ref<string>(getInitialLocalUsername());
  *       between hostGame() and the first roster mirror).
  *    3. Funny default keyed by playerId so every viewer agrees on what
  *       to call AI seats with no host-side rename. */
-function resolvePlayerName(pid: PlayerId): string {
+function resolvePlayerName(pid: PlayerId): string;
+function resolvePlayerName(pid: PlayerId, fallback: null): string | null;
+function resolvePlayerName(pid: PlayerId, fallback?: string | null): string | null {
   const roster = lobbyPlayers.value.find((p) => p.playerId === pid);
   if (roster && roster.name && roster.name.length > 0) return roster.name;
   if (pid === localPlayerId.value) return localUsername.value;
-  return getDefaultPlayerName(pid);
+  return fallback === undefined ? getDefaultPlayerName(pid) : fallback;
 }
 
-/** Same lookup used by RtsScene3D for commander labels. Differs only in
- *  return type (null when "no roster yet, fall back to default") so the
- *  scene's optional-callback contract stays simple. */
-function lookupPlayerNameForScene(pid: PlayerId): string | null {
-  const roster = lobbyPlayers.value.find((p) => p.playerId === pid);
-  if (roster && roster.name && roster.name.length > 0) return roster.name;
-  if (pid === localPlayerId.value) return localUsername.value;
-  return null;
-}
-
-/** Commit a TopBar rename — updates the local ref, persists to
- *  localStorage, and (in real battle) hands off to NetworkManager
+/** Commit a local lobby-slot rename — updates the local ref, persists
+ *  to localStorage, and (in real battle) hands off to NetworkManager
  *  which broadcasts the change to every other client. */
 function onPlayerNameChange(name: string): void {
   const trimmed = name.trim();
@@ -1021,12 +1010,6 @@ const currentAllowedUnits = computed<readonly string[]>(
 const allDemoUnitsActive = computed(() =>
   demoUnitTypes.every((ut) => currentAllowedUnits.value.includes(ut)),
 );
-const currentFfAccelUnits = computed(
-  () => serverMetaFromSnapshot.value?.ffAccel.units ?? BATTLE_CONFIG.ffAccelUnits.default,
-);
-const currentFfAccelShots = computed(
-  () => serverMetaFromSnapshot.value?.ffAccel.shots ?? BATTLE_CONFIG.ffAccelShots.default,
-);
 const currentMirrorsEnabled = computed(
   () => serverMetaFromSnapshot.value?.mirrorsEnabled ?? BATTLE_CONFIG.mirrorsEnabled.default,
 );
@@ -1075,16 +1058,6 @@ function changeMaxTotalUnits(value: number): void {
   // mutations write to the demo key. Same pattern every shared
   // setting below uses via `currentBattleMode`.
   saveStoredCap(currentBattleMode.value, value);
-}
-
-function setFfAccelUnits(enabled: boolean): void {
-  activeConnection?.sendCommand({ type: 'setFfAccelUnits', tick: 0, enabled });
-  saveFfAccelUnits(enabled, currentBattleMode.value);
-}
-
-function setFfAccelShots(enabled: boolean): void {
-  activeConnection?.sendCommand({ type: 'setFfAccelShots', tick: 0, enabled });
-  saveFfAccelShots(enabled, currentBattleMode.value);
 }
 
 function setMirrorsEnabled(enabled: boolean): void {
@@ -1184,8 +1157,6 @@ function resetDemoDefaults(): void {
   // resetting demo while in the lobby would wipe the user's solo
   // demo prefs out from under them, and vice versa.
   const mode = currentBattleMode.value;
-  setFfAccelUnits(BATTLE_CONFIG.ffAccelUnits.default);
-  setFfAccelShots(BATTLE_CONFIG.ffAccelShots.default);
   setMirrorsEnabled(BATTLE_CONFIG.mirrorsEnabled.default);
   setForceFieldsEnabled(BATTLE_CONFIG.forceFieldsEnabled.default);
   // Reset terrain shape to defaults. applyTerrainShape handles the
@@ -1388,7 +1359,7 @@ async function handleHost(): Promise<void> {
     lobbyPlayers.value = [
       {
         playerId: 1,
-        name: 'Red',
+        name: networkManager.getLocalPlayerName(),
         isHost: true,
         ipAddress: localIpAddress.value !== 'N/A' ? localIpAddress.value : undefined,
         location: localLocation.value || undefined,
@@ -1794,12 +1765,16 @@ function setupNetworkCallbacks(): void {
   // re-broadcast). Update the matching entry in lobbyPlayers so
   // the GAME LOBBY player list re-renders with the new columns.
   networkManager.onPlayerInfoUpdate = (player) => {
+    if (player.playerId === localPlayerId.value && player.name) {
+      localUsername.value = player.name;
+    }
     const idx = lobbyPlayers.value.findIndex((p) => p.playerId === player.playerId);
     if (idx === -1) return;
     lobbyPlayers.value = lobbyPlayers.value.map((p, i) =>
       i === idx
         ? {
             ...p,
+            name: player.name,
             ipAddress: player.ipAddress,
             location: player.location,
             timezone: player.timezone,
@@ -1988,7 +1963,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       terrainDividers: realTerrainDividers,
       terrainMapShape: realTerrainMapShape,
       backgroundMode: false,
-      lookupPlayerName: lookupPlayerNameForScene,
+      lookupPlayerName: (pid) => resolvePlayerName(pid, null),
     });
     setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
 
@@ -2214,7 +2189,6 @@ onUnmounted(() => {
         :network-status="networkStatus"
         :network-warning="networkNotice"
         @toggle-player="togglePlayer"
-        @player-name-change="onPlayerNameChange"
       />
     </div>
 
@@ -2415,22 +2389,6 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>FF:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                :active="currentFfAccelUnits"
-                title="Force field accelerates enemy units"
-                @click="setFfAccelUnits(!currentFfAccelUnits)"
-              >UNIT-ACC</BarButton>
-              <BarButton
-                :active="currentFfAccelShots"
-                title="Force field accelerates enemy projectiles"
-                @click="setFfAccelShots(!currentFfAccelShots)"
-              >SHOT-ACC</BarButton>
-            </BarButtonGroup>
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />
@@ -3311,8 +3269,6 @@ onUnmounted(() => {
       :unit-types="demoUnitTypes"
       :allowed-units="currentAllowedUnits"
       :unit-cap="displayUnitCap"
-      :ff-accel-units="currentFfAccelUnits"
-      :ff-accel-shots="currentFfAccelShots"
       :mirrors-enabled="currentMirrorsEnabled"
       :force-fields-enabled="currentForceFieldsEnabled"
       @host="handleHost"
@@ -3327,10 +3283,9 @@ onUnmounted(() => {
       @toggle-unit="(ut) => toggleDemoUnitType(ut)"
       @toggle-all-units="toggleAllDemoUnits"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
-      @set-ff-accel-units="(e) => setFfAccelUnits(e)"
-      @set-ff-accel-shots="(e) => setFfAccelShots(e)"
       @set-mirrors-enabled="(e) => setMirrorsEnabled(e)"
       @set-force-fields-enabled="(e) => setForceFieldsEnabled(e)"
+      @set-player-name="onPlayerNameChange"
       @reset-defaults="resetDemoDefaults"
     />
 
