@@ -8,12 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   6) OUTDATED / STALE COMMENTS
   ---------------------------------------------------
 
-  [LOW] src/game/sim/economy.ts:155 — `canAfford(playerId, resourceCost:
-    number)` parameter still named `resourceCost`, but it's a single
-    scalar applied to EACH resource. Misleading given that
-    `ResourceCost` is the type for a triple. Rename to
-    `perResourceAmount` or change the signature to take a `ResourceCost`.
-
   ---------------------------------------------------
   7) CONFIGURATION KNOB FRAGMENTATION
   ---------------------------------------------------

@@ -152,13 +152,17 @@ export class EconomyManager {
     return actualSpend;
   }
 
-  // Check if player can afford a unified resource cost (energy + mana + metal each).
-  canAfford(playerId: PlayerId, resourceCost: number): boolean {
+  /** True iff every resource pool (energy, mana, metal) holds at
+   *  least `perResourceAmount`. Used by the dgun gate, where the same
+   *  scalar threshold applies uniformly to each pool. Distinct from a
+   *  `ResourceCost` triple — `ResourceCost` lets each pool have its
+   *  own cost, this checks the same number against all three. */
+  canAfford(playerId: PlayerId, perResourceAmount: number): boolean {
     const economy = this.getOrCreateEconomy(playerId);
     return (
-      economy.stockpile.curr >= resourceCost &&
-      economy.mana.stockpile.curr >= resourceCost &&
-      economy.metal.stockpile.curr >= resourceCost
+      economy.stockpile.curr >= perResourceAmount &&
+      economy.mana.stockpile.curr >= perResourceAmount &&
+      economy.metal.stockpile.curr >= perResourceAmount
     );
   }
 
