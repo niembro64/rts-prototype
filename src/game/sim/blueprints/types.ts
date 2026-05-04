@@ -24,6 +24,7 @@ export type {
   LaserShotBlueprint,
   ShotBlueprint,
   MirrorPanel,
+  TurretRadiusConfig,
   TurretBlueprint,
   MountOffset,
   TurretMount,
@@ -34,6 +35,7 @@ export type {
   LocomotionPhysics,
   UnitBodyShape,
   UnitBodyShapePart,
+  EntityHudBlueprint,
   LocomotionBlueprint,
   UnitBlueprint,
 } from '@/types/blueprints';

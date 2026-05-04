@@ -9,7 +9,7 @@ import {
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
 } from '../../config';
 import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
-import { getPlayerBaseAngle } from '../sim/spawn';
+import { getPlayerBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
 import { isFarFromWater } from '../sim/Terrain';
 import { expandPathActions } from '../sim/Pathfinder';
 import type { BuildingGrid } from '../sim/grid';
@@ -124,7 +124,7 @@ function spawnUnit(
   if (unit.unit) {
     const body = physics.createUnitBody(
       x, y,
-      unit.unit.unitRadiusCollider.push,
+      unit.unit.radius.push,
       unit.unit.bodyCenterHeight,
       unit.unit.mass,
       `unit_${unit.id}`,
@@ -145,9 +145,15 @@ export function spawnBackgroundUnitsStandalone(
   initialSpawn: boolean,
   buildingGrid: BuildingGrid,
   allowedTypes?: ReadonlySet<string>,
+  playerIds?: readonly PlayerId[],
 ): Entity[] {
   const spawned: Entity[] = [];
-  const numPlayers = DEMO_CONFIG.playerCount;
+  const players = normalizePlayerIds(
+    playerIds && playerIds.length > 0
+      ? playerIds
+      : Array.from({ length: Math.max(1, world.playerCount || DEMO_CONFIG.playerCount) }, (_, i) => (i + 1) as PlayerId),
+  );
+  const numPlayers = players.length;
   const unitCapPerPlayer = Math.floor(world.maxTotalUnits / numPlayers);
   const mapWidth = world.mapWidth;
   const mapHeight = world.mapHeight;
@@ -185,7 +191,7 @@ export function spawnBackgroundUnitsStandalone(
     const maxAttempts = DEMO_CONFIG.centerSpawnWaterMaxAttempts;
 
     for (let p = 0; p < numPlayers; p++) {
-      const playerId = (p + 1) as PlayerId;
+      const playerId = players[p];
       const pUnits = world.getUnitsByPlayer(playerId).length;
 
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
@@ -222,7 +228,7 @@ export function spawnBackgroundUnitsStandalone(
     const sectorAngle = (2 * Math.PI / numPlayers) * DEMO_CONFIG.centerSpawnSectorFraction;
 
     for (let p = 0; p < numPlayers; p++) {
-      const playerId = (p + 1) as PlayerId;
+      const playerId = players[p];
       const pUnits = world.getUnitsByPlayer(playerId).length;
       if (pUnits >= unitCapPerPlayer) continue;
 

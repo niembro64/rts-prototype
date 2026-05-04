@@ -30,12 +30,16 @@ export type MirrorMesh = {
    *  fallback is in use (cap exhausted). The caller (Render3DEntities)
    *  sets this after build. */
   panelSlots?: number[];
+  /** Thin team-colored bars enclosing each mirror plate. These stay
+   *  per-Mesh because they are low-count structural pieces, while the
+   *  white mirror plates can still use the shared instance pool. */
+  frames: THREE.Mesh[];
 };
 
 export type MirrorPanelMount = {
   /** Authored chassis-local offset of the panel center along the
    *  turret's local +X (forward). For the arm-mounted mirror this is
-   *  the arm length (= bodyRadius × MIRROR_ARM_LENGTH_MULT). */
+   *  the arm length (= radius.body × MIRROR_ARM_LENGTH_MULT). */
   offsetX: number;
   /** Lateral chassis-local offset; always 0 for the regularized
    *  single-arm mirror. */
@@ -52,7 +56,7 @@ export function buildMirrorMesh3D(
    *  unit's body center. The cache uses bp.bodyCenterHeight; pass the
    *  same value here so visual and sim panels share one center. */
   panelCenterY: number,
-  /** Half the square's edge length (= bodyRadius). Same value the sim
+  /** Half the square's edge length (= radius.body). Same value the sim
    *  cache stores in halfWidth/halfHeight. */
   panelHalfSide: number,
   /** Forward arm length from the turret body sphere center to the
@@ -60,6 +64,7 @@ export function buildMirrorMesh3D(
    *  cache's `panel.offsetX`. */
   panelArmLength: number,
   panelGeom: THREE.PlaneGeometry,
+  frameGeom: THREE.BoxGeometry,
   armGeom: THREE.CylinderGeometry,
   panelMaterial: THREE.Material,
   armMaterial: THREE.Material,
@@ -86,8 +91,12 @@ export function buildMirrorMesh3D(
   parent.add(root);
   const panelMeshes: THREE.Mesh[] = [];
   const armMeshes: THREE.Mesh[] = [];
+  const frameMeshes: THREE.Mesh[] = [];
   const side = Math.max(panelHalfSide * 2, 1);
   const armThickness = Math.max(panelHalfSide * MIRROR_ARM_THICKNESS_FRAC, 0.5);
+  const frameThickness = Math.max(panelHalfSide * 0.055, 0.25);
+  const frameDepth = Math.max(panelHalfSide * 0.075, 0.34);
+  const frameSegmentLength = side / 3;
   const panelGap = Math.min(
     Math.max(panelHalfSide * MIRROR_ARM_PANEL_GAP_FRAC, 0.25),
     Math.max(panelArmLength * 0.2, 0),
@@ -120,10 +129,23 @@ export function buildMirrorMesh3D(
     m.position.set(panelArmLength, 0, 0);
     if (!skipPerMesh) root.add(m);
     panelMeshes.push(m);
+
+    const left = new THREE.Mesh(frameGeom, armMaterial);
+    left.scale.set(frameDepth, frameSegmentLength, frameThickness);
+    left.position.set(panelArmLength, 0, -panelHalfSide - frameThickness / 2);
+    root.add(left);
+    frameMeshes.push(left);
+
+    const right = new THREE.Mesh(frameGeom, armMaterial);
+    right.scale.set(frameDepth, frameSegmentLength, frameThickness);
+    right.position.set(panelArmLength, 0, panelHalfSide + frameThickness / 2);
+    root.add(right);
+    frameMeshes.push(right);
   }
   return {
     root,
     panels: panelMeshes,
     arms: armMeshes,
+    frames: frameMeshes,
   };
 }

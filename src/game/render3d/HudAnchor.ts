@@ -4,18 +4,23 @@ import { getBuildingBlueprint } from '../sim/blueprints/buildings';
 import { getBodyTopY, getChassisLiftY } from '../math/BodyDimensions';
 import type { EntityHudBlueprint } from '@/types/blueprints';
 import {
+  getConeBarrelTipOrbitRadius,
+  getSimpleMultiBarrelOrbitRadius,
   getTurretBarrelCenterToTipLength,
   getTurretBarrelDiameter,
   getTurretHeadRadius,
 } from '../math';
-import { BARREL_ORBIT_CLAMP_FRAC } from '../math/BarrelGeometry';
-import { TURRET_HEIGHT } from '../../config';
 import { getBuildingVisualTopZ } from '../sim/buildingAnchors';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import {
   DEFAULT_BUILDING_HUD_LAYOUT,
+  ENTITY_HUD_BAR_STACK_GAP,
+  ENTITY_HUD_BAR_STACK_ROWS,
+  ENTITY_HUD_NAME_GAP_ABOVE_BARS,
   DEFAULT_UNIT_HUD_LAYOUT,
 } from '@/entityHudConfig';
+import { SHELL_BAR_WORLD_HEIGHT } from '@/shellConfig';
+import { NAME_LABEL_WORLD_HEIGHT } from '@/nameLabelConfig';
 
 function getBarrelRadius(turret: Turret): number {
   const barrel = turret.config.barrel;
@@ -32,18 +37,15 @@ function getBarrelTopAboveGround(turret: Turret, mountY: number): number {
   const forwardUp = Math.max(0, Math.sin(pitch)) * barrelLen;
   let orbitUp = 0;
   if (barrel.type === 'simpleMultiBarrel') {
-    orbitUp = Math.abs(Math.cos(pitch)) * Math.min(
-      barrel.orbitRadius * headRadius,
-      TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.parallel,
-    );
+    orbitUp = Math.abs(Math.cos(pitch))
+      * getSimpleMultiBarrelOrbitRadius(barrel, headRadius);
   } else if (barrel.type === 'coneMultiBarrel') {
-    const baseOrbitR = Math.min(barrel.baseOrbit * headRadius, TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneBase);
-    const tipOrbitR = barrel.tipOrbit !== undefined
-      ? barrel.tipOrbit * headRadius
-      : Math.min(
-          baseOrbitR + barrelLen * Math.tan((turret.config.spread?.angle ?? Math.PI / 5) / 2),
-          TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneTip,
-        );
+    const tipOrbitR = getConeBarrelTipOrbitRadius(
+      barrel,
+      headRadius,
+      barrelLen,
+      turret.config.spread?.angle,
+    );
     orbitUp = Math.abs(Math.cos(pitch)) * tipOrbitR;
   }
   return mountY + forwardUp + orbitUp + getBarrelRadius(turret);
@@ -51,7 +53,7 @@ function getBarrelTopAboveGround(turret: Turret, mountY: number): number {
 
 export function getUnitHudTopY(unit: Entity): number {
   if (!unit.unit) return unit.transform.z;
-  const unitRadius = unit.unit.bodyRadius;
+  const unitRadius = unit.unit.radius.body;
   const groundY = getUnitGroundZ(unit);
   let topAboveGround = unitRadius;
 
@@ -119,10 +121,22 @@ export function getBuildingHudBarsY(building: Entity): number {
   return getBuildingHudTopY(building) + getBuildingHudLayout(building).barsOffsetAboveTop;
 }
 
+function getHudNameYFromBarsY(barsY: number): number {
+  const rows = Math.max(1, Math.floor(ENTITY_HUD_BAR_STACK_ROWS));
+  const topBarCenterOffset = (rows - 1) * (SHELL_BAR_WORLD_HEIGHT + ENTITY_HUD_BAR_STACK_GAP);
+  const topBarTopOffset = topBarCenterOffset + SHELL_BAR_WORLD_HEIGHT / 2;
+  return (
+    barsY +
+    topBarTopOffset +
+    ENTITY_HUD_NAME_GAP_ABOVE_BARS +
+    NAME_LABEL_WORLD_HEIGHT / 2
+  );
+}
+
 export function getUnitHudNameY(unit: Entity): number {
-  return getUnitHudTopY(unit) + getUnitHudLayout(unit).nameOffsetAboveTop;
+  return getHudNameYFromBarsY(getUnitHudBarsY(unit));
 }
 
 export function getBuildingHudNameY(building: Entity): number {
-  return getBuildingHudTopY(building) + getBuildingHudLayout(building).nameOffsetAboveTop;
+  return getHudNameYFromBarsY(getBuildingHudBarsY(building));
 }

@@ -3,13 +3,24 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, BeamShot, LaserShot } from '../types';
-import { getPlayerPrimaryColor, isLineShot } from '../types';
+import { getPlayerPrimaryColor, isLineShot, isProjectileShot } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types';
 import type { Projectile, ProjectileConfig } from '../types';
 import { getUnitBodyCenterHeight } from '../unitGeometry';
+import { isTurretId, isUnitTypeId } from '../../../types/blueprintIds';
+
+function eventAudioKey(
+  sourceKey: string,
+  sourceType: SimEventSourceType,
+  fallbackUnitType?: string,
+): SimEvent['turretId'] {
+  if (sourceType === 'turret' && isTurretId(sourceKey)) return sourceKey;
+  if (fallbackUnitType && isUnitTypeId(fallbackUnitType)) return fallbackUnitType;
+  return '';
+}
 
 // Build an ImpactContext for hit/projectileExpire audio events
 export function buildImpactContext(
@@ -23,7 +34,7 @@ export function buildImpactContext(
   // collision falls through to collisionRadius when the shot has no
   // splash zone (pure carrier or non-splashing line shot).
   let explosionRadius = collisionRadius;
-  if (config.shot.type === 'projectile') {
+  if (isProjectileShot(config.shot)) {
     explosionRadius = config.shot.explosion?.radius ?? collisionRadius;
   } else if (isLineShot(config.shot)) {
     explosionRadius = config.shot.radius;
@@ -35,7 +46,7 @@ export function buildImpactContext(
   if (entity) {
     entityVelX = entity.unit?.velocityX ?? 0;
     entityVelY = entity.unit?.velocityY ?? 0;
-    entityCollisionRadius = entity.unit?.unitRadiusCollider.shot ?? (entity.building ? entity.building.width / 2 : 0);
+    entityCollisionRadius = entity.unit?.radius.shot ?? (entity.building ? entity.building.width / 2 : 0);
 
     // Normalized direction from projectile center to entity center
     const dx = entity.transform.x - projectileX;
@@ -85,8 +96,8 @@ export function buildUnitDeathEvent(
     x: target?.body?.physicsBody.vx ?? 0,
     y: target?.body?.physicsBody.vy ?? 0,
   };
-  const collider = target?.unit?.unitRadiusCollider;
-  const visualRadius = target?.unit?.bodyRadius ?? collider?.shot ?? 15;
+  const collider = target?.unit?.radius;
+  const visualRadius = target?.unit?.radius.body ?? collider?.shot ?? 15;
   const pushRadius = collider?.push ?? collider?.shot ?? visualRadius;
   const bodyCenterHeight = getUnitBodyCenterHeight(target?.unit);
   const radius = collider?.shot ?? visualRadius;
@@ -95,6 +106,7 @@ export function buildUnitDeathEvent(
   const deathZ = target?.body?.physicsBody.z ?? target?.transform.z ?? 0;
   const baseZ = target ? deathZ - bodyCenterHeight : undefined;
   const unitType = target?.unit?.unitType;
+  const deathUnitType = unitType && isUnitTypeId(unitType) ? unitType : undefined;
   const rotation = target?.transform.rotation ?? 0;
   // Per-turret yaw + pitch at death — Debris3D rotates each barrel
   // template by these so the cylinder spawns where the live mesh
@@ -119,7 +131,7 @@ export function buildUnitDeathEvent(
         pushRadius,
         baseZ,
         color: playerColor,
-        unitType,
+        unitType: deathUnitType,
         rotation,
         turretPoses,
       }
@@ -133,13 +145,13 @@ export function buildUnitDeathEvent(
         pushRadius,
         baseZ,
         color: playerColor,
-        unitType,
+        unitType: deathUnitType,
         rotation,
         turretPoses,
       };
   return {
     type: 'death',
-    turretId: sourceType === 'turret' ? sourceKey : '',
+    turretId: eventAudioKey(sourceKey, sourceType, unitType),
     sourceType,
     sourceKey,
     pos: {
@@ -177,7 +189,7 @@ export function buildBuildingDeathEvent(
   const deathZ = building?.body?.physicsBody.z ?? building?.transform.z ?? 0;
   return {
     type: 'death',
-    turretId: sourceType === 'turret' ? sourceKey : '',
+    turretId: eventAudioKey(sourceKey, sourceType),
     sourceType,
     sourceKey,
     pos: {

@@ -7,6 +7,7 @@ import type { AudioToolkit } from './audioHelpers';
 import { FIRE_SYNTHS } from './fireSynths';
 import { HIT_SYNTHS } from './hitSynths';
 import { DEATH_SYNTHS } from './deathSynths';
+import type { TurretAudioId } from '../../types/combat';
 import {
   type ContinuousSound,
   startContinuousSound,
@@ -16,8 +17,6 @@ import {
   getBeamConfig,
   getForceFieldConfig,
 } from './continuousSounds';
-
-export type TurretAudioId = string;
 
 // Unified synth dispatch table
 const SYNTH_DISPATCH: Record<string, (tk: AudioToolkit, speed: number, vol: number) => void> = {

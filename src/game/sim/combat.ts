@@ -33,7 +33,7 @@ export {
 
 export {
   updateForceFieldState,
-  applyForceFieldDamage,
+  findForceFieldProjectileIntersection,
   resetForceFieldBuffers,
 } from './combat/forceFieldTurret';
 

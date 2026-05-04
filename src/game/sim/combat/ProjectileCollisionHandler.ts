@@ -20,6 +20,25 @@ import { getUnitGroundZ } from '../unitGeometry';
 import { findForceFieldProjectileIntersection } from './forceFieldTurret';
 
 const MIRROR_PROJECTILE_QUERY_PAD = 96;
+const MAX_PROJECTILE_SWEEP_DISTANCE = SPATIAL_GRID_CELL_SIZE * 64;
+const MAX_PROJECTILE_SWEEP_DISTANCE_SQ =
+  MAX_PROJECTILE_SWEEP_DISTANCE * MAX_PROJECTILE_SWEEP_DISTANCE;
+
+function isValidProjectileSweep(
+  prevX: number, prevY: number, prevZ: number,
+  currentX: number, currentY: number, currentZ: number,
+): boolean {
+  if (
+    !Number.isFinite(prevX) || !Number.isFinite(prevY) || !Number.isFinite(prevZ) ||
+    !Number.isFinite(currentX) || !Number.isFinite(currentY) || !Number.isFinite(currentZ)
+  ) {
+    return false;
+  }
+  const dx = currentX - prevX;
+  const dy = currentY - prevY;
+  const dz = currentZ - prevZ;
+  return dx * dx + dy * dy + dz * dz <= MAX_PROJECTILE_SWEEP_DISTANCE_SQ;
+}
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
@@ -265,6 +284,22 @@ export function checkProjectileCollisions(
     const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
     const damageSourceKey = proj.sourceTurretId ?? shotId;
     const damageSourceType: SimEventSourceType = proj.sourceTurretId ? 'turret' : 'system';
+    const isDGunProjectile = projEntity.dgunProjectile?.isDGun === true;
+    const isTerrainFollowingDGun = projEntity.dgunProjectile?.terrainFollow === true;
+    const isRocketShot = isProjectileShot(config.shot) && config.shot.type === 'rocket';
+    if (proj.projectileType === 'projectile') {
+      const sweepPrevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
+      const sweepPrevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
+      const sweepPrevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
+      if (!isValidProjectileSweep(
+        sweepPrevX, sweepPrevY, sweepPrevZ,
+        projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+      )) {
+        projectilesToRemove.push(projEntity.id);
+        despawnEvents.push({ id: projEntity.id });
+        continue;
+      }
+    }
 
     // Barrier impacts — a traveling projectile whose flight path this
     // tick crosses a mirror panel or enters a force-field sphere
@@ -322,7 +357,10 @@ export function checkProjectileCollisions(
           }
         }
       }
-      const shieldHit = world.forceFieldsEnabled
+      // Rocket-class shots punch through force fields. All other projectile
+      // shots are checked geometrically, with no projectile-owner/friendly
+      // filtering: outside-to-inside crossing is the only shield rule.
+      const shieldHit = world.forceFieldsEnabled && !isRocketShot
         ? findForceFieldProjectileIntersection(
             world,
             prevX, prevY, prevZ,
@@ -363,6 +401,8 @@ export function checkProjectileCollisions(
       !hitMirrorPanel &&
       !hitForceField &&
       proj.projectileType === 'projectile' &&
+      !isTerrainFollowingDGun &&
+      proj.hasLeftSource &&
       projEntity.transform.z <= groundZAtProj;
     if (hitGround) {
       projEntity.transform.z = groundZAtProj;
@@ -415,6 +455,7 @@ export function checkProjectileCollisions(
               ownerId: projEntity.ownership.playerId,
               damage: projShot.explosion!.damage,
               excludeEntities: splashExcludes,
+              excludeCommanders: isDGunProjectile,
               center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
               radius: projShot.explosion!.radius,
               knockbackForce: projShot.explosion!.force,
@@ -433,9 +474,9 @@ export function checkProjectileCollisions(
           // true above) — every projectile that explodes should LOOK
           // like it explodes, regardless of whether anything was in
           // splash range. The visual FX size comes from the shot's
-          // own primary/secondary explosion radii via impactContext,
-          // so a 0-radius pure carrier (e.g. mortarShot) still gets
-          // a small fragmentation pop sized by collision.radius.
+          // own explosion radius via impactContext. Pure carriers
+          // without an explosion still get a small fragmentation pop
+          // sized by collision.radius.
           audioEvents.push({
             type: 'hit',
             turretId: shotId,
@@ -543,9 +584,10 @@ export function checkProjectileCollisions(
       const beamDirX = Math.cos(beamAngle);
       const beamDirY = Math.sin(beamAngle);
 
-      // Reflected beams: attribute damage/kills to the last mirror unit
-      // that redirected the beam (= last polyline vertex with a
-      // mirrorEntityId). Points layout: [start, ...reflections, end].
+      // Reflected beams: attribute damage/kills to the last reflector
+      // entity that redirected the beam (= last polyline vertex with a
+      // mirrorEntityId, a legacy field name). Points layout:
+      // [start, ...reflections, end].
       let lastMirrorEntityId: EntityId | undefined;
       if (points) {
         for (let i = points.length - 2; i >= 1; i--) {
@@ -568,10 +610,10 @@ export function checkProjectileCollisions(
 
       applyKnockbackForces(result.knockbacks, forceAccumulator);
 
-      // Apply beam force (knockback only, no damage) to each mirror entity.
+      // Apply beam force (knockback only, no damage) to each reflector entity.
       // Walk segment-by-segment along the polyline; whenever a vertex
       // carries a mirrorEntityId, the segment ENTERING that vertex is
-      // the incoming beam direction at that mirror.
+      // the incoming beam direction at that reflector.
       if (points && points.length > 2 && forceAccumulator) {
         for (let i = 1; i < points.length - 1; i++) {
           const refl = points[i];
@@ -611,29 +653,35 @@ export function checkProjectileCollisions(
       const currentY = projEntity.transform.y;
       const currentZ = projEntity.transform.z;
 
-      // Source-entity exit guard: temporarily exclude source from collision while still inside hitbox
-      const sourceGuard = !proj.hasLeftSource;
-      const hitEntities = sourceGuard
-        ? ensureProjectileHitEntities(proj)
-        : (proj.hitEntities ?? _emptyExcludeSet);
-      if (sourceGuard) hitEntities.add(proj.sourceEntityId);
+      // Muzzle arming guard: while the round is still inside its
+      // firing unit's shot-clearance volume, do not run swept entity
+      // collision at all. Large chassis + multi-barrel turrets can
+      // spawn some barrels inside the source collider; excluding only
+      // the source still let carrier shots detonate instantly on nearby
+      // units in a crowded formation.
+      if (!proj.hasLeftSource) {
+        proj.collisionStartX = currentX;
+        proj.collisionStartY = currentY;
+        proj.collisionStartZ = currentZ;
+      } else {
+      const hitEntities = proj.hitEntities ?? _emptyExcludeSet;
 
       // 3D swept: capsule from prev→current (the projectile's flight
-      // path this tick) vs each unit sphere. The swept hit itself
-      // does no damage — direct-impact damage now lives entirely in
-      // the explosion block. The hit just registers the impact and
-      // triggers the detonation pipeline below, which applies splash
-      // (primary + secondary) and any submunitions.
+      // path this tick) vs each unit sphere. Normal projectiles keep
+      // direct damage at 0 and detonate on first hit. D-gun waves are
+      // terrain-following passthrough projectiles, so their swept
+      // capsule is the damage source and commanders are immune.
       const result = damageSystem.applyDamage({
         type: 'swept',
         sourceEntityId: proj.sourceEntityId,
         ownerId: projEntity.ownership.playerId,
-        damage: 0,
+        damage: isDGunProjectile ? (projShot.explosion?.damage ?? 0) : 0,
         excludeEntities: hitEntities,
+        excludeCommanders: isDGunProjectile,
         prev: { x: prevX, y: prevY, z: prevZ },
         current: { x: currentX, y: currentY, z: currentZ },
         radius: projRadius,
-        maxHits: proj.maxHits - getProjectileHitCount(proj) + (sourceGuard ? 1 : 0), // Compensate for phantom guard entry
+        maxHits: proj.maxHits - getProjectileHitCount(proj),
         velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
         projectileMass: projShot.mass,
       });
@@ -649,7 +697,7 @@ export function checkProjectileCollisions(
         // Add hit audio event with impact context for directional flame explosions
         // Position at the projectile's location (not the unit's center)
         const entity = world.getEntity(hitId);
-        if (entity) {
+        if (entity && !isDGunProjectile) {
           audioEvents.push({
             type: 'hit',
             turretId: shotId,
@@ -671,9 +719,9 @@ export function checkProjectileCollisions(
       );
 
       // Detonate on direct hit when the shot has either an explosion
-      // or submunitions to release. A pure carrier (no explosion, only
-      // submunitions) still triggers fragmentation.
-      if (hadHits && !proj.hasExploded
+      // or submunitions to release. A carrier with both applies its
+      // own splash first, then releases children from the same point.
+      if (!isDGunProjectile && hadHits && !proj.hasExploded
           && (projShot.explosion?.radius || projShot.submunitions)) {
         proj.hasExploded = true;
 
@@ -689,6 +737,7 @@ export function checkProjectileCollisions(
             ownerId: projEntity.ownership.playerId,
             damage: projShot.explosion.damage,
             excludeEntities: splashExcludes,
+            excludeCommanders: isDGunProjectile,
             center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
             radius: projShot.explosion.radius,
             knockbackForce: projShot.explosion.force,
@@ -733,9 +782,6 @@ export function checkProjectileCollisions(
         }
       }
 
-      // Clean up source guard (must happen after all damage processing for this projectile)
-      if (sourceGuard) proj.hitEntities?.delete(proj.sourceEntityId);
-
       // Remove projectile if max hits reached
       if (getProjectileHitCount(proj) >= proj.maxHits) {
         // Always emit projectileExpire at the projectile's position so it produces a termination explosion
@@ -756,6 +802,7 @@ export function checkProjectileCollisions(
       proj.collisionStartX = currentX;
       proj.collisionStartY = currentY;
       proj.collisionStartZ = currentZ;
+      }
       }
     }
 

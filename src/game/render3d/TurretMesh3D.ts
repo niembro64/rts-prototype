@@ -15,12 +15,13 @@ import * as THREE from 'three';
 import type { Turret } from '../sim/types';
 import type { GraphicsConfig } from '@/types/graphics';
 import {
+  getConeBarrelBaseOrbitRadius,
+  getConeBarrelTipOrbitRadius,
+  getSimpleMultiBarrelOrbitRadius,
   getTurretBarrelCenterToTipLength,
   getTurretBarrelDiameter,
   getTurretHeadRadius,
 } from '../math';
-import { BARREL_ORBIT_CLAMP_FRAC } from '../math/BarrelGeometry';
-import { TURRET_HEIGHT } from '../../config';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -225,7 +226,7 @@ export function buildTurretMesh3D(
     pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
   } else if (barrel.type === 'simpleMultiBarrel') {
     // Parallel barrels arranged in a YZ circle around the firing axis.
-    const orbitR = Math.min(barrel.orbitRadius * barrelScale, TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.parallel);
+    const orbitR = getSimpleMultiBarrelOrbitRadius(barrel, barrelScale);
     const n = barrel.barrelCount;
     for (let i = 0; i < n; i++) {
       const a = (i + 0.5) / n * Math.PI * 2;
@@ -235,13 +236,13 @@ export function buildTurretMesh3D(
     }
   } else if (barrel.type === 'coneMultiBarrel') {
     // Barrels diverge from base orbit to a wider tip orbit.
-    const baseOrbitR = Math.min(barrel.baseOrbit * barrelScale, TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneBase);
-    const tipOrbitR = barrel.tipOrbit !== undefined
-      ? barrel.tipOrbit * barrelScale
-      : Math.min(
-          baseOrbitR + length * Math.tan((turret.config.spread?.angle ?? Math.PI / 5) / 2),
-          TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneTip,
-        );
+    const baseOrbitR = getConeBarrelBaseOrbitRadius(barrel, barrelScale);
+    const tipOrbitR = getConeBarrelTipOrbitRadius(
+      barrel,
+      barrelScale,
+      length,
+      turret.config.spread?.angle,
+    );
     const n = barrel.barrelCount;
     for (let i = 0; i < n; i++) {
       const a = (i + 0.5) / n * Math.PI * 2;

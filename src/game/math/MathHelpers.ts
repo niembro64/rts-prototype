@@ -59,9 +59,13 @@ export function magnitude3(x: number, y: number, z: number): number {
 /**
  * Normalize an angle to the range [-π, π]
  */
+const TWO_PI = Math.PI * 2;
 export function normalizeAngle(angle: number): number {
-  while (angle > Math.PI) angle -= Math.PI * 2;
-  while (angle < -Math.PI) angle += Math.PI * 2;
+  if (angle <= Math.PI && angle >= -Math.PI) return angle;
+  if (!Number.isFinite(angle)) return 0;
+  if (angle > Math.PI && angle <= Math.PI + TWO_PI) return angle - TWO_PI;
+  if (angle < -Math.PI && angle >= -Math.PI - TWO_PI) return angle + TWO_PI;
+  angle = ((angle + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
   return angle;
 }
 
@@ -91,10 +95,7 @@ export function lerp(a: number, b: number, t: number): number {
  * Useful for smooth angle interpolation
  */
 export function angleDiff(from: number, to: number): number {
-  let diff = to - from;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  return diff;
+  return normalizeAngle(to - from);
 }
 
 /**

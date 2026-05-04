@@ -20,8 +20,6 @@ export type CommandType =
   | 'setSendGridInfo'
   | 'setBackgroundUnitType'
   | 'setMaxTotalUnits'
-  | 'setFfAccelUnits'
-  | 'setFfAccelShots'
   | 'setMirrorsEnabled'
   | 'setForceFieldsEnabled'
   | 'setSimQuality'
@@ -158,16 +156,6 @@ export type SetMaxTotalUnitsCommand = BaseCommand & {
   maxTotalUnits: number;
 };
 
-export type SetFfAccelUnitsCommand = BaseCommand & {
-  type: 'setFfAccelUnits';
-  enabled: boolean;
-};
-
-export type SetFfAccelShotsCommand = BaseCommand & {
-  type: 'setFfAccelShots';
-  enabled: boolean;
-};
-
 export type SetMirrorsEnabledCommand = BaseCommand & {
   type: 'setMirrorsEnabled';
   enabled: boolean;
@@ -212,8 +200,6 @@ export type Command =
   | SetSendGridInfoCommand
   | SetBackgroundUnitTypeCommand
   | SetMaxTotalUnitsCommand
-  | SetFfAccelUnitsCommand
-  | SetFfAccelShotsCommand
   | SetMirrorsEnabledCommand
   | SetForceFieldsEnabledCommand
   | SetSimQualityCommand

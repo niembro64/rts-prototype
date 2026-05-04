@@ -22,6 +22,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
+import { isProjectileShot } from '../types';
 import { getMovementAngle, resolveWeaponWorldMount, turretBit, turretMaskIncludes } from './combatUtils';
 import { getTransformCosSin, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
@@ -142,7 +143,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
             }
           }
 
-          if (shot.type === 'projectile' && !weapon.config.passive) {
+          if (isProjectileShot(shot) && !weapon.config.passive) {
             // Ballistic arcs are solved from the actual muzzle TIP and
             // from a collider-aware 3D target point. Lead prediction is
             // relative to the turret's own muzzle velocity, not just

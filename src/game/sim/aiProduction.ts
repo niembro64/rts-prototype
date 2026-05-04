@@ -4,6 +4,7 @@ import type { WorldState } from './WorldState';
 import type { PlayerId } from './types';
 import { BUILDABLE_UNIT_IDS, getNormalizedUnitCost, getUnitBlueprint } from './blueprints';
 import { factoryProductionSystem } from './factoryProduction';
+import { isEntityActive } from './buildableHelpers';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { ENTITY_CHANGED_FACTORY } from '../../types/network';
 
@@ -74,7 +75,7 @@ export function updateAiProduction(
   if (allowedTypes && allowedTypes.size === 0) return;
 
   for (const entity of world.getFactoryBuildings()) {
-    if (!entity.factory || !entity.buildable?.isComplete) continue;
+    if (!entity.factory || !isEntityActive(entity)) continue;
     if (!entity.ownership) continue;
     if (!aiPlayerIds.has(entity.ownership.playerId)) continue;
 

@@ -30,7 +30,7 @@
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
 
-import { getPlayerBaseAngle } from './game/sim/spawn';
+import { getPlayerBaseAngle } from './game/sim/playerLayout';
 import { TERRAIN_D_TERRAIN } from './game/sim/Terrain';
 import { GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/grid';
 import { terrainShapeSign, type TerrainShape } from './types/terrain';

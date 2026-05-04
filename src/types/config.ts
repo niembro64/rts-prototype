@@ -103,7 +103,7 @@ export type SpinConfig = {
 // from the turret head's center along chassis-local +X. Each barrel is
 // a cylinder positioned by its BASE (anchor on the head) and TIP (where
 // shots leave). All `*RadiusFrac` / `barrelLength` values are scalar
-// FRACTIONS of the turret's head radius (= TurretBlueprint.bodyRadius);
+// FRACTIONS of the turret's body sphere radius (= TurretBlueprint.radius.body);
 // world-space sizing happens at render time. Cylinder thickness is
 // authored in absolute world units via `barrelThickness`.
 //

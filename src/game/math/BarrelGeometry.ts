@@ -16,18 +16,16 @@
 // TurretMesh3D, so the barrelIndex carried in projectile spawn events is
 // real muzzle metadata rather than just visual cadence.
 
-import { TURRET_HEIGHT } from '../../config';
 import type { BarrelShape } from '@/types/blueprints';
 import type { ActiveProjectileShot, ShotConfig, TurretConfig } from '../sim/types';
 
 export const TURRET_BARREL_MIN_DIAMETER = 2;
 
-/** Maximum barrel orbit radius — fractions of TURRET_HEIGHT — applied
- *  to the authored blueprint orbit values so a turret head with an
- *  oversize blueprint orbit doesn't fan barrels past the turret silhouette.
- *  Three call sites (BarrelGeometry's tip computation, TurretMesh3D's
- *  mesh emission, HudAnchor's barrel-top probe) all use the same
- *  clamp values; importing from here keeps them locked together. */
+/** Maximum barrel orbit radius — fractions of the turret body sphere
+ *  radius — applied to authored blueprint orbit values so a barrel
+ *  cluster cannot fan outside its own turret silhouette. All muzzle,
+ *  render, HUD, and debris paths use the helpers below so the same
+ *  blueprint geometry is used everywhere. */
 export const BARREL_ORBIT_CLAMP_FRAC = {
   /** simpleMultiBarrel — single orbit ring of parallel barrels. */
   parallel: 0.45,
@@ -39,39 +37,41 @@ export const BARREL_ORBIT_CLAMP_FRAC = {
   coneTip: 0.9,
 } as const;
 
-/** Radius of the spherical turret head. Read directly from the
- *  turret blueprint's `bodyRadius`; turrets are unit-agnostic by
- *  contract, so the host unit's body radius does NOT factor in.
- *  Throws if the turret config is missing `bodyRadius` — every
- *  turret blueprint is required to declare it. */
-type TurretRadiusSource = { id?: string; bodyRadius?: number };
+/** Radius of the spherical turret body. Read directly from the turret
+ *  blueprint's `radius.body`; turrets are unit-agnostic by contract,
+ *  so the host unit's body radius does NOT factor in. */
+type TurretRadiusSource = { id?: string; radius?: { body?: number } };
 type TurretBarrelSource = TurretRadiusSource & { barrel?: BarrelShape };
 type BarrelShotSource = TurretBarrelSource & {
   shot: ShotConfig | ActiveProjectileShot;
   spread?: TurretConfig['spread'];
 };
 
-export function getTurretHeadRadius(config: TurretRadiusSource): number {
-  const r = config.bodyRadius;
+export function getTurretBodyRadius(config: TurretRadiusSource): number {
+  const r = config.radius?.body;
   if (r === undefined || r <= 0) {
     const id = config.id ?? 'unknown-source';
     throw new Error(
-      `Turret config '${id}' must define a positive bodyRadius`,
+      `Turret config '${id}' must define a positive radius.body`,
     );
   }
-  return Math.max(r, TURRET_HEIGHT / 2);
+  return r;
 }
 
-/** Same as getTurretHeadRadius but takes the per-turret bodyRadius
- *  value directly — for blueprint-side callers that only have a
- *  `bodyRadius?: number` field rather than a full TurretConfig. */
-export function turretHeadRadiusFromBodyRadius(
-  turretBodyRadius: number | undefined,
+/** Legacy name retained for the existing turret mesh/HUD vocabulary:
+ *  the visible turret "head" is the same sphere as `radius.body`. */
+export function getTurretHeadRadius(config: TurretRadiusSource): number {
+  return getTurretBodyRadius(config);
+}
+
+export function turretBodyRadiusFromRadius(
+  radius: TurretRadiusSource['radius'] | undefined,
 ): number {
-  if (turretBodyRadius === undefined || turretBodyRadius <= 0) {
-    throw new Error('Turret bodyRadius must be a positive number');
+  const body = radius?.body;
+  if (body === undefined || body <= 0) {
+    throw new Error('Turret radius.body must be a positive number');
   }
-  return Math.max(turretBodyRadius, TURRET_HEIGHT / 2);
+  return body;
 }
 
 /** Center-to-tip length of the visible/authoritative barrel. The
@@ -115,6 +115,55 @@ export function countBarrels(config: Pick<TurretConfig, 'barrel'>): number {
   return b.barrelCount;
 }
 
+export function clampBarrelOrbitRadius(
+  authoredRadiusFrac: number,
+  turretBodyRadius: number,
+  clampFrac: number,
+): number {
+  return Math.min(
+    authoredRadiusFrac * turretBodyRadius,
+    turretBodyRadius * clampFrac,
+  );
+}
+
+export function getSimpleMultiBarrelOrbitRadius(
+  barrel: Extract<BarrelShape, { type: 'simpleMultiBarrel' }>,
+  turretBodyRadius: number,
+): number {
+  return clampBarrelOrbitRadius(
+    barrel.orbitRadius,
+    turretBodyRadius,
+    BARREL_ORBIT_CLAMP_FRAC.parallel,
+  );
+}
+
+export function getConeBarrelBaseOrbitRadius(
+  barrel: Extract<BarrelShape, { type: 'coneMultiBarrel' }>,
+  turretBodyRadius: number,
+): number {
+  return clampBarrelOrbitRadius(
+    barrel.baseOrbit,
+    turretBodyRadius,
+    BARREL_ORBIT_CLAMP_FRAC.coneBase,
+  );
+}
+
+export function getConeBarrelTipOrbitRadius(
+  barrel: Extract<BarrelShape, { type: 'coneMultiBarrel' }>,
+  turretBodyRadius: number,
+  barrelLen: number,
+  spreadAngle: number | undefined,
+): number {
+  if (barrel.tipOrbit !== undefined) {
+    return barrel.tipOrbit * turretBodyRadius;
+  }
+  return Math.min(
+    getConeBarrelBaseOrbitRadius(barrel, turretBodyRadius)
+      + barrelLen * Math.tan((spreadAngle ?? Math.PI / 5) / 2),
+    turretBodyRadius * BARREL_ORBIT_CLAMP_FRAC.coneTip,
+  );
+}
+
 export function getTurretBarrelDiameter(
   config: BarrelShotSource,
 ): number {
@@ -135,7 +184,7 @@ export function getTurretBarrelDiameter(
 /** Compute the 3D tip position and firing direction for a specific
  *  barrel on a turret. Unit-agnostic: the host unit's body radius
  *  is intentionally NOT a parameter. Barrel dimensions are derived
- *  from the turret blueprint's own `bodyRadius`, so a turret of a
+ *  from the turret blueprint's own `radius.body`, so a turret of a
  *  given blueprint fires from the same offset on every host that
  *  mounts it.
  *
@@ -211,21 +260,19 @@ export function getBarrelTip(
   let tipOrbitR: number;
 
   if (b.type === 'simpleMultiBarrel') {
-    baseOrbitR = tipOrbitR = Math.min(
-      b.orbitRadius * getTurretHeadRadius(config),
-      TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.parallel,
+    baseOrbitR = tipOrbitR = getSimpleMultiBarrelOrbitRadius(
+      b,
+      getTurretHeadRadius(config),
     );
   } else {
-    baseOrbitR = Math.min(
-      b.baseOrbit * getTurretHeadRadius(config),
-      TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneBase,
+    const turretBodyRadius = getTurretHeadRadius(config);
+    baseOrbitR = getConeBarrelBaseOrbitRadius(b, turretBodyRadius);
+    tipOrbitR = getConeBarrelTipOrbitRadius(
+      b,
+      turretBodyRadius,
+      barrelLen,
+      config.spread?.angle,
     );
-    tipOrbitR = b.tipOrbit !== undefined
-      ? b.tipOrbit * getTurretHeadRadius(config)
-      : Math.min(
-          baseOrbitR + barrelLen * Math.tan((config.spread?.angle ?? Math.PI / 5) / 2),
-          TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneTip,
-        );
   }
 
   const cosA = Math.cos(orbitAngle);

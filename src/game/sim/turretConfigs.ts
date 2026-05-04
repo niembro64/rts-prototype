@@ -16,9 +16,9 @@ function makeHysteresisRange(acquire: number, release: number): { acquire: numbe
 
 // Compute hysteresis range pairs for a turret.
 //
-//   `fire.max`  — outer firing envelope, always present
-//   `fire.min`  — minimum firing distance (mortar dead zone); `null`
-//                 when the turret can fire to point-blank
+//   `fire.max`  — hard outer firing envelope, always present
+//   `fire.min`  — optional soft inner preference; targets outside it
+//                 are preferred, but close targets remain valid fallbacks
 //   `tracking`  — optional pre-rotation shell strictly outside the
 //                 fire envelope; `null` when the turret doesn't need
 //                 to be aware of enemies beyond its fire range

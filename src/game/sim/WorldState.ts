@@ -13,6 +13,7 @@ import {
   DEFAULT_FORCE_FIELDS_ENABLED,
   UNIT_HP_MULTIPLIER,
   SPATIAL_GRID_CELL_SIZE,
+  DGUN_TERRAIN_FOLLOW_HEIGHT,
 } from '../../config';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
@@ -477,9 +478,8 @@ export class WorldState {
     y: number,
     playerId: PlayerId,
     unitType: string,
-    unitRadiusCollider: { shot: number; push: number } = { shot: 15, push: 15 },
-    bodyRadius: number = 15,
-    bodyCenterHeight: number = unitRadiusCollider.push,
+    radius: { body: number; shot: number; push: number } = { body: 15, shot: 15, push: 15 },
+    bodyCenterHeight: number = radius.push,
     locomotion: UnitLocomotion = getUnitLocomotion(unitType),
     mass: number = 25,
     hp: number = 100,
@@ -502,8 +502,7 @@ export class WorldState {
       unit: {
         unitType,
         locomotion: cloneUnitLocomotion(locomotion),
-        unitRadiusCollider: { ...unitRadiusCollider },
-        bodyRadius,
+        radius: { ...radius },
         bodyCenterHeight,
         mass,
         hp,
@@ -529,8 +528,7 @@ export class WorldState {
 
     const entity = this.createUnitBase(
       x, y, playerId, unitId,
-      bp.unitRadiusCollider,
-      bp.bodyRadius,
+      bp.radius,
       bp.bodyCenterHeight,
       getUnitLocomotion(unitId),
       bp.mass,
@@ -538,7 +536,7 @@ export class WorldState {
     );
 
     // Create turrets from blueprint definition
-    entity.turrets = createTurretsFromDefinition(unitId, bp.bodyRadius);
+    entity.turrets = createTurretsFromDefinition(unitId, bp.radius.body);
 
     // Cache mirror panels for fast beam collision checks. Same helper
     // runs on the client (NetworkEntityFactory) so authoritative and
@@ -594,8 +592,12 @@ export class WorldState {
       'projectile',
     );
 
-    // Mark as D-gun projectile
-    entity.dgunProjectile = { isDGun: true };
+    // Mark as terrain-following D-gun wave.
+    entity.dgunProjectile = {
+      isDGun: true,
+      terrainFollow: true,
+      groundOffset: DGUN_TERRAIN_FOLLOW_HEIGHT,
+    };
 
     // D-gun hits everything (infinite hits)
     if (entity.projectile) {

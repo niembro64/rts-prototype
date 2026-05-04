@@ -8,7 +8,7 @@ import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
-import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY } from '../../../config';
+import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../../config';
 import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, turretMaskIncludes, updateWeaponWorldKinematics } from './combatUtils';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
@@ -611,7 +611,7 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
         const dz = (proj.prevZ ?? 0) - source.transform.z;
         const distSq = dx * dx + dy * dy + dz * dz;
         const shot = proj.config.shot as ProjectileShot;
-        const clearance = source.unit.unitRadiusCollider.shot + shot.collision.radius + 2;
+        const clearance = source.unit.radius.shot + shot.collision.radius + 2;
         if (distSq > clearance * clearance) {
           proj.hasLeftSource = true;
         }
@@ -644,16 +644,27 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // Gravity integration: vz loses GRAVITY·dt each tick. Ballistic
     // projectiles (shells, mortar rounds) arc under this; rockets
     // opt out via `ignoresGravity`, so they travel in a straight
-    // line on thrust alone and are steered purely by homing.
+    // line on thrust alone and are steered purely by homing. D-gun
+    // waves are their own terrain-following projectile class: they
+    // move horizontally and snap to local terrain height every tick.
     const shotCfg = proj.config.shot;
     const ignoresGravity = isProjectileShot(shotCfg) && shotCfg.ignoresGravity === true;
-    if (!ignoresGravity) {
+    const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
+    const prevTerrainFollowZ = entity.transform.z;
+    if (!ignoresGravity && !terrainFollow) {
       proj.velocityZ -= GRAVITY * dtSec;
     }
 
     entity.transform.x += proj.velocityX * dtSec;
     entity.transform.y += proj.velocityY * dtSec;
-    entity.transform.z += proj.velocityZ * dtSec;
+    if (terrainFollow) {
+      const nextZ = world.getGroundZ(entity.transform.x, entity.transform.y) +
+        (entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT);
+      proj.velocityZ = dtSec > 0 ? (nextZ - prevTerrainFollowZ) / dtSec : 0;
+      entity.transform.z = nextZ;
+    } else {
+      entity.transform.z += proj.velocityZ * dtSec;
+    }
 
     if (!proj.hasLeftSource) {
       const source = world.getEntity(proj.sourceEntityId);
@@ -664,7 +675,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         const dy = proj.prevY - source.transform.y;
         const dz = (proj.prevZ ?? 0) - source.transform.z;
         const distSq = dx * dx + dy * dy + dz * dz;
-        const clearance = source.unit.unitRadiusCollider.shot + (isProjectileShot(proj.config.shot) ? proj.config.shot.collision.radius : 5) + 2;
+        const clearance = source.unit.radius.shot + (isProjectileShot(proj.config.shot) ? proj.config.shot.collision.radius : 5) + 2;
         if (distSq > clearance * clearance) {
           proj.hasLeftSource = true;
         }
@@ -951,7 +962,7 @@ export function updateProjectiles(
             }
             if (points.length > newLen) points.length = newLen;
 
-            // Reflection points: finite-diff per-mirror against the
+            // Reflection points: finite-diff per-reflector against the
             // previous trace so each reflection vertex carries its own
             // instantaneous velocity (for client-side extrapolation
             // between re-trace strides).
@@ -983,7 +994,8 @@ export function updateProjectiles(
               point.vz = vz;
             }
 
-            // Cache this trace's reflections (by mirrorEntityId) for
+            // Cache this trace's reflections (by mirrorEntityId; legacy
+            // field name, now any reflector entity) for
             // the next finite-diff. Reuse the array's slots in place
             // to avoid GC churn on every re-trace.
             const cache = proj.prevReflectionPoints ?? (proj.prevReflectionPoints = []);

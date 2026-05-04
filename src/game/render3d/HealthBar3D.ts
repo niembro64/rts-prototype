@@ -11,31 +11,29 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { getBuildingHudTopY, getUnitHudTopY } from './HudAnchor';
+import { getBuildingHudBarsY, getUnitHudBarsY } from './HudAnchor';
 import { getResourceFillRatio } from '../sim/buildableHelpers';
 import type { Buildable } from '../sim/types';
+import { ENTITY_HUD_BAR_STACK_GAP } from '@/entityHudConfig';
 import {
   SHELL_BAR_COLORS,
   SHELL_BAR_BG_COLOR,
   SHELL_BAR_BG_ALPHA,
   SHELL_BAR_FG_ALPHA,
-  SHELL_BAR_STACK_GAP,
   SHELL_BAR_WORLD_HEIGHT,
   SHELL_BAR_CANVAS_WIDTH,
   SHELL_BAR_CANVAS_HEIGHT,
   SHELL_BAR_HIDE_AT_FULL,
-  BAR_WORLD_OFFSET_ABOVE,
   HP_BAR_COLOR_HIGH,
   HP_BAR_COLOR_LOW,
   HP_BAR_COLOR_BUILD,
   HP_BAR_LOW_THRESHOLD,
 } from '@/shellConfig';
 
-// Every visual knob lives in @/shellConfig so the HP bar + the
-// three construction-resource bars stay tunable in one place.
+// Bar visuals live in @/shellConfig; vertical placement lives in the
+// unit/building blueprint `hud` blocks read by HudAnchor.
 const STYLE = {
   worldHeight: SHELL_BAR_WORLD_HEIGHT,
-  worldOffsetAbove: BAR_WORLD_OFFSET_ABOVE,
   bgColor: SHELL_BAR_BG_COLOR,
   bgAlpha: SHELL_BAR_BG_ALPHA,
   fgColorHigh: HP_BAR_COLOR_HIGH,
@@ -45,7 +43,7 @@ const STYLE = {
   fgColorMana: SHELL_BAR_COLORS.mana,
   fgColorMetal: SHELL_BAR_COLORS.metal,
   fgAlpha: SHELL_BAR_FG_ALPHA,
-  worldStackGap: SHELL_BAR_STACK_GAP,
+  worldStackGap: ENTITY_HUD_BAR_STACK_GAP,
   lowThreshold: HP_BAR_LOW_THRESHOLD,
   hideAtFull: SHELL_BAR_HIDE_AT_FULL,
   canvasWidth: SHELL_BAR_CANVAS_WIDTH,
@@ -236,9 +234,9 @@ export class HealthBar3D {
     if (!showHp && !buildable) return;
     this._seenEntityFrame.set(u.id, this._frameToken);
     const worldX = u.transform.x;
-    const worldY = getUnitHudTopY(u) + STYLE.worldOffsetAbove;
+    const worldY = getUnitHudBarsY(u);
     const worldZ = u.transform.y;
-    const worldWidth = unit.bodyRadius * 2;
+    const worldWidth = unit.radius.body * 2;
     let stack = 0;
     if (showHp) {
       const ratio = Math.max(0, Math.min(1, hp / maxHp));
@@ -268,7 +266,7 @@ export class HealthBar3D {
     if (!showHp && !buildable) return;
     this._seenEntityFrame.set(b.id, this._frameToken);
     const worldX = b.transform.x;
-    const worldY = getBuildingHudTopY(b) + STYLE.worldOffsetAbove;
+    const worldY = getBuildingHudBarsY(b);
     const worldZ = b.transform.y;
     const worldWidth = b.building.width;
     let stack = 0;

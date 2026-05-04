@@ -18,10 +18,11 @@ function buildBuildingConfig(type: BuildingType): BuildingConfig {
     },
     energyProduction: bp.energyProduction,
     metalProduction: bp.metalProduction,
-    maxEnergyUseRate: bp.maxEnergyUseRate,
+    constructionRate: bp.constructionRate,
     renderProfile: bp.renderProfile,
     visualHeight: bp.visualHeight,
     anchorProfile: bp.anchorProfile,
+    hud: bp.hud,
   };
 }
 
@@ -51,8 +52,7 @@ export function getUnitBuildConfig(unitId: string) {
       mana: bp.cost.mana * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
     },
-    unitRadiusCollider: { ...bp.unitRadiusCollider },
-    bodyRadius: bp.bodyRadius,
+    radius: { ...bp.radius },
     bodyCenterHeight: bp.bodyCenterHeight,
     locomotion: getUnitLocomotion(unitId),
     mass: bp.mass,

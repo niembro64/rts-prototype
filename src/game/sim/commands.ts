@@ -20,8 +20,6 @@ export type {
   SetSendGridInfoCommand,
   SetBackgroundUnitTypeCommand,
   SetMaxTotalUnitsCommand,
-  SetFfAccelUnitsCommand,
-  SetFfAccelShotsCommand,
   SetMirrorsEnabledCommand,
   SetForceFieldsEnabledCommand,
   Command,

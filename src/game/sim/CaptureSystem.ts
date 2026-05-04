@@ -257,6 +257,7 @@ export class CaptureSystem {
     const grid = this.landGrid;
     const cellsX = grid.cellsX;
     const cellsY = grid.cellsY;
+
     const sectorWidth = (Math.PI * 2) / N;
     const TWO_PI = Math.PI * 2;
 

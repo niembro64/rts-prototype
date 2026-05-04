@@ -17,7 +17,7 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { isLineShot } from '../sim/types';
+import { isLineShot, isProjectileShot } from '../sim/types';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import {
@@ -220,23 +220,26 @@ export class BurnMark3D {
     for (const e of projectiles) {
       const proj = e.projectile;
       if (!proj) continue;
-      if (proj.projectileType !== 'beam' && proj.projectileType !== 'laser') continue;
+      const isDGunTrail = e.dgunProjectile?.isDGun === true && proj.projectileType === 'projectile';
+      if (!isDGunTrail && proj.projectileType !== 'beam' && proj.projectileType !== 'laser') continue;
 
       const turretIndex = proj.config.turretIndex ?? 0;
-      const key = beamStateKey(proj.sourceEntityId, turretIndex);
+      const key = isDGunTrail ? `dgun:${e.id}` : beamStateKey(proj.sourceEntityId, turretIndex);
       this._seenBeamKeys.add(key);
 
       const lastPoint = proj.points && proj.points.length >= 2
         ? proj.points[proj.points.length - 1]
         : undefined;
-      const ex = lastPoint?.x ?? e.transform.x;
-      const ez = lastPoint?.y ?? e.transform.y;
+      const ex = isDGunTrail ? e.transform.x : (lastPoint?.x ?? e.transform.x);
+      const ez = isDGunTrail ? e.transform.y : (lastPoint?.y ?? e.transform.y);
       // Scope gate — skip the beam entirely when the endpoint is off-
       // scope. We use generous padding (200) since the endpoint can
       // drift quickly and a strict rect would drop marks mid-sweep.
       if (this.scope && !this.scope.inScope(ex, ez, 200)) continue;
       const shot = proj.config.shot;
-      const beamWidth = isLineShot(shot) ? shot.width * 2 : 4;
+      const beamWidth = isDGunTrail && isProjectileShot(shot)
+        ? shot.collision.radius * 1.5
+        : isLineShot(shot) ? shot.width * 2 : 4;
 
       let state = this.beams.get(key);
       if (!state) {

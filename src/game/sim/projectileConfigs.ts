@@ -1,10 +1,11 @@
 import type { ActiveProjectileShot, ProjectileConfig, TurretConfig } from './types';
+import { isShotId, isTurretId, type ShotId, type TurretId } from '../../types/blueprintIds';
 import { buildProjectileShotConfig } from './blueprints';
 import { TURRET_CONFIGS } from './turretConfigs';
 
-const _shotConfigCache = new Map<string, ActiveProjectileShot>();
+const _shotConfigCache = new Map<ShotId, ActiveProjectileShot>();
 
-function getShotOnlyConfig(shotId: string): ActiveProjectileShot {
+function getShotOnlyConfig(shotId: ShotId): ActiveProjectileShot {
   const cached = _shotConfigCache.get(shotId);
   if (cached) return cached;
   const shot = buildProjectileShotConfig(shotId);
@@ -25,14 +26,14 @@ export function createProjectileConfigFromTurret(
     range: turretConfig.range,
     cooldown: turretConfig.cooldown,
     barrel: turretConfig.barrel,
-    bodyRadius: turretConfig.bodyRadius,
+    radius: { ...turretConfig.radius },
     turretIndex,
   };
 }
 
 export function createProjectileConfigFromShot(
-  shotId: string,
-  sourceTurretId?: string,
+  shotId: ShotId,
+  sourceTurretId?: TurretId,
 ): ProjectileConfig {
   return {
     shot: getShotOnlyConfig(shotId),
@@ -53,15 +54,22 @@ export function getProjectileConfigForSpawn(
   shotId: string | undefined,
   turretIndex?: number,
 ): ProjectileConfig {
-  if (sourceTurretId) {
-    const source = TURRET_CONFIGS[sourceTurretId];
+  const validSourceTurretId = sourceTurretId && isTurretId(sourceTurretId)
+    ? sourceTurretId
+    : undefined;
+  const validShotId = shotId && isShotId(shotId)
+    ? shotId
+    : undefined;
+
+  if (validSourceTurretId) {
+    const source = TURRET_CONFIGS[validSourceTurretId];
     if (source && source.shot.type !== 'force') {
-      if (!shotId || source.shot.id === shotId) {
+      if (!validShotId || source.shot.id === validShotId) {
         return createProjectileConfigFromTurret(source, turretIndex);
       }
-      return createProjectileConfigFromShot(shotId, sourceTurretId);
+      return createProjectileConfigFromShot(validShotId, validSourceTurretId);
     }
   }
-  if (shotId) return createProjectileConfigFromShot(shotId, sourceTurretId);
+  if (validShotId) return createProjectileConfigFromShot(validShotId, validSourceTurretId);
   throw new Error('Projectile spawn missing sourceTurretId and shotId');
 }

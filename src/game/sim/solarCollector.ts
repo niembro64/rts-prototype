@@ -1,5 +1,6 @@
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { getBuildingConfig } from './buildConfigs';
+import { isEntityActive } from './buildableHelpers';
 import { economyManager } from './economy';
 import type { WorldState } from './WorldState';
 import type { Entity, SolarCollectorState } from './types';
@@ -44,7 +45,7 @@ function setSolarProduction(entity: Entity, producing: boolean): boolean {
 
 export function activateSolarCollector(world: WorldState, entity: Entity): void {
   const state = ensureSolarCollectorState(entity);
-  if (!state || !entity.building || !entity.buildable?.isComplete || entity.building.hp <= 0) return;
+  if (!state || !entity.building || !isEntityActive(entity) || entity.building.hp <= 0) return;
   let changed = false;
   if (!state.open || state.reopenDelayMs !== 0) {
     state.open = true;
@@ -57,7 +58,7 @@ export function activateSolarCollector(world: WorldState, entity: Entity): void 
 
 export function startSolarCollectorClosed(world: WorldState, entity: Entity): void {
   const state = ensureSolarCollectorState(entity);
-  if (!state || !entity.building || !entity.buildable?.isComplete || entity.building.hp <= 0) return;
+  if (!state || !entity.building || !isEntityActive(entity) || entity.building.hp <= 0) return;
   let changed = false;
   if (state.open) {
     state.open = false;
@@ -99,7 +100,7 @@ export function updateSolarCollectors(world: WorldState, dtMs: number): void {
     if (!entity.building) continue;
     const state = ensureSolarCollectorState(entity);
     if (!state) continue;
-    if (!entity.buildable?.isComplete || entity.building.hp <= 0) {
+    if (!isEntityActive(entity) || entity.building.hp <= 0) {
       setSolarProduction(entity, false);
       continue;
     }

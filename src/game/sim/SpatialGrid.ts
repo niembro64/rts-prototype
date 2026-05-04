@@ -5,11 +5,14 @@ import {
   assertCanonicalLandCellSize,
   spatialCubeKeyToLandCellKey,
 } from '../landGrid';
+import { isEntityActive } from './buildableHelpers';
 
 // Maximum shot collider radius any unit can have (hippo = 45). Used to pad cell search
 // in queryEnemyEntitiesInRadius so units at tracking range + radius boundary aren't
 // missed due to cell-level culling.
 const MAX_UNIT_SHOT_RADIUS = 45;
+const MAX_LINE_QUERY_CELLS = 4096;
+const MAX_LINE_QUERY_OCCUPIED_FALLBACK_CELLS = 8192;
 
 /**
  * 3D voxel spatial hash for efficient sphere/segment range queries.
@@ -118,6 +121,17 @@ export class SpatialGrid {
     const cyB = (cy + CELL_BIAS) & CELL_MASK;
     const czB = (cz + CELL_BIAS) & CELL_MASK;
     return cxB * CX_MULT + cyB * CY_MULT + czB;
+  }
+
+  private fillOccupiedCellsForLargeLineQuery(): boolean {
+    this.nearbyCells.length = 0;
+    if (this.cells.size > MAX_LINE_QUERY_OCCUPIED_FALLBACK_CELLS) {
+      return false;
+    }
+    for (const key of this.cells.keys()) {
+      this.nearbyCells.push(key);
+    }
+    return true;
   }
 
   /**
@@ -238,7 +252,7 @@ export class SpatialGrid {
       !keys ||
       !entity.building ||
       entity.building.hp <= 0 ||
-      !entity.buildable?.isComplete
+      !isEntityActive(entity)
     ) {
       return;
     }
@@ -760,7 +774,7 @@ export class SpatialGrid {
         const dz = unit.transform.z - z;
         // Add unit shot collider radius to distance check (matches building behavior)
         // so units at edge of tracking range + radius are not incorrectly excluded
-        const unitCheckRadius = radius + unit.unit.unitRadiusCollider.shot;
+        const unitCheckRadius = radius + unit.unit.radius.shot;
         if (dx * dx + dy * dy + dz * dz <= unitCheckRadius * unitCheckRadius) {
           this.queryResultAll.push(unit);
         }
@@ -807,7 +821,7 @@ export class SpatialGrid {
     x1: number, y1: number, z1: number,
     x2: number, y2: number, z2: number,
     lineWidth: number,
-  ): void {
+  ): boolean {
     this.nearbyCells.length = 0;
 
     // A non-finite input (NaN/±Infinity) — usually a projectile whose
@@ -821,7 +835,7 @@ export class SpatialGrid {
     if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(z1)
       || !Number.isFinite(x2) || !Number.isFinite(y2) || !Number.isFinite(z2)
       || !Number.isFinite(lineWidth)) {
-      return;
+      return false;
     }
 
     const halfWidth = lineWidth / 2;
@@ -839,6 +853,20 @@ export class SpatialGrid {
     const minCz = Math.floor((minZ + this.halfCellSize) / this.cellSize);
     const maxCz = Math.floor((maxZ + this.halfCellSize) / this.cellSize);
 
+    const cellsX = maxCx - minCx + 1;
+    const cellsY = maxCy - minCy + 1;
+    const cellsZ = maxCz - minCz + 1;
+    const cellCount = cellsX * cellsY * cellsZ;
+    if (
+      cellsX <= 0 || cellsY <= 0 || cellsZ <= 0 ||
+      !Number.isFinite(cellCount)
+    ) {
+      return false;
+    }
+    if (cellCount > MAX_LINE_QUERY_CELLS) {
+      return this.fillOccupiedCellsForLargeLineQuery();
+    }
+
     for (let cx = minCx; cx <= maxCx; cx++) {
       for (let cy = minCy; cy <= maxCy; cy++) {
         for (let cz = minCz; cz <= maxCz; cz++) {
@@ -846,6 +874,7 @@ export class SpatialGrid {
         }
       }
     }
+    return true;
   }
 
   /**
@@ -857,7 +886,9 @@ export class SpatialGrid {
     lineWidth: number,
   ): Entity[] {
     this.queryResultUnits.length = 0;
-    this.queryCellsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
+    if (!this.queryCellsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth)) {
+      return this.queryResultUnits;
+    }
 
     this._dedup.clear();
 
@@ -884,7 +915,9 @@ export class SpatialGrid {
     lineWidth: number,
   ): Entity[] {
     this.queryResultBuildings.length = 0;
-    this.queryCellsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
+    if (!this.queryCellsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth)) {
+      return this.queryResultBuildings;
+    }
 
     this._dedup.clear();
 

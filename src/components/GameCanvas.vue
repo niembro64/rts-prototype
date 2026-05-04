@@ -3190,17 +3190,17 @@ onUnmounted(() => {
             <BarButtonGroup>
               <BarButton
                 :active="unitRadiusToggles.visual"
-                title="Show unit body radius (unit.bodyRadius — visible chassis size, click detection)"
+                title="Show unit body radius (unit.radius.body — visible chassis size)"
                 @click="toggleUnitRadius('visual')"
-              >SCAL</BarButton>
+              >BODY</BarButton>
               <BarButton
                 :active="unitRadiusToggles.shot"
-                title="Show unit shot radius (unitRadiusCollider.shot — projectile/beam hit detection)"
+                title="Show unit shot radius (radius.shot — projectile/beam hit detection)"
                 @click="toggleUnitRadius('shot')"
               >SHOT</BarButton>
               <BarButton
                 :active="unitRadiusToggles.push"
-                title="Show unit push radius (unitRadiusCollider.push — unit-unit push physics)"
+                title="Show unit push radius (radius.push — unit-unit push physics, ground-click selection fallback)"
                 @click="toggleUnitRadius('push')"
               >PUSH</BarButton>
             </BarButtonGroup>
@@ -3339,7 +3339,7 @@ onUnmounted(() => {
           class="winner-text"
           :style="{ color: getPlayerColor(gameOverWinner) }"
         >
-          {{ resolvePlayerName(gameOverWinner).toUpperCase() }} WINS!
+          {{ resolvePlayerName(gameOverWinner) }} wins!
         </h1>
         <p class="loser-text">All other commanders were destroyed</p>
         <div class="game-over-actions">

@@ -204,7 +204,7 @@ export type EnergyBuffers = {
   consumers: EnergyConsumer[];
   consumersByPlayer: Map<PlayerId, number[]>;
   buildTargetSet: Set<EntityId>;
-  maxEnergyUseRateByTarget: Map<EntityId, number>;
+  constructionRateByTarget: Map<EntityId, number>;
   /** Building IDs already added as a 'building' consumer this tick.
    *  Used by the commander pass to skip re-adding a target that a
    *  builder unit has already registered, in O(1) instead of an
@@ -219,10 +219,16 @@ export type EnergyConsumer = {
    *  healed. */
   entity: Entity;
   type: 'build' | 'heal';
-  /** Remaining energy this consumer needs to finish (used for
-   *  per-consumer rate clamping and proportional fairness). */
+  /** Factory that spawned this shell, when this build consumer is a
+   *  factory-produced unit. The shell owns resource truth, but the
+   *  factory owns queue UI progress, so resource flow into the shell
+   *  dirties the factory snapshot too. */
+  sourceFactoryId?: EntityId;
+  /** Remaining resource work this consumer needs to finish. Healing
+   *  stores energy repair cost; building stores total construction
+   *  resource remaining across energy, mana, and metal. */
   remainingCost: number;
   playerId: PlayerId;
-  maxEnergyPerTick: number;
+  maxResourcePerTick: number;
 };
 

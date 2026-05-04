@@ -1,10 +1,14 @@
 // Combat system types extracted from game/sim/combat/types.ts
 
 import type { EntityId, PlayerId, Entity } from './sim';
+import type { ShotId, TurretId, UnitTypeId } from './blueprintIds';
 import type { DeathContext } from './damage';
 import type { Vec2, Vec3 } from './vec2';
 
-export type TurretAudioId = string;
+export type TurretAudioId = TurretId;
+export type ShotAudioId = ShotId;
+export type UnitAudioId = UnitTypeId;
+export type SimEventAudioKey = TurretAudioId | ShotAudioId | UnitAudioId | '';
 export type SimEventSourceType = 'turret' | 'unit' | 'building' | 'system';
 
 export type ImpactContext = {
@@ -38,7 +42,7 @@ export type SimDeathContext = {
    *  guessing the third axis from the shot collider. */
   baseZ?: number;
   color: number;
-  unitType?: string;
+  unitType?: UnitAudioId;
   rotation?: number;
   /** Per-turret world-frame yaw + pitch at the moment of death,
    *  one entry per entry in the unit's blueprint `turrets` array.
@@ -47,6 +51,13 @@ export type SimDeathContext = {
    *  not the chassis-aligned default. Optional: when missing
    *  Debris3D falls back to chassis-aligned (legacy behaviour). */
   turretPoses?: Array<{ rotation: number; pitch: number }>;
+};
+
+export type ForceFieldImpactContext = {
+  /** Surface normal of the force-field sphere at the hit point in sim coords. */
+  normal: Vec3;
+  /** Owner of the force field, kept for provenance even when visuals are neutral. */
+  playerId: PlayerId;
 };
 
 export type SimEvent = {
@@ -58,11 +69,14 @@ export type SimEvent = {
     | 'laserStop'
     | 'forceFieldStart'
     | 'forceFieldStop'
+    | 'forceFieldImpact'
     | 'projectileExpire';
-  /** Weapon/audio routing key. This is a turret id for weapon events;
-   *  non-weapon events should use sourceType/sourceKey instead of
-   *  overloading this field with unit or building ids. */
-  turretId: TurretAudioId;
+  /** Legacy wire field for the one-shot audio routing key. Fire,
+   *  laser, and force-field events use turret ids; hit/projectile
+   *  expire events use shot ids; death events may use a unit id. Keep
+   *  this as the only allowed blueprint-id union until the wire format
+   *  can rename it to `audioKey`. */
+  turretId: SimEventAudioKey;
   /** Explicit provenance for sim events. `turretId` remains the audio
    *  key; this pair describes what authored the event. */
   sourceType?: SimEventSourceType;
@@ -78,6 +92,7 @@ export type SimEvent = {
   entityId?: EntityId;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;
+  forceFieldImpact?: ForceFieldImpactContext;
 };
 
 export type ProjectileSpawnEvent = {
@@ -91,14 +106,14 @@ export type ProjectileSpawnEvent = {
   maxLifespan?: number;
   /** Compatibility/source turret id. New code should use
    *  sourceTurretId for provenance and shotId for projectile config. */
-  turretId: string;
+  turretId: TurretAudioId | '';
   /** Actual shot blueprint id that should be hydrated on clients.
    *  This is especially important for submunitions, which are shot
    *  blueprints spawned by another projectile rather than by a turret. */
-  shotId: string;
+  shotId: ShotAudioId;
   /** Real turret blueprint id that ultimately authored this projectile,
    *  inherited through submunition chains when applicable. */
-  sourceTurretId?: string;
+  sourceTurretId?: TurretAudioId;
   playerId: PlayerId;
   sourceEntityId: EntityId;
   turretIndex: number;

@@ -8,70 +8,68 @@
 // matches the 3D renderer.
 
 import type { EntityId, PlayerId } from '../../sim/types';
-import { magnitude } from '../../math';
 
 export type { SelectionEntitySource } from '@/types/input';
 import type { SelectionEntitySource } from '@/types/input';
 
-// Find closest owned unit to a point (for single-click selection)
-export function findClosestUnitToPoint(
-  entitySource: SelectionEntitySource,
-  worldX: number,
-  worldY: number,
-  playerId: PlayerId
-): { id: EntityId; dist: number } | null {
-  let closest: { id: EntityId; dist: number } | null = null;
+type ClosestEntityOptions = {
+  /** Optional owner filter. Omit for hover affordances that should
+   *  recognize any live unit/building under the cursor. */
+  playerId?: PlayerId;
+  /** Small floor for very small units. The actual selectable footprint
+   *  is the unit's push radius so click-selection matches spacing and
+   *  collision expectations, not cosmetic body art. */
+  minUnitRadius?: number;
+};
 
-  for (const entity of entitySource.getUnits()) {
-    if (!entity.unit) continue;
-    if (entity.ownership?.playerId !== playerId) continue;
-
-    const dx = entity.transform.x - worldX;
-    const dy = entity.transform.y - worldY;
-    const dist = magnitude(dx, dy);
-
-    // Must be within collision radius
-    if (dist < entity.unit.bodyRadius) {
-      if (!closest || dist < closest.dist) {
-        closest = { id: entity.id, dist };
-      }
-    }
-  }
-
-  return closest;
+function canUseUnit(entity: ReturnType<SelectionEntitySource['getUnits']>[number], playerId?: PlayerId): boolean {
+  if (!entity.unit) return false;
+  if (entity.unit.hp <= 0) return false;
+  if (playerId !== undefined && entity.ownership?.playerId !== playerId) return false;
+  return true;
 }
 
-// Find closest owned building to a point (for single-click selection)
-export function findClosestBuildingToPoint(
+function canUseBuilding(entity: ReturnType<SelectionEntitySource['getBuildings']>[number], playerId?: PlayerId): boolean {
+  if (!entity.building) return false;
+  if (entity.building.hp <= 0) return false;
+  if (playerId !== undefined && entity.ownership?.playerId !== playerId) return false;
+  return true;
+}
+
+export function findClosestSelectableEntityToPoint(
   entitySource: SelectionEntitySource,
   worldX: number,
   worldY: number,
-  playerId: PlayerId
+  options: ClosestEntityOptions = {},
 ): { id: EntityId; dist: number } | null {
-  let closest: { id: EntityId; dist: number } | null = null;
+  let closest: { id: EntityId; distSq: number } | null = null;
+  const { playerId, minUnitRadius = 0 } = options;
 
-  for (const entity of entitySource.getBuildings()) {
-    if (!entity.building) continue;
-    if (entity.ownership?.playerId !== playerId) continue;
-
-    const { x, y } = entity.transform;
-    const halfW = entity.building.width / 2;
-    const halfH = entity.building.height / 2;
-
-    // Check if point is inside building bounds
-    if (worldX >= x - halfW && worldX <= x + halfW &&
-        worldY >= y - halfH && worldY <= y + halfH) {
-      const dx = x - worldX;
-      const dy = y - worldY;
-      const dist = magnitude(dx, dy);
-
-      if (!closest || dist < closest.dist) {
-        closest = { id: entity.id, dist };
-      }
+  for (const entity of entitySource.getUnits()) {
+    if (!canUseUnit(entity, playerId)) continue;
+    const dx = entity.transform.x - worldX;
+    const dy = entity.transform.y - worldY;
+    const radius = Math.max(minUnitRadius, entity.unit!.radius.push);
+    const distSq = dx * dx + dy * dy;
+    if (distSq <= radius * radius && (!closest || distSq < closest.distSq)) {
+      closest = { id: entity.id, distSq };
     }
   }
 
-  return closest;
+  for (const entity of entitySource.getBuildings()) {
+    if (!canUseBuilding(entity, playerId)) continue;
+    const dx = Math.abs(worldX - entity.transform.x);
+    const dy = Math.abs(worldY - entity.transform.y);
+    const halfW = entity.building!.width / 2;
+    const halfH = entity.building!.height / 2;
+    if (dx > halfW || dy > halfH) continue;
+    const distSq = dx * dx + dy * dy;
+    if (!closest || distSq < closest.distSq) {
+      closest = { id: entity.id, distSq };
+    }
+  }
+
+  return closest ? { id: closest.id, dist: Math.sqrt(closest.distSq) } : null;
 }
 
 // (Drag-distance + world-rect helpers removed: box-select now runs in

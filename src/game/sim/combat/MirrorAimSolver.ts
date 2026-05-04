@@ -56,50 +56,10 @@
 // realistic arm length / target distance combo.
 
 import type { Entity, Turret } from '../types';
-import { isLineShot } from '../types';
 import { getTransformCosSin, getBarrelTip } from '../../math';
 import { resolveWeaponWorldMount } from './combatUtils';
 import { getMirrorPanelCenter } from '../mirrorPanelCache';
-
-/** Pick the most-relevant non-passive line-shot turret on `target` to
- *  bisect the mirror panel against. Priority (lowest rank wins):
- *
- *    1. Engaged AND targeting our unit — that turret is firing at us
- *       right now; the mirror MUST orient against this one.
- *    2. Targeting our unit (any state ≠ idle) — the turret has us in
- *       its sights but isn't yet in fire range; pre-aim so the bounce
- *       lands the moment it engages.
- *    3. Engaged at someone else — at least the barrel is pointing
- *       somewhere we can compute a bisector against. Falls out of
- *       use once targetingSystem narrows acquisition to threats
- *       targeting us, but kept as a defensive last resort for
- *       legacy / racy frames where the threat predicate just flipped.
- *    4. Any line-shot — pure backstop so the panel never hangs at
- *       its previous yaw because of a one-tick state-machine race.
- *
- *  Returns null when the target carries no line-shot turret at all,
- *  matching the previous semantics. */
-function pickEnemyLineShotTurret(
-  target: Entity,
-  ourUnitId: number,
-): { turret: Turret; index: number } | null {
-  if (!target.turrets) return null;
-  let best: { turret: Turret; index: number; rank: number } | null = null;
-  for (let ti = 0; ti < target.turrets.length; ti++) {
-    const t = target.turrets[ti];
-    if (t.config.passive) continue;
-    if (!isLineShot(t.config.shot)) continue;
-    let rank = 4;
-    if (t.target === ourUnitId && t.state === 'engaged') rank = 1;
-    else if (t.target === ourUnitId) rank = 2;
-    else if (t.state === 'engaged') rank = 3;
-    if (best === null || rank < best.rank) {
-      best = { turret: t, index: ti, rank };
-      if (rank === 1) break; // can't improve on "engaged at us"
-    }
-  }
-  return best === null ? null : { turret: best.turret, index: best.index };
-}
+import { pickMirrorLineTurret } from './mirrorTargetPriority';
 
 export type MirrorAim = {
   targetAngle: number;
@@ -126,14 +86,10 @@ export function solveMirrorAim(
   if (!target.turrets || !unit.unit) return null;
 
   // Pick the single most-relevant line-shot turret on `target`. The
-  // priority chain (engaged-at-us > targeting-us > engaged-elsewhere
-  // > any) collapses to "the one firing at us" as soon as the
-  // targeting system has narrowed acquisition to threats — see
-  // pickEnemyLineShotTurret above for the full rationale. isLineShot
-  // (in @/types/sim) remains the SINGLE source of truth for "is a
-  // shot mirror-reflectable" — it covers laser, beam, and megaBeam
-  // (which is just type='beam' with bigger dps/width).
-  const picked = pickEnemyLineShotTurret(target, unit.id);
+  // shared mirror priority ranks:
+  // direct threat to this unit > engaged elsewhere > any line weapon,
+  // and within each tier megaBeam > beam > laser.
+  const picked = pickMirrorLineTurret(target, unit.id);
   if (picked === null) return null;
   const enemyTurret = picked.turret;
   const ti = picked.index;

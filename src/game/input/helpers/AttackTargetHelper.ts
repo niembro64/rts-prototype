@@ -33,7 +33,7 @@ function findEnemyUnitAt(
     const dy = unit.transform.y - worldY;
     const dist = magnitude(dx, dy);
 
-    if (dist <= unit.unit.bodyRadius && dist < closestDist) {
+    if (dist <= unit.unit.radius.body && dist < closestDist) {
       closest = unit;
       closestDist = dist;
     }

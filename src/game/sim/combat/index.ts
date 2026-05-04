@@ -21,7 +21,11 @@ export { updateLaserSounds, emitLaserStopsForEntity, emitLaserStopsForTarget } f
 export { updateForceFieldSounds, emitForceFieldStopsForEntity } from './forceFieldSoundSystem';
 
 // Force field weapons
-export { updateForceFieldState, applyForceFieldDamage, resetForceFieldBuffers } from './forceFieldTurret';
+export {
+  updateForceFieldState,
+  findForceFieldProjectileIntersection,
+  resetForceFieldBuffers,
+} from './forceFieldTurret';
 
 // Projectiles
 export {

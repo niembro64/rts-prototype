@@ -1,5 +1,6 @@
 import { terrainShapeSign, type TerrainMapShape, type TerrainShape } from '@/types/terrain';
 import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { getTerrainDividerTeamCount } from './playerLayout';
 export type { TerrainShape } from '@/types/terrain';
 
 // Terrain — deterministic heightmap generator.
@@ -233,7 +234,7 @@ const RIDGE_HALF_WIDTH_FRACTION = 0.08;
 let teamCount = 0;
 
 export function setTerrainTeamCount(n: number): void {
-  const next = Math.max(0, n | 0);
+  const next = getTerrainDividerTeamCount(n);
   if (next === teamCount) return;
   teamCount = next;
   _terrainVersion++;
@@ -522,14 +523,21 @@ export function getTerrainHeight(
     //   f(t) = (1 + cos(πt)) / 2
     // — peak = 1 at the barrier centreline (t=0), 0 at the ridge's
     // outer edge (t=1). The Hann is keyed off PHYSICAL perpendicular
-    // distance to the radial barrier line, so the slope of the
-    // mountain (height per unit distance) is the same everywhere
-    // along its length — no more "sharp at the centre, gentle at
-    // the edge" artifact from the old angular-Hann formulation.
+    // distance to the radial barrier RAY, so the slope of the mountain
+    // (height per unit distance) is the same everywhere along its
+    // length without treating the opposite ray as another divider.
+    //
+    // The old line-distance form used `dist * sin(angleDelta)` and
+    // therefore matched both directions of the same infinite line.
+    // With teamCount=1 that put a second valley/ridge through the
+    // player's own slice. Projecting onto the divider ray keeps the
+    // same math for every player count while giving each divider one
+    // start and one end.
     const minDim = Math.min(mapWidth, mapHeight);
     const halfWidth = minDim * RIDGE_HALF_WIDTH_FRACTION;
+    const alongDist = dist * Math.cos(distFromBarrierCenter);
     const perpDist = dist * Math.sin(distFromBarrierCenter);
-    if (perpDist < halfWidth) {
+    if (alongDist > 0 && perpDist < halfWidth) {
       const widthT = perpDist / halfWidth; // 0..1
       const angFalloff = (1 + Math.cos(widthT * Math.PI)) * 0.5;
       // Radial profile — see RIDGE_INNER_RADIUS_FRACTION /
@@ -537,16 +545,16 @@ export function getTerrainHeight(
       const innerR = minDim * RIDGE_INNER_RADIUS_FRACTION;
       const outerR = minDim * RIDGE_OUTER_RADIUS_FRACTION;
       let radT: number;
-      if (dist >= outerR) {
+      if (alongDist >= outerR) {
         // Peak plateau — propagates outward to the map edge.
         radT = 1;
-      } else if (dist <= innerR) {
+      } else if (alongDist <= innerR) {
         // Flat inner plain — no ridge near the map centre.
         radT = 0;
       } else {
         // Ramp from 0 at innerR up to 1 at outerR.
         const span = outerR - innerR;
-        radT = span > 0 ? (dist - innerR) / span : 1;
+        radT = span > 0 ? (alongDist - innerR) / span : 1;
       }
       ridge = mountainSeparatorAmplitude * angFalloff * radT;
     }

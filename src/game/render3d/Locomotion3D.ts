@@ -3,9 +3,8 @@
 //
 // Legs port the 2D ArachnidLeg system (world-space foot planting, snap-lerp
 // gait, IK knee bend) with the only simplification being that we keep feet
-// on the ground plane (2-axis movement: XZ). Per-style attach offsets and
-// snap parameters are cloned from 2D LocomotionManager so the 3D walk cycle
-// matches the 2D look.
+// on the ground plane (2-axis movement: XZ). Attach offsets, lengths, and
+// snap parameters are authored on each unit blueprint.
 
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
@@ -15,7 +14,6 @@ import type {
   TreadConfig,
   WheelConfig,
   LegConfig as BlueprintLegConfig,
-  LegStyle,
   UnitBodyShape,
 } from '@/types/blueprints';
 import type { GraphicsConfig, LegStyle as LegLod } from '@/types/graphics';
@@ -25,6 +23,7 @@ import {
   getSegmentMidYAt,
   TREAD_CHASSIS_LIFT_Y,
 } from '../math/BodyDimensions';
+import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
 import { getSurfaceHeight, getGroundNormal } from '../sim/Terrain';
 import { SHELL_OPACITY, NORMAL_OPACITY } from '@/shellConfig';
@@ -137,7 +136,6 @@ export type Locomotion3DMesh =
         *  scene. Each leg keeps a slot index into those buffers. */
        group: THREE.Group;
        legs: LegInstance[];
-       style: LegStyle;
        config: BlueprintLegConfig;
        legLod: LegLod;
        /** Per-UNIT rest-sphere radius (world units). Every leg on
@@ -297,7 +295,7 @@ export function captureLegState(loc: Locomotion3DMesh): LegStateSnapshot | undef
 
 /** Pour a captured snapshot back into a freshly-built legged mesh,
  *  matching by leg index. Leg COUNT is determined by the unit's
- *  blueprint (style + bodyShape), which doesn't change with graphics
+ *  blueprint (leg layout + bodyShape), which doesn't change with graphics
  *  LOD — so the indices line up 1:1 between the old and new
  *  LegInstance arrays. Slot indices, configs, and per-leg geometry
  *  refs (newly minted by buildLegs) are left untouched; only the
@@ -317,69 +315,6 @@ export function applyLegState(loc: Locomotion3DMesh, snapshot: LegStateSnapshot)
     dst.initialized = src.initialized;
     dst.phaseShift01 = src.phaseShift01;
   }
-}
-
-/**
- * Per-style leg-config builder, cloned from LocomotionManager.getOrCreateLegs
- * in the 2D renderer. Returns left-side configs only; the caller mirrors
- * them for the right side with the same `attachOffsetY`/`snapTargetAngle`
- * sign flip that 2D uses.
- */
-export function leftSideConfigsForStyle(style: LegStyle, radius: number): ArachnidLegConfig[] {
-  if (style === 'daddy') {
-    const legLength = radius * 10;
-    const upperLen = legLength * 0.45;
-    const lowerLen = upperLen * 1.2;
-    return [
-      { attachOffsetX:  radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen,        lowerLegLength: lowerLen,        snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
-      { attachOffsetX: -radius * 0.3,  attachOffsetY: -radius * 0.3,  upperLegLength: upperLen,        lowerLegLength: lowerLen,        snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
-    ];
-  }
-  if (style === 'tarantula') {
-    const legLength = radius * 1.9;
-    const upperLen = legLength * 0.55;
-    const lowerLen = upperLen * 1.2;
-    return [
-      { attachOffsetX:  radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
-      { attachOffsetX: -radius * 0.3,  attachOffsetY: -radius * 0.2,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
-    ];
-  }
-  if (style === 'formik') {
-    const legLength = radius * 1.75;
-    const upperLen = legLength * 0.52;
-    const lowerLen = upperLen * 1.16;
-    return [
-      { attachOffsetX:  radius * 0.42, attachOffsetY: -radius * 0.28, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.42, snapTargetAngle: -Math.PI * 0.28, snapDistanceMultiplier: 0.7,  extensionThreshold: 0.96 },
-      { attachOffsetX:  radius * 0.02, attachOffsetY: -radius * 0.36, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.72, snapTargetAngle: -Math.PI * 0.45, snapDistanceMultiplier: 0.62, extensionThreshold: 0.98 },
-      { attachOffsetX: -radius * 0.48, attachOffsetY: -radius * 0.3,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 1.02, snapTargetAngle: -Math.PI * 0.62, snapDistanceMultiplier: 0.54, extensionThreshold: 0.99 },
-    ];
-  }
-  if (style === 'tick') {
-    const legLength = radius * 1.0;
-    const upperLen = legLength * 0.5;
-    const lowerLen = upperLen * 1.1;
-    return [
-      { attachOffsetX:  radius * 0.25, attachOffsetY: -radius * 0.15, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
-      { attachOffsetX: -radius * 0.25, attachOffsetY: -radius * 0.15, upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
-    ];
-  }
-  if (style === 'commander') {
-    const legLength = radius * 2.2;
-    const upperLen = legLength * 0.5;
-    const lowerLen = upperLen * 1.2;
-    return [
-      { attachOffsetX:  radius * 0.4,  attachOffsetY: -radius * 0.5,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
-      { attachOffsetX: -radius * 0.4,  attachOffsetY: -radius * 0.5,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
-    ];
-  }
-  // Default: widow (2 legs per side)
-  const legLength = radius * 1.9;
-  const upperLen = legLength * 0.55;
-  const lowerLen = upperLen * 1.2;
-  return [
-    { attachOffsetX:  radius * 0.4,  attachOffsetY: -radius * 0.4,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.46, snapTargetAngle: -Math.PI * 0.31, snapDistanceMultiplier: 0.74, extensionThreshold: 0.96 },
-    { attachOffsetX: -radius * 0.4,  attachOffsetY: -radius * 0.4,  upperLegLength: upperLen, lowerLegLength: lowerLen, snapTriggerAngle: Math.PI * 0.99, snapTargetAngle: -Math.PI * 0.58, snapDistanceMultiplier: 0.5,  extensionThreshold: 0.99 },
-  ];
 }
 
 export function buildLocomotion(
@@ -419,7 +354,7 @@ export function buildLocomotion(
     case 'legs': {
       const chassisLiftY = getChassisLift(bp, unitRadius);
       const mesh = buildLegs(
-        worldGroup, entity, unitRadius, loc.style, loc.config,
+        worldGroup, entity, unitRadius, loc.config,
         gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac, mapWidth, mapHeight, legRenderer,
       );
       if (mesh) mesh.lodKey = lodKey;
@@ -548,7 +483,6 @@ function buildLegs(
   worldGroup: THREE.Group,
   entity: Entity,
   r: number,
-  style: LegStyle,
   cfg: BlueprintLegConfig,
   legLod: LegLod,
   bodyShape: UnitBodyShape,
@@ -560,21 +494,7 @@ function buildLegs(
 ): Locomotion3DMesh {
   if (legLod === 'none') return undefined;
 
-  const leftConfigs = leftSideConfigsForStyle(style, r);
-  const lerpDuration = cfg.lerpDuration ?? 150;
-  // Mirror left → right by flipping attachOffsetY and snapTargetAngle, same
-  // way the 2D LocomotionManager builds the full leg set.
-  const leftWithLerp: ArachnidLegConfig[] = leftConfigs.map((c) => ({ ...c, lerpDuration }));
-  const rightWithLerp: ArachnidLegConfig[] = leftWithLerp.map((c) => ({
-    ...c,
-    attachOffsetY: -c.attachOffsetY,
-    snapTargetAngle: -c.snapTargetAngle,
-  }));
-  const allConfigs = [...leftWithLerp, ...rightWithLerp];
-  const sides = [
-    ...leftWithLerp.map(() => -1),
-    ...rightWithLerp.map(() => 1),
-  ];
+  const { left, all: allConfigs, sides } = resolveMirroredLegConfigs(cfg, r);
 
   const group = new THREE.Group();
   worldGroup.add(group);
@@ -583,7 +503,7 @@ function buildLegs(
   const upperThick = Math.max(cfg.upperThickness, 1) * 0.6;
   const lowerThick = Math.max(cfg.lowerThickness, 1) * 0.6;
 
-  const sideLegCount = leftWithLerp.length;
+  const sideLegCount = left.length;
   for (let i = 0; i < allConfigs.length; i++) {
     const legCfg = allConfigs[i];
     const side = sides[i];
@@ -645,7 +565,7 @@ function buildLegs(
       targetWorldX: 0, targetWorldY: 0, targetWorldZ: 0,
       isSliding: false,
       lerpProgress: 0,
-      lerpDuration,
+      lerpDuration: legCfg.lerpDuration ?? cfg.lerpDuration,
       initialized: false,
       upperSlot,
       lowerSlot,
@@ -684,7 +604,6 @@ function buildLegs(
     type: 'legs',
     group,
     legs,
-    style,
     config: cfg,
     legLod,
     stepRadius,

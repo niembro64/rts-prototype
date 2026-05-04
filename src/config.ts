@@ -314,42 +314,9 @@ export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
 export const REAL_BATTLE_FACTORY_WAYPOINT_TYPE = 'fight' as const;
 export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE = 0.5;
 
-/** REAL BATTLE commander placement radius as a fraction of the outer
- *  spawn circle (mapMin/2 − spawnMarginPx). 1.0 plants each commander
- *  exactly on the outer ring (the legacy behavior); <1.0 pulls them
- *  inward so they're not pinned to the very edge of the playable
- *  area. Demo battle has its own knob (DEMO_CONFIG.commanderRadiusFraction).
- *  This value is also read by `getSpawnPositionForSeat`, so the 3D
- *  scene's pre-snapshot camera framing matches the real spawn point. */
-export const REAL_BATTLE_COMMANDER_RADIUS_FRACTION = 0.7;
-
 // =============================================================================
 // VISUAL DIMENSIONS (shared sim + render)
 // =============================================================================
-// The sim knows each unit's physics sphere (radius around transform.z),
-// but the visible chassis + turret mesh sits *above* that sphere center.
-// Chassis heights are now per-unit (derived from the unit's render body
-// shape — see src/game/math/BodyDimensions.ts), so the only shared
-// vertical constant left here is the turret head extent.
-
-/** Vertical extent of a turret's head (the barrel cluster sits at
- *  mid-height of the turret head). The projectile spawn point is
- *  computed per-shot by `getBarrelTip` in `src/game/math/BarrelGeometry`
- *  (which walks the barrel cluster geometry), with the world-space
- *  mount it pivots from coming from `resolveWeaponWorldMount` in
- *  `combat/combatUtils.ts`. TURRET_HEIGHT itself is now used only as
- *  a barrel-orbit clamp inside that geometry path; sim spawn math
- *  doesn't reference it directly. */
-export const TURRET_HEIGHT = 16;
-
-/** Extra vertical height added above a mirror-host unit's turret top
- *  when stacking other turrets on a mirror unit (they sit ON TOP of
- *  the panel stack, so they need to be lifted clear of it). Currently
- *  read by Debris3D's stacked-mirror computation; pure render-side
- *  knob — sim panel collision uses `mount.z * unitBodyRadius ± halfSide`
- *  from mirrorPanelCache, no extra-height term. */
-export const MIRROR_EXTRA_HEIGHT = 15;
-
 /** Universal gravity acceleration (world units / s², pulling −z).
  *  Single source of truth for every falling thing — physics engine's
  *  unit bodies, projectile ballistic integration, debris chunks,
@@ -600,7 +567,7 @@ export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slo
 export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFieldBarrierRatioConfig =
   {
     outerRatio: 0.5,
-    color: 0x3366ff,
+    color: 0xffffff,
     alpha: 0.05,
     particleAlpha: 0.2,
   };
@@ -609,9 +576,9 @@ export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFie
  *  render at every tier; the MAX-tier orbital rings are tuned via
  *  RING_* constants inside ForceFieldRenderer3D rather than here. */
 export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig = {
-  colorMode: 'player',
-  fallbackColor: 0x3366ff,
-  emitterIdleColor: 0xf0f0f0,
+  colorMode: 'config',
+  fallbackColor: 0xffffff,
+  emitterIdleColor: 0xffffff,
 };
 
 /** Force-field projectile interception visual.
@@ -620,8 +587,8 @@ export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig = {
  *  lies 90 degrees from the impact normal. */
 export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig = {
   style: 'tangentRingPulse',
-  colorMode: 'player',
-  fallbackColor: 0x3366ff,
+  colorMode: 'config',
+  fallbackColor: 0xffffff,
   maxImpacts: 192,
   durationMs: 420,
   ringCount: 3,

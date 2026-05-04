@@ -81,10 +81,6 @@ export const SHELL_BAR_BG_COLOR = '#333333';
 export const SHELL_BAR_BG_ALPHA = 0.8;
 export const SHELL_BAR_FG_ALPHA = 0.9;
 
-/** Vertical separation between stacked bars (HP + 3 resource bars
- *  during construction). */
-export const SHELL_BAR_STACK_GAP = 5;
-
 /** Bar height in world units. Bar width is keyed to the entity's
  *  rendering radius so a bigger unit gets a wider bar — same convention
  *  the legacy HP bar used. */
@@ -100,11 +96,6 @@ export const SHELL_BAR_CANVAS_HEIGHT = 16;
  *  rule of disappearing on full HP. Always true for resource bars in
  *  this codebase; configurable here so a debug overlay can flip it. */
 export const SHELL_BAR_HIDE_AT_FULL = true;
-
-/** World-units distance from the entity's anchor top to the bar
- *  group's centerline. Applies to the whole stack — HP bar + the
- *  three construction-resource bars below it. */
-export const BAR_WORLD_OFFSET_ABOVE = 12;
 
 /** HP-bar foreground colors. The bar switches from "high" to "low" at
  *  HP_BAR_LOW_THRESHOLD; while a unit is shell-state, every bar in the

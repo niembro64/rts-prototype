@@ -76,10 +76,10 @@ function forceFieldKey(unitId: number, turretIndex: number): FieldKey {
   return `${unitId}-${turretIndex}`;
 }
 
-function resolveForceFieldColor(playerId: number | undefined, fallbackColor: number): number {
+function resolveForceFieldColor(playerId: number | undefined): number {
   return FORCE_FIELD_VISUAL.colorMode === 'player'
     ? getPlayerPrimaryColor(playerId)
-    : fallbackColor;
+    : FORCE_FIELD_VISUAL.fallbackColor;
 }
 
 // Shader for the sphereInstanced pool — same shape as
@@ -226,7 +226,7 @@ export class ForceFieldRenderer3D {
 
   private updateMountCache(field: FieldMesh, unit: Entity, turret: Turret): void {
     const unitData = unit.unit!;
-    const unitRadius = unitData.bodyRadius;
+    const unitRadius = unitData.radius.body;
     const offsetX = turret.mount.x;
     const offsetY = turret.mount.y;
     const mountZ = turret.mount.z;
@@ -339,10 +339,7 @@ export class ForceFieldRenderer3D {
 
       const shot = turret.config.shot;
       if (shot.type !== 'force' || !shot.barrier) continue;
-      const fieldColor = resolveForceFieldColor(
-        unit.ownership?.playerId,
-        shot.barrier.color ?? FORCE_FIELD_VISUAL.fallbackColor,
-      );
+      const fieldColor = resolveForceFieldColor(unit.ownership?.playerId);
 
       const key = forceFieldKey(unit.id, ti);
       seen.add(key);

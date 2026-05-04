@@ -1512,8 +1512,8 @@ export class RtsScene3D {
       if (!ctx && ent) {
         const pid = ent.ownership?.playerId;
         const tcol = getPlayerPrimaryColor(pid);
-        const visualRadius = ent.unit?.bodyRadius
-          ?? ent.unit?.unitRadiusCollider.shot
+        const visualRadius = ent.unit?.radius.body
+          ?? ent.unit?.radius.shot
           ?? 15;
         const pushRadius = ent.unit ? getUnitBodyCenterHeight(ent.unit) : visualRadius;
         ctx = {
@@ -1524,7 +1524,7 @@ export class RtsScene3D {
           hitDir: { x: 0, y: 0 },
           projectileVel: { x: 0, y: 0 },
           attackMagnitude: 25,
-          radius: ent.unit?.unitRadiusCollider.shot ?? 15,
+          radius: ent.unit?.radius.shot ?? 15,
           visualRadius,
           pushRadius,
           baseZ: ent.unit ? getUnitGroundZ(ent) : ent.transform.z - pushRadius,
@@ -1536,8 +1536,8 @@ export class RtsScene3D {
         };
       }
       if (ctx && ent?.unit) {
-        const visualRadius = ent.unit.bodyRadius
-          ?? ent.unit.unitRadiusCollider.shot
+        const visualRadius = ent.unit.radius.body
+          ?? ent.unit.radius.shot
           ?? ctx.visualRadius
           ?? ctx.radius;
         const pushRadius = getUnitBodyCenterHeight(ent.unit);

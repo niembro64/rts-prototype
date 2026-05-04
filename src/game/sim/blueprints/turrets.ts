@@ -55,12 +55,12 @@ export const TURRET_BLUEPRINTS = {
   lightTurret: {
     id: 'lightTurret',
     projectileId: 'lightShot',
-    range: 120,
+    range: 200,
     cooldown: 450,
     launchForce: 456,
     turretTurnAccel: 200,
     turretDrag: 0.5,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.5 },
+    barrel: { type: 'simpleSingleBarrel', barrelLength: 2 },
     rangeMultiplierOverrides: fireEnvelope({
       engageRangeMin: null,
       trackingRange: null,
@@ -68,112 +68,15 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
-    bodyRadius: 1,
+    radius: { body: 3 },
     audio: { fireSound: AUDIO.event.fire.lightTurret },
     highArc: true,
-  },
-  // Salvo rocket pod — vertical-launch system. The turret is pinned
-  // pointing straight up (verticalLauncher=true → turretSystem locks
-  // pitch to π/2) so the original cone-cluster of barrels stays
-  // visibly aimed at the sky, with the cluster spin still driven by
-  // engagement state. Each volley fires 3 rockets straight up into
-  // a random cone (`spread.angle` is the half-angle from vertical);
-  // `lightRocket` ignores gravity so each rocket climbs on thrust,
-  // then `homingTurnRate` bends them onto the acquired target.
-  salvoRocketTurret: {
-    id: 'salvoRocketTurret',
-    projectileId: 'lightRocket',
-    range: 360,
-    cooldown: 2000,
-    launchForce: 1000,
-    turretTurnAccel: 20,
-    turretDrag: 0.15,
-    barrel: {
-      type: 'coneMultiBarrel',
-      // 3 long tubes splayed out from the firing axis, with their tips
-      // 2.5× headRadius out to the side. The forward extension
-      // (`barrelLength`) is set to 0.01 so the cylinders run almost
-      // entirely sideways from the head — visible length is dominated
-      // by the radial spread (tipOrbit − baseOrbit), not by forward
-      // run. Authoring `tipOrbit` explicitly decouples the visible
-      // splay from `spread.angle` (which controls the random firing
-      // cone around vertical, not the rendered barrel angles).
-      barrelCount: 3,
-      barrelLength: 0.01,
-      baseOrbit: 0.00,
-      tipOrbit: 0.9,
-      spin: { idle: 2, max: 20, accel: 10, decel: 5 },
-    },
-    rangeMultiplierOverrides: fireEnvelope({
-      engageRangeMin: RANGE_FIRE_MIN,
-      trackingRange: null,
-    }),
-    eventsSmooth: false,
-    color: COLOR_WHITE,
-    // 90° max deviation from vertical — rockets launch anywhere from
-    // straight up to horizontal; homing then bends each one onto the
-    // target's line.
-    spread: { angle: Math.PI / 4, pelletCount: 3 },
-    // spread: { angle: Math.PI / 2, pelletCount: 1 },
-    bodyRadius: 8,
-    audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
-    verticalLauncher: true,
-    // Spawn pointing straight up. verticalLauncher pins pitch to π/2
-    // every tick once combat runs, but during construction (shell
-    // state) and the first frame before turretSystem ticks the pose
-    // comes from idlePitch — without this the cluster spawned aimed
-    // forward and snapped up on first activate.
-    idlePitch: Math.PI / 2,
-  },
-  cannonTurret: {
-    id: 'cannonTurret',
-    projectileId: 'heavyShot',
-    range: 600,
-    cooldown: 2300,
-    launchForce: 30_000,
-    turretTurnAccel: 200,
-    turretDrag: 0.5,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 1.4 },
-    rangeMultiplierOverrides: fireEnvelope({
-      engageRangeMin: RANGE_FIRE_MIN,
-      trackingRange: null,
-    }),
-    eventsSmooth: false,
-    color: COLOR_WHITE,
-    spread: { angle: 0 },
-    bodyRadius: 10,
-    audio: { fireSound: AUDIO.event.fire.cannonTurret },
-  },
-  mortarTurret: {
-    id: 'mortarTurret',
-    projectileId: 'mortarShot',
-    range: 600,
-    cooldown: 6000,
-    launchForce: 20_000,
-    turretTurnAccel: 90,
-    turretDrag: 0.4,
-    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
-    rangeMultiplierOverrides: fireEnvelope({
-      engageRangeMin: RANGE_FIRE_MIN,
-      trackingRange: null,
-    }),
-    eventsSmooth: false,
-    color: COLOR_WHITE,
-    spread: { angle: 0 },
-    bodyRadius: 9,
-    audio: { fireSound: AUDIO.event.fire.mortarTurret },
-    // Mortars lob — high-arc solution from the ballistic solver so
-    // shells sail up and over whatever's in front of them.
-    highArc: true,
-    // Aim directly at the target point. mortarShot detonates on
-    // ground impact and releases mediumShot fragments from there.
-    groundAimFraction: 1.0,
   },
   pulseTurret: {
     id: 'pulseTurret',
     projectileId: 'mediumShot',
     range: 160,
-    cooldown: 1_000,
+    cooldown: 3_000,
     launchForce: 2_000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
@@ -192,9 +95,53 @@ export const TURRET_BLUEPRINTS = {
     color: COLOR_WHITE,
     spread: { angle: Math.PI / 8 },
     burst: { count: 4, delay: 100 },
-    bodyRadius: 7,
+    radius: { body: 6 },
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
     highArc: false,
+  },
+  cannonTurret: {
+    id: 'cannonTurret',
+    projectileId: 'heavyShot',
+    range: 600,
+    cooldown: 2300,
+    launchForce: 30_000,
+    turretTurnAccel: 200,
+    turretDrag: 0.5,
+    barrel: { type: 'simpleSingleBarrel', barrelLength: 1.4 },
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: RANGE_FIRE_MIN,
+      trackingRange: null,
+    }),
+    eventsSmooth: false,
+    color: COLOR_WHITE,
+    spread: { angle: 0 },
+    radius: { body: 10 },
+    audio: { fireSound: AUDIO.event.fire.cannonTurret },
+  },
+  mortarTurret: {
+    id: 'mortarTurret',
+    projectileId: 'mortarShot',
+    range: 600,
+    cooldown: 6000,
+    launchForce: 20_000,
+    turretTurnAccel: 90,
+    turretDrag: 0.4,
+    barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: RANGE_FIRE_MIN,
+      trackingRange: null,
+    }),
+    eventsSmooth: false,
+    color: COLOR_WHITE,
+    spread: { angle: 0 },
+    radius: { body: 9 },
+    audio: { fireSound: AUDIO.event.fire.mortarTurret },
+    // Mortars lob — high-arc solution from the ballistic solver so
+    // shells sail up and over whatever's in front of them.
+    highArc: true,
+    // Aim directly at the target point. mortarShot detonates on
+    // ground impact and releases mediumShot fragments from there.
+    groundAimFraction: 1.0,
   },
   // Gatling mortar: multi-barrel rotating cluster that lobs mortarShot
   // carrier rounds. Each carrier releases three mediumShot children on
@@ -230,7 +177,7 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
-    bodyRadius: 14,
+    radius: { body: 14 },
     audio: { fireSound: AUDIO.event.fire.gatlingMortarTurret },
     // Fast high-arc carrier. The submunitions do the area spread; this
     // keeps the gatling role readable without adding another cluster
@@ -263,8 +210,61 @@ export const TURRET_BLUEPRINTS = {
     color: COLOR_WHITE,
     spread: { angle: Math.PI / 16 },
     burst: { count: 1, delay: 80 },
-    bodyRadius: 12,
+    radius: { body: 12 },
     audio: { fireSound: AUDIO.event.fire.hippoGatlingTurret },
+  },
+  // Salvo rocket pod — vertical-launch system. The turret is pinned
+  // pointing straight up (verticalLauncher=true → turretSystem locks
+  // pitch to π/2) so the original cone-cluster of barrels stays
+  // visibly aimed at the sky, with the cluster spin still driven by
+  // engagement state. Each volley fires 3 rockets straight up into
+  // a random cone (`spread.angle` is the half-angle from vertical);
+  // `lightRocket` ignores gravity so each rocket climbs on thrust,
+  // then `homingTurnRate` bends them onto the acquired target.
+  salvoRocketTurret: {
+    id: 'salvoRocketTurret',
+    projectileId: 'lightRocket',
+    range: 400,
+    cooldown: 2000,
+    launchForce: 400,
+    turretTurnAccel: 20,
+    turretDrag: 0.15,
+    barrel: {
+      type: 'coneMultiBarrel',
+      // 3 long tubes splayed out from the firing axis, with their tips
+      // 2.5× headRadius out to the side. The forward extension
+      // (`barrelLength`) is set to 0.01 so the cylinders run almost
+      // entirely sideways from the head — visible length is dominated
+      // by the radial spread (tipOrbit − baseOrbit), not by forward
+      // run. Authoring `tipOrbit` explicitly decouples the visible
+      // splay from `spread.angle` (which controls the random firing
+      // cone around vertical, not the rendered barrel angles).
+      barrelCount: 3,
+      barrelLength: 0.01,
+      baseOrbit: 0.0,
+      tipOrbit: 0.9,
+      spin: { idle: 2, max: 20, accel: 10, decel: 5 },
+    },
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: RANGE_FIRE_MIN,
+      trackingRange: null,
+    }),
+    eventsSmooth: false,
+    color: COLOR_WHITE,
+    // 90° max deviation from vertical — rockets launch anywhere from
+    // straight up to horizontal; homing then bends each one onto the
+    // target's line.
+    spread: { angle: Math.PI / 4, pelletCount: 3 },
+    // spread: { angle: Math.PI / 2, pelletCount: 1 },
+    radius: { body: 8 },
+    audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
+    verticalLauncher: true,
+    // Spawn pointing straight up. verticalLauncher pins pitch to π/2
+    // every tick once combat runs, but during construction (shell
+    // state) and the first frame before turretSystem ticks the pose
+    // comes from idlePitch — without this the cluster spawned aimed
+    // forward and snapped up on first activate.
+    idlePitch: Math.PI / 2,
   },
   dgunTurret: {
     id: 'dgunTurret',
@@ -286,7 +286,7 @@ export const TURRET_BLUEPRINTS = {
     }),
     eventsSmooth: false,
     color: 0xff8800,
-    bodyRadius: 7,
+    radius: { body: 8 },
     audio: { fireSound: AUDIO.event.fire.dgunTurret },
   },
   mirrorTurret: {
@@ -314,14 +314,13 @@ export const TURRET_BLUEPRINTS = {
     // line-shot threat. As soon as the aim solver runs, the damper
     // takes over and pitches the panel to the bisector solution.
     idlePitch: Math.PI / 2,
-    // The mirror-host turret's head sphere is hidden (panels are the
-    // visual), so bodyRadius is set for consistency with sibling
-    // turrets but has no rendered effect.
-    bodyRadius: 5,
+    // The mirror-host turret's head sphere is hidden; radius.body
+    // defines the panel half-side used by the mirror visual/collision.
+    radius: { body: 5 },
     // Single fully-regularized square reflector. The panel ATTACHMENT
     // POINT is the unit/turret center (offsetX = offsetY = 0); the
     // panel's normal points along the turret's facing direction
-    // (angle = 0); the panel size is `2 × bodyRadius` square,
+    // (angle = 0); the panel size is `2 × radius.body` square,
     // vertically centered on `bodyCenterHeight`. mirrorPanelCache
     // ignores these per-panel fields entirely — they're declared as
     // a count of 1 so the cache builder emits one panel per host.
@@ -345,7 +344,7 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
-    bodyRadius: 5,
+    radius: { body: 8 },
     audio: { fireSound: AUDIO.event.fire.laserTurret },
   },
   beamTurret: {
@@ -364,7 +363,7 @@ export const TURRET_BLUEPRINTS = {
     }),
     eventsSmooth: false,
     color: COLOR_WHITE,
-    bodyRadius: 6,
+    radius: { body: 8 },
     audio: {
       fireSound: AUDIO.event.fire.beamTurret,
     },
@@ -391,7 +390,7 @@ export const TURRET_BLUEPRINTS = {
     }),
     eventsSmooth: false,
     color: COLOR_WHITE,
-    bodyRadius: 14,
+    radius: { body: 14 },
     audio: {
       fireSound: AUDIO.event.fire.megaBeamTurret,
     },
@@ -417,9 +416,9 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     // Force-field emitters render via ForceFieldRenderer3D's glowing
-    // sphere; the turret head itself is hidden, so this value has no
-    // rendered effect — set for consistency with sibling turrets.
-    bodyRadius: 12,
+    // sphere; radius.body remains available to shared barrel/mount
+    // helpers even though the normal turret head is hidden.
+    radius: { body: 12 },
     forceField: {
       angle: Math.PI * 2,
       transitionTime: 500,

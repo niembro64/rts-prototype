@@ -17,6 +17,7 @@ export type DamageSourceBase = {
   ownerId: PlayerId;
   damage: number;
   excludeEntities: Set<EntityId>;
+  excludeCommanders?: boolean;
 };
 
 /** Beam / laser damage: a 3D line segment from `start` → `end`. `width`
@@ -49,8 +50,7 @@ export type SweptDamageSource = DamageSourceBase & {
  *  shot collider must intersect this sphere — pure boolean overlap
  *  test, no distance falloff. Damage + knockback are applied at full
  *  magnitude inside the sphere, zero outside. `sliceAngle` /
- *  `sliceDirection` are still planar — force-field cones stay on the
- *  ground plane. */
+ *  `sliceDirection` are planar for callers that need conic AOE. */
 export type AreaDamageSource = DamageSourceBase & {
   type: 'area';
   center: Vec3;

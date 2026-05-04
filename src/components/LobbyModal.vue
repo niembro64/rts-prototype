@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { PLAYER_COLORS, getPlayerColors, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
@@ -8,6 +8,7 @@ import BarButtonGroup from './BarButtonGroup.vue';
 import BarButton from './BarButton.vue';
 import { getUnitBlueprint } from '../game/sim/blueprints';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
+import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 
 export type { LobbyPlayer } from '@/types/ui';
 import type { LobbyPlayer } from '@/types/ui';
@@ -26,8 +27,6 @@ const props = defineProps<{
   unitTypes: readonly string[];
   allowedUnits: readonly string[];
   unitCap: number;
-  ffAccelUnits: boolean;
-  ffAccelShots: boolean;
   mirrorsEnabled: boolean;
   forceFieldsEnabled: boolean;
 }>();
@@ -44,10 +43,9 @@ const emit = defineEmits<{
   (e: 'toggleUnit', unitType: string): void;
   (e: 'toggleAllUnits'): void;
   (e: 'setUnitCap', cap: number): void;
-  (e: 'setFfAccelUnits', enabled: boolean): void;
-  (e: 'setFfAccelShots', enabled: boolean): void;
   (e: 'setMirrorsEnabled', enabled: boolean): void;
   (e: 'setForceFieldsEnabled', enabled: boolean): void;
+  (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
 }>();
 
@@ -93,16 +91,6 @@ function pickUnitCap(cap: number): void {
   emit('setUnitCap', cap);
 }
 
-function pickFfAccelUnits(enabled: boolean): void {
-  if (!props.isHost) return;
-  emit('setFfAccelUnits', enabled);
-}
-
-function pickFfAccelShots(enabled: boolean): void {
-  if (!props.isHost) return;
-  emit('setFfAccelShots', enabled);
-}
-
 function pickMirrors(enabled: boolean): void {
   if (!props.isHost) return;
   emit('setMirrorsEnabled', enabled);
@@ -124,6 +112,55 @@ function unitShortName(unitType: string): string {
 function pickResetDefaults(): void {
   if (!props.isHost) return;
   emit('resetDefaults');
+}
+
+const editingName = ref('');
+const nameModalOpen = ref(false);
+const nameInputEl = ref<HTMLInputElement | null>(null);
+
+const localPlayerName = computed(() =>
+  props.players.find((p) => p.playerId === props.localPlayerId)?.name ?? '',
+);
+
+watch(
+  localPlayerName,
+  (name) => {
+    if (!nameModalOpen.value) editingName.value = name;
+  },
+  { immediate: true },
+);
+
+const nameCanSave = computed(() => editingName.value.trim().length > 0);
+
+async function openNameEditor(): Promise<void> {
+  editingName.value = localPlayerName.value;
+  nameModalOpen.value = true;
+  await nextTick();
+  nameInputEl.value?.focus();
+  nameInputEl.value?.select();
+}
+
+function closeNameEditor(): void {
+  editingName.value = localPlayerName.value;
+  nameModalOpen.value = false;
+}
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (!visible) closeNameEditor();
+  },
+);
+
+function commitLocalPlayerName(): void {
+  const trimmed = editingName.value.trim().slice(0, MAX_NAME_LENGTH);
+  if (trimmed.length === 0) {
+    nameInputEl.value?.focus();
+    return;
+  }
+  if (trimmed !== localPlayerName.value) emit('setPlayerName', trimmed);
+  editingName.value = trimmed;
+  nameModalOpen.value = false;
 }
 
 const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -388,16 +425,23 @@ const terrainSectionVars = computed(() =>
                   :color="getPlayerColor(player.playerId)"
                   :size="44"
                 />
-                <!-- Three-line player info. The avatar's color IS
-                     the per-player identifier, so the literal
-                     "Red" / "Blue" name is dropped — what's
-                     shown instead is what the player IS at this
-                     moment: where they're connecting from
-                     (location), as whom (IP), and when
-                     (live time + tz). Each row reads
-                     diagnostically without asking the player who
-                     they are. -->
+                <!-- Player info. The local user's row owns the only
+                     name-edit entry point; remote slots render the
+                     name broadcast by that player. -->
                 <div class="player-info">
+                  <div class="player-name-row">
+                    <span class="player-name">{{ player.name }}</span>
+                    <button
+                      v-if="player.playerId === localPlayerId"
+                      class="player-name-edit-btn"
+                      type="button"
+                      title="Edit username"
+                      aria-label="Edit username"
+                      @click="openNameEditor"
+                    >
+                      Edit
+                    </button>
+                  </div>
                   <span v-if="player.location" class="player-location">{{ player.location }}</span>
                   <span v-if="player.ipAddress" class="player-ip">{{ player.ipAddress }}</span>
                   <span
@@ -514,23 +558,6 @@ const terrainSectionVars = computed(() =>
               </BarButtonGroup>
             </div>
             <div class="terrain-control-row">
-              <div class="terrain-control-label">FF:</div>
-              <BarButtonGroup>
-                <BarButton
-                  size="large"
-                  :active="ffAccelUnits"
-                  :title="isHost ? 'Force field accelerates enemy units' : 'Only the host can change battle settings'"
-                  @click="pickFfAccelUnits(!ffAccelUnits)"
-                >UNIT-ACC</BarButton>
-                <BarButton
-                  size="large"
-                  :active="ffAccelShots"
-                  :title="isHost ? 'Force field accelerates enemy projectiles' : 'Only the host can change battle settings'"
-                  @click="pickFfAccelShots(!ffAccelShots)"
-                >SHOT-ACC</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
               <div class="terrain-control-label">SYSTEM:</div>
               <BarButtonGroup>
                 <BarButton
@@ -576,6 +603,41 @@ const terrainSectionVars = computed(() =>
           <button class="lobby-btn exit-btn" @click="exitApp">Exit</button>
         </div>
       </template>
+
+      <div
+        v-if="nameModalOpen"
+        class="name-edit-backdrop"
+        role="presentation"
+        @click.self="closeNameEditor"
+      >
+        <form
+          class="name-edit-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="name-edit-title"
+          @submit.prevent="commitLocalPlayerName"
+        >
+          <h2 id="name-edit-title" class="name-edit-title">Username</h2>
+          <input
+            ref="nameInputEl"
+            v-model="editingName"
+            class="name-edit-input"
+            type="text"
+            :maxlength="MAX_NAME_LENGTH"
+            spellcheck="false"
+            autocomplete="off"
+            @keydown.esc.prevent="closeNameEditor"
+          />
+          <div class="name-edit-actions">
+            <button class="lobby-btn cancel-btn" type="button" @click="closeNameEditor">
+              Cancel
+            </button>
+            <button class="lobby-btn host-btn" type="submit" :disabled="!nameCanSave">
+              Save
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 </template>
@@ -605,9 +667,21 @@ const terrainSectionVars = computed(() =>
   border: 1px solid #444;
   border-radius: 16px;
   padding: 40px 50px;
-  min-width: 500px;
+  box-sizing: border-box;
   text-align: center;
   box-shadow: 0 0 60px rgba(68, 68, 170, 0.25);
+}
+
+.lobby-modal:not(.in-lobby) {
+  width: 600px;
+  height: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 /* GAME LOBBY screen — full-screen two-column layout.
@@ -972,16 +1046,110 @@ const terrainSectionVars = computed(() =>
   flex: 1;
   min-width: 0;
   font-family: monospace;
-  /* Each row is one line of info — keep them tight so 3 lines
-   * fit comfortably in the row's 60px min-height. */
+  /* Keep rows tight so name + connection diagnostics fit
+   * comfortably in the row's 60px min-height. */
 }
 
-/* Most prominent line: "Mountain View, United States" — the
- * fastest read for "where are you from?" */
-.player-info .player-location {
-  font-size: 13px;
-  color: #ddd;
+.player-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.player-info .player-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  color: #f2f2f2;
   font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-name-edit-btn {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  background: rgba(74, 158, 255, 0.16);
+  border: 1px solid rgba(74, 158, 255, 0.45);
+  border-radius: 5px;
+  color: #9fd0ff;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.player-name-edit-btn:hover,
+.player-name-edit-btn:focus-visible {
+  background: rgba(74, 158, 255, 0.3);
+  border-color: #4a9eff;
+  color: #fff;
+  outline: none;
+}
+
+.name-edit-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.name-edit-modal {
+  width: min(420px, calc(100vw - 48px));
+  padding: 24px;
+  background: rgba(15, 18, 24, 0.98);
+  border: 1px solid rgba(74, 158, 255, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 0 36px rgba(0, 0, 0, 0.55);
+}
+
+.name-edit-title {
+  margin: 0 0 14px;
+  color: #fff;
+  font-family: monospace;
+  font-size: 18px;
+  text-transform: uppercase;
+}
+
+.name-edit-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  color: #fff;
+  font-family: monospace;
+  font-size: 18px;
+  outline: none;
+  caret-color: currentColor;
+}
+
+.name-edit-input:focus {
+  border-color: #4a9eff;
+}
+
+.name-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.name-edit-actions .host-btn {
+  width: auto;
+}
+
+/* Location: "Mountain View, United States". */
+.player-info .player-location {
+  font-size: 12px;
+  color: #ddd;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

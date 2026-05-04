@@ -1,8 +1,10 @@
 import type { WorldState } from './WorldState';
 import type { Entity } from './types';
 import { economyManager } from './economy';
+import { factoryProductionSystem } from './factoryProduction';
 import { deactivateSolarCollector, startSolarCollectorClosed } from './solarCollector';
 import { spatialGrid } from './SpatialGrid';
+import { isEntityActive } from './buildableHelpers';
 import {
   claimDepositsForExtractor,
   releaseDepositsForExtractor,
@@ -35,11 +37,15 @@ export function applyCompletedBuildingEffects(world: WorldState, entity: Entity)
 }
 
 export function removeCompletedBuildingEffects(world: WorldState, entity: Entity): void {
-  if (entity.buildingType === 'solar' && entity.ownership && entity.buildable?.isComplete) {
+  if (entity.factory) {
+    factoryProductionSystem.cancelActiveShell(world, entity);
+  }
+
+  if (entity.buildingType === 'solar' && entity.ownership && isEntityActive(entity)) {
     deactivateSolarCollector(entity);
   }
 
-  if (entity.buildingType === 'extractor' && entity.ownership && entity.buildable?.isComplete) {
+  if (entity.buildingType === 'extractor' && entity.ownership && isEntityActive(entity)) {
     // Release every owned deposit. For each released deposit the
     // helper looks for a surviving completed extractor whose
     // footprint still covers it and promotes that extractor to the

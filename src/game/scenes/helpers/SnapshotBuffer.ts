@@ -170,6 +170,7 @@ function createBufferedSimEvent(): BufferedSimEvent {
     sourceType: undefined,
     sourceKey: undefined,
     pos: { x: 0, y: 0, z: 0 },
+    forceFieldImpact: undefined,
     _pos: { x: 0, y: 0, z: 0 },
   };
   event.pos = event._pos;
@@ -187,6 +188,12 @@ function copySimEventInto(src: NetworkServerSnapshotSimEvent, dst: BufferedSimEv
   dst.entityId = src.entityId;
   dst.deathContext = src.deathContext;
   dst.impactContext = src.impactContext;
+  dst.forceFieldImpact = src.forceFieldImpact
+    ? {
+        normal: { ...src.forceFieldImpact.normal },
+        playerId: src.forceFieldImpact.playerId,
+      }
+    : undefined;
   return dst;
 }
 

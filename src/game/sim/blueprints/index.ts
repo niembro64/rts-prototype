@@ -147,10 +147,10 @@ function validateTurretRangeMultipliers(
     );
   }
 
-  // engageRangeMin is `null` when the turret has no minimum firing
-  // distance (most direct-fire weapons). When set, both edges must be
-  // finite and acquire must be farther out than release so the turret
-  // doesn't flicker when targets sit on the inner boundary.
+  // engageRangeMin is `null` when the turret has no soft inner target
+  // preference. When set, both edges must be finite and acquire must be
+  // farther out than release so target preference doesn't flicker when
+  // enemies sit on the inner boundary.
   if (min) {
     assertFiniteRangeMultiplier(turretId, 'engageRangeMin.acquire', min.acquire);
     assertFiniteRangeMultiplier(turretId, 'engageRangeMin.release', min.release);
@@ -287,6 +287,11 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   const turretBlueprint: TurretBlueprint = TURRET_BLUEPRINTS[turretId];
   if (!turretBlueprint) throw new Error(`Unknown turret blueprint: ${turretId}`);
   validateTurretRangeMultipliers(turretId, turretBlueprint.rangeMultiplierOverrides);
+  if (!Number.isFinite(turretBlueprint.radius.body) || turretBlueprint.radius.body <= 0) {
+    throw new Error(
+      `Turret blueprint ${turretId} must define positive radius.body`,
+    );
+  }
 
   // Determine shot config
   let shot: ShotConfig;
@@ -329,7 +334,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     verticalLauncher: turretBlueprint.verticalLauncher ?? false,
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction,
-    bodyRadius: turretBlueprint.bodyRadius,
+    radius: { ...turretBlueprint.radius },
   };
 
   // Derive barrelThickness from shot size, scaled by global multiplier

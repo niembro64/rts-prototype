@@ -5,15 +5,15 @@
 // so beam-vs-mirror collision uses the exact same canonical rectangles
 // on host and client.
 //
-// The mirror panel is a square slab of side `2 × bodyRadius`, mounted
+// The mirror panel is a square slab of side `2 × radius.body`, mounted
 // at ARM'S LENGTH from the turret body sphere along the turret's
-// facing direction. The arm length is also `bodyRadius` — so the
+// facing direction. The arm length is also `radius.body` — so the
 // panel's near edge touches the unit body and the panel center sits
 // at the body's outer edge. Vertical position comes from the mirror
 // turret's blueprint-authored 3D mount so panel collision and visuals
 // stay attached to the same pivot as the turret.
 // Attachment cylinder + offset are rendered together; the sim only
-// needs the panel center offset (offsetX = bodyRadius, offsetY = 0)
+// needs the panel center offset (offsetX = radius.body, offsetY = 0)
 // and angle = 0 (panel normal = turret yaw direction).
 
 import type { CachedMirrorPanel } from '../../types/sim';
@@ -21,24 +21,24 @@ import type { UnitBlueprint } from '../../types/blueprints';
 import { getTurretBlueprint } from './blueprints';
 
 /** Forward arm length (from turret body center to panel center) as a
- *  multiple of unit bodyRadius. 1.0 puts the panel center at the
+ *  multiple of unit radius.body. 1.0 puts the panel center at the
  *  body edge; bigger values stretch the arm further out. Bumped up
  *  to 5 as a debug knob — the longer the arm, the more visible the
  *  rigid yaw + pitch sweep is, which makes it obvious whether the
  *  ball-joint math (MirrorAimSolver, MirrorPanelHit, the renderer's
  *  single-quaternion root rotation) all agree on where the panel
  *  ends up in 3D. Dial back when you're done verifying. */
-export const MIRROR_ARM_LENGTH_MULT = 1.2;
+export const MIRROR_ARM_LENGTH_MULT = 1.8;
 
 /** Mirror panel size multiplier. Scales BOTH the sim collision
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
  *  Render3DEntities reads `mirrorPanels[0].halfWidth` directly so a
  *  bump here flows through to the visual panel without any other
- *  edit. 1.0 = legacy "panel side = 2 × bodyRadius". Cranked to 4
+ *  edit. 1.0 = legacy "panel side = 2 × radius.body". Cranked to 4
  *  for the same debug-visibility reason as MIRROR_ARM_LENGTH_MULT:
- *  a panel that's 8 × bodyRadius on a side is impossible to miss
+ *  a panel that's 8 × radius.body on a side is impossible to miss
  *  during yaw / pitch sweeps. */
-export const MIRROR_PANEL_SIZE_MULT = 4.0;
+export const MIRROR_PANEL_SIZE_MULT = 2.0;
 
 /** Mirror arm thickness as a fraction of the panel half-side. The arm
  *  is the cylinder/box bridging the turret body to the panel; this
@@ -94,7 +94,7 @@ export function buildMirrorPanelCache(
   bp: UnitBlueprint,
   panelsOut: CachedMirrorPanel[],
 ): number {
-  const unitBodyRadius = bp.bodyRadius;
+  const unitBodyRadius = bp.radius.body;
   const halfSide = unitBodyRadius * MIRROR_PANEL_SIZE_MULT;
   const armLength = unitBodyRadius * MIRROR_ARM_LENGTH_MULT;
   let mirrorBoundRadius = 0;

@@ -215,7 +215,7 @@ export class NetworkManager {
     // so seed with whatever username is persisted in localStorage (or a
     // fresh random funny pick if this is a first-time visitor — which
     // gets persisted immediately so subsequent loads are stable). The
-    // user can edit this from the TopBar; setLocalPlayerName below
+    // user can edit this from their lobby player slot; setLocalPlayerName below
     // persists + broadcasts the change.
     const hostPlayer: LobbyPlayer = {
       playerId: 1,
@@ -688,7 +688,9 @@ export class NetworkManager {
               ipAddress: message.ipAddress,
               location: message.location,
               timezone: message.timezone,
-              name: message.name,
+              name: message.name !== undefined && message.name.length > 0
+                ? player.name
+                : undefined,
             });
           }
         }
@@ -830,7 +832,8 @@ export class NetworkManager {
     this.lastHeartbeatReceived.clear();
   }
 
-  /** Report the LOCAL player's IP / location / timezone. On the
+  /** Report the LOCAL player's IP / location / timezone and current
+   *  username. On the
    *  host this updates the host's record + fans out to every
    *  client; on a client it ships a `playerInfo` to the host
    *  (which then does the broadcast). Caller invokes once the
@@ -847,6 +850,7 @@ export class NetworkManager {
         self.ipAddress = ipAddress;
         self.location = location;
         self.timezone = timezone;
+        self.name = self.name || getInitialLocalUsername();
         this.onPlayerInfoUpdate?.(self);
         this.broadcast({
           type: 'playerInfoUpdate',
@@ -855,6 +859,7 @@ export class NetworkManager {
           ipAddress,
           location,
           timezone,
+          name: self.name,
         });
       }
     } else if (this.role === 'client') {
@@ -866,6 +871,7 @@ export class NetworkManager {
           ipAddress,
           location,
           timezone,
+          name: getInitialLocalUsername(),
         });
       }
     }

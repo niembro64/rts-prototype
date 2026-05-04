@@ -5,6 +5,7 @@ import {
 } from '@/config';
 import type { WorldState } from './WorldState';
 import { getBuildingConfig } from './buildConfigs';
+import { isEntityActive } from './buildableHelpers';
 import { economyManager } from './economy';
 
 export type WindState = {
@@ -53,7 +54,7 @@ export class WindPowerTracker {
 
     for (const entity of world.getWindBuildings()) {
       if (!entity.ownership || !entity.building || entity.building.hp <= 0) continue;
-      if (!entity.buildable?.isComplete || entity.buildable.isGhost) continue;
+      if (!isEntityActive(entity)) continue;
       const pid = entity.ownership.playerId;
       nextProductionByPlayer.set(
         pid,

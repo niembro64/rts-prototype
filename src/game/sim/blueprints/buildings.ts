@@ -7,6 +7,7 @@
  */
 
 import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingType, ResourceCost } from '../types';
+import type { EntityHudBlueprint } from '../../../types/blueprints';
 import {
   EXTRACTOR_METAL_PER_SECOND,
   METAL_DEPOSIT_RESOURCE_CELLS,
@@ -27,11 +28,12 @@ export type BuildingBlueprint = {
   cost: ResourceCost;
   energyProduction?: number;
   metalProduction?: number;
-  maxEnergyUseRate?: number;
+  constructionRate?: number;
   renderProfile: BuildingRenderProfile;
   /** Primary visual/anchor height above ground, in world units. */
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
+  hud: EntityHudBlueprint;
 };
 
 export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
@@ -39,6 +41,57 @@ export const SOLAR_BUILDING_VISUAL_HEIGHT = 52;
 export const WIND_BUILDING_VISUAL_HEIGHT = 250;
 export const FACTORY_BASE_VISUAL_HEIGHT = 30;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 50;
+
+export type FactoryBuildingVisualMetrics = {
+  minDim: number;
+  baseHeight: number;
+  towerRadius: number;
+  collarRadius: number;
+  towerHeight: number;
+  towerBaseY: number;
+  pylonRadius: number;
+  pylonOffset: number;
+  pylonHeight: number;
+  capY: number;
+  nozzleRadius: number;
+  nozzleY: number;
+  visualTop: number;
+};
+
+/** Factory construction tower dimensions. This is shared by the 3D
+ *  renderer and simulation-side anchors so changing the tower visual
+ *  cannot desync hover bars, target points, and construction spray. */
+export function getFactoryBuildingVisualMetrics(
+  width: number,
+  depth: number,
+): FactoryBuildingVisualMetrics {
+  const minDim = Math.min(width, depth);
+  const towerRadius = Math.max(7, minDim * 0.22);
+  const collarRadius = Math.max(towerRadius * 1.35, minDim * 0.34);
+  const towerHeight = Math.max(78, minDim * 1.9);
+  const towerBaseY = FACTORY_BASE_VISUAL_HEIGHT;
+  const pylonRadius = Math.max(2.3, minDim * 0.055);
+  const pylonOffset = Math.min(minDim * 0.38, collarRadius * 1.15);
+  const pylonHeight = towerHeight * 0.66;
+  const capY = towerBaseY + towerHeight + 5;
+  const nozzleRadius = Math.max(6, towerRadius * 0.95);
+  const nozzleY = capY + 5 + nozzleRadius * 0.45;
+  return {
+    minDim,
+    baseHeight: FACTORY_BASE_VISUAL_HEIGHT,
+    towerRadius,
+    collarRadius,
+    towerHeight,
+    towerBaseY,
+    pylonRadius,
+    pylonOffset,
+    pylonHeight,
+    capY,
+    nozzleRadius,
+    nozzleY,
+    visualTop: nozzleY + nozzleRadius,
+  };
+}
 
 export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
   solar: {
@@ -53,6 +106,9 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     renderProfile: 'solar',
     visualHeight: SOLAR_BUILDING_VISUAL_HEIGHT,
     anchorProfile: 'constantVisualTop',
+    hud: {
+      barsOffsetAboveTop: 12,
+    },
   },
   wind: {
     id: 'wind',
@@ -66,6 +122,9 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     renderProfile: 'wind',
     visualHeight: WIND_BUILDING_VISUAL_HEIGHT,
     anchorProfile: 'constantVisualTop',
+    hud: {
+      barsOffsetAboveTop: -10,
+    },
   },
   factory: {
     id: 'factory',
@@ -77,10 +136,13 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     gridDepth: 6,
     hp: 800,
     cost: { energy: 300, mana: 300, metal: 300 },
-    maxEnergyUseRate: 100,
+    constructionRate: 100,
     renderProfile: 'factory',
     visualHeight: FACTORY_BASE_VISUAL_HEIGHT,
     anchorProfile: 'factoryTower',
+    hud: {
+      barsOffsetAboveTop: 12,
+    },
   },
   extractor: {
     id: 'extractor',
@@ -95,6 +157,9 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     renderProfile: 'extractor',
     visualHeight: EXTRACTOR_BUILDING_VISUAL_HEIGHT,
     anchorProfile: 'constantVisualTop',
+    hud: {
+      barsOffsetAboveTop: 38,
+    },
   },
 };
 
@@ -113,6 +178,14 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   }
   if (!Number.isFinite(blueprint.visualHeight) || blueprint.visualHeight <= 0) {
     throw new Error(`Invalid building blueprint ${id}: visualHeight must be positive`);
+  }
+  if (
+    !blueprint.hud ||
+    !Number.isFinite(blueprint.hud.barsOffsetAboveTop)
+  ) {
+    throw new Error(
+      `Invalid building blueprint ${id}: HUD barsOffsetAboveTop must be finite`,
+    );
   }
 }
 

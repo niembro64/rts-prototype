@@ -27,8 +27,7 @@ import type { InputContext } from '@/types/input';
 import type { TerrainShape } from '@/types/terrain';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import {
-  findClosestUnitToPoint,
-  findClosestBuildingToPoint,
+  findClosestSelectableEntityToPoint,
   selectEntitiesInScreenRect,
   SelectionChangeTracker,
   LinePathAccumulator,
@@ -47,12 +46,14 @@ import {
   getSnappedBuildPosition,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
+import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
 import { isWaterAt } from '../sim/Terrain';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 const HOVER_RAYCAST_INTERVAL_MS = 50;
+const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 
 /** Approximate world-space vertical center for box-select projection,
  *  picked per entity kind so the screen-projected point lands near
@@ -105,6 +106,7 @@ export class Input3DManager {
   public onBuildModeChange?: (type: BuildingType | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
   private hoveredEntityId: EntityId | null = null;
+  private hoveredSelectableEntityId: EntityId | null = null;
   private lastHoverRaycastMs = 0;
   private lastHoverClientX = Number.NaN;
   private lastHoverClientY = Number.NaN;
@@ -113,6 +115,7 @@ export class Input3DManager {
   private buildGhostDiagnostics: BuildPlacementDiagnostics | undefined;
   private buildOccupancyVersion = '';
   private buildOccupiedCells: ReadonlySet<string> | undefined;
+  private appliedCursor: CommandCursorKind = 'default';
 
   // Optional preview renderer driven on mouse-move-in-build-mode;
   // scene injects one via setBuildGhost. Stays null in the demo /
@@ -220,12 +223,15 @@ export class Input3DManager {
       this.buildGhostCanPlace = false;
       this.buildGhostDiagnostics = undefined;
       if (type === null) {
-        this.canvas.style.cursor = '';
         this.buildGhost?.hide();
       }
+      this.refreshCursor();
       this.onBuildModeChange?.(type);
     };
-    this.mode.onDGunModeChange = (active) => this.onDGunModeChange?.(active);
+    this.mode.onDGunModeChange = (active) => {
+      this.refreshCursor();
+      this.onDGunModeChange?.(active);
+    };
   }
 
   /** Inject the scene's build-ghost preview renderer. Input3DManager
@@ -263,6 +269,7 @@ export class Input3DManager {
   setWaypointMode(mode: WaypointType): void {
     if (this.waypointMode === mode) return;
     this.waypointMode = mode;
+    this.refreshCursor();
     this.onWaypointModeChange?.(mode);
   }
 
@@ -309,6 +316,84 @@ export class Input3DManager {
     );
   }
 
+  private applyCursor(kind: CommandCursorKind): void {
+    if (this.appliedCursor === kind) return;
+    this.appliedCursor = kind;
+    this.canvas.style.cursor = getCommandCursorStyle(kind);
+  }
+
+  private waypointCursorKind(): CommandCursorKind {
+    switch (this.waypointMode) {
+      case 'fight': return 'fight';
+      case 'patrol': return 'patrol';
+      case 'move':
+      default: return 'move';
+    }
+  }
+
+  private isRepairableBySelectedCommander(entity: Entity | null): boolean {
+    const commander = this.getSelectedCommander();
+    if (!commander?.ownership || !entity?.ownership) return false;
+    if (entity.ownership.playerId !== commander.ownership.playerId) return false;
+    if (entity.building) {
+      return !!entity.buildable &&
+        !entity.buildable.isComplete &&
+        !entity.buildable.isGhost;
+    }
+    if (entity.unit) {
+      return entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp;
+    }
+    return false;
+  }
+
+  private isAttackableBySelectedUnits(entity: Entity | null): boolean {
+    if (!entity?.ownership || entity.ownership.playerId === this.context.activePlayerId) return false;
+    if (this.entitySource.getSelectedUnits().length === 0) return false;
+    if (entity.unit) return entity.unit.hp > 0;
+    if (entity.building) return entity.building.hp > 0;
+    return false;
+  }
+
+  private isSelectableHoverTarget(entity: Entity | null): boolean {
+    if (!entity) return false;
+    if (entity.unit) return entity.unit.hp > 0;
+    if (entity.building) return entity.building.hp > 0;
+    return false;
+  }
+
+  private isSelectableByActivePlayer(entity: Entity | null): boolean {
+    return this.isSelectableHoverTarget(entity) &&
+      entity?.ownership?.playerId === this.context.activePlayerId;
+  }
+
+  private inferCursorKind(): CommandCursorKind {
+    if (this.mode.isInBuildMode) {
+      return this.buildGhostDiagnostics
+        ? (this.buildGhostDiagnostics.canPlace ? 'build' : 'blocked')
+        : 'build';
+    }
+    if (this.mode.isInDGunMode) return 'dgun';
+    if (this.leftDown) return 'select';
+    if (this.rightDown) return this.waypointCursorKind();
+
+    const hovered = this.hoveredEntityId !== null
+      ? this.entitySource.getEntity(this.hoveredEntityId) ?? null
+      : null;
+    if (this.isRepairableBySelectedCommander(hovered)) return 'repair';
+    if (this.isAttackableBySelectedUnits(hovered)) return 'attack';
+    const selectableHovered = this.hoveredSelectableEntityId !== null
+      ? this.entitySource.getEntity(this.hoveredSelectableEntityId) ?? null
+      : null;
+    if (this.isSelectableByActivePlayer(selectableHovered)) return 'select';
+    if (this.entitySource.getSelectedUnits().length > 0) return this.waypointCursorKind();
+    if (this.getSelectedFactories().length > 0) return 'factoryWaypoint';
+    return 'game';
+  }
+
+  private refreshCursor(): void {
+    this.applyCursor(this.inferCursorKind());
+  }
+
   /** Per-frame poll. Right now it only runs the selection-change
    *  tracker (which resets waypoint mode on change), but any other
    *  "once-per-frame" input bookkeeping should live here so the
@@ -319,6 +404,7 @@ export class Input3DManager {
       this.context.activePlayerId,
     );
     if (changed) this.setWaypointMode('move');
+    this.refreshCursor();
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
@@ -427,13 +513,68 @@ export class Input3DManager {
     return null;
   }
 
+  /** Cursor hover serves two purposes: command affordances can target
+   *  any live enemy/friendly entity, but the select cursor must match
+   *  the actual left-click selection rules for owned entities. */
+  private resolveHoverTargets(
+    clientX: number,
+    clientY: number,
+  ): { hovered: EntityId | null; selectable: EntityId | null } {
+    let hovered: EntityId | null = null;
+    let selectable: EntityId | null = null;
+    const hit = this.raycastEntity(clientX, clientY);
+    if (hit !== null) {
+      const entity = this.entitySource.getEntity(hit) ?? null;
+      if (this.isSelectableHoverTarget(entity)) {
+        hovered = hit;
+        if (this.isSelectableByActivePlayer(entity)) selectable = hit;
+      }
+    }
+
+    if (hovered !== null && selectable !== null) {
+      return { hovered, selectable };
+    }
+
+    const world = this.raycastGround(clientX, clientY);
+    if (!world) return { hovered, selectable };
+
+    const options = { minUnitRadius: SELECTABLE_GROUND_MIN_UNIT_RADIUS };
+    if (hovered === null) {
+      hovered = findClosestSelectableEntityToPoint(
+        this.entitySource,
+        world.x,
+        world.y,
+        options,
+      )?.id ?? null;
+    }
+    if (selectable === null) {
+      selectable = findClosestSelectableEntityToPoint(
+        this.entitySource,
+        world.x,
+        world.y,
+        {
+          ...options,
+          playerId: this.context.activePlayerId,
+        },
+      )?.id ?? null;
+    }
+    return { hovered, selectable };
+  }
+
+  private clearHoveredEntities(): void {
+    this.hoveredEntityId = null;
+    this.hoveredSelectableEntityId = null;
+  }
+
   private updateHoveredEntity(clientX: number, clientY: number): void {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (now - this.lastHoverRaycastMs < HOVER_RAYCAST_INTERVAL_MS) return;
     this.lastHoverRaycastMs = now;
     this.lastHoverClientX = clientX;
     this.lastHoverClientY = clientY;
-    this.hoveredEntityId = this.raycastEntity(clientX, clientY);
+    const targets = this.resolveHoverTargets(clientX, clientY);
+    this.hoveredEntityId = targets.hovered;
+    this.hoveredSelectableEntityId = targets.selectable;
   }
 
   private handleMouseDown(e: MouseEvent): void {
@@ -460,6 +601,7 @@ export class Input3DManager {
       this.leftDown = true;
       this.dragStartScreen = { x: e.clientX, y: e.clientY };
       this.dragEndScreen = { x: e.clientX, y: e.clientY };
+      this.applyCursor('select');
     } else if (e.button === 2) {
       e.preventDefault();
       this.handleRightMouseDown(e);
@@ -481,7 +623,7 @@ export class Input3DManager {
     const buildType = this.mode.buildingType;
     if (buildType === null) return;
     const diagnostics = this.validateBuildPlacement(buildType, world.x, world.y);
-    this.canvas.style.cursor = diagnostics.canPlace ? 'crosshair' : 'not-allowed';
+    this.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
     if (this.buildGhost) {
       this.buildGhost.setTarget(
         buildType, world.x, world.y,
@@ -563,31 +705,36 @@ export class Input3DManager {
 
   private handleMouseMove(e: MouseEvent): void {
     if (this.leftDown || this.rightDown || this.mode.isInBuildMode || this.mode.isInDGunMode) {
-      this.hoveredEntityId = null;
+      this.clearHoveredEntities();
     } else if (this.lastHoverClientX !== e.clientX || this.lastHoverClientY !== e.clientY) {
       this.updateHoveredEntity(e.clientX, e.clientY);
     }
 
-    // Live build-ghost preview — only while in build mode and the
-    // scene provided a ghost renderer.
+    // Live build-ghost preview — only while in build mode. Cursor
+    // feedback still works in headless/no-ghost cases.
     const buildType = this.mode.buildingType;
-    if (buildType !== null && this.buildGhost) {
+    if (buildType !== null) {
       const world = this.raycastGround(e.clientX, e.clientY);
       if (world) {
         const diagnostics = this.validateBuildPlacement(buildType, world.x, world.y);
-        this.canvas.style.cursor = diagnostics.canPlace ? 'crosshair' : 'not-allowed';
-        this.buildGhost.setTarget(
-          buildType, world.x, world.y,
-          this.getSelectedCommander(),
-          this.buildGhostCanPlace,
-          diagnostics,
-        );
+        this.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
+        if (this.buildGhost) {
+          this.buildGhost.setTarget(
+            buildType, world.x, world.y,
+            this.getSelectedCommander(),
+            this.buildGhostCanPlace,
+            diagnostics,
+          );
+        }
       } else {
-        this.canvas.style.cursor = 'not-allowed';
+        this.buildGhostDiagnostics = undefined;
+        this.applyCursor('blocked');
       }
+      return;
     }
 
     if (this.leftDown) {
+      this.applyCursor('select');
       this.dragEndScreen = { x: e.clientX, y: e.clientY };
       const dx = e.clientX - this.dragStartScreen.x;
       const dy = e.clientY - this.dragStartScreen.y;
@@ -599,6 +746,7 @@ export class Input3DManager {
     }
 
     if (this.rightDown) {
+      this.applyCursor(this.waypointCursorKind());
       // Record points along the right-drag path so units can spread
       // along a line. The accumulator drops near-duplicate samples
       // and recomputes per-unit targets on append; we also force a
@@ -608,7 +756,10 @@ export class Input3DManager {
       const unitCount = this.entitySource.getSelectedUnits().length;
       this.linePath.append(world.x, world.y, unitCount, world.z);
       this.linePath.recomputeTargets(unitCount);
+      return;
     }
+
+    this.refreshCursor();
   }
 
   private handleMouseUp(e: MouseEvent): void {
@@ -630,14 +781,15 @@ export class Input3DManager {
       // distance-based closest-entity fallback).
       const hit = this.raycastEntity(e.clientX, e.clientY);
       if (hit !== null) {
-        const ent = this.entitySource.getEntity(hit);
-        if (ent && ent.ownership?.playerId === this.context.activePlayerId) {
+        const ent = this.entitySource.getEntity(hit) ?? null;
+        if (this.isSelectableByActivePlayer(ent)) {
           this.localCommandQueue.enqueue({
             type: 'select',
             tick: this.context.getTick(),
             entityIds: [hit],
             additive,
           });
+          this.refreshCursor();
           return;
         }
       }
@@ -645,34 +797,23 @@ export class Input3DManager {
       // a unit but missed the mesh). Matches 2D behavior.
       const world = this.raycastGround(e.clientX, e.clientY);
       if (world) {
-        const closestUnit = findClosestUnitToPoint(
+        const closest = findClosestSelectableEntityToPoint(
           this.entitySource,
           world.x,
           world.y,
-          this.context.activePlayerId,
+          {
+            playerId: this.context.activePlayerId,
+            minUnitRadius: SELECTABLE_GROUND_MIN_UNIT_RADIUS,
+          },
         );
-        if (closestUnit) {
+        if (closest) {
           this.localCommandQueue.enqueue({
             type: 'select',
             tick: this.context.getTick(),
-            entityIds: [closestUnit.id],
+            entityIds: [closest.id],
             additive,
           });
-          return;
-        }
-        const closestBuilding = findClosestBuildingToPoint(
-          this.entitySource,
-          world.x,
-          world.y,
-          this.context.activePlayerId,
-        );
-        if (closestBuilding) {
-          this.localCommandQueue.enqueue({
-            type: 'select',
-            tick: this.context.getTick(),
-            entityIds: [closestBuilding.id],
-            additive,
-          });
+          this.refreshCursor();
           return;
         }
       }
@@ -682,6 +823,7 @@ export class Input3DManager {
           tick: this.context.getTick(),
         });
       }
+      this.refreshCursor();
       return;
     }
 
@@ -699,6 +841,7 @@ export class Input3DManager {
       entityIds: ids,
       additive,
     });
+    this.refreshCursor();
   }
 
   /** Delegates to the shared box-select helper. The renderer-specific
@@ -763,6 +906,7 @@ export class Input3DManager {
         '[click] attack-mesh: hit target #%d, %d unit(s)',
         meshAttackCmd.targetId, selectedUnits.length,
       );
+      this.applyCursor('attack');
       this.localCommandQueue.enqueue(meshAttackCmd);
       return;
     }
@@ -784,6 +928,7 @@ export class Input3DManager {
         Math.round(world.x), Math.round(world.y), Math.round(world.z),
         repairCmd.targetId,
       );
+      this.applyCursor('repair');
       this.localCommandQueue.enqueue(repairCmd);
       return;
     }
@@ -805,6 +950,7 @@ export class Input3DManager {
           Math.round(world.x), Math.round(world.y), Math.round(world.z),
           attackCmd.targetId, selectedUnits.length,
         );
+        this.applyCursor('attack');
         this.localCommandQueue.enqueue(attackCmd);
         return;
       }
@@ -819,6 +965,7 @@ export class Input3DManager {
         selectedUnits.length,
       );
       this.rightDown = true;
+      this.applyCursor(this.waypointCursorKind());
       this.linePath.start(world.x, world.y, selectedUnits.length, world.z);
       return;
     }
@@ -835,6 +982,7 @@ export class Input3DManager {
         factories.length,
       );
       this.rightDown = true;
+      this.applyCursor('factoryWaypoint');
       this.linePath.startWithFixedTarget(world.x, world.y, world.z);
     }
   }
@@ -900,6 +1048,7 @@ export class Input3DManager {
         );
         this.localCommandQueue.enqueue(repairCmd);
         this.linePath.reset();
+        this.refreshCursor();
         return;
       }
       const moveCmd = buildLinePathMoveCommand(
@@ -944,6 +1093,7 @@ export class Input3DManager {
         this.localCommandQueue.enqueue(moveCmd);
       }
       this.linePath.reset();
+      this.refreshCursor();
       return;
     }
 
@@ -965,6 +1115,7 @@ export class Input3DManager {
       for (const cmd of cmds) this.localCommandQueue.enqueue(cmd);
     }
     this.linePath.reset();
+    this.refreshCursor();
   }
 
   private showMarquee(): void {

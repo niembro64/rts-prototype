@@ -2,13 +2,13 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, HysteresisRange, Turret, TurretRanges } from '../types';
-import { isLineShot } from '../types';
 import { getTargetRadius, turretBit, updateWeaponWorldKinematics } from './combatUtils';
 import { distanceSquared3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
 import { getUnitGroundZ } from '../unitGeometry';
+import { getMirrorLineTargetScore } from './mirrorTargetPriority';
 
 const _activeCombatUnits: Entity[] = [];
 
@@ -76,7 +76,7 @@ function maxRangeWithTargetSq(range: HysteresisRange, edge: 'acquire' | 'release
   return r * r;
 }
 
-function minRangeAllowsTargetSq(
+function minRangePrefersTargetSq(
   range: HysteresisRange | null,
   edge: 'acquire' | 'release',
   targetRadius: number,
@@ -88,25 +88,109 @@ function minRangeAllowsTargetSq(
 
   // Range checks are against the target collider. For max range a target
   // is valid if its near edge is reachable (dist <= max + radius). For
-  // min range it is valid if its far edge reaches outside the dead zone
-  // (dist >= min - radius). This treats fire range as an annulus rather
-  // than punishing large targets by center point only.
+  // min preference it is preferred if its far edge reaches outside the
+  // soft inner radius (dist >= min - radius). This keeps large targets
+  // from being ranked as "too close" just because their center is near.
   const threshold = minRange - targetRadius;
   if (threshold <= 0) return true;
   const thresholdSq = targetRadius <= 0 ? rangeEdgeSq(range, edge) : threshold * threshold;
   return distSq >= thresholdSq;
 }
 
-function withinFireEnvelopeSq(
+function withinFireMaxSq(
   ranges: TurretRanges,
   edge: 'acquire' | 'release',
   distSq: number,
   targetRadius: number,
 ): boolean {
-  return (
-    minRangeAllowsTargetSq(ranges.fire.min, edge, targetRadius, distSq) &&
-    distSq <= maxRangeWithTargetSq(ranges.fire.max, edge, targetRadius)
+  return distSq <= maxRangeWithTargetSq(ranges.fire.max, edge, targetRadius);
+}
+
+const TARGET_RANK_NONE = 0;
+const TARGET_RANK_TRACKING_ONLY = 1;
+const TARGET_RANK_FIRE_FALLBACK = 2;
+const TARGET_RANK_FIRE_PREFERRED = 3;
+type TargetPreferenceRank =
+  | typeof TARGET_RANK_NONE
+  | typeof TARGET_RANK_TRACKING_ONLY
+  | typeof TARGET_RANK_FIRE_FALLBACK
+  | typeof TARGET_RANK_FIRE_PREFERRED;
+
+function fireTargetPreferenceRankSq(
+  ranges: TurretRanges,
+  edge: 'acquire' | 'release',
+  distSq: number,
+  targetRadius: number,
+): TargetPreferenceRank {
+  if (!withinFireMaxSq(ranges, edge, distSq, targetRadius)) {
+    return TARGET_RANK_NONE;
+  }
+  return minRangePrefersTargetSq(ranges.fire.min, edge, targetRadius, distSq)
+    ? TARGET_RANK_FIRE_PREFERRED
+    : TARGET_RANK_FIRE_FALLBACK;
+}
+
+function acquisitionTargetPreferenceRankSq(
+  ranges: TurretRanges,
+  edge: 'acquire' | 'release',
+  distSq: number,
+  targetRadius: number,
+): TargetPreferenceRank {
+  const fireRank = fireTargetPreferenceRankSq(ranges, edge, distSq, targetRadius);
+  if (fireRank !== TARGET_RANK_NONE) return fireRank;
+  if (
+    ranges.tracking &&
+    distSq <= maxRangeWithTargetSq(ranges.tracking, edge, targetRadius)
+  ) {
+    return TARGET_RANK_TRACKING_ONLY;
+  }
+  return TARGET_RANK_NONE;
+}
+
+function isBetterTargetCandidate(
+  rank: TargetPreferenceRank,
+  distSq: number,
+  bestRank: TargetPreferenceRank,
+  bestDistSq: number,
+): boolean {
+  return rank > bestRank || (rank === bestRank && distSq < bestDistSq);
+}
+
+function isBetterMirrorTargetCandidate(
+  mirrorScore: number,
+  rank: TargetPreferenceRank,
+  distSq: number,
+  bestMirrorScore: number,
+  bestRank: TargetPreferenceRank,
+  bestDistSq: number,
+): boolean {
+  if (mirrorScore !== bestMirrorScore) return mirrorScore > bestMirrorScore;
+  return isBetterTargetCandidate(rank, distSq, bestRank, bestDistSq);
+}
+
+function currentFireTargetRankSq(
+  world: WorldState,
+  weapon: Turret,
+  edge: 'acquire' | 'release',
+): { rank: TargetPreferenceRank; distSq: number } {
+  if (weapon.target === null || !weapon.worldPos) {
+    return { rank: TARGET_RANK_NONE, distSq: Infinity };
+  }
+  const target = world.getEntity(weapon.target);
+  const targetRadius = target?.unit
+    ? target.unit.radius.shot
+    : (target?.building ? getTargetRadius(target) : 0);
+  if (!target || targetRadius <= 0 && !target.unit && !target.building) {
+    return { rank: TARGET_RANK_NONE, distSq: Infinity };
+  }
+  const distSq = distanceSquared3(
+    weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
+    target.transform.x, target.transform.y, target.transform.z,
   );
+  return {
+    rank: fireTargetPreferenceRankSq(weapon.ranges, edge, distSq, targetRadius),
+    distSq,
+  };
 }
 
 /** Outermost release boundary for the targeting FSM. When the turret
@@ -132,30 +216,8 @@ function outsideTrackingReleaseSq(ranges: TurretRanges, distSq: number, targetRa
 // HOST SERVER LOD tier (see simQuality.ts). Lower tiers tighten the
 // threshold AND raise the stride so heavy crowds bound out faster.
 
-/** Threat predicate used by passive (mirror) weapons. True iff
- *  `enemy` carries at least one non-passive line-shot turret whose
- *  CURRENT target is `mirrorUnitId` AND whose state is not 'idle' —
- *  i.e. that turret is actively rotating onto us ('tracking') or
- *  already firing at us ('engaged').
- *
- *  Stricter than isBeamUnit on purpose: a beam-bearing enemy who
- *  hasn't decided to point at US is not a threat the mirror can do
- *  anything about, and locking the panel to such an enemy would
- *  pose-budget away from a different beam unit who IS firing at us.
- *  Combined with MirrorAimSolver's per-turret pick (which prefers
- *  the turret targeting us over any other line shot on the same
- *  unit), this gives the user-visible behaviour:
- *  "the mirror locks onto the beam currently firing at us." */
-function isLineThreatTo(enemy: Entity, mirrorUnitId: EntityId): boolean {
-  if (!enemy.turrets) return false;
-  for (const turret of enemy.turrets) {
-    if (turret.config.passive) continue;
-    if (!isLineShot(turret.config.shot)) continue;
-    if (turret.target !== mirrorUnitId) continue;
-    if (turret.state === 'idle') continue;
-    return true;
-  }
-  return false;
+function isMirrorLineTarget(enemy: Entity, mirrorUnitId: EntityId): boolean {
+  return getMirrorLineTargetScore(enemy, mirrorUnitId) > 0;
 }
 
 function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
@@ -190,7 +252,7 @@ function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, we
 //
 // 1) ATTACK MODE (priorityTargetId set by attack command):
 //    All weapons forced to the priority target exclusively.
-//    Uses the fire envelope, not the broader tracking/search range.
+//    Uses the hard max fire envelope, not the broader tracking/search range.
 //    The unit is already moving toward the target via the attack action handler.
 //
 // 2) AUTO MODE (no priorityTargetId):
@@ -199,12 +261,14 @@ function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, we
 //      tracking: turret has a target and is aimed at it
 //        - acquire: nearest enemy enters tracking.acquire range
 //        - release: tracked target exits tracking.release range (or dies) → idle
-//        - promote: tracked target enters the fire acquire envelope → engaged
+//        - promote: tracked target enters hard max fire acquire range → engaged
 //      engaged: weapon is actively firing
-//        - release: target exits the fire release envelope → tracking
+//        - release: target exits hard max fire release range → tracking
 //        - escape: target exits tracking.release → idle
 //
-//    Hysteresis prevents state flickering at both max and optional min fire boundaries.
+//    Hysteresis prevents state flickering at max fire and optional min
+//    preference boundaries. engageRangeMin ranks preferred targets; it
+//    does not forbid close fallback targets.
 //
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
 // PERFORMANCE: Multi-weapon units batch a single spatial query instead of per-weapon queries
@@ -321,24 +385,24 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       let priorityRadius = 0;
       if (pt?.unit && pt.unit.hp > 0) {
         priorityTarget = pt;
-        priorityRadius = pt.unit.unitRadiusCollider.shot;
+        priorityRadius = pt.unit.radius.shot;
       } else if (pt?.building && pt.building.hp > 0) {
         priorityTarget = pt;
         priorityRadius = getTargetRadius(pt);
       }
 
       if (priorityTarget) {
-        // ATTACK MODE: force all weapons to the priority target, firing only inside the fire envelope.
+        // ATTACK MODE: force all weapons to the priority target, firing only inside hard max range.
         for (let wi = 0; wi < weapons.length; wi++) {
           const weapon = weapons[wi];
           if (weaponSystemDisabled(world, weapon)) continue;
           if (weapon.config.isManualFire) continue;
           // Passive turrets (mirrors) only lock onto enemies that
-          // are actively pointing a line shot AT THIS UNIT. The
-          // priority-target path inherits the same rule so a
-          // user-issued "attack X" against a non-threat doesn't
-          // hijack a mirror that's protecting against a real beam.
-          if (weapon.config.passive && !isLineThreatTo(priorityTarget, unit.id)) {
+          // have a line-shot turret worth reflecting. The shared
+          // mirror scorer handles threat priority: direct threat to
+          // this unit > engaged elsewhere > any line weapon, with
+          // megaBeam > beam > laser inside each tier.
+          if (weapon.config.passive && !isMirrorLineTarget(priorityTarget, unit.id)) {
             setWeaponTarget(weapon, unit, wi, null);
             weapon.state = 'idle';
             continue;
@@ -350,9 +414,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             priorityTarget.transform.x, priorityTarget.transform.y, priorityTarget.transform.z,
           );
 
-          if (withinFireEnvelopeSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
+          if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
             weapon.state = 'engaged';
-          } else if (withinFireEnvelopeSq(weapon.ranges, 'release', distSq, priorityRadius)) {
+          } else if (withinFireMaxSq(weapon.ranges, 'release', distSq, priorityRadius)) {
             // Between acquire and release — maintain engaged if already engaged, otherwise tracking
             weapon.state = weapon.state === 'engaged' ? 'engaged' : 'tracking';
           } else {
@@ -377,15 +441,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const target = world.getEntity(weapon.target);
       let targetIsValid = false;
       let targetRadius = 0;
-      if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.unitRadiusCollider.shot; }
+      if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.radius.shot; }
       else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
       // Per-tick re-validation of an existing lock. For passive
-      // (mirror) weapons we drop the lock the moment the enemy
-      // STOPS being a line threat to us — i.e. its targeting turret
-      // disengaged or swapped victim — so the mirror immediately
-      // becomes available to acquire whatever IS firing at us next.
-      if (!targetIsValid || !target || (weapon.config.passive && !isLineThreatTo(target, unit.id))) {
+      // (mirror) weapons we only require that the enemy still has a
+      // reflectable line-shot turret; reacquisition below can switch
+      // to a higher-priority direct threat or stronger weapon.
+      if (!targetIsValid || !target || (weapon.config.passive && !isMirrorLineTarget(target, unit.id))) {
         setWeaponTarget(weapon, unit, wi, null);
         weapon.state = 'idle';
       } else {
@@ -403,17 +466,17 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             if (outsideTrackingReleaseSq(r, distSq, targetRadius)) {
               setWeaponTarget(weapon, unit, wi, null);
               weapon.state = 'idle';
-            } else if (withinFireEnvelopeSq(r, 'acquire', distSq, targetRadius)) {
+            } else if (withinFireMaxSq(r, 'acquire', distSq, targetRadius)) {
               weapon.state = 'engaged';
             }
-            // else: still tracking but can't fire — Pass 2.5 will check
-            // if there's a closer engageable target to switch to.
+            // else: still tracking but can't fire — Pass 2 will check
+            // if there's a preferred or fallback fire target to switch to.
             break;
           case 'engaged':
             if (outsideTrackingReleaseSq(r, distSq, targetRadius)) {
               setWeaponTarget(weapon, unit, wi, null);
               weapon.state = 'idle';
-            } else if (!withinFireEnvelopeSq(r, 'release', distSq, targetRadius)) {
+            } else if (!withinFireMaxSq(r, 'release', distSq, targetRadius)) {
               weapon.state = 'tracking';
             }
             break;
@@ -441,16 +504,26 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     // Pre-scan: find any weapon that needs an acquisition query plus
     // the max acquire range + max weapon offset, so a single
-    // unit-centered query covers every weapon's reach.
+    // unit-centered query covers every weapon's reach. A weapon that
+    // is currently firing at a close fallback target also gets a query:
+    // engageRangeMin is a soft preference, so preferred-band targets
+    // should take over when they become available.
     let needsAnyQuery = false;
     let maxAcquireRange = 0;
     let maxWeaponOffset = 0;
     for (const weapon of weapons) {
       if (weaponSystemDisabled(world, weapon)) continue;
       if (weapon.config.isManualFire) continue;
-      // Needs query if: no target (idle), or tracking but not engaged
-      // (tracking weapons should re-evaluate for a closer engageable target)
-      if (weapon.target === null || weapon.state === 'tracking') {
+      const currentFireRank = weapon.state === 'engaged' && weapon.ranges.fire.min
+        ? currentFireTargetRankSq(world, weapon, 'release').rank
+        : TARGET_RANK_NONE;
+      // Needs query if: no target (idle), tracking but not engaged, or
+      // engaged on a close fallback while the turret has a min preference.
+      if (
+        weapon.target === null ||
+        weapon.state === 'tracking' ||
+        currentFireRank === TARGET_RANK_FIRE_FALLBACK
+      ) {
         needsAnyQuery = true;
         const acquireRange = outermostAcquireDistance(weapon.ranges);
         if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
@@ -470,14 +543,25 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       );
     }
 
-    // Pass 2: Re-evaluate tracking weapons — if a closer engageable target
-    // exists, switch to it instead of uselessly tracking an out-of-range enemy.
-    // This uses per-turret ranges so each weapon evaluates independently.
+    // Pass 2: Re-evaluate tracking weapons and close-range fallback
+    // locks. If a preferred-band target exists, switch to it; if no
+    // preferred target exists, close targets inside max range remain
+    // valid fallbacks. This uses per-turret ranges so each weapon
+    // evaluates independently.
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
       if (weaponSystemDisabled(world, weapon)) continue;
       if (weapon.config.isManualFire) continue;
-      if (weapon.state !== 'tracking' || weapon.target === null) continue;
+      if (weapon.target === null) continue;
+      const currentFireRank = weapon.state === 'engaged'
+        ? currentFireTargetRankSq(world, weapon, 'release')
+        : { rank: TARGET_RANK_NONE as TargetPreferenceRank, distSq: Infinity };
+      if (
+        weapon.state !== 'tracking' &&
+        currentFireRank.rank !== TARGET_RANK_FIRE_FALLBACK
+      ) {
+        continue;
+      }
 
       const weaponX = weapon.worldPos!.x;
       const weaponY = weapon.worldPos!.y;
@@ -489,31 +573,49 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, outermostAcquireDistance(r), playerId);
 
       let closestEngageable: Entity | null = null;
-      let closestDistSq = Infinity;
+      let closestDistSq = currentFireRank.distSq;
+      let closestRank = currentFireRank.rank;
+      let closestMirrorScore = 0;
+      if (weapon.config.passive && weapon.target !== null) {
+        const currentTarget = world.getEntity(weapon.target);
+        if (currentTarget) {
+          closestMirrorScore = getMirrorLineTargetScore(currentTarget, unit.id);
+        }
+      }
 
       const denseScan = candidates.length > densityThreshold;
       const scanStride = denseScan ? densityStride : 1;
       const scanStart = denseScan ? tick % scanStride : 0;
       for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
         const enemy = candidates[ci];
-        // Tracking-pass switch: passive (mirror) weapons only swap
-        // to a closer enemy if THAT enemy is actively threatening us
-        // with a line shot.
-        if (weapon.config.passive && !isLineThreatTo(enemy, unit.id)) continue;
-        const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
+        let mirrorScore = 0;
+        if (weapon.config.passive) {
+          mirrorScore = getMirrorLineTargetScore(enemy, unit.id);
+          if (mirrorScore <= 0) continue;
+        }
+        const enemyRadius = enemy.unit ? enemy.unit.radius.shot : (enemy.building ? getTargetRadius(enemy) : 0);
         const distSq = distanceSquared3(
           weaponX, weaponY, weaponZ,
           enemy.transform.x, enemy.transform.y, enemy.transform.z,
         );
-        // Only consider enemies inside the full fire envelope.
-        if (withinFireEnvelopeSq(r, 'acquire', distSq, enemyRadius) && distSq < closestDistSq) {
+        const rank = fireTargetPreferenceRankSq(r, 'acquire', distSq, enemyRadius);
+        const betterTarget = weapon.config.passive
+          ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, closestMirrorScore, closestRank, closestDistSq)
+          : isBetterTargetCandidate(rank, distSq, closestRank, closestDistSq);
+        if (
+          rank >= TARGET_RANK_FIRE_FALLBACK &&
+          betterTarget
+        ) {
           closestDistSq = distSq;
+          closestRank = rank;
+          closestMirrorScore = mirrorScore;
           closestEngageable = enemy;
         }
       }
 
       if (closestEngageable) {
-        // Found a closer target we can actually fire at — switch to it
+        // Found a target we can actually fire at. Preferred-band
+        // targets outrank close fallbacks; within a rank, nearer wins.
         setWeaponTarget(weapon, unit, wi, closestEngageable.id);
         weapon.state = 'engaged';
       }
@@ -539,40 +641,47 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
       let closestEnemy: Entity | null = null;
       let closestDistSq = Infinity;
+      let closestRank: TargetPreferenceRank = TARGET_RANK_NONE;
+      let closestMirrorScore = 0;
 
       const denseScan = candidates.length > densityThreshold;
       const scanStride = denseScan ? densityStride : 1;
       const scanStart = denseScan ? tick % scanStride : 0;
       for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
         const enemy = candidates[ci];
-        // Acquisition pass: passive (mirror) weapons only lock onto
-        // enemies that have a non-passive line-shot turret currently
-        // pointed AT THIS UNIT (state ∈ {tracking, engaged}). An
-        // idle beam-bearer or a beam unit firing at someone else
-        // produces nothing the mirror can deflect, so we don't waste
-        // a lock on it.
-        if (weapon.config.passive && !isLineThreatTo(enemy, unit.id)) continue;
+        let mirrorScore = 0;
+        if (weapon.config.passive) {
+          mirrorScore = getMirrorLineTargetScore(enemy, unit.id);
+          if (mirrorScore <= 0) continue;
+        }
 
-        const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
+        const enemyRadius = enemy.unit ? enemy.unit.radius.shot : (enemy.building ? getTargetRadius(enemy) : 0);
         const distSq = distanceSquared3(
           weaponX, weaponY, weaponZ,
           enemy.transform.x, enemy.transform.y, enemy.transform.z,
         );
+        const rank = acquisitionTargetPreferenceRankSq(
+          r,
+          'acquire',
+          distSq,
+          enemyRadius,
+        );
 
-        if (
-          distSq <= maxRangeWithTargetSq((r.tracking ?? r.fire.max), 'acquire', enemyRadius)
-          && distSq < closestDistSq
-        ) {
+        const betterTarget = weapon.config.passive
+          ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, closestMirrorScore, closestRank, closestDistSq)
+          : isBetterTargetCandidate(rank, distSq, closestRank, closestDistSq);
+
+        if (rank !== TARGET_RANK_NONE && betterTarget) {
           closestDistSq = distSq;
+          closestRank = rank;
+          closestMirrorScore = mirrorScore;
           closestEnemy = enemy;
         }
       }
 
       if (closestEnemy) {
         setWeaponTarget(weapon, unit, wi, closestEnemy.id);
-        const targetRadius = closestEnemy.unit ? closestEnemy.unit.unitRadiusCollider.shot
-          : (closestEnemy.building ? getTargetRadius(closestEnemy) : 0);
-        weapon.state = withinFireEnvelopeSq(r, 'acquire', closestDistSq, targetRadius) ? 'engaged' : 'tracking';
+        weapon.state = closestRank >= TARGET_RANK_FIRE_FALLBACK ? 'engaged' : 'tracking';
       } else {
         setWeaponTarget(weapon, unit, wi, null);
         weapon.state = 'idle';

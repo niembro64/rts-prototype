@@ -1,7 +1,5 @@
 import type { BattleMode } from '../../battleBarConfig';
 import {
-  loadStoredFfAccelShots,
-  loadStoredFfAccelUnits,
   loadStoredForceFieldsEnabled,
   loadStoredGrid,
   loadStoredMirrorsEnabled,
@@ -53,16 +51,6 @@ export function applyStoredBattleServerSettings(
     });
   }
 
-  server.receiveCommand({
-    type: 'setFfAccelUnits',
-    tick: 0,
-    enabled: loadStoredFfAccelUnits(mode),
-  });
-  server.receiveCommand({
-    type: 'setFfAccelShots',
-    tick: 0,
-    enabled: loadStoredFfAccelShots(mode),
-  });
   server.receiveCommand({
     type: 'setMirrorsEnabled',
     tick: 0,

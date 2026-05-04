@@ -22,7 +22,7 @@ import * as THREE from 'three';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SimDeathContext } from '@/types/combat';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { MAP_BG_COLOR, GRAVITY, MIRROR_EXTRA_HEIGHT, TURRET_HEIGHT } from '../../config';
+import { MAP_BG_COLOR, GRAVITY } from '../../config';
 import {
   FALLBACK_UNIT_BODY_SHAPE,
   getShotBlueprint,
@@ -40,17 +40,18 @@ import { getBodyEdgeTemplates } from './BodyShape3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {
   TREAD_CHASSIS_LIFT_Y,
-  getBodyMountTopY,
   getBodyTopY,
   getChassisLiftY,
   getSegmentMidYAt,
 } from '../math/BodyDimensions';
 import {
   TURRET_BARREL_MIN_DIAMETER,
+  getConeBarrelBaseOrbitRadius,
+  getConeBarrelTipOrbitRadius,
+  getSimpleMultiBarrelOrbitRadius,
   getTurretBarrelCenterToTipLength,
-  turretHeadRadiusFromBodyRadius,
+  turretBodyRadiusFromRadius,
 } from '../math';
-import { BARREL_ORBIT_CLAMP_FRAC } from '../math/BarrelGeometry';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -64,12 +65,6 @@ const STYLE_STRIDE: Record<DebrisStyle, number> = {
   detonate: 1,
   obliterate: 1,
 };
-
-// Must match the values in Render3DEntities for sizes to line up with the
-// source parts. Head sphere radius and per-turret column height come
-// from getTurretHeadRadius (per-turret bodyRadius wins, falling back to
-// the unit-scale default). TURRET_HEIGHT is imported from config so
-// the debris cone-barrel clamp stays locked to the renderer.
 
 // Must match Locomotion3D. Tread height and chassis lift share one value;
 // hip Y is per-leg now and resolved via getSegmentMidYAt.
@@ -634,24 +629,6 @@ export class Debris3D {
     // Color is unused here now but kept around in case someone wants a
     // contrasting tint later.)
     const bodyShape = bp.bodyShape;
-    const bodyTopY = getBodyTopY(bodyShape, r);
-    let hostTurretBlueprint: ReturnType<typeof getTurretBlueprint> | undefined;
-    try {
-      if (bp.turrets[0]) hostTurretBlueprint = getTurretBlueprint(bp.turrets[0].turretId);
-    } catch { /* missing host turret blueprint: no mirror stack */ }
-    const unitHasMirrorsHere = (hostTurretBlueprint?.mirrorPanels?.length ?? 0) > 0;
-    const hostHeadRadiusForStack = unitHasMirrorsHere
-      ? turretHeadRadiusFromBodyRadius(hostTurretBlueprint?.bodyRadius)
-      : 0;
-    const hostTurretMount = bp.turrets[0]?.mount ?? { x: 0, y: 0, z: bp.bodyCenterHeight / r };
-    const hostBodyTopYForStack = unitHasMirrorsHere && bp.turrets[0]
-      ? getBodyMountTopY(
-          bodyShape,
-          r,
-          hostTurretMount.x * r,
-          hostTurretMount.y * r,
-        )
-      : bodyTopY;
 
     // Each barrel template is built in chassis-local coords assuming
     // the turret was aimed straight ahead (yaw=0, pitch=0). At death
@@ -697,17 +674,12 @@ export class Debris3D {
       const chassisYaw = pose ? pose.rotation - bodyYaw : 0;
       const pitch = pose ? pose.pitch : 0;
 
-      // Per-turret head radius. Each turret column is 2·headRadius tall:
-      // sphere bottom touches chassis top, sphere top is the highest point
-      // of the turret. Barrels pivot through the sphere center. Mirror
-      // panels (when present) replace the sphere visually but use the
-      // same vertical span. Turret bodyRadius is the source scale for
-      // the rendered head and barrels — matches Render3DEntities.
-      const headR = turretHeadRadiusFromBodyRadius(tb.bodyRadius);
-      const stackedMirrorHeight = hostBodyTopYForStack + 2 * hostHeadRadiusForStack + MIRROR_EXTRA_HEIGHT;
-      const shotHeight = unitHasMirrorsHere && ti > 0
-        ? chassisLiftY + stackedMirrorHeight
-        : localMount.z * r;
+      // Per-turret body radius. The unit blueprint's mount is the
+      // source-of-truth center for the turret sphere and barrel pivot;
+      // debris uses the same mount instead of adding mirror-specific
+      // vertical offsets.
+      const headR = turretBodyRadiusFromRadius(tb.radius);
+      const shotHeight = localMount.z * r;
 
       // Skip the head + barrels for the mirror-host turret — its visible
       // body IS the mirror panels, not a separate cylinder. Render3DEntities
@@ -775,7 +747,7 @@ export class Debris3D {
           const diameter = bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER;
           const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
           const n = bs.barrelCount;
-          const orbit = bs.orbitRadius * headR;
+          const orbit = getSimpleMultiBarrelOrbitRadius(bs, headR);
           // Renderer's `oy` is along three.js Y (vertical = sim Z),
           // `oz` is along three.js Z (lateral = sim Y). Map both
           // accordingly so the rotated debris cylinders trace the
@@ -795,13 +767,13 @@ export class Debris3D {
           const diameter = bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER;
           const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
           const n = bs.barrelCount;
-          const baseOrbitR = Math.min(bs.baseOrbit * headR, TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneBase);
-          const tipOrbitR = bs.tipOrbit !== undefined
-            ? bs.tipOrbit * headR
-            : Math.min(
-                baseOrbitR + len * Math.tan(((tb.spread?.angle ?? Math.PI / 5)) / 2),
-                TURRET_HEIGHT * BARREL_ORBIT_CLAMP_FRAC.coneTip,
-              );
+          const baseOrbitR = getConeBarrelBaseOrbitRadius(bs, headR);
+          const tipOrbitR = getConeBarrelTipOrbitRadius(
+            bs,
+            headR,
+            len,
+            tb.spread?.angle,
+          );
           for (let i = 0; i < n; i++) {
             const a = ((i + 0.5) / n) * Math.PI * 2;
             const cosA = Math.cos(a);
@@ -816,7 +788,7 @@ export class Debris3D {
       }
 
       // Mirror panels — emit one slab per panel matching what
-      // Render3DEntities draws: a square panel of side `2 × bodyRadius`
+      // Render3DEntities draws: a square panel of side `2 × radius.body`
       // mounted at ARM'S LENGTH out from the turret body sphere along
       // the turret's facing direction, with a thin attachment cylinder
       // bridging the gap. Both pieces shed as separate debris boxes

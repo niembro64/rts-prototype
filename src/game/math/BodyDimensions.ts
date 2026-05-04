@@ -21,6 +21,13 @@ const BODY_PART_CONTAIN_EPS = 1e-6;
 export const TREAD_CHASSIS_LIFT_Y = 10;
 export const LEG_BODY_LIFT_FRAC = 0.5;
 
+/** Stable identity for a unit body shape. This is the only render/cache
+ *  key for chassis geometry; unit blueprints author bodyShape, not a
+ *  second renderer id that can drift from the actual geometry. */
+export function getUnitBodyShapeKey(bodyShape: UnitBodyShape): string {
+  return JSON.stringify(bodyShape);
+}
+
 /** Default locomotion clearance under a body whose center height has
  *  not been explicitly authored. This is only a blueprint-authoring
  *  helper; runtime layout must use bodyCenterHeight as the source of
@@ -115,11 +122,11 @@ export function getChassisLiftY(
   return blueprint.bodyCenterHeight - getBodyCenterLocalY(blueprint.bodyShape, unitRadius);
 }
 
-/** Body-top height in unit-radius-1 space for the given renderer id.
+/** Body-top height in unit-radius-1 space for the given body shape.
  *  Multiply by a unit's render radius to get the world-space Y where
  *  the turret mounts (and therefore the barrel base height). */
 export function getBodyTopFrac(bodyShape: UnitBodyShape): number {
-  const key = JSON.stringify(bodyShape);
+  const key = getUnitBodyShapeKey(bodyShape);
   const cached = TOP_Y_CACHE.get(key);
   if (cached !== undefined) return cached;
   const spec = bodyShape;

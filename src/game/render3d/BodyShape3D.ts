@@ -1,4 +1,4 @@
-// BodyShape3D — per-unit-renderer 3D chassis geometry.
+// BodyShape3D — body-shape keyed 3D chassis geometry.
 //
 // Each 2D unit body shape maps to one or more 3D meshes. Smooth shapes
 // (circle/oval/composite) become SphereGeometry scaled to spheroids so
@@ -25,13 +25,14 @@ import {
   getBodyMountTopY as getBodyMountTopYShared,
   getBodyTopFrac,
   getTurretRootY as getTurretRootYShared,
+  getUnitBodyShapeKey,
 } from '../math/BodyDimensions';
 
 /** One mesh that makes up a unit body. Positions and scales are in
  *  unit-radius-1 space — the caller multiplies both by the unit's
  *  render radius (usually by uniformly scaling the chassis parent
  *  group). Spheres use SphereGeometry; extrusions use ExtrudeGeometry
- *  built with the per-renderer height already baked into `depth`. */
+ *  built with the body-shape height already baked into `depth`. */
 export type BodyMeshPart = {
   geometry: THREE.BufferGeometry;
   /** Center X (forward, +X) in unit-radius-1 space. */
@@ -68,7 +69,7 @@ export type BodyGeomEntry = {
 
 // A single unit sphere is reused across every smooth body part — sphere
 // positioning and non-uniform scaling turn it into the final spheroid
-// without needing a separate BufferGeometry per renderer.
+// without needing a separate BufferGeometry per body shape.
 let _unitSphere: THREE.SphereGeometry | null = null;
 function getUnitSphere(): THREE.SphereGeometry {
   if (!_unitSphere) _unitSphere = new THREE.SphereGeometry(1, 24, 16);
@@ -166,21 +167,17 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
 
 const CACHE: Map<string, BodyGeomEntry> = new Map();
 
-function cacheKey(shape: UnitBodyShape): string {
-  return JSON.stringify(shape);
-}
-
 function getBlueprintBodyShape(unitType: string): UnitBodyShape {
   try { return getUnitBlueprint(unitType).bodyShape; }
   catch { return FALLBACK_UNIT_BODY_SHAPE; }
 }
 
-/** Look up or build the 3D chassis geometry for a 2D renderer ID.
+/** Look up or build the 3D chassis geometry for an authored body shape.
  *  Returned parts live in unit-radius-1 space; call sites scale the
  *  chassis parent group by the unit's render radius so each part's
  *  offset and scale both multiply uniformly. */
 export function getBodyGeom(bodyShape: UnitBodyShape): BodyGeomEntry {
-  const key = cacheKey(bodyShape);
+  const key = getUnitBodyShapeKey(bodyShape);
   const cached = CACHE.get(key);
   if (cached) return cached;
   const entry = buildEntry(bodyShape);

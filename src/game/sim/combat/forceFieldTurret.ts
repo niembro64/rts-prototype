@@ -1,25 +1,16 @@
-// Force field weapon system - dual-zone pie-slice AoE with push (inner) and pull (outer)
+// Force field weapon system - spherical projectile shield boundary
 
 import type { WorldState } from '../WorldState';
 import type { Entity, ForceShot, Turret } from '../types';
-import type { DamageSystem } from '../damage';
-import type { ForceAccumulator } from '../ForceAccumulator';
-import type { ProjectileVelocityUpdateEvent } from './types';
 import { getTransformCosSin } from '../../math';
-import { spatialGrid } from '../SpatialGrid';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG } from '../../../config';
-import { getSimDetailConfig } from '../simQuality';
 import { updateWeaponWorldKinematics } from './combatUtils';
 import { getUnitGroundZ } from '../unitGeometry';
 
-// Module-level dedup map: keyed by projectile entity ID, keeps only the last velocity state
-// when a projectile is affected by multiple force fields in the same tick.
-const _velocityUpdateMap = new Map<number, ProjectileVelocityUpdateEvent>();
-const _velocityUpdateResult: ProjectileVelocityUpdateEvent[] = [];
 const _forceFieldMount = { x: 0, y: 0, z: 0 };
+const _forceFieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 0, entityId: 0 };
 
 // Compact list of force field weapons with progress > 0, built by
-// updateForceFieldState() and consumed by applyForceFieldDamage().
+// updateForceFieldState() and consumed by projectile collision.
 type ActiveForceFieldRef = {
   unit: Entity;
   weapon: Turret;
@@ -30,14 +21,11 @@ const _activeForceFields: ActiveForceFieldRef[] = [];
 
 // Reset module-level buffers (call between game sessions)
 export function resetForceFieldBuffers(): void {
-  _velocityUpdateMap.clear();
-  _velocityUpdateResult.length = 0;
   _activeForceFields.length = 0;
 }
 
 // Update force field state (transition progress 0→1)
-// Both push and pull zones grow outward from middleRadius simultaneously.
-// currentForceFieldRange is repurposed to carry the progress (0→1) for serialization.
+// currentForceFieldRange carries visual/gameplay progress (0→1) for serialization.
 export function updateForceFieldState(world: WorldState, dtMs: number): void {
   _activeForceFields.length = 0;
 
@@ -68,62 +56,93 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
       // Serialize progress as forceField.range (0→1)
       weapon.forceField.range = weapon.forceField.transition;
 
-      if (weapon.forceField.transition > 0) {
-        if (unit.ownership && unit.unit && unit.unit.hp > 0) {
-          _activeForceFields.push({ unit, weapon, weaponIndex, shot: fieldShot });
-        }
+      if (weapon.forceField.transition > 0 && unit.unit && unit.unit.hp > 0) {
+        _activeForceFields.push({ unit, weapon, weaponIndex, shot: fieldShot });
       }
     }
   }
 }
 
-// Compute the effective push zone boundaries from transition progress + config
-const _zones = { pushInner: 0, pushOuter: 0 };
+export type ForceFieldProjectileIntersection = {
+  t: number;
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  ny: number;
+  nz: number;
+  playerId: number;
+  entityId: number;
+};
 
-function getForceFieldZones(push: import('../types').ForceFieldZoneConfig | null | undefined, progress: number) {
-  if (push) {
-    _zones.pushInner = push.outerRange - (push.outerRange - push.innerRange) * progress;
-    _zones.pushOuter = push.outerRange;
-  } else {
-    _zones.pushInner = 0;
-    _zones.pushOuter = 0;
-  }
-  return _zones;
+function intersectOutsideToInsideSphere(
+  startX: number,
+  startY: number,
+  startZ: number,
+  endX: number,
+  endY: number,
+  endZ: number,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+  radius: number,
+): number | null {
+  const sx = startX - centerX;
+  const sy = startY - centerY;
+  const sz = startZ - centerZ;
+  const radiusSq = radius * radius;
+  const startDistSq = sx * sx + sy * sy + sz * sz;
+  // Shield only stops projectiles that begin outside and cross inward.
+  // Inside-starting projectiles, including friendly shots fired from
+  // inside the bubble, are not clipped by the barrier.
+  if (startDistSq <= radiusSq) return null;
+
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const dz = endZ - startZ;
+  const a = dx * dx + dy * dy + dz * dz;
+  if (a <= 1e-9) return null;
+  const b = 2 * (sx * dx + sy * dy + sz * dz);
+  const c = startDistSq - radiusSq;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const sqrtDisc = Math.sqrt(disc);
+  const invDenom = 1 / (2 * a);
+  const t = (-b - sqrtDisc) * invDenom;
+  if (t < 0 || t > 1) return null;
+
+  const hitX = startX + dx * t - centerX;
+  const hitY = startY + dy * t - centerY;
+  const hitZ = startZ + dz * t - centerZ;
+  // Negative dot means the segment is entering the sphere at this
+  // intersection. Exiting or tangential paths are unaffected.
+  const radialVelocity = dx * hitX + dy * hitY + dz * hitZ;
+  return radialVelocity < 0 ? t : null;
 }
 
-// Apply force field damage (continuous pie-slice AoE with dual push/pull zones)
-export function applyForceFieldDamage(
+export function findForceFieldSegmentIntersection(
   world: WorldState,
-  dtMs: number,
-  _damageSystem: DamageSystem,
-  forceAccumulator?: ForceAccumulator,
-): ProjectileVelocityUpdateEvent[] {
-  // HOST SERVER LOD throttle: at low tiers run every Nth tick. The
-  // skipped ticks contribute zero force; on the apply tick we scale
-  // dt by the stride so the time-integral of force matches the
-  // every-tick path. Push pulses get coarser at low LOD but the
-  // average velocity change over time stays the same.
-  const simDetail = getSimDetailConfig();
-  const stride = Math.max(1, simDetail.forceFieldStride | 0);
-  if (stride > 1) {
-    if (world.getTick() % stride !== 0) return [];
-    dtMs = dtMs * stride;
-  }
+  startX: number,
+  startY: number,
+  startZ: number,
+  endX: number,
+  endY: number,
+  endZ: number,
+): ForceFieldProjectileIntersection | null {
+  // Intentionally no projectile-owner/player filter here: a force-field
+  // barrier is purely geometric and stops any non-rocket projectile that
+  // crosses from outside the sphere to inside.
   const activeFields = _activeForceFields;
-  if (dtMs <= 0 || activeFields.length === 0) return [];
-
-  // Both effect flags off → there's nothing the outer loop could
-  // accomplish. Skip wholesale.
-  if (!world.ffAccelUnits && !world.ffAccelShots) {
-    return [];
-  }
-
-  _velocityUpdateMap.clear();
-  const activeCount = activeFields.length;
-  const applyBudget = Math.max(1, simDetail.forceFieldApplyBudget | 0);
-  const isBudgeted = activeCount > applyBudget;
-  const applyStart = isBudgeted ? (world.getTick() * applyBudget) % activeCount : 0;
-  const dtSec = (dtMs / 1000) * (isBudgeted ? activeCount / applyBudget : 1);
+  if (activeFields.length === 0) return null;
+  let bestT = Infinity;
+  let bestX = 0;
+  let bestY = 0;
+  let bestZ = 0;
+  let bestNx = 0;
+  let bestNy = 0;
+  let bestNz = 0;
+  let bestPlayerId = 0;
+  let bestEntityId = 0;
 
   for (let activeOrdinal = 0; activeOrdinal < activeFields.length; activeOrdinal++) {
     const active = activeFields[activeOrdinal];
@@ -131,161 +150,77 @@ export function applyForceFieldDamage(
     const weapon = active.weapon;
     const weaponIndex = active.weaponIndex;
     const fieldShot = active.shot;
+    const fieldPlayerId = unit.ownership?.playerId ?? 0;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
-    const sourcePlayerId = unit.ownership!.playerId;
 
-      const progress = weapon.forceField?.transition ?? (weapon.forceField?.range ?? 0);
-      if (progress <= 0) continue;
-      if (isBudgeted) {
-        const relative = activeOrdinal >= applyStart
-          ? activeOrdinal - applyStart
-          : activeOrdinal + activeCount - applyStart;
-        if (relative >= applyBudget) continue;
-      }
+    const progress = weapon.forceField?.transition ?? (weapon.forceField?.range ?? 0);
+    if (progress <= 0) continue;
 
-      const push = fieldShot.push;
-      if (!push || push.power == null) continue;
+    const radius = fieldShot.barrier?.outerRange ?? weapon.config.range;
+    if (radius <= 0) continue;
 
-      const zones = getForceFieldZones(push, progress);
-      if (zones.pushOuter <= zones.pushInner) continue;
+    const mount = updateWeaponWorldKinematics(
+      unit, weapon, weaponIndex,
+      unitCos, unitSin,
+      {
+        currentTick: world.getTick(),
+        dtMs: 0,
+        unitGroundZ: getUnitGroundZ(unit),
+        surfaceN: world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y),
+      },
+      _forceFieldMount,
+    );
+    const t = intersectOutsideToInsideSphere(
+      startX, startY, startZ,
+      endX, endY, endZ,
+      mount.x, mount.y, mount.z,
+      radius,
+    );
+    if (t === null || t >= bestT) continue;
 
-      const pushStrength = push.power * KNOCKBACK.FORCE_FIELD_PULL_MULTIPLIER;
-
-      // Force fields are always 360° — no angle checks needed.
-      // Center the gameplay sphere on the same 3D turret mount used by
-      // targeting, firing, and the renderer.
-      const mount = updateWeaponWorldKinematics(
-        unit, weapon, weaponIndex,
-        unitCos, unitSin,
-        {
-          currentTick: world.getTick(),
-          dtMs,
-          unitGroundZ: getUnitGroundZ(unit),
-          surfaceN: world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y),
-        },
-        _forceFieldMount,
-      );
-      const weaponX = mount.x;
-      const weaponY = mount.y;
-      const weaponZ = mount.z;
-
-      // Single combined cell sweep when BOTH unit and projectile pushes
-      // are enabled — saves rebuilding `nearbyCells` twice for the same
-      // (weaponX, weaponY, pushOuter). When only one is enabled we fall
-      // through to the targeted helper.
-      const useCombinedQuery =
-        (world.ffAccelUnits && forceAccumulator) && world.ffAccelShots;
-      const combined = useCombinedQuery
-        ? spatialGrid.queryEnemyUnitsAndProjectilesInRadius(
-            weaponX, weaponY, weaponZ, zones.pushOuter, sourcePlayerId,
-          )
-        : null;
-
-      // --- Enemy units (knockback only — force fields no longer
-      // deal damage; if ffAccelUnits is off there's nothing to do). ---
-      if (world.ffAccelUnits && forceAccumulator) {
-        const nearbyUnits = combined
-          ? combined.units
-          : spatialGrid.queryEnemyUnitsInRadius(
-              weaponX, weaponY, weaponZ, zones.pushOuter, sourcePlayerId,
-            );
-        for (const target of nearbyUnits) {
-          if (!target.unit || target.unit.hp <= 0) continue;
-          if (target.id === unit.id) continue;
-
-          const targetRadius = target.unit.unitRadiusCollider.shot;
-          const dx = target.transform.x - weaponX;
-          const dy = target.transform.y - weaponY;
-          const dz = target.transform.z - weaponZ;
-
-          const distSq = dx * dx + dy * dy + dz * dz;
-          const maxDist = zones.pushOuter + targetRadius;
-          if (distSq > maxDist * maxDist) continue;
-
-          const dist = Math.sqrt(distSq);
-          if (zones.pushInner > 0 && dist + targetRadius < zones.pushInner) continue;
-          if (dist <= 0) continue;
-
-          const targetMass = target.body?.physicsBody.mass ?? 1;
-          // Force-field push is currently a 2D shove on the horizontal
-          // plane — the addNormalizedDirectionalForce API only accepts
-          // (nx, ny). Vertical separation between emitter and target
-          // is correctly used to gate IN/OUT (3D distance check above)
-          // but the impulse itself is horizontal. When the force API
-          // grows a Z component, this can become a true 3D push.
-          const nx = dx / dist;
-          const ny = dy / dist;
-
-          forceAccumulator.addNormalizedDirectionalForce(
-            target.id,
-            nx, ny,
-            pushStrength, targetMass,
-            true, 'force_field_push'
-          );
-        }
-      }
-
-      // --- Projectiles (skipped when ffAccelShots is disabled) ---
-      const nearbyProjectiles = !world.ffAccelShots
-        ? []
-        : combined
-          ? combined.projectiles
-          : spatialGrid.queryEnemyProjectilesInRadius(weaponX, weaponY, weaponZ, zones.pushOuter, sourcePlayerId);
-
-      for (const projEntity of nearbyProjectiles) {
-        const proj = projEntity.projectile!;
-        const projRadius = proj.config.shot.type === 'projectile' ? proj.config.shot.collision.radius : 5;
-
-        const dx = projEntity.transform.x - weaponX;
-        const dy = projEntity.transform.y - weaponY;
-        const dz = projEntity.transform.z - weaponZ;
-        const distSq = dx * dx + dy * dy + dz * dz;
-        const pmaxDist = zones.pushOuter + projRadius;
-        if (distSq > pmaxDist * pmaxDist) continue;
-
-        const dist = Math.sqrt(distSq);
-        if (zones.pushInner > 0 && dist + projRadius < zones.pushInner) continue;
-
-        const projMass = (proj.config.shot.type === 'projectile' ? proj.config.shot.mass : 1) * PROJECTILE_MASS_MULTIPLIER;
-        const pushAccel = pushStrength / projMass;
-
-        // 3D push: scale outward direction along all three axes so a
-        // projectile passing high above the emitter gets shoved up as
-        // well as out, and one passing below gets shoved down.
-        const dirX = dist > 0 ? dx / dist : 0;
-        const dirY = dist > 0 ? dy / dist : 0;
-        const dirZ = dist > 0 ? dz / dist : 0;
-        proj.velocityX += dirX * pushAccel * dtSec;
-        proj.velocityY += dirY * pushAccel * dtSec;
-        proj.velocityZ += dirZ * pushAccel * dtSec;
-
-        projEntity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
-
-        // Only emit when velocity changed beyond threshold since last sent
-        const velTh = SNAPSHOT_CONFIG.velocityThreshold;
-        const lastVx = proj.lastSentVelX ?? proj.velocityX;
-        const lastVy = proj.lastSentVelY ?? proj.velocityY;
-        const lastVz = proj.lastSentVelZ ?? proj.velocityZ;
-        if (Math.abs(proj.velocityX - lastVx) > velTh ||
-            Math.abs(proj.velocityY - lastVy) > velTh ||
-            Math.abs(proj.velocityZ - lastVz) > velTh) {
-          proj.lastSentVelX = proj.velocityX;
-          proj.lastSentVelY = proj.velocityY;
-          proj.lastSentVelZ = proj.velocityZ;
-          // Dedup: if same projectile affected by multiple force fields, keep latest
-          _velocityUpdateMap.set(projEntity.id, {
-            id: projEntity.id,
-            pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-            velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
-          });
-        }
-      }
+    const hitX = startX + (endX - startX) * t;
+    const hitY = startY + (endY - startY) * t;
+    const hitZ = startZ + (endZ - startZ) * t;
+    const nx = hitX - mount.x;
+    const ny = hitY - mount.y;
+    const nz = hitZ - mount.z;
+    const nLen = Math.hypot(nx, ny, nz) || 1;
+    bestT = t;
+    bestX = hitX;
+    bestY = hitY;
+    bestZ = hitZ;
+    bestNx = nx / nLen;
+    bestNy = ny / nLen;
+    bestNz = nz / nLen;
+    bestPlayerId = fieldPlayerId;
+    bestEntityId = unit.id;
   }
 
-  // Build result from dedup map (reuse array to reduce GC pressure)
-  _velocityUpdateResult.length = 0;
-  for (const event of _velocityUpdateMap.values()) {
-    _velocityUpdateResult.push(event);
-  }
-  return _velocityUpdateResult;
+  if (bestT === Infinity) return null;
+  _forceFieldHit.t = bestT;
+  _forceFieldHit.x = bestX;
+  _forceFieldHit.y = bestY;
+  _forceFieldHit.z = bestZ;
+  _forceFieldHit.nx = bestNx;
+  _forceFieldHit.ny = bestNy;
+  _forceFieldHit.nz = bestNz;
+  _forceFieldHit.playerId = bestPlayerId;
+  _forceFieldHit.entityId = bestEntityId;
+  return _forceFieldHit;
+}
+
+export function findForceFieldProjectileIntersection(
+  world: WorldState,
+  startX: number,
+  startY: number,
+  startZ: number,
+  endX: number,
+  endY: number,
+  endZ: number,
+): ForceFieldProjectileIntersection | null {
+  return findForceFieldSegmentIntersection(
+    world,
+    startX, startY, startZ,
+    endX, endY, endZ,
+  );
 }

@@ -10,8 +10,7 @@ export {
 
 export {
   type SelectionEntitySource,
-  findClosestUnitToPoint,
-  findClosestBuildingToPoint,
+  findClosestSelectableEntityToPoint,
 } from './SelectionHelper';
 
 export {

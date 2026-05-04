@@ -7,12 +7,12 @@ export type RuntimeTurretMountSource = {
 
 export function createRuntimeTurretMount(
   mount: TurretMount,
-  bodyRadius: number,
+  unitBodyRadius: number,
 ): Vec3 {
   return {
-    x: mount.mount.x * bodyRadius,
-    y: mount.mount.y * bodyRadius,
-    z: mount.mount.z * bodyRadius,
+    x: mount.mount.x * unitBodyRadius,
+    y: mount.mount.y * unitBodyRadius,
+    z: mount.mount.z * unitBodyRadius,
   };
 }
 

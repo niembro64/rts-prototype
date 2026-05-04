@@ -7,6 +7,7 @@
  */
 
 import { AUDIO } from '../../../audioConfig';
+import { DEFAULT_UNIT_HUD_LAYOUT } from '../../../entityHudConfig';
 import type { TurretId } from '../../../types/blueprintIds';
 import type {
   LegLayoutEntry,
@@ -18,7 +19,7 @@ import type {
 import type { UnitLocomotion } from '../types';
 import { createLocomotionPhysics, createUnitLocomotion } from '../locomotion';
 // One legitimate cross-domain dependency: the widow's top-mounted
-// turret Z-fraction is computed from the turret's own bodyRadius
+// turret Z-fraction is computed from the turret's own radius.body
 // (`widowTopMountedTurretZFrac` below). Cross-blueprint *validation*
 // (every turretId on every unit resolves) lives in blueprints/index.ts
 // instead, so this is the ONLY thing units.ts pulls from turrets.
@@ -49,10 +50,10 @@ function widowTopMountedTurretZFrac(
   turretId: TurretId,
   bodyTopZFrac: number,
 ): number {
-  const turretRadius = getTurretBlueprint(turretId).bodyRadius;
-  if (turretRadius === undefined) {
+  const turretRadius = getTurretBlueprint(turretId).radius.body;
+  if (!Number.isFinite(turretRadius) || turretRadius <= 0) {
     throw new Error(
-      `Widow top-mounted turret ${turretId} must define bodyRadius`,
+      `Widow top-mounted turret ${turretId} must define positive radius.body`,
     );
   }
   return bodyTopZFrac + turretRadius / WIDOW_BODY_RADIUS;
@@ -292,10 +293,7 @@ const DADDY_LEG_ATTACH_HEIGHT_FRAC = DADDY_FORCE_FIELD_TURRET_Z_FRAC;
 const LORIS_BODY_CENTER_HEIGHT = 24;
 const LORIS_MIRROR_TURRET_Z_FRAC = LORIS_BODY_CENTER_HEIGHT / 10;
 
-function turretMount(
-  turretId: TurretId,
-  mount: MountOffset,
-): TurretMount {
+function turretMount(turretId: TurretId, mount: MountOffset): TurretMount {
   return { turretId, mount };
 }
 
@@ -341,10 +339,10 @@ function computeWidowMounts(): MountOffset[] {
 function computeWidowTurrets(): TurretMount[] {
   const mounts = computeWidowMounts();
   return [
-    turretMount('lightTurret', mounts[0]), // front-left abdomen edge
-    turretMount('lightTurret', mounts[1]), // back-left abdomen edge
-    turretMount('lightTurret', mounts[2]), // back-right abdomen edge
-    turretMount('lightTurret', mounts[3]), // front-right abdomen edge
+    turretMount('pulseTurret', mounts[0]), // front-left abdomen edge
+    turretMount('pulseTurret', mounts[1]), // back-left abdomen edge
+    turretMount('pulseTurret', mounts[2]), // back-right abdomen edge
+    turretMount('pulseTurret', mounts[3]), // front-right abdomen edge
     turretMount('megaBeamTurret', mounts[4]), // abdomen center
     turretMount('forceTurret', mounts[5]), // head center
   ];
@@ -356,13 +354,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Jackal',
     shortName: 'JKL',
     hp: 55,
-    unitRadiusCollider: { shot: 6, push: 8 * 1.2 },
-    bodyRadius: 8,
+    radius: { body: 8, shot: 6, push: 8 * 1.2 },
     bodyCenterHeight: getWheelBodyCenterHeightY(BODY_SHAPES.scout, 8, 0.28),
     mass: 30,
     cost: { energy: 50, mana: 50, metal: 50 },
     turrets: [turretMount('lightTurret', mountPoint(0, 0, 1.2))],
     bodyShape: BODY_SHAPES.scout,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'wheels',
       physics: createLocomotionPhysics('wheels', 300),
@@ -383,13 +381,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Lynx',
     shortName: 'LNX',
     hp: 60,
-    unitRadiusCollider: { shot: 7, push: 10 * 1.3 },
-    bodyRadius: 10,
+    radius: { body: 10, shot: 7, push: 10 * 1.3 },
     bodyCenterHeight: getTreadBodyCenterHeightY(BODY_SHAPES.burst, 10),
     mass: 40,
     cost: { energy: 90, mana: 90, metal: 90 },
     turrets: [turretMount('pulseTurret', mountPoint(0, 0, 1.3))],
     bodyShape: BODY_SHAPES.burst,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'treads',
       physics: createLocomotionPhysics('treads', 170),
@@ -409,11 +407,11 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Daddy',
     shortName: 'DDY',
     hp: 200,
-    unitRadiusCollider: {
+    radius: {
+      body: DADDY_VISUAL_RADIUS,
       shot: 9,
       push: DADDY_PUSH_RADIUS,
     },
-    bodyRadius: DADDY_VISUAL_RADIUS,
     bodyCenterHeight: DADDY_BODY_CENTER_HEIGHT,
     mass: 30,
     cost: { energy: 350, mana: 350, metal: 350 },
@@ -425,6 +423,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       ),
     ],
     bodyShape: BODY_SHAPES.forceField,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     hideChassis: true,
     legAttachHeightFrac: DADDY_LEG_ATTACH_HEIGHT_FRAC,
     locomotion: {
@@ -448,13 +447,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Badger',
     shortName: 'BDG',
     hp: 300,
-    unitRadiusCollider: { shot: 13, push: 16 * 1.4 },
-    bodyRadius: 16,
+    radius: { body: 16, shot: 13, push: 16 * 1.4 },
     bodyCenterHeight: getTreadBodyCenterHeightY(BODY_SHAPES.brawl, 16),
     mass: 300,
     cost: { energy: 300, mana: 300, metal: 300 },
     turrets: [turretMount('salvoRocketTurret', mountPoint(0, 0, 1.4))],
     bodyShape: BODY_SHAPES.brawl,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'treads',
       physics: createLocomotionPhysics('treads', 200),
@@ -474,13 +473,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Mongoose',
     shortName: 'MGS',
     hp: 200,
-    unitRadiusCollider: { shot: 12, push: 20 * 1.2 },
-    bodyRadius: 20,
+    radius: { body: 20, shot: 12, push: 20 * 1.2 },
     bodyCenterHeight: getWheelBodyCenterHeightY(BODY_SHAPES.mortar, 20, 0.22),
     mass: 200,
     cost: { energy: 220, mana: 220, metal: 220 },
     turrets: [turretMount('mortarTurret', mountPoint(0, 0, 1.2))],
     bodyShape: BODY_SHAPES.mortar,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'wheels',
       physics: createLocomotionPhysics('wheels', 220),
@@ -501,13 +500,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Tick',
     shortName: 'TCK',
     hp: 55,
-    unitRadiusCollider: { shot: 8, push: 11 * 1.1 },
-    bodyRadius: 10,
+    radius: { body: 10, shot: 8, push: 11 * 1.1 },
     bodyCenterHeight: TICK_BODY_CENTER_HEIGHT,
     mass: 20,
     cost: { energy: 35, mana: 35, metal: 35 },
     turrets: [turretMount('laserTurret', mountPoint(0, 0, TICK_TURRET_Z_FRAC))],
     bodyShape: BODY_SHAPES.snipe,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     hideChassis: true,
     locomotion: {
       type: 'legs',
@@ -530,13 +529,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Mammoth',
     shortName: 'MMT',
     hp: 900,
-    unitRadiusCollider: { shot: 24, push: 24 * 1.5 },
-    bodyRadius: 24,
+    radius: { body: 24, shot: 24, push: 24 * 1.5 },
     bodyCenterHeight: getTreadBodyCenterHeightY(BODY_SHAPES.tank, 24),
     mass: 1000,
     cost: { energy: 1200, mana: 1200, metal: 1200 },
     turrets: [turretMount('cannonTurret', mountPoint(0, 0, 1.5))],
     bodyShape: BODY_SHAPES.tank,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'treads',
       physics: createLocomotionPhysics('treads', 60),
@@ -557,8 +556,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     shortName: 'FMK',
     // Larger than Widow (scale 30 → 40) and tougher to match.
     hp: 3200,
-    unitRadiusCollider: { shot: 50, push: 50 * 1.3 },
-    bodyRadius: 40,
+    radius: { body: 40, shot: 50, push: 50 * 1.3 },
     bodyCenterHeight: getLegBodyCenterHeightY(BODY_SHAPES.formik, 40),
     mass: 2500,
     cost: { energy: 4000, mana: 4000, metal: 4000 },
@@ -571,6 +569,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     // Mount on the top of the rear abdomen/back segment. The forward
     // head sphere remains a body part, not a turret replacement.
     bodyShape: BODY_SHAPES.formik,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'legs',
       physics: createLocomotionPhysics('legs', 60),
@@ -595,8 +594,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Widow',
     shortName: 'WDW',
     hp: 2400,
-    unitRadiusCollider: { shot: 40, push: 40 * 1.3 },
-    bodyRadius: WIDOW_BODY_RADIUS,
+    radius: { body: WIDOW_BODY_RADIUS, shot: 40, push: 40 * 1.3 },
     bodyCenterHeight: getLegBodyCenterHeightY(
       BODY_SHAPES.arachnid,
       WIDOW_BODY_RADIUS,
@@ -605,6 +603,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     cost: { energy: 3000, mana: 3000, metal: 3000 },
     turrets: computeWidowTurrets(),
     bodyShape: BODY_SHAPES.arachnid,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'legs',
       physics: createLocomotionPhysics('legs', 70),
@@ -626,13 +625,13 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Hippo',
     shortName: 'HPO',
     hp: 1500,
-    unitRadiusCollider: { shot: 27, push: 45 * 1.2 },
-    bodyRadius: 30,
+    radius: { body: 30, shot: 27, push: 45 * 1.2 },
     bodyCenterHeight: getTreadBodyCenterHeightY(BODY_SHAPES.hippo, 30),
     mass: 1500,
     cost: { energy: 2500, mana: 2500, metal: 2500 },
     turrets: [turretMount('hippoGatlingTurret', mountPoint(0.2, 0, 1.8))],
     bodyShape: BODY_SHAPES.hippo,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'treads',
       physics: createLocomotionPhysics('treads', 55),
@@ -652,8 +651,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Tarantula',
     shortName: 'TRN',
     hp: 100,
-    unitRadiusCollider: { shot: 13, push: 11 * 1.8 },
-    bodyRadius: 11,
+    radius: { body: 11, shot: 13, push: 11 * 1.8 },
     bodyCenterHeight: getLegBodyCenterHeightY(BODY_SHAPES.beam, 11),
     mass: 30,
     cost: { energy: 300, mana: 300, metal: 300 },
@@ -666,6 +664,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     // Mount the beam turret on the rear abdomen segment; the forward
     // head body sphere stays in place.
     bodyShape: BODY_SHAPES.beam,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'legs',
       physics: createLocomotionPhysics('legs', 200),
@@ -687,8 +686,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Loris',
     shortName: 'LRS',
     hp: 200,
-    unitRadiusCollider: { shot: 8, push: 24 },
-    bodyRadius: 10,
+    radius: { body: 10, shot: 8, push: 24 },
     bodyCenterHeight: LORIS_BODY_CENTER_HEIGHT,
     mass: 90,
     cost: { energy: 190, mana: 190, metal: 190 },
@@ -696,6 +694,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       turretMount('mirrorTurret', mountPoint(0, 0, LORIS_MIRROR_TURRET_Z_FRAC)),
     ],
     bodyShape: BODY_SHAPES.loris,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     hideChassis: true,
     locomotion: {
       type: 'treads',
@@ -716,8 +715,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Commander',
     shortName: 'CMD',
     hp: 500,
-    unitRadiusCollider: { shot: 20, push: 20 },
-    bodyRadius: 20,
+    radius: { body: 20, shot: 20, push: 20 },
     bodyCenterHeight: getLegBodyCenterHeightY(BODY_SHAPES.commander, 20),
     mass: 300,
     cost: { energy: 400, mana: 400, metal: 400 },
@@ -726,6 +724,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       turretMount('dgunTurret', mountPoint(0.36, 0.42, 1)),
     ],
     bodyShape: BODY_SHAPES.commander,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: {
       type: 'legs',
       physics: createLocomotionPhysics('legs', 200),
@@ -749,7 +748,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   const expectedBodyCenterHeight = getExpectedUnitBodyCenterHeightY(
     bp,
-    bp.bodyRadius,
+    bp.radius.body,
   );
   if (
     !Number.isFinite(bp.bodyCenterHeight) ||
@@ -757,6 +756,12 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   ) {
     throw new Error(
       `Invalid bodyCenterHeight for ${bp.id}: expected ${expectedBodyCenterHeight}, got ${bp.bodyCenterHeight}`,
+    );
+  }
+
+  if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
+    throw new Error(
+      `Invalid HUD layout for ${bp.id}: barsOffsetAboveTop must be finite`,
     );
   }
 

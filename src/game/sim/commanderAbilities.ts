@@ -1,9 +1,7 @@
 import type { WorldState } from './WorldState';
-import type { Entity, EntityId, PlayerId } from './types';
-import { ENTITY_CHANGED_BUILDING } from '../../types/network';
-import { applyCompletedBuildingEffects } from './buildingCompletion';
+import type { Entity, EntityId } from './types';
 import { isBuildTargetInRange } from './builderRange';
-import { isBuildFullyPaid, getBuildFraction } from './buildableHelpers';
+import { getBuildFraction } from './buildableHelpers';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -23,11 +21,11 @@ export class CommanderAbilitiesSystem {
       const playerId = commander.ownership.playerId;
       const commanderX = commander.transform.x;
       const commanderY = commander.transform.y;
-      const constructionEmitterOffset = -commander.unit.bodyRadius * 0.42;
+      const constructionEmitterOffset = -commander.unit.radius.body * 0.42;
       const commanderSprayX = commanderX + Math.cos(commander.transform.rotation) * constructionEmitterOffset;
       const commanderSprayY = commanderY + Math.sin(commander.transform.rotation) * constructionEmitterOffset;
       const commanderSprayZ = commander.transform.z +
-        (commander.unit.bodyRadius * 1.75);
+        (commander.unit.radius.body * 1.75);
 
       // Get current target from queue (only work on ONE thing at a time)
       const currentTarget = this.getCurrentTarget(world, commander);
@@ -38,15 +36,6 @@ export class CommanderAbilitiesSystem {
 
       // Check what type of target this is
       if (currentTarget.buildable && !currentTarget.buildable.isComplete) {
-        // Building an incomplete building - check if complete (progress set by energy system)
-        if (isBuildFullyPaid(currentTarget.buildable)) {
-          currentTarget.buildable.paid = { ...currentTarget.buildable.required };
-          currentTarget.buildable.isComplete = true;
-          world.markSnapshotDirty(currentTarget.id, ENTITY_CHANGED_BUILDING);
-          this.onConstructionComplete(world, currentTarget, playerId);
-          completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
-        }
-
         // Spray effect — driven off the unified build fraction (avg
         // of the three resource bars) so the commander's spray fades
         // out cleanly as the shell finishes filling.
@@ -82,7 +71,7 @@ export class CommanderAbilitiesSystem {
             id: currentTarget.id,
             pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },
             z: currentTarget.transform.z,
-            radius: currentTarget.unit.unitRadiusCollider.shot,
+            radius: currentTarget.unit.radius.shot,
           },
           type: 'heal',
           intensity: Math.max(0.1, intensity),
@@ -131,12 +120,6 @@ export class CommanderAbilitiesSystem {
     }
 
     return null;
-  }
-
-  // Called when construction completes
-  private onConstructionComplete(world: WorldState, entity: Entity, _playerId: PlayerId): void {
-    applyCompletedBuildingEffects(world, entity);
-    // Factory - waypoints are already set up during creation
   }
 }
 

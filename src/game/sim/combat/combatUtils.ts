@@ -45,7 +45,7 @@ export function engagedTurretCount(turrets: { state: string }[] | undefined): nu
 // change), so this is a property read, not a per-call sqrt.
 export function getTargetRadius(target: Entity): number {
   if (target.unit) {
-    return target.unit.unitRadiusCollider.shot;
+    return target.unit.radius.shot;
   } else if (target.building) {
     return target.building.targetRadius;
   }

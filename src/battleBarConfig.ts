@@ -1,27 +1,41 @@
 import type { BattleBarConfig } from './types/battle';
 import type { TerrainMapShape, TerrainShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
+import {
+  BUILDABLE_UNIT_IDS,
+  isBuildableUnitId,
+  isDemoUnitEnabledByDefault,
+} from './game/sim/blueprints/unitRoster';
 
 const clean = (x: number) => {
   return Math.floor(Math.pow(3, x));
 };
 
+function buildUnitToggleConfig(): Record<string, { default: boolean }> {
+  return Object.fromEntries(
+    BUILDABLE_UNIT_IDS.map((unitId) => [
+      unitId,
+      { default: isDemoUnitEnabledByDefault(unitId) },
+    ]),
+  );
+}
+
+function sanitizeDemoUnitIds(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const unitId of value) {
+    if (typeof unitId !== 'string') continue;
+    if (!isBuildableUnitId(unitId)) continue;
+    if (seen.has(unitId)) continue;
+    seen.add(unitId);
+    result.push(unitId);
+  }
+  return result;
+}
+
 export const BATTLE_CONFIG = {
-  units: {
-    jackal: { default: true },
-    lynx: { default: true },
-    daddy: { default: false },
-    badger: { default: true },
-    mongoose: { default: true },
-    tick: { default: true },
-    mammoth: { default: true },
-    widow: { default: true },
-    formik: { default: true },
-    hippo: { default: true },
-    tarantula: { default: true },
-    loris: { default: true },
-    commander: { default: true },
-  } as Record<string, { default: boolean }>,
+  units: buildUnitToggleConfig(),
   cap: {
     default: clean(5),
     options: [
@@ -35,8 +49,6 @@ export const BATTLE_CONFIG = {
       clean(7),
     ] as readonly number[],
   },
-  ffAccelUnits: { default: false },
-  ffAccelShots: { default: true },
   mirrorsEnabled: { default: true },
   forceFieldsEnabled: { default: true },
   // Terrain shape — applied at game-construction time via
@@ -116,10 +128,6 @@ const STORAGE_DEMO_CAP = 'demo-battle-cap';
 const STORAGE_REAL_CAP = 'real-battle-cap';
 const STORAGE_DEMO_GRID = 'demo-battle-grid';
 const STORAGE_REAL_GRID = 'real-battle-grid';
-const STORAGE_DEMO_FF_ACCEL_UNITS = 'demo-battle-ff-accel-units';
-const STORAGE_REAL_FF_ACCEL_UNITS = 'real-battle-ff-accel-units';
-const STORAGE_DEMO_FF_ACCEL_SHOTS = 'demo-battle-ff-accel-shots';
-const STORAGE_REAL_FF_ACCEL_SHOTS = 'real-battle-ff-accel-shots';
 const STORAGE_DEMO_MIRRORS_ENABLED = 'demo-battle-mirrors-enabled';
 const STORAGE_REAL_MIRRORS_ENABLED = 'real-battle-mirrors-enabled';
 const STORAGE_DEMO_FORCE_FIELDS_ENABLED = 'demo-battle-force-fields-enabled';
@@ -144,8 +152,6 @@ const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-real-cap', STORAGE_REAL_CAP],
   ['rts-demo-grid', STORAGE_DEMO_GRID],
   ['rts-real-grid', STORAGE_REAL_GRID],
-  ['rts-ff-accel-units', STORAGE_DEMO_FF_ACCEL_UNITS],
-  ['rts-ff-accel-shots', STORAGE_DEMO_FF_ACCEL_SHOTS],
   ['rts-mirrors-enabled', STORAGE_DEMO_MIRRORS_ENABLED],
   ['rts-force-fields-enabled', STORAGE_DEMO_FORCE_FIELDS_ENABLED],
   ['rts-terrain-center', STORAGE_DEMO_TERRAIN_CENTER],
@@ -191,7 +197,7 @@ export function loadStoredDemoUnits(): string[] | null {
   if (!stored) return null;
   try {
     const parsed = JSON.parse(stored);
-    if (Array.isArray(parsed)) return parsed;
+    return sanitizeDemoUnitIds(parsed);
   } catch {
     /* malformed JSON */
   }
@@ -199,7 +205,7 @@ export function loadStoredDemoUnits(): string[] | null {
 }
 
 export function saveDemoUnits(units: string[]): void {
-  persistJson(STORAGE_DEMO_UNITS, units);
+  persistJson(STORAGE_DEMO_UNITS, sanitizeDemoUnitIds(units) ?? []);
 }
 
 export function getDefaultDemoUnits(): string[] {
@@ -314,38 +320,6 @@ function loadModeBool(
     if (demoFallback !== null) return demoFallback;
   }
   return defaultValue;
-}
-
-export function loadStoredFfAccelUnits(mode: BattleMode): boolean {
-  return loadModeBool(
-    mode,
-    STORAGE_REAL_FF_ACCEL_UNITS,
-    STORAGE_DEMO_FF_ACCEL_UNITS,
-    BATTLE_CONFIG.ffAccelUnits.default,
-  );
-}
-
-export function saveFfAccelUnits(enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_FF_ACCEL_UNITS : STORAGE_DEMO_FF_ACCEL_UNITS,
-    String(enabled),
-  );
-}
-
-export function loadStoredFfAccelShots(mode: BattleMode): boolean {
-  return loadModeBool(
-    mode,
-    STORAGE_REAL_FF_ACCEL_SHOTS,
-    STORAGE_DEMO_FF_ACCEL_SHOTS,
-    BATTLE_CONFIG.ffAccelShots.default,
-  );
-}
-
-export function saveFfAccelShots(enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real' ? STORAGE_REAL_FF_ACCEL_SHOTS : STORAGE_DEMO_FF_ACCEL_SHOTS,
-    String(enabled),
-  );
 }
 
 export function loadStoredMirrorsEnabled(mode: BattleMode): boolean {

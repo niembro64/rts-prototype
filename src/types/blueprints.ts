@@ -108,9 +108,9 @@ export type ProjectileShotBlueprint = {
   id: ShotId;
   mass: number;
   collision: ShotCollision;
-  /** Optional. Omit for "pure carrier" shots (e.g. a cluster mortar
-   *  that does no damage of its own and only releases submunitions
-   *  on detonation). When omitted, the projectile still detonates on
+  /** Optional. Omit for "pure carrier" shots that do no damage of
+   *  their own and only release submunitions on detonation. When omitted,
+   *  the projectile still detonates on
    *  hit / on expiry but applies no splash damage. Single radius —
    *  damage + force are applied boolean (sphere-vs-sphere intersect). */
   explosion?: ShotExplosion;
@@ -245,6 +245,14 @@ export type MirrorPanel = {
   angle: number;    // rotation of the panel normal relative to turret forward (radians)
 };
 
+export type TurretRadiusConfig = {
+  /** World-space radius of this turret's spherical body. The unit
+   *  blueprint owns the 3D mount point; this radius only controls the
+   *  body sphere drawn around that point and the barrel geometry
+   *  authored relative to that sphere. */
+  body: number;
+};
+
 export type TurretBlueprint = {
   id: TurretId;
   projectileId?: ShotId;
@@ -269,10 +277,7 @@ export type TurretBlueprint = {
   };
   mirrorPanels?: MirrorPanel[];
   audio?: { fireSound?: SoundEntry };
-  /** World-space radius of this turret's spherical head. This is the
-   *  blueprint-owned source of truth for both renderer head size and
-   *  barrel-tip math; host unit body radius must not affect it. */
-  bodyRadius?: number;
+  radius: TurretRadiusConfig;
   /** Ballistic arc preference for the aim solver. Two solutions exist
    *  for any in-range target under gravity — a low flat arc and a
    *  high lofted arc. Default (omitted / false) picks the low arc
@@ -416,20 +421,22 @@ export type UnitBodyShape =
   | { kind: 'oval'; xFrac: number; yFrac: number; zFrac: number }
   | { kind: 'composite'; parts: UnitBodyShapePart[] };
 
+export type EntityHudBlueprint = {
+  /** First bar sprite centerline offset above the computed visual HUD
+   *  top, in world units. Names are derived from this bar anchor plus
+   *  the global bar stack/name gap in entityHudConfig. */
+  barsOffsetAboveTop: number;
+};
+
 export type UnitBlueprint = {
   id: UnitTypeId;
   name: string;
   shortName: string;
   hp: number;
-  /** Hit/push radii. Visual body size is the separate `bodyRadius`
-   *  field below; the two used to be conflated under
-   *  `unitRadiusCollider.scale` but are independent values now. */
-  unitRadiusCollider: { shot: number; push: number };
-  /** Authored body radius (world units) — the visible chassis size.
-   *  Drives turret head defaults, turret mount scaling, mirror-panel
-   *  sizing, barrel placement, and click hit radius. Used to live as
-   *  `unitRadiusCollider.scale` but it was never a collider field. */
-  bodyRadius: number;
+  /** Unit radii in world units. `body` is the visible chassis/body
+   *  authoring radius, `shot` is the projectile-vs-unit collider, and
+   *  `push` is the unit-vs-unit physics/selection spacing radius. */
+  radius: { body: number; shot: number; push: number };
   /** World-space height of the authored unit body center above terrain.
    *  Hard vertical contract for the unit: physics rest altitude,
    *  targeting center, low-LOD imposter center, chassis lift, turret
@@ -444,11 +451,13 @@ export type UnitBlueprint = {
   turrets: TurretMount[];
   /** 3D chassis/body shape in unit-radius-1 space. */
   bodyShape: UnitBodyShape;
+  /** Blueprint-authored 3D HUD placement for names and HP/build bars. */
+  hud: EntityHudBlueprint;
   /** Hide the rendered chassis while keeping bodyShape for logical
    *  mount/leg/debris math. Used by units whose weapon turret is meant
    *  to visually replace the whole body. */
   hideChassis?: boolean;
-  /** Optional absolute leg hip/attach height in bodyRadius fractions,
+  /** Optional absolute leg hip/attach height in radius.body fractions,
    *  measured from terrain in the same coordinate system as turret
    *  mount.z. Use only for units whose visible body is a turret or
    *  custom rig rather than the logical bodyShape segment. */

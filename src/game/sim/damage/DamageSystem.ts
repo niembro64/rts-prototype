@@ -19,6 +19,7 @@ import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice } from '../../math';
 import { findClosestPanelHit } from '../combat/MirrorPanelHit';
+import { findForceFieldSegmentIntersection } from '../combat/forceFieldTurret';
 import { getTargetRadius } from '../combat/combatUtils';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
 import {
@@ -89,10 +90,9 @@ export function resetDamageBuffers(): void {
 }
 
 // Reusable result for findBeamSegmentHit. `z` is the world altitude
-// of the hit point; `normalX/Y/Z` is the panel's outward-facing 3D
-// normal (yaw-and-pitch rotated, so a pitched mirror redirects the
-// beam's vertical component as well as horizontal — see the
-// reflection formula in findBeamPath).
+// of the hit point; `normalX/Y/Z` is the reflector's outward-facing
+// 3D normal. Mirrors use their panel normal, force fields use the
+// sphere surface normal.
 const _segHit = { t: 0, x: 0, y: 0, z: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, normalZ: 0, panelIndex: -1 };
 
 const BEAM_GROUND_HIT_STEPS = 12;
@@ -139,7 +139,7 @@ export class DamageSystem {
       const t = lineCircleIntersectionT(
         startX, startY, endX, endY,
         unit.transform.x, unit.transform.y,
-        unit.unit.unitRadiusCollider.shot + lineWidth / 2
+        unit.unit.radius.shot + lineWidth / 2
       );
 
       if (t !== null && (closestT === null || t < closestT)) {
@@ -171,24 +171,21 @@ export class DamageSystem {
     return closestT !== null ? { t: closestT, entityId: closestEntityId! } : null;
   }
 
-  // Find beam path with reflections off mirror units — full 3D.
+  // Find beam path with reflections off mirror units and force-field
+  // spheres — full 3D.
   //
   // The beam terminates at the first of: a unit hit, a building hit,
   // a ground hit, or the firing turret's RANGE SPHERE — a sphere of
-  // radius `range` centered at the muzzle (`startX/Y/Z`). Mirrors
-  // bounce; every segment after a reflection is also clipped at the
-  // same range sphere, so the beam can travel any distance along its
-  // bouncing polyline as long as the current segment hasn't exited the
-  // sphere.
+  // radius `range` centered at the muzzle (`startX/Y/Z`). Mirrors and
+  // force fields bounce; every segment after a reflection is also
+  // clipped at the same range sphere, so the beam can travel any
+  // distance along its bouncing polyline as long as the current segment
+  // hasn't exited the sphere.
   //
-  // Mirror panels are upright rectangles (vertical slab, horizontal
-  // yaw-only normal). A beam tilted up into the sky genuinely misses a
-  // low panel even if its horizontal projection would cross the panel's
-  // edge line, and a bounce off a panel preserves the beam's pitch
-  // because the reflection formula r = d − 2·(d·n)·n with n.z=0 leaves
-  // d.z untouched. Buildings are 3D AABBs (x/y footprint × z depth), so
-  // a high-arc beam can pass over a short building and hit the mirror
-  // behind it.
+  // Mirror panels are tilted rectangles; force fields are spherical
+  // reflectors that only catch outside-to-inside crossings. Buildings
+  // are 3D AABBs (x/y footprint × z depth), so a high-arc beam can pass
+  // over a short building and hit the reflector behind it.
   findBeamPath(
     startX: number, startY: number, startZ: number,
     endX: number, endY: number, endZ: number,
@@ -241,10 +238,8 @@ export class DamageSystem {
       const beamDirY = segDy / segLen;
       const beamDirZ = segDz / segLen;
 
-      // Reflect around the panel's full 3D normal so a pitched mirror
-      // redirects vertical aim as well as horizontal — perfect retro-
-      // reflection requires n to point at the beam source in 3D, and
-      // d_out = d_in − 2(d_in · n) n with the full-3D dot product.
+      // Reflect around the reflector's full 3D normal. Mirrors provide
+      // a panel normal; force fields provide the sphere surface normal.
       const dotDN = beamDirX * hit.normalX + beamDirY * hit.normalY + beamDirZ * hit.normalZ;
       const reflDirX = beamDirX - 2 * dotDN * hit.normalX;
       const reflDirY = beamDirY - 2 * dotDN * hit.normalY;
@@ -347,8 +342,8 @@ export class DamageSystem {
       const panels = unit.unit.mirrorPanels;
       const mirrorsActive = this.world.mirrorsEnabled && panels.length > 0;
       const boundR = mirrorsActive
-        ? Math.max(unit.unit.mirrorBoundRadius, unit.unit.unitRadiusCollider.shot) + lineWidth
-        : unit.unit.unitRadiusCollider.shot + lineWidth / 2;
+        ? Math.max(unit.unit.mirrorBoundRadius, unit.unit.radius.shot) + lineWidth
+        : unit.unit.radius.shot + lineWidth / 2;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
       if (mirrorsActive) {
@@ -389,7 +384,7 @@ export class DamageSystem {
           startX, startY, startZ,
           endX, endY, endZ,
           unit.transform.x, unit.transform.y, unit.transform.z,
-          unit.unit.unitRadiusCollider.shot + lineWidth / 2
+          unit.unit.radius.shot + lineWidth / 2
         );
         if (t !== null && t < bestT) {
           bestT = t; found = true;
@@ -402,6 +397,27 @@ export class DamageSystem {
           _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
           _segHit.panelIndex = -1;
         }
+      }
+    }
+
+    if (this.world.forceFieldsEnabled) {
+      const forceFieldHit = findForceFieldSegmentIntersection(
+        this.world,
+        startX, startY, startZ,
+        endX, endY, endZ,
+      );
+      if (forceFieldHit !== null && forceFieldHit.t < bestT) {
+        bestT = forceFieldHit.t; found = true;
+        _segHit.t = forceFieldHit.t;
+        _segHit.x = forceFieldHit.x;
+        _segHit.y = forceFieldHit.y;
+        _segHit.z = forceFieldHit.z;
+        _segHit.entityId = forceFieldHit.entityId as EntityId;
+        _segHit.isMirror = true;
+        _segHit.normalX = forceFieldHit.nx;
+        _segHit.normalY = forceFieldHit.ny;
+        _segHit.normalZ = forceFieldHit.nz;
+        _segHit.panelIndex = -1;
       }
     }
 
@@ -492,13 +508,14 @@ export class DamageSystem {
     // sky can't catch ground units; a beam aimed down does.
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
+      if (source.excludeCommanders && unit.commander) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
       const t = lineSphereIntersectionT(
         source.start.x, source.start.y, source.start.z,
         source.end.x, source.end.y, source.end.z,
         unit.transform.x, unit.transform.y, unit.transform.z,
-        unit.unit.unitRadiusCollider.shot + source.width / 2
+        unit.unit.radius.shot + source.width / 2
       );
 
       if (t !== null && t < bestT) {
@@ -607,9 +624,10 @@ export class DamageSystem {
     // flight path.
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
+      if (source.excludeCommanders && unit.commander) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
-      const combinedRadius = source.radius + unit.unit.unitRadiusCollider.shot;
+      const combinedRadius = source.radius + unit.unit.radius.shot;
       const t = lineSphereIntersectionT(
         source.prev.x, source.prev.y, source.prev.z,
         source.current.x, source.current.y, source.current.z,
@@ -715,12 +733,13 @@ export class DamageSystem {
     // altitude doesn't (once air units exist).
     for (const unit of nearbyUnits) {
       if (source.excludeEntities.has(unit.id)) continue;
+      if (source.excludeCommanders && unit.commander) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
       const dx = unit.transform.x - source.center.x;
       const dy = unit.transform.y - source.center.y;
       const dz = unit.transform.z - source.center.z;
-      const targetRadius = unit.unit.unitRadiusCollider.shot;
+      const targetRadius = unit.unit.radius.shot;
 
       // Cheap squared-distance rejection before sqrt
       const distSq = dx * dx + dy * dy + dz * dz;

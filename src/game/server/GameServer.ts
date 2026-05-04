@@ -5,6 +5,7 @@ import { WorldState } from '../sim/WorldState';
 import { Simulation } from '../sim/Simulation';
 import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities, spawnInitialBases, spawnMetalExtractorsOnDeposits, FIRST_PLAYER_ANGLE } from '../sim/spawn';
+import { getTerrainDividerTeamCount, normalizePlayerIds } from '../sim/playerLayout';
 import { CAPTURE_CONFIG } from '../../captureConfig';
 import { serializeGameState, resetDeltaTracking, resetDeltaTrackingForKey, resetProtocolSeeded } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
@@ -190,7 +191,7 @@ export class GameServer {
   }
 
   constructor(config: GameServerConfig, physics?: PhysicsEngine3D) {
-    this.playerIds = config.playerIds;
+    this.playerIds = normalizePlayerIds(config.playerIds);
     this.backgroundMode = config.backgroundMode ?? false;
     this.tickRateHz = 60;
     this.userTickRateHz = 60;
@@ -218,12 +219,12 @@ export class GameServer {
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
 
-    // Tell the heightmap how many teams are playing so it can lay
-    // down the radial team-separation ridges. Set BEFORE the
-    // WorldState (which spawns commanders / bases) and the renderer
-    // (which bakes terrain geometry once at construction) so every
-    // downstream consumer reads the same surface.
-    setTerrainTeamCount(this.playerIds.length);
+    // Tell the heightmap how many radial player slices are active so
+    // it can lay down the matching divider ridges. A one-player map
+    // still uses one slice and one divider slice; no map-building math
+    // branches on "solo". Set BEFORE WorldState, deposit flattening,
+    // and renderer mesh baking so every consumer reads the same surface.
+    setTerrainTeamCount(getTerrainDividerTeamCount(this.playerIds.length));
     setTerrainCenterShape(config.terrainCenter ?? 'lake');
     setTerrainDividersShape(config.terrainDividers ?? 'lake');
     setTerrainMapShape(config.terrainMapShape ?? 'circle');
@@ -332,6 +333,7 @@ export class GameServer {
         this.world, this.physics, true,
         constructionSystem.getGrid(),
         this.backgroundAllowedTypes,
+        this.playerIds,
       );
     } else {
       const entities = spawnInitialEntities(this.world, this.playerIds);
@@ -374,7 +376,7 @@ export class GameServer {
           const body = this.physics.createUnitBody(
             entity.transform.x,
             entity.transform.y,
-            entity.unit.unitRadiusCollider.push,
+            entity.unit.radius.push,
             entity.unit.bodyCenterHeight,
             entity.unit.mass,
             `unit_${entity.id}`,
@@ -552,7 +554,7 @@ export class GameServer {
     this.syncFromPhysics();
 
     // Update territory capture (uses spatial grid occupancy). Same
-    // skip-and-scale-dt pattern as applyForceFieldDamage at low
+    // skip-and-scale-dt pattern as other low-detail systems at low
     // LOD: the time-integral of flag accumulation matches the
     // every-tick path; tile colours just step in coarser intervals.
     const captureStride = Math.max(1, getSimDetailConfig().captureStride | 0);
@@ -907,7 +909,7 @@ export class GameServer {
         const body = this.physics.createUnitBody(
           entity.transform.x,
           entity.transform.y,
-          entity.unit.unitRadiusCollider.push,
+          entity.unit.radius.push,
           entity.unit.bodyCenterHeight,
           entity.unit.mass,
           `unit_${entity.id}`,
@@ -922,8 +924,8 @@ export class GameServer {
           if (!building.body?.physicsBody || !building.building) continue;
           const bw = building.building.width / 2;
           const bh = building.building.height / 2;
-          if (Math.abs(spawnX - building.transform.x) < bw + entity.unit.unitRadiusCollider.push &&
-              Math.abs(spawnY - building.transform.y) < bh + entity.unit.unitRadiusCollider.push) {
+          if (Math.abs(spawnX - building.transform.x) < bw + entity.unit.radius.push &&
+              Math.abs(spawnY - building.transform.y) < bh + entity.unit.radius.push) {
             this.physics.setIgnoreStatic(body, building.body.physicsBody);
             break;
           }
@@ -1009,7 +1011,6 @@ export class GameServer {
           max: this.world.maxTotalUnits,
           count: this.world.getUnits().length,
         },
-        ffAccel: { units: this.world.ffAccelUnits, shots: this.world.ffAccelShots },
         mirrorsEnabled: this.world.mirrorsEnabled,
         forceFieldsEnabled: this.world.forceFieldsEnabled,
         cpu: { avg: cpuAvg, hi: cpuHi },
@@ -1104,12 +1105,6 @@ export class GameServer {
         return;
       case 'setMaxTotalUnits':
         this.world.maxTotalUnits = command.maxTotalUnits;
-        return;
-      case 'setFfAccelUnits':
-        this.world.ffAccelUnits = command.enabled;
-        return;
-      case 'setFfAccelShots':
-        this.world.ffAccelShots = command.enabled;
         return;
       case 'setMirrorsEnabled':
         this.setMirrorsEnabled(command.enabled);

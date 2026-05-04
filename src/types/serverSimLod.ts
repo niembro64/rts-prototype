@@ -70,17 +70,6 @@ export type ServerSimDetailConfig = {
    *  stride = fewer distance3 calls per weapon per tick, at the
    *  cost of taking more ticks to cover all candidates. */
   targetingDensityStride: number;
-  /** Force-field knockback application stride. applyForceFieldDamage
-   *  runs every Nth tick at low LOD; on the apply tick the dt is
-   *  multiplied by N so the integral over time matches every-tick
-   *  application. Skipping ticks costs a touch of responsiveness
-   *  (units feel pushes in pulses) but at high counts FF push is
-   *  one of the heaviest per-tick systems. */
-  forceFieldStride: number;
-  /** Maximum active force-field weapons that apply push/projectile
-   *  acceleration on one tick. Extra active fields are round-robin
-   *  scheduled and scale dt so long-term impulse stays consistent. */
-  forceFieldApplyBudget: number;
   /** Projectile collision stride. Traveling projectiles still move
    *  every tick, but their expensive unit/mirror collision sweep can
    *  be staggered. The projectile stores its last checked sweep start
@@ -129,8 +118,6 @@ export type ServerSimDetailTable = {
   MIRROR_BISECTOR_ITERATIONS: ServerSimTierMap<number>;
   TARGETING_DENSITY_THRESHOLD: ServerSimTierMap<number>;
   TARGETING_DENSITY_STRIDE: ServerSimTierMap<number>;
-  FORCE_FIELD_STRIDE: ServerSimTierMap<number>;
-  FORCE_FIELD_APPLY_BUDGET: ServerSimTierMap<number>;
   PROJECTILE_COLLISION_STRIDE: ServerSimTierMap<number>;
   CAPTURE_STRIDE: ServerSimTierMap<number>;
 };

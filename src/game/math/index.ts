@@ -34,10 +34,14 @@ export {
   type BarrelEndpoint,
   getBarrelTip,
   countBarrels,
+  getConeBarrelBaseOrbitRadius,
+  getConeBarrelTipOrbitRadius,
+  getSimpleMultiBarrelOrbitRadius,
+  getTurretBodyRadius,
   getTurretBarrelDiameter,
   getTurretBarrelCenterToTipLength,
   getTurretHeadRadius,
-  turretHeadRadiusFromBodyRadius,
+  turretBodyRadiusFromRadius,
   TURRET_BARREL_MIN_DIAMETER,
 } from './BarrelGeometry';
 

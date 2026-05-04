@@ -20,7 +20,7 @@ export function getBuildTargetHorizontalDistance(builder: Entity, target: Entity
 
   const dx = target.transform.x - builder.transform.x;
   const dy = target.transform.y - builder.transform.y;
-  const radius = target.unit?.unitRadiusCollider.push ?? target.unit?.unitRadiusCollider.shot ?? 0;
+  const radius = target.unit?.radius.push ?? target.unit?.radius.shot ?? 0;
   return Math.max(0, magnitude(dx, dy) - radius);
 }
 

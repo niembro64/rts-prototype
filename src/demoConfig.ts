@@ -10,12 +10,12 @@ export const DEMO_CONFIG = {
    *  180°/N wide (the other 180°/N of every 360°/N cycle is the
    *  barrier slice between teams) — with N=3 that's 60° per team
    *  slice, ~51° usable at arcSectorFraction=0.85. */
-  factoryCount: 6,
+  factoryCount: 5,
 
   /** Number of power buildings per player. Demo bases split these
    *  slots evenly between Solar and Wind. Same rationale as
    *  factoryCount — buildings have to fit inside the team slice. */
-  solarCount: 14,
+  solarCount: 9,
 
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the
@@ -47,13 +47,10 @@ export const DEMO_CONFIG = {
 
   /**
    * Commander placement radius as a fraction of the outer spawn circle.
-   * 1.0 = commander sits at the outer edge of the spawn circle (the
-   * legacy behavior); <1.0 pulls each commander inward toward map
-   * center, leaving open ground behind the base. The solar/factory
-   * arcs are spaced INWARD of the commander, so dropping this also
-   * pulls those rows in by the same delta — pair with smaller
-   * commanderGapCells / rowGapCells if buildings start crowding the
-   * map center.
+   * Shared by DEMO BATTLE and REAL BATTLE so both modes use the same
+   * commander ring. 1.0 = commander sits at the outer edge of the spawn
+   * circle; <1.0 pulls each commander inward toward map center. In demo,
+   * the solar/factory arcs are spaced inward from this ring as well.
    */
   commanderRadiusFraction: 0.75,
 

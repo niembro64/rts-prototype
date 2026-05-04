@@ -2,13 +2,12 @@
 // whose shot declares a SmokeTrailSpec (rockets, missiles, anything
 // thrust-powered).
 //
-// Each projectile accrues a time-based emission budget: roughly one
-// puff every emitIntervalMs at the projectile's current position,
-// independent of frame rate. A puff is one slot in a single shared
-// InstancedMesh — it stays put in world space as the rocket flies
-// away, grows slightly, and fades to transparent over its lifespan.
-// When the projectile despawns, the emitter state is dropped;
-// still-living puffs continue fading on their own.
+// Each projectile samples one puff on selected render frames. The
+// cadence is a frame-skip count, not an elapsed-time accumulator, so a
+// slow frame never dumps a backlog burst and each LOD reads with stable
+// visual spacing. A puff is one slot in a single shared InstancedMesh —
+// it stays put in world space as the rocket flies away, grows slightly,
+// and fades to transparent over its lifespan.
 //
 // One material + one geometry are shared across every puff. Per-puff
 // scale, alpha, and color ride on the InstancedMesh's instance
@@ -17,17 +16,17 @@
 // fancy per-tier visual variants. Higher LOD just means more puffs;
 // the puffs themselves look identical at every tier.
 //
-// LOD: density scales with `fireExplosionStyle` (the same LOD axis
-// SprayRenderer3D + the 2D explosion effects use). At MIN we emit
-// nothing; at `inferno` rockets trail dense streaks. Higher LOD also
-// stretches each puff's lifespan so the trail is both denser AND
-// longer, giving a clear visual upgrade at MAX without unbounded
+// LOD: density scales with `smokeTrailFramesSkip`, while the existing
+// fireExplosionStyle tier still caps the total particle budget. Higher
+// LOD also stretches each puff's lifespan so the trail is both denser
+// AND longer, giving a clear visual upgrade at MAX without unbounded
 // cost at MIN.
 
 import * as THREE from 'three';
-import type { Entity, EntityId } from '../sim/types';
-import type { FireExplosionStyle } from '@/types/graphics';
-import { getGraphicsConfig, getEffectiveQuality } from '@/clientBarConfig';
+import type { Entity } from '../sim/types';
+import { isProjectileShot } from '../sim/types';
+import type { ConcreteGraphicsQuality, FireExplosionStyle } from '@/types/graphics';
+import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 
 /** Per-puff scope padding in sim-world units. Smoke trails extend
@@ -42,30 +41,20 @@ const SMOKE_SCOPE_PADDING = 200;
 // Engine fallbacks for any SmokeTrailSpec field a shot blueprint
 // leaves unset. Per-shot overrides live on the projectile blueprint
 // (see SmokeTrailSpec) — these only kick in when the blueprint is
-// silent. Treat them as the "inferno" / max-LOD baseline; the LOD
-// multipliers further scale them down for lower tiers.
-const DEFAULT_EMIT_INTERVAL_MS = 30;  // ~33 puffs/sec per rocket at max LOD
+// silent. Treat them as the max-LOD baseline; the LOD frame-skip table
+// further thins emissions for lower tiers.
+const DEFAULT_EMIT_FRAMES_SKIP = 0;  // sample every render frame at max LOD
 const DEFAULT_LIFESPAN_MS = 1400;
 const DEFAULT_START_RADIUS = 2.5;
 const DEFAULT_END_RADIUS = 8.0;
 const DEFAULT_START_ALPHA = 0.75;
 const DEFAULT_COLOR = 0xcccccc;
 // Pool ceiling — bounded so heavy salvo spam can't unbounded-allocate.
-// At max LOD, steady state per rocket ≈ lifespan/emitInterval ≈ 47
-// particles, so 4000 covers ~20 simultaneous 4-rocket salvos before
-// we start dropping emissions. Lower LODs use far fewer.
+// At max LOD, steady state per rocket is roughly one puff per render
+// frame for lifespanMs, so 4000 covers heavy salvos before we start
+// dropping emissions. Lower LODs use far fewer.
 const MAX_PARTICLES = 4000;
-
-/** LOD multiplier on emission rate. Mirrors the LOD_INTENSITY table
- *  SprayRenderer3D uses so every particle system on screen scales in
- *  lockstep — flipping one LOD lever visibly affects every effect. */
-const LOD_EMIT_MULT: Record<FireExplosionStyle, number> = {
-  flash:   0.15,
-  spark:   0.3,
-  burst:   0.55,
-  blaze:   0.8,
-  inferno: 1.0,
-};
+const SMOKE_EVICTION_SCAN = 16;
 
 const LOD_PARTICLE_CAP: Record<FireExplosionStyle, number> = {
   flash: 700,
@@ -75,12 +64,13 @@ const LOD_PARTICLE_CAP: Record<FireExplosionStyle, number> = {
   inferno: MAX_PARTICLES,
 };
 
-/** LOD multiplier on particle lifespan. Blended gently so low LODs
- *  don't produce invisibly-short puffs — min tier stays at 50% of
- *  max tier's lifespan. */
-function lodLifespanMult(m: number): number {
-  return 0.5 + 0.5 * m;
-}
+const LOD_LIFESPAN_MULT: Record<ConcreteGraphicsQuality, number> = {
+  min: 0.5,
+  low: 0.65,
+  medium: 0.8,
+  high: 0.9,
+  max: 1.0,
+};
 
 type Puff = {
   /** Seconds of life remaining. Reaches ≤ 0 → swap-popped. */
@@ -105,12 +95,6 @@ type Puff = {
   r: number;
   g: number;
   b: number;
-};
-
-type Emitter = {
-  /** Ms of accumulated time since the last puff was emitted. Capped
-   *  so a stalled tick doesn't dump a burst on the next frame. */
-  sinceLastEmit: number;
 };
 
 const SMOKE_VERTEX_SHADER = `
@@ -151,11 +135,11 @@ export class SmokeTrail3D {
   private alphaAttr: THREE.InstancedBufferAttribute;
   private colorAttr: THREE.InstancedBufferAttribute;
   private active: Puff[] = [];
-  private emitters = new Map<EntityId, Emitter>();
   // Scratch buffers reused across frames to avoid per-frame allocs.
-  private _seen = new Set<EntityId>();
   private _eligible: Entity[] = [];
   private _scratchMat = new THREE.Matrix4();
+  private emissionCursor = 0;
+  private evictionCursor = 0;
   private colorUpdateMin = Number.POSITIVE_INFINITY;
   private colorUpdateMax = -1;
 
@@ -194,31 +178,29 @@ export class SmokeTrail3D {
    *
    *  RENDER-mode aware: when `scope` is provided and its mode is
    *  not 'all', projectiles whose current position is outside the
-   *  padded scope are skipped — no `seen.add()`, no emitter-state
-   *  advance, no eligibility. Their emitter state is dropped by the
-   *  cleanup pass and they resume from a clean `sinceLastEmit = 0`
-   *  if they re-enter the viewport, so off-screen salvos cost
-   *  effectively zero on the smoke-trail pipeline. Already-live
-   *  puffs are NOT culled — they fade in place naturally as the
-   *  camera pans away from them. */
+   *  padded scope are skipped. Re-entering scope resumes on the next
+   *  matching frame phase with no backlog burst. Already-live puffs
+   *  are NOT culled — they fade in place naturally as the camera pans
+   *  away from them. */
   update(
     projectiles: readonly Entity[],
     dtMs: number,
+    renderFrameIndex: number,
     scope?: ViewportFootprint,
   ): void {
-    if (projectiles.length === 0 && this.active.length === 0 && this.emitters.size === 0) return;
+    if (projectiles.length === 0 && this.active.length === 0) return;
 
     const dtSec = dtMs / 1000;
 
-    // Sample LOD once per frame. Emission rate and lifespan are
-    // multiplied by per-shot SmokeTrailSpec values then scaled by the
-    // current fireExplosionStyle tier — so a higher LOD yields a
-    // denser AND longer trail and a lower LOD produces a sparse short
-    // wisp regardless of which shot the trail belongs to.
-    const style = (getGraphicsConfig().fireExplosionStyle as FireExplosionStyle) ?? 'burst';
-    const lodEmitMult = LOD_EMIT_MULT[style] ?? 0.55;
-    const lodLifeMult = lodLifespanMult(lodEmitMult);
+    // Sample LOD once per render frame. Smoke density is controlled
+    // by integer frame skips, not elapsed milliseconds, so trail
+    // spacing stays consistent under hitches and across LOD tiers.
+    const gfx = getGraphicsConfig();
+    const style = (gfx.fireExplosionStyle as FireExplosionStyle) ?? 'burst';
+    const lodFramesSkip = Math.max(0, gfx.smokeTrailFramesSkip | 0);
+    const lodLifeMult = LOD_LIFESPAN_MULT[gfx.tier] ?? 0.8;
     const particleCap = Math.min(MAX_PARTICLES, LOD_PARTICLE_CAP[style] ?? 2200);
+    const defaultLifespanSec = Math.max(0.001, (DEFAULT_LIFESPAN_MS * lodLifeMult) / 1000);
 
     // 1) Advance + fade existing puffs in place. Dead ones are
     //    swap-popped: the last live puff takes the dead slot's index,
@@ -253,92 +235,62 @@ export class SmokeTrail3D {
       this.alphaArr[i] = alpha;
       i++;
     }
+    if (this.active.length > particleCap) {
+      this.active.length = particleCap;
+      if (this.evictionCursor >= particleCap) this.evictionCursor = 0;
+    }
 
-    // MIN tier emits zero new puffs — the LOD floor cuts smoke
-    // entirely. Already-live puffs above keep fading naturally; we
-    // just stop spawning new ones and clear emitter state so a tier
-    // flip back up doesn't dump a backlogged burst.
-    const minTier = getEffectiveQuality() === 'min';
-    if (minTier) {
-      this.emitters.clear();
-    } else {
-      // 2) For each projectile that leaves a trail, accumulate emission
-      //    budget. Then spawn puffs in a ROUND-ROBIN pass so every
-      //    eligible rocket gets a fair share of the pool — otherwise
-      //    projectiles early in the iteration could burn the entire
-      //    cap on their own backlog and later rockets would silently
-      //    produce no trail at all.
-      const seen = this._seen;
-      const eligible = this._eligible;
-      seen.clear();
-      eligible.length = 0;
-      for (const e of projectiles) {
-        const shot = e.projectile?.config.shot;
-        if (!shot || shot.type !== 'projectile') continue;
-        const spec = shot.smokeTrail;
-        if (!spec) continue;
-        // RENDER scope cull: if the projectile is outside the padded
-        // viewport, drop it from `seen` so the cleanup pass below
-        // releases its emitter state. No emission work, no slot
-        // allocation. Re-entering scope on a future frame restarts
-        // from sinceLastEmit = 0 — natural cadence, no backlog burst.
-        if (scope && !scope.inScope(e.transform.x, e.transform.y, SMOKE_SCOPE_PADDING)) continue;
-        seen.add(e.id);
+    // 2) For each projectile that leaves a trail, sample at its
+    //    frame-skip cadence. Then apply a steady-state global emission
+    //    budget so a large salvo does not fill the entire pool in one
+    //    burst and then go silent until old puffs expire.
+    const eligible = this._eligible;
+    eligible.length = 0;
+    for (const e of projectiles) {
+      const shot = e.projectile?.config.shot;
+      if (!shot || !isProjectileShot(shot)) continue;
+      const spec = shot.smokeTrail;
+      if (!spec) continue;
+      // RENDER scope cull: off-screen projectiles do no smoke work.
+      // Re-entering scope resumes on the next matching frame phase,
+      // with no missed-frame burst to catch up.
+      if (scope && !scope.inScope(e.transform.x, e.transform.y, SMOKE_SCOPE_PADDING)) continue;
 
-        const baseInterval = spec.emitIntervalMs ?? DEFAULT_EMIT_INTERVAL_MS;
-        const emitIntervalMs = baseInterval / lodEmitMult;
+      const shotFramesSkip = Math.max(0, spec.emitFramesSkip ?? DEFAULT_EMIT_FRAMES_SKIP);
+      const stride = Math.max(1, Math.max(lodFramesSkip, shotFramesSkip) + 1);
+      // Phase by projectile id so a salvo does not allocate every puff
+      // on the same frame at low LOD.
+      if ((renderFrameIndex + (e.id % stride)) % stride !== 0) continue;
+      eligible.push(e);
+    }
 
-        let em = this.emitters.get(e.id);
-        if (!em) {
-          em = { sinceLastEmit: 0 };
-          this.emitters.set(e.id, em);
-        }
-        em.sinceLastEmit = Math.min(em.sinceLastEmit + dtMs, emitIntervalMs * 3);
-        if (em.sinceLastEmit >= emitIntervalMs) eligible.push(e);
+    if (eligible.length > 0 && particleCap > 0) {
+      const steadyBudget = Math.max(1, Math.ceil((particleCap * dtSec) / defaultLifespanSec));
+      const emissions = Math.min(eligible.length, steadyBudget);
+      let start = 0;
+      if (eligible.length > emissions) {
+        start = this.emissionCursor % eligible.length;
+        this.emissionCursor = (this.emissionCursor + emissions) % eligible.length;
+      } else {
+        this.emissionCursor = 0;
       }
-
-      // Round-robin: repeatedly walk the eligible list, taking one
-      // emission budget slice off each rocket that still has one,
-      // until either all emitters drain below threshold or the pool
-      // fills. That way 10 rockets with backlog each get 1 puff before
-      // any rocket gets 2 — the trail density is uniform across the
-      // salvo.
-      if (eligible.length > 0) {
-        let progress = true;
-        while (progress && this.active.length < particleCap) {
-          progress = false;
-          for (const e of eligible) {
-            if (this.active.length >= particleCap) break;
-            const em = this.emitters.get(e.id)!;
-            const spec = (e.projectile!.config.shot as { smokeTrail?: import('@/types/blueprints').SmokeTrailSpec }).smokeTrail!;
-            const baseInterval = spec.emitIntervalMs ?? DEFAULT_EMIT_INTERVAL_MS;
-            const emitIntervalMs = baseInterval / lodEmitMult;
-            if (em.sinceLastEmit < emitIntervalMs) continue;
-            em.sinceLastEmit -= emitIntervalMs;
-            const lifespanSec = ((spec.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lodLifeMult) / 1000;
-            this.spawnPuff(
-              e.transform.x, e.transform.y, e.transform.z,
-              lifespanSec,
-              spec.startRadius ?? DEFAULT_START_RADIUS,
-              spec.endRadius ?? DEFAULT_END_RADIUS,
-              spec.startAlpha ?? DEFAULT_START_ALPHA,
-              spec.color ?? DEFAULT_COLOR,
-            );
-            progress = true;
-          }
-        }
-      }
-
-      // 3) Drop emitter state for rockets that despawned this frame.
-      //    Their in-flight puffs continue fading independently.
-      if (this.emitters.size > seen.size) {
-        for (const id of this.emitters.keys()) {
-          if (!seen.has(id)) this.emitters.delete(id);
-        }
+      for (let n = 0; n < emissions; n++) {
+        const e = eligible[(start + n) % eligible.length];
+        const spec = (e.projectile!.config.shot as { smokeTrail?: import('@/types/blueprints').SmokeTrailSpec }).smokeTrail!;
+        const lifespanSec = ((spec.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lodLifeMult) / 1000;
+        this.spawnPuff(
+          e.transform.x, e.transform.y, e.transform.z,
+          lifespanSec,
+          spec.startRadius ?? DEFAULT_START_RADIUS,
+          spec.endRadius ?? DEFAULT_END_RADIUS,
+          spec.startAlpha ?? DEFAULT_START_ALPHA,
+          spec.color ?? DEFAULT_COLOR,
+          particleCap,
+        );
       }
     }
 
-    // 4) Push attribute updates to GPU and bound the draw to the
+    // 3) Push attribute updates to GPU and bound the draw to the
     //    live-puff prefix.
     this.mesh.count = this.active.length;
     if (this.active.length > 0) {
@@ -380,8 +332,10 @@ export class SmokeTrail3D {
     endRadius: number,
     startAlpha: number,
     color: number,
+    particleCap: number,
   ): void {
-    if (this.active.length >= MAX_PARTICLES) return;
+    const cap = Math.min(MAX_PARTICLES, Math.max(0, particleCap | 0));
+    if (cap <= 0) return;
 
     const r = ((color >> 16) & 0xff) / 255;
     const g = ((color >> 8)  & 0xff) / 255;
@@ -402,8 +356,14 @@ export class SmokeTrail3D {
       r, g, b,
     };
 
-    const i = this.active.length;
-    this.active.push(puff);
+    let i: number;
+    if (this.active.length < cap) {
+      i = this.active.length;
+      this.active.push(puff);
+    } else {
+      i = this.pickEvictionSlot(cap);
+      this.active[i] = puff;
+    }
 
     this._scratchMat.makeScale(startRadius, startRadius, startRadius);
     this._scratchMat.setPosition(puff.threeX, puff.threeY, puff.threeZ);
@@ -412,13 +372,40 @@ export class SmokeTrail3D {
     this.writePuffColor(i, puff);
   }
 
+  private pickEvictionSlot(cap: number): number {
+    if (cap <= 1) {
+      this.evictionCursor = 0;
+      return 0;
+    }
+    const scan = Math.min(SMOKE_EVICTION_SCAN, cap);
+    let best = this.evictionCursor % cap;
+    let bestLifeFrac = this.active[best]
+      ? this.active[best].timeLeft / this.active[best].lifespan
+      : -1;
+    for (let n = 1; n < scan; n++) {
+      const idx = (this.evictionCursor + n) % cap;
+      const p = this.active[idx];
+      if (!p) {
+        best = idx;
+        bestLifeFrac = -1;
+        break;
+      }
+      const lifeFrac = p.timeLeft / p.lifespan;
+      if (lifeFrac < bestLifeFrac) {
+        best = idx;
+        bestLifeFrac = lifeFrac;
+      }
+    }
+    this.evictionCursor = (best + 1) % cap;
+    return best;
+  }
+
   destroy(): void {
     this.root.remove(this.mesh);
     this.mesh.dispose();
     this.mat.dispose();
     this.geom.dispose();
     this.active.length = 0;
-    this.emitters.clear();
     this.root.parent?.remove(this.root);
   }
 }
