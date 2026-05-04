@@ -8,11 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   4) DEAD CODE
   ---------------------------------------------------
 
-  [LOW] src/shellConfig.ts:24-25, 38-40 — explicit "Backwards-compatible
-    aliases" / "Legacy aliases":
-      - SHELL_OPACITY, NORMAL_OPACITY: still used by Render3DEntities.ts:22
-        (keep)
-      - SHELL_COLOR_HEX, SHELL_TINT_RGB: NOT used anywhere — drop them.
   [LOW] src/playerNamesConfig.ts:21,44,49 `FUNNY_DEMO_NAMES`,
     `FunnyName`, `pickFunnyName` are exported but only used inside the
     same module. Remove the `export`.

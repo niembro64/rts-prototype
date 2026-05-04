@@ -35,10 +35,6 @@ export const SHELL_PALE_RGB: readonly [number, number, number] = [0.88, 0.88, 0.
  *  SHELL_PALE_RGB rounded to 8-bit per channel. */
 export const SHELL_PALE_HEX = 0xe0e0e0;
 
-/** Legacy aliases — older callers import these names. */
-export const SHELL_COLOR_HEX = SHELL_PALE_HEX;
-export const SHELL_TINT_RGB = SHELL_PALE_RGB;
-
 // ── Build-bubble visuals ─────────────────────────────────────────
 // The "build bubble" is the cluster of orbs the factory's
 // FactoryConstructionRig emits while a unit is forming at the build
@@ -70,7 +66,7 @@ export const BUILD_BUBBLE_SPARK_OPACITY = 0.9;
 /** Outer-ghost-shell radius as a multiplier of the queued unit's
  *  PUSH collider radius. The bubble grows toward this size with build
  *  progress (eased), with a small pulse modulation for life. */
-export const BUILD_BUBBLE_RADIUS_PUSH_MULT = 1.5;
+export const BUILD_BUBBLE_RADIUS_PUSH_MULT = 2;
 
 /** Build-bar palette + layout. The HP bar uses the legacy health
  *  green/red and isn't configured here; only the three resource bars
