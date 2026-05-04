@@ -788,8 +788,8 @@ export class Debris3D {
 
       // Mirror panels — emit one slab per panel matching what
       // Render3DEntities draws: a square panel mounted at ARM'S LENGTH
-      // out from the turret body sphere, plus the two side support rails
-      // that run from the mirror-frame tabs back to the turret pivot.
+      // out from the turret body sphere, plus two broad extruded arms
+      // and the cylindrical grabbers they attach to.
       // Same liftGroup convention as Render3DEntities: subtract
       // chassisLift so the live world-y lands at the blueprint-authored
       // mirror turret mount after debris adds chassisLiftY.
@@ -801,11 +801,10 @@ export class Debris3D {
         const side = r * MIRROR_PANEL_SIZE_MULT * 2;
         const armLength = r * MIRROR_ARM_LENGTH_MULT;
         const panelHalfSide = r * MIRROR_PANEL_SIZE_MULT;
-        const frameThickness = Math.max(panelHalfSide * 0.055, 0.25);
-        const frameDepth = Math.max(panelHalfSide * 0.075, 0.34);
+        const supportDiameter = Math.max(panelHalfSide * 0.075, 0.34);
+        const supportRadius = supportDiameter * 0.5;
         const frameSegmentLength = side / 3;
-        const frameZ = panelHalfSide + frameThickness / 2;
-        const armAnchorX = Math.max(armLength - frameDepth / 2, 0.1);
+        const frameZ = panelHalfSide + supportRadius;
         const panelCenterY = localMount.z * r - chassisLiftY;
         const cY = Math.cos(chassisYaw);
         const sY = Math.sin(chassisYaw);
@@ -827,23 +826,36 @@ export class Debris3D {
             sz: 1,
             color: MIRROR_PANEL_DEBRIS_COLOR,
           });
-          // Side support rails — same dimensions as MirrorMesh3D's
-          // frame-tab extrusion, rotated in the chassis plane so each
-          // rail runs from the turret pivot to a side-frame tab.
+          // Broad side arms + vertical grabbers — same dimensions as
+          // MirrorMesh3D. Arms run from the turret pivot to each side
+          // grabber's midpoint; grabbers remain cylindrical.
           for (const sign of [-1, 1] as const) {
             const localZ = frameZ * sign;
-            const railLength = Math.hypot(armAnchorX, localZ);
-            const cx = armAnchorX / 2;
+            const railLength = Math.hypot(armLength, localZ);
+            const cx = armLength / 2;
             const cz = localZ / 2;
+            const grabberX = armLength * cY - localZ * sY;
+            const grabberZ = armLength * sY + localZ * cY;
             out.push({
               shape: 'box',
               x: cx * cY - cz * sY,
               y: panelCenterY,
               z: cx * sY + cz * cY,
-              yaw: chassisYaw + Math.atan2(localZ, armAnchorX),
+              yaw: chassisYaw + Math.atan2(localZ, armLength),
               sx: railLength,
               sy: frameSegmentLength,
-              sz: frameThickness,
+              sz: supportDiameter,
+              color: primary,
+            });
+            out.push({
+              shape: 'cyl',
+              ax: grabberX,
+              ay: panelCenterY - frameSegmentLength / 2,
+              az: grabberZ,
+              bx: grabberX,
+              by: panelCenterY + frameSegmentLength / 2,
+              bz: grabberZ,
+              thickness: supportRadius,
               color: primary,
             });
           }

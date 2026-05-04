@@ -531,7 +531,8 @@ export class Render3DEntities {
   /** Instanced-only clone for the same reason as turret heads/barrels:
    *  the instance-alpha attribute is renderer-private state. */
   private mirrorInstancedGeom = this.mirrorGeom.clone();
-  private mirrorFrameGeom = new THREE.BoxGeometry(1, 1, 1);
+  private mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
+  private mirrorSupportGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
   // Selection-indicator halo. A low torus reads as a real 3D donut
   // around the unit instead of a flat 2D strip or billboarded band.
   // Geometry is unit-sized: major radius 1, tube radius 0.06. The
@@ -2754,7 +2755,7 @@ export class Render3DEntities {
           m.mirrors = buildMirrorMesh3D(
             liftGroup, mirrorPanels,
             panelCenterY, panelHalfSide, panelArmLength,
-            this.mirrorGeom, this.mirrorFrameGeom,
+            this.mirrorGeom, this.mirrorArmGeom, this.mirrorSupportGeom,
             this.getMirrorShinyMat(), this.getPrimaryMat(pid),
             allMirrorAlloc, // skipPerMesh when instancing is on
           );
@@ -4540,7 +4541,8 @@ export class Render3DEntities {
     this.projMatCollision.dispose();
     this.projMatExplosion.dispose();
     this.mirrorGeom.dispose();
-    this.mirrorFrameGeom.dispose();
+    this.mirrorArmGeom.dispose();
+    this.mirrorSupportGeom.dispose();
     this.mirrorShinyNeutralMat.dispose();
     this.commanderArmorMat.dispose();
     this.commanderTrimMat.dispose();

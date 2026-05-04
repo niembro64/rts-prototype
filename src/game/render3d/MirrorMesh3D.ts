@@ -4,11 +4,14 @@
 // above the chassis lift. The joint is the `root` THREE.Group:
 // `root.position` lifts to the attachment height, `root.quaternion`
 // is the only rotation in the entire mirror system (yaw + pitch
-// combined). The side support rails and panel mesh sit at static positions
-// in `root`'s local frame and sweep through 3D as one body when
+// combined). The side arms, cylindrical grabbers, and panel mesh sit
+// at static positions in `root`'s local frame and sweep through 3D as one body when
 // `root` rotates. No per-mesh, per-frame rotation.
 
 import * as THREE from 'three';
+
+const CYLINDER_UP = new THREE.Vector3(0, 1, 0);
+const _supportDir = new THREE.Vector3();
 
 export type MirrorMesh = {
   /** The ball-joint. Position is the attachment point in liftGroup's
@@ -17,7 +20,7 @@ export type MirrorMesh = {
    *  at static local positions and share root's transform. */
   root: THREE.Group;
   panels: THREE.Mesh[];
-  /** Side support rails, two per panel, sharing the same parent as
+  /** Extruded side support arms, two per panel, sharing the same parent as
    *  the panels. The renderer doesn't currently route these through
    *  any InstancedMesh — they're per-Mesh on the `root` group either
    *  way (the per-mirror cap is small, so a few static rails cost
@@ -29,7 +32,7 @@ export type MirrorMesh = {
    *  fallback is in use (cap exhausted). The caller (Render3DEntities)
    *  sets this after build. */
   panelSlots?: number[];
-  /** Thin team-colored bars enclosing each mirror plate. These stay
+  /** Thin team-colored cylindrical grabbers enclosing each mirror plate. These stay
    *  per-Mesh because they are low-count structural pieces, while the
    *  white mirror plates can still use the shared instance pool. */
   frames: THREE.Mesh[];
@@ -63,7 +66,8 @@ export function buildMirrorMesh3D(
    *  cache's `panel.offsetX`. */
   panelArmLength: number,
   panelGeom: THREE.PlaneGeometry,
-  frameGeom: THREE.BoxGeometry,
+  armGeom: THREE.BoxGeometry,
+  supportGeom: THREE.CylinderGeometry,
   panelMaterial: THREE.Material,
   armMaterial: THREE.Material,
   /** When true, panel Meshes are BUILT (so .position / .rotation /
@@ -91,9 +95,24 @@ export function buildMirrorMesh3D(
   const armMeshes: THREE.Mesh[] = [];
   const frameMeshes: THREE.Mesh[] = [];
   const side = Math.max(panelHalfSide * 2, 1);
-  const frameThickness = Math.max(panelHalfSide * 0.055, 0.25);
-  const frameDepth = Math.max(panelHalfSide * 0.075, 0.34);
+  const supportDiameter = Math.max(panelHalfSide * 0.075, 0.34);
   const frameSegmentLength = side / 3;
+
+  const makeCylinderBetween = (
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+  ): THREE.Mesh => {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    const len = Math.max(Math.hypot(dx, dy, dz), 0.001);
+    const mesh = new THREE.Mesh(supportGeom, armMaterial);
+    mesh.position.set((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5);
+    mesh.scale.set(supportDiameter, len, supportDiameter);
+    _supportDir.set(dx / len, dy / len, dz / len);
+    mesh.quaternion.setFromUnitVectors(CYLINDER_UP, _supportDir);
+    return mesh;
+  };
 
   for (let i = 0; i < panels.length; i++) {
     // Panel face — square plane perpendicular to the arm. PlaneGeometry
@@ -109,34 +128,36 @@ export function buildMirrorMesh3D(
     if (!skipPerMesh) root.add(m);
     panelMeshes.push(m);
 
-    const frameZ = panelHalfSide + frameThickness / 2;
-    const armAnchorX = Math.max(panelArmLength - frameDepth / 2, 0.1);
+    const frameZ = panelHalfSide + supportDiameter / 2;
     const addSideArm = (sign: -1 | 1) => {
       const armZ = frameZ * sign;
-      const armLength = Math.hypot(armAnchorX, armZ);
-      const arm = new THREE.Mesh(frameGeom, armMaterial);
-      // The rail is the side-frame segment extruded back to the
-      // turret pivot: same vertical span and lateral thickness as the
-      // visible frame tab, but rotated in X/Z so its inner endpoint
-      // lands at the root-local center.
-      arm.scale.set(armLength, frameSegmentLength, frameThickness);
-      arm.rotation.y = -Math.atan2(armZ, armAnchorX);
-      arm.position.set(armAnchorX / 2, 0, armZ / 2);
+      const armLength = Math.hypot(panelArmLength, armZ);
+      const arm = new THREE.Mesh(armGeom, armMaterial);
+      // The arm is the old "extruded frame tab" shape: long toward
+      // the turret pivot, tall along the mirror side, and thin through
+      // the panel. It overlaps the cylindrical grabber at the far end
+      // so the holder reads rounded while the arm keeps its broad
+      // structural face.
+      arm.scale.set(armLength, frameSegmentLength, supportDiameter);
+      arm.rotation.y = -Math.atan2(armZ, panelArmLength);
+      arm.position.set(panelArmLength / 2, 0, armZ / 2);
       root.add(arm);
       armMeshes.push(arm);
     };
     addSideArm(-1);
     addSideArm(1);
 
-    const left = new THREE.Mesh(frameGeom, armMaterial);
-    left.scale.set(frameDepth, frameSegmentLength, frameThickness);
-    left.position.set(panelArmLength, 0, -frameZ);
+    const left = makeCylinderBetween(
+      panelArmLength, -frameSegmentLength / 2, -frameZ,
+      panelArmLength, frameSegmentLength / 2, -frameZ,
+    );
     root.add(left);
     frameMeshes.push(left);
 
-    const right = new THREE.Mesh(frameGeom, armMaterial);
-    right.scale.set(frameDepth, frameSegmentLength, frameThickness);
-    right.position.set(panelArmLength, 0, frameZ);
+    const right = makeCylinderBetween(
+      panelArmLength, -frameSegmentLength / 2, frameZ,
+      panelArmLength, frameSegmentLength / 2, frameZ,
+    );
     root.add(right);
     frameMeshes.push(right);
   }

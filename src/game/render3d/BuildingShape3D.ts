@@ -221,8 +221,6 @@ const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape
   bevelEnabled: false,
   steps: 1,
 });
-const solarPanelCoarseLineGeom = createSolarPanelLineGeometry([0.36, 0.62]);
-const solarPanelFineLineGeom = createSolarPanelLineGeometry([0.22, 0.38, 0.54, 0.70, 0.84]);
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
 const extractorPyramidGeom = createHexFrustumGeometry();
@@ -230,8 +228,6 @@ const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
 const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
 const windBladeGeom = createWindBladeGeometry();
 
-// Shared blue-gray structure used by non-team building frames.
-const chimneyMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 // Solar-panel glass uses high metalness and low roughness to reflect
 // the scene PMREM, while the dark blue base tint keeps it reading as
 // photovoltaic glass.
@@ -246,20 +242,6 @@ const solarCellMat = new THREE.MeshStandardMaterial({
 });
 const solarPetalBackMat = new THREE.MeshLambertMaterial({
   color: BUILDING_PALETTE.photovoltaicBack,
-  side: THREE.DoubleSide,
-});
-const solarPanelCoarseLineMat = new THREE.MeshBasicMaterial({
-  color: 0x77c8d8,
-  transparent: true,
-  opacity: 0.34,
-  depthWrite: false,
-  side: THREE.DoubleSide,
-});
-const solarPanelFineLineMat = new THREE.MeshBasicMaterial({
-  color: 0xd4eef4,
-  transparent: true,
-  opacity: 0.46,
-  depthWrite: false,
   side: THREE.DoubleSide,
 });
 const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
@@ -285,14 +267,7 @@ const windGlowMat = new THREE.MeshBasicMaterial({
   opacity: 0.82,
   depthWrite: false,
 });
-const extractorDarkMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 const extractorBladeMat = new THREE.MeshStandardMaterial(SHINY_GRAY_METAL_MATERIAL);
-const extractorGlowMat = new THREE.MeshBasicMaterial({
-  color: BUILDING_PALETTE.cyanGlow,
-  transparent: true,
-  opacity: 0.62,
-  depthWrite: false,
-});
 const invisibleMat = new THREE.MeshBasicMaterial({
   color: 0x000000,
   transparent: true,
@@ -413,35 +388,6 @@ const _solarPetalXAxis = new THREE.Vector3();
 const _solarPetalYAxis = new THREE.Vector3();
 const _solarPetalZAxis = new THREE.Vector3();
 
-function createSolarPanelLineGeometry(crossbars: readonly number[]): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const addRect = (x0: number, y0: number, x1: number, y1: number): void => {
-    positions.push(
-      x0, y0, 0,
-      x1, y0, 0,
-      x1, y1, 0,
-      x0, y0, 0,
-      x1, y1, 0,
-      x0, y1, 0,
-    );
-  };
-
-  addRect(-0.014, 0.12, 0.014, 0.90);
-  for (const y of crossbars) {
-    const halfWidth = (1 - y) * 0.5;
-    const margin = Math.max(0.035, halfWidth * 0.1);
-    const x0 = -halfWidth + margin;
-    const x1 = halfWidth - margin;
-    if (x1 <= x0) continue;
-    addRect(x0, y - 0.010, x1, y + 0.010);
-  }
-
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geom.computeVertexNormals();
-  return geom;
-}
-
 export function getConstructionHazardMaterial(): THREE.Material {
   return hazardStripeMat;
 }
@@ -474,32 +420,11 @@ export function buildBuildingShape(
 
 /** Metal extractor LOD ladder.
  *
- *  Principle: every tier preserves the SILHOUETTE — pyramid base +
- *  chimney column + rotating fan — so the building reads as the same
- *  object at any zoom level. Higher tiers add DECORATIVE details
- *  (cap spheres, collar rings, glowing cutting edges) on top of that
- *  silhouette; lower tiers strip those small touches but keep the
- *  major masses visible.
- *
- *    min    — pyramid + base ring + chimney + simple 3-blade rotor.
- *             Silhouette is complete; no decorative trim.
- *    low    — + cap sphere on the chimney tip (small polish where
- *             the chimney meets the rotor mount).
- *    medium — + collar ring around the pyramid's top edge (reads as
- *             a structural seam).
- *    high   — + top-cap collar around the rotor base AND swap the
- *             3-blade rotor for the full 6-blade rotor with glowing
- *             cutting edges.
- *    max    — same content as high (the full rig is already at the
- *             ceiling of useful detail).
- *
- *  Tier-gating lives in the top-level detail array. Both rotor
- *  variants get parented as separate details with mutually exclusive
- *  tier ranges so only one is on-screen at a time. The animator
- *  advances yaw on every rotor in `extractorRig.rotors`; writing to
- *  the hidden one is free (one assign, no GPU work) and prevents an
- *  LOD-flip glitch where the swapped-in rotor would briefly show an
- *  old yaw.
+ *  The complete readable extractor silhouette is the six-sided pyramid
+ *  plus one rotating shiny hub/blade assembly. That simple version
+ *  intentionally remains the ceiling for MEDIUM / HIGH / MAX, so the
+ *  extractor does not swap into busier decorative variants as it moves
+ *  through camera-sphere tiers.
  */
 function buildExtractor(
   width: number,
@@ -507,88 +432,31 @@ function buildExtractor(
   primaryMat: THREE.Material,
 ): BuildingShape {
   const minDim = Math.min(width, depth);
-  const footprintRadius = minDim * 0.5;
   const pyramidHeight = Math.min(EXTRACTOR_VISUAL_HEIGHT * 0.64, Math.max(28, minDim * 0.78));
   const base = new THREE.Mesh(extractorPyramidGeom, primaryMat);
 
   const details: BuildingDetailMesh[] = [];
   const hubRadius = Math.max(5.5, minDim * 0.15);
-  const collarY = pyramidHeight - Math.max(1.8, minDim * 0.045);
   const rotorY = Math.min(EXTRACTOR_VISUAL_HEIGHT - 6, pyramidHeight + Math.max(4, minDim * 0.1));
-
-  // MIN+ silhouette — base ring + chimney column. These are the
-  // major masses that make the building read as an extractor at any
-  // zoom level. Stripping them at min would collapse the building
-  // back to "just a pyramid" which doesn't communicate the function.
-  details.push(detail(
-    makeCylinder(
-      extractorDarkMat,
-      Math.min(footprintRadius * 0.92, Math.max(12, minDim * 0.45)),
-      5,
-      0,
-      2.5,
-      0,
-      hexCylinderGeom,
-    ),
-    'min',
-  ));
-  details.push(detail(
-    makeCylinder(chimneyMat, hubRadius * 1.05, Math.max(8, rotorY - collarY), 0, (collarY + rotorY) * 0.5, 0, hexCylinderGeom),
-    'min',
-  ));
-
-  // HIGH+ decorative — cap sphere where the chimney meets the rotor
-  // mount. Lower LODs keep the six-blade motion silhouette but drop
-  // this trim.
-  const cap = makeSphere(primaryMat, hubRadius * 1.28, 0, rotorY, 0);
-  details.push(detail(cap, 'high'));
-
-  // HIGH+ decorative — collar ring around the pyramid's top edge.
-  // Visually "tightens" the seam between the pyramid and the chimney.
-  details.push(detail(
-    makeCylinder(factoryFrameMat, Math.max(15, minDim * 0.38), 4.5, 0, collarY, 0, hexCylinderGeom),
-    'high',
-  ));
-
-  // MAX decorative — top-cap collar around the rotor base. Fine
-  // detail right next to the rotor; only worth drawing when the
-  // camera is close enough to the rotor itself to read it.
-  details.push(detail(
-    makeCylinder(factoryFrameMat, hubRadius * 2.15, 4.2, 0, rotorY - 2.5, 0, hexCylinderGeom),
-    'max',
-  ));
 
   const bladeLen = Math.max(32, minDim * 0.86);
   const bladeWidth = Math.max(10, minDim * 0.2);
   const bladeThickness = Math.max(4.5, minDim * 0.11);
   const bladeRootRadius = Math.max(hubRadius * 1.7, minDim * 0.28);
 
-  // MIN..MEDIUM rotor — all six blades remain visible and rotating so
-  // the silhouette is stable across LODs. Lower tiers only strip the
-  // cutting-edge glow and trim.
+  // Simple rotor — all six blades remain visible and rotating so the
+  // silhouette is stable across LODs. No higher-tier glow/trim variant.
   const simpleRotor = makeExtractorRotor(
     bladeLen, bladeWidth, bladeThickness,
     6, rotorY, Math.PI / 6, bladeRootRadius, 0.5,
-    /* withCuttingEdgeGlow */ false,
   );
-  details.push(detail(simpleRotor, 'min', 'medium', 'extractorRotor'));
-
-  // HIGH+ rotor — full six-blade rotor with glowing cutting edges.
-  // Mutually exclusive tier range with the simple rotor (maxTier on
-  // the simple variant = 'medium') so exactly one is visible per
-  // frame; the LOD swap is a free visibility toggle.
-  const fullRotor = makeExtractorRotor(
-    bladeLen, bladeWidth, bladeThickness,
-    6, rotorY, Math.PI / 6, bladeRootRadius, 0.5,
-    /* withCuttingEdgeGlow */ true,
-  );
-  details.push(detail(fullRotor, 'high', undefined, 'extractorRotor'));
+  details.push(detail(simpleRotor, 'min', undefined, 'extractorRotor'));
 
   return {
     primary: base,
     details,
     height: pyramidHeight,
-    extractorRig: { rotors: [simpleRotor, fullRotor] },
+    extractorRig: { rotors: [simpleRotor] },
   };
 }
 
@@ -599,8 +467,8 @@ function buildExtractor(
  *    min    — single photovoltaic pyramid
  *    low    — animated solid petals + solar faces
  *    medium — team-color backing panels on petal exteriors
- *    high   — coarse photovoltaic cell lines
- *    max    — denser/brighter photovoltaic cell lines
+ *    high   — same visual as medium
+ *    max    — same visual as medium
  *
  *  Every petal-attached detail carries the same hinge animation data
  *  so closed/open transitions move as one rigid collector assembly. */
@@ -646,36 +514,6 @@ function buildSolar(
   for (const sign of [-1, 1]) {
     const frontBackClosedDir = new THREE.Vector3(0, SOLAR_HEIGHT, -sign * frontBackZ);
     const frontBackPanelSide = new THREE.Vector3(0, 0, -sign);
-    const frontBackPyramidPanelSide = new THREE.Vector3(0, 0, sign);
-    const frontBackPyramidDir = new THREE.Vector3(0, SOLAR_HEIGHT, -sign * frontBackZ);
-    details.push(detail(makeSolarStaticPanelOverlay(
-      solarPanelCoarseLineGeom,
-      solarPanelCoarseLineMat,
-      frontBackSpan,
-      frontBackLen,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      frontBackPyramidDir,
-      1.1,
-      frontBackPyramidPanelSide,
-    ), 'high', 'high', 'solarPanel'));
-    details.push(detail(makeSolarStaticPanelOverlay(
-      solarPanelFineLineGeom,
-      solarPanelFineLineMat,
-      frontBackSpan,
-      frontBackLen,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      frontBackPyramidDir,
-      1.25,
-      frontBackPyramidPanelSide,
-    ), 'max', undefined, 'solarPanel'));
     details.push(detail(makeHingeBar(
       solarPetalBackMat,
       frontBackSpan,
@@ -740,75 +578,9 @@ function buildSolar(
       frontBackClosedDir,
       frontBackPanelSide,
     ), 'low', undefined, 'solarPanel'));
-    details.push(detail(makeSolarPetalOverlay(
-      solarPanelCoarseLineGeom,
-      solarPanelCoarseLineMat,
-      frontBackSpan,
-      frontBackLen,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      0,
-      sign,
-      petalTilt,
-      0,
-      petalFaceOffset + 0.65,
-      frontBackClosedDir,
-      frontBackPanelSide,
-    ), 'high', 'high', 'solarPanel'));
-    details.push(detail(makeSolarPetalOverlay(
-      solarPanelFineLineGeom,
-      solarPanelFineLineMat,
-      frontBackSpan,
-      frontBackLen,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      0,
-      sign,
-      petalTilt,
-      0,
-      petalFaceOffset + 0.8,
-      frontBackClosedDir,
-      frontBackPanelSide,
-    ), 'max', undefined, 'solarPanel'));
 
     const sideClosedDir = new THREE.Vector3(-sign * sideX, SOLAR_HEIGHT, 0);
     const sidePanelSide = new THREE.Vector3(-sign, 0, 0);
-    const sidePyramidPanelSide = new THREE.Vector3(sign, 0, 0);
-    const sidePyramidDir = new THREE.Vector3(-sign * sideX, SOLAR_HEIGHT, 0);
-    details.push(detail(makeSolarStaticPanelOverlay(
-      solarPanelCoarseLineGeom,
-      solarPanelCoarseLineMat,
-      sideSpan,
-      sideLen,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sidePyramidDir,
-      1.1,
-      sidePyramidPanelSide,
-    ), 'high', 'high', 'solarPanel'));
-    details.push(detail(makeSolarStaticPanelOverlay(
-      solarPanelFineLineGeom,
-      solarPanelFineLineMat,
-      sideSpan,
-      sideLen,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sidePyramidDir,
-      1.25,
-      sidePyramidPanelSide,
-    ), 'max', undefined, 'solarPanel'));
     details.push(detail(makeHingeBar(
       solarPetalBackMat,
       sideSpan,
@@ -873,42 +645,6 @@ function buildSolar(
       sideClosedDir,
       sidePanelSide,
     ), 'low', undefined, 'solarPanel'));
-    details.push(detail(makeSolarPetalOverlay(
-      solarPanelCoarseLineGeom,
-      solarPanelCoarseLineMat,
-      sideSpan,
-      sideLen,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sign,
-      0,
-      petalTilt,
-      0,
-      petalFaceOffset + 0.65,
-      sideClosedDir,
-      sidePanelSide,
-    ), 'high', 'high', 'solarPanel'));
-    details.push(detail(makeSolarPetalOverlay(
-      solarPanelFineLineGeom,
-      solarPanelFineLineMat,
-      sideSpan,
-      sideLen,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sign,
-      0,
-      petalTilt,
-      0,
-      petalFaceOffset + 0.8,
-      sideClosedDir,
-      sidePanelSide,
-    ), 'max', undefined, 'solarPanel'));
   }
 
   return { primary, details, height: SOLAR_HEIGHT, primaryMaterialLocked: true };
@@ -931,34 +667,9 @@ function buildWind(
     'low',
   ));
   details.push(detail(
-    makeCylinder(windGlowMat, Math.max(8.5, minDim * 0.34), 2.5, 0, baseH + 6.8, 0, hexCylinderGeom),
-    'medium',
-  ));
-  details.push(detail(
     makeCylinder(windTowerMat, towerRadius, towerH, 0, towerH / 2, 0),
     'low',
   ));
-  details.push(detail(
-    makeCylinder(windTrimMat, towerRadius * 1.34, 4, 0, towerH * 0.38, 0, hexCylinderGeom),
-    'medium',
-  ));
-  details.push(detail(
-    makeCylinder(windTrimMat, towerRadius * 1.5, 4.5, 0, towerH * 0.72, 0, hexCylinderGeom),
-    'medium',
-  ));
-
-  const conduitH = towerH * 0.68;
-  for (const side of [-1, 1]) {
-    details.push(detail(makeBox(
-      windGlowMat,
-      Math.max(0.9, towerRadius * 0.18),
-      conduitH,
-      Math.max(0.75, towerRadius * 0.14),
-      side * towerRadius * 1.22,
-      towerH * 0.5,
-      towerRadius * 0.52,
-    ), 'high'));
-  }
 
   const root = new THREE.Mesh(boxGeom, invisibleMat);
   root.position.set(0, towerH, 0);
@@ -1479,20 +1190,13 @@ function makeExtractorRotor(
   angleOffset: number,
   bladeRootRadius: number,
   bladeLengthScale: number = 1,
-  /** When true, each blade gets an emissive cutting-edge strip along
-   *  its outer face. Used at HIGH+ tier; the LOW/MEDIUM rotor variant
-   *  passes false to halve the per-blade draw cost. */
-  withCuttingEdgeGlow: boolean = true,
 ): THREE.Mesh {
   const rotor = new THREE.Mesh(cylinderGeom, invisibleMat);
   rotor.position.set(0, y, 0);
 
   const hubRadius = Math.max(4.5, bladeWidth * 0.68);
-  const hub = makeCylinder(extractorDarkMat, hubRadius, bladeThickness * 2.7, 0, 0, 0, hexCylinderGeom);
+  const hub = makeCylinder(extractorBladeMat, hubRadius, bladeThickness * 2.7, 0, 0, 0, hexCylinderGeom);
   rotor.add(hub);
-
-  const crown = makeSphere(extractorBladeMat, hubRadius * 0.72, 0, bladeThickness * 1.45, 0);
-  rotor.add(crown);
 
   const groundClearance = Math.max(3.5, bladeThickness * 1.5);
   const fullVerticalDrop = Math.max(12, y - groundClearance);
@@ -1528,23 +1232,6 @@ function makeExtractorRotor(
     );
     applyBasis(blade, bladeDir, normalDir, tangentDir);
     rotor.add(blade);
-
-    if (withCuttingEdgeGlow) {
-      const edgeCenterX = centerX + normalDir.x * bladeThickness * 0.56;
-      const edgeCenterY = centerY + normalDir.y * bladeThickness * 0.56;
-      const edgeCenterZ = centerZ + normalDir.z * bladeThickness * 0.56;
-      const cuttingEdge = makeBox(
-        extractorGlowMat,
-        bladeAxisLength * 0.72,
-        Math.max(1.2, bladeThickness * 0.18),
-        Math.max(1.2, bladeWidth * 0.16),
-        edgeCenterX,
-        edgeCenterY,
-        edgeCenterZ,
-      );
-      applyBasis(cuttingEdge, bladeDir, normalDir, tangentDir);
-      rotor.add(cuttingEdge);
-    }
   }
 
   return rotor;
@@ -1601,89 +1288,6 @@ function makeTrianglePetal(
       thickness,
     } satisfies SolarPetalAnimation;
   }
-  return mesh;
-}
-
-function makeSolarPetalOverlay(
-  geometry: THREE.BufferGeometry,
-  material: THREE.Material,
-  width: number,
-  length: number,
-  hingeX: number,
-  hingeY: number,
-  hingeZ: number,
-  tangentX: number,
-  tangentZ: number,
-  outwardX: number,
-  outwardZ: number,
-  openAngle: number,
-  inset: number,
-  normalOffset: number,
-  closedDirection: THREE.Vector3,
-  panelSideHint: THREE.Vector3,
-): THREE.Mesh {
-  const hinge = new THREE.Vector3(hingeX, hingeY, hingeZ);
-  const tangent = new THREE.Vector3(tangentX, 0, tangentZ);
-  const openDirection = new THREE.Vector3(
-    outwardX * Math.cos(openAngle),
-    Math.sin(openAngle),
-    outwardZ * Math.cos(openAngle),
-  );
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.matrixAutoUpdate = false;
-  mesh.matrix.copy(makeTrianglePlateMatrix(
-    width,
-    length,
-    hinge,
-    tangent,
-    openDirection,
-    inset,
-    normalOffset,
-    0,
-    panelSideHint,
-  ));
-  mesh.userData.solarPetal = {
-    width,
-    length,
-    hinge: hinge.clone(),
-    tangent: tangent.clone(),
-    openDirection: openDirection.clone(),
-    closedDirection: closedDirection.clone(),
-    panelSideHint: panelSideHint.clone(),
-    inset,
-    normalOffset,
-    thickness: 0,
-  } satisfies SolarPetalAnimation;
-  return mesh;
-}
-
-function makeSolarStaticPanelOverlay(
-  geometry: THREE.BufferGeometry,
-  material: THREE.Material,
-  width: number,
-  length: number,
-  hingeX: number,
-  hingeY: number,
-  hingeZ: number,
-  tangentX: number,
-  tangentZ: number,
-  panelDirection: THREE.Vector3,
-  normalOffset: number,
-  panelSideHint: THREE.Vector3,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.matrixAutoUpdate = false;
-  mesh.matrix.copy(makeTrianglePlateMatrix(
-    width,
-    length,
-    new THREE.Vector3(hingeX, hingeY, hingeZ),
-    new THREE.Vector3(tangentX, 0, tangentZ),
-    panelDirection,
-    0,
-    normalOffset,
-    0,
-    panelSideHint,
-  ));
   return mesh;
 }
 
@@ -1853,8 +1457,6 @@ export function disposeBuildingGeoms(): void {
   solarPanelPyramidGeom.dispose();
   solarTrianglePanelGeom.dispose();
   solarTrianglePetalGeom.dispose();
-  solarPanelCoarseLineGeom.dispose();
-  solarPanelFineLineGeom.dispose();
   cylinderGeom.dispose();
   hexCylinderGeom.dispose();
   extractorPyramidGeom.dispose();
@@ -1862,20 +1464,15 @@ export function disposeBuildingGeoms(): void {
   coneGeom.dispose();
   windBladeGeom.dispose();
   constructionOrbGeom.dispose();
-  chimneyMat.dispose();
   solarCellMat.dispose();
   solarPetalBackMat.dispose();
-  solarPanelCoarseLineMat.dispose();
-  solarPanelFineLineMat.dispose();
   windTowerMat.dispose();
   windTrimMat.dispose();
   windNacelleMat.dispose();
   windBladeMat.dispose();
   windGlassMat.dispose();
   windGlowMat.dispose();
-  extractorDarkMat.dispose();
   extractorBladeMat.dispose();
-  extractorGlowMat.dispose();
   invisibleMat.dispose();
   factoryFrameMat.dispose();
   constructionBandMat.dispose();
