@@ -97,7 +97,6 @@ export function buildMirrorPanelCache(
     for (let i = 0; i < tb.mirrorPanels.length; i++) {
       panelsOut.push({
         halfWidth: halfSide,
-        halfHeight: halfSide,
         // Panel center sits forward of the turret pivot by armLength
         // along the turret's local +X axis. The world-space yaw of
         // that offset is the mirror turret's rotation, applied at

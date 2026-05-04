@@ -152,17 +152,21 @@ export type UnitAction = {
 };
 
 // Cached mirror panel geometry (pre-computed from blueprint at entity creation).
-// halfWidth  — half the panel's edge length (along the horizontal edge direction).
-// halfHeight — legacy 2D thickness value from the blueprint; unused in 3D
-//              collision (panels are vertical infinitely-thin rectangles) but
-//              kept so 2D art paths still read meaningful numbers.
-// baseY/topY — world-y above the unit's ground footprint defining the
-//              panel's vertical span. Shared across all of a unit's panels
-//              because they all sit flush with the unit body (baseY=MIRROR_BASE_Y)
-//              and run up to body-top + TURRET_HEIGHT (topY, per-unit).
+// halfWidth — half the panel's edge length (square panel, so the same
+//             value is used for both the horizontal-edge half and the
+//             vertical-edge half via `(topY - baseY) / 2`).
+// offsetX  — distance from turret pivot to panel center along the rigid
+//            arm's forward direction (≈ unitBodyRadius * MIRROR_ARM_LENGTH_FRAC).
+// offsetY  — lateral pivot offset (zero for current single-arm panels;
+//            non-zero would mount the arm off-center on the chassis).
+// angle    — panel-yaw offset relative to mirror turret yaw (zero today;
+//            reserved for future multi-panel mirror configurations).
+// baseY / topY — world-Z (above the unit's ground footprint) defining the
+//                panel's vertical span. Both are derived in mirrorPanelCache
+//                from `mount.z * unitBodyRadius ± halfSide`, so their
+//                midpoint is the rigid-arm pivot's Z.
 export type CachedMirrorPanel = {
   halfWidth: number;
-  halfHeight: number;
   offsetX: number;
   offsetY: number;
   angle: number;

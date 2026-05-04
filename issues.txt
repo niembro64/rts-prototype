@@ -8,10 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   4) DEAD CODE
   ---------------------------------------------------
 
-  [MEDIUM] src/types/sim.ts:165 `CachedMirrorPanel.halfHeight` is set
-    by mirrorPanelCache.ts:65 but never read; the comment at lines
-    156-158 even labels it "legacy 2D thickness value… unused in 3D
-    collision". Delete the field.
   [MEDIUM] src/config.ts:347 `MIRROR_BASE_Y = 2` exported but never
     imported. Two stale comments at types/sim.ts:161 and
     Render3DEntities.ts:198 still reference it.
@@ -55,12 +51,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   ---------------------------------------------------
   6) OUTDATED / STALE COMMENTS
   ---------------------------------------------------
-
-  [MEDIUM] src/types/sim.ts:154-162 — `CachedMirrorPanel` doc references
-    `MIRROR_BASE_Y`, `TURRET_HEIGHT`, "2D thickness". Current
-    mirrorPanelCache.ts derives baseY/topY from
-    `mount.z * unitBodyRadius ± halfSide` — none of those constants
-    are involved. Multi-refactor stale.
 
   [MEDIUM] src/config.ts:336-339 — `TURRET_HEIGHT` doc points to
     `getUnitMuzzleHeight` in `combatUtils.ts`. That function does not
