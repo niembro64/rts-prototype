@@ -1,7 +1,7 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity, HysteresisRange, Turret, TurretRanges } from '../types';
+import type { Entity, EntityId, HysteresisRange, Turret, TurretRanges } from '../types';
 import { isLineShot } from '../types';
 import { getTargetRadius, turretBit, updateWeaponWorldKinematics } from './combatUtils';
 import { distanceSquared3 } from '../../math';
@@ -132,11 +132,28 @@ function outsideTrackingReleaseSq(ranges: TurretRanges, distSq: number, targetRa
 // HOST SERVER LOD tier (see simQuality.ts). Lower tiers tighten the
 // threshold AND raise the stride so heavy crowds bound out faster.
 
-// Check if an entity is a beam unit (has at least one non-passive beam or laser turret)
-function isBeamUnit(entity: Entity): boolean {
-  if (!entity.turrets) return false;
-  for (const turret of entity.turrets) {
-    if (!turret.config.passive && isLineShot(turret.config.shot)) return true;
+/** Threat predicate used by passive (mirror) weapons. True iff
+ *  `enemy` carries at least one non-passive line-shot turret whose
+ *  CURRENT target is `mirrorUnitId` AND whose state is not 'idle' —
+ *  i.e. that turret is actively rotating onto us ('tracking') or
+ *  already firing at us ('engaged').
+ *
+ *  Stricter than isBeamUnit on purpose: a beam-bearing enemy who
+ *  hasn't decided to point at US is not a threat the mirror can do
+ *  anything about, and locking the panel to such an enemy would
+ *  pose-budget away from a different beam unit who IS firing at us.
+ *  Combined with MirrorAimSolver's per-turret pick (which prefers
+ *  the turret targeting us over any other line shot on the same
+ *  unit), this gives the user-visible behaviour:
+ *  "the mirror locks onto the beam currently firing at us." */
+function isLineThreatTo(enemy: Entity, mirrorUnitId: EntityId): boolean {
+  if (!enemy.turrets) return false;
+  for (const turret of enemy.turrets) {
+    if (turret.config.passive) continue;
+    if (!isLineShot(turret.config.shot)) continue;
+    if (turret.target !== mirrorUnitId) continue;
+    if (turret.state === 'idle') continue;
+    return true;
   }
   return false;
 }
@@ -316,8 +333,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           const weapon = weapons[wi];
           if (weaponSystemDisabled(world, weapon)) continue;
           if (weapon.config.isManualFire) continue;
-          // Passive turrets (mirrors) only target beam units
-          if (weapon.config.passive && !isBeamUnit(priorityTarget)) {
+          // Passive turrets (mirrors) only lock onto enemies that
+          // are actively pointing a line shot AT THIS UNIT. The
+          // priority-target path inherits the same rule so a
+          // user-issued "attack X" against a non-threat doesn't
+          // hijack a mirror that's protecting against a real beam.
+          if (weapon.config.passive && !isLineThreatTo(priorityTarget, unit.id)) {
             setWeaponTarget(weapon, unit, wi, null);
             weapon.state = 'idle';
             continue;
@@ -359,7 +380,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.unitRadiusCollider.shot; }
       else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
-      if (!targetIsValid || !target || (weapon.config.passive && !isBeamUnit(target))) {
+      // Per-tick re-validation of an existing lock. For passive
+      // (mirror) weapons we drop the lock the moment the enemy
+      // STOPS being a line threat to us — i.e. its targeting turret
+      // disengaged or swapped victim — so the mirror immediately
+      // becomes available to acquire whatever IS firing at us next.
+      if (!targetIsValid || !target || (weapon.config.passive && !isLineThreatTo(target, unit.id))) {
         setWeaponTarget(weapon, unit, wi, null);
         weapon.state = 'idle';
       } else {
@@ -470,7 +496,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const scanStart = denseScan ? tick % scanStride : 0;
       for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
         const enemy = candidates[ci];
-        if (weapon.config.passive && !isBeamUnit(enemy)) continue;
+        // Tracking-pass switch: passive (mirror) weapons only swap
+        // to a closer enemy if THAT enemy is actively threatening us
+        // with a line shot.
+        if (weapon.config.passive && !isLineThreatTo(enemy, unit.id)) continue;
         const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
         const distSq = distanceSquared3(
           weaponX, weaponY, weaponZ,
@@ -516,8 +545,13 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const scanStart = denseScan ? tick % scanStride : 0;
       for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
         const enemy = candidates[ci];
-        // Passive turrets (mirrors) only target beam units
-        if (weapon.config.passive && !isBeamUnit(enemy)) continue;
+        // Acquisition pass: passive (mirror) weapons only lock onto
+        // enemies that have a non-passive line-shot turret currently
+        // pointed AT THIS UNIT (state ∈ {tracking, engaged}). An
+        // idle beam-bearer or a beam unit firing at someone else
+        // produces nothing the mirror can deflect, so we don't waste
+        // a lock on it.
+        if (weapon.config.passive && !isLineThreatTo(enemy, unit.id)) continue;
 
         const enemyRadius = enemy.unit ? enemy.unit.unitRadiusCollider.shot : (enemy.building ? getTargetRadius(enemy) : 0);
         const distSq = distanceSquared3(
