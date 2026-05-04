@@ -30,7 +30,7 @@ import {
   getUnitBlueprint,
 } from '../sim/blueprints';
 import { isLineShotBlueprint } from '@/types/blueprints';
-import { MIRROR_ARM_LENGTH_FRAC } from '../sim/mirrorPanelCache';
+import { MIRROR_ARM_LENGTH_FRAC, getMirrorPanelCenter } from '../sim/mirrorPanelCache';
 import { getBodyEdgeTemplates } from './BodyShape3D';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {
@@ -74,6 +74,10 @@ const FOOT_Y = 1;
 // units only produce ~30-60 pieces now. Old pieces are evicted oldest-first.
 const GLOBAL_MAX_PIECES = 800;
 const MAX_PIECES_EMITTED_PER_FRAME = 180;
+
+// Scratch container for getMirrorPanelCenter — debris emission is the
+// only per-piece consumer in this file, called inside a death pulse.
+const _panelCenter = { x: 0, y: 0, z: 0 };
 
 // Physics. Linear drag mirrors the 2D DebrisSystem (~0.99/frame at 60Hz).
 // Angular drag is lower so spin decays noticeably faster than travel — the
@@ -822,15 +826,18 @@ export class Debris3D {
         const panelCenterY = localMount.z * r - chassisLiftY;
         const cY = Math.cos(chassisYaw);
         const sY = Math.sin(chassisYaw);
+        // Use the canonical arm-extension formula (mirror pitch is 0
+        // here — debris has no live mirror pose to read). Sim coords
+        // come back as (sim x, sim y, sim z); three.js takes
+        // (sim x, sim z, sim y).
+        getMirrorPanelCenter(0, 0, panelCenterY, armLength, chassisYaw, 0, _panelCenter);
         for (let pi = 0; pi < tb.mirrorPanels.length; pi++) {
-          // Panel — at arm's end, perpendicular to the arm. Local
-          // chassis-frame position is (armLength, panelCenterY, 0)
-          // rotated by chassisYaw around +Y.
+          // Panel — at arm's end, perpendicular to the arm.
           out.push({
             shape: 'box',
-            x: armLength * cY,
-            y: panelCenterY,
-            z: armLength * sY,
+            x: _panelCenter.x,
+            y: _panelCenter.z,
+            z: _panelCenter.y,
             yaw: -Math.PI / 2 + chassisYaw,
             sx: side,
             sy: side,

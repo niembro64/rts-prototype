@@ -59,6 +59,7 @@ import type { Entity, Turret } from '../types';
 import { isLineShot } from '../types';
 import { getTransformCosSin, getBarrelTip } from '../../math';
 import { resolveWeaponWorldMount } from './combatUtils';
+import { getMirrorPanelCenter } from '../mirrorPanelCache';
 
 /** Pick the most-relevant non-passive line-shot turret on `target` to
  *  bisect the mirror panel against. Priority (lowest rank wins):
@@ -109,6 +110,7 @@ export type MirrorAim = {
 };
 
 const _enemyBeamMount = { x: 0, y: 0, z: 0 };
+const _panelCenter = { x: 0, y: 0, z: 0 };
 
 export function solveMirrorAim(
   unit: Entity,
@@ -159,30 +161,24 @@ export function solveMirrorAim(
   const panel = panels[0];
   const armLength = panel.offsetX;
 
-  // Three fixed-point iterations on the panel center P (now full 3D).
-  // P(α, β) = (weaponX, weaponY, weaponZ) + armLength · a(α, β)
-  // where a(α, β) = (cos α · cos β,  sin α · cos β,  sin β) is the
-  // arm direction vector. Seed (α, β) from the weapon's last solved
-  // pose so the residual is sub-degree after one iter for nearly-
-  // stationary targets.
+  // Three fixed-point iterations on the panel center P (now full 3D),
+  // routed through the canonical `getMirrorPanelCenter` formula in
+  // mirrorPanelCache.ts so the aim solver, the panel hit-test, and
+  // the debris emitter can never disagree on where the panel ends up.
+  // Seed (α, β) from the weapon's last solved pose so the residual is
+  // sub-degree after one iter for nearly-stationary targets.
   let bisectorYaw = fallbackYaw;
   let bisectorPitch = fallbackPitch;
   let valid = false;
-  let cosA = Math.cos(bisectorYaw);
-  let sinA = Math.sin(bisectorYaw);
-  let cosB = Math.cos(bisectorPitch);
-  let sinB = Math.sin(bisectorPitch);
-  let pcx = weaponX + cosA * cosB * armLength;
-  let pcy = weaponY + sinA * cosB * armLength;
-  let pcz = weaponZ + sinB * armLength;
+  getMirrorPanelCenter(weaponX, weaponY, weaponZ, armLength, bisectorYaw, bisectorPitch, _panelCenter);
   for (let iter = 0; iter < 3; iter++) {
-    const sX = eTip.x - pcx;
-    const sY = eTip.y - pcy;
-    const sZ = eTip.z - pcz;
+    const sX = eTip.x - _panelCenter.x;
+    const sY = eTip.y - _panelCenter.y;
+    const sZ = eTip.z - _panelCenter.z;
     const sLen = Math.hypot(sX, sY, sZ);
-    const cX = target.transform.x - pcx;
-    const cY = target.transform.y - pcy;
-    const cZ = target.transform.z - pcz;
+    const cX = target.transform.x - _panelCenter.x;
+    const cY = target.transform.y - _panelCenter.y;
+    const cZ = target.transform.z - _panelCenter.z;
     const cLen = Math.hypot(cX, cY, cZ);
     if (sLen <= 1e-6 || cLen <= 1e-6) break;
     const nx = sX / sLen + cX / cLen;
@@ -195,13 +191,7 @@ export function solveMirrorAim(
     valid = true;
     // Re-anchor P at the just-solved bisector direction. Both yaw
     // and pitch feed back into the new panel center.
-    cosA = Math.cos(bisectorYaw);
-    sinA = Math.sin(bisectorYaw);
-    cosB = Math.cos(bisectorPitch);
-    sinB = Math.sin(bisectorPitch);
-    pcx = weaponX + cosA * cosB * armLength;
-    pcy = weaponY + sinA * cosB * armLength;
-    pcz = weaponZ + sinB * armLength;
+    getMirrorPanelCenter(weaponX, weaponY, weaponZ, armLength, bisectorYaw, bisectorPitch, _panelCenter);
   }
 
   if (!valid) {

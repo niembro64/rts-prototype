@@ -21,6 +21,7 @@
 
 import { rayTiltedRectIntersectionT } from '../../math';
 import type { CachedMirrorPanel } from '../../../types/sim';
+import { getMirrorPanelCenter } from '../mirrorPanelCache';
 
 export type MirrorPanelHit = {
   t: number;
@@ -39,6 +40,7 @@ const _result: MirrorPanelHit = {
   normalX: 0, normalY: 0, normalZ: 0,
   panelIndex: -1,
 };
+const _panelCenter = { x: 0, y: 0, z: 0 };
 
 /**
  * Find the closest mirror-panel hit on a single unit by a 3D ray
@@ -87,17 +89,19 @@ export function findClosestPanelHit(
     // Panel center in world. The rigid arm starts at the turret
     // pivot — which sits at the unit center (xy) + panel.offsetY
     // sideways (perpY-aligned) — and extends `armLength = offsetX`
-    // along the 3D arm direction (cos α cos β, sin α cos β, sin β).
-    // unitGroundZ + (baseY+topY)/2 is the pivot's Z (the panel's
-    // baseY/topY are authored at zero pitch, so their midpoint IS
-    // the pivot height regardless of pitch).
+    // along the 3D arm direction. unitGroundZ + (baseY+topY)/2 is
+    // the pivot's Z (the panel's baseY/topY are authored at zero
+    // pitch, so their midpoint IS the pivot height regardless of
+    // pitch). The arm-extension formula is shared with the aim
+    // solver and debris emitter via getMirrorPanelCenter.
     const armLength = panel.offsetX;
     const pivotX = unitX + perpX * panel.offsetY;
     const pivotY = unitY + perpY * panel.offsetY;
     const pivotZ = unitGroundZ + (panel.baseY + panel.topY) / 2;
-    const pcx = pivotX + fwdX * cosPitch * armLength;
-    const pcy = pivotY + fwdY * cosPitch * armLength;
-    const pcz = pivotZ + sinPitch * armLength;
+    getMirrorPanelCenter(pivotX, pivotY, pivotZ, armLength, mirrorRot, mirrorPitch, _panelCenter);
+    const pcx = _panelCenter.x;
+    const pcy = _panelCenter.y;
+    const pcz = _panelCenter.z;
 
     // Yaw of the panel itself = turret yaw + panel's blueprint angle.
     const panelYaw = mirrorRot + panel.angle;

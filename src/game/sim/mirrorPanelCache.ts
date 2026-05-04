@@ -28,7 +28,7 @@ import { getTurretBlueprint } from './blueprints';
  *  ball-joint math (MirrorAimSolver, MirrorPanelHit, the renderer's
  *  single-quaternion root rotation) all agree on where the panel
  *  ends up in 3D. Dial back when you're done verifying. */
-export const MIRROR_ARM_LENGTH_FRAC = 5.0;
+export const MIRROR_ARM_LENGTH_FRAC = 1.2;
 
 /** Mirror panel size multiplier. Scales BOTH the sim collision
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
@@ -39,6 +39,41 @@ export const MIRROR_ARM_LENGTH_FRAC = 5.0;
  *  a panel that's 8 × bodyRadius on a side is impossible to miss
  *  during yaw / pitch sweeps. */
 export const MIRROR_PANEL_SIZE_MULT = 4.0;
+
+/** Compute the rigid mirror arm's panel CENTER in world coords by
+ *  extending an arm of length `armLength` from `(pivotX, pivotY,
+ *  pivotZ)` along the 3D direction
+ *
+ *      a(α, β) = (cos α · cos β,  sin α · cos β,  sin β)
+ *
+ *  where α = mirrorYaw and β = mirrorPitch.
+ *
+ *  SINGLE SOURCE OF TRUTH for the rigid-arm extend formula — shared
+ *  by the aim solver (iterating panel-center for bisector refinement),
+ *  the panel hit test (collision), and the debris emitter (so dead
+ *  Lorises drop debris in the same spot the live panel was). The
+ *  PIVOT itself is computed differently per call site (the aim solver
+ *  uses a chassis-tilt-aware mount from resolveWeaponWorldMount; the
+ *  hit test and debris use the upright body-mid-Z anchor) so the
+ *  pivot stays at the call site, but the arm extension lives here.
+ *
+ *  `out` is mutated and returned to keep this allocation-free in the
+ *  per-tick aim-solver loop. */
+export function getMirrorPanelCenter(
+  pivotX: number, pivotY: number, pivotZ: number,
+  armLength: number,
+  mirrorYaw: number, mirrorPitch: number,
+  out: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } {
+  const cosYaw = Math.cos(mirrorYaw);
+  const sinYaw = Math.sin(mirrorYaw);
+  const cosPitch = Math.cos(mirrorPitch);
+  const sinPitch = Math.sin(mirrorPitch);
+  out.x = pivotX + cosYaw * cosPitch * armLength;
+  out.y = pivotY + sinYaw * cosPitch * armLength;
+  out.z = pivotZ + sinPitch * armLength;
+  return out;
+}
 
 /** Mutates `panelsOut` (push), returns the bound radius the caller
  *  should assign to `unit.mirrorBoundRadius`. Returns 0 when the
