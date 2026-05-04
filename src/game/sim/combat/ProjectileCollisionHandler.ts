@@ -17,7 +17,6 @@ import { getSimDetailConfig } from '../simQuality';
 import { spatialGrid } from '../SpatialGrid';
 import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
 import { getUnitGroundZ } from '../unitGeometry';
-import { getLineShotDamageSphereRadius } from './lineShotUtils';
 import { findForceFieldProjectileIntersection } from './forceFieldTurret';
 
 const MIRROR_PROJECTILE_QUERY_PAD = 96;
@@ -533,7 +532,7 @@ export function checkProjectileCollisions(
       const impactZ = lastPoint?.z ?? projEntity.transform.z;
       const dtSec = collisionDtMs / 1000;
 
-      const damageSphereRadius = getLineShotDamageSphereRadius(beamShot);
+      const damageSphereRadius = beamShot.damageSphere.radius;
 
       // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
       const tickDamage = beamShot.dps * dtSec;

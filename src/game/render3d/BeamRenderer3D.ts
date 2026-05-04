@@ -20,7 +20,6 @@ import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjec
 import { RenderLodGrid } from './RenderLodGrid';
 import { normalizeLodCellSize } from '../lodGridMath';
 import { landCellIndexForSize } from '../landGrid';
-import { getLineShotDamageSphereRadius } from '../sim/combat/lineShotUtils';
 
 // Cylinder radius is the sim's `shot.radius` (= shot.width / 2), scaled
 // down and floored so a very-thin beam still renders as a visible line.
@@ -429,10 +428,7 @@ export class BeamRenderer3D {
       let damageSphereRadius = ENDPOINT_MIN_RADIUS;
       if (shot && isLineShot(shot)) {
         cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius * BEAM_RADIUS_SCALE * radiusMul);
-        damageSphereRadius = Math.max(
-          ENDPOINT_MIN_RADIUS,
-          getLineShotDamageSphereRadius(shot),
-        );
+        damageSphereRadius = Math.max(ENDPOINT_MIN_RADIUS, shot.damageSphere.radius);
       }
       const baseAlpha = pt === 'laser' ? LASER_OPACITY_MAX : BEAM_OPACITY;
 

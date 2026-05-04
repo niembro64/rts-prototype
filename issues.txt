@@ -8,11 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   1) DUPLICATE PREDICATES / HELPERS
   ---------------------------------------------------
 
-  [LOW] src/game/sim/combat/lineShotUtils.ts exports
-    `getLineShotDamageSphereRadius(shot) => shot.damageSphere.radius` —
-    a trivial wrapper used 2x (ProjectileCollisionHandler.ts:536,
-    BeamRenderer3D.ts:433). Inline the field access; delete the helper.
-
   [LOW] src/game/sim/combat/targetIndex.ts:40,88 use bare `=== 'beam'`
     and the comment lumps "laser-pulse" with "projectile/force" — that
     framing is misleading because lasers ARE line shots. Either fold
