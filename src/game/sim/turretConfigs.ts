@@ -1,17 +1,9 @@
 import type { TurretConfig, TurretRanges } from './types';
-import { buildAllTurretConfigs, TURRET_BLUEPRINTS } from './blueprints';
-
-// Union type of all registered turret config keys (derived from blueprints)
-export type WeaponId = keyof typeof TURRET_BLUEPRINTS;
+import { buildAllTurretConfigs } from './blueprints';
 
 // Turret configurations — built from blueprints at init time
 export const TURRET_CONFIGS: Record<string, TurretConfig> =
   buildAllTurretConfigs();
-
-export function refreshHysteresisRangeSquares(range: { acquire: number; release: number; acquireSq?: number; releaseSq?: number }): void {
-  range.acquireSq = range.acquire * range.acquire;
-  range.releaseSq = range.release * range.release;
-}
 
 function makeHysteresisRange(acquire: number, release: number): { acquire: number; release: number; acquireSq: number; releaseSq: number } {
   return {
