@@ -641,9 +641,11 @@ export type Projectile = {
   lastSentVelZ?: number;
 };
 
-// Economy state per player. `resourceCost` on a buildable is the
-// SAME number for energy + mana + metal — every build draws from
-// all three pools in lockstep, gated by whichever is most scarce.
+// Economy state per player. Each pool (energy / mana / metal) has its
+// own stockpile, income breakdown, and expenditure tally. Buildables
+// author independent per-resource costs (`ResourceCost` triple) and
+// each pool fills its own `paid` accumulator; the build is gated by
+// whichever pool is most scarce. See ResourceCost / Buildable below.
 export type EconomyState = {
   stockpile: { curr: number; max: number };
   income: { base: number; production: number };

@@ -8,11 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   6) OUTDATED / STALE COMMENTS
   ---------------------------------------------------
 
-  [MEDIUM] src/types/sim.ts:629-630 — "Economy state per player.
-    `resourceCost` on a buildable is the SAME number for energy + mana
-    + metal" is wrong post-refactor; per-resource costs are now
-    independent (`{ energy, mana, metal }` triple).
-
   [LOW] src/game/sim/economy.ts:155 — `canAfford(playerId, resourceCost:
     number)` parameter still named `resourceCost`, but it's a single
     scalar applied to EACH resource. Misleading given that
