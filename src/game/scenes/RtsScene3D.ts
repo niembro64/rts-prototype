@@ -301,7 +301,7 @@ export class RtsScene3D {
   private precompileFramesRemaining = 60;
 
   // Performance trackers (mirror RtsScene)
-  private fpsTracker = new EmaTracker(EMA_CONFIG.fps, EMA_INITIAL_VALUES.fps);
+  private renderTpsTracker = new EmaTracker(EMA_CONFIG.tps, EMA_INITIAL_VALUES.tps);
   private snapTracker = new EmaTracker(EMA_CONFIG.snaps, EMA_INITIAL_VALUES.snaps);
   // Parallel tracker that ONLY updates on full keyframes (state.isDelta=false).
   //
@@ -314,6 +314,7 @@ export class RtsScene3D {
   private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs, EMA_INITIAL_VALUES.frameMs);
   private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
   private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
+  private predMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.predMs, EMA_INITIAL_VALUES.predMs);
   private longtaskTracker = new LongtaskTracker();
 
   // Reusable raycaster + horizontal-plane scratch for projecting
@@ -791,8 +792,11 @@ export class RtsScene3D {
   update(_time: number, delta: number): void {
     const frameStart = performance.now();
 
-    // Per-frame FPS tracker
-    if (delta > 0) this.fpsTracker.update(1000 / delta);
+    // PLAYER CLIENT scene/update loop cadence used by the client LOD resolver.
+    if (delta > 0) {
+      const rate = 1000 / delta;
+      this.renderTpsTracker.update(rate);
+    }
     if (this.clientRenderEnabled) {
       this.explosionRenderer.beginFrame();
       this.debrisRenderer.beginFrame();
@@ -887,6 +891,8 @@ export class RtsScene3D {
       this.frameMsTracker.update(frameMs);
       this.renderMsTracker.update(0);
       this.logicMsTracker.update(frameMs);
+      // Render-disabled branch never runs prediction, so PRED ms is 0.
+      this.predMsTracker.update(0);
       this.longtaskTracker.tick();
       return;
     }
@@ -930,6 +936,10 @@ export class RtsScene3D {
     // Dead-reckon + drift through the exact same camera-sphere cell
     // resolver used by renderers this frame. Near entities predict
     // every frame; far cells update on sparse staggered strides.
+    // Wall-clock the prediction pass independently so the PLAYER
+    // CLIENT bar can isolate prediction cost from the broader
+    // logic/render/frame timing — see getFrameTiming().
+    const predStart = performance.now();
     this.clientViewState.applyPrediction(delta, {
       cameraX: renderLod.view.cameraX,
       cameraY: renderLod.view.cameraY,
@@ -942,6 +952,7 @@ export class RtsScene3D {
       physicsPredictionFramesSkip: graphicsConfig.clientPhysicsPredictionFramesSkip,
       resolveTier: this.predictionLodResolver,
     });
+    const predMs = performance.now() - predStart;
 
     // Render phase
     const renderStart = performance.now();
@@ -1200,14 +1211,19 @@ export class RtsScene3D {
       this.updateMinimapData();
     }
 
-    // Track frame timing
+    // Track frame timing. logicMs = frameMs - renderMs - predMs so
+    // the three buckets sum to frameMs and a long applyPrediction
+    // pass can no longer hide behind the LOGIC bar. Clamp at 0 to
+    // protect against `performance.now()` reordering jitter (in
+    // practice negligible but defensive).
     const frameEnd = performance.now();
     const frameMs = frameEnd - frameStart;
     const renderMs = renderEnd - renderStart;
-    const logicMs = frameMs - renderMs;
+    const logicMs = Math.max(0, frameMs - renderMs - predMs);
     this.frameMsTracker.update(frameMs);
     this.renderMsTracker.update(renderMs);
     this.logicMsTracker.update(logicMs);
+    this.predMsTracker.update(predMs);
     this.longtaskTracker.tick();
   }
 
@@ -1880,6 +1896,11 @@ export class RtsScene3D {
     frameMsAvg: number; frameMsHi: number;
     renderMsAvg: number; renderMsHi: number;
     logicMsAvg: number; logicMsHi: number;
+    /** Pure ClientViewState.applyPrediction wall-clock per frame
+     *  (avg/hi). Pulled out of logicMs so the PLAYER CLIENT bar can
+     *  isolate prediction cost — long prediction passes used to hide
+     *  in the LOGIC bar. */
+    predMsAvg: number; predMsHi: number;
     /** Actual GPU execution time (ms) from EXT_disjoint_timer_query_webgl2,
      *  or 0 when the extension isn't available (Safari). Callers should
      *  check `gpuTimerSupported` and fall back to renderMs if false. */
@@ -1897,6 +1918,8 @@ export class RtsScene3D {
       renderMsHi: this.renderMsTracker.getHi(),
       logicMsAvg: this.logicMsTracker.getAvg(),
       logicMsHi: this.logicMsTracker.getHi(),
+      predMsAvg: this.predMsTracker.getAvg(),
+      predMsHi: this.predMsTracker.getHi(),
       gpuTimerMs: this.clientRenderEnabled ? this.threeApp.gpuTimer.getGpuMs() : 0,
       gpuTimerSupported: this.threeApp.gpuTimer.isSupported(),
       longtaskMsPerSec: this.longtaskTracker.getBlockedMsPerSec(),
@@ -1905,10 +1928,10 @@ export class RtsScene3D {
     };
   }
 
-  public getFrameStats(): { avgFps: number; worstFps: number } {
+  public getRenderTpsStats(): { avgRate: number; worstRate: number } {
     return {
-      avgFps: this.fpsTracker.getAvg(),
-      worstFps: this.fpsTracker.getLow(),
+      avgRate: this.renderTpsTracker.getAvg(),
+      worstRate: this.renderTpsTracker.getLow(),
     };
   }
 

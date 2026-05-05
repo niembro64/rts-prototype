@@ -258,6 +258,11 @@ export const FRAME_TIMING_EMA = {
   frameMs: FRAME_MS_EMA,
   renderMs: FRAME_MS_EMA,
   logicMs: FRAME_MS_EMA,
+  /** Pure ClientViewState.applyPrediction wall-clock per frame.
+   *  Pulled OUT of logicMs so the LOGIC bar isolates non-prediction
+   *  cost (input, HUD, scene scaffolding) and the PRED bar isolates
+   *  the dead-reckon + drift + per-frame turret/shot prediction pass. */
+  predMs: FRAME_MS_EMA,
 };
 
 /**
@@ -287,6 +292,7 @@ export const EMA_INITIAL_VALUES = {
   frameMs: 0,
   renderMs: 0,
   logicMs: 0,
+  predMs: 0,
 };
 
 // =============================================================================
