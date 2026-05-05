@@ -28,6 +28,7 @@ import { isProjectileShot } from '../sim/types';
 import type { ConcreteGraphicsQuality, FireExplosionStyle } from '@/types/graphics';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
+import { hexToRgb01 } from './colorUtils';
 
 /** Per-puff scope padding in sim-world units. Smoke trails extend
  *  BEHIND the projectile along its flight path, so a rocket whose
@@ -337,9 +338,7 @@ export class SmokeTrail3D {
     const cap = Math.min(MAX_PARTICLES, Math.max(0, particleCap | 0));
     if (cap <= 0) return;
 
-    const r = ((color >> 16) & 0xff) / 255;
-    const g = ((color >> 8)  & 0xff) / 255;
-    const b = ( color        & 0xff) / 255;
+    const { r, g, b } = hexToRgb01(color);
 
     // sim(x, y, z) → three(x, z, y) — smoke stays at the rocket's
     // 3D position when it was emitted and doesn't follow the rocket

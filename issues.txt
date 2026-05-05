@@ -24,21 +24,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
     src/game/sim/combat/aimSolver.ts:41-43. MathHelpers.ts already
     exports `clamp`; aimSolver should import it.
 
-  [MEDIUM] Hex-int → 0..1 RGB conversion duplicated across 8+ files.
-    Pattern `((hex >> 16) & 0xff) / 255` etc. at:
-      - src/game/render3d/SprayRenderer3D.ts:220-222
-      - src/game/render3d/Explosion3D.ts:203-205
-      - src/game/render3d/Debris3D.ts:108-110, :1023-1025
-      - src/game/render3d/Render3DEntities.ts:113-115
-      - src/game/render3d/Waypoint3D.ts:241-243, :270-272, :298-300
-      - src/game/render3d/SmokeTrail3D.ts:340-342
-      - src/game/render3d/ForceFieldRenderer3D.ts:431-433, :456-458
-    Lift `hexToRgb01(hex: number): { r, g, b }` (and an array-write
-    variant for instance buffers) into a shared colorUtils.ts.
-    Render3DEntities already has a sibling `hexStringToRgb` for the
-    string form — co-locate them.
-
-  [MEDIUM] Mirror arm-direction unit vector recomputed at the call
+[MEDIUM] Mirror arm-direction unit vector recomputed at the call
     site instead of via the canonical helper. MirrorPanelHit.ts:74-79
     and :112-114 open-code `(yawCos × cosPitch, yawSin × cosPitch,
     sinPitch)`, the same arm direction `getMirrorPanelCenter` (in
@@ -121,6 +107,5 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   Suggested attack order
   ---------------------------------------------------
 
-  1. Color helper (bucket 1 MEDIUM): hexToRgb01 + sweep call sites.
-  2. aimSolver.iterateMuzzleAim helper (bucket 1 MEDIUM): minor
+  1. aimSolver.iterateMuzzleAim helper (bucket 1 MEDIUM): minor
      cleanup; do alongside any future aim-solver work.

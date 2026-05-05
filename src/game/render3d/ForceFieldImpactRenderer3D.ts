@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { FORCE_FIELD_IMPACT_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type PlayerId } from '../sim/types';
+import { writeHexToRgb01Array } from './colorUtils';
 
 type Impact = {
   ageMs: number;
@@ -89,9 +90,7 @@ class ImpactPool {
   ): void {
     this.mesh.setMatrixAt(index, matrix);
     this.alphaArr[index] = alpha;
-    this.colorArr[index * 3] = ((color >> 16) & 0xff) / 255;
-    this.colorArr[index * 3 + 1] = ((color >> 8) & 0xff) / 255;
-    this.colorArr[index * 3 + 2] = (color & 0xff) / 255;
+    writeHexToRgb01Array(color, this.colorArr, index * 3);
   }
 
   setCount(count: number): void {

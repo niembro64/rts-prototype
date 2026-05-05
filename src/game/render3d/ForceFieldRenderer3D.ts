@@ -19,6 +19,7 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
+import { hexToRgb01, writeHexToRgb01Array } from './colorUtils';
 
 /** How far the force-field emitter sphere is embedded into the body
  *  part it's mounted on. Expressed as a chassis-local Y offset added
@@ -360,16 +361,11 @@ export class ForceFieldRenderer3D {
       // bubble below is gated by active progress.
       const freq = (Math.PI * 2) / (shot.transitionTime / 1000);
       const pulse = Math.sin(nowSec * freq) * 0.5 + 0.5;
-      const idleColor = FORCE_FIELD_VISUAL.emitterIdleColor;
-      const er =
-        ((idleColor >> 16) & 0xff)
-        + (((fieldColor >> 16) & 0xff) - ((idleColor >> 16) & 0xff)) * pulse;
-      const eg =
-        ((idleColor >> 8) & 0xff)
-        + (((fieldColor >> 8) & 0xff) - ((idleColor >> 8) & 0xff)) * pulse;
-      const eb =
-        (idleColor & 0xff)
-        + ((fieldColor & 0xff) - (idleColor & 0xff)) * pulse;
+      const idleRgb = hexToRgb01(FORCE_FIELD_VISUAL.emitterIdleColor);
+      const fieldRgb = hexToRgb01(fieldColor);
+      const er = idleRgb.r + (fieldRgb.r - idleRgb.r) * pulse;
+      const eg = idleRgb.g + (fieldRgb.g - idleRgb.g) * pulse;
+      const eb = idleRgb.b + (fieldRgb.b - idleRgb.b) * pulse;
       const emitterVisualProgress = Math.max(progress, 0.3);
       const emitterRadius = EMITTER_BASE_RADIUS
         + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * emitterVisualProgress;
@@ -428,9 +424,9 @@ export class ForceFieldRenderer3D {
         );
         this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
         this.sphereAlphaArr[this._sphereCursor] = 0.9;
-        this.sphereColorArr[this._sphereCursor * 3]     = er / 255;
-        this.sphereColorArr[this._sphereCursor * 3 + 1] = eg / 255;
-        this.sphereColorArr[this._sphereCursor * 3 + 2] = eb / 255;
+        this.sphereColorArr[this._sphereCursor * 3]     = er;
+        this.sphereColorArr[this._sphereCursor * 3 + 1] = eg;
+        this.sphereColorArr[this._sphereCursor * 3 + 2] = eb;
         this._sphereCursor++;
       }
 
@@ -453,9 +449,7 @@ export class ForceFieldRenderer3D {
         );
         this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
         this.sphereAlphaArr[this._sphereCursor] = barrier.alpha * fadeIn * FIELD_OPACITY_BOOST;
-        this.sphereColorArr[this._sphereCursor * 3]     = ((fieldColor >> 16) & 0xff) / 255;
-        this.sphereColorArr[this._sphereCursor * 3 + 1] = ((fieldColor >>  8) & 0xff) / 255;
-        this.sphereColorArr[this._sphereCursor * 3 + 2] = ( fieldColor        & 0xff) / 255;
+        writeHexToRgb01Array(fieldColor, this.sphereColorArr, this._sphereCursor * 3);
         this._sphereCursor++;
       }
     }

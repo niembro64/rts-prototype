@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { RenderObjectLodTier } from './RenderObjectLod';
+import { hexToRgb01 } from './colorUtils';
 
 type LodShell = {
   tier: Exclude<RenderObjectLodTier, 'marker' | 'hero'>;
@@ -190,9 +191,7 @@ export class LodShellGround3D {
     shell: LodShell,
   ): void {
     const color = SHELL_COLORS[shell.tier];
-    const r = ((color >> 16) & 0xff) / 255;
-    const g = ((color >> 8) & 0xff) / 255;
-    const b = (color & 0xff) / 255;
+    const { r, g, b } = hexToRgb01(color);
     let first: GroundPoint | null = null;
     let prev: GroundPoint | null = null;
     let hadGap = false;

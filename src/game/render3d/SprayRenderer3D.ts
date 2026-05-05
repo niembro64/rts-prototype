@@ -34,6 +34,7 @@ import * as THREE from 'three';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { getGraphicsConfig } from '@/clientBarConfig';
+import { hexToRgb01 } from './colorUtils';
 
 // Default spray trail altitude for legacy 2D spray targets. Factory
 // tower sprays can pass explicit source/target z heights.
@@ -217,9 +218,7 @@ export class SprayRenderer3D {
           r = cached.r; g = cached.g; b = cached.b;
         } else {
           const hex = getPlayerPrimaryColor(spray.source.playerId);
-          r = ((hex >> 16) & 0xff) / 255;
-          g = ((hex >>  8) & 0xff) / 255;
-          b = ( hex        & 0xff) / 255;
+          ({ r, g, b } = hexToRgb01(hex));
           this._teamColorCache.set(spray.source.playerId, { r, g, b });
         }
       }

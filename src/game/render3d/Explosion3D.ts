@@ -7,6 +7,7 @@
 
 import * as THREE from 'three';
 import type { FireExplosionStyle } from '@/types/graphics';
+import { hexToRgb01 } from './colorUtils';
 
 const CORE_COLOR = 0xffffff;
 const CORE_LIFETIME_MS = 180;
@@ -200,9 +201,7 @@ export class Explosion3D {
     if (this.puffs.length >= MAX_PUFFS) return;
     if (this.puffSpawnsThisFrame >= MAX_PUFF_SPAWNS_PER_FRAME) return;
     this.puffSpawnsThisFrame++;
-    const r = ((CORE_COLOR >> 16) & 0xff) / 255;
-    const g = ((CORE_COLOR >> 8) & 0xff) / 255;
-    const b = (CORE_COLOR & 0xff) / 255;
+    const { r, g, b } = hexToRgb01(CORE_COLOR);
     this.puffs.push({
       startR,
       endR,

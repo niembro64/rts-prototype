@@ -38,6 +38,7 @@ import {
 } from '../sim/mirrorPanelCache';
 import { SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import { getBodyEdgeTemplates } from './BodyShape3D';
+import { hexToRgb01 } from './colorUtils';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import {
   TREAD_CHASSIS_LIFT_Y,
@@ -107,9 +108,7 @@ const ANGULAR_INIT = 22;
 
 // Shared fade target — pieces lerp toward this color so they read as
 // "burning out into the terrain" rather than disappearing into black.
-const BG_R = ((MAP_BG_COLOR >> 16) & 0xff) / 255;
-const BG_G = ((MAP_BG_COLOR >> 8) & 0xff) / 255;
-const BG_B = (MAP_BG_COLOR & 0xff) / 255;
+const { r: BG_R, g: BG_G, b: BG_B } = hexToRgb01(MAP_BG_COLOR);
 
 // Non-team colors for generic parts (tread gray, wheel gray, barrel white,
 // leg gray). Close to the values used by Locomotion3D's shared materials.
@@ -1034,9 +1033,7 @@ export class Debris3D {
     // so they don't whip too fast. Clamped so tiny chunks still spin fast.
     const spinScale = Math.max(0.3, Math.min(1.2, 14 / Math.max(maxDim, 1)));
 
-    const baseR = ((t.color >> 16) & 0xff) / 255;
-    const baseG = ((t.color >>  8) & 0xff) / 255;
-    const baseB = ( t.color        & 0xff) / 255;
+    const { r: baseR, g: baseG, b: baseB } = hexToRgb01(t.color);
     const groundY = this.groundHeightAt(px, pz) + GROUND_BOUNCE_CLEARANCE;
 
     const piece: Piece = {

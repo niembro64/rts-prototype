@@ -25,6 +25,7 @@ import { getSurfaceHeight } from '../sim/Terrain';
 import { SPATIAL_GRID_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
 import { getWaypointDetail } from '../../clientBarConfig';
 import { getEntityTargetPoint } from '../sim/buildingAnchors';
+import { hexToRgb01, writeHexToRgb01Array } from './colorUtils';
 
 const STYLE = {
   /** Vertical lift above the terrain so lines / dots / flags clear
@@ -238,9 +239,10 @@ export class Waypoint3D {
     color: number, alpha: number,
     az?: number, bz?: number,
   ): void {
-    const r = (((color >> 16) & 0xff) / 255) * alpha;
-    const g = (((color >> 8) & 0xff) / 255) * alpha;
-    const b = ((color & 0xff) / 255) * alpha;
+    const c = hexToRgb01(color);
+    const r = c.r * alpha;
+    const g = c.g * alpha;
+    const b = c.b * alpha;
     const dx = bx - ax;
     const dy = by - ay;
     const length = Math.sqrt(dx * dx + dy * dy);
@@ -267,9 +269,10 @@ export class Waypoint3D {
     state: { lineSeg: number },
     x: number, y: number, color: number, zHint?: number,
   ): void {
-    const r = (((color >> 16) & 0xff) / 255) * STYLE.lineAlpha;
-    const g = (((color >> 8) & 0xff) / 255) * STYLE.lineAlpha;
-    const b = ((color & 0xff) / 255) * STYLE.lineAlpha;
+    const c = hexToRgb01(color);
+    const r = c.r * STYLE.lineAlpha;
+    const g = c.g * STYLE.lineAlpha;
+    const b = c.b * STYLE.lineAlpha;
     const h = STYLE.rectWorldSize / 2;
     const z = this.resolveY(x, y, zHint);
     // Four corners traversed counterclockwise.
@@ -295,9 +298,7 @@ export class Waypoint3D {
     this.dotPositions[o + 0] = x;
     this.dotPositions[o + 1] = z;
     this.dotPositions[o + 2] = y;
-    this.dotColors[o + 0] = ((color >> 16) & 0xff) / 255;
-    this.dotColors[o + 1] = ((color >> 8) & 0xff) / 255;
-    this.dotColors[o + 2] = (color & 0xff) / 255;
+    writeHexToRgb01Array(color, this.dotColors, o);
     state.dotCount++;
   }
 

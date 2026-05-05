@@ -93,6 +93,7 @@ import { landCellIndexForSize } from '../landGrid';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 import { MIRROR_CHROME_MATERIAL } from './BuildingVisualPalette';
+import { hexStringToRgb } from './colorUtils';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -112,14 +113,6 @@ type ConstructionTowerSpinRig = Pick<
 // Same palette as SHELL_BAR_COLORS so the colored spray reads as the
 // same resource the HP-side bar shows. Pre-baked into 0..1 RGB floats
 // once at module load.
-function hexStringToRgb(hex: string): { r: number; g: number; b: number } {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return {
-    r: ((n >> 16) & 0xff) / 255,
-    g: ((n >>  8) & 0xff) / 255,
-    b: ( n        & 0xff) / 255,
-  };
-}
 const RESOURCE_SPRAY_COLORS = [
   hexStringToRgb(SHELL_BAR_COLORS.energy),
   hexStringToRgb(SHELL_BAR_COLORS.mana),
