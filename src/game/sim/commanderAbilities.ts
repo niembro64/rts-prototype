@@ -43,7 +43,11 @@ export class CommanderAbilitiesSystem {
             currentTick: world.getTick(),
             dtMs,
             unitGroundZ: getUnitGroundZ(commander),
-            surfaceN: world.getCachedSurfaceNormal(commanderX, commanderY),
+            // Read the smoothed normal off the commander unit instead
+            // of the position cache; updateUnitTilt EMAs raw → smoothed
+            // each tick so the construction emitter mount doesn't snap
+            // on triangle crossings.
+            surfaceN: commander.unit?.surfaceNormal,
           },
           _constructionEmitterMount,
         );

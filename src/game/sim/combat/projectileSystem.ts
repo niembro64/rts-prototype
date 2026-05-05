@@ -879,7 +879,7 @@ export function updateProjectiles(
             currentTick,
             dtMs,
             unitGroundZ,
-            surfaceN: world.getCachedSurfaceNormal(source.transform.x, source.transform.y),
+            surfaceN: source.unit?.surfaceNormal,
           },
           _beamWeaponMount,
         );

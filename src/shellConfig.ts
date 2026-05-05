@@ -130,3 +130,27 @@ export const BUILD_RATE_EMA_HALF_LIFE_SEC = {
 } as const;
 export type BuildRateEmaMode = keyof typeof BUILD_RATE_EMA_HALF_LIFE_SEC;
 export const BUILD_RATE_EMA_MODE: BuildRateEmaMode = 'mid';
+
+/** Per-unit chassis-tilt smoothing. The terrain mesh is piecewise-flat
+ *  at the triangle level, so a unit walking from one triangle to the
+ *  next sees its surface normal SNAP rather than rotate continuously.
+ *  This EMA blends the raw per-tick normal toward the unit's stored
+ *  smoothed normal so chassis tilt rotates through the boundary
+ *  instead of popping. Same SNAP/FAST/MID/SLOW shape as the build-rate
+ *  EMA; tune via the HOST SERVER bar at runtime.
+ *
+ *  Reference points:
+ *    SNAP — 0     (no smoothing; raw triangle-jump tilt)
+ *    FAST — 0.05  (~50ms, snaps to slope changes quickly)
+ *    MID  — 0.18  (~180ms, calm but responsive — current default)
+ *    SLOW — 0.5   (~500ms, deliberately laggy / weighty look)
+ */
+export const TILT_EMA_HALF_LIFE_SEC = {
+  snap: 0,
+  fast: 0.05,
+  mid: 0.18,
+  slow: 0.5,
+} as const;
+export type TiltEmaMode = keyof typeof TILT_EMA_HALF_LIFE_SEC;
+/** Compile-time default; overridden at runtime by the HOST SERVER bar. */
+export const TILT_EMA_MODE_DEFAULT: TiltEmaMode = 'mid';

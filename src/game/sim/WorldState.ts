@@ -493,6 +493,11 @@ export class WorldState {
     // Units spawned in the central ripple disc come in already on top
     // of the elevated cubes; corner spawns sit at z = bodyCenterHeight.
     const groundZ = this.getGroundZ(x, y);
+    // Seed the per-unit smoothed normal with the raw normal at the
+    // spawn position so the first tick after spawn doesn't snap from
+    // the flat default to a tilted slope. The cache lookup also seeds
+    // the cell entry for any downstream reader on this tick.
+    const spawnNormal = this.getCachedSurfaceNormal(x, y);
     const entity: Entity = {
       id,
       type: 'unit',
@@ -511,6 +516,7 @@ export class WorldState {
         patrolStartIndex: null,
         mirrorPanels: [],
         mirrorBoundRadius: 0,
+        surfaceNormal: { nx: spawnNormal.nx, ny: spawnNormal.ny, nz: spawnNormal.nz },
       },
       turrets: [], // Turrets set by caller
     };

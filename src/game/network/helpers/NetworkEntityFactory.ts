@@ -182,6 +182,11 @@ function createUnitFromNetwork(
       velocityZ: u?.velocity?.z ?? 0,
       mirrorPanels: [],
       mirrorBoundRadius: 0,
+      // Smoothed surface normal: defaults to flat-up until Phase 2
+      // ships the per-unit value on the wire and the renderer reads
+      // from this field. The client-side helper system on top of this
+      // will fill it from the snapshot when wire support lands.
+      surfaceNormal: { nx: 0, ny: 0, nz: 1 },
     },
   };
 

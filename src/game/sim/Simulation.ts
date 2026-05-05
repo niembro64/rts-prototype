@@ -36,6 +36,7 @@ import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
 import { updateConstructionLifecycle } from './constructionLifecycle';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
+import { updateUnitTilt } from './unitTilt';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
@@ -291,6 +292,13 @@ export class Simulation {
     // on a living commander — pass the predicate so a team that's
     // lost its commander stops earning passive mana.
     economyManager.update(dtMs, (pid) => this.world.isCommanderAlive(pid));
+
+    // Update each unit's smoothed surface normal BEFORE the systems
+    // that read it (commanderAbilitiesSystem, turret kinematics inside
+    // updateUnits / targetingSystem). The EMA owns the single canonical
+    // tilt source so the renderer, sim turret mounts, and locomotion
+    // can never read disagreeing per-unit normals.
+    updateUnitTilt(this.world, dtMs);
 
     // Distribute energy equally among all active consumers (factories, construction, commander)
     distributeEnergy(this.world, dtMs, this.energyBuffers);

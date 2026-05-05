@@ -364,7 +364,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // Targeting, aiming, firing, force fields, and beam retracing all
     // read the same cached 3D mount pose/velocity through combatUtils.
     const unitGroundZ = getUnitGroundZ(unit);
-    const surfaceN = world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y);
+    // Surface normal comes from the unit's smoothed-tilt EMA so all
+    // turret kinematics for this unit on this tick read one canonical
+    // value (matches the per-unit slope basis updateUnitTilt produced).
+    const surfaceN = unit.unit?.surfaceNormal;
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
       if (weaponSystemDisabled(world, weapon)) continue;

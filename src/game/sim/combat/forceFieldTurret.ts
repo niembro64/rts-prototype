@@ -166,7 +166,7 @@ export function findForceFieldSegmentIntersection(
         currentTick: world.getTick(),
         dtMs: 0,
         unitGroundZ: getUnitGroundZ(unit),
-        surfaceN: world.getCachedSurfaceNormal(unit.transform.x, unit.transform.y),
+        surfaceN: unit.unit?.surfaceNormal,
       },
       _forceFieldMount,
     );

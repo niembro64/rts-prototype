@@ -281,14 +281,13 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // Resolve the d-gun's barrel tip + direction through the shared
   // primitive — exactly the same call AI turrets use — so the
   // commander-fired shot emerges from the same point and axis the
-  // renderer draws.
-  const surfaceN = ctx.world.getCachedSurfaceNormal(
-    commander.transform.x, commander.transform.y,
-  );
+  // renderer draws. Surface normal comes from the unit's smoothed-
+  // tilt EMA (updateUnitTilt) so the slope-tilted mount doesn't snap
+  // when the commander crosses a terrain triangle edge.
   const mount = updateWeaponWorldKinematics(
     commander, dgunTurret, dgunIdx,
     cos, sin,
-    { currentTick: ctx.world.getTick(), surfaceN },
+    { currentTick: ctx.world.getTick(), surfaceN: commander.unit?.surfaceNormal },
     _dgunMount,
   );
   const tip = getBarrelTip(

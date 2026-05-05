@@ -225,6 +225,14 @@ export type Unit = {
   priorityTargetId?: EntityId;
   mirrorPanels: CachedMirrorPanel[];
   mirrorBoundRadius: number;
+  /** Per-unit smoothed surface normal at the unit's footprint. The
+   *  terrain mesh is piecewise-flat at the triangle level, so the raw
+   *  normal SNAPS each time the unit crosses a triangle edge. The sim
+   *  EMA-blends raw → stored every tick (see updateUnitTilt) so chassis
+   *  tilt, turret world mounts, and rendered tilt all read one
+   *  smoothed-but-physically-grounded value. Initialized at spawn to
+   *  the raw normal at the spawn position; written by the tilt system. */
+  surfaceNormal: { nx: number; ny: number; nz: number };
   /** Per-tick combat hot-path masks, written by targetingSystem.
    *  Bit i set in activeTurretMask means turret i still needs rotation
    *  integration this tick; bit i set in firingTurretMask means turret i
