@@ -43,7 +43,7 @@ import {
   getSurfaceNormal,
   getSurfaceHeight,
   getTerrainVersion,
-  getTerrainHeight,
+  getTerrainMeshHeight,
   WATER_LEVEL,
 } from './Terrain';
 import type { ActionType, UnitAction } from './types';
@@ -158,7 +158,13 @@ function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
       const cx = (gx + 0.5) * GRID_CELL_SIZE;
       const cy = (gy + 0.5) * GRID_CELL_SIZE;
       let blk = false;
-      if (getTerrainHeight(cx, cy, mapWidth, mapHeight) < WATER_LEVEL) {
+      // Terrain mask runs once per pathfinder cell — switched from
+      // analytical getTerrainHeight to getTerrainMeshHeight so the
+      // 5x slope-gated plateau cost only fires when the authoritative
+      // tile map isn't installed yet (rare, falls back automatically).
+      // getSurfaceNormal already samples the baked mesh, so the slope
+      // check below is O(1) too.
+      if (getTerrainMeshHeight(cx, cy, mapWidth, mapHeight) < WATER_LEVEL) {
         blk = true;
       } else {
         const norm = getSurfaceNormal(cx, cy, mapWidth, mapHeight, LAND_CELL_SIZE);

@@ -1,6 +1,5 @@
 import { LAND_CELL_SIZE } from '../../../config';
 import { WATER_LEVEL } from './terrainConfig';
-import { getTerrainHeight } from './terrainHeightGenerator';
 import { findDepositFlatZoneAt } from './terrainFlatZones';
 import {
   getTerrainMeshHeight,
@@ -9,7 +8,6 @@ import {
   terrainMeshNormalFromSample,
 } from './terrainTileMap';
 
-const NORMAL_GRADIENT_EPS = 1;
 const WATER_CLEARANCE_SAMPLES = 8;
 
 export function getSurfaceNormal(
@@ -23,26 +21,6 @@ export function getSurfaceNormal(
   const h0 = terrainMeshHeightFromSample(sample);
   if (h0 < WATER_LEVEL) return { nx: 0, ny: 0, nz: 1 };
   return terrainMeshNormalFromSample(sample);
-}
-
-export function getGroundNormal(
-  x: number,
-  z: number,
-  mapWidth: number,
-  mapHeight: number,
-): { nx: number; ny: number; nz: number } {
-  const eps = NORMAL_GRADIENT_EPS;
-  const hxp = getTerrainHeight(x + eps, z, mapWidth, mapHeight);
-  const hxm = getTerrainHeight(x - eps, z, mapWidth, mapHeight);
-  const hzp = getTerrainHeight(x, z + eps, mapWidth, mapHeight);
-  const hzm = getTerrainHeight(x, z - eps, mapWidth, mapHeight);
-  const dHdx = (hxp - hxm) / (2 * eps);
-  const dHdz = (hzp - hzm) / (2 * eps);
-  const nx = -dHdx;
-  const ny = -dHdz;
-  const nz = 1;
-  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-  return { nx: nx / len, ny: ny / len, nz: nz / len };
 }
 
 export function projectHorizontalOntoSlope(

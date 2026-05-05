@@ -245,6 +245,22 @@ function getGeneratedNaturalTerrainHeight(
   return (ripple + ridge) * (1 - generationFade);
 }
 
+/**
+ * Analytical terrain height at (x, y). Re-computes ripple + ridge +
+ * slope-gated plateau + boundary fade + deposit override from scratch.
+ *
+ * COST: ~5x a single ripple+ridge evaluation when slope-gated plateaus
+ * are enabled — `estimateGeneratedTerrainSlope` does four extra
+ * `getGeneratedNaturalTerrainHeight` calls (central-difference). This
+ * is acceptable during one-time terrain baking
+ * (`buildTerrainTileMap`) but DANGEROUS for any recurring caller.
+ *
+ * For runtime hot paths (per-pixel minimap, per-tile pathfinding,
+ * per-frame visual normals) use `getTerrainMeshHeight` /
+ * `getTerrainMeshNormal` from `terrainTileMap.ts` instead — those are
+ * O(1) lookups against the baked authoritative tile map and stay in
+ * sync via `getTerrainVersion`.
+ */
 export function getTerrainHeight(
   x: number,
   y: number,
