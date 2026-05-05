@@ -3910,6 +3910,104 @@ export class Render3DEntities {
   }
 
 
+  /** EMA-blend new per-resource rate targets toward the rig's smoothed
+   *  store. Shared by factory + commander emitters so the smoothing
+   *  contract can't drift between them. */
+  private blendSmoothedRates(
+    smoothed: { energy: number; mana: number; metal: number },
+    targetEnergy: number,
+    targetMana: number,
+    targetMetal: number,
+    alpha: number,
+  ): void {
+    smoothed.energy += (targetEnergy - smoothed.energy) * alpha;
+    smoothed.mana   += (targetMana   - smoothed.mana)   * alpha;
+    smoothed.metal  += (targetMetal  - smoothed.metal)  * alpha;
+  }
+
+  /** Drive each shower cylinder bottom-up from the rig's smoothed
+   *  per-resource rates (0..1). Hidden when the rate is essentially
+   *  zero so a fully-funded build doesn't leave a stub. Shared by
+   *  factory active/inactive paths and commander active path. */
+  private applyShowerFromSmoothedRates(rig: {
+    showers: THREE.Mesh[];
+    showerRadius: number;
+    pylonHeight: number;
+    pylonBaseY: number;
+    smoothedRates: { energy: number; mana: number; metal: number };
+  }): void {
+    const smoothed: readonly [number, number, number] = [
+      rig.smoothedRates.energy,
+      rig.smoothedRates.mana,
+      rig.smoothedRates.metal,
+    ];
+    for (let i = 0; i < rig.showers.length && i < 3; i++) {
+      const shower = rig.showers[i];
+      const r = smoothed[i];
+      if (r < 0.01) {
+        shower.visible = false;
+        continue;
+      }
+      shower.visible = true;
+      const h = rig.pylonHeight * r;
+      shower.scale.set(rig.showerRadius, h, rig.showerRadius);
+      shower.position.y = rig.pylonBaseY + h / 2;
+    }
+  }
+
+  /** Emit the three per-resource colored build sprays from each pylon
+   *  top to the supplied world-space target. Skipped per-pylon when
+   *  that resource's smoothed rate is below the 0.05 visibility floor.
+   *  Caller is responsible for the upstream tier gate (only fires at
+   *  'high' tier or above), for calling `group.updateWorldMatrix(true,
+   *  false)` once before invocation (so factory callers can reuse the
+   *  fresh matrix when computing their own target), and for writing
+   *  the desired three.js world point into `targetWorld`. */
+  private emitPylonResourceSprays(
+    rig: {
+      pylonTopsLocal: THREE.Vector3[];
+      smoothedRates: { energy: number; mana: number; metal: number };
+    },
+    group: THREE.Group,
+    sourceId: EntityId,
+    sourcePlayerId: PlayerId,
+    targetId: EntityId,
+    targetWorld: THREE.Vector3,
+    targetRadius: number,
+  ): void {
+    const smoothed: readonly [number, number, number] = [
+      rig.smoothedRates.energy,
+      rig.smoothedRates.mana,
+      rig.smoothedRates.metal,
+    ];
+    for (let i = 0; i < rig.pylonTopsLocal.length && i < 3; i++) {
+      const rate = smoothed[i];
+      if (rate < 0.05) continue;
+      this._factorySpraySourceWorld
+        .copy(rig.pylonTopsLocal[i])
+        .applyMatrix4(group.matrixWorld);
+      const spray = this.acquireFactorySprayTarget();
+      spray.source.id = sourceId;
+      spray.source.pos.x = this._factorySpraySourceWorld.x;
+      spray.source.pos.y = this._factorySpraySourceWorld.z;
+      spray.source.z = this._factorySpraySourceWorld.y;
+      spray.source.playerId = sourcePlayerId;
+      spray.target.id = targetId;
+      spray.target.pos.x = targetWorld.x;
+      spray.target.pos.y = targetWorld.z;
+      spray.target.z = targetWorld.y;
+      spray.target.dim = undefined;
+      spray.target.radius = targetRadius;
+      spray.type = 'build';
+      // Intensity ∈ (0, 1] — rate fraction shapes the density;
+      // a small floor keeps the stream visibly active even when the
+      // pool is starved (the 0.05 cull above already drops the spray
+      // entirely if the rate is essentially zero).
+      spray.intensity = Math.max(0.15, Math.min(1, rate));
+      spray.colorRGB = RESOURCE_SPRAY_COLORS[i];
+    }
+  }
+
   /** Drive the commander build emitter: EMA the per-resource transfer
    *  rates derived from the build target's `buildable.paid` deltas,
    *  scale each shower bottom-up, and emit one colored build spray
@@ -3964,24 +4062,8 @@ export class Render3DEntities {
     }
 
     this.updateConstructionTowerSpin(rig, spinActive, dtSec);
-
-    rig.smoothedRates.energy += (targetRateE - rig.smoothedRates.energy) * rateAlpha;
-    rig.smoothedRates.mana   += (targetRateM - rig.smoothedRates.mana)   * rateAlpha;
-    rig.smoothedRates.metal  += (targetRateT - rig.smoothedRates.metal)  * rateAlpha;
-
-    const smoothed = [rig.smoothedRates.energy, rig.smoothedRates.mana, rig.smoothedRates.metal];
-    for (let i = 0; i < rig.showers.length && i < 3; i++) {
-      const shower = rig.showers[i];
-      const r = smoothed[i];
-      if (r < 0.01) {
-        shower.visible = false;
-        continue;
-      }
-      shower.visible = true;
-      const h = rig.pylonHeight * r;
-      shower.scale.set(rig.showerRadius, h, rig.showerRadius);
-      shower.position.y = rig.pylonBaseY + h / 2;
-    }
+    this.blendSmoothedRates(rig.smoothedRates, targetRateE, targetRateM, targetRateT, rateAlpha);
+    this.applyShowerFromSmoothedRates(rig);
 
     // Per-resource colored sprays from each pylon top to the build
     // target, intensity gated by smoothed rate. Skipped at low tiers
@@ -3994,31 +4076,20 @@ export class Render3DEntities {
       const target = this.clientViewState.getEntity(targetId);
       if (!target) return;
       rig.group.updateWorldMatrix(true, false);
-      const targetWorldX = target.transform.x;
-      const targetWorldY = target.transform.z + 8;
-      const targetWorldZ = target.transform.y;
-      for (let i = 0; i < rig.pylonTopsLocal.length && i < 3; i++) {
-        const rate = smoothed[i];
-        if (rate < 0.05) continue;
-        this._factorySpraySourceWorld
-          .copy(rig.pylonTopsLocal[i])
-          .applyMatrix4(rig.group.matrixWorld);
-        const spray = this.acquireFactorySprayTarget();
-        spray.source.id = commander.id;
-        spray.source.pos.x = this._factorySpraySourceWorld.x;
-        spray.source.pos.y = this._factorySpraySourceWorld.z;
-        spray.source.z = this._factorySpraySourceWorld.y;
-        spray.source.playerId = commander.ownership.playerId;
-        spray.target.id = target.id;
-        spray.target.pos.x = targetWorldX;
-        spray.target.pos.y = targetWorldZ;
-        spray.target.z = targetWorldY;
-        spray.target.dim = undefined;
-        spray.target.radius = 12;
-        spray.type = 'build';
-        spray.intensity = Math.max(0.15, Math.min(1, rate));
-        spray.colorRGB = RESOURCE_SPRAY_COLORS[i];
-      }
+      this._factorySprayTargetWorld.set(
+        target.transform.x,
+        target.transform.z + 8,
+        target.transform.y,
+      );
+      this.emitPylonResourceSprays(
+        rig,
+        rig.group,
+        commander.id,
+        commander.ownership.playerId,
+        target.id,
+        this._factorySprayTargetWorld,
+        12,
+      );
     }
   }
 
@@ -4052,9 +4123,7 @@ export class Render3DEntities {
     const targetMana   = active ? Math.max(0, Math.min(1, factory?.manaRateFraction   ?? 0)) : 0;
     const targetMetal  = active ? Math.max(0, Math.min(1, factory?.metalRateFraction  ?? 0)) : 0;
     this.updateConstructionTowerSpin(rig, active, dtSec);
-    rig.smoothedRates.energy += (targetEnergy - rig.smoothedRates.energy) * rateAlpha;
-    rig.smoothedRates.mana   += (targetMana   - rig.smoothedRates.mana)   * rateAlpha;
-    rig.smoothedRates.metal  += (targetMetal  - rig.smoothedRates.metal)  * rateAlpha;
+    this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMana, targetMetal, rateAlpha);
 
     if (!active) {
       rig.unitGhost.visible = false;
@@ -4063,36 +4132,11 @@ export class Render3DEntities {
       // Keep showers visible while the smoothed rate hasn't decayed
       // to ~0 yet so the fade-out reads. Once they're effectively
       // zero, hide entirely.
-      const smoothed = [rig.smoothedRates.energy, rig.smoothedRates.mana, rig.smoothedRates.metal];
-      for (let i = 0; i < rig.showers.length && i < 3; i++) {
-        const shower = rig.showers[i];
-        const r = smoothed[i];
-        if (r < 0.01) { shower.visible = false; continue; }
-        shower.visible = true;
-        const h = rig.pylonHeight * r;
-        shower.scale.set(rig.showerRadius, h, rig.showerRadius);
-        shower.position.y = rig.pylonBaseY + h / 2;
-      }
+      this.applyShowerFromSmoothedRates(rig);
       return;
     }
 
-    // Resource transfer "showers" — three vertical cylinders around
-    // each pylon, scaled bottom-up by the smoothed per-resource rate
-    // fraction (0..1). 0 → hidden, 1 → fills the whole pylon. Indices
-    // match the wire payload order: energy / mana / metal.
-    const smoothed = [rig.smoothedRates.energy, rig.smoothedRates.mana, rig.smoothedRates.metal];
-    for (let i = 0; i < rig.showers.length && i < 3; i++) {
-      const shower = rig.showers[i];
-      const rate = smoothed[i];
-      if (rate < 0.01) {
-        shower.visible = false;
-        continue;
-      }
-      shower.visible = true;
-      const h = rig.pylonHeight * rate;
-      shower.scale.set(rig.showerRadius, h, rig.showerRadius);
-      shower.position.y = rig.pylonBaseY + h / 2;
-    }
+    this.applyShowerFromSmoothedRates(rig);
 
     let blueprintRadius = Math.min(footprintW, footprintD) * 0.13;
     let buildSpotRadius = blueprintRadius;
@@ -4160,34 +4204,18 @@ export class Render3DEntities {
     if (buildingTierAtLeast(tier, 'high') && e.ownership) {
       group.updateWorldMatrix(true, false);
       this._factorySprayTargetLocal.set(localSpotX, centerY + radius * 0.06, localSpotZ);
-      this._factorySprayTargetWorld.copy(this._factorySprayTargetLocal).applyMatrix4(group.matrixWorld);
-      const smoothed = [rig.smoothedRates.energy, rig.smoothedRates.mana, rig.smoothedRates.metal];
-      for (let i = 0; i < rig.pylonTopsLocal.length && i < 3; i++) {
-        const rate = smoothed[i];
-        if (rate < 0.05) continue;
-        this._factorySpraySourceWorld
-          .copy(rig.pylonTopsLocal[i])
-          .applyMatrix4(group.matrixWorld);
-        const spray = this.acquireFactorySprayTarget();
-        spray.source.id = e.id;
-        spray.source.pos.x = this._factorySpraySourceWorld.x;
-        spray.source.pos.y = this._factorySpraySourceWorld.z;
-        spray.source.z = this._factorySpraySourceWorld.y;
-        spray.source.playerId = e.ownership.playerId;
-        spray.target.id = e.id;
-        spray.target.pos.x = this._factorySprayTargetWorld.x;
-        spray.target.pos.y = this._factorySprayTargetWorld.z;
-        spray.target.z = this._factorySprayTargetWorld.y;
-        spray.target.dim = undefined;
-        spray.target.radius = radius;
-        spray.type = 'build';
-        // Intensity ∈ (0, 1] — rate fraction shapes the density;
-        // a small floor keeps the stream visibly active even when the
-        // pool is starved (unless rate is essentially zero, where the
-        // 0.05 cull above already skips the spray entirely).
-        spray.intensity = Math.max(0.15, Math.min(1, rate));
-        spray.colorRGB = RESOURCE_SPRAY_COLORS[i];
-      }
+      this._factorySprayTargetWorld
+        .copy(this._factorySprayTargetLocal)
+        .applyMatrix4(group.matrixWorld);
+      this.emitPylonResourceSprays(
+        rig,
+        group,
+        e.id,
+        e.ownership.playerId,
+        e.id,
+        this._factorySprayTargetWorld,
+        radius,
+      );
     }
 
     const showSparks = buildingTierAtLeast(tier, 'max');

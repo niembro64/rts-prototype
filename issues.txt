@@ -83,30 +83,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   2) CROSS-FILE INCONSISTENCIES / SHARED-HELPER GAPS
   ---------------------------------------------------
 
-  [HIGH] Per-frame shower-update loop duplicated 3× across the
-    construction emitters in Render3DEntities.ts:
-      - updateCommanderEmitter:3899-3910 (active path)
-      - updateFactoryConstructionRig:3993-4001 (inactive-fade path)
-      - updateFactoryConstructionRig:4010-4021 (active path)
-    All iterate rig.showers[0..3) and write the same
-    `shower.scale.set(rig.showerRadius, h, rig.showerRadius)` +
-    `shower.position.y = rig.pylonBaseY + h/2` after gating on
-    `r < 0.01`. Lift to `applyShowerFromSmoothedRates(rig, smoothed)`.
-
-  [HIGH] Per-pylon spray emission loop duplicated. Same file
-    lines 3915-3948 (commander) and 4086-4117 (factory). Both walk
-    rig.pylonTopsLocal[0..3), gate on `rate < 0.05`, project the
-    pylon-top into world via `applyMatrix4(group.matrixWorld)`,
-    acquire a spray, and set the same 13 fields. Lift to
-    `emitPylonResourceSprays(rig, group, smoothed, sourceEntity,
-    targetWorld, targetRadius)`.
-
-  [HIGH] EMA-blend update of smoothed rates duplicated at
-    Render3DEntities.ts:3894-3896 (commander) and :3981-3983
-    (factory). One-liner `blendSmoothedRates(smoothed, e, m, t,
-    alpha)`.
-
-[HIGH] Mirror-panel pivot Z is computed two different ways across
+  [HIGH] Mirror-panel pivot Z is computed two different ways across
     sim sites. MirrorPanelHit.ts:100 uses
     `unitGroundZ + (panel.baseY + panel.topY) / 2` (upright midpoint).
     MirrorAimSolver.ts:102-107 uses `resolveWeaponWorldMount` (slope-
@@ -162,19 +139,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   ---------------------------------------------------
   4) PATTERN DUPLICATION ACROSS BUILD EMITTERS
   ---------------------------------------------------
-
-  [HIGH] Move per-frame "shower fill + per-pylon spray" pattern into
-    a shared helper. Specifically
-      applyConstructionRigShowersAndSprays(
-        rig, group, sourceEntity,
-        targetEntity | targetWorld, targetRadius,
-        tier, dtMs,
-      )
-    `rig` carries smoothedRates / showers / pylonHeight /
-    pylonBaseY / showerRadius / pylonTopsLocal. Reads target.transform
-    (commander) OR uses explicit targetWorld (factory build-spot).
-    Consolidates ~70 lines duplicated across updateCommanderEmitter
-    (3892-3948) and updateFactoryConstructionRig (3980-4117).
 
   [MEDIUM] FactoryConstructionRig.bayBaseY is always 0
     (BuildingShape3D.ts:1278) and only read at Render3DEntities.ts:4061
@@ -246,9 +210,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   Suggested attack order
   ---------------------------------------------------
 
-  1. Drift-prevention payoff cluster (bucket 2 HIGH): factory/
-     commander shower-and-spray helper. Low-risk, high-readability.
-  2. Dead fields cluster (bucket 4 + 5): drop posEnd, nozzleLocal,
+  1. Dead fields cluster (bucket 4 + 5): drop posEnd, nozzleLocal,
      bayBaseY. Each is a ~2-line edit, no behaviour change.
   3. Predicate cluster (bucket 1 HIGH): add isRocketLikeShot,
      isCommander predicates; replace BarrelGeometry.ts:174-176 with
