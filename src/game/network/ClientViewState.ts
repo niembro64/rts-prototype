@@ -1058,6 +1058,16 @@ export class ClientViewState {
       }
       if (isFiniteNumber(su.mass)) entity.unit.mass = su.mass;
 
+      // Smoothed surface normal — wire payload ships it on POS-bit
+      // deltas and on full keyframes. When omitted (POS unchanged)
+      // the client retains the last value, matching the server's
+      // EMA state at that tick.
+      if (su.surfaceNormal) {
+        entity.unit.surfaceNormal.nx = su.surfaceNormal.nx;
+        entity.unit.surfaceNormal.ny = su.surfaceNormal.ny;
+        entity.unit.surfaceNormal.nz = su.surfaceNormal.nz;
+      }
+
       // On full keyframes, turret mounts/configs are static blueprint
       // data. Rebuild them from the unit type + body radius and then
       // apply only dynamic network state. This keeps remote MessagePack

@@ -96,6 +96,9 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       bodyCenterHeight: e.unit.bodyCenterHeight,
       mass: e.unit.mass,
       velocity: { x: e.unit.velocity.x, y: e.unit.velocity.y, z: e.unit.velocity.z },
+      surfaceNormal: e.unit.surfaceNormal
+        ? { nx: e.unit.surfaceNormal.nx, ny: e.unit.surfaceNormal.ny, nz: e.unit.surfaceNormal.nz }
+        : undefined,
       isCommander: e.unit.isCommander,
       buildTargetId: e.unit.buildTargetId,
       actions: e.unit.actions?.map(cloneAction),
@@ -403,6 +406,14 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
   dst.velocity.z = src.velocity.z;
+  if (src.surfaceNormal) {
+    if (!dst.surfaceNormal) dst.surfaceNormal = { nx: 0, ny: 0, nz: 1 };
+    dst.surfaceNormal.nx = src.surfaceNormal.nx;
+    dst.surfaceNormal.ny = src.surfaceNormal.ny;
+    dst.surfaceNormal.nz = src.surfaceNormal.nz;
+  } else {
+    dst.surfaceNormal = undefined;
+  }
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
   dst.build = src.build

@@ -182,11 +182,14 @@ function createUnitFromNetwork(
       velocityZ: u?.velocity?.z ?? 0,
       mirrorPanels: [],
       mirrorBoundRadius: 0,
-      // Smoothed surface normal: defaults to flat-up until Phase 2
-      // ships the per-unit value on the wire and the renderer reads
-      // from this field. The client-side helper system on top of this
-      // will fill it from the snapshot when wire support lands.
-      surfaceNormal: { nx: 0, ny: 0, nz: 1 },
+      // Smoothed surface normal: hydrated from the wire when present
+      // (full keyframes always carry it, per-tick deltas ship it on
+      // ENTITY_CHANGED_POS). Defaults to flat-up so non-keyframe
+      // creations or pre-tilt-EMA snapshots don't leave a zero normal
+      // for downstream consumers.
+      surfaceNormal: u?.surfaceNormal
+        ? { nx: u.surfaceNormal.nx, ny: u.surfaceNormal.ny, nz: u.surfaceNormal.nz }
+        : { nx: 0, ny: 0, nz: 1 },
     },
   };
 

@@ -524,6 +524,16 @@ export type NetworkServerSnapshotEntity = {
     bodyCenterHeight?: number;
     mass?: number;
     velocity: Vec3;
+    /** Per-unit smoothed surface normal (unit-length nx, ny, nz). The
+     *  sim EMA-blends raw → smoothed each tick (see updateUnitTilt) so
+     *  the rendered chassis tilt and the slope-tilted turret world
+     *  mounts can read the same canonical value here instead of
+     *  re-querying the position-keyed terrain cache and getting a
+     *  triangle-snapping raw normal. Quantized to 0.001 precision on
+     *  the wire (qNormal); ~3 bytes per unit per snapshot after delta
+     *  encoding. Omitted on snapshots where the unit's tilt didn't
+     *  change since last keyframe. */
+    surfaceNormal?: { nx: number; ny: number; nz: number };
     isCommander?: boolean;
     buildTargetId?: number;
     actions?: NetworkServerSnapshotAction[];

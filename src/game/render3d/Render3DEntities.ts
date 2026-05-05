@@ -1287,7 +1287,11 @@ export class Render3DEntities {
               ux, uy, getUnitGroundZ(entity),
               cos, sin,
               weapon.mount.x, weapon.mount.y, getTurretMountHeight(entity, i),
-              getSurfaceNormal(
+              // Pull from the unit's smoothed normal (set by sim's
+              // updateUnitTilt and shipped in the snapshot) instead of
+              // re-querying raw terrain — keeps this fallback in sync
+              // with the chassis tilt above.
+              entity.unit?.surfaceNormal ?? getSurfaceNormal(
                 ux, uy,
                 this.clientViewState.getMapWidth(),
                 this.clientViewState.getMapHeight(),
@@ -2808,11 +2812,20 @@ export class Render3DEntities {
       // to identity — same fast path as before.
       const yaw = -e.transform.rotation;
       let chassisTilted = false;
-      const n = getSurfaceNormal(
-        e.transform.x, e.transform.y,
-        this.clientViewState.getMapWidth(), this.clientViewState.getMapHeight(),
-        LAND_CELL_SIZE,
-      );
+      // Read the unit's sim-side smoothed normal instead of querying
+      // the raw terrain mesh per frame. The sim's updateUnitTilt EMA
+      // owns the canonical value (initialized at spawn, blended each
+      // tick); for unit entities this is what we want.
+      // For non-unit entities (buildings, projectiles) we fall back
+      // to the raw terrain query since they don't run through the
+      // tilt EMA.
+      const n = e.unit
+        ? e.unit.surfaceNormal
+        : getSurfaceNormal(
+            e.transform.x, e.transform.y,
+            this.clientViewState.getMapWidth(), this.clientViewState.getMapHeight(),
+            LAND_CELL_SIZE,
+          );
       if (n.nx === 0 && n.ny === 0) {
         m.group.quaternion.identity();
       } else {

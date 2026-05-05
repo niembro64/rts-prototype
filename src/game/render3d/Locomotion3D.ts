@@ -652,7 +652,10 @@ function transformChassisToWorld(
   const yy = cy;
   const yz = sinR * cx + cosR * cz;
   // Tilt: build the same surface-normal quaternion the renderer uses.
-  const n = getSurfaceNormal(
+  // Read from the unit's sim-side smoothed normal (updateUnitTilt) so
+  // legs/wheels and chassis tilt all share one canonical value, falling
+  // back to a raw-terrain read for non-unit entities.
+  const n = entity.unit?.surfaceNormal ?? getSurfaceNormal(
     entity.transform.x, entity.transform.y,
     mapWidth, mapHeight, LAND_CELL_SIZE,
   );
@@ -881,7 +884,7 @@ export function updateLocomotion(
     // shared across every leg's IK so all legs bend their knees
     // along the same chassis-relative "up", regardless of slope.
     // On flat ground this collapses to (0, 1, 0) = world up.
-    const sn = getSurfaceNormal(
+    const sn = entity.unit?.surfaceNormal ?? getSurfaceNormal(
       entity.transform.x, entity.transform.y,
       mapWidth, mapHeight, LAND_CELL_SIZE,
     );

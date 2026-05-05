@@ -118,6 +118,13 @@ function qRot(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+/** Surface-normal quantization. Components are unit-vector floats in
+ *  [-1, 1]; 0.001 precision (~0.06° of tilt at the rim) is far below
+ *  visible chassis-tilt jitter and trims wire bytes vs. raw float64. */
+function qNormal(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
 function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
   return {
     id: 0,
@@ -1252,6 +1259,20 @@ function serializeEntity(
         u.velocity.x = qVel(entity.unit.velocityX ?? 0);
         u.velocity.y = qVel(entity.unit.velocityY ?? 0);
         u.velocity.z = qVel(entity.unit.velocityZ ?? 0);
+      }
+
+      // Smoothed surface normal — same shape as velocity. Piggybacked
+      // on POS bit because the normal is a function of (x, y) and
+      // changes when (and only when) the unit moves. Omitted when
+      // POS didn't change — the client keeps the last value.
+      if (isFull || (changedFields! & ENTITY_CHANGED_POS)) {
+        const sn = entity.unit.surfaceNormal;
+        if (!u.surfaceNormal) u.surfaceNormal = { nx: 0, ny: 0, nz: 1 };
+        u.surfaceNormal.nx = qNormal(sn.nx);
+        u.surfaceNormal.ny = qNormal(sn.ny);
+        u.surfaceNormal.nz = qNormal(sn.nz);
+      } else {
+        u.surfaceNormal = undefined;
       }
 
       // HP
