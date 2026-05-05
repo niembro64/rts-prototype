@@ -1105,9 +1105,20 @@ export function serializeGameState(
         // velocities (qVel = 0.1 wu/sec). Lets the client extrapolate
         // each vertex between snapshots — same role the turret
         // rotation+angularVelocity pair plays for turret pose.
-        out.vx = qVel(sp.vx);
-        out.vy = qVel(sp.vy);
-        out.vz = qVel(sp.vz);
+        //
+        // Common case: a vertex anchored to a static structure (mirror
+        // panel on a building, or beam endpoint on a stationary unit)
+        // has all-zero velocity every tick. Skip the three Math.round
+        // calls in that case — qVel(0) === 0.
+        if (sp.vx === 0 && sp.vy === 0 && sp.vz === 0) {
+          out.vx = 0;
+          out.vy = 0;
+          out.vz = 0;
+        } else {
+          out.vx = qVel(sp.vx);
+          out.vy = qVel(sp.vy);
+          out.vz = qVel(sp.vz);
+        }
         out.mirrorEntityId = sp.mirrorEntityId;
         dstPts[p] = out;
       }

@@ -25,12 +25,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
     of 3 cheap visible=false sets per inactive-frame don't justify
     the state-tracking complexity.)
 
-[LOW] Beam-update wire payload re-quantizes static beam-vertex
-    velocities every snapshot (stateSerializer.ts:1095, :1108-1110).
-    A mirror-anchored end on a static structure recomputes qVel(0)
-    from scratch every tick. Tier-2 nicety.
-
-  ---------------------------------------------------
+---------------------------------------------------
   4) PATTERN DUPLICATION ACROSS BUILD EMITTERS
   ---------------------------------------------------
 
