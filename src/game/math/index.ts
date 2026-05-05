@@ -5,7 +5,6 @@ export {
   distance,
   distanceSquared3,
   distance3,
-  magnitudeSquared,
   magnitude,
   magnitude3,
   normalizeAngle,
@@ -34,10 +33,10 @@ export {
   type BarrelEndpoint,
   getBarrelTip,
   countBarrels,
+  getBarrelOrbitAngle,
   getConeBarrelBaseOrbitRadius,
   getConeBarrelTipOrbitRadius,
   getSimpleMultiBarrelOrbitRadius,
-  getTurretBodyRadius,
   getTurretBarrelDiameter,
   getTurretBarrelCenterToTipLength,
   getTurretHeadRadius,
@@ -51,3 +50,5 @@ export {
   solveBallisticPitch,
   computeInterceptTime,
 } from './Ballistics';
+
+export { getTurretWorldMount } from './MountGeometry';

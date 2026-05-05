@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import type { Turret } from '../sim/types';
 import type { GraphicsConfig } from '@/types/graphics';
 import {
+  getBarrelOrbitAngle,
   getConeBarrelBaseOrbitRadius,
   getConeBarrelTipOrbitRadius,
   getSimpleMultiBarrelOrbitRadius,
@@ -229,7 +230,7 @@ export function buildTurretMesh3D(
     const orbitR = getSimpleMultiBarrelOrbitRadius(barrel, barrelScale);
     const n = barrel.barrelCount;
     for (let i = 0; i < n; i++) {
-      const a = (i + 0.5) / n * Math.PI * 2;
+      const a = getBarrelOrbitAngle(i, n);
       const oy = Math.cos(a) * orbitR;
       const oz = Math.sin(a) * orbitR;
       pushSegment(0, parentBaseY + oy, oz, length, parentBaseY + oy, oz);
@@ -245,7 +246,7 @@ export function buildTurretMesh3D(
     );
     const n = barrel.barrelCount;
     for (let i = 0; i < n; i++) {
-      const a = (i + 0.5) / n * Math.PI * 2;
+      const a = getBarrelOrbitAngle(i, n);
       const cosA = Math.cos(a);
       const sinA = Math.sin(a);
       pushSegment(

@@ -27,7 +27,7 @@ export const TURRET_BARREL_MIN_DIAMETER = 2;
  *  cluster cannot fan outside its own turret silhouette. All muzzle,
  *  render, HUD, and debris paths use the helpers below so the same
  *  blueprint geometry is used everywhere. */
-export const BARREL_ORBIT_CLAMP_FRAC = {
+const BARREL_ORBIT_CLAMP_FRAC = {
   /** simpleMultiBarrel — single orbit ring of parallel barrels. */
   parallel: 0.45,
   /** coneMultiBarrel — base end of the diverging cone. */
@@ -48,7 +48,7 @@ type BarrelShotSource = TurretBarrelSource & {
   spread?: TurretConfig['spread'];
 };
 
-export function getTurretBodyRadius(config: TurretRadiusSource): number {
+function getTurretBodyRadius(config: TurretRadiusSource): number {
   const r = config.radius?.body;
   if (r === undefined || r <= 0) {
     const id = config.id ?? 'unknown-source';
@@ -116,7 +116,18 @@ export function countBarrels(config: Pick<TurretConfig, 'barrel'>): number {
   return b.barrelCount;
 }
 
-export function clampBarrelOrbitRadius(
+/** Per-barrel orbit angle around the firing axis: barrels are evenly
+ *  spaced on a circle, half-step offset so the i=0 barrel is NOT on
+ *  any cardinal axis (which would visually align with the chassis edge
+ *  at one orientation). Same convention used by the renderer's
+ *  YZ-plane multi-barrel layout AND the sim's firing-frame barrel-tip
+ *  computation; centralizing keeps a future change to the spacing
+ *  rule (e.g. anti-aliased sub-step jitter) atomic across both. */
+export function getBarrelOrbitAngle(idx: number, n: number): number {
+  return ((idx + 0.5) / n) * Math.PI * 2;
+}
+
+function clampBarrelOrbitRadius(
   authoredRadiusFrac: number,
   turretBodyRadius: number,
   clampFrac: number,
@@ -252,7 +263,7 @@ export function getBarrelTip(
 
   const n = Math.max(1, b.barrelCount);
   const idx = ((Math.floor(barrelIndex) % n) + n) % n;
-  const orbitAngle = ((idx + 0.5) / n) * Math.PI * 2;
+  const orbitAngle = getBarrelOrbitAngle(idx, n);
   const spinCos = Math.cos(spinAngle);
   const spinSin = Math.sin(spinAngle);
   let baseOrbitR: number;

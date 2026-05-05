@@ -98,6 +98,25 @@ export function getMirrorPanelCenter(
   return out;
 }
 
+/** Unit-length arm direction `a(α, β)` from the same `(yaw, pitch)`
+ *  pose `getMirrorPanelCenter` extends along. The panel's face normal
+ *  IS this direction (panel face is perpendicular to the arm), so the
+ *  hit test reaches for the same vector instead of recomputing the
+ *  components inline. Mutates `out` and returns it. */
+export function getMirrorArmDirection(
+  mirrorYaw: number, mirrorPitch: number,
+  out: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } {
+  const cosYaw = Math.cos(mirrorYaw);
+  const sinYaw = Math.sin(mirrorYaw);
+  const cosPitch = Math.cos(mirrorPitch);
+  const sinPitch = Math.sin(mirrorPitch);
+  out.x = cosYaw * cosPitch;
+  out.y = sinYaw * cosPitch;
+  out.z = sinPitch;
+  return out;
+}
+
 /** Mutates `panelsOut` (push), returns the bound radius the caller
  *  should assign to `unit.mirrorBoundRadius`. Returns 0 when the
  *  blueprint declares no mirror-bearing turrets. */

@@ -28,6 +28,7 @@ import { getTransformCosSin, normalizeAngle } from '../../math';
 import { solveMirrorAim } from './MirrorAimSolver';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 import { createDirectTurretAimScratch, createProjectileTurretAimScratch, solveDirectTurretAim, solveProjectileTurretAim } from './aimSolver';
+import { getUnitGroundZ } from '../unitGeometry';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
  *  renderer's pitch range and keeps the ballistic solver from driving
@@ -51,7 +52,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     const { cos, sin } = getTransformCosSin(unit.transform);
     const activeMask = unit.unit.activeTurretMask;
     const currentTick = world.getTick();
-    const unitGroundZ = unit.transform.z - unit.unit.bodyCenterHeight;
+    const unitGroundZ = getUnitGroundZ(unit);
 
     for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
       if (!turretMaskIncludes(activeMask, weaponIndex)) continue;

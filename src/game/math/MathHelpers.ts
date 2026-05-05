@@ -17,13 +17,6 @@ export function distance(x1: number, y1: number, x2: number, y2: number): number
 }
 
 /**
- * Compute squared magnitude of a vector (avoids sqrt for comparisons)
- */
-export function magnitudeSquared(x: number, y: number): number {
-  return x * x + y * y;
-}
-
-/**
  * Compute magnitude of a vector
  */
 export function magnitude(x: number, y: number): number {

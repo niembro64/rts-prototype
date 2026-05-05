@@ -8,26 +8,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   1) DUPLICATE PREDICATES / HELPERS
   ---------------------------------------------------
 
-[MEDIUM] `unit.transform.z - unit.unit.bodyCenterHeight` open-coded
-    at src/game/sim/combat/turretSystem.ts:54. Should use
-    `getUnitGroundZ(unit)` from sim/unitGeometry.ts (the rest of the
-    codebase already does).
-
-[MEDIUM] Mirror arm-direction unit vector recomputed at the call
-    site instead of via the canonical helper. MirrorPanelHit.ts:74-79
-    and :112-114 open-code `(yawCos × cosPitch, yawSin × cosPitch,
-    sinPitch)`, the same arm direction `getMirrorPanelCenter` (in
-    mirrorPanelCache.ts) computes internally. Export
-    `getMirrorArmDirection(yaw, pitch, out)` so the panel normal in
-    findClosestPanelHit can't drift from getMirrorPanelCenter's arm.
-
-  [MEDIUM] Per-barrel orbit-angle math `((idx + 0.5) / n) * 2π` is
-    duplicated at TurretMesh3D.ts:231-235, :247-254 and
-    BarrelGeometry.ts:256, :278-283. Local frames differ (renderer
-    YZ vs sim firing-frame) but the angular step is identical. Pull
-    the angle helper into BarrelGeometry as a one-liner export.
-
-  ---------------------------------------------------
+---------------------------------------------------
   2) CROSS-FILE INCONSISTENCIES / SHARED-HELPER GAPS
   ---------------------------------------------------
 
@@ -73,22 +54,4 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   ---------------------------------------------------
   5) DEAD EXPORTS / DEAD FIELDS
   ---------------------------------------------------
-
-  [MEDIUM] Unused exports through math/index.ts:
-      - magnitudeSquared (MathHelpers.ts:22) — no external consumer.
-      - BARREL_ORBIT_CLAMP_FRAC (BarrelGeometry.ts:29) — no external
-        consumer; only used inside BarrelGeometry.
-      - clampBarrelOrbitRadius (BarrelGeometry.ts:118) — same.
-      - getTurretBodyRadius (BarrelGeometry.ts:50) — only used by
-        the alias getTurretHeadRadius in the same file.
-    Drop the exports (keep the symbols module-local where used
-    internally).
-
-  [MEDIUM] MountGeometry.getTurretWorldMount is NOT re-exported
-    through math/index.ts. Three call sites import directly:
-      - src/game/network/ClientViewState.ts:62
-      - src/game/sim/combat/combatUtils.ts:5
-      - src/game/render3d/Render3DEntities.ts:85
-    Add the re-export so math primitives have one canonical import
-    path.
 

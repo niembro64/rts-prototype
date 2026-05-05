@@ -21,7 +21,7 @@
 
 import { rayTiltedRectIntersectionT } from '../../math';
 import type { CachedMirrorPanel } from '../../../types/sim';
-import { getMirrorPanelCenter } from '../mirrorPanelCache';
+import { getMirrorArmDirection, getMirrorPanelCenter } from '../mirrorPanelCache';
 
 export type MirrorPanelHit = {
   t: number;
@@ -41,6 +41,7 @@ const _result: MirrorPanelHit = {
   panelIndex: -1,
 };
 const _panelCenter = { x: 0, y: 0, z: 0 };
+const _panelNormal = { x: 0, y: 0, z: 0 };
 
 /**
  * Find the closest mirror-panel hit on a single unit by a 3D ray
@@ -71,12 +72,10 @@ export function findClosestPanelHit(
 ): MirrorPanelHit | null {
   if (panels.length === 0) return null;
 
-  const fwdX = Math.cos(mirrorRot);
-  const fwdY = Math.sin(mirrorRot);
-  const perpX = -fwdY;
-  const perpY = fwdX;
-  const cosPitch = Math.cos(mirrorPitch);
-  const sinPitch = Math.sin(mirrorPitch);
+  const cosRot = Math.cos(mirrorRot);
+  const sinRot = Math.sin(mirrorRot);
+  const perpX = -sinRot;
+  const perpY = cosRot;
 
   let bestT = Infinity;
   let found = false;
@@ -105,18 +104,19 @@ export function findClosestPanelHit(
 
     // Yaw of the panel itself = turret yaw + panel's blueprint angle.
     const panelYaw = mirrorRot + panel.angle;
-    const yawCos = Math.cos(panelYaw);
-    const yawSin = Math.sin(panelYaw);
 
     // 3D normal = arm direction (panel face perpendicular to arm).
-    const nx = yawCos * cosPitch;
-    const ny = yawSin * cosPitch;
-    const nz = sinPitch;
+    // Shared with getMirrorPanelCenter so the hit-test normal can't
+    // drift from the arm-extension formula it pairs with.
+    getMirrorArmDirection(panelYaw, mirrorPitch, _panelNormal);
+    const nx = _panelNormal.x;
+    const ny = _panelNormal.y;
+    const nz = _panelNormal.z;
 
     // Edge axis: horizontal perpendicular to panel-yaw (unaffected by
     // pitch, since pitch rotates around this axis).
-    const edx = -yawSin;
-    const edy = yawCos;
+    const edx = -Math.sin(panelYaw);
+    const edy = Math.cos(panelYaw);
     const edz = 0;
 
     const halfH = (panel.topY - panel.baseY) / 2;

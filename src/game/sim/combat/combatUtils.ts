@@ -2,7 +2,7 @@
 
 import type { Entity, ProjectileShot, Turret } from '../types';
 import { distance, normalizeAngle, magnitude } from '../../math';
-import { getTurretWorldMount } from '../../math/MountGeometry';
+import { getTurretWorldMount } from '../../math';
 import type { Vec3 } from '@/types/vec2';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMounts';

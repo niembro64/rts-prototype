@@ -59,7 +59,7 @@ import {
 } from '../math';
 import { COST_MULTIPLIER, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, SPATIAL_GRID_CELL_SIZE } from '../../config';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
-import { getTurretWorldMount } from '../math/MountGeometry';
+import { getTurretWorldMount } from '../math';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
