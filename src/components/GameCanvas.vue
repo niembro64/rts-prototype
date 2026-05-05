@@ -2091,6 +2091,17 @@ function setTiltEmaModeValue(mode: TiltEmaMode): void {
   serverTiltEmaMode.value = mode;
 }
 
+/** Display labels for the TILT EMA bar. Keys stay as the canonical
+ *  TiltEmaMode strings (storage / wire / config-table) so a future
+ *  rename only touches this map. 'mid' renders as MED for visual
+ *  symmetry with the surrounding 3-letter labels. */
+const TILT_EMA_LABEL: Record<TiltEmaMode, string> = {
+  snap: 'SNAP',
+  fast: 'FAST',
+  mid: 'MED',
+  slow: 'SLOW',
+};
+
 function setSimQualityValue(q: ServerSimQuality): void {
   activeConnection?.sendCommand({ type: 'setSimQuality', tick: 0, quality: q });
   saveSimQuality(q);
@@ -2581,15 +2592,15 @@ onUnmounted(() => {
           </BarControlGroup>
           <BarDivider />
           <BarControlGroup>
-            <BarLabel title="Per-unit chassis-tilt EMA. SNAP = no smoothing (raw triangle-jump), FAST/MID/SLOW progressively heavier blending. Drives the sim's updateUnitTilt half-life.">TILT EMA:</BarLabel>
+            <BarLabel title="Per-unit chassis-tilt EMA. SNAP = no smoothing (raw triangle-jump), FAST/MED/SLOW progressively heavier blending. Drives the sim's updateUnitTilt half-life.">TILT EMA:</BarLabel>
             <BarButtonGroup>
               <BarButton
                 v-for="mode in SERVER_CONFIG.tiltEma.options"
                 :key="mode"
                 :active="serverTiltEmaMode === mode"
-                :title="`Set chassis-tilt EMA to ${mode.toUpperCase()}.`"
+                :title="`Set chassis-tilt EMA to ${TILT_EMA_LABEL[mode]}.`"
                 @click="setTiltEmaModeValue(mode)"
-              >{{ mode.toUpperCase() }}</BarButton>
+              >{{ TILT_EMA_LABEL[mode] }}</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
           <BarControlGroup>
