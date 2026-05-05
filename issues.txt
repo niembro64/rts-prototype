@@ -106,20 +106,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
     (factory). One-liner `blendSmoothedRates(smoothed, e, m, t,
     alpha)`.
 
-  [HIGH] Mirror arm/frame geometry hard-coded twice with raw magic
-    numbers. MirrorMesh3D.ts:94-113 and Debris3D.ts:804-808 both
-    compute `frameThickness = max(panelHalfSide × 0.055, 0.25)`,
-    `frameDepth = max(panelHalfSide × 0.075, 0.34)`,
-    `frameSegmentLength = side / 3`,
-    `frameZ = panelHalfSide + frameThickness/2`,
-    `armAnchorX = max(panelArmLength - frameDepth/2, 0.1)`. The
-    constants 0.055 / 0.075 / 0.25 / 0.34 should be a single
-    MIRROR_FRAME_GEOMETRY block in mirrorPanelCache.ts (next to
-    MIRROR_PANEL_SIZE_MULT) exposed as
-    `getMirrorFrameGeometry(panelHalfSide, panelArmLength)`. Drift
-    risk is exactly what already bit Debris3D twice.
-
-  [HIGH] Mirror-panel pivot Z is computed two different ways across
+[HIGH] Mirror-panel pivot Z is computed two different ways across
     sim sites. MirrorPanelHit.ts:100 uses
     `unitGroundZ + (panel.baseY + panel.topY) / 2` (upright midpoint).
     MirrorAimSolver.ts:102-107 uses `resolveWeaponWorldMount` (slope-
@@ -259,9 +246,8 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   Suggested attack order
   ---------------------------------------------------
 
-  1. Drift-prevention payoff cluster (bucket 2 HIGH): mirror-frame
-     geometry → shared helper, then the factory/commander shower-
-     and-spray helper. Both low-risk, high-readability.
+  1. Drift-prevention payoff cluster (bucket 2 HIGH): factory/
+     commander shower-and-spray helper. Low-risk, high-readability.
   2. Dead fields cluster (bucket 4 + 5): drop posEnd, nozzleLocal,
      bayBaseY. Each is a ~2-line edit, no behaviour change.
   3. Predicate cluster (bucket 1 HIGH): add isRocketLikeShot,

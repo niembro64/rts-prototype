@@ -10,6 +10,8 @@
 
 import * as THREE from 'three';
 
+import { getMirrorFrameGeometry } from '../sim/mirrorPanelCache';
+
 const CYLINDER_UP = new THREE.Vector3(0, 1, 0);
 const _supportDir = new THREE.Vector3();
 
@@ -94,9 +96,10 @@ export function buildMirrorMesh3D(
   const panelMeshes: THREE.Mesh[] = [];
   const armMeshes: THREE.Mesh[] = [];
   const frameMeshes: THREE.Mesh[] = [];
-  const side = Math.max(panelHalfSide * 2, 1);
-  const supportDiameter = Math.max(panelHalfSide * 0.075, 0.34);
-  const frameSegmentLength = side / 3;
+  const frame = getMirrorFrameGeometry(panelHalfSide);
+  const side = frame.side;
+  const supportDiameter = frame.supportDiameter;
+  const frameSegmentLength = frame.frameSegmentLength;
 
   const makeCylinderBetween = (
     ax: number, ay: number, az: number,
@@ -128,7 +131,7 @@ export function buildMirrorMesh3D(
     if (!skipPerMesh) root.add(m);
     panelMeshes.push(m);
 
-    const frameZ = panelHalfSide + supportDiameter / 2;
+    const frameZ = frame.frameZ;
     const addSideArm = (sign: -1 | 1) => {
       const armZ = frameZ * sign;
       const armLength = Math.hypot(panelArmLength, armZ);

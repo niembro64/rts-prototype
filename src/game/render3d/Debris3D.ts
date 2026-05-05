@@ -33,6 +33,7 @@ import { isLineShotBlueprint } from '@/types/blueprints';
 import {
   MIRROR_ARM_LENGTH_MULT,
   MIRROR_PANEL_SIZE_MULT,
+  getMirrorFrameGeometry,
   getMirrorPanelCenter,
 } from '../sim/mirrorPanelCache';
 import { SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
@@ -798,13 +799,14 @@ export class Debris3D {
         // tumble at the same scale they had while alive — bumping
         // MIRROR_PANEL_SIZE_MULT in mirrorPanelCache feeds through here
         // automatically.
-        const side = r * MIRROR_PANEL_SIZE_MULT * 2;
         const armLength = r * MIRROR_ARM_LENGTH_MULT;
         const panelHalfSide = r * MIRROR_PANEL_SIZE_MULT;
-        const supportDiameter = Math.max(panelHalfSide * 0.075, 0.34);
-        const supportRadius = supportDiameter * 0.5;
-        const frameSegmentLength = side / 3;
-        const frameZ = panelHalfSide + supportRadius;
+        const frame = getMirrorFrameGeometry(panelHalfSide);
+        const side = frame.side;
+        const supportDiameter = frame.supportDiameter;
+        const supportRadius = frame.supportRadius;
+        const frameSegmentLength = frame.frameSegmentLength;
+        const frameZ = frame.frameZ;
         const panelCenterY = localMount.z * r - chassisLiftY;
         const cY = Math.cos(chassisYaw);
         const sY = Math.sin(chassisYaw);

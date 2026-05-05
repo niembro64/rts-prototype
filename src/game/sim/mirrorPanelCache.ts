@@ -30,6 +30,39 @@ export const MIRROR_ARM_LENGTH_MULT = 1.8;
  *  edit. 1.0 = legacy "panel side = 2 × radius.body". */
 export const MIRROR_PANEL_SIZE_MULT = 2.0;
 
+/** Mirror frame geometry derived from `panelHalfSide` (= radius.body
+ *  × MIRROR_PANEL_SIZE_MULT).
+ *
+ *  - `side`              — full panel edge length (= 2 × halfSide).
+ *  - `supportDiameter`   — diameter of the cylindrical side grabbers.
+ *                          Floor of 0.34 keeps tiny units visible.
+ *  - `supportRadius`     — half of `supportDiameter`.
+ *  - `frameSegmentLength`— length of each grabber segment (panel side / 3).
+ *  - `frameZ`            — chassis-local Z of each grabber's centerline
+ *                          (offset out from the panel face by half the
+ *                          support diameter).
+ *
+ *  Single source of truth shared by `MirrorMesh3D` (live mirror) and
+ *  `Debris3D` (post-death debris) so the dead-mirror tumbling pieces
+ *  always match the live silhouette. Past drift bug:
+ *  Debris3D fell out of sync when MirrorMesh3D's constants moved. */
+export type MirrorFrameGeometry = {
+  side: number;
+  supportDiameter: number;
+  supportRadius: number;
+  frameSegmentLength: number;
+  frameZ: number;
+};
+
+export function getMirrorFrameGeometry(panelHalfSide: number): MirrorFrameGeometry {
+  const side = panelHalfSide * 2;
+  const supportDiameter = Math.max(panelHalfSide * 0.075, 0.34);
+  const supportRadius = supportDiameter * 0.5;
+  const frameSegmentLength = side / 3;
+  const frameZ = panelHalfSide + supportRadius;
+  return { side, supportDiameter, supportRadius, frameSegmentLength, frameZ };
+}
+
 /** Compute the rigid mirror arm's panel CENTER in world coords by
  *  extending an arm of length `armLength` from `(pivotX, pivotY,
  *  pivotZ)` along the 3D direction
