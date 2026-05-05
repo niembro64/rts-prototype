@@ -115,8 +115,7 @@ function estimateGeneratedTerrainSlope(
   return Math.hypot((hx1 - hx0) / (2 * eps), (hy1 - hy0) / (2 * eps));
 }
 
-function getTerrainCircleEndRadius(mapWidth: number, mapHeight: number): number {
-  const minDim = makeMapOvalMetrics(mapWidth, mapHeight).minDim;
+function getTerrainCircleEndRadiusForMinDim(minDim: number): number {
   const maxEndRadius = minDim * 0.5;
   return Math.max(
     1,
@@ -127,12 +126,10 @@ function getTerrainCircleEndRadius(mapWidth: number, mapHeight: number): number 
   );
 }
 
-function getTerrainCircleStartRadius(
-  mapWidth: number,
-  mapHeight: number,
+function getTerrainCircleStartRadiusForMinDim(
+  minDim: number,
   endRadius: number,
 ): number {
-  const minDim = makeMapOvalMetrics(mapWidth, mapHeight).minDim;
   const maxWidth = Math.max(0, endRadius - 1);
   const desiredWidth =
     minDim * Math.max(0, TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION);
@@ -157,6 +154,25 @@ function getTerrainGenerationBoundaryFadeForSample(
   );
 }
 
+/** Internal: boundary fade from a pre-built metrics + sample pair.
+ *  Public callers go through `getTerrainMapBoundaryFade` (which builds
+ *  both); the per-tick `getTerrainHeight` pipeline threads its own
+ *  metrics + oval through this helper to avoid 3 redundant
+ *  makeMapOvalMetrics calls per height sample. */
+function getTerrainMapBoundaryFadeForSample(
+  metrics: MapOvalMetrics,
+  oval: MapOvalSample,
+): number {
+  if (getTerrainMapShape() !== 'circle') return 0;
+  const endRadius = getTerrainCircleEndRadiusForMinDim(metrics.minDim);
+  const startRadius = getTerrainCircleStartRadiusForMinDim(metrics.minDim, endRadius);
+  if (oval.distance <= startRadius) return 0;
+  if (oval.distance >= endRadius) return 1;
+  return smootherstep(
+    clamp01((oval.distance - startRadius) / (endRadius - startRadius)),
+  );
+}
+
 export function getTerrainMapBoundaryFade(
   x: number,
   y: number,
@@ -164,25 +180,18 @@ export function getTerrainMapBoundaryFade(
   mapHeight: number,
 ): number {
   if (getTerrainMapShape() !== 'circle') return 0;
-  const endRadius = getTerrainCircleEndRadius(mapWidth, mapHeight);
-  const startRadius = getTerrainCircleStartRadius(mapWidth, mapHeight, endRadius);
-  const oval = sampleMapOvalAt(makeMapOvalMetrics(mapWidth, mapHeight), x, y);
-  if (oval.distance <= startRadius) return 0;
-  if (oval.distance >= endRadius) return 1;
-
-  return smootherstep(
-    clamp01((oval.distance - startRadius) / (endRadius - startRadius)),
-  );
+  const metrics = makeMapOvalMetrics(mapWidth, mapHeight);
+  const oval = sampleMapOvalAt(metrics, x, y);
+  return getTerrainMapBoundaryFadeForSample(metrics, oval);
 }
 
-function applyTerrainMapBoundary(
+/** Internal: apply boundary fade with pre-built metrics + sample. */
+function applyTerrainMapBoundaryForSample(
   height: number,
-  x: number,
-  y: number,
-  mapWidth: number,
-  mapHeight: number,
+  metrics: MapOvalMetrics,
+  oval: MapOvalSample,
 ): number {
-  const w = getTerrainMapBoundaryFade(x, y, mapWidth, mapHeight);
+  const w = getTerrainMapBoundaryFadeForSample(metrics, oval);
   if (w <= 0) return height;
   if (w >= 1) return TERRAIN_CIRCLE_UNDERWATER_HEIGHT;
   return height + (TERRAIN_CIRCLE_UNDERWATER_HEIGHT - height) * w;
@@ -194,8 +203,12 @@ function getGeneratedNaturalTerrainHeight(
   mapWidth: number,
   mapHeight: number,
   ovalMetrics: MapOvalMetrics = makeMapOvalMetrics(mapWidth, mapHeight),
+  /** Pre-computed oval sample for (x, y). Threaded by getTerrainHeight
+   *  so the same sample is reused across natural+plateau+boundary
+   *  pipeline stages instead of being re-sampled three times. */
+  ovalSample?: MapOvalSample,
 ): number {
-  const oval = sampleMapOvalAt(ovalMetrics, x, y);
+  const oval = ovalSample ?? sampleMapOvalAt(ovalMetrics, x, y);
 
   let ripple = 0;
   const maxDist = ovalMetrics.minDim * RIPPLE_RADIUS_FRACTION;
@@ -267,16 +280,27 @@ export function getTerrainHeight(
   mapWidth: number,
   mapHeight: number,
 ): number {
+  // Build the oval metrics + center sample ONCE per call and thread
+  // them through every stage that needs them (natural ripple/ridge,
+  // optional plateau slope estimator, boundary fade). Audit measured
+  // 3 redundant makeMapOvalMetrics calls per getTerrainHeight before
+  // this — small per call but called from every baked tile vertex,
+  // every analytical fallback, every getTerrainMapBoundaryFade probe.
   const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
+  const ovalSample = sampleMapOvalAt(ovalMetrics, x, y);
   const natural = getGeneratedNaturalTerrainHeight(
     x,
     y,
     mapWidth,
     mapHeight,
     ovalMetrics,
+    ovalSample,
   );
   let terraced = natural;
   if (TERRAIN_PLATEAU_CONFIG.enabled) {
+    // Slope estimator samples four neighbors at ±eps — those need
+    // their own oval samples (different positions), so only metrics
+    // get threaded here.
     const naturalSlope = estimateGeneratedTerrainSlope(
       x,
       y,
@@ -290,12 +314,10 @@ export function getTerrainHeight(
     );
   }
 
-  const terracedShaped = applyTerrainMapBoundary(
+  const terracedShaped = applyTerrainMapBoundaryForSample(
     terraced,
-    x,
-    y,
-    mapWidth,
-    mapHeight,
+    ovalMetrics,
+    ovalSample,
   );
   const override = depositOverride(x, y);
   const blended =

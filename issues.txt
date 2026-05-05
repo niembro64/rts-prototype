@@ -4,23 +4,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
 TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
 
-1. Terrain map boundary/oval sampling is duplicated inside getTerrainHeight.
-   References:
-   - src/game/sim/terrain/terrainHeightGenerator.ts:118
-   - src/game/sim/terrain/terrainHeightGenerator.ts:130
-   - src/game/sim/terrain/terrainHeightGenerator.ts:160
-   - src/game/sim/terrain/terrainHeightGenerator.ts:178
-   - src/game/sim/terrain/terrainHeightGenerator.ts:248
-
-   getTerrainHeight already builds MapOvalMetrics, but applyTerrainMapBoundary
-   calls getTerrainMapBoundaryFade, which builds/sample oval metrics again.
-   This is small per call but duplicated across a very hot function.
-
-   Fix direction: add metric/sample-aware helpers, e.g.
-   getTerrainMapBoundaryFadeForSample(metrics, sample), and thread the
-   existing metrics through the terrain pipeline.
-
-2. TerrainTileMap stores heights as number[] and snapshotClone copies the
+1. TerrainTileMap stores heights as number[] and snapshotClone copies the
    whole array.
    References:
    - src/types/terrain.ts:16
@@ -38,7 +22,7 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    same-process snapshot clones, or store heights as Float32Array and transfer/
    serialize it explicitly only on terrain-version changes.
 
-3. Build placement diagnostics duplicate terrain footprint checks.
+2. Build placement diagnostics duplicate terrain footprint checks.
    Reference: src/game/sim/buildPlacementValidation.ts:101
    Reference: src/game/sim/buildPlacementValidation.ts:128
    Reference: src/game/sim/buildPlacementValidation.ts:139
@@ -52,7 +36,7 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    the candidate cells once and returns: blocking terrain cells, common
    plateau level, water/steepness failures, and per-cell debug colors.
 
-4. Public terrain APIs still accept arbitrary cellSize even though LAND_CELL_SIZE
+3. Public terrain APIs still accept arbitrary cellSize even though LAND_CELL_SIZE
    is supposed to be canonical.
    References:
    - src/game/sim/terrain/terrainTileMap.ts:23
@@ -69,7 +53,7 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    assertCanonicalLandCellSize, or remove the optional cellSize parameter from
    terrain public APIs that should never vary.
 
-5. Map-size option generation is isolated from land-grid validation.
+4. Map-size option generation is isolated from land-grid validation.
    References:
    - src/mapSizeConfig.ts:31
    - src/mapSizeConfig.ts:41
