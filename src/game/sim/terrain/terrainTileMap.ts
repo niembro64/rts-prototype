@@ -1,5 +1,6 @@
 import type { TerrainTileMap } from '@/types/terrain';
 import { LAND_CELL_SIZE } from '../../../config';
+import { assertCanonicalLandCellSize } from '../../landGrid';
 import { TERRAIN_MESH_SUBDIV } from './terrainConfig';
 import {
   getInstalledTerrainTileMap,
@@ -31,6 +32,10 @@ export function buildTerrainTileMap(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): TerrainTileMap {
+  // Terrain grid is canonical — see landGrid.CANONICAL_LAND_CELL_SIZE.
+  // Any non-canonical caller is silently mis-aligning sim/render/host
+  // grids; hard-fail in dev so drift can't slip through.
+  assertCanonicalLandCellSize('buildTerrainTileMap cellSize', cellSize);
   const size = terrainCellSize(cellSize);
   const cellsX = Math.max(1, Math.ceil(mapWidth / size));
   const cellsY = Math.max(1, Math.ceil(mapHeight / size));
@@ -90,6 +95,7 @@ export function getTerrainMeshSample(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): TerrainMeshSample {
+  assertCanonicalLandCellSize('getTerrainMeshSample cellSize', cellSize);
   const size = terrainCellSize(cellSize);
   const cellsX = Math.max(1, Math.ceil(mapWidth / size));
   const cellsZ = Math.max(1, Math.ceil(mapHeight / size));

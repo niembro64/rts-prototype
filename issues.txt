@@ -4,24 +4,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
 TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
 
-1. Public terrain APIs still accept arbitrary cellSize even though LAND_CELL_SIZE
-   is supposed to be canonical.
-   References:
-   - src/game/sim/terrain/terrainTileMap.ts:23
-   - src/game/sim/terrain/terrainTileMap.ts:184
-   - src/game/sim/terrain/terrainBuildability.ts:26
-   - src/game/landGrid.ts:27
-
-   The project direction is that LAND_CELL_SIZE, spatial grouping, capture/mana
-   tiles, and terrain cells are one canonical grid. Terrain APIs still accept
-   arbitrary cell sizes and silently normalize them, which keeps a path open
-   for frontend/backend drift.
-
-   Fix direction: assert canonical LAND_CELL_SIZE at API boundaries using
-   assertCanonicalLandCellSize, or remove the optional cellSize parameter from
-   terrain public APIs that should never vary.
-
-2. Map-size option generation is isolated from land-grid validation.
+1. Map-size option generation is isolated from land-grid validation.
    References:
    - src/mapSizeConfig.ts:31
    - src/mapSizeConfig.ts:41

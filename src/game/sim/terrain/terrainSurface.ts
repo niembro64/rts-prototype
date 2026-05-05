@@ -1,4 +1,5 @@
 import { LAND_CELL_SIZE } from '../../../config';
+import { assertCanonicalLandCellSize } from '../../landGrid';
 import { WATER_LEVEL } from './terrainConfig';
 import { findDepositFlatZoneAt } from './terrainFlatZones';
 import {
@@ -17,6 +18,7 @@ export function getSurfaceNormal(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): { nx: number; ny: number; nz: number } {
+  assertCanonicalLandCellSize('getSurfaceNormal cellSize', cellSize);
   const sample = getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize);
   const h0 = terrainMeshHeightFromSample(sample);
   if (h0 < WATER_LEVEL) return { nx: 0, ny: 0, nz: 1 };
@@ -67,6 +69,7 @@ export function getSurfaceHeight(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): number {
+  assertCanonicalLandCellSize('getSurfaceHeight cellSize', cellSize);
   return Math.max(
     WATER_LEVEL,
     getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize),
@@ -80,6 +83,7 @@ export function isWaterAt(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): boolean {
+  assertCanonicalLandCellSize('isWaterAt cellSize', cellSize);
   const flatZone = findDepositFlatZoneAt(x, z);
   if (flatZone) return flatZone.height < WATER_LEVEL;
   return (

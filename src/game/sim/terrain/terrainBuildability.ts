@@ -1,4 +1,5 @@
 import { LAND_CELL_SIZE } from '../../../config';
+import { assertCanonicalLandCellSize } from '../../landGrid';
 import { TERRAIN_D_TERRAIN, TERRAIN_PLATEAU_CONFIG } from './terrainConfig';
 import { findDepositFlatZoneAt } from './terrainFlatZones';
 import { getTerrainMeshHeight } from './terrainTileMap';
@@ -11,6 +12,7 @@ export function getTerrainPlateauLevelAt(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): number | null {
+  assertCanonicalLandCellSize('getTerrainPlateauLevelAt cellSize', cellSize);
   if (!TERRAIN_PLATEAU_CONFIG.enabled) return 0;
   const step = TERRAIN_D_TERRAIN;
   if (step <= 0) return 0;
@@ -49,6 +51,7 @@ export function evaluateBuildabilityFootprint(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): FootprintBuildability {
+  assertCanonicalLandCellSize('evaluateBuildabilityFootprint cellSize', cellSize);
   const rx = Math.max(0, halfWidth - 1);
   const rz = Math.max(0, halfDepth - 1);
   const samples: [number, number][] = [
