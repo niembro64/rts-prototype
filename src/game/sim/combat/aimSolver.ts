@@ -1,6 +1,6 @@
 import type { Vec3 } from '@/types/vec2';
 import type { Entity, ProjectileShot, Turret, TurretConfig } from '../types';
-import { ballisticSolutions, computeInterceptTime, getBarrelTip, solveBallisticPitch } from '../../math';
+import { ballisticSolutions, clamp, computeInterceptTime, getBarrelTip, solveBallisticPitch } from '../../math';
 import type { BarrelEndpoint } from '../../math/BarrelGeometry';
 import { GRAVITY } from '../../../config';
 import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed } from './combatUtils';
@@ -36,10 +36,6 @@ export function createProjectileTurretAimScratch(): ProjectileTurretAim {
     muzzleVelocity: { x: 0, y: 0, z: 0 },
     hasBallisticSolution: true,
   };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 /**
@@ -90,6 +86,38 @@ export function resolveTargetAimPoint(
   return out;
 }
 
+/**
+ * Three-iteration refinement of `out.aim` toward a target through the
+ * actual barrel tip. A long barrel can move the firing origin enough
+ * to change which point on a building AABB is closest, so the loop
+ * resolves the aim point once from the mount, recomputes the tip,
+ * resolves again, and re-resolves once more to settle. Returns the
+ * settled barrel tip and yaw; `out.aim` is mutated in place.
+ *
+ * Shared by solveDirectTurretAim and solveProjectileTurretAim — they
+ * differ only in what they do AFTER this refinement (lead-time
+ * solving, ballistic pitch, ground-aim folding) and used to inline
+ * the chain identically.
+ */
+function iterateMuzzleAim(
+  target: Entity,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  currentPitch: number,
+  config: TurretConfig,
+  out: Vec3,
+): { tip: BarrelEndpoint; yaw: number } {
+  resolveTargetAimPoint(target, mountX, mountY, mountZ, out);
+  let yaw = Math.atan2(out.y - mountY, out.x - mountX);
+  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
+  resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out);
+  yaw = Math.atan2(out.y - tip.y, out.x - tip.x);
+  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
+  resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out);
+  return { tip, yaw };
+}
+
 export function solveDirectTurretAim(
   target: Entity,
   mountX: number,
@@ -99,17 +127,9 @@ export function solveDirectTurretAim(
   config: TurretConfig,
   out: DirectTurretAim,
 ): DirectTurretAim {
-  resolveTargetAimPoint(target, mountX, mountY, mountZ, out.aim);
-  let yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
-
-  // Resolve from the actual barrel tip after yaw, because a long
-  // barrel can move the origin enough to change which point on a
-  // building AABB is closest.
-  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
-  resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out.aim);
-  yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
-  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
-  resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out.aim);
+  const { tip } = iterateMuzzleAim(
+    target, mountX, mountY, mountZ, currentPitch, config, out.aim,
+  );
 
   const horizDist = Math.hypot(out.aim.x - tip.x, out.aim.y - tip.y);
   const heightDiff = out.aim.z - tip.z;
@@ -133,13 +153,11 @@ export function solveProjectileTurretAim(
   const shot = weapon.config.shot as ProjectileShot;
   const launchSpeed = getProjectileLaunchSpeed(shot);
 
-  resolveTargetAimPoint(target, mountX, mountY, mountZ, out.aim);
-  let yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
-  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, 0);
-  resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out.aim);
-  yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
-  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, 0);
-  resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out.aim);
+  const refined = iterateMuzzleAim(
+    target, mountX, mountY, mountZ, currentPitch, weapon.config, out.aim,
+  );
+  let yaw = refined.yaw;
+  let tip = refined.tip;
 
   const targetVelocity = getEntityVelocity3(target, out.targetVelocity);
   const muzzleVelocity = out.muzzleVelocity;
