@@ -1,32 +1,15 @@
-This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed.
+This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. remember that our system may have changed since the issue was written, so if you are unsure about an item, check the code and if it is no longer relevant, delete it.
 
 #####################################################
 
 TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
 
-1. Terrain.ts is too large and owns too many responsibilities.
-   src/game/sim/Terrain.ts is currently ~1,266 lines and mixes terrain
-   config, mutable terrain mode state, authored height generation,
-   slope-gated plateau logic, metal flat-zone indexing, authoritative
-   tile-map baking, mesh interpolation, water checks, surface normals,
-   and building-footprint helpers.
-
-   This violates the small-file / single-responsibility policy. Split into:
-   - terrainConfig.ts: WATER_LEVEL, TERRAIN_D_TERRAIN, plateau/perimeter config.
-   - terrainHeightGenerator.ts: natural height, ridge/ripple generation,
-     slope-gated terracing, boundary shaping.
-   - terrainTileMap.ts: buildTerrainTileMap, authoritative tile-map storage,
-     mesh interpolation.
-   - terrainSurface.ts: getSurfaceHeight, getSurfaceNormal, isWaterAt.
-   - terrainBuildability.ts: plateau-level and footprint build checks.
-   - terrainFlatZones.ts: metal-deposit flat-zone indexing/overrides.
-
-2. getTerrainHeight became significantly more expensive after slope-gated
+1. getTerrainHeight became significantly more expensive after slope-gated
    plateaus.
    References:
-   - src/game/sim/Terrain.ts:457
-   - src/game/sim/Terrain.ts:669
-   - src/game/sim/Terrain.ts:760
+   - src/game/sim/terrain/terrainHeightGenerator.ts:79
+   - src/game/sim/terrain/terrainHeightGenerator.ts:248
+   - src/game/sim/terrain/terrainTileMap.ts:29
 
    getTerrainHeight now computes the natural height, then estimates natural
    slope by calling getGeneratedNaturalTerrainHeight four more times. That is
@@ -38,7 +21,7 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    terrain tile map when the server builds the map. Runtime consumers should
    sample the baked mesh, not recompute analytical terrain and slope gates.
 
-3. Minimap still samples analytical getTerrainHeight per pixel.
+2. Minimap still samples analytical getTerrainHeight per pixel.
    Reference: src/components/Minimap.vue:208
 
    The minimap comment says raw analytical height is cheap, but after
@@ -50,8 +33,8 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    server-authored TerrainTileMap, keyed by terrain version + minimap size +
    map dimensions. Do not call analytical getTerrainHeight in a pixel loop.
 
-4. getGroundNormal uses four analytical getTerrainHeight calls.
-   Reference: src/game/sim/Terrain.ts:1108
+3. getGroundNormal uses four analytical getTerrainHeight calls.
+   Reference: src/game/sim/terrain/terrainSurface.ts:28
 
    getGroundNormal is visual-only but now calls the expensive analytical
    terrain path four times per normal sample. If any renderer calls this for
@@ -61,13 +44,13 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    compute smoothed visual normals from the authoritative TerrainTileMap with
    cached neighboring vertex samples.
 
-5. Terrain map boundary/oval sampling is duplicated inside getTerrainHeight.
+4. Terrain map boundary/oval sampling is duplicated inside getTerrainHeight.
    References:
-   - src/game/sim/Terrain.ts:496
-   - src/game/sim/Terrain.ts:508
-   - src/game/sim/Terrain.ts:541
-   - src/game/sim/Terrain.ts:559
-   - src/game/sim/Terrain.ts:675
+   - src/game/sim/terrain/terrainHeightGenerator.ts:118
+   - src/game/sim/terrain/terrainHeightGenerator.ts:130
+   - src/game/sim/terrain/terrainHeightGenerator.ts:160
+   - src/game/sim/terrain/terrainHeightGenerator.ts:178
+   - src/game/sim/terrain/terrainHeightGenerator.ts:248
 
    getTerrainHeight already builds MapOvalMetrics, but applyTerrainMapBoundary
    calls getTerrainMapBoundaryFade, which builds/sample oval metrics again.
@@ -77,11 +60,11 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    getTerrainMapBoundaryFadeForSample(metrics, sample), and thread the
    existing metrics through the terrain pipeline.
 
-6. TerrainTileMap stores heights as number[] and snapshotClone copies the
+5. TerrainTileMap stores heights as number[] and snapshotClone copies the
    whole array.
    References:
    - src/types/terrain.ts:16
-   - src/game/sim/Terrain.ts:771
+   - src/game/sim/terrain/terrainTileMap.ts:40
    - src/game/network/snapshotClone.ts:36
    - src/game/network/snapshotClone.ts:301
    - src/game/server/GameServer.ts:1064
@@ -95,7 +78,7 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    same-process snapshot clones, or store heights as Float32Array and transfer/
    serialize it explicitly only on terrain-version changes.
 
-7. Build placement diagnostics duplicate terrain footprint checks.
+6. Build placement diagnostics duplicate terrain footprint checks.
    Reference: src/game/sim/buildPlacementValidation.ts:101
    Reference: src/game/sim/buildPlacementValidation.ts:128
    Reference: src/game/sim/buildPlacementValidation.ts:139
@@ -109,12 +92,12 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    the candidate cells once and returns: blocking terrain cells, common
    plateau level, water/steepness failures, and per-cell debug colors.
 
-8. Public terrain APIs still accept arbitrary cellSize even though LAND_CELL_SIZE
+7. Public terrain APIs still accept arbitrary cellSize even though LAND_CELL_SIZE
    is supposed to be canonical.
    References:
-   - src/game/sim/Terrain.ts:750
-   - src/game/sim/Terrain.ts:956
-   - src/game/sim/Terrain.ts:1005
+   - src/game/sim/terrain/terrainTileMap.ts:23
+   - src/game/sim/terrain/terrainTileMap.ts:184
+   - src/game/sim/terrain/terrainBuildability.ts:26
    - src/game/landGrid.ts:27
 
    The project direction is that LAND_CELL_SIZE, spatial grouping, capture/mana
@@ -126,7 +109,7 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    assertCanonicalLandCellSize, or remove the optional cellSize parameter from
    terrain public APIs that should never vary.
 
-9. Map-size option generation is isolated from land-grid validation.
+8. Map-size option generation is isolated from land-grid validation.
    References:
    - src/mapSizeConfig.ts:31
    - src/mapSizeConfig.ts:41
