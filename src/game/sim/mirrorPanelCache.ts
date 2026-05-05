@@ -117,6 +117,37 @@ export function getMirrorArmDirection(
   return out;
 }
 
+/** Upright (slope-IGNORANT) mirror arm pivot — the turret pivot point
+ *  the rigid arm extends from, computed from the chassis-local panel
+ *  cache + the unit's ground anchor. Used by the hit test
+ *  (`MirrorPanelHit.findClosestPanelHit`).
+ *
+ *  This is NOT the only pivot computation in the sim. The aim solver
+ *  (`MirrorAimSolver.solveMirrorAim`) instead receives the pivot from
+ *  `resolveWeaponWorldMount`, which applies chassis tilt to the same
+ *  chassis-local mount. On flat ground both paths agree; on slopes the
+ *  upright path here ignores tilt while the aim solver respects it.
+ *
+ *  Today this divergence is intentional (see the original audit note in
+ *  issues.txt) — keeping the hit test stable across tilt-induced
+ *  jitter. Centralizing the formula here means a future decision to
+ *  unify both paths is a one-line change. Mutates `out` and returns it. */
+export function getMirrorUprightPivot(
+  unitX: number, unitY: number, unitGroundZ: number,
+  /** Chassis-perpendicular axis (unit length) — pre-computed by the
+   *  caller from the unit yaw to avoid redundant trig. */
+  perpX: number, perpY: number,
+  panel: CachedMirrorPanel,
+  out: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } {
+  out.x = unitX + perpX * panel.offsetY;
+  out.y = unitY + perpY * panel.offsetY;
+  // panel.baseY/topY are authored at zero pitch, so their midpoint
+  // is the pivot height regardless of pitch.
+  out.z = unitGroundZ + (panel.baseY + panel.topY) / 2;
+  return out;
+}
+
 /** Mutates `panelsOut` (push), returns the bound radius the caller
  *  should assign to `unit.mirrorBoundRadius`. Returns 0 when the
  *  blueprint declares no mirror-bearing turrets. */

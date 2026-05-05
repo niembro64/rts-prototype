@@ -21,7 +21,7 @@
 
 import { rayTiltedRectIntersectionT } from '../../math';
 import type { CachedMirrorPanel } from '../../../types/sim';
-import { getMirrorArmDirection, getMirrorPanelCenter } from '../mirrorPanelCache';
+import { getMirrorArmDirection, getMirrorPanelCenter, getMirrorUprightPivot } from '../mirrorPanelCache';
 
 export type MirrorPanelHit = {
   t: number;
@@ -42,6 +42,7 @@ const _result: MirrorPanelHit = {
 };
 const _panelCenter = { x: 0, y: 0, z: 0 };
 const _panelNormal = { x: 0, y: 0, z: 0 };
+const _panelPivot = { x: 0, y: 0, z: 0 };
 
 /**
  * Find the closest mirror-panel hit on a single unit by a 3D ray
@@ -87,17 +88,17 @@ export function findClosestPanelHit(
 
     // Panel center in world. The rigid arm starts at the turret
     // pivot — which sits at the unit center (xy) + panel.offsetY
-    // sideways (perpY-aligned) — and extends `armLength = offsetX`
-    // along the 3D arm direction. unitGroundZ + (baseY+topY)/2 is
-    // the pivot's Z (the panel's baseY/topY are authored at zero
-    // pitch, so their midpoint IS the pivot height regardless of
-    // pitch). The arm-extension formula is shared with the aim
-    // solver and debris emitter via getMirrorPanelCenter.
+    // sideways (perpY-aligned), and at unitGroundZ + panel midpoint
+    // vertically — and extends `armLength = offsetX` along the 3D
+    // arm direction. The upright-pivot formula is shared via
+    // getMirrorUprightPivot; the arm-extension formula is shared
+    // with the aim solver and debris emitter via getMirrorPanelCenter.
     const armLength = panel.offsetX;
-    const pivotX = unitX + perpX * panel.offsetY;
-    const pivotY = unitY + perpY * panel.offsetY;
-    const pivotZ = unitGroundZ + (panel.baseY + panel.topY) / 2;
-    getMirrorPanelCenter(pivotX, pivotY, pivotZ, armLength, mirrorRot, mirrorPitch, _panelCenter);
+    getMirrorUprightPivot(unitX, unitY, unitGroundZ, perpX, perpY, panel, _panelPivot);
+    getMirrorPanelCenter(
+      _panelPivot.x, _panelPivot.y, _panelPivot.z,
+      armLength, mirrorRot, mirrorPitch, _panelCenter,
+    );
     const pcx = _panelCenter.x;
     const pcy = _panelCenter.y;
     const pcz = _panelCenter.z;

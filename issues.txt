@@ -12,16 +12,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   2) CROSS-FILE INCONSISTENCIES / SHARED-HELPER GAPS
   ---------------------------------------------------
 
-  [HIGH] Mirror-panel pivot Z is computed two different ways across
-    sim sites. MirrorPanelHit.ts:100 uses
-    `unitGroundZ + (panel.baseY + panel.topY) / 2` (upright midpoint).
-    MirrorAimSolver.ts:102-107 uses `resolveWeaponWorldMount` (slope-
-    tilt-aware). The mirrorPanelCache.ts comment calls this out as
-    intentional, but verify on steep slopes — the panel hit-test will
-    use upright Z while the live aim uses the slope-tilted Z. At
-    minimum, fold both into the cache so a future unification is
-    trivial.
-
 ---------------------------------------------------
   3) OPTIMIZATION TARGETS
   ---------------------------------------------------
