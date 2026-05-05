@@ -27,6 +27,7 @@ import type {
   ServerSimQuality,
   ServerSimSignalStates,
 } from './types/serverSimLod';
+import { assertMonotonicLodThresholds } from './types/lod';
 
 // =============================================================================
 // HOST SERVER LOD — SIGNAL TOGGLES
@@ -173,6 +174,13 @@ export const SERVER_SIM_LOD_THRESHOLDS: ServerSimAutoModeConfig = {
     max: 0.5,
   },
 };
+
+// Validate at module load — same shape contract as LOD_THRESHOLDS.
+// The host-side resolver walks the four rungs in order and a
+// non-monotonic config silently mis-tiers; hard-fail in dev instead.
+assertMonotonicLodThresholds('serverSim.tps', SERVER_SIM_LOD_THRESHOLDS.tps);
+assertMonotonicLodThresholds('serverSim.cpu', SERVER_SIM_LOD_THRESHOLDS.cpu);
+assertMonotonicLodThresholds('serverSim.units', SERVER_SIM_LOD_THRESHOLDS.units);
 
 export const SERVER_SIM_HYSTERESIS: ServerSimHysteresis = {
   tps: 0.05,

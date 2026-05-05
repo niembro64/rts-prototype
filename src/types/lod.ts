@@ -28,8 +28,8 @@ export type SignalState = 'off' | 'active' | 'solo';
 /** PLAYER CLIENT signals that can be toggled. */
 export type LodSignalStates = {
   zoom: SignalState;
-  tps: SignalState;
-  fps: SignalState;
+  serverTps: SignalState;
+  renderTps: SignalState;
   units: SignalState;
 };
 
@@ -37,13 +37,54 @@ export type LodTierMap<T> = Record<ConcreteGraphicsQuality, T>;
 
 export type LodThresholds = Record<Exclude<ConcreteGraphicsQuality, 'min'>, number>;
 
+/** Dev-time guard: every LodThresholds-shaped object must have its
+ *  four rungs (low < medium < high < max) finite AND strictly
+ *  increasing. The shared resolver (ratioToRank in clientBarConfig
+ *  for client signals, the server-sim auto resolver for host
+ *  signals) walks the array in order and stops at the highest index
+ *  whose threshold is met — a non-monotonic table either silently
+ *  skips a tier (e.g. medium > high → tier 'high' never picked) or
+ *  promotes too eagerly. We caught one such config drift by hand;
+ *  this assertion catches the next one before any resolver runs.
+ *
+ *  Same shape works for both LodThresholds and ServerSimLodThresholds
+ *  since both are Record<'low' | 'medium' | 'high' | 'max', number>. */
+export function assertMonotonicLodThresholds(
+  name: string,
+  t: Record<'low' | 'medium' | 'high' | 'max', number>,
+): void {
+  const rungs = [
+    ['low', t.low],
+    ['medium', t.medium],
+    ['high', t.high],
+    ['max', t.max],
+  ] as const;
+  for (const [key, val] of rungs) {
+    if (!Number.isFinite(val)) {
+      throw new Error(
+        `LodThresholds[${name}] rung '${key}' must be finite, got ${val}`,
+      );
+    }
+  }
+  for (let i = 1; i < rungs.length; i++) {
+    const [prevKey, prev] = rungs[i - 1];
+    const [curKey, cur] = rungs[i];
+    if (cur <= prev) {
+      throw new Error(
+        `LodThresholds[${name}] must be strictly increasing: ` +
+        `${prevKey}=${prev} >= ${curKey}=${cur}`,
+      );
+    }
+  }
+}
+
 export type LodAutoModeConfig = {
   zoom: LodThresholds;
-  tps: LodThresholds;
-  fps: LodThresholds;
+  serverTps: LodThresholds;
+  renderTps: LodThresholds;
   /** Unit-fullness thresholds. The ratio fed in is
    *      (1 − unitCount / unitCap)
-   *  so 1.0 = empty world, 0.0 = at the cap. Same direction as tps/fps:
+   *  so 1.0 = empty world, 0.0 = at the cap. Same direction as tps:
    *  ratio >= threshold means tier is eligible — a sparser world earns
    *  a higher tier. Expressing thresholds as fractions of the player's
    *  configured cap means the LOD ladder works the same whether the
@@ -53,15 +94,15 @@ export type LodAutoModeConfig = {
 
 export type LodHysteresis = {
   zoom: number;
-  tps: number;
-  fps: number;
+  serverTps: number;
+  renderTps: number;
   /** Hysteresis on the unit-fullness ratio (also a 0–1 number). */
   units: number;
 };
 
 export type LodEmaSource = {
-  tps: EmaStat;
-  fps: EmaStat;
+  serverTps: EmaStat;
+  renderTps: EmaStat;
 };
 
 export type GraphicsDetailConfig = {

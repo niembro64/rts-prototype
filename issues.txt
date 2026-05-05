@@ -2,24 +2,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
 #####################################################
 
-PLAYER CLIENT LOOP / LOD TELEMETRY AUDIT
-
-1. PLAYER CLIENT LOD thresholds have no monotonic validation.
-   References:
-   - src/lodConfig.ts:73
-   - src/clientBarConfig.ts:858
-
-   The LOD resolver assumes thresholds are ordered low < medium < high < max.
-   A malformed config silently skips tiers or promotes too aggressively because
-   ratioToRank just walks the table in order. We fixed the current malformed
-   client values, but nothing prevents future config drift.
-
-   Fix direction: add a dev-time assertion/helper that validates every
-   LodThresholds object is finite and strictly increasing before any LOD
-   resolver uses it.
-
-#####################################################
-
 TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
 
 1. getTerrainHeight became significantly more expensive after slope-gated
