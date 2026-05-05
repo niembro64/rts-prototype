@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { getTerrainHeight, WATER_LEVEL } from '@/game/sim/Terrain';
+import {
+  getTerrainMeshHeight,
+  getTerrainVersion,
+  WATER_LEVEL,
+} from '@/game/sim/Terrain';
 import { MAP_BG_COLOR } from '@/config';
 import { getCaptureTileDisplayColor } from '@/game/sim/manaProduction';
 import { minimapPointerToWorld } from './minimapHelpers';
@@ -62,6 +66,51 @@ let background: HTMLCanvasElement | null = null;
 let backgroundCtx: CanvasRenderingContext2D | null = null;
 let backgroundKey = '';
 let canvasCtx: CanvasRenderingContext2D | null = null;
+
+// Water-mask cache. drawBackgroundLayer's pixel loop classifies each
+// minimap pixel as wet (height < WATER_LEVEL) or dry; that classification
+// only changes when the underlying terrain changes, but the loop itself
+// runs whenever ANY backgroundKey component changes — including
+// captureVersion (per-tile mana value changes), gridOverlayIntensity, etc.
+//
+// Pre-compute the wet/dry decision into a Uint8Array keyed by terrain
+// version + canvas size + map dimensions. Subsequent backgroundLayer
+// rebuilds (capture-tile / overlay churn) just read 1 byte per pixel
+// instead of doing an O(1) mesh sample (or, before the migration off
+// analytical getTerrainHeight, a 5x slope-gated plateau evaluation).
+let waterMask: Uint8Array | null = null;
+let waterMaskKey = '';
+
+function ensureWaterMask(
+  w: number,
+  h: number,
+  mapWidth: number,
+  mapHeight: number,
+): Uint8Array {
+  const nextKey = [getTerrainVersion(), w, h, mapWidth, mapHeight].join('|');
+  if (waterMask && waterMaskKey === nextKey && waterMask.length === w * h) {
+    return waterMask;
+  }
+  const mask = new Uint8Array(w * h);
+  const scaleX = w / mapWidth;
+  const scaleY = h / mapHeight;
+  let mi = 0;
+  for (let py = 0; py < h; py++) {
+    const worldY = py / scaleY;
+    for (let px = 0; px < w; px++, mi++) {
+      const worldX = px / scaleX;
+      // getTerrainMeshHeight is O(1) against the baked tile map (with
+      // analytical fallback before the map is installed). The audit
+      // flagged the previous analytical getTerrainHeight call as ~5x
+      // more expensive after slope-gated plateaus landed.
+      mask[mi] = getTerrainMeshHeight(worldX, worldY, mapWidth, mapHeight)
+        < WATER_LEVEL ? 1 : 0;
+    }
+  }
+  waterMask = mask;
+  waterMaskKey = nextKey;
+  return mask;
+}
 
 function ensureOffscreen(): void {
   // Rebuild offscreen if the minimap's target dimensions changed
@@ -194,21 +243,21 @@ function drawBackgroundLayer(): void {
     }
   } else {
     // Water is a flat plane at WATER_LEVEL — a pixel is "wet" iff the
-    // continuous heightmap underneath it dips below that plane. The
-    // mesh-aware 4-sample interpolation we used to call here is only
-    // useful for matching the exact triangle mesh CaptureTileRenderer3D
-    // draws; for a binary water/land paint at minimap resolution the
-    // raw analytical height is indistinguishable and ~4× cheaper —
-    // dropped a profiled 31ms drawBackgroundLayer pass to single digits.
+    // continuous heightmap underneath it dips below that plane. We
+    // pre-bake that decision into a Uint8Array keyed by terrain
+    // version (see ensureWaterMask) so capture-tile / overlay
+    // churn doesn't re-sample the heightmap every rebuild — the
+    // audit measured ~32k getTerrainHeight calls per pass on a
+    // 180×180 minimap, ~5x more expensive after slope-gated plateaus.
+    const mask = ensureWaterMask(w, h, mapWidth, mapHeight);
+    let mi = 0;
     for (let py = 0; py < h; py++) {
       const worldY = py / scaleY;
       const ty = overlayActive ? Math.floor(worldY / captureCellSize) : 0;
-      for (let px = 0; px < w; px++, pi += 4) {
+      for (let px = 0; px < w; px++, pi += 4, mi++) {
         const worldX = px / scaleX;
-        const height = getTerrainHeight(worldX, worldY, mapWidth, mapHeight);
-        const wet = height < WATER_LEVEL;
         let outR: number, outG: number, outB: number;
-        if (wet) {
+        if (mask[mi]) {
           outR = waterR; outG = waterG; outB = waterB;
         } else {
           outR = NEUTRAL_R; outG = NEUTRAL_G; outB = NEUTRAL_B;
