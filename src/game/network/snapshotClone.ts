@@ -67,7 +67,6 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
     type: e.type,
     pos: { x: e.pos.x, y: e.pos.y, z: e.pos.z },
     rotation: e.rotation,
-    posEnd: e.posEnd ? { x: e.posEnd.x, y: e.posEnd.y, z: e.posEnd.z } : undefined,
     playerId: e.playerId,
     changedFields: e.changedFields,
     unit: e.unit ? {
@@ -528,14 +527,6 @@ function copyEntityInto(
   dst.pos.y = src.pos.y;
   dst.pos.z = src.pos.z;
   dst.rotation = src.rotation;
-  if (src.posEnd) {
-    if (!dst.posEnd) dst.posEnd = { x: 0, y: 0, z: 0 };
-    dst.posEnd.x = src.posEnd.x;
-    dst.posEnd.y = src.posEnd.y;
-    dst.posEnd.z = src.posEnd.z;
-  } else {
-    dst.posEnd = undefined;
-  }
   dst.playerId = src.playerId;
   dst.changedFields = src.changedFields;
   dst.unit = src.unit

@@ -140,28 +140,9 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   4) PATTERN DUPLICATION ACROSS BUILD EMITTERS
   ---------------------------------------------------
 
-  [MEDIUM] FactoryConstructionRig.bayBaseY is always 0
-    (BuildingShape3D.ts:1278) and only read at Render3DEntities.ts:4061
-    as `centerY = rig.bayBaseY + Math.max(...)`. Drop the field.
-
-  [MEDIUM] FactoryConstructionRig.nozzleLocal and
-    ConstructionEmitterRig.nozzleLocal are set but never read
-    (BuildingShape3D.ts:86, :134, :1277, :1325). Field comment claims
-    "any straggling caller" but `grep -r nozzleLocal src` shows zero
-    consumers outside this one file. Drop both declarations + the
-    assignments that build them.
-
   ---------------------------------------------------
   5) DEAD EXPORTS / DEAD FIELDS
   ---------------------------------------------------
-
-  [HIGH] NetworkServerSnapshotEntity.posEnd is read but never written.
-    Declared at types/network.ts:492, cloned through
-    snapshotClone.ts:70-72, :531-537, read at
-    NetworkEntityFactory.ts:377-382. Nothing in stateSerializer.ts
-    ever sets ne.posEnd. The branch at NetworkEntityFactory.ts:377
-    always falls into the `null` arm. Either drop the wire field, or
-    wire it up if it was supposed to ship line-shot endpoints.
 
   [MEDIUM] Unused exports through math/index.ts:
       - magnitudeSquared (MathHelpers.ts:22) — no external consumer.
@@ -191,15 +172,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   6) STALE COMMENTS
   ---------------------------------------------------
 
-  [LOW] BuildingShape3D.ts:83-86 — comment says nozzleLocal exists
-    for "any straggling caller". No such callers (grep verified).
-    Either the comment is obsolete or the field is dead (see
-    bucket 5).
-
-  [LOW] BuildingShape3D.ts:1322-1324 — comment about "callers that
-    still expect a single emitter point" referring to nozzleLocal;
-    no such callers exist.
-
   [LOW] Render3DEntities.ts:3842-3844 — updateCommanderEmitter
     docstring says "rates are computed render-side (no extra wire
     payload)" — accurate, but doesn't mention that the sim ALSO
@@ -210,15 +182,13 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   Suggested attack order
   ---------------------------------------------------
 
-  1. Dead fields cluster (bucket 4 + 5): drop posEnd, nozzleLocal,
-     bayBaseY. Each is a ~2-line edit, no behaviour change.
-  3. Predicate cluster (bucket 1 HIGH): add isRocketLikeShot,
+  1. Predicate cluster (bucket 1 HIGH): add isRocketLikeShot,
      isCommander predicates; replace BarrelGeometry.ts:174-176 with
      isLineShot.
-  4. Spray dedup (bucket 2 HIGH): pick whether commander build spray
+  2. Spray dedup (bucket 2 HIGH): pick whether commander build spray
      lives sim-side or render-side and delete the other.
-  5. build.progress wire field (bucket 2 MEDIUM): derive client-side
-     from paid+required. Higher-risk; defer until #1-4 are in.
-  6. Color helper (bucket 1 MEDIUM): hexToRgb01 + sweep call sites.
-  7. aimSolver.iterateMuzzleAim helper (bucket 1 MEDIUM): minor
+  3. build.progress wire field (bucket 2 MEDIUM): derive client-side
+     from paid+required. Higher-risk; defer until #1-2 are in.
+  4. Color helper (bucket 1 MEDIUM): hexToRgb01 + sweep call sites.
+  5. aimSolver.iterateMuzzleAim helper (bucket 1 MEDIUM): minor
      cleanup; do alongside any future aim-solver work.

@@ -374,15 +374,6 @@ function createProjectileFromNetwork(
       maxLifespan,
       hitEntities: new Set(),
       maxHits: 1,
-      points: netEntity.posEnd ? [
-        { x, y, z: netEntity.pos.z, vx: 0, vy: 0, vz: 0 },
-        {
-          x: netEntity.posEnd.x,
-          y: netEntity.posEnd.y,
-          z: netEntity.posEnd.z,
-          vx: 0, vy: 0, vz: 0,
-        },
-      ] : undefined,
     },
   };
 }

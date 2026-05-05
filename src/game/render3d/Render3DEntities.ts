@@ -4176,7 +4176,7 @@ export class Render3DEntities {
     );
     const baseRadius = Math.max(8, Math.min(maxBayRadius, blueprintRadius * 1.15));
     const radius = baseRadius * (0.28 + easedProgress * 0.72);
-    const centerY = rig.bayBaseY + Math.max(5, ghostRadius * 0.68);
+    const centerY = Math.max(5, ghostRadius * 0.68);
     const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
       mapWidth: this.clientViewState.getMapWidth(),
       mapHeight: this.clientViewState.getMapHeight(),

@@ -489,7 +489,6 @@ export type NetworkServerSnapshotEntity = {
    *  x/y; the 3D client reads all three. */
   pos: Vec3;
   rotation: number;
-  posEnd?: Vec3;
   playerId: PlayerId;
   changedFields?: number | null;
   unit?: {

@@ -88,11 +88,6 @@ export type FactoryConstructionRig = {
   unitGhost: THREE.Mesh;
   unitCore: THREE.Mesh;
   sparks: THREE.Mesh[];
-  /** Legacy pivot point in chassis-local frame. Per-resource sprays
-   *  use `pylonTopsLocal` directly; this stays as a sensible "centre
-   *  of the emitter" anchor for any straggling caller. */
-  nozzleLocal: THREE.Vector3;
-  bayBaseY: number;
   /** The three resource "showers" — translucent cylinders surrounding
    *  the factory's three structural pylons. Each fills bottom-up with
    *  its resource's transfer-rate fraction (0..1):
@@ -144,7 +139,6 @@ export type ExtractorRig = {
 
 export type ConstructionEmitterRig = {
   group: THREE.Group;
-  nozzleLocal: THREE.Vector3;
   /** Same per-resource pylon trio the factory uses — three structural
    *  pylons evenly spaced around the emitter (energy / mana / metal),
    *  each wrapped by a translucent shower cylinder driven by the
@@ -954,7 +948,6 @@ function buildFactory(
   const innerPylonRadius = metrics.pylonRadius * 0.85;
   const showerRadius = innerPylonRadius * 2.5;
   const pylonBaseY = metrics.towerBaseY;
-  const pylonTopY = pylonBaseY + metrics.pylonHeight;
   const pylonTrio = buildConstructionPylonTrio(
     'large',
     primaryMat,
@@ -1003,12 +996,6 @@ function buildFactory(
       unitGhost,
       unitCore,
       sparks,
-      // Legacy field, kept on the type for any straggling caller —
-      // the per-pylon sprays use pylonTopsLocal as their actual
-      // sources. Points to the average pylon top so it remains a
-      // sensible "center point of the emitter" anchor.
-      nozzleLocal: new THREE.Vector3(0, pylonTopY, 0),
-      bayBaseY: 0,
       showers: pylonTrio.showers,
       towerOrbitParts: pylonTrio.towerOrbitParts,
       showerRadius,
@@ -1036,7 +1023,6 @@ export function buildConstructionEmitterRig(
   const innerPylonRadius = Math.max(1.0, scale * 0.18);
   const showerRadius = innerPylonRadius * 2.5;
   const pylonBaseY = 0;
-  const pylonTopY = pylonBaseY + pylonHeight;
 
   // Same energy / mana / metal trio as the factory; nothing else.
   const pylonTrio = buildConstructionPylonTrio(
@@ -1053,10 +1039,6 @@ export function buildConstructionEmitterRig(
 
   return {
     group: root,
-    // Legacy field — points to the centroid of the three pylon tops.
-    // Per-resource sprays use pylonTopsLocal directly; this exists
-    // only for callers that still expect a single emitter point.
-    nozzleLocal: new THREE.Vector3(0, pylonTopY, 0),
     showers: pylonTrio.showers,
     towerOrbitParts: pylonTrio.towerOrbitParts,
     showerRadius,
