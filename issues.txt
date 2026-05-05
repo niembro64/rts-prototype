@@ -2,6 +2,39 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
 #####################################################
 
+PLAYER CLIENT LOOP / LOD TELEMETRY AUDIT
+
+1. Client prediction cost is not attributed separately from render logic.
+   References:
+   - src/game/scenes/RtsScene3D.ts:936
+   - src/game/network/ClientViewState.ts:1702
+
+   The PLAYER CLIENT now exposes render TPS separately from server TPS, but
+   the expensive client prediction pass still rolls into the broad LOGIC and
+   FRAME timing bars. If units appear visually choppy while R-TPS stays high, we
+   need a direct PRED ms / prediction-entity-count readout to distinguish
+   prediction cadence, renderer CPU, and GPU submission.
+
+   Fix direction: time ClientViewState.applyPrediction independently and
+   publish avg/hi prediction ms plus counts for active unit/projectile/beam
+   prediction sets.
+
+2. PLAYER CLIENT LOD thresholds have no monotonic validation.
+   References:
+   - src/lodConfig.ts:73
+   - src/clientBarConfig.ts:858
+
+   The LOD resolver assumes thresholds are ordered low < medium < high < max.
+   A malformed config silently skips tiers or promotes too aggressively because
+   ratioToRank just walks the table in order. We fixed the current malformed
+   client values, but nothing prevents future config drift.
+
+   Fix direction: add a dev-time assertion/helper that validates every
+   LodThresholds object is finite and strictly increasing before any LOD
+   resolver uses it.
+
+#####################################################
+
 TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
 
 1. getTerrainHeight became significantly more expensive after slope-gated
