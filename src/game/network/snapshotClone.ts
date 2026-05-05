@@ -85,7 +85,6 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       actions: e.unit.actions?.map(cloneAction),
       turrets: e.unit.turrets?.map(cloneTurret),
       build: e.unit.build ? {
-        progress: e.unit.build.progress,
         complete: e.unit.build.complete,
         paid: {
           energy: e.unit.build.paid.energy,
@@ -99,7 +98,6 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       dim: e.building.dim ? { x: e.building.dim.x, y: e.building.dim.y } : undefined,
       hp: { curr: e.building.hp.curr, max: e.building.hp.max },
       build: {
-        progress: e.building.build.progress,
         complete: e.building.build.complete,
         paid: {
           energy: e.building.build.paid.energy,
@@ -357,7 +355,6 @@ function copyBuildStateInto(
   src: ReusableBuildState,
   dst: ReusableBuildState,
 ): ReusableBuildState {
-  dst.progress = src.progress;
   dst.complete = src.complete;
   dst.paid.energy = src.paid.energy;
   dst.paid.mana = src.paid.mana;
@@ -367,7 +364,6 @@ function copyBuildStateInto(
 
 function createReusableBuildState(): ReusableBuildState {
   return {
-    progress: 0,
     complete: false,
     paid: { energy: 0, mana: 0, metal: 0 },
   };
@@ -423,7 +419,6 @@ function createReusableBuilding(): ReusableEntityBuilding {
   return {
     hp: { curr: 0, max: 0 },
     build: {
-      progress: 0,
       complete: false,
       paid: { energy: 0, mana: 0, metal: 0 },
     },

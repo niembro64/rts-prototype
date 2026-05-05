@@ -256,7 +256,6 @@ function createPooledEntry(): PooledEntry {
     buildingSub: {
       type: undefined, dim: undefined, hp: { curr: 0, max: 0 },
       build: {
-        progress: 0,
         complete: false,
         paid: { energy: 0, mana: 0, metal: 0 },
       },
@@ -1256,7 +1255,6 @@ function serializeEntity(
       u.build = undefined;
       if ((isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) && entity.buildable) {
         u.build = {
-          progress: getBuildFraction(entity.buildable),
           complete: entity.buildable.isComplete,
           paid: {
             energy: entity.buildable.paid.energy,
@@ -1383,13 +1381,11 @@ function serializeEntity(
       if (isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) {
         if (entity.buildable) {
           const buildable = entity.buildable;
-          b.build.progress = getBuildFraction(buildable);
           b.build.complete = buildable.isComplete;
           b.build.paid.energy = buildable.paid.energy;
           b.build.paid.mana = buildable.paid.mana;
           b.build.paid.metal = buildable.paid.metal;
         } else {
-          b.build.progress = 1;
           b.build.complete = true;
           b.build.paid.energy = 0;
           b.build.paid.mana = 0;

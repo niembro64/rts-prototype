@@ -21,7 +21,7 @@ import { GRID_CELL_SIZE } from '../../sim/grid';
 import { COST_MULTIPLIER } from '../../../config';
 import { buildMirrorPanelCache } from '../../sim/mirrorPanelCache';
 import { createTurretsFromDefinition } from '../../sim/unitDefinitions';
-import { createBuildable } from '../../sim/buildableHelpers';
+import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -222,11 +222,9 @@ function createUnitFromNetwork(
         mana: unitBlueprint.cost.mana * COST_MULTIPLIER,
         metal: unitBlueprint.cost.metal * COST_MULTIPLIER,
       },
-      {
-        paid: u.build.paid,
-        healthBuildFraction: u.build.progress,
-      },
+      { paid: u.build.paid },
     );
+    entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);
   }
 
   return entity;
@@ -278,10 +276,8 @@ function createBuildingFromNetwork(
     // required is re-derived from the local building config — it's a
     // pure function of buildingType and never changes after spawn, so
     // no need to ship it on the wire.
-    entity.buildable = createBuildable(config.cost, {
-      paid: b.build.paid,
-      healthBuildFraction: b.build.progress,
-    });
+    entity.buildable = createBuildable(config.cost, { paid: b.build.paid });
+    entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);
   }
 
   const f = b?.factory;

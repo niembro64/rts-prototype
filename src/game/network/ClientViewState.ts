@@ -64,7 +64,7 @@ import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
 import { landCellCenterForSize, landCellIndexForSize, packLandCellKey } from '../landGrid';
-import { createBuildable } from '../sim/buildableHelpers';
+import { createBuildable, getBuildFraction } from '../sim/buildableHelpers';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -119,10 +119,9 @@ function applyNetworkBuildState(
   if (!required) return false;
   let buildable = entity.buildable;
   if (!buildable) {
-    entity.buildable = createBuildable(required, {
-      paid: build.paid,
-      healthBuildFraction: build.progress,
-    });
+    buildable = createBuildable(required, { paid: build.paid });
+    buildable.healthBuildFraction = getBuildFraction(buildable);
+    entity.buildable = buildable;
     return true;
   }
 
@@ -134,7 +133,7 @@ function applyNetworkBuildState(
   buildable.paid.metal = build.paid.metal;
   buildable.isComplete = false;
   buildable.isGhost = false;
-  buildable.healthBuildFraction = build.progress;
+  buildable.healthBuildFraction = getBuildFraction(buildable);
   return true;
 }
 
