@@ -4,6 +4,7 @@ import type { PlayerId, WaypointType } from '../../sim/types';
 import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
+import { isCommander } from '../../sim/combat/combatUtils';
 
 function unitLabel(unitType: string): string {
   try {
@@ -64,10 +65,11 @@ export function buildSelectionInfo(
   const selectedUnits = entitySource.getSelectedUnits();
   const selectedBuildings = entitySource.getSelectedBuildings();
 
-  // Check for capabilities
-  const commander = selectedUnits.find(u => u.commander !== undefined);
+  // Check for capabilities. Every commander has a d-gun, so the
+  // commander unit IS the dgunner — no second find call needed.
+  const commander = selectedUnits.find(isCommander);
   const builder = selectedUnits.find(u => u.builder !== undefined);
-  const dgunner = selectedUnits.find(u => u.commander !== undefined);
+  const dgunner = commander;
 
   // Check for factory
   const factory = selectedBuildings.find(b => b.factory !== undefined);

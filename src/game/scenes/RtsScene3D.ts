@@ -29,6 +29,7 @@ import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
 import { MetalDepositRenderer3D } from '../render3d/MetalDepositRenderer3D';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
+import { isCommander } from '../sim/combat/combatUtils';
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
@@ -1227,7 +1228,7 @@ export class RtsScene3D {
   private centerCameraOnCommander(): void {
     const units = this.clientViewState.getUnits();
     const commander = units.find(
-      (e) => e.commander !== undefined && e.ownership?.playerId === this.localPlayerId,
+      (e) => isCommander(e) && e.ownership?.playerId === this.localPlayerId,
     );
     if (commander) {
       const cx = commander.transform.x;

@@ -10,6 +10,14 @@ import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMou
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
 
+/** True iff the entity carries the optional `commander` block — i.e.
+ *  it's the player's commander unit. Centralized so a future tweak to
+ *  the predicate (e.g. `commander && !isDying`) can't get applied to
+ *  some sites and missed at others. */
+export function isCommander(entity: { commander?: unknown }): boolean {
+  return entity.commander !== undefined;
+}
+
 /** Bit-mask of which turrets are engaged/firing. Indices >= this can't
  *  fit in a 32-bit mask, so the helpers below treat them as always
  *  included (the rare unit with 31+ turrets falls back to "permissive"

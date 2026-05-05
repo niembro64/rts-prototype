@@ -8,33 +8,6 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   1) DUPLICATE PREDICATES / HELPERS
   ---------------------------------------------------
 
-  [HIGH] `(isProjectileShot(shot) && shot.ignoresGravity === true)` is
-    re-implemented in 6 places:
-      - src/game/network/ClientViewState.ts:1771, :1848, :1877
-      - src/game/sim/combat/projectileSystem.ts:257, :651, :704
-    Semantic = "shot doesn't follow ballistic arc / rocket-class".
-    Lift to `isRocketLikeShot(shot)` predicate next to
-    `isProjectileShot` in types/sim.ts. Drift risk: a future shot
-    type that also ignoresGravity will quietly miss the rocket
-    branch in any one place if added piecemeal.
-
-  [HIGH] `isLineShot` predicate is bypassed at
-    src/game/math/BarrelGeometry.ts:174 — open-codes
-    `shot.type === 'beam' || shot.type === 'laser'`. The whole point
-    of LINE_SHOT_TYPES is centralization. Replace with isLineShot(shot)
-    so a future third reflectable shot type doesn't drop barrel-
-    diameter inheritance.
-
-  [HIGH] `e.commander !== undefined` predicate spread across 6+ files:
-      - src/game/render3d/Render3DEntities.ts:2398, :2593
-      - src/game/render3d/Input3DManager.ts:307, :314
-      - src/game/scenes/RtsScene3D.ts:1234
-      - src/game/scenes/helpers/UIUpdateManager.ts:68, :70
-      - src/game/network/stateSerializer.ts:1227
-    Add `isCommander(entity): boolean` to combat/combatUtils.ts.
-    Drift risk: switching the predicate to (commander && !isDying)
-    only catches some sites.
-
   [MEDIUM] `Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x)` and the
     surrounding 3-iteration `tip = getBarrelTip; resolveTargetAimPoint;
     yaw = atan2(...)` chain appears identically in two solvers in
@@ -162,13 +135,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
     Add the re-export so math primitives have one canonical import
     path.
 
-  [LOW] UIUpdateManager.ts:70 `dgunner = selectedUnits.find(u =>
-    u.commander !== undefined)`. Identical predicate to `commander`
-    on line 68 — every commander has a d-gun. Either rename the
-    variable (e.g. commanderForDgun) with a comment, or use
-    `commander` directly so `hasDGun: commander !== undefined`.
-
-  ---------------------------------------------------
+---------------------------------------------------
   6) STALE COMMENTS
   ---------------------------------------------------
 
@@ -182,13 +149,10 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
   Suggested attack order
   ---------------------------------------------------
 
-  1. Predicate cluster (bucket 1 HIGH): add isRocketLikeShot,
-     isCommander predicates; replace BarrelGeometry.ts:174-176 with
-     isLineShot.
-  2. Spray dedup (bucket 2 HIGH): pick whether commander build spray
+  1. Spray dedup (bucket 2 HIGH): pick whether commander build spray
      lives sim-side or render-side and delete the other.
-  3. build.progress wire field (bucket 2 MEDIUM): derive client-side
-     from paid+required. Higher-risk; defer until #1-2 are in.
-  4. Color helper (bucket 1 MEDIUM): hexToRgb01 + sweep call sites.
-  5. aimSolver.iterateMuzzleAim helper (bucket 1 MEDIUM): minor
+  2. build.progress wire field (bucket 2 MEDIUM): derive client-side
+     from paid+required. Higher-risk; defer until #1 is in.
+  3. Color helper (bucket 1 MEDIUM): hexToRgb01 + sweep call sites.
+  4. aimSolver.iterateMuzzleAim helper (bucket 1 MEDIUM): minor
      cleanup; do alongside any future aim-solver work.

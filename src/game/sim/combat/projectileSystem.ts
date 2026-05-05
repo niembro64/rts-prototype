@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
-import { isLineShot, isLineShotType, isProjectileShot } from '../types';
+import { isLineShot, isLineShotType, isProjectileShot, isRocketLikeShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
@@ -648,7 +648,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // waves are their own terrain-following projectile class: they
     // move horizontally and snap to local terrain height every tick.
     const shotCfg = proj.config.shot;
-    const ignoresGravity = isProjectileShot(shotCfg) && shotCfg.ignoresGravity === true;
+    const ignoresGravity = isRocketLikeShot(shotCfg);
     const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
     const prevTerrainFollowZ = entity.transform.z;
     if (!ignoresGravity && !terrainFollow) {
@@ -701,7 +701,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       const targetValid = homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0));
       if (!targetValid) {
         const shotCfgForSeek = proj.config.shot;
-        const isRocket = isProjectileShot(shotCfgForSeek) && shotCfgForSeek.ignoresGravity === true;
+        const isRocket = isRocketLikeShot(shotCfgForSeek);
         if (isRocket) {
           const reacquired = findNearestEnemyForRocket(world, entity, proj.ownerId);
           if (reacquired) {

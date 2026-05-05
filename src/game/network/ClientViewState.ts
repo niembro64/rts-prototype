@@ -8,7 +8,7 @@
  */
 
 import type { Buildable, Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
-import { isProjectileShot } from '../sim/types';
+import { isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { isLineShotType, getShotMaxLifespan } from '@/types/sim';
 import type {
   NetworkServerSnapshot,
@@ -1535,6 +1535,7 @@ export class ClientViewState {
 
     for (let i = 0; i < entity.turrets.length; i++) {
       const weapon = entity.turrets[i];
+      if (weapon.config.visualOnly) continue;
       weapon.rotation += weapon.angularVelocity * dt;
 
       const tw = target?.turrets?.[i];
@@ -1619,6 +1620,7 @@ export class ClientViewState {
 
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
+      if (weapon.config.visualOnly) continue;
       if (Math.abs(weapon.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
 
       const tw = target?.turrets?.[i];
@@ -1768,7 +1770,7 @@ export class ClientViewState {
           let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
           if (!targetValid) {
             const shotCfg = proj.config.shot;
-            const isRocket = isProjectileShot(shotCfg) && shotCfg.ignoresGravity === true;
+            const isRocket = isRocketLikeShot(shotCfg);
             if (isRocket && entity.ownership) {
               homingTarget = this.findNearestEnemyForRocketClient(entity, entity.ownership.playerId) ?? undefined;
               if (homingTarget) {
@@ -1845,7 +1847,7 @@ export class ClientViewState {
         const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
         if (target) {
           const targetShotCfg = entity.projectile.config.shot;
-          const targetIgnoresGravity = isProjectileShot(targetShotCfg) && targetShotCfg.ignoresGravity === true;
+          const targetIgnoresGravity = isRocketLikeShot(targetShotCfg);
           if (!targetIgnoresGravity && !terrainFollow) {
             target.velocityZ -= GRAVITY * targetDt;
           }
@@ -1874,7 +1876,7 @@ export class ClientViewState {
         // are bent only by homing — mirrors the server path so
         // predicted arcs match authoritative arcs.
         const shotCfg = entity.projectile.config.shot;
-        const ignoresGravity = isProjectileShot(shotCfg) && shotCfg.ignoresGravity === true;
+        const ignoresGravity = isRocketLikeShot(shotCfg);
         const prevTerrainFollowZ = entity.transform.z;
         if (!ignoresGravity && !terrainFollow) {
           entity.projectile.velocityZ -= GRAVITY * dt;

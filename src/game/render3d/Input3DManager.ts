@@ -50,6 +50,7 @@ import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandC
 import { isWaterAt } from '../sim/Terrain';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
+import { isCommander } from '../sim/combat/combatUtils';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 const HOVER_RAYCAST_INTERVAL_MS = 50;
@@ -303,16 +304,12 @@ export class Input3DManager {
   }
 
   private hasSelectedCommander(): boolean {
-    return this.entitySource.getSelectedUnits().some(
-      (e) => e.commander !== undefined,
-    );
+    return this.entitySource.getSelectedUnits().some(isCommander);
   }
 
   private getSelectedCommander(): Entity | null {
     return (
-      this.entitySource.getSelectedUnits().find(
-        (e) => e.commander !== undefined,
-      ) ?? null
+      this.entitySource.getSelectedUnits().find(isCommander) ?? null
     );
   }
 

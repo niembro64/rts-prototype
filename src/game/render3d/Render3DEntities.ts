@@ -87,7 +87,7 @@ import { getDriftMode, getGraphicsConfigFor, getUnitRadiusToggle, getRangeToggle
 import { getDriftPreset, halfLifeBlend } from '../network/driftEma';
 import { getTurretHeadRadius, lerp, lerpAngle } from '../math';
 import { getTurretWorldMount } from '../math/MountGeometry';
-import { getTurretMountHeight } from '../sim/combat/combatUtils';
+import { getTurretMountHeight, isCommander } from '../sim/combat/combatUtils';
 import { normalizeLodCellSize } from '../lodGridMath';
 import { landCellIndexForSize } from '../landGrid';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
@@ -1615,7 +1615,7 @@ export class Render3DEntities {
       if (vx * vx + vy * vy + vz * vz > UNIT_DETAIL_VELOCITY_EPSILON_SQ) return true;
     }
     const turrets = entity.turrets;
-    if (turrets?.some((t) => t.state === 'tracking' || t.state === 'engaged' || t.target !== null)) {
+    if (turrets?.some((t) => !t.config.visualOnly && (t.state === 'tracking' || t.state === 'engaged' || t.target !== null))) {
       return true;
     }
     const cachedX = mesh.unitDetailCachedX;
@@ -2256,6 +2256,7 @@ export class Render3DEntities {
     if (!entity.turrets) return;
     let spinConfig: SpinConfig | undefined;
     for (const w of entity.turrets) {
+      if (w.config.visualOnly) continue;
       const bc = w.config.barrel;
       if (
         bc
@@ -2273,7 +2274,7 @@ export class Render3DEntities {
       this.barrelSpins.set(entity.id, state);
     }
 
-    const firing = entity.turrets.some((w) => w.state === 'engaged');
+    const firing = entity.turrets.some((w) => !w.config.visualOnly && w.state === 'engaged');
     if (firing) {
       state.speed = Math.min(state.speed + spinConfig.accel * dt, spinConfig.max);
     } else {
@@ -2439,7 +2440,7 @@ export class Render3DEntities {
       const colorKey = pid ?? -1;
       const turrets = e.turrets ?? [];
       const objectTier = this.massRichObjectTiers.get(e.id) ?? this.resolveEntityObjectLod(e);
-      const isCommanderUnit = e.commander !== undefined;
+      const isCommanderUnit = isCommander(e);
       const fullUnitDetail =
         isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor';
       const unitGraphicsTier = objectTier === 'impostor'

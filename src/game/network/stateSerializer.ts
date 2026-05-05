@@ -2,6 +2,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
 import { getBuildFraction } from '../sim/buildableHelpers';
+import { isCommander } from '../sim/combat/combatUtils';
 import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
@@ -1224,7 +1225,7 @@ function serializeEntity(
         u.radius.push = entity.unit.radius.push;
         u.bodyCenterHeight = entity.unit.bodyCenterHeight;
         u.mass = entity.unit.mass;
-        u.isCommander = entity.commander !== undefined ? true : undefined;
+        u.isCommander = isCommander(entity) ? true : undefined;
         protocolSeeded.add(entity.id);
       } else {
         u.unitType = undefined;

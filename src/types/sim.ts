@@ -407,6 +407,17 @@ export function isProjectileShot(shot: ShotConfig): shot is ProjectileShot {
   return shot.type === 'projectile' || shot.type === 'rocket';
 }
 
+/** Rocket-class predicate: a projectile shot whose `ignoresGravity`
+ *  flag is set. These don't follow a ballistic arc — they fly in a
+ *  straight line from muzzle to target (or steer mid-flight when the
+ *  shot has homing). Centralized so a future shot type that also
+ *  ignores gravity (cruise missile, drone, beam-rider, ...) plugs into
+ *  every existing branch by extending one predicate rather than 6
+ *  parallel call sites. */
+export function isRocketLikeShot(shot: ShotConfig): boolean {
+  return isProjectileShot(shot) && shot.ignoresGravity === true;
+}
+
 /** Static (no-RNG) max lifespan for a shot. Beams are Infinity
  *  (continuous), lasers use their fixed duration, projectiles and
  *  rockets use their config `lifespan` with the supplied fallback.
