@@ -38,8 +38,10 @@ export {
   setAuthoritativeTerrainTileMap,
 } from './terrain/terrainTileMap';
 export {
+  evaluateBuildabilityFootprint,
   getTerrainPlateauLevelAt,
   isBuildableTerrainFootprint,
+  type FootprintBuildability,
 } from './terrain/terrainBuildability';
 export {
   applySurfaceTilt,

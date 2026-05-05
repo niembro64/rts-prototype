@@ -4,21 +4,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
 TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
 
-1. Build placement diagnostics duplicate terrain footprint checks.
-   Reference: src/game/sim/buildPlacementValidation.ts:101
-   Reference: src/game/sim/buildPlacementValidation.ts:128
-   Reference: src/game/sim/buildPlacementValidation.ts:139
-
-   The code checks the whole building footprint, then checks every fine
-   placement cell with isBuildableTerrainFootprint, then separately asks for
-   plateau levels. That repeats terrain mesh sampling heavily while moving a
-   building ghost around.
-
-   Fix direction: create one terrain-footprint diagnostic helper that walks
-   the candidate cells once and returns: blocking terrain cells, common
-   plateau level, water/steepness failures, and per-cell debug colors.
-
-2. Public terrain APIs still accept arbitrary cellSize even though LAND_CELL_SIZE
+1. Public terrain APIs still accept arbitrary cellSize even though LAND_CELL_SIZE
    is supposed to be canonical.
    References:
    - src/game/sim/terrain/terrainTileMap.ts:23
@@ -35,7 +21,7 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    assertCanonicalLandCellSize, or remove the optional cellSize parameter from
    terrain public APIs that should never vary.
 
-3. Map-size option generation is isolated from land-grid validation.
+2. Map-size option generation is isolated from land-grid validation.
    References:
    - src/mapSizeConfig.ts:31
    - src/mapSizeConfig.ts:41

@@ -25,7 +25,22 @@ export function getTerrainPlateauLevelAt(
     : null;
 }
 
-export function isBuildableTerrainFootprint(
+export type FootprintBuildability = {
+  /** True iff every sampled corner/edge/center is dry land AND on
+   *  the same plateau level. */
+  buildable: boolean;
+  /** The shared plateau level (when buildable). null when buildable
+   *  is false OR the underlying sample yielded no plateau level. */
+  level: number | null;
+};
+
+/** Walk the 9-sample buildability perimeter (corners + edges + center)
+ *  ONCE and return both the buildable boolean and the shared plateau
+ *  level. Callers that need only the boolean go through the
+ *  `isBuildableTerrainFootprint` wrapper below; callers that also need
+ *  the level (e.g. build-placement diagnostics) can read both off the
+ *  returned struct without a second mesh-sample walk. */
+export function evaluateBuildabilityFootprint(
   centerX: number,
   centerZ: number,
   halfWidth: number,
@@ -33,7 +48,7 @@ export function isBuildableTerrainFootprint(
   mapWidth: number,
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
-): boolean {
+): FootprintBuildability {
   const rx = Math.max(0, halfWidth - 1);
   const rz = Math.max(0, halfDepth - 1);
   const samples: [number, number][] = [
@@ -50,7 +65,9 @@ export function isBuildableTerrainFootprint(
 
   let footprintLevel: number | null = null;
   for (const [sx, sz] of samples) {
-    if (isWaterAt(sx, sz, mapWidth, mapHeight, cellSize)) return false;
+    if (isWaterAt(sx, sz, mapWidth, mapHeight, cellSize)) {
+      return { buildable: false, level: null };
+    }
     const level = getTerrainPlateauLevelAt(
       sx,
       sz,
@@ -58,12 +75,26 @@ export function isBuildableTerrainFootprint(
       mapHeight,
       cellSize,
     );
-    if (level === null) return false;
+    if (level === null) return { buildable: false, level: null };
     if (footprintLevel === null) {
       footprintLevel = level;
     } else if (level !== footprintLevel) {
-      return false;
+      return { buildable: false, level: null };
     }
   }
-  return true;
+  return { buildable: true, level: footprintLevel };
+}
+
+export function isBuildableTerrainFootprint(
+  centerX: number,
+  centerZ: number,
+  halfWidth: number,
+  halfDepth: number,
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number = LAND_CELL_SIZE,
+): boolean {
+  return evaluateBuildabilityFootprint(
+    centerX, centerZ, halfWidth, halfDepth, mapWidth, mapHeight, cellSize,
+  ).buildable;
 }

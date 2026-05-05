@@ -7,7 +7,7 @@ import {
   getMetalDepositGridCells,
   getMetalDepositFootprintCoverage,
 } from './metalDeposits';
-import { getTerrainPlateauLevelAt, isBuildableTerrainFootprint } from './Terrain';
+import { evaluateBuildabilityFootprint } from './Terrain';
 
 export type BuildPlacementCellReason =
   | 'ok'
@@ -98,14 +98,19 @@ function getBuildingPlacementDiagnosticsAtGrid(
   let metalCoveredCells = 0;
   const terrainLevelCounts = new Map<number, number>();
 
-  const footprintTerrainOk = isBuildableTerrainFootprint(
+  // Walk the whole-footprint perimeter once. Per-cell loop below also
+  // walks each cell's perimeter ONCE and reads BOTH the buildable
+  // boolean AND the plateau level off a single helper (the previous
+  // code did separate isBuildableTerrainFootprint + getTerrainPlateauLevelAt
+  // calls per cell, which re-sampled the same mesh points twice).
+  const footprintTerrainOk = evaluateBuildabilityFootprint(
     center.x,
     center.y,
     halfWidth,
     halfHeight,
     mapWidth,
     mapHeight,
-  );
+  ).buildable;
 
   for (let dy = 0; dy < config.gridHeight; dy++) {
     for (let dx = 0; dx < config.gridWidth; dx++) {
@@ -125,19 +130,20 @@ function getBuildingPlacementDiagnosticsAtGrid(
       } else if (isCellOccupied(gx, gy)) {
         reason = 'occupied';
         blocking = true;
-      } else if (!isBuildableTerrainFootprint(
-        x,
-        y,
-        GRID_CELL_SIZE / 2,
-        GRID_CELL_SIZE / 2,
-        mapWidth,
-        mapHeight,
-      )) {
-        reason = 'terrain';
-        blocking = true;
       } else {
-        terrainLevel = getTerrainPlateauLevelAt(x, y, mapWidth, mapHeight) ?? undefined;
-        if (terrainLevel !== undefined) {
+        const cellEval = evaluateBuildabilityFootprint(
+          x,
+          y,
+          GRID_CELL_SIZE / 2,
+          GRID_CELL_SIZE / 2,
+          mapWidth,
+          mapHeight,
+        );
+        if (!cellEval.buildable) {
+          reason = 'terrain';
+          blocking = true;
+        } else if (cellEval.level !== null) {
+          terrainLevel = cellEval.level;
           terrainLevelCounts.set(terrainLevel, (terrainLevelCounts.get(terrainLevel) ?? 0) + 1);
         }
       }
