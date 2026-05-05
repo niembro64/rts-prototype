@@ -8,6 +8,7 @@ import {
   loadStoredKeyframeRatio,
   loadStoredSnapshotRate,
   loadStoredTickRate,
+  loadStoredTiltEmaMode,
 } from '../../serverBarConfig';
 import type { ServerSimQuality, ServerSimSignalStates } from '../../types/serverSimLod';
 import type { GameServer } from './GameServer';
@@ -27,6 +28,11 @@ export function applyStoredBattleServerSettings(
   server.setTickRate(loadStoredTickRate());
   server.setSnapshotRate(loadStoredSnapshotRate());
   server.setKeyframeRatio(loadStoredKeyframeRatio());
+  server.receiveCommand({
+    type: 'setTiltEmaMode',
+    tick: 0,
+    mode: loadStoredTiltEmaMode(),
+  });
 
   if (options.simQuality !== undefined) {
     server.setSimQuality(options.simQuality);

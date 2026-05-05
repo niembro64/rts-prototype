@@ -48,6 +48,7 @@ import {
 } from '../../config';
 import { SERVER_SIM_LOD_EMA_SOURCE } from '../../serverSimLodConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
+import { setTiltEmaMode } from '../sim/unitTilt';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
@@ -1091,6 +1092,13 @@ export class GameServer {
         return;
       case 'setTickRate':
         this.setTickRate(command.rate);
+        return;
+      case 'setTiltEmaMode':
+        // updateUnitTilt reads its mode from the unitTilt module's
+        // private state; flipping it from a command keeps host +
+        // every client running with the same effective EMA the
+        // moment the user clicks the bar button.
+        setTiltEmaMode(command.mode);
         return;
       case 'setSendGridInfo':
         this.setSendGridInfo(command.enabled);

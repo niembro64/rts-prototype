@@ -6,11 +6,16 @@ import {
   SERVER_SIM_LOD_SIGNAL_DEFAULTS,
   SERVER_SIM_QUALITY_DEFAULT,
 } from './serverSimLodConfig';
+import { TILT_EMA_MODE_DEFAULT, type TiltEmaMode } from './shellConfig';
 
 export const SERVER_CONFIG = {
   tickRate: {
     default: 128 as TickRate,
     options: [1, 4, 8, 16, 32, 64, 128, 256, 512] as readonly TickRate[],
+  },
+  tiltEma: {
+    default: TILT_EMA_MODE_DEFAULT,
+    options: ['snap', 'fast', 'mid', 'slow'] as readonly TiltEmaMode[],
   },
   snapshot: {
     default: 32 as SnapshotRate,
@@ -37,6 +42,7 @@ const STORAGE_SNAPSHOT_RATE = 'host-server-snapshot-rate';
 const STORAGE_KEYFRAME_RATIO = 'host-server-keyframe-ratio';
 const STORAGE_TICK_RATE = 'host-server-tick-rate';
 const STORAGE_SIM_QUALITY = 'host-server-sim-quality';
+const STORAGE_TILT_EMA_MODE = 'host-server-tilt-ema-mode';
 
 const HOST_SERVER_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-snapshot-rate', STORAGE_SNAPSHOT_RATE],
@@ -172,5 +178,20 @@ export function loadStoredTickRate(): TickRate {
 
 export function saveTickRate(rate: TickRate): void {
   persist(STORAGE_TICK_RATE, String(rate));
+}
+
+const TILT_EMA_MODES: readonly TiltEmaMode[] = ['snap', 'fast', 'mid', 'slow'];
+
+export function loadStoredTiltEmaMode(): TiltEmaMode {
+  ensureHostServerMigrations();
+  const stored = readPersisted(STORAGE_TILT_EMA_MODE);
+  if (stored && (TILT_EMA_MODES as readonly string[]).includes(stored)) {
+    return stored as TiltEmaMode;
+  }
+  return TILT_EMA_MODE_DEFAULT;
+}
+
+export function saveTiltEmaMode(mode: TiltEmaMode): void {
+  persist(STORAGE_TILT_EMA_MODE, mode);
 }
 

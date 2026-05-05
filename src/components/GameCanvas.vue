@@ -76,7 +76,10 @@ import {
   loadStoredSimSignalStates,
   saveSimSignalStates,
   resetSimSignalStates,
+  loadStoredTiltEmaMode,
+  saveTiltEmaMode,
 } from '../serverBarConfig';
+import type { TiltEmaMode } from '../shellConfig';
 import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
 import type { SignalState } from '../types/lod';
 import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
@@ -943,6 +946,10 @@ const displayTargetTickRate = computed(
 // background AND the effective tier as white text just like the
 // PLAYER CLIENT bar does.
 const serverSimQuality = ref<ServerSimQuality>(loadStoredSimQuality());
+// HOST SERVER chassis-tilt EMA mode. Picks the half-life used by the
+// sim's updateUnitTilt (TILT_EMA_HALF_LIFE_SEC[mode]). Persisted to
+// localStorage and pushed via setTiltEmaMode command.
+const serverTiltEmaMode = ref<TiltEmaMode>(loadStoredTiltEmaMode());
 // HOST SERVER per-signal tri-state — persisted locally and pushed
 // to the server via setSimSignalStates command.
 const serverSignalStates = ref<ServerSimSignalStates>(loadStoredSimSignalStates());
@@ -2078,6 +2085,12 @@ function setTickRateValue(rate: TickRate): void {
   saveTickRate(rate);
 }
 
+function setTiltEmaModeValue(mode: TiltEmaMode): void {
+  activeConnection?.sendCommand({ type: 'setTiltEmaMode', tick: 0, mode });
+  saveTiltEmaMode(mode);
+  serverTiltEmaMode.value = mode;
+}
+
 function setSimQualityValue(q: ServerSimQuality): void {
   activeConnection?.sendCommand({ type: 'setSimQuality', tick: 0, quality: q });
   saveSimQuality(q);
@@ -2564,6 +2577,19 @@ onUnmounted(() => {
                 :title="`Target ${rate} simulation ticks per second. Effective TPS cap is currently ${displayTickRate}.`"
                 @click="setTickRateValue(rate)"
               >{{ rate }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarDivider />
+          <BarControlGroup>
+            <BarLabel title="Per-unit chassis-tilt EMA. SNAP = no smoothing (raw triangle-jump), FAST/MID/SLOW progressively heavier blending. Drives the sim's updateUnitTilt half-life.">TILT EMA:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                v-for="mode in SERVER_CONFIG.tiltEma.options"
+                :key="mode"
+                :active="serverTiltEmaMode === mode"
+                :title="`Set chassis-tilt EMA to ${mode.toUpperCase()}.`"
+                @click="setTiltEmaModeValue(mode)"
+              >{{ mode.toUpperCase() }}</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
           <BarControlGroup>

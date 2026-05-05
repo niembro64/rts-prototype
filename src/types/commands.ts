@@ -17,6 +17,7 @@ export type CommandType =
   | 'setSnapshotRate'
   | 'setKeyframeRatio'
   | 'setTickRate'
+  | 'setTiltEmaMode'
   | 'setSendGridInfo'
   | 'setBackgroundUnitType'
   | 'setMaxTotalUnits'
@@ -140,6 +141,16 @@ export type SetTickRateCommand = BaseCommand & {
   rate: number;
 };
 
+/** Pick the smoothing strength for the per-unit chassis-tilt EMA
+ *  (see updateUnitTilt). SNAP = no smoothing (raw triangle-jump);
+ *  FAST/MID/SLOW = increasing half-life. Goes through the regular
+ *  command queue so host + every connected client run with the same
+ *  effective EMA, just like setTickRate / setSnapshotRate. */
+export type SetTiltEmaModeCommand = BaseCommand & {
+  type: 'setTiltEmaMode';
+  mode: 'snap' | 'fast' | 'mid' | 'slow';
+};
+
 export type SetSendGridInfoCommand = BaseCommand & {
   type: 'setSendGridInfo';
   enabled: boolean;
@@ -197,6 +208,7 @@ export type Command =
   | SetSnapshotRateCommand
   | SetKeyframeRatioCommand
   | SetTickRateCommand
+  | SetTiltEmaModeCommand
   | SetSendGridInfoCommand
   | SetBackgroundUnitTypeCommand
   | SetMaxTotalUnitsCommand
