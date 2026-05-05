@@ -1,7 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId } from './types';
 import { isBuildTargetInRange } from './builderRange';
-import { getBuildFraction } from './buildableHelpers';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -34,36 +33,17 @@ export class CommanderAbilitiesSystem {
       // Energy spending is handled by the shared energy distribution system.
       // Commander building progress is advanced there.
 
-      // Check what type of target this is
-      if (currentTarget.buildable && !currentTarget.buildable.isComplete) {
-        // Spray effect — driven off the unified build fraction (avg
-        // of the three resource bars) so the commander's spray fades
-        // out cleanly as the shell finishes filling.
-        const buildFraction = getBuildFraction(currentTarget.buildable);
-        const intensity = buildFraction < 1 ? 1 : 0;
-        const targetZ = currentTarget.building
-          ? currentTarget.transform.z - currentTarget.building.depth / 2 +
-            currentTarget.building.depth * Math.max(0.1, buildFraction)
-          : currentTarget.transform.z;
-        sprayTargets.push({
-          source: { id: commander.id, pos: { x: commanderSprayX, y: commanderSprayY }, z: commanderSprayZ, playerId },
-          target: {
-            id: currentTarget.id,
-            pos: { x: currentTarget.transform.x, y: currentTarget.transform.y },
-            z: targetZ,
-            dim: currentTarget.building ? { x: currentTarget.building.width, y: currentTarget.building.height } : undefined,
-          },
-          type: 'build',
-          intensity: Math.max(0.1, intensity),
-        });
-      } else if (currentTarget.unit && currentTarget.unit.hp < currentTarget.unit.maxHp) {
+      // Build sprays for buildables are emitted render-side (per-pylon
+      // colored sprays driven by buildable.paid deltas in
+      // updateCommanderEmitter), so the sim only ships heal sprays —
+      // there is no renderer counterpart for those.
+      if (currentTarget.unit && currentTarget.unit.hp < currentTarget.unit.maxHp) {
         // Healing a damaged unit - energy/progress handled by shared system
         // Check if fully healed
         if (currentTarget.unit.hp >= currentTarget.unit.maxHp) {
           completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
         }
 
-        // Spray effect
         const intensity = currentTarget.unit.hp < currentTarget.unit.maxHp ? 1 : 0;
         sprayTargets.push({
           source: { id: commander.id, pos: { x: commanderSprayX, y: commanderSprayY }, z: commanderSprayZ, playerId },
