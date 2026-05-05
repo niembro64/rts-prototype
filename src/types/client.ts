@@ -54,6 +54,10 @@ export type ClientBarConfig = {
    *  — they cap a per-entity object-tier resolved from camera distance. */
   readonly baseLodMode: BooleanSetting;
   readonly driftMode: DefaultSetting<DriftMode>;
+  /** Per-frame chassis-tilt EMA on the client. Layered on top of the
+   *  HOST SERVER tilt EMA. Same SNAP/FAST/MID/SLOW shape as
+   *  driftMode (DriftMode) so the half-life table is reused. */
+  readonly tiltEma: LabeledOptionsConfig<DriftMode>;
   readonly legsRadius: BooleanSetting;
   readonly cameraSmooth: LabeledOptionsConfig<CameraSmoothMode>;
   readonly edgeScroll: BooleanSetting;

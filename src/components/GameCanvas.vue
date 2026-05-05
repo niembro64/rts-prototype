@@ -145,6 +145,8 @@ import {
   setBaseLodMode,
   getDriftMode,
   setDriftMode,
+  getClientTiltEmaMode,
+  setClientTiltEmaMode,
   getSoundToggle,
   setSoundToggle,
   SOUND_CATEGORIES,
@@ -483,6 +485,9 @@ const lodShellRings = ref<boolean>(getLodShellRings());
 const lodGridBorders = ref<boolean>(getLodGridBorders());
 const baseLodMode = ref<boolean>(getBaseLodMode());
 const driftMode = ref<DriftMode>(getDriftMode());
+// Per-frame chassis-tilt EMA on the client. Layered ON TOP of the
+// HOST SERVER tilt EMA. Same SNAP/FAST/MED/SLOW shape as DRIFT.
+const clientTiltEmaMode = ref<DriftMode>(getClientTiltEmaMode());
 const edgeScrollEnabled = ref(getEdgeScrollEnabled());
 const dragPanEnabled = ref(getDragPanEnabled());
 const gridOverlay = ref<GridOverlay>(getGridOverlay());
@@ -1334,6 +1339,8 @@ function resetClientDefaults(): void {
   baseLodMode.value = cd.baseLodMode.default;
   setDriftMode(cd.driftMode.default);
   driftMode.value = cd.driftMode.default;
+  setClientTiltEmaMode(cd.tiltEma.default);
+  clientTiltEmaMode.value = cd.tiltEma.default;
   if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();
   if (dragPanEnabled.value !== cd.dragPan.default) toggleDragPan();
   for (const rt of RANGE_TYPES) {
@@ -1686,6 +1693,11 @@ function toggleBaseLodMode(): void {
 function changeDriftMode(mode: DriftMode): void {
   setDriftMode(mode);
   driftMode.value = mode;
+}
+
+function changeClientTiltEmaMode(mode: DriftMode): void {
+  setClientTiltEmaMode(mode);
+  clientTiltEmaMode.value = mode;
 }
 
 function toggleEdgeScroll(): void {
@@ -3097,6 +3109,19 @@ onUnmounted(() => {
                 title="Slow interpolation to server state"
                 @click="changeDriftMode('slow')"
               >SLOW</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup>
+            <BarDivider />
+            <BarLabel title="Per-frame chassis-tilt EMA on the client. Layered on top of the HOST SERVER TILT EMA — sim smooths first, then this knob smooths further at render cadence.">TILT EMA:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                v-for="opt in CLIENT_CONFIG.tiltEma.options"
+                :key="opt.value"
+                :active="clientTiltEmaMode === opt.value"
+                :title="`Set client-side chassis-tilt EMA to ${opt.label}.`"
+                @click="changeClientTiltEmaMode(opt.value)"
+              >{{ opt.label }}</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
           <BarControlGroup>

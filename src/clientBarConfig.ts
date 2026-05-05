@@ -73,6 +73,22 @@ export const CLIENT_CONFIG = {
   lodGridBorders: { default: false },
   baseLodMode: { default: false },
   driftMode: { default: 'mid' as const },
+  /** Client-side chassis-tilt EMA. Layered ON TOP of the host's
+   *  HOST SERVER TILT EMA — sim-side smoothing reduces triangle-jump
+   *  noise before serialization, then this knob smooths further on
+   *  the receiving client (per render frame, gliding toward each
+   *  snapshot's value the same way position drift glides toward
+   *  target.x). SNAP = no client smoothing, identical to the
+   *  pre-feature behavior. */
+  tiltEma: {
+    default: 'mid' as const,
+    options: [
+      { value: 'snap' as const, label: 'SNAP' },
+      { value: 'fast' as const, label: 'FAST' },
+      { value: 'mid' as const, label: 'MED' },
+      { value: 'slow' as const, label: 'SLOW' },
+    ],
+  },
   legsRadius: { default: false },
   cameraSmooth: {
     default: 'mid' as const,
@@ -398,6 +414,7 @@ const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
 const LOD_GRID_BORDERS_STORAGE_KEY = 'player-client-lod-grid-borders';
 const BASE_LOD_MODE_STORAGE_KEY = 'player-client-base-lod-mode';
 const DRIFT_MODE_STORAGE_KEY = 'player-client-drift-mode';
+const TILT_EMA_MODE_STORAGE_KEY = 'player-client-tilt-ema-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'player-client-sound-toggles';
 const RANGE_TOGGLES_STORAGE_KEY = 'player-client-range-toggles';
 const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'player-client-proj-range-toggles';
@@ -490,6 +507,7 @@ let currentLodGridBorders: boolean = _cd.lodGridBorders.default;
 // above for the full picture.
 let currentBaseLodMode: boolean = _cd.baseLodMode.default;
 let currentDriftMode: DriftMode = _cd.driftMode.default;
+let currentClientTiltEmaMode: DriftMode = _cd.tiltEma.default;
 const currentSoundToggles: Record<SoundCategory, boolean> = {
   ..._cd.sounds.default,
 };
@@ -645,6 +663,16 @@ function loadFromStorage(): void {
       storedDriftMode === 'slow')
   ) {
     currentDriftMode = storedDriftMode;
+  }
+  const storedClientTilt = readPersisted(TILT_EMA_MODE_STORAGE_KEY);
+  if (
+    storedClientTilt &&
+    (storedClientTilt === 'snap' ||
+      storedClientTilt === 'fast' ||
+      storedClientTilt === 'mid' ||
+      storedClientTilt === 'slow')
+  ) {
+    currentClientTiltEmaMode = storedClientTilt;
   }
   const storedSoundToggles = readPersisted(SOUND_TOGGLES_STORAGE_KEY);
   if (storedSoundToggles) {
@@ -1052,6 +1080,20 @@ export function getDriftMode(): DriftMode {
 export function setDriftMode(mode: DriftMode): void {
   currentDriftMode = mode;
   persist(DRIFT_MODE_STORAGE_KEY, mode);
+}
+
+/** Active client-side chassis-tilt EMA mode. Returns the user's bar
+ *  selection on the PLAYER CLIENT bar; reads as 'snap' (no smoothing)
+ *  by default. Reused for the per-frame predict-side EMA in
+ *  ClientViewState that glides each unit's tilt toward the snapshot's
+ *  target.surfaceNormal. */
+export function getClientTiltEmaMode(): DriftMode {
+  return currentClientTiltEmaMode;
+}
+
+export function setClientTiltEmaMode(mode: DriftMode): void {
+  currentClientTiltEmaMode = mode;
+  persist(TILT_EMA_MODE_STORAGE_KEY, mode);
 }
 
 export function getSoundToggle(category: SoundCategory): boolean {

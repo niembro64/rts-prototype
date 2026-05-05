@@ -24,6 +24,8 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkCaptureTile } from '@/types/capture';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork, refreshUnitTurretsFromNetwork } from './helpers';
+import { getClientTiltEmaMode } from '@/clientBarConfig';
+import { TILT_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import { TURRET_CONFIGS } from '../sim/turretConfigs';
 import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
 import { getUnitBlueprint, getUnitLocomotion } from '../sim/blueprints';
@@ -162,6 +164,14 @@ type ServerTarget = {
   /** Server vz for dead-reckoning and gravity-aware drift on airborne
    *  units between snapshots. */
   velocityZ: number;
+  /** Server's most recent smoothed surface normal for this unit
+   *  (post-host-side tilt EMA). The per-frame predictor glides
+   *  entity.unit.surfaceNormal toward this with the client's own
+   *  tilt-EMA half-life — gives a second smoothing pass on top of
+   *  the host's. Initialized to flat-up (matches createUnitFromNetwork). */
+  surfaceNormalX: number;
+  surfaceNormalY: number;
+  surfaceNormalZ: number;
   turrets: {
     rotation: number;
     angularVelocity: number;
@@ -171,7 +181,12 @@ type ServerTarget = {
 };
 
 function createServerTarget(): ServerTarget {
-  return { x: 0, y: 0, z: 0, rotation: 0, velocityX: 0, velocityY: 0, velocityZ: 0, turrets: [] };
+  return {
+    x: 0, y: 0, z: 0, rotation: 0,
+    velocityX: 0, velocityY: 0, velocityZ: 0,
+    surfaceNormalX: 0, surfaceNormalY: 0, surfaceNormalZ: 1,
+    turrets: [],
+  };
 }
 
 type BeamPathTarget = {
@@ -753,6 +768,16 @@ export class ClientViewState {
           // netEntity.pos is a Vec3 — altitude must ride along or
           // airborne units render at stale ground-plane z on the client.
           target.z = netEntity.pos.z;
+          // Surface normal piggybacks on POS (it's a function of
+          // position). Wire shipped it in the same hunk; if absent
+          // (older snapshot or mid-rollout server), retain prior
+          // target value so client-side EMA keeps gliding.
+          const sn = netEntity.unit?.surfaceNormal;
+          if (sn) {
+            target.surfaceNormalX = sn.nx;
+            target.surfaceNormalY = sn.ny;
+            target.surfaceNormalZ = sn.nz;
+          }
         }
         if (isFull || cf! & ENTITY_CHANGED_ROT) {
           target.rotation = netEntity.rotation;
@@ -1057,16 +1082,11 @@ export class ClientViewState {
         }
       }
       if (isFiniteNumber(su.mass)) entity.unit.mass = su.mass;
-
-      // Smoothed surface normal — wire payload ships it on POS-bit
-      // deltas and on full keyframes. When omitted (POS unchanged)
-      // the client retains the last value, matching the server's
-      // EMA state at that tick.
-      if (su.surfaceNormal) {
-        entity.unit.surfaceNormal.nx = su.surfaceNormal.nx;
-        entity.unit.surfaceNormal.ny = su.surfaceNormal.ny;
-        entity.unit.surfaceNormal.nz = su.surfaceNormal.nz;
-      }
+      // Surface normal is no longer snapped here — it glides per frame
+      // toward target.surfaceNormal* in applyEntityPrediction so the
+      // client-side TILT EMA bar can layer additional smoothing on top
+      // of the host's already-smoothed value. The wire payload writes
+      // into target.surfaceNormal* in the per-snapshot ingestion above.
 
       // On full keyframes, turret mounts/configs are static blueprint
       // data. Rebuild them from the unit type + body radius and then
@@ -1532,6 +1552,24 @@ export class ClientViewState {
     entity.unit.velocityX = lerp(vx, target.velocityX ?? 0, movVelDrift);
     entity.unit.velocityY = lerp(vy, target.velocityY ?? 0, movVelDrift);
     entity.unit.velocityZ = lerp(vz, target.velocityZ ?? 0, movVelDrift);
+
+    // Per-frame chassis-tilt drift. The host's TILT EMA already
+    // smoothed the wire value; this layers an additional client-side
+    // blend at render cadence so the chassis rotates toward each
+    // snapshot's value the same way position glides toward target.x.
+    // SNAP mode → halfLifeBlend returns 1.0 → identical to overwrite.
+    const tiltAlpha = halfLifeBlend(dt, TILT_EMA_HALF_LIFE_SEC[getClientTiltEmaMode()]);
+    const sn = entity.unit.surfaceNormal;
+    const tnx = sn.nx + (target.surfaceNormalX - sn.nx) * tiltAlpha;
+    const tny = sn.ny + (target.surfaceNormalY - sn.ny) * tiltAlpha;
+    const tnz = sn.nz + (target.surfaceNormalZ - sn.nz) * tiltAlpha;
+    const tlen = Math.hypot(tnx, tny, tnz);
+    if (tlen > 1e-6) {
+      const inv = 1 / tlen;
+      sn.nx = tnx * inv;
+      sn.ny = tny * inv;
+      sn.nz = tnz * inv;
+    }
   }
 
   private applyUnitExpensivePrediction(
