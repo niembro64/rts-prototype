@@ -153,4 +153,4 @@ export const TILT_EMA_HALF_LIFE_SEC = {
 } as const;
 export type TiltEmaMode = keyof typeof TILT_EMA_HALF_LIFE_SEC;
 /** Compile-time default; overridden at runtime by the HOST SERVER bar. */
-export const TILT_EMA_MODE_DEFAULT: TiltEmaMode = 'mid';
+export const TILT_EMA_MODE_DEFAULT: TiltEmaMode = 'fast';

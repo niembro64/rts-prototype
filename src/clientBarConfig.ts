@@ -81,7 +81,7 @@ export const CLIENT_CONFIG = {
    *  target.x). SNAP = no client smoothing, identical to the
    *  pre-feature behavior. */
   tiltEma: {
-    default: 'mid' as const,
+    default: 'fast' as const,
     options: [
       { value: 'snap' as const, label: 'SNAP' },
       { value: 'fast' as const, label: 'FAST' },
