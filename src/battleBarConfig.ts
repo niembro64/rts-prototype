@@ -1,6 +1,7 @@
 import type { BattleBarConfig } from './types/battle';
 import type { TerrainMapShape, TerrainShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
+import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
 import {
   BUILDABLE_UNIT_IDS,
   isBuildableUnitId,
@@ -76,6 +77,10 @@ export const BATTLE_CONFIG = {
       { value: 'circle', label: 'CIRCLE' },
     ],
   },
+  mapSize: {
+    width: MAP_DIMENSION_CONFIG.width,
+    length: MAP_DIMENSION_CONFIG.length,
+  },
 } as const satisfies BattleBarConfig;
 
 // Default caps per mode (must be values from BATTLE_CONFIG.cap.options)
@@ -135,6 +140,12 @@ const STORAGE_DEMO_TERRAIN_DIVIDERS = 'demo-battle-terrain-dividers';
 const STORAGE_REAL_TERRAIN_DIVIDERS = 'real-battle-terrain-dividers';
 const STORAGE_DEMO_TERRAIN_MAP_SHAPE = 'demo-battle-terrain-map-shape';
 const STORAGE_REAL_TERRAIN_MAP_SHAPE = 'real-battle-terrain-map-shape';
+const STORAGE_DEMO_MAP_LAND_CELLS = 'demo-battle-map-land-cells';
+const STORAGE_REAL_MAP_LAND_CELLS = 'real-battle-map-land-cells';
+const STORAGE_DEMO_MAP_WIDTH_LAND_CELLS = 'demo-battle-map-width-land-cells';
+const STORAGE_REAL_MAP_WIDTH_LAND_CELLS = 'real-battle-map-width-land-cells';
+const STORAGE_DEMO_MAP_LENGTH_LAND_CELLS = 'demo-battle-map-length-land-cells';
+const STORAGE_REAL_MAP_LENGTH_LAND_CELLS = 'real-battle-map-length-land-cells';
 // Bottom-bars collapsed state. Persisted PER MODE so the user can
 // keep the bars expanded in demo (where they tune sim/visual
 // settings) and collapsed in real-battle (where map real estate
@@ -154,6 +165,7 @@ const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-terrain-center', STORAGE_DEMO_TERRAIN_CENTER],
   ['rts-terrain-dividers', STORAGE_DEMO_TERRAIN_DIVIDERS],
   ['rts-terrain-map-shape', STORAGE_DEMO_TERRAIN_MAP_SHAPE],
+  ['rts-map-land-cells', STORAGE_DEMO_MAP_WIDTH_LAND_CELLS],
 ];
 
 let _battleMigrationsRun = false;
@@ -369,6 +381,58 @@ function parseTerrainMapShape(s: string | null): TerrainMapShape | null {
   return null;
 }
 
+function parseMapLandCellAxis(s: string | null, axis: 'width' | 'length'): number | null {
+  if (!s) return null;
+  const n = Math.floor(Number(s));
+  if (!Number.isFinite(n)) return null;
+  const options =
+    axis === 'width'
+      ? BATTLE_CONFIG.mapSize.width.options
+      : BATTLE_CONFIG.mapSize.length.options;
+  const option = options.find((opt) => opt.valueLandCells === n);
+  return option?.valueLandCells ?? null;
+}
+
+function normalizeMapLandDimensions(
+  dimensions: MapLandCellDimensions,
+): MapLandCellDimensions {
+  const width =
+    parseMapLandCellAxis(String(dimensions.widthLandCells), 'width') ??
+    BATTLE_CONFIG.mapSize.width.default;
+  const length =
+    parseMapLandCellAxis(String(dimensions.lengthLandCells), 'length') ??
+    BATTLE_CONFIG.mapSize.length.default;
+  return { widthLandCells: width, lengthLandCells: length };
+}
+
+function readStoredMapLandDimensions(
+  widthKey: string,
+  lengthKey: string,
+  legacyKey: string,
+): MapLandCellDimensions | null {
+  const width = parseMapLandCellAxis(readPersisted(widthKey), 'width');
+  const length = parseMapLandCellAxis(readPersisted(lengthKey), 'length');
+  if (width !== null && length !== null) {
+    return { widthLandCells: width, lengthLandCells: length };
+  }
+
+  const legacy = parseMapLandCellAxis(readPersisted(legacyKey), 'width');
+  if (legacy !== null) {
+    return {
+      widthLandCells: width ?? legacy,
+      lengthLandCells: length ?? legacy,
+    };
+  }
+
+  if (width !== null) {
+    return { widthLandCells: width, lengthLandCells: width };
+  }
+  if (length !== null) {
+    return { widthLandCells: length, lengthLandCells: length };
+  }
+  return null;
+}
+
 export function loadStoredTerrainCenter(mode: BattleMode): TerrainShape {
   ensureBattleMigrations();
   const primary = parseTerrainShape(
@@ -454,5 +518,56 @@ export function saveTerrainMapShape(
       ? STORAGE_REAL_TERRAIN_MAP_SHAPE
       : STORAGE_DEMO_TERRAIN_MAP_SHAPE,
     shape,
+  );
+}
+
+export function getDefaultMapLandDimensions(): MapLandCellDimensions {
+  return {
+    widthLandCells: BATTLE_CONFIG.mapSize.width.default,
+    lengthLandCells: BATTLE_CONFIG.mapSize.length.default,
+  };
+}
+
+export function loadStoredMapLandDimensions(mode: BattleMode): MapLandCellDimensions {
+  ensureBattleMigrations();
+  const primary = readStoredMapLandDimensions(
+    mode === 'real'
+      ? STORAGE_REAL_MAP_WIDTH_LAND_CELLS
+      : STORAGE_DEMO_MAP_WIDTH_LAND_CELLS,
+    mode === 'real'
+      ? STORAGE_REAL_MAP_LENGTH_LAND_CELLS
+      : STORAGE_DEMO_MAP_LENGTH_LAND_CELLS,
+    mode === 'real'
+      ? STORAGE_REAL_MAP_LAND_CELLS
+      : STORAGE_DEMO_MAP_LAND_CELLS,
+  );
+  if (primary !== null) return primary;
+  if (mode === 'real') {
+    const demoFallback = readStoredMapLandDimensions(
+      STORAGE_DEMO_MAP_WIDTH_LAND_CELLS,
+      STORAGE_DEMO_MAP_LENGTH_LAND_CELLS,
+      STORAGE_DEMO_MAP_LAND_CELLS,
+    );
+    if (demoFallback !== null) return demoFallback;
+  }
+  return getDefaultMapLandDimensions();
+}
+
+export function saveMapLandDimensions(
+  dimensions: MapLandCellDimensions,
+  mode: BattleMode,
+): void {
+  const normalized = normalizeMapLandDimensions(dimensions);
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_MAP_WIDTH_LAND_CELLS
+      : STORAGE_DEMO_MAP_WIDTH_LAND_CELLS,
+    String(normalized.widthLandCells),
+  );
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_MAP_LENGTH_LAND_CELLS
+      : STORAGE_DEMO_MAP_LENGTH_LAND_CELLS,
+    String(normalized.lengthLandCells),
   );
 }

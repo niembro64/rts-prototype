@@ -30,6 +30,7 @@ export type {
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,
   LobbyPlayer,
+  LobbySettings,
   NetworkRole,
   BattleHandoff,
 } from './NetworkTypes';
@@ -42,6 +43,7 @@ import {
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotMessage,
+  LobbyPlayerInfoPayload,
   LobbyPlayer,
   NetworkMessage,
   NetworkRole,
@@ -202,6 +204,102 @@ export class NetworkManager {
     }, delay);
   }
 
+  private getBrowserTimezone(): string {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    } catch {
+      return '';
+    }
+  }
+
+  private formatLocalTime(timezone: string | undefined): string | undefined {
+    if (!timezone) return undefined;
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZone: timezone,
+        timeZoneName: 'short',
+      }).format(new Date());
+    } catch {
+      return undefined;
+    }
+  }
+
+  private applyPlayerInfo(player: LobbyPlayer, info: LobbyPlayerInfoPayload): boolean {
+    let changed = false;
+    const setIfChanged = <K extends keyof LobbyPlayer>(key: K, value: LobbyPlayer[K] | undefined): void => {
+      if (value === undefined || player[key] === value) return;
+      player[key] = value;
+      changed = true;
+    };
+
+    setIfChanged('ipAddress', info.ipAddress);
+    setIfChanged('location', info.location);
+    setIfChanged('timezone', info.timezone);
+    setIfChanged('localTime', info.localTime);
+    if (info.name !== undefined && info.name.length > 0) {
+      const trimmed = info.name.trim().slice(0, MAX_NAME_LENGTH);
+      if (trimmed.length > 0 && player.name !== trimmed) {
+        player.name = trimmed;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  private copyPlayer(player: LobbyPlayer): LobbyPlayer {
+    return { ...player };
+  }
+
+  private playerInfoUpdateMessage(player: LobbyPlayer): NetworkMessage {
+    return {
+      type: 'playerInfoUpdate',
+      gameId: this.getUniversalGameId(),
+      playerId: player.playerId,
+      ipAddress: player.ipAddress,
+      location: player.location,
+      timezone: player.timezone,
+      localTime: player.localTime,
+      name: player.name,
+    };
+  }
+
+  private buildLocalPlayerInfo(): LobbyPlayerInfoPayload {
+    const self = this.players.get(this.localPlayerId);
+    const timezone = self?.timezone || this.getBrowserTimezone();
+    return {
+      name: self?.name ?? getInitialLocalUsername(),
+      ipAddress: self?.ipAddress,
+      location: self?.location,
+      timezone: timezone || undefined,
+      localTime: this.formatLocalTime(timezone),
+    };
+  }
+
+  private refreshLocalPlayerInfo(notify = true): LobbyPlayer | null {
+    const self = this.players.get(this.localPlayerId);
+    if (!self) return null;
+    const changed = this.applyPlayerInfo(self, this.buildLocalPlayerInfo());
+    if (changed && notify) this.onPlayerInfoUpdate?.(this.copyPlayer(self));
+    return self;
+  }
+
+  private mergeRosterPlayer(player: LobbyPlayer): LobbyPlayer {
+    const existing = this.players.get(player.playerId);
+    if (!existing) {
+      const copy = this.copyPlayer(player);
+      this.players.set(copy.playerId, copy);
+      this.onPlayerJoined?.(this.copyPlayer(copy));
+      return copy;
+    }
+    existing.isHost = player.isHost;
+    this.applyPlayerInfo(existing, player);
+    return existing;
+  }
+
   // Host a new game
   async hostGame(): Promise<string> {
     this.roomCode = generateRoomCode();
@@ -244,6 +342,7 @@ export class NetworkManager {
         if (resolved) return;
         resolved = true;
         clearTimeout(timeout);
+        this.startHeartbeats();
         console.log('Host peer opened with ID:', this.peer?.id);
         resolve(this.roomCode);
       });
@@ -273,6 +372,7 @@ export class NetworkManager {
             if (resolved) return;
             resolved = true;
             clearTimeout(timeout);
+            this.startHeartbeats();
             resolve(this.roomCode);
           });
           this.peer.on('connection', (conn) => this.handleIncomingConnection(conn));
@@ -423,6 +523,8 @@ export class NetworkManager {
         gameId: this.getUniversalGameId(),
       });
 
+      this.refreshLocalPlayerInfo(false);
+
       // Send current player list to new player, plus any IP /
        // location info already known about each. Without the
        // info-update follow-up the joiner would see existing
@@ -438,16 +540,10 @@ export class NetworkManager {
         if (
           p.ipAddress !== undefined ||
           p.location !== undefined ||
-          p.timezone !== undefined
+          p.timezone !== undefined ||
+          p.localTime !== undefined
         ) {
-          this.sendTo(playerId, {
-            type: 'playerInfoUpdate',
-            gameId: this.getUniversalGameId(),
-            playerId: p.playerId,
-            ipAddress: p.ipAddress,
-            location: p.location,
-            timezone: p.timezone,
-          });
+          this.sendTo(playerId, this.playerInfoUpdateMessage(p));
         }
       }
 
@@ -619,8 +715,17 @@ export class NetworkManager {
     switch (message.type) {
       case 'heartbeat':
         if (!this.isMessageForCurrentGame(message)) return;
-        // Bookkeeping only — the unconditional refresh above
-        // already updated the timestamp. Nothing else to do.
+        if (this.role === 'host' && message.playerInfo) {
+          const player = this.players.get(fromPlayerId);
+          if (player && this.applyPlayerInfo(player, message.playerInfo)) {
+            this.onPlayerInfoUpdate?.(this.copyPlayer(player));
+          }
+        } else if (this.role === 'client' && message.players) {
+          for (const rosterPlayer of message.players) {
+            const merged = this.mergeRosterPlayer(rosterPlayer);
+            this.onPlayerInfoUpdate?.(this.copyPlayer(merged));
+          }
+        }
         return;
       case 'state':
         // Client receives state from host. Host now ships state as a
@@ -674,24 +779,9 @@ export class NetworkManager {
           if (!this.isMessageForCurrentGame(message)) return;
           const player = this.players.get(fromPlayerId);
           if (player) {
-            if (message.ipAddress !== undefined) player.ipAddress = message.ipAddress;
-            if (message.location !== undefined) player.location = message.location;
-            if (message.timezone !== undefined) player.timezone = message.timezone;
-            if (message.name !== undefined && message.name.length > 0) {
-              player.name = message.name.slice(0, MAX_NAME_LENGTH);
-            }
-            this.onPlayerInfoUpdate?.(player);
-            this.broadcast({
-              type: 'playerInfoUpdate',
-              gameId: this.getUniversalGameId(),
-              playerId: fromPlayerId,
-              ipAddress: message.ipAddress,
-              location: message.location,
-              timezone: message.timezone,
-              name: message.name !== undefined && message.name.length > 0
-                ? player.name
-                : undefined,
-            });
+            this.applyPlayerInfo(player, message);
+            this.onPlayerInfoUpdate?.(this.copyPlayer(player));
+            this.broadcast(this.playerInfoUpdateMessage(player));
           }
         }
         break;
@@ -723,13 +813,13 @@ export class NetworkManager {
 
       case 'playerJoined':
         if (!this.isMessageForCurrentGame(message)) return;
-        // Update player list
-        this.players.set(message.playerId, {
+        // Update player list without dropping richer metadata that may
+        // have arrived first via heartbeat or playerInfoUpdate.
+        this.mergeRosterPlayer({
           playerId: message.playerId,
           name: message.playerName,
           isHost: message.playerId === 1,
         });
-        this.onPlayerJoined?.(this.players.get(message.playerId)!);
         break;
 
       case 'playerLeft':
@@ -746,16 +836,13 @@ export class NetworkManager {
         // already-known IP.
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message)) return;
-          const target = this.players.get(message.playerId);
-          if (target) {
-            if (message.ipAddress !== undefined) target.ipAddress = message.ipAddress;
-            if (message.location !== undefined) target.location = message.location;
-            if (message.timezone !== undefined) target.timezone = message.timezone;
-            if (message.name !== undefined && message.name.length > 0) {
-              target.name = message.name.slice(0, MAX_NAME_LENGTH);
-            }
-            this.onPlayerInfoUpdate?.(target);
-          }
+          const target = this.mergeRosterPlayer({
+            playerId: message.playerId,
+            name: message.name ?? getDefaultPlayerName(message.playerId),
+            isHost: message.playerId === 1,
+          });
+          this.applyPlayerInfo(target, message);
+          this.onPlayerInfoUpdate?.(this.copyPlayer(target));
         }
         break;
 
@@ -794,10 +881,15 @@ export class NetworkManager {
       this.lastHeartbeatReceived.set(pid, now);
     }
     this.heartbeatSendInterval = setInterval(() => {
+      const self = this.refreshLocalPlayerInfo(true);
       const beat: NetworkMessage = {
         type: 'heartbeat',
         gameId: this.getUniversalGameId(),
         playerId: this.localPlayerId,
+        playerInfo: self ? this.buildLocalPlayerInfo() : undefined,
+        players: this.role === 'host'
+          ? Array.from(this.players.values()).map((player) => this.copyPlayer(player))
+          : undefined,
       };
       for (const conn of this.connections.values()) {
         this.safeSend(conn, beat);
@@ -844,34 +936,32 @@ export class NetworkManager {
     location: string | undefined,
     timezone: string | undefined,
   ): void {
+    const payload: LobbyPlayerInfoPayload = {
+      ipAddress,
+      location,
+      timezone,
+      localTime: this.formatLocalTime(timezone || this.getBrowserTimezone()),
+      name: getInitialLocalUsername(),
+    };
     if (this.role === 'host') {
       const self = this.players.get(this.localPlayerId);
       if (self) {
-        self.ipAddress = ipAddress;
-        self.location = location;
-        self.timezone = timezone;
-        self.name = self.name || getInitialLocalUsername();
-        this.onPlayerInfoUpdate?.(self);
-        this.broadcast({
-          type: 'playerInfoUpdate',
-          gameId: this.getUniversalGameId(),
-          playerId: this.localPlayerId,
-          ipAddress,
-          location,
-          timezone,
-          name: self.name,
-        });
+        this.applyPlayerInfo(self, payload);
+        this.onPlayerInfoUpdate?.(this.copyPlayer(self));
+        this.broadcast(this.playerInfoUpdateMessage(self));
       }
     } else if (this.role === 'client') {
+      const self = this.players.get(this.localPlayerId);
+      if (self) {
+        this.applyPlayerInfo(self, payload);
+        this.onPlayerInfoUpdate?.(this.copyPlayer(self));
+      }
       const hostConn = this.connections.get(1);
       if (hostConn) {
         this.safeSend(hostConn, {
           type: 'playerInfo',
           gameId: this.getUniversalGameId(),
-          ipAddress,
-          location,
-          timezone,
-          name: getInitialLocalUsername(),
+          ...payload,
         });
       }
     }
@@ -890,22 +980,21 @@ export class NetworkManager {
     const self = this.players.get(this.localPlayerId);
     if (self && self.name !== trimmed) {
       self.name = trimmed;
-      this.onPlayerInfoUpdate?.(self);
+      this.refreshLocalPlayerInfo(false);
+      this.onPlayerInfoUpdate?.(this.copyPlayer(self));
     }
     if (this.role === 'host') {
-      this.broadcast({
-        type: 'playerInfoUpdate',
-        gameId: this.getUniversalGameId(),
-        playerId: this.localPlayerId,
-        name: trimmed,
-      });
+      const player = this.refreshLocalPlayerInfo(false);
+      if (player) this.broadcast(this.playerInfoUpdateMessage(player));
     } else if (this.role === 'client') {
       const hostConn = this.connections.get(1);
       if (hostConn) {
+        const payload = this.buildLocalPlayerInfo();
+        payload.name = trimmed;
         this.safeSend(hostConn, {
           type: 'playerInfo',
           gameId: this.getUniversalGameId(),
-          name: trimmed,
+          ...payload,
         });
       }
     }
@@ -1107,7 +1196,7 @@ export class NetworkManager {
   }
 
   getPlayers(): LobbyPlayer[] {
-    return Array.from(this.players.values());
+    return Array.from(this.players.values()).map((player) => this.copyPlayer(player));
   }
 
   getConnectedPlayerIds(): PlayerId[] {

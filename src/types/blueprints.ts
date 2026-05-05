@@ -253,6 +253,19 @@ export type TurretRadiusConfig = {
   body: number;
 };
 
+export type ConstructionEmitterSize = 'small' | 'large';
+
+export type ConstructionEmitterVisualSpec = {
+  defaultSize: ConstructionEmitterSize;
+  sizes: Record<ConstructionEmitterSize, {
+    towerSize: ConstructionEmitterSize;
+    pylonHeight: number;
+    pylonOffset: number;
+    innerPylonRadius: number;
+    showerRadius: number;
+  }>;
+};
+
 export type TurretBlueprint = {
   id: TurretId;
   projectileId?: ShotId;
@@ -315,6 +328,11 @@ export type TurretBlueprint = {
    *  ballistic projectile turrets — beams / lasers / vertical
    *  launchers ignore it. */
   groundAimFraction?: number;
+  /** Visual-only construction hardware. These turret blueprints still
+   *  mount through normal unit/building hardpoints, but combat systems
+   *  ignore them and the renderer builds the shared construction
+   *  emitter instead of weapon barrels. */
+  constructionEmitter?: ConstructionEmitterVisualSpec;
 };
 
 /** Chassis-local 3D mount offset, authored in body-radius fractions.
@@ -331,6 +349,20 @@ export type MountOffset = {
 export type TurretMount = {
   turretId: TurretId;
   mount: MountOffset;
+  /** Optional visual variant for turret blueprints that expose
+   *  variant-specific art, such as construction emitters. */
+  visualVariant?: ConstructionEmitterSize;
+};
+
+/** Building hardpoint. Coordinates are world units relative to the
+ *  building footprint center/base:
+ *    x = forward, y = lateral/left, z = turret-head center above base.
+ *  This mirrors unit TurretMount semantics after unit mounts have been
+ *  multiplied by unit radius. */
+export type BuildingTurretMount = {
+  turretId: TurretId;
+  mount: MountOffset;
+  visualVariant?: ConstructionEmitterSize;
 };
 
 export type WheelConfig = {

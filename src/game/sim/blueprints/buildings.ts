@@ -7,13 +7,14 @@
  */
 
 import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingType, ResourceCost } from '../types';
-import type { EntityHudBlueprint } from '../../../types/blueprints';
+import type { BuildingTurretMount, EntityHudBlueprint } from '../../../types/blueprints';
 import {
   EXTRACTOR_METAL_PER_SECOND,
   METAL_DEPOSIT_RESOURCE_CELLS,
   SOLAR_ENERGY_PER_SECOND,
   WIND_ENERGY_PER_SECOND,
 } from '../../../config';
+import { CONSTRUCTION_TURRET_HEAD_RADIUS } from './turrets';
 
 export type BuildingBlueprint = {
   id: BuildingType;
@@ -34,6 +35,10 @@ export type BuildingBlueprint = {
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
   hud: EntityHudBlueprint;
+  /** Optional reusable turret hardpoints mounted on this building.
+   *  Building mount coordinates are absolute world units relative to
+   *  the building center/base, not body-radius fractions like units. */
+  turrets?: BuildingTurretMount[];
 };
 
 export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
@@ -41,6 +46,8 @@ export const SOLAR_BUILDING_VISUAL_HEIGHT = 52;
 export const WIND_BUILDING_VISUAL_HEIGHT = 250;
 export const FACTORY_BASE_VISUAL_HEIGHT = 30;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 50;
+export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
+  FACTORY_BASE_VISUAL_HEIGHT + CONSTRUCTION_TURRET_HEAD_RADIUS;
 
 export type FactoryBuildingVisualMetrics = {
   minDim: number;
@@ -143,6 +150,13 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     hud: {
       barsOffsetAboveTop: 12,
     },
+    turrets: [
+      {
+        turretId: 'constructionTurret',
+        mount: { x: 0, y: 0, z: FACTORY_CONSTRUCTION_TURRET_MOUNT_Z },
+        visualVariant: 'large',
+      },
+    ],
   },
   extractor: {
     id: 'extractor',
@@ -186,6 +200,20 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
     throw new Error(
       `Invalid building blueprint ${id}: HUD barsOffsetAboveTop must be finite`,
     );
+  }
+  if (blueprint.turrets) {
+    for (let i = 0; i < blueprint.turrets.length; i++) {
+      const mount = blueprint.turrets[i].mount;
+      if (
+        !Number.isFinite(mount.x) ||
+        !Number.isFinite(mount.y) ||
+        !Number.isFinite(mount.z)
+      ) {
+        throw new Error(
+          `Invalid building turret mount for ${id}[${i}] ${blueprint.turrets[i].turretId}: mount x/y/z must be finite`,
+        );
+      }
+    }
   }
 }
 

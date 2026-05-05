@@ -2,34 +2,3 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
 #####################################################
 
-  Findings
-
-  ---------------------------------------------------
-  1) DUPLICATE PREDICATES / HELPERS
-  ---------------------------------------------------
-
----------------------------------------------------
-  2) CROSS-FILE INCONSISTENCIES / SHARED-HELPER GAPS
-  ---------------------------------------------------
-
----------------------------------------------------
-  3) OPTIMIZATION TARGETS
-  ---------------------------------------------------
-
-  [MEDIUM] updateFactoryConstructionRig inactive-fade loop
-    (Render3DEntities.ts:3992-4001) keeps reading rates and gating
-    after smoothed rates have collapsed below 0.01. Could skip the
-    block entirely when all three are below threshold. (Skipped —
-    requires tracking a "showers-already-hidden" flag on the rig to
-    avoid leaving them visible on the transition frame; the savings
-    of 3 cheap visible=false sets per inactive-frame don't justify
-    the state-tracking complexity.)
-
----------------------------------------------------
-  4) PATTERN DUPLICATION ACROSS BUILD EMITTERS
-  ---------------------------------------------------
-
-  ---------------------------------------------------
-  5) DEAD EXPORTS / DEAD FIELDS
-  ---------------------------------------------------
-

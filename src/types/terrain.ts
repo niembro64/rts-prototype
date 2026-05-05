@@ -10,6 +10,22 @@
 export type TerrainShape = 'valley' | 'mountain' | 'flat';
 export type TerrainMapShape = 'square' | 'circle';
 
+/** Server-authored terrain mesh samples. Heights are row-major
+ *  authoritative terrain vertices, not render LOD vertices:
+ *  `heights[vy * verticesX + vx]`. */
+export type TerrainTileMap = {
+  mapWidth: number;
+  mapHeight: number;
+  cellSize: number;
+  subdiv: number;
+  cellsX: number;
+  cellsY: number;
+  verticesX: number;
+  verticesY: number;
+  version: number;
+  heights: number[];
+};
+
 /** Shared sign convention for terrain-shaped height features.
  *  VALLEY cuts below ground, MOUNTAIN rises above ground, FLAT removes
  *  the feature. */

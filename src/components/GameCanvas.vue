@@ -53,6 +53,9 @@ import {
   saveTerrainDividers,
   loadStoredTerrainMapShape,
   saveTerrainMapShape,
+  loadStoredMapLandDimensions,
+  saveMapLandDimensions,
+  getDefaultMapLandDimensions,
   getDefaultDemoUnits,
   loadStoredDemoBarsCollapsed,
   saveDemoBarsCollapsed,
@@ -60,6 +63,7 @@ import {
   saveRealBarsCollapsed,
   type BattleMode,
 } from '../battleBarConfig';
+import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { setTerrainCenterShape, setTerrainDividersShape, setTerrainMapShape } from '../game/sim/Terrain';
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
 import {
@@ -297,6 +301,27 @@ function resolvePlayerName(pid: PlayerId, fallback?: string | null): string | nu
   return fallback === undefined ? getDefaultPlayerName(pid) : fallback;
 }
 
+function upsertLobbyPlayer(player: LobbyPlayer): void {
+  const idx = lobbyPlayers.value.findIndex((p) => p.playerId === player.playerId);
+  if (idx === -1) {
+    lobbyPlayers.value = [...lobbyPlayers.value, { ...player }];
+    return;
+  }
+  lobbyPlayers.value = lobbyPlayers.value.map((existing, i) => {
+    if (i !== idx) return existing;
+    return {
+      ...existing,
+      playerId: player.playerId,
+      isHost: player.isHost,
+      name: player.name || existing.name,
+      ipAddress: player.ipAddress ?? existing.ipAddress,
+      location: player.location ?? existing.location,
+      timezone: player.timezone ?? existing.timezone,
+      localTime: player.localTime ?? existing.localTime,
+    };
+  });
+}
+
 /** Commit a local lobby-slot rename — updates the local ref, persists
  *  to localStorage, and (in real battle) hands off to NetworkManager
  *  which broadcasts the change to every other client. */
@@ -388,6 +413,8 @@ watch(playerClientEnabled, (enabled) => {
 
 // Server metadata received from snapshots (for remote clients to display server bar)
 const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
+// Local lookup values are inputs to NetworkManager only. In real
+// battles the UI displays the host-propagated LobbyPlayer record.
 const localIpAddress = ref<string>('N/A');
 // Coarse "City, Country" string from the IP-services lookup,
 // or a timezone-derived fallback if the IP service didn't yield
@@ -424,6 +451,9 @@ const demoUnitTypes = BACKGROUND_UNIT_TYPES;
 const terrainCenter = ref<TerrainShape>(loadStoredTerrainCenter('demo'));
 const terrainDividers = ref<TerrainShape>(loadStoredTerrainDividers('demo'));
 const terrainMapShape = ref<TerrainMapShape>(loadStoredTerrainMapShape('demo'));
+const initialMapDimensions = loadStoredMapLandDimensions('demo');
+const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
+const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
 const effectiveQuality = ref<ConcreteGraphicsQuality>(
   getEffectiveQuality(),
@@ -746,6 +776,20 @@ const currentBattleMode = computed<BattleMode>(
   () => (gameStarted.value || roomCode.value !== '' ? 'real' : 'demo'),
 );
 
+const localLobbyPlayer = computed(
+  () => lobbyPlayers.value.find((p) => p.playerId === localPlayerId.value) ?? null,
+);
+const displayedClientTime = computed(() =>
+  currentBattleMode.value === 'real'
+    ? localLobbyPlayer.value?.localTime ?? ''
+    : clientTime.value,
+);
+const displayedClientIp = computed(() =>
+  currentBattleMode.value === 'real'
+    ? localLobbyPlayer.value?.ipAddress ?? ''
+    : (localIpAddress.value !== 'N/A' ? localIpAddress.value : ''),
+);
+
 // When the active namespace flips, refresh the reactive UI refs so
 // the BATTLE bar + terrain options reflect THAT mode's stored
 // values, AND restart the running demo battle so the preview pane
@@ -760,6 +804,9 @@ watch(currentBattleMode, (mode) => {
   terrainCenter.value = loadStoredTerrainCenter(mode);
   terrainDividers.value = loadStoredTerrainDividers(mode);
   terrainMapShape.value = loadStoredTerrainMapShape(mode);
+  const mapDimensions = loadStoredMapLandDimensions(mode);
+  mapWidthLandCells.value = mapDimensions.widthLandCells;
+  mapLengthLandCells.value = mapDimensions.lengthLandCells;
   if (!gameStarted.value) {
     stopBackgroundBattle();
     nextTick(() => {
@@ -1070,6 +1117,22 @@ function setForceFieldsEnabled(enabled: boolean): void {
   saveForceFieldsEnabled(enabled, currentBattleMode.value);
 }
 
+function currentLobbySettings() {
+  return {
+    terrainCenter: terrainCenter.value,
+    terrainDividers: terrainDividers.value,
+    terrainMapShape: terrainMapShape.value,
+    mapWidthLandCells: mapWidthLandCells.value,
+    mapLengthLandCells: mapLengthLandCells.value,
+  };
+}
+
+function broadcastLobbySettingsIfHost(): void {
+  if (networkRole.value === 'host' && roomCode.value !== '') {
+    networkManager.broadcastLobbySettings(currentLobbySettings());
+  }
+}
+
 /** Pick a new terrain shape (CENTER or DIVIDERS). Persists the choice
  *  and, if a demo battle is running, restarts it so the new heightmap
  *  takes effect immediately. The demo path stops + recreates the
@@ -1109,11 +1172,7 @@ function applyTerrainShape(
     networkRole.value === 'host' &&
     roomCode.value !== ''
   ) {
-    networkManager.broadcastLobbySettings({
-      terrainCenter: terrainCenter.value,
-      terrainDividers: terrainDividers.value,
-      terrainMapShape: terrainMapShape.value,
-    });
+    broadcastLobbySettingsIfHost();
   }
 }
 
@@ -1132,12 +1191,35 @@ function applyTerrainMapShape(shape: TerrainMapShape, broadcast = true): void {
     networkRole.value === 'host' &&
     roomCode.value !== ''
   ) {
-    networkManager.broadcastLobbySettings({
-      terrainCenter: terrainCenter.value,
-      terrainDividers: terrainDividers.value,
-      terrainMapShape: terrainMapShape.value,
+    broadcastLobbySettingsIfHost();
+  }
+}
+
+function sameMapLandDimensions(
+  a: MapLandCellDimensions,
+  b: MapLandCellDimensions,
+): boolean {
+  return (
+    a.widthLandCells === b.widthLandCells &&
+    a.lengthLandCells === b.lengthLandCells
+  );
+}
+
+function applyMapLandDimensions(
+  dimensions: MapLandCellDimensions,
+  broadcast = true,
+): void {
+  const mode = currentBattleMode.value;
+  mapWidthLandCells.value = dimensions.widthLandCells;
+  mapLengthLandCells.value = dimensions.lengthLandCells;
+  saveMapLandDimensions(dimensions, mode);
+  if (!gameStarted.value) {
+    stopBackgroundBattle();
+    nextTick(() => {
+      startBackgroundBattle();
     });
   }
+  if (broadcast) broadcastLobbySettingsIfHost();
 }
 
 function resetDemoDefaults(): void {
@@ -1167,17 +1249,28 @@ function resetDemoDefaults(): void {
   const centerDefault = BATTLE_CONFIG.center.default;
   const dividersDefault = BATTLE_CONFIG.dividers.default;
   const mapShapeDefault = BATTLE_CONFIG.mapShape.default;
+  const mapDimensionsDefault = getDefaultMapLandDimensions();
   if (
     terrainCenter.value !== centerDefault ||
     terrainDividers.value !== dividersDefault ||
-    terrainMapShape.value !== mapShapeDefault
+    terrainMapShape.value !== mapShapeDefault ||
+    !sameMapLandDimensions(
+      {
+        widthLandCells: mapWidthLandCells.value,
+        lengthLandCells: mapLengthLandCells.value,
+      },
+      mapDimensionsDefault,
+    )
   ) {
     terrainCenter.value = centerDefault;
     terrainDividers.value = dividersDefault;
     terrainMapShape.value = mapShapeDefault;
+    mapWidthLandCells.value = mapDimensionsDefault.widthLandCells;
+    mapLengthLandCells.value = mapDimensionsDefault.lengthLandCells;
     saveTerrainCenter(centerDefault, mode);
     saveTerrainDividers(dividersDefault, mode);
     saveTerrainMapShape(mapShapeDefault, mode);
+    saveMapLandDimensions(mapDimensionsDefault, mode);
     if (!gameStarted.value) {
       stopBackgroundBattle();
       nextTick(() => {
@@ -1190,6 +1283,7 @@ function resetDemoDefaults(): void {
   if (displayGridInfo.value !== gridDefault) {
     toggleSendGridInfo();
   }
+  broadcastLobbySettingsIfHost();
 }
 
 function resetServerDefaults(): void {
@@ -1355,17 +1449,9 @@ async function handleHost(): Promise<void> {
     networkRole.value = 'host';
     localPlayerId.value = 1;
 
-    // Add self to player list
-    lobbyPlayers.value = [
-      {
-        playerId: 1,
-        name: networkManager.getLocalPlayerName(),
-        isHost: true,
-        ipAddress: localIpAddress.value !== 'N/A' ? localIpAddress.value : undefined,
-        location: localLocation.value || undefined,
-        timezone: localTimezone.value || undefined,
-      },
-    ];
+    // Add self from NetworkManager's canonical host roster. IP/time
+    // arrive through reportLocalPlayerInfo and host heartbeat updates.
+    lobbyPlayers.value = networkManager.getPlayers().map((player) => ({ ...player }));
 
     // Setup network callbacks
     setupNetworkCallbacks();
@@ -1716,13 +1802,7 @@ function updateFPSStats(): void {
 function setupNetworkCallbacks(): void {
   networkManager.onPlayerJoined = (player: LobbyPlayer) => {
     networkNotice.value = null;
-    // Check if already in list
-    const existing = lobbyPlayers.value.find(
-      (p) => p.playerId === player.playerId,
-    );
-    if (!existing) {
-      lobbyPlayers.value = [...lobbyPlayers.value, player];
-    }
+    upsertLobbyPlayer(player);
   };
 
   networkManager.onPlayerLeft = (playerId: PlayerId) => {
@@ -1768,19 +1848,7 @@ function setupNetworkCallbacks(): void {
     if (player.playerId === localPlayerId.value && player.name) {
       localUsername.value = player.name;
     }
-    const idx = lobbyPlayers.value.findIndex((p) => p.playerId === player.playerId);
-    if (idx === -1) return;
-    lobbyPlayers.value = lobbyPlayers.value.map((p, i) =>
-      i === idx
-        ? {
-            ...p,
-            name: player.name,
-            ipAddress: player.ipAddress,
-            location: player.location,
-            timezone: player.timezone,
-          }
-        : p,
-    );
+    upsertLobbyPlayer(player);
   };
 
   // Lobby-settings sync. The host registers a getter so the
@@ -1788,11 +1856,7 @@ function setupNetworkCallbacks(): void {
   // client joins (initial handshake push). Clients always write
   // these into the real-match namespace, even if the packet arrives
   // before `roomCode` flips the UI out of demo mode.
-  networkManager.getLobbySettings = () => ({
-    terrainCenter: terrainCenter.value,
-    terrainDividers: terrainDividers.value,
-    terrainMapShape: terrainMapShape.value,
-  });
+  networkManager.getLobbySettings = currentLobbySettings;
   networkManager.onLobbySettings = (settings) => {
     applyLobbySettingsFromHost(settings);
   };
@@ -1802,18 +1866,31 @@ function applyLobbySettingsFromHost(settings: {
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
   terrainMapShape: TerrainMapShape;
+  mapWidthLandCells: number;
+  mapLengthLandCells: number;
 }, options: { restartPreview?: boolean } = {}): void {
   const changed =
     settings.terrainCenter !== terrainCenter.value ||
     settings.terrainDividers !== terrainDividers.value ||
-    settings.terrainMapShape !== terrainMapShape.value;
+    settings.terrainMapShape !== terrainMapShape.value ||
+    settings.mapWidthLandCells !== mapWidthLandCells.value ||
+    settings.mapLengthLandCells !== mapLengthLandCells.value;
 
   terrainCenter.value = settings.terrainCenter;
   terrainDividers.value = settings.terrainDividers;
   terrainMapShape.value = settings.terrainMapShape;
+  mapWidthLandCells.value = settings.mapWidthLandCells;
+  mapLengthLandCells.value = settings.mapLengthLandCells;
   saveTerrainCenter(settings.terrainCenter, 'real');
   saveTerrainDividers(settings.terrainDividers, 'real');
   saveTerrainMapShape(settings.terrainMapShape, 'real');
+  saveMapLandDimensions(
+    {
+      widthLandCells: settings.mapWidthLandCells,
+      lengthLandCells: settings.mapLengthLandCells,
+    },
+    'real',
+  );
   setTerrainCenterShape(settings.terrainCenter);
   setTerrainDividersShape(settings.terrainDividers);
   setTerrainMapShape(settings.terrainMapShape);
@@ -1857,6 +1934,12 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
     const realTerrainCenter = loadStoredTerrainCenter('real');
     const realTerrainDividers = loadStoredTerrainDividers('real');
     const realTerrainMapShape = loadStoredTerrainMapShape('real');
+    const realMapDimensions = loadStoredMapLandDimensions('real');
+    const realMapSize = getMapSize(
+      false,
+      realMapDimensions.widthLandCells,
+      realMapDimensions.lengthLandCells,
+    );
     setTerrainCenterShape(realTerrainCenter);
     setTerrainDividersShape(realTerrainDividers);
     setTerrainMapShape(realTerrainMapShape);
@@ -1869,6 +1952,8 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         terrainCenter: realTerrainCenter,
         terrainDividers: realTerrainDividers,
         terrainMapShape: realTerrainMapShape,
+        mapWidthLandCells: realMapDimensions.widthLandCells,
+        mapLengthLandCells: realMapDimensions.lengthLandCells,
       });
       if (startGen !== realBattleStartGen || !gameStarted.value || !containerRef.value) {
         createdServer.stop();
@@ -1946,7 +2031,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
     // Create ClientViewState once per game session.
     clientViewState = new ClientViewState();
-    clientViewState.setMapDimensions(getMapSize(false).width, getMapSize(false).height);
+    clientViewState.setMapDimensions(realMapSize.width, realMapSize.height);
 
     // Create game with player configuration
     gameInstance = createGame({
@@ -1957,8 +2042,8 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       localPlayerId: localPlayerId.value,
       gameConnection,
       clientViewState,
-      mapWidth: getMapSize(false).width,
-      mapHeight: getMapSize(false).height,
+      mapWidth: realMapSize.width,
+      mapHeight: realMapSize.height,
       terrainCenter: realTerrainCenter,
       terrainDividers: realTerrainDividers,
       terrainMapShape: realTerrainMapShape,
@@ -2335,6 +2420,32 @@ onUnmounted(() => {
                component tree — single source of truth. -->
           <BarControlGroup v-if="!gameStarted">
             <BarDivider />
+            <BarLabel>WIDTH:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                v-for="opt in BATTLE_CONFIG.mapSize.width.options"
+                :key="opt.label"
+                :active="mapWidthLandCells === opt.valueLandCells"
+                :title="`Set map width to ${opt.label} land cells`"
+                @click="applyMapLandDimensions({ widthLandCells: opt.valueLandCells, lengthLandCells: mapLengthLandCells })"
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup v-if="!gameStarted">
+            <BarDivider />
+            <BarLabel>LENGTH:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                v-for="opt in BATTLE_CONFIG.mapSize.length.options"
+                :key="opt.label"
+                :active="mapLengthLandCells === opt.valueLandCells"
+                :title="`Set map length to ${opt.label} land cells`"
+                @click="applyMapLandDimensions({ widthLandCells: mapWidthLandCells, lengthLandCells: opt.valueLandCells })"
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
+          </BarControlGroup>
+          <BarControlGroup v-if="!gameStarted">
+            <BarDivider />
             <BarLabel>CENTER:</BarLabel>
             <BarButtonGroup>
               <BarButton
@@ -2648,16 +2759,16 @@ onUnmounted(() => {
         <BarDivider />
         <div class="bar-controls">
           <span
-            v-if="clientTime"
+            v-if="displayedClientTime"
             class="time-display"
-            title="Client wall-clock time"
-            >{{ clientTime }}</span
+            title="Host-propagated client wall-clock time"
+            >{{ displayedClientTime }}</span
           >
           <span
-            v-if="localIpAddress !== 'N/A'"
+            v-if="displayedClientIp"
             class="ip-display"
-            title="Public IP address"
-            >{{ localIpAddress }}</span
+            title="Host-propagated public IP address"
+            >{{ displayedClientIp }}</span
           >
           <BarDivider />
           <BarControlGroup>
@@ -3266,6 +3377,8 @@ onUnmounted(() => {
       :terrain-center="terrainCenter"
       :terrain-dividers="terrainDividers"
       :terrain-map-shape="terrainMapShape"
+      :map-width-land-cells="mapWidthLandCells"
+      :map-length-land-cells="mapLengthLandCells"
       :unit-types="demoUnitTypes"
       :allowed-units="currentAllowedUnits"
       :unit-cap="displayUnitCap"
@@ -3280,6 +3393,7 @@ onUnmounted(() => {
       @set-terrain-center="(s) => applyTerrainShape('center', s)"
       @set-terrain-dividers="(s) => applyTerrainShape('dividers', s)"
       @set-terrain-map-shape="(s) => applyTerrainMapShape(s)"
+      @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"
       @toggle-unit="(ut) => toggleDemoUnitType(ut)"
       @toggle-all-units="toggleAllDemoUnits"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"

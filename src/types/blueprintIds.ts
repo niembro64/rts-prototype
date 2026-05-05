@@ -39,6 +39,7 @@ export const TURRET_IDS = [
   'beamTurret',
   'megaBeamTurret',
   'forceTurret',
+  'constructionTurret',
 ] as const;
 export type TurretId = typeof TURRET_IDS[number];
 

@@ -1,5 +1,5 @@
 import type { Entity, EntityId, PlayerId } from './types';
-import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { LAND_CELL_SIZE } from '../../config';
 import {
   CANONICAL_LAND_CELL_SIZE,
   assertCanonicalLandCellSize,
@@ -105,7 +105,7 @@ export class SpatialGrid {
   private readonly queryResultAll: Entity[] = [];
   private readonly nearbyCells: number[] = [];
 
-  constructor(cellSize: number = SPATIAL_GRID_CELL_SIZE) {
+  constructor(cellSize: number = LAND_CELL_SIZE) {
     assertCanonicalLandCellSize('SpatialGrid cell size', cellSize);
     this.cellSize = CANONICAL_LAND_CELL_SIZE;
     this.halfCellSize = this.cellSize / 2;

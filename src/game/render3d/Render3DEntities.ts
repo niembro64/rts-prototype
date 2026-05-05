@@ -33,11 +33,12 @@ import {
 } from '@/shellConfig';
 import type { SpinConfig } from '../../config';
 import {
+  LAND_CELL_SIZE,
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
 import { CONSTRUCTION_TOWER_SPIN_CONFIG } from '@/constructionVisualConfig';
-import { getGroundNormal } from '../sim/Terrain';
+import { getSurfaceNormal } from '../sim/Terrain';
 import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
@@ -66,7 +67,6 @@ import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
 import { getUnitBodyShapeKey } from '../math/BodyDimensions';
 import {
   buildBuildingShape,
-  buildConstructionEmitterRig,
   disposeBuildingGeoms,
   getConstructionHazardMaterial,
   writeSolarPetalMatrix,
@@ -325,7 +325,6 @@ type EntityMesh = {
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  body. Empty / undefined for units. */
   buildingDetails?: BuildingDetailMesh[];
-  constructionEmitter?: ConstructionEmitterRig;
   factoryRig?: FactoryConstructionRig;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
@@ -1278,6 +1277,7 @@ export class Render3DEntities {
       const sin = Math.sin(entity.transform.rotation);
       for (let i = 0; i < entity.turrets.length; i++) {
         const weapon = entity.turrets[i];
+        if (weapon.config.visualOnly) continue;
         const tm = m.turrets[i];
         if (!tm) continue;
         const cachedMount = weapon.worldPos;
@@ -1287,10 +1287,11 @@ export class Render3DEntities {
               ux, uy, getUnitGroundZ(entity),
               cos, sin,
               weapon.mount.x, weapon.mount.y, getTurretMountHeight(entity, i),
-              getGroundNormal(
+              getSurfaceNormal(
                 ux, uy,
                 this.clientViewState.getMapWidth(),
                 this.clientViewState.getMapHeight(),
+                LAND_CELL_SIZE,
               ),
             );
         const mountX = cachedMount?.x ?? fallbackMount!.x;
@@ -2564,7 +2565,8 @@ export class Render3DEntities {
           // (would double-render). Slot alloc returns null on cap
           // exhaustion → fall back to per-Mesh head.
           const isForceField = (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
-          const hideHead = turretOff || isForceField;
+          const isConstructionEmitter = t.config.constructionEmitter !== undefined;
+          const hideHead = turretOff || isForceField || isConstructionEmitter;
           let headSlot: number | undefined;
           if (USE_DETAILED_UNIT_INSTANCING && !hideHead && !isCommanderUnit) {
             const allocated = this.allocTurretHeadSlot();
@@ -2638,26 +2640,11 @@ export class Render3DEntities {
           turretMeshes.push(tm);
         }
 
-        const constructionEmitter = e.commander && e.builder
-          ? buildConstructionEmitterRig(Math.max(5, radius * 0.34), this.getPrimaryMat(pid))
-          : undefined;
-        if (constructionEmitter) {
-          constructionEmitter.group.userData.entityId = e.id;
-          constructionEmitter.group.traverse((obj) => { obj.userData.entityId = e.id; });
-          constructionEmitter.group.position.set(
-            -radius * 0.42,
-            bodyEntry.topY * radius + radius * 0.14,
-            0,
-          );
-          liftGroup.add(constructionEmitter.group);
-        }
-
         this.world.add(group);
         m = {
           group, yawGroup, liftGroup, chassis, chassisMeshes, bodyShapeKey, bodyShape,
           hideChassis,
           turrets: turretMeshes, lodKey: unitLodKey,
-          constructionEmitter,
           smoothChassisSlots,
           polyChassisSlot,
           // Cache the lift so the chassis instance writers can
@@ -2821,9 +2808,10 @@ export class Render3DEntities {
       // to identity — same fast path as before.
       const yaw = -e.transform.rotation;
       let chassisTilted = false;
-      const n = getGroundNormal(
+      const n = getSurfaceNormal(
         e.transform.x, e.transform.y,
         this.clientViewState.getMapWidth(), this.clientViewState.getMapHeight(),
+        LAND_CELL_SIZE,
       );
       if (n.nx === 0 && n.ny === 0) {
         m.group.quaternion.identity();
@@ -3002,10 +2990,6 @@ export class Render3DEntities {
       // here we mirror the same toggle → ring visibility behaviour.
       this.updateRadiusRings(m, e);
       this.updateRangeRings(m, e);
-      if (m.constructionEmitter) {
-        m.constructionEmitter.group.visible = buildingTierAtLeast(unitGraphicsTier, 'low');
-        this.updateCommanderEmitter(m.constructionEmitter, e, unitGraphicsTier);
-      }
 
       // Per-turret placement. The runtime 3D mount is derived from the
       // unit blueprint's `turrets[i].mount` in body-radius fractions.
@@ -3021,6 +3005,18 @@ export class Render3DEntities {
         const turretHeadCenterY = getTurretMountHeight(e, i);
         const turretMountY = turretHeadCenterY - (m.chassisLift ?? 0) - headRadius;
         tm.root.position.set(t.mount.x, turretMountY, t.mount.y);
+
+        if (tm.constructionEmitter) {
+          const visible = buildingTierAtLeast(unitGraphicsTier, 'low');
+          tm.root.visible = visible;
+          tm.root.rotation.y = 0;
+          if (tm.pitchGroup) tm.pitchGroup.rotation.z = 0;
+          if (tm.spinGroup) tm.spinGroup.rotation.x = 0;
+          if (visible) {
+            this.updateCommanderEmitter(tm.constructionEmitter, e, unitGraphicsTier);
+          }
+          continue;
+        }
 
         // Head InstancedMesh write — the head sphere's chassis-local
         // position is (mount.x, mountY + headRadius, mount.y) inside
@@ -3463,6 +3459,11 @@ export class Render3DEntities {
         for (const detail of shape.details) {
           detail.mesh.userData.entityId = e.id;
           group.add(detail.mesh);
+        }
+        if (shape.factoryRig?.group) {
+          shape.factoryRig.group.userData.entityId = e.id;
+          shape.factoryRig.group.traverse((obj) => { obj.userData.entityId = e.id; });
+          group.add(shape.factoryRig.group);
         }
         this.world.add(group);
         m = {
@@ -4017,7 +4018,7 @@ export class Render3DEntities {
    *  pattern but rates are computed render-side (no extra wire
    *  payload) since builders already ship `paid` for every Buildable. */
   private updateCommanderEmitter(
-    rig: import('./BuildingShape3D').ConstructionEmitterRig,
+    rig: ConstructionEmitterRig,
     commander: Entity,
     tier: ConcreteGraphicsQuality,
   ): void {
@@ -4113,6 +4114,7 @@ export class Render3DEntities {
       && !!factory
       && !!queuedUnitType
       && factory.isProducing;
+    rig.group.visible = detailsReady && buildingTierAtLeast(tier, 'medium');
 
     // EMA the live per-resource rate fractions toward the smoothed
     // values stored on the rig. Targets are 0 when the factory isn't
@@ -4205,13 +4207,14 @@ export class Render3DEntities {
     // toward the forming unit.
     if (buildingTierAtLeast(tier, 'high') && e.ownership) {
       group.updateWorldMatrix(true, false);
+      rig.group.updateWorldMatrix(true, false);
       this._factorySprayTargetLocal.set(localSpotX, centerY + radius * 0.06, localSpotZ);
       this._factorySprayTargetWorld
         .copy(this._factorySprayTargetLocal)
         .applyMatrix4(group.matrixWorld);
       this.emitPylonResourceSprays(
         rig,
-        group,
+        rig.group,
         e.id,
         e.ownership.playerId,
         e.id,

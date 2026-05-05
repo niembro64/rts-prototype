@@ -36,7 +36,7 @@
 
 import type { BuildingGrid } from './grid';
 import { GRID_CELL_SIZE } from './grid';
-import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { LAND_CELL_SIZE } from '../../config';
 import { GAME_DIAGNOSTICS, debugWarn } from '../diagnostics';
 import {
   isWaterAt,
@@ -161,7 +161,7 @@ function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
       if (getTerrainHeight(cx, cy, mapWidth, mapHeight) < WATER_LEVEL) {
         blk = true;
       } else {
-        const norm = getSurfaceNormal(cx, cy, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
+        const norm = getSurfaceNormal(cx, cy, mapWidth, mapHeight, LAND_CELL_SIZE);
         if (norm.nz < SLOPE_BLOCK_NZ) blk = true;
       }
       if (blk) terrainMask[gy * gridW + gx] = 1;
@@ -706,7 +706,7 @@ export function expandPathActions(
     const isFinalUnsnapped = isFinal && goalZ !== undefined && px === goalX && py === goalY;
     const z = isFinalUnsnapped
       ? goalZ
-      : getSurfaceHeight(px, py, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
+      : getSurfaceHeight(px, py, mapWidth, mapHeight, LAND_CELL_SIZE);
     const action: UnitAction = { type, x: px, y: py, z };
     if (!isFinal) action.isPathExpansion = true;
     out.push(action);

@@ -17,6 +17,9 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
   for (let i = 0; i < bp.turrets.length; i++) {
     const mount = bp.turrets[i];
     const turretConfig = getTurretConfig(mount.turretId);
+    if (mount.visualVariant !== undefined) {
+      turretConfig.visualVariant = mount.visualVariant;
+    }
     const ranges = computeTurretRanges(turretConfig);
     const turnAccel = turretConfig.angular.turnAccel;
     const drag = turretConfig.angular.drag;

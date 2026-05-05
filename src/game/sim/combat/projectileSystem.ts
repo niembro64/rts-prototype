@@ -250,6 +250,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (!turretMaskIncludes(firingMask, weaponIndex)) continue;
       const weapon = unit.turrets[weaponIndex];
       const config = weapon.config;
+      if (config.visualOnly) continue;
       const shot = config.shot;
       if (shot.type === 'force') continue; // Force fields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire

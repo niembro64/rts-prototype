@@ -15,6 +15,7 @@ import type {
   MountOffset,
   TurretMount,
   UnitBodyShape,
+  ConstructionEmitterSize,
 } from './types';
 import type { UnitLocomotion } from '../types';
 import { createLocomotionPhysics, createUnitLocomotion } from '../locomotion';
@@ -292,9 +293,19 @@ const DADDY_FORCE_FIELD_TURRET_Z_FRAC = 49 / DADDY_VISUAL_RADIUS;
 const DADDY_LEG_ATTACH_HEIGHT_FRAC = DADDY_FORCE_FIELD_TURRET_Z_FRAC;
 const LORIS_BODY_CENTER_HEIGHT = 24;
 const LORIS_MIRROR_TURRET_Z_FRAC = LORIS_BODY_CENTER_HEIGHT / 10;
+// Commander construction turret is the small version of the shared
+// construction emitter. Its mount is authored as a normal turret pivot:
+// z is the turret head center in body-radius fractions. The renderer
+// subtracts the turret body radius to place the emitter base at the
+// same raised deck where the previous bespoke commander emitter lived.
+const COMMANDER_CONSTRUCTION_TURRET_Z_FRAC = 2.28;
 
-function turretMount(turretId: TurretId, mount: MountOffset): TurretMount {
-  return { turretId, mount };
+function turretMount(
+  turretId: TurretId,
+  mount: MountOffset,
+  visualVariant?: ConstructionEmitterSize,
+): TurretMount {
+  return visualVariant ? { turretId, mount, visualVariant } : { turretId, mount };
 }
 
 function mountPoint(x: number, y: number, z: number): MountOffset {
@@ -722,6 +733,11 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [
       turretMount('beamTurret', mountPoint(0.36, -0.42, 1)),
       turretMount('dgunTurret', mountPoint(0.36, 0.42, 1)),
+      turretMount(
+        'constructionTurret',
+        mountPoint(-0.42, 0, COMMANDER_CONSTRUCTION_TURRET_Z_FRAC),
+        'small',
+      ),
     ],
     bodyShape: BODY_SHAPES.commander,
     hud: DEFAULT_UNIT_HUD_LAYOUT,

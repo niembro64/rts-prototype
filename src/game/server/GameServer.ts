@@ -39,7 +39,7 @@ import {
   SNAPSHOT_CONFIG,
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
-  MANA_TILE_SIZE,
+  LAND_CELL_SIZE,
   MAX_TICK_DT_MS,
   SERVER_GRID_DEBUG_INTERVAL_MS,
   SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS,
@@ -52,8 +52,9 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
 import { getLocomotionForceProfile } from '../sim/locomotion';
-import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape, setTerrainCenterShape, setTerrainDividersShape } from '../sim/Terrain';
+import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape, setTerrainCenterShape, setTerrainDividersShape, buildTerrainTileMap, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { generateMetalDeposits } from '../../metalDepositConfig';
+import type { TerrainTileMap } from '@/types/terrain';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -103,6 +104,7 @@ export class GameServer {
 
   private playerIds: PlayerId[];
   private backgroundMode: boolean;
+  private terrainTileMap: TerrainTileMap;
 
   // Game loop
   private gameLoopInterval: ReturnType<typeof setInterval> | null = null;
@@ -201,9 +203,11 @@ export class GameServer {
     this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
-    // Demo / lobby battle uses MAP_SETTINGS.demo (larger); real game
-    // uses MAP_SETTINGS.game.
-    const mapConfig = getMapSize(this.backgroundMode);
+    const mapConfig = getMapSize(
+      this.backgroundMode,
+      config.mapWidthLandCells,
+      config.mapLengthLandCells,
+    );
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
 
@@ -237,6 +241,8 @@ export class GameServer {
         blendRadius: d.blendRadius,
       })),
     );
+    this.terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
+    setAuthoritativeTerrainTileMap(this.terrainTileMap);
 
     // The physics engine is now fully 3D — same module for every path.
     this.physics = physics ?? new PhysicsEngine3D(mapWidth, mapHeight);
@@ -284,7 +290,7 @@ export class GameServer {
     this.setupSimulationCallbacks();
 
     // Pre-paint the capture grid into per-team radial sectors. Same
-    // angular layout the spawn circle and terrain dividers use, so
+    // oval-space angular layout the spawn oval and terrain dividers use, so
     // each team starts with the territory in front of their base.
     // Border tiles get area-weighted partial ownership (the centre
     // tile is naturally split among all teams). Tiles flagged dirty
@@ -295,9 +301,9 @@ export class GameServer {
       // available during update() AND for the initial radial paint
       // below. The renderer pulls the same weights so on-screen
       // brightness and income stay in lockstep.
-      this.captureSystem.setMapSize(mapWidth, mapHeight, MANA_TILE_SIZE);
+      this.captureSystem.setMapSize(mapWidth, mapHeight, LAND_CELL_SIZE);
       this.captureSystem.initializeRadialOwnership(
-        mapWidth, mapHeight, MANA_TILE_SIZE,
+        mapWidth, mapHeight, LAND_CELL_SIZE,
         this.playerIds, FIRST_PLAYER_ANGLE,
         CAPTURE_CONFIG.initialOwnershipHeight,
       );
@@ -1055,6 +1061,7 @@ export class GameServer {
       state.capture = captureTiles.length > 0
         ? { tiles: captureTiles, cellSize: this.captureSystem.getCellSize() }
         : undefined;
+      state.terrain = isDelta ? undefined : this.terrainTileMap;
       state.serverMeta = serverMeta;
       return state;
     };

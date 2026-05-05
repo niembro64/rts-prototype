@@ -11,6 +11,7 @@ import {
 import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
 import { getPlayerBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
 import { isFarFromWater } from '../sim/Terrain';
+import { makeMapOvalMetrics, mapOvalPointAt } from '../sim/mapOval';
 import { expandPathActions } from '../sim/Pathfinder';
 import type { BuildingGrid } from '../sim/grid';
 
@@ -137,7 +138,7 @@ function spawnUnit(
 }
 
 // Spawn units for the background battle. Teams + their angular bands
-// on the spawn circle come from DEMO_CONFIG so 3-vs-3 (or 2-vs-2, 4-vs-4)
+// on the spawn oval come from DEMO_CONFIG so 3-vs-3 (or 2-vs-2, 4-vs-4)
 // works without code changes.
 export function spawnBackgroundUnitsStandalone(
   world: WorldState,
@@ -157,10 +158,11 @@ export function spawnBackgroundUnitsStandalone(
   const unitCapPerPlayer = Math.floor(world.maxTotalUnits / numPlayers);
   const mapWidth = world.mapWidth;
   const mapHeight = world.mapHeight;
-  const cx = mapWidth / 2;
-  const cy = mapHeight / 2;
+  const oval = makeMapOvalMetrics(mapWidth, mapHeight);
+  const cx = oval.cx;
+  const cy = oval.cy;
 
-  // Each team's angular position on the spawn circle (matches the layout
+  // Each team's angular position on the spawn oval (matches the layout
   // used for commanders / solars / factories in spawn.ts).
   const baseAngles: number[] = [];
   for (let p = 0; p < numPlayers; p++) {
@@ -169,7 +171,7 @@ export function spawnBackgroundUnitsStandalone(
 
   if (initialSpawn) {
     // All teams' initial units spawn at random positions inside a
-    // single circle around the map center (uniform area density via
+    // single oval around the map center (uniform oval-space area density via
     // sqrt-sample). Each unit's waypoint is the diametrically
     // opposite point through the center, so the units from every team
     // intermix on launch and converge through the middle — the
@@ -179,7 +181,7 @@ export function spawnBackgroundUnitsStandalone(
     // against `isFarFromWater`. After centerSpawnWaterMaxAttempts
     // failures the unit is skipped — the central disk is the SAME
     // sample area as before, just with the wet portion carved out.
-    const centerRadius = DEMO_CONFIG.centerSpawnRadius * mapHeight;
+    const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
     // Initial demo spawn fills each team's slice of the global unit cap
     // — `unitCapPerPlayer` (= maxTotalUnits / numPlayers). The demo
     // starts at FULL CAP so the user immediately sees the battle at
@@ -201,8 +203,9 @@ export function spawnBackgroundUnitsStandalone(
         for (let k = 0; k < maxAttempts; k++) {
           const spawnAngle = Math.random() * Math.PI * 2;
           const spawnDist = Math.sqrt(Math.random()) * centerRadius;
-          spawnX = cx + Math.cos(spawnAngle) * spawnDist;
-          spawnY = cy + Math.sin(spawnAngle) * spawnDist;
+          const point = mapOvalPointAt(oval, spawnAngle, spawnDist);
+          spawnX = point.x;
+          spawnY = point.y;
           if (isFarFromWater(spawnX, spawnY, mapWidth, mapHeight, waterBuffer)) {
             found = true;
             break;
@@ -224,7 +227,7 @@ export function spawnBackgroundUnitsStandalone(
   } else {
     // Reinforcements: one unit per team at their base sector arc, heading
     // toward map center. Same angular layout as the initial spawn.
-    const spawnRadius = DEMO_CONFIG.centerSpawnRadius * mapHeight;
+    const spawnRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
     const sectorAngle = (2 * Math.PI / numPlayers) * DEMO_CONFIG.centerSpawnSectorFraction;
 
     for (let p = 0; p < numPlayers; p++) {
@@ -235,11 +238,10 @@ export function spawnBackgroundUnitsStandalone(
       const offsetAngle = (Math.random() - 0.5) * sectorAngle;
       const a = baseAngles[p] + offsetAngle;
       const r = spawnRadius * (0.85 + Math.random() * 0.15);
-      const x = cx + Math.cos(a) * r;
-      const y = cy + Math.sin(a) * r;
+      const point = mapOvalPointAt(oval, a, r);
 
       const unit = spawnUnit(
-        world, physics, playerId, x, y, cx, cy,
+        world, physics, playerId, point.x, point.y, cx, cy,
         buildingGrid, DEMO_CONFIG.initialUnitWaypointType, allowedTypes,
       );
       if (unit) spawned.push(unit);

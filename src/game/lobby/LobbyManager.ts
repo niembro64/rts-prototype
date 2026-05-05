@@ -14,6 +14,7 @@ import {
   loadStoredTerrainCenter,
   loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
+  loadStoredMapLandDimensions,
   getDefaultDemoUnits,
   type BattleMode,
 } from '../../battleBarConfig';
@@ -88,6 +89,12 @@ export async function createBackgroundBattle(
   const terrainCenter = loadStoredTerrainCenter(mode);
   const terrainDividers = loadStoredTerrainDividers(mode);
   const terrainMapShape = loadStoredTerrainMapShape(mode);
+  const mapDimensions = loadStoredMapLandDimensions(mode);
+  const mapSize = getMapSize(
+    true,
+    mapDimensions.widthLandCells,
+    mapDimensions.lengthLandCells,
+  );
   setTerrainCenterShape(terrainCenter);
   setTerrainDividersShape(terrainDividers);
   setTerrainMapShape(terrainMapShape);
@@ -127,6 +134,8 @@ export async function createBackgroundBattle(
     terrainCenter,
     terrainDividers,
     terrainMapShape,
+    mapWidthLandCells: mapDimensions.widthLandCells,
+    mapLengthLandCells: mapDimensions.lengthLandCells,
     backgroundMode: true,
     initialAllowedTypes,
     initialMaxTotalUnits: loadStoredDemoCap(),
@@ -159,7 +168,7 @@ export async function createBackgroundBattle(
   // Background-battle CVS — owned by the returned gameInstance; destroyed
   // when the lobby tears it down.
   const clientViewState = new ClientViewState();
-  clientViewState.setMapDimensions(getMapSize(true).width, getMapSize(true).height);
+  clientViewState.setMapDimensions(mapSize.width, mapSize.height);
   const gameInstance = createGame({
     parent: container,
     width: rect.width || window.innerWidth,
@@ -168,8 +177,8 @@ export async function createBackgroundBattle(
     localPlayerId: resolvedLocalPlayerId,
     gameConnection: connection,
     clientViewState,
-    mapWidth: getMapSize(true).width,
-    mapHeight: getMapSize(true).height,
+    mapWidth: mapSize.width,
+    mapHeight: mapSize.height,
     terrainCenter,
     terrainDividers,
     terrainMapShape,

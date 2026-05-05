@@ -6,7 +6,7 @@
  */
 
 import {
-  SPATIAL_GRID_CELL_SIZE,
+  LAND_CELL_SIZE,
   FORCE_FIELD_TURRET,
   FORCE_FIELD_BARRIER,
 } from '../../../config';
@@ -16,6 +16,27 @@ import type { HysteresisRangeMultiplier } from '../../../types/sim';
 import type { TurretBlueprint } from './types';
 
 const COLOR_WHITE = 0xffffff;
+export const CONSTRUCTION_TURRET_HEAD_RADIUS = 8;
+
+const CONSTRUCTION_EMITTER_VISUALS = {
+  defaultSize: 'small',
+  sizes: {
+    small: {
+      towerSize: 'small',
+      pylonHeight: 9.52,
+      pylonOffset: 3.74,
+      innerPylonRadius: 1.22,
+      showerRadius: 3.05,
+    },
+    large: {
+      towerSize: 'large',
+      pylonHeight: 78,
+      pylonOffset: 15.2,
+      innerPylonRadius: 1.955,
+      showerRadius: 4.8875,
+    },
+  },
+} as const;
 
 /** Outer awareness shell for turrets that need to rotate toward
  *  enemies BEFORE the enemy enters fire range. Multiplied by the
@@ -402,7 +423,7 @@ export const TURRET_BLUEPRINTS = {
   // we collapsed to one entry here.
   forceTurret: {
     id: 'forceTurret',
-    range: SPATIAL_GRID_CELL_SIZE * 3 * 0.9,
+    range: LAND_CELL_SIZE * 3 * 0.9,
     turretTurnAccel: 30,
     turretDrag: 0.5,
     barrel: {
@@ -425,6 +446,26 @@ export const TURRET_BLUEPRINTS = {
       barrier: { ...FORCE_FIELD_BARRIER },
     },
     audio: { fireSound: AUDIO.event.fire.forceTurret },
+  },
+  constructionTurret: {
+    id: 'constructionTurret',
+    projectileId: 'lightShot',
+    range: 0,
+    cooldown: 0,
+    launchForce: 0,
+    turretTurnAccel: 1,
+    turretDrag: 1,
+    barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
+    eventsSmooth: false,
+    color: COLOR_WHITE,
+    spread: { angle: 0 },
+    radius: { body: CONSTRUCTION_TURRET_HEAD_RADIUS },
+    isManualFire: true,
+    constructionEmitter: CONSTRUCTION_EMITTER_VISUALS,
   },
 } satisfies Record<TurretId, TurretBlueprint>;
 

@@ -489,7 +489,7 @@ export class RtsScene3D {
     //
     // Initial yaw is set to the local seat's POV — camera "behind" the
     // viewer's team, looking toward the map center. For real battles
-    // that's the local player's spawn angle on the commander circle;
+    // that's the local player's spawn angle on the commander oval;
     // for the demo battle (no real player) we always pick red (player
     // index 0) so the demo always reads as if you were watching from
     // red's seat. centerCameraOnCommander() refines this once entities
@@ -1247,7 +1247,7 @@ export class RtsScene3D {
       //   vector (fx, fz) we want the camera OPPOSITE that vector —
       //   i.e. yaw = atan2(-fx, fz).
       //
-      // Commanders spawn in an even circle around the map center
+      // Commanders spawn in even oval-space angles around the map center
       // (sim/spawn.ts), so this makes every player's first view look
       // the same relative to their own commander regardless of seat.
       const forwardX = this.mapWidth / 2 - cx;
@@ -1292,7 +1292,7 @@ export class RtsScene3D {
   }
 
   /** Compute the orbit yaw that would put the camera "behind" a
-   *  player's spawn position on the commander circle, looking toward
+   *  player's spawn position on the commander oval, looking toward
    *  the map center. For real battles we use the local player's
    *  index in `playerIds`; for demo / background battles we always
    *  use red (index 0) so the framing reads consistently regardless

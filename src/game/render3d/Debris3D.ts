@@ -662,6 +662,7 @@ export class Debris3D {
       const mount = bp.turrets[ti];
       let tb;
       try { tb = getTurretBlueprint(mount.turretId); } catch { continue; }
+      if (tb.constructionEmitter) continue;
       const localMount = mount.mount;
       const tox = localMount.x * r;
       const toz = localMount.y * r;

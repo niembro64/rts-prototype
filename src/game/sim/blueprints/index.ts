@@ -335,6 +335,16 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction,
     radius: { ...turretBlueprint.radius },
+    visualOnly: turretBlueprint.constructionEmitter !== undefined,
+    constructionEmitter: turretBlueprint.constructionEmitter
+      ? {
+          defaultSize: turretBlueprint.constructionEmitter.defaultSize,
+          sizes: {
+            small: { ...turretBlueprint.constructionEmitter.sizes.small },
+            large: { ...turretBlueprint.constructionEmitter.sizes.large },
+          },
+        }
+      : undefined,
   };
 
   // Derive barrelThickness from shot size, scaled by global multiplier
@@ -376,12 +386,12 @@ export function buildAllTurretConfigs(): Record<TurretId, TurretConfig> {
   return result;
 }
 
-// Cross-blueprint validation: every turretId referenced by a unit
-// blueprint must resolve to a real turret blueprint. Runs at module-
-// load so a missing/typoed reference throws immediately on import,
-// not deep inside a runtime call. units.ts can't do this itself
-// without a sibling import into turrets — that's why the check lives
-// here in the aggregation file.
+// Cross-blueprint validation: every turretId referenced by a unit or
+// building blueprint must resolve to a real turret blueprint. Runs at
+// module-load so a missing/typoed reference throws immediately on
+// import, not deep inside a runtime call. Leaf blueprint modules keep
+// sibling imports minimal; the aggregation file owns relationship
+// validation.
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   for (let i = 0; i < bp.turrets.length; i++) {
     const turretId = bp.turrets[i].turretId;
@@ -395,5 +405,17 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     throw new Error(
       `Invalid dgun turret reference for ${bp.id}: unknown turretId "${bp.dgun.turretId}"`,
     );
+  }
+}
+for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
+  const turrets = bp.turrets;
+  if (!turrets) continue;
+  for (let i = 0; i < turrets.length; i++) {
+    const turretId = turrets[i].turretId;
+    if (!TURRET_BLUEPRINTS[turretId]) {
+      throw new Error(
+        `Invalid building turret reference for ${bp.id}[${i}]: unknown turretId "${turretId}"`,
+      );
+    }
   }
 }

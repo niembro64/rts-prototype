@@ -57,6 +57,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
       if (!turretMaskIncludes(activeMask, weaponIndex)) continue;
       const weapon = unit.turrets[weaponIndex];
+      if (weapon.config.visualOnly) continue;
       // Vertical launchers skip the normal yaw/pitch aim math — the
       // turret always points straight up and each fired rocket picks
       // a random cone-from-vertical direction at launch (projectile-

@@ -8,7 +8,7 @@
 //   • A tile fully captured by one team produces `tileRate` mana/sec
 //     for that team. `tileRate` ramps linearly from the default
 //     mana amount (`BASE_MANA_PER_SECOND`) at the edge of the
-//     central hotspot disc up to
+//     central hotspot oval up to
 //     `BASE_MANA_PER_SECOND × MANA_CENTER_TILE_MULTIPLIER` at the
 //     exact map centre, and is constant at the perimeter rate
 //     everywhere outside the disc. There is no separately-defined
@@ -23,8 +23,9 @@ import {
   MANA_CENTER_TILE_MULTIPLIER,
   MANA_HOTSPOT_RADIUS_FRACTION,
 } from '../../captureConfig';
-import { BASE_MANA_PER_SECOND, MANA_TILE_SIZE } from '../../config';
+import { BASE_MANA_PER_SECOND, LAND_CELL_SIZE } from '../../config';
 import { landCellCenterForSize, normalizeLandCellSize } from '../landGrid';
+import { makeMapOvalMetrics, sampleMapOvalAt } from './mapOval';
 import { getPlayerPrimaryColor } from './types';
 import type { PlayerId } from './types';
 
@@ -41,13 +42,12 @@ export function getManaTileProductionPerSecond(
   if (MANA_HOTSPOT_RADIUS_FRACTION <= 0 || MANA_CENTER_TILE_MULTIPLIER <= 1) {
     return BASE_MANA_PER_SECOND;
   }
-  const radius = Math.min(mapWidth, mapHeight) * MANA_HOTSPOT_RADIUS_FRACTION;
+  const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
+  const radius = ovalMetrics.minDim * MANA_HOTSPOT_RADIUS_FRACTION;
   if (radius <= 0) return BASE_MANA_PER_SECOND;
-  const dx = cellCenterX - mapWidth / 2;
-  const dy = cellCenterY - mapHeight / 2;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist >= radius) return BASE_MANA_PER_SECOND;
-  const t = 1 - dist / radius;
+  const oval = sampleMapOvalAt(ovalMetrics, cellCenterX, cellCenterY);
+  if (oval.distance >= radius) return BASE_MANA_PER_SECOND;
+  const t = 1 - oval.distance / radius;
   return BASE_MANA_PER_SECOND * (1 + (MANA_CENTER_TILE_MULTIPLIER - 1) * t);
 }
 
@@ -61,7 +61,7 @@ export function getManaCellProductionPerSecond(
   mapWidth: number,
   mapHeight: number,
 ): number {
-  const size = normalizeLandCellSize(cellSize > 0 ? cellSize : MANA_TILE_SIZE);
+  const size = normalizeLandCellSize(cellSize > 0 ? cellSize : LAND_CELL_SIZE);
   const wx = landCellCenterForSize(cx, size);
   const wy = landCellCenterForSize(cy, size);
   return getManaTileProductionPerSecond(wx, wy, mapWidth, mapHeight);

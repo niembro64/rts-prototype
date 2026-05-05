@@ -31,6 +31,7 @@
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
 
 import { getPlayerBaseAngle } from './game/sim/playerLayout';
+import { makeMapOvalMetrics, mapOvalPointAt } from './game/sim/mapOval';
 import { TERRAIN_D_TERRAIN } from './game/sim/Terrain';
 import { GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/grid';
 import { terrainShapeSign, type TerrainShape } from './types/terrain';
@@ -40,8 +41,9 @@ import {
 } from './config';
 
 export type DepositRing = {
-  /** Distance from map center as a fraction of (mapMinExtent/2 - margin).
-   *  0 = center (single deposit), 1 = at the spawn circle edge. */
+  /** Distance from map center as a fraction of the oval-space
+   *  (mapMinExtent/2 - margin). 0 = center (single deposit),
+   *  1 = at the spawn oval edge. */
   radiusFraction: number;
   /** How many deposits each player's radial slice gets on this ring.
    *  Total deposits per ring = countPerPlayer × playerCount (with the
@@ -63,7 +65,7 @@ export type DepositRing = {
 };
 
 export const METAL_DEPOSIT_CONFIG = {
-  /** Margin (world units) between the spawn circle and the outermost
+  /** Margin (oval-space world units) between the spawn oval and the outermost
    *  deposit ring. Keeps deposits from clipping into commander spawns. */
   edgeMarginPx: 200,
 
@@ -166,10 +168,10 @@ export function generateMetalDeposits(
   terrainCenterShape: TerrainShape = 'valley',
 ): MetalDeposit[] {
   const deposits: MetalDeposit[] = [];
-  const halfExtent =
-    Math.min(mapWidth, mapHeight) / 2 - METAL_DEPOSIT_CONFIG.edgeMarginPx;
-  const cx = mapWidth / 2;
-  const cy = mapHeight / 2;
+  const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
+  const halfExtent = ovalMetrics.minDim / 2 - METAL_DEPOSIT_CONFIG.edgeMarginPx;
+  const cx = ovalMetrics.cx;
+  const cy = ovalMetrics.cy;
   const players = Math.max(1, playerCount);
   const sliceWidth = (2 * Math.PI) / players;
   let id = 0;
@@ -209,11 +211,10 @@ export function generateMetalDeposits(
         const t = (j + 0.5) / ring.countPerPlayer;
         const angleInSlice = -sliceWidth / 2 + t * sliceWidth;
         const angle = sliceCenter + angleInSlice + ringAngularOffset;
-        const x = cx + Math.cos(angle) * ringRadius;
-        const y = cy + Math.sin(angle) * ringRadius;
+        const point = mapOvalPointAt(ovalMetrics, angle, ringRadius);
         deposits.push({
           id: id++,
-          ...makeMetalDepositPlacement(x, y),
+          ...makeMetalDepositPlacement(point.x, point.y),
           dTerrainLevels,
           height,
           blendRadius,

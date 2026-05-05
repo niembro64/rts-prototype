@@ -1,5 +1,6 @@
 import type { BooleanSetting, LabeledOptionsConfig, OptionsConfig } from './bars';
 import type { TerrainMapShape, TerrainShape } from './terrain';
+import type { MapDimensionAxisOption } from '../mapSizeConfig';
 
 export type UnitToggleConfig = {
   readonly default: boolean;
@@ -16,4 +17,15 @@ export type BattleBarConfig = {
   readonly dividers: LabeledOptionsConfig<TerrainShape>;
   /** Overall map boundary shape: full square map or circular island. */
   readonly mapShape: LabeledOptionsConfig<TerrainMapShape>;
+  /** Map width and length options in canonical LAND_CELL_SIZE cells. */
+  readonly mapSize: {
+    readonly width: {
+      readonly default: number;
+      readonly options: readonly MapDimensionAxisOption[];
+    };
+    readonly length: {
+      readonly default: number;
+      readonly options: readonly MapDimensionAxisOption[];
+    };
+  };
 };

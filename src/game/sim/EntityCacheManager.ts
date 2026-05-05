@@ -98,15 +98,18 @@ export class EntityCacheManager {
             this.cachedDamagedUnits.push(entity);
           }
           if (entity.turrets) {
-            if (entity.turrets.length > 0) this.cachedArmedUnits.push(entity);
             let hasForceField = false;
             let hasBeam = false;
+            let hasCombatTurret = false;
             for (let i = 0; i < entity.turrets.length; i++) {
+              if (entity.turrets[i].config.visualOnly) continue;
+              hasCombatTurret = true;
               const t = entity.turrets[i].config.shot.type;
               if (t === 'force') hasForceField = true;
               else if (t === 'beam') hasBeam = true;
               if (hasForceField && hasBeam) break;
             }
+            if (hasCombatTurret) this.cachedArmedUnits.push(entity);
             if (hasForceField) this.cachedForceFieldUnits.push(entity);
             if (hasBeam) this.cachedBeamUnits.push(entity);
           }

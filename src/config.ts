@@ -35,15 +35,21 @@ import type {
   ForceFieldTurretConfig,
   MapSize,
 } from './types/config';
+import { MAP_DIMENSION_CONFIG } from './mapSizeConfig';
 
 // Canonical 2D land partition size. All broad ground-space systems
 // should derive from this: host spatial-grid XY columns, capture/mana
 // tiles, terrain/water tiles, and player-client object LOD cells. Keep
 // this separate from GRID_CELL_SIZE (fine building placement) and the
 // physics contact grid (local collision broadphase).
-export const LAND_CELL_SIZE = 160 * 2;
-export const SPATIAL_GRID_CELL_SIZE = LAND_CELL_SIZE;
-export const MANA_TILE_SIZE = LAND_CELL_SIZE;
+export const LAND_CELL_SIZE = 100;
+
+// Default square map span in canonical land cells. Demo Battle and Real Battle
+// use the same option set and server/client math, while their selected size is
+// persisted per mode. Keep this odd so the map has exactly one central
+// land/mana tile.
+export const MAP_LAND_CELLS_WIDTH = MAP_DIMENSION_CONFIG.width.default;
+export const MAP_LAND_CELLS_LENGTH = MAP_DIMENSION_CONFIG.length.default;
 
 // Logical metal resource footprint, in fine build-grid cells per side.
 // This drives the metal-producing square, extractor gridWidth/gridHeight,
@@ -56,14 +62,15 @@ export const METAL_DEPOSIT_RESOURCE_CELLS = 5;
 export const METAL_DEPOSIT_FLAT_PAD_CELLS = 20;
 
 // Render-only vertical lift for mana/capture tile surfaces above sampled
-// terrain. Capture ownership, pathfinding, and physics stay on the real
-// terrain height; this only controls where the visual tile mesh sits.
-export const MANA_TILE_GROUND_LIFT = -5;
+// terrain. Keep this at 0 for normal play: the terrain renderer, host sim,
+// and client prediction all share the same authoritative triangle surface.
+// Use waypoint/overlay lifts for readability instead of moving the terrain.
+export const MANA_TILE_GROUND_LIFT = 0;
 
-// Mana/capture terrain tiles whose sampled height range is at or below
-// this value are rendered with the cheapest possible interior mesh.
-// Shared edges still inherit neighbor resolution so adjacent sloped tiles
-// remain crack-free and visually continuous.
+// Maximum world-unit error allowed when collapsing a mana/capture terrain
+// tile to a lower polygon mesh. Tiles that exceed this against the shared
+// authoritative triangle surface auto-upgrade until renderer and sim stay
+// aligned. Coplanar/flat tiles still render at the cheapest possible mesh.
 export const MANA_TILE_FLAT_HEIGHT_THRESHOLD = 1;
 
 // 3D waypoint visual lift above the sampled terrain surface. This is
@@ -486,7 +493,7 @@ export const MANA_TILE_TEXTURE_PIXELS_PER_TILE = 32;
 
 const manaTileWaveScale = (tileWidths: number): number =>
   (Math.PI * 2) /
-  (MANA_TILE_SIZE * tileWidths * MANA_TILE_TEXTURE_PERIOD_MULTIPLIER);
+  (LAND_CELL_SIZE * tileWidths * MANA_TILE_TEXTURE_PERIOD_MULTIPLIER);
 
 export const MANA_TILE_TEXTURE = {
   xWaves: [
@@ -683,37 +690,44 @@ export const UNIT_HP_MULTIPLIER = 2.0;
 // MAP SIZE SETTINGS
 // =============================================================================
 
-export const MAP_MANA_TILE_COUNTS = {
-  game: 11,
-  demo: 21,
-} as const;
-
-const manaTileMapSpan = (manaTilesPerAxis: number): number => {
-  const clamped = Math.max(1, Math.floor(manaTilesPerAxis));
-  const oddTileCount = clamped % 2 === 1 ? clamped : clamped + 1;
-  return oddTileCount * MANA_TILE_SIZE;
+export const normalizeMapLandCells = (landCells: number): number => {
+  const clamped = Math.max(1, Math.floor(landCells));
+  return clamped % 2 === 1 ? clamped : clamped + 1;
 };
+
+const landCellMapSpan = (landCells: number): number =>
+  normalizeMapLandCells(landCells) * LAND_CELL_SIZE;
+
+export function mapSizeFromLandCells(
+  widthLandCells: number,
+  lengthLandCells: number = widthLandCells,
+): MapSize {
+  return {
+    width: landCellMapSpan(widthLandCells),
+    height: landCellMapSpan(lengthLandCells),
+  };
+}
+
+const UNIVERSAL_MAP_SIZE = mapSizeFromLandCells(
+  MAP_LAND_CELLS_WIDTH,
+  MAP_LAND_CELLS_LENGTH,
+);
 
 export const MAP_SETTINGS: Record<string, MapSize> = {
-  // Real (foreground) match. Demo / lobby battle uses MAP_SETTINGS.demo
-  // (2× linear) so the AI vs. AI showcase has more breathing room.
-  //
-  // Sized to an ODD number of land/mana cells on each axis so the map
-  // always has exactly one central mana tile. With the default 320wu
-  // land cell: game = 11x11, demo = 21x21.
-  game: {
-    width: manaTileMapSpan(MAP_MANA_TILE_COUNTS.game),
-    height: manaTileMapSpan(MAP_MANA_TILE_COUNTS.game),
-  },
-  demo: {
-    width: manaTileMapSpan(MAP_MANA_TILE_COUNTS.demo),
-    height: manaTileMapSpan(MAP_MANA_TILE_COUNTS.demo),
-  },
+  // Both modes share one authoritative land-cell map size. With the default
+  // 320wu land cell and 21 cells per axis, every battle is 6720x6720wu.
+  game: UNIVERSAL_MAP_SIZE,
+  demo: UNIVERSAL_MAP_SIZE,
 };
 
-/** Pick the map size for the current battle: demo (background) or game (real). */
-export function getMapSize(backgroundMode: boolean): MapSize {
-  return backgroundMode ? MAP_SETTINGS.demo : MAP_SETTINGS.game;
+/** Pick the map size for the current battle. Demo and real currently share
+ *  the same dimensions; keep the parameter for existing call sites. */
+export function getMapSize(
+  _backgroundMode: boolean,
+  widthLandCells: number = MAP_LAND_CELLS_WIDTH,
+  lengthLandCells: number = MAP_LAND_CELLS_LENGTH,
+): MapSize {
+  return mapSizeFromLandCells(widthLandCells, lengthLandCells);
 }
 
 // =============================================================================

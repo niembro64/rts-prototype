@@ -20,6 +20,7 @@ import {
   type LandCellBounds,
   type LandGridMetrics,
 } from '../landGrid';
+import { makeMapOvalMetrics, sampleMapOvalAt } from './mapOval';
 
 export class CaptureSystem {
   private tiles: Map<number, TileState> = new Map();
@@ -213,7 +214,7 @@ export class CaptureSystem {
 
   /** Pre-capture every mana tile to the team whose radial sector
    *  contains it, so the map starts already partitioned along the
-   *  same angular sectors the spawn-circle and terrain-divider
+   *  same oval-space angular sectors the spawn-oval and terrain-divider
    *  ridges use.
    *
    *  Tiles fully inside one slice get height = ownerHeight for that
@@ -252,8 +253,7 @@ export class CaptureSystem {
     if (N <= 0 || ownerHeight <= 0) return;
     this.setMapSize(mapWidth, mapHeight, cellSize);
 
-    const cx0 = mapWidth / 2;
-    const cy0 = mapHeight / 2;
+    const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
     const grid = this.landGrid;
     const cellsX = grid.cellsX;
     const cellsY = grid.cellsY;
@@ -281,10 +281,10 @@ export class CaptureSystem {
         for (let n = 0; n < N; n++) sampleCounts[n] = 0;
 
         for (let sj = 0; sj < S; sj++) {
-          const dy = bounds.y0 + subStartY + sj * subStepY - cy0;
+          const sampleY = bounds.y0 + subStartY + sj * subStepY;
           for (let si = 0; si < S; si++) {
-            const dx = bounds.x0 + subStartX + si * subStepX - cx0;
-            let theta = Math.atan2(dy, dx) + angleShift;
+            const sampleX = bounds.x0 + subStartX + si * subStepX;
+            let theta = sampleMapOvalAt(ovalMetrics, sampleX, sampleY).angle + angleShift;
             theta = ((theta % TWO_PI) + TWO_PI) % TWO_PI;
             const idx = Math.floor(theta / sectorWidth) % N;
             sampleCounts[idx]++;

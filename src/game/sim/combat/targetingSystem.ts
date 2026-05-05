@@ -23,6 +23,7 @@ function commitCombatMasks(unit: Entity): boolean {
 
   for (let i = 0; i < weapons.length; i++) {
     const weapon = weapons[i];
+    if (weapon.config.visualOnly) continue;
     const isActive =
       weapon.target !== null ||
       weapon.state !== 'idle' ||
@@ -222,6 +223,7 @@ function isMirrorLineTarget(enemy: Entity, mirrorUnitId: EntityId): boolean {
 
 function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
   return (
+    weapon.config.visualOnly === true ||
     (weapon.config.passive && !world.mirrorsEnabled) ||
     (weapon.config.shot.type === 'force' && !world.forceFieldsEnabled)
   );

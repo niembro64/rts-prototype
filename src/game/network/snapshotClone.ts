@@ -13,6 +13,7 @@ import type {
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkTypes';
 import { PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN } from '@/types/network';
+import type { TerrainTileMap } from '@/types/terrain';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -29,6 +30,21 @@ function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapsh
       income: { base: e.metal.income.base, extraction: e.metal.income.extraction },
       expenditure: e.metal.expenditure,
     },
+  };
+}
+
+function cloneTerrainTileMap(map: TerrainTileMap): TerrainTileMap {
+  return {
+    mapWidth: map.mapWidth,
+    mapHeight: map.mapHeight,
+    cellSize: map.cellSize,
+    subdiv: map.subdiv,
+    cellsX: map.cellsX,
+    cellsY: map.cellsY,
+    verticesX: map.verticesX,
+    verticesY: map.verticesY,
+    version: map.version,
+    heights: map.heights.slice(),
   };
 }
 
@@ -282,6 +298,7 @@ export function cloneNetworkSnapshot(state: NetworkServerSnapshot): NetworkServe
       })),
       cellSize: state.capture.cellSize,
     } : undefined,
+    terrain: state.terrain ? cloneTerrainTileMap(state.terrain) : undefined,
     isDelta: state.isDelta,
     removedEntityIds: state.removedEntityIds?.slice(),
   };
@@ -819,6 +836,7 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.projectiles = undefined;
     this.snapshot.grid = undefined;
     this.snapshot.capture = undefined;
+    this.snapshot.terrain = undefined;
     this.snapshot.gameState = undefined;
     this.snapshot.serverMeta = undefined;
     this.snapshot.removedEntityIds = undefined;
@@ -914,6 +932,7 @@ export class ReusableNetworkSnapshotCloner {
     } else {
       dst.capture = undefined;
     }
+    dst.terrain = state.terrain ? cloneTerrainTileMap(state.terrain) : undefined;
     dst.isDelta = state.isDelta;
     if (state.removedEntityIds && state.removedEntityIds.length > 0) {
       this.removedEntityIds.length = state.removedEntityIds.length;

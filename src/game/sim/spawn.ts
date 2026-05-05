@@ -19,6 +19,12 @@ import {
   getPlayerBuildArcAngle,
   normalizePlayerIds,
 } from './playerLayout';
+import {
+  makeMapOvalMetrics,
+  mapOvalAngleAt,
+  mapOvalPointAt,
+  type MapOvalMetrics,
+} from './mapOval';
 
 export { FIRST_PLAYER_ANGLE, getPlayerBaseAngle } from './playerLayout';
 
@@ -73,13 +79,13 @@ function spawnCommander(
   return commander;
 }
 
-// Map center + spawn-circle radius (margined inside the playable area).
+// Map center + spawn-oval radius (margined inside the playable area).
 // Single source of truth for every radial spawn-layout function below.
-function getDemoCircle(world: WorldState): { cx: number; cy: number; radius: number } {
+function getDemoOval(world: WorldState): { oval: MapOvalMetrics; radius: number } {
+  const oval = makeMapOvalMetrics(world.mapWidth, world.mapHeight);
   return {
-    cx: world.mapWidth / 2,
-    cy: world.mapHeight / 2,
-    radius: Math.min(world.mapWidth, world.mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx,
+    oval,
+    radius: oval.minDim / 2 - DEMO_CONFIG.spawnMarginPx,
   };
 }
 
@@ -93,7 +99,9 @@ function commanderRadiusFromOuterSpawnRadius(spawnRadius: number): number {
  *  commander ring changes the real-battle ring and camera pre-framing
  *  at the same time. */
 function commanderRadiusForMap(mapWidth: number, mapHeight: number): number {
-  const spawnRadius = Math.min(mapWidth, mapHeight) / 2 - DEMO_CONFIG.spawnMarginPx;
+  const spawnRadius =
+    makeMapOvalMetrics(mapWidth, mapHeight).minDim / 2 -
+    DEMO_CONFIG.spawnMarginPx;
   return commanderRadiusFromOuterSpawnRadius(spawnRadius);
 }
 
@@ -103,8 +111,8 @@ function commanderRadiusForMap(mapWidth: number, mapHeight: number): number {
  *  pre-frame each client's camera on its own commander BEFORE the
  *  first snapshot arrives — without that, the camera stays centered
  *  on the map mid and the joiner's commander spawns off-frustum on
- *  the periphery. The radial-sector layout uses the same circle as
- *  `getDemoCircle`, so this is also the same seat the capture
+ *  the periphery. The radial-sector layout uses the same oval as
+ *  `getDemoOval`, so this is also the same seat the capture
  *  system pre-paints for that player. */
 export function getSpawnPositionForSeat(
   seatIndex: number,
@@ -114,13 +122,10 @@ export function getSpawnPositionForSeat(
 ): { x: number; y: number } {
   const radius = commanderRadiusForMap(mapWidth, mapHeight);
   const angle = getPlayerBaseAngle(seatIndex, playerCount);
-  return {
-    x: mapWidth / 2 + Math.cos(angle) * radius,
-    y: mapHeight / 2 + Math.sin(angle) * radius,
-  };
+  return mapOvalPointAt(makeMapOvalMetrics(mapWidth, mapHeight), angle, radius);
 }
 
-// Calculate spawn positions on the spawn circle for N players. Used
+// Calculate spawn positions on the spawn oval for N players. Used
 // for the REAL BATTLE flow (just commanders). The commander ring is
 // shared with demo battle through DEMO_CONFIG.commanderRadiusFraction.
 function getSpawnPositions(
@@ -129,14 +134,18 @@ function getSpawnPositions(
 ): { x: number; y: number; facingAngle: number }[] {
   const cx = world.mapWidth / 2;
   const cy = world.mapHeight / 2;
+  const oval = makeMapOvalMetrics(world.mapWidth, world.mapHeight);
   const radius = commanderRadiusForMap(world.mapWidth, world.mapHeight);
   const positions: { x: number; y: number; facingAngle: number }[] = [];
   const count = getLayoutPlayerCount(playerCount);
   for (let i = 0; i < count; i++) {
     const angle = getPlayerBaseAngle(i, count);
-    const x = cx + Math.cos(angle) * radius;
-    const y = cy + Math.sin(angle) * radius;
-    positions.push({ x, y, facingAngle: Math.atan2(cy - y, cx - x) });
+    const point = mapOvalPointAt(oval, angle, radius);
+    positions.push({
+      x: point.x,
+      y: point.y,
+      facingAngle: Math.atan2(cy - point.y, cx - point.x),
+    });
   }
   return positions;
 }
@@ -232,7 +241,7 @@ function placeCompleteBuilding(
   return entity;
 }
 
-// (Building rows replaced by per-player arcs along the spawn circle —
+// (Building rows replaced by per-player arcs along the spawn oval —
 // see spawnInitialBases below.)
 
 // Spawn initial entities for the game with N players (commander only)
@@ -260,8 +269,8 @@ export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = 
 
 /**
  * Place a row of buildings evenly distributed across an angular arc on
- * a circle of given radius around (centerX, centerY). Each building
- * faces toward the circle's center. Buildings overlap-snap-skip the same
+ * the map oval. Each building faces toward the oval's center.
+ * Buildings overlap-snap-skip the same
  * way they do in placeCompleteBuilding (returns null if no grid fit).
  */
 function placeArcRow(
@@ -269,8 +278,7 @@ function placeArcRow(
   construction: ConstructionSystem,
   buildingType: BuildingType,
   count: number,
-  centerX: number,
-  centerY: number,
+  oval: MapOvalMetrics,
   radius: number,
   baseAngle: number,
   sectorAngle: number,
@@ -283,14 +291,13 @@ function placeArcRow(
   const angularStep = count > 1 ? sectorAngle / (count - 1) : 0;
   for (let j = 0; j < count; j++) {
     const a = count > 1 ? startAngle + j * angularStep : baseAngle;
-    const wx = centerX + Math.cos(a) * radius;
-    const wy = centerY + Math.sin(a) * radius;
+    const point = mapOvalPointAt(oval, a, radius);
     const e = placeCompleteBuilding(
       world,
       construction,
       buildingType,
-      wx,
-      wy,
+      point.x,
+      point.y,
       playerId,
       factoryWaypoint,
     );
@@ -303,8 +310,7 @@ function placePowerArcRow(
   world: WorldState,
   construction: ConstructionSystem,
   count: number,
-  centerX: number,
-  centerY: number,
+  oval: MapOvalMetrics,
   radius: number,
   baseAngle: number,
   sectorAngle: number,
@@ -324,14 +330,13 @@ function placePowerArcRow(
     if (buildingType === 'wind') windRemaining--;
     else solarRemaining--;
     const a = count > 1 ? startAngle + j * angularStep : baseAngle;
-    const wx = centerX + Math.cos(a) * radius;
-    const wy = centerY + Math.sin(a) * radius;
+    const point = mapOvalPointAt(oval, a, radius);
     const e = placeCompleteBuilding(
       world,
       construction,
       buildingType,
-      wx,
-      wy,
+      point.x,
+      point.y,
       playerId,
       factoryWaypoint,
     );
@@ -341,9 +346,9 @@ function placePowerArcRow(
 }
 
 /**
- * Spawn a full base for each player on three concentric arcs centered
+ * Spawn a full base for each player on three concentric oval arcs centered
  * on the map. Mirrors the original square layout's radial ordering —
- * commander outermost (at the spawn circle), then solars, then factories
+ * commander outermost (at the spawn oval), then solars, then factories
  * closest to the map center — but each "row" is now an arc rather than
  * a straight line:
  *
@@ -352,7 +357,7 @@ function placePowerArcRow(
  *           factory arc ← closest to map center
  *
  * Each arc spans the same angular sector for the player, and every
- * building faces the map center. Building counts and radial gaps are
+ * building faces the map center. Building counts and oval radial gaps are
  * controlled by DEMO_CONFIG.
  */
 export function spawnInitialBases(
@@ -372,7 +377,8 @@ export function spawnInitialBases(
   }
 
   const playerCount = normalizedPlayerIds.length;
-  const { cx, cy, radius: spawnRadius } = getDemoCircle(world);
+  const { oval, radius: spawnRadius } = getDemoOval(world);
+  const { cx, cy } = oval;
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
 
   const solarConfig = getBuildingConfig('solar');
@@ -384,14 +390,14 @@ export function spawnInitialBases(
 
   // Three concentric radii — same radial order as the original square
   // layout (commander outermost, then solars, then factories). The
-  // commander sits at a fraction of the spawn circle so it's not
+  // commander sits at a fraction of the spawn oval so it's not
   // pinned to the very edge; the solar/factory arcs follow inward
   // from that point.
   const commanderRadius = commanderRadiusFromOuterSpawnRadius(spawnRadius);
   const solarRadius = commanderRadius - commanderGap - solarDepth / 2;
   const factoryRadius = solarRadius - solarDepth / 2 - cellGap - factoryDepth / 2;
 
-  // Each player's slice of the spawn circle is ONE HALF of the
+  // Each player's slice of the spawn oval is ONE HALF of the
   // 2π/N angular cycle — the other half is the divider terrain slice
   // (the mountain ridge in Terrain.ts). This same formula is used for
   // one-player maps too: one commander gets one team slice and one
@@ -403,24 +409,29 @@ export function spawnInitialBases(
     const baseAngle = getPlayerBaseAngle(i, playerCount);
 
     // Commander: single entity at the player's spawn point on the outer
-    // circle, facing the map center.
-    const cmdX = cx + Math.cos(baseAngle) * commanderRadius;
-    const cmdY = cy + Math.sin(baseAngle) * commanderRadius;
-    const cmdFacing = Math.atan2(cy - cmdY, cx - cmdX);
-    const commander = spawnCommander(world, playerId, cmdX, cmdY, cmdFacing);
+    // oval, facing the map center.
+    const cmdPoint = mapOvalPointAt(oval, baseAngle, commanderRadius);
+    const cmdFacing = Math.atan2(cy - cmdPoint.y, cx - cmdPoint.x);
+    const commander = spawnCommander(
+      world,
+      playerId,
+      cmdPoint.x,
+      cmdPoint.y,
+      cmdFacing,
+    );
     entities.push(commander);
 
     // Power arc: same slots that used to be all solar, split evenly
     // between solar collectors and wind turbines.
     entities.push(...placePowerArcRow(
       world, construction, DEMO_CONFIG.solarCount,
-      cx, cy, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      oval, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
     // Factory arc (closest to center).
     entities.push(...placeArcRow(
       world, construction, 'factory', DEMO_CONFIG.factoryCount,
-      cx, cy, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+      oval, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
   }
 
@@ -435,9 +446,7 @@ function angleDeltaAbs(a: number, b: number): number {
 }
 
 function ownerForDeposit(world: WorldState, playerIds: PlayerId[], x: number, y: number): PlayerId {
-  const cx = world.mapWidth / 2;
-  const cy = world.mapHeight / 2;
-  const depositAngle = Math.atan2(y - cy, x - cx);
+  const depositAngle = mapOvalAngleAt(world.mapWidth, world.mapHeight, x, y);
   let bestIndex = 0;
   let bestDelta = Infinity;
   for (let i = 0; i < playerIds.length; i++) {
@@ -480,6 +489,10 @@ export function spawnMetalExtractorsOnDeposits(
       // through the construction loop.
       extractor.buildable.paid = { ...extractor.buildable.required };
       extractor.buildable.isComplete = true;
+    }
+    if (extractor.building) {
+      extractor.building.hp = config.hp;
+      extractor.building.maxHp = config.hp;
     }
     applyCompletedBuildingEffects(world, extractor);
     delete extractor.buildable;

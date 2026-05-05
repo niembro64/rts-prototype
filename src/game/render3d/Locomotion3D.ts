@@ -25,9 +25,9 @@ import {
 } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
-import { getSurfaceHeight, getGroundNormal } from '../sim/Terrain';
+import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { SHELL_OPACITY, NORMAL_OPACITY } from '@/shellConfig';
-import { SPATIAL_GRID_CELL_SIZE } from '../../config';
+import { LAND_CELL_SIZE } from '../../config';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 
 /** Per-unit step-circle radius as a fraction of the unit's LONGEST
@@ -652,9 +652,9 @@ function transformChassisToWorld(
   const yy = cy;
   const yz = sinR * cx + cosR * cz;
   // Tilt: build the same surface-normal quaternion the renderer uses.
-  const n = getGroundNormal(
+  const n = getSurfaceNormal(
     entity.transform.x, entity.transform.y,
-    mapWidth, mapHeight,
+    mapWidth, mapHeight, LAND_CELL_SIZE,
   );
   if (n.nx === 0 && n.ny === 0) {
     out.x = entity.transform.x + yx;
@@ -705,7 +705,7 @@ function initializeLegAt(
   // Transform to world to find the foot's spawn XZ, then snap Y to
   // the actual terrain elevation so the foot lands ON the ground.
   transformChassisToWorld(cx, cy, cz, entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut);
-  const groundY = getSurfaceHeight(_worldOut.x, _worldOut.z, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
+  const groundY = getSurfaceHeight(_worldOut.x, _worldOut.z, mapWidth, mapHeight, LAND_CELL_SIZE);
   leg.worldX = _worldOut.x;
   leg.worldY = groundY;
   leg.worldZ = _worldOut.z;
@@ -881,9 +881,9 @@ export function updateLocomotion(
     // shared across every leg's IK so all legs bend their knees
     // along the same chassis-relative "up", regardless of slope.
     // On flat ground this collapses to (0, 1, 0) = world up.
-    const sn = getGroundNormal(
+    const sn = getSurfaceNormal(
       entity.transform.x, entity.transform.y,
-      mapWidth, mapHeight,
+      mapWidth, mapHeight, LAND_CELL_SIZE,
     );
     const chassisUpX = sn.nx;
     const chassisUpY = sn.nz;
@@ -1035,7 +1035,7 @@ export function updateLocomotion(
         const tWorldZ = _worldOut.z;
         // Y comes from actual terrain at the chosen XZ — feet always
         // land on real ground, not a plane through the rest center.
-        const groundY = getSurfaceHeight(tWorldX, tWorldZ, mapWidth, mapHeight, SPATIAL_GRID_CELL_SIZE);
+        const groundY = getSurfaceHeight(tWorldX, tWorldZ, mapWidth, mapHeight, LAND_CELL_SIZE);
 
         leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
         leg.targetWorldX = tWorldX;

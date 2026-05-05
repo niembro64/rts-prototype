@@ -23,6 +23,10 @@ import {
   getTurretBarrelDiameter,
   getTurretHeadRadius,
 } from '../math';
+import {
+  buildConstructionEmitterRigFromTurretConfig,
+  type ConstructionEmitterRig,
+} from './BuildingShape3D';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -65,6 +69,9 @@ export type TurretMesh = {
    *  already-pitched firing axis — spin rotates the barrel cluster
    *  around the real pitched direction, not around world-X. */
   spinGroup?: THREE.Group;
+  /** Visual-only construction turret rig. Built from the turret
+   *  blueprint instead of bespoke commander/factory art. */
+  constructionEmitter?: ConstructionEmitterRig;
   /** Per-turret TURR RAD overlay spheres (filled in by the range-ring
    *  update path; nothing built here). */
   rangeRings?: {
@@ -111,6 +118,23 @@ export function buildTurretMesh3D(
   const root = new THREE.Group();
   const barrel = turret.config.barrel;
   const isForceField = barrel?.type === 'complexSingleEmitter';
+  const headRadius = getTurretHeadRadius(turret.config);
+
+  if (turret.config.constructionEmitter) {
+    const constructionEmitter = buildConstructionEmitterRigFromTurretConfig(
+      turret.config,
+      turret.config.visualVariant,
+      deps.primaryMat,
+    );
+    root.add(constructionEmitter.group);
+    parent.add(root);
+    return {
+      root,
+      headRadius,
+      barrels: [],
+      constructionEmitter,
+    };
+  }
 
   // Skip the head sphere entirely for:
   //  - turretStyle='none' (min LOD): no body, no barrels — chassis only.
@@ -126,8 +150,6 @@ export function buildTurretMesh3D(
   // Resolved head radius drives BOTH the sphere mesh size AND its
   // attachment height. Computed up front so the barrel block can pivot
   // at the head center even when the head itself is hidden.
-  const headRadius = getTurretHeadRadius(turret.config);
-
   let head: THREE.Mesh | undefined;
   if (!skipHeadMesh) {
     head = new THREE.Mesh(deps.headGeom, deps.primaryMat);

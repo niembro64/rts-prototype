@@ -18,6 +18,8 @@ export type {
   NetworkServerSnapshotTurret,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotEconomy,
+  LobbyPlayerInfoPayload,
+  LobbySettings,
   LobbyPlayer,
   NetworkRole,
   BattleHandoff,

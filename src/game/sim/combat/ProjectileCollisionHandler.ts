@@ -15,12 +15,12 @@ import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal } from '../Terrain';
 import { getSimDetailConfig } from '../simQuality';
 import { spatialGrid } from '../SpatialGrid';
-import { SPATIAL_GRID_CELL_SIZE } from '../../../config';
+import { LAND_CELL_SIZE } from '../../../config';
 import { getUnitGroundZ } from '../unitGeometry';
 import { findForceFieldProjectileIntersection } from './forceFieldTurret';
 
 const MIRROR_PROJECTILE_QUERY_PAD = 96;
-const MAX_PROJECTILE_SWEEP_DISTANCE = SPATIAL_GRID_CELL_SIZE * 64;
+const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
 const MAX_PROJECTILE_SWEEP_DISTANCE_SQ =
   MAX_PROJECTILE_SWEEP_DISTANCE * MAX_PROJECTILE_SWEEP_DISTANCE;
 
@@ -513,7 +513,7 @@ export function checkProjectileCollisions(
             } else if (hitGround) {
               const n = getSurfaceNormal(
                 projEntity.transform.x, projEntity.transform.y,
-                world.mapWidth, world.mapHeight, SPATIAL_GRID_CELL_SIZE,
+                world.mapWidth, world.mapHeight, LAND_CELL_SIZE,
               );
               surfaceNormalX = n.nx;
               surfaceNormalY = n.ny;

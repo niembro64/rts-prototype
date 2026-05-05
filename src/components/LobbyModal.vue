@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { PLAYER_COLORS, getPlayerColors, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
@@ -8,6 +8,7 @@ import BarButtonGroup from './BarButtonGroup.vue';
 import BarButton from './BarButton.vue';
 import { getUnitBlueprint } from '../game/sim/blueprints';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
+import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 
 export type { LobbyPlayer } from '@/types/ui';
@@ -24,6 +25,8 @@ const props = defineProps<{
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
   terrainMapShape: TerrainMapShape;
+  mapWidthLandCells: number;
+  mapLengthLandCells: number;
   unitTypes: readonly string[];
   allowedUnits: readonly string[];
   unitCap: number;
@@ -40,6 +43,7 @@ const emit = defineEmits<{
   (e: 'setTerrainCenter', shape: TerrainShape): void;
   (e: 'setTerrainDividers', shape: TerrainShape): void;
   (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
+  (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitType: string): void;
   (e: 'toggleAllUnits'): void;
   (e: 'setUnitCap', cap: number): void;
@@ -55,6 +59,8 @@ const emit = defineEmits<{
 const centerOptions = BATTLE_CONFIG.center.options;
 const dividersOptions = BATTLE_CONFIG.dividers.options;
 const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
+const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
+const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
 const capOptions = BATTLE_CONFIG.cap.options;
 
 const allUnitsActive = computed(() =>
@@ -74,6 +80,22 @@ function pickTerrainDividers(shape: TerrainShape): void {
 function pickTerrainMapShape(shape: TerrainMapShape): void {
   if (!props.isHost) return;
   emit('setTerrainMapShape', shape);
+}
+
+function pickMapWidthLandCells(widthLandCells: number): void {
+  if (!props.isHost) return;
+  emit('setMapLandDimensions', {
+    widthLandCells,
+    lengthLandCells: props.mapLengthLandCells,
+  });
+}
+
+function pickMapLengthLandCells(lengthLandCells: number): void {
+  if (!props.isHost) return;
+  emit('setMapLandDimensions', {
+    widthLandCells: props.mapWidthLandCells,
+    lengthLandCells,
+  });
 }
 
 function pickToggleUnit(unitType: string): void {
@@ -118,9 +140,10 @@ const editingName = ref('');
 const nameModalOpen = ref(false);
 const nameInputEl = ref<HTMLInputElement | null>(null);
 
-const localPlayerName = computed(() =>
-  props.players.find((p) => p.playerId === props.localPlayerId)?.name ?? '',
+const localPlayer = computed(
+  () => props.players.find((p) => p.playerId === props.localPlayerId) ?? null,
 );
+const localPlayerName = computed(() => localPlayer.value?.name ?? '');
 
 watch(
   localPlayerName,
@@ -220,45 +243,6 @@ function getColorName(playerId: PlayerId): string {
   return getPlayerColors(playerId).name;
 }
 void getColorName; // suppress "unused" while we keep the helper around
-
-// One-Hz reactive tick that drives the "current time in player's
-// timezone" cell in each row. Bumping the ref is enough — the
-// `formatPlayerTime` function reads it, so Vue re-tracks the
-// dependency and re-renders every row's time column once per
-// second. Started on mount, cleared on unmount; only ticks while
-// the lobby modal is alive.
-const nowTick = ref(0);
-let nowTickInterval: ReturnType<typeof setInterval> | null = null;
-onMounted(() => {
-  nowTickInterval = setInterval(() => { nowTick.value++; }, 1000);
-});
-onUnmounted(() => {
-  if (nowTickInterval) clearInterval(nowTickInterval);
-  nowTickInterval = null;
-});
-
-/** Render a player's CURRENT local time + short timezone label
- *  (e.g. "14:32:15 PDT"). Reads `nowTick` so Vue treats this as
- *  a reactive dependency and re-runs once a second. Returns an
- *  empty string for players whose timezone isn't known yet OR
- *  when the timezone is rejected by Intl (very rare; falls back
- *  to skipping the row's time cell rather than throwing). */
-function formatPlayerTime(timezone: string | undefined): string {
-  void nowTick.value; // re-track every tick
-  if (!timezone) return '';
-  try {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: timezone,
-      timeZoneName: 'short',
-    }).format(new Date());
-  } catch {
-    return '';
-  }
-}
 
 function handleHost() {
   emit('host');
@@ -445,9 +429,9 @@ const terrainSectionVars = computed(() =>
                   <span v-if="player.location" class="player-location">{{ player.location }}</span>
                   <span v-if="player.ipAddress" class="player-ip">{{ player.ipAddress }}</span>
                   <span
-                    v-if="player.timezone"
+                    v-if="player.localTime"
                     class="player-time"
-                  >{{ formatPlayerTime(player.timezone) }}</span>
+                  >{{ player.localTime }}</span>
                 </div>
                 <!-- Badges pinned to the right edge of the row.
                      HOST anchors top-right (default flex-column
@@ -482,6 +466,32 @@ const terrainSectionVars = computed(() =>
             :class="{ 'bar-readonly': !isHost }"
             :style="terrainSectionVars"
           >
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">WIDTH:</div>
+              <BarButtonGroup>
+                <BarButton
+                  v-for="opt in mapWidthOptions"
+                  :key="opt.label"
+                  size="large"
+                  :active="mapWidthLandCells === opt.valueLandCells"
+                  :title="isHost ? `Set map width to ${opt.label} land cells` : 'Only the host can change terrain'"
+                  @click="pickMapWidthLandCells(opt.valueLandCells)"
+                >{{ opt.label }}</BarButton>
+              </BarButtonGroup>
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">LENGTH:</div>
+              <BarButtonGroup>
+                <BarButton
+                  v-for="opt in mapLengthOptions"
+                  :key="opt.label"
+                  size="large"
+                  :active="mapLengthLandCells === opt.valueLandCells"
+                  :title="isHost ? `Set map length to ${opt.label} land cells` : 'Only the host can change terrain'"
+                  @click="pickMapLengthLandCells(opt.valueLandCells)"
+                >{{ opt.label }}</BarButton>
+              </BarButtonGroup>
+            </div>
             <div class="terrain-control-row">
               <div class="terrain-control-label">CENTER:</div>
               <BarButtonGroup>
@@ -628,6 +638,14 @@ const terrainSectionVars = computed(() =>
             autocomplete="off"
             @keydown.esc.prevent="closeNameEditor"
           />
+          <div
+            v-if="localPlayer?.location || localPlayer?.ipAddress || localPlayer?.localTime"
+            class="name-edit-meta"
+          >
+            <span v-if="localPlayer?.location">{{ localPlayer.location }}</span>
+            <span v-if="localPlayer?.ipAddress">{{ localPlayer.ipAddress }}</span>
+            <span v-if="localPlayer?.localTime">{{ localPlayer.localTime }}</span>
+          </div>
           <div class="name-edit-actions">
             <button class="lobby-btn cancel-btn" type="button" @click="closeNameEditor">
               Cancel
@@ -1135,6 +1153,16 @@ const terrainSectionVars = computed(() =>
   border-color: #4a9eff;
 }
 
+.name-edit-meta {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  color: #cfd7e5;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .name-edit-actions {
   display: flex;
   justify-content: flex-end;
@@ -1164,9 +1192,7 @@ const terrainSectionVars = computed(() =>
   white-space: nowrap;
 }
 
-/* Live local time + short timezone label. Slight accent color
- * since this cell ticks once a second and the eye picks up
- * motion; tabular nums keep digits from jiggling. */
+/* Host-propagated local time + short timezone label. */
 .player-info .player-time {
   font-size: 11px;
   color: #99a;

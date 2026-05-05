@@ -12,7 +12,7 @@ import {
   DEFAULT_MIRRORS_ENABLED,
   DEFAULT_FORCE_FIELDS_ENABLED,
   UNIT_HP_MULTIPLIER,
-  SPATIAL_GRID_CELL_SIZE,
+  LAND_CELL_SIZE,
   DGUN_TERRAIN_FOLLOW_HEIGHT,
 } from '../../config';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
@@ -118,12 +118,12 @@ export class WorldState {
 
   /** Canonical ground-surface elevation at world point (x, y). One
    *  source of truth for "what is the ground here?" — sim, physics,
-   *  client dead-reckoning, and the tile renderer all read this
-   *  bilinear interpolation of the 4 corner heights of the tile
-   *  that contains (x, y). The surface returned matches what the
-   *  player sees with no tile-center stepping. */
+   *  client dead-reckoning, and the tile renderer all read the same
+   *  authoritative triangle mesh. The surface returned matches what the
+   *  player sees, except for renderer cells that are safely collapsed
+   *  within MANA_TILE_FLAT_HEIGHT_THRESHOLD. */
   getGroundZ(x: number, y: number): number {
-    return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE);
+    return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
   }
 
   private surfaceNormalCacheKey(x: number, y: number): number {
@@ -139,7 +139,7 @@ export class WorldState {
       normal = getSurfaceNormal(
         x, y,
         this.mapWidth, this.mapHeight,
-        SPATIAL_GRID_CELL_SIZE,
+        LAND_CELL_SIZE,
       );
       this.surfaceNormalCache.set(key, normal);
     }

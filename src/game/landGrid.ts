@@ -1,4 +1,4 @@
-import { LAND_CELL_SIZE, MANA_TILE_SIZE, SPATIAL_GRID_CELL_SIZE } from '../config';
+import { LAND_CELL_SIZE } from '../config';
 
 export const LAND_CELL_AXIS_BIAS = 32768;
 export const LAND_CELL_AXIS_MASK = 0xffff;
@@ -36,8 +36,6 @@ export function assertCanonicalLandCellSize(label: string, cellSize: number): vo
 export function assertCanonicalLandGridSymmetry(
   objectLodCellSize: number = CANONICAL_LAND_CELL_SIZE,
 ): void {
-  assertCanonicalLandCellSize('SPATIAL_GRID_CELL_SIZE', SPATIAL_GRID_CELL_SIZE);
-  assertCanonicalLandCellSize('MANA_TILE_SIZE', MANA_TILE_SIZE);
   assertCanonicalLandCellSize('PLAYER_CLIENT objectLodCellSize', objectLodCellSize);
 }
 

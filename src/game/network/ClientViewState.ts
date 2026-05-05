@@ -57,8 +57,8 @@ import {
   applyHomingSteering,
   computeInterceptTime,
 } from '../math';
-import { COST_MULTIPLIER, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, SPATIAL_GRID_CELL_SIZE } from '../../config';
-import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
+import { COST_MULTIPLIER, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
+import { getSurfaceHeight, getSurfaceNormal, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { getTurretWorldMount } from '../math';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { getUnitGroundZ } from '../sim/unitGeometry';
@@ -425,10 +425,10 @@ export class ClientViewState {
   private _rocketEnemyCacheFrame: number = -1;
   private _rocketEnemyCacheOwnerId: PlayerId | null = null;
 
-  // Map dimensions — needed to evaluate the deterministic terrain
-  // heightmap on the client side (server and client share the same
-  // pure function so projectile dead-reckoning lifts off raised
-  // cube tiles correctly without networking the heightmap).
+  // Map dimensions — needed to evaluate the installed server-authored
+  // terrain tile map on the client side. Before the first terrain
+  // keyframe arrives, clients fall back to the deterministic authored
+  // height function using these same dimensions.
   private mapWidth: number = 2000;
   private mapHeight: number = 2000;
 
@@ -713,6 +713,10 @@ export class ClientViewState {
    * Visual blending toward these targets happens in applyPrediction() each frame.
    */
   applyNetworkState(state: NetworkServerSnapshot): void {
+    if (state.terrain) {
+      this.setMapDimensions(state.terrain.mapWidth, state.terrain.mapHeight);
+      setAuthoritativeTerrainTileMap(state.terrain);
+    }
     this.currentTick = state.tick;
     let cacheNeedsInvalidate = false;
     const now = performance.now();
@@ -1854,7 +1858,7 @@ export class ClientViewState {
           target.x += target.velocityX * targetDt;
           target.y += target.velocityY * targetDt;
           if (terrainFollow) {
-            const nextZ = getSurfaceHeight(target.x, target.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE) + groundOffset;
+            const nextZ = getSurfaceHeight(target.x, target.y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE) + groundOffset;
             target.velocityZ = targetDt > 0 ? (nextZ - targetPrevZ) / targetDt : 0;
             target.z = nextZ;
           } else {
@@ -1883,7 +1887,7 @@ export class ClientViewState {
         entity.transform.x += entity.projectile.velocityX * dt;
         entity.transform.y += entity.projectile.velocityY * dt;
         if (terrainFollow) {
-          const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE) + groundOffset;
+          const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE) + groundOffset;
           entity.projectile.velocityZ = dt > 0 ? (nextZ - prevTerrainFollowZ) / dt : 0;
           entity.transform.z = nextZ;
         } else {
@@ -1894,7 +1898,7 @@ export class ClientViewState {
         // the shell alive with horizontal velocity until the despawn
         // side-channel arrived, which made fast falling rounds visibly
         // skate along the ground for one frame.
-        const groundZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE);
+        const groundZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
         if (!terrainFollow && entity.transform.z <= groundZ && entity.projectile.velocityZ <= 0) {
           entity.transform.z = groundZ;
           this.deleteEntityLocalState(entity.id);
@@ -2010,7 +2014,7 @@ export class ClientViewState {
         // Same canonical mount math as the sim's targeting path.
         const sn = getSurfaceNormal(
           source.transform.x, source.transform.y,
-          this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE,
+          this.mapWidth, this.mapHeight, LAND_CELL_SIZE,
         );
         const unitGroundZ = getUnitGroundZ(source);
         const mount = getTurretWorldMount(

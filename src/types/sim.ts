@@ -465,6 +465,12 @@ export type TurretConfig = {
   /** World-space radius of the rendered turret body sphere and the
    *  source scale for barrel-tip math. See TurretBlueprint.radius. */
   radius: TurretRadiusConfig;
+  /** Visual-only turret hardpoints do not acquire targets or fire.
+   *  They exist so reusable turret art, such as construction emitters,
+   *  can mount through the same blueprint path as combat turrets. */
+  visualOnly?: boolean;
+  constructionEmitter?: import('./blueprints').ConstructionEmitterVisualSpec;
+  visualVariant?: import('./blueprints').ConstructionEmitterSize;
 };
 
 // Runtime projectile configuration. This is intentionally smaller than

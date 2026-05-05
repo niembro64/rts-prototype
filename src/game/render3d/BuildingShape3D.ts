@@ -20,14 +20,16 @@
 
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
+import type { ConstructionEmitterSize } from '@/types/blueprints';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   EXTRACTOR_BUILDING_VISUAL_HEIGHT,
   SOLAR_BUILDING_VISUAL_HEIGHT,
   WIND_BUILDING_VISUAL_HEIGHT,
-  getFactoryBuildingVisualMetrics,
+  getBuildingBlueprint,
 } from '../sim/blueprints';
-import type { BuildingRenderProfile } from '../sim/types';
+import type { BuildingRenderProfile, TurretConfig } from '../sim/types';
+import { getTurretConfig } from '../sim/turretConfigs';
 import { BUILDING_PALETTE, SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import {
   BUILD_BUBBLE_GHOST_COLOR_HEX,
@@ -85,6 +87,7 @@ export type ConstructionTowerOrbitPart = {
 };
 
 export type FactoryConstructionRig = {
+  group: THREE.Group;
   unitGhost: THREE.Mesh;
   unitCore: THREE.Mesh;
   sparks: THREE.Mesh[];
@@ -930,41 +933,29 @@ function buildConstructionPylonTrio(
  *  live resource showers/sprays. The unitGhost + unitCore + sparks
  *  remain at the BUILD SPOT, visualizing the forming unit. */
 function buildFactory(
-  width: number,
-  depth: number,
+  _width: number,
+  _depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
   const primary = new THREE.Mesh(cylinderGeom, primaryMat);
   const details: BuildingDetailMesh[] = [];
-
-  const metrics = getFactoryBuildingVisualMetrics(width, depth);
-
-  // 3 structural pylons evenly spaced around the footprint — one per
-  // resource (energy / mana / metal). Each is an inner cylinder
-  // wrapped by a thicker translucent "shower" cylinder that fills
-  // bottom-up with the live transfer rate, and emits a same-colored
-  // build spray from its top toward the build spot (driven per-frame
-  // in updateFactoryConstructionRig).
-  const innerPylonRadius = metrics.pylonRadius * 0.85;
-  const showerRadius = innerPylonRadius * 2.5;
-  const pylonBaseY = metrics.towerBaseY;
-  const pylonTrio = buildConstructionPylonTrio(
-    'large',
+  const blueprint = getBuildingBlueprint('factory');
+  const constructionMount = blueprint.turrets?.find((mount) => mount.turretId === 'constructionTurret');
+  if (!constructionMount) {
+    throw new Error('Factory blueprint must mount a constructionTurret');
+  }
+  const constructionConfig = getTurretConfig(constructionMount.turretId);
+  const constructionRig = buildConstructionEmitterRigFromTurretConfig(
+    constructionConfig,
+    constructionMount.visualVariant,
     primaryMat,
-    metrics.pylonHeight,
-    metrics.pylonOffset,
-    innerPylonRadius,
-    showerRadius,
-    pylonBaseY,
   );
-  for (const mesh of pylonTrio.staticMeshes) {
-    details.push(detail(mesh, 'medium'));
-  }
-  for (const shower of pylonTrio.showers) {
-    // Shower starts hidden + zero-height; updateFactoryConstructionRig
-    // scales scale.y and offsets position.y per resource rate fraction.
-    details.push(detail(shower, 'medium', undefined, 'factoryShower'));
-  }
+  constructionRig.group.position.set(
+    constructionMount.mount.x,
+    constructionMount.mount.z - constructionConfig.radius.body,
+    constructionMount.mount.y,
+  );
+  constructionRig.group.visible = false;
 
   // Build-spot visuals. These follow the FORMING UNIT (not the tower)
   // so they stay even after the central tower pieces were removed.
@@ -991,18 +982,19 @@ function buildFactory(
   return {
     primary,
     details,
-    height: metrics.baseHeight,
+    height: blueprint.visualHeight,
     factoryRig: {
+      group: constructionRig.group,
       unitGhost,
       unitCore,
       sparks,
-      showers: pylonTrio.showers,
-      towerOrbitParts: pylonTrio.towerOrbitParts,
-      showerRadius,
-      pylonHeight: metrics.pylonHeight,
-      pylonBaseY,
-      pylonTopsLocal: pylonTrio.pylonTopsLocal,
-      pylonTopBaseLocals: pylonTrio.pylonTopBaseLocals,
+      showers: constructionRig.showers,
+      towerOrbitParts: constructionRig.towerOrbitParts,
+      showerRadius: constructionRig.showerRadius,
+      pylonHeight: constructionRig.pylonHeight,
+      pylonBaseY: constructionRig.pylonBaseY,
+      pylonTopsLocal: constructionRig.pylonTopsLocal,
+      pylonTopBaseLocals: constructionRig.pylonTopBaseLocals,
       smoothedRates: { energy: 0, mana: 0, metal: 0 },
       towerSpinAmount: 0,
       towerSpinPhase: 0,
@@ -1010,28 +1002,36 @@ function buildFactory(
   };
 }
 
-/** Commander's build turret. The visual contract is intentionally
- *  identical to the fabricator tower: the small version of the same
- *  shared three-pylon construction emitter, mounted on the commander. */
-export function buildConstructionEmitterRig(
-  scale: number,
+/** Reusable construction turret visual. The commander's build turret
+ *  and the fabricator tower both instantiate this from the
+ *  constructionTurret blueprint; only their mount point and visual
+ *  variant differ. */
+export function buildConstructionEmitterRigFromTurretConfig(
+  turretConfig: Pick<TurretConfig, 'constructionEmitter'>,
+  visualVariant: ConstructionEmitterSize | undefined,
   primaryMat: THREE.Material = factoryFrameMat,
 ): ConstructionEmitterRig {
+  const spec = turretConfig.constructionEmitter;
+  if (!spec) {
+    throw new Error('Construction emitter rig requires a constructionEmitter turret config');
+  }
+  const variant = visualVariant ?? spec.defaultSize;
+  const dims = spec.sizes[variant];
+  if (!dims) {
+    throw new Error(`Unknown construction emitter visual variant: ${variant}`);
+  }
+
   const root = new THREE.Group();
-  const pylonHeight = Math.max(8, scale * 1.4);
-  const pylonOffset = Math.max(3, scale * 0.55);
-  const innerPylonRadius = Math.max(1.0, scale * 0.18);
-  const showerRadius = innerPylonRadius * 2.5;
   const pylonBaseY = 0;
 
   // Same energy / mana / metal trio as the factory; nothing else.
   const pylonTrio = buildConstructionPylonTrio(
-    'small',
+    dims.towerSize,
     primaryMat,
-    pylonHeight,
-    pylonOffset,
-    innerPylonRadius,
-    showerRadius,
+    dims.pylonHeight,
+    dims.pylonOffset,
+    dims.innerPylonRadius,
+    dims.showerRadius,
     pylonBaseY,
   );
   for (const mesh of pylonTrio.staticMeshes) root.add(mesh);
@@ -1041,8 +1041,8 @@ export function buildConstructionEmitterRig(
     group: root,
     showers: pylonTrio.showers,
     towerOrbitParts: pylonTrio.towerOrbitParts,
-    showerRadius,
-    pylonHeight,
+    showerRadius: dims.showerRadius,
+    pylonHeight: dims.pylonHeight,
     pylonBaseY,
     pylonTopsLocal: pylonTrio.pylonTopsLocal,
     pylonTopBaseLocals: pylonTrio.pylonTopBaseLocals,

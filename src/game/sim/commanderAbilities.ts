@@ -1,14 +1,18 @@
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId } from './types';
 import { isBuildTargetInRange } from './builderRange';
+import { updateWeaponWorldKinematics } from './combat/combatUtils';
+import { getUnitGroundZ } from './unitGeometry';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 
+const _constructionEmitterMount = { x: 0, y: 0, z: 0 };
+
 // Commander abilities system - handles build queue (ONE target at a time)
 export class CommanderAbilitiesSystem {
   // Update all commanders' building and healing
-  update(world: WorldState, _dtMs: number): CommanderAbilitiesResult {
+  update(world: WorldState, dtMs: number): CommanderAbilitiesResult {
     const sprayTargets: SprayTarget[] = [];
     const completedBuildings: { commanderId: EntityId; buildingId: EntityId }[] = [];
 
@@ -20,11 +24,33 @@ export class CommanderAbilitiesSystem {
       const playerId = commander.ownership.playerId;
       const commanderX = commander.transform.x;
       const commanderY = commander.transform.y;
-      const constructionEmitterOffset = -commander.unit.radius.body * 0.42;
-      const commanderSprayX = commanderX + Math.cos(commander.transform.rotation) * constructionEmitterOffset;
-      const commanderSprayY = commanderY + Math.sin(commander.transform.rotation) * constructionEmitterOffset;
-      const commanderSprayZ = commander.transform.z +
-        (commander.unit.radius.body * 1.75);
+      let commanderSprayX = commanderX;
+      let commanderSprayY = commanderY;
+      let commanderSprayZ = commander.transform.z;
+      const constructionTurretIndex = commander.turrets?.findIndex(
+        (turret) => turret.config.id === 'constructionTurret',
+      ) ?? -1;
+      if (constructionTurretIndex >= 0 && commander.turrets) {
+        const cos = Math.cos(commander.transform.rotation);
+        const sin = Math.sin(commander.transform.rotation);
+        const mount = updateWeaponWorldKinematics(
+          commander,
+          commander.turrets[constructionTurretIndex],
+          constructionTurretIndex,
+          cos,
+          sin,
+          {
+            currentTick: world.getTick(),
+            dtMs,
+            unitGroundZ: getUnitGroundZ(commander),
+            surfaceN: world.getCachedSurfaceNormal(commanderX, commanderY),
+          },
+          _constructionEmitterMount,
+        );
+        commanderSprayX = mount.x;
+        commanderSprayY = mount.y;
+        commanderSprayZ = mount.z;
+      }
 
       // Get current target from queue (only work on ONE thing at a time)
       const currentTarget = this.getCurrentTarget(world, commander);

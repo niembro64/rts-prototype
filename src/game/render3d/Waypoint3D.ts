@@ -22,7 +22,7 @@ import * as THREE from 'three';
 import type { Entity, UnitAction } from '../sim/types';
 import { ACTION_COLORS, WAYPOINT_COLORS } from '../uiLabels';
 import { getSurfaceHeight } from '../sim/Terrain';
-import { SPATIAL_GRID_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
+import { LAND_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
 import { getWaypointDetail } from '../../clientBarConfig';
 import { getEntityTargetPoint } from '../sim/buildingAnchors';
 import { hexToRgb01, writeHexToRgb01Array } from './colorUtils';
@@ -168,7 +168,7 @@ export class Waypoint3D {
    *  worldLift stays identical to the original "surfaceZ" semantics
    *  so tuning carries over verbatim. */
   private resolveY(x: number, y: number, hint?: number): number {
-    return (hint ?? getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, SPATIAL_GRID_CELL_SIZE))
+    return (hint ?? getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE))
       + STYLE.worldLift;
   }
 

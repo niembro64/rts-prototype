@@ -13,7 +13,7 @@ import { getGraphicsConfigFor, getGridOverlay, getGridOverlayIntensity } from '@
 import type { GraphicsConfig } from '@/types/graphics';
 import type { NetworkCaptureTile } from '@/types/capture';
 import {
-  MANA_TILE_SIZE,
+  LAND_CELL_SIZE,
   MANA_TILE_TEXTURE,
   MANA_TILE_TEXTURE_PIXELS_PER_TILE,
   MAP_BG_COLOR,
@@ -22,7 +22,10 @@ import {
 } from '../../config';
 import {
   getTerrainMapBoundaryFade,
-  getTerrainHeight,
+  getTerrainMeshHeight,
+  getTerrainMeshNormal,
+  getTerrainVersion,
+  interpolateTerrainMeshQuadHeight,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
   TERRAIN_MESH_SUBDIV,
   TILE_FLOOR_Y,
@@ -43,7 +46,6 @@ import { objectLodToCameraSphereGraphicsTier } from './RenderObjectLod';
 import type { RenderLodGrid } from './RenderLodGrid';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
-const STEEP_TILE_HEIGHT_THRESHOLD = 30;
 const TERRAIN_LOD_REBUILD_CELL_MULTIPLIER = 4;
 const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING = 24;
@@ -195,9 +197,8 @@ export class CaptureTileRenderer3D {
   private terrainLodKey = '';
   private tileSubdivisions = new Uint8Array(0);
   private tileSideWalls = new Uint8Array(0);
-  private steepTileMask = new Uint8Array(0);
-  private flatTileMask = new Uint8Array(0);
-  private steepTileKey = '';
+  private minTileSubdivisions = new Uint8Array(0);
+  private tileShapeKey = '';
   private horizontalEdgeSubdivisions = new Uint8Array(0);
   private verticalEdgeSubdivisions = new Uint8Array(0);
   private renderFrameIndex = 0;
@@ -368,7 +369,7 @@ export class CaptureTileRenderer3D {
     const pixelsPerTile = Math.max(1, MANA_TILE_TEXTURE_PIXELS_PER_TILE | 0);
     const width = Math.max(1, cellsX * pixelsPerTile);
     const height = Math.max(1, cellsY * pixelsPerTile);
-    const key = `${width}|${height}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_TEXTURE_PIXELS_PER_TILE}`;
+    const key = `${width}|${height}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_TEXTURE_PIXELS_PER_TILE}|${getTerrainVersion()}`;
     this.terrainTextureMapSizeUniform.value.set(this.mapWidth, this.mapHeight);
     if (this.terrainTextureKey === key) return;
 
@@ -417,6 +418,7 @@ export class CaptureTileRenderer3D {
       graphicsConfig.cameraSphereRadii.simple,
       graphicsConfig.cameraSphereRadii.mass,
       graphicsConfig.cameraSphereRadii.impostor,
+      getTerrainVersion(),
     ];
 
     if (lod && sharedLodGrid) {
@@ -511,46 +513,105 @@ export class CaptureTileRenderer3D {
     }
   }
 
-  private ensureTileShapeMasks(grid: LandGridMetrics): void {
+  private normalizeAuthoritativeSubdiv(subdiv: number): number {
+    const desired = Math.max(1, Math.min(TERRAIN_MESH_SUBDIV, subdiv | 0));
+    if (TERRAIN_MESH_SUBDIV % desired === 0) return desired;
+    for (let s = desired + 1; s <= TERRAIN_MESH_SUBDIV; s++) {
+      if (TERRAIN_MESH_SUBDIV % s === 0) return s;
+    }
+    return TERRAIN_MESH_SUBDIV;
+  }
+
+  private terrainHeightAtCellFraction(
+    bounds: LandCellBounds,
+    fx: number,
+    fz: number,
+  ): number {
+    return getTerrainMeshHeight(
+      bounds.x0 + (bounds.x1 - bounds.x0) * fx,
+      bounds.y0 + (bounds.y1 - bounds.y0) * fz,
+      this.mapWidth,
+      this.mapHeight,
+      LAND_CELL_SIZE,
+    );
+  }
+
+  private simplifiedTileHeight(
+    bounds: LandCellBounds,
+    subdiv: number,
+    fx: number,
+    fz: number,
+  ): number {
+    if (subdiv >= TERRAIN_MESH_SUBDIV) {
+      return this.terrainHeightAtCellFraction(bounds, fx, fz);
+    }
+    const cellX = Math.min(subdiv - 1, Math.max(0, Math.floor(fx * subdiv)));
+    const cellZ = Math.min(subdiv - 1, Math.max(0, Math.floor(fz * subdiv)));
+    const step = 1 / subdiv;
+    const x0 = cellX * step;
+    const z0 = cellZ * step;
+    const x1 = x0 + step;
+    const z1 = z0 + step;
+    const u = Math.max(0, Math.min(1, (fx - x0) / step));
+    const v = Math.max(0, Math.min(1, (fz - z0) / step));
+    return interpolateTerrainMeshQuadHeight(
+      u,
+      v,
+      this.terrainHeightAtCellFraction(bounds, x0, z0),
+      this.terrainHeightAtCellFraction(bounds, x1, z0),
+      this.terrainHeightAtCellFraction(bounds, x1, z1),
+      this.terrainHeightAtCellFraction(bounds, x0, z1),
+    );
+  }
+
+  private maxTileSimplificationError(bounds: LandCellBounds, subdiv: number): number {
+    if (subdiv >= TERRAIN_MESH_SUBDIV) return 0;
+    let maxError = 0;
+    for (let jy = 0; jy <= TERRAIN_MESH_SUBDIV; jy++) {
+      const fz = jy / TERRAIN_MESH_SUBDIV;
+      for (let ix = 0; ix <= TERRAIN_MESH_SUBDIV; ix++) {
+        const fx = ix / TERRAIN_MESH_SUBDIV;
+        const authoritative = this.terrainHeightAtCellFraction(bounds, fx, fz);
+        const simplified = this.simplifiedTileHeight(bounds, subdiv, fx, fz);
+        const error = Math.abs(authoritative - simplified);
+        if (error > maxError) maxError = error;
+      }
+    }
+    return maxError;
+  }
+
+  private ensureTileSimplificationLimits(grid: LandGridMetrics): void {
     const { cellsX, cellsY, cellSize } = grid;
     const tileCount = cellsX * cellsY;
-    const key = `${cellsX}|${cellsY}|${cellSize}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_FLAT_HEIGHT_THRESHOLD}`;
-    if (this.steepTileKey === key && this.steepTileMask.length === tileCount) return;
+    const key = `${cellsX}|${cellsY}|${cellSize}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_FLAT_HEIGHT_THRESHOLD}|${getTerrainVersion()}`;
+    if (this.tileShapeKey === key && this.minTileSubdivisions.length === tileCount) return;
 
-    if (this.steepTileMask.length !== tileCount) {
-      this.steepTileMask = new Uint8Array(tileCount);
-      this.flatTileMask = new Uint8Array(tileCount);
+    if (this.minTileSubdivisions.length !== tileCount) {
+      this.minTileSubdivisions = new Uint8Array(tileCount);
     } else {
-      this.steepTileMask.fill(0);
-      this.flatTileMask.fill(0);
+      this.minTileSubdivisions.fill(0);
     }
-    this.steepTileKey = key;
+    this.tileShapeKey = key;
 
-    // Height-variation masks are static for a renderer/map
-    // configuration, so cache them instead of re-sampling terrain for
-    // every tile on every render frame. Flat tiles can safely use the
-    // cheapest interior mesh; steep tiles force full terrain resolution.
+    // Simplification limits are static for a renderer/map configuration,
+    // so cache them instead of re-sampling terrain for every tile on every
+    // render frame. A tile can use reduced triangles only when that mesh is
+    // within the configured error threshold of the authoritative surface
+    // sampled by host sim and client prediction.
     const bounds: LandCellBounds = { x0: 0, y0: 0, x1: 0, y1: 0 };
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
         writeLandCellBounds(grid, cx, cy, bounds);
-        let hMin = Number.POSITIVE_INFINITY;
-        let hMax = Number.NEGATIVE_INFINITY;
-        for (let jy = 0; jy <= TERRAIN_MESH_SUBDIV; jy++) {
-          const fz = jy / TERRAIN_MESH_SUBDIV;
-          const wz = bounds.y0 + (bounds.y1 - bounds.y0) * fz;
-          for (let ix = 0; ix <= TERRAIN_MESH_SUBDIV; ix++) {
-            const fx = ix / TERRAIN_MESH_SUBDIV;
-            const wx = bounds.x0 + (bounds.x1 - bounds.x0) * fx;
-            const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight);
-            if (h < hMin) hMin = h;
-            if (h > hMax) hMax = h;
+        let minSubdiv = TERRAIN_MESH_SUBDIV;
+        for (let candidate = 1; candidate < TERRAIN_MESH_SUBDIV; candidate++) {
+          if (TERRAIN_MESH_SUBDIV % candidate !== 0) continue;
+          if (this.maxTileSimplificationError(bounds, candidate) <= MANA_TILE_FLAT_HEIGHT_THRESHOLD) {
+            minSubdiv = candidate;
+            break;
           }
         }
         const tileIdx = cy * cellsX + cx;
-        const range = hMax - hMin;
-        this.flatTileMask[tileIdx] = range <= MANA_TILE_FLAT_HEIGHT_THRESHOLD ? 1 : 0;
-        this.steepTileMask[tileIdx] = range > STEEP_TILE_HEIGHT_THRESHOLD ? 1 : 0;
+        this.minTileSubdivisions[tileIdx] = minSubdiv;
       }
     }
   }
@@ -626,7 +687,7 @@ export class CaptureTileRenderer3D {
     const tileSideWalls = this.tileSideWalls;
     const horizontalEdgeSubdivisions = this.horizontalEdgeSubdivisions;
     const verticalEdgeSubdivisions = this.verticalEdgeSubdivisions;
-    this.ensureTileShapeMasks(grid);
+    this.ensureTileSimplificationLimits(grid);
 
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
@@ -635,16 +696,10 @@ export class CaptureTileRenderer3D {
           const tier = objectLodToCameraSphereGraphicsTier(sharedLodGrid.resolveCell(cx, cy));
           tileGfx = getGraphicsConfigFor(tier);
         }
-        let subdiv = tileGfx.captureTileSubdiv | 0;
-        subdiv = Math.max(1, Math.min(TERRAIN_MESH_SUBDIV, subdiv));
-
+        const desiredSubdiv = this.normalizeAuthoritativeSubdiv(tileGfx.captureTileSubdiv | 0);
         const tileIdx = cy * cellsX + cx;
-        if (this.flatTileMask[tileIdx] !== 0) {
-          subdiv = 1;
-        }
-        if (subdiv < TERRAIN_MESH_SUBDIV && this.steepTileMask[tileIdx] !== 0) {
-          subdiv = TERRAIN_MESH_SUBDIV;
-        }
+        const minSubdiv = this.minTileSubdivisions[tileIdx] || TERRAIN_MESH_SUBDIV;
+        const subdiv = minSubdiv === 1 ? 1 : Math.max(desiredSubdiv, minSubdiv);
         tileSubdivisions[tileIdx] = subdiv;
         tileSideWalls[tileIdx] = tileGfx.captureTileSideWalls ? 1 : 0;
       }
@@ -683,7 +738,6 @@ export class CaptureTileRenderer3D {
     const terrainShades: number[] = [];
     const terrainIndices: number[] = [];
 
-    const eps = 1;
     const bounds: LandCellBounds = { x0: 0, y0: 0, x1: 0, y1: 0 };
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
@@ -715,23 +769,27 @@ export class CaptureTileRenderer3D {
         const addTopVertex = (fx: number, fz: number): number => {
           const wx = x0 + fx * cellWidth;
           const wz = z0 + fz * cellDepth;
-          const h = getTerrainHeight(wx, wz, this.mapWidth, this.mapHeight) + MANA_TILE_GROUND_LIFT;
+          const h = getTerrainMeshHeight(
+            wx,
+            wz,
+            this.mapWidth,
+            this.mapHeight,
+            cellSize,
+          ) + MANA_TILE_GROUND_LIFT;
           const localIndex = topLocalCount++;
           terrainPositions.push(wx, h, wz);
           terrainCaptureUvs.push(tileU, tileV);
           terrainCaptureMasks.push(1);
           terrainShades.push(1);
 
-          const hxp = getTerrainHeight(wx + eps, wz, this.mapWidth, this.mapHeight);
-          const hxm = getTerrainHeight(wx - eps, wz, this.mapWidth, this.mapHeight);
-          const hzp = getTerrainHeight(wx, wz + eps, this.mapWidth, this.mapHeight);
-          const hzm = getTerrainHeight(wx, wz - eps, this.mapWidth, this.mapHeight);
-          const dHdx = (hxp - hxm) / (2 * eps);
-          const dHdz = (hzp - hzm) / (2 * eps);
-          let nx = -dHdx, ny = 1, nz = -dHdz;
-          const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-          nx /= len; ny /= len; nz /= len;
-          terrainNormals.push(nx, ny, nz);
+          const normal = getTerrainMeshNormal(
+            wx,
+            wz,
+            this.mapWidth,
+            this.mapHeight,
+            cellSize,
+          );
+          terrainNormals.push(normal.nx, normal.nz, normal.ny);
 
           return localIndex;
         };
@@ -1173,7 +1231,7 @@ export class CaptureTileRenderer3D {
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
 
     let cellSize = this.clientViewState.getCaptureCellSize();
-    if (cellSize <= 0) cellSize = MANA_TILE_SIZE;
+    if (cellSize <= 0) cellSize = LAND_CELL_SIZE;
     cellSize = normalizeLandCellSize(cellSize);
 
     const gridMode = getGridOverlay();
@@ -1245,9 +1303,8 @@ export class CaptureTileRenderer3D {
     this.overlayPixels = new Uint8Array(4);
     this.tileSubdivisions = new Uint8Array(0);
     this.tileSideWalls = new Uint8Array(0);
-    this.steepTileMask = new Uint8Array(0);
-    this.flatTileMask = new Uint8Array(0);
-    this.steepTileKey = '';
+    this.minTileSubdivisions = new Uint8Array(0);
+    this.tileShapeKey = '';
     this.horizontalEdgeSubdivisions = new Uint8Array(0);
     this.verticalEdgeSubdivisions = new Uint8Array(0);
   }

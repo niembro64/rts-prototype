@@ -164,9 +164,17 @@ export function codeToTurretId(c: number): TurretId | null {
 import type { Command } from './commands';
 import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ForceFieldImpactContext } from './combat';
 import type { Vec2, Vec3 } from './vec2';
-import type { TerrainMapShape, TerrainShape } from './terrain';
+import type { TerrainMapShape, TerrainShape, TerrainTileMap } from './terrain';
 
 export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v1' as const;
+
+export type LobbyPlayerInfoPayload = {
+  ipAddress?: string;
+  location?: string;
+  timezone?: string;
+  localTime?: string;
+  name?: string;
+};
 
 // Client → Server
 export type NetworkPlayerActionMessage =
@@ -181,6 +189,7 @@ export type NetworkPlayerActionMessage =
       ipAddress?: string;
       location?: string;
       timezone?: string;
+      localTime?: string;
       /** Optional rename — set when the local user edits their own
        *  lobby player slot. Host re-broadcasts via `playerInfoUpdate`. */
       name?: string;
@@ -188,11 +197,19 @@ export type NetworkPlayerActionMessage =
   // Heartbeat ping. Both directions (client→host AND host→client)
   // — every peer sends one every couple seconds while the GAME
   // LOBBY is alive, and every peer monitors what it's received
-  // from the others. A peer that hasn't sent in too long gets
-  // its connection forcibly closed, which triggers the regular
-  // `playerLeft` cleanup. Catches silent disconnects (frozen
-  // tabs, network drops) that don't fire PeerJS's `close` event.
-  | { type: 'heartbeat'; gameId?: string; playerId: PlayerId };
+  // from the others. Clients attach their own latest lobby info;
+  // the host attaches the authoritative roster back to clients.
+  // A peer that hasn't sent in too long gets its connection
+  // forcibly closed, which triggers the regular `playerLeft`
+  // cleanup. Catches silent disconnects (frozen tabs, network
+  // drops) that don't fire PeerJS's `close` event.
+  | {
+      type: 'heartbeat';
+      gameId?: string;
+      playerId: PlayerId;
+      playerInfo?: LobbyPlayerInfoPayload;
+      players?: LobbyPlayer[];
+    };
 
 // Host → Client lobby-settings sync. Carries the host's
 // pre-game choices (terrain shape today, extensible to other
@@ -208,6 +225,8 @@ export type LobbySettings = {
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
   terrainMapShape: TerrainMapShape;
+  mapWidthLandCells: number;
+  mapLengthLandCells: number;
 };
 
 // Server → Client
@@ -235,6 +254,7 @@ export type NetworkServerSnapshotMessage =
       ipAddress?: string;
       location?: string;
       timezone?: string;
+      localTime?: string;
       /** Optional rename. Sent by the host whenever a player's
        *  username changes from their own lobby slot, or when the host
        *  receives a `playerInfo` rename. Receivers update the matching
@@ -411,6 +431,7 @@ export type NetworkServerSnapshot = {
     tiles: import('./capture').NetworkCaptureTile[];
     cellSize: number;
   };
+  terrain?: TerrainTileMap;
   isDelta: boolean;
   removedEntityIds?: number[];
 };
@@ -604,10 +625,13 @@ export type LobbyPlayer = {
    *  didn't return one. Same staleness window as `ipAddress`. */
   location?: string;
   /** IANA timezone of the player's machine (e.g.
-   *  `America/Los_Angeles`). Lets every viewer render the
-   *  player's CURRENT local time + timezone abbreviation in
-   *  the lobby roster, ticking live in their own browser. */
+   *  `America/Los_Angeles`). Used by that player to report a
+   *  formatted localTime through the host-controlled lobby stream. */
   timezone?: string;
+  /** Host-propagated time label last reported by that player's
+   *  client heartbeat. UI displays this canonical string instead
+   *  of formatting remote player times directly. */
+  localTime?: string;
 };
 
 export type BattleHandoff = {
