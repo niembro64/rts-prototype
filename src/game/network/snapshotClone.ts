@@ -33,19 +33,14 @@ function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapsh
   };
 }
 
+/** Pass-through. TerrainTileMap is immutable per match (see the
+ *  contract on the type definition); the previous deep-clone was
+ *  copying ~14k–60k height samples per full keyframe per listener
+ *  for no benefit since no consumer mutates the map. Sharing the
+ *  reference is safe and saves a predictable allocation spike on
+ *  every keyframe. */
 function cloneTerrainTileMap(map: TerrainTileMap): TerrainTileMap {
-  return {
-    mapWidth: map.mapWidth,
-    mapHeight: map.mapHeight,
-    cellSize: map.cellSize,
-    subdiv: map.subdiv,
-    cellsX: map.cellsX,
-    cellsY: map.cellsY,
-    verticesX: map.verticesX,
-    verticesY: map.verticesY,
-    version: map.version,
-    heights: map.heights.slice(),
-  };
+  return map;
 }
 
 function cloneAction(a: NetworkServerSnapshotAction): NetworkServerSnapshotAction {

@@ -12,18 +12,28 @@ export type TerrainMapShape = 'square' | 'circle';
 
 /** Server-authored terrain mesh samples. Heights are row-major
  *  authoritative terrain vertices, not render LOD vertices:
- *  `heights[vy * verticesX + vx]`. */
+ *  `heights[vy * verticesX + vx]`.
+ *
+ *  IMMUTABILITY CONTRACT: a TerrainTileMap is built once per match
+ *  by `buildTerrainTileMap` and is never mutated thereafter. The
+ *  authoritative-state setter (`setAuthoritativeTerrainTileMap`)
+ *  bumps `version` whenever a fresh map replaces an old one.
+ *  Snapshot cloning shares the SAME object reference across the
+ *  source snapshot and any in-process clones — `cloneTerrainTileMap`
+ *  is a passthrough. The `readonly` markers below make any
+ *  accidental mutation a compile-time error so the assumption can't
+ *  silently rot. */
 export type TerrainTileMap = {
-  mapWidth: number;
-  mapHeight: number;
-  cellSize: number;
-  subdiv: number;
-  cellsX: number;
-  cellsY: number;
-  verticesX: number;
-  verticesY: number;
-  version: number;
-  heights: number[];
+  readonly mapWidth: number;
+  readonly mapHeight: number;
+  readonly cellSize: number;
+  readonly subdiv: number;
+  readonly cellsX: number;
+  readonly cellsY: number;
+  readonly verticesX: number;
+  readonly verticesY: number;
+  readonly version: number;
+  readonly heights: readonly number[];
 };
 
 /** Shared sign convention for terrain-shaped height features.

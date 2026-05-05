@@ -4,25 +4,7 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
 TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
 
-1. TerrainTileMap stores heights as number[] and snapshotClone copies the
-   whole array.
-   References:
-   - src/types/terrain.ts:16
-   - src/game/sim/terrain/terrainTileMap.ts:40
-   - src/game/network/snapshotClone.ts:36
-   - src/game/network/snapshotClone.ts:301
-   - src/game/server/GameServer.ts:1064
-
-   Full snaps include the terrain map, and cloneTerrainTileMap does
-   map.heights.slice(). On larger rectangular maps, this becomes a predictable
-   allocation spike. The terrain map is immutable per match and should not be
-   deep-cloned every time it is attached to a snapshot clone.
-
-   Fix direction: make TerrainTileMap immutable and share by reference inside
-   same-process snapshot clones, or store heights as Float32Array and transfer/
-   serialize it explicitly only on terrain-version changes.
-
-2. Build placement diagnostics duplicate terrain footprint checks.
+1. Build placement diagnostics duplicate terrain footprint checks.
    Reference: src/game/sim/buildPlacementValidation.ts:101
    Reference: src/game/sim/buildPlacementValidation.ts:128
    Reference: src/game/sim/buildPlacementValidation.ts:139
@@ -36,7 +18,7 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    the candidate cells once and returns: blocking terrain cells, common
    plateau level, water/steepness failures, and per-cell debug colors.
 
-3. Public terrain APIs still accept arbitrary cellSize even though LAND_CELL_SIZE
+2. Public terrain APIs still accept arbitrary cellSize even though LAND_CELL_SIZE
    is supposed to be canonical.
    References:
    - src/game/sim/terrain/terrainTileMap.ts:23
@@ -53,7 +35,7 @@ TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
    assertCanonicalLandCellSize, or remove the optional cellSize parameter from
    terrain public APIs that should never vary.
 
-4. Map-size option generation is isolated from land-grid validation.
+3. Map-size option generation is isolated from land-grid validation.
    References:
    - src/mapSizeConfig.ts:31
    - src/mapSizeConfig.ts:41
