@@ -2,18 +2,23 @@ This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc w
 
 #####################################################
 
-TERRAIN / MAP GENERATION OPTIMIZATION AUDIT
+MAP-DIMENSION HELPER DUPLICATION (NEW, found 2026-05-05)
 
-1. Map-size option generation is isolated from land-grid validation.
+1. Two different "force land-cell count to odd" rules across the codebase.
    References:
-   - src/mapSizeConfig.ts:31
-   - src/mapSizeConfig.ts:41
-   - src/game/landGrid.ts:23
+   - src/game/landGrid.ts:nearestOddLandCellCount   (rounds to NEAREST odd)
+   - src/config.ts:normalizeMapLandCells            (rounds UP to next odd)
 
-   mapSizeConfig has its own odd-cell rounding and validation, while landGrid
-   owns canonical cell-size normalization and grid metrics. These are related
-   policies but currently split across two places.
+   Same goal (maps need exactly one central land/mana cell, which requires
+   odd cell counts), different policy. nearestOddLandCellCount feeds the
+   lobby axis-options generator (mapSizeConfig); normalizeMapLandCells is
+   only used internally by config.landCellMapSpan and has no external
+   callers. Either delete normalizeMapLandCells (it's effectively dead —
+   landCellMapSpan via mapSizeFromLandCells could route through landGrid
+   instead) or document the asymmetry so future readers know which rule
+   applies where.
 
-   Fix direction: move odd-cell option generation and default validation into
-   a shared map/grid config helper so map dimensions, central-cell guarantees,
-   and LAND_CELL_SIZE grid math are enforced from one module.
+   Fix direction: drop the unused config-side normalizer once
+   mapSizeFromLandCells is migrated, OR alias normalizeMapLandCells to the
+   landGrid version so there's a single source of truth for the rounding
+   policy.

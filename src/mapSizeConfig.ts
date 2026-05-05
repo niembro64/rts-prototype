@@ -1,3 +1,8 @@
+import {
+  assertOddPositiveLandCellAxis,
+  nearestOddLandCellCount,
+} from './game/landGrid';
+
 export type MapDimensionAxisOption = {
   readonly valueLandCells: number;
   readonly label: string;
@@ -28,26 +33,16 @@ const DEFAULT_MAP_LENGTH_LAND_CELLS_VALUE = 75;
  *  around the playable/generated oval. */
 export const MAP_GENERATION_EXTENT_FRACTION = 0.85;
 
-function nearestOddLandCellCount(value: number): number {
-  const floor = Math.floor(value);
-  const lowerOdd = floor % 2 === 1 ? floor : floor - 1;
-  const ceil = Math.ceil(value);
-  const upperOdd = ceil % 2 === 1 ? ceil : ceil + 1;
-  const lowerDistance = Math.abs(value - lowerOdd);
-  const upperDistance = Math.abs(value - upperOdd);
-  return Math.max(1, lowerDistance <= upperDistance ? lowerOdd : upperOdd);
-}
-
 function buildMapDimensionAxisValues(): readonly number[] {
-  if (
-    !Number.isInteger(MAP_DIMENSION_BASE_LAND_CELLS) ||
-    MAP_DIMENSION_BASE_LAND_CELLS <= 0 ||
-    MAP_DIMENSION_BASE_LAND_CELLS % 2 !== 1
-  ) {
-    throw new Error(
-      `MAP_DIMENSION_BASE_LAND_CELLS must be a positive odd integer; got ${MAP_DIMENSION_BASE_LAND_CELLS}`,
-    );
-  }
+  // landGrid owns the canonical "must be a positive odd integer"
+  // guard — both axes need it so every map has exactly one central
+  // land/mana cell. Threading it through mapSizeConfig means the
+  // base-cell-count constant + the option-list defaults + the
+  // landGrid grid-math all enforce one rule from one module.
+  assertOddPositiveLandCellAxis(
+    'MAP_DIMENSION_BASE_LAND_CELLS',
+    MAP_DIMENSION_BASE_LAND_CELLS,
+  );
 
   const values: number[] = [];
   let value = MAP_DIMENSION_BASE_LAND_CELLS;
@@ -63,6 +58,11 @@ function buildMapDimensionAxisValues(): readonly number[] {
 const MAP_DIMENSION_AXIS_VALUES = buildMapDimensionAxisValues();
 
 function validateDefaultMapDimension(axis: 'width' | 'length', valueLandCells: number): number {
+  // Two-stage check: must be a valid land-cell axis value (odd
+  // positive int — landGrid invariant) AND must appear in the
+  // generated option list (so the lobby UI button matches the
+  // persisted default).
+  assertOddPositiveLandCellAxis(`Default map ${axis}`, valueLandCells);
   if (!MAP_DIMENSION_AXIS_VALUES.includes(valueLandCells)) {
     throw new Error(
       `Default map ${axis} (${valueLandCells}) must be one of ` +
