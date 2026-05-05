@@ -3877,6 +3877,7 @@ export class Render3DEntities {
       preset.rotation.vel * CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
     );
     const target = active ? 1 : 0;
+    const amountBefore = rig.towerSpinAmount;
     rig.towerSpinAmount += (target - rig.towerSpinAmount) * alpha;
     if (!active && rig.towerSpinAmount < 0.001) {
       rig.towerSpinAmount = 0;
@@ -3886,6 +3887,13 @@ export class Render3DEntities {
         (rig.towerSpinPhase + dtSec * CONSTRUCTION_TOWER_SPIN_CONFIG.radPerSec * rig.towerSpinAmount)
         % (Math.PI * 2);
     }
+    // Stable-state short-circuit: when both this frame's amount AND
+    // the previous frame's amount are 0, the phase didn't advance and
+    // every per-mesh write below would re-stamp the same transform we
+    // wrote last frame. The first frame after the fade-out completes
+    // still runs the loop (amountBefore > 0 → amount === 0) so the
+    // resting positions get one final settled write.
+    if (amountBefore === 0 && rig.towerSpinAmount === 0) return;
     const c = Math.cos(rig.towerSpinPhase);
     const s = Math.sin(rig.towerSpinPhase);
     for (let i = 0; i < rig.towerOrbitParts.length; i++) {
@@ -4239,6 +4247,13 @@ export class Render3DEntities {
     const cylinderMesh = this.projectileCylinderInstanced;
     let sphereCount = 0;
     let cylinderCount = 0;
+    // Hoist the per-frame range-toggle reads to once per call instead of
+    // twice per projectile (was inside updateProjRadiusMeshes). Toggle
+    // state is global so it can't change between projectiles within a
+    // single frame, and at high projectile counts the dictionary read
+    // for each toggle dominated the inner loop.
+    const wantCol = getProjRangeToggle('collision');
+    const wantExp = getProjRangeToggle('explosion');
 
     for (const e of projectiles) {
       if (pruneProjectiles) seen.add(e.id);
@@ -4338,7 +4353,7 @@ export class Render3DEntities {
       }
 
       if (richProjectile) {
-        this.updateProjRadiusMeshes(e);
+        this.updateProjRadiusMeshes(e, wantCol, wantExp);
       } else {
         this.hideProjRadiusMeshes(e.id);
       }
@@ -4377,14 +4392,16 @@ export class Render3DEntities {
    *  for EXP. Drawing flat rings would under-sell what the sim tests —
    *  a high-arc shell's blast genuinely catches airborne targets above
    *  it. */
-  private updateProjRadiusMeshes(entity: Entity): void {
+  private updateProjRadiusMeshes(
+    entity: Entity,
+    wantCol: boolean,
+    wantExp: boolean,
+  ): void {
     const proj = entity.projectile;
     if (!proj) return;
     const shot = proj.config.shot;
     if (!isProjectileShot(shot)) return;
 
-    const wantCol = getProjRangeToggle('collision');
-    const wantExp = getProjRangeToggle('explosion');
     if (!wantCol && !wantExp) {
       // Fast path — nothing to show. Hide anything that was visible
       // last frame so flipping the toggle off doesn't leave a stale
