@@ -406,7 +406,6 @@ export type LegConfig = {
   lowerThickness: number;
   hipRadius: number;
   kneeRadius: number;
-  footRadius: number;
   lerpDuration: number;
   /** Left-side authored leg geometry in body-radius fractions. Runtime
    *  code mirrors this list to the right side so units define their

@@ -4,7 +4,7 @@
 // spheres). Replaces the old per-leg THREE.Mesh + per-frame
 // setCylinderBetween() pattern, which produced 2 draw calls per leg
 // → 8 per 4-leg unit → 4000+ at 500 such units. Joints (full-
-// LOD only) collapse from 3 spheres × 4 legs × N units → 1 shared
+// LOD only) collapse from 2 spheres × 4 legs × N units → 1 shared
 // InstancedMesh draw.
 //
 // Each leg cylinder is a single instance in one of the two
@@ -194,7 +194,7 @@ class CylinderPool {
   }
 }
 
-/** Pool of joint spheres (hip / knee / foot). One InstancedMesh of
+/** Pool of joint spheres (hip / knee). One InstancedMesh of
  *  the canonical unit sphere; per-instance state — position +
  *  uniform scale (radius) — rides on `instanceMatrix`. Stock
  *  MeshBasicMaterial is enough because spheres are rotationally

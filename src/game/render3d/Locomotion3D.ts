@@ -111,19 +111,21 @@ export type Locomotion3DMesh =
   | ({ type: 'treads';
        group: THREE.Group;
        wheels: THREE.Mesh[];
+       wheelContacts: RollingContactState[];
+       treadContacts: RollingContactState[];
        /** Animated cleat strips on top of the tread slab (empty when
-        *  treadsAnimated is off). Scroll along the slab length every frame
-        *  at a rate proportional to the unit's speed — 3D analog of the
-        *  2D drawAnimatedTread() moving track-mark lines. */
+        *  treadsAnimated is off). Each side scrolls from that side's own
+        *  ground-contact motion, so a turning tread can crawl one side
+        *  forward and the other backward. */
        cleats: THREE.Mesh[];
        cleatSpacing: number;
        slabLength: number;
-       /** Cumulative linear distance the tread has "rolled" (world units).
-        *  Only the mod with cleatSpacing is used, but we keep the full
-        *  accumulator so animation keeps smooth across long runs. */
-       treadPhase: number;
     } & LocomotionBase)
-  | ({ type: 'wheels'; group: THREE.Group; wheels: THREE.Mesh[] } & LocomotionBase)
+  | ({ type: 'wheels';
+       group: THREE.Group;
+       wheels: THREE.Mesh[];
+       wheelContacts: RollingContactState[];
+    } & LocomotionBase)
   | ({ type: 'legs';
        /** Container for non-instanced leg parts — joint spheres at
         *  'full' LOD, the LEGS-RAD viz sphere, etc. Parented to the
@@ -150,6 +152,32 @@ export type Locomotion3DMesh =
 type LocomotionBase = {
   lodKey: string;
 };
+
+type RollingContactState = {
+  /** Wheel/tread contact-center in chassis local XZ coordinates. The
+   *  underside touches the ground at the same XZ as the center, so this
+   *  point captures forward/reverse and yaw-driven side motion without
+   *  needing to sample terrain height. */
+  localX: number;
+  localZ: number;
+  worldX: number;
+  worldZ: number;
+  initialized: boolean;
+  /** Cumulative signed ground distance in world units. Wheels convert this
+   *  to angular rotation; treads use it to scroll cleats along each side. */
+  phase: number;
+};
+
+function rollingContact(localX: number, localZ: number): RollingContactState {
+  return {
+    localX,
+    localZ,
+    worldX: 0,
+    worldZ: 0,
+    initialized: false,
+    phase: 0,
+  };
+}
 
 /** State for a single leg. The foot is planted at a real WORLD XYZ
  *  point on the terrain — it stays at that exact ground spot
@@ -205,16 +233,14 @@ type LegInstance = {
   /** Slot indices into LegInstancedRenderer's joint-sphere pool —
    *  only allocated at 'full' LOD; -1 elsewhere (or when the pool
    *  is exhausted, in which case the leg quietly skips that joint).
-   *  All three joints across the whole scene draw in a single shared
+   *  Both joints across the whole scene draw in a single shared
    *  InstancedMesh call. The radius is baked once at build (joint
    *  sizes are constant) and re-encoded into the per-frame matrix
    *  alongside the world position. */
   hipJointSlot: number;
   kneeJointSlot: number;
-  footJointSlot: number;
   hipJointRadius: number;
   kneeJointRadius: number;
-  footJointRadius: number;
   upperThick: number;
   lowerThick: number;
   /** LEGS-radius debug viz: a wireframe SPHERE centered at this
@@ -384,6 +410,11 @@ function buildTreads(
   }
 
   const wheels: THREE.Mesh[] = [];
+  const wheelContacts: RollingContactState[] = [];
+  const treadContacts: RollingContactState[] = [
+    rollingContact(0, -offset),
+    rollingContact(0, offset),
+  ];
   const cleats: THREE.Mesh[] = [];
   let cleatSpacing = 0;
 
@@ -403,6 +434,7 @@ function buildTreads(
         w.position.set(x, TREAD_Y, side * offset);
         group.add(w);
         wheels.push(w);
+        wheelContacts.push(rollingContact(x, side * offset));
       }
     }
 
@@ -433,10 +465,11 @@ function buildTreads(
     type: 'treads',
     group,
     wheels,
+    wheelContacts,
+    treadContacts,
     cleats,
     cleatSpacing,
     slabLength: length,
-    treadPhase: 0,
     lodKey: '',
   };
 }
@@ -458,6 +491,7 @@ function buildWheels(
   const fx = r * cfg.wheelDistX;
   const fz = r * cfg.wheelDistY;
   const wheels: THREE.Mesh[] = [];
+  const wheelContacts: RollingContactState[] = [];
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       // Outer group: position at the wheel mount, lay the cylinder
@@ -476,10 +510,11 @@ function buildWheels(
       wheelGroup.add(tire);
       group.add(wheelGroup);
       wheels.push(tire);
+      wheelContacts.push(rollingContact(sx * fx, sz * fz));
     }
   }
   unitGroup.add(group);
-  return { type: 'wheels', group, wheels, lodKey: '' };
+  return { type: 'wheels', group, wheels, wheelContacts, lodKey: '' };
 }
 
 function buildLegs(
@@ -533,7 +568,7 @@ function buildLegs(
       lowerSlot = legRenderer.allocLower(shellPool);
     }
 
-    // Joint spheres at 'full' LOD only — all three slots allocate
+    // Joint spheres at 'full' LOD only — both slots allocate
     // into the shared joint-sphere InstancedMesh pool. Radii are
     // baked here (joint sizes are constant per leg config) and
     // re-applied each frame alongside the world position via the
@@ -541,14 +576,11 @@ function buildLegs(
     // the pool was exhausted; the leg just skips that joint).
     let hipJointSlot = -1;
     let kneeJointSlot = -1;
-    let footJointSlot = -1;
     const hipJointRadius = Math.max(1, cfg.hipRadius);
     const kneeJointRadius = Math.max(1, cfg.kneeRadius);
-    const footJointRadius = Math.max(1, cfg.footRadius);
     if (legLod === 'full') {
       hipJointSlot = legRenderer.allocJoint(shellPool);
       kneeJointSlot = legRenderer.allocJoint(shellPool);
-      footJointSlot = legRenderer.allocJoint(shellPool);
     }
 
     // Hip Y defaults to the lifted vertical mid-point of whichever body
@@ -576,10 +608,8 @@ function buildLegs(
       lowerSlot,
       hipJointSlot,
       kneeJointSlot,
-      footJointSlot,
       hipJointRadius,
       kneeJointRadius,
-      footJointRadius,
       upperThick,
       lowerThick,
     });
@@ -785,9 +815,34 @@ function kneeFromIK(
   };
 }
 
+function sampleRollingContactDistance(entity: Entity, state: RollingContactState): number {
+  const rotation = entity.transform.rotation;
+  const cosR = Math.cos(rotation);
+  const sinR = Math.sin(rotation);
+  const worldX = entity.transform.x + cosR * state.localX - sinR * state.localZ;
+  const worldZ = entity.transform.y + sinR * state.localX + cosR * state.localZ;
+
+  let signedDistance = 0;
+  if (state.initialized) {
+    const dx = worldX - state.worldX;
+    const dz = worldZ - state.worldZ;
+    signedDistance = dx * cosR + dz * sinR;
+  }
+
+  state.worldX = worldX;
+  state.worldZ = worldZ;
+  state.initialized = true;
+  state.phase += signedDistance;
+  return signedDistance;
+}
+
+function wrappedRollingPhase(phase: number, spacing: number): number {
+  return ((phase % spacing) + spacing) % spacing;
+}
+
 /**
- * Per-frame update — drives the tread wheels, and advances each leg's
- * snap-lerp physics + IK.
+ * Per-frame update — drives wheels/treads from per-contact ground motion,
+ * and advances each leg's snap-lerp physics + IK.
  */
 export function updateLocomotion(
   mesh: Locomotion3DMesh,
@@ -800,40 +855,45 @@ export function updateLocomotion(
   if (!mesh) return;
   const vx = entity.unit?.velocityX ?? 0;
   const vy = entity.unit?.velocityY ?? 0;
-  const speed = Math.hypot(vx, vy);
-  const dt = dtMs / 1000;
 
   if (mesh.type === 'wheels') {
-    if (speed <= 0.1) return;
-    // Wheels spin at ω = v / r so the tire's tangential surface
-    // speed matches the chassis's linear speed.
-    if (mesh.wheels.length > 0) {
-      const wheelR = Math.max(1, mesh.wheels[0].scale.x);
-      const rotDelta = (speed / wheelR) * dt;
-      for (const w of mesh.wheels) w.rotation.y += rotDelta;
+    // Each tire rolls from the frame-to-frame motion of its own
+    // chassis-local underside point. This keeps reverse motion and
+    // yaw turns honest: outside wheels travel farther than inside
+    // wheels, and can rotate opposite directions during a pivot.
+    const count = Math.min(mesh.wheels.length, mesh.wheelContacts.length);
+    for (let i = 0; i < count; i++) {
+      const signedDistance = sampleRollingContactDistance(entity, mesh.wheelContacts[i]);
+      if (Math.abs(signedDistance) <= 1e-4) continue;
+      const wheelR = Math.max(1, mesh.wheels[i].scale.x);
+      mesh.wheels[i].rotation.y += signedDistance / wheelR;
     }
     return;
   }
 
   if (mesh.type === 'treads') {
-    if (speed <= 0.1) return;
-    // Wheels spin at ω = v / r so their surface speed matches the unit's
-    // linear speed.
-    if (mesh.wheels.length > 0) {
-      const wheelR = Math.max(1, mesh.wheels[0].scale.x);
-      const rotDelta = (speed / wheelR) * dt;
-      for (const w of mesh.wheels) w.rotation.y += rotDelta;
+    // Internal wheels roll from their own contact centers, not from
+    // the unit center. Treaded turns therefore show the two sides
+    // moving at different speeds/directions.
+    const wheelCount = Math.min(mesh.wheels.length, mesh.wheelContacts.length);
+    for (let i = 0; i < wheelCount; i++) {
+      const signedDistance = sampleRollingContactDistance(entity, mesh.wheelContacts[i]);
+      if (Math.abs(signedDistance) <= 1e-4) continue;
+      const wheelR = Math.max(1, mesh.wheels[i].scale.x);
+      mesh.wheels[i].rotation.y += signedDistance / wheelR;
     }
     // Cleats scroll along the slab length at the same linear speed. We
-    // advance a phase counter in world units and lay out cleats modulo
+    // advance one signed phase per tread side and lay out cleats modulo
     // spacing so they look continuous regardless of cumulative distance.
     if (mesh.cleats.length > 0 && mesh.cleatSpacing > 0) {
-      mesh.treadPhase += speed * dt;
       const spacing = mesh.cleatSpacing;
-      const phaseOff = ((mesh.treadPhase % spacing) + spacing) % spacing;
       const L = mesh.slabLength;
       const cleatsPerSide = mesh.cleats.length / 2;
       for (let s = 0; s < 2; s++) {
+        const contact = mesh.treadContacts[s];
+        if (!contact) continue;
+        sampleRollingContactDistance(entity, contact);
+        const phaseOff = wrappedRollingPhase(contact.phase, spacing);
         const baseIdx = s * cleatsPerSide;
         for (let i = 0; i < cleatsPerSide; i++) {
           let posX = -L / 2 + phaseOff + i * spacing;
@@ -1096,7 +1156,6 @@ export function updateLocomotion(
         );
         if (leg.hipJointSlot >= 0)  legRenderer.updateJoint(leg.hipJointSlot,  hipWorldX, hipWorldY, hipWorldZ, leg.hipJointRadius, leg.shellPool);
         if (leg.kneeJointSlot >= 0) legRenderer.updateJoint(leg.kneeJointSlot, knee.x, knee.y, knee.z, leg.kneeJointRadius, leg.shellPool);
-        if (leg.footJointSlot >= 0) legRenderer.updateJoint(leg.footJointSlot, footX, footY, footZ, leg.footJointRadius, leg.shellPool);
       }
     }
   }
@@ -1125,7 +1184,6 @@ export function destroyLocomotion(
       legRenderer.freeLower(leg.lowerSlot, leg.shellPool);
       legRenderer.freeJoint(leg.hipJointSlot, leg.shellPool);
       legRenderer.freeJoint(leg.kneeJointSlot, leg.shellPool);
-      legRenderer.freeJoint(leg.footJointSlot, leg.shellPool);
     }
   }
   mesh.group.parent?.remove(mesh.group);
