@@ -797,6 +797,45 @@ export const LOBBY_PREVIEW_SPIN_RATE = 0.0925;
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
 export const CAMERA_PAN_MULTIPLIER = 6.0;
 
+/**
+ * Where the wheel-zoom and alt+middle-click rotate operations
+ * are anchored on the world.
+ *
+ *   - 'cursor'        → ground point under the mouse cursor
+ *   - 'screen-center' → ground point at the center of the screen
+ *
+ * Each interaction has its own knob so the three behaviors can be
+ * mixed (e.g. zoom in toward cursor but zoom out from the screen
+ * center, which feels more like a stable pull-back than an
+ * exact-inverse "back along the cursor pin"). The picker for both
+ * modes is the same 3D raycast helper — when the chosen point
+ * misses geometry, the camera falls back to a y=0 plane projection.
+ */
+export type CameraAnchorMode = 'cursor' | 'screen-center';
+
+/** Anchor for SCROLL-IN (wheel deltaY < 0). Defaults to cursor so
+ *  zooming in continues to pull the world toward the spot the
+ *  player is pointing at — the existing "zoom toward what I'm
+ *  looking at" feel. Set to `'screen-center'` to dolly in along
+ *  the view axis instead. */
+export const CAMERA_ZOOM_IN_ANCHOR: CameraAnchorMode = 'cursor';
+
+/** Anchor for SCROLL-OUT (wheel deltaY > 0). Defaults to
+ *  `'screen-center'` so zooming out reads as a normal pull-back
+ *  from the framed scene, not the geometric inverse of the cursor-
+ *  anchored zoom-in (which would yank whatever was under the
+ *  cursor toward the screen center as the camera receded). The two
+ *  defaults intentionally diverge: in to cursor, out from center. */
+export const CAMERA_ZOOM_OUT_ANCHOR: CameraAnchorMode = 'screen-center';
+
+/** Anchor for ALT + middle-click ORBIT (camera rotation). Defaults
+ *  to `'screen-center'` so the framed view rotates around itself
+ *  rather than around whichever spot the cursor happens to be
+ *  hovering — easier to keep the scene composed while tumbling.
+ *  Set to `'cursor'` to pivot around whatever the player is
+ *  pointing at (the previous cursor-anchored behavior). */
+export const CAMERA_ROTATE_ANCHOR: CameraAnchorMode = 'screen-center';
+
 /** Minimum world-Y gap (sim units) between the camera and the
  *  terrain directly beneath it. Acts as the TRUE "minimum zoom"
  *  rail: the wheel-zoom altitude clamp uses

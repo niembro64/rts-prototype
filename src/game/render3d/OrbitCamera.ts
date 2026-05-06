@@ -84,7 +84,27 @@ export type OrbitCameraOptions = {
    *  terrain at the target's XZ. Bounds cursor-pin's accumulated
    *  Y drift across many wheel events. 0 disables the clamp. */
   targetTerrainBand?: number;
+  /** Anchor for the SCROLL-IN gesture — the world point the camera
+   *  pulls toward when the wheel rolls forward. `'cursor'` pins the
+   *  spot under the mouse; `'screen-center'` pins the spot at the
+   *  middle of the canvas. Defaults to `'cursor'`. */
+  zoomInAnchor?: CameraAnchorMode;
+  /** Anchor for the SCROLL-OUT gesture. Defaults to
+   *  `'screen-center'` — pulling back from the framed view feels
+   *  more natural than running the cursor-anchored zoom math in
+   *  reverse, which would yank whatever was under the cursor away
+   *  from the screen center as the camera receded. */
+  zoomOutAnchor?: CameraAnchorMode;
+  /** Anchor for ALT + middle-click ORBIT. Defaults to
+   *  `'screen-center'` so the framed view tumbles around itself
+   *  rather than around the cursor's current hover spot. */
+  rotateAnchor?: CameraAnchorMode;
 };
+
+/** Where a camera operation pivots / pins on the world.
+ *  - 'cursor':        the ground point under the mouse cursor
+ *  - 'screen-center': the ground point at the middle of the canvas */
+export type CameraAnchorMode = 'cursor' | 'screen-center';
 
 export class OrbitCamera {
   public camera: THREE.PerspectiveCamera;
@@ -158,6 +178,16 @@ export class OrbitCamera {
    *  band re-anchors it to the actual ground while still letting
    *  cursor-pin track normal slopes. 0 disables the clamp. */
   public targetTerrainBand = 200;
+
+  /** Anchor mode for each gesture. The wheel handler reads
+   *  `zoomInAnchor` vs `zoomOutAnchor` based on scroll direction so
+   *  the two halves of the zoom can use different anchors (default:
+   *  in → cursor, out → screen center). The orbit drag uses
+   *  `rotateAnchor`. Touch pinch + twist always use the gesture
+   *  centroid, which is conceptually the touch's "cursor". */
+  private zoomInAnchor: CameraAnchorMode = 'cursor';
+  private zoomOutAnchor: CameraAnchorMode = 'screen-center';
+  private rotateAnchor: CameraAnchorMode = 'screen-center';
 
   private dragMode: 'none' | 'orbit' | 'pan' = 'none';
   private lastMouseX = 0;
@@ -243,6 +273,9 @@ export class OrbitCamera {
     if (opts.targetTerrainBand !== undefined) {
       this.targetTerrainBand = Math.max(0, opts.targetTerrainBand);
     }
+    if (opts.zoomInAnchor !== undefined) this.zoomInAnchor = opts.zoomInAnchor;
+    if (opts.zoomOutAnchor !== undefined) this.zoomOutAnchor = opts.zoomOutAnchor;
+    if (opts.rotateAnchor !== undefined) this.rotateAnchor = opts.rotateAnchor;
 
     this.toDistance = this.distance;
     this.toTargetX = this.target.x;
@@ -289,7 +322,18 @@ export class OrbitCamera {
       // the orbit math itself — the orbit state stays free, and the
       // visible camera floats above terrain as needed.
       const f = this.zoomStepFraction;
-      this.zoomByFactorAt(e.clientX, e.clientY, e.deltaY > 0 ? 1 / (1 - f) : 1 - f);
+      const zoomingIn = e.deltaY < 0;
+      // Each zoom direction gets its own anchor — the defaults
+      // (in → cursor, out → screen-center) intentionally make the
+      // two motions NON-symmetric: zoom-in pulls toward the spot
+      // the player is pointing at, zoom-out pulls back from the
+      // currently-framed view. Pinning zoom-out to the cursor too
+      // would yank whatever was under the cursor toward the screen
+      // center as the camera receded, which reads as the framing
+      // sliding away rather than a clean pull-back.
+      const anchorMode = zoomingIn ? this.zoomInAnchor : this.zoomOutAnchor;
+      const factor = zoomingIn ? 1 - f : 1 / (1 - f);
+      this.zoomByFactorAt(e.clientX, e.clientY, factor, anchorMode);
     };
 
     this.onMouseDown = (e) => {
@@ -311,7 +355,14 @@ export class OrbitCamera {
         // drive a rigid rotation of the camera around the pivot,
         // so the pivot stays anchored on screen but the camera
         // doesn't re-center on it.
-        const hit = this._cursorWorldPoint(e.clientX, e.clientY);
+        //
+        // Pivot location follows `rotateAnchor`: by default the
+        // ground point at the SCREEN CENTER (the framed view
+        // tumbles around itself), or the ground point under the
+        // cursor when configured. Same picker either way — both
+        // return null if the chosen point misses geometry, in
+        // which case we fall through to the no-pivot orbit branch.
+        const hit = this._anchorWorldPoint(e.clientX, e.clientY, this.rotateAnchor);
         if (hit) {
           this.orbitPivot.copy(hit);
           // Make sure the camera position is up-to-date before we
@@ -540,9 +591,14 @@ export class OrbitCamera {
     this.apply();
   }
 
-  private zoomByFactorAt(clientX: number, clientY: number, wantFactor: number): void {
+  private zoomByFactorAt(
+    clientX: number,
+    clientY: number,
+    wantFactor: number,
+    anchorMode: CameraAnchorMode = 'cursor',
+  ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
-    const p0 = this._cursorWorldPoint(clientX, clientY);
+    const p0 = this._anchorWorldPoint(clientX, clientY, anchorMode);
     const wantedDistance = this.toDistance * wantFactor;
     const newToDistance = Math.min(
       this.maxDistance,
@@ -764,6 +820,28 @@ export class OrbitCamera {
       if (hit) return hit;
     }
     return this._cursorWorldPointGroundPlane(clientX, clientY, this._zoomGroundOut);
+  }
+
+  /** Resolve the gesture's anchor world point. `'cursor'` returns
+   *  the world hit under the supplied client coords (raycast against
+   *  scene geometry, falling back to a y=0 plane). `'screen-center'`
+   *  swaps the input coords for the canvas's center pixel before
+   *  going through the same picker — so configurable anchors share
+   *  one code path and behave identically with respect to terrain
+   *  hits, water fallback, and degenerate-ray handling. */
+  private _anchorWorldPoint(
+    clientX: number,
+    clientY: number,
+    mode: CameraAnchorMode,
+  ): THREE.Vector3 | null {
+    if (mode === 'cursor') {
+      return this._cursorWorldPoint(clientX, clientY);
+    }
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const cx = rect.left + rect.width * 0.5;
+    const cy = rect.top + rect.height * 0.5;
+    return this._cursorWorldPoint(cx, cy);
   }
 
   /** Fallback: project screen-space cursor onto the y=0 ground

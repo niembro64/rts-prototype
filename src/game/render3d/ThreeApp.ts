@@ -7,10 +7,14 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
+import { installSunLighting } from './SunLighting';
 import {
   CAMERA_PAN_MULTIPLIER,
   CAMERA_MIN_TERRAIN_CLEARANCE,
   CAMERA_TARGET_TERRAIN_BAND,
+  CAMERA_ZOOM_IN_ANCHOR,
+  CAMERA_ZOOM_OUT_ANCHOR,
+  CAMERA_ROTATE_ANCHOR,
   SKY_RENDER_CONFIG,
   ZOOM_STEP_FRACTION,
   ZOOM_MIN,
@@ -178,6 +182,9 @@ export class ThreeApp {
       panMultiplier: CAMERA_PAN_MULTIPLIER,
       minTerrainClearance: CAMERA_MIN_TERRAIN_CLEARANCE,
       targetTerrainBand: CAMERA_TARGET_TERRAIN_BAND,
+      zoomInAnchor: CAMERA_ZOOM_IN_ANCHOR,
+      zoomOutAnchor: CAMERA_ZOOM_OUT_ANCHOR,
+      rotateAnchor: CAMERA_ROTATE_ANCHOR,
     });
     // Center on map, pulled in for a useful RTS default view
     this.orbit.setState({
@@ -189,14 +196,7 @@ export class ThreeApp {
       pitch: Math.PI * 0.28,
     });
 
-    // Lighting
-    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-    this.scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xffffff, 0.85);
-    sun.position.set(mapWidth * 0.5, 3000, mapHeight * 0.2);
-    sun.target.position.set(mapWidth * 0.5, 0, mapHeight * 0.5);
-    this.scene.add(sun);
-    this.scene.add(sun.target);
+    installSunLighting(this.scene, mapWidth, mapHeight);
 
     // No standalone ground slab — the mana cubes ARE the world's
     // mass. CaptureTileRenderer3D extends each tile cube far below
