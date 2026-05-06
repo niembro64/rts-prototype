@@ -4144,7 +4144,16 @@ export class Render3DEntities {
       && !!factory
       && !!queuedUnitType
       && factory.isProducing;
-    rig.group.visible = detailsReady && buildingTierAtLeast(tier, 'medium');
+    // Show the construction tower (the factory's "turret") during the
+    // shell phase too — units render their turrets while being built,
+    // so buildings should follow the same rule. applyShellOverride on
+    // the parent group cascades into the rig's meshes, so the tower
+    // reads as a translucent white shell until the building completes.
+    // The tier check still gates marker-LOD (markerOnly forces tier='min',
+    // which fails buildingTierAtLeast(tier, 'medium')); the !active
+    // early-return below naturally suppresses sprays/showers for shells
+    // because factory.isProducing is false until completion.
+    rig.group.visible = buildingTierAtLeast(tier, 'medium');
 
     // EMA the live per-resource rate fractions toward the smoothed
     // values stored on the rig. Targets are 0 when the factory isn't
