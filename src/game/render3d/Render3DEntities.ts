@@ -19,14 +19,8 @@ import { getPlayerColors } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { applyShellOverride } from './ShellMaterial';
 import {
-  copyInstanceAlphaSlot,
-  makeInstanceAlphaCapable,
-  setInstanceAlphaSlot,
-} from './instanceAlpha';
-import {
-  SHELL_OPACITY,
-  NORMAL_OPACITY,
   BUILD_BUBBLE_RADIUS_PUSH_MULT,
+  SHELL_PALE_HEX,
   SHELL_BAR_COLORS,
   BUILD_RATE_EMA_HALF_LIFE_SEC,
   BUILD_RATE_EMA_MODE,
@@ -207,6 +201,15 @@ function buildingDetailVisible(
 function scaledWindTurbineHalfLife(baseHalfLife: number, multiplier: number): number {
   if (baseHalfLife <= 0 || multiplier <= 0) return 0;
   return baseHalfLife * multiplier;
+}
+
+function isConstructionShell(entity: Entity): boolean {
+  return !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
+}
+
+function entityInstanceColorKey(entity: Entity): number {
+  const ownerKey = entity.ownership?.playerId ?? -1;
+  return ownerKey * 2 + (isConstructionShell(entity) ? 1 : 0);
 }
 
 // Scratch globals reused by the per-unit surface-tilt path so the
@@ -444,10 +447,8 @@ export class Render3DEntities {
   // around, letting pitch aim up toward AA targets without the
   // barrels clipping through a flat cylinder top.
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
-  /** Instanced-only clone. `makeInstanceAlphaCapable()` adds an
-   *  InstancedBufferAttribute to the geometry; keep that mutation away
-   *  from regular per-Mesh fallback turret heads for cross-driver
-   *  stability. */
+  /** Instanced-only clone. The instanced path carries renderer-owned
+   *  buffers, so keep it separate from regular per-Mesh fallback heads. */
   private turretHeadInstancedGeom = this.turretHeadGeom.clone();
   private commanderBoxGeom = new THREE.BoxGeometry(1, 1, 1);
   private commanderCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 18);
@@ -509,9 +510,8 @@ export class Render3DEntities {
   private projectileCylinderInstanced: THREE.InstancedMesh | null = null;
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
-  /** Instanced barrels need a patched material. Regular fallback
-   *  barrels keep using `barrelMat` so the instance-alpha shader patch
-   *  stays private to the instanced pool. */
+  /** Instanced barrels get their own material so state on the shared
+   *  instanced pool cannot leak into regular fallback barrels. */
   private barrelInstancedMat = this.barrelMat.clone();
   // Mirror panel = flat unit square plane. Default orientation: face
   // in XY plane with normal +Z; we rotate it into the panel-local frame
@@ -521,7 +521,7 @@ export class Render3DEntities {
   // could appear to clip the visible mirror but miss the sim plane.
   private mirrorGeom = new THREE.PlaneGeometry(1, 1);
   /** Instanced-only clone for the same reason as turret heads/barrels:
-   *  the instance-alpha attribute is renderer-private state. */
+   *  renderer-private buffers stay isolated to the instanced pool. */
   private mirrorInstancedGeom = this.mirrorGeom.clone();
   private mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorSupportGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
@@ -835,6 +835,7 @@ export class Render3DEntities {
   // tightening from commit a165b65.
   private static readonly BARREL_CAP = 32768;
   private barrelInstanced: THREE.InstancedMesh | null = null;
+  private barrelColorKey = new Map<number, number>();
   private barrelFreeSlots: number[] = [];
   private barrelNextSlot = 0;
 
@@ -910,10 +911,6 @@ export class Render3DEntities {
     // DRAW BOUND.
     this.unitInstanced.count = 0;
     this.unitInstanced.instanceMatrix.needsUpdate = true;
-    // Per-instance alpha: shell entities get SHELL_OPACITY in their
-    // slot; everything else stays at NORMAL_OPACITY. Patches the
-    // shader to multiply gl_FragColor.a by the slot's instanceAlpha.
-    makeInstanceAlphaCapable(this.unitInstanced, Render3DEntities.LOW_INSTANCED_CAP);
     this.world.add(this.unitInstanced);
 
     // Smooth-body chassis InstancedMesh — one shared draw call covers
@@ -946,7 +943,6 @@ export class Render3DEntities {
     // smoothChassisNextSlot per frame in updateUnits.
     this.smoothChassis.count = 0;
     this.smoothChassis.instanceMatrix.needsUpdate = true;
-    makeInstanceAlphaCapable(this.smoothChassis, Render3DEntities.SMOOTH_CHASSIS_CAP);
     this.world.add(this.smoothChassis);
 
     // Turret-head InstancedMesh — uses an instanced-only clone of the
@@ -971,7 +967,6 @@ export class Render3DEntities {
     }
     this.turretHeadInstanced.count = 0;
     this.turretHeadInstanced.instanceMatrix.needsUpdate = true;
-    makeInstanceAlphaCapable(this.turretHeadInstanced, Render3DEntities.TURRET_HEAD_CAP);
     this.world.add(this.turretHeadInstanced);
 
     // Barrel InstancedMesh — uses instanced-only geometry/material
@@ -992,7 +987,6 @@ export class Render3DEntities {
     }
     this.barrelInstanced.count = 0;
     this.barrelInstanced.instanceMatrix.needsUpdate = true;
-    makeInstanceAlphaCapable(this.barrelInstanced, Render3DEntities.BARREL_CAP);
     this.world.add(this.barrelInstanced);
 
     // Mirror-panel InstancedMesh — one shared chrome material,
@@ -1019,7 +1013,6 @@ export class Render3DEntities {
     }
     this.mirrorPanelInstanced.count = 0;
     this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
-    makeInstanceAlphaCapable(this.mirrorPanelInstanced, Render3DEntities.MIRROR_PANEL_CAP);
     this.world.add(this.mirrorPanelInstanced);
 
     this.projectileSphereInstanced = new THREE.InstancedMesh(
@@ -1056,6 +1049,20 @@ export class Render3DEntities {
       this.primaryMats.set(pid, mat);
     }
     return mat;
+  }
+
+  private setInstanceColorForEntity(
+    mesh: THREE.InstancedMesh,
+    slot: number,
+    entity: Entity,
+  ): void {
+    if (isConstructionShell(entity)) {
+      this._instColor.set(SHELL_PALE_HEX);
+    } else {
+      const pid = entity.ownership?.playerId;
+      this._instColor.set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888);
+    }
+    mesh.setColorAt(slot, this._instColor);
   }
 
   private buildCommanderVisualKit(tier: ConcreteGraphicsQuality): THREE.Group {
@@ -1517,8 +1524,6 @@ export class Render3DEntities {
       im.getMatrixAt(tailSlot, this._instMatrix);
       im.setMatrixAt(freeSlot, this._instMatrix);
       im.setMatrixAt(tailSlot, Render3DEntities._ZERO_MATRIX);
-      copyInstanceAlphaSlot(im, tailSlot, freeSlot);
-      setInstanceAlphaSlot(im, tailSlot, NORMAL_OPACITY);
       if (im.instanceColor) {
         im.getColorAt(tailSlot, this._instColor);
         im.setColorAt(freeSlot, this._instColor);
@@ -1577,7 +1582,6 @@ export class Render3DEntities {
   ): void {
     if (slot === undefined || this.unitInstancedHiddenIds.has(entityId)) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     this.unitInstancedHiddenIds.add(entityId);
     if (slot < dirty.matrixMinSlot) dirty.matrixMinSlot = slot;
     if (slot > dirty.matrixMaxSlot) dirty.matrixMaxSlot = slot;
@@ -1781,13 +1785,6 @@ export class Render3DEntities {
         slotWasNew = true;
       }
       const wasHidden = this.unitInstancedHiddenIds.delete(e.id);
-      setInstanceAlphaSlot(
-        im,
-        slot,
-        e.buildable && !e.buildable.isComplete && !e.buildable.isGhost
-          ? SHELL_OPACITY
-          : NORMAL_OPACITY,
-      );
 
       const radius = e.unit?.radius.body
         ?? e.unit?.radius.shot
@@ -1810,12 +1807,9 @@ export class Render3DEntities {
         if (slot > matrixDirty.matrixMaxSlot) matrixDirty.matrixMaxSlot = slot;
       }
 
-      const pid = e.ownership?.playerId;
-      const colorKey = pid ?? -1;
+      const colorKey = entityInstanceColorKey(e);
       if (this.unitInstancedColorKey.get(e.id) !== colorKey) {
-        this._instColor
-          .set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888);
-        im.setColorAt(slot, this._instColor);
+        this.setInstanceColorForEntity(im, slot, e);
         this.unitInstancedColorKey.set(e.id, colorKey);
         colorDirty = true;
         if (slot < colorMinSlot) colorMinSlot = slot;
@@ -1878,7 +1872,6 @@ export class Render3DEntities {
     if (!im) return;
     for (const slot of this.unitInstancedSlot.values()) {
       im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-      setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     }
     this.unitInstancedSlot.clear();
     this.unitInstancedEntityBySlot.length = 0;
@@ -1939,7 +1932,6 @@ export class Render3DEntities {
     if (!slots) return;
     for (const slot of slots) {
       im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-      setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
       this.smoothChassisFreeSlots.push(slot);
     }
     this.smoothChassisSlots.delete(eid);
@@ -1955,7 +1947,6 @@ export class Render3DEntities {
     for (const slots of this.smoothChassisSlots.values()) {
       for (const slot of slots) {
         im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-        setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
       }
     }
     this.smoothChassisSlots.clear();
@@ -1968,11 +1959,10 @@ export class Render3DEntities {
 
   /** Look up or lazily create the InstancedMesh pool for a polygonal /
    *  rect body shape. The source geometry comes from BodyShape3D's
-   *  cache, but the instanced pool owns a clone because
-   *  makeInstanceAlphaCapable() attaches instanced-only attributes.
-   *  Regular fallback meshes must never share that mutated geometry.
-   *  Material stays Lambert like the rest of the main unit/building
-   *  surfaces so units keep the intended scene lighting. */
+   *  cache, but the instanced pool owns a clone so renderer-owned
+   *  attributes/buffers cannot leak into fallback meshes. Material stays
+   *  Lambert like the rest of the main unit/building surfaces so units
+   *  keep the intended scene lighting. */
   private getOrCreatePolyPool(
     bodyShapeKey: string,
     geom: THREE.BufferGeometry,
@@ -2008,7 +1998,6 @@ export class Render3DEntities {
     // pool.nextSlot at end-of-update.
     mesh.count = 0;
     mesh.instanceMatrix.needsUpdate = true;
-    makeInstanceAlphaCapable(mesh, Render3DEntities.POLY_CHASSIS_CAP);
     this.world.add(mesh);
     pool = {
       mesh,
@@ -2055,7 +2044,6 @@ export class Render3DEntities {
     const slot = pool.slots.get(eid);
     if (slot === undefined) return;
     pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    setInstanceAlphaSlot(pool.mesh, slot, NORMAL_OPACITY);
     pool.freeSlots.push(slot);
     pool.slots.delete(eid);
     pool.colorKeys.delete(eid);
@@ -2083,7 +2071,6 @@ export class Render3DEntities {
     const im = this.turretHeadInstanced;
     if (!im || slot < 0) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     this.turretHeadFreeSlots.push(slot);
     this.turretHeadColorKey.delete(slot);
     im.instanceMatrix.needsUpdate = true;
@@ -2096,7 +2083,6 @@ export class Render3DEntities {
     if (!im) return;
     for (let i = 0; i < this.turretHeadNextSlot; i++) {
       im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-      setInstanceAlphaSlot(im, i, NORMAL_OPACITY);
     }
     this.turretHeadFreeSlots.length = 0;
     this.turretHeadColorKey.clear();
@@ -2126,8 +2112,8 @@ export class Render3DEntities {
     const im = this.barrelInstanced;
     if (!im || slot < 0) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     this.barrelFreeSlots.push(slot);
+    this.barrelColorKey.delete(slot);
     im.instanceMatrix.needsUpdate = true;
   }
 
@@ -2138,9 +2124,9 @@ export class Render3DEntities {
     if (!im) return;
     for (let i = 0; i < this.barrelNextSlot; i++) {
       im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-      setInstanceAlphaSlot(im, i, NORMAL_OPACITY);
     }
     this.barrelFreeSlots.length = 0;
+    this.barrelColorKey.clear();
     this.barrelNextSlot = 0;
     im.count = 0;
     im.instanceMatrix.needsUpdate = true;
@@ -2162,7 +2148,6 @@ export class Render3DEntities {
     const im = this.mirrorPanelInstanced;
     if (!im || slot < 0) return;
     im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    setInstanceAlphaSlot(im, slot, NORMAL_OPACITY);
     this.mirrorPanelFreeSlots.push(slot);
     this.mirrorPanelColorKey.delete(slot);
     im.instanceMatrix.needsUpdate = true;
@@ -2173,7 +2158,6 @@ export class Render3DEntities {
     if (!im) return;
     for (let i = 0; i < this.mirrorPanelNextSlot; i++) {
       im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-      setInstanceAlphaSlot(im, i, NORMAL_OPACITY);
     }
     this.mirrorPanelFreeSlots.length = 0;
     this.mirrorPanelColorKey.clear();
@@ -2190,7 +2174,6 @@ export class Render3DEntities {
     for (const pool of this.polyChassis.values()) {
       for (const slot of pool.slots.values()) {
         pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-        setInstanceAlphaSlot(pool.mesh, slot, NORMAL_OPACITY);
       }
       pool.slots.clear();
       pool.colorKeys.clear();
@@ -2292,58 +2275,77 @@ export class Render3DEntities {
     );
   }
 
-  /** Per-frame: flip the shell flag (per-instance `instanceAlpha`
-   *  attribute) for every InstancedMesh slot the entity occupies. The
-   *  shader (see instanceAlpha.ts) treats <1.0 as "paint flat unlit
-   *  pale" and 1.0 as "render normally" — material stays opaque and
-   *  team color routing is untouched, so completed instances render
-   *  exactly as they would without shell support.
-   *
-   *  Touches:
-   *    - unitInstanced (MIN-tier mass sphere)
-   *    - smoothChassis / polyChassis (unit body)
-   *    - turretHeadInstanced + barrelInstanced (turret heads & barrels)
-   *    - mirrorPanelInstanced (mirror panels)
-   *  Treads & per-Mesh chassis fallbacks are handled separately by the
-   *  per-Mesh material override (applyShellOverride). */
-  private updateShellAlphas(e: Entity, m: EntityMesh): void {
-    const isShell = !!(e.buildable && !e.buildable.isComplete && !e.buildable.isGhost);
-    const flag = isShell ? SHELL_OPACITY : NORMAL_OPACITY;
+  /** Per-frame shell-state color sync for instanced render paths. This
+   *  intentionally uses ordinary instanceColor only: no per-instance alpha
+   *  attributes and no material shader patching. Per-Mesh fallbacks still use
+   *  applyShellOverride for the translucent shell material. */
+  private updateShellInstanceColors(e: Entity, m: EntityMesh): void {
+    const colorKey = entityInstanceColorKey(e);
 
     const massSlot = this.unitInstancedSlot.get(e.id);
-    if (this.unitInstanced && massSlot !== undefined) {
-      setInstanceAlphaSlot(this.unitInstanced, massSlot, flag);
+    if (
+      this.unitInstanced &&
+      massSlot !== undefined &&
+      this.unitInstancedColorKey.get(e.id) !== colorKey
+    ) {
+      this.setInstanceColorForEntity(this.unitInstanced, massSlot, e);
+      this.unitInstancedColorKey.set(e.id, colorKey);
+      this.unitInstanced.instanceColor!.needsUpdate = true;
     }
 
-    if (this.smoothChassis && m.smoothChassisSlots) {
+    if (
+      this.smoothChassis &&
+      m.smoothChassisSlots &&
+      this.smoothChassisColorKey.get(e.id) !== colorKey
+    ) {
       for (const slot of m.smoothChassisSlots) {
-        setInstanceAlphaSlot(this.smoothChassis, slot, flag);
+        this.setInstanceColorForEntity(this.smoothChassis, slot, e);
       }
+      this.smoothChassisColorKey.set(e.id, colorKey);
+      this.smoothChassis.instanceColor!.needsUpdate = true;
     }
 
     if (m.polyChassisSlot !== undefined && m.bodyShapeKey) {
       const pool = this.polyChassis.get(m.bodyShapeKey);
-      if (pool) {
-        setInstanceAlphaSlot(pool.mesh, m.polyChassisSlot, flag);
+      if (pool && pool.colorKeys.get(e.id) !== colorKey) {
+        this.setInstanceColorForEntity(pool.mesh, m.polyChassisSlot, e);
+        pool.colorKeys.set(e.id, colorKey);
+        pool.mesh.instanceColor!.needsUpdate = true;
       }
     }
 
     if (m.turrets) {
       for (const tm of m.turrets) {
-        if (tm.headSlot !== undefined && this.turretHeadInstanced) {
-          setInstanceAlphaSlot(this.turretHeadInstanced, tm.headSlot, flag);
+        if (
+          tm.headSlot !== undefined &&
+          this.turretHeadInstanced &&
+          this.turretHeadColorKey.get(tm.headSlot) !== colorKey
+        ) {
+          this.setInstanceColorForEntity(this.turretHeadInstanced, tm.headSlot, e);
+          this.turretHeadColorKey.set(tm.headSlot, colorKey);
+          this.turretHeadInstanced.instanceColor!.needsUpdate = true;
         }
         if (tm.barrelSlots && this.barrelInstanced) {
+          const barrelColorKey = isConstructionShell(e) ? SHELL_PALE_HEX : 0xffffff;
           for (const slot of tm.barrelSlots) {
-            setInstanceAlphaSlot(this.barrelInstanced, slot, flag);
+            if (this.barrelColorKey.get(slot) === barrelColorKey) continue;
+            this._instColor.set(barrelColorKey);
+            this.barrelInstanced.setColorAt(slot, this._instColor);
+            this.barrelColorKey.set(slot, barrelColorKey);
+            this.barrelInstanced.instanceColor!.needsUpdate = true;
           }
         }
       }
     }
 
     if (m.mirrors?.panelSlots && this.mirrorPanelInstanced) {
+      const mirrorColorKey = isConstructionShell(e) ? SHELL_PALE_HEX : MIRROR_PANEL_COLOR;
+      this._instColor.set(mirrorColorKey);
       for (const slot of m.mirrors.panelSlots) {
-        setInstanceAlphaSlot(this.mirrorPanelInstanced, slot, flag);
+        if (this.mirrorPanelColorKey.get(slot) === mirrorColorKey) continue;
+        this.mirrorPanelInstanced.setColorAt(slot, this._instColor);
+        this.mirrorPanelColorKey.set(slot, mirrorColorKey);
+        this.mirrorPanelInstanced.instanceColor!.needsUpdate = true;
       }
     }
   }
@@ -2408,15 +2410,13 @@ export class Render3DEntities {
         // Shell-state visual — two paths must agree:
         //   - applyShellOverride handles per-Mesh chassis fallbacks
         //     and treads (objects that own their own material).
-        //   - updateShellAlphas handles every InstancedMesh slot the
-        //     entity occupies (smooth/poly chassis, turret heads,
-        //     barrels, mirror panels, MIN-tier mass sphere) via the
-        //     per-instance alpha shader injection in instanceAlpha.ts.
+        //   - updateShellInstanceColors handles every InstancedMesh slot
+        //     the entity occupies with plain instanceColor updates.
         applyShellOverride(
           existing.group,
-          !!(e.buildable && !e.buildable.isComplete && !e.buildable.isGhost),
+          isConstructionShell(e),
         );
-        this.updateShellAlphas(e, existing);
+        this.updateShellInstanceColors(e, existing);
       }
       // The expensive per-frame work below (terrain normal, slope tilt,
       // locomotion, mirror tracking, range rings, turret-aim math) IS
@@ -2437,7 +2437,7 @@ export class Render3DEntities {
         ?? e.unit?.radius.shot
         ?? 15;
       const pid = e.ownership?.playerId;
-      const colorKey = pid ?? -1;
+      const colorKey = entityInstanceColorKey(e);
       const turrets = e.combat?.turrets ?? [];
       const objectTier = this.massRichObjectTiers.get(e.id) ?? this.resolveEntityObjectLod(e);
       const isCommanderUnit = isCommander(e);
@@ -2755,11 +2755,9 @@ export class Render3DEntities {
           }
         }
 
-        const isShellState = !!(
-          e.buildable && !e.buildable.isComplete && !e.buildable.isGhost
-        );
+        const isShellState = isConstructionShell(e);
         applyShellOverride(group, isShellState);
-        this.updateShellAlphas(e, m);
+        this.updateShellInstanceColors(e, m);
         this.unitMeshes.set(e.id, m);
       } else {
         // Per-frame team-color refresh for the per-Mesh paths
@@ -2772,9 +2770,7 @@ export class Render3DEntities {
         // first frame after completion will install the original
         // material (cached on userData) and the next refresh will
         // touch up to the latest team color.
-        const isShellState = !!(
-          e.buildable && !e.buildable.isComplete && !e.buildable.isGhost
-        );
+        const isShellState = isConstructionShell(e);
         if (!isShellState) {
           const primaryMat = this.getPrimaryMat(pid);
           for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
@@ -2914,9 +2910,6 @@ export class Render3DEntities {
         );
         const writeColor = this.smoothChassisColorKey.get(e.id) !== colorKey;
         if (writeColor) {
-          this._instColor.set(
-            pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
-          );
           this.smoothChassisColorKey.set(e.id, colorKey);
           smoothColorDirty = true;
         }
@@ -2936,7 +2929,7 @@ export class Render3DEntities {
             this._smoothPartMat,
           );
           this.smoothChassis.setMatrixAt(slot, this._smoothFinalMat);
-          if (writeColor) this.smoothChassis.setColorAt(slot, this._instColor);
+          if (writeColor) this.setInstanceColorForEntity(this.smoothChassis, slot, e);
         }
       } else if (m.polyChassisSlot !== undefined) {
         // Polygonal/rect chassis: same parentMat × partMat composition
@@ -2953,9 +2946,6 @@ export class Render3DEntities {
           );
           const writeColor = pool.colorKeys.get(e.id) !== colorKey;
           if (writeColor) {
-            this._instColor.set(
-              pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
-            );
             pool.colorKeys.set(e.id, colorKey);
             pool.colorDirty = true;
           }
@@ -2972,7 +2962,7 @@ export class Render3DEntities {
             this._smoothPartMat,
           );
           pool.mesh.setMatrixAt(m.polyChassisSlot, this._smoothFinalMat);
-          if (writeColor) pool.mesh.setColorAt(m.polyChassisSlot, this._instColor);
+          if (writeColor) this.setInstanceColorForEntity(pool.mesh, m.polyChassisSlot, e);
         }
       }
 
@@ -3072,10 +3062,7 @@ export class Render3DEntities {
           );
           this.turretHeadInstanced.setMatrixAt(tm.headSlot, this._smoothPartMat);
           if (this.turretHeadColorKey.get(tm.headSlot) !== colorKey) {
-            this._instColor.set(
-              pid !== undefined ? getPlayerColors(pid).primary : 0x888888,
-            );
-            this.turretHeadInstanced.setColorAt(tm.headSlot, this._instColor);
+            this.setInstanceColorForEntity(this.turretHeadInstanced, tm.headSlot, e);
             this.turretHeadColorKey.set(tm.headSlot, colorKey);
             this.turretHeadColorDirty = true;
           }
@@ -3254,8 +3241,8 @@ export class Render3DEntities {
             );
             this._barrelParentMat.multiply(this._barrelStepMat);
 
-            const mirrorColorKey = MIRROR_PANEL_COLOR;
-            this._instColor.set(MIRROR_PANEL_COLOR);
+            const mirrorColorKey = isConstructionShell(e) ? SHELL_PALE_HEX : MIRROR_PANEL_COLOR;
+            this._instColor.set(mirrorColorKey);
             const slotCount = Math.min(
               m.mirrors.panels.length,
               m.mirrors.panelSlots.length,
@@ -3402,11 +3389,9 @@ export class Render3DEntities {
         }
       }
     }
-    // Barrels — one shared draw call for every barrel across every
-    // turret on every unit. Color isn't written per frame (barrels
-    // stay white in the current visual contract); the instanceColor
-    // buffer was zeroed at construction so unused slots are white-on-
-    // empty-matrix and nothing extra needs flushing.
+    // Barrels — one shared draw call for every barrel across every turret on
+    // every unit. Colors normally stay white; construction shells may tint
+    // specific barrel slots pale via updateShellInstanceColors().
     if (this.barrelInstanced) {
       this.barrelInstanced.count = this.barrelNextSlot;
       if (this.barrelNextSlot > 0) {
@@ -3487,7 +3472,16 @@ export class Render3DEntities {
         const buildingTurretMeshes: TurretMesh[] = [];
         const buildingTurrets = e.combat?.turrets;
         if (buildingTurrets) {
-          const buildingGfx = getGraphicsConfigFor(tier);
+          // Use the GLOBAL gfx tier, not the per-entity distance tier,
+          // when building the turret. Distance-LOD can briefly drop a
+          // tower to 'min' (turretStyle: 'none' → no head, no barrel)
+          // while the camera is framing in, and the building mesh is
+          // cached forever after that — so a tower built at 'min' has
+          // no turret hardware visible even after the camera comes
+          // close. Towers are sparse strategic landmarks; their
+          // weapon should be present whenever the user's overall
+          // graphics tier renders any turret hardware.
+          const buildingGfx = getGraphicsConfigFor(this.lod.gfx.tier);
           for (let ti = 0; ti < buildingTurrets.length; ti++) {
             const t = buildingTurrets[ti];
             if (t.config.constructionEmitter) {
@@ -4729,14 +4723,15 @@ export class Render3DEntities {
     this.turretHeadColorKey.clear();
     if (this.barrelInstanced) {
       this.world.remove(this.barrelInstanced);
-      // Instanced barrels own their cloned geometry and patched
-      // material; per-Mesh fallback barrels use barrelGeom/barrelMat.
+      // Instanced barrels own their cloned geometry/material; per-Mesh
+      // fallback barrels use barrelGeom/barrelMat.
       this.barrelInstanced.geometry.dispose();
       (this.barrelInstanced.material as THREE.Material).dispose();
       this.barrelInstanced.dispose();
       this.barrelInstanced = null;
     }
     this.barrelFreeSlots.length = 0;
+    this.barrelColorKey.clear();
     if (this.mirrorPanelInstanced) {
       this.world.remove(this.mirrorPanelInstanced);
       // Material and geometry are private to the InstancedMesh.
