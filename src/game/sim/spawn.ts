@@ -306,45 +306,6 @@ function placeArcRow(
   return entities;
 }
 
-function placePowerArcRow(
-  world: WorldState,
-  construction: ConstructionSystem,
-  count: number,
-  oval: MapOvalMetrics,
-  radius: number,
-  baseAngle: number,
-  sectorAngle: number,
-  playerId: PlayerId,
-  factoryWaypoint: InitialFactoryWaypointConfig,
-): Entity[] {
-  if (count <= 0) return [];
-  const entities: Entity[] = [];
-  const startAngle = baseAngle - sectorAngle / 2;
-  const angularStep = count > 1 ? sectorAngle / (count - 1) : 0;
-  let solarRemaining = Math.ceil(count / 2);
-  let windRemaining = Math.floor(count / 2);
-  for (let j = 0; j < count; j++) {
-    const preferWind = j % 2 === 1;
-    const buildingType: BuildingType =
-      (preferWind && windRemaining > 0) || solarRemaining <= 0 ? 'wind' : 'solar';
-    if (buildingType === 'wind') windRemaining--;
-    else solarRemaining--;
-    const a = count > 1 ? startAngle + j * angularStep : baseAngle;
-    const point = mapOvalPointAt(oval, a, radius);
-    const e = placeCompleteBuilding(
-      world,
-      construction,
-      buildingType,
-      point.x,
-      point.y,
-      playerId,
-      factoryWaypoint,
-    );
-    if (e) entities.push(e);
-  }
-  return entities;
-}
-
 /**
  * Spawn a full base for each player on three concentric oval arcs centered
  * on the map. Mirrors the original square layout's radial ordering —
@@ -382,20 +343,28 @@ export function spawnInitialBases(
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
 
   const solarConfig = getBuildingConfig('solar');
+  const windConfig = getBuildingConfig('wind');
   const factoryConfig = getBuildingConfig('factory');
+  const megaBeamTowerConfig = getBuildingConfig('megaBeamTower');
   const cellGap = DEMO_CONFIG.rowGapCells * GRID_CELL_SIZE;
   const commanderGap = DEMO_CONFIG.commanderGapCells * GRID_CELL_SIZE;
+  const megaBeamTowerGap = DEMO_CONFIG.megaBeamTowerGapCells * GRID_CELL_SIZE;
   const solarDepth = solarConfig.gridHeight * GRID_CELL_SIZE;
+  const windDepth = windConfig.gridHeight * GRID_CELL_SIZE;
   const factoryDepth = factoryConfig.gridHeight * GRID_CELL_SIZE;
+  const megaBeamTowerDepth = megaBeamTowerConfig.gridHeight * GRID_CELL_SIZE;
 
-  // Three concentric radii — same radial order as the original square
-  // layout (commander outermost, then solars, then factories). The
-  // commander sits at a fraction of the spawn oval so it's not
-  // pinned to the very edge; the solar/factory arcs follow inward
-  // from that point.
+  // Five concentric radii — outermost to innermost: commander, solar,
+  // wind, factory, megaBeam tower. Solar and wind used to share one
+  // alternating arc; they now ride on independent radii. The megaBeam
+  // tower arc sits further inward than every other building so the
+  // towers cover the approach to the base from the map center.
   const commanderRadius = commanderRadiusFromOuterSpawnRadius(spawnRadius);
   const solarRadius = commanderRadius - commanderGap - solarDepth / 2;
-  const factoryRadius = solarRadius - solarDepth / 2 - cellGap - factoryDepth / 2;
+  const windRadius = solarRadius - solarDepth / 2 - cellGap - windDepth / 2;
+  const factoryRadius = windRadius - windDepth / 2 - cellGap - factoryDepth / 2;
+  const megaBeamTowerRadius =
+    factoryRadius - factoryDepth / 2 - megaBeamTowerGap - megaBeamTowerDepth / 2;
 
   // Each player's slice of the spawn oval is ONE HALF of the
   // 2π/N angular cycle — the other half is the divider terrain slice
@@ -421,17 +390,30 @@ export function spawnInitialBases(
     );
     entities.push(commander);
 
-    // Power arc: same slots that used to be all solar, split evenly
-    // between solar collectors and wind turbines.
-    entities.push(...placePowerArcRow(
-      world, construction, DEMO_CONFIG.solarCount,
+    // Solar collector arc.
+    entities.push(...placeArcRow(
+      world, construction, 'solar', DEMO_CONFIG.solarCount,
       oval, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
-    // Factory arc (closest to center).
+    // Wind turbine arc — independent radius so its silhouette reads on
+    // its own ring, not interleaved with the solars.
+    entities.push(...placeArcRow(
+      world, construction, 'wind', DEMO_CONFIG.windCount,
+      oval, windRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+    ));
+
+    // Factory arc.
     entities.push(...placeArcRow(
       world, construction, 'factory', DEMO_CONFIG.factoryCount,
       oval, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+    ));
+
+    // megaBeam tower arc — innermost, covers the approach to the base
+    // from the map center.
+    entities.push(...placeArcRow(
+      world, construction, 'megaBeamTower', DEMO_CONFIG.megaBeamTowerCount,
+      oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
   }
 

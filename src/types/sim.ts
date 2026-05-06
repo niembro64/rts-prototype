@@ -118,7 +118,7 @@ export type Waypoint = {
 export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair' | 'attack';
 
 // Building type identifiers
-export type BuildingType = 'solar' | 'wind' | 'factory' | 'extractor';
+export type BuildingType = 'solar' | 'wind' | 'factory' | 'extractor' | 'megaBeamTower';
 export type BuildingRenderProfile = BuildingType | 'unknown';
 export type BuildingAnchorProfile = 'constantVisualTop' | 'factoryTower' | 'collisionDepth';
 

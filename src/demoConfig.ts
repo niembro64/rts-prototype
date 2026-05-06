@@ -12,10 +12,17 @@ export const DEMO_CONFIG = {
    *  slice, ~51° usable at arcSectorFraction=0.85. */
   factoryCount: 5,
 
-  /** Number of power buildings per player. Demo bases split these
-   *  slots evenly between Solar and Wind. Same rationale as
-   *  factoryCount — buildings have to fit inside the team slice. */
-  solarCount: 9,
+  /** Number of solar collectors per player on the dedicated solar arc. */
+  solarCount: 5,
+
+  /** Number of wind turbines per player on the dedicated wind arc.
+   *  Solar and wind used to share one ring with alternating placements;
+   *  they now occupy independent radii so each silhouette reads on its
+   *  own ring. */
+  windCount: 4,
+
+  /** Number of megaBeam defense towers per player on the innermost ring. */
+  megaBeamTowerCount: 2,
 
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the
@@ -28,10 +35,18 @@ export const DEMO_CONFIG = {
 
   /**
    * Radial gap (in grid cells) between concentric building arcs —
-   * commander arc (outermost) → solar arc → factory arc (closest to
-   * map center). 1 cell = 20 px.
+   * commander arc (outermost) → solar arc → wind arc → factory arc →
+   * megaBeam tower arc (closest to map center). 1 cell = 20 px.
    */
   rowGapCells: 7,
+
+  /**
+   * Radial gap (in grid cells) between the factory arc and the
+   * megaBeam tower arc directly inward of it. The towers sit further
+   * inside than every other building so they cover the approach to
+   * the base from the map center.
+   */
+  megaBeamTowerGapCells: 14,
 
   /**
    * Radial gap (in grid cells) between the commander arc and the solar

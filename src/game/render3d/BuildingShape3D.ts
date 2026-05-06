@@ -24,6 +24,8 @@ import type { ConstructionEmitterSize } from '@/types/blueprints';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   EXTRACTOR_BUILDING_VISUAL_HEIGHT,
+  MEGA_BEAM_TOWER_VISUAL_HEIGHT,
+  MEGA_BEAM_TOWER_TURRET_MOUNT_Z,
   SOLAR_BUILDING_VISUAL_HEIGHT,
   WIND_BUILDING_VISUAL_HEIGHT,
   getBuildingBlueprint,
@@ -408,6 +410,8 @@ export function buildBuildingShape(
       return buildFactory(width, depth, primaryMat);
     case 'extractor':
       return buildExtractor(width, depth, primaryMat);
+    case 'megaBeamTower':
+      return buildMegaBeamTower(primaryMat);
     case 'unknown':
       return buildUnknown(primaryMat);
     default:
@@ -1058,6 +1062,49 @@ export function buildConstructionEmitterRigFromTurretConfig(
 function buildUnknown(primaryMat: THREE.Material): BuildingShape {
   const primary = new THREE.Mesh(boxGeom, primaryMat);
   return { primary, details: [], height: DEFAULT_HEIGHT };
+}
+
+/** Static beam tower — tall narrow body with a megaBeam turret head +
+ *  barrel mounted at the top. Visually static (no spin, no aim) for
+ *  now; firing will hook in once buildings join the targeting / fire
+ *  pipeline. The body uses the team primary slab; the turret head and
+ *  barrel ride along as building details so the shell-override pass
+ *  paints them translucent during construction. */
+function buildMegaBeamTower(primaryMat: THREE.Material): BuildingShape {
+  const primary = new THREE.Mesh(boxGeom, primaryMat);
+
+  const details: BuildingDetailMesh[] = [];
+  const turretCfg = getTurretConfig('megaBeamTurret');
+  const headRadius = turretCfg.radius.body;
+  const barrel = turretCfg.barrel;
+  const barrelLength =
+    barrel && 'barrelLength' in barrel
+      ? barrel.barrelLength * headRadius * 2
+      : headRadius * 1.6;
+  const barrelThickness =
+    barrel && 'barrelThickness' in barrel && barrel.barrelThickness !== undefined
+      ? barrel.barrelThickness
+      : Math.max(2, headRadius * 0.6);
+
+  const head = new THREE.Mesh(factorySphereGeom, primaryMat);
+  head.scale.setScalar(headRadius);
+  head.position.set(0, MEGA_BEAM_TOWER_TURRET_MOUNT_Z, 0);
+  details.push(detail(head, 'min', undefined, 'static'));
+
+  // Barrel runs forward along +X (the building faces the map center,
+  // and the renderer rotates the building group by -transform.rotation
+  // so +X stays "forward").
+  const barrelMesh = new THREE.Mesh(cylinderGeom, extractorBladeMat);
+  barrelMesh.rotation.z = Math.PI / 2;
+  barrelMesh.scale.set(barrelThickness, barrelLength, barrelThickness);
+  barrelMesh.position.set(
+    headRadius + barrelLength / 2,
+    MEGA_BEAM_TOWER_TURRET_MOUNT_Z,
+    0,
+  );
+  details.push(detail(barrelMesh, 'min', undefined, 'static'));
+
+  return { primary, details, height: MEGA_BEAM_TOWER_VISUAL_HEIGHT };
 }
 
 function createWindBladeGeometry(): THREE.BufferGeometry {

@@ -32,6 +32,7 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
   wind: buildBuildingConfig('wind'),
   factory: buildBuildingConfig('factory'),
   extractor: buildBuildingConfig('extractor'),
+  megaBeamTower: buildBuildingConfig('megaBeamTower'),
 };
 
 // Helper to get building config

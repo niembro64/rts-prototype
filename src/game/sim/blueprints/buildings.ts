@@ -46,8 +46,12 @@ export const SOLAR_BUILDING_VISUAL_HEIGHT = 52;
 export const WIND_BUILDING_VISUAL_HEIGHT = 250;
 export const FACTORY_BASE_VISUAL_HEIGHT = 30;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 50;
+export const MEGA_BEAM_TOWER_VISUAL_HEIGHT = 180;
 export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
   FACTORY_BASE_VISUAL_HEIGHT + CONSTRUCTION_TURRET_HEAD_RADIUS;
+/** Pivot height for the megaBeam turret on the tower — the head sits a
+ *  hair above the body cap so the barrel clears the box silhouette. */
+export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z = MEGA_BEAM_TOWER_VISUAL_HEIGHT + 14;
 
 export type FactoryBuildingVisualMetrics = {
   minDim: number;
@@ -174,6 +178,30 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     hud: {
       barsOffsetAboveTop: 38,
     },
+  },
+  megaBeamTower: {
+    id: 'megaBeamTower',
+    name: 'Beam Tower',
+    // Compact square footprint; the silhouette reads as TALL, not wide.
+    // gridDepth controls the static collider height (in cells = 20wu),
+    // and is tuned so the cuboid matches the rendered visualHeight.
+    gridWidth: 2,
+    gridHeight: 2,
+    gridDepth: 9,
+    hp: 800,
+    cost: { energy: 1500, mana: 1500, metal: 1500 },
+    renderProfile: 'megaBeamTower',
+    visualHeight: MEGA_BEAM_TOWER_VISUAL_HEIGHT,
+    anchorProfile: 'constantVisualTop',
+    hud: {
+      barsOffsetAboveTop: 12,
+    },
+    turrets: [
+      {
+        turretId: 'megaBeamTurret',
+        mount: { x: 0, y: 0, z: MEGA_BEAM_TOWER_TURRET_MOUNT_Z },
+      },
+    ],
   },
 };
 
