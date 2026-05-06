@@ -21,9 +21,7 @@
 
 import { rayTiltedRectIntersectionT } from '../../math';
 import type { CachedMirrorPanel } from '../../../types/sim';
-import { getMirrorArmDirection, getMirrorPanelCenter, getMirrorPivot } from '../mirrorPanelCache';
-
-type SurfaceNormal = { nx: number; ny: number; nz: number };
+import { getMirrorArmDirection, getMirrorPanelCenter, getMirrorUprightPivot } from '../mirrorPanelCache';
 
 export type MirrorPanelHit = {
   t: number;
@@ -45,22 +43,6 @@ const _result: MirrorPanelHit = {
 const _panelCenter = { x: 0, y: 0, z: 0 };
 const _panelNormal = { x: 0, y: 0, z: 0 };
 const _panelPivot = { x: 0, y: 0, z: 0 };
-const _edgeLocal = { x: 0, y: 0, z: 0 };
-const _edgeOut = { x: 0, y: 0, z: 0 };
-
-import { applySurfaceTilt } from '../terrain/terrainSurface';
-const _FLAT_NORMAL = { nx: 0, ny: 0, nz: 1 };
-
-/** Same chassis-tilt rotation `applySurfaceTilt` applies to the arm
- *  direction, applied to the panel's edge axis. Local edge is in the
- *  chassis-tilted XY plane; this lifts it to world frame on slopes. */
-function applyEdgeTilt(local: { x: number; y: number; z: number }, n: SurfaceNormal | undefined) {
-  const tilted = applySurfaceTilt(local.x, local.y, local.z, n ?? _FLAT_NORMAL);
-  _edgeOut.x = tilted.x;
-  _edgeOut.y = tilted.y;
-  _edgeOut.z = tilted.z;
-  return _edgeOut;
-}
 
 /**
  * Find the closest mirror-panel hit on a single unit by a 3D ray
@@ -85,11 +67,6 @@ export function findClosestPanelHit(
   mirrorRot: number,
   mirrorPitch: number,
   unitX: number, unitY: number, unitGroundZ: number,
-  /** Host unit's smoothed surface normal — rotates the entire mirror
-   *  rig (pivot offset + arm direction + panel face normal) so the
-   *  collision plane rides with the chassis on slopes / banked stances.
-   *  Pass `undefined` for the flat-ground fast path. */
-  surfaceNormal: SurfaceNormal | undefined,
   sx: number, sy: number, sz: number,
   ex: number, ey: number, ez: number,
   excludePanelIndex: number,
@@ -110,18 +87,17 @@ export function findClosestPanelHit(
     const panel = panels[pi];
 
     // Panel center in world. The rigid arm starts at the turret
-    // pivot — sits at the unit center (xy) + panel.offsetY sideways
-    // along the chassis perpendicular, and at unitGroundZ + panel
-    // midpoint along chassis-local up — and extends `armLength` along
-    // the chassis-local arm direction (cos α cos β, sin α cos β,
-    // sin β). All three offsets ride through `applySurfaceTilt(…,
-    // surfaceNormal)` so the collision plane matches the visual on a
-    // tilted chassis.
+    // pivot — which sits at the unit center (xy) + panel.offsetY
+    // sideways (perpY-aligned), and at unitGroundZ + panel midpoint
+    // vertically — and extends `armLength = offsetX` along the 3D
+    // arm direction. The upright-pivot formula is shared via
+    // getMirrorUprightPivot; the arm-extension formula is shared
+    // with the aim solver and debris emitter via getMirrorPanelCenter.
     const armLength = panel.offsetX;
-    getMirrorPivot(unitX, unitY, unitGroundZ, perpX, perpY, panel, surfaceNormal, _panelPivot);
+    getMirrorUprightPivot(unitX, unitY, unitGroundZ, perpX, perpY, panel, _panelPivot);
     getMirrorPanelCenter(
       _panelPivot.x, _panelPivot.y, _panelPivot.z,
-      armLength, mirrorRot, mirrorPitch, surfaceNormal, _panelCenter,
+      armLength, mirrorRot, mirrorPitch, _panelCenter,
     );
     const pcx = _panelCenter.x;
     const pcy = _panelCenter.y;
@@ -130,26 +106,19 @@ export function findClosestPanelHit(
     // Yaw of the panel itself = turret yaw + panel's blueprint angle.
     const panelYaw = mirrorRot + panel.angle;
 
-    // 3D normal = arm direction (panel face perpendicular to arm),
-    // also rotated through chassis tilt. Shared with
-    // getMirrorPanelCenter so the hit-test normal can't drift from
-    // the arm-extension formula it pairs with.
-    getMirrorArmDirection(panelYaw, mirrorPitch, surfaceNormal, _panelNormal);
+    // 3D normal = arm direction (panel face perpendicular to arm).
+    // Shared with getMirrorPanelCenter so the hit-test normal can't
+    // drift from the arm-extension formula it pairs with.
+    getMirrorArmDirection(panelYaw, mirrorPitch, _panelNormal);
     const nx = _panelNormal.x;
     const ny = _panelNormal.y;
     const nz = _panelNormal.z;
 
-    // Edge axis: chassis-local horizontal perpendicular to panel-yaw
-    // (unaffected by pitch in chassis-local frame, since pitch rotates
-    // around this axis), then rotated through chassis tilt so the
-    // panel rectangle lies in the same plane as `n`.
-    _edgeLocal.x = -Math.sin(panelYaw);
-    _edgeLocal.y = Math.cos(panelYaw);
-    _edgeLocal.z = 0;
-    const edge = applyEdgeTilt(_edgeLocal, surfaceNormal);
-    const edx = edge.x;
-    const edy = edge.y;
-    const edz = edge.z;
+    // Edge axis: horizontal perpendicular to panel-yaw (unaffected by
+    // pitch, since pitch rotates around this axis).
+    const edx = -Math.sin(panelYaw);
+    const edy = Math.cos(panelYaw);
+    const edz = 0;
 
     const halfH = (panel.topY - panel.baseY) / 2;
 

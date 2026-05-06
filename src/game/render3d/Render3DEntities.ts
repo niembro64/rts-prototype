@@ -3201,19 +3201,20 @@ export class Render3DEntities {
           const mirrorPitch = turrets[0]?.pitch ?? 0;
           // SINGLE JOINT at the turret attachment point. The whole
           // rigid arm + panel assembly is parented to mirrors.root,
-          // and ALL rotation lives there. mirror.rotation/pitch are
-          // CHASSIS-LOCAL angles — the parent chain (m.group's tilt
-          // quaternion → yawGroup's chassis yaw) already rotates the
-          // panel through the host's tilt and yaw, so the local
-          // rotation here only carries the in-chassis yaw + pitch.
-          // The yawGroup applies `-e.transform.rotation`, so we add
-          // it back here to net the turret's chassis-local yaw.
-          // Three Euler 'YZX' = yaw first (around local Y), then
-          // pitch (around local Z), matching the sim's panel-cache
-          // formula a(α, β) = R_y(α) · R_z(β) · +X.
+          // and ALL rotation lives there. Yaw + pitch are two
+          // descriptions of one ball-joint orientation — applied as
+          // one Euler 'YZX' (yaw first around world Y, then pitch
+          // around the post-yaw side axis Z). No per-arm or per-panel
+          // rotation; the arms and panels keep their static
+          // build-time transforms (arm at visibleArmLength/2 forward,
+          // panel at panelArmLength forward, both at panelCenterY up)
+          // and sweep through 3D as one body when root rotates.
+          _aimDir.set(Math.cos(mirrorRot), 0, Math.sin(mirrorRot));
+          if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
+          const mCombinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
           m.mirrors.root.rotation.set(
             0,
-            mirrorRot + e.transform.rotation,
+            mCombinedYaw + e.transform.rotation,
             mirrorPitch,
             'YZX',
           );

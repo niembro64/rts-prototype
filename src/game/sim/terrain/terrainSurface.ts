@@ -62,37 +62,6 @@ export function applySurfaceTilt(
   };
 }
 
-/** Inverse of `applySurfaceTilt`: rotates a WORLD-frame vector back
- *  into the chassis-local upright frame. Same Rodrigues axis, opposite
- *  angle (sin negated). Used by the mirror aim solver to project the
- *  desired bisector back into chassis-local yaw/pitch the panel can
- *  then rotate to via `applySurfaceTilt`. */
-export function unapplySurfaceTilt(
-  vx: number,
-  vy: number,
-  vz: number,
-  n: { nx: number; ny: number; nz: number },
-): { x: number; y: number; z: number } {
-  const sinT2 = n.nx * n.nx + n.ny * n.ny;
-  if (sinT2 < 1e-12) return { x: vx, y: vy, z: vz };
-  const sinT = Math.sqrt(sinT2);
-  const cosT = n.nz;
-  const kx = -n.ny / sinT;
-  const ky = n.nx / sinT;
-  const kdotv = kx * vx + ky * vy;
-  // For an inverse rotation around the same axis, negate every cross
-  // term (k × v becomes -(k × v)).
-  const crossX = -ky * vz;
-  const crossY = kx * vz;
-  const crossZ = -(kx * vy - ky * vx);
-  const oneMinusCos = 1 - cosT;
-  return {
-    x: vx * cosT + crossX * sinT + kx * kdotv * oneMinusCos,
-    y: vy * cosT + crossY * sinT + ky * kdotv * oneMinusCos,
-    z: vz * cosT + crossZ * sinT,
-  };
-}
-
 export function getSurfaceHeight(
   x: number,
   z: number,

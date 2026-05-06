@@ -17,11 +17,6 @@
 import type { CachedMirrorPanel } from '../../types/sim';
 import type { UnitBlueprint } from '../../types/blueprints';
 import { getTurretBlueprint } from './blueprints';
-import { applySurfaceTilt } from './terrain/terrainSurface';
-
-type SurfaceNormal = { nx: number; ny: number; nz: number };
-
-const _FLAT_NORMAL: SurfaceNormal = { nx: 0, ny: 0, nz: 1 };
 
 /** Forward arm length (from turret body center to panel center) as a
  *  multiple of unit radius.body. 1.0 puts the panel center at the
@@ -68,21 +63,22 @@ export function getMirrorFrameGeometry(panelHalfSide: number): MirrorFrameGeomet
   return { side, supportDiameter, supportRadius, frameSegmentLength, frameZ };
 }
 
-/** Compute the rigid mirror arm's panel CENTER in world coords. The
- *  arm extends from `(pivotX, pivotY, pivotZ)` along the chassis-local
- *  3D direction
+/** Compute the rigid mirror arm's panel CENTER in world coords by
+ *  extending an arm of length `armLength` from `(pivotX, pivotY,
+ *  pivotZ)` along the 3D direction
  *
- *      a_local(α, β) = (cos α · cos β, sin α · cos β, sin β)
+ *      a(α, β) = (cos α · cos β,  sin α · cos β,  sin β)
  *
- *  and is then ROTATED by the host's chassis tilt (surface normal) so
- *  the panel rides with the unit on slopes. (α, β) are chassis-local
- *  angles — the same numbers stored on `weapon.rotation` /
- *  `weapon.pitch`.
+ *  where α = mirrorYaw and β = mirrorPitch.
  *
  *  SINGLE SOURCE OF TRUTH for the rigid-arm extend formula — shared
  *  by the aim solver (iterating panel-center for bisector refinement),
- *  the panel hit test (collision), and the debris emitter. Pass
- *  `surfaceNormal: undefined` to get the flat-ground fast path.
+ *  the panel hit test (collision), and the debris emitter (so dead
+ *  Lorises drop debris in the same spot the live panel was). The
+ *  PIVOT itself is computed differently per call site (the aim solver
+ *  uses a chassis-tilt-aware mount from resolveWeaponWorldMount; the
+ *  hit test and debris use the upright body-mid-Z anchor) so the
+ *  pivot stays at the call site, but the arm extension lives here.
  *
  *  `out` is mutated and returned to keep this allocation-free in the
  *  per-tick aim-solver loop. */
@@ -90,77 +86,65 @@ export function getMirrorPanelCenter(
   pivotX: number, pivotY: number, pivotZ: number,
   armLength: number,
   mirrorYaw: number, mirrorPitch: number,
-  surfaceNormal: SurfaceNormal | undefined,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
   const cosYaw = Math.cos(mirrorYaw);
   const sinYaw = Math.sin(mirrorYaw);
   const cosPitch = Math.cos(mirrorPitch);
   const sinPitch = Math.sin(mirrorPitch);
-  // Chassis-local arm vector before tilt.
-  const ax = cosYaw * cosPitch * armLength;
-  const ay = sinYaw * cosPitch * armLength;
-  const az = sinPitch * armLength;
-  const tilted = applySurfaceTilt(ax, ay, az, surfaceNormal ?? _FLAT_NORMAL);
-  out.x = pivotX + tilted.x;
-  out.y = pivotY + tilted.y;
-  out.z = pivotZ + tilted.z;
+  out.x = pivotX + cosYaw * cosPitch * armLength;
+  out.y = pivotY + sinYaw * cosPitch * armLength;
+  out.z = pivotZ + sinPitch * armLength;
   return out;
 }
 
-/** Unit-length arm direction in WORLD frame for the same (yaw, pitch,
- *  surfaceNormal) pose `getMirrorPanelCenter` extends along. The
- *  panel's face normal IS this direction (panel face perpendicular to
- *  the arm), so the hit test reaches for the same vector instead of
- *  recomputing the components inline. Mutates `out` and returns it. */
+/** Unit-length arm direction `a(α, β)` from the same `(yaw, pitch)`
+ *  pose `getMirrorPanelCenter` extends along. The panel's face normal
+ *  IS this direction (panel face is perpendicular to the arm), so the
+ *  hit test reaches for the same vector instead of recomputing the
+ *  components inline. Mutates `out` and returns it. */
 export function getMirrorArmDirection(
   mirrorYaw: number, mirrorPitch: number,
-  surfaceNormal: SurfaceNormal | undefined,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
   const cosYaw = Math.cos(mirrorYaw);
   const sinYaw = Math.sin(mirrorYaw);
   const cosPitch = Math.cos(mirrorPitch);
   const sinPitch = Math.sin(mirrorPitch);
-  const ax = cosYaw * cosPitch;
-  const ay = sinYaw * cosPitch;
-  const az = sinPitch;
-  const tilted = applySurfaceTilt(ax, ay, az, surfaceNormal ?? _FLAT_NORMAL);
-  out.x = tilted.x;
-  out.y = tilted.y;
-  out.z = tilted.z;
+  out.x = cosYaw * cosPitch;
+  out.y = sinYaw * cosPitch;
+  out.z = sinPitch;
   return out;
 }
 
-/** Mirror arm pivot — the turret pivot point the rigid arm extends
- *  from. Built from the chassis-local panel offsets (`offsetY` lateral
- *  to chassis forward, panel midY along chassis-local up) rotated
- *  through the host's chassis tilt and added to the host's ground
- *  anchor. Pass `surfaceNormal: undefined` for the flat-ground fast
- *  path. Mutates `out` and returns it. */
-export function getMirrorPivot(
+/** Upright (slope-IGNORANT) mirror arm pivot — the turret pivot point
+ *  the rigid arm extends from, computed from the chassis-local panel
+ *  cache + the unit's ground anchor. Used by the hit test
+ *  (`MirrorPanelHit.findClosestPanelHit`).
+ *
+ *  This is NOT the only pivot computation in the sim. The aim solver
+ *  (`MirrorAimSolver.solveMirrorAim`) instead receives the pivot from
+ *  `resolveWeaponWorldMount`, which applies chassis tilt to the same
+ *  chassis-local mount. On flat ground both paths agree; on slopes the
+ *  upright path here ignores tilt while the aim solver respects it.
+ *
+ *  Today this divergence is intentional (see the original audit note in
+ *  issues.txt) — keeping the hit test stable across tilt-induced
+ *  jitter. Centralizing the formula here means a future decision to
+ *  unify both paths is a one-line change. Mutates `out` and returns it. */
+export function getMirrorUprightPivot(
   unitX: number, unitY: number, unitGroundZ: number,
   /** Chassis-perpendicular axis (unit length) — pre-computed by the
    *  caller from the unit yaw to avoid redundant trig. */
   perpX: number, perpY: number,
   panel: CachedMirrorPanel,
-  surfaceNormal: SurfaceNormal | undefined,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
-  // Chassis-local pivot offset: lateral component along the chassis
-  // perpendicular direction (which is itself in chassis-tilted XY,
-  // already), and vertical component along chassis-local +Z. The
-  // tilt rotates ALL of it, so a steeply-banked unit has its mirror
-  // pivot riding sideways with the body just like the head sphere.
-  const localX = perpX * panel.offsetY;
-  const localY = perpY * panel.offsetY;
-  // panel.baseY/topY are authored at zero pitch in chassis-local up,
-  // so their midpoint is the chassis-local pivot height.
-  const localZ = (panel.baseY + panel.topY) / 2;
-  const tilted = applySurfaceTilt(localX, localY, localZ, surfaceNormal ?? _FLAT_NORMAL);
-  out.x = unitX + tilted.x;
-  out.y = unitY + tilted.y;
-  out.z = unitGroundZ + tilted.z;
+  out.x = unitX + perpX * panel.offsetY;
+  out.y = unitY + perpY * panel.offsetY;
+  // panel.baseY/topY are authored at zero pitch, so their midpoint
+  // is the pivot height regardless of pitch.
+  out.z = unitGroundZ + (panel.baseY + panel.topY) / 2;
   return out;
 }
 

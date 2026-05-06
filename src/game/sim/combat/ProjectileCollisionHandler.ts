@@ -347,7 +347,6 @@ export function checkProjectileCollisions(
           const hit = findClosestPanelHit(
             panels, mirrorRot, mirrorPitch,
             u.transform.x, u.transform.y, groundZ,
-            u.unit?.surfaceNormal,
             prevX, prevY, prevZ, curX, curY, curZ,
             -1,
           );

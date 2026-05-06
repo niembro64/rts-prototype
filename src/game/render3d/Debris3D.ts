@@ -814,11 +814,7 @@ export class Debris3D {
         // here — debris has no live mirror pose to read). Sim coords
         // come back as (sim x, sim y, sim z); three.js takes
         // (sim x, sim z, sim y).
-        // Debris is computed in chassis-local frame (no host tilt
-        // available at debris-spawn time), so pass `undefined` for
-        // the surface normal — the helper falls back to the flat
-        // identity rotation.
-        getMirrorPanelCenter(0, 0, panelCenterY, armLength, chassisYaw, 0, undefined, _panelCenter);
+        getMirrorPanelCenter(0, 0, panelCenterY, armLength, chassisYaw, 0, _panelCenter);
         for (let pi = 0; pi < tb.mirrorPanels.length; pi++) {
           // Panel — at arm's end, perpendicular to the arm.
           out.push({
