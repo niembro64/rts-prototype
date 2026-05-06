@@ -14,6 +14,12 @@ export type TerrainMapShape = 'square' | 'circle';
  *  authoritative terrain vertices, not render LOD vertices:
  *  `heights[vy * verticesX + vx]`.
  *
+ *  `tileSubdivisions[cy * cellsX + cx]` is the authoritative render/sim
+ *  subdivision selected for that land cell. The height arrays retain the
+ *  max-resolution sample grid, but terrain sampling collapses each cell
+ *  to its selected subdivision so sim, client prediction, and rendering
+ *  stay on the same adaptive triangle surface.
+ *
  *  Terrain sub-quads normally use the classic two-triangle split. When
  *  a sub-quad's averaged corner center materially differs from that
  *  diagonal plane, `centerFanMask[q]` is 1 and `centerHeights[q]` is
@@ -43,6 +49,7 @@ export type TerrainTileMap = {
   readonly heights: readonly number[];
   readonly centerHeights: readonly number[];
   readonly centerFanMask: readonly number[];
+  readonly tileSubdivisions: readonly number[];
 };
 
 /** Server-authored buildability grid for the building-placement

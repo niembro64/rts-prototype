@@ -168,7 +168,7 @@ export function buildEconomyInfo(
 // Build minimap data from entities. captureTiles + captureCellSize +
 // gridOverlayIntensity flow straight through to Minimap.vue so the
 // minimap can paint the same per-team color overlay (with the same
-// blend math) the 3D CaptureTileRenderer3D paints. When intensity is
+// blend math) the 3D floating cells overlay paints. When intensity is
 // 0 (GRID overlay = off) the minimap renderer skips the overlay
 // entirely — one switch ties minimap brightness to 3D brightness.
 export function buildMinimapData(

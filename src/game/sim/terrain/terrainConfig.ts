@@ -8,8 +8,15 @@ export const WATER_LEVEL_FRACTION = 0.71;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
 // Host sim, client prediction, and terrain rendering share this exact mesh.
-export const AUTHORITATIVE_TERRAIN_SUBDIV = 1;
+// This is the max per-land-cell resolution; buildTerrainTileMap collapses
+// cells that do not need it down to cheaper authoritative subdivisions.
+export const AUTHORITATIVE_TERRAIN_SUBDIV = 7;
 export const TERRAIN_MESH_SUBDIV = AUTHORITATIVE_TERRAIN_SUBDIV;
+
+/** Maximum vertical deviation, in world units, allowed when a land cell is
+ *  collapsed to a lower subdivision. Steep but planar cells simplify; curved,
+ *  terraced, waterline, and ridge cells keep more triangles. */
+export const TERRAIN_ADAPTIVE_MAX_HEIGHT_ERROR = 8;
 
 /** Add an averaged center vertex to an authoritative terrain sub-quad
  *  when the four corners are non-planar enough to make the old fixed
@@ -30,7 +37,7 @@ export const TERRAIN_SMOOTHING_LAMBDA_Y = val;
 export const TERRAIN_SMOOTHING_LAMBDA_Z = val;
 
 /** Magnitude only; TerrainShape decides the sign. */
-export const TERRAIN_SHAPE_MAGNITUDE = 600;
+export const TERRAIN_SHAPE_MAGNITUDE = 400;
 export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 
 /** Vertical spacing between authored terrain plateau levels. */

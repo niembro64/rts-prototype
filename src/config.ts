@@ -55,10 +55,10 @@ export const METAL_DEPOSIT_RESOURCE_CELLS = 5;
 // resource square: it only controls how much nearby terrain is forced flat.
 export const METAL_DEPOSIT_FLAT_PAD_CELLS = 20;
 
-// Render-only vertical lift for mana/capture tile surfaces above sampled
-// terrain. Keep this at 0 for normal play: the terrain renderer, host sim,
-// and client prediction all share the same authoritative triangle surface.
-// Use waypoint/overlay lifts for readability instead of moving the terrain.
+// Render-only vertical lift for the terrain mesh above sampled terrain. Keep
+// this at 0 for normal play: the terrain renderer, host sim, and client
+// prediction all share the same authoritative triangle surface. Use waypoint
+// and floating-cell overlay lifts for readability instead of moving terrain.
 export const MANA_TILE_GROUND_LIFT = 0;
 
 // 3D waypoint visual lift above the sampled terrain surface. This is
@@ -506,7 +506,7 @@ export const TERRAIN_SHADOW_RENDER_CONFIG = {
   maxShade: 2.25,
   precomputed: {
     enabled: true,
-    samples: 18,
+    samples: 6,
     sampleDistance: LAND_CELL_SIZE * 0.18,
     bias: 0,
     softness: 24,

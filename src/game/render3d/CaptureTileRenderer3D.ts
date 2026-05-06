@@ -1,30 +1,19 @@
-// CaptureTileRenderer3D — static mana terrain mesh + tiny capture ownership texture.
+// CaptureTileRenderer3D — authoritative terrain mesh.
 //
-// The old path used one vertex-coloured mesh for both terrain and capture
-// ownership. Every capture update could touch a large vertex color buffer.
-// This renderer keeps one visible terrain mesh and blends dynamic ownership
-// from a cellsX*cellsY DataTexture inside the terrain shader. Capture changes
-// still update only a few texture bytes, but there is no second lifted overlay
-// surface fighting the terrain for depth or readability.
+// Resource/capture coloring lives in LodGridCells2D's floating cells overlay.
+// This renderer owns only the pickable/rendered ground surface and debug build
+// grid tint, so gameplay terrain and visible terrain remain one shared mesh.
 
 import * as THREE from 'three';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   getBuildGridDebug,
-  getGraphicsConfigFor,
-  getGridOverlay,
-  getGridOverlayIntensity,
   getTriangleDebug,
 } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
-import type { NetworkCaptureTile } from '@/types/capture';
 import {
   LAND_CELL_SIZE,
-  MANA_TILE_TEXTURE,
-  MANA_TILE_TEXTURE_CACHE_KEY,
-  MANA_TILE_TEXTURE_PIXELS_PER_TILE,
-  MANA_TILE_TEXTURE_SWIRLS_ENABLED,
   MAP_BG_COLOR,
   MANA_TILE_GROUND_LIFT,
   HORIZON_RENDER_EXTEND,
@@ -32,30 +21,27 @@ import {
 } from '../../config';
 import {
   getTerrainMapBoundaryFade,
-  getTerrainMeshHeight,
-  getTerrainMeshNormal,
   getTerrainMeshSample,
+  getTerrainTileSubdivisionAtCell,
   getTerrainVersion,
+  terrainMeshHeightFromSample,
+  terrainMeshNormalFromSample,
   evaluateBuildabilityFootprint,
   getTerrainBuildabilityGridCell,
   getTerrainBuildabilityConfigKey,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
   TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
-  TERRAIN_MESH_SUBDIV,
   TILE_FLOOR_Y,
 } from '../sim/Terrain';
-import { getCaptureTileDisplayColor } from '../sim/manaProduction';
 import {
   CANONICAL_LAND_CELL_SIZE,
   assertCanonicalLandCellSize,
-  landCellIndexForSize,
   makeLandGridMetrics,
   normalizeLandCellSize,
   writeLandCellBounds,
   type LandCellBounds,
 } from '../landGrid';
 import type { Lod3DState } from './Lod3D';
-import { objectLodToCameraSphereGraphicsTier } from './RenderObjectLod';
 import type { RenderLodGrid } from './RenderLodGrid';
 import { GRID_CELL_SIZE } from '../sim/grid';
 import { getOccupiedBuildingCells } from '../sim/buildPlacementValidation';
@@ -67,7 +53,6 @@ import {
 } from './SunLighting';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
-const TERRAIN_LOD_REBUILD_CELL_MULTIPLIER = 4;
 const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING = 24;
 const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
@@ -76,138 +61,9 @@ const BUILD_GRID_COLOR_OK = [0, 102, 0, 160] as const;
 const BUILD_GRID_COLOR_BLOCKED = [119, 0, 0, 170] as const;
 const BUILD_GRID_COLOR_METAL = [0, 58, 153, 185] as const;
 
-const NEUTRAL_R_BYTE = (MAP_BG_COLOR >> 16) & 0xff;
-const NEUTRAL_G_BYTE = (MAP_BG_COLOR >> 8) & 0xff;
-const NEUTRAL_B_BYTE = MAP_BG_COLOR & 0xff;
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
-const WHITE_COLOR = new THREE.Color(0xffffff);
 const TRIANGLE_DEBUG_COLOR = new THREE.Color();
 const TRIANGLE_DEBUG_HUE_STEP = 0.618033988749895;
-
-function clamp01(v: number): number {
-  return Math.max(0, Math.min(1, v));
-}
-
-function clampSigned(v: number): number {
-  return Math.max(-1, Math.min(1, v));
-}
-
-function softSignedWave(v: number, power: number): number {
-  const clamped = clampSigned(v);
-  const magnitude = Math.pow(Math.abs(clamped), Math.max(0.25, power));
-  return clamped < 0 ? -magnitude : magnitude;
-}
-
-function lerpColorChannel(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function writeManaTerrainColorBytes(
-  out: Uint8Array,
-  offset: number,
-  wx: number,
-  wz: number,
-  mapWidth: number,
-  mapHeight: number,
-): void {
-  const boundaryFade = getTerrainMapBoundaryFade(wx, wz, mapWidth, mapHeight);
-  if (boundaryFade >= 1) {
-    out[offset] = NEUTRAL_R_BYTE;
-    out[offset + 1] = NEUTRAL_G_BYTE;
-    out[offset + 2] = NEUTRAL_B_BYTE;
-    out[offset + 3] = 255;
-    return;
-  }
-
-  if (!MANA_TILE_TEXTURE_SWIRLS_ENABLED) {
-    let r = clamp01(MANA_TILE_TEXTURE.base.color.r * MANA_TILE_TEXTURE.base.brightness) * 255;
-    let g = clamp01(MANA_TILE_TEXTURE.base.color.g * MANA_TILE_TEXTURE.base.brightness) * 255;
-    let b = clamp01(MANA_TILE_TEXTURE.base.color.b * MANA_TILE_TEXTURE.base.brightness) * 255;
-    if (boundaryFade > 0) {
-      r = lerpColorChannel(r, NEUTRAL_R_BYTE, boundaryFade);
-      g = lerpColorChannel(g, NEUTRAL_G_BYTE, boundaryFade);
-      b = lerpColorChannel(b, NEUTRAL_B_BYTE, boundaryFade);
-    }
-    out[offset] = Math.round(clamp01(r / 255) * 255);
-    out[offset + 1] = Math.round(clamp01(g / 255) * 255);
-    out[offset + 2] = Math.round(clamp01(b / 255) * 255);
-    out[offset + 3] = 255;
-    return;
-  }
-
-  const xWaves =
-    Math.sin(wx * MANA_TILE_TEXTURE.xWaves[0].scale + MANA_TILE_TEXTURE.xWaves[0].phase) * MANA_TILE_TEXTURE.xWaves[0].amplitude +
-    Math.sin(wx * MANA_TILE_TEXTURE.xWaves[1].scale + MANA_TILE_TEXTURE.xWaves[1].phase) * MANA_TILE_TEXTURE.xWaves[1].amplitude;
-  const zWaves =
-    Math.sin(wz * MANA_TILE_TEXTURE.zWaves[0].scale + MANA_TILE_TEXTURE.zWaves[0].phase) * MANA_TILE_TEXTURE.zWaves[0].amplitude +
-    Math.sin(wz * MANA_TILE_TEXTURE.zWaves[1].scale + MANA_TILE_TEXTURE.zWaves[1].phase) * MANA_TILE_TEXTURE.zWaves[1].amplitude;
-  const cross =
-    Math.sin(
-      (wx + wz) * MANA_TILE_TEXTURE.cross.scale +
-      MANA_TILE_TEXTURE.cross.phase +
-      xWaves * MANA_TILE_TEXTURE.cross.xInfluence +
-      zWaves * MANA_TILE_TEXTURE.cross.zInfluence,
-    );
-  const fleckWave =
-    Math.sin(wx * MANA_TILE_TEXTURE.fleck.xScale + MANA_TILE_TEXTURE.fleck.xPhase) *
-    Math.sin(
-      wz * (MANA_TILE_TEXTURE.fleck.xScale * MANA_TILE_TEXTURE.fleck.zScaleMultiplier) +
-      MANA_TILE_TEXTURE.fleck.zPhase,
-    );
-  const fleck = softSignedWave(fleckWave, MANA_TILE_TEXTURE.fleck.power);
-  const veinRaw = Math.sin(
-    wx * MANA_TILE_TEXTURE.vein.xScale +
-    wz * MANA_TILE_TEXTURE.vein.zScale +
-    Math.sin(wx * MANA_TILE_TEXTURE.vein.xWarpScale) * MANA_TILE_TEXTURE.vein.xWarpAmplitude +
-    Math.sin(wz * MANA_TILE_TEXTURE.vein.zWarpScale) * MANA_TILE_TEXTURE.vein.zWarpAmplitude,
-  );
-  const vein = softSignedWave(veinRaw, MANA_TILE_TEXTURE.vein.power);
-  const signedTexture = clampSigned(
-    xWaves * MANA_TILE_TEXTURE.base.xWaveAmplitude +
-    zWaves * MANA_TILE_TEXTURE.base.zWaveAmplitude +
-    cross * MANA_TILE_TEXTURE.cross.amplitude +
-    fleck * MANA_TILE_TEXTURE.fleck.amplitude +
-    vein * MANA_TILE_TEXTURE.vein.amplitude,
-  );
-  const brightness =
-    MANA_TILE_TEXTURE.base.brightness +
-    xWaves * MANA_TILE_TEXTURE.base.xWaveAmplitude +
-    zWaves * MANA_TILE_TEXTURE.base.zWaveAmplitude +
-    cross * MANA_TILE_TEXTURE.cross.amplitude +
-    fleck * MANA_TILE_TEXTURE.fleck.amplitude;
-  const baseR = clamp01(MANA_TILE_TEXTURE.base.color.r * brightness);
-  const baseG = clamp01(MANA_TILE_TEXTURE.base.color.g * brightness);
-  const baseB = clamp01(MANA_TILE_TEXTURE.base.color.b * brightness);
-  const grayTone = clamp01(
-    MANA_TILE_TEXTURE.tone.neutral + signedTexture * MANA_TILE_TEXTURE.tone.contrast,
-  );
-  const mix = clamp01(MANA_TILE_TEXTURE.tone.mix);
-  let r = clamp01(lerpColorChannel(baseR, grayTone, mix)) * 255;
-  let g = clamp01(lerpColorChannel(baseG, grayTone, mix)) * 255;
-  let b = clamp01(lerpColorChannel(baseB, grayTone, mix)) * 255;
-  if (boundaryFade > 0) {
-    r = lerpColorChannel(r, NEUTRAL_R_BYTE, boundaryFade);
-    g = lerpColorChannel(g, NEUTRAL_G_BYTE, boundaryFade);
-    b = lerpColorChannel(b, NEUTRAL_B_BYTE, boundaryFade);
-  }
-  out[offset] = Math.round(clamp01(r / 255) * 255);
-  out[offset + 1] = Math.round(clamp01(g / 255) * 255);
-  out[offset + 2] = Math.round(clamp01(b / 255) * 255);
-  out[offset + 3] = 255;
-}
-
-function captureOverlayOpacity(intensity: number): number {
-  const t = clamp01(intensity);
-  return MANA_TILE_TEXTURE.overlayOpacity.min +
-    (MANA_TILE_TEXTURE.overlayOpacity.max - MANA_TILE_TEXTURE.overlayOpacity.min) * t;
-}
-
-function hasCaptureHeight(heights: NetworkCaptureTile['heights']): boolean {
-  for (const key in heights) {
-    if (Object.prototype.hasOwnProperty.call(heights, key)) return true;
-  }
-  return false;
-}
 
 function writeTriangleDebugColor(
   out: Float32Array,
@@ -233,15 +89,6 @@ export class CaptureTileRenderer3D {
   private terrainGeometryCache = new Map<string, CachedTerrainGeometry>();
   private currentTerrainGeometryCacheKey = '';
 
-  private overlayTexture: THREE.DataTexture;
-  private overlayPixels = new Uint8Array(4);
-  private overlayMapUniform!: { value: THREE.DataTexture };
-  private overlayOpacityUniform = { value: 0 };
-  private overlayEnabledUniform = { value: 0 };
-  private terrainTexture: THREE.DataTexture;
-  private terrainTextureMapUniform!: { value: THREE.DataTexture };
-  private terrainTextureMapSizeUniform = { value: new THREE.Vector2(1, 1) };
-  private terrainTextureEnabledUniform = { value: 0 };
   private triangleDebugEnabledUniform = { value: 0 };
   private buildGridTexture: THREE.DataTexture;
   private buildGridPixels = new Uint8Array(4);
@@ -251,7 +98,6 @@ export class CaptureTileRenderer3D {
   private buildGridCellSizeUniform = { value: GRID_CELL_SIZE };
   private buildGridEnabledUniform = { value: 0 };
   private buildGridTextureKey = '';
-  private terrainTextureKey = '';
 
   private gridCellsX = 0;
   private gridCellsY = 0;
@@ -260,9 +106,6 @@ export class CaptureTileRenderer3D {
   private tileSubdivisions = new Uint8Array(0);
   private tileSideWalls = new Uint8Array(0);
   private renderFrameIndex = 0;
-  private lastCaptureVersion = -1;
-  private lastOverlayIntensity = -1;
-  private terrainTextureActive = false;
   private pendingTerrainLodKey = '';
   private pendingTerrainLodFrames = 0;
   private lastGeometryRebuildFrame = -TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING;
@@ -289,10 +132,6 @@ export class CaptureTileRenderer3D {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
 
-    this.overlayTexture = this.makeOverlayTexture(1, 1);
-    this.overlayMapUniform = { value: this.overlayTexture };
-    this.terrainTexture = this.makeManaTerrainTexture(1, 1, 1, 1);
-    this.terrainTextureMapUniform = { value: this.terrainTexture };
     this.buildGridTexture = this.makeBuildGridTexture(1, 1);
     this.buildGridMapUniform = { value: this.buildGridTexture };
 
@@ -302,7 +141,7 @@ export class CaptureTileRenderer3D {
       side: THREE.DoubleSide,
       vertexColors: false,
     });
-    this.installCaptureOverlayShader();
+    this.installTerrainShader();
     this.terrainMesh = new THREE.Mesh(this.terrainGeometry, this.terrainMaterial);
     this.terrainMesh.frustumCulled = false;
     this.terrainMesh.visible = false;
@@ -310,14 +149,8 @@ export class CaptureTileRenderer3D {
     parentWorld.add(this.terrainMesh);
   }
 
-  private installCaptureOverlayShader(): void {
+  private installTerrainShader(): void {
     this.terrainMaterial.onBeforeCompile = (shader) => {
-      shader.uniforms.uCaptureOverlayMap = this.overlayMapUniform;
-      shader.uniforms.uCaptureOverlayOpacity = this.overlayOpacityUniform;
-      shader.uniforms.uCaptureOverlayEnabled = this.overlayEnabledUniform;
-      shader.uniforms.uManaTerrainMap = this.terrainTextureMapUniform;
-      shader.uniforms.uManaTerrainMapSize = this.terrainTextureMapSizeUniform;
-      shader.uniforms.uManaTerrainTextureEnabled = this.terrainTextureEnabledUniform;
       shader.uniforms.uTriangleDebugEnabled = this.triangleDebugEnabledUniform;
       shader.uniforms.uBuildGridMap = this.buildGridMapUniform;
       shader.uniforms.uBuildGridMapSize = this.buildGridMapSizeUniform;
@@ -328,14 +161,10 @@ export class CaptureTileRenderer3D {
         .replace(
           '#include <common>',
           [
-            'attribute vec2 captureUv;',
-            'attribute float captureMask;',
             'attribute float terrainShade;',
             'attribute vec3 triangleDebugColor;',
-            'varying vec2 vCaptureUv;',
-            'varying float vCaptureMask;',
-            'varying vec3 vManaWorldPos;',
-            'varying float vManaShade;',
+            'varying vec3 vTerrainWorldPos;',
+            'varying float vTerrainShade;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
@@ -344,10 +173,8 @@ export class CaptureTileRenderer3D {
           '#include <begin_vertex>',
           [
             '#include <begin_vertex>',
-            'vCaptureUv = captureUv;',
-            'vCaptureMask = captureMask;',
-            'vManaWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
-            'vManaShade = terrainShade;',
+            'vTerrainWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+            'vTerrainShade = terrainShade;',
             'vTriangleDebugColor = triangleDebugColor;',
           ].join('\n'),
         );
@@ -355,22 +182,14 @@ export class CaptureTileRenderer3D {
         .replace(
           '#include <common>',
           [
-            'uniform sampler2D uCaptureOverlayMap;',
-            'uniform float uCaptureOverlayOpacity;',
-            'uniform float uCaptureOverlayEnabled;',
-            'uniform sampler2D uManaTerrainMap;',
-            'uniform vec2 uManaTerrainMapSize;',
-            'uniform float uManaTerrainTextureEnabled;',
             'uniform float uTriangleDebugEnabled;',
             'uniform sampler2D uBuildGridMap;',
             'uniform vec2 uBuildGridMapSize;',
             'uniform vec2 uBuildGridWorldSize;',
             'uniform float uBuildGridCellSize;',
             'uniform float uBuildGridEnabled;',
-            'varying vec2 vCaptureUv;',
-            'varying float vCaptureMask;',
-            'varying vec3 vManaWorldPos;',
-            'varying float vManaShade;',
+            'varying vec3 vTerrainWorldPos;',
+            'varying float vTerrainShade;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
@@ -379,21 +198,12 @@ export class CaptureTileRenderer3D {
           '#include <color_fragment>',
           [
             '#include <color_fragment>',
-            'if (uManaTerrainTextureEnabled > 0.0) {',
-            '  vec2 manaUv = clamp(vManaWorldPos.xz / uManaTerrainMapSize, 0.0, 1.0);',
-            '  diffuseColor.rgb = texture2D(uManaTerrainMap, manaUv).rgb;',
-            '}',
-            'diffuseColor.rgb *= vManaShade;',
-            'if (uCaptureOverlayEnabled > 0.0 && vCaptureMask > 0.0) {',
-            '  vec4 captureOverlay = texture2D(uCaptureOverlayMap, vCaptureUv);',
-            '  float captureBlend = clamp(captureOverlay.a * uCaptureOverlayOpacity, 0.0, 1.0);',
-            '  diffuseColor.rgb = mix(diffuseColor.rgb, captureOverlay.rgb, captureBlend);',
-            '}',
+            'diffuseColor.rgb *= vTerrainShade;',
             'if (uBuildGridEnabled > 0.0 &&',
-            '    vManaWorldPos.x >= 0.0 && vManaWorldPos.z >= 0.0 &&',
-            '    vManaWorldPos.x < uBuildGridWorldSize.x &&',
-            '    vManaWorldPos.z < uBuildGridWorldSize.y) {',
-            '  vec2 buildGridCoord = vManaWorldPos.xz / uBuildGridCellSize;',
+            '    vTerrainWorldPos.x >= 0.0 && vTerrainWorldPos.z >= 0.0 &&',
+            '    vTerrainWorldPos.x < uBuildGridWorldSize.x &&',
+            '    vTerrainWorldPos.z < uBuildGridWorldSize.y) {',
+            '  vec2 buildGridCoord = vTerrainWorldPos.xz / uBuildGridCellSize;',
             '  vec2 buildGridCell = floor(buildGridCoord);',
             '  vec2 buildUv = (buildGridCell + vec2(0.5)) / uBuildGridMapSize;',
             '  vec4 buildColor = texture2D(uBuildGridMap, clamp(buildUv, vec2(0.0), vec2(1.0)));',
@@ -416,23 +226,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'capture-tile-single-surface-v7';
-  }
-
-  private makeOverlayTexture(width: number, height: number): THREE.DataTexture {
-    this.overlayPixels = new Uint8Array(Math.max(1, width * height * 4));
-    const texture = new THREE.DataTexture(
-      this.overlayPixels,
-      Math.max(1, width),
-      Math.max(1, height),
-      THREE.RGBAFormat,
-    );
-    texture.magFilter = THREE.NearestFilter;
-    texture.minFilter = THREE.NearestFilter;
-    texture.generateMipmaps = false;
-    texture.flipY = false;
-    texture.needsUpdate = true;
-    return texture;
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v8';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -548,77 +342,12 @@ export class CaptureTileRenderer3D {
     this.buildGridTextureKey = key;
   }
 
-  private makeManaTerrainTexture(
-    width: number,
-    height: number,
-    mapWidth: number,
-    mapHeight: number,
-  ): THREE.DataTexture {
-    const safeWidth = Math.max(1, width | 0);
-    const safeHeight = Math.max(1, height | 0);
-    const pixels = new Uint8Array(safeWidth * safeHeight * 4);
-    for (let py = 0; py < safeHeight; py++) {
-      const wz = ((py + 0.5) / safeHeight) * mapHeight;
-      for (let px = 0; px < safeWidth; px++) {
-        const wx = ((px + 0.5) / safeWidth) * mapWidth;
-        writeManaTerrainColorBytes(
-          pixels,
-          (py * safeWidth + px) * 4,
-          wx,
-          wz,
-          mapWidth,
-          mapHeight,
-        );
-      }
-    }
-    const texture = new THREE.DataTexture(pixels, safeWidth, safeHeight, THREE.RGBAFormat);
-    texture.magFilter = THREE.LinearFilter;
-    texture.minFilter = THREE.LinearFilter;
-    texture.generateMipmaps = false;
-    texture.flipY = false;
-    texture.needsUpdate = true;
-    return texture;
-  }
-
-  private ensureManaTerrainTexture(cellsX: number, cellsY: number): void {
-    const pixelsPerTile = Math.max(1, MANA_TILE_TEXTURE_PIXELS_PER_TILE | 0);
-    const width = Math.max(1, cellsX * pixelsPerTile);
-    const height = Math.max(1, cellsY * pixelsPerTile);
-    const key = `${width}|${height}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_TEXTURE_PIXELS_PER_TILE}|${getTerrainVersion()}|${MANA_TILE_TEXTURE_CACHE_KEY}`;
-    this.terrainTextureMapSizeUniform.value.set(this.mapWidth, this.mapHeight);
-    if (this.terrainTextureKey === key) return;
-
-    const old = this.terrainTexture;
-    this.terrainTexture = this.makeManaTerrainTexture(width, height, this.mapWidth, this.mapHeight);
-    this.terrainTextureMapUniform.value = this.terrainTexture;
-    this.terrainTextureKey = key;
-    old.dispose();
-  }
-
-  private ensureOverlayTexture(width: number, height: number): boolean {
-    if (
-      this.overlayTexture.image.width === width &&
-      this.overlayTexture.image.height === height
-    ) {
-      return false;
-    }
-    const old = this.overlayTexture;
-    this.overlayTexture = this.makeOverlayTexture(width, height);
-    this.overlayMapUniform.value = this.overlayTexture;
-    old.dispose();
-    this.lastCaptureVersion = -1;
-    this.lastOverlayIntensity = -1;
-    return true;
-  }
-
   private makeTerrainLodKey(
     cellsX: number,
     cellsY: number,
     cellSize: number,
     graphicsConfig: GraphicsConfig,
     triangleDebug: boolean,
-    lod?: Lod3DState,
-    sharedLodGrid?: RenderLodGrid,
   ): string {
     const parts: Array<string | number> = [
       cellsX,
@@ -630,30 +359,9 @@ export class CaptureTileRenderer3D {
       graphicsConfig.captureTileSideWalls ? 1 : 0,
       triangleDebug ? 1 : 0,
       CANONICAL_LAND_CELL_SIZE,
-      graphicsConfig.cameraSphereRadii.rich,
-      graphicsConfig.cameraSphereRadii.simple,
-      graphicsConfig.cameraSphereRadii.mass,
-      graphicsConfig.cameraSphereRadii.impostor,
       getTerrainVersion(),
       getTerrainShadowCacheKey(),
     ];
-
-    if (lod && sharedLodGrid) {
-      const cameraCellSize = Math.max(
-        cellSize,
-        CANONICAL_LAND_CELL_SIZE * TERRAIN_LOD_REBUILD_CELL_MULTIPLIER,
-      );
-      const view = lod.view;
-      const cameraAltitudeBand = Math.floor(view.cameraY / cameraCellSize);
-      parts.push(
-        cameraCellSize,
-        landCellIndexForSize(view.cameraX, cameraCellSize),
-        landCellIndexForSize(view.cameraZ, cameraCellSize),
-        cameraAltitudeBand,
-      );
-    } else {
-      parts.push('static');
-    }
 
     return parts.join('|');
   }
@@ -734,27 +442,21 @@ export class CaptureTileRenderer3D {
     cellSize: number,
     graphicsConfig: GraphicsConfig,
     triangleDebug: boolean,
-    lod?: Lod3DState,
-    sharedLodGrid?: RenderLodGrid,
   ): boolean {
     const grid = makeLandGridMetrics(this.mapWidth, this.mapHeight, cellSize);
     cellSize = grid.cellSize;
-    assertCanonicalLandCellSize('capture/mana tile cell size', cellSize);
+    assertCanonicalLandCellSize('terrain tile cell size', cellSize);
     const cellsX = grid.cellsX;
     const cellsY = grid.cellsY;
-    const textureRebuilt = this.ensureOverlayTexture(cellsX, cellsY);
     const nextTerrainLodKey = this.makeTerrainLodKey(
       cellsX,
       cellsY,
       cellSize,
       graphicsConfig,
       triangleDebug,
-      lod,
-      sharedLodGrid,
     );
     const triangleDebugChanged = triangleDebug !== this.terrainTriangleDebug;
     const structuralChange =
-      textureRebuilt ||
       cellsX !== this.gridCellsX ||
       cellsY !== this.gridCellsY ||
       cellSize !== this.gridCellSize ||
@@ -771,7 +473,6 @@ export class CaptureTileRenderer3D {
       this.terrainTriangleDebug = triangleDebug;
       this.useTerrainGeometry(nextTerrainLodKey, cachedGeometry.geometry);
       this.markTerrainGeometryRebuilt(nextTerrainLodKey);
-      this.lastCaptureVersion = -1;
       return true;
     }
 
@@ -785,14 +486,15 @@ export class CaptureTileRenderer3D {
 
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
-        let tileGfx = graphicsConfig;
-        if (sharedLodGrid) {
-          const tier = objectLodToCameraSphereGraphicsTier(sharedLodGrid.resolveCell(cx, cy));
-          tileGfx = getGraphicsConfigFor(tier);
-        }
         const tileIdx = cy * cellsX + cx;
-        tileSubdivisions[tileIdx] = TERRAIN_MESH_SUBDIV;
-        tileSideWalls[tileIdx] = tileGfx.captureTileSideWalls ? 1 : 0;
+        tileSubdivisions[tileIdx] = getTerrainTileSubdivisionAtCell(
+          cx,
+          cy,
+          this.mapWidth,
+          this.mapHeight,
+          cellSize,
+        );
+        tileSideWalls[tileIdx] = graphicsConfig.captureTileSideWalls ? 1 : 0;
       }
     }
 
@@ -801,12 +503,9 @@ export class CaptureTileRenderer3D {
     this.gridCellSize = cellSize;
     this.terrainTriangleDebug = triangleDebug;
     this.markTerrainGeometryRebuilt(nextTerrainLodKey);
-    this.lastCaptureVersion = -1;
 
     const terrainPositions: number[] = [];
     const terrainNormals: number[] = [];
-    const terrainCaptureUvs: number[] = [];
-    const terrainCaptureMasks: number[] = [];
     const terrainShades: number[] = [];
     const terrainIndices: number[] = [];
 
@@ -818,8 +517,6 @@ export class CaptureTileRenderer3D {
         const z0 = bounds.y0;
         const cellWidth = bounds.x1 - bounds.x0;
         const cellDepth = bounds.y1 - bounds.y0;
-        const tileU = (cx + 0.5) / cellsX;
-        const tileV = (cy + 0.5) / cellsY;
         const tileIdx = cy * cellsX + cx;
         const tileSubdiv = tileSubdivisions[tileIdx] || 1;
         const includeSideWalls = tileSideWalls[tileIdx] === 1;
@@ -834,43 +531,46 @@ export class CaptureTileRenderer3D {
         edgeSouth.length = 0;
         edgeWest.length = 0;
 
-        const addTopVertex = (fx: number, fz: number): number => {
-          const wx = x0 + fx * cellWidth;
-          const wz = z0 + fz * cellDepth;
-          const h = getTerrainMeshHeight(
-            wx,
-            wz,
-            this.mapWidth,
-            this.mapHeight,
-            cellSize,
-          ) + MANA_TILE_GROUND_LIFT;
-          const localIndex = topLocalCount++;
-          terrainPositions.push(wx, h, wz);
-          terrainCaptureUvs.push(tileU, tileV);
-          terrainCaptureMasks.push(1);
-          terrainShades.push(1);
-
-          const normal = getTerrainMeshNormal(
-            wx,
-            wz,
-            this.mapWidth,
-            this.mapHeight,
-            cellSize,
-          );
-          terrainNormals.push(normal.nx, normal.nz, normal.ny);
-          const precomputedShadow = terrainPrecomputedShadow(
-            wx,
-            wz,
-            h - MANA_TILE_GROUND_LIFT,
-            this.mapWidth,
-            this.mapHeight,
-            (sx, sy) => getTerrainMeshHeight(
+        const terrainHeightAt = (sx: number, sy: number): number =>
+          terrainMeshHeightFromSample(
+            getTerrainMeshSample(
               sx,
               sy,
               this.mapWidth,
               this.mapHeight,
               cellSize,
             ),
+          );
+
+        const addTopVertex = (
+          fx: number,
+          fz: number,
+          existingSample?: ReturnType<typeof getTerrainMeshSample>,
+        ): number => {
+          const wx = x0 + fx * cellWidth;
+          const wz = z0 + fz * cellDepth;
+          const sample = existingSample ?? getTerrainMeshSample(
+            wx,
+            wz,
+            this.mapWidth,
+            this.mapHeight,
+            cellSize,
+          );
+          const terrainHeight = terrainMeshHeightFromSample(sample);
+          const h = terrainHeight + MANA_TILE_GROUND_LIFT;
+          const localIndex = topLocalCount++;
+          terrainPositions.push(wx, h, wz);
+          terrainShades.push(1);
+
+          const normal = terrainMeshNormalFromSample(sample);
+          terrainNormals.push(normal.nx, normal.nz, normal.ny);
+          const precomputedShadow = terrainPrecomputedShadow(
+            wx,
+            wz,
+            terrainHeight,
+            this.mapWidth,
+            this.mapHeight,
+            terrainHeightAt,
           );
           terrainShades[terrainShades.length - 1] = terrainSunShade(
             { x: normal.nx, y: normal.ny, z: normal.nz },
@@ -904,7 +604,7 @@ export class CaptureTileRenderer3D {
             cellSize,
           );
           if (sample.centerFan) {
-            const center = addTopVertex((fx0 + fx1) * 0.5, (fz0 + fz1) * 0.5);
+            const center = addTopVertex((fx0 + fx1) * 0.5, (fz0 + fz1) * 0.5, sample);
             addTopTri(a, b, center);
             addTopTri(b, c, center);
             addTopTri(c, d, center);
@@ -958,8 +658,6 @@ export class CaptureTileRenderer3D {
             const idx = terrainPositions.length / 3;
             terrainPositions.push(x, y, z);
             terrainNormals.push(nx, 0, nz);
-            terrainCaptureUvs.push(tileU, tileV);
-            terrainCaptureMasks.push(0);
             terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
             return idx;
           };
@@ -996,7 +694,7 @@ export class CaptureTileRenderer3D {
               terrainIndices.push(floorA, topA, topB, floorA, topB, floorB);
             }
           };
-          // Internal mana/capture tile edges are part of one continuous
+          // Internal terrain tile edges are part of one continuous
           // terrain surface and do not need vertical skirts. Only the
           // outer map boundary gets side walls; this removes hidden
           // back-to-back internal walls and avoids unnecessary sharp
@@ -1043,8 +741,6 @@ export class CaptureTileRenderer3D {
         terrainPositions.push(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1);
         for (let i = 0; i < 4; i++) {
           terrainNormals.push(0, 1, 0);
-          terrainCaptureUvs.push(0, 0);
-          terrainCaptureMasks.push(0);
           terrainShades.push(1);
         }
         terrainIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -1062,8 +758,6 @@ export class CaptureTileRenderer3D {
       const debugVertexCount = terrainIndices.length;
       const debugPositions = new Float32Array(debugVertexCount * 3);
       const debugNormals = new Float32Array(debugVertexCount * 3);
-      const debugCaptureUvs = new Float32Array(debugVertexCount * 2);
-      const debugCaptureMasks = new Float32Array(debugVertexCount);
       const debugTerrainShades = new Float32Array(debugVertexCount);
       const debugTriangleColors = new Float32Array(debugVertexCount * 3);
 
@@ -1077,27 +771,18 @@ export class CaptureTileRenderer3D {
         debugNormals[dst3] = terrainNormals[src3];
         debugNormals[dst3 + 1] = terrainNormals[src3 + 1];
         debugNormals[dst3 + 2] = terrainNormals[src3 + 2];
-        const src2 = src * 2;
-        const dst2 = dst * 2;
-        debugCaptureUvs[dst2] = terrainCaptureUvs[src2];
-        debugCaptureUvs[dst2 + 1] = terrainCaptureUvs[src2 + 1];
-        debugCaptureMasks[dst] = terrainCaptureMasks[src];
         debugTerrainShades[dst] = terrainShades[src];
         writeTriangleDebugColor(debugTriangleColors, dst3, Math.floor(dst / 3));
       }
 
       geometry.setAttribute('position', new THREE.BufferAttribute(debugPositions, 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(debugNormals, 3));
-      geometry.setAttribute('captureUv', new THREE.BufferAttribute(debugCaptureUvs, 2));
-      geometry.setAttribute('captureMask', new THREE.BufferAttribute(debugCaptureMasks, 1));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(debugTerrainShades, 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(debugTriangleColors, 3));
     } else {
       const vertexCount = terrainPositions.length / 3;
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
-      geometry.setAttribute('captureUv', new THREE.BufferAttribute(new Float32Array(terrainCaptureUvs), 2));
-      geometry.setAttribute('captureMask', new THREE.BufferAttribute(new Float32Array(terrainCaptureMasks), 1));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(new Float32Array(terrainShades), 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3));
       geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
@@ -1108,94 +793,10 @@ export class CaptureTileRenderer3D {
     return true;
   }
 
-  private setTerrainTextureActive(active: boolean): void {
-    if (this.terrainTextureActive === active) return;
-    this.terrainTextureActive = active;
-    this.terrainTextureEnabledUniform.value = active ? 1 : 0;
-    this.terrainMaterial.color.copy(active ? WHITE_COLOR : NEUTRAL_COLOR);
-  }
-
-  private clearOverlayTexture(): void {
-    this.overlayPixels.fill(0);
-    this.overlayTexture.needsUpdate = true;
-  }
-
-  private writeOverlayTile(tile: NetworkCaptureTile, cellSize: number, intensity: number): void {
-    const cx = tile.cx;
-    const cy = tile.cy;
-    if (cx < 0 || cx >= this.gridCellsX || cy < 0 || cy >= this.gridCellsY) return;
-    const idx = (cy * this.gridCellsX + cx) * 4;
-    const wx = (cx + 0.5) * cellSize;
-    const wz = (cy + 0.5) * cellSize;
-    const boundaryFade = getTerrainMapBoundaryFade(wx, wz, this.mapWidth, this.mapHeight);
-    const localIntensity = intensity * (1 - boundaryFade);
-    if (localIntensity <= 0) {
-      this.overlayPixels[idx] = 0;
-      this.overlayPixels[idx + 1] = 0;
-      this.overlayPixels[idx + 2] = 0;
-      this.overlayPixels[idx + 3] = 0;
-      return;
-    }
-    if (!hasCaptureHeight(tile.heights)) {
-      this.overlayPixels[idx] = 0;
-      this.overlayPixels[idx + 1] = 0;
-      this.overlayPixels[idx + 2] = 0;
-      this.overlayPixels[idx + 3] = 0;
-      return;
-    }
-
-    const color = getCaptureTileDisplayColor(
-      tile.heights,
-      cx,
-      cy,
-      cellSize,
-      this.mapWidth,
-      this.mapHeight,
-      localIntensity,
-      NEUTRAL_R_BYTE,
-      NEUTRAL_G_BYTE,
-      NEUTRAL_B_BYTE,
-    );
-    if (!color.hasColor) {
-      this.overlayPixels[idx] = 0;
-      this.overlayPixels[idx + 1] = 0;
-      this.overlayPixels[idx + 2] = 0;
-      this.overlayPixels[idx + 3] = 0;
-      return;
-    }
-    this.overlayPixels[idx] = Math.max(0, Math.min(255, Math.round(color.r)));
-    this.overlayPixels[idx + 1] = Math.max(0, Math.min(255, Math.round(color.g)));
-    this.overlayPixels[idx + 2] = Math.max(0, Math.min(255, Math.round(color.b)));
-    this.overlayPixels[idx + 3] = 255;
-  }
-
-  private refreshAllOverlayTiles(cellSize: number, intensity: number): void {
-    this.overlayPixels.fill(0);
-    if (intensity > 0) {
-      const tiles = this.clientViewState.getCaptureTiles();
-      for (let i = 0; i < tiles.length; i++) {
-        this.writeOverlayTile(tiles[i], cellSize, intensity);
-      }
-    }
-    this.overlayTexture.needsUpdate = true;
-  }
-
-  private refreshChangedOverlayTiles(
-    tiles: readonly NetworkCaptureTile[],
-    cellSize: number,
-    intensity: number,
-  ): void {
-    if (tiles.length === 0) return;
-    for (let i = 0; i < tiles.length; i++) {
-      this.writeOverlayTile(tiles[i], cellSize, intensity);
-    }
-    this.overlayTexture.needsUpdate = true;
-  }
-
   update(
     graphicsConfig: GraphicsConfig,
-    lod?: Lod3DState,
-    sharedLodGrid?: RenderLodGrid,
+    _lod?: Lod3DState,
+    _sharedLodGrid?: RenderLodGrid,
   ): void {
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
 
@@ -1203,60 +804,16 @@ export class CaptureTileRenderer3D {
     if (cellSize <= 0) cellSize = LAND_CELL_SIZE;
     cellSize = normalizeLandCellSize(cellSize);
 
-    const gridMode = getGridOverlay();
-    const intensity = getGridOverlayIntensity();
     const triangleDebug = getTriangleDebug();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
-    const rebuilt = this.rebuildGeometryIfNeeded(
+    this.rebuildGeometryIfNeeded(
       cellSize,
       graphicsConfig,
       triangleDebug,
-      lod,
-      sharedLodGrid,
     );
     this.terrainMesh.visible = true;
 
-    const terrainTextureEnabled = gridMode !== 'off';
-    if (terrainTextureEnabled) {
-      this.ensureManaTerrainTexture(this.gridCellsX, this.gridCellsY);
-    }
-    this.setTerrainTextureActive(terrainTextureEnabled);
     this.refreshBuildGridTexture(getBuildGridDebug());
-    const overlayActive = gridMode !== 'off' && intensity > 0;
-    this.overlayEnabledUniform.value = overlayActive ? 1 : 0;
-    this.overlayOpacityUniform.value = overlayActive ? captureOverlayOpacity(intensity) : 0;
-    if (!overlayActive) {
-      if (this.lastOverlayIntensity !== intensity) {
-        this.clearOverlayTexture();
-        this.lastOverlayIntensity = intensity;
-      }
-      return;
-    }
-
-    const captureVersion = this.clientViewState.getCaptureVersion();
-    const intensityChanged = intensity !== this.lastOverlayIntensity;
-    if (
-      !rebuilt &&
-      captureVersion === this.lastCaptureVersion &&
-      !intensityChanged
-    ) {
-      return;
-    }
-
-    if (!rebuilt && !intensityChanged && captureVersion !== this.lastCaptureVersion) {
-      const stride = Math.max(1, graphicsConfig.captureTileFrameStride | 0);
-      if (stride > 1 && this.renderFrameIndex % stride !== 0) return;
-    }
-
-    const changes = this.clientViewState.consumeCaptureTileChanges();
-    if (rebuilt || intensityChanged || changes.full) {
-      this.refreshAllOverlayTiles(cellSize, intensity);
-    } else {
-      this.refreshChangedOverlayTiles(changes.tiles, cellSize, intensity);
-    }
-
-    this.lastCaptureVersion = captureVersion;
-    this.lastOverlayIntensity = intensity;
   }
 
   getMesh(): THREE.Mesh {
@@ -1271,10 +828,7 @@ export class CaptureTileRenderer3D {
     if (this.currentTerrainGeometryCacheKey === '') this.terrainGeometry.dispose();
     this.terrainMaterial.dispose();
     this.terrainMesh.parent?.remove(this.terrainMesh);
-    this.overlayTexture.dispose();
-    this.terrainTexture.dispose();
     this.buildGridTexture.dispose();
-    this.overlayPixels = new Uint8Array(4);
     this.buildGridPixels = new Uint8Array(4);
     this.tileSubdivisions = new Uint8Array(0);
     this.tileSideWalls = new Uint8Array(0);

@@ -36,10 +36,13 @@ export {
   getTerrainMeshHeight,
   getTerrainMeshNormal,
   getTerrainMeshSample,
+  getTerrainTileSubdivisionAtCell,
   interpolateTerrainMeshQuadHeight,
   shouldUseTerrainCenterFan,
   setAuthoritativeTerrainTileMap,
   terrainCenterFanHeight,
+  terrainMeshHeightFromSample,
+  terrainMeshNormalFromSample,
 } from './terrain/terrainTileMap';
 export {
   buildTerrainBuildabilityGrid,

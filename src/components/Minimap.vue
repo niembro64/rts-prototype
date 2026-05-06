@@ -12,7 +12,7 @@ import { minimapPointerToWorld } from './minimapHelpers';
 export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
 
-// Same neutral baseline the 3D CaptureTileRenderer3D uses (lifted from
+// Same neutral baseline the 3D floating cells overlay uses (lifted from
 // MAP_BG_COLOR), so unowned cells on the minimap match unowned cells in
 // the 3D scene exactly.
 const NEUTRAL_R = (MAP_BG_COLOR >> 16) & 0xff;
@@ -175,8 +175,8 @@ function drawBackgroundLayer(): void {
   // its world coords to a (cx, cy) and hits these arrays — no nested
   // dict lookups inside the hot loop.
   //
-  // Identical proportional brightness model the 3D
-  // CaptureTileRenderer3D uses — see manaProduction.ts. We
+  // Identical proportional brightness model the 3D floating cells
+  // overlay uses — see manaProduction.ts. We
   // pre-resolve the FINAL blended RGB per tile once, then the
   // per-pixel hot loop is a flat array lookup. Each tile's
   // brightness is `intensity × tileMana / maxTileMana`, so the
@@ -228,11 +228,9 @@ function drawBackgroundLayer(): void {
   const waterR = 0x2a, waterG = 0x55, waterB = 0x9a;
   let pi = 0;
   if (!showTerrain) {
-    // GRID = OFF: 3D scene hides the capture-tile mesh entirely (no
-    // land), so the minimap mirrors that — stamp the dark map bg under
-    // every pixel and let the entity dots ride on top. Skipping the
-    // per-pixel terrain sample is also a meaningful speedup on the
-    // canvas-render path.
+    // Terrain hidden: stamp the dark map bg under every pixel and let
+    // the entity dots ride on top. Normal play keeps terrain visible
+    // even when GRID/capture color is off.
     for (let py = 0; py < h; py++) {
       for (let px = 0; px < w; px++, pi += 4) {
         waterPixels[pi]     = NEUTRAL_R;

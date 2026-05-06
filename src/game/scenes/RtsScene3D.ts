@@ -367,6 +367,7 @@ export class RtsScene3D {
   // first keyframe arrives, then updates only on subsequent keyframes.
   private lastFullSnapArrivalMs = 0;
   private startupReadyAckSent = false;
+  private startupFullSnapshotApplied = false;
   private startupReleased = false;
 
   // Entity source adapter, kept shape-compatible with RtsScene's for UI helpers
@@ -745,6 +746,7 @@ export class RtsScene3D {
         this.threeApp.world,
         this.mapWidth,
         this.mapHeight,
+        this.clientViewState,
       );
     }
 
@@ -828,8 +830,7 @@ export class RtsScene3D {
     if (state) {
       this.clientViewState.applyNetworkState(state);
       if (!this.startupReadyAckSent && !state.isDelta) {
-        this.startupReadyAckSent = true;
-        this.gameConnection.markClientReady();
+        this.startupFullSnapshotApplied = true;
       }
       if (!this.startupReleased && state.tick > 0) {
         this.startupReleased = true;
@@ -988,9 +989,13 @@ export class RtsScene3D {
       ],
       getLodShellRings(),
     );
+    const gridMode = getGridOverlay();
+    const gridOverlayIntensity = gridMode !== 'off' ? getGridOverlayIntensity() : 0;
     this.lodGridCells2D?.update(
       graphicsConfig.objectLodCellSize,
       getLodGridBorders(),
+      gridMode !== 'off',
+      gridOverlayIntensity,
     );
     this.metalDepositRenderer?.update(
       graphicsConfig,
@@ -1032,6 +1037,10 @@ export class RtsScene3D {
       renderLod,
       this.renderLodGrid,
     );
+    if (this.startupFullSnapshotApplied && !this.startupReadyAckSent) {
+      this.startupReadyAckSent = true;
+      this.gameConnection.markClientReady();
+    }
     const lineProjectiles = this.clientViewState.collectLineProjectiles(this._lineProjectilesScratch);
     const smokeTrailProjectiles = updateEffectsThisFrame
       ? this.clientViewState.collectSmokeTrailProjectiles(this._smokeTrailProjectilesScratch)
@@ -1684,9 +1693,9 @@ export class RtsScene3D {
     // reads it so we don't pay 4× raycasts twice per frame.
     //
     // Capture-overlay parity: hand the minimap the same tiles +
-    // cellSize the 3D CaptureTileRenderer3D consumes, plus the GRID
-    // intensity from clientBarConfig. GRID now controls ownership
-    // tint only; terrain/water stay visible and are optimized by LOD.
+    // cellSize the 3D floating cells overlay consumes, plus the GRID
+    // intensity from clientBarConfig. GRID controls ownership tint only;
+    // terrain/water stay visible and are optimized by LOD.
     const captureTiles = this.clientViewState.getCaptureTiles();
     const captureVersion = this.clientViewState.getCaptureVersion();
     const captureCellSize = this.clientViewState.getCaptureCellSize();

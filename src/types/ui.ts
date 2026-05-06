@@ -66,7 +66,7 @@ export type MinimapEntity = {
 };
 
 /** One captured grid cell carried across to the minimap. Mirrors the
- *  3D CaptureTileRenderer3D's per-tile data exactly so the two
+ *  3D floating cells overlay's per-tile data exactly so the two
  *  renderers can share a blend formula. cx / cy are integer cell
  *  indices into the `cellSize`-spaced grid; `heights` is a sparse
  *  per-team flag-height map (0–1). */
@@ -100,8 +100,8 @@ export type MinimapData = {
    *  world directions in current screen-space rather than map-space. */
   cameraYaw: number;
 
-  /** Per-tile capture data, paralleled with the 3D capture-tile
-   *  renderer. Empty array when the GRID overlay is OFF — the minimap
+  /** Per-tile capture data, paralleled with the 3D floating cells
+   *  overlay. Empty array when the GRID overlay is OFF — the minimap
    *  uses this as the signal to skip the team-color overlay (one
    *  switch keeps minimap brightness in lockstep with the 3D grid). */
   captureTiles: readonly MinimapCaptureTile[];
@@ -114,12 +114,9 @@ export type MinimapData = {
    *  0.1, high → 0.8) so minimap brightness tracks the 3D scene's
    *  brightness exactly. */
   gridOverlayIntensity: number;
-  /** Whether the GRID setting is anything other than OFF — i.e. the
-   *  3D capture-tile mesh is currently visible. The minimap mirrors
-   *  this to decide whether to draw the terrain (land + water) layer
-   *  at all: when GRID = OFF the 3D scene shows no land tiles, so the
-   *  minimap skips the terrain pass too and just stamps the dark map
-   *  background under the entity dots. */
+  /** Whether to draw the terrain (land + water) layer. This is no
+   *  longer tied to GRID visibility; GRID only controls the capture
+   *  color overlay. */
   showTerrain: boolean;
   wind?: { x: number; y: number; speed: number };
 };
