@@ -113,13 +113,15 @@ export type Locomotion3DMesh =
        wheels: THREE.Mesh[];
        wheelContacts: RollingContactState[];
        treadContacts: RollingContactState[];
-       /** Animated cleat strips on top of the tread slab (empty when
+       /** Animated cleat strips around the tread belt (empty when
         *  treadsAnimated is off). Each side scrolls from that side's own
         *  ground-contact motion, so a turning tread can crawl one side
         *  forward and the other backward. */
        cleats: THREE.Mesh[];
        cleatSpacing: number;
-       slabLength: number;
+       cleatLoopLength: number;
+       treadStraightLength: number;
+       treadRadius: number;
     } & LocomotionBase)
   | ({ type: 'wheels';
        group: THREE.Group;
@@ -250,6 +252,7 @@ type LegInstance = {
 };
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
+const treadEndGeom = new THREE.CylinderGeometry(1, 1, 1, 16);
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
 // Leg cylinders AND joint spheres no longer need a per-mesh
 // geometry — every leg cylinder + joint sphere renders through the
@@ -277,6 +280,9 @@ const wheelMat = new THREE.MeshBasicMaterial({ color: WHEEL_COLOR });
 // track-line color (`GRAY_LIGHT`) so the moving highlights read over the
 // dark tread slab.
 const cleatMat = new THREE.MeshBasicMaterial({ color: 0x5a636d });
+const TREAD_CLEAT_HEIGHT = 2;
+const TREAD_CLEAT_WIDTH_FRAC = 0.85;
+const TREAD_CLEAT_LENGTH_FRAC = 0.36;
 
 export function lodKeyFor(gfx: GraphicsConfig): string {
   return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;
@@ -402,11 +408,23 @@ function buildTreads(
   const length = r * cfg.treadLength;
   const width = r * cfg.treadWidth;
   const offset = r * cfg.treadOffset;
+  const treadRadius = Math.min(TREAD_HEIGHT / 2, Math.max(1, length / 2));
+  const straightLength = Math.max(1, length - 2 * treadRadius);
+  const halfStraight = straightLength / 2;
+
   for (const side of [-1, 1]) {
-    const slab = new THREE.Mesh(treadBoxGeom, treadMat);
-    slab.scale.set(length, TREAD_HEIGHT, width);
-    slab.position.set(0, TREAD_Y, side * offset);
-    group.add(slab);
+    const centerRun = new THREE.Mesh(treadBoxGeom, treadMat);
+    centerRun.scale.set(straightLength, TREAD_HEIGHT, width);
+    centerRun.position.set(0, TREAD_Y, side * offset);
+    group.add(centerRun);
+
+    for (const end of [-1, 1]) {
+      const roundedEnd = new THREE.Mesh(treadEndGeom, treadMat);
+      roundedEnd.rotation.x = Math.PI / 2;
+      roundedEnd.scale.set(treadRadius, width, treadRadius);
+      roundedEnd.position.set(end * halfStraight, TREAD_Y, side * offset);
+      group.add(roundedEnd);
+    }
   }
 
   const wheels: THREE.Mesh[] = [];
@@ -438,22 +456,27 @@ function buildTreads(
       }
     }
 
-    // Animated cleats on top of the slab — lighter-gray strips that scroll
-    // along the tread length, matching the 2D drawAnimatedTread track-mark
-    // animation. One extra cleat per side so the wrap-around transition is
-    // seamless as strips exit the near end and re-enter at the far end.
-    const cleatCount = Math.max(6, Math.round(cfg.treadLength * 4));
-    cleatSpacing = length / cleatCount;
-    const cleatLen = cleatSpacing * 0.4;
-    const cleatHeight = 2;
-    const cleatWidth = width * 0.85;
+    // Animated cleats cover the full belt loop: top run, rounded front
+    // return, bottom ground-contact run, and rounded rear return. This
+    // makes treads read correctly from side/front/back instead of looking
+    // like a square slab with only top markings.
+    const loopLength = 2 * straightLength + 2 * Math.PI * treadRadius;
+    const cleatCount = Math.max(10, Math.round(loopLength / Math.max(1, r * 0.16)));
+    cleatSpacing = loopLength / cleatCount;
+    const cleatLen = cleatSpacing * TREAD_CLEAT_LENGTH_FRAC;
+    const cleatWidth = width * TREAD_CLEAT_WIDTH_FRAC;
     const cleatsPerSide = cleatCount + 1;
     for (const side of [-1, 1]) {
       for (let i = 0; i < cleatsPerSide; i++) {
         const cleat = new THREE.Mesh(treadBoxGeom, cleatMat);
-        cleat.scale.set(cleatLen, cleatHeight, cleatWidth);
-        // Rest Y on top of the slab; X is set each frame by the scroll loop.
-        cleat.position.set(0, TREAD_HEIGHT + cleatHeight / 2, side * offset);
+        cleat.scale.set(cleatLen, TREAD_CLEAT_HEIGHT, cleatWidth);
+        layoutTreadCleat(
+          cleat,
+          i * cleatSpacing,
+          straightLength,
+          treadRadius,
+          side * offset,
+        );
         group.add(cleat);
         cleats.push(cleat);
       }
@@ -469,7 +492,9 @@ function buildTreads(
     treadContacts,
     cleats,
     cleatSpacing,
-    slabLength: length,
+    cleatLoopLength: 2 * straightLength + 2 * Math.PI * treadRadius,
+    treadStraightLength: straightLength,
+    treadRadius,
     lodKey: '',
   };
 }
@@ -840,6 +865,54 @@ function wrappedRollingPhase(phase: number, spacing: number): number {
   return ((phase % spacing) + spacing) % spacing;
 }
 
+function layoutTreadCleat(
+  cleat: THREE.Mesh,
+  distance: number,
+  straightLength: number,
+  treadRadius: number,
+  sideZ: number,
+): void {
+  const halfStraight = straightLength / 2;
+  const arcLength = Math.PI * treadRadius;
+  const loopLength = 2 * straightLength + 2 * arcLength;
+  let d = ((distance % loopLength) + loopLength) % loopLength;
+  const outerRadius = treadRadius + TREAD_CLEAT_HEIGHT / 2;
+
+  let x = 0;
+  let y = 0;
+  let angle = 0;
+
+  if (d < straightLength) {
+    x = -halfStraight + d;
+    y = TREAD_Y + outerRadius;
+    angle = 0;
+  } else {
+    d -= straightLength;
+    if (d < arcLength) {
+      const theta = Math.PI / 2 - d / treadRadius;
+      x = halfStraight + Math.cos(theta) * outerRadius;
+      y = TREAD_Y + Math.sin(theta) * outerRadius;
+      angle = Math.atan2(-Math.cos(theta), Math.sin(theta));
+    } else {
+      d -= arcLength;
+      if (d < straightLength) {
+        x = halfStraight - d;
+        y = TREAD_Y - outerRadius;
+        angle = Math.PI;
+      } else {
+        d -= straightLength;
+        const theta = -Math.PI / 2 - d / treadRadius;
+        x = -halfStraight + Math.cos(theta) * outerRadius;
+        y = TREAD_Y + Math.sin(theta) * outerRadius;
+        angle = Math.atan2(-Math.cos(theta), Math.sin(theta));
+      }
+    }
+  }
+
+  cleat.position.set(x, y, sideZ);
+  cleat.rotation.z = angle;
+}
+
 /**
  * Per-frame update — drives wheels/treads from per-contact ground motion,
  * and advances each leg's snap-lerp physics + IK.
@@ -887,21 +960,21 @@ export function updateLocomotion(
     // spacing so they look continuous regardless of cumulative distance.
     if (mesh.cleats.length > 0 && mesh.cleatSpacing > 0) {
       const spacing = mesh.cleatSpacing;
-      const L = mesh.slabLength;
       const cleatsPerSide = mesh.cleats.length / 2;
       for (let s = 0; s < 2; s++) {
         const contact = mesh.treadContacts[s];
         if (!contact) continue;
         sampleRollingContactDistance(entity, contact);
-        const phaseOff = wrappedRollingPhase(contact.phase, spacing);
+        const phaseOff = wrappedRollingPhase(contact.phase, mesh.cleatLoopLength);
         const baseIdx = s * cleatsPerSide;
         for (let i = 0; i < cleatsPerSide; i++) {
-          let posX = -L / 2 + phaseOff + i * spacing;
-          // Wrap into [-L/2, L/2]. At most one wrap either way is needed
-          // since phaseOff ∈ [0, spacing) and i ∈ [0, cleatsPerSide-1].
-          if (posX > L / 2) posX -= L;
-          else if (posX < -L / 2) posX += L;
-          mesh.cleats[baseIdx + i].position.x = posX;
+          layoutTreadCleat(
+            mesh.cleats[baseIdx + i],
+            phaseOff + i * spacing,
+            mesh.treadStraightLength,
+            mesh.treadRadius,
+            contact.localZ,
+          );
         }
       }
     }
