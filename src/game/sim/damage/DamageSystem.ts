@@ -150,6 +150,10 @@ export class DamageSystem {
 
     // Check buildings
     for (const building of nearbyBuildings) {
+      // Skip the firing building — a tower-mounted turret must not
+      // self-block on its own AABB (matches the unit-source guard
+      // above).
+      if (building.id === sourceEntityId) continue;
       if (!building.building || building.building.hp <= 0) continue;
 
       const bWidth = building.building.width;
@@ -426,6 +430,11 @@ export class DamageSystem {
     // over a short building correctly misses; clipping the wall stops.
     const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 100);
     for (const building of nearbyBuildings) {
+      // Skip the firing building — a tower-mounted turret must not
+      // self-block on its own AABB. Mirrors the unit-source guard
+      // above (excludeEntityId / excludePanelIndex tracks the entity
+      // the beam was just emitted from / last reflected off).
+      if (building.id === excludeEntityId) continue;
       if (!building.building || building.building.hp <= 0) continue;
       const bWidth = building.building.width;
       const bHeight = building.building.height;
