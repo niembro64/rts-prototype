@@ -3,6 +3,7 @@ import type { Entity, PlayerId, BuildingType } from './types';
 import type { ConstructionSystem } from './construction';
 import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
+import { createTurretsForBuilding } from './unitDefinitions';
 import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
 import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
@@ -235,6 +236,20 @@ function placeCompleteBuilding(
     startSolarCollectorClosed(world, entity);
   }
 
+  // Buildings whose blueprint declares turrets get a CombatComponent
+  // at spawn — the same shape units carry. The cache filter picks them
+  // up via entity.combat (host-agnostic), so armed buildings ride
+  // through the targeting / fire / turret-rotation pipelines on the
+  // same code path as armed units.
+  const buildingTurrets = createTurretsForBuilding(buildingType);
+  if (buildingTurrets.length > 0) {
+    entity.combat = {
+      turrets: buildingTurrets,
+      activeTurretMask: 0,
+      firingTurretMask: 0,
+    };
+  }
+
   grid.place(gx, gy, config.gridWidth, config.gridHeight, entity.id, playerId);
   world.addEntity(entity);
 
@@ -326,6 +341,11 @@ export function spawnInitialBases(
   construction: ConstructionSystem,
   playerIds: PlayerId[],
   mode: InitialBaseMode = 'demo',
+  // Reserved — when set, future demo-layout work can derive the
+  // factory roster from this allowed-unit set (one factory per type)
+  // instead of DEMO_CONFIG.factoryCount. Accepted today so the
+  // GameServer call site stays stable while that work lands.
+  _availableUnitTypes?: ReadonlySet<string>,
 ): Entity[] {
   const entities: Entity[] = [];
 
