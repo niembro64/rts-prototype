@@ -42,7 +42,10 @@ export class ContactShadowRenderer3D {
       blendSrc: THREE.SrcAlphaFactor,
       blendDst: THREE.OneMinusSrcAlphaFactor,
       depthWrite: false,
-      depthTest: false,
+      depthTest: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
       side: THREE.DoubleSide,
     });
     this.mesh = new THREE.InstancedMesh(

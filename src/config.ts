@@ -515,9 +515,11 @@ export const TERRAIN_SHADOW_RENDER_CONFIG = {
 } as const;
 
 // Stable render layering for ground-adjacent systems. Contact shadows
-// are blended in the opaque render phase after terrain but before
-// units/buildings, so uneven terrain cannot depth-clip the shadow and
-// entity meshes still cover it naturally.
+// render after terrain (so terrain depth is in the buffer for occlusion
+// tests) but before units/buildings (so entities overdraw shadows
+// naturally). Shadows depth-test against terrain so mountains occlude
+// them; polygonOffset on the shadow material keeps them from z-fighting
+// with the ground they sit on.
 export const GROUND_RENDER_ORDER = {
   terrain: -20,
   contactShadows: -10,
