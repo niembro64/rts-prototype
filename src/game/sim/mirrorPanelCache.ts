@@ -72,13 +72,13 @@ export function getMirrorFrameGeometry(panelHalfSide: number): MirrorFrameGeomet
  *  where α = mirrorYaw and β = mirrorPitch.
  *
  *  SINGLE SOURCE OF TRUTH for the rigid-arm extend formula — shared
- *  by the aim solver (iterating panel-center for bisector refinement),
- *  the panel hit test (collision), and the debris emitter (so dead
- *  Lorises drop debris in the same spot the live panel was). The
- *  PIVOT itself is computed differently per call site (the aim solver
- *  uses a chassis-tilt-aware mount from resolveWeaponWorldMount; the
- *  hit test and debris use the upright body-mid-Z anchor) so the
- *  pivot stays at the call site, but the arm extension lives here.
+ *  by the aim solver, the panel hit test (collision), and the debris
+ *  emitter (so dead Lorises drop debris in the same spot the live
+ *  panel was). The PIVOT itself is computed differently per call site
+ *  (live aim/hit-test use a chassis-tilt-aware mount from
+ *  resolveWeaponWorldMount; upright fallback/debris use the body-mid-Z
+ *  anchor) so the pivot stays at the call site, but the arm extension
+ *  lives here.
  *
  *  `out` is mutated and returned to keep this allocation-free in the
  *  per-tick aim-solver loop. */
@@ -120,18 +120,13 @@ export function getMirrorArmDirection(
 /** Upright (slope-IGNORANT) mirror arm pivot — the turret pivot point
  *  the rigid arm extends from, computed from the chassis-local panel
  *  cache + the unit's ground anchor. Used by the hit test
- *  (`MirrorPanelHit.findClosestPanelHit`).
+ *  (`MirrorPanelHit.findClosestPanelHit`) when no slope-aware pivot is
+ *  supplied, plus debris/fallback code.
  *
- *  This is NOT the only pivot computation in the sim. The aim solver
- *  (`MirrorAimSolver.solveMirrorAim`) instead receives the pivot from
- *  `resolveWeaponWorldMount`, which applies chassis tilt to the same
- *  chassis-local mount. On flat ground both paths agree; on slopes the
- *  upright path here ignores tilt while the aim solver respects it.
- *
- *  Today this divergence is intentional (see the original audit note in
- *  issues.txt) — keeping the hit test stable across tilt-induced
- *  jitter. Centralizing the formula here means a future decision to
- *  unify both paths is a one-line change. Mutates `out` and returns it. */
+ *  Live mirror aim and hit-test paths prefer the tilt-aware runtime
+ *  turret mount. This helper remains the stable fallback for callers
+ *  that do not have a turret entity/mount available. Mutates `out`
+ *  and returns it. */
 export function getMirrorUprightPivot(
   unitX: number, unitY: number, unitGroundZ: number,
   /** Chassis-perpendicular axis (unit length) — pre-computed by the

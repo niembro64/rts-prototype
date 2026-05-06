@@ -81,15 +81,14 @@ export function buildMirrorMesh3D(
    *  panels only. */
   skipPerMesh: boolean = false,
 ): MirrorMesh {
-  // The mirror is a ball-joint at the turret attachment point. The
-  // joint's location in the parent's (liftGroup) frame is at chassis
-  // X/Z = 0 and Y = panelCenterY (the host unit's body-center height
-  // above the parent). We position `root` THERE rather than at the
-  // parent's origin so that root's own rotation pivots around the
-  // attachment point. Arms and panels then live at Y = 0 in root's
-  // local frame; the only rotation in the entire mirror assembly is
-  // root's own quaternion, written each frame by the renderer to a
-  // single combined yaw + pitch.
+  // The mirror is a ball-joint at the turret attachment point. This
+  // initial position is the flat-ground body center in liftGroup
+  // space; Render3DEntities overwrites it per frame on slopes so the
+  // joint lands exactly at entity.transform (the gameplay body center)
+  // rather than at the slope-tilted height offset. Arms and panels
+  // then live at Y = 0 in root's local frame; the only rotation in the
+  // entire mirror assembly is root's own quaternion, written each
+  // frame by the renderer to a single combined yaw + pitch.
   const root = new THREE.Group();
   root.position.set(0, panelCenterY, 0);
   parent.add(root);

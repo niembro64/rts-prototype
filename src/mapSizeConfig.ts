@@ -25,8 +25,10 @@ export const MAP_DIMENSION_BASE_LAND_CELLS = 7;
 const MAP_DIMENSION_AXIS_GROWTH = 1.5;
 const MAP_DIMENSION_AXIS_OPTION_COUNT = 8;
 
+
+// 7, 11, 15, 23, 35, 53, 79, 119
 const DEFAULT_MAP_WIDTH_LAND_CELLS_VALUE = 53;
-const DEFAULT_MAP_LENGTH_LAND_CELLS_VALUE = 35;
+const DEFAULT_MAP_LENGTH_LAND_CELLS_VALUE = 53;
 
 /** Fraction of the total map width/length used by generated radial
  *  terrain/layout features. The remaining outer band is buffer space

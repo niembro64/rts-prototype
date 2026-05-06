@@ -27,7 +27,6 @@ import {
   MANA_TILE_TEXTURE_SWIRLS_ENABLED,
   MAP_BG_COLOR,
   MANA_TILE_GROUND_LIFT,
-  MANA_TILE_FLAT_HEIGHT_THRESHOLD,
   HORIZON_RENDER_EXTEND,
   GROUND_RENDER_ORDER,
 } from '../../config';
@@ -35,10 +34,8 @@ import {
   getTerrainMapBoundaryFade,
   getTerrainMeshHeight,
   getTerrainMeshNormal,
+  getTerrainMeshSample,
   getTerrainVersion,
-  interpolateTerrainMeshQuadHeight,
-  shouldUseTerrainCenterFan,
-  terrainCenterFanHeight,
   evaluateBuildabilityFootprint,
   getTerrainBuildabilityGridCell,
   getTerrainBuildabilityConfigKey,
@@ -56,7 +53,6 @@ import {
   normalizeLandCellSize,
   writeLandCellBounds,
   type LandCellBounds,
-  type LandGridMetrics,
 } from '../landGrid';
 import type { Lod3DState } from './Lod3D';
 import { objectLodToCameraSphereGraphicsTier } from './RenderObjectLod';
@@ -263,10 +259,6 @@ export class CaptureTileRenderer3D {
   private terrainLodKey = '';
   private tileSubdivisions = new Uint8Array(0);
   private tileSideWalls = new Uint8Array(0);
-  private minTileSubdivisions = new Uint8Array(0);
-  private tileShapeKey = '';
-  private horizontalEdgeSubdivisions = new Uint8Array(0);
-  private verticalEdgeSubdivisions = new Uint8Array(0);
   private renderFrameIndex = 0;
   private lastCaptureVersion = -1;
   private lastOverlayIntensity = -1;
@@ -279,10 +271,6 @@ export class CaptureTileRenderer3D {
   private scratchEdgeEast: number[] = [];
   private scratchEdgeSouth: number[] = [];
   private scratchEdgeWest: number[] = [];
-  private scratchOuterLoop: number[] = [];
-  private scratchInnerRing: number[] = [];
-  private scratchOuterT = new Float32Array(0);
-  private scratchInnerT = new Float32Array(0);
 
   private clientViewState: ClientViewState;
   private metalDeposits: readonly MetalDeposit[];
@@ -637,10 +625,8 @@ export class CaptureTileRenderer3D {
       cellsY,
       cellSize,
       MANA_TILE_GROUND_LIFT,
-      MANA_TILE_FLAT_HEIGHT_THRESHOLD,
       TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
       graphicsConfig.tier,
-      graphicsConfig.captureTileSubdiv,
       graphicsConfig.captureTileSideWalls ? 1 : 0,
       triangleDebug ? 1 : 0,
       CANONICAL_LAND_CELL_SIZE,
@@ -744,130 +730,6 @@ export class CaptureTileRenderer3D {
     }
   }
 
-  private normalizeAuthoritativeSubdiv(subdiv: number): number {
-    const desired = Math.max(1, Math.min(TERRAIN_MESH_SUBDIV, subdiv | 0));
-    if (TERRAIN_MESH_SUBDIV % desired === 0) return desired;
-    for (let s = desired + 1; s <= TERRAIN_MESH_SUBDIV; s++) {
-      if (TERRAIN_MESH_SUBDIV % s === 0) return s;
-    }
-    return TERRAIN_MESH_SUBDIV;
-  }
-
-  private terrainHeightAtCellFraction(
-    bounds: LandCellBounds,
-    fx: number,
-    fz: number,
-  ): number {
-    return getTerrainMeshHeight(
-      bounds.x0 + (bounds.x1 - bounds.x0) * fx,
-      bounds.y0 + (bounds.y1 - bounds.y0) * fz,
-      this.mapWidth,
-      this.mapHeight,
-      LAND_CELL_SIZE,
-    );
-  }
-
-  private simplifiedTileHeight(
-    bounds: LandCellBounds,
-    subdiv: number,
-    fx: number,
-    fz: number,
-  ): number {
-    if (subdiv >= TERRAIN_MESH_SUBDIV) {
-      return this.terrainHeightAtCellFraction(bounds, fx, fz);
-    }
-    const cellX = Math.min(subdiv - 1, Math.max(0, Math.floor(fx * subdiv)));
-    const cellZ = Math.min(subdiv - 1, Math.max(0, Math.floor(fz * subdiv)));
-    const step = 1 / subdiv;
-    const x0 = cellX * step;
-    const z0 = cellZ * step;
-    const x1 = x0 + step;
-    const z1 = z0 + step;
-    const u = Math.max(0, Math.min(1, (fx - x0) / step));
-    const v = Math.max(0, Math.min(1, (fz - z0) / step));
-    const h00 = this.terrainHeightAtCellFraction(bounds, x0, z0);
-    const h10 = this.terrainHeightAtCellFraction(bounds, x1, z0);
-    const h11 = this.terrainHeightAtCellFraction(bounds, x1, z1);
-    const h01 = this.terrainHeightAtCellFraction(bounds, x0, z1);
-    const hc = terrainCenterFanHeight(h00, h10, h11, h01);
-    return interpolateTerrainMeshQuadHeight(
-      u,
-      v,
-      h00,
-      h10,
-      h11,
-      h01,
-      hc,
-      shouldUseTerrainCenterFan(h00, h10, h11, h01, hc),
-    );
-  }
-
-  private maxTileSimplificationError(bounds: LandCellBounds, subdiv: number): number {
-    if (subdiv >= TERRAIN_MESH_SUBDIV) return 0;
-    let maxError = 0;
-    for (let jy = 0; jy <= TERRAIN_MESH_SUBDIV; jy++) {
-      const fz = jy / TERRAIN_MESH_SUBDIV;
-      for (let ix = 0; ix <= TERRAIN_MESH_SUBDIV; ix++) {
-        const fx = ix / TERRAIN_MESH_SUBDIV;
-        const authoritative = this.terrainHeightAtCellFraction(bounds, fx, fz);
-        const simplified = this.simplifiedTileHeight(bounds, subdiv, fx, fz);
-        const error = Math.abs(authoritative - simplified);
-        if (error > maxError) maxError = error;
-      }
-    }
-    return maxError;
-  }
-
-  private ensureTileSimplificationLimits(grid: LandGridMetrics): void {
-    const { cellsX, cellsY, cellSize } = grid;
-    const tileCount = cellsX * cellsY;
-    const key = `${cellsX}|${cellsY}|${cellSize}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_FLAT_HEIGHT_THRESHOLD}|${TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD}|${getTerrainVersion()}`;
-    if (this.tileShapeKey === key && this.minTileSubdivisions.length === tileCount) return;
-
-    if (this.minTileSubdivisions.length !== tileCount) {
-      this.minTileSubdivisions = new Uint8Array(tileCount);
-    } else {
-      this.minTileSubdivisions.fill(0);
-    }
-    this.tileShapeKey = key;
-
-    // Simplification limits are static for a renderer/map configuration,
-    // so cache them instead of re-sampling terrain for every tile on every
-    // render frame. A tile can use reduced triangles only when that mesh is
-    // within the configured error threshold of the authoritative surface
-    // sampled by host sim and client prediction.
-    const bounds: LandCellBounds = { x0: 0, y0: 0, x1: 0, y1: 0 };
-    for (let cy = 0; cy < cellsY; cy++) {
-      for (let cx = 0; cx < cellsX; cx++) {
-        writeLandCellBounds(grid, cx, cy, bounds);
-        let minSubdiv = TERRAIN_MESH_SUBDIV;
-        for (let candidate = 1; candidate < TERRAIN_MESH_SUBDIV; candidate++) {
-          if (TERRAIN_MESH_SUBDIV % candidate !== 0) continue;
-          if (this.maxTileSimplificationError(bounds, candidate) <= MANA_TILE_FLAT_HEIGHT_THRESHOLD) {
-            minSubdiv = candidate;
-            break;
-          }
-        }
-        const tileIdx = cy * cellsX + cx;
-        this.minTileSubdivisions[tileIdx] = minSubdiv;
-      }
-    }
-  }
-
-  private ensureOuterTScratch(length: number): Float32Array {
-    if (this.scratchOuterT.length < length) {
-      this.scratchOuterT = new Float32Array(Math.max(length, this.scratchOuterT.length * 2, 16));
-    }
-    return this.scratchOuterT;
-  }
-
-  private ensureInnerTScratch(length: number): Float32Array {
-    if (this.scratchInnerT.length < length) {
-      this.scratchInnerT = new Float32Array(Math.max(length, this.scratchInnerT.length * 2, 16));
-    }
-    return this.scratchInnerT;
-  }
-
   private rebuildGeometryIfNeeded(
     cellSize: number,
     graphicsConfig: GraphicsConfig,
@@ -918,19 +780,8 @@ export class CaptureTileRenderer3D {
       this.tileSubdivisions = new Uint8Array(tileCount);
       this.tileSideWalls = new Uint8Array(tileCount);
     }
-    const horizontalEdgeCount = cellsX * (cellsY + 1);
-    if (this.horizontalEdgeSubdivisions.length !== horizontalEdgeCount) {
-      this.horizontalEdgeSubdivisions = new Uint8Array(horizontalEdgeCount);
-    }
-    const verticalEdgeCount = (cellsX + 1) * cellsY;
-    if (this.verticalEdgeSubdivisions.length !== verticalEdgeCount) {
-      this.verticalEdgeSubdivisions = new Uint8Array(verticalEdgeCount);
-    }
     const tileSubdivisions = this.tileSubdivisions;
     const tileSideWalls = this.tileSideWalls;
-    const horizontalEdgeSubdivisions = this.horizontalEdgeSubdivisions;
-    const verticalEdgeSubdivisions = this.verticalEdgeSubdivisions;
-    this.ensureTileSimplificationLimits(grid);
 
     for (let cy = 0; cy < cellsY; cy++) {
       for (let cx = 0; cx < cellsX; cx++) {
@@ -939,32 +790,9 @@ export class CaptureTileRenderer3D {
           const tier = objectLodToCameraSphereGraphicsTier(sharedLodGrid.resolveCell(cx, cy));
           tileGfx = getGraphicsConfigFor(tier);
         }
-        const desiredSubdiv = this.normalizeAuthoritativeSubdiv(tileGfx.captureTileSubdiv | 0);
         const tileIdx = cy * cellsX + cx;
-        const minSubdiv = this.minTileSubdivisions[tileIdx] || TERRAIN_MESH_SUBDIV;
-        const subdiv = minSubdiv === 1 ? 1 : Math.max(desiredSubdiv, minSubdiv);
-        tileSubdivisions[tileIdx] = subdiv;
+        tileSubdivisions[tileIdx] = TERRAIN_MESH_SUBDIV;
         tileSideWalls[tileIdx] = tileGfx.captureTileSideWalls ? 1 : 0;
-      }
-    }
-
-    // Canonical shared-edge resolution. Each tile reads these buffers
-    // instead of independently asking its neighbor, so both sides of a
-    // shared edge always emit the exact same vertex count.
-    for (let ey = 0; ey <= cellsY; ey++) {
-      for (let cx = 0; cx < cellsX; cx++) {
-        const above = ey > 0 ? tileSubdivisions[(ey - 1) * cellsX + cx] : 0;
-        const below = ey < cellsY ? tileSubdivisions[ey * cellsX + cx] : 0;
-        horizontalEdgeSubdivisions[ey * cellsX + cx] = Math.max(above, below, 1);
-      }
-    }
-    for (let cy = 0; cy < cellsY; cy++) {
-      const rowOff = cy * (cellsX + 1);
-      const tileRowOff = cy * cellsX;
-      for (let ex = 0; ex <= cellsX; ex++) {
-        const left = ex > 0 ? tileSubdivisions[tileRowOff + ex - 1] : 0;
-        const right = ex < cellsX ? tileSubdivisions[tileRowOff + ex] : 0;
-        verticalEdgeSubdivisions[rowOff + ex] = Math.max(left, right, 1);
       }
     }
 
@@ -1001,14 +829,10 @@ export class CaptureTileRenderer3D {
         const edgeEast = this.scratchEdgeEast;
         const edgeSouth = this.scratchEdgeSouth;
         const edgeWest = this.scratchEdgeWest;
-        const outerLoop = this.scratchOuterLoop;
-        const innerRing = this.scratchInnerRing;
         edgeNorth.length = 0;
         edgeEast.length = 0;
         edgeSouth.length = 0;
         edgeWest.length = 0;
-        outerLoop.length = 0;
-        innerRing.length = 0;
 
         const addTopVertex = (fx: number, fz: number): number => {
           const wx = x0 + fx * cellWidth;
@@ -1060,11 +884,6 @@ export class CaptureTileRenderer3D {
           terrainIndices.push(terrainVertexBase + a, terrainVertexBase + b, terrainVertexBase + c);
         };
 
-        const topHeight = (localIdx: number): number => {
-          const off = (terrainVertexBase + localIdx) * 3;
-          return terrainPositions[off + 1] - MANA_TILE_GROUND_LIFT;
-        };
-
         const addTopQuad = (
           a: number,
           b: number,
@@ -1075,12 +894,16 @@ export class CaptureTileRenderer3D {
           fx1: number,
           fz1: number,
         ): void => {
-          const h00 = topHeight(a);
-          const h10 = topHeight(b);
-          const h11 = topHeight(c);
-          const h01 = topHeight(d);
-          const hCenter = terrainCenterFanHeight(h00, h10, h11, h01);
-          if (shouldUseTerrainCenterFan(h00, h10, h11, h01, hCenter)) {
+          const centerFx = (fx0 + fx1) * 0.5;
+          const centerFz = (fz0 + fz1) * 0.5;
+          const sample = getTerrainMeshSample(
+            x0 + centerFx * cellWidth,
+            z0 + centerFz * cellDepth,
+            this.mapWidth,
+            this.mapHeight,
+            cellSize,
+          );
+          if (sample.centerFan) {
             const center = addTopVertex((fx0 + fx1) * 0.5, (fz0 + fz1) * 0.5);
             addTopTri(a, b, center);
             addTopTri(b, c, center);
@@ -1092,240 +915,35 @@ export class CaptureTileRenderer3D {
           addTopTri(a, c, d);
         };
 
-        const addBoundaryLoop = (
-          northSubdiv: number,
-          eastSubdiv: number,
-          southSubdiv: number,
-          westSubdiv: number,
-        ): number[] => {
-          const push = (fx: number, fz: number): number => {
-            const idx = addTopVertex(fx, fz);
-            outerLoop.push(idx);
-            return idx;
-          };
-
-          for (let i = 0; i < northSubdiv; i++) {
-            edgeNorth.push(push(i / northSubdiv, 0));
+        const subdiv = tileSubdiv;
+        const topVertsPerRow = subdiv + 1;
+        const topIdx = (ix: number, iz: number): number => iz * topVertsPerRow + ix;
+        for (let j = 0; j <= subdiv; j++) {
+          for (let ix = 0; ix <= subdiv; ix++) {
+            addTopVertex(ix / subdiv, j / subdiv);
           }
-          for (let i = 0; i < eastSubdiv; i++) {
-            const idx = push(1, i / eastSubdiv);
-            if (i === 0) edgeNorth.push(idx);
-            edgeEast.push(idx);
-          }
-          for (let i = southSubdiv; i > 0; i--) {
-            const idx = push(i / southSubdiv, 1);
-            if (i === southSubdiv) edgeEast.push(idx);
-            edgeSouth.push(idx);
-          }
-          for (let i = westSubdiv; i > 0; i--) {
-            const idx = push(0, i / westSubdiv);
-            if (i === westSubdiv) edgeSouth.push(idx);
-            edgeWest.push(idx);
-          }
-          edgeWest.push(outerLoop[0]);
-          return outerLoop;
-        };
+        }
+        for (let i = 0; i <= subdiv; i++) edgeNorth.push(topIdx(i, 0));
+        for (let i = 0; i <= subdiv; i++) edgeEast.push(topIdx(subdiv, i));
+        for (let i = 0; i <= subdiv; i++) edgeSouth.push(topIdx(subdiv - i, subdiv));
+        for (let i = 0; i <= subdiv; i++) edgeWest.push(topIdx(0, subdiv - i));
 
-        const addFanToCenter = (loop: readonly number[]): void => {
-          const center = addTopVertex(0.5, 0.5);
-          for (let i = 0; i < loop.length; i++) {
-            addTopTri(center, loop[i], loop[(i + 1) % loop.length]);
-          }
-        };
-
-        const addFanFromFirstBoundaryVertex = (loop: readonly number[]): void => {
-          for (let i = 1; i < loop.length - 1; i++) {
-            addTopTri(loop[0], loop[i], loop[i + 1]);
-          }
-        };
-
-        const shouldUseWholeTileCenterFan = (): boolean =>
-        {
-          const h00 = this.terrainHeightAtCellFraction(bounds, 0, 0);
-          const h10 = this.terrainHeightAtCellFraction(bounds, 1, 0);
-          const h11 = this.terrainHeightAtCellFraction(bounds, 1, 1);
-          const h01 = this.terrainHeightAtCellFraction(bounds, 0, 1);
-          return shouldUseTerrainCenterFan(
-            h00,
-            h10,
-            h11,
-            h01,
-            terrainCenterFanHeight(h00, h10, h11, h01),
-          );
-        };
-
-        const northSubdiv = horizontalEdgeSubdivisions[cy * cellsX + cx] || tileSubdiv;
-        const eastSubdiv = verticalEdgeSubdivisions[cy * (cellsX + 1) + cx + 1] || tileSubdiv;
-        const southSubdiv = horizontalEdgeSubdivisions[(cy + 1) * cellsX + cx] || tileSubdiv;
-        const westSubdiv = verticalEdgeSubdivisions[cy * (cellsX + 1) + cx] || tileSubdiv;
-        const regularInterior =
-          tileSubdiv >= 3 &&
-          northSubdiv === tileSubdiv &&
-          eastSubdiv === tileSubdiv &&
-          southSubdiv === tileSubdiv &&
-          westSubdiv === tileSubdiv;
-
-        if (regularInterior) {
-          const subdiv = tileSubdiv;
-          const topVertsPerRow = subdiv + 1;
-          const topIdx = (ix: number, iz: number): number => iz * topVertsPerRow + ix;
-          for (let j = 0; j <= subdiv; j++) {
-            for (let ix = 0; ix <= subdiv; ix++) {
-              addTopVertex(ix / subdiv, j / subdiv);
-            }
-          }
-          for (let i = 0; i <= subdiv; i++) edgeNorth.push(topIdx(i, 0));
-          for (let i = 0; i <= subdiv; i++) edgeEast.push(topIdx(subdiv, i));
-          for (let i = 0; i <= subdiv; i++) edgeSouth.push(topIdx(subdiv - i, subdiv));
-          for (let i = 0; i <= subdiv; i++) edgeWest.push(topIdx(0, subdiv - i));
-
-          for (let j = 0; j < subdiv; j++) {
-            for (let ix = 0; ix < subdiv; ix++) {
-              const a = topIdx(ix, j);
-              const b = topIdx(ix + 1, j);
-              const c = topIdx(ix + 1, j + 1);
-              const d = topIdx(ix, j + 1);
-              addTopQuad(
-                a,
-                b,
-                c,
-                d,
-                ix / subdiv,
-                j / subdiv,
-                (ix + 1) / subdiv,
-                (j + 1) / subdiv,
-              );
-            }
-          }
-        } else {
-          const outer = addBoundaryLoop(northSubdiv, eastSubdiv, southSubdiv, westSubdiv);
-
-          if (tileSubdiv >= 3) {
-            // Two adjacent tiles can share the same LOD tier yet take
-            // different paths here: tile A becomes irregular only because
-            // ONE of its OTHER neighbors is at a higher LOD (bumping
-            // that edge's subdiv via Math.max), while same-LOD tile B
-            // (with all-equal neighbors) goes through regularInterior.
-            // The old fan-to-center path then produced ~one triangle per
-            // boundary segment for A while B got a full subdiv x subdiv
-            // grid — visibly different meshes on hilly terrain at the
-            // same LOD.
-            //
-            // Fix: still generate the full regular interior grid at
-            // tileSubdiv density, then zip-stitch the (higher-density)
-            // outer boundary loop to the inner ring of the grid. Inner
-            // grid triangulation matches regularInterior exactly; only
-            // the outer skirt differs.
-            const subdiv = tileSubdiv;
-            const innerStride = subdiv - 1;
-            const innerStart = topLocalCount;
-            for (let j = 1; j <= subdiv - 1; j++) {
-              for (let ix = 1; ix <= subdiv - 1; ix++) {
-                addTopVertex(ix / subdiv, j / subdiv);
-              }
-            }
-            const innerIdx = (i: number, j: number): number =>
-              innerStart + (j - 1) * innerStride + (i - 1);
-
-            // Inner grid quads (interior only — the inner "ring" is
-            // stitched separately to the outer boundary below).
-            for (let j = 1; j < subdiv - 1; j++) {
-              for (let ix = 1; ix < subdiv - 1; ix++) {
-                const a = innerIdx(ix, j);
-                const b = innerIdx(ix + 1, j);
-                const c = innerIdx(ix + 1, j + 1);
-                const d = innerIdx(ix, j + 1);
-                addTopQuad(
-                  a,
-                  b,
-                  c,
-                  d,
-                  ix / subdiv,
-                  j / subdiv,
-                  (ix + 1) / subdiv,
-                  (j + 1) / subdiv,
-                );
-              }
-            }
-
-            // Inner ring — outermost layer of the inner grid, walked
-            // CCW starting at inner_NW (matches the outer loop's CCW
-            // start at outer_NW).
-            // North side: (1, 1) → (subdiv-1, 1).
-            for (let i = 1; i <= subdiv - 1; i++) innerRing.push(innerIdx(i, 1));
-            // East side: (subdiv-1, 2) → (subdiv-1, subdiv-1).
-            for (let j = 2; j <= subdiv - 1; j++) innerRing.push(innerIdx(subdiv - 1, j));
-            // South side: (subdiv-2, subdiv-1) → (1, subdiv-1).
-            for (let i = subdiv - 2; i >= 1; i--) innerRing.push(innerIdx(i, subdiv - 1));
-            // West side: (1, subdiv-2) → (1, 2).
-            for (let j = subdiv - 2; j >= 2; j--) innerRing.push(innerIdx(1, j));
-
-            // Perimeter t for each loop, both walked CCW from the
-            // tile's NW corner. Each side contributes 0.25 of the total
-            // perimeter so corners always align at t = 0.25, 0.5, 0.75.
-            const outerT = this.ensureOuterTScratch(outer.length);
-            const innerT = this.ensureInnerTScratch(innerRing.length);
-            const noN = northSubdiv, noE = eastSubdiv, noS = southSubdiv, noW = westSubdiv;
-            for (let i = 0; i < noN; i++) outerT[i] = (i / noN) * 0.25;
-            for (let i = 0; i < noE; i++) outerT[noN + i] = 0.25 + (i / noE) * 0.25;
-            for (let i = 0; i < noS; i++) outerT[noN + noE + i] = 0.5 + (i / noS) * 0.25;
-            for (let i = 0; i < noW; i++) outerT[noN + noE + noS + i] = 0.75 + (i / noW) * 0.25;
-
-            const innerSide = subdiv - 1;
-            const innerSegPerSide = subdiv - 2;
-            // Vertices per side in the ring excluding the next side's
-            // starting corner: subdiv-1 verts per side, but consecutive
-            // sides share corners so each side after the first
-            // contributes subdiv-2 fresh entries. The corners (other
-            // than NW=0) are at ring indices innerSide-1, 2*(innerSide-1),
-            // 3*(innerSide-1).
-            const cornerNE = innerSide - 1;
-            const cornerSE = 2 * (innerSide - 1);
-            const cornerSW = 3 * (innerSide - 1);
-            for (let k = 0; k < innerRing.length; k++) {
-              if (k <= cornerNE) {
-                innerT[k] = innerSegPerSide > 0 ? (k / innerSegPerSide) * 0.25 : 0;
-              } else if (k <= cornerSE) {
-                innerT[k] = 0.25 + ((k - cornerNE) / innerSegPerSide) * 0.25;
-              } else if (k <= cornerSW) {
-                innerT[k] = 0.5 + ((k - cornerSE) / innerSegPerSide) * 0.25;
-              } else {
-                innerT[k] = 0.75 + ((k - cornerSW) / innerSegPerSide) * 0.25;
-              }
-            }
-
-            // Zip-stitch: walk both loops CCW. At each step, advance the
-            // pointer whose NEXT vertex has the smaller perimeter t, and
-            // emit a triangle bridging the current pair to the advanced
-            // vertex. Total triangles = outer.length + innerRing.length
-            // (each ring segment contributes one tri).
-            const no = outer.length;
-            const ni = innerRing.length;
-            let oi = 0, ii = 0;
-            while (oi < no || ii < ni) {
-              const tOuterNext = (oi + 1) >= no ? 1 : outerT[oi + 1];
-              const tInnerNext = (ii + 1) >= ni ? 1 : innerT[ii + 1];
-              const advanceOuter = ii >= ni ? true
-                : oi >= no ? false
-                : tOuterNext <= tInnerNext;
-              if (advanceOuter) {
-                const a = outer[oi];
-                const b = outer[(oi + 1) % no];
-                const c = innerRing[ii % ni];
-                addTopTri(a, b, c);
-                oi++;
-              } else {
-                const a = outer[oi % no];
-                const b = innerRing[(ii + 1) % ni];
-                const c = innerRing[ii];
-                addTopTri(a, b, c);
-                ii++;
-              }
-            }
-          } else if (tileSubdiv >= 2 || shouldUseWholeTileCenterFan()) {
-            addFanToCenter(outer);
-          } else {
-            addFanFromFirstBoundaryVertex(outer);
+        for (let j = 0; j < subdiv; j++) {
+          for (let ix = 0; ix < subdiv; ix++) {
+            const a = topIdx(ix, j);
+            const b = topIdx(ix + 1, j);
+            const c = topIdx(ix + 1, j + 1);
+            const d = topIdx(ix, j + 1);
+            addTopQuad(
+              a,
+              b,
+              c,
+              d,
+              ix / subdiv,
+              j / subdiv,
+              (ix + 1) / subdiv,
+              (j + 1) / subdiv,
+            );
           }
         }
 
@@ -1660,9 +1278,5 @@ export class CaptureTileRenderer3D {
     this.buildGridPixels = new Uint8Array(4);
     this.tileSubdivisions = new Uint8Array(0);
     this.tileSideWalls = new Uint8Array(0);
-    this.minTileSubdivisions = new Uint8Array(0);
-    this.tileShapeKey = '';
-    this.horizontalEdgeSubdivisions = new Uint8Array(0);
-    this.verticalEdgeSubdivisions = new Uint8Array(0);
   }
 }

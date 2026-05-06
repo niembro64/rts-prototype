@@ -28,6 +28,7 @@ import {
 import type { SpinConfig } from '../../config';
 import {
   LAND_CELL_SIZE,
+  WIND_SPEED_MAX,
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
@@ -68,6 +69,7 @@ import {
   type ConstructionEmitterRig,
   type ExtractorRig,
   type FactoryConstructionRig,
+  type ProductionRateIndicatorRig,
   type WindTurbineRig,
   type BuildingShapeType,
   type SolarPetalAnimation,
@@ -756,6 +758,8 @@ export class Render3DEntities {
    *  multiplies (which used to rebuild this chain from m.group every
    *  turret) collapse to a single `Matrix4.copy()`. */
   private _unitChainMat = new THREE.Matrix4();
+  private _unitParentInvQuat = new THREE.Quaternion();
+  private _unitBodyCenterLocal = new THREE.Vector3();
 
   // ── LOW+ tier polygonal/rect chassis InstancedMeshes ──────────────
   // One InstancedMesh per polygon / rect body shape. Lazily created
@@ -2877,6 +2881,11 @@ export class Render3DEntities {
         this._smoothParentQuat,
         this._barrelOneVec,
       );
+      this._unitParentInvQuat.copy(this._smoothParentQuat).invert();
+      this._unitBodyCenterLocal
+        .set(0, getUnitBodyCenterHeight(e.unit), 0)
+        .applyQuaternion(this._unitParentInvQuat);
+      this._unitBodyCenterLocal.y -= m.chassisLift ?? 0;
 
       // Smooth-body chassis: write each part's per-instance world
       // matrix + team color into the shared `smoothChassis`
@@ -3010,9 +3019,21 @@ export class Render3DEntities {
         const tm = m.turrets[i];
         const t = turrets[i];
         const headRadius = tm.headRadius ?? getTurretHeadRadius(t.config);
-        const turretHeadCenterY = getTurretMountHeight(e, i);
-        const turretMountY = turretHeadCenterY - (m.chassisLift ?? 0) - headRadius;
-        tm.root.position.set(t.mount.x, turretMountY, t.mount.y);
+        if (t.config.passive && m.mirrors) {
+          // The mirror turret is the Loris body center in gameplay
+          // terms. Keep the visible turret head/joint at the exact
+          // same world XYZ as entity.transform, even under a tilted
+          // parent chain.
+          tm.root.position.set(
+            this._unitBodyCenterLocal.x,
+            this._unitBodyCenterLocal.y - headRadius,
+            this._unitBodyCenterLocal.z,
+          );
+        } else {
+          const turretHeadCenterY = getTurretMountHeight(e, i);
+          const turretMountY = turretHeadCenterY - (m.chassisLift ?? 0) - headRadius;
+          tm.root.position.set(t.mount.x, turretMountY, t.mount.y);
+        }
 
         if (tm.constructionEmitter) {
           const visible = buildingTierAtLeast(unitGraphicsTier, 'low');
@@ -3049,9 +3070,9 @@ export class Render3DEntities {
           // explicitly here so we go from raw m.group.position, not
           // from liftedPos, to avoid double-counting lift.
           this._smoothPartLocalPos.set(
-            t.mount.x,
-            lift + turretMountY + tm.headRadius,
-            t.mount.y,
+            tm.root.position.x,
+            lift + tm.root.position.y + tm.headRadius,
+            tm.root.position.z,
           );
           this._smoothPartLocalPos.applyQuaternion(this._smoothParentQuat);
           this._smoothLiftedPos
@@ -3181,20 +3202,12 @@ export class Render3DEntities {
         }
       }
 
-      // Mirror panels: track the first turret's rotation. Pitch tilts
-      // each panel around its edge axis so the rectangle the player
-      // sees lines up with the rectangle the sim's beam tracer uses.
-      //
-      // SIGN of rotation.x: positive sim pitch means the panel's NORMAL
-      // tilts upward — which, for a normal that starts pointing forward
-      // (+sim X), requires the panel's TOP to lean BACKWARD. With Euler
-      // YXZ the X rotation is applied around the panel's default-local
-      // X axis (its width axis, before the Y flip). For our Y rotation
-      // of -(angle + π/2) the right sign is +mirrorPitch — using -mirrorPitch
-      // would tilt the visible panel forward while the sim treats it as
-      // tilting backward, so the rendered panel would lean opposite to
-      // where the sim's reflection plane actually sits.
+      // Mirror panels: track the first turret's full world-space
+      // normal. Like standard turret barrels above, yaw + pitch must
+      // be decomposed through the tilted chassis parent so the visible
+      // mirror stays aimed at the same world direction the sim solved.
       if (m.mirrors) {
+        m.mirrors.root.position.copy(this._unitBodyCenterLocal);
         m.mirrors.root.visible = this.mirrorsEnabled;
         if (this.mirrorsEnabled) {
           const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
@@ -3209,13 +3222,23 @@ export class Render3DEntities {
           // build-time transforms (arm at visibleArmLength/2 forward,
           // panel at panelArmLength forward, both at panelCenterY up)
           // and sweep through 3D as one body when root rotates.
-          _aimDir.set(Math.cos(mirrorRot), 0, Math.sin(mirrorRot));
+          const cosMirrorRot = Math.cos(mirrorRot);
+          const sinMirrorRot = Math.sin(mirrorRot);
+          const cosMirrorPitch = Math.cos(mirrorPitch);
+          const sinMirrorPitch = Math.sin(mirrorPitch);
+          _aimDir.set(
+            cosMirrorRot * cosMirrorPitch,
+            sinMirrorPitch,
+            sinMirrorRot * cosMirrorPitch,
+          );
           if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
           const mCombinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
+          const mNy = _aimDir.y;
+          const mLocalPitch = Math.asin(mNy < -1 ? -1 : mNy > 1 ? 1 : mNy);
           m.mirrors.root.rotation.set(
             0,
             mCombinedYaw + e.transform.rotation,
-            mirrorPitch,
+            mLocalPitch,
             'YZX',
           );
 
@@ -3754,9 +3777,21 @@ export class Render3DEntities {
 
     if (this.windBuildingIds.length > 0) {
       this.updateWindAnimationGlobals();
+      const wind = this.clientViewState.getServerMeta()?.wind;
+      const dtSec = this._spinDt;
+      const rateAlpha = halfLifeBlend(dtSec, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
+      const normalizedWindRate = wind ? wind.speed / WIND_SPEED_MAX : 0;
       for (const id of this.windBuildingIds) {
         const mesh = this.buildingMeshes.get(id);
-        if (mesh) this.updateWindTurbineRig(mesh, mesh.buildingCachedDetailsReady === true);
+        if (!mesh) continue;
+        this.updateWindTurbineRig(mesh, mesh.buildingCachedDetailsReady === true);
+        this.applyProductionRateIndicator(
+          mesh.windRig?.rateIndicator,
+          normalizedWindRate,
+          rateAlpha,
+          mesh.buildingCachedDetailsReady === true
+            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
+        );
       }
     }
 
@@ -3774,14 +3809,16 @@ export class Render3DEntities {
       const dtRate = this._spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC;
       const TWO_PI = Math.PI * 2;
       const phases = this.extractorRotorPhases;
+      const rateAlpha = halfLifeBlend(this._spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       for (const id of this.extractorBuildingIds) {
         const mesh = this.buildingMeshes.get(id);
         const entity = this.clientViewState.getEntity(id);
         if (!mesh || !entity) continue;
         const rate = entity.metalExtractionRate ?? 0;
+        const normalizedRate = rate * invBase;
         let phase = phases.get(id);
         if (phase === undefined) phase = id * 0.173; // first-frame jitter seed
-        phase = (phase + dtRate * (rate * invBase)) % TWO_PI;
+        phase = (phase + dtRate * normalizedRate) % TWO_PI;
         phases.set(id, phase);
         // Inline the rig write. Every per-tier rotor in the rig
         // array gets the same yaw — only one is visible at a time
@@ -3797,6 +3834,13 @@ export class Render3DEntities {
             rotors[r].rotation.y = yaw;
           }
         }
+        this.applyProductionRateIndicator(
+          rig?.rateIndicator,
+          normalizedRate,
+          rateAlpha,
+          mesh.buildingCachedDetailsReady === true
+            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
+        );
       }
     }
 
@@ -4016,9 +4060,28 @@ export class Render3DEntities {
       }
       shower.visible = true;
       const h = rig.pylonHeight * r;
-      shower.scale.set(rig.showerRadius, h, rig.showerRadius);
+      shower.scale.set(rig.showerRadius * 2, h, rig.showerRadius * 2);
       shower.position.y = rig.pylonBaseY + h / 2;
     }
+  }
+
+  private applyProductionRateIndicator(
+    rig: ProductionRateIndicatorRig | undefined,
+    targetRate: number,
+    alpha: number,
+    visible: boolean,
+  ): void {
+    if (!rig) return;
+    const target = visible ? Math.max(0, Math.min(1, targetRate)) : 0;
+    rig.smoothedRate += (target - rig.smoothedRate) * alpha;
+    if (!visible || rig.smoothedRate < 0.01) {
+      rig.shower.visible = false;
+      return;
+    }
+    rig.shower.visible = true;
+    const h = rig.pylonHeight * rig.smoothedRate;
+    rig.shower.scale.set(rig.showerRadius * 2, h, rig.showerRadius * 2);
+    rig.shower.position.y = rig.pylonBaseY + h / 2;
   }
 
   /** Emit the three per-resource colored build sprays from each pylon

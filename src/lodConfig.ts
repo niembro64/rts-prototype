@@ -267,28 +267,6 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     high: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.HI,
     max: CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.MAX,
   },
-  // Mana/capture tile terrain smoothness by camera-sphere object LOD.
-  // The renderer resolves each tile through the same 2D LOD grid as
-  // units/buildings, then reads this table for that tile's effective
-  // MIN/LOW/MID/HI/MAX desired smoothness. Terrain cells auto-upgrade
-  // from this request when the lower mesh would diverge from the shared
-  // authoritative triangle surface by more than
-  // MANA_TILE_FLAT_HEIGHT_THRESHOLD. Tile borders always keep shared edge
-  // samples so adjacent tiles with different smoothness do not crack.
-  // Side walls follow the same per-tile camera-sphere tier.
-  //
-  // Values are per-tile terrain subdivisions. The renderer caps this at
-  // TERRAIN_MESH_SUBDIV and rounds non-divisors up to an authoritative
-  // subdivision count, so higher values are safe but no richer than the
-  // terrain mesh can represent. Coplanar/flat cells collapse to the
-  // cheapest mesh at every LOD.
-  MANA_TILE_SMOOTHNESS: {
-    min: 1,
-    low: 2,
-    medium: 3,
-    high: 4,
-    max: 4,
-  },
   CAPTURE_TILE_FRAME_STRIDE: {
     min: 8,
     low: 5,

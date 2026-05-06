@@ -71,7 +71,6 @@ export type GraphicsConfig = {
   hudFrameStride: number;
   effectFrameStride: number;
   clientPhysicsPredictionFramesSkip: number;
-  captureTileSubdiv: number;
   captureTileFrameStride: number;
   captureTileSideWalls: boolean;
   waterSubdivisions: number;

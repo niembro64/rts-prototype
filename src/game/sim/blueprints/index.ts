@@ -441,6 +441,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     config.isManualFire = turretBlueprint.isManualFire;
   }
   if (turretBlueprint.passive != null) config.passive = turretBlueprint.passive;
+  if (turretBlueprint.mountMode != null) config.mountMode = turretBlueprint.mountMode;
 
   return config;
 }

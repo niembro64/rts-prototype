@@ -112,7 +112,6 @@ export type GraphicsDetailConfig = {
   HUD_FRAME_STRIDE: LodTierMap<number>;
   EFFECT_FRAME_STRIDE: LodTierMap<number>;
   CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP: LodTierMap<number>;
-  MANA_TILE_SMOOTHNESS: LodTierMap<number>;
   CAPTURE_TILE_FRAME_STRIDE: LodTierMap<number>;
   CAPTURE_TILE_SIDE_WALLS: LodTierMap<boolean>;
   WATER_SUBDIVISIONS: LodTierMap<number>;

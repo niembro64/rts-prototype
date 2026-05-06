@@ -18,6 +18,8 @@ import { spatialGrid } from '../SpatialGrid';
 import { LAND_CELL_SIZE } from '../../../config';
 import { getUnitGroundZ } from '../unitGeometry';
 import { findForceFieldProjectileIntersection } from './forceFieldTurret';
+import { getTransformCosSin } from '../../math';
+import { resolveWeaponWorldMount } from './combatUtils';
 
 const MIRROR_PROJECTILE_QUERY_PAD = 96;
 const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
@@ -49,6 +51,7 @@ const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
 const _collisionSimEvents: SimEvent[] = [];
 const _collisionNewProjectiles: Entity[] = [];
 const _collisionSpawnEvents: ProjectileSpawnEvent[] = [];
+const _mirrorProjectilePivot = { x: 0, y: 0, z: 0 };
 
 // Reusable empty set for additive area damage (avoids allocating new Set per frame)
 const _emptyExcludeSet = new Set<EntityId>();
@@ -344,11 +347,25 @@ export function checkProjectileCollisions(
             ? uTurrets[0].pitch
             : 0;
           const groundZ = getUnitGroundZ(u);
+          const uCS = getTransformCosSin(u.transform);
+          const mirrorPivot = uTurrets && uTurrets.length > 0
+            ? resolveWeaponWorldMount(
+                u, uTurrets[0], 0,
+                uCS.cos, uCS.sin,
+                {
+                  currentTick: world.getTick(),
+                  unitGroundZ: groundZ,
+                  surfaceN: u.unit.surfaceNormal,
+                },
+                _mirrorProjectilePivot,
+              )
+            : undefined;
           const hit = findClosestPanelHit(
             panels, mirrorRot, mirrorPitch,
             u.transform.x, u.transform.y, groundZ,
             prevX, prevY, prevZ, curX, curY, curZ,
             -1,
+            mirrorPivot,
           );
           if (hit && hit.t < bestT) {
             bestT = hit.t;

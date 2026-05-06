@@ -419,11 +419,10 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           // Beam length is the firing turret's own `range`. The trace
           // (findBeamPath) bounces off mirrors and subtracts each
           // segment's travelled distance from the budget, so the total
-          // polyline length stays ≤ range — the beam expires at the
-          // sphere surface centred on the muzzle. End point on the
-          // initial fire spawn is start + dir × range so the spawn
-          // visual already shows the correct unobstructed reach until
-          // the per-tick re-trace refines it with bounces / hits.
+          // polyline length stays <= range. End point on the initial
+          // fire spawn is start + dir * range so the spawn visual
+          // already shows the correct unobstructed reach until the
+          // per-tick re-trace refines it with bounces / hits.
           const beamLength = weapon.config.range;
           const endX = spawnX + dirX * beamLength;
           const endY = spawnY + dirY * beamLength;
@@ -930,12 +929,11 @@ export function updateProjectiles(
         startPoint.z = tip.z;
         startPoint.mirrorEntityId = undefined;
 
-        // Per-tick re-trace. The beam is bounded by a SPHERE of radius
-        // `range` centered at the muzzle: the first segment runs out
-        // to `start + dir × range` (where the sphere boundary lies in
-        // that direction), and findBeamPath re-clips every reflected
-        // segment against the same sphere so a bouncing beam can keep
-        // travelling as long as it stays inside the muzzle's range.
+        // Per-tick re-trace. The beam is bounded by a path-length
+        // budget equal to the firing weapon's range. The first segment
+        // runs to start + dir * range; findBeamPath subtracts the
+        // travelled distance at each reflection and traces the next
+        // segment with only the remaining budget.
         const beamLength = proj.config.range;
         const fullEndX = tip.x + tip.dirX * beamLength;
         const fullEndY = tip.y + tip.dirY * beamLength;

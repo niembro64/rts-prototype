@@ -61,12 +61,6 @@ export const METAL_DEPOSIT_FLAT_PAD_CELLS = 20;
 // Use waypoint/overlay lifts for readability instead of moving the terrain.
 export const MANA_TILE_GROUND_LIFT = 0;
 
-// Maximum world-unit error allowed when collapsing a mana/capture terrain
-// tile to a lower polygon mesh. Tiles that exceed this against the shared
-// authoritative triangle surface auto-upgrade until renderer and sim stay
-// aligned. Coplanar/flat tiles still render at the cheapest possible mesh.
-export const MANA_TILE_FLAT_HEIGHT_THRESHOLD = 1;
-
 // 3D waypoint visual lift above the sampled terrain surface. This is
 // render-only: command positions and pathfinding still use the actual
 // terrain height, while dots/lines/flags float this many world units up
@@ -369,6 +363,8 @@ export const EXTRACTOR_METAL_PER_SECOND = 50;
 /** Energy produced per second by each completed solar panel */
 export const SOLAR_ENERGY_PER_SECOND = 50;
 export const WIND_ENERGY_PER_SECOND = 50;
+export const WIND_SPEED_MIN = 0.25;
+export const WIND_SPEED_MAX = 1.55;
 
 /** Wind direction oscillation wave periods in seconds. These are true
  *  sine/cosine periods, not angular divisors. Longer = slower turning. */

@@ -61,6 +61,11 @@ const _panelPivot = { x: 0, y: 0, z: 0 };
  * `excludePanelIndex` lets a beam skip the panel it just bounced off
  * (avoids self-intersection on the next ray segment). Pass -1 to test
  * every panel.
+ *
+ * `pivotOverride`, when provided, is the mirror turret's real
+ * world-space joint. Callers pass it on slope-aware units so the
+ * panel collision plane uses the same turret attachment point as the
+ * aim solver and renderer.
  */
 export function findClosestPanelHit(
   panels: readonly CachedMirrorPanel[],
@@ -70,6 +75,7 @@ export function findClosestPanelHit(
   sx: number, sy: number, sz: number,
   ex: number, ey: number, ez: number,
   excludePanelIndex: number,
+  pivotOverride?: { x: number; y: number; z: number },
 ): MirrorPanelHit | null {
   if (panels.length === 0) return null;
 
@@ -87,14 +93,17 @@ export function findClosestPanelHit(
     const panel = panels[pi];
 
     // Panel center in world. The rigid arm starts at the turret
-    // pivot — which sits at the unit center (xy) + panel.offsetY
-    // sideways (perpY-aligned), and at unitGroundZ + panel midpoint
-    // vertically — and extends `armLength = offsetX` along the 3D
-    // arm direction. The upright-pivot formula is shared via
-    // getMirrorUprightPivot; the arm-extension formula is shared
-    // with the aim solver and debris emitter via getMirrorPanelCenter.
+    // pivot and extends `armLength = offsetX` along the 3D arm
+    // direction. Slope-aware callers provide the real turret joint;
+    // legacy/fallback callers use the upright pivot formula.
     const armLength = panel.offsetX;
-    getMirrorUprightPivot(unitX, unitY, unitGroundZ, perpX, perpY, panel, _panelPivot);
+    if (pivotOverride) {
+      _panelPivot.x = pivotOverride.x + perpX * panel.offsetY;
+      _panelPivot.y = pivotOverride.y + perpY * panel.offsetY;
+      _panelPivot.z = pivotOverride.z;
+    } else {
+      getMirrorUprightPivot(unitX, unitY, unitGroundZ, perpX, perpY, panel, _panelPivot);
+    }
     getMirrorPanelCenter(
       _panelPivot.x, _panelPivot.y, _panelPivot.z,
       armLength, mirrorRot, mirrorPitch, _panelCenter,

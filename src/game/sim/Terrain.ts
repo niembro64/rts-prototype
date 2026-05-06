@@ -35,6 +35,7 @@ export {
   buildTerrainTileMap,
   getTerrainMeshHeight,
   getTerrainMeshNormal,
+  getTerrainMeshSample,
   interpolateTerrainMeshQuadHeight,
   shouldUseTerrainCenterFan,
   setAuthoritativeTerrainTileMap,

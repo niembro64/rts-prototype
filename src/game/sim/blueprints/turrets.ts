@@ -318,6 +318,7 @@ export const TURRET_BLUEPRINTS = {
     turretDrag: 1,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
     passive: true,
+    mountMode: 'unitBodyCenter',
     spread: { angle: Math.PI / 2 },
     // Mirror turrets need to be already pointed when an enemy beam
     // arrives, so they get an awareness shell strictly outside their

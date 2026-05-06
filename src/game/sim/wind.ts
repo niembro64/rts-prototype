@@ -2,6 +2,8 @@ import type { PlayerId } from '@/types/sim';
 import {
   WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS,
   WIND_SPEED_OSCILLATION_PERIODS_SECONDS,
+  WIND_SPEED_MIN,
+  WIND_SPEED_MAX,
 } from '@/config';
 import type { WorldState } from './WorldState';
 import { getBuildingConfig } from './buildConfigs';
@@ -34,7 +36,7 @@ export function sampleWindState(nowMs = Date.now()): WindState {
     Math.sin(wave(t, speedPeriods.primary, 1.7)) * 0.28 +
     Math.cos(wave(t, speedPeriods.secondary, 0.2)) * 0.22 +
     Math.sin(wave(t, speedPeriods.tertiary, 4.1)) * 0.13;
-  const speed = Math.max(0.25, Math.min(1.55, rawSpeed));
+  const speed = Math.max(WIND_SPEED_MIN, Math.min(WIND_SPEED_MAX, rawSpeed));
   return {
     x: Math.cos(angle) * speed,
     y: Math.sin(angle) * speed,

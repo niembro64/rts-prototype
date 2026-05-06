@@ -128,9 +128,18 @@ export type FactoryConstructionRig = {
   towerSpinPhase: number;
 };
 
+export type ProductionRateIndicatorRig = {
+  shower: THREE.Mesh;
+  showerRadius: number;
+  pylonHeight: number;
+  pylonBaseY: number;
+  smoothedRate: number;
+};
+
 export type WindTurbineRig = {
   root: THREE.Mesh;
   rotor: THREE.Mesh;
+  rateIndicator?: ProductionRateIndicatorRig;
 };
 
 /** Per-LOD rotor meshes for the extractor. The detail system gates
@@ -139,6 +148,7 @@ export type WindTurbineRig = {
  *  bands is a free visibility toggle, no rebuild needed. */
 export type ExtractorRig = {
   rotors: THREE.Mesh[];
+  rateIndicator?: ProductionRateIndicatorRig;
 };
 
 export type ConstructionEmitterRig = {
@@ -258,12 +268,6 @@ const windGlassMat = new THREE.MeshStandardMaterial({
   color: BUILDING_PALETTE.photovoltaic,
   metalness: 1.0,
   roughness: 0.04,
-});
-const windGlowMat = new THREE.MeshBasicMaterial({
-  color: BUILDING_PALETTE.cyanGlow,
-  transparent: true,
-  opacity: 0.82,
-  depthWrite: false,
 });
 const extractorBladeMat = new THREE.MeshStandardMaterial(SHINY_GRAY_METAL_MATERIAL);
 const invisibleMat = new THREE.MeshBasicMaterial({
@@ -436,13 +440,33 @@ function buildExtractor(
   const base = new THREE.Mesh(extractorPyramidGeom, primaryMat);
 
   const details: BuildingDetailMesh[] = [];
-  const hubRadius = Math.max(5.5, minDim * 0.15);
-  const rotorY = Math.min(EXTRACTOR_VISUAL_HEIGHT - 6, pyramidHeight + Math.max(4, minDim * 0.1));
+  const ratePillarBaseY = pyramidHeight + 2;
+  const shortRatePillarHeight = Math.max(10, Math.min(16, EXTRACTOR_VISUAL_HEIGHT - ratePillarBaseY - 4));
+  const ratePillarHeight = shortRatePillarHeight * 2;
+  const ratePillarRadius = Math.max(3.8, minDim * 0.055);
+  const metalRateIndicator = buildProductionRateIndicator(
+    'metal',
+    ratePillarRadius * 1.7,
+    ratePillarHeight,
+    ratePillarBaseY,
+    0,
+    0,
+    ratePillarRadius,
+  );
+  for (const mesh of metalRateIndicator.staticMeshes) {
+    details.push(detail(mesh, 'low'));
+  }
+  details.push(detail(metalRateIndicator.rig.shower, 'low'));
+
+  const rotorY = Math.min(
+    EXTRACTOR_VISUAL_HEIGHT - 3,
+    ratePillarBaseY + ratePillarHeight + Math.max(1.5, ratePillarRadius * 0.35),
+  );
 
   const bladeLen = Math.max(32, minDim * 0.86);
   const bladeWidth = Math.max(10, minDim * 0.2);
   const bladeThickness = Math.max(4.5, minDim * 0.11);
-  const bladeRootRadius = Math.max(hubRadius * 1.7, minDim * 0.28);
+  const bladeRootRadius = Math.max(ratePillarRadius * 2.2, minDim * 0.28);
 
   // Simple rotor — all six blades remain visible and rotating so the
   // silhouette is stable across LODs. No higher-tier glow/trim variant.
@@ -456,7 +480,10 @@ function buildExtractor(
     primary: base,
     details,
     height: pyramidHeight,
-    extractorRig: { rotors: [simpleRotor] },
+    extractorRig: {
+      rotors: [simpleRotor],
+      rateIndicator: metalRateIndicator.rig,
+    },
   };
 }
 
@@ -670,6 +697,13 @@ function buildWind(
     makeCylinder(windTowerMat, towerRadius, towerH, 0, towerH / 2, 0),
     'low',
   ));
+  const energyRateIndicator = buildProductionRateIndicator(
+    'energy',
+    towerRadius * 1.8,
+    towerH,
+    0,
+  );
+  details.push(detail(energyRateIndicator.rig.shower, 'low'));
 
   const root = new THREE.Mesh(boxGeom, invisibleMat);
   root.position.set(0, towerH, 0);
@@ -728,18 +762,6 @@ function buildWind(
     const angle = (i / 3) * Math.PI * 2;
     const blade = makeTurbineBlade(windBladeMat, bladeLen, bladeW, bladeThickness, angle);
     rotor.add(blade);
-    const ribCenter = bladeLen * 0.54;
-    const rib = makeBox(
-      windGlowMat,
-      bladeW * 0.16,
-      bladeLen * 0.68,
-      bladeThickness * 0.55,
-      -Math.sin(angle) * ribCenter,
-      Math.cos(angle) * ribCenter,
-      bladeThickness * 0.95,
-    );
-    rib.rotation.z = angle;
-    rotor.add(rib);
   }
 
   details.push(detail(root, 'low', undefined, 'windRig'));
@@ -747,7 +769,7 @@ function buildWind(
     primary,
     details,
     height: baseH,
-    windRig: { root, rotor },
+    windRig: { root, rotor, rateIndicator: energyRateIndicator.rig },
   };
 }
 
@@ -773,6 +795,12 @@ const CONSTRUCTION_TOWER_VARIANTS: readonly ConstructionTowerVariant[] = [
   { resource: 'mana', showerMaterial: factoryManaShowerMat, capMaterial: factoryManaCapMat },
   { resource: 'metal', showerMaterial: factoryMetalShowerMat, capMaterial: factoryMetalCapMat },
 ] as const;
+
+const CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE: Record<ConstructionTowerResource, ConstructionTowerVariant> = {
+  energy: CONSTRUCTION_TOWER_VARIANTS[0],
+  mana: CONSTRUCTION_TOWER_VARIANTS[1],
+  metal: CONSTRUCTION_TOWER_VARIANTS[2],
+};
 
 const CONSTRUCTION_TOWER_SIZE_STYLE: Record<ConstructionTowerSize, {
   baseRadiusMult: number;
@@ -886,6 +914,59 @@ function buildConstructionTowerPiece(
     shower,
     topLocal,
     topBaseLocal: topLocal.clone(),
+  };
+}
+
+function buildProductionRateIndicator(
+  resource: ConstructionTowerResource,
+  showerRadius: number,
+  pylonHeight: number,
+  pylonBaseY: number,
+  x = 0,
+  z = 0,
+  pylonRadius = 0,
+): {
+  staticMeshes: THREE.Mesh[];
+  rig: ProductionRateIndicatorRig;
+} {
+  const variant = CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE[resource];
+  const staticMeshes: THREE.Mesh[] = [];
+  if (pylonRadius > 0) {
+    staticMeshes.push(makeCylinder(
+      factoryFrameMat,
+      pylonRadius,
+      pylonHeight,
+      x,
+      pylonBaseY + pylonHeight / 2,
+      z,
+    ));
+    staticMeshes.push(makeSphere(
+      variant.capMaterial,
+      Math.max(1.6, pylonRadius * 1.45),
+      x,
+      pylonBaseY + pylonHeight + Math.max(1.0, pylonRadius * 0.5),
+      z,
+    ));
+  }
+  const shower = makeCylinder(
+    variant.showerMaterial,
+    showerRadius,
+    1,
+    x,
+    pylonBaseY,
+    z,
+  );
+  shower.visible = false;
+  shower.renderOrder = 6;
+  return {
+    staticMeshes,
+    rig: {
+      shower,
+      showerRadius,
+      pylonHeight,
+      pylonBaseY,
+      smoothedRate: 0,
+    },
   };
 }
 
@@ -1254,10 +1335,6 @@ function makeExtractorRotor(
   const rotor = new THREE.Mesh(cylinderGeom, invisibleMat);
   rotor.position.set(0, y, 0);
 
-  const hubRadius = Math.max(4.5, bladeWidth * 0.68);
-  const hub = makeCylinder(extractorBladeMat, hubRadius, bladeThickness * 2.7, 0, 0, 0, hexCylinderGeom);
-  rotor.add(hub);
-
   const groundClearance = Math.max(3.5, bladeThickness * 1.5);
   const fullVerticalDrop = Math.max(12, y - groundClearance);
   const rootRadius = Math.max(0, Math.min(bladeRootRadius, Math.max(0, bladeReach - 16)));
@@ -1531,7 +1608,6 @@ export function disposeBuildingGeoms(): void {
   windNacelleMat.dispose();
   windBladeMat.dispose();
   windGlassMat.dispose();
-  windGlowMat.dispose();
   extractorBladeMat.dispose();
   invisibleMat.dispose();
   factoryFrameMat.dispose();

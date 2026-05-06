@@ -64,9 +64,12 @@ export const TERRAIN_RIPPLE_CONFIG = {
   radiusFraction: 0.4,
   phase: 1.7,
   components: [
-    { wavelength: 200, magnitude: 0.5 },
-    { wavelength: 600, magnitude: 0.3 },
-    { wavelength: 600, magnitude: 0.2 },
+    { wavelength: 200, magnitude: 0.9 },
+    { wavelength: 600, magnitude: 0.0 },
+    { wavelength: 600, magnitude: 0.0 },
+    // { wavelength: 200, magnitude: 0.5 },
+    // { wavelength: 600, magnitude: 0.3 },
+    // { wavelength: 600, magnitude: 0.2 },
   ],
 } as const;
 

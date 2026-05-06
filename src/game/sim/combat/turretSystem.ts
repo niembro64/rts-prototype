@@ -22,12 +22,10 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
-import { isProjectileShot } from '../types';
 import { getMovementAngle, resolveWeaponWorldMount, turretBit, turretMaskIncludes } from './combatUtils';
 import { getTransformCosSin, normalizeAngle } from '../../math';
-import { solveMirrorAim } from './MirrorAimSolver';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
-import { createDirectTurretAimScratch, createProjectileTurretAimScratch, solveDirectTurretAim, solveProjectileTurretAim } from './aimSolver';
+import { createTurretAimScratch, solveTurretAim } from './aimSolver';
 import { getUnitGroundZ } from '../unitGeometry';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
@@ -35,8 +33,7 @@ import { getUnitGroundZ } from '../unitGeometry';
  *  the barrel through the body. */
 const PITCH_MIN = -Math.PI / 2;
 const PITCH_MAX = Math.PI / 2;
-const _directAim = createDirectTurretAimScratch();
-const _projectileAim = createProjectileTurretAimScratch();
+const _turretAim = createTurretAimScratch();
 const _turretMount = { x: 0, y: 0, z: 0 };
 
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedEntities()): void {
@@ -104,65 +101,29 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           const mount = resolveWeaponWorldMount(
             unit, weapon, weaponIndex,
             cos, sin,
-            { currentTick, unitGroundZ },
+            { currentTick, unitGroundZ, surfaceN: unit.unit?.surfaceNormal },
             _turretMount,
           );
           const weaponX = mount.x;
           const weaponY = mount.y;
           const mountZ = mount.z;
 
-          const shot = weapon.config.shot;
-          const directAim = solveDirectTurretAim(
+          // One aiming path for every turret:
+          // - direct/line weapons resolve a target body/collider point,
+          // - projectile weapons add lead + gravity,
+          // - mirrors resolve the bisector point between enemy turret
+          //   center and enemy body center.
+          const solved = solveTurretAim(
+            unit,
+            weapon,
             target,
             weaponX, weaponY, mountZ,
             weapon.pitch,
-            weapon.config,
-            _directAim,
+            currentTick,
+            (x, y) => world.getGroundZ(x, y),
+            _turretAim,
           );
-          targetAngle = directAim.yaw;
-          targetPitch = directAim.pitch;
-
-          // Passive (mirror) turret aim — orient the reflector so the
-          // enemy's beam bounces toward the chosen victim. All the
-          // bisector geometry, victim selection, and fixed-point P
-          // refinement lives in MirrorAimSolver; here we just apply
-          // the solved overrides.
-          let mirrorPitchOverride: number | null = null;
-          if (weapon.config.passive && world.mirrorsEnabled) {
-            // Pass the FULL 3D turret pivot (mountZ, not just
-            // unitGroundZ) and the weapon's CURRENT pitch as the
-            // iteration seed — the rigid-arm bisector solver couples
-            // yaw + pitch through the panel center, so the seed pose
-            // matters for both axes (stale fallback = noisier first
-            // pass).
-            const aim = solveMirrorAim(
-              unit, weapon, target,
-              weaponX, weaponY, mountZ,
-              targetAngle ?? weapon.rotation,
-              weapon.pitch,
-              currentTick,
-            );
-            if (aim) {
-              targetAngle = aim.targetAngle;
-              mirrorPitchOverride = aim.mirrorPitch;
-            }
-          }
-
-          if (isProjectileShot(shot) && !weapon.config.passive) {
-            // Ballistic arcs are solved from the actual muzzle TIP and
-            // from a collider-aware 3D target point. Lead prediction is
-            // relative to the turret's own muzzle velocity, not just
-            // the carrier unit velocity, and gravity comes from the
-            // shared config constant inside aimSolver.
-            const solved = solveProjectileTurretAim(
-              weapon,
-              target,
-              weaponX, weaponY, mountZ,
-              weapon.pitch,
-              true,
-              (x, y) => world.getGroundZ(x, y),
-              _projectileAim,
-            );
+          if (solved) {
             weapon.ballisticAimInRange = solved.hasBallisticSolution;
             if (!solved.hasBallisticSolution) {
               const bit = turretBit(weaponIndex);
@@ -172,14 +133,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
             }
             targetAngle = solved.yaw;
             targetPitch = solved.pitch;
+            hasActiveTarget = true;
           }
-          // Mirror turrets pivot at the panel center, not the turret
-          // mount — override with the panel-aware pitch computed above
-          // so the panel normal points at the beam source in 3D.
-          if (mirrorPitchOverride !== null) {
-            targetPitch = mirrorPitchOverride;
-          }
-          hasActiveTarget = true;
         }
       }
 

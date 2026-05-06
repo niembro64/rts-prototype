@@ -1,11 +1,16 @@
 import type { Vec3 } from '@/types/vec2';
 import type { Entity, ProjectileShot, Turret, TurretConfig } from '../types';
-import { ballisticSolutions, clamp, computeInterceptTime, getBarrelTip, solveBallisticPitch } from '../../math';
+import { isProjectileShot } from '../types';
+import { ballisticSolutions, clamp, computeInterceptTime, getBarrelTip, getTransformCosSin, solveBallisticPitch } from '../../math';
 import type { BarrelEndpoint } from '../../math/BarrelGeometry';
 import { GRAVITY } from '../../../config';
-import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed } from './combatUtils';
+import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, resolveWeaponWorldMount } from './combatUtils';
+import { pickMirrorLineTurret } from './mirrorTargetPriority';
+import { getUnitGroundZ } from '../unitGeometry';
 
 type GroundHeightLookup = (x: number, y: number) => number;
+
+const _mirrorEnemyTurretMount = { x: 0, y: 0, z: 0 };
 
 export type DirectTurretAim = {
   aim: Vec3;
@@ -19,6 +24,8 @@ export type ProjectileTurretAim = DirectTurretAim & {
   muzzleVelocity: Vec3;
   hasBallisticSolution: boolean;
 };
+
+export type TurretAimSolution = ProjectileTurretAim;
 
 export function createDirectTurretAimScratch(): DirectTurretAim {
   return {
@@ -36,6 +43,10 @@ export function createProjectileTurretAimScratch(): ProjectileTurretAim {
     muzzleVelocity: { x: 0, y: 0, z: 0 },
     hasBallisticSolution: true,
   };
+}
+
+export function createTurretAimScratch(): TurretAimSolution {
+  return createProjectileTurretAimScratch();
 }
 
 /**
@@ -116,6 +127,121 @@ function iterateMuzzleAim(
   tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
   resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out);
   return { tip, yaw };
+}
+
+function writeFallbackDirectionAimPoint(
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  fallbackYaw: number,
+  fallbackPitch: number,
+  out: Vec3,
+): Vec3 {
+  const cosYaw = Math.cos(fallbackYaw);
+  const sinYaw = Math.sin(fallbackYaw);
+  const cosPitch = Math.cos(fallbackPitch);
+  out.x = mountX + cosYaw * cosPitch;
+  out.y = mountY + sinYaw * cosPitch;
+  out.z = mountZ + Math.sin(fallbackPitch);
+  return out;
+}
+
+/**
+ * Mirror turrets share the normal turret aiming pipeline: resolve a
+ * world-space point, then yaw/pitch toward it. The only mirror-specific
+ * part is this point provider: it returns the direction bisecting
+ * own-mirror-center→enemy-line-turret-center and
+ * own-mirror-center→enemy-body-center.
+ */
+export function resolveMirrorTurretAimPoint(
+  unit: Entity,
+  target: Entity,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  fallbackYaw: number,
+  fallbackPitch: number,
+  currentTick: number | undefined,
+  out: Vec3,
+): Vec3 | null {
+  if (!target.combat || !unit.unit) return null;
+
+  const picked = pickMirrorLineTurret(target, unit.id);
+  if (picked === null) return null;
+
+  const tCS = getTransformCosSin(target.transform);
+  const enemyMount = resolveWeaponWorldMount(
+    target, picked.turret, picked.index,
+    tCS.cos, tCS.sin,
+    {
+      currentTick,
+      unitGroundZ: getUnitGroundZ(target),
+      surfaceN: target.unit?.surfaceNormal,
+    },
+    _mirrorEnemyTurretMount,
+  );
+
+  const turretVecX = enemyMount.x - mountX;
+  const turretVecY = enemyMount.y - mountY;
+  const turretVecZ = enemyMount.z - mountZ;
+  const turretLen = Math.hypot(turretVecX, turretVecY, turretVecZ);
+  const bodyVecX = target.transform.x - mountX;
+  const bodyVecY = target.transform.y - mountY;
+  const bodyVecZ = target.transform.z - mountZ;
+  const bodyLen = Math.hypot(bodyVecX, bodyVecY, bodyVecZ);
+  if (turretLen <= 1e-6 || bodyLen <= 1e-6) {
+    return writeFallbackDirectionAimPoint(
+      mountX, mountY, mountZ, fallbackYaw, fallbackPitch, out,
+    );
+  }
+
+  const nx = turretVecX / turretLen + bodyVecX / bodyLen;
+  const ny = turretVecY / turretLen + bodyVecY / bodyLen;
+  const nz = turretVecZ / turretLen + bodyVecZ / bodyLen;
+  const nLen = Math.hypot(nx, ny, nz);
+  if (nLen <= 1e-6) {
+    return writeFallbackDirectionAimPoint(
+      mountX, mountY, mountZ, fallbackYaw, fallbackPitch, out,
+    );
+  }
+
+  out.x = mountX + nx / nLen;
+  out.y = mountY + ny / nLen;
+  out.z = mountZ + nz / nLen;
+  return out;
+}
+
+export function solveTurretAimAtPoint(
+  aimPoint: Vec3,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  currentPitch: number,
+  config: TurretConfig,
+  out: TurretAimSolution,
+): TurretAimSolution {
+  out.aim.x = aimPoint.x;
+  out.aim.y = aimPoint.y;
+  out.aim.z = aimPoint.z;
+
+  let yaw = Math.atan2(aimPoint.y - mountY, aimPoint.x - mountX);
+  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
+  yaw = Math.atan2(aimPoint.y - tip.y, aimPoint.x - tip.x);
+  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
+
+  const horizDist = Math.hypot(aimPoint.x - tip.x, aimPoint.y - tip.y);
+  const heightDiff = aimPoint.z - tip.z;
+  out.yaw = yaw;
+  out.pitch = Math.atan2(heightDiff, horizDist);
+  out.tip = tip;
+  out.hasBallisticSolution = true;
+  out.targetVelocity.x = 0;
+  out.targetVelocity.y = 0;
+  out.targetVelocity.z = 0;
+  out.muzzleVelocity.x = 0;
+  out.muzzleVelocity.y = 0;
+  out.muzzleVelocity.z = 0;
+  return out;
 }
 
 export function solveDirectTurretAim(
@@ -242,5 +368,64 @@ export function solveProjectileTurretAim(
         );
   }
   out.tip = tip;
+  return out;
+}
+
+export function solveTurretAim(
+  unit: Entity,
+  weapon: Turret,
+  target: Entity,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  currentPitch: number,
+  currentTick: number | undefined,
+  groundHeightAt: GroundHeightLookup,
+  out: TurretAimSolution,
+): TurretAimSolution | null {
+  if (weapon.config.passive) {
+    const aimPoint = resolveMirrorTurretAimPoint(
+      unit, target,
+      mountX, mountY, mountZ,
+      weapon.rotation, weapon.pitch,
+      currentTick,
+      out.aim,
+    );
+    if (!aimPoint) return null;
+    return solveTurretAimAtPoint(
+      aimPoint,
+      mountX, mountY, mountZ,
+      currentPitch,
+      weapon.config,
+      out,
+    );
+  }
+
+  if (isProjectileShot(weapon.config.shot)) {
+    return solveProjectileTurretAim(
+      weapon,
+      target,
+      mountX, mountY, mountZ,
+      currentPitch,
+      true,
+      groundHeightAt,
+      out,
+    );
+  }
+
+  solveDirectTurretAim(
+    target,
+    mountX, mountY, mountZ,
+    currentPitch,
+    weapon.config,
+    out,
+  );
+  out.hasBallisticSolution = true;
+  out.targetVelocity.x = 0;
+  out.targetVelocity.y = 0;
+  out.targetVelocity.z = 0;
+  out.muzzleVelocity.x = 0;
+  out.muzzleVelocity.y = 0;
+  out.muzzleVelocity.z = 0;
   return out;
 }

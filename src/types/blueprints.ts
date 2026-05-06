@@ -300,6 +300,11 @@ export type TurretBlueprint = {
   launchForce?: number;
   isManualFire?: boolean;
   passive?: boolean;
+  /** How runtime resolves the turret's world-space body center. The
+   *  default authored mode uses the host blueprint mount. Unit-body-
+   *  center mode is for turrets whose gameplay body is exactly the
+   *  owning unit's target center, e.g. Loris mirrors. */
+  mountMode?: 'authored' | 'unitBodyCenter';
   spread?: { angle?: number; pelletCount?: number };
   burst?: { count?: number; delay?: number };
   forceField?: {

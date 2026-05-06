@@ -17,10 +17,10 @@ import type {
 import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
 import { spatialGrid } from '../SpatialGrid';
-import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice } from '../../math';
+import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice, getTransformCosSin } from '../../math';
 import { findClosestPanelHit } from '../combat/MirrorPanelHit';
 import { findForceFieldSegmentIntersection } from '../combat/forceFieldTurret';
-import { getTargetRadius } from '../combat/combatUtils';
+import { getTargetRadius, resolveWeaponWorldMount } from '../combat/combatUtils';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
 import {
   SOLAR_CLOSED_DAMAGE_MULTIPLIER,
@@ -94,6 +94,7 @@ export function resetDamageBuffers(): void {
 // 3D normal. Mirrors use their panel normal, force fields use the
 // sphere surface normal.
 const _segHit = { t: 0, x: 0, y: 0, z: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, normalZ: 0, panelIndex: -1 };
+const _mirrorPanelPivot = { x: 0, y: 0, z: 0 };
 
 const BEAM_GROUND_HIT_STEPS = 12;
 const BEAM_GROUND_HIT_BISECT_STEPS = 6;
@@ -179,12 +180,9 @@ export class DamageSystem {
   // spheres — full 3D.
   //
   // The beam terminates at the first of: a unit hit, a building hit,
-  // a ground hit, or the firing turret's RANGE SPHERE — a sphere of
-  // radius `range` centered at the muzzle (`startX/Y/Z`). Mirrors and
-  // force fields bounce; every segment after a reflection is also
-  // clipped at the same range sphere, so the beam can travel any
-  // distance along its bouncing polyline as long as the current segment
-  // hasn't exited the sphere.
+  // a ground hit, or the firing turret's path-length range. Mirrors and
+  // force fields bounce; each reflected segment consumes the remaining
+  // distance budget, so the full polyline length stays within range.
   //
   // Mirror panels are tilted rectangles; force fields are spherical
   // reflectors that only catch outside-to-inside crossings. Buildings
@@ -202,13 +200,8 @@ export class DamageSystem {
     reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[];
   } {
     const reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[] = [];
-    // Range sphere — every bounced segment is clipped at this boundary
-    // so the beam never travels further than `range` from the muzzle,
-    // regardless of how many mirrors it bounces off. Caller passes the
-    // initial endpoint as `start + dir × range`, which gives us the
-    // sphere radius for free.
     const range = Math.hypot(endX - startX, endY - startY, endZ - startZ);
-    const rangeSq = range * range;
+    let remainingRange = range;
     let curSX = startX, curSY = startY, curSZ = startZ;
     let curEX = endX, curEY = endY, curEZ = endZ;
     let excludeEntityId = sourceEntityId;
@@ -237,39 +230,46 @@ export class DamageSystem {
       const segDy = curEY - curSY;
       const segDz = curEZ - curSZ;
       const segLen = Math.hypot(segDx, segDy, segDz);
-      if (segLen === 0) break;
+      if (segLen <= 1e-9) break;
       const beamDirX = segDx / segLen;
       const beamDirY = segDy / segLen;
       const beamDirZ = segDz / segLen;
 
+      const travelled = Math.max(0, Math.min(segLen, segLen * hit.t));
+      remainingRange = Math.max(0, remainingRange - travelled);
+      if (remainingRange <= 1e-6) {
+        curSX = hit.x;
+        curSY = hit.y;
+        curSZ = hit.z;
+        curEX = hit.x;
+        curEY = hit.y;
+        curEZ = hit.z;
+        break;
+      }
+
       // Reflect around the reflector's full 3D normal. Mirrors provide
       // a panel normal; force fields provide the sphere surface normal.
-      const dotDN = beamDirX * hit.normalX + beamDirY * hit.normalY + beamDirZ * hit.normalZ;
-      const reflDirX = beamDirX - 2 * dotDN * hit.normalX;
-      const reflDirY = beamDirY - 2 * dotDN * hit.normalY;
-      const reflDirZ = beamDirZ - 2 * dotDN * hit.normalZ;
-
-      // Reflected segment runs from the bounce point outward to wherever
-      // the ray exits the firing turret's range sphere. Ray–sphere
-      // exit: solve |hit + t·refl − origin|² = range² for the FAR
-      // (positive) root with origin = startX/Y/Z and dir already unit.
-      // The bounce point is at distance ≤ range from the origin, so the
-      // discriminant is always non-negative and t_far ≥ 0.
-      const ex = hit.x - startX;
-      const ey = hit.y - startY;
-      const ez = hit.z - startZ;
-      const b = ex * reflDirX + ey * reflDirY + ez * reflDirZ;
-      const c = ex * ex + ey * ey + ez * ez - rangeSq;
-      const disc = b * b - c;
-      const tFar = disc > 0 ? -b + Math.sqrt(disc) : 0;
-      if (tFar <= 0) break;
+      const normalLen = Math.hypot(hit.normalX, hit.normalY, hit.normalZ);
+      if (normalLen <= 1e-9) break;
+      const nx = hit.normalX / normalLen;
+      const ny = hit.normalY / normalLen;
+      const nz = hit.normalZ / normalLen;
+      const dotDN = beamDirX * nx + beamDirY * ny + beamDirZ * nz;
+      let reflDirX = beamDirX - 2 * dotDN * nx;
+      let reflDirY = beamDirY - 2 * dotDN * ny;
+      let reflDirZ = beamDirZ - 2 * dotDN * nz;
+      const reflLen = Math.hypot(reflDirX, reflDirY, reflDirZ);
+      if (reflLen <= 1e-9) break;
+      reflDirX /= reflLen;
+      reflDirY /= reflLen;
+      reflDirZ /= reflLen;
 
       curSX = hit.x;
       curSY = hit.y;
       curSZ = hit.z;
-      curEX = hit.x + reflDirX * tFar;
-      curEY = hit.y + reflDirY * tFar;
-      curEZ = hit.z + reflDirZ * tFar;
+      curEX = hit.x + reflDirX * remainingRange;
+      curEY = hit.y + reflDirY * remainingRange;
+      curEZ = hit.z + reflDirZ * remainingRange;
       excludeEntityId = hit.entityId;
       excludePanelIndex = hit.panelIndex;
     }
@@ -361,12 +361,26 @@ export class DamageSystem {
           ? unitTurrets[0].pitch
           : 0;
         const unitGroundZ = getUnitGroundZ(unit);
+        const unitCS = getTransformCosSin(unit.transform);
+        const mirrorPivot = unitTurrets && unitTurrets.length > 0
+          ? resolveWeaponWorldMount(
+              unit, unitTurrets[0], 0,
+              unitCS.cos, unitCS.sin,
+              {
+                currentTick: this.world.getTick(),
+                unitGroundZ,
+                surfaceN: unit.unit.surfaceNormal,
+              },
+              _mirrorPanelPivot,
+            )
+          : undefined;
         const panelExclude = isExcludedEntity ? excludePanelIndex : -1;
         const hit = findClosestPanelHit(
           panels, mirrorRot, mirrorPitch,
           unit.transform.x, unit.transform.y, unitGroundZ,
           startX, startY, startZ, endX, endY, endZ,
           panelExclude,
+          mirrorPivot,
         );
         if (hit !== null && hit.t < bestT) {
           bestT = hit.t; found = true;

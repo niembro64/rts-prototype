@@ -75,12 +75,27 @@ export type WeaponKinematicsOptions = {
   surfaceN?: { nx: number; ny: number; nz: number };
 };
 
+function usesHostBodyCenterMount(
+  unit: Entity,
+  turret: { config?: { mountMode?: 'authored' | 'unitBodyCenter' } },
+): boolean {
+  return unit.unit !== undefined && turret.config?.mountMode === 'unitBodyCenter';
+}
+
+function writeHostBodyCenterMount(unit: Entity, out: Vec3): Vec3 {
+  out.x = unit.transform.x;
+  out.y = unit.transform.y;
+  out.z = unit.transform.z;
+  return out;
+}
+
 export function resolveWeaponWorldMount(
   unit: Entity,
   turret: {
     worldPos?: Vec3;
     worldPosTick?: number;
     mount: Vec3;
+    config?: { mountMode?: 'authored' | 'unitBodyCenter' };
   },
   _turretIndex: number,
   cos: number,
@@ -92,6 +107,10 @@ export function resolveWeaponWorldMount(
   },
   out: Vec3 = _rwmOut,
 ): Vec3 {
+  if (usesHostBodyCenterMount(unit, turret)) {
+    return writeHostBodyCenterMount(unit, out);
+  }
+
   if (
     turret.worldPos &&
     (options?.currentTick === undefined || turret.worldPosTick === options.currentTick)
@@ -136,7 +155,8 @@ export function updateWeaponWorldKinematics(
   const worldPos = turret.worldPos ?? (turret.worldPos = { x: 0, y: 0, z: 0 });
   const worldVel = turret.worldVelocity ?? (turret.worldVelocity = { x: 0, y: 0, z: 0 });
   const currentTick = options.currentTick;
-  if (currentTick !== undefined && turret.worldPosTick === currentTick) {
+  const bodyCenterMount = usesHostBodyCenterMount(unit, turret);
+  if (currentTick !== undefined && turret.worldPosTick === currentTick && !bodyCenterMount) {
     out.x = worldPos.x;
     out.y = worldPos.y;
     out.z = worldPos.z;
@@ -144,13 +164,18 @@ export function updateWeaponWorldKinematics(
   }
 
   const unitGroundZ = options.unitGroundZ ?? getUnitGroundZ(unit);
-  const localMount = getRuntimeTurretMount(turret);
-  const mount = getTurretWorldMount(
-    unit.transform.x, unit.transform.y, unitGroundZ,
-    cos, sin,
-    localMount.x, localMount.y, localMount.z,
-    options.surfaceN ?? FLAT_SURFACE_NORMAL,
-  );
+  let mount: Vec3;
+  if (bodyCenterMount) {
+    mount = writeHostBodyCenterMount(unit, out);
+  } else {
+    const localMount = getRuntimeTurretMount(turret);
+    mount = getTurretWorldMount(
+      unit.transform.x, unit.transform.y, unitGroundZ,
+      cos, sin,
+      localMount.x, localMount.y, localMount.z,
+      options.surfaceN ?? FLAT_SURFACE_NORMAL,
+    );
+  }
 
   const prevTick = turret.worldPosTick;
   const ticksElapsed = currentTick !== undefined && prevTick !== undefined

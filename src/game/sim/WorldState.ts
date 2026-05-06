@@ -120,8 +120,7 @@ export class WorldState {
    *  source of truth for "what is the ground here?" — sim, physics,
    *  client dead-reckoning, and the tile renderer all read the same
    *  authoritative triangle mesh. The surface returned matches what the
-   *  player sees, except for renderer cells that are safely collapsed
-   *  within MANA_TILE_FLAT_HEIGHT_THRESHOLD. */
+   *  player sees. */
   getGroundZ(x: number, y: number): number {
     return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
   }
