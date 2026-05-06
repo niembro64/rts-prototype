@@ -5,8 +5,14 @@
 // construction-emitter → build-area (or commander → unit for heal)
 // pair. Active sprays emit small colored particles at the source
 // barrel/nozzle. Each particle stores its own target point and flies
-// there over a short lifetime, with chaotic perpendicular wobble,
-// source fade-in, and target fade-out.
+// there over a short lifetime, with chaotic perpendicular wobble.
+// Build-spray particles target points distributed throughout the full
+// volume of the thing being built (a uniform sphere from `radius`, or
+// a uniform box from `dim`), so the stream visibly paints every part
+// of the structure rather than a single nozzle dot. Alpha is constant
+// across each particle's lifetime — start and end render at the same
+// opacity so a particle reads as a solid pellet of resource the whole
+// way to the target. Particle size grows linearly from start to end.
 //
 // Implementation: ONE shared InstancedMesh of unit-sphere particles,
 // drawn in a single draw call for every active spray on the map.
@@ -22,8 +28,9 @@
 //
 // Particle allocation is persistent across frames: when an active
 // spray stops, no new particles are emitted, but already-fired
-// particles finish their short flight and fade out instead of the
-// whole spray popping off instantly.
+// particles always finish their full flight (life completes in air,
+// arriving at their stored target point) instead of dying mid-stream
+// when the build target completes.
 //
 // LOD: particle count scales with `fireExplosionStyle` (flash → inferno
 // ≈ 0.15× → 1.0×) — matching the 2D intensity multiplier — so low LODs
@@ -199,7 +206,12 @@ export class SprayRenderer3D {
       // they represent a construction emitter painting a footprint, not
       // a single repair beam.
       const baseCount = spray.type === 'build' ? 36 : 16;
-      const count = Math.max(4, Math.floor(baseCount * scaledIntensity));
+      // Build sprays scale linearly with intensity so the spawn rate is
+      // exactly proportional to the EMA resource transfer rate the
+      // shower visual shows. Heal sprays keep a small floor so a damaged
+      // unit always reads as actively repaired.
+      const minCount = spray.type === 'build' ? 1 : 4;
+      const count = Math.max(minCount, Math.floor(baseCount * scaledIntensity));
       const n = Math.min(count, MAX_PARTICLES_PER_SPRAY);
 
       // Resolve per-spray color once. Per-spray colorRGB override
@@ -303,20 +315,49 @@ export class SprayRenderer3D {
     const tx = spray.target.pos.x;
     const ty = spray.target.z ?? TRAIL_Y;
     const tz = spray.target.pos.y;
-    const dimSpread = spray.target.dim
-      ? Math.min(spray.target.dim.x, spray.target.dim.y) * 0.42
-      : 0;
-    const targetSpread = spray.type === 'build'
-      ? Math.max(spray.target.radius ?? 0, dimSpread)
-      : Math.max(spray.target.radius ?? 0, 0) * 0.25;
+    const dim = spray.target.dim;
+    const sphereRadius = Math.max(spray.target.radius ?? 0, 0);
 
-    const areaPhase = this.random() * Math.PI * 2;
-    const areaRing = targetSpread * Math.sqrt(this.random());
-    const endX = tx + Math.cos(areaPhase) * areaRing;
-    const endZ = tz + Math.sin(areaPhase) * areaRing;
-    const endY = ty + (spray.type === 'build'
-      ? (this.random() * 2 - 1) * Math.min(targetSpread * 0.16, 10)
-      : (this.random() * 2 - 1) * Math.min(targetSpread * 0.1, 5));
+    let endX: number;
+    let endY: number;
+    let endZ: number;
+    if (spray.type === 'build') {
+      // Build sprays paint the full volume of the thing being built so
+      // particles arrive distributed across every part of the target —
+      // a uniform 3D sphere when only `radius` is supplied, or a
+      // uniform box when explicit `dim` extents are given. Either way
+      // the endpoints fill the volume rather than a flat disk slice.
+      if (dim) {
+        const halfX = dim.x * 0.5;
+        const halfZ = dim.y * 0.5;
+        const halfY = sphereRadius > 0 ? sphereRadius : Math.min(halfX, halfZ);
+        endX = tx + (this.random() * 2 - 1) * halfX;
+        endY = ty + (this.random() * 2 - 1) * halfY;
+        endZ = tz + (this.random() * 2 - 1) * halfZ;
+      } else {
+        // Uniform-volume sphere: cube-root for radial CDF, then a
+        // random unit vector via cos(θ) ∈ [-1,1].
+        const r = sphereRadius * Math.cbrt(this.random());
+        const cosTheta = 1 - 2 * this.random();
+        const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+        const phi = this.random() * Math.PI * 2;
+        endX = tx + r * sinTheta * Math.cos(phi);
+        endY = ty + r * cosTheta;
+        endZ = tz + r * sinTheta * Math.sin(phi);
+      }
+    } else {
+      // Heal: small disk + tiny vertical jitter around the target — a
+      // beam-like stream rather than a volumetric paint.
+      const healSpread = sphereRadius * 0.25;
+      const areaPhase = this.random() * Math.PI * 2;
+      const areaRing = healSpread * Math.sqrt(this.random());
+      endX = tx + Math.cos(areaPhase) * areaRing;
+      endZ = tz + Math.sin(areaPhase) * areaRing;
+      endY = ty + (this.random() * 2 - 1) * Math.min(healSpread * 0.4, 5);
+    }
+    const targetSpread = spray.type === 'build'
+      ? (dim ? Math.max(dim.x, dim.y, sphereRadius * 2) * 0.5 : sphereRadius)
+      : sphereRadius * 0.25;
     const dx = endX - sx;
     const dy = endY - sy;
     const dz = endZ - sz;
@@ -402,12 +443,19 @@ export class SprayRenderer3D {
       const py = sy + dy * phase + this.pArc[i] * envelope;
       const pz = sz + dz * phase + perpZ * wobble;
 
-      const fadeIn = Math.min(1, phase * 4);
-      const fadeOut = Math.min(1, (1 - phase) * 3.4);
-      const alpha = PARTICLE_ALPHA * fadeIn * fadeOut;
-      if (alpha <= 0.002) continue;
+      // Constant alpha across the particle's lifetime — start and end
+      // read at the same opacity so a particle doesn't appear to fade
+      // in at the source or die out before reaching the target. With
+      // the spray immediately stopping new emissions when a build
+      // completes, holding alpha lets the trailing particles complete
+      // their full flight without visually dissolving mid-air.
+      const alpha = PARTICLE_ALPHA;
 
-      const size = this.pSize[i] * (0.68 + 0.42 * envelope);
+      // Size grows linearly from a slightly smaller start to a
+      // slightly larger end so each particle visibly inflates as it
+      // travels — replaces the previous mid-flight bulge from the
+      // sine envelope.
+      const size = this.pSize[i] * (0.78 + 0.36 * phase);
       this._scratchMat.makeScale(size, size, size);
       this._scratchMat.setPosition(px, py, pz);
       this.mesh.setMatrixAt(visibleCount, this._scratchMat);

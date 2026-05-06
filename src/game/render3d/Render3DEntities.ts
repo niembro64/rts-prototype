@@ -4015,11 +4015,13 @@ export class Render3DEntities {
       spray.target.dim = undefined;
       spray.target.radius = targetRadius;
       spray.type = 'build';
-      // Intensity ∈ (0, 1] — rate fraction shapes the density;
-      // a small floor keeps the stream visibly active even when the
-      // pool is starved (the 0.05 cull above already drops the spray
-      // entirely if the rate is essentially zero).
-      spray.intensity = Math.max(0.15, Math.min(1, rate));
+      // Intensity = the EMA rate fraction directly (clamped to [0,1]).
+      // The renderer uses this linearly for spawn rate so the particle
+      // stream density tracks the shower-cylinder fill exactly — i.e.
+      // when the shower is at 50% the spray emits at 50% of the spawn
+      // budget. The upstream 0.05 cull (above) gates whether to emit
+      // a spray at all; below that the visual would be ~zero anyway.
+      spray.intensity = Math.min(1, rate);
       spray.colorRGB = RESOURCE_SPRAY_COLORS[i];
     }
   }
@@ -4092,9 +4094,24 @@ export class Render3DEntities {
       const target = this.clientViewState.getEntity(targetId);
       if (!target) return;
       rig.group.updateWorldMatrix(true, false);
+      // Build target's bounding sphere — spray particles fill this
+      // volume so they paint every part of the structure. Uses the
+      // building's actual width/height/depth when present (so a long
+      // factory and a small solar both get fully covered) and the
+      // unit's body radius as a fallback for unit-shaped targets.
+      let halfHeight = 8;
+      let sphereRadius = 12;
+      const b = target.building;
+      if (b) {
+        halfHeight = b.depth * 0.5;
+        sphereRadius = Math.hypot(b.width, b.height, b.depth) * 0.5;
+      } else if (target.unit) {
+        halfHeight = target.unit.radius.body;
+        sphereRadius = target.unit.radius.body;
+      }
       this._factorySprayTargetWorld.set(
         target.transform.x,
-        target.transform.z + 8,
+        target.transform.z + halfHeight,
         target.transform.y,
       );
       this.emitPylonResourceSprays(
@@ -4104,7 +4121,7 @@ export class Render3DEntities {
         commander.ownership.playerId,
         target.id,
         this._factorySprayTargetWorld,
-        12,
+        sphereRadius,
       );
     }
   }
