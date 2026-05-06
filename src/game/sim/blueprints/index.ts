@@ -26,8 +26,11 @@ import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_BLUEPRINTS } from './units';
 import { BUILDING_BLUEPRINTS } from './buildings';
-import type { ShotBlueprint, ForceFieldBarrierRatioConfig, TurretBlueprint } from './types';
-import { BARREL_THICKNESS_MULTIPLIER } from '../../../config';
+import type {
+  ShotBlueprint,
+  ForceFieldBarrierRatioConfig,
+  TurretBlueprint,
+} from './types';
 import {
   buildingTypeToCode,
   codeToBuildingType,
@@ -65,10 +68,16 @@ function validateStableWireIds(
     }
     seenWireIds.add(id);
     if (!blueprintSet.has(id)) {
-      throw new Error(`Stale ${label} network wire id '${id}' has no matching blueprint`);
+      throw new Error(
+        `Stale ${label} network wire id '${id}' has no matching blueprint`,
+      );
     }
     const encoded = toCode(id);
-    if (encoded === unknownCode || encoded !== code || fromCode(encoded) !== id) {
+    if (
+      encoded === unknownCode ||
+      encoded !== code ||
+      fromCode(encoded) !== id
+    ) {
       throw new Error(
         `Invalid ${label} network wire mapping for '${id}': expected code ${code}, got ${encoded}`,
       );
@@ -152,8 +161,16 @@ function validateTurretRangeMultipliers(
   // farther out than release so target preference doesn't flicker when
   // enemies sit on the inner boundary.
   if (min) {
-    assertFiniteRangeMultiplier(turretId, 'engageRangeMin.acquire', min.acquire);
-    assertFiniteRangeMultiplier(turretId, 'engageRangeMin.release', min.release);
+    assertFiniteRangeMultiplier(
+      turretId,
+      'engageRangeMin.acquire',
+      min.acquire,
+    );
+    assertFiniteRangeMultiplier(
+      turretId,
+      'engageRangeMin.release',
+      min.release,
+    );
     if (min.acquire <= min.release) {
       throw new Error(
         `Invalid turret range multipliers for ${turretId}: engageRangeMin.acquire (${min.acquire}) must be greater than engageRangeMin.release (${min.release})`,
@@ -167,8 +184,16 @@ function validateTurretRangeMultipliers(
   // whole purpose is pre-rotation toward enemies that aren't yet in
   // fire range.
   if (tracking) {
-    assertFiniteRangeMultiplier(turretId, 'trackingRange.acquire', tracking.acquire);
-    assertFiniteRangeMultiplier(turretId, 'trackingRange.release', tracking.release);
+    assertFiniteRangeMultiplier(
+      turretId,
+      'trackingRange.acquire',
+      tracking.acquire,
+    );
+    assertFiniteRangeMultiplier(
+      turretId,
+      'trackingRange.release',
+      tracking.release,
+    );
     if (tracking.release <= tracking.acquire) {
       throw new Error(
         `Invalid turret range multipliers for ${turretId}: trackingRange.release (${tracking.release}) must be greater than trackingRange.acquire (${tracking.acquire})`,
@@ -193,9 +218,10 @@ function computeBarrierConfig(
   range: number,
 ): ForceFieldBarrierConfig | null {
   if (!barrier) return null;
-  const outerRange = barrier.rimWidth != null
-    ? barrier.rimWidth
-    : range * (barrier.outerRatio ?? 1);
+  const outerRange =
+    barrier.rimWidth != null
+      ? barrier.rimWidth
+      : range * (barrier.outerRatio ?? 1);
   return {
     innerRange: 0,
     outerRange,
@@ -257,9 +283,10 @@ function buildShotConfig(
     lifespanVariance: shotBlueprint.lifespanVariance,
     homingTurnRate: shotBlueprint.homingTurnRate,
     submunitions: shotBlueprint.submunitions,
-    ignoresGravity: shotBlueprint.type === 'rocket'
-      ? (shotBlueprint.ignoresGravity ?? true)
-      : shotBlueprint.ignoresGravity,
+    ignoresGravity:
+      shotBlueprint.type === 'rocket'
+        ? (shotBlueprint.ignoresGravity ?? true)
+        : shotBlueprint.ignoresGravity,
     smokeTrail: shotBlueprint.smokeTrail,
     shape: shotBlueprint.shape,
     cylinderShape: shotBlueprint.cylinderShape,
@@ -275,7 +302,9 @@ export function buildProjectileShotConfig(
   if (!shotBlueprint) throw new Error(`Unknown shot blueprint: ${shotId}`);
   const shot = buildShotConfig(shotBlueprint, launchForce);
   if (shot.type === 'force') {
-    throw new Error(`Shot blueprint ${shotId} cannot build a projectile config`);
+    throw new Error(
+      `Shot blueprint ${shotId} cannot build a projectile config`,
+    );
   }
   return shot;
 }
@@ -285,9 +314,16 @@ export function buildProjectileShotConfig(
  */
 export function buildTurretConfig(turretId: TurretId): TurretConfig {
   const turretBlueprint: TurretBlueprint = TURRET_BLUEPRINTS[turretId];
-  if (!turretBlueprint) throw new Error(`Unknown turret blueprint: ${turretId}`);
-  validateTurretRangeMultipliers(turretId, turretBlueprint.rangeMultiplierOverrides);
-  if (!Number.isFinite(turretBlueprint.radius.body) || turretBlueprint.radius.body <= 0) {
+  if (!turretBlueprint)
+    throw new Error(`Unknown turret blueprint: ${turretId}`);
+  validateTurretRangeMultipliers(
+    turretId,
+    turretBlueprint.rangeMultiplierOverrides,
+  );
+  if (
+    !Number.isFinite(turretBlueprint.radius.body) ||
+    turretBlueprint.radius.body <= 0
+  ) {
     throw new Error(
       `Turret blueprint ${turretId} must define positive radius.body`,
     );
@@ -302,7 +338,11 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
       type: 'force',
       angle: turretBlueprint.forceField.angle ?? Math.PI * 2,
       transitionTime: turretBlueprint.forceField.transitionTime ?? 1000,
-      barrier: computeBarrierConfig(turretBlueprint.forceField.barrier, turretBlueprint.range) ?? undefined,
+      barrier:
+        computeBarrierConfig(
+          turretBlueprint.forceField.barrier,
+          turretBlueprint.range,
+        ) ?? undefined,
     };
     shot = fieldShot;
   } else if (turretBlueprint.projectileId) {
@@ -314,7 +354,9 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
       );
     shot = buildShotConfig(shotBlueprint, turretBlueprint.launchForce);
   } else {
-    throw new Error(`Turret ${turretId} has neither projectileId nor forceField`);
+    throw new Error(
+      `Turret ${turretId} has neither projectileId nor forceField`,
+    );
   }
 
   const config: TurretConfig = {
@@ -353,14 +395,16 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     config.barrel &&
     config.barrel.type !== 'complexSingleEmitter'
   ) {
-    const shotBlueprint: ShotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.projectileId];
+    const shotBlueprint: ShotBlueprint =
+      SHOT_BLUEPRINTS[turretBlueprint.projectileId];
     const rawThickness = isLineShotBlueprint(shotBlueprint)
       ? shotBlueprint.width
-      : (shotBlueprint.collision.radius > 0 ? shotBlueprint.collision.radius * 2 : 2);
+      : shotBlueprint.collision.radius > 0
+        ? shotBlueprint.collision.radius * 2
+        : 2;
     config.barrel = {
       ...config.barrel,
-      barrelThickness: config.barrel.barrelThickness ??
-        rawThickness * BARREL_THICKNESS_MULTIPLIER,
+      barrelThickness: config.barrel.barrelThickness ?? rawThickness,
     };
   }
 

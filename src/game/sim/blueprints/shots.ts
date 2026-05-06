@@ -68,7 +68,7 @@ export const SHOT_BLUEPRINTS = {
     collision: { radius: 2.5 },
     explosion: {
       radius: 10 * FIRE_EXPLOSION_RADIUS_MULTIPLIER,
-      damage: 4,
+      damage: 10,
       force: 800,
     },
     detonateOnExpiry: true,

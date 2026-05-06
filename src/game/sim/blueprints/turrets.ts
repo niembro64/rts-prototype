@@ -172,7 +172,7 @@ export const TURRET_BLUEPRINTS = {
     id: 'gatlingMortarTurret',
     projectileId: 'mortarShot',
     range: 1000,
-    cooldown: 200,
+    cooldown: 500,
     // Ballistic max range = (launchForce / mass)² / GRAVITY. With
     // mortarShot.mass = SHOT_MASS_MEDIUM × 3 = 30 and GRAVITY = 400,
     // a launchForce of 8 000 only reaches ~178 wu — far short of
