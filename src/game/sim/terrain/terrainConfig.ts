@@ -8,7 +8,7 @@ export const WATER_LEVEL_FRACTION = 0.71;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
 // Host sim, client prediction, and terrain rendering share this exact mesh.
-export const AUTHORITATIVE_TERRAIN_SUBDIV = 7;
+export const AUTHORITATIVE_TERRAIN_SUBDIV = 1;
 export const TERRAIN_MESH_SUBDIV = AUTHORITATIVE_TERRAIN_SUBDIV;
 
 /** Add an averaged center vertex to an authoritative terrain sub-quad
