@@ -79,9 +79,13 @@ export function updateAiProduction(
     if (!entity.ownership) continue;
     if (!aiPlayerIds.has(entity.ownership.playerId)) continue;
 
-    // Queue a unit if the factory is idle and player is under cap
+    // Pick a repeat-build type for the factory if it has none set. The
+    // production loop now keeps queue[0] for the lifetime of the
+    // selection, so each idle AI factory locks onto one type until the
+    // shell completes — in practice that means one unit type per
+    // factory until destruction.
     if (entity.factory.buildQueue.length === 0 && world.canPlayerQueueUnit(entity.ownership.playerId)) {
-      if (factoryProductionSystem.queueUnit(entity, pickRandomUnit(world, allowedTypes))) {
+      if (factoryProductionSystem.selectUnit(entity, pickRandomUnit(world, allowedTypes), world)) {
         world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
       }
     }

@@ -54,9 +54,12 @@ export class FactoryProductionSystem {
         factoryComp.currentBuildProgress = shell.buildable ? getBuildFraction(shell.buildable) : 1;
         if (!shell.buildable || shell.buildable.isComplete) {
           // Activation: copy waypoints, aim turrets, mark dirty.
+          // The queue head is intentionally NOT popped — repeat-build
+          // mode keeps the selected unit type until the player toggles
+          // it off, so the next tick will spawn another shell from
+          // queue[0].
           this.activateShell(world, factory, shell, buildingGrid);
           completedUnits.push(shell);
-          factoryComp.buildQueue.shift();
           factoryComp.currentShellId = null;
           factoryComp.isProducing = false;
           factoryComp.currentBuildProgress = 0;
@@ -179,8 +182,13 @@ export class FactoryProductionSystem {
     world.markSnapshotDirty(unit.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS);
   }
 
-  // Add a unit to factory's build queue (cap-checked externally via canPlayerQueueUnit)
-  queueUnit(factory: Entity, unitTypeId: string): boolean {
+  // Toggle the factory's repeat-build selection. Selecting the
+  // currently-building type clears the selection and cancels the
+  // in-progress shell; selecting a different type cancels the current
+  // shell (refunding paid resources) and replaces the selection. The
+  // production loop never pops queue[0], so the selected type is rebuilt
+  // forever until the player toggles it off.
+  selectUnit(factory: Entity, unitTypeId: string, world: WorldState): boolean {
     if (!factory.factory || !isEntityActive(factory)) {
       return false;
     }
@@ -189,7 +197,21 @@ export class FactoryProductionSystem {
     } catch {
       return false;
     }
-    factory.factory.buildQueue.push(unitTypeId);
+    const factoryComp = factory.factory;
+    const current = factoryComp.buildQueue[0] ?? null;
+    if (current === unitTypeId) {
+      // Toggle off — cancel active shell, clear selection.
+      this.cancelActiveShell(world, factory);
+      factoryComp.buildQueue.length = 0;
+      factoryComp.isProducing = false;
+    } else {
+      // Replace — cancel any active shell of the previous type, then
+      // swap the selection. The production loop spawns a fresh shell
+      // of the new type next tick.
+      this.cancelActiveShell(world, factory);
+      factoryComp.buildQueue.length = 0;
+      factoryComp.buildQueue.push(unitTypeId);
+    }
     return true;
   }
 

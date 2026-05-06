@@ -15,11 +15,10 @@ const props = defineProps<{
 
 const showPanel = computed(() => props.selection.unitCount > 0 || props.selection.hasFactory);
 
-// Status panel shows when factory has a queue
-const showStatusPanel = computed(() =>
-  props.selection.hasFactory &&
-  props.selection.factoryQueue &&
-  props.selection.factoryQueue.length > 0
+// Repeat-build: queue holds 0-or-1 entries; queue[0] is the unit type
+// currently being looped. Used to light up the matching button.
+const selectedBuildUnitId = computed(() =>
+  props.selection.factoryQueue?.[0]?.unitId ?? null,
 );
 
 const waypointModes: { mode: WaypointType; label: string; key: string; color: string }[] = [
@@ -50,19 +49,6 @@ const unitOptions = BUILDABLE_UNIT_IDS.map((id) => {
 const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
 const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
-// Queue units with modifier key support (Shift=5, Ctrl=100)
-function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: string) {
-  let count = 1;
-  if (event.ctrlKey) {
-    count = 100;
-  } else if (event.shiftKey) {
-    count = 5;
-  }
-
-  for (let i = 0; i < count; i++) {
-    props.actions.queueUnit(factoryId, unitId);
-  }
-}
 </script>
 
 <template>
@@ -129,13 +115,14 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
 
     <!-- Vehicle production (for factory) -->
     <div v-if="selection.hasFactory && selection.factoryId" class="button-group">
-      <div class="group-label">Vehicles <span class="modifier-hint">(Shift=5, Ctrl=100)</span></div>
+      <div class="group-label">Vehicles</div>
       <div class="buttons">
         <button
           v-for="uo in vehicleOptions"
           :key="uo.unitId"
           class="action-btn produce-btn vehicle-btn"
-          @click="queueUnitsWithModifier($event, selection.factoryId!, uo.unitId)"
+          :class="{ active: selectedBuildUnitId === uo.unitId }"
+          @click="actions.queueUnit(selection.factoryId!, uo.unitId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
@@ -151,7 +138,8 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
           v-for="uo in botOptions"
           :key="uo.unitId"
           class="action-btn produce-btn bot-btn"
-          @click="queueUnitsWithModifier($event, selection.factoryId!, uo.unitId)"
+          :class="{ active: selectedBuildUnitId === uo.unitId }"
+          @click="actions.queueUnit(selection.factoryId!, uo.unitId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
@@ -167,51 +155,16 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
       <span v-else>&nbsp;</span>
     </div>
   </div>
-
-  <!-- STATUS PANEL (right side) - shows queue and production status -->
-  <div v-if="showStatusPanel" class="status-panel">
-    <div class="panel-header">
-      <span class="status-title">Production Status</span>
-    </div>
-
-    <!-- Current production progress bar -->
-    <div v-if="selection.factoryIsProducing" class="progress-section">
-      <div class="group-label">Building</div>
-      <div class="progress-bar">
-        <div class="progress-fill" :style="{ width: (selection.factoryProgress ?? 0) * 100 + '%' }"></div>
-        <span class="progress-label">{{ selection.factoryQueue?.[0]?.label }}</span>
-      </div>
-    </div>
-
-    <!-- Queue items -->
-    <div v-if="selection.factoryQueue && selection.factoryQueue.length > 0" class="queue-section">
-      <div class="group-label">Queue ({{ selection.factoryQueue.length }})</div>
-      <div class="queue-items">
-        <div
-          v-for="(item, index) in selection.factoryQueue"
-          :key="index"
-          class="queue-item"
-          :class="{ 'building': index === 0 && selection.factoryIsProducing }"
-          @click="actions.cancelQueueItem(selection.factoryId!, index)"
-          :title="'Click to cancel ' + item.label"
-        >
-          <span class="queue-index">{{ index + 1 }}</span>
-          <span class="queue-label">{{ item.label }}</span>
-          <span class="queue-cancel">×</span>
-        </div>
-      </div>
-    </div>
-  </div>
 </template>
 
 <style scoped>
 /* Base panel styles — aligned with the bottom-bar aesthetic
  * (dark semi-transparent base + muted gray border). Rounded
  * corners stay so the panel still reads as a discrete card. */
-.options-panel,
-.status-panel {
+.options-panel {
   position: absolute;
   bottom: 20px;
+  left: 20px;
   background: rgba(15, 18, 24, 0.92);
   border: 1px solid #444;
   border-radius: 8px;
@@ -221,50 +174,6 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
   color: white;
   pointer-events: auto;
   z-index: 1000;
-}
-
-/* Options panel on left */
-.options-panel {
-  left: 20px;
-}
-
-/* Status panel on right */
-.status-panel {
-  right: 20px;
-  width: 220px;
-  height: 280px;
-  border-color: rgba(255, 204, 0, 0.4);
-  display: flex;
-  flex-direction: column;
-}
-
-.status-panel .panel-header {
-  flex-shrink: 0;
-}
-
-.status-panel .progress-section {
-  flex-shrink: 0;
-}
-
-.status-panel .queue-section {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.status-panel .queue-items {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
-}
-
-.status-title {
-  color: #ffcc00;
-}
-
-.progress-section {
-  margin-bottom: 10px;
 }
 
 .panel-header {
@@ -386,110 +295,4 @@ function queueUnitsWithModifier(event: MouseEvent, factoryId: number, unitId: st
   min-height: 14px;
 }
 
-/* Queue section styles */
-.queue-section {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.progress-bar {
-  position: relative;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.progress-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  background: linear-gradient(90deg, #ffcc00, #ff9900);
-  transition: width 0.1s ease;
-}
-
-.progress-label {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 11px;
-  font-weight: bold;
-  color: white;
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
-}
-
-.queue-items {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 120px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-/* Custom scrollbar for queue */
-.queue-items::-webkit-scrollbar {
-  width: 6px;
-}
-
-.queue-items::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-}
-
-.queue-items::-webkit-scrollbar-thumb {
-  background: rgba(255, 204, 0, 0.5);
-  border-radius: 3px;
-}
-
-.queue-items::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 204, 0, 0.7);
-}
-
-.queue-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.queue-item:hover {
-  background: rgba(255, 100, 100, 0.3);
-  border-color: #ff4444;
-}
-
-.queue-item.building {
-  border-color: #ffcc00;
-  background: rgba(255, 204, 0, 0.2);
-}
-
-.queue-index {
-  font-weight: bold;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 10px;
-}
-
-.queue-label {
-  color: white;
-}
-
-.queue-cancel {
-  color: rgba(255, 255, 255, 0.4);
-  font-weight: bold;
-}
-
-.queue-item:hover .queue-cancel {
-  color: #ff4444;
-}
 </style>

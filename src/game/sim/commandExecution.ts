@@ -183,10 +183,10 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
   const factory = ctx.world.getEntity(command.factoryId);
   if (!factory?.factory || !factory.ownership) return;
 
-  // Don't allow queueing if player is at unit cap (including already-queued units)
-  if (!ctx.world.canPlayerQueueUnit(factory.ownership.playerId)) return;
-
-  if (factoryProductionSystem.queueUnit(factory, command.unitId)) {
+  // Repeat-build: the selection persists even at unit cap so production
+  // resumes automatically when an existing unit dies. Cap is enforced
+  // at shell-spawn time inside the production loop.
+  if (factoryProductionSystem.selectUnit(factory, command.unitId, ctx.world)) {
     ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
   }
 }
