@@ -1,18 +1,12 @@
 import {
-  RIDGE_HALF_WIDTH_FRACTION,
-  RIDGE_INNER_RADIUS_FRACTION,
-  RIDGE_OUTER_RADIUS_FRACTION,
-  RIPPLE_PHASE,
-  RIPPLE_RADIUS_FRACTION,
-  RIPPLE_W1,
-  RIPPLE_W2,
-  RIPPLE_W3,
   TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION,
   TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
   TERRAIN_D_TERRAIN,
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
   TERRAIN_PLATEAU_CONFIG,
+  TERRAIN_RIDGE_CONFIG,
+  TERRAIN_RIPPLE_CONFIG,
   TILE_FLOOR_Y,
 } from './terrainConfig';
 import { clamp01, smootherstep } from './terrainMath';
@@ -216,14 +210,15 @@ function getGeneratedNaturalTerrainHeight(
   const oval = ovalSample ?? sampleMapOvalAt(ovalMetrics, x, y);
 
   let ripple = 0;
-  const maxDist = ovalMetrics.minDim * RIPPLE_RADIUS_FRACTION;
+  const maxDist = ovalMetrics.minDim * TERRAIN_RIPPLE_CONFIG.radiusFraction;
   if (oval.distance < maxDist && maxDist > 0) {
     const fadeT = (oval.distance / maxDist) * (Math.PI / 2);
     const fade = Math.cos(fadeT);
-    const a = Math.cos(oval.distance / RIPPLE_W1);
-    const b = Math.cos(oval.distance / RIPPLE_W2 + RIPPLE_PHASE);
-    const c = Math.sin((oval.ox + oval.oy) / RIPPLE_W3);
-    const sum = a * 0.5 + b * 0.3 + c * 0.2;
+    const [c0, c1, c2] = TERRAIN_RIPPLE_CONFIG.components;
+    const a = Math.cos(oval.distance / c0.wavelength);
+    const b = Math.cos(oval.distance / c1.wavelength + TERRAIN_RIPPLE_CONFIG.phase);
+    const c = Math.sin((oval.ox + oval.oy) / c2.wavelength);
+    const sum = a * c0.magnitude + b * c1.magnitude + c * c2.magnitude;
     const norm = (sum + 1) * 0.5;
     ripple = getMountainRippleAmplitude() * fade * norm;
   }
@@ -237,14 +232,14 @@ function getGeneratedNaturalTerrainHeight(
     const barrierMid = cycle / 2;
     const distFromBarrierCenter = Math.abs(pos - barrierMid);
     const minDim = ovalMetrics.minDim;
-    const halfWidth = minDim * RIDGE_HALF_WIDTH_FRACTION;
+    const halfWidth = minDim * TERRAIN_RIDGE_CONFIG.halfWidthFraction;
     const alongDist = oval.distance * Math.cos(distFromBarrierCenter);
     const perpDist = oval.distance * Math.sin(distFromBarrierCenter);
     if (alongDist > 0 && perpDist < halfWidth) {
       const widthT = perpDist / halfWidth;
       const angFalloff = (1 + Math.cos(widthT * Math.PI)) * 0.5;
-      const innerR = minDim * RIDGE_INNER_RADIUS_FRACTION;
-      const outerR = minDim * RIDGE_OUTER_RADIUS_FRACTION;
+      const innerR = minDim * TERRAIN_RIDGE_CONFIG.innerRadiusFraction;
+      const outerR = minDim * TERRAIN_RIDGE_CONFIG.outerRadiusFraction;
       let radT: number;
       if (alongDist >= outerR) {
         radT = 1;
