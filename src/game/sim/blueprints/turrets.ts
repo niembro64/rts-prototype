@@ -78,7 +78,9 @@ export const TURRET_BLUEPRINTS = {
     projectileId: 'lightShot',
     range: 200,
     cooldown: 450,
-    launchForce: 456,
+    // Must cover the authored fire envelope: ballistic max range is
+    // (launchForce / mass)^2 / GRAVITY, and lightShot.mass = 4.
+    launchForce: 1_250,
     turretTurnAccel: 200,
     turretDrag: 0.5,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 2 },
@@ -98,7 +100,9 @@ export const TURRET_BLUEPRINTS = {
     projectileId: 'mediumShot',
     range: 160,
     cooldown: 3_000,
-    launchForce: 2_000,
+    // mediumShot.mass = 10; this leaves headroom over the 160 wu
+    // release range so Lynx fight-move stops only when it can fire.
+    launchForce: 2_800,
     turretTurnAccel: 40,
     turretDrag: 0.15,
     barrel: {
@@ -476,11 +480,10 @@ export const TURRET_BLUEPRINTS = {
     isManualFire: true,
     constructionEmitter: CONSTRUCTION_EMITTER_VISUALS,
   },
-  // Tower beam turret — same head, barrel, range, audio, and visual
-  // shape as megaBeamTurret, but fires towerBeamShot (10× dps). Used
-  // by the static megaBeam tower so the building's heavier damage
-  // doesn't drift onto the Widow, which keeps its own megaBeamTurret.
-  // Visually identical at the TurretMesh3D level.
+  // Tower beam turret — same range and audio family as megaBeamTurret,
+  // but with a larger head and longer barrel so the static tower's
+  // weapon is readable above its body. Fires towerBeamShot (10x dps)
+  // without changing the Widow's own megaBeamTurret balance.
   towerBeamTurret: {
     id: 'towerBeamTurret',
     projectileId: 'towerBeamShot',
@@ -489,7 +492,7 @@ export const TURRET_BLUEPRINTS = {
     turretDrag: 0.5,
     barrel: {
       type: 'simpleSingleBarrel',
-      barrelLength: 0.6,
+      barrelLength: 0.8,
       barrelThickness: 8,
     },
     rangeMultiplierOverrides: fireEnvelope({
@@ -498,7 +501,7 @@ export const TURRET_BLUEPRINTS = {
     }),
     eventsSmooth: false,
     color: COLOR_WHITE,
-    radius: { body: 14 },
+    radius: { body: 18 },
     audio: {
       fireSound: AUDIO.event.fire.megaBeamTurret,
     },

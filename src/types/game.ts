@@ -68,6 +68,7 @@ export type GameOverCallback = (winnerId: PlayerId) => void;
 
 export type GameConnection = {
   sendCommand(command: Command): void;
+  markClientReady(): void;
   onSnapshot(callback: SnapshotCallback): void;
   onSimEvent(callback: SimEventCallback): void;
   onGameOver(callback: GameOverCallback): void;

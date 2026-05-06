@@ -236,6 +236,7 @@ function savePlayerClientEnabled(enabled: boolean): void {
 const playerClientEnabled = ref(loadStoredPlayerClientEnabled());
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
+const battleLoading = ref(false);
 
 // Background battle state (managed by LobbyManager)
 let backgroundBattle: BackgroundBattleState | null = null;
@@ -917,6 +918,14 @@ const serverBarVars = computed(() =>
 const clientBarVars = computed(() => barVars(BAR_THEMES.client));
 
 const battleLabel = computed(() => gameStarted.value ? 'REAL BATTLE' : 'DEMO BATTLE');
+const battleLoadingTitle = computed(() =>
+  networkRole.value === 'client' ? 'Receiving Terrain' : 'Generating Terrain',
+);
+const battleLoadingDetail = computed(() =>
+  networkRole.value === 'host'
+    ? 'Waiting for every player to install the authoritative map.'
+    : 'Installing the authoritative map before simulation starts.',
+);
 
 // Display values: always read from snapshot meta (server→snapshot→display)
 const displayServerTpsAvg = computed(
@@ -1400,6 +1409,7 @@ function handleMinimapClick(x: number, y: number): void {
 function restartGame(): void {
   gameOverWinner.value = null;
   battleStartTime = 0;
+  battleLoading.value = false;
   clearRealBattleTimeouts();
   // Return to lobby
   gameStarted.value = false;
@@ -1547,6 +1557,7 @@ function handleLobbyStart(): void {
 }
 
 function handleLobbyCancel(): void {
+  battleLoading.value = false;
   networkManager.disconnect();
   networkRole.value = null;
   roomCode.value = '';
@@ -1561,6 +1572,7 @@ function handleOffline(): void {
   // Start game in offline mode — 4-player AI game, user controls player 1
   networkRole.value = null;
   networkNotice.value = null;
+  battleLoading.value = true;
   localPlayerId.value = 1;
 
   nextTick(() => {
@@ -1876,6 +1888,10 @@ function setupNetworkCallbacks(): void {
     startGameWithPlayers(handoff.playerIds);
   };
 
+  networkManager.onClientReady = (playerId: PlayerId) => {
+    currentServer?.markPlayerReady(playerId);
+  };
+
   networkManager.onError = (error: string) => {
     lobbyError.value = error;
     networkNotice.value = error;
@@ -1948,6 +1964,7 @@ function applyLobbySettingsFromHost(settings: {
 async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): Promise<void> {
   showLobby.value = false;
   gameStarted.value = true;
+  battleLoading.value = true;
   battleStartTime = Date.now();
   if (networkRole.value !== null) {
     localPlayerId.value = networkManager.getLocalPlayerId();
@@ -1962,7 +1979,10 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
   // Small delay to ensure WebGL cleanup before creating new game
   realBattleStartTimeout = setTimeout(async () => {
     realBattleStartTimeout = null;
-    if (startGen !== realBattleStartGen || !containerRef.value) return;
+    if (startGen !== realBattleStartGen || !containerRef.value) {
+      battleLoading.value = false;
+      return;
+    }
 
     const rect = containerRef.value.getBoundingClientRect();
 
@@ -1998,6 +2018,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       });
       if (startGen !== realBattleStartGen || !gameStarted.value || !containerRef.value) {
         createdServer.stop();
+        battleLoading.value = false;
         return;
       }
       realBattleSnapshotListenerKeys.clear();
@@ -2092,6 +2113,12 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       lookupPlayerName: (pid) => resolvePlayerName(pid, null),
     });
     setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
+    const scene = gameInstance.getScene();
+    if (scene) {
+      scene.onStartupReady = () => {
+        if (startGen === realBattleStartGen) battleLoading.value = false;
+      };
+    }
 
     // Setup scene callbacks
     setupSceneCallbacks();
@@ -2364,6 +2391,17 @@ onUnmounted(() => {
         class="phaser-container"
         v-show="gameStarted"
       ></div>
+
+      <div
+        v-if="battleLoading"
+        class="battle-loading-overlay"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="battle-loading-spinner"></div>
+        <div class="battle-loading-title">{{ battleLoadingTitle }}</div>
+        <div class="battle-loading-detail">{{ battleLoadingDetail }}</div>
+      </div>
 
       <div
         v-if="!playerClientEnabled"
@@ -3609,6 +3647,48 @@ onUnmounted(() => {
 
 .phaser-container canvas {
   display: block;
+}
+
+.battle-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(5, 7, 10, 0.92);
+  color: #edf3ff;
+  pointer-events: auto;
+}
+
+.battle-loading-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgba(237, 243, 255, 0.18);
+  border-top-color: #80c7ff;
+  border-radius: 50%;
+  animation: battle-loading-spin 0.8s linear infinite;
+}
+
+.battle-loading-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.battle-loading-detail {
+  max-width: min(420px, calc(100vw - 40px));
+  color: rgba(237, 243, 255, 0.72);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+@keyframes battle-loading-spin {
+  to { transform: rotate(360deg); }
 }
 
 .player-client-off .phaser-container canvas,

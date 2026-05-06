@@ -153,6 +153,7 @@ export class NetworkManager {
    *  any player via the host's re-broadcast. The receiver
    *  updates its own LobbyPlayer record from `getPlayer(id)`. */
   public onPlayerInfoUpdate?: (player: LobbyPlayer) => void;
+  public onClientReady?: (playerId: PlayerId) => void;
 
   private createPeer(peerId: string): Peer {
     return new Peer(peerId, PEER_OPTIONS);
@@ -767,6 +768,13 @@ export class NetworkManager {
         }
         break;
 
+      case 'clientReady':
+        if (this.role === 'host') {
+          if (!this.isMessageForCurrentGame(message)) return;
+          this.onClientReady?.(fromPlayerId);
+        }
+        break;
+
       case 'playerInfo':
         // Host: a client is reporting its own IP/location/tz lookup
         // and/or a username rename. Stamp the values on our player
@@ -1134,6 +1142,17 @@ export class NetworkManager {
     }
   }
 
+  sendClientReady(): void {
+    if (this.role !== 'client') return;
+    const hostConn = this.connections.get(1);
+    if (hostConn) {
+      this.safeSend(hostConn, {
+        type: 'clientReady',
+        gameId: this.getUniversalGameId(),
+      });
+    }
+  }
+
   consumePendingState(): NetworkServerSnapshot | null {
     const state = this.pendingReceivedState;
     this.pendingReceivedState = null;
@@ -1250,6 +1269,7 @@ export class NetworkManager {
     this.onPlayerAssignment = undefined;
     this.onError = undefined;
     this.onConnected = undefined;
+    this.onClientReady = undefined;
   }
 }
 

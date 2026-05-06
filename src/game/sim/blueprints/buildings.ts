@@ -50,8 +50,8 @@ export const MEGA_BEAM_TOWER_VISUAL_HEIGHT = 80;
 export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
   FACTORY_BASE_VISUAL_HEIGHT + CONSTRUCTION_TURRET_HEAD_RADIUS;
 /** Pivot height for the megaBeam turret on the tower — head sits just
- *  above the body cap so the barrel clears the box silhouette. */
-export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z = MEGA_BEAM_TOWER_VISUAL_HEIGHT + 14;
+ *  above the body socket so the barrel clears the tapered hex shaft. */
+export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z = MEGA_BEAM_TOWER_VISUAL_HEIGHT + 18;
 
 export type FactoryBuildingVisualMetrics = {
   minDim: number;
@@ -198,9 +198,10 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     },
     turrets: [
       {
-        // Tower-specific turret: same visual + range as the Widow's
-        // megaBeam mount, but fires towerBeamShot (10× dps). The Widow
-        // keeps the regular megaBeamTurret so its balance is unchanged.
+        // Tower-specific turret: same range/audio family as the
+        // Widow's megaBeam mount, but larger and firing towerBeamShot
+        // (10x dps). The Widow keeps the regular megaBeamTurret so
+        // its balance and silhouette are unchanged.
         turretId: 'towerBeamTurret',
         mount: { x: 0, y: 0, z: MEGA_BEAM_TOWER_TURRET_MOUNT_Z },
       },

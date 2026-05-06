@@ -177,6 +177,8 @@ export class GameServer {
   private isFirstSnapshot: boolean = true;
   private snapshotCounter: number = 0;
   private keyframeRatio: number = typeof DEFAULT_KEYFRAME_RATIO === 'number' ? DEFAULT_KEYFRAME_RATIO : DEFAULT_KEYFRAME_RATIO === 'ALL' ? 1 : 0;
+  private startupReadyListenerKeys = new Set<string>();
+  private startupGateOpen = false;
 
   // Debug: send spatial grid occupancy info in snapshots
   private sendGridInfo: boolean = false;
@@ -436,6 +438,10 @@ export class GameServer {
     const now = performance.now();
     this.lastTickTime = now;
     this.lastSnapshotTime = 0; // Ensure first tick always emits a snapshot
+    this.startupGateOpen = this.snapshotListeners.length === 0;
+    if (!this.startupGateOpen) {
+      this.emitStartupSnapshot(now);
+    }
     this.startGameLoop();
   }
 
@@ -455,6 +461,19 @@ export class GameServer {
       // part of the same setInterval callback, so we include it — remote
       // clients care about the total load each tick imposes on the host.
       const workStart = performance.now();
+      if (!this.areStartupClientsReady()) {
+        const elapsed = tickNow - this.lastSnapshotTime;
+        const baseInterval = this.maxSnapshotIntervalMs;
+        const effectiveInterval = baseInterval === 0
+          ? 0
+          : baseInterval * this.snapshotIntervalMultiplier();
+        if (effectiveInterval === 0 || elapsed >= effectiveInterval) {
+          this.emitStartupSnapshot(tickNow);
+        }
+        this.recordTickWork(performance.now() - workStart);
+        return;
+      }
+      this.startupGateOpen = true;
       this.tick(delta);
 
       const elapsed = tickNow - this.lastSnapshotTime;
@@ -475,19 +494,7 @@ export class GameServer {
         this.emitSnapshot();
       }
 
-      const workMs = performance.now() - workStart;
-      if (!this.tickMsInitialized) {
-        this.tickMsAvg = workMs;
-        this.tickMsHi = workMs;
-        this.tickMsInitialized = true;
-      } else {
-        // Same tier semantics as FRAME_TIMING_EMA: slow drift on avg, fast
-        // climb on hi, slow decay on hi.
-        this.tickMsAvg = 0.99 * this.tickMsAvg + 0.01 * workMs;
-        this.tickMsHi = workMs > this.tickMsHi
-          ? 0.5 * this.tickMsHi + 0.5 * workMs
-          : 0.9999 * this.tickMsHi + 0.0001 * workMs;
-      }
+      this.recordTickWork(performance.now() - workStart);
 
       // Adaptive rate: every ~64 ticks check whether we're chronically
       // over (halve effective rate) or chronically under (claw back
@@ -496,6 +503,36 @@ export class GameServer {
       // userTickRateHz worth of work per second.
       this.maybeAdaptTickRate();
     }, 1000 / this.tickRateHz);
+  }
+
+  private emitStartupSnapshot(now: number): void {
+    this.forceNextSnapshotKeyframe();
+    this.lastSnapshotTime = now;
+    this.emitSnapshot();
+  }
+
+  private areStartupClientsReady(): boolean {
+    if (this.startupGateOpen) return true;
+    if (this.snapshotListeners.length === 0) return true;
+    for (const listener of this.snapshotListeners) {
+      if (!this.startupReadyListenerKeys.has(listener.trackingKey)) return false;
+    }
+    return true;
+  }
+
+  private recordTickWork(workMs: number): void {
+    if (!this.tickMsInitialized) {
+      this.tickMsAvg = workMs;
+      this.tickMsHi = workMs;
+      this.tickMsInitialized = true;
+    } else {
+      // Same tier semantics as FRAME_TIMING_EMA: slow drift on avg, fast
+      // climb on hi, slow decay on hi.
+      this.tickMsAvg = 0.99 * this.tickMsAvg + 0.01 * workMs;
+      this.tickMsHi = workMs > this.tickMsHi
+        ? 0.5 * this.tickMsHi + 0.5 * workMs
+        : 0.9999 * this.tickMsHi + 0.0001 * workMs;
+    }
   }
 
   // Stop the game loop
@@ -523,6 +560,8 @@ export class GameServer {
     // Reset keyframe state for next session
     this.isFirstSnapshot = true;
     this.snapshotCounter = 0;
+    this.startupReadyListenerKeys.clear();
+    this.startupGateOpen = false;
   }
 
   // Main simulation tick — variable timestep (driven by internal setInterval)
@@ -1254,10 +1293,23 @@ export class GameServer {
     return trackingKey;
   }
 
+  markSnapshotListenerReady(trackingKey: string): void {
+    this.startupReadyListenerKeys.add(trackingKey);
+  }
+
+  markPlayerReady(playerId: PlayerId): void {
+    for (const listener of this.snapshotListeners) {
+      if (listener.playerId === playerId) {
+        this.startupReadyListenerKeys.add(listener.trackingKey);
+      }
+    }
+  }
+
   removeSnapshotListener(trackingKey: string): void {
     const idx = this.snapshotListeners.findIndex((l) => l.trackingKey === trackingKey);
     if (idx < 0) return;
     const [removed] = this.snapshotListeners.splice(idx, 1);
+    this.startupReadyListenerKeys.delete(removed.trackingKey);
     if (!this.snapshotListeners.some((l) => l.deltaTrackingKey === removed.deltaTrackingKey)) {
       resetDeltaTrackingForKey(removed.deltaTrackingKey);
     }

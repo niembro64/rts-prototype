@@ -30,6 +30,10 @@ export class RemoteGameConnection implements GameConnection {
     networkManager.sendCommand(command);
   }
 
+  markClientReady(): void {
+    networkManager.sendClientReady();
+  }
+
   onSnapshot(callback: SnapshotCallback): void {
     this.snapshotCallback = callback;
     const pendingFromNetworkManager = networkManager.consumePendingState();

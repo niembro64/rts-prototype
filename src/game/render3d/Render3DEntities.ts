@@ -70,6 +70,7 @@ import {
   type ExtractorRig,
   type FactoryConstructionRig,
   type ProductionRateIndicatorRig,
+  type SolarRig,
   type WindTurbineRig,
   type BuildingShapeType,
   type SolarPetalAnimation,
@@ -333,6 +334,7 @@ type EntityMesh = {
   factoryRig?: FactoryConstructionRig;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
+  solarRig?: SolarRig;
   /** Per-building render height (solar is shorter than the default). */
   buildingHeight?: number;
   /** True when the building primary mesh owns its material and should
@@ -3500,14 +3502,16 @@ export class Render3DEntities {
         if (buildingTurrets) {
           // Use the GLOBAL gfx tier, not the per-entity distance tier,
           // when building the turret. Distance-LOD can briefly drop a
-          // tower to 'min' (turretStyle: 'none' → no head, no barrel)
+          // tower to 'min' (turretStyle: 'none' -> no head, no barrel)
           // while the camera is framing in, and the building mesh is
-          // cached forever after that — so a tower built at 'min' has
-          // no turret hardware visible even after the camera comes
-          // close. Towers are sparse strategic landmarks; their
-          // weapon should be present whenever the user's overall
-          // graphics tier renders any turret hardware.
-          const buildingGfx = getGraphicsConfigFor(this.lod.gfx.tier);
+          // cached forever after that. Beam towers are sparse strategic
+          // landmarks, so keep their weapon mesh present even when the
+          // user's overall tier is min.
+          const buildingTurretTier =
+            shapeType === 'megaBeamTower' && this.lod.gfx.tier === 'min'
+              ? 'low'
+              : this.lod.gfx.tier;
+          const buildingGfx = getGraphicsConfigFor(buildingTurretTier);
           for (let ti = 0; ti < buildingTurrets.length; ti++) {
             const t = buildingTurrets[ti];
             if (t.config.constructionEmitter) {
@@ -3547,6 +3551,7 @@ export class Render3DEntities {
           factoryRig: shape.factoryRig,
           windRig: shape.windRig,
           extractorRig: shape.extractorRig,
+          solarRig: shape.solarRig,
           buildingHeight: shape.height,
           buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
           solarOpenAmount: e.building?.solar?.open === false ? 0 : 1,
@@ -3767,11 +3772,21 @@ export class Render3DEntities {
   }
 
   private updateAnimatedBuildings(): void {
-    for (const id of this.solarBuildingIds) {
-      const mesh = this.buildingMeshes.get(id);
-      const entity = this.clientViewState.getEntity(id);
-      if (mesh && entity) {
+    if (this.solarBuildingIds.length > 0) {
+      const rateAlpha = halfLifeBlend(this._spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
+      for (const id of this.solarBuildingIds) {
+        const mesh = this.buildingMeshes.get(id);
+        const entity = this.clientViewState.getEntity(id);
+        if (!mesh || !entity) continue;
         this.updateSolarCollectorAnimation(mesh, entity, mesh.buildingCachedDetailsReady === true);
+        const open = entity.building?.solar?.open !== false;
+        this.applyProductionRateIndicator(
+          mesh.solarRig?.rateIndicator,
+          open ? 1 : 0,
+          rateAlpha,
+          mesh.buildingCachedDetailsReady === true
+            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
+        );
       }
     }
 

@@ -142,6 +142,10 @@ export type WindTurbineRig = {
   rateIndicator?: ProductionRateIndicatorRig;
 };
 
+export type SolarRig = {
+  rateIndicator: ProductionRateIndicatorRig;
+};
+
 /** Per-LOD rotor meshes for the extractor. The detail system gates
  *  visibility by tier so only ONE rotor is on-screen at a time, but
  *  the animator advances the same yaw on every entry — flipping LOD
@@ -195,6 +199,7 @@ export type BuildingShape = {
   factoryRig?: FactoryConstructionRig;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
+  solarRig?: SolarRig;
 };
 
 // ── Standard dimensions ────────────────────────────────────────────────
@@ -210,18 +215,43 @@ const EXTRACTOR_VISUAL_HEIGHT = EXTRACTOR_BUILDING_VISUAL_HEIGHT;
 // it to the right dimensions. Shared across instances so every factory
 // and every solar uses the same backing BufferGeometry.
 const boxGeom = new THREE.BoxGeometry(1, 1, 1);
+// Solar geometry — both the inner photovoltaic body (truncated square
+// pyramid) and the four fold-out petals (trapezoids) share one chop
+// line: cut off the top third of the original triangle/pyramid so the
+// closed assembly lands on a flat square plateau (where the energy
+// rate pillar sits) instead of an apex point.
+const SOLAR_PETAL_CHOP_FRACTION = 2 / 3;
+// Half-width of the panel/face at the chop line. Linear taper from
+// half-width 0.5 at the base (y=0) to 0 at the apex (y=1).
+const SOLAR_CHOP_HALF = (1 - SOLAR_PETAL_CHOP_FRACTION) / 2;
+// Frustum top y in the body's local (centered) y-range -0.5..0.5.
+const SOLAR_FRUSTUM_TOP_Y = -0.5 + SOLAR_PETAL_CHOP_FRACTION;
+const h = SOLAR_CHOP_HALF;
+const ty = SOLAR_FRUSTUM_TOP_Y;
 const solarPanelPyramidGeom = new THREE.BufferGeometry();
 solarPanelPyramidGeom.setAttribute('position', new THREE.Float32BufferAttribute([
-  -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,   0, 0.5, 0,
-   0.5, -0.5, -0.5,  -0.5, -0.5, -0.5,   0, 0.5, 0,
-   0.5, -0.5,  0.5,   0.5, -0.5, -0.5,   0, 0.5, 0,
-  -0.5, -0.5, -0.5,  -0.5, -0.5,  0.5,   0, 0.5, 0,
+  // Front face (+z) — base edge then chopped top edge, two triangles
+  -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,   h, ty,  h,
+  -0.5, -0.5,  0.5,   h, ty,  h,  -h, ty,  h,
+  // Back face (-z)
+   0.5, -0.5, -0.5,  -0.5, -0.5, -0.5,  -h, ty, -h,
+   0.5, -0.5, -0.5,  -h, ty, -h,   h, ty, -h,
+  // Right face (+x)
+   0.5, -0.5,  0.5,   0.5, -0.5, -0.5,   h, ty, -h,
+   0.5, -0.5,  0.5,   h, ty, -h,   h, ty,  h,
+  // Left face (-x)
+  -0.5, -0.5, -0.5,  -0.5, -0.5,  0.5,  -h, ty,  h,
+  -0.5, -0.5, -0.5,  -h, ty,  h,  -h, ty, -h,
+  // Top face (+y) — flat square plateau the energy pillar rests on
+  -h, ty, -h,  -h, ty,  h,   h, ty,  h,
+  -h, ty, -h,   h, ty,  h,   h, ty, -h,
 ], 3));
 solarPanelPyramidGeom.computeVertexNormals();
 const solarTrianglePetalShape = new THREE.Shape([
   new THREE.Vector2(-0.5, 0),
   new THREE.Vector2(0.5, 0),
-  new THREE.Vector2(0, 1),
+  new THREE.Vector2(SOLAR_CHOP_HALF, SOLAR_PETAL_CHOP_FRACTION),
+  new THREE.Vector2(-SOLAR_CHOP_HALF, SOLAR_PETAL_CHOP_FRACTION),
 ]);
 const solarTrianglePanelGeom = new THREE.ShapeGeometry(solarTrianglePetalShape);
 const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape, {
@@ -231,6 +261,7 @@ const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape
 });
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
+const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.36);
 const extractorPyramidGeom = createHexFrustumGeometry();
 const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
 const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
@@ -674,7 +705,36 @@ function buildSolar(
     ), 'low', undefined, 'solarPanel'));
   }
 
-  return { primary, details, height: SOLAR_HEIGHT, primaryMaterialLocked: true };
+  // Energy rate pillar — same hardware as the metal extractor's
+  // metal-rate pillar, mounted on the new square plateau formed by
+  // the four chopped petal tops.
+  const minDim = Math.min(width, depth);
+  const squareTopY = SOLAR_PETAL_CHOP_FRACTION * SOLAR_HEIGHT;
+  const ratePillarBaseY = squareTopY + 2;
+  const shortRatePillarHeight = Math.max(10, Math.min(16, SOLAR_HEIGHT - ratePillarBaseY - 4));
+  const ratePillarHeight = shortRatePillarHeight * 2;
+  const ratePillarRadius = Math.max(3.8, minDim * 0.055);
+  const energyRateIndicator = buildProductionRateIndicator(
+    'energy',
+    ratePillarRadius * 1.7,
+    ratePillarHeight,
+    ratePillarBaseY,
+    0,
+    0,
+    ratePillarRadius,
+  );
+  for (const mesh of energyRateIndicator.staticMeshes) {
+    details.push(detail(mesh, 'low'));
+  }
+  details.push(detail(energyRateIndicator.rig.shower, 'low'));
+
+  return {
+    primary,
+    details,
+    height: SOLAR_HEIGHT,
+    primaryMaterialLocked: true,
+    solarRig: { rateIndicator: energyRateIndicator.rig },
+  };
 }
 
 function buildWind(
@@ -1152,69 +1212,101 @@ function buildUnknown(primaryMat: THREE.Material): BuildingShape {
  *  a turret collar — and ride along in absolute world units, so they
  *  don't deform when the primary scales.
  *
- *  The mounted megaBeam turret is built and aimed by Render3DEntities
+ *  The mounted beam turret is built and aimed by Render3DEntities
  *  through the same buildTurretMesh3D path units use, so head + barrel
- *  + spin/pitch groups are byte-identical to a Widow-mounted megaBeam.
- *  This shape builder owns body geometry only; turret meshes are added
- *  on top by the caller from `entity.combat.turrets`. */
+ *  + spin/pitch behavior stays shared with unit-mounted weapons. This
+ *  shape builder owns body geometry only; turret meshes are added on
+ *  top by the caller from `entity.combat.turrets`. */
 function buildMegaBeamTower(primaryMat: THREE.Material): BuildingShape {
-  const primary = new THREE.Mesh(boxGeom, primaryMat);
+  const primary = new THREE.Mesh(megaBeamTowerBodyGeom, primaryMat);
 
-  // World-unit dimensions. The primary slab spans the building's
-  // logical 40×80×40 cuboid (set by gridWidth/gridHeight × cellSize
-  // and the visualHeight constant); details are sized in those terms.
+  // World-unit dimensions. The primary tapered shaft scales inside
+  // the building's logical 40x80x40 cuboid (set by gridWidth/gridHeight
+  // x cellSize and the visualHeight constant); details are sized in
+  // those terms.
   const H = MEGA_BEAM_TOWER_VISUAL_HEIGHT; // 80 wu
   const FOOT = 40; // gridWidth × cellSize for the megaBeamTower entry
 
   const details: BuildingDetailMesh[] = [];
 
-  // Stepped foundation flange — slightly wider, low and squat. Reads
-  // as "this thing is bolted into the ground, not floating".
+  // Stepped hex foundation flange — slightly wider, low and squat.
+  // Reads as "this thing is bolted into the ground, not floating".
   const baseHeight = 14;
-  const baseWidth = FOOT * 1.35;
-  const base = new THREE.Mesh(boxGeom, primaryMat);
-  base.scale.set(baseWidth, baseHeight, baseWidth);
-  base.position.set(0, baseHeight / 2, 0);
+  const base = makeCylinder(
+    primaryMat,
+    FOOT * 0.68,
+    baseHeight,
+    0,
+    baseHeight / 2,
+    0,
+    hexCylinderGeom,
+  );
   details.push(detail(base, 'min', undefined, 'static'));
 
-  // Turret collar platform — sits at the top of the body, flares the
-  // silhouette out under the turret head so the tower reads as
-  // structurally reinforced where the weapon is mounted.
-  const collarHeight = 10;
-  const collarWidth = FOOT * 1.2;
-  const collar = new THREE.Mesh(boxGeom, primaryMat);
-  collar.scale.set(collarWidth, collarHeight, collarWidth);
-  collar.position.set(0, H - collarHeight / 2 + 2, 0);
-  details.push(detail(collar, 'min', undefined, 'static'));
+  const lowerBand = makeCylinder(
+    extractorBladeMat,
+    FOOT * 0.57,
+    3,
+    0,
+    baseHeight + 1.5,
+    0,
+    hexCylinderGeom,
+  );
+  details.push(detail(lowerBand, 'min', undefined, 'static'));
 
-  // Cap accent — a thin metal-finished band sandwiched between the
-  // primary slab and the collar. Reads as a structural ring.
-  const capRingHeight = 2;
-  const capRingWidth = FOOT * 1.05;
-  const capRing = new THREE.Mesh(boxGeom, extractorBladeMat);
-  capRing.scale.set(capRingWidth, capRingHeight, capRingWidth);
-  capRing.position.set(0, H - collarHeight - capRingHeight / 2 + 1, 0);
-  details.push(detail(capRing, 'min', undefined, 'static'));
-
-  // Four vertical corner ribs running the full body height. Thin
-  // rectangular columns at the four edges of the slab. Built on the
-  // building primary face midpoints (slightly inset so they read as
-  // attached girders rather than a separate frame). Metal-finished
-  // material distinguishes them from the team-colored body.
-  const ribThickness = 3.5;
-  const ribInset = ribThickness * 0.4;
-  const ribHalf = FOOT / 2 - ribInset;
-  const ribY = baseHeight + (H - baseHeight - collarHeight) / 2;
-  const ribLength = H - baseHeight - collarHeight;
-  for (let i = 0; i < 4; i++) {
-    const corner = i;
-    const sx = corner === 0 || corner === 3 ? -1 : 1;
-    const sz = corner < 2 ? -1 : 1;
-    const rib = new THREE.Mesh(boxGeom, extractorBladeMat);
-    rib.scale.set(ribThickness, ribLength, ribThickness);
-    rib.position.set(sx * ribHalf, ribY, sz * ribHalf);
-    details.push(detail(rib, 'min', undefined, 'static'));
+  // Six sloped metal spars follow the taper from the wide base to the
+  // narrower turret neck, making the shaft read as hexagonal and
+  // engineered instead of a scaled box.
+  const strutBottomRadius = FOOT * 0.42;
+  const strutTopRadius = FOOT * 0.29;
+  const strutBottomY = baseHeight + 3;
+  const strutTopY = H - 8;
+  const strutRadius = 1.7;
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 6 + (i / 6) * Math.PI * 2;
+    const bottom = new THREE.Vector3(
+      Math.cos(angle) * strutBottomRadius,
+      strutBottomY,
+      Math.sin(angle) * strutBottomRadius,
+    );
+    const top = new THREE.Vector3(
+      Math.cos(angle) * strutTopRadius,
+      strutTopY,
+      Math.sin(angle) * strutTopRadius,
+    );
+    const delta = top.clone().sub(bottom);
+    const length = delta.length();
+    const strut = new THREE.Mesh(cylinderGeom, extractorBladeMat);
+    strut.scale.set(strutRadius * 2, length, strutRadius * 2);
+    strut.position.copy(bottom).addScaledVector(delta, 0.5);
+    strut.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize());
+    details.push(detail(strut, 'min', undefined, 'static'));
   }
+
+  // Turret socket — a compact hex collar at the top of the taper. The
+  // actual rotating turret mesh is mounted on this centerline by
+  // Render3DEntities.
+  const neck = makeCylinder(
+    primaryMat,
+    FOOT * 0.41,
+    7,
+    0,
+    H - 3.5,
+    0,
+    hexCylinderGeom,
+  );
+  details.push(detail(neck, 'min', undefined, 'static'));
+
+  const socket = makeCylinder(
+    extractorBladeMat,
+    FOOT * 0.44,
+    4,
+    0,
+    H + 2,
+    0,
+    hexCylinderGeom,
+  );
+  details.push(detail(socket, 'min', undefined, 'static'));
 
   return { primary, details, height: H };
 }
@@ -1258,13 +1350,14 @@ function createWindBladeGeometry(): THREE.BufferGeometry {
   return geom;
 }
 
-function createHexFrustumGeometry(): THREE.BufferGeometry {
+function createHexFrustumGeometry(
+  topRadius: number = 0.17,
+  bottomRadius: number = 0.5,
+): THREE.BufferGeometry {
   const positions: number[] = [];
   // Normalized footprint: when Render3DEntities scales the primary by
   // building width/depth, the widest base edge stays inside that exact
-  // logical footprint instead of spilling past the extractor cells.
-  const bottomRadius = 0.5;
-  const topRadius = 0.17;
+  // logical footprint instead of spilling past the building cells.
   const bottomY = -0.5;
   const topY = 0.5;
   const bottomCorners: THREE.Vector3[] = [];
@@ -1596,6 +1689,7 @@ export function disposeBuildingGeoms(): void {
   solarTrianglePetalGeom.dispose();
   cylinderGeom.dispose();
   hexCylinderGeom.dispose();
+  megaBeamTowerBodyGeom.dispose();
   extractorPyramidGeom.dispose();
   factorySphereGeom.dispose();
   coneGeom.dispose();

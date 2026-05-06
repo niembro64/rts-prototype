@@ -1,4 +1,4 @@
-This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. remember that our system may have changed since the issue was written, so if you are unsure about an item, check the code and if it is no longer relevant, delete it.
+This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. remember that our code may have changed since the issue was written, check the code and if the issue is no longer relevant, delete it.
 
 #####################################################
 
@@ -212,20 +212,6 @@ profiles/components, not reinterpret blueprint pieces independently.
     Fix direction: extract `ServerBootstrap`, `ServerTickLoop`,
     `UnitForceSystem`, `ServerSnapshotPublisher`, and `ServerDebugGridPublisher`.
 
-12. CaptureTileRenderer3D owns terrain geometry, terrain texture, capture overlay, build overlay, and horizon shelf.
-    References:
-    - src/game/render3d/CaptureTileRenderer3D.ts:1
-    - src/game/render3d/CaptureTileRenderer3D.ts:756
-    - src/game/render3d/CaptureTileRenderer3D.ts:1016
-    - file size: 1668 lines
-
-    Terrain mesh LOD, mana/capture tile coloring, build/debug overlays, baked
-    lighting, and horizon continuation are different systems with different
-    lifetimes and update triggers.
-
-    Fix direction: split into `TerrainGeometryBuilder`, `ManaTerrainTexture`,
-    `CaptureOverlayTexture`, `BuildGridOverlayTexture`, and a thin renderer that
-    composes them.
 
 13. Debris rendering re-interprets unit/turret/shot blueprints instead of reusing render fragments.
     References:
@@ -288,15 +274,3 @@ profiles/components, not reinterpret blueprint pieces independently.
     `shotTypes`, `constructionTypes`, `locomotionTypes`, `buildingTypes`) with
     barrel exports for backwards compatibility during migration.
 
-17. Turret ballistic comments still mention stale derived gravity math.
-    References:
-    - src/game/sim/blueprints/turrets.ts:176
-    - src/game/sim/blueprints/turrets.ts:177
-
-    The gatling mortar comment hardcodes a gravity value in prose. We have been
-    pushing toward one global gravity source of truth; comments that quote old
-    constants become misleading when tuning ballistics.
-
-    Fix direction: remove hardcoded gravity math from turret blueprint comments,
-    or reference the canonical gravity constant without duplicating numeric
-    derivations in prose.

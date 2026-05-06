@@ -366,6 +366,8 @@ export class RtsScene3D {
   // Separate timestamp for the full-keyframe rate. Stays 0 until the
   // first keyframe arrives, then updates only on subsequent keyframes.
   private lastFullSnapArrivalMs = 0;
+  private startupReadyAckSent = false;
+  private startupReleased = false;
 
   // Entity source adapter, kept shape-compatible with RtsScene's for UI helpers
   private entitySourceAdapter!: {
@@ -416,6 +418,7 @@ export class RtsScene3D {
   public onGameOverUI?: (winnerId: PlayerId) => void;
   public onGameRestart?: () => void;
   public onServerMetaUpdate?: (meta: NetworkServerSnapshotMeta) => void;
+  public onStartupReady?: () => void;
 
   // Phaser-compat accessors used by PhaserCanvas.vue
   private _restartCb: (() => void) | null = null;
@@ -824,6 +827,14 @@ export class RtsScene3D {
     const state = this.snapshotBuffer.consume();
     if (state) {
       this.clientViewState.applyNetworkState(state);
+      if (!this.startupReadyAckSent && !state.isDelta) {
+        this.startupReadyAckSent = true;
+        this.gameConnection.markClientReady();
+      }
+      if (!this.startupReleased && state.tick > 0) {
+        this.startupReleased = true;
+        this.onStartupReady?.();
+      }
 
       const now = performance.now();
       if (this.lastSnapArrivalMs > 0) {

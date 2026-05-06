@@ -184,6 +184,7 @@ export type LobbyPlayerInfoPayload = {
 // Client → Server
 export type NetworkPlayerActionMessage =
   | { type: 'command'; gameId?: string; data: Command }
+  | { type: 'clientReady'; gameId?: string }
   // Client reports its own IP / location / timezone to the host.
   // The host updates the local LobbyPlayer record and re-broadcasts
   // (see `playerInfoUpdate` below) so every connected client sees

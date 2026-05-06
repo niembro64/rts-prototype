@@ -39,6 +39,10 @@ export class LocalGameConnection implements GameConnection {
     this.server.receiveCommand(command);
   }
 
+  markClientReady(): void {
+    this.server.markSnapshotListenerReady(this.snapshotListenerKey);
+  }
+
   onSnapshot(callback: SnapshotCallback): void {
     this.snapshotCallback = callback;
     if (this.pendingSnapshot) {

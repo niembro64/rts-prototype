@@ -21,7 +21,10 @@ import {
   unregisterPackedProjectile,
 } from './combat';
 import { clearTargetIndex } from './combat/targetIndex';
-import { engagedTurretCount } from './combat/combatUtils';
+import {
+  fightMoveFireCapableTurretCount,
+  fightMoveFireEligibleTurretCount,
+} from './combat/combatUtils';
 import {
   updateProjectiles,
   checkProjectileCollisions,
@@ -930,13 +933,17 @@ export class Simulation {
     unit.thrustDirY = dy / distance;
   }
 
-  /** True when the unit has enough turrets engaged that it should hold
-   *  position to fight rather than continue chasing the current waypoint. */
+  /** True when the unit has enough fire-capable turrets eligible to
+   *  shoot that it should hold position rather than keep chasing. */
   private shouldStopForEngagedCombat(entity: Entity): boolean {
-    const turrets = entity.combat?.turrets;
-    if (!turrets || turrets.length === 0) return false;
+    const combat = entity.combat;
+    if (!combat || combat.turrets.length === 0) return false;
+    const turrets = combat.turrets;
     const stopRatio = getUnitBlueprint(entity.unit!.unitType).fightStopEngagedRatio;
-    return engagedTurretCount(turrets) >= turrets.length * stopRatio;
+    const fireCapableCount = fightMoveFireCapableTurretCount(turrets);
+    if (fireCapableCount === 0) return false;
+    return fightMoveFireEligibleTurretCount(turrets, combat.firingTurretMask) >=
+      fireCapableCount * stopRatio;
   }
 
   /** Per-tick stuck check. For each unit that wanted to move this

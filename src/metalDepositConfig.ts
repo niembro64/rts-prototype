@@ -91,17 +91,24 @@ export const METAL_DEPOSIT_CONFIG = {
 
   /** Concentric rings of deposits. Order doesn't matter — the renderer
    *  and placement validator iterate over all of them. */
+
   rings: [
     {
       radiusFraction: 0.2,
       countPerPlayer: 1,
-      sliceOffset: 2.66,
+      sliceOffset: 0,
       dTerrainLevels: 1,
     },
     {
-      radiusFraction: 0.45,
-      countPerPlayer: 2,
-      sliceOffset: 0.10,
+      radiusFraction: 0.27,
+      countPerPlayer: 1,
+      sliceOffset: 2.4,
+      dTerrainLevels: 2,
+    },
+    {
+      radiusFraction: 0.36,
+      countPerPlayer: 1,
+      sliceOffset: 2.3,
       dTerrainLevels: 2,
     },
     {
