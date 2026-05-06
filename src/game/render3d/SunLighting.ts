@@ -125,6 +125,11 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
+function smoothstep(edge0: number, edge1: number, v: number): number {
+  const t = clamp((v - edge0) / Math.max(1e-6, edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 export function terrainDirectionalShade(normal: SimSunDirection): number {
   if (!TERRAIN_SHADOW_RENDER_CONFIG.enabled) return 1;
   const direct = Math.max(
@@ -164,7 +169,7 @@ export function terrainPrecomputedShadow(
     const blocker = sampleHeight(sx, sy) - rayHeight;
     if (blocker <= 0) continue;
 
-    const block = clamp(blocker / Math.max(1, cfg.softness), 0, 1);
+    const block = smoothstep(0, Math.max(1, cfg.softness), blocker);
     const distanceWeight = 1 - (i - 1) / Math.max(1, samples);
     shade = Math.min(shade, 1 - cfg.strength * block * distanceWeight);
   }

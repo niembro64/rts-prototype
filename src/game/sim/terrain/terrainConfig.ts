@@ -8,34 +8,41 @@ export const WATER_LEVEL_FRACTION = 0.71;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
 // Host sim, client prediction, and terrain rendering share this exact mesh.
-// This is the max per-land-cell resolution; buildTerrainTileMap collapses
-// cells that do not need it down to cheaper authoritative subdivisions.
-export const AUTHORITATIVE_TERRAIN_SUBDIV = 4;
-export const TERRAIN_MESH_SUBDIV = AUTHORITATIVE_TERRAIN_SUBDIV;
+// This is the finest equilateral-triangle edge resolution relative to
+// LAND_CELL_SIZE. The baker groups fine triangles upward into larger
+// authoritative triangles where error allows.
+export const TERRAIN_FINE_TRIANGLE_SUBDIV = 3;
 
 /** Maximum vertical deviation, in world units, allowed when a land cell is
  *  collapsed to a lower subdivision. Steep but planar cells simplify; curved,
  *  terraced, waterline, and ridge cells keep more triangles. */
-export const TERRAIN_ADAPTIVE_MAX_HEIGHT_ERROR = 8;
+export const TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR = 20;
 
-/** Legacy diagnostic threshold for the old center-fan terrain split.
- *  Authoritative terrain now keeps every sub-quad at two triangles. */
-export const TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD = 0.5;
+/** Maximum hierarchy-level jump allowed across touching triangle edges.
+ *  `1` gives a 2:1 balanced transition band around high-detail terrain. */
+export const TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA = 1;
 
-/** Legacy smoothing factors for experiments. The authoritative adaptive
- *  surface samples final vertices from the generated terrain curve exactly. */
+/** Hard cap for final mesh edge repair. Keeps terrain startup bounded even
+ *  when a pathological map generates many transition edges. */
+export const TERRAIN_TRIANGLE_FINAL_REPAIR_MAX_PASSES = 3;
 
-const val = 0.5;
-export const TERRAIN_SMOOTHING_LAMBDA_X = val;
-export const TERRAIN_SMOOTHING_LAMBDA_Y = val;
-export const TERRAIN_SMOOTHING_LAMBDA_Z = val;
+/** Extra error sample at a triangle centroid catches peaks or valleys that do
+ *  not land on the fine lattice points for that candidate triangle. */
+export const TERRAIN_TRIANGLE_SAMPLE_CENTROID = true;
+
+/** Never collapse a candidate triangle if the simplified plane moves the
+ *  waterline classification of any checked point. */
+export const TERRAIN_TRIANGLE_PRESERVE_WATERLINE = true;
+
+/** World-space vertex de-duplication precision for clipped triangle borders. */
+export const TERRAIN_TRIANGLE_VERTEX_KEY_SCALE = 1000;
 
 /** Magnitude only; TerrainShape decides the sign. */
-export const TERRAIN_SHAPE_MAGNITUDE = 400;
+export const TERRAIN_SHAPE_MAGNITUDE = 800;
 export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 
 /** Vertical spacing between authored terrain plateau levels. */
-export const TERRAIN_D_TERRAIN = 200 * (TERRAIN_SHAPE_MAGNITUDE / 800);
+export const TERRAIN_D_TERRAIN = 500;
 
 export const TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION = 0.49;
 export const TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION = 0.1;

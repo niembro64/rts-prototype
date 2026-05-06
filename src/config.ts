@@ -441,9 +441,9 @@ export function hexToRgb(c: number): { r: number; g: number; b: number } {
 }
 
 // Map colors
-export const MAP_BG_COLOR = 0x0a0e0f; // in-bounds background
-export const MAP_OOB_COLOR = 0x08080f; // out-of-bounds background
-export const MAP_CAMERA_BG = 0x0a0a14; // camera clear color
+export const MAP_BG_COLOR = 0x445138; // in-bounds background
+export const MAP_OOB_COLOR = 0x121820; // out-of-bounds background
+export const MAP_CAMERA_BG = 0x8fb1c9; // camera clear color
 export const MAP_GRID_COLOR = MAP_BG_COLOR;
 
 // Render-only fake horizon extent for the transparent water plane and
@@ -457,17 +457,17 @@ export const HORIZON_RENDER_EXTEND = 180000;
 // horizon water plane; `opacity` is material alpha. Lower opacity =
 // more transparent.
 export const WATER_RENDER_CONFIG = {
-  color: 0x459,
-  opacity: 0.3,
+  color: 0x1f6f8c,
+  opacity: 0.82,
 } as const;
 
 // Static sky background gradient. Generated once as a tiny canvas
 // texture by ThreeApp, then reused as the scene background.
 export const SKY_RENDER_CONFIG = {
-  topColor: '#5e84a2',
-  midColor: '#87a0ae',
-  horizonColor: '#abbec7',
-  midStop: 0.58,
+  topColor: '#6d9dcc',
+  midColor: '#b7cddd',
+  horizonColor: '#e1d5bd',
+  midStop: 0.64,
 } as const;
 
 // One shared sun definition for scene lights, terrain shading, and
@@ -476,21 +476,21 @@ export const SKY_RENDER_CONFIG = {
 // shadows readable without paying for real-time shadow maps.
 export const SUN_RENDER_CONFIG = {
   azimuthRad: -Math.PI * 0.25,
-  elevationRad: Math.PI * 0.1,
-  color: 0xffffff,
-  ambientIntensity: 0.12,
-  directionalIntensity: 2.15,
+  elevationRad: Math.PI * 0.12,
+  color: 0xfff0cf,
+  ambientIntensity: 0.24,
+  directionalIntensity: 1.45,
   distance: 6000,
   visibleSkyDisk: {
     enabled: true,
     distance: 60000,
-    size: 2200,
+    size: 1900,
     texturePixels: 128,
-    coreColor: '#fff7d6',
-    haloColor: '#f6c66f',
-    coreRadius: 0.2,
-    haloRadius: 0.72,
-    opacity: 0.95,
+    coreColor: '#fff8dc',
+    haloColor: '#f0b860',
+    coreRadius: 0.18,
+    haloRadius: 0.66,
+    opacity: 0.86,
   },
 } as const;
 
@@ -500,18 +500,33 @@ export const SUN_RENDER_CONFIG = {
 // sun ray.
 export const TERRAIN_SHADOW_RENDER_CONFIG = {
   enabled: true,
-  ambient: 0.08,
-  directStrength: 2.35,
-  minShade: 0.035,
-  maxShade: 2.25,
+  ambient: 0.34,
+  directStrength: 1.08,
+  minShade: 0.26,
+  maxShade: 1.18,
   precomputed: {
     enabled: true,
-    samples: 6,
-    sampleDistance: LAND_CELL_SIZE * 0.18,
-    bias: 0,
-    softness: 24,
-    strength: 1,
+    samples: 7,
+    sampleDistance: LAND_CELL_SIZE * 0.26,
+    bias: 16,
+    softness: 82,
+    strength: 0.58,
   },
+} as const;
+
+// Render-only blend that hides the color seam where the authoritative
+// gameplay terrain hands off to the non-gameplay horizon shelf/water.
+// `boundaryFadeStart`/`boundaryFadeEnd` are in the existing circular
+// map-boundary fade space: 0 = full gameplay terrain, 1 = shelf/water.
+// Square maps also get a small rectangular edge band in world units.
+export const TERRAIN_HORIZON_BLEND_CONFIG = {
+  enabled: true,
+  boundaryFadeStart: 0.58,
+  boundaryFadeEnd: 1,
+  rectangularEdgeStartDistance: LAND_CELL_SIZE * 2.5,
+  rectangularEdgeEndDistance: 0,
+  color: 0x163f4c,
+  shade: 1,
 } as const;
 
 // Stable render layering for ground-adjacent systems. Contact shadows

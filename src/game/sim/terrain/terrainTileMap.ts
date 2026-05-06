@@ -2,9 +2,13 @@ import type { TerrainTileMap } from '@/types/terrain';
 import { LAND_CELL_SIZE } from '../../../config';
 import { assertCanonicalLandCellSize } from '../../landGrid';
 import {
-  TERRAIN_ADAPTIVE_MAX_HEIGHT_ERROR,
-  TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
-  TERRAIN_MESH_SUBDIV,
+  TERRAIN_FINE_TRIANGLE_SUBDIV,
+  TERRAIN_TRIANGLE_FINAL_REPAIR_MAX_PASSES,
+  TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR,
+  TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA,
+  TERRAIN_TRIANGLE_PRESERVE_WATERLINE,
+  TERRAIN_TRIANGLE_SAMPLE_CENTROID,
+  TERRAIN_TRIANGLE_VERTEX_KEY_SCALE,
   WATER_LEVEL,
 } from './terrainConfig';
 import {
@@ -25,19 +29,18 @@ export type TerrainMeshSample = {
   h10: number;
   h11: number;
   h01: number;
-  hc: number;
-  centerFan: boolean;
   triangle?: TerrainTriangleSample;
 };
 
-export type TerrainTileMeshView = {
-  vertexOffset: number;
+export type TerrainMeshView = {
   vertexCount: number;
-  triangleOffset: number;
   triangleCount: number;
   vertexCoords: readonly number[];
   vertexHeights: readonly number[];
   triangleIndices: readonly number[];
+  triangleLevels: readonly number[];
+  triangleNeighborIndices: readonly number[];
+  triangleNeighborLevels: readonly number[];
 };
 
 type TerrainTriangleSample = {
@@ -55,17 +58,62 @@ type TerrainTriangleSample = {
   wc: number;
 };
 
-type LocalMeshVertex = {
-  fx: number;
-  fz: number;
+type LatticePoint = {
+  i: number;
+  j: number;
+};
+
+type TerrainHierarchyTriangle = {
+  i: number;
+  j: number;
+  side: number;
+  down: boolean;
+};
+
+type MeshPoint = {
+  x: number;
+  z: number;
   h: number;
 };
 
-const TERRAIN_TILE_EDGE_NORTH = 0;
-const TERRAIN_TILE_EDGE_EAST = 1;
-const TERRAIN_TILE_EDGE_SOUTH = 2;
-const TERRAIN_TILE_EDGE_WEST = 3;
-const TERRAIN_MESH_EPSILON = 1e-7;
+type TerrainMeshBuildContext = {
+  mapWidth: number;
+  mapHeight: number;
+  fineEdge: number;
+  fineHeight: number;
+  rootSide: number;
+  heightCache: Map<string, number>;
+};
+
+type BuiltTerrainMesh = {
+  vertexCoords: number[];
+  vertexHeights: number[];
+  triangleIndices: number[];
+  triangleLevels: number[];
+  triangleLeafIndices: number[];
+  triangleNeighborIndices: number[];
+  triangleNeighborLevels: number[];
+  cellTriangleOffsets: number[];
+  cellTriangleIndices: number[];
+};
+
+type TriangleEdgeOwner = {
+  triangle: number;
+  edge: number;
+  a: number;
+  b: number;
+};
+
+type TriangleEdgeSpan = TriangleEdgeOwner & {
+  lineKey: string;
+  start: number;
+  end: number;
+};
+
+const SQRT3_OVER_2 = Math.sqrt(3) * 0.5;
+const TERRAIN_MESH_EPSILON = 1e-6;
+const TERRAIN_MESH_EDGE_EPSILON = 1e-4;
+const INV_SQRT3 = 1 / Math.sqrt(3);
 
 function terrainCellSize(cellSize: number | undefined): number {
   return cellSize !== undefined && cellSize > 0
@@ -78,70 +126,22 @@ export function buildTerrainTileMap(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): TerrainTileMap {
-  // Terrain grid is canonical — see landGrid.CANONICAL_LAND_CELL_SIZE.
-  // Any non-canonical caller is silently mis-aligning sim/render/host
-  // grids; hard-fail in dev so drift can't slip through.
   assertCanonicalLandCellSize('buildTerrainTileMap cellSize', cellSize);
   const size = terrainCellSize(cellSize);
   const cellsX = Math.max(1, Math.ceil(mapWidth / size));
   const cellsY = Math.max(1, Math.ceil(mapHeight / size));
-  const verticesX = cellsX * TERRAIN_MESH_SUBDIV + 1;
-  const verticesY = cellsY * TERRAIN_MESH_SUBDIV + 1;
-  const maxSubdiv = Math.max(1, TERRAIN_MESH_SUBDIV | 0);
-  const subSize = size / maxSubdiv;
-  const heights = new Array<number>(verticesX * verticesY);
-  const quadCount = (verticesX - 1) * (verticesY - 1);
-  const centerHeights = new Array<number>(quadCount);
-  const centerFanMask = new Array<number>(quadCount);
+  const maxSubdiv = Math.max(1, TERRAIN_FINE_TRIANGLE_SUBDIV | 0);
 
-  for (let vy = 0; vy < verticesY; vy++) {
-    const z = Math.min(mapHeight, vy * subSize);
-    const rowOff = vy * verticesX;
-    for (let vx = 0; vx < verticesX; vx++) {
-      const x = Math.min(mapWidth, vx * subSize);
-      heights[rowOff + vx] = getTerrainHeight(x, z, mapWidth, mapHeight);
-    }
-  }
+  const verticesX = cellsX * maxSubdiv + 1;
+  const verticesY = cellsY * maxSubdiv + 1;
 
-  // Center-fan topology is disabled: all authoritative sub-quads use the
-  // normal two-triangle diagonal split. The legacy center arrays stay in the
-  // snapshot so older consumers see a complete map shape, but the mask is zero.
-  for (let qy = 0; qy < verticesY - 1; qy++) {
-    const rowOff = qy * (verticesX - 1);
-    for (let qx = 0; qx < verticesX - 1; qx++) {
-      const idx = rowOff + qx;
-      const h00 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx, qy);
-      const h10 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx + 1, qy);
-      const h11 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx + 1, qy + 1);
-      const h01 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx, qy + 1);
-      centerHeights[idx] = terrainCenterFanHeight(h00, h10, h11, h01);
-      centerFanMask[idx] = 0;
-    }
-  }
-
-  const tileSubdivisions = buildAdaptiveTerrainTileSubdivisions(
+  const mesh = buildAdaptiveEquilateralTerrainMesh(
     mapWidth,
     mapHeight,
     size,
     cellsX,
     cellsY,
     maxSubdiv,
-  );
-  const {
-    tileEdgeSubdivisions,
-    tileVertexOffsets,
-    tileVertexCoords,
-    tileVertexHeights,
-    tileTriangleOffsets,
-    tileTriangleIndices,
-  } = buildAdaptiveTerrainTileMeshes(
-    mapWidth,
-    mapHeight,
-    size,
-    cellsX,
-    cellsY,
-    maxSubdiv,
-    tileSubdivisions,
   );
 
   return {
@@ -154,596 +154,113 @@ export function buildTerrainTileMap(
     verticesX,
     verticesY,
     version: getTerrainVersion(),
-    heights,
-    centerHeights,
-    centerFanMask,
-    tileSubdivisions,
-    tileEdgeSubdivisions,
-    tileVertexOffsets,
-    tileVertexCoords,
-    tileVertexHeights,
-    tileTriangleOffsets,
-    tileTriangleIndices,
+    meshVertexCoords: mesh.vertexCoords,
+    meshVertexHeights: mesh.vertexHeights,
+    meshTriangleIndices: mesh.triangleIndices,
+    meshTriangleLevels: mesh.triangleLevels,
+    meshTriangleNeighborIndices: mesh.triangleNeighborIndices,
+    meshTriangleNeighborLevels: mesh.triangleNeighborLevels,
+    meshCellTriangleOffsets: mesh.cellTriangleOffsets,
+    meshCellTriangleIndices: mesh.cellTriangleIndices,
   };
 }
 
-function terrainTileMapHeightAtVertexRaw(
-  heights: readonly number[],
-  verticesX: number,
-  vx: number,
-  vy: number,
-): number {
-  return heights[vy * verticesX + vx] ?? 0;
+function clampToMap(value: number, max: number): number {
+  return value <= 0 ? 0 : value >= max ? max : value;
 }
 
-function clamp01(value: number): number {
-  return value <= 0 ? 0 : value >= 1 ? 1 : value;
+function nextPowerOfTwo(value: number): number {
+  let n = 1;
+  while (n < value) n <<= 1;
+  return n;
 }
 
-function generatedTerrainHeightAtCellFraction(
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number,
-  cellX: number,
-  cellY: number,
-  fx: number,
-  fz: number,
-): number {
-  const x = Math.min(mapWidth, Math.max(0, (cellX + clamp01(fx)) * cellSize));
-  const z = Math.min(mapHeight, Math.max(0, (cellY + clamp01(fz)) * cellSize));
-  return getTerrainHeight(x, z, mapWidth, mapHeight);
+function latticeKey(i: number, j: number): string {
+  return `${i}:${j}`;
 }
 
-function normalizeTerrainTileSubdivision(raw: number | undefined, maxSubdiv: number): number {
-  const max = Math.max(1, maxSubdiv | 0);
-  return Math.max(1, Math.min(max, Math.round(raw ?? max)));
-}
-
-function terrainTileSubdivisionAtMapCell(
-  map: TerrainTileMap,
-  cellX: number,
-  cellY: number,
-): number {
-  const cx = Math.max(0, Math.min(map.cellsX - 1, cellX));
-  const cy = Math.max(0, Math.min(map.cellsY - 1, cellY));
-  const raw = (map.tileSubdivisions as readonly number[] | undefined)?.[cy * map.cellsX + cx];
-  return normalizeTerrainTileSubdivision(raw, map.subdiv);
-}
-
-export function getTerrainTileSubdivisionAtCell(
-  cellX: number,
-  cellY: number,
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
-): number {
-  assertCanonicalLandCellSize('getTerrainTileSubdivisionAtCell cellSize', cellSize);
-  const size = terrainCellSize(cellSize);
-  const map = getInstalledTerrainTileMap(mapWidth, mapHeight, size);
-  if (!map) return TERRAIN_MESH_SUBDIV;
-  return terrainTileSubdivisionAtMapCell(map, cellX, cellY);
-}
-
-function terrainSubdivisionCandidates(maxSubdiv: number): number[] {
-  const max = Math.max(1, maxSubdiv | 0);
-  const candidates: number[] = [];
-  for (let subdiv = 1; subdiv <= max; subdiv++) {
-    if (max % subdiv === 0) candidates.push(subdiv);
-  }
-  return candidates;
-}
-
-function greatestCommonDivisor(a: number, b: number): number {
-  let x = Math.max(1, Math.abs(a | 0));
-  let y = Math.max(1, Math.abs(b | 0));
-  while (y !== 0) {
-    const next = x % y;
-    x = y;
-    y = next;
-  }
-  return x;
-}
-
-function leastCommonMultiple(a: number, b: number): number {
-  const x = Math.max(1, a | 0);
-  const y = Math.max(1, b | 0);
-  return Math.abs((x / greatestCommonDivisor(x, y)) * y);
-}
-
-function terrainCellSurfaceHeightFromGenerator(
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number,
-  maxSubdiv: number,
-  cellX: number,
-  cellY: number,
-  candidateSubdiv: number,
-  fx: number,
-  fz: number,
-): number {
-  const subdiv = normalizeTerrainTileSubdivision(candidateSubdiv, maxSubdiv);
-  const localX = clamp01(fx);
-  const localZ = clamp01(fz);
-  const subX = Math.min(subdiv - 1, Math.max(0, Math.floor(localX * subdiv)));
-  const subZ = Math.min(subdiv - 1, Math.max(0, Math.floor(localZ * subdiv)));
-  const u = clamp01(localX * subdiv - subX);
-  const v = clamp01(localZ * subdiv - subZ);
-  const fx0 = subX / subdiv;
-  const fz0 = subZ / subdiv;
-  const fx1 = (subX + 1) / subdiv;
-  const fz1 = (subZ + 1) / subdiv;
-  const h00 = generatedTerrainHeightAtCellFraction(
-    mapWidth,
-    mapHeight,
-    cellSize,
-    cellX,
-    cellY,
-    fx0,
-    fz0,
-  );
-  const h10 = generatedTerrainHeightAtCellFraction(
-    mapWidth,
-    mapHeight,
-    cellSize,
-    cellX,
-    cellY,
-    fx1,
-    fz0,
-  );
-  const h11 = generatedTerrainHeightAtCellFraction(
-    mapWidth,
-    mapHeight,
-    cellSize,
-    cellX,
-    cellY,
-    fx1,
-    fz1,
-  );
-  const h01 = generatedTerrainHeightAtCellFraction(
-    mapWidth,
-    mapHeight,
-    cellSize,
-    cellX,
-    cellY,
-    fx0,
-    fz1,
-  );
-  return interpolateTerrainMeshQuadHeight(
-    u,
-    v,
-    h00,
-    h10,
-    h11,
-    h01,
-    terrainCenterFanHeight(h00, h10, h11, h01),
-    false,
-  );
-}
-
-function terrainCellSimplificationError(
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number,
-  maxSubdiv: number,
-  cellX: number,
-  cellY: number,
-  candidateSubdiv: number,
-  maxAllowedError: number,
-): number {
-  let maxError = 0;
-  const checkPoint = (fx: number, fz: number): boolean => {
-    const actual = generatedTerrainHeightAtCellFraction(
-      mapWidth,
-      mapHeight,
-      cellSize,
-      cellX,
-      cellY,
-      fx,
-      fz,
-    );
-    const approx = terrainCellSurfaceHeightFromGenerator(
-      mapWidth,
-      mapHeight,
-      cellSize,
-      maxSubdiv,
-      cellX,
-      cellY,
-      candidateSubdiv,
-      fx,
-      fz,
-    );
-    if ((actual < WATER_LEVEL) !== (approx < WATER_LEVEL)) {
-      maxError = Number.POSITIVE_INFINITY;
-      return true;
-    }
-    maxError = Math.max(maxError, Math.abs(actual - approx));
-    return maxError > maxAllowedError;
-  };
-
-  const sampleSubdiv = Math.max(1, maxSubdiv * 2);
-  for (let iy = 0; iy <= sampleSubdiv; iy++) {
-    const fz = iy / sampleSubdiv;
-    for (let ix = 0; ix <= sampleSubdiv; ix++) {
-      if (checkPoint(ix / sampleSubdiv, fz)) return maxError;
-    }
-  }
-  for (let iy = 0; iy < sampleSubdiv; iy++) {
-    const fz = (iy + 0.5) / sampleSubdiv;
-    for (let ix = 0; ix < sampleSubdiv; ix++) {
-      if (checkPoint((ix + 0.5) / sampleSubdiv, fz)) return maxError;
-    }
-  }
-  return maxError;
-}
-
-function buildAdaptiveTerrainTileSubdivisions(
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number,
-  cellsX: number,
-  cellsY: number,
-  maxSubdiv: number,
-): number[] {
-  const fullSubdiv = Math.max(1, maxSubdiv | 0);
-  const tileSubdivisions = new Array<number>(cellsX * cellsY);
-  if (fullSubdiv <= 1) {
-    tileSubdivisions.fill(1);
-    return tileSubdivisions;
-  }
-
-  const candidates = terrainSubdivisionCandidates(fullSubdiv);
-  for (let cy = 0; cy < cellsY; cy++) {
-    for (let cx = 0; cx < cellsX; cx++) {
-      let chosen = fullSubdiv;
-      for (let i = 0; i < candidates.length; i++) {
-        const candidate = candidates[i];
-        if (candidate >= fullSubdiv) {
-          chosen = fullSubdiv;
-          break;
-        }
-        const error = terrainCellSimplificationError(
-          mapWidth,
-          mapHeight,
-          cellSize,
-          fullSubdiv,
-          cx,
-          cy,
-          candidate,
-          TERRAIN_ADAPTIVE_MAX_HEIGHT_ERROR,
-        );
-        if (error <= TERRAIN_ADAPTIVE_MAX_HEIGHT_ERROR) {
-          chosen = candidate;
-          break;
-        }
-      }
-      tileSubdivisions[cy * cellsX + cx] = chosen;
-    }
-  }
-  return tileSubdivisions;
-}
-
-function terrainTileBaseSubdivision(
-  tileSubdivisions: readonly number[],
-  cellsX: number,
-  cellsY: number,
-  cellX: number,
-  cellY: number,
-  maxSubdiv: number,
-): number {
-  if (cellX < 0 || cellX >= cellsX || cellY < 0 || cellY >= cellsY) return 0;
-  return normalizeTerrainTileSubdivision(tileSubdivisions[cellY * cellsX + cellX], maxSubdiv);
-}
-
-function terrainTouchingEdgeSubdivision(
-  selfSubdiv: number,
-  neighborSubdiv: number,
-  maxSubdiv: number,
-): number {
-  if (neighborSubdiv <= 0) return selfSubdiv;
-  return Math.min(maxSubdiv, leastCommonMultiple(selfSubdiv, neighborSubdiv));
-}
-
-function terrainCoordKey(fx: number, fz: number): string {
-  return `${Math.round(clamp01(fx) * 1_000_000_000)}:${Math.round(clamp01(fz) * 1_000_000_000)}`;
-}
-
-function terrainTriangleArea2(
-  vertices: readonly LocalMeshVertex[],
-  a: number,
-  b: number,
-  c: number,
-): number {
-  const va = vertices[a];
-  const vb = vertices[b];
-  const vc = vertices[c];
-  return (vb.fx - va.fx) * (vc.fz - va.fz) - (vb.fz - va.fz) * (vc.fx - va.fx);
-}
-
-function triangulateConvexLocalPolygon(
-  vertices: readonly LocalMeshVertex[],
-  polygon: readonly number[],
-  out: number[],
-): void {
-  const remaining: number[] = [];
-  for (let i = 0; i < polygon.length; i++) {
-    const id = polygon[i];
-    if (remaining[remaining.length - 1] !== id) remaining.push(id);
-  }
-  if (remaining.length > 1 && remaining[0] === remaining[remaining.length - 1]) {
-    remaining.pop();
-  }
-
-  while (remaining.length > 3) {
-    let ear = -1;
-    for (let i = 0; i < remaining.length; i++) {
-      const prev = remaining[(i + remaining.length - 1) % remaining.length];
-      const curr = remaining[i];
-      const next = remaining[(i + 1) % remaining.length];
-      if (Math.abs(terrainTriangleArea2(vertices, prev, curr, next)) > TERRAIN_MESH_EPSILON) {
-        ear = i;
-        out.push(prev, curr, next);
-        break;
-      }
-    }
-    if (ear < 0) return;
-    remaining.splice(ear, 1);
-  }
-
-  if (
-    remaining.length === 3 &&
-    Math.abs(terrainTriangleArea2(vertices, remaining[0], remaining[1], remaining[2])) >
-      TERRAIN_MESH_EPSILON
-  ) {
-    out.push(remaining[0], remaining[1], remaining[2]);
-  }
-}
-
-function buildTerrainTileLocalMesh(
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number,
-  cellX: number,
-  cellY: number,
-  baseSubdiv: number,
-  northSubdiv: number,
-  eastSubdiv: number,
-  southSubdiv: number,
-  westSubdiv: number,
-): {
-  vertices: LocalMeshVertex[];
-  triangles: number[];
-} {
-  const vertices: LocalMeshVertex[] = [];
-  const vertexIds = new Map<string, number>();
-  const addVertex = (fxRaw: number, fzRaw: number): number => {
-    const fx = clamp01(fxRaw);
-    const fz = clamp01(fzRaw);
-    const key = terrainCoordKey(fx, fz);
-    const existing = vertexIds.get(key);
-    if (existing !== undefined) return existing;
-    const id = vertices.length;
-    vertexIds.set(key, id);
-    vertices.push({
-      fx,
-      fz,
-      h: generatedTerrainHeightAtCellFraction(
-        mapWidth,
-        mapHeight,
-        cellSize,
-        cellX,
-        cellY,
-        fx,
-        fz,
-      ),
-    });
-    return id;
-  };
-
-  for (let vy = 0; vy <= baseSubdiv; vy++) {
-    for (let vx = 0; vx <= baseSubdiv; vx++) {
-      addVertex(vx / baseSubdiv, vy / baseSubdiv);
-    }
-  }
-  for (let i = 1; i < northSubdiv; i++) addVertex(i / northSubdiv, 0);
-  for (let i = 1; i < eastSubdiv; i++) addVertex(1, i / eastSubdiv);
-  for (let i = 1; i < southSubdiv; i++) addVertex(i / southSubdiv, 1);
-  for (let i = 1; i < westSubdiv; i++) addVertex(0, i / westSubdiv);
-
-  const verticesOnSegment = (a: number, b: number): number[] => {
-    const va = vertices[a];
-    const vb = vertices[b];
-    const dx = vb.fx - va.fx;
-    const dz = vb.fz - va.fz;
-    const lenSq = dx * dx + dz * dz;
-    const found: Array<{ id: number; t: number }> = [];
-    for (let id = 0; id < vertices.length; id++) {
-      const p = vertices[id];
-      const relX = p.fx - va.fx;
-      const relZ = p.fz - va.fz;
-      const cross = relX * dz - relZ * dx;
-      if (Math.abs(cross) > TERRAIN_MESH_EPSILON) continue;
-      const t = lenSq > 0 ? (relX * dx + relZ * dz) / lenSq : 0;
-      if (t < -TERRAIN_MESH_EPSILON || t > 1 + TERRAIN_MESH_EPSILON) continue;
-      found.push({ id, t: clamp01(t) });
-    }
-    found.sort((left, right) => left.t - right.t);
-    const ids: number[] = [];
-    for (let i = 0; i < found.length; i++) {
-      const id = found[i].id;
-      if (ids[ids.length - 1] !== id) ids.push(id);
-    }
-    return ids;
-  };
-
-  const triangles: number[] = [];
-  const addBaseTriangle = (a: number, b: number, c: number): void => {
-    const ab = verticesOnSegment(a, b);
-    const bc = verticesOnSegment(b, c);
-    const ca = verticesOnSegment(c, a);
-    const polygon = [...ab];
-    for (let i = 1; i < bc.length; i++) polygon.push(bc[i]);
-    for (let i = 1; i < ca.length - 1; i++) polygon.push(ca[i]);
-    triangulateConvexLocalPolygon(vertices, polygon, triangles);
-  };
-
-  for (let y = 0; y < baseSubdiv; y++) {
-    for (let x = 0; x < baseSubdiv; x++) {
-      const tl = addVertex(x / baseSubdiv, y / baseSubdiv);
-      const tr = addVertex((x + 1) / baseSubdiv, y / baseSubdiv);
-      const br = addVertex((x + 1) / baseSubdiv, (y + 1) / baseSubdiv);
-      const bl = addVertex(x / baseSubdiv, (y + 1) / baseSubdiv);
-      addBaseTriangle(tl, tr, br);
-      addBaseTriangle(tl, br, bl);
-    }
-  }
-
-  return { vertices, triangles };
-}
-
-function buildAdaptiveTerrainTileMeshes(
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number,
-  cellsX: number,
-  cellsY: number,
-  maxSubdiv: number,
-  tileSubdivisions: readonly number[],
-): {
-  tileEdgeSubdivisions: number[];
-  tileVertexOffsets: number[];
-  tileVertexCoords: number[];
-  tileVertexHeights: number[];
-  tileTriangleOffsets: number[];
-  tileTriangleIndices: number[];
-} {
-  const tileCount = cellsX * cellsY;
-  const tileEdgeSubdivisions = new Array<number>(tileCount * 4);
-  const tileVertexOffsets = new Array<number>(tileCount + 1);
-  const tileVertexCoords: number[] = [];
-  const tileVertexHeights: number[] = [];
-  const tileTriangleOffsets = new Array<number>(tileCount + 1);
-  const tileTriangleIndices: number[] = [];
-
-  for (let cy = 0; cy < cellsY; cy++) {
-    for (let cx = 0; cx < cellsX; cx++) {
-      const tileIdx = cy * cellsX + cx;
-      const self = terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx, cy, maxSubdiv);
-      const north = terrainTouchingEdgeSubdivision(
-        self,
-        terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx, cy - 1, maxSubdiv),
-        maxSubdiv,
-      );
-      const east = terrainTouchingEdgeSubdivision(
-        self,
-        terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx + 1, cy, maxSubdiv),
-        maxSubdiv,
-      );
-      const south = terrainTouchingEdgeSubdivision(
-        self,
-        terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx, cy + 1, maxSubdiv),
-        maxSubdiv,
-      );
-      const west = terrainTouchingEdgeSubdivision(
-        self,
-        terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx - 1, cy, maxSubdiv),
-        maxSubdiv,
-      );
-      const edgeOffset = tileIdx * 4;
-      tileEdgeSubdivisions[edgeOffset + TERRAIN_TILE_EDGE_NORTH] = north;
-      tileEdgeSubdivisions[edgeOffset + TERRAIN_TILE_EDGE_EAST] = east;
-      tileEdgeSubdivisions[edgeOffset + TERRAIN_TILE_EDGE_SOUTH] = south;
-      tileEdgeSubdivisions[edgeOffset + TERRAIN_TILE_EDGE_WEST] = west;
-
-      const mesh = buildTerrainTileLocalMesh(
-        mapWidth,
-        mapHeight,
-        cellSize,
-        cx,
-        cy,
-        self,
-        north,
-        east,
-        south,
-        west,
-      );
-
-      tileVertexOffsets[tileIdx] = tileVertexHeights.length;
-      for (let i = 0; i < mesh.vertices.length; i++) {
-        const vertex = mesh.vertices[i];
-        tileVertexCoords.push(vertex.fx, vertex.fz);
-        tileVertexHeights.push(vertex.h);
-      }
-      tileTriangleOffsets[tileIdx] = tileTriangleIndices.length;
-      for (let i = 0; i < mesh.triangles.length; i++) {
-        tileTriangleIndices.push(mesh.triangles[i]);
-      }
-    }
-  }
-  tileVertexOffsets[tileCount] = tileVertexHeights.length;
-  tileTriangleOffsets[tileCount] = tileTriangleIndices.length;
-
+function latticePointAt(ctx: TerrainMeshBuildContext, i: number, j: number): MeshPoint {
+  const x = ctx.fineEdge * (i + j * 0.5);
+  const z = ctx.fineHeight * j;
   return {
-    tileEdgeSubdivisions,
-    tileVertexOffsets,
-    tileVertexCoords,
-    tileVertexHeights,
-    tileTriangleOffsets,
-    tileTriangleIndices,
+    x,
+    z,
+    h: terrainHeightAtWorld(ctx, x, z),
   };
 }
 
-function terrainTileMeshViewFromMap(
-  map: TerrainTileMap,
-  cellX: number,
-  cellY: number,
-): TerrainTileMeshView | null {
-  const cx = Math.max(0, Math.min(map.cellsX - 1, cellX));
-  const cy = Math.max(0, Math.min(map.cellsY - 1, cellY));
-  const tileIdx = cy * map.cellsX + cx;
-  const vertexOffsets = map.tileVertexOffsets as readonly number[] | undefined;
-  const vertexCoords = map.tileVertexCoords as readonly number[] | undefined;
-  const vertexHeights = map.tileVertexHeights as readonly number[] | undefined;
-  const triangleOffsets = map.tileTriangleOffsets as readonly number[] | undefined;
-  const triangleIndices = map.tileTriangleIndices as readonly number[] | undefined;
-  const vertexOffset = vertexOffsets?.[tileIdx];
-  const nextVertexOffset = vertexOffsets?.[tileIdx + 1];
-  const triangleOffset = triangleOffsets?.[tileIdx];
-  const nextTriangleOffset = triangleOffsets?.[tileIdx + 1];
-  if (
-    !vertexCoords ||
-    !vertexHeights ||
-    !triangleIndices ||
-    vertexOffset === undefined ||
-    nextVertexOffset === undefined ||
-    triangleOffset === undefined ||
-    nextTriangleOffset === undefined
-  ) {
-    return null;
+function terrainHeightAtWorld(ctx: TerrainMeshBuildContext, x: number, z: number): number {
+  return getTerrainHeight(
+    clampToMap(x, ctx.mapWidth),
+    clampToMap(z, ctx.mapHeight),
+    ctx.mapWidth,
+    ctx.mapHeight,
+  );
+}
+
+function terrainHeightAtLattice(ctx: TerrainMeshBuildContext, i: number, j: number): number {
+  const key = latticeKey(i, j);
+  const cached = ctx.heightCache.get(key);
+  if (cached !== undefined) return cached;
+  const x = ctx.fineEdge * (i + j * 0.5);
+  const z = ctx.fineHeight * j;
+  const h = terrainHeightAtWorld(ctx, x, z);
+  ctx.heightCache.set(key, h);
+  return h;
+}
+
+function terrainTriangleHierarchyLevel(
+  ctx: TerrainMeshBuildContext,
+  tri: TerrainHierarchyTriangle,
+): number {
+  const ratio = ctx.rootSide / Math.max(1, tri.side);
+  return Math.max(0, Math.round(Math.log2(ratio)));
+}
+
+function triangleLatticeVertices(tri: TerrainHierarchyTriangle): [LatticePoint, LatticePoint, LatticePoint] {
+  const { i, j, side } = tri;
+  if (!tri.down) {
+    return [
+      { i, j },
+      { i: i + side, j },
+      { i, j: j + side },
+    ];
   }
-
-  return {
-    vertexOffset,
-    vertexCount: Math.max(0, nextVertexOffset - vertexOffset),
-    triangleOffset,
-    triangleCount: Math.max(0, Math.floor((nextTriangleOffset - triangleOffset) / 3)),
-    vertexCoords,
-    vertexHeights,
-    triangleIndices,
-  };
+  return [
+    { i: i + side, j },
+    { i: i + side, j: j + side },
+    { i, j: j + side },
+  ];
 }
 
-export function getTerrainTileMeshAtCell(
-  cellX: number,
-  cellY: number,
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
-): TerrainTileMeshView | null {
-  assertCanonicalLandCellSize('getTerrainTileMeshAtCell cellSize', cellSize);
-  const size = terrainCellSize(cellSize);
-  const map = getInstalledTerrainTileMap(mapWidth, mapHeight, size);
-  if (!map) return null;
-  return terrainTileMeshViewFromMap(map, cellX, cellY);
+function triangleWorldVertices(
+  ctx: TerrainMeshBuildContext,
+  tri: TerrainHierarchyTriangle,
+): [MeshPoint, MeshPoint, MeshPoint] {
+  const [a, b, c] = triangleLatticeVertices(tri);
+  return [
+    latticePointAt(ctx, a.i, a.j),
+    latticePointAt(ctx, b.i, b.j),
+    latticePointAt(ctx, c.i, c.j),
+  ];
+}
+
+function triangleBboxIntersectsMap(ctx: TerrainMeshBuildContext, tri: TerrainHierarchyTriangle): boolean {
+  const [a, b, c] = triangleWorldVertices(ctx, tri);
+  const minX = Math.min(a.x, b.x, c.x);
+  const maxX = Math.max(a.x, b.x, c.x);
+  const minZ = Math.min(a.z, b.z, c.z);
+  const maxZ = Math.max(a.z, b.z, c.z);
+  return maxX > 0 && minX < ctx.mapWidth && maxZ > 0 && minZ < ctx.mapHeight;
+}
+
+function pointInsideMap(ctx: TerrainMeshBuildContext, x: number, z: number): boolean {
+  return (
+    x >= -TERRAIN_MESH_EPSILON &&
+    z >= -TERRAIN_MESH_EPSILON &&
+    x <= ctx.mapWidth + TERRAIN_MESH_EPSILON &&
+    z <= ctx.mapHeight + TERRAIN_MESH_EPSILON
+  );
 }
 
 function terrainBarycentricAt(
@@ -776,34 +293,1150 @@ function normalizeBarycentricWeights(
   return { wa: ca / sum, wb: cb / sum, wc: cc / sum };
 }
 
-function terrainTriangleSampleFromMesh(
+function forEachFinePointInTriangle(
+  tri: TerrainHierarchyTriangle,
+  visit: (i: number, j: number) => boolean,
+): boolean {
+  const n = tri.side;
+  for (let a = 0; a <= n; a++) {
+    for (let b = 0; b <= n; b++) {
+      const inside = tri.down ? a + b >= n : a + b <= n;
+      if (!inside) continue;
+      if (visit(tri.i + a, tri.j + b)) return true;
+    }
+  }
+  return false;
+}
+
+function canCollapseTerrainTriangle(
+  ctx: TerrainMeshBuildContext,
+  tri: TerrainHierarchyTriangle,
+): boolean {
+  const [a, b, c] = triangleWorldVertices(ctx, tri);
+  let checked = 0;
+  let failed = false;
+
+  forEachFinePointInTriangle(tri, (i, j) => {
+    const x = ctx.fineEdge * (i + j * 0.5);
+    const z = ctx.fineHeight * j;
+    if (!pointInsideMap(ctx, x, z)) return false;
+    const bary = terrainBarycentricAt(x, z, a.x, a.z, b.x, b.z, c.x, c.z);
+    if (!bary) return false;
+    const actual = terrainHeightAtLattice(ctx, i, j);
+    const approx = bary.wa * a.h + bary.wb * b.h + bary.wc * c.h;
+    checked++;
+    if (
+      TERRAIN_TRIANGLE_PRESERVE_WATERLINE &&
+      (actual < WATER_LEVEL) !== (approx < WATER_LEVEL)
+    ) {
+      failed = true;
+      return true;
+    }
+    if (Math.abs(actual - approx) > TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR) {
+      failed = true;
+      return true;
+    }
+    return false;
+  });
+
+  if (failed) return false;
+  if (checked === 0) return true;
+
+  const centroidX = (a.x + b.x + c.x) / 3;
+  const centroidZ = (a.z + b.z + c.z) / 3;
+  if (TERRAIN_TRIANGLE_SAMPLE_CENTROID && pointInsideMap(ctx, centroidX, centroidZ)) {
+    const actual = terrainHeightAtWorld(ctx, centroidX, centroidZ);
+    const approx = (a.h + b.h + c.h) / 3;
+    if (
+      TERRAIN_TRIANGLE_PRESERVE_WATERLINE &&
+      (actual < WATER_LEVEL) !== (approx < WATER_LEVEL)
+    ) {
+      return false;
+    }
+    if (Math.abs(actual - approx) > TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR) return false;
+  }
+
+  return true;
+}
+
+function terrainTriangleChildren(tri: TerrainHierarchyTriangle): TerrainHierarchyTriangle[] {
+  const half = tri.side >> 1;
+  if (half < 1) return [];
+  const { i, j } = tri;
+  if (!tri.down) {
+    return [
+      { i, j, side: half, down: false },
+      { i: i + half, j, side: half, down: false },
+      { i, j: j + half, side: half, down: false },
+      { i, j, side: half, down: true },
+    ];
+  }
+  return [
+    { i: i + half, j, side: half, down: true },
+    { i, j: j + half, side: half, down: true },
+    { i: i + half, j: j + half, side: half, down: true },
+    { i: i + half, j: j + half, side: half, down: false },
+  ];
+}
+
+function buildTerrainTriangleLeaves(
+  ctx: TerrainMeshBuildContext,
+  tri: TerrainHierarchyTriangle,
+  out: TerrainHierarchyTriangle[],
+): void {
+  if (!triangleBboxIntersectsMap(ctx, tri)) return;
+  if (tri.side <= 1) {
+    out.push(tri);
+    return;
+  }
+
+  if (canCollapseTerrainTriangle(ctx, tri)) {
+    out.push(tri);
+    return;
+  }
+
+  const children = terrainTriangleChildren(tri);
+  for (let i = 0; i < children.length; i++) {
+    buildTerrainTriangleLeaves(ctx, children[i], out);
+  }
+}
+
+function latticeSegmentKey(a: LatticePoint, b: LatticePoint): string {
+  const ak = latticeKey(a.i, a.j);
+  const bk = latticeKey(b.i, b.j);
+  return ak < bk ? `${ak}|${bk}` : `${bk}|${ak}`;
+}
+
+function forEachTriangleUnitEdgeSegment(
+  tri: TerrainHierarchyTriangle,
+  visit: (a: LatticePoint, b: LatticePoint) => void,
+): void {
+  const verts = triangleLatticeVertices(tri);
+  for (let edge = 0; edge < 3; edge++) {
+    const a = verts[edge];
+    const b = verts[(edge + 1) % 3];
+    const di = b.i - a.i;
+    const dj = b.j - a.j;
+    const steps = Math.max(Math.abs(di), Math.abs(dj));
+    if (steps <= 0) continue;
+    const stepI = di / steps;
+    const stepJ = dj / steps;
+    for (let k = 0; k < steps; k++) {
+      visit(
+        { i: a.i + stepI * k, j: a.j + stepJ * k },
+        { i: a.i + stepI * (k + 1), j: a.j + stepJ * (k + 1) },
+      );
+    }
+  }
+}
+
+function balanceTerrainTriangleLeaves(
+  ctx: TerrainMeshBuildContext,
+  leaves: readonly TerrainHierarchyTriangle[],
+): TerrainHierarchyTriangle[] {
+  const maxDelta = Math.max(0, TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA | 0);
+  if (leaves.length <= 1) return [...leaves];
+
+  let balanced = [...leaves];
+  const maxPasses = terrainTriangleHierarchyLevel(ctx, {
+    i: 0,
+    j: 0,
+    side: 1,
+    down: false,
+  }) + 1;
+
+  for (let pass = 0; pass < maxPasses; pass++) {
+    const segmentOwners = new Map<string, Array<{ leafIndex: number; level: number }>>();
+    for (let leafIndex = 0; leafIndex < balanced.length; leafIndex++) {
+      const leaf = balanced[leafIndex];
+      const level = terrainTriangleHierarchyLevel(ctx, leaf);
+      forEachTriangleUnitEdgeSegment(leaf, (a, b) => {
+        const key = latticeSegmentKey(a, b);
+        const owners = segmentOwners.get(key);
+        if (owners) {
+          owners.push({ leafIndex, level });
+        } else {
+          segmentOwners.set(key, [{ leafIndex, level }]);
+        }
+      });
+    }
+
+    const splitLeaves = new Set<number>();
+    for (const owners of segmentOwners.values()) {
+      if (owners.length < 2) continue;
+      let highestLevel = 0;
+      for (let i = 0; i < owners.length; i++) {
+        highestLevel = Math.max(highestLevel, owners[i].level);
+      }
+      for (let i = 0; i < owners.length; i++) {
+        const owner = owners[i];
+        const leaf = balanced[owner.leafIndex];
+        if (leaf.side > 1 && highestLevel - owner.level > maxDelta) {
+          splitLeaves.add(owner.leafIndex);
+        }
+      }
+    }
+
+    if (splitLeaves.size === 0) return balanced;
+
+    balanced = splitTerrainTriangleLeaves(ctx, balanced, splitLeaves);
+  }
+
+  return balanced;
+}
+
+function splitTerrainTriangleLeaves(
+  ctx: TerrainMeshBuildContext,
+  leaves: readonly TerrainHierarchyTriangle[],
+  splitLeaves: ReadonlySet<number>,
+): TerrainHierarchyTriangle[] {
+  const next: TerrainHierarchyTriangle[] = [];
+  for (let i = 0; i < leaves.length; i++) {
+    const leaf = leaves[i];
+    if (!splitLeaves.has(i) || leaf.side <= 1) {
+      next.push(leaf);
+      continue;
+    }
+    const children = terrainTriangleChildren(leaf);
+    for (let c = 0; c < children.length; c++) {
+      if (triangleBboxIntersectsMap(ctx, children[c])) next.push(children[c]);
+    }
+  }
+  return next;
+}
+
+function edgeLatticePoints(
+  a: LatticePoint,
+  b: LatticePoint,
+  vertexSet: ReadonlySet<string>,
+  includeStart: boolean,
+  includeEnd: boolean,
+): LatticePoint[] {
+  const di = b.i - a.i;
+  const dj = b.j - a.j;
+  const steps = Math.max(Math.abs(di), Math.abs(dj));
+  const out: LatticePoint[] = [];
+  if (steps <= 0) return out;
+  const stepI = di / steps;
+  const stepJ = dj / steps;
+  for (let k = 0; k <= steps; k++) {
+    if (k === 0 && !includeStart) continue;
+    if (k === steps && !includeEnd) continue;
+    const i = a.i + stepI * k;
+    const j = a.j + stepJ * k;
+    if (k === 0 || k === steps || vertexSet.has(latticeKey(i, j))) {
+      out.push({ i, j });
+    }
+  }
+  return out;
+}
+
+function triangleBoundaryLatticePoints(
+  tri: TerrainHierarchyTriangle,
+  vertexSet: ReadonlySet<string>,
+): LatticePoint[] {
+  const [a, b, c] = triangleLatticeVertices(tri);
+  return [
+    ...edgeLatticePoints(a, b, vertexSet, true, true),
+    ...edgeLatticePoints(b, c, vertexSet, false, true),
+    ...edgeLatticePoints(c, a, vertexSet, false, false),
+  ];
+}
+
+function removeDuplicateMeshPoints(points: readonly MeshPoint[]): MeshPoint[] {
+  const out: MeshPoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      Math.abs(prev.x - p.x) <= TERRAIN_MESH_EPSILON &&
+      Math.abs(prev.z - p.z) <= TERRAIN_MESH_EPSILON
+    ) {
+      continue;
+    }
+    out.push(p);
+  }
+  if (out.length > 1) {
+    const first = out[0];
+    const last = out[out.length - 1];
+    if (
+      Math.abs(first.x - last.x) <= TERRAIN_MESH_EPSILON &&
+      Math.abs(first.z - last.z) <= TERRAIN_MESH_EPSILON
+    ) {
+      out.pop();
+    }
+  }
+  return out;
+}
+
+function lineIntersectionPoint(
+  ctx: TerrainMeshBuildContext,
+  a: MeshPoint,
+  b: MeshPoint,
+  t: number,
+): MeshPoint {
+  const x = a.x + (b.x - a.x) * t;
+  const z = a.z + (b.z - a.z) * t;
+  return { x, z, h: terrainHeightAtWorld(ctx, x, z) };
+}
+
+function clipPolygonAgainstBoundary(
+  points: readonly MeshPoint[],
+  inside: (p: MeshPoint) => boolean,
+  intersect: (a: MeshPoint, b: MeshPoint) => MeshPoint,
+): MeshPoint[] {
+  if (points.length === 0) return [];
+  const out: MeshPoint[] = [];
+  let prev = points[points.length - 1];
+  let prevInside = inside(prev);
+  for (let i = 0; i < points.length; i++) {
+    const curr = points[i];
+    const currInside = inside(curr);
+    if (currInside !== prevInside) out.push(intersect(prev, curr));
+    if (currInside) out.push(curr);
+    prev = curr;
+    prevInside = currInside;
+  }
+  return removeDuplicateMeshPoints(out);
+}
+
+function clipPolygonToMap(
+  ctx: TerrainMeshBuildContext,
+  points: readonly MeshPoint[],
+): MeshPoint[] {
+  let clipped = removeDuplicateMeshPoints(points);
+  clipped = clipPolygonAgainstBoundary(
+    clipped,
+    (p) => p.x >= 0,
+    (a, b) => lineIntersectionPoint(ctx, a, b, (0 - a.x) / (b.x - a.x || 1)),
+  );
+  clipped = clipPolygonAgainstBoundary(
+    clipped,
+    (p) => p.x <= ctx.mapWidth,
+    (a, b) => lineIntersectionPoint(ctx, a, b, (ctx.mapWidth - a.x) / (b.x - a.x || 1)),
+  );
+  clipped = clipPolygonAgainstBoundary(
+    clipped,
+    (p) => p.z >= 0,
+    (a, b) => lineIntersectionPoint(ctx, a, b, (0 - a.z) / (b.z - a.z || 1)),
+  );
+  clipped = clipPolygonAgainstBoundary(
+    clipped,
+    (p) => p.z <= ctx.mapHeight,
+    (a, b) => lineIntersectionPoint(ctx, a, b, (ctx.mapHeight - a.z) / (b.z - a.z || 1)),
+  );
+  return removeDuplicateMeshPoints(clipped);
+}
+
+function polygonSignedArea(points: readonly MeshPoint[]): number {
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    area += a.x * b.z - b.x * a.z;
+  }
+  return area * 0.5;
+}
+
+function worldVertexKey(x: number, z: number): string {
+  return `${Math.round(x * TERRAIN_TRIANGLE_VERTEX_KEY_SCALE)}:${Math.round(z * TERRAIN_TRIANGLE_VERTEX_KEY_SCALE)}`;
+}
+
+function meshEdgeKey(a: number, b: number): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+function collectTriangleEdgeOwners(
+  triangleIndices: readonly number[],
+): Map<string, TriangleEdgeOwner[]> {
+  const edgeOwners = new Map<string, TriangleEdgeOwner[]>();
+  const triangleCount = Math.floor(triangleIndices.length / 3);
+  for (let triangle = 0; triangle < triangleCount; triangle++) {
+    const triOffset = triangle * 3;
+    for (let edge = 0; edge < 3; edge++) {
+      const a = triangleIndices[triOffset + edge];
+      const b = triangleIndices[triOffset + ((edge + 1) % 3)];
+      const key = meshEdgeKey(a, b);
+      const owners = edgeOwners.get(key);
+      const owner = { triangle, edge, a, b };
+      if (owners) owners.push(owner);
+      else edgeOwners.set(key, [owner]);
+    }
+  }
+  return edgeOwners;
+}
+
+function meshEdgeIsMapBoundary(
+  ctx: TerrainMeshBuildContext,
+  vertexCoords: readonly number[],
+  owner: TriangleEdgeOwner,
+): boolean {
+  const ax = vertexCoords[owner.a * 2];
+  const az = vertexCoords[owner.a * 2 + 1];
+  const bx = vertexCoords[owner.b * 2];
+  const bz = vertexCoords[owner.b * 2 + 1];
+  return (
+    (Math.abs(ax) <= TERRAIN_MESH_EDGE_EPSILON && Math.abs(bx) <= TERRAIN_MESH_EDGE_EPSILON) ||
+    (Math.abs(ax - ctx.mapWidth) <= TERRAIN_MESH_EDGE_EPSILON &&
+      Math.abs(bx - ctx.mapWidth) <= TERRAIN_MESH_EDGE_EPSILON) ||
+    (Math.abs(az) <= TERRAIN_MESH_EDGE_EPSILON && Math.abs(bz) <= TERRAIN_MESH_EDGE_EPSILON) ||
+    (Math.abs(az - ctx.mapHeight) <= TERRAIN_MESH_EDGE_EPSILON &&
+      Math.abs(bz - ctx.mapHeight) <= TERRAIN_MESH_EDGE_EPSILON)
+  );
+}
+
+function quantizedLineValue(value: number): number {
+  return Math.round(value * TERRAIN_TRIANGLE_VERTEX_KEY_SCALE);
+}
+
+function edgeSpanForOwner(
+  vertexCoords: readonly number[],
+  owner: TriangleEdgeOwner,
+): TriangleEdgeSpan | null {
+  const ax = vertexCoords[owner.a * 2];
+  const az = vertexCoords[owner.a * 2 + 1];
+  const bx = vertexCoords[owner.b * 2];
+  const bz = vertexCoords[owner.b * 2 + 1];
+  const horizontalError = Math.abs(az - bz);
+  const diagA0 = ax - az * INV_SQRT3;
+  const diagA1 = bx - bz * INV_SQRT3;
+  const diagB0 = ax + az * INV_SQRT3;
+  const diagB1 = bx + bz * INV_SQRT3;
+  const diagAError = Math.abs(diagA0 - diagA1);
+  const diagBError = Math.abs(diagB0 - diagB1);
+  const bestError = Math.min(horizontalError, diagAError, diagBError);
+  if (bestError > TERRAIN_MESH_EDGE_EPSILON) return null;
+
+  let lineKey: string;
+  let aCoord: number;
+  let bCoord: number;
+  if (bestError === horizontalError) {
+    lineKey = `h:${quantizedLineValue((az + bz) * 0.5)}`;
+    aCoord = ax;
+    bCoord = bx;
+  } else if (bestError === diagAError) {
+    lineKey = `a:${quantizedLineValue((diagA0 + diagA1) * 0.5)}`;
+    aCoord = az;
+    bCoord = bz;
+  } else {
+    lineKey = `b:${quantizedLineValue((diagB0 + diagB1) * 0.5)}`;
+    aCoord = az;
+    bCoord = bz;
+  }
+
+  return {
+    ...owner,
+    lineKey,
+    start: Math.min(aCoord, bCoord),
+    end: Math.max(aCoord, bCoord),
+  };
+}
+
+function collectTriangleEdgeSpansByLine(
+  vertexCoords: readonly number[],
+  edgeOwners: ReadonlyMap<string, readonly TriangleEdgeOwner[]>,
+): Map<string, TriangleEdgeSpan[]> {
+  const spansByLine = new Map<string, TriangleEdgeSpan[]>();
+  for (const owners of edgeOwners.values()) {
+    for (let i = 0; i < owners.length; i++) {
+      const span = edgeSpanForOwner(vertexCoords, owners[i]);
+      if (!span) continue;
+      const spans = spansByLine.get(span.lineKey);
+      if (spans) spans.push(span);
+      else spansByLine.set(span.lineKey, [span]);
+    }
+  }
+  for (const spans of spansByLine.values()) {
+    spans.sort((a, b) => a.start - b.start || a.end - b.end);
+  }
+  return spansByLine;
+}
+
+function collectTriangleEdgeSpanIndex(
+  spansByLine: ReadonlyMap<string, readonly TriangleEdgeSpan[]>,
+): Map<string, TriangleEdgeSpan> {
+  const edgeSpans = new Map<string, TriangleEdgeSpan>();
+  for (const spans of spansByLine.values()) {
+    for (let i = 0; i < spans.length; i++) {
+      const span = spans[i];
+      edgeSpans.set(`${span.triangle}:${span.edge}`, span);
+    }
+  }
+  return edgeSpans;
+}
+
+function edgeSpansOverlap(a: TriangleEdgeSpan, b: TriangleEdgeSpan): boolean {
+  if (a.triangle === b.triangle || a.lineKey !== b.lineKey) return false;
+  return Math.min(a.end, b.end) - Math.max(a.start, b.start) > TERRAIN_MESH_EDGE_EPSILON;
+}
+
+function findOverlappingEdgeSpans(
+  owner: TriangleEdgeOwner,
+  spansByLine: ReadonlyMap<string, readonly TriangleEdgeSpan[]>,
+  edgeSpans: ReadonlyMap<string, TriangleEdgeSpan>,
+): TriangleEdgeSpan[] {
+  const ownerSpan = edgeSpans.get(`${owner.triangle}:${owner.edge}`);
+  if (!ownerSpan) return [];
+  const candidates = spansByLine.get(ownerSpan.lineKey);
+  if (!candidates) return [];
+  const out: TriangleEdgeSpan[] = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    if (candidate.end <= ownerSpan.start + TERRAIN_MESH_EDGE_EPSILON) continue;
+    if (candidate.start >= ownerSpan.end - TERRAIN_MESH_EDGE_EPSILON) break;
+    if (edgeSpansOverlap(ownerSpan, candidate)) out.push(candidate);
+  }
+  return out;
+}
+
+function edgeCoordinateForLine(
+  lineKey: string,
+  vertexCoords: readonly number[],
+  vertexId: number,
+): number {
+  const x = vertexCoords[vertexId * 2];
+  const z = vertexCoords[vertexId * 2 + 1];
+  return lineKey.startsWith('h:') ? x : z;
+}
+
+function addSplitVertexForEdge(
+  splitVerticesByEdge: Map<number, Set<number>>,
+  vertexCoords: readonly number[],
+  owner: TriangleEdgeOwner,
+  ownerSpan: TriangleEdgeSpan,
+  vertexId: number,
+): void {
+  if (vertexId === owner.a || vertexId === owner.b) return;
+  const coord = edgeCoordinateForLine(ownerSpan.lineKey, vertexCoords, vertexId);
+  if (
+    coord <= ownerSpan.start + TERRAIN_MESH_EDGE_EPSILON ||
+    coord >= ownerSpan.end - TERRAIN_MESH_EDGE_EPSILON
+  ) {
+    return;
+  }
+  const key = owner.triangle * 3 + owner.edge;
+  let vertices = splitVerticesByEdge.get(key);
+  if (!vertices) {
+    vertices = new Set<number>();
+    splitVerticesByEdge.set(key, vertices);
+  }
+  vertices.add(vertexId);
+}
+
+function collectMeshEdgeSplitVertices(
+  ctx: TerrainMeshBuildContext,
+  vertexCoords: readonly number[],
+  triangleIndices: readonly number[],
+): Map<number, Set<number>> {
+  const edgeOwners = collectTriangleEdgeOwners(triangleIndices);
+  const spansByLine = collectTriangleEdgeSpansByLine(vertexCoords, edgeOwners);
+  const edgeSpans = collectTriangleEdgeSpanIndex(spansByLine);
+  const splitVerticesByEdge = new Map<number, Set<number>>();
+
+  for (const owners of edgeOwners.values()) {
+    if (owners.length !== 1) continue;
+    const owner = owners[0];
+    if (meshEdgeIsMapBoundary(ctx, vertexCoords, owner)) continue;
+    const ownerSpan = edgeSpans.get(`${owner.triangle}:${owner.edge}`);
+    if (!ownerSpan) continue;
+
+    const overlaps = findOverlappingEdgeSpans(owner, spansByLine, edgeSpans);
+    for (let i = 0; i < overlaps.length; i++) {
+      const overlap = overlaps[i];
+      addSplitVertexForEdge(splitVerticesByEdge, vertexCoords, owner, ownerSpan, overlap.a);
+      addSplitVertexForEdge(splitVerticesByEdge, vertexCoords, owner, ownerSpan, overlap.b);
+    }
+  }
+
+  return splitVerticesByEdge;
+}
+
+function pushUniqueVertex(out: number[], vertexId: number): void {
+  if (out[out.length - 1] !== vertexId) out.push(vertexId);
+}
+
+function triangleAreaFromVertexIds(
+  vertexCoords: readonly number[],
+  a: number,
+  b: number,
+  c: number,
+): number {
+  const ax = vertexCoords[a * 2];
+  const az = vertexCoords[a * 2 + 1];
+  const bx = vertexCoords[b * 2];
+  const bz = vertexCoords[b * 2 + 1];
+  const cx = vertexCoords[c * 2];
+  const cz = vertexCoords[c * 2 + 1];
+  return (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
+}
+
+function polygonSignedAreaFromVertexIds(
+  vertexCoords: readonly number[],
+  polygon: readonly number[],
+): number {
+  let area = 0;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    area +=
+      vertexCoords[a * 2] * vertexCoords[b * 2 + 1] -
+      vertexCoords[b * 2] * vertexCoords[a * 2 + 1];
+  }
+  return area * 0.5;
+}
+
+function triangulateConvexPolygonVertexIds(
+  vertexCoords: readonly number[],
+  polygon: readonly number[],
+  level: number,
+  leafIndex: number,
+  outIndices: number[],
+  outLevels: number[],
+  outLeafIndices: number[],
+): void {
+  let work = [...polygon];
+  if (work.length < 3) return;
+  if (polygonSignedAreaFromVertexIds(vertexCoords, work) < 0) work = work.reverse();
+
+  let guard = work.length * work.length;
+  while (work.length > 3 && guard-- > 0) {
+    let clipped = false;
+    for (let i = 0; i < work.length; i++) {
+      const prev = work[(i + work.length - 1) % work.length];
+      const curr = work[i];
+      const next = work[(i + 1) % work.length];
+      if (triangleAreaFromVertexIds(vertexCoords, prev, curr, next) <= TERRAIN_MESH_EPSILON) {
+        continue;
+      }
+      outIndices.push(prev, curr, next);
+      outLevels.push(level);
+      outLeafIndices.push(leafIndex);
+      work.splice(i, 1);
+      clipped = true;
+      break;
+    }
+    if (!clipped) return;
+  }
+
+  if (
+    work.length === 3 &&
+    triangleAreaFromVertexIds(vertexCoords, work[0], work[1], work[2]) > TERRAIN_MESH_EPSILON
+  ) {
+    outIndices.push(work[0], work[1], work[2]);
+    outLevels.push(level);
+    outLeafIndices.push(leafIndex);
+  }
+}
+
+function sortedSplitVerticesForTriangleEdge(
+  vertexCoords: readonly number[],
+  a: number,
+  b: number,
+  splitVertices: ReadonlySet<number> | undefined,
+): number[] {
+  if (!splitVertices || splitVertices.size === 0) return [];
+  const ax = vertexCoords[a * 2];
+  const az = vertexCoords[a * 2 + 1];
+  const bx = vertexCoords[b * 2];
+  const bz = vertexCoords[b * 2 + 1];
+  const dx = bx - ax;
+  const dz = bz - az;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq <= TERRAIN_MESH_EPSILON) return [];
+  return [...splitVertices].sort((va, vb) => {
+    const tax = vertexCoords[va * 2] - ax;
+    const taz = vertexCoords[va * 2 + 1] - az;
+    const tbx = vertexCoords[vb * 2] - ax;
+    const tbz = vertexCoords[vb * 2 + 1] - az;
+    return (tax * dx + taz * dz) / lenSq - (tbx * dx + tbz * dz) / lenSq;
+  });
+}
+
+function resolveMeshTriangleEdgeSplits(
+  ctx: TerrainMeshBuildContext,
+  vertexCoords: readonly number[],
+  triangleIndices: readonly number[],
+  triangleLevels: readonly number[],
+  triangleLeafIndices: readonly number[],
+): {
+  triangleIndices: number[];
+  triangleLevels: number[];
+  triangleLeafIndices: number[];
+} {
+  let indices = [...triangleIndices];
+  let levels = [...triangleLevels];
+  let leafIndices = [...triangleLeafIndices];
+  const maxIterations = terrainTriangleHierarchyLevel(ctx, {
+    i: 0,
+    j: 0,
+    side: 1,
+    down: false,
+  }) + 2;
+
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    const splitVerticesByEdge = collectMeshEdgeSplitVertices(ctx, vertexCoords, indices);
+    if (splitVerticesByEdge.size === 0) break;
+
+    const nextIndices: number[] = [];
+    const nextLevels: number[] = [];
+    const nextLeafIndices: number[] = [];
+
+    for (let tri = 0; tri < indices.length / 3; tri++) {
+      const base = tri * 3;
+      const a = indices[base];
+      const b = indices[base + 1];
+      const c = indices[base + 2];
+      const polygon: number[] = [];
+      pushUniqueVertex(polygon, a);
+      for (const v of sortedSplitVerticesForTriangleEdge(
+        vertexCoords,
+        a,
+        b,
+        splitVerticesByEdge.get(base),
+      )) {
+        pushUniqueVertex(polygon, v);
+      }
+      pushUniqueVertex(polygon, b);
+      for (const v of sortedSplitVerticesForTriangleEdge(
+        vertexCoords,
+        b,
+        c,
+        splitVerticesByEdge.get(base + 1),
+      )) {
+        pushUniqueVertex(polygon, v);
+      }
+      pushUniqueVertex(polygon, c);
+      for (const v of sortedSplitVerticesForTriangleEdge(
+        vertexCoords,
+        c,
+        a,
+        splitVerticesByEdge.get(base + 2),
+      )) {
+        pushUniqueVertex(polygon, v);
+      }
+      if (polygon.length > 1 && polygon[0] === polygon[polygon.length - 1]) polygon.pop();
+
+      triangulateConvexPolygonVertexIds(
+        vertexCoords,
+        polygon,
+        levels[tri] ?? 0,
+        leafIndices[tri] ?? -1,
+        nextIndices,
+        nextLevels,
+        nextLeafIndices,
+      );
+    }
+
+    indices = nextIndices;
+    levels = nextLevels;
+    leafIndices = nextLeafIndices;
+  }
+
+  return {
+    triangleIndices: indices,
+    triangleLevels: levels,
+    triangleLeafIndices: leafIndices,
+  };
+}
+
+function buildTriangleNeighborMetadata(
+  ctx: TerrainMeshBuildContext,
+  vertexCoords: readonly number[],
+  triangleIndices: readonly number[],
+  triangleLevels: readonly number[],
+): { indices: number[]; levels: number[] } {
+  const triangleCount = Math.floor(triangleIndices.length / 3);
+  const neighborIndices = new Array<number>(triangleCount * 3).fill(-1);
+  const neighborLevels = new Array<number>(triangleCount * 3).fill(-1);
+  const edgeOwners = collectTriangleEdgeOwners(triangleIndices);
+  const spansByLine = collectTriangleEdgeSpansByLine(vertexCoords, edgeOwners);
+  const edgeSpans = collectTriangleEdgeSpanIndex(spansByLine);
+
+  for (const owners of edgeOwners.values()) {
+    if (owners.length !== 2) continue;
+    const a = owners[0];
+    const b = owners[1];
+    const aOffset = a.triangle * 3 + a.edge;
+    const bOffset = b.triangle * 3 + b.edge;
+    neighborIndices[aOffset] = b.triangle;
+    neighborLevels[aOffset] = triangleLevels[b.triangle] ?? -1;
+    neighborIndices[bOffset] = a.triangle;
+    neighborLevels[bOffset] = triangleLevels[a.triangle] ?? -1;
+  }
+
+  for (const owners of edgeOwners.values()) {
+    for (let i = 0; i < owners.length; i++) {
+      const owner = owners[i];
+      const ownerOffset = owner.triangle * 3 + owner.edge;
+      if (neighborLevels[ownerOffset] >= 0 || meshEdgeIsMapBoundary(ctx, vertexCoords, owner)) {
+        continue;
+      }
+      const overlaps = findOverlappingEdgeSpans(owner, spansByLine, edgeSpans);
+      let bestTriangle = -1;
+      let bestLevel = -1;
+      for (let o = 0; o < overlaps.length; o++) {
+        const candidate = overlaps[o];
+        const level = triangleLevels[candidate.triangle] ?? -1;
+        if (level > bestLevel) {
+          bestLevel = level;
+          bestTriangle = candidate.triangle;
+        }
+      }
+      if (bestTriangle >= 0) {
+        neighborIndices[ownerOffset] = bestTriangle;
+        neighborLevels[ownerOffset] = bestLevel;
+      }
+    }
+  }
+
+  return { indices: neighborIndices, levels: neighborLevels };
+}
+
+function markTriangleLeafForSplit(
+  leaves: readonly TerrainHierarchyTriangle[],
+  triangleLeafIndices: readonly number[],
+  splitLeafIndices: Set<number>,
+  triangle: number,
+): void {
+  const leafIndex = triangleLeafIndices[triangle];
+  if (leafIndex === undefined || leafIndex < 0) return;
+  if ((leaves[leafIndex]?.side ?? 1) <= 1) return;
+  splitLeafIndices.add(leafIndex);
+}
+
+function markCoarserTriangleLeafForSplit(
+  leaves: readonly TerrainHierarchyTriangle[],
+  triangleLeafIndices: readonly number[],
+  triangleLevels: readonly number[],
+  splitLeafIndices: Set<number>,
+  aTriangle: number,
+  bTriangle: number,
+): void {
+  const aLevel = triangleLevels[aTriangle] ?? 0;
+  const bLevel = triangleLevels[bTriangle] ?? 0;
+  if (aLevel <= bLevel) {
+    markTriangleLeafForSplit(leaves, triangleLeafIndices, splitLeafIndices, aTriangle);
+  }
+  if (bLevel <= aLevel) {
+    markTriangleLeafForSplit(leaves, triangleLeafIndices, splitLeafIndices, bTriangle);
+  }
+}
+
+function findMeshNeighborDiscrepancyLeafIndices(
+  ctx: TerrainMeshBuildContext,
+  leaves: readonly TerrainHierarchyTriangle[],
+  mesh: BuiltTerrainMesh,
+): Set<number> {
+  const splitLeafIndices = new Set<number>();
+  const maxDelta = Math.max(0, TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA | 0);
+  const edgeOwners = collectTriangleEdgeOwners(mesh.triangleIndices);
+  const spansByLine = collectTriangleEdgeSpansByLine(mesh.vertexCoords, edgeOwners);
+  const edgeSpans = collectTriangleEdgeSpanIndex(spansByLine);
+
+  for (const owners of edgeOwners.values()) {
+    if (owners.length === 2) {
+      const a = owners[0];
+      const b = owners[1];
+      const aLevel = mesh.triangleLevels[a.triangle] ?? 0;
+      const bLevel = mesh.triangleLevels[b.triangle] ?? 0;
+      if (Math.abs(aLevel - bLevel) > maxDelta) {
+        markCoarserTriangleLeafForSplit(
+          leaves,
+          mesh.triangleLeafIndices,
+          mesh.triangleLevels,
+          splitLeafIndices,
+          a.triangle,
+          b.triangle,
+        );
+      }
+      continue;
+    }
+
+    if (owners.length > 2) {
+      for (let i = 0; i < owners.length; i++) {
+        markTriangleLeafForSplit(
+          leaves,
+          mesh.triangleLeafIndices,
+          splitLeafIndices,
+          owners[i].triangle,
+        );
+      }
+      continue;
+    }
+
+    const owner = owners[0];
+    if (meshEdgeIsMapBoundary(ctx, mesh.vertexCoords, owner)) continue;
+
+    const overlaps = findOverlappingEdgeSpans(owner, spansByLine, edgeSpans);
+    if (overlaps.length === 0) {
+      markTriangleLeafForSplit(
+        leaves,
+        mesh.triangleLeafIndices,
+        splitLeafIndices,
+        owner.triangle,
+      );
+      continue;
+    }
+
+    for (let i = 0; i < overlaps.length; i++) {
+      markCoarserTriangleLeafForSplit(
+        leaves,
+        mesh.triangleLeafIndices,
+        mesh.triangleLevels,
+        splitLeafIndices,
+        owner.triangle,
+        overlaps[i].triangle,
+      );
+    }
+  }
+
+  return splitLeafIndices;
+}
+
+function buildConformingMeshFromLeaves(
+  ctx: TerrainMeshBuildContext,
+  leaves: readonly TerrainHierarchyTriangle[],
+  cellsX: number,
+  cellsY: number,
+  cellSize: number,
+): BuiltTerrainMesh {
+  const leafVertexSet = new Set<string>();
+  for (let i = 0; i < leaves.length; i++) {
+    const verts = triangleLatticeVertices(leaves[i]);
+    for (let v = 0; v < verts.length; v++) {
+      leafVertexSet.add(latticeKey(verts[v].i, verts[v].j));
+    }
+  }
+
+  const vertexIds = new Map<string, number>();
+  const vertexCoords: number[] = [];
+  const vertexHeights: number[] = [];
+  let triangleIndices: number[] = [];
+  let triangleLevels: number[] = [];
+  let triangleLeafIndices: number[] = [];
+  const addVertex = (p: MeshPoint): number => {
+    const x = clampToMap(p.x, ctx.mapWidth);
+    const z = clampToMap(p.z, ctx.mapHeight);
+    const key = worldVertexKey(x, z);
+    const existing = vertexIds.get(key);
+    if (existing !== undefined) return existing;
+    const id = vertexHeights.length;
+    vertexIds.set(key, id);
+    vertexCoords.push(x, z);
+    vertexHeights.push(terrainHeightAtWorld(ctx, x, z));
+    return id;
+  };
+  const addPolygon = (
+    points: readonly MeshPoint[],
+    level: number,
+    leafIndex: number,
+  ): void => {
+    const polygon = points.map((p) => addVertex(p));
+    triangulateConvexPolygonVertexIds(
+      vertexCoords,
+      polygon,
+      level,
+      leafIndex,
+      triangleIndices,
+      triangleLevels,
+      triangleLeafIndices,
+    );
+  };
+
+  for (let i = 0; i < leaves.length; i++) {
+    const sourceLevel = terrainTriangleHierarchyLevel(ctx, leaves[i]);
+    const latticePoints = triangleBoundaryLatticePoints(leaves[i], leafVertexSet);
+    const polygon = latticePoints.map((p) => latticePointAt(ctx, p.i, p.j));
+    let clipped = clipPolygonToMap(ctx, polygon);
+    if (clipped.length < 3) continue;
+    if (polygonSignedArea(clipped) < 0) clipped = [...clipped].reverse();
+    addPolygon(clipped, sourceLevel, i);
+  }
+
+  const resolvedTriangles = resolveMeshTriangleEdgeSplits(
+    ctx,
+    vertexCoords,
+    triangleIndices,
+    triangleLevels,
+    triangleLeafIndices,
+  );
+  triangleIndices = resolvedTriangles.triangleIndices;
+  triangleLevels = resolvedTriangles.triangleLevels;
+  triangleLeafIndices = resolvedTriangles.triangleLeafIndices;
+
+  const triangleNeighbors = buildTriangleNeighborMetadata(
+    ctx,
+    vertexCoords,
+    triangleIndices,
+    triangleLevels,
+  );
+
+  const cellBuckets: number[][] = Array.from({ length: cellsX * cellsY }, () => []);
+  for (let tri = 0; tri < triangleIndices.length / 3; tri++) {
+    const ia = triangleIndices[tri * 3];
+    const ib = triangleIndices[tri * 3 + 1];
+    const ic = triangleIndices[tri * 3 + 2];
+    const ax = vertexCoords[ia * 2];
+    const az = vertexCoords[ia * 2 + 1];
+    const bx = vertexCoords[ib * 2];
+    const bz = vertexCoords[ib * 2 + 1];
+    const cx = vertexCoords[ic * 2];
+    const cz = vertexCoords[ic * 2 + 1];
+    const minCellX = Math.max(0, Math.min(cellsX - 1, Math.floor(Math.min(ax, bx, cx) / cellSize)));
+    const maxCellX = Math.max(0, Math.min(cellsX - 1, Math.floor(Math.max(ax, bx, cx) / cellSize)));
+    const minCellY = Math.max(0, Math.min(cellsY - 1, Math.floor(Math.min(az, bz, cz) / cellSize)));
+    const maxCellY = Math.max(0, Math.min(cellsY - 1, Math.floor(Math.max(az, bz, cz) / cellSize)));
+    for (let cy = minCellY; cy <= maxCellY; cy++) {
+      for (let cx2 = minCellX; cx2 <= maxCellX; cx2++) {
+        cellBuckets[cy * cellsX + cx2].push(tri);
+      }
+    }
+  }
+
+  const cellTriangleOffsets = new Array<number>(cellBuckets.length + 1);
+  const cellTriangleIndices: number[] = [];
+  for (let i = 0; i < cellBuckets.length; i++) {
+    cellTriangleOffsets[i] = cellTriangleIndices.length;
+    for (let j = 0; j < cellBuckets[i].length; j++) {
+      cellTriangleIndices.push(cellBuckets[i][j]);
+    }
+  }
+  cellTriangleOffsets[cellBuckets.length] = cellTriangleIndices.length;
+
+  return {
+    vertexCoords,
+    vertexHeights,
+    triangleIndices,
+    triangleLevels,
+    triangleLeafIndices,
+    triangleNeighborIndices: triangleNeighbors.indices,
+    triangleNeighborLevels: triangleNeighbors.levels,
+    cellTriangleOffsets,
+    cellTriangleIndices,
+  };
+}
+
+function buildValidatedConformingMeshFromLeaves(
+  ctx: TerrainMeshBuildContext,
+  leaves: readonly TerrainHierarchyTriangle[],
+  cellsX: number,
+  cellsY: number,
+  cellSize: number,
+): BuiltTerrainMesh {
+  let repairedLeaves = [...leaves];
+  const maxPasses = terrainTriangleHierarchyLevel(ctx, {
+    i: 0,
+    j: 0,
+    side: 1,
+    down: false,
+  }) + 2;
+  const boundedMaxPasses = Math.max(
+    0,
+    Math.min(maxPasses, TERRAIN_TRIANGLE_FINAL_REPAIR_MAX_PASSES | 0),
+  );
+
+  for (let pass = 0; pass < boundedMaxPasses; pass++) {
+    const mesh = buildConformingMeshFromLeaves(ctx, repairedLeaves, cellsX, cellsY, cellSize);
+    const splitLeafIndices = findMeshNeighborDiscrepancyLeafIndices(ctx, repairedLeaves, mesh);
+    if (splitLeafIndices.size === 0) return mesh;
+
+    const nextLeaves = balanceTerrainTriangleLeaves(
+      ctx,
+      splitTerrainTriangleLeaves(ctx, repairedLeaves, splitLeafIndices),
+    );
+    if (nextLeaves.length === repairedLeaves.length) return mesh;
+    repairedLeaves = nextLeaves;
+  }
+
+  return buildConformingMeshFromLeaves(ctx, repairedLeaves, cellsX, cellsY, cellSize);
+}
+
+function buildAdaptiveEquilateralTerrainMesh(
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
+  cellsX: number,
+  cellsY: number,
+  maxSubdiv: number,
+): BuiltTerrainMesh {
+  const fineEdge = cellSize / Math.max(1, maxSubdiv);
+  const fineHeight = fineEdge * SQRT3_OVER_2;
+  const rootSide = nextPowerOfTwo(
+    Math.max(
+      1,
+      Math.ceil(Math.max(mapWidth / fineEdge, mapHeight / fineHeight)),
+    ),
+  );
+  const ctx: TerrainMeshBuildContext = {
+    mapWidth,
+    mapHeight,
+    fineEdge,
+    fineHeight,
+    rootSide,
+    heightCache: new Map<string, number>(),
+  };
+  const rows = Math.ceil(mapHeight / fineHeight);
+  const cols = Math.ceil(mapWidth / fineEdge);
+  const leaves: TerrainHierarchyTriangle[] = [];
+
+  for (let j = -rootSide; j <= rows + rootSide; j += rootSide) {
+    for (let i = -rootSide * 2; i <= cols + rootSide * 2; i += rootSide) {
+      buildTerrainTriangleLeaves(ctx, { i, j, side: rootSide, down: false }, leaves);
+      buildTerrainTriangleLeaves(ctx, { i, j, side: rootSide, down: true }, leaves);
+    }
+  }
+
+  const balancedLeaves = balanceTerrainTriangleLeaves(ctx, leaves);
+  return buildValidatedConformingMeshFromLeaves(ctx, balancedLeaves, cellsX, cellsY, cellSize);
+}
+
+export function getTerrainMeshView(
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number = LAND_CELL_SIZE,
+): TerrainMeshView | null {
+  assertCanonicalLandCellSize('getTerrainMeshView cellSize', cellSize);
+  const size = terrainCellSize(cellSize);
+  const map = getInstalledTerrainTileMap(mapWidth, mapHeight, size);
+  if (!map) return null;
+  return {
+    vertexCount: map.meshVertexHeights.length,
+    triangleCount: Math.floor(map.meshTriangleIndices.length / 3),
+    vertexCoords: map.meshVertexCoords,
+    vertexHeights: map.meshVertexHeights,
+    triangleIndices: map.meshTriangleIndices,
+    triangleLevels: map.meshTriangleLevels,
+    triangleNeighborIndices: map.meshTriangleNeighborIndices,
+    triangleNeighborLevels: map.meshTriangleNeighborLevels,
+  };
+}
+
+function terrainTriangleSampleFromGlobalMesh(
   map: TerrainTileMap,
+  px: number,
+  pz: number,
   cellX: number,
   cellY: number,
-  fx: number,
-  fz: number,
 ): TerrainTriangleSample | null {
-  const mesh = terrainTileMeshViewFromMap(map, cellX, cellY);
-  if (!mesh || mesh.triangleCount <= 0) return null;
-
+  const cellIdx = cellY * map.cellsX + cellX;
+  const start = map.meshCellTriangleOffsets[cellIdx] ?? 0;
+  const end = map.meshCellTriangleOffsets[cellIdx + 1] ?? start;
   let best: TerrainTriangleSample | null = null;
   let bestScore = Number.NEGATIVE_INFINITY;
-  const px = clamp01(fx);
-  const pz = clamp01(fz);
-  for (let tri = 0; tri < mesh.triangleCount; tri++) {
-    const triOffset = mesh.triangleOffset + tri * 3;
-    const ia = mesh.triangleIndices[triOffset];
-    const ib = mesh.triangleIndices[triOffset + 1];
-    const ic = mesh.triangleIndices[triOffset + 2];
-    const aCoord = (mesh.vertexOffset + ia) * 2;
-    const bCoord = (mesh.vertexOffset + ib) * 2;
-    const cCoord = (mesh.vertexOffset + ic) * 2;
-    const ax = mesh.vertexCoords[aCoord];
-    const az = mesh.vertexCoords[aCoord + 1];
-    const bx = mesh.vertexCoords[bCoord];
-    const bz = mesh.vertexCoords[bCoord + 1];
-    const cx = mesh.vertexCoords[cCoord];
-    const cz = mesh.vertexCoords[cCoord + 1];
+
+  for (let ref = start; ref < end; ref++) {
+    const tri = map.meshCellTriangleIndices[ref];
+    const triOffset = tri * 3;
+    const ia = map.meshTriangleIndices[triOffset];
+    const ib = map.meshTriangleIndices[triOffset + 1];
+    const ic = map.meshTriangleIndices[triOffset + 2];
+    const ax = map.meshVertexCoords[ia * 2];
+    const az = map.meshVertexCoords[ia * 2 + 1];
+    const bx = map.meshVertexCoords[ib * 2];
+    const bz = map.meshVertexCoords[ib * 2 + 1];
+    const cx = map.meshVertexCoords[ic * 2];
+    const cz = map.meshVertexCoords[ic * 2 + 1];
     const bary = terrainBarycentricAt(px, pz, ax, az, bx, bz, cx, cz);
     if (!bary) continue;
     const score = Math.min(bary.wa, bary.wb, bary.wc);
@@ -812,15 +1445,15 @@ function terrainTriangleSampleFromMesh(
       ? bary
       : normalizeBarycentricWeights(bary.wa, bary.wb, bary.wc);
     const sample = {
-      ax: (cellX + ax) * map.cellSize,
-      az: (cellY + az) * map.cellSize,
-      ah: mesh.vertexHeights[mesh.vertexOffset + ia] ?? 0,
-      bx: (cellX + bx) * map.cellSize,
-      bz: (cellY + bz) * map.cellSize,
-      bh: mesh.vertexHeights[mesh.vertexOffset + ib] ?? 0,
-      cx: (cellX + cx) * map.cellSize,
-      cz: (cellY + cz) * map.cellSize,
-      ch: mesh.vertexHeights[mesh.vertexOffset + ic] ?? 0,
+      ax,
+      az,
+      ah: map.meshVertexHeights[ia] ?? 0,
+      bx,
+      bz,
+      bh: map.meshVertexHeights[ib] ?? 0,
+      cx,
+      cz,
+      ch: map.meshVertexHeights[ic] ?? 0,
       wa: weights.wa,
       wb: weights.wb,
       wc: weights.wc,
@@ -851,7 +1484,7 @@ export function getTerrainMeshSample(
     candidateMap.mapWidth === mapWidth &&
     candidateMap.mapHeight === mapHeight &&
     candidateMap.cellSize === size &&
-    candidateMap.subdiv === TERRAIN_MESH_SUBDIV
+    candidateMap.subdiv === TERRAIN_FINE_TRIANGLE_SUBDIV
       ? candidateMap
       : null;
   const cellsX = installedMap?.cellsX ?? Math.max(1, Math.ceil(mapWidth / size));
@@ -862,44 +1495,32 @@ export function getTerrainMeshSample(
   const pz = z <= 0 ? 0 : z >= maxZ ? maxZ : z;
   const cellX = Math.min(cellsX - 1, Math.max(0, Math.floor(px / size)));
   const cellZ = Math.min(cellsZ - 1, Math.max(0, Math.floor(pz / size)));
-  const localX = px - cellX * size;
-  const localZ = pz - cellZ * size;
 
   if (installedMap) {
-    const rawTileSubdiv =
-      (installedMap.tileSubdivisions as readonly number[] | undefined)?.[cellZ * installedMap.cellsX + cellX] ??
-      installedMap.subdiv;
-    const tileSubdiv = normalizeTerrainTileSubdivision(rawTileSubdiv, installedMap.subdiv);
-    const triangle = terrainTriangleSampleFromMesh(
-      installedMap,
-      cellX,
-      cellZ,
-      localX / size,
-      localZ / size,
-    );
+    const triangle = terrainTriangleSampleFromGlobalMesh(installedMap, px, pz, cellX, cellZ);
     if (triangle) {
       return {
         u: triangle.wb,
         v: triangle.wc,
-        subSize: size / tileSubdiv,
+        subSize: size / installedMap.subdiv,
         h00: triangle.ah,
         h10: triangle.bh,
         h11: triangle.ch,
         h01: triangle.ah,
-        hc: triangle.ah,
-        centerFan: false,
         triangle,
       };
     }
   }
 
-  const subSize = size / TERRAIN_MESH_SUBDIV;
+  const localX = px - cellX * size;
+  const localZ = pz - cellZ * size;
+  const subSize = size / TERRAIN_FINE_TRIANGLE_SUBDIV;
   const subX = Math.min(
-    TERRAIN_MESH_SUBDIV - 1,
+    TERRAIN_FINE_TRIANGLE_SUBDIV - 1,
     Math.max(0, Math.floor(localX / subSize)),
   );
   const subZ = Math.min(
-    TERRAIN_MESH_SUBDIV - 1,
+    TERRAIN_FINE_TRIANGLE_SUBDIV - 1,
     Math.max(0, Math.floor(localZ / subSize)),
   );
   const x0 = cellX * size + subX * subSize;
@@ -932,7 +1553,6 @@ export function getTerrainMeshSample(
     mapWidth,
     mapHeight,
   );
-  const hc = terrainCenterFanHeight(h00, h10, h11, h01);
   return {
     u,
     v,
@@ -941,58 +1561,17 @@ export function getTerrainMeshSample(
     h10,
     h11,
     h01,
-    hc,
-    centerFan: false,
   };
 }
 
-export function terrainCenterFanHeight(
-  h00: number,
-  h10: number,
-  h11: number,
-  h01: number,
-): number {
-  return (h00 + h10 + h11 + h01) * 0.25;
-}
-
-export function shouldUseTerrainCenterFan(
-  h00: number,
-  h10: number,
-  h11: number,
-  h01: number,
-  hc: number = terrainCenterFanHeight(h00, h10, h11, h01),
-  threshold: number = TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
-): boolean {
-  const fixedDiagonalCenter = (h00 + h11) * 0.5;
-  const oppositeDiagonalCenter = (h10 + h01) * 0.5;
-  return Math.max(
-    Math.abs(hc - fixedDiagonalCenter),
-    Math.abs(hc - oppositeDiagonalCenter),
-  ) > threshold;
-}
-
-export function interpolateTerrainMeshQuadHeight(
+function interpolateTerrainMeshQuadHeight(
   u: number,
   v: number,
   h00: number,
   h10: number,
   h11: number,
   h01: number,
-  hc: number = (h00 + h11) * 0.5,
-  centerFan: boolean = false,
 ): number {
-  if (centerFan) {
-    if (v <= u && v <= 1 - u) {
-      return (1 - u - v) * h00 + (u - v) * h10 + (2 * v) * hc;
-    }
-    if (u >= v && u >= 1 - v) {
-      return (u - v) * h10 + (u + v - 1) * h11 + (2 * (1 - u)) * hc;
-    }
-    if (v >= u && v >= 1 - u) {
-      return (u + v - 1) * h11 + (v - u) * h01 + (2 * (1 - v)) * hc;
-    }
-    return (v - u) * h01 + (1 - v - u) * h00 + (2 * u) * hc;
-  }
   if (u >= v) {
     return (1 - u) * h00 + (u - v) * h10 + v * h11;
   }
@@ -1011,8 +1590,6 @@ export function terrainMeshHeightFromSample(sample: TerrainMeshSample): number {
     sample.h10,
     sample.h11,
     sample.h01,
-    sample.hc,
-    sample.centerFan,
   );
 }
 
@@ -1024,43 +1601,25 @@ export function terrainMeshNormalFromSample(sample: TerrainMeshSample): {
   if (sample.triangle) {
     const tri = sample.triangle;
     const ux = tri.bx - tri.ax;
+    const uy = tri.bh - tri.ah;
     const uz = tri.bz - tri.az;
-    const uh = tri.bh - tri.ah;
     const vx = tri.cx - tri.ax;
+    const vy = tri.ch - tri.ah;
     const vz = tri.cz - tri.az;
-    const vh = tri.ch - tri.ah;
-    let nx = uh * vz - uz * vh;
-    let ny = uz * vx - ux * vz;
-    let nz = ux * vh - uh * vx;
-    if (ny < 0) {
+    let nx = uy * vz - uz * vy;
+    let vertical = uz * vx - ux * vz;
+    let nz = ux * vy - uy * vx;
+    if (vertical < 0) {
       nx = -nx;
-      ny = -ny;
+      vertical = -vertical;
       nz = -nz;
     }
-    const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-    return { nx: nx / len, ny: nz / len, nz: ny / len };
+    const len = Math.sqrt(nx * nx + vertical * vertical + nz * nz) || 1;
+    return { nx: nx / len, ny: nz / len, nz: vertical / len };
   }
-  const { u, v, subSize, h00, h10, h11, h01, hc, centerFan } = sample;
-  let dHdx: number;
-  let dHdz: number;
-  if (centerFan) {
-    if (v <= u && v <= 1 - u) {
-      dHdx = (h10 - h00) / subSize;
-      dHdz = (-h00 - h10 + 2 * hc) / subSize;
-    } else if (u >= v && u >= 1 - v) {
-      dHdx = (h10 + h11 - 2 * hc) / subSize;
-      dHdz = (h11 - h10) / subSize;
-    } else if (v >= u && v >= 1 - u) {
-      dHdx = (h11 - h01) / subSize;
-      dHdz = (h11 + h01 - 2 * hc) / subSize;
-    } else {
-      dHdx = (-h01 - h00 + 2 * hc) / subSize;
-      dHdz = (h01 - h00) / subSize;
-    }
-  } else {
-    dHdx = u >= v ? (h10 - h00) / subSize : (h11 - h01) / subSize;
-    dHdz = u >= v ? (h11 - h10) / subSize : (h01 - h00) / subSize;
-  }
+  const { u, v, subSize, h00, h10, h11, h01 } = sample;
+  const dHdx = u >= v ? (h10 - h00) / subSize : (h11 - h01) / subSize;
+  const dHdz = u >= v ? (h11 - h10) / subSize : (h01 - h00) / subSize;
   const nx = -dHdx;
   const ny = -dHdz;
   const nz = 1;

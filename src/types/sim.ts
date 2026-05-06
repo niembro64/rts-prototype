@@ -618,10 +618,10 @@ export type Turret = {
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
   /** Consecutive ticks the line of sight to `target` has been blocked
-   *  by terrain. Direct-fire turrets stop firing the first blocked
-   *  tick (engaged → tracking) and drop the lock entirely once this
-   *  exceeds LOS_DROP_GRACE_TICKS. Cleared whenever the target changes
-   *  or the sightline reopens. */
+   *  by terrain or live unit/building occluders. Direct-fire turrets
+   *  stop firing the first blocked tick (engaged → tracking) and drop
+   *  the lock entirely once this exceeds LOS_DROP_GRACE_TICKS. Cleared
+   *  whenever the target changes or the sightline reopens. */
   losBlockedTicks?: number;
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet) %

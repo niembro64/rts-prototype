@@ -5,7 +5,7 @@ import {
   type TerrainTileMap,
 } from '@/types/terrain';
 import { getTerrainDividerTeamCount } from '../playerLayout';
-import { TERRAIN_MESH_SUBDIV, TERRAIN_SHAPE_MAGNITUDE } from './terrainConfig';
+import { TERRAIN_FINE_TRIANGLE_SUBDIV, TERRAIN_SHAPE_MAGNITUDE } from './terrainConfig';
 
 let mountainRippleAmplitude = TERRAIN_SHAPE_MAGNITUDE;
 let mountainSeparatorAmplitude = TERRAIN_SHAPE_MAGNITUDE;
@@ -108,7 +108,7 @@ export function getInstalledTerrainTileMap(
     map.mapWidth !== mapWidth ||
     map.mapHeight !== mapHeight ||
     map.cellSize !== cellSize ||
-    map.subdiv !== TERRAIN_MESH_SUBDIV
+    map.subdiv !== TERRAIN_FINE_TRIANGLE_SUBDIV
   ) {
     return null;
   }

@@ -94,34 +94,46 @@ export const METAL_DEPOSIT_CONFIG = {
 
   rings: [
     {
-      radiusFraction: 0.2,
+      radiusFraction: 0.3,
       countPerPlayer: 1,
       sliceOffset: 0,
-      dTerrainLevels: 1,
+      dTerrainLevels: 0,
     },
+    // {
+    //   radiusFraction: 0.3,
+    //   countPerPlayer: 2,
+    //   sliceOffset: 0.1,
+    //   dTerrainLevels: 0,
+    // },
+    // {
+    //   radiusFraction: 0.4,
+    //   countPerPlayer: 2,
+    //   sliceOffset: 0.2,
+    //   dTerrainLevels: 0,
+    // },
+    // {
+    //   radiusFraction: 0.5,
+    //   countPerPlayer: 2,
+    //   sliceOffset: 0.3,
+    //   dTerrainLevels: 0,
+    // },
     {
-      radiusFraction: 0.27,
-      countPerPlayer: 1,
-      sliceOffset: 2.4,
-      dTerrainLevels: 2,
-    },
-    {
-      radiusFraction: 0.36,
-      countPerPlayer: 1,
-      sliceOffset: 2.3,
-      dTerrainLevels: 2,
-    },
-    {
-      radiusFraction: 0.7,
+      radiusFraction: 0.6,
       countPerPlayer: 2,
-      sliceOffset: 0.0,
-      dTerrainLevels: 1,
+      sliceOffset: 0.4,
+      dTerrainLevels: 0,
     },
+    // {
+    //   radiusFraction: 0.7,
+    //   countPerPlayer: 2,
+    //   sliceOffset: 0.5,
+    //   dTerrainLevels: 0,
+    // },
     {
-      radiusFraction: 0.86,
+      radiusFraction: 0.8,
       countPerPlayer: 2,
-      sliceOffset: -0.375,
-      dTerrainLevels: 1,
+      sliceOffset: 0.6,
+      dTerrainLevels: 0,
     },
   ] as DepositRing[],
 };

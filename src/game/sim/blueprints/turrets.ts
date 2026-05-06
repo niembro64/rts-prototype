@@ -377,8 +377,8 @@ export const TURRET_BLUEPRINTS = {
     id: 'beamTurret',
     projectileId: 'beamShot',
     range: 250,
-    turretTurnAccel: 100,
-    turretDrag: 0.4,
+    turretTurnAccel: 200,
+    turretDrag: 0.6,
     barrel: {
       type: 'simpleSingleBarrel',
       barrelLength: 0.6,
@@ -403,8 +403,8 @@ export const TURRET_BLUEPRINTS = {
     id: 'megaBeamTurret',
     projectileId: 'megaBeamShot',
     range: 350,
-    turretTurnAccel: 100,
-    turretDrag: 0.5,
+    turretTurnAccel: 200,
+    turretDrag: 0.6,
     barrel: {
       type: 'simpleSingleBarrel',
       barrelLength: 0.6,

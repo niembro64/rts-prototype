@@ -10,27 +10,24 @@
 export type TerrainShape = 'valley' | 'mountain' | 'flat';
 export type TerrainMapShape = 'square' | 'circle';
 
-/** Server-authored terrain mesh samples. Heights are row-major
- *  authoritative terrain vertices, not render LOD vertices:
- *  `heights[vy * verticesX + vx]`.
+/** Server-authored terrain mesh samples.
  *
- *  `tileSubdivisions[cy * cellsX + cx]` is the authoritative render/sim
- *  subdivision selected for that land cell. Runtime terrain sampling uses
- *  that selected subdivision and the baked `tileVertexHeights` payload,
- *  whose vertices were sampled directly from the generated terrain curve
- *  after subdivision selection. Sim, client prediction, and rendering stay
- *  on the same adaptive two-triangle quad surface.
+ *  Terrain topology is independent from LAND GRID gameplay cells. The
+ *  authoritative mesh is a global bottom-up equilateral-triangle hierarchy:
+ *  fine lattice triangles are grouped upward only when the larger triangle
+ *  stays within terrain error constraints. The final baked mesh is fixed per
+ *  match and shared by host sim, client prediction, and rendering.
  *
- *  `tileEdgeSubdivisions[(tile * 4) + edge]` stores north/east/south/west
- *  edge resolutions after considering touching cells. `tileVertexCoords`,
- *  `tileVertexHeights`, and `tileTriangleIndices` store the final stitched
- *  per-cell mesh so low-resolution cells can add only the border vertices
- *  needed to match higher-resolution neighbors.
+ *  LAND GRID cells remain useful for gameplay, overlays, and broad lookup.
+ *  `meshCellTriangleOffsets` / `meshCellTriangleIndices` are an acceleration
+ *  index from land cells to global terrain triangles; they do not define the
+ *  terrain topology.
  *
- *  `heights` retains a max-resolution generator sample grid for snapshots
- *  and diagnostics. `centerHeights` / `centerFanMask` are legacy snapshot
- *  fields; authoritative topology now keeps every sub-quad on the classic
- *  two-triangle split and writes a zero center-fan mask.
+ *  `meshTriangleLevels` gives each rendered triangle's hierarchy level.
+ *  `meshTriangleNeighborIndices` and `meshTriangleNeighborLevels` are
+ *  per-edge metadata: three entries per triangle. Map boundary edges use
+ *  `-1`; non-boundary edges are repaired until they have either an exact
+ *  neighbor or a highest-resolution overlapping neighbor recorded.
  *
  *  IMMUTABILITY CONTRACT: a TerrainTileMap is built once per match
  *  by `buildTerrainTileMap` and is never mutated thereafter. The
@@ -51,16 +48,14 @@ export type TerrainTileMap = {
   readonly verticesX: number;
   readonly verticesY: number;
   readonly version: number;
-  readonly heights: readonly number[];
-  readonly centerHeights: readonly number[];
-  readonly centerFanMask: readonly number[];
-  readonly tileSubdivisions: readonly number[];
-  readonly tileEdgeSubdivisions: readonly number[];
-  readonly tileVertexOffsets: readonly number[];
-  readonly tileVertexCoords: readonly number[];
-  readonly tileVertexHeights: readonly number[];
-  readonly tileTriangleOffsets: readonly number[];
-  readonly tileTriangleIndices: readonly number[];
+  readonly meshVertexCoords: readonly number[];
+  readonly meshVertexHeights: readonly number[];
+  readonly meshTriangleIndices: readonly number[];
+  readonly meshTriangleLevels: readonly number[];
+  readonly meshTriangleNeighborIndices: readonly number[];
+  readonly meshTriangleNeighborLevels: readonly number[];
+  readonly meshCellTriangleOffsets: readonly number[];
+  readonly meshCellTriangleIndices: readonly number[];
 };
 
 /** Server-authored buildability grid for the building-placement

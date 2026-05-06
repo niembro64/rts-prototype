@@ -128,6 +128,9 @@ export class ThreeApp {
       precision: 'highp',
       powerPreference: 'high-performance',
     });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
     const mobileLike = isMobileLikeBrowser();
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
     this._dynamicPixelRatioEnabled = !mobileLike;

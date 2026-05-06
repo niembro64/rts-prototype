@@ -9,13 +9,15 @@ import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getMirrorLineTargetScore } from './mirrorTargetPriority';
+import { resolveTargetAimPoint } from './aimSolver';
 import {
   LOS_DROP_GRACE_TICKS,
-  hasTerrainLineOfSight,
+  hasCombatLineOfSight,
   weaponNeedsLineOfSight,
 } from './lineOfSight';
 
 const _activeCombatUnits: Entity[] = [];
+const _losTargetPoint = { x: 0, y: 0, z: 0 };
 
 function commitCombatMasks(entity: Entity): boolean {
   const combat = entity.combat;
@@ -235,6 +237,32 @@ function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
   );
 }
 
+function hasWeaponLineOfSight(
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
+  target: Entity,
+  weaponX: number,
+  weaponY: number,
+  weaponZ: number,
+): boolean {
+  if (!weaponNeedsLineOfSight(weapon)) return true;
+  const targetPoint = resolveTargetAimPoint(
+    target,
+    weaponX, weaponY, weaponZ,
+    _losTargetPoint,
+  );
+  return (
+    hasCombatLineOfSight(
+      world,
+      weaponX, weaponY, weaponZ,
+      targetPoint.x, targetPoint.y, targetPoint.z,
+      source.id,
+      target.id,
+    )
+  );
+}
+
 function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, weaponIndex: number): boolean {
   if (!weaponSystemDisabled(world, weapon)) return false;
   setWeaponTarget(weapon, unit, weaponIndex, null);
@@ -259,8 +287,9 @@ function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, we
 // Two modes per unit:
 //
 // 1) ATTACK MODE (priorityTargetId set by attack command):
-//    All weapons forced to the priority target exclusively.
-//    Uses the hard max fire envelope, not the broader tracking/search range.
+//    Weapons try the priority target exclusively. Direct-fire weapons
+//    only lock while LOS is clear. Uses the hard max fire envelope, not
+//    the broader tracking/search range.
 //    The unit is already moving toward the target via the attack action handler.
 //
 // 2) AUTO MODE (no priorityTargetId):
@@ -407,7 +436,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
 
       if (priorityTarget) {
-        // ATTACK MODE: force all weapons to the priority target, firing only inside hard max range.
+        // ATTACK MODE: try the priority target, firing only inside hard max range.
         for (let wi = 0; wi < weapons.length; wi++) {
           const weapon = weapons[wi];
           if (weaponSystemDisabled(world, weapon)) continue;
@@ -423,27 +452,31 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             continue;
           }
 
-          setWeaponTarget(weapon, unit, wi, priorityId);
           const wpx = weapon.worldPos!.x;
           const wpy = weapon.worldPos!.y;
           const wpz = weapon.worldPos!.z;
+          const losClear = hasWeaponLineOfSight(
+            world,
+            unit,
+            weapon,
+            priorityTarget,
+            wpx, wpy, wpz,
+          );
+          if (!losClear) {
+            setWeaponTarget(weapon, unit, wi, null);
+            weapon.state = 'idle';
+            continue;
+          }
+
+          setWeaponTarget(weapon, unit, wi, priorityId);
           const distSq = distanceSquared3(
             wpx, wpy, wpz,
             priorityTarget.transform.x, priorityTarget.transform.y, priorityTarget.transform.z,
           );
-          // Attack-command keeps the player-chosen lock no matter
-          // what; LOS only gates firing.
-          const losClear =
-            !weaponNeedsLineOfSight(weapon) ||
-            hasTerrainLineOfSight(
-              world,
-              wpx, wpy, wpz,
-              priorityTarget.transform.x, priorityTarget.transform.y, priorityTarget.transform.z,
-            );
 
-          if (losClear && withinFireMaxSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
+          if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
             weapon.state = 'engaged';
-          } else if (losClear && withinFireMaxSq(weapon.ranges, 'release', distSq, priorityRadius)) {
+          } else if (withinFireMaxSq(weapon.ranges, 'release', distSq, priorityRadius)) {
             // Between acquire and release — maintain engaged if already engaged, otherwise tracking
             weapon.state = weapon.state === 'engaged' ? 'engaged' : 'tracking';
           } else {
@@ -488,17 +521,19 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           target.transform.x, target.transform.y, target.transform.z,
         );
 
-        // Terrain LOS gating for direct-fire weapons. A blocked sightline
+        // LOS gating for direct-fire weapons. A blocked sightline
         // demotes engaged → tracking immediately so the turret stops
         // firing blind, and runs a small grace counter before dropping
         // the lock entirely so a target briefly clipping a corner
         // doesn't reset the spatial-grid reacquisition cycle.
         const losBlocked =
           weaponNeedsLineOfSight(weapon) &&
-          !hasTerrainLineOfSight(
+          !hasWeaponLineOfSight(
             world,
+            unit,
+            weapon,
+            target,
             wpx, wpy, wpz,
-            target.transform.x, target.transform.y, target.transform.z,
           );
         weapon.losBlockedTicks = losBlocked
           ? (weapon.losBlockedTicks ?? 0) + 1
@@ -649,10 +684,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         if (
           rank >= TARGET_RANK_FIRE_FALLBACK &&
           needsLOS &&
-          !hasTerrainLineOfSight(
+          !hasWeaponLineOfSight(
             world,
+            unit,
+            weapon,
+            enemy,
             weaponX, weaponY, weaponZ,
-            enemy.transform.x, enemy.transform.y, enemy.transform.z,
           )
         ) {
           continue;
@@ -727,12 +764,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         );
 
         if (
-          rank >= TARGET_RANK_FIRE_FALLBACK &&
+          rank !== TARGET_RANK_NONE &&
           needsLOS &&
-          !hasTerrainLineOfSight(
+          !hasWeaponLineOfSight(
             world,
+            unit,
+            weapon,
+            enemy,
             weaponX, weaponY, weaponZ,
-            enemy.transform.x, enemy.transform.y, enemy.transform.z,
           )
         ) {
           continue;

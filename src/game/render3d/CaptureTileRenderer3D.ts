@@ -18,12 +18,12 @@ import {
   MANA_TILE_GROUND_LIFT,
   HORIZON_RENDER_EXTEND,
   GROUND_RENDER_ORDER,
+  TERRAIN_HORIZON_BLEND_CONFIG,
 } from '../../config';
 import {
   getTerrainMapBoundaryFade,
   getTerrainMeshSample,
-  getTerrainTileMeshAtCell,
-  getTerrainTileSubdivisionAtCell,
+  getTerrainMeshView,
   getTerrainVersion,
   terrainMeshHeightFromSample,
   terrainMeshNormalFromSample,
@@ -31,15 +31,15 @@ import {
   getTerrainBuildabilityGridCell,
   getTerrainBuildabilityConfigKey,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
+  TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
+  WATER_LEVEL,
 } from '../sim/Terrain';
 import {
   CANONICAL_LAND_CELL_SIZE,
   assertCanonicalLandCellSize,
   makeLandGridMetrics,
   normalizeLandCellSize,
-  writeLandCellBounds,
-  type LandCellBounds,
 } from '../landGrid';
 import type { Lod3DState } from './Lod3D';
 import type { RenderLodGrid } from './RenderLodGrid';
@@ -63,15 +63,34 @@ const BUILD_GRID_COLOR_METAL = [0, 58, 153, 185] as const;
 
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
 const TRIANGLE_DEBUG_COLOR = new THREE.Color();
-const TRIANGLE_DEBUG_HUE_STEP = 0.618033988749895;
+const TERRAIN_HORIZON_COLOR = new THREE.Color(TERRAIN_HORIZON_BLEND_CONFIG.color);
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+function smoothstep01(t: number): number {
+  const clamped = clamp01(t);
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
+function triangleDebugHash01(n: number): number {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
+  return x - Math.floor(x);
+}
 
 function writeTriangleDebugColor(
   out: Float32Array,
   offset: number,
   triangleIndex: number,
+  hierarchyLevel: number = -1,
 ): void {
-  const hue = (0.09 + triangleIndex * TRIANGLE_DEBUG_HUE_STEP) % 1;
-  TRIANGLE_DEBUG_COLOR.setHSL(hue, 0.78, 0.54);
+  const levelSeed = hierarchyLevel >= 0 ? hierarchyLevel + 1 : 0;
+  const hue = triangleDebugHash01(triangleIndex * 3 + levelSeed * 97);
+  const saturation = 0.68 + triangleDebugHash01(triangleIndex * 5 + levelSeed * 131) * 0.3;
+  const levelBand = hierarchyLevel >= 0 ? (hierarchyLevel % 5) * 0.045 : 0.08;
+  const lightness = 0.36 + levelBand + triangleDebugHash01(triangleIndex * 7 + levelSeed * 193) * 0.22;
+  TRIANGLE_DEBUG_COLOR.setHSL(hue, saturation, Math.min(0.72, lightness));
   out[offset] = TRIANGLE_DEBUG_COLOR.r;
   out[offset + 1] = TRIANGLE_DEBUG_COLOR.g;
   out[offset + 2] = TRIANGLE_DEBUG_COLOR.b;
@@ -90,6 +109,19 @@ export class CaptureTileRenderer3D {
   private currentTerrainGeometryCacheKey = '';
 
   private triangleDebugEnabledUniform = { value: 0 };
+  private terrainWaterLevelUniform = { value: WATER_LEVEL };
+  private terrainMaxHeightUniform = { value: TERRAIN_MAX_RENDER_Y };
+  private terrainHorizonBlendEnabledUniform = {
+    value: TERRAIN_HORIZON_BLEND_CONFIG.enabled ? 1 : 0,
+  };
+  private terrainHorizonFadeStartUniform = {
+    value: TERRAIN_HORIZON_BLEND_CONFIG.boundaryFadeStart,
+  };
+  private terrainHorizonFadeEndUniform = {
+    value: TERRAIN_HORIZON_BLEND_CONFIG.boundaryFadeEnd,
+  };
+  private terrainHorizonColorUniform = { value: TERRAIN_HORIZON_COLOR };
+  private terrainHorizonShadeUniform = { value: TERRAIN_HORIZON_BLEND_CONFIG.shade };
   private buildGridTexture: THREE.DataTexture;
   private buildGridPixels = new Uint8Array(4);
   private buildGridMapUniform!: { value: THREE.DataTexture };
@@ -103,17 +135,12 @@ export class CaptureTileRenderer3D {
   private gridCellsY = 0;
   private gridCellSize = 0;
   private terrainLodKey = '';
-  private tileSubdivisions = new Uint8Array(0);
-  private tileSideWalls = new Uint8Array(0);
   private renderFrameIndex = 0;
   private pendingTerrainLodKey = '';
   private pendingTerrainLodFrames = 0;
   private lastGeometryRebuildFrame = -TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING;
   private terrainTriangleDebug = false;
-  private scratchEdgeNorth: number[] = [];
-  private scratchEdgeEast: number[] = [];
-  private scratchEdgeSouth: number[] = [];
-  private scratchEdgeWest: number[] = [];
+  private terrainGeometryReady = false;
 
   private clientViewState: ClientViewState;
   private metalDeposits: readonly MetalDeposit[];
@@ -152,6 +179,13 @@ export class CaptureTileRenderer3D {
   private installTerrainShader(): void {
     this.terrainMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.uTriangleDebugEnabled = this.triangleDebugEnabledUniform;
+      shader.uniforms.uTerrainWaterLevel = this.terrainWaterLevelUniform;
+      shader.uniforms.uTerrainMaxHeight = this.terrainMaxHeightUniform;
+      shader.uniforms.uTerrainHorizonBlendEnabled = this.terrainHorizonBlendEnabledUniform;
+      shader.uniforms.uTerrainHorizonFadeStart = this.terrainHorizonFadeStartUniform;
+      shader.uniforms.uTerrainHorizonFadeEnd = this.terrainHorizonFadeEndUniform;
+      shader.uniforms.uTerrainHorizonColor = this.terrainHorizonColorUniform;
+      shader.uniforms.uTerrainHorizonShade = this.terrainHorizonShadeUniform;
       shader.uniforms.uBuildGridMap = this.buildGridMapUniform;
       shader.uniforms.uBuildGridMapSize = this.buildGridMapSizeUniform;
       shader.uniforms.uBuildGridWorldSize = this.buildGridWorldSizeUniform;
@@ -162,9 +196,12 @@ export class CaptureTileRenderer3D {
           '#include <common>',
           [
             'attribute float terrainShade;',
+            'attribute float terrainHorizonFade;',
             'attribute vec3 triangleDebugColor;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
+            'varying float vTerrainSlope;',
+            'varying float vTerrainHorizonFade;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
@@ -175,6 +212,8 @@ export class CaptureTileRenderer3D {
             '#include <begin_vertex>',
             'vTerrainWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
             'vTerrainShade = terrainShade;',
+            'vTerrainSlope = 1.0 - clamp(abs(normal.y), 0.0, 1.0);',
+            'vTerrainHorizonFade = terrainHorizonFade;',
             'vTriangleDebugColor = triangleDebugColor;',
           ].join('\n'),
         );
@@ -183,6 +222,13 @@ export class CaptureTileRenderer3D {
           '#include <common>',
           [
             'uniform float uTriangleDebugEnabled;',
+            'uniform float uTerrainWaterLevel;',
+            'uniform float uTerrainMaxHeight;',
+            'uniform float uTerrainHorizonBlendEnabled;',
+            'uniform float uTerrainHorizonFadeStart;',
+            'uniform float uTerrainHorizonFadeEnd;',
+            'uniform vec3 uTerrainHorizonColor;',
+            'uniform float uTerrainHorizonShade;',
             'uniform sampler2D uBuildGridMap;',
             'uniform vec2 uBuildGridMapSize;',
             'uniform vec2 uBuildGridWorldSize;',
@@ -190,6 +236,8 @@ export class CaptureTileRenderer3D {
             'uniform float uBuildGridEnabled;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
+            'varying float vTerrainSlope;',
+            'varying float vTerrainHorizonFade;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
@@ -198,7 +246,29 @@ export class CaptureTileRenderer3D {
           '#include <color_fragment>',
           [
             '#include <color_fragment>',
-            'diffuseColor.rgb *= vTerrainShade;',
+            'float terrainHeightT = clamp((vTerrainWorldPos.y - uTerrainWaterLevel) / max(1.0, uTerrainMaxHeight - uTerrainWaterLevel), 0.0, 1.0);',
+            'float shoreline = 1.0 - smoothstep(uTerrainWaterLevel + 10.0, uTerrainWaterLevel + 140.0, vTerrainWorldPos.y);',
+            'float upland = smoothstep(0.16, 0.58, terrainHeightT);',
+            'float exposedRock = smoothstep(0.38, 0.86, terrainHeightT);',
+            'float steepRock = smoothstep(0.20, 0.56, vTerrainSlope);',
+            'float highDry = smoothstep(0.68, 1.0, terrainHeightT);',
+            'float broadNoise = sin(vTerrainWorldPos.x * 0.0077 + vTerrainWorldPos.z * 0.0113 + 0.4);',
+            'float fineNoise = sin(vTerrainWorldPos.x * 0.031 - vTerrainWorldPos.z * 0.027 + 2.1);',
+            'float mottled = broadNoise * 0.5 + fineNoise * 0.25;',
+            'vec3 wetSoil = vec3(0.18, 0.25, 0.18);',
+            'vec3 lowGrass = vec3(0.31, 0.41, 0.22);',
+            'vec3 dryGrass = vec3(0.49, 0.43, 0.27);',
+            'vec3 rock = vec3(0.43, 0.42, 0.36);',
+            'vec3 sunBleachedRock = vec3(0.62, 0.59, 0.50);',
+            'vec3 terrainRgb = mix(lowGrass, dryGrass, upland);',
+            'terrainRgb = mix(terrainRgb, rock, max(exposedRock * 0.58, steepRock * 0.48));',
+            'terrainRgb = mix(terrainRgb, sunBleachedRock, highDry * 0.38);',
+            'terrainRgb = mix(terrainRgb, wetSoil, shoreline * 0.72);',
+            'terrainRgb *= 0.93 + mottled * 0.075;',
+            'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
+            'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
+            'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
+            'diffuseColor.rgb = clamp(terrainRgb, vec3(0.02), vec3(1.0)) * terrainFinalShade;',
             'if (uBuildGridEnabled > 0.0 &&',
             '    vTerrainWorldPos.x >= 0.0 && vTerrainWorldPos.z >= 0.0 &&',
             '    vTerrainWorldPos.x < uBuildGridWorldSize.x &&',
@@ -226,7 +296,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v9';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v12';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -354,6 +424,11 @@ export class CaptureTileRenderer3D {
       cellsY,
       cellSize,
       MANA_TILE_GROUND_LIFT,
+      TERRAIN_HORIZON_BLEND_CONFIG.enabled ? 1 : 0,
+      TERRAIN_HORIZON_BLEND_CONFIG.boundaryFadeStart,
+      TERRAIN_HORIZON_BLEND_CONFIG.boundaryFadeEnd,
+      TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeStartDistance,
+      TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeEndDistance,
       graphicsConfig.tier,
       graphicsConfig.captureTileSideWalls ? 1 : 0,
       triangleDebug ? 1 : 0,
@@ -363,6 +438,38 @@ export class CaptureTileRenderer3D {
     ];
 
     return parts.join('|');
+  }
+
+  private getTerrainHorizonFade(x: number, z: number): number {
+    if (!TERRAIN_HORIZON_BLEND_CONFIG.enabled) return 0;
+
+    const boundaryFade = getTerrainMapBoundaryFade(
+      x,
+      z,
+      this.mapWidth,
+      this.mapHeight,
+    );
+
+    const start = Math.max(
+      0,
+      TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeStartDistance,
+    );
+    const end = Math.max(
+      0,
+      TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeEndDistance,
+    );
+    let edgeFade = 0;
+    if (start > end) {
+      const edgeDistance = Math.min(
+        Math.max(0, x),
+        Math.max(0, z),
+        Math.max(0, this.mapWidth - x),
+        Math.max(0, this.mapHeight - z),
+      );
+      edgeFade = 1 - smoothstep01((edgeDistance - end) / (start - end));
+    }
+
+    return Math.max(boundaryFade, edgeFade);
   }
 
   private shouldRebuildTerrainGeometry(nextKey: string, immediate: boolean): boolean {
@@ -406,6 +513,7 @@ export class CaptureTileRenderer3D {
       }
     }
     this.currentTerrainGeometryCacheKey = nextKey;
+    this.terrainGeometryReady = true;
     const cached = this.terrainGeometryCache.get(nextKey);
     if (cached) cached.lastUsedFrame = this.renderFrameIndex;
   }
@@ -475,271 +583,175 @@ export class CaptureTileRenderer3D {
       return true;
     }
 
-    const tileCount = cellsX * cellsY;
-    if (this.tileSubdivisions.length !== tileCount) {
-      this.tileSubdivisions = new Uint8Array(tileCount);
-      this.tileSideWalls = new Uint8Array(tileCount);
-    }
-    const tileSubdivisions = this.tileSubdivisions;
-    const tileSideWalls = this.tileSideWalls;
-
-    for (let cy = 0; cy < cellsY; cy++) {
-      for (let cx = 0; cx < cellsX; cx++) {
-        const tileIdx = cy * cellsX + cx;
-        tileSubdivisions[tileIdx] = getTerrainTileSubdivisionAtCell(
-          cx,
-          cy,
-          this.mapWidth,
-          this.mapHeight,
-          cellSize,
-        );
-        tileSideWalls[tileIdx] = graphicsConfig.captureTileSideWalls ? 1 : 0;
-      }
-    }
-
     this.gridCellsX = cellsX;
     this.gridCellsY = cellsY;
     this.gridCellSize = cellSize;
     this.terrainTriangleDebug = triangleDebug;
-    this.markTerrainGeometryRebuilt(nextTerrainLodKey);
 
     const terrainPositions: number[] = [];
     const terrainNormals: number[] = [];
     const terrainShades: number[] = [];
+    const terrainHorizonFades: number[] = [];
     const terrainIndices: number[] = [];
+    const terrainDebugLevels: number[] = [];
 
-    const bounds: LandCellBounds = { x0: 0, y0: 0, x1: 0, y1: 0 };
-    for (let cy = 0; cy < cellsY; cy++) {
-      for (let cx = 0; cx < cellsX; cx++) {
-        writeLandCellBounds(grid, cx, cy, bounds);
-        const x0 = bounds.x0;
-        const z0 = bounds.y0;
-        const cellWidth = bounds.x1 - bounds.x0;
-        const cellDepth = bounds.y1 - bounds.y0;
-        const tileIdx = cy * cellsX + cx;
-        const tileSubdiv = tileSubdivisions[tileIdx] || 1;
-        const includeSideWalls = tileSideWalls[tileIdx] === 1;
-        const terrainVertexBase = terrainPositions.length / 3;
-        let topLocalCount = 0;
-        const edgeNorth = this.scratchEdgeNorth;
-        const edgeEast = this.scratchEdgeEast;
-        const edgeSouth = this.scratchEdgeSouth;
-        const edgeWest = this.scratchEdgeWest;
-        edgeNorth.length = 0;
-        edgeEast.length = 0;
-        edgeSouth.length = 0;
-        edgeWest.length = 0;
+    const authoritativeMesh = getTerrainMeshView(
+      this.mapWidth,
+      this.mapHeight,
+      cellSize,
+    );
 
-        const terrainHeightAt = (sx: number, sy: number): number =>
-          terrainMeshHeightFromSample(
-            getTerrainMeshSample(
-              sx,
-              sy,
-              this.mapWidth,
-              this.mapHeight,
-              cellSize,
-            ),
-          );
+    if (!authoritativeMesh) {
+      this.terrainGeometryReady = false;
+      return false;
+    }
 
-        const addTopVertex = (
-          fx: number,
-          fz: number,
-          existingSample?: ReturnType<typeof getTerrainMeshSample>,
-          terrainHeightOverride?: number,
-        ): number => {
-          const wx = x0 + fx * cellWidth;
-          const wz = z0 + fz * cellDepth;
-          const sample = existingSample ?? getTerrainMeshSample(
-            wx,
-            wz,
+    {
+      const terrainHeightAt = (sx: number, sy: number): number =>
+        terrainMeshHeightFromSample(
+          getTerrainMeshSample(
+            sx,
+            sy,
             this.mapWidth,
             this.mapHeight,
             cellSize,
-          );
-          const terrainHeight = terrainHeightOverride ?? terrainMeshHeightFromSample(sample);
-          const h = terrainHeight + MANA_TILE_GROUND_LIFT;
-          const localIndex = topLocalCount++;
-          terrainPositions.push(wx, h, wz);
-          terrainShades.push(1);
+          ),
+        );
+      const meshVertexToTerrainVertex = new Array<number>(authoritativeMesh.vertexCount);
 
-          const normal = terrainMeshNormalFromSample(sample);
-          terrainNormals.push(normal.nx, normal.nz, normal.ny);
-          const precomputedShadow = terrainPrecomputedShadow(
-            wx,
-            wz,
-            terrainHeight,
-            this.mapWidth,
-            this.mapHeight,
-            terrainHeightAt,
-          );
-          terrainShades[terrainShades.length - 1] = terrainSunShade(
-            { x: normal.nx, y: normal.ny, z: normal.nz },
-            precomputedShadow,
-          );
-
-          return localIndex;
-        };
-
-        const addTopTri = (a: number, b: number, c: number): void => {
-          terrainIndices.push(terrainVertexBase + a, terrainVertexBase + b, terrainVertexBase + c);
-        };
-
-        const addTopQuad = (
-          a: number,
-          b: number,
-          c: number,
-          d: number,
-        ): void => {
-          addTopTri(a, b, c);
-          addTopTri(a, c, d);
-        };
-
-        const tileMesh = getTerrainTileMeshAtCell(
-          cx,
-          cy,
+      for (let i = 0; i < authoritativeMesh.vertexCount; i++) {
+        const coordOffset = i * 2;
+        const wx = authoritativeMesh.vertexCoords[coordOffset];
+        const wz = authoritativeMesh.vertexCoords[coordOffset + 1];
+        const terrainHeight = authoritativeMesh.vertexHeights[i];
+        const sample = getTerrainMeshSample(
+          wx,
+          wz,
           this.mapWidth,
           this.mapHeight,
           cellSize,
         );
+        const normal = terrainMeshNormalFromSample(sample);
+        const idx = terrainPositions.length / 3;
+        meshVertexToTerrainVertex[i] = idx;
+        terrainPositions.push(wx, terrainHeight + MANA_TILE_GROUND_LIFT, wz);
+        terrainNormals.push(normal.nx, normal.nz, normal.ny);
+        terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
+        const precomputedShadow = terrainPrecomputedShadow(
+          wx,
+          wz,
+          terrainHeight,
+          this.mapWidth,
+          this.mapHeight,
+          terrainHeightAt,
+        );
+        terrainShades.push(
+          terrainSunShade(
+            { x: normal.nx, y: normal.ny, z: normal.nz },
+            precomputedShadow,
+          ),
+        );
+      }
 
-        if (tileMesh) {
-          const localByMeshVertex = new Array<number>(tileMesh.vertexCount);
-          const northEntries: Array<{ order: number; local: number }> = [];
-          const eastEntries: Array<{ order: number; local: number }> = [];
-          const southEntries: Array<{ order: number; local: number }> = [];
-          const westEntries: Array<{ order: number; local: number }> = [];
-          const edgeEps = 1e-6;
+      for (let tri = 0; tri < authoritativeMesh.triangleCount; tri++) {
+        const triOffset = tri * 3;
+        terrainIndices.push(
+          meshVertexToTerrainVertex[authoritativeMesh.triangleIndices[triOffset]],
+          meshVertexToTerrainVertex[authoritativeMesh.triangleIndices[triOffset + 1]],
+          meshVertexToTerrainVertex[authoritativeMesh.triangleIndices[triOffset + 2]],
+        );
+        terrainDebugLevels.push(authoritativeMesh.triangleLevels[tri] ?? 0);
+      }
 
-          for (let i = 0; i < tileMesh.vertexCount; i++) {
-            const coordOffset = (tileMesh.vertexOffset + i) * 2;
-            const fx = tileMesh.vertexCoords[coordOffset];
-            const fz = tileMesh.vertexCoords[coordOffset + 1];
-            const local = addTopVertex(
-              fx,
-              fz,
-              undefined,
-              tileMesh.vertexHeights[tileMesh.vertexOffset + i],
-            );
-            localByMeshVertex[i] = local;
-            if (fz <= edgeEps) northEntries.push({ order: fx, local });
-            if (fx >= 1 - edgeEps) eastEntries.push({ order: fz, local });
-            if (fz >= 1 - edgeEps) southEntries.push({ order: -fx, local });
-            if (fx <= edgeEps) westEntries.push({ order: -fz, local });
+      if (graphicsConfig.captureTileSideWalls) {
+        const edgeCounts = new Map<string, { a: number; b: number; count: number }>();
+        const addEdge = (a: number, b: number): void => {
+          const lo = Math.min(a, b);
+          const hi = Math.max(a, b);
+          const key = `${lo}:${hi}`;
+          const entry = edgeCounts.get(key);
+          if (entry) {
+            entry.count++;
+            return;
           }
-
-          const writeSortedEdge = (
-            entries: Array<{ order: number; local: number }>,
-            out: number[],
-          ): void => {
-            entries.sort((a, b) => a.order - b.order);
-            for (let i = 0; i < entries.length; i++) out.push(entries[i].local);
-          };
-          writeSortedEdge(northEntries, edgeNorth);
-          writeSortedEdge(eastEntries, edgeEast);
-          writeSortedEdge(southEntries, edgeSouth);
-          writeSortedEdge(westEntries, edgeWest);
-
-          for (let tri = 0; tri < tileMesh.triangleCount; tri++) {
-            const triOffset = tileMesh.triangleOffset + tri * 3;
-            addTopTri(
-              localByMeshVertex[tileMesh.triangleIndices[triOffset]],
-              localByMeshVertex[tileMesh.triangleIndices[triOffset + 1]],
-              localByMeshVertex[tileMesh.triangleIndices[triOffset + 2]],
-            );
-          }
-        } else {
-          const subdiv = tileSubdiv;
-          const topVertsPerRow = subdiv + 1;
-          const topIdx = (ix: number, iz: number): number => iz * topVertsPerRow + ix;
-          for (let j = 0; j <= subdiv; j++) {
-            for (let ix = 0; ix <= subdiv; ix++) {
-              addTopVertex(ix / subdiv, j / subdiv);
-            }
-          }
-          for (let i = 0; i <= subdiv; i++) edgeNorth.push(topIdx(i, 0));
-          for (let i = 0; i <= subdiv; i++) edgeEast.push(topIdx(subdiv, i));
-          for (let i = 0; i <= subdiv; i++) edgeSouth.push(topIdx(subdiv - i, subdiv));
-          for (let i = 0; i <= subdiv; i++) edgeWest.push(topIdx(0, subdiv - i));
-
-          for (let j = 0; j < subdiv; j++) {
-            for (let ix = 0; ix < subdiv; ix++) {
-              const a = topIdx(ix, j);
-              const b = topIdx(ix + 1, j);
-              const c = topIdx(ix + 1, j + 1);
-              const d = topIdx(ix, j + 1);
-              addTopQuad(a, b, c, d);
-            }
-          }
+          edgeCounts.set(key, { a, b, count: 1 });
+        };
+        for (let tri = 0; tri < authoritativeMesh.triangleCount; tri++) {
+          const triOffset = tri * 3;
+          const a = authoritativeMesh.triangleIndices[triOffset];
+          const b = authoritativeMesh.triangleIndices[triOffset + 1];
+          const c = authoritativeMesh.triangleIndices[triOffset + 2];
+          addEdge(a, b);
+          addEdge(b, c);
+          addEdge(c, a);
         }
-
-        if (includeSideWalls) {
-          const pushWallVertex = (
-            x: number,
-            y: number,
-            z: number,
-            nx: number,
-            nz: number,
-          ): number => {
-            const idx = terrainPositions.length / 3;
-            terrainPositions.push(x, y, z);
-            terrainNormals.push(nx, 0, nz);
-            terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
-            return idx;
-          };
-          const copyWallTopVertex = (localIdx: number, nx: number, nz: number): number => {
-            const off = (terrainVertexBase + localIdx) * 3;
-            return pushWallVertex(
-              terrainPositions[off],
-              terrainPositions[off + 1],
-              terrainPositions[off + 2],
-              nx,
-              nz,
-            );
-          };
-          const addWall = (edge: readonly number[], nx: number, nz: number): void => {
-            for (let s = 0; s < edge.length - 1; s++) {
-              const topA = copyWallTopVertex(edge[s], nx, nz);
-              const topB = copyWallTopVertex(edge[s + 1], nx, nz);
-              const topAOff = topA * 3;
-              const topBOff = topB * 3;
-              const floorA = pushWallVertex(
-                terrainPositions[topAOff],
-                CUBE_FLOOR_Y,
-                terrainPositions[topAOff + 2],
-                nx,
-                nz,
-              );
-              const floorB = pushWallVertex(
-                terrainPositions[topBOff],
-                CUBE_FLOOR_Y,
-                terrainPositions[topBOff + 2],
-                nx,
-                nz,
-              );
-              terrainIndices.push(floorA, topA, topB, floorA, topB, floorB);
-            }
-          };
-          // Internal terrain tile edges are part of one continuous
-          // terrain surface and do not need vertical skirts. Only the
-          // outer map boundary gets side walls; this removes hidden
-          // back-to-back internal walls and avoids unnecessary sharp
-          // seams between terrain pieces.
-          const northIsSubmergedShelf =
-            getTerrainMapBoundaryFade(x0, z0, this.mapWidth, this.mapHeight) >= 1 &&
-            getTerrainMapBoundaryFade(x0 + cellWidth, z0, this.mapWidth, this.mapHeight) >= 1;
-          const eastIsSubmergedShelf =
-            getTerrainMapBoundaryFade(x0 + cellWidth, z0, this.mapWidth, this.mapHeight) >= 1 &&
-            getTerrainMapBoundaryFade(x0 + cellWidth, z0 + cellDepth, this.mapWidth, this.mapHeight) >= 1;
-          const southIsSubmergedShelf =
-            getTerrainMapBoundaryFade(x0, z0 + cellDepth, this.mapWidth, this.mapHeight) >= 1 &&
-            getTerrainMapBoundaryFade(x0 + cellWidth, z0 + cellDepth, this.mapWidth, this.mapHeight) >= 1;
-          const westIsSubmergedShelf =
-            getTerrainMapBoundaryFade(x0, z0, this.mapWidth, this.mapHeight) >= 1 &&
-            getTerrainMapBoundaryFade(x0, z0 + cellDepth, this.mapWidth, this.mapHeight) >= 1;
-          if (cy === 0 && !northIsSubmergedShelf) addWall(edgeNorth, 0, -1);
-          if (cx === cellsX - 1 && !eastIsSubmergedShelf) addWall(edgeEast, 1, 0);
-          if (cy === cellsY - 1 && !southIsSubmergedShelf) addWall(edgeSouth, 0, 1);
-          if (cx === 0 && !westIsSubmergedShelf) addWall(edgeWest, -1, 0);
+        const pushWallVertex = (
+          x: number,
+          y: number,
+          z: number,
+          nx: number,
+          nz: number,
+        ): number => {
+          const idx = terrainPositions.length / 3;
+          terrainPositions.push(x, y, z);
+          terrainNormals.push(nx, 0, nz);
+          terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
+          terrainHorizonFades.push(this.getTerrainHorizonFade(x, z));
+          return idx;
+        };
+        const boundaryEps = 1e-4;
+        const wallNormal = (a: number, b: number): { nx: number; nz: number } | null => {
+          const ax = authoritativeMesh.vertexCoords[a * 2];
+          const az = authoritativeMesh.vertexCoords[a * 2 + 1];
+          const bx = authoritativeMesh.vertexCoords[b * 2];
+          const bz = authoritativeMesh.vertexCoords[b * 2 + 1];
+          if (Math.abs(az) <= boundaryEps && Math.abs(bz) <= boundaryEps) return { nx: 0, nz: -1 };
+          if (
+            Math.abs(ax - this.mapWidth) <= boundaryEps &&
+            Math.abs(bx - this.mapWidth) <= boundaryEps
+          ) return { nx: 1, nz: 0 };
+          if (
+            Math.abs(az - this.mapHeight) <= boundaryEps &&
+            Math.abs(bz - this.mapHeight) <= boundaryEps
+          ) return { nx: 0, nz: 1 };
+          if (Math.abs(ax) <= boundaryEps && Math.abs(bx) <= boundaryEps) return { nx: -1, nz: 0 };
+          return null;
+        };
+        for (const edge of edgeCounts.values()) {
+          if (edge.count !== 1) continue;
+          const normal = wallNormal(edge.a, edge.b);
+          if (!normal) continue;
+          const ax = authoritativeMesh.vertexCoords[edge.a * 2];
+          const az = authoritativeMesh.vertexCoords[edge.a * 2 + 1];
+          const bx = authoritativeMesh.vertexCoords[edge.b * 2];
+          const bz = authoritativeMesh.vertexCoords[edge.b * 2 + 1];
+          const midFade = getTerrainMapBoundaryFade(
+            (ax + bx) * 0.5,
+            (az + bz) * 0.5,
+            this.mapWidth,
+            this.mapHeight,
+          );
+          if (midFade >= 1) continue;
+          const topA = meshVertexToTerrainVertex[edge.a];
+          const topB = meshVertexToTerrainVertex[edge.b];
+          const topAOff = topA * 3;
+          const topBOff = topB * 3;
+          const floorA = pushWallVertex(
+            terrainPositions[topAOff],
+            CUBE_FLOOR_Y,
+            terrainPositions[topAOff + 2],
+            normal.nx,
+            normal.nz,
+          );
+          const floorB = pushWallVertex(
+            terrainPositions[topBOff],
+            CUBE_FLOOR_Y,
+            terrainPositions[topBOff + 2],
+            normal.nx,
+            normal.nz,
+          );
+          terrainIndices.push(floorA, topA, topB, floorA, topB, floorB);
+          terrainDebugLevels.push(-1, -1);
         }
       }
     }
@@ -767,8 +779,10 @@ export class CaptureTileRenderer3D {
         for (let i = 0; i < 4; i++) {
           terrainNormals.push(0, 1, 0);
           terrainShades.push(1);
+          terrainHorizonFades.push(1);
         }
         terrainIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        terrainDebugLevels.push(-1, -1);
       };
 
       pushShelfQuad(-outer, -outer, W + outer, 0);
@@ -784,6 +798,7 @@ export class CaptureTileRenderer3D {
       const debugPositions = new Float32Array(debugVertexCount * 3);
       const debugNormals = new Float32Array(debugVertexCount * 3);
       const debugTerrainShades = new Float32Array(debugVertexCount);
+      const debugTerrainHorizonFades = new Float32Array(debugVertexCount);
       const debugTriangleColors = new Float32Array(debugVertexCount * 3);
 
       for (let dst = 0; dst < debugVertexCount; dst++) {
@@ -797,23 +812,33 @@ export class CaptureTileRenderer3D {
         debugNormals[dst3 + 1] = terrainNormals[src3 + 1];
         debugNormals[dst3 + 2] = terrainNormals[src3 + 2];
         debugTerrainShades[dst] = terrainShades[src];
-        writeTriangleDebugColor(debugTriangleColors, dst3, Math.floor(dst / 3));
+        debugTerrainHorizonFades[dst] = terrainHorizonFades[src];
+        const triangleIndex = Math.floor(dst / 3);
+        writeTriangleDebugColor(
+          debugTriangleColors,
+          dst3,
+          triangleIndex,
+          terrainDebugLevels[triangleIndex] ?? -1,
+        );
       }
 
       geometry.setAttribute('position', new THREE.BufferAttribute(debugPositions, 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(debugNormals, 3));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(debugTerrainShades, 1));
+      geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(debugTerrainHorizonFades, 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(debugTriangleColors, 3));
     } else {
       const vertexCount = terrainPositions.length / 3;
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(new Float32Array(terrainShades), 1));
+      geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(new Float32Array(terrainHorizonFades), 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3));
       geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
     }
     geometry.computeBoundingSphere();
     this.cacheTerrainGeometry(nextTerrainLodKey, geometry);
+    this.markTerrainGeometryRebuilt(nextTerrainLodKey);
 
     return true;
   }
@@ -836,7 +861,7 @@ export class CaptureTileRenderer3D {
       graphicsConfig,
       triangleDebug,
     );
-    this.terrainMesh.visible = true;
+    this.terrainMesh.visible = this.terrainGeometryReady;
 
     this.refreshBuildGridTexture(getBuildGridDebug());
   }
@@ -855,7 +880,6 @@ export class CaptureTileRenderer3D {
     this.terrainMesh.parent?.remove(this.terrainMesh);
     this.buildGridTexture.dispose();
     this.buildGridPixels = new Uint8Array(4);
-    this.tileSubdivisions = new Uint8Array(0);
-    this.tileSideWalls = new Uint8Array(0);
+    this.terrainGeometryReady = false;
   }
 }
