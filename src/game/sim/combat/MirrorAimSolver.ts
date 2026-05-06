@@ -59,6 +59,7 @@ import type { Entity, Turret } from '../types';
 import { getTransformCosSin, getBarrelTip } from '../../math';
 import { resolveWeaponWorldMount } from './combatUtils';
 import { getMirrorPanelCenter } from '../mirrorPanelCache';
+import { unapplySurfaceTilt } from '../terrain/terrainSurface';
 import { pickMirrorLineTurret } from './mirrorTargetPriority';
 
 export type MirrorAim = {
@@ -117,16 +118,26 @@ export function solveMirrorAim(
   const panel = panels[0];
   const armLength = panel.offsetX;
 
-  // Three fixed-point iterations on the panel center P (now full 3D),
-  // routed through the canonical `getMirrorPanelCenter` formula in
-  // mirrorPanelCache.ts so the aim solver, the panel hit-test, and
-  // the debris emitter can never disagree on where the panel ends up.
-  // Seed (α, β) from the weapon's last solved pose so the residual is
-  // sub-degree after one iter for nearly-stationary targets.
+  // Mirror angles are CHASSIS-LOCAL: weapon.rotation/pitch describe
+  // the arm direction inside the host's tilted frame, and the panel
+  // builder rotates that direction through `applySurfaceTilt` to get
+  // the world arm. So the solver works in a hybrid frame:
+  //   - Bisector candidate is computed in WORLD frame from
+  //     world-frame ray-from-S and ray-toward-V.
+  //   - That world bisector is rotated INTO chassis-local frame via
+  //     `unapplySurfaceTilt`, then decomposed to (yaw, pitch). Those
+  //     are the chassis-local angles the panel cache expects.
+  //   - Re-anchoring P uses `getMirrorPanelCenter(..., surfaceNormal,
+  //     ...)`, which rotates the chassis-local arm back to world
+  //     before adding it to the pivot — closing the loop.
+  // On flat ground (surfaceNormal undefined or pointing straight up)
+  // both rotations are identity and the math collapses to the legacy
+  // upright form.
+  const surfaceNormal = unit.unit.surfaceNormal;
   let bisectorYaw = fallbackYaw;
   let bisectorPitch = fallbackPitch;
   let valid = false;
-  getMirrorPanelCenter(weaponX, weaponY, weaponZ, armLength, bisectorYaw, bisectorPitch, _panelCenter);
+  getMirrorPanelCenter(weaponX, weaponY, weaponZ, armLength, bisectorYaw, bisectorPitch, surfaceNormal, _panelCenter);
   for (let iter = 0; iter < 3; iter++) {
     const sX = eTip.x - _panelCenter.x;
     const sY = eTip.y - _panelCenter.y;
@@ -137,17 +148,23 @@ export function solveMirrorAim(
     const cZ = target.transform.z - _panelCenter.z;
     const cLen = Math.hypot(cX, cY, cZ);
     if (sLen <= 1e-6 || cLen <= 1e-6) break;
-    const nx = sX / sLen + cX / cLen;
-    const ny = sY / sLen + cY / cLen;
-    const nz = sZ / sLen + cZ / cLen;
-    const nLen = Math.hypot(nx, ny, nz);
-    if (nLen <= 1e-6) break;
-    bisectorYaw = Math.atan2(ny, nx);
-    bisectorPitch = Math.atan2(nz / nLen, Math.hypot(nx / nLen, ny / nLen));
+    const wnx = sX / sLen + cX / cLen;
+    const wny = sY / sLen + cY / cLen;
+    const wnz = sZ / sLen + cZ / cLen;
+    const wnLen = Math.hypot(wnx, wny, wnz);
+    if (wnLen <= 1e-6) break;
+    // Project the world bisector into the chassis-local frame so the
+    // decomposed yaw/pitch are angles the panel cache will rotate
+    // back through `applySurfaceTilt(…, surfaceNormal)`.
+    const local = unapplySurfaceTilt(wnx, wny, wnz, surfaceNormal);
+    const localLen = Math.hypot(local.x, local.y, local.z);
+    if (localLen <= 1e-6) break;
+    bisectorYaw = Math.atan2(local.y, local.x);
+    bisectorPitch = Math.atan2(local.z / localLen, Math.hypot(local.x / localLen, local.y / localLen));
     valid = true;
-    // Re-anchor P at the just-solved bisector direction. Both yaw
-    // and pitch feed back into the new panel center.
-    getMirrorPanelCenter(weaponX, weaponY, weaponZ, armLength, bisectorYaw, bisectorPitch, _panelCenter);
+    // Re-anchor P at the just-solved chassis-local bisector. The
+    // panel-center helper rotates back into world via tilt.
+    getMirrorPanelCenter(weaponX, weaponY, weaponZ, armLength, bisectorYaw, bisectorPitch, surfaceNormal, _panelCenter);
   }
 
   if (!valid) {

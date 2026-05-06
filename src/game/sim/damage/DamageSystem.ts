@@ -365,6 +365,7 @@ export class DamageSystem {
         const hit = findClosestPanelHit(
           panels, mirrorRot, mirrorPitch,
           unit.transform.x, unit.transform.y, unitGroundZ,
+          unit.unit?.surfaceNormal,
           startX, startY, startZ, endX, endY, endZ,
           panelExclude,
         );
