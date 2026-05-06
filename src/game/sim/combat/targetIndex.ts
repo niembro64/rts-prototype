@@ -72,6 +72,7 @@ export function setWeaponTarget(
   }
 
   weapon.target = newTarget;
+  weapon.losBlockedTicks = 0;
 }
 
 /** Iterate every beam weapon (in any unit) currently targeting

@@ -9,6 +9,11 @@ import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getMirrorLineTargetScore } from './mirrorTargetPriority';
+import {
+  LOS_DROP_GRACE_TICKS,
+  hasTerrainLineOfSight,
+  weaponNeedsLineOfSight,
+} from './lineOfSight';
 
 const _activeCombatUnits: Entity[] = [];
 
@@ -414,14 +419,26 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           }
 
           setWeaponTarget(weapon, unit, wi, priorityId);
+          const wpx = weapon.worldPos!.x;
+          const wpy = weapon.worldPos!.y;
+          const wpz = weapon.worldPos!.z;
           const distSq = distanceSquared3(
-            weapon.worldPos!.x, weapon.worldPos!.y, weapon.worldPos!.z,
+            wpx, wpy, wpz,
             priorityTarget.transform.x, priorityTarget.transform.y, priorityTarget.transform.z,
           );
+          // Attack-command keeps the player-chosen lock no matter
+          // what; LOS only gates firing.
+          const losClear =
+            !weaponNeedsLineOfSight(weapon) ||
+            hasTerrainLineOfSight(
+              world,
+              wpx, wpy, wpz,
+              priorityTarget.transform.x, priorityTarget.transform.y, priorityTarget.transform.z,
+            );
 
-          if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
+          if (losClear && withinFireMaxSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
             weapon.state = 'engaged';
-          } else if (withinFireMaxSq(weapon.ranges, 'release', distSq, priorityRadius)) {
+          } else if (losClear && withinFireMaxSq(weapon.ranges, 'release', distSq, priorityRadius)) {
             // Between acquire and release — maintain engaged if already engaged, otherwise tracking
             weapon.state = weapon.state === 'engaged' ? 'engaged' : 'tracking';
           } else {
@@ -458,35 +475,54 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         weapon.state = 'idle';
       } else {
         const r = weapon.ranges;
+        const wpx = weapon.worldPos!.x;
+        const wpy = weapon.worldPos!.y;
+        const wpz = weapon.worldPos!.z;
         const distSq = distanceSquared3(
-          weapon.worldPos!.x, weapon.worldPos!.y, weapon.worldPos!.z,
+          wpx, wpy, wpz,
           target.transform.x, target.transform.y, target.transform.z,
         );
 
-        switch (weapon.state) {
-          case 'idle':
-            // Shouldn't have a target while idle — treat as new acquisition
-            break;
-          case 'tracking':
-            if (outsideTrackingReleaseSq(r, distSq, targetRadius)) {
-              setWeaponTarget(weapon, unit, wi, null);
-              weapon.state = 'idle';
-            } else if (withinFireMaxSq(r, 'acquire', distSq, targetRadius)) {
-              weapon.state = 'engaged';
-            }
-            // else: still tracking but can't fire — Pass 2 will check
-            // if there's a preferred or fallback fire target to switch to.
-            break;
-          case 'engaged':
-            if (outsideTrackingReleaseSq(r, distSq, targetRadius)) {
-              setWeaponTarget(weapon, unit, wi, null);
-              weapon.state = 'idle';
-            } else if (!withinFireMaxSq(r, 'release', distSq, targetRadius)) {
-              weapon.state = 'tracking';
-            }
-            break;
-          default:
-            throw new Error(`Unknown turret state: ${weapon.state}`);
+        // Terrain LOS gating for direct-fire weapons. A blocked sightline
+        // demotes engaged → tracking immediately so the turret stops
+        // firing blind, and runs a small grace counter before dropping
+        // the lock entirely so a target briefly clipping a corner
+        // doesn't reset the spatial-grid reacquisition cycle.
+        const losBlocked =
+          weaponNeedsLineOfSight(weapon) &&
+          !hasTerrainLineOfSight(
+            world,
+            wpx, wpy, wpz,
+            target.transform.x, target.transform.y, target.transform.z,
+          );
+        weapon.losBlockedTicks = losBlocked
+          ? (weapon.losBlockedTicks ?? 0) + 1
+          : 0;
+        const losDrop = weapon.losBlockedTicks > LOS_DROP_GRACE_TICKS;
+
+        if (outsideTrackingReleaseSq(r, distSq, targetRadius) || losDrop) {
+          setWeaponTarget(weapon, unit, wi, null);
+          weapon.state = 'idle';
+        } else {
+          switch (weapon.state) {
+            case 'idle':
+              // Shouldn't have a target while idle — treat as new acquisition
+              break;
+            case 'tracking':
+              if (!losBlocked && withinFireMaxSq(r, 'acquire', distSq, targetRadius)) {
+                weapon.state = 'engaged';
+              }
+              // else: still tracking but can't fire — Pass 2 will check
+              // if there's a preferred or fallback fire target to switch to.
+              break;
+            case 'engaged':
+              if (losBlocked || !withinFireMaxSq(r, 'release', distSq, targetRadius)) {
+                weapon.state = 'tracking';
+              }
+              break;
+            default:
+              throw new Error(`Unknown turret state: ${weapon.state}`);
+          }
         }
       }
     }
@@ -591,6 +627,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const denseScan = candidates.length > densityThreshold;
       const scanStride = denseScan ? densityStride : 1;
       const scanStart = denseScan ? tick % scanStride : 0;
+      const needsLOS = weaponNeedsLineOfSight(weapon);
       for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
         const enemy = candidates[ci];
         let mirrorScore = 0;
@@ -604,6 +641,17 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           enemy.transform.x, enemy.transform.y, enemy.transform.z,
         );
         const rank = fireTargetPreferenceRankSq(r, 'acquire', distSq, enemyRadius);
+        if (
+          rank >= TARGET_RANK_FIRE_FALLBACK &&
+          needsLOS &&
+          !hasTerrainLineOfSight(
+            world,
+            weaponX, weaponY, weaponZ,
+            enemy.transform.x, enemy.transform.y, enemy.transform.z,
+          )
+        ) {
+          continue;
+        }
         const betterTarget = weapon.config.passive
           ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, closestMirrorScore, closestRank, closestDistSq)
           : isBetterTargetCandidate(rank, distSq, closestRank, closestDistSq);
@@ -652,6 +700,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const denseScan = candidates.length > densityThreshold;
       const scanStride = denseScan ? densityStride : 1;
       const scanStart = denseScan ? tick % scanStride : 0;
+      const needsLOS = weaponNeedsLineOfSight(weapon);
       for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
         const enemy = candidates[ci];
         let mirrorScore = 0;
@@ -671,6 +720,18 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           distSq,
           enemyRadius,
         );
+
+        if (
+          rank >= TARGET_RANK_FIRE_FALLBACK &&
+          needsLOS &&
+          !hasTerrainLineOfSight(
+            world,
+            weaponX, weaponY, weaponZ,
+            enemy.transform.x, enemy.transform.y, enemy.transform.z,
+          )
+        ) {
+          continue;
+        }
 
         const betterTarget = weapon.config.passive
           ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, closestMirrorScore, closestRank, closestDistSq)
