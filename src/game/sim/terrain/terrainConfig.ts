@@ -34,7 +34,7 @@ export const TERRAIN_PLATEAU_CONFIG = {
   enabled: true,
   shelfFractionOfStep: 0.6,
   rampEdgeSharpness: 0,
-  buildableShelfHeightTolerance: 10,
+  buildableShelfHeightTolerance: 20,
   slopeSampleDistance: LAND_CELL_SIZE * 0.5,
   fullTerraceMaxSlope: 0.45,
   noTerraceMinSlope: 0.9,
