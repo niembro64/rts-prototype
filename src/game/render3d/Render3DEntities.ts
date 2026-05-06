@@ -3480,6 +3480,34 @@ export class Render3DEntities {
           shape.factoryRig.group.traverse((obj) => { obj.userData.entityId = e.id; });
           group.add(shape.factoryRig.group);
         }
+        // Mount each non-construction-emitter combat turret on the
+        // building via the same TurretMesh3D path units use. The
+        // construction emitter (factory) keeps going through factoryRig
+        // — that's a different visual rig, not a turret mesh.
+        const buildingTurretMeshes: TurretMesh[] = [];
+        const buildingTurrets = e.combat?.turrets;
+        if (buildingTurrets) {
+          const buildingGfx = getGraphicsConfigFor(tier);
+          for (let ti = 0; ti < buildingTurrets.length; ti++) {
+            const t = buildingTurrets[ti];
+            if (t.config.constructionEmitter) {
+              // Construction emitter renders via factoryRig. Push an
+              // empty placeholder so building turret indices stay
+              // aligned with combat.turrets indices.
+              buildingTurretMeshes.push({ root: new THREE.Group(), barrels: [] });
+              continue;
+            }
+            const tm = buildTurretMesh3D(group, t, buildingGfx, {
+              headGeom: this.turretHeadGeom,
+              barrelGeom: this.barrelGeom,
+              barrelMat: this.barrelMat,
+              primaryMat: this.getPrimaryMat(pid),
+            });
+            if (tm.head) tm.head.userData.entityId = e.id;
+            for (const b of tm.barrels) b.userData.entityId = e.id;
+            buildingTurretMeshes.push(tm);
+          }
+        }
         this.world.add(group);
         m = {
           group,
@@ -3490,7 +3518,7 @@ export class Render3DEntities {
           // here — empty string is fine since the unit-update loop
           // never reaches a building.
           bodyShapeKey: '',
-          turrets: [],
+          turrets: buildingTurretMeshes,
           lodKey: this.lod.key,
           // Store the accent meshes separately so the LOD-key rebuild
           // path (if we ever add one for buildings) knows what to
@@ -3635,6 +3663,29 @@ export class Render3DEntities {
 
       // Health + build-progress bars handled by HealthBar3D
       // (billboarded sprite in the world group).
+
+      // Per-frame turret pose for combat turrets mounted on buildings.
+      // Buildings don't tilt and don't yaw after placement, so the
+      // unit path's full tilt-aware decomposition collapses to
+      //   localYaw   = e.transform.rotation - turret.rotation
+      //   localPitch = turret.pitch
+      // (same fast path the unit code uses on flat ground).
+      const combatTurrets = e.combat?.turrets;
+      if (combatTurrets && m.turrets.length === combatTurrets.length) {
+        for (let ti = 0; ti < combatTurrets.length; ti++) {
+          const t = combatTurrets[ti];
+          const tm = m.turrets[ti];
+          if (t.config.constructionEmitter) continue; // factoryRig path
+          const headRadius = tm.headRadius ?? getTurretHeadRadius(t.config);
+          // Building-mount.z is the absolute height of the turret head
+          // center above the building base; subtract headRadius so the
+          // TurretMesh root sits at the right pivot height (head sphere
+          // is built at local Y = headRadius inside the root).
+          tm.root.position.set(t.mount.x, t.mount.z - headRadius, t.mount.y);
+          tm.root.rotation.y = e.transform.rotation - t.rotation;
+          if (tm.pitchGroup) tm.pitchGroup.rotation.z = t.pitch;
+        }
+      }
     }
 
     this.updateAnimatedBuildings();
