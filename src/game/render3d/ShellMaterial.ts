@@ -5,8 +5,9 @@
 // destroyed). MeshBasicMaterial is unlit by definition — same flat
 // color regardless of sun direction, normals, or material setup —
 // which is exactly the "no reflections / no shading / no team color"
-// look we want for an in-progress shell. Opaque + depthWrite=true so
-// shells don't introduce any sort or z-fighting artefacts.
+// look we want for an in-progress shell. Translucent (50% opacity)
+// with depthWrite=true so the silhouette still reads but completed
+// internals show through faintly.
 //
 // All shell-render colour tuning lives in @/shellConfig so the
 // per-Mesh override here and the per-instance shader injection in
@@ -17,7 +18,9 @@ import { SHELL_PALE_HEX } from '@/shellConfig';
 
 const _shellMaterial = new THREE.MeshBasicMaterial({
   color: SHELL_PALE_HEX,
-  transparent: false,
+  transparent: true,
+  opacity: 0.5,
+  depthWrite: true,
   // Render BOTH sides of every face — chassis sphere geometries are
   // single-sided, but with the shell material's flat colour both
   // sides reading the same is the cleaner visual.

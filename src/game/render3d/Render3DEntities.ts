@@ -4222,11 +4222,16 @@ export class Render3DEntities {
     const localSpotX = cos * spotDx + sin * spotDz;
     const localSpotZ = -sin * spotDx + cos * spotDz;
 
-    rig.unitGhost.visible = buildingTierAtLeast(tier, 'medium');
+    // The build-bubble outer ghost and inner core orb were a visual
+    // proxy for the unit being assembled; now that the actual unit
+    // shell renders translucent in-place, the bubble obscures the
+    // shell. Hide both meshes outright (positions/scales kept stable
+    // so any unhide later reads coherent values, not stale zeros).
+    rig.unitGhost.visible = false;
     rig.unitGhost.position.set(localSpotX, centerY, localSpotZ);
     rig.unitGhost.scale.setScalar(ghostRadius);
 
-    rig.unitCore.visible = buildingTierAtLeast(tier, 'high');
+    rig.unitCore.visible = false;
     rig.unitCore.position.set(localSpotX, centerY + radius * 0.08, localSpotZ);
     rig.unitCore.scale.setScalar(Math.max(3, radius * 0.18));
 
@@ -4253,21 +4258,10 @@ export class Render3DEntities {
       );
     }
 
-    const showSparks = buildingTierAtLeast(tier, 'max');
-    for (let i = 0; i < rig.sparks.length; i++) {
-      const spark = rig.sparks[i];
-      spark.visible = showSparks;
-      if (!showSparks) continue;
-
-      const sparkPhase = phase * 1.8 + i * 1.37;
-      const sparkRadius = radius * (0.2 + (i % 3) * 0.1);
-      spark.position.set(
-        localSpotX + Math.cos(sparkPhase) * sparkRadius,
-        centerY + Math.sin(sparkPhase * 1.23) * radius * 0.38,
-        localSpotZ + Math.sin(sparkPhase) * sparkRadius,
-      );
-      spark.scale.setScalar(Math.max(2.2, radius * (0.055 + (i % 2) * 0.015)));
-    }
+    // Orbiting sparks were the small white spheres orbiting inside the
+    // build bubble. Hidden alongside the bubble for the same reason —
+    // the translucent unit shell now carries the in-progress reading.
+    for (const spark of rig.sparks) spark.visible = false;
   }
 
   private updateProjectiles(): void {

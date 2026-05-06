@@ -1,21 +1,20 @@
 // Per-instance "shell flag" for THREE.InstancedMesh — paints flagged
-// instances as flat unlit pale gray while leaving every other
-// instance to render normally (lit, team-colored, full material
-// pipeline).
+// instances as flat unlit pale gray, 50% translucent, while leaving
+// every other instance to render normally (lit, team-colored, full
+// material pipeline) at full opacity.
 //
 // The attribute is still named `instanceAlpha` for backwards-compat
 // (legs, joints, and Render3DEntities all wrote into it under that
 // name), and still carries a float per instance, but the values are
 // now used as a binary flag:
 //   - 1.0  → render normally (full Lambert / Standard / Basic shading,
-//            instanceColor → team primary, etc).
-//   - <1.0 → ignore lighting, paint with SHELL_PALE_RGB.
+//            instanceColor → team primary, etc), output alpha = 1.0.
+//   - <1.0 → ignore lighting, paint with SHELL_PALE_RGB at 50% alpha.
 //
-// Switching from "translucent ghost" to "flat unlit pale" sidesteps
-// every transparency-related artefact (z-fighting, transparent-pass
-// sort order, shared-material depth-write conflicts) — material stays
-// opaque + depthWrite=true and completed instances render exactly as
-// they did before per-instance shell support landed.
+// Patched materials are forced into the transparent pass with
+// depthWrite=true. Completed instances still emit alpha=1.0, so they
+// blend identically to opaque rendering; only shell instances actually
+// composite at half alpha.
 //
 // Tunables live in @/shellConfig — this module is shape-only.
 
@@ -32,16 +31,19 @@ const _SHELL_PALE_GLSL =
 
 /** Patch a Material to read a per-instance `instanceAlpha` attribute
  *  and, for any instance whose value is below 1.0, override the final
- *  fragment color with SHELL_PALE_RGB — flat, unlit, no team tint, no
- *  reflection / specular contribution. Idempotent.
+ *  fragment color with SHELL_PALE_RGB at 50% alpha — flat, unlit, no
+ *  team tint, no reflection / specular contribution. Idempotent.
  *
- *  Material settings stay at their defaults (opaque, depthWrite=true,
- *  transparent=false). Completed instances render through the
- *  unmodified standard pipeline, so depth + sort + lighting all match
- *  what they did before per-instance shell support landed. */
+ *  Forces the material into the transparent pass with depthWrite=true.
+ *  Completed instances emit alpha=1.0 so their composite output is
+ *  identical to opaque rendering; only shell instances actually blend
+ *  at half alpha. */
 export function enableInstanceAlphaOnMaterial(material: THREE.Material): void {
   if (_PATCHED_MATERIALS.has(material)) return;
   _PATCHED_MATERIALS.add(material);
+
+  material.transparent = true;
+  material.depthWrite = true;
 
   const previousOnBefore = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
@@ -55,13 +57,13 @@ export function enableInstanceAlphaOnMaterial(material: THREE.Material): void {
     // After the standard fragment pipeline has finalised gl_FragColor
     // (with all the lighting / envmap / colorspace / tonemapping
     // chunks done), branch on the shell flag and replace with a flat
-    // pale color when the instance is a shell. Completed instances
-    // (vInstanceAlpha == 1.0) untouched.
+    // pale color at 50% alpha when the instance is a shell. Completed
+    // instances (vInstanceAlpha == 1.0) keep alpha=1.0 untouched.
     shader.fragmentShader =
       'varying float vInstanceAlpha;\n' + shader.fragmentShader;
     const overrideSnippet =
       '  if (vInstanceAlpha < 1.0) {\n'
-      + `    gl_FragColor = vec4(${_SHELL_PALE_GLSL}, 1.0);\n`
+      + `    gl_FragColor = vec4(${_SHELL_PALE_GLSL}, 0.5);\n`
       + '  }\n';
     if (shader.fragmentShader.includes('#include <opaque_fragment>')) {
       shader.fragmentShader = shader.fragmentShader.replace(
