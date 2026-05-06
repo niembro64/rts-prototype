@@ -12,10 +12,11 @@ const _forceFieldStopOwner: SimEvent[] = [];
 // Must be called before the entity is removed from the world.
 export function emitForceFieldStopsForEntity(entity: Entity): SimEvent[] {
   _forceFieldStopOwner.length = 0;
-  if (!entity.turrets) return _forceFieldStopOwner;
+  const turrets = entity.combat?.turrets;
+  if (!turrets) return _forceFieldStopOwner;
 
-  for (let i = 0; i < entity.turrets.length; i++) {
-    const config = entity.turrets[i].config;
+  for (let i = 0; i < turrets.length; i++) {
+    const config = turrets[i].config;
     if (config.shot.type !== 'force') continue;
 
     _forceFieldStopOwner.push({
@@ -34,12 +35,13 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
   _forceFieldSimEvents.length = 0;
 
   for (const unit of units) {
-    if (!unit.turrets || !unit.unit || !unit.ownership) continue;
+    if (!unit.combat || !unit.unit || !unit.ownership) continue;
 
     const isDead = unit.unit.hp <= 0;
 
-    for (let i = 0; i < unit.turrets.length; i++) {
-      const weapon = unit.turrets[i];
+    const turrets = unit.combat.turrets;
+    for (let i = 0; i < turrets.length; i++) {
+      const weapon = turrets[i];
       const config = weapon.config;
       if (config.shot.type !== 'force') continue;
 

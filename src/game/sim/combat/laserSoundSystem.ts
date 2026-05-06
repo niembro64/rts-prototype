@@ -14,10 +14,11 @@ const _laserStopTarget: SimEvent[] = [];
 // Must be called before the entity is removed from the world.
 export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
   _laserStopOwner.length = 0;
-  if (!entity.turrets) return _laserStopOwner;
+  const turrets = entity.combat?.turrets;
+  if (!turrets) return _laserStopOwner;
 
-  for (let i = 0; i < entity.turrets.length; i++) {
-    const config = entity.turrets[i].config;
+  for (let i = 0; i < turrets.length; i++) {
+    const config = turrets[i].config;
     if (config.shot.type === 'beam') {
       _laserStopOwner.push({
         type: 'laserStop',
@@ -41,8 +42,8 @@ export function emitLaserStopsForTarget(_world: WorldState, targetId: EntityId):
   const refs = getBeamWeaponsTargeting(targetId);
   for (let r = 0; r < refs.length; r++) {
     const { unit, weaponIndex } = refs[r];
-    if (!unit.turrets || !unit.unit || unit.unit.hp <= 0) continue;
-    const weapon = unit.turrets[weaponIndex];
+    if (!unit.combat || !unit.unit || unit.unit.hp <= 0) continue;
+    const weapon = unit.combat.turrets[weaponIndex];
     if (!weapon || weapon.target !== targetId) continue;
     const config = weapon.config;
     if (config.shot.type !== 'beam') continue;
@@ -67,14 +68,15 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
   const audioEvents = _laserSimEvents;
 
   for (const unit of world.getBeamUnits()) {
-    if (!unit.turrets || !unit.unit || !unit.ownership) continue;
+    if (!unit.combat || !unit.unit || !unit.ownership) continue;
 
     // Dead units must still emit laserStop so the client releases audio nodes
     const isDead = unit.unit.hp <= 0;
 
     // Check each weapon for beam sounds
-    for (let i = 0; i < unit.turrets.length; i++) {
-      const weapon = unit.turrets[i];
+    const turrets = unit.combat.turrets;
+    for (let i = 0; i < turrets.length; i++) {
+      const weapon = turrets[i];
       const config = weapon.config;
       const isBeamWeapon = config.shot.type === 'beam';
 

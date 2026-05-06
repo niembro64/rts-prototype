@@ -30,8 +30,9 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
   _activeForceFields.length = 0;
 
   for (const unit of world.getForceFieldUnits()) {
-    for (let weaponIndex = 0; weaponIndex < unit.turrets!.length; weaponIndex++) {
-      const weapon = unit.turrets![weaponIndex];
+    const turrets = unit.combat!.turrets;
+    for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
+      const weapon = turrets[weaponIndex];
       const config = weapon.config;
       if (config.shot.type !== 'force') continue;
       const fieldShot = config.shot as ForceShot;

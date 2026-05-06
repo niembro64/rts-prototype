@@ -89,7 +89,7 @@ const _EMPTY: readonly BeamWeaponRef[] = Object.freeze([]);
  *  from the world). Called on unit despawn so a long-lived game
  *  doesn't accumulate dangling refs in the index. */
 export function dropWeaponsForUnit(parentUnit: Entity): void {
-  const turrets = parentUnit.turrets;
+  const turrets = parentUnit.combat?.turrets;
   if (!turrets) return;
   for (let i = 0; i < turrets.length; i++) {
     const w = turrets[i];

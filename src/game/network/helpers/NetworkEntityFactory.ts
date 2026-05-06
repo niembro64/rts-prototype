@@ -77,10 +77,10 @@ export function refreshUnitTurretsFromNetwork(
   unitBodyRadius: number,
   netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
 ): void {
-  const previous = entity.turrets;
+  const previous = entity.combat?.turrets;
   const turrets = createTurretsFromNetwork(unitType, unitBodyRadius, netTurrets);
   if (!turrets) {
-    entity.turrets = undefined;
+    entity.combat = undefined;
     return;
   }
 
@@ -96,7 +96,9 @@ export function refreshUnitTurretsFromNetwork(
       }
     }
   }
-  entity.turrets = turrets;
+  entity.combat = entity.combat
+    ? { ...entity.combat, turrets }
+    : { turrets, activeTurretMask: 0, firingTurretMask: 0 };
 }
 
 /**
@@ -193,7 +195,14 @@ function createUnitFromNetwork(
     },
   };
 
-  entity.turrets = createTurretsFromNetwork(unitType, entity.unit!.radius.body, u?.turrets);
+  const turrets = createTurretsFromNetwork(unitType, entity.unit!.radius.body, u?.turrets);
+  if (turrets) {
+    entity.combat = {
+      turrets,
+      activeTurretMask: 0,
+      firingTurretMask: 0,
+    };
+  }
 
   // Cache mirror panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the

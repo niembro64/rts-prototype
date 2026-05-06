@@ -675,7 +675,7 @@ export class Simulation {
       if (entity.buildable && !entity.buildable.isComplete) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
-        unit.priorityTargetId = undefined;
+        if (entity.combat) entity.combat.priorityTargetId = undefined;
         continue;
       }
 
@@ -684,7 +684,7 @@ export class Simulation {
       unit.thrustDirY = 0;
 
       // Clear priority target — re-set below if current action is attack
-      unit.priorityTargetId = undefined;
+      if (entity.combat) entity.combat.priorityTargetId = undefined;
 
       // Sweep targeted intents whose target disappeared or no longer
       // needs work. Pathfinding stores intermediate `move` waypoints
@@ -736,7 +736,7 @@ export class Simulation {
         const attackTarget = this.world.getEntity(currentAction.targetId)!;
 
         // Set priority target for turret system
-        unit.priorityTargetId = currentAction.targetId;
+        if (entity.combat) entity.combat.priorityTargetId = currentAction.targetId;
 
         // Update action position to target's current anchor (follow
         // moving units and keep building attack markers on the visual
@@ -933,7 +933,7 @@ export class Simulation {
   /** True when the unit has enough turrets engaged that it should hold
    *  position to fight rather than continue chasing the current waypoint. */
   private shouldStopForEngagedCombat(entity: Entity): boolean {
-    const turrets = entity.turrets;
+    const turrets = entity.combat?.turrets;
     if (!turrets || turrets.length === 0) return false;
     const stopRatio = getUnitBlueprint(entity.unit!.unitType).fightStopEngagedRatio;
     return engagedTurretCount(turrets) >= turrets.length * stopRatio;

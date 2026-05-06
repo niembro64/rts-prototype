@@ -39,24 +39,27 @@ const _directAim = createDirectTurretAimScratch();
 const _projectileAim = createProjectileTurretAimScratch();
 const _turretMount = { x: 0, y: 0, z: 0 };
 
-export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedUnits()): void {
+export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedEntities()): void {
   const dtSec = dtMs / 1000;
 
   for (const unit of units) {
-    if (!unit.unit || !unit.ownership || !unit.turrets) continue;
-    if (unit.unit.hp <= 0) continue;
+    if (!unit.combat || !unit.ownership) continue;
+    const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
+    if (hostHp <= 0) continue;
     // Inert shells (in-progress buildable) skip combat entirely until
     // every resource bar tops up.
     if (unit.buildable && !unit.buildable.isComplete) continue;
 
+    const combat = unit.combat;
     const { cos, sin } = getTransformCosSin(unit.transform);
-    const activeMask = unit.unit.activeTurretMask;
+    const activeMask = combat.activeTurretMask;
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
 
-    for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
+    const turrets = combat.turrets;
+    for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
       if (!turretMaskIncludes(activeMask, weaponIndex)) continue;
-      const weapon = unit.turrets[weaponIndex];
+      const weapon = turrets[weaponIndex];
       if (weapon.config.visualOnly) continue;
       // Vertical launchers skip the normal yaw/pitch aim math — the
       // turret always points straight up and each fired rocket picks
@@ -163,8 +166,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
             weapon.ballisticAimInRange = solved.hasBallisticSolution;
             if (!solved.hasBallisticSolution) {
               const bit = turretBit(weaponIndex);
-              if (bit !== 0 && unit.unit.firingTurretMask !== undefined && unit.unit.firingTurretMask >= 0) {
-                unit.unit.firingTurretMask &= ~bit;
+              if (bit !== 0 && combat.firingTurretMask >= 0) {
+                combat.firingTurretMask &= ~bit;
               }
             }
             targetAngle = solved.yaw;

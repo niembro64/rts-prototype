@@ -72,7 +72,7 @@ export function getUnitHudTopY(unit: Entity): number {
   }
 
   const hasMirrors = (unit.unit.mirrorPanels?.length ?? 0) > 0;
-  const turrets = unit.turrets ?? [];
+  const turrets = unit.combat?.turrets ?? [];
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
     const isForceField = turret.config.barrel?.type === 'complexSingleEmitter';

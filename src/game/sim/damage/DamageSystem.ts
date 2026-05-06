@@ -349,11 +349,12 @@ export class DamageSystem {
       if (mirrorsActive) {
         // Mirror unit: 3D ray-vs-tilted-rectangle for each panel
         // (yaw + pitch from the mirror turret rotation/pitch).
-        const mirrorRot = unit.turrets && unit.turrets.length > 0
-          ? unit.turrets[0].rotation
+        const unitTurrets = unit.combat?.turrets;
+        const mirrorRot = unitTurrets && unitTurrets.length > 0
+          ? unitTurrets[0].rotation
           : unit.transform.rotation;
-        const mirrorPitch = unit.turrets && unit.turrets.length > 0
-          ? unit.turrets[0].pitch
+        const mirrorPitch = unitTurrets && unitTurrets.length > 0
+          ? unitTurrets[0].pitch
           : 0;
         const unitGroundZ = getUnitGroundZ(unit);
         const panelExclude = isExcludedEntity ? excludePanelIndex : -1;

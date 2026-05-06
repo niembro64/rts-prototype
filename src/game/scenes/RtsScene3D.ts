@@ -56,6 +56,7 @@ import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
 import { BuildGhost3D } from '../render3d/BuildGhost3D';
+import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
@@ -250,6 +251,7 @@ export class RtsScene3D {
   private currentDGunActive = false;
   private healthBar3D: HealthBar3D | null = null;
   private nameLabel3D: NameLabel3D | null = null;
+  private contactShadowRenderer: ContactShadowRenderer3D | null = null;
   /** Resolves a player ID to its display name. Hooked up via
    *  RtsScene3DConfig.lookupPlayerName; null result falls back to
    *  `getDefaultPlayerName(playerId)` so commander labels still
@@ -658,6 +660,11 @@ export class RtsScene3D {
       this.metalDeposits,
       getGraphicsConfig().tier,
     );
+    this.contactShadowRenderer = new ContactShadowRenderer3D(
+      this.threeApp.world,
+      this.mapWidth,
+      this.mapHeight,
+    );
     // Transparent horizon water sits at WATER_LEVEL. The submerged
     // off-map continuation is part of the terrain mesh itself, so the
     // map edge and infinity shelf share the same material/color path.
@@ -1001,6 +1008,13 @@ export class RtsScene3D {
       renderLod,
       this.renderLodGrid,
       { mirrorsEnabled: serverMeta?.mirrorsEnabled ?? true },
+    );
+    this.contactShadowRenderer?.update(
+      this.clientViewState.getUnits(),
+      this.clientViewState.getBuildings(),
+      graphicsConfig,
+      this.renderFrameIndex,
+      this.renderScope,
     );
     this.captureTileRenderer.update(
       graphicsConfig,
@@ -1570,10 +1584,10 @@ export class RtsScene3D {
           };
         }
       }
-      if (ctx && ent && !ctx.turretPoses && ent.turrets && ent.turrets.length > 0) {
+      if (ctx && ent && !ctx.turretPoses && ent.combat && ent.combat.turrets.length > 0) {
         ctx = {
           ...ctx,
-          turretPoses: ent.turrets.map((t) => ({
+          turretPoses: ent.combat.turrets.map((t) => ({
             rotation: t.rotation,
             pitch: t.pitch,
           })),
@@ -1977,6 +1991,8 @@ export class RtsScene3D {
     this.entityRenderer?.destroy();
     this.metalDepositRenderer?.dispose();
     this.metalDepositRenderer = null;
+    this.contactShadowRenderer?.dispose();
+    this.contactShadowRenderer = null;
     this.beamRenderer?.destroy();
     this.forceFieldRenderer?.destroy();
     this.captureTileRenderer?.destroy();

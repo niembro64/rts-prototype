@@ -30,14 +30,15 @@ export class EntityCacheManager {
   private cachedForceFieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
-  /** Units with at least one turret. Used by hot combat systems so
-   *  workers, commanders, or future unarmed utility units do not pay
-   *  weapon-loop costs every tick. */
-  private cachedArmedUnits: Entity[] = [];
-  /** Units with at least one beam-type turret. Populated alongside
+  /** Every entity (unit OR building) with a CombatComponent that owns
+   *  at least one non-visualOnly turret. The combat pipeline iterates
+   *  this list and never branches on entity type — armed buildings are
+   *  first-class participants alongside armed units. */
+  private cachedArmedEntities: Entity[] = [];
+  /** Entities with at least one beam-type turret. Populated alongside
    *  cachedForceFieldUnits so updateLaserSounds can iterate just the
-   *  ~few percent of units that actually fire beams instead of scanning
-   *  every unit's turrets every tick. */
+   *  ~few percent of entities that actually fire beams instead of
+   *  scanning every entity's turrets every tick. */
   private cachedBeamUnits: Entity[] = [];
   /** Units with mirror panels (e.g. Loris). Used by the per-projectile
    *  panel-impact check so it doesn't scan every unit looking for a
@@ -69,7 +70,7 @@ export class EntityCacheManager {
     this.cachedForceFieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
-    this.cachedArmedUnits.length = 0;
+    this.cachedArmedEntities.length = 0;
     this.cachedBeamUnits.length = 0;
     this.cachedMirrorUnits.length = 0;
     this.cachedAll.length = 0;
@@ -78,6 +79,26 @@ export class EntityCacheManager {
 
     for (const entity of entities.values()) {
       this.cachedAll.push(entity);
+      // Combat capability is host-agnostic: any entity with a
+      // CombatComponent that owns a non-visualOnly turret enters the
+      // armed list, regardless of whether it's a unit or a building.
+      if (entity.combat) {
+        const turrets = entity.combat.turrets;
+        let hasForceField = false;
+        let hasBeam = false;
+        let hasCombatTurret = false;
+        for (let i = 0; i < turrets.length; i++) {
+          if (turrets[i].config.visualOnly) continue;
+          hasCombatTurret = true;
+          const t = turrets[i].config.shot.type;
+          if (t === 'force') hasForceField = true;
+          else if (t === 'beam') hasBeam = true;
+          if (hasForceField && hasBeam) break;
+        }
+        if (hasCombatTurret) this.cachedArmedEntities.push(entity);
+        if (hasForceField) this.cachedForceFieldUnits.push(entity);
+        if (hasBeam) this.cachedBeamUnits.push(entity);
+      }
       switch (entity.type) {
         case 'unit':
           this.cachedUnits.push(entity);
@@ -96,22 +117,6 @@ export class EntityCacheManager {
             )
           ) {
             this.cachedDamagedUnits.push(entity);
-          }
-          if (entity.turrets) {
-            let hasForceField = false;
-            let hasBeam = false;
-            let hasCombatTurret = false;
-            for (let i = 0; i < entity.turrets.length; i++) {
-              if (entity.turrets[i].config.visualOnly) continue;
-              hasCombatTurret = true;
-              const t = entity.turrets[i].config.shot.type;
-              if (t === 'force') hasForceField = true;
-              else if (t === 'beam') hasBeam = true;
-              if (hasForceField && hasBeam) break;
-            }
-            if (hasCombatTurret) this.cachedArmedUnits.push(entity);
-            if (hasForceField) this.cachedForceFieldUnits.push(entity);
-            if (hasBeam) this.cachedBeamUnits.push(entity);
           }
           if (entity.unit?.mirrorPanels && entity.unit.mirrorPanels.length > 0) {
             this.cachedMirrorUnits.push(entity);
@@ -244,8 +249,8 @@ export class EntityCacheManager {
     return this.cachedBuilderUnits;
   }
 
-  getArmedUnits(): Entity[] {
-    return this.cachedArmedUnits;
+  getArmedEntities(): Entity[] {
+    return this.cachedArmedEntities;
   }
 
   getBeamUnits(): Entity[] {

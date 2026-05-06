@@ -13,7 +13,7 @@ import type { NetworkServerSnapshot, NetworkServerSnapshotGridCell } from '../ne
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
-import { ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_TURRETS, ENTITY_CHANGED_VEL } from '../../types/network';
+import { ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_TURRETS, ENTITY_CHANGED_VEL } from '../../types/network';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import {
@@ -54,6 +54,7 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
 import { getLocomotionForceProfile } from '../sim/locomotion';
+import { factoryProductionSystem } from '../sim/factoryProduction';
 import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape, setTerrainCenterShape, setTerrainDividersShape, buildTerrainTileMap, buildTerrainBuildabilityGrid, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { generateMetalDeposits } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
@@ -330,7 +331,13 @@ export class GameServer {
     // network games.
     if (this.backgroundMode && aiPlayerIds.length > 0) {
       const constructionSystem = this.simulation.getConstructionSystem();
-      const entities = spawnInitialBases(this.world, constructionSystem, this.playerIds, 'demo');
+      const entities = spawnInitialBases(
+        this.world,
+        constructionSystem,
+        this.playerIds,
+        'demo',
+        this.backgroundAllowedTypes,
+      );
       entities.push(...spawnMetalExtractorsOnDeposits(this.world, constructionSystem, this.playerIds));
       this.createPhysicsBodies(entities);
 
@@ -1199,9 +1206,10 @@ export class GameServer {
     this.world.mirrorsEnabled = enabled;
     if (enabled) return;
     for (const unit of this.world.getMirrorUnits()) {
-      if (!unit.turrets) continue;
-      for (let i = 0; i < unit.turrets.length; i++) {
-        const turret = unit.turrets[i];
+      const turrets = unit.combat?.turrets;
+      if (!turrets) continue;
+      for (let i = 0; i < turrets.length; i++) {
+        const turret = turrets[i];
         if (!turret.config.passive) continue;
         turret.target = null;
         turret.state = 'idle';
@@ -1217,8 +1225,9 @@ export class GameServer {
     this.world.forceFieldsEnabled = enabled;
     if (enabled) return;
     for (const unit of this.world.getForceFieldUnits()) {
-      if (!unit.turrets) continue;
-      for (const turret of unit.turrets) {
+      const turrets = unit.combat?.turrets;
+      if (!turrets) continue;
+      for (const turret of turrets) {
         if (turret.config.shot.type !== 'force') continue;
         turret.target = null;
         turret.state = 'idle';
@@ -1569,7 +1578,9 @@ export class GameServer {
     if (cellSize <= 0) return;
 
     for (const unit of this.world.getUnits()) {
-      if (!unit.unit || unit.unit.hp <= 0 || !unit.turrets || unit.turrets.length === 0) continue;
+      if (!unit.unit || unit.unit.hp <= 0) continue;
+      const turrets = unit.combat?.turrets;
+      if (!turrets || turrets.length === 0) continue;
       const playerId = unit.ownership?.playerId;
       if (playerId === undefined) continue;
       const playerMask = this.playerGridDebugMask(playerId);
@@ -1579,8 +1590,8 @@ export class GameServer {
       // when present (turret can be aware further than it can fire);
       // otherwise the fire envelope's max release IS the awareness shell.
       let maxSeeRange = 0;
-      for (let i = 0; i < unit.turrets.length; i++) {
-        const r = unit.turrets[i].ranges;
+      for (let i = 0; i < turrets.length; i++) {
+        const r = turrets[i].ranges;
         const seeRange = (r.tracking ?? r.fire.max).release;
         if (seeRange > maxSeeRange) maxSeeRange = seeRange;
       }
@@ -1634,6 +1645,29 @@ export class GameServer {
       this.backgroundAllowedTypes.add(unitType);
     } else {
       this.backgroundAllowedTypes.delete(unitType);
+      for (const factory of this.world.getFactoryBuildings()) {
+        const factoryComp = factory.factory;
+        if (!factoryComp) continue;
+        let touched = false;
+        if (factoryComp.currentShellId !== null) {
+          const shell = this.world.getEntity(factoryComp.currentShellId);
+          if (shell?.unit?.unitType === unitType) {
+            factoryProductionSystem.cancelActiveShell(this.world, factory);
+            touched = true;
+          }
+        }
+        for (let i = factoryComp.buildQueue.length - 1; i >= 0; i--) {
+          if (factoryComp.buildQueue[i] !== unitType) continue;
+          factoryComp.buildQueue.splice(i, 1);
+          touched = true;
+        }
+        if (!touched) continue;
+        if (factoryComp.buildQueue.length === 0) {
+          factoryComp.isProducing = false;
+          factoryComp.currentBuildProgress = 0;
+        }
+        this.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+      }
       // Kill all existing units of this type
       for (const unit of this.world.getUnits()) {
         if (unit.unit?.unitType === unitType) {

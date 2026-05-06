@@ -1272,11 +1272,12 @@ export class Render3DEntities {
 
     // Per-turret spheres — same center the sim's targeting code uses,
     // so what you see is exactly the volume the sim tests against.
-    if (showAnyTurretRange && entity.turrets) {
+    if (showAnyTurretRange && entity.combat) {
       const cos = Math.cos(entity.transform.rotation);
       const sin = Math.sin(entity.transform.rotation);
-      for (let i = 0; i < entity.turrets.length; i++) {
-        const weapon = entity.turrets[i];
+      const turrets = entity.combat.turrets;
+      for (let i = 0; i < turrets.length; i++) {
+        const weapon = turrets[i];
         if (weapon.config.visualOnly) continue;
         const tm = m.turrets[i];
         if (!tm) continue;
@@ -1612,7 +1613,7 @@ export class Render3DEntities {
       const vz = unit.velocityZ ?? 0;
       if (vx * vx + vy * vy + vz * vz > UNIT_DETAIL_VELOCITY_EPSILON_SQ) return true;
     }
-    const turrets = entity.turrets;
+    const turrets = entity.combat?.turrets;
     if (turrets?.some((t) => !t.config.visualOnly && (t.state === 'tracking' || t.state === 'engaged' || t.target !== null))) {
       return true;
     }
@@ -2251,9 +2252,10 @@ export class Render3DEntities {
    *  Called inline from the per-entity loop in updateUnits — fuses
    *  what used to be a separate full sweep over getUnits(). */
   private advanceBarrelSpin(entity: Entity, dt: number): void {
-    if (!entity.turrets) return;
+    const turrets = entity.combat?.turrets;
+    if (!turrets) return;
     let spinConfig: SpinConfig | undefined;
-    for (const w of entity.turrets) {
+    for (const w of turrets) {
       if (w.config.visualOnly) continue;
       const bc = w.config.barrel;
       if (
@@ -2272,7 +2274,7 @@ export class Render3DEntities {
       this.barrelSpins.set(entity.id, state);
     }
 
-    const firing = entity.turrets.some((w) => !w.config.visualOnly && w.state === 'engaged');
+    const firing = turrets.some((w) => !w.config.visualOnly && w.state === 'engaged');
     if (firing) {
       state.speed = Math.min(state.speed + spinConfig.accel * dt, spinConfig.max);
     } else {
@@ -2436,7 +2438,7 @@ export class Render3DEntities {
         ?? 15;
       const pid = e.ownership?.playerId;
       const colorKey = pid ?? -1;
-      const turrets = e.turrets ?? [];
+      const turrets = e.combat?.turrets ?? [];
       const objectTier = this.massRichObjectTiers.get(e.id) ?? this.resolveEntityObjectLod(e);
       const isCommanderUnit = isCommander(e);
       const fullUnitDetail =

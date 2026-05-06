@@ -17,9 +17,10 @@ import {
 
 const _activeCombatUnits: Entity[] = [];
 
-function commitCombatMasks(unit: Entity): boolean {
-  const weapons = unit.turrets;
-  if (!unit.unit || !weapons) return false;
+function commitCombatMasks(entity: Entity): boolean {
+  const combat = entity.combat;
+  if (!combat) return false;
+  const weapons = combat.turrets;
 
   let activeMask = 0;
   let firingMask = 0;
@@ -51,10 +52,10 @@ function commitCombatMasks(unit: Entity): boolean {
     }
   }
 
-  // Overflow units are extremely unusual, but treating them as
+  // Overflow entities are extremely unusual, but treating them as
   // all-turret-active is safer than dropping turret 31+ from combat.
-  unit.unit.activeTurretMask = overflowActive ? -1 : activeMask;
-  unit.unit.firingTurretMask = overflowFiring ? -1 : firingMask;
+  combat.activeTurretMask = overflowActive ? -1 : activeMask;
+  combat.firingTurretMask = overflowFiring ? -1 : firingMask;
   return activeMask !== 0 || overflowActive;
 }
 
@@ -297,16 +298,20 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const densityThreshold = lod.targetingDensityThreshold;
   const densityStride = Math.max(1, lod.targetingDensityStride | 0);
 
-  for (const unit of world.getArmedUnits()) {
-    if (!unit.ownership || !unit.unit || !unit.turrets) continue;
-    if (unit.unit.hp <= 0) continue;
+  for (const unit of world.getArmedEntities()) {
+    if (!unit.ownership || !unit.combat) continue;
+    const combat = unit.combat;
+    // Host-aliveness check — units track hp on entity.unit, buildings on
+    // entity.building. Combat is host-agnostic; the host components own
+    // their own hp.
+    const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
+    if (hostHp <= 0) continue;
     // Inert shells skip targeting until construction completes.
     if (unit.buildable && !unit.buildable.isComplete) continue;
-    const unitState = unit.unit;
-    unit.unit.activeTurretMask = 0;
-    unit.unit.firingTurretMask = 0;
-    const priorityId = unitState.priorityTargetId;
-    const scheduledProbeTick = unitState.nextCombatProbeTick;
+    combat.activeTurretMask = 0;
+    combat.firingTurretMask = 0;
+    const priorityId = combat.priorityTargetId;
+    const scheduledProbeTick = combat.nextCombatProbeTick;
     if (priorityId === undefined && scheduledProbeTick !== undefined && scheduledProbeTick > tick) {
       continue;
     }
@@ -316,7 +321,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const sin = Math.sin(unit.transform.rotation);
     unit.transform.rotCos = cos;
     unit.transform.rotSin = sin;
-    const weapons = unit.turrets;
+    const weapons = combat.turrets;
 
     let hasCooldownState = false;
     let hasEnabledWeapon = false;
@@ -337,7 +342,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
     }
     if (!hasEnabledWeapon) {
-      unitState.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
+      combat.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
       continue;
     }
 
@@ -360,10 +365,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       scheduledProbeTick <= tick;
     const shouldReacquire = forcedProbeDue || stride <= 1 || ((unit.id + tick) % stride) === 0;
     if (priorityId === undefined && !hasLiveWeaponState && !hasCooldownState && !shouldReacquire) {
-      unitState.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
+      combat.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
       continue;
     }
-    unitState.nextCombatProbeTick = undefined;
+    combat.nextCombatProbeTick = undefined;
 
     // Pass 0: Compute authoritative per-turret mount kinematics once.
     // Targeting, aiming, firing, force fields, and beam retracing all
@@ -536,7 +541,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     if (!shouldReacquire) {
       if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
       else if (priorityId === undefined) {
-        unitState.nextCombatProbeTick = hasCooldownState
+        combat.nextCombatProbeTick = hasCooldownState
           ? tick + 1
           : nextTargetingReacquireTick(unit.id, tick, stride);
       }
@@ -756,7 +761,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
     else if (priorityId === undefined) {
-      unitState.nextCombatProbeTick = hasCooldownState
+      combat.nextCombatProbeTick = hasCooldownState
         ? tick + 1
         : nextTargetingReacquireTick(unit.id, tick, stride);
     }

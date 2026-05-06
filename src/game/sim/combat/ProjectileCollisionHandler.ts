@@ -336,11 +336,12 @@ export function checkProjectileCollisions(
           if (!u.unit || u.unit.hp <= 0) continue;
           const panels = u.unit.mirrorPanels;
           if (!panels || panels.length === 0) continue;
-          const mirrorRot = u.turrets && u.turrets.length > 0
-            ? u.turrets[0].rotation
+          const uTurrets = u.combat?.turrets;
+          const mirrorRot = uTurrets && uTurrets.length > 0
+            ? uTurrets[0].rotation
             : u.transform.rotation;
-          const mirrorPitch = u.turrets && u.turrets.length > 0
-            ? u.turrets[0].pitch
+          const mirrorPitch = uTurrets && uTurrets.length > 0
+            ? uTurrets[0].pitch
             : 0;
           const groundZ = getUnitGroundZ(u);
           const hit = findClosestPanelHit(
@@ -831,8 +832,8 @@ export function checkProjectileCollisions(
       const cooldown = proj.config.cooldown;
       if (cooldown > 0) {
         const source = world.getEntity(proj.sourceEntityId);
-        if (source?.turrets) {
-          const weapon = source.turrets[weaponIdx];
+        if (source?.combat) {
+          const weapon = source.combat.turrets[weaponIdx];
           if (weapon) {
             weapon.cooldown = cooldown;
           }

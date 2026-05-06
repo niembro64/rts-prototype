@@ -222,7 +222,6 @@ export type Unit = {
    *  "stationary" as (0, 0). */
   thrustDirX?: number;
   thrustDirY?: number;
-  priorityTargetId?: EntityId;
   mirrorPanels: CachedMirrorPanel[];
   mirrorBoundRadius: number;
   /** Per-unit smoothed surface normal at the unit's footprint. The
@@ -233,17 +232,6 @@ export type Unit = {
    *  smoothed-but-physically-grounded value. Initialized at spawn to
    *  the raw normal at the spawn position; written by the tilt system. */
   surfaceNormal: { nx: number; ny: number; nz: number };
-  /** Per-tick combat hot-path masks, written by targetingSystem.
-   *  Bit i set in activeTurretMask means turret i still needs rotation
-   *  integration this tick; bit i set in firingTurretMask means turret i
-   *  is eligible for the fire/recoil path. These are transient sim-only
-   *  fields and are never serialized. */
-  activeTurretMask?: number;
-  firingTurretMask?: number;
-  /** Tick before which fully-idle armed units can skip the targeting
-   *  pass. Attack commands clear this implicitly by setting
-   *  priorityTargetId, and live/cooldown weapons process every tick. */
-  nextCombatProbeTick?: number;
   /** Consecutive ticks the unit has wanted to move but failed to make
    *  meaningful progress. Reset on either no-movement-intent ticks or
    *  ticks where physics velocity exceeds the stuck threshold. When
@@ -252,6 +240,39 @@ export type Unit = {
    *  destination, replacing the stale path. Tick-only state, never
    *  serialised. */
   stuckTicks?: number;
+};
+
+// Combat capability — separates "this entity has armed turrets"
+// from "this entity is a unit chassis" or "this entity is a building
+// footprint". Any entity that can target, rotate, and fire wears a
+// CombatComponent. The combat pipeline iterates entities with
+// `entity.combat` and never asks "is this a unit or a building?".
+//
+// hp/maxHp intentionally stay on the host component (Unit / Building)
+// because every host has hp regardless of whether it has turrets — a
+// commander shell has hp before its turrets are functional, a future
+// transport unit would have hp without turrets, etc. CombatComponent
+// owns ONLY combat-specific bookkeeping.
+export type CombatComponent = {
+  /** Runtime turret instances mounted on this entity. Built once at
+   *  spawn from the host blueprint's `turrets[]` and persisted across
+   *  the entity's lifetime. */
+  turrets: Turret[];
+  /** Player attack-command target. When set, every turret on this
+   *  entity is forced toward it and fires as soon as it enters fire
+   *  range, ignoring the auto-acquisition picker. */
+  priorityTargetId?: EntityId;
+  /** Tick before which fully-idle armed entities can skip the targeting
+   *  pass. Attack commands clear this implicitly by setting
+   *  priorityTargetId; live/cooldown weapons process every tick. */
+  nextCombatProbeTick?: number;
+  /** Per-tick combat hot-path masks, written by targetingSystem.
+   *  Bit i set in activeTurretMask means turret i still needs rotation
+   *  integration this tick; bit i set in firingTurretMask means turret i
+   *  is eligible for the fire/recoil path. These are transient sim-only
+   *  fields and are never serialized. */
+  activeTurretMask: number;
+  firingTurretMask: number;
 };
 
 // Building component - static structures with a real 3D extent.
@@ -851,7 +872,11 @@ export type Entity = {
   ownership?: Ownership;
   unit?: Unit;
   building?: Building;
-  turrets?: Turret[];
+  /** Combat capability — turrets + per-host bookkeeping. Present iff
+   *  the entity has at least one runtime turret (combat OR visualOnly).
+   *  The cache only adds entities to the armed list when at least one
+   *  of those turrets is non-visualOnly. */
+  combat?: CombatComponent;
   projectile?: Projectile;
   buildable?: Buildable;
   builder?: Builder;

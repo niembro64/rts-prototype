@@ -326,9 +326,13 @@ export class WorldState {
     return this.cache.getBuilderUnits();
   }
 
-  getArmedUnits(): Entity[] {
+  /** Every entity that carries a CombatComponent with at least one
+   *  non-visualOnly turret. Includes both armed units and armed
+   *  buildings (megaBeam towers etc.) — the combat pipeline iterates
+   *  this list and never branches on entity type. */
+  getArmedEntities(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cache.getArmedUnits();
+    return this.cache.getArmedEntities();
   }
 
   // Get units with beam weapons (cached - DO NOT MODIFY returned array)
@@ -518,7 +522,9 @@ export class WorldState {
         mirrorBoundRadius: 0,
         surfaceNormal: { nx: spawnNormal.nx, ny: spawnNormal.ny, nz: spawnNormal.nz },
       },
-      turrets: [], // Turrets set by caller
+      // combat is attached by the caller (createUnitFromBlueprint) once
+      // it knows the runtime turret list. The base entity has no combat
+      // component yet because not every caller wants one.
     };
     return entity;
   }
@@ -541,8 +547,14 @@ export class WorldState {
       bp.hp * UNIT_HP_MULTIPLIER,
     );
 
-    // Create turrets from blueprint definition
-    entity.turrets = createTurretsFromDefinition(unitId, bp.radius.body);
+    // Create combat component (turrets + per-host bookkeeping) from
+    // blueprint. Every unit blueprint declares at least one turret, so
+    // every unit gets a combat component at spawn.
+    entity.combat = {
+      turrets: createTurretsFromDefinition(unitId, bp.radius.body),
+      activeTurretMask: 0,
+      firingTurretMask: 0,
+    };
 
     // Cache mirror panels for fast beam collision checks. Same helper
     // runs on the client (NetworkEntityFactory) so authoritative and

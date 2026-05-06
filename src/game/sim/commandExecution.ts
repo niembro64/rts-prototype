@@ -239,7 +239,7 @@ function executeSetFactoryWaypointsCommand(ctx: CommandContext, command: SetFact
 
 function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
-  if (!commander?.commander || !commander.ownership || !commander.turrets) return;
+  if (!commander?.commander || !commander.ownership || !commander.combat) return;
 
   const playerId = commander.ownership.playerId;
 
@@ -253,9 +253,10 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // should not know or duplicate the concrete turret id string.
   const dgunTurretId = getCommanderDGunTurretId(commander);
   if (!dgunTurretId) return;
-  const dgunIdx = commander.turrets.findIndex(w => w.config.id === dgunTurretId);
+  const turrets = commander.combat.turrets;
+  const dgunIdx = turrets.findIndex(w => w.config.id === dgunTurretId);
   if (dgunIdx < 0) return;
-  const dgunTurret = commander.turrets[dgunIdx];
+  const dgunTurret = turrets[dgunIdx];
 
   // Spend energy
   economyManager.spendInstant(playerId, dgunCost);

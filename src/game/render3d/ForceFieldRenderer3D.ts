@@ -277,7 +277,7 @@ export class ForceFieldRenderer3D {
    *  field is a barrier the player needs to see), so we render at
    *  every camera-sphere band — no LOD-driven blink-on/off. */
   perUnit(unit: Entity): void {
-    if (!unit.turrets || !unit.unit) return;
+    if (!unit.combat || !unit.unit) return;
     // Force-field bubbles can be large (up to ~barrier.outerRange
     // units across), so pad generously so a turret just off-screen
     // with its bubble reaching in still updates.
@@ -323,7 +323,7 @@ export class ForceFieldRenderer3D {
 
     // Sanity guard — perUnit already filtered, but check again so
     // _processUnit is safe to call directly.
-    if (!unit.turrets || !unit.unit) return;
+    if (!unit.combat || !unit.unit) return;
     if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
 
     // The bubble + emitter are written in absolute world coords below,
@@ -333,8 +333,9 @@ export class ForceFieldRenderer3D {
     // back to the unit's transform.
     const yawGroup = this.getYawGroup(unit.id);
 
-    for (let ti = 0; ti < unit.turrets.length; ti++) {
-      const turret = unit.turrets[ti];
+    const turrets = unit.combat.turrets;
+    for (let ti = 0; ti < turrets.length; ti++) {
+      const turret = turrets[ti];
       if (!isForceFieldTurret(turret)) continue;
       const progress = turret.forceField?.range ?? 0;
 

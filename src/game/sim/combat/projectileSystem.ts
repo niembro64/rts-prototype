@@ -224,7 +224,7 @@ function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, turretIndex: 
 
 // Fire weapons at targets - unified for all units
 // Each weapon fires independently based on its own state
-export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: ForceAccumulator, units: readonly Entity[] = world.getArmedUnits()): FireTurretsResult {
+export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: ForceAccumulator, units: readonly Entity[] = world.getArmedEntities()): FireTurretsResult {
   _fireNewProjectiles.length = 0;
   _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
@@ -233,22 +233,25 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
   const spawnEvents = _fireSpawnEvents;
 
   for (const unit of units) {
-    if (!unit.ownership || !unit.unit || !unit.turrets) continue;
-    if (unit.unit.hp <= 0) continue;
+    if (!unit.ownership || !unit.combat) continue;
+    const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
+    if (hostHp <= 0) continue;
     // Inert shells don't fire — every active behavior is gated on
     // buildable.isComplete.
     if (unit.buildable && !unit.buildable.isComplete) continue;
 
+    const combat = unit.combat;
     const playerId = unit.ownership.playerId;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
-    const firingMask = unit.unit.firingTurretMask;
+    const firingMask = combat.firingTurretMask;
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
 
     // Fire each weapon independently
-    for (let weaponIndex = 0; weaponIndex < unit.turrets.length; weaponIndex++) {
+    const turrets = combat.turrets;
+    for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
       if (!turretMaskIncludes(firingMask, weaponIndex)) continue;
-      const weapon = unit.turrets[weaponIndex];
+      const weapon = turrets[weaponIndex];
       const config = weapon.config;
       if (config.visualOnly) continue;
       const shot = config.shot;
@@ -822,16 +825,17 @@ export function updateProjectiles(
       // Get weapon index from config
       const weaponIndex = proj.config.turretIndex ?? 0;
 
-      // Remove beam if source unit is dead or gone
-      if (!source || !source.unit || source.unit.hp <= 0 || !source.turrets) {
+      // Remove beam if source is dead, gone, or no longer armed.
+      const sourceHostHp = source?.unit?.hp ?? source?.building?.hp ?? 0;
+      if (!source || sourceHostHp <= 0 || !source.combat) {
         beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
         projectilesToRemove.push(entity.id);
         despawnEvents.push({ id: entity.id });
         continue;
       }
 
-      if (source && source.unit && source.turrets) {
-        const weapon = source.turrets[weaponIndex];
+      {
+        const weapon = source.combat.turrets[weaponIndex];
 
         if (!weapon) {
           beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);

@@ -188,7 +188,7 @@ export function updateWeaponWorldKinematics(
  *  so the server's targeting/firing path and the client renderer share
  *  the same authored 3D pivot. */
 export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
-  const turret = unit.turrets?.[turretIndex];
+  const turret = unit.combat?.turrets?.[turretIndex];
   return turret ? getRuntimeTurretMountHeight(turret) : (unit.unit?.bodyCenterHeight ?? 0);
 }
 

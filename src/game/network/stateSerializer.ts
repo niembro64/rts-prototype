@@ -473,7 +473,7 @@ function getChangedFields(
       mask |= ENTITY_CHANGED_BUILDING;
     }
 
-    if (entity.turrets) {
+    if (entity.combat) {
       if (next.weaponCount !== prev.weaponCount) {
         mask |= ENTITY_CHANGED_TURRETS;
       } else {
@@ -548,16 +548,17 @@ function captureEntityState(entity: Entity, prev: PrevEntityState): void {
 
   prev.isEngagedBits = 0;
   prev.targetBits = 0;
-  prev.weaponCount = entity.turrets?.length ?? 0;
-  if (entity.turrets) {
+  const combatTurrets = entity.combat?.turrets;
+  prev.weaponCount = combatTurrets?.length ?? 0;
+  if (combatTurrets) {
     // Grow turret arrays if needed
-    while (prev.turretRots.length < entity.turrets.length) {
+    while (prev.turretRots.length < combatTurrets.length) {
       prev.turretRots.push(0);
       prev.turretAngVels.push(0);
       prev.forceFieldRanges.push(0);
     }
-    for (let i = 0; i < entity.turrets.length; i++) {
-      const w = entity.turrets[i];
+    for (let i = 0; i < combatTurrets.length; i++) {
+      const w = combatTurrets[i];
       if (w.state === 'engaged') prev.isEngagedBits |= (1 << i);
       if (w.target) prev.targetBits |= (1 << i);
       prev.turretRots[i] = w.rotation;
@@ -1342,8 +1343,9 @@ function serializeEntity(
       // array when combat actually dirtied turret state. This keeps
       // large armies moving without serializing every idle turret.
       u.turrets = undefined;
-      if (entity.turrets && entity.turrets.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
-        const weapons = entity.turrets;
+      const weapons0 = entity.combat?.turrets;
+      if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
+        const weapons = weapons0;
         const count = weapons.length;
         while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
         pool.turrets.length = count;

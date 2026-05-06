@@ -113,7 +113,7 @@ export function buildUnitDeathEvent(
   // was, not at the chassis-aligned default. Captured here on the
   // authoritative side so remote clients don't have to rely on the
   // entity still being present in their view state.
-  const turretPoses = target?.turrets?.map((t) => ({
+  const turretPoses = target?.combat?.turrets?.map((t) => ({
     rotation: t.rotation,
     pitch: t.pitch,
   }));

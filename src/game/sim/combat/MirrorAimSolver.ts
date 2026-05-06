@@ -83,7 +83,7 @@ export function solveMirrorAim(
   fallbackPitch: number,
   currentTick?: number,
 ): MirrorAim | null {
-  if (!target.turrets || !unit.unit) return null;
+  if (!target.combat || !unit.unit) return null;
 
   // Pick the single most-relevant line-shot turret on `target`. The
   // shared mirror priority ranks:

@@ -1140,15 +1140,16 @@ export class ClientViewState {
       if (
         su.turrets &&
         su.turrets.length > 0 &&
-        entity.turrets
+        entity.combat
       ) {
+        const turrets = entity.combat.turrets;
         for (
           let i = 0;
-          i < su.turrets.length && i < entity.turrets.length;
+          i < su.turrets.length && i < turrets.length;
           i++
         ) {
-          entity.turrets[i].target = su.turrets[i].targetId ?? null;
-          entity.turrets[i].state = codeToTurretState(su.turrets[i].state);
+          turrets[i].target = su.turrets[i].targetId ?? null;
+          turrets[i].state = codeToTurretState(su.turrets[i].state);
           // forceField.range is NOT snapped — dead-reckoned + drifted in applyPrediction()
         }
       }
@@ -1583,14 +1584,15 @@ export class ClientViewState {
     predictionStep: PredictionStep,
     preset: DriftPreset,
   ): void {
-    if (!entity.unit || !entity.turrets) return;
+    if (!entity.unit || !entity.combat) return;
     const dt = predictionStep.entityDeltaMs / 1000;
     const targetDt = predictionStep.targetDeltaMs / 1000;
     const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
     const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
 
-    for (let i = 0; i < entity.turrets.length; i++) {
-      const weapon = entity.turrets[i];
+    const turrets = entity.combat.turrets;
+    for (let i = 0; i < turrets.length; i++) {
+      const weapon = turrets[i];
       if (weapon.config.visualOnly) continue;
       weapon.rotation += weapon.angularVelocity * dt;
 
@@ -1671,7 +1673,7 @@ export class ClientViewState {
       if (angleDeltaAbs(entity.transform.rotation, target.rotation) > PREDICTION_ROT_EPSILON) return false;
     }
 
-    const weapons = entity.turrets;
+    const weapons = entity.combat?.turrets;
     if (!weapons || weapons.length === 0) return true;
 
     for (let i = 0; i < weapons.length; i++) {
@@ -1777,7 +1779,7 @@ export class ClientViewState {
       const target = this.serverTargets.get(id);
       this.applyUnitVisualPrediction(entity, target, deltaMs, preset);
       this.dirtyUnitRenderIds.add(id);
-      if (entity.turrets && entity.turrets.length > 0) {
+      if (entity.combat && entity.combat.turrets.length > 0) {
         const predictionTier = this.resolvePredictionLodTier(entity, lod);
         const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
         const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
@@ -2060,7 +2062,7 @@ export class ClientViewState {
       !spawn.fromParentDetonation
     ) {
       const source = this.entities.get(spawn.sourceEntityId);
-      const weapon = source?.turrets?.[spawn.turretIndex];
+      const weapon = source?.combat?.turrets?.[spawn.turretIndex];
       if (source && source.unit && weapon) {
         const unitCos = Math.cos(source.transform.rotation);
         const unitSin = Math.sin(source.transform.rotation);

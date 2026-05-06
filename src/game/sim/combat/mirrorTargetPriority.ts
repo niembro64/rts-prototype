@@ -32,10 +32,11 @@ export function pickMirrorLineTurret(
   target: Entity,
   ourUnitId: number,
 ): MirrorLineTurretPick | null {
-  if (!target.turrets) return null;
+  const turrets = target.combat?.turrets;
+  if (!turrets) return null;
   let best: MirrorLineTurretPick | null = null;
-  for (let ti = 0; ti < target.turrets.length; ti++) {
-    const turret = target.turrets[ti];
+  for (let ti = 0; ti < turrets.length; ti++) {
+    const turret = turrets[ti];
     const score = scoreMirrorLineTurret(turret, ourUnitId);
     if (score <= 0) continue;
     if (best === null || score > best.score) {
