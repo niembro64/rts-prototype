@@ -1063,15 +1063,79 @@ function buildUnknown(primaryMat: THREE.Material): BuildingShape {
   return { primary, details: [], height: DEFAULT_HEIGHT };
 }
 
-/** Static beam tower — tall narrow body. The mounted megaBeam turret
- *  is built and aimed by Render3DEntities through the same
- *  buildTurretMesh3D path units use, so head + barrel + spin/pitch
- *  groups are byte-identical to a Widow-mounted megaBeam. This shape
- *  builder is responsible only for the body slab; turret meshes are
- *  added on top by the caller from `entity.combat.turrets`. */
+/** Static beam tower — wider stepped base, hex-prism shaft, and a
+ *  collar platform under the turret. The primary slab gets scaled to
+ *  the building's full cuboid by the per-frame writer (so the
+ *  silhouette inside the build grid stays correct); detail meshes
+ *  carry the visible character — base flange, four corner ribs, and
+ *  a turret collar — and ride along in absolute world units, so they
+ *  don't deform when the primary scales.
+ *
+ *  The mounted megaBeam turret is built and aimed by Render3DEntities
+ *  through the same buildTurretMesh3D path units use, so head + barrel
+ *  + spin/pitch groups are byte-identical to a Widow-mounted megaBeam.
+ *  This shape builder owns body geometry only; turret meshes are added
+ *  on top by the caller from `entity.combat.turrets`. */
 function buildMegaBeamTower(primaryMat: THREE.Material): BuildingShape {
   const primary = new THREE.Mesh(boxGeom, primaryMat);
-  return { primary, details: [], height: MEGA_BEAM_TOWER_VISUAL_HEIGHT };
+
+  // World-unit dimensions. The primary slab spans the building's
+  // logical 40×80×40 cuboid (set by gridWidth/gridHeight × cellSize
+  // and the visualHeight constant); details are sized in those terms.
+  const H = MEGA_BEAM_TOWER_VISUAL_HEIGHT; // 80 wu
+  const FOOT = 40; // gridWidth × cellSize for the megaBeamTower entry
+
+  const details: BuildingDetailMesh[] = [];
+
+  // Stepped foundation flange — slightly wider, low and squat. Reads
+  // as "this thing is bolted into the ground, not floating".
+  const baseHeight = 14;
+  const baseWidth = FOOT * 1.35;
+  const base = new THREE.Mesh(boxGeom, primaryMat);
+  base.scale.set(baseWidth, baseHeight, baseWidth);
+  base.position.set(0, baseHeight / 2, 0);
+  details.push(detail(base, 'min', undefined, 'static'));
+
+  // Turret collar platform — sits at the top of the body, flares the
+  // silhouette out under the turret head so the tower reads as
+  // structurally reinforced where the weapon is mounted.
+  const collarHeight = 10;
+  const collarWidth = FOOT * 1.2;
+  const collar = new THREE.Mesh(boxGeom, primaryMat);
+  collar.scale.set(collarWidth, collarHeight, collarWidth);
+  collar.position.set(0, H - collarHeight / 2 + 2, 0);
+  details.push(detail(collar, 'min', undefined, 'static'));
+
+  // Cap accent — a thin metal-finished band sandwiched between the
+  // primary slab and the collar. Reads as a structural ring.
+  const capRingHeight = 2;
+  const capRingWidth = FOOT * 1.05;
+  const capRing = new THREE.Mesh(boxGeom, extractorBladeMat);
+  capRing.scale.set(capRingWidth, capRingHeight, capRingWidth);
+  capRing.position.set(0, H - collarHeight - capRingHeight / 2 + 1, 0);
+  details.push(detail(capRing, 'min', undefined, 'static'));
+
+  // Four vertical corner ribs running the full body height. Thin
+  // rectangular columns at the four edges of the slab. Built on the
+  // building primary face midpoints (slightly inset so they read as
+  // attached girders rather than a separate frame). Metal-finished
+  // material distinguishes them from the team-colored body.
+  const ribThickness = 3.5;
+  const ribInset = ribThickness * 0.4;
+  const ribHalf = FOOT / 2 - ribInset;
+  const ribY = baseHeight + (H - baseHeight - collarHeight) / 2;
+  const ribLength = H - baseHeight - collarHeight;
+  for (let i = 0; i < 4; i++) {
+    const corner = i;
+    const sx = corner === 0 || corner === 3 ? -1 : 1;
+    const sz = corner < 2 ? -1 : 1;
+    const rib = new THREE.Mesh(boxGeom, extractorBladeMat);
+    rib.scale.set(ribThickness, ribLength, ribThickness);
+    rib.position.set(sx * ribHalf, ribY, sz * ribHalf);
+    details.push(detail(rib, 'min', undefined, 'static'));
+  }
+
+  return { primary, details, height: H };
 }
 
 function createWindBladeGeometry(): THREE.BufferGeometry {
