@@ -87,7 +87,7 @@ export const METAL_DEPOSIT_CONFIG = {
   /** World-unit width outside each deposit's flat pad where terrain
    *  eases back to the natural heightmap. Keep this larger than a grid
    *  cell when deposits sit far above/below the surrounding land. */
-  terrainBlendRadius: 300,
+  terrainBlendRadius: 600,
 
   /** Concentric rings of deposits. Order doesn't matter — the renderer
    *  and placement validator iterate over all of them. */
