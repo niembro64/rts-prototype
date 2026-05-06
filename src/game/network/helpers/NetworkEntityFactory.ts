@@ -20,7 +20,7 @@ import { getBuildingConfig } from '../../sim/buildConfigs';
 import { GRID_CELL_SIZE } from '../../sim/grid';
 import { COST_MULTIPLIER } from '../../../config';
 import { buildMirrorPanelCache } from '../../sim/mirrorPanelCache';
-import { createTurretsFromDefinition } from '../../sim/unitDefinitions';
+import { createTurretsFromDefinition, createTurretsForBuilding } from '../../sim/unitDefinitions';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
 
 function isFiniteNumber(value: unknown): value is number {
@@ -295,6 +295,22 @@ function createBuildingFromNetwork(
     // no need to ship it on the wire.
     entity.buildable = createBuildable(config.cost, { paid: b.build.paid });
     entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);
+  }
+
+  // Mirror the host's combat hydration. Building turret meshes are
+  // mounted by Render3DEntities on the client side, and the per-frame
+  // writer positions / aims them from entity.combat.turrets — without
+  // a client-side combat component the turret root stays at default
+  // (0, 0, 0) in building-local space, hiding the head inside the
+  // body slab. Beam updates also reference the source's turret rig
+  // for client-side prediction / aim smoothing.
+  const buildingTurrets = createTurretsForBuilding(buildingType);
+  if (buildingTurrets.length > 0) {
+    entity.combat = {
+      turrets: buildingTurrets,
+      activeTurretMask: 0,
+      firingTurretMask: 0,
+    };
   }
 
   const f = b?.factory;
