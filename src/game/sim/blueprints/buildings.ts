@@ -198,7 +198,10 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     },
     turrets: [
       {
-        turretId: 'megaBeamTurret',
+        // Tower-specific turret: same visual + range as the Widow's
+        // megaBeam mount, but fires towerBeamShot (10× dps). The Widow
+        // keeps the regular megaBeamTurret so its balance is unchanged.
+        turretId: 'towerBeamTurret',
         mount: { x: 0, y: 0, z: MEGA_BEAM_TOWER_TURRET_MOUNT_Z },
       },
     ],

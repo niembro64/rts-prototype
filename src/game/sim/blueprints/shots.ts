@@ -210,6 +210,23 @@ export const SHOT_BLUEPRINTS = {
     speed: 800,
     visualRadius: 1.5,
   },
+  // Tower beam — same physical shape and audio as megaBeamShot, but
+  // 10× the dps. Mounted on the static megaBeam tower so its damage
+  // doesn't drift onto the Widow (which still fires the regular
+  // megaBeamShot from its own megaBeamTurret). Recoil stays at the
+  // base value because the tower is static — extra recoil would
+  // accumulate on a body that can't move and just waste a force slot.
+  towerBeamShot: {
+    type: 'beam',
+    id: 'towerBeamShot',
+    dps: 3000,
+    force: BEAM_RECOIL_AND_HIT_FORCE * 10,
+    recoil: BEAM_RECOIL_AND_HIT_FORCE,
+    radius: BEAM_WIDTH_MEGA / 2,
+    width: BEAM_WIDTH_MEGA,
+    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS_MEGA },
+    hitSound: AUDIO.event.hit.megaBeamShot,
+  },
 } satisfies Record<ShotId, ShotBlueprint>;
 
 export function getShotBlueprint(id: string): ShotBlueprint {

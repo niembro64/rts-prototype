@@ -91,7 +91,7 @@ export const TURRET_BLUEPRINTS = {
     spread: { angle: 0 },
     radius: { body: 3 },
     audio: { fireSound: AUDIO.event.fire.lightTurret },
-    highArc: true,
+    highArc: false,
   },
   pulseTurret: {
     id: 'pulseTurret',
@@ -474,6 +474,33 @@ export const TURRET_BLUEPRINTS = {
     radius: { body: CONSTRUCTION_TURRET_HEAD_RADIUS },
     isManualFire: true,
     constructionEmitter: CONSTRUCTION_EMITTER_VISUALS,
+  },
+  // Tower beam turret — same head, barrel, range, audio, and visual
+  // shape as megaBeamTurret, but fires towerBeamShot (10× dps). Used
+  // by the static megaBeam tower so the building's heavier damage
+  // doesn't drift onto the Widow, which keeps its own megaBeamTurret.
+  // Visually identical at the TurretMesh3D level.
+  towerBeamTurret: {
+    id: 'towerBeamTurret',
+    projectileId: 'towerBeamShot',
+    range: 350,
+    turretTurnAccel: 100,
+    turretDrag: 0.5,
+    barrel: {
+      type: 'simpleSingleBarrel',
+      barrelLength: 0.6,
+      barrelThickness: 8,
+    },
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
+    eventsSmooth: false,
+    color: COLOR_WHITE,
+    radius: { body: 14 },
+    audio: {
+      fireSound: AUDIO.event.fire.megaBeamTurret,
+    },
   },
 } satisfies Record<TurretId, TurretBlueprint>;
 
