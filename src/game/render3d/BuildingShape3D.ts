@@ -32,6 +32,10 @@ import {
 } from '../sim/blueprints';
 import type { BuildingRenderProfile, TurretConfig } from '../sim/types';
 import { getTurretConfig } from '../sim/turretConfigs';
+import {
+  getTurretBarrelCenterToTipLength,
+  getTurretBarrelDiameter,
+} from '../math';
 import { BUILDING_PALETTE, SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import {
   BUILD_BUBBLE_GHOST_COLOR_HEX,
@@ -267,6 +271,11 @@ const windGlowMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
 });
 const extractorBladeMat = new THREE.MeshStandardMaterial(SHINY_GRAY_METAL_MATERIAL);
+// Tower barrel material — pure white MeshLambert, exactly matching the
+// `barrelMat` used by the unit-side TurretMesh3D path
+// (Render3DEntities.ts: BARREL_COLOR=0xffffff). A megaBeam barrel on the
+// tower draws with the same material as a megaBeam barrel on a Widow.
+const towerBarrelMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
 const invisibleMat = new THREE.MeshBasicMaterial({
   color: 0x000000,
   transparent: true,
@@ -1065,44 +1074,47 @@ function buildUnknown(primaryMat: THREE.Material): BuildingShape {
 }
 
 /** Static beam tower — tall narrow body with a megaBeam turret head +
- *  barrel mounted at the top. Visually static (no spin, no aim) for
- *  now; firing will hook in once buildings join the targeting / fire
- *  pipeline. The body uses the team primary slab; the turret head and
- *  barrel ride along as building details so the shell-override pass
- *  paints them translucent during construction. */
+ *  barrel mounted at the top. The head sphere reuses the team primary
+ *  material, the barrel reuses the same white MeshLambert the unit
+ *  TurretMesh3D path uses, and barrel sizing is pulled through the
+ *  exact same `getTurretBarrelCenterToTipLength` /
+ *  `getTurretBarrelDiameter` helpers — so a megaBeam turret on the
+ *  tower reads identically to one on a Widow. The shell-override pass
+ *  paints both head and barrel translucent during construction along
+ *  with the body. */
 function buildMegaBeamTower(primaryMat: THREE.Material): BuildingShape {
   const primary = new THREE.Mesh(boxGeom, primaryMat);
 
   const details: BuildingDetailMesh[] = [];
   const turretCfg = getTurretConfig('megaBeamTurret');
   const headRadius = turretCfg.radius.body;
-  const barrel = turretCfg.barrel;
-  const barrelLength =
-    barrel && 'barrelLength' in barrel
-      ? barrel.barrelLength * headRadius * 2
-      : headRadius * 1.6;
-  const barrelThickness =
-    barrel && 'barrelThickness' in barrel && barrel.barrelThickness !== undefined
-      ? barrel.barrelThickness
-      : Math.max(2, headRadius * 0.6);
+  // Total distance from head center to barrel tip — same helper the
+  // unit-side TurretMesh3D path uses, so any future tweak to barrel
+  // proportions flows through both render paths.
+  const barrelTipFromCenter = getTurretBarrelCenterToTipLength(turretCfg);
+  const barrelLength = Math.max(0, barrelTipFromCenter - headRadius);
+  const barrelDiameter = getTurretBarrelDiameter(turretCfg);
 
   const head = new THREE.Mesh(factorySphereGeom, primaryMat);
   head.scale.setScalar(headRadius);
   head.position.set(0, MEGA_BEAM_TOWER_TURRET_MOUNT_Z, 0);
   details.push(detail(head, 'min', undefined, 'static'));
 
-  // Barrel runs forward along +X (the building faces the map center,
-  // and the renderer rotates the building group by -transform.rotation
-  // so +X stays "forward").
-  const barrelMesh = new THREE.Mesh(cylinderGeom, extractorBladeMat);
-  barrelMesh.rotation.z = Math.PI / 2;
-  barrelMesh.scale.set(barrelThickness, barrelLength, barrelThickness);
-  barrelMesh.position.set(
-    headRadius + barrelLength / 2,
-    MEGA_BEAM_TOWER_TURRET_MOUNT_Z,
-    0,
-  );
-  details.push(detail(barrelMesh, 'min', undefined, 'static'));
+  if (barrelLength > 0) {
+    // Barrel runs forward along +X (the building faces the map center,
+    // and the renderer rotates the building group by -transform.rotation
+    // so +X stays "forward"). Cylinder mesh's local +Y is its long axis;
+    // rotate Z by π/2 to lay it down along +X.
+    const barrelMesh = new THREE.Mesh(cylinderGeom, towerBarrelMat);
+    barrelMesh.rotation.z = Math.PI / 2;
+    barrelMesh.scale.set(barrelDiameter, barrelLength, barrelDiameter);
+    barrelMesh.position.set(
+      headRadius + barrelLength / 2,
+      MEGA_BEAM_TOWER_TURRET_MOUNT_Z,
+      0,
+    );
+    details.push(detail(barrelMesh, 'min', undefined, 'static'));
+  }
 
   return { primary, details, height: MEGA_BEAM_TOWER_VISUAL_HEIGHT };
 }

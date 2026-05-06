@@ -46,11 +46,11 @@ export const SOLAR_BUILDING_VISUAL_HEIGHT = 52;
 export const WIND_BUILDING_VISUAL_HEIGHT = 250;
 export const FACTORY_BASE_VISUAL_HEIGHT = 30;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 50;
-export const MEGA_BEAM_TOWER_VISUAL_HEIGHT = 180;
+export const MEGA_BEAM_TOWER_VISUAL_HEIGHT = 80;
 export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
   FACTORY_BASE_VISUAL_HEIGHT + CONSTRUCTION_TURRET_HEAD_RADIUS;
-/** Pivot height for the megaBeam turret on the tower — the head sits a
- *  hair above the body cap so the barrel clears the box silhouette. */
+/** Pivot height for the megaBeam turret on the tower — head sits just
+ *  above the body cap so the barrel clears the box silhouette. */
 export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z = MEGA_BEAM_TOWER_VISUAL_HEIGHT + 14;
 
 export type FactoryBuildingVisualMetrics = {
@@ -187,7 +187,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     // and is tuned so the cuboid matches the rendered visualHeight.
     gridWidth: 2,
     gridHeight: 2,
-    gridDepth: 9,
+    gridDepth: 4,
     hp: 800,
     cost: { energy: 1500, mana: 1500, metal: 1500 },
     renderProfile: 'megaBeamTower',
