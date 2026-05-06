@@ -5,10 +5,10 @@ import {
   TERRAIN_ADAPTIVE_MAX_HEIGHT_ERROR,
   TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
   TERRAIN_MESH_SUBDIV,
-  TERRAIN_SMOOTHING_LAMBDA_Y,
   WATER_LEVEL,
 } from './terrainConfig';
 import {
+  getAuthoritativeTerrainTileMap,
   getInstalledTerrainTileMap,
   getTerrainVersion,
   setAuthoritativeTerrainTileMap,
@@ -27,18 +27,45 @@ export type TerrainMeshSample = {
   h01: number;
   hc: number;
   centerFan: boolean;
+  triangle?: TerrainTriangleSample;
 };
 
-type TerrainQuadHeights = {
-  h00: number;
-  h10: number;
-  h11: number;
-  h01: number;
-  hc: number;
-  centerFan: boolean;
+export type TerrainTileMeshView = {
+  vertexOffset: number;
+  vertexCount: number;
+  triangleOffset: number;
+  triangleCount: number;
+  vertexCoords: readonly number[];
+  vertexHeights: readonly number[];
+  triangleIndices: readonly number[];
 };
 
-const adaptiveQuadCache = new WeakMap<TerrainTileMap, Map<number, TerrainQuadHeights>>();
+type TerrainTriangleSample = {
+  ax: number;
+  az: number;
+  ah: number;
+  bx: number;
+  bz: number;
+  bh: number;
+  cx: number;
+  cz: number;
+  ch: number;
+  wa: number;
+  wb: number;
+  wc: number;
+};
+
+type LocalMeshVertex = {
+  fx: number;
+  fz: number;
+  h: number;
+};
+
+const TERRAIN_TILE_EDGE_NORTH = 0;
+const TERRAIN_TILE_EDGE_EAST = 1;
+const TERRAIN_TILE_EDGE_SOUTH = 2;
+const TERRAIN_TILE_EDGE_WEST = 3;
+const TERRAIN_MESH_EPSILON = 1e-7;
 
 function terrainCellSize(cellSize: number | undefined): number {
   return cellSize !== undefined && cellSize > 0
@@ -60,7 +87,8 @@ export function buildTerrainTileMap(
   const cellsY = Math.max(1, Math.ceil(mapHeight / size));
   const verticesX = cellsX * TERRAIN_MESH_SUBDIV + 1;
   const verticesY = cellsY * TERRAIN_MESH_SUBDIV + 1;
-  const subSize = size / TERRAIN_MESH_SUBDIV;
+  const maxSubdiv = Math.max(1, TERRAIN_MESH_SUBDIV | 0);
+  const subSize = size / maxSubdiv;
   const heights = new Array<number>(verticesX * verticesY);
   const quadCount = (verticesX - 1) * (verticesY - 1);
   const centerHeights = new Array<number>(quadCount);
@@ -75,6 +103,9 @@ export function buildTerrainTileMap(
     }
   }
 
+  // Center-fan topology is disabled: all authoritative sub-quads use the
+  // normal two-triangle diagonal split. The legacy center arrays stay in the
+  // snapshot so older consumers see a complete map shape, but the mask is zero.
   for (let qy = 0; qy < verticesY - 1; qy++) {
     const rowOff = qy * (verticesX - 1);
     for (let qx = 0; qx < verticesX - 1; qx++) {
@@ -84,73 +115,40 @@ export function buildTerrainTileMap(
       const h11 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx + 1, qy + 1);
       const h01 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx, qy + 1);
       centerHeights[idx] = terrainCenterFanHeight(h00, h10, h11, h01);
-    }
-  }
-
-  smoothTerrainTriangleVerticesInPlace(
-    heights,
-    centerHeights,
-    verticesX,
-    verticesY,
-    TERRAIN_SMOOTHING_LAMBDA_Y,
-  );
-
-  for (let qy = 0; qy < verticesY - 1; qy++) {
-    const rowOff = qy * (verticesX - 1);
-    for (let qx = 0; qx < verticesX - 1; qx++) {
-      const idx = rowOff + qx;
-      const h00 = terrainTileMapHeightAtVertexFromArrays(
-        heights,
-        verticesX,
-        verticesY,
-        TERRAIN_MESH_SUBDIV,
-        qx,
-        qy,
-      );
-      const h10 = terrainTileMapHeightAtVertexFromArrays(
-        heights,
-        verticesX,
-        verticesY,
-        TERRAIN_MESH_SUBDIV,
-        qx + 1,
-        qy,
-      );
-      const h11 = terrainTileMapHeightAtVertexFromArrays(
-        heights,
-        verticesX,
-        verticesY,
-        TERRAIN_MESH_SUBDIV,
-        qx + 1,
-        qy + 1,
-      );
-      const h01 = terrainTileMapHeightAtVertexFromArrays(
-        heights,
-        verticesX,
-        verticesY,
-        TERRAIN_MESH_SUBDIV,
-        qx,
-        qy + 1,
-      );
-      centerFanMask[idx] = shouldUseTerrainCenterFan(h00, h10, h11, h01, centerHeights[idx]) ? 1 : 0;
+      centerFanMask[idx] = 0;
     }
   }
 
   const tileSubdivisions = buildAdaptiveTerrainTileSubdivisions(
-    heights,
-    centerHeights,
-    centerFanMask,
-    verticesX,
-    verticesY,
+    mapWidth,
+    mapHeight,
+    size,
     cellsX,
     cellsY,
-    TERRAIN_MESH_SUBDIV,
+    maxSubdiv,
+  );
+  const {
+    tileEdgeSubdivisions,
+    tileVertexOffsets,
+    tileVertexCoords,
+    tileVertexHeights,
+    tileTriangleOffsets,
+    tileTriangleIndices,
+  } = buildAdaptiveTerrainTileMeshes(
+    mapWidth,
+    mapHeight,
+    size,
+    cellsX,
+    cellsY,
+    maxSubdiv,
+    tileSubdivisions,
   );
 
   return {
     mapWidth,
     mapHeight,
     cellSize: size,
-    subdiv: TERRAIN_MESH_SUBDIV,
+    subdiv: maxSubdiv,
     cellsX,
     cellsY,
     verticesX,
@@ -160,67 +158,13 @@ export function buildTerrainTileMap(
     centerHeights,
     centerFanMask,
     tileSubdivisions,
+    tileEdgeSubdivisions,
+    tileVertexOffsets,
+    tileVertexCoords,
+    tileVertexHeights,
+    tileTriangleOffsets,
+    tileTriangleIndices,
   };
-}
-
-/** One Jacobi-style Laplacian pass over the triangle-vertex set
- *  (heightmap corners + per-quad center vertices). Each vertex pulls
- *  toward the mean height of every other vertex it shares a triangle
- *  edge with: corners ↔ 4 cardinal corners + up to 4 surrounding
- *  centers; centers ↔ their 4 corners. X/Z neighborhoods are
- *  symmetric on the regular grid, so only Y is persisted. */
-function smoothTerrainTriangleVerticesInPlace(
-  heights: number[],
-  centerHeights: number[],
-  verticesX: number,
-  verticesY: number,
-  lambdaY: number,
-): void {
-  if (lambdaY <= 0) return;
-  const quadsX = verticesX - 1;
-  const quadsY = verticesY - 1;
-  const newCorner = new Array<number>(heights.length);
-  const newCenter = new Array<number>(centerHeights.length);
-
-  for (let vy = 0; vy < verticesY; vy++) {
-    for (let vx = 0; vx < verticesX; vx++) {
-      const idx = vy * verticesX + vx;
-      let sum = 0;
-      let count = 0;
-      if (vx > 0) { sum += heights[idx - 1]; count++; }
-      if (vx < verticesX - 1) { sum += heights[idx + 1]; count++; }
-      if (vy > 0) { sum += heights[idx - verticesX]; count++; }
-      if (vy < verticesY - 1) { sum += heights[idx + verticesX]; count++; }
-      for (let dy = -1; dy <= 0; dy++) {
-        const qy = vy + dy;
-        if (qy < 0 || qy >= quadsY) continue;
-        for (let dx = -1; dx <= 0; dx++) {
-          const qx = vx + dx;
-          if (qx < 0 || qx >= quadsX) continue;
-          sum += centerHeights[qy * quadsX + qx];
-          count++;
-        }
-      }
-      const h = heights[idx];
-      newCorner[idx] = count > 0 ? h + lambdaY * (sum / count - h) : h;
-    }
-  }
-
-  for (let qy = 0; qy < quadsY; qy++) {
-    for (let qx = 0; qx < quadsX; qx++) {
-      const idx = qy * quadsX + qx;
-      const h00 = heights[qy * verticesX + qx];
-      const h10 = heights[qy * verticesX + qx + 1];
-      const h11 = heights[(qy + 1) * verticesX + qx + 1];
-      const h01 = heights[(qy + 1) * verticesX + qx];
-      const mean = (h00 + h10 + h11 + h01) * 0.25;
-      const h = centerHeights[idx];
-      newCenter[idx] = h + lambdaY * (mean - h);
-    }
-  }
-
-  for (let i = 0; i < heights.length; i++) heights[i] = newCorner[i];
-  for (let i = 0; i < centerHeights.length; i++) centerHeights[i] = newCenter[i];
 }
 
 function terrainTileMapHeightAtVertexRaw(
@@ -232,83 +176,22 @@ function terrainTileMapHeightAtVertexRaw(
   return heights[vy * verticesX + vx] ?? 0;
 }
 
-function terrainTileMapHeightAtVertexFromArrays(
-  heights: readonly number[],
-  verticesX: number,
-  verticesY: number,
-  maxSubdiv: number,
-  vx: number,
-  vy: number,
-): number {
-  const subdiv = Math.max(1, maxSubdiv | 0);
-  const ix = vx >= 0 && vx < verticesX ? vx : Math.max(0, Math.min(verticesX - 1, vx));
-  const iy = vy >= 0 && vy < verticesY ? vy : Math.max(0, Math.min(verticesY - 1, vy));
-  if (subdiv > 1) {
-    const onLandX = ix % subdiv === 0;
-    const onLandY = iy % subdiv === 0;
-    if (onLandX === onLandY) {
-      return terrainTileMapHeightAtVertexRaw(heights, verticesX, ix, iy);
-    }
-    if (onLandX && !onLandY) {
-      const y0 = Math.floor(iy / subdiv) * subdiv;
-      const y1 = Math.min(verticesY - 1, y0 + subdiv);
-      const t = y1 > y0 ? (iy - y0) / (y1 - y0) : 0;
-      const h0 = terrainTileMapHeightAtVertexRaw(heights, verticesX, ix, y0);
-      const h1 = terrainTileMapHeightAtVertexRaw(heights, verticesX, ix, y1);
-      return h0 + (h1 - h0) * t;
-    }
-    const x0 = Math.floor(ix / subdiv) * subdiv;
-    const x1 = Math.min(verticesX - 1, x0 + subdiv);
-    const t = x1 > x0 ? (ix - x0) / (x1 - x0) : 0;
-    const h0 = terrainTileMapHeightAtVertexRaw(heights, verticesX, x0, iy);
-    const h1 = terrainTileMapHeightAtVertexRaw(heights, verticesX, x1, iy);
-    return h0 + (h1 - h0) * t;
-  }
-  return terrainTileMapHeightAtVertexRaw(heights, verticesX, ix, iy);
+function clamp01(value: number): number {
+  return value <= 0 ? 0 : value >= 1 ? 1 : value;
 }
 
-function terrainTileMapHeightAtVertex(
-  map: TerrainTileMap,
-  vx: number,
-  vy: number,
+function generatedTerrainHeightAtCellFraction(
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
+  cellX: number,
+  cellY: number,
+  fx: number,
+  fz: number,
 ): number {
-  return terrainTileMapHeightAtVertexFromArrays(
-    map.heights,
-    map.verticesX,
-    map.verticesY,
-    map.subdiv,
-    vx,
-    vy,
-  );
-}
-
-function terrainTileMapCenterHeightAtQuad(
-  map: TerrainTileMap,
-  qx: number,
-  qy: number,
-): number {
-  const quadsX = map.verticesX - 1;
-  const ix = Math.max(0, Math.min(quadsX - 1, qx));
-  const iy = Math.max(0, Math.min(map.verticesY - 2, qy));
-  const idx = iy * quadsX + ix;
-  const stored = (map.centerHeights as readonly number[] | undefined)?.[idx];
-  if (stored !== undefined) return stored;
-  const h00 = terrainTileMapHeightAtVertex(map, ix, iy);
-  const h10 = terrainTileMapHeightAtVertex(map, ix + 1, iy);
-  const h11 = terrainTileMapHeightAtVertex(map, ix + 1, iy + 1);
-  const h01 = terrainTileMapHeightAtVertex(map, ix, iy + 1);
-  return terrainCenterFanHeight(h00, h10, h11, h01);
-}
-
-function terrainTileMapUsesCenterFanAtQuad(
-  map: TerrainTileMap,
-  qx: number,
-  qy: number,
-): boolean {
-  const quadsX = map.verticesX - 1;
-  const ix = Math.max(0, Math.min(quadsX - 1, qx));
-  const iy = Math.max(0, Math.min(map.verticesY - 2, qy));
-  return ((map.centerFanMask as readonly number[] | undefined)?.[iy * quadsX + ix] ?? 0) > 0;
+  const x = Math.min(mapWidth, Math.max(0, (cellX + clamp01(fx)) * cellSize));
+  const z = Math.min(mapHeight, Math.max(0, (cellY + clamp01(fz)) * cellSize));
+  return getTerrainHeight(x, z, mapWidth, mapHeight);
 }
 
 function normalizeTerrainTileSubdivision(raw: number | undefined, maxSubdiv: number): number {
@@ -345,17 +228,32 @@ function terrainSubdivisionCandidates(maxSubdiv: number): number[] {
   const max = Math.max(1, maxSubdiv | 0);
   const candidates: number[] = [];
   for (let subdiv = 1; subdiv <= max; subdiv++) {
-    candidates.push(subdiv);
+    if (max % subdiv === 0) candidates.push(subdiv);
   }
   return candidates;
 }
 
-function terrainCellSurfaceHeightFromArrays(
-  heights: readonly number[],
-  centerHeights: readonly number[],
-  centerFanMask: readonly number[],
-  verticesX: number,
-  verticesY: number,
+function greatestCommonDivisor(a: number, b: number): number {
+  let x = Math.max(1, Math.abs(a | 0));
+  let y = Math.max(1, Math.abs(b | 0));
+  while (y !== 0) {
+    const next = x % y;
+    x = y;
+    y = next;
+  }
+  return x;
+}
+
+function leastCommonMultiple(a: number, b: number): number {
+  const x = Math.max(1, a | 0);
+  const y = Math.max(1, b | 0);
+  return Math.abs((x / greatestCommonDivisor(x, y)) * y);
+}
+
+function terrainCellSurfaceHeightFromGenerator(
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
   maxSubdiv: number,
   cellX: number,
   cellY: number,
@@ -364,159 +262,68 @@ function terrainCellSurfaceHeightFromArrays(
   fz: number,
 ): number {
   const subdiv = normalizeTerrainTileSubdivision(candidateSubdiv, maxSubdiv);
-  if (subdiv === maxSubdiv) {
-    return terrainFullSurfaceHeightFromArrays(
-      heights,
-      centerHeights,
-      centerFanMask,
-      verticesX,
-      verticesY,
-      maxSubdiv,
-      cellX,
-      cellY,
-      fx,
-      fz,
-    );
-  }
-  const localX = Math.max(0, Math.min(1, fx));
-  const localZ = Math.max(0, Math.min(1, fz));
+  const localX = clamp01(fx);
+  const localZ = clamp01(fz);
   const subX = Math.min(subdiv - 1, Math.max(0, Math.floor(localX * subdiv)));
   const subZ = Math.min(subdiv - 1, Math.max(0, Math.floor(localZ * subdiv)));
-  const u = Math.max(0, Math.min(1, localX * subdiv - subX));
-  const v = Math.max(0, Math.min(1, localZ * subdiv - subZ));
+  const u = clamp01(localX * subdiv - subX);
+  const v = clamp01(localZ * subdiv - subZ);
   const fx0 = subX / subdiv;
   const fz0 = subZ / subdiv;
   const fx1 = (subX + 1) / subdiv;
   const fz1 = (subZ + 1) / subdiv;
-  const h00 = terrainFullSurfaceHeightFromArrays(
-    heights,
-    centerHeights,
-    centerFanMask,
-    verticesX,
-    verticesY,
-    maxSubdiv,
+  const h00 = generatedTerrainHeightAtCellFraction(
+    mapWidth,
+    mapHeight,
+    cellSize,
     cellX,
     cellY,
     fx0,
     fz0,
   );
-  const h10 = terrainFullSurfaceHeightFromArrays(
-    heights,
-    centerHeights,
-    centerFanMask,
-    verticesX,
-    verticesY,
-    maxSubdiv,
+  const h10 = generatedTerrainHeightAtCellFraction(
+    mapWidth,
+    mapHeight,
+    cellSize,
     cellX,
     cellY,
     fx1,
     fz0,
   );
-  const h11 = terrainFullSurfaceHeightFromArrays(
-    heights,
-    centerHeights,
-    centerFanMask,
-    verticesX,
-    verticesY,
-    maxSubdiv,
+  const h11 = generatedTerrainHeightAtCellFraction(
+    mapWidth,
+    mapHeight,
+    cellSize,
     cellX,
     cellY,
     fx1,
     fz1,
   );
-  const h01 = terrainFullSurfaceHeightFromArrays(
-    heights,
-    centerHeights,
-    centerFanMask,
-    verticesX,
-    verticesY,
-    maxSubdiv,
+  const h01 = generatedTerrainHeightAtCellFraction(
+    mapWidth,
+    mapHeight,
+    cellSize,
     cellX,
     cellY,
     fx0,
     fz1,
   );
-  const hc = terrainFullSurfaceHeightFromArrays(
-    heights,
-    centerHeights,
-    centerFanMask,
-    verticesX,
-    verticesY,
-    maxSubdiv,
-    cellX,
-    cellY,
-    (fx0 + fx1) * 0.5,
-    (fz0 + fz1) * 0.5,
+  return interpolateTerrainMeshQuadHeight(
+    u,
+    v,
+    h00,
+    h10,
+    h11,
+    h01,
+    terrainCenterFanHeight(h00, h10, h11, h01),
+    false,
   );
-  const centerFan = shouldUseTerrainCenterFan(h00, h10, h11, h01, hc);
-  return interpolateTerrainMeshQuadHeight(u, v, h00, h10, h11, h01, hc, centerFan);
-}
-
-function terrainFullSurfaceHeightFromArrays(
-  heights: readonly number[],
-  centerHeights: readonly number[],
-  centerFanMask: readonly number[],
-  verticesX: number,
-  verticesY: number,
-  maxSubdiv: number,
-  cellX: number,
-  cellY: number,
-  fx: number,
-  fz: number,
-): number {
-  const subdiv = Math.max(1, maxSubdiv | 0);
-  const localX = Math.max(0, Math.min(1, fx));
-  const localZ = Math.max(0, Math.min(1, fz));
-  const subX = Math.min(subdiv - 1, Math.max(0, Math.floor(localX * subdiv)));
-  const subZ = Math.min(subdiv - 1, Math.max(0, Math.floor(localZ * subdiv)));
-  const u = Math.max(0, Math.min(1, localX * subdiv - subX));
-  const v = Math.max(0, Math.min(1, localZ * subdiv - subZ));
-  const qx = cellX * subdiv + subX;
-  const qy = cellY * subdiv + subZ;
-  const h00 = terrainTileMapHeightAtVertexFromArrays(
-    heights,
-    verticesX,
-    verticesY,
-    subdiv,
-    qx,
-    qy,
-  );
-  const h10 = terrainTileMapHeightAtVertexFromArrays(
-    heights,
-    verticesX,
-    verticesY,
-    subdiv,
-    qx + 1,
-    qy,
-  );
-  const h11 = terrainTileMapHeightAtVertexFromArrays(
-    heights,
-    verticesX,
-    verticesY,
-    subdiv,
-    qx + 1,
-    qy + 1,
-  );
-  const h01 = terrainTileMapHeightAtVertexFromArrays(
-    heights,
-    verticesX,
-    verticesY,
-    subdiv,
-    qx,
-    qy + 1,
-  );
-  const quadIdx = qy * (verticesX - 1) + qx;
-  const hc = centerHeights[quadIdx] ?? terrainCenterFanHeight(h00, h10, h11, h01);
-  const centerFan = (centerFanMask[quadIdx] ?? 0) > 0;
-  return interpolateTerrainMeshQuadHeight(u, v, h00, h10, h11, h01, hc, centerFan);
 }
 
 function terrainCellSimplificationError(
-  heights: readonly number[],
-  centerHeights: readonly number[],
-  centerFanMask: readonly number[],
-  verticesX: number,
-  verticesY: number,
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
   maxSubdiv: number,
   cellX: number,
   cellY: number,
@@ -525,25 +332,19 @@ function terrainCellSimplificationError(
 ): number {
   let maxError = 0;
   const checkPoint = (fx: number, fz: number): boolean => {
-    const actual = terrainCellSurfaceHeightFromArrays(
-      heights,
-      centerHeights,
-      centerFanMask,
-      verticesX,
-      verticesY,
-      maxSubdiv,
+    const actual = generatedTerrainHeightAtCellFraction(
+      mapWidth,
+      mapHeight,
+      cellSize,
       cellX,
       cellY,
-      maxSubdiv,
       fx,
       fz,
     );
-    const approx = terrainCellSurfaceHeightFromArrays(
-      heights,
-      centerHeights,
-      centerFanMask,
-      verticesX,
-      verticesY,
+    const approx = terrainCellSurfaceHeightFromGenerator(
+      mapWidth,
+      mapHeight,
+      cellSize,
       maxSubdiv,
       cellX,
       cellY,
@@ -559,27 +360,26 @@ function terrainCellSimplificationError(
     return maxError > maxAllowedError;
   };
 
-  for (let iy = 0; iy <= maxSubdiv; iy++) {
-    const fz = iy / maxSubdiv;
-    for (let ix = 0; ix <= maxSubdiv; ix++) {
-      if (checkPoint(ix / maxSubdiv, fz)) return maxError;
+  const sampleSubdiv = Math.max(1, maxSubdiv * 2);
+  for (let iy = 0; iy <= sampleSubdiv; iy++) {
+    const fz = iy / sampleSubdiv;
+    for (let ix = 0; ix <= sampleSubdiv; ix++) {
+      if (checkPoint(ix / sampleSubdiv, fz)) return maxError;
     }
   }
-  for (let iy = 0; iy < maxSubdiv; iy++) {
-    const fz = (iy + 0.5) / maxSubdiv;
-    for (let ix = 0; ix < maxSubdiv; ix++) {
-      if (checkPoint((ix + 0.5) / maxSubdiv, fz)) return maxError;
+  for (let iy = 0; iy < sampleSubdiv; iy++) {
+    const fz = (iy + 0.5) / sampleSubdiv;
+    for (let ix = 0; ix < sampleSubdiv; ix++) {
+      if (checkPoint((ix + 0.5) / sampleSubdiv, fz)) return maxError;
     }
   }
   return maxError;
 }
 
 function buildAdaptiveTerrainTileSubdivisions(
-  heights: readonly number[],
-  centerHeights: readonly number[],
-  centerFanMask: readonly number[],
-  verticesX: number,
-  verticesY: number,
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
   cellsX: number,
   cellsY: number,
   maxSubdiv: number,
@@ -602,11 +402,9 @@ function buildAdaptiveTerrainTileSubdivisions(
           break;
         }
         const error = terrainCellSimplificationError(
-          heights,
-          centerHeights,
-          centerFanMask,
-          verticesX,
-          verticesY,
+          mapWidth,
+          mapHeight,
+          cellSize,
           fullSubdiv,
           cx,
           cy,
@@ -624,127 +422,415 @@ function buildAdaptiveTerrainTileSubdivisions(
   return tileSubdivisions;
 }
 
-function terrainTileMapQuadAtAdaptiveSubdiv(
+function terrainTileBaseSubdivision(
+  tileSubdivisions: readonly number[],
+  cellsX: number,
+  cellsY: number,
+  cellX: number,
+  cellY: number,
+  maxSubdiv: number,
+): number {
+  if (cellX < 0 || cellX >= cellsX || cellY < 0 || cellY >= cellsY) return 0;
+  return normalizeTerrainTileSubdivision(tileSubdivisions[cellY * cellsX + cellX], maxSubdiv);
+}
+
+function terrainTouchingEdgeSubdivision(
+  selfSubdiv: number,
+  neighborSubdiv: number,
+  maxSubdiv: number,
+): number {
+  if (neighborSubdiv <= 0) return selfSubdiv;
+  return Math.min(maxSubdiv, leastCommonMultiple(selfSubdiv, neighborSubdiv));
+}
+
+function terrainCoordKey(fx: number, fz: number): string {
+  return `${Math.round(clamp01(fx) * 1_000_000_000)}:${Math.round(clamp01(fz) * 1_000_000_000)}`;
+}
+
+function terrainTriangleArea2(
+  vertices: readonly LocalMeshVertex[],
+  a: number,
+  b: number,
+  c: number,
+): number {
+  const va = vertices[a];
+  const vb = vertices[b];
+  const vc = vertices[c];
+  return (vb.fx - va.fx) * (vc.fz - va.fz) - (vb.fz - va.fz) * (vc.fx - va.fx);
+}
+
+function triangulateConvexLocalPolygon(
+  vertices: readonly LocalMeshVertex[],
+  polygon: readonly number[],
+  out: number[],
+): void {
+  const remaining: number[] = [];
+  for (let i = 0; i < polygon.length; i++) {
+    const id = polygon[i];
+    if (remaining[remaining.length - 1] !== id) remaining.push(id);
+  }
+  if (remaining.length > 1 && remaining[0] === remaining[remaining.length - 1]) {
+    remaining.pop();
+  }
+
+  while (remaining.length > 3) {
+    let ear = -1;
+    for (let i = 0; i < remaining.length; i++) {
+      const prev = remaining[(i + remaining.length - 1) % remaining.length];
+      const curr = remaining[i];
+      const next = remaining[(i + 1) % remaining.length];
+      if (Math.abs(terrainTriangleArea2(vertices, prev, curr, next)) > TERRAIN_MESH_EPSILON) {
+        ear = i;
+        out.push(prev, curr, next);
+        break;
+      }
+    }
+    if (ear < 0) return;
+    remaining.splice(ear, 1);
+  }
+
+  if (
+    remaining.length === 3 &&
+    Math.abs(terrainTriangleArea2(vertices, remaining[0], remaining[1], remaining[2])) >
+      TERRAIN_MESH_EPSILON
+  ) {
+    out.push(remaining[0], remaining[1], remaining[2]);
+  }
+}
+
+function buildTerrainTileLocalMesh(
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
+  cellX: number,
+  cellY: number,
+  baseSubdiv: number,
+  northSubdiv: number,
+  eastSubdiv: number,
+  southSubdiv: number,
+  westSubdiv: number,
+): {
+  vertices: LocalMeshVertex[];
+  triangles: number[];
+} {
+  const vertices: LocalMeshVertex[] = [];
+  const vertexIds = new Map<string, number>();
+  const addVertex = (fxRaw: number, fzRaw: number): number => {
+    const fx = clamp01(fxRaw);
+    const fz = clamp01(fzRaw);
+    const key = terrainCoordKey(fx, fz);
+    const existing = vertexIds.get(key);
+    if (existing !== undefined) return existing;
+    const id = vertices.length;
+    vertexIds.set(key, id);
+    vertices.push({
+      fx,
+      fz,
+      h: generatedTerrainHeightAtCellFraction(
+        mapWidth,
+        mapHeight,
+        cellSize,
+        cellX,
+        cellY,
+        fx,
+        fz,
+      ),
+    });
+    return id;
+  };
+
+  for (let vy = 0; vy <= baseSubdiv; vy++) {
+    for (let vx = 0; vx <= baseSubdiv; vx++) {
+      addVertex(vx / baseSubdiv, vy / baseSubdiv);
+    }
+  }
+  for (let i = 1; i < northSubdiv; i++) addVertex(i / northSubdiv, 0);
+  for (let i = 1; i < eastSubdiv; i++) addVertex(1, i / eastSubdiv);
+  for (let i = 1; i < southSubdiv; i++) addVertex(i / southSubdiv, 1);
+  for (let i = 1; i < westSubdiv; i++) addVertex(0, i / westSubdiv);
+
+  const verticesOnSegment = (a: number, b: number): number[] => {
+    const va = vertices[a];
+    const vb = vertices[b];
+    const dx = vb.fx - va.fx;
+    const dz = vb.fz - va.fz;
+    const lenSq = dx * dx + dz * dz;
+    const found: Array<{ id: number; t: number }> = [];
+    for (let id = 0; id < vertices.length; id++) {
+      const p = vertices[id];
+      const relX = p.fx - va.fx;
+      const relZ = p.fz - va.fz;
+      const cross = relX * dz - relZ * dx;
+      if (Math.abs(cross) > TERRAIN_MESH_EPSILON) continue;
+      const t = lenSq > 0 ? (relX * dx + relZ * dz) / lenSq : 0;
+      if (t < -TERRAIN_MESH_EPSILON || t > 1 + TERRAIN_MESH_EPSILON) continue;
+      found.push({ id, t: clamp01(t) });
+    }
+    found.sort((left, right) => left.t - right.t);
+    const ids: number[] = [];
+    for (let i = 0; i < found.length; i++) {
+      const id = found[i].id;
+      if (ids[ids.length - 1] !== id) ids.push(id);
+    }
+    return ids;
+  };
+
+  const triangles: number[] = [];
+  const addBaseTriangle = (a: number, b: number, c: number): void => {
+    const ab = verticesOnSegment(a, b);
+    const bc = verticesOnSegment(b, c);
+    const ca = verticesOnSegment(c, a);
+    const polygon = [...ab];
+    for (let i = 1; i < bc.length; i++) polygon.push(bc[i]);
+    for (let i = 1; i < ca.length - 1; i++) polygon.push(ca[i]);
+    triangulateConvexLocalPolygon(vertices, polygon, triangles);
+  };
+
+  for (let y = 0; y < baseSubdiv; y++) {
+    for (let x = 0; x < baseSubdiv; x++) {
+      const tl = addVertex(x / baseSubdiv, y / baseSubdiv);
+      const tr = addVertex((x + 1) / baseSubdiv, y / baseSubdiv);
+      const br = addVertex((x + 1) / baseSubdiv, (y + 1) / baseSubdiv);
+      const bl = addVertex(x / baseSubdiv, (y + 1) / baseSubdiv);
+      addBaseTriangle(tl, tr, br);
+      addBaseTriangle(tl, br, bl);
+    }
+  }
+
+  return { vertices, triangles };
+}
+
+function buildAdaptiveTerrainTileMeshes(
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
+  cellsX: number,
+  cellsY: number,
+  maxSubdiv: number,
+  tileSubdivisions: readonly number[],
+): {
+  tileEdgeSubdivisions: number[];
+  tileVertexOffsets: number[];
+  tileVertexCoords: number[];
+  tileVertexHeights: number[];
+  tileTriangleOffsets: number[];
+  tileTriangleIndices: number[];
+} {
+  const tileCount = cellsX * cellsY;
+  const tileEdgeSubdivisions = new Array<number>(tileCount * 4);
+  const tileVertexOffsets = new Array<number>(tileCount + 1);
+  const tileVertexCoords: number[] = [];
+  const tileVertexHeights: number[] = [];
+  const tileTriangleOffsets = new Array<number>(tileCount + 1);
+  const tileTriangleIndices: number[] = [];
+
+  for (let cy = 0; cy < cellsY; cy++) {
+    for (let cx = 0; cx < cellsX; cx++) {
+      const tileIdx = cy * cellsX + cx;
+      const self = terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx, cy, maxSubdiv);
+      const north = terrainTouchingEdgeSubdivision(
+        self,
+        terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx, cy - 1, maxSubdiv),
+        maxSubdiv,
+      );
+      const east = terrainTouchingEdgeSubdivision(
+        self,
+        terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx + 1, cy, maxSubdiv),
+        maxSubdiv,
+      );
+      const south = terrainTouchingEdgeSubdivision(
+        self,
+        terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx, cy + 1, maxSubdiv),
+        maxSubdiv,
+      );
+      const west = terrainTouchingEdgeSubdivision(
+        self,
+        terrainTileBaseSubdivision(tileSubdivisions, cellsX, cellsY, cx - 1, cy, maxSubdiv),
+        maxSubdiv,
+      );
+      const edgeOffset = tileIdx * 4;
+      tileEdgeSubdivisions[edgeOffset + TERRAIN_TILE_EDGE_NORTH] = north;
+      tileEdgeSubdivisions[edgeOffset + TERRAIN_TILE_EDGE_EAST] = east;
+      tileEdgeSubdivisions[edgeOffset + TERRAIN_TILE_EDGE_SOUTH] = south;
+      tileEdgeSubdivisions[edgeOffset + TERRAIN_TILE_EDGE_WEST] = west;
+
+      const mesh = buildTerrainTileLocalMesh(
+        mapWidth,
+        mapHeight,
+        cellSize,
+        cx,
+        cy,
+        self,
+        north,
+        east,
+        south,
+        west,
+      );
+
+      tileVertexOffsets[tileIdx] = tileVertexHeights.length;
+      for (let i = 0; i < mesh.vertices.length; i++) {
+        const vertex = mesh.vertices[i];
+        tileVertexCoords.push(vertex.fx, vertex.fz);
+        tileVertexHeights.push(vertex.h);
+      }
+      tileTriangleOffsets[tileIdx] = tileTriangleIndices.length;
+      for (let i = 0; i < mesh.triangles.length; i++) {
+        tileTriangleIndices.push(mesh.triangles[i]);
+      }
+    }
+  }
+  tileVertexOffsets[tileCount] = tileVertexHeights.length;
+  tileTriangleOffsets[tileCount] = tileTriangleIndices.length;
+
+  return {
+    tileEdgeSubdivisions,
+    tileVertexOffsets,
+    tileVertexCoords,
+    tileVertexHeights,
+    tileTriangleOffsets,
+    tileTriangleIndices,
+  };
+}
+
+function terrainTileMeshViewFromMap(
   map: TerrainTileMap,
   cellX: number,
   cellY: number,
-  tileSubdiv: number,
-  subX: number,
-  subY: number,
-): TerrainQuadHeights {
-  const subdiv = normalizeTerrainTileSubdivision(tileSubdiv, map.subdiv);
-  if (subdiv === map.subdiv) {
-    const qx = cellX * map.subdiv + subX;
-    const qy = cellY * map.subdiv + subY;
-    const h00 = terrainTileMapHeightAtVertex(map, qx, qy);
-    const h10 = terrainTileMapHeightAtVertex(map, qx + 1, qy);
-    const h11 = terrainTileMapHeightAtVertex(map, qx + 1, qy + 1);
-    const h01 = terrainTileMapHeightAtVertex(map, qx, qy + 1);
-    return {
-      h00,
-      h10,
-      h11,
-      h01,
-      hc: terrainTileMapCenterHeightAtQuad(map, qx, qy),
-      centerFan: terrainTileMapUsesCenterFanAtQuad(map, qx, qy),
-    };
+): TerrainTileMeshView | null {
+  const cx = Math.max(0, Math.min(map.cellsX - 1, cellX));
+  const cy = Math.max(0, Math.min(map.cellsY - 1, cellY));
+  const tileIdx = cy * map.cellsX + cx;
+  const vertexOffsets = map.tileVertexOffsets as readonly number[] | undefined;
+  const vertexCoords = map.tileVertexCoords as readonly number[] | undefined;
+  const vertexHeights = map.tileVertexHeights as readonly number[] | undefined;
+  const triangleOffsets = map.tileTriangleOffsets as readonly number[] | undefined;
+  const triangleIndices = map.tileTriangleIndices as readonly number[] | undefined;
+  const vertexOffset = vertexOffsets?.[tileIdx];
+  const nextVertexOffset = vertexOffsets?.[tileIdx + 1];
+  const triangleOffset = triangleOffsets?.[tileIdx];
+  const nextTriangleOffset = triangleOffsets?.[tileIdx + 1];
+  if (
+    !vertexCoords ||
+    !vertexHeights ||
+    !triangleIndices ||
+    vertexOffset === undefined ||
+    nextVertexOffset === undefined ||
+    triangleOffset === undefined ||
+    nextTriangleOffset === undefined
+  ) {
+    return null;
   }
 
-  let cache = adaptiveQuadCache.get(map);
-  if (!cache) {
-    cache = new Map<number, TerrainQuadHeights>();
-    adaptiveQuadCache.set(map, cache);
-  }
-  const stride = map.subdiv + 1;
-  const key = (((cellY * map.cellsX + cellX) * stride + subdiv) * stride + subY) * stride + subX;
-  const cached = cache.get(key);
-  if (cached) return cached;
-
-  const fx0 = subX / subdiv;
-  const fy0 = subY / subdiv;
-  const fx1 = (subX + 1) / subdiv;
-  const fy1 = (subY + 1) / subdiv;
-  const h00 = terrainFullSurfaceHeightFromArrays(
-    map.heights,
-    map.centerHeights,
-    map.centerFanMask,
-    map.verticesX,
-    map.verticesY,
-    map.subdiv,
-    cellX,
-    cellY,
-    fx0,
-    fy0,
-  );
-  const h10 = terrainFullSurfaceHeightFromArrays(
-    map.heights,
-    map.centerHeights,
-    map.centerFanMask,
-    map.verticesX,
-    map.verticesY,
-    map.subdiv,
-    cellX,
-    cellY,
-    fx1,
-    fy0,
-  );
-  const h11 = terrainFullSurfaceHeightFromArrays(
-    map.heights,
-    map.centerHeights,
-    map.centerFanMask,
-    map.verticesX,
-    map.verticesY,
-    map.subdiv,
-    cellX,
-    cellY,
-    fx1,
-    fy1,
-  );
-  const h01 = terrainFullSurfaceHeightFromArrays(
-    map.heights,
-    map.centerHeights,
-    map.centerFanMask,
-    map.verticesX,
-    map.verticesY,
-    map.subdiv,
-    cellX,
-    cellY,
-    fx0,
-    fy1,
-  );
-  const hc = terrainFullSurfaceHeightFromArrays(
-    map.heights,
-    map.centerHeights,
-    map.centerFanMask,
-    map.verticesX,
-    map.verticesY,
-    map.subdiv,
-    cellX,
-    cellY,
-    (fx0 + fx1) * 0.5,
-    (fy0 + fy1) * 0.5,
-  );
-  const quad = {
-    h00,
-    h10,
-    h11,
-    h01,
-    hc,
-    centerFan: shouldUseTerrainCenterFan(h00, h10, h11, h01, hc),
+  return {
+    vertexOffset,
+    vertexCount: Math.max(0, nextVertexOffset - vertexOffset),
+    triangleOffset,
+    triangleCount: Math.max(0, Math.floor((nextTriangleOffset - triangleOffset) / 3)),
+    vertexCoords,
+    vertexHeights,
+    triangleIndices,
   };
-  cache.set(key, quad);
-  return quad;
 }
 
-function clampToMeshExtent(
-  value: number,
-  cells: number,
-  cellSize: number,
-): number {
-  const max = cells * cellSize;
-  if (value <= 0) return 0;
-  if (value >= max) return max;
-  return value;
+export function getTerrainTileMeshAtCell(
+  cellX: number,
+  cellY: number,
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number = LAND_CELL_SIZE,
+): TerrainTileMeshView | null {
+  assertCanonicalLandCellSize('getTerrainTileMeshAtCell cellSize', cellSize);
+  const size = terrainCellSize(cellSize);
+  const map = getInstalledTerrainTileMap(mapWidth, mapHeight, size);
+  if (!map) return null;
+  return terrainTileMeshViewFromMap(map, cellX, cellY);
+}
+
+function terrainBarycentricAt(
+  px: number,
+  pz: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  cx: number,
+  cz: number,
+): { wa: number; wb: number; wc: number } | null {
+  const denom = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+  if (Math.abs(denom) <= TERRAIN_MESH_EPSILON) return null;
+  const wa = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / denom;
+  const wb = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / denom;
+  return { wa, wb, wc: 1 - wa - wb };
+}
+
+function normalizeBarycentricWeights(
+  wa: number,
+  wb: number,
+  wc: number,
+): { wa: number; wb: number; wc: number } {
+  const ca = Math.max(0, wa);
+  const cb = Math.max(0, wb);
+  const cc = Math.max(0, wc);
+  const sum = ca + cb + cc;
+  if (sum <= 0) return { wa: 1, wb: 0, wc: 0 };
+  return { wa: ca / sum, wb: cb / sum, wc: cc / sum };
+}
+
+function terrainTriangleSampleFromMesh(
+  map: TerrainTileMap,
+  cellX: number,
+  cellY: number,
+  fx: number,
+  fz: number,
+): TerrainTriangleSample | null {
+  const mesh = terrainTileMeshViewFromMap(map, cellX, cellY);
+  if (!mesh || mesh.triangleCount <= 0) return null;
+
+  let best: TerrainTriangleSample | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  const px = clamp01(fx);
+  const pz = clamp01(fz);
+  for (let tri = 0; tri < mesh.triangleCount; tri++) {
+    const triOffset = mesh.triangleOffset + tri * 3;
+    const ia = mesh.triangleIndices[triOffset];
+    const ib = mesh.triangleIndices[triOffset + 1];
+    const ic = mesh.triangleIndices[triOffset + 2];
+    const aCoord = (mesh.vertexOffset + ia) * 2;
+    const bCoord = (mesh.vertexOffset + ib) * 2;
+    const cCoord = (mesh.vertexOffset + ic) * 2;
+    const ax = mesh.vertexCoords[aCoord];
+    const az = mesh.vertexCoords[aCoord + 1];
+    const bx = mesh.vertexCoords[bCoord];
+    const bz = mesh.vertexCoords[bCoord + 1];
+    const cx = mesh.vertexCoords[cCoord];
+    const cz = mesh.vertexCoords[cCoord + 1];
+    const bary = terrainBarycentricAt(px, pz, ax, az, bx, bz, cx, cz);
+    if (!bary) continue;
+    const score = Math.min(bary.wa, bary.wb, bary.wc);
+    if (score < -1e-5 && score <= bestScore) continue;
+    const weights = score >= -1e-5
+      ? bary
+      : normalizeBarycentricWeights(bary.wa, bary.wb, bary.wc);
+    const sample = {
+      ax: (cellX + ax) * map.cellSize,
+      az: (cellY + az) * map.cellSize,
+      ah: mesh.vertexHeights[mesh.vertexOffset + ia] ?? 0,
+      bx: (cellX + bx) * map.cellSize,
+      bz: (cellY + bz) * map.cellSize,
+      bh: mesh.vertexHeights[mesh.vertexOffset + ib] ?? 0,
+      cx: (cellX + cx) * map.cellSize,
+      cz: (cellY + cz) * map.cellSize,
+      ch: mesh.vertexHeights[mesh.vertexOffset + ic] ?? 0,
+      wa: weights.wa,
+      wb: weights.wb,
+      wc: weights.wc,
+    };
+    if (score >= -1e-5) return sample;
+    best = sample;
+    bestScore = score;
+  }
+
+  return best;
 }
 
 export function getTerrainMeshSample(
@@ -754,52 +840,57 @@ export function getTerrainMeshSample(
   mapHeight: number,
   cellSize: number = LAND_CELL_SIZE,
 ): TerrainMeshSample {
-  assertCanonicalLandCellSize('getTerrainMeshSample cellSize', cellSize);
-  const size = terrainCellSize(cellSize);
-  const cellsX = Math.max(1, Math.ceil(mapWidth / size));
-  const cellsZ = Math.max(1, Math.ceil(mapHeight / size));
-  const px = clampToMeshExtent(x, cellsX, size);
-  const pz = clampToMeshExtent(z, cellsZ, size);
+  let size = LAND_CELL_SIZE;
+  if (cellSize !== LAND_CELL_SIZE && cellSize > 0) {
+    assertCanonicalLandCellSize('getTerrainMeshSample cellSize', cellSize);
+    size = terrainCellSize(cellSize);
+  }
+  const candidateMap = getAuthoritativeTerrainTileMap();
+  const installedMap =
+    candidateMap &&
+    candidateMap.mapWidth === mapWidth &&
+    candidateMap.mapHeight === mapHeight &&
+    candidateMap.cellSize === size &&
+    candidateMap.subdiv === TERRAIN_MESH_SUBDIV
+      ? candidateMap
+      : null;
+  const cellsX = installedMap?.cellsX ?? Math.max(1, Math.ceil(mapWidth / size));
+  const cellsZ = installedMap?.cellsY ?? Math.max(1, Math.ceil(mapHeight / size));
+  const maxX = cellsX * size;
+  const maxZ = cellsZ * size;
+  const px = x <= 0 ? 0 : x >= maxX ? maxX : x;
+  const pz = z <= 0 ? 0 : z >= maxZ ? maxZ : z;
   const cellX = Math.min(cellsX - 1, Math.max(0, Math.floor(px / size)));
   const cellZ = Math.min(cellsZ - 1, Math.max(0, Math.floor(pz / size)));
   const localX = px - cellX * size;
   const localZ = pz - cellZ * size;
-  const installedMap = getInstalledTerrainTileMap(mapWidth, mapHeight, size);
 
   if (installedMap) {
-    const tileSubdiv = terrainTileSubdivisionAtMapCell(installedMap, cellX, cellZ);
-    const subSize = size / tileSubdiv;
-    const subX = Math.min(
-      tileSubdiv - 1,
-      Math.max(0, Math.floor(localX / subSize)),
-    );
-    const subZ = Math.min(
-      tileSubdiv - 1,
-      Math.max(0, Math.floor(localZ / subSize)),
-    );
-    const x0 = cellX * size + subX * subSize;
-    const z0 = cellZ * size + subZ * subSize;
-    const u = Math.max(0, Math.min(1, (px - x0) / subSize));
-    const v = Math.max(0, Math.min(1, (pz - z0) / subSize));
-    const quad = terrainTileMapQuadAtAdaptiveSubdiv(
+    const rawTileSubdiv =
+      (installedMap.tileSubdivisions as readonly number[] | undefined)?.[cellZ * installedMap.cellsX + cellX] ??
+      installedMap.subdiv;
+    const tileSubdiv = normalizeTerrainTileSubdivision(rawTileSubdiv, installedMap.subdiv);
+    const triangle = terrainTriangleSampleFromMesh(
       installedMap,
       cellX,
       cellZ,
-      tileSubdiv,
-      subX,
-      subZ,
+      localX / size,
+      localZ / size,
     );
-    return {
-      u,
-      v,
-      subSize,
-      h00: quad.h00,
-      h10: quad.h10,
-      h11: quad.h11,
-      h01: quad.h01,
-      hc: quad.hc,
-      centerFan: quad.centerFan,
-    };
+    if (triangle) {
+      return {
+        u: triangle.wb,
+        v: triangle.wc,
+        subSize: size / tileSubdiv,
+        h00: triangle.ah,
+        h10: triangle.bh,
+        h11: triangle.ch,
+        h01: triangle.ah,
+        hc: triangle.ah,
+        centerFan: false,
+        triangle,
+      };
+    }
   }
 
   const subSize = size / TERRAIN_MESH_SUBDIV;
@@ -817,10 +908,30 @@ export function getTerrainMeshSample(
   const z1 = z0 + subSize;
   const u = Math.max(0, Math.min(1, (px - x0) / subSize));
   const v = Math.max(0, Math.min(1, (pz - z0) / subSize));
-  const h00 = getTerrainHeight(x0, z0, mapWidth, mapHeight);
-  const h10 = getTerrainHeight(x1, z0, mapWidth, mapHeight);
-  const h11 = getTerrainHeight(x1, z1, mapWidth, mapHeight);
-  const h01 = getTerrainHeight(x0, z1, mapWidth, mapHeight);
+  const h00 = getTerrainHeight(
+    Math.min(mapWidth, x0),
+    Math.min(mapHeight, z0),
+    mapWidth,
+    mapHeight,
+  );
+  const h10 = getTerrainHeight(
+    Math.min(mapWidth, x1),
+    Math.min(mapHeight, z0),
+    mapWidth,
+    mapHeight,
+  );
+  const h11 = getTerrainHeight(
+    Math.min(mapWidth, x1),
+    Math.min(mapHeight, z1),
+    mapWidth,
+    mapHeight,
+  );
+  const h01 = getTerrainHeight(
+    Math.min(mapWidth, x0),
+    Math.min(mapHeight, z1),
+    mapWidth,
+    mapHeight,
+  );
   const hc = terrainCenterFanHeight(h00, h10, h11, h01);
   return {
     u,
@@ -831,7 +942,7 @@ export function getTerrainMeshSample(
     h11,
     h01,
     hc,
-    centerFan: shouldUseTerrainCenterFan(h00, h10, h11, h01, hc),
+    centerFan: false,
   };
 }
 
@@ -889,6 +1000,10 @@ export function interpolateTerrainMeshQuadHeight(
 }
 
 export function terrainMeshHeightFromSample(sample: TerrainMeshSample): number {
+  if (sample.triangle) {
+    const tri = sample.triangle;
+    return tri.wa * tri.ah + tri.wb * tri.bh + tri.wc * tri.ch;
+  }
   return interpolateTerrainMeshQuadHeight(
     sample.u,
     sample.v,
@@ -906,6 +1021,25 @@ export function terrainMeshNormalFromSample(sample: TerrainMeshSample): {
   ny: number;
   nz: number;
 } {
+  if (sample.triangle) {
+    const tri = sample.triangle;
+    const ux = tri.bx - tri.ax;
+    const uz = tri.bz - tri.az;
+    const uh = tri.bh - tri.ah;
+    const vx = tri.cx - tri.ax;
+    const vz = tri.cz - tri.az;
+    const vh = tri.ch - tri.ah;
+    let nx = uh * vz - uz * vh;
+    let ny = uz * vx - ux * vz;
+    let nz = ux * vh - uh * vx;
+    if (ny < 0) {
+      nx = -nx;
+      ny = -ny;
+      nz = -nz;
+    }
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+    return { nx: nx / len, ny: nz / len, nz: ny / len };
+  }
   const { u, v, subSize, h00, h10, h11, h01, hc, centerFan } = sample;
   let dHdx: number;
   let dHdz: number;

@@ -10,7 +10,7 @@ export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 // Host sim, client prediction, and terrain rendering share this exact mesh.
 // This is the max per-land-cell resolution; buildTerrainTileMap collapses
 // cells that do not need it down to cheaper authoritative subdivisions.
-export const AUTHORITATIVE_TERRAIN_SUBDIV = 7;
+export const AUTHORITATIVE_TERRAIN_SUBDIV = 4;
 export const TERRAIN_MESH_SUBDIV = AUTHORITATIVE_TERRAIN_SUBDIV;
 
 /** Maximum vertical deviation, in world units, allowed when a land cell is
@@ -18,20 +18,14 @@ export const TERRAIN_MESH_SUBDIV = AUTHORITATIVE_TERRAIN_SUBDIV;
  *  terraced, waterline, and ridge cells keep more triangles. */
 export const TERRAIN_ADAPTIVE_MAX_HEIGHT_ERROR = 8;
 
-/** Add an averaged center vertex to an authoritative terrain sub-quad
- *  when the four corners are non-planar enough to make the old fixed
- *  diagonal visibly biased. Flat/planar cells stay at two triangles. */
+/** Legacy diagnostic threshold for the old center-fan terrain split.
+ *  Authoritative terrain now keeps every sub-quad at two triangles. */
 export const TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD = 0.5;
 
-/** Per-axis Laplacian blend factors for the triangle-vertex smoothing
- *  pass that runs after heights are sampled but before the center-fan
- *  topology is decided. Each vertex (corner or quad center) is pulled
- *  toward the mean of all triangle-edge-touching neighbors by these
- *  fractions. X and Z are stored for completeness; on a regular grid
- *  the cardinal+center neighbor sets are symmetric, so x/z deltas are
- *  zero for interior vertices and only y actually moves geometry. */
+/** Legacy smoothing factors for experiments. The authoritative adaptive
+ *  surface samples final vertices from the generated terrain curve exactly. */
 
-const val = 0.0
+const val = 0.5;
 export const TERRAIN_SMOOTHING_LAMBDA_X = val;
 export const TERRAIN_SMOOTHING_LAMBDA_Y = val;
 export const TERRAIN_SMOOTHING_LAMBDA_Z = val;

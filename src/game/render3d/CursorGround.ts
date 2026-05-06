@@ -1,5 +1,5 @@
 // CursorGround — single canonical "where is the cursor on the actual
-// 3D ground?" service. One raycaster, one terrain mesh, two lenses:
+// 3D ground?" service. One camera ray, one authoritative terrain sampler, two lenses:
 // `pickWorld` returns three.js coords (used by OrbitCamera for zoom +
 // pan anchoring), `pickSim` returns sim coords (used by Input3DManager
 // for every command point — waypoints, attack-moves, build clicks,
@@ -10,10 +10,10 @@
 //   sim.y  = three.z
 //   sim.z  = three.y     (altitude / height)
 //
-// SUBMERGED-HIT FALLBACK. The terrain mesh is a heightmap that dips
+// SUBMERGED-HIT FALLBACK. The terrain surface is a heightmap that dips
 // DOWN to TILE_FLOOR_Y in valley basins. The water plane is a separate
 // translucent mesh layered on top at WATER_LEVEL — it does NOT
-// participate in the raycast. So for a typical RTS camera pitch
+// participate in picking. So for a typical RTS camera pitch
 // (~50°), a click on what visually appears to be the FAR shore of a
 // valley casts a ray that enters the basin from above and hits the
 // near-side SUBMERGED basin slope FIRST (it's closer to the camera
@@ -36,7 +36,11 @@
 // care about altitude).
 
 import * as THREE from 'three';
-import { WATER_LEVEL } from '../sim/Terrain';
+import {
+  getTerrainMeshHeight,
+  TILE_FLOOR_Y,
+  WATER_LEVEL,
+} from '../sim/Terrain';
 
 export type SimGroundPoint = {
   x: number;
@@ -47,7 +51,8 @@ export type SimGroundPoint = {
 export class CursorGround {
   private camera: THREE.PerspectiveCamera;
   private canvas: HTMLElement;
-  private getTerrainMesh: () => THREE.Mesh | null;
+  private mapWidth: number;
+  private mapHeight: number;
 
   // Reusable scratch — never allocate per-call on hot input paths.
   private raycaster = new THREE.Raycaster();
@@ -58,20 +63,22 @@ export class CursorGround {
   constructor(
     camera: THREE.PerspectiveCamera,
     canvas: HTMLElement,
-    getTerrainMesh: () => THREE.Mesh | null,
+    mapWidth: number,
+    mapHeight: number,
   ) {
     this.camera = camera;
     this.canvas = canvas;
-    this.getTerrainMesh = getTerrainMesh;
+    this.mapWidth = mapWidth;
+    this.mapHeight = mapHeight;
   }
 
   /** Cursor → world point under the cursor, in THREE.JS coords.
    *
-   *  Tries the terrain raycast first; if that hits SUBMERGED
+   *  Tries the terrain heightfield first; if that hits SUBMERGED
    *  terrain (three.y < WATER_LEVEL — see file header for the
    *  reason this is wrong for click commands), falls back to a
    *  flat ground-plane intersection at three.y = 0. The
-   *  fallback is also used when the raycast misses entirely
+   *  fallback is also used when the heightfield solve misses entirely
    *  (cursor over sky / past the map edge / terrain mesh not
    *  yet built) — anything where a command should still be
    *  issuable based on horizontal cursor position.
@@ -90,17 +97,13 @@ export class CursorGround {
     );
     this.raycaster.setFromCamera(this.ndc, this.camera);
 
-    // First try the terrain mesh raycast. Use the hit only if it's
+    // First try the authoritative terrain sampler. Use the hit only if it's
     // ABOVE water level — otherwise the user clicked "through" a
     // valley and the hit is on the near-side basin floor, which is
     // not what they were pointing at.
-    const mesh = this.getTerrainMesh();
-    if (mesh) {
-      const hits = this.raycaster.intersectObject(mesh, false);
-      if (hits.length > 0 && hits[0].point.y >= WATER_LEVEL) {
-        this.worldHit.copy(hits[0].point);
-        return this.worldHit;
-      }
+    const terrainHit = this.pickTerrainRay();
+    if (terrainHit && terrainHit.y >= WATER_LEVEL) {
+      return terrainHit;
     }
 
     // Fall back to flat ground-plane (three.y = 0) projection.
@@ -114,6 +117,47 @@ export class CursorGround {
       ray.origin.x + t * ray.direction.x,
       0,
       ray.origin.z + t * ray.direction.z,
+    );
+    return this.worldHit;
+  }
+
+  private pickTerrainRay(): THREE.Vector3 | null {
+    const ray = this.raycaster.ray;
+    if (ray.direction.y >= -1e-6) return null;
+
+    const heightAt = (t: number): number => getTerrainMeshHeight(
+      ray.origin.x + t * ray.direction.x,
+      ray.origin.z + t * ray.direction.z,
+      this.mapWidth,
+      this.mapHeight,
+    );
+    let lo = 0;
+    const loClearance = ray.origin.y - heightAt(lo);
+    if (loClearance <= 0) return null;
+
+    let hi = (TILE_FLOOR_Y - ray.origin.y) / ray.direction.y;
+    if (!Number.isFinite(hi) || hi <= 0) return null;
+    let hiClearance = ray.origin.y + hi * ray.direction.y - heightAt(hi);
+    if (hiClearance > 0) return null;
+
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) * 0.5;
+      const clearance = ray.origin.y + mid * ray.direction.y - heightAt(mid);
+      if (clearance > 0) {
+        lo = mid;
+      } else {
+        hi = mid;
+        hiClearance = clearance;
+      }
+    }
+
+    const t = hiClearance <= 0 ? hi : lo;
+    const x = ray.origin.x + t * ray.direction.x;
+    const z = ray.origin.z + t * ray.direction.z;
+    this.worldHit.set(
+      x,
+      getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
+      z,
     );
     return this.worldHit;
   }

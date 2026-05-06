@@ -15,17 +15,22 @@ export type TerrainMapShape = 'square' | 'circle';
  *  `heights[vy * verticesX + vx]`.
  *
  *  `tileSubdivisions[cy * cellsX + cx]` is the authoritative render/sim
- *  subdivision selected for that land cell. The height arrays retain the
- *  max-resolution sample grid, but terrain sampling collapses each cell
- *  to its selected subdivision so sim, client prediction, and rendering
- *  stay on the same adaptive triangle surface.
+ *  subdivision selected for that land cell. Runtime terrain sampling uses
+ *  that selected subdivision and the baked `tileVertexHeights` payload,
+ *  whose vertices were sampled directly from the generated terrain curve
+ *  after subdivision selection. Sim, client prediction, and rendering stay
+ *  on the same adaptive two-triangle quad surface.
  *
- *  Terrain sub-quads normally use the classic two-triangle split. When
- *  a sub-quad's averaged corner center materially differs from that
- *  diagonal plane, `centerFanMask[q]` is 1 and `centerHeights[q]` is
- *  the authoritative center vertex for a four-triangle fan. This keeps
- *  sim, client prediction, and rendering on the same surface while
- *  avoiding extra triangles on flat/planar cells.
+ *  `tileEdgeSubdivisions[(tile * 4) + edge]` stores north/east/south/west
+ *  edge resolutions after considering touching cells. `tileVertexCoords`,
+ *  `tileVertexHeights`, and `tileTriangleIndices` store the final stitched
+ *  per-cell mesh so low-resolution cells can add only the border vertices
+ *  needed to match higher-resolution neighbors.
+ *
+ *  `heights` retains a max-resolution generator sample grid for snapshots
+ *  and diagnostics. `centerHeights` / `centerFanMask` are legacy snapshot
+ *  fields; authoritative topology now keeps every sub-quad on the classic
+ *  two-triangle split and writes a zero center-fan mask.
  *
  *  IMMUTABILITY CONTRACT: a TerrainTileMap is built once per match
  *  by `buildTerrainTileMap` and is never mutated thereafter. The
@@ -50,6 +55,12 @@ export type TerrainTileMap = {
   readonly centerHeights: readonly number[];
   readonly centerFanMask: readonly number[];
   readonly tileSubdivisions: readonly number[];
+  readonly tileEdgeSubdivisions: readonly number[];
+  readonly tileVertexOffsets: readonly number[];
+  readonly tileVertexCoords: readonly number[];
+  readonly tileVertexHeights: readonly number[];
+  readonly tileTriangleOffsets: readonly number[];
+  readonly tileTriangleIndices: readonly number[];
 };
 
 /** Server-authored buildability grid for the building-placement

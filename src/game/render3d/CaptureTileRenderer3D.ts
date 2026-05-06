@@ -22,6 +22,7 @@ import {
 import {
   getTerrainMapBoundaryFade,
   getTerrainMeshSample,
+  getTerrainTileMeshAtCell,
   getTerrainTileSubdivisionAtCell,
   getTerrainVersion,
   terrainMeshHeightFromSample,
@@ -30,7 +31,6 @@ import {
   getTerrainBuildabilityGridCell,
   getTerrainBuildabilityConfigKey,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
-  TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
   TILE_FLOOR_Y,
 } from '../sim/Terrain';
 import {
@@ -226,7 +226,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v8';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v9';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -354,7 +354,6 @@ export class CaptureTileRenderer3D {
       cellsY,
       cellSize,
       MANA_TILE_GROUND_LIFT,
-      TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
       graphicsConfig.tier,
       graphicsConfig.captureTileSideWalls ? 1 : 0,
       triangleDebug ? 1 : 0,
@@ -546,6 +545,7 @@ export class CaptureTileRenderer3D {
           fx: number,
           fz: number,
           existingSample?: ReturnType<typeof getTerrainMeshSample>,
+          terrainHeightOverride?: number,
         ): number => {
           const wx = x0 + fx * cellWidth;
           const wz = z0 + fz * cellDepth;
@@ -556,7 +556,7 @@ export class CaptureTileRenderer3D {
             this.mapHeight,
             cellSize,
           );
-          const terrainHeight = terrainMeshHeightFromSample(sample);
+          const terrainHeight = terrainHeightOverride ?? terrainMeshHeightFromSample(sample);
           const h = terrainHeight + MANA_TILE_GROUND_LIFT;
           const localIndex = topLocalCount++;
           terrainPositions.push(wx, h, wz);
@@ -589,61 +589,86 @@ export class CaptureTileRenderer3D {
           b: number,
           c: number,
           d: number,
-          fx0: number,
-          fz0: number,
-          fx1: number,
-          fz1: number,
         ): void => {
-          const centerFx = (fx0 + fx1) * 0.5;
-          const centerFz = (fz0 + fz1) * 0.5;
-          const sample = getTerrainMeshSample(
-            x0 + centerFx * cellWidth,
-            z0 + centerFz * cellDepth,
-            this.mapWidth,
-            this.mapHeight,
-            cellSize,
-          );
-          if (sample.centerFan) {
-            const center = addTopVertex((fx0 + fx1) * 0.5, (fz0 + fz1) * 0.5, sample);
-            addTopTri(a, b, center);
-            addTopTri(b, c, center);
-            addTopTri(c, d, center);
-            addTopTri(d, a, center);
-            return;
-          }
           addTopTri(a, b, c);
           addTopTri(a, c, d);
         };
 
-        const subdiv = tileSubdiv;
-        const topVertsPerRow = subdiv + 1;
-        const topIdx = (ix: number, iz: number): number => iz * topVertsPerRow + ix;
-        for (let j = 0; j <= subdiv; j++) {
-          for (let ix = 0; ix <= subdiv; ix++) {
-            addTopVertex(ix / subdiv, j / subdiv);
-          }
-        }
-        for (let i = 0; i <= subdiv; i++) edgeNorth.push(topIdx(i, 0));
-        for (let i = 0; i <= subdiv; i++) edgeEast.push(topIdx(subdiv, i));
-        for (let i = 0; i <= subdiv; i++) edgeSouth.push(topIdx(subdiv - i, subdiv));
-        for (let i = 0; i <= subdiv; i++) edgeWest.push(topIdx(0, subdiv - i));
+        const tileMesh = getTerrainTileMeshAtCell(
+          cx,
+          cy,
+          this.mapWidth,
+          this.mapHeight,
+          cellSize,
+        );
 
-        for (let j = 0; j < subdiv; j++) {
-          for (let ix = 0; ix < subdiv; ix++) {
-            const a = topIdx(ix, j);
-            const b = topIdx(ix + 1, j);
-            const c = topIdx(ix + 1, j + 1);
-            const d = topIdx(ix, j + 1);
-            addTopQuad(
-              a,
-              b,
-              c,
-              d,
-              ix / subdiv,
-              j / subdiv,
-              (ix + 1) / subdiv,
-              (j + 1) / subdiv,
+        if (tileMesh) {
+          const localByMeshVertex = new Array<number>(tileMesh.vertexCount);
+          const northEntries: Array<{ order: number; local: number }> = [];
+          const eastEntries: Array<{ order: number; local: number }> = [];
+          const southEntries: Array<{ order: number; local: number }> = [];
+          const westEntries: Array<{ order: number; local: number }> = [];
+          const edgeEps = 1e-6;
+
+          for (let i = 0; i < tileMesh.vertexCount; i++) {
+            const coordOffset = (tileMesh.vertexOffset + i) * 2;
+            const fx = tileMesh.vertexCoords[coordOffset];
+            const fz = tileMesh.vertexCoords[coordOffset + 1];
+            const local = addTopVertex(
+              fx,
+              fz,
+              undefined,
+              tileMesh.vertexHeights[tileMesh.vertexOffset + i],
             );
+            localByMeshVertex[i] = local;
+            if (fz <= edgeEps) northEntries.push({ order: fx, local });
+            if (fx >= 1 - edgeEps) eastEntries.push({ order: fz, local });
+            if (fz >= 1 - edgeEps) southEntries.push({ order: -fx, local });
+            if (fx <= edgeEps) westEntries.push({ order: -fz, local });
+          }
+
+          const writeSortedEdge = (
+            entries: Array<{ order: number; local: number }>,
+            out: number[],
+          ): void => {
+            entries.sort((a, b) => a.order - b.order);
+            for (let i = 0; i < entries.length; i++) out.push(entries[i].local);
+          };
+          writeSortedEdge(northEntries, edgeNorth);
+          writeSortedEdge(eastEntries, edgeEast);
+          writeSortedEdge(southEntries, edgeSouth);
+          writeSortedEdge(westEntries, edgeWest);
+
+          for (let tri = 0; tri < tileMesh.triangleCount; tri++) {
+            const triOffset = tileMesh.triangleOffset + tri * 3;
+            addTopTri(
+              localByMeshVertex[tileMesh.triangleIndices[triOffset]],
+              localByMeshVertex[tileMesh.triangleIndices[triOffset + 1]],
+              localByMeshVertex[tileMesh.triangleIndices[triOffset + 2]],
+            );
+          }
+        } else {
+          const subdiv = tileSubdiv;
+          const topVertsPerRow = subdiv + 1;
+          const topIdx = (ix: number, iz: number): number => iz * topVertsPerRow + ix;
+          for (let j = 0; j <= subdiv; j++) {
+            for (let ix = 0; ix <= subdiv; ix++) {
+              addTopVertex(ix / subdiv, j / subdiv);
+            }
+          }
+          for (let i = 0; i <= subdiv; i++) edgeNorth.push(topIdx(i, 0));
+          for (let i = 0; i <= subdiv; i++) edgeEast.push(topIdx(subdiv, i));
+          for (let i = 0; i <= subdiv; i++) edgeSouth.push(topIdx(subdiv - i, subdiv));
+          for (let i = 0; i <= subdiv; i++) edgeWest.push(topIdx(0, subdiv - i));
+
+          for (let j = 0; j < subdiv; j++) {
+            for (let ix = 0; ix < subdiv; ix++) {
+              const a = topIdx(ix, j);
+              const b = topIdx(ix + 1, j);
+              const c = topIdx(ix + 1, j + 1);
+              const d = topIdx(ix, j + 1);
+              addTopQuad(a, b, c, d);
+            }
           }
         }
 

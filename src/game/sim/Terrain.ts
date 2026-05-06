@@ -36,6 +36,7 @@ export {
   getTerrainMeshHeight,
   getTerrainMeshNormal,
   getTerrainMeshSample,
+  getTerrainTileMeshAtCell,
   getTerrainTileSubdivisionAtCell,
   interpolateTerrainMeshQuadHeight,
   shouldUseTerrainCenterFan,
@@ -43,6 +44,7 @@ export {
   terrainCenterFanHeight,
   terrainMeshHeightFromSample,
   terrainMeshNormalFromSample,
+  type TerrainTileMeshView,
 } from './terrain/terrainTileMap';
 export {
   buildTerrainBuildabilityGrid,

@@ -520,18 +520,6 @@ export class Input3DManager {
   ): { hovered: EntityId | null; selectable: EntityId | null } {
     let hovered: EntityId | null = null;
     let selectable: EntityId | null = null;
-    const hit = this.raycastEntity(clientX, clientY);
-    if (hit !== null) {
-      const entity = this.entitySource.getEntity(hit) ?? null;
-      if (this.isSelectableHoverTarget(entity)) {
-        hovered = hit;
-        if (this.isSelectableByActivePlayer(entity)) selectable = hit;
-      }
-    }
-
-    if (hovered !== null && selectable !== null) {
-      return { hovered, selectable };
-    }
 
     const world = this.raycastGround(clientX, clientY);
     if (!world) return { hovered, selectable };

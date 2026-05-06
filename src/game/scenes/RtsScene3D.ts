@@ -693,7 +693,8 @@ export class RtsScene3D {
     this.cursorGround = new CursorGround(
       this.threeApp.camera,
       this.threeApp.renderer.domElement,
-      () => this.captureTileRenderer.getMesh(),
+      this.mapWidth,
+      this.mapHeight,
     );
     this.threeApp.orbit.setCursorPicker((cx, cy) => this.cursorGround.pickWorld(cx, cy));
     // Camera-clearance sampler — sample the RAW rendered terrain mesh
