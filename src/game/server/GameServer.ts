@@ -53,9 +53,9 @@ import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { CaptureSystem } from '../sim/CaptureSystem';
 import { getLocomotionForceProfile } from '../sim/locomotion';
-import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape, setTerrainCenterShape, setTerrainDividersShape, buildTerrainTileMap, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
+import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape, setTerrainCenterShape, setTerrainDividersShape, buildTerrainTileMap, buildTerrainBuildabilityGrid, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { generateMetalDeposits } from '../../metalDepositConfig';
-import type { TerrainTileMap } from '@/types/terrain';
+import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -106,6 +106,7 @@ export class GameServer {
   private playerIds: PlayerId[];
   private backgroundMode: boolean;
   private terrainTileMap: TerrainTileMap;
+  private terrainBuildabilityGrid: TerrainBuildabilityGrid;
 
   // Game loop
   private gameLoopInterval: ReturnType<typeof setInterval> | null = null;
@@ -244,6 +245,7 @@ export class GameServer {
     );
     this.terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
     setAuthoritativeTerrainTileMap(this.terrainTileMap);
+    this.terrainBuildabilityGrid = buildTerrainBuildabilityGrid(mapWidth, mapHeight);
 
     // The physics engine is now fully 3D — same module for every path.
     this.physics = physics ?? new PhysicsEngine3D(mapWidth, mapHeight);
@@ -264,7 +266,11 @@ export class GameServer {
     this.world.setActivePlayer(0 as PlayerId); // Server has no active player
 
     this.commandQueue = new CommandQueue();
-    this.simulation = new Simulation(this.world, this.commandQueue);
+    this.simulation = new Simulation(
+      this.world,
+      this.commandQueue,
+      this.terrainBuildabilityGrid,
+    );
     this.simulation.setPlayerIds(this.playerIds);
 
     // Honour any saved demo-unit selection passed in by the caller —
@@ -1063,6 +1069,7 @@ export class GameServer {
         ? { tiles: captureTiles, cellSize: this.captureSystem.getCellSize() }
         : undefined;
       state.terrain = isDelta ? undefined : this.terrainTileMap;
+      state.buildability = isDelta ? undefined : this.terrainBuildabilityGrid;
       state.serverMeta = serverMeta;
       return state;
     };

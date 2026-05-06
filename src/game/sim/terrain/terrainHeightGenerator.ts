@@ -49,17 +49,22 @@ function applyTerrainPlateaus(height: number, strength: number = 1): number {
     Math.max(0, TERRAIN_PLATEAU_CONFIG.shelfFractionOfStep * 0.5),
   );
   const q = height / step;
-  const lowerLevel = Math.floor(q);
-  const t = q - lowerLevel;
-  let plateauHeight: number;
-  if (t <= flatHalf) {
-    plateauHeight = lowerLevel * step;
-  } else if (t >= 1 - flatHalf) {
-    plateauHeight = (lowerLevel + 1) * step;
+  const nearestLevel = Math.round(q);
+  const signedFromNearest = q - nearestLevel;
+  const absFromNearest = Math.abs(signedFromNearest);
+  let plateauLevel: number;
+  if (absFromNearest <= flatHalf) {
+    plateauLevel = nearestLevel;
+  } else if (signedFromNearest > 0) {
+    const rampSpan = Math.max(1e-6, 1 - flatHalf * 2);
+    const rampT = (signedFromNearest - flatHalf) / rampSpan;
+    plateauLevel = nearestLevel + plateauRampCurve(rampT);
   } else {
-    const rampT = (t - flatHalf) / Math.max(1e-6, 1 - flatHalf * 2);
-    plateauHeight = (lowerLevel + plateauRampCurve(rampT)) * step;
+    const rampSpan = Math.max(1e-6, 1 - flatHalf * 2);
+    const rampT = (1 + signedFromNearest - flatHalf) / rampSpan;
+    plateauLevel = nearestLevel - 1 + plateauRampCurve(rampT);
   }
+  const plateauHeight = plateauLevel * step;
 
   return height + (plateauHeight - height) * terraceStrength;
 }

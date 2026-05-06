@@ -6,6 +6,7 @@ export {
   TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION,
   TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
+  TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
   TERRAIN_D_TERRAIN,
   TERRAIN_MAX_RENDER_Y,
   TERRAIN_MESH_SUBDIV,
@@ -35,13 +36,19 @@ export {
   getTerrainMeshHeight,
   getTerrainMeshNormal,
   interpolateTerrainMeshQuadHeight,
+  shouldUseTerrainCenterFan,
   setAuthoritativeTerrainTileMap,
+  terrainCenterFanHeight,
 } from './terrain/terrainTileMap';
 export {
+  buildTerrainBuildabilityGrid,
   evaluateBuildabilityFootprint,
+  getTerrainBuildabilityGridCell,
+  getTerrainBuildabilityConfigKey,
   getTerrainPlateauLevelAt,
   isBuildableTerrainFootprint,
   type FootprintBuildability,
+  type TerrainBuildabilityCell,
 } from './terrain/terrainBuildability';
 export {
   applySurfaceTilt,

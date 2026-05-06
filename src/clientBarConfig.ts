@@ -71,6 +71,8 @@ export const CLIENT_CONFIG = {
   burnMarks: { default: false },
   lodShellRings: { default: false },
   lodGridBorders: { default: false },
+  triangleDebug: { default: false },
+  buildGridDebug: { default: false },
   baseLodMode: { default: false },
   driftMode: { default: 'mid' as const },
   /** Client-side chassis-tilt EMA. Layered ON TOP of the host's
@@ -412,6 +414,8 @@ const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
 const BURN_MARKS_STORAGE_KEY = 'player-client-burn-marks';
 const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
 const LOD_GRID_BORDERS_STORAGE_KEY = 'player-client-lod-grid-borders';
+const TRIANGLE_DEBUG_STORAGE_KEY = 'player-client-triangle-debug';
+const BUILD_GRID_DEBUG_STORAGE_KEY = 'player-client-build-grid-debug';
 const BASE_LOD_MODE_STORAGE_KEY = 'player-client-base-lod-mode';
 const DRIFT_MODE_STORAGE_KEY = 'player-client-drift-mode';
 const TILT_EMA_MODE_STORAGE_KEY = 'player-client-tilt-ema-mode';
@@ -444,6 +448,8 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-burn-marks', BURN_MARKS_STORAGE_KEY],
   ['rts-lod-shell-rings', LOD_SHELL_RINGS_STORAGE_KEY],
   ['rts-lod-grid-borders', LOD_GRID_BORDERS_STORAGE_KEY],
+  ['rts-triangle-debug', TRIANGLE_DEBUG_STORAGE_KEY],
+  ['rts-build-grid-debug', BUILD_GRID_DEBUG_STORAGE_KEY],
   ['rts-drift-mode', DRIFT_MODE_STORAGE_KEY],
   ['rts-sound-toggles', SOUND_TOGGLES_STORAGE_KEY],
   ['rts-range-toggles', RANGE_TOGGLES_STORAGE_KEY],
@@ -502,6 +508,8 @@ let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLodShellRings: boolean = _cd.lodShellRings.default;
 let currentLodGridBorders: boolean = _cd.lodGridBorders.default;
+let currentTriangleDebug: boolean = _cd.triangleDebug.default;
+let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 // "BASE" toggle — fixes the active graphics tier across every entity by
 // short-circuiting the camera-sphere resolver. See GRAPHICS_CONFIGS_BASE
 // above for the full picture.
@@ -519,23 +527,23 @@ let currentLobbyVisible: boolean = _isMobile
   ? _cd.lobbyVisible.default.mobile
   : _cd.lobbyVisible.default.desktop;
 let currentZoom: number = 1.0;
-let currentTpsRatio: number = 1.0;
-let currentFpsRatio: number = 1.0;
+let currentServerTpsRatio: number = 1.0;
+let currentRenderTpsRatio: number = 1.0;
 let currentUnitCount: number = 0;
 // Units LOD fallback before a server snapshot lands. GameCanvas
 // overrides this every frame with the authoritative cap from
 // serverMeta.units.max.
 let currentUnitCap: number = _cd.unitCapFallback.default;
 let prevZoomRank: number = 4;
-let prevTpsRank: number = 4;
-let prevFpsRank: number = 4;
+let prevServerTpsRank: number = 4;
+let prevRenderTpsRank: number = 4;
 // Per-signal tri-state. Seeded from LOD_SIGNAL_DEFAULTS (the single
 // source of truth for first-load + DEFAULTS-button state); click-cycle
 // updates this and the resolver consults it on every getEffectiveQuality()
 // call.
 let currentSignalStates: LodSignalStates = { ...LOD_SIGNAL_DEFAULTS };
 let prevUnitsRank: number = 4;
-let localServerRunning: boolean = false;
+let serverTpsAvailable: boolean = false;
 
 // ── Load from localStorage on module init ──
 // Each read is independent — a bad JSON value or throw from ONE key
@@ -554,20 +562,20 @@ function loadFromStorage(): void {
   if (storedQuality) {
     // Migrate legacy 'auto-X' values to 'auto' + a SOLO state on the
     // matching signal (others OFF). The user clicked "auto-tps" in a
-    // previous session, so they meant "let TPS alone drive the LOD" —
-    // exactly what the new SOLO state expresses.
+    // previous session, so they meant "let SERVER TPS alone drive the LOD"
+    // under the new explicit SERVER/RENDER TPS split.
     if (storedQuality === 'auto-zoom') {
       currentQuality = 'auto';
-      currentSignalStates = { zoom: 'solo', tps: 'off', fps: 'off', units: 'off' };
+      currentSignalStates = { zoom: 'solo', serverTps: 'off', renderTps: 'off', units: 'off' };
     } else if (storedQuality === 'auto-tps') {
       currentQuality = 'auto';
-      currentSignalStates = { zoom: 'off', tps: 'solo', fps: 'off', units: 'off' };
+      currentSignalStates = { zoom: 'off', serverTps: 'solo', renderTps: 'off', units: 'off' };
     } else if (storedQuality === 'auto-fps') {
       currentQuality = 'auto';
-      currentSignalStates = { zoom: 'off', tps: 'off', fps: 'solo', units: 'off' };
+      currentSignalStates = { zoom: 'off', serverTps: 'off', renderTps: 'solo', units: 'off' };
     } else if (storedQuality === 'auto-units') {
       currentQuality = 'auto';
-      currentSignalStates = { zoom: 'off', tps: 'off', fps: 'off', units: 'solo' };
+      currentSignalStates = { zoom: 'off', serverTps: 'off', renderTps: 'off', units: 'solo' };
     } else if (
       storedQuality === 'auto' ||
       storedQuality === 'min' ||
@@ -590,8 +598,10 @@ function loadFromStorage(): void {
         s === 'off' || s === 'active' || s === 'solo';
       if (parsed && typeof parsed === 'object') {
         if (valid(parsed.zoom)) currentSignalStates.zoom = parsed.zoom;
-        if (valid(parsed.tps)) currentSignalStates.tps = parsed.tps;
-        if (valid(parsed.fps)) currentSignalStates.fps = parsed.fps;
+        if (valid(parsed.serverTps)) currentSignalStates.serverTps = parsed.serverTps;
+        else if (valid(parsed.tps)) currentSignalStates.serverTps = parsed.tps;
+        if (valid(parsed.renderTps)) currentSignalStates.renderTps = parsed.renderTps;
+        else if (valid(parsed.fps)) currentSignalStates.renderTps = parsed.fps;
         if (valid(parsed.units)) currentSignalStates.units = parsed.units;
       }
     } catch { /* ignore malformed */ }
@@ -630,6 +640,14 @@ function loadFromStorage(): void {
   const storedLodGridBorders = readPersisted(LOD_GRID_BORDERS_STORAGE_KEY);
   if (storedLodGridBorders !== null) {
     currentLodGridBorders = storedLodGridBorders === 'true';
+  }
+  const storedTriangleDebug = readPersisted(TRIANGLE_DEBUG_STORAGE_KEY);
+  if (storedTriangleDebug !== null) {
+    currentTriangleDebug = storedTriangleDebug === 'true';
+  }
+  const storedBuildGridDebug = readPersisted(BUILD_GRID_DEBUG_STORAGE_KEY);
+  if (storedBuildGridDebug !== null) {
+    currentBuildGridDebug = storedBuildGridDebug === 'true';
   }
   const storedBaseLodMode = readPersisted(BASE_LOD_MODE_STORAGE_KEY);
   if (storedBaseLodMode !== null) {
@@ -807,12 +825,12 @@ export function setCurrentZoom(zoom: number): void {
   currentZoom = zoom;
 }
 
-export function setCurrentTpsRatio(ratio: number): void {
-  currentTpsRatio = ratio;
+export function setCurrentServerTpsRatio(ratio: number): void {
+  currentServerTpsRatio = ratio;
 }
 
-export function setCurrentFpsRatio(ratio: number): void {
-  currentFpsRatio = ratio;
+export function setCurrentRenderTpsRatio(ratio: number): void {
+  currentRenderTpsRatio = ratio;
 }
 
 export function setCurrentUnitCount(count: number): void {
@@ -825,12 +843,12 @@ export function setCurrentUnitCap(cap: number): void {
   if (cap > 0) currentUnitCap = cap;
 }
 
-export function setLocalServerRunning(running: boolean): void {
-  localServerRunning = running;
+export function setServerTpsAvailable(available: boolean): void {
+  serverTpsAvailable = available;
 }
 
-export function getLocalServerRunning(): boolean {
-  return localServerRunning;
+export function getServerTpsAvailable(): boolean {
+  return serverTpsAvailable;
 }
 
 const RANK_TO_QUALITY: ConcreteGraphicsQuality[] = [
@@ -842,8 +860,8 @@ function toArray(t: { low: number; medium: number; high: number; max: number }):
 }
 
 const ZOOM_THRESHOLDS = toArray(LOD_THRESHOLDS.zoom);
-const TPS_THRESHOLDS = toArray(LOD_THRESHOLDS.tps);
-const FPS_THRESHOLDS = toArray(LOD_THRESHOLDS.fps);
+const SERVER_TPS_THRESHOLDS = toArray(LOD_THRESHOLDS.serverTps);
+const RENDER_TPS_THRESHOLDS = toArray(LOD_THRESHOLDS.renderTps);
 const UNITS_THRESHOLDS = toArray(LOD_THRESHOLDS.units);
 
 function ratioToRank(
@@ -876,7 +894,7 @@ function zoomToRank(prevRank: number): number {
 }
 
 /** Current unit-fullness ratio, normalized so it shares the
- *  ratioToRank semantics with TPS/FPS:
+ *  ratioToRank semantics with TPS:
  *      ratio = 1 − count / cap
  *  An empty world is 1.0; a full world is 0.0. Higher ratio earns
  *  a higher tier — same direction as the other auto modes, so the
@@ -909,28 +927,28 @@ export function getEffectiveQuality(): ConcreteGraphicsQuality {
       // back to SOLO doesn't see a stale rank.
       const states = currentSignalStates;
       const zoomEligible = LOD_SIGNALS_ENABLED.zoom && states.zoom !== 'off';
-      const fpsEligible = LOD_SIGNALS_ENABLED.fps && states.fps !== 'off';
+      const serverTpsEligible = LOD_SIGNALS_ENABLED.serverTps && states.serverTps !== 'off' && serverTpsAvailable;
+      const renderTpsEligible = LOD_SIGNALS_ENABLED.renderTps && states.renderTps !== 'off';
       const unitsEligible = LOD_SIGNALS_ENABLED.units && states.units !== 'off';
-      const tpsEligible = LOD_SIGNALS_ENABLED.tps && states.tps !== 'off' && localServerRunning;
 
       if (zoomEligible) prevZoomRank = zoomToRank(prevZoomRank);
-      if (fpsEligible) prevFpsRank = ratioToRank(currentFpsRatio, FPS_THRESHOLDS, prevFpsRank, LOD_HYSTERESIS.fps);
+      if (serverTpsEligible) prevServerTpsRank = ratioToRank(currentServerTpsRatio, SERVER_TPS_THRESHOLDS, prevServerTpsRank, LOD_HYSTERESIS.serverTps);
+      if (renderTpsEligible) prevRenderTpsRank = ratioToRank(currentRenderTpsRatio, RENDER_TPS_THRESHOLDS, prevRenderTpsRank, LOD_HYSTERESIS.renderTps);
       if (unitsEligible) prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
-      if (tpsEligible) prevTpsRank = ratioToRank(currentTpsRatio, TPS_THRESHOLDS, prevTpsRank, LOD_HYSTERESIS.tps);
 
       // Solo override.
       if (zoomEligible && states.zoom === 'solo') return RANK_TO_QUALITY[prevZoomRank];
-      if (fpsEligible && states.fps === 'solo') return RANK_TO_QUALITY[prevFpsRank];
+      if (serverTpsEligible && states.serverTps === 'solo') return RANK_TO_QUALITY[prevServerTpsRank];
+      if (renderTpsEligible && states.renderTps === 'solo') return RANK_TO_QUALITY[prevRenderTpsRank];
       if (unitsEligible && states.units === 'solo') return RANK_TO_QUALITY[prevUnitsRank];
-      if (tpsEligible && states.tps === 'solo') return RANK_TO_QUALITY[prevTpsRank];
 
       // Min over actives.
       let minRank = 4;
       let any = false;
       if (zoomEligible && states.zoom === 'active') { any = true; if (prevZoomRank < minRank) minRank = prevZoomRank; }
-      if (fpsEligible && states.fps === 'active') { any = true; if (prevFpsRank < minRank) minRank = prevFpsRank; }
+      if (serverTpsEligible && states.serverTps === 'active') { any = true; if (prevServerTpsRank < minRank) minRank = prevServerTpsRank; }
+      if (renderTpsEligible && states.renderTps === 'active') { any = true; if (prevRenderTpsRank < minRank) minRank = prevRenderTpsRank; }
       if (unitsEligible && states.units === 'active') { any = true; if (prevUnitsRank < minRank) minRank = prevUnitsRank; }
-      if (tpsEligible && states.tps === 'active') { any = true; if (prevTpsRank < minRank) minRank = prevTpsRank; }
       return any ? RANK_TO_QUALITY[minRank] : RANK_TO_QUALITY[4];
     }
     case 'min':
@@ -1062,6 +1080,24 @@ export function getLodGridBorders(): boolean {
 export function setLodGridBorders(enabled: boolean): void {
   currentLodGridBorders = enabled;
   persist(LOD_GRID_BORDERS_STORAGE_KEY, String(enabled));
+}
+
+export function getTriangleDebug(): boolean {
+  return currentTriangleDebug;
+}
+
+export function setTriangleDebug(enabled: boolean): void {
+  currentTriangleDebug = enabled;
+  persist(TRIANGLE_DEBUG_STORAGE_KEY, String(enabled));
+}
+
+export function getBuildGridDebug(): boolean {
+  return currentBuildGridDebug;
+}
+
+export function setBuildGridDebug(enabled: boolean): void {
+  currentBuildGridDebug = enabled;
+  persist(BUILD_GRID_DEBUG_STORAGE_KEY, String(enabled));
 }
 
 export function getBaseLodMode(): boolean {

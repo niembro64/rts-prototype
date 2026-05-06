@@ -7,7 +7,7 @@
 
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../sim/Terrain';
-import { WATER_RENDER_CONFIG } from '../../config';
+import { HORIZON_RENDER_EXTEND, WATER_RENDER_CONFIG } from '../../config';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { Lod3DState } from './Lod3D';
 
@@ -31,11 +31,6 @@ import type { Lod3DState } from './Lod3D';
 // jitter.
 const WATER_DEPTH_OFFSET_FACTOR = 0;
 const WATER_DEPTH_OFFSET_UNITS = 64;
-
-/** Large enough to cover the camera's far plane from any legal map
- *  camera state. Three.js has no literal infinite plane here, so this
- *  is the practical "infinite horizon" water extent. */
-const WATER_HORIZON_EXTEND = 60000;
 
 export class WaterRenderer3D {
   private waterMesh: THREE.Mesh;
@@ -68,7 +63,7 @@ export class WaterRenderer3D {
   }
 
   private buildGeometry(): void {
-    const outer = WATER_HORIZON_EXTEND;
+    const outer = HORIZON_RENDER_EXTEND;
     const x0 = -outer;
     const z0 = -outer;
     const x1 = this.mapWidth + outer;

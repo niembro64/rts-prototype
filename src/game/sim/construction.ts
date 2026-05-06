@@ -1,4 +1,5 @@
 import type { WorldState } from './WorldState';
+import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, EntityId, PlayerId, BuildingType } from './types';
 import { getBuildingConfig } from './buildConfigs';
 import { BuildingGrid, GRID_CELL_SIZE } from './grid';
@@ -20,10 +21,16 @@ export class ConstructionSystem {
   private buildingGrid: BuildingGrid;
   private readonly mapWidth: number;
   private readonly mapHeight: number;
+  private readonly terrainBuildabilityGrid: TerrainBuildabilityGrid | null;
 
-  constructor(mapWidth: number, mapHeight: number) {
+  constructor(
+    mapWidth: number,
+    mapHeight: number,
+    terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
+  ) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+    this.terrainBuildabilityGrid = terrainBuildabilityGrid;
     this.buildingGrid = new BuildingGrid(mapWidth, mapHeight);
   }
 
@@ -52,6 +59,7 @@ export class ConstructionSystem {
       world.mapHeight,
       world.metalDeposits,
       (gx, gy) => this.buildingGrid.getCell(gx, gy)?.occupied === true,
+      this.terrainBuildabilityGrid,
     );
     if (!diagnostics.canPlace) {
       return null;
@@ -202,6 +210,7 @@ export class ConstructionSystem {
       this.mapHeight,
       [],
       (gx, gy) => this.buildingGrid.getCell(gx, gy)?.occupied === true,
+      this.terrainBuildabilityGrid,
     ).canPlace;
   }
 

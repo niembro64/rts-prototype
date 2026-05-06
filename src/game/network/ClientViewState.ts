@@ -22,6 +22,7 @@ import type { BeamPoint } from '../../types/sim';
 import type { ShotId, TurretId } from '../../types/blueprintIds';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkCaptureTile } from '@/types/capture';
+import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork, refreshUnitTurretsFromNetwork } from './helpers';
 import { getClientTiltEmaMode } from '@/clientBarConfig';
@@ -392,6 +393,7 @@ export class ClientViewState {
   private gridCells: NetworkServerSnapshotGridCell[] = [];
   private gridSearchCells: NetworkServerSnapshotGridCell[] = [];
   private gridCellSize: number = 0;
+  private terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null;
 
   // Capture tile data — Map for delta merge, array cache for rendering
   private captureTileMap: Map<number, NetworkCaptureTile> = new Map();
@@ -731,6 +733,9 @@ export class ClientViewState {
     if (state.terrain) {
       this.setMapDimensions(state.terrain.mapWidth, state.terrain.mapHeight);
       setAuthoritativeTerrainTileMap(state.terrain);
+    }
+    if (state.buildability) {
+      this.terrainBuildabilityGrid = state.buildability;
     }
     this.currentTick = state.tick;
     let cacheNeedsInvalidate = false;
@@ -2143,6 +2148,10 @@ export class ClientViewState {
     return this.entitySetVersion;
   }
 
+  getTerrainBuildabilityGrid(): TerrainBuildabilityGrid | null {
+    return this.terrainBuildabilityGrid;
+  }
+
   getAllEntities(): Entity[] {
     this.rebuildCachesIfNeeded(true);
     return this.cache.getAll();
@@ -2529,6 +2538,7 @@ export class ClientViewState {
     this.gridCells = [];
     this.gridSearchCells = [];
     this.gridCellSize = 0;
+    this.terrainBuildabilityGrid = null;
     this.clearCaptureTileMaps();
     this.captureFullDirty = true;
     this.captureTilesDirty = true;

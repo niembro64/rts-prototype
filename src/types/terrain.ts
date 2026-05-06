@@ -14,6 +14,13 @@ export type TerrainMapShape = 'square' | 'circle';
  *  authoritative terrain vertices, not render LOD vertices:
  *  `heights[vy * verticesX + vx]`.
  *
+ *  Terrain sub-quads normally use the classic two-triangle split. When
+ *  a sub-quad's averaged corner center materially differs from that
+ *  diagonal plane, `centerFanMask[q]` is 1 and `centerHeights[q]` is
+ *  the authoritative center vertex for a four-triangle fan. This keeps
+ *  sim, client prediction, and rendering on the same surface while
+ *  avoiding extra triangles on flat/planar cells.
+ *
  *  IMMUTABILITY CONTRACT: a TerrainTileMap is built once per match
  *  by `buildTerrainTileMap` and is never mutated thereafter. The
  *  authoritative-state setter (`setAuthoritativeTerrainTileMap`)
@@ -34,6 +41,28 @@ export type TerrainTileMap = {
   readonly verticesY: number;
   readonly version: number;
   readonly heights: readonly number[];
+  readonly centerHeights: readonly number[];
+  readonly centerFanMask: readonly number[];
+};
+
+/** Server-authored buildability grid for the building-placement
+ *  cells. This is static for a match: terrain, water, and plateau
+ *  eligibility are baked once by the host. Dynamic blockers such as
+ *  buildings remain snapshot/state driven.
+ *
+ *  `flags[i]` is 1 when the cell is buildable terrain, 0 otherwise.
+ *  `levels[i]` is the plateau level for buildable cells; consumers
+ *  require all cells in a footprint to share one level. */
+export type TerrainBuildabilityGrid = {
+  readonly mapWidth: number;
+  readonly mapHeight: number;
+  readonly cellSize: number;
+  readonly cellsX: number;
+  readonly cellsY: number;
+  readonly version: number;
+  readonly configKey: string;
+  readonly flags: readonly number[];
+  readonly levels: readonly number[];
 };
 
 /** Shared sign convention for terrain-shaped height features.

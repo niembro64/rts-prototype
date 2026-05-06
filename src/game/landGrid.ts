@@ -1,4 +1,9 @@
-import { LAND_CELL_SIZE } from '../config';
+import { LAND_CELL_SIZE } from '../mapSizeConfig';
+
+export {
+  assertOddPositiveLandCellAxis,
+  nearestOddLandCellCount,
+} from '../mapSizeConfig';
 
 export const LAND_CELL_AXIS_BIAS = 32768;
 export const LAND_CELL_AXIS_MASK = 0xffff;
@@ -22,40 +27,6 @@ export type LandCellBounds = {
 
 export function normalizeLandCellSize(cellSize: number = LAND_CELL_SIZE): number {
   return Math.max(1, Math.floor(cellSize > 0 ? cellSize : LAND_CELL_SIZE));
-}
-
-/** Round a land-cell axis count to the nearest positive odd integer.
- *  Map dimensions are required to be odd so every map has exactly
- *  one central land/mana cell — the `nearest-odd` rule keeps map-
- *  size option growth stable (15 → 23 → 35 → ...) without bias
- *  toward upward rounding. Used by `mapSizeConfig` to generate
- *  axis options.
- *
- *  Note: `config.normalizeMapLandCells` uses a different rule
- *  (always round UP to odd). Same goal, different policy. Kept
- *  separate intentionally for now — see issues.txt. */
-export function nearestOddLandCellCount(value: number): number {
-  const floor = Math.floor(value);
-  const lowerOdd = floor % 2 === 1 ? floor : floor - 1;
-  const ceil = Math.ceil(value);
-  const upperOdd = ceil % 2 === 1 ? ceil : ceil + 1;
-  const lowerDistance = Math.abs(value - lowerOdd);
-  const upperDistance = Math.abs(value - upperOdd);
-  return Math.max(1, lowerDistance <= upperDistance ? lowerOdd : upperOdd);
-}
-
-/** Hard-fail dev guard: a land-cell axis value must be a positive
- *  odd integer. Maps need exactly one central cell, which requires
- *  odd cell counts on both axes. Used at config-validation
- *  boundaries (mapSizeConfig defaults, axis option seeds, etc.) so
- *  drift fails loudly instead of producing maps with two or four
- *  centroid candidates. */
-export function assertOddPositiveLandCellAxis(label: string, value: number): void {
-  if (!Number.isInteger(value) || value <= 0 || value % 2 !== 1) {
-    throw new Error(
-      `${label} (${value}) must be a positive odd integer (one central land cell required)`,
-    );
-  }
 }
 
 export function assertCanonicalLandCellSize(label: string, cellSize: number): void {

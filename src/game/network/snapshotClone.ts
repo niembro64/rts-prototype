@@ -13,7 +13,7 @@ import type {
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkTypes';
 import { PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN } from '@/types/network';
-import type { TerrainTileMap } from '@/types/terrain';
+import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -41,6 +41,10 @@ function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapsh
  *  every keyframe. */
 function cloneTerrainTileMap(map: TerrainTileMap): TerrainTileMap {
   return map;
+}
+
+function cloneTerrainBuildabilityGrid(grid: TerrainBuildabilityGrid): TerrainBuildabilityGrid {
+  return grid;
 }
 
 function cloneAction(a: NetworkServerSnapshotAction): NetworkServerSnapshotAction {
@@ -297,6 +301,7 @@ export function cloneNetworkSnapshot(state: NetworkServerSnapshot): NetworkServe
       cellSize: state.capture.cellSize,
     } : undefined,
     terrain: state.terrain ? cloneTerrainTileMap(state.terrain) : undefined,
+    buildability: state.buildability ? cloneTerrainBuildabilityGrid(state.buildability) : undefined,
     isDelta: state.isDelta,
     removedEntityIds: state.removedEntityIds?.slice(),
   };
@@ -843,6 +848,7 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.grid = undefined;
     this.snapshot.capture = undefined;
     this.snapshot.terrain = undefined;
+    this.snapshot.buildability = undefined;
     this.snapshot.gameState = undefined;
     this.snapshot.serverMeta = undefined;
     this.snapshot.removedEntityIds = undefined;
@@ -939,6 +945,9 @@ export class ReusableNetworkSnapshotCloner {
       dst.capture = undefined;
     }
     dst.terrain = state.terrain ? cloneTerrainTileMap(state.terrain) : undefined;
+    dst.buildability = state.buildability
+      ? cloneTerrainBuildabilityGrid(state.buildability)
+      : undefined;
     dst.isDelta = state.isDelta;
     if (state.removedEntityIds && state.removedEntityIds.length > 0) {
       this.removedEntityIds.length = state.removedEntityIds.length;

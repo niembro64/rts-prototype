@@ -4,19 +4,24 @@ import { LAND_CELL_SIZE } from '../../../config';
 export const TILE_FLOOR_Y = -1200;
 
 /** Water surface position between TILE_FLOOR_Y and ground level 0. */
-export const WATER_LEVEL_FRACTION = 0.7;
+export const WATER_LEVEL_FRACTION = 0.71;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
 // Host sim, client prediction, and terrain rendering share this exact mesh.
-export const AUTHORITATIVE_TERRAIN_SUBDIV = 4;
+export const AUTHORITATIVE_TERRAIN_SUBDIV = 1;
 export const TERRAIN_MESH_SUBDIV = AUTHORITATIVE_TERRAIN_SUBDIV;
+
+/** Add an averaged center vertex to an authoritative terrain sub-quad
+ *  when the four corners are non-planar enough to make the old fixed
+ *  diagonal visibly biased. Flat/planar cells stay at two triangles. */
+export const TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD = 1;
 
 /** Magnitude only; TerrainShape decides the sign. */
 export const TERRAIN_SHAPE_MAGNITUDE = 600;
 export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 
 /** Vertical spacing between authored terrain plateau levels. */
-export const TERRAIN_D_TERRAIN = 200 * (TERRAIN_SHAPE_MAGNITUDE / 800);
+export const TERRAIN_D_TERRAIN = 100 * (TERRAIN_SHAPE_MAGNITUDE / 800);
 
 export const TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION = 0.49;
 export const TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION = 0.10;
@@ -28,8 +33,8 @@ export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION = 0.04;
 export const TERRAIN_PLATEAU_CONFIG = {
   enabled: true,
   shelfFractionOfStep: 0.6,
-  rampEdgeSharpness: 1,
-  buildableShelfHeightTolerance: 0.5,
+  rampEdgeSharpness: 0,
+  buildableShelfHeightTolerance: 10,
   slopeSampleDistance: LAND_CELL_SIZE * 0.5,
   fullTerraceMaxSlope: 0.45,
   noTerraceMinSlope: 0.9,

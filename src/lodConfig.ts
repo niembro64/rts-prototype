@@ -6,6 +6,7 @@ import type {
   GraphicsDetailConfig,
   LodSignalStates,
 } from './types/lod';
+import { assertMonotonicLodThresholds } from './types/lod';
 import type {
   CameraSphereRadii,
   ConcreteGraphicsQuality,
@@ -27,8 +28,8 @@ import type {
 // instead of the global performance tier.
 export const LOD_SIGNALS_ENABLED = {
   zoom: false,
-  tps: true,
-  fps: true,
+  serverTps: true,
+  renderTps: true,
   units: true,
 } as const;
 
@@ -42,8 +43,8 @@ export const LOD_SIGNALS_ENABLED = {
 //
 export const LOD_SIGNAL_DEFAULTS: LodSignalStates = {
   zoom: 'off',
-  tps: 'active',
-  fps: 'active',
+  serverTps: 'active',
+  renderTps: 'active',
   units: 'off',
 };
 
@@ -52,7 +53,8 @@ export const LOD_SIGNAL_DEFAULTS: LodSignalStates = {
 // =============================================================================
 
 // The TPS value considered "good" for bar display and LOD decisions.
-// This is independent of TARGET TPS (the rate the server tries to run at).
+// Server TPS measures authoritative simulation ticks; render TPS measures the
+// PLAYER CLIENT update loop that runs prediction/input/render prep.
 // Bar fill and LOD ratio = actual TPS / GOOD_TPS.
 export const GOOD_TPS = 60;
 
@@ -63,7 +65,8 @@ export const GOOD_TPS = 60;
 // Per-mode thresholds dividing the 0–1 ratio into 5 quality zones.
 // ratio >= max → 'max', >= high → 'high', … < low → 'min'
 // Zoom thresholds are absolute zoom values (logarithmic spacing between ZOOM_MIN/ZOOM_MAX).
-// TPS/FPS thresholds are performance ratios (actual / GOOD_TPS for TPS, actual / 60 for FPS).
+// TPS thresholds are performance ratios:
+//   serverTps/renderTps => actual / GOOD_TPS
 const _zoomRatio = ZOOM_MAX / ZOOM_MIN;
 export const LOD_THRESHOLDS: LodAutoModeConfig = {
   zoom: {
@@ -72,21 +75,21 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
     high: ZOOM_MIN * Math.pow(_zoomRatio, 3 / 5),
     max: ZOOM_MIN * Math.pow(_zoomRatio, 4 / 5),
   },
-  tps: {
+  serverTps: {
     low: 0.2,
-    medium: 4,
+    medium: 0.4,
     high: 0.6,
     max: 0.8,
   },
-  fps: {
-    low: 0.1,
-    medium: 0.5,
-    high: 0.3,
-    max: 0.4,
+  renderTps: {
+    low: 0.2,
+    medium: 0.4,
+    high: 0.6,
+    max: 0.8,
   },
   // UNIT-FULLNESS THRESHOLDS — fractions of the user-configured unit
   // cap. The ratio fed in is `1 − unitCount / unitCap`, so an empty
-  // world is 1.0 and a full one is 0.0. Same direction as tps/fps:
+  // world is 1.0 and a full one is 0.0. Same direction as TPS:
   // ratio >= threshold ⇒ tier eligible.
   //
   // Defaults: full visuals only while the world is sparse, then move
@@ -94,31 +97,40 @@ export const LOD_THRESHOLDS: LodAutoModeConfig = {
   // Whether the cap is 1k or 16k, the LOD ladder steps at the same
   // proportional milestones.
   units: {
-    low: 0.2, // ratio >= 0.25 (≤75% full) → low or better
-    medium: 4, // ratio >= 0.50 (≤50% full) → medium or better
-    high: 0.6, // ratio >= 0.75 (≤25% full) → high or better
-    max: 0.8, // ratio >= 0.90 (≤10% full) → max
+    low: 0.2,
+    medium: 0.4,
+    high: 0.6,
+    max: 0.8,
   },
 };
+
+// Validate LOD_THRESHOLDS at module load. ratioToRank assumes the
+// four rungs are finite and strictly increasing — a malformed config
+// would silently skip a tier or promote too eagerly. Hard-fail in
+// dev so config drift surfaces before any resolver runs.
+assertMonotonicLodThresholds('zoom', LOD_THRESHOLDS.zoom);
+assertMonotonicLodThresholds('serverTps', LOD_THRESHOLDS.serverTps);
+assertMonotonicLodThresholds('renderTps', LOD_THRESHOLDS.renderTps);
+assertMonotonicLodThresholds('units', LOD_THRESHOLDS.units);
 
 // Hysteresis band applied to each threshold.
 // When upgrading quality, ratio must exceed threshold + hysteresis.
 // When downgrading, ratio must drop below threshold − hysteresis.
 export const LOD_HYSTERESIS: LodHysteresis = {
   zoom: 0,
-  tps: 0.05,
-  fps: 0.05,
+  serverTps: 0.05,
+  renderTps: 0.05,
   units: 0.05,
 };
 
 // Which PLAYER CLIENT EMA sample drives each auto-LOD signal.
 // Toggle these between 'avg' and 'low' when tuning how quickly the
 // renderer drops detail:
-//   - tps 'avg' = steady server tick rate, 'low' = lower/worst tick rate.
-//   - fps 'avg' = steady frame rate, 'low' = lower/worst frame rate.
+//   - serverTps 'avg' = steady server tick rate, 'low' = lower/worst tick rate.
+//   - renderTps 'avg' = steady client update-loop tick rate, 'low' = lower/worst.
 export const LOD_EMA_SOURCE: LodEmaSource = {
-  tps: 'low',
-  fps: 'low',
+  serverTps: 'low',
+  renderTps: 'low',
 };
 
 // =============================================================================

@@ -1,6 +1,7 @@
 import { WorldState } from './WorldState';
 import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId, UnitAction } from './types';
+import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { buildUnitDeathEvent, buildBuildingDeathEvent } from './combat/damageHelpers';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
@@ -173,10 +174,18 @@ export class Simulation {
   // Callback for game over (passes winner ID)
   public onGameOver?: (winnerId: PlayerId) => void;
 
-  constructor(world: WorldState, commandQueue: CommandQueue) {
+  constructor(
+    world: WorldState,
+    commandQueue: CommandQueue,
+    terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
+  ) {
     this.world = world;
     this.commandQueue = commandQueue;
-    this.constructionSystem = new ConstructionSystem(world.mapWidth, world.mapHeight);
+    this.constructionSystem = new ConstructionSystem(
+      world.mapWidth,
+      world.mapHeight,
+      terrainBuildabilityGrid,
+    );
     this.damageSystem = new DamageSystem(world);
   }
 

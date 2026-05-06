@@ -26,7 +26,7 @@ const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
 // renders closer to the camera than that.
 //
 // CAMERA_FAR_PLANE raised 50000 → 100000 so the water plane (which
-// extends `WATER_HORIZON_EXTEND` past every map edge) doesn't get
+// extends `HORIZON_RENDER_EXTEND` past every map edge) doesn't get
 // clipped at low-pitch / high-altitude views. The bigger far-plane
 // is paid for by `logarithmicDepthBuffer: true` on the renderer
 // below — log depth distributes precision evenly across the whole

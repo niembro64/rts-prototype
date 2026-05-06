@@ -141,6 +141,10 @@ import {
   setLodShellRings,
   getLodGridBorders,
   setLodGridBorders,
+  getTriangleDebug,
+  setTriangleDebug,
+  getBuildGridDebug,
+  setBuildGridDebug,
   getBaseLodMode,
   setBaseLodMode,
   getDriftMode,
@@ -156,11 +160,11 @@ import {
   setGridOverlay,
   getWaypointDetail,
   setWaypointDetail,
-  setCurrentTpsRatio,
-  setCurrentFpsRatio,
+  setCurrentServerTpsRatio,
+  setCurrentRenderTpsRatio,
   setCurrentUnitCount,
   setCurrentUnitCap,
-  setLocalServerRunning,
+  setServerTpsAvailable,
 } from '../clientBarConfig';
 import type { CameraSmoothMode } from '../clientBarConfig';
 import type { GraphicsQuality, ConcreteGraphicsQuality, RenderMode } from '../types/graphics';
@@ -473,8 +477,8 @@ const clientSignalStates = ref({ ...getLodSignalStates() });
 // active signals stop showing white text (they're overridden).
 const clientAnySolo = computed(() =>
   (LOD_SIGNALS_ENABLED.zoom && clientSignalStates.value.zoom === 'solo') ||
-  (LOD_SIGNALS_ENABLED.tps && clientSignalStates.value.tps === 'solo') ||
-  (LOD_SIGNALS_ENABLED.fps && clientSignalStates.value.fps === 'solo') ||
+  (LOD_SIGNALS_ENABLED.serverTps && clientSignalStates.value.serverTps === 'solo') ||
+  (LOD_SIGNALS_ENABLED.renderTps && clientSignalStates.value.renderTps === 'solo') ||
   (LOD_SIGNALS_ENABLED.units && clientSignalStates.value.units === 'solo'),
 );
 const renderMode = ref<RenderMode>(getRenderMode());
@@ -483,6 +487,8 @@ const audioSmoothing = ref<boolean>(getAudioSmoothing());
 const burnMarks = ref<boolean>(getBurnMarks());
 const lodShellRings = ref<boolean>(getLodShellRings());
 const lodGridBorders = ref<boolean>(getLodGridBorders());
+const triangleDebug = ref<boolean>(getTriangleDebug());
+const buildGridDebug = ref<boolean>(getBuildGridDebug());
 const baseLodMode = ref<boolean>(getBaseLodMode());
 const driftMode = ref<DriftMode>(getDriftMode());
 // Per-frame chassis-tilt EMA on the client. Layered ON TOP of the
@@ -546,9 +552,9 @@ const gpuTimerSupported = ref(false);
 const longtaskMsPerSec = ref(0);
 const longtaskSupported = ref(false);
 
-// FPS, snapshot rate, and zoom tracking (EMA-based, polled from scene)
-const actualAvgFPS = ref(0);
-const actualWorstFPS = ref(0);
+// Client cadence, snapshot rate, and zoom tracking (EMA-based, polled from scene)
+const renderTpsAvg = ref(0);
+const renderTpsWorst = ref(0);
 const snapAvgRate = ref(0);
 const snapWorstRate = ref(0);
 // Parallel pair tracking ONLY full-keyframe arrivals — used by the
@@ -558,7 +564,7 @@ const snapWorstRate = ref(0);
 const fullSnapAvgRate = ref(0);
 const fullSnapWorstRate = ref(0);
 const currentZoom = ref(0.4);
-let fpsUpdateInterval: ReturnType<typeof setInterval> | null = null;
+let clientTelemetryUpdateInterval: ReturnType<typeof setInterval> | null = null;
 
 // Selection state for the panel
 const selectionInfo = reactive<SelectionInfo>({
@@ -1335,6 +1341,10 @@ function resetClientDefaults(): void {
   lodShellRings.value = cd.lodShellRings.default;
   setLodGridBorders(cd.lodGridBorders.default);
   lodGridBorders.value = cd.lodGridBorders.default;
+  setTriangleDebug(cd.triangleDebug.default);
+  triangleDebug.value = cd.triangleDebug.default;
+  setBuildGridDebug(cd.buildGridDebug.default);
+  buildGridDebug.value = cd.buildGridDebug.default;
   setBaseLodMode(cd.baseLodMode.default);
   baseLodMode.value = cd.baseLodMode.default;
   setDriftMode(cd.driftMode.default);
@@ -1576,7 +1586,7 @@ function changeGraphicsQuality(quality: GraphicsQuality): void {
 // ref so the template repaints without polling. Note: clicking a
 // signal does NOT change the global mode — the user has to pick
 // AUTO or a manual tier separately.
-function cycleClientSignal(signal: 'zoom' | 'tps' | 'fps' | 'units'): void {
+function cycleClientSignal(signal: 'zoom' | 'serverTps' | 'renderTps' | 'units'): void {
   cycleLodSignalState(signal);
   // Trigger reactivity by re-reading the snapshot.
   clientSignalStates.value = { ...getLodSignalStates() };
@@ -1684,6 +1694,18 @@ function toggleLodGridBorders(): void {
   lodGridBorders.value = newValue;
 }
 
+function toggleTriangleDebug(): void {
+  const newValue = !triangleDebug.value;
+  setTriangleDebug(newValue);
+  triangleDebug.value = newValue;
+}
+
+function toggleBuildGridDebug(): void {
+  const newValue = !buildGridDebug.value;
+  setBuildGridDebug(newValue);
+  buildGridDebug.value = newValue;
+}
+
 function toggleBaseLodMode(): void {
   const newValue = !baseLodMode.value;
   setBaseLodMode(newValue);
@@ -1766,7 +1788,7 @@ const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
   music: 'Background music (procedural or MIDI)',
 };
 
-function updateFPSStats(): void {
+function updateClientTelemetryStats(): void {
   const scene = backgroundBattle?.gameInstance?.getScene() ?? gameInstance?.getScene();
   if (scene) {
     // Display camera altitude — distance from the y=0 ground plane
@@ -1790,9 +1812,9 @@ function updateFPSStats(): void {
     setNumberRefIfChanged(longtaskMsPerSec, timing.longtaskMsPerSec);
     setRefIfChanged(longtaskSupported, timing.longtaskSupported);
 
-    const frameStats = scene.getFrameStats();
-    setNumberRefIfChanged(actualAvgFPS, frameStats.avgFps, 0.05);
-    setNumberRefIfChanged(actualWorstFPS, frameStats.worstFps, 0.05);
+    const renderTpsStats = scene.getRenderTpsStats();
+    setNumberRefIfChanged(renderTpsAvg, renderTpsStats.avgRate, 0.05);
+    setNumberRefIfChanged(renderTpsWorst, renderTpsStats.worstRate, 0.05);
 
     const snapStats = scene.getSnapshotStats();
     setNumberRefIfChanged(snapAvgRate, snapStats.avgRate, 0.05);
@@ -1801,10 +1823,10 @@ function updateFPSStats(): void {
     setNumberRefIfChanged(fullSnapAvgRate, fullSnapStats.avgRate, 0.05);
     setNumberRefIfChanged(fullSnapWorstRate, fullSnapStats.worstRate, 0.05);
   }
-  const fpsVal = LOD_EMA_SOURCE.fps === 'avg' ? actualAvgFPS.value : actualWorstFPS.value;
-  const tpsVal = LOD_EMA_SOURCE.tps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
-  setCurrentFpsRatio(fpsVal / 60);
-  setCurrentTpsRatio(tpsVal / GOOD_TPS);
+  const serverTpsVal = LOD_EMA_SOURCE.serverTps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
+  const renderTpsVal = LOD_EMA_SOURCE.renderTps === 'avg' ? renderTpsAvg.value : renderTpsWorst.value;
+  setCurrentServerTpsRatio(serverTpsVal / GOOD_TPS);
+  setCurrentRenderTpsRatio(renderTpsVal / GOOD_TPS);
   // UNITS auto-LOD reads (count, cap) from the server's snapshot
   // meta. The LOD ladder operates on `1 − count/cap` (fullness ratio)
   // so visual quality drops at the same proportional milestones
@@ -1814,7 +1836,7 @@ function updateFPSStats(): void {
   const meta = serverMetaFromSnapshot.value;
   setCurrentUnitCount(meta?.units.count ?? 0);
   if (meta?.units.max !== undefined) setCurrentUnitCap(meta.units.max);
-  setLocalServerRunning(hasServer.value);
+  setServerTpsAvailable(showServerControls.value);
   setRefIfChanged(effectiveQuality, getEffectiveQuality());
 }
 
@@ -2197,8 +2219,8 @@ onMounted(() => {
     startBackgroundBattle();
   });
 
-  // Start FPS tracking
-  fpsUpdateInterval = setInterval(updateFPSStats, 100); // Update 10x per second
+  // Poll client/server telemetry for the bottom bars and AUTO LOD.
+  clientTelemetryUpdateInterval = setInterval(updateClientTelemetryStats, 100);
 
   // Public IP + coarse location for the server bar AND the GAME
   // LOBBY player list. Avoid geo-IP providers that commonly return
@@ -2263,8 +2285,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   clearRealBattleTimeouts();
-  if (fpsUpdateInterval) {
-    clearInterval(fpsUpdateInterval);
+  if (clientTelemetryUpdateInterval) {
+    clearInterval(clientTelemetryUpdateInterval);
+    clientTelemetryUpdateInterval = null;
   }
   if (checkSceneInterval) {
     clearInterval(checkSceneInterval);
@@ -2617,7 +2640,7 @@ onUnmounted(() => {
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />
-            <BarLabel title="Server simulation ticks per second">TPS:</BarLabel>
+            <BarLabel title="Server simulation ticks per second">S-TPS:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
@@ -2951,29 +2974,29 @@ onUnmounted(() => {
           </BarControlGroup>
           <BarDivider />
           <BarControlGroup>
-            <BarLabel title="Client rendering frames per second">FPS:</BarLabel>
+            <BarLabel title="PLAYER CLIENT update-loop ticks per second. This includes prediction/input/render prep cadence and is the client-side TPS signal for LOD.">R-TPS:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
                 <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(actualAvgFPS) }}</span>
+                  <span class="fps-value">{{ fmt4(renderTpsAvg) }}</span>
                   <span class="fps-label">avg</span>
                 </div>
                 <div class="stat-bar-track">
                   <div
                     class="stat-bar-fill"
-                    :style="statBarStyle(actualAvgFPS)"
+                    :style="statBarStyle(renderTpsAvg, GOOD_TPS)"
                   ></div>
                 </div>
               </div>
               <div class="stat-bar">
                 <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(actualWorstFPS) }}</span>
+                  <span class="fps-value">{{ fmt4(renderTpsWorst) }}</span>
                   <span class="fps-label">low</span>
                 </div>
                 <div class="stat-bar-track">
                   <div
                     class="stat-bar-fill"
-                    :style="statBarStyle(actualWorstFPS)"
+                    :style="statBarStyle(renderTpsWorst, GOOD_TPS)"
                   ></div>
                 </div>
               </div>
@@ -3167,28 +3190,28 @@ onUnmounted(() => {
                 @click="cycleClientSignal('zoom')"
               >ZOOM</BarButton>
               <BarButton
-                v-if="LOD_SIGNALS_ENABLED.tps"
-                :active="graphicsQuality === 'auto' && clientSignalStates.tps === 'solo'"
+                v-if="LOD_SIGNALS_ENABLED.serverTps"
+                :active="graphicsQuality === 'auto' && clientSignalStates.serverTps === 'solo'"
                 :active-level="
                   graphicsQuality === 'auto'
-                    && clientSignalStates.tps === 'active'
+                    && clientSignalStates.serverTps === 'active'
                     && !clientAnySolo
-                    && hasServer
+                    && showServerControls
                 "
-                :title="`Server TPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.tps}.`"
-                @click="cycleClientSignal('tps')"
-              >TPS</BarButton>
+                :title="`Server TPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.serverTps}.`"
+                @click="cycleClientSignal('serverTps')"
+              >S-TPS</BarButton>
               <BarButton
-                v-if="LOD_SIGNALS_ENABLED.fps"
-                :active="graphicsQuality === 'auto' && clientSignalStates.fps === 'solo'"
+                v-if="LOD_SIGNALS_ENABLED.renderTps"
+                :active="graphicsQuality === 'auto' && clientSignalStates.renderTps === 'solo'"
                 :active-level="
                   graphicsQuality === 'auto'
-                    && clientSignalStates.fps === 'active'
+                    && clientSignalStates.renderTps === 'active'
                     && !clientAnySolo
                 "
-                :title="`Client FPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.fps}.`"
-                @click="cycleClientSignal('fps')"
-              >FPS</BarButton>
+                :title="`Render TPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.renderTps}.`"
+                @click="cycleClientSignal('renderTps')"
+              >R-TPS</BarButton>
               <BarButton
                 v-if="LOD_SIGNALS_ENABLED.units"
                 :active="graphicsQuality === 'auto' && clientSignalStates.units === 'solo'"
@@ -3229,6 +3252,16 @@ onUnmounted(() => {
               title="Show object-LOD spatial grid tiles as 2D ground-plane outlines"
               @click="toggleLodGridBorders"
             >CELLS</BarButton>
+            <BarButton
+              :active="triangleDebug"
+              title="TRIS — debug-color every terrain/mana mesh triangle so triangle reduction and flat-tile optimization are visually obvious"
+              @click="toggleTriangleDebug"
+            >TRIS</BarButton>
+            <BarButton
+              :active="buildGridDebug"
+              title="BUILD — show every fine build-placement cell using the same green/red/blue colors as the building ghost"
+              @click="toggleBuildGridDebug"
+            >BUILD</BarButton>
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />

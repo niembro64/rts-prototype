@@ -35,14 +35,8 @@ import type {
   ForceFieldTurretConfig,
   MapSize,
 } from './types/config';
-import { MAP_DIMENSION_CONFIG } from './mapSizeConfig';
-
-// Canonical 2D land partition size. All broad ground-space systems
-// should derive from this: host spatial-grid XY columns, capture/mana
-// tiles, terrain/water tiles, and player-client object LOD cells. Keep
-// this separate from GRID_CELL_SIZE (fine building placement) and the
-// physics contact grid (local collision broadphase).
-export const LAND_CELL_SIZE = 100;
+import { LAND_CELL_SIZE, MAP_DIMENSION_CONFIG } from './mapSizeConfig';
+export { LAND_CELL_SIZE } from './mapSizeConfig';
 
 // Default square map span in canonical land cells. Demo Battle and Real Battle
 // use the same option set and server/client math, while their selected size is
@@ -239,10 +233,6 @@ export const EMA_CONFIG: Record<string, EmaTierConfig> = {
     avg: 0.01,
     low: { drop: 0.01, recovery: 0.001 },
   },
-  fps: {
-    avg: 0.01,
-    low: { drop: 0.01, recovery: 0.001 },
-  },
   snaps: {
     avg: 0.01,
     low: { drop: 0.01, recovery: 0.001 },
@@ -272,20 +262,18 @@ export const FRAME_TIMING_EMA = {
  * Starting HIGH means LOD begins at max quality and degrades if needed.
  * Starting LOW means LOD begins at min quality and climbs if performance allows.
  *
- * Rate trackers (FPS/TPS/SPS): high number = good performance.
+ * Rate trackers (TPS/SPS): high number = good performance.
  * Ms trackers (frame/render/logic): low number = good performance.
  *
  * We seed visible EMA stats at 0.0 so the bottom bars start from an
  * honest empty baseline and climb as real samples arrive. This also
- * means auto-LOD begins pessimistically for FPS/TPS-driven signals
+ * means auto-LOD begins pessimistically for TPS-driven signals
  * instead of assuming a healthy mid-tier before measurement.
  */
 export const EMA_INITIAL_VALUES = {
-  // FPS feeds the PLAYER CLIENT auto-LOD ladder via fps / 60.
   // TPS/CPU host seeds live in GameServer because they depend on the
   // configured tickRateHz.
   tps: 0,
-  fps: 0,
   snaps: 0,
 
   // Ms trackers drive CPU/GPU/FRAME bars. 0 ms means no measured work yet.
@@ -461,6 +449,13 @@ export const MAP_BG_COLOR = 0x0a0e0f; // in-bounds background
 export const MAP_OOB_COLOR = 0x08080f; // out-of-bounds background
 export const MAP_CAMERA_BG = 0x0a0a14; // camera clear color
 export const MAP_GRID_COLOR = MAP_BG_COLOR;
+
+// Render-only fake horizon extent for the transparent water plane and
+// submerged "infinity" terrain shelf around circle-perimeter maps.
+// Kept shared so water and terrain always terminate at the same practical
+// distance. This is only a few giant quads, so raising it is cheap; the
+// camera far plane still controls what actually draws.
+export const HORIZON_RENDER_EXTEND = 180000;
 
 // Render-only water surface tuning. `color` is the tint of the flat
 // horizon water plane; `opacity` is material alpha. Lower opacity =

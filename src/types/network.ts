@@ -164,7 +164,12 @@ export function codeToTurretId(c: number): TurretId | null {
 import type { Command } from './commands';
 import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ForceFieldImpactContext } from './combat';
 import type { Vec2, Vec3 } from './vec2';
-import type { TerrainMapShape, TerrainShape, TerrainTileMap } from './terrain';
+import type {
+  TerrainBuildabilityGrid,
+  TerrainMapShape,
+  TerrainShape,
+  TerrainTileMap,
+} from './terrain';
 
 export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v1' as const;
 
@@ -432,6 +437,7 @@ export type NetworkServerSnapshot = {
     cellSize: number;
   };
   terrain?: TerrainTileMap;
+  buildability?: TerrainBuildabilityGrid;
   isDelta: boolean;
   removedEntityIds?: number[];
 };

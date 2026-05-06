@@ -1,9 +1,20 @@
 import { LAND_CELL_SIZE } from '../../../config';
 import { assertCanonicalLandCellSize } from '../../landGrid';
+import { GRID_CELL_SIZE } from '../grid';
+import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { TERRAIN_D_TERRAIN, TERRAIN_PLATEAU_CONFIG } from './terrainConfig';
 import { findDepositFlatZoneAt } from './terrainFlatZones';
 import { getTerrainMeshHeight } from './terrainTileMap';
+import { getTerrainVersion } from './terrainState';
 import { isWaterAt } from './terrainSurface';
+
+export function getTerrainBuildabilityConfigKey(): string {
+  return [
+    TERRAIN_PLATEAU_CONFIG.enabled ? 1 : 0,
+    TERRAIN_D_TERRAIN,
+    TERRAIN_PLATEAU_CONFIG.buildableShelfHeightTolerance,
+  ].join(':');
+}
 
 export function getTerrainPlateauLevelAt(
   x: number,
@@ -100,4 +111,66 @@ export function isBuildableTerrainFootprint(
   return evaluateBuildabilityFootprint(
     centerX, centerZ, halfWidth, halfDepth, mapWidth, mapHeight, cellSize,
   ).buildable;
+}
+
+export type TerrainBuildabilityCell = {
+  buildable: boolean;
+  level: number | null;
+};
+
+export function getTerrainBuildabilityGridCell(
+  grid: TerrainBuildabilityGrid,
+  gx: number,
+  gy: number,
+): TerrainBuildabilityCell {
+  if (gx < 0 || gy < 0 || gx >= grid.cellsX || gy >= grid.cellsY) {
+    return { buildable: false, level: null };
+  }
+  const index = gy * grid.cellsX + gx;
+  const buildable = grid.flags[index] === 1;
+  return {
+    buildable,
+    level: buildable ? grid.levels[index] : null,
+  };
+}
+
+export function buildTerrainBuildabilityGrid(
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number = GRID_CELL_SIZE,
+): TerrainBuildabilityGrid {
+  const cellsX = Math.max(1, Math.ceil(mapWidth / cellSize));
+  const cellsY = Math.max(1, Math.ceil(mapHeight / cellSize));
+  const flags = new Array<number>(cellsX * cellsY);
+  const levels = new Array<number>(cellsX * cellsY);
+
+  for (let gy = 0; gy < cellsY; gy++) {
+    for (let gx = 0; gx < cellsX; gx++) {
+      const x = gx * cellSize + cellSize / 2;
+      const y = gy * cellSize + cellSize / 2;
+      const evaluated = evaluateBuildabilityFootprint(
+        x,
+        y,
+        cellSize / 2,
+        cellSize / 2,
+        mapWidth,
+        mapHeight,
+      );
+      const index = gy * cellsX + gx;
+      flags[index] = evaluated.buildable ? 1 : 0;
+      levels[index] = evaluated.level ?? 0;
+    }
+  }
+
+  return {
+    mapWidth,
+    mapHeight,
+    cellSize,
+    cellsX,
+    cellsY,
+    version: getTerrainVersion(),
+    configKey: getTerrainBuildabilityConfigKey(),
+    flags,
+    levels,
+  };
 }

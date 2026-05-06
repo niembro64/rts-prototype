@@ -1,4 +1,5 @@
 import type { MetalDeposit } from '../../metalDepositConfig';
+import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, BuildingType } from './types';
 import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE, getBuildingCenterFromGrid, snapBuildingToGrid } from './grid';
@@ -7,7 +8,7 @@ import {
   getMetalDepositGridCells,
   getMetalDepositFootprintCoverage,
 } from './metalDeposits';
-import { evaluateBuildabilityFootprint } from './Terrain';
+import { evaluateBuildabilityFootprint, getTerrainBuildabilityGridCell } from './Terrain';
 
 export type BuildPlacementCellReason =
   | 'ok'
@@ -85,6 +86,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
   mapHeight: number,
   metalDeposits: ReadonlyArray<MetalDeposit>,
   isCellOccupied: BuildPlacementOccupiedLookup,
+  terrainBuildabilityGrid: TerrainBuildabilityGrid | null,
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
   const center = getBuildingCenterFromGrid(gridX, gridY, config.gridWidth, config.gridHeight);
@@ -103,14 +105,21 @@ function getBuildingPlacementDiagnosticsAtGrid(
   // boolean AND the plateau level off a single helper (the previous
   // code did separate isBuildableTerrainFootprint + getTerrainPlateauLevelAt
   // calls per cell, which re-sampled the same mesh points twice).
-  const footprintTerrainOk = evaluateBuildabilityFootprint(
-    center.x,
-    center.y,
-    halfWidth,
-    halfHeight,
-    mapWidth,
-    mapHeight,
-  ).buildable;
+  const useAuthoritativeBuildability =
+    terrainBuildabilityGrid !== null &&
+    terrainBuildabilityGrid.cellSize === GRID_CELL_SIZE &&
+    terrainBuildabilityGrid.mapWidth === mapWidth &&
+    terrainBuildabilityGrid.mapHeight === mapHeight;
+  const footprintTerrainOk = useAuthoritativeBuildability
+    ? true
+    : evaluateBuildabilityFootprint(
+      center.x,
+      center.y,
+      halfWidth,
+      halfHeight,
+      mapWidth,
+      mapHeight,
+    ).buildable;
 
   for (let dy = 0; dy < config.gridHeight; dy++) {
     for (let dx = 0; dx < config.gridWidth; dx++) {
@@ -131,14 +140,16 @@ function getBuildingPlacementDiagnosticsAtGrid(
         reason = 'occupied';
         blocking = true;
       } else {
-        const cellEval = evaluateBuildabilityFootprint(
-          x,
-          y,
-          GRID_CELL_SIZE / 2,
-          GRID_CELL_SIZE / 2,
-          mapWidth,
-          mapHeight,
-        );
+        const cellEval = useAuthoritativeBuildability
+          ? getTerrainBuildabilityGridCell(terrainBuildabilityGrid, gx, gy)
+          : evaluateBuildabilityFootprint(
+            x,
+            y,
+            GRID_CELL_SIZE / 2,
+            GRID_CELL_SIZE / 2,
+            mapWidth,
+            mapHeight,
+          );
         if (!cellEval.buildable) {
           reason = 'terrain';
           blocking = true;
@@ -248,6 +259,7 @@ export function getBuildingPlacementDiagnosticsForGrid(
   mapHeight: number,
   metalDeposits: ReadonlyArray<MetalDeposit> = [],
   isCellOccupied: BuildPlacementOccupiedLookup = emptyOccupiedLookup,
+  terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
 ): BuildPlacementDiagnostics {
   return getBuildingPlacementDiagnosticsAtGrid(
     candidateType,
@@ -257,6 +269,7 @@ export function getBuildingPlacementDiagnosticsForGrid(
     mapHeight,
     metalDeposits,
     isCellOccupied,
+    terrainBuildabilityGrid,
   );
 }
 
@@ -269,6 +282,7 @@ export function getBuildingPlacementDiagnostics(
   buildings: Entity[],
   metalDeposits: ReadonlyArray<MetalDeposit> = [],
   occupiedCells: ReadonlySet<string> = getOccupiedBuildingCells(buildings),
+  terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
   const snapped = snapBuildingToGrid(centerX, centerY, config.gridWidth, config.gridHeight);
@@ -280,6 +294,7 @@ export function getBuildingPlacementDiagnostics(
     mapHeight,
     metalDeposits,
     occupiedSetLookup(occupiedCells),
+    terrainBuildabilityGrid,
   );
 }
 

@@ -8,8 +8,15 @@
 // surface fighting the terrain for depth or readability.
 
 import * as THREE from 'three';
+import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
-import { getGraphicsConfigFor, getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
+import {
+  getBuildGridDebug,
+  getGraphicsConfigFor,
+  getGridOverlay,
+  getGridOverlayIntensity,
+  getTriangleDebug,
+} from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { NetworkCaptureTile } from '@/types/capture';
 import {
@@ -19,6 +26,7 @@ import {
   MAP_BG_COLOR,
   MANA_TILE_GROUND_LIFT,
   MANA_TILE_FLAT_HEIGHT_THRESHOLD,
+  HORIZON_RENDER_EXTEND,
 } from '../../config';
 import {
   getTerrainMapBoundaryFade,
@@ -26,7 +34,13 @@ import {
   getTerrainMeshNormal,
   getTerrainVersion,
   interpolateTerrainMeshQuadHeight,
+  shouldUseTerrainCenterFan,
+  terrainCenterFanHeight,
+  evaluateBuildabilityFootprint,
+  getTerrainBuildabilityGridCell,
+  getTerrainBuildabilityConfigKey,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
+  TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
   TERRAIN_MESH_SUBDIV,
   TILE_FLOOR_Y,
 } from '../sim/Terrain';
@@ -44,20 +58,27 @@ import {
 import type { Lod3DState } from './Lod3D';
 import { objectLodToCameraSphereGraphicsTier } from './RenderObjectLod';
 import type { RenderLodGrid } from './RenderLodGrid';
+import { GRID_CELL_SIZE } from '../sim/grid';
+import { getOccupiedBuildingCells } from '../sim/buildPlacementValidation';
+import { getMetalDepositGridCells } from '../sim/metalDeposits';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const TERRAIN_LOD_REBUILD_CELL_MULTIPLIER = 4;
 const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING = 24;
 const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
-const TERRAIN_INFINITY_EXTEND = 60000;
 const SIDE_WALL_TERRAIN_SHADE = 0.68;
+const BUILD_GRID_COLOR_OK = [0, 102, 0, 160] as const;
+const BUILD_GRID_COLOR_BLOCKED = [119, 0, 0, 170] as const;
+const BUILD_GRID_COLOR_METAL = [0, 58, 153, 185] as const;
 
 const NEUTRAL_R_BYTE = (MAP_BG_COLOR >> 16) & 0xff;
 const NEUTRAL_G_BYTE = (MAP_BG_COLOR >> 8) & 0xff;
 const NEUTRAL_B_BYTE = MAP_BG_COLOR & 0xff;
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
 const WHITE_COLOR = new THREE.Color(0xffffff);
+const TRIANGLE_DEBUG_COLOR = new THREE.Color();
+const TRIANGLE_DEBUG_HUE_STEP = 0.618033988749895;
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
@@ -168,6 +189,18 @@ function hasCaptureHeight(heights: NetworkCaptureTile['heights']): boolean {
   return false;
 }
 
+function writeTriangleDebugColor(
+  out: Float32Array,
+  offset: number,
+  triangleIndex: number,
+): void {
+  const hue = (0.09 + triangleIndex * TRIANGLE_DEBUG_HUE_STEP) % 1;
+  TRIANGLE_DEBUG_COLOR.setHSL(hue, 0.78, 0.54);
+  out[offset] = TRIANGLE_DEBUG_COLOR.r;
+  out[offset + 1] = TRIANGLE_DEBUG_COLOR.g;
+  out[offset + 2] = TRIANGLE_DEBUG_COLOR.b;
+}
+
 type CachedTerrainGeometry = {
   geometry: THREE.BufferGeometry;
   lastUsedFrame: number;
@@ -189,6 +222,15 @@ export class CaptureTileRenderer3D {
   private terrainTextureMapUniform!: { value: THREE.DataTexture };
   private terrainTextureMapSizeUniform = { value: new THREE.Vector2(1, 1) };
   private terrainTextureEnabledUniform = { value: 0 };
+  private triangleDebugEnabledUniform = { value: 0 };
+  private buildGridTexture: THREE.DataTexture;
+  private buildGridPixels = new Uint8Array(4);
+  private buildGridMapUniform!: { value: THREE.DataTexture };
+  private buildGridMapSizeUniform = { value: new THREE.Vector2(1, 1) };
+  private buildGridWorldSizeUniform = { value: new THREE.Vector2(1, 1) };
+  private buildGridCellSizeUniform = { value: GRID_CELL_SIZE };
+  private buildGridEnabledUniform = { value: 0 };
+  private buildGridTextureKey = '';
   private terrainTextureKey = '';
 
   private gridCellsX = 0;
@@ -208,6 +250,7 @@ export class CaptureTileRenderer3D {
   private pendingTerrainLodKey = '';
   private pendingTerrainLodFrames = 0;
   private lastGeometryRebuildFrame = -TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING;
+  private terrainTriangleDebug = false;
   private scratchEdgeNorth: number[] = [];
   private scratchEdgeEast: number[] = [];
   private scratchEdgeSouth: number[] = [];
@@ -218,6 +261,7 @@ export class CaptureTileRenderer3D {
   private scratchInnerT = new Float32Array(0);
 
   private clientViewState: ClientViewState;
+  private metalDeposits: readonly MetalDeposit[];
   private mapWidth: number;
   private mapHeight: number;
 
@@ -226,8 +270,10 @@ export class CaptureTileRenderer3D {
     clientViewState: ClientViewState,
     mapWidth: number,
     mapHeight: number,
+    metalDeposits: readonly MetalDeposit[] = [],
   ) {
     this.clientViewState = clientViewState;
+    this.metalDeposits = metalDeposits;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
 
@@ -235,6 +281,8 @@ export class CaptureTileRenderer3D {
     this.overlayMapUniform = { value: this.overlayTexture };
     this.terrainTexture = this.makeManaTerrainTexture(1, 1, 1, 1);
     this.terrainTextureMapUniform = { value: this.terrainTexture };
+    this.buildGridTexture = this.makeBuildGridTexture(1, 1);
+    this.buildGridMapUniform = { value: this.buildGridTexture };
 
     this.terrainGeometry = new THREE.BufferGeometry();
     this.terrainMaterial = new THREE.MeshLambertMaterial({
@@ -257,6 +305,12 @@ export class CaptureTileRenderer3D {
       shader.uniforms.uManaTerrainMap = this.terrainTextureMapUniform;
       shader.uniforms.uManaTerrainMapSize = this.terrainTextureMapSizeUniform;
       shader.uniforms.uManaTerrainTextureEnabled = this.terrainTextureEnabledUniform;
+      shader.uniforms.uTriangleDebugEnabled = this.triangleDebugEnabledUniform;
+      shader.uniforms.uBuildGridMap = this.buildGridMapUniform;
+      shader.uniforms.uBuildGridMapSize = this.buildGridMapSizeUniform;
+      shader.uniforms.uBuildGridWorldSize = this.buildGridWorldSizeUniform;
+      shader.uniforms.uBuildGridCellSize = this.buildGridCellSizeUniform;
+      shader.uniforms.uBuildGridEnabled = this.buildGridEnabledUniform;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -264,10 +318,12 @@ export class CaptureTileRenderer3D {
             'attribute vec2 captureUv;',
             'attribute float captureMask;',
             'attribute float terrainShade;',
+            'attribute vec3 triangleDebugColor;',
             'varying vec2 vCaptureUv;',
             'varying float vCaptureMask;',
             'varying vec3 vManaWorldPos;',
             'varying float vManaShade;',
+            'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
         )
@@ -279,6 +335,7 @@ export class CaptureTileRenderer3D {
             'vCaptureMask = captureMask;',
             'vManaWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
             'vManaShade = terrainShade;',
+            'vTriangleDebugColor = triangleDebugColor;',
           ].join('\n'),
         );
       shader.fragmentShader = shader.fragmentShader
@@ -291,10 +348,17 @@ export class CaptureTileRenderer3D {
             'uniform sampler2D uManaTerrainMap;',
             'uniform vec2 uManaTerrainMapSize;',
             'uniform float uManaTerrainTextureEnabled;',
+            'uniform float uTriangleDebugEnabled;',
+            'uniform sampler2D uBuildGridMap;',
+            'uniform vec2 uBuildGridMapSize;',
+            'uniform vec2 uBuildGridWorldSize;',
+            'uniform float uBuildGridCellSize;',
+            'uniform float uBuildGridEnabled;',
             'varying vec2 vCaptureUv;',
             'varying float vCaptureMask;',
             'varying vec3 vManaWorldPos;',
             'varying float vManaShade;',
+            'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
         )
@@ -311,10 +375,34 @@ export class CaptureTileRenderer3D {
             '  float captureBlend = clamp(captureOverlay.a * uCaptureOverlayOpacity, 0.0, 1.0);',
             '  diffuseColor.rgb = mix(diffuseColor.rgb, captureOverlay.rgb, captureBlend);',
             '}',
+            'if (uBuildGridEnabled > 0.0 &&',
+            '    vManaWorldPos.x >= 0.0 && vManaWorldPos.z >= 0.0 &&',
+            '    vManaWorldPos.x < uBuildGridWorldSize.x &&',
+            '    vManaWorldPos.z < uBuildGridWorldSize.y) {',
+            '  vec2 buildGridCoord = vManaWorldPos.xz / uBuildGridCellSize;',
+            '  vec2 buildGridCell = floor(buildGridCoord);',
+            '  vec2 buildUv = (buildGridCell + vec2(0.5)) / uBuildGridMapSize;',
+            '  vec4 buildColor = texture2D(uBuildGridMap, clamp(buildUv, vec2(0.0), vec2(1.0)));',
+            '  vec2 buildCellFrac = abs(fract(buildGridCoord) - vec2(0.5));',
+            '  float buildBorder = step(0.455, max(buildCellFrac.x, buildCellFrac.y));',
+            '  vec3 buildBorderColor = min(buildColor.rgb * 3.25 + vec3(0.02), vec3(1.0));',
+            '  vec3 buildRgb = mix(buildColor.rgb, buildBorderColor, buildBorder);',
+            '  float buildAlpha = buildColor.a * mix(0.42, 0.95, buildBorder);',
+            '  diffuseColor.rgb = mix(diffuseColor.rgb, buildRgb, buildAlpha);',
+            '}',
+          ].join('\n'),
+        )
+        .replace(
+          '#include <dithering_fragment>',
+          [
+            'if (uTriangleDebugEnabled > 0.0) {',
+            '  gl_FragColor = vec4(vTriangleDebugColor, 1.0);',
+            '}',
+            '#include <dithering_fragment>',
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'capture-tile-single-surface-v4';
+    this.terrainMaterial.customProgramCacheKey = () => 'capture-tile-single-surface-v6';
   }
 
   private makeOverlayTexture(width: number, height: number): THREE.DataTexture {
@@ -331,6 +419,119 @@ export class CaptureTileRenderer3D {
     texture.flipY = false;
     texture.needsUpdate = true;
     return texture;
+  }
+
+  private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
+    this.buildGridPixels = new Uint8Array(Math.max(1, width * height * 4));
+    const texture = new THREE.DataTexture(
+      this.buildGridPixels,
+      Math.max(1, width),
+      Math.max(1, height),
+      THREE.RGBAFormat,
+    );
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    texture.generateMipmaps = false;
+    texture.flipY = false;
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  private ensureBuildGridTexture(width: number, height: number): boolean {
+    const safeWidth = Math.max(1, width | 0);
+    const safeHeight = Math.max(1, height | 0);
+    if (
+      this.buildGridTexture.image.width === safeWidth &&
+      this.buildGridTexture.image.height === safeHeight
+    ) {
+      return false;
+    }
+    const old = this.buildGridTexture;
+    this.buildGridTexture = this.makeBuildGridTexture(safeWidth, safeHeight);
+    this.buildGridMapUniform.value = this.buildGridTexture;
+    old.dispose();
+    this.buildGridTextureKey = '';
+    return true;
+  }
+
+  private writeBuildGridPixel(offset: number, color: readonly [number, number, number, number]): void {
+    this.buildGridPixels[offset] = color[0];
+    this.buildGridPixels[offset + 1] = color[1];
+    this.buildGridPixels[offset + 2] = color[2];
+    this.buildGridPixels[offset + 3] = color[3];
+  }
+
+  private refreshBuildGridTexture(enabled: boolean): void {
+    this.buildGridEnabledUniform.value = enabled ? 1 : 0;
+    const buildabilityGrid = this.clientViewState.getTerrainBuildabilityGrid();
+    const buildCellSize = buildabilityGrid?.cellSize ?? GRID_CELL_SIZE;
+    this.buildGridCellSizeUniform.value = buildCellSize;
+    this.buildGridWorldSizeUniform.value.set(this.mapWidth, this.mapHeight);
+    if (!enabled) {
+      this.buildGridTextureKey = '';
+      return;
+    }
+
+    const cellsX = buildabilityGrid?.cellsX ?? Math.max(1, Math.ceil(this.mapWidth / buildCellSize));
+    const cellsY = buildabilityGrid?.cellsY ?? Math.max(1, Math.ceil(this.mapHeight / buildCellSize));
+    this.ensureBuildGridTexture(cellsX, cellsY);
+    this.buildGridMapSizeUniform.value.set(cellsX, cellsY);
+
+    const entityVersion = this.clientViewState.getEntitySetVersion();
+    const depositKey = this.metalDeposits.length;
+    const key = [
+      cellsX,
+      cellsY,
+      buildCellSize,
+      this.mapWidth,
+      this.mapHeight,
+      buildabilityGrid?.version ?? getTerrainVersion(),
+      buildabilityGrid?.configKey ?? getTerrainBuildabilityConfigKey(),
+      entityVersion,
+      depositKey,
+    ].join('|');
+    if (key === this.buildGridTextureKey) return;
+
+    const occupied = getOccupiedBuildingCells(this.clientViewState.getBuildings());
+    const metalCells = new Set<string>();
+    const depositCells = getMetalDepositGridCells(this.metalDeposits);
+    for (let i = 0; i < depositCells.length; i++) {
+      metalCells.add(`${depositCells[i].gx},${depositCells[i].gy}`);
+    }
+
+    for (let gy = 0; gy < cellsY; gy++) {
+      for (let gx = 0; gx < cellsX; gx++) {
+        const x = gx * buildCellSize + buildCellSize / 2;
+        const y = gy * buildCellSize + buildCellSize / 2;
+        const offset = (gy * cellsX + gx) * 4;
+        const key2 = `${gx},${gy}`;
+        if (occupied.has(key2)) {
+          this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
+          continue;
+        }
+        const cellEval = buildabilityGrid
+          ? getTerrainBuildabilityGridCell(buildabilityGrid, gx, gy)
+          : evaluateBuildabilityFootprint(
+            x,
+            y,
+            buildCellSize / 2,
+            buildCellSize / 2,
+            this.mapWidth,
+            this.mapHeight,
+          );
+        if (!cellEval.buildable) {
+          this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
+          continue;
+        }
+        this.writeBuildGridPixel(
+          offset,
+          metalCells.has(key2) ? BUILD_GRID_COLOR_METAL : BUILD_GRID_COLOR_OK,
+        );
+      }
+    }
+
+    this.buildGridTexture.needsUpdate = true;
+    this.buildGridTextureKey = key;
   }
 
   private makeManaTerrainTexture(
@@ -401,6 +602,7 @@ export class CaptureTileRenderer3D {
     cellsY: number,
     cellSize: number,
     graphicsConfig: GraphicsConfig,
+    triangleDebug: boolean,
     lod?: Lod3DState,
     sharedLodGrid?: RenderLodGrid,
   ): string {
@@ -410,9 +612,11 @@ export class CaptureTileRenderer3D {
       cellSize,
       MANA_TILE_GROUND_LIFT,
       MANA_TILE_FLAT_HEIGHT_THRESHOLD,
+      TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
       graphicsConfig.tier,
       graphicsConfig.captureTileSubdiv,
       graphicsConfig.captureTileSideWalls ? 1 : 0,
+      triangleDebug ? 1 : 0,
       CANONICAL_LAND_CELL_SIZE,
       graphicsConfig.cameraSphereRadii.rich,
       graphicsConfig.cameraSphereRadii.simple,
@@ -554,13 +758,20 @@ export class CaptureTileRenderer3D {
     const z1 = z0 + step;
     const u = Math.max(0, Math.min(1, (fx - x0) / step));
     const v = Math.max(0, Math.min(1, (fz - z0) / step));
+    const h00 = this.terrainHeightAtCellFraction(bounds, x0, z0);
+    const h10 = this.terrainHeightAtCellFraction(bounds, x1, z0);
+    const h11 = this.terrainHeightAtCellFraction(bounds, x1, z1);
+    const h01 = this.terrainHeightAtCellFraction(bounds, x0, z1);
+    const hc = terrainCenterFanHeight(h00, h10, h11, h01);
     return interpolateTerrainMeshQuadHeight(
       u,
       v,
-      this.terrainHeightAtCellFraction(bounds, x0, z0),
-      this.terrainHeightAtCellFraction(bounds, x1, z0),
-      this.terrainHeightAtCellFraction(bounds, x1, z1),
-      this.terrainHeightAtCellFraction(bounds, x0, z1),
+      h00,
+      h10,
+      h11,
+      h01,
+      hc,
+      shouldUseTerrainCenterFan(h00, h10, h11, h01, hc),
     );
   }
 
@@ -583,7 +794,7 @@ export class CaptureTileRenderer3D {
   private ensureTileSimplificationLimits(grid: LandGridMetrics): void {
     const { cellsX, cellsY, cellSize } = grid;
     const tileCount = cellsX * cellsY;
-    const key = `${cellsX}|${cellsY}|${cellSize}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_FLAT_HEIGHT_THRESHOLD}|${getTerrainVersion()}`;
+    const key = `${cellsX}|${cellsY}|${cellSize}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_FLAT_HEIGHT_THRESHOLD}|${TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD}|${getTerrainVersion()}`;
     if (this.tileShapeKey === key && this.minTileSubdivisions.length === tileCount) return;
 
     if (this.minTileSubdivisions.length !== tileCount) {
@@ -633,6 +844,7 @@ export class CaptureTileRenderer3D {
   private rebuildGeometryIfNeeded(
     cellSize: number,
     graphicsConfig: GraphicsConfig,
+    triangleDebug: boolean,
     lod?: Lod3DState,
     sharedLodGrid?: RenderLodGrid,
   ): boolean {
@@ -647,14 +859,17 @@ export class CaptureTileRenderer3D {
       cellsY,
       cellSize,
       graphicsConfig,
+      triangleDebug,
       lod,
       sharedLodGrid,
     );
+    const triangleDebugChanged = triangleDebug !== this.terrainTriangleDebug;
     const structuralChange =
       textureRebuilt ||
       cellsX !== this.gridCellsX ||
       cellsY !== this.gridCellsY ||
-      cellSize !== this.gridCellSize;
+      cellSize !== this.gridCellSize ||
+      triangleDebugChanged;
     if (!this.shouldRebuildTerrainGeometry(nextTerrainLodKey, structuralChange)) {
       return false;
     }
@@ -664,6 +879,7 @@ export class CaptureTileRenderer3D {
       this.gridCellsX = cellsX;
       this.gridCellsY = cellsY;
       this.gridCellSize = cellSize;
+      this.terrainTriangleDebug = triangleDebug;
       this.useTerrainGeometry(nextTerrainLodKey, cachedGeometry.geometry);
       this.markTerrainGeometryRebuilt(nextTerrainLodKey);
       this.lastCaptureVersion = -1;
@@ -728,6 +944,7 @@ export class CaptureTileRenderer3D {
     this.gridCellsX = cellsX;
     this.gridCellsY = cellsY;
     this.gridCellSize = cellSize;
+    this.terrainTriangleDebug = triangleDebug;
     this.markTerrainGeometryRebuilt(nextTerrainLodKey);
     this.lastCaptureVersion = -1;
 
@@ -798,6 +1015,38 @@ export class CaptureTileRenderer3D {
           terrainIndices.push(terrainVertexBase + a, terrainVertexBase + b, terrainVertexBase + c);
         };
 
+        const topHeight = (localIdx: number): number => {
+          const off = (terrainVertexBase + localIdx) * 3;
+          return terrainPositions[off + 1] - MANA_TILE_GROUND_LIFT;
+        };
+
+        const addTopQuad = (
+          a: number,
+          b: number,
+          c: number,
+          d: number,
+          fx0: number,
+          fz0: number,
+          fx1: number,
+          fz1: number,
+        ): void => {
+          const h00 = topHeight(a);
+          const h10 = topHeight(b);
+          const h11 = topHeight(c);
+          const h01 = topHeight(d);
+          const hCenter = terrainCenterFanHeight(h00, h10, h11, h01);
+          if (shouldUseTerrainCenterFan(h00, h10, h11, h01, hCenter)) {
+            const center = addTopVertex((fx0 + fx1) * 0.5, (fz0 + fz1) * 0.5);
+            addTopTri(a, b, center);
+            addTopTri(b, c, center);
+            addTopTri(c, d, center);
+            addTopTri(d, a, center);
+            return;
+          }
+          addTopTri(a, b, c);
+          addTopTri(a, c, d);
+        };
+
         const addBoundaryLoop = (
           northSubdiv: number,
           eastSubdiv: number,
@@ -845,6 +1094,21 @@ export class CaptureTileRenderer3D {
           }
         };
 
+        const shouldUseWholeTileCenterFan = (): boolean =>
+        {
+          const h00 = this.terrainHeightAtCellFraction(bounds, 0, 0);
+          const h10 = this.terrainHeightAtCellFraction(bounds, 1, 0);
+          const h11 = this.terrainHeightAtCellFraction(bounds, 1, 1);
+          const h01 = this.terrainHeightAtCellFraction(bounds, 0, 1);
+          return shouldUseTerrainCenterFan(
+            h00,
+            h10,
+            h11,
+            h01,
+            terrainCenterFanHeight(h00, h10, h11, h01),
+          );
+        };
+
         const northSubdiv = horizontalEdgeSubdivisions[cy * cellsX + cx] || tileSubdiv;
         const eastSubdiv = verticalEdgeSubdivisions[cy * (cellsX + 1) + cx + 1] || tileSubdiv;
         const southSubdiv = horizontalEdgeSubdivisions[(cy + 1) * cellsX + cx] || tileSubdiv;
@@ -876,14 +1140,16 @@ export class CaptureTileRenderer3D {
               const b = topIdx(ix + 1, j);
               const c = topIdx(ix + 1, j + 1);
               const d = topIdx(ix, j + 1);
-              const useAcDiagonal = true;
-              if (useAcDiagonal) {
-                addTopTri(a, b, c);
-                addTopTri(a, c, d);
-              } else {
-                addTopTri(a, b, d);
-                addTopTri(b, c, d);
-              }
+              addTopQuad(
+                a,
+                b,
+                c,
+                d,
+                ix / subdiv,
+                j / subdiv,
+                (ix + 1) / subdiv,
+                (j + 1) / subdiv,
+              );
             }
           }
         } else {
@@ -924,14 +1190,16 @@ export class CaptureTileRenderer3D {
                 const b = innerIdx(ix + 1, j);
                 const c = innerIdx(ix + 1, j + 1);
                 const d = innerIdx(ix, j + 1);
-                const useAcDiagonal = true;
-                if (useAcDiagonal) {
-                  addTopTri(a, b, c);
-                  addTopTri(a, c, d);
-                } else {
-                  addTopTri(a, b, d);
-                  addTopTri(b, c, d);
-                }
+                addTopQuad(
+                  a,
+                  b,
+                  c,
+                  d,
+                  ix / subdiv,
+                  j / subdiv,
+                  (ix + 1) / subdiv,
+                  (j + 1) / subdiv,
+                );
               }
             }
 
@@ -1009,7 +1277,7 @@ export class CaptureTileRenderer3D {
                 ii++;
               }
             }
-          } else if (tileSubdiv >= 2) {
+          } else if (tileSubdiv >= 2 || shouldUseWholeTileCenterFan()) {
             addFanToCenter(outer);
           } else {
             addFanFromFirstBoundaryVertex(outer);
@@ -1099,7 +1367,7 @@ export class CaptureTileRenderer3D {
       if (!sideMidpointsAreShelf) return;
 
       const y = TERRAIN_CIRCLE_UNDERWATER_HEIGHT + MANA_TILE_GROUND_LIFT;
-      const outer = TERRAIN_INFINITY_EXTEND;
+      const outer = HORIZON_RENDER_EXTEND;
       const W = this.mapWidth;
       const H = this.mapHeight;
       const pushShelfQuad = (
@@ -1127,12 +1395,50 @@ export class CaptureTileRenderer3D {
     addInfinityShelf();
 
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
-    geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
-    geometry.setAttribute('captureUv', new THREE.BufferAttribute(new Float32Array(terrainCaptureUvs), 2));
-    geometry.setAttribute('captureMask', new THREE.BufferAttribute(new Float32Array(terrainCaptureMasks), 1));
-    geometry.setAttribute('terrainShade', new THREE.BufferAttribute(new Float32Array(terrainShades), 1));
-    geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
+    if (triangleDebug) {
+      const debugVertexCount = terrainIndices.length;
+      const debugPositions = new Float32Array(debugVertexCount * 3);
+      const debugNormals = new Float32Array(debugVertexCount * 3);
+      const debugCaptureUvs = new Float32Array(debugVertexCount * 2);
+      const debugCaptureMasks = new Float32Array(debugVertexCount);
+      const debugTerrainShades = new Float32Array(debugVertexCount);
+      const debugTriangleColors = new Float32Array(debugVertexCount * 3);
+
+      for (let dst = 0; dst < debugVertexCount; dst++) {
+        const src = terrainIndices[dst];
+        const src3 = src * 3;
+        const dst3 = dst * 3;
+        debugPositions[dst3] = terrainPositions[src3];
+        debugPositions[dst3 + 1] = terrainPositions[src3 + 1];
+        debugPositions[dst3 + 2] = terrainPositions[src3 + 2];
+        debugNormals[dst3] = terrainNormals[src3];
+        debugNormals[dst3 + 1] = terrainNormals[src3 + 1];
+        debugNormals[dst3 + 2] = terrainNormals[src3 + 2];
+        const src2 = src * 2;
+        const dst2 = dst * 2;
+        debugCaptureUvs[dst2] = terrainCaptureUvs[src2];
+        debugCaptureUvs[dst2 + 1] = terrainCaptureUvs[src2 + 1];
+        debugCaptureMasks[dst] = terrainCaptureMasks[src];
+        debugTerrainShades[dst] = terrainShades[src];
+        writeTriangleDebugColor(debugTriangleColors, dst3, Math.floor(dst / 3));
+      }
+
+      geometry.setAttribute('position', new THREE.BufferAttribute(debugPositions, 3));
+      geometry.setAttribute('normal', new THREE.BufferAttribute(debugNormals, 3));
+      geometry.setAttribute('captureUv', new THREE.BufferAttribute(debugCaptureUvs, 2));
+      geometry.setAttribute('captureMask', new THREE.BufferAttribute(debugCaptureMasks, 1));
+      geometry.setAttribute('terrainShade', new THREE.BufferAttribute(debugTerrainShades, 1));
+      geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(debugTriangleColors, 3));
+    } else {
+      const vertexCount = terrainPositions.length / 3;
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
+      geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
+      geometry.setAttribute('captureUv', new THREE.BufferAttribute(new Float32Array(terrainCaptureUvs), 2));
+      geometry.setAttribute('captureMask', new THREE.BufferAttribute(new Float32Array(terrainCaptureMasks), 1));
+      geometry.setAttribute('terrainShade', new THREE.BufferAttribute(new Float32Array(terrainShades), 1));
+      geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3));
+      geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
+    }
     geometry.computeBoundingSphere();
     this.cacheTerrainGeometry(nextTerrainLodKey, geometry);
 
@@ -1236,9 +1542,12 @@ export class CaptureTileRenderer3D {
 
     const gridMode = getGridOverlay();
     const intensity = getGridOverlayIntensity();
+    const triangleDebug = getTriangleDebug();
+    this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
     const rebuilt = this.rebuildGeometryIfNeeded(
       cellSize,
       graphicsConfig,
+      triangleDebug,
       lod,
       sharedLodGrid,
     );
@@ -1249,6 +1558,7 @@ export class CaptureTileRenderer3D {
       this.ensureManaTerrainTexture(this.gridCellsX, this.gridCellsY);
     }
     this.setTerrainTextureActive(terrainTextureEnabled);
+    this.refreshBuildGridTexture(getBuildGridDebug());
     const overlayActive = gridMode !== 'off' && intensity > 0;
     this.overlayEnabledUniform.value = overlayActive ? 1 : 0;
     this.overlayOpacityUniform.value = overlayActive ? captureOverlayOpacity(intensity) : 0;
@@ -1300,7 +1610,9 @@ export class CaptureTileRenderer3D {
     this.terrainMesh.parent?.remove(this.terrainMesh);
     this.overlayTexture.dispose();
     this.terrainTexture.dispose();
+    this.buildGridTexture.dispose();
     this.overlayPixels = new Uint8Array(4);
+    this.buildGridPixels = new Uint8Array(4);
     this.tileSubdivisions = new Uint8Array(0);
     this.tileSideWalls = new Uint8Array(0);
     this.minTileSubdivisions = new Uint8Array(0);

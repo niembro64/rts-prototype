@@ -24,7 +24,7 @@ import type { BuildGhost3D } from './BuildGhost3D';
 import type { CursorGround, SimGroundPoint } from './CursorGround';
 import type { CommandQueue } from '../sim/commands';
 import type { InputContext } from '@/types/input';
-import type { TerrainShape } from '@/types/terrain';
+import type { TerrainBuildabilityGrid, TerrainShape } from '@/types/terrain';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import {
   findClosestSelectableEntityToPoint,
@@ -83,6 +83,7 @@ type EntitySource = {
   getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
   getUnitsByPlayer: (playerId: PlayerId) => Entity[];
   getEntitySetVersion?: () => number;
+  getTerrainBuildabilityGrid?: () => TerrainBuildabilityGrid | null;
 };
 
 export class Input3DManager {
@@ -656,6 +657,7 @@ export class Input3DManager {
     const snapped = getSnappedBuildPosition(worldX, worldY, buildType);
     const buildings = this.entitySource.getBuildings();
     const entitySetVersion = this.entitySource.getEntitySetVersion?.() ?? buildings.length;
+    const terrainBuildabilityGrid = this.entitySource.getTerrainBuildabilityGrid?.() ?? null;
     const occupancyVersion = `${entitySetVersion}`;
     if (occupancyVersion !== this.buildOccupancyVersion || !this.buildOccupiedCells) {
       this.buildOccupancyVersion = occupancyVersion;
@@ -668,6 +670,8 @@ export class Input3DManager {
       this.mapWidth,
       this.mapHeight,
       entitySetVersion,
+      terrainBuildabilityGrid?.version ?? 0,
+      terrainBuildabilityGrid?.configKey ?? '',
     ].join(':');
     if (validationKey !== this.buildGhostValidationKey || !this.buildGhostDiagnostics) {
       this.buildGhostValidationKey = validationKey;
@@ -677,6 +681,7 @@ export class Input3DManager {
         buildings,
         this.metalDeposits,
         this.buildOccupiedCells,
+        terrainBuildabilityGrid,
       );
       this.buildGhostCanPlace = this.buildGhostDiagnostics.canPlace;
     }

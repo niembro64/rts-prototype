@@ -377,6 +377,7 @@ export class RtsScene3D {
     getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
     getUnitsByPlayer: (playerId: PlayerId) => Entity[];
     getEntitySetVersion: () => number;
+    getTerrainBuildabilityGrid: () => ReturnType<ClientViewState['getTerrainBuildabilityGrid']>;
   };
   private _cachedSelectedUnits: Entity[] = [];
   private _cachedSelectedBuildings: Entity[] = [];
@@ -604,6 +605,7 @@ export class RtsScene3D {
       getBuildingsByPlayer: (pid) => this.clientViewState.getBuildingsByPlayer(pid),
       getUnitsByPlayer: (pid) => this.clientViewState.getUnitsByPlayer(pid),
       getEntitySetVersion: () => this.clientViewState.getEntitySetVersion(),
+      getTerrainBuildabilityGrid: () => this.clientViewState.getTerrainBuildabilityGrid(),
     };
 
     this.snapshotBuffer.attach(this.gameConnection);
@@ -649,6 +651,7 @@ export class RtsScene3D {
       this.clientViewState,
       this.mapWidth,
       this.mapHeight,
+      this.metalDeposits,
     );
     this.metalDepositRenderer = new MetalDepositRenderer3D(
       this.threeApp.world,
