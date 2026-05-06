@@ -4,6 +4,7 @@ import { assertCanonicalLandCellSize } from '../../landGrid';
 import {
   TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD,
   TERRAIN_MESH_SUBDIV,
+  TERRAIN_SMOOTHING_LAMBDA_Y,
 } from './terrainConfig';
 import {
   getInstalledTerrainTileMap,
@@ -69,9 +70,27 @@ export function buildTerrainTileMap(
       const h10 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx + 1, qy);
       const h11 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx + 1, qy + 1);
       const h01 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx, qy + 1);
-      const hc = terrainCenterFanHeight(h00, h10, h11, h01);
-      centerHeights[idx] = hc;
-      centerFanMask[idx] = shouldUseTerrainCenterFan(h00, h10, h11, h01, hc) ? 1 : 0;
+      centerHeights[idx] = terrainCenterFanHeight(h00, h10, h11, h01);
+    }
+  }
+
+  smoothTerrainTriangleVerticesInPlace(
+    heights,
+    centerHeights,
+    verticesX,
+    verticesY,
+    TERRAIN_SMOOTHING_LAMBDA_Y,
+  );
+
+  for (let qy = 0; qy < verticesY - 1; qy++) {
+    const rowOff = qy * (verticesX - 1);
+    for (let qx = 0; qx < verticesX - 1; qx++) {
+      const idx = rowOff + qx;
+      const h00 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx, qy);
+      const h10 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx + 1, qy);
+      const h11 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx + 1, qy + 1);
+      const h01 = terrainTileMapHeightAtVertexRaw(heights, verticesX, qx, qy + 1);
+      centerFanMask[idx] = shouldUseTerrainCenterFan(h00, h10, h11, h01, centerHeights[idx]) ? 1 : 0;
     }
   }
 
@@ -89,6 +108,66 @@ export function buildTerrainTileMap(
     centerHeights,
     centerFanMask,
   };
+}
+
+/** One Jacobi-style Laplacian pass over the triangle-vertex set
+ *  (heightmap corners + per-quad center vertices). Each vertex pulls
+ *  toward the mean height of every other vertex it shares a triangle
+ *  edge with: corners ↔ 4 cardinal corners + up to 4 surrounding
+ *  centers; centers ↔ their 4 corners. X/Z neighborhoods are
+ *  symmetric on the regular grid, so only Y is persisted. */
+function smoothTerrainTriangleVerticesInPlace(
+  heights: number[],
+  centerHeights: number[],
+  verticesX: number,
+  verticesY: number,
+  lambdaY: number,
+): void {
+  if (lambdaY <= 0) return;
+  const quadsX = verticesX - 1;
+  const quadsY = verticesY - 1;
+  const newCorner = new Array<number>(heights.length);
+  const newCenter = new Array<number>(centerHeights.length);
+
+  for (let vy = 0; vy < verticesY; vy++) {
+    for (let vx = 0; vx < verticesX; vx++) {
+      const idx = vy * verticesX + vx;
+      let sum = 0;
+      let count = 0;
+      if (vx > 0) { sum += heights[idx - 1]; count++; }
+      if (vx < verticesX - 1) { sum += heights[idx + 1]; count++; }
+      if (vy > 0) { sum += heights[idx - verticesX]; count++; }
+      if (vy < verticesY - 1) { sum += heights[idx + verticesX]; count++; }
+      for (let dy = -1; dy <= 0; dy++) {
+        const qy = vy + dy;
+        if (qy < 0 || qy >= quadsY) continue;
+        for (let dx = -1; dx <= 0; dx++) {
+          const qx = vx + dx;
+          if (qx < 0 || qx >= quadsX) continue;
+          sum += centerHeights[qy * quadsX + qx];
+          count++;
+        }
+      }
+      const h = heights[idx];
+      newCorner[idx] = count > 0 ? h + lambdaY * (sum / count - h) : h;
+    }
+  }
+
+  for (let qy = 0; qy < quadsY; qy++) {
+    for (let qx = 0; qx < quadsX; qx++) {
+      const idx = qy * quadsX + qx;
+      const h00 = heights[qy * verticesX + qx];
+      const h10 = heights[qy * verticesX + qx + 1];
+      const h11 = heights[(qy + 1) * verticesX + qx + 1];
+      const h01 = heights[(qy + 1) * verticesX + qx];
+      const mean = (h00 + h10 + h11 + h01) * 0.25;
+      const h = centerHeights[idx];
+      newCenter[idx] = h + lambdaY * (mean - h);
+    }
+  }
+
+  for (let i = 0; i < heights.length; i++) heights[i] = newCorner[i];
+  for (let i = 0; i < centerHeights.length; i++) centerHeights[i] = newCenter[i];
 }
 
 function terrainTileMapHeightAtVertexRaw(

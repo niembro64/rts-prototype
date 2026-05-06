@@ -8,13 +8,24 @@ export const WATER_LEVEL_FRACTION = 0.71;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
 // Host sim, client prediction, and terrain rendering share this exact mesh.
-export const AUTHORITATIVE_TERRAIN_SUBDIV = 1;
+export const AUTHORITATIVE_TERRAIN_SUBDIV = 4;
 export const TERRAIN_MESH_SUBDIV = AUTHORITATIVE_TERRAIN_SUBDIV;
 
 /** Add an averaged center vertex to an authoritative terrain sub-quad
  *  when the four corners are non-planar enough to make the old fixed
  *  diagonal visibly biased. Flat/planar cells stay at two triangles. */
 export const TERRAIN_CENTER_FAN_HEIGHT_THRESHOLD = 1;
+
+/** Per-axis Laplacian blend factors for the triangle-vertex smoothing
+ *  pass that runs after heights are sampled but before the center-fan
+ *  topology is decided. Each vertex (corner or quad center) is pulled
+ *  toward the mean of all triangle-edge-touching neighbors by these
+ *  fractions. X and Z are stored for completeness; on a regular grid
+ *  the cardinal+center neighbor sets are symmetric, so x/z deltas are
+ *  zero for interior vertices and only y actually moves geometry. */
+export const TERRAIN_SMOOTHING_LAMBDA_X = 0.25;
+export const TERRAIN_SMOOTHING_LAMBDA_Y = 0.5;
+export const TERRAIN_SMOOTHING_LAMBDA_Z = 0.25;
 
 /** Magnitude only; TerrainShape decides the sign. */
 export const TERRAIN_SHAPE_MAGNITUDE = 600;
