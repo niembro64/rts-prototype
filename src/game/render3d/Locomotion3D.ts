@@ -26,7 +26,6 @@ import {
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
-import { SHELL_OPACITY, NORMAL_OPACITY } from '@/shellConfig';
 import { LAND_CELL_SIZE } from '../../config';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 
@@ -173,6 +172,10 @@ type LegInstance = {
    *  inverted and the two sides are inverted from each other —
    *  diagonal-pair alternating gait from frame 1. */
   phaseShift01: 0 | 1;
+  /** True when this leg allocated from the transparent construction-shell
+   *  pools in LegInstancedRenderer. Completion triggers a unit mesh rebuild,
+   *  freeing these slots and reallocating normal-material slots. */
+  shellPool: boolean;
 
   /** Current foot world position. Y is sampled from terrain — when
    *  the foot is planted (not sliding) this XYZ doesn't change at
@@ -495,6 +498,7 @@ function buildLegs(
   if (legLod === 'none') return undefined;
 
   const { left, all: allConfigs, sides } = resolveMirroredLegConfigs(cfg, r);
+  const shellPool = !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
 
   const group = new THREE.Group();
   worldGroup.add(group);
@@ -523,10 +527,10 @@ function buildLegs(
     // tiers — 'simple' is a single hip→foot cylinder in the upper
     // pool). If the pool is exhausted, alloc returns -1 and the
     // leg quietly skips rendering.
-    const upperSlot = legRenderer.allocUpper();
+    const upperSlot = legRenderer.allocUpper(shellPool);
     let lowerSlot = -1;
     if (legLod === 'animated' || legLod === 'full') {
-      lowerSlot = legRenderer.allocLower();
+      lowerSlot = legRenderer.allocLower(shellPool);
     }
 
     // Joint spheres at 'full' LOD only — all three slots allocate
@@ -542,9 +546,9 @@ function buildLegs(
     const kneeJointRadius = Math.max(1, cfg.kneeRadius);
     const footJointRadius = Math.max(1, cfg.footRadius);
     if (legLod === 'full') {
-      hipJointSlot = legRenderer.allocJoint();
-      kneeJointSlot = legRenderer.allocJoint();
-      footJointSlot = legRenderer.allocJoint();
+      hipJointSlot = legRenderer.allocJoint(shellPool);
+      kneeJointSlot = legRenderer.allocJoint(shellPool);
+      footJointSlot = legRenderer.allocJoint(shellPool);
     }
 
     // Hip Y defaults to the lifted vertical mid-point of whichever body
@@ -560,6 +564,7 @@ function buildLegs(
       side,
       hipY,
       phaseShift01,
+      shellPool,
       worldX: 0, worldY: 0, worldZ: 0,
       startWorldX: 0, startWorldY: 0, startWorldZ: 0,
       targetWorldX: 0, targetWorldY: 0, targetWorldZ: 0,
@@ -844,19 +849,6 @@ export function updateLocomotion(
   }
 
   if (mesh.type === 'legs') {
-    // Per-leg shell alpha — pushed into the LegInstancedRenderer's
-    // per-instance buffers so a half-built unit's legs / joints render
-    // at SHELL_OPACITY along with the chassis / turrets / barrels.
-    const isShell = !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
-    const legAlpha = isShell ? SHELL_OPACITY : NORMAL_OPACITY;
-    for (const leg of mesh.legs) {
-      if (leg.upperSlot >= 0) legRenderer.setUpperAlpha(leg.upperSlot, legAlpha);
-      if (leg.lowerSlot >= 0) legRenderer.setLowerAlpha(leg.lowerSlot, legAlpha);
-      if (leg.hipJointSlot >= 0) legRenderer.setJointAlpha(leg.hipJointSlot, legAlpha);
-      if (leg.kneeJointSlot >= 0) legRenderer.setJointAlpha(leg.kneeJointSlot, legAlpha);
-      if (leg.footJointSlot >= 0) legRenderer.setJointAlpha(leg.footJointSlot, legAlpha);
-    }
-
     // World-planted feet. Each foot sits at a real world XYZ point on
     // the terrain and stays there until the body has moved or yawed
     // or tilted enough that the planted foot exits the leg's REST
@@ -1078,6 +1070,7 @@ export function updateLocomotion(
           hipWorldX, hipWorldY, hipWorldZ,
           footX, footY, footZ,
           leg.upperThick,
+          leg.shellPool,
         );
         // No lower slot allocated; nothing to do.
       } else {
@@ -1092,16 +1085,18 @@ export function updateLocomotion(
           hipWorldX, hipWorldY, hipWorldZ,
           knee.x, knee.y, knee.z,
           leg.upperThick,
+          leg.shellPool,
         );
         legRenderer.updateLower(
           leg.lowerSlot,
           knee.x, knee.y, knee.z,
           footX, footY, footZ,
           leg.lowerThick,
+          leg.shellPool,
         );
-        if (leg.hipJointSlot >= 0)  legRenderer.updateJoint(leg.hipJointSlot,  hipWorldX, hipWorldY, hipWorldZ, leg.hipJointRadius);
-        if (leg.kneeJointSlot >= 0) legRenderer.updateJoint(leg.kneeJointSlot, knee.x, knee.y, knee.z, leg.kneeJointRadius);
-        if (leg.footJointSlot >= 0) legRenderer.updateJoint(leg.footJointSlot, footX, footY, footZ, leg.footJointRadius);
+        if (leg.hipJointSlot >= 0)  legRenderer.updateJoint(leg.hipJointSlot,  hipWorldX, hipWorldY, hipWorldZ, leg.hipJointRadius, leg.shellPool);
+        if (leg.kneeJointSlot >= 0) legRenderer.updateJoint(leg.kneeJointSlot, knee.x, knee.y, knee.z, leg.kneeJointRadius, leg.shellPool);
+        if (leg.footJointSlot >= 0) legRenderer.updateJoint(leg.footJointSlot, footX, footY, footZ, leg.footJointRadius, leg.shellPool);
       }
     }
   }
@@ -1126,11 +1121,11 @@ export function destroyLocomotion(
   // by free() and pushed onto the pool's free-list.
   if (mesh.type === 'legs') {
     for (const leg of mesh.legs) {
-      legRenderer.freeUpper(leg.upperSlot);
-      legRenderer.freeLower(leg.lowerSlot);
-      legRenderer.freeJoint(leg.hipJointSlot);
-      legRenderer.freeJoint(leg.kneeJointSlot);
-      legRenderer.freeJoint(leg.footJointSlot);
+      legRenderer.freeUpper(leg.upperSlot, leg.shellPool);
+      legRenderer.freeLower(leg.lowerSlot, leg.shellPool);
+      legRenderer.freeJoint(leg.hipJointSlot, leg.shellPool);
+      legRenderer.freeJoint(leg.kneeJointSlot, leg.shellPool);
+      legRenderer.freeJoint(leg.footJointSlot, leg.shellPool);
     }
   }
   mesh.group.parent?.remove(mesh.group);

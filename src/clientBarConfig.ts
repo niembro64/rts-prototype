@@ -119,7 +119,7 @@ export const CLIENT_CONFIG = {
   lobbyVisible: { default: { mobile: true, desktop: true } },
   unitCapFallback: { default: MAX_TOTAL_UNITS },
   gridOverlay: {
-    default: 'high' as const,
+    default: 'zero' as const,
     options: [
       { value: 'off' as const, label: 'OFF' },
       { value: 'zero' as const, label: 'ZERO' },

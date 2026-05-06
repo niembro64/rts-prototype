@@ -22,11 +22,14 @@ import type { NetworkCaptureTile } from '@/types/capture';
 import {
   LAND_CELL_SIZE,
   MANA_TILE_TEXTURE,
+  MANA_TILE_TEXTURE_CACHE_KEY,
   MANA_TILE_TEXTURE_PIXELS_PER_TILE,
+  MANA_TILE_TEXTURE_SWIRLS_ENABLED,
   MAP_BG_COLOR,
   MANA_TILE_GROUND_LIFT,
   MANA_TILE_FLAT_HEIGHT_THRESHOLD,
   HORIZON_RENDER_EXTEND,
+  GROUND_RENDER_ORDER,
 } from '../../config';
 import {
   getTerrainMapBoundaryFade,
@@ -61,6 +64,11 @@ import type { RenderLodGrid } from './RenderLodGrid';
 import { GRID_CELL_SIZE } from '../sim/grid';
 import { getOccupiedBuildingCells } from '../sim/buildPlacementValidation';
 import { getMetalDepositGridCells } from '../sim/metalDeposits';
+import {
+  getTerrainShadowCacheKey,
+  terrainPrecomputedShadow,
+  terrainSunShade,
+} from './SunLighting';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const TERRAIN_LOD_REBUILD_CELL_MULTIPLIER = 4;
@@ -111,6 +119,22 @@ function writeManaTerrainColorBytes(
     out[offset] = NEUTRAL_R_BYTE;
     out[offset + 1] = NEUTRAL_G_BYTE;
     out[offset + 2] = NEUTRAL_B_BYTE;
+    out[offset + 3] = 255;
+    return;
+  }
+
+  if (!MANA_TILE_TEXTURE_SWIRLS_ENABLED) {
+    let r = clamp01(MANA_TILE_TEXTURE.base.color.r * MANA_TILE_TEXTURE.base.brightness) * 255;
+    let g = clamp01(MANA_TILE_TEXTURE.base.color.g * MANA_TILE_TEXTURE.base.brightness) * 255;
+    let b = clamp01(MANA_TILE_TEXTURE.base.color.b * MANA_TILE_TEXTURE.base.brightness) * 255;
+    if (boundaryFade > 0) {
+      r = lerpColorChannel(r, NEUTRAL_R_BYTE, boundaryFade);
+      g = lerpColorChannel(g, NEUTRAL_G_BYTE, boundaryFade);
+      b = lerpColorChannel(b, NEUTRAL_B_BYTE, boundaryFade);
+    }
+    out[offset] = Math.round(clamp01(r / 255) * 255);
+    out[offset + 1] = Math.round(clamp01(g / 255) * 255);
+    out[offset + 2] = Math.round(clamp01(b / 255) * 255);
     out[offset + 3] = 255;
     return;
   }
@@ -294,6 +318,7 @@ export class CaptureTileRenderer3D {
     this.terrainMesh = new THREE.Mesh(this.terrainGeometry, this.terrainMaterial);
     this.terrainMesh.frustumCulled = false;
     this.terrainMesh.visible = false;
+    this.terrainMesh.renderOrder = GROUND_RENDER_ORDER.terrain;
     parentWorld.add(this.terrainMesh);
   }
 
@@ -368,8 +393,9 @@ export class CaptureTileRenderer3D {
             '#include <color_fragment>',
             'if (uManaTerrainTextureEnabled > 0.0) {',
             '  vec2 manaUv = clamp(vManaWorldPos.xz / uManaTerrainMapSize, 0.0, 1.0);',
-            '  diffuseColor.rgb = texture2D(uManaTerrainMap, manaUv).rgb * vManaShade;',
+            '  diffuseColor.rgb = texture2D(uManaTerrainMap, manaUv).rgb;',
             '}',
+            'diffuseColor.rgb *= vManaShade;',
             'if (uCaptureOverlayEnabled > 0.0 && vCaptureMask > 0.0) {',
             '  vec4 captureOverlay = texture2D(uCaptureOverlayMap, vCaptureUv);',
             '  float captureBlend = clamp(captureOverlay.a * uCaptureOverlayOpacity, 0.0, 1.0);',
@@ -402,7 +428,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'capture-tile-single-surface-v6';
+    this.terrainMaterial.customProgramCacheKey = () => 'capture-tile-single-surface-v7';
   }
 
   private makeOverlayTexture(width: number, height: number): THREE.DataTexture {
@@ -570,7 +596,7 @@ export class CaptureTileRenderer3D {
     const pixelsPerTile = Math.max(1, MANA_TILE_TEXTURE_PIXELS_PER_TILE | 0);
     const width = Math.max(1, cellsX * pixelsPerTile);
     const height = Math.max(1, cellsY * pixelsPerTile);
-    const key = `${width}|${height}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_TEXTURE_PIXELS_PER_TILE}|${getTerrainVersion()}`;
+    const key = `${width}|${height}|${this.mapWidth}|${this.mapHeight}|${MANA_TILE_TEXTURE_PIXELS_PER_TILE}|${getTerrainVersion()}|${MANA_TILE_TEXTURE_CACHE_KEY}`;
     this.terrainTextureMapSizeUniform.value.set(this.mapWidth, this.mapHeight);
     if (this.terrainTextureKey === key) return;
 
@@ -623,6 +649,7 @@ export class CaptureTileRenderer3D {
       graphicsConfig.cameraSphereRadii.mass,
       graphicsConfig.cameraSphereRadii.impostor,
       getTerrainVersion(),
+      getTerrainShadowCacheKey(),
     ];
 
     if (lod && sharedLodGrid) {
@@ -1007,6 +1034,24 @@ export class CaptureTileRenderer3D {
             cellSize,
           );
           terrainNormals.push(normal.nx, normal.nz, normal.ny);
+          const precomputedShadow = terrainPrecomputedShadow(
+            wx,
+            wz,
+            h - MANA_TILE_GROUND_LIFT,
+            this.mapWidth,
+            this.mapHeight,
+            (sx, sy) => getTerrainMeshHeight(
+              sx,
+              sy,
+              this.mapWidth,
+              this.mapHeight,
+              cellSize,
+            ),
+          );
+          terrainShades[terrainShades.length - 1] = terrainSunShade(
+            { x: normal.nx, y: normal.ny, z: normal.nz },
+            precomputedShadow,
+          );
 
           return localIndex;
         };

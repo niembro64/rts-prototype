@@ -6,6 +6,7 @@ import { aimTurretsToward } from './turretInit';
 import { createTurretsForBuilding } from './unitDefinitions';
 import { getBuildingConfig } from './buildConfigs';
 import { GRID_CELL_SIZE } from './grid';
+import { BUILDABLE_UNIT_IDS } from './blueprints';
 import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
 import {
   REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
@@ -321,6 +322,57 @@ function placeArcRow(
   return entities;
 }
 
+function getAvailableDemoFactoryUnitTypes(
+  availableUnitTypes?: ReadonlySet<string>,
+): string[] {
+  return BUILDABLE_UNIT_IDS.filter((unitType) =>
+    availableUnitTypes ? availableUnitTypes.has(unitType) : true,
+  );
+}
+
+function seedFactoryRepeatBuild(factory: Entity, unitType: string): void {
+  if (!factory.factory) return;
+  factory.factory.buildQueue.length = 0;
+  factory.factory.buildQueue.push(unitType);
+}
+
+function placeFactoryArcRowForUnitTypes(
+  world: WorldState,
+  construction: ConstructionSystem,
+  unitTypes: readonly string[],
+  oval: MapOvalMetrics,
+  radius: number,
+  baseAngle: number,
+  sectorAngle: number,
+  playerId: PlayerId,
+  factoryWaypoint: InitialFactoryWaypointConfig,
+): Entity[] {
+  const count = unitTypes.length;
+  if (count <= 0) return [];
+  const entities: Entity[] = [];
+  const startAngle = baseAngle - sectorAngle / 2;
+  const angularStep = count > 1 ? sectorAngle / (count - 1) : 0;
+
+  for (let j = 0; j < count; j++) {
+    const a = count > 1 ? startAngle + j * angularStep : baseAngle;
+    const point = mapOvalPointAt(oval, a, radius);
+    const factory = placeCompleteBuilding(
+      world,
+      construction,
+      'factory',
+      point.x,
+      point.y,
+      playerId,
+      factoryWaypoint,
+    );
+    if (!factory) continue;
+    seedFactoryRepeatBuild(factory, unitTypes[j]);
+    entities.push(factory);
+  }
+
+  return entities;
+}
+
 /**
  * Spawn a full base for each player on three concentric oval arcs centered
  * on the map. Mirrors the original square layout's radial ordering —
@@ -333,19 +385,17 @@ function placeArcRow(
  *           factory arc ← closest to map center
  *
  * Each arc spans the same angular sector for the player, and every
- * building faces the map center. Building counts and oval radial gaps are
- * controlled by DEMO_CONFIG.
+ * building faces the map center. Solar/wind/tower counts and oval radial
+ * gaps are controlled by DEMO_CONFIG. Fabricators are derived from the
+ * active demo unit roster: one fabricator per available unit type, seeded
+ * to repeat-build that unit.
  */
 export function spawnInitialBases(
   world: WorldState,
   construction: ConstructionSystem,
   playerIds: PlayerId[],
   mode: InitialBaseMode = 'demo',
-  // Reserved — when set, future demo-layout work can derive the
-  // factory roster from this allowed-unit set (one factory per type)
-  // instead of DEMO_CONFIG.factoryCount. Accepted today so the
-  // GameServer call site stays stable while that work lands.
-  _availableUnitTypes?: ReadonlySet<string>,
+  availableUnitTypes?: ReadonlySet<string>,
 ): Entity[] {
   const entities: Entity[] = [];
 
@@ -361,6 +411,7 @@ export function spawnInitialBases(
   const { oval, radius: spawnRadius } = getDemoOval(world);
   const { cx, cy } = oval;
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
+  const factoryUnitTypes = getAvailableDemoFactoryUnitTypes(availableUnitTypes);
 
   const solarConfig = getBuildingConfig('solar');
   const windConfig = getBuildingConfig('wind');
@@ -423,9 +474,12 @@ export function spawnInitialBases(
       oval, windRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
-    // Factory arc.
-    entities.push(...placeArcRow(
-      world, construction, 'factory', DEMO_CONFIG.factoryCount,
+    // Fabricator arc — one fabricator per available demo unit type.
+    // Each fabricator starts with a repeat-build selection matching
+    // its unit type, so the base layout and AI production inventory
+    // stay tied to the same unit roster.
+    entities.push(...placeFactoryArcRowForUnitTypes(
+      world, construction, factoryUnitTypes,
       oval, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 

@@ -474,6 +474,90 @@ export const SKY_RENDER_CONFIG = {
   midStop: 0.58,
 } as const;
 
+// One shared sun definition for scene lights, terrain shading, and
+// cheap contact-shadow offsets. Azimuth is in sim/map space:
+// x=+east, y=+south. A diagonal, lower sun angle makes baked terrain
+// shadows readable without paying for real-time shadow maps.
+export const SUN_RENDER_CONFIG = {
+  azimuthRad: -Math.PI * 0.25,
+  elevationRad: Math.PI * 0.1,
+  color: 0xffffff,
+  ambientIntensity: 0.12,
+  directionalIntensity: 2.15,
+  distance: 6000,
+  visibleSkyDisk: {
+    enabled: true,
+    distance: 60000,
+    size: 2200,
+    texturePixels: 128,
+    coreColor: '#fff7d6',
+    haloColor: '#f6c66f',
+    coreRadius: 0.2,
+    haloRadius: 0.72,
+    opacity: 0.95,
+  },
+} as const;
+
+// Static terrain shading is baked into terrain vertices when the mesh
+// is rebuilt. It is not a real-time shadow map; it is a cheap, stable
+// directional shade plus short terrain self-shadow probes along the
+// sun ray.
+export const TERRAIN_SHADOW_RENDER_CONFIG = {
+  enabled: true,
+  ambient: 0.08,
+  directStrength: 2.35,
+  minShade: 0.035,
+  maxShade: 2.25,
+  precomputed: {
+    enabled: true,
+    samples: 18,
+    sampleDistance: LAND_CELL_SIZE * 0.18,
+    bias: 0,
+    softness: 24,
+    strength: 1,
+  },
+} as const;
+
+// Stable render layering for ground-adjacent systems. Contact shadows
+// are blended in the opaque render phase after terrain but before
+// units/buildings, so uneven terrain cannot depth-clip the shadow and
+// entity meshes still cover it naturally.
+export const GROUND_RENDER_ORDER = {
+  terrain: -20,
+  contactShadows: -10,
+} as const;
+
+// Cheap object grounding shadows. This intentionally avoids Three.js
+// shadow maps: all units/buildings write into one transparent instanced
+// contact-shadow mesh and update at LOD-dependent strides.
+export const CONTACT_SHADOW_RENDER_CONFIG = {
+  enabled: true,
+  maxInstances: 16000,
+  lift: 1.35,
+  opacity: {
+    min: 0.11,
+    low: 0.13,
+    medium: 0.16,
+    high: 0.18,
+    max: 0.2,
+  },
+  frameStride: {
+    min: 4,
+    low: 3,
+    medium: 2,
+    high: 1,
+    max: 1,
+  },
+  unitShotRadiusMultiplier: 1.25,
+  buildingRadiusMultiplier: 0.72,
+  minBuildingRadius: 22,
+  sunStretch: 1.35,
+  crossSunSquash: 0.78,
+  unitSunOffsetPerHeight: 0.18,
+  buildingSunOffsetPerHeight: 0.22,
+  maxSunOffset: 70,
+} as const;
+
 // Seam-safe mana tile terrain texture. These waves are evaluated from
 // world-space X/Z only, so adjacent mana tiles share exact vertex colors
 // on shared edges and corners.
@@ -491,6 +575,10 @@ export const MANA_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.2;
  *  more procedural texture detail without requiring more terrain
  *  triangles; cost is one small GPU texture per map. */
 export const MANA_TILE_TEXTURE_PIXELS_PER_TILE = 32;
+/** Master switch for the procedural sine-wave swirls in the mana/ground texture.
+ *  When false, the terrain keeps a flat base color and still receives baked
+ *  lighting/shadows from TERRAIN_SHADOW_RENDER_CONFIG. */
+export const MANA_TILE_TEXTURE_SWIRLS_ENABLED = true;
 
 const manaTileWaveScale = (tileWidths: number): number =>
   (Math.PI * 2) /
@@ -498,24 +586,24 @@ const manaTileWaveScale = (tileWidths: number): number =>
 
 export const MANA_TILE_TEXTURE = {
   xWaves: [
-    { scale: manaTileWaveScale(9.4), phase: 1.31, amplitude: 0.34 },
+    { scale: manaTileWaveScale(20.4), phase: 1.31, amplitude: 0.14 },
     { scale: manaTileWaveScale(17.8), phase: 4.76, amplitude: 0.16 },
   ],
   zWaves: [
-    { scale: manaTileWaveScale(12.7), phase: 2.38, amplitude: 0.31 },
+    { scale: manaTileWaveScale(32.7), phase: 2.38, amplitude: 0.11 },
     { scale: manaTileWaveScale(23.6), phase: 5.11, amplitude: 0.14 },
   ],
   cross: {
     // Keep this at 0 by default: a strong `(x + z)` term reads as a
     // regular 45-degree pattern across the mana grid.
-    scale: manaTileWaveScale(31.5),
+    scale: manaTileWaveScale(61.5),
     phase: 1.9,
     amplitude: 0,
     xInfluence: 0.31,
     zInfluence: -0.73,
   },
   fleck: {
-    xScale: manaTileWaveScale(15.2),
+    xScale: manaTileWaveScale(35.2),
     zScaleMultiplier: 0.61,
     xPhase: 3.37,
     zPhase: 0.94,
@@ -523,34 +611,39 @@ export const MANA_TILE_TEXTURE = {
     power: 1.6,
   },
   vein: {
-    xScale: manaTileWaveScale(18.5),
-    zScale: manaTileWaveScale(33.7),
-    xWarpScale: manaTileWaveScale(24.3),
-    zWarpScale: manaTileWaveScale(41.9),
+    xScale: manaTileWaveScale(38.5),
+    zScale: manaTileWaveScale(53.7),
+    xWarpScale: manaTileWaveScale(34.3),
+    zWarpScale: manaTileWaveScale(61.9),
     xWarpAmplitude: 3.2,
     zWarpAmplitude: 2.6,
     amplitude: 0.18,
     power: 1.8,
   },
   base: {
-    brightness: 0.86,
-    xWaveAmplitude: 0.1,
-    zWaveAmplitude: 0.085,
-    color: { r: 0.07, g: 0.115, b: 0.13 },
+    brightness: 0.52,
+    xWaveAmplitude: 0.07,
+    zWaveAmplitude: 0.06,
+    color: { r: 0.025, g: 0.045, b: 0.052 },
   },
   tone: {
     // Signed grayscale texture layer. The combined procedural wave
     // signal maps negative -> black, zero -> gray, positive -> white,
     // then blends back into the mana-tile base color.
-    neutral: 0.5,
-    contrast: 0.72,
-    mix: 0.52,
+    neutral: 0.28,
+    contrast: 0.88,
+    mix: 0.36,
   },
   overlayOpacity: {
     min: 0.46,
     max: 0.76,
   },
 } as const;
+
+export const MANA_TILE_TEXTURE_CACHE_KEY = JSON.stringify({
+  swirlsEnabled: MANA_TILE_TEXTURE_SWIRLS_ENABLED,
+  texture: MANA_TILE_TEXTURE,
+});
 
 // Scorched earth burn mark colors and decay
 export const BURN_COLOR_HOT = 0x882200; // bright red start

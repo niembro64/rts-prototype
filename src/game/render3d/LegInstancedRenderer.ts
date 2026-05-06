@@ -16,17 +16,14 @@
 // orthonormal basis (right, up, forward) aligning local +Y to
 // `(end - start)`, then maps the base vertex into world space.
 //
-// Joint spheres ride on a regular THREE.InstancedMesh (no custom
-// shader patch needed — joints are spherically symmetric so all the
-// per-instance state fits in `instanceMatrix`: position from the
-// translation column, radius from the uniform scale).
+// Joint spheres ride on a regular THREE.InstancedMesh. They are
+// spherically symmetric, so all per-instance state fits in
+// `instanceMatrix`: position from the translation column, radius from
+// the uniform scale.
 //
-// Lighting uses MeshLambertMaterial — patched with onBeforeCompile
-// for cylinders (position + normal chunks); joints use stock
-// Lambert via InstancedMesh's built-in `instanceMatrix` path. The
-// rest of Three's Lambert pipeline (ambient + sun direction + the
-// project matrix chain) runs unchanged, so legs match the rest of
-// the scene shading-wise.
+// Leg cylinders use a minimal MeshBasicMaterial with a vertex-only
+// transform patch. No per-instance alpha / transparency shader path is
+// used; that path produced cross-GPU artifacts on some drivers.
 //
 // Slot lifecycle: alloc() returns a slot index from a free-list
 // (LIFO), update(slot, …) writes the per-instance state, free(slot)
@@ -35,8 +32,7 @@
 // after every leg has updated.
 
 import * as THREE from 'three';
-import { makeInstanceAlphaCapable, setInstanceAlphaSlot } from './instanceAlpha';
-import { SHELL_PALE_RGB } from '@/shellConfig';
+import { createShellMaterial } from './ShellMaterial';
 
 /** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
  *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
@@ -45,8 +41,8 @@ import { SHELL_PALE_RGB } from '@/shellConfig';
  *  (logic still updates its planted-foot state). */
 const SLOT_CAP = 16384;
 
-/** Hand-edited vertex / normal chunks injected into Lambert's
- *  shader so each instance positions / orients its cylinder along
+/** Hand-edited vertex transform chunk injected into the material shader
+ *  so each instance positions / orients its cylinder along
  *  the (instStart → instEnd) axis with `instThickness` in XZ.
  *
  *  The basis math:
@@ -83,29 +79,19 @@ vec3 transformed = _segMid
   + _segFwd * position.z * instThickness;
 `;
 
-function makeInstancedLegMaterial(color: number): THREE.MeshBasicMaterial {
-  const material = new THREE.MeshBasicMaterial({ color });
-  // Per-leg-slot `instanceAlpha` is a binary shell flag. Unit legs are
-  // intentionally MeshBasicMaterial so Windows/ANGLE never depends on
-  // driver-specific normal interpolation for the main unit silhouette.
-  const palerStr = `vec3(${SHELL_PALE_RGB[0].toFixed(4)}, ${SHELL_PALE_RGB[1].toFixed(4)}, ${SHELL_PALE_RGB[2].toFixed(4)})`;
+function makeInstancedLegMaterial(color: number, shell: boolean): THREE.MeshBasicMaterial {
+  const material = shell
+    ? createShellMaterial()
+    : new THREE.MeshBasicMaterial({ color });
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
-      `${INSTANCE_HEADER}\nattribute float instanceAlpha;\nvarying float vInstanceAlpha;\n#include <common>`,
+      `${INSTANCE_HEADER}\n#include <common>`,
     );
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
-      INSTANCE_BEGIN_VERTEX + '\n  vInstanceAlpha = instanceAlpha;',
+      INSTANCE_BEGIN_VERTEX,
     );
-    shader.fragmentShader =
-      'varying float vInstanceAlpha;\n' + shader.fragmentShader.replace(
-        '#include <opaque_fragment>',
-        '#include <opaque_fragment>\n'
-        + '  if (vInstanceAlpha < 1.0) {\n'
-        + `    gl_FragColor = vec4(${palerStr}, 1.0);\n`
-        + '  }\n',
-      );
   };
   return material;
 }
@@ -119,7 +105,6 @@ function buildInstancedCylinderGeom(
   startBuf: THREE.InstancedBufferAttribute,
   endBuf: THREE.InstancedBufferAttribute,
   thickBuf: THREE.InstancedBufferAttribute,
-  alphaBuf: THREE.InstancedBufferAttribute,
 ): THREE.InstancedBufferGeometry {
   const base = new THREE.CylinderGeometry(1, 1, 1, 10);
   const inst = new THREE.InstancedBufferGeometry();
@@ -131,7 +116,6 @@ function buildInstancedCylinderGeom(
   inst.setAttribute('instStart', startBuf);
   inst.setAttribute('instEnd', endBuf);
   inst.setAttribute('instThickness', thickBuf);
-  inst.setAttribute('instanceAlpha', alphaBuf);
   // The base geom's bounding sphere is at origin with radius 1; our
   // instances live anywhere on the map, so disable culling. Empty
   // slots have thickness 0 and contribute zero pixels anyway.
@@ -144,12 +128,11 @@ class CylinderPool {
   private startBuf: THREE.InstancedBufferAttribute;
   private endBuf: THREE.InstancedBufferAttribute;
   private thickBuf: THREE.InstancedBufferAttribute;
-  private alphaBuf: THREE.InstancedBufferAttribute;
   private mesh: THREE.Mesh;
   private nextSlot = 0;
   private freeList: number[] = [];
 
-  constructor(parent: THREE.Group, color: number) {
+  constructor(parent: THREE.Group, color: number, shell: boolean) {
     this.startBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP * 3), 3,
     ).setUsage(THREE.DynamicDrawUsage);
@@ -159,26 +142,12 @@ class CylinderPool {
     this.thickBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP), 1,
     ).setUsage(THREE.DynamicDrawUsage);
-    // Per-instance alpha — 1.0 (fully opaque) by default; flipped to
-    // SHELL_OPACITY for shell entities by Locomotion3D.updateLocomotion.
-    const alphaArr = new Float32Array(SLOT_CAP);
-    alphaArr.fill(1.0);
-    this.alphaBuf = new THREE.InstancedBufferAttribute(alphaArr, 1)
-      .setUsage(THREE.DynamicDrawUsage);
 
-    const geom = buildInstancedCylinderGeom(this.startBuf, this.endBuf, this.thickBuf, this.alphaBuf);
-    const material = makeInstancedLegMaterial(color);
+    const geom = buildInstancedCylinderGeom(this.startBuf, this.endBuf, this.thickBuf);
+    const material = makeInstancedLegMaterial(color, shell);
     this.mesh = new THREE.Mesh(geom, material);
     this.mesh.frustumCulled = false;
     parent.add(this.mesh);
-  }
-
-  setAlpha(slot: number, alpha: number): void {
-    if (slot < 0) return;
-    const arr = this.alphaBuf.array as Float32Array;
-    if (arr[slot] === alpha) return;
-    arr[slot] = alpha;
-    this.alphaBuf.needsUpdate = true;
   }
 
   alloc(): number {
@@ -227,9 +196,9 @@ class CylinderPool {
 
 /** Pool of joint spheres (hip / knee / foot). One InstancedMesh of
  *  the canonical unit sphere; per-instance state — position +
- *  uniform scale (radius) — rides on `instanceMatrix`. Stock Lambert
- *  material (no shader patch) since spheres are rotationally
- *  symmetric.
+ *  uniform scale (radius) — rides on `instanceMatrix`. Stock
+ *  MeshBasicMaterial is enough because spheres are rotationally
+ *  symmetric and we avoid transparent shader patches here.
  *
  *  Slot lifecycle mirrors the chassis pool: stable per leg, with a
  *  high-water mark `nextSlot` and a LIFO `freeList`. flush() bumps
@@ -246,22 +215,18 @@ class JointSpherePool {
   private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
-  constructor(parent: THREE.Group, color: number) {
+  constructor(parent: THREE.Group, color: number, shell: boolean) {
     const geom = new THREE.SphereGeometry(1, 8, 6);
-    const material = new THREE.MeshBasicMaterial({ color });
+    const material = shell
+      ? createShellMaterial()
+      : new THREE.MeshBasicMaterial({ color });
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
     // Same caveat as the cylinder + chassis + particle pools — instances
     // live anywhere on the map, source-geom bounding sphere is at origin.
     this.mesh.frustumCulled = false;
-    // Per-instance alpha for shell rendering.
-    makeInstanceAlphaCapable(this.mesh, SLOT_CAP);
     parent.add(this.mesh);
-  }
-
-  setAlpha(slot: number, alpha: number): void {
-    setInstanceAlphaSlot(this.mesh, slot, alpha);
   }
 
   alloc(): number {
@@ -307,33 +272,40 @@ export class LegInstancedRenderer {
   private upper: CylinderPool;
   private lower: CylinderPool;
   private joints: JointSpherePool;
+  private shellUpper: CylinderPool;
+  private shellLower: CylinderPool;
+  private shellJoints: JointSpherePool;
 
   constructor(parent: THREE.Group, color: number) {
-    this.upper = new CylinderPool(parent, color);
-    this.lower = new CylinderPool(parent, color);
-    this.joints = new JointSpherePool(parent, color);
+    this.upper = new CylinderPool(parent, color, false);
+    this.lower = new CylinderPool(parent, color, false);
+    this.joints = new JointSpherePool(parent, color, false);
+    this.shellUpper = new CylinderPool(parent, color, true);
+    this.shellLower = new CylinderPool(parent, color, true);
+    this.shellJoints = new JointSpherePool(parent, color, true);
   }
 
   /** Allocate an upper-cylinder slot. Returns -1 if the pool is
    *  full; the caller should treat that as "leg won't render this
    *  unit" and continue (no exception, no error spam). */
-  allocUpper(): number { return this.upper.alloc(); }
-  allocLower(): number { return this.lower.alloc(); }
+  allocUpper(shell = false): number { return (shell ? this.shellUpper : this.upper).alloc(); }
+  allocLower(shell = false): number { return (shell ? this.shellLower : this.lower).alloc(); }
   /** Allocate a joint-sphere slot (used at FULL LOD for hip / knee /
    *  foot spheres). Returns -1 if the pool is full. */
-  allocJoint(): number { return this.joints.alloc(); }
+  allocJoint(shell = false): number { return (shell ? this.shellJoints : this.joints).alloc(); }
 
-  freeUpper(slot: number): void { this.upper.free(slot); }
-  freeLower(slot: number): void { this.lower.free(slot); }
-  freeJoint(slot: number): void { this.joints.free(slot); }
+  freeUpper(slot: number, shell = false): void { (shell ? this.shellUpper : this.upper).free(slot); }
+  freeLower(slot: number, shell = false): void { (shell ? this.shellLower : this.lower).free(slot); }
+  freeJoint(slot: number, shell = false): void { (shell ? this.shellJoints : this.joints).free(slot); }
 
   updateUpper(
     slot: number,
     sx: number, sy: number, sz: number,
     ex: number, ey: number, ez: number,
     thick: number,
+    shell = false,
   ): void {
-    this.upper.update(slot, sx, sy, sz, ex, ey, ez, thick);
+    (shell ? this.shellUpper : this.upper).update(slot, sx, sy, sz, ex, ey, ez, thick);
   }
 
   updateLower(
@@ -341,24 +313,18 @@ export class LegInstancedRenderer {
     sx: number, sy: number, sz: number,
     ex: number, ey: number, ez: number,
     thick: number,
+    shell = false,
   ): void {
-    this.lower.update(slot, sx, sy, sz, ex, ey, ez, thick);
+    (shell ? this.shellLower : this.lower).update(slot, sx, sy, sz, ex, ey, ez, thick);
   }
 
   /** Per-frame write for one joint sphere — encodes world position
    *  and radius (uniform scale) into the slot's instanceMatrix. The
    *  radius is constant per joint, so most frames this is the same
    *  value; the matrix compose is cheap and lets the API stay flat. */
-  updateJoint(slot: number, x: number, y: number, z: number, radius: number): void {
-    this.joints.update(slot, x, y, z, radius);
+  updateJoint(slot: number, x: number, y: number, z: number, radius: number, shell = false): void {
+    (shell ? this.shellJoints : this.joints).update(slot, x, y, z, radius);
   }
-
-  /** Per-slot alpha — 1.0 = fully opaque, < 1.0 = translucent.
-   *  Locomotion3D writes SHELL_OPACITY for shell entities so legs
-   *  read as ghosted along with the rest of the unit. */
-  setUpperAlpha(slot: number, alpha: number): void { this.upper.setAlpha(slot, alpha); }
-  setLowerAlpha(slot: number, alpha: number): void { this.lower.setAlpha(slot, alpha); }
-  setJointAlpha(slot: number, alpha: number): void { this.joints.setAlpha(slot, alpha); }
 
   /** Mark all per-instance buffers dirty — call once per frame
    *  after every leg has been updated. Cheap (just sets the dirty
@@ -367,11 +333,17 @@ export class LegInstancedRenderer {
     this.upper.flush();
     this.lower.flush();
     this.joints.flush();
+    this.shellUpper.flush();
+    this.shellLower.flush();
+    this.shellJoints.flush();
   }
 
   destroy(): void {
     this.upper.destroy();
     this.lower.destroy();
     this.joints.destroy();
+    this.shellUpper.destroy();
+    this.shellLower.destroy();
+    this.shellJoints.destroy();
   }
 }

@@ -129,8 +129,8 @@ export const LOD_HYSTERESIS: LodHysteresis = {
 //   - serverTps 'avg' = steady server tick rate, 'low' = lower/worst tick rate.
 //   - renderTps 'avg' = steady client update-loop tick rate, 'low' = lower/worst.
 export const LOD_EMA_SOURCE: LodEmaSource = {
-  serverTps: 'low',
-  renderTps: 'low',
+  serverTps: 'avg',
+  renderTps: 'avg',
 };
 
 // =============================================================================

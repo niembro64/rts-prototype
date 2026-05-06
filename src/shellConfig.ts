@@ -4,25 +4,13 @@
 // a unit at a factory or starts a building. It carries three
 // independent resource accumulators (energy / mana / metal) that fill
 // from the owner's stockpile. Until every accumulator hits its
-// blueprint cost the entity is rendered as a colorless half-transparent
-// version of itself, with no animations / combat / production / income.
+// blueprint cost the entity is rendered as a colorless shell, with no
+// animations / combat / production / income. Per-mesh shell fallbacks are
+// translucent; instanced shell paths use plain pale instance colors to avoid
+// cross-GPU alpha shader artifacts.
 //
 // Every tunable knob for that look-and-feel lives here. Renderers and
 // the per-tick HP-sync pass import from this single source.
-
-/** Per-instance "shell flag" passed in via the `instanceAlpha`
- *  attribute. The shader treats anything < 1.0 as "render flat pale,
- *  unlit"; anything == 1.0 as "render normally (lit, team-colored)".
- *  Values are intentionally binary even though the attribute is a
- *  float — leaves the door open for graded fades later but keeps the
- *  current visual contract simple ("a shell is a shell"). */
-export const SHELL_FLAG_VALUE = 0.0;
-export const NORMAL_FLAG_VALUE = 1.0;
-
-/** Backwards-compatible aliases — older callers still import these.
- *  Same numeric values as above. */
-export const SHELL_OPACITY = SHELL_FLAG_VALUE;
-export const NORMAL_OPACITY = NORMAL_FLAG_VALUE;
 
 /** The flat unlit color every shell mesh and every shell-flagged
  *  instance is painted in. Picked to read as "placeholder, not real

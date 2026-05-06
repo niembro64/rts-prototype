@@ -9,23 +9,27 @@
 // with depthWrite=true so the silhouette still reads but completed
 // internals show through faintly.
 //
-// All shell-render colour tuning lives in @/shellConfig so the
-// per-Mesh override here and the per-instance shader injection in
-// instanceAlpha.ts paint the exact same pale tone.
+// All shell-render colour tuning lives in @/shellConfig. Instanced
+// render paths use ordinary instance colors; this file is only for
+// Mesh objects that own their material.
 
 import * as THREE from 'three';
 import { SHELL_PALE_HEX } from '@/shellConfig';
 
-const _shellMaterial = new THREE.MeshBasicMaterial({
-  color: SHELL_PALE_HEX,
-  transparent: true,
-  opacity: 0.5,
-  depthWrite: true,
-  // Render BOTH sides of every face — chassis sphere geometries are
-  // single-sided, but with the shell material's flat colour both
-  // sides reading the same is the cleaner visual.
-  side: THREE.DoubleSide,
-});
+export function createShellMaterial(): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color: SHELL_PALE_HEX,
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: true,
+    // Render BOTH sides of every face — chassis sphere geometries are
+    // single-sided, but with the shell material's flat colour both
+    // sides reading the same is the cleaner visual.
+    side: THREE.DoubleSide,
+  });
+}
+
+const _shellMaterial = createShellMaterial();
 
 type ShellCache = {
   /** Original material captured the first frame this mesh entered
@@ -43,8 +47,8 @@ export function applyShellOverride(group: THREE.Object3D, isShell: boolean): voi
   group.traverse((obj) => {
     if (!isMaterialBearing(obj)) return;
     // Don't touch InstancedMesh — its material is shared across all
-    // instances, including non-shell ones. Shell appearance for
-    // instanced units is a follow-up concern.
+    // instances, including non-shell ones. Instanced shell appearance
+    // is handled by instanceColor writes in Render3DEntities.
     if ((obj as THREE.InstancedMesh).isInstancedMesh) return;
     const cache = obj.userData as ShellCache;
     if (isShell) {

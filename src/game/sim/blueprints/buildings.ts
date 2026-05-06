@@ -188,7 +188,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     gridWidth: 2,
     gridHeight: 2,
     gridDepth: 4,
-    hp: 800,
+    hp: 8000,
     cost: { energy: 1500, mana: 1500, metal: 1500 },
     renderProfile: 'megaBeamTower',
     visualHeight: MEGA_BEAM_TOWER_VISUAL_HEIGHT,

@@ -6,12 +6,6 @@ export const DEMO_CONFIG = {
   /** Number of players in the demo game */
   playerCount: 5,
 
-  /** Number of factories per player. Each player's TEAM slice is
-   *  180°/N wide (the other 180°/N of every 360°/N cycle is the
-   *  barrier slice between teams) — with N=3 that's 60° per team
-   *  slice, ~51° usable at arcSectorFraction=0.85. */
-  factoryCount: 5,
-
   /** Number of solar collectors per player on the dedicated solar arc. */
   solarCount: 5,
 

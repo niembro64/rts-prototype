@@ -1752,7 +1752,7 @@ export class Render3DEntities {
         // selection overlays. Units outside that older 2D footprint
         // still flow through the cheap instanced body below, so the
         // 2D LOD grid never resolves to "invisible" for unit bodies.
-        if (inScope && (isRichObjectLod(objectTier) || objectTier === 'simple')) {
+        if (inScope && (isConstructionShell(e) || isRichObjectLod(objectTier) || objectTier === 'simple')) {
           const alreadyRich = richIds.has(e.id);
           const hasSceneMesh = this.unitMeshes.has(e.id);
           const canPromote =
@@ -2448,9 +2448,11 @@ export class Render3DEntities {
         : objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
       const unitGfx = getGraphicsConfigFor(unitGraphicsTier);
       const unitLodKey = lodKey(unitGfx);
+      const unitIsShell = isConstructionShell(e);
+      const unitRenderKey = `${unitLodKey}|shell:${unitIsShell ? 1 : 0}`;
 
       let m = this.unitMeshes.get(e.id);
-      if (m && m.lodKey !== unitLodKey) {
+      if (m && m.lodKey !== unitRenderKey) {
         // Preserve leg state across the LOD-driven rebuild — feet keep
         // their planted world positions through the teardown so the
         // newly built mesh resumes the gait instead of snapping back
@@ -2506,6 +2508,7 @@ export class Render3DEntities {
         const chassis = new THREE.Group();
         chassis.userData.entityId = e.id;
         const chassisMeshes: THREE.Mesh[] = [];
+        const useDetailedUnitInstancing = USE_DETAILED_UNIT_INSTANCING && !unitIsShell;
         // Chassis routing — three paths in priority order:
         //   1. Smooth body  → `smoothChassis` InstancedMesh (one shared
         //      sphere geometry, multiple slots per composite).
@@ -2520,14 +2523,14 @@ export class Render3DEntities {
         let smoothChassisSlots: number[] | undefined;
         let polyChassisSlot: number | undefined;
         if (
-          USE_DETAILED_UNIT_INSTANCING &&
+          useDetailedUnitInstancing &&
           !hideChassis &&
           bodyEntry.isSmooth &&
           bodyEntry.parts.length > 0
         ) {
           smoothChassisSlots = this.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
         } else if (
-          USE_DETAILED_UNIT_INSTANCING &&
+          useDetailedUnitInstancing &&
           !hideChassis &&
           !bodyEntry.isSmooth &&
           bodyEntry.parts.length > 0
@@ -2574,7 +2577,7 @@ export class Render3DEntities {
           const isConstructionEmitter = t.config.constructionEmitter !== undefined;
           const hideHead = turretOff || isForceField || isConstructionEmitter;
           let headSlot: number | undefined;
-          if (USE_DETAILED_UNIT_INSTANCING && !hideHead && !isCommanderUnit) {
+          if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
             const allocated = this.allocTurretHeadSlot();
             if (allocated !== null) headSlot = allocated;
           }
@@ -2623,7 +2626,7 @@ export class Render3DEntities {
           // Try to allocate one barrel slot per barrel. All-or-nothing:
           // partial allocations get freed and we leave the per-Mesh
           // barrels in the scene as the fallback.
-          if (USE_DETAILED_UNIT_INSTANCING && tm.barrels.length > 0 && this.barrelInstanced) {
+          if (useDetailedUnitInstancing && tm.barrels.length > 0 && this.barrelInstanced) {
             const barrelSlots: number[] = [];
             let allAlloc = true;
             for (let bi = 0; bi < tm.barrels.length; bi++) {
@@ -2650,7 +2653,7 @@ export class Render3DEntities {
         m = {
           group, yawGroup, liftGroup, chassis, chassisMeshes, bodyShapeKey, bodyShape,
           hideChassis,
-          turrets: turretMeshes, lodKey: unitLodKey,
+          turrets: turretMeshes, lodKey: unitRenderKey,
           smoothChassisSlots,
           polyChassisSlot,
           // Cache the lift so the chassis instance writers can
@@ -2725,7 +2728,7 @@ export class Render3DEntities {
           const panelCount = mirrorPanels.length;
           const allocedPanelSlots: number[] = [];
           let allMirrorAlloc =
-            USE_DETAILED_UNIT_INSTANCING &&
+            useDetailedUnitInstancing &&
             panelCount > 0 &&
             this.mirrorPanelInstanced !== null;
           if (allMirrorAlloc) {
