@@ -447,9 +447,17 @@ export const TURRET_BLUEPRINTS = {
     },
     audio: { fireSound: AUDIO.event.fire.forceTurret },
   },
+  // Construction turret — its identity is "fires the buildSpray shot
+  // type". The shot type is intrinsically gravity-ignoring and is
+  // emitted along the controlled cone described by constructionEmitter
+  // (which now holds only the visuals — pylon positions, shower
+  // geometry — not the targeting/firing semantics). The turret itself
+  // is `visualOnly` at compile time because buildSpray shots aren't
+  // currently spawned by the auto-targeting pipeline; client-side
+  // emitPylonResourceSprays renders the spray particles.
   constructionTurret: {
     id: 'constructionTurret',
-    projectileId: 'lightShot',
+    projectileId: 'buildSpray',
     range: 0,
     cooldown: 0,
     launchForce: 0,

@@ -221,7 +221,26 @@ export type LaserShotBlueprint = {
   hitSound?: SoundEntry;
 };
 
-export type ShotBlueprint = ProjectileShotBlueprint | BeamShotBlueprint | LaserShotBlueprint;
+export type BuildSprayShotBlueprint = {
+  type: 'buildSpray';
+  id: ShotId;
+  /** Max time-of-flight per particle, in ms. */
+  lifespan: number;
+  /** Particle launch speed (world units per second). */
+  speed: number;
+  /** Cosmetic — sphere radius for the rendered particle. */
+  visualRadius: number;
+  /** Build-spray particles don't hit anything; the field is here for
+   *  shape uniformity with the other shot blueprints so callers can
+   *  read `.hitSound` without narrowing the union first. */
+  hitSound?: SoundEntry;
+};
+
+export type ShotBlueprint =
+  | ProjectileShotBlueprint
+  | BeamShotBlueprint
+  | LaserShotBlueprint
+  | BuildSprayShotBlueprint;
 export type LineShotBlueprint = BeamShotBlueprint | LaserShotBlueprint;
 
 /** Blueprint-side counterpart of `isLineShot` from types/sim.ts. Both

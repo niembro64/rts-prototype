@@ -129,7 +129,7 @@ export const AUDIO = {
       laserShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },
       ..._beamHit,
       disruptorShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 1.0 },
-    } satisfies Record<ShotId, SoundEntry>,
+    } satisfies Partial<Record<ShotId, SoundEntry>>,
 
     // Per-unit death sounds
     death: {

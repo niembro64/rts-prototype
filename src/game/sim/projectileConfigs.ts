@@ -17,11 +17,18 @@ export function createProjectileConfigFromTurret(
   turretConfig: TurretConfig,
   turretIndex?: number,
 ): ProjectileConfig {
-  if (turretConfig.shot.type === 'force') {
-    throw new Error(`Force turret ${turretConfig.id} cannot create a projectile config`);
+  const shot = turretConfig.shot;
+  if (shot.type === 'force' || shot.type === 'buildSpray') {
+    // Force-field emitters and construction emitters never spawn
+    // projectile entities through this path. The visualOnly gate in
+    // the firing pipeline keeps them out at runtime; the type guard
+    // here mirrors that contract for the type system.
+    throw new Error(
+      `Turret ${turretConfig.id} (shot.type=${shot.type}) cannot create a projectile config`,
+    );
   }
   return {
-    shot: turretConfig.shot,
+    shot,
     sourceTurretId: turretConfig.id,
     range: turretConfig.range,
     cooldown: turretConfig.cooldown,
@@ -63,7 +70,11 @@ export function getProjectileConfigForSpawn(
 
   if (validSourceTurretId) {
     const source = TURRET_CONFIGS[validSourceTurretId];
-    if (source && source.shot.type !== 'force') {
+    if (
+      source &&
+      source.shot.type !== 'force' &&
+      source.shot.type !== 'buildSpray'
+    ) {
       if (!validShotId || source.shot.id === validShotId) {
         return createProjectileConfigFromTurret(source, turretIndex);
       }

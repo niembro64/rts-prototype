@@ -408,8 +408,38 @@ export type ForceShot = {
   barrier?: ForceFieldBarrierConfig;
 };
 
+// Build-spray shot — colored construction particle emitted from a
+// construction turret toward the target being built. Mechanically a
+// straight-line traveler, mass-less in the gravity sense (ignoresGravity
+// is intrinsic, not opt-in). Currently the sim does NOT spawn these as
+// active projectile entities — the visual flow is still client-side
+// emission via emitPylonResourceSprays — but the shot type exists as a
+// first-class citizen so the construction turret declares its identity
+// through `projectileId: 'buildSpray'` rather than implicit detection
+// of a `constructionEmitter` side-field.
+export type BuildSprayShot = {
+  type: 'buildSpray';
+  id: ShotId;
+  /** Always true. Build-spray particles fly along a controlled cone
+   *  from the emitter; gravity would only break the visual. The flag
+   *  is on the type rather than implicit so consumers reading the
+   *  shot can branch on it the same way they do for rockets. */
+  ignoresGravity: true;
+  /** Max time-of-flight per particle, in ms. */
+  lifespan: number;
+  /** Particle launch speed (world units per second). */
+  speed: number;
+  /** Cosmetic — sphere radius for the rendered particle. */
+  visualRadius: number;
+};
+
 // Discriminated union of all shot types
-export type ShotConfig = ProjectileShot | BeamShot | LaserShot | ForceShot;
+export type ShotConfig =
+  | ProjectileShot
+  | BeamShot
+  | LaserShot
+  | ForceShot
+  | BuildSprayShot;
 
 export function isProjectileShot(shot: ShotConfig): shot is ProjectileShot {
   return shot.type === 'projectile' || shot.type === 'rocket';
@@ -428,12 +458,14 @@ export function isRocketLikeShot(shot: ShotConfig): boolean {
 
 /** Static (no-RNG) max lifespan for a shot. Beams are Infinity
  *  (continuous), lasers use their fixed duration, projectiles and
- *  rockets use their config `lifespan` with the supplied fallback.
+ *  rockets use their config `lifespan` with the supplied fallback,
+ *  build-spray particles use their own lifespan field.
  *  WorldState additionally applies `lifespanVariance` on top of this. */
 export function getShotMaxLifespan(shot: ShotConfig, fallbackLifespan: number = 2000): number {
   if (shot.type === 'beam') return Infinity;
   if (shot.type === 'laser') return shot.duration;
   if (shot.type === 'projectile' || shot.type === 'rocket') return shot.lifespan ?? fallbackLifespan;
+  if (shot.type === 'buildSpray') return shot.lifespan;
   return fallbackLifespan;
 }
 

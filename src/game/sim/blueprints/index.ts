@@ -12,6 +12,7 @@ export * from './fallbacks';
 
 import type {
   BeamShot,
+  BuildSprayShot,
   ForceFieldBarrierConfig,
   ForceShot,
   LaserShot,
@@ -241,6 +242,20 @@ function buildShotConfig(
   shotBlueprint: ShotBlueprint,
   launchForce?: number,
 ): ShotConfig {
+  if (shotBlueprint.type === 'buildSpray') {
+    const shot: BuildSprayShot = {
+      type: 'buildSpray',
+      id: shotBlueprint.id,
+      // ignoresGravity is intrinsic to the type — the literal `true`
+      // keeps consumers from having to defaulting it themselves.
+      ignoresGravity: true,
+      lifespan: shotBlueprint.lifespan,
+      speed: shotBlueprint.speed,
+      visualRadius: shotBlueprint.visualRadius,
+    };
+    return shot;
+  }
+
   if (shotBlueprint.type === 'beam') {
     const shot: BeamShot = {
       type: 'beam',
@@ -301,7 +316,7 @@ export function buildProjectileShotConfig(
   const shotBlueprint = SHOT_BLUEPRINTS[shotId];
   if (!shotBlueprint) throw new Error(`Unknown shot blueprint: ${shotId}`);
   const shot = buildShotConfig(shotBlueprint, launchForce);
-  if (shot.type === 'force') {
+  if (shot.type === 'force' || shot.type === 'buildSpray') {
     throw new Error(
       `Shot blueprint ${shotId} cannot build a projectile config`,
     );
@@ -377,7 +392,12 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction,
     radius: { ...turretBlueprint.radius },
-    visualOnly: turretBlueprint.constructionEmitter !== undefined,
+    // visualOnly used to be derived from the presence of the
+    // constructionEmitter side-field. Now the construction turret
+    // declares its identity via `projectileId: 'buildSpray'`, so the
+    // shot type itself drives visualOnly: build-spray emitters do not
+    // participate in the auto-targeting / firing pipeline.
+    visualOnly: shot.type === 'buildSpray',
     constructionEmitter: turretBlueprint.constructionEmitter
       ? {
           defaultSize: turretBlueprint.constructionEmitter.defaultSize,
@@ -397,11 +417,17 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   ) {
     const shotBlueprint: ShotBlueprint =
       SHOT_BLUEPRINTS[turretBlueprint.projectileId];
-    const rawThickness = isLineShotBlueprint(shotBlueprint)
-      ? shotBlueprint.width
-      : shotBlueprint.collision.radius > 0
-        ? shotBlueprint.collision.radius * 2
-        : 2;
+    let rawThickness: number;
+    if (isLineShotBlueprint(shotBlueprint)) {
+      rawThickness = shotBlueprint.width;
+    } else if (shotBlueprint.type === 'buildSpray') {
+      rawThickness = shotBlueprint.visualRadius * 2;
+    } else {
+      rawThickness =
+        shotBlueprint.collision.radius > 0
+          ? shotBlueprint.collision.radius * 2
+          : 2;
+    }
     config.barrel = {
       ...config.barrel,
       barrelThickness: config.barrel.barrelThickness ?? rawThickness,

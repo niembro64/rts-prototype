@@ -198,6 +198,18 @@ export const SHOT_BLUEPRINTS = {
     damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS_MEGA },
     hitSound: AUDIO.event.hit.megaBeamShot,
   },
+  // Build spray — colored construction particle emitted by every
+  // construction turret. Visually rendered client-side via the pylon
+  // spray emitter today; the type exists so the construction turret's
+  // identity is "fires buildSpray" rather than the implicit "has a
+  // constructionEmitter side-field".
+  buildSpray: {
+    type: 'buildSpray',
+    id: 'buildSpray',
+    lifespan: 600,
+    speed: 800,
+    visualRadius: 1.5,
+  },
 } satisfies Record<ShotId, ShotBlueprint>;
 
 export function getShotBlueprint(id: string): ShotBlueprint {
