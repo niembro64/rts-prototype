@@ -655,7 +655,7 @@ export class Simulation {
 
   // Update unit movement with action queue processing.
   // unit.thrustDirX/Y is what GameServer.applyForces reads — a (0, 0)
-  // means "no thrust this tick, friction will slow us". The
+  // means "no thrust this tick; contact braking/drag will slow or hold us". The
   // authoritative physics velocity stays in unit.velocityX/Y/Z and
   // is only overwritten by syncFromPhysics, so lead-prediction in
   // turretSystem reads the real velocity, not this thrust target.
@@ -679,7 +679,7 @@ export class Simulation {
         continue;
       }
 
-      // Default: no thrust (friction will slow the unit)
+      // Default: no thrust (contact braking/drag will slow or hold the unit)
       unit.thrustDirX = 0;
       unit.thrustDirY = 0;
 

@@ -30,10 +30,11 @@ import {
   getSimSignalStates,
 } from '../sim/simQuality';
 import type { ServerSimQuality } from '@/types/serverSimLod';
-import { PhysicsEngine3D } from './PhysicsEngine3D';
+import { PhysicsEngine3D, type Body3D } from './PhysicsEngine3D';
 import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { magnitude } from '../math';
 import {
+  GRAVITY,
   getMapSize,
   UNIT_THRUST_MULTIPLIER_GAME,
   SNAPSHOT_CONFIG,
@@ -80,6 +81,7 @@ const WATER_OUT_CACHE_BUCKET_SCALE = 10;
 // physics tick.
 const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
 type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
+type LocomotionForceProfile = ReturnType<typeof getLocomotionForceProfile>;
 // Fog-of-war visibility is not implemented yet. Per-recipient snapshots
 // only reduce fidelity through owner-aware delta thresholds and projectile
 // side-channel cadence; every unit/building remains present in snapshots.
@@ -146,6 +148,9 @@ export class GameServer {
   private physicsForceUnitIdsBuf: EntityId[] = [];
   private physicsSyncUnitIdsBuf: EntityId[] = [];
   private physicsCandidateUnitIdsBuf: EntityId[] = [];
+  private _idleBrakeForceX = 0;
+  private _idleBrakeForceY = 0;
+  private _idleBrakeForceZ = 0;
   private physicsActiveUnitIds = new Set<EntityId>();
 
   // Game over tracking
@@ -546,7 +551,7 @@ export class GameServer {
     this.simulation.update(dtMs);
 
     // Apply thrust + external forces to physics bodies
-    this.applyForces();
+    this.applyForces(dtSec);
 
     // Step physics (integrate + collisions)
     this.physics.step(dtSec);
@@ -578,7 +583,7 @@ export class GameServer {
   }
 
   // Apply thrust and external forces to physics bodies
-  private applyForces(): void {
+  private applyForces(dtSec: number): void {
     const forceAccumulator = this.simulation.getForceAccumulator();
     const mw = this.world.mapWidth;
     const mh = this.world.mapHeight;
@@ -696,7 +701,7 @@ export class GameServer {
           thrustForceY = this._waterOutY * wallPush;
           // No z thrust — water surface is flat, no slope to climb out of.
         }
-      } else if (dirMag > 0) {
+      } else if (dirMag > 0.01) {
         let useDirX = dirX / dirMag;
         let useDirY = dirY / dirMag;
 
@@ -743,6 +748,13 @@ export class GameServer {
           thrustForceX = t.x * thrustMagnitude;
           thrustForceY = t.y * thrustMagnitude;
           thrustForceZ = t.z * thrustMagnitude;
+        }
+      } else {
+        const n = this.world.getCachedSurfaceNormal(body.x, body.y);
+        if (this.computeIdleBrakeForce(body, n, locomotionForce, dtSec)) {
+          thrustForceX = this._idleBrakeForceX;
+          thrustForceY = this._idleBrakeForceY;
+          thrustForceZ = this._idleBrakeForceZ;
         }
       }
 
@@ -797,6 +809,50 @@ export class GameServer {
     for (let i = 0; i < candidates.length; i++) {
       pushId(candidates[i]);
     }
+  }
+
+  private computeIdleBrakeForce(
+    body: Body3D,
+    normal: { nx: number; ny: number; nz: number },
+    locomotionForce: LocomotionForceProfile,
+    dtSec: number,
+  ): boolean {
+    this._idleBrakeForceX = 0;
+    this._idleBrakeForceY = 0;
+    this._idleBrakeForceZ = 0;
+
+    const maxForce = locomotionForce.tractionForceMagnitude;
+    if (dtSec <= 0 || maxForce <= 0 || body.mass <= 0) return false;
+
+    // Existing velocity and gravity are both constrained to the
+    // ground tangent by PhysicsEngine3D. When the action system is not
+    // asking this unit to move, use the same locomotion traction as a
+    // contact brake: cancel downhill gravity and bleed any current
+    // tangent velocity toward zero, capped by the unit's available grip.
+    const vDotN = body.vx * normal.nx + body.vy * normal.ny + body.vz * normal.nz;
+    const tangentVx = body.vx - vDotN * normal.nx;
+    const tangentVy = body.vy - vDotN * normal.ny;
+    const tangentVz = body.vz - vDotN * normal.nz;
+
+    const slopeGravityX = GRAVITY * normal.nz * normal.nx;
+    const slopeGravityY = GRAVITY * normal.nz * normal.ny;
+    const slopeGravityZ = -GRAVITY + GRAVITY * normal.nz * normal.nz;
+
+    const desiredAx = -slopeGravityX - tangentVx / dtSec;
+    const desiredAy = -slopeGravityY - tangentVy / dtSec;
+    const desiredAz = -slopeGravityZ - tangentVz / dtSec;
+    const desiredAccelMag = Math.sqrt(
+      desiredAx * desiredAx + desiredAy * desiredAy + desiredAz * desiredAz,
+    );
+    if (desiredAccelMag <= 1e-6) return false;
+
+    const desiredForce = (desiredAccelMag * body.mass) / 1e6;
+    const scale = desiredForce > maxForce ? maxForce / desiredForce : 1;
+    const forceScale = (body.mass / 1e6) * scale;
+    this._idleBrakeForceX = desiredAx * forceScale;
+    this._idleBrakeForceY = desiredAy * forceScale;
+    this._idleBrakeForceZ = desiredAz * forceScale;
+    return true;
   }
 
   private _waterOutX = 0;

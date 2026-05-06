@@ -21,7 +21,7 @@ export const TERRAIN_SHAPE_MAGNITUDE = 600;
 export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 
 /** Vertical spacing between authored terrain plateau levels. */
-export const TERRAIN_D_TERRAIN = 100 * (TERRAIN_SHAPE_MAGNITUDE / 800);
+export const TERRAIN_D_TERRAIN = 200 * (TERRAIN_SHAPE_MAGNITUDE / 800);
 
 export const TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION = 0.49;
 export const TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION = 0.10;
@@ -32,7 +32,7 @@ export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION = 0.04;
 
 export const TERRAIN_PLATEAU_CONFIG = {
   enabled: true,
-  shelfFractionOfStep: 0.6,
+  shelfFractionOfStep: 0.99,
   rampEdgeSharpness: 0,
   buildableShelfHeightTolerance: 20,
   slopeSampleDistance: LAND_CELL_SIZE * 0.5,

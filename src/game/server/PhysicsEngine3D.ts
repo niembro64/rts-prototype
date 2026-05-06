@@ -553,6 +553,7 @@ export class PhysicsEngine3D {
       ax -= aDotN0 * n0.nx;
       ay -= aDotN0 * n0.ny;
       az -= aDotN0 * n0.nz;
+      const tangentAccelSq = ax * ax + ay * ay + az * az;
       // (3) velocity update.
       b.vx += ax * dtSec;
       b.vy += ay * dtSec;
@@ -581,9 +582,8 @@ export class PhysicsEngine3D {
         b.vz = 0;
       }
 
-      const accelSq = b.ax * b.ax + b.ay * b.ay + b.az * b.az;
       const speedSq = b.vx * b.vx + b.vy * b.vy;
-      if (accelSq <= SLEEP_ACCEL_SQ && speedSq <= SLEEP_SPEED_SQ) {
+      if (tangentAccelSq <= SLEEP_ACCEL_SQ && speedSq <= SLEEP_SPEED_SQ) {
         b.sleepTicks++;
         if (b.sleepTicks >= SLEEP_TICKS) {
           b.vx = 0;
