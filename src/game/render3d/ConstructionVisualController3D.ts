@@ -20,6 +20,7 @@ import {
 } from '../sim/factoryConstructionSite';
 import type { FactoryConstructionRig } from './BuildingShape3D';
 import type { ConstructionEmitterRig, ConstructionTowerOrbitPart } from './ConstructionEmitterMesh3D';
+import { buildingTierAtLeast } from './RenderTier3D';
 import { hexStringToRgb } from './colorUtils';
 
 type ConstructionTowerSpinRig = {
@@ -29,21 +30,6 @@ type ConstructionTowerSpinRig = {
   pylonTopsLocal: THREE.Vector3[];
   pylonTopBaseLocals: THREE.Vector3[];
 };
-
-const BUILDING_TIER_ORDER: Record<ConcreteGraphicsQuality, number> = {
-  min: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-  max: 4,
-};
-
-function buildingTierAtLeast(
-  tier: ConcreteGraphicsQuality,
-  minTier: ConcreteGraphicsQuality,
-): boolean {
-  return BUILDING_TIER_ORDER[tier] >= BUILDING_TIER_ORDER[minTier];
-}
 
 const RESOURCE_SPRAY_COLORS = [
   hexStringToRgb(SHELL_BAR_COLORS.energy),

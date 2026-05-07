@@ -9,18 +9,22 @@ profiles/components, not reinterpret blueprint pieces independently.
 8. Render3DEntities is a major god file and owns too many atomic concepts.
    References:
    - src/game/render3d/Render3DEntities.ts:1
-   - file size: 3687 lines
+   - file size: 3122 lines
 
    This file currently owns or coordinates unit meshes, building meshes, turret
    attachment transforms, projectile visuals, commander-specific mesh assembly,
    LOD shells, instanced pools, and cleanup. Projectile rendering,
    selection/radius/range overlays, and construction emitter/factory visual
-   control have been split out, but the orchestration file is still too large
-   to keep blueprint/rendering boundaries clean.
+   control have been split out. Entity mesh state, shared render tier helpers,
+   commander visual kit assembly, and animated building control have also been
+   split out, but the orchestration file is still too large to keep
+   blueprint/rendering boundaries clean.
 
    Fix direction: split into small modules: `UnitEntityRenderer`,
    `BuildingEntityRenderer`, and `TurretAttachmentRenderer`. Leave
-   `Render3DEntities` as an orchestration facade.
+   `Render3DEntities` as an orchestration facade. Next useful cut: move unit
+   instanced pool allocation/flush or building creation/update into a dedicated
+   renderer class.
 
 9. BuildingShape3D mixes every building's geometry and reusable construction parts.
    References:

@@ -8,27 +8,23 @@ import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { TurretMesh } from './TurretMesh3D';
+import type { EntityMesh, RadiusRingMeshes } from './EntityMesh3D';
 
 const RANGE_CIRCLE_SEGMENTS = 96;
 const RANGE_CIRCLE_GROUND_LIFT = 6;
 const RANGE_CIRCLE_RENDER_ORDER = 20;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 
-type RadiusRingMeshes = {
-  scale?: THREE.LineSegments;
-  shot?: THREE.LineSegments;
-  push?: THREE.LineSegments;
-};
-
-export type OverlayEntityMesh = {
-  group: THREE.Group;
-  turrets: TurretMesh[];
-  ring?: THREE.Mesh;
-  radiusRings?: RadiusRingMeshes;
-  radiusRingsVisible?: boolean;
-  buildRing?: THREE.LineSegments;
-  rangeRingsVisible?: boolean;
-};
+export type OverlayEntityMesh = Pick<
+  EntityMesh,
+  | 'group'
+  | 'turrets'
+  | 'ring'
+  | 'radiusRings'
+  | 'radiusRingsVisible'
+  | 'buildRing'
+  | 'rangeRingsVisible'
+>;
 
 function makeRangeCircleGeometry(): THREE.BufferGeometry {
   const positions = new Float32Array(RANGE_CIRCLE_SEGMENTS * 2 * 3);
