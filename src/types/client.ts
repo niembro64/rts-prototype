@@ -9,6 +9,7 @@ import type { ConcreteGraphicsQuality, GraphicsQuality, RenderMode } from './gra
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
+export type CameraFovDegrees = 10 | 20 | 30 | 60 | 120;
 export type GridOverlay = 'off' | 'zero' | 'low' | 'medium' | 'high';
 /** Waypoint visualization detail. SIMPLE shows only the user-issued
  *  click points and shortcut lines between them — the convention in
@@ -66,6 +67,7 @@ export type ClientBarConfig = {
   readonly tiltEma: LabeledOptionsConfig<DriftMode>;
   readonly legsRadius: BooleanSetting;
   readonly cameraSmooth: LabeledOptionsConfig<CameraSmoothMode>;
+  readonly cameraFov: LabeledOptionsConfig<CameraFovDegrees>;
   readonly edgeScroll: BooleanSetting;
   readonly dragPan: BooleanSetting;
   readonly sounds: DefaultSetting<SoundDefaults>;

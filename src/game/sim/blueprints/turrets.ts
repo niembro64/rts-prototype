@@ -108,8 +108,8 @@ export const TURRET_BLUEPRINTS = {
     barrel: {
       type: 'simpleMultiBarrel',
       barrelCount: 2,
-      barrelLength: 1.7,
-      orbitRadius: 0.35,
+      barrelLength: 1.2,
+      orbitRadius: 0.65,
       spin: { idle: 2, max: 30, accel: 80, decel: 30 },
     },
     rangeMultiplierOverrides: fireEnvelope({
@@ -120,7 +120,7 @@ export const TURRET_BLUEPRINTS = {
     color: COLOR_WHITE,
     spread: { angle: Math.PI / 8 },
     burst: { count: 4, delay: 100 },
-    radius: { body: 7 },
+    radius: { body: 9 },
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
     highArc: false,
   },
@@ -185,14 +185,14 @@ export const TURRET_BLUEPRINTS = {
     // target and the fire-gate at projectileSystem.ts:257 skipped
     // every shot. 22 000 yields ~1344 wu max range with comfortable
     // headroom over the 1000 cap.
-    launchForce: 22_000,
+    launchForce: 26_000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
     barrel: {
       type: 'simpleMultiBarrel',
       barrelCount: 6,
       barrelLength: 1.0,
-      orbitRadius: 0.5,
+      orbitRadius: 0.9,
       spin: { idle: 2, max: 18, accel: 80, decel: 10 },
     },
     rangeMultiplierOverrides: fireEnvelope({
@@ -202,7 +202,7 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
-    radius: { body: 14 },
+    radius: { body: 40 },
     audio: { fireSound: AUDIO.event.fire.gatlingMortarTurret },
     // Fast high-arc carrier. The submunitions do the area spread; this
     // keeps the gatling role readable without adding another cluster

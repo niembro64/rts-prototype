@@ -864,6 +864,12 @@ export type { SynthId, SoundEntry } from './audioConfig';
 // CAMERA & ZOOM
 // =============================================================================
 
+/** Main 3D game camera vertical field-of-view in degrees.
+ *  Lower values feel like a narrower/telephoto lens; higher values
+ *  feel like a wider-angle lens. This is lens FOV, not the orbit
+ *  camera's pitch angle against the terrain. */
+export const CAMERA_FOV_DEGREES = 30;
+
 /** Minimum zoom level (zoomed out) */
 export const ZOOM_MIN = 0.2;
 

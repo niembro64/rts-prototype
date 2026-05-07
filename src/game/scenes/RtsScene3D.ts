@@ -497,21 +497,19 @@ export class RtsScene3D {
     this.clientViewState = config.clientViewState;
     this._baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
 
-    // Seed orbit camera from the same battle-facing target logic used
-    // after snapshots arrive, while keeping per-mode zoom distances.
+    // Seed orbit camera from the same per-mode target logic used after
+    // snapshots arrive, while keeping per-mode zoom distances.
     //
-    // Initial yaw is set to the local seat's POV — camera "behind" the
-    // viewer's team, looking toward the map center. DEMO BATTLE and
-    // REAL BATTLE both frame the local commander so their controls
-    // feel identical; only GAME LOBBY preview keeps the wide map-center
-    // framing and continuous slow orbit (driven from `update()` below).
+    // REAL BATTLE frames the local commander from behind, looking toward
+    // the map center. DEMO BATTLE and GAME LOBBY preview start on the
+    // middle of the battlefield so the opening view reads as an overview.
+    // GAME LOBBY preview also keeps its continuous slow orbit in `update()`.
     const initialZoom = this.lobbyPreview
       ? ZOOM_INITIAL_LOBBY_PREVIEW
       : this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
-    // Target the LOCAL SEAT's spawn position so the commander is
-    // in-frame from frame 1, before any snapshot arrives. Lobby preview
-    // is intentionally spectator-style and stays centered on the map.
-    const framesLocalCommander = !this.lobbyPreview;
+    // Target the local seat's spawn position only for a real battle so
+    // the commander is in-frame from frame 1, before any snapshot arrives.
+    const framesLocalCommander = !this.backgroundMode && !this.lobbyPreview;
     const seatIndex = framesLocalCommander
       ? Math.max(0, this.playerIds.indexOf(this.localPlayerId))
       : 0;
@@ -876,11 +874,11 @@ export class RtsScene3D {
       const winnerId = this.clientViewState.getGameOverWinnerId();
       if (winnerId !== null && !this.isGameOver) this.handleGameOver(winnerId);
 
-      // First-snapshot camera framing. Interactive battles center on
-      // the local player's commander (yaw tilts so the map center is
-      // forward); the GAME LOBBY preview remains spectator-wide.
+      // First-snapshot camera framing. Real battles center on the local
+      // player's commander (yaw tilts so the map center is forward);
+      // DEMO BATTLE and GAME LOBBY preview remain spectator-wide.
       if (!this.hasCenteredCamera) {
-        if (this.lobbyPreview) this.centerCameraOnMap();
+        if (this.backgroundMode || this.lobbyPreview) this.centerCameraOnMap();
         else this.centerCameraOnCommander();
       }
 
@@ -1325,11 +1323,10 @@ export class RtsScene3D {
     }
   }
 
-  // Center the orbit camera on the map center — used by the GAME
-  // LOBBY preview so the whole upcoming battlefield is visible instead
-  // of framing a specific commander's seat. Yaw is held at red's POV
-  // (set in the constructor via _povYawForLocalSeat) for stable
-  // spectator framing.
+  // Center the orbit camera on the map center — used by DEMO BATTLE
+  // and the GAME LOBBY preview so the battlefield is visible instead
+  // of framing a specific commander's seat. Yaw is held at the
+  // constructor seed for stable spectator framing.
   private centerCameraOnMap(): void {
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.hasCenteredCamera = true;
@@ -1355,9 +1352,10 @@ export class RtsScene3D {
 
   /** Compute the orbit yaw that would put the camera "behind" a
    *  player's spawn position on the commander oval, looking toward
-   *  the map center. DEMO BATTLE and REAL BATTLE use the active
-   *  local player's index; GAME LOBBY preview uses red (index 0)
-   *  for stable spectator framing. Math mirrors centerCameraOnCommander:
+   *  the map center. REAL BATTLE uses the active local player's
+   *  index; DEMO BATTLE also has a stable local seat, and GAME LOBBY
+   *  preview uses red (index 0) for stable spectator framing. Math
+   *  mirrors centerCameraOnCommander:
    *  yaw = atan2(−forwardX, forwardZ) where forward is the unit
    *  vector from the player's spawn to the map center. */
   private _povYawForLocalSeat(): number {

@@ -124,6 +124,8 @@ import {
   setLegsRadiusToggle,
   getCameraSmoothMode,
   setCameraSmoothMode,
+  getCameraFovDegrees,
+  setCameraFovDegrees,
   RANGE_TYPES,
   PROJ_RANGE_TYPES,
   UNIT_RADIUS_TYPES,
@@ -170,6 +172,7 @@ import type { CameraSmoothMode } from '../clientBarConfig';
 import type { GraphicsQuality, ConcreteGraphicsQuality, RenderMode } from '../types/graphics';
 import type {
   AudioScope,
+  CameraFovDegrees,
   DriftMode,
   GridOverlay,
   SoundCategory,
@@ -407,9 +410,21 @@ function setInstancePlayerClientEnabled(instance: GameInstance | null | undefine
   instance.getScene()?.setClientRenderEnabled(enabled);
 }
 
+function setInstanceCameraFovDegrees(
+  instance: GameInstance | null | undefined,
+  fov: CameraFovDegrees,
+): void {
+  instance?.app.setCameraFovDegrees(fov);
+}
+
 function applyPlayerClientEnabled(): void {
   setInstancePlayerClientEnabled(backgroundBattle?.gameInstance, playerClientEnabled.value);
   setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
+}
+
+function applyCameraFovDegrees(): void {
+  setInstanceCameraFovDegrees(backgroundBattle?.gameInstance, cameraFovDegrees.value);
+  setInstanceCameraFovDegrees(gameInstance, cameraFovDegrees.value);
 }
 
 function togglePlayerClientEnabled(): void {
@@ -535,6 +550,7 @@ const legsRadiusToggle = ref(getLegsRadiusToggle());
 // instantly; FAST / MID / SLOW use exponential smoothing with
 // progressively larger τ.
 const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
+const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
 
 // Frame timing tracking (EMA-based, polled from scene)
 const frameMsAvg = ref(0);
@@ -726,6 +742,7 @@ async function startBackgroundBattle(): Promise<void> {
   hasServer.value = true;
   battleStartTime = Date.now();
   setInstancePlayerClientEnabled(backgroundBattle.gameInstance, playerClientEnabled.value);
+  setInstanceCameraFovDegrees(backgroundBattle.gameInstance, cameraFovDegrees.value);
 
   checkBgSceneInterval = waitForSceneAndBind(
     () => backgroundBattle?.gameInstance?.getScene(),
@@ -1390,6 +1407,7 @@ function resetClientDefaults(): void {
   // the next page refresh replayed it.
   if (legsRadiusToggle.value !== cd.legsRadius.default) toggleLegsRadius();
   setCameraMode(cd.cameraSmooth.default);
+  changeCameraFovDegrees(cd.cameraFov.default);
   // Reset every PLAYER CLIENT LOD signal to the centralized
   // LOD_SIGNAL_DEFAULTS table, then refresh the reactive ref the
   // bar template reads from so the buttons repaint immediately.
@@ -1646,6 +1664,12 @@ function toggleLegsRadius(): void {
 function setCameraMode(mode: CameraSmoothMode): void {
   setCameraSmoothMode(mode);
   cameraSmoothMode.value = mode;
+}
+
+function changeCameraFovDegrees(fov: CameraFovDegrees): void {
+  setCameraFovDegrees(fov);
+  cameraFovDegrees.value = fov;
+  applyCameraFovDegrees();
 }
 
 // "ALL" helpers for each radius/range section — same behavior as
@@ -2117,6 +2141,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       lookupPlayerName: (pid) => resolvePlayerName(pid, null),
     });
     setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
+    setInstanceCameraFovDegrees(gameInstance, cameraFovDegrees.value);
     const scene = gameInstance.getScene();
     if (scene) {
       scene.onStartupReady = () => {
@@ -3471,6 +3496,19 @@ onUnmounted(() => {
               title="Show each leg's rest circle (chassis-local — the foot wanders inside this radius before snapping to the opposite edge)"
               @click="toggleLegsRadius"
             >RAD</BarButton>
+          </BarControlGroup>
+          <BarControlGroup>
+            <BarDivider />
+            <BarLabel title="Main 3D camera vertical field-of-view in degrees. Lower is narrower/telephoto; higher is wider-angle.">FOV:</BarLabel>
+            <BarButtonGroup>
+              <BarButton
+                v-for="opt in CLIENT_CONFIG.cameraFov.options"
+                :key="opt.value"
+                :active="cameraFovDegrees === opt.value"
+                :title="`Set camera field-of-view to ${opt.value} degrees`"
+                @click="changeCameraFovDegrees(opt.value)"
+              >{{ opt.label }}</BarButton>
+            </BarButtonGroup>
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />

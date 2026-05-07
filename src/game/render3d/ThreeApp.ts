@@ -15,6 +15,7 @@ import {
   CAMERA_ZOOM_IN_ANCHOR,
   CAMERA_ZOOM_OUT_ANCHOR,
   CAMERA_ROTATE_ANCHOR,
+  CAMERA_FOV_DEGREES,
   SKY_RENDER_CONFIG,
   ZOOM_STEP_FRACTION,
   ZOOM_MIN,
@@ -139,7 +140,7 @@ export class ThreeApp {
       : this._nativePixelRatio;
     this.renderer.setPixelRatio(this._activePixelRatio);
     this.camera = new THREE.PerspectiveCamera(
-      50,
+      CAMERA_FOV_DEGREES,
       width / height,
       CAMERA_NEAR_PLANE,
       CAMERA_FAR_PLANE,
@@ -243,6 +244,13 @@ export class ThreeApp {
 
   isRenderEnabled(): boolean {
     return this._renderEnabled;
+  }
+
+  setCameraFovDegrees(fovDegrees: number): void {
+    const next = Math.min(179, Math.max(1, fovDegrees));
+    if (Math.abs(this.camera.fov - next) < 0.001) return;
+    this.camera.fov = next;
+    this.camera.updateProjectionMatrix();
   }
 
   /** Force every material currently in the scene to compile its shader

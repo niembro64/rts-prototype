@@ -18,6 +18,7 @@ import type {
 import type { ClientBarConfig } from './types/client';
 import type {
   AudioScope,
+  CameraFovDegrees,
   CameraSmoothMode,
   DriftMode,
   GridOverlay,
@@ -27,7 +28,7 @@ import type {
   UnitRadiusType,
   WaypointDetail,
 } from './types/client';
-import { MAX_TOTAL_UNITS, WATER_RENDER_CONFIG } from './config';
+import { CAMERA_FOV_DEGREES, MAX_TOTAL_UNITS, WATER_RENDER_CONFIG } from './config';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import {
   PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
@@ -99,6 +100,16 @@ export const CLIENT_CONFIG = {
       { value: 'fast' as const, label: 'FAST' },
       { value: 'mid' as const, label: 'MID' },
       { value: 'slow' as const, label: 'SLOW' },
+    ],
+  },
+  cameraFov: {
+    default: CAMERA_FOV_DEGREES,
+    options: [
+      { value: 10 as const, label: '10' },
+      { value: 20 as const, label: '20' },
+      { value: 30 as const, label: '30' },
+      { value: 60 as const, label: '60' },
+      { value: 120 as const, label: '120' },
     ],
   },
   edgeScroll: { default: false },
@@ -420,6 +431,7 @@ const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'player-client-proj-range-toggles';
 const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'player-client-unit-radius-toggles';
 const LEGS_RADIUS_STORAGE_KEY = 'player-client-legs-radius';
 const CAMERA_SMOOTH_STORAGE_KEY = 'player-client-camera-smooth';
+const CAMERA_FOV_STORAGE_KEY = 'player-client-camera-fov-degrees';
 const EDGE_SCROLL_STORAGE_KEY = 'player-client-edge-scroll';
 const DRAG_PAN_STORAGE_KEY = 'player-client-drag-pan';
 // The "BUDGET ANNIHILATION" lobby modal IS the demo-battle pre-game
@@ -458,6 +470,7 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-unit-radius-toggles', UNIT_RADIUS_TOGGLES_STORAGE_KEY],
   ['rts-legs-radius', LEGS_RADIUS_STORAGE_KEY],
   ['rts-camera-smooth', CAMERA_SMOOTH_STORAGE_KEY],
+  ['rts-camera-fov-degrees', CAMERA_FOV_STORAGE_KEY],
   ['rts-edge-scroll', EDGE_SCROLL_STORAGE_KEY],
   ['rts-drag-pan', DRAG_PAN_STORAGE_KEY],
   // Lobby visibility migrated from BOTH historical homes — the
@@ -504,6 +517,7 @@ let currentLegsRadius: boolean = _cd.legsRadius.default;
 // Both wheel zoom and pan-drag feed the same EMA, so they animate
 // simultaneously without fighting each other.
 let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
+let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentGroundMarks: boolean = _cd.groundMarks.default;
@@ -545,6 +559,10 @@ let prevRenderTpsRank: number = 4;
 let currentSignalStates: LodSignalStates = { ...LOD_SIGNAL_DEFAULTS };
 let prevUnitsRank: number = 4;
 let serverTpsAvailable: boolean = false;
+
+function isCameraFovDegrees(value: number): value is CameraFovDegrees {
+  return _cd.cameraFov.options.some((opt) => opt.value === value);
+}
 
 // ── Load from localStorage on module init ──
 // Each read is independent — a bad JSON value or throw from ONE key
@@ -672,6 +690,13 @@ function loadFromStorage(): void {
     currentCameraSmoothMode = _cd.cameraSmooth.default;
   } else if (storedCameraSmooth === 'false') {
     currentCameraSmoothMode = 'snap';
+  }
+  const storedCameraFov = readPersisted(CAMERA_FOV_STORAGE_KEY);
+  if (storedCameraFov !== null) {
+    const parsed = Number(storedCameraFov);
+    if (Number.isFinite(parsed) && isCameraFovDegrees(parsed)) {
+      currentCameraFovDegrees = parsed;
+    }
   }
   const storedDriftMode = readPersisted(DRIFT_MODE_STORAGE_KEY);
   if (
@@ -1036,6 +1061,15 @@ export function getCameraSmoothMode(): CameraSmoothMode {
 export function setCameraSmoothMode(mode: CameraSmoothMode): void {
   currentCameraSmoothMode = mode;
   persist(CAMERA_SMOOTH_STORAGE_KEY, mode);
+}
+
+export function getCameraFovDegrees(): CameraFovDegrees {
+  return currentCameraFovDegrees;
+}
+
+export function setCameraFovDegrees(fov: CameraFovDegrees): void {
+  currentCameraFovDegrees = fov;
+  persist(CAMERA_FOV_STORAGE_KEY, String(fov));
 }
 
 export function getAudioScope(): AudioScope {
