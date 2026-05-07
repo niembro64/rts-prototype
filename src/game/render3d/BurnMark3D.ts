@@ -59,6 +59,15 @@ const MITER_LIMIT = 3;
 // mark — avoids stacking zero-length quads for stationary beams.
 const MIN_SEGMENT_DIST_SQ = 4;
 
+// How close the beam endpoint's altitude must be to the ground at that
+// (x,y) for the endpoint to count as a ground hit. Beams ending mid-air
+// (on a flying unit, on a building side, at the range circle in the
+// sky, on a mirror reflector above ground) shouldn't leave scorches on
+// the dirt below. A few units of slack covers the beam's own half-width
+// and floating-point slop on a sim-authoritative ground hit (which sets
+// endpoint.z = getGroundZ(x, y) exactly).
+const GROUND_HIT_Z_TOLERANCE = 4;
+
 /** LOD-driven cap on active marks — same tiers as 2D `getBurnMarkCap`. */
 function getBurnMarkCap(): number {
   const cutoff = getGraphicsConfig().burnMarkAlphaCutoff;
@@ -134,10 +143,21 @@ export class BurnMark3D {
    *  outside the scope rect skip sampling. */
   private scope: ViewportFootprint | null = null;
 
-  constructor(parentWorld: THREE.Group, scope?: ViewportFootprint) {
+  /** Sim-authoritative ground height sampler — used to gate marks so
+   *  beams that end in mid-air don't paint phantom scorches on the
+   *  dirt below their endpoint. Returns 0 when not provided (legacy
+   *  callers / flat maps). */
+  private getGroundZ: (x: number, y: number) => number;
+
+  constructor(
+    parentWorld: THREE.Group,
+    scope?: ViewportFootprint,
+    getGroundZ?: (x: number, y: number) => number,
+  ) {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope ?? null;
+    this.getGroundZ = getGroundZ ?? (() => 0);
 
     this.positions = new Float32Array(MAX_MARKS * 4 * 3);
     this.colors = new Float32Array(MAX_MARKS * 4 * 4);
@@ -235,6 +255,30 @@ export class BurnMark3D {
       // scope. We use generous padding (200) since the endpoint can
       // drift quickly and a strict rect would drop marks mid-sweep.
       if (this.scope && !this.scope.inScope(ex, ez, 200)) continue;
+      // Ground-hit gate — beams that terminate on a flying/standing
+      // unit, on the side of a building, on an aerial mirror, or at the
+      // range circle while still climbing should not scorch the ground.
+      // dgun trails ride the terrain, so always sample those. When a
+      // beam fails the gate we still keep its key alive (so the beam
+      // entry isn't retired-and-recreated each frame) but break the
+      // trail: reset prevMark to null and snap lastEnd to the current
+      // endpoint so the *next* ground-hit sample starts a fresh square
+      // cap instead of stretching a quad through the air gap.
+      if (!isDGunTrail) {
+        const endZ = lastPoint?.z ?? 0;
+        const groundZ = this.getGroundZ(ex, ez);
+        if (endZ - groundZ > GROUND_HIT_Z_TOLERANCE) {
+          const existing = this.beams.get(key);
+          if (existing) {
+            existing.prevMark = null;
+            existing.lastEndX = ex;
+            existing.lastEndY = ez;
+            existing.lastDirX = 0;
+            existing.lastDirY = 0;
+          }
+          continue;
+        }
+      }
       const beamWidth = isDGunTrail
         ? proj.config.shotProfile.visual.burnMarkWidth
         : proj.config.shotProfile.visual.burnMarkWidth || 4;

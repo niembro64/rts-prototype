@@ -75,6 +75,7 @@ import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
 import {
   getTerrainMeshHeight,
+  getSurfaceHeight,
   setTerrainTeamCount,
   setTerrainCenterShape,
   setTerrainDividersShape,
@@ -117,6 +118,7 @@ import {
   ZOOM_INITIAL_DEMO,
   ZOOM_INITIAL_LOBBY_PREVIEW,
   LOBBY_PREVIEW_SPIN_RATE,
+  LAND_CELL_SIZE,
 } from '../../config';
 
 const RENDER_SCOPE_AERIAL_HEADROOM_Y = 700;
@@ -701,7 +703,11 @@ export class RtsScene3D {
       this.threeApp.world,
       (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
     );
-    this.burnMarkRenderer = new BurnMark3D(this.threeApp.world, this.renderScope);
+    this.burnMarkRenderer = new BurnMark3D(
+      this.threeApp.world,
+      this.renderScope,
+      (x, y) => getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
+    );
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
     this.buildGhostRenderer = new BuildGhost3D(
       this.threeApp.world,
