@@ -52,8 +52,6 @@ import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getGraphicsConfigFor } from '@/clientBarConfig';
 import { getTurretHeadRadius } from '../math';
 import { getTurretMountHeight, isCommander } from '../sim/combat/combatUtils';
-import { normalizeLodCellSize } from '../lodGridMath';
-import { landCellIndexForSize } from '../landGrid';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D } from './MirrorMesh3D';
 import { MIRROR_CHROME_MATERIAL } from './BuildingVisualPalette';
@@ -64,6 +62,12 @@ import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
+import {
+  entityInstanceColorKey,
+  isConstructionShell,
+  setEntityInstanceColor,
+} from './EntityInstanceColor3D';
+import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -82,27 +86,9 @@ const MIRROR_PANEL_ENV_INTENSITY = MIRROR_CHROME_MATERIAL.envMapIntensity;
 // normal rendering route.
 const USE_DETAILED_UNIT_INSTANCING = true;
 
-// Module-level rotation axis reused by the LOW-tier instanced sphere
-// path. Three.js' Quaternion.setFromAxisAngle reads the axis as an
-// (input) Vector3, but never mutates it.
+// Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
-const LOW_INSTANCED_COMPACT_MIN_FREE = 128;
-const LOW_INSTANCED_COMPACT_INTERVAL_FRAMES = 30;
-const LOW_INSTANCED_COMPACT_MAX_MOVES = 256;
-// Safety sweep for rare missed dirty events. Normal movement/selection
-// reaches the mass renderer through active/dirty lists; camera-cell,
-// LOD, and entity-set changes still force immediate full passes. Keep
-// this slow so 10k-unit scenes do not get periodic all-unit spikes.
-const UNIT_INSTANCED_FULL_REFRESH_INTERVAL_FRAMES = 120;
-const RICH_UNIT_PROMOTION_BUDGET_PER_FRAME = 64;
-const MASS_INSTANCE_MATRIX_STRIDE: Record<RenderObjectLodTier, number> = {
-  hero: 1,
-  rich: 1,
-  simple: 1,
-  mass: 2,
-  impostor: 4,
-  marker: 8,
-};
+
 const RICH_UNIT_DETAIL_STRIDE: Record<RenderObjectLodTier, number> = {
   hero: 1,
   rich: 1,
@@ -114,15 +100,6 @@ const RICH_UNIT_DETAIL_STRIDE: Record<RenderObjectLodTier, number> = {
 const UNIT_DETAIL_TRANSFORM_EPSILON = 0.05;
 const UNIT_DETAIL_ROTATION_EPSILON = 0.001;
 const UNIT_DETAIL_VELOCITY_EPSILON_SQ = 0.25;
-
-function isConstructionShell(entity: Entity): boolean {
-  return !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
-}
-
-function entityInstanceColorKey(entity: Entity): number {
-  const ownerKey = entity.ownership?.playerId ?? -1;
-  return ownerKey * 2 + (isConstructionShell(entity) ? 1 : 0);
-}
 
 // Scratch globals reused by the per-unit surface-tilt path so the
 // per-frame loop allocates no quaternions/vectors. Tilt is applied
@@ -168,11 +145,11 @@ export class Render3DEntities {
   // instance field and calling `.clear()` avoids a fresh Set allocation
   // every render frame.
   private _seenUnitIds = new Set<EntityId>();
-  private lastUnitInstancedEntitySetVersion = -1;
   private projectileRenderer: ProjectileRenderer3D;
   private selectionOverlays: SelectionOverlayRenderer3D;
   private constructionVisuals: ConstructionVisualController3D;
   private buildingRenderer: BuildingEntityRenderer3D;
+  private unitMassInstances: UnitMassInstanceRenderer3D;
 
   // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
   // Angle advances by `speed` radians/sec; speed accelerates toward
@@ -202,11 +179,6 @@ export class Render3DEntities {
    *  buffers, so keep it separate from regular per-Mesh fallback heads. */
   private turretHeadInstancedGeom = this.turretHeadGeom.clone();
   private commanderVisualKit = new CommanderVisualKit3D();
-  // Plain sphere used at MIN / LOW LOD as the entire unit body — mirrors
-  // the 2D "circles" representation. Coarser tessellation than the
-  // turret-head sphere because at low tiers we trade detail for draw
-  // speed and the unit count is what hurts.
-  private unitSphereLowGeom = new THREE.SphereGeometry(1, 10, 8);
   /** Unit box used as the BUILDING marker mesh at the lowest LOD tier.
    *  Scaled per-frame to the building's logical sim cuboid
    *  (width × depth × height) so the building still reads as a building
@@ -251,78 +223,12 @@ export class Render3DEntities {
     envMapIntensity: MIRROR_PANEL_ENV_INTENSITY,
     side: THREE.DoubleSide,
   });
-  // ── LOW-tier instanced sphere ─────────────────────────────────────
-  // At MIN / LOW LOD every unit is a single sphere. Stamping each one
-  // as a separate Mesh costs 1 draw call per unit; a single
-  // InstancedMesh collapses thousands of spheres into one draw + one
-  // shader invocation per instance. Per-unit transform/colour go into
-  // the instance buffers; unused slots are kept at scale 0 so they
-  // contribute no visible geometry.
-  private static readonly LOW_INSTANCED_CAP = 16384;
-  private unitInstanced: THREE.InstancedMesh | null = null;
-  /** Maps entityId → instance slot index for fast per-frame writes. */
-  private unitInstancedSlot = new Map<EntityId, number>();
-  /** Reverse lookup so low-tier compaction can move tail slots into holes in O(1). */
-  private unitInstancedEntityBySlot: (EntityId | undefined)[] = [];
-  /** Maps entityId → last owner/lod color key written into its instance slot. */
-  private unitInstancedColorKey = new Map<EntityId, number>();
-  // In hybrid mode this is the set of units whose mass-body slot should
-  // be hidden because a richer object mesh is responsible for drawing
-  // the body. The outer marker tier still uses this packed sphere path.
-  private massRichUnitIds = new Set<EntityId>();
-  private massRichUnits: Entity[] = [];
-  private massRichUnitIndex = new Map<EntityId, number>();
-  private massRichObjectTiers = new Map<EntityId, RenderObjectLodTier>();
   private ownedObjectLodGrid = new RenderLodGrid();
   private objectLodGrid = this.ownedObjectLodGrid;
-  /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
-  private unitInstancedFreeSlots: number[] = [];
-  /** High-water mark; everything ≥ this is unused. */
-  private unitInstancedNextSlot = 0;
-  private unitInstancedCompactFrame = 0;
-  private unitInstancedFrame = 0;
-  private unitInstancedLastFullPassFrame = -1;
-  private unitInstancedLastFullPassEntitySetVersion = -1;
-  private unitInstancedLastFullPassLodKey = '';
-  private unitInstancedLastFullPassCellSize = 0;
-  private unitInstancedLastFullPassCameraCellX = 0;
-  private unitInstancedLastFullPassCameraCellY = 0;
-  private unitInstancedActiveUnits: Entity[] = [];
-  private unitInstancedHiddenIds = new Set<EntityId>();
   private richUnitDetailFrame = 0;
   /** Hidden-slot transform: scale=0 collapses the geometry to a point. */
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
-  /** Reusable scratch matrix to avoid allocations in the per-instance write hot loop. */
-  private _instMatrix = new THREE.Matrix4();
-  /** Reusable scratch quaternion + vector. */
-  private _instQuat = new THREE.Quaternion();
-  private _instPos = new THREE.Vector3();
-  private _instScale = new THREE.Vector3();
   private _instColor = new THREE.Color();
-
-  private markInstanceMatrixRange(
-    mesh: THREE.InstancedMesh,
-    minSlot: number,
-    maxSlot: number,
-  ): void {
-    if (maxSlot < minSlot) return;
-    const attr = mesh.instanceMatrix;
-    attr.clearUpdateRanges();
-    attr.addUpdateRange(minSlot * 16, (maxSlot - minSlot + 1) * 16);
-    attr.needsUpdate = true;
-  }
-
-  private markInstanceColorRange(
-    mesh: THREE.InstancedMesh,
-    minSlot: number,
-    maxSlot: number,
-  ): void {
-    if (!mesh.instanceColor || maxSlot < minSlot) return;
-    const attr = mesh.instanceColor;
-    attr.clearUpdateRanges();
-    attr.addUpdateRange(minSlot * 3, (maxSlot - minSlot + 1) * 3);
-    attr.needsUpdate = true;
-  }
 
   // ── LOW+ tier smooth-body chassis InstancedMesh ─────────────────
   // At MED+ LOD every smooth-body unit (arachnid, beam, snipe / tick,
@@ -551,43 +457,13 @@ export class Render3DEntities {
     // player-color generator (sim/types.getPlayerColors) supports any
     // pid, so we don't pre-allocate for a fixed table here.
 
-    // Build the LOW-tier instanced sphere up front. The material is
-    // white because per-instance colour comes from the InstancedMesh
-    // colour attribute (setColorAt). DynamicDrawUsage hints to the
-    // driver that the matrix buffer changes every frame.
-    const baseMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    this.unitInstanced = new THREE.InstancedMesh(
-      this.unitSphereLowGeom,
-      baseMat,
-      Render3DEntities.LOW_INSTANCED_CAP,
-    );
-    this.unitInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    // Allocate the instanceColor buffer so setColorAt works without a
-    // first-frame initialization branch.
-    this.unitInstanced.setColorAt(0, this._instColor.set(0xffffff));
-    this.unitInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
-    // Frustum culling on an InstancedMesh uses the LOCAL geometry's
-    // bounding sphere — for our unit sphere that's a 1-radius ball at
-    // the origin. Instances live anywhere on the (up to 6000-wu) map,
-    // so the default cull would hide the whole mesh whenever the
-    // camera wasn't looking at world origin (which is most of the
-    // time). Disabling cull is cheap because hidden slots use a
-    // scale-0 matrix and contribute zero rasterized pixels.
-    this.unitInstanced.frustumCulled = false;
-    // Hide every slot up front; updateUnitsInstanced fills active ones
-    // each frame.
-    for (let i = 0; i < Render3DEntities.LOW_INSTANCED_CAP; i++) {
-      this.unitInstanced.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-    }
-    // Start with count = 0 so an empty pool doesn't spin the GPU
-    // through 16k empty vertex-shader invocations every frame. The
-    // per-frame writer bumps count up to nextSlot (the high-water
-    // mark of allocated slot indices) at the end of each update —
-    // see updateUnitsInstanced. CAP is the buffer SIZE; count is the
-    // DRAW BOUND.
-    this.unitInstanced.count = 0;
-    this.unitInstanced.instanceMatrix.needsUpdate = true;
-    this.world.add(this.unitInstanced);
+    this.unitMassInstances = new UnitMassInstanceRenderer3D({
+      world: this.world,
+      clientViewState: this.clientViewState,
+      scope: this.scope,
+      resolveObjectLod: (entity) => this.resolveEntityObjectLod(entity),
+      hasSceneMesh: (entityId) => this.unitMeshes.has(entityId),
+    });
 
     // Smooth-body chassis InstancedMesh — one shared draw call covers
     // every smooth body part across every smooth-body unit on the map
@@ -713,13 +589,7 @@ export class Render3DEntities {
     slot: number,
     entity: Entity,
   ): void {
-    if (isConstructionShell(entity)) {
-      this._instColor.set(SHELL_PALE_HEX);
-    } else {
-      const pid = entity.ownership?.playerId;
-      this._instColor.set(pid !== undefined ? getPlayerColors(pid).primary : 0x888888);
-    }
-    mesh.setColorAt(slot, this._instColor);
+    setEntityInstanceColor(mesh, slot, entity, this._instColor);
   }
 
   update(
@@ -777,76 +647,6 @@ export class Render3DEntities {
     return nextSlot;
   }
 
-  private compactUnitInstancedSlots(
-    im: THREE.InstancedMesh,
-  ): {
-    matrixMinSlot: number;
-    matrixMaxSlot: number;
-    colorMinSlot: number;
-    colorMaxSlot: number;
-    colorDirty: boolean;
-  } {
-    const result = {
-      matrixMinSlot: Number.POSITIVE_INFINITY,
-      matrixMaxSlot: -1,
-      colorMinSlot: Number.POSITIVE_INFINITY,
-      colorMaxSlot: -1,
-      colorDirty: false,
-    };
-
-    if (this.unitInstancedFreeSlots.length < LOW_INSTANCED_COMPACT_MIN_FREE) return result;
-    if ((this.unitInstancedCompactFrame++ % LOW_INSTANCED_COMPACT_INTERVAL_FRAMES) !== 0) return result;
-
-    this.unitInstancedFreeSlots.sort((a, b) => a - b);
-    let moves = 0;
-    let nextSlot = this.unitInstancedNextSlot;
-
-    for (let freeIndex = 0; freeIndex < this.unitInstancedFreeSlots.length && moves < LOW_INSTANCED_COMPACT_MAX_MOVES;) {
-      nextSlot = this.trimFreeTail(this.unitInstancedFreeSlots, nextSlot);
-      const freeSlot = this.unitInstancedFreeSlots[freeIndex];
-      if (freeSlot >= nextSlot) {
-        this.unitInstancedFreeSlots.splice(freeIndex, 1);
-        continue;
-      }
-
-      let tailSlot = nextSlot - 1;
-      while (tailSlot > freeSlot && this.unitInstancedEntityBySlot[tailSlot] === undefined) {
-        const tailFreeIdx = this.unitInstancedFreeSlots.indexOf(tailSlot);
-        if (tailFreeIdx >= 0) this.unitInstancedFreeSlots.splice(tailFreeIdx, 1);
-        nextSlot = tailSlot;
-        tailSlot = nextSlot - 1;
-      }
-      if (tailSlot <= freeSlot) break;
-
-      const tailEntityId = this.unitInstancedEntityBySlot[tailSlot];
-      if (tailEntityId === undefined) break;
-
-      im.getMatrixAt(tailSlot, this._instMatrix);
-      im.setMatrixAt(freeSlot, this._instMatrix);
-      im.setMatrixAt(tailSlot, Render3DEntities._ZERO_MATRIX);
-      if (im.instanceColor) {
-        im.getColorAt(tailSlot, this._instColor);
-        im.setColorAt(freeSlot, this._instColor);
-        result.colorDirty = true;
-        result.colorMinSlot = Math.min(result.colorMinSlot, freeSlot, tailSlot);
-        result.colorMaxSlot = Math.max(result.colorMaxSlot, freeSlot, tailSlot);
-      }
-
-      this.unitInstancedSlot.set(tailEntityId, freeSlot);
-      this.unitInstancedEntityBySlot[freeSlot] = tailEntityId;
-      this.unitInstancedEntityBySlot[tailSlot] = undefined;
-
-      this.unitInstancedFreeSlots.splice(freeIndex, 1);
-      this.unitInstancedFreeSlots.push(tailSlot);
-      result.matrixMinSlot = Math.min(result.matrixMinSlot, freeSlot, tailSlot);
-      result.matrixMaxSlot = Math.max(result.matrixMaxSlot, freeSlot, tailSlot);
-      moves++;
-    }
-
-    this.unitInstancedNextSlot = this.trimFreeTail(this.unitInstancedFreeSlots, nextSlot);
-    return result;
-  }
-
   /** Wipe every cached unit mesh so the next updateUnits() rebuilds them at
    *  the current LOD. Explosions / projectiles / tile grid don't need a rebuild
    *  — their per-frame loops already read the LOD snapshot directly. */
@@ -872,32 +672,6 @@ export class Render3DEntities {
     this.releaseAllTurretHeadSlots();
     this.releaseAllBarrelSlots();
     this.releaseAllMirrorPanelSlots();
-  }
-
-  private hideUnitInstancedSlot(
-    im: THREE.InstancedMesh,
-    entityId: EntityId,
-    slot: number | undefined,
-    dirty: { matrixMinSlot: number; matrixMaxSlot: number },
-  ): void {
-    if (slot === undefined || this.unitInstancedHiddenIds.has(entityId)) return;
-    im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    this.unitInstancedHiddenIds.add(entityId);
-    if (slot < dirty.matrixMinSlot) dirty.matrixMinSlot = slot;
-    if (slot > dirty.matrixMaxSlot) dirty.matrixMaxSlot = slot;
-  }
-
-  private shouldUpdateUnitInstancedMatrix(
-    entity: Entity,
-    tier: RenderObjectLodTier,
-    slotWasNew: boolean,
-    wasHidden: boolean,
-  ): boolean {
-    if (slotWasNew || wasHidden) return true;
-    if (entity.selectable?.selected === true) return true;
-    const stride = MASS_INSTANCE_MATRIX_STRIDE[tier] ?? 1;
-    if (stride <= 1) return true;
-    return (this.unitInstancedFrame + entity.id) % stride === 0;
   }
 
   private shouldUpdateRichUnitDetails(
@@ -941,256 +715,6 @@ export class Render3DEntities {
     mesh.unitDetailCachedY = entity.transform.y;
     mesh.unitDetailCachedZ = entity.transform.z;
     mesh.unitDetailCachedRotation = entity.transform.rotation;
-  }
-
-  private shouldRunUnitInstancedFullPass(
-    entitySetVersion: number,
-    collectRichUnits: boolean,
-  ): boolean {
-    const size = normalizeLodCellSize(this.lod.gfx.objectLodCellSize);
-    const view = this.lod.view;
-    const cameraCellX = landCellIndexForSize(view.cameraX, size);
-    const cameraCellY = landCellIndexForSize(view.cameraZ, size);
-    if (
-      entitySetVersion !== this.unitInstancedLastFullPassEntitySetVersion ||
-      this.lod.key !== this.unitInstancedLastFullPassLodKey ||
-      size !== this.unitInstancedLastFullPassCellSize ||
-      cameraCellX !== this.unitInstancedLastFullPassCameraCellX ||
-      cameraCellY !== this.unitInstancedLastFullPassCameraCellY
-    ) {
-      this.unitInstancedLastFullPassEntitySetVersion = entitySetVersion;
-      this.unitInstancedLastFullPassLodKey = this.lod.key;
-      this.unitInstancedLastFullPassCellSize = size;
-      this.unitInstancedLastFullPassCameraCellX = cameraCellX;
-      this.unitInstancedLastFullPassCameraCellY = cameraCellY;
-      return true;
-    }
-    if (!collectRichUnits) return false;
-    return (
-      this.unitInstancedLastFullPassFrame < 0 ||
-      this.unitInstancedFrame - this.unitInstancedLastFullPassFrame >=
-        UNIT_INSTANCED_FULL_REFRESH_INTERVAL_FRAMES
-    );
-  }
-
-  private removeMassRichUnit(id: EntityId): void {
-    if (!this.massRichUnitIds.delete(id)) return;
-    this.massRichObjectTiers.delete(id);
-    const idx = this.massRichUnitIndex.get(id);
-    this.massRichUnitIndex.delete(id);
-    if (idx === undefined) return;
-    const lastIdx = this.massRichUnits.length - 1;
-    const last = this.massRichUnits[lastIdx];
-    if (idx !== lastIdx && last) {
-      this.massRichUnits[idx] = last;
-      this.massRichUnitIndex.set(last.id, idx);
-    }
-    this.massRichUnits.pop();
-  }
-
-  private clearMassRichUnits(): void {
-    this.massRichUnitIds.clear();
-    this.massRichUnits.length = 0;
-    this.massRichUnitIndex.clear();
-    this.massRichObjectTiers.clear();
-  }
-
-  private addMassRichUnit(entity: Entity, objectTier: RenderObjectLodTier): void {
-    if (!this.massRichUnitIds.has(entity.id)) {
-      this.massRichUnitIds.add(entity.id);
-      this.massRichUnitIndex.set(entity.id, this.massRichUnits.length);
-      this.massRichUnits.push(entity);
-    }
-    this.massRichObjectTiers.set(entity.id, objectTier);
-  }
-
-  /** LOW-tier per-frame instance write. Each visible unit takes one
-   *  slot in the InstancedMesh; the slot's matrix encodes its world
-   *  pose (translation + Y-rotation + uniform scale by render radius)
-   *  and the color attribute carries its team primary. Slots vacated
-   *  by removed units go on the free list to be reused.
-   *
-   *  GPU cost: one draw call total + N vertex-shader invocations.
-   *  CPU cost: one Matrix4.compose + setMatrixAt + setColorAt per
-   *  visible unit per frame, no allocations. */
-  private updateUnitsInstanced(
-    units?: readonly Entity[],
-    collectRichUnits = false,
-  ): readonly Entity[] {
-    const im = this.unitInstanced;
-    if (!im) return this.massRichUnits;
-
-    this.unitInstancedFrame = (this.unitInstancedFrame + 1) & 0x3fffffff;
-    const entitySetVersion = this.clientViewState.getEntitySetVersion();
-    const fullPass = this.shouldRunUnitInstancedFullPass(entitySetVersion, collectRichUnits);
-    const unitsToProcess = fullPass
-      ? (units ?? this.clientViewState.getUnits())
-      : this.clientViewState.collectActiveUnitRenderEntities(this.unitInstancedActiveUnits);
-    if (fullPass) this.unitInstancedLastFullPassFrame = this.unitInstancedFrame;
-
-    const seen = this._seenUnitIds;
-    seen.clear();
-    const richIds = this.massRichUnitIds;
-    if (collectRichUnits && fullPass) {
-      this.clearMassRichUnits();
-    }
-    let colorDirty = false;
-    let matrixMinSlot = Number.POSITIVE_INFINITY;
-    let matrixMaxSlot = -1;
-    let colorMinSlot = Number.POSITIVE_INFINITY;
-    let colorMaxSlot = -1;
-    const matrixDirty = { matrixMinSlot, matrixMaxSlot };
-    let richPromotionsThisFrame = 0;
-
-    for (const e of unitsToProcess) {
-      seen.add(e.id);
-      const objectTier = this.resolveEntityObjectLod(e);
-      const inScope = this.scope.inScope(e.transform.x, e.transform.y, 100);
-      if (collectRichUnits) {
-        // Rich scenegraph units stay render-scope gated because they
-        // drive terrain tilt, locomotion, turret/mirror matrices, and
-        // selection overlays. Units outside that older 2D footprint
-        // still flow through the cheap instanced body below, so the
-        // 2D LOD grid never resolves to "invisible" for unit bodies.
-        if (inScope && (isConstructionShell(e) || isRichObjectLod(objectTier) || objectTier === 'simple')) {
-          const alreadyRich = richIds.has(e.id);
-          const hasSceneMesh = this.unitMeshes.has(e.id);
-          const canPromote =
-            alreadyRich ||
-            hasSceneMesh ||
-            richPromotionsThisFrame < RICH_UNIT_PROMOTION_BUDGET_PER_FRAME;
-          if (canPromote) {
-            if (!alreadyRich && !hasSceneMesh) richPromotionsThisFrame++;
-            this.addMassRichUnit(e, objectTier);
-            this.hideUnitInstancedSlot(im, e.id, this.unitInstancedSlot.get(e.id), matrixDirty);
-            continue;
-          }
-        }
-        this.removeMassRichUnit(e.id);
-      }
-
-      let slot = this.unitInstancedSlot.get(e.id);
-      let slotWasNew = false;
-      if (slot === undefined) {
-        if (this.unitInstancedFreeSlots.length > 0) {
-          slot = this.unitInstancedFreeSlots.pop()!;
-        } else if (this.unitInstancedNextSlot < Render3DEntities.LOW_INSTANCED_CAP) {
-          slot = this.unitInstancedNextSlot++;
-        } else {
-          // Cap exhausted — drop this unit's render. Sim still runs.
-          continue;
-        }
-        this.unitInstancedSlot.set(e.id, slot);
-        this.unitInstancedEntityBySlot[slot] = e.id;
-        slotWasNew = true;
-      }
-      const wasHidden = this.unitInstancedHiddenIds.delete(e.id);
-
-      const radius = e.unit?.radius.body
-        ?? e.unit?.radius.shot
-        ?? 15;
-      if (this.shouldUpdateUnitInstancedMatrix(e, objectTier, slotWasNew, wasHidden)) {
-        // Low-detail imposter sphere is centered on the same authored
-        // unit body center as simulation targeting and the rich body
-        // renderer. Do not infer this from radius; tall/low rigs can
-        // have body centers that intentionally differ from body radius.
-        this._instPos.set(
-          e.transform.x,
-          e.transform.z,
-          e.transform.y,
-        );
-        this._instQuat.setFromAxisAngle(_INST_UP, -e.transform.rotation);
-        this._instScale.set(radius, radius, radius);
-        this._instMatrix.compose(this._instPos, this._instQuat, this._instScale);
-        im.setMatrixAt(slot, this._instMatrix);
-        if (slot < matrixDirty.matrixMinSlot) matrixDirty.matrixMinSlot = slot;
-        if (slot > matrixDirty.matrixMaxSlot) matrixDirty.matrixMaxSlot = slot;
-      }
-
-      const colorKey = entityInstanceColorKey(e);
-      if (this.unitInstancedColorKey.get(e.id) !== colorKey) {
-        this.setInstanceColorForEntity(im, slot, e);
-        this.unitInstancedColorKey.set(e.id, colorKey);
-        colorDirty = true;
-        if (slot < colorMinSlot) colorMinSlot = slot;
-        if (slot > colorMaxSlot) colorMaxSlot = slot;
-      }
-    }
-
-    // Free slots for units that disappeared. This is an O(active units)
-    // map walk, so run it only when the client entity set actually
-    // changed rather than on every render frame.
-    if (entitySetVersion !== this.lastUnitInstancedEntitySetVersion) {
-      for (const [id, slot] of this.unitInstancedSlot) {
-        if (!seen.has(id)) {
-          im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-          if (slot < matrixDirty.matrixMinSlot) matrixDirty.matrixMinSlot = slot;
-          if (slot > matrixDirty.matrixMaxSlot) matrixDirty.matrixMaxSlot = slot;
-          this.unitInstancedFreeSlots.push(slot);
-          this.unitInstancedEntityBySlot[slot] = undefined;
-          this.unitInstancedSlot.delete(id);
-          this.unitInstancedColorKey.delete(id);
-          this.unitInstancedHiddenIds.delete(id);
-        }
-      }
-      this.lastUnitInstancedEntitySetVersion = entitySetVersion;
-    }
-    matrixMinSlot = matrixDirty.matrixMinSlot;
-    matrixMaxSlot = matrixDirty.matrixMaxSlot;
-    this.unitInstancedNextSlot = this.trimFreeTail(
-      this.unitInstancedFreeSlots,
-      this.unitInstancedNextSlot,
-    );
-    const compacted = this.compactUnitInstancedSlots(im);
-    if (compacted.matrixMaxSlot >= compacted.matrixMinSlot) {
-      matrixMinSlot = Math.min(matrixMinSlot, compacted.matrixMinSlot);
-      matrixMaxSlot = Math.max(matrixMaxSlot, compacted.matrixMaxSlot);
-    }
-    if (compacted.colorDirty) {
-      colorDirty = true;
-      colorMinSlot = Math.min(colorMinSlot, compacted.colorMinSlot);
-      colorMaxSlot = Math.max(colorMaxSlot, compacted.colorMaxSlot);
-    }
-
-    // Tighten draw bound to the high-water mark so the GPU doesn't
-    // run the vertex shader on the (CAP - nextSlot) trailing slots
-    // that have never been allocated. Freed slots within [0,
-    // nextSlot) still incur VS cost (their matrix is scale-0 so no
-    // fragments) but stable-slot allocation keeps churn-induced
-    // waste bounded — peak active count is the steady-state ceiling.
-    im.count = this.unitInstancedNextSlot;
-    this.markInstanceMatrixRange(im, matrixMinSlot, matrixMaxSlot);
-    if (colorDirty) this.markInstanceColorRange(im, colorMinSlot, colorMaxSlot);
-    return this.massRichUnits;
-  }
-
-  /** Tier flipped from LOW to MED+: hide every active instanced slot
-   *  and drop the slot map so the next LOW pass starts fresh (and
-   *  colors get re-applied to whatever pid currently owns each slot). */
-  private releaseAllInstancedSlots(): void {
-    const im = this.unitInstanced;
-    if (!im) return;
-    for (const slot of this.unitInstancedSlot.values()) {
-      im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    }
-    this.unitInstancedSlot.clear();
-    this.unitInstancedEntityBySlot.length = 0;
-    this.unitInstancedColorKey.clear();
-    this.unitInstancedHiddenIds.clear();
-    this.clearMassRichUnits();
-    this.unitInstancedFreeSlots.length = 0;
-    this.unitInstancedNextSlot = 0;
-    this.unitInstancedCompactFrame = 0;
-    this.unitInstancedFrame = 0;
-    this.unitInstancedLastFullPassFrame = -1;
-    this.unitInstancedLastFullPassEntitySetVersion = -1;
-    this.unitInstancedLastFullPassLodKey = '';
-    this.unitInstancedLastFullPassCellSize = 0;
-    this.unitInstancedLastFullPassCameraCellX = 0;
-    this.unitInstancedLastFullPassCameraCellY = 0;
-    this.unitInstancedActiveUnits.length = 0;
-    im.count = 0;
-    im.instanceMatrix.needsUpdate = true;
   }
 
   /** Reserve N consecutive logical slots in `smoothChassis` for one
@@ -1568,16 +1092,7 @@ export class Render3DEntities {
   private updateShellInstanceColors(e: Entity, m: EntityMesh): void {
     const colorKey = entityInstanceColorKey(e);
 
-    const massSlot = this.unitInstancedSlot.get(e.id);
-    if (
-      this.unitInstanced &&
-      massSlot !== undefined &&
-      this.unitInstancedColorKey.get(e.id) !== colorKey
-    ) {
-      this.setInstanceColorForEntity(this.unitInstanced, massSlot, e);
-      this.unitInstancedColorKey.set(e.id, colorKey);
-      this.unitInstanced.instanceColor!.needsUpdate = true;
-    }
+    this.unitMassInstances.syncColorForEntity(e);
 
     if (
       this.smoothChassis &&
@@ -1640,24 +1155,24 @@ export class Render3DEntities {
     const unitRenderMode = this.lod.gfx.unitRenderMode;
 
     if (unitRenderMode === 'mass') {
-      this.clearMassRichUnits();
+      this.unitMassInstances.clearRichUnits();
       if (this.unitMeshes.size > 0) {
         this.rebuildAllUnitsOnLodChange();
       }
-      this.updateUnitsInstanced();
+      this.unitMassInstances.update(this.lod);
       return;
     }
 
     if (unitRenderMode === 'hybrid') {
-      const richUnits = this.updateUnitsInstanced(undefined, true);
+      const richUnits = this.unitMassInstances.update(this.lod, undefined, true);
       this.updateUnitMeshes(richUnits);
       return;
     }
 
-    if (this.unitInstancedSlot.size > 0) {
-      this.releaseAllInstancedSlots();
+    if (this.unitMassInstances.hasSlots()) {
+      this.unitMassInstances.releaseAll();
     }
-    this.clearMassRichUnits();
+    this.unitMassInstances.clearRichUnits();
     const units = this.clientViewState.getUnits();
     this.updateUnitMeshes(units);
   }
@@ -1725,7 +1240,7 @@ export class Render3DEntities {
       const pid = e.ownership?.playerId;
       const colorKey = entityInstanceColorKey(e);
       const turrets = e.combat?.turrets ?? [];
-      const objectTier = this.massRichObjectTiers.get(e.id) ?? this.resolveEntityObjectLod(e);
+      const objectTier = this.unitMassInstances.getRichObjectTier(e.id) ?? this.resolveEntityObjectLod(e);
       const isCommanderUnit = isCommander(e);
       const fullUnitDetail =
         isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor';
@@ -2761,32 +2276,7 @@ export class Render3DEntities {
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
     this.neutralMat.dispose();
-    if (this.unitInstanced) {
-      this.world.remove(this.unitInstanced);
-      // The InstancedMesh's geometry (unitSphereLowGeom) is also held
-      // as a class field disposed below; the material is a private
-      // MeshLambertMaterial only owned by this InstancedMesh, so
-      // dispose it via the mesh.
-      (this.unitInstanced.material as THREE.Material).dispose();
-      this.unitInstanced.dispose();
-      this.unitInstanced = null;
-    }
-    this.unitSphereLowGeom.dispose();
-    this.unitInstancedSlot.clear();
-    this.unitInstancedColorKey.clear();
-    this.unitInstancedHiddenIds.clear();
-    this.clearMassRichUnits();
-    this.unitInstancedEntityBySlot.length = 0;
-    this.unitInstancedFreeSlots.length = 0;
-    this.unitInstancedCompactFrame = 0;
-    this.unitInstancedFrame = 0;
-    this.unitInstancedLastFullPassFrame = -1;
-    this.unitInstancedLastFullPassEntitySetVersion = -1;
-    this.unitInstancedLastFullPassLodKey = '';
-    this.unitInstancedLastFullPassCellSize = 0;
-    this.unitInstancedLastFullPassCameraCellX = 0;
-    this.unitInstancedLastFullPassCameraCellY = 0;
-    this.unitInstancedActiveUnits.length = 0;
+    this.unitMassInstances.destroy();
     if (this.smoothChassis) {
       this.world.remove(this.smoothChassis);
       // Material is a private MeshLambertMaterial only owned by this
