@@ -67,18 +67,22 @@ profiles/components, not reinterpret blueprint pieces independently.
 11. GameServer still mixes bootstrap, tick, physics forces, snapshots, and commands.
     References:
     - src/game/server/GameServer.ts:1
-    - src/game/server/GameServer.ts:380
-    - src/game/server/GameServer.ts:516
-    - src/game/server/GameServer.ts:753
-    - file size: 1740 lines
+    - src/game/server/GameServer.ts:431
+    - src/game/server/GameServer.ts:552
+    - src/game/server/GameServer.ts:616
+    - src/game/server/GameServer.ts:1026
+    - src/game/server/ServerDebugGridPublisher.ts:1
+    - file size: 1570 lines
 
     The host server class owns map setup, spawn setup, tick scheduling,
     simulation stepping, force application, physics sync, snapshot publication,
-    debug overlays, and command entrypoints. This makes server performance fixes
-    harder to isolate and test.
+    and command entrypoints. Spatial-grid debug snapshot publishing has been
+    split into `ServerDebugGridPublisher`, but the remaining server class is
+    still too broad. This makes server performance fixes harder to isolate and
+    test.
 
     Fix direction: extract `ServerBootstrap`, `ServerTickLoop`,
-    `UnitForceSystem`, `ServerSnapshotPublisher`, and `ServerDebugGridPublisher`.
+    `UnitForceSystem`, and `ServerSnapshotPublisher`.
 
 
 13. Debris rendering re-interprets unit/turret/shot blueprints instead of reusing render fragments.
