@@ -417,46 +417,31 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: true,
   },
 
-  // Burn mark cutoff — higher = marks disappear sooner = fewer active marks
-  BURN_MARK_ALPHA_CUTOFF: {
-    min: 1,
-    low: 0.6,
-    medium: 0.4,
-    high: 0.2,
-    max: 0.01,
+  // Burn mark density (0..1) — single LOD knob from which the burn-
+  // mark renderer derives its active-count cap, frame-skip stride,
+  // AND lifetime multiplier. 0 = disabled; 1 = full. Each renderer
+  // smooths its observed density with a short EMA so a tier flip
+  // glides over ~300 ms instead of stepping (which used to look
+  // like a chunk of marks vanishing all at once).
+  BURN_MARK_DENSITY: {
+    min: 0,
+    low: 0.25,
+    medium: 0.5,
+    high: 0.75,
+    max: 1.0,
   },
 
-  // Burn mark sample interval — frames to skip between placing new burn marks
-  BURN_MARK_FRAMES_SKIP: {
-    min: 5,
-    low: 4,
-    medium: 3,
-    high: 1,
-    max: 0,
-  },
-
-  // Ground print cutoff — wheel/tread ruts and footstep stamps. Higher
-  // = prints disappear sooner = fewer active prints (cheaper render).
-  // Volume is roughly 50× burn marks at battle scale (one emitter per
-  // wheel/tread/leg vs one per beam), so the low tiers cut harder.
-  GROUND_PRINT_ALPHA_CUTOFF: {
-    min: 1,        // off entirely
-    low: 0.6,
-    medium: 0.35,
-    high: 0.15,
-    max: 0.04,
-  },
-
-  // Ground print sample interval — frames between rut/stamp placement
-  // attempts. Spacing in world units is also gated by a per-emitter
-  // minimum-distance check inside GroundPrint3D, so a higher skip here
-  // strictly throttles the upper bound.
-  GROUND_PRINT_FRAMES_SKIP: {
-    min: 8,
-    low: 5,
-    medium: 3,
-    high: 1,
-    max: 0,
+  // Ground print density — same role as BURN_MARK_DENSITY but for
+  // wheel ruts, tread tracks, and footstep stamps. Sized identically
+  // (0..1, one knob → cap + frame-skip + lifetime), so the two mark
+  // systems scale on the same axis and the LOD ladder is easy to
+  // reason about.
+  GROUND_PRINT_DENSITY: {
+    min: 0,
+    low: 0.25,
+    medium: 0.5,
+    high: 0.75,
+    max: 1.0,
   },
 
   // Smoke puff emission cadence — render frames skipped between

@@ -16,7 +16,6 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { getGraphicsConfig, getGroundMarks } from '@/clientBarConfig';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { LegInstance } from './LegRig3D';
@@ -38,33 +37,17 @@ const PRINT_LIN = new THREE.Color(PRINT_HEX);
 
 // ── Lifetime ──
 // Linear alpha decay from PRINT_INITIAL_ALPHA at age 0 → 0 at age
-// PRINT_TOTAL_LIFETIME_MS. Tweak this single number to change how
-// long ruts and footstep stamps hang around before disappearing
-// completely. A linear ramp keeps the meaning of "total duration"
-// honest: the LOD-driven alphaCutoff still trims a mark earlier on
-// low tiers (so it never *renders* below the cutoff alpha), but at
-// the MAX tier (cutoff ≈ 0) marks live for exactly this many ms.
+// PRINT_TOTAL_LIFETIME_MS × density-derived multiplier. Tweak this
+// single number to change how long ruts and footstep stamps hang
+// around before disappearing completely.
 const PRINT_TOTAL_LIFETIME_MS = 1000;
 const PRINT_INITIAL_ALPHA = 0.2;
-
-// Per-tier lifetime multiplier — mirrors SmokeTrail3D's
-// LOD_LIFESPAN_MULT so ground prints scale on the same axis as the
-// other long-lived effects. A shorter effective lifetime at low/min
-// tiers frees slots faster under the existing per-tier cap, so the
-// system self-throttles in two dimensions: cap (max active count)
-// and lifetime (slot turnover rate).
-const LOD_LIFETIME_MULT: Record<ConcreteGraphicsQuality, number> = {
-  min: 0.5,
-  low: 0.65,
-  medium: 0.8,
-  high: 0.9,
-  max: 1.0,
-};
 
 // Hard buffer cap — sized to keep the geometry in one draw call at
 // the most generous LOD tier. Memory: ~12k × 4 verts × 28 bytes ≈
 // 1.3 MB GPU, trivial. Active count is throttled per-tier by the
-// LOD-driven cap below; this is just the never-allocate-more ceiling.
+// density-derived cap below; this is just the never-allocate-more
+// ceiling.
 const MAX_PRINTS = 12000;
 
 // Miter limit — same PostScript default as BurnMark3D.
@@ -81,15 +64,19 @@ const TRAIL_MIN_SEGMENT_DIST_SQ = 9;
 // same spot (creep-walking, tiny stride) from stamping every cycle.
 const STAMP_MIN_DIST_SQ = 16;
 
-/** LOD-driven cap on active prints. Tiers mirror BurnMark3D's shape
- *  but the absolute counts are higher because the volume is too. */
-function getGroundPrintCap(): number {
-  const cutoff = getGraphicsConfig().groundPrintAlphaCutoff;
-  if (cutoff >= 1) return 0;       // disabled at min tier
-  if (cutoff >= 0.5) return 1500;
-  if (cutoff >= 0.25) return 4000;
-  if (cutoff >= 0.1) return 7500;
-  return 12000;
+// EMA tau (ms) used to smooth the LOD-resolved density so a tier
+// flip glides instead of stepping. Same value as BurnMark3D for
+// visual consistency across both mark systems.
+const DENSITY_EMA_TAU_MS = 300;
+
+// Density-derived throttles — same shape as BurnMark3D. Density is
+// a single scalar in [0, 1]; cap, frame-skip, and lifetime mult
+// fall out of it together so a tier flip moves all three.
+const MAX_GROUND_FRAMES_SKIP = 8;
+const GROUND_LIFETIME_MULT_AT_ZERO = 0.5;
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
 // ── Per-trail bookkeeping ──
@@ -149,6 +136,10 @@ export class GroundPrint3D {
   private _seenStampKeys = new Set<TrailKey>();
 
   private _frameCounter = 0;
+  /** EMA-smoothed copy of the LOD-resolved density. -1 means "not
+   *  initialized yet" so the first update snaps directly to the
+   *  resolved value rather than easing in from 0. */
+  private _smoothedDensity = -1;
   private scope: ViewportFootprint | null = null;
 
   constructor(parentWorld: THREE.Group, scope?: ViewportFootprint) {
@@ -220,19 +211,37 @@ export class GroundPrint3D {
       if (this.trails.size > 0) this.trails.clear();
       if (this.stamps.size > 0) this.stamps.clear();
       this._frameCounter = 0;
+      this._smoothedDensity = -1;
       return;
     }
 
-    const cap = getGroundPrintCap();
-    if (cap === 0) {
-      // LOD MIN tier explicitly disables prints regardless of toggle.
+    // ── Density resolution (one knob, three throttles) ──
+    // Read the LOD-resolved target density, EMA-smooth it, then
+    // derive cap, frame-skip, and lifetime mult from the smoothed
+    // value. This is the unification: a tier flip moves all three
+    // throttles together and they all glide instead of stepping.
+    const targetDensity = clamp01(gfx.groundPrintDensity ?? 1);
+    if (this._smoothedDensity < 0) {
+      this._smoothedDensity = targetDensity;
+    } else {
+      const ema = 1 - Math.exp(-Math.max(0, dtMs) / DENSITY_EMA_TAU_MS);
+      this._smoothedDensity += (targetDensity - this._smoothedDensity) * ema;
+    }
+    const density = this._smoothedDensity;
+    const cap = Math.min(MAX_PRINTS, Math.round(MAX_PRINTS * density));
+    if (cap <= 0) {
+      // Density rounded down to zero (effectively disabled tier).
       if (this.marks.length > 0) this.clearMarksOnly();
       this._frameCounter = 0;
       return;
     }
+    const framesSkip = Math.max(0, Math.round(MAX_GROUND_FRAMES_SKIP * (1 - density)));
+    const lifeMult =
+      GROUND_LIFETIME_MULT_AT_ZERO +
+      (1 - GROUND_LIFETIME_MULT_AT_ZERO) * density;
+    const invEffLifetime = 1 / Math.max(1, PRINT_TOTAL_LIFETIME_MS * lifeMult);
 
-    // Sample stride — same shape as burnMarkFramesSkip.
-    const framesSkip = gfx.groundPrintFramesSkip ?? 0;
+    // Sample stride.
     const sampleNow = this._frameCounter === 0;
     this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
 
@@ -311,20 +320,19 @@ export class GroundPrint3D {
 
     // ── Age + prune ──
     // Linear ramp: alpha = INITIAL · (1 − age/effectiveLifetime),
-    // clamped at 0. Effective lifetime = PRINT_TOTAL_LIFETIME_MS
-    // scaled by the per-tier LOD_LIFETIME_MULT, so low/min tiers
-    // fade marks out faster (and free slots faster under the cap)
-    // than high/max. A mark is removed once it hits 0 OR drops
-    // below the LOD's alpha cutoff — whichever comes first.
-    const lifeMult = LOD_LIFETIME_MULT[gfx.tier] ?? 0.8;
-    const invEffLifetime = 1 / Math.max(1, PRINT_TOTAL_LIFETIME_MS * lifeMult);
-    const cutoff = gfx.groundPrintAlphaCutoff;
+    // clamped at 0. Effective lifetime is density-scaled (computed
+    // above) so low/min tiers fade marks out faster — slot turnover
+    // accelerates without ever cutting an in-progress fade short.
+    // The deletion gate is `alpha <= 0`, NOT a tier-driven cutoff,
+    // so a tier flip never deletes visible marks; the smoothed
+    // density just shortens the *new* effective lifetime, and the
+    // visible result is a graceful collective fade-out.
     for (let i = this.marks.length - 1; i >= 0; i--) {
       const mark = this.marks[i];
       mark.age += dtMs;
       const lifeFrac = mark.age * invEffLifetime;
       const alpha = PRINT_INITIAL_ALPHA * (1 - lifeFrac);
-      if (alpha <= 0 || alpha < cutoff) {
+      if (alpha <= 0) {
         this.removeMarkAt(i);
         continue;
       }

@@ -88,10 +88,14 @@ export type GraphicsConfig = {
   beamStyle: BeamStyle;
   beamGlow: boolean;
   antialias: boolean;
-  burnMarkAlphaCutoff: number;
-  burnMarkFramesSkip: number;
-  groundPrintAlphaCutoff: number;
-  groundPrintFramesSkip: number;
+  /** Unified density knob (0..1) for beam-scorch burn marks. The
+   *  renderer derives its active-count cap, frame-skip stride, and
+   *  per-mark lifetime multiplier from this single value, so a tier
+   *  flip moves all three throttles together. 0 = effect disabled. */
+  burnMarkDensity: number;
+  /** Unified density knob (0..1) for wheel/tread/foot ground prints.
+   *  Same role as burnMarkDensity but for the GroundPrint3D pipeline. */
+  groundPrintDensity: number;
   smokeTrailFramesSkip: number;
   projectileStyle: ProjectileStyle;
   fireExplosionStyle: FireExplosionStyle;

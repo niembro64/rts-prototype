@@ -42,13 +42,31 @@ const MARK_Y = 2.5;
 const COOL_COLOR = 0x221100;                      // dark brown residue
 const HOT_LIN = new THREE.Color(BURN_COLOR_HOT);  // linear-RGB of 0x882200
 const COOL_LIN = new THREE.Color(COOL_COLOR);     // linear-RGB of 0x221100
-const INV_COLOR_TAU = 1 / BURN_COLOR_TAU;         // hot → cool fade
-const INV_COOL_TAU = 1 / BURN_COOL_TAU;           // alpha fade
 
-// Hard buffer size — sized for the maximum `burnMarkAlphaCutoff` tier
-// (0.01 → 5000 marks) so we never need to reallocate. Memory: ~280 KB
-// for positions + colors, trivial.
+// Hard buffer size — never need to reallocate. Memory: ~280 KB for
+// positions + colors, trivial. The active-count cap below sits inside
+// this ceiling and scales with LOD density.
 const MAX_MARKS = 5000;
+
+// Constant alpha floor below which a mark is invisible enough to
+// reclaim its slot. Decoupled from the LOD tier on purpose: a tier
+// flip used to bump this threshold and instantly cull a chunk of
+// rendered marks (the "abrupt deletion" the user reported). Now the
+// floor is fixed; marks die only when they fade to it via natural
+// rational-exp decay.
+const BURN_MARK_FADE_FLOOR = 0.01;
+
+// EMA tau (ms) used to smooth the LOD-resolved density so a tier
+// flip glides over half a second of frames instead of stepping on
+// the very next one.
+const DENSITY_EMA_TAU_MS = 300;
+
+// Mapping from density (0..1) to derived throttles. The density
+// is EMA-smoothed inside the renderer and these formulas turn it
+// into the three concrete knobs (cap, frame-skip, lifetime mult)
+// that drive emission, eviction, and fade.
+const MAX_BURN_FRAMES_SKIP = 5;     // density=0 → skip 5 of every 6 frames
+const BURN_LIFETIME_MULT_AT_ZERO = 0.5; // shortest visible lifetime
 
 // Miter limit: at sharp turns, the miter joint extends far from the
 // actual corner. Clamp to 3× halfWidth (PostScript default) so a tight
@@ -68,14 +86,8 @@ const MIN_SEGMENT_DIST_SQ = 4;
 // endpoint.z = getGroundZ(x, y) exactly).
 const GROUND_HIT_Z_TOLERANCE = 4;
 
-/** LOD-driven cap on active marks — same tiers as 2D `getBurnMarkCap`. */
-function getBurnMarkCap(): number {
-  const cutoff = getGraphicsConfig().burnMarkAlphaCutoff;
-  if (cutoff >= 1) return 300;
-  if (cutoff >= 0.5) return 800;
-  if (cutoff >= 0.3) return 2000;
-  if (cutoff >= 0.1) return 3500;
-  return 5000;
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
 type BeamState = {
@@ -138,6 +150,15 @@ export class BurnMark3D {
   private _seenBeamKeys = new Set<BeamStateKey>();
 
   private _frameCounter = 0;
+  /** EMA-smoothed copy of the LOD-resolved density. Stays around -1
+   *  until the first update so the first frame snaps to the
+   *  resolved value rather than easing in from 0. */
+  private _smoothedDensity = -1;
+  /** Active-count cap derived from `_smoothedDensity` once per
+   *  update() call. Cached on the instance so appendMark (called
+   *  many times per frame from the beam loop) doesn't have to
+   *  recompute from density each time. */
+  private _currentCap = 0;
 
   /** RENDER: WIN/PAD/ALL visibility scope — beams with their endpoint
    *  outside the scope rect skip sampling. */
@@ -211,9 +232,7 @@ export class BurnMark3D {
   update(projectiles: readonly Entity[], dtMs: number): void {
     if (projectiles.length === 0 && this.marks.length === 0 && this.beams.size === 0) return;
 
-    // Snapshot the graphics config once per frame — the hot path below
-    // reads burnMarkFramesSkip / burnMarkAlphaCutoff so re-querying it
-    // per beam would multiply the config lookup cost.
+    // Snapshot the graphics config once per frame.
     const gfx = getGraphicsConfig();
 
     // The unified MARKS: ALL toggle gates the scorched-earth trail
@@ -226,11 +245,34 @@ export class BurnMark3D {
       if (this.marks.length > 0) this.clearMarksOnly();
       if (this.beams.size > 0) this.beams.clear();
       this._frameCounter = 0;
+      this._smoothedDensity = -1;
       return;
     }
 
+    // ── Density resolution (one knob, three throttles) ──
+    // 1) Read the LOD-resolved target density.
+    // 2) EMA-smooth it so a tier flip glides instead of stepping —
+    //    this is the core fix for "marks vanish abruptly" at
+    //    MAX→HIGH. Cap, frame-skip, and lifetime all derive from
+    //    the smoothed value.
+    const targetDensity = clamp01(gfx.burnMarkDensity ?? 1);
+    if (this._smoothedDensity < 0) {
+      this._smoothedDensity = targetDensity;
+    } else {
+      const ema = 1 - Math.exp(-Math.max(0, dtMs) / DENSITY_EMA_TAU_MS);
+      this._smoothedDensity += (targetDensity - this._smoothedDensity) * ema;
+    }
+    const density = this._smoothedDensity;
+    const activeCap = Math.min(MAX_MARKS, Math.round(MAX_MARKS * density));
+    this._currentCap = activeCap;
+    const framesSkip = Math.max(0, Math.round(MAX_BURN_FRAMES_SKIP * (1 - density)));
+    const lifeMult =
+      BURN_LIFETIME_MULT_AT_ZERO +
+      (1 - BURN_LIFETIME_MULT_AT_ZERO) * density;
+    const invColorTau = 1 / Math.max(1, BURN_COLOR_TAU * lifeMult);
+    const invCoolTau = 1 / Math.max(1, BURN_COOL_TAU * lifeMult);
+
     // Sample at every (framesSkip + 1)th frame.
-    const framesSkip = gfx.burnMarkFramesSkip ?? 0;
     const sampleNow = this._frameCounter === 0;
     this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
 
@@ -312,21 +354,24 @@ export class BurnMark3D {
       }
     }
 
-    // ── Age + prune marks — skipped entirely when the trail is disabled. ──
-    if (!marksEnabled) return;
-    const cutoff = gfx.burnMarkAlphaCutoff;
+    // ── Age + prune marks ──
+    // Deletion threshold is the constant fade floor, NOT the LOD
+    // tier. So a tier flip (e.g. MAX→HIGH) doesn't suddenly cull
+    // every mark in a wide alpha band — marks always fade out
+    // along the same per-mark curve and only get reclaimed once
+    // they're effectively invisible.
     for (let i = this.marks.length - 1; i >= 0; i--) {
       const mark = this.marks[i];
       mark.age += dtMs;
-      const xCool = mark.age * INV_COOL_TAU;
+      const xCool = mark.age * invCoolTau;
       const alpha =
         1 / (1 + xCool + 0.48 * xCool * xCool + 0.235 * xCool * xCool * xCool);
-      if (alpha < cutoff) {
+      if (alpha < BURN_MARK_FADE_FLOOR) {
         this.removeMarkAt(i);
         continue;
       }
-      // Color: hot → cool over BURN_COLOR_TAU (same rational-exp curve 2D uses).
-      const xHot = mark.age * INV_COLOR_TAU;
+      // Color: hot → cool over BURN_COLOR_TAU * lifeMult.
+      const xHot = mark.age * invColorTau;
       const hotDecay =
         1 / (1 + xHot + 0.48 * xHot * xHot + 0.235 * xHot * xHot * xHot);
       const coolBlend = 1 - hotDecay;
@@ -368,7 +413,7 @@ export class BurnMark3D {
   ): void {
     // LOD-driven cap — if full, just drop this sample. Aging will free
     // slots soon enough.
-    if (this.marks.length >= getBurnMarkCap() || this.marks.length >= MAX_MARKS) {
+    if (this.marks.length >= this._currentCap || this.marks.length >= MAX_MARKS) {
       state.lastEndX = endX;
       state.lastEndY = endY;
       state.lastDirX = dirX;
