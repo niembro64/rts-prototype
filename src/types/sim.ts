@@ -3,7 +3,7 @@
 import type { BarrelShape } from './config';
 import type { ShotId, TurretId } from './blueprintIds';
 import type { Vec3 } from './vec2';
-import type { ProjectileShotKind, TurretRadiusConfig } from './blueprints';
+import type { TurretRadiusConfig } from './blueprints';
 import type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
@@ -14,9 +14,17 @@ import type {
   Waypoint,
 } from './commandTypes';
 import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
+import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import type { EntityId, PlayerId } from './entityTypes';
 import type { UnitLocomotion } from './locomotionTypes';
 import type { ResourceCost } from './economyTypes';
+import type {
+  ActiveProjectileShot,
+  BeamPoint,
+  ProjectileType,
+  ShotConfig,
+  ShotProfile,
+} from './shotTypes';
 
 export type {
   BuildingAnchorProfile,
@@ -39,6 +47,32 @@ export type {
 export type { EntityId, PlayerId } from './entityTypes';
 export type { UnitLocomotion } from './locomotionTypes';
 export type { ResourceCost } from './economyTypes';
+export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
+export type {
+  ActiveProjectileShot,
+  BeamPoint,
+  BeamShot,
+  BuildSprayShot,
+  ForceFieldBarrierConfig,
+  ForceShot,
+  LaserShot,
+  LineShot,
+  LineShotType,
+  ProjectileShot,
+  ProjectileType,
+  ShotConfig,
+  ShotProfile,
+  ShotRuntimeProfile,
+  ShotVisualProfile,
+} from './shotTypes';
+export {
+  LINE_SHOT_TYPES,
+  getShotMaxLifespan,
+  isLineShot,
+  isLineShotType,
+  isProjectileShot,
+  isRocketLikeShot,
+} from './shotTypes';
 
 // Transform component - position and rotation in world space.
 // The sim is fully 3D: (x, y) = ground-plane footprint, z = altitude
@@ -206,240 +240,6 @@ export type Building = {
   solar?: SolarCollectorState;
 };
 
-// Force field barrier configuration: a visual/interception sphere,
-// not a unit or projectile acceleration volume.
-export type ForceFieldBarrierConfig = {
-  innerRange: number;
-  outerRange: number;
-  color: number;
-  alpha: number;
-  particleAlpha: number;
-};
-
-// Projectile shot — fire-and-forget, has mass, single-tick impact
-export type ProjectileShot = {
-  type: ProjectileShotKind;
-  id: ShotId;
-  mass: number;
-  launchForce: number;
-  collision: { radius: number };
-  /** Splash AoE — single radius, boolean damage + force application.
-   *  See ShotExplosion in types/blueprints. */
-  explosion?: { radius: number; damage: number; force: number };
-  /** When true, run detonation logic (splash damage if `explosion`,
-   *  submunition spawn if `submunitions`, audio either way) at the end
-   *  of `lifespan`. See ProjectileShotBlueprint.detonateOnExpiry. */
-  detonateOnExpiry?: boolean;
-  lifespan?: number;
-  /** Fractional per-instance variance applied to maxLifespan at
-   *  projectile creation time. `0.1` means ±10%. */
-  lifespanVariance?: number;
-  homingTurnRate?: number;
-  trailLength?: number;
-  /** Cluster / flak-burst behavior — see SubmunitionSpec in types/blueprints.ts.
-   *  Evaluated by the collision handler at the moment of explosion. */
-  submunitions?: import('./blueprints').SubmunitionSpec;
-  /** Rocket/missile flag — gravity is not applied to vz while this
-   *  shot is in flight. Shared sim + client state so predicted arcs
-   *  match authoritative arcs. Orthogonal to homingTurnRate. */
-  ignoresGravity?: boolean;
-  /** Cosmetic 3D-client trail config. Presence => smoke is on. See
-   *  ProjectileShotBlueprint.smokeTrail / SmokeTrailSpec for fields. */
-  smokeTrail?: import('./blueprints').SmokeTrailSpec;
-  /** Cosmetic 3D-client mesh shape. 'cylinder' aligns with velocity
-   *  for rockets/missiles; 'sphere' (default) is an isotropic ball.
-   *  Sim collision is always sphere-based — see ShotCollision.radius. */
-  shape?: 'sphere' | 'cylinder';
-  /** When shape === 'cylinder', overrides the default rendered pill
-   *  dimensions (multiples of collision.radius). */
-  cylinderShape?: import('./blueprints').CylinderShapeSpec;
-};
-
-// Beam shot — continuous line from turret, per-tick damage (no cooldown)
-export type BeamShot = {
-  type: 'beam';
-  id: ShotId;
-  dps: number;
-  force: number;
-  recoil: number;
-  /** Thin beam body radius used for obstruction/path tracing. */
-  radius: number;
-  width: number;
-  /** Endpoint damage sphere. The beam line only chooses the terminal
-   *  point; this sphere is the actual area that deals damage. */
-  damageSphere: { radius: number };
-};
-
-// Laser shot — pulsed line weapon with duration + cooldown
-export type LaserShot = {
-  type: 'laser';
-  id: ShotId;
-  dps: number;
-  force: number;
-  recoil: number;
-  /** Thin laser body radius used for obstruction/path tracing. */
-  radius: number;
-  width: number;
-  /** Endpoint damage sphere. The laser line only chooses the terminal
-   *  point; this sphere is the actual area that deals damage. */
-  damageSphere: { radius: number };
-  duration: number;
-};
-
-// ── Line-shot (mirror-reflectable) abstraction ───────────────────
-// SINGLE SOURCE OF TRUTH for "what does a mirror panel deflect?".
-//
-// The mirror-turret system has three responsibilities — target
-// acquisition, panel aim solving, and beam-path reflection — and each
-// needs the same yes/no answer about a given projectile / turret:
-// "is this a line shot that reflects off mirrors?"
-//
-// All three call sites key off `isLineShot()` (or its sibling
-// `isLineShotType()` for raw type strings). To add a new
-// mirror-reflectable shot type — a new beam variety, a chain-laser,
-// whatever — extend `LINE_SHOT_TYPES` here and every call site picks
-// it up automatically. The current set is `{ beam, laser }`, and that
-// covers the three weapons the user thinks of as "the laser and the
-// two beams" — `laserShot` (type='laser'), `beamShot` (type='beam'),
-// `megaBeamShot` (type='beam'). megaBeam doesn't need a new type
-// string because it's mechanically a beam variant; the bigger dps /
-// width / damage sphere are blueprint knobs on the same `beam`
-// shot family.
-
-/** The set of `shot.type` values that mirror panels reflect. Adding
- *  one here automatically wires the new type into the aim solver,
- *  panel hit collision, and beam-trace reflection. */
-export const LINE_SHOT_TYPES = ['beam', 'laser'] as const;
-export type LineShotType = typeof LINE_SHOT_TYPES[number];
-
-// Shared type for beam and laser (line weapons).
-export type LineShot = BeamShot | LaserShot;
-export type ActiveProjectileShot = ProjectileShot | BeamShot | LaserShot;
-
-/** Predicate on raw `shot.type` strings — used at network / projectile
- *  layer boundaries where we have a string but not the full ShotConfig. */
-export function isLineShotType(t: string): t is LineShotType {
-  return t === 'beam' || t === 'laser';
-}
-
-/** Predicate on a full ShotConfig — preferred form (gives the type
- *  guard a `LineShot` narrowing). */
-export function isLineShot(shot: ShotConfig): shot is LineShot {
-  return isLineShotType(shot.type);
-}
-
-// Force shot — continuous spherical barrier around turret.
-export type ForceShot = {
-  type: 'force';
-  angle: number;
-  transitionTime: number;
-  barrier?: ForceFieldBarrierConfig;
-};
-
-// Build-spray shot — colored construction particle emitted from a
-// construction turret toward the target being built. Mechanically a
-// straight-line traveler, mass-less in the gravity sense (ignoresGravity
-// is intrinsic, not opt-in). Currently the sim does NOT spawn these as
-// active projectile entities — the visual flow is still client-side
-// emission via emitPylonResourceSprays — but the shot type exists as a
-// first-class citizen so the construction turret declares its identity
-// through `projectileId: 'buildSpray'` rather than implicit detection
-// of a `constructionEmitter` side-field.
-export type BuildSprayShot = {
-  type: 'buildSpray';
-  id: ShotId;
-  /** Always true. Build-spray particles fly along a controlled cone
-   *  from the emitter; gravity would only break the visual. The flag
-   *  is on the type rather than implicit so consumers reading the
-   *  shot can branch on it the same way they do for rockets. */
-  ignoresGravity: true;
-  /** Max time-of-flight per particle, in ms. */
-  lifespan: number;
-  /** Particle launch speed (world units per second). */
-  speed: number;
-  /** Cosmetic — sphere radius for the rendered particle. */
-  visualRadius: number;
-};
-
-// Discriminated union of all shot types
-export type ShotConfig =
-  | ProjectileShot
-  | BeamShot
-  | LaserShot
-  | ForceShot
-  | BuildSprayShot;
-
-export type ShotRuntimeProfile = {
-  id: ShotId;
-  type: ActiveProjectileShot['type'];
-  projectileType: ProjectileType;
-  isProjectile: boolean;
-  isLine: boolean;
-  isRocketLike: boolean;
-  ignoresGravity: boolean;
-  /** Swept/projectile collider radius for traveling shots, or line
-   *  trace radius for beam/laser shots. */
-  collisionRadius: number;
-  /** Radius written into ImpactContext for audio/death effects. */
-  impactRadius: number;
-  /** Projectile splash radius. 0 when the shot has no splash zone. */
-  explosionRadius: number;
-  /** Beam/laser endpoint damage radius, or projectile direct collider. */
-  damageRadius: number;
-  maxLifespan: number;
-  detonateOnExpiry: boolean;
-  hasExplosion: boolean;
-  hasSubmunitions: boolean;
-};
-
-export type ShotVisualProfile = {
-  projectileShape: 'sphere' | 'cylinder';
-  projectileBodyRadius: number;
-  cylinderLengthMult: number;
-  cylinderDiameterMult: number;
-  debugCollisionRadius: number;
-  debugExplosionRadius: number;
-  smokeTrail?: import('./blueprints').SmokeTrailSpec;
-  /** Ground mark width authored from the shot once. Line shots use
-   *  beam/laser width; D-gun projectile trails use projectile radius. */
-  burnMarkWidth: number;
-  lineRadius: number;
-  lineDamageSphereRadius: number;
-};
-
-export type ShotProfile = {
-  runtime: ShotRuntimeProfile;
-  visual: ShotVisualProfile;
-};
-
-export function isProjectileShot(shot: ShotConfig): shot is ProjectileShot {
-  return shot.type === 'projectile' || shot.type === 'rocket';
-}
-
-/** Rocket-class predicate: a projectile shot whose `ignoresGravity`
- *  flag is set. These don't follow a ballistic arc — they fly in a
- *  straight line from muzzle to target (or steer mid-flight when the
- *  shot has homing). Centralized so a future shot type that also
- *  ignores gravity (cruise missile, drone, beam-rider, ...) plugs into
- *  every existing branch by extending one predicate rather than 6
- *  parallel call sites. */
-export function isRocketLikeShot(shot: ShotConfig): boolean {
-  return isProjectileShot(shot) && shot.ignoresGravity === true;
-}
-
-/** Static (no-RNG) max lifespan for a shot. Beams are Infinity
- *  (continuous), lasers use their fixed duration, projectiles and
- *  rockets use their config `lifespan` with the supplied fallback,
- *  build-spray particles use their own lifespan field.
- *  WorldState additionally applies `lifespanVariance` on top of this. */
-export function getShotMaxLifespan(shot: ShotConfig, fallbackLifespan: number = 2000): number {
-  if (shot.type === 'beam') return Infinity;
-  if (shot.type === 'laser') return shot.duration;
-  if (shot.type === 'projectile' || shot.type === 'rocket') return shot.lifespan ?? fallbackLifespan;
-  if (shot.type === 'buildSpray') return shot.lifespan;
-  return fallbackLifespan;
-}
-
 // Turret configuration (compiled turret definition)
 export type TurretConfig = {
   id: TurretId;
@@ -488,8 +288,8 @@ export type TurretConfig = {
    *  They exist so reusable turret art, such as construction emitters,
    *  can mount through the same blueprint path as combat turrets. */
   visualOnly?: boolean;
-  constructionEmitter?: import('./blueprints').ConstructionEmitterVisualSpec;
-  visualVariant?: import('./blueprints').ConstructionEmitterSize;
+  constructionEmitter?: ConstructionEmitterVisualSpec;
+  visualVariant?: ConstructionEmitterSize;
 };
 
 // Runtime projectile configuration. This is intentionally smaller than
@@ -584,28 +384,6 @@ export type Turret = {
    *  barrelCount, then the pointer advances by the pellet count.
    *  Single-barrel turrets always see barrelIndex = 0. */
   barrelFireIndex?: number;
-};
-
-// Projectile travel types
-export type ProjectileType = 'projectile' | 'beam' | 'laser';
-
-/** One vertex of a beam/laser polyline. The same shape covers the
- *  start (muzzle), each mirror reflection, and the end (range
- *  truncation, ground hit, or unit hit). Each point carries its
- *  instantaneous 3D velocity in the world frame so the client can
- *  extrapolate every vertex independently between snapshots — no
- *  separate startVel/endVel fields, no separate reflections list.
- *  Intermediate (reflection) points carry the redirecting mirror's
- *  entityId; start and end leave it undefined. The field name is legacy:
- *  force-field reflections also use it to identify the reflecting entity. */
-export type BeamPoint = {
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  mirrorEntityId?: EntityId;
 };
 
 // Projectile component. Fully 3D: velocity + prev/start/end points

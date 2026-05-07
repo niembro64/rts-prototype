@@ -17,12 +17,18 @@ export type {
 // Re-export all blueprint types
 export type {
   ForceFieldBarrierRatioConfig,
+  BuildSprayShotBlueprint,
+  CylinderShapeSpec,
   ShotCollision,
   ShotExplosion,
+  ProjectileShotKind,
   ProjectileShotBlueprint,
   BeamShotBlueprint,
   LaserShotBlueprint,
+  LineShotBlueprint,
   ShotBlueprint,
+  SmokeTrailSpec,
+  SubmunitionSpec,
   MirrorPanel,
   ConstructionEmitterSize,
   ConstructionEmitterVisualSpec,

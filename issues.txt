@@ -112,21 +112,3 @@ profiles/components, not reinterpret blueprint pieces independently.
 
     Fix direction: split by responsibility: `LegRig3D`, `TreadRig3D`,
     `WheelRig3D`, and `LocomotionAnimationState`.
-
-16. Type files are too broad for the atomic boundaries we want.
-    References:
-    - src/types/sim.ts:1
-    - src/types/blueprints.ts:1
-    - file sizes: 852 and 541 lines
-
-    `sim.ts` and `blueprints.ts` both mix several domains: entities, combat,
-    shots, construction, economy, locomotion, buildings, and units. Large shared
-    type files make cross-domain imports feel cheap and hide coupling.
-    `ResourceCost`, core building identifiers, entity ids, command/waypoint
-    types, combat range types, and runtime locomotion type have been split into
-    `economyTypes`, `buildingTypes`, `entityTypes`, `commandTypes`,
-    `combatTypes`, and `locomotionTypes`, with barrel exports preserved for
-    compatibility.
-
-    Fix direction: split into domain files (`shotTypes`, `constructionTypes`)
-    with barrel exports for backwards compatibility during migration.
