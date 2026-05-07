@@ -217,7 +217,7 @@ export const TURRET_BLUEPRINTS = {
     projectileId: 'lightShot',
     range: 300,
     cooldown: 30,
-    launchForce: 3_000,
+    launchForce: 1_000,
     turretTurnAccel: 40,
     turretDrag: 0.15,
     barrel: {

@@ -26,6 +26,7 @@ import { getMovementAngle, resolveWeaponWorldMount, turretBit, turretMaskInclude
 import { getTransformCosSin, normalizeAngle } from '../../math';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 import { createTurretAimScratch, solveTurretAim } from './aimSolver';
+import { setWeaponTarget } from './targetIndex';
 import { getUnitGroundZ } from '../unitGeometry';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
@@ -126,14 +127,24 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           if (solved) {
             weapon.ballisticAimInRange = solved.hasBallisticSolution;
             if (!solved.hasBallisticSolution) {
+              // No real ballistic solution exists — the target is in
+              // horizontal acquire range but beyond the projectile's
+              // gravity-bounded reach. Drop the lock outright so the
+              // turret is free to find a reachable target instead of
+              // silently tracking a fallback "best-guess" pitch
+              // forever. Clear the firing bit too so we don't ghost-
+              // fire on the way to idle.
               const bit = turretBit(weaponIndex);
               if (bit !== 0 && combat.firingTurretMask >= 0) {
                 combat.firingTurretMask &= ~bit;
               }
+              setWeaponTarget(weapon, unit, weaponIndex, null);
+              weapon.state = 'idle';
+            } else {
+              targetAngle = solved.yaw;
+              targetPitch = solved.pitch;
+              hasActiveTarget = true;
             }
-            targetAngle = solved.yaw;
-            targetPitch = solved.pitch;
-            hasActiveTarget = true;
           }
         }
       }
