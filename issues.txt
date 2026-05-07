@@ -6,33 +6,6 @@ Goal for this section: units, buildings, turrets, locomotion, and shots should
 each have one canonical definition path. Runtime systems should consume built
 profiles/components, not reinterpret blueprint pieces independently.
 
-8. Render3DEntities is a major god file and owns too many atomic concepts.
-   References:
-   - src/game/render3d/Render3DEntities.ts:1
-   - src/game/render3d/Render3DEntities.ts:2331
-   - src/game/render3d/BuildingEntityRenderer3D.ts:1
-   - src/game/render3d/UnitMassInstanceRenderer3D.ts:1
-   - file size: 2331 lines
-
-   This file currently owns or coordinates unit meshes, building meshes, turret
-   attachment transforms, projectile visuals, commander-specific mesh assembly,
-   LOD shells, instanced pools, and cleanup. Projectile rendering,
-   selection/radius/range overlays, and construction emitter/factory visual
-   control have been split out. Entity mesh state, shared render tier helpers,
-   commander visual kit assembly, animated building control, and building mesh
-   creation have also been split out. Building mesh creation and per-frame
-   building transform/detail/turret updates now live in
-   `BuildingEntityRenderer3D`. Mass-unit instanced slot allocation, compaction,
-   dirty-range uploads, color sync, and hybrid rich-unit promotion now live in
-   `UnitMassInstanceRenderer3D`, but the orchestration file is still too large to
-   keep blueprint/rendering boundaries clean.
-
-   Fix direction: split into small modules: `UnitEntityRenderer`,
-   `BuildingEntityRenderer`, and `TurretAttachmentRenderer`. Leave
-   `Render3DEntities` as an orchestration facade. Next useful cut: move detailed
-   unit instanced pools (smooth chassis, polygon chassis, turret heads, barrels,
-   mirror panels) behind a dedicated renderer.
-
 10. ClientViewState still mixes snapshot application, prediction stepping, and projectile behavior.
     References:
     - src/game/network/ClientViewState.ts:1

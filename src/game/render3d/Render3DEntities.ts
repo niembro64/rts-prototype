@@ -14,7 +14,6 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
 import { applyShellOverride } from './ShellMaterial';
-import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { SpinConfig } from '../../config';
 import { LAND_CELL_SIZE } from '../../config';
 import { getSurfaceNormal } from '../sim/Terrain';
@@ -62,12 +61,9 @@ import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
-import {
-  entityInstanceColorKey,
-  isConstructionShell,
-  setEntityInstanceColor,
-} from './EntityInstanceColor3D';
+import { isConstructionShell } from './EntityInstanceColor3D';
 import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
+import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -150,6 +146,7 @@ export class Render3DEntities {
   private constructionVisuals: ConstructionVisualController3D;
   private buildingRenderer: BuildingEntityRenderer3D;
   private unitMassInstances: UnitMassInstanceRenderer3D;
+  private unitDetailInstances: UnitDetailInstanceRenderer3D;
 
   // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
   // Angle advances by `speed` radians/sec; speed accelerates toward
@@ -175,9 +172,6 @@ export class Render3DEntities {
   // around, letting pitch aim up toward AA targets without the
   // barrels clipping through a flat cylinder top.
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
-  /** Instanced-only clone. The instanced path carries renderer-owned
-   *  buffers, so keep it separate from regular per-Mesh fallback heads. */
-  private turretHeadInstancedGeom = this.turretHeadGeom.clone();
   private commanderVisualKit = new CommanderVisualKit3D();
   /** Unit box used as the BUILDING marker mesh at the lowest LOD tier.
    *  Scaled per-frame to the building's logical sim cuboid
@@ -186,11 +180,7 @@ export class Render3DEntities {
    *  its static collider, same volume the high-LOD primary occupies. */
   private buildingMarkerBoxGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
-  private barrelInstancedGeom = this.barrelGeom.clone();
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
-  /** Instanced barrels get their own material so state on the shared
-   *  instanced pool cannot leak into regular fallback barrels. */
-  private barrelInstancedMat = this.barrelMat.clone();
   // Mirror panel = flat unit square plane. Default orientation: face
   // in XY plane with normal +Z; we rotate it into the panel-local frame
   // (edge → +Z, normal → +X) per panel below. Plane has zero physical
@@ -198,9 +188,6 @@ export class Render3DEntities {
   // on EXACTLY the same surface — no front/back offset where a beam
   // could appear to clip the visible mirror but miss the sim plane.
   private mirrorGeom = new THREE.PlaneGeometry(1, 1);
-  /** Instanced-only clone for the same reason as turret heads/barrels:
-   *  renderer-private buffers stay isolated to the instanced pool. */
-  private mirrorInstancedGeom = this.mirrorGeom.clone();
   private mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorSupportGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
   // Unit-radius indicator wireframe spheres (BODY/SHOT/PUSH). Unit
@@ -226,46 +213,7 @@ export class Render3DEntities {
   private ownedObjectLodGrid = new RenderLodGrid();
   private objectLodGrid = this.ownedObjectLodGrid;
   private richUnitDetailFrame = 0;
-  /** Hidden-slot transform: scale=0 collapses the geometry to a point. */
-  private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
-  private _instColor = new THREE.Color();
 
-  // ── LOW+ tier smooth-body chassis InstancedMesh ─────────────────
-  // At MED+ LOD every smooth-body unit (arachnid, beam, snipe / tick,
-  // commander, forceField, loris) used to stamp one Mesh per body
-  // segment — composite arachnids/commanders ate 2 draw calls each
-  // before any turret/leg work. This InstancedMesh collapses every
-  // smooth body part across every smooth-body unit on the map into
-  // ONE shared draw call.
-  //
-  // Per-instance attributes:
-  //   - instanceMatrix encodes the part's full world transform:
-  //       T(group_pos) · R(tilt · Ry(yaw)) · S(radius) · T(part.local) · S(part.scale)
-  //     — exactly what the per-Mesh scenegraph chain
-  //     (group → yawGroup → chassis → mesh) produced.
-  //   - instanceColor carries the team primary, modulated against the
-  //     shared material's white base color (same trick MIN-tier uses).
-  //
-  // Polygon / rect bodies (scout, brawl, tank, burst, mortar, hippo)
-  // need ExtrudeGeometry per renderer and so still go through the
-  // per-Mesh chassis path; bodyEntry.isSmooth flags the routing.
-  //
-  // The yawGroup hierarchy is still built for smooth-body units —
-  // turrets, legs, and mirror panels still parent to it. Only the
-  // chassis Mesh children are skipped; the chassis Group stays empty.
-  private static readonly SMOOTH_CHASSIS_CAP = 16384;
-  private smoothChassisGeom = new THREE.SphereGeometry(1, 24, 16);
-  private smoothChassis: THREE.InstancedMesh | null = null;
-  /** Maps entityId → list of slot indices, one per body part. Composite
-   *  bodies (arachnid, commander, beam) get a slot per segment; single-
-   *  part smooth bodies (snipe, loris, forceField) get exactly one. */
-  private smoothChassisSlots = new Map<EntityId, number[]>();
-  /** Maps entityId → last owner color key written into its smooth slots. */
-  private smoothChassisColorKey = new Map<EntityId, number>();
-  /** Reuse pool of vacated slots so a long game doesn't burn through cap. */
-  private smoothChassisFreeSlots: number[] = [];
-  /** High-water mark; everything ≥ this is unused. */
-  private smoothChassisNextSlot = 0;
   /** Per-frame scratch: combined parent (group + yaw + radius-scale) matrix
    *  cached once per smooth-body unit, then multiplied with each part's
    *  local matrix to produce the per-slot world matrix. */
@@ -313,103 +261,6 @@ export class Render3DEntities {
   private _unitParentInvQuat = new THREE.Quaternion();
   private _unitBodyCenterLocal = new THREE.Vector3();
 
-  // ── LOW+ tier polygonal/rect chassis InstancedMeshes ──────────────
-  // One InstancedMesh per polygon / rect body shape. Lazily created
-  // the first time a unit with that bodyShape enters the scene because
-  // the geometry isn't built until BodyShape3D's `getBodyGeom(shape)`
-  // is called. Each pool's mesh references the SAME geometry object
-  // that BodyShape3D's CACHE owns — disposed by BodyShape3D's
-  // `disposeBodyGeoms()` in destroy(), not by us, so we tear down
-  // `polyChassis` pool meshes BEFORE that call.
-  //
-  // Polygonal bodies always have parts.length === 1 (single
-  // Extruded polygonal bodies are single-part today, so each unit takes
-  // exactly one slot in its body-shape pool. Composite-or-multi-part
-  // polygonal bodies would need a slot list like smoothChassisSlots.
-  private static readonly POLY_CHASSIS_CAP = 4096;
-  private polyChassis = new Map<string, {
-    mesh: THREE.InstancedMesh;
-    slots: Map<EntityId, number>;
-    colorKeys: Map<EntityId, number>;
-    colorDirty: boolean;
-    freeSlots: number[];
-    nextSlot: number;
-  }>();
-
-  // ── LOW+ tier turret-head InstancedMesh ──────────────────────────
-  // Every visible turret head across every unit on the map renders
-  // through ONE shared InstancedMesh — same draw-call collapse the
-  // chassis pools achieved, applied to the next-largest per-unit
-  // visual after chassis (heads can be 1-7 per unit; widow has 6
-  // beam turrets + 1 force-field, so up to 6 heads / unit at the
-  // upper end).
-  //
-  // Heads are simple unit spheres: per-instance world position
-  // (unit + tilt + yaw + lift + turret offset + headRadius lift),
-  // uniform scale = headRadius, team color via instanceColor.
-  // Position is NOT affected by turret yaw/pitch — the head sits
-  // on the +Y axis of the turret root, which is the rotation axis
-  // for both yaw and pitch, so the head's chassis-local position
-  // is rotation-invariant.
-  //
-  // Slots are stable-allocated per turret (turretMesh.headSlot)
-  // and rewritten every frame; slots persist across frames so
-  // count tracks nextSlot like the chassis pools.
-  //
-  // Hidden heads (turretStyle=none / force-field)
-  // don't get a slot — they have no visible head at all. Heads
-  // that would be visible but hit the cap fall back to per-Mesh
-  // (TurretMesh.head) — same fallback the chassis pools use.
-  private static readonly TURRET_HEAD_CAP = 16384;
-  private turretHeadInstanced: THREE.InstancedMesh | null = null;
-  private turretHeadColorKey = new Map<number, number>();
-  private turretHeadColorDirty = false;
-  private turretHeadFreeSlots: number[] = [];
-  private turretHeadNextSlot = 0;
-
-  // ── LOW+ tier barrel InstancedMesh ──────────────────────────────
-  // Every barrel cylinder across every turret across every unit
-  // renders through ONE shared InstancedMesh draw call. Continuation
-  // of the chassis + head instancing — barrels are the largest
-  // remaining per-unit visual after those (unit can have 1-7
-  // turrets × 1-7 barrels each; widow with multi-barrel beam emitters
-  // can push 14+ barrels alone).
-  //
-  // Each barrel carries a static base transform (position +
-  // quaternion + scale, set by TurretMesh3D's pushSegment) within
-  // its turret's spinGroup-local frame. Per frame we compose
-  // `parentMat = group · yawGroup · liftGroup · turretRoot ·
-  // pitchGroup · spinGroup` once per turret and `worldMat = parentMat
-  // · barrelLocalMat` per barrel. Per-instance team color isn't
-  // needed (barrels are always white in the current visual contract,
-  // matching this.barrelMat); we still expose instanceColor in case
-  // future per-team / per-state tints are added — unused slots stay
-  // at the default white init.
-  //
-  // Slot allocation is stable per turret-barrel, freed on unit
-  // despawn. count = nextSlot per frame matches the chassis-pool
-  // tightening from commit a165b65.
-  private static readonly BARREL_CAP = 32768;
-  private barrelInstanced: THREE.InstancedMesh | null = null;
-  private barrelColorKey = new Map<number, number>();
-  private barrelFreeSlots: number[] = [];
-  private barrelNextSlot = 0;
-
-  // ── LOW+ tier mirror-panel InstancedMesh ────────────────────────
-  // Loris-only feature, but each Loris carries 4 panels and chrome
-  // PBR each — so a 100-Loris scene is 400 separate MeshStandardMaterial
-  // draws today. Routing them through ONE shared InstancedMesh with
-  // one shared per-instance color collapses that to 1 draw call.
-  // metalness + roughness are material-level uniforms so they
-  // stay shared across panels; mirror arms still carry team color.
-  // The PMREM environment map for metal reflection is set on the
-  // scene, not the material, so it applies to all instances.
-  private static readonly MIRROR_PANEL_CAP = 1024;
-  private mirrorPanelInstanced: THREE.InstancedMesh | null = null;
-  private mirrorPanelColorKey = new Map<number, number>();
-  private mirrorPanelColorDirty = false;
-  private mirrorPanelFreeSlots: number[] = [];
-  private mirrorPanelNextSlot = 0;
   private mirrorsEnabled = true;
 
   constructor(
@@ -464,109 +315,13 @@ export class Render3DEntities {
       resolveObjectLod: (entity) => this.resolveEntityObjectLod(entity),
       hasSceneMesh: (entityId) => this.unitMeshes.has(entityId),
     });
-
-    // Smooth-body chassis InstancedMesh — one shared draw call covers
-    // every smooth body part across every smooth-body unit on the map
-    // at LOW+ tier. Material is white because per-instance colour comes
-    // from setColorAt (same trick the MIN-tier instanced mesh uses).
-    // 24×16 tessellation matches the per-Mesh smooth-body sphere from
-    // BodyShape3D so the visual is byte-for-byte identical when the LOD
-    // routing flips a unit between paths.
-    const smoothMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    this.smoothChassis = new THREE.InstancedMesh(
-      this.smoothChassisGeom,
-      smoothMat,
-      Render3DEntities.SMOOTH_CHASSIS_CAP,
-    );
-    this.smoothChassis.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    // Allocate the instanceColor buffer up front so setColorAt works
-    // without a first-frame initialization branch.
-    this.smoothChassis.setColorAt(0, this._instColor.set(0xffffff));
-    this.smoothChassis.instanceColor!.setUsage(THREE.DynamicDrawUsage);
-    // Same culling caveat as unitInstanced: source geom's bounding
-    // sphere is at origin radius 1; instances live anywhere on the map,
-    // so disable frustum cull. Hidden slots use a scale-0 matrix and
-    // contribute zero rasterized pixels.
-    this.smoothChassis.frustumCulled = false;
-    for (let i = 0; i < Render3DEntities.SMOOTH_CHASSIS_CAP; i++) {
-      this.smoothChassis.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-    }
-    // Same draw-bound logic as unitInstanced — start at 0, bump to
-    // smoothChassisNextSlot per frame in updateUnits.
-    this.smoothChassis.count = 0;
-    this.smoothChassis.instanceMatrix.needsUpdate = true;
-    this.world.add(this.smoothChassis);
-
-    // Turret-head InstancedMesh — uses an instanced-only clone of the
-    // 16×12 unit sphere. Per-instance team color via instanceColor
-    // modulates against the white shared MeshLambertMaterial — same
-    // pattern smoothChassis uses, so team-changes are picked up by
-    // the per-frame setColorAt without touching any material.
-    const headMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    this.turretHeadInstanced = new THREE.InstancedMesh(
-      this.turretHeadInstancedGeom,
-      headMat,
-      Render3DEntities.TURRET_HEAD_CAP,
-    );
-    this.turretHeadInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.turretHeadInstanced.setColorAt(0, this._instColor.set(0xffffff));
-    this.turretHeadInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
-    // Same culling caveat as the chassis pools — instances are
-    // anywhere on the map, source-geom bounding sphere is at origin.
-    this.turretHeadInstanced.frustumCulled = false;
-    for (let i = 0; i < Render3DEntities.TURRET_HEAD_CAP; i++) {
-      this.turretHeadInstanced.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-    }
-    this.turretHeadInstanced.count = 0;
-    this.turretHeadInstanced.instanceMatrix.needsUpdate = true;
-    this.world.add(this.turretHeadInstanced);
-
-    // Barrel InstancedMesh — uses instanced-only geometry/material
-    // (10-segment cylinder, radius 1, height 1; the per-instance
-    // scale shapes it to (cylRadius, length, cylRadius)). Barrels stay
-    // white across teams, matching the existing visual contract.
-    this.barrelInstanced = new THREE.InstancedMesh(
-      this.barrelInstancedGeom,
-      this.barrelInstancedMat,
-      Render3DEntities.BARREL_CAP,
-    );
-    this.barrelInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.barrelInstanced.setColorAt(0, this._instColor.set(0xffffff));
-    this.barrelInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
-    this.barrelInstanced.frustumCulled = false;
-    for (let i = 0; i < Render3DEntities.BARREL_CAP; i++) {
-      this.barrelInstanced.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-    }
-    this.barrelInstanced.count = 0;
-    this.barrelInstanced.instanceMatrix.needsUpdate = true;
-    this.world.add(this.barrelInstanced);
-
-    // Mirror-panel InstancedMesh — one shared chrome material,
-    // double-sided so the panel reads from either side, with a fixed
-    // owner-agnostic panel color.
-    const mirrorMat = new THREE.MeshStandardMaterial({
-      color: MIRROR_PANEL_COLOR,
-      metalness: MIRROR_PANEL_METALNESS,
-      roughness: MIRROR_PANEL_ROUGHNESS,
-      envMapIntensity: MIRROR_PANEL_ENV_INTENSITY,
-      side: THREE.DoubleSide,
+    this.unitDetailInstances = new UnitDetailInstanceRenderer3D({
+      world: this.world,
+      turretHeadGeom: this.turretHeadGeom,
+      barrelGeom: this.barrelGeom,
+      barrelMat: this.barrelMat,
+      mirrorGeom: this.mirrorGeom,
     });
-    this.mirrorPanelInstanced = new THREE.InstancedMesh(
-      this.mirrorInstancedGeom,
-      mirrorMat,
-      Render3DEntities.MIRROR_PANEL_CAP,
-    );
-    this.mirrorPanelInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mirrorPanelInstanced.setColorAt(0, this._instColor.set(MIRROR_PANEL_COLOR));
-    this.mirrorPanelInstanced.instanceColor!.setUsage(THREE.DynamicDrawUsage);
-    this.mirrorPanelInstanced.frustumCulled = false;
-    for (let i = 0; i < Render3DEntities.MIRROR_PANEL_CAP; i++) {
-      this.mirrorPanelInstanced.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-    }
-    this.mirrorPanelInstanced.count = 0;
-    this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
-    this.world.add(this.mirrorPanelInstanced);
-
   }
 
   private getMirrorShinyMat(): THREE.MeshStandardMaterial {
@@ -582,14 +337,6 @@ export class Render3DEntities {
       this.primaryMats.set(pid, mat);
     }
     return mat;
-  }
-
-  private setInstanceColorForEntity(
-    mesh: THREE.InstancedMesh,
-    slot: number,
-    entity: Entity,
-  ): void {
-    setEntityInstanceColor(mesh, slot, entity, this._instColor);
   }
 
   update(
@@ -633,20 +380,6 @@ export class Render3DEntities {
 
   private _currentDtMs = 0;
 
-  private trimFreeTail(freeSlots: number[], nextSlot: number): number {
-    // Stable slot allocation can leave freed slots below the high-water
-    // mark. When the freed slots are at the tail, lower nextSlot so the
-    // InstancedMesh draw count stops paying vertex cost for them.
-    while (nextSlot > 0) {
-      const tail = nextSlot - 1;
-      const i = freeSlots.indexOf(tail);
-      if (i < 0) break;
-      freeSlots.splice(i, 1);
-      nextSlot = tail;
-    }
-    return nextSlot;
-  }
-
   /** Wipe every cached unit mesh so the next updateUnits() rebuilds them at
    *  the current LOD. Explosions / projectiles / tile grid don't need a rebuild
    *  — their per-frame loops already read the LOD snapshot directly. */
@@ -664,14 +397,7 @@ export class Render3DEntities {
     }
     this.unitMeshes.clear();
     this.barrelSpins.clear();
-    // Smooth-chassis slot indices are tied to specific entityIds + the
-    // current LOD's geometry path; on a tier flip we re-discover which
-    // units route through smoothChassis and re-allocate fresh.
-    this.releaseAllSmoothChassisSlots();
-    this.releaseAllPolyChassisSlots();
-    this.releaseAllTurretHeadSlots();
-    this.releaseAllBarrelSlots();
-    this.releaseAllMirrorPanelSlots();
+    this.unitDetailInstances.releaseAllSlots();
   }
 
   private shouldUpdateRichUnitDetails(
@@ -717,298 +443,6 @@ export class Render3DEntities {
     mesh.unitDetailCachedRotation = entity.transform.rotation;
   }
 
-  /** Reserve N consecutive logical slots in `smoothChassis` for one
-   *  unit. Returns the allocated slot indices, or null if the cap is
-   *  exhausted (caller falls back to per-Mesh chassis). Slots are
-   *  drawn from the free list LIFO so a long game doesn't burn
-   *  through the high-water mark. */
-  private allocSmoothChassisSlots(count: number): number[] | null {
-    if (count <= 0) return [];
-    const out: number[] = [];
-    for (let k = 0; k < count; k++) {
-      let slot: number;
-      if (this.smoothChassisFreeSlots.length > 0) {
-        slot = this.smoothChassisFreeSlots.pop()!;
-      } else if (this.smoothChassisNextSlot < Render3DEntities.SMOOTH_CHASSIS_CAP) {
-        slot = this.smoothChassisNextSlot++;
-      } else {
-        // Cap exhausted — return what we got so far so the caller can
-        // free them; the unit will fall back to whatever path the
-        // caller chooses (currently: drop the chassis render).
-        for (const s of out) this.smoothChassisFreeSlots.push(s);
-        return null;
-      }
-      out.push(slot);
-    }
-    return out;
-  }
-
-  /** Hide every smooth-chassis slot the entity owns, free them back to
-   *  the pool, and forget the entity. Called from the per-frame
-   *  seen-pruning loop (unit despawned) and from the LOD-flip rebuild
-   *  path. The InstancedMesh's instanceMatrix dirty flag is set by the
-   *  per-frame writer; a freed-but-unwritten slot at scale 0 contributes
-   *  zero pixels until the next write reuses it. */
-  private freeSmoothChassisSlotsForEntity(eid: EntityId): void {
-    const im = this.smoothChassis;
-    if (!im) return;
-    const slots = this.smoothChassisSlots.get(eid);
-    if (!slots) return;
-    for (const slot of slots) {
-      im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-      this.smoothChassisFreeSlots.push(slot);
-    }
-    this.smoothChassisSlots.delete(eid);
-    this.smoothChassisColorKey.delete(eid);
-    im.instanceMatrix.needsUpdate = true;
-  }
-
-  /** Wipe every active smooth-chassis slot (LOD flip / teardown). Same
-   *  shape as releaseAllInstancedSlots above. */
-  private releaseAllSmoothChassisSlots(): void {
-    const im = this.smoothChassis;
-    if (!im) return;
-    for (const slots of this.smoothChassisSlots.values()) {
-      for (const slot of slots) {
-        im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-      }
-    }
-    this.smoothChassisSlots.clear();
-    this.smoothChassisColorKey.clear();
-    this.smoothChassisFreeSlots.length = 0;
-    this.smoothChassisNextSlot = 0;
-    im.count = 0;
-    im.instanceMatrix.needsUpdate = true;
-  }
-
-  /** Look up or lazily create the InstancedMesh pool for a polygonal /
-   *  rect body shape. The source geometry comes from BodyShape3D's
-   *  cache, but the instanced pool owns a clone so renderer-owned
-   *  attributes/buffers cannot leak into fallback meshes. Material stays
-   *  Lambert like the rest of the main unit/building surfaces so units
-   *  keep the intended scene lighting. */
-  private getOrCreatePolyPool(
-    bodyShapeKey: string,
-    geom: THREE.BufferGeometry,
-  ): {
-    mesh: THREE.InstancedMesh;
-    slots: Map<EntityId, number>;
-    colorKeys: Map<EntityId, number>;
-    colorDirty: boolean;
-    freeSlots: number[];
-    nextSlot: number;
-  } {
-    let pool = this.polyChassis.get(bodyShapeKey);
-    if (pool) return pool;
-    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    const instancedGeom = geom.clone();
-    const mesh = new THREE.InstancedMesh(
-      instancedGeom,
-      mat,
-      Render3DEntities.POLY_CHASSIS_CAP,
-    );
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    mesh.setColorAt(0, this._instColor.set(0xffffff));
-    mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
-    // Frustum culling: same caveat as smoothChassis / unitInstanced.
-    // Source geometry's bounding sphere is at origin; instances live
-    // anywhere on the map.
-    mesh.frustumCulled = false;
-    for (let i = 0; i < Render3DEntities.POLY_CHASSIS_CAP; i++) {
-      mesh.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-    }
-    // Same draw-bound logic — count tracks allocated slots, not the
-    // buffer's static cap. Per-frame writer bumps count to
-    // pool.nextSlot at end-of-update.
-    mesh.count = 0;
-    mesh.instanceMatrix.needsUpdate = true;
-    this.world.add(mesh);
-    pool = {
-      mesh,
-      slots: new Map(),
-      colorKeys: new Map(),
-      colorDirty: false,
-      freeSlots: [],
-      nextSlot: 0,
-    };
-    this.polyChassis.set(bodyShapeKey, pool);
-    return pool;
-  }
-
-  /** Reserve one slot for entity `eid` in the body-shape poly pool.
-   *  Returns the slot index, or null when the cap is exhausted (caller
-   *  falls back to per-Mesh chassis). */
-  private allocPolyChassisSlot(
-    eid: EntityId,
-    bodyShapeKey: string,
-    geom: THREE.BufferGeometry,
-  ): number | null {
-    const pool = this.getOrCreatePolyPool(bodyShapeKey, geom);
-    let slot: number;
-    if (pool.freeSlots.length > 0) {
-      slot = pool.freeSlots.pop()!;
-    } else if (pool.nextSlot < Render3DEntities.POLY_CHASSIS_CAP) {
-      slot = pool.nextSlot++;
-    } else {
-      return null;
-    }
-    pool.slots.set(eid, slot);
-    return slot;
-  }
-
-  /** Release entity `eid`'s slot in the body-shape pool back
-   *  to the free list. Called from the per-frame seen-pruning loop on
-   *  unit despawn. */
-  private freePolyChassisSlotForEntity(
-    bodyShapeKey: string,
-    eid: EntityId,
-  ): void {
-    const pool = this.polyChassis.get(bodyShapeKey);
-    if (!pool) return;
-    const slot = pool.slots.get(eid);
-    if (slot === undefined) return;
-    pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    pool.freeSlots.push(slot);
-    pool.slots.delete(eid);
-    pool.colorKeys.delete(eid);
-    pool.mesh.instanceMatrix.needsUpdate = true;
-  }
-
-  /** Reserve a slot for a turret head. Returns slot index, or null
-   *  when the cap is exhausted (caller falls back to per-Mesh head
-   *  via TurretMesh3D's normal head-creation path). */
-  private allocTurretHeadSlot(): number | null {
-    if (!this.turretHeadInstanced) return null;
-    if (this.turretHeadFreeSlots.length > 0) {
-      return this.turretHeadFreeSlots.pop()!;
-    }
-    if (this.turretHeadNextSlot < Render3DEntities.TURRET_HEAD_CAP) {
-      return this.turretHeadNextSlot++;
-    }
-    return null;
-  }
-
-  /** Hide one turret-head slot and push it back on the free list.
-   *  Called from the seen-pruning loop on unit despawn (each turret
-   *  on the unit gets its head slot freed). */
-  private freeTurretHeadSlot(slot: number): void {
-    const im = this.turretHeadInstanced;
-    if (!im || slot < 0) return;
-    im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    this.turretHeadFreeSlots.push(slot);
-    this.turretHeadColorKey.delete(slot);
-    im.instanceMatrix.needsUpdate = true;
-  }
-
-  /** Wipe every active turret-head slot (LOD flip). The mesh stays
-   *  in the scene with count = 0 until allocations refill it. */
-  private releaseAllTurretHeadSlots(): void {
-    const im = this.turretHeadInstanced;
-    if (!im) return;
-    for (let i = 0; i < this.turretHeadNextSlot; i++) {
-      im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-    }
-    this.turretHeadFreeSlots.length = 0;
-    this.turretHeadColorKey.clear();
-    this.turretHeadColorDirty = false;
-    this.turretHeadNextSlot = 0;
-    im.count = 0;
-    im.instanceMatrix.needsUpdate = true;
-  }
-
-  /** Reserve a slot for a single barrel cylinder. Returns slot
-   *  index, or null when the cap is exhausted (caller falls back to
-   *  per-Mesh barrels for the whole turret — see TurretMesh3D's
-   *  skipBarrels path). */
-  private allocBarrelSlot(): number | null {
-    if (!this.barrelInstanced) return null;
-    if (this.barrelFreeSlots.length > 0) return this.barrelFreeSlots.pop()!;
-    if (this.barrelNextSlot < Render3DEntities.BARREL_CAP) {
-      return this.barrelNextSlot++;
-    }
-    return null;
-  }
-
-  /** Hide one barrel slot and push it back on the free list. Used by
-   *  the seen-pruning loop on unit despawn (each barrel on each
-   *  turret on the unit gets its slot freed). */
-  private freeBarrelSlot(slot: number): void {
-    const im = this.barrelInstanced;
-    if (!im || slot < 0) return;
-    im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    this.barrelFreeSlots.push(slot);
-    this.barrelColorKey.delete(slot);
-    im.instanceMatrix.needsUpdate = true;
-  }
-
-  /** Wipe every active barrel slot (LOD flip / teardown). Same
-   *  shape as the head + chassis releases. */
-  private releaseAllBarrelSlots(): void {
-    const im = this.barrelInstanced;
-    if (!im) return;
-    for (let i = 0; i < this.barrelNextSlot; i++) {
-      im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-    }
-    this.barrelFreeSlots.length = 0;
-    this.barrelColorKey.clear();
-    this.barrelNextSlot = 0;
-    im.count = 0;
-    im.instanceMatrix.needsUpdate = true;
-  }
-
-  /** Reserve a slot for one mirror panel. Returns slot index, or
-   *  null when the cap is exhausted (caller falls back to per-Mesh
-   *  panels for the whole unit — all-or-nothing same as barrels). */
-  private allocMirrorPanelSlot(): number | null {
-    if (!this.mirrorPanelInstanced) return null;
-    if (this.mirrorPanelFreeSlots.length > 0) return this.mirrorPanelFreeSlots.pop()!;
-    if (this.mirrorPanelNextSlot < Render3DEntities.MIRROR_PANEL_CAP) {
-      return this.mirrorPanelNextSlot++;
-    }
-    return null;
-  }
-
-  private freeMirrorPanelSlot(slot: number): void {
-    const im = this.mirrorPanelInstanced;
-    if (!im || slot < 0) return;
-    im.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-    this.mirrorPanelFreeSlots.push(slot);
-    this.mirrorPanelColorKey.delete(slot);
-    im.instanceMatrix.needsUpdate = true;
-  }
-
-  private releaseAllMirrorPanelSlots(): void {
-    const im = this.mirrorPanelInstanced;
-    if (!im) return;
-    for (let i = 0; i < this.mirrorPanelNextSlot; i++) {
-      im.setMatrixAt(i, Render3DEntities._ZERO_MATRIX);
-    }
-    this.mirrorPanelFreeSlots.length = 0;
-    this.mirrorPanelColorKey.clear();
-    this.mirrorPanelColorDirty = false;
-    this.mirrorPanelNextSlot = 0;
-    im.count = 0;
-    im.instanceMatrix.needsUpdate = true;
-  }
-
-  /** Wipe every active polygonal-chassis slot across every body-shape
-   *  pool (LOD flip). The pool meshes stay in the scene with count = 0
-   *  (no GPU draw work) until the next allocation refills them. */
-  private releaseAllPolyChassisSlots(): void {
-    for (const pool of this.polyChassis.values()) {
-      for (const slot of pool.slots.values()) {
-        pool.mesh.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-      }
-      pool.slots.clear();
-      pool.colorKeys.clear();
-      pool.colorDirty = false;
-      pool.freeSlots.length = 0;
-      pool.nextSlot = 0;
-      pool.mesh.count = 0;
-      pool.mesh.instanceMatrix.needsUpdate = true;
-    }
-  }
-
   /** Remove every overlay mesh that lives in the world group (not the
    *  unit group) so a teardown/rebuild cycle doesn't leak them into
    *  the scene. TURR CIR circles (per-turret) and the BLD build circle
@@ -1024,17 +458,7 @@ export class Render3DEntities {
     destroyLocomotion(m.locomotion, this.legRenderer);
     this.world.remove(m.group);
     this.disposeWorldParentedOverlays(m);
-    if (m.smoothChassisSlots) this.freeSmoothChassisSlotsForEntity(id);
-    if (m.polyChassisSlot !== undefined) this.freePolyChassisSlotForEntity(m.bodyShapeKey, id);
-    for (const tm of m.turrets) {
-      if (tm.headSlot !== undefined) this.freeTurretHeadSlot(tm.headSlot);
-      if (tm.barrelSlots) {
-        for (const slot of tm.barrelSlots) this.freeBarrelSlot(slot);
-      }
-    }
-    if (m.mirrors?.panelSlots) {
-      for (const slot of m.mirrors.panelSlots) this.freeMirrorPanelSlot(slot);
-    }
+    this.unitDetailInstances.freeMeshSlots(id, m);
     this.unitMeshes.delete(id);
   }
 
@@ -1090,65 +514,8 @@ export class Render3DEntities {
    *  attributes and no material shader patching. Per-Mesh fallbacks still use
    *  applyShellOverride for the translucent shell material. */
   private updateShellInstanceColors(e: Entity, m: EntityMesh): void {
-    const colorKey = entityInstanceColorKey(e);
-
     this.unitMassInstances.syncColorForEntity(e);
-
-    if (
-      this.smoothChassis &&
-      m.smoothChassisSlots &&
-      this.smoothChassisColorKey.get(e.id) !== colorKey
-    ) {
-      for (const slot of m.smoothChassisSlots) {
-        this.setInstanceColorForEntity(this.smoothChassis, slot, e);
-      }
-      this.smoothChassisColorKey.set(e.id, colorKey);
-      this.smoothChassis.instanceColor!.needsUpdate = true;
-    }
-
-    if (m.polyChassisSlot !== undefined && m.bodyShapeKey) {
-      const pool = this.polyChassis.get(m.bodyShapeKey);
-      if (pool && pool.colorKeys.get(e.id) !== colorKey) {
-        this.setInstanceColorForEntity(pool.mesh, m.polyChassisSlot, e);
-        pool.colorKeys.set(e.id, colorKey);
-        pool.mesh.instanceColor!.needsUpdate = true;
-      }
-    }
-
-    if (m.turrets) {
-      for (const tm of m.turrets) {
-        if (
-          tm.headSlot !== undefined &&
-          this.turretHeadInstanced &&
-          this.turretHeadColorKey.get(tm.headSlot) !== colorKey
-        ) {
-          this.setInstanceColorForEntity(this.turretHeadInstanced, tm.headSlot, e);
-          this.turretHeadColorKey.set(tm.headSlot, colorKey);
-          this.turretHeadInstanced.instanceColor!.needsUpdate = true;
-        }
-        if (tm.barrelSlots && this.barrelInstanced) {
-          const barrelColorKey = isConstructionShell(e) ? SHELL_PALE_HEX : 0xffffff;
-          for (const slot of tm.barrelSlots) {
-            if (this.barrelColorKey.get(slot) === barrelColorKey) continue;
-            this._instColor.set(barrelColorKey);
-            this.barrelInstanced.setColorAt(slot, this._instColor);
-            this.barrelColorKey.set(slot, barrelColorKey);
-            this.barrelInstanced.instanceColor!.needsUpdate = true;
-          }
-        }
-      }
-    }
-
-    if (m.mirrors?.panelSlots && this.mirrorPanelInstanced) {
-      const mirrorColorKey = isConstructionShell(e) ? SHELL_PALE_HEX : MIRROR_PANEL_COLOR;
-      this._instColor.set(mirrorColorKey);
-      for (const slot of m.mirrors.panelSlots) {
-        if (this.mirrorPanelColorKey.get(slot) === mirrorColorKey) continue;
-        this.mirrorPanelInstanced.setColorAt(slot, this._instColor);
-        this.mirrorPanelColorKey.set(slot, mirrorColorKey);
-        this.mirrorPanelInstanced.instanceColor!.needsUpdate = true;
-      }
-    }
+    this.unitDetailInstances.syncShellColors(e, m);
   }
 
   private updateUnits(): void {
@@ -1182,9 +549,6 @@ export class Render3DEntities {
     seen.clear();
     const spinDt = this._spinDt;
     this.richUnitDetailFrame = (this.richUnitDetailFrame + 1) & 0x3fffffff;
-    let smoothColorDirty = false;
-    this.turretHeadColorDirty = false;
-    this.mirrorPanelColorDirty = false;
 
     for (const e of units) {
       seen.add(e.id);
@@ -1238,7 +602,6 @@ export class Render3DEntities {
         ?? e.unit?.radius.shot
         ?? 15;
       const pid = e.ownership?.playerId;
-      const colorKey = entityInstanceColorKey(e);
       const turrets = e.combat?.turrets ?? [];
       const objectTier = this.unitMassInstances.getRichObjectTier(e.id) ?? this.resolveEntityObjectLod(e);
       const isCommanderUnit = isCommander(e);
@@ -1329,15 +692,17 @@ export class Render3DEntities {
           bodyEntry.isSmooth &&
           bodyEntry.parts.length > 0
         ) {
-          smoothChassisSlots = this.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
+          smoothChassisSlots = this.unitDetailInstances.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
         } else if (
           useDetailedUnitInstancing &&
           !hideChassis &&
           !bodyEntry.isSmooth &&
           bodyEntry.parts.length > 0
         ) {
-          const allocated = this.allocPolyChassisSlot(
-            e.id, bodyShapeKey, bodyEntry.parts[0].geometry,
+          const allocated = this.unitDetailInstances.allocPolyChassisSlot(
+            bodyShapeKey,
+            bodyEntry.parts[0].geometry,
+            e.id,
           );
           if (allocated !== null) polyChassisSlot = allocated;
         }
@@ -1379,7 +744,7 @@ export class Render3DEntities {
           const hideHead = turretOff || isForceField || isConstructionEmitter;
           let headSlot: number | undefined;
           if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
-            const allocated = this.allocTurretHeadSlot();
+            const allocated = this.unitDetailInstances.allocTurretHeadSlot();
             if (allocated !== null) headSlot = allocated;
           }
           // Decide whether to route this turret's barrels through the
@@ -1427,24 +792,15 @@ export class Render3DEntities {
           // Try to allocate one barrel slot per barrel. All-or-nothing:
           // partial allocations get freed and we leave the per-Mesh
           // barrels in the scene as the fallback.
-          if (useDetailedUnitInstancing && tm.barrels.length > 0 && this.barrelInstanced) {
-            const barrelSlots: number[] = [];
-            let allAlloc = true;
-            for (let bi = 0; bi < tm.barrels.length; bi++) {
-              const slot = this.allocBarrelSlot();
-              if (slot === null) { allAlloc = false; break; }
-              barrelSlots.push(slot);
-            }
-            if (allAlloc) {
+          if (useDetailedUnitInstancing && tm.barrels.length > 0) {
+            const barrelSlots = this.unitDetailInstances.allocBarrelSlots(tm.barrels.length);
+            if (barrelSlots) {
               tm.barrelSlots = barrelSlots;
               // Detach the per-Mesh barrels from spinGroup so they
               // don't double-render — we still keep the Mesh
               // references in tm.barrels[] as the per-frame writer
               // reads .position / .quaternion / .scale off them.
               for (const b of tm.barrels) b.parent?.remove(b);
-            } else {
-              // Partial alloc → free what we got, fall back to per-Mesh.
-              for (const slot of barrelSlots) this.freeBarrelSlot(slot);
             }
           }
           turretMeshes.push(tm);
@@ -1465,7 +821,7 @@ export class Render3DEntities {
           chassisLift: liftGroup.position.y,
         };
         if (smoothChassisSlots) {
-          this.smoothChassisSlots.set(e.id, smoothChassisSlots);
+          this.unitDetailInstances.registerSmoothChassisSlots(e.id, smoothChassisSlots);
         }
         // (polyChassisSlot is already registered in the pool's slots
         // map by allocPolyChassisSlot above — no extra bookkeeping
@@ -1527,22 +883,10 @@ export class Render3DEntities {
           // are read each frame to compose the world matrix written
           // to the slot).
           const panelCount = mirrorPanels.length;
-          const allocedPanelSlots: number[] = [];
-          let allMirrorAlloc =
-            useDetailedUnitInstancing &&
-            panelCount > 0 &&
-            this.mirrorPanelInstanced !== null;
-          if (allMirrorAlloc) {
-            for (let pi = 0; pi < panelCount; pi++) {
-              const slot = this.allocMirrorPanelSlot();
-              if (slot === null) { allMirrorAlloc = false; break; }
-              allocedPanelSlots.push(slot);
-            }
-            if (!allMirrorAlloc) {
-              for (const slot of allocedPanelSlots) this.freeMirrorPanelSlot(slot);
-              allocedPanelSlots.length = 0;
-            }
-          }
+          const allocedPanelSlots = useDetailedUnitInstancing && panelCount > 0
+            ? this.unitDetailInstances.allocMirrorPanelSlots(panelCount)
+            : null;
+          const allMirrorAlloc = allocedPanelSlots !== null;
           m.mirrors = buildMirrorMesh3D(
             liftGroup, mirrorPanels,
             panelCenterY, panelHalfSide, panelArmLength,
@@ -1699,15 +1043,8 @@ export class Render3DEntities {
       // slots, a snipe / loris / forceField takes one. All slots feed
       // the same shared draw call.
       if (!fullUnitDetail || m.hideChassis) {
-        if (m.smoothChassisSlots && this.smoothChassis) {
-          for (const slot of m.smoothChassisSlots) {
-            this.smoothChassis.setMatrixAt(slot, Render3DEntities._ZERO_MATRIX);
-          }
-        } else if (m.polyChassisSlot !== undefined) {
-          const pool = this.polyChassis.get(m.bodyShapeKey);
-          if (pool) pool.mesh.setMatrixAt(m.polyChassisSlot, Render3DEntities._ZERO_MATRIX);
-        }
-      } else if (m.smoothChassisSlots && this.smoothChassis) {
+        this.unitDetailInstances.hideChassisSlots(m);
+      } else if (m.smoothChassisSlots) {
         // Reuse cached parentQuat / liftedPos from the per-unit prefix
         // block above. Chassis adds its own radius scale on top of the
         // shared chain. parentMat = T(liftedPos) · R(parentQuat) · S(radius).
@@ -1717,11 +1054,7 @@ export class Render3DEntities {
           this._smoothParentQuat,
           this._smoothParentScale,
         );
-        const writeColor = this.smoothChassisColorKey.get(e.id) !== colorKey;
-        if (writeColor) {
-          this.smoothChassisColorKey.set(e.id, colorKey);
-          smoothColorDirty = true;
-        }
+        const writeColor = this.unitDetailInstances.prepareSmoothChassisColor(e);
         const slotCount = Math.min(bodyEntry.parts.length, m.smoothChassisSlots.length);
         for (let pi = 0; pi < slotCount; pi++) {
           const part = bodyEntry.parts[pi];
@@ -1737,42 +1070,42 @@ export class Render3DEntities {
             this._smoothParentMat,
             this._smoothPartMat,
           );
-          this.smoothChassis.setMatrixAt(slot, this._smoothFinalMat);
-          if (writeColor) this.setInstanceColorForEntity(this.smoothChassis, slot, e);
+          this.unitDetailInstances.writeSmoothChassisMatrix(
+            slot,
+            this._smoothFinalMat,
+            e,
+            writeColor,
+          );
         }
       } else if (m.polyChassisSlot !== undefined) {
         // Polygonal/rect chassis: same parentMat × partMat composition
         // as the smooth path, including the lift translation.
-        const pool = this.polyChassis.get(m.bodyShapeKey);
-        if (pool) {
-          // Same per-unit chain as smooth chassis — reuse cached
-          // parentQuat / liftedPos.
-          this._smoothParentScale.set(radius, radius, radius);
-          this._smoothParentMat.compose(
-            this._smoothLiftedPos,
-            this._smoothParentQuat,
-            this._smoothParentScale,
-          );
-          const writeColor = pool.colorKeys.get(e.id) !== colorKey;
-          if (writeColor) {
-            pool.colorKeys.set(e.id, colorKey);
-            pool.colorDirty = true;
-          }
-          const part = bodyEntry.parts[0];
-          this._smoothPartLocalPos.set(part.x, part.y, part.z);
-          this._smoothPartScale.set(part.scaleX, part.scaleY, part.scaleZ);
-          this._smoothPartMat.compose(
-            this._smoothPartLocalPos,
-            Render3DEntities._IDENTITY_QUAT,
-            this._smoothPartScale,
-          );
-          this._smoothFinalMat.multiplyMatrices(
-            this._smoothParentMat,
-            this._smoothPartMat,
-          );
-          pool.mesh.setMatrixAt(m.polyChassisSlot, this._smoothFinalMat);
-          if (writeColor) this.setInstanceColorForEntity(pool.mesh, m.polyChassisSlot, e);
-        }
+        // Same per-unit chain as smooth chassis — reuse cached
+        // parentQuat / liftedPos.
+        this._smoothParentScale.set(radius, radius, radius);
+        this._smoothParentMat.compose(
+          this._smoothLiftedPos,
+          this._smoothParentQuat,
+          this._smoothParentScale,
+        );
+        const part = bodyEntry.parts[0];
+        this._smoothPartLocalPos.set(part.x, part.y, part.z);
+        this._smoothPartScale.set(part.scaleX, part.scaleY, part.scaleZ);
+        this._smoothPartMat.compose(
+          this._smoothPartLocalPos,
+          Render3DEntities._IDENTITY_QUAT,
+          this._smoothPartScale,
+        );
+        this._smoothFinalMat.multiplyMatrices(
+          this._smoothParentMat,
+          this._smoothPartMat,
+        );
+        this.unitDetailInstances.writePolyChassisMatrix(
+          e,
+          m.bodyShapeKey,
+          m.polyChassisSlot,
+          this._smoothFinalMat,
+        );
       }
 
       const selected = e.selectable?.selected === true;
@@ -1835,7 +1168,6 @@ export class Render3DEntities {
         // on the TurretMesh so we don't re-call getTurretHeadRadius.
         if (
           tm.headSlot !== undefined
-          && this.turretHeadInstanced
           && tm.headRadius !== undefined
         ) {
           const lift = m.chassisLift ?? 0;
@@ -1861,12 +1193,7 @@ export class Render3DEntities {
             Render3DEntities._IDENTITY_QUAT,
             this._smoothPartScale,
           );
-          this.turretHeadInstanced.setMatrixAt(tm.headSlot, this._smoothPartMat);
-          if (this.turretHeadColorKey.get(tm.headSlot) !== colorKey) {
-            this.setInstanceColorForEntity(this.turretHeadInstanced, tm.headSlot, e);
-            this.turretHeadColorKey.set(tm.headSlot, colorKey);
-            this.turretHeadColorDirty = true;
-          }
+          this.unitDetailInstances.writeTurretHeadMatrix(tm.headSlot, this._smoothPartMat, e);
         }
 
         // Barrel InstancedMesh write — compose the FULL chain
@@ -1881,7 +1208,6 @@ export class Render3DEntities {
         // depend on THREE's lazy matrixWorld update timing.
         if (
           tm.barrelSlots
-          && this.barrelInstanced
           && tm.barrels.length > 0
           && tm.barrelSlots.length === tm.barrels.length
         ) {
@@ -1926,7 +1252,7 @@ export class Render3DEntities {
             this._smoothFinalMat.multiplyMatrices(
               this._barrelParentMat, this._barrelStepMat,
             );
-            this.barrelInstanced.setMatrixAt(slot, this._smoothFinalMat);
+            this.unitDetailInstances.writeBarrelMatrix(slot, this._smoothFinalMat);
           }
         }
 
@@ -2028,7 +1354,7 @@ export class Render3DEntities {
           // render where the sim collides: pitch sweeps the panel
           // through 3D via the parent matrix, not by per-mesh
           // post-rotations.
-          if (m.mirrors.panelSlots && this.mirrorPanelInstanced) {
+          if (m.mirrors.panelSlots) {
             // parentMat = group · yawGroup · liftGroup · root.local.
             // root.local is now T(0, panelCenterY, 0) · R(quaternion)
             // — the translation lifts the joint to the body-center
@@ -2044,8 +1370,6 @@ export class Render3DEntities {
             );
             this._barrelParentMat.multiply(this._barrelStepMat);
 
-            const mirrorColorKey = isConstructionShell(e) ? SHELL_PALE_HEX : MIRROR_PANEL_COLOR;
-            this._instColor.set(mirrorColorKey);
             const slotCount = Math.min(
               m.mirrors.panels.length,
               m.mirrors.panelSlots.length,
@@ -2064,12 +1388,7 @@ export class Render3DEntities {
               this._smoothFinalMat.multiplyMatrices(
                 this._barrelParentMat, this._barrelStepMat,
               );
-              this.mirrorPanelInstanced.setMatrixAt(slot, this._smoothFinalMat);
-              if (this.mirrorPanelColorKey.get(slot) !== mirrorColorKey) {
-                this.mirrorPanelInstanced.setColorAt(slot, this._instColor);
-                this.mirrorPanelColorKey.set(slot, mirrorColorKey);
-                this.mirrorPanelColorDirty = true;
-              }
+              this.unitDetailInstances.writeMirrorPanelMatrix(slot, this._smoothFinalMat, e);
             }
           }
         }
@@ -2097,30 +1416,7 @@ export class Render3DEntities {
         destroyLocomotion(m.locomotion, this.legRenderer);
         this.world.remove(m.group);
         this.disposeWorldParentedOverlays(m);
-        // Smooth-chassis slots are owned by this entity; release them
-        // back to the pool so future smooth-body units can recycle the
-        // slot indices.
-        if (m.smoothChassisSlots) this.freeSmoothChassisSlotsForEntity(id);
-        // Polygonal-chassis slot lives in the body-shape pool keyed by
-        // m.bodyShapeKey — release it back so a future unit with the
-        // same body shape can take the slot.
-        if (m.polyChassisSlot !== undefined) {
-          this.freePolyChassisSlotForEntity(m.bodyShapeKey, id);
-        }
-        // Turret-head slots — one per turret on the unit that had a
-        // visible head routed through the InstancedMesh path.
-        for (const tm of m.turrets) {
-          if (tm.headSlot !== undefined) this.freeTurretHeadSlot(tm.headSlot);
-          // Barrel slots — one per barrel on each turret routed
-          // through the barrel InstancedMesh path.
-          if (tm.barrelSlots) {
-            for (const slot of tm.barrelSlots) this.freeBarrelSlot(slot);
-          }
-        }
-        // Mirror-panel slots (Loris-only).
-        if (m.mirrors?.panelSlots) {
-          for (const slot of m.mirrors.panelSlots) this.freeMirrorPanelSlot(slot);
-        }
+        this.unitDetailInstances.freeMeshSlots(id, m);
         // True entity removal — drop any stashed leg-state snapshot
         // so a future re-spawn of a different unit reusing this
         // entityId starts fresh instead of inheriting last unit's
@@ -2135,82 +1431,7 @@ export class Render3DEntities {
     for (const id of this.barrelSpins.keys()) {
       if (!seen.has(id)) this.barrelSpins.delete(id);
     }
-    this.smoothChassisNextSlot = this.trimFreeTail(
-      this.smoothChassisFreeSlots,
-      this.smoothChassisNextSlot,
-    );
-    for (const pool of this.polyChassis.values()) {
-      pool.nextSlot = this.trimFreeTail(pool.freeSlots, pool.nextSlot);
-    }
-    this.turretHeadNextSlot = this.trimFreeTail(
-      this.turretHeadFreeSlots,
-      this.turretHeadNextSlot,
-    );
-    this.barrelNextSlot = this.trimFreeTail(
-      this.barrelFreeSlots,
-      this.barrelNextSlot,
-    );
-    this.mirrorPanelNextSlot = this.trimFreeTail(
-      this.mirrorPanelFreeSlots,
-      this.mirrorPanelNextSlot,
-    );
-    // Flush smooth-chassis instance buffers + tighten draw bound
-    // to the high-water mark so the GPU stops running the vertex
-    // shader on the (CAP - nextSlot) trailing slots that have never
-    // been allocated. count = nextSlot scales the VS load with peak
-    // population instead of with the buffer's static cap (16384).
-    if (this.smoothChassis) {
-      this.smoothChassis.count = this.smoothChassisNextSlot;
-      if (this.smoothChassisSlots.size > 0) {
-        this.smoothChassis.instanceMatrix.needsUpdate = true;
-        if (smoothColorDirty && this.smoothChassis.instanceColor) {
-          this.smoothChassis.instanceColor.needsUpdate = true;
-        }
-      }
-    }
-    // Same for every body-shape polygonal pool. count rides on
-    // each pool's nextSlot independently so a pool serving 50 units
-    // doesn't get stuck running 4096 VS invocations per frame just
-    // because it shares the architecture with a busier body shape.
-    for (const pool of this.polyChassis.values()) {
-      pool.mesh.count = pool.nextSlot;
-      if (pool.slots.size === 0) continue;
-      pool.mesh.instanceMatrix.needsUpdate = true;
-      if (pool.colorDirty && pool.mesh.instanceColor) {
-        pool.mesh.instanceColor.needsUpdate = true;
-        pool.colorDirty = false;
-      }
-    }
-    // Same for the turret-head InstancedMesh — one shared draw call
-    // for every visible turret head across every unit on the map.
-    if (this.turretHeadInstanced) {
-      this.turretHeadInstanced.count = this.turretHeadNextSlot;
-      if (this.turretHeadNextSlot > 0) {
-        this.turretHeadInstanced.instanceMatrix.needsUpdate = true;
-        if (this.turretHeadColorDirty && this.turretHeadInstanced.instanceColor) {
-          this.turretHeadInstanced.instanceColor.needsUpdate = true;
-        }
-      }
-    }
-    // Barrels — one shared draw call for every barrel across every turret on
-    // every unit. Colors normally stay white; construction shells may tint
-    // specific barrel slots pale via updateShellInstanceColors().
-    if (this.barrelInstanced) {
-      this.barrelInstanced.count = this.barrelNextSlot;
-      if (this.barrelNextSlot > 0) {
-        this.barrelInstanced.instanceMatrix.needsUpdate = true;
-      }
-    }
-    // Mirror panels — one shared shiny-gray PBR draw call.
-    if (this.mirrorPanelInstanced) {
-      this.mirrorPanelInstanced.count = this.mirrorsEnabled ? this.mirrorPanelNextSlot : 0;
-      if (this.mirrorPanelNextSlot > 0) {
-        this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
-        if (this.mirrorPanelColorDirty && this.mirrorPanelInstanced.instanceColor) {
-          this.mirrorPanelInstanced.instanceColor.needsUpdate = true;
-        }
-      }
-    }
+    this.unitDetailInstances.flush(this.mirrorsEnabled);
   }
 
   /** Look up the lift subgroup for a unit's mesh. The lift group
@@ -2250,17 +1471,8 @@ export class Render3DEntities {
     this.barrelSpins.clear();
     this._seenUnitIds.clear();
     this.constructionVisuals.destroy();
-    // Polygonal-chassis pools must tear down BEFORE disposeBodyGeoms().
-    // Each pool owns an instanced-only clone of the BodyShape3D cached
-    // geometry, so dispose that clone here; BodyShape3D still disposes
-    // the original cached geometry immediately below.
-    for (const pool of this.polyChassis.values()) {
-      this.world.remove(pool.mesh);
-      pool.mesh.geometry.dispose();
-      (pool.mesh.material as THREE.Material).dispose();
-      pool.mesh.dispose();
-    }
-    this.polyChassis.clear();
+    this.unitMassInstances.destroy();
+    this.unitDetailInstances.destroy();
     disposeBodyGeoms();
     disposeBuildingGeoms();
     this.buildingMarkerBoxGeom.dispose();
@@ -2276,50 +1488,5 @@ export class Render3DEntities {
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
     this.neutralMat.dispose();
-    this.unitMassInstances.destroy();
-    if (this.smoothChassis) {
-      this.world.remove(this.smoothChassis);
-      // Material is a private MeshLambertMaterial only owned by this
-      // InstancedMesh — dispose via the mesh. Geometry is the class
-      // field below.
-      (this.smoothChassis.material as THREE.Material).dispose();
-      this.smoothChassis.dispose();
-      this.smoothChassis = null;
-    }
-    this.smoothChassisGeom.dispose();
-    this.smoothChassisSlots.clear();
-    this.smoothChassisColorKey.clear();
-    this.smoothChassisFreeSlots.length = 0;
-    if (this.turretHeadInstanced) {
-      this.world.remove(this.turretHeadInstanced);
-      // Material and geometry are private to the InstancedMesh.
-      this.turretHeadInstanced.geometry.dispose();
-      (this.turretHeadInstanced.material as THREE.Material).dispose();
-      this.turretHeadInstanced.dispose();
-      this.turretHeadInstanced = null;
-    }
-    this.turretHeadFreeSlots.length = 0;
-    this.turretHeadColorKey.clear();
-    if (this.barrelInstanced) {
-      this.world.remove(this.barrelInstanced);
-      // Instanced barrels own their cloned geometry/material; per-Mesh
-      // fallback barrels use barrelGeom/barrelMat.
-      this.barrelInstanced.geometry.dispose();
-      (this.barrelInstanced.material as THREE.Material).dispose();
-      this.barrelInstanced.dispose();
-      this.barrelInstanced = null;
-    }
-    this.barrelFreeSlots.length = 0;
-    this.barrelColorKey.clear();
-    if (this.mirrorPanelInstanced) {
-      this.world.remove(this.mirrorPanelInstanced);
-      // Material and geometry are private to the InstancedMesh.
-      this.mirrorPanelInstanced.geometry.dispose();
-      (this.mirrorPanelInstanced.material as THREE.Material).dispose();
-      this.mirrorPanelInstanced.dispose();
-      this.mirrorPanelInstanced = null;
-    }
-    this.mirrorPanelFreeSlots.length = 0;
-    this.mirrorPanelColorKey.clear();
   }
 }
