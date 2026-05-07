@@ -19,6 +19,8 @@ export function isLineShotType(t: string): t is LineShotType {
 export type ForceFieldBarrierRatioConfig = {
   outerRatio?: number;       // percentage of range (ignored if rimWidth set)
   rimWidth?: number;         // fixed world-space outer radius
+  /** Downward sphere-center offset as a multiple of the computed outer radius. */
+  originOffsetRadiusRatio?: number;
   color: number;
   alpha: number;
   particleAlpha: number;
@@ -173,6 +175,8 @@ export function isLineShotBlueprint(sb: ShotBlueprint): sb is LineShotBlueprint 
 export type ForceFieldBarrierConfig = {
   innerRange: number;
   outerRange: number;
+  /** World-space downward offset from the emitter/turret origin to the sphere origin. */
+  originOffsetZ: number;
   color: number;
   alpha: number;
   particleAlpha: number;

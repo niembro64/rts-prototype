@@ -60,7 +60,8 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
       weapon.forceField.range = weapon.forceField.transition;
 
       if (weapon.forceField.transition > 0 && unit.unit && unit.unit.hp > 0) {
-        const radius = fieldShot.barrier?.outerRange ?? config.range;
+        const barrier = fieldShot.barrier;
+        const radius = barrier?.outerRange ?? config.range;
         if (radius <= 0) continue;
         const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
         const mount = updateWeaponWorldKinematics(
@@ -74,10 +75,11 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
           },
           _forceFieldMount,
         );
+        const originOffsetZ = barrier?.originOffsetZ ?? 0;
         _activeForceFields.push({
           centerX: mount.x,
           centerY: mount.y,
-          centerZ: mount.z,
+          centerZ: mount.z - originOffsetZ,
           radius,
           playerId: unit.ownership?.playerId ?? 0,
           entityId: unit.id,

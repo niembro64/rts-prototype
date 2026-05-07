@@ -679,6 +679,9 @@ export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slo
 export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFieldBarrierRatioConfig =
   {
     outerRatio: 0.5,
+    // Sphere origin sits below the turret origin by this fraction of
+    // the computed outer radius. 0.5 means "half a field radius down".
+    originOffsetRadiusRatio: 0.5,
     color: 0xffffff,
     alpha: 0.05,
     particleAlpha: 0.2,

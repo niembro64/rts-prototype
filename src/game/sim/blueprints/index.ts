@@ -234,9 +234,11 @@ function computeBarrierConfig(
     barrier.rimWidth != null
       ? barrier.rimWidth
       : range * (barrier.outerRatio ?? 1);
+  const originOffsetZ = outerRange * (barrier.originOffsetRadiusRatio ?? 0);
   return {
     innerRange: 0,
     outerRange,
+    originOffsetZ,
     color: barrier.color,
     alpha: barrier.alpha,
     particleAlpha: barrier.particleAlpha,

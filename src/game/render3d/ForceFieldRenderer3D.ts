@@ -434,15 +434,18 @@ export class ForceFieldRenderer3D {
       if (progress <= 0) continue;
 
       // Bubble — translucent team-color sphere with fade-in alpha.
-      // Reuses the world position computed for the emitter slot since
-      // emitter and bubble are concentric.
+      // The emitter remains mounted at the turret origin; the actual
+      // field sphere can be configured lower in world-space so the
+      // shield wraps the host body instead of centering on the turret.
       const barrier = shot.barrier;
       const outer = barrier.outerRange;
       if (outer <= 0) continue;
       const fadeIn = Math.min(progress * 3, 1);
 
       if (havePosition && this._sphereCursor < SPHERE_INSTANCED_CAP) {
+        const fieldCenterY = this._sphereScratchPos.y - barrier.originOffsetZ;
         this._sphereScratchScale.set(outer, outer, outer);
+        this._sphereScratchPos.y = fieldCenterY;
         this._sphereScratchMat.compose(
           this._sphereScratchPos,
           ForceFieldRenderer3D._IDENTITY_QUAT,
