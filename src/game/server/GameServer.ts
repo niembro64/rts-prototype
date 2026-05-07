@@ -7,9 +7,7 @@ import { CommandQueue, type Command } from '../sim/commands';
 import { spawnInitialEntities, spawnInitialBases, spawnMetalExtractorsOnDeposits, FIRST_PLAYER_ANGLE } from '../sim/spawn';
 import { getTerrainDividerTeamCount, normalizePlayerIds } from '../sim/playerLayout';
 import { CAPTURE_CONFIG } from '../../captureConfig';
-import { serializeGameState, resetDeltaTracking, resetDeltaTrackingForKey, resetProtocolSeeded } from '../network/stateSerializer';
-import type { SerializeGameStateOptions } from '../network/stateSerializer';
-import type { NetworkServerSnapshot } from '../network/NetworkTypes';
+import { resetDeltaTracking, resetDeltaTrackingForKey } from '../network/stateSerializer';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
@@ -27,7 +25,6 @@ import {
   getSimDetailConfig,
   tickSimQuality,
   setSimSignalStates,
-  getSimSignalStates,
 } from '../sim/simQuality';
 import type { ServerSimQuality } from '@/types/serverSimLod';
 import { PhysicsEngine3D, type Body3D } from './PhysicsEngine3D';
@@ -37,7 +34,6 @@ import {
   GRAVITY,
   getMapSize,
   UNIT_THRUST_MULTIPLIER_GAME,
-  SNAPSHOT_CONFIG,
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
   LAND_CELL_SIZE,
@@ -56,8 +52,11 @@ import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDep
 import { generateMetalDeposits } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
-import { ServerSnapshotMetaBuilder } from './ServerSnapshotMetaBuilder';
 import { ServerTickLoop } from './ServerTickLoop';
+import {
+  ServerSnapshotPublisher,
+  type SnapshotListenerEntry,
+} from './ServerSnapshotPublisher';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -83,16 +82,6 @@ const WATER_OUT_CACHE_BUCKET_SCALE = 10;
 const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
 type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
 type LocomotionForceProfile = ReturnType<typeof getLocomotionForceProfile>;
-// Fog-of-war visibility is not implemented yet. Per-recipient snapshots
-// only reduce fidelity through owner-aware delta thresholds and projectile
-// side-channel cadence; every unit/building remains present in snapshots.
-type SnapshotListenerEntry = {
-  callback: SnapshotCallback;
-  playerId?: PlayerId;
-  trackingKey: string;
-  deltaTrackingKey: string;
-};
-
 export class GameServer {
   private physics: PhysicsEngine3D;
   private world: WorldState;
@@ -128,9 +117,6 @@ export class GameServer {
   // Snapshot listeners
   private snapshotListeners: SnapshotListenerEntry[] = [];
   private snapshotListenerId: number = 0;
-  private snapshotDirtyIdsBuf: EntityId[] = [];
-  private snapshotDirtyFieldsBuf: number[] = [];
-  private snapshotRemovedIdsBuf: EntityId[] = [];
   private gameOverListeners: GameOverCallback[] = [];
   private physicsForceUnitIdsBuf: EntityId[] = [];
   private physicsSyncUnitIdsBuf: EntityId[] = [];
@@ -160,8 +146,6 @@ export class GameServer {
   private tickMsInitialized: boolean = true;
 
   // Delta snapshot keyframe ratio tracking
-  private isFirstSnapshot: boolean = true;
-  private snapshotCounter: number = 0;
   private keyframeRatio: number = typeof DEFAULT_KEYFRAME_RATIO === 'number' ? DEFAULT_KEYFRAME_RATIO : DEFAULT_KEYFRAME_RATIO === 'ALL' ? 1 : 0;
   private startupReadyListenerKeys = new Set<string>();
   private startupGateOpen = false;
@@ -169,7 +153,7 @@ export class GameServer {
   // Territory capture system
   private captureSystem = new CaptureSystem();
   private debugGridPublisher = new ServerDebugGridPublisher();
-  private snapshotMetaBuilder = new ServerSnapshotMetaBuilder();
+  private snapshotPublisher = new ServerSnapshotPublisher();
 
   // Public IP address (set by host component)
   private ipAddress: string = 'N/A';
@@ -535,8 +519,7 @@ export class GameServer {
     resetDeltaTracking();
 
     // Reset keyframe state for next session
-    this.isFirstSnapshot = true;
-    this.snapshotCounter = 0;
+    this.snapshotPublisher.reset();
     this.startupReadyListenerKeys.clear();
     this.startupGateOpen = false;
   }
@@ -1017,131 +1000,30 @@ export class GameServer {
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
   private emitSnapshot(): void {
-    const gamePhase = this.simulation.getGamePhase();
-    const winnerId = gamePhase === 'gameOver' ? this.simulation.getWinnerId() ?? undefined : undefined;
-    const sprayTargets = this.simulation.getSprayTargets();
-    const audioEvents = this.simulation.getAndClearEvents();
-    const projectileSpawns = this.simulation.getAndClearProjectileSpawns();
-    const projectileDespawns = this.simulation.getAndClearProjectileDespawns();
-    const projectileVelocityUpdates = this.simulation.getAndClearProjectileVelocityUpdates();
-
-    // Determine if this snapshot should be a delta or a full keyframe
-    // First snapshot is always a keyframe; then use ratio-based counter
-    let isDelta = false;
-    if (this.isFirstSnapshot) {
-      this.isFirstSnapshot = false;
-      this.snapshotCounter = 0;
-    } else if (SNAPSHOT_CONFIG.deltaEnabled) {
-      if (this.keyframeRatio >= 1) {
-        // ALL: every snapshot is a keyframe
-        isDelta = false;
-      } else if (this.keyframeRatio <= 0) {
-        // NONE: never a keyframe after the first
-        isDelta = true;
-      } else {
-        this.snapshotCounter++;
-        const keyframeInterval = Math.round(1 / this.keyframeRatio);
-        if (this.snapshotCounter >= keyframeInterval) {
-          this.snapshotCounter = 0;
-          // keyframe — isDelta stays false
-        } else {
-          isDelta = true;
-        }
-      }
-    }
-
-    this.snapshotDirtyIdsBuf.length = 0;
-    this.snapshotDirtyFieldsBuf.length = 0;
-    this.snapshotRemovedIdsBuf.length = 0;
-    this.world.drainSnapshotDirtyEntities(this.snapshotDirtyIdsBuf, this.snapshotDirtyFieldsBuf);
-    this.world.drainRemovedSnapshotEntityIds(this.snapshotRemovedIdsBuf);
-
-    // Add capture tile data (delta-aware: only changed tiles on delta snapshots)
-    const captureTiles = this.captureSystem.consumeSnapshot(isDelta);
-
-    // Add server metadata to snapshot. Wind is visual/gameplay-visible and
-    // intentionally changes continuously, so metadata must ride every
-    // snapshot instead of only when the human-readable clock changes.
-    const wind = this.simulation.getWindState();
-    const serverMeta = this.snapshotMetaBuilder.build({
-      tickAvg: this.tpsAvg,
-      tickLow: this.tpsLow,
+    this.snapshotPublisher.emit({
+      world: this.world,
+      simulation: this.simulation,
+      captureSystem: this.captureSystem,
+      debugGridPublisher: this.debugGridPublisher,
+      listeners: this.snapshotListeners,
+      terrainTileMap: this.terrainTileMap,
+      terrainBuildabilityGrid: this.terrainBuildabilityGrid,
+      tpsAvg: this.tpsAvg,
+      tpsLow: this.tpsLow,
       tickRateHz: this.tickRateHz,
-      tickTargetHz: this.userTickRateHz,
-      snapshotRate: this.maxSnapshotsDisplay,
-      keyframeRatio: this.keyframeRatioDisplay,
+      userTickRateHz: this.userTickRateHz,
+      maxSnapshotsDisplay: this.maxSnapshotsDisplay,
+      keyframeRatioDisplay: this.keyframeRatioDisplay,
+      keyframeRatio: this.keyframeRatio,
       ipAddress: this.ipAddress,
-      gridEnabled: this.debugGridPublisher.isEnabled(),
-      allowedUnits: this.backgroundMode ? this.backgroundAllowedTypes : undefined,
-      maxUnits: this.world.maxTotalUnits,
-      unitCount: this.world.getUnits().length,
-      mirrorsEnabled: this.world.mirrorsEnabled,
-      forceFieldsEnabled: this.world.forceFieldsEnabled,
+      backgroundMode: this.backgroundMode,
+      backgroundAllowedTypes: this.backgroundAllowedTypes,
       tickMsAvg: this.tickMsAvg,
       tickMsHi: this.tickMsHi,
       tickMsInitialized: this.tickMsInitialized,
       simQuality: this.getSimQuality(),
       effectiveSimQuality: this.getEffectiveSimQuality(),
-      simSignals: getSimSignalStates(),
-      wind,
     });
-
-    // Spatial-grid debug data is diagnostic and expensive to build.
-    // Emit it on a slower cadence; clients retain the last grid payload
-    // between updates while normal gameplay snapshots keep flowing.
-    const gridDebug = this.debugGridPublisher.refresh(performance.now(), this.world);
-    const gridCells = gridDebug.cells;
-    const gridSearchCells = gridDebug.searchCells;
-    const gridCellSize = gridDebug.cellSize;
-
-    const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
-      const serializeOptions: SerializeGameStateOptions = {
-        trackingKey: listener.deltaTrackingKey,
-        dirtyEntityIds: this.snapshotDirtyIdsBuf,
-        dirtyEntityFields: this.snapshotDirtyFieldsBuf,
-        removedEntityIds: this.snapshotRemovedIdsBuf,
-        recipientPlayerId: listener.playerId,
-      };
-      const state = serializeGameState(
-        this.world,
-        isDelta,
-        gamePhase,
-        winnerId,
-        sprayTargets,
-        audioEvents,
-        projectileSpawns,
-        projectileDespawns,
-        projectileVelocityUpdates,
-        gridCells,
-        gridSearchCells,
-        gridCellSize,
-        serializeOptions,
-      );
-
-      // _snapshotBuf is reused across listeners and across ticks, so
-      // any optional field that's only set on some paths must be
-      // explicitly cleared on the others — otherwise the previous
-      // listener / tick's data leaks into the next encode.
-      state.capture = captureTiles.length > 0
-        ? { tiles: captureTiles, cellSize: this.captureSystem.getCellSize() }
-        : undefined;
-      state.terrain = isDelta ? undefined : this.terrainTileMap;
-      state.buildability = isDelta ? undefined : this.terrainBuildabilityGrid;
-      state.serverMeta = serverMeta;
-      return state;
-    };
-
-    let sharedGlobalState: NetworkServerSnapshot | undefined;
-    for (const listener of this.snapshotListeners) {
-      if (listener.playerId !== undefined) continue;
-      if (!sharedGlobalState) sharedGlobalState = serializeForListener(listener);
-      listener.callback(sharedGlobalState);
-    }
-
-    for (const listener of this.snapshotListeners) {
-      if (listener.playerId === undefined) continue;
-      listener.callback(serializeForListener(listener));
-    }
   }
 
   // Receive a command from a client
@@ -1287,7 +1169,7 @@ export class GameServer {
   setKeyframeRatio(ratio: KeyframeRatio): void {
     this.keyframeRatioDisplay = ratio;
     this.keyframeRatio = ratio === 'ALL' ? 1 : ratio === 'NONE' ? 0 : ratio;
-    this.snapshotCounter = 0;
+    this.snapshotPublisher.reset();
   }
 
   // Force the next emitted snapshot to be a self-contained keyframe.
@@ -1295,9 +1177,7 @@ export class GameServer {
   // render scene slightly after the first server tick still receive
   // commander/unit creation data even when KEYFRAMES is set to NONE.
   forceNextSnapshotKeyframe(): void {
-    resetProtocolSeeded();
-    this.isFirstSnapshot = true;
-    this.snapshotCounter = 0;
+    this.snapshotPublisher.forceNextKeyframe();
   }
 
   // Change max snapshots per second cap ('none' = no cap, send every tick)

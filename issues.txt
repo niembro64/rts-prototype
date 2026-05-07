@@ -6,7 +6,7 @@ Goal for this section: units, buildings, turrets, locomotion, and shots should
 each have one canonical definition path. Runtime systems should consume built
 profiles/components, not reinterpret blueprint pieces independently.
 
-11. GameServer still mixes bootstrap, tick, physics forces, snapshots, and commands.
+11. GameServer still mixes bootstrap, tick, physics forces, and commands.
     References:
     - src/game/server/GameServer.ts:1
     - src/game/server/GameServer.ts:433
@@ -15,20 +15,20 @@ profiles/components, not reinterpret blueprint pieces independently.
     - src/game/server/GameServer.ts:1028
     - src/game/server/ServerTickLoop.ts:1
     - src/game/server/ServerDebugGridPublisher.ts:1
-    - src/game/server/ServerSnapshotMetaBuilder.ts:1
-    - file size: 1521 lines
+    - src/game/server/ServerSnapshotPublisher.ts:1
+    - file size: 1402 lines
 
     The host server class owns map setup, spawn setup, tick scheduling,
-    simulation stepping, force application, physics sync, snapshot publication,
-    and command entrypoints. Spatial-grid debug snapshot publishing has been
-    split into `ServerDebugGridPublisher`, and server snapshot metadata/time
-    formatting has been split into `ServerSnapshotMetaBuilder`. The interval
-    lifecycle and elapsed-time calculation now live in `ServerTickLoop`, but the
-    remaining server class is still too broad. This makes server performance
-    fixes harder to isolate and test.
+    simulation stepping, force application, physics sync, and command
+    entrypoints. Spatial-grid debug snapshot publishing has been split into
+    `ServerDebugGridPublisher`, server snapshot metadata/time formatting has
+    been split into `ServerSnapshotMetaBuilder`, and snapshot emission /
+    keyframe bookkeeping now live in `ServerSnapshotPublisher`. The interval
+    lifecycle and elapsed-time calculation now live in `ServerTickLoop`, but
+    the remaining server class is still too broad. This makes server
+    performance fixes harder to isolate and test.
 
-    Fix direction: extract `ServerBootstrap`, `UnitForceSystem`, and
-    `ServerSnapshotPublisher`.
+    Fix direction: extract `ServerBootstrap` and `UnitForceSystem`.
 
 
 13. Debris rendering re-interprets unit/turret/shot blueprints instead of reusing render fragments.
