@@ -45,13 +45,10 @@ import { RenderLodGrid } from './RenderLodGrid';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
 import { getUnitBodyShapeKey } from '../math/BodyDimensions';
 import {
-  buildBuildingShape,
   disposeBuildingGeoms,
-  type BuildingShapeType,
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
-import { getBuildingConfig } from '../sim/buildConfigs';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getGraphicsConfigFor } from '@/clientBarConfig';
 import { getTurretHeadRadius } from '../math';
@@ -68,6 +65,7 @@ import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import { BuildingAnimationController3D } from './BuildingAnimationController3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingDetailVisible, buildingTierAtLeast } from './RenderTier3D';
+import { createBuildingEntityMesh3D } from './BuildingEntityRenderer3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -226,7 +224,6 @@ export class Render3DEntities {
   private buildingMarkerBoxGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private barrelInstancedGeom = this.barrelGeom.clone();
-  private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   /** Instanced barrels get their own material so state on the shared
    *  instanced pool cannot leak into regular fallback barrels. */
@@ -2724,101 +2721,24 @@ export class Render3DEntities {
       const markerOnly = objectTier === 'marker';
       const tier = markerOnly ? 'min' : objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
       const pid = e.ownership?.playerId;
-      const shapeType: BuildingShapeType = e.buildingType
-        ? getBuildingConfig(e.buildingType).renderProfile
-        : 'unknown';
       const w = e.building?.width ?? 100;
       const d = e.building?.height ?? 100;
 
       let m = this.buildingMeshes.get(e.id);
       if (!m) {
-        const group = new THREE.Group();
-        group.userData.entityId = e.id;
-        // Build the type-specific mesh set. Primary material is the
-        // team primary color; details carry their own shared materials
-        // so they don't re-color across teams.
-        const shape = buildBuildingShape(shapeType, w, d, this.getPrimaryMat(pid));
-        shape.primary.userData.entityId = e.id;
-        // Wrap the primary body in an unscaled group so EntityMesh's
-        // shared `chassis: Group` / `chassisMeshes: Mesh[]` shape works
-        // for both buildings and units. The per-frame update below
-        // positions and scales the primary body directly.
-        const chassis = new THREE.Group();
-        chassis.userData.entityId = e.id;
-        chassis.add(shape.primary);
-        group.add(chassis);
-        for (const detail of shape.details) {
-          detail.mesh.userData.entityId = e.id;
-          group.add(detail.mesh);
-        }
-        if (shape.factoryRig?.group) {
-          shape.factoryRig.group.userData.entityId = e.id;
-          shape.factoryRig.group.traverse((obj) => { obj.userData.entityId = e.id; });
-          group.add(shape.factoryRig.group);
-        }
-        // Mount each non-construction-emitter combat turret on the
-        // building via the same TurretMesh3D path units use. The
-        // construction emitter (factory) keeps going through factoryRig
-        // — that's a different visual rig, not a turret mesh.
-        const buildingTurretMeshes: TurretMesh[] = [];
-        const buildingTurrets = e.combat?.turrets;
-        if (buildingTurrets) {
-          // Use the GLOBAL gfx tier, not the per-entity distance tier,
-          // when building the turret. Distance-LOD can briefly drop a
-          // tower to 'min' (turretStyle: 'none' -> no head, no barrel)
-          // while the camera is framing in, and the building mesh is
-          // cached forever after that. Beam towers are sparse strategic
-          // landmarks, so keep their weapon mesh present even when the
-          // user's overall tier is min.
-          const buildingTurretTier =
-            shapeType === 'megaBeamTower' && this.lod.gfx.tier === 'min'
-              ? 'low'
-              : this.lod.gfx.tier;
-          const buildingGfx = getGraphicsConfigFor(buildingTurretTier);
-          for (let ti = 0; ti < buildingTurrets.length; ti++) {
-            const t = buildingTurrets[ti];
-            if (t.config.constructionEmitter) {
-              // Construction emitter renders via factoryRig. Push an
-              // empty placeholder so building turret indices stay
-              // aligned with combat.turrets indices.
-              buildingTurretMeshes.push({ root: new THREE.Group(), barrels: [] });
-              continue;
-            }
-            const tm = buildTurretMesh3D(group, t, buildingGfx, {
-              headGeom: this.turretHeadGeom,
-              barrelGeom: this.barrelGeom,
-              barrelMat: this.barrelMat,
-              primaryMat: this.getPrimaryMat(pid),
-            });
-            if (tm.head) tm.head.userData.entityId = e.id;
-            for (const b of tm.barrels) b.userData.entityId = e.id;
-            buildingTurretMeshes.push(tm);
-          }
-        }
-        this.world.add(group);
-        m = {
-          group,
-          chassis,
-          chassisMeshes: [shape.primary],
-          // Buildings don't use unit body-shape pools (they have
-          // their own BuildingShape3D path), so the field is unused
-          // here — empty string is fine since the unit-update loop
-          // never reaches a building.
-          bodyShapeKey: '',
-          turrets: buildingTurretMeshes,
+        m = createBuildingEntityMesh3D({
+          entity: e,
+          width: w,
+          depth: d,
+          ownerId: pid,
+          globalGraphicsTier: this.lod.gfx.tier,
           lodKey: this.lod.key,
-          // Store the accent meshes separately so the LOD-key rebuild
-          // path (if we ever add one for buildings) knows what to
-          // discard along with the primary.
-          buildingDetails: shape.details,
-          factoryRig: shape.factoryRig,
-          windRig: shape.windRig,
-          extractorRig: shape.extractorRig,
-          solarRig: shape.solarRig,
-          buildingHeight: shape.height,
-          buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
-          solarOpenAmount: e.building?.solar?.open === false ? 0 : 1,
-        };
+          world: this.world,
+          turretHeadGeom: this.turretHeadGeom,
+          barrelGeom: this.barrelGeom,
+          barrelMat: this.barrelMat,
+          getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
+        });
         this.buildingMeshes.set(e.id, m);
         this.buildingAnimations.register(e, m);
       }
@@ -3038,7 +2958,6 @@ export class Render3DEntities {
     this.turretHeadGeom.dispose();
     this.commanderVisualKit.dispose();
     this.barrelGeom.dispose();
-    this.buildingGeom.dispose();
     this.radiusSphereGeom.dispose();
     this.selectionOverlays.dispose();
     this.mirrorGeom.dispose();
