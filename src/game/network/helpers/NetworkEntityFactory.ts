@@ -1,8 +1,6 @@
 // Network entity creation helpers
 
 import type { Entity, BuildingType, Turret, ProjectileConfig, UnitAction } from '../../sim/types';
-import { isProjectileShot } from '../../sim/types';
-import { getShotMaxLifespan } from '@/types/sim';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import {
   codeToActionType,
@@ -17,10 +15,13 @@ import {
 import { getProjectileConfigForSpawn } from '../../sim/projectileConfigs';
 import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
-import { GRID_CELL_SIZE } from '../../sim/grid';
+import { BUILD_GRID_CELL_SIZE } from '../../sim/buildGrid';
 import { COST_MULTIPLIER } from '../../../config';
 import { buildMirrorPanelCache } from '../../sim/mirrorPanelCache';
-import { createTurretsFromDefinition, createTurretsForBuilding } from '../../sim/unitDefinitions';
+import {
+  createBuildingRuntimeTurrets,
+  createUnitRuntimeTurrets,
+} from '../../sim/runtimeTurrets';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
 
 function isFiniteNumber(value: unknown): value is number {
@@ -61,7 +62,7 @@ function createTurretsFromNetwork(
   if (!Array.isArray(netTurrets) || netTurrets.length === 0) return undefined;
 
   try {
-    const canonical = createTurretsFromDefinition(unitType, unitBodyRadius);
+    const canonical = createUnitRuntimeTurrets(unitType, unitBodyRadius);
     for (let i = 0; i < netTurrets.length && i < canonical.length; i++) {
       applyNetworkTurretState(canonical[i], netTurrets[i]);
     }
@@ -263,9 +264,9 @@ function createBuildingFromNetwork(
   // snapshot overlays only dynamic state (hp, build progress, factory
   // queue, solar open state, extraction rate).
   const config = getBuildingConfig(buildingType);
-  const width = config.gridWidth * GRID_CELL_SIZE;
-  const height = config.gridHeight * GRID_CELL_SIZE;
-  const depth = config.gridDepth * GRID_CELL_SIZE;
+  const width = config.gridWidth * BUILD_GRID_CELL_SIZE;
+  const height = config.gridHeight * BUILD_GRID_CELL_SIZE;
+  const depth = config.gridDepth * BUILD_GRID_CELL_SIZE;
   const entity: Entity = {
     id,
     type: 'building',
@@ -304,7 +305,7 @@ function createBuildingFromNetwork(
   // (0, 0, 0) in building-local space, hiding the head inside the
   // body slab. Beam updates also reference the source's turret rig
   // for client-side prediction / aim smoothing.
-  const buildingTurrets = createTurretsForBuilding(buildingType);
+  const buildingTurrets = createBuildingRuntimeTurrets(buildingType);
   if (buildingTurrets.length > 0) {
     entity.combat = {
       turrets: buildingTurrets,
@@ -379,11 +380,9 @@ function createProjectileFromNetwork(
 
   const projectileType = s.type !== undefined
     ? codeToProjectileType(s.type)
-    : isProjectileShot(config.shot)
-      ? 'projectile'
-      : config.shot.type;
+    : config.shotProfile.runtime.projectileType;
   if (!projectileType) return null;
-  const maxLifespan = getShotMaxLifespan(config.shot);
+  const maxLifespan = config.shotProfile.runtime.maxLifespan;
 
   return {
     id,

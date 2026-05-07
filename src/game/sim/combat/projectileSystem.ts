@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
-import { isLineShot, isLineShotType, isProjectileShot, isRocketLikeShot } from '../types';
+import { isLineShot, isLineShotType, isProjectileShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
@@ -13,6 +13,7 @@ import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpee
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
+import { resolveLineShotRangeCircleEndpoint, type LineShotRangeCircle } from './lineShotRange';
 import { spatialGrid } from '../SpatialGrid';
 import { getSimDetailConfig } from '../simQuality';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -92,6 +93,8 @@ const _packedProjectileSlots = new Map<EntityId, number>();
 const _fireMuzzleVelocity = { x: 0, y: 0, z: 0 };
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
+const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
+const _lineShotRangeCircle: LineShotRangeCircle = { centerX: 0, centerY: 0, radius: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
 const FIRE_YAW_TOLERANCE = 0.16;
@@ -147,8 +150,9 @@ function isPackedProjectileEligible(entity: Entity): boolean {
   const proj = entity.projectile;
   if (!proj || proj.projectileType !== 'projectile') return false;
   if (entity.dgunProjectile) return false;
-  const shot = proj.config.shot;
-  if (!isProjectileShot(shot)) return false;
+  const profile = proj.config.shotProfile.runtime;
+  if (!profile.isProjectile) return false;
+  const shot = proj.config.shot as ProjectileShot;
   if ((shot.homingTurnRate ?? 0) > 0 || proj.homingTargetId !== undefined) return false;
   if (proj.maxHits !== 1) return false;
   return true;
@@ -158,7 +162,7 @@ export function registerPackedProjectile(entity: Entity): void {
   if (!isPackedProjectileEligible(entity)) return;
   if (_packedProjectileSlots.has(entity.id)) return;
   const proj = entity.projectile!;
-  const shot = proj.config.shot as ProjectileShot;
+  const profile = proj.config.shotProfile.runtime;
   const slot = _packedProjectileCount++;
   ensurePackedProjectileCapacity(_packedProjectileCount);
   _packedProjectileSlots.set(entity.id, slot);
@@ -171,7 +175,7 @@ export function registerPackedProjectile(entity: Entity): void {
   _packedProjectileVy[slot] = proj.velocityY;
   _packedProjectileVz[slot] = proj.velocityZ;
   _packedProjectileTimeAlive[slot] = proj.timeAlive;
-  _packedProjectileHasGravity[slot] = shot.ignoresGravity === true ? 0 : 1;
+  _packedProjectileHasGravity[slot] = profile.ignoresGravity ? 0 : 1;
 }
 
 export function unregisterPackedProjectile(id: EntityId): void {
@@ -416,17 +420,24 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
 
         if (isBeamWeapon) {
-          // Beam length is the firing turret's own `range`. The trace
-          // (findBeamPath) bounces off mirrors and subtracts each
-          // segment's travelled distance from the budget, so the total
-          // polyline length stays <= range. End point on the initial
-          // fire spawn is start + dir * range so the spawn visual
-          // already shows the correct unobstructed reach until the
-          // per-tick re-trace refines it with bounces / hits.
-          const beamLength = weapon.config.range;
-          const endX = spawnX + dirX * beamLength;
-          const endY = spawnY + dirY * beamLength;
-          const endZ = spawnZ + dirZ * beamLength;
+          // Line shots are bounded by the turret's 2D firing circle,
+          // not by a fixed 3D segment length. Pitching up/down can make
+          // the actual 3D beam longer than the horizontal range; the
+          // terminal point is where the ray's XY projection exits the
+          // fire-release circle.
+          const rangeCircle = _lineShotRangeCircle;
+          rangeCircle.centerX = weaponX;
+          rangeCircle.centerY = weaponY;
+          rangeCircle.radius = weapon.ranges.fire.max.release;
+          const endpoint = resolveLineShotRangeCircleEndpoint(
+            spawnX, spawnY, spawnZ,
+            dirX, dirY, dirZ,
+            rangeCircle,
+            _lineShotRangeEnd,
+          );
+          const endX = endpoint.x;
+          const endY = endpoint.y;
+          const endZ = endpoint.z;
 
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
@@ -435,7 +446,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             beam.projectile.sourceBarrelIndex = barrelIndex;
             beam.projectile.sourceEntityId = unit.id;
             // createBeam seeds both polyline vertices at spawnZ; the
-            // pitched end actually sits at endZ (= spawnZ + dirZ * range).
+            // pitched endpoint is the 2D range-circle exit point.
             const pts = beam.projectile.points;
             if (pts && pts.length >= 2) pts[pts.length - 1].z = endZ;
           }
@@ -613,8 +624,8 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
         const dy = (proj.prevY ?? 0) - source.transform.y;
         const dz = (proj.prevZ ?? 0) - source.transform.z;
         const distSq = dx * dx + dy * dy + dz * dz;
-        const shot = proj.config.shot as ProjectileShot;
-        const clearance = source.unit.radius.shot + shot.collision.radius + 2;
+        const clearance =
+          source.unit.radius.shot + proj.config.shotProfile.runtime.collisionRadius + 2;
         if (distSq > clearance * clearance) {
           proj.hasLeftSource = true;
         }
@@ -650,8 +661,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // line on thrust alone and are steered purely by homing. D-gun
     // waves are their own terrain-following projectile class: they
     // move horizontally and snap to local terrain height every tick.
-    const shotCfg = proj.config.shot;
-    const ignoresGravity = isRocketLikeShot(shotCfg);
+    const ignoresGravity = proj.config.shotProfile.runtime.ignoresGravity;
     const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
     const prevTerrainFollowZ = entity.transform.z;
     if (!ignoresGravity && !terrainFollow) {
@@ -678,7 +688,8 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         const dy = proj.prevY - source.transform.y;
         const dz = (proj.prevZ ?? 0) - source.transform.z;
         const distSq = dx * dx + dy * dy + dz * dz;
-        const clearance = source.unit.radius.shot + (isProjectileShot(proj.config.shot) ? proj.config.shot.collision.radius : 5) + 2;
+        const clearance =
+          source.unit.radius.shot + proj.config.shotProfile.runtime.collisionRadius + 2;
         if (distSq > clearance * clearance) {
           proj.hasLeftSource = true;
         }
@@ -703,8 +714,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       let homingTarget = world.getEntity(proj.homingTargetId);
       const targetValid = homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0));
       if (!targetValid) {
-        const shotCfgForSeek = proj.config.shot;
-        const isRocket = isRocketLikeShot(shotCfgForSeek);
+        const isRocket = proj.config.shotProfile.runtime.isRocketLike;
         if (isRocket) {
           const reacquired = findNearestEnemyForRocket(world, entity, proj.ownerId);
           if (reacquired) {
@@ -929,22 +939,30 @@ export function updateProjectiles(
         startPoint.z = tip.z;
         startPoint.mirrorEntityId = undefined;
 
-        // Per-tick re-trace. The beam is bounded by a path-length
-        // budget equal to the firing weapon's range. The first segment
-        // runs to start + dir * range; findBeamPath subtracts the
-        // travelled distance at each reflection and traces the next
-        // segment with only the remaining budget.
-        const beamLength = proj.config.range;
-        const fullEndX = tip.x + tip.dirX * beamLength;
-        const fullEndY = tip.y + tip.dirY * beamLength;
-        const fullEndZ = tip.z + tip.dirZ * beamLength;
+        // Per-tick re-trace. The beam is bounded by the firing
+        // turret's 2D fire-release circle, not by fixed 3D length. The
+        // first segment runs to the circle edge; reflected segments are
+        // clipped against the same original circle inside findBeamPath.
+        const rangeCircle = _lineShotRangeCircle;
+        rangeCircle.centerX = beamMount.x;
+        rangeCircle.centerY = beamMount.y;
+        rangeCircle.radius = weapon.ranges.fire.max.release;
+        const endpoint = resolveLineShotRangeCircleEndpoint(
+          tip.x, tip.y, tip.z,
+          tip.dirX, tip.dirY, tip.dirZ,
+          rangeCircle,
+          _lineShotRangeEnd,
+        );
+        const fullEndX = endpoint.x;
+        const fullEndY = endpoint.y;
+        const fullEndZ = endpoint.z;
 
         // Find beam path (with possible reflections off mirror units).
         // Throttle stride comes from the HOST SERVER LOD tier — MAX
         // re-traces every tick, MIN every 8. Beam visuals tolerate
         // slight staleness so the trade is mostly invisible until
         // pretty low tiers.
-        const collisionRadius = isLineShot(proj.config.shot) ? proj.config.shot.radius : 2;
+        const collisionRadius = proj.config.shotProfile.runtime.collisionRadius;
         const beamStride = Math.max(1, simDetail.beamPathStride | 0);
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= beamStride) {
           if (beamTracesThisTick < beamTraceBudget) {
@@ -953,7 +971,9 @@ export function updateProjectiles(
               startPoint.x, startPoint.y, startPoint.z,
               fullEndX, fullEndY, fullEndZ,
               proj.sourceEntityId,
-              collisionRadius
+              collisionRadius,
+              3,
+              rangeCircle,
             );
 
             // Resize the polyline to [start, ...reflections, end] and

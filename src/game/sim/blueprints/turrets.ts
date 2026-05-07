@@ -81,8 +81,8 @@ export const TURRET_BLUEPRINTS = {
     // Must cover the authored fire envelope: ballistic max range is
     // (launchForce / mass)^2 / GRAVITY, and lightShot.mass = 4.
     launchForce: 1_250,
-    turretTurnAccel: 200,
-    turretDrag: 0.5,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 2 },
     rangeMultiplierOverrides: fireEnvelope({
       engageRangeMin: null,
@@ -129,9 +129,9 @@ export const TURRET_BLUEPRINTS = {
     projectileId: 'heavyShot',
     range: 600,
     cooldown: 2300,
-    launchForce: 30_000,
-    turretTurnAccel: 200,
-    turretDrag: 0.5,
+    launchForce: 20_000,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 1.4 },
     rangeMultiplierOverrides: fireEnvelope({
       engageRangeMin: RANGE_FIRE_MIN,
@@ -149,8 +149,8 @@ export const TURRET_BLUEPRINTS = {
     range: 600,
     cooldown: 6000,
     launchForce: 20_000,
-    turretTurnAccel: 90,
-    turretDrag: 0.4,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
     rangeMultiplierOverrides: fireEnvelope({
       engageRangeMin: RANGE_FIRE_MIN,
@@ -186,8 +186,8 @@ export const TURRET_BLUEPRINTS = {
     // every shot. 22 000 yields ~1344 wu max range with comfortable
     // headroom over the 1000 cap.
     launchForce: 22_000,
-    turretTurnAccel: 80,
-    turretDrag: 0.4,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: {
       type: 'simpleMultiBarrel',
       barrelCount: 6,
@@ -217,9 +217,9 @@ export const TURRET_BLUEPRINTS = {
     projectileId: 'lightShot',
     range: 300,
     cooldown: 30,
-    launchForce: 5_040,
-    turretTurnAccel: 100,
-    turretDrag: 0.4,
+    launchForce: 3_000,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: {
       type: 'simpleMultiBarrel',
       barrelCount: 5,
@@ -252,7 +252,7 @@ export const TURRET_BLUEPRINTS = {
     range: 400,
     cooldown: 2000,
     launchForce: 400,
-    turretTurnAccel: 20,
+    turretTurnAccel: 40,
     turretDrag: 0.15,
     barrel: {
       type: 'coneMultiBarrel',
@@ -318,8 +318,8 @@ export const TURRET_BLUEPRINTS = {
     id: 'mirrorTurret',
     projectileId: 'beamShot',
     range: 300,
-    turretTurnAccel: 60,
-    turretDrag: 1,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
     passive: true,
     mountMode: 'unitBodyCenter',
@@ -357,8 +357,8 @@ export const TURRET_BLUEPRINTS = {
     projectileId: 'laserShot',
     range: 100,
     cooldown: 1500,
-    turretTurnAccel: 100,
-    turretDrag: 0.6,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: {
       type: 'simpleSingleBarrel',
       barrelLength: 0.5,
@@ -368,6 +368,7 @@ export const TURRET_BLUEPRINTS = {
       trackingRange: null,
     }),
     eventsSmooth: false,
+    mirrorReflectPriority: 1,
     color: COLOR_WHITE,
     spread: { angle: 0 },
     radius: { body: 4 },
@@ -377,8 +378,8 @@ export const TURRET_BLUEPRINTS = {
     id: 'beamTurret',
     projectileId: 'beamShot',
     range: 250,
-    turretTurnAccel: 200,
-    turretDrag: 0.6,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: {
       type: 'simpleSingleBarrel',
       barrelLength: 0.6,
@@ -388,6 +389,7 @@ export const TURRET_BLUEPRINTS = {
       trackingRange: null,
     }),
     eventsSmooth: false,
+    mirrorReflectPriority: 2,
     color: COLOR_WHITE,
     radius: { body: 8 },
     audio: {
@@ -403,8 +405,8 @@ export const TURRET_BLUEPRINTS = {
     id: 'megaBeamTurret',
     projectileId: 'megaBeamShot',
     range: 350,
-    turretTurnAccel: 200,
-    turretDrag: 0.6,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: {
       type: 'simpleSingleBarrel',
       barrelLength: 0.6,
@@ -415,6 +417,7 @@ export const TURRET_BLUEPRINTS = {
       trackingRange: null,
     }),
     eventsSmooth: false,
+    mirrorReflectPriority: 3,
     color: COLOR_WHITE,
     radius: { body: 14 },
     audio: {
@@ -429,8 +432,8 @@ export const TURRET_BLUEPRINTS = {
   forceTurret: {
     id: 'forceTurret',
     range: LAND_CELL_SIZE * 3 * 0.9,
-    turretTurnAccel: 30,
-    turretDrag: 0.5,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: {
       type: 'complexSingleEmitter',
       grate: FORCE_FIELD_TURRET.forceField,
@@ -466,8 +469,8 @@ export const TURRET_BLUEPRINTS = {
     range: 0,
     cooldown: 0,
     launchForce: 0,
-    turretTurnAccel: 1,
-    turretDrag: 1,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0 },
     rangeMultiplierOverrides: fireEnvelope({
       engageRangeMin: null,
@@ -488,8 +491,8 @@ export const TURRET_BLUEPRINTS = {
     id: 'towerBeamTurret',
     projectileId: 'towerBeamShot',
     range: 350,
-    turretTurnAccel: 100,
-    turretDrag: 0.5,
+    turretTurnAccel: 40,
+    turretDrag: 0.15,
     barrel: {
       type: 'simpleSingleBarrel',
       barrelLength: 0.8,
@@ -500,6 +503,7 @@ export const TURRET_BLUEPRINTS = {
       trackingRange: null,
     }),
     eventsSmooth: false,
+    mirrorReflectPriority: 2,
     color: COLOR_WHITE,
     radius: { body: 18 },
     audio: {

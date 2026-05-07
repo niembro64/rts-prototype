@@ -37,7 +37,7 @@ import type { WorldState } from './WorldState';
 import type { Entity } from './types';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
-import { GRID_CELL_SIZE } from './grid';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import {
   getMetalDepositsOverlappingBuildingFootprint,
   metalDepositOverlapsBuildingFootprint,
@@ -55,10 +55,10 @@ function getExtractorFootprintGrid(entity: Entity): {
 } | null {
   if (entity.buildingType !== 'extractor' || !entity.building) return null;
   const cfg = getBuildingConfig('extractor');
-  const halfW = (cfg.gridWidth * GRID_CELL_SIZE) / 2;
-  const halfH = (cfg.gridHeight * GRID_CELL_SIZE) / 2;
-  const gridX = Math.floor((entity.transform.x - halfW) / GRID_CELL_SIZE + 1e-6);
-  const gridY = Math.floor((entity.transform.y - halfH) / GRID_CELL_SIZE + 1e-6);
+  const halfW = (cfg.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
+  const halfH = (cfg.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
+  const gridX = Math.floor((entity.transform.x - halfW) / BUILD_GRID_CELL_SIZE + 1e-6);
+  const gridY = Math.floor((entity.transform.y - halfH) / BUILD_GRID_CELL_SIZE + 1e-6);
   return { gridX, gridY, gridW: cfg.gridWidth, gridH: cfg.gridHeight };
 }
 

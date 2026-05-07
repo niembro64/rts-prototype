@@ -1,11 +1,10 @@
-// LegInstancedRenderer — renders every leg cylinder + joint sphere
-// across every unit in the scene in THREE draw calls (one for
-// upper-leg cylinders, one for lower-leg cylinders, one for joint
-// spheres). Replaces the old per-leg THREE.Mesh + per-frame
+// LegInstancedRenderer — renders every leg cylinder, joint sphere,
+// and foot pad across every unit in the scene via shared instanced
+// pools. Replaces the old per-leg THREE.Mesh + per-frame
 // setCylinderBetween() pattern, which produced 2 draw calls per leg
 // → 8 per 4-leg unit → 4000+ at 500 such units. Joints (full-
-// LOD only) collapse from 2 spheres × 4 legs × N units → 1 shared
-// InstancedMesh draw.
+// LOD only) and pads similarly collapse into shared InstancedMesh
+// draws.
 //
 // Each leg cylinder is a single instance in one of the two
 // InstancedBufferGeometry-backed meshes. The cylinder geometry is
@@ -268,21 +267,107 @@ class JointSpherePool {
   }
 }
 
+/** Flattened ellipsoid foot pads. They are separate from joint
+ *  spheres because pads need non-uniform scale and terrain-normal
+ *  orientation, while joints are uniform balls. */
+class FootPadPool {
+  private readonly mesh: THREE.InstancedMesh;
+  private nextSlot = 0;
+  private freeList: number[] = [];
+  private static readonly _scratchMat = new THREE.Matrix4();
+  private static readonly _scratchPos = new THREE.Vector3();
+  private static readonly _scratchScale = new THREE.Vector3();
+  private static readonly _scratchQuat = new THREE.Quaternion();
+  private static readonly _UP = new THREE.Vector3(0, 1, 0);
+  private static readonly _scratchNormal = new THREE.Vector3();
+  private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+
+  constructor(parent: THREE.Group, color: number, shell: boolean) {
+    const geom = new THREE.SphereGeometry(1, 12, 8);
+    const material = shell
+      ? createShellMaterial()
+      : new THREE.MeshBasicMaterial({ color });
+    this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.count = 0;
+    this.mesh.frustumCulled = false;
+    parent.add(this.mesh);
+  }
+
+  alloc(): number {
+    if (this.freeList.length > 0) return this.freeList.pop()!;
+    if (this.nextSlot < SLOT_CAP) return this.nextSlot++;
+    return -1;
+  }
+
+  free(slot: number): void {
+    if (slot < 0) return;
+    this.mesh.setMatrixAt(slot, FootPadPool._ZERO_MATRIX);
+    this.freeList.push(slot);
+  }
+
+  update(
+    slot: number,
+    x: number, y: number, z: number,
+    radius: number,
+    halfHeight: number,
+    normalX: number, normalY: number, normalZ: number,
+  ): void {
+    if (slot < 0) return;
+    FootPadPool._scratchNormal.set(normalX, normalY, normalZ);
+    if (FootPadPool._scratchNormal.lengthSq() <= 1e-8) {
+      FootPadPool._scratchNormal.copy(FootPadPool._UP);
+    } else {
+      FootPadPool._scratchNormal.normalize();
+    }
+    FootPadPool._scratchQuat.setFromUnitVectors(
+      FootPadPool._UP,
+      FootPadPool._scratchNormal,
+    );
+    FootPadPool._scratchPos.set(x, y, z);
+    FootPadPool._scratchScale.set(radius, halfHeight, radius);
+    FootPadPool._scratchMat.compose(
+      FootPadPool._scratchPos,
+      FootPadPool._scratchQuat,
+      FootPadPool._scratchScale,
+    );
+    this.mesh.setMatrixAt(slot, FootPadPool._scratchMat);
+  }
+
+  flush(): void {
+    this.mesh.count = this.nextSlot;
+    if (this.nextSlot > 0) {
+      this.mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  destroy(): void {
+    this.mesh.parent?.remove(this.mesh);
+    this.mesh.dispose();
+    this.mesh.geometry.dispose();
+    (this.mesh.material as THREE.Material).dispose();
+  }
+}
+
 export class LegInstancedRenderer {
   private upper: CylinderPool;
   private lower: CylinderPool;
   private joints: JointSpherePool;
+  private pads: FootPadPool;
   private shellUpper: CylinderPool;
   private shellLower: CylinderPool;
   private shellJoints: JointSpherePool;
+  private shellPads: FootPadPool;
 
   constructor(parent: THREE.Group, color: number) {
     this.upper = new CylinderPool(parent, color, false);
     this.lower = new CylinderPool(parent, color, false);
     this.joints = new JointSpherePool(parent, color, false);
+    this.pads = new FootPadPool(parent, color, false);
     this.shellUpper = new CylinderPool(parent, color, true);
     this.shellLower = new CylinderPool(parent, color, true);
     this.shellJoints = new JointSpherePool(parent, color, true);
+    this.shellPads = new FootPadPool(parent, color, true);
   }
 
   /** Allocate an upper-cylinder slot. Returns -1 if the pool is
@@ -290,13 +375,15 @@ export class LegInstancedRenderer {
    *  unit" and continue (no exception, no error spam). */
   allocUpper(shell = false): number { return (shell ? this.shellUpper : this.upper).alloc(); }
   allocLower(shell = false): number { return (shell ? this.shellLower : this.lower).alloc(); }
-  /** Allocate a joint-sphere slot (used at FULL LOD for hip / knee /
-   *  foot spheres). Returns -1 if the pool is full. */
+  /** Allocate a joint-sphere slot (used at FULL LOD for hip / knee).
+   *  Returns -1 if the pool is full. */
   allocJoint(shell = false): number { return (shell ? this.shellJoints : this.joints).alloc(); }
+  allocFootPad(shell = false): number { return (shell ? this.shellPads : this.pads).alloc(); }
 
   freeUpper(slot: number, shell = false): void { (shell ? this.shellUpper : this.upper).free(slot); }
   freeLower(slot: number, shell = false): void { (shell ? this.shellLower : this.lower).free(slot); }
   freeJoint(slot: number, shell = false): void { (shell ? this.shellJoints : this.joints).free(slot); }
+  freeFootPad(slot: number, shell = false): void { (shell ? this.shellPads : this.pads).free(slot); }
 
   updateUpper(
     slot: number,
@@ -326,6 +413,26 @@ export class LegInstancedRenderer {
     (shell ? this.shellJoints : this.joints).update(slot, x, y, z, radius);
   }
 
+  /** Per-frame write for one flattened foot pad. Normal is in Three.js
+   *  world coordinates and orients the pad so its local +Y follows the
+   *  terrain surface normal under the foot. */
+  updateFootPad(
+    slot: number,
+    x: number, y: number, z: number,
+    radius: number,
+    halfHeight: number,
+    normalX: number, normalY: number, normalZ: number,
+    shell = false,
+  ): void {
+    (shell ? this.shellPads : this.pads).update(
+      slot,
+      x, y, z,
+      radius,
+      halfHeight,
+      normalX, normalY, normalZ,
+    );
+  }
+
   /** Mark all per-instance buffers dirty — call once per frame
    *  after every leg has been updated. Cheap (just sets the dirty
    *  flags); the actual GPU upload happens at the next render. */
@@ -333,17 +440,21 @@ export class LegInstancedRenderer {
     this.upper.flush();
     this.lower.flush();
     this.joints.flush();
+    this.pads.flush();
     this.shellUpper.flush();
     this.shellLower.flush();
     this.shellJoints.flush();
+    this.shellPads.flush();
   }
 
   destroy(): void {
     this.upper.destroy();
     this.lower.destroy();
     this.joints.destroy();
+    this.pads.destroy();
     this.shellUpper.destroy();
     this.shellLower.destroy();
     this.shellJoints.destroy();
+    this.shellPads.destroy();
   }
 }

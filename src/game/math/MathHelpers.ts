@@ -34,9 +34,9 @@ export function distanceSquared3(
   return dx * dx + dy * dy + dz * dz;
 }
 
-/** 3D Euclidean distance. Used everywhere a range check has to
- *  account for altitude (turret targeting, builder reach, area damage
- *  vs units) now that the sim runs in true 3D. */
+/** 3D Euclidean distance. Used where a range or sweep check has to
+ *  account for altitude (builder reach, area damage vs units, projectile
+ *  motion) now that the sim runs in true 3D. */
 export function distance3(
   x1: number, y1: number, z1: number,
   x2: number, y2: number, z2: number,

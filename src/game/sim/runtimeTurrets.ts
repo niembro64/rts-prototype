@@ -1,6 +1,6 @@
 // Helpers that materialize the runtime turret list for a host
 // (a unit or a building) from its blueprint. Both helpers produce
-// identical Turret objects — the only difference is the mount math:
+// identical Turret objects; the only difference is the mount math:
 //
 //   - Unit blueprints author mounts as fractions of body radius, so
 //     the runtime mount is `mount × bodyRadius`.
@@ -16,7 +16,11 @@ import { getTurretConfig, computeTurretRanges } from './turretConfigs';
 import { getUnitBlueprint, getBuildingBlueprint } from './blueprints';
 import { createRuntimeTurretMount } from './turretMounts';
 
-function makeRuntimeTurret(turretId: string, mount: { x: number; y: number; z: number }, visualVariant?: BuildingTurretMount['visualVariant']): Turret {
+function makeRuntimeTurret(
+  turretId: string,
+  mount: { x: number; y: number; z: number },
+  visualVariant?: BuildingTurretMount['visualVariant'],
+): Turret {
   const turretConfig = getTurretConfig(turretId);
   if (visualVariant !== undefined) {
     turretConfig.visualVariant = visualVariant;
@@ -46,7 +50,7 @@ function makeRuntimeTurret(turretId: string, mount: { x: number; y: number; z: n
   };
 }
 
-export function createTurretsFromDefinition(unitId: string, radius: number): Turret[] {
+export function createUnitRuntimeTurrets(unitId: string, radius: number): Turret[] {
   const bp = getUnitBlueprint(unitId);
   const turrets: Turret[] = [];
   for (let i = 0; i < bp.turrets.length; i++) {
@@ -61,7 +65,7 @@ export function createTurretsFromDefinition(unitId: string, radius: number): Tur
  *  authored in absolute world units (not body-radius fractions), so
  *  the mount value is copied through verbatim. Returns an empty array
  *  when the blueprint declares no turrets. */
-export function createTurretsForBuilding(buildingType: BuildingType): Turret[] {
+export function createBuildingRuntimeTurrets(buildingType: BuildingType): Turret[] {
   const bp = getBuildingBlueprint(buildingType);
   const mounts = bp.turrets;
   if (!mounts || mounts.length === 0) return [];

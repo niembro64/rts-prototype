@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import type { Entity, BuildingType } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
-import { GRID_CELL_SIZE } from '../sim/grid';
+import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import {
   type BuildPlacementCellDiagnostic,
   type BuildPlacementDiagnostics,
@@ -179,7 +179,7 @@ export class BuildGhost3D {
     );
     this.rangeLine = new THREE.Line(this.rangeLineGeom, this.lineMat);
     this.group.add(this.rangeLine);
-    this.cellGeom = new THREE.PlaneGeometry(GRID_CELL_SIZE, GRID_CELL_SIZE);
+    this.cellGeom = new THREE.PlaneGeometry(BUILD_GRID_CELL_SIZE, BUILD_GRID_CELL_SIZE);
     this.cellBorderGeom = BuildGhost3D.makeCellBorderGeometry();
 
     this.group.visible = false;
@@ -203,8 +203,8 @@ export class BuildGhost3D {
   ): void {
     const snapped = getSnappedBuildPosition(worldX, worldY, buildingType);
     const config = getBuildingConfig(buildingType);
-    const width = config.gridWidth * GRID_CELL_SIZE;
-    const depth = config.gridHeight * GRID_CELL_SIZE;
+    const width = config.gridWidth * BUILD_GRID_CELL_SIZE;
+    const depth = config.gridHeight * BUILD_GRID_CELL_SIZE;
     const commanderKey = commander?.builder
       ? `${commander.id}:${commander.transform.x}:${commander.transform.y}:${commander.transform.z}:${commander.builder.buildRange}`
       : 'none';
@@ -266,7 +266,7 @@ export class BuildGhost3D {
   }
 
   private static makeCellBorderGeometry(): THREE.BufferGeometry {
-    const h = GRID_CELL_SIZE / 2;
+    const h = BUILD_GRID_CELL_SIZE / 2;
     const positions = new Float32Array([
       -h, -h, 0, h, -h, 0,
       h, -h, 0, h, h, 0,

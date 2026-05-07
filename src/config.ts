@@ -35,7 +35,11 @@ import type {
   ForceFieldTurretConfig,
   MapSize,
 } from './types/config';
-import { LAND_CELL_SIZE, MAP_DIMENSION_CONFIG } from './mapSizeConfig';
+import {
+  LAND_CELL_SIZE,
+  MAP_DIMENSION_CONFIG,
+  nearestOddLandCellCount,
+} from './mapSizeConfig';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
 // Default square map span in canonical land cells. Demo Battle and Real Battle
@@ -789,10 +793,7 @@ export const UNIT_HP_MULTIPLIER = 2.0;
 // MAP SIZE SETTINGS
 // =============================================================================
 
-export const normalizeMapLandCells = (landCells: number): number => {
-  const clamped = Math.max(1, Math.floor(landCells));
-  return clamped % 2 === 1 ? clamped : clamped + 1;
-};
+export const normalizeMapLandCells = nearestOddLandCellCount;
 
 const landCellMapSpan = (landCells: number): number =>
   normalizeMapLandCells(landCells) * LAND_CELL_SIZE;

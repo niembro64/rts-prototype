@@ -1,12 +1,10 @@
-import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, UnitLocomotion } from './types';
-import { isProjectileShot } from './types';
-import { getShotMaxLifespan } from '@/types/sim';
+import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, ProjectileShot, UnitLocomotion } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ShotId, TurretId } from '../../types/blueprintIds';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { cloneUnitLocomotion } from './locomotion';
-import { createTurretsFromDefinition } from './unitDefinitions';
+import { createUnitRuntimeTurrets } from './runtimeTurrets';
 import {
   MAX_TOTAL_UNITS,
   DEFAULT_MIRRORS_ENABLED,
@@ -550,7 +548,7 @@ export class WorldState {
     // blueprint. Every unit blueprint declares at least one turret, so
     // every unit gets a combat component at spawn.
     entity.combat = {
-      turrets: createTurretsFromDefinition(unitId, bp.radius.body),
+      turrets: createUnitRuntimeTurrets(unitId, bp.radius.body),
       activeTurretMask: 0,
       firingTurretMask: 0,
     };
@@ -680,9 +678,10 @@ export class WorldState {
     // Static (no-RNG) lifespan from shot type, then apply per-instance
     // variance for projectiles/rockets so each spawn gets a slightly
     // different fuse.
-    let maxLifespan = getShotMaxLifespan(config.shot);
-    if (isProjectileShot(config.shot)) {
-      const variance = Math.max(0, config.shot.lifespanVariance ?? 0);
+    let maxLifespan = config.shotProfile.runtime.maxLifespan;
+    if (config.shotProfile.runtime.isProjectile) {
+      const shot = config.shot as ProjectileShot;
+      const variance = Math.max(0, shot.lifespanVariance ?? 0);
       if (variance > 0) {
         const factor = 1 + (this.rng.next() * 2 - 1) * variance;
         maxLifespan = Math.max(0, maxLifespan * factor);

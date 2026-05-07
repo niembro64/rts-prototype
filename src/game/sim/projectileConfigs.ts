@@ -2,6 +2,7 @@ import type { ActiveProjectileShot, ProjectileConfig, TurretConfig } from './typ
 import { isShotId, isTurretId, type ShotId, type TurretId } from '../../types/blueprintIds';
 import { buildProjectileShotConfig } from './blueprints';
 import { TURRET_CONFIGS } from './turretConfigs';
+import { getShotProfile } from './shotProfiles';
 
 const _shotConfigCache = new Map<ShotId, ActiveProjectileShot>();
 
@@ -29,6 +30,7 @@ export function createProjectileConfigFromTurret(
   }
   return {
     shot,
+    shotProfile: getShotProfile(shot),
     sourceTurretId: turretConfig.id,
     range: turretConfig.range,
     cooldown: turretConfig.cooldown,
@@ -42,8 +44,10 @@ export function createProjectileConfigFromShot(
   shotId: ShotId,
   sourceTurretId?: TurretId,
 ): ProjectileConfig {
+  const shot = getShotOnlyConfig(shotId);
   return {
-    shot: getShotOnlyConfig(shotId),
+    shot,
+    shotProfile: getShotProfile(shot),
     sourceTurretId,
     range: 0,
     cooldown: 0,

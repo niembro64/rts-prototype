@@ -22,10 +22,6 @@ import {
 } from './combat';
 import { clearTargetIndex } from './combat/targetIndex';
 import {
-  fightMoveFireCapableTurretCount,
-  fightMoveFireEligibleTurretCount,
-} from './combat/combatUtils';
-import {
   updateProjectiles,
   checkProjectileCollisions,
   type SimEvent,
@@ -44,7 +40,6 @@ import { updateUnitTilt } from './unitTilt';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
-import { getUnitBlueprint } from './blueprints';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS } from '@/types/network';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
@@ -749,7 +744,7 @@ export class Simulation {
         currentAction.y = targetPoint.y;
         currentAction.z = targetPoint.z;
 
-        // Stop if enough turrets are engaged
+        // Stop if any turret is engaged.
         if (this.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
@@ -768,7 +763,7 @@ export class Simulation {
         continue;
       }
 
-      // Check if unit should stop for combat (fight or patrol mode with enough turrets engaged)
+      // Check if unit should stop for combat (fight or patrol mode with any engaged turret)
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
         if (this.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
@@ -933,17 +928,18 @@ export class Simulation {
     unit.thrustDirY = dy / distance;
   }
 
-  /** True when the unit has enough fire-capable turrets eligible to
-   *  shoot that it should hold position rather than keep chasing. */
+  /** True when any non-visual turret is engaged with a target, so the
+   *  unit should hold position rather than keep chasing. This uses the
+   *  turret FSM directly instead of firingTurretMask so passive combat
+   *  systems like mirror panels can stop during fight/patrol orders. */
   private shouldStopForEngagedCombat(entity: Entity): boolean {
     const combat = entity.combat;
     if (!combat || combat.turrets.length === 0) return false;
-    const turrets = combat.turrets;
-    const stopRatio = getUnitBlueprint(entity.unit!.unitType).fightStopEngagedRatio;
-    const fireCapableCount = fightMoveFireCapableTurretCount(turrets);
-    if (fireCapableCount === 0) return false;
-    return fightMoveFireEligibleTurretCount(turrets, combat.firingTurretMask) >=
-      fireCapableCount * stopRatio;
+    for (const turret of combat.turrets) {
+      if (turret.config.visualOnly) continue;
+      if (turret.state === 'engaged' && turret.target !== null) return true;
+    }
+    return false;
   }
 
   /** Per-tick stuck check. For each unit that wanted to move this

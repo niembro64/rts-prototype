@@ -10,10 +10,7 @@ export type MirrorLineTurretPick = {
 function lineWeaponPriority(turret: Turret): number {
   const shot = turret.config.shot;
   if (!isLineShot(shot)) return 0;
-  if (turret.config.id === 'megaBeamTurret' || shot.id === 'megaBeamShot') return 3;
-  if (turret.config.id === 'beamTurret' || shot.type === 'beam') return 2;
-  if (turret.config.id === 'laserTurret' || shot.type === 'laser') return 1;
-  return 1;
+  return Math.max(0, turret.config.mirrorReflectPriority ?? 0);
 }
 
 function threatTier(turret: Turret, ourUnitId: number): number {

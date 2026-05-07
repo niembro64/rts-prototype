@@ -34,8 +34,8 @@
 //     gets cleared and the visualization doesn't draw a fake
 //     straight line through obstacles.
 
-import type { BuildingGrid } from './grid';
-import { GRID_CELL_SIZE } from './grid';
+import type { BuildingGrid } from './buildGrid';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { LAND_CELL_SIZE } from '../../config';
 import { GAME_DIAGNOSTICS, debugWarn } from '../diagnostics';
 import {
@@ -132,8 +132,8 @@ function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
   n: number;
 } {
   const tVer = getTerrainVersion();
-  const gridW = Math.ceil(mapWidth / GRID_CELL_SIZE);
-  const gridH = Math.ceil(mapHeight / GRID_CELL_SIZE);
+  const gridW = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
+  const gridH = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
   const n = gridW * gridH;
   const tKey = `${tVer}|${gridW}|${gridH}`;
   if (
@@ -155,8 +155,8 @@ function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
   const terrainMask = new Uint8Array(n);
   for (let gy = 0; gy < gridH; gy++) {
     for (let gx = 0; gx < gridW; gx++) {
-      const cx = (gx + 0.5) * GRID_CELL_SIZE;
-      const cy = (gy + 0.5) * GRID_CELL_SIZE;
+      const cx = (gx + 0.5) * BUILD_GRID_CELL_SIZE;
+      const cy = (gy + 0.5) * BUILD_GRID_CELL_SIZE;
       let blk = false;
       // Terrain mask runs once per pathfinder cell — switched from
       // analytical getTerrainHeight to getTerrainMeshHeight so the
@@ -477,10 +477,10 @@ function aStar(startGx: number, startGy: number, goalGx: number, goalGy: number)
 function hasLineOfSight(x0: number, y0: number, x1: number, y1: number): boolean {
   const blocked = _blocked!;
   const gridW = _gridW, gridH = _gridH;
-  let gx = Math.floor(x0 / GRID_CELL_SIZE);
-  let gy = Math.floor(y0 / GRID_CELL_SIZE);
-  const tgx = Math.floor(x1 / GRID_CELL_SIZE);
-  const tgy = Math.floor(y1 / GRID_CELL_SIZE);
+  let gx = Math.floor(x0 / BUILD_GRID_CELL_SIZE);
+  let gy = Math.floor(y0 / BUILD_GRID_CELL_SIZE);
+  const tgx = Math.floor(x1 / BUILD_GRID_CELL_SIZE);
+  const tgy = Math.floor(y1 / BUILD_GRID_CELL_SIZE);
   const sx = gx < tgx ? 1 : -1;
   const sy = gy < tgy ? 1 : -1;
   const dx = Math.abs(tgx - gx);
@@ -517,10 +517,10 @@ function findPath(
   const ccLabels = _ccLabels!;
   const gridW = _gridW, gridH = _gridH;
 
-  const sgx = Math.max(0, Math.min(gridW - 1, Math.floor(startX / GRID_CELL_SIZE)));
-  const sgy = Math.max(0, Math.min(gridH - 1, Math.floor(startY / GRID_CELL_SIZE)));
-  const ggx = Math.max(0, Math.min(gridW - 1, Math.floor(goalX / GRID_CELL_SIZE)));
-  const ggy = Math.max(0, Math.min(gridH - 1, Math.floor(goalY / GRID_CELL_SIZE)));
+  const sgx = Math.max(0, Math.min(gridW - 1, Math.floor(startX / BUILD_GRID_CELL_SIZE)));
+  const sgy = Math.max(0, Math.min(gridH - 1, Math.floor(startY / BUILD_GRID_CELL_SIZE)));
+  const ggx = Math.max(0, Math.min(gridW - 1, Math.floor(goalX / BUILD_GRID_CELL_SIZE)));
+  const ggy = Math.max(0, Math.min(gridH - 1, Math.floor(goalY / BUILD_GRID_CELL_SIZE)));
 
   // Snap blocked start to nearest open cell. The unit's actual
   // position may sit inside the inflation halo (knockback, spawn
@@ -556,8 +556,8 @@ function findPath(
   if (startCellGx === goalCellGx && startCellGy === goalCellGy) {
     if (goalWasSnapped) {
       return [{
-        x: (goalCellGx + 0.5) * GRID_CELL_SIZE,
-        y: (goalCellGy + 0.5) * GRID_CELL_SIZE,
+        x: (goalCellGx + 0.5) * BUILD_GRID_CELL_SIZE,
+        y: (goalCellGy + 0.5) * BUILD_GRID_CELL_SIZE,
       }];
     }
     return [{ x: goalX, y: goalY }];
@@ -572,8 +572,8 @@ function findPath(
   const smoothed: Vec2[] = [];
   let anchorX: number, anchorY: number;
   if (startWasSnapped) {
-    const sxw = (startCellGx + 0.5) * GRID_CELL_SIZE;
-    const syw = (startCellGy + 0.5) * GRID_CELL_SIZE;
+    const sxw = (startCellGx + 0.5) * BUILD_GRID_CELL_SIZE;
+    const syw = (startCellGy + 0.5) * BUILD_GRID_CELL_SIZE;
     smoothed.push({ x: sxw, y: syw });
     anchorX = sxw;
     anchorY = syw;
@@ -588,10 +588,10 @@ function findPath(
     const cgy = (candIdx - cgx) / gridW;
     const ngx = nextIdx % gridW;
     const ngy = (nextIdx - ngx) / gridW;
-    const candX = (cgx + 0.5) * GRID_CELL_SIZE;
-    const candY = (cgy + 0.5) * GRID_CELL_SIZE;
-    const nextX = (ngx + 0.5) * GRID_CELL_SIZE;
-    const nextY = (ngy + 0.5) * GRID_CELL_SIZE;
+    const candX = (cgx + 0.5) * BUILD_GRID_CELL_SIZE;
+    const candY = (cgy + 0.5) * BUILD_GRID_CELL_SIZE;
+    const nextX = (ngx + 0.5) * BUILD_GRID_CELL_SIZE;
+    const nextY = (ngy + 0.5) * BUILD_GRID_CELL_SIZE;
     if (!hasLineOfSight(anchorX, anchorY, nextX, nextY)) {
       smoothed.push({ x: candX, y: candY });
       anchorX = candX;
@@ -600,8 +600,8 @@ function findPath(
   }
   if (goalWasSnapped) {
     smoothed.push({
-      x: (goalCellGx + 0.5) * GRID_CELL_SIZE,
-      y: (goalCellGy + 0.5) * GRID_CELL_SIZE,
+      x: (goalCellGx + 0.5) * BUILD_GRID_CELL_SIZE,
+      y: (goalCellGy + 0.5) * BUILD_GRID_CELL_SIZE,
     });
   } else {
     smoothed.push({ x: goalX, y: goalY });

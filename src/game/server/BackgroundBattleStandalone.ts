@@ -13,7 +13,7 @@ import { getPlayerBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
 import { isFarFromWater } from '../sim/Terrain';
 import { makeMapOvalMetrics, mapOvalPointAt } from '../sim/mapOval';
 import { expandPathActions } from '../sim/Pathfinder';
-import type { BuildingGrid } from '../sim/grid';
+import type { BuildingGrid } from '../sim/buildGrid';
 
 // Available unit types for background spawning (excludes commander)
 export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS];

@@ -7,7 +7,8 @@ import type {
 } from './config';
 import type { SoundEntry } from './audio';
 import type { ShotId, TurretId, UnitTypeId } from './blueprintIds';
-import type { TurretRangeOverrides, ResourceCost } from './sim';
+import type { TurretRangeOverrides } from './combatTypes';
+import type { ResourceCost } from './economyTypes';
 import { isLineShotType } from './sim';
 
 // Re-export for consumers
@@ -300,6 +301,11 @@ export type TurretBlueprint = {
   launchForce?: number;
   isManualFire?: boolean;
   passive?: boolean;
+  /** Priority used by passive mirror turrets when choosing which
+   *  line-shot weapon to face. Omit/0 means "not a mirror threat";
+   *  line-shot turrets that omit this default to low priority in the
+   *  blueprint build step. */
+  mirrorReflectPriority?: number;
   /** How runtime resolves the turret's world-space body center. The
    *  default authored mode uses the host blueprint mount. Unit-body-
    *  center mode is for turrets whose gameplay body is exactly the
@@ -330,7 +336,8 @@ export type TurretBlueprint = {
    *  with the rocket-class shot flag `ignoresGravity`. */
   verticalLauncher?: boolean;
   /** Spawn pitch in radians, applied once when the turret instance is
-   *  created (createTurretsFromDefinition). Default 0 = barrel
+   *  created (createUnitRuntimeTurrets/createBuildingRuntimeTurrets).
+   *  Default 0 = barrel
    *  horizontal. Useful for passive / mirror turrets that should rest
    *  pointed at the sky until they actually acquire a target — once
    *  the aim solver runs, this initial value is overwritten by the
@@ -370,9 +377,19 @@ export type MountOffset = {
   z: number;
 };
 
+export type UnitTurretMountZResolver = {
+  /** Resolve the final pivot height after turret blueprints are loaded:
+   *  body-top fraction + turret body radius / unit body radius. */
+  kind: 'topMounted';
+  bodyTopZFrac: number;
+};
+
 export type TurretMount = {
   turretId: TurretId;
   mount: MountOffset;
+  /** Unit-blueprint authoring hint. The blueprint builder resolves this
+   *  into mount.z once both unit and turret blueprints are available. */
+  zResolver?: UnitTurretMountZResolver;
   /** Optional visual variant for turret blueprints that expose
    *  variant-specific art, such as construction emitters. */
   visualVariant?: ConstructionEmitterSize;
@@ -521,5 +538,4 @@ export type UnitBlueprint = {
   builder?: { buildRange: number; constructionRate: number };
   dgun?: { turretId: TurretId; energyCost: number };
   deathSound?: SoundEntry;
-  fightStopEngagedRatio: number;
 };

@@ -3,7 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, HysteresisRange, Turret, TurretRanges } from '../types';
 import { getTargetRadius, turretBit, updateWeaponWorldKinematics } from './combatUtils';
-import { distanceSquared3 } from '../../math';
+import { distanceSquared } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
@@ -95,11 +95,12 @@ function minRangePrefersTargetSq(
   const minRange = rangeEdgeValue(range, edge);
   if (minRange <= 0) return true;
 
-  // Range checks are against the target collider. For max range a target
-  // is valid if its near edge is reachable (dist <= max + radius). For
-  // min preference it is preferred if its far edge reaches outside the
-  // soft inner radius (dist >= min - radius). This keeps large targets
-  // from being ranked as "too close" just because their center is near.
+  // Targeting ranges are ground-plane circles. For max range a target
+  // is valid if its near edge is reachable in XY (dist <= max + radius).
+  // For min preference it is preferred if its far edge reaches outside
+  // the soft inner radius (dist >= min - radius). This keeps large
+  // targets from being ranked as "too close" just because their center
+  // is near.
   const threshold = minRange - targetRadius;
   if (threshold <= 0) return true;
   const thresholdSq = targetRadius <= 0 ? rangeEdgeSq(range, edge) : threshold * threshold;
@@ -192,9 +193,9 @@ function currentFireTargetRankSq(
   if (!target || targetRadius <= 0 && !target.unit && !target.building) {
     return { rank: TARGET_RANK_NONE, distSq: Infinity };
   }
-  const distSq = distanceSquared3(
-    weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
-    target.transform.x, target.transform.y, target.transform.z,
+  const distSq = distanceSquared(
+    weapon.worldPos.x, weapon.worldPos.y,
+    target.transform.x, target.transform.y,
   );
   return {
     rank: fireTargetPreferenceRankSq(weapon.ranges, edge, distSq, targetRadius),
@@ -469,9 +470,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           }
 
           setWeaponTarget(weapon, unit, wi, priorityId);
-          const distSq = distanceSquared3(
-            wpx, wpy, wpz,
-            priorityTarget.transform.x, priorityTarget.transform.y, priorityTarget.transform.z,
+          const distSq = distanceSquared(
+            wpx, wpy,
+            priorityTarget.transform.x, priorityTarget.transform.y,
           );
 
           if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
@@ -516,9 +517,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         const wpx = weapon.worldPos!.x;
         const wpy = weapon.worldPos!.y;
         const wpz = weapon.worldPos!.z;
-        const distSq = distanceSquared3(
-          wpx, wpy, wpz,
-          target.transform.x, target.transform.y, target.transform.z,
+        const distSq = distanceSquared(
+          wpx, wpy,
+          target.transform.x, target.transform.y,
         );
 
         // LOS gating for direct-fire weapons. A blocked sightline
@@ -619,8 +620,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     let batchedEnemies: Entity[] | null = null;
     if (needsAnyQuery) {
       const batchRadius = maxAcquireRange + maxWeaponOffset;
-      batchedEnemies = spatialGrid.queryEnemyEntitiesInRadius(
-        unit.transform.x, unit.transform.y, unit.transform.z, batchRadius, playerId
+      batchedEnemies = spatialGrid.queryEnemyEntitiesInCircle2D(
+        unit.transform.x, unit.transform.y, batchRadius, playerId
       );
     }
 
@@ -651,7 +652,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
       const candidates = batchedEnemies
         ? batchedEnemies
-        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, outermostAcquireDistance(r), playerId);
+        : spatialGrid.queryEnemyEntitiesInCircle2D(weaponX, weaponY, outermostAcquireDistance(r), playerId);
 
       let closestEngageable: Entity | null = null;
       let closestDistSq = currentFireRank.distSq;
@@ -676,9 +677,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           if (mirrorScore <= 0) continue;
         }
         const enemyRadius = enemy.unit ? enemy.unit.radius.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const distSq = distanceSquared3(
-          weaponX, weaponY, weaponZ,
-          enemy.transform.x, enemy.transform.y, enemy.transform.z,
+        const distSq = distanceSquared(
+          weaponX, weaponY,
+          enemy.transform.x, enemy.transform.y,
         );
         const rank = fireTargetPreferenceRankSq(r, 'acquire', distSq, enemyRadius);
         if (
@@ -732,7 +733,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       // per-weapon query if this path is reached without a unit batch.
       const candidates = batchedEnemies
         ? batchedEnemies
-        : spatialGrid.queryEnemyEntitiesInRadius(weaponX, weaponY, weaponZ, outermostAcquireDistance(r), playerId);
+        : spatialGrid.queryEnemyEntitiesInCircle2D(weaponX, weaponY, outermostAcquireDistance(r), playerId);
 
       let closestEnemy: Entity | null = null;
       let closestDistSq = Infinity;
@@ -752,9 +753,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         }
 
         const enemyRadius = enemy.unit ? enemy.unit.radius.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const distSq = distanceSquared3(
-          weaponX, weaponY, weaponZ,
-          enemy.transform.x, enemy.transform.y, enemy.transform.z,
+        const distSq = distanceSquared(
+          weaponX, weaponY,
+          enemy.transform.x, enemy.transform.y,
         );
         const rank = acquisitionTargetPreferenceRankSq(
           r,

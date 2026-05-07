@@ -6,6 +6,7 @@ import {
   spatialCubeKeyToLandCellKey,
 } from '../landGrid';
 import { isEntityActive } from './buildableHelpers';
+import { TERRAIN_MAX_RENDER_Y, TILE_FLOOR_Y } from './terrain/terrainConfig';
 
 // Maximum shot collider radius any unit can have (hippo = 45). Used to pad cell search
 // in queryEnemyEntitiesInRadius so units at tracking range + radius boundary aren't
@@ -541,6 +542,31 @@ export class SpatialGrid {
   }
 
   /**
+   * Collect cells in an XY circle/cylinder across the terrain-height
+   * play volume. Turret targeting ranges are ground-plane circles: high
+   * terrain should not make a target disappear from the broadphase just
+   * because its Z differs from the shooter.
+   */
+  private getCellsInCircle2D(x: number, y: number, radius: number): void {
+    this.nearbyCells.length = 0;
+
+    const minCx = Math.floor((x - radius) / this.cellSize);
+    const maxCx = Math.floor((x + radius) / this.cellSize);
+    const minCy = Math.floor((y - radius) / this.cellSize);
+    const maxCy = Math.floor((y + radius) / this.cellSize);
+    const minCz = Math.floor((TILE_FLOOR_Y - this.cellSize + this.halfCellSize) / this.cellSize);
+    const maxCz = Math.floor((TERRAIN_MAX_RENDER_Y + this.cellSize * 2 + this.halfCellSize) / this.cellSize);
+
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        for (let cz = minCz; cz <= maxCz; cz++) {
+          this.nearbyCells.push(this.packCell(cx, cy, cz));
+        }
+      }
+    }
+  }
+
+  /**
    * Query units within a 3D sphere of `radius` around (x, y, z).
    * Returns a reused array — DO NOT STORE THE REFERENCE.
    */
@@ -802,6 +828,58 @@ export class SpatialGrid {
         const dz = czp - z;
 
         if (dx * dx + dy * dy + dz * dz <= radius * radius) {
+          this.queryResultAll.push(building);
+        }
+      }
+    }
+
+    return this.queryResultAll;
+  }
+
+  /**
+   * Query enemy entities (units + buildings) inside a ground-plane
+   * circle. Exact checks ignore Z; unit shot radii and building XY AABBs
+   * are still respected. Returns a reused array - DO NOT STORE THE
+   * REFERENCE.
+   */
+  queryEnemyEntitiesInCircle2D(x: number, y: number, radius: number, excludePlayerId: PlayerId): Entity[] {
+    this.queryResultAll.length = 0;
+    this.getCellsInCircle2D(x, y, radius + MAX_UNIT_SHOT_RADIUS);
+    this._dedup.clear();
+
+    for (const key of this.nearbyCells) {
+      const cell = this.cells.get(key);
+      if (!cell) continue;
+
+      for (const unit of cell.units) {
+        if (unit.ownership?.playerId === excludePlayerId) continue;
+        if (!unit.unit || unit.unit.hp <= 0) continue;
+
+        const dx = unit.transform.x - x;
+        const dy = unit.transform.y - y;
+        const unitCheckRadius = radius + unit.unit.radius.shot;
+        if (dx * dx + dy * dy <= unitCheckRadius * unitCheckRadius) {
+          this.queryResultAll.push(unit);
+        }
+      }
+
+      for (const building of cell.buildings) {
+        if (building.ownership?.playerId === excludePlayerId) continue;
+        if (this._dedup.has(building.id)) continue;
+        if (!building.building || building.building.hp <= 0) continue;
+        this._dedup.add(building.id);
+
+        const b = building.building;
+        const minX = building.transform.x - b.width / 2;
+        const maxX = building.transform.x + b.width / 2;
+        const minY = building.transform.y - b.height / 2;
+        const maxY = building.transform.y + b.height / 2;
+        const cxp = x < minX ? minX : x > maxX ? maxX : x;
+        const cyp = y < minY ? minY : y > maxY ? maxY : y;
+        const dx = cxp - x;
+        const dy = cyp - y;
+
+        if (dx * dx + dy * dy <= radius * radius) {
           this.queryResultAll.push(building);
         }
       }

@@ -1,6 +1,6 @@
 import { LAND_CELL_SIZE } from '../../../config';
 import { assertCanonicalLandCellSize } from '../../landGrid';
-import { GRID_CELL_SIZE } from '../grid';
+import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { TERRAIN_D_TERRAIN, TERRAIN_PLATEAU_CONFIG } from './terrainConfig';
 import { findDepositFlatZoneAt } from './terrainFlatZones';
@@ -137,7 +137,7 @@ export function getTerrainBuildabilityGridCell(
 export function buildTerrainBuildabilityGrid(
   mapWidth: number,
   mapHeight: number,
-  cellSize: number = GRID_CELL_SIZE,
+  cellSize: number = BUILD_GRID_CELL_SIZE,
 ): TerrainBuildabilityGrid {
   const cellsX = Math.max(1, Math.ceil(mapWidth / cellSize));
   const cellsY = Math.max(1, Math.ceil(mapHeight / cellSize));

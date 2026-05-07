@@ -1,7 +1,7 @@
 // Render3DEntities — extrudes the 2D sim primitives into 3D shapes.
 //
 // - Units:        cylinder (radius from unit.radius.body, height ∝ radius)
-// - Turrets:      one per entry in entity.turrets, positioned at the
+// - Turrets:      one per entry in entity.combat.turrets, positioned at the
 //                 blueprint-authored chassis-local 3D mount, rotated to
 //                 the turret's firing angle, with white barrel cylinders.
 // - Buildings:    box (width/height from building component, y-depth ∝ scale)
@@ -11,7 +11,6 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import { isProjectileShot } from '../sim/types';
 import type { UnitBodyShape } from '@/types/blueprints';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
@@ -19,9 +18,7 @@ import { getPlayerColors } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { applyShellOverride } from './ShellMaterial';
 import {
-  BUILD_BUBBLE_RADIUS_PUSH_MULT,
   SHELL_PALE_HEX,
-  SHELL_BAR_COLORS,
   BUILD_RATE_EMA_HALF_LIFE_SEC,
   BUILD_RATE_EMA_MODE,
 } from '@/shellConfig';
@@ -32,7 +29,6 @@ import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
-import { CONSTRUCTION_TOWER_SPIN_CONFIG } from '@/constructionVisualConfig';
 import { getSurfaceNormal } from '../sim/Terrain';
 import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -64,33 +60,36 @@ import {
   buildBuildingShape,
   disposeBuildingGeoms,
   getConstructionHazardMaterial,
-  writeSolarPetalMatrix,
   type BuildingDetailMesh,
-  type ConstructionEmitterRig,
   type ExtractorRig,
   type FactoryConstructionRig,
-  type ProductionRateIndicatorRig,
-  type SolarRig,
   type WindTurbineRig,
   type BuildingShapeType,
-  type SolarPetalAnimation,
 } from './BuildingShape3D';
+import {
+  writeSolarPetalMatrix,
+  type SolarPetalAnimation,
+  type SolarRig,
+} from './SolarCollectorMesh3D';
+import type {
+  ProductionRateIndicatorRig,
+} from './ConstructionEmitterMesh3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
-import { getFactoryBuildSpot, getFactoryConstructionRadius, type FactoryBuildSpot } from '../sim/factoryConstructionSite';
-import { getDriftMode, getGraphicsConfigFor, getUnitRadiusToggle, getRangeToggle, getProjRangeToggle } from '@/clientBarConfig';
+import { getDriftMode, getGraphicsConfigFor } from '@/clientBarConfig';
 import { getDriftPreset, halfLifeBlend } from '../network/driftEma';
 import { getTurretHeadRadius, lerp, lerpAngle } from '../math';
-import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTurretMountHeight, isCommander } from '../sim/combat/combatUtils';
 import { normalizeLodCellSize } from '../lodGridMath';
 import { landCellIndexForSize } from '../landGrid';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D, type MirrorMesh } from './MirrorMesh3D';
 import { MIRROR_CHROME_MATERIAL } from './BuildingVisualPalette';
-import { hexStringToRgb } from './colorUtils';
+import { ProjectileRenderer3D } from './ProjectileRenderer3D';
+import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
+import { ConstructionVisualController3D } from './ConstructionVisualController3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -100,21 +99,6 @@ import { hexStringToRgb } from './colorUtils';
 // barrel tip and sim muzzle stay locked together.
 
 const BUILDING_HEIGHT = 120;
-
-type ConstructionTowerSpinRig = Pick<
-  FactoryConstructionRig,
-  'towerOrbitParts' | 'towerSpinAmount' | 'towerSpinPhase' | 'pylonTopsLocal' | 'pylonTopBaseLocals'
->;
-
-// Per-resource spray colors for the factory + commander build emitters.
-// Same palette as SHELL_BAR_COLORS so the colored spray reads as the
-// same resource the HP-side bar shows. Pre-baked into 0..1 RGB floats
-// once at module load.
-const RESOURCE_SPRAY_COLORS = [
-  hexStringToRgb(SHELL_BAR_COLORS.energy),
-  hexStringToRgb(SHELL_BAR_COLORS.mana),
-  hexStringToRgb(SHELL_BAR_COLORS.metal),
-] as const;
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
 const _solarPetalDirection = new THREE.Vector3();
@@ -126,7 +110,6 @@ const INV_EXTRACTOR_BASE_PRODUCTION = (() => {
   const base = getBuildingConfig('extractor').metalProduction ?? 0;
   return base > 0 ? 1 / base : 0;
 })();
-const PROJECTILE_MIN_RADIUS = 1.5;   // floor so very-small shots stay visible
 const BARREL_COLOR = 0xffffff;
 const MIRROR_PANEL_COLOR = MIRROR_CHROME_MATERIAL.color;
 const MIRROR_PANEL_METALNESS = MIRROR_CHROME_MATERIAL.metalness;
@@ -136,14 +119,6 @@ const MIRROR_PANEL_ENV_INTENSITY = MIRROR_CHROME_MATERIAL.envMapIntensity;
 // per-mesh path remains only as an allocation fallback, not as the
 // normal rendering route.
 const USE_DETAILED_UNIT_INSTANCING = true;
-
-const PROJECTILE_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
-  min: 0.7,
-  low: 0.8,
-  medium: 0.9,
-  high: 1,
-  max: 1,
-};
 
 // Module-level rotation axis reused by the LOW-tier instanced sphere
 // path. Three.js' Quaternion.setFromAxisAngle reads the axis as an
@@ -295,16 +270,16 @@ type EntityMesh = {
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;
-  /** Selection ring mesh — material is the renderer-owned shared
-   *  `selectionRingMat` (white for every selection), so we don't store
-   *  a per-unit material reference. The mesh itself lives under
-   *  `m.group` and is GC'd with the group on death. */
+  /** Selection ring mesh — material/geometry are owned by
+   *  SelectionOverlayRenderer3D, so we don't store a per-unit material
+   *  reference. The mesh itself lives under `m.group` and is GC'd with
+   *  the group on death. */
   ring?: THREE.Mesh;
   /** Outer camera-sphere marker for buildings. Units use the packed
    *  mass InstancedMesh for the same role; buildings need a tiny mesh
    *  because their normal render path is type-specific scenegraph art. */
   lodMarker?: THREE.Mesh;
-  /** UNIT RAD wireframe spheres. All three channels are now 3D in
+  /** UNIT SPH wireframe spheres. All three channels are now 3D in
    *  the sim:
    *    - body  → unit.radius.body, the visible body footprint and
    *      ground-click selection fallback radius.
@@ -322,9 +297,9 @@ type EntityMesh = {
     push?: THREE.LineSegments;
   };
   radiusRingsVisible?: boolean;
-  /** Builder-unit BLD wireframe sphere — 3D now that the build-range
-   *  check includes altitude. Parented to the WORLD group and
-   *  positioned at the unit's sim sphere center each frame. */
+  /** Builder-unit BLD ground-plane circle. Build range is a 2D
+   *  horizontal check, so this lives at the local terrain surface and
+   *  scales in the X/Y plane instead of drawing a 3D sphere. */
   buildRing?: THREE.LineSegments;
   rangeRingsVisible?: boolean;
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
@@ -389,8 +364,6 @@ export class Render3DEntities {
   private extractorBuildingIdSet = new Set<EntityId>();
   private factoryBuildingIds: EntityId[] = [];
   private factoryBuildingIdSet = new Set<EntityId>();
-  private factorySprayTargets: SprayTarget[] = [];
-  private factorySprayTargetPool: SprayTarget[] = [];
   private windFanYaw: number | null = null;
   private windVisualSpeed: number | null = null;
   private windRotorPhase = 0;
@@ -410,22 +383,11 @@ export class Render3DEntities {
   // Set allocations × 60 Hz = ~240 GC objects/sec otherwise.
   private _seenUnitIds = new Set<EntityId>();
   private _seenBuildingIds = new Set<number>();
-  private _seenProjectileIds = new Set<number>();
-  private _projectileRenderScratch: Entity[] = [];
   private lastUnitInstancedEntitySetVersion = -1;
   private lastBuildingEntitySetVersion = -1;
-  private lastProjectileEntitySetVersion = -1;
-  /** SHOT RAD overlay meshes per projectile. Wireframe spheres —
-   *  not ground rings — because the matching sim checks ARE 3D
-   *  (lineSphereIntersectionT for collision, sqrt(dx²+dy²+dz²) for
-   *  area damage against units). Lazily created on first visible
-   *  toggle and hidden (not destroyed) when toggled off, so churning
-   *  the buttons doesn't churn GPU allocations. */
-  private projectileRadiusMeshes = new Map<number, {
-    collision?: THREE.LineSegments;
-    explosion?: THREE.LineSegments;
-  }>();
-  private projectileRadiusMeshPool: THREE.LineSegments[] = [];
+  private projectileRenderer: ProjectileRenderer3D;
+  private selectionOverlays: SelectionOverlayRenderer3D;
+  private constructionVisuals: ConstructionVisualController3D;
 
   // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
   // Angle advances by `speed` radians/sec; speed accelerates toward
@@ -470,48 +432,6 @@ export class Render3DEntities {
   private buildingMarkerBoxGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private barrelInstancedGeom = this.barrelGeom.clone();
-  private projectileGeom = new THREE.SphereGeometry(1, 10, 8);
-  /** Velocity-aligned body for rocket-style projectiles (shot.shape ===
-   *  'cylinder'). Geometry has its long axis on Y; per-frame orientation
-   *  rotates that Y to match the projectile's velocity vector. */
-  private projectileCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
-  /** Reusable scratch objects for per-frame cylinder orientation —
-   *  every rocket would otherwise allocate a Vector3 + Quaternion per
-   *  frame. */
-  private _projDir = new THREE.Vector3();
-  private _projQuat = new THREE.Quaternion();
-  private _projPos = new THREE.Vector3();
-  private _projScale = new THREE.Vector3();
-  private _projMatrix = new THREE.Matrix4();
-  private _factorySprayTargetLocal = new THREE.Vector3();
-  private _factorySpraySourceWorld = new THREE.Vector3();
-  private _factorySprayTargetWorld = new THREE.Vector3();
-  private _factoryBuildSpot: FactoryBuildSpot = {
-    x: 0,
-    y: 0,
-    localX: 0,
-    localY: 0,
-    dirX: 0,
-    dirY: 0,
-    offset: 0,
-  };
-  private static readonly _PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
-  /** Engine fallback values used when a shape:'cylinder' shot doesn't
-   *  define its own `cylinderShape` block. World length =
-   *  collision.radius × LENGTH_MULT; world diameter = collision.radius
-   *  × DIAMETER_MULT. Per-shot overrides live on the shot blueprint
-   *  (see CylinderShapeSpec) — these only kick in when the blueprint
-   *  is silent. */
-  private static readonly _PROJ_CYL_LENGTH_MULT_DEFAULT = 4.0;
-  private static readonly _PROJ_CYL_DIAMETER_MULT_DEFAULT = 0.5;
-  // White projectile mat — team-agnostic so any shot reads as "can hit
-  // anyone". Shooter identity comes from the turret/barrel and impact
-  // effects, not the projectile body. Matches the 2D getProjectileColor
-  // override.
-  private projectileMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  private static readonly PROJECTILE_INSTANCED_CAP = 8192;
-  private projectileSphereInstanced: THREE.InstancedMesh | null = null;
-  private projectileCylinderInstanced: THREE.InstancedMesh | null = null;
   private buildingGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   /** Instanced barrels get their own material so state on the shared
@@ -529,12 +449,6 @@ export class Render3DEntities {
   private mirrorInstancedGeom = this.mirrorGeom.clone();
   private mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorSupportGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
-  // Selection-indicator halo. A low torus reads as a real 3D donut
-  // around the unit instead of a flat 2D strip or billboarded band.
-  // Geometry is unit-sized: major radius 1, tube radius 0.06. The
-  // mesh is rotated into the XZ ground plane on creation and scaled
-  // per unit below.
-  private ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
   // Unit-radius indicator wireframe spheres (BODY/SHOT/PUSH). Unit
   // radius = 1 → scale per mesh to the actual collider radius. The
   // sim's hit-detection uses 3D spheres centered on transform.z, so
@@ -544,49 +458,6 @@ export class Render3DEntities {
   private radiusSphereGeom = new THREE.WireframeGeometry(
     new THREE.SphereGeometry(1, 16, 10),
   );
-  private radiusMatScale = new THREE.LineBasicMaterial({
-    color: 0x44ffff, transparent: true, opacity: 0.7, depthWrite: false,
-  });
-  private radiusMatShot = new THREE.LineBasicMaterial({
-    color: 0xff44ff, transparent: true, opacity: 0.7, depthWrite: false,
-  });
-  private radiusMatPush = new THREE.LineBasicMaterial({
-    color: 0x44ff44, transparent: true, opacity: 0.7, depthWrite: false,
-  });
-
-  // TURR RAD sphere materials. Colors mirror the 2D RangeCircles
-  // palette so the same toggle reads the same regardless of renderer.
-  // The sphere geometry is the shared radiusSphereGeom (wireframe
-  // unit sphere) built above.
-  private ringMatTrackAcquire = new THREE.LineBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.25, depthWrite: false });
-  private ringMatTrackRelease = new THREE.LineBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.12, depthWrite: false });
-  private ringMatEngageAcquire = new THREE.LineBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.30, depthWrite: false });
-  private ringMatEngageRelease = new THREE.LineBasicMaterial({ color: 0x44aaff, transparent: true, opacity: 0.25, depthWrite: false });
-  // Min-fire dead-zone rings (mortars + similar). Orange = "I can
-  // start firing once I'm at least this far out from the target";
-  // purple = the closer hysteresis line ("stop firing inside this").
-  private ringMatEngageMinAcquire = new THREE.LineBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.30, depthWrite: false });
-  private ringMatEngageMinRelease = new THREE.LineBasicMaterial({ color: 0xaa44ff, transparent: true, opacity: 0.25, depthWrite: false });
-  private ringMatBuild = new THREE.LineBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.30, depthWrite: false });
-  // Selection ring material — color is always white, so one shared
-  // instance covers every selectable entity. Was previously allocated
-  // fresh on every (deselect → select) toggle, with a matching dispose
-  // on deselect/death; that churned a MeshBasicMaterial per click.
-  private selectionRingMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff,
-    emissive: 0x333333,
-    transparent: true,
-    opacity: 0.9,
-    depthWrite: false,
-  });
-
-  // SHOT RAD wireframe spheres. These sim checks ARE 3D
-  // (lineSphereIntersectionT for collision, 3D sqrt(dx²+dy²+dz²) for
-  // area damage), so the viz is a 3D sphere — not a ring — to match
-  // the real volume the sim tests. Separate materials per toggle so
-  // overlapping spheres stay visually distinct.
-  private projMatCollision = new THREE.LineBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.55, depthWrite: false });
-  private projMatExplosion = new THREE.LineBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.35, depthWrite: false });
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
@@ -876,6 +747,19 @@ export class Render3DEntities {
     this.legRenderer = legRenderer;
     this.camera = camera;
     this.getViewportHeight = getViewportHeight;
+    this.selectionOverlays = new SelectionOverlayRenderer3D({
+      world: this.world,
+      clientViewState: this.clientViewState,
+      radiusSphereGeom: this.radiusSphereGeom,
+    });
+    this.constructionVisuals = new ConstructionVisualController3D(this.clientViewState);
+    this.projectileRenderer = new ProjectileRenderer3D({
+      world: this.world,
+      clientViewState: this.clientViewState,
+      scope: this.scope,
+      radiusSphereGeom: this.radiusSphereGeom,
+      resolveObjectLod: (entity) => this.resolveEntityObjectLod(entity),
+    });
     // Per-team materials are created lazily on first use (see
     // getPrimaryMat / getSecondaryMat). The
     // player-color generator (sim/types.getPlayerColors) supports any
@@ -1021,25 +905,6 @@ export class Render3DEntities {
     this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
     this.world.add(this.mirrorPanelInstanced);
 
-    this.projectileSphereInstanced = new THREE.InstancedMesh(
-      this.projectileGeom,
-      this.projectileMat,
-      Render3DEntities.PROJECTILE_INSTANCED_CAP,
-    );
-    this.projectileSphereInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.projectileSphereInstanced.frustumCulled = false;
-    this.projectileSphereInstanced.count = 0;
-    this.world.add(this.projectileSphereInstanced);
-
-    this.projectileCylinderInstanced = new THREE.InstancedMesh(
-      this.projectileCylinderGeom,
-      this.projectileMat,
-      Render3DEntities.PROJECTILE_INSTANCED_CAP,
-    );
-    this.projectileCylinderInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.projectileCylinderInstanced.frustumCulled = false;
-    this.projectileCylinderInstanced.count = 0;
-    this.world.add(this.projectileCylinderInstanced);
   }
 
   private getMirrorShinyMat(): THREE.MeshStandardMaterial {
@@ -1168,266 +1033,6 @@ export class Render3DEntities {
     }
   }
 
-
-  /**
-   * Show/hide the per-unit BODY / SHOT / PUSH radius rings, matching the 2D
-   * renderUnitRadiusCircles toggles. Rings are lazily created on first show
-   * and simply hidden (not destroyed) when toggled off, so flipping toggles
-   * repeatedly doesn't churn geometry.
-   *
-   * Wireframe SPHERE centered at the authored unit body center above
-   * the group's ground origin. Scale is the radius value for the
-   * selected channel. SHOT/PUSH are sim volumes; BODY is the visible
-   * chassis/body authoring radius.
-   */
-  private updateRadiusRings(m: EntityMesh, entity: Entity): void {
-    const showScale = getUnitRadiusToggle('visual');
-    const showShot = getUnitRadiusToggle('shot');
-    const showPush = getUnitRadiusToggle('push');
-    if (!showScale && !showShot && !showPush) {
-      if (m.radiusRingsVisible && m.radiusRings) {
-        if (m.radiusRings.scale) m.radiusRings.scale.visible = false;
-        if (m.radiusRings.shot) m.radiusRings.shot.visible = false;
-        if (m.radiusRings.push) m.radiusRings.push.visible = false;
-      }
-      m.radiusRingsVisible = false;
-      return;
-    }
-
-    const collider = entity.unit?.radius;
-    if (!entity.unit || !collider) return;
-
-    const rings = m.radiusRings ?? (m.radiusRings = {});
-
-    // All three UNIT RAD spheres sit at the authored unit center.
-    // Because the unit group is positioned at (x, groundZ, y) in
-    // three-space and the center height is authored per blueprint,
-    // a local-Y of `bodyCenterHeight` keeps debug spheres aligned with
-    // the visible/sim center. The sphere follows altitude changes for free.
-    const centerY = getUnitBodyCenterHeight(entity.unit);
-
-    this.setUnitRadiusSphere(
-      rings, 'scale', showScale, m.group,
-      centerY, entity.unit.radius.body, this.radiusMatScale,
-    );
-    this.setUnitRadiusSphere(
-      rings, 'shot', showShot, m.group,
-      centerY, collider.shot, this.radiusMatShot,
-    );
-    this.setUnitRadiusSphere(
-      rings, 'push', showPush, m.group,
-      centerY, collider.push, this.radiusMatPush,
-    );
-    m.radiusRingsVisible = true;
-  }
-
-  /** Internal helper for the three UNIT RAD sphere toggles. All three
-   *  share the same placement (unit sphere center, parented to the
-   *  unit group) and differ only by color + radius. */
-  private setUnitRadiusSphere(
-    rings: { scale?: THREE.LineSegments; shot?: THREE.LineSegments; push?: THREE.LineSegments },
-    key: 'scale' | 'shot' | 'push',
-    want: boolean,
-    parent: THREE.Group,
-    centerY: number,
-    radius: number,
-    mat: THREE.LineBasicMaterial,
-  ): void {
-    let mesh = rings[key];
-    if (want) {
-      if (!mesh) {
-        mesh = new THREE.LineSegments(this.radiusSphereGeom, mat);
-        parent.add(mesh);
-        rings[key] = mesh;
-      }
-      mesh.visible = true;
-      mesh.position.y = centerY;
-      mesh.scale.setScalar(radius);
-    } else if (mesh) {
-      mesh.visible = false;
-    }
-  }
-
-  /** Show/hide the per-unit TURR RAD wireframe spheres: tracking
-   *  acquire/release and engage acquire/release are per-turret,
-   *  centered at each weapon's 3D mount point (matches the sim's
-   *  distance3 check in targetingSystem). Build range is per-unit,
-   *  centered at the unit's sim sphere center (matches construction's
-   *  distance3 check).
-   *
-   *  Spheres are parented to the WORLD group rather than the unit/
-   *  turret group — they represent absolute world volumes and don't
-   *  rotate with the hull. */
-  private updateRangeRings(m: EntityMesh, entity: Entity): void {
-    const unit = entity.unit;
-    if (!unit) return;
-
-    const showTrackAcquire = getRangeToggle('trackAcquire');
-    const showTrackRelease = getRangeToggle('trackRelease');
-    const showEngageAcquire = getRangeToggle('engageAcquire');
-    const showEngageRelease = getRangeToggle('engageRelease');
-    const showEngageMinAcquire = getRangeToggle('engageMinAcquire');
-    const showEngageMinRelease = getRangeToggle('engageMinRelease');
-    const showBuild = getRangeToggle('build');
-    const showAnyTurretRange =
-      showTrackAcquire || showTrackRelease
-      || showEngageAcquire || showEngageRelease
-      || showEngageMinAcquire || showEngageMinRelease;
-    if (!showAnyTurretRange && !showBuild) {
-      if (m.rangeRingsVisible) this.hideRangeRings(m);
-      m.rangeRingsVisible = false;
-      return;
-    }
-
-    const ux = entity.transform.x;
-    const uy = entity.transform.y;
-    const uz = entity.transform.z;
-
-    // Per-turret spheres — same center the sim's targeting code uses,
-    // so what you see is exactly the volume the sim tests against.
-    if (showAnyTurretRange && entity.combat) {
-      const cos = Math.cos(entity.transform.rotation);
-      const sin = Math.sin(entity.transform.rotation);
-      const turrets = entity.combat.turrets;
-      for (let i = 0; i < turrets.length; i++) {
-        const weapon = turrets[i];
-        if (weapon.config.visualOnly) continue;
-        const tm = m.turrets[i];
-        if (!tm) continue;
-        const cachedMount = weapon.worldPos;
-        const fallbackMount = cachedMount
-          ? undefined
-          : getTurretWorldMount(
-              ux, uy, getUnitGroundZ(entity),
-              cos, sin,
-              weapon.mount.x, weapon.mount.y, getTurretMountHeight(entity, i),
-              // Pull from the unit's smoothed normal (set by sim's
-              // updateUnitTilt and shipped in the snapshot) instead of
-              // re-querying raw terrain — keeps this fallback in sync
-              // with the chassis tilt above.
-              entity.unit?.surfaceNormal ?? getSurfaceNormal(
-                ux, uy,
-                this.clientViewState.getMapWidth(),
-                this.clientViewState.getMapHeight(),
-                LAND_CELL_SIZE,
-              ),
-            );
-        const mountX = cachedMount?.x ?? fallbackMount!.x;
-        const mountY = cachedMount?.y ?? fallbackMount!.y;
-        // Use the same full 3D mount cache that the sim targeting path
-        // writes. This keeps debug range spheres centered on rearranged
-        // rear/side turrets instead of mixing old flat XY math with a
-        // newer mount Z.
-        const mountZ = cachedMount?.z ?? fallbackMount!.z;
-
-        // Tracking shell only renders when this turret actually has
-        // one — most weapons don't (engage = acquire on contact).
-        this.setRangeSphere(
-          tm, 'trackAcquire', showTrackAcquire, mountX, mountY, mountZ,
-          weapon.ranges.tracking?.acquire ?? null, this.ringMatTrackAcquire,
-        );
-        this.setRangeSphere(
-          tm, 'trackRelease', showTrackRelease, mountX, mountY, mountZ,
-          weapon.ranges.tracking?.release ?? null, this.ringMatTrackRelease,
-        );
-        this.setRangeSphere(
-          tm, 'engageAcquire', showEngageAcquire, mountX, mountY, mountZ,
-          weapon.ranges.fire.max.acquire, this.ringMatEngageAcquire,
-        );
-        this.setRangeSphere(
-          tm, 'engageRelease', showEngageRelease, mountX, mountY, mountZ,
-          weapon.ranges.fire.max.release, this.ringMatEngageRelease,
-        );
-        // Min-fire dead-zone rings — only emitted for turrets with a
-        // configured fire.min (mortars, gatling-mortar, etc.). Null
-        // hides the ring without erroring, so direct-fire weapons
-        // simply skip these channels.
-        this.setRangeSphere(
-          tm, 'engageMinAcquire', showEngageMinAcquire, mountX, mountY, mountZ,
-          weapon.ranges.fire.min?.acquire ?? null, this.ringMatEngageMinAcquire,
-        );
-        this.setRangeSphere(
-          tm, 'engageMinRelease', showEngageMinRelease, mountX, mountY, mountZ,
-          weapon.ranges.fire.min?.release ?? null, this.ringMatEngageMinRelease,
-        );
-      }
-    } else if (m.rangeRingsVisible) {
-      this.hideTurretRangeRings(m);
-    }
-
-    // Build range (builder-only, centered on the unit's sim sphere).
-    const builder = entity.builder;
-    if (showBuild && builder) {
-      if (!m.buildRing) {
-        m.buildRing = new THREE.LineSegments(this.radiusSphereGeom, this.ringMatBuild);
-        this.world.add(m.buildRing);
-      }
-      m.buildRing.visible = true;
-      // sim(x,y,z) → three(x,z,y).
-      m.buildRing.position.set(ux, uz, uy);
-      m.buildRing.scale.setScalar(builder.buildRange);
-    } else if (m.buildRing) {
-      m.buildRing.visible = false;
-    }
-    m.rangeRingsVisible = showAnyTurretRange || (showBuild && builder !== undefined);
-  }
-
-  private hideRangeRings(m: EntityMesh): void {
-    this.hideTurretRangeRings(m);
-    if (m.buildRing) m.buildRing.visible = false;
-  }
-
-  private hideTurretRangeRings(m: EntityMesh): void {
-    for (const tm of m.turrets) {
-      const rings = tm.rangeRings;
-      if (!rings) continue;
-      if (rings.trackAcquire)     rings.trackAcquire.visible = false;
-      if (rings.trackRelease)     rings.trackRelease.visible = false;
-      if (rings.engageAcquire)    rings.engageAcquire.visible = false;
-      if (rings.engageRelease)    rings.engageRelease.visible = false;
-      if (rings.engageMinAcquire) rings.engageMinAcquire.visible = false;
-      if (rings.engageMinRelease) rings.engageMinRelease.visible = false;
-    }
-  }
-
-  /** Internal helper: create-if-missing / update-if-visible / hide for
-   *  a single per-turret TURR RAD sphere. Keeps the four toggle
-   *  branches in updateRangeRings from duplicating the lazy-create
-   *  dance. */
-  private setRangeSphere(
-    tm: TurretMesh,
-    key:
-      | 'trackAcquire'
-      | 'trackRelease'
-      | 'engageAcquire'
-      | 'engageRelease'
-      | 'engageMinAcquire'
-      | 'engageMinRelease',
-    want: boolean,
-    cx: number, cy: number, cz: number,
-    /** Radius in world units, or `null` when this turret has no shell
-     *  for this channel (e.g. tracking radius on a turret without a
-     *  tracking range). Null hides any existing ring without erroring. */
-    radius: number | null,
-    mat: THREE.LineBasicMaterial,
-  ): void {
-    const rings = tm.rangeRings ?? (tm.rangeRings = {});
-    let ring = rings[key];
-    if (want && radius !== null) {
-      if (!ring) {
-        ring = new THREE.LineSegments(this.radiusSphereGeom, mat);
-        this.world.add(ring);
-        rings[key] = ring;
-      }
-      ring.visible = true;
-      // sim(x,y,z) → three(x,z,y).
-      ring.position.set(cx, cz, cy);
-      ring.scale.setScalar(radius);
-    } else if (ring) {
-      ring.visible = false;
-    }
-  }
-
   update(
     lodOverride?: Lod3DState,
     sharedLodGrid?: RenderLodGrid,
@@ -1457,7 +1062,7 @@ export class Render3DEntities {
     this._spinDt = spinDt;
     this.updateUnits();
     this.updateBuildings();
-    this.updateProjectiles();
+    this.projectileRenderer.update(this.lod);
     // One flush per frame uploads the per-instance leg cylinder
     // buffers (start / end / thickness) to the GPU. Every leg in
     // every unit wrote into the same shared pool above; the GPU
@@ -2193,27 +1798,13 @@ export class Render3DEntities {
 
   /** Remove every overlay mesh that lives in the world group (not the
    *  unit group) so a teardown/rebuild cycle doesn't leak them into
-   *  the scene. TURR RAD spheres (per-turret) and BLD build sphere
+   *  the scene. TURR CIR circles (per-turret) and the BLD build circle
    *  are the only ones in this category — they represent absolute
-   *  world volumes keyed to the turret mount / unit center. UNIT RAD
-   *  spheres (BODY/SHOT/PUSH) ride the unit group and leave alongside
-   *  m.group. */
+   *  horizontal ranges keyed to the turret mount / unit center. UNIT
+   *  SPH spheres (BODY/SHOT/PUSH) ride the unit group and leave
+   *  alongside m.group. */
   private disposeWorldParentedOverlays(m: EntityMesh): void {
-    if (m.buildRing) this.world.remove(m.buildRing);
-    for (const tm of m.turrets) {
-      if (tm.rangeRings) {
-        if (tm.rangeRings.trackAcquire)     this.world.remove(tm.rangeRings.trackAcquire);
-        if (tm.rangeRings.trackRelease)     this.world.remove(tm.rangeRings.trackRelease);
-        if (tm.rangeRings.engageAcquire)    this.world.remove(tm.rangeRings.engageAcquire);
-        if (tm.rangeRings.engageRelease)    this.world.remove(tm.rangeRings.engageRelease);
-        if (tm.rangeRings.engageMinAcquire) this.world.remove(tm.rangeRings.engageMinAcquire);
-        if (tm.rangeRings.engageMinRelease) this.world.remove(tm.rangeRings.engageMinRelease);
-      }
-    }
-    // Selection ring is parented to m.group and gets GC'd with the
-    // group; its material is the shared `selectionRingMat`, owned by
-    // the renderer, so no per-unit dispose.
-    m.ring = undefined;
+    this.selectionOverlays.removeWorldParentedOverlays(m);
   }
 
   private destroyUnitMesh(id: EntityId, m: EntityMesh): void {
@@ -2980,35 +2571,10 @@ export class Render3DEntities {
         }
       }
 
-      // Selection halo — low torus wrapping the unit's base. Material
-      // is the renderer-owned shared instance; the mesh is per-unit
-      // so its scale tracks the unit's render radius.
       const selected = e.selectable?.selected === true;
-      if (selected && !m.ring) {
-        const ring = new THREE.Mesh(this.ringGeom, this.selectionRingMat);
-        // TorusGeometry lies in XY by default; rotate it into XZ so
-        // the donut rests on the local ground plane.
-        ring.rotation.x = Math.PI / 2;
-        m.group.add(ring);
-        m.ring = ring;
-      } else if (!selected && m.ring) {
-        m.group.remove(m.ring);
-        m.ring = undefined;
-      }
-      if (m.ring) {
-        const ringR = radius * 1.35;
-        m.ring.scale.setScalar(ringR);
-        // Keep the torus slightly above the ground. The geometry's
-        // tube radius is 0.06, so this places the lower curve just
-        // above local y=0 after scaling.
-        m.ring.position.y = ringR * 0.06 + 0.8;
-      }
-
-      // BODY / SHOT / PUSH unit-radius indicator rings. The 2D renderer
-      // draws these as stroked circles at the respective collider radii;
-      // here we mirror the same toggle → ring visibility behaviour.
-      this.updateRadiusRings(m, e);
-      this.updateRangeRings(m, e);
+      this.selectionOverlays.updateSelectionRing(m, selected, radius * 1.35);
+      this.selectionOverlays.updateUnitRadiusRings(m, e);
+      this.selectionOverlays.updateRangeRings(m, e);
 
       // Per-turret placement. The runtime 3D mount is derived from the
       // unit blueprint's `turrets[i].mount` in body-radius fractions.
@@ -3044,7 +2610,12 @@ export class Render3DEntities {
           if (tm.pitchGroup) tm.pitchGroup.rotation.z = 0;
           if (tm.spinGroup) tm.spinGroup.rotation.x = 0;
           if (visible) {
-            this.updateCommanderEmitter(tm.constructionEmitter, e, unitGraphicsTier);
+            this.constructionVisuals.updateCommanderEmitter(
+              tm.constructionEmitter,
+              e,
+              unitGraphicsTier,
+              this._currentDtMs,
+            );
           }
           continue;
         }
@@ -3444,7 +3015,7 @@ export class Render3DEntities {
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const pruneBuildings = entitySetVersion !== this.lastBuildingEntitySetVersion;
     if (pruneBuildings) seen.clear();
-    this.releaseFactorySprayTargets();
+    this.constructionVisuals.beginFrame();
 
     // LOD-driven detail visibility for buildings. Each accent mesh now
     // declares its own tier range, and the per-object resolver can lower
@@ -3651,24 +3222,7 @@ export class Render3DEntities {
           }
         }
 
-        // Building selection halo. Uses the same torus material/geometry as
-        // units so clicking a factory/solar/wind reads like selecting any
-        // other owned entity. Scale by footprint diagonal so rectangular
-        // buildings sit fully inside the donut.
-        if (selected && !m.ring) {
-          const ring = new THREE.Mesh(this.ringGeom, this.selectionRingMat);
-          ring.rotation.x = Math.PI / 2;
-          m.group.add(ring);
-          m.ring = ring;
-        } else if (!selected && m.ring) {
-          m.group.remove(m.ring);
-          m.ring = undefined;
-        }
-        if (m.ring) {
-          const ringR = Math.hypot(w, d) * 0.55;
-          m.ring.scale.setScalar(ringR);
-          m.ring.position.set(0, ringR * 0.06 + 0.8, 0);
-        }
+        this.selectionOverlays.updateSelectionRing(m, selected, Math.hypot(w, d) * 0.55);
 
         m.buildingCachedTier = objectTier;
         m.buildingCachedGraphicsTier = tier;
@@ -3711,6 +3265,7 @@ export class Render3DEntities {
           if (tm.pitchGroup) tm.pitchGroup.rotation.z = t.pitch;
         }
       }
+      this.selectionOverlays.updateRangeRings(m, e);
     }
 
     this.updateAnimatedBuildings();
@@ -3719,6 +3274,7 @@ export class Render3DEntities {
       for (const [id, m] of this.buildingMeshes) {
         if (!seen.has(id)) {
           this.world.remove(m.group);
+          this.disposeWorldParentedOverlays(m);
           this.buildingMeshes.delete(id);
           this.unregisterAnimatedBuilding(id);
         }
@@ -3863,7 +3419,7 @@ export class Render3DEntities {
       const mesh = this.buildingMeshes.get(id);
       const entity = this.clientViewState.getEntity(id);
       if (!mesh || !entity) continue;
-      this.updateFactoryConstructionRig(
+      this.constructionVisuals.updateFactoryConstructionRig(
         mesh.factoryRig,
         entity,
         mesh.buildingCachedGraphicsTier ?? 'min',
@@ -3871,33 +3427,10 @@ export class Render3DEntities {
         mesh.buildingCachedWidth ?? entity.building?.width ?? 100,
         mesh.buildingCachedDepth ?? entity.building?.height ?? 100,
         mesh.group,
+        this._currentDtMs,
+        this._lastSpinMs,
       );
     }
-  }
-
-  private releaseFactorySprayTargets(): void {
-    for (let i = 0; i < this.factorySprayTargets.length; i++) {
-      this.factorySprayTargetPool.push(this.factorySprayTargets[i]);
-    }
-    this.factorySprayTargets.length = 0;
-  }
-
-  private acquireFactorySprayTarget(): SprayTarget {
-    let target = this.factorySprayTargetPool.pop();
-    if (!target) {
-      target = {
-        source: { id: 0, pos: { x: 0, y: 0 }, z: 0, playerId: 1 as PlayerId },
-        target: { id: 0, pos: { x: 0, y: 0 }, z: 0, radius: 0 },
-        type: 'build',
-        intensity: 0,
-      };
-    }
-    // Recycled targets may carry a stale per-resource colorRGB from
-    // their last use. Clear it so callers that don't set one fall
-    // back to team color cleanly.
-    target.colorRGB = undefined;
-    this.factorySprayTargets.push(target);
-    return target;
   }
 
   private updateSolarCollectorAnimation(
@@ -3988,98 +3521,6 @@ export class Render3DEntities {
     m.windRig.rotor.rotation.z = this.windRotorPhase;
   }
 
-  private updateConstructionTowerSpin(
-    rig: ConstructionTowerSpinRig,
-    active: boolean,
-    dtSec: number,
-  ): void {
-    if (rig.towerOrbitParts.length === 0) return;
-    const preset = getDriftPreset(getDriftMode());
-    const alpha = halfLifeBlend(
-      dtSec,
-      preset.rotation.vel * CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
-    );
-    const target = active ? 1 : 0;
-    const amountBefore = rig.towerSpinAmount;
-    rig.towerSpinAmount += (target - rig.towerSpinAmount) * alpha;
-    if (!active && rig.towerSpinAmount < 0.001) {
-      rig.towerSpinAmount = 0;
-    }
-    if (rig.towerSpinAmount > 0) {
-      rig.towerSpinPhase =
-        (rig.towerSpinPhase + dtSec * CONSTRUCTION_TOWER_SPIN_CONFIG.radPerSec * rig.towerSpinAmount)
-        % (Math.PI * 2);
-    }
-    // Stable-state short-circuit: when both this frame's amount AND
-    // the previous frame's amount are 0, the phase didn't advance and
-    // every per-mesh write below would re-stamp the same transform we
-    // wrote last frame. The first frame after the fade-out completes
-    // still runs the loop (amountBefore > 0 → amount === 0) so the
-    // resting positions get one final settled write.
-    if (amountBefore === 0 && rig.towerSpinAmount === 0) return;
-    const c = Math.cos(rig.towerSpinPhase);
-    const s = Math.sin(rig.towerSpinPhase);
-    for (let i = 0; i < rig.towerOrbitParts.length; i++) {
-      const part = rig.towerOrbitParts[i];
-      part.mesh.position.x = part.baseX * c - part.baseZ * s;
-      part.mesh.position.z = part.baseX * s + part.baseZ * c;
-      part.mesh.rotation.y = part.baseRotationY + rig.towerSpinPhase;
-    }
-    for (let i = 0; i < rig.pylonTopsLocal.length && i < rig.pylonTopBaseLocals.length; i++) {
-      const base = rig.pylonTopBaseLocals[i];
-      const current = rig.pylonTopsLocal[i];
-      current.x = base.x * c - base.z * s;
-      current.y = base.y;
-      current.z = base.x * s + base.z * c;
-    }
-  }
-
-
-  /** EMA-blend new per-resource rate targets toward the rig's smoothed
-   *  store. Shared by factory + commander emitters so the smoothing
-   *  contract can't drift between them. */
-  private blendSmoothedRates(
-    smoothed: { energy: number; mana: number; metal: number },
-    targetEnergy: number,
-    targetMana: number,
-    targetMetal: number,
-    alpha: number,
-  ): void {
-    smoothed.energy += (targetEnergy - smoothed.energy) * alpha;
-    smoothed.mana   += (targetMana   - smoothed.mana)   * alpha;
-    smoothed.metal  += (targetMetal  - smoothed.metal)  * alpha;
-  }
-
-  /** Drive each shower cylinder bottom-up from the rig's smoothed
-   *  per-resource rates (0..1). Hidden when the rate is essentially
-   *  zero so a fully-funded build doesn't leave a stub. Shared by
-   *  factory active/inactive paths and commander active path. */
-  private applyShowerFromSmoothedRates(rig: {
-    showers: THREE.Mesh[];
-    showerRadius: number;
-    pylonHeight: number;
-    pylonBaseY: number;
-    smoothedRates: { energy: number; mana: number; metal: number };
-  }): void {
-    const smoothed: readonly [number, number, number] = [
-      rig.smoothedRates.energy,
-      rig.smoothedRates.mana,
-      rig.smoothedRates.metal,
-    ];
-    for (let i = 0; i < rig.showers.length && i < 3; i++) {
-      const shower = rig.showers[i];
-      const r = smoothed[i];
-      if (r < 0.01) {
-        shower.visible = false;
-        continue;
-      }
-      shower.visible = true;
-      const h = rig.pylonHeight * r;
-      shower.scale.set(rig.showerRadius * 2, h, rig.showerRadius * 2);
-      shower.position.y = rig.pylonBaseY + h / 2;
-    }
-  }
-
   private applyProductionRateIndicator(
     rig: ProductionRateIndicatorRig | undefined,
     targetRate: number,
@@ -4099,553 +3540,6 @@ export class Render3DEntities {
     rig.shower.position.y = rig.pylonBaseY + h / 2;
   }
 
-  /** Emit the three per-resource colored build sprays from each pylon
-   *  top to the supplied world-space target. Skipped per-pylon when
-   *  that resource's smoothed rate is below the 0.05 visibility floor.
-   *  Caller is responsible for the upstream tier gate (only fires at
-   *  'high' tier or above), for calling `group.updateWorldMatrix(true,
-   *  false)` once before invocation (so factory callers can reuse the
-   *  fresh matrix when computing their own target), and for writing
-   *  the desired three.js world point into `targetWorld`. */
-  private emitPylonResourceSprays(
-    rig: {
-      pylonTopsLocal: THREE.Vector3[];
-      smoothedRates: { energy: number; mana: number; metal: number };
-    },
-    group: THREE.Group,
-    sourceId: EntityId,
-    sourcePlayerId: PlayerId,
-    targetId: EntityId,
-    targetWorld: THREE.Vector3,
-    targetRadius: number,
-  ): void {
-    const smoothed: readonly [number, number, number] = [
-      rig.smoothedRates.energy,
-      rig.smoothedRates.mana,
-      rig.smoothedRates.metal,
-    ];
-    for (let i = 0; i < rig.pylonTopsLocal.length && i < 3; i++) {
-      const rate = smoothed[i];
-      if (rate < 0.05) continue;
-      this._factorySpraySourceWorld
-        .copy(rig.pylonTopsLocal[i])
-        .applyMatrix4(group.matrixWorld);
-      const spray = this.acquireFactorySprayTarget();
-      spray.source.id = sourceId;
-      spray.source.pos.x = this._factorySpraySourceWorld.x;
-      spray.source.pos.y = this._factorySpraySourceWorld.z;
-      spray.source.z = this._factorySpraySourceWorld.y;
-      spray.source.playerId = sourcePlayerId;
-      spray.target.id = targetId;
-      spray.target.pos.x = targetWorld.x;
-      spray.target.pos.y = targetWorld.z;
-      spray.target.z = targetWorld.y;
-      spray.target.dim = undefined;
-      spray.target.radius = targetRadius;
-      spray.type = 'build';
-      // Intensity = the EMA rate fraction directly (clamped to [0,1]).
-      // The renderer uses this linearly for spawn rate so the particle
-      // stream density tracks the shower-cylinder fill exactly — i.e.
-      // when the shower is at 50% the spray emits at 50% of the spawn
-      // budget. The upstream 0.05 cull (above) gates whether to emit
-      // a spray at all; below that the visual would be ~zero anyway.
-      spray.intensity = Math.min(1, rate);
-      spray.colorRGB = RESOURCE_SPRAY_COLORS[i];
-    }
-  }
-
-  /** Drive the commander build emitter: EMA the per-resource transfer
-   *  rates derived from the build target's `buildable.paid` deltas,
-   *  scale each shower bottom-up, and emit one colored build spray
-   *  from each pylon top toward the build target. Mirrors the factory
-   *  pattern but rates are computed render-side (no extra wire
-   *  payload) since builders already ship `paid` for every Buildable. */
-  private updateCommanderEmitter(
-    rig: ConstructionEmitterRig,
-    commander: Entity,
-    tier: ConcreteGraphicsQuality,
-  ): void {
-    const dtSec = this._currentDtMs / 1000;
-    const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];
-    const rateAlpha = halfLifeBlend(dtSec, halfLife);
-
-    const targetId = commander.builder?.currentBuildTarget ?? null;
-    let targetRateE = 0;
-    let targetRateM = 0;
-    let targetRateT = 0;
-    let spinActive = false;
-    if (targetId !== null && commander.builder && dtSec > 0) {
-      const target = this.clientViewState.getEntity(targetId);
-      const buildable = target?.buildable;
-      if (target && buildable && !buildable.isComplete) {
-        spinActive = true;
-        // Reset baseline on target switch — otherwise the first frame
-        // would see a giant delta and spike all three showers.
-        if (rig.lastPaidTargetId !== targetId) {
-          rig.lastPaid.energy = buildable.paid.energy;
-          rig.lastPaid.mana = buildable.paid.mana;
-          rig.lastPaid.metal = buildable.paid.metal;
-          rig.lastPaidTargetId = targetId;
-        }
-        const dE = Math.max(0, buildable.paid.energy - rig.lastPaid.energy);
-        const dM = Math.max(0, buildable.paid.mana - rig.lastPaid.mana);
-        const dT = Math.max(0, buildable.paid.metal - rig.lastPaid.metal);
-        rig.lastPaid.energy = buildable.paid.energy;
-        rig.lastPaid.mana = buildable.paid.mana;
-        rig.lastPaid.metal = buildable.paid.metal;
-
-        const cap = commander.builder.constructionRate * dtSec;
-        if (cap > 0) {
-          targetRateE = Math.max(0, Math.min(1, dE / cap));
-          targetRateM = Math.max(0, Math.min(1, dM / cap));
-          targetRateT = Math.max(0, Math.min(1, dT / cap));
-        }
-      }
-    } else {
-      // Not actively building — drop the cached baseline so a future
-      // build starts cleanly.
-      rig.lastPaidTargetId = null;
-    }
-
-    this.updateConstructionTowerSpin(rig, spinActive, dtSec);
-    this.blendSmoothedRates(rig.smoothedRates, targetRateE, targetRateM, targetRateT, rateAlpha);
-    this.applyShowerFromSmoothedRates(rig);
-
-    // Per-resource colored sprays from each pylon top to the build
-    // target, intensity gated by smoothed rate. Skipped at low tiers
-    // (matches factory's 'high' gate) and when no live target.
-    if (
-      buildingTierAtLeast(tier, 'high')
-      && targetId !== null
-      && commander.ownership
-    ) {
-      const target = this.clientViewState.getEntity(targetId);
-      if (!target) return;
-      rig.group.updateWorldMatrix(true, false);
-      // Build target's bounding sphere — spray particles fill this
-      // volume so they paint every part of the structure. Uses the
-      // building's actual width/height/depth when present (so a long
-      // factory and a small solar both get fully covered) and the
-      // unit's body radius as a fallback for unit-shaped targets.
-      let halfHeight = 8;
-      let sphereRadius = 12;
-      const b = target.building;
-      if (b) {
-        halfHeight = b.depth * 0.5;
-        sphereRadius = Math.hypot(b.width, b.height, b.depth) * 0.5;
-      } else if (target.unit) {
-        halfHeight = target.unit.radius.body;
-        sphereRadius = target.unit.radius.body;
-      }
-      this._factorySprayTargetWorld.set(
-        target.transform.x,
-        target.transform.z + halfHeight,
-        target.transform.y,
-      );
-      this.emitPylonResourceSprays(
-        rig,
-        rig.group,
-        commander.id,
-        commander.ownership.playerId,
-        target.id,
-        this._factorySprayTargetWorld,
-        sphereRadius,
-      );
-    }
-  }
-
-  private updateFactoryConstructionRig(
-    rig: FactoryConstructionRig | undefined,
-    e: Entity,
-    tier: ConcreteGraphicsQuality,
-    detailsReady: boolean,
-    footprintW: number,
-    footprintD: number,
-    group: THREE.Group,
-  ): void {
-    if (!rig) return;
-
-    const factory = e.factory;
-    const queuedUnitType = factory?.buildQueue[0];
-    const progress = Math.max(0, Math.min(1, factory?.currentBuildProgress ?? 0));
-    const active = detailsReady
-      && !!factory
-      && !!queuedUnitType
-      && factory.isProducing;
-    // Show the construction tower (the factory's "turret") during the
-    // shell phase too — units render their turrets while being built,
-    // so buildings should follow the same rule. applyShellOverride on
-    // the parent group cascades into the rig's meshes, so the tower
-    // reads as a translucent white shell until the building completes.
-    // The tier check still gates marker-LOD (markerOnly forces tier='min',
-    // which fails buildingTierAtLeast(tier, 'medium')); the !active
-    // early-return below naturally suppresses sprays/showers for shells
-    // because factory.isProducing is false until completion.
-    rig.group.visible = buildingTierAtLeast(tier, 'medium');
-
-    // EMA the live per-resource rate fractions toward the smoothed
-    // values stored on the rig. Targets are 0 when the factory isn't
-    // producing (so the showers + sprays fade out instead of popping
-    // off). Rate fractions are 0..1.
-    const dtSec = this._currentDtMs / 1000;
-    const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];
-    const rateAlpha = halfLifeBlend(dtSec, halfLife);
-    const targetEnergy = active ? Math.max(0, Math.min(1, factory?.energyRateFraction ?? 0)) : 0;
-    const targetMana   = active ? Math.max(0, Math.min(1, factory?.manaRateFraction   ?? 0)) : 0;
-    const targetMetal  = active ? Math.max(0, Math.min(1, factory?.metalRateFraction  ?? 0)) : 0;
-    this.updateConstructionTowerSpin(rig, active, dtSec);
-    this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMana, targetMetal, rateAlpha);
-
-    if (!active) {
-      rig.unitGhost.visible = false;
-      rig.unitCore.visible = false;
-      for (const spark of rig.sparks) spark.visible = false;
-      // Keep showers visible while the smoothed rate hasn't decayed
-      // to ~0 yet so the fade-out reads. Once they're effectively
-      // zero, hide entirely.
-      this.applyShowerFromSmoothedRates(rig);
-      return;
-    }
-
-    this.applyShowerFromSmoothedRates(rig);
-
-    let blueprintRadius = Math.min(footprintW, footprintD) * 0.13;
-    let buildSpotRadius = blueprintRadius;
-    if (queuedUnitType) {
-      try {
-        const bp = getUnitBlueprint(queuedUnitType);
-        blueprintRadius = bp.radius.body;
-        buildSpotRadius = bp.radius.push;
-      } catch {
-        // Unknown queue ids should not break rendering; keep the generic bay ghost.
-      }
-    }
-
-    // Outer ghost shell ("build bubble") — sized as a SPHERE at
-    // BUILD_BUBBLE_RADIUS_PUSH_MULT × the queued unit's PUSH collider
-    // radius, easing in with build progress and modulated by a small
-    // breathing pulse for life. The original implementation grew the
-    // bubble off the unit's body radius and stretched it into a flat
-    // ellipsoid; the user pinned it to the push collider so the bubble
-    // visually matches the footprint the unit will occupy after it
-    // exits the factory bay.
-    const targetGhostRadius = Math.max(8, buildSpotRadius * BUILD_BUBBLE_RADIUS_PUSH_MULT);
-    const easedProgress = progress * progress * (3 - 2 * progress);
-    const ghostScaleProgress = 0.28 + easedProgress * 0.72;
-    const timeSec = this._lastSpinMs / 1000;
-    const phase = timeSec * 4.7 + e.id * 0.19;
-    const pulse = 1 + Math.sin(phase * 1.7) * 0.035;
-    const ghostRadius = targetGhostRadius * ghostScaleProgress * pulse;
-    // The remaining rig elements (core orb, travelling pulses,
-    // sparks) keep their old per-blueprint sizing for now — they're
-    // small relative to the outer shell, and locking them to the push
-    // multiplier would visually swamp small units. `radius` below is
-    // the legacy "rig radius" they lerp against.
-    const maxBayRadius = Math.max(
-      12,
-      Math.min(getFactoryConstructionRadius() * 0.34, blueprintRadius * 1.35),
-    );
-    const baseRadius = Math.max(8, Math.min(maxBayRadius, blueprintRadius * 1.15));
-    const radius = baseRadius * (0.28 + easedProgress * 0.72);
-    const centerY = Math.max(5, ghostRadius * 0.68);
-    const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
-      mapWidth: this.clientViewState.getMapWidth(),
-      mapHeight: this.clientViewState.getMapHeight(),
-    }, this._factoryBuildSpot);
-    const spotDx = buildSpot.x - e.transform.x;
-    const spotDz = buildSpot.y - e.transform.y;
-    const cos = Math.cos(e.transform.rotation);
-    const sin = Math.sin(e.transform.rotation);
-    const localSpotX = cos * spotDx + sin * spotDz;
-    const localSpotZ = -sin * spotDx + cos * spotDz;
-
-    // The build-bubble outer ghost and inner core orb were a visual
-    // proxy for the unit being assembled; now that the actual unit
-    // shell renders translucent in-place, the bubble obscures the
-    // shell. Hide both meshes outright (positions/scales kept stable
-    // so any unhide later reads coherent values, not stale zeros).
-    rig.unitGhost.visible = false;
-    rig.unitGhost.position.set(localSpotX, centerY, localSpotZ);
-    rig.unitGhost.scale.setScalar(ghostRadius);
-
-    rig.unitCore.visible = false;
-    rig.unitCore.position.set(localSpotX, centerY + radius * 0.08, localSpotZ);
-    rig.unitCore.scale.setScalar(Math.max(3, radius * 0.18));
-
-    // Three colored build sprays — one per pylon top to the build
-    // spot, intensity gated by that resource's smoothed transfer rate.
-    // The sprays replace the single nozzle stream; each pylon now both
-    // fills its shower bottom-up AND emits its colored particles
-    // toward the forming unit.
-    if (buildingTierAtLeast(tier, 'high') && e.ownership) {
-      group.updateWorldMatrix(true, false);
-      rig.group.updateWorldMatrix(true, false);
-      this._factorySprayTargetLocal.set(localSpotX, centerY + radius * 0.06, localSpotZ);
-      this._factorySprayTargetWorld
-        .copy(this._factorySprayTargetLocal)
-        .applyMatrix4(group.matrixWorld);
-      this.emitPylonResourceSprays(
-        rig,
-        rig.group,
-        e.id,
-        e.ownership.playerId,
-        e.id,
-        this._factorySprayTargetWorld,
-        radius,
-      );
-    }
-
-    // Orbiting sparks were the small white spheres orbiting inside the
-    // build bubble. Hidden alongside the bubble for the same reason —
-    // the translucent unit shell now carries the in-progress reading.
-    for (const spark of rig.sparks) spark.visible = false;
-  }
-
-  private updateProjectiles(): void {
-    const projectiles = this.clientViewState.collectTravelingProjectiles(this._projectileRenderScratch);
-    const seen = this._seenProjectileIds;
-    const entitySetVersion = this.clientViewState.getEntitySetVersion();
-    const pruneProjectiles = entitySetVersion !== this.lastProjectileEntitySetVersion;
-    if (pruneProjectiles) seen.clear();
-    const sphereMesh = this.projectileSphereInstanced;
-    const cylinderMesh = this.projectileCylinderInstanced;
-    let sphereCount = 0;
-    let cylinderCount = 0;
-    // Hoist the per-frame range-toggle reads to once per call instead of
-    // twice per projectile (was inside updateProjRadiusMeshes). Toggle
-    // state is global so it can't change between projectiles within a
-    // single frame, and at high projectile counts the dictionary read
-    // for each toggle dominated the inner loop.
-    const wantCol = getProjRangeToggle('collision');
-    const wantExp = getProjRangeToggle('explosion');
-
-    for (const e of projectiles) {
-      if (pruneProjectiles) seen.add(e.id);
-      // Hoist the transform reads once per projectile — used in
-      // scope gate, position write, and (for cylinders) the orientation
-      // basis. Property access on `e.transform` six times each frame
-      // for thousands of in-flight shots adds up; one local-var copy
-      // pays for the rest of the loop body.
-      const tx = e.transform.x;
-      const ty = e.transform.y;
-      const tz = e.transform.z;
-      // Scope gate — tighter padding (projectiles are small and moving fast).
-      if (!this.scope.inScope(tx, ty, 50)) {
-        this.hideProjRadiusMeshes(e.id);
-        continue;
-      }
-
-      const objectTier = this.resolveEntityObjectLod(e);
-      if (objectTier === 'marker') {
-        this.hideProjRadiusMeshes(e.id);
-        continue;
-      }
-      const projectileGraphicsTier = objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
-      const richProjectile = objectTier === 'rich' || objectTier === 'hero' || objectTier === 'simple';
-      const shot = e.projectile?.config.shot;
-      // Projectile shots have collision.radius
-      let radius = 4;
-      if (shot && isProjectileShot(shot)) radius = shot.collision.radius;
-      const radiusScale = PROJECTILE_RADIUS_BY_TIER[projectileGraphicsTier];
-      const visualRadius = radius * radiusScale;
-      const isCylinder = richProjectile
-        && shot
-        && isProjectileShot(shot)
-        && shot.shape === 'cylinder';
-
-      // Projectile altitude is authoritative sim state (arcs through
-      // real z from turret muzzle to ground / target). SHOT_HEIGHT is
-      // no longer the truth — the sphere renders exactly where the
-      // sim says it is.
-      this._projPos.set(tx, tz, ty);
-
-      if (isCylinder) {
-        if (!cylinderMesh || cylinderCount >= Render3DEntities.PROJECTILE_INSTANCED_CAP) {
-          this.hideProjRadiusMeshes(e.id);
-          continue;
-        }
-        // Cylinder rocket body: stretch along its local +Y, then rotate
-        // so +Y aligns with the projectile's velocity vector. World
-        // length = radius · lengthMult, world diameter = radius ·
-        // diameterMult — both pulled from the shot's `cylinderShape`
-        // block so a designer can tune rocket aspect ratios per blueprint
-        // (lightRocket vs heavyMissile vs torpedo etc.). The sim
-        // collision footprint stays a sphere of collision.radius —
-        // this is purely a render hint.
-        const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
-        const cylSpec = (shot && isProjectileShot(shot)) ? shot.cylinderShape : undefined;
-        const lengthMult = cylSpec?.lengthMult ?? Render3DEntities._PROJ_CYL_LENGTH_MULT_DEFAULT;
-        const diameterMult = cylSpec?.diameterMult ?? Render3DEntities._PROJ_CYL_DIAMETER_MULT_DEFAULT;
-        const length = r * lengthMult;
-        const diameter = r * diameterMult;
-        this._projScale.set(diameter, length, diameter);
-        this._projQuat.identity();
-        const proj = e.projectile;
-        if (proj) {
-          // sim(x, y, z) → three(x, z, y), so velocity components map
-          // the same way. If velocity is near zero (just-spawned, paused)
-          // fall through to identity rotation rather than NaN.
-          const vx = proj.velocityX, vy = proj.velocityY, vz = proj.velocityZ;
-          const len2 = vx * vx + vy * vy + vz * vz;
-          if (len2 > 1e-6) {
-            const inv = 1 / Math.sqrt(len2);
-            this._projDir.set(vx * inv, vz * inv, vy * inv);
-            this._projQuat.setFromUnitVectors(
-              Render3DEntities._PROJ_CYL_AXIS,
-              this._projDir,
-            );
-          }
-        }
-        this._projMatrix.compose(this._projPos, this._projQuat, this._projScale);
-        cylinderMesh.setMatrixAt(cylinderCount++, this._projMatrix);
-      } else {
-        if (!sphereMesh || sphereCount >= Render3DEntities.PROJECTILE_INSTANCED_CAP) {
-          this.hideProjRadiusMeshes(e.id);
-          continue;
-        }
-        // Match 2D: `fillCircle(x, y, radius)` — the sphere's world-space radius
-        // equals the sim's shot.collision.radius. SphereGeometry has radius 1,
-        // so setScalar(radius) is the correct scale.
-        const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
-        this._projScale.set(r, r, r);
-        this._projMatrix.compose(
-          this._projPos,
-          Render3DEntities._IDENTITY_QUAT,
-          this._projScale,
-        );
-        sphereMesh.setMatrixAt(sphereCount++, this._projMatrix);
-      }
-
-      if (richProjectile) {
-        this.updateProjRadiusMeshes(e, wantCol, wantExp);
-      } else {
-        this.hideProjRadiusMeshes(e.id);
-      }
-    }
-
-    if (sphereMesh) {
-      sphereMesh.count = sphereCount;
-      if (sphereCount > 0) this.markInstanceMatrixRange(sphereMesh, 0, sphereCount - 1);
-    }
-    if (cylinderMesh) {
-      cylinderMesh.count = cylinderCount;
-      if (cylinderCount > 0) this.markInstanceMatrixRange(cylinderMesh, 0, cylinderCount - 1);
-    }
-
-    // Drop SHOT RAD wireframes that went with despawned projectiles.
-    // This map is sparse, but avoid the walk on frames where the
-    // network entity set did not change.
-    if (pruneProjectiles) {
-      for (const [id, radii] of this.projectileRadiusMeshes) {
-        if (!seen.has(id)) {
-          this.releaseProjRadiusMesh(radii.collision);
-          this.releaseProjRadiusMesh(radii.explosion);
-          this.projectileRadiusMeshes.delete(id);
-        }
-      }
-      this.lastProjectileEntitySetVersion = entitySetVersion;
-    }
-  }
-
-  /** Show/hide the per-projectile SHOT RAD wireframe spheres. COL is
-   *  the actual collision capsule the swept-line 3D test uses; EXP is
-   *  the boolean splash-damage sphere applied at detonation.
-   *
-   *  Spheres (not rings) because every one of these sim checks is 3D:
-   *  `lineSphereIntersectionT` for COL, sphere-vs-sphere intersection
-   *  for EXP. Drawing flat rings would under-sell what the sim tests —
-   *  a high-arc shell's blast genuinely catches airborne targets above
-   *  it. */
-  private updateProjRadiusMeshes(
-    entity: Entity,
-    wantCol: boolean,
-    wantExp: boolean,
-  ): void {
-    const proj = entity.projectile;
-    if (!proj) return;
-    const shot = proj.config.shot;
-    if (!isProjectileShot(shot)) return;
-
-    if (!wantCol && !wantExp) {
-      // Fast path — nothing to show. Hide anything that was visible
-      // last frame so flipping the toggle off doesn't leave a stale
-      // sphere floating around.
-      const existing = this.projectileRadiusMeshes.get(entity.id);
-      if (existing) {
-        if (existing.collision) existing.collision.visible = false;
-        if (existing.explosion) existing.explosion.visible = false;
-      }
-      return;
-    }
-
-    let radii = this.projectileRadiusMeshes.get(entity.id);
-    if (!radii) {
-      radii = {};
-      this.projectileRadiusMeshes.set(entity.id, radii);
-    }
-
-    const projX = entity.transform.x;
-    const projY = entity.transform.y;
-    const projZ = entity.transform.z;
-
-    this.setProjRadiusMesh(
-      radii, 'collision', wantCol,
-      projX, projY, projZ,
-      shot.collision.radius,
-      this.projMatCollision,
-    );
-    this.setProjRadiusMesh(
-      radii, 'explosion', wantExp && !proj.hasExploded,
-      projX, projY, projZ,
-      shot.explosion?.radius ?? 0,
-      this.projMatExplosion,
-    );
-  }
-
-  private hideProjRadiusMeshes(entityId: EntityId): void {
-    const radii = this.projectileRadiusMeshes.get(entityId);
-    if (!radii) return;
-    if (radii.collision) radii.collision.visible = false;
-    if (radii.explosion) radii.explosion.visible = false;
-  }
-
-  /** Internal helper — create/show/hide one of the SHOT RAD
-   *  wireframe spheres on a projectile. */
-  private setProjRadiusMesh(
-    radii: { collision?: THREE.LineSegments; explosion?: THREE.LineSegments },
-    key: 'collision' | 'explosion',
-    want: boolean,
-    x: number, y: number, z: number,
-    radius: number,
-    mat: THREE.LineBasicMaterial,
-  ): void {
-    if (!want || radius <= 0) {
-      const m = radii[key];
-      if (m) m.visible = false;
-      return;
-    }
-    let mesh = radii[key];
-    if (!mesh) {
-      mesh = this.projectileRadiusMeshPool.pop() ?? new THREE.LineSegments(this.radiusSphereGeom, mat);
-      mesh.material = mat;
-      this.world.add(mesh);
-      radii[key] = mesh;
-    }
-    mesh.visible = true;
-    // sim(x,y,z) → three(x,z,y). Sphere already lives at origin; scale
-    // is the sim radius so its world size matches what the collision
-    // code tests against.
-    mesh.position.set(x, z, y);
-    mesh.scale.setScalar(radius);
-  }
-
-  private releaseProjRadiusMesh(mesh?: THREE.LineSegments): void {
-    if (!mesh) return;
-    mesh.visible = false;
-    this.world.remove(mesh);
-    this.projectileRadiusMeshPool.push(mesh);
-  }
-
   /** Look up the lift subgroup for a unit's mesh. The lift group
    *  carries the body's vertical lift (so it sits on top of the
    *  locomotion instead of embedded in it) AND is parented through
@@ -4662,14 +3556,13 @@ export class Render3DEntities {
   }
 
   getFactorySprayTargets(): readonly SprayTarget[] {
-    return this.factorySprayTargets;
+    return this.constructionVisuals.getFactorySprayTargets();
   }
 
   destroy(): void {
-    // Per-unit overlays (TURR RAD rings, BLD ring, BODY + PUSH rings)
-    // are parented to the world group rather than the unit group so
-    // they stay flat on the ground regardless of unit rotation /
-    // altitude — destroy() has to release them explicitly.
+    // TURR CIR / BLD overlays are world-parented so they stay flat on
+    // the terrain regardless of unit rotation; release those explicitly.
+    // UNIT SPH overlays are parented to m.group and leave with it.
     for (const m of this.unitMeshes.values()) {
       destroyLocomotion(m.locomotion, this.legRenderer);
       this.world.remove(m.group);
@@ -4678,34 +3571,17 @@ export class Render3DEntities {
     // Renderer-wide teardown — drop every cached leg snapshot, no
     // future build will consume them.
     this.legStateCache.clear();
-    for (const m of this.buildingMeshes.values()) this.world.remove(m.group);
-    if (this.projectileSphereInstanced) {
-      this.world.remove(this.projectileSphereInstanced);
-      this.projectileSphereInstanced.dispose();
-      this.projectileSphereInstanced = null;
+    for (const m of this.buildingMeshes.values()) {
+      this.world.remove(m.group);
+      this.disposeWorldParentedOverlays(m);
     }
-    if (this.projectileCylinderInstanced) {
-      this.world.remove(this.projectileCylinderInstanced);
-      this.projectileCylinderInstanced.dispose();
-      this.projectileCylinderInstanced = null;
-    }
-    for (const radii of this.projectileRadiusMeshes.values()) {
-      if (radii.collision) this.world.remove(radii.collision);
-      if (radii.explosion) this.world.remove(radii.explosion);
-    }
-    for (const mesh of this.projectileRadiusMeshPool) {
-      this.world.remove(mesh);
-    }
+    this.projectileRenderer.destroy();
     this.unitMeshes.clear();
     this.buildingMeshes.clear();
     this.barrelSpins.clear();
     this._seenUnitIds.clear();
     this._seenBuildingIds.clear();
-    this._seenProjectileIds.clear();
-    this.projectileRadiusMeshes.clear();
-    this.projectileRadiusMeshPool.length = 0;
-    this.factorySprayTargets.length = 0;
-    this.factorySprayTargetPool.length = 0;
+    this.constructionVisuals.destroy();
     // Polygonal-chassis pools must tear down BEFORE disposeBodyGeoms().
     // Each pool owns an instanced-only clone of the BodyShape3D cached
     // geometry, so dispose that clone here; BodyShape3D still disposes
@@ -4724,25 +3600,9 @@ export class Render3DEntities {
     this.commanderCylinderGeom.dispose();
     this.commanderDomeGeom.dispose();
     this.barrelGeom.dispose();
-    this.projectileGeom.dispose();
-    this.projectileCylinderGeom.dispose();
-    this.projectileMat.dispose();
     this.buildingGeom.dispose();
-    this.ringGeom.dispose();
     this.radiusSphereGeom.dispose();
-    this.radiusMatScale.dispose();
-    this.radiusMatShot.dispose();
-    this.radiusMatPush.dispose();
-    this.ringMatTrackAcquire.dispose();
-    this.ringMatTrackRelease.dispose();
-    this.ringMatEngageAcquire.dispose();
-    this.ringMatEngageRelease.dispose();
-    this.ringMatEngageMinAcquire.dispose();
-    this.ringMatEngageMinRelease.dispose();
-    this.ringMatBuild.dispose();
-    this.selectionRingMat.dispose();
-    this.projMatCollision.dispose();
-    this.projMatExplosion.dispose();
+    this.selectionOverlays.dispose();
     this.mirrorGeom.dispose();
     this.mirrorArmGeom.dispose();
     this.mirrorSupportGeom.dispose();

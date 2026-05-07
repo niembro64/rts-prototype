@@ -3,7 +3,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, BeamShot, LaserShot } from '../types';
-import { getPlayerPrimaryColor, isLineShot, isProjectileShot } from '../types';
+import { getPlayerPrimaryColor } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
 import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
@@ -30,15 +30,9 @@ export function buildImpactContext(
   collisionRadius: number,
   entity?: Entity,
 ): ImpactContext {
-  // Single explosion radius now (no primary/secondary). Direct-hit
-  // collision falls through to collisionRadius when the shot has no
-  // splash zone (pure carrier or non-splashing line shot).
-  let explosionRadius = collisionRadius;
-  if (isProjectileShot(config.shot)) {
-    explosionRadius = config.shot.explosion?.radius ?? collisionRadius;
-  } else if (isLineShot(config.shot)) {
-    explosionRadius = config.shot.radius;
-  }
+  // Single explosion radius now (no primary/secondary). The shot
+  // profile owns the fallback policy for projectiles vs line shots.
+  const explosionRadius = config.shotProfile.runtime.impactRadius || collisionRadius;
 
   let entityVelX = 0, entityVelY = 0, entityCollisionRadius = 0;
   let penDirX = 0, penDirY = 0;

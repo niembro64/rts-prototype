@@ -43,7 +43,7 @@ import {
 } from '../landGrid';
 import type { Lod3DState } from './Lod3D';
 import type { RenderLodGrid } from './RenderLodGrid';
-import { GRID_CELL_SIZE } from '../sim/grid';
+import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getOccupiedBuildingCells } from '../sim/buildPlacementValidation';
 import { getMetalDepositGridCells } from '../sim/metalDeposits';
 import {
@@ -127,7 +127,7 @@ export class CaptureTileRenderer3D {
   private buildGridMapUniform!: { value: THREE.DataTexture };
   private buildGridMapSizeUniform = { value: new THREE.Vector2(1, 1) };
   private buildGridWorldSizeUniform = { value: new THREE.Vector2(1, 1) };
-  private buildGridCellSizeUniform = { value: GRID_CELL_SIZE };
+  private buildGridCellSizeUniform = { value: BUILD_GRID_CELL_SIZE };
   private buildGridEnabledUniform = { value: 0 };
   private buildGridTextureKey = '';
 
@@ -342,7 +342,7 @@ export class CaptureTileRenderer3D {
   private refreshBuildGridTexture(enabled: boolean): void {
     this.buildGridEnabledUniform.value = enabled ? 1 : 0;
     const buildabilityGrid = this.clientViewState.getTerrainBuildabilityGrid();
-    const buildCellSize = buildabilityGrid?.cellSize ?? GRID_CELL_SIZE;
+    const buildCellSize = buildabilityGrid?.cellSize ?? BUILD_GRID_CELL_SIZE;
     this.buildGridCellSizeUniform.value = buildCellSize;
     this.buildGridWorldSizeUniform.value.set(this.mapWidth, this.mapHeight);
     if (!enabled) {

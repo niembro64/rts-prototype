@@ -20,18 +20,28 @@
 
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
-import type { ConstructionEmitterSize } from '@/types/blueprints';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   EXTRACTOR_BUILDING_VISUAL_HEIGHT,
   MEGA_BEAM_TOWER_VISUAL_HEIGHT,
-  SOLAR_BUILDING_VISUAL_HEIGHT,
   WIND_BUILDING_VISUAL_HEIGHT,
   getBuildingBlueprint,
 } from '../sim/blueprints';
-import type { BuildingRenderProfile, TurretConfig } from '../sim/types';
+import type { BuildingRenderProfile } from '../sim/types';
 import { getTurretConfig } from '../sim/turretConfigs';
 import { BUILDING_PALETTE, SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
+import {
+  buildConstructionEmitterRigFromTurretConfig,
+  buildProductionRateIndicator,
+  disposeConstructionEmitterGeoms,
+  type ConstructionTowerOrbitPart,
+  type ProductionRateIndicatorRig,
+} from './ConstructionEmitterMesh3D';
+import {
+  buildSolarCollector,
+  disposeSolarCollectorGeoms,
+  type SolarRig,
+} from './SolarCollectorMesh3D';
 import {
   BUILD_BUBBLE_GHOST_COLOR_HEX,
   BUILD_BUBBLE_GHOST_OPACITY,
@@ -65,26 +75,6 @@ export type BuildingDetailMesh = {
   minTier: ConcreteGraphicsQuality;
   maxTier?: ConcreteGraphicsQuality;
   role?: BuildingDetailRole;
-};
-
-export type SolarPetalAnimation = {
-  width: number;
-  length: number;
-  hinge: THREE.Vector3;
-  tangent: THREE.Vector3;
-  openDirection: THREE.Vector3;
-  closedDirection: THREE.Vector3;
-  panelSideHint: THREE.Vector3;
-  inset: number;
-  normalOffset: number;
-  thickness: number;
-};
-
-export type ConstructionTowerOrbitPart = {
-  mesh: THREE.Mesh;
-  baseX: number;
-  baseZ: number;
-  baseRotationY: number;
 };
 
 export type FactoryConstructionRig = {
@@ -128,22 +118,10 @@ export type FactoryConstructionRig = {
   towerSpinPhase: number;
 };
 
-export type ProductionRateIndicatorRig = {
-  shower: THREE.Mesh;
-  showerRadius: number;
-  pylonHeight: number;
-  pylonBaseY: number;
-  smoothedRate: number;
-};
-
 export type WindTurbineRig = {
   root: THREE.Mesh;
   rotor: THREE.Mesh;
   rateIndicator?: ProductionRateIndicatorRig;
-};
-
-export type SolarRig = {
-  rateIndicator: ProductionRateIndicatorRig;
 };
 
 /** Per-LOD rotor meshes for the extractor. The detail system gates
@@ -153,32 +131,6 @@ export type SolarRig = {
 export type ExtractorRig = {
   rotors: THREE.Mesh[];
   rateIndicator?: ProductionRateIndicatorRig;
-};
-
-export type ConstructionEmitterRig = {
-  group: THREE.Group;
-  /** Same per-resource pylon trio the factory uses — three structural
-   *  pylons evenly spaced around the emitter (energy / mana / metal),
-   *  each wrapped by a translucent shower cylinder driven by the
-   *  smoothed transfer rate. The render path EMAs rates derived from
-   *  the build target's `buildable.paid` deltas (no extra wire
-   *  payload — see Render3DEntities updateCommanderEmitter) and feeds
-   *  per-resource colored sprays from each pylon top to the target. */
-  showers: THREE.Mesh[];
-  towerOrbitParts: ConstructionTowerOrbitPart[];
-  showerRadius: number;
-  pylonHeight: number;
-  pylonBaseY: number;
-  pylonTopsLocal: THREE.Vector3[];
-  pylonTopBaseLocals: THREE.Vector3[];
-  smoothedRates: { energy: number; mana: number; metal: number };
-  /** Target id we last sampled `paid` from, plus the per-resource
-   *  paid values, so the per-frame updater can compute deltas. Reset
-   *  to null when the commander stops building. */
-  lastPaidTargetId: number | null;
-  lastPaid: { energy: number; mana: number; metal: number };
-  towerSpinAmount: number;
-  towerSpinPhase: number;
 };
 
 /** What the caller receives back from `buildBuildingShape()`. */
@@ -205,9 +157,6 @@ export type BuildingShape = {
 // ── Standard dimensions ────────────────────────────────────────────────
 /** Default fallback block height for unknown buildings. */
 const DEFAULT_HEIGHT = DEFAULT_BUILDING_VISUAL_HEIGHT;
-/** Solar collector silhouette is a squat opened pyramid, but tall enough
- *  for the photovoltaic faces to read as the main structure. */
-const SOLAR_HEIGHT = SOLAR_BUILDING_VISUAL_HEIGHT;
 const WIND_HEIGHT = WIND_BUILDING_VISUAL_HEIGHT;
 const EXTRACTOR_VISUAL_HEIGHT = EXTRACTOR_BUILDING_VISUAL_HEIGHT;
 // ── Shared cached geometries ───────────────────────────────────────────
@@ -215,50 +164,6 @@ const EXTRACTOR_VISUAL_HEIGHT = EXTRACTOR_BUILDING_VISUAL_HEIGHT;
 // it to the right dimensions. Shared across instances so every factory
 // and every solar uses the same backing BufferGeometry.
 const boxGeom = new THREE.BoxGeometry(1, 1, 1);
-// Solar geometry — both the inner photovoltaic body (truncated square
-// pyramid) and the four fold-out petals (trapezoids) share one chop
-// line: cut off the top third of the original triangle/pyramid so the
-// closed assembly lands on a flat square plateau (where the energy
-// rate pillar sits) instead of an apex point.
-const SOLAR_PETAL_CHOP_FRACTION = 2 / 3;
-// Half-width of the panel/face at the chop line. Linear taper from
-// half-width 0.5 at the base (y=0) to 0 at the apex (y=1).
-const SOLAR_CHOP_HALF = (1 - SOLAR_PETAL_CHOP_FRACTION) / 2;
-// Frustum top y in the body's local (centered) y-range -0.5..0.5.
-const SOLAR_FRUSTUM_TOP_Y = -0.5 + SOLAR_PETAL_CHOP_FRACTION;
-const h = SOLAR_CHOP_HALF;
-const ty = SOLAR_FRUSTUM_TOP_Y;
-const solarPanelPyramidGeom = new THREE.BufferGeometry();
-solarPanelPyramidGeom.setAttribute('position', new THREE.Float32BufferAttribute([
-  // Front face (+z) — base edge then chopped top edge, two triangles
-  -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,   h, ty,  h,
-  -0.5, -0.5,  0.5,   h, ty,  h,  -h, ty,  h,
-  // Back face (-z)
-   0.5, -0.5, -0.5,  -0.5, -0.5, -0.5,  -h, ty, -h,
-   0.5, -0.5, -0.5,  -h, ty, -h,   h, ty, -h,
-  // Right face (+x)
-   0.5, -0.5,  0.5,   0.5, -0.5, -0.5,   h, ty, -h,
-   0.5, -0.5,  0.5,   h, ty, -h,   h, ty,  h,
-  // Left face (-x)
-  -0.5, -0.5, -0.5,  -0.5, -0.5,  0.5,  -h, ty,  h,
-  -0.5, -0.5, -0.5,  -h, ty,  h,  -h, ty, -h,
-  // Top face (+y) — flat square plateau the energy pillar rests on
-  -h, ty, -h,  -h, ty,  h,   h, ty,  h,
-  -h, ty, -h,   h, ty,  h,   h, ty, -h,
-], 3));
-solarPanelPyramidGeom.computeVertexNormals();
-const solarTrianglePetalShape = new THREE.Shape([
-  new THREE.Vector2(-0.5, 0),
-  new THREE.Vector2(0.5, 0),
-  new THREE.Vector2(SOLAR_CHOP_HALF, SOLAR_PETAL_CHOP_FRACTION),
-  new THREE.Vector2(-SOLAR_CHOP_HALF, SOLAR_PETAL_CHOP_FRACTION),
-]);
-const solarTrianglePanelGeom = new THREE.ShapeGeometry(solarTrianglePetalShape);
-const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape, {
-  depth: 1,
-  bevelEnabled: false,
-  steps: 1,
-});
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
 const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.36);
@@ -267,22 +172,6 @@ const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
 const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
 const windBladeGeom = createWindBladeGeometry();
 
-// Solar-panel glass uses high metalness and low roughness to reflect
-// the scene PMREM, while the dark blue base tint keeps it reading as
-// photovoltaic glass.
-const solarCellMat = new THREE.MeshStandardMaterial({
-  color: BUILDING_PALETTE.photovoltaic,
-  metalness: 1.0,
-  roughness: 0.02,
-  side: THREE.DoubleSide,
-  polygonOffset: true,
-  polygonOffsetFactor: -1,
-  polygonOffsetUnits: -4,
-});
-const solarPetalBackMat = new THREE.MeshLambertMaterial({
-  color: BUILDING_PALETTE.photovoltaicBack,
-  side: THREE.DoubleSide,
-});
 const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 const windTrimMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 const windNacelleMat = new THREE.MeshStandardMaterial({
@@ -316,51 +205,6 @@ function shaderRgb(rgb: readonly [number, number, number]): string {
 const CONSTRUCTION_HAZARD_YELLOW_GLSL = shaderRgb(CONSTRUCTION_HAZARD_COLORS.yellowRgb);
 const CONSTRUCTION_HAZARD_BLACK_GLSL = shaderRgb(CONSTRUCTION_HAZARD_COLORS.blackRgb);
 
-const constructionBandMat = new THREE.ShaderMaterial({
-  vertexShader: `
-varying vec3 vLocal;
-void main() {
-  vLocal = position;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`,
-  fragmentShader: `
-varying vec3 vLocal;
-void main() {
-  float diagonal = fract((vLocal.x * 0.8 + vLocal.y * 1.15 + vLocal.z * 0.45) * 4.4);
-  vec3 yellow = ${CONSTRUCTION_HAZARD_YELLOW_GLSL};
-  vec3 black = ${CONSTRUCTION_HAZARD_BLACK_GLSL};
-  gl_FragColor = vec4(diagonal < 0.5 ? yellow : black, 1.0);
-}
-`,
-});
-
-// Resource-shower cylinders that surround each of the factory's three
-// pylons. Color matches the shell-bar palette so a glance reads
-// "yellow = energy, cyan = mana, copper = metal" the same way the
-// shell HUD does. Translucent + additive so the pylon underneath
-// stays legible when the shower is at full height.
-const CONSTRUCTION_RESOURCE_COLORS = {
-  energy: 0xf5d442,
-  mana: 0x7ad7ff,
-  metal: 0xd09060,
-} as const;
-
-function makeFactoryShowerMat(hex: number): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
-    color: hex,
-    transparent: true,
-    opacity: 0.55,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-}
-const factoryEnergyShowerMat = makeFactoryShowerMat(CONSTRUCTION_RESOURCE_COLORS.energy);
-const factoryManaShowerMat = makeFactoryShowerMat(CONSTRUCTION_RESOURCE_COLORS.mana);
-const factoryMetalShowerMat = makeFactoryShowerMat(CONSTRUCTION_RESOURCE_COLORS.metal);
-const factoryEnergyCapMat = new THREE.MeshLambertMaterial({ color: CONSTRUCTION_RESOURCE_COLORS.energy });
-const factoryManaCapMat = new THREE.MeshLambertMaterial({ color: CONSTRUCTION_RESOURCE_COLORS.mana });
-const factoryMetalCapMat = new THREE.MeshLambertMaterial({ color: CONSTRUCTION_RESOURCE_COLORS.metal });
 // Build-bubble materials. Strictly whitish/grayish per shellConfig —
 // no team color, no amber, no cyan glass. All four mats are kept as
 // separate THREE.Material instances so the four roles (ghost shell,
@@ -413,14 +257,6 @@ void main() {
 `,
 });
 
-const _solarPetalTangent = new THREE.Vector3();
-const _solarPetalDirection = new THREE.Vector3();
-const _solarPetalNormal = new THREE.Vector3();
-const _solarPetalOrigin = new THREE.Vector3();
-const _solarPetalXAxis = new THREE.Vector3();
-const _solarPetalYAxis = new THREE.Vector3();
-const _solarPetalZAxis = new THREE.Vector3();
-
 export function getConstructionHazardMaterial(): THREE.Material {
   return hazardStripeMat;
 }
@@ -437,7 +273,7 @@ export function buildBuildingShape(
 ): BuildingShape {
   switch (type) {
     case 'solar':
-      return buildSolar(width, depth, primaryMat);
+      return buildSolarCollector(width, depth, primaryMat);
     case 'wind':
       return buildWind(width, depth, primaryMat);
     case 'factory':
@@ -519,223 +355,6 @@ function buildExtractor(
 }
 
 // ── Per-type builders ──────────────────────────────────────────────────
-
-/** Solar collector LOD ladder:
- *    marker — cheap team box handled by Render3DEntities
- *    min    — single photovoltaic pyramid
- *    low    — animated solid petals + solar faces
- *    medium — team-color backing panels on petal exteriors
- *    high   — same visual as medium
- *    max    — same visual as medium
- *
- *  Every petal-attached detail carries the same hinge animation data
- *  so closed/open transitions move as one rigid collector assembly. */
-function buildSolar(
-  width: number,
-  depth: number,
-  primaryMat: THREE.Material,
-): BuildingShape {
-  const primary = new THREE.Mesh(solarPanelPyramidGeom, solarCellMat);
-  const details: BuildingDetailMesh[] = [];
-
-  const petalTilt = 0.42;
-  const petalHingeY = 0;
-  const petalThickness = 3.2;
-  const panelRaise = 2.4;
-  const petalFaceOffset = petalThickness + panelRaise;
-  const teamAccentThickness = 0.85;
-  const teamAccentOffset = -teamAccentThickness - 0.35;
-  const frontBackAspect = width / Math.hypot(SOLAR_HEIGHT, depth * 0.5);
-  const sideAspect = depth / Math.hypot(SOLAR_HEIGHT, width * 0.5);
-
-  const frontBackSpan = width;
-  const frontBackLen = frontBackSpan / frontBackAspect;
-  const frontBackZ = depth * 0.5;
-  const sideSpan = depth;
-  const sideLen = sideSpan / sideAspect;
-  const sideX = width * 0.5;
-  const hingeRadius = Math.max(2.2, Math.min(width, depth) * 0.035);
-  const hingeCapRadius = hingeRadius * 1.08;
-
-  for (const xSign of [-1, 1] as const) {
-    for (const zSign of [-1, 1] as const) {
-      details.push(detail(makeSphere(
-        solarPetalBackMat,
-        hingeCapRadius,
-        xSign * sideX,
-        hingeCapRadius,
-        zSign * frontBackZ,
-      ), 'low'));
-    }
-  }
-
-  for (const sign of [-1, 1]) {
-    const frontBackClosedDir = new THREE.Vector3(0, SOLAR_HEIGHT, -sign * frontBackZ);
-    const frontBackPanelSide = new THREE.Vector3(0, 0, -sign);
-    details.push(detail(makeHingeBar(
-      solarPetalBackMat,
-      frontBackSpan,
-      hingeRadius,
-      0,
-      hingeRadius,
-      sign * frontBackZ,
-      1,
-      0,
-    ), 'low'));
-    details.push(detail(makeTrianglePetal(
-      solarPetalBackMat,
-      frontBackSpan,
-      frontBackLen,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      0,
-      sign,
-      petalTilt,
-      0,
-      0,
-      petalThickness,
-      frontBackClosedDir,
-      frontBackPanelSide,
-    ), 'low', undefined, 'solarLeaf'));
-    details.push(detail(makeTrianglePetal(
-      primaryMat,
-      frontBackSpan * 0.58,
-      frontBackLen * 0.42,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      0,
-      sign,
-      petalTilt,
-      frontBackLen * 0.2,
-      teamAccentOffset,
-      teamAccentThickness,
-      frontBackClosedDir,
-      frontBackPanelSide,
-    ), 'medium', undefined, 'solarTeamAccent'));
-    details.push(detail(makeTrianglePetal(
-      solarCellMat,
-      frontBackSpan,
-      frontBackLen,
-      0,
-      petalHingeY,
-      sign * frontBackZ,
-      1,
-      0,
-      0,
-      sign,
-      petalTilt,
-      0,
-      petalFaceOffset,
-      0,
-      frontBackClosedDir,
-      frontBackPanelSide,
-    ), 'low', undefined, 'solarPanel'));
-
-    const sideClosedDir = new THREE.Vector3(-sign * sideX, SOLAR_HEIGHT, 0);
-    const sidePanelSide = new THREE.Vector3(-sign, 0, 0);
-    details.push(detail(makeHingeBar(
-      solarPetalBackMat,
-      sideSpan,
-      hingeRadius,
-      sign * sideX,
-      hingeRadius,
-      0,
-      0,
-      1,
-    ), 'low'));
-    details.push(detail(makeTrianglePetal(
-      solarPetalBackMat,
-      sideSpan,
-      sideLen,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sign,
-      0,
-      petalTilt,
-      0,
-      0,
-      petalThickness,
-      sideClosedDir,
-      sidePanelSide,
-    ), 'low', undefined, 'solarLeaf'));
-    details.push(detail(makeTrianglePetal(
-      primaryMat,
-      sideSpan * 0.58,
-      sideLen * 0.42,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sign,
-      0,
-      petalTilt,
-      sideLen * 0.2,
-      teamAccentOffset,
-      teamAccentThickness,
-      sideClosedDir,
-      sidePanelSide,
-    ), 'medium', undefined, 'solarTeamAccent'));
-    details.push(detail(makeTrianglePetal(
-      solarCellMat,
-      sideSpan,
-      sideLen,
-      sign * sideX,
-      petalHingeY,
-      0,
-      0,
-      1,
-      sign,
-      0,
-      petalTilt,
-      0,
-      petalFaceOffset,
-      0,
-      sideClosedDir,
-      sidePanelSide,
-    ), 'low', undefined, 'solarPanel'));
-  }
-
-  // Energy rate pillar — same hardware as the metal extractor's
-  // metal-rate pillar, mounted on the new square plateau formed by
-  // the four chopped petal tops.
-  const minDim = Math.min(width, depth);
-  const squareTopY = SOLAR_PETAL_CHOP_FRACTION * SOLAR_HEIGHT;
-  const ratePillarBaseY = squareTopY + 2;
-  const shortRatePillarHeight = Math.max(10, Math.min(16, SOLAR_HEIGHT - ratePillarBaseY - 4));
-  const ratePillarHeight = shortRatePillarHeight * 2;
-  const ratePillarRadius = Math.max(3.8, minDim * 0.055);
-  const energyRateIndicator = buildProductionRateIndicator(
-    'energy',
-    ratePillarRadius * 1.7,
-    ratePillarHeight,
-    ratePillarBaseY,
-    0,
-    0,
-    ratePillarRadius,
-  );
-  for (const mesh of energyRateIndicator.staticMeshes) {
-    details.push(detail(mesh, 'low'));
-  }
-  details.push(detail(energyRateIndicator.rig.shower, 'low'));
-
-  return {
-    primary,
-    details,
-    height: SOLAR_HEIGHT,
-    primaryMaterialLocked: true,
-    solarRig: { rateIndicator: energyRateIndicator.rig },
-  };
-}
 
 function buildWind(
   width: number,
@@ -833,241 +452,6 @@ function buildWind(
   };
 }
 
-type ConstructionPylonTrio = {
-  staticMeshes: THREE.Mesh[];
-  towerOrbitParts: ConstructionTowerOrbitPart[];
-  showers: THREE.Mesh[];
-  pylonTopsLocal: THREE.Vector3[];
-  pylonTopBaseLocals: THREE.Vector3[];
-};
-
-type ConstructionTowerResource = 'energy' | 'mana' | 'metal';
-type ConstructionTowerSize = 'large' | 'small';
-
-type ConstructionTowerVariant = {
-  resource: ConstructionTowerResource;
-  showerMaterial: THREE.Material;
-  capMaterial: THREE.Material;
-};
-
-const CONSTRUCTION_TOWER_VARIANTS: readonly ConstructionTowerVariant[] = [
-  { resource: 'energy', showerMaterial: factoryEnergyShowerMat, capMaterial: factoryEnergyCapMat },
-  { resource: 'mana', showerMaterial: factoryManaShowerMat, capMaterial: factoryManaCapMat },
-  { resource: 'metal', showerMaterial: factoryMetalShowerMat, capMaterial: factoryMetalCapMat },
-] as const;
-
-const CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE: Record<ConstructionTowerResource, ConstructionTowerVariant> = {
-  energy: CONSTRUCTION_TOWER_VARIANTS[0],
-  mana: CONSTRUCTION_TOWER_VARIANTS[1],
-  metal: CONSTRUCTION_TOWER_VARIANTS[2],
-};
-
-const CONSTRUCTION_TOWER_SIZE_STYLE: Record<ConstructionTowerSize, {
-  baseRadiusMult: number;
-  baseHeightMult: number;
-  bandRadiusMult: number;
-  bandHeightMult: number;
-  capRadiusMult: number;
-}> = {
-  large: {
-    baseRadiusMult: 2.85,
-    baseHeightMult: 1.45,
-    bandRadiusMult: 2.55,
-    bandHeightMult: 0.95,
-    capRadiusMult: 1.65,
-  },
-  small: {
-    baseRadiusMult: 2.55,
-    baseHeightMult: 1.25,
-    bandRadiusMult: 2.25,
-    bandHeightMult: 0.78,
-    capRadiusMult: 1.55,
-  },
-};
-
-function buildConstructionTowerPiece(
-  variant: ConstructionTowerVariant,
-  size: ConstructionTowerSize,
-  teamBaseMat: THREE.Material,
-  pylonHeight: number,
-  innerPylonRadius: number,
-  showerRadius: number,
-  pylonBaseY: number,
-  x: number,
-  z: number,
-): {
-  staticMeshes: THREE.Mesh[];
-  towerOrbitParts: ConstructionTowerOrbitPart[];
-  shower: THREE.Mesh;
-  topLocal: THREE.Vector3;
-  topBaseLocal: THREE.Vector3;
-} {
-  const style = CONSTRUCTION_TOWER_SIZE_STYLE[size];
-  const baseRadius = innerPylonRadius * style.baseRadiusMult;
-  const baseHeight = Math.max(1.2, innerPylonRadius * style.baseHeightMult);
-  const bandRadius = innerPylonRadius * style.bandRadiusMult;
-  const bandHeight = Math.max(1.0, innerPylonRadius * style.bandHeightMult);
-  const capRadius = Math.max(1.35, innerPylonRadius * style.capRadiusMult);
-  const pylonTopY = pylonBaseY + pylonHeight;
-  const capY = pylonTopY + capRadius * 0.36;
-
-  // Team color lives on the base, not on the pillar.
-  const teamBase = makeCylinder(
-    teamBaseMat,
-    baseRadius,
-    baseHeight,
-    x,
-    pylonBaseY + baseHeight / 2,
-    z,
-    hexCylinderGeom,
-  );
-  // Construction bands are base hardware now, leaving the pillar
-  // itself a clean dark-gray structural tower.
-  const constructionBand = makeCylinder(
-    constructionBandMat,
-    bandRadius,
-    bandHeight,
-    x,
-    pylonBaseY + baseHeight + bandHeight / 2,
-    z,
-    hexCylinderGeom,
-  );
-  const pylon = makeCylinder(
-    factoryFrameMat,
-    innerPylonRadius,
-    pylonHeight,
-    x,
-    pylonBaseY + pylonHeight / 2,
-    z,
-  );
-  const cap = makeSphere(variant.capMaterial, capRadius, x, capY, z);
-  const staticMeshes = [teamBase, constructionBand, pylon, cap];
-
-  const shower = makeCylinder(
-    variant.showerMaterial,
-    showerRadius,
-    1,
-    x,
-    pylonBaseY,
-    z,
-  );
-  shower.visible = false;
-  shower.renderOrder = 6;
-  const topLocal = new THREE.Vector3(x, capY + capRadius * 0.35, z);
-
-  const towerOrbitParts: ConstructionTowerOrbitPart[] = [
-    teamBase,
-    constructionBand,
-    pylon,
-    cap,
-    shower,
-  ].map((mesh) => ({
-    mesh,
-    baseX: mesh.position.x,
-    baseZ: mesh.position.z,
-    baseRotationY: mesh.rotation.y,
-  }));
-
-  return {
-    staticMeshes,
-    towerOrbitParts,
-    shower,
-    topLocal,
-    topBaseLocal: topLocal.clone(),
-  };
-}
-
-function buildProductionRateIndicator(
-  resource: ConstructionTowerResource,
-  showerRadius: number,
-  pylonHeight: number,
-  pylonBaseY: number,
-  x = 0,
-  z = 0,
-  pylonRadius = 0,
-): {
-  staticMeshes: THREE.Mesh[];
-  rig: ProductionRateIndicatorRig;
-} {
-  const variant = CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE[resource];
-  const staticMeshes: THREE.Mesh[] = [];
-  if (pylonRadius > 0) {
-    staticMeshes.push(makeCylinder(
-      factoryFrameMat,
-      pylonRadius,
-      pylonHeight,
-      x,
-      pylonBaseY + pylonHeight / 2,
-      z,
-    ));
-    staticMeshes.push(makeSphere(
-      variant.capMaterial,
-      Math.max(1.6, pylonRadius * 1.45),
-      x,
-      pylonBaseY + pylonHeight + Math.max(1.0, pylonRadius * 0.5),
-      z,
-    ));
-  }
-  const shower = makeCylinder(
-    variant.showerMaterial,
-    showerRadius,
-    1,
-    x,
-    pylonBaseY,
-    z,
-  );
-  shower.visible = false;
-  shower.renderOrder = 6;
-  return {
-    staticMeshes,
-    rig: {
-      shower,
-      showerRadius,
-      pylonHeight,
-      pylonBaseY,
-      smoothedRate: 0,
-    },
-  };
-}
-
-function buildConstructionPylonTrio(
-  size: ConstructionTowerSize,
-  teamBaseMat: THREE.Material,
-  pylonHeight: number,
-  pylonOffset: number,
-  innerPylonRadius: number,
-  showerRadius: number,
-  pylonBaseY: number,
-): ConstructionPylonTrio {
-  const staticMeshes: THREE.Mesh[] = [];
-  const towerOrbitParts: ConstructionTowerOrbitPart[] = [];
-  const showers: THREE.Mesh[] = [];
-  const pylonTopsLocal: THREE.Vector3[] = [];
-  const pylonTopBaseLocals: THREE.Vector3[] = [];
-
-  for (let i = 0; i < CONSTRUCTION_TOWER_VARIANTS.length; i++) {
-    const a = (i / CONSTRUCTION_TOWER_VARIANTS.length) * Math.PI * 2;
-    const tower = buildConstructionTowerPiece(
-      CONSTRUCTION_TOWER_VARIANTS[i],
-      size,
-      teamBaseMat,
-      pylonHeight,
-      innerPylonRadius,
-      showerRadius,
-      pylonBaseY,
-      Math.cos(a) * pylonOffset,
-      Math.sin(a) * pylonOffset,
-    );
-    staticMeshes.push(...tower.staticMeshes);
-    towerOrbitParts.push(...tower.towerOrbitParts);
-    showers.push(tower.shower);
-    pylonTopsLocal.push(tower.topLocal);
-    pylonTopBaseLocals.push(tower.topBaseLocal);
-  }
-
-  return { staticMeshes, towerOrbitParts, showers, pylonTopsLocal, pylonTopBaseLocals };
-}
-
 /** Factory: compact radial construction tower.
  *
  *  The tower is the large version of the same shared three-pylon
@@ -1143,58 +527,6 @@ function buildFactory(
       towerSpinAmount: 0,
       towerSpinPhase: 0,
     },
-  };
-}
-
-/** Reusable construction turret visual. The commander's build turret
- *  and the fabricator tower both instantiate this from the
- *  constructionTurret blueprint; only their mount point and visual
- *  variant differ. */
-export function buildConstructionEmitterRigFromTurretConfig(
-  turretConfig: Pick<TurretConfig, 'constructionEmitter'>,
-  visualVariant: ConstructionEmitterSize | undefined,
-  primaryMat: THREE.Material = factoryFrameMat,
-): ConstructionEmitterRig {
-  const spec = turretConfig.constructionEmitter;
-  if (!spec) {
-    throw new Error('Construction emitter rig requires a constructionEmitter turret config');
-  }
-  const variant = visualVariant ?? spec.defaultSize;
-  const dims = spec.sizes[variant];
-  if (!dims) {
-    throw new Error(`Unknown construction emitter visual variant: ${variant}`);
-  }
-
-  const root = new THREE.Group();
-  const pylonBaseY = 0;
-
-  // Same energy / mana / metal trio as the factory; nothing else.
-  const pylonTrio = buildConstructionPylonTrio(
-    dims.towerSize,
-    primaryMat,
-    dims.pylonHeight,
-    dims.pylonOffset,
-    dims.innerPylonRadius,
-    dims.showerRadius,
-    pylonBaseY,
-  );
-  for (const mesh of pylonTrio.staticMeshes) root.add(mesh);
-  for (const shower of pylonTrio.showers) root.add(shower);
-
-  return {
-    group: root,
-    showers: pylonTrio.showers,
-    towerOrbitParts: pylonTrio.towerOrbitParts,
-    showerRadius: dims.showerRadius,
-    pylonHeight: dims.pylonHeight,
-    pylonBaseY,
-    pylonTopsLocal: pylonTrio.pylonTopsLocal,
-    pylonTopBaseLocals: pylonTrio.pylonTopBaseLocals,
-    smoothedRates: { energy: 0, mana: 0, metal: 0 },
-    lastPaidTargetId: null,
-    lastPaid: { energy: 0, mana: 0, metal: 0 },
-    towerSpinAmount: 0,
-    towerSpinPhase: 0,
   };
 }
 
@@ -1467,153 +799,6 @@ function makeExtractorRotor(
   return rotor;
 }
 
-function makeTrianglePetal(
-  material: THREE.Material,
-  width: number,
-  length: number,
-  hingeX: number,
-  hingeY: number,
-  hingeZ: number,
-  tangentX: number,
-  tangentZ: number,
-  outwardX: number,
-  outwardZ: number,
-  openAngle: number,
-  inset = 0,
-  normalOffset = 0,
-  thickness = 0,
-  closedDirection?: THREE.Vector3,
-  panelSideHint = new THREE.Vector3(0, 1, 0),
-): THREE.Mesh {
-  const hinge = new THREE.Vector3(hingeX, hingeY, hingeZ);
-  const tangent = new THREE.Vector3(tangentX, 0, tangentZ);
-  const openDirection = new THREE.Vector3(
-    outwardX * Math.cos(openAngle),
-    Math.sin(openAngle),
-    outwardZ * Math.cos(openAngle),
-  );
-  const mesh = makeTrianglePlate(
-    material,
-    width,
-    length,
-    hinge,
-    tangent,
-    openDirection,
-    inset,
-    normalOffset,
-    thickness,
-    panelSideHint,
-  );
-  if (closedDirection) {
-    mesh.userData.solarPetal = {
-      width,
-      length,
-      hinge: hinge.clone(),
-      tangent: tangent.clone(),
-      openDirection: openDirection.clone(),
-      closedDirection: closedDirection.clone(),
-      panelSideHint: panelSideHint.clone(),
-      inset,
-      normalOffset,
-      thickness,
-    } satisfies SolarPetalAnimation;
-  }
-  return mesh;
-}
-
-function makeTrianglePlate(
-  material: THREE.Material,
-  width: number,
-  length: number,
-  hinge: THREE.Vector3,
-  tangent: THREE.Vector3,
-  petalDirection: THREE.Vector3,
-  inset = 0,
-  normalOffset = 0,
-  thickness = 0,
-  panelSideHint?: THREE.Vector3,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(thickness > 0 ? solarTrianglePetalGeom : solarTrianglePanelGeom, material);
-  mesh.matrixAutoUpdate = false;
-  mesh.matrix.copy(makeTrianglePlateMatrix(width, length, hinge, tangent, petalDirection, inset, normalOffset, thickness, panelSideHint));
-  return mesh;
-}
-
-function makeTrianglePlateMatrix(
-  width: number,
-  length: number,
-  hinge: THREE.Vector3,
-  tangent: THREE.Vector3,
-  petalDirection: THREE.Vector3,
-  inset = 0,
-  normalOffset = 0,
-  thickness = 0,
-  panelSideHint?: THREE.Vector3,
-): THREE.Matrix4 {
-  const matrix = new THREE.Matrix4();
-  writeSolarPetalMatrix(
-    matrix,
-    width,
-    length,
-    hinge,
-    tangent,
-    petalDirection,
-    inset,
-    normalOffset,
-    thickness,
-    panelSideHint,
-  );
-  return matrix;
-}
-
-export function writeSolarPetalMatrix(
-  matrix: THREE.Matrix4,
-  width: number,
-  length: number,
-  hinge: THREE.Vector3,
-  tangent: THREE.Vector3,
-  petalDirection: THREE.Vector3,
-  inset = 0,
-  normalOffset = 0,
-  thickness = 0,
-  panelSideHint?: THREE.Vector3,
-): void {
-  const tangentDir = _solarPetalTangent.copy(tangent).normalize();
-  const petalDir = _solarPetalDirection.copy(petalDirection).normalize();
-  const normal = _solarPetalNormal.crossVectors(tangentDir, petalDir).normalize();
-  if (panelSideHint) {
-    if (normal.dot(panelSideHint) < 0) normal.multiplyScalar(-1);
-  } else if (normal.y < 0) {
-    normal.multiplyScalar(-1);
-  }
-  const origin = _solarPetalOrigin.copy(hinge)
-    .addScaledVector(petalDir, inset)
-    .addScaledVector(normal, normalOffset);
-  const xAxis = _solarPetalXAxis.copy(tangentDir).multiplyScalar(width);
-  const yAxis = _solarPetalYAxis.copy(petalDir).multiplyScalar(Math.max(1, length - inset));
-  const zAxis = _solarPetalZAxis.copy(normal).multiplyScalar(Math.max(1, thickness));
-  matrix.makeBasis(xAxis, yAxis, zAxis);
-  matrix.setPosition(origin);
-}
-
-function makeHingeBar(
-  material: THREE.Material,
-  length: number,
-  radius: number,
-  x: number,
-  y: number,
-  z: number,
-  tangentX: number,
-  tangentZ: number,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(cylinderGeom, material);
-  mesh.scale.set(radius * 2, length, radius * 2);
-  mesh.position.set(x, y, z);
-  const tangent = new THREE.Vector3(tangentX, 0, tangentZ).normalize();
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
-  return mesh;
-}
-
 function makeBox(
   material: THREE.Material,
   width: number,
@@ -1684,9 +869,6 @@ function detail(
  *  (Render3DEntities.destroy) invoke once at app teardown. */
 export function disposeBuildingGeoms(): void {
   boxGeom.dispose();
-  solarPanelPyramidGeom.dispose();
-  solarTrianglePanelGeom.dispose();
-  solarTrianglePetalGeom.dispose();
   cylinderGeom.dispose();
   hexCylinderGeom.dispose();
   megaBeamTowerBodyGeom.dispose();
@@ -1695,8 +877,8 @@ export function disposeBuildingGeoms(): void {
   coneGeom.dispose();
   windBladeGeom.dispose();
   constructionOrbGeom.dispose();
-  solarCellMat.dispose();
-  solarPetalBackMat.dispose();
+  disposeConstructionEmitterGeoms();
+  disposeSolarCollectorGeoms();
   windTowerMat.dispose();
   windTrimMat.dispose();
   windNacelleMat.dispose();
@@ -1705,14 +887,7 @@ export function disposeBuildingGeoms(): void {
   extractorBladeMat.dispose();
   invisibleMat.dispose();
   factoryFrameMat.dispose();
-  constructionBandMat.dispose();
   hazardStripeMat.dispose();
-  factoryEnergyShowerMat.dispose();
-  factoryManaShowerMat.dispose();
-  factoryMetalShowerMat.dispose();
-  factoryEnergyCapMat.dispose();
-  factoryManaCapMat.dispose();
-  factoryMetalCapMat.dispose();
   constructionGhostMat.dispose();
   constructionCoreMat.dispose();
   constructionPulseMat.dispose();

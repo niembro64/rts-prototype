@@ -1,5 +1,5 @@
 import type { MetalDeposit } from '../../metalDepositConfig';
-import { GRID_CELL_SIZE } from './grid';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 
 export type MetalDepositFootprintCell = {
   x: number;
@@ -30,8 +30,8 @@ export function metalDepositContainsPoint(
   x: number,
   y: number,
 ): boolean {
-  const gx = Math.floor(x / GRID_CELL_SIZE);
-  const gy = Math.floor(y / GRID_CELL_SIZE);
+  const gx = Math.floor(x / BUILD_GRID_CELL_SIZE);
+  const gy = Math.floor(y / BUILD_GRID_CELL_SIZE);
   return metalDepositContainsGridCell(deposit, gx, gy);
 }
 
@@ -115,8 +115,8 @@ export function getMetalDepositGridCells(
         out.push({
           gx,
           gy,
-          x: gx * GRID_CELL_SIZE + GRID_CELL_SIZE / 2,
-          y: gy * GRID_CELL_SIZE + GRID_CELL_SIZE / 2,
+          x: gx * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
+          y: gy * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
           depositId: deposit.id,
         });
       }
@@ -150,8 +150,8 @@ export function getMetalDepositFootprintCoverage(
     const sampleY = minY + (y + 0.5) * stepY;
     for (let x = 0; x < cellsX; x++) {
       const sampleX = minX + (x + 0.5) * stepX;
-      const gx = Math.floor(sampleX / GRID_CELL_SIZE);
-      const gy = Math.floor(sampleY / GRID_CELL_SIZE);
+      const gx = Math.floor(sampleX / BUILD_GRID_CELL_SIZE);
+      const gy = Math.floor(sampleY / BUILD_GRID_CELL_SIZE);
       const deposit = findDepositContainingPoint(deposits, sampleX, sampleY);
       if (deposit) {
         coveredCells++;

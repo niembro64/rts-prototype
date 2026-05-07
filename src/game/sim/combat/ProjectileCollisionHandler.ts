@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot } from '../types';
-import { isLineShotType, isProjectileShot } from '../types';
+import { isLineShotType } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, CollisionResult, ProjectileDespawnEvent, ProjectileSpawnEvent, SimEventSourceType } from './types';
@@ -289,7 +289,9 @@ export function checkProjectileCollisions(
     const damageSourceType: SimEventSourceType = proj.sourceTurretId ? 'turret' : 'system';
     const isDGunProjectile = projEntity.dgunProjectile?.isDGun === true;
     const isTerrainFollowingDGun = projEntity.dgunProjectile?.terrainFollow === true;
-    const isRocketShot = isProjectileShot(config.shot) && config.shot.type === 'rocket';
+    const profile = config.shotProfile;
+    const runtimeProfile = profile.runtime;
+    const isRocketShot = runtimeProfile.isRocketLike;
     if (proj.projectileType === 'projectile') {
       const sweepPrevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
       const sweepPrevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
@@ -326,9 +328,7 @@ export function checkProjectileCollisions(
       let bestT = Infinity;
       let bestX = 0, bestY = 0, bestZ = 0;
       if (world.mirrorsEnabled && world.getMirrorUnits().length > 0) {
-        const projectileRadius = isProjectileShot(config.shot)
-          ? config.shot.collision.radius
-          : 5;
+        const projectileRadius = runtimeProfile.collisionRadius;
         const mirrorCandidates = spatialGrid.queryUnitsAlongLine(
           prevX, prevY, prevZ,
           curX, curY, curZ,
@@ -453,10 +453,10 @@ export function checkProjectileCollisions(
       // shot has something to do at the apex (an explosion, submunitions,
       // or both). A pure carrier (no explosion, only submunitions) still
       // fragments here.
-      if (isProjectileShot(config.shot) && config.shot.detonateOnExpiry && !proj.hasExploded) {
-        const projShot = config.shot;
-        const hasSplash = !!projShot.explosion?.radius;
-        const hasSubs = !!projShot.submunitions;
+      if (runtimeProfile.detonateOnExpiry && !proj.hasExploded) {
+        const projShot = config.shot as ProjectileShot;
+        const hasSplash = runtimeProfile.hasExplosion;
+        const hasSubs = runtimeProfile.hasSubmunitions;
         if (hasSplash || hasSubs) {
           proj.hasExploded = true;
           let firstSplashHit: Entity | undefined;
@@ -502,7 +502,7 @@ export function checkProjectileCollisions(
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
               proj.velocityX ?? 0, proj.velocityY ?? 0,
-              projShot.collision.radius, firstSplashHit,
+              runtimeProfile.collisionRadius, firstSplashHit,
             ),
           });
 
@@ -552,7 +552,7 @@ export function checkProjectileCollisions(
       // Add projectile expire event for traveling projectiles (not beams)
       // This creates an explosion effect at projectile termination point
       if (proj.projectileType === 'projectile' && !proj.hasExploded) {
-        const projRadius = isProjectileShot(config.shot) ? config.shot.collision.radius : 5;
+        const projRadius = runtimeProfile.collisionRadius;
         audioEvents.push({
           type: 'projectileExpire',
           turretId: shotId,
@@ -591,7 +591,7 @@ export function checkProjectileCollisions(
       const impactZ = lastPoint?.z ?? projEntity.transform.z;
       const dtSec = collisionDtMs / 1000;
 
-      const damageSphereRadius = beamShot.damageSphere.radius;
+      const damageSphereRadius = runtimeProfile.damageRadius;
 
       // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
       const tickDamage = beamShot.dps * dtSec;
@@ -663,7 +663,7 @@ export function checkProjectileCollisions(
       } else {
       // Traveling projectiles use swept 3D volume collision (prevents tunneling)
       const projShot = config.shot as ProjectileShot;
-      const projRadius = projShot.collision.radius;
+      const projRadius = runtimeProfile.collisionRadius;
       const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
       const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
       const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
@@ -740,10 +740,10 @@ export function checkProjectileCollisions(
       // or submunitions to release. A carrier with both applies its
       // own splash first, then releases children from the same point.
       if (!isDGunProjectile && hadHits && !proj.hasExploded
-          && (projShot.explosion?.radius || projShot.submunitions)) {
+          && (runtimeProfile.hasExplosion || runtimeProfile.hasSubmunitions)) {
         proj.hasExploded = true;
 
-        if (projShot.explosion?.radius) {
+        if (runtimeProfile.hasExplosion && projShot.explosion) {
           const splashExcludes = getSplashExcludes(proj);
           // Single boolean AoE — everyone whose shot collider
           // intersects the explosion sphere eats the full damage and

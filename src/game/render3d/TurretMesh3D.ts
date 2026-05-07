@@ -26,7 +26,7 @@ import {
 import {
   buildConstructionEmitterRigFromTurretConfig,
   type ConstructionEmitterRig,
-} from './BuildingShape3D';
+} from './ConstructionEmitterMesh3D';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -72,7 +72,7 @@ export type TurretMesh = {
   /** Visual-only construction turret rig. Built from the turret
    *  blueprint instead of bespoke commander/factory art. */
   constructionEmitter?: ConstructionEmitterRig;
-  /** Per-turret TURR RAD overlay spheres (filled in by the range-ring
+  /** Per-turret TURR CIR overlay circles (filled in by the range-ring
    *  update path; nothing built here). */
   rangeRings?: {
     trackAcquire?: THREE.LineSegments;

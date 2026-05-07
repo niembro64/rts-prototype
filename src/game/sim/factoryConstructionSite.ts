@@ -1,6 +1,6 @@
 import type { Entity } from './types';
 import { getBuildingConfig } from './buildConfigs';
-import { GRID_CELL_SIZE } from './grid';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 
 export type FactoryFootprintDimensions = {
   footprintWidth: number;
@@ -33,15 +33,15 @@ const _buildSpotDir = { x: 0, y: 0 };
 export function getFactoryFootprintDimensions(): FactoryFootprintDimensions {
   const cfg = getBuildingConfig('factory');
   return {
-    footprintWidth: cfg.gridWidth * GRID_CELL_SIZE,
-    footprintHeight: cfg.gridHeight * GRID_CELL_SIZE,
-    footprintDepth: cfg.gridDepth * GRID_CELL_SIZE,
+    footprintWidth: cfg.gridWidth * BUILD_GRID_CELL_SIZE,
+    footprintHeight: cfg.gridHeight * BUILD_GRID_CELL_SIZE,
+    footprintDepth: cfg.gridDepth * BUILD_GRID_CELL_SIZE,
     constructionRadius: getFactoryConstructionRadius(),
   };
 }
 
 export function getFactoryConstructionRadius(): number {
-  return FACTORY_CONSTRUCTION_RADIUS_CELLS * GRID_CELL_SIZE;
+  return FACTORY_CONSTRUCTION_RADIUS_CELLS * BUILD_GRID_CELL_SIZE;
 }
 
 export function getFactoryWaypointDirection(factory: Entity): { x: number; y: number } {

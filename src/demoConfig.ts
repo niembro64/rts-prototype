@@ -28,14 +28,14 @@ export const DEMO_CONFIG = {
   arcSectorFraction: 0.7,
 
   /**
-   * Radial gap (in grid cells) between concentric building arcs —
+   * Radial gap (in build-grid cells) between concentric building arcs —
    * commander arc (outermost) → solar arc → wind arc → factory arc →
    * megaBeam tower arc (closest to map center). 1 cell = 20 px.
    */
   rowGapCells: 7,
 
   /**
-   * Radial gap (in grid cells) between the factory arc and the
+   * Radial gap (in build-grid cells) between the factory arc and the
    * megaBeam tower arc directly inward of it. The towers sit further
    * inside than every other building so they cover the approach to
    * the base from the map center.
@@ -43,7 +43,7 @@ export const DEMO_CONFIG = {
   megaBeamTowerGapCells: 14,
 
   /**
-   * Radial gap (in grid cells) between the commander arc and the solar
+   * Radial gap (in build-grid cells) between the commander arc and the solar
    * arc directly inward of it. 1 cell = 20 px.
    */
   commanderGapCells: 20,
@@ -114,7 +114,7 @@ export const DEMO_CONFIG = {
    * initial spawn position. Each candidate (x, y) and 8 cardinal
    * points at this radius are tested; if any is over water the
    * candidate is rejected. 0 disables the check (legacy behaviour).
-   * Tuned ≈ 2 grid cells = 40 wu so units land with collision-radius
+   * Tuned around 2 build-grid cells = 40 wu so units land with collision-radius
    * slack and a tick of inertia headroom before they could possibly
    * brush the shoreline.
    */

@@ -4,69 +4,41 @@ import type { BarrelShape } from './config';
 import type { ShotId, TurretId } from './blueprintIds';
 import type { Vec3 } from './vec2';
 import type { ProjectileShotKind, TurretRadiusConfig } from './blueprints';
+import type {
+  BuildingAnchorProfile,
+  BuildingRenderProfile,
+  BuildingType,
+} from './buildingTypes';
+import type {
+  UnitAction,
+  Waypoint,
+} from './commandTypes';
+import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
+import type { EntityId, PlayerId } from './entityTypes';
+import type { UnitLocomotion } from './locomotionTypes';
+import type { ResourceCost } from './economyTypes';
 
-// Entity ID type for deterministic identification
-export type EntityId = number;
-
-// Player ID type
-export type PlayerId = number;
-
-// A single hysteresis pair. For outer/max ranges, acquire < release
-// prevents flicker at the far edge. For minimum preference ranges,
-// acquire is the distance where a new target becomes preferred and
-// release is the smaller distance where an existing preferred target
-// stops being preferred.
-export type HysteresisRange = {
-  acquire: number;
-  release: number;
-  /** Precomputed squares for hot-path distance checks. */
-  acquireSq?: number;
-  releaseSq?: number;
-};
-
-// Multiplier pair authored directly on each turret blueprint.
-export type HysteresisRangeMultiplier = {
-  acquire: number;
-  release: number;
-};
-
-// Computed absolute targeting envelope. `max` is the hard outer fire
-// range. `min` is an optional soft inner preference: targets outside
-// min are preferred, but targets inside min remain valid fallbacks when
-// no preferred target exists.
-export type FireEnvelope = {
-  min: HysteresisRange | null;
-  max: HysteresisRange;
-};
-
-// Computed absolute ranges for weapon states (in world units).
-//
-// `fire` is the firing envelope and is always present. `tracking` is
-// the OPTIONAL outer awareness shell — when present, the turret will
-// rotate toward an enemy that has entered tracking range even before
-// the enemy enters the fire envelope. Set explicitly to `null` for
-// turrets that don't need pre-rotation (most weapons).
-export type TurretRanges = {
-  tracking: HysteresisRange | null;
-  fire: FireEnvelope;
-};
-
-// Per-weapon range multipliers authored directly on each turret
-// blueprint.
-//
-// `engageRangeMin` is `null` when the weapon has no inner target
-// preference. `trackingRange` is `null` when the turret only ever cares
-// about the max fire envelope (acquires +
-// engages on contact); set non-null when the turret should be aware of
-// — and rotate toward — enemies BEYOND its fire range, e.g. mirror
-// turrets that need to be already pointed when an incoming beam lands.
-// Tracking-range multipliers MUST exceed `engageRangeMax` so the
-// tracking shell sits strictly outside the fire envelope.
-export type TurretRangeOverrides = {
-  engageRangeMax: HysteresisRangeMultiplier;
-  engageRangeMin: HysteresisRangeMultiplier | null;
-  trackingRange: HysteresisRangeMultiplier | null;
-};
+export type {
+  BuildingAnchorProfile,
+  BuildingRenderProfile,
+  BuildingType,
+} from './buildingTypes';
+export type {
+  ActionType,
+  UnitAction,
+  Waypoint,
+  WaypointType,
+} from './commandTypes';
+export type {
+  FireEnvelope,
+  HysteresisRange,
+  HysteresisRangeMultiplier,
+  TurretRangeOverrides,
+  TurretRanges,
+} from './combatTypes';
+export type { EntityId, PlayerId } from './entityTypes';
+export type { UnitLocomotion } from './locomotionTypes';
+export type { ResourceCost } from './economyTypes';
 
 // Transform component - position and rotation in world space.
 // The sim is fully 3D: (x, y) = ground-plane footprint, z = altitude
@@ -98,60 +70,6 @@ export type Ownership = {
   playerId: PlayerId;
 };
 
-// Waypoint types for unit movement
-export type WaypointType = 'move' | 'fight' | 'patrol';
-
-// Single waypoint in a unit's path queue. Altitude (`z`) is optional —
-// player-issued waypoints carry the click's actual 3D ground altitude
-// (from CursorGround.pickSim) so renderers / handlers don't have to
-// re-sample terrain to visualize them. AI-issued or path-expanded
-// intermediate waypoints leave it undefined and fall back to a
-// terrain sample at the (x, y).
-export type Waypoint = {
-  x: number;
-  y: number;
-  z?: number;
-  type: WaypointType;
-};
-
-// Action types for unified action queue
-export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair' | 'attack';
-
-// Building type identifiers
-export type BuildingType = 'solar' | 'wind' | 'factory' | 'extractor' | 'megaBeamTower';
-export type BuildingRenderProfile = BuildingType | 'unknown';
-export type BuildingAnchorProfile = 'constantVisualTop' | 'factoryTower' | 'collisionDepth';
-
-// Unified action for any unit command. Altitude (`z`) carries the
-// actual 3D ground point the user clicked (from CursorGround.pickSim
-// — the canonical "where on the rendered terrain is the cursor")
-// through the command pipeline so renderers visualize waypoints at
-// the precise altitude the player saw under the cursor, instead of
-// extrapolating it back from (x, y) via a terrain re-sample. Optional
-// because AI-issued / path-expanded intermediate waypoints don't
-// have a click point — those callers leave it undefined and the
-// renderer falls back to a fresh terrain sample.
-//
-// `isPathExpansion` is true on every intermediate waypoint produced by
-// JPS smoothing — the cells inserted along the route that the unit
-// must visit but the user did NOT click. The user-clicked endpoint of
-// a `findPath` query keeps it false/undefined. Renderers use this flag
-// to draw "simple" waypoint visuals (just the user's click points,
-// shortcut lines between them) vs. "detailed" (every intermediate
-// drawn). Doesn't affect movement — the unit still walks every action.
-export type UnitAction = {
-  type: ActionType;
-  x: number;
-  y: number;
-  z?: number;
-  buildingType?: BuildingType;
-  gridX?: number;
-  gridY?: number;
-  buildingId?: EntityId;
-  targetId?: EntityId;
-  isPathExpansion?: boolean;
-};
-
 // Cached mirror panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
 //             value is used for both the horizontal-edge half and the
@@ -173,17 +91,6 @@ export type CachedMirrorPanel = {
   angle: number;
   baseY: number;
   topY: number;
-};
-
-export type UnitLocomotion = {
-  type: 'wheels' | 'treads' | 'legs';
-  /** Authored propulsion scalar supplied by the locomotion blueprint.
-   *  GameServer.applyForces converts this into actual 3D force using
-   *  terrain tangent, mass, gravity, and external forces. */
-  driveForce: number;
-  /** Ground traction coefficient. This is the ability to couple drive
-   *  force into terrain, not drag. */
-  traction: number;
 };
 
 // Unit component - movable entities. Velocities are 3D: X/Y are
@@ -462,6 +369,49 @@ export type ShotConfig =
   | ForceShot
   | BuildSprayShot;
 
+export type ShotRuntimeProfile = {
+  id: ShotId;
+  type: ActiveProjectileShot['type'];
+  projectileType: ProjectileType;
+  isProjectile: boolean;
+  isLine: boolean;
+  isRocketLike: boolean;
+  ignoresGravity: boolean;
+  /** Swept/projectile collider radius for traveling shots, or line
+   *  trace radius for beam/laser shots. */
+  collisionRadius: number;
+  /** Radius written into ImpactContext for audio/death effects. */
+  impactRadius: number;
+  /** Projectile splash radius. 0 when the shot has no splash zone. */
+  explosionRadius: number;
+  /** Beam/laser endpoint damage radius, or projectile direct collider. */
+  damageRadius: number;
+  maxLifespan: number;
+  detonateOnExpiry: boolean;
+  hasExplosion: boolean;
+  hasSubmunitions: boolean;
+};
+
+export type ShotVisualProfile = {
+  projectileShape: 'sphere' | 'cylinder';
+  projectileBodyRadius: number;
+  cylinderLengthMult: number;
+  cylinderDiameterMult: number;
+  debugCollisionRadius: number;
+  debugExplosionRadius: number;
+  smokeTrail?: import('./blueprints').SmokeTrailSpec;
+  /** Ground mark width authored from the shot once. Line shots use
+   *  beam/laser width; D-gun projectile trails use projectile radius. */
+  burnMarkWidth: number;
+  lineRadius: number;
+  lineDamageSphereRadius: number;
+};
+
+export type ShotProfile = {
+  runtime: ShotRuntimeProfile;
+  visual: ShotVisualProfile;
+};
+
 export function isProjectileShot(shot: ShotConfig): shot is ProjectileShot {
   return shot.type === 'projectile' || shot.type === 'rocket';
 }
@@ -505,6 +455,10 @@ export type TurretConfig = {
   burst?: { count?: number; delay?: number };
   isManualFire?: boolean;
   passive?: boolean;
+  /** Mirror-target threat rank for line-shot turrets. Passive mirror
+   *  weapons use this compiled profile value instead of knowing
+   *  turret/shot ids. */
+  mirrorReflectPriority?: number;
   /** World mount policy. `authored` uses the blueprint mount resolved
    *  through the host transform. `unitBodyCenter` makes the turret body
    *  center exactly equal the owning unit's gameplay target center. */
@@ -544,9 +498,11 @@ export type TurretConfig = {
 // submunition can therefore be a real shot without masquerading as a turret.
 export type ProjectileConfig = {
   shot: ActiveProjectileShot;
+  shotProfile: ShotProfile;
   /** Real turret blueprint that authored this projectile, when one exists. */
   sourceTurretId?: TurretId;
-  /** Source-turret range. Used by active beam retracing; 0 for shot-only children. */
+  /** Source-turret base range. Active line shots use the live turret's
+   *  computed 2D fire circle while retracing; shot-only children keep 0. */
   range: number;
   /** Source-turret cooldown. Used when laser projectiles expire. */
   cooldown: number;
@@ -618,7 +574,7 @@ export type Turret = {
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
   /** Consecutive ticks the line of sight to `target` has been blocked
-   *  by terrain or live unit/building occluders. Direct-fire turrets
+   *  by terrain, live unit push spheres, or building occluders. Direct-fire turrets
    *  stop firing the first blocked tick (engaged → tracking) and drop
    *  the lock entirely once this exceeds LOS_DROP_GRACE_TICKS. Cleared
    *  whenever the target changes or the sightline reopens. */
@@ -746,16 +702,6 @@ export type EconomyState = {
   };
 };
 
-// Three-resource cost vector. Every buildable thing (unit + building)
-// authors its own per-resource cost in its blueprint; the build is
-// gated by whichever pool is most scarce, but each pool fills its own
-// `paid` accumulator independently.
-export type ResourceCost = {
-  energy: number;
-  mana: number;
-  metal: number;
-};
-
 // Buildable component. While a unit/building is under construction it
 // lives in the world as an inert "shell" — `paid.{e,m,m}` accumulate
 // from the owner's stockpiles toward `required.{e,m,m}`. This
@@ -783,8 +729,8 @@ export type Builder = {
 };
 
 // Building configuration. gridWidth/gridHeight are the footprint on
-// the ground plane (measured in grid cells); gridDepth is the
-// vertical extent (how many cell-heights tall the building stands).
+// the ground plane (measured in build-grid cells); gridDepth is the
+// vertical extent (how many build-grid cell-heights tall the building stands).
 // The sim is fully 3D, so buildings need a real z-extent — it's a
 // first-class property of the shape, not a render-only detail.
 export type BuildingConfig = {

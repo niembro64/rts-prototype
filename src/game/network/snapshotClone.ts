@@ -60,7 +60,7 @@ function cloneAction(a: NetworkServerSnapshotAction): NetworkServerSnapshotActio
   };
 }
 
-function cloneTurret(t: NetworkServerSnapshotTurret): NetworkServerSnapshotTurret {
+function cloneNetworkTurret(t: NetworkServerSnapshotTurret): NetworkServerSnapshotTurret {
   return {
     turret: {
       id: t.turret.id,
@@ -101,7 +101,9 @@ function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntit
       isCommander: e.unit.isCommander,
       buildTargetId: e.unit.buildTargetId,
       actions: e.unit.actions?.map(cloneAction),
-      turrets: e.unit.turrets?.map(cloneTurret),
+      // `unit.turrets` is the network unit DTO field. Runtime entities
+      // hydrate these into `entity.combat.turrets` on the client.
+      turrets: e.unit.turrets?.map(cloneNetworkTurret),
       build: e.unit.build ? {
         complete: e.unit.build.complete,
         paid: {
@@ -340,7 +342,7 @@ function copyActionInto(
   return dst;
 }
 
-function copyTurretInto(
+function copyNetworkTurretInto(
   src: NetworkServerSnapshotTurret,
   dst: NetworkServerSnapshotTurret,
 ): NetworkServerSnapshotTurret {
@@ -354,7 +356,7 @@ function copyTurretInto(
   return dst;
 }
 
-function createReusableTurret(): NetworkServerSnapshotTurret {
+function createReusableNetworkTurret(): NetworkServerSnapshotTurret {
   return {
     turret: {
       id: TURRET_ID_UNKNOWN,
@@ -434,7 +436,10 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
     const turrets = dst.turrets ?? (dst.turrets = []);
     turrets.length = src.turrets.length;
     for (let i = 0; i < src.turrets.length; i++) {
-      turrets[i] = copyTurretInto(src.turrets[i], turrets[i] ?? createReusableTurret());
+      turrets[i] = copyNetworkTurretInto(
+        src.turrets[i],
+        turrets[i] ?? createReusableNetworkTurret(),
+      );
     }
   } else {
     dst.turrets = undefined;

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { BuildingType, WaypointType } from '../game/sim/types';
-import { BUILDABLE_UNIT_IDS, getUnitBlueprint } from '../game/sim/blueprints';
-import { getAllBuildings } from '../game/sim/buildConfigs';
-import { COST_MULTIPLIER } from '../config';
+import type { WaypointType } from '../game/sim/types';
+import {
+  buildingRosterDisplay,
+  unitRosterDisplay,
+} from '../game/sim/blueprints/displayRosters';
 
 export type { QueueItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type { SelectionInfo, SelectionActions } from '@/types/ui';
@@ -27,24 +28,8 @@ const waypointModes: { mode: WaypointType; label: string; key: string; color: st
   { mode: 'patrol', label: 'Patrol', key: 'H', color: '#0088ff' },
 ];
 
-const buildingOptions = getAllBuildings().map((building, index) => ({
-  type: building.id as BuildingType,
-  label: building.name,
-  key: `${index + 1}`,
-  // Buildings now author per-resource costs; the panel shows total
-  // across the three axes (energy + mana + metal).
-  cost: building.cost.energy + building.cost.mana + building.cost.metal,
-}));
-
-const unitOptions = BUILDABLE_UNIT_IDS.map((id) => {
-  const bp = getUnitBlueprint(id);
-  return {
-    unitId: bp.id,
-    label: bp.name,
-    cost: (bp.cost.energy + bp.cost.mana + bp.cost.metal) * COST_MULTIPLIER,
-    locomotion: bp.locomotion.type,
-  };
-});
+const buildingOptions = buildingRosterDisplay;
+const unitOptions = unitRosterDisplay;
 
 const vehicleOptions = unitOptions.filter((unit) => unit.locomotion !== 'legs');
 const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');

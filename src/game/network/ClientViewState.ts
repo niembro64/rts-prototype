@@ -7,9 +7,8 @@
  * - Smooth at any snapshot rate, from 1/sec to 60/sec
  */
 
-import type { Buildable, Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
-import { isProjectileShot, isRocketLikeShot } from '../sim/types';
-import { isLineShotType, getShotMaxLifespan } from '@/types/sim';
+import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
+import { isLineShotType } from '@/types/sim';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
@@ -19,7 +18,7 @@ import type {
   NetworkServerSnapshotMeta,
 } from './NetworkManager';
 import type { BeamPoint } from '../../types/sim';
-import type { ShotId, TurretId } from '../../types/blueprintIds';
+import type { ShotId } from '../../types/blueprintIds';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkCaptureTile } from '@/types/capture';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
@@ -27,10 +26,8 @@ import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork, refreshUnitTurretsFromNetwork } from './helpers';
 import { getClientTiltEmaMode } from '@/clientBarConfig';
 import { TILT_EMA_HALF_LIFE_SEC } from '@/shellConfig';
-import { TURRET_CONFIGS } from '../sim/turretConfigs';
 import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
-import { getUnitBlueprint, getUnitLocomotion } from '../sim/blueprints';
-import { getBuildingConfig } from '../sim/buildConfigs';
+import { getUnitLocomotion } from '../sim/blueprints';
 import { getEntityVelocity3, getTurretMountHeight } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import { getBarrelTip } from '../math';
@@ -48,9 +45,6 @@ import {
   codeToBuildingType,
   codeToProjectileType,
   codeToShotId,
-  codeToTurretId,
-  PROJECTILE_TYPE_PROJECTILE,
-  TURRET_ID_UNKNOWN,
   isLineProjectileTypeCode,
 } from '../../types/network';
 
@@ -60,14 +54,28 @@ import {
   applyHomingSteering,
   computeInterceptTime,
 } from '../math';
-import { COST_MULTIPLIER, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
+import { GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
 import { getSurfaceHeight, getSurfaceNormal, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { getTurretWorldMount } from '../math';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
-import { landCellCenterForSize, landCellIndexForSize, packLandCellKey } from '../landGrid';
-import { createBuildable, getBuildFraction } from '../sim/buildableHelpers';
+import {
+  applyNetworkBuildState,
+  getBuildingBuildRequired,
+  getUnitBuildRequired,
+} from './ClientBuildStateApplier';
+import {
+  decodeProjectileSourceTurretId,
+  ProjectileSpawnQueue,
+} from './ProjectileSpawnQueue';
+import { ClientSelectionState } from './ClientSelectionState';
+import {
+  ClientPredictionLod,
+  type PredictionLodContext,
+  type PredictionStep,
+} from './ClientPredictionLod';
+export type { PredictionLodContext, PredictionLodTier } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -79,67 +87,6 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-type NetworkBuildState = {
-  complete: boolean;
-  progress?: number;
-  paid: Buildable['paid'];
-};
-
-function getUnitBuildRequired(unitType: string | undefined): Buildable['required'] | undefined {
-  if (!unitType) return undefined;
-  try {
-    const bp = getUnitBlueprint(unitType);
-    return {
-      energy: bp.cost.energy * COST_MULTIPLIER,
-      mana: bp.cost.mana * COST_MULTIPLIER,
-      metal: bp.cost.metal * COST_MULTIPLIER,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function getBuildingBuildRequired(buildingType: BuildingType | undefined): Buildable['required'] | undefined {
-  if (!buildingType) return undefined;
-  try {
-    return { ...getBuildingConfig(buildingType).cost };
-  } catch {
-    return undefined;
-  }
-}
-
-function applyNetworkBuildState(
-  entity: Entity,
-  build: NetworkBuildState | undefined,
-  required: Buildable['required'] | undefined,
-): boolean {
-  if (!build || build.complete) {
-    if (!entity.buildable) return false;
-    delete entity.buildable;
-    return true;
-  }
-
-  if (!required) return false;
-  let buildable = entity.buildable;
-  if (!buildable) {
-    buildable = createBuildable(required, { paid: build.paid });
-    buildable.healthBuildFraction = getBuildFraction(buildable);
-    entity.buildable = buildable;
-    return true;
-  }
-
-  buildable.required.energy = required.energy;
-  buildable.required.mana = required.mana;
-  buildable.required.metal = required.metal;
-  buildable.paid.energy = build.paid.energy;
-  buildable.paid.mana = build.paid.mana;
-  buildable.paid.metal = build.paid.metal;
-  buildable.isComplete = false;
-  buildable.isGhost = false;
-  buildable.healthBuildFraction = getBuildFraction(buildable);
-  return true;
-}
-
 const _clientHomingAimPoint = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 
@@ -147,7 +94,6 @@ const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 // Smaller = snappier correction, larger = smoother/lazier.
 // Blend factor per frame: 1 - Math.pow(0.5, dt / halfLife)
 import { getDriftMode } from '@/clientBarConfig';
-import { normalizeLodCellSize } from '../lodGridMath';
 
 // Lightweight copy of server state used for per-frame drift in applyPrediction().
 // Owns its data (not a reference to pooled serializer objects).
@@ -215,109 +161,6 @@ function ensureBeamPoint(arr: BeamPoint[], i: number): BeamPoint {
   return p;
 }
 
-type QueuedProjectileSpawn = {
-  spawn: NetworkServerSnapshotProjectileSpawn;
-  playAt: number;
-};
-
-function createOwnedProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
-  return {
-    id: 0,
-    pos: { x: 0, y: 0, z: 0 },
-    rotation: 0,
-    velocity: { x: 0, y: 0, z: 0 },
-    projectileType: PROJECTILE_TYPE_PROJECTILE,
-    turretId: TURRET_ID_UNKNOWN,
-    shotId: undefined,
-    sourceTurretId: undefined,
-    playerId: 0,
-    sourceEntityId: 0,
-    turretIndex: 0,
-    barrelIndex: 0,
-  };
-}
-
-function copyProjectileSpawnInto(
-  src: NetworkServerSnapshotProjectileSpawn,
-  dst: NetworkServerSnapshotProjectileSpawn,
-): NetworkServerSnapshotProjectileSpawn {
-  dst.id = src.id;
-  dst.pos.x = src.pos.x;
-  dst.pos.y = src.pos.y;
-  dst.pos.z = src.pos.z;
-  dst.rotation = src.rotation;
-  dst.velocity.x = src.velocity.x;
-  dst.velocity.y = src.velocity.y;
-  dst.velocity.z = src.velocity.z;
-  dst.projectileType = src.projectileType;
-  dst.maxLifespan = src.maxLifespan;
-  dst.turretId = src.turretId;
-  dst.shotId = src.shotId;
-  dst.sourceTurretId = src.sourceTurretId;
-  dst.playerId = src.playerId;
-  dst.sourceEntityId = src.sourceEntityId;
-  dst.turretIndex = src.turretIndex;
-  dst.barrelIndex = src.barrelIndex;
-  dst.isDGun = src.isDGun;
-  dst.fromParentDetonation = src.fromParentDetonation;
-  dst.targetEntityId = src.targetEntityId;
-  dst.homingTurnRate = src.homingTurnRate;
-  if (src.beam) {
-    const beam = dst.beam ?? {
-      start: { x: 0, y: 0, z: 0 },
-      end: { x: 0, y: 0, z: 0 },
-    };
-    beam.start.x = src.beam.start.x;
-    beam.start.y = src.beam.start.y;
-    beam.start.z = src.beam.start.z;
-    beam.end.x = src.beam.end.x;
-    beam.end.y = src.beam.end.y;
-    beam.end.z = src.beam.end.z;
-    dst.beam = beam;
-  } else {
-    dst.beam = undefined;
-  }
-  return dst;
-}
-
-export type PredictionLodTier = 'rich' | 'simple' | 'mass' | 'impostor' | 'marker';
-
-export type PredictionLodContext = {
-  /** Three.js/world camera x. */
-  cameraX: number;
-  /** Three.js/world camera height. */
-  cameraY: number;
-  /** Three.js/world camera z, equivalent to sim y. */
-  cameraZ: number;
-  richDistance: number;
-  simpleDistance: number;
-  massDistance: number;
-  impostorDistance: number;
-  cellSize: number;
-  /** PLAYER CLIENT LOD global cadence: frames to skip before
-   *  another client prediction step. 0 means every render frame. */
-  physicsPredictionFramesSkip: number;
-  /**
-   * Optional shared frame resolver. When supplied, prediction uses the
-   * same cell/tier cache as rendering instead of recomputing camera
-   * sphere membership inside ClientViewState. Coordinates are Three.js
-   * world axes: x, height/y, z.
-   */
-  resolveTier?: (worldX: number, worldY: number, worldZ: number) => PredictionLodTier;
-};
-
-type PredictionLodCellKey = number;
-
-type PredictionStep = {
-  entityDeltaMs: number;
-  targetDeltaMs: number;
-};
-
-type PredictionAccumulator = {
-  entityMs: number;
-  targetMs: number;
-};
-
 const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
 const PREDICTION_VEL_EPSILON_SQ = 0.01 * 0.01;
 const PREDICTION_ROT_EPSILON = 0.001;
@@ -339,16 +182,6 @@ function isLineProjectileEntity(entity: Entity): boolean {
   return entity.projectile !== undefined && isLineShotType(entity.projectile.projectileType);
 }
 
-function decodeProjectileSourceTurretId(
-  spawn: NetworkServerSnapshotProjectileSpawn,
-): TurretId | undefined {
-  const sourceTurretId = spawn.sourceTurretId !== undefined
-    ? codeToTurretId(spawn.sourceTurretId) ?? undefined
-    : undefined;
-  if (sourceTurretId) return sourceTurretId;
-  return codeToTurretId(spawn.turretId) ?? undefined;
-}
-
 function decodeProjectileShotId(
   spawn: NetworkServerSnapshotProjectileSpawn,
 ): ShotId | undefined {
@@ -365,10 +198,7 @@ export class ClientViewState {
   private serverTargets: Map<EntityId, ServerTarget> = new Map();
   private beamPathTargets: Map<EntityId, BeamPathTarget> = new Map();
   private activeBeamPathIds: Set<EntityId> = new Set();
-  private projectileSpawnQueue: QueuedProjectileSpawn[] = [];
-  private projectileSpawnQueuePool: QueuedProjectileSpawn[] = [];
-  private projectileSpawnSnapshotTime = 0;
-  private projectileSpawnSnapshotInterval = 100;
+  private projectileSpawns = new ProjectileSpawnQueue();
 
   // Current spray targets for rendering
   private sprayTargets: SprayTarget[] = [];
@@ -382,9 +212,6 @@ export class ClientViewState {
 
   // Current tick from host
   private currentTick: number = 0;
-
-  // Selection state (synced from main view)
-  private selectedIds: Set<EntityId> = new Set();
 
   // Reusable Set for snapshot diffing (avoids new Set() per snapshot)
   private _serverIds: Set<EntityId> = new Set();
@@ -423,16 +250,15 @@ export class ClientViewState {
   // cells used by rendering. Far entities accumulate elapsed time and
   // run less often instead of paying turret/projectile/beam prediction
   // cost every browser frame.
-  private predictionAccums: Map<EntityId, PredictionAccumulator> = new Map();
-  private predictionLodCells: Map<PredictionLodCellKey, PredictionLodTier> = new Map();
-  private predictionRichDistanceSq = 0;
-  private predictionSimpleDistanceSq = 0;
-  private predictionMassDistanceSq = 0;
-  private predictionImpostorDistanceSq = 0;
-  private predictionLodCellSize = 1;
+  private predictionLod = new ClientPredictionLod();
   private activeUnitPredictionIds: Set<EntityId> = new Set();
   private activeProjectilePredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
+  private selectionState = new ClientSelectionState(
+    this.entities,
+    this.dirtyUnitRenderIds,
+    (entity) => this.markEntityPredictionActive(entity),
+  );
 
   // Per-frame cache of living enemy entities, built lazily the first
   // time a rocket needs to re-acquire this frame. Subsequent rockets
@@ -480,14 +306,11 @@ export class ClientViewState {
   }
 
   private clearPredictionAccum(id: EntityId): void {
-    this.predictionAccums.delete(id);
+    this.predictionLod.clear(id);
   }
 
   private clearTargetPredictionAccum(id: EntityId): void {
-    const accum = this.predictionAccums.get(id);
-    if (!accum) return;
-    accum.targetMs = 0;
-    if (accum.entityMs <= 0) this.predictionAccums.delete(id);
+    this.predictionLod.clearTarget(id);
   }
 
   private deleteEntityLocalState(id: EntityId): void {
@@ -496,8 +319,8 @@ export class ClientViewState {
     const existed = this.entities.delete(id);
     this.serverTargets.delete(id);
     this.beamPathTargets.delete(id);
-    this.removeQueuedProjectileSpawn(id);
-    this.selectedIds.delete(id);
+    this.projectileSpawns.remove(id);
+    this.selectionState.delete(id);
     this.clearPredictionAccum(id);
     this.activeUnitPredictionIds.delete(id);
     this.activeProjectilePredictionIds.delete(id);
@@ -511,67 +334,6 @@ export class ClientViewState {
 
   private markLineProjectilesChanged(): void {
     this.lineProjectileRenderVersion = (this.lineProjectileRenderVersion + 1) & 0x3fffffff;
-  }
-
-  private acquireQueuedProjectileSpawn(): QueuedProjectileSpawn {
-    const queued = this.projectileSpawnQueuePool.pop();
-    if (queued) {
-      queued.playAt = 0;
-      return queued;
-    }
-    return {
-      spawn: createOwnedProjectileSpawn(),
-      playAt: 0,
-    };
-  }
-
-  private releaseQueuedProjectileSpawn(queued: QueuedProjectileSpawn): void {
-    queued.spawn.beam = undefined;
-    queued.spawn.maxLifespan = undefined;
-    queued.spawn.isDGun = undefined;
-    queued.spawn.fromParentDetonation = undefined;
-    queued.spawn.targetEntityId = undefined;
-    queued.spawn.homingTurnRate = undefined;
-    queued.playAt = 0;
-    this.projectileSpawnQueuePool.push(queued);
-  }
-
-  private removeQueuedProjectileSpawn(id: EntityId): void {
-    const q = this.projectileSpawnQueue;
-    for (let i = q.length - 1; i >= 0; i--) {
-      if (q[i].spawn.id !== id) continue;
-      const queued = q[i];
-      q[i] = q[q.length - 1];
-      q.length--;
-      this.releaseQueuedProjectileSpawn(queued);
-      return;
-    }
-  }
-
-  private recordProjectileSpawnSnapshot(now: number): void {
-    if (this.projectileSpawnSnapshotTime > 0) {
-      const dt = now - this.projectileSpawnSnapshotTime;
-      if (dt > 0) {
-        this.projectileSpawnSnapshotInterval =
-          0.8 * this.projectileSpawnSnapshotInterval + 0.2 * dt;
-      }
-    }
-    this.projectileSpawnSnapshotTime = now;
-  }
-
-  private shouldSmoothProjectileSpawn(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
-    const sourceTurretId = decodeProjectileSourceTurretId(spawn);
-    return spawn.projectileType === PROJECTILE_TYPE_PROJECTILE &&
-      !spawn.fromParentDetonation &&
-      !!(sourceTurretId && TURRET_CONFIGS[sourceTurretId]?.eventsSmooth);
-  }
-
-  private queueProjectileSpawn(spawn: NetworkServerSnapshotProjectileSpawn, now: number): void {
-    this.removeQueuedProjectileSpawn(spawn.id);
-    const queued = this.acquireQueuedProjectileSpawn();
-    copyProjectileSpawnInto(spawn, queued.spawn);
-    queued.playAt = now + Math.random() * this.projectileSpawnSnapshotInterval;
-    this.projectileSpawnQueue.push(queued);
   }
 
   private applyProjectileSpawn(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
@@ -591,20 +353,6 @@ export class ClientViewState {
       // Skip projectiles with unknown weapon configs (e.g. corrupted by serialization)
       return false;
     }
-  }
-
-  private drainQueuedProjectileSpawns(now: number): boolean {
-    const q = this.projectileSpawnQueue;
-    let changed = false;
-    for (let i = q.length - 1; i >= 0; i--) {
-      const queued = q[i];
-      if (now < queued.playAt) continue;
-      if (this.applyProjectileSpawn(queued.spawn)) changed = true;
-      q[i] = q[q.length - 1];
-      q.length--;
-      this.releaseQueuedProjectileSpawn(queued);
-    }
-    return changed;
   }
 
   private acquireSprayTarget(): SprayTarget {
@@ -740,8 +488,8 @@ export class ClientViewState {
     this.currentTick = state.tick;
     let cacheNeedsInvalidate = false;
     const now = performance.now();
-    this.recordProjectileSpawnSnapshot(now);
-    this.drainQueuedProjectileSpawns(now);
+    this.projectileSpawns.recordSnapshot(now);
+    this.projectileSpawns.drain(now, (spawn) => this.applyProjectileSpawn(spawn));
 
     // Process entity updates (present in both delta and keyframe snapshots)
     for (const netEntity of state.entities) {
@@ -836,7 +584,7 @@ export class ClientViewState {
 
         const newEntity = createEntityFromNetwork(netEntity);
         if (newEntity) {
-          if (newEntity.selectable && this.selectedIds.has(newEntity.id)) {
+          if (newEntity.selectable && this.selectionState.has(newEntity.id)) {
             newEntity.selectable.selected = true;
           }
           this.entities.set(netEntity.id, newEntity);
@@ -878,8 +626,8 @@ export class ClientViewState {
     // Process projectile spawn events
     if (state.projectiles?.spawns) {
       for (const spawn of state.projectiles.spawns) {
-        if (this.shouldSmoothProjectileSpawn(spawn)) {
-          this.queueProjectileSpawn(spawn, now);
+        if (this.projectileSpawns.shouldSmooth(spawn)) {
+          this.projectileSpawns.enqueue(spawn, now);
           continue;
         }
         this.applyProjectileSpawn(spawn);
@@ -1407,115 +1155,6 @@ export class ClientViewState {
     return changed;
   }
 
-  private resolvePredictionLodTier(
-    entity: Entity,
-    lod: PredictionLodContext | undefined,
-  ): PredictionLodTier {
-    if (!lod) return 'rich';
-    if (lod.resolveTier) {
-      return lod.resolveTier(
-        entity.transform.x,
-        entity.transform.z,
-        entity.transform.y,
-      );
-    }
-
-    const size = this.predictionLodCellSize;
-    // LOD grouping is intentionally 2D: sim x/y on the ground plane.
-    // Altitude still affects the camera-sphere distance through the
-    // camera's height above the ground plane, but not cell identity.
-    const ix = landCellIndexForSize(entity.transform.x, size);
-    const iy = landCellIndexForSize(entity.transform.y, size);
-    const key = packLandCellKey(ix, iy);
-    const cached = this.predictionLodCells.get(key);
-    if (cached !== undefined) return cached;
-
-    const cellX = landCellCenterForSize(ix, size);
-    const cellY = landCellCenterForSize(iy, size);
-    const dx = cellX - lod.cameraX;
-    const dy = -lod.cameraY;
-    const dz = cellY - lod.cameraZ;
-    const tier = this.resolvePredictionLodTierForDistanceSq(
-      dx * dx + dy * dy + dz * dz,
-    );
-    this.predictionLodCells.set(key, tier);
-    return tier;
-  }
-
-  private resolvePredictionLodTierForDistanceSq(
-    distanceSq: number,
-  ): PredictionLodTier {
-    if (this.predictionRichDistanceSq > 0 && distanceSq <= this.predictionRichDistanceSq) return 'rich';
-    if (this.predictionSimpleDistanceSq > 0 && distanceSq <= this.predictionSimpleDistanceSq) return 'simple';
-    if (this.predictionMassDistanceSq > 0 && distanceSq <= this.predictionMassDistanceSq) return 'mass';
-    if (this.predictionImpostorDistanceSq > 0 && distanceSq <= this.predictionImpostorDistanceSq) return 'impostor';
-    return 'marker';
-  }
-
-  private predictionFrameStrideForTier(
-    tier: PredictionLodTier,
-    entity: Entity,
-    lod: PredictionLodContext | undefined,
-  ): number {
-    if (entity.selectable?.selected === true) return 1;
-    if (
-      entity.projectile &&
-      this.entities.get(entity.projectile.sourceEntityId)?.selectable?.selected === true
-    ) {
-      return 1;
-    }
-    const globalFramesSkip = Math.max(0, Math.floor(lod?.physicsPredictionFramesSkip ?? 0));
-    const sphereFramesSkip = this.predictionFramesSkipForTier(tier);
-    return Math.max(globalFramesSkip, sphereFramesSkip) + 1;
-  }
-
-  private predictionFramesSkipForTier(tier: PredictionLodTier): number {
-    switch (tier) {
-      case 'rich': return 0;
-      case 'simple': return 1;
-      case 'mass': return 3;
-      case 'impostor': return 7;
-      case 'marker': return 15;
-    }
-  }
-
-  private consumePredictionDeltaMs(
-    entity: Entity,
-    deltaMs: number,
-    stride: number,
-  ): PredictionStep | null {
-    if (stride <= 1) {
-      this.clearPredictionAccum(entity.id);
-      return { entityDeltaMs: deltaMs, targetDeltaMs: deltaMs };
-    }
-
-    let accum = this.predictionAccums.get(entity.id);
-    const accumulatedMs = Math.min(
-      (accum?.entityMs ?? 0) + deltaMs,
-      250,
-    );
-    const targetAccumulatedMs = Math.min(
-      (accum?.targetMs ?? 0) + deltaMs,
-      250,
-    );
-    if ((this.frameCounter + entity.id) % stride !== 0) {
-      if (!accum) {
-        accum = { entityMs: accumulatedMs, targetMs: targetAccumulatedMs };
-        this.predictionAccums.set(entity.id, accum);
-      } else {
-        accum.entityMs = accumulatedMs;
-        accum.targetMs = targetAccumulatedMs;
-      }
-      return null;
-    }
-
-    this.clearPredictionAccum(entity.id);
-    return {
-      entityDeltaMs: accumulatedMs,
-      targetDeltaMs: targetAccumulatedMs,
-    };
-  }
-
   private applyUnitVisualPrediction(
     entity: Entity,
     target: ServerTarget | undefined,
@@ -1712,30 +1351,11 @@ export class ClientViewState {
     if (this.frameCounter === 0) {
       this.frameCounter = 1;
     }
-    if (!lod?.resolveTier) {
-      this.predictionLodCells.clear();
-    }
+    this.predictionLod.beginFrame(lod);
 
     // Frame-rate independent blend factors (driven by drift mode half-lives)
     const preset = getDriftPreset(getDriftMode());
-    this.drainQueuedProjectileSpawns(performance.now());
-    if (lod) {
-      const rich = Math.max(0, lod.richDistance);
-      const simple = Math.max(0, lod.simpleDistance);
-      const mass = Math.max(0, lod.massDistance);
-      const impostor = Math.max(0, lod.impostorDistance);
-      this.predictionLodCellSize = normalizeLodCellSize(lod.cellSize);
-      this.predictionRichDistanceSq = rich * rich;
-      this.predictionSimpleDistanceSq = simple * simple;
-      this.predictionMassDistanceSq = mass * mass;
-      this.predictionImpostorDistanceSq = impostor * impostor;
-    } else {
-      this.predictionRichDistanceSq = 0;
-      this.predictionSimpleDistanceSq = 0;
-      this.predictionMassDistanceSq = 0;
-      this.predictionImpostorDistanceSq = 0;
-      this.predictionLodCellSize = 1;
-    }
+    this.projectileSpawns.drain(performance.now(), (spawn) => this.applyProjectileSpawn(spawn));
 
     this.forceFieldsEnabledForPrediction = this.serverMeta?.forceFieldsEnabled ?? true;
 
@@ -1780,9 +1400,19 @@ export class ClientViewState {
       this.applyUnitVisualPrediction(entity, target, deltaMs, preset);
       this.dirtyUnitRenderIds.add(id);
       if (entity.combat && entity.combat.turrets.length > 0) {
-        const predictionTier = this.resolvePredictionLodTier(entity, lod);
-        const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
-        const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
+        const predictionTier = this.predictionLod.resolveTier(entity, lod);
+        const predictionStride = this.predictionLod.frameStride(
+          predictionTier,
+          entity,
+          lod,
+          (sourceId) => this.entities.get(sourceId)?.selectable?.selected === true,
+        );
+        const predictionStep = this.predictionLod.consumeDelta(
+          entity.id,
+          this.frameCounter,
+          deltaMs,
+          predictionStride,
+        );
         if (predictionStep) this.applyUnitExpensivePrediction(entity, target, predictionStep, preset);
       }
 
@@ -1799,9 +1429,19 @@ export class ClientViewState {
       }
 
       const target = this.serverTargets.get(id);
-      const predictionTier = this.resolvePredictionLodTier(entity, lod);
-      const predictionStride = this.predictionFrameStrideForTier(predictionTier, entity, lod);
-      const predictionStep = this.consumePredictionDeltaMs(entity, deltaMs, predictionStride);
+      const predictionTier = this.predictionLod.resolveTier(entity, lod);
+      const predictionStride = this.predictionLod.frameStride(
+        predictionTier,
+        entity,
+        lod,
+        (sourceId) => this.entities.get(sourceId)?.selectable?.selected === true,
+      );
+      const predictionStep = this.predictionLod.consumeDelta(
+        entity.id,
+        this.frameCounter,
+        deltaMs,
+        predictionStride,
+      );
       if (predictionStep === null) continue;
 
       const entityDeltaMs = predictionStep.entityDeltaMs;
@@ -1827,8 +1467,7 @@ export class ClientViewState {
           let homingTarget = this.entities.get(proj.homingTargetId);
           let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
           if (!targetValid) {
-            const shotCfg = proj.config.shot;
-            const isRocket = isRocketLikeShot(shotCfg);
+            const isRocket = proj.config.shotProfile.runtime.isRocketLike;
             if (isRocket && entity.ownership) {
               homingTarget = this.findNearestEnemyForRocketClient(entity, entity.ownership.playerId) ?? undefined;
               if (homingTarget) {
@@ -1904,8 +1543,8 @@ export class ClientViewState {
         const terrainFollow = entity.dgunProjectile?.terrainFollow === true;
         const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
         if (target) {
-          const targetShotCfg = entity.projectile.config.shot;
-          const targetIgnoresGravity = isRocketLikeShot(targetShotCfg);
+          const targetIgnoresGravity =
+            entity.projectile.config.shotProfile.runtime.ignoresGravity;
           if (!targetIgnoresGravity && !terrainFollow) {
             target.velocityZ -= GRAVITY * targetDt;
           }
@@ -1933,8 +1572,8 @@ export class ClientViewState {
         // rockets (shot.ignoresGravity) travel on pure thrust and
         // are bent only by homing — mirrors the server path so
         // predicted arcs match authoritative arcs.
-        const shotCfg = entity.projectile.config.shot;
-        const ignoresGravity = isRocketLikeShot(shotCfg);
+        const ignoresGravity =
+          entity.projectile.config.shotProfile.runtime.ignoresGravity;
         const prevTerrainFollowZ = entity.transform.z;
         if (!ignoresGravity && !terrainFollow) {
           entity.projectile.velocityZ -= GRAVITY * dt;
@@ -2110,7 +1749,7 @@ export class ClientViewState {
         velocityY: spawn.velocity.y,
         velocityZ: spawn.velocity.z,
         timeAlive: 0,
-        maxLifespan: spawn.maxLifespan ?? getShotMaxLifespan(config.shot),
+        maxLifespan: spawn.maxLifespan ?? config.shotProfile.runtime.maxLifespan,
         hitEntities: new Set(),
         maxHits: 1,
         points: spawn.beam ? [
@@ -2227,8 +1866,11 @@ export class ClientViewState {
     out.length = 0;
     for (const id of this.activeProjectilePredictionIds) {
       const entity = this.entities.get(id);
-      const shot = entity?.projectile?.config.shot;
-      if (entity?.projectile?.projectileType === 'projectile' && shot && isProjectileShot(shot) && shot.smokeTrail) {
+      const profile = entity?.projectile?.config.shotProfile;
+      if (
+        entity?.projectile?.projectileType === 'projectile' &&
+        profile?.visual.smokeTrail
+      ) {
         out.push(entity);
       }
     }
@@ -2299,55 +1941,23 @@ export class ClientViewState {
   // === Selection management ===
 
   setSelectedIds(ids: Set<EntityId>): void {
-    // Reuse the existing Set rather than replacing it — consumers
-    // (including the `selectedIds` getter below) hold a stable
-    // reference across selection changes.
-    this.selectedIds.clear();
-    for (const id of ids) this.selectedIds.add(id);
-    for (const entity of this.entities.values()) {
-      if (entity.selectable) {
-        const selected = this.selectedIds.has(entity.id);
-        if (entity.selectable.selected !== selected && entity.unit) {
-          this.dirtyUnitRenderIds.add(entity.id);
-        }
-        entity.selectable.selected = selected;
-        if (selected) this.markEntityPredictionActive(entity);
-      }
-    }
+    this.selectionState.set(ids);
   }
 
   getSelectedIds(): Set<EntityId> {
-    return this.selectedIds;
+    return this.selectionState.get();
   }
 
   selectEntity(id: EntityId): void {
-    this.selectedIds.add(id);
-    const entity = this.entities.get(id);
-    if (entity?.selectable) {
-      if (!entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
-      entity.selectable.selected = true;
-      this.markEntityPredictionActive(entity);
-    }
+    this.selectionState.select(id);
   }
 
   deselectEntity(id: EntityId): void {
-    this.selectedIds.delete(id);
-    const entity = this.entities.get(id);
-    if (entity?.selectable) {
-      if (entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
-      entity.selectable.selected = false;
-    }
+    this.selectionState.deselect(id);
   }
 
   clearSelection(): void {
-    for (const id of this.selectedIds) {
-      const entity = this.entities.get(id);
-      if (entity?.selectable) {
-        if (entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
-        entity.selectable.selected = false;
-      }
-    }
-    this.selectedIds.clear();
+    this.selectionState.clear();
   }
 
   // === Entity lookup for input handling ===
@@ -2527,16 +2137,11 @@ export class ClientViewState {
     this.entities.clear();
     this.serverTargets.clear();
     this.beamPathTargets.clear();
-    for (let i = 0; i < this.projectileSpawnQueue.length; i++) {
-      this.releaseQueuedProjectileSpawn(this.projectileSpawnQueue[i]);
-    }
-    this.projectileSpawnQueue.length = 0;
-    this.projectileSpawnSnapshotTime = 0;
-    this.projectileSpawnSnapshotInterval = 100;
+    this.projectileSpawns.clear();
     this.sprayTargets = [];
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.gameOverWinnerId = null;
-    this.selectedIds.clear();
+    this.selectionState.reset();
     this.gridCells = [];
     this.gridSearchCells = [];
     this.gridCellSize = 0;
@@ -2548,8 +2153,7 @@ export class ClientViewState {
     this.captureCellSize = 0;
     this.serverMeta = null;
     this.frameCounter = 0;
-    this.predictionAccums.clear();
-    this.predictionLodCells.clear();
+    this.predictionLod.clearAll();
     this.activeUnitPredictionIds.clear();
     this.activeProjectilePredictionIds.clear();
     this.activeBeamPathIds.clear();

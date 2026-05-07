@@ -24,7 +24,6 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { isProjectileShot } from '../sim/types';
 import type { ConcreteGraphicsQuality, FireExplosionStyle } from '@/types/graphics';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -248,9 +247,9 @@ export class SmokeTrail3D {
     const eligible = this._eligible;
     eligible.length = 0;
     for (const e of projectiles) {
-      const shot = e.projectile?.config.shot;
-      if (!shot || !isProjectileShot(shot)) continue;
-      const spec = shot.smokeTrail;
+      const profile = e.projectile?.config.shotProfile;
+      if (!profile?.runtime.isProjectile) continue;
+      const spec = profile.visual.smokeTrail;
       if (!spec) continue;
       // RENDER scope cull: off-screen projectiles do no smoke work.
       // Re-entering scope resumes on the next matching frame phase,
@@ -277,7 +276,7 @@ export class SmokeTrail3D {
       }
       for (let n = 0; n < emissions; n++) {
         const e = eligible[(start + n) % eligible.length];
-        const spec = (e.projectile!.config.shot as { smokeTrail?: import('@/types/blueprints').SmokeTrailSpec }).smokeTrail!;
+        const spec = e.projectile!.config.shotProfile.visual.smokeTrail!;
         const lifespanSec = ((spec.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lodLifeMult) / 1000;
         this.spawnPuff(
           e.transform.x, e.transform.y, e.transform.z,

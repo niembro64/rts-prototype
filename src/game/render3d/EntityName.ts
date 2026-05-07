@@ -15,7 +15,7 @@
 
 import type { Entity, PlayerId } from '../sim/types';
 import { getBuildingBlueprint } from '../sim/blueprints/buildings';
-import { getUnitBlueprint } from '../sim/blueprints/units';
+import { getUnitBlueprint } from '../sim/blueprints';
 
 export type PlayerNameLookup = (playerId: PlayerId) => string | null;
 

@@ -36,56 +36,6 @@ export function turretMaskIncludes(mask: number | undefined, index: number): boo
   return (mask & (1 << index)) !== 0;
 }
 
-/** Runtime weapon subset that can justify stopping a fight-move unit.
- *  Defensive/passive/manual/visual hardpoints can still rotate or activate,
- *  but they should not make a moving unit hold position as if it had a
- *  damage-dealing weapon ready. */
-export function isFightMoveFireCapableTurret(turret: Turret): boolean {
-  const config = turret.config;
-  const shotType = config.shot.type;
-  return (
-    !config.visualOnly &&
-    !config.isManualFire &&
-    !config.passive &&
-    shotType !== 'force' &&
-    shotType !== 'buildSpray'
-  );
-}
-
-/** Count fire-capable turrets in the runtime list. Movement uses this
- *  as the stop-ratio denominator instead of raw hardpoint count so
- *  construction emitters, manual D-guns, mirrors, and shields do not
- *  dilute normal attack-move behavior. */
-export function fightMoveFireCapableTurretCount(turrets: readonly Turret[] | undefined): number {
-  if (!turrets) return 0;
-  let count = 0;
-  for (let i = 0; i < turrets.length; i++) {
-    if (isFightMoveFireCapableTurret(turrets[i])) count++;
-  }
-  return count;
-}
-
-/** Count fire-capable turrets that are engaged AND eligible for the
- *  firing path. The firing mask is written by targeting and then
- *  pruned by turret rotation when a ballistic projectile has no valid
- *  solution. That keeps fight-move from stopping at "engaged but
- *  cannot actually shoot" ranges. */
-export function fightMoveFireEligibleTurretCount(
-  turrets: readonly Turret[] | undefined,
-  firingMask: number | undefined,
-): number {
-  if (!turrets) return 0;
-  let count = 0;
-  for (let i = 0; i < turrets.length; i++) {
-    const turret = turrets[i];
-    if (!isFightMoveFireCapableTurret(turret)) continue;
-    if (turret.state !== 'engaged' || turret.target === null) continue;
-    if (!turretMaskIncludes(firingMask, i)) continue;
-    count++;
-  }
-  return count;
-}
-
 // Get target radius for range calculations.
 // Buildings precompute targetRadius at construction (dimensions never
 // change), so this is a property read, not a per-call sqrt.

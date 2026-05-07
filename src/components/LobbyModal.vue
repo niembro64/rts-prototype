@@ -6,7 +6,7 @@ import { BAR_THEMES, barVars } from '../barThemes';
 import CommanderAvatar from './CommanderAvatar.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarButton from './BarButton.vue';
-import { getUnitBlueprint } from '../game/sim/blueprints';
+import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
@@ -124,11 +124,7 @@ function pickForceFields(enabled: boolean): void {
 }
 
 function unitShortName(unitType: string): string {
-  try {
-    return getUnitBlueprint(unitType).shortName;
-  } catch {
-    return unitType.toUpperCase().slice(0, 3);
-  }
+  return getUnitDisplayShortName(unitType);
 }
 
 function pickResetDefaults(): void {

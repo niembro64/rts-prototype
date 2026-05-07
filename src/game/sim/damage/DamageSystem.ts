@@ -21,6 +21,10 @@ import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIn
 import { findClosestPanelHit } from '../combat/MirrorPanelHit';
 import { findForceFieldSegmentIntersection } from '../combat/forceFieldTurret';
 import { getTargetRadius, resolveWeaponWorldMount } from '../combat/combatUtils';
+import {
+  distanceToLineShotRangeCircle,
+  type LineShotRangeCircle,
+} from '../combat/lineShotRange';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
 import {
   SOLAR_CLOSED_DAMAGE_MULTIPLIER,
@@ -180,9 +184,9 @@ export class DamageSystem {
   // spheres — full 3D.
   //
   // The beam terminates at the first of: a unit hit, a building hit,
-  // a ground hit, or the firing turret's path-length range. Mirrors and
-  // force fields bounce; each reflected segment consumes the remaining
-  // distance budget, so the full polyline length stays within range.
+  // a ground hit, or the firing turret's 2D range circle. Mirrors and
+  // force fields bounce; reflected segments are clipped against the
+  // same original range circle instead of a separate 3D max length.
   //
   // Mirror panels are tilted rectangles; force fields are spherical
   // reflectors that only catch outside-to-inside crossings. Buildings
@@ -193,21 +197,44 @@ export class DamageSystem {
     endX: number, endY: number, endZ: number,
     sourceEntityId: EntityId,
     lineWidth: number,
-    maxBounces: number = 3
+    maxBounces: number = 3,
+    rangeCircle?: LineShotRangeCircle,
   ): {
     endX: number; endY: number; endZ: number;
     obstructionT?: number;
     reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[];
   } {
     const reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[] = [];
-    const range = Math.hypot(endX - startX, endY - startY, endZ - startZ);
-    let remainingRange = range;
+    let remainingRange = Math.hypot(endX - startX, endY - startY, endZ - startZ);
     let curSX = startX, curSY = startY, curSZ = startZ;
     let curEX = endX, curEY = endY, curEZ = endZ;
     let excludeEntityId = sourceEntityId;
     let excludePanelIndex = -1; // -1 = exclude entire entity (source), >= 0 = exclude only that panel
 
     for (let bounce = 0; bounce <= maxBounces; bounce++) {
+      if (rangeCircle) {
+        const segDx = curEX - curSX;
+        const segDy = curEY - curSY;
+        const segDz = curEZ - curSZ;
+        const segLen = Math.hypot(segDx, segDy, segDz);
+        if (segLen <= 1e-9) break;
+        const invSegLen = 1 / segLen;
+        const circleDistance = distanceToLineShotRangeCircle(
+          curSX, curSY,
+          segDx * invSegLen, segDy * invSegLen,
+          rangeCircle,
+        );
+        if (circleDistance === null || circleDistance <= 1e-6) {
+          curEX = curSX;
+          curEY = curSY;
+          curEZ = curSZ;
+          break;
+        }
+        curEX = curSX + segDx * invSegLen * circleDistance;
+        curEY = curSY + segDy * invSegLen * circleDistance;
+        curEZ = curSZ + segDz * invSegLen * circleDistance;
+      }
+
       const hit = this.findBeamSegmentHit(
         curSX, curSY, curSZ, curEX, curEY, curEZ,
         excludeEntityId, excludePanelIndex, lineWidth
@@ -235,18 +262,6 @@ export class DamageSystem {
       const beamDirY = segDy / segLen;
       const beamDirZ = segDz / segLen;
 
-      const travelled = Math.max(0, Math.min(segLen, segLen * hit.t));
-      remainingRange = Math.max(0, remainingRange - travelled);
-      if (remainingRange <= 1e-6) {
-        curSX = hit.x;
-        curSY = hit.y;
-        curSZ = hit.z;
-        curEX = hit.x;
-        curEY = hit.y;
-        curEZ = hit.z;
-        break;
-      }
-
       // Reflect around the reflector's full 3D normal. Mirrors provide
       // a panel normal; force fields provide the sphere surface normal.
       const normalLen = Math.hypot(hit.normalX, hit.normalY, hit.normalZ);
@@ -267,9 +282,34 @@ export class DamageSystem {
       curSX = hit.x;
       curSY = hit.y;
       curSZ = hit.z;
-      curEX = hit.x + reflDirX * remainingRange;
-      curEY = hit.y + reflDirY * remainingRange;
-      curEZ = hit.z + reflDirZ * remainingRange;
+      if (rangeCircle) {
+        const circleDistance = distanceToLineShotRangeCircle(
+          curSX, curSY,
+          reflDirX, reflDirY,
+          rangeCircle,
+        );
+        if (circleDistance === null || circleDistance <= 1e-6) {
+          curEX = hit.x;
+          curEY = hit.y;
+          curEZ = hit.z;
+          break;
+        }
+        curEX = hit.x + reflDirX * circleDistance;
+        curEY = hit.y + reflDirY * circleDistance;
+        curEZ = hit.z + reflDirZ * circleDistance;
+      } else {
+        const travelled = Math.max(0, Math.min(segLen, segLen * hit.t));
+        remainingRange = Math.max(0, remainingRange - travelled);
+        if (remainingRange <= 1e-6) {
+          curEX = hit.x;
+          curEY = hit.y;
+          curEZ = hit.z;
+          break;
+        }
+        curEX = hit.x + reflDirX * remainingRange;
+        curEY = hit.y + reflDirY * remainingRange;
+        curEZ = hit.z + reflDirZ * remainingRange;
+      }
       excludeEntityId = hit.entityId;
       excludePanelIndex = hit.panelIndex;
     }

@@ -1,6 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, UnitAction } from './types';
-import type { BuildingGrid } from './grid';
+import type { BuildingGrid } from './buildGrid';
 import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';

@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { isLineShot, isLineShotType } from '../sim/types';
+import { isLineShotType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { BeamStyle, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
 import { getGraphicsConfig } from '@/clientBarConfig';
@@ -421,15 +421,17 @@ export class BeamRenderer3D {
         && graphicsTier !== 'min'
         && graphicsTier !== 'low';
 
-      const shot = proj.config.shot;
-      // shot.radius already equals shot.width / 2 for line shots, so using it
+      const profile = proj.config.shotProfile.visual;
+      // lineRadius already equals shot.width / 2 for line shots, so using it
       // directly as the cylinder scale makes the diameter = shot.width.
-      let cylRadius = BEAM_MIN_RADIUS;
-      let damageSphereRadius = ENDPOINT_MIN_RADIUS;
-      if (shot && isLineShot(shot)) {
-        cylRadius = Math.max(BEAM_MIN_RADIUS, shot.radius * BEAM_RADIUS_SCALE * radiusMul);
-        damageSphereRadius = Math.max(ENDPOINT_MIN_RADIUS, shot.damageSphere.radius);
-      }
+      const cylRadius = Math.max(
+        BEAM_MIN_RADIUS,
+        profile.lineRadius * BEAM_RADIUS_SCALE * radiusMul,
+      );
+      const damageSphereRadius = Math.max(
+        ENDPOINT_MIN_RADIUS,
+        profile.lineDamageSphereRadius,
+      );
       const baseAlpha = pt === 'laser' ? LASER_OPACITY_MAX : BEAM_OPACITY;
 
       // Walk the polyline pairwise and draw one cylinder per segment.

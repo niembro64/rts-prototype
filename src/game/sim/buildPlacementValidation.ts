@@ -2,7 +2,7 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, BuildingType } from './types';
 import { getBuildingConfig } from './buildConfigs';
-import { GRID_CELL_SIZE, getBuildingCenterFromGrid, snapBuildingToGrid } from './grid';
+import { BUILD_GRID_CELL_SIZE, getBuildingCenterFromGrid, snapBuildingToGrid } from './buildGrid';
 import {
   findDepositContainingPoint,
   getMetalDepositGridCells,
@@ -65,10 +65,10 @@ export function getOccupiedBuildingCells(buildings: Entity[]): ReadonlySet<strin
   for (const b of buildings) {
     if (!b.building) continue;
     const existingConfig = b.buildingType ? getBuildingConfig(b.buildingType) : undefined;
-    const bw = existingConfig ? existingConfig.gridWidth : Math.max(1, Math.ceil(b.building.width / GRID_CELL_SIZE));
-    const bh = existingConfig ? existingConfig.gridHeight : Math.max(1, Math.ceil(b.building.height / GRID_CELL_SIZE));
-    const left = Math.floor((b.transform.x - (bw * GRID_CELL_SIZE) / 2) / GRID_CELL_SIZE + 1e-6);
-    const top = Math.floor((b.transform.y - (bh * GRID_CELL_SIZE) / 2) / GRID_CELL_SIZE + 1e-6);
+    const bw = existingConfig ? existingConfig.gridWidth : Math.max(1, Math.ceil(b.building.width / BUILD_GRID_CELL_SIZE));
+    const bh = existingConfig ? existingConfig.gridHeight : Math.max(1, Math.ceil(b.building.height / BUILD_GRID_CELL_SIZE));
+    const left = Math.floor((b.transform.x - (bw * BUILD_GRID_CELL_SIZE) / 2) / BUILD_GRID_CELL_SIZE + 1e-6);
+    const top = Math.floor((b.transform.y - (bh * BUILD_GRID_CELL_SIZE) / 2) / BUILD_GRID_CELL_SIZE + 1e-6);
     for (let dx = 0; dx < bw; dx++) {
       for (let dy = 0; dy < bh; dy++) {
         occupied.add(cellKey(left + dx, top + dy));
@@ -90,10 +90,10 @@ function getBuildingPlacementDiagnosticsAtGrid(
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
   const center = getBuildingCenterFromGrid(gridX, gridY, config.gridWidth, config.gridHeight);
-  const halfWidth = (config.gridWidth * GRID_CELL_SIZE) / 2;
-  const halfHeight = (config.gridHeight * GRID_CELL_SIZE) / 2;
-  const mapCellsX = Math.ceil(mapWidth / GRID_CELL_SIZE);
-  const mapCellsY = Math.ceil(mapHeight / GRID_CELL_SIZE);
+  const halfWidth = (config.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
+  const halfHeight = (config.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
+  const mapCellsX = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
+  const mapCellsY = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
   const cells: BuildPlacementCellDiagnostic[] = [];
   let hasBlockingCell = false;
   let failureReason: BuildPlacementFailureReason | undefined;
@@ -107,7 +107,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
   // calls per cell, which re-sampled the same mesh points twice).
   const useAuthoritativeBuildability =
     terrainBuildabilityGrid !== null &&
-    terrainBuildabilityGrid.cellSize === GRID_CELL_SIZE &&
+    terrainBuildabilityGrid.cellSize === BUILD_GRID_CELL_SIZE &&
     terrainBuildabilityGrid.mapWidth === mapWidth &&
     terrainBuildabilityGrid.mapHeight === mapHeight;
   const footprintTerrainOk = useAuthoritativeBuildability
@@ -125,8 +125,8 @@ function getBuildingPlacementDiagnosticsAtGrid(
     for (let dx = 0; dx < config.gridWidth; dx++) {
       const gx = gridX + dx;
       const gy = gridY + dy;
-      const x = gx * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
-      const y = gy * GRID_CELL_SIZE + GRID_CELL_SIZE / 2;
+      const x = gx * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2;
+      const y = gy * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2;
       let reason: BuildPlacementCellReason = 'ok';
       let blocking = false;
       let metalCovered = false;
@@ -145,8 +145,8 @@ function getBuildingPlacementDiagnosticsAtGrid(
           : evaluateBuildabilityFootprint(
             x,
             y,
-            GRID_CELL_SIZE / 2,
-            GRID_CELL_SIZE / 2,
+            BUILD_GRID_CELL_SIZE / 2,
+            BUILD_GRID_CELL_SIZE / 2,
             mapWidth,
             mapHeight,
           );
@@ -219,7 +219,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
       center.y,
       halfWidth,
       halfHeight,
-      GRID_CELL_SIZE,
+      BUILD_GRID_CELL_SIZE,
     );
     metalFraction = coverage.fraction;
     metalCoveredCells = coverage.coveredCells;

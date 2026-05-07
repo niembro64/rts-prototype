@@ -3,9 +3,9 @@ import type { Entity, PlayerId, BuildingType } from './types';
 import type { ConstructionSystem } from './construction';
 import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
-import { createTurretsForBuilding } from './unitDefinitions';
+import { createBuildingRuntimeTurrets } from './runtimeTurrets';
 import { getBuildingConfig } from './buildConfigs';
-import { GRID_CELL_SIZE } from './grid';
+import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { BUILDABLE_UNIT_IDS } from './blueprints';
 import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
 import {
@@ -166,8 +166,8 @@ function placeCompleteBuilding(
   const grid = construction.getGrid();
 
   const snapped = grid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
-  const gx = Math.floor(snapped.x / GRID_CELL_SIZE);
-  const gy = Math.floor(snapped.y / GRID_CELL_SIZE);
+  const gx = Math.floor(snapped.x / BUILD_GRID_CELL_SIZE);
+  const gy = Math.floor(snapped.y / BUILD_GRID_CELL_SIZE);
 
   if (!grid.canPlace(gx, gy, config.gridWidth, config.gridHeight)) {
     return null;
@@ -181,9 +181,9 @@ function placeCompleteBuilding(
   }
 
   const physicalSize = {
-    width: config.gridWidth * GRID_CELL_SIZE,
-    height: config.gridHeight * GRID_CELL_SIZE,
-    depth: config.gridDepth * GRID_CELL_SIZE,
+    width: config.gridWidth * BUILD_GRID_CELL_SIZE,
+    height: config.gridHeight * BUILD_GRID_CELL_SIZE,
+    depth: config.gridDepth * BUILD_GRID_CELL_SIZE,
   };
 
   const entity = world.createBuilding(
@@ -242,7 +242,7 @@ function placeCompleteBuilding(
   // up via entity.combat (host-agnostic), so armed buildings ride
   // through the targeting / fire / turret-rotation pipelines on the
   // same code path as armed units.
-  const buildingTurrets = createTurretsForBuilding(buildingType);
+  const buildingTurrets = createBuildingRuntimeTurrets(buildingType);
   if (buildingTurrets.length > 0) {
     entity.combat = {
       turrets: buildingTurrets,
@@ -417,13 +417,13 @@ export function spawnInitialBases(
   const windConfig = getBuildingConfig('wind');
   const factoryConfig = getBuildingConfig('factory');
   const megaBeamTowerConfig = getBuildingConfig('megaBeamTower');
-  const cellGap = DEMO_CONFIG.rowGapCells * GRID_CELL_SIZE;
-  const commanderGap = DEMO_CONFIG.commanderGapCells * GRID_CELL_SIZE;
-  const megaBeamTowerGap = DEMO_CONFIG.megaBeamTowerGapCells * GRID_CELL_SIZE;
-  const solarDepth = solarConfig.gridHeight * GRID_CELL_SIZE;
-  const windDepth = windConfig.gridHeight * GRID_CELL_SIZE;
-  const factoryDepth = factoryConfig.gridHeight * GRID_CELL_SIZE;
-  const megaBeamTowerDepth = megaBeamTowerConfig.gridHeight * GRID_CELL_SIZE;
+  const cellGap = DEMO_CONFIG.rowGapCells * BUILD_GRID_CELL_SIZE;
+  const commanderGap = DEMO_CONFIG.commanderGapCells * BUILD_GRID_CELL_SIZE;
+  const megaBeamTowerGap = DEMO_CONFIG.megaBeamTowerGapCells * BUILD_GRID_CELL_SIZE;
+  const solarDepth = solarConfig.gridHeight * BUILD_GRID_CELL_SIZE;
+  const windDepth = windConfig.gridHeight * BUILD_GRID_CELL_SIZE;
+  const factoryDepth = factoryConfig.gridHeight * BUILD_GRID_CELL_SIZE;
+  const megaBeamTowerDepth = megaBeamTowerConfig.gridHeight * BUILD_GRID_CELL_SIZE;
 
   // Five concentric radii — outermost to innermost: commander, solar,
   // wind, factory, megaBeam tower. Solar and wind used to share one

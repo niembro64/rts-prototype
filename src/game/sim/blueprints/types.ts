@@ -30,6 +30,7 @@ export type {
   TurretBlueprint,
   MountOffset,
   TurretMount,
+  UnitTurretMountZResolver,
   BuildingTurretMount,
   WheelConfig,
   TreadConfig,

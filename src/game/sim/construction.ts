@@ -2,7 +2,7 @@ import type { WorldState } from './WorldState';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, EntityId, PlayerId, BuildingType } from './types';
 import { getBuildingConfig } from './buildConfigs';
-import { BuildingGrid, GRID_CELL_SIZE } from './grid';
+import { BuildingGrid, BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { computeFactoryWaypoint } from './spawn';
 import { getBuildingPlacementDiagnosticsForGrid } from './buildPlacementValidation';
 import {
@@ -80,9 +80,9 @@ export class ConstructionSystem {
     // fields stay zero / empty until completion.
 
     const physicalSize = {
-      width: config.gridWidth * GRID_CELL_SIZE,
-      height: config.gridHeight * GRID_CELL_SIZE,
-      depth: config.gridDepth * GRID_CELL_SIZE,
+      width: config.gridWidth * BUILD_GRID_CELL_SIZE,
+      height: config.gridHeight * BUILD_GRID_CELL_SIZE,
+      depth: config.gridDepth * BUILD_GRID_CELL_SIZE,
     };
 
     const entity = world.createBuilding(
@@ -173,16 +173,16 @@ export class ConstructionSystem {
 
     // Snap to grid
     const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
-    const centerX = snapped.x + (config.gridWidth * GRID_CELL_SIZE) / 2;
-    const centerY = snapped.y + (config.gridHeight * GRID_CELL_SIZE) / 2;
+    const centerX = snapped.x + (config.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
+    const centerY = snapped.y + (config.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
 
     // Create ghost entity
     const entity = world.createBuilding(
       centerX,
       centerY,
-      config.gridWidth * GRID_CELL_SIZE,
-      config.gridHeight * GRID_CELL_SIZE,
-      config.gridDepth * GRID_CELL_SIZE,
+      config.gridWidth * BUILD_GRID_CELL_SIZE,
+      config.gridHeight * BUILD_GRID_CELL_SIZE,
+      config.gridDepth * BUILD_GRID_CELL_SIZE,
       playerId
     );
 
@@ -200,8 +200,8 @@ export class ConstructionSystem {
   canPlaceAt(worldX: number, worldY: number, buildingType: BuildingType): boolean {
     const config = getBuildingConfig(buildingType);
     const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
-    const gridX = Math.floor(snapped.x / GRID_CELL_SIZE);
-    const gridY = Math.floor(snapped.y / GRID_CELL_SIZE);
+    const gridX = Math.floor(snapped.x / BUILD_GRID_CELL_SIZE);
+    const gridY = Math.floor(snapped.y / BUILD_GRID_CELL_SIZE);
     return getBuildingPlacementDiagnosticsForGrid(
       buildingType,
       gridX,
@@ -250,8 +250,8 @@ export class ConstructionSystem {
     const config = getBuildingConfig(buildingType);
     const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
     return {
-      x: snapped.x + (config.gridWidth * GRID_CELL_SIZE) / 2,
-      y: snapped.y + (config.gridHeight * GRID_CELL_SIZE) / 2,
+      x: snapped.x + (config.gridWidth * BUILD_GRID_CELL_SIZE) / 2,
+      y: snapped.y + (config.gridHeight * BUILD_GRID_CELL_SIZE) / 2,
     };
   }
 }

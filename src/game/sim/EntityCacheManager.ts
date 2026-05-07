@@ -2,7 +2,7 @@
 // Used by both WorldState (server) and ClientViewState (client)
 
 import type { Entity, EntityId, PlayerId } from './types';
-import { isLineShotType, isProjectileShot } from './types';
+import { isLineShotType } from './types';
 
 const EMPTY_ENTITIES: Entity[] = [];
 
@@ -152,8 +152,7 @@ export class EntityCacheManager {
           this.cachedProjectiles.push(entity);
           if (entity.projectile?.projectileType === 'projectile') {
             this.cachedTravelingProjectiles.push(entity);
-            const shot = entity.projectile.config.shot;
-            if (isProjectileShot(shot) && shot.smokeTrail) {
+            if (entity.projectile.config.shotProfile.visual.smokeTrail) {
               this.cachedSmokeTrailProjectiles.push(entity);
             }
           } else if (entity.projectile && isLineShotType(entity.projectile.projectileType)) {

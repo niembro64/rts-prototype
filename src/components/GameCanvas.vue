@@ -31,7 +31,7 @@ import {
   type BattleHandoff,
 } from '../game/network/NetworkManager';
 import { getMapSize } from '../config';
-import { getUnitBlueprint } from '../game/sim/blueprints';
+import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
 import { LOD_EMA_SOURCE, GOOD_TPS } from '../lodConfig';
 import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
@@ -2491,7 +2491,7 @@ onUnmounted(() => {
                 :active="currentAllowedUnits.includes(ut)"
                 :title="`Toggle ${ut} units in demo battle`"
                 @click="toggleDemoUnitType(ut)"
-              >{{ getUnitBlueprint(ut).shortName }}</BarButton>
+              >{{ getUnitDisplayShortName(ut) }}</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
           <BarControlGroup>
@@ -3368,83 +3368,93 @@ onUnmounted(() => {
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />
-            <BarLabel>TURR RAD:</BarLabel>
+            <BarLabel>TURR CIR:</BarLabel>
             <BarButton
               :active="allRangesActive"
-              title="Toggle every turret-range viz on/off"
+              title="Toggle every 2D turret/build circle viz on/off"
               @click="toggleAllRanges"
             >ALL</BarButton>
             <BarButtonGroup>
               <BarButton
                 :active="rangeToggles.trackAcquire"
-                title="Show tracking acquire range (start tracking target)"
+                title="Show tracking acquire circle (2D ground-plane start tracking target range)"
                 @click="toggleRange('trackAcquire')"
               >T.A</BarButton>
               <BarButton
                 :active="rangeToggles.trackRelease"
-                title="Show tracking release range (lose target)"
+                title="Show tracking release circle (2D ground-plane lose target range)"
                 @click="toggleRange('trackRelease')"
               >T.R</BarButton>
               <BarButton
                 :active="rangeToggles.engageAcquire"
-                title="Show engage acquire range (start firing)"
+                title="Show engage acquire circle (2D ground-plane start firing range)"
                 @click="toggleRange('engageAcquire')"
               >E.A</BarButton>
               <BarButton
                 :active="rangeToggles.engageRelease"
-                title="Show engage release range (stop firing)"
+                title="Show engage release circle (2D ground-plane stop firing range)"
                 @click="toggleRange('engageRelease')"
               >E.R</BarButton>
               <BarButton
+                :active="rangeToggles.engageMinAcquire"
+                title="Show minimum engage acquire circle (2D inner dead-zone start firing boundary)"
+                @click="toggleRange('engageMinAcquire')"
+              >M.A</BarButton>
+              <BarButton
+                :active="rangeToggles.engageMinRelease"
+                title="Show minimum engage release circle (2D inner dead-zone stop firing boundary)"
+                @click="toggleRange('engageMinRelease')"
+              >M.R</BarButton>
+              <BarButton
                 :active="rangeToggles.build"
-                title="Show build range"
+                title="Show build circle (2D ground-plane builder range)"
                 @click="toggleRange('build')"
               >BLD</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />
-            <BarLabel>SHOT RAD:</BarLabel>
+            <BarLabel>SHOT SPH:</BarLabel>
             <BarButton
               :active="allProjRangesActive"
-              title="Toggle every projectile-radius viz on/off"
+              title="Toggle every 3D projectile sphere viz on/off"
               @click="toggleAllProjRanges"
             >ALL</BarButton>
             <BarButtonGroup>
               <BarButton
                 :active="projRangeToggles.collision"
-                title="Show projectile collision radius"
+                title="Show projectile collision sphere (3D hit volume)"
                 @click="toggleProjRange('collision')"
               >COL</BarButton>
               <BarButton
                 :active="projRangeToggles.explosion"
-                title="Show projectile explosion radius"
+                title="Show projectile explosion sphere (3D splash volume)"
                 @click="toggleProjRange('explosion')"
               >EXP</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />
-            <BarLabel>UNIT RAD:</BarLabel>
+            <BarLabel>UNIT SPH:</BarLabel>
             <BarButton
               :active="allUnitRadiiActive"
-              title="Toggle every unit-radius viz on/off"
+              title="Toggle every 3D unit sphere viz on/off"
               @click="toggleAllUnitRadii"
             >ALL</BarButton>
             <BarButtonGroup>
               <BarButton
                 :active="unitRadiusToggles.visual"
-                title="Show unit body radius (unit.radius.body — visible chassis size)"
+                title="Show unit body sphere (unit.radius.body — visible chassis size)"
                 @click="toggleUnitRadius('visual')"
               >BODY</BarButton>
               <BarButton
                 :active="unitRadiusToggles.shot"
-                title="Show unit shot radius (radius.shot — projectile/beam hit detection)"
+                title="Show unit shot sphere (radius.shot — projectile/beam hit detection)"
                 @click="toggleUnitRadius('shot')"
               >SHOT</BarButton>
               <BarButton
                 :active="unitRadiusToggles.push"
-                title="Show unit push radius (radius.push — unit-unit push physics, ground-click selection fallback)"
+                title="Show unit push sphere (radius.push — unit-unit push physics, ground-click selection fallback)"
                 @click="toggleUnitRadius('push')"
               >PUSH</BarButton>
             </BarButtonGroup>

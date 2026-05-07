@@ -11,6 +11,7 @@ import { lineSphereIntersectionT, rayBoxIntersectionT } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import type { WorldState } from '../WorldState';
 import type { EntityId, Turret } from '../../../types/sim';
+import { UNIT_BLUEPRINTS } from '../blueprints/units';
 
 /** Step the LOS ray at this fraction of LAND_CELL_SIZE. Half-cell is
  *  the natural floor: terrain features authored at cell scale cannot
@@ -18,6 +19,10 @@ import type { EntityId, Turret } from '../../../types/sim';
  *  thin ridges. */
 const LOS_STEP_FRAC = 0.5;
 const LOS_ENTITY_QUERY_WIDTH = LAND_CELL_SIZE;
+const LOS_UNIT_QUERY_WIDTH = LOS_ENTITY_QUERY_WIDTH + 2 * Math.max(
+  0,
+  ...Object.values(UNIT_BLUEPRINTS).map((bp) => bp.radius.push),
+);
 
 /** Ticks of consecutive LOS occlusion before a tracked target is
  *  dropped entirely. Engagement (firing) is gated immediately on the
@@ -71,10 +76,11 @@ function isExcludedLineOfSightEntity(
   return id === sourceEntityId || id === targetEntityId;
 }
 
-/** True if no live unit sphere or building AABB intersects the straight
- *  sightline. The shooter and intended target are ignored because the
- *  sightline can start/end inside or on their gameplay colliders; every
- *  other live unit/building is a blocker regardless of ownership. */
+/** True if no live unit push sphere or building AABB intersects the
+ *  straight sightline. The shooter and intended target are ignored
+ *  because the sightline can start/end inside or on their gameplay
+ *  colliders; every other live unit/building is a blocker regardless
+ *  of ownership. */
 export function hasEntityLineOfSight(
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
@@ -84,7 +90,7 @@ export function hasEntityLineOfSight(
   const nearbyUnits = spatialGrid.queryUnitsAlongLine(
     sx, sy, sz,
     tx, ty, tz,
-    LOS_ENTITY_QUERY_WIDTH,
+    LOS_UNIT_QUERY_WIDTH,
   );
   for (const unit of nearbyUnits) {
     if (isExcludedLineOfSightEntity(unit.id, sourceEntityId, targetEntityId)) continue;
@@ -94,7 +100,7 @@ export function hasEntityLineOfSight(
       sx, sy, sz,
       tx, ty, tz,
       unit.transform.x, unit.transform.y, unit.transform.z,
-      unit.unit.radius.shot,
+      unit.unit.radius.push,
     );
     if (t !== null) return false;
   }

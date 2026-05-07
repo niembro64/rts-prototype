@@ -2,9 +2,10 @@
 // treads, or wheels.
 //
 // Legs port the 2D ArachnidLeg system (world-space foot planting, snap-lerp
-// gait, IK knee bend) with the only simplification being that we keep feet
-// on the ground plane (2-axis movement: XZ). Attach offsets, lengths, and
-// snap parameters are authored on each unit blueprint.
+// gait, IK knee bend). The planted foot point stays on terrain for gait
+// logic, while the rendered pad/cylinder endpoint rides just above terrain
+// so thick leg geometry does not intersect the ground. Attach offsets,
+// lengths, and snap parameters are authored on each unit blueprint.
 
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
@@ -99,13 +100,20 @@ export function getChassisLift(
 }
 const WHEEL_COLOR = 0x2a2f36;
 
-// Vertical layout for legs. Feet stay on the ground, hips attach at
-// each leg's per-body-segment midpoint — computed once when the leg
-// set is built (getSegmentMidYAt resolves the nearest body segment to
-// the leg's forward offset). The knee's Y is solved by the IK routine:
-// it lifts upward in the vertical plane containing the hip-foot line.
-// Walk-cycle animation remains 2-axis (foot planting in XZ).
+// Vertical layout for legs. The planted foot state stays on the
+// terrain, but the rendered foot pad is lifted slightly so the lower
+// cylinder's thick end cap does not clip into the ground. Hips attach
+// at each leg's per-body-segment midpoint — computed once when the
+// leg set is built (getSegmentMidYAt resolves the nearest body segment
+// to the leg's forward offset). The knee's Y is solved by the IK
+// routine: it lifts upward in the vertical plane containing the
+// hip-foot line. Walk-cycle animation remains 2-axis (foot planting in XZ).
 const FOOT_Y = 1;
+const FOOT_PAD_RADIUS_MULT = 1.45;
+const FOOT_PAD_HALF_HEIGHT_MULT = 0.45;
+const FOOT_PAD_MIN_RADIUS = 1.1;
+const FOOT_PAD_MIN_HALF_HEIGHT = 0.35;
+const FOOT_PAD_GROUND_CLEARANCE = 0.35;
 
 export type Locomotion3DMesh =
   | ({ type: 'treads';
@@ -241,8 +249,14 @@ type LegInstance = {
    *  alongside the world position. */
   hipJointSlot: number;
   kneeJointSlot: number;
+  /** Slot into the flattened foot-pad pool. Allocated for every
+   *  rendered leg LOD so the cylinder endpoint can sit above terrain
+   *  even when joints are disabled. */
+  footPadSlot: number;
   hipJointRadius: number;
   kneeJointRadius: number;
+  footPadRadius: number;
+  footPadHalfHeight: number;
   upperThick: number;
   lowerThick: number;
   /** LEGS-radius debug viz: a wireframe SPHERE centered at this
@@ -254,9 +268,9 @@ type LegInstance = {
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
 const treadEndGeom = new THREE.CylinderGeometry(1, 1, 1, 16);
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
-// Leg cylinders AND joint spheres no longer need a per-mesh
-// geometry — every leg cylinder + joint sphere renders through the
-// LegInstancedRenderer's shared pools.
+// Leg cylinders, joint spheres, and foot pads no longer need per-mesh
+// geometry — every leg cylinder, joint sphere, and foot pad renders
+// through the LegInstancedRenderer's shared pools.
 
 // Unit wireframe sphere — the rest-sphere viz. Each leg gets one
 // LineSegments instance scaled up to stepRadius and positioned at the
@@ -273,7 +287,7 @@ const restSphereMat = new THREE.LineBasicMaterial({
 
 const treadMat = new THREE.MeshBasicMaterial({ color: TREAD_COLOR });
 const wheelMat = new THREE.MeshBasicMaterial({ color: WHEEL_COLOR });
-// Leg cylinders + joint spheres now live in LegInstancedRenderer's
+// Leg cylinders, joint spheres, and foot pads now live in LegInstancedRenderer's
 // shared pools; their materials are owned there. No module-level
 // legMat remains.
 // Lighter gray for the animated cleats, mirroring the 2D drawAnimatedTread
@@ -592,6 +606,7 @@ function buildLegs(
     if (legLod === 'animated' || legLod === 'full') {
       lowerSlot = legRenderer.allocLower(shellPool);
     }
+    const footPadSlot = legRenderer.allocFootPad(shellPool);
 
     // Joint spheres at 'full' LOD only — both slots allocate
     // into the shared joint-sphere InstancedMesh pool. Radii are
@@ -603,6 +618,11 @@ function buildLegs(
     let kneeJointSlot = -1;
     const hipJointRadius = Math.max(1, cfg.hipRadius);
     const kneeJointRadius = Math.max(1, cfg.kneeRadius);
+    const footPadRadius = Math.max(FOOT_PAD_MIN_RADIUS, lowerThick * FOOT_PAD_RADIUS_MULT);
+    const footPadHalfHeight = Math.max(
+      FOOT_PAD_MIN_HALF_HEIGHT,
+      lowerThick * FOOT_PAD_HALF_HEIGHT_MULT,
+    );
     if (legLod === 'full') {
       hipJointSlot = legRenderer.allocJoint(shellPool);
       kneeJointSlot = legRenderer.allocJoint(shellPool);
@@ -633,8 +653,11 @@ function buildLegs(
       lowerSlot,
       hipJointSlot,
       kneeJointSlot,
+      footPadSlot,
       hipJointRadius,
       kneeJointRadius,
+      footPadRadius,
+      footPadHalfHeight,
       upperThick,
       lowerThick,
     });
@@ -1191,6 +1214,21 @@ export function updateLocomotion(
         footZ = hipWorldZ + clampDz * scale;
       }
 
+      // The gait foot remains terrain-planted, but the visible foot
+      // endpoint needs enough clearance for the leg cylinder's radius.
+      // Sampling at the current visual XZ keeps sliding feet above
+      // hills/ridges between their start and target ground points.
+      const footGroundY = getSurfaceHeight(footX, footZ, mapWidth, mapHeight, LAND_CELL_SIZE);
+      const footSurfaceNormal = getSurfaceNormal(footX, footZ, mapWidth, mapHeight, LAND_CELL_SIZE);
+      const footCylinderRadius = mesh.legLod === 'simple' ? leg.upperThick : leg.lowerThick;
+      const footNormalY = Math.max(0.35, footSurfaceNormal.nz);
+      const padVerticalLift = (leg.footPadHalfHeight + FOOT_PAD_GROUND_CLEARANCE) / footNormalY;
+      const cylinderVerticalLift = footCylinderRadius + FOOT_PAD_GROUND_CLEARANCE;
+      const visualFootY = Math.max(
+        footY,
+        footGroundY + Math.max(cylinderVerticalLift, padVerticalLift),
+      );
+
       // Write the leg's two cylinder slots into the shared
       // instanced renderer's per-instance buffers. After this loop
       // (across every unit's every leg), the scene calls
@@ -1201,7 +1239,7 @@ export function updateLocomotion(
         legRenderer.updateUpper(
           leg.upperSlot,
           hipWorldX, hipWorldY, hipWorldZ,
-          footX, footY, footZ,
+          footX, visualFootY, footZ,
           leg.upperThick,
           leg.shellPool,
         );
@@ -1209,7 +1247,7 @@ export function updateLocomotion(
       } else {
         const knee = kneeFromIK(
           hipWorldX, hipWorldY, hipWorldZ,
-          footX, footY, footZ,
+          footX, visualFootY, footZ,
           c.upperLegLength, c.lowerLegLength,
           chassisUpX, chassisUpY, chassisUpZ,
         );
@@ -1223,13 +1261,21 @@ export function updateLocomotion(
         legRenderer.updateLower(
           leg.lowerSlot,
           knee.x, knee.y, knee.z,
-          footX, footY, footZ,
+          footX, visualFootY, footZ,
           leg.lowerThick,
           leg.shellPool,
         );
         if (leg.hipJointSlot >= 0)  legRenderer.updateJoint(leg.hipJointSlot,  hipWorldX, hipWorldY, hipWorldZ, leg.hipJointRadius, leg.shellPool);
         if (leg.kneeJointSlot >= 0) legRenderer.updateJoint(leg.kneeJointSlot, knee.x, knee.y, knee.z, leg.kneeJointRadius, leg.shellPool);
       }
+      legRenderer.updateFootPad(
+        leg.footPadSlot,
+        footX, visualFootY, footZ,
+        leg.footPadRadius,
+        leg.footPadHalfHeight,
+        footSurfaceNormal.nx, footSurfaceNormal.nz, footSurfaceNormal.ny,
+        leg.shellPool,
+      );
     }
   }
 }
@@ -1257,6 +1303,7 @@ export function destroyLocomotion(
       legRenderer.freeLower(leg.lowerSlot, leg.shellPool);
       legRenderer.freeJoint(leg.hipJointSlot, leg.shellPool);
       legRenderer.freeJoint(leg.kneeJointSlot, leg.shellPool);
+      legRenderer.freeFootPad(leg.footPadSlot, leg.shellPool);
     }
   }
   mesh.group.parent?.remove(mesh.group);

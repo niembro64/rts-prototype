@@ -1,200 +1,60 @@
 This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. remember that our code may have changed since the issue was written, check the code and if the issue is no longer relevant, delete it.
 
-#####################################################
-
-MAP-DIMENSION HELPER DUPLICATION (NEW, found 2026-05-05)
-
-1. Two different "force land-cell count to odd" rules across the codebase.
-   References:
-   - src/game/landGrid.ts:nearestOddLandCellCount   (rounds to NEAREST odd)
-   - src/config.ts:normalizeMapLandCells            (rounds UP to next odd)
-
-   Same goal (maps need exactly one central land/mana cell, which requires
-   odd cell counts), different policy. nearestOddLandCellCount feeds the
-   lobby axis-options generator (mapSizeConfig); normalizeMapLandCells is
-   only used internally by config.landCellMapSpan and has no external
-   callers. Either delete normalizeMapLandCells (it's effectively dead —
-   landCellMapSpan via mapSizeFromLandCells could route through landGrid
-   instead) or document the asymmetry so future readers know which rule
-   applies where.
-
-   Fix direction: drop the unused config-side normalizer once
-   mapSizeFromLandCells is migrated, OR alias normalizeMapLandCells to the
-   landGrid version so there's a single source of truth for the rounding
-   policy.
-
-#####################################################
-
 ATOMIC BLUEPRINT / RUNTIME BOUNDARY AUDIT (NEW, found 2026-05-06)
 
 Goal for this section: units, buildings, turrets, locomotion, and shots should
 each have one canonical definition path. Runtime systems should consume built
 profiles/components, not reinterpret blueprint pieces independently.
 
-1. Runtime turret creation is in a misleading unit-only file and keeps old names.
-   References:
-   - src/game/sim/unitDefinitions.ts:1
-   - src/game/sim/unitDefinitions.ts:49
-   - src/game/sim/unitDefinitions.ts:64
-   - src/game/sim/WorldState.ts:554
-   - src/game/sim/spawn.ts:245
-
-   `unitDefinitions.ts` now creates turrets for both units and buildings, but
-   the filename and `createTurretsFromDefinition` still read as unit-only.
-   This is how duplicate turret factories start: future code can reasonably
-   assume building turrets need a different path.
-
-   Fix direction: rename this module around the concept it owns, e.g.
-   `runtimeTurrets.ts` or `combatTurretFactory.ts`. Export explicit
-   `createUnitRuntimeTurrets` and `createBuildingRuntimeTurrets`, backed by one
-   private `makeRuntimeTurret`.
-
-2. Runtime turret creation appears to mutate shared turret config before cloning.
-   References:
-   - src/game/sim/unitDefinitions.ts:20
-   - src/game/sim/unitDefinitions.ts:21
-   - src/game/sim/unitDefinitions.ts:32
-   - src/game/sim/turretConfigs.ts:54
-
-   `makeRuntimeTurret` calls `getTurretConfig`, writes `visualVariant` onto the
-   returned object, then shallow-clones it into the runtime turret. If
-   `getTurretConfig` returns a cached/shared config, one building or unit mount
-   can leak a visual variant into later turret instances.
-
-   Fix direction: clone first, then apply mount-specific overrides to the clone.
-   Treat blueprint/config objects as immutable after build.
-
-3. Combat turret state migration still has stale wire/runtime naming.
-   References:
-   - src/types/sim.ts:879
-   - src/game/render3d/Render3DEntities.ts:4
-   - src/game/network/snapshotClone.ts:104
-   - src/game/network/helpers/NetworkEntityFactory.ts:56
-
-   Runtime code mostly uses `entity.combat.turrets`, but comments and snapshot
-   clone code still mention/read `entity.turrets` or `e.unit.turrets`. The wire
-   payload may intentionally carry `unit.turrets`, but that needs to be clearly
-   isolated as a network DTO, not confused with runtime entity shape.
-
-   Fix direction: add explicit network DTO naming/adapters and update stale
-   comments. Runtime code should never look for `Entity.turrets`.
-
-4. Unit blueprints depend on turret blueprints for mount height math.
-   References:
-   - src/game/sim/blueprints/units.ts:22
-   - src/game/sim/blueprints/units.ts:27
-   - src/game/sim/blueprints/units.ts:50
-   - src/game/sim/blueprints/units.ts:54
-
-   The file documents this as intentional for widow top-mounted turrets, but it
-   still makes unit authoring depend on turret shape data. That weakens atomic
-   blueprint ownership and makes import order/validation more fragile.
-
-   Fix direction: move "place this turret on top of this body segment" into a
-   mount resolver/build step. Unit blueprints should author symbolic placement;
-   the blueprint builder should resolve it after both unit and turret blueprints
-   exist.
-
-5. Mirror targeting priority hardcodes turret and shot ids outside blueprints.
-   References:
-   - src/game/sim/combat/mirrorTargetPriority.ts:10
-   - src/game/sim/combat/mirrorTargetPriority.ts:13
-   - src/game/sim/combat/mirrorTargetPriority.ts:14
-   - src/game/sim/combat/mirrorTargetPriority.ts:15
-
-   Mirror behavior currently knows specific ids like `megaBeamTurret`,
-   `beamTurret`, and `laserTurret`. That creates a second definition of weapon
-   importance outside the turret/shot blueprint.
-
-   Fix direction: add a blueprint field such as `mirrorReflectPriority` or
-   `lineWeaponThreatTier` on turret/shot configs, validate it in blueprint build,
-   and have mirror targeting consume only that profile.
-
-6. Shot/projectile semantics are derived repeatedly across sim, networking, and rendering.
-   References:
-   - src/game/sim/projectileConfigs.ts:1
-   - src/game/sim/combat/projectileSystem.ts:151
-   - src/game/sim/combat/ProjectileCollisionHandler.ts:326
-   - src/game/sim/combat/damageHelpers.ts:36
-   - src/game/render3d/Render3DEntities.ts:4373
-   - src/game/render3d/SmokeTrail3D.ts:252
-   - src/game/render3d/BurnMark3D.ts:240
-   - src/game/network/ClientViewState.ts:2231
-
-   We have a good start with `projectileConfigs.ts`, but many systems still
-   branch on `shot.type`, `isProjectileShot`, collision radius, explosion
-   radius, smoke trail, burn marks, line-shot width, etc. This is duplicated
-   policy and makes shot changes risky.
-
-   Fix direction: create a canonical `ShotRuntimeProfile`/`ShotVisualProfile`
-   built once from the shot blueprint. Collision, damage, networking, prediction,
-   smoke, burn marks, and rendering should consume the profile instead of
-   re-deriving shot behavior.
-
-7. Land/cell naming still allows confusion between coarse land cells and fine build cells.
-   References:
-   - src/mapSizeConfig.ts:16
-   - src/mapSizeConfig.ts:19
-   - src/game/sim/grid.ts:4
-   - src/game/sim/grid.ts:5
-   - src/game/render3d/BuildGhost3D.ts:182
-
-   `LAND_CELL_SIZE` is the canonical coarse map/mana/spatial partition, while
-   `GRID_CELL_SIZE` is a fine building footprint grid. That distinction is valid,
-   but the generic name `GRID_CELL_SIZE` reads like another competing spatial
-   cell size.
-
-   Fix direction: rename `GRID_CELL_SIZE` to something explicit like
-   `BUILD_GRID_CELL_SIZE` and keep it in a build-grid module. Document that it
-   intentionally subdivides the canonical land cell.
-
 8. Render3DEntities is a major god file and owns too many atomic concepts.
    References:
    - src/game/render3d/Render3DEntities.ts:1
-   - file size: 4751 lines
+   - file size: 3687 lines
 
    This file currently owns or coordinates unit meshes, building meshes, turret
    attachment transforms, projectile visuals, commander-specific mesh assembly,
-   selection/radius rings, construction visuals, LOD shells, instanced pools, and
-   cleanup. It is too large to keep blueprint/rendering boundaries clean.
+   LOD shells, instanced pools, and cleanup. Projectile rendering,
+   selection/radius/range overlays, and construction emitter/factory visual
+   control have been split out, but the orchestration file is still too large
+   to keep blueprint/rendering boundaries clean.
 
    Fix direction: split into small modules: `UnitEntityRenderer`,
-   `BuildingEntityRenderer`, `TurretAttachmentRenderer`, `ProjectileRenderer`,
-   `SelectionOverlayRenderer`, and `ConstructionVisualController`. Leave
+   `BuildingEntityRenderer`, and `TurretAttachmentRenderer`. Leave
    `Render3DEntities` as an orchestration facade.
 
 9. BuildingShape3D mixes every building's geometry and reusable construction parts.
    References:
    - src/game/render3d/BuildingShape3D.ts:1
-   - src/game/render3d/BuildingShape3D.ts:201
-   - src/game/render3d/BuildingShape3D.ts:945
-   - file size: 1486 lines
+   - file size: 895 lines
 
-   Solar, wind, metal extractor, factory/fabricator, construction tower pieces,
-   material helpers, and animation metadata all live together. This encourages
-   copy-paste variants instead of reusable building components.
+   Wind, metal extractor, factory/fabricator, material helpers, and animation
+   metadata still live together. The shared construction emitter,
+   production-rate indicators, and solar collector have been split into
+   `ConstructionEmitterMesh3D` and `SolarCollectorMesh3D`, but the remaining
+   per-building shapes still encourage copy-paste variants instead of reusable
+   building components.
 
    Fix direction: split per-building renderer factories and shared components:
-   `ConstructionEmitterMesh`, `SolarCollectorMesh`, `WindTurbineMesh`,
-   `MetalExtractorMesh`, plus shared geometry/material utilities.
+   `WindTurbineMesh`, `MetalExtractorMesh`, plus shared geometry/material
+   utilities.
 
-10. ClientViewState mixes snapshot application, prediction, projectile behavior, and build state.
+10. ClientViewState still mixes snapshot application, prediction stepping, and projectile behavior.
     References:
     - src/game/network/ClientViewState.ts:1
-    - src/game/network/ClientViewState.ts:438
-    - src/game/network/ClientViewState.ts:1916
-    - src/game/network/ClientViewState.ts:1972
-    - file size: 2560 lines
+    - src/game/network/ClientViewState.ts:604
+    - src/game/network/ClientViewState.ts:1495
+    - src/game/network/ClientViewState.ts:1819
+    - file size: 2164 lines
 
     The client network state object now handles entity cloning, delta/full-snap
     application, client prediction, rocket re-acquisition, force-field
-    prediction, terrain-following, buildable state, and interpolation/drift.
-    That makes frontend performance work risky because unrelated behavior shares
+    prediction, terrain-following, and interpolation/drift. Build-state
+    application, projectile spawn queuing, selection bookkeeping, and prediction
+    LOD cadence/storage have been split out, but unrelated behavior still shares
     one large mutable class.
 
-    Fix direction: split into `SnapshotApplier`, `ClientPredictionStepper`,
-    `ProjectilePredictionStore`, and `BuildStateApplier`. Keep `ClientViewState`
-    as the container/facade.
+    Fix direction: split into `SnapshotApplier`, `ClientPredictionStepper`, and
+    `ProjectilePredictionStore`. Keep `ClientViewState` as the container/facade.
 
 11. GameServer still mixes bootstrap, tick, physics forces, snapshots, and commands.
     References:
@@ -202,7 +62,7 @@ profiles/components, not reinterpret blueprint pieces independently.
     - src/game/server/GameServer.ts:380
     - src/game/server/GameServer.ts:516
     - src/game/server/GameServer.ts:753
-    - file size: 1688 lines
+    - file size: 1740 lines
 
     The host server class owns map setup, spawn setup, tick scheduling,
     simulation stepping, force application, physics sync, snapshot publication,
@@ -244,33 +104,20 @@ profiles/components, not reinterpret blueprint pieces independently.
     Fix direction: split by responsibility: `LegRig3D`, `TreadRig3D`,
     `WheelRig3D`, `LocomotionTerrainSampler`, and `LocomotionAnimationState`.
 
-15. Blueprint lookups are imported directly into UI components.
-    References:
-    - src/components/GameCanvas.vue:34
-    - src/components/GameCanvas.vue:2456
-    - src/components/LobbyModal.vue:9
-    - src/components/LobbyModal.vue:128
-    - src/components/SelectionPanel.vue:4
-
-    Vue UI components pull directly from sim blueprints for labels/short names.
-    This couples lobby/UI rendering to the full sim blueprint graph and makes it
-    harder to split or lazy-load atomic data.
-
-    Fix direction: export a lightweight `unitRosterDisplay`/`buildingRosterDisplay`
-    DTO from the blueprint build step. UI should consume display DTOs, not sim
-    construction functions.
-
 16. Type files are too broad for the atomic boundaries we want.
     References:
     - src/types/sim.ts:1
     - src/types/blueprints.ts:1
-    - file sizes: 902 and 521 lines
+    - file sizes: 852 and 541 lines
 
     `sim.ts` and `blueprints.ts` both mix several domains: entities, combat,
     shots, construction, economy, locomotion, buildings, and units. Large shared
     type files make cross-domain imports feel cheap and hide coupling.
+    `ResourceCost`, core building identifiers, entity ids, command/waypoint
+    types, combat range types, and runtime locomotion type have been split into
+    `economyTypes`, `buildingTypes`, `entityTypes`, `commandTypes`,
+    `combatTypes`, and `locomotionTypes`, with barrel exports preserved for
+    compatibility.
 
-    Fix direction: split into domain files (`entityTypes`, `combatTypes`,
-    `shotTypes`, `constructionTypes`, `locomotionTypes`, `buildingTypes`) with
-    barrel exports for backwards compatibility during migration.
-
+    Fix direction: split into domain files (`shotTypes`, `constructionTypes`)
+    with barrel exports for backwards compatibility during migration.

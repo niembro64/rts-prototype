@@ -21,11 +21,12 @@ import type {
   ShotConfig,
   TurretConfig,
 } from '../types';
+import { isLineShot } from '../types';
 import { isLineShotBlueprint } from '@/types/blueprints';
 import type { ShotId, TurretId } from '../../../types/blueprintIds';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
-import { UNIT_BLUEPRINTS } from './units';
+import { UNIT_BLUEPRINTS, resolveUnitTurretMounts } from './units';
 import { BUILDING_BLUEPRINTS } from './buildings';
 import type {
   ShotBlueprint,
@@ -127,6 +128,16 @@ validateStableWireIds(
   codeToTurretId,
   TURRET_ID_UNKNOWN,
 );
+
+resolveUnitTurretMounts((turretId) => {
+  const turretBlueprint = TURRET_BLUEPRINTS[turretId];
+  if (!turretBlueprint) {
+    throw new Error(
+      `Invalid unit turret mount resolver: unknown turretId "${turretId}"`,
+    );
+  }
+  return turretBlueprint.radius.body;
+});
 
 function assertFiniteRangeMultiplier(
   turretId: string,
@@ -442,6 +453,9 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   }
   if (turretBlueprint.passive != null) config.passive = turretBlueprint.passive;
   if (turretBlueprint.mountMode != null) config.mountMode = turretBlueprint.mountMode;
+  if (isLineShot(config.shot)) {
+    config.mirrorReflectPriority = turretBlueprint.mirrorReflectPriority ?? 1;
+  }
 
   return config;
 }

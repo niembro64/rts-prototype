@@ -17,7 +17,6 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { isLineShot, isProjectileShot } from '../sim/types';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import {
@@ -236,10 +235,9 @@ export class BurnMark3D {
       // scope. We use generous padding (200) since the endpoint can
       // drift quickly and a strict rect would drop marks mid-sweep.
       if (this.scope && !this.scope.inScope(ex, ez, 200)) continue;
-      const shot = proj.config.shot;
-      const beamWidth = isDGunTrail && isProjectileShot(shot)
-        ? shot.collision.radius * 1.5
-        : isLineShot(shot) ? shot.width * 2 : 4;
+      const beamWidth = isDGunTrail
+        ? proj.config.shotProfile.visual.burnMarkWidth
+        : proj.config.shotProfile.visual.burnMarkWidth || 4;
 
       let state = this.beams.get(key);
       if (!state) {

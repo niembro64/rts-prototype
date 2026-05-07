@@ -16,15 +16,10 @@ import type {
   TurretMount,
   UnitBodyShape,
   ConstructionEmitterSize,
+  UnitTurretMountZResolver,
 } from './types';
 import type { UnitLocomotion } from '../types';
 import { createLocomotionPhysics, createUnitLocomotion } from '../locomotion';
-// One legitimate cross-domain dependency: the widow's top-mounted
-// turret Z-fraction is computed from the turret's own radius.body
-// (`widowTopMountedTurretZFrac` below). Cross-blueprint *validation*
-// (every turretId on every unit resolves) lives in blueprints/index.ts
-// instead, so this is the ONLY thing units.ts pulls from turrets.
-import { getTurretBlueprint } from './turrets';
 import {
   LEG_BODY_LIFT_FRAC,
   getExpectedUnitBodyCenterHeightY,
@@ -46,19 +41,6 @@ const WIDOW_HEAD_FORWARD_FRAC = 0.3;
 const WIDOW_ABDOMEN_TOP_Z_FRAC =
   LEG_BODY_LIFT_FRAC + WIDOW_ABDOMEN_RADIUS_FRAC * 2;
 const WIDOW_HEAD_TOP_Z_FRAC = LEG_BODY_LIFT_FRAC + WIDOW_HEAD_RADIUS_FRAC * 2;
-
-function widowTopMountedTurretZFrac(
-  turretId: TurretId,
-  bodyTopZFrac: number,
-): number {
-  const turretRadius = getTurretBlueprint(turretId).radius.body;
-  if (!Number.isFinite(turretRadius) || turretRadius <= 0) {
-    throw new Error(
-      `Widow top-mounted turret ${turretId} must define positive radius.body`,
-    );
-  }
-  return bodyTopZFrac + turretRadius / WIDOW_BODY_RADIUS;
-}
 
 const BODY_SHAPES = {
   scout: {
@@ -304,58 +286,63 @@ function turretMount(
   turretId: TurretId,
   mount: MountOffset,
   visualVariant?: ConstructionEmitterSize,
+  zResolver?: UnitTurretMountZResolver,
 ): TurretMount {
-  return visualVariant ? { turretId, mount, visualVariant } : { turretId, mount };
+  return {
+    turretId,
+    mount,
+    ...(visualVariant ? { visualVariant } : {}),
+    ...(zResolver ? { zResolver } : {}),
+  };
 }
 
 function mountPoint(x: number, y: number, z: number): MountOffset {
   return { x, y, z };
 }
 
-// Compute widow's mount points: 4 light turrets on the abdomen edge,
-// the megaBeam centered on top of the rear abdomen segment, and the
-// force-field emitter on top of the forward head segment. Order
-// matches the `turrets` array on the widow blueprint below.
-function computeWidowMounts(): MountOffset[] {
-  const mounts: MountOffset[] = [];
-  const lightZ = widowTopMountedTurretZFrac(
-    'lightTurret',
-    WIDOW_ABDOMEN_TOP_Z_FRAC,
-  );
-  const megaBeamZ = widowTopMountedTurretZFrac(
-    'megaBeamTurret',
-    WIDOW_ABDOMEN_TOP_Z_FRAC,
-  );
-  const forceFieldZ = widowTopMountedTurretZFrac(
-    'forceTurret',
-    WIDOW_HEAD_TOP_Z_FRAC,
-  );
-  for (let i = 0; i < 4; i++) {
-    const angle = Math.PI / 4 + (i * Math.PI) / 2;
-    mounts.push({
-      x:
-        Math.cos(angle) * WIDOW_ABDOMEN_RADIUS_FRAC +
-        WIDOW_ABDOMEN_FORWARD_FRAC,
-      y: Math.sin(angle) * WIDOW_ABDOMEN_RADIUS_FRAC,
-      z: lightZ,
-    });
-  }
-  // megaBeam: rear abdomen segment center, sitting above the body top.
-  mounts.push({ x: WIDOW_ABDOMEN_FORWARD_FRAC, y: 0, z: megaBeamZ });
-  // forceTurret: forward prosoma/head segment center top.
-  mounts.push({ x: WIDOW_HEAD_FORWARD_FRAC, y: 0, z: forceFieldZ });
-  return mounts;
+function topMountedTurretMount(
+  turretId: TurretId,
+  x: number,
+  y: number,
+  bodyTopZFrac: number,
+): TurretMount {
+  return turretMount(turretId, mountPoint(x, y, bodyTopZFrac), undefined, {
+    kind: 'topMounted',
+    bodyTopZFrac,
+  });
 }
 
 function computeWidowTurrets(): TurretMount[] {
-  const mounts = computeWidowMounts();
+  const abdomenEdgeMounts: TurretMount[] = [];
+  for (let i = 0; i < 4; i++) {
+    const angle = Math.PI / 4 + (i * Math.PI) / 2;
+    abdomenEdgeMounts.push(
+      topMountedTurretMount(
+        'pulseTurret',
+        Math.cos(angle) * WIDOW_ABDOMEN_RADIUS_FRAC +
+          WIDOW_ABDOMEN_FORWARD_FRAC,
+        Math.sin(angle) * WIDOW_ABDOMEN_RADIUS_FRAC,
+        WIDOW_ABDOMEN_TOP_Z_FRAC,
+      ),
+    );
+  }
   return [
-    turretMount('pulseTurret', mounts[0]), // front-left abdomen edge
-    turretMount('pulseTurret', mounts[1]), // back-left abdomen edge
-    turretMount('pulseTurret', mounts[2]), // back-right abdomen edge
-    turretMount('pulseTurret', mounts[3]), // front-right abdomen edge
-    turretMount('megaBeamTurret', mounts[4]), // abdomen center
-    turretMount('forceTurret', mounts[5]), // head center
+    abdomenEdgeMounts[0], // front-left abdomen edge
+    abdomenEdgeMounts[1], // back-left abdomen edge
+    abdomenEdgeMounts[2], // back-right abdomen edge
+    abdomenEdgeMounts[3], // front-right abdomen edge
+    topMountedTurretMount(
+      'megaBeamTurret',
+      WIDOW_ABDOMEN_FORWARD_FRAC,
+      0,
+      WIDOW_ABDOMEN_TOP_Z_FRAC,
+    ), // abdomen center
+    topMountedTurretMount(
+      'forceTurret',
+      WIDOW_HEAD_FORWARD_FRAC,
+      0,
+      WIDOW_HEAD_TOP_Z_FRAC,
+    ), // head center
   ];
 }
 
@@ -385,7 +372,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.jackal,
-    fightStopEngagedRatio: 0.9,
   },
   lynx: {
     id: 'lynx',
@@ -411,7 +397,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.lynx,
-    fightStopEngagedRatio: 0.9,
   },
   daddy: {
     id: 'daddy',
@@ -450,7 +435,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.daddy,
-    fightStopEngagedRatio: 0.1,
   },
   badger: {
     id: 'badger',
@@ -476,7 +460,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.badger,
-    fightStopEngagedRatio: 0.9,
   },
   mongoose: {
     id: 'mongoose',
@@ -503,7 +486,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.mongoose,
-    fightStopEngagedRatio: 0.9,
   },
   tick: {
     id: 'tick',
@@ -531,7 +513,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.tick,
-    fightStopEngagedRatio: 0.9,
   },
   mammoth: {
     id: 'mammoth',
@@ -557,7 +538,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.mammoth,
-    fightStopEngagedRatio: 0.9,
   },
   formik: {
     id: 'formik',
@@ -595,7 +575,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.formik,
-    fightStopEngagedRatio: 0.9,
   },
   widow: {
     id: 'widow',
@@ -625,7 +604,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.widow,
-    fightStopEngagedRatio: 0.9,
   },
   hippo: {
     id: 'hippo',
@@ -651,7 +629,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.hippo,
-    fightStopEngagedRatio: 0.9,
   },
   tarantula: {
     id: 'tarantula',
@@ -685,7 +662,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.tarantula,
-    fightStopEngagedRatio: 0.9,
   },
   loris: {
     id: 'loris',
@@ -714,7 +690,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       },
     },
     deathSound: AUDIO.event.death.loris,
-    fightStopEngagedRatio: 0.9,
   },
   commander: {
     id: 'commander',
@@ -751,7 +726,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     builder: { buildRange: 150, constructionRate: 50 },
     dgun: { turretId: 'dgunTurret', energyCost: 200 },
     deathSound: AUDIO.event.death.commander,
-    fightStopEngagedRatio: 0.9,
   },
 };
 
@@ -840,7 +814,46 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   }
 }
 
+let unitTurretMountsResolved = false;
+
+export function resolveUnitTurretMounts(
+  getTurretBodyRadius: (turretId: TurretId) => number,
+): void {
+  if (unitTurretMountsResolved) return;
+
+  for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+    for (let i = 0; i < bp.turrets.length; i++) {
+      const turret = bp.turrets[i];
+      const resolver = turret.zResolver;
+      if (!resolver) continue;
+      if (resolver.kind !== 'topMounted') {
+        throw new Error(
+          `Invalid turret mount resolver for ${bp.id}[${i}] ${turret.turretId}: unsupported kind`,
+        );
+      }
+      const turretRadius = getTurretBodyRadius(turret.turretId);
+      if (!Number.isFinite(turretRadius) || turretRadius <= 0) {
+        throw new Error(
+          `Invalid top-mounted turret for ${bp.id}[${i}] ${turret.turretId}: turret radius.body must be positive`,
+        );
+      }
+      turret.mount.z = resolver.bodyTopZFrac + turretRadius / bp.radius.body;
+    }
+  }
+
+  unitTurretMountsResolved = true;
+}
+
+function assertUnitTurretMountsResolved(): void {
+  if (!unitTurretMountsResolved) {
+    throw new Error(
+      'Unit turret mounts must be resolved by the blueprint builder before use',
+    );
+  }
+}
+
 export function getUnitBlueprint(id: string): UnitBlueprint {
+  assertUnitTurretMountsResolved();
   const unitBlueprint = UNIT_BLUEPRINTS[id];
   if (!unitBlueprint) throw new Error(`Unknown unit blueprint: ${id}`);
   return unitBlueprint;
@@ -851,6 +864,7 @@ export function getUnitLocomotion(id: string): UnitLocomotion {
 }
 
 export function getAllUnitBlueprints(): UnitBlueprint[] {
+  assertUnitTurretMountsResolved();
   return Object.values(UNIT_BLUEPRINTS);
 }
 

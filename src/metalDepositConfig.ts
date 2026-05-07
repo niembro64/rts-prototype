@@ -33,7 +33,7 @@
 import { getPlayerBaseAngle } from './game/sim/playerLayout';
 import { makeMapOvalMetrics, mapOvalPointAt } from './game/sim/mapOval';
 import { TERRAIN_D_TERRAIN } from './game/sim/Terrain';
-import { GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/grid';
+import { BUILD_GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/buildGrid';
 import { terrainShapeSign, type TerrainShape } from './types/terrain';
 import {
   METAL_DEPOSIT_FLAT_PAD_CELLS,
@@ -251,8 +251,8 @@ function makeMetalDepositPlacement(
 ): MetalDepositPlacement {
   const resourceCells = METAL_DEPOSIT_CONFIG.resourceCells;
   const flatPadCells = METAL_DEPOSIT_CONFIG.flatPadCells;
-  const resourceHalfSize = (resourceCells * GRID_CELL_SIZE) / 2;
-  const flatPadRadius = (flatPadCells * GRID_CELL_SIZE) / 2;
+  const resourceHalfSize = (resourceCells * BUILD_GRID_CELL_SIZE) / 2;
+  const flatPadRadius = (flatPadCells * BUILD_GRID_CELL_SIZE) / 2;
   const resourceHalfDiagonal = Math.SQRT2 * resourceHalfSize;
   if (flatPadRadius < resourceHalfDiagonal) {
     throw new Error(
