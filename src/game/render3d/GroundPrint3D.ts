@@ -36,11 +36,15 @@ const PRINT_HEX = 0x1a1308;
 const PRINT_LIN = new THREE.Color(PRINT_HEX);
 
 // ── Lifetime ──
-// Slow rational-exp alpha decay. Tau is longer than burn marks (which
-// favor a quick thermal pop) — ruts are physical impressions and
-// should hang around a few seconds before fading into the dirt.
-const PRINT_FADE_TAU = 1500;
-const INV_PRINT_FADE_TAU = 1 / PRINT_FADE_TAU;
+// Linear alpha decay from PRINT_INITIAL_ALPHA at age 0 → 0 at age
+// PRINT_TOTAL_LIFETIME_MS. Tweak this single number to change how
+// long ruts and footstep stamps hang around before disappearing
+// completely. A linear ramp keeps the meaning of "total duration"
+// honest: the LOD-driven alphaCutoff still trims a mark earlier on
+// low tiers (so it never *renders* below the cutoff alpha), but at
+// the MAX tier (cutoff ≈ 0) marks live for exactly this many ms.
+const PRINT_TOTAL_LIFETIME_MS = 5000;
+const INV_PRINT_LIFETIME = 1 / PRINT_TOTAL_LIFETIME_MS;
 const PRINT_INITIAL_ALPHA = 0.7;
 
 // Hard buffer cap — sized to keep the geometry in one draw call at
@@ -292,15 +296,18 @@ export class GroundPrint3D {
     }
 
     // ── Age + prune ──
+    // Linear ramp: alpha = INITIAL · (1 − age/lifetime), clamped at 0.
+    // A mark is removed once it hits 0 OR drops below the LOD's alpha
+    // cutoff — whichever comes first. So PRINT_TOTAL_LIFETIME_MS is
+    // the ceiling on lifetime; a tier with cutoff > 0 ends the mark
+    // earlier. Set cutoff to 0 (max tier) to honor the full duration.
     const cutoff = gfx.groundPrintAlphaCutoff;
     for (let i = this.marks.length - 1; i >= 0; i--) {
       const mark = this.marks[i];
       mark.age += dtMs;
-      const x = mark.age * INV_PRINT_FADE_TAU;
-      // Same rational-exp shape as BurnMark3D — gently concave fade.
-      const alpha =
-        PRINT_INITIAL_ALPHA / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
-      if (alpha < cutoff) {
+      const lifeFrac = mark.age * INV_PRINT_LIFETIME;
+      const alpha = PRINT_INITIAL_ALPHA * (1 - lifeFrac);
+      if (alpha <= 0 || alpha < cutoff) {
         this.removeMarkAt(i);
         continue;
       }
