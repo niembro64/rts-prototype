@@ -26,25 +26,6 @@ profiles/components, not reinterpret blueprint pieces independently.
    instanced pool allocation/flush or building creation/update into a dedicated
    renderer class.
 
-9. BuildingShape3D mixes every building's geometry and reusable construction parts.
-   References:
-   - src/game/render3d/BuildingShape3D.ts:1
-   - file size: 348 lines
-
-   Wind, metal extractor, factory/fabricator, material helpers, and animation
-   metadata still live together. The shared construction emitter,
-   production-rate indicators, and solar collector have been split into
-   `ConstructionEmitterMesh3D` and `SolarCollectorMesh3D`; wind turbine and
-   metal extractor shape factories now live in `WindTurbineMesh3D` and
-   `MetalExtractorMesh3D`, the mega-beam tower shape lives in
-   `MegaBeamTowerMesh3D`, and shared mesh primitives/materials live in
-   `BuildingMeshPrimitives3D`. The remaining factory/fabricator shape code
-   still encourages copy-paste variants instead of reusable building components.
-
-   Fix direction: split per-building renderer factories and shared components:
-   move factory/fabricator construction visuals into a dedicated module and
-   keep `BuildingShape3D` as the dispatcher/type boundary.
-
 10. ClientViewState still mixes snapshot application, prediction stepping, and projectile behavior.
     References:
     - src/game/network/ClientViewState.ts:1
