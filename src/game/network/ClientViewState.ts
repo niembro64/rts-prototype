@@ -28,8 +28,7 @@ import { getClientTiltEmaMode } from '@/clientBarConfig';
 import { TILT_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
 import { getUnitLocomotion } from '../sim/blueprints';
-import { getEntityVelocity3, getTurretMountHeight } from '../sim/combat/combatUtils';
-import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
+import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import { getBarrelTip } from '../math';
 import {
   ENTITY_CHANGED_POS,
@@ -51,11 +50,9 @@ import {
 import {
   lerp,
   lerpAngle,
-  applyHomingSteering,
-  computeInterceptTime,
 } from '../math';
-import { GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
-import { getSurfaceHeight, getSurfaceNormal, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
+import { DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
+import { getSurfaceNormal, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { getTurretWorldMount } from '../math';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { getUnitGroundZ } from '../sim/unitGeometry';
@@ -75,20 +72,15 @@ import {
   type PredictionLodContext,
   type PredictionStep,
 } from './ClientPredictionLod';
+import { applyClientProjectilePrediction } from './ClientProjectilePrediction';
 export type { PredictionLodContext, PredictionLodTier } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
-// Gravity imported from config.ts — single value shared with server
-// sim and every other falling-thing system.
-
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
-
-const _clientHomingAimPoint = { x: 0, y: 0, z: 0 };
-const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 
 // Drift half-lives (seconds). How long to close 50% of the gap to the server value.
 // Smaller = snappier correction, larger = smoother/lazier.
@@ -1444,166 +1436,25 @@ export class ClientViewState {
       );
       if (predictionStep === null) continue;
 
-      const entityDeltaMs = predictionStep.entityDeltaMs;
-      const dt = entityDeltaMs / 1000;
-      const targetDt = predictionStep.targetDeltaMs / 1000;
-      const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
-      const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
-
-      if (isLineShotType(entity.projectile.projectileType)) {
+      const projectileResult = applyClientProjectilePrediction({
+        entity,
+        target,
+        predictionStep,
+        preset,
+        mapWidth: this.mapWidth,
+        mapHeight: this.mapHeight,
+        getEntity: (entityId) => this.entities.get(entityId),
+        findNearestEnemyForRocket: (projectile, ownerId) =>
+          this.findNearestEnemyForRocketClient(projectile, ownerId),
+      });
+      if (projectileResult.becameLineProjectile) {
         this.activeBeamPathIds.add(id);
         this.activeProjectilePredictionIds.delete(id);
-      } else {
-        // Homing steering — 3D velocity rotation toward the target,
-        // identical math to the server's projectileSystem call so
-        // predicted and authoritative paths agree frame-for-frame.
-        // Rocket-class shots (ignoresGravity=true) also re-acquire
-        // the nearest enemy when their original target dies —
-        // mirrors the server's seeker behavior so the predicted
-        // trajectory matches until the server's next velocity-
-        // update snapshot.
-        const proj = entity.projectile;
-        if (proj.homingTargetId !== undefined) {
-          let homingTarget = this.entities.get(proj.homingTargetId);
-          let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
-          if (!targetValid) {
-            const isRocket = proj.config.shotProfile.runtime.isRocketLike;
-            if (isRocket && entity.ownership) {
-              homingTarget = this.findNearestEnemyForRocketClient(entity, entity.ownership.playerId) ?? undefined;
-              if (homingTarget) {
-                proj.homingTargetId = homingTarget.id;
-                targetValid = true;
-              } else {
-                proj.homingTargetId = undefined;
-              }
-            } else {
-              proj.homingTargetId = undefined;
-            }
-          }
-          if (targetValid && homingTarget) {
-            const aimPoint = resolveTargetAimPoint(
-              homingTarget,
-              entity.transform.x, entity.transform.y, entity.transform.z,
-              _clientHomingAimPoint,
-            );
-            let steerX = aimPoint.x;
-            let steerY = aimPoint.y;
-            let steerZ = aimPoint.z;
-            const targetVelocity = getEntityVelocity3(homingTarget, _clientHomingTargetVelocity);
-            const targetSpeedSq =
-              targetVelocity.x * targetVelocity.x +
-              targetVelocity.y * targetVelocity.y +
-              targetVelocity.z * targetVelocity.z;
-            const projectileSpeed = Math.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
-            if (targetSpeedSq > 1e-6 && projectileSpeed > 1e-6) {
-              const tLead = computeInterceptTime(
-                steerX - entity.transform.x,
-                steerY - entity.transform.y,
-                steerZ - entity.transform.z,
-                targetVelocity.x, targetVelocity.y, targetVelocity.z,
-                projectileSpeed,
-              );
-              if (tLead > 0) {
-                const remainingSec = Number.isFinite(proj.maxLifespan)
-                  ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
-                  : tLead;
-                const leadT = remainingSec > 0 ? Math.min(tLead, remainingSec) : tLead;
-                steerX += targetVelocity.x * leadT;
-                steerY += targetVelocity.y * leadT;
-                steerZ += targetVelocity.z * leadT;
-              }
-            }
-            const steered = applyHomingSteering(
-              proj.velocityX, proj.velocityY, proj.velocityZ,
-              steerX, steerY, steerZ,
-              entity.transform.x, entity.transform.y, entity.transform.z,
-              proj.homingTurnRate ?? 0, dt,
-            );
-            proj.velocityX = steered.velocityX;
-            proj.velocityY = steered.velocityY;
-            proj.velocityZ = steered.velocityZ;
-            entity.transform.rotation = steered.rotation;
-          }
-        }
-        // Drift projectile position + velocity toward server target
-        // (smooth correction). Z is drifted too now that server
-        // velocity updates carry a vz — homing corrections in the
-        // vertical axis propagate instead
-        // of being lost.
-        //
-        // The server only emits velocity-update events on homing /
-        // knockback, NOT on gravity decay. So `target.velocityZ`
-        // would stay frozen at the launch vz between updates; the
-        // lerp below would then pull `proj.velocityZ` back up to
-        // launch vz every tick, fighting against the local gravity
-        // application a few lines down. Apply gravity to the target
-        // here so the extrapolated drift target decays exactly the
-        // way the server's authoritative state does — high-arc
-        // shells stop flying up forever.
-        const terrainFollow = entity.dgunProjectile?.terrainFollow === true;
-        const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
-        if (target) {
-          const targetIgnoresGravity =
-            entity.projectile.config.shotProfile.runtime.ignoresGravity;
-          if (!targetIgnoresGravity && !terrainFollow) {
-            target.velocityZ -= GRAVITY * targetDt;
-          }
-          const targetPrevZ = target.z;
-          target.x += target.velocityX * targetDt;
-          target.y += target.velocityY * targetDt;
-          if (terrainFollow) {
-            const nextZ = getSurfaceHeight(target.x, target.y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE) + groundOffset;
-            target.velocityZ = targetDt > 0 ? (nextZ - targetPrevZ) / targetDt : 0;
-            target.z = nextZ;
-          } else {
-            target.z += target.velocityZ * targetDt;
-          }
-          entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
-          entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
-          entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
-          proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelDrift);
-          proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelDrift);
-          proj.velocityZ = lerp(proj.velocityZ, target.velocityZ, movVelDrift);
-          entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
-        }
-
-        // Traveling projectiles: dead-reckon using (possibly steered)
-        // velocity in full 3D. Ballistic projectiles take gravity;
-        // rockets (shot.ignoresGravity) travel on pure thrust and
-        // are bent only by homing — mirrors the server path so
-        // predicted arcs match authoritative arcs.
-        const ignoresGravity =
-          entity.projectile.config.shotProfile.runtime.ignoresGravity;
-        const prevTerrainFollowZ = entity.transform.z;
-        if (!ignoresGravity && !terrainFollow) {
-          entity.projectile.velocityZ -= GRAVITY * dt;
-        }
-        entity.transform.x += entity.projectile.velocityX * dt;
-        entity.transform.y += entity.projectile.velocityY * dt;
-        if (terrainFollow) {
-          const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE) + groundOffset;
-          entity.projectile.velocityZ = dt > 0 ? (nextZ - prevTerrainFollowZ) / dt : 0;
-          entity.transform.z = nextZ;
-        } else {
-          entity.transform.z += entity.projectile.velocityZ * dt;
-        }
-        // Terrain impact is terminal for traveling projectiles on the
-        // server. Do the same in client prediction: the old clamp kept
-        // the shell alive with horizontal velocity until the despawn
-        // side-channel arrived, which made fast falling rounds visibly
-        // skate along the ground for one frame.
-        const groundZ = getSurfaceHeight(entity.transform.x, entity.transform.y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
-        if (!terrainFollow && entity.transform.z <= groundZ && entity.projectile.velocityZ <= 0) {
-          entity.transform.z = groundZ;
-          this.deleteEntityLocalState(entity.id);
-          continue;
-        }
-
-        // Auto-remove if projectile has left the map bounds
-        entity.projectile.timeAlive += entityDeltaMs;
-        if (entity.projectile.timeAlive > (entity.projectile.maxLifespan ?? 10000)) {
-          this.deleteEntityLocalState(entity.id);
-        }
+        continue;
+      }
+      if (projectileResult.shouldDelete) {
+        this.deleteEntityLocalState(entity.id);
+        continue;
       }
     }
   }
