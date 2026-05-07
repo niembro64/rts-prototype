@@ -2,12 +2,16 @@ import * as THREE from 'three';
 import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { Entity, EntityId } from '../sim/types';
 import type { EntityMesh } from './EntityMesh3D';
-import { MIRROR_CHROME_MATERIAL } from './BuildingVisualPalette';
 import {
   entityInstanceColorKey,
   isConstructionShell,
   setEntityInstanceColor,
 } from './EntityInstanceColor3D';
+import {
+  createMirrorReflectorPanelMaterial,
+  MIRROR_REFLECTOR_PANEL_COLOR,
+  resolveMirrorReflectorPanelColor,
+} from './MirrorReflectorVisual3D';
 
 const SMOOTH_CHASSIS_CAP = 16384;
 const POLY_CHASSIS_CAP = 4096;
@@ -15,10 +19,6 @@ const TURRET_HEAD_CAP = 16384;
 const BARREL_CAP = 32768;
 const MIRROR_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
-const MIRROR_PANEL_COLOR = MIRROR_CHROME_MATERIAL.color;
-const MIRROR_PANEL_METALNESS = MIRROR_CHROME_MATERIAL.metalness;
-const MIRROR_PANEL_ROUGHNESS = MIRROR_CHROME_MATERIAL.roughness;
-const MIRROR_PANEL_ENV_INTENSITY = MIRROR_CHROME_MATERIAL.envMapIntensity;
 
 type PolyChassisPool = {
   mesh: THREE.InstancedMesh;
@@ -94,16 +94,11 @@ export class UnitDetailInstanceRenderer3D {
 
     this.mirrorPanelInstanced = this.createPool(
       options.mirrorGeom.clone(),
-      new THREE.MeshStandardMaterial({
-        color: MIRROR_PANEL_COLOR,
-        metalness: MIRROR_PANEL_METALNESS,
-        roughness: MIRROR_PANEL_ROUGHNESS,
-        envMapIntensity: MIRROR_PANEL_ENV_INTENSITY,
-        side: THREE.DoubleSide,
-      }),
+      createMirrorReflectorPanelMaterial(),
       MIRROR_PANEL_CAP,
-      MIRROR_PANEL_COLOR,
+      MIRROR_REFLECTOR_PANEL_COLOR,
     );
+    this.mirrorPanelInstanced.renderOrder = 7;
   }
 
   allocSmoothChassisSlots(count: number): number[] | null {
@@ -247,7 +242,7 @@ export class UnitDetailInstanceRenderer3D {
     }
 
     if (mesh.mirrors?.panelSlots) {
-      const mirrorColorKey = isConstructionShell(entity) ? SHELL_PALE_HEX : MIRROR_PANEL_COLOR;
+      const mirrorColorKey = resolveMirrorReflectorPanelColor(entity);
       this.scratchColor.set(mirrorColorKey);
       for (const slot of mesh.mirrors.panelSlots) {
         if (this.mirrorPanelColorKey.get(slot) === mirrorColorKey) continue;
@@ -323,7 +318,7 @@ export class UnitDetailInstanceRenderer3D {
 
   writeMirrorPanelMatrix(slot: number, matrix: THREE.Matrix4, entity: Entity): void {
     this.mirrorPanelInstanced.setMatrixAt(slot, matrix);
-    const mirrorColorKey = isConstructionShell(entity) ? SHELL_PALE_HEX : MIRROR_PANEL_COLOR;
+    const mirrorColorKey = resolveMirrorReflectorPanelColor(entity);
     if (this.mirrorPanelColorKey.get(slot) !== mirrorColorKey) {
       this.scratchColor.set(mirrorColorKey);
       this.mirrorPanelInstanced.setColorAt(slot, this.scratchColor);

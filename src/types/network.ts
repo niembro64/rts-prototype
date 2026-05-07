@@ -7,7 +7,7 @@ import {
   UNIT_TYPE_IDS,
 } from './blueprintIds';
 import type { ShotId, TurretId } from './blueprintIds';
-import type { EntityType, PlayerId, TurretState } from './sim';
+import type { BeamReflectorKind, EntityType, PlayerId, TurretState } from './sim';
 
 // ── Bit-packed enum codes for the wire format ─────────────────────
 // String enums compress poorly even after msgpack — every "tracking"
@@ -340,9 +340,10 @@ export type NetworkServerSnapshotVelocityUpdate = {
  *  `points = [start, ...reflections, end]`. Each vertex carries its
  *  own instantaneous 3D velocity in the world frame so the client can
  *  extrapolate every vertex independently between snapshots; the
- *  middles set `mirrorEntityId` to the redirecting reflector entity
- *  (legacy field name; mirrors and force fields both use it). Start
- *  and end leave it undefined. */
+ *  reflector vertices set `mirrorEntityId` to the redirecting reflector
+ *  entity (legacy field name; mirrors and force fields both use it).
+ *  Start leaves it undefined; the end can carry reflector metadata
+ *  when the authoritative max-segment cap terminated on a reflector. */
 export type NetworkServerSnapshotBeamPoint = {
   x: number;
   y: number;
@@ -350,18 +351,27 @@ export type NetworkServerSnapshotBeamPoint = {
   vx: number;
   vy: number;
   vz: number;
+  /** Legacy name: any beam reflector entity, not only mirrors. */
   mirrorEntityId?: number;
+  reflectorKind?: BeamReflectorKind;
+  reflectorPlayerId?: PlayerId;
+  normalX?: number;
+  normalY?: number;
+  normalZ?: number;
 };
 
 export type NetworkServerSnapshotBeamUpdate = {
   id: number;
   /** Polyline vertices (≥ 2). Index 0 = start (muzzle), last = end
-   *  (range / hit / ground), middles = reflections. Each carries its
+   *  (range / hit / ground / terminal reflector), middles = reflections. Each carries its
    *  own (vx, vy, vz) — the start finite-diffs every tick, the end
    *  and reflections finite-diff across the (LOD-strided) re-trace
    *  cadence. */
   points: NetworkServerSnapshotBeamPoint[];
   obstructionT?: number;
+  /** False when the authoritative path stopped at BEAM_MAX_SEGMENTS on
+   *  a reflector, so clients should not render an endpoint damage orb. */
+  endpointDamageable?: boolean;
 };
 
 export type NetworkServerSnapshotGridCell = {

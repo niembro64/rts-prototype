@@ -92,6 +92,7 @@ export class ClientProjectileStore {
       this.beamPathTargets.set(update.id, target);
     }
     target.obstructionT = update.obstructionT;
+    target.endpointDamageable = update.endpointDamageable;
 
     const srcPts = update.points;
     const dstTarget = target.points;
@@ -102,6 +103,11 @@ export class ClientProjectileStore {
       dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
       dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
       dp.mirrorEntityId = sp.mirrorEntityId;
+      dp.reflectorKind = sp.reflectorKind;
+      dp.reflectorPlayerId = sp.reflectorPlayerId;
+      dp.normalX = sp.normalX;
+      dp.normalY = sp.normalY;
+      dp.normalZ = sp.normalZ;
     }
 
     const projPts = proj.points ?? (proj.points = []);
@@ -113,6 +119,11 @@ export class ClientProjectileStore {
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
         pp.mirrorEntityId = sp.mirrorEntityId;
+        pp.reflectorKind = sp.reflectorKind;
+        pp.reflectorPlayerId = sp.reflectorPlayerId;
+        pp.normalX = sp.normalX;
+        pp.normalY = sp.normalY;
+        pp.normalZ = sp.normalZ;
       }
       if (srcPts.length > 0) {
         const start = srcPts[0];
@@ -129,9 +140,15 @@ export class ClientProjectileStore {
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
         pp.mirrorEntityId = sp.mirrorEntityId;
+        pp.reflectorKind = sp.reflectorKind;
+        pp.reflectorPlayerId = sp.reflectorPlayerId;
+        pp.normalX = sp.normalX;
+        pp.normalY = sp.normalY;
+        pp.normalZ = sp.normalZ;
       }
     }
     proj.obstructionT = update.obstructionT;
+    proj.endpointDamageable = update.endpointDamageable !== false;
     this.activeBeamPathIds.add(update.id);
     this.options.clearPredictionAccum(update.id);
     this.markLineProjectilesChanged();
@@ -262,6 +279,8 @@ export class ClientProjectileStore {
         maxLifespan: spawn.maxLifespan ?? config.shotProfile.runtime.maxLifespan,
         hitEntities: new Set(),
         maxHits: 1,
+        endpointDamageable: true,
+        segmentLimitReached: false,
         points: spawn.beam ? [
           {
             x: spawn.beam.start.x, y: spawn.beam.start.y, z: spawn.beam.start.z,

@@ -130,6 +130,7 @@ function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
     id: 0,
     points: [],
     obstructionT: undefined,
+    endpointDamageable: undefined,
   };
 }
 
@@ -695,6 +696,7 @@ function getPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
   _beamUpdatePoolIndex++;
   update.points.length = 0;
   update.obstructionT = undefined;
+  update.endpointDamageable = undefined;
   return update;
 }
 
@@ -706,6 +708,11 @@ function getPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
   }
   _beamPointPoolIndex++;
   point.mirrorEntityId = undefined;
+  point.reflectorKind = undefined;
+  point.reflectorPlayerId = undefined;
+  point.normalX = undefined;
+  point.normalY = undefined;
+  point.normalZ = undefined;
   return point;
 }
 
@@ -1101,6 +1108,7 @@ export function serializeGameState(
       const update = getPooledBeamUpdate();
       update.id = entity.id;
       update.obstructionT = proj.obstructionT === undefined ? undefined : qRot(proj.obstructionT);
+      update.endpointDamageable = proj.endpointDamageable === false ? false : undefined;
       const dstPts = update.points;
       dstPts.length = srcPts.length;
       for (let p = 0; p < srcPts.length; p++) {
@@ -1128,6 +1136,11 @@ export function serializeGameState(
           out.vz = qVel(sp.vz);
         }
         out.mirrorEntityId = sp.mirrorEntityId;
+        out.reflectorKind = sp.reflectorKind;
+        out.reflectorPlayerId = sp.reflectorPlayerId;
+        out.normalX = sp.normalX === undefined ? undefined : qNormal(sp.normalX);
+        out.normalY = sp.normalY === undefined ? undefined : qNormal(sp.normalY);
+        out.normalZ = sp.normalZ === undefined ? undefined : qNormal(sp.normalZ);
         dstPts[p] = out;
       }
 

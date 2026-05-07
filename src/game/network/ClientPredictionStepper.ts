@@ -83,6 +83,11 @@ function applyBeamPathPrediction(
       pp.x = tp.x; pp.y = tp.y; pp.z = tp.z;
       pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
       pp.mirrorEntityId = tp.mirrorEntityId;
+      pp.reflectorKind = tp.reflectorKind;
+      pp.reflectorPlayerId = tp.reflectorPlayerId;
+      pp.normalX = tp.normalX;
+      pp.normalY = tp.normalY;
+      pp.normalZ = tp.normalZ;
       changed = true;
       continue;
     }
@@ -95,6 +100,11 @@ function applyBeamPathPrediction(
       Math.abs(ny - py) > 1e-4 ||
       Math.abs(nz - pz) > 1e-4 ||
       pp.mirrorEntityId !== tp.mirrorEntityId
+      || pp.reflectorKind !== tp.reflectorKind
+      || pp.reflectorPlayerId !== tp.reflectorPlayerId
+      || pp.normalX !== tp.normalX
+      || pp.normalY !== tp.normalY
+      || pp.normalZ !== tp.normalZ
     ) {
       changed = true;
     }
@@ -103,8 +113,14 @@ function applyBeamPathPrediction(
     pp.z = nz;
     pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
     pp.mirrorEntityId = tp.mirrorEntityId;
+    pp.reflectorKind = tp.reflectorKind;
+    pp.reflectorPlayerId = tp.reflectorPlayerId;
+    pp.normalX = tp.normalX;
+    pp.normalY = tp.normalY;
+    pp.normalZ = tp.normalZ;
   }
   proj.obstructionT = target.obstructionT;
+  proj.endpointDamageable = target.endpointDamageable !== false;
 
   const start = projPts[0];
   const second = projPts[1] ?? start;

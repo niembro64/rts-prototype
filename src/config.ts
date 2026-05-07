@@ -289,6 +289,14 @@ export const EMA_INITIAL_VALUES = {
  *  Prevents spiral-of-death when a tick takes longer than the interval. */
 export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
 
+/** Maximum authoritative beam/laser path segments traced per re-path.
+ *  Segment 1 is muzzle -> first hit/range, segment 2 is after the
+ *  first reflector, and so on. If the final allowed segment ends on a
+ *  reflector, the beam terminates there and does not get endpoint
+ *  damage. This prevents mirror/force-field loops from producing
+ *  unbounded traces or arbitrary damage spheres. */
+export const BEAM_MAX_SEGMENTS = 4;
+
 // =============================================================================
 // BATTLE WAYPOINT DEFAULTS
 // =============================================================================

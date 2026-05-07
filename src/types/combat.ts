@@ -157,6 +157,7 @@ export type CollisionResult = {
   deadBuildingIds: Set<EntityId>;
   events: SimEvent[];
   despawnEvents: ProjectileDespawnEvent[];
+  velocityUpdates: ProjectileVelocityUpdateEvent[];
   deathContexts: Map<EntityId, DeathContext>;
   /** New projectile entities created by collisions (submunitions /
    *  cluster spawns). Simulation adds these to the world after the

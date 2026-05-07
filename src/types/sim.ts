@@ -50,6 +50,7 @@ export type { ResourceCost } from './economyTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 export type {
   ActiveProjectileShot,
+  BeamReflectorKind,
   BeamPoint,
   BeamShot,
   BuildSprayShot,
@@ -416,11 +417,18 @@ export type Projectile = {
   timeAlive: number;
   maxLifespan: number;
   /** Beam/laser polyline. Index 0 = start (muzzle), last = end
-   *  (range/hit/ground), middles = reflections (each carries its own
-   *  reflector id via mirrorEntityId). Undefined on non-line projectiles. Mutated in
-   *  place — each re-trace resizes the array length and overwrites
-   *  the per-vertex fields, so the array reference is stable. */
+   *  (range/hit/ground/terminal reflector), middles = reflections.
+   *  Reflection vertices carry reflector metadata via the legacy
+   *  mirrorEntityId field plus reflectorKind/normal*. Undefined on
+   *  non-line projectiles. Mutated in place — each re-trace resizes
+   *  the array length and overwrites the per-vertex fields, so the
+   *  array reference is stable. */
   points?: BeamPoint[];
+  /** False when the path ended because BEAM_MAX_SEGMENTS was exhausted
+   *  on a reflector. The beam is still rendered to that contact point,
+   *  but no endpoint damage sphere is applied there. */
+  endpointDamageable?: boolean;
+  segmentLimitReached?: boolean;
   /** Physical source barrel for persistent beam/laser muzzle updates.
    *  Normal projectile spawns carry barrelIndex on their spawn event;
    *  beams need to remember it because their start point is re-traced

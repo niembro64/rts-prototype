@@ -1061,7 +1061,7 @@ export class RtsScene3D {
       this.fireExplosionAccumMs = 0;
       this.debrisAccumMs = 0;
     }
-    this.forceFieldImpactRenderer.update(effectDt);
+    this.forceFieldImpactRenderer.update(effectDt, lineProjectiles);
     this.burnMarkAccumMs += effectDt;
     if (updateEffectsThisFrame) {
       const burnMarkProjectiles = this.clientViewState.collectBurnMarkProjectiles(this._burnMarkProjectilesScratch);

@@ -33,6 +33,7 @@ export function createServerTarget(): ServerTarget {
 export type BeamPathTarget = {
   points: BeamPoint[];
   obstructionT?: number;
+  endpointDamageable?: boolean;
 };
 
 export function createBeamPathTarget(): BeamPathTarget {

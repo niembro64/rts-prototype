@@ -3,7 +3,7 @@
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId } from '../types';
+import type { BeamReflectorKind, Entity, EntityId, PlayerId } from '../types';
 import type {
   AnyDamageSource,
   LineDamageSource,
@@ -93,11 +93,36 @@ export function resetDamageBuffers(): void {
   _reusableHits.length = 0;
 }
 
+type BeamReflectorPoint = {
+  x: number;
+  y: number;
+  z: number;
+  mirrorEntityId: EntityId;
+  reflectorKind: BeamReflectorKind;
+  reflectorPlayerId?: PlayerId;
+  normalX: number;
+  normalY: number;
+  normalZ: number;
+};
+
 // Reusable result for findBeamSegmentHit. `z` is the world altitude
 // of the hit point; `normalX/Y/Z` is the reflector's outward-facing
 // 3D normal. Mirrors use their panel normal, force fields use the
 // sphere surface normal.
-const _segHit = { t: 0, x: 0, y: 0, z: 0, entityId: 0 as EntityId, isMirror: false, normalX: 0, normalY: 0, normalZ: 0, panelIndex: -1 };
+const _segHit = {
+  t: 0,
+  x: 0,
+  y: 0,
+  z: 0,
+  entityId: 0 as EntityId,
+  isMirror: false,
+  normalX: 0,
+  normalY: 0,
+  normalZ: 0,
+  panelIndex: -1,
+  reflectorKind: undefined as BeamReflectorKind | undefined,
+  reflectorPlayerId: undefined as PlayerId | undefined,
+};
 const _mirrorPanelPivot = { x: 0, y: 0, z: 0 };
 
 const BEAM_GROUND_HIT_STEPS = 12;
@@ -184,9 +209,10 @@ export class DamageSystem {
   // spheres — full 3D.
   //
   // The beam terminates at the first of: a unit hit, a building hit,
-  // a ground hit, or the firing turret's 2D range circle. Mirrors and
-  // force fields bounce; reflected segments are clipped against the
-  // same original range circle instead of a separate 3D max length.
+  // a ground hit, the firing turret's 2D range circle, or the configured
+  // max segment count. Mirrors and force fields bounce; reflected
+  // segments are clipped against the same original range circle instead
+  // of a separate 3D max length.
   //
   // Mirror panels are tilted rectangles; force fields are spherical
   // reflectors that only catch outside-to-inside crossings. Buildings
@@ -197,21 +223,25 @@ export class DamageSystem {
     endX: number, endY: number, endZ: number,
     sourceEntityId: EntityId,
     lineWidth: number,
-    maxBounces: number = 3,
+    maxSegments: number = 4,
     rangeCircle?: LineShotRangeCircle,
   ): {
     endX: number; endY: number; endZ: number;
     obstructionT?: number;
-    reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[];
+    reflections: BeamReflectorPoint[];
+    terminalReflection?: BeamReflectorPoint;
+    endpointDamageable: boolean;
+    segmentLimitReached: boolean;
   } {
-    const reflections: { x: number; y: number; z: number; mirrorEntityId: EntityId }[] = [];
+    const reflections: BeamReflectorPoint[] = [];
+    const segmentLimit = Math.max(1, Math.floor(maxSegments));
     let remainingRange = Math.hypot(endX - startX, endY - startY, endZ - startZ);
     let curSX = startX, curSY = startY, curSZ = startZ;
     let curEX = endX, curEY = endY, curEZ = endZ;
     let excludeEntityId = sourceEntityId;
     let excludePanelIndex = -1; // -1 = exclude entire entity (source), >= 0 = exclude only that panel
 
-    for (let bounce = 0; bounce <= maxBounces; bounce++) {
+    for (let segmentIndex = 0; segmentIndex < segmentLimit; segmentIndex++) {
       if (rangeCircle) {
         const segDx = curEX - curSX;
         const segDy = curEY - curSY;
@@ -241,23 +271,78 @@ export class DamageSystem {
       );
 
       if (!hit) {
-        return { endX: curEX, endY: curEY, endZ: curEZ, reflections };
+        return {
+          endX: curEX,
+          endY: curEY,
+          endZ: curEZ,
+          reflections,
+          endpointDamageable: true,
+          segmentLimitReached: false,
+        };
       }
 
       if (!hit.isMirror) {
-        if (bounce === 0) {
-          return { endX: hit.x, endY: hit.y, endZ: hit.z, obstructionT: hit.t, reflections };
+        if (segmentIndex === 0) {
+          return {
+            endX: hit.x,
+            endY: hit.y,
+            endZ: hit.z,
+            obstructionT: hit.t,
+            reflections,
+            endpointDamageable: true,
+            segmentLimitReached: false,
+          };
         }
-        return { endX: hit.x, endY: hit.y, endZ: hit.z, reflections };
+        return {
+          endX: hit.x,
+          endY: hit.y,
+          endZ: hit.z,
+          reflections,
+          endpointDamageable: true,
+          segmentLimitReached: false,
+        };
       }
 
-      reflections.push({ x: hit.x, y: hit.y, z: hit.z, mirrorEntityId: hit.entityId });
+      const reflectorKind = hit.reflectorKind ?? 'mirror';
+      const reflection: BeamReflectorPoint = {
+        x: hit.x,
+        y: hit.y,
+        z: hit.z,
+        mirrorEntityId: hit.entityId,
+        reflectorKind,
+        reflectorPlayerId: hit.reflectorPlayerId,
+        normalX: hit.normalX,
+        normalY: hit.normalY,
+        normalZ: hit.normalZ,
+      };
+
+      if (segmentIndex === segmentLimit - 1) {
+        return {
+          endX: hit.x,
+          endY: hit.y,
+          endZ: hit.z,
+          reflections,
+          terminalReflection: reflection,
+          endpointDamageable: false,
+          segmentLimitReached: true,
+        };
+      }
 
       const segDx = curEX - curSX;
       const segDy = curEY - curSY;
       const segDz = curEZ - curSZ;
       const segLen = Math.hypot(segDx, segDy, segDz);
-      if (segLen <= 1e-9) break;
+      if (segLen <= 1e-9) {
+        return {
+          endX: hit.x,
+          endY: hit.y,
+          endZ: hit.z,
+          reflections,
+          terminalReflection: reflection,
+          endpointDamageable: false,
+          segmentLimitReached: false,
+        };
+      }
       const beamDirX = segDx / segLen;
       const beamDirY = segDy / segLen;
       const beamDirZ = segDz / segLen;
@@ -265,7 +350,17 @@ export class DamageSystem {
       // Reflect around the reflector's full 3D normal. Mirrors provide
       // a panel normal; force fields provide the sphere surface normal.
       const normalLen = Math.hypot(hit.normalX, hit.normalY, hit.normalZ);
-      if (normalLen <= 1e-9) break;
+      if (normalLen <= 1e-9) {
+        return {
+          endX: hit.x,
+          endY: hit.y,
+          endZ: hit.z,
+          reflections,
+          terminalReflection: reflection,
+          endpointDamageable: false,
+          segmentLimitReached: false,
+        };
+      }
       const nx = hit.normalX / normalLen;
       const ny = hit.normalY / normalLen;
       const nz = hit.normalZ / normalLen;
@@ -274,11 +369,22 @@ export class DamageSystem {
       let reflDirY = beamDirY - 2 * dotDN * ny;
       let reflDirZ = beamDirZ - 2 * dotDN * nz;
       const reflLen = Math.hypot(reflDirX, reflDirY, reflDirZ);
-      if (reflLen <= 1e-9) break;
+      if (reflLen <= 1e-9) {
+        return {
+          endX: hit.x,
+          endY: hit.y,
+          endZ: hit.z,
+          reflections,
+          terminalReflection: reflection,
+          endpointDamageable: false,
+          segmentLimitReached: false,
+        };
+      }
       reflDirX /= reflLen;
       reflDirY /= reflLen;
       reflDirZ /= reflLen;
 
+      reflections.push(reflection);
       curSX = hit.x;
       curSY = hit.y;
       curSZ = hit.z;
@@ -314,7 +420,14 @@ export class DamageSystem {
       excludePanelIndex = hit.panelIndex;
     }
 
-    return { endX: curEX, endY: curEY, endZ: curEZ, reflections };
+    return {
+      endX: curEX,
+      endY: curEY,
+      endZ: curEZ,
+      reflections,
+      endpointDamageable: true,
+      segmentLimitReached: false,
+    };
   }
 
   // Find closest beam hit — checks mirror panel rectangles AND regular
@@ -434,6 +547,8 @@ export class DamageSystem {
           _segHit.normalY = hit.normalY;
           _segHit.normalZ = hit.normalZ;
           _segHit.panelIndex = hit.panelIndex;
+          _segHit.reflectorKind = 'mirror';
+          _segHit.reflectorPlayerId = unit.ownership?.playerId;
         }
       }
 
@@ -455,6 +570,8 @@ export class DamageSystem {
           _segHit.isMirror = false;
           _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
           _segHit.panelIndex = -1;
+          _segHit.reflectorKind = undefined;
+          _segHit.reflectorPlayerId = undefined;
         }
       }
     }
@@ -477,6 +594,8 @@ export class DamageSystem {
         _segHit.normalY = forceFieldHit.ny;
         _segHit.normalZ = forceFieldHit.nz;
         _segHit.panelIndex = -1;
+        _segHit.reflectorKind = 'forceField';
+        _segHit.reflectorPlayerId = forceFieldHit.playerId;
       }
     }
 
@@ -515,6 +634,8 @@ export class DamageSystem {
         _segHit.isMirror = false;
         _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
         _segHit.panelIndex = -1;
+        _segHit.reflectorKind = undefined;
+        _segHit.reflectorPlayerId = undefined;
       }
     }
 
@@ -529,6 +650,8 @@ export class DamageSystem {
       _segHit.isMirror = false;
       _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 1;
       _segHit.panelIndex = -1;
+      _segHit.reflectorKind = undefined;
+      _segHit.reflectorPlayerId = undefined;
     }
 
     return found ? _segHit : null;

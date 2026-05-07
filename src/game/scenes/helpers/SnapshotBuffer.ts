@@ -146,6 +146,7 @@ function createBufferedBeamUpdate(): BufferedBeamUpdate {
 function copyBeamInto(src: NetworkServerSnapshotBeamUpdate, dst: BufferedBeamUpdate): BufferedBeamUpdate {
   dst.id = src.id;
   dst.obstructionT = src.obstructionT;
+  dst.endpointDamageable = src.endpointDamageable;
   const dstPts = dst._points;
   dstPts.length = src.points.length;
   for (let i = 0; i < src.points.length; i++) {
@@ -158,6 +159,11 @@ function copyBeamInto(src: NetworkServerSnapshotBeamUpdate, dst: BufferedBeamUpd
     dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
     dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
     dp.mirrorEntityId = sp.mirrorEntityId;
+    dp.reflectorKind = sp.reflectorKind;
+    dp.reflectorPlayerId = sp.reflectorPlayerId;
+    dp.normalX = sp.normalX;
+    dp.normalY = sp.normalY;
+    dp.normalZ = sp.normalZ;
   }
   dst.points = dstPts;
   return dst;

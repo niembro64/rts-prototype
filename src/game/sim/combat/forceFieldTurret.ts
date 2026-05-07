@@ -1,7 +1,7 @@
 // Force field weapon system - spherical projectile shield boundary
 
 import type { WorldState } from '../WorldState';
-import type { Entity, ForceShot, Turret } from '../types';
+import type { ForceShot } from '../types';
 import { getTransformCosSin } from '../../math';
 import { updateWeaponWorldKinematics } from './combatUtils';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -12,10 +12,12 @@ const _forceFieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 
 // Compact list of force field weapons with progress > 0, built by
 // updateForceFieldState() and consumed by projectile collision.
 type ActiveForceFieldRef = {
-  unit: Entity;
-  weapon: Turret;
-  weaponIndex: number;
-  shot: ForceShot;
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+  radius: number;
+  playerId: number;
+  entityId: number;
 };
 const _activeForceFields: ActiveForceFieldRef[] = [];
 
@@ -58,7 +60,28 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
       weapon.forceField.range = weapon.forceField.transition;
 
       if (weapon.forceField.transition > 0 && unit.unit && unit.unit.hp > 0) {
-        _activeForceFields.push({ unit, weapon, weaponIndex, shot: fieldShot });
+        const radius = fieldShot.barrier?.outerRange ?? config.range;
+        if (radius <= 0) continue;
+        const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
+        const mount = updateWeaponWorldKinematics(
+          unit, weapon, weaponIndex,
+          unitCos, unitSin,
+          {
+            currentTick: world.getTick(),
+            dtMs: 0,
+            unitGroundZ: getUnitGroundZ(unit),
+            surfaceN: unit.unit.surfaceNormal,
+          },
+          _forceFieldMount,
+        );
+        _activeForceFields.push({
+          centerX: mount.x,
+          centerY: mount.y,
+          centerZ: mount.z,
+          radius,
+          playerId: unit.ownership?.playerId ?? 0,
+          entityId: unit.id,
+        });
       }
     }
   }
@@ -92,6 +115,18 @@ function intersectOutsideToInsideSphere(
   const sy = startY - centerY;
   const sz = startZ - centerZ;
   const radiusSq = radius * radius;
+
+  if (
+    Math.max(startX, endX) < centerX - radius ||
+    Math.min(startX, endX) > centerX + radius ||
+    Math.max(startY, endY) < centerY - radius ||
+    Math.min(startY, endY) > centerY + radius ||
+    Math.max(startZ, endZ) < centerZ - radius ||
+    Math.min(startZ, endZ) > centerZ + radius
+  ) {
+    return null;
+  }
+
   const startDistSq = sx * sx + sy * sy + sz * sz;
   // Shield only stops projectiles that begin outside and cross inward.
   // Inside-starting projectiles, including friendly shots fired from
@@ -103,7 +138,9 @@ function intersectOutsideToInsideSphere(
   const dz = endZ - startZ;
   const a = dx * dx + dy * dy + dz * dz;
   if (a <= 1e-9) return null;
-  const b = 2 * (sx * dx + sy * dy + sz * dz);
+  const startDotVelocity = sx * dx + sy * dy + sz * dz;
+  if (startDotVelocity >= 0) return null;
+  const b = 2 * startDotVelocity;
   const c = startDistSq - radiusSq;
   const disc = b * b - 4 * a * c;
   if (disc < 0) return null;
@@ -122,7 +159,7 @@ function intersectOutsideToInsideSphere(
 }
 
 export function findForceFieldSegmentIntersection(
-  world: WorldState,
+  _world: WorldState,
   startX: number,
   startY: number,
   startZ: number,
@@ -147,44 +184,20 @@ export function findForceFieldSegmentIntersection(
 
   for (let activeOrdinal = 0; activeOrdinal < activeFields.length; activeOrdinal++) {
     const active = activeFields[activeOrdinal];
-    const unit = active.unit;
-    const weapon = active.weapon;
-    const weaponIndex = active.weaponIndex;
-    const fieldShot = active.shot;
-    const fieldPlayerId = unit.ownership?.playerId ?? 0;
-    const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
-
-    const progress = weapon.forceField?.transition ?? (weapon.forceField?.range ?? 0);
-    if (progress <= 0) continue;
-
-    const radius = fieldShot.barrier?.outerRange ?? weapon.config.range;
-    if (radius <= 0) continue;
-
-    const mount = updateWeaponWorldKinematics(
-      unit, weapon, weaponIndex,
-      unitCos, unitSin,
-      {
-        currentTick: world.getTick(),
-        dtMs: 0,
-        unitGroundZ: getUnitGroundZ(unit),
-        surfaceN: unit.unit?.surfaceNormal,
-      },
-      _forceFieldMount,
-    );
     const t = intersectOutsideToInsideSphere(
       startX, startY, startZ,
       endX, endY, endZ,
-      mount.x, mount.y, mount.z,
-      radius,
+      active.centerX, active.centerY, active.centerZ,
+      active.radius,
     );
     if (t === null || t >= bestT) continue;
 
     const hitX = startX + (endX - startX) * t;
     const hitY = startY + (endY - startY) * t;
     const hitZ = startZ + (endZ - startZ) * t;
-    const nx = hitX - mount.x;
-    const ny = hitY - mount.y;
-    const nz = hitZ - mount.z;
+    const nx = hitX - active.centerX;
+    const ny = hitY - active.centerY;
+    const nz = hitZ - active.centerZ;
     const nLen = Math.hypot(nx, ny, nz) || 1;
     bestT = t;
     bestX = hitX;
@@ -193,8 +206,8 @@ export function findForceFieldSegmentIntersection(
     bestNx = nx / nLen;
     bestNy = ny / nLen;
     bestNz = nz / nLen;
-    bestPlayerId = fieldPlayerId;
-    bestEntityId = unit.id;
+    bestPlayerId = active.playerId;
+    bestEntityId = active.entityId;
   }
 
   if (bestT === Infinity) return null;

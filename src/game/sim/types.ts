@@ -46,6 +46,7 @@ export type {
   TurretState,
   Turret,
   ProjectileType,
+  BeamReflectorKind,
   BeamPoint,
   Projectile,
   EconomyState,

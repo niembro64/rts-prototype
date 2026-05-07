@@ -1,13 +1,15 @@
-// ForceFieldImpactRenderer3D - tangent-plane shield hit flashes.
+// ForceFieldImpactRenderer3D - tangent-plane reflector hit flashes.
 //
-// A force-field impact is authored by the server at the exact sphere
-// intersection point. The supplied normal is the shield surface normal
-// in sim coordinates; this renderer draws expanding rings in the plane
-// perpendicular to that normal, so the pulse lies tangent to the field.
+// Force-field projectile impacts are authored by the server at the exact
+// sphere intersection point. Continuous beam/laser reflection contacts
+// come from live beam polyline vertices. In both cases the supplied
+// normal is in sim coordinates; this renderer draws rings in the plane
+// perpendicular to that normal, so the pulse lies tangent to the
+// force-field shell or mirror panel.
 
 import * as THREE from 'three';
 import { FORCE_FIELD_IMPACT_VISUAL } from '../../config';
-import { getPlayerPrimaryColor, type PlayerId } from '../sim/types';
+import { getPlayerPrimaryColor, type Entity, type PlayerId } from '../sim/types';
 import { writeHexToRgb01Array } from './colorUtils';
 
 type Impact = {
@@ -62,10 +64,10 @@ class ImpactPool {
   private alphaAttr: THREE.InstancedBufferAttribute;
   private colorAttr: THREE.InstancedBufferAttribute;
 
-  constructor(parent: THREE.Group, geom: THREE.BufferGeometry, cap: number, renderOrder: number) {
+  constructor(parent: THREE.Group, geom: THREE.BufferGeometry, readonly capacity: number, renderOrder: number) {
     this.geom = geom;
-    this.alphaArr = new Float32Array(cap);
-    this.colorArr = new Float32Array(cap * 3);
+    this.alphaArr = new Float32Array(capacity);
+    this.colorArr = new Float32Array(capacity * 3);
     this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
     this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
     this.colorAttr = new THREE.InstancedBufferAttribute(this.colorArr, 3);
@@ -74,7 +76,7 @@ class ImpactPool {
     geom.setAttribute('aColor', this.colorAttr);
 
     this.mat = makeImpactMaterial();
-    this.mesh = new THREE.InstancedMesh(geom, this.mat, cap);
+    this.mesh = new THREE.InstancedMesh(geom, this.mat, capacity);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
     this.mesh.frustumCulled = false;
@@ -125,8 +127,11 @@ export class ForceFieldImpactRenderer3D {
   private scratchScale = new THREE.Vector3();
   private scratchQuat = new THREE.Quaternion();
   private scratchNormal = new THREE.Vector3();
+  private continuousTimeMs = 0;
 
   private static readonly Z_AXIS = new THREE.Vector3(0, 0, 1);
+  private static readonly CONTINUOUS_BEAM_HIT_CAP = 256;
+  private static readonly CONTINUOUS_RING_COUNT = 2;
 
   constructor(parentWorld: THREE.Group) {
     const cfg = FORCE_FIELD_IMPACT_VISUAL;
@@ -138,15 +143,24 @@ export class ForceFieldImpactRenderer3D {
     this.ringPool = new ImpactPool(
       this.root,
       new THREE.RingGeometry(inner, 1, ringSegments),
-      cfg.maxImpacts * Math.max(1, cfg.ringCount),
+      cfg.maxImpacts * Math.max(1, cfg.ringCount)
+        + ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP
+          * ForceFieldImpactRenderer3D.CONTINUOUS_RING_COUNT,
       18,
     );
     this.corePool = new ImpactPool(
       this.root,
       new THREE.CircleGeometry(1, ringSegments),
-      cfg.maxImpacts,
+      cfg.maxImpacts + ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP,
       17,
     );
+  }
+
+  private resolveColor(playerId: PlayerId | undefined): number {
+    const cfg = FORCE_FIELD_IMPACT_VISUAL;
+    return cfg.colorMode === 'player' && playerId !== undefined
+      ? getPlayerPrimaryColor(playerId)
+      : cfg.fallbackColor;
   }
 
   spawn(
@@ -162,9 +176,7 @@ export class ForceFieldImpactRenderer3D {
       this.impacts.pop();
     }
 
-    const color = cfg.colorMode === 'player' && playerId !== undefined
-      ? getPlayerPrimaryColor(playerId)
-      : cfg.fallbackColor;
+    const color = this.resolveColor(playerId);
     const nx = Number.isFinite(normal.x) ? normal.x : 0;
     const ny = Number.isFinite(normal.y) ? normal.y : 0;
     const nz = Number.isFinite(normal.z) ? normal.z : 1;
@@ -186,8 +198,9 @@ export class ForceFieldImpactRenderer3D {
     });
   }
 
-  update(dtMs: number): void {
+  update(dtMs: number, lineProjectiles: readonly Entity[] = []): void {
     const cfg = FORCE_FIELD_IMPACT_VISUAL;
+    this.continuousTimeMs += dtMs;
     let ringCursor = 0;
     let coreCursor = 0;
 
@@ -231,8 +244,101 @@ export class ForceFieldImpactRenderer3D {
       i++;
     }
 
+    const continuousCounts = this.writeContinuousBeamHits(
+      lineProjectiles,
+      ringCursor,
+      coreCursor,
+    );
+    ringCursor = continuousCounts.ringCursor;
+    coreCursor = continuousCounts.coreCursor;
+
     this.corePool.setCount(coreCursor);
     this.ringPool.setCount(ringCursor);
+  }
+
+  private writeContinuousBeamHits(
+    lineProjectiles: readonly Entity[],
+    ringCursor: number,
+    coreCursor: number,
+  ): { ringCursor: number; coreCursor: number } {
+    const cfg = FORCE_FIELD_IMPACT_VISUAL;
+    if (lineProjectiles.length === 0) return { ringCursor, coreCursor };
+
+    let written = 0;
+    const time = this.continuousTimeMs;
+    for (const entity of lineProjectiles) {
+      if (written >= ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP) break;
+      const points = entity.projectile?.points;
+      if (!points || points.length < 2) continue;
+
+      for (let i = 1; i < points.length; i++) {
+        if (written >= ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP) break;
+        const point = points[i];
+        if (point.mirrorEntityId === undefined) continue;
+        const nx = point.normalX;
+        const ny = point.normalY;
+        const nz = point.normalZ;
+        if (
+          nx === undefined || ny === undefined || nz === undefined ||
+          !Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz)
+        ) {
+          continue;
+        }
+        const len = Math.hypot(nx, ny, nz);
+        if (len <= 1e-6) continue;
+
+        const invLen = 1 / len;
+        const snx = nx * invLen;
+        const sny = ny * invLen;
+        const snz = nz * invLen;
+        this.scratchPos.set(
+          point.x + snx * cfg.surfaceOffset,
+          point.z + snz * cfg.surfaceOffset,
+          point.y + sny * cfg.surfaceOffset,
+        );
+        this.scratchNormal.set(snx, snz, sny).normalize();
+        this.scratchQuat.setFromUnitVectors(ForceFieldImpactRenderer3D.Z_AXIS, this.scratchNormal);
+
+        const color = this.resolveColor(point.reflectorPlayerId);
+        const sizeMul = 1;
+        const alphaMul = 0.8;
+        const phaseSeed = entity.id * 0.173 + i * 0.417;
+        const pulse = (time * 0.006 + phaseSeed) % 1;
+        const sinPulse = Math.sin((pulse + phaseSeed) * Math.PI * 2) * 0.5 + 0.5;
+
+        if (coreCursor < this.corePool.capacity) {
+          const coreRadius = cfg.startRadius * sizeMul * (1.05 + sinPulse * 0.22);
+          this.scratchScale.set(coreRadius, coreRadius, 1);
+          this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
+          this.corePool.write(
+            coreCursor++,
+            this.scratchMat,
+            color,
+            cfg.coreOpacity * alphaMul * (0.55 + sinPulse * 0.35),
+          );
+        }
+
+        for (let ring = 0; ring < ForceFieldImpactRenderer3D.CONTINUOUS_RING_COUNT; ring++) {
+          if (ringCursor >= this.ringPool.capacity) break;
+          const t = (pulse + ring / ForceFieldImpactRenderer3D.CONTINUOUS_RING_COUNT) % 1;
+          const ease = 1 - Math.pow(1 - t, 2);
+          const radius = (cfg.startRadius + (cfg.endRadius * 0.72 - cfg.startRadius) * ease) * sizeMul;
+          const fade = (1 - t) * (1 - t);
+          this.scratchScale.set(radius, radius, 1);
+          this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
+          this.ringPool.write(
+            ringCursor++,
+            this.scratchMat,
+            color,
+            cfg.ringOpacity * 0.34 * alphaMul * fade,
+          );
+        }
+
+        written++;
+      }
+    }
+
+    return { ringCursor, coreCursor };
   }
 
   destroy(): void {

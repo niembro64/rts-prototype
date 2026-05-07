@@ -1,6 +1,6 @@
 import type { SoundEntry } from './audio';
 import type { ShotId } from './blueprintIds';
-import type { EntityId } from './entityTypes';
+import type { EntityId, PlayerId } from './entityTypes';
 
 export type ProjectileShotKind = 'projectile' | 'rocket';
 
@@ -277,6 +277,8 @@ export type ShotConfig =
 export type ProjectileType = 'projectile' | 'beam' | 'laser';
 
 /** One vertex of a beam/laser polyline. */
+export type BeamReflectorKind = 'mirror' | 'forceField';
+
 export type BeamPoint = {
   x: number;
   y: number;
@@ -284,7 +286,14 @@ export type BeamPoint = {
   vx: number;
   vy: number;
   vz: number;
+  /** Legacy name: any beam reflector entity, not only mirrors. */
   mirrorEntityId?: EntityId;
+  reflectorKind?: BeamReflectorKind;
+  reflectorPlayerId?: PlayerId;
+  /** Full 3D reflector surface normal in sim coords. Present on reflector vertices. */
+  normalX?: number;
+  normalY?: number;
+  normalZ?: number;
 };
 
 export type ShotRuntimeProfile = {

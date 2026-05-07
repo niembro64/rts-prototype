@@ -468,17 +468,19 @@ export class BeamRenderer3D {
         }
       }
 
-      const endpointAlpha = (pt === 'laser' ? LASER_ENDPOINT_OPACITY : ENDPOINT_OPACITY) * opacityMul;
-      if (this.writeEndpoint(
-        endpointIdx,
-        endPoint.x,
-        endPoint.y,
-        endPoint.z,
-        damageSphereRadius,
-        endpointAlpha,
-        this.flowPhase(e.id, 997),
-      )) {
-        endpointIdx++;
+      if (proj.endpointDamageable !== false) {
+        const endpointAlpha = (pt === 'laser' ? LASER_ENDPOINT_OPACITY : ENDPOINT_OPACITY) * opacityMul;
+        if (this.writeEndpoint(
+          endpointIdx,
+          endPoint.x,
+          endPoint.y,
+          endPoint.z,
+          damageSphereRadius,
+          endpointAlpha,
+          this.flowPhase(e.id, 997),
+        )) {
+          endpointIdx++;
+        }
       }
     }
 

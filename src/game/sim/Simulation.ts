@@ -52,6 +52,10 @@ import { isBuildTargetInRange } from './builderRange';
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
 
+function safeVelocityUpdates(value: unknown): ProjectileVelocityUpdateEvent[] {
+  return Array.isArray(value) ? value as ProjectileVelocityUpdateEvent[] : EMPTY_VEL_UPDATES;
+}
+
 // ── Stuck-detection / replanning constants ────────────────────────
 //
 // A unit that wants to move (thrust set) but isn't actually moving
@@ -489,7 +493,7 @@ export class Simulation {
         this.pendingProjectileDespawns.push(event);
       }
       // Collect homing projectile velocity updates
-      for (const event of updateResult.velocityUpdates) {
+      for (const event of safeVelocityUpdates(updateResult.velocityUpdates)) {
         this.pendingProjectileVelocityUpdates.set(event.id, event);
       }
 
@@ -512,6 +516,9 @@ export class Simulation {
         unregisterPackedProjectile(event.id);
         spatialGrid.removeProjectile(event.id);
         this.pendingProjectileDespawns.push(event);
+      }
+      for (const event of safeVelocityUpdates(collisionResult.velocityUpdates)) {
+        this.pendingProjectileVelocityUpdates.set(event.id, event);
       }
 
       // Emit hit/death audio events

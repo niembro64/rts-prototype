@@ -1,14 +1,14 @@
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
+import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
 import { isLineShot, isLineShotType, isProjectileShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
-import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../../config';
+import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, BEAM_MAX_SEGMENTS } from '../../../config';
 import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, turretMaskIncludes, updateWeaponWorldKinematics } from './combatUtils';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
@@ -99,6 +99,34 @@ const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
 const FIRE_YAW_TOLERANCE = 0.16;
 const FIRE_PITCH_TOLERANCE = 0.16;
+
+function clearBeamReflectorMetadata(point: BeamPoint): void {
+  point.mirrorEntityId = undefined;
+  point.reflectorKind = undefined;
+  point.reflectorPlayerId = undefined;
+  point.normalX = undefined;
+  point.normalY = undefined;
+  point.normalZ = undefined;
+}
+
+function copyBeamReflectorMetadata(
+  point: BeamPoint,
+  reflector: {
+    mirrorEntityId: EntityId;
+    reflectorKind: BeamPoint['reflectorKind'];
+    reflectorPlayerId?: BeamPoint['reflectorPlayerId'];
+    normalX: number;
+    normalY: number;
+    normalZ: number;
+  },
+): void {
+  point.mirrorEntityId = reflector.mirrorEntityId;
+  point.reflectorKind = reflector.reflectorKind;
+  point.reflectorPlayerId = reflector.reflectorPlayerId;
+  point.normalX = reflector.normalX;
+  point.normalY = reflector.normalY;
+  point.normalZ = reflector.normalZ;
+}
 
 function isWeaponAimedForFire(weapon: Turret): boolean {
   if (weapon.config.verticalLauncher) return true;
@@ -937,7 +965,7 @@ export function updateProjectiles(
         startPoint.x = tip.x;
         startPoint.y = tip.y;
         startPoint.z = tip.z;
-        startPoint.mirrorEntityId = undefined;
+        clearBeamReflectorMetadata(startPoint);
 
         // Per-tick re-trace. The beam is bounded by the firing
         // turret's 2D fire-release circle, not by fixed 3D length. The
@@ -972,7 +1000,7 @@ export function updateProjectiles(
               fullEndX, fullEndY, fullEndZ,
               proj.sourceEntityId,
               collisionRadius,
-              3,
+              BEAM_MAX_SEGMENTS,
               rangeCircle,
             );
 
@@ -996,7 +1024,7 @@ export function updateProjectiles(
               point.x = refl.x;
               point.y = refl.y;
               point.z = refl.z;
-              point.mirrorEntityId = refl.mirrorEntityId;
+              copyBeamReflectorMetadata(point, refl);
               let vx = 0, vy = 0, vz = 0;
               if (prevRefs && dtSec > 0) {
                 for (let p = 0; p < prevRefs.length; p++) {
@@ -1066,13 +1094,19 @@ export function updateProjectiles(
             endPoint.x = beamPath.endX;
             endPoint.y = beamPath.endY;
             endPoint.z = beamPath.endZ;
-            endPoint.mirrorEntityId = undefined;
+            if (beamPath.terminalReflection) {
+              copyBeamReflectorMetadata(endPoint, beamPath.terminalReflection);
+            } else {
+              clearBeamReflectorMetadata(endPoint);
+            }
             proj.prevEndX = beamPath.endX;
             proj.prevEndY = beamPath.endY;
             proj.prevEndZ = beamPath.endZ;
             proj.prevEndTick = currentTick;
             proj.obstructionT = beamPath.obstructionT;
             proj.obstructionTick = currentTick;
+            proj.endpointDamageable = beamPath.endpointDamageable;
+            proj.segmentLimitReached = beamPath.segmentLimitReached;
           }
           // else: no trace budget this tick — keep the previous polyline.
           // createBeam seeded a 2-point start→range line at spawn so the

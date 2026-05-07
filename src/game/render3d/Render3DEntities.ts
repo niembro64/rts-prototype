@@ -53,7 +53,6 @@ import { getTurretHeadRadius } from '../math';
 import { getTurretMountHeight, isCommander } from '../sim/combat/combatUtils';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D } from './MirrorMesh3D';
-import { MIRROR_CHROME_MATERIAL } from './BuildingVisualPalette';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
@@ -64,6 +63,7 @@ import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
 import { isConstructionShell } from './EntityInstanceColor3D';
 import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
+import { createMirrorReflectorPanelMaterial } from './MirrorReflectorVisual3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -73,10 +73,6 @@ import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 // barrel tip and sim muzzle stay locked together.
 
 const BARREL_COLOR = 0xffffff;
-const MIRROR_PANEL_COLOR = MIRROR_CHROME_MATERIAL.color;
-const MIRROR_PANEL_METALNESS = MIRROR_CHROME_MATERIAL.metalness;
-const MIRROR_PANEL_ROUGHNESS = MIRROR_CHROME_MATERIAL.roughness;
-const MIRROR_PANEL_ENV_INTENSITY = MIRROR_CHROME_MATERIAL.envMapIntensity;
 // Detailed unit parts use shared instanced pools by default. The
 // per-mesh path remains only as an allocation fallback, not as the
 // normal rendering route.
@@ -202,14 +198,10 @@ export class Render3DEntities {
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
-  // Chrome variant of the extractor-blade shiny gray base color.
-  private mirrorShinyNeutralMat = new THREE.MeshStandardMaterial({
-    color: MIRROR_PANEL_COLOR,
-    metalness: MIRROR_PANEL_METALNESS,
-    roughness: MIRROR_PANEL_ROUGHNESS,
-    envMapIntensity: MIRROR_PANEL_ENV_INTENSITY,
-    side: THREE.DoubleSide,
-  });
+  // Mirror panels keep their existing shape and mount, but use the
+  // force-field shield treatment so they read as reflector surfaces
+  // instead of chrome slabs.
+  private mirrorShinyNeutralMat = createMirrorReflectorPanelMaterial();
   private ownedObjectLodGrid = new RenderLodGrid();
   private objectLodGrid = this.ownedObjectLodGrid;
   private richUnitDetailFrame = 0;
@@ -324,7 +316,7 @@ export class Render3DEntities {
     });
   }
 
-  private getMirrorShinyMat(): THREE.MeshStandardMaterial {
+  private getMirrorShinyMat(): THREE.Material {
     return this.mirrorShinyNeutralMat;
   }
 
@@ -897,6 +889,7 @@ export class Render3DEntities {
           if (allMirrorAlloc) m.mirrors.panelSlots = allocedPanelSlots;
           for (const panel of m.mirrors.panels) {
             panel.userData.entityId = e.id;
+            panel.renderOrder = 7;
           }
           for (const frame of m.mirrors.frames) {
             frame.userData.entityId = e.id;

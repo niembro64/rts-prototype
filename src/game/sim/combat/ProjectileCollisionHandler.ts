@@ -5,7 +5,14 @@ import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot } from '../t
 import { isLineShotType } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
-import type { SimEvent, CollisionResult, ProjectileDespawnEvent, ProjectileSpawnEvent, SimEventSourceType } from './types';
+import type {
+  SimEvent,
+  CollisionResult,
+  ProjectileDespawnEvent,
+  ProjectileSpawnEvent,
+  ProjectileVelocityUpdateEvent,
+  SimEventSourceType,
+} from './types';
 import type { TurretId } from '../../../types/blueprintIds';
 import { beamIndex } from '../BeamIndex';
 import type { DeathContext } from '../damage/types';
@@ -25,6 +32,7 @@ const MIRROR_PROJECTILE_QUERY_PAD = 96;
 const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
 const MAX_PROJECTILE_SWEEP_DISTANCE_SQ =
   MAX_PROJECTILE_SWEEP_DISTANCE * MAX_PROJECTILE_SWEEP_DISTANCE;
+const MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS = 96;
 
 function isValidProjectileSweep(
   prevX: number, prevY: number, prevZ: number,
@@ -42,6 +50,40 @@ function isValidProjectileSweep(
   return dx * dx + dy * dy + dz * dz <= MAX_PROJECTILE_SWEEP_DISTANCE_SQ;
 }
 
+function pointSegmentDistanceSq3(
+  px: number,
+  py: number,
+  pz: number,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abz = bz - az;
+  const lenSq = abx * abx + aby * aby + abz * abz;
+  if (lenSq <= 1e-9) {
+    const dx = px - ax;
+    const dy = py - ay;
+    const dz = pz - az;
+    return dx * dx + dy * dy + dz * dz;
+  }
+  const t = Math.max(
+    0,
+    Math.min(1, ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / lenSq),
+  );
+  const cx = ax + abx * t;
+  const cy = ay + aby * t;
+  const cz = az + abz * t;
+  const dx = px - cx;
+  const dy = py - cy;
+  const dz = pz - cz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
 const _collisionUnitsToRemove = new Set<EntityId>();
 const _collisionBuildingsToRemove = new Set<EntityId>();
@@ -51,6 +93,7 @@ const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
 const _collisionSimEvents: SimEvent[] = [];
 const _collisionNewProjectiles: Entity[] = [];
 const _collisionSpawnEvents: ProjectileSpawnEvent[] = [];
+const _collisionVelocityUpdates: ProjectileVelocityUpdateEvent[] = [];
 const _mirrorProjectilePivot = { x: 0, y: 0, z: 0 };
 
 // Reusable empty set for additive area damage (avoids allocating new Set per frame)
@@ -73,6 +116,33 @@ function getProjectileHitCount(proj: { hitEntities?: Set<EntityId> }): number {
   return proj.hitEntities?.size ?? 0;
 }
 
+function reflectVelocityPreserveSpeed(
+  vx: number,
+  vy: number,
+  vz: number,
+  normalX: number,
+  normalY: number,
+  normalZ: number,
+): { x: number; y: number; z: number } | null {
+  const speed = Math.hypot(vx, vy, vz);
+  const nLen = Math.hypot(normalX, normalY, normalZ);
+  if (speed <= 1e-9 || nLen <= 1e-9) return null;
+  const nx = normalX / nLen;
+  const ny = normalY / nLen;
+  const nz = normalZ / nLen;
+  const dot = vx * nx + vy * ny + vz * nz;
+  let rx = vx - 2 * dot * nx;
+  let ry = vy - 2 * dot * ny;
+  let rz = vz - 2 * dot * nz;
+  const rLen = Math.hypot(rx, ry, rz);
+  if (rLen <= 1e-9) return null;
+  const scale = speed / rLen;
+  rx *= scale;
+  ry *= scale;
+  rz *= scale;
+  return { x: rx, y: ry, z: rz };
+}
+
 // Reset collision-specific reusable buffers between game sessions
 // (prevents stale entity references from surviving across sessions)
 export function resetCollisionBuffers(): void {
@@ -84,6 +154,7 @@ export function resetCollisionBuffers(): void {
   _collisionSimEvents.length = 0;
   _collisionNewProjectiles.length = 0;
   _collisionSpawnEvents.length = 0;
+  _collisionVelocityUpdates.length = 0;
 }
 
 /**
@@ -264,6 +335,7 @@ export function checkProjectileCollisions(
   _collisionDeathContexts.clear();
   _collisionNewProjectiles.length = 0;
   _collisionSpawnEvents.length = 0;
+  _collisionVelocityUpdates.length = 0;
   const projectilesToRemove = _collisionProjectilesToRemove;
   const despawnEvents = _collisionDespawnEvents;
   const unitsToRemove = _collisionUnitsToRemove;
@@ -272,6 +344,8 @@ export function checkProjectileCollisions(
   const deathContexts = _collisionDeathContexts;
   const newProjectiles = _collisionNewProjectiles;
   const spawnEvents = _collisionSpawnEvents;
+  const velocityUpdates = _collisionVelocityUpdates;
+  let reflectorImpactEvents = 0;
   const projectileCollisionStride = Math.max(1, getSimDetailConfig().projectileCollisionStride | 0);
   const collisionDtMs = dtMs * projectileCollisionStride;
   const tick = world.getTick();
@@ -306,18 +380,20 @@ export function checkProjectileCollisions(
       }
     }
 
-    // Barrier impacts — a traveling projectile whose flight path this
-    // tick crosses a mirror panel or enters a force-field sphere
-    // detonates at the first barrier intersection. Same termination
-    // flow as ground impact: splash/submunitions if the shot supports
-    // them, otherwise projectileExpire visual + despawn. Beams/lasers
-    // are handled by their own line path.
+    // Reflector contacts — a traveling projectile whose flight path this
+    // tick crosses a mirror panel or enters a force-field sphere skips
+    // off the surface with the same vector reflection math beams use.
+    // Beams/lasers are handled by their own line path.
     let hitMirrorPanel = false;
     let hitForceField = false;
-    let forceFieldNormalX: number | undefined;
-    let forceFieldNormalY: number | undefined;
-    let forceFieldNormalZ: number | undefined;
-    let forceFieldPlayerId: number | undefined;
+    let reflectedProjectile = false;
+    let reflectorNormalX: number | undefined;
+    let reflectorNormalY: number | undefined;
+    let reflectorNormalZ: number | undefined;
+    let reflectorPlayerId: number | undefined;
+    let reflectorHitX = 0;
+    let reflectorHitY = 0;
+    let reflectorHitZ = 0;
     if (processCollision && proj.projectileType === 'projectile') {
       const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
       const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
@@ -327,18 +403,27 @@ export function checkProjectileCollisions(
       const curZ = projEntity.transform.z;
       let bestT = Infinity;
       let bestX = 0, bestY = 0, bestZ = 0;
-      if (world.mirrorsEnabled && world.getMirrorUnits().length > 0) {
+      if (!isRocketShot && world.mirrorsEnabled) {
+        const mirrorCandidates = world.getMirrorUnits();
         const projectileRadius = runtimeProfile.collisionRadius;
-        const mirrorCandidates = spatialGrid.queryUnitsAlongLine(
-          prevX, prevY, prevZ,
-          curX, curY, curZ,
-          projectileRadius * 2 + MIRROR_PROJECTILE_QUERY_PAD * 2,
-        );
         for (const u of mirrorCandidates) {
           if (u.id === proj.sourceEntityId) continue;
           if (!u.unit || u.unit.hp <= 0) continue;
           const panels = u.unit.mirrorPanels;
           if (!panels || panels.length === 0) continue;
+          const mirrorBroadRadius =
+            Math.max(u.unit.mirrorBoundRadius, u.unit.radius.shot) +
+            projectileRadius +
+            MIRROR_PROJECTILE_QUERY_PAD;
+          if (
+            pointSegmentDistanceSq3(
+              u.transform.x, u.transform.y, u.transform.z,
+              prevX, prevY, prevZ,
+              curX, curY, curZ,
+            ) > mirrorBroadRadius * mirrorBroadRadius
+          ) {
+            continue;
+          }
           const uTurrets = u.combat?.turrets;
           const mirrorRot = uTurrets && uTurrets.length > 0
             ? uTurrets[0].rotation
@@ -372,12 +457,18 @@ export function checkProjectileCollisions(
             bestX = hit.x;
             bestY = hit.y;
             bestZ = hit.z;
+            reflectorNormalX = hit.normalX;
+            reflectorNormalY = hit.normalY;
+            reflectorNormalZ = hit.normalZ;
+            reflectorPlayerId = u.ownership?.playerId;
+            hitMirrorPanel = true;
+            hitForceField = false;
           }
         }
       }
-      // Rocket-class shots punch through force fields. All other projectile
+      // Rocket-class shots punch through reflectors. All other projectile
       // shots are checked geometrically, with no projectile-owner/friendly
-      // filtering: outside-to-inside crossing is the only shield rule.
+      // filtering: outside-to-inside crossing is the force-field rule.
       const shieldHit = world.forceFieldsEnabled && !isRocketShot
         ? findForceFieldProjectileIntersection(
             world,
@@ -390,18 +481,69 @@ export function checkProjectileCollisions(
         bestX = shieldHit.x;
         bestY = shieldHit.y;
         bestZ = shieldHit.z;
-        forceFieldNormalX = shieldHit.nx;
-        forceFieldNormalY = shieldHit.ny;
-        forceFieldNormalZ = shieldHit.nz;
-        forceFieldPlayerId = shieldHit.playerId;
+        reflectorNormalX = shieldHit.nx;
+        reflectorNormalY = shieldHit.ny;
+        reflectorNormalZ = shieldHit.nz;
+        reflectorPlayerId = shieldHit.playerId;
         hitMirrorPanel = false;
         hitForceField = true;
       }
       if (bestT < Infinity) {
-        projEntity.transform.x = bestX;
-        projEntity.transform.y = bestY;
-        projEntity.transform.z = bestZ;
-        if (!hitForceField) hitMirrorPanel = true;
+        const reflected = reflectorNormalX !== undefined &&
+          reflectorNormalY !== undefined &&
+          reflectorNormalZ !== undefined
+          ? reflectVelocityPreserveSpeed(
+              proj.velocityX, proj.velocityY, proj.velocityZ,
+              reflectorNormalX, reflectorNormalY, reflectorNormalZ,
+            )
+          : null;
+        if (reflected) {
+          reflectorHitX = bestX;
+          reflectorHitY = bestY;
+          reflectorHitZ = bestZ;
+          const remainingSec = Math.max(0, (collisionDtMs / 1000) * (1 - bestT));
+          const nLen = Math.hypot(reflectorNormalX!, reflectorNormalY!, reflectorNormalZ!) || 1;
+          const nx = reflectorNormalX! / nLen;
+          const ny = reflectorNormalY! / nLen;
+          const nz = reflectorNormalZ! / nLen;
+          const surfaceOffset = Math.max(0.5, runtimeProfile.collisionRadius * 0.25);
+          const reflectedNormalDot = reflected.x * nx + reflected.y * ny + reflected.z * nz;
+          const offsetSign = reflectedNormalDot >= 0 ? 1 : -1;
+          proj.velocityX = reflected.x;
+          proj.velocityY = reflected.y;
+          proj.velocityZ = reflected.z;
+          projEntity.transform.x = bestX + nx * surfaceOffset * offsetSign + reflected.x * remainingSec;
+          projEntity.transform.y = bestY + ny * surfaceOffset * offsetSign + reflected.y * remainingSec;
+          projEntity.transform.z = bestZ + nz * surfaceOffset * offsetSign + reflected.z * remainingSec;
+          if (Math.hypot(reflected.x, reflected.y) > 1e-6) {
+            projEntity.transform.rotation = Math.atan2(reflected.y, reflected.x);
+          }
+          proj.collisionStartX = projEntity.transform.x;
+          proj.collisionStartY = projEntity.transform.y;
+          proj.collisionStartZ = projEntity.transform.z;
+          proj.prevX = projEntity.transform.x;
+          proj.prevY = projEntity.transform.y;
+          proj.prevZ = projEntity.transform.z;
+          proj.hasLeftSource = true;
+          proj.lastSentVelX = reflected.x;
+          proj.lastSentVelY = reflected.y;
+          proj.lastSentVelZ = reflected.z;
+          spatialGrid.updateProjectile(projEntity);
+          velocityUpdates.push({
+            id: projEntity.id,
+            pos: {
+              x: projEntity.transform.x,
+              y: projEntity.transform.y,
+              z: projEntity.transform.z,
+            },
+            velocity: { x: reflected.x, y: reflected.y, z: reflected.z },
+          });
+          reflectedProjectile = true;
+        } else {
+          projEntity.transform.x = bestX;
+          projEntity.transform.y = bestY;
+          projEntity.transform.z = bestZ;
+        }
       }
     }
 
@@ -416,6 +558,7 @@ export function checkProjectileCollisions(
     // so they skip this check.
     const groundZAtProj = world.getGroundZ(projEntity.transform.x, projEntity.transform.y);
     const hitGround =
+      !reflectedProjectile &&
       !hitMirrorPanel &&
       !hitForceField &&
       proj.projectileType === 'projectile' &&
@@ -426,25 +569,52 @@ export function checkProjectileCollisions(
       projEntity.transform.z = groundZAtProj;
     }
 
+    if (
+      reflectedProjectile &&
+      reflectorNormalX !== undefined &&
+      reflectorNormalY !== undefined &&
+      reflectorNormalZ !== undefined &&
+      reflectorImpactEvents < MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS
+    ) {
+      reflectorImpactEvents++;
+      audioEvents.push({
+        type: 'forceFieldImpact',
+        turretId: 'forceTurret',
+        sourceType: 'turret',
+        sourceKey: hitForceField ? 'forceTurret' : 'mirrorTurret',
+        pos: {
+          x: reflectorHitX,
+          y: reflectorHitY,
+          z: reflectorHitZ,
+        },
+        forceFieldImpact: {
+          normal: { x: reflectorNormalX, y: reflectorNormalY, z: reflectorNormalZ },
+          playerId: reflectorPlayerId ?? 0,
+        },
+      });
+    }
+
     // Check if projectile expired (lifespan OR ground/barrier impact)
-    if (proj.timeAlive >= proj.maxLifespan || hitGround || hitMirrorPanel || hitForceField) {
+    const terminalReflectorHit = (hitMirrorPanel || hitForceField) && !reflectedProjectile;
+    if (proj.timeAlive >= proj.maxLifespan || hitGround || terminalReflectorHit) {
       // Beam audio is handled by updateLaserSounds based on targeting state
       if (
-        hitForceField &&
-        forceFieldNormalX !== undefined &&
-        forceFieldNormalY !== undefined &&
-        forceFieldNormalZ !== undefined &&
-        forceFieldPlayerId !== undefined
+        terminalReflectorHit &&
+        reflectorNormalX !== undefined &&
+        reflectorNormalY !== undefined &&
+        reflectorNormalZ !== undefined &&
+        reflectorImpactEvents < MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS
       ) {
+        reflectorImpactEvents++;
         audioEvents.push({
           type: 'forceFieldImpact',
           turretId: 'forceTurret',
           sourceType: 'turret',
-          sourceKey: 'forceTurret',
+          sourceKey: hitForceField ? 'forceTurret' : 'mirrorTurret',
           pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
           forceFieldImpact: {
-            normal: { x: forceFieldNormalX, y: forceFieldNormalY, z: forceFieldNormalZ },
-            playerId: forceFieldPlayerId,
+            normal: { x: reflectorNormalX, y: reflectorNormalY, z: reflectorNormalZ },
+            playerId: reflectorPlayerId ?? 0,
           },
         });
       }
@@ -524,10 +694,10 @@ export function checkProjectileCollisions(
             let surfaceNormalX: number | undefined;
             let surfaceNormalY: number | undefined;
             let surfaceNormalZ: number | undefined;
-            if (hitForceField) {
-              surfaceNormalX = forceFieldNormalX;
-              surfaceNormalY = forceFieldNormalY;
-              surfaceNormalZ = forceFieldNormalZ;
+            if (terminalReflectorHit) {
+              surfaceNormalX = reflectorNormalX;
+              surfaceNormalY = reflectorNormalY;
+              surfaceNormalZ = reflectorNormalZ;
             } else if (hitGround) {
               const n = getSurfaceNormal(
                 projEntity.transform.x, projEntity.transform.y,
@@ -605,35 +775,38 @@ export function checkProjectileCollisions(
       // Reflected beams: attribute damage/kills to the last reflector
       // entity that redirected the beam (= last polyline vertex with a
       // mirrorEntityId, a legacy field name). Points layout:
-      // [start, ...reflections, end].
+      // [start, ...reflections, end]; when the max-segment cap is hit,
+      // the endpoint itself can be the terminal reflector.
       let lastMirrorEntityId: EntityId | undefined;
       if (points) {
-        for (let i = points.length - 2; i >= 1; i--) {
+        for (let i = points.length - 1; i >= 1; i--) {
           const mid = points[i].mirrorEntityId;
           if (mid !== undefined) { lastMirrorEntityId = mid; break; }
         }
       }
       const damageSourceId = lastMirrorEntityId ?? proj.sourceEntityId;
+      const endpointDamageable = proj.endpointDamageable !== false;
+      const result = endpointDamageable
+        ? damageSystem.applyDamage({
+            type: 'area',
+            sourceEntityId: damageSourceId,
+            ownerId: projEntity.ownership.playerId,
+            damage: tickDamage,
+            excludeEntities: _emptyExcludeSet,
+            center: { x: impactX, y: impactY, z: impactZ },
+            radius: damageSphereRadius,
+            knockbackForce: tickForce,
+          })
+        : null;
 
-      const result = damageSystem.applyDamage({
-        type: 'area',
-        sourceEntityId: damageSourceId,
-        ownerId: projEntity.ownership.playerId,
-        damage: tickDamage,
-        excludeEntities: _emptyExcludeSet,
-        center: { x: impactX, y: impactY, z: impactZ },
-        radius: damageSphereRadius,
-        knockbackForce: tickForce,
-      });
-
-      applyKnockbackForces(result.knockbacks, forceAccumulator);
+      if (result) applyKnockbackForces(result.knockbacks, forceAccumulator);
 
       // Apply beam force (knockback only, no damage) to each reflector entity.
       // Walk segment-by-segment along the polyline; whenever a vertex
       // carries a mirrorEntityId, the segment ENTERING that vertex is
       // the incoming beam direction at that reflector.
-      if (points && points.length > 2 && forceAccumulator) {
-        for (let i = 1; i < points.length - 1; i++) {
+      if (points && points.length > 1 && forceAccumulator) {
+        for (let i = 1; i < points.length; i++) {
           const refl = points[i];
           if (refl.mirrorEntityId === undefined) continue;
           const prev = points[i - 1];
@@ -648,16 +821,26 @@ export function checkProjectileCollisions(
         }
       }
 
-      emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
-      collectKillsWithDeathAudio(
-        result, world, damageSourceKey, damageSourceType,
-        unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-      );
+      if (result) {
+        emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
+        collectKillsWithDeathAudio(
+          result, world, damageSourceKey, damageSourceType,
+          unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+        );
+      }
 
       // Note: beam recoil is applied in fireTurrets() based on weapon.state
       }
     } else {
-      if (!processCollision) {
+      if (reflectedProjectile) {
+        // Reflection already consumed this tick's swept segment. Start
+        // the next collision sweep from the post-reflection position
+        // so the projectile does not immediately direct-hit the
+        // reflector it just skipped off.
+        proj.collisionStartX = projEntity.transform.x;
+        proj.collisionStartY = projEntity.transform.y;
+        proj.collisionStartZ = projEntity.transform.z;
+      } else if (!processCollision) {
         // Keep collisionStart intact so the next processed tick sweeps
         // the full skipped path instead of only the most recent segment.
       } else {
@@ -865,6 +1048,7 @@ export function checkProjectileCollisions(
     deadBuildingIds: buildingsToRemove,
     events: audioEvents,
     despawnEvents,
+    velocityUpdates,
     deathContexts,
     newProjectiles,
     spawnEvents,

@@ -754,6 +754,8 @@ export class WorldState {
         { x: startX, y: startY, z: beamZ, vx: 0, vy: 0, vz: 0 },
         { x: endX, y: endY, z: beamZ, vx: 0, vy: 0, vz: 0 },
       ];
+      entity.projectile.endpointDamageable = true;
+      entity.projectile.segmentLimitReached = false;
     }
 
     return entity;

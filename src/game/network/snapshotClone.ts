@@ -230,6 +230,7 @@ function cloneBeamUpdate(b: NetworkServerSnapshotBeamUpdate): NetworkServerSnaps
   return {
     id: b.id,
     obstructionT: b.obstructionT,
+    endpointDamageable: b.endpointDamageable,
     points: b.points.map((p) => ({
       x: p.x,
       y: p.y,
@@ -238,6 +239,11 @@ function cloneBeamUpdate(b: NetworkServerSnapshotBeamUpdate): NetworkServerSnaps
       vy: p.vy,
       vz: p.vz,
       mirrorEntityId: p.mirrorEntityId,
+      reflectorKind: p.reflectorKind,
+      reflectorPlayerId: p.reflectorPlayerId,
+      normalX: p.normalX,
+      normalY: p.normalY,
+      normalZ: p.normalZ,
     })),
   };
 }
@@ -725,7 +731,7 @@ function createReusableVelocity(): NetworkServerSnapshotVelocityUpdate {
 }
 
 function createReusableBeam(): NetworkServerSnapshotBeamUpdate {
-  return { id: 0, points: [] };
+  return { id: 0, points: [], endpointDamageable: undefined };
 }
 
 function copyBeamInto(
@@ -734,6 +740,7 @@ function copyBeamInto(
 ): NetworkServerSnapshotBeamUpdate {
   dst.id = src.id;
   dst.obstructionT = src.obstructionT;
+  dst.endpointDamageable = src.endpointDamageable;
   const dstPts = dst.points;
   dstPts.length = src.points.length;
   for (let i = 0; i < src.points.length; i++) {
@@ -746,6 +753,11 @@ function copyBeamInto(
     dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
     dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
     dp.mirrorEntityId = sp.mirrorEntityId;
+    dp.reflectorKind = sp.reflectorKind;
+    dp.reflectorPlayerId = sp.reflectorPlayerId;
+    dp.normalX = sp.normalX;
+    dp.normalY = sp.normalY;
+    dp.normalZ = sp.normalZ;
   }
   return dst;
 }
