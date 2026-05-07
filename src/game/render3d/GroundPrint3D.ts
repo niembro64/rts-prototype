@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { getGraphicsConfig, getGroundMarks } from '@/clientBarConfig';
+import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { LegInstance } from './LegRig3D';
@@ -43,9 +44,22 @@ const PRINT_LIN = new THREE.Color(PRINT_HEX);
 // honest: the LOD-driven alphaCutoff still trims a mark earlier on
 // low tiers (so it never *renders* below the cutoff alpha), but at
 // the MAX tier (cutoff ≈ 0) marks live for exactly this many ms.
-const PRINT_TOTAL_LIFETIME_MS = 5000;
-const INV_PRINT_LIFETIME = 1 / PRINT_TOTAL_LIFETIME_MS;
-const PRINT_INITIAL_ALPHA = 0.7;
+const PRINT_TOTAL_LIFETIME_MS = 1000;
+const PRINT_INITIAL_ALPHA = 0.2;
+
+// Per-tier lifetime multiplier — mirrors SmokeTrail3D's
+// LOD_LIFESPAN_MULT so ground prints scale on the same axis as the
+// other long-lived effects. A shorter effective lifetime at low/min
+// tiers frees slots faster under the existing per-tier cap, so the
+// system self-throttles in two dimensions: cap (max active count)
+// and lifetime (slot turnover rate).
+const LOD_LIFETIME_MULT: Record<ConcreteGraphicsQuality, number> = {
+  min: 0.5,
+  low: 0.65,
+  medium: 0.8,
+  high: 0.9,
+  max: 1.0,
+};
 
 // Hard buffer cap — sized to keep the geometry in one draw call at
 // the most generous LOD tier. Memory: ~12k × 4 verts × 28 bytes ≈
@@ -296,16 +310,19 @@ export class GroundPrint3D {
     }
 
     // ── Age + prune ──
-    // Linear ramp: alpha = INITIAL · (1 − age/lifetime), clamped at 0.
-    // A mark is removed once it hits 0 OR drops below the LOD's alpha
-    // cutoff — whichever comes first. So PRINT_TOTAL_LIFETIME_MS is
-    // the ceiling on lifetime; a tier with cutoff > 0 ends the mark
-    // earlier. Set cutoff to 0 (max tier) to honor the full duration.
+    // Linear ramp: alpha = INITIAL · (1 − age/effectiveLifetime),
+    // clamped at 0. Effective lifetime = PRINT_TOTAL_LIFETIME_MS
+    // scaled by the per-tier LOD_LIFETIME_MULT, so low/min tiers
+    // fade marks out faster (and free slots faster under the cap)
+    // than high/max. A mark is removed once it hits 0 OR drops
+    // below the LOD's alpha cutoff — whichever comes first.
+    const lifeMult = LOD_LIFETIME_MULT[gfx.tier] ?? 0.8;
+    const invEffLifetime = 1 / Math.max(1, PRINT_TOTAL_LIFETIME_MS * lifeMult);
     const cutoff = gfx.groundPrintAlphaCutoff;
     for (let i = this.marks.length - 1; i >= 0; i--) {
       const mark = this.marks[i];
       mark.age += dtMs;
-      const lifeFrac = mark.age * INV_PRINT_LIFETIME;
+      const lifeFrac = mark.age * invEffLifetime;
       const alpha = PRINT_INITIAL_ALPHA * (1 - lifeFrac);
       if (alpha <= 0 || alpha < cutoff) {
         this.removeMarkAt(i);
