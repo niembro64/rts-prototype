@@ -1,17 +1,14 @@
 // GameServer - Headless simulation server (no Phaser dependency)
 // Owns WorldState, Simulation, PhysicsEngine3D, and runs the game loop via setInterval
 
-import { WorldState } from '../sim/WorldState';
-import { Simulation } from '../sim/Simulation';
-import { CommandQueue, type Command } from '../sim/commands';
-import { spawnInitialEntities, spawnInitialBases, spawnMetalExtractorsOnDeposits, FIRST_PLAYER_ANGLE } from '../sim/spawn';
-import { getTerrainDividerTeamCount, normalizePlayerIds } from '../sim/playerLayout';
-import { CAPTURE_CONFIG } from '../../captureConfig';
+import type { WorldState } from '../sim/WorldState';
+import type { Simulation } from '../sim/Simulation';
+import type { CommandQueue, Command } from '../sim/commands';
 import { resetDeltaTracking, resetDeltaTrackingForKey } from '../network/stateSerializer';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
-import { ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_TURRETS, ENTITY_CHANGED_VEL } from '../../types/network';
+import { ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_POS, ENTITY_CHANGED_TURRETS, ENTITY_CHANGED_VEL } from '../../types/network';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import {
@@ -27,16 +24,10 @@ import {
   setSimSignalStates,
 } from '../sim/simQuality';
 import type { ServerSimQuality } from '@/types/serverSimLod';
-import { PhysicsEngine3D, type Body3D } from './PhysicsEngine3D';
-import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
-import { magnitude } from '../math';
+import type { PhysicsEngine3D } from './PhysicsEngine3D';
 import {
-  GRAVITY,
-  getMapSize,
-  UNIT_THRUST_MULTIPLIER_GAME,
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
-  LAND_CELL_SIZE,
   MAX_TICK_DT_MS,
   type KeyframeRatio,
 } from '../../config';
@@ -45,43 +36,21 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { setTiltEmaMode } from '../sim/unitTilt';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
-import { CaptureSystem } from '../sim/CaptureSystem';
-import { getLocomotionForceProfile } from '../sim/locomotion';
+import type { CaptureSystem } from '../sim/CaptureSystem';
 import { factoryProductionSystem } from '../sim/factoryProduction';
-import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDepositFlatZones, getTerrainVersion, setTerrainMapShape, setTerrainCenterShape, setTerrainDividersShape, buildTerrainTileMap, buildTerrainBuildabilityGrid, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
-import { generateMetalDeposits } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
+import { ServerBootstrap } from './ServerBootstrap';
 import { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerTickLoop } from './ServerTickLoop';
 import {
   ServerSnapshotPublisher,
   type SnapshotListenerEntry,
 } from './ServerSnapshotPublisher';
+import { UnitForceSystem } from './UnitForceSystem';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
 
-const WATER_PROBE_DX = [
-  1, 0.7071067811865476, 0, -0.7071067811865475,
-  -1, -0.7071067811865477, 0, 0.7071067811865474,
-];
-const WATER_PROBE_DY = [
-  0, 0.7071067811865475, 1, 0.7071067811865476,
-  0, -0.7071067811865475, -1, -0.7071067811865477,
-];
-const WATER_ESCAPE_PROBE_MULTS = [1.5, 3, 6];
-const MATTER_FORCE_SCALE = 150000;
-const WATER_OUT_CACHE_CELL_SIZE = 25;
-const WATER_OUT_CACHE_BUCKET_SCALE = 10;
-// Hard cap on the probe cache. At cell-size 25 a 4k×4k map has ~25k
-// possible cells; in practice probes cluster around shorelines, so a
-// few thousand keys cover every spot units actually visit. Beyond
-// that the cache is just a long-tail leak, so we drop it wholesale
-// on overflow rather than carry per-entry LRU bookkeeping in the
-// physics tick.
-const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
-type WaterOutCacheEntry = { ok: boolean; x: number; y: number };
-type LocomotionForceProfile = ReturnType<typeof getLocomotionForceProfile>;
 export class GameServer {
   private physics: PhysicsEngine3D;
   private world: WorldState;
@@ -118,13 +87,8 @@ export class GameServer {
   private snapshotListeners: SnapshotListenerEntry[] = [];
   private snapshotListenerId: number = 0;
   private gameOverListeners: GameOverCallback[] = [];
-  private physicsForceUnitIdsBuf: EntityId[] = [];
   private physicsSyncUnitIdsBuf: EntityId[] = [];
-  private physicsCandidateUnitIdsBuf: EntityId[] = [];
-  private _idleBrakeForceX = 0;
-  private _idleBrakeForceY = 0;
-  private _idleBrakeForceZ = 0;
-  private physicsActiveUnitIds = new Set<EntityId>();
+  private unitForceSystem: UnitForceSystem;
 
   // Game over tracking
   private isGameOver: boolean = false;
@@ -151,7 +115,7 @@ export class GameServer {
   private startupGateOpen = false;
 
   // Territory capture system
-  private captureSystem = new CaptureSystem();
+  private captureSystem: CaptureSystem;
   private debugGridPublisher = new ServerDebugGridPublisher();
   private snapshotPublisher = new ServerSnapshotPublisher();
 
@@ -166,8 +130,6 @@ export class GameServer {
   }
 
   constructor(config: GameServerConfig, physics?: PhysicsEngine3D) {
-    this.playerIds = normalizePlayerIds(config.playerIds);
-    this.backgroundMode = config.backgroundMode ?? false;
     this.tickRateHz = 60;
     this.userTickRateHz = 60;
 
@@ -182,150 +144,30 @@ export class GameServer {
     this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
-    const mapConfig = getMapSize(
-      this.backgroundMode,
-      config.mapWidthLandCells,
-      config.mapLengthLandCells,
-    );
-    const mapWidth = mapConfig.width;
-    const mapHeight = mapConfig.height;
+    // Bootstrap the entire world: terrain, physics, world state, sim,
+    // capture grid, initial spawn. Ordering is tightly constrained
+    // (terrain shape before deposits, deposits before terrain tile map,
+    // tile map before physics ground lookup, etc.) and lives inside
+    // ServerBootstrap so this constructor can stay focused on
+    // instance-level concerns.
+    const boot = ServerBootstrap.bootstrap(config, physics);
+    this.physics = boot.physics;
+    this.world = boot.world;
+    this.simulation = boot.simulation;
+    this.commandQueue = boot.commandQueue;
+    this.captureSystem = boot.captureSystem;
+    this.playerIds = boot.playerIds;
+    this.backgroundMode = boot.backgroundMode;
+    this.backgroundAllowedTypes = boot.backgroundAllowedTypes;
+    this.terrainTileMap = boot.terrainTileMap;
+    this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
 
-    // Tell the heightmap how many radial player slices are active so
-    // it can lay down the matching divider ridges. A one-player map
-    // still uses one slice and one divider slice; no map-building math
-    // branches on "solo". Set BEFORE WorldState, deposit flattening,
-    // and renderer mesh baking so every consumer reads the same surface.
-    setTerrainTeamCount(getTerrainDividerTeamCount(this.playerIds.length));
-    setTerrainCenterShape(config.terrainCenter ?? 'valley');
-    setTerrainDividersShape(config.terrainDividers ?? 'valley');
-    setTerrainMapShape(config.terrainMapShape ?? 'circle');
+    this.unitForceSystem = new UnitForceSystem(this.world, this.simulation, this.physics);
 
-    // Metal deposits — same set across all clients (deterministic from
-    // map size + player count + CENTER terrain polarity). Push their
-    // flat zones (with per-ring dTerrain-derived height) to the heightmap
-    // BEFORE the physics ground lookup or any sim/render code samples
-    // terrain, so every consumer sees the raised/lowered pads on first read.
-    const deposits = generateMetalDeposits(
-      mapWidth,
-      mapHeight,
-      this.playerIds.length,
-      config.terrainCenter,
-    );
-    setMetalDepositFlatZones(
-      deposits.map((d) => ({
-        x: d.x,
-        y: d.y,
-        radius: d.flatPadRadius,
-        height: d.height,
-        blendRadius: d.blendRadius,
-      })),
-    );
-    this.terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
-    setAuthoritativeTerrainTileMap(this.terrainTileMap);
-    this.terrainBuildabilityGrid = buildTerrainBuildabilityGrid(mapWidth, mapHeight);
-
-    // The physics engine is now fully 3D — same module for every path.
-    this.physics = physics ?? new PhysicsEngine3D(mapWidth, mapHeight);
-    this.world = new WorldState(42, mapWidth, mapHeight);
-    this.world.playerCount = this.playerIds.length;
-    this.world.metalDeposits = deposits;
-    // Wire the heightmap into physics so ground contacts settle units
-    // on top of their terrain cube tile AND project their velocity
-    // onto the slope tangent each tick — keeps units glued to the
-    // surface as they climb / descend instead of bobbing or
-    // launching off slope transitions. Both lookups return flat-up
-    // outside the ripple disc, so corner spawns stay flat.
-    this.physics.setGroundLookup(
-      (x, y) => this.world.getGroundZ(x, y),
-      (x, y) => this.world.getCachedSurfaceNormal(x, y),
-    );
-    this.world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
-    this.world.setActivePlayer(0 as PlayerId); // Server has no active player
-
-    this.commandQueue = new CommandQueue();
-    this.simulation = new Simulation(
-      this.world,
-      this.commandQueue,
-      this.terrainBuildabilityGrid,
-    );
-    this.simulation.setPlayerIds(this.playerIds);
-
-    // Honour any saved demo-unit selection passed in by the caller —
-    // this MUST happen before spawnBackgroundUnitsStandalone so the
-    // initial spawn picks from the restricted set. Otherwise we'd
-    // create units of disallowed types and immediately wipe them via
-    // the toggle handler.
-    this.backgroundAllowedTypes = new Set(
-      config.initialAllowedTypes ?? BACKGROUND_UNIT_TYPES,
-    );
-    // Same ordering rule for the unit cap: the demo spawn now fills
-    // `maxTotalUnits / numPlayers` slots per team, so the cap must
-    // be set BEFORE spawnBackgroundUnitsStandalone runs (in the
-    // playerIds branch below). Without this override, the world
-    // boots at MAX_TOTAL_UNITS (4096) regardless of user storage,
-    // the spawn fills to that, and only AFTER would `setMaxTotalUnits`
-    // arrive from LobbyManager — producing the visible "4075/16"
-    // mismatch where the spawn count and the displayed cap disagree.
-    if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
-      this.world.maxTotalUnits = config.initialMaxTotalUnits;
-    }
-
-    // Setup simulation callbacks
+    // Setup simulation callbacks (need `this` references for physics
+    // body cleanup and game-over fan-out, so they live here rather than
+    // inside ServerBootstrap).
     this.setupSimulationCallbacks();
-
-    // Pre-paint the capture grid into per-team radial sectors. Same
-    // oval-space angular layout the spawn oval and terrain dividers use, so
-    // each team starts with the territory in front of their base.
-    // Border tiles get area-weighted partial ownership (the centre
-    // tile is naturally split among all teams). Tiles flagged dirty
-    // here flow out in the next snapshot regardless of keyframe / delta.
-    {
-      // Tell the capture system about the map up front so its
-      // per-tile mana-production weights (hotspot multiplier) are
-      // available during update() AND for the initial radial paint
-      // below. The renderer pulls the same weights so on-screen
-      // brightness and income stay in lockstep.
-      this.captureSystem.setMapSize(mapWidth, mapHeight, LAND_CELL_SIZE);
-      this.captureSystem.initializeRadialOwnership(
-        mapWidth, mapHeight, LAND_CELL_SIZE,
-        this.playerIds, FIRST_PLAYER_ANGLE,
-        CAPTURE_CONFIG.initialOwnershipHeight,
-      );
-    }
-
-    // AI player configuration
-    const aiPlayerIds = config.aiPlayerIds ?? (this.backgroundMode ? [...this.playerIds] : []);
-    const spawnDemoInitialState =
-      this.backgroundMode && (config.spawnDemoInitialState ?? aiPlayerIds.length > 0);
-
-    // Spawn initial entities. Only background/demo battles get full
-    // bases; real games, including offline games with AI players,
-    // start from commanders so their spawn layout matches hosted
-    // network games.
-    if (spawnDemoInitialState) {
-      const constructionSystem = this.simulation.getConstructionSystem();
-      const entities = spawnInitialBases(
-        this.world,
-        constructionSystem,
-        this.playerIds,
-        'demo',
-        this.backgroundAllowedTypes,
-      );
-      entities.push(...spawnMetalExtractorsOnDeposits(this.world, constructionSystem, this.playerIds));
-      this.createPhysicsBodies(entities);
-
-      // Background mode: spawn a cluster of units near center for immediate combat
-      spawnBackgroundUnitsStandalone(
-        this.world, this.physics, true,
-        constructionSystem.getGrid(),
-        this.backgroundAllowedTypes,
-        this.playerIds,
-      );
-    } else {
-      const entities = spawnInitialEntities(this.world, this.playerIds);
-      this.createPhysicsBodies(entities);
-    }
-    this.simulation.setAiPlayerIds(aiPlayerIds);
   }
 
   private setupSimulationCallbacks(): void {
@@ -557,7 +399,7 @@ export class GameServer {
     this.simulation.update(dtMs);
 
     // Apply thrust + external forces to physics bodies
-    this.applyForces(dtSec);
+    this.unitForceSystem.applyForces(dtSec);
 
     // Step physics (integrate + collisions)
     this.physics.step(dtSec);
@@ -588,341 +430,6 @@ export class GameServer {
     }
   }
 
-  // Apply thrust and external forces to physics bodies
-  private applyForces(dtSec: number): void {
-    const forceAccumulator = this.simulation.getForceAccumulator();
-    const mw = this.world.mapWidth;
-    const mh = this.world.mapHeight;
-
-    this.collectPhysicsForceUnitIds();
-    const activeIds = this.physicsForceUnitIdsBuf;
-    for (let i = 0; i < activeIds.length; i++) {
-      const entity = this.world.getEntity(activeIds[i]);
-      if (!entity || !entity.body?.physicsBody || !entity.unit) continue;
-
-      const body = entity.body.physicsBody;
-
-      // Sync position from physics body (before force application, for
-      // rotation calc). z tracks gravity + ground contact — units sit on
-      // the ground at body.radius altitude; explosions or falls push them
-      // up and gravity pulls them back.
-      entity.transform.x = body.x;
-      entity.transform.y = body.y;
-      entity.transform.z = body.z;
-
-      // Action-system thrust target — a HORIZONTAL desired direction.
-      // Locomotion owns propulsion: driveForce is the authored motor
-      // strength and traction is how much of that force couples into
-      // the ground. Sloped terrain projects the direction onto the
-      // local surface tangent below so units climb / descend along the
-      // actual ground instead of trying to push straight through it.
-      // velocityX/Y/Z is authoritative physics, not touched here.
-      const dirX = entity.unit.thrustDirX ?? 0;
-      const dirY = entity.unit.thrustDirY ?? 0;
-      const dirMag = magnitude(dirX, dirY);
-      const locomotionForce = getLocomotionForceProfile(
-        entity.unit.locomotion,
-        entity.unit.mass,
-        this.world.thrustMultiplier,
-        MATTER_FORCE_SCALE,
-      );
-
-      // Sleeping units that aren't being asked to thrust short-circuit
-      // BEFORE the accumulator probe — `hasForce` is a single Map.has
-      // (no allocation) where `getFinalForce` would build a scratch
-      // tuple. Skip the rotation update too: dirMag is already below
-      // the threshold there.
-      if (body.sleeping && dirMag <= 0.01 && !forceAccumulator.hasForce(entity.id)) {
-        continue;
-      }
-
-      const externalForce = forceAccumulator.getFinalForce(entity.id);
-      const externalFx = (externalForce?.fx ?? 0) / 3600;
-      const externalFy = (externalForce?.fy ?? 0) / 3600;
-
-      // Unit faces its movement direction (yaw only — chassis tilt
-      // is a render concern; sim transform.rotation stays a 2D yaw).
-      if (dirMag > 0.01) {
-        const nextRotation = Math.atan2(dirY, dirX);
-        if (nextRotation !== entity.transform.rotation) {
-          entity.transform.rotation = nextRotation;
-          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
-        }
-      }
-
-      let thrustForceX = 0;
-      let thrustForceY = 0;
-      let thrustForceZ = 0;
-
-      // Water as a WALL.
-      //
-      // Two-pronged behaviour, both built on `isWaterAt` against the
-      // local heightmap (no clamp, no surface, just "is this position
-      // submerged?"):
-      //
-      //   1. THRUST GATE on dry land: when the action system wants
-      //      to push the body in a direction that would step into
-      //      water, decompose the thrust into the local outward
-      //      component (toward dry land) and the parallel component
-      //      (along the shore). Zero the inward component, keep the
-      //      parallel. The unit slides along the shore and physically
-      //      cannot push past the boundary — exactly the behaviour
-      //      you want from a wall.
-      //
-      //   2. ESCAPE FORCE in water: when the body has somehow ended
-      //      up over water anyway (knockback impulse, spawn edge
-      //      case, sub-tick collision push), apply a strong outward
-      //      force so they're expelled within a couple of frames.
-      //      3× the unit's normal thrust magnitude — water is a
-      //      WALL, not a friendly current.
-      //
-      // The body's tilt (`getSurfaceNormal`) is already land-only
-      // by construction (Terrain.ts excludes wet samples from the
-      // gradient), so the chassis never inherits the water plane's
-      // flat normal. Combined with the wall-push, water has no
-      // "solid" aspect: nothing rests on it, units never tilt to
-      // its surface, and they bounce off the boundary like it's a
-      // building wall.
-      const radius = body.radius || 10;
-      const inWater = isWaterAt(body.x, body.y, mw, mh);
-
-      if (inWater) {
-        // ESCAPE FORCE — push toward dry land. Try expanding probe
-        // radii so even a unit teleported deep into a valley gets a
-        // valid outward direction.
-        let hasOutDir = false;
-        for (let i = 0; i < WATER_ESCAPE_PROBE_MULTS.length; i++) {
-          hasOutDir = this.probeWaterOutward(
-            body.x, body.y,
-            radius * WATER_ESCAPE_PROBE_MULTS[i],
-            mw, mh,
-          );
-          if (hasOutDir) break;
-        }
-        if (hasOutDir) {
-          // 3× normal thrust strength — feels like a hard wall pushing
-          // the unit out, not a gentle current.
-          const wallPush = 3 * locomotionForce.rawForceMagnitude;
-          thrustForceX = this._waterOutX * wallPush;
-          thrustForceY = this._waterOutY * wallPush;
-          // No z thrust — water surface is flat, no slope to climb out of.
-        }
-      } else if (dirMag > 0.01) {
-        let useDirX = dirX / dirMag;
-        let useDirY = dirY / dirMag;
-
-        // THRUST GATE — if a body-radius step ahead would put the
-        // body in water, project the thrust onto the local "along
-        // the shore" direction. The inward component (into water)
-        // gets zeroed; the parallel component (sliding along the
-        // boundary) is preserved.
-        const probe = radius + 5;
-        const aheadX = body.x + useDirX * probe;
-        const aheadY = body.y + useDirY * probe;
-        if (isWaterAt(aheadX, aheadY, mw, mh)) {
-          if (this.probeWaterOutward(aheadX, aheadY, radius, mw, mh)) {
-            // Decompose useDir against outward direction.
-            // dotOut > 0 ⇒ thrust outward (away from water) — fine.
-            // dotOut < 0 ⇒ thrust has inward component — remove it.
-            const dotOut = useDirX * this._waterOutX + useDirY * this._waterOutY;
-            if (dotOut < 0) {
-              useDirX -= dotOut * this._waterOutX;
-              useDirY -= dotOut * this._waterOutY;
-              const m = Math.sqrt(useDirX * useDirX + useDirY * useDirY);
-              if (m > 1e-3) {
-                useDirX /= m;
-                useDirY /= m;
-              } else {
-                // Thrust was purely inward — nothing parallel to the
-                // shore left. Unit stops at the wall.
-                useDirX = 0;
-                useDirY = 0;
-              }
-            }
-          }
-        }
-
-        if (useDirX !== 0 || useDirY !== 0) {
-          const thrustMagnitude = locomotionForce.tractionForceMagnitude;
-          // Project horizontal thrust onto the slope tangent so
-          // hill-climbing produces the right z-aware force. Slope
-          // normal is land-only (Terrain.getSurfaceNormal excludes
-          // wet samples), so this never inherits the water plane's
-          // tilt.
-          const n = this.world.getCachedSurfaceNormal(body.x, body.y);
-          const t = projectHorizontalOntoSlope(useDirX, useDirY, n);
-          thrustForceX = t.x * thrustMagnitude;
-          thrustForceY = t.y * thrustMagnitude;
-          thrustForceZ = t.z * thrustMagnitude;
-        }
-      } else {
-        const n = this.world.getCachedSurfaceNormal(body.x, body.y);
-        if (this.computeIdleBrakeForce(body, n, locomotionForce, dtSec)) {
-          thrustForceX = this._idleBrakeForceX;
-          thrustForceY = this._idleBrakeForceY;
-          thrustForceZ = this._idleBrakeForceZ;
-        }
-      }
-
-      let totalForceX = thrustForceX + externalFx;
-      let totalForceY = thrustForceY + externalFy;
-      let totalForceZ = thrustForceZ;
-
-      if (
-        !Number.isFinite(totalForceX) ||
-        !Number.isFinite(totalForceY) ||
-        !Number.isFinite(totalForceZ)
-      ) {
-        continue;
-      }
-
-      // Matter.js Verlet integration uses (F/m) * deltaTimeMs², our Euler engine uses (F/m) * dtSec.
-      // Conversion: (ms)² / (sec)² = 1000² = 1e6. With friction-first ordering this is exact.
-      // The Z thrust component lifts the unit along the slope when
-      // climbing; gravity continues to pull through the integrator
-      // and the ground-contact resolver clamps to the surface, so the
-      // unit settles onto the rendered tile triangle each tick.
-      this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6, totalForceZ * 1e6);
-    }
-  }
-
-  private collectPhysicsForceUnitIds(): void {
-    const ids = this.physicsForceUnitIdsBuf;
-    const seen = this.physicsActiveUnitIds;
-    ids.length = 0;
-    seen.clear();
-
-    const pushId = (id: EntityId): void => {
-      if (seen.has(id)) return;
-      seen.add(id);
-      ids.push(id);
-    };
-
-    const movingUnits = this.simulation.getMovingUnits();
-    for (let i = 0; i < movingUnits.length; i++) {
-      pushId(movingUnits[i].id);
-    }
-
-    const candidates = this.physicsCandidateUnitIdsBuf;
-    candidates.length = 0;
-    this.simulation.getForceAccumulator().collectActiveEntityIds(candidates);
-    for (let i = 0; i < candidates.length; i++) {
-      pushId(candidates[i]);
-    }
-
-    candidates.length = 0;
-    this.physics.collectAwakeEntityIds(candidates);
-    for (let i = 0; i < candidates.length; i++) {
-      pushId(candidates[i]);
-    }
-  }
-
-  private computeIdleBrakeForce(
-    body: Body3D,
-    normal: { nx: number; ny: number; nz: number },
-    locomotionForce: LocomotionForceProfile,
-    dtSec: number,
-  ): boolean {
-    this._idleBrakeForceX = 0;
-    this._idleBrakeForceY = 0;
-    this._idleBrakeForceZ = 0;
-
-    const maxForce = locomotionForce.tractionForceMagnitude;
-    if (dtSec <= 0 || maxForce <= 0 || body.mass <= 0) return false;
-
-    // Existing velocity and gravity are both constrained to the
-    // ground tangent by PhysicsEngine3D. When the action system is not
-    // asking this unit to move, use the same locomotion traction as a
-    // contact brake: cancel downhill gravity and bleed any current
-    // tangent velocity toward zero, capped by the unit's available grip.
-    const vDotN = body.vx * normal.nx + body.vy * normal.ny + body.vz * normal.nz;
-    const tangentVx = body.vx - vDotN * normal.nx;
-    const tangentVy = body.vy - vDotN * normal.ny;
-    const tangentVz = body.vz - vDotN * normal.nz;
-
-    const slopeGravityX = GRAVITY * normal.nz * normal.nx;
-    const slopeGravityY = GRAVITY * normal.nz * normal.ny;
-    const slopeGravityZ = -GRAVITY + GRAVITY * normal.nz * normal.nz;
-
-    const desiredAx = -slopeGravityX - tangentVx / dtSec;
-    const desiredAy = -slopeGravityY - tangentVy / dtSec;
-    const desiredAz = -slopeGravityZ - tangentVz / dtSec;
-    const desiredAccelMag = Math.sqrt(
-      desiredAx * desiredAx + desiredAy * desiredAy + desiredAz * desiredAz,
-    );
-    if (desiredAccelMag <= 1e-6) return false;
-
-    const desiredForce = (desiredAccelMag * body.mass) / 1e6;
-    const scale = desiredForce > maxForce ? maxForce / desiredForce : 1;
-    const forceScale = (body.mass / 1e6) * scale;
-    this._idleBrakeForceX = desiredAx * forceScale;
-    this._idleBrakeForceY = desiredAy * forceScale;
-    this._idleBrakeForceZ = desiredAz * forceScale;
-    return true;
-  }
-
-  private _waterOutX = 0;
-  private _waterOutY = 0;
-  private waterOutCache = new Map<number, WaterOutCacheEntry>();
-  private waterOutCacheTerrainVersion = -1;
-
-  private waterOutCacheKey(x: number, y: number, probeR: number): number {
-    const cx = Math.floor(x / WATER_OUT_CACHE_CELL_SIZE) + 32768;
-    const cy = Math.floor(y / WATER_OUT_CACHE_CELL_SIZE) + 32768;
-    const rb = Math.max(0, Math.min(255, Math.round(probeR / WATER_OUT_CACHE_BUCKET_SCALE)));
-    return cx * 0x1000000 + cy * 0x100 + rb;
-  }
-
-  // Compute "outward from water" direction at (x, y). Samples 8
-  // fixed directions at probeR and stores the normalized dry-sample
-  // average into _waterOutX/Y. Returns false if every sample is wet.
-  private probeWaterOutward(
-    x: number,
-    y: number,
-    probeR: number,
-    mapWidth: number,
-    mapHeight: number,
-  ): boolean {
-    // Cache invariants: tied to terrain shape AND map dims AND a soft
-    // size cap. Drop on any of those changing so a long match (terrain
-    // edits, generator-driven flat zones, hour-long sessions probing
-    // new shorelines) can't grow the map indefinitely.
-    const tv = getTerrainVersion();
-    if (tv !== this.waterOutCacheTerrainVersion || this.waterOutCache.size >= WATER_OUT_CACHE_MAX_ENTRIES) {
-      this.waterOutCache.clear();
-      this.waterOutCacheTerrainVersion = tv;
-    }
-    const key = this.waterOutCacheKey(x, y, probeR);
-    const cached = this.waterOutCache.get(key);
-    if (cached) {
-      this._waterOutX = cached.x;
-      this._waterOutY = cached.y;
-      return cached.ok;
-    }
-
-    let ox = 0;
-    let oy = 0;
-    for (let i = 0; i < WATER_PROBE_DX.length; i++) {
-      const dx = WATER_PROBE_DX[i];
-      const dy = WATER_PROBE_DY[i];
-      if (!isWaterAt(x + dx * probeR, y + dy * probeR, mapWidth, mapHeight)) {
-        ox += dx;
-        oy += dy;
-      }
-    }
-    const m = Math.sqrt(ox * ox + oy * oy);
-    if (m <= 0) {
-      this._waterOutX = 0;
-      this._waterOutY = 0;
-      this.waterOutCache.set(key, { ok: false, x: 0, y: 0 });
-      return false;
-    }
-    this._waterOutX = ox / m;
-    this._waterOutY = oy / m;
-    this.waterOutCache.set(key, { ok: true, x: this._waterOutX, y: this._waterOutY });
-    return true;
-  }
-
   // Sync positions and velocities from physics bodies to entities
   private syncFromPhysics(): void {
     const ids = this.physicsSyncUnitIdsBuf;
@@ -941,61 +448,6 @@ export class GameServer {
       entity.unit.velocityZ = body.vz;
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
     }
-  }
-
-  // Create physics bodies for a list of entities
-  // Buildings are created first so that units can set ignore-static for overlapping buildings.
-  private createPhysicsBodies(entities: Entity[]): void {
-    // Pass 1: create building bodies
-    for (const entity of entities) {
-      if (entity.type === 'building' && entity.building) {
-        // baseZ matches WorldState.createBuilding's terrain lookup so
-        // the static cuboid body sits where the entity transform says
-        // it does — base on the local cube tile top.
-        const baseZ = entity.transform.z - entity.building.depth / 2;
-        const body = this.physics.createBuildingBody(
-          entity.transform.x,
-          entity.transform.y,
-          entity.building.width,
-          entity.building.height,
-          entity.building.depth,
-          baseZ,
-          `building_${entity.id}`
-        );
-        entity.body = { physicsBody: body };
-      }
-    }
-
-    // Pass 2: create unit bodies + set ignore-static for overlapping buildings
-    for (const entity of entities) {
-      if (entity.type === 'unit' && entity.unit) {
-        const body = this.physics.createUnitBody(
-          entity.transform.x,
-          entity.transform.y,
-          entity.unit.radius.push,
-          entity.unit.bodyCenterHeight,
-          entity.unit.mass,
-          `unit_${entity.id}`,
-          entity.id,
-        );
-        entity.body = { physicsBody: body };
-
-        // Skip collision with any building the unit overlaps at spawn
-        const spawnX = entity.transform.x;
-        const spawnY = entity.transform.y;
-        for (const building of this.world.getBuildings()) {
-          if (!building.body?.physicsBody || !building.building) continue;
-          const bw = building.building.width / 2;
-          const bh = building.building.height / 2;
-          if (Math.abs(spawnX - building.transform.x) < bw + entity.unit.radius.push &&
-              Math.abs(spawnY - building.transform.y) < bh + entity.unit.radius.push) {
-            this.physics.setIgnoreStatic(body, building.body.physicsBody);
-            break;
-          }
-        }
-      }
-    }
-
   }
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
