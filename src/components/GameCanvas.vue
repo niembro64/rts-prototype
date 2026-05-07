@@ -135,8 +135,8 @@ import {
   setAudioScope,
   getAudioSmoothing,
   setAudioSmoothing,
-  getBurnMarks,
-  setBurnMarks,
+  getGroundMarks,
+  setGroundMarks,
   getLodShellRings,
   setLodShellRings,
   getLodGridBorders,
@@ -485,7 +485,7 @@ const clientAnySolo = computed(() =>
 const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
 const audioSmoothing = ref<boolean>(getAudioSmoothing());
-const burnMarks = ref<boolean>(getBurnMarks());
+const groundMarks = ref<boolean>(getGroundMarks());
 const lodShellRings = ref<boolean>(getLodShellRings());
 const lodGridBorders = ref<boolean>(getLodGridBorders());
 const triangleDebug = ref<boolean>(getTriangleDebug());
@@ -1348,8 +1348,8 @@ function resetClientDefaults(): void {
   changeAudioScope(cd.audio.default);
   setAudioSmoothing(cd.audioSmoothing.default);
   audioSmoothing.value = cd.audioSmoothing.default;
-  setBurnMarks(cd.burnMarks.default);
-  burnMarks.value = cd.burnMarks.default;
+  setGroundMarks(cd.groundMarks.default);
+  groundMarks.value = cd.groundMarks.default;
   setLodShellRings(cd.lodShellRings.default);
   lodShellRings.value = cd.lodShellRings.default;
   setLodGridBorders(cd.lodGridBorders.default);
@@ -1692,10 +1692,10 @@ function toggleAudioSmoothing(): void {
   audioSmoothing.value = newValue;
 }
 
-function toggleBurnMarks(): void {
-  const newValue = !burnMarks.value;
-  setBurnMarks(newValue);
-  burnMarks.value = newValue;
+function toggleGroundMarks(): void {
+  const newValue = !groundMarks.value;
+  setGroundMarks(newValue);
+  groundMarks.value = newValue;
 }
 
 function toggleLodShellRings(): void {
@@ -3145,10 +3145,10 @@ onUnmounted(() => {
             <BarDivider />
             <BarLabel>MARKS:</BarLabel>
             <BarButton
-              :active="burnMarks"
-              title="Draw scorch marks on the ground where beams and lasers hit"
-              @click="toggleBurnMarks"
-            >BURN</BarButton>
+              :active="groundMarks"
+              title="Draw all ground marks: beam/laser scorches plus wheel, tread, and footstep prints"
+              @click="toggleGroundMarks"
+            >ALL</BarButton>
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />

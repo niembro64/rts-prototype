@@ -48,6 +48,11 @@ export type TreadMesh = {
   cleatLoopLength: number;
   treadStraightLength: number;
   treadRadius: number;
+  /** Width of the rut a single tread side stamps onto the ground, in
+   *  world units. Roughly the cleat width — narrower than the full
+   *  belt so the two parallel ruts are visually separated rather
+   *  than reading as one wide smear. */
+  printWidth: number;
 } & LocomotionBase;
 
 export function buildTreads(
@@ -136,6 +141,9 @@ export function buildTreads(
   }
 
   unitGroup.add(group);
+  // Rut width sized to the cleat: narrower than the slab so the
+  // left+right ruts read as two parallel lines instead of merging.
+  const printWidth = Math.max(0.5, width * TREAD_CLEAT_WIDTH_FRAC);
   return {
     type: 'treads',
     group,
@@ -147,6 +155,7 @@ export function buildTreads(
     cleatLoopLength: 2 * straightLength + 2 * Math.PI * treadRadius,
     treadStraightLength: straightLength,
     treadRadius,
+    printWidth,
     lodKey: '',
   };
 }

@@ -45,7 +45,11 @@ export type ClientBarConfig = {
   readonly render: LabeledOptionsConfig<RenderMode>;
   readonly audio: LabeledOptionsConfig<Exclude<AudioScope, 'off'>>;
   readonly audioSmoothing: BooleanSetting;
-  readonly burnMarks: BooleanSetting;
+  /** Single toggle gating ALL ground-plane marks: beam/laser scorches
+   *  drawn by BurnMark3D AND wheel/tread/foot prints drawn by
+   *  GroundPrint3D. Off by default — turning it on enables every mark
+   *  type at once (LOD tiers still cap density). */
+  readonly groundMarks: BooleanSetting;
   readonly lodShellRings: BooleanSetting;
   readonly lodGridBorders: BooleanSetting;
   readonly triangleDebug: BooleanSetting;

@@ -132,6 +132,8 @@ export type GraphicsDetailConfig = {
   BARREL_SPIN: LodTierMap<boolean>;
   BURN_MARK_ALPHA_CUTOFF: LodTierMap<number>;
   BURN_MARK_FRAMES_SKIP: LodTierMap<number>;
+  GROUND_PRINT_ALPHA_CUTOFF: LodTierMap<number>;
+  GROUND_PRINT_FRAMES_SKIP: LodTierMap<number>;
   SMOKE_TRAIL_FRAMES_SKIP: LodTierMap<number>;
   PROJECTILE_STYLE: LodTierMap<ProjectileStyle>;
   FIRE_EXPLOSION_STYLE: LodTierMap<FireExplosionStyle>;

@@ -54,6 +54,7 @@ import { Explosion3D } from '../render3d/Explosion3D';
 import { ForceFieldImpactRenderer3D } from '../render3d/ForceFieldImpactRenderer3D';
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
+import { GroundPrint3D } from '../render3d/GroundPrint3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
 import { BuildGhost3D } from '../render3d/BuildGhost3D';
 import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
@@ -228,6 +229,7 @@ export class RtsScene3D {
    *  minimap. */
   private renderScope = new ViewportFootprint();
   private burnMarkRenderer!: BurnMark3D;
+  private groundPrintRenderer!: GroundPrint3D;
   private lineDragRenderer!: LineDrag3D;
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
@@ -238,6 +240,7 @@ export class RtsScene3D {
   private fireExplosionAccumMs = 0;
   private debrisAccumMs = 0;
   private burnMarkAccumMs = 0;
+  private groundPrintAccumMs = 0;
   private smokeTrailAccumMs = 0;
   private sprayAccumMs = 0;
   private combinedSprayTargets: SprayTarget[] = [];
@@ -562,6 +565,7 @@ export class RtsScene3D {
       this.fireExplosionAccumMs = 0;
       this.debrisAccumMs = 0;
       this.burnMarkAccumMs = 0;
+      this.groundPrintAccumMs = 0;
       this.smokeTrailAccumMs = 0;
       this.sprayAccumMs = 0;
     }
@@ -708,6 +712,7 @@ export class RtsScene3D {
       this.renderScope,
       (x, y) => getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
     );
+    this.groundPrintRenderer = new GroundPrint3D(this.threeApp.world, this.renderScope);
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
     this.buildGhostRenderer = new BuildGhost3D(
       this.threeApp.world,
@@ -1073,6 +1078,20 @@ export class RtsScene3D {
       const burnMarkProjectiles = this.clientViewState.collectBurnMarkProjectiles(this._burnMarkProjectilesScratch);
       this.burnMarkRenderer.update(burnMarkProjectiles, this.burnMarkAccumMs);
       this.burnMarkAccumMs = 0;
+    }
+    // Wheel/tread/foot ground prints. We pull each unit's locomotion
+    // mesh from the entity renderer (which built it earlier in this
+    // tick during updateAll), so this runs AFTER updateLocomotion has
+    // refreshed every contact's worldX/Z for the frame.
+    this.groundPrintAccumMs += effectDt;
+    if (updateEffectsThisFrame) {
+      const units = this.clientViewState.getUnits();
+      this.groundPrintRenderer.update(
+        units,
+        (e) => this.entityRenderer.getLocomotionMesh(e.id),
+        this.groundPrintAccumMs,
+      );
+      this.groundPrintAccumMs = 0;
     }
     // Commander build/heal spray comes from sim state; factory unit
     // construction spray is derived from the client-side factory tower
@@ -2010,6 +2029,7 @@ export class RtsScene3D {
     this.forceFieldImpactRenderer?.destroy();
     this.debrisRenderer?.destroy();
     this.burnMarkRenderer?.destroy();
+    this.groundPrintRenderer?.destroy();
     this.lineDragRenderer?.destroy();
     this.buildGhostRenderer?.destroy();
     this.sprayRenderer?.destroy();

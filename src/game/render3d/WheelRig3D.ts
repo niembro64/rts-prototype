@@ -23,6 +23,10 @@ export type WheelMesh = {
   group: THREE.Group;
   wheels: THREE.Mesh[];
   wheelContacts: RollingContactState[];
+  /** Width of the rut a single tire stamps onto the ground, in world
+   *  units. Derived from tireWidth at build so GroundPrint3D doesn't
+   *  have to re-walk the blueprint to size its quads. */
+  printWidth: number;
 } & LocomotionBase;
 
 export function buildWheels(
@@ -65,7 +69,10 @@ export function buildWheels(
     }
   }
   unitGroup.add(group);
-  return { type: 'wheels', group, wheels, wheelContacts, lodKey: '' };
+  // Rut narrower than the tire — tires squash the soil under their
+  // contact patch, not the full slick width.
+  const printWidth = Math.max(0.5, tireWidth * 0.65);
+  return { type: 'wheels', group, wheels, wheelContacts, printWidth, lodKey: '' };
 }
 
 /** Per-frame: each tire rolls from the frame-to-frame motion of its

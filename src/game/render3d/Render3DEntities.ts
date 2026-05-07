@@ -1446,6 +1446,15 @@ export class Render3DEntities {
     return this.constructionVisuals.getFactorySprayTargets();
   }
 
+  /** Look up an entity's currently built locomotion mesh — undefined
+   *  if the unit has no rendered mesh yet (off-scope at scene start),
+   *  has been torn down, or its blueprint has no locomotion (statics,
+   *  buildings). Used by GroundPrint3D to read each unit's
+   *  per-contact world XZ once it has finished updating this frame. */
+  getLocomotionMesh(eid: EntityId): import('./Locomotion3D').Locomotion3DMesh {
+    return this.unitMeshes.get(eid)?.locomotion;
+  }
+
   destroy(): void {
     // TURR CIR / BLD overlays are world-parented so they stay flat on
     // the terrain regardless of unit rotation; release those explicitly.

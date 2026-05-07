@@ -68,7 +68,7 @@ export const CLIENT_CONFIG = {
     ],
   },
   audioSmoothing: { default: true },
-  burnMarks: { default: false },
+  groundMarks: { default: false },
   lodShellRings: { default: false },
   lodGridBorders: { default: false },
   triangleDebug: { default: false },
@@ -198,6 +198,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     antialias: D.ANTIALIAS.min,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.min,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.min,
+    groundPrintAlphaCutoff: D.GROUND_PRINT_ALPHA_CUTOFF.min,
+    groundPrintFramesSkip: D.GROUND_PRINT_FRAMES_SKIP.min,
     smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.min,
     projectileStyle: D.PROJECTILE_STYLE.min as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.min as FireExplosionStyle,
@@ -233,6 +235,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     antialias: D.ANTIALIAS.low,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.low,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.low,
+    groundPrintAlphaCutoff: D.GROUND_PRINT_ALPHA_CUTOFF.low,
+    groundPrintFramesSkip: D.GROUND_PRINT_FRAMES_SKIP.low,
     smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.low,
     projectileStyle: D.PROJECTILE_STYLE.low as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.low as FireExplosionStyle,
@@ -268,6 +272,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     antialias: D.ANTIALIAS.medium,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.medium,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.medium,
+    groundPrintAlphaCutoff: D.GROUND_PRINT_ALPHA_CUTOFF.medium,
+    groundPrintFramesSkip: D.GROUND_PRINT_FRAMES_SKIP.medium,
     smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.medium,
     projectileStyle: D.PROJECTILE_STYLE.medium as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.medium as FireExplosionStyle,
@@ -303,6 +309,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     antialias: D.ANTIALIAS.high,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.high,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.high,
+    groundPrintAlphaCutoff: D.GROUND_PRINT_ALPHA_CUTOFF.high,
+    groundPrintFramesSkip: D.GROUND_PRINT_FRAMES_SKIP.high,
     smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.high,
     projectileStyle: D.PROJECTILE_STYLE.high as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.high as FireExplosionStyle,
@@ -338,6 +346,8 @@ const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
     antialias: D.ANTIALIAS.max,
     burnMarkAlphaCutoff: D.BURN_MARK_ALPHA_CUTOFF.max,
     burnMarkFramesSkip: D.BURN_MARK_FRAMES_SKIP.max,
+    groundPrintAlphaCutoff: D.GROUND_PRINT_ALPHA_CUTOFF.max,
+    groundPrintFramesSkip: D.GROUND_PRINT_FRAMES_SKIP.max,
     smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.max,
     projectileStyle: D.PROJECTILE_STYLE.max as ProjectileStyle,
     fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.max as FireExplosionStyle,
@@ -406,7 +416,7 @@ const STORAGE_KEY = 'player-client-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'player-client-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'player-client-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
-const BURN_MARKS_STORAGE_KEY = 'player-client-burn-marks';
+const GROUND_MARKS_STORAGE_KEY = 'player-client-ground-marks';
 const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
 const LOD_GRID_BORDERS_STORAGE_KEY = 'player-client-lod-grid-borders';
 const TRIANGLE_DEBUG_STORAGE_KEY = 'player-client-triangle-debug';
@@ -440,7 +450,13 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-render-mode', RENDER_MODE_STORAGE_KEY],
   ['rts-audio-scope', AUDIO_SCOPE_STORAGE_KEY],
   ['rts-audio-smoothing', AUDIO_SMOOTHING_STORAGE_KEY],
-  ['rts-burn-marks', BURN_MARKS_STORAGE_KEY],
+  // Old standalone "burn marks" key folded into the unified
+   //  ground-marks toggle. Honoring both legacy paths so existing
+   //  preferences carry over: original `rts-burn-marks` from the very
+   //  first naming, and `player-client-burn-marks` from the prefix
+   //  rename that landed before the toggle was repurposed.
+  ['rts-burn-marks', GROUND_MARKS_STORAGE_KEY],
+  ['player-client-burn-marks', GROUND_MARKS_STORAGE_KEY],
   ['rts-lod-shell-rings', LOD_SHELL_RINGS_STORAGE_KEY],
   ['rts-lod-grid-borders', LOD_GRID_BORDERS_STORAGE_KEY],
   ['rts-triangle-debug', TRIANGLE_DEBUG_STORAGE_KEY],
@@ -500,7 +516,7 @@ let currentLegsRadius: boolean = _cd.legsRadius.default;
 let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
-let currentBurnMarks: boolean = _cd.burnMarks.default;
+let currentGroundMarks: boolean = _cd.groundMarks.default;
 let currentLodShellRings: boolean = _cd.lodShellRings.default;
 let currentLodGridBorders: boolean = _cd.lodGridBorders.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
@@ -624,9 +640,9 @@ function loadFromStorage(): void {
   if (storedAudioSmoothing !== null) {
     currentAudioSmoothing = storedAudioSmoothing === 'true';
   }
-  const storedBurnMarks = readPersisted(BURN_MARKS_STORAGE_KEY);
-  if (storedBurnMarks !== null) {
-    currentBurnMarks = storedBurnMarks === 'true';
+  const storedGroundMarks = readPersisted(GROUND_MARKS_STORAGE_KEY);
+  if (storedGroundMarks !== null) {
+    currentGroundMarks = storedGroundMarks === 'true';
   }
   const storedLodShellRings = readPersisted(LOD_SHELL_RINGS_STORAGE_KEY);
   if (storedLodShellRings !== null) {
@@ -1050,13 +1066,17 @@ export function setAudioSmoothing(enabled: boolean): void {
   persist(AUDIO_SMOOTHING_STORAGE_KEY, String(enabled));
 }
 
-export function getBurnMarks(): boolean {
-  return currentBurnMarks;
+/** Master ground-marks toggle: when false, BurnMark3D, GroundPrint3D,
+ *  and any future ground-plane decoration system stay invisible/idle.
+ *  Persisted under `player-client-ground-marks`; legacy
+ *  `player-client-burn-marks` / `rts-burn-marks` values migrate here. */
+export function getGroundMarks(): boolean {
+  return currentGroundMarks;
 }
 
-export function setBurnMarks(enabled: boolean): void {
-  currentBurnMarks = enabled;
-  persist(BURN_MARKS_STORAGE_KEY, String(enabled));
+export function setGroundMarks(enabled: boolean): void {
+  currentGroundMarks = enabled;
+  persist(GROUND_MARKS_STORAGE_KEY, String(enabled));
 }
 
 export function getLodShellRings(): boolean {

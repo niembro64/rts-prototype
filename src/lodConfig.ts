@@ -435,6 +435,30 @@ export const PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL = {
     max: 0,
   },
 
+  // Ground print cutoff — wheel/tread ruts and footstep stamps. Higher
+  // = prints disappear sooner = fewer active prints (cheaper render).
+  // Volume is roughly 50× burn marks at battle scale (one emitter per
+  // wheel/tread/leg vs one per beam), so the low tiers cut harder.
+  GROUND_PRINT_ALPHA_CUTOFF: {
+    min: 1,        // off entirely
+    low: 0.6,
+    medium: 0.35,
+    high: 0.15,
+    max: 0.04,
+  },
+
+  // Ground print sample interval — frames between rut/stamp placement
+  // attempts. Spacing in world units is also gated by a per-emitter
+  // minimum-distance check inside GroundPrint3D, so a higher skip here
+  // strictly throttles the upper bound.
+  GROUND_PRINT_FRAMES_SKIP: {
+    min: 8,
+    low: 5,
+    medium: 3,
+    high: 1,
+    max: 0,
+  },
+
   // Smoke puff emission cadence — render frames skipped between
   // rocket trail samples. Frame-count gating gives stable visual
   // spacing per LOD and avoids time-accumulator backlog bursts after

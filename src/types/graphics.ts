@@ -90,6 +90,8 @@ export type GraphicsConfig = {
   antialias: boolean;
   burnMarkAlphaCutoff: number;
   burnMarkFramesSkip: number;
+  groundPrintAlphaCutoff: number;
+  groundPrintFramesSkip: number;
   smokeTrailFramesSkip: number;
   projectileStyle: ProjectileStyle;
   fireExplosionStyle: FireExplosionStyle;

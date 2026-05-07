@@ -17,7 +17,7 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
+import { getGraphicsConfig, getGroundMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import {
   BURN_COLOR_HOT,
@@ -216,13 +216,12 @@ export class BurnMark3D {
     // per beam would multiply the config lookup cost.
     const gfx = getGraphicsConfig();
 
-    // The MARKS: BURN toggle gates *only* the scorched-earth trail, not
-    // the live beam hit indicators or the MAX-flare sparks — those are a
-    // separate "this is where the beam is hitting" visual that should
-    // always show for active beams. When the toggle is off we wipe any
-    // existing trail geometry and skip sampling, but keep the per-beam
-    // update below (glow + sparks) running.
-    const marksEnabled = getBurnMarks();
+    // The unified MARKS: ALL toggle gates the scorched-earth trail
+    // (this renderer) along with wheel/tread/foot prints (GroundPrint3D).
+    // When off we wipe any existing trail geometry and skip sampling.
+    // Live beam hit indicators / MAX-flare sparks are handled by
+    // BeamRenderer3D and are not affected by this toggle.
+    const marksEnabled = getGroundMarks();
     if (!marksEnabled) {
       if (this.marks.length > 0) this.clearMarksOnly();
       if (this.beams.size > 0) this.beams.clear();
