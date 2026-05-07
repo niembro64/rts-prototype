@@ -7,176 +7,51 @@
  * - Smooth at any snapshot rate, from 1/sec to 60/sec
  */
 
-import type { Entity, PlayerId, EntityId, BuildingType } from '../sim/types';
-import { isLineShotType } from '@/types/sim';
+import type { Entity, PlayerId, EntityId } from '../sim/types';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
-  NetworkServerSnapshotProjectileSpawn,
-  NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,
 } from './NetworkManager';
-import type { BeamPoint } from '../../types/sim';
-import type { ShotId } from '../../types/blueprintIds';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkCaptureTile } from '@/types/capture';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { economyManager } from '../sim/economy';
-import { createEntityFromNetwork, refreshUnitTurretsFromNetwork } from './helpers';
-import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
-import { getUnitLocomotion } from '../sim/blueprints';
-import { getTurretMountHeight } from '../sim/combat/combatUtils';
-import { getBarrelTip } from '../math';
+import { createEntityFromNetwork } from './helpers';
 import {
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP,
-  ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
-  ENTITY_CHANGED_FACTORY,
-  codeToActionType,
-  codeToTurretState,
-  codeToUnitType,
-  codeToBuildingType,
-  codeToProjectileType,
-  codeToShotId,
-  isLineProjectileTypeCode,
 } from '../../types/network';
 
-import {
-  lerp,
-} from '../math';
-import { DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
-import { getSurfaceNormal, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
-import { getTurretWorldMount } from '../math';
+import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
-import { getUnitGroundZ } from '../sim/unitGeometry';
-import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
 import {
-  applyNetworkBuildState,
-  getBuildingBuildRequired,
-  getUnitBuildRequired,
-} from './ClientBuildStateApplier';
-import {
-  decodeProjectileSourceTurretId,
-  ProjectileSpawnQueue,
-} from './ProjectileSpawnQueue';
+  createServerTarget,
+  type ServerTarget,
+} from './ClientPredictionTargets';
+import { snapClientNonVisualState } from './ClientSnapshotApplier';
 import { ClientSelectionState } from './ClientSelectionState';
 import {
   ClientPredictionLod,
   type PredictionLodContext,
 } from './ClientPredictionLod';
-import { applyClientProjectilePrediction } from './ClientProjectilePrediction';
-import {
-  applyClientUnitExpensivePrediction,
-  applyClientUnitVisualPrediction,
-  clientUnitPredictionIsSettled,
-} from './ClientUnitPrediction';
+import { clientUnitPredictionIsSettled } from './ClientUnitPrediction';
 import { ClientRocketTargetFinder } from './ClientRocketTargetFinder';
+import { ClientPredictionStepper } from './ClientPredictionStepper';
+import { ClientProjectileStore } from './ClientProjectileStore';
+import { isLineProjectileEntity } from './ClientProjectileUtils';
 export type { PredictionLodContext, PredictionLodTier } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-// Drift half-lives (seconds). How long to close 50% of the gap to the server value.
-// Smaller = snappier correction, larger = smoother/lazier.
-// Blend factor per frame: 1 - Math.pow(0.5, dt / halfLife)
-import { getDriftMode } from '@/clientBarConfig';
-
-// Lightweight copy of server state used for per-frame drift in applyPrediction().
-// Owns its data (not a reference to pooled serializer objects).
-type ServerTarget = {
-  x: number;
-  y: number;
-  /** Server's authoritative altitude. Updated every snapshot that
-   *  carries ENTITY_CHANGED_POS or a full keyframe so airborne /
-   *  knocked-up / falling units render at their true height instead
-   *  of freezing at creation altitude. */
-  z: number;
-  rotation: number;
-  velocityX: number;
-  velocityY: number;
-  /** Server vz for dead-reckoning and gravity-aware drift on airborne
-   *  units between snapshots. */
-  velocityZ: number;
-  /** Server's most recent smoothed surface normal for this unit
-   *  (post-host-side tilt EMA). The per-frame predictor glides
-   *  entity.unit.surfaceNormal toward this with the client's own
-   *  tilt-EMA half-life — gives a second smoothing pass on top of
-   *  the host's. Initialized to flat-up (matches createUnitFromNetwork). */
-  surfaceNormalX: number;
-  surfaceNormalY: number;
-  surfaceNormalZ: number;
-  turrets: {
-    rotation: number;
-    angularVelocity: number;
-    pitch: number;
-    forceFieldRange: number | undefined;
-  }[];
-};
-
-function createServerTarget(): ServerTarget {
-  return {
-    x: 0, y: 0, z: 0, rotation: 0,
-    velocityX: 0, velocityY: 0, velocityZ: 0,
-    surfaceNormalX: 0, surfaceNormalY: 0, surfaceNormalZ: 1,
-    turrets: [],
-  };
-}
-
-type BeamPathTarget = {
-  /** Authoritative per-snapshot polyline (start, ...reflections, end).
-   *  Each vertex carries (vx, vy, vz) in world frame; the per-frame
-   *  predictor advances every vertex by its own velocity AND eases
-   *  toward the snapshot value, mirroring the turret rotation +
-   *  angularVelocity prediction pattern. Owned in place — the array
-   *  reference is stable, slots get reused/resized as the host's
-   *  reflection count changes. */
-  points: BeamPoint[];
-  obstructionT?: number;
-};
-
-function createBeamPathTarget(): BeamPathTarget {
-  return { points: [] };
-}
-
-function ensureBeamPoint(arr: BeamPoint[], i: number): BeamPoint {
-  let p = arr[i];
-  if (!p) {
-    p = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
-    arr[i] = p;
-  }
-  return p;
-}
-
-function angleDeltaAbs(a: number, b: number): number {
-  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
-}
-
 function captureHeightsEmpty(heights: NetworkCaptureTile['heights']): boolean {
   for (const _key in heights) return false;
   return true;
-}
-
-/** True when this entity is a beam/laser projectile. Thin convenience
- *  wrapper around the canonical {@link isLineShotType} predicate that
- *  also handles the `entity.projectile` undefined case. */
-function isLineProjectileEntity(entity: Entity): boolean {
-  return entity.projectile !== undefined && isLineShotType(entity.projectile.projectileType);
-}
-
-function decodeProjectileShotId(
-  spawn: NetworkServerSnapshotProjectileSpawn,
-): ShotId | undefined {
-  return spawn.shotId !== undefined
-    ? codeToShotId(spawn.shotId) ?? undefined
-    : undefined;
 }
 
 export class ClientViewState {
@@ -185,9 +60,7 @@ export class ClientViewState {
 
   // Server target state — owned copies of drift-relevant fields per entity
   private serverTargets: Map<EntityId, ServerTarget> = new Map();
-  private beamPathTargets: Map<EntityId, BeamPathTarget> = new Map();
-  private activeBeamPathIds: Set<EntityId> = new Set();
-  private projectileSpawns = new ProjectileSpawnQueue();
+  private projectileStore!: ClientProjectileStore;
 
   // Current spray targets for rendering
   private sprayTargets: SprayTarget[] = [];
@@ -229,11 +102,7 @@ export class ClientViewState {
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
   private entitySetVersion = 0;
-  private lineProjectileRenderVersion = 0;
   private projectileCacheDirty = false;
-
-  // Frame counter for beam path throttling (recompute every N frames instead of every frame)
-  private frameCounter: number = 0;
 
   // Client prediction is LOD-stepped by the same camera-centered 3D
   // cells used by rendering. Far entities accumulate elapsed time and
@@ -241,18 +110,14 @@ export class ClientViewState {
   // cost every browser frame.
   private predictionLod = new ClientPredictionLod();
   private activeUnitPredictionIds: Set<EntityId> = new Set();
-  private activeProjectilePredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
   private selectionState = new ClientSelectionState(
     this.entities,
     this.dirtyUnitRenderIds,
     (entity) => this.markEntityPredictionActive(entity),
   );
-  private rocketTargetFinder = new ClientRocketTargetFinder({
-    getUnits: () => this.getUnits(),
-    getBuildings: () => this.getBuildings(),
-    getFrameCounter: () => this.frameCounter,
-  });
+  private rocketTargetFinder!: ClientRocketTargetFinder;
+  private predictionStepper!: ClientPredictionStepper;
 
   // Map dimensions — needed to evaluate the installed server-authored
   // terrain tile map on the client side. Before the first terrain
@@ -261,7 +126,41 @@ export class ClientViewState {
   private mapWidth: number = 2000;
   private mapHeight: number = 2000;
 
-  constructor() {}
+  constructor() {
+    this.rocketTargetFinder = new ClientRocketTargetFinder({
+      getUnits: () => this.getUnits(),
+      getBuildings: () => this.getBuildings(),
+      getFrameCounter: () => this.predictionStepper.getFrameCounter(),
+    });
+    this.projectileStore = new ClientProjectileStore({
+      entities: this.entities,
+      getMapWidth: () => this.mapWidth,
+      getMapHeight: () => this.mapHeight,
+      clearPredictionAccum: (id) => this.clearPredictionAccum(id),
+      markEntitySetChanged: (invalidateCaches) => this.markEntitySetChanged(invalidateCaches),
+    });
+    this.predictionStepper = new ClientPredictionStepper({
+      entities: this.entities,
+      serverTargets: this.serverTargets,
+      beamPathTargets: this.projectileStore.beamPathTargets,
+      projectileSpawns: this.projectileStore.projectileSpawns,
+      predictionLod: this.predictionLod,
+      rocketTargetFinder: this.rocketTargetFinder,
+      activeUnitPredictionIds: this.activeUnitPredictionIds,
+      activeProjectilePredictionIds: this.projectileStore.activeProjectilePredictionIds,
+      activeBeamPathIds: this.projectileStore.activeBeamPathIds,
+      dirtyUnitRenderIds: this.dirtyUnitRenderIds,
+      getMapWidth: () => this.mapWidth,
+      getMapHeight: () => this.mapHeight,
+      getServerForceFieldsEnabled: () => this.serverMeta?.forceFieldsEnabled ?? true,
+      setForceFieldsEnabledForPrediction: (enabled) => {
+        this.forceFieldsEnabledForPrediction = enabled;
+      },
+      applyProjectileSpawn: (spawn) => this.projectileStore.applySpawn(spawn),
+      deleteEntityLocalState: (id) => this.deleteEntityLocalState(id),
+      markLineProjectilesChanged: () => this.projectileStore.markLineProjectilesChanged(),
+    });
+  }
 
   /** Plumb in the map dimensions so client-side projectile dead-
    *  reckoning can evaluate the same terrain heightmap the server
@@ -304,40 +203,12 @@ export class ClientViewState {
     const wasLineProjectile = existing ? isLineProjectileEntity(existing) : false;
     const existed = this.entities.delete(id);
     this.serverTargets.delete(id);
-    this.beamPathTargets.delete(id);
-    this.projectileSpawns.remove(id);
+    this.projectileStore.remove(id, wasLineProjectile);
     this.selectionState.delete(id);
-    this.clearPredictionAccum(id);
     this.activeUnitPredictionIds.delete(id);
-    this.activeProjectilePredictionIds.delete(id);
-    this.activeBeamPathIds.delete(id);
     this.dirtyUnitRenderIds.delete(id);
     if (existed) {
-      if (wasLineProjectile) this.markLineProjectilesChanged();
       this.markEntitySetChanged(existing?.type !== 'shot');
-    }
-  }
-
-  private markLineProjectilesChanged(): void {
-    this.lineProjectileRenderVersion = (this.lineProjectileRenderVersion + 1) & 0x3fffffff;
-  }
-
-  private applyProjectileSpawn(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
-    if (this.entities.has(spawn.id)) return false;
-    try {
-      const entity = this.createProjectileFromSpawn(spawn);
-      this.markEntitySetChanged(false);
-      this.entities.set(spawn.id, entity);
-      if (isLineProjectileTypeCode(spawn.projectileType)) {
-        this.activeBeamPathIds.add(spawn.id);
-        this.markLineProjectilesChanged();
-      } else {
-        this.activeProjectilePredictionIds.add(spawn.id);
-      }
-      return true;
-    } catch {
-      // Skip projectiles with unknown weapon configs (e.g. corrupted by serialization)
-      return false;
     }
   }
 
@@ -366,7 +237,7 @@ export class ClientViewState {
       this.activeUnitPredictionIds.add(entity.id);
       this.dirtyUnitRenderIds.add(entity.id);
     } else if (entity.projectile && !isLineProjectileEntity(entity)) {
-      this.activeProjectilePredictionIds.add(entity.id);
+      this.projectileStore.activeProjectilePredictionIds.add(entity.id);
     }
   }
 
@@ -482,8 +353,11 @@ export class ClientViewState {
     this.currentTick = state.tick;
     let cacheNeedsInvalidate = false;
     const now = performance.now();
-    this.projectileSpawns.recordSnapshot(now);
-    this.projectileSpawns.drain(now, (spawn) => this.applyProjectileSpawn(spawn));
+    this.projectileStore.projectileSpawns.recordSnapshot(now);
+    this.projectileStore.projectileSpawns.drain(
+      now,
+      (spawn) => this.projectileStore.applySpawn(spawn),
+    );
 
     // Process entity updates (present in both delta and keyframe snapshots)
     for (const netEntity of state.entities) {
@@ -493,7 +367,7 @@ export class ClientViewState {
       if (isBuildingUpdate) {
         // Buildings are static scene objects. Keep them out of the
         // per-frame prediction maps entirely; their transform is snapped
-        // directly in snapNonVisualState() when the network record says
+        // directly in snapClientNonVisualState() when the network record says
         // it changed.
         this.serverTargets.delete(netEntity.id);
         this.clearPredictionAccum(netEntity.id);
@@ -591,7 +465,9 @@ export class ClientViewState {
         if (this.snapshotAffectsEntityCaches(existing, netEntity)) {
           cacheNeedsInvalidate = true;
         }
-        this.snapNonVisualState(existing, netEntity);
+        if (snapClientNonVisualState(existing, netEntity)) {
+          this.cache.invalidate();
+        }
         this.markNetworkUnitPredictionActive(netEntity, existing);
       }
     }
@@ -620,11 +496,11 @@ export class ClientViewState {
     // Process projectile spawn events
     if (state.projectiles?.spawns) {
       for (const spawn of state.projectiles.spawns) {
-        if (this.projectileSpawns.shouldSmooth(spawn)) {
-          this.projectileSpawns.enqueue(spawn, now);
+        if (this.projectileStore.projectileSpawns.shouldSmooth(spawn)) {
+          this.projectileStore.projectileSpawns.enqueue(spawn, now);
           continue;
         }
-        this.applyProjectileSpawn(spawn);
+        this.projectileStore.applySpawn(spawn);
       }
     }
 
@@ -633,7 +509,7 @@ export class ClientViewState {
     // running local mirror/unit/building beam traces in applyPrediction.
     if (state.projectiles?.beamUpdates) {
       for (const update of state.projectiles.beamUpdates) {
-        this.applyBeamUpdate(update);
+        this.projectileStore.applyBeamUpdate(update);
       }
     }
 
@@ -662,8 +538,7 @@ export class ClientViewState {
           target.velocityZ = vu.velocity.z;
           target.velocityY = vu.velocity.y;
           this.clearTargetPredictionAccum(vu.id);
-          if (isLineProjectileEntity(entity)) this.activeBeamPathIds.add(vu.id);
-          else this.activeProjectilePredictionIds.add(vu.id);
+          this.projectileStore.markVelocityUpdateActive(entity, vu.id);
         }
       }
     }
@@ -783,626 +658,12 @@ export class ClientViewState {
   }
 
   /**
-   * Snap non-visual state (hp, actions, targeting, building/factory fields).
-   * These don't need smooth blending — they should reflect server truth immediately.
-   */
-  private snapNonVisualState(
-    entity: Entity,
-    server: NetworkServerSnapshotEntity,
-  ): void {
-    const cf = server.changedFields;
-    const isFull = cf == null;
-    const su = server.unit;
-    let cacheDirty = false;
-    if (entity.unit && su) {
-      if (isFull || cf! & ENTITY_CHANGED_HP) {
-        entity.unit.hp = su.hp.curr;
-        entity.unit.maxHp = su.hp.max;
-        cacheDirty = true;
-      }
-      // Buildable means "currently under construction." A full
-      // record or BUILDING-bit delta with no incomplete build payload
-      // removes stale construction state from completed shells.
-      if (isFull || cf! & ENTITY_CHANGED_BUILDING) {
-        cacheDirty = applyNetworkBuildState(
-          entity,
-          su.build,
-          getUnitBuildRequired(entity.unit.unitType),
-        ) || cacheDirty;
-      }
-      // Static fields are present on full records and may be omitted
-      // from ordinary deltas. Read whenever they're present; they do
-      // not change after spawn, so re-applying them is a no-op.
-      if (su.radius) {
-        if (isFiniteNumber(su.radius.body)) entity.unit.radius.body = su.radius.body;
-        if (isFiniteNumber(su.radius.shot)) entity.unit.radius.shot = su.radius.shot;
-        if (isFiniteNumber(su.radius.push)) entity.unit.radius.push = su.radius.push;
-      }
-      if (isFiniteNumber(su.bodyCenterHeight)) {
-        entity.unit.bodyCenterHeight = su.bodyCenterHeight;
-      }
-      if (typeof su.unitType === 'number') {
-        const unitType = codeToUnitType(su.unitType);
-        if (unitType) {
-          entity.unit.unitType = unitType;
-          entity.unit.locomotion = getUnitLocomotion(unitType);
-        }
-      }
-      if (isFiniteNumber(su.mass)) entity.unit.mass = su.mass;
-      // Surface normal is no longer snapped here — it glides per frame
-      // toward target.surfaceNormal* in applyEntityPrediction so the
-      // client-side TILT EMA bar can layer additional smoothing on top
-      // of the host's already-smoothed value. The wire payload writes
-      // into target.surfaceNormal* in the per-snapshot ingestion above.
-
-      // On full keyframes, turret mounts/configs are static blueprint
-      // data. Rebuild them from the unit type + body radius and then
-      // apply only dynamic network state. This keeps remote MessagePack
-      // full snaps from moving turret mounts if pooled/static wire data
-      // gets stale or decoded oddly.
-      if (isFull && Array.isArray(su.turrets)) {
-        refreshUnitTurretsFromNetwork(
-          entity,
-          entity.unit.unitType,
-          entity.unit.radius.body,
-          su.turrets,
-        );
-      }
-
-      if ((isFull || cf! & ENTITY_CHANGED_ACTIONS) && su.actions) {
-        const src = su.actions;
-        const actions = entity.unit.actions;
-        actions.length = 0;
-        for (let i = 0; i < src.length; i++) {
-          const na = src[i];
-          if (!na.pos) continue;
-          actions.push({
-            type: codeToActionType(na.type) as
-              | 'move'
-              | 'patrol'
-              | 'fight'
-              | 'build'
-              | 'repair'
-              | 'attack',
-            x: na.pos.x,
-            y: na.pos.y,
-            z: na.posZ,
-            isPathExpansion: na.pathExp,
-            targetId: na.targetId,
-            buildingType: na.buildingType as BuildingType | undefined,
-            gridX: na.grid?.x,
-            gridY: na.grid?.y,
-            buildingId: na.buildingId,
-          });
-        }
-      }
-
-      // Snap turret targeting state (turret rotation/velocity blended in applyPrediction)
-      // Now read whenever su.turrets is present, since the server ships it on every delta.
-      if (
-        su.turrets &&
-        su.turrets.length > 0 &&
-        entity.combat
-      ) {
-        const turrets = entity.combat.turrets;
-        for (
-          let i = 0;
-          i < su.turrets.length && i < turrets.length;
-          i++
-        ) {
-          turrets[i].target = su.turrets[i].targetId ?? null;
-          turrets[i].state = codeToTurretState(su.turrets[i].state);
-          // forceField.range is NOT snapped — dead-reckoned + drifted in applyPrediction()
-        }
-      }
-
-      if (entity.builder && su.buildTargetId !== undefined) {
-        entity.builder.currentBuildTarget = su.buildTargetId;
-      }
-    }
-
-    const sb = server.building;
-    if (entity.building) {
-      if (isFull || cf! & ENTITY_CHANGED_POS) {
-        entity.transform.x = server.pos.x;
-        entity.transform.y = server.pos.y;
-        entity.transform.z = server.pos.z;
-      }
-      if (isFull || cf! & ENTITY_CHANGED_ROT) {
-        entity.transform.rotation = server.rotation;
-      }
-    }
-
-    if (entity.building && sb?.type !== undefined && isFull) {
-      const buildingType = codeToBuildingType(sb.type);
-      if (buildingType) entity.buildingType = buildingType as BuildingType;
-    }
-
-    if (entity.building && sb && (isFull || sb.metalExtractionRate !== undefined)) {
-      entity.metalExtractionRate = sb.metalExtractionRate;
-    }
-
-    if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_HP)) {
-      entity.building.hp = sb.hp.curr;
-      entity.building.maxHp = sb.hp.max;
-      cacheDirty = true;
-    }
-
-    if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
-      cacheDirty = applyNetworkBuildState(
-        entity,
-        sb.build,
-        getBuildingBuildRequired(entity.buildingType),
-      ) || cacheDirty;
-    }
-
-    if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
-      if (sb.solar) {
-        entity.building.solar = {
-          open: sb.solar.open,
-          producing: entity.building.solar?.producing ?? false,
-          reopenDelayMs: entity.building.solar?.reopenDelayMs ?? 0,
-        };
-      } else if (isFull && entity.buildingType === 'solar') {
-        entity.building.solar = { open: false, producing: false, reopenDelayMs: 0 };
-      }
-    }
-
-    const sf = sb?.factory;
-    if (entity.factory && sf && (isFull || cf! & ENTITY_CHANGED_FACTORY)) {
-      // Decode wire codes back to string ids in place — reuses the
-      // entity's existing buildQueue array so we don't allocate per
-      // factory per delta. UIUpdateManager reads strings from this
-      // field so the conversion has to happen on the way in.
-      const dst = entity.factory.buildQueue;
-      const src = sf.queue;
-      dst.length = 0;
-      for (let i = 0; i < src.length; i++) {
-        const unitType = codeToUnitType(src[i]);
-        if (unitType) dst.push(unitType);
-      }
-      // Wire `progress` is the avg-fill of the factory's currentShellId
-      // (server-derived). Client-side currentShellId stays null on the
-      // viewstate-projected entity — the shell entity itself is in the
-      // world separately, and currentBuildProgress mirrors the wire so
-      // the build-queue UI strip can draw without looking up the shell.
-      entity.factory.currentShellId = null;
-      entity.factory.currentBuildProgress = sf.progress;
-      entity.factory.isProducing = sf.producing;
-      entity.factory.energyRateFraction = sf.energyRate ?? 0;
-      entity.factory.manaRateFraction = sf.manaRate ?? 0;
-      entity.factory.metalRateFraction = sf.metalRate ?? 0;
-      // waypoints[0] = rally point, rest = user-set waypoints
-      const wps = sf.waypoints;
-      if (wps.length > 0) {
-        entity.factory.rallyX = wps[0].pos.x;
-        entity.factory.rallyY = wps[0].pos.y;
-      }
-      entity.factory.waypoints.length = Math.max(0, wps.length - 1);
-      for (let i = 1; i < wps.length; i++) {
-        entity.factory.waypoints[i - 1] = {
-          x: wps[i].pos.x,
-          y: wps[i].pos.y,
-          z: wps[i].posZ,
-          type: wps[i].type as 'move' | 'fight' | 'patrol',
-        };
-      }
-    }
-
-    if (cacheDirty) this.cache.invalidate();
-
-    // Projectiles are no longer in server snapshots — handled via spawn/despawn events
-  }
-
-  private applyBeamUpdate(update: NetworkServerSnapshotBeamUpdate): void {
-    const entity = this.entities.get(update.id);
-    const proj = entity?.projectile;
-    if (!entity || !proj) return;
-
-    let target = this.beamPathTargets.get(update.id);
-    if (!target) {
-      target = createBeamPathTarget();
-      this.beamPathTargets.set(update.id, target);
-    }
-    target.obstructionT = update.obstructionT;
-
-    // Mirror the host's polyline length and per-vertex fields into the
-    // target buffer. Keep the array reference stable (mutate in place)
-    // so per-frame prediction can hold onto its own ref between
-    // snapshots.
-    const srcPts = update.points;
-    const dstTarget = target.points;
-    dstTarget.length = srcPts.length;
-    for (let i = 0; i < srcPts.length; i++) {
-      const sp = srcPts[i];
-      const dp = ensureBeamPoint(dstTarget, i);
-      dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
-      dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
-      dp.mirrorEntityId = sp.mirrorEntityId;
-    }
-
-    // Seed proj.points on first arrival. Subsequent updates ride
-    // through applyBeamPathPrediction (per-vertex easing toward target).
-    const projPts = proj.points ?? (proj.points = []);
-    if (projPts.length === 0) {
-      projPts.length = srcPts.length;
-      for (let i = 0; i < srcPts.length; i++) {
-        const sp = srcPts[i];
-        const pp = ensureBeamPoint(projPts, i);
-        pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
-        pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
-        pp.mirrorEntityId = sp.mirrorEntityId;
-      }
-      if (srcPts.length > 0) {
-        const start = srcPts[0];
-        entity.transform.x = start.x;
-        entity.transform.y = start.y;
-        entity.transform.z = start.z;
-      }
-    } else if (projPts.length !== srcPts.length) {
-      // Length changed (reflection count differs from last snapshot).
-      // Pop or grow proj.points so the predictor steps in sync; new
-      // slots seed at the snapshot value (no easing for vertices we
-      // didn't have last frame).
-      const oldLen = projPts.length;
-      projPts.length = srcPts.length;
-      for (let i = oldLen; i < srcPts.length; i++) {
-        const sp = srcPts[i];
-        const pp = ensureBeamPoint(projPts, i);
-        pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
-        pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
-        pp.mirrorEntityId = sp.mirrorEntityId;
-      }
-    }
-    proj.obstructionT = update.obstructionT;
-    this.activeBeamPathIds.add(update.id);
-    this.clearPredictionAccum(update.id);
-    this.markLineProjectilesChanged();
-  }
-
-  private applyBeamPathPrediction(
-    entity: Entity,
-    target: BeamPathTarget,
-    deltaMs: number,
-    preset: DriftPreset,
-  ): boolean {
-    const proj = entity.projectile;
-    if (!proj) return false;
-    const tgtPts = target.points;
-    if (tgtPts.length === 0) return false;
-
-    const blend = halfLifeBlend(deltaMs / 1000, preset.movement.pos);
-    const dt = deltaMs / 1000;
-    let changed = false;
-
-    // Mirror the target's polyline length onto proj.points. Length
-    // changes (reflection count drift) snap the new vertices to the
-    // target value — easing only applies to vertices we held last
-    // frame.
-    const projPts = proj.points ?? (proj.points = []);
-    const oldLen = projPts.length;
-    if (oldLen !== tgtPts.length) {
-      projPts.length = tgtPts.length;
-      changed = true;
-    }
-
-    // Advance every target vertex by its own velocity each frame so the
-    // beam tracks the host's anticipated polyline between snapshots —
-    // same role the per-turret rotation+angularVelocity prediction
-    // plays for turret pose.
-    for (let i = 0; i < tgtPts.length; i++) {
-      const tp = tgtPts[i];
-      tp.x += tp.vx * dt;
-      tp.y += tp.vy * dt;
-      tp.z += tp.vz * dt;
-    }
-
-    for (let i = 0; i < tgtPts.length; i++) {
-      const tp = tgtPts[i];
-      let pp = projPts[i];
-      if (!pp || i >= oldLen) {
-        pp = ensureBeamPoint(projPts, i);
-        pp.x = tp.x; pp.y = tp.y; pp.z = tp.z;
-        pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
-        pp.mirrorEntityId = tp.mirrorEntityId;
-        changed = true;
-        continue;
-      }
-      const px = pp.x, py = pp.y, pz = pp.z;
-      const nx = lerp(px, tp.x, blend);
-      const ny = lerp(py, tp.y, blend);
-      const nz = lerp(pz, tp.z, blend);
-      if (
-        Math.abs(nx - px) > 1e-4 ||
-        Math.abs(ny - py) > 1e-4 ||
-        Math.abs(nz - pz) > 1e-4 ||
-        pp.mirrorEntityId !== tp.mirrorEntityId
-      ) {
-        changed = true;
-      }
-      pp.x = nx;
-      pp.y = ny;
-      pp.z = nz;
-      pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
-      pp.mirrorEntityId = tp.mirrorEntityId;
-    }
-    proj.obstructionT = target.obstructionT;
-
-    // Update entity transform to track the start vertex; rotation
-    // points down the first segment so HUD/audio readouts match the
-    // beam's outgoing direction.
-    const start = projPts[0];
-    const second = projPts[1] ?? start;
-    const nextRotation = Math.atan2(second.y - start.y, second.x - start.x);
-    if (
-      Math.abs(entity.transform.x - start.x) > 1e-4 ||
-      Math.abs(entity.transform.y - start.y) > 1e-4 ||
-      Math.abs(entity.transform.z - start.z) > 1e-4 ||
-      angleDeltaAbs(entity.transform.rotation, nextRotation) > 1e-4
-    ) {
-      changed = true;
-    }
-    entity.transform.x = start.x;
-    entity.transform.y = start.y;
-    entity.transform.z = start.z;
-    entity.transform.rotation = nextRotation;
-    return changed;
-  }
-
-  /**
    * Called every frame. Two steps:
    * 1. Dead-reckon: advance positions using velocity
    * 2. Drift: EMA blend position/velocity/rotation toward server targets
    */
   applyPrediction(deltaMs: number, lod?: PredictionLodContext): void {
-    this.frameCounter = (this.frameCounter + 1) & 0x3fffffff;
-    if (this.frameCounter === 0) {
-      this.frameCounter = 1;
-    }
-    this.predictionLod.beginFrame(lod);
-
-    // Frame-rate independent blend factors (driven by drift mode half-lives)
-    const preset = getDriftPreset(getDriftMode());
-    this.projectileSpawns.drain(performance.now(), (spawn) => this.applyProjectileSpawn(spawn));
-
-    this.forceFieldsEnabledForPrediction = this.serverMeta?.forceFieldsEnabled ?? true;
-
-    let beamPathsChanged = false;
-    for (const id of this.activeBeamPathIds) {
-      const entity = this.entities.get(id);
-      if (!entity?.projectile || !isLineProjectileEntity(entity)) {
-        this.activeBeamPathIds.delete(id);
-        this.beamPathTargets.delete(id);
-        continue;
-      }
-
-      entity.projectile.timeAlive += deltaMs;
-      if (
-        Number.isFinite(entity.projectile.maxLifespan) &&
-        entity.projectile.timeAlive > entity.projectile.maxLifespan + 1000
-      ) {
-        this.deleteEntityLocalState(entity.id);
-        beamPathsChanged = true;
-        continue;
-      }
-
-      const beamTarget = this.beamPathTargets.get(id);
-      if (beamTarget && this.applyBeamPathPrediction(entity, beamTarget, deltaMs, preset)) {
-        beamPathsChanged = true;
-      }
-    }
-    if (beamPathsChanged) this.markLineProjectilesChanged();
-
-    // Buildings are intentionally absent here. They are static actor
-    // graphs and their network transform is snapped when snapshots are
-    // applied, so the render frame should spend prediction time only on
-    // units that are still correcting/moving and live shots.
-    for (const id of this.activeUnitPredictionIds) {
-      const entity = this.entities.get(id);
-      if (!entity?.unit) {
-        this.activeUnitPredictionIds.delete(id);
-        continue;
-      }
-
-      const target = this.serverTargets.get(id);
-      applyClientUnitVisualPrediction({ entity, target, deltaMs, preset });
-      this.dirtyUnitRenderIds.add(id);
-      if (entity.combat && entity.combat.turrets.length > 0) {
-        const predictionTier = this.predictionLod.resolveTier(entity, lod);
-        const predictionStride = this.predictionLod.frameStride(
-          predictionTier,
-          entity,
-          lod,
-          (sourceId) => this.entities.get(sourceId)?.selectable?.selected === true,
-        );
-        const predictionStep = this.predictionLod.consumeDelta(
-          entity.id,
-          this.frameCounter,
-          deltaMs,
-          predictionStride,
-        );
-        if (predictionStep) {
-          applyClientUnitExpensivePrediction({
-            entity,
-            target,
-            predictionStep,
-            preset,
-            forceFieldsEnabled: this.forceFieldsEnabledForPrediction,
-          });
-        }
-      }
-
-      if (
-        clientUnitPredictionIsSettled(
-          entity,
-          target,
-          this.forceFieldsEnabledForPrediction,
-        )
-      ) {
-        this.activeUnitPredictionIds.delete(id);
-      }
-    }
-
-    for (const id of this.activeProjectilePredictionIds) {
-      const entity = this.entities.get(id);
-      if (!entity?.projectile) {
-        this.activeProjectilePredictionIds.delete(id);
-        continue;
-      }
-
-      const target = this.serverTargets.get(id);
-      const predictionTier = this.predictionLod.resolveTier(entity, lod);
-      const predictionStride = this.predictionLod.frameStride(
-        predictionTier,
-        entity,
-        lod,
-        (sourceId) => this.entities.get(sourceId)?.selectable?.selected === true,
-      );
-      const predictionStep = this.predictionLod.consumeDelta(
-        entity.id,
-        this.frameCounter,
-        deltaMs,
-        predictionStride,
-      );
-      if (predictionStep === null) continue;
-
-      const projectileResult = applyClientProjectilePrediction({
-        entity,
-        target,
-        predictionStep,
-        preset,
-        mapWidth: this.mapWidth,
-        mapHeight: this.mapHeight,
-        getEntity: (entityId) => this.entities.get(entityId),
-        findNearestEnemyForRocket: (projectile, ownerId) =>
-          this.rocketTargetFinder.findNearestEnemyForRocket(projectile, ownerId),
-      });
-      if (projectileResult.becameLineProjectile) {
-        this.activeBeamPathIds.add(id);
-        this.activeProjectilePredictionIds.delete(id);
-        continue;
-      }
-      if (projectileResult.shouldDelete) {
-        this.deleteEntityLocalState(entity.id);
-        continue;
-      }
-    }
-  }
-
-  /**
-   * Create a full Entity from a projectile spawn event.
-   * For traveling/dgun projectiles, adjusts spawn position to the client-side muzzle
-   * so bullets visually originate from the gun (same approach as beams).
-   */
-  private createProjectileFromSpawn(
-    spawn: NetworkServerSnapshotProjectileSpawn,
-  ): Entity {
-    const sourceTurretId = decodeProjectileSourceTurretId(spawn);
-    const shotId = decodeProjectileShotId(spawn);
-    const config = {
-      ...getProjectileConfigForSpawn(sourceTurretId, shotId, spawn.turretIndex),
-      turretIndex: spawn.turretIndex,
-    };
-
-    // Default to server position; override with client-side muzzle if source is available
-    let spawnX = spawn.pos.x;
-    let spawnY = spawn.pos.y;
-    // z always comes from the server — the wire carries it. Beam
-    // endpoints (beam.start.z / end.z) also come across the wire, so
-    // lasers/beams render at their real altitude too.
-    let spawnZ = spawn.pos.z;
-
-    // Projectiles that came from the shooter's own turret (i.e. NOT
-    // parent-detonation submunitions) get their spawn position nudged
-    // onto the client's local muzzle tip. This hides any small latency
-    // drift between the server snapshot and the client's render of the
-    // source unit — without it, a shot would pop at the server's
-    // slightly-stale position and then the projectile would race to
-    // catch up with the visibly-moved barrel cluster. We delegate the
-    // turret-rotation chain (unit yaw → turret yaw+pitch) to the shared
-    // primitive, including the server's barrelIndex, so multi-barrel
-    // shots are corrected to the same physical muzzle on both sides.
-    if (
-      !isLineProjectileTypeCode(spawn.projectileType) &&
-      !spawn.fromParentDetonation
-    ) {
-      const source = this.entities.get(spawn.sourceEntityId);
-      const weapon = source?.combat?.turrets?.[spawn.turretIndex];
-      if (source && source.unit && weapon) {
-        const unitCos = Math.cos(source.transform.rotation);
-        const unitSin = Math.sin(source.transform.rotation);
-        // Same canonical mount math as the sim's targeting path.
-        const sn = getSurfaceNormal(
-          source.transform.x, source.transform.y,
-          this.mapWidth, this.mapHeight, LAND_CELL_SIZE,
-        );
-        const unitGroundZ = getUnitGroundZ(source);
-        const mount = getTurretWorldMount(
-          source.transform.x, source.transform.y, unitGroundZ,
-          unitCos, unitSin,
-          weapon.mount.x, weapon.mount.y, getTurretMountHeight(source, spawn.turretIndex),
-          sn,
-        );
-        const tip = getBarrelTip(
-          mount.x, mount.y, mount.z,
-          weapon.rotation, weapon.pitch,
-          config,
-          spawn.barrelIndex,
-        );
-        spawnX = tip.x;
-        spawnY = tip.y;
-        spawnZ = tip.z;
-      }
-    }
-
-    const entity: Entity = {
-      id: spawn.id,
-      type: 'shot',
-      transform: { x: spawnX, y: spawnY, z: spawnZ, rotation: spawn.rotation },
-      ownership: { playerId: spawn.playerId },
-      projectile: {
-        ownerId: spawn.playerId,
-        sourceEntityId: spawn.sourceEntityId,
-        config,
-        shotId: shotId ?? config.shot.id,
-        sourceTurretId: sourceTurretId ?? config.sourceTurretId,
-        projectileType: (() => {
-          const projectileType = codeToProjectileType(spawn.projectileType);
-          if (!projectileType) throw new Error(`Unknown projectile type code: ${spawn.projectileType}`);
-          return projectileType;
-        })(),
-        velocityX: spawn.velocity.x,
-        velocityY: spawn.velocity.y,
-        velocityZ: spawn.velocity.z,
-        timeAlive: 0,
-        maxLifespan: spawn.maxLifespan ?? config.shotProfile.runtime.maxLifespan,
-        hitEntities: new Set(),
-        maxHits: 1,
-        points: spawn.beam ? [
-          {
-            x: spawn.beam.start.x, y: spawn.beam.start.y, z: spawn.beam.start.z,
-            vx: 0, vy: 0, vz: 0,
-          },
-          {
-            x: spawn.beam.end.x, y: spawn.beam.end.y, z: spawn.beam.end.z,
-            vx: 0, vy: 0, vz: 0,
-          },
-        ] : undefined,
-      },
-    };
-    if (spawn.isDGun) {
-      entity.dgunProjectile = {
-        isDGun: true,
-        terrainFollow: true,
-        groundOffset: DGUN_TERRAIN_FOLLOW_HEIGHT,
-      };
-    }
-    // Store homing properties so client can predict curved trajectories
-    if (spawn.targetEntityId !== undefined && spawn.homingTurnRate) {
-      entity.projectile!.homingTargetId = spawn.targetEntityId;
-      entity.projectile!.homingTurnRate = spawn.homingTurnRate;
-    }
-    return entity;
+    this.predictionStepper.apply(deltaMs, lod);
   }
 
   // === Accessors for rendering and input ===
@@ -1480,55 +741,23 @@ export class ClientViewState {
   }
 
   collectTravelingProjectiles(out: Entity[]): Entity[] {
-    out.length = 0;
-    for (const id of this.activeProjectilePredictionIds) {
-      const entity = this.entities.get(id);
-      if (entity?.projectile?.projectileType === 'projectile') out.push(entity);
-    }
-    return out;
+    return this.projectileStore.collectTraveling(out);
   }
 
   collectSmokeTrailProjectiles(out: Entity[]): Entity[] {
-    out.length = 0;
-    for (const id of this.activeProjectilePredictionIds) {
-      const entity = this.entities.get(id);
-      const profile = entity?.projectile?.config.shotProfile;
-      if (
-        entity?.projectile?.projectileType === 'projectile' &&
-        profile?.visual.smokeTrail
-      ) {
-        out.push(entity);
-      }
-    }
-    return out;
+    return this.projectileStore.collectSmokeTrail(out);
   }
 
   collectLineProjectiles(out: Entity[]): Entity[] {
-    out.length = 0;
-    for (const id of this.activeBeamPathIds) {
-      const entity = this.entities.get(id);
-      if (entity?.projectile && isLineProjectileEntity(entity)) out.push(entity);
-    }
-    return out;
+    return this.projectileStore.collectLine(out);
   }
 
   collectBurnMarkProjectiles(out: Entity[]): Entity[] {
-    out.length = 0;
-    for (const id of this.activeBeamPathIds) {
-      const entity = this.entities.get(id);
-      if (entity?.projectile && isLineProjectileEntity(entity)) out.push(entity);
-    }
-    for (const id of this.activeProjectilePredictionIds) {
-      const entity = this.entities.get(id);
-      if (entity?.projectile?.projectileType === 'projectile' && entity.dgunProjectile?.isDGun) {
-        out.push(entity);
-      }
-    }
-    return out;
+    return this.projectileStore.collectBurnMark(out);
   }
 
   getLineProjectileRenderVersion(): number {
-    return this.lineProjectileRenderVersion;
+    return this.projectileStore.getLineProjectileRenderVersion();
   }
 
   getForceFieldUnits(): Entity[] {
@@ -1762,8 +991,7 @@ export class ClientViewState {
   clear(): void {
     this.entities.clear();
     this.serverTargets.clear();
-    this.beamPathTargets.clear();
-    this.projectileSpawns.clear();
+    this.projectileStore.clear();
     this.sprayTargets = [];
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.gameOverWinnerId = null;
@@ -1778,12 +1006,10 @@ export class ClientViewState {
     this.captureVersion++;
     this.captureCellSize = 0;
     this.serverMeta = null;
-    this.frameCounter = 0;
+    this.predictionStepper.reset();
     this.predictionLod.clearAll();
     this.rocketTargetFinder.clear();
     this.activeUnitPredictionIds.clear();
-    this.activeProjectilePredictionIds.clear();
-    this.activeBeamPathIds.clear();
     this.dirtyUnitRenderIds.clear();
     this.entitySetVersion++;
     this.invalidateCaches();
