@@ -25,11 +25,9 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 import { MAP_BG_COLOR, GRAVITY } from '../../config';
 import {
   FALLBACK_UNIT_BODY_SHAPE,
-  getShotBlueprint,
   getTurretBlueprint,
   getUnitBlueprint,
 } from '../sim/blueprints';
-import { isLineShotBlueprint } from '@/types/blueprints';
 import {
   MIRROR_ARM_LENGTH_MULT,
   MIRROR_PANEL_SIZE_MULT,
@@ -47,13 +45,9 @@ import {
   getSegmentMidYAt,
 } from '../math/BodyDimensions';
 import {
-  TURRET_BARREL_MIN_DIAMETER,
-  getConeBarrelBaseOrbitRadius,
-  getConeBarrelTipOrbitRadius,
-  getSimpleMultiBarrelOrbitRadius,
-  getTurretBarrelCenterToTipLength,
   turretBodyRadiusFromRadius,
 } from '../math';
+import { getDebrisBarrelProfile } from './DebrisBarrelProfile3D';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -698,21 +692,11 @@ export class Debris3D {
           color: primary,
         });
 
-        // Barrels — one cylinder per physical barrel. Diameter mirrors
-        // Render3DEntities' barrel cylinder: for line shots (beam/laser)
-        // the diameter is shot.width; otherwise barrelThickness. Falls
-        // through to TURRET_BARREL_MIN_DIAMETER only when neither is set.
-        const bs = tb.barrel;
-        if (!bs) continue;
-        let shotWidth: number | undefined;
-        if (tb.projectileId) {
-          try {
-            const sb = getShotBlueprint(tb.projectileId);
-            if (isLineShotBlueprint(sb)) {
-              shotWidth = sb.width;
-            }
-          } catch { /* unknown shot id — fall through to barrelThickness */ }
-        }
+        // Barrels — one cylinder per physical barrel. The profile
+        // helper owns shot-width / barrel-thickness resolution so this
+        // renderer only places already-derived visual fragments.
+        const barrelProfile = getDebrisBarrelProfile(tb, headR);
+        if (!barrelProfile) continue;
         // Each barrel is built as a chassis-aligned segment from
         // (baseDx, baseDy, baseDz) to (tipDx, tipDy, tipDz) in
         // local-to-mount sim coords (dx along default firing axis,
@@ -735,53 +719,42 @@ export class Debris3D {
           });
         };
 
-        const len = getTurretBarrelCenterToTipLength(tb);
-        if (bs.type === 'simpleSingleBarrel') {
-          if (len < 1) continue;
-          const diameter = (shotWidth ?? bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER);
-          const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
-          emitBarrel(0, 0, 0, len, 0, 0, thick);
-        } else if (bs.type === 'simpleMultiBarrel') {
+        if (barrelProfile.type === 'simpleSingleBarrel') {
+          emitBarrel(0, 0, 0, barrelProfile.length, 0, 0, barrelProfile.thickness);
+        } else if (barrelProfile.type === 'simpleMultiBarrel') {
           // Parallel cluster of cylinders — base orbit = tip orbit.
-          if (len < 1) continue;
-          const diameter = bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER;
-          const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
-          const n = bs.barrelCount;
-          const orbit = getSimpleMultiBarrelOrbitRadius(bs, headR);
           // Renderer's `oy` is along three.js Y (vertical = sim Z),
           // `oz` is along three.js Z (lateral = sim Y). Map both
           // accordingly so the rotated debris cylinders trace the
           // same orbit the live render did.
+          const n = barrelProfile.barrelCount;
+          const orbit = barrelProfile.orbit;
           for (let i = 0; i < n; i++) {
             const a = ((i + 0.5) / n) * Math.PI * 2;
             const orbVert = Math.cos(a) * orbit; // sim Z
             const orbLat = Math.sin(a) * orbit;  // sim Y
-            emitBarrel(0, orbLat, orbVert, len, orbLat, orbVert, thick);
+            emitBarrel(
+              0, orbLat, orbVert,
+              barrelProfile.length, orbLat, orbVert,
+              barrelProfile.thickness,
+            );
           }
-        } else if (bs.type === 'coneMultiBarrel') {
+        } else if (barrelProfile.type === 'coneMultiBarrel') {
           // Cone cluster — base sits at baseOrbit, tip splays out at
           // tipOrbit (or, when unset, derived from spread.angle exactly
           // the way Render3DEntities does it). Each barrel cylinder
           // therefore tilts outward.
-          if (len < 1) continue;
-          const diameter = bs.barrelThickness ?? TURRET_BARREL_MIN_DIAMETER;
-          const thick = Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2;
-          const n = bs.barrelCount;
-          const baseOrbitR = getConeBarrelBaseOrbitRadius(bs, headR);
-          const tipOrbitR = getConeBarrelTipOrbitRadius(
-            bs,
-            headR,
-            len,
-            tb.spread?.angle,
-          );
+          const n = barrelProfile.barrelCount;
           for (let i = 0; i < n; i++) {
             const a = ((i + 0.5) / n) * Math.PI * 2;
             const cosA = Math.cos(a);
             const sinA = Math.sin(a);
             emitBarrel(
-              0, sinA * baseOrbitR, cosA * baseOrbitR,
-              len, sinA * tipOrbitR, cosA * tipOrbitR,
-              thick,
+              0, sinA * barrelProfile.baseOrbit, cosA * barrelProfile.baseOrbit,
+              barrelProfile.length,
+              sinA * barrelProfile.tipOrbit,
+              cosA * barrelProfile.tipOrbit,
+              barrelProfile.thickness,
             );
           }
         }
