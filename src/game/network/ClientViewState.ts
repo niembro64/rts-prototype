@@ -24,8 +24,6 @@ import type { NetworkCaptureTile } from '@/types/capture';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork, refreshUnitTurretsFromNetwork } from './helpers';
-import { getClientTiltEmaMode } from '@/clientBarConfig';
-import { TILT_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
 import { getUnitLocomotion } from '../sim/blueprints';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
@@ -49,7 +47,6 @@ import {
 
 import {
   lerp,
-  lerpAngle,
 } from '../math';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
 import { getSurfaceNormal, setAuthoritativeTerrainTileMap } from '../sim/Terrain';
@@ -70,9 +67,13 @@ import { ClientSelectionState } from './ClientSelectionState';
 import {
   ClientPredictionLod,
   type PredictionLodContext,
-  type PredictionStep,
 } from './ClientPredictionLod';
 import { applyClientProjectilePrediction } from './ClientProjectilePrediction';
+import {
+  applyClientUnitExpensivePrediction,
+  applyClientUnitVisualPrediction,
+  clientUnitPredictionIsSettled,
+} from './ClientUnitPrediction';
 export type { PredictionLodContext, PredictionLodTier } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
@@ -152,11 +153,6 @@ function ensureBeamPoint(arr: BeamPoint[], i: number): BeamPoint {
   }
   return p;
 }
-
-const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
-const PREDICTION_VEL_EPSILON_SQ = 0.01 * 0.01;
-const PREDICTION_ROT_EPSILON = 0.001;
-const PREDICTION_TURRET_EPSILON = 0.001;
 
 function angleDeltaAbs(a: number, b: number): number {
   return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
@@ -382,7 +378,15 @@ export class ClientViewState {
   ): void {
     if (server.type !== 'unit') return;
     const cf = server.changedFields;
-    if (cf == null && entity && this.unitPredictionIsSettled(entity, this.serverTargets.get(server.id))) {
+    if (
+      cf == null &&
+      entity &&
+      clientUnitPredictionIsSettled(
+        entity,
+        this.serverTargets.get(server.id),
+        this.forceFieldsEnabledForPrediction,
+      )
+    ) {
       return;
     }
     if (
@@ -1147,192 +1151,6 @@ export class ClientViewState {
     return changed;
   }
 
-  private applyUnitVisualPrediction(
-    entity: Entity,
-    target: ServerTarget | undefined,
-    deltaMs: number,
-    preset: DriftPreset,
-  ): void {
-    if (!entity.unit) return;
-    const dt = deltaMs / 1000;
-    const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
-    const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
-    const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
-
-    if (target) {
-      // Unit body motion is a visual contract, not an optional detail.
-      // Keep this smooth at render cadence while LOD throttles heavier
-      // turret / force-field prediction below.
-      target.x += target.velocityX * dt;
-      target.y += target.velocityY * dt;
-      target.z += target.velocityZ * dt;
-    }
-
-    const vx = entity.unit.velocityX ?? 0;
-    const vy = entity.unit.velocityY ?? 0;
-    const vz = entity.unit.velocityZ ?? 0;
-    entity.transform.x += vx * dt;
-    entity.transform.y += vy * dt;
-    entity.transform.z += vz * dt;
-
-    if (!target) return;
-
-    entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
-    entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
-    entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
-    entity.transform.rotation = lerpAngle(
-      entity.transform.rotation,
-      target.rotation,
-      rotPosDrift,
-    );
-
-    entity.unit.velocityX = lerp(vx, target.velocityX ?? 0, movVelDrift);
-    entity.unit.velocityY = lerp(vy, target.velocityY ?? 0, movVelDrift);
-    entity.unit.velocityZ = lerp(vz, target.velocityZ ?? 0, movVelDrift);
-
-    // Per-frame chassis-tilt drift. The host's TILT EMA already
-    // smoothed the wire value; this layers an additional client-side
-    // blend at render cadence so the chassis rotates toward each
-    // snapshot's value the same way position glides toward target.x.
-    // SNAP mode → halfLifeBlend returns 1.0 → identical to overwrite.
-    const tiltAlpha = halfLifeBlend(dt, TILT_EMA_HALF_LIFE_SEC[getClientTiltEmaMode()]);
-    const sn = entity.unit.surfaceNormal;
-    const tnx = sn.nx + (target.surfaceNormalX - sn.nx) * tiltAlpha;
-    const tny = sn.ny + (target.surfaceNormalY - sn.ny) * tiltAlpha;
-    const tnz = sn.nz + (target.surfaceNormalZ - sn.nz) * tiltAlpha;
-    const tlen = Math.hypot(tnx, tny, tnz);
-    if (tlen > 1e-6) {
-      const inv = 1 / tlen;
-      sn.nx = tnx * inv;
-      sn.ny = tny * inv;
-      sn.nz = tnz * inv;
-    }
-  }
-
-  private applyUnitExpensivePrediction(
-    entity: Entity,
-    target: ServerTarget | undefined,
-    predictionStep: PredictionStep,
-    preset: DriftPreset,
-  ): void {
-    if (!entity.unit || !entity.combat) return;
-    const dt = predictionStep.entityDeltaMs / 1000;
-    const targetDt = predictionStep.targetDeltaMs / 1000;
-    const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
-    const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
-
-    const turrets = entity.combat.turrets;
-    for (let i = 0; i < turrets.length; i++) {
-      const weapon = turrets[i];
-      if (weapon.config.visualOnly) continue;
-      weapon.rotation += weapon.angularVelocity * dt;
-
-      const tw = target?.turrets?.[i];
-      if (tw) {
-        tw.rotation += tw.angularVelocity * targetDt;
-        weapon.rotation = lerpAngle(
-          weapon.rotation,
-          tw.rotation,
-          rotPosDrift,
-        );
-        weapon.angularVelocity = lerp(
-          weapon.angularVelocity,
-          tw.angularVelocity,
-          rotVelDrift,
-        );
-        weapon.pitch = lerpAngle(
-          weapon.pitch,
-          tw.pitch,
-          rotPosDrift,
-        );
-      }
-
-      if (weapon.config.shot.type !== 'force') continue;
-      if (!this.forceFieldsEnabledForPrediction) {
-        if (weapon.forceField) {
-          weapon.forceField.range = 0;
-          weapon.forceField.transition = 0;
-        }
-        continue;
-      }
-      const fieldShot = weapon.config.shot;
-      const cur = weapon.forceField?.range ?? 0;
-      const targetProgress = weapon.state === 'engaged' ? 1 : 0;
-      const progressDelta = dt / (fieldShot.transitionTime / 1000);
-      let next = cur;
-      if (cur < targetProgress) {
-        next = Math.min(cur + progressDelta, 1);
-      } else if (cur > targetProgress) {
-        next = Math.max(cur - progressDelta, 0);
-      }
-
-      const serverRange = tw?.forceFieldRange;
-      if (serverRange !== undefined) {
-        next = lerp(next, serverRange, rotPosDrift);
-      }
-      if (!weapon.forceField) {
-        weapon.forceField = { range: next, transition: 0 };
-      } else {
-        weapon.forceField.range = next;
-      }
-
-    }
-  }
-
-  private unitPredictionIsSettled(
-    entity: Entity,
-    target: ServerTarget | undefined,
-  ): boolean {
-    const unit = entity.unit;
-    if (!unit) return true;
-
-    const vx = unit.velocityX ?? 0;
-    const vy = unit.velocityY ?? 0;
-    const vz = unit.velocityZ ?? 0;
-    if (vx * vx + vy * vy + vz * vz > PREDICTION_VEL_EPSILON_SQ) return false;
-
-    if (target) {
-      const tvx = target.velocityX ?? 0;
-      const tvy = target.velocityY ?? 0;
-      const tvz = target.velocityZ ?? 0;
-      if (tvx * tvx + tvy * tvy + tvz * tvz > PREDICTION_VEL_EPSILON_SQ) return false;
-
-      const dx = entity.transform.x - target.x;
-      const dy = entity.transform.y - target.y;
-      const dz = entity.transform.z - target.z;
-      if (dx * dx + dy * dy + dz * dz > PREDICTION_POS_EPSILON_SQ) return false;
-      if (angleDeltaAbs(entity.transform.rotation, target.rotation) > PREDICTION_ROT_EPSILON) return false;
-    }
-
-    const weapons = entity.combat?.turrets;
-    if (!weapons || weapons.length === 0) return true;
-
-    for (let i = 0; i < weapons.length; i++) {
-      const weapon = weapons[i];
-      if (weapon.config.visualOnly) continue;
-      if (Math.abs(weapon.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
-
-      const tw = target?.turrets?.[i];
-      if (tw) {
-        if (Math.abs(tw.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
-        if (angleDeltaAbs(weapon.rotation, tw.rotation) > PREDICTION_TURRET_EPSILON) return false;
-        if (angleDeltaAbs(weapon.pitch, tw.pitch) > PREDICTION_TURRET_EPSILON) return false;
-        if (this.forceFieldsEnabledForPrediction) {
-          const localRange = weapon.forceField?.range ?? 0;
-          const targetRange = tw.forceFieldRange ?? 0;
-          if (Math.abs(localRange - targetRange) > PREDICTION_TURRET_EPSILON) return false;
-        }
-      }
-
-      if (this.forceFieldsEnabledForPrediction && weapon.config.shot.type === 'force') {
-        if ((weapon.forceField?.range ?? 0) > PREDICTION_TURRET_EPSILON) return false;
-        if (weapon.state === 'engaged') return false;
-      }
-    }
-
-    return true;
-  }
-
   /**
    * Called every frame. Two steps:
    * 1. Dead-reckon: advance positions using velocity
@@ -1389,7 +1207,7 @@ export class ClientViewState {
       }
 
       const target = this.serverTargets.get(id);
-      this.applyUnitVisualPrediction(entity, target, deltaMs, preset);
+      applyClientUnitVisualPrediction({ entity, target, deltaMs, preset });
       this.dirtyUnitRenderIds.add(id);
       if (entity.combat && entity.combat.turrets.length > 0) {
         const predictionTier = this.predictionLod.resolveTier(entity, lod);
@@ -1405,10 +1223,24 @@ export class ClientViewState {
           deltaMs,
           predictionStride,
         );
-        if (predictionStep) this.applyUnitExpensivePrediction(entity, target, predictionStep, preset);
+        if (predictionStep) {
+          applyClientUnitExpensivePrediction({
+            entity,
+            target,
+            predictionStep,
+            preset,
+            forceFieldsEnabled: this.forceFieldsEnabledForPrediction,
+          });
+        }
       }
 
-      if (this.unitPredictionIsSettled(entity, target)) {
+      if (
+        clientUnitPredictionIsSettled(
+          entity,
+          target,
+          this.forceFieldsEnabledForPrediction,
+        )
+      ) {
         this.activeUnitPredictionIds.delete(id);
       }
     }

@@ -29,18 +29,19 @@ profiles/components, not reinterpret blueprint pieces independently.
 10. ClientViewState still mixes snapshot application, prediction stepping, and projectile behavior.
     References:
     - src/game/network/ClientViewState.ts:1
-    - src/game/network/ClientViewState.ts:472
-    - src/game/network/ClientViewState.ts:1341
-    - src/game/network/ClientViewState.ts:1522
+    - src/game/network/ClientViewState.ts:476
+    - src/game/network/ClientViewState.ts:1159
+    - src/game/network/ClientViewState.ts:1354
     - src/game/network/ClientProjectilePrediction.ts:1
-    - file size: 2015 lines
+    - src/game/network/ClientUnitPrediction.ts:1
+    - file size: 1848 lines
 
     The client network state object now handles entity cloning, delta/full-snap
-    application, client prediction, force-field prediction, and
-    interpolation/drift. Build-state application, projectile spawn queuing,
-    selection bookkeeping, prediction LOD cadence/storage, and traveling
-    projectile prediction have been split out, but unrelated behavior still
-    shares one large mutable class.
+    application, beam prediction, and prediction orchestration. Build-state
+    application, projectile spawn queuing, selection bookkeeping, prediction
+    LOD cadence/storage, traveling projectile prediction, and unit visual /
+    turret / force-field prediction have been split out, but unrelated behavior
+    still shares one large mutable class.
 
     Fix direction: split into `SnapshotApplier`, `ClientPredictionStepper`, and
     `ProjectilePredictionStore`. Keep `ClientViewState` as the container/facade.
