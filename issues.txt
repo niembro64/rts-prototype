@@ -6,25 +6,6 @@ Goal for this section: units, buildings, turrets, locomotion, and shots should
 each have one canonical definition path. Runtime systems should consume built
 profiles/components, not reinterpret blueprint pieces independently.
 
-13. Debris rendering re-interprets unit/turret/shot blueprints instead of reusing render fragments.
-    References:
-    - src/game/render3d/Debris3D.ts:28
-    - src/game/render3d/Debris3D.ts:537
-    - src/game/render3d/Debris3D.ts:664
-    - src/game/render3d/Debris3D.ts:710
-    - src/game/render3d/DebrisBarrelProfile3D.ts:1
-    - file size: 1145 lines
-
-    Death debris reaches back into unit, turret, and shot blueprints to decide
-    which pieces exist. Shot-width/barrel-thickness derivation for debris
-    barrels has been isolated in `DebrisBarrelProfile3D`, but this is still a
-    second renderer-specific interpretation of the same visual structure used by
-    live entities.
-
-    Fix direction: live unit/building/turret render factories should emit a
-    small canonical `RenderFragmentBlueprint`/`DebrisFragmentProfile`; debris
-    should consume that instead of reading all gameplay blueprints directly.
-
 14. Locomotion3D mixes mesh construction, animation, terrain sampling, and rig state.
     References:
     - src/game/render3d/Locomotion3D.ts:1

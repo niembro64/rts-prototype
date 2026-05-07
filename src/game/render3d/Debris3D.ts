@@ -23,31 +23,17 @@ import type { GraphicsConfig } from '@/types/graphics';
 import type { SimDeathContext } from '@/types/combat';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { MAP_BG_COLOR, GRAVITY } from '../../config';
-import {
-  FALLBACK_UNIT_BODY_SHAPE,
-  getTurretBlueprint,
-  getUnitBlueprint,
-} from '../sim/blueprints';
-import {
-  MIRROR_ARM_LENGTH_MULT,
-  MIRROR_PANEL_SIZE_MULT,
-  getMirrorFrameGeometry,
-  getMirrorPanelCenter,
-} from '../sim/mirrorPanelCache';
+import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
+import { getMirrorPanelCenter } from '../sim/mirrorPanelCache';
 import { SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
-import { getBodyEdgeTemplates } from './BodyShape3D';
 import { hexToRgb01 } from './colorUtils';
-import { resolveMirroredLegConfigs } from '../math/LegLayout';
+import { getBodyTopY } from '../math/BodyDimensions';
 import {
-  TREAD_CHASSIS_LIFT_Y,
-  getBodyTopY,
-  getChassisLiftY,
-  getSegmentMidYAt,
-} from '../math/BodyDimensions';
-import {
-  turretBodyRadiusFromRadius,
-} from '../math';
-import { getDebrisBarrelProfile } from './DebrisBarrelProfile3D';
+  type DebrisColorRole,
+  type DebrisStaticFragment,
+  type DebrisTurretMount,
+  getDebrisUnitProfile,
+} from './UnitDebrisProfile3D';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -62,11 +48,6 @@ const STYLE_STRIDE: Record<DebrisStyle, number> = {
   obliterate: 1,
 };
 
-// Must match Locomotion3D. Tread height and chassis lift share one value;
-// hip Y is per-leg now and resolved via getSegmentMidYAt.
-const TREAD_Y = TREAD_CHASSIS_LIFT_Y / 2;
-const FOOT_Y = 1;
-
 // Global cap on simultaneous pieces across the scene — generous since most
 // units only produce ~30-60 pieces now. Old pieces are evicted oldest-first.
 const GLOBAL_MAX_PIECES = 800;
@@ -75,6 +56,30 @@ const MAX_PIECES_EMITTED_PER_FRAME = 180;
 // Scratch container for getMirrorPanelCenter — debris emission is the
 // only per-piece consumer in this file, called inside a death pulse.
 const _panelCenter = { x: 0, y: 0, z: 0 };
+
+/** Rotate a barrel-local offset (dx, dy, dz) by chassis-relative yaw +
+ *  pitch. Sim convention: +X forward, +Y left, +Z up. Yaw rotates
+ *  around +Z, pitch lifts +X toward +Z. Returns the rotated offset
+ *  in the chassis frame (still pre-body-yaw). */
+function rotateBarrelOffset(
+  dx: number, dy: number, dz: number,
+  chassisYaw: number, pitch: number,
+): { x: number; y: number; z: number } {
+  const cP = Math.cos(pitch);
+  const sP = Math.sin(pitch);
+  // Pitch (lifts +X toward +Z, leaves +Y untouched).
+  const px = dx * cP - dz * sP;
+  const py = dy;
+  const pz = dx * sP + dz * cP;
+  const cY = Math.cos(chassisYaw);
+  const sY = Math.sin(chassisYaw);
+  // Yaw (rotation around +Z, sweeps +X toward +Y).
+  return {
+    x: px * cY - py * sY,
+    y: px * sY + py * cY,
+    z: pz,
+  };
+}
 
 // Physics. Linear drag mirrors the 2D DebrisSystem (~0.99/frame at 60Hz).
 // Angular drag is lower so spin decays noticeably faster than travel — the
@@ -513,196 +518,119 @@ export class Debris3D {
   }
 
   /**
-   * Build the full list of one-piece-per-atomic-part templates from the unit
-   * blueprint + death context. Each source category (treads / wheels / legs /
-   * turrets / body edges) contributes pieces in turn so the template order
-   * interleaves sources evenly — helpful for stride-based LOD thinning.
+   * Build the full list of one-piece-per-atomic-part templates from the
+   * unit's pre-derived debris profile + death context. The profile
+   * (UnitDebrisProfile3D) owns all blueprint reading; this method only
+   * applies the live death-event poses (body yaw, per-turret yaw +
+   * pitch) and resolves color roles to concrete RGB values.
    */
   private buildTemplates(
     ctx: SimDeathContext,
     r: number,
     primary: number,
   ): DebrisTemplate[] {
-    const out: DebrisTemplate[] = [];
     if (!ctx.unitType) return this.fallbackTemplates(r, primary);
 
-    let bp;
-    try {
-      bp = getUnitBlueprint(ctx.unitType);
-    } catch {
-      return this.fallbackTemplates(r, primary);
-    }
+    const profile = getDebrisUnitProfile(ctx.unitType, r);
+    if (!profile) return this.fallbackTemplates(r, primary);
 
-    const chassisLiftY = getChassisLiftY(bp, r);
-
-    // --- Locomotion parts ---
-    const loc = bp.locomotion;
-    if (loc?.type === 'treads') {
-      // Each side's full tread slab — same size the 3D locomotion draws.
-      const cfg = loc.config;
-      const length = r * cfg.treadLength;
-      const width = r * cfg.treadWidth;
-      const offset = r * cfg.treadOffset;
-      for (const side of [-1, 1]) {
-        out.push({
-          shape: 'box',
-          x: 0, y: TREAD_Y, z: side * offset,
-          yaw: 0,
-          sx: length, sy: TREAD_CHASSIS_LIFT_Y, sz: width,
-          color: TREAD_COLOR,
-        });
+    const out: DebrisTemplate[] = [];
+    const resolveColor = (role: DebrisColorRole): number => {
+      switch (role) {
+        case 'primary': return primary;
+        case 'tread': return TREAD_COLOR;
+        case 'wheel': return WHEEL_COLOR;
+        case 'leg': return LEG_COLOR;
+        case 'barrel': return BARREL_COLOR;
+        case 'mirrorPanel': return MIRROR_PANEL_DEBRIS_COLOR;
       }
-    } else if (loc?.type === 'wheels') {
-      // Four corner wheels as short tire cylinders (matches the live
-      // renderer's buildWheels — axle along the unit's lateral axis,
-      // radius = r·wheelRadius, width = r·treadWidth).
-      const cfg = loc.config;
-      const wheelR = Math.max(1, r * cfg.wheelRadius);
-      const tireWidth = Math.max(0.5, r * cfg.treadWidth);
-      const fx = r * cfg.wheelDistX;
-      const fz = r * cfg.wheelDistY;
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          out.push({
-            shape: 'cyl',
-            ax: sx * fx, ay: wheelR, az: sz * fz - tireWidth / 2,
-            bx: sx * fx, by: wheelR, bz: sz * fz + tireWidth / 2,
-            thickness: wheelR,
-            color: WHEEL_COLOR,
-          });
-        }
-      }
-    } else if (loc?.type === 'legs') {
-      // One cylinder per upper segment + one per lower segment, placed at
-      // their rest-pose hip/knee/foot positions — same math Locomotion3D
-      // uses to initialize legs.
-      const { all } = resolveMirroredLegConfigs(loc.config, r);
-      const upperThick = Math.max(1, loc.config.upperThickness) * 0.6;
-      const lowerThick = Math.max(1, loc.config.lowerThickness) * 0.6;
-      for (const lc of all) {
-        const hipX = lc.attachOffsetX;
-        const hipZ = lc.attachOffsetY;
-        // Hip Y matches Locomotion3D: either an authored absolute
-        // attach height or the lifted midpoint of the body segment.
-        const hipY = bp.legAttachHeightFrac !== undefined
-          ? bp.legAttachHeightFrac * r
-          : chassisLiftY + getSegmentMidYAt(bp.bodyShape, r, hipX);
-        const restDist =
-          (lc.upperLegLength + lc.lowerLegLength) * lc.snapDistanceMultiplier;
-        const footA = lc.snapTargetAngle;
-        const footX = hipX + Math.cos(footA) * restDist;
-        const footZ = hipZ + Math.sin(footA) * restDist;
-        // Approximate knee at the midpoint of hip↔foot, lifted up — matches
-        // the visible "knee bends upward" pose from Locomotion3D.
-        const kneeX = (hipX + footX) / 2;
-        const kneeZ = (hipZ + footZ) / 2;
-        const kneeY = hipY + lc.upperLegLength * 0.15;
-        out.push({
-          shape: 'cyl',
-          ax: hipX, ay: hipY, az: hipZ,
-          bx: kneeX, by: kneeY, bz: kneeZ,
-          thickness: upperThick,
-          color: LEG_COLOR,
-        });
-        out.push({
-          shape: 'cyl',
-          ax: kneeX, ay: kneeY, az: kneeZ,
-          bx: footX, by: FOOT_Y, bz: footZ,
-          thickness: lowerThick,
-          color: LEG_COLOR,
-        });
-      }
-    }
-
-    // --- Turret heads + barrels ---
-    // One piece per mounted turret head, plus one piece per barrel in each
-    // turret's barrel config. Turret-local Y sits on top of the unit's
-    // per-renderer body (tall-bodied units => turret debris spawns higher).
-    // Turret heads use the same `primary` color as the chassis. Mirror
-    // panel debris uses the live mirror panel's shared shiny-gray base
-    // color; support rails remain player-colored.
-    const bodyShape = bp.bodyShape;
-
-    // Each barrel template is built in chassis-local coords assuming
-    // the turret was aimed straight ahead (yaw=0, pitch=0). At death
-    // we want every cylinder to spawn where it physically WAS — so
-    // we rotate its endpoint offsets around the turret mount by the
-    // live (chassisLocalYaw, pitch) before emitting. World yaw on
-    // the sim side is `t.rotation`; chassis-local = world − body
-    // yaw. Sim convention: +X forward, +Y left, +Z up. Yaw rotates
-    // around +Z, pitch lifts +X toward +Z (rotation around -Y).
-    const bodyYaw = ctx.rotation ?? 0;
-    const rotateBarrelOffset = (
-      dx: number, dy: number, dz: number,
-      chassisYaw: number, pitch: number,
-    ): { x: number; y: number; z: number } => {
-      const cP = Math.cos(pitch);
-      const sP = Math.sin(pitch);
-      // Pitch (lifts +X toward +Z, leaves +Y untouched).
-      const px = dx * cP - dz * sP;
-      const py = dy;
-      const pz = dx * sP + dz * cP;
-      const cY = Math.cos(chassisYaw);
-      const sY = Math.sin(chassisYaw);
-      // Yaw (rotation around +Z, sweeps +X toward +Y).
-      return {
-        x: px * cY - py * sY,
-        y: px * sY + py * cY,
-        z: pz,
-      };
     };
 
-    for (let ti = 0; ti < bp.turrets.length; ti++) {
-      const mount = bp.turrets[ti];
-      let tb;
-      try { tb = getTurretBlueprint(mount.turretId); } catch { continue; }
-      if (tb.constructionEmitter) continue;
-      const localMount = mount.mount;
-      const tox = localMount.x * r;
-      const toz = localMount.y * r;
-      // Live turret pose at death (when supplied by the death event
-      // handler). Without it we fall back to chassis-aligned, which
-      // is only correct when the turret happened to be facing
-      // forward at death.
+    // --- Locomotion + body edges (pose-independent fragments) ---
+    // Body yaw is applied at debris spawn time, so these go out as-is
+    // in chassis-local coords.
+    for (const f of profile.staticFragments) {
+      this.emitStaticFragment(out, f, resolveColor(f.color));
+    }
+
+    // --- Turret heads + barrels + mirror panels ---
+    // Each barrel / panel is in chassis-local coords assuming the
+    // turret was aimed straight ahead. Apply the live (chassisYaw,
+    // pitch) per turret so cylinders land at the world pose their
+    // live mesh had. World yaw on the sim side is `t.rotation`;
+    // chassis-local = world − body yaw. Sim convention: +X forward,
+    // +Y left, +Z up.
+    const bodyYaw = ctx.rotation ?? 0;
+    for (let ti = 0; ti < profile.turretMounts.length; ti++) {
+      const mount = profile.turretMounts[ti];
+      if (!mount) continue;
       const pose = ctx.turretPoses?.[ti];
       const chassisYaw = pose ? pose.rotation - bodyYaw : 0;
       const pitch = pose ? pose.pitch : 0;
+      this.emitTurretMount(out, mount, chassisYaw, pitch, primary);
+    }
 
-      // Per-turret body radius. The unit blueprint's mount is the
-      // source-of-truth center for the turret sphere and barrel pivot;
-      // debris uses the same mount instead of adding mirror-specific
-      // vertical offsets.
-      const headR = turretBodyRadiusFromRadius(tb.radius);
-      const shotHeight = localMount.z * r;
+    return out;
+  }
 
-      // Skip the head + barrels for the mirror-host turret — its visible
-      // body IS the mirror panels, not a separate cylinder. Render3DEntities
-      // does the same skip via `isMirrorHost` in buildTurretMesh.
-      const isMirrorHost = (tb.mirrorPanels?.length ?? 0) > 0;
-      if (!isMirrorHost) {
-        // Turret head — SPHERE of radius `headR`, centered at headR above
-        // the unit body so the sphere bottom touches chassis top. Mirrors
-        // Render3DEntities' head placement.
-        out.push({
-          shape: 'sphere',
-          x: tox,
-          y: shotHeight,
-          z: toz,
-          radius: headR,
-          color: primary,
-        });
+  /** Push one chassis-local fragment to the template list. */
+  private emitStaticFragment(
+    out: DebrisTemplate[],
+    f: DebrisStaticFragment,
+    color: number,
+  ): void {
+    if (f.kind === 'box') {
+      out.push({
+        shape: 'box',
+        x: f.x, y: f.y, z: f.z,
+        yaw: f.yaw,
+        sx: f.sx, sy: f.sy, sz: f.sz,
+        color,
+      });
+    } else {
+      out.push({
+        shape: 'cyl',
+        ax: f.ax, ay: f.ay, az: f.az,
+        bx: f.bx, by: f.by, bz: f.bz,
+        thickness: f.thickness,
+        color,
+      });
+    }
+  }
 
-        // Barrels — one cylinder per physical barrel. The profile
-        // helper owns shot-width / barrel-thickness resolution so this
-        // renderer only places already-derived visual fragments.
-        const barrelProfile = getDebrisBarrelProfile(tb, headR);
-        if (!barrelProfile) continue;
-        // Each barrel is built as a chassis-aligned segment from
-        // (baseDx, baseDy, baseDz) to (tipDx, tipDy, tipDz) in
-        // local-to-mount sim coords (dx along default firing axis,
-        // dy lateral, dz vertical orbit). rotateBarrelOffset rotates
-        // the endpoint by the live (chassisYaw, pitch) so the
-        // emitted cylinder lands at the world pose its live mesh had.
+  /** Emit one turret mount's debris pieces (head + barrels + mirror
+   *  panels), rotated by the live chassis-relative yaw + pitch. */
+  private emitTurretMount(
+    out: DebrisTemplate[],
+    mount: DebrisTurretMount,
+    chassisYaw: number,
+    pitch: number,
+    primary: number,
+  ): void {
+    const tox = mount.mountX;
+    const toz = mount.mountZ;
+    const shotHeight = mount.shotHeight;
+
+    if (!mount.isMirrorHost) {
+      // Turret head — SPHERE centered at the mount. Pose-independent
+      // (the sphere is rotationally symmetric).
+      out.push({
+        shape: 'sphere',
+        x: tox,
+        y: shotHeight,
+        z: toz,
+        radius: mount.headRadius,
+        color: primary,
+      });
+
+      // Barrels — one cylinder per physical barrel. Each is built as a
+      // chassis-aligned segment from (baseDx, baseDy, baseDz) to
+      // (tipDx, tipDy, tipDz) in local-to-mount sim coords (dx along
+      // default firing axis, dy lateral, dz vertical orbit). Rotated
+      // by (chassisYaw, pitch) so the cylinder lands at the world
+      // pose its live mesh had.
+      const bp = mount.barrelProfile;
+      if (bp) {
         const emitBarrel = (
           baseDx: number, baseDy: number, baseDz: number,
           tipDx: number, tipDy: number, tipDz: number,
@@ -719,144 +647,106 @@ export class Debris3D {
           });
         };
 
-        if (barrelProfile.type === 'simpleSingleBarrel') {
-          emitBarrel(0, 0, 0, barrelProfile.length, 0, 0, barrelProfile.thickness);
-        } else if (barrelProfile.type === 'simpleMultiBarrel') {
+        if (bp.type === 'simpleSingleBarrel') {
+          emitBarrel(0, 0, 0, bp.length, 0, 0, bp.thickness);
+        } else if (bp.type === 'simpleMultiBarrel') {
           // Parallel cluster of cylinders — base orbit = tip orbit.
-          // Renderer's `oy` is along three.js Y (vertical = sim Z),
-          // `oz` is along three.js Z (lateral = sim Y). Map both
-          // accordingly so the rotated debris cylinders trace the
-          // same orbit the live render did.
-          const n = barrelProfile.barrelCount;
-          const orbit = barrelProfile.orbit;
+          // `oy` is along three.js Y (vertical = sim Z), `oz` is along
+          // three.js Z (lateral = sim Y). Map both accordingly so the
+          // rotated debris cylinders trace the same orbit the live
+          // render did.
+          const n = bp.barrelCount;
+          const orbit = bp.orbit;
           for (let i = 0; i < n; i++) {
             const a = ((i + 0.5) / n) * Math.PI * 2;
             const orbVert = Math.cos(a) * orbit; // sim Z
             const orbLat = Math.sin(a) * orbit;  // sim Y
             emitBarrel(
               0, orbLat, orbVert,
-              barrelProfile.length, orbLat, orbVert,
-              barrelProfile.thickness,
+              bp.length, orbLat, orbVert,
+              bp.thickness,
             );
           }
-        } else if (barrelProfile.type === 'coneMultiBarrel') {
-          // Cone cluster — base sits at baseOrbit, tip splays out at
-          // tipOrbit (or, when unset, derived from spread.angle exactly
-          // the way Render3DEntities does it). Each barrel cylinder
-          // therefore tilts outward.
-          const n = barrelProfile.barrelCount;
+        } else if (bp.type === 'coneMultiBarrel') {
+          // Cone cluster — base at baseOrbit, tip splays out at
+          // tipOrbit. Each barrel cylinder therefore tilts outward.
+          const n = bp.barrelCount;
           for (let i = 0; i < n; i++) {
             const a = ((i + 0.5) / n) * Math.PI * 2;
             const cosA = Math.cos(a);
             const sinA = Math.sin(a);
             emitBarrel(
-              0, sinA * barrelProfile.baseOrbit, cosA * barrelProfile.baseOrbit,
-              barrelProfile.length,
-              sinA * barrelProfile.tipOrbit,
-              cosA * barrelProfile.tipOrbit,
-              barrelProfile.thickness,
+              0, sinA * bp.baseOrbit, cosA * bp.baseOrbit,
+              bp.length,
+              sinA * bp.tipOrbit,
+              cosA * bp.tipOrbit,
+              bp.thickness,
             );
           }
         }
       }
+    }
 
-      // Mirror panels — emit one slab per panel matching what
-      // Render3DEntities draws: a square panel mounted at ARM'S LENGTH
-      // out from the turret body sphere, plus two broad extruded arms
-      // and the cylindrical grabbers they attach to.
-      // Same liftGroup convention as Render3DEntities: subtract
-      // chassisLift so the live world-y lands at the blueprint-authored
-      // mirror turret mount after debris adds chassisLiftY.
-      if (tb.mirrorPanels && tb.mirrorPanels.length > 0) {
-        // Match the live mirrorPanelCache sizing so debris panels
-        // tumble at the same scale they had while alive — bumping
-        // MIRROR_PANEL_SIZE_MULT in mirrorPanelCache feeds through here
-        // automatically.
-        const armLength = r * MIRROR_ARM_LENGTH_MULT;
-        const panelHalfSide = r * MIRROR_PANEL_SIZE_MULT;
-        const frame = getMirrorFrameGeometry(panelHalfSide);
-        const side = frame.side;
-        const supportDiameter = frame.supportDiameter;
-        const supportRadius = frame.supportRadius;
-        const frameSegmentLength = frame.frameSegmentLength;
-        const frameZ = frame.frameZ;
-        const panelCenterY = localMount.z * r - chassisLiftY;
-        const cY = Math.cos(chassisYaw);
-        const sY = Math.sin(chassisYaw);
-        // Use the canonical arm-extension formula (mirror pitch is 0
-        // here — debris has no live mirror pose to read). Sim coords
-        // come back as (sim x, sim y, sim z); three.js takes
-        // (sim x, sim z, sim y).
-        getMirrorPanelCenter(0, 0, panelCenterY, armLength, chassisYaw, 0, _panelCenter);
-        for (let pi = 0; pi < tb.mirrorPanels.length; pi++) {
-          // Panel — at arm's end, perpendicular to the arm.
+    // Mirror panels — emit one slab per panel + two broad extruded
+    // arms + the cylindrical grabbers they attach to.
+    const mp = mount.mirrorPanels;
+    if (mp) {
+      const armLength = mp.armLength;
+      const panelCenterY = mp.panelCenterY;
+      const cY = Math.cos(chassisYaw);
+      const sY = Math.sin(chassisYaw);
+      // Canonical arm-extension formula (mirror pitch is 0 here — debris
+      // has no live mirror pose to read). Sim coords come back as
+      // (sim x, sim y, sim z); three.js takes (sim x, sim z, sim y).
+      getMirrorPanelCenter(0, 0, panelCenterY, armLength, chassisYaw, 0, _panelCenter);
+      for (let pi = 0; pi < mp.panelCount; pi++) {
+        // Panel — at arm's end, perpendicular to the arm.
+        out.push({
+          shape: 'box',
+          x: _panelCenter.x,
+          y: _panelCenter.z,
+          z: _panelCenter.y,
+          yaw: -Math.PI / 2 + chassisYaw,
+          sx: mp.side,
+          sy: mp.side,
+          sz: 1,
+          color: MIRROR_PANEL_DEBRIS_COLOR,
+        });
+        // Broad side arms + vertical grabbers — same dimensions as
+        // MirrorMesh3D. Arms run from the turret pivot to each side
+        // grabber's midpoint; grabbers remain cylindrical.
+        for (const sign of [-1, 1] as const) {
+          const localZ = mp.frameZ * sign;
+          const railLength = Math.hypot(armLength, localZ);
+          const cx = armLength / 2;
+          const cz = localZ / 2;
+          const grabberX = armLength * cY - localZ * sY;
+          const grabberZ = armLength * sY + localZ * cY;
           out.push({
             shape: 'box',
-            x: _panelCenter.x,
-            y: _panelCenter.z,
-            z: _panelCenter.y,
-            yaw: -Math.PI / 2 + chassisYaw,
-            sx: side,
-            sy: side,
-            sz: 1,
-            color: MIRROR_PANEL_DEBRIS_COLOR,
+            x: cx * cY - cz * sY,
+            y: panelCenterY,
+            z: cx * sY + cz * cY,
+            yaw: chassisYaw + Math.atan2(localZ, armLength),
+            sx: railLength,
+            sy: mp.frameSegmentLength,
+            sz: mp.supportDiameter,
+            color: primary,
           });
-          // Broad side arms + vertical grabbers — same dimensions as
-          // MirrorMesh3D. Arms run from the turret pivot to each side
-          // grabber's midpoint; grabbers remain cylindrical.
-          for (const sign of [-1, 1] as const) {
-            const localZ = frameZ * sign;
-            const railLength = Math.hypot(armLength, localZ);
-            const cx = armLength / 2;
-            const cz = localZ / 2;
-            const grabberX = armLength * cY - localZ * sY;
-            const grabberZ = armLength * sY + localZ * cY;
-            out.push({
-              shape: 'box',
-              x: cx * cY - cz * sY,
-              y: panelCenterY,
-              z: cx * sY + cz * cY,
-              yaw: chassisYaw + Math.atan2(localZ, armLength),
-              sx: railLength,
-              sy: frameSegmentLength,
-              sz: supportDiameter,
-              color: primary,
-            });
-            out.push({
-              shape: 'cyl',
-              ax: grabberX,
-              ay: panelCenterY - frameSegmentLength / 2,
-              az: grabberZ,
-              bx: grabberX,
-              by: panelCenterY + frameSegmentLength / 2,
-              bz: grabberZ,
-              thickness: supportRadius,
-              color: primary,
-            });
-          }
+          out.push({
+            shape: 'cyl',
+            ax: grabberX,
+            ay: panelCenterY - mp.frameSegmentLength / 2,
+            az: grabberZ,
+            bx: grabberX,
+            by: panelCenterY + mp.frameSegmentLength / 2,
+            bz: grabberZ,
+            thickness: mp.supportRadius,
+            color: primary,
+          });
         }
       }
     }
-
-    // --- Chassis body edges ---
-    // Read the per-renderer body shape (scout=diamond, tank=pentagon,
-    // arachnid=two spheroids, etc.) and emit one tall slab per polygon
-    // edge at the true edge position. Each template's `height` mirrors
-    // the body segment it came from, so debris slab heights match the
-    // live unit silhouette (composite bodies shed tall abdomen debris
-    // and short head debris).
-    const edges = getBodyEdgeTemplates(bodyShape, r);
-    for (const e of edges) {
-      out.push({
-        shape: 'box',
-        x: e.x, y: chassisLiftY + e.height / 2, z: e.z,
-        yaw: e.yaw,
-        sx: e.length, sy: e.height, sz: e.thickness,
-        color: primary,
-      });
-    }
-
-    return out;
   }
 
   /** Fallback when the unit blueprint can't be resolved — a small handful
