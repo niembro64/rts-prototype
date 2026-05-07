@@ -57,6 +57,7 @@ import { generateMetalDeposits } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerSnapshotMetaBuilder } from './ServerSnapshotMetaBuilder';
+import { ServerTickLoop } from './ServerTickLoop';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -104,8 +105,7 @@ export class GameServer {
   private terrainBuildabilityGrid: TerrainBuildabilityGrid;
 
   // Game loop
-  private gameLoopInterval: ReturnType<typeof setInterval> | null = null;
-  private lastTickTime: number = 0;
+  private tickLoop = new ServerTickLoop();
   private tickRateHz: number;
   /** User's configured target. The setInterval rate (`tickRateHz`)
    *  may be auto-lowered below this when the host can't keep up;
@@ -423,7 +423,6 @@ export class GameServer {
   // Start the game loop
   start(): void {
     const now = performance.now();
-    this.lastTickTime = now;
     this.lastSnapshotTime = 0; // Ensure first tick always emits a snapshot
     this.startupGateOpen = this.snapshotListeners.length === 0;
     if (!this.startupGateOpen) {
@@ -433,16 +432,9 @@ export class GameServer {
   }
 
   private startGameLoop(): void {
-    if (this.gameLoopInterval) {
-      clearInterval(this.gameLoopInterval);
-    }
     // Run simulation at configured tick rate
     // Snapshots are emitted at end of tick, gated by maxSnapshotIntervalMs
-    this.gameLoopInterval = setInterval(() => {
-      const tickNow = performance.now();
-      const delta = tickNow - this.lastTickTime;
-      this.lastTickTime = tickNow;
-
+    this.tickLoop.start(this.tickRateHz, (tickNow, delta) => {
       // Measure how much CPU the tick body actually consumed, separately
       // from its *period* (which the TPS EMA tracks). Snapshot emission is
       // part of the same setInterval callback, so we include it — remote
@@ -489,7 +481,7 @@ export class GameServer {
       // tick loop completes even when the host genuinely can't do
       // userTickRateHz worth of work per second.
       this.maybeAdaptTickRate();
-    }, 1000 / this.tickRateHz);
+    });
   }
 
   private emitStartupSnapshot(now: number): void {
@@ -524,10 +516,7 @@ export class GameServer {
 
   // Stop the game loop
   stop(): void {
-    if (this.gameLoopInterval) {
-      clearInterval(this.gameLoopInterval);
-      this.gameLoopInterval = null;
-    }
+    this.tickLoop.stop();
     this.snapshotListeners.length = 0;
     this.gameOverListeners.length = 0;
 
@@ -1408,7 +1397,7 @@ export class GameServer {
   setTickRate(hz: number): void {
     this.userTickRateHz = hz;
     this.tickRateHz = hz;
-    if (this.gameLoopInterval) {
+    if (this.tickLoop.isRunning()) {
       this.startGameLoop();
     }
   }
@@ -1448,13 +1437,13 @@ export class GameServer {
       const next = Math.max(FLOOR_HZ, Math.floor(this.tickRateHz / 2));
       if (next !== this.tickRateHz) {
         this.tickRateHz = next;
-        if (this.gameLoopInterval) this.startGameLoop();
+        if (this.tickLoop.isRunning()) this.startGameLoop();
       }
     } else if (loadAvg < 0.5 && this.tickRateHz < this.userTickRateHz) {
       const next = Math.min(this.userTickRateHz, this.tickRateHz * 2);
       if (next !== this.tickRateHz) {
         this.tickRateHz = next;
-        if (this.gameLoopInterval) this.startGameLoop();
+        if (this.tickLoop.isRunning()) this.startGameLoop();
       }
     }
   }

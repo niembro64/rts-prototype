@@ -58,20 +58,22 @@ profiles/components, not reinterpret blueprint pieces independently.
     - src/game/server/GameServer.ts:554
     - src/game/server/GameServer.ts:618
     - src/game/server/GameServer.ts:1028
+    - src/game/server/ServerTickLoop.ts:1
     - src/game/server/ServerDebugGridPublisher.ts:1
     - src/game/server/ServerSnapshotMetaBuilder.ts:1
-    - file size: 1530 lines
+    - file size: 1521 lines
 
     The host server class owns map setup, spawn setup, tick scheduling,
     simulation stepping, force application, physics sync, snapshot publication,
     and command entrypoints. Spatial-grid debug snapshot publishing has been
     split into `ServerDebugGridPublisher`, and server snapshot metadata/time
-    formatting has been split into `ServerSnapshotMetaBuilder`, but the
+    formatting has been split into `ServerSnapshotMetaBuilder`. The interval
+    lifecycle and elapsed-time calculation now live in `ServerTickLoop`, but the
     remaining server class is still too broad. This makes server performance
     fixes harder to isolate and test.
 
-    Fix direction: extract `ServerBootstrap`, `ServerTickLoop`,
-    `UnitForceSystem`, and `ServerSnapshotPublisher`.
+    Fix direction: extract `ServerBootstrap`, `UnitForceSystem`, and
+    `ServerSnapshotPublisher`.
 
 
 13. Debris rendering re-interprets unit/turret/shot blueprints instead of reusing render fragments.
