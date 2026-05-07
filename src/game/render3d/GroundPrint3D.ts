@@ -1,17 +1,43 @@
 // GroundPrint3D — wheel ruts, tread tracks, and footstep stamps drawn
-// onto the ground as fading quads. Same merged-buffer + swap-and-pop
-// pattern as BurnMark3D, but sized for ~50× more emitters: one trail
-// per wheel/tread side per moving unit, plus one stamp per planted
-// foot — vs BurnMark3D's handful of active beams in heavy combat.
+// onto the ground as fading quads.
 //
-// The renderer dispatches on each unit's locomotion mesh type:
-//   - 'wheels' → 1 trail per tire (4 contacts/unit), miter-joined.
-//   - 'treads' → 1 trail per side  (2 contacts/unit), miter-joined.
-//   - 'legs'   → discrete stamps emitted on foot lift-off / re-plant.
+// Rewrite goals (vs. the original frame-skip design):
 //
-// Color stays constant across a print's lifetime — these are physical
-// impressions, not exotherms. Only alpha fades. The shared "MARKS: ALL"
-// toggle (getGroundMarks) gates this renderer alongside BurnMark3D.
+// 1. NO GAPS. Trails are continuous at every LOD. We sample every
+//    contact every frame and emit a new quad as soon as the contact
+//    has moved by `spacing` world units since the last emit. The new
+//    quad spans `lastEmit → current` exactly, so segments butt
+//    edge-to-edge no matter how fast the unit is moving or how few
+//    quads-per-second we end up emitting.
+//
+// 2. NO MISSED FOOTPRINTS. Leg stamps are emitted on the planted-
+//    after-sliding transition (`wasSliding && !isSliding`), so every
+//    plant cycle stamps exactly once. No frame-skip can drop a
+//    plant — we read every frame and look for the edge.
+//
+// 3. NO LOD CULL. Marks die only when their lifetime expires. A tier
+//    flip never deletes in-flight marks; it just slows the rate of
+//    new emission and shortens the lifetime applied to *future*
+//    marks. The visible result is a graceful collective fade-out
+//    instead of the old hard cut. EMA-smoothed density (~300 ms tau)
+//    smooths the transition even further.
+//
+// 4. SPACING + LIFETIME = LOD. One density knob (groundPrintDensity)
+//    per LOD tier drives both:
+//      - emit spacing  (tight at MAX, wide at MIN — fewer marks per
+//        unit distance, but always continuous)
+//      - per-mark lifetime (longer at MAX, shorter at MIN — natural
+//        active-count throttle without an explicit cap)
+//
+// 5. SOFT CAP. There's a hard buffer ceiling (HARD_CAP) for GPU
+//    pre-allocation. When it's hit (only at extreme load), we evict
+//    the oldest-aged mark to free a slot. No emit ever gets dropped
+//    on the floor — the cost of overflow is one mark dying a frame
+//    early, not a missing rut.
+//
+// Per-frame work is bounded: O(units × contacts) for sampling, plus
+// O(active marks) for the age sweep. Both scale linearly and
+// allocate nothing in steady state.
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
@@ -20,92 +46,110 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { LegInstance } from './LegRig3D';
 
-// ── Y layout ──
-// Sit slightly above the tile floor so the merged geometry always
-// wins the depth test against tiles. BurnMark3D uses MARK_Y = 2.5; we
-// pick 2.4 so ground prints render *under* burn marks where they
-// overlap (a beam scorching the same square a tank just rolled over
-// should read as scorch on top of rut).
+// ── World Y layout ──
+// Sit slightly above the tile floor; under burn marks (Y=2.5) so a
+// scorch on top of a rut reads correctly.
 const MARK_Y = 2.4;
 
 // ── Color ──
 // Dark soil compaction. Routed through THREE.Color so the hex (sRGB)
-// is converted into linear-RGB for vertex-color writes (matches the
-// renderer's working space when ColorManagement is on).
+// converts to linear-RGB for vertex-color writes.
 const PRINT_HEX = 0x1a1308;
 const PRINT_LIN = new THREE.Color(PRINT_HEX);
 
 // ── Lifetime ──
 // Linear alpha decay from PRINT_INITIAL_ALPHA at age 0 → 0 at age
-// PRINT_TOTAL_LIFETIME_MS × density-derived multiplier. Tweak this
-// single number to change how long ruts and footstep stamps hang
-// around before disappearing completely.
-const PRINT_TOTAL_LIFETIME_MS = 1000;
+// PRINT_BASE_LIFETIME_MS × density-derived multiplier. Tweak the
+// base to change how long marks linger at MAX LOD; the multiplier
+// shortens it at lower tiers.
+const PRINT_BASE_LIFETIME_MS = 1000;
 const PRINT_INITIAL_ALPHA = 0.2;
 
-// Hard buffer cap — sized to keep the geometry in one draw call at
-// the most generous LOD tier. Memory: ~12k × 4 verts × 28 bytes ≈
-// 1.3 MB GPU, trivial. Active count is throttled per-tier by the
-// density-derived cap below; this is just the never-allocate-more
-// ceiling.
-const MAX_PRINTS = 12000;
+// At density = 0 lifetime is shrunk to this fraction of the base.
+// MIN tier therefore drains the buffer about 2.5× faster than MAX.
+const LIFETIME_MULT_AT_MIN = 0.4;
 
-// Miter limit — same PostScript default as BurnMark3D.
+// ── Spacing (distance-based emit) ──
+// At density = 1 we emit a new quad every SPACING_AT_MAX wu of
+// motion (tight ribbons). At density = 0 the spacing relaxes to
+// SPACING_AT_MIN — fewer quads per unit distance but each quad spans
+// more, so the trail stays continuous.
+const SPACING_AT_MAX = 4;
+const SPACING_AT_MIN = 24;
+
+// ── Stamp dedupe ──
+// A leg sometimes "re-plants" within ~a wu of where it took off
+// (creep-walking, micro-corrections). Skip the stamp if the new
+// plant is within this distance of the previous stamp for the
+// SAME foot. Small enough that real strides always pass.
+const STAMP_MIN_DIST_SQ = 4;
+
+// ── Buffer ceiling ──
+// Hard cap on the GPU-side merged geometry. Active count rarely
+// approaches this — at MAX LOD the spacing × lifetime product
+// converges to a few thousand marks even in heavy combat. The cap
+// only kicks in at pathological loads (100+ mobile units all
+// sprinting at MAX), at which point we evict oldest-on-emit.
+const HARD_CAP = 16000;
+
+// Miter limit — clamp the bisector offset to 3× halfWidth so a
+// near-180° turn doesn't produce an infinite spike.
 const MITER_LIMIT = 3;
 
-// Minimum world distance² between successive trail samples for a new
-// quad. Keeps slow / stationary contacts from spamming zero-length
-// marks. Larger than BurnMark3D's 4 because tread/wheel contacts move
-// every frame even when the unit is barely creeping.
-const TRAIL_MIN_SEGMENT_DIST_SQ = 9;
-
-// Minimum world distance² for a leg footprint vs. the previous stamp
-// for that same foot. Prevents a foot that re-plants in basically the
-// same spot (creep-walking, tiny stride) from stamping every cycle.
-const STAMP_MIN_DIST_SQ = 16;
-
-// EMA tau (ms) used to smooth the LOD-resolved density so a tier
-// flip glides instead of stepping. Same value as BurnMark3D for
-// visual consistency across both mark systems.
+// EMA tau (ms) for smoothing the LOD-resolved density. ~300 ms
+// matches BurnMark3D so the two mark systems glide together when
+// the user changes graphics tier mid-frame.
 const DENSITY_EMA_TAU_MS = 300;
 
-// Density-derived throttles — same shape as BurnMark3D. Density is
-// a single scalar in [0, 1]; cap, frame-skip, and lifetime mult
-// fall out of it together so a tier flip moves all three.
-const MAX_GROUND_FRAMES_SKIP = 8;
-const GROUND_LIFETIME_MULT_AT_ZERO = 0.5;
+// Below this smoothed density we skip the emit pass entirely — no
+// new marks until the smoothed value climbs back above. The age
+// sweep continues regardless so existing marks fade naturally and
+// the buffer drains. Without this floor, density = 0 (MIN tier)
+// would still emit at SPACING_AT_MIN intervals.
+const EMIT_DENSITY_FLOOR = 0.02;
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
 // ── Per-trail bookkeeping ──
-// Trails (wheels/treads) are miter-joined; we remember the previous
-// emitted mark for each (entity, contactIndex) so a new sample can
-// rewrite the predecessor's end vertices to share an edge. Stamps
-// (legs) just remember the last stamp position to debounce.
+// One TrailState per (unit, contact): the contact's last-emit
+// position (also the start of the next quad), its motion direction
+// at that emit (for miter-joining the next), and a pointer to the
+// most recent live Mark so we can rewrite its end vertices when a
+// successor joins.
 
 type TrailKey = string;
 
 type TrailState = {
-  lastEndX: number;
-  lastEndY: number;
+  lastEmitX: number;
+  lastEmitY: number;
   lastDirX: number;
   lastDirY: number;
+  /** First time we saw this contact we record the position but
+   *  don't have a direction yet — emits don't begin until the
+   *  contact has moved by `spacing` from this point. */
+  primed: boolean;
   prevMark: Mark | null;
 };
 
+// ── Per-stamp bookkeeping ──
+// Track the previous-frame slide state so we can detect the
+// sliding → planted transition (foot just landed). Plus the last
+// stamp position for the rare micro-replant dedupe.
+
 type StampState = {
+  wasSliding: boolean;
   lastX: number;
   lastY: number;
-  /** True once we've emitted at least one stamp for this foot. The
-   *  first plant always stamps regardless of distance. */
-  initialized: boolean;
+  hasInitial: boolean;
 };
 
 type Mark = {
   slot: number;
   age: number;
+  /** Set true when the mark is removed; trails reading prevMark
+   *  notice this and fall back to a square cap for the next quad. */
   removed: boolean;
 };
 
@@ -125,21 +169,16 @@ export class GroundPrint3D {
   private colDirty = false;
 
   private marks: Mark[] = [];
-
-  /** Trails: keyed `${kind}:${entityId}:${contactIndex}` so wheels
-   *  and tread sides on the same unit don't collide. */
   private trails = new Map<TrailKey, TrailState>();
   private _seenTrailKeys = new Set<TrailKey>();
-
-  /** Stamps: per-leg "last printed" debounce, keyed identically. */
   private stamps = new Map<TrailKey, StampState>();
   private _seenStampKeys = new Set<TrailKey>();
 
-  private _frameCounter = 0;
-  /** EMA-smoothed copy of the LOD-resolved density. -1 means "not
-   *  initialized yet" so the first update snaps directly to the
-   *  resolved value rather than easing in from 0. */
+  /** EMA-smoothed copy of the LOD-resolved density. -1 = "not
+   *  initialized yet" so the first update snaps to the resolved
+   *  value rather than easing in from 0. */
   private _smoothedDensity = -1;
+
   private scope: ViewportFootprint | null = null;
 
   constructor(parentWorld: THREE.Group, scope?: ViewportFootprint) {
@@ -147,10 +186,10 @@ export class GroundPrint3D {
     parentWorld.add(this.root);
     this.scope = scope ?? null;
 
-    this.positions = new Float32Array(MAX_PRINTS * 4 * 3);
-    this.colors = new Float32Array(MAX_PRINTS * 4 * 4);
-    this.indices = new Uint32Array(MAX_PRINTS * 6);
-    for (let i = 0; i < MAX_PRINTS; i++) {
+    this.positions = new Float32Array(HARD_CAP * 4 * 3);
+    this.colors = new Float32Array(HARD_CAP * 4 * 4);
+    this.indices = new Uint32Array(HARD_CAP * 6);
+    for (let i = 0; i < HARD_CAP; i++) {
       const vBase = i * 4;
       const iBase = i * 6;
       this.indices[iBase] = vBase;
@@ -175,89 +214,105 @@ export class GroundPrint3D {
       side: THREE.DoubleSide,
       depthWrite: false,
       polygonOffset: true,
-      // Slightly weaker offset than burn marks so scorches render on
-      // top when the two systems overlap the same patch of dirt.
       polygonOffsetFactor: -3,
       polygonOffsetUnits: -3,
     });
     this.mesh = new THREE.Mesh(this.geometry, this.mat);
-    this.mesh.renderOrder = 9; // < BurnMark3D (10), > terrain.
-    // Per-frame position writes don't update the bounding sphere, so
-    // an auto-computed (origin, 0) sphere would frustum-cull the mesh
-    // any time the camera looks elsewhere. Disable the per-mesh cull
-    // — prints can cover the whole map.
+    this.mesh.renderOrder = 9;
     this.mesh.frustumCulled = false;
     this.root.add(this.mesh);
   }
 
-  /** Per-frame entry point. `units` should already be filtered to the
-   *  set of entities with a tracked locomotion mesh; `getMesh`
-   *  resolves the renderer's per-unit mesh record so we don't have to
-   *  duplicate Render3DEntities's bookkeeping. */
+  /** Per-frame entry point. */
   update(
     units: readonly Entity[],
     getMesh: (e: Entity) => Locomotion3DMesh,
     dtMs: number,
   ): void {
-    if (units.length === 0 && this.marks.length === 0 && this.trails.size === 0 && this.stamps.size === 0) {
-      return;
-    }
-
-    const gfx = getGraphicsConfig();
-
-    const enabled = getGroundMarks();
-    if (!enabled) {
+    // Toggle: if marks are off, drain everything and idle.
+    if (!getGroundMarks()) {
       if (this.marks.length > 0) this.clearMarksOnly();
-      if (this.trails.size > 0) this.trails.clear();
-      if (this.stamps.size > 0) this.stamps.clear();
-      this._frameCounter = 0;
+      this.trails.clear();
+      this.stamps.clear();
       this._smoothedDensity = -1;
       return;
     }
 
-    // ── Density resolution (one knob, three throttles) ──
-    // Read the LOD-resolved target density, EMA-smooth it, then
-    // derive cap, frame-skip, and lifetime mult from the smoothed
-    // value. This is the unification: a tier flip moves all three
-    // throttles together and they all glide instead of stepping.
-    const targetDensity = clamp01(gfx.groundPrintDensity ?? 1);
-    if (this._smoothedDensity < 0) {
-      this._smoothedDensity = targetDensity;
-    } else {
-      const ema = 1 - Math.exp(-Math.max(0, dtMs) / DENSITY_EMA_TAU_MS);
-      this._smoothedDensity += (targetDensity - this._smoothedDensity) * ema;
-    }
-    const density = this._smoothedDensity;
-    const cap = Math.min(MAX_PRINTS, Math.round(MAX_PRINTS * density));
-    if (cap <= 0) {
-      // Density rounded down to zero (effectively disabled tier).
-      if (this.marks.length > 0) this.clearMarksOnly();
-      this._frameCounter = 0;
+    if (
+      units.length === 0 &&
+      this.marks.length === 0 &&
+      this.trails.size === 0 &&
+      this.stamps.size === 0
+    ) {
       return;
     }
-    const framesSkip = Math.max(0, Math.round(MAX_GROUND_FRAMES_SKIP * (1 - density)));
+
+    // ── Density EMA ──
+    // The LOD-resolved target glides over ~300 ms toward whatever
+    // value the active tier provides. Tier flips never step.
+    const gfx = getGraphicsConfig();
+    const target = clamp01(gfx.groundPrintDensity ?? 1);
+    if (this._smoothedDensity < 0) {
+      this._smoothedDensity = target;
+    } else {
+      const a = 1 - Math.exp(-Math.max(0, dtMs) / DENSITY_EMA_TAU_MS);
+      this._smoothedDensity += (target - this._smoothedDensity) * a;
+    }
+    const density = this._smoothedDensity;
+
+    // Lifetime applies to every tier — even when emit is gated off
+    // below, in-flight marks must keep aging.
     const lifeMult =
-      GROUND_LIFETIME_MULT_AT_ZERO +
-      (1 - GROUND_LIFETIME_MULT_AT_ZERO) * density;
-    const invEffLifetime = 1 / Math.max(1, PRINT_TOTAL_LIFETIME_MS * lifeMult);
+      LIFETIME_MULT_AT_MIN + (1 - LIFETIME_MULT_AT_MIN) * density;
+    const effLifetimeMs = Math.max(1, PRINT_BASE_LIFETIME_MS * lifeMult);
+    const invLifetime = 1 / effLifetimeMs;
 
-    // Sample stride.
-    const sampleNow = this._frameCounter === 0;
-    this._frameCounter = (this._frameCounter + 1) % (framesSkip + 1);
+    // ── Age sweep ──
+    // Run BEFORE emits so dead marks free their slots first; new
+    // emits this frame can immediately reuse them without waiting
+    // for the next frame's overflow eviction.
+    for (let i = this.marks.length - 1; i >= 0; i--) {
+      const m = this.marks[i];
+      m.age += dtMs;
+      const lifeFrac = m.age * invLifetime;
+      if (lifeFrac >= 1) {
+        this.removeMarkAt(i);
+        continue;
+      }
+      const alpha = PRINT_INITIAL_ALPHA * (1 - lifeFrac);
+      this.writeQuadColor(i, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, alpha);
+      this.colDirty = true;
+    }
 
+    // Below the floor, skip the emit pass — keep the smoothed
+    // density alive so the next frame can pick up smoothly. Do NOT
+    // wipe trails/stamps; if the tier flips back up we want their
+    // "last emit" point to still be valid so the next quad
+    // continues from where the trail left off.
+    if (density < EMIT_DENSITY_FLOOR) {
+      this.flushBuffers();
+      return;
+    }
+
+    // Spacing for this frame. Squared form for the cheap distance
+    // compare in sampleTrail.
+    const spacing =
+      SPACING_AT_MAX + (1 - density) * (SPACING_AT_MIN - SPACING_AT_MAX);
+    const spacingSq = spacing * spacing;
+
+    // ── Sample every contact every frame ──
     this._seenTrailKeys.clear();
     this._seenStampKeys.clear();
 
     for (const e of units) {
       const loc = getMesh(e);
       if (!loc) continue;
-
-      // Off-scope units skip the full sample pass. Width = 200 padding
-      // matches BurnMark3D's beam scope check — generous so a unit
-      // moving fast doesn't drop prints mid-traverse.
-      if (this.scope && !this.scope.inScope(e.transform.x, e.transform.y, 200)) {
-        continue;
-      }
+      // Off-scope units: skip sampling entirely. Their trail/stamp
+      // state will be retired at end-of-frame; if they re-enter
+      // scope later the trail starts fresh from a square cap, which
+      // is the right thing to do (we have no idea where they were
+      // while off-screen).
+      if (this.scope && !this.scope.inScope(e.transform.x, e.transform.y, 200)) continue;
 
       switch (loc.type) {
         case 'wheels': {
@@ -266,11 +321,7 @@ export class GroundPrint3D {
             if (!c.initialized) continue;
             const key = `wheel:${e.id}:${i}`;
             this._seenTrailKeys.add(key);
-            if (sampleNow) {
-              this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, cap);
-            } else {
-              this.touchTrail(key, c.worldX, c.worldZ);
-            }
+            this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, spacingSq);
           }
           break;
         }
@@ -280,37 +331,24 @@ export class GroundPrint3D {
             if (!c.initialized) continue;
             const key = `tread:${e.id}:${i}`;
             this._seenTrailKeys.add(key);
-            if (sampleNow) {
-              this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, cap);
-            } else {
-              this.touchTrail(key, c.worldX, c.worldZ);
-            }
+            this.sampleTrail(key, c.worldX, c.worldZ, loc.printWidth, spacingSq);
           }
           break;
         }
         case 'legs': {
-          // Legs stamp on plant — a foot is "planted" while
-          // !isSliding. We keep a per-leg cursor and emit at most
-          // one stamp per plant cycle (the distance gate also skips
-          // micro-replants where the foot lands ~where it lifted).
           for (let i = 0; i < loc.legs.length; i++) {
             const leg = loc.legs[i];
             if (!leg.initialized) continue;
-            // Mark the key as seen even mid-slide so end-of-frame
-            // cleanup preserves this foot's last-stamp position
-            // across the lift cycle. Otherwise a foot that lands
-            // ~where it took off would re-stamp on every plant.
             const key = `leg:${e.id}:${i}`;
             this._seenStampKeys.add(key);
-            if (leg.isSliding) continue;
-            this.sampleStamp(key, leg, e.transform.rotation, cap);
+            this.sampleStamp(key, leg, e.transform.rotation);
           }
           break;
         }
       }
     }
 
-    // Retire trails / stamps for units that disappeared this frame.
+    // Retire trails / stamps for contacts we didn't see this frame.
     for (const k of this.trails.keys()) {
       if (!this._seenTrailKeys.has(k)) this.trails.delete(k);
     }
@@ -318,119 +356,96 @@ export class GroundPrint3D {
       if (!this._seenStampKeys.has(k)) this.stamps.delete(k);
     }
 
-    // ── Age + prune ──
-    // Linear ramp: alpha = INITIAL · (1 − age/effectiveLifetime),
-    // clamped at 0. Effective lifetime is density-scaled (computed
-    // above) so low/min tiers fade marks out faster — slot turnover
-    // accelerates without ever cutting an in-progress fade short.
-    // The deletion gate is `alpha <= 0`, NOT a tier-driven cutoff,
-    // so a tier flip never deletes visible marks; the smoothed
-    // density just shortens the *new* effective lifetime, and the
-    // visible result is a graceful collective fade-out.
-    for (let i = this.marks.length - 1; i >= 0; i--) {
-      const mark = this.marks[i];
-      mark.age += dtMs;
-      const lifeFrac = mark.age * invEffLifetime;
-      const alpha = PRINT_INITIAL_ALPHA * (1 - lifeFrac);
-      if (alpha <= 0) {
-        this.removeMarkAt(i);
-        continue;
-      }
-      this.writeQuadColor(i, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, alpha);
-      this.colDirty = true;
-    }
-
-    if (this.marks.length > 0) {
-      if (this.posDirty) {
-        this.posAttr.clearUpdateRanges();
-        this.posAttr.addUpdateRange(0, this.marks.length * 12);
-        this.posAttr.needsUpdate = true;
-        this.posDirty = false;
-      }
-      if (this.colDirty) {
-        this.colAttr.clearUpdateRanges();
-        this.colAttr.addUpdateRange(0, this.marks.length * 16);
-        this.colAttr.needsUpdate = true;
-        this.colDirty = false;
-      }
-    } else {
-      this.posDirty = false;
-      this.colDirty = false;
-    }
+    this.flushBuffers();
   }
 
-  /** A "touch" without sampling: keep the trail's lastEnd / direction
-   *  current on a skipped frame so the next sampled frame's miter
-   *  computation reflects the true motion since the last quad. */
-  private touchTrail(key: TrailKey, ex: number, ez: number): void {
-    const state = this.trails.get(key);
-    if (!state) return;
-    state.lastEndX = ex;
-    state.lastEndY = ez;
-  }
+  // ── Trail sampling (wheels, tread sides) ──
+  // Always invoked, every frame, every contact. The distance check
+  // gates emission; nothing else does. So as long as the contact
+  // moves, the trail keeps getting longer with quads butting
+  // edge-to-edge — gap-free regardless of LOD.
 
-  /** Append (or first-create) a trail sample. */
   private sampleTrail(
     key: TrailKey,
-    ex: number, ez: number,
+    cx: number, cz: number,
     width: number,
-    cap: number,
+    spacingSq: number,
   ): void {
     let state = this.trails.get(key);
     if (!state) {
-      this.trails.set(key, {
-        lastEndX: ex,
-        lastEndY: ez,
+      state = {
+        lastEmitX: cx,
+        lastEmitY: cz,
         lastDirX: 0,
         lastDirY: 0,
+        primed: true,
         prevMark: null,
-      });
+      };
+      this.trails.set(key, state);
       return;
     }
-    const dx = ex - state.lastEndX;
-    const dz = ez - state.lastEndY;
+    const dx = cx - state.lastEmitX;
+    const dz = cz - state.lastEmitY;
     const distSq = dx * dx + dz * dz;
-    if (distSq <= TRAIL_MIN_SEGMENT_DIST_SQ) return;
-    if (this.marks.length >= cap || this.marks.length >= MAX_PRINTS) {
-      state.lastEndX = ex;
-      state.lastEndY = ez;
-      return;
-    }
+    if (distSq < spacingSq) return;
     const invLen = 1 / Math.sqrt(distSq);
     const dirX = dx * invLen;
     const dirZ = dz * invLen;
-    this.appendMiteredTrailMark(state, ex, ez, dirX, dirZ, width);
+    this.appendMiteredTrail(state, cx, cz, dirX, dirZ, width);
   }
 
-  /** Append a single stamp for a planted foot. Debounced by distance
-   *  from the last stamp on this same foot. */
+  // ── Stamp sampling (legs) ──
+  // Detect the slide → planted transition. Every plant cycle yields
+  // exactly one stamp; misses are only possible if a plant happens
+  // closer than STAMP_MIN_DIST to the previous stamp (rare; the
+  // body has effectively not moved between cycles).
+
   private sampleStamp(
     key: TrailKey,
     leg: LegInstance,
-    bodyRotation: number,
-    cap: number,
+    rotation: number,
+  ): void {
+    let state = this.stamps.get(key);
+    if (!state) {
+      // First sighting. If the foot is already planted, treat that
+      // as the initial plant and stamp it.
+      state = {
+        wasSliding: leg.isSliding,
+        lastX: leg.worldX,
+        lastY: leg.worldZ,
+        hasInitial: false,
+      };
+      this.stamps.set(key, state);
+      if (!leg.isSliding) {
+        this.emitStamp(state, leg, rotation);
+      }
+      return;
+    }
+    const justLanded = state.wasSliding && !leg.isSliding;
+    state.wasSliding = leg.isSliding;
+    if (!justLanded) return;
+    if (state.hasInitial) {
+      const dx = leg.worldX - state.lastX;
+      const dz = leg.worldZ - state.lastY;
+      if (dx * dx + dz * dz < STAMP_MIN_DIST_SQ) return;
+    }
+    this.emitStamp(state, leg, rotation);
+  }
+
+  private emitStamp(
+    state: StampState,
+    leg: LegInstance,
+    rotation: number,
   ): void {
     const fx = leg.worldX;
     const fz = leg.worldZ;
-    let state = this.stamps.get(key);
-    if (!state) {
-      state = { lastX: fx, lastY: fz, initialized: false };
-      this.stamps.set(key, state);
-    } else if (state.initialized) {
-      const dx = fx - state.lastX;
-      const dz = fz - state.lastY;
-      if (dx * dx + dz * dz < STAMP_MIN_DIST_SQ) return;
-    }
-    if (this.marks.length >= cap || this.marks.length >= MAX_PRINTS) return;
-
-    // Stamp aligned with body forward direction at the moment of plant.
-    // That makes a row of footprints read like a walking gait rather
-    // than a randomly-rotated speckle.
-    const cosR = Math.cos(bodyRotation);
-    const sinR = Math.sin(bodyRotation);
+    const cosR = Math.cos(rotation);
+    const sinR = Math.sin(rotation);
+    // Body forward = (cosR, sinR); right perpendicular = (-sinR, cosR).
+    // Stamp aligned with body forward so a row of footprints reads
+    // like a gait rather than randomly-oriented speckle.
     const halfL = leg.footPadRadius * 1.4;
     const halfW = leg.footPadRadius * 1.0;
-    // Forward axis (cosR, sinR), right-hand perpendicular (-sinR, cosR).
     const fxL = cosR * halfL;
     const fzL = sinR * halfL;
     const rxW = -sinR * halfW;
@@ -444,25 +459,24 @@ export class GroundPrint3D {
     const eLx = fx + fxL - rxW;
     const eLz = fz + fzL - rzW;
 
-    const slot = this.marks.length;
-    const mark: Mark = { slot, age: 0, removed: false };
-    this.marks.push(mark);
-    this.writeQuad(slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
-    this.writeQuadColor(slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
+    const mark = this.allocateMark();
+    this.writeQuad(mark.slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
+    this.writeQuadColor(mark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
     this.posDirty = true;
     this.colDirty = true;
-    this.geometry.setDrawRange(0, this.marks.length * 6);
 
     state.lastX = fx;
     state.lastY = fz;
-    state.initialized = true;
+    state.hasInitial = true;
   }
 
-  /** Mitered-trail append: same algorithm as BurnMark3D.appendMark.
-   *  The new quad spans state.lastEnd → (endX, endY); when a previous
-   *  live mark exists, both quads share the bisector edge so the
-   *  trail is gap- and overlap-free. */
-  private appendMiteredTrailMark(
+  // ── Trail miter append ──
+  // Always allocate the new mark FIRST so any overflow eviction
+  // settles before we touch geometry. Then check whether the
+  // predecessor is still alive (eviction may have killed it). If
+  // alive: bisector miter; if not: square cap.
+
+  private appendMiteredTrail(
     state: TrailState,
     endX: number, endY: number,
     dirX: number, dirZ: number,
@@ -471,17 +485,25 @@ export class GroundPrint3D {
     const halfW = width * 0.5;
     const perpRX = -dirZ;
     const perpRZ = dirX;
-
-    const startCx = state.lastEndX;
-    const startCz = state.lastEndY;
-
+    const startCx = state.lastEmitX;
+    const startCz = state.lastEmitY;
+    // Capture lastDir before allocateMark; allocateMark won't
+    // touch state, but we read these before any branching anyway.
+    const lastDirX = state.lastDirX;
+    const lastDirY = state.lastDirY;
     const prev = state.prevMark;
+
+    // Allocate first — may evict ANY existing mark including `prev`.
+    const newMark = this.allocateMark();
+
     const haveLivePrev = prev !== null && !prev.removed;
     let sLx: number, sLz: number, sRx: number, sRz: number;
 
     if (haveLivePrev) {
-      const sumX = state.lastDirX + dirX;
-      const sumZ = state.lastDirY + dirZ;
+      // Bisector of (lastDir + newDir). Length = 2·cos(θ/2). Miter
+      // offset along its perpendicular is halfW · 2 / |sum|.
+      const sumX = lastDirX + dirX;
+      const sumZ = lastDirY + dirZ;
       const sumLen = Math.sqrt(sumX * sumX + sumZ * sumZ);
       if (sumLen > 1e-4) {
         let miter = (halfW * 2) / sumLen;
@@ -495,6 +517,7 @@ export class GroundPrint3D {
         sRx = startCx + perpBX * miter;
         sRz = startCz + perpBZ * miter;
       } else {
+        // 180° turn — fall back to square cap.
         sLx = startCx - perpRX * halfW;
         sLz = startCz - perpRZ * halfW;
         sRx = startCx + perpRX * halfW;
@@ -515,25 +538,48 @@ export class GroundPrint3D {
     if (haveLivePrev) {
       this.writeQuadEnd(prev!.slot, sRx, sRz, sLx, sLz);
     }
+    this.writeQuad(newMark.slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
+    this.writeQuadColor(newMark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
+    this.posDirty = true;
+    this.colDirty = true;
 
+    state.lastEmitX = endX;
+    state.lastEmitY = endY;
+    state.lastDirX = dirX;
+    state.lastDirY = dirZ;
+    state.prevMark = newMark;
+  }
+
+  /** Allocate a new Mark, evicting the oldest existing mark first
+   *  if the buffer is full. Returns the freshly-pushed Mark with
+   *  `slot` already set. Never drops the request. */
+  private allocateMark(): Mark {
+    if (this.marks.length >= HARD_CAP) {
+      // Linear scan for the highest-age mark — the oldest. The
+      // existing array order is shuffled by swap-pop deletions, so
+      // marks[0] isn't guaranteed oldest; we have to look. This is
+      // O(n) but only runs when at the cap, which in practice is
+      // rare (max-LOD heavy combat only).
+      let oldestIdx = 0;
+      let oldestAge = -1;
+      for (let i = 0; i < this.marks.length; i++) {
+        if (this.marks[i].age > oldestAge) {
+          oldestAge = this.marks[i].age;
+          oldestIdx = i;
+        }
+      }
+      this.removeMarkAt(oldestIdx);
+    }
     const slot = this.marks.length;
     const mark: Mark = { slot, age: 0, removed: false };
     this.marks.push(mark);
-    this.writeQuad(slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
-    this.writeQuadColor(slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
-
-    this.posDirty = true;
-    this.colDirty = true;
     this.geometry.setDrawRange(0, this.marks.length * 6);
-
-    state.lastEndX = endX;
-    state.lastEndY = endY;
-    state.lastDirX = dirX;
-    state.lastDirY = dirZ;
-    state.prevMark = mark;
+    return mark;
   }
 
-  // ── Buffer writers (identical layout to BurnMark3D) ──
+  // ── Buffer writers ──
+  // Quad vertex order: 0=startL, 1=startR, 2=endR, 3=endL (matches
+  // the prebuilt index buffer).
 
   private writeQuad(
     slot: number,
@@ -573,6 +619,10 @@ export class GroundPrint3D {
     }
   }
 
+  /** Swap-pop deletion: copy the last mark's data into slot `i`,
+   *  pop the array, and update the moved mark's `slot` field. The
+   *  removed mark's `removed` flag is set so any TrailState still
+   *  holding a reference can detect the loss. O(1) deletion. */
   private removeMarkAt(i: number): void {
     const last = this.marks.length - 1;
     this.marks[i].removed = true;
@@ -595,6 +645,10 @@ export class GroundPrint3D {
     this.geometry.setDrawRange(0, this.marks.length * 6);
   }
 
+  /** Wipe the geometry but keep the trail/stamp Maps intact. The
+   *  toggle path uses this; mid-update gating skips emit instead.
+   *  TrailStates' prevMark refs go stale but the `removed` flag
+   *  + clearing prevMark below makes the next emit start fresh. */
   private clearMarksOnly(): void {
     for (const m of this.marks) m.removed = true;
     this.marks.length = 0;
@@ -602,6 +656,26 @@ export class GroundPrint3D {
     for (const state of this.trails.values()) state.prevMark = null;
     this.posDirty = false;
     this.colDirty = false;
+  }
+
+  private flushBuffers(): void {
+    if (this.marks.length > 0) {
+      if (this.posDirty) {
+        this.posAttr.clearUpdateRanges();
+        this.posAttr.addUpdateRange(0, this.marks.length * 12);
+        this.posAttr.needsUpdate = true;
+        this.posDirty = false;
+      }
+      if (this.colDirty) {
+        this.colAttr.clearUpdateRanges();
+        this.colAttr.addUpdateRange(0, this.marks.length * 16);
+        this.colAttr.needsUpdate = true;
+        this.colDirty = false;
+      }
+    } else {
+      this.posDirty = false;
+      this.colDirty = false;
+    }
   }
 
   destroy(): void {
