@@ -26,9 +26,12 @@ import {
 } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
-import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
-import { LAND_CELL_SIZE } from '../../config';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
+import {
+  getLocomotionSurfaceHeight,
+  getLocomotionSurfaceNormal,
+  sampleLocomotionFootSurface,
+} from './LocomotionTerrainSampler';
 
 /** Per-unit step-circle radius as a fraction of the unit's LONGEST
  *  leg (upperLegLength + lowerLegLength). One value shared by every
@@ -738,10 +741,7 @@ function transformChassisToWorld(
   // Read from the unit's sim-side smoothed normal (updateUnitTilt) so
   // legs/wheels and chassis tilt all share one canonical value, falling
   // back to a raw-terrain read for non-unit entities.
-  const n = entity.unit?.surfaceNormal ?? getSurfaceNormal(
-    entity.transform.x, entity.transform.y,
-    mapWidth, mapHeight, LAND_CELL_SIZE,
-  );
+  const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
   if (n.nx === 0 && n.ny === 0) {
     out.x = entity.transform.x + yx;
     out.y = entity.transform.z - bodyCenterHeight + yy;
@@ -791,7 +791,7 @@ function initializeLegAt(
   // Transform to world to find the foot's spawn XZ, then snap Y to
   // the actual terrain elevation so the foot lands ON the ground.
   transformChassisToWorld(cx, cy, cz, entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut);
-  const groundY = getSurfaceHeight(_worldOut.x, _worldOut.z, mapWidth, mapHeight, LAND_CELL_SIZE);
+  const groundY = getLocomotionSurfaceHeight(_worldOut.x, _worldOut.z, mapWidth, mapHeight);
   leg.worldX = _worldOut.x;
   leg.worldY = groundY;
   leg.worldZ = _worldOut.z;
@@ -1032,10 +1032,7 @@ export function updateLocomotion(
     // shared across every leg's IK so all legs bend their knees
     // along the same chassis-relative "up", regardless of slope.
     // On flat ground this collapses to (0, 1, 0) = world up.
-    const sn = entity.unit?.surfaceNormal ?? getSurfaceNormal(
-      entity.transform.x, entity.transform.y,
-      mapWidth, mapHeight, LAND_CELL_SIZE,
-    );
+    const sn = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
     const chassisUpX = sn.nx;
     const chassisUpY = sn.nz;
     const chassisUpZ = sn.ny;
@@ -1186,7 +1183,7 @@ export function updateLocomotion(
         const tWorldZ = _worldOut.z;
         // Y comes from actual terrain at the chosen XZ — feet always
         // land on real ground, not a plane through the rest center.
-        const groundY = getSurfaceHeight(tWorldX, tWorldZ, mapWidth, mapHeight, LAND_CELL_SIZE);
+        const groundY = getLocomotionSurfaceHeight(tWorldX, tWorldZ, mapWidth, mapHeight);
 
         leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
         leg.targetWorldX = tWorldX;
@@ -1218,16 +1215,17 @@ export function updateLocomotion(
       // endpoint needs enough clearance for the leg cylinder's radius.
       // Sampling at the current visual XZ keeps sliding feet above
       // hills/ridges between their start and target ground points.
-      const footGroundY = getSurfaceHeight(footX, footZ, mapWidth, mapHeight, LAND_CELL_SIZE);
-      const footSurfaceNormal = getSurfaceNormal(footX, footZ, mapWidth, mapHeight, LAND_CELL_SIZE);
       const footCylinderRadius = mesh.legLod === 'simple' ? leg.upperThick : leg.lowerThick;
-      const footNormalY = Math.max(0.35, footSurfaceNormal.nz);
-      const padVerticalLift = (leg.footPadHalfHeight + FOOT_PAD_GROUND_CLEARANCE) / footNormalY;
-      const cylinderVerticalLift = footCylinderRadius + FOOT_PAD_GROUND_CLEARANCE;
-      const visualFootY = Math.max(
-        footY,
-        footGroundY + Math.max(cylinderVerticalLift, padVerticalLift),
+      const footSurface = sampleLocomotionFootSurface(
+        footX,
+        footZ,
+        mapWidth,
+        mapHeight,
+        footCylinderRadius,
+        leg.footPadHalfHeight,
+        FOOT_PAD_GROUND_CLEARANCE,
       );
+      const visualFootY = Math.max(footY, footSurface.visualFootY);
 
       // Write the leg's two cylinder slots into the shared
       // instanced renderer's per-instance buffers. After this loop
@@ -1273,7 +1271,7 @@ export function updateLocomotion(
         footX, visualFootY, footZ,
         leg.footPadRadius,
         leg.footPadHalfHeight,
-        footSurfaceNormal.nx, footSurfaceNormal.nz, footSurfaceNormal.ny,
+        footSurface.nx, footSurface.nz, footSurface.ny,
         leg.shellPool,
       );
     }

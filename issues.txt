@@ -101,14 +101,17 @@ profiles/components, not reinterpret blueprint pieces independently.
     - src/game/render3d/Locomotion3D.ts:334
     - src/game/render3d/Locomotion3D.ts:711
     - src/game/render3d/Locomotion3D.ts:1041
-    - file size: 1137 lines
+    - src/game/render3d/LocomotionTerrainSampler.ts:1
+    - file size: 1308 lines
 
     Legs, treads, wheels, IK-ish foot placement, terrain sampling, debug rest
-    spheres, and instanced leg pools all share one file. That makes it too easy
-    for locomotion rendering to drift from locomotion physics/blueprints.
+    spheres, and instanced leg pools mostly share one file. Terrain height /
+    normal reads now go through `LocomotionTerrainSampler`, but the rig and
+    animation logic are still too coupled. That makes it too easy for
+    locomotion rendering to drift from locomotion physics/blueprints.
 
     Fix direction: split by responsibility: `LegRig3D`, `TreadRig3D`,
-    `WheelRig3D`, `LocomotionTerrainSampler`, and `LocomotionAnimationState`.
+    `WheelRig3D`, and `LocomotionAnimationState`.
 
 16. Type files are too broad for the atomic boundaries we want.
     References:
