@@ -13,7 +13,6 @@ import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
-import { getBuildFraction } from '../sim/buildableHelpers';
 import { applyShellOverride } from './ShellMaterial';
 import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { SpinConfig } from '../../config';
@@ -62,10 +61,9 @@ import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
-import { BuildingAnimationController3D } from './BuildingAnimationController3D';
 import type { EntityMesh } from './EntityMesh3D';
-import { buildingDetailVisible, buildingTierAtLeast } from './RenderTier3D';
-import { createBuildingEntityMesh3D } from './BuildingEntityRenderer3D';
+import { buildingTierAtLeast } from './RenderTier3D';
+import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -74,7 +72,6 @@ import { createBuildingEntityMesh3D } from './BuildingEntityRenderer3D';
 // by resolveWeaponWorldMount (sim/combat/combatUtils.ts), so visual
 // barrel tip and sim muzzle stay locked together.
 
-const BUILDING_HEIGHT = 120;
 const BARREL_COLOR = 0xffffff;
 const MIRROR_PANEL_COLOR = MIRROR_CHROME_MATERIAL.color;
 const MIRROR_PANEL_METALNESS = MIRROR_CHROME_MATERIAL.metalness;
@@ -167,21 +164,15 @@ export class Render3DEntities {
   private legRenderer!: LegInstancedRenderer;
 
   private unitMeshes = new Map<number, EntityMesh>();
-  private buildingMeshes = new Map<number, EntityMesh>();
-  // Reusable "seen this frame" sets — the four per-frame update loops
-  // (barrel-spin, unit, building, projectile) each need to track which
-  // entity ids were visited so stale Map entries get pruned. Keeping
-  // them as instance fields and calling `.clear()` at the top of each
-  // loop avoids allocating a fresh Set on every render frame — four
-  // Set allocations × 60 Hz = ~240 GC objects/sec otherwise.
+  // Reusable "seen this frame" set for unit pruning. Keeping it as an
+  // instance field and calling `.clear()` avoids a fresh Set allocation
+  // every render frame.
   private _seenUnitIds = new Set<EntityId>();
-  private _seenBuildingIds = new Set<number>();
   private lastUnitInstancedEntitySetVersion = -1;
-  private lastBuildingEntitySetVersion = -1;
   private projectileRenderer: ProjectileRenderer3D;
   private selectionOverlays: SelectionOverlayRenderer3D;
   private constructionVisuals: ConstructionVisualController3D;
-  private buildingAnimations: BuildingAnimationController3D;
+  private buildingRenderer: BuildingEntityRenderer3D;
 
   // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
   // Angle advances by `speed` radians/sec; speed accelerates toward
@@ -535,10 +526,19 @@ export class Render3DEntities {
       radiusSphereGeom: this.radiusSphereGeom,
     });
     this.constructionVisuals = new ConstructionVisualController3D(this.clientViewState);
-    this.buildingAnimations = new BuildingAnimationController3D(
-      this.clientViewState,
-      this.constructionVisuals,
-    );
+    this.buildingRenderer = new BuildingEntityRenderer3D({
+      world: this.world,
+      clientViewState: this.clientViewState,
+      selectionOverlays: this.selectionOverlays,
+      constructionVisuals: this.constructionVisuals,
+      markerBoxGeom: this.buildingMarkerBoxGeom,
+      turretHeadGeom: this.turretHeadGeom,
+      barrelGeom: this.barrelGeom,
+      barrelMat: this.barrelMat,
+      getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
+      resolveObjectLod: (entity) => this.resolveEntityObjectLod(entity),
+      disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
+    });
     this.projectileRenderer = new ProjectileRenderer3D({
       world: this.world,
       clientViewState: this.clientViewState,
@@ -750,7 +750,7 @@ export class Render3DEntities {
     // the dt on the instance so the per-unit body can read it.
     this._spinDt = spinDt;
     this.updateUnits();
-    this.updateBuildings();
+    this.buildingRenderer.update(this.lod, this._spinDt, this._currentDtMs, this._lastSpinMs);
     this.projectileRenderer.update(this.lod);
     // One flush per frame uploads the per-instance leg cylinder
     // buffers (start / end / thickness) to the GPU. Every leg in
@@ -2698,208 +2698,6 @@ export class Render3DEntities {
     }
   }
 
-  private updateBuildings(): void {
-    const buildings = this.clientViewState.getBuildings();
-    const seen = this._seenBuildingIds;
-    const entitySetVersion = this.clientViewState.getEntitySetVersion();
-    const pruneBuildings = entitySetVersion !== this.lastBuildingEntitySetVersion;
-    if (pruneBuildings) seen.clear();
-    this.constructionVisuals.beginFrame();
-
-    // LOD-driven detail visibility for buildings. Each accent mesh now
-    // declares its own tier range, and the per-object resolver can lower
-    // distant buildings below the global tier without using footprint size.
-
-    for (const e of buildings) {
-      if (pruneBuildings) seen.add(e.id);
-      // Buildings are sparse and strategically important. Do not apply
-      // the 2D render-scope early-out here: it can disagree with the
-      // perspective/frustum view at steep camera angles and make a
-      // building vanish even though its 3D LOD cell should render a
-      // full shape or marker. Let Three frustum-cull the final meshes.
-      const objectTier = this.resolveEntityObjectLod(e);
-      const markerOnly = objectTier === 'marker';
-      const tier = markerOnly ? 'min' : objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
-      const pid = e.ownership?.playerId;
-      const w = e.building?.width ?? 100;
-      const d = e.building?.height ?? 100;
-
-      let m = this.buildingMeshes.get(e.id);
-      if (!m) {
-        m = createBuildingEntityMesh3D({
-          entity: e,
-          width: w,
-          depth: d,
-          ownerId: pid,
-          globalGraphicsTier: this.lod.gfx.tier,
-          lodKey: this.lod.key,
-          world: this.world,
-          turretHeadGeom: this.turretHeadGeom,
-          barrelGeom: this.barrelGeom,
-          barrelMat: this.barrelMat,
-          getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
-        });
-        this.buildingMeshes.set(e.id, m);
-        this.buildingAnimations.register(e, m);
-      }
-
-      const buildable = e.buildable;
-      const progress =
-        buildable && !buildable.isComplete
-          ? Math.max(0.05, Math.min(1, getBuildFraction(buildable)))
-          : 1;
-      const selected = e.selectable?.selected === true;
-      const buildingBaseY = e.building ? e.transform.z - e.building.depth / 2 : 0;
-      const detailsReady = !markerOnly && progress >= 1;
-      const buildingRenderDirty =
-        m.buildingCachedTier !== objectTier ||
-        m.buildingCachedGraphicsTier !== tier ||
-        m.buildingCachedOwnerId !== pid ||
-        m.buildingCachedProgress !== progress ||
-        m.buildingCachedSelected !== selected ||
-        m.buildingCachedWidth !== w ||
-        m.buildingCachedDepth !== d ||
-        m.buildingCachedX !== e.transform.x ||
-        m.buildingCachedY !== e.transform.y ||
-        m.buildingCachedZ !== e.transform.z ||
-        m.buildingCachedRotation !== e.transform.rotation;
-
-      if (buildingRenderDirty) {
-        m.group.visible = true;
-        if (!m.buildingPrimaryMaterialLocked) {
-          const primaryMat = this.getPrimaryMat(pid);
-          for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
-        }
-        if (m.buildingDetails) {
-          const primaryMat = this.getPrimaryMat(pid);
-          for (const detail of m.buildingDetails) {
-            if (detail.role === 'solarTeamAccent') detail.mesh.material = primaryMat;
-          }
-        }
-
-        // Transform.z is the building's vertical center in sim space.
-        // Render from the footprint base so buildings sit on the same
-        // terrain height the server used when creating their collider.
-        m.group.position.set(e.transform.x, buildingBaseY, e.transform.y);
-        m.group.rotation.y = -e.transform.rotation;
-        // Shell-state visual — same logic as units: while the
-        // building's buildable is incomplete, every mesh inside the
-        // group flips to the shared transparent gray shell material.
-        applyShellOverride(
-          m.group,
-          !!(e.buildable && !e.buildable.isComplete && !e.buildable.isGhost),
-        );
-        const h = m.buildingHeight ?? BUILDING_HEIGHT;
-
-        // Build-progress visual — bottom-up fill. Primary body scales
-        // vertically by `progress` (the average fill across the three
-        // resource axes computed from paid / required, clamped to a
-        // small minimum so a 0% building still catches light and is
-        // clickable); accent meshes (chimney, solar cells) stay hidden
-        // until the building is complete so they don't pop out of an
-        // incomplete silhouette.
-        const renderH = h * progress;
-        // Buildings own the single primary body at chassisMeshes[0]; scale
-        // it directly instead of the chassis wrapper group (which stays
-        // at identity so the building-detail meshes added alongside it
-        // aren't affected).
-        const primary = m.chassisMeshes[0];
-        primary.position.set(0, renderH / 2, 0);
-        primary.scale.set(w, renderH, d);
-        primary.visible = !markerOnly;
-        if (!m.lodMarker) {
-          const marker = new THREE.Mesh(this.buildingMarkerBoxGeom, this.getPrimaryMat(pid));
-          marker.userData.entityId = e.id;
-          m.group.add(marker);
-          m.lodMarker = marker;
-        } else {
-          m.lodMarker.material = this.getPrimaryMat(pid);
-        }
-        // At marker tier the type-specific primary mesh and the accent
-        // details are all hidden, so without a stand-in the building
-        // would collapse to nothing. Show a simple team-colored box
-        // sized to the building's LOGICAL sim cuboid (width × depth ×
-        // height — identical to the static collider on the host) so it
-        // still reads as a building on the ground. Same volume the
-        // high-LOD primary occupies, just one cube instead of a bespoke
-        // shape.
-        const markerHeight = e.building?.depth ?? (m.buildingHeight ?? BUILDING_HEIGHT);
-        m.lodMarker.visible = markerOnly;
-        m.lodMarker.position.set(0, markerHeight / 2, 0);
-        m.lodMarker.scale.set(w, markerHeight, d);
-        if (m.buildingDetails) {
-          for (const detail of m.buildingDetails) {
-            const visible = detailsReady && buildingDetailVisible(detail, tier);
-            detail.mesh.visible = visible;
-          }
-        }
-
-        this.selectionOverlays.updateSelectionRing(m, selected, Math.hypot(w, d) * 0.55);
-
-        m.buildingCachedTier = objectTier;
-        m.buildingCachedGraphicsTier = tier;
-        m.buildingCachedOwnerId = pid;
-        m.buildingCachedProgress = progress;
-        m.buildingCachedSelected = selected;
-        m.buildingCachedWidth = w;
-        m.buildingCachedDepth = d;
-        m.buildingCachedX = e.transform.x;
-        m.buildingCachedY = e.transform.y;
-        m.buildingCachedZ = e.transform.z;
-        m.buildingCachedRotation = e.transform.rotation;
-        m.buildingCachedDetailsReady = detailsReady;
-      } else {
-        m.group.visible = true;
-      }
-
-      // Health + build-progress bars handled by HealthBar3D
-      // (billboarded sprite in the world group).
-
-      // Per-frame turret pose for combat turrets mounted on buildings.
-      // Buildings don't tilt and don't yaw after placement, so the
-      // unit path's full tilt-aware decomposition collapses to
-      //   localYaw   = e.transform.rotation - turret.rotation
-      //   localPitch = turret.pitch
-      // (same fast path the unit code uses on flat ground).
-      const combatTurrets = e.combat?.turrets;
-      if (combatTurrets && m.turrets.length === combatTurrets.length) {
-        for (let ti = 0; ti < combatTurrets.length; ti++) {
-          const t = combatTurrets[ti];
-          const tm = m.turrets[ti];
-          if (t.config.constructionEmitter) continue; // factoryRig path
-          const headRadius = tm.headRadius ?? getTurretHeadRadius(t.config);
-          // Building-mount.z is the absolute height of the turret head
-          // center above the building base; subtract headRadius so the
-          // TurretMesh root sits at the right pivot height (head sphere
-          // is built at local Y = headRadius inside the root).
-          tm.root.position.set(t.mount.x, t.mount.z - headRadius, t.mount.y);
-          tm.root.rotation.y = e.transform.rotation - t.rotation;
-          if (tm.pitchGroup) tm.pitchGroup.rotation.z = t.pitch;
-        }
-      }
-      this.selectionOverlays.updateRangeRings(m, e);
-    }
-
-    this.buildingAnimations.update(
-      this.buildingMeshes,
-      this._spinDt,
-      this._currentDtMs,
-      this._lastSpinMs,
-    );
-
-    if (pruneBuildings) {
-      for (const [id, m] of this.buildingMeshes) {
-        if (!seen.has(id)) {
-          this.world.remove(m.group);
-          this.disposeWorldParentedOverlays(m);
-          this.buildingMeshes.delete(id);
-          this.buildingAnimations.unregister(id);
-        }
-      }
-      this.lastBuildingEntitySetVersion = entitySetVersion;
-    }
-  }
-
   /** Look up the lift subgroup for a unit's mesh. The lift group
    *  carries the body's vertical lift (so it sits on top of the
    *  locomotion instead of embedded in it) AND is parented through
@@ -2931,16 +2729,11 @@ export class Render3DEntities {
     // Renderer-wide teardown — drop every cached leg snapshot, no
     // future build will consume them.
     this.legStateCache.clear();
-    for (const m of this.buildingMeshes.values()) {
-      this.world.remove(m.group);
-      this.disposeWorldParentedOverlays(m);
-    }
+    this.buildingRenderer.destroy();
     this.projectileRenderer.destroy();
     this.unitMeshes.clear();
-    this.buildingMeshes.clear();
     this.barrelSpins.clear();
     this._seenUnitIds.clear();
-    this._seenBuildingIds.clear();
     this.constructionVisuals.destroy();
     // Polygonal-chassis pools must tear down BEFORE disposeBodyGeoms().
     // Each pool owns an instanced-only clone of the BodyShape3D cached
@@ -2955,6 +2748,7 @@ export class Render3DEntities {
     this.polyChassis.clear();
     disposeBodyGeoms();
     disposeBuildingGeoms();
+    this.buildingMarkerBoxGeom.dispose();
     this.turretHeadGeom.dispose();
     this.commanderVisualKit.dispose();
     this.barrelGeom.dispose();

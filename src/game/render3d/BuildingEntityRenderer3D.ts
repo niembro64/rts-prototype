@@ -1,17 +1,32 @@
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
-import type { Entity, PlayerId } from '../sim/types';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfigFor } from '@/clientBarConfig';
+import { getBuildFraction } from '../sim/buildableHelpers';
+import type { ClientViewState } from '../network/ClientViewState';
+import { getTurretHeadRadius } from '../math';
+import { applyShellOverride } from './ShellMaterial';
 import {
   buildBuildingShape,
   type BuildingShapeType,
 } from './BuildingShape3D';
 import type { EntityMesh } from './EntityMesh3D';
+import type { Lod3DState } from './Lod3D';
+import {
+  objectLodToGraphicsTier,
+  type RenderObjectLodTier,
+} from './RenderObjectLod';
+import { buildingDetailVisible } from './RenderTier3D';
+import { BuildingAnimationController3D } from './BuildingAnimationController3D';
+import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
+import type { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import {
   buildTurretMesh3D,
   type TurretMesh,
 } from './TurretMesh3D';
+
+const BUILDING_HEIGHT = 120;
 
 export type BuildingEntityMeshFactoryOptions = {
   entity: Entity;
@@ -121,4 +136,260 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
     solarOpenAmount: entity.building?.solar?.open === false ? 0 : 1,
   };
+}
+
+export type BuildingEntityRenderer3DOptions = {
+  world: THREE.Group;
+  clientViewState: ClientViewState;
+  selectionOverlays: SelectionOverlayRenderer3D;
+  constructionVisuals: ConstructionVisualController3D;
+  markerBoxGeom: THREE.BoxGeometry;
+  turretHeadGeom: THREE.SphereGeometry;
+  barrelGeom: THREE.CylinderGeometry;
+  barrelMat: THREE.Material;
+  getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
+  resolveObjectLod: (entity: Entity) => RenderObjectLodTier;
+  disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
+};
+
+export class BuildingEntityRenderer3D {
+  private readonly world: THREE.Group;
+  private readonly clientViewState: ClientViewState;
+  private readonly selectionOverlays: SelectionOverlayRenderer3D;
+  private readonly constructionVisuals: ConstructionVisualController3D;
+  private readonly markerBoxGeom: THREE.BoxGeometry;
+  private readonly turretHeadGeom: THREE.SphereGeometry;
+  private readonly barrelGeom: THREE.CylinderGeometry;
+  private readonly barrelMat: THREE.Material;
+  private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
+  private readonly resolveObjectLod: (entity: Entity) => RenderObjectLodTier;
+  private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
+  private readonly animations: BuildingAnimationController3D;
+  private readonly meshes = new Map<EntityId, EntityMesh>();
+  private readonly seenIds = new Set<EntityId>();
+  private lastEntitySetVersion = -1;
+
+  constructor(options: BuildingEntityRenderer3DOptions) {
+    this.world = options.world;
+    this.clientViewState = options.clientViewState;
+    this.selectionOverlays = options.selectionOverlays;
+    this.constructionVisuals = options.constructionVisuals;
+    this.markerBoxGeom = options.markerBoxGeom;
+    this.turretHeadGeom = options.turretHeadGeom;
+    this.barrelGeom = options.barrelGeom;
+    this.barrelMat = options.barrelMat;
+    this.getPrimaryMat = options.getPrimaryMat;
+    this.resolveObjectLod = options.resolveObjectLod;
+    this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
+    this.animations = new BuildingAnimationController3D(
+      this.clientViewState,
+      this.constructionVisuals,
+    );
+  }
+
+  update(lod: Lod3DState, spinDt: number, currentDtMs: number, timeMs: number): void {
+    const buildings = this.clientViewState.getBuildings();
+    const entitySetVersion = this.clientViewState.getEntitySetVersion();
+    const pruneBuildings = entitySetVersion !== this.lastEntitySetVersion;
+    if (pruneBuildings) this.seenIds.clear();
+    this.constructionVisuals.beginFrame();
+
+    for (const entity of buildings) {
+      if (pruneBuildings) this.seenIds.add(entity.id);
+      this.updateBuilding(entity, lod);
+    }
+
+    this.animations.update(this.meshes, spinDt, currentDtMs, timeMs);
+
+    if (!pruneBuildings) return;
+    for (const [id, mesh] of this.meshes) {
+      if (this.seenIds.has(id)) continue;
+      this.world.remove(mesh.group);
+      this.disposeWorldParentedOverlays(mesh);
+      this.meshes.delete(id);
+      this.animations.unregister(id);
+    }
+    this.lastEntitySetVersion = entitySetVersion;
+  }
+
+  destroy(): void {
+    for (const mesh of this.meshes.values()) {
+      this.world.remove(mesh.group);
+      this.disposeWorldParentedOverlays(mesh);
+    }
+    this.meshes.clear();
+    this.seenIds.clear();
+    this.lastEntitySetVersion = -1;
+    this.animations.destroy();
+  }
+
+  private updateBuilding(entity: Entity, lod: Lod3DState): void {
+    // Buildings are sparse and strategically important. Do not apply
+    // the 2D render-scope early-out here: it can disagree with the
+    // perspective/frustum view at steep camera angles and make a
+    // building vanish even though its 3D LOD cell should render a
+    // full shape or marker. Let Three frustum-cull the final meshes.
+    const objectTier = this.resolveObjectLod(entity);
+    const markerOnly = objectTier === 'marker';
+    const graphicsTier = markerOnly ? 'min' : objectLodToGraphicsTier(objectTier, lod.gfx.tier);
+    const ownerId = entity.ownership?.playerId;
+    const width = entity.building?.width ?? 100;
+    const depth = entity.building?.height ?? 100;
+
+    let mesh = this.meshes.get(entity.id);
+    if (!mesh) {
+      mesh = createBuildingEntityMesh3D({
+        entity,
+        width,
+        depth,
+        ownerId,
+        globalGraphicsTier: lod.gfx.tier,
+        lodKey: lod.key,
+        world: this.world,
+        turretHeadGeom: this.turretHeadGeom,
+        barrelGeom: this.barrelGeom,
+        barrelMat: this.barrelMat,
+        getPrimaryMat: this.getPrimaryMat,
+      });
+      this.meshes.set(entity.id, mesh);
+      this.animations.register(entity, mesh);
+    }
+
+    const buildable = entity.buildable;
+    const progress =
+      buildable && !buildable.isComplete
+        ? Math.max(0.05, Math.min(1, getBuildFraction(buildable)))
+        : 1;
+    const selected = entity.selectable?.selected === true;
+    const buildingBaseY = entity.building ? entity.transform.z - entity.building.depth / 2 : 0;
+    const detailsReady = !markerOnly && progress >= 1;
+    const renderDirty =
+      mesh.buildingCachedTier !== objectTier ||
+      mesh.buildingCachedGraphicsTier !== graphicsTier ||
+      mesh.buildingCachedOwnerId !== ownerId ||
+      mesh.buildingCachedProgress !== progress ||
+      mesh.buildingCachedSelected !== selected ||
+      mesh.buildingCachedWidth !== width ||
+      mesh.buildingCachedDepth !== depth ||
+      mesh.buildingCachedX !== entity.transform.x ||
+      mesh.buildingCachedY !== entity.transform.y ||
+      mesh.buildingCachedZ !== entity.transform.z ||
+      mesh.buildingCachedRotation !== entity.transform.rotation;
+
+    if (renderDirty) {
+      this.updateBuildingMesh(
+        entity,
+        mesh,
+        objectTier,
+        graphicsTier,
+        ownerId,
+        width,
+        depth,
+        progress,
+        selected,
+        buildingBaseY,
+        detailsReady,
+      );
+    } else {
+      mesh.group.visible = true;
+    }
+
+    this.updateTurretPoses(entity, mesh);
+    this.selectionOverlays.updateRangeRings(mesh, entity);
+  }
+
+  private updateBuildingMesh(
+    entity: Entity,
+    mesh: EntityMesh,
+    objectTier: RenderObjectLodTier,
+    graphicsTier: ConcreteGraphicsQuality,
+    ownerId: PlayerId | undefined,
+    width: number,
+    depth: number,
+    progress: number,
+    selected: boolean,
+    buildingBaseY: number,
+    detailsReady: boolean,
+  ): void {
+    mesh.group.visible = true;
+    if (!mesh.buildingPrimaryMaterialLocked) {
+      const primaryMat = this.getPrimaryMat(ownerId);
+      for (const chassisMesh of mesh.chassisMeshes) chassisMesh.material = primaryMat;
+    }
+    if (mesh.buildingDetails) {
+      const primaryMat = this.getPrimaryMat(ownerId);
+      for (const detail of mesh.buildingDetails) {
+        if (detail.role === 'solarTeamAccent') detail.mesh.material = primaryMat;
+      }
+    }
+
+    // Transform.z is the building's vertical center in sim space.
+    // Render from the footprint base so buildings sit on the same
+    // terrain height the server used when creating their collider.
+    mesh.group.position.set(entity.transform.x, buildingBaseY, entity.transform.y);
+    mesh.group.rotation.y = -entity.transform.rotation;
+    applyShellOverride(
+      mesh.group,
+      !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost),
+    );
+
+    const height = mesh.buildingHeight ?? BUILDING_HEIGHT;
+    const renderHeight = height * progress;
+    const primary = mesh.chassisMeshes[0];
+    primary.position.set(0, renderHeight / 2, 0);
+    primary.scale.set(width, renderHeight, depth);
+    primary.visible = objectTier !== 'marker';
+
+    if (!mesh.lodMarker) {
+      const marker = new THREE.Mesh(this.markerBoxGeom, this.getPrimaryMat(ownerId));
+      marker.userData.entityId = entity.id;
+      mesh.group.add(marker);
+      mesh.lodMarker = marker;
+    } else {
+      mesh.lodMarker.material = this.getPrimaryMat(ownerId);
+    }
+    const markerHeight = entity.building?.depth ?? (mesh.buildingHeight ?? BUILDING_HEIGHT);
+    mesh.lodMarker.visible = objectTier === 'marker';
+    mesh.lodMarker.position.set(0, markerHeight / 2, 0);
+    mesh.lodMarker.scale.set(width, markerHeight, depth);
+
+    if (mesh.buildingDetails) {
+      for (const detail of mesh.buildingDetails) {
+        detail.mesh.visible = detailsReady && buildingDetailVisible(detail, graphicsTier);
+      }
+    }
+
+    this.selectionOverlays.updateSelectionRing(mesh, selected, Math.hypot(width, depth) * 0.55);
+
+    mesh.buildingCachedTier = objectTier;
+    mesh.buildingCachedGraphicsTier = graphicsTier;
+    mesh.buildingCachedOwnerId = ownerId;
+    mesh.buildingCachedProgress = progress;
+    mesh.buildingCachedSelected = selected;
+    mesh.buildingCachedWidth = width;
+    mesh.buildingCachedDepth = depth;
+    mesh.buildingCachedX = entity.transform.x;
+    mesh.buildingCachedY = entity.transform.y;
+    mesh.buildingCachedZ = entity.transform.z;
+    mesh.buildingCachedRotation = entity.transform.rotation;
+    mesh.buildingCachedDetailsReady = detailsReady;
+  }
+
+  private updateTurretPoses(entity: Entity, mesh: EntityMesh): void {
+    const combatTurrets = entity.combat?.turrets;
+    if (!combatTurrets || mesh.turrets.length !== combatTurrets.length) return;
+    for (let turretIndex = 0; turretIndex < combatTurrets.length; turretIndex++) {
+      const turret = combatTurrets[turretIndex];
+      const turretMesh = mesh.turrets[turretIndex];
+      if (turret.config.constructionEmitter) continue;
+      const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
+      turretMesh.root.position.set(
+        turret.mount.x,
+        turret.mount.z - headRadius,
+        turret.mount.y,
+      );
+      turretMesh.root.rotation.y = entity.transform.rotation - turret.rotation;
+      if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = turret.pitch;
+    }
+  }
 }
