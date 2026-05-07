@@ -74,6 +74,7 @@ import {
   applyClientUnitVisualPrediction,
   clientUnitPredictionIsSettled,
 } from './ClientUnitPrediction';
+import { ClientRocketTargetFinder } from './ClientRocketTargetFinder';
 export type { PredictionLodContext, PredictionLodTier } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
@@ -247,14 +248,11 @@ export class ClientViewState {
     this.dirtyUnitRenderIds,
     (entity) => this.markEntityPredictionActive(entity),
   );
-
-  // Per-frame cache of living enemy entities, built lazily the first
-  // time a rocket needs to re-acquire this frame. Subsequent rockets
-  // losing target in the same frame share the same scan result — so
-  // 10 rockets losing lock = 1 entity-map walk, not 10.
-  private _rocketEnemyCache: Entity[] = [];
-  private _rocketEnemyCacheFrame: number = -1;
-  private _rocketEnemyCacheOwnerId: PlayerId | null = null;
+  private rocketTargetFinder = new ClientRocketTargetFinder({
+    getUnits: () => this.getUnits(),
+    getBuildings: () => this.getBuildings(),
+    getFrameCounter: () => this.frameCounter,
+  });
 
   // Map dimensions — needed to evaluate the installed server-authored
   // terrain tile map on the client side. Before the first terrain
@@ -1277,7 +1275,7 @@ export class ClientViewState {
         mapHeight: this.mapHeight,
         getEntity: (entityId) => this.entities.get(entityId),
         findNearestEnemyForRocket: (projectile, ownerId) =>
-          this.findNearestEnemyForRocketClient(projectile, ownerId),
+          this.rocketTargetFinder.findNearestEnemyForRocket(projectile, ownerId),
       });
       if (projectileResult.becameLineProjectile) {
         this.activeBeamPathIds.add(id);
@@ -1289,61 +1287,6 @@ export class ClientViewState {
         continue;
       }
     }
-  }
-
-  /** Find the closest live enemy (unit or building) within rocket
-   *  seeker range. Mirrors the server's findNearestEnemyForRocket so
-   *  a rocket whose target dies mid-flight re-locks onto the same
-   *  fallback target on both sides — keeps predicted + authoritative
-   *  trajectories from diverging until the server's next velocity
-   *  update. */
-  private findNearestEnemyForRocketClient(
-    proj: Entity,
-    ownerId: PlayerId,
-  ): Entity | null {
-    const ROCKET_REACQUIRE_RANGE_SQ = 800 * 800;
-    // Per-frame enemy cache. The first rocket to lose target walks
-    // the entity map and collects every living enemy; any further
-    // rockets from the same player that lose target this frame reuse
-    // the same list. Rebuilt if the frame counter OR the requesting
-    // owner changed (different player → different enemy set).
-    if (
-      this._rocketEnemyCacheFrame !== this.frameCounter ||
-      this._rocketEnemyCacheOwnerId !== ownerId
-    ) {
-      const list = this._rocketEnemyCache;
-      list.length = 0;
-      const units = this.getUnits();
-      for (let i = 0; i < units.length; i++) {
-        const e = units[i];
-        if (e.ownership?.playerId === undefined || e.ownership.playerId === ownerId) continue;
-        if (!e.unit || e.unit.hp <= 0) continue;
-        list.push(e);
-      }
-      const buildings = this.getBuildings();
-      for (let i = 0; i < buildings.length; i++) {
-        const e = buildings[i];
-        if (e.ownership?.playerId === undefined || e.ownership.playerId === ownerId) continue;
-        if (!e.building || e.building.hp <= 0) continue;
-        list.push(e);
-      }
-      this._rocketEnemyCacheFrame = this.frameCounter;
-      this._rocketEnemyCacheOwnerId = ownerId;
-    }
-
-    let nearest: Entity | null = null;
-    let nearestDistSq = ROCKET_REACQUIRE_RANGE_SQ;
-    for (const e of this._rocketEnemyCache) {
-      const dx = e.transform.x - proj.transform.x;
-      const dy = e.transform.y - proj.transform.y;
-      const dz = e.transform.z - proj.transform.z;
-      const distSq = dx * dx + dy * dy + dz * dz;
-      if (distSq < nearestDistSq) {
-        nearestDistSq = distSq;
-        nearest = e;
-      }
-    }
-    return nearest;
   }
 
   /**
@@ -1837,6 +1780,7 @@ export class ClientViewState {
     this.serverMeta = null;
     this.frameCounter = 0;
     this.predictionLod.clearAll();
+    this.rocketTargetFinder.clear();
     this.activeUnitPredictionIds.clear();
     this.activeProjectilePredictionIds.clear();
     this.activeBeamPathIds.clear();
