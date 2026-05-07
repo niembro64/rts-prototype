@@ -88,6 +88,10 @@ export type GameServerConfig = {
   mapLengthLandCells?: number;
   backgroundMode?: boolean;
   aiPlayerIds?: PlayerId[];
+  /** Background/demo battles can still use the rich prebuilt RTS
+   *  opening state even when no players are AI-controlled. Lobby
+   *  previews pass false so they stay commander-only. */
+  spawnDemoInitialState?: boolean;
   maxSnapshotsPerSec?: number;
   /** Restrict the demo battle's initial-unit spawn to this set of unit
    *  types. When omitted the server falls back to "all background unit

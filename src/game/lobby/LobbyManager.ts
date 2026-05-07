@@ -100,12 +100,13 @@ export async function createBackgroundBattle(
   setTerrainMapShape(terrainMapShape);
 
   // GAME LOBBY preview = a stripped-down background battle showing
-  // only commanders. Passing `aiPlayerIds: []` flips GameServer's
-  // spawn path to `spawnInitialEntities` (commanders only, no
-  // factories, no solars) and disables AI updates entirely; that
-  // single config nob handles the "no buildings + no units"
-  // requirement without a flag-laden detour through spawn.ts.
+  // only commanders. The full DEMO BATTLE keeps its initialized
+  // buildings, units, and fabricator orders, but the local demo seat
+  // is excluded from AI control so it behaves like the REAL BATTLE.
   const isLobbyPreview = mode === 'real';
+  const aiPlayerIds: PlayerId[] = isLobbyPreview
+    ? []
+    : demoPlayerIds.filter((playerId) => playerId !== resolvedLocalPlayerId);
 
   // Restore stored demo unit selection (fall back to config defaults).
   // We resolve this BEFORE creating the GameServer so the constructor's
@@ -139,11 +140,8 @@ export async function createBackgroundBattle(
     backgroundMode: true,
     initialAllowedTypes,
     initialMaxTotalUnits: loadStoredDemoCap(),
-    // Empty `aiPlayerIds` in lobby-preview mode: GameServer falls
-    // through to `spawnInitialEntities` (commanders only) and skips
-    // both `spawnInitialBases` (which would have placed factories +
-    // solars) and `spawnBackgroundUnitsStandalone` (the AI units).
-    ...(isLobbyPreview ? { aiPlayerIds: [] as PlayerId[] } : {}),
+    aiPlayerIds,
+    spawnDemoInitialState: !isLobbyPreview,
   });
 
   const connection = new LocalGameConnection(server);

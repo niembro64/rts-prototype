@@ -492,39 +492,25 @@ export class RtsScene3D {
     this.clientViewState = config.clientViewState;
     this._baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
 
-    // Seed orbit camera on map center (ThreeApp did this too, but we honor the
-    // game vs demo initial-zoom distinction like RtsScene).
+    // Seed orbit camera from the same battle-facing target logic used
+    // after snapshots arrive, while keeping per-mode zoom distances.
     //
     // Initial yaw is set to the local seat's POV — camera "behind" the
-    // viewer's team, looking toward the map center. For real battles
-    // that's the local player's spawn angle on the commander oval;
-    // for the demo battle (no real player) we always pick red (player
-    // index 0) so the demo always reads as if you were watching from
-    // red's seat. centerCameraOnCommander() refines this once entities
-    // are alive (in case the commander has drifted off its spawn);
-    // centerCameraOnMap() preserves yaw so demo-mode framing stays put.
-    // GAME LOBBY preview gets a wide map-center framing and a
-    // continuous slow orbit (driven from `update()` below — feels
-    // like an alt+middle-drag spinning around the map). Demo mode
-    // (full-screen pre-game backdrop) and real-game mode keep the
-    // existing centered-on-map framing + their per-mode zooms.
+    // viewer's team, looking toward the map center. DEMO BATTLE and
+    // REAL BATTLE both frame the local commander so their controls
+    // feel identical; only GAME LOBBY preview keeps the wide map-center
+    // framing and continuous slow orbit (driven from `update()` below).
     const initialZoom = this.lobbyPreview
       ? ZOOM_INITIAL_LOBBY_PREVIEW
       : this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
-    // Real game: target the LOCAL SEAT's spawn position so the
-    // commander is in-frame from frame 1, before any snapshot
-    // arrives. Otherwise the camera sits at the map centre with
-    // its yaw pointing inward from the local seat — which puts
-    // the local seat (and the spawning commander) BEHIND the
-    // camera, so the joiner can't see their own commander until
-    // centerCameraOnCommander() runs after the first snapshot.
-    // Demo / lobby-preview keep the wide map-centre framing they
-    // had before so the whole battlefield reads at a glance.
-    const isRealGame = !this.lobbyPreview && !this.backgroundMode;
-    const seatIndex = isRealGame
+    // Target the LOCAL SEAT's spawn position so the commander is
+    // in-frame from frame 1, before any snapshot arrives. Lobby preview
+    // is intentionally spectator-style and stays centered on the map.
+    const framesLocalCommander = !this.lobbyPreview;
+    const seatIndex = framesLocalCommander
       ? Math.max(0, this.playerIds.indexOf(this.localPlayerId))
       : 0;
-    const initialTarget = isRealGame
+    const initialTarget = framesLocalCommander
       ? getSpawnPositionForSeat(
           seatIndex,
           Math.max(1, this.playerIds.length),
@@ -879,13 +865,11 @@ export class RtsScene3D {
       const winnerId = this.clientViewState.getGameOverWinnerId();
       if (winnerId !== null && !this.isGameOver) this.handleGameOver(winnerId);
 
-      // First-snapshot camera framing. Real games center on the
-      // player's commander (yaw tilts so the map center is forward);
-      // the demo / lobby background centers on the map itself so the
-      // whole battle is visible. Zoom / distance stays at
-      // ZOOM_INITIAL_DEMO from the constructor.
+      // First-snapshot camera framing. Interactive battles center on
+      // the local player's commander (yaw tilts so the map center is
+      // forward); the GAME LOBBY preview remains spectator-wide.
       if (!this.hasCenteredCamera) {
-        if (this.backgroundMode) this.centerCameraOnMap();
+        if (this.lobbyPreview) this.centerCameraOnMap();
         else this.centerCameraOnCommander();
       }
 
@@ -1316,12 +1300,11 @@ export class RtsScene3D {
     }
   }
 
-  // Center the orbit camera on the map center — used by the demo /
-  // lobby background so the whole battlefield is visible instead of
-  // framing a specific commander's seat. Yaw is held at red's POV
-  // (set in the constructor via _povYawForLocalSeat) so demo always
-  // reads as "watching from red's seat" even though the target is
-  // the map center, not the commander.
+  // Center the orbit camera on the map center — used by the GAME
+  // LOBBY preview so the whole upcoming battlefield is visible instead
+  // of framing a specific commander's seat. Yaw is held at red's POV
+  // (set in the constructor via _povYawForLocalSeat) for stable
+  // spectator framing.
   private centerCameraOnMap(): void {
     this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
     this.hasCenteredCamera = true;
@@ -1347,15 +1330,14 @@ export class RtsScene3D {
 
   /** Compute the orbit yaw that would put the camera "behind" a
    *  player's spawn position on the commander oval, looking toward
-   *  the map center. For real battles we use the local player's
-   *  index in `playerIds`; for demo / background battles we always
-   *  use red (index 0) so the framing reads consistently regardless
-   *  of which client is viewing. Math mirrors centerCameraOnCommander:
+   *  the map center. DEMO BATTLE and REAL BATTLE use the active
+   *  local player's index; GAME LOBBY preview uses red (index 0)
+   *  for stable spectator framing. Math mirrors centerCameraOnCommander:
    *  yaw = atan2(−forwardX, forwardZ) where forward is the unit
    *  vector from the player's spawn to the map center. */
   private _povYawForLocalSeat(): number {
     const playerCount = Math.max(1, this.playerIds.length);
-    const seatIndex = this.backgroundMode
+    const seatIndex = this.lobbyPreview
       ? 0
       : Math.max(0, this.playerIds.indexOf(this.localPlayerId));
     const angle = getPlayerBaseAngle(seatIndex, playerCount);
@@ -1830,7 +1812,7 @@ export class RtsScene3D {
 
   public switchPlayer(playerId: PlayerId): void {
     this.localPlayerId = playerId;
-    this.inputManager?.setWaypointMode('move');
+    this.inputManager?.setActivePlayerId(playerId);
     this.markSelectionDirty();
     this.onPlayerChange?.(playerId);
   }

@@ -662,6 +662,10 @@ let gameInstance: GameInstance | null = null;
 // the match starts, cleared when the match ends.
 let clientViewState: ClientViewState | null = null;
 
+function getActiveBattleScene(): GameScene | null {
+  return gameInstance?.getScene() ?? backgroundBattle?.gameInstance?.getScene() ?? null;
+}
+
 // Polling interval IDs for cleanup
 let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
 let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
@@ -1394,7 +1398,7 @@ function resetClientDefaults(): void {
 }
 
 function togglePlayer(): void {
-  const scene = gameInstance?.getScene() ?? backgroundBattle?.gameInstance?.getScene();
+  const scene = getActiveBattleScene();
   if (scene) {
     scene.togglePlayer();
     activePlayer.value = scene.getActivePlayer();
@@ -1402,7 +1406,7 @@ function togglePlayer(): void {
 }
 
 function handleMinimapClick(x: number, y: number): void {
-  const scene = gameInstance?.getScene();
+  const scene = getActiveBattleScene();
   scene?.centerCameraOn(x, y);
 }
 
@@ -1445,27 +1449,27 @@ function restartGame(): void {
 // Selection panel actions
 const selectionActions: SelectionActions = {
   setWaypointMode: (mode: WaypointType) => {
-    const scene = gameInstance?.getScene();
+    const scene = getActiveBattleScene();
     scene?.setWaypointMode(mode);
   },
   startBuild: (buildingType: BuildingType) => {
-    const scene = gameInstance?.getScene();
+    const scene = getActiveBattleScene();
     scene?.startBuildMode(buildingType);
   },
   cancelBuild: () => {
-    const scene = gameInstance?.getScene();
+    const scene = getActiveBattleScene();
     scene?.cancelBuildMode();
   },
   toggleDGun: () => {
-    const scene = gameInstance?.getScene();
+    const scene = getActiveBattleScene();
     scene?.toggleDGunMode();
   },
   queueUnit: (factoryId: number, unitId: string) => {
-    const scene = gameInstance?.getScene();
+    const scene = getActiveBattleScene();
     scene?.queueFactoryUnit(factoryId, unitId);
   },
   cancelQueueItem: (factoryId: number, index: number) => {
-    const scene = gameInstance?.getScene();
+    const scene = getActiveBattleScene();
     scene?.cancelFactoryQueueItem(factoryId, index);
   },
 };

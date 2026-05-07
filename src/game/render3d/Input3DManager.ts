@@ -275,6 +275,17 @@ export class Input3DManager {
     this.onWaypointModeChange?.(mode);
   }
 
+  setActivePlayerId(playerId: PlayerId): void {
+    if (this.context.activePlayerId === playerId) return;
+    this.context.activePlayerId = playerId;
+    this.selectionChangeTracker.reset();
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.setWaypointMode('move');
+    this.clearHoveredEntities();
+    this.refreshCursor();
+  }
+
   /** Enter build mode with a building type. Called from the UI
    *  (scene.startBuildMode forwards to here). Next left-click on the
    *  ground will issue a startBuild command for the selected

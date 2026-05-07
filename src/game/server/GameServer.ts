@@ -311,12 +311,14 @@ export class GameServer {
 
     // AI player configuration
     const aiPlayerIds = config.aiPlayerIds ?? (this.backgroundMode ? [...this.playerIds] : []);
+    const spawnDemoInitialState =
+      this.backgroundMode && (config.spawnDemoInitialState ?? aiPlayerIds.length > 0);
 
     // Spawn initial entities. Only background/demo battles get full
     // bases; real games, including offline games with AI players,
     // start from commanders so their spawn layout matches hosted
     // network games.
-    if (this.backgroundMode && aiPlayerIds.length > 0) {
+    if (spawnDemoInitialState) {
       const constructionSystem = this.simulation.getConstructionSystem();
       const entities = spawnInitialBases(
         this.world,
