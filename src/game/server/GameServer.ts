@@ -56,6 +56,7 @@ import { projectHorizontalOntoSlope, setTerrainTeamCount, isWaterAt, setMetalDep
 import { generateMetalDeposits } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
+import { ServerSnapshotMetaBuilder } from './ServerSnapshotMetaBuilder';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -168,6 +169,7 @@ export class GameServer {
   // Territory capture system
   private captureSystem = new CaptureSystem();
   private debugGridPublisher = new ServerDebugGridPublisher();
+  private snapshotMetaBuilder = new ServerSnapshotMetaBuilder();
 
   // Public IP address (set by host component)
   private ipAddress: string = 'N/A';
@@ -1069,51 +1071,29 @@ export class GameServer {
     // Add server metadata to snapshot. Wind is visual/gameplay-visible and
     // intentionally changes continuously, so metadata must ride every
     // snapshot instead of only when the human-readable clock changes.
-    let serverMeta: NetworkServerSnapshot['serverMeta'] | undefined;
-    const currentTime = this.formatServerTime();
-    {
-      const tickStats = this.getTickStats();
-      const wind = this.simulation.getWindState();
-      // CPU load = tick work / tick budget, expressed as a percent. We
-      // clamp nothing here — the UI can show >100 to mean "falling behind".
-      const tickBudgetMs = 1000 / this.tickRateHz;
-      const cpuAvg = this.tickMsInitialized
-        ? (this.tickMsAvg / tickBudgetMs) * 100
-        : 0;
-      const cpuHi = this.tickMsInitialized
-        ? (this.tickMsHi / tickBudgetMs) * 100
-        : 0;
-      serverMeta = {
-        ticks: {
-          avg: tickStats.avgFps,
-          low: tickStats.worstFps,
-          rate: this.tickRateHz,
-          target: this.userTickRateHz,
-        },
-        snaps: { rate: this.maxSnapshotsDisplay, keyframes: this.keyframeRatioDisplay },
-        server: { time: currentTime, ip: this.ipAddress },
-        grid: this.debugGridPublisher.isEnabled(),
-        units: {
-          allowed: this.backgroundMode ? [...this.backgroundAllowedTypes] : undefined,
-          max: this.world.maxTotalUnits,
-          count: this.world.getUnits().length,
-        },
-        mirrorsEnabled: this.world.mirrorsEnabled,
-        forceFieldsEnabled: this.world.forceFieldsEnabled,
-        cpu: { avg: cpuAvg, hi: cpuHi },
-        simLod: {
-          picked: this.getSimQuality(),
-          effective: this.getEffectiveSimQuality(),
-          signals: { ...getSimSignalStates() },
-        },
-        wind: {
-          x: wind.x,
-          y: wind.y,
-          speed: wind.speed,
-          angle: wind.angle,
-        },
-      };
-    }
+    const wind = this.simulation.getWindState();
+    const serverMeta = this.snapshotMetaBuilder.build({
+      tickAvg: this.tpsAvg,
+      tickLow: this.tpsLow,
+      tickRateHz: this.tickRateHz,
+      tickTargetHz: this.userTickRateHz,
+      snapshotRate: this.maxSnapshotsDisplay,
+      keyframeRatio: this.keyframeRatioDisplay,
+      ipAddress: this.ipAddress,
+      gridEnabled: this.debugGridPublisher.isEnabled(),
+      allowedUnits: this.backgroundMode ? this.backgroundAllowedTypes : undefined,
+      maxUnits: this.world.maxTotalUnits,
+      unitCount: this.world.getUnits().length,
+      mirrorsEnabled: this.world.mirrorsEnabled,
+      forceFieldsEnabled: this.world.forceFieldsEnabled,
+      tickMsAvg: this.tickMsAvg,
+      tickMsHi: this.tickMsHi,
+      tickMsInitialized: this.tickMsInitialized,
+      simQuality: this.getSimQuality(),
+      effectiveSimQuality: this.getEffectiveSimQuality(),
+      simSignals: getSimSignalStates(),
+      wind,
+    });
 
     // Spatial-grid debug data is diagnostic and expensive to build.
     // Emit it on a slower cadence; clients retain the last grid payload
@@ -1489,26 +1469,6 @@ export class GameServer {
   // Set the public IP address (called by host component after fetching)
   setIpAddress(ip: string): void {
     this.ipAddress = ip;
-  }
-
-  // Format current time as military format with timezone abbreviation (e.g. "14:34:05 MST")
-  // Caches result so delta snapshots can skip sending unchanged time
-  private lastServerTime: string = '';
-  private lastServerTimeSec: number = -1;
-  private formatServerTime(): string {
-    const now = new Date();
-    const sec = now.getSeconds();
-    if (sec !== this.lastServerTimeSec) {
-      this.lastServerTimeSec = sec;
-      this.lastServerTime = new Intl.DateTimeFormat('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-        timeZoneName: 'short',
-      }).format(now);
-    }
-    return this.lastServerTime;
   }
 
   // Toggle spatial grid debug info in snapshots
