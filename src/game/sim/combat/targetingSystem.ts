@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, HysteresisRange, Turret, TurretRanges } from '../types';
-import { getTargetRadius, turretBit, updateWeaponWorldKinematics } from './combatUtils';
+import { decrementCooldown, getTargetRadius, turretBit, updateWeaponWorldKinematics } from './combatUtils';
 import { distanceSquared, shouldRunOnStride } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
@@ -361,14 +361,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       hasEnabledWeapon = true;
       if (weapon.cooldown > 0) {
         hasCooldownState = true;
-        weapon.cooldown -= dtMs;
-        if (weapon.cooldown < 0) weapon.cooldown = 0;
+        weapon.cooldown = decrementCooldown(weapon.cooldown, dtMs);
       }
 
       if (weapon.burst?.cooldown !== undefined && weapon.burst.cooldown > 0) {
         hasCooldownState = true;
-        weapon.burst.cooldown -= dtMs;
-        if (weapon.burst.cooldown < 0) weapon.burst.cooldown = 0;
+        weapon.burst.cooldown = decrementCooldown(weapon.burst.cooldown, dtMs);
       }
     }
     if (!hasEnabledWeapon) {

@@ -11,18 +11,6 @@ Earlier rounds centralized snapshot DTO factories, vector-length math
 (sim/combat/render3d/persistence) and largely orthogonal to the
 snapshot-DTO work. Each lift is small and self-contained.
 
-3. Cooldown floor-to-zero pattern duplicated.
-   - `src/game/sim/combat/targetingSystem.ts:362–365` and `:368–371`
-     share the exact `if (cd > 0) { cd -= dtMs; if (cd < 0) cd = 0; }`
-     three-line guard — once for `weapon.cooldown`, once for
-     `weapon.burst.cooldown`.
-   - Drift kind: exact.
-   - Fix direction: a one-liner `decrementCooldown(cd: number, dtMs:
-     number): number { return cd > 0 ? Math.max(0, cd − dtMs) : 0; }`
-     somewhere local (e.g. top of `combatUtils.ts`). Tiny scope, but
-     adding a third cooldown timer in the future shouldn't reinvent
-     the floor guard.
-
 4. SignalState JSON-parse + per-key validate pattern duplicated.
    - `src/clientBarConfig.ts:612–626` and `src/serverBarConfig.ts:111–120`
      each pull a stored signal-states blob, run an inline

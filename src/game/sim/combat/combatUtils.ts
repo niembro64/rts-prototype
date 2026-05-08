@@ -53,6 +53,16 @@ export function getProjectileLaunchSpeed(shot: Pick<ProjectileShot, 'launchForce
   return shot.launchForce / shot.mass;
 }
 
+/** Step a non-negative cooldown timer toward zero by `dtMs`. Skips
+ *  the work entirely when the timer is already at rest, and floors
+ *  the result at 0 so the next tick's `if (cd > 0)` gate reads false
+ *  instead of leaking a tiny negative deficit into the next cycle. */
+export function decrementCooldown(cd: number, dtMs: number): number {
+  if (cd <= 0) return 0;
+  const next = cd - dtMs;
+  return next < 0 ? 0 : next;
+}
+
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const _rwmOut: Vec3 = { x: 0, y: 0, z: 0 };
 
