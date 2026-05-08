@@ -13,6 +13,8 @@ import {
 } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import {
+  FOREST_SPRUCE2_LEAF_COLOR,
+  FOREST_SPRUCE2_WOOD_COLOR,
   LAND_CELL_SIZE,
   MAP_BG_COLOR,
   MANA_TILE_GROUND_LIFT,
@@ -61,6 +63,9 @@ const BUILD_GRID_COLOR_OK = [0, 102, 0, 160] as const;
 const BUILD_GRID_COLOR_BLOCKED = [119, 0, 0, 170] as const;
 const BUILD_GRID_COLOR_METAL = [0, 58, 153, 185] as const;
 
+const FOREST_SPRUCE2_WOOD_SHADER_RGB = shaderRgbLiteral(FOREST_SPRUCE2_WOOD_COLOR);
+const FOREST_SPRUCE2_LEAF_SHADER_RGB = shaderRgbLiteral(FOREST_SPRUCE2_LEAF_COLOR);
+
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
 const TRIANGLE_DEBUG_COLOR = new THREE.Color();
 const TERRAIN_HORIZON_COLOR = new THREE.Color(TERRAIN_HORIZON_BLEND_CONFIG.color);
@@ -72,6 +77,13 @@ function clamp01(v: number): number {
 function smoothstep01(t: number): number {
   const clamped = clamp01(t);
   return clamped * clamped * (3 - 2 * clamped);
+}
+
+function shaderRgbLiteral(hexColor: number): string {
+  const r = ((hexColor >> 16) & 0xff) / 255;
+  const g = ((hexColor >> 8) & 0xff) / 255;
+  const b = (hexColor & 0xff) / 255;
+  return `vec3(${r.toFixed(6)}, ${g.toFixed(6)}, ${b.toFixed(6)})`;
 }
 
 function triangleDebugHash01(n: number): number {
@@ -266,9 +278,6 @@ export class CaptureTileRenderer3D {
             'float exposedRock = smoothstep(0.38, 0.86, terrainHeightT);',
             'float steepRock = smoothstep(0.20, 0.56, vTerrainSlope);',
             'float highDry = smoothstep(0.68, 1.0, terrainHeightT);',
-            'float broadNoise = sin(vTerrainWorldPos.x * 0.0077 + vTerrainWorldPos.z * 0.0113 + 0.4);',
-            'float fineNoise = sin(vTerrainWorldPos.x * 0.031 - vTerrainWorldPos.z * 0.027 + 2.1);',
-            'float mottled = broadNoise * 0.5 + fineNoise * 0.25;',
             'vec3 wetSoil = vec3(0.18, 0.25, 0.18);',
             'vec3 lowGrass = vec3(0.31, 0.41, 0.22);',
             'vec3 dryGrass = vec3(0.49, 0.43, 0.27);',
@@ -278,8 +287,10 @@ export class CaptureTileRenderer3D {
             'terrainRgb = mix(terrainRgb, rock, max(exposedRock * 0.58, steepRock * 0.48));',
             'terrainRgb = mix(terrainRgb, sunBleachedRock, highDry * 0.38);',
             'terrainRgb = mix(terrainRgb, wetSoil, shoreline * 0.72);',
-            'terrainRgb *= 0.93 + mottled * 0.075;',
             'float flatDetail = (1.0 - smoothstep(0.035, 0.16, vTerrainSlope)) * (1.0 - shoreline);',
+            'float flatGreenDetail = flatDetail * (1.0 - smoothstep(0.38, 0.92, upland)) * (1.0 - exposedRock * 0.82) * (1.0 - highDry * 0.72);',
+            `vec3 forestSpruce2LeafRgb = ${FOREST_SPRUCE2_LEAF_SHADER_RGB};`,
+            `vec3 forestSpruce2WoodRgb = ${FOREST_SPRUCE2_WOOD_SHADER_RGB};`,
             'vec2 detailPos = vTerrainWorldPos.xz;',
             'vec2 bladeGrid = detailPos / 4.4;',
             'vec2 bladeCell = floor(bladeGrid);',
@@ -292,8 +303,10 @@ export class CaptureTileRenderer3D {
             'float bladeAngle = (terrainHash12(bladeCell + vec2(23.3, 51.9)) - 0.5) * 3.14159265;',
             'vec2 bladeLocal = terrainRot2(bladeAngle) * (bladeUv - bladeOffset * 0.38);',
             'float bladeMark = terrainBoxMark(bladeLocal, vec2(0.034, 0.49)) * step(0.20, bladeSeed);',
-            'vec3 bladeRgb = mix(vec3(0.10, 0.32, 0.08), vec3(0.36, 0.62, 0.20), terrainHash12(bladeCell + vec2(7.7, 2.9)));',
-            'terrainRgb = mix(terrainRgb, bladeRgb, bladeMark * flatDetail * 0.70);',
+            'vec3 bladeDarkRgb = forestSpruce2LeafRgb * vec3(0.50, 0.65, 0.48);',
+            'vec3 bladeLightRgb = min(forestSpruce2LeafRgb * vec3(1.30, 1.28, 1.18) + vec3(0.035, 0.040, 0.020), vec3(1.0));',
+            'vec3 bladeRgb = mix(bladeDarkRgb, bladeLightRgb, terrainHash12(bladeCell + vec2(7.7, 2.9)));',
+            'terrainRgb = mix(terrainRgb, bladeRgb, bladeMark * flatGreenDetail * 0.70);',
             'vec2 blade2Grid = detailPos / 2.6;',
             'vec2 blade2Cell = floor(blade2Grid);',
             'vec2 blade2Uv = fract(blade2Grid) - vec2(0.5);',
@@ -305,8 +318,10 @@ export class CaptureTileRenderer3D {
             'float blade2Angle = (terrainHash12(blade2Cell + vec2(19.1, 33.7)) - 0.5) * 3.14159265;',
             'vec2 blade2Local = terrainRot2(blade2Angle) * (blade2Uv - blade2Offset * 0.40);',
             'float blade2Mark = terrainBoxMark(blade2Local, vec2(0.020, 0.49)) * step(0.35, blade2Seed);',
-            'vec3 blade2Rgb = mix(vec3(0.06, 0.24, 0.05), vec3(0.30, 0.55, 0.18), terrainHash12(blade2Cell + vec2(5.1, 88.2)));',
-            'terrainRgb = mix(terrainRgb, blade2Rgb, blade2Mark * flatDetail * 0.65);',
+            'vec3 blade2DarkRgb = forestSpruce2LeafRgb * vec3(0.38, 0.55, 0.36);',
+            'vec3 blade2LightRgb = min(forestSpruce2LeafRgb * vec3(1.18, 1.24, 1.05) + vec3(0.020, 0.025, 0.015), vec3(1.0));',
+            'vec3 blade2Rgb = mix(blade2DarkRgb, blade2LightRgb, terrainHash12(blade2Cell + vec2(5.1, 88.2)));',
+            'terrainRgb = mix(terrainRgb, blade2Rgb, blade2Mark * flatGreenDetail * 0.65);',
             'vec2 stickGrid = detailPos / 8.8;',
             'vec2 stickCell = floor(stickGrid);',
             'vec2 stickUv = fract(stickGrid) - vec2(0.5);',
@@ -318,8 +333,10 @@ export class CaptureTileRenderer3D {
             'float stickAngle = terrainHash12(stickCell + vec2(13.7, 91.1)) * 3.14159265;',
             'vec2 stickLocal = terrainRot2(stickAngle) * (stickUv - stickOffset * 0.44);',
             'float stickMark = terrainBoxMark(stickLocal, vec2(0.022, 0.49)) * step(0.55, stickSeed);',
-            'vec3 stickRgb = mix(vec3(0.18, 0.13, 0.07), vec3(0.42, 0.30, 0.15), terrainHash12(stickCell + vec2(63.4, 12.9)));',
-            'terrainRgb = mix(terrainRgb, stickRgb, stickMark * flatDetail * 0.70);',
+            'vec3 stickDarkRgb = forestSpruce2WoodRgb * vec3(0.45, 0.44, 0.38);',
+            'vec3 stickLightRgb = min(forestSpruce2WoodRgb * vec3(1.25, 1.20, 1.03), vec3(1.0));',
+            'vec3 stickRgb = mix(stickDarkRgb, stickLightRgb, terrainHash12(stickCell + vec2(63.4, 12.9)));',
+            'terrainRgb = mix(terrainRgb, stickRgb, stickMark * flatGreenDetail * 0.70);',
             'vec2 stick2Grid = detailPos / 15.2;',
             'vec2 stick2Cell = floor(stick2Grid);',
             'vec2 stick2Uv = fract(stick2Grid) - vec2(0.5);',
@@ -331,8 +348,10 @@ export class CaptureTileRenderer3D {
             'float stick2Angle = terrainHash12(stick2Cell + vec2(77.4, 31.8)) * 3.14159265;',
             'vec2 stick2Local = terrainRot2(stick2Angle) * (stick2Uv - stick2Offset * 0.42);',
             'float stick2Mark = terrainBoxMark(stick2Local, vec2(0.028, 0.49)) * step(0.72, stick2Seed);',
-            'vec3 stick2Rgb = mix(vec3(0.12, 0.08, 0.04), vec3(0.36, 0.24, 0.12), terrainHash12(stick2Cell + vec2(44.1, 15.6)));',
-            'terrainRgb = mix(terrainRgb, stick2Rgb, stick2Mark * flatDetail * 0.78);',
+            'vec3 stick2DarkRgb = forestSpruce2WoodRgb * vec3(0.32, 0.31, 0.26);',
+            'vec3 stick2LightRgb = min(forestSpruce2WoodRgb * vec3(1.05, 0.98, 0.74), vec3(1.0));',
+            'vec3 stick2Rgb = mix(stick2DarkRgb, stick2LightRgb, terrainHash12(stick2Cell + vec2(44.1, 15.6)));',
+            'terrainRgb = mix(terrainRgb, stick2Rgb, stick2Mark * flatGreenDetail * 0.78);',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
             'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
@@ -364,7 +383,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v13';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v15';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {

@@ -482,6 +482,9 @@ export const SKY_RENDER_CONFIG = {
   midStop: 0.64,
 } as const;
 
+export const FOREST_SPRUCE2_WOOD_COLOR = 0x5b4230;
+export const FOREST_SPRUCE2_LEAF_COLOR = 0x416f35;
+
 // One shared sun definition for scene lights, terrain shading, and
 // cheap contact-shadow offsets. Azimuth is in sim/map space:
 // x=+east, y=+south. A diagonal, lower sun angle makes baked terrain

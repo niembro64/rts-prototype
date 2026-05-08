@@ -3,7 +3,11 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import type { GraphicsConfig, RenderObjectLodTier } from '@/types/graphics';
-import { LAND_CELL_SIZE } from '../../config';
+import {
+  FOREST_SPRUCE2_LEAF_COLOR,
+  FOREST_SPRUCE2_WOOD_COLOR,
+  LAND_CELL_SIZE,
+} from '../../config';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { ViewportFootprint } from '../ViewportFootprint';
 import { getSpawnPositionForSeat } from '../sim/spawn';
@@ -11,7 +15,6 @@ import {
   getSurfaceNormal,
   isFarFromWater,
   isWaterAt,
-  TERRAIN_MAX_RENDER_Y,
   WATER_LEVEL,
 } from '../sim/Terrain';
 import type { Lod3DState } from './Lod3D';
@@ -118,8 +121,6 @@ const DEFAULT_TREE_WATER_BUFFER = 130;
 const DEFAULT_GRASS_WATER_BUFFER = 55;
 const SCOPE_PADDING_EXTRA = 120;
 const RANDOM_ENVIRONMENT_PLACEMENT_MAX_ATTEMPTS_PER_TARGET = 80;
-const FOREST_SPRUCE2_WOOD_COLOR = 0x5b4230;
-const FOREST_SPRUCE2_LEAF_COLOR = 0x416f35;
 const FBX_UNKNOWN_MATERIAL_WARNING_FILTER_KEY =
   '__rtsFbxUnknownMaterialWarningFilterInstalled' as const;
 
