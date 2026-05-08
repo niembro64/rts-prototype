@@ -47,11 +47,13 @@ import { SHOT_BLUEPRINTS } from '../sim/blueprints/shots';
 // Default spray trail altitude for legacy 2D spray targets. Factory
 // tower sprays can pass explicit source/target z heights.
 const TRAIL_Y = 4;
-const PARTICLE_BASE_RADIUS = 2.35;
 const MIN_FLIGHT_SEC = 0.16;
-const MAX_FLIGHT_SEC = 0.62;
 const BUILD_PARTICLE_SPEED = SHOT_BLUEPRINTS.buildSpray.speed;
+const BUILD_MAX_FLIGHT_SEC = SHOT_BLUEPRINTS.buildSpray.lifespan / 1000;
+const BUILD_PARTICLE_BASE_RADIUS = SHOT_BLUEPRINTS.buildSpray.visualRadius;
 const HEAL_PARTICLE_SPEED = 560;
+const HEAL_MAX_FLIGHT_SEC = 0.62;
+const HEAL_PARTICLE_BASE_RADIUS = 2.35;
 const MAX_PARTICLE_SPAWNS_PER_SPRAY_FRAME = 24;
 
 /** LOD multiplier on the raw per-spray particle count, matching the 2D
@@ -298,7 +300,8 @@ export class SprayRenderer3D {
 
   private flightTimeForDistance(distance: number, type: SprayTarget['type']): number {
     const speed = type === 'build' ? BUILD_PARTICLE_SPEED : HEAL_PARTICLE_SPEED;
-    return Math.max(MIN_FLIGHT_SEC, Math.min(MAX_FLIGHT_SEC, distance / speed));
+    const maxFlight = type === 'build' ? BUILD_MAX_FLIGHT_SEC : HEAL_MAX_FLIGHT_SEC;
+    return Math.max(MIN_FLIGHT_SEC, Math.min(maxFlight, distance / speed));
   }
 
   private emitParticle(
@@ -375,7 +378,10 @@ export class SprayRenderer3D {
     this.pEndZ[idx] = endZ;
     this.pAge[idx] = 0;
     this.pLife[idx] = life;
-    this.pSize[idx] = PARTICLE_BASE_RADIUS
+    const baseRadius = spray.type === 'build'
+      ? BUILD_PARTICLE_BASE_RADIUS
+      : HEAL_PARTICLE_BASE_RADIUS;
+    this.pSize[idx] = baseRadius
       * (0.72 + this.random() * 0.52)
       * (0.5 + 0.5 * scaledIntensity);
     this.pWobble[idx] = len * 0.018 + targetSpread * 0.035;
