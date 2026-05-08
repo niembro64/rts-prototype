@@ -3,5 +3,91 @@ As we fix something here we should completely delete it from this file. You shou
 you know for a fact it has been addressed. Remember that our code may have changed since the issue was
 written; check the code and if the issue is no longer relevant, delete it.
 
-Audit findings - 2026-05-07
+Duplicate-code audit — 2026-05-08
 
+The previous round centralized projectile spawn / velocity-update / beam-update /
+sim-event DTO copy+factory helpers into `src/game/network/snapshotDtoCopy.ts`. The
+remaining clusters below follow the same pattern of the same shape getting duplicate
+init in two modules — promoting them into the same module (or into the existing
+`MathHelpers`) keeps the wire schema in lockstep with one source of truth.
+
+1. Wire-DTO factories for action/turret/spray/waypoint/cell still split.
+   - The `NetworkServerSnapshot*` shapes that snapshotDtoCopy.ts already owns
+     (spawn/velocity/beam/sim-event) have peer factories spread across two files
+     for the *other* four nested shapes. Each pair is a no-arg factory returning
+     an identical default-filled object, so adding/removing a wire field today
+     means editing both copies.
+   - Action: `src/game/network/stateSerializer.ts:55` `createPooledAction()` vs
+     no peer factory (snapshotClone.ts builds the dst inline at action-copy time
+     in `copyActionInto`) — but the pool/storage type definition lives in
+     stateSerializer. Adding the centralized factory + lifting `copyActionInto`
+     out of snapshotClone unifies it.
+   - Turret: `stateSerializer.ts:33` `createPooledTurret()` vs
+     `snapshotClone.ts:106` `createReusableNetworkTurret()` — exact duplicate
+     shape; matching `copyNetworkTurretInto` lives in snapshotClone, while the
+     stateSerializer body inlines its own copy in `writeTurretsToPool`.
+   - Spray target: `stateSerializer.ts:167` `createPooledSprayTarget()` (with
+     underscore-prefixed `_sourcePos`/`_targetPos`/`_targetDim` swap fields, the
+     same ownership trick the previous round removed for spawn) vs
+     `snapshotClone.ts:318` `createReusableSpray()` — same shape, different
+     init style.
+   - Waypoint: `stateSerializer.ts:71` `createPooledWaypoint()` vs an inline
+     literal `{ pos: { x: 0, y: 0 }, type: '' }` at `snapshotClone.ts:221`.
+   - Grid cell: `snapshotClone.ts:357` `createReusableCell()` vs inline
+     `{ cell: { x: cell.cell.x, ... }, players: cell.players.slice() }` in
+     `src/game/server/ServerDebugGridPublisher.ts:snapshotCells()` (added in
+     the prior round's defensive-copy fix).
+   - Drift kind: exact (factory shape) / near-exact (copy bodies — same fields,
+     different write style around the underscore-swap trick).
+   - Fix direction: extend `src/game/network/snapshotDtoCopy.ts` with
+     `createActionDto/copyActionInto`, `createTurretDto/copyTurretInto`,
+     `createSprayDto/copySprayInto`, `createWaypointDto/copyWaypointInto`,
+     `createCellDto/copyCellInto`. Have stateSerializer's pool factories,
+     snapshotClone's `createReusable*`, and the publisher's defensive-copy site
+     all import these. The previous round's spawn case is the template.
+
+2. `Math.hypot(x, y, z)` reinvents `magnitude3`.
+   - `src/game/math/MathHelpers.ts:48` already exports `magnitude3(x, y, z)`
+     and its 2D peer `magnitude(x, y)`. Several hot-path sites import nothing
+     and call `Math.hypot` directly:
+   - Site: `src/game/sim/unitTilt.ts:77` — `const len = Math.hypot(nx, ny, nz);`
+     (per-unit per-tick on the EMA renormalize path).
+   - Site: `src/game/network/ClientUnitPrediction.ts:88` — same shape on the
+     client-side tilt EMA renormalize.
+   - Site: `src/game/network/ClientProjectilePrediction.ts:79` — projectile
+     speed magnitude.
+   - Site: `src/game/math/BarrelGeometry.ts:305` — barrel firing-direction
+     length.
+   - Site: `src/game/server/UnitForceSystem.ts:208,385` — 2D force vector
+     magnitudes; should use `magnitude(x, y)`.
+   - Drift kind: exact (same math).
+   - Fix direction: import `magnitude` / `magnitude3` from `../math` (or
+     `'../../math'` depending on depth) at each site. No new helper file
+     needed.
+
+3. `getTransformCosSin` adopted in only some hot paths.
+   - `src/game/math/MathHelpers.ts:105` already exports `getTransformCosSin(t)`
+     that prefers cached `t.rotCos`/`t.rotSin` when present, falling back to
+     the trig calls. Half the codebase uses it; the other half still inlines
+     `Math.cos(t.transform.rotation)` / `Math.sin(...)` and pays the trig cost
+     every call even when the transform has cached values.
+   - Site: `src/game/network/ClientProjectileStore.ts:235`.
+   - Site: `src/game/sim/factoryConstructionSite.ts:61`.
+   - Site: `src/game/sim/commanderAbilities.ts:35`.
+   - Site: `src/game/sim/combat/targetingSystem.ts:350`.
+   - Site: `src/game/render3d/SelectionOverlayRenderer3D.ts:176`.
+   - Site: `src/game/render3d/ConstructionVisualController3D.ts:236`.
+   - Drift kind: divergent (semantically equivalent but skips the cache path).
+   - Fix direction: replace each pair of `Math.cos(t.transform.rotation)` /
+     `Math.sin(t.transform.rotation)` with a single `getTransformCosSin(t.transform)`
+     destructure. No new helper, just adoption.
+
+4. Local `isFiniteNumber` typeguard duplicated.
+   - `src/game/network/ClientSnapshotApplier.ts:27` and
+     `src/game/network/helpers/NetworkEntityFactory.ts:24` define the same
+     `function isFiniteNumber(value: unknown): value is number { return typeof
+     value === 'number' && Number.isFinite(value); }`.
+   - Drift kind: exact.
+   - Fix direction: export it once from a shared module (`src/game/math/MathHelpers.ts`
+     is the natural home; or a new `src/types/numbers.ts` if `MathHelpers` feels
+     too narrow) and import at both sites.
