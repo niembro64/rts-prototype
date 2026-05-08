@@ -683,6 +683,7 @@ let _despawnPoolIndex = 0;
 let _velUpdatePoolIndex = 0;
 let _beamUpdatePoolIndex = 0;
 let _beamPointPoolIndex = 0;
+const _resyncSeenIds = new Set<number>();
 const _economyBuf: Record<PlayerId, NetworkServerSnapshotEconomy> = {} as Record<PlayerId, NetworkServerSnapshotEconomy>;
 const _economyKeys: PlayerId[] = [];
 
@@ -1039,48 +1040,113 @@ export function serializeGameState(
     if (_audioBuf.length > 0) netAudioEvents = _audioBuf;
   }
 
-  // Serialize projectile spawns (reuse buffer)
+  // Serialize projectile spawns (reuse buffer). Full keyframes also
+  // synthesize spawns for every live projectile entity so a client that
+  // missed the original spawn event can still recover the projectile —
+  // delta snapshots only carry units and buildings, and `whole state`
+  // messages can be dropped under backpressure in NetworkManager.
   let netProjectileSpawns: NetworkServerSnapshotProjectileSpawn[] | undefined;
-  if (projectileSpawns && projectileSpawns.length > 0) {
+  const wantKeyframeProjectileResync = !deltaEnabled;
+  const tickSpawnCount = projectileSpawns?.length ?? 0;
+  if (tickSpawnCount > 0 || wantKeyframeProjectileResync) {
     _spawnBuf.length = 0;
-    for (let i = 0; i < projectileSpawns.length; i++) {
-      const ps = projectileSpawns[i];
-      const out = getPooledProjectileSpawn();
-      out.id = ps.id;
-      out._pos.x = ps.pos.x;
-      out._pos.y = ps.pos.y;
-      out._pos.z = ps.pos.z;
-      out.rotation = ps.rotation;
-      out._velocity.x = ps.velocity.x;
-      out._velocity.y = ps.velocity.y;
-      out._velocity.z = ps.velocity.z;
-      out.projectileType = projectileTypeToCode(ps.projectileType);
-      out.maxLifespan = ps.maxLifespan;
-      out.turretId = turretIdToCode(ps.turretId);
-      out.shotId = shotIdToCode(ps.shotId);
-      out.sourceTurretId = ps.sourceTurretId !== undefined
-        ? turretIdToCode(ps.sourceTurretId)
-        : undefined;
-      out.playerId = ps.playerId;
-      out.sourceEntityId = ps.sourceEntityId;
-      out.turretIndex = ps.turretIndex;
-      out.barrelIndex = ps.barrelIndex;
-      out.isDGun = ps.isDGun;
-      out.fromParentDetonation = ps.fromParentDetonation;
-      if (ps.beam) {
-        out._beamStart.x = ps.beam.start.x;
-        out._beamStart.y = ps.beam.start.y;
-        out._beamStart.z = ps.beam.start.z;
-        out._beamEnd.x = ps.beam.end.x;
-        out._beamEnd.y = ps.beam.end.y;
-        out._beamEnd.z = ps.beam.end.z;
-        out.beam = out._beam;
-      } else {
-        out.beam = undefined;
+    if (wantKeyframeProjectileResync) _resyncSeenIds.clear();
+    if (projectileSpawns) {
+      for (let i = 0; i < tickSpawnCount; i++) {
+        const ps = projectileSpawns[i];
+        const out = getPooledProjectileSpawn();
+        out.id = ps.id;
+        out._pos.x = ps.pos.x;
+        out._pos.y = ps.pos.y;
+        out._pos.z = ps.pos.z;
+        out.rotation = ps.rotation;
+        out._velocity.x = ps.velocity.x;
+        out._velocity.y = ps.velocity.y;
+        out._velocity.z = ps.velocity.z;
+        out.projectileType = projectileTypeToCode(ps.projectileType);
+        out.maxLifespan = ps.maxLifespan;
+        out.turretId = turretIdToCode(ps.turretId);
+        out.shotId = shotIdToCode(ps.shotId);
+        out.sourceTurretId = ps.sourceTurretId !== undefined
+          ? turretIdToCode(ps.sourceTurretId)
+          : undefined;
+        out.playerId = ps.playerId;
+        out.sourceEntityId = ps.sourceEntityId;
+        out.turretIndex = ps.turretIndex;
+        out.barrelIndex = ps.barrelIndex;
+        out.isDGun = ps.isDGun;
+        out.fromParentDetonation = ps.fromParentDetonation;
+        if (ps.beam) {
+          out._beamStart.x = ps.beam.start.x;
+          out._beamStart.y = ps.beam.start.y;
+          out._beamStart.z = ps.beam.start.z;
+          out._beamEnd.x = ps.beam.end.x;
+          out._beamEnd.y = ps.beam.end.y;
+          out._beamEnd.z = ps.beam.end.z;
+          out.beam = out._beam;
+        } else {
+          out.beam = undefined;
+        }
+        out.targetEntityId = ps.targetEntityId;
+        out.homingTurnRate = ps.homingTurnRate;
+        _spawnBuf.push(out);
+        if (wantKeyframeProjectileResync) _resyncSeenIds.add(ps.id);
       }
-      out.targetEntityId = ps.targetEntityId;
-      out.homingTurnRate = ps.homingTurnRate;
-      _spawnBuf.push(out);
+    }
+    if (wantKeyframeProjectileResync) {
+      const liveProjectiles = world.getProjectiles();
+      for (let i = 0; i < liveProjectiles.length; i++) {
+        const entity = liveProjectiles[i];
+        if (_resyncSeenIds.has(entity.id)) continue;
+        const proj = entity.projectile;
+        if (!proj) continue;
+        const out = getPooledProjectileSpawn();
+        out.id = entity.id;
+        out._pos.x = entity.transform.x;
+        out._pos.y = entity.transform.y;
+        out._pos.z = entity.transform.z;
+        out.rotation = entity.transform.rotation;
+        out._velocity.x = proj.velocityX;
+        out._velocity.y = proj.velocityY;
+        out._velocity.z = proj.velocityZ;
+        out.projectileType = projectileTypeToCode(proj.projectileType);
+        out.maxLifespan = proj.maxLifespan;
+        out.turretId = proj.sourceTurretId !== undefined
+          ? turretIdToCode(proj.sourceTurretId)
+          : TURRET_ID_UNKNOWN;
+        out.shotId = shotIdToCode(proj.shotId);
+        out.sourceTurretId = proj.sourceTurretId !== undefined
+          ? turretIdToCode(proj.sourceTurretId)
+          : undefined;
+        out.playerId = proj.ownerId;
+        out.sourceEntityId = proj.sourceEntityId;
+        out.turretIndex = proj.config.turretIndex ?? 0;
+        out.barrelIndex = proj.sourceBarrelIndex ?? 0;
+        out.isDGun = entity.dgunProjectile?.isDGun ? true : undefined;
+        // Re-sync spawns carry the projectile's CURRENT pos, not its
+        // muzzle origin. Setting `fromParentDetonation` tells the client
+        // applier to skip the barrel-tip override and treat `pos` as
+        // authoritative — same flag submunitions use for the same
+        // reason.
+        out.fromParentDetonation = true;
+        const pts = proj.points;
+        if (pts && pts.length >= 2) {
+          const start = pts[0];
+          const end = pts[pts.length - 1];
+          out._beamStart.x = start.x;
+          out._beamStart.y = start.y;
+          out._beamStart.z = start.z;
+          out._beamEnd.x = end.x;
+          out._beamEnd.y = end.y;
+          out._beamEnd.z = end.z;
+          out.beam = out._beam;
+        } else {
+          out.beam = undefined;
+        }
+        out.targetEntityId = proj.homingTargetId;
+        out.homingTurnRate = proj.homingTurnRate;
+        _spawnBuf.push(out);
+      }
     }
     if (_spawnBuf.length > 0) netProjectileSpawns = _spawnBuf;
   }
