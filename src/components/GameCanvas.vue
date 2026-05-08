@@ -2500,13 +2500,15 @@ onUnmounted(() => {
             ><span class="bar-label-hover">DEFAULTS</span>
           </BarButton>
         </div>
-        <BarDivider />
         <div class="bar-controls">
-          <span class="time-display" title="Battle elapsed time">{{
-            battleElapsed
-          }}</span>
-          <BarDivider />
           <BarControlGroup>
+            <BarDivider />
+            <span class="time-display" title="Battle elapsed time">{{
+              battleElapsed
+            }}</span>
+          </BarControlGroup>
+          <BarControlGroup>
+            <BarDivider />
             <BarLabel>UNITS:</BarLabel>
             <BarButton
               :active="allDemoUnitsActive"
@@ -2642,6 +2644,7 @@ onUnmounted(() => {
                 @click="setForceFieldsEnabled(!currentForceFieldsEnabled)"
               >FIELD</BarButton>
             </BarButtonGroup>
+            <BarDivider />
           </BarControlGroup>
         </div>
       </div>
@@ -2664,22 +2667,25 @@ onUnmounted(() => {
             ><span class="bar-label-hover">DEFAULTS</span>
           </BarButton>
         </div>
-        <BarDivider />
         <div class="bar-controls">
-          <span
-            v-if="displayServerTime"
-            class="time-display"
-            title="Server wall-clock time"
-            >{{ displayServerTime }}</span
-          >
-          <span
-            v-if="displayServerIp"
-            class="ip-display"
-            title="Server IP address"
-            >{{ displayServerIp }}</span
-          >
-          <BarDivider />
+          <BarControlGroup v-if="displayServerTime">
+            <BarDivider />
+            <span
+              class="time-display"
+              title="Server wall-clock time"
+              >{{ displayServerTime }}</span
+            >
+          </BarControlGroup>
+          <BarControlGroup v-if="displayServerIp">
+            <BarDivider />
+            <span
+              class="ip-display"
+              title="Server IP address"
+              >{{ displayServerIp }}</span
+            >
+          </BarControlGroup>
           <BarControlGroup>
+            <BarDivider />
             <BarLabel>TARGET TPS:</BarLabel>
             <BarButtonGroup>
               <BarButton
@@ -2692,8 +2698,8 @@ onUnmounted(() => {
               >{{ rate }}</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
-          <BarDivider />
           <BarControlGroup>
+            <BarDivider />
             <BarLabel title="Per-unit chassis-tilt EMA. SNAP = no smoothing (raw triangle-jump), FAST/MED/SLOW progressively heavier blending. Drives the sim's updateUnitTilt half-life.">TILT EMA:</BarLabel>
             <BarButtonGroup>
               <BarButton
@@ -2872,6 +2878,7 @@ onUnmounted(() => {
                 @click="setSimQualityValue(opt.value)"
               >{{ opt.label }}</BarButton>
             </BarButtonGroup>
+            <BarDivider />
           </BarControlGroup>
         </div>
       </div>
@@ -2895,22 +2902,25 @@ onUnmounted(() => {
             @click="togglePlayerClientEnabled"
           >{{ playerClientEnabled ? 'ON' : 'OFF' }}</BarButton>
         </div>
-        <BarDivider />
         <div class="bar-controls">
-          <span
-            v-if="displayedClientTime"
-            class="time-display"
-            title="Host-propagated client wall-clock time"
-            >{{ displayedClientTime }}</span
-          >
-          <span
-            v-if="displayedClientIp"
-            class="ip-display"
-            title="Host-propagated public IP address"
-            >{{ displayedClientIp }}</span
-          >
-          <BarDivider />
+          <BarControlGroup v-if="displayedClientTime">
+            <BarDivider />
+            <span
+              class="time-display"
+              title="Host-propagated client wall-clock time"
+              >{{ displayedClientTime }}</span
+            >
+          </BarControlGroup>
+          <BarControlGroup v-if="displayedClientIp">
+            <BarDivider />
+            <span
+              class="ip-display"
+              title="Host-propagated public IP address"
+              >{{ displayedClientIp }}</span
+            >
+          </BarControlGroup>
           <BarControlGroup>
+            <BarDivider />
             <BarLabel>GRID:</BarLabel>
             <BarButtonGroup>
               <BarButton
@@ -2935,7 +2945,6 @@ onUnmounted(() => {
               >{{ opt.label }}</BarButton>
             </BarButtonGroup>
           </BarControlGroup>
-          <BarDivider />
           <!--
             Bottleneck-first ordering: CPU (sim/update work) then GPU (real
             execution time if the EXT_disjoint_timer_query_webgl2 extension
@@ -2944,6 +2953,7 @@ onUnmounted(() => {
             Longtask API). Raw ms throughout — no arbitrary 100%.
           -->
           <BarControlGroup>
+            <BarDivider />
             <BarLabel title="Client CPU — simulation prediction, input, HUD updates. Raw logicMs avg/hi in milliseconds per frame.">CPU:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
@@ -2967,6 +2977,7 @@ onUnmounted(() => {
             </div>
           </BarControlGroup>
           <BarControlGroup>
+            <BarDivider />
             <BarLabel :title="`Client GPU — source: ${gpuSourceLabel}. Raw renderMs avg/hi ${fmt4(renderMsAvg)} / ${fmt4(renderMsHi)} ms. Timer-query (when supported) shows the actual GPU-side execution time in milliseconds; otherwise shows renderer.render() wall-clock which is mostly CPU draw-call submission.`">GPU:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
@@ -2992,6 +3003,7 @@ onUnmounted(() => {
             </div>
           </BarControlGroup>
           <BarControlGroup>
+            <BarDivider />
             <BarLabel title="Total frame time — CPU + GPU wall-clock per frame (ms)">FRAME:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
@@ -3015,6 +3027,7 @@ onUnmounted(() => {
             </div>
           </BarControlGroup>
           <BarControlGroup v-if="longtaskSupported">
+            <BarDivider />
             <!--
               Longtask API: any single main-thread task ≥50 ms counts. This
               shows how many ms per second of wall-clock time were "lost"
@@ -3039,8 +3052,8 @@ onUnmounted(() => {
               </div>
             </div>
           </BarControlGroup>
-          <BarDivider />
           <BarControlGroup>
+            <BarDivider />
             <BarLabel title="PLAYER CLIENT update-loop ticks per second. This includes prediction/input/render prep cadence and is the client-side TPS signal for LOD.">R-TPS:</BarLabel>
             <div class="stat-bar-group">
               <div class="stat-bar">
@@ -3535,6 +3548,7 @@ onUnmounted(() => {
                 @click="setCameraMode('slow')"
               >SLOW</BarButton>
             </BarButtonGroup>
+            <BarDivider />
           </BarControlGroup>
         </div>
         </div>
