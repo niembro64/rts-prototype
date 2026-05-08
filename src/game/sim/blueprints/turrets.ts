@@ -25,17 +25,17 @@ const CONSTRUCTION_EMITTER_VISUALS = {
   sizes: {
     small: {
       towerSize: 'small',
-      pylonHeight: 9.52,
-      pylonOffset: 3.74,
-      innerPylonRadius: 1.22,
-      showerRadius: 3.05,
+      pylonHeight: 10,
+      pylonOffset: 3,
+      innerPylonRadius: 1.5,
+      showerRadius: 3.0,
     },
     large: {
       towerSize: 'large',
-      pylonHeight: 78,
-      pylonOffset: 15.2,
-      innerPylonRadius: 1.955,
-      showerRadius: 4.8875,
+      pylonHeight: 50,
+      pylonOffset: 15,
+      innerPylonRadius: 2,
+      showerRadius: 5,
     },
   },
 } as const;
