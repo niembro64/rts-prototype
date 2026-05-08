@@ -3,6 +3,8 @@ import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import {
   BUILD_BUBBLE_RADIUS_PUSH_MULT,
+  BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC,
+  BUILD_RATE_DISPLAY_EMA_MODE,
   BUILD_RATE_EMA_HALF_LIFE_SEC,
   BUILD_RATE_EMA_MODE,
   SHELL_BAR_COLORS,
@@ -26,6 +28,7 @@ import { hexStringToRgb } from './colorUtils';
 type ConstructionTowerSpinRig = {
   towerOrbitParts: ConstructionTowerOrbitPart[];
   towerSpinAmount: number;
+  displayTowerSpinAmount: number;
   towerSpinPhase: number;
   pylonTopsLocal: THREE.Vector3[];
   pylonTopBaseLocals: THREE.Vector3[];
@@ -118,6 +121,7 @@ export class ConstructionVisualController3D {
 
     this.updateConstructionTowerSpin(rig, targetRateE + targetRateM + targetRateT, dtSec);
     this.blendSmoothedRates(rig.smoothedRates, targetRateE, targetRateM, targetRateT, rateAlpha);
+    this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
     this.applyShowerFromSmoothedRates(rig);
 
     if (
@@ -185,6 +189,7 @@ export class ConstructionVisualController3D {
     const targetMetal  = active ? Math.max(0, Math.min(1, factory?.metalRateFraction  ?? 0)) : 0;
     this.updateConstructionTowerSpin(rig, targetEnergy + targetMana + targetMetal, dtSec);
     this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMana, targetMetal, rateAlpha);
+    this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
 
     if (!active) {
       rig.unitGhost.visible = false;
@@ -291,17 +296,25 @@ export class ConstructionVisualController3D {
       preset.rotation.vel * CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
     );
     const target = Math.max(0, resourceRateSum);
-    const amountBefore = rig.towerSpinAmount;
+    const amountBefore = rig.displayTowerSpinAmount;
     rig.towerSpinAmount += (target - rig.towerSpinAmount) * alpha;
     if (target === 0 && rig.towerSpinAmount < 0.001) {
       rig.towerSpinAmount = 0;
     }
-    if (rig.towerSpinAmount > 0) {
+    const displayAlpha = halfLifeBlend(
+      dtSec,
+      BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC[BUILD_RATE_DISPLAY_EMA_MODE],
+    );
+    rig.displayTowerSpinAmount += (rig.towerSpinAmount - rig.displayTowerSpinAmount) * displayAlpha;
+    if (rig.towerSpinAmount === 0 && rig.displayTowerSpinAmount < 0.001) {
+      rig.displayTowerSpinAmount = 0;
+    }
+    if (rig.displayTowerSpinAmount > 0) {
       rig.towerSpinPhase =
-        (rig.towerSpinPhase + dtSec * CONSTRUCTION_TOWER_SPIN_CONFIG.radPerSec * rig.towerSpinAmount)
+        (rig.towerSpinPhase + dtSec * CONSTRUCTION_TOWER_SPIN_CONFIG.radPerSec * rig.displayTowerSpinAmount)
         % (Math.PI * 2);
     }
-    if (amountBefore === 0 && rig.towerSpinAmount === 0) return;
+    if (amountBefore === 0 && rig.displayTowerSpinAmount === 0) return;
     const c = Math.cos(rig.towerSpinPhase);
     const s = Math.sin(rig.towerSpinPhase);
     for (let i = 0; i < rig.towerOrbitParts.length; i++) {
@@ -331,17 +344,31 @@ export class ConstructionVisualController3D {
     smoothed.metal  += (targetMetal  - smoothed.metal)  * alpha;
   }
 
+  private blendDisplaySmoothedRates(
+    display: { energy: number; mana: number; metal: number },
+    smoothed: { energy: number; mana: number; metal: number },
+    dtSec: number,
+  ): void {
+    const alpha = halfLifeBlend(
+      dtSec,
+      BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC[BUILD_RATE_DISPLAY_EMA_MODE],
+    );
+    display.energy += (smoothed.energy - display.energy) * alpha;
+    display.mana   += (smoothed.mana   - display.mana)   * alpha;
+    display.metal  += (smoothed.metal  - display.metal)  * alpha;
+  }
+
   private applyShowerFromSmoothedRates(rig: {
     showers: THREE.Mesh[];
     showerRadius: number;
     pylonHeight: number;
     pylonBaseY: number;
-    smoothedRates: { energy: number; mana: number; metal: number };
+    displaySmoothedRates: { energy: number; mana: number; metal: number };
   }): void {
     const smoothed: readonly [number, number, number] = [
-      rig.smoothedRates.energy,
-      rig.smoothedRates.mana,
-      rig.smoothedRates.metal,
+      rig.displaySmoothedRates.energy,
+      rig.displaySmoothedRates.mana,
+      rig.displaySmoothedRates.metal,
     ];
     for (let i = 0; i < rig.showers.length && i < 3; i++) {
       const shower = rig.showers[i];
@@ -362,7 +389,7 @@ export class ConstructionVisualController3D {
       pylonTopsLocal: THREE.Vector3[];
       sprayTravelSpeed: number;
       sprayParticleRadius: number;
-      smoothedRates: { energy: number; mana: number; metal: number };
+      displaySmoothedRates: { energy: number; mana: number; metal: number };
     },
     group: THREE.Group,
     sourceId: EntityId,
@@ -372,9 +399,9 @@ export class ConstructionVisualController3D {
     targetRadius: number,
   ): void {
     const smoothed: readonly [number, number, number] = [
-      rig.smoothedRates.energy,
-      rig.smoothedRates.mana,
-      rig.smoothedRates.metal,
+      rig.displaySmoothedRates.energy,
+      rig.displaySmoothedRates.mana,
+      rig.displaySmoothedRates.metal,
     ];
     for (let i = 0; i < rig.pylonTopsLocal.length && i < 3; i++) {
       const rate = smoothed[i];

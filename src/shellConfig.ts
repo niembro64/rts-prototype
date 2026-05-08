@@ -119,6 +119,24 @@ export const BUILD_RATE_EMA_HALF_LIFE_SEC = {
 export type BuildRateEmaMode = keyof typeof BUILD_RATE_EMA_HALF_LIFE_SEC;
 export const BUILD_RATE_EMA_MODE: BuildRateEmaMode = 'mid';
 
+/** Second-stage display EMA, layered on top of BUILD_RATE_EMA_*. The
+ *  first stage tames the per-tick sim noise; this stage makes the
+ *  visible motion (shower bar height, build-spray emission count,
+ *  fabricator tower spin amount) feel velvety instead of merely calm.
+ *  Chaining two single-pole EMAs gives a smoother, ease-in shape than
+ *  any single half-life can produce.
+ *
+ *  Same SNAP/FAST/MID/SLOW shape as the first stage so the two can be
+ *  reasoned about together. */
+export const BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC = {
+  snap: 0,
+  fast: 0.05,
+  mid: 0.18,
+  slow: 0.5,
+} as const;
+export type BuildRateDisplayEmaMode = keyof typeof BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC;
+export const BUILD_RATE_DISPLAY_EMA_MODE: BuildRateDisplayEmaMode = 'mid';
+
 /** Per-unit chassis-tilt smoothing. The terrain mesh is piecewise-flat
  *  at the triangle level, so a unit walking from one triangle to the
  *  next sees its surface normal SNAP rather than rotate continuously.

@@ -64,7 +64,14 @@ export type FactoryConstructionRig = {
    *  rates into these so the showers + sprays don't pop on per-tick
    *  step changes. Zeroed at rig creation. */
   smoothedRates: { energy: number; mana: number; metal: number };
+  /** Second-stage display EMA layered on top of `smoothedRates`. Drives
+   *  the visible shower height + build-spray emission so motion eases
+   *  in/out of changes instead of tracking the first stage 1:1. */
+  displaySmoothedRates: { energy: number; mana: number; metal: number };
   towerSpinAmount: number;
+  /** Second-stage display EMA layered on top of `towerSpinAmount`. The
+   *  visible tower spin uses this so spin-up / spin-down eases in. */
+  displayTowerSpinAmount: number;
   towerSpinPhase: number;
 };
 
@@ -172,7 +179,9 @@ export function buildFactoryMesh(
       sprayTravelSpeed: constructionRig.sprayTravelSpeed,
       sprayParticleRadius: constructionRig.sprayParticleRadius,
       smoothedRates: { energy: 0, mana: 0, metal: 0 },
+      displaySmoothedRates: { energy: 0, mana: 0, metal: 0 },
       towerSpinAmount: 0,
+      displayTowerSpinAmount: 0,
       towerSpinPhase: 0,
     },
   };

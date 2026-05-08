@@ -7,7 +7,13 @@ import { LAND_CELL_SIZE } from '../../config';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { ViewportFootprint } from '../ViewportFootprint';
 import { getSpawnPositionForSeat } from '../sim/spawn';
-import { isFarFromWater, isWaterAt, WATER_LEVEL } from '../sim/Terrain';
+import {
+  getSurfaceNormal,
+  isFarFromWater,
+  isWaterAt,
+  TERRAIN_MAX_RENDER_Y,
+  WATER_LEVEL,
+} from '../sim/Terrain';
 import type { Lod3DState } from './Lod3D';
 import { RenderLodGrid } from './RenderLodGrid';
 
@@ -73,6 +79,16 @@ type PlacementOptions = {
   waterBuffer?: number;
 };
 
+type RandomPlacementProfile = Readonly<{
+  targetCount: number;
+  heightScaleMin: number;
+  heightScaleMax: number;
+  radiusScaleMin: number;
+  radiusScaleMax: number;
+  minTier?: RenderObjectLodTier;
+  waterBuffer: number;
+}>;
+
 type EnvironmentPropNode = {
   placement: EnvironmentPlacement;
   root: THREE.Group;
@@ -101,6 +117,10 @@ const EDGE_CLEARANCE = 180;
 const DEFAULT_TREE_WATER_BUFFER = 130;
 const DEFAULT_GRASS_WATER_BUFFER = 55;
 const SCOPE_PADDING_EXTRA = 120;
+const RANDOM_ENVIRONMENT_TREE_BASE_COUNT = 95;
+const RANDOM_ENVIRONMENT_GRASS_BASE_COUNT = 780;
+const RANDOM_ENVIRONMENT_PLACEMENT_MAX_ATTEMPTS_PER_TARGET = 80;
+const RANDOM_ENVIRONMENT_MIN_GREEN_LAND_ACCEPTANCE = 0.02;
 const FBX_UNKNOWN_MATERIAL_WARNING_FILTER_KEY =
   '__rtsFbxUnknownMaterialWarningFilterInstalled' as const;
 
@@ -581,17 +601,17 @@ export const RANDOM_ENVIRONMENT_ASSETS = [
   { id: 'palm1', use: false, scale: 0.1, frequency: 1 }, // meh
   { id: 'palm2', use: false, scale: 0.1, frequency: 1 }, // meh
   { id: 'palm3', use: false, scale: 0.1, frequency: 1 }, // meh
-  { id: 'lowTree1', use: true, scale: 0.08, frequency: 0.05 }, // simple
+  { id: 'lowTree1', use: true, scale: 0.08, frequency: 0.1 }, // simple
   { id: 'lowTree2', use: false, scale: 0.1, frequency: 1 }, // too complicated
   { id: 'lowTree3', use: false, scale: 0.1, frequency: 1 }, // good
   { id: 'lowTree4', use: true, scale: 0.1, frequency: 1 }, // good simple
   { id: 'lowTree5', use: true, scale: 0.1, frequency: 1 }, // good simple
   { id: 'lowTree6', use: false, scale: 0.1, frequency: 1 }, // terrible
-  { id: 'forestOak1', use: false, scale: 0.1, frequency: 1 },
-  { id: 'forestOak2', use: false, scale: 0.1, frequency: 1 },
-  { id: 'forestOak3', use: false, scale: 0.1, frequency: 1 },
+  { id: 'forestOak1', use: false, scale: 0.1, frequency: 1 }, // too complex
+  { id: 'forestOak2', use: false, scale: 0.1, frequency: 1 }, // too complex
+  { id: 'forestOak3', use: false, scale: 0.1, frequency: 1 }, // too complex
   { id: 'forestSpruce1', use: false, scale: 0.1, frequency: 1 },
-  { id: 'forestSpruce2', use: false, scale: 0.1, frequency: 1 },
+  { id: 'forestSpruce2', use: true, scale: 0.15, frequency: 1 },
   { id: 'forestSpruce3', use: false, scale: 0.1, frequency: 1 },
   { id: 'deadOak1', use: false, scale: 0.1, frequency: 1 },
   { id: 'deadOak2', use: false, scale: 0.1, frequency: 1 },
@@ -611,10 +631,10 @@ export const RANDOM_ENVIRONMENT_ASSETS = [
   { id: 'simpleTree04', use: false, scale: 0.1, frequency: 1 },
   { id: 'simpleTree05', use: false, scale: 0.1, frequency: 1 },
   { id: 'simpleDeadTree', use: false, scale: 0.1, frequency: 1 },
-  { id: 'modGrass1', use: false, scale: 0.1, frequency: 1 },
-  { id: 'modGrass2', use: false, scale: 0.1, frequency: 1 },
-  { id: 'modGrass3', use: false, scale: 0.1, frequency: 1 },
-  { id: 'modGrass4', use: false, scale: 0.1, frequency: 1 },
+  { id: 'modGrass1', use: true, scale: 0.1, frequency: 1 },
+  { id: 'modGrass2', use: true, scale: 0.1, frequency: 1 },
+  { id: 'modGrass3', use: true, scale: 0.1, frequency: 1 },
+  { id: 'modGrass4', use: true, scale: 0.1, frequency: 1 },
   { id: 'lowGrass1', use: false, scale: 0.1, frequency: 1 },
   { id: 'lowGrass2', use: false, scale: 0.1, frequency: 1 },
   { id: 'freeGrass1', use: false, scale: 0.1, frequency: 1 },
@@ -994,103 +1014,73 @@ export class EnvironmentPropRenderer3D {
       this.metalDeposits.length,
     );
     const rng = mulberry32(seed);
-    this.addTreeGroves(placements, rng);
-    this.addGrassMeadows(placements, rng);
+    this.addRandomEnvironmentAssetPlacements(
+      placements,
+      rng,
+      TREE_ASSET_OPTIONS,
+      {
+        targetCount: this.randomTreeTargetCount(),
+        heightScaleMin: 0.78,
+        heightScaleMax: 1.22,
+        radiusScaleMin: 0.85,
+        radiusScaleMax: 1.2,
+        waterBuffer: DEFAULT_TREE_WATER_BUFFER,
+      },
+    );
+    this.addRandomEnvironmentAssetPlacements(
+      placements,
+      rng,
+      GRASS_ASSET_OPTIONS,
+      {
+        targetCount: this.randomGrassTargetCount(),
+        heightScaleMin: 0.55,
+        heightScaleMax: 1.35,
+        radiusScaleMin: 0.65,
+        radiusScaleMax: 1.25,
+        minTier: 'mass',
+        waterBuffer: DEFAULT_GRASS_WATER_BUFFER,
+      },
+    );
     return placements;
   }
 
-  private addTreeGroves(
+  private addRandomEnvironmentAssetPlacements(
     placements: EnvironmentPlacement[],
     rng: () => number,
+    assetOptions: readonly WeightedEnvironmentAssetOption[],
+    profile: RandomPlacementProfile,
   ): void {
-    if (TREE_ASSET_OPTIONS.length === 0) return;
-    const areaScale = this.areaScale();
-    const groveCount = clampInt(Math.round(7 * Math.sqrt(areaScale)), 4, 12);
-    for (let g = 0; g < groveCount; g++) {
-      const center = this.findLandPoint(rng, 180, 1400);
-      if (!center) continue;
-      const groveRadius = randRange(rng, 340, 820) * Math.sqrt(areaScale);
-      const treeCount = clampInt(
-        Math.round(randRange(rng, 9, 18) * Math.sqrt(areaScale)),
-        7,
-        26,
-      );
-      const grassCount = clampInt(
-        Math.round(randRange(rng, 34, 70) * Math.sqrt(areaScale)),
-        22,
-        96,
-      );
-      for (let i = 0; i < treeCount; i++) {
-        const p = scatterAround(center.x, center.z, groveRadius, rng);
-        const assetId = chooseWeightedEnvironmentAssetIdOrNull(
-          TREE_ASSET_OPTIONS,
-          rng,
-        );
-        if (!assetId) continue;
-        const spec = ASSET_BY_ID.get(assetId);
-        if (!spec) continue;
-        this.tryAddPlacement(placements, assetId, p.x, p.z, rng, {
-          height: spec.defaultHeight * randRange(rng, 0.78, 1.22),
-          radius: spec.defaultRadius * randRange(rng, 0.85, 1.2),
-          rotation: rng() * Math.PI * 2,
-          waterBuffer: DEFAULT_TREE_WATER_BUFFER,
-        });
-      }
-      this.addGrassPatch(
-        placements,
-        rng,
-        center.x,
-        center.z,
-        groveRadius * 1.1,
-        grassCount,
-      );
-    }
-  }
-
-  private addGrassMeadows(
-    placements: EnvironmentPlacement[],
-    rng: () => number,
-  ): void {
-    if (GRASS_ASSET_OPTIONS.length === 0) return;
-    const areaScale = this.areaScale();
-    const meadowCount = clampInt(Math.round(9 * Math.sqrt(areaScale)), 5, 16);
-    for (let i = 0; i < meadowCount; i++) {
-      const center = this.findLandPoint(rng, 120, 1400);
-      if (!center) continue;
-      const radius = randRange(rng, 240, 680) * Math.sqrt(areaScale);
-      const count = clampInt(
-        Math.round(randRange(rng, 28, 64) * Math.sqrt(areaScale)),
-        20,
-        88,
-      );
-      this.addGrassPatch(placements, rng, center.x, center.z, radius, count);
-    }
-  }
-
-  private addGrassPatch(
-    placements: EnvironmentPlacement[],
-    rng: () => number,
-    x: number,
-    z: number,
-    radius: number,
-    count: number,
-  ): void {
-    for (let i = 0; i < count; i++) {
-      const p = scatterAround(x, z, radius, rng);
+    if (assetOptions.length === 0 || profile.targetCount <= 0) return;
+    let placed = 0;
+    const maxAttempts =
+      profile.targetCount *
+      RANDOM_ENVIRONMENT_PLACEMENT_MAX_ATTEMPTS_PER_TARGET;
+    for (
+      let attempt = 0;
+      placed < profile.targetCount && attempt < maxAttempts;
+      attempt++
+    ) {
       const assetId = chooseWeightedEnvironmentAssetIdOrNull(
-        GRASS_ASSET_OPTIONS,
+        assetOptions,
         rng,
       );
       if (!assetId) continue;
       const spec = ASSET_BY_ID.get(assetId);
       if (!spec) continue;
-      this.tryAddPlacement(placements, assetId, p.x, p.z, rng, {
-        height: spec.defaultHeight * randRange(rng, 0.55, 1.35),
-        radius: spec.defaultRadius * randRange(rng, 0.65, 1.25),
+      const x = rng() * this.mapWidth;
+      const z = rng() * this.mapHeight;
+      const added = this.tryAddPlacement(placements, assetId, x, z, rng, {
+        height:
+          spec.defaultHeight *
+          randRange(rng, profile.heightScaleMin, profile.heightScaleMax),
+        radius:
+          spec.defaultRadius *
+          randRange(rng, profile.radiusScaleMin, profile.radiusScaleMax),
         rotation: rng() * Math.PI * 2,
-        minTier: 'mass',
-        waterBuffer: DEFAULT_GRASS_WATER_BUFFER,
+        minTier: profile.minTier,
+        waterBuffer: profile.waterBuffer,
       });
+      if (added) placed++;
     }
   }
 
@@ -1113,6 +1103,7 @@ export class EnvironmentPropRenderer3D {
     if (!this.canPlaceAt(x, z, radius, options)) return false;
     const y = this.sampleTerrainHeight(x, z);
     if (!Number.isFinite(y) || y < WATER_LEVEL) return false;
+    if (!this.acceptsRandomEnvironmentLand(x, z, y, rng)) return false;
     placements.push({
       assetId,
       x,
@@ -1124,6 +1115,22 @@ export class EnvironmentPropRenderer3D {
       minTier: options.minTier ?? spec.minTier,
     });
     return true;
+  }
+
+  private acceptsRandomEnvironmentLand(
+    x: number,
+    z: number,
+    y: number,
+    rng: () => number,
+  ): boolean {
+    const normal = getSurfaceNormal(
+      x,
+      z,
+      this.mapWidth,
+      this.mapHeight,
+      LAND_CELL_SIZE,
+    );
+    return rng() <= randomEnvironmentGreenLandAcceptance(y, normal.nz);
   }
 
   private canPlaceAt(
@@ -1185,34 +1192,17 @@ export class EnvironmentPropRenderer3D {
     return true;
   }
 
-  private findLandPoint(
-    rng: () => number,
-    radius: number,
-    maxAttempts: number,
-  ): { x: number; z: number } | null {
-    const centerX = this.mapWidth * 0.5;
-    const centerZ = this.mapHeight * 0.5;
-    const rx = this.mapWidth * 0.42;
-    const rz = this.mapHeight * 0.42;
-    for (let i = 0; i < maxAttempts; i++) {
-      const a = rng() * Math.PI * 2;
-      const r = Math.sqrt(rng()) * 0.96;
-      const x = centerX + Math.cos(a) * rx * r;
-      const z = centerZ + Math.sin(a) * rz * r;
-      if (
-        this.canPlaceAt(x, z, radius, {
-          waterBuffer: DEFAULT_TREE_WATER_BUFFER,
-        })
-      ) {
-        return { x, z };
-      }
-    }
-    return null;
-  }
-
   private areaScale(): number {
     const defaultArea = 10600 * 10600;
     return clamp((this.mapWidth * this.mapHeight) / defaultArea, 0.35, 2.4);
+  }
+
+  private randomTreeTargetCount(): number {
+    return Math.round(RANDOM_ENVIRONMENT_TREE_BASE_COUNT * this.areaScale());
+  }
+
+  private randomGrassTargetCount(): number {
+    return Math.round(RANDOM_ENVIRONMENT_GRASS_BASE_COUNT * this.areaScale());
   }
 }
 
@@ -1417,24 +1407,61 @@ function chooseWeightedEnvironmentAssetIdOrNull(
   return fallback;
 }
 
-function scatterAround(
-  x: number,
-  z: number,
-  radius: number,
-  rng: () => number,
-): { x: number; z: number } {
-  const a = rng() * Math.PI * 2;
-  const r = Math.sqrt(rng()) * radius;
-  return {
-    x: x + Math.cos(a) * r,
-    z: z + Math.sin(a) * r,
-  };
+function randomEnvironmentGreenLandAcceptance(
+  terrainY: number,
+  normalUp: number,
+): number {
+  const heightT = clamp(
+    (terrainY - WATER_LEVEL) / Math.max(1, TERRAIN_MAX_RENDER_Y - WATER_LEVEL),
+    0,
+    1,
+  );
+  const slope = 1 - clamp(Math.abs(normalUp), 0, 1);
+  const shoreline =
+    1 - smoothstep(WATER_LEVEL + 10, WATER_LEVEL + 140, terrainY);
+  const upland = smoothstep(0.16, 0.58, heightT);
+  const exposedRock = smoothstep(0.38, 0.86, heightT);
+  const steepRock = smoothstep(0.2, 0.56, slope);
+  const highDry = smoothstep(0.68, 1, heightT);
+  const flatDetail =
+    (1 - smoothstep(0.035, 0.16, slope)) * (1 - shoreline);
+
+  let r = mixNumber(0.31, 0.49, upland);
+  let g = mixNumber(0.41, 0.43, upland);
+  let b = mixNumber(0.22, 0.27, upland);
+  const rockMix = Math.max(exposedRock * 0.58, steepRock * 0.48);
+  r = mixNumber(r, 0.43, rockMix);
+  g = mixNumber(g, 0.42, rockMix);
+  b = mixNumber(b, 0.36, rockMix);
+  const highDryMix = highDry * 0.38;
+  r = mixNumber(r, 0.62, highDryMix);
+  g = mixNumber(g, 0.59, highDryMix);
+  b = mixNumber(b, 0.5, highDryMix);
+  const shorelineMix = shoreline * 0.72;
+  r = mixNumber(r, 0.18, shorelineMix);
+  g = mixNumber(g, 0.25, shorelineMix);
+  b = mixNumber(b, 0.18, shorelineMix);
+
+  const greenDominance = clamp((g - Math.max(r, b) + 0.08) / 0.18, 0, 1);
+  const flatPreference =
+    RANDOM_ENVIRONMENT_MIN_GREEN_LAND_ACCEPTANCE +
+    (1 - RANDOM_ENVIRONMENT_MIN_GREEN_LAND_ACCEPTANCE) * flatDetail;
+  return clamp(
+    greenDominance * flatPreference,
+    RANDOM_ENVIRONMENT_MIN_GREEN_LAND_ACCEPTANCE,
+    1,
+  );
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function clampInt(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, Math.round(value)));
+function smoothstep(edge0: number, edge1: number, value: number): number {
+  const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function mixNumber(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
 }

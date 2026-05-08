@@ -32,9 +32,16 @@ export type ConstructionEmitterRig = {
   sprayTravelSpeed: number;
   sprayParticleRadius: number;
   smoothedRates: { energy: number; mana: number; metal: number };
+  /** Second-stage display EMA layered on top of `smoothedRates`. Drives
+   *  the visible shower height + build-spray emission so motion eases
+   *  in/out of changes instead of tracking the first stage 1:1. */
+  displaySmoothedRates: { energy: number; mana: number; metal: number };
   lastPaidTargetId: number | null;
   lastPaid: { energy: number; mana: number; metal: number };
   towerSpinAmount: number;
+  /** Second-stage display EMA layered on top of `towerSpinAmount`. The
+   *  visible tower spin uses this so spin-up / spin-down eases in. */
+  displayTowerSpinAmount: number;
   towerSpinPhase: number;
 };
 
@@ -238,9 +245,11 @@ export function buildConstructionEmitterRigFromTurretConfig(
     sprayTravelSpeed: spec.particleTravelSpeed,
     sprayParticleRadius: spec.particleRadius,
     smoothedRates: { energy: 0, mana: 0, metal: 0 },
+    displaySmoothedRates: { energy: 0, mana: 0, metal: 0 },
     lastPaidTargetId: null,
     lastPaid: { energy: 0, mana: 0, metal: 0 },
     towerSpinAmount: 0,
+    displayTowerSpinAmount: 0,
     towerSpinPhase: 0,
   };
 }
