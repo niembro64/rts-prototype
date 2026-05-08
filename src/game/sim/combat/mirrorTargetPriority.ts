@@ -6,13 +6,6 @@ export type MirrorTargetTurretPick = {
   score: number;
 };
 
-/** Lexicographic encoding: threat tier dominates, DPS breaks ties.
- *  TIER_WEIGHT must exceed any plausible sustained DPS so the tier
- *  ordering is never crossed; DPS_CAP keeps the encoded score safely
- *  inside one tier band even for outlier weapons. */
-const TIER_WEIGHT = 1_000_000;
-const DPS_CAP = TIER_WEIGHT - 1;
-
 /** Sustained DPS for a turret based on its compiled shot config and
  *  cooldown. Beams sustain their authored `dps` continuously; lasers
  *  pulse for `duration` out of every `cooldown` window; projectile
@@ -35,19 +28,17 @@ function turretDps(turret: Turret): number {
   return 0;
 }
 
-function threatTier(turret: Turret, ourUnitId: number): number {
-  if (turret.target === ourUnitId && turret.state !== 'idle') return 3;
-  if (turret.state === 'engaged') return 2;
-  return 1;
-}
-
+/** A mirror turret only locks onto an enemy turret that is itself
+ *  actively locked onto our own unit (target === ourUnitId, non-idle).
+ *  Score equals sustained DPS so the most dangerous incoming turret
+ *  wins when several enemy turrets target the same unit. */
 export function scoreMirrorTargetTurret(turret: Turret, ourUnitId: number): number {
   if (turret.config.passive) return 0;
   if (turret.config.visualOnly) return 0;
   if (turret.config.isManualFire) return 0;
-  const dps = turretDps(turret);
-  if (dps <= 0) return 0;
-  return threatTier(turret, ourUnitId) * TIER_WEIGHT + Math.min(dps, DPS_CAP);
+  if (turret.target !== ourUnitId) return 0;
+  if (turret.state === 'idle') return 0;
+  return turretDps(turret);
 }
 
 export function pickMirrorTargetTurret(

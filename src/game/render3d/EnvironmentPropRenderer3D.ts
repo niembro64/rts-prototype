@@ -117,10 +117,9 @@ const EDGE_CLEARANCE = 180;
 const DEFAULT_TREE_WATER_BUFFER = 130;
 const DEFAULT_GRASS_WATER_BUFFER = 55;
 const SCOPE_PADDING_EXTRA = 120;
-const RANDOM_ENVIRONMENT_TREE_BASE_COUNT = 95;
-const RANDOM_ENVIRONMENT_GRASS_BASE_COUNT = 780;
 const RANDOM_ENVIRONMENT_PLACEMENT_MAX_ATTEMPTS_PER_TARGET = 80;
-const RANDOM_ENVIRONMENT_MIN_GREEN_LAND_ACCEPTANCE = 0.02;
+const FOREST_SPRUCE2_WOOD_COLOR = 0x5b4230;
+const FOREST_SPRUCE2_LEAF_COLOR = 0x416f35;
 const FBX_UNKNOWN_MATERIAL_WARNING_FILTER_KEY =
   '__rtsFbxUnknownMaterialWarningFilterInstalled' as const;
 
@@ -586,6 +585,15 @@ export const RANDOM_ENVIRONMENT_ASSET_GLOBAL_SCALE = 3;
 // Adds +/- this fraction to each placed asset's resolved scale. 0.1 means +/-10%.
 export const RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS = 0.1;
 
+// Uses the terrain shader slope metric: 0 is flat, 1 is vertical.
+export const RANDOM_ENVIRONMENT_ASSET_MIN_SLOPE = 0.03;
+export const RANDOM_ENVIRONMENT_ASSET_MAX_SLOPE = 0.3;
+export const RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT = 100;
+
+// Target counts at the default map area. Larger/smaller maps scale from these.
+export const RANDOM_ENVIRONMENT_TREE_ASSET_COUNT = 400;
+export const RANDOM_ENVIRONMENT_GRASS_ASSET_COUNT = 1000;
+
 // Toggle random placement here. Scale is a direct multiplier on that asset's world size.
 // Frequency is a relative pick weight among enabled assets of the same kind.
 export const RANDOM_ENVIRONMENT_ASSETS = [
@@ -601,7 +609,7 @@ export const RANDOM_ENVIRONMENT_ASSETS = [
   { id: 'palm1', use: false, scale: 0.1, frequency: 1 }, // meh
   { id: 'palm2', use: false, scale: 0.1, frequency: 1 }, // meh
   { id: 'palm3', use: false, scale: 0.1, frequency: 1 }, // meh
-  { id: 'lowTree1', use: true, scale: 0.08, frequency: 0.1 }, // simple
+  { id: 'lowTree1', use: false, scale: 0.08, frequency: 0.1 }, // simple
   { id: 'lowTree2', use: false, scale: 0.1, frequency: 1 }, // too complicated
   { id: 'lowTree3', use: false, scale: 0.1, frequency: 1 }, // good
   { id: 'lowTree4', use: true, scale: 0.1, frequency: 1 }, // good simple
@@ -926,11 +934,16 @@ export class EnvironmentPropRenderer3D {
         (mat) => this.materialForAsset(spec, mat) as THREE.Material,
       );
     }
+    const sourceName = source.name.toLowerCase();
+    const selectedMaterial = this.materialForSelectedRandomAsset(
+      spec,
+      sourceName,
+    );
+    if (selectedMaterial) return selectedMaterial;
     if (spec.palette === 'modular') {
       tuneLoadedMaterial(source);
       return source;
     }
-    const sourceName = source.name.toLowerCase();
     if (spec.palette === 'lowTree') {
       return sourceName.includes('mat_01')
         ? this.sharedMaterial('lowTree.trunk', 0x5f4b34)
@@ -968,6 +981,28 @@ export class EnvironmentPropRenderer3D {
     if (spec.palette === 'freeGrass')
       return this.sharedMaterial('freeGrass.green', 0x608b39);
     return source;
+  }
+
+  private materialForSelectedRandomAsset(
+    spec: EnvironmentAssetSpec,
+    sourceName: string,
+  ): THREE.MeshLambertMaterial | null {
+    if (!isRandomEnvironmentAssetUsable(spec.id)) return null;
+    if (spec.kind === 'grass') {
+      return this.sharedMaterial(
+        'randomEnvironment.forestSpruce2.leaves',
+        FOREST_SPRUCE2_LEAF_COLOR,
+      );
+    }
+    const color = isWoodMaterialForAsset(spec, sourceName)
+      ? FOREST_SPRUCE2_WOOD_COLOR
+      : FOREST_SPRUCE2_LEAF_COLOR;
+    return this.sharedMaterial(
+      color === FOREST_SPRUCE2_WOOD_COLOR
+        ? 'randomEnvironment.forestSpruce2.wood'
+        : 'randomEnvironment.forestSpruce2.leaves',
+      color,
+    );
   }
 
   private sharedMaterial(
@@ -1060,10 +1095,7 @@ export class EnvironmentPropRenderer3D {
       placed < profile.targetCount && attempt < maxAttempts;
       attempt++
     ) {
-      const assetId = chooseWeightedEnvironmentAssetIdOrNull(
-        assetOptions,
-        rng,
-      );
+      const assetId = chooseWeightedEnvironmentAssetIdOrNull(assetOptions, rng);
       if (!assetId) continue;
       const spec = ASSET_BY_ID.get(assetId);
       if (!spec) continue;
@@ -1103,7 +1135,8 @@ export class EnvironmentPropRenderer3D {
     if (!this.canPlaceAt(x, z, radius, options)) return false;
     const y = this.sampleTerrainHeight(x, z);
     if (!Number.isFinite(y) || y < WATER_LEVEL) return false;
-    if (!this.acceptsRandomEnvironmentLand(x, z, y, rng)) return false;
+    if (!isRandomEnvironmentAssetHeightAllowed(y)) return false;
+    if (!this.isInRandomEnvironmentSlopeZone(x, z)) return false;
     placements.push({
       assetId,
       x,
@@ -1117,12 +1150,7 @@ export class EnvironmentPropRenderer3D {
     return true;
   }
 
-  private acceptsRandomEnvironmentLand(
-    x: number,
-    z: number,
-    y: number,
-    rng: () => number,
-  ): boolean {
+  private isInRandomEnvironmentSlopeZone(x: number, z: number): boolean {
     const normal = getSurfaceNormal(
       x,
       z,
@@ -1130,7 +1158,9 @@ export class EnvironmentPropRenderer3D {
       this.mapHeight,
       LAND_CELL_SIZE,
     );
-    return rng() <= randomEnvironmentGreenLandAcceptance(y, normal.nz);
+    return isSlopeInRandomEnvironmentAssetZone(
+      terrainSlopeFromNormalUp(normal.nz),
+    );
   }
 
   private canPlaceAt(
@@ -1198,11 +1228,11 @@ export class EnvironmentPropRenderer3D {
   }
 
   private randomTreeTargetCount(): number {
-    return Math.round(RANDOM_ENVIRONMENT_TREE_BASE_COUNT * this.areaScale());
+    return Math.round(RANDOM_ENVIRONMENT_TREE_ASSET_COUNT * this.areaScale());
   }
 
   private randomGrassTargetCount(): number {
-    return Math.round(RANDOM_ENVIRONMENT_GRASS_BASE_COUNT * this.areaScale());
+    return Math.round(RANDOM_ENVIRONMENT_GRASS_ASSET_COUNT * this.areaScale());
   }
 }
 
@@ -1407,61 +1437,46 @@ function chooseWeightedEnvironmentAssetIdOrNull(
   return fallback;
 }
 
-function randomEnvironmentGreenLandAcceptance(
-  terrainY: number,
-  normalUp: number,
-): number {
-  const heightT = clamp(
-    (terrainY - WATER_LEVEL) / Math.max(1, TERRAIN_MAX_RENDER_Y - WATER_LEVEL),
-    0,
-    1,
-  );
-  const slope = 1 - clamp(Math.abs(normalUp), 0, 1);
-  const shoreline =
-    1 - smoothstep(WATER_LEVEL + 10, WATER_LEVEL + 140, terrainY);
-  const upland = smoothstep(0.16, 0.58, heightT);
-  const exposedRock = smoothstep(0.38, 0.86, heightT);
-  const steepRock = smoothstep(0.2, 0.56, slope);
-  const highDry = smoothstep(0.68, 1, heightT);
-  const flatDetail =
-    (1 - smoothstep(0.035, 0.16, slope)) * (1 - shoreline);
+function terrainSlopeFromNormalUp(normalUp: number): number {
+  return 1 - clamp(Math.abs(normalUp), 0, 1);
+}
 
-  let r = mixNumber(0.31, 0.49, upland);
-  let g = mixNumber(0.41, 0.43, upland);
-  let b = mixNumber(0.22, 0.27, upland);
-  const rockMix = Math.max(exposedRock * 0.58, steepRock * 0.48);
-  r = mixNumber(r, 0.43, rockMix);
-  g = mixNumber(g, 0.42, rockMix);
-  b = mixNumber(b, 0.36, rockMix);
-  const highDryMix = highDry * 0.38;
-  r = mixNumber(r, 0.62, highDryMix);
-  g = mixNumber(g, 0.59, highDryMix);
-  b = mixNumber(b, 0.5, highDryMix);
-  const shorelineMix = shoreline * 0.72;
-  r = mixNumber(r, 0.18, shorelineMix);
-  g = mixNumber(g, 0.25, shorelineMix);
-  b = mixNumber(b, 0.18, shorelineMix);
+function isSlopeInRandomEnvironmentAssetZone(slope: number): boolean {
+  if (
+    !Number.isFinite(RANDOM_ENVIRONMENT_ASSET_MIN_SLOPE) ||
+    !Number.isFinite(RANDOM_ENVIRONMENT_ASSET_MAX_SLOPE)
+  ) {
+    return false;
+  }
+  const minSlope = clamp(RANDOM_ENVIRONMENT_ASSET_MIN_SLOPE, 0, 1);
+  const maxSlope = clamp(RANDOM_ENVIRONMENT_ASSET_MAX_SLOPE, 0, 1);
+  return minSlope <= maxSlope && slope >= minSlope && slope <= maxSlope;
+}
 
-  const greenDominance = clamp((g - Math.max(r, b) + 0.08) / 0.18, 0, 1);
-  const flatPreference =
-    RANDOM_ENVIRONMENT_MIN_GREEN_LAND_ACCEPTANCE +
-    (1 - RANDOM_ENVIRONMENT_MIN_GREEN_LAND_ACCEPTANCE) * flatDetail;
-  return clamp(
-    greenDominance * flatPreference,
-    RANDOM_ENVIRONMENT_MIN_GREEN_LAND_ACCEPTANCE,
-    1,
-  );
+function isRandomEnvironmentAssetHeightAllowed(height: number): boolean {
+  if (!Number.isFinite(RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT)) return true;
+  return height <= RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT;
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function smoothstep(edge0: number, edge1: number, value: number): number {
-  const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
-  return t * t * (3 - 2 * t);
-}
-
-function mixNumber(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
+function isWoodMaterialForAsset(
+  spec: EnvironmentAssetSpec,
+  sourceName: string,
+): boolean {
+  if (spec.palette === 'lowTree') return sourceName.includes('mat_01');
+  if (sourceName.includes('wood')) return true;
+  if (sourceName.includes('bark')) return true;
+  if (sourceName.includes('trunk')) return true;
+  if (sourceName.includes('palm')) return true;
+  if (sourceName.includes('leaf')) return false;
+  if (sourceName.includes('leaves')) return false;
+  if (sourceName.includes('needle')) return false;
+  if (sourceName.includes('pine')) return false;
+  if (sourceName.includes('cedar')) return false;
+  if (sourceName.includes('oak')) return false;
+  if (sourceName.includes('grass')) return false;
+  return spec.kind === 'tree';
 }
