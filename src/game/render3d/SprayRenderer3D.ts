@@ -398,7 +398,11 @@ export class SprayRenderer3D {
         * (0.5 + 0.5 * scaledIntensity);
       this.pUniformSize[idx] = 0;
     }
-    this.pWobble[idx] = len * 0.018 + targetSpread * 0.035;
+    // Build sprays travel in a straight line (no wiggle); heal sprays
+    // keep the perpendicular sine oscillation for a stream-like read.
+    this.pWobble[idx] = spray.type === 'build'
+      ? 0
+      : len * 0.018 + targetSpread * 0.035;
     // Build sprays ignore gravity (the buildSpray shot config sets
     // `ignoresGravity: true`) — straight-line flight, no lob arc.
     this.pArc[idx] = spray.type === 'build'
