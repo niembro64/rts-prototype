@@ -255,10 +255,6 @@ export type TurretConfig = {
   burst?: { count?: number; delay?: number };
   isManualFire?: boolean;
   passive?: boolean;
-  /** Mirror-target threat rank for line-shot turrets. Passive mirror
-   *  weapons use this compiled profile value instead of knowing
-   *  turret/shot ids. */
-  mirrorReflectPriority?: number;
   /** World mount policy. `authored` uses the blueprint mount resolved
    *  through the host transform. `unitBodyCenter` makes the turret body
    *  center exactly equal the owning unit's gameplay target center. */

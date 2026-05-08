@@ -75,11 +75,6 @@ export type TurretBlueprint = {
   launchForce?: number;
   isManualFire?: boolean;
   passive?: boolean;
-  /** Priority used by passive mirror turrets when choosing which
-   *  line-shot weapon to face. Omit/0 means "not a mirror threat";
-   *  line-shot turrets that omit this default to low priority in the
-   *  blueprint build step. */
-  mirrorReflectPriority?: number;
   /** How runtime resolves the turret's world-space body center. The
    *  default authored mode uses the host blueprint mount. Unit-body-
    *  center mode is for turrets whose gameplay body is exactly the

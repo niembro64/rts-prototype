@@ -339,8 +339,8 @@ export const TURRET_BLUEPRINTS = {
     color: COLOR_WHITE,
     // Rest pose: panel pitched straight up so a freshly-spawned mirror
     // unit reads as "scanning the sky" until it acquires an actual
-    // line-shot threat. As soon as the aim solver runs, the damper
-    // takes over and pitches the panel to the bisector solution.
+    // threat. As soon as the aim solver runs, the damper takes over
+    // and pitches the panel to the bisector solution.
     idlePitch: Math.PI / 2,
     // The mirror-host turret's head sphere is hidden; radius.body
     // defines the panel half-side used by the mirror visual/collision.
@@ -370,7 +370,6 @@ export const TURRET_BLUEPRINTS = {
       trackingRange: null,
     }),
     eventsSmooth: false,
-    mirrorReflectPriority: 1,
     color: COLOR_WHITE,
     spread: { angle: 0 },
     radius: { body: 4 },
@@ -391,7 +390,6 @@ export const TURRET_BLUEPRINTS = {
       trackingRange: null,
     }),
     eventsSmooth: false,
-    mirrorReflectPriority: 2,
     color: COLOR_WHITE,
     radius: { body: 8 },
     audio: {
@@ -419,7 +417,6 @@ export const TURRET_BLUEPRINTS = {
       trackingRange: null,
     }),
     eventsSmooth: false,
-    mirrorReflectPriority: 3,
     color: COLOR_WHITE,
     radius: { body: 14 },
     audio: {
@@ -501,7 +498,6 @@ export const TURRET_BLUEPRINTS = {
       trackingRange: null,
     }),
     eventsSmooth: false,
-    mirrorReflectPriority: 2,
     color: COLOR_WHITE,
     radius: { body: 18 },
     audio: {

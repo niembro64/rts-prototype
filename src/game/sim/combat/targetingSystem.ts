@@ -8,7 +8,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
 import { getUnitGroundZ } from '../unitGeometry';
-import { getMirrorLineTargetScore } from './mirrorTargetPriority';
+import { getMirrorTargetScore } from './mirrorTargetPriority';
 import { resolveTargetAimPoint } from './aimSolver';
 import {
   LOS_DROP_GRACE_TICKS,
@@ -226,8 +226,8 @@ function outsideTrackingReleaseSq(ranges: TurretRanges, distSq: number, targetRa
 // HOST SERVER LOD tier (see simQuality.ts). Lower tiers tighten the
 // threshold AND raise the stride so heavy crowds bound out faster.
 
-function isMirrorLineTarget(enemy: Entity, mirrorUnitId: EntityId): boolean {
-  return getMirrorLineTargetScore(enemy, mirrorUnitId) > 0;
+function isMirrorTarget(enemy: Entity, mirrorUnitId: EntityId): boolean {
+  return getMirrorTargetScore(enemy, mirrorUnitId) > 0;
 }
 
 function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
@@ -442,12 +442,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           const weapon = weapons[wi];
           if (weaponSystemDisabled(world, weapon)) continue;
           if (weapon.config.isManualFire) continue;
-          // Passive turrets (mirrors) only lock onto enemies that
-          // have a line-shot turret worth reflecting. The shared
-          // mirror scorer handles threat priority: direct threat to
-          // this unit > engaged elsewhere > any line weapon, with
-          // megaBeam > beam > laser inside each tier.
-          if (weapon.config.passive && !isMirrorLineTarget(priorityTarget, unit.id)) {
+          // Passive turrets (mirrors) only lock onto enemies whose
+          // turrets actually deal damage. The shared mirror scorer
+          // handles threat priority: direct threat to this unit >
+          // engaged elsewhere > any active turret, with sustained
+          // DPS as the tiebreaker inside each tier.
+          if (weapon.config.passive && !isMirrorTarget(priorityTarget, unit.id)) {
             setWeaponTarget(weapon, unit, wi, null);
             weapon.state = 'idle';
             continue;
@@ -507,9 +507,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
       // Per-tick re-validation of an existing lock. For passive
       // (mirror) weapons we only require that the enemy still has a
-      // reflectable line-shot turret; reacquisition below can switch
-      // to a higher-priority direct threat or stronger weapon.
-      if (!targetIsValid || !target || (weapon.config.passive && !isMirrorLineTarget(target, unit.id))) {
+      // damaging turret; reacquisition below can switch to a
+      // higher-priority direct threat or higher-DPS weapon.
+      if (!targetIsValid || !target || (weapon.config.passive && !isMirrorTarget(target, unit.id))) {
         setWeaponTarget(weapon, unit, wi, null);
         weapon.state = 'idle';
       } else {
@@ -661,7 +661,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       if (weapon.config.passive && weapon.target !== null) {
         const currentTarget = world.getEntity(weapon.target);
         if (currentTarget) {
-          closestMirrorScore = getMirrorLineTargetScore(currentTarget, unit.id);
+          closestMirrorScore = getMirrorTargetScore(currentTarget, unit.id);
         }
       }
 
@@ -673,7 +673,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         const enemy = candidates[ci];
         let mirrorScore = 0;
         if (weapon.config.passive) {
-          mirrorScore = getMirrorLineTargetScore(enemy, unit.id);
+          mirrorScore = getMirrorTargetScore(enemy, unit.id);
           if (mirrorScore <= 0) continue;
         }
         const enemyRadius = enemy.unit ? enemy.unit.radius.shot : (enemy.building ? getTargetRadius(enemy) : 0);
@@ -748,7 +748,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         const enemy = candidates[ci];
         let mirrorScore = 0;
         if (weapon.config.passive) {
-          mirrorScore = getMirrorLineTargetScore(enemy, unit.id);
+          mirrorScore = getMirrorTargetScore(enemy, unit.id);
           if (mirrorScore <= 0) continue;
         }
 

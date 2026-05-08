@@ -5,7 +5,7 @@ import { ballisticSolutions, clamp, computeInterceptTime, getBarrelTip, getTrans
 import type { BarrelEndpoint } from '../../math/BarrelGeometry';
 import { GRAVITY } from '../../../config';
 import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, resolveWeaponWorldMount } from './combatUtils';
-import { pickMirrorLineTurret } from './mirrorTargetPriority';
+import { pickMirrorTargetTurret } from './mirrorTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
 
 type GroundHeightLookup = (x: number, y: number) => number;
@@ -150,8 +150,9 @@ function writeFallbackDirectionAimPoint(
  * Mirror turrets share the normal turret aiming pipeline: resolve a
  * world-space point, then yaw/pitch toward it. The only mirror-specific
  * part is this point provider: it returns the direction bisecting
- * own-mirror-center→enemy-line-turret-center and
- * own-mirror-center→enemy-body-center.
+ * own-mirror-center→enemy-turret-mount-center and
+ * own-mirror-center→enemy-body-center, where the enemy turret picked
+ * is the highest-DPS active threat on that target.
  */
 export function resolveMirrorTurretAimPoint(
   unit: Entity,
@@ -166,7 +167,7 @@ export function resolveMirrorTurretAimPoint(
 ): Vec3 | null {
   if (!target.combat || !unit.unit) return null;
 
-  const picked = pickMirrorLineTurret(target, unit.id);
+  const picked = pickMirrorTargetTurret(target, unit.id);
   if (picked === null) return null;
 
   const tCS = getTransformCosSin(target.transform);

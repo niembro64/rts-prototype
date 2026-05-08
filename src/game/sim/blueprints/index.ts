@@ -20,7 +20,6 @@ import type {
   ShotConfig,
   TurretConfig,
 } from '../types';
-import { isLineShot } from '../types';
 import { isLineShotBlueprint } from '@/types/blueprints';
 import type { ShotId, TurretId } from '../../../types/blueprintIds';
 import { SHOT_BLUEPRINTS } from './shots';
@@ -437,9 +436,6 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   }
   if (turretBlueprint.passive != null) config.passive = turretBlueprint.passive;
   if (turretBlueprint.mountMode != null) config.mountMode = turretBlueprint.mountMode;
-  if (config.shot && isLineShot(config.shot)) {
-    config.mirrorReflectPriority = turretBlueprint.mirrorReflectPriority ?? 1;
-  }
 
   return config;
 }

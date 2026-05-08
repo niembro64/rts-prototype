@@ -40,6 +40,12 @@ export type RandomEnvironmentAssetConfig = Readonly<{
   id: string;
   use: boolean;
   scale: number;
+  frequency: number;
+}>;
+
+type WeightedEnvironmentAssetOption = Readonly<{
+  id: string;
+  frequency: number;
 }>;
 
 type LoadedEnvironmentAsset = {
@@ -103,12 +109,6 @@ type ConsoleWithFbxWarningFilter = Console & {
 };
 
 installKnownFbxMaterialWarningFilter();
-
-if (import.meta.hot) {
-  import.meta.hot.accept(() => {
-    window.location.reload();
-  });
-}
 
 const OBJECT_TIER_RANK: Record<RenderObjectLodTier, number> = {
   marker: 0,
@@ -561,61 +561,65 @@ const ENVIRONMENT_ASSETS: readonly EnvironmentAssetSpec[] = [
 ];
 
 // Applied after each asset's scale. 1 keeps the current asset sizes unchanged.
-export const RANDOM_ENVIRONMENT_ASSET_GLOBAL_SCALE = 2;
+export const RANDOM_ENVIRONMENT_ASSET_GLOBAL_SCALE = 3;
+
+// Adds +/- this fraction to each placed asset's resolved scale. 0.1 means +/-10%.
+export const RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS = 0.1;
 
 // Toggle random placement here. Scale is a direct multiplier on that asset's world size.
+// Frequency is a relative pick weight among enabled assets of the same kind.
 export const RANDOM_ENVIRONMENT_ASSETS = [
-  { id: 'modCedar1', use: false, scale: 0.1 }, // bad
-  { id: 'modCedar2', use: false, scale: 0.1 }, // ok
-  { id: 'modOak1', use: true, scale: 0.1 },
-  { id: 'modOak2', use: false, scale: 0.1 },
-  { id: 'modOak3', use: false, scale: 0.1 },
-  { id: 'modOak4', use: false, scale: 0.1 },
-  { id: 'modPine1', use: false, scale: 0.1 },
-  { id: 'modPine2', use: false, scale: 0.1 },
-  { id: 'modPine3', use: false, scale: 0.1 },
-  { id: 'palm1', use: false, scale: 0.1 },
-  { id: 'palm2', use: false, scale: 0.1 },
-  { id: 'palm3', use: false, scale: 0.1 },
-  { id: 'lowTree1', use: false, scale: 0.1 },
-  { id: 'lowTree2', use: false, scale: 0.1 },
-  { id: 'lowTree3', use: false, scale: 0.1 },
-  { id: 'lowTree4', use: false, scale: 0.1 },
-  { id: 'lowTree5', use: false, scale: 0.1 },
-  { id: 'lowTree6', use: false, scale: 0.1 },
-  { id: 'forestOak1', use: false, scale: 0.1 },
-  { id: 'forestOak2', use: false, scale: 0.1 },
-  { id: 'forestOak3', use: false, scale: 0.1 },
-  { id: 'forestSpruce1', use: false, scale: 0.1 },
-  { id: 'forestSpruce2', use: false, scale: 0.1 },
-  { id: 'forestSpruce3', use: false, scale: 0.1 },
-  { id: 'deadOak1', use: false, scale: 0.1 },
-  { id: 'deadOak2', use: false, scale: 0.1 },
-  { id: 'deadSpruce1', use: false, scale: 0.1 },
-  { id: 'deadSpruce2', use: false, scale: 0.1 },
-  { id: 'devilsTree01', use: false, scale: 0.1 },
-  { id: 'devilsTree04', use: false, scale: 0.1 },
-  { id: 'devilsTreeBlob04', use: false, scale: 0.1 },
-  { id: 'devilsRoundTop02', use: false, scale: 0.1 },
-  { id: 'devilsRoundTop05', use: false, scale: 0.1 },
-  { id: 'devilsTreeTall02', use: false, scale: 0.1 },
-  { id: 'devilsTreeTall05', use: false, scale: 0.1 },
-  { id: 'devilsTreeThin01', use: false, scale: 0.1 },
-  { id: 'simpleTree01', use: false, scale: 0.1 },
-  { id: 'simpleTree02', use: false, scale: 0.1 },
-  { id: 'simpleTree03', use: false, scale: 0.1 },
-  { id: 'simpleTree04', use: false, scale: 0.1 },
-  { id: 'simpleTree05', use: false, scale: 0.1 },
-  { id: 'simpleDeadTree', use: false, scale: 0.1 },
-  { id: 'modGrass1', use: false, scale: 0.1 },
-  { id: 'modGrass2', use: false, scale: 0.1 },
-  { id: 'modGrass3', use: false, scale: 0.1 },
-  { id: 'modGrass4', use: false, scale: 0.1 },
-  { id: 'lowGrass1', use: false, scale: 0.1 },
-  { id: 'lowGrass2', use: false, scale: 0.1 },
-  { id: 'freeGrass1', use: false, scale: 0.1 },
-  { id: 'freeGrass2', use: false, scale: 0.1 },
-  { id: 'simpleGrass', use: false, scale: 0.1 },
+  { id: 'modCedar1', use: false, scale: 0.1, frequency: 1 }, // bad
+  { id: 'modCedar2', use: false, scale: 0.1, frequency: 1 }, // ok
+  { id: 'modOak1', use: false, scale: 0.1, frequency: 1 }, //bad
+  { id: 'modOak2', use: false, scale: 0.1, frequency: 1 }, // pretty good
+  { id: 'modOak3', use: false, scale: 0.1, frequency: 1 }, // pretty good
+  { id: 'modOak4', use: false, scale: 0.1, frequency: 1 }, // pretty good
+  { id: 'modPine1', use: false, scale: 0.1, frequency: 1 }, // too simple
+  { id: 'modPine2', use: false, scale: 0.1, frequency: 1 }, // too simple
+  { id: 'modPine3', use: false, scale: 0.1, frequency: 1 }, // too simple
+  { id: 'palm1', use: false, scale: 0.1, frequency: 1 }, // meh
+  { id: 'palm2', use: false, scale: 0.1, frequency: 1 }, // meh
+  { id: 'palm3', use: false, scale: 0.1, frequency: 1 }, // meh
+  { id: 'lowTree1', use: true, scale: 0.08, frequency: 0.05 }, // simple
+  { id: 'lowTree2', use: false, scale: 0.1, frequency: 1 }, // too complicated
+  { id: 'lowTree3', use: false, scale: 0.1, frequency: 1 }, // good
+  { id: 'lowTree4', use: true, scale: 0.1, frequency: 1 }, // good simple
+  { id: 'lowTree5', use: true, scale: 0.1, frequency: 1 }, // good simple
+  { id: 'lowTree6', use: false, scale: 0.1, frequency: 1 }, // terrible
+  { id: 'forestOak1', use: false, scale: 0.1, frequency: 1 },
+  { id: 'forestOak2', use: false, scale: 0.1, frequency: 1 },
+  { id: 'forestOak3', use: false, scale: 0.1, frequency: 1 },
+  { id: 'forestSpruce1', use: false, scale: 0.1, frequency: 1 },
+  { id: 'forestSpruce2', use: false, scale: 0.1, frequency: 1 },
+  { id: 'forestSpruce3', use: false, scale: 0.1, frequency: 1 },
+  { id: 'deadOak1', use: false, scale: 0.1, frequency: 1 },
+  { id: 'deadOak2', use: false, scale: 0.1, frequency: 1 },
+  { id: 'deadSpruce1', use: false, scale: 0.1, frequency: 1 },
+  { id: 'deadSpruce2', use: false, scale: 0.1, frequency: 1 },
+  { id: 'devilsTree01', use: false, scale: 0.1, frequency: 1 },
+  { id: 'devilsTree04', use: false, scale: 0.1, frequency: 1 },
+  { id: 'devilsTreeBlob04', use: false, scale: 0.1, frequency: 1 },
+  { id: 'devilsRoundTop02', use: false, scale: 0.1, frequency: 1 },
+  { id: 'devilsRoundTop05', use: false, scale: 0.1, frequency: 1 },
+  { id: 'devilsTreeTall02', use: false, scale: 0.1, frequency: 1 },
+  { id: 'devilsTreeTall05', use: false, scale: 0.1, frequency: 1 },
+  { id: 'devilsTreeThin01', use: false, scale: 0.1, frequency: 1 },
+  { id: 'simpleTree01', use: false, scale: 0.1, frequency: 1 },
+  { id: 'simpleTree02', use: false, scale: 0.1, frequency: 1 },
+  { id: 'simpleTree03', use: false, scale: 0.1, frequency: 1 },
+  { id: 'simpleTree04', use: false, scale: 0.1, frequency: 1 },
+  { id: 'simpleTree05', use: false, scale: 0.1, frequency: 1 },
+  { id: 'simpleDeadTree', use: false, scale: 0.1, frequency: 1 },
+  { id: 'modGrass1', use: false, scale: 0.1, frequency: 1 },
+  { id: 'modGrass2', use: false, scale: 0.1, frequency: 1 },
+  { id: 'modGrass3', use: false, scale: 0.1, frequency: 1 },
+  { id: 'modGrass4', use: false, scale: 0.1, frequency: 1 },
+  { id: 'lowGrass1', use: false, scale: 0.1, frequency: 1 },
+  { id: 'lowGrass2', use: false, scale: 0.1, frequency: 1 },
+  { id: 'freeGrass1', use: false, scale: 0.1, frequency: 1 },
+  { id: 'freeGrass2', use: false, scale: 0.1, frequency: 1 },
+  { id: 'simpleGrass', use: false, scale: 0.1, frequency: 1 },
 ] as const satisfies readonly RandomEnvironmentAssetConfig[];
 
 const RANDOM_ENVIRONMENT_ASSET_CONFIG_BY_ID = new Map<
@@ -628,18 +632,18 @@ const ACTIVE_ENVIRONMENT_ASSETS = ENVIRONMENT_ASSETS.filter((spec) =>
 const ASSET_BY_ID = new Map(
   ACTIVE_ENVIRONMENT_ASSETS.map((spec) => [spec.id, spec]),
 );
-const TREE_ASSET_IDS = ACTIVE_ENVIRONMENT_ASSETS.filter(
-  (spec) => spec.kind === 'tree',
-).map((spec) => spec.id);
-const GRASS_ASSET_IDS = ACTIVE_ENVIRONMENT_ASSETS.filter(
-  (spec) => spec.kind === 'grass',
-).map((spec) => spec.id);
+const TREE_ASSET_OPTIONS = getWeightedEnvironmentAssetOptions('tree');
+const GRASS_ASSET_OPTIONS = getWeightedEnvironmentAssetOptions('grass');
 
 function isUsableAssetConfig(
   config: RandomEnvironmentAssetConfig | undefined,
 ): config is RandomEnvironmentAssetConfig {
   return (
-    config?.use === true && Number.isFinite(config.scale) && config.scale > 0
+    config?.use === true &&
+    Number.isFinite(config.scale) &&
+    config.scale > 0 &&
+    Number.isFinite(config.frequency) &&
+    config.frequency > 0
   );
 }
 
@@ -659,6 +663,53 @@ function getRandomEnvironmentAssetScale(assetId: string): number {
     return 0;
   }
   return config.scale * RANDOM_ENVIRONMENT_ASSET_GLOBAL_SCALE;
+}
+
+function getRandomEnvironmentAssetFrequency(assetId: string): number {
+  const config = RANDOM_ENVIRONMENT_ASSET_CONFIG_BY_ID.get(assetId);
+  if (!isUsableAssetConfig(config)) return 0;
+  return config.frequency;
+}
+
+function getWeightedEnvironmentAssetOptions(
+  kind: EnvironmentAssetKind,
+): WeightedEnvironmentAssetOption[] {
+  return ACTIVE_ENVIRONMENT_ASSETS.filter((spec) => spec.kind === kind).map(
+    (spec) => ({
+      id: spec.id,
+      frequency: getRandomEnvironmentAssetFrequency(spec.id),
+    }),
+  );
+}
+
+function getRandomEnvironmentAssetScaleJitter(rng: () => number): number {
+  if (
+    !Number.isFinite(RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS) ||
+    RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS <= 0
+  ) {
+    return 1;
+  }
+  return Math.max(
+    0.001,
+    randRange(
+      rng,
+      1 - RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS,
+      1 + RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS,
+    ),
+  );
+}
+
+let loggedActiveEnvironmentAssets = false;
+
+function logActiveEnvironmentAssets(): void {
+  if (!import.meta.env.DEV || loggedActiveEnvironmentAssets) return;
+  loggedActiveEnvironmentAssets = true;
+  const enabledIds = ACTIVE_ENVIRONMENT_ASSETS.map((spec) => spec.id);
+  console.info(
+    `[EnvironmentPropRenderer3D] enabled random assets (${enabledIds.length}): ${
+      enabledIds.length > 0 ? enabledIds.join(', ') : 'none'
+    }`,
+  );
 }
 
 export class EnvironmentPropRenderer3D {
@@ -694,6 +745,7 @@ export class EnvironmentPropRenderer3D {
     this.sampleTerrainHeight = options.sampleTerrainHeight;
     this.root.name = 'EnvironmentPropRenderer3D';
     parentWorld.add(this.root);
+    logActiveEnvironmentAssets();
     this.placements = this.generatePlacements();
     void this.loadAssets();
   }
@@ -951,7 +1003,7 @@ export class EnvironmentPropRenderer3D {
     placements: EnvironmentPlacement[],
     rng: () => number,
   ): void {
-    if (TREE_ASSET_IDS.length === 0) return;
+    if (TREE_ASSET_OPTIONS.length === 0) return;
     const areaScale = this.areaScale();
     const groveCount = clampInt(Math.round(7 * Math.sqrt(areaScale)), 4, 12);
     for (let g = 0; g < groveCount; g++) {
@@ -970,11 +1022,14 @@ export class EnvironmentPropRenderer3D {
       );
       for (let i = 0; i < treeCount; i++) {
         const p = scatterAround(center.x, center.z, groveRadius, rng);
-        const assetId = chooseOrNull(TREE_ASSET_IDS, rng);
+        const assetId = chooseWeightedEnvironmentAssetIdOrNull(
+          TREE_ASSET_OPTIONS,
+          rng,
+        );
         if (!assetId) continue;
         const spec = ASSET_BY_ID.get(assetId);
         if (!spec) continue;
-        this.tryAddPlacement(placements, assetId, p.x, p.z, {
+        this.tryAddPlacement(placements, assetId, p.x, p.z, rng, {
           height: spec.defaultHeight * randRange(rng, 0.78, 1.22),
           radius: spec.defaultRadius * randRange(rng, 0.85, 1.2),
           rotation: rng() * Math.PI * 2,
@@ -996,7 +1051,7 @@ export class EnvironmentPropRenderer3D {
     placements: EnvironmentPlacement[],
     rng: () => number,
   ): void {
-    if (GRASS_ASSET_IDS.length === 0) return;
+    if (GRASS_ASSET_OPTIONS.length === 0) return;
     const areaScale = this.areaScale();
     const meadowCount = clampInt(Math.round(9 * Math.sqrt(areaScale)), 5, 16);
     for (let i = 0; i < meadowCount; i++) {
@@ -1022,11 +1077,14 @@ export class EnvironmentPropRenderer3D {
   ): void {
     for (let i = 0; i < count; i++) {
       const p = scatterAround(x, z, radius, rng);
-      const assetId = chooseOrNull(GRASS_ASSET_IDS, rng);
+      const assetId = chooseWeightedEnvironmentAssetIdOrNull(
+        GRASS_ASSET_OPTIONS,
+        rng,
+      );
       if (!assetId) continue;
       const spec = ASSET_BY_ID.get(assetId);
       if (!spec) continue;
-      this.tryAddPlacement(placements, assetId, p.x, p.z, {
+      this.tryAddPlacement(placements, assetId, p.x, p.z, rng, {
         height: spec.defaultHeight * randRange(rng, 0.55, 1.35),
         radius: spec.defaultRadius * randRange(rng, 0.65, 1.25),
         rotation: rng() * Math.PI * 2,
@@ -1041,14 +1099,17 @@ export class EnvironmentPropRenderer3D {
     assetId: string,
     x: number,
     z: number,
+    rng: () => number,
     options: PlacementOptions = {},
   ): boolean {
     const spec = ASSET_BY_ID.get(assetId);
     if (!spec) return false;
     const assetScale = getRandomEnvironmentAssetScale(assetId);
     if (assetScale <= 0) return false;
-    const height = (options.height ?? spec.defaultHeight) * assetScale;
-    const radius = (options.radius ?? spec.defaultRadius) * assetScale;
+    const jitteredScale =
+      assetScale * getRandomEnvironmentAssetScaleJitter(rng);
+    const height = (options.height ?? spec.defaultHeight) * jitteredScale;
+    const radius = (options.radius ?? spec.defaultRadius) * jitteredScale;
     if (!this.canPlaceAt(x, z, radius, options)) return false;
     const y = this.sampleTerrainHeight(x, z);
     if (!Number.isFinite(y) || y < WATER_LEVEL) return false;
@@ -1338,9 +1399,22 @@ function randRange(rng: () => number, min: number, max: number): number {
   return min + (max - min) * rng();
 }
 
-function chooseOrNull<T>(items: readonly T[], rng: () => number): T | null {
-  if (items.length === 0) return null;
-  return items[Math.min(items.length - 1, Math.floor(rng() * items.length))];
+function chooseWeightedEnvironmentAssetIdOrNull(
+  options: readonly WeightedEnvironmentAssetOption[],
+  rng: () => number,
+): string | null {
+  let totalFrequency = 0;
+  for (const option of options) totalFrequency += option.frequency;
+  if (totalFrequency <= 0) return null;
+
+  let target = rng() * totalFrequency;
+  let fallback: string | null = null;
+  for (const option of options) {
+    fallback = option.id;
+    target -= option.frequency;
+    if (target <= 0) return option.id;
+  }
+  return fallback;
 }
 
 function scatterAround(
