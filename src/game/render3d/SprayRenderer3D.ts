@@ -385,8 +385,10 @@ export class SprayRenderer3D {
       * (0.72 + this.random() * 0.52)
       * (0.5 + 0.5 * scaledIntensity);
     this.pWobble[idx] = len * 0.018 + targetSpread * 0.035;
+    // Build sprays ignore gravity (the buildSpray shot config sets
+    // `ignoresGravity: true`) — straight-line flight, no lob arc.
     this.pArc[idx] = spray.type === 'build'
-      ? Math.min(34, Math.max(5, len * 0.09))
+      ? 0
       : Math.min(18, Math.max(3, len * 0.045));
     this.pSeed[idx] = this.random() * Math.PI * 2;
     this.pR[idx] = r;
