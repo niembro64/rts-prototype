@@ -69,7 +69,7 @@ export const CLIENT_CONFIG = {
     ],
   },
   audioSmoothing: { default: true },
-  groundMarks: { default: false },
+  groundMarks: { default: true },
   lodShellRings: { default: false },
   lodGridBorders: { default: false },
   triangleDebug: { default: false },

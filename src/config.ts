@@ -544,6 +544,13 @@ export const TERRAIN_HORIZON_BLEND_CONFIG = {
   shade: 1,
 } as const;
 
+/** Master switch for the procedural shader-drawn ground detail in the
+ *  terrain fragment shader — the per-cell rotated grass-blade and twig
+ *  rectangles that hash-place themselves across flat green ground. When
+ *  false, the terrain keeps just the underlying biome colors (low/dry
+ *  grass, rock, shoreline soil) without any of the four box-mark layers. */
+export const TERRAIN_GROUND_DETAIL_ENABLED = false;
+
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion
 // tests) but before units/buildings (so entities overdraw shadows
@@ -681,10 +688,10 @@ export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slo
 
 export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFieldBarrierRatioConfig =
   {
-    outerRatio: 0.5,
+    outerRatio: 0.8,
     // Sphere origin sits below the turret origin by this fraction of
     // the computed outer radius. 0.5 means "half a field radius down".
-    originOffsetRadiusRatio: 0.5,
+    originOffsetRadiusRatio: 0.3,
     color: 0xffffff,
     alpha: 0.05,
     particleAlpha: 0.2,

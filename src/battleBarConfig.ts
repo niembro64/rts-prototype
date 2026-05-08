@@ -63,7 +63,7 @@ export const BATTLE_CONFIG = {
     ],
   },
   dividers: {
-    default: 'valley',
+    default: 'mountain',
     options: [
       { value: 'valley', label: 'VALLEYS' },
       { value: 'mountain', label: 'MOUNTAINS' },
