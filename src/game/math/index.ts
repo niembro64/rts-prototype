@@ -14,6 +14,7 @@ export {
   angleDiff,
   lerpAngle,
   getTransformCosSin,
+  isFiniteNumber,
 } from './MathHelpers';
 
 export {

@@ -3,20 +3,3 @@ As we fix something here we should completely delete it from this file. You shou
 you know for a fact it has been addressed. Remember that our code may have changed since the issue was
 written; check the code and if the issue is no longer relevant, delete it.
 
-Duplicate-code audit — 2026-05-08
-
-The previous round centralized projectile spawn / velocity-update / beam-update /
-sim-event DTO copy+factory helpers into `src/game/network/snapshotDtoCopy.ts`. The
-remaining clusters below follow the same pattern of the same shape getting duplicate
-init in two modules — promoting them into the same module (or into the existing
-`MathHelpers`) keeps the wire schema in lockstep with one source of truth.
-
-4. Local `isFiniteNumber` typeguard duplicated.
-   - `src/game/network/ClientSnapshotApplier.ts:27` and
-     `src/game/network/helpers/NetworkEntityFactory.ts:24` define the same
-     `function isFiniteNumber(value: unknown): value is number { return typeof
-     value === 'number' && Number.isFinite(value); }`.
-   - Drift kind: exact.
-   - Fix direction: export it once from a shared module (`src/game/math/MathHelpers.ts`
-     is the natural home; or a new `src/types/numbers.ts` if `MathHelpers` feels
-     too narrow) and import at both sites.

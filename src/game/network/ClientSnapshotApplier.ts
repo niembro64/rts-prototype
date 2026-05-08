@@ -12,6 +12,7 @@ import {
   codeToTurretState,
   codeToUnitType,
 } from '../../types/network';
+import { isFiniteNumber } from '../math';
 import { getUnitLocomotion } from '../sim/blueprints';
 import {
   applyNetworkTurretNonVisualState,
@@ -23,10 +24,6 @@ import {
   getBuildingBuildRequired,
   getUnitBuildRequired,
 } from './ClientBuildStateApplier';
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
 
 /**
  * Applies snapshot fields that should snap immediately instead of entering the

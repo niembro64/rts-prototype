@@ -20,10 +20,7 @@ import {
   createUnitRuntimeTurrets,
 } from '../../sim/runtimeTurrets';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
+import { isFiniteNumber } from '../../math';
 
 function decodeNetworkUnitType(unitType: unknown): string | null {
   return isFiniteNumber(unitType) ? codeToUnitType(unitType) : null;

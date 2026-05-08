@@ -107,3 +107,11 @@ export function getTransformCosSin(t: { rotation: number; rotCos?: number; rotSi
   _csOut.sin = t.rotSin ?? Math.sin(t.rotation);
   return _csOut;
 }
+
+/** Type guard that narrows `unknown` to a real, finite `number` —
+ *  rejects `NaN`, `Infinity`, and anything that isn't a JS number.
+ *  Used at wire / snapshot boundaries where decoded values can be
+ *  any shape and presence-checks alone aren't enough. */
+export function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
