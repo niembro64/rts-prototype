@@ -4,7 +4,7 @@
 // host class can stay focused on bootstrap, tick scheduling, and
 // snapshot publishing.
 
-import { magnitude } from '../math';
+import { magnitude, magnitude3 } from '../math';
 import { GRAVITY } from '../../config';
 import {
   getTerrainVersion,
@@ -205,7 +205,7 @@ export class UnitForceSystem {
             if (dotOut < 0) {
               useDirX -= dotOut * this._waterOutX;
               useDirY -= dotOut * this._waterOutY;
-              const m = Math.sqrt(useDirX * useDirX + useDirY * useDirY);
+              const m = magnitude(useDirX, useDirY);
               if (m > 1e-3) {
                 useDirX /= m;
                 useDirY /= m;
@@ -324,9 +324,7 @@ export class UnitForceSystem {
     const desiredAx = -slopeGravityX - tangentVx / dtSec;
     const desiredAy = -slopeGravityY - tangentVy / dtSec;
     const desiredAz = -slopeGravityZ - tangentVz / dtSec;
-    const desiredAccelMag = Math.sqrt(
-      desiredAx * desiredAx + desiredAy * desiredAy + desiredAz * desiredAz,
-    );
+    const desiredAccelMag = magnitude3(desiredAx, desiredAy, desiredAz);
     if (desiredAccelMag <= 1e-6) return false;
 
     const desiredForce = (desiredAccelMag * body.mass) / 1e6;
@@ -382,7 +380,7 @@ export class UnitForceSystem {
         oy += dy;
       }
     }
-    const m = Math.sqrt(ox * ox + oy * oy);
+    const m = magnitude(ox, oy);
     if (m <= 0) {
       this._waterOutX = 0;
       this._waterOutY = 0;

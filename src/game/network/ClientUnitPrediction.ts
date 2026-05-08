@@ -4,6 +4,7 @@ import type { Entity } from '../sim/types';
 import {
   lerp,
   lerpAngle,
+  magnitude3,
 } from '../math';
 import { halfLifeBlend, type DriftPreset } from './driftEma';
 import type { PredictionStep } from './ClientPredictionLod';
@@ -85,7 +86,7 @@ export function applyClientUnitVisualPrediction(options: {
   const tnx = sn.nx + (target.surfaceNormalX - sn.nx) * tiltAlpha;
   const tny = sn.ny + (target.surfaceNormalY - sn.ny) * tiltAlpha;
   const tnz = sn.nz + (target.surfaceNormalZ - sn.nz) * tiltAlpha;
-  const tlen = Math.hypot(tnx, tny, tnz);
+  const tlen = magnitude3(tnx, tny, tnz);
   if (tlen > 1e-6) {
     const inv = 1 / tlen;
     sn.nx = tnx * inv;

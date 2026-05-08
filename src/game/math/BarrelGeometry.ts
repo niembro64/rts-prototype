@@ -19,6 +19,7 @@
 import type { BarrelShape } from '@/types/blueprints';
 import type { ActiveProjectileShot, ShotConfig, TurretConfig } from '../sim/types';
 import { isLineShot } from '../sim/types';
+import { magnitude3 } from './MathHelpers';
 
 export const TURRET_BARREL_MIN_DIAMETER = 2;
 
@@ -302,7 +303,7 @@ export function getBarrelTip(
   let dirX = fwdX * barrelLen + upX * (tipY - baseY) + sideX * (tipZ - baseZ);
   let dirY = fwdY * barrelLen + upY * (tipY - baseY) + sideY * (tipZ - baseZ);
   let dirZ = fwdZ * barrelLen + upZ * (tipY - baseY) + sideZ * (tipZ - baseZ);
-  const dirLen = Math.hypot(dirX, dirY, dirZ);
+  const dirLen = magnitude3(dirX, dirY, dirZ);
   if (dirLen > 1e-6) {
     dirX /= dirLen;
     dirY /= dirLen;

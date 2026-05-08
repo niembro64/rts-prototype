@@ -8,6 +8,7 @@ import {
   applyHomingSteering,
   computeInterceptTime,
   lerp,
+  magnitude3,
 } from '../math';
 import { halfLifeBlend, type DriftPreset } from './driftEma';
 import type { PredictionStep } from './ClientPredictionLod';
@@ -76,7 +77,7 @@ function applyClientProjectileHoming(options: {
       targetVelocity.x * targetVelocity.x +
       targetVelocity.y * targetVelocity.y +
       targetVelocity.z * targetVelocity.z;
-    const projectileSpeed = Math.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
+    const projectileSpeed = magnitude3(proj.velocityX, proj.velocityY, proj.velocityZ);
     if (targetSpeedSq > 1e-6 && projectileSpeed > 1e-6) {
       const tLead = computeInterceptTime(
         steerX - entity.transform.x,

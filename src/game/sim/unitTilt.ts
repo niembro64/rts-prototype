@@ -23,6 +23,7 @@
 // payload ships the smoothed value (Phase 2).
 
 import type { WorldState } from './WorldState';
+import { magnitude3 } from '../math';
 import { halfLifeBlend } from '../network/driftEma';
 import { TILT_EMA_HALF_LIFE_SEC, TILT_EMA_MODE_DEFAULT, type TiltEmaMode } from '../../shellConfig';
 
@@ -74,7 +75,7 @@ export function updateUnitTilt(world: WorldState, dtMs: number): void {
     const nx = stored.nx + (raw.nx - stored.nx) * alpha;
     const ny = stored.ny + (raw.ny - stored.ny) * alpha;
     const nz = stored.nz + (raw.nz - stored.nz) * alpha;
-    const len = Math.hypot(nx, ny, nz);
+    const len = magnitude3(nx, ny, nz);
     if (len > 1e-6) {
       const inv = 1 / len;
       stored.nx = nx * inv;

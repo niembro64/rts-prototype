@@ -11,25 +11,6 @@ remaining clusters below follow the same pattern of the same shape getting dupli
 init in two modules — promoting them into the same module (or into the existing
 `MathHelpers`) keeps the wire schema in lockstep with one source of truth.
 
-2. `Math.hypot(x, y, z)` reinvents `magnitude3`.
-   - `src/game/math/MathHelpers.ts:48` already exports `magnitude3(x, y, z)`
-     and its 2D peer `magnitude(x, y)`. Several hot-path sites import nothing
-     and call `Math.hypot` directly:
-   - Site: `src/game/sim/unitTilt.ts:77` — `const len = Math.hypot(nx, ny, nz);`
-     (per-unit per-tick on the EMA renormalize path).
-   - Site: `src/game/network/ClientUnitPrediction.ts:88` — same shape on the
-     client-side tilt EMA renormalize.
-   - Site: `src/game/network/ClientProjectilePrediction.ts:79` — projectile
-     speed magnitude.
-   - Site: `src/game/math/BarrelGeometry.ts:305` — barrel firing-direction
-     length.
-   - Site: `src/game/server/UnitForceSystem.ts:208,385` — 2D force vector
-     magnitudes; should use `magnitude(x, y)`.
-   - Drift kind: exact (same math).
-   - Fix direction: import `magnitude` / `magnitude3` from `../math` (or
-     `'../../math'` depending on depth) at each site. No new helper file
-     needed.
-
 3. `getTransformCosSin` adopted in only some hot paths.
    - `src/game/math/MathHelpers.ts:105` already exports `getTransformCosSin(t)`
      that prefers cached `t.rotCos`/`t.rotSin` when present, falling back to
