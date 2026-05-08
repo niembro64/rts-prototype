@@ -1,21 +1,33 @@
-// Centralized copy/factory helpers for the projectile spawn /
-// velocity-update / beam-update / sim-event wire DTOs.
+// Centralized copy/factory helpers for the wire DTO shapes that the
+// snapshot serializer, snapshot cloner, projectile-spawn smoothing
+// queue, and debug-grid publisher all build into pooled buffers.
 //
-// These shapes are written from three places — the wire serializer's
-// pooled buffers, the client SnapshotBuffer's accumulator, and the
-// per-spawn smoothing queue — and previously each site kept its own
-// copy of every helper. That made it easy to add a field in one spot
-// and miss it in the others, so DTO schema drift was a real risk.
-// Keep additions/removals to a single field here so all three pools
-// stay in lockstep.
+// Each shape used to keep its own factory + per-field copy in two or
+// three modules, which is exactly how DTO fields drift — add a new
+// optional field in one site, miss the others, and the wire schema
+// silently desyncs. Every pair below is the single source of truth;
+// pool wrappers in the serializer, the cloner, the spawn-smoothing
+// queue, and the debug-grid publisher import these directly.
 
 import type {
+  NetworkServerSnapshotAction,
   NetworkServerSnapshotBeamUpdate,
+  NetworkServerSnapshotEntity,
+  NetworkServerSnapshotGridCell,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotSimEvent,
+  NetworkServerSnapshotSprayTarget,
+  NetworkServerSnapshotTurret,
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkTypes';
 import { PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN } from '@/types/network';
+import type { PlayerId } from '@/types/sim';
+
+/** Factory waypoint wire shape — anonymous in the snapshot type, lifted
+ *  here so the centralized waypoint helpers can name it. */
+export type WaypointDto = NonNullable<
+  NonNullable<NetworkServerSnapshotEntity['building']>['factory']
+>['waypoints'][number];
 
 export function createSpawnDto(): NetworkServerSnapshotProjectileSpawn {
   return {
@@ -170,5 +182,138 @@ export function copySimEventInto(
         playerId: src.forceFieldImpact.playerId,
       }
     : undefined;
+  return dst;
+}
+
+export function createActionDto(): NetworkServerSnapshotAction {
+  return {
+    type: 0,
+    pos: undefined,
+    posZ: undefined,
+    pathExp: undefined,
+    targetId: undefined,
+    buildingType: undefined,
+    grid: undefined,
+    buildingId: undefined,
+  };
+}
+
+export function copyActionInto(
+  src: NetworkServerSnapshotAction,
+  dst: NetworkServerSnapshotAction,
+): NetworkServerSnapshotAction {
+  dst.type = src.type;
+  if (src.pos) {
+    if (!dst.pos) dst.pos = { x: 0, y: 0 };
+    dst.pos.x = src.pos.x;
+    dst.pos.y = src.pos.y;
+  } else {
+    dst.pos = undefined;
+  }
+  dst.posZ = src.posZ;
+  dst.pathExp = src.pathExp;
+  dst.targetId = src.targetId;
+  dst.buildingType = src.buildingType;
+  if (src.grid) {
+    if (!dst.grid) dst.grid = { x: 0, y: 0 };
+    dst.grid.x = src.grid.x;
+    dst.grid.y = src.grid.y;
+  } else {
+    dst.grid = undefined;
+  }
+  dst.buildingId = src.buildingId;
+  return dst;
+}
+
+export function createTurretDto(): NetworkServerSnapshotTurret {
+  return {
+    turret: {
+      id: TURRET_ID_UNKNOWN,
+      angular: { rot: 0, vel: 0, pitch: 0 },
+    },
+    targetId: undefined,
+    state: 0,
+    currentForceFieldRange: undefined,
+  };
+}
+
+export function copyTurretInto(
+  src: NetworkServerSnapshotTurret,
+  dst: NetworkServerSnapshotTurret,
+): NetworkServerSnapshotTurret {
+  dst.turret.id = src.turret.id;
+  dst.turret.angular.rot = src.turret.angular.rot;
+  dst.turret.angular.vel = src.turret.angular.vel;
+  dst.turret.angular.pitch = src.turret.angular.pitch;
+  dst.targetId = src.targetId;
+  dst.state = src.state;
+  dst.currentForceFieldRange = src.currentForceFieldRange;
+  return dst;
+}
+
+export function createSprayDto(): NetworkServerSnapshotSprayTarget {
+  return {
+    source: { id: 0, pos: { x: 0, y: 0 }, z: undefined, playerId: 1 as PlayerId },
+    target: { id: 0, pos: { x: 0, y: 0 }, z: undefined, dim: undefined, radius: undefined },
+    type: 'build',
+    intensity: 0,
+    speed: undefined,
+    particleRadius: undefined,
+  };
+}
+
+export function copySprayInto(
+  src: NetworkServerSnapshotSprayTarget,
+  dst: NetworkServerSnapshotSprayTarget,
+): NetworkServerSnapshotSprayTarget {
+  dst.source.id = src.source.id;
+  dst.source.pos.x = src.source.pos.x;
+  dst.source.pos.y = src.source.pos.y;
+  dst.source.z = src.source.z;
+  dst.source.playerId = src.source.playerId;
+  dst.target.id = src.target.id;
+  dst.target.pos.x = src.target.pos.x;
+  dst.target.pos.y = src.target.pos.y;
+  dst.target.z = src.target.z;
+  if (src.target.dim) {
+    if (!dst.target.dim) dst.target.dim = { x: 0, y: 0 };
+    dst.target.dim.x = src.target.dim.x;
+    dst.target.dim.y = src.target.dim.y;
+  } else {
+    dst.target.dim = undefined;
+  }
+  dst.target.radius = src.target.radius;
+  dst.type = src.type;
+  dst.intensity = src.intensity;
+  dst.speed = src.speed;
+  dst.particleRadius = src.particleRadius;
+  return dst;
+}
+
+export function createWaypointDto(): WaypointDto {
+  return { pos: { x: 0, y: 0 }, posZ: undefined, type: '' };
+}
+
+export function copyWaypointInto(src: WaypointDto, dst: WaypointDto): WaypointDto {
+  dst.pos.x = src.pos.x;
+  dst.pos.y = src.pos.y;
+  dst.posZ = src.posZ;
+  dst.type = src.type;
+  return dst;
+}
+
+export function createCellDto(): NetworkServerSnapshotGridCell {
+  return { cell: { x: 0, y: 0, z: 0 }, players: [] };
+}
+
+export function copyCellInto(
+  src: NetworkServerSnapshotGridCell,
+  dst: NetworkServerSnapshotGridCell,
+): NetworkServerSnapshotGridCell {
+  dst.cell.x = src.cell.x;
+  dst.cell.y = src.cell.y;
+  dst.cell.z = src.cell.z;
+  dst.players.length = src.players.length;
+  for (let i = 0; i < src.players.length; i++) dst.players[i] = src.players[i];
   return dst;
 }

@@ -1,28 +1,34 @@
 import type {
   NetworkServerSnapshot,
-  NetworkServerSnapshotAction,
   NetworkServerSnapshotEconomy,
   NetworkServerSnapshotEntity,
-  NetworkServerSnapshotGridCell,
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
-  NetworkServerSnapshotTurret,
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkTypes';
-import { TURRET_ID_UNKNOWN } from '@/types/network';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
+  copyActionInto,
   copyBeamInto,
+  copyCellInto,
   copySimEventInto,
   copySpawnInto,
+  copySprayInto,
+  copyTurretInto,
   copyVelocityInto,
+  copyWaypointInto,
+  createActionDto,
   createBeamDto,
+  createCellDto,
   createSimEventDto,
   createSpawnDto,
+  createSprayDto,
+  createTurretDto,
   createVelocityDto,
+  createWaypointDto,
 } from './snapshotDtoCopy';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
@@ -61,57 +67,6 @@ type ReusableEntityUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
 type ReusableFactory = NonNullable<ReusableEntityBuilding['factory']>;
 type ReusableBuildState = NonNullable<ReusableEntityUnit['build']>;
-
-function copyActionInto(
-  src: NetworkServerSnapshotAction,
-  dst: NetworkServerSnapshotAction,
-): NetworkServerSnapshotAction {
-  dst.type = src.type;
-  if (src.pos) {
-    if (!dst.pos) dst.pos = { x: 0, y: 0 };
-    dst.pos.x = src.pos.x;
-    dst.pos.y = src.pos.y;
-  } else {
-    dst.pos = undefined;
-  }
-  dst.posZ = src.posZ;
-  dst.pathExp = src.pathExp;
-  dst.targetId = src.targetId;
-  dst.buildingType = src.buildingType;
-  if (src.grid) {
-    if (!dst.grid) dst.grid = { x: 0, y: 0 };
-    dst.grid.x = src.grid.x;
-    dst.grid.y = src.grid.y;
-  } else {
-    dst.grid = undefined;
-  }
-  dst.buildingId = src.buildingId;
-  return dst;
-}
-
-function copyNetworkTurretInto(
-  src: NetworkServerSnapshotTurret,
-  dst: NetworkServerSnapshotTurret,
-): NetworkServerSnapshotTurret {
-  dst.turret.id = src.turret.id;
-  dst.turret.angular.rot = src.turret.angular.rot;
-  dst.turret.angular.vel = src.turret.angular.vel;
-  dst.turret.angular.pitch = src.turret.angular.pitch;
-  dst.targetId = src.targetId;
-  dst.state = src.state;
-  dst.currentForceFieldRange = src.currentForceFieldRange;
-  return dst;
-}
-
-function createReusableNetworkTurret(): NetworkServerSnapshotTurret {
-  return {
-    turret: {
-      id: TURRET_ID_UNKNOWN,
-      angular: { rot: 0, vel: 0, pitch: 0 },
-    },
-    state: 0,
-  };
-}
 
 function createReusableUnit(): ReusableEntityUnit {
   return {
@@ -173,7 +128,7 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
     const actions = dst.actions ?? (dst.actions = []);
     actions.length = src.actions.length;
     for (let i = 0; i < src.actions.length; i++) {
-      actions[i] = copyActionInto(src.actions[i], actions[i] ?? {});
+      actions[i] = copyActionInto(src.actions[i], actions[i] ?? createActionDto());
     }
   } else {
     dst.actions = undefined;
@@ -183,9 +138,9 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
     const turrets = dst.turrets ?? (dst.turrets = []);
     turrets.length = src.turrets.length;
     for (let i = 0; i < src.turrets.length; i++) {
-      turrets[i] = copyNetworkTurretInto(
+      turrets[i] = copyTurretInto(
         src.turrets[i],
-        turrets[i] ?? createReusableNetworkTurret(),
+        turrets[i] ?? createTurretDto(),
       );
     }
   } else {
@@ -215,16 +170,12 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.metalRate = src.metalRate;
   dst.waypoints.length = src.waypoints.length;
   for (let i = 0; i < src.waypoints.length; i++) {
-    const sw = src.waypoints[i];
     let dw = dst.waypoints[i];
     if (!dw) {
-      dw = { pos: { x: 0, y: 0 }, type: '' };
+      dw = createWaypointDto();
       dst.waypoints[i] = dw;
     }
-    dw.pos.x = sw.pos.x;
-    dw.pos.y = sw.pos.y;
-    dw.posZ = sw.posZ;
-    dw.type = sw.type;
+    copyWaypointInto(src.waypoints[i], dw);
   }
   return dst;
 }
@@ -255,9 +206,9 @@ function copyBuildingInto(
     const turrets = dst.turrets ?? (dst.turrets = []);
     turrets.length = src.turrets.length;
     for (let i = 0; i < src.turrets.length; i++) {
-      turrets[i] = copyNetworkTurretInto(
+      turrets[i] = copyTurretInto(
         src.turrets[i],
-        turrets[i] ?? createReusableNetworkTurret(),
+        turrets[i] ?? createTurretDto(),
       );
     }
   } else {
@@ -314,61 +265,6 @@ function createReusableEntity(): NetworkServerSnapshotEntity {
 }
 
 type ReusableCaptureTile = NonNullable<NetworkServerSnapshot['capture']>['tiles'][number];
-
-function createReusableSpray(): NetworkServerSnapshotSprayTarget {
-  return {
-    source: { id: 0, pos: { x: 0, y: 0 }, playerId: 1 },
-    target: { id: 0, pos: { x: 0, y: 0 } },
-    type: 'build',
-    intensity: 0,
-    speed: undefined,
-    particleRadius: undefined,
-  };
-}
-
-function copySprayInto(
-  src: NetworkServerSnapshotSprayTarget,
-  dst: NetworkServerSnapshotSprayTarget,
-): NetworkServerSnapshotSprayTarget {
-  dst.source.id = src.source.id;
-  dst.source.pos.x = src.source.pos.x;
-  dst.source.pos.y = src.source.pos.y;
-  dst.source.z = src.source.z;
-  dst.source.playerId = src.source.playerId;
-  dst.target.id = src.target.id;
-  dst.target.pos.x = src.target.pos.x;
-  dst.target.pos.y = src.target.pos.y;
-  dst.target.z = src.target.z;
-  if (src.target.dim) {
-    if (!dst.target.dim) dst.target.dim = { x: 0, y: 0 };
-    dst.target.dim.x = src.target.dim.x;
-    dst.target.dim.y = src.target.dim.y;
-  } else {
-    dst.target.dim = undefined;
-  }
-  dst.target.radius = src.target.radius;
-  dst.type = src.type;
-  dst.intensity = src.intensity;
-  dst.speed = src.speed;
-  dst.particleRadius = src.particleRadius;
-  return dst;
-}
-
-function createReusableCell(): NetworkServerSnapshotGridCell {
-  return { cell: { x: 0, y: 0, z: 0 }, players: [] };
-}
-
-function copyCellInto(
-  src: NetworkServerSnapshotGridCell,
-  dst: NetworkServerSnapshotGridCell,
-): NetworkServerSnapshotGridCell {
-  dst.cell.x = src.cell.x;
-  dst.cell.y = src.cell.y;
-  dst.cell.z = src.cell.z;
-  dst.players.length = src.players.length;
-  for (let i = 0; i < src.players.length; i++) dst.players[i] = src.players[i];
-  return dst;
-}
 
 function createReusableCaptureTile(): ReusableCaptureTile {
   return { cx: 0, cy: 0, heights: {} };
@@ -485,7 +381,7 @@ export class ReusableNetworkSnapshotCloner {
         economy[playerId] ?? cloneEconomyEntry(state.economy[playerId]),
       );
     }
-    dst.sprayTargets = this.copyArray(state.sprayTargets, this.sprayTargets, createReusableSpray, copySprayInto);
+    dst.sprayTargets = this.copyArray(state.sprayTargets, this.sprayTargets, createSprayDto, copySprayInto);
     dst.audioEvents = this.copyArray(state.audioEvents, this.audioEvents, createSimEventDto, copySimEventInto);
     if (state.projectiles) {
       this.projectiles.spawns = this.copyArray(state.projectiles.spawns, this.spawns, createSpawnDto, copySpawnInto);
@@ -535,8 +431,8 @@ export class ReusableNetworkSnapshotCloner {
       tiltEma: state.serverMeta.tiltEma,
     } : undefined;
     if (state.grid) {
-      this.grid.cells = this.copyRequiredArray(state.grid.cells, this.grid.cells, createReusableCell, copyCellInto);
-      this.grid.searchCells = this.copyRequiredArray(state.grid.searchCells, this.grid.searchCells, createReusableCell, copyCellInto);
+      this.grid.cells = this.copyRequiredArray(state.grid.cells, this.grid.cells, createCellDto, copyCellInto);
+      this.grid.searchCells = this.copyRequiredArray(state.grid.searchCells, this.grid.searchCells, createCellDto, copyCellInto);
       this.grid.cellSize = state.grid.cellSize;
       dst.grid = this.grid;
     } else {

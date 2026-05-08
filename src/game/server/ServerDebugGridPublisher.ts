@@ -4,6 +4,7 @@ import {
   SERVER_GRID_DEBUG_MAX_SEARCH_CELLS,
 } from '../../config';
 import type { NetworkServerSnapshotGridCell } from '../network/NetworkTypes';
+import { createCellDto } from '../network/snapshotDtoCopy';
 import { spatialGrid } from '../sim/SpatialGrid';
 import type { WorldState } from '../sim/WorldState';
 
@@ -81,10 +82,14 @@ export class ServerDebugGridPublisher {
     const out: NetworkServerSnapshotGridCell[] = new Array(src.length);
     for (let i = 0; i < src.length; i++) {
       const s = src[i];
-      out[i] = {
-        cell: { x: s.cell.x, y: s.cell.y, z: s.cell.z },
-        players: s.players.slice(),
-      };
+      const dto = createCellDto();
+      dto.cell.x = s.cell.x;
+      dto.cell.y = s.cell.y;
+      dto.cell.z = s.cell.z;
+      const players = dto.players;
+      players.length = s.players.length;
+      for (let j = 0; j < s.players.length; j++) players[j] = s.players[j];
+      out[i] = dto;
     }
     return out;
   }
@@ -95,7 +100,7 @@ export class ServerDebugGridPublisher {
     cz: number,
     playersMask: number,
   ): NetworkServerSnapshotGridCell {
-    const cell = this.cellPool.pop() ?? { cell: { x: 0, y: 0, z: 0 }, players: [] };
+    const cell = this.cellPool.pop() ?? createCellDto();
     cell.cell.x = cx;
     cell.cell.y = cy;
     cell.cell.z = cz;

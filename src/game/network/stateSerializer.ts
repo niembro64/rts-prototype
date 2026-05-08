@@ -7,7 +7,7 @@ import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerS
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
-import type { Vec2, Vec3 } from '../../types/vec2';
+import type { Vec3 } from '../../types/vec2';
 import type { GamePhase } from '../../types/network';
 import type { SnapshotDeltaResolutionConfig } from '../../types/config';
 import {
@@ -20,6 +20,13 @@ import {
   PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN,
 } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
+import {
+  createActionDto,
+  createSprayDto,
+  createTurretDto,
+  createWaypointDto,
+  type WaypointDto,
+} from './snapshotDtoCopy';
 
 // === Object pool for NetworkServerSnapshotEntity (eliminates per-frame allocations) ===
 // Each frame we reset the pool index and overwrite existing objects.
@@ -28,49 +35,6 @@ const INITIAL_ENTITY_POOL = 200; // MAX_TOTAL_UNITS (120) + buildings + headroom
 const MAX_WEAPONS_PER_ENTITY = 8;
 const MAX_ACTIONS_PER_ENTITY = 16;
 const MAX_WAYPOINTS_PER_ENTITY = 16;
-
-// Pre-allocated weapon objects per entity slot
-function createPooledTurret(): NetworkServerSnapshotTurret {
-  return {
-    turret: {
-      id: TURRET_ID_UNKNOWN,
-      angular: { rot: 0, vel: 0, pitch: 0 },
-    },
-    targetId: undefined,
-    state: 0,
-    currentForceFieldRange: undefined,
-  };
-}
-
-/** Pooled action carries its own pos/grid sub-objects so the per-snapshot
- *  serialization just mutates them and toggles the action's pos/grid
- *  fields between that persistent reference and undefined — instead of
- *  allocating a fresh `{ x, y }` per action per snapshot. The hidden
- *  `_pos` / `_grid` properties are not on the wire shape; only the
- *  `pos` / `grid` fields above are serialized. */
-type PooledActionStorage = NetworkServerSnapshotAction & {
-  _pos: { x: number; y: number };
-  _grid: { x: number; y: number };
-};
-function createPooledAction(): NetworkServerSnapshotAction {
-  const storage: PooledActionStorage = {
-    type: 0,
-    pos: undefined,
-    posZ: undefined,
-    pathExp: undefined,
-    targetId: undefined,
-    buildingType: undefined,
-    grid: undefined,
-    buildingId: undefined,
-    _pos: { x: 0, y: 0 },
-    _grid: { x: 0, y: 0 },
-  };
-  return storage;
-}
-
-function createPooledWaypoint(): { pos: Vec2; posZ?: number; type: string } {
-  return { pos: { x: 0, y: 0 }, posZ: undefined, type: '' };
-}
 
 // Pre-allocated sub-objects for the nested NetworkServerSnapshotEntity shape
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
@@ -92,7 +56,7 @@ type PooledEntry = {
   factorySub: FactorySub;
   turrets: NetworkServerSnapshotTurret[];
   actions: NetworkServerSnapshotAction[];
-  waypoints: { pos: Vec2; posZ?: number; type: string }[];
+  waypoints: WaypointDto[];
   buildQueue: number[];
 };
 
@@ -121,7 +85,7 @@ function writeTurretsToPool(
   weapons: NonNullable<Entity['combat']>['turrets'],
 ): NetworkServerSnapshotTurret[] {
   const count = weapons.length;
-  while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
+  while (pool.turrets.length < count) pool.turrets.push(createTurretDto());
   pool.turrets.length = count;
   for (let i = 0; i < count; i++) {
     const src = weapons[i];
@@ -156,29 +120,6 @@ function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
 
 function createPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
   return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
-}
-
-type PooledSprayTarget = NetworkServerSnapshotSprayTarget & {
-  _sourcePos: Vec2;
-  _targetPos: Vec2;
-  _targetDim: Vec2;
-};
-
-function createPooledSprayTarget(): NetworkServerSnapshotSprayTarget {
-  const spray: PooledSprayTarget = {
-    source: { id: 0, pos: { x: 0, y: 0 }, z: undefined, playerId: 1 as PlayerId },
-    target: { id: 0, pos: { x: 0, y: 0 }, z: undefined, dim: undefined, radius: undefined },
-    type: 'build',
-    intensity: 0,
-    speed: undefined,
-    particleRadius: undefined,
-    _sourcePos: { x: 0, y: 0 },
-    _targetPos: { x: 0, y: 0 },
-    _targetDim: { x: 0, y: 0 },
-  };
-  spray.source.pos = spray._sourcePos;
-  spray.target.pos = spray._targetPos;
-  return spray;
 }
 
 type PooledSimEvent = NetworkServerSnapshotSimEvent & {
@@ -267,11 +208,11 @@ function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
 
 function createPooledEntry(): PooledEntry {
   const turrets: NetworkServerSnapshotTurret[] = [];
-  for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) turrets.push(createPooledTurret());
+  for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) turrets.push(createTurretDto());
   const actions: NetworkServerSnapshotAction[] = [];
-  for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createPooledAction());
-  const waypoints: { pos: Vec2; posZ?: number; type: string }[] = [];
-  for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createPooledWaypoint());
+  for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createActionDto());
+  const waypoints: WaypointDto[] = [];
+  for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createWaypointDto());
   return {
     entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
       unitSub: {
@@ -759,10 +700,10 @@ function getPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
   return point;
 }
 
-function getPooledSprayTarget(): PooledSprayTarget {
-  let spray = _sprayPool[_sprayPoolIndex] as PooledSprayTarget | undefined;
+function getPooledSprayTarget(): NetworkServerSnapshotSprayTarget {
+  let spray = _sprayPool[_sprayPoolIndex];
   if (!spray) {
-    spray = createPooledSprayTarget() as PooledSprayTarget;
+    spray = createSprayDto();
     _sprayPool[_sprayPoolIndex] = spray;
   }
   _sprayPoolIndex++;
@@ -999,18 +940,18 @@ export function serializeGameState(
       const st = sprayTargets[i];
       const out = getPooledSprayTarget();
       out.source.id = st.source.id;
-      out._sourcePos.x = st.source.pos.x;
-      out._sourcePos.y = st.source.pos.y;
+      out.source.pos.x = st.source.pos.x;
+      out.source.pos.y = st.source.pos.y;
       out.source.z = st.source.z;
       out.source.playerId = st.source.playerId;
       out.target.id = st.target.id;
-      out._targetPos.x = st.target.pos.x;
-      out._targetPos.y = st.target.pos.y;
+      out.target.pos.x = st.target.pos.x;
+      out.target.pos.y = st.target.pos.y;
       out.target.z = st.target.z;
       if (st.target.dim) {
-        out._targetDim.x = st.target.dim.x;
-        out._targetDim.y = st.target.dim.y;
-        out.target.dim = out._targetDim;
+        if (!out.target.dim) out.target.dim = { x: 0, y: 0 };
+        out.target.dim.x = st.target.dim.x;
+        out.target.dim.y = st.target.dim.y;
       } else {
         out.target.dim = undefined;
       }
@@ -1423,16 +1364,16 @@ function serializeEntity(
       if (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS)) {
         const actions = entity.unit.actions ?? [];
         const count = actions.length;
-        while (pool.actions.length < count) pool.actions.push(createPooledAction());
+        while (pool.actions.length < count) pool.actions.push(createActionDto());
         pool.actions.length = count;
         for (let i = 0; i < count; i++) {
           const src = actions[i];
-          const dst = pool.actions[i] as PooledActionStorage;
+          const dst = pool.actions[i];
           dst.type = actionTypeToCode(src.type);
           if (src.x !== undefined) {
-            dst._pos.x = src.x;
-            dst._pos.y = src.y;
-            dst.pos = dst._pos;
+            if (!dst.pos) dst.pos = { x: 0, y: 0 };
+            dst.pos.x = src.x;
+            dst.pos.y = src.y;
           } else {
             dst.pos = undefined;
           }
@@ -1447,9 +1388,9 @@ function serializeEntity(
           dst.targetId = src.targetId;
           dst.buildingType = src.buildingType;
           if (src.gridX !== undefined) {
-            dst._grid.x = src.gridX;
-            dst._grid.y = src.gridY!;
-            dst.grid = dst._grid;
+            if (!dst.grid) dst.grid = { x: 0, y: 0 };
+            dst.grid.x = src.gridX;
+            dst.grid.y = src.gridY!;
           } else {
             dst.grid = undefined;
           }
@@ -1573,7 +1514,7 @@ function serializeEntity(
           // waypoints[0] = rally point, rest = user-set waypoints
           const wps = entity.factory.waypoints;
           const wpCount = 1 + wps.length;
-          while (pool.waypoints.length < wpCount) pool.waypoints.push(createPooledWaypoint());
+          while (pool.waypoints.length < wpCount) pool.waypoints.push(createWaypointDto());
           pool.waypoints.length = wpCount;
           pool.waypoints[0].pos.x = entity.factory.rallyX;
           pool.waypoints[0].pos.y = entity.factory.rallyY;
