@@ -130,6 +130,10 @@ export class NetworkManager {
   private readonly heartbeatTimeoutMs = 30000;
   private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
+  /** 10s connection-setup deadline created by hostGame/joinGame. Held
+   *  here so disconnect() can cancel it — otherwise a stale timeout
+   *  can fire after the user retries and destroy the new peer. */
+  private setupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   // Callbacks
   public onPlayerJoined?: (player: LobbyPlayer) => void;
@@ -168,6 +172,13 @@ export class NetworkManager {
     if (this.signalingReconnectTimer !== null) {
       clearTimeout(this.signalingReconnectTimer);
       this.signalingReconnectTimer = null;
+    }
+  }
+
+  private clearSetupTimeout(): void {
+    if (this.setupTimeoutId !== null) {
+      clearTimeout(this.setupTimeoutId);
+      this.setupTimeoutId = null;
     }
   }
 
@@ -331,8 +342,13 @@ export class NetworkManager {
     return new Promise((resolve, reject) => {
       let resolved = false;
 
-      // Timeout after 10 seconds
-      const timeout = setTimeout(() => {
+      // Timeout after 10 seconds. Stored on `this` so disconnect()
+      // can cancel a setup attempt that's still in flight; without
+      // that, a retry creates a fresh peer and the old timer fires
+      // 10s later destroying the new one.
+      this.clearSetupTimeout();
+      this.setupTimeoutId = setTimeout(() => {
+        this.setupTimeoutId = null;
         if (!resolved) {
           resolved = true;
           this.peer?.destroy();
@@ -347,7 +363,7 @@ export class NetworkManager {
         this.markSignalingOpen();
         if (resolved) return;
         resolved = true;
-        clearTimeout(timeout);
+        this.clearSetupTimeout();
         this.startHeartbeats();
         console.log('Host peer opened with ID:', this.peer?.id);
         resolve(this.roomCode);
@@ -377,7 +393,7 @@ export class NetworkManager {
             this.markSignalingOpen();
             if (resolved) return;
             resolved = true;
-            clearTimeout(timeout);
+            this.clearSetupTimeout();
             this.startHeartbeats();
             resolve(this.roomCode);
           });
@@ -389,20 +405,20 @@ export class NetworkManager {
           this.peer.on('error', (e) => {
             if (resolved) return;
             resolved = true;
-            clearTimeout(timeout);
+            this.clearSetupTimeout();
             reject(e);
           });
         } else if (err.type === 'disconnected' || err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
           // Connection to signaling server failed
           if (!resolved) {
             resolved = true;
-            clearTimeout(timeout);
+            this.clearSetupTimeout();
             reject(new Error('Could not connect to game server. Please try again.'));
           }
         } else {
           if (resolved) return;
           resolved = true;
-          clearTimeout(timeout);
+          this.clearSetupTimeout();
           this.onError?.(err.message);
           reject(err);
         }
@@ -435,6 +451,7 @@ export class NetworkManager {
 
         conn.on('open', () => {
           opened = true;
+          this.clearSetupTimeout();
           console.log('Connected to host');
           // Track host's heartbeats — if the host stops sending
           // for too long, the check loop closes our side of the
@@ -447,6 +464,7 @@ export class NetworkManager {
 
         conn.on('error', (err) => {
           console.error('Connection error:', err);
+          this.clearSetupTimeout();
           this.onError?.('Failed to connect to host');
           reject(err);
         });
@@ -465,18 +483,24 @@ export class NetworkManager {
           return;
         }
         if (err.type === 'peer-unavailable') {
+          this.clearSetupTimeout();
           this.onError?.('Game not found - check the code and try again');
           this.peer?.destroy();
           this.peer = null;
           reject(new Error('Game not found'));
           return;
         }
+        this.clearSetupTimeout();
         this.onError?.(err.message);
         reject(err);
       });
 
-      // Timeout after 10 seconds
-      setTimeout(() => {
+      // Timeout after 10 seconds. Stored on `this` (see hostGame for
+      // the same pattern) so disconnect() can cancel an in-flight
+      // attempt and avoid destroying a newly-created peer 10s later.
+      this.clearSetupTimeout();
+      this.setupTimeoutId = setTimeout(() => {
+        this.setupTimeoutId = null;
         if (!opened) {
           this.peer?.destroy();
           this.peer = null;
@@ -1201,6 +1225,7 @@ export class NetworkManager {
   // Disconnect and cleanup
   disconnect(): void {
     this.clearSignalingReconnect();
+    this.clearSetupTimeout();
     this.stopHeartbeats();
     for (const playerId of this.connections.keys()) {
       this.detachDataChannelListeners(playerId);
@@ -1232,6 +1257,9 @@ export class NetworkManager {
     this.onError = undefined;
     this.onConnected = undefined;
     this.onClientReady = undefined;
+    this.onLobbySettings = undefined;
+    this.getLobbySettings = undefined;
+    this.onPlayerInfoUpdate = undefined;
   }
 }
 

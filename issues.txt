@@ -5,15 +5,6 @@ written; check the code and if the issue is no longer relevant, delete it.
 
 Audit findings - 2026-05-07
 
-6. `NetworkManager.disconnect` leaves callbacks and connection timers behind.
-   - `disconnect` clears many callbacks but omits `onLobbySettings`, `getLobbySettings`, and
-     `onPlayerInfoUpdate`, which are assigned closures from `GameCanvas.vue`.
-   - `hostGame` and `joinGame` create 10-second setup timeouts that are not stored or canceled on disconnect.
-     A stale timeout can later call `this.peer?.destroy()` after the user has canceled/retried and created a
-     newer peer.
-   - Fix direction: clear all callback fields on disconnect, store timeout IDs, cancel them on disconnect, and
-     guard timeout callbacks by peer identity or session generation.
-
 7. HOST SERVER Tilt EMA setting is not included in snapshot meta.
    - The host UI sends tilt EMA changes to the server, and `GameServer` applies them.
    - `ServerSnapshotMetaBuilder.build` includes other host-controlled settings such as sim LOD and wind, but
