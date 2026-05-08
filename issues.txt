@@ -3,3 +3,106 @@ As we fix something here we should completely delete it from this file. You shou
 you know for a fact it has been addressed. Remember that our code may have changed since the issue was
 written; check the code and if the issue is no longer relevant, delete it.
 
+Duplicate-code audit (round 3) — 2026-05-08
+
+Earlier rounds centralized snapshot DTO factories, vector-length math
+(`magnitude`/`magnitude3`), inline cos/sin (`getTransformCosSin`), and
+`isFiniteNumber`. The clusters below are NEW — different layers
+(sim/combat/render3d/persistence) and largely orthogonal to the
+snapshot-DTO work. Each lift is small and self-contained.
+
+1. Stride-modulo "should this tick run?" predicate.
+   - Seven sites compute `stride <= 1 || (tick + entityPhase) % stride === 0`
+     (or the negation) inline:
+   - `src/game/network/stateSerializer.ts:402` — `tick % stride === 0`
+     (no per-entity phase; spawn-event side channel cadence).
+   - `src/game/sim/combat/targetingSystem.ts:396` —
+     `stride <= 1 || ((unit.id + tick) % stride) === 0`.
+   - `src/game/sim/combat/targetingSystem.ts:66` — `(unitId + tick) % stride`
+     for the next-reacquire-tick math.
+   - `src/game/network/ClientPredictionLod.ts:150` —
+     `(frameCounter + id) % stride !== 0`.
+   - `src/game/render3d/UnitMassInstanceRenderer3D.ts:297` —
+     `(this.frame + entity.id) % stride === 0`.
+   - `src/game/render3d/Render3DEntities.ts:427` —
+     `stride <= 1 || ((this.richUnitDetailFrame + entity.id) % stride) === 0`.
+   - `src/game/render3d/ContactShadowRenderer3D.ts:76` —
+     `stride > 1 && frameIndex % stride !== 0` (negated form, no phase).
+   - Drift kind: near-exact (same predicate; some add an entity-id
+     phase to spread load across the stride window, some don't).
+   - Fix direction: add `shouldRunOnStride(tick: number, stride: number,
+     entityPhase?: number): boolean` to `src/game/math/MathHelpers.ts`
+     and route every site through it. The helper handles the
+     `stride <= 1` early-out so each call site collapses to one line.
+
+2. Damped-spring rotation integrator duplicated for yaw + pitch.
+   - `src/game/sim/combat/turretSystem.ts:179–192` runs the same
+     `diff = target − current; accel = diff*k − vel*c; vel += accel*dt;
+     new = current + vel*dt` four-line block twice — once for yaw
+     (with `normalizeAngle` on the diff and the integrated angle),
+     once for pitch (with PITCH_MIN/MAX clamp + zero-velocity-on-clamp).
+   - Drift kind: near-exact (same physics; yaw wraps via
+     `normalizeAngle`, pitch clamps with `if (n < min) { n = min; vel = 0; }`).
+   - Fix direction: extract `integrateDampedRotation(angle, vel,
+     target, kp, c, dtSec, options?: { wrap?: boolean; minAngle?: number;
+     maxAngle?: number }): { angle, vel }` to a new
+     `src/game/sim/combat/rotationIntegration.ts`. Both yaw and pitch
+     update sites collapse to one call each.
+
+3. Cooldown floor-to-zero pattern duplicated.
+   - `src/game/sim/combat/targetingSystem.ts:362–365` and `:368–371`
+     share the exact `if (cd > 0) { cd -= dtMs; if (cd < 0) cd = 0; }`
+     three-line guard — once for `weapon.cooldown`, once for
+     `weapon.burst.cooldown`.
+   - Drift kind: exact.
+   - Fix direction: a one-liner `decrementCooldown(cd: number, dtMs:
+     number): number { return cd > 0 ? Math.max(0, cd − dtMs) : 0; }`
+     somewhere local (e.g. top of `combatUtils.ts`). Tiny scope, but
+     adding a third cooldown timer in the future shouldn't reinvent
+     the floor guard.
+
+4. SignalState JSON-parse + per-key validate pattern duplicated.
+   - `src/clientBarConfig.ts:612–626` and `src/serverBarConfig.ts:111–120`
+     each pull a stored signal-states blob, run an inline
+     `valid = (s: unknown): s is SignalState => s === 'off' ||
+     s === 'active' || s === 'solo'` predicate, and apply it per key
+     with `if (valid(parsed.X)) target.X = parsed.X`. The validator is
+     identical; the per-key application differs (different field
+     sets, plus the client side has alias migrations).
+   - Drift kind: near-exact (same predicate, different field sets).
+   - Fix direction: lift the `SignalState` typeguard once — it lives
+     naturally in `src/types/lod.ts` next to the `SignalState` type.
+     Both bar-config files import it. The per-key application stays
+     local since the field sets diverge.
+
+5. Three.js mesh disposal triplet repeated across renderers.
+   - Pattern: `mesh.dispose(); material.dispose(); geometry.dispose()`
+     (or some subset, usually all three) appears in:
+   - `src/game/render3d/Explosion3D.ts:128–130`.
+   - `src/game/render3d/Debris3D.ts:288–290`.
+   - `src/game/render3d/SprayRenderer3D.ts:517–519`.
+   - `src/game/render3d/UnitMassInstanceRenderer3D.ts:281,283`.
+   - `src/game/render3d/ContactShadowRenderer3D.ts:192–193` (mesh + material).
+   - `src/game/render3d/LegInstancedRenderer.ts:264–265,346,...`
+     (mesh + geometry, several spots).
+   - `src/game/render3d/HealthBar3D.ts:313–314` (texture + material).
+   - Drift kind: near-exact (same dispose order; some sites omit one
+     of the three when the resource isn't owned).
+   - Fix direction: add `disposeInstancedMesh(mesh: THREE.InstancedMesh
+     & { material?: THREE.Material; geometry?: THREE.BufferGeometry }):
+     void` (or a more general `disposeMesh` taking flags for which
+     resources to dispose) to a new `src/game/render3d/threeUtils.ts`.
+
+6. Canvas-texture filter + mipmap setup repeated.
+   - Five sites set the same three texture properties together:
+     `texture.minFilter = LinearFilter; texture.magFilter = LinearFilter;
+     texture.generateMipmaps = false`. Some flip Linear↔Nearest.
+   - `src/game/render3d/HealthBar3D.ts:96–98` (linear, no mips).
+   - `src/game/render3d/LodGridCells2D.ts:236–238` (nearest, no mips).
+   - `src/game/render3d/NameLabel3D.ts:166–168` (linear, no mips).
+   - `src/game/render3d/SunLighting.ts:52–54` (linear, no mips).
+   - `src/game/render3d/Waypoint3D.ts:326–328` (linear, no mips).
+   - Drift kind: near-exact.
+   - Fix direction: `configureSpriteTexture(tex: THREE.Texture, filter:
+     'linear' | 'nearest' = 'linear'): void` in the same
+     `src/game/render3d/threeUtils.ts` proposed for #5.
