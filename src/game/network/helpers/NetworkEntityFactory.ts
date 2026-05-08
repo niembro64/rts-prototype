@@ -1,6 +1,6 @@
 // Network entity creation helpers
 
-import type { Entity, BuildingType, Turret, ProjectileConfig, UnitAction } from '../../sim/types';
+import type { Entity, BuildingType, Turret, UnitAction } from '../../sim/types';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import {
   codeToActionType,
@@ -8,11 +8,8 @@ import {
   codeToUnitType,
   codeToBuildingType,
   buildingTypeToCode,
-  codeToProjectileType,
-  codeToShotId,
   codeToTurretId,
 } from '../../../types/network';
-import { getProjectileConfigForSpawn } from '../../sim/projectileConfigs';
 import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../../sim/buildGrid';
@@ -144,7 +141,9 @@ export function refreshBuildingTurretsFromNetwork(
 }
 
 /**
- * Create an Entity from NetworkServerSnapshotEntity data
+ * Create an Entity from NetworkServerSnapshotEntity data. Projectiles
+ * are out of scope here — they hydrate from `ClientProjectileStore`
+ * spawn events, not entity snapshots.
  */
 export function createEntityFromNetwork(netEntity: NetworkServerSnapshotEntity): Entity | null {
   const { id, type, pos, rotation, playerId } = netEntity;
@@ -155,10 +154,6 @@ export function createEntityFromNetwork(netEntity: NetworkServerSnapshotEntity):
 
   if (type === 'building') {
     return createBuildingFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
-  }
-
-  if (type === 'shot') {
-    return createProjectileFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
   }
 
   return null;
@@ -384,58 +379,3 @@ function createBuildingFromNetwork(
   return entity;
 }
 
-function createProjectileFromNetwork(
-  netEntity: NetworkServerSnapshotEntity,
-  id: number,
-  x: number,
-  y: number,
-  rotation: number,
-  playerId: number
-): Entity | null {
-  const s = netEntity.shot;
-  if (!s) return null;
-  const sourceTurretId = s?.sourceTurretId !== undefined
-    ? codeToTurretId(s.sourceTurretId) ?? undefined
-    : s?.turretId !== undefined
-      ? codeToTurretId(s.turretId) ?? undefined
-      : undefined;
-  const shotId = s?.shotId !== undefined ? codeToShotId(s.shotId) ?? undefined : undefined;
-  if (!sourceTurretId && !shotId) return null;
-
-  let config: ProjectileConfig;
-  try {
-    config = {
-      ...getProjectileConfigForSpawn(sourceTurretId, shotId, s.turretIndex),
-      turretIndex: s.turretIndex,
-    };
-  } catch {
-    return null;
-  }
-
-  const projectileType = s.type !== undefined
-    ? codeToProjectileType(s.type)
-    : config.shotProfile.runtime.projectileType;
-  if (!projectileType) return null;
-  const maxLifespan = config.shotProfile.runtime.maxLifespan;
-
-  return {
-    id,
-    type: 'shot',
-    transform: { x, y, z: netEntity.pos.z, rotation },
-    projectile: {
-      ownerId: playerId,
-      sourceEntityId: s?.source ?? 0,
-      config,
-      shotId: shotId ?? config.shot.id,
-      sourceTurretId: sourceTurretId ?? config.sourceTurretId,
-      projectileType,
-      velocityX: s?.velocity?.x ?? 0,
-      velocityY: s?.velocity?.y ?? 0,
-      velocityZ: s?.velocity?.z ?? 0,
-      timeAlive: 0,
-      maxLifespan,
-      hitEntities: new Set(),
-      maxHits: 1,
-    },
-  };
-}

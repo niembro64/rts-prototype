@@ -5,17 +5,6 @@ written; check the code and if the issue is no longer relevant, delete it.
 
 Audit findings - 2026-05-07
 
-5. Dead or legacy protocol state should be removed or documented.
-   - `DeltaTrackingState.protocolSeeded` is allocated, tracked, cleared, and added to on full records, but no
-     longer appears to gate serialization behavior (`src/game/network/stateSerializer.ts`).
-   - `NetworkManager.broadcastState` appears unused and duplicates much of `sendStateTo`
-     (`src/game/network/NetworkManager.ts`).
-   - `NetworkEntityFactory.createProjectileFromNetwork` supports snapshot `shot` entities, but the current
-     serializer excludes shots from full/diff entity snapshots. Projectile creation now appears to use
-     `ClientProjectileStore` spawn events instead.
-   - Fix direction: delete the dead paths, or document the intended future protocol use so they do not drift
-     silently.
-
 6. `NetworkManager.disconnect` leaves callbacks and connection timers behind.
    - `disconnect` clears many callbacks but omits `onLobbySettings`, `getLobbySettings`, and
      `onPlayerInfoUpdate`, which are assigned closures from `GameCanvas.vue`.

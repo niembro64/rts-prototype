@@ -12,7 +12,7 @@ import type {
   NetworkServerSnapshotTurret,
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkTypes';
-import { PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN } from '@/types/network';
+import { TURRET_ID_UNKNOWN } from '@/types/network';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
   copyBeamInto,
@@ -59,7 +59,6 @@ function cloneTerrainBuildabilityGrid(grid: TerrainBuildabilityGrid): TerrainBui
 
 type ReusableEntityUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
-type ReusableEntityShot = NonNullable<NetworkServerSnapshotEntity['shot']>;
 type ReusableFactory = NonNullable<ReusableEntityBuilding['factory']>;
 type ReusableBuildState = NonNullable<ReusableEntityUnit['build']>;
 
@@ -283,28 +282,6 @@ function copyBuildingInto(
   return dst;
 }
 
-function createReusableShot(): ReusableEntityShot {
-  return { type: PROJECTILE_TYPE_UNKNOWN, source: 0 };
-}
-
-function copyShotInto(src: ReusableEntityShot, dst: ReusableEntityShot): ReusableEntityShot {
-  dst.type = src.type;
-  dst.source = src.source;
-  dst.turretId = src.turretId;
-  dst.shotId = src.shotId;
-  dst.sourceTurretId = src.sourceTurretId;
-  dst.turretIndex = src.turretIndex;
-  if (src.velocity) {
-    if (!dst.velocity) dst.velocity = { x: 0, y: 0, z: 0 };
-    dst.velocity.x = src.velocity.x;
-    dst.velocity.y = src.velocity.y;
-    dst.velocity.z = src.velocity.z;
-  } else {
-    dst.velocity = undefined;
-  }
-  return dst;
-}
-
 function copyEntityInto(
   src: NetworkServerSnapshotEntity,
   dst: NetworkServerSnapshotEntity,
@@ -322,9 +299,6 @@ function copyEntityInto(
     : undefined;
   dst.building = src.building
     ? copyBuildingInto(src.building, dst.building ?? createReusableBuilding())
-    : undefined;
-  dst.shot = src.shot
-    ? copyShotInto(src.shot, dst.shot ?? createReusableShot())
     : undefined;
   return dst;
 }

@@ -42,7 +42,6 @@ import {
 } from '@/types/network';
 import type {
   NetworkServerSnapshot,
-  NetworkServerSnapshotMessage,
   LobbyPlayerInfoPayload,
   LobbyPlayer,
   NetworkMessage,
@@ -111,8 +110,6 @@ export class NetworkManager {
   private snapshotsReceived: number = 0;
   private snapshotsDropped: number = 0;
   private snapshotDropCounts: Map<PlayerId, number> = new Map();
-  private snapshotReadyPlayerIds: PlayerId[] = [];
-  private snapshotReadyConnections: DataConnection[] = [];
   private pendingReceivedState: NetworkServerSnapshot | null = null;
 
   // Heartbeat presence tracking for the lobby roster. Once the real
@@ -1068,53 +1065,12 @@ export class NetworkManager {
     return true;
   }
 
-  // Send game state to all clients (host only)
+  // Send game state to a specific client (host only).
   // Pre-serializes to a MessagePack Uint8Array so PeerJS's BinaryPack
   // only handles a flat byte buffer (trivial) instead of a deep object
   // tree (expensive to pack/unpack). MessagePack typically halves wire
   // size vs JSON because numbers go on as 1-9 bytes instead of 6-12
   // ASCII chars and field names use a length-prefixed compact form.
-  broadcastState(state: NetworkServerSnapshot): boolean {
-    if (this.role !== 'host') return false;
-
-    this.snapshotReadyPlayerIds.length = 0;
-    this.snapshotReadyConnections.length = 0;
-    for (const [playerId, conn] of this.connections) {
-      if (!this.shouldDropSnapshotForBackpressure(playerId, conn)) {
-        this.snapshotReadyPlayerIds.push(playerId);
-        this.snapshotReadyConnections.push(conn);
-      }
-    }
-    if (this.snapshotReadyConnections.length === 0) return false;
-
-    this.snapshotsSent++;
-
-    // Pre-serialize once for all clients (msgpack-javascript is fast,
-    // does no per-call allocations beyond the result buffer).
-    const buf = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
-
-    // Log every 100th snapshot with connection health + payload size
-    if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsSent % 100 === 0) {
-      for (const [pid, conn] of this.connections) {
-        const dc = conn.dataChannel;
-        const buffered = dc ? dc.bufferedAmount : -1;
-        const dcState = dc ? dc.readyState : 'no-dc';
-        debugLog(true, `[NET] Host snapshot #${this.snapshotsSent} -> player ${pid}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${buf.byteLength} dropped=${this.snapshotDropCounts.get(pid) ?? 0}`);
-      }
-    }
-
-    const message: NetworkServerSnapshotMessage = {
-      type: 'state',
-      gameId: this.getUniversalGameId(),
-      data: buf,
-    };
-    let sentAny = false;
-    for (let i = 0; i < this.snapshotReadyConnections.length; i++) {
-      sentAny = this.safeSend(this.snapshotReadyConnections[i], message) || sentAny;
-    }
-    return sentAny;
-  }
-
   sendStateTo(playerId: PlayerId, state: NetworkServerSnapshot): boolean {
     if (this.role !== 'host') return false;
     const conn = this.connections.get(playerId);
@@ -1265,8 +1221,6 @@ export class NetworkManager {
     this.pendingReceivedState = null;
     this.snapshotDropCounts.clear();
     this.snapshotsDropped = 0;
-    this.snapshotReadyPlayerIds.length = 0;
-    this.snapshotReadyConnections.length = 0;
 
     // Clear all callbacks to release closure references
     this.onPlayerJoined = undefined;

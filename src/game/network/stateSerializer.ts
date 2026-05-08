@@ -76,7 +76,6 @@ function createPooledWaypoint(): { pos: Vec2; posZ?: number; type: string } {
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
 type FactorySub = NonNullable<BuildingSub['factory']>;
-type ShotSub = NonNullable<NetworkServerSnapshotEntity['shot']>;
 
 // Extended pool entry with pre-allocated sub-arrays and sub-objects
 type PooledEntry = {
@@ -91,7 +90,6 @@ type PooledEntry = {
   solarSub: { open: boolean };
   buildingSub: BuildingSub;
   factorySub: FactorySub;
-  shotSub: ShotSub;
   turrets: NetworkServerSnapshotTurret[];
   actions: NetworkServerSnapshotAction[];
   waypoints: { pos: Vec2; posZ?: number; type: string }[];
@@ -298,9 +296,6 @@ function createPooledEntry(): PooledEntry {
       energyRate: 0, manaRate: 0, metalRate: 0,
       waypoints: [],
     },
-    shotSub: {
-      type: PROJECTILE_TYPE_UNKNOWN, source: 0,
-    },
     turrets,
     actions,
     waypoints,
@@ -376,7 +371,6 @@ type DeltaTrackingState = {
   prevStates: Map<number, PrevEntityState>;
   prevEntityIds: Set<number>;
   currentEntityIds: Set<number>;
-  protocolSeeded: Set<number>;
   prevStatePool: PrevEntityState[];
   prevStatePoolIndex: number;
 };
@@ -386,7 +380,6 @@ function createDeltaTrackingState(): DeltaTrackingState {
     prevStates: new Map<number, PrevEntityState>(),
     prevEntityIds: new Set<number>(),
     currentEntityIds: new Set<number>(),
-    protocolSeeded: new Set<number>(),
     prevStatePool: [],
     prevStatePoolIndex: 0,
   };
@@ -651,16 +644,6 @@ export function resetDeltaTrackingForKey(key: string | number | undefined): void
   _trackingStates.delete(getTrackingKey(key));
 }
 
-/** Force the next emitted snapshot to re-include static fields for
- *  every entity. Call when a new client joins mid-game so they get the
- *  full picture on their first keyframe; for single-host games this is
- *  not normally needed. */
-export function resetProtocolSeeded(): void {
-  for (const tracking of _trackingStates.values()) {
-    tracking.protocolSeeded.clear();
-  }
-}
-
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
 const _sprayBuf: NetworkServerSnapshotSprayTarget[] = [];
@@ -855,7 +838,6 @@ export function serializeGameState(
   const forgetTrackedEntity = (id: EntityId, emitRemoval: boolean): void => {
     const wasVisible = tracking.prevEntityIds.delete(id);
     tracking.prevStates.delete(id);
-    tracking.protocolSeeded.delete(id);
     if (emitRemoval && wasVisible) {
       _removedIdsBuf.push(id);
     }
@@ -872,9 +854,6 @@ export function serializeGameState(
       for (const id of _removedIdsBuf) {
         tracking.prevEntityIds.delete(id);
         tracking.prevStates.delete(id);
-        // Clear seeded entry too — if the entity ID is reused later
-        // we want the next full to re-seed its statics.
-        tracking.protocolSeeded.delete(id);
       }
     }
 
@@ -899,7 +878,7 @@ export function serializeGameState(
         : getChangedFields(entity, prev, _nextStateScratch, getDeltaResolution(entity, recipientPlayerId)) |
           (dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS);
       if (isNew || changedFields! > 0) {
-        const netEntity = serializeEntity(entity, changedFields, tracking.protocolSeeded, world);
+        const netEntity = serializeEntity(entity, changedFields, world);
         if (netEntity) _entityBuf.push(netEntity);
         copyPrevState(_nextStateScratch, prev);
       }
@@ -922,7 +901,7 @@ export function serializeGameState(
         const entity = source[i];
         if (!acceptsEntity(entity)) continue;
         tracking.currentEntityIds.add(entity.id);
-        const netEntity = serializeEntity(entity, undefined, tracking.protocolSeeded, world);
+        const netEntity = serializeEntity(entity, undefined, world);
         if (netEntity) _entityBuf.push(netEntity);
         const prev = getPrevState(tracking, entity.id);
         captureEntityState(entity, prev);
@@ -945,7 +924,6 @@ export function serializeGameState(
     for (const id of tracking.prevStates.keys()) {
       if (!tracking.currentEntityIds.has(id)) {
         tracking.prevStates.delete(id);
-        tracking.protocolSeeded.delete(id);
       }
     }
   }
@@ -1287,7 +1265,6 @@ export function serializeGameState(
 function serializeEntity(
   entity: Entity,
   changedFields: number | undefined,
-  protocolSeeded: Set<number>,
   world: WorldState,
 ): NetworkServerSnapshotEntity | null {
   const pool = getPooledEntry();
@@ -1321,7 +1298,6 @@ function serializeEntity(
   // Clear nested sub-objects (prevents stale data from previous frame leaking)
   ne.unit = undefined;
   ne.building = undefined;
-  ne.shot = undefined;
 
   if (entity.type === 'unit' && entity.unit) {
     // Attach the unit sub-object on every delta this entity appears
@@ -1355,7 +1331,6 @@ function serializeEntity(
         u.bodyCenterHeight = entity.unit.bodyCenterHeight;
         u.mass = entity.unit.mass;
         u.isCommander = isCommander(entity) ? true : undefined;
-        protocolSeeded.add(entity.id);
       } else {
         u.unitType = undefined;
         u.radius = undefined;
@@ -1493,7 +1468,6 @@ function serializeEntity(
         b.metalExtractionRate = entity.buildingType === 'extractor'
           ? entity.metalExtractionRate ?? 0
           : undefined;
-        protocolSeeded.add(entity.id);
       } else {
         b.dim = undefined;
         b.type = undefined;

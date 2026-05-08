@@ -4,10 +4,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
-import {
-  resetProtocolSeeded,
-  serializeGameState,
-} from '../network/stateSerializer';
+import { serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
@@ -61,7 +58,6 @@ export class ServerSnapshotPublisher {
   }
 
   forceNextKeyframe(): void {
-    resetProtocolSeeded();
     this.reset();
   }
 

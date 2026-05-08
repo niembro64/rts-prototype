@@ -614,16 +614,6 @@ export type NetworkServerSnapshotEntity = {
       waypoints: { pos: Vec2; posZ?: number; type: string }[];
     };
   };
-  shot?: {
-    /** Projectile type code — see PROJECTILE_TYPE_* / projectileTypeToCode. */
-    type: ProjectileTypeCode;
-    source: number;
-    turretId?: TurretTypeCode;
-    shotId?: ShotTypeCode;
-    sourceTurretId?: TurretTypeCode;
-    turretIndex?: number;
-    velocity?: Vec3;
-  };
 };
 
 export type NetworkServerSnapshotEconomy = {
