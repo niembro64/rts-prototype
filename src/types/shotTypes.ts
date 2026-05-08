@@ -148,9 +148,9 @@ export type LaserShotBlueprint = {
 export type BuildSprayShotBlueprint = {
   type: 'buildSpray';
   id: ShotId;
-  /** Max time-of-flight per particle, in ms. */
-  lifespan: number;
-  /** Particle launch speed (world units per second). */
+  /** Particle launch speed (world units per second). Particles fly at
+   *  constant velocity from emitter to target — flight time is derived
+   *  as distance / speed, with no lifespan ceiling. */
   speed: number;
   /** Cosmetic sphere radius for the rendered particle. */
   visualRadius: number;
@@ -262,9 +262,8 @@ export type BuildSprayShot = {
   id: ShotId;
   /** Always true. Build-spray particles fly along a controlled cone from the emitter. */
   ignoresGravity: true;
-  /** Max time-of-flight per particle, in ms. */
-  lifespan: number;
-  /** Particle launch speed (world units per second). */
+  /** Particle launch speed (world units per second). Constant velocity
+   *  from origin to destination — no lifespan ceiling. */
   speed: number;
   /** Cosmetic sphere radius for the rendered particle. */
   visualRadius: number;
@@ -355,6 +354,5 @@ export function getShotMaxLifespan(shot: ShotConfig, fallbackLifespan: number = 
   if (shot.type === 'beam') return Infinity;
   if (shot.type === 'laser') return shot.duration;
   if (shot.type === 'projectile' || shot.type === 'rocket') return shot.lifespan ?? fallbackLifespan;
-  if (shot.type === 'buildSpray') return shot.lifespan;
   return fallbackLifespan;
 }

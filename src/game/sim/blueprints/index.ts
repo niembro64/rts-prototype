@@ -262,7 +262,6 @@ function buildShotConfig(
       // ignoresGravity is intrinsic to the type — the literal `true`
       // keeps consumers from having to defaulting it themselves.
       ignoresGravity: true,
-      lifespan: shotBlueprint.lifespan,
       speed: shotBlueprint.speed,
       visualRadius: shotBlueprint.visualRadius,
     };

@@ -49,7 +49,6 @@ import { SHOT_BLUEPRINTS } from '../sim/blueprints/shots';
 const TRAIL_Y = 4;
 const MIN_FLIGHT_SEC = 0.16;
 const BUILD_PARTICLE_SPEED = SHOT_BLUEPRINTS.buildSpray.speed;
-const BUILD_MAX_FLIGHT_SEC = SHOT_BLUEPRINTS.buildSpray.lifespan / 1000;
 const BUILD_PARTICLE_BASE_RADIUS = SHOT_BLUEPRINTS.buildSpray.visualRadius;
 const HEAL_PARTICLE_SPEED = 560;
 const HEAL_MAX_FLIGHT_SEC = 0.62;
@@ -299,9 +298,15 @@ export class SprayRenderer3D {
   }
 
   private flightTimeForDistance(distance: number, type: SprayTarget['type']): number {
-    const speed = type === 'build' ? BUILD_PARTICLE_SPEED : HEAL_PARTICLE_SPEED;
-    const maxFlight = type === 'build' ? BUILD_MAX_FLIGHT_SEC : HEAL_MAX_FLIGHT_SEC;
-    return Math.max(MIN_FLIGHT_SEC, Math.min(maxFlight, distance / speed));
+    if (type === 'build') {
+      // Build sprays travel at constant speed end-to-end with no
+      // lifespan ceiling — flight time is purely distance / speed.
+      return distance / BUILD_PARTICLE_SPEED;
+    }
+    return Math.max(
+      MIN_FLIGHT_SEC,
+      Math.min(HEAL_MAX_FLIGHT_SEC, distance / HEAL_PARTICLE_SPEED),
+    );
   }
 
   private emitParticle(

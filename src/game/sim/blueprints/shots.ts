@@ -206,8 +206,7 @@ export const SHOT_BLUEPRINTS = {
   buildSpray: {
     type: 'buildSpray',
     id: 'buildSpray',
-    lifespan: 600,
-    speed: 30,
+    speed: 5,
     visualRadius: 1.5,
   },
   // Tower beam — same physical shape and audio as megaBeamShot, but
