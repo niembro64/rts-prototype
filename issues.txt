@@ -11,23 +11,6 @@ remaining clusters below follow the same pattern of the same shape getting dupli
 init in two modules — promoting them into the same module (or into the existing
 `MathHelpers`) keeps the wire schema in lockstep with one source of truth.
 
-3. `getTransformCosSin` adopted in only some hot paths.
-   - `src/game/math/MathHelpers.ts:105` already exports `getTransformCosSin(t)`
-     that prefers cached `t.rotCos`/`t.rotSin` when present, falling back to
-     the trig calls. Half the codebase uses it; the other half still inlines
-     `Math.cos(t.transform.rotation)` / `Math.sin(...)` and pays the trig cost
-     every call even when the transform has cached values.
-   - Site: `src/game/network/ClientProjectileStore.ts:235`.
-   - Site: `src/game/sim/factoryConstructionSite.ts:61`.
-   - Site: `src/game/sim/commanderAbilities.ts:35`.
-   - Site: `src/game/sim/combat/targetingSystem.ts:350`.
-   - Site: `src/game/render3d/SelectionOverlayRenderer3D.ts:176`.
-   - Site: `src/game/render3d/ConstructionVisualController3D.ts:236`.
-   - Drift kind: divergent (semantically equivalent but skips the cache path).
-   - Fix direction: replace each pair of `Math.cos(t.transform.rotation)` /
-     `Math.sin(t.transform.rotation)` with a single `getTransformCosSin(t.transform)`
-     destructure. No new helper, just adoption.
-
 4. Local `isFiniteNumber` typeguard duplicated.
    - `src/game/network/ClientSnapshotApplier.ts:27` and
      `src/game/network/helpers/NetworkEntityFactory.ts:24` define the same

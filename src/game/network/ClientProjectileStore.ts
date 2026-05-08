@@ -7,7 +7,7 @@ import { DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
 import { getSurfaceNormal } from '../sim/Terrain';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
-import { getBarrelTip, getTurretWorldMount } from '../math';
+import { getBarrelTip, getTransformCosSin, getTurretWorldMount } from '../math';
 import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
 import {
   codeToProjectileType,
@@ -232,8 +232,7 @@ export class ClientProjectileStore {
       const source = this.options.entities.get(spawn.sourceEntityId);
       const weapon = source?.combat?.turrets?.[spawn.turretIndex];
       if (source && source.unit && weapon) {
-        const unitCos = Math.cos(source.transform.rotation);
-        const unitSin = Math.sin(source.transform.rotation);
+        const { cos: unitCos, sin: unitSin } = getTransformCosSin(source.transform);
         const sn = getSurfaceNormal(
           source.transform.x, source.transform.y,
           this.options.getMapWidth(), this.options.getMapHeight(), LAND_CELL_SIZE,

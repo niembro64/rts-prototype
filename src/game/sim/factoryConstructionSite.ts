@@ -1,4 +1,5 @@
 import type { Entity } from './types';
+import { getTransformCosSin } from '../math';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 
@@ -58,8 +59,9 @@ function writeFactoryWaypointDirection(factory: Entity, out: { x: number; y: num
   let dy = targetY - factory.transform.y;
   let len = Math.hypot(dx, dy);
   if (len < 1e-3) {
-    dx = Math.cos(factory.transform.rotation);
-    dy = Math.sin(factory.transform.rotation);
+    const { cos, sin } = getTransformCosSin(factory.transform);
+    dx = cos;
+    dy = sin;
     len = Math.max(1e-3, Math.hypot(dx, dy));
   }
   out.x = dx / len;

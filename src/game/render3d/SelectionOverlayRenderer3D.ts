@@ -6,6 +6,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getTurretWorldMount } from '../math/MountGeometry';
+import { getTransformCosSin } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { TurretMesh } from './TurretMesh3D';
 import type { EntityMesh, RadiusRingMeshes } from './EntityMesh3D';
@@ -173,8 +174,7 @@ export class SelectionOverlayRenderer3D {
       + RANGE_CIRCLE_GROUND_LIFT;
 
     if (showAnyTurretRange && entity.combat) {
-      const cos = Math.cos(entity.transform.rotation);
-      const sin = Math.sin(entity.transform.rotation);
+      const { cos, sin } = getTransformCosSin(entity.transform);
       const turrets = entity.combat.turrets;
       for (let i = 0; i < turrets.length; i++) {
         const weapon = turrets[i];

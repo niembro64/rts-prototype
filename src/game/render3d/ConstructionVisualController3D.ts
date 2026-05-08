@@ -13,6 +13,7 @@ import { CONSTRUCTION_TOWER_SPIN_CONFIG } from '@/constructionVisualConfig';
 import { getDriftMode } from '@/clientBarConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend, getDriftPreset } from '../network/driftEma';
+import { getTransformCosSin } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import {
@@ -233,8 +234,7 @@ export class ConstructionVisualController3D {
     }, this._factoryBuildSpot);
     const spotDx = buildSpot.x - e.transform.x;
     const spotDz = buildSpot.y - e.transform.y;
-    const cos = Math.cos(e.transform.rotation);
-    const sin = Math.sin(e.transform.rotation);
+    const { cos, sin } = getTransformCosSin(e.transform);
     const localSpotX = cos * spotDx + sin * spotDz;
     const localSpotZ = -sin * spotDx + cos * spotDz;
 

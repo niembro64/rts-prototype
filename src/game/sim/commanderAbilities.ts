@@ -3,6 +3,7 @@ import type { Entity, EntityId } from './types';
 import { isBuildTargetInRange } from './builderRange';
 import { updateWeaponWorldKinematics } from './combat/combatUtils';
 import { getUnitGroundZ } from './unitGeometry';
+import { getTransformCosSin } from '../math';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -32,8 +33,7 @@ export class CommanderAbilitiesSystem {
         (turret) => turret.config.id === 'constructionTurret',
       ) ?? -1;
       if (constructionTurretIndex >= 0 && commanderTurrets) {
-        const cos = Math.cos(commander.transform.rotation);
-        const sin = Math.sin(commander.transform.rotation);
+        const { cos, sin } = getTransformCosSin(commander.transform);
         const mount = updateWeaponWorldKinematics(
           commander,
           commanderTurrets[constructionTurretIndex],
