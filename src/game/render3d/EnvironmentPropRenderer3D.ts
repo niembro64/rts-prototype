@@ -92,6 +92,8 @@ type RandomPlacementProfile = Readonly<{
   waterBuffer: number;
 }>;
 
+type SurfaceNormal = { nx: number; ny: number; nz: number };
+
 type EnvironmentPropNode = {
   placement: EnvironmentPlacement;
   root: THREE.Group;
@@ -581,18 +583,23 @@ const ENVIRONMENT_ASSETS: readonly EnvironmentAssetSpec[] = [
 ];
 
 // Applied after each asset's scale. 1 keeps the current asset sizes unchanged.
-export const RANDOM_ENVIRONMENT_ASSET_GLOBAL_SCALE = 3;
+export const RANDOM_ENVIRONMENT_ASSET_GLOBAL_SCALE = 2.2;
 
 // Adds +/- this fraction to each placed asset's resolved scale. 0.1 means +/-10%.
-export const RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS = 0.1;
+export const RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS = 0.05;
 
 // Uses the terrain shader slope metric: 0 is flat, 1 is vertical.
 export const RANDOM_ENVIRONMENT_ASSET_MIN_SLOPE = 0.03;
 export const RANDOM_ENVIRONMENT_ASSET_MAX_SLOPE = 0.3;
 export const RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT = 100;
 
+// Lower tree roots by the terrain drop across this approximate trunk/base
+// footprint so the downhill side does not reveal the asset's underside.
+export const RANDOM_ENVIRONMENT_TREE_SLOPE_SINK_RADIUS_FRACTION = 0.35;
+export const RANDOM_ENVIRONMENT_TREE_SLOPE_SINK_MAX_HEIGHT_FRACTION = 0.12;
+
 // Target counts at the default map area. Larger/smaller maps scale from these.
-export const RANDOM_ENVIRONMENT_TREE_ASSET_COUNT = 400;
+export const RANDOM_ENVIRONMENT_TREE_ASSET_COUNT = 1000;
 export const RANDOM_ENVIRONMENT_GRASS_ASSET_COUNT = 1000;
 
 // Toggle random placement here. Scale is a direct multiplier on that asset's world size.
@@ -1137,12 +1144,22 @@ export class EnvironmentPropRenderer3D {
     const y = this.sampleTerrainHeight(x, z);
     if (!Number.isFinite(y) || y < WATER_LEVEL) return false;
     if (!isRandomEnvironmentAssetHeightAllowed(y)) return false;
-    if (!this.isInRandomEnvironmentSlopeZone(x, z)) return false;
+    const normal = this.getRandomEnvironmentSurfaceNormal(x, z);
+    if (
+      !isSlopeInRandomEnvironmentAssetZone(
+        terrainSlopeFromNormalUp(normal.nz),
+      )
+    )
+      return false;
+    const slopeSink =
+      spec.kind === 'tree'
+        ? treeSlopeBaseSinkFromNormal(normal, radius, height)
+        : 0;
     placements.push({
       assetId,
       x,
       z,
-      y,
+      y: y - slopeSink,
       rotation: options.rotation ?? 0,
       height,
       radius,
@@ -1151,16 +1168,16 @@ export class EnvironmentPropRenderer3D {
     return true;
   }
 
-  private isInRandomEnvironmentSlopeZone(x: number, z: number): boolean {
-    const normal = getSurfaceNormal(
+  private getRandomEnvironmentSurfaceNormal(
+    x: number,
+    z: number,
+  ): SurfaceNormal {
+    return getSurfaceNormal(
       x,
       z,
       this.mapWidth,
       this.mapHeight,
       LAND_CELL_SIZE,
-    );
-    return isSlopeInRandomEnvironmentAssetZone(
-      terrainSlopeFromNormalUp(normal.nz),
     );
   }
 
@@ -1440,6 +1457,24 @@ function chooseWeightedEnvironmentAssetIdOrNull(
 
 function terrainSlopeFromNormalUp(normalUp: number): number {
   return 1 - clamp(Math.abs(normalUp), 0, 1);
+}
+
+function treeSlopeBaseSinkFromNormal(
+  normal: SurfaceNormal,
+  radius: number,
+  height: number,
+): number {
+  if (radius <= 0 || height <= 0) return 0;
+  const normalUp = Math.max(Math.abs(normal.nz), 0.001);
+  const horizontalNormal = Math.sqrt(
+    normal.nx * normal.nx + normal.ny * normal.ny,
+  );
+  const terrainGrade = horizontalNormal / normalUp;
+  const baseFootprintRadius =
+    radius * RANDOM_ENVIRONMENT_TREE_SLOPE_SINK_RADIUS_FRACTION;
+  const maxSink =
+    height * RANDOM_ENVIRONMENT_TREE_SLOPE_SINK_MAX_HEIGHT_FRACTION;
+  return clamp(terrainGrade * baseFootprintRadius, 0, maxSink);
 }
 
 function isSlopeInRandomEnvironmentAssetZone(slope: number): boolean {
