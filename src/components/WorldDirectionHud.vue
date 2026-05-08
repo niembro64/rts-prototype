@@ -10,21 +10,28 @@ const props = withDefaults(defineProps<{
   compact: false,
 });
 
-const canvasRef = ref<HTMLCanvasElement | null>(null);
+const compassCanvasRef = ref<HTMLCanvasElement | null>(null);
+const windCanvasRef = ref<HTMLCanvasElement | null>(null);
 const windSpeedLabel = computed(() => `${(props.data.wind?.speed ?? 0).toFixed(2)}x`);
 
-let renderer: THREE.WebGLRenderer | null = null;
-let scene: THREE.Scene | null = null;
-let camera: THREE.PerspectiveCamera | null = null;
+type HudView = {
+  canvas: HTMLCanvasElement;
+  renderer: THREE.WebGLRenderer;
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  width: number;
+  height: number;
+  compact: boolean;
+};
+
+let compassView: HudView | null = null;
+let windView: HudView | null = null;
 let compassRig: THREE.Group | null = null;
 let windArrow: THREE.Group | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let rafId = 0;
 let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 let lastRenderMs = 0;
-let lastWidth = 0;
-let lastHeight = 0;
-let lastCompact = props.compact;
 let lastCompassYaw = Number.NaN;
 let lastWindYaw = Number.NaN;
 let lastWindScale = Number.NaN;
@@ -34,6 +41,12 @@ let needsRender = true;
 const RENDER_INTERVAL_MS = 1000 / 30;
 const ANGLE_EPS = 0.0005;
 const SCALE_EPS = 0.001;
+const COMPACT_CAMERA_FOV = 28;
+const DEFAULT_CAMERA_FOV = 38;
+const COMPACT_CAMERA_Y = 2.45;
+const COMPACT_CAMERA_Z = 2.88;
+const DEFAULT_CAMERA_Y = 4.0;
+const DEFAULT_CAMERA_Z = 4.8;
 
 const rightVec = new THREE.Vector2();
 const upVec = new THREE.Vector2();
@@ -135,23 +148,7 @@ function makeCompass(
   return group;
 }
 
-function buildScene(): void {
-  const canvas = canvasRef.value;
-  if (!canvas) return;
-
-  renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: true,
-    alpha: true,
-  });
-  renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, props.compact ? 1.5 : 2));
-
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(38, 1, 0.1, 30);
-  camera.position.set(0, 4.0, 4.8);
-  camera.lookAt(0, 0, 0);
-
+function addHudLights(scene: THREE.Scene): void {
   const ambient = new THREE.AmbientLight(0xffffff, 1.15);
   scene.add(ambient);
   const key = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -160,6 +157,55 @@ function buildScene(): void {
   const fill = new THREE.DirectionalLight(0x8fdcff, 0.65);
   fill.position.set(-2.5, 2.5, -2);
   scene.add(fill);
+}
+
+function frameHudCamera(camera: THREE.PerspectiveCamera): void {
+  camera.fov = props.compact ? COMPACT_CAMERA_FOV : DEFAULT_CAMERA_FOV;
+  camera.position.set(
+    0,
+    props.compact ? COMPACT_CAMERA_Y : DEFAULT_CAMERA_Y,
+    props.compact ? COMPACT_CAMERA_Z : DEFAULT_CAMERA_Z,
+  );
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
+}
+
+function createHudView(canvas: HTMLCanvasElement, root: THREE.Group): HudView {
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+  });
+  renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, props.compact ? 1.5 : 2));
+
+  const scene = new THREE.Scene();
+  addHudLights(scene);
+  scene.add(root);
+
+  const camera = new THREE.PerspectiveCamera(
+    props.compact ? COMPACT_CAMERA_FOV : DEFAULT_CAMERA_FOV,
+    1,
+    0.1,
+    30,
+  );
+  frameHudCamera(camera);
+
+  return {
+    canvas,
+    renderer,
+    scene,
+    camera,
+    width: 0,
+    height: 0,
+    compact: props.compact,
+  };
+}
+
+function buildScene(): void {
+  const compassCanvas = compassCanvasRef.value;
+  const windCanvas = windCanvasRef.value;
+  if (!compassCanvas || !windCanvas) return;
 
   const compassMat = new THREE.MeshPhongMaterial({
     color: 0xe9f0f8,
@@ -193,38 +239,44 @@ function buildScene(): void {
   });
 
   compassRig = makeCompass(compassMat, compassAccent, northMat, northAccent);
-  compassRig.position.x = -1.55;
-  scene.add(compassRig);
-
   windArrow = makeArrow(windMat, windAccent);
-  windArrow.position.x = 1.55;
-  scene.add(windArrow);
+  windArrow.visible = false;
+
+  compassView = createHudView(compassCanvas, compassRig);
+  windView = createHudView(windCanvas, windArrow);
 
   resizeObserver = new ResizeObserver(resize);
-  resizeObserver.observe(canvas);
+  resizeObserver.observe(compassCanvas);
+  resizeObserver.observe(windCanvas);
   resize();
 }
 
+function resizeHudView(view: HudView): boolean {
+  const width = Math.max(1, view.canvas.clientWidth);
+  const height = Math.max(1, view.canvas.clientHeight);
+  if (width === view.width && height === view.height && props.compact === view.compact) {
+    return false;
+  }
+  view.width = width;
+  view.height = height;
+  view.compact = props.compact;
+  view.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, props.compact ? 1.5 : 2));
+  view.renderer.setSize(width, height, false);
+  view.camera.aspect = width / height;
+  frameHudCamera(view.camera);
+  return true;
+}
+
 function resize(): void {
-  if (!renderer || !camera || !canvasRef.value) return;
-  const canvas = canvasRef.value;
-  const width = Math.max(1, canvas.clientWidth);
-  const height = Math.max(1, canvas.clientHeight);
-  if (width === lastWidth && height === lastHeight && props.compact === lastCompact) return;
-  lastWidth = width;
-  lastHeight = height;
-  lastCompact = props.compact;
-  renderer.setSize(width, height, false);
-  camera.aspect = width / height;
-  camera.position.set(0, props.compact ? 4.8 : 4.0, props.compact ? 5.4 : 4.8);
-  camera.lookAt(0, 0, 0);
-  camera.updateProjectionMatrix();
-  requestHudRender();
+  let resized = false;
+  if (compassView) resized = resizeHudView(compassView) || resized;
+  if (windView) resized = resizeHudView(windView) || resized;
+  if (resized) requestHudRender();
 }
 
 function renderHud(now: number): void {
   rafId = 0;
-  if (!renderer || !scene || !camera || !compassRig || !windArrow) return;
+  if (!compassView || !windView || !compassRig || !windArrow) return;
   if (typeof document !== 'undefined' && document.hidden) {
     needsRender = true;
     return;
@@ -275,7 +327,8 @@ function renderHud(now: number): void {
   }
 
   if (changed) {
-    renderer.render(scene, camera);
+    compassView.renderer.render(compassView.scene, compassView.camera);
+    windView.renderer.render(windView.scene, windView.camera);
     needsRender = false;
   }
 }
@@ -330,11 +383,16 @@ onUnmounted(() => {
   throttleTimer = null;
   resizeObserver?.disconnect();
   resizeObserver = null;
-  if (scene) disposeSceneResources(scene);
-  renderer?.dispose();
-  renderer = null;
-  scene = null;
-  camera = null;
+  if (compassView) {
+    disposeSceneResources(compassView.scene);
+    compassView.renderer.dispose();
+  }
+  if (windView) {
+    disposeSceneResources(windView.scene);
+    windView.renderer.dispose();
+  }
+  compassView = null;
+  windView = null;
   compassRig = null;
   windArrow = null;
 });
@@ -357,12 +415,15 @@ watch(
     :class="{ compact }"
     aria-label="Compass and wind direction"
   >
-    <canvas ref="canvasRef" class="direction-canvas"></canvas>
-    <div class="direction-labels">
+    <div class="direction-item">
+      <canvas ref="compassCanvasRef" class="direction-canvas"></canvas>
       <div class="direction-label">
         <span>Compass</span>
         <strong>N</strong>
       </div>
+    </div>
+    <div class="direction-item">
+      <canvas ref="windCanvasRef" class="direction-canvas"></canvas>
       <div class="direction-label">
         <span>Wind Speed</span>
         <strong>{{ windSpeedLabel }}</strong>
@@ -373,7 +434,12 @@ watch(
 
 <style scoped>
 .world-direction-hud {
-  width: 260px;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: 300px;
+  height: 118px;
+  min-height: 0;
   padding: 0;
   background: transparent;
   border: 0;
@@ -383,37 +449,39 @@ watch(
 }
 
 .world-direction-hud.compact {
-  width: 196px;
+  width: 276px;
+  height: 100%;
 }
 
-.direction-canvas {
-  display: block;
-  width: 100%;
-  height: 118px;
-}
-
-.world-direction-hud.compact .direction-canvas {
-  height: 38px;
-}
-
-.direction-labels {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-  margin-top: -10px;
-}
-
-.world-direction-hud.compact .direction-labels {
-  gap: 12px;
-  margin-top: -7px;
+.direction-item {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 0;
+  height: 100%;
 }
 
 .direction-label {
   display: grid;
+  align-self: center;
   min-width: 0;
   gap: 1px;
   line-height: 1.05;
-  text-align: center;
+  text-align: left;
+}
+
+.direction-canvas {
+  display: block;
+  flex: 0 0 58px;
+  width: 58px;
+  height: 100%;
+  min-height: 0;
+}
+
+.world-direction-hud.compact .direction-canvas {
+  flex-basis: 58px;
+  width: 58px;
 }
 
 .direction-label span {

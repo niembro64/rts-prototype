@@ -26,23 +26,19 @@ const emit = defineEmits<{
   togglePlayer: [];
 }>();
 
-// Unsigned magnitude format. Used for the +income/-expenditure
-// columns where the sign is rendered as a separate prefix.
+// Unsigned magnitude format. Used for the produce/consume columns.
 function fmtMag(n: number): string {
   const abs = Math.abs(n);
   if (abs < 10) return abs.toFixed(1).padStart(4, ' ');
   return abs.toFixed(0).padStart(4, ' ');
 }
 
-// Signed format with explicit + or − prefix. Used for the net-flow
-// column so positive/negative is always unambiguous.
-function fmtSigned(n: number): string {
-  const sign = n < 0 ? '−' : '+';
-  return sign + fmtMag(n);
-}
-
 function fmtStock(n: number): string {
   return Math.floor(n).toString().padStart(4, ' ');
+}
+
+function isStockEmpty(n: number): boolean {
+  return Math.floor(n) <= 0;
 }
 
 const energyPct = computed(() =>
@@ -63,15 +59,10 @@ const unitCapColor = computed(() => {
 });
 
 const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.units.cap);
-
-function flowColor(n: number): string {
-  if (Math.abs(n) < 1) return 'rgba(255,255,255,0.4)';
-  return n > 0 ? '#88ffaa' : '#ff6666';
-}
 </script>
 
 <template>
-  <div class="top-bar" :style="{ '--player-color': playerColor }">
+  <div class="top-bar">
     <!-- Exit (desktop app only) -->
     <button
       v-if="isTauri"
@@ -112,7 +103,11 @@ function flowColor(n: number): string {
         <span class="count-label">UNITS</span>
         <span class="count-value" :style="{ color: unitCapColor }">
           {{ economy.units.count }}/{{ economy.units.cap }}
-          <span v-if="isAtUnitCap" class="cap-warning">MAX</span>
+          <span
+            class="cap-warning"
+            :class="{ visible: isAtUnitCap }"
+            :aria-hidden="!isAtUnitCap"
+          >MAX</span>
         </span>
       </div>
       <div class="count-row">
@@ -125,72 +120,104 @@ function flowColor(n: number): string {
       </div>
     </div>
 
-    <WorldDirectionHud
-      class="top-direction-widget"
-      :data="directionData"
-      compact
-    />
+    <div class="direction-slot">
+      <WorldDirectionHud
+        class="top-direction-widget"
+        :data="directionData"
+        compact
+      />
+    </div>
 
     <!-- Energy block -->
-    <div class="resource-block energy-block">
-      <div class="resource-header">
-        <span class="resource-icon">⚡</span>
-        <span class="resource-label">ENERGY</span>
-      </div>
-      <div class="resource-row">
-        <span class="resource-stock">{{ fmtStock(economy.stockpile.curr) }}</span>
-        <span class="resource-sep">/</span>
-        <span class="resource-max">{{ economy.stockpile.max }}</span>
+    <div
+      class="resource-block energy-block"
+      :class="{ 'resource-empty': isStockEmpty(economy.stockpile.curr) }"
+    >
+      <div class="resource-summary">
+        <div class="resource-header">
+          <span class="resource-icon">⚡</span>
+          <span class="resource-label">ENERGY</span>
+        </div>
+        <div class="resource-row">
+          <span class="resource-stock">{{ fmtStock(economy.stockpile.curr) }}</span>
+          <span class="resource-sep">/</span>
+          <span class="resource-max">{{ economy.stockpile.max }}</span>
+        </div>
       </div>
       <div class="resource-bar">
         <div class="resource-bar-fill energy-fill" :style="{ width: energyPct + '%' }"></div>
       </div>
       <div class="resource-flows">
-        <span class="flow-pos">+{{ fmtMag(economy.income.total) }}</span>
-        <span class="flow-neg" :class="{ inactive: economy.expenditure < 0.05 }">−{{ fmtMag(economy.expenditure) }}</span>
-        <span class="flow-net" :style="{ color: flowColor(economy.netFlow) }">={{ fmtSigned(economy.netFlow) }}</span>
+        <span class="resource-flow">
+          <span class="flow-label">produce</span>
+          <span class="flow-value">{{ fmtMag(economy.income.total) }}</span>
+        </span>
+        <span class="resource-flow">
+          <span class="flow-label">consume</span>
+          <span class="flow-value">{{ fmtMag(economy.expenditure) }}</span>
+        </span>
       </div>
     </div>
 
     <!-- Mana block -->
-    <div class="resource-block mana-block">
-      <div class="resource-header">
-        <span class="resource-icon">💎</span>
-        <span class="resource-label">MANA</span>
-      </div>
-      <div class="resource-row">
-        <span class="resource-stock">{{ fmtStock(economy.mana.stockpile.curr) }}</span>
-        <span class="resource-sep">/</span>
-        <span class="resource-max">{{ economy.mana.stockpile.max }}</span>
+    <div
+      class="resource-block mana-block"
+      :class="{ 'resource-empty': isStockEmpty(economy.mana.stockpile.curr) }"
+    >
+      <div class="resource-summary">
+        <div class="resource-header">
+          <span class="resource-icon">💎</span>
+          <span class="resource-label">MANA</span>
+        </div>
+        <div class="resource-row">
+          <span class="resource-stock">{{ fmtStock(economy.mana.stockpile.curr) }}</span>
+          <span class="resource-sep">/</span>
+          <span class="resource-max">{{ economy.mana.stockpile.max }}</span>
+        </div>
       </div>
       <div class="resource-bar">
         <div class="resource-bar-fill mana-fill" :style="{ width: manaPct + '%' }"></div>
       </div>
       <div class="resource-flows">
-        <span class="flow-pos">+{{ fmtMag(economy.mana.income.total) }}</span>
-        <span class="flow-neg" :class="{ inactive: economy.mana.expenditure < 0.05 }">−{{ fmtMag(economy.mana.expenditure) }}</span>
-        <span class="flow-net" :style="{ color: flowColor(economy.mana.netFlow) }">={{ fmtSigned(economy.mana.netFlow) }}</span>
+        <span class="resource-flow">
+          <span class="flow-label">produce</span>
+          <span class="flow-value">{{ fmtMag(economy.mana.income.total) }}</span>
+        </span>
+        <span class="resource-flow">
+          <span class="flow-label">consume</span>
+          <span class="flow-value">{{ fmtMag(economy.mana.expenditure) }}</span>
+        </span>
       </div>
     </div>
 
     <!-- Metal block -->
-    <div class="resource-block metal-block">
-      <div class="resource-header">
-        <span class="resource-icon">⛏</span>
-        <span class="resource-label">METAL</span>
-      </div>
-      <div class="resource-row">
-        <span class="resource-stock">{{ fmtStock(economy.metal.stockpile.curr) }}</span>
-        <span class="resource-sep">/</span>
-        <span class="resource-max">{{ economy.metal.stockpile.max }}</span>
+    <div
+      class="resource-block metal-block"
+      :class="{ 'resource-empty': isStockEmpty(economy.metal.stockpile.curr) }"
+    >
+      <div class="resource-summary">
+        <div class="resource-header">
+          <span class="resource-icon">⛏</span>
+          <span class="resource-label">METAL</span>
+        </div>
+        <div class="resource-row">
+          <span class="resource-stock">{{ fmtStock(economy.metal.stockpile.curr) }}</span>
+          <span class="resource-sep">/</span>
+          <span class="resource-max">{{ economy.metal.stockpile.max }}</span>
+        </div>
       </div>
       <div class="resource-bar">
         <div class="resource-bar-fill metal-fill" :style="{ width: metalPct + '%' }"></div>
       </div>
       <div class="resource-flows">
-        <span class="flow-pos">+{{ fmtMag(economy.metal.income.total) }}</span>
-        <span class="flow-neg" :class="{ inactive: economy.metal.expenditure < 0.05 }">−{{ fmtMag(economy.metal.expenditure) }}</span>
-        <span class="flow-net" :style="{ color: flowColor(economy.metal.netFlow) }">={{ fmtSigned(economy.metal.netFlow) }}</span>
+        <span class="resource-flow">
+          <span class="flow-label">produce</span>
+          <span class="flow-value">{{ fmtMag(economy.metal.income.total) }}</span>
+        </span>
+        <span class="resource-flow">
+          <span class="flow-label">consume</span>
+          <span class="flow-value">{{ fmtMag(economy.metal.expenditure) }}</span>
+        </span>
       </div>
     </div>
   </div>
@@ -201,22 +228,28 @@ function flowColor(n: number): string {
   position: relative;
   width: 100%;
   box-sizing: border-box;
-  min-height: 58px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--player-color) 15%, transparent) 0%, transparent 100%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.7) 100%);
-  border-bottom: 2px solid var(--player-color);
+  height: 58px;
+  background: rgba(15, 15, 15, 0.7);
+  border-bottom: 1px solid #444;
   display: flex;
   align-items: center;
-  padding: 6px 12px 7px;
-  gap: 16px;
+  padding: 0 12px;
+  gap: 12px;
   font-family: monospace;
   color: white;
   pointer-events: auto;
 }
 
-.top-direction-widget {
+.direction-slot {
+  align-self: stretch;
+  display: flex;
+  align-items: stretch;
   flex: 0 0 auto;
+  min-height: 0;
+}
+
+.top-direction-widget {
+  height: 100%;
 }
 
 .exit-btn {
@@ -252,7 +285,7 @@ function flowColor(n: number): string {
   gap: 6px;
   padding: 4px 12px 4px 8px;
   border: none;
-  border-right: 1px solid color-mix(in srgb, var(--player-color) 40%, transparent);
+  border-right: 1px solid rgba(255, 255, 255, 0.18);
   background: none;
   color: white;
   font-family: monospace;
@@ -312,7 +345,7 @@ function flowColor(n: number): string {
   min-width: 92px;
   max-width: 170px;
   padding-right: 12px;
-  border-right: 1px solid color-mix(in srgb, var(--player-color) 28%, transparent);
+  border-right: 1px solid rgba(255, 255, 255, 0.18);
   overflow: hidden;
 }
 
@@ -338,25 +371,39 @@ function flowColor(n: number): string {
 
 /* ── Resource blocks (Energy / Mana) ── */
 .resource-block {
+  --resource-accent: #ddd;
   display: flex;
   flex-direction: column;
-  min-width: 145px;
+  min-width: 160px;
   gap: 1px;
+  box-sizing: border-box;
+  padding: 3px 5px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.resource-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
 
 .resource-header {
   display: flex;
   align-items: center;
   gap: 4px;
+  color: var(--resource-accent);
+  flex: 0 0 auto;
   font-size: 10px;
   font-weight: bold;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.energy-block .resource-header { color: #ffcc00; }
-.mana-block .resource-header { color: #44aaff; }
-.metal-block .resource-header { color: #d8a878; }
+.energy-block { --resource-accent: #ffcc00; }
+.mana-block { --resource-accent: #44aaff; }
+.metal-block { --resource-accent: #d8a878; }
 
 .resource-icon {
   font-size: 11px;
@@ -370,9 +417,9 @@ function flowColor(n: number): string {
   white-space: pre;
 }
 
-.energy-block .resource-stock { color: #ffcc00; }
-.mana-block .resource-stock { color: #44aaff; }
-.metal-block .resource-stock { color: #d8a878; }
+.resource-stock {
+  color: var(--resource-accent);
+}
 
 .resource-sep {
   color: rgba(255, 255, 255, 0.3);
@@ -399,9 +446,9 @@ function flowColor(n: number): string {
   transition: width 0.2s ease;
 }
 
-.energy-fill { background: #ffcc00; }
-.mana-fill { background: #44aaff; }
-.metal-fill { background: #d8a878; }
+.resource-bar-fill {
+  background: var(--resource-accent);
+}
 
 .resource-flows {
   display: flex;
@@ -409,12 +456,109 @@ function flowColor(n: number): string {
   font-size: 11px;
   white-space: pre;
   font-weight: bold;
+  color: rgba(190, 190, 200, 0.78);
 }
 
-.flow-pos { color: #88ffaa; }
-.flow-neg { color: #ff8080; }
-.flow-neg.inactive { color: rgba(255, 255, 255, 0.25); }
-.flow-net { /* color set inline by flowColor() */ }
+.resource-flow {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.flow-label {
+  color: rgba(160, 160, 170, 0.72);
+  font-size: 9px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.flow-value {
+  color: rgba(205, 205, 215, 0.82);
+}
+
+.resource-empty {
+  animation: resource-empty-shell 0.9s steps(1, end) infinite;
+}
+
+.resource-empty .resource-header,
+.resource-empty .resource-stock {
+  animation: resource-empty-accent-text 0.9s steps(1, end) infinite;
+}
+
+.resource-empty .resource-sep,
+.resource-empty .resource-max {
+  animation: resource-empty-subtle-text 0.9s steps(1, end) infinite;
+}
+
+.resource-empty .flow-label {
+  animation: resource-empty-flow-label 0.9s steps(1, end) infinite;
+}
+
+.resource-empty .flow-value {
+  animation: resource-empty-flow-value 0.9s steps(1, end) infinite;
+}
+
+.resource-empty .resource-bar-fill {
+  animation: resource-empty-fill 0.9s steps(1, end) infinite;
+}
+
+@keyframes resource-empty-shell {
+  0%, 49% {
+    background: rgba(255, 45, 45, 0.18);
+    border-color: rgba(255, 80, 80, 0.65);
+    box-shadow: 0 0 10px rgba(255, 45, 45, 0.38);
+  }
+  50%, 100% {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+}
+
+@keyframes resource-empty-accent-text {
+  0%, 49% {
+    color: #ff5555;
+  }
+  50%, 100% {
+    color: var(--resource-accent);
+  }
+}
+
+@keyframes resource-empty-subtle-text {
+  0%, 49% {
+    color: #ff5555;
+  }
+  50%, 100% {
+    color: rgba(255, 255, 255, 0.3);
+  }
+}
+
+@keyframes resource-empty-flow-label {
+  0%, 49% {
+    color: #ff5555;
+  }
+  50%, 100% {
+    color: rgba(160, 160, 170, 0.72);
+  }
+}
+
+@keyframes resource-empty-flow-value {
+  0%, 49% {
+    color: #ff5555;
+  }
+  50%, 100% {
+    color: rgba(205, 205, 215, 0.82);
+  }
+}
+
+@keyframes resource-empty-fill {
+  0%, 49% {
+    background: #ff5555;
+  }
+  50%, 100% {
+    background: var(--resource-accent);
+  }
+}
 
 /* ── Counts ── */
 .counts-section {
@@ -450,9 +594,17 @@ function flowColor(n: number): string {
 .building-factory { color: #88ccff; }
 
 .cap-warning {
+  display: inline-block;
+  flex: 0 0 3ch;
   font-size: 9px;
   color: #ff4444;
+  text-align: left;
+  visibility: hidden;
+}
+
+.cap-warning.visible {
   animation: blink 1s infinite;
+  visibility: visible;
 }
 
 @keyframes blink {

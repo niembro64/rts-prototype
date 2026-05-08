@@ -36,7 +36,7 @@ export const SHOT_BLUEPRINTS = {
       force: 500,
     },
     detonateOnExpiry: true,
-    lifespan: 10_000,
+    lifespan: 2_000,
     hitSound: AUDIO.event.hit.lightShot,
   },
   mediumShot: {
@@ -50,7 +50,7 @@ export const SHOT_BLUEPRINTS = {
       force: 1000,
     },
     detonateOnExpiry: true,
-    lifespan: 10_000,
+    lifespan: 3_000,
     hitSound: AUDIO.event.hit.mediumShot,
   },
   // Rocket-class projectile. Flies in a straight line on pure thrust
@@ -72,7 +72,7 @@ export const SHOT_BLUEPRINTS = {
       force: 800,
     },
     detonateOnExpiry: true,
-    lifespan: 5500,
+    lifespan: 4000,
     ignoresGravity: true,
     homingTurnRate: 1,
     // Render as a velocity-aligned cylinder (purely cosmetic — sim
@@ -103,7 +103,7 @@ export const SHOT_BLUEPRINTS = {
       force: 7_000,
     },
     detonateOnExpiry: true,
-    lifespan: 10_000,
+    lifespan: 5_000,
     hitSound: AUDIO.event.hit.heavyShot,
   },
   // Mortar carrier. The turret fires this shot directly; it follows
@@ -207,7 +207,7 @@ export const SHOT_BLUEPRINTS = {
     type: 'buildSpray',
     id: 'buildSpray',
     lifespan: 600,
-    speed: 800,
+    speed: 30,
     visualRadius: 1.5,
   },
   // Tower beam — same physical shape and audio as megaBeamShot, but

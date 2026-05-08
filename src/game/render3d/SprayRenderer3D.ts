@@ -42,6 +42,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { hexToRgb01 } from './colorUtils';
+import { SHOT_BLUEPRINTS } from '../sim/blueprints/shots';
 
 // Default spray trail altitude for legacy 2D spray targets. Factory
 // tower sprays can pass explicit source/target z heights.
@@ -49,7 +50,7 @@ const TRAIL_Y = 4;
 const PARTICLE_BASE_RADIUS = 2.35;
 const MIN_FLIGHT_SEC = 0.16;
 const MAX_FLIGHT_SEC = 0.62;
-const BUILD_PARTICLE_SPEED = 470;
+const BUILD_PARTICLE_SPEED = SHOT_BLUEPRINTS.buildSpray.speed;
 const HEAL_PARTICLE_SPEED = 560;
 const MAX_PARTICLE_SPAWNS_PER_SPRAY_FRAME = 24;
 
