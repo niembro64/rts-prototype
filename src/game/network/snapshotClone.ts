@@ -14,6 +14,16 @@ import type {
 } from './NetworkTypes';
 import { PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN } from '@/types/network';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
+import {
+  copyBeamInto,
+  copySimEventInto,
+  copySpawnInto,
+  copyVelocityInto,
+  createBeamDto,
+  createSimEventDto,
+  createSpawnDto,
+  createVelocityDto,
+} from './snapshotDtoCopy';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -370,146 +380,6 @@ function copySprayInto(
   return dst;
 }
 
-function createReusableSimEvent(): NetworkServerSnapshotSimEvent {
-  return {
-    type: 'fire',
-    turretId: '',
-    sourceType: undefined,
-    sourceKey: undefined,
-    pos: { x: 0, y: 0, z: 0 },
-    forceFieldImpact: undefined,
-  };
-}
-
-function copySimEventInto(
-  src: NetworkServerSnapshotSimEvent,
-  dst: NetworkServerSnapshotSimEvent,
-): NetworkServerSnapshotSimEvent {
-  dst.type = src.type;
-  dst.turretId = src.turretId;
-  dst.sourceType = src.sourceType;
-  dst.sourceKey = src.sourceKey;
-  dst.pos.x = src.pos.x;
-  dst.pos.y = src.pos.y;
-  dst.pos.z = src.pos.z;
-  dst.entityId = src.entityId;
-  dst.deathContext = src.deathContext ? { ...src.deathContext } : undefined;
-  dst.impactContext = src.impactContext ? { ...src.impactContext } : undefined;
-  dst.forceFieldImpact = src.forceFieldImpact
-    ? {
-        normal: { ...src.forceFieldImpact.normal },
-        playerId: src.forceFieldImpact.playerId,
-      }
-    : undefined;
-  return dst;
-}
-
-function createReusableSpawn(): NetworkServerSnapshotProjectileSpawn {
-  return {
-    id: 0,
-    pos: { x: 0, y: 0, z: 0 },
-    rotation: 0,
-    velocity: { x: 0, y: 0, z: 0 },
-    projectileType: PROJECTILE_TYPE_UNKNOWN,
-    turretId: TURRET_ID_UNKNOWN,
-    shotId: undefined,
-    sourceTurretId: undefined,
-    playerId: 1,
-    sourceEntityId: 0,
-    turretIndex: 0,
-    barrelIndex: 0,
-  };
-}
-
-function copySpawnInto(
-  src: NetworkServerSnapshotProjectileSpawn,
-  dst: NetworkServerSnapshotProjectileSpawn,
-): NetworkServerSnapshotProjectileSpawn {
-  dst.id = src.id;
-  dst.pos.x = src.pos.x;
-  dst.pos.y = src.pos.y;
-  dst.pos.z = src.pos.z;
-  dst.rotation = src.rotation;
-  dst.velocity.x = src.velocity.x;
-  dst.velocity.y = src.velocity.y;
-  dst.velocity.z = src.velocity.z;
-  dst.projectileType = src.projectileType;
-  dst.maxLifespan = src.maxLifespan;
-  dst.turretId = src.turretId;
-  dst.shotId = src.shotId;
-  dst.sourceTurretId = src.sourceTurretId;
-  dst.playerId = src.playerId;
-  dst.sourceEntityId = src.sourceEntityId;
-  dst.turretIndex = src.turretIndex;
-  dst.barrelIndex = src.barrelIndex;
-  dst.isDGun = src.isDGun;
-  dst.fromParentDetonation = src.fromParentDetonation;
-  if (src.beam) {
-    if (!dst.beam) dst.beam = { start: { x: 0, y: 0, z: 0 }, end: { x: 0, y: 0, z: 0 } };
-    dst.beam.start.x = src.beam.start.x;
-    dst.beam.start.y = src.beam.start.y;
-    dst.beam.start.z = src.beam.start.z;
-    dst.beam.end.x = src.beam.end.x;
-    dst.beam.end.y = src.beam.end.y;
-    dst.beam.end.z = src.beam.end.z;
-  } else {
-    dst.beam = undefined;
-  }
-  dst.targetEntityId = src.targetEntityId;
-  dst.homingTurnRate = src.homingTurnRate;
-  return dst;
-}
-
-function copyVelocityInto(
-  src: NetworkServerSnapshotVelocityUpdate,
-  dst: NetworkServerSnapshotVelocityUpdate,
-): NetworkServerSnapshotVelocityUpdate {
-  dst.id = src.id;
-  dst.pos.x = src.pos.x;
-  dst.pos.y = src.pos.y;
-  dst.pos.z = src.pos.z;
-  dst.velocity.x = src.velocity.x;
-  dst.velocity.y = src.velocity.y;
-  dst.velocity.z = src.velocity.z;
-  return dst;
-}
-
-function createReusableVelocity(): NetworkServerSnapshotVelocityUpdate {
-  return { id: 0, pos: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 } };
-}
-
-function createReusableBeam(): NetworkServerSnapshotBeamUpdate {
-  return { id: 0, points: [], endpointDamageable: undefined };
-}
-
-function copyBeamInto(
-  src: NetworkServerSnapshotBeamUpdate,
-  dst: NetworkServerSnapshotBeamUpdate,
-): NetworkServerSnapshotBeamUpdate {
-  dst.id = src.id;
-  dst.obstructionT = src.obstructionT;
-  dst.endpointDamageable = src.endpointDamageable;
-  const dstPts = dst.points;
-  dstPts.length = src.points.length;
-  for (let i = 0; i < src.points.length; i++) {
-    const sp = src.points[i];
-    let dp = dstPts[i];
-    if (!dp) {
-      dp = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
-      dstPts[i] = dp;
-    }
-    dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
-    dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
-    dp.mirrorEntityId = sp.mirrorEntityId;
-    dp.reflectorKind = sp.reflectorKind;
-    dp.reflectorPlayerId = sp.reflectorPlayerId;
-    dp.normalX = sp.normalX;
-    dp.normalY = sp.normalY;
-    dp.normalZ = sp.normalZ;
-  }
-  return dst;
-}
-
 function createReusableCell(): NetworkServerSnapshotGridCell {
   return { cell: { x: 0, y: 0, z: 0 }, players: [] };
 }
@@ -642,20 +512,20 @@ export class ReusableNetworkSnapshotCloner {
       );
     }
     dst.sprayTargets = this.copyArray(state.sprayTargets, this.sprayTargets, createReusableSpray, copySprayInto);
-    dst.audioEvents = this.copyArray(state.audioEvents, this.audioEvents, createReusableSimEvent, copySimEventInto);
+    dst.audioEvents = this.copyArray(state.audioEvents, this.audioEvents, createSimEventDto, copySimEventInto);
     if (state.projectiles) {
-      this.projectiles.spawns = this.copyArray(state.projectiles.spawns, this.spawns, createReusableSpawn, copySpawnInto);
+      this.projectiles.spawns = this.copyArray(state.projectiles.spawns, this.spawns, createSpawnDto, copySpawnInto);
       this.projectiles.despawns = this.copyDespawnArray(state.projectiles.despawns);
       this.projectiles.velocityUpdates = this.copyArray(
         state.projectiles.velocityUpdates,
         this.velocityUpdates,
-        createReusableVelocity,
+        createVelocityDto,
         copyVelocityInto,
       );
       this.projectiles.beamUpdates = this.copyArray(
         state.projectiles.beamUpdates,
         this.beamUpdates,
-        createReusableBeam,
+        createBeamDto,
         copyBeamInto,
       );
       dst.projectiles = this.projectiles;

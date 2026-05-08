@@ -4,74 +4,14 @@ import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 import {
   codeToTurretId,
   PROJECTILE_TYPE_PROJECTILE,
-  TURRET_ID_UNKNOWN,
 } from '../../types/network';
 import { TURRET_CONFIGS } from '../sim/turretConfigs';
+import { copySpawnInto, createSpawnDto } from './snapshotDtoCopy';
 
 type QueuedProjectileSpawn = {
   spawn: NetworkServerSnapshotProjectileSpawn;
   playAt: number;
 };
-
-function createOwnedProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
-  return {
-    id: 0,
-    pos: { x: 0, y: 0, z: 0 },
-    rotation: 0,
-    velocity: { x: 0, y: 0, z: 0 },
-    projectileType: PROJECTILE_TYPE_PROJECTILE,
-    turretId: TURRET_ID_UNKNOWN,
-    shotId: undefined,
-    sourceTurretId: undefined,
-    playerId: 0,
-    sourceEntityId: 0,
-    turretIndex: 0,
-    barrelIndex: 0,
-  };
-}
-
-function copyProjectileSpawnInto(
-  src: NetworkServerSnapshotProjectileSpawn,
-  dst: NetworkServerSnapshotProjectileSpawn,
-): NetworkServerSnapshotProjectileSpawn {
-  dst.id = src.id;
-  dst.pos.x = src.pos.x;
-  dst.pos.y = src.pos.y;
-  dst.pos.z = src.pos.z;
-  dst.rotation = src.rotation;
-  dst.velocity.x = src.velocity.x;
-  dst.velocity.y = src.velocity.y;
-  dst.velocity.z = src.velocity.z;
-  dst.projectileType = src.projectileType;
-  dst.maxLifespan = src.maxLifespan;
-  dst.turretId = src.turretId;
-  dst.shotId = src.shotId;
-  dst.sourceTurretId = src.sourceTurretId;
-  dst.playerId = src.playerId;
-  dst.sourceEntityId = src.sourceEntityId;
-  dst.turretIndex = src.turretIndex;
-  dst.barrelIndex = src.barrelIndex;
-  dst.isDGun = src.isDGun;
-  dst.fromParentDetonation = src.fromParentDetonation;
-  dst.targetEntityId = src.targetEntityId;
-  dst.homingTurnRate = src.homingTurnRate;
-  if (src.beam) {
-    const beam = dst.beam ?? {
-      start: { x: 0, y: 0, z: 0 },
-      end: { x: 0, y: 0, z: 0 },
-    };
-    beam.start.x = src.beam.start.x;
-    beam.start.y = src.beam.start.y;
-    beam.start.z = src.beam.start.z;
-    beam.end.x = src.beam.end.x;
-    beam.end.y = src.beam.end.y;
-    beam.end.z = src.beam.end.z;
-    dst.beam = beam;
-  } else {
-    dst.beam = undefined;
-  }
-  return dst;
-}
 
 export function decodeProjectileSourceTurretId(
   spawn: NetworkServerSnapshotProjectileSpawn,
@@ -121,7 +61,7 @@ export class ProjectileSpawnQueue {
   enqueue(spawn: NetworkServerSnapshotProjectileSpawn, now: number): void {
     this.remove(spawn.id);
     const queued = this.acquire();
-    copyProjectileSpawnInto(spawn, queued.spawn);
+    copySpawnInto(spawn, queued.spawn);
     queued.playAt = now + Math.random() * this.snapshotInterval;
     this.queue.push(queued);
   }
@@ -159,7 +99,7 @@ export class ProjectileSpawnQueue {
       return queued;
     }
     return {
-      spawn: createOwnedProjectileSpawn(),
+      spawn: createSpawnDto(),
       playAt: 0,
     };
   }

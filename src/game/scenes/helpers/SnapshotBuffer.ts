@@ -9,199 +9,25 @@ import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotProjectileDespawn,
-  NetworkServerSnapshotBeamPoint,
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotVelocityUpdate,
 } from '../../network/NetworkTypes';
 import type { GameConnection } from '../../server/GameConnection';
 import { ReusableNetworkSnapshotCloner } from '../../network/snapshotClone';
-import type { Vec3 } from '@/types/vec2';
-import { PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN } from '@/types/network';
+import {
+  copyBeamInto,
+  copySimEventInto,
+  copySpawnInto,
+  copyVelocityInto,
+  createBeamDto,
+  createSimEventDto,
+  createSpawnDto,
+  createVelocityDto,
+} from '../../network/snapshotDtoCopy';
 
 const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
-
-type BufferedSpawn = NetworkServerSnapshotProjectileSpawn & {
-  _pos: Vec3;
-  _velocity: Vec3;
-  _beamStart: Vec3;
-  _beamEnd: Vec3;
-  _beam: { start: Vec3; end: Vec3 };
-};
-
-type BufferedVelocityUpdate = NetworkServerSnapshotVelocityUpdate & {
-  _pos: Vec3;
-  _velocity: Vec3;
-};
-
-type BufferedBeamUpdate = NetworkServerSnapshotBeamUpdate & {
-  _points: NetworkServerSnapshotBeamPoint[];
-};
-
-type BufferedSimEvent = NetworkServerSnapshotSimEvent & {
-  _pos: Vec3;
-};
-
-function createBufferedSpawn(): BufferedSpawn {
-  const spawn: BufferedSpawn = {
-    id: 0,
-    pos: { x: 0, y: 0, z: 0 },
-    rotation: 0,
-    velocity: { x: 0, y: 0, z: 0 },
-    projectileType: PROJECTILE_TYPE_UNKNOWN,
-    turretId: TURRET_ID_UNKNOWN,
-    shotId: undefined,
-    sourceTurretId: undefined,
-    playerId: 1,
-    sourceEntityId: 0,
-    turretIndex: 0,
-    barrelIndex: 0,
-    _pos: { x: 0, y: 0, z: 0 },
-    _velocity: { x: 0, y: 0, z: 0 },
-    _beamStart: { x: 0, y: 0, z: 0 },
-    _beamEnd: { x: 0, y: 0, z: 0 },
-    _beam: { start: { x: 0, y: 0, z: 0 }, end: { x: 0, y: 0, z: 0 } },
-  };
-  spawn.pos = spawn._pos;
-  spawn.velocity = spawn._velocity;
-  spawn._beam.start = spawn._beamStart;
-  spawn._beam.end = spawn._beamEnd;
-  return spawn;
-}
-
-function copySpawnInto(src: NetworkServerSnapshotProjectileSpawn, dst: BufferedSpawn): BufferedSpawn {
-  dst.id = src.id;
-  dst._pos.x = src.pos.x;
-  dst._pos.y = src.pos.y;
-  dst._pos.z = src.pos.z;
-  dst.rotation = src.rotation;
-  dst._velocity.x = src.velocity.x;
-  dst._velocity.y = src.velocity.y;
-  dst._velocity.z = src.velocity.z;
-  dst.projectileType = src.projectileType;
-  dst.maxLifespan = src.maxLifespan;
-  dst.turretId = src.turretId;
-  dst.shotId = src.shotId;
-  dst.sourceTurretId = src.sourceTurretId;
-  dst.playerId = src.playerId;
-  dst.sourceEntityId = src.sourceEntityId;
-  dst.turretIndex = src.turretIndex;
-  dst.barrelIndex = src.barrelIndex;
-  dst.isDGun = src.isDGun;
-  dst.fromParentDetonation = src.fromParentDetonation;
-  if (src.beam) {
-    dst._beamStart.x = src.beam.start.x;
-    dst._beamStart.y = src.beam.start.y;
-    dst._beamStart.z = src.beam.start.z;
-    dst._beamEnd.x = src.beam.end.x;
-    dst._beamEnd.y = src.beam.end.y;
-    dst._beamEnd.z = src.beam.end.z;
-    dst.beam = dst._beam;
-  } else {
-    dst.beam = undefined;
-  }
-  dst.targetEntityId = src.targetEntityId;
-  dst.homingTurnRate = src.homingTurnRate;
-  return dst;
-}
-
-function createBufferedVelocityUpdate(): BufferedVelocityUpdate {
-  const update: BufferedVelocityUpdate = {
-    id: 0,
-    pos: { x: 0, y: 0, z: 0 },
-    velocity: { x: 0, y: 0, z: 0 },
-    _pos: { x: 0, y: 0, z: 0 },
-    _velocity: { x: 0, y: 0, z: 0 },
-  };
-  update.pos = update._pos;
-  update.velocity = update._velocity;
-  return update;
-}
-
-function copyVelocityInto(
-  src: NetworkServerSnapshotVelocityUpdate,
-  dst: BufferedVelocityUpdate,
-): BufferedVelocityUpdate {
-  dst.id = src.id;
-  dst._pos.x = src.pos.x;
-  dst._pos.y = src.pos.y;
-  dst._pos.z = src.pos.z;
-  dst._velocity.x = src.velocity.x;
-  dst._velocity.y = src.velocity.y;
-  dst._velocity.z = src.velocity.z;
-  return dst;
-}
-
-function createBufferedBeamUpdate(): BufferedBeamUpdate {
-  const update: BufferedBeamUpdate = {
-    id: 0,
-    points: [],
-    _points: [],
-  };
-  update.points = update._points;
-  return update;
-}
-
-function copyBeamInto(src: NetworkServerSnapshotBeamUpdate, dst: BufferedBeamUpdate): BufferedBeamUpdate {
-  dst.id = src.id;
-  dst.obstructionT = src.obstructionT;
-  dst.endpointDamageable = src.endpointDamageable;
-  const dstPts = dst._points;
-  dstPts.length = src.points.length;
-  for (let i = 0; i < src.points.length; i++) {
-    const sp = src.points[i];
-    let dp = dstPts[i];
-    if (!dp) {
-      dp = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
-      dstPts[i] = dp;
-    }
-    dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
-    dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
-    dp.mirrorEntityId = sp.mirrorEntityId;
-    dp.reflectorKind = sp.reflectorKind;
-    dp.reflectorPlayerId = sp.reflectorPlayerId;
-    dp.normalX = sp.normalX;
-    dp.normalY = sp.normalY;
-    dp.normalZ = sp.normalZ;
-  }
-  dst.points = dstPts;
-  return dst;
-}
-
-function createBufferedSimEvent(): BufferedSimEvent {
-  const event: BufferedSimEvent = {
-    type: 'fire',
-    turretId: '',
-    sourceType: undefined,
-    sourceKey: undefined,
-    pos: { x: 0, y: 0, z: 0 },
-    forceFieldImpact: undefined,
-    _pos: { x: 0, y: 0, z: 0 },
-  };
-  event.pos = event._pos;
-  return event;
-}
-
-function copySimEventInto(src: NetworkServerSnapshotSimEvent, dst: BufferedSimEvent): BufferedSimEvent {
-  dst.type = src.type;
-  dst.turretId = src.turretId;
-  dst.sourceType = src.sourceType;
-  dst.sourceKey = src.sourceKey;
-  dst._pos.x = src.pos.x;
-  dst._pos.y = src.pos.y;
-  dst._pos.z = src.pos.z;
-  dst.entityId = src.entityId;
-  dst.deathContext = src.deathContext;
-  dst.impactContext = src.impactContext;
-  dst.forceFieldImpact = src.forceFieldImpact
-    ? {
-        normal: { ...src.forceFieldImpact.normal },
-        playerId: src.forceFieldImpact.playerId,
-      }
-    : undefined;
-  return dst;
-}
 
 export class SnapshotBuffer {
   private pendingSnapshot: NetworkServerSnapshot | null = null;
@@ -210,10 +36,10 @@ export class SnapshotBuffer {
   // Double-buffered event arrays (swap instead of allocating new arrays each frame)
   private _spawnsA: NetworkServerSnapshotProjectileSpawn[] = [];
   private _spawnsB: NetworkServerSnapshotProjectileSpawn[] = [];
-  private _spawnsPoolA: BufferedSpawn[] = [];
-  private _spawnsPoolB: BufferedSpawn[] = [];
+  private _spawnsPoolA: NetworkServerSnapshotProjectileSpawn[] = [];
+  private _spawnsPoolB: NetworkServerSnapshotProjectileSpawn[] = [];
   private bufferedSpawns: NetworkServerSnapshotProjectileSpawn[] = this._spawnsA;
-  private bufferedSpawnsPool: BufferedSpawn[] = this._spawnsPoolA;
+  private bufferedSpawnsPool: NetworkServerSnapshotProjectileSpawn[] = this._spawnsPoolA;
   private bufferedSpawnOverwriteIndex = 0;
 
   private _despawnsA: NetworkServerSnapshotProjectileDespawn[] = [];
@@ -225,28 +51,28 @@ export class SnapshotBuffer {
 
   private _audioA: NetworkServerSnapshotSimEvent[] = [];
   private _audioB: NetworkServerSnapshotSimEvent[] = [];
-  private _audioPoolA: BufferedSimEvent[] = [];
-  private _audioPoolB: BufferedSimEvent[] = [];
+  private _audioPoolA: NetworkServerSnapshotSimEvent[] = [];
+  private _audioPoolB: NetworkServerSnapshotSimEvent[] = [];
   private bufferedAudio: NetworkServerSnapshotSimEvent[] = this._audioA;
-  private bufferedAudioPool: BufferedSimEvent[] = this._audioPoolA;
+  private bufferedAudioPool: NetworkServerSnapshotSimEvent[] = this._audioPoolA;
   private bufferedAudioOverwriteIndex = 0;
 
-  private bufferedVelocityUpdates = new Map<number, BufferedVelocityUpdate>();
-  private velocityStagePool: BufferedVelocityUpdate[] = [];
+  private bufferedVelocityUpdates = new Map<number, NetworkServerSnapshotVelocityUpdate>();
+  private velocityStagePool: NetworkServerSnapshotVelocityUpdate[] = [];
   private velocityStagePoolIndex = 0;
   private _velBufA: NetworkServerSnapshotVelocityUpdate[] = [];
   private _velBufB: NetworkServerSnapshotVelocityUpdate[] = [];
-  private _velPoolA: BufferedVelocityUpdate[] = [];
-  private _velPoolB: BufferedVelocityUpdate[] = [];
+  private _velPoolA: NetworkServerSnapshotVelocityUpdate[] = [];
+  private _velPoolB: NetworkServerSnapshotVelocityUpdate[] = [];
   private _velBufToggle = false;
 
-  private bufferedBeamUpdates = new Map<number, BufferedBeamUpdate>();
-  private beamStagePool: BufferedBeamUpdate[] = [];
+  private bufferedBeamUpdates = new Map<number, NetworkServerSnapshotBeamUpdate>();
+  private beamStagePool: NetworkServerSnapshotBeamUpdate[] = [];
   private beamStagePoolIndex = 0;
   private _beamBufA: NetworkServerSnapshotBeamUpdate[] = [];
   private _beamBufB: NetworkServerSnapshotBeamUpdate[] = [];
-  private _beamPoolA: BufferedBeamUpdate[] = [];
-  private _beamPoolB: BufferedBeamUpdate[] = [];
+  private _beamPoolA: NetworkServerSnapshotBeamUpdate[] = [];
+  private _beamPoolB: NetworkServerSnapshotBeamUpdate[] = [];
   private _beamBufToggle = false;
   private bufferedGrid: NetworkServerSnapshot['grid'];
 
@@ -256,7 +82,7 @@ export class SnapshotBuffer {
       index = this.bufferedSpawnOverwriteIndex % MAX_BUFFERED_PROJECTILE_SPAWNS;
       this.bufferedSpawnOverwriteIndex++;
     }
-    const out = this.bufferedSpawnsPool[index] ?? createBufferedSpawn();
+    const out = this.bufferedSpawnsPool[index] ?? createSpawnDto();
     this.bufferedSpawnsPool[index] = out;
     const copied = copySpawnInto(spawn, out);
     if (index === this.bufferedSpawns.length) this.bufferedSpawns.push(copied);
@@ -269,7 +95,7 @@ export class SnapshotBuffer {
       index = this.bufferedAudioOverwriteIndex % MAX_BUFFERED_SIM_EVENTS;
       this.bufferedAudioOverwriteIndex++;
     }
-    const out = this.bufferedAudioPool[index] ?? createBufferedSimEvent();
+    const out = this.bufferedAudioPool[index] ?? createSimEventDto();
     this.bufferedAudioPool[index] = out;
     const copied = copySimEventInto(event, out);
     if (index === this.bufferedAudio.length) this.bufferedAudio.push(copied);
@@ -304,7 +130,7 @@ export class SnapshotBuffer {
           const vu = proj.velocityUpdates[i];
           let out = this.bufferedVelocityUpdates.get(vu.id);
           if (!out) {
-            out = this.velocityStagePool[this.velocityStagePoolIndex] ?? createBufferedVelocityUpdate();
+            out = this.velocityStagePool[this.velocityStagePoolIndex] ?? createVelocityDto();
             this.velocityStagePool[this.velocityStagePoolIndex] = out;
             this.velocityStagePoolIndex++;
             this.bufferedVelocityUpdates.set(vu.id, out);
@@ -317,7 +143,7 @@ export class SnapshotBuffer {
           const bu = proj.beamUpdates[i];
           let out = this.bufferedBeamUpdates.get(bu.id);
           if (!out) {
-            out = this.beamStagePool[this.beamStagePoolIndex] ?? createBufferedBeamUpdate();
+            out = this.beamStagePool[this.beamStagePoolIndex] ?? createBeamDto();
             this.beamStagePool[this.beamStagePoolIndex] = out;
             this.beamStagePoolIndex++;
             this.bufferedBeamUpdates.set(bu.id, out);
@@ -388,7 +214,7 @@ export class SnapshotBuffer {
       buf.length = 0;
       let writeIdx = 0;
       for (const v of this.bufferedVelocityUpdates.values()) {
-        const out = pool[writeIdx] ?? createBufferedVelocityUpdate();
+        const out = pool[writeIdx] ?? createVelocityDto();
         pool[writeIdx] = out;
         buf.push(copyVelocityInto(v, out));
         writeIdx++;
@@ -408,7 +234,7 @@ export class SnapshotBuffer {
       buf.length = 0;
       let writeIdx = 0;
       for (const b of this.bufferedBeamUpdates.values()) {
-        const out = pool[writeIdx] ?? createBufferedBeamUpdate();
+        const out = pool[writeIdx] ?? createBeamDto();
         pool[writeIdx] = out;
         buf.push(copyBeamInto(b, out));
         writeIdx++;
