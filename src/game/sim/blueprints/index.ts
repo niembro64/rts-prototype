@@ -12,7 +12,6 @@ export * from './fallbacks';
 
 import type {
   BeamShot,
-  BuildSprayShot,
   ForceFieldBarrierConfig,
   ForceShot,
   LaserShot,
@@ -255,19 +254,6 @@ function buildShotConfig(
   shotBlueprint: ShotBlueprint,
   launchForce?: number,
 ): ShotConfig {
-  if (shotBlueprint.type === 'buildSpray') {
-    const shot: BuildSprayShot = {
-      type: 'buildSpray',
-      id: shotBlueprint.id,
-      // ignoresGravity is intrinsic to the type — the literal `true`
-      // keeps consumers from having to defaulting it themselves.
-      ignoresGravity: true,
-      speed: shotBlueprint.speed,
-      visualRadius: shotBlueprint.visualRadius,
-    };
-    return shot;
-  }
-
   if (shotBlueprint.type === 'beam') {
     const shot: BeamShot = {
       type: 'beam',
@@ -328,7 +314,7 @@ export function buildProjectileShotConfig(
   const shotBlueprint = SHOT_BLUEPRINTS[shotId];
   if (!shotBlueprint) throw new Error(`Unknown shot blueprint: ${shotId}`);
   const shot = buildShotConfig(shotBlueprint, launchForce);
-  if (shot.type === 'force' || shot.type === 'buildSpray') {
+  if (shot.type === 'force') {
     throw new Error(
       `Shot blueprint ${shotId} cannot build a projectile config`,
     );
@@ -356,8 +342,10 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     );
   }
 
-  // Determine shot config
-  let shot: ShotConfig;
+  // Determine shot config. Visual-only construction emitters have no
+  // shot: their particles are renderer-owned cosmetics, not simulated
+  // projectiles.
+  let shot: ShotConfig | undefined;
 
   if (turretBlueprint.forceField) {
     // Force field turret: build a classic projectile barrier.
@@ -380,9 +368,9 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
         `Unknown projectile in turret ${turretId}: ${turretBlueprint.projectileId}`,
       );
     shot = buildShotConfig(shotBlueprint, turretBlueprint.launchForce);
-  } else {
+  } else if (!turretBlueprint.constructionEmitter) {
     throw new Error(
-      `Turret ${turretId} has neither projectileId nor forceField`,
+      `Turret ${turretId} has neither projectileId, forceField, nor constructionEmitter`,
     );
   }
 
@@ -404,15 +392,12 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction,
     radius: { ...turretBlueprint.radius },
-    // visualOnly used to be derived from the presence of the
-    // constructionEmitter side-field. Now the construction turret
-    // declares its identity via `projectileId: 'buildSpray'`, so the
-    // shot type itself drives visualOnly: build-spray emitters do not
-    // participate in the auto-targeting / firing pipeline.
-    visualOnly: shot.type === 'buildSpray',
+    visualOnly: shot === undefined,
     constructionEmitter: turretBlueprint.constructionEmitter
       ? {
           defaultSize: turretBlueprint.constructionEmitter.defaultSize,
+          particleTravelSpeed: turretBlueprint.constructionEmitter.particleTravelSpeed,
+          particleRadius: turretBlueprint.constructionEmitter.particleRadius,
           sizes: {
             small: { ...turretBlueprint.constructionEmitter.sizes.small },
             large: { ...turretBlueprint.constructionEmitter.sizes.large },
@@ -432,8 +417,6 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     let rawThickness: number;
     if (isLineShotBlueprint(shotBlueprint)) {
       rawThickness = shotBlueprint.width;
-    } else if (shotBlueprint.type === 'buildSpray') {
-      rawThickness = shotBlueprint.visualRadius * 2;
     } else {
       rawThickness =
         shotBlueprint.collision.radius > 0
@@ -454,7 +437,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   }
   if (turretBlueprint.passive != null) config.passive = turretBlueprint.passive;
   if (turretBlueprint.mountMode != null) config.mountMode = turretBlueprint.mountMode;
-  if (isLineShot(config.shot)) {
+  if (config.shot && isLineShot(config.shot)) {
     config.mirrorReflectPriority = turretBlueprint.mirrorReflectPriority ?? 1;
   }
 

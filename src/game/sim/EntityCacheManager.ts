@@ -90,7 +90,8 @@ export class EntityCacheManager {
         for (let i = 0; i < turrets.length; i++) {
           if (turrets[i].config.visualOnly) continue;
           hasCombatTurret = true;
-          const t = turrets[i].config.shot.type;
+          const t = turrets[i].config.shot?.type;
+          if (!t) continue;
           if (t === 'force') hasForceField = true;
           else if (t === 'beam') hasBeam = true;
           if (hasForceField && hasBeam) break;

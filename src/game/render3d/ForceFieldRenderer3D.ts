@@ -340,7 +340,7 @@ export class ForceFieldRenderer3D {
       const progress = turret.forceField?.range ?? 0;
 
       const shot = turret.config.shot;
-      if (shot.type !== 'force' || !shot.barrier) continue;
+      if (!shot || shot.type !== 'force' || !shot.barrier) continue;
       const fieldColor = resolveForceFieldColor(unit.ownership?.playerId);
 
       const key = forceFieldKey(unit.id, ti);

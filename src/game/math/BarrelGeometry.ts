@@ -44,7 +44,7 @@ const BARREL_ORBIT_CLAMP_FRAC = {
 type TurretRadiusSource = { id?: string; radius?: { body?: number } };
 type TurretBarrelSource = TurretRadiusSource & { barrel?: BarrelShape };
 type BarrelShotSource = TurretBarrelSource & {
-  shot: ShotConfig | ActiveProjectileShot;
+  shot?: ShotConfig | ActiveProjectileShot;
   spread?: TurretConfig['spread'];
 };
 
@@ -183,7 +183,7 @@ export function getTurretBarrelDiameter(
   if (!barrel || barrel.type === 'complexSingleEmitter') return 0;
 
   const shot = config.shot;
-  const lineShotWidth = isLineShot(shot) ? shot.width : undefined;
+  const lineShotWidth = shot && isLineShot(shot) ? shot.width : undefined;
   const diameter =
     (barrel.type === 'simpleSingleBarrel' ? lineShotWidth : undefined)
     ?? barrel.barrelThickness

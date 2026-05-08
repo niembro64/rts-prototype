@@ -36,7 +36,6 @@ export type {
   LineShotType,
   ActiveProjectileShot,
   ForceShot,
-  BuildSprayShot,
   ShotConfig,
   ShotRuntimeProfile,
   ShotVisualProfile,

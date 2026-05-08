@@ -42,14 +42,16 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { hexToRgb01 } from './colorUtils';
-import { SHOT_BLUEPRINTS } from '../sim/blueprints/shots';
+import { TURRET_CONFIGS } from '../sim/turretConfigs';
 
 // Default spray trail altitude for legacy 2D spray targets. Factory
 // tower sprays can pass explicit source/target z heights.
 const TRAIL_Y = 4;
 const MIN_FLIGHT_SEC = 0.16;
-const BUILD_PARTICLE_SPEED = SHOT_BLUEPRINTS.buildSpray.speed;
-const BUILD_PARTICLE_BASE_RADIUS = SHOT_BLUEPRINTS.buildSpray.visualRadius;
+const DEFAULT_BUILD_PARTICLE_SPEED =
+  TURRET_CONFIGS.constructionTurret.constructionEmitter?.particleTravelSpeed ?? 100;
+const DEFAULT_BUILD_PARTICLE_RADIUS =
+  TURRET_CONFIGS.constructionTurret.constructionEmitter?.particleRadius ?? 1.5;
 const HEAL_PARTICLE_SPEED = 560;
 const HEAL_MAX_FLIGHT_SEC = 0.62;
 const HEAL_PARTICLE_BASE_RADIUS = 2.35;
@@ -247,7 +249,7 @@ export class SprayRenderer3D {
       const ty = spray.target.z ?? TRAIL_Y;
       const tz = spray.target.pos.y;
       const dist = Math.hypot(tx - sx, ty - sy, tz - sz);
-      const flightSec = this.flightTimeForDistance(dist, spray.type);
+      const flightSec = this.flightTimeForDistance(dist, spray);
       const key = this.sprayKey(spray);
       this.activeSprayKeys.add(key);
       let budget = this.spraySpawnBudget.get(key) ?? 0;
@@ -300,16 +302,28 @@ export class SprayRenderer3D {
     return ((x >>> 0) / 0x100000000);
   }
 
-  private flightTimeForDistance(distance: number, type: SprayTarget['type']): number {
-    if (type === 'build') {
+  private flightTimeForDistance(distance: number, spray: Pick<SprayTarget, 'type' | 'speed'>): number {
+    if (spray.type === 'build') {
       // Build sprays travel at constant speed end-to-end with no
       // lifespan ceiling — flight time is purely distance / speed.
-      return distance / BUILD_PARTICLE_SPEED;
+      return distance / this.buildParticleSpeed(spray.speed);
     }
     return Math.max(
       MIN_FLIGHT_SEC,
       Math.min(HEAL_MAX_FLIGHT_SEC, distance / HEAL_PARTICLE_SPEED),
     );
+  }
+
+  private buildParticleSpeed(speed: number | undefined): number {
+    return speed !== undefined && Number.isFinite(speed) && speed > 0
+      ? speed
+      : DEFAULT_BUILD_PARTICLE_SPEED;
+  }
+
+  private buildParticleRadius(radius: number | undefined): number {
+    return radius !== undefined && Number.isFinite(radius) && radius > 0
+      ? radius
+      : DEFAULT_BUILD_PARTICLE_RADIUS;
   }
 
   private emitParticle(
@@ -377,7 +391,7 @@ export class SprayRenderer3D {
     if (len < 1e-3) return;
 
     const idx = this.particleCount++;
-    const life = this.flightTimeForDistance(len, spray.type) * (0.86 + this.random() * 0.28);
+    const life = this.flightTimeForDistance(len, spray) * (0.86 + this.random() * 0.28);
     this.pStartX[idx] = sx;
     this.pStartY[idx] = sy;
     this.pStartZ[idx] = sz;
@@ -387,10 +401,10 @@ export class SprayRenderer3D {
     this.pAge[idx] = 0;
     this.pLife[idx] = life;
     if (spray.type === 'build') {
-      // All build particles render at exactly the blueprint
-      // visualRadius — no per-particle jitter, no LOD scaling, no
+      // All build particles render at exactly the construction
+      // emitter particle radius — no per-particle jitter, no LOD scaling, no
       // mid-flight growth (see writeParticlesToMesh).
-      this.pSize[idx] = BUILD_PARTICLE_BASE_RADIUS;
+      this.pSize[idx] = this.buildParticleRadius(spray.particleRadius);
       this.pUniformSize[idx] = 1;
     } else {
       this.pSize[idx] = HEAL_PARTICLE_BASE_RADIUS
@@ -403,8 +417,8 @@ export class SprayRenderer3D {
     this.pWobble[idx] = spray.type === 'build'
       ? 0
       : len * 0.018 + targetSpread * 0.035;
-    // Build sprays ignore gravity (the buildSpray shot config sets
-    // `ignoresGravity: true`) — straight-line flight, no lob arc.
+    // Build sprays are renderer-owned straight-line particles: no
+    // gravity, no lob arc.
     this.pArc[idx] = spray.type === 'build'
       ? 0
       : Math.min(18, Math.max(3, len * 0.045));

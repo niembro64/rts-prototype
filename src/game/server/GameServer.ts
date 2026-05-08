@@ -556,7 +556,7 @@ export class GameServer {
       const turrets = unit.combat?.turrets;
       if (!turrets) continue;
       for (const turret of turrets) {
-        if (turret.config.shot.type !== 'force') continue;
+        if (turret.config.shot?.type !== 'force') continue;
         turret.target = null;
         turret.state = 'idle';
         turret.angularVelocity = 0;

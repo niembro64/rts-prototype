@@ -174,6 +174,13 @@ export type SprayTarget = {
   target: { id: EntityId; pos: Vec2; z?: number; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
   intensity: number;
+  /** Optional particle travel speed in world units per second. Build
+   *  sprays use this to move linearly from source to target; omitted
+   *  heal sprays use the renderer's heal default. */
+  speed?: number;
+  /** Optional cosmetic particle radius. Build sprays use this so the
+   *  construction emitter owns both travel speed and pellet size. */
+  particleRadius?: number;
   /** Optional per-spray color override (RGB in [0..1]). When present
    *  the renderer paints particles in this color instead of the
    *  source's team-primary color. Used by the factory's per-resource

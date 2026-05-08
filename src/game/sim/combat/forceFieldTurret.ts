@@ -36,8 +36,9 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
     for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
       const weapon = turrets[weaponIndex];
       const config = weapon.config;
-      if (config.shot.type !== 'force') continue;
-      const fieldShot = config.shot as ForceShot;
+      const shot = config.shot;
+      if (!shot || shot.type !== 'force') continue;
+      const fieldShot = shot as ForceShot;
 
       const transitionTime = fieldShot.transitionTime;
 

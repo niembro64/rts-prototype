@@ -9,7 +9,7 @@ export type MirrorLineTurretPick = {
 
 function lineWeaponPriority(turret: Turret): number {
   const shot = turret.config.shot;
-  if (!isLineShot(shot)) return 0;
+  if (!shot || !isLineShot(shot)) return 0;
   return Math.max(0, turret.config.mirrorReflectPriority ?? 0);
 }
 
@@ -21,7 +21,8 @@ function threatTier(turret: Turret, ourUnitId: number): number {
 
 export function scoreMirrorLineTurret(turret: Turret, ourUnitId: number): number {
   if (turret.config.passive) return 0;
-  if (!isLineShot(turret.config.shot)) return 0;
+  const shot = turret.config.shot;
+  if (!shot || !isLineShot(shot)) return 0;
   return threatTier(turret, ourUnitId) * 100 + lineWeaponPriority(turret);
 }
 

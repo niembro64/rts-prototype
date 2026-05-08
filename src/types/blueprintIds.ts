@@ -22,7 +22,6 @@ export const SHOT_IDS = [
   'laserShot',
   'beamShot',
   'megaBeamShot',
-  'buildSpray',
   'towerBeamShot',
 ] as const;
 export type ShotId = typeof SHOT_IDS[number];

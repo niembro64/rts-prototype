@@ -57,6 +57,8 @@ export type FactoryConstructionRig = {
    *  renderer rotates these into `pylonTopsLocal` with the same phase
    *  used for the visible tower pieces. */
   pylonTopBaseLocals: THREE.Vector3[];
+  sprayTravelSpeed: number;
+  sprayParticleRadius: number;
   /** Smoothed transfer-rate fractions (0..1), one per resource in
    *  the same order as `showers`. The renderer EMAs the live sim
    *  rates into these so the showers + sprays don't pop on per-tick
@@ -167,6 +169,8 @@ export function buildFactoryMesh(
       pylonBaseY: constructionRig.pylonBaseY,
       pylonTopsLocal: constructionRig.pylonTopsLocal,
       pylonTopBaseLocals: constructionRig.pylonTopBaseLocals,
+      sprayTravelSpeed: constructionRig.sprayTravelSpeed,
+      sprayParticleRadius: constructionRig.sprayParticleRadius,
       smoothedRates: { energy: 0, mana: 0, metal: 0 },
       towerSpinAmount: 0,
       towerSpinPhase: 0,

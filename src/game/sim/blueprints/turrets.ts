@@ -20,6 +20,8 @@ export const CONSTRUCTION_TURRET_HEAD_RADIUS = 8;
 
 const CONSTRUCTION_EMITTER_VISUALS = {
   defaultSize: 'small',
+  particleTravelSpeed: 50,
+  particleRadius: 1.5,
   sizes: {
     small: {
       towerSize: 'small',
@@ -455,17 +457,13 @@ export const TURRET_BLUEPRINTS = {
     },
     audio: { fireSound: AUDIO.event.fire.forceTurret },
   },
-  // Construction turret — its identity is "fires the buildSpray shot
-  // type". The shot type is intrinsically gravity-ignoring and is
-  // emitted along the controlled cone described by constructionEmitter
-  // (which now holds only the visuals — pylon positions, shower
-  // geometry — not the targeting/firing semantics). The turret itself
-  // is `visualOnly` at compile time because buildSpray shots aren't
-  // currently spawned by the auto-targeting pipeline; client-side
-  // emitPylonResourceSprays renders the spray particles.
+  // Construction turret — visual-only construction hardware mounted
+  // through the normal turret hardpoint path. It has no projectileId:
+  // build spray particles are renderer-owned cosmetics, not backend
+  // sim shots. constructionEmitter owns pylon/shower geometry plus
+  // cosmetic particle travel speed and radius.
   constructionTurret: {
     id: 'constructionTurret',
-    projectileId: 'buildSpray',
     range: 0,
     cooldown: 0,
     launchForce: 0,

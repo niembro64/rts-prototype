@@ -36,7 +36,7 @@ export function weaponNeedsLineOfSight(weapon: Turret): boolean {
   const cfg = weapon.config;
   if (cfg.highArc) return false;
   if (cfg.verticalLauncher) return false;
-  if (cfg.shot.type === 'force') return false;
+  if (cfg.shot?.type === 'force') return false;
   if (cfg.passive) return false;
   return true;
 }

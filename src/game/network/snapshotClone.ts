@@ -170,6 +170,8 @@ function cloneSpray(s: NetworkServerSnapshotSprayTarget): NetworkServerSnapshotS
     },
     type: s.type,
     intensity: s.intensity,
+    speed: s.speed,
+    particleRadius: s.particleRadius,
   };
 }
 
@@ -593,6 +595,8 @@ function createReusableSpray(): NetworkServerSnapshotSprayTarget {
     target: { id: 0, pos: { x: 0, y: 0 } },
     type: 'build',
     intensity: 0,
+    speed: undefined,
+    particleRadius: undefined,
   };
 }
 
@@ -619,6 +623,8 @@ function copySprayInto(
   dst.target.radius = src.target.radius;
   dst.type = src.type;
   dst.intensity = src.intensity;
+  dst.speed = src.speed;
+  dst.particleRadius = src.particleRadius;
   return dst;
 }
 

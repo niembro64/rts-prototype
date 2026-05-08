@@ -53,7 +53,6 @@ export type {
   BeamReflectorKind,
   BeamPoint,
   BeamShot,
-  BuildSprayShot,
   ForceFieldBarrierConfig,
   ForceShot,
   LaserShot,
@@ -264,7 +263,10 @@ export type TurretConfig = {
    *  through the host transform. `unitBodyCenter` makes the turret body
    *  center exactly equal the owning unit's gameplay target center. */
   mountMode?: 'authored' | 'unitBodyCenter';
-  shot: ShotConfig;
+  /** Undefined for visual-only construction emitters. Those turrets
+   *  mount renderer-owned construction hardware but do not represent a
+   *  simulated weapon or projectile. */
+  shot?: ShotConfig;
   turretIndex?: number;
   /** Ballistic arc choice for the aim solver — `true` = lofted (high
    *  arc, mortar-style); `false`/omitted = flat (low arc, direct-fire

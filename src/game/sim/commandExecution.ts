@@ -307,6 +307,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // moving commander still uses the turret's own motion, but never let
   // vertical muzzle velocity turn it into a ballistic shell.
   const dgunShot = dgunTurret.config.shot;
+  if (!dgunShot || dgunShot.type === 'force') {
+    throw new Error('D-gun turret must use a projectile, beam, or laser shot');
+  }
   const speed = isProjectileShot(dgunShot) ? getProjectileLaunchSpeed(dgunShot) : 350;
   let velocityX = Math.cos(fireAngle) * speed;
   let velocityY = Math.sin(fireAngle) * speed;
@@ -347,9 +350,6 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // Emit projectile spawn event for D-gun. Spawn pos + altitude came
   // from the shared BarrelGeometry primitive (see getBarrelTip call
   // above) so the event lines up with the visible barrel tip.
-  if (dgunShot.type === 'force') {
-    throw new Error('D-gun turret cannot use a force shot');
-  }
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },

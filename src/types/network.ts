@@ -458,6 +458,8 @@ export type NetworkServerSnapshotSprayTarget = {
   target: { id: number; pos: Vec2; z?: number; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
   intensity: number;
+  speed?: number;
+  particleRadius?: number;
 };
 
 export type NetworkServerSnapshotAction = {

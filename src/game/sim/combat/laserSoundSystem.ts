@@ -19,7 +19,7 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
 
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
-    if (config.shot.type === 'beam') {
+    if (config.shot?.type === 'beam') {
       _laserStopOwner.push({
         type: 'laserStop',
         turretId: config.id,
@@ -46,7 +46,7 @@ export function emitLaserStopsForTarget(_world: WorldState, targetId: EntityId):
     const weapon = unit.combat.turrets[weaponIndex];
     if (!weapon || weapon.target !== targetId) continue;
     const config = weapon.config;
-    if (config.shot.type !== 'beam') continue;
+    if (config.shot?.type !== 'beam') continue;
     _laserStopTarget.push({
       type: 'laserStop',
       turretId: config.id,
@@ -78,7 +78,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
     for (let i = 0; i < turrets.length; i++) {
       const weapon = turrets[i];
       const config = weapon.config;
-      const isBeamWeapon = config.shot.type === 'beam';
+      const isBeamWeapon = config.shot?.type === 'beam';
 
       if (!isBeamWeapon) continue;
 

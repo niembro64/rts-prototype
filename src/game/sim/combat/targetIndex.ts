@@ -44,7 +44,7 @@ export function setWeaponTarget(
 
   // Beam-only — see file header for why laser/projectile/force aren't
   // indexed.
-  if (weapon.config.shot.type === 'beam') {
+  if (weapon.config.shot?.type === 'beam') {
     if (oldTarget !== null) {
       const list = _beamTargetIndex.get(oldTarget);
       if (list) {
@@ -93,7 +93,7 @@ export function dropWeaponsForUnit(parentUnit: Entity): void {
   if (!turrets) return;
   for (let i = 0; i < turrets.length; i++) {
     const w = turrets[i];
-    if (w.config.shot.type !== 'beam') continue;
+    if (w.config.shot?.type !== 'beam') continue;
     if (w.target === null) continue;
     const list = _beamTargetIndex.get(w.target);
     if (!list) continue;

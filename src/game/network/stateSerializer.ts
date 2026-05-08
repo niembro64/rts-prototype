@@ -150,6 +150,8 @@ function createPooledSprayTarget(): NetworkServerSnapshotSprayTarget {
     target: { id: 0, pos: { x: 0, y: 0 }, z: undefined, dim: undefined, radius: undefined },
     type: 'build',
     intensity: 0,
+    speed: undefined,
+    particleRadius: undefined,
     _sourcePos: { x: 0, y: 0 },
     _targetPos: { x: 0, y: 0 },
     _targetDim: { x: 0, y: 0 },
@@ -979,6 +981,8 @@ export function serializeGameState(
       out.target.radius = st.target.radius;
       out.type = st.type;
       out.intensity = st.intensity;
+      out.speed = st.speed;
+      out.particleRadius = st.particleRadius;
       _sprayBuf.push(out);
     }
     if (_sprayBuf.length > 0) netSprayTargets = _sprayBuf;

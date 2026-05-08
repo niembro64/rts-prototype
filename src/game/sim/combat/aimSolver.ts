@@ -401,7 +401,8 @@ export function solveTurretAim(
     );
   }
 
-  if (isProjectileShot(weapon.config.shot)) {
+  const shot = weapon.config.shot;
+  if (shot && isProjectileShot(shot)) {
     return solveProjectileTurretAim(
       weapon,
       target,

@@ -43,7 +43,7 @@ function commitCombatMasks(entity: Entity): boolean {
     if (bit !== 0) activeMask |= bit;
     else overflowActive = true;
 
-    const shotType = weapon.config.shot.type;
+    const shotType = weapon.config.shot?.type;
     if (
       weapon.state === 'engaged' &&
       !weapon.config.passive &&
@@ -234,7 +234,7 @@ function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
   return (
     weapon.config.visualOnly === true ||
     (weapon.config.passive && !world.mirrorsEnabled) ||
-    (weapon.config.shot.type === 'force' && !world.forceFieldsEnabled)
+    (weapon.config.shot?.type === 'force' && !world.forceFieldsEnabled)
   );
 }
 

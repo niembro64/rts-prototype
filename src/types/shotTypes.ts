@@ -145,24 +145,10 @@ export type LaserShotBlueprint = {
   hitSound?: SoundEntry;
 };
 
-export type BuildSprayShotBlueprint = {
-  type: 'buildSpray';
-  id: ShotId;
-  /** Particle launch speed (world units per second). Particles fly at
-   *  constant velocity from emitter to target — flight time is derived
-   *  as distance / speed, with no lifespan ceiling. */
-  speed: number;
-  /** Cosmetic sphere radius for the rendered particle. */
-  visualRadius: number;
-  /** Shape-uniform field so callers can read `.hitSound` without narrowing first. */
-  hitSound?: SoundEntry;
-};
-
 export type ShotBlueprint =
   | ProjectileShotBlueprint
   | BeamShotBlueprint
-  | LaserShotBlueprint
-  | BuildSprayShotBlueprint;
+  | LaserShotBlueprint;
 export type LineShotBlueprint = BeamShotBlueprint | LaserShotBlueprint;
 
 /** Blueprint-side counterpart of `isLineShot`. */
@@ -256,25 +242,11 @@ export type ForceShot = {
   barrier?: ForceFieldBarrierConfig;
 };
 
-// Build-spray shot: colored construction particle emitted from a construction turret.
-export type BuildSprayShot = {
-  type: 'buildSpray';
-  id: ShotId;
-  /** Always true. Build-spray particles fly along a controlled cone from the emitter. */
-  ignoresGravity: true;
-  /** Particle launch speed (world units per second). Constant velocity
-   *  from origin to destination — no lifespan ceiling. */
-  speed: number;
-  /** Cosmetic sphere radius for the rendered particle. */
-  visualRadius: number;
-};
-
 export type ShotConfig =
   | ProjectileShot
   | BeamShot
   | LaserShot
-  | ForceShot
-  | BuildSprayShot;
+  | ForceShot;
 
 // Projectile travel types.
 export type ProjectileType = 'projectile' | 'beam' | 'laser';

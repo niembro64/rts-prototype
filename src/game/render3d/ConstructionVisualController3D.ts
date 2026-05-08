@@ -88,12 +88,10 @@ export class ConstructionVisualController3D {
     let targetRateE = 0;
     let targetRateM = 0;
     let targetRateT = 0;
-    let spinActive = false;
     if (targetId !== null && commander.builder && dtSec > 0) {
       const target = this.clientViewState.getEntity(targetId);
       const buildable = target?.buildable;
       if (target && buildable && !buildable.isComplete) {
-        spinActive = true;
         if (rig.lastPaidTargetId !== targetId) {
           rig.lastPaid.energy = buildable.paid.energy;
           rig.lastPaid.mana = buildable.paid.mana;
@@ -118,7 +116,7 @@ export class ConstructionVisualController3D {
       rig.lastPaidTargetId = null;
     }
 
-    this.updateConstructionTowerSpin(rig, spinActive, dtSec);
+    this.updateConstructionTowerSpin(rig, targetRateE + targetRateM + targetRateT, dtSec);
     this.blendSmoothedRates(rig.smoothedRates, targetRateE, targetRateM, targetRateT, rateAlpha);
     this.applyShowerFromSmoothedRates(rig);
 
@@ -185,7 +183,7 @@ export class ConstructionVisualController3D {
     const targetEnergy = active ? Math.max(0, Math.min(1, factory?.energyRateFraction ?? 0)) : 0;
     const targetMana   = active ? Math.max(0, Math.min(1, factory?.manaRateFraction   ?? 0)) : 0;
     const targetMetal  = active ? Math.max(0, Math.min(1, factory?.metalRateFraction  ?? 0)) : 0;
-    this.updateConstructionTowerSpin(rig, active, dtSec);
+    this.updateConstructionTowerSpin(rig, targetEnergy + targetMana + targetMetal, dtSec);
     this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMana, targetMetal, rateAlpha);
 
     if (!active) {
@@ -275,13 +273,15 @@ export class ConstructionVisualController3D {
       };
     }
     target.colorRGB = undefined;
+    target.speed = undefined;
+    target.particleRadius = undefined;
     this.factorySprayTargets.push(target);
     return target;
   }
 
   private updateConstructionTowerSpin(
     rig: ConstructionTowerSpinRig,
-    active: boolean,
+    resourceRateSum: number,
     dtSec: number,
   ): void {
     if (rig.towerOrbitParts.length === 0) return;
@@ -290,10 +290,10 @@ export class ConstructionVisualController3D {
       dtSec,
       preset.rotation.vel * CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
     );
-    const target = active ? 1 : 0;
+    const target = Math.max(0, resourceRateSum);
     const amountBefore = rig.towerSpinAmount;
     rig.towerSpinAmount += (target - rig.towerSpinAmount) * alpha;
-    if (!active && rig.towerSpinAmount < 0.001) {
+    if (target === 0 && rig.towerSpinAmount < 0.001) {
       rig.towerSpinAmount = 0;
     }
     if (rig.towerSpinAmount > 0) {
@@ -360,6 +360,8 @@ export class ConstructionVisualController3D {
   private emitPylonResourceSprays(
     rig: {
       pylonTopsLocal: THREE.Vector3[];
+      sprayTravelSpeed: number;
+      sprayParticleRadius: number;
       smoothedRates: { energy: number; mana: number; metal: number };
     },
     group: THREE.Group,
@@ -394,6 +396,8 @@ export class ConstructionVisualController3D {
       spray.target.radius = targetRadius;
       spray.type = 'build';
       spray.intensity = Math.min(1, rate);
+      spray.speed = rig.sprayTravelSpeed;
+      spray.particleRadius = rig.sprayParticleRadius;
       spray.colorRGB = RESOURCE_SPRAY_COLORS[i];
     }
   }

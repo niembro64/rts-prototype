@@ -287,6 +287,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const config = weapon.config;
       if (config.visualOnly) continue;
       const shot = config.shot;
+      if (!shot) continue;
       if (shot.type === 'force') continue; // Force fields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);

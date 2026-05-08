@@ -29,6 +29,8 @@ export type ConstructionEmitterRig = {
   pylonBaseY: number;
   pylonTopsLocal: THREE.Vector3[];
   pylonTopBaseLocals: THREE.Vector3[];
+  sprayTravelSpeed: number;
+  sprayParticleRadius: number;
   smoothedRates: { energy: number; mana: number; metal: number };
   lastPaidTargetId: number | null;
   lastPaid: { energy: number; mana: number; metal: number };
@@ -233,6 +235,8 @@ export function buildConstructionEmitterRigFromTurretConfig(
     pylonBaseY,
     pylonTopsLocal: pylonTrio.pylonTopsLocal,
     pylonTopBaseLocals: pylonTrio.pylonTopBaseLocals,
+    sprayTravelSpeed: spec.particleTravelSpeed,
+    sprayParticleRadius: spec.particleRadius,
     smoothedRates: { energy: 0, mana: 0, metal: 0 },
     lastPaidTargetId: null,
     lastPaid: { energy: 0, mana: 0, metal: 0 },

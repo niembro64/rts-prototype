@@ -222,6 +222,8 @@ export class ClientViewState {
         intensity: 0,
       };
     }
+    target.speed = undefined;
+    target.particleRadius = undefined;
     return target;
   }
 
@@ -577,6 +579,8 @@ export class ClientViewState {
         target.target.radius = st.target.radius;
         target.type = st.type;
         target.intensity = st.intensity;
+        target.speed = st.speed;
+        target.particleRadius = st.particleRadius;
         this.sprayTargets.push(target);
       }
     }

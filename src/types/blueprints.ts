@@ -23,7 +23,6 @@ export type {
 
 export type {
   BeamShotBlueprint,
-  BuildSprayShotBlueprint,
   CylinderShapeSpec,
   ForceFieldBarrierRatioConfig,
   LaserShotBlueprint,

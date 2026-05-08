@@ -134,7 +134,8 @@ export function applyClientUnitExpensivePrediction(options: {
       );
     }
 
-    if (weapon.config.shot.type !== 'force') continue;
+    const shot = weapon.config.shot;
+    if (!shot || shot.type !== 'force') continue;
     if (!forceFieldsEnabled) {
       if (weapon.forceField) {
         weapon.forceField.range = 0;
@@ -142,7 +143,7 @@ export function applyClientUnitExpensivePrediction(options: {
       }
       continue;
     }
-    const fieldShot = weapon.config.shot;
+    const fieldShot = shot;
     const cur = weapon.forceField?.range ?? 0;
     const targetProgress = weapon.state === 'engaged' ? 1 : 0;
     const progressDelta = dt / (fieldShot.transitionTime / 1000);
@@ -211,7 +212,7 @@ export function clientUnitPredictionIsSettled(
       }
     }
 
-    if (forceFieldsEnabled && weapon.config.shot.type === 'force') {
+    if (forceFieldsEnabled && weapon.config.shot?.type === 'force') {
       if ((weapon.forceField?.range ?? 0) > PREDICTION_TURRET_EPSILON) return false;
       if (weapon.state === 'engaged') return false;
     }
