@@ -92,12 +92,22 @@ function getDemoOval(world: WorldState): { oval: MapOvalMetrics; radius: number 
 }
 
 function commanderRadiusFromOuterSpawnRadius(spawnRadius: number): number {
-  return spawnRadius * DEMO_CONFIG.commanderRadiusFraction;
+  return demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.commander.radiusFraction,
+  );
+}
+
+function demoBaseRingRadiusFromOuterSpawnRadius(
+  spawnRadius: number,
+  radiusFraction: number,
+): number {
+  return spawnRadius * radiusFraction;
 }
 
 /** Commander placement radius for a map of the given dimensions.
  *  DEMO BATTLE and REAL BATTLE intentionally share
- *  `DEMO_CONFIG.commanderRadiusFraction`, so changing the demo
+ *  `DEMO_CONFIG.baseRings.commander.radiusFraction`, so changing the demo
  *  commander ring changes the real-battle ring and camera pre-framing
  *  at the same time. */
 function commanderRadiusForMap(mapWidth: number, mapHeight: number): number {
@@ -129,7 +139,7 @@ export function getSpawnPositionForSeat(
 
 // Calculate spawn positions on the spawn oval for N players. Used
 // for the REAL BATTLE flow (just commanders). The commander ring is
-// shared with demo battle through DEMO_CONFIG.commanderRadiusFraction.
+// shared with demo battle through DEMO_CONFIG.baseRings.commander.
 function getSpawnPositions(
   world: WorldState,
   playerCount: number
@@ -374,19 +384,18 @@ function placeFactoryArcRowForUnitTypes(
 }
 
 /**
- * Spawn a full base for each player on three concentric oval arcs centered
- * on the map. Mirrors the original square layout's radial ordering —
- * commander outermost (at the spawn oval), then solars, then factories
- * closest to the map center — but each "row" is now an arc rather than
- * a straight line:
+ * Spawn a full base for each player on five concentric oval arcs centered
+ * on the map. Each ring's radius comes directly from DEMO_CONFIG:
  *
- *           commander  ← outermost (spawn radius)
+ *           commander  ← outermost
  *           solar arc
- *           factory arc ← closest to map center
+ *           wind arc
+ *           fabricator arc
+ *           megaBeam tower arc ← closest to map center
  *
  * Each arc spans the same angular sector for the player, and every
- * building faces the map center. Solar/wind/tower counts and oval radial
- * gaps are controlled by DEMO_CONFIG. Fabricators are derived from the
+ * building faces the map center. Solar/wind/tower counts and oval radius
+ * fractions are controlled by DEMO_CONFIG. Fabricators are derived from the
  * active demo unit roster: one fabricator per available unit type, seeded
  * to repeat-build that unit.
  */
@@ -413,29 +422,26 @@ export function spawnInitialBases(
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
   const factoryUnitTypes = getAvailableDemoFactoryUnitTypes(availableUnitTypes);
 
-  const solarConfig = getBuildingConfig('solar');
-  const windConfig = getBuildingConfig('wind');
-  const factoryConfig = getBuildingConfig('factory');
-  const megaBeamTowerConfig = getBuildingConfig('megaBeamTower');
-  const cellGap = DEMO_CONFIG.rowGapCells * BUILD_GRID_CELL_SIZE;
-  const commanderGap = DEMO_CONFIG.commanderGapCells * BUILD_GRID_CELL_SIZE;
-  const megaBeamTowerGap = DEMO_CONFIG.megaBeamTowerGapCells * BUILD_GRID_CELL_SIZE;
-  const solarDepth = solarConfig.gridHeight * BUILD_GRID_CELL_SIZE;
-  const windDepth = windConfig.gridHeight * BUILD_GRID_CELL_SIZE;
-  const factoryDepth = factoryConfig.gridHeight * BUILD_GRID_CELL_SIZE;
-  const megaBeamTowerDepth = megaBeamTowerConfig.gridHeight * BUILD_GRID_CELL_SIZE;
-
   // Five concentric radii — outermost to innermost: commander, solar,
-  // wind, factory, megaBeam tower. Solar and wind used to share one
-  // alternating arc; they now ride on independent radii. The megaBeam
-  // tower arc sits further inward than every other building so the
-  // towers cover the approach to the base from the map center.
+  // wind, fabricator, megaBeam tower. Each ring is explicit so the demo
+  // layout can be tuned the same way metal deposit rings are tuned.
   const commanderRadius = commanderRadiusFromOuterSpawnRadius(spawnRadius);
-  const solarRadius = commanderRadius - commanderGap - solarDepth / 2;
-  const windRadius = solarRadius - solarDepth / 2 - cellGap - windDepth / 2;
-  const factoryRadius = windRadius - windDepth / 2 - cellGap - factoryDepth / 2;
-  const megaBeamTowerRadius =
-    factoryRadius - factoryDepth / 2 - megaBeamTowerGap - megaBeamTowerDepth / 2;
+  const solarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.solar.radiusFraction,
+  );
+  const windRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.wind.radiusFraction,
+  );
+  const factoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.fabricator.radiusFraction,
+  );
+  const megaBeamTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.megaBeamTower.radiusFraction,
+  );
 
   // Each player's slice of the spawn oval is ONE HALF of the
   // 2π/N angular cycle — the other half is the divider terrain slice

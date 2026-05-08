@@ -94,7 +94,7 @@ export function applyClientUnitVisualPrediction(options: {
   }
 }
 
-export function applyClientUnitExpensivePrediction(options: {
+export function applyClientCombatExpensivePrediction(options: {
   entity: Entity;
   target: UnitPredictionTarget | undefined;
   predictionStep: PredictionStep;
@@ -102,7 +102,7 @@ export function applyClientUnitExpensivePrediction(options: {
   forceFieldsEnabled: boolean;
 }): void {
   const { entity, target, predictionStep, preset, forceFieldsEnabled } = options;
-  if (!entity.unit || !entity.combat) return;
+  if (!entity.combat) return;
   const dt = predictionStep.entityDeltaMs / 1000;
   const targetDt = predictionStep.targetDeltaMs / 1000;
   const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
@@ -172,24 +172,24 @@ export function clientUnitPredictionIsSettled(
   forceFieldsEnabled: boolean,
 ): boolean {
   const unit = entity.unit;
-  if (!unit) return true;
+  if (unit) {
+    const vx = unit.velocityX ?? 0;
+    const vy = unit.velocityY ?? 0;
+    const vz = unit.velocityZ ?? 0;
+    if (vx * vx + vy * vy + vz * vz > PREDICTION_VEL_EPSILON_SQ) return false;
 
-  const vx = unit.velocityX ?? 0;
-  const vy = unit.velocityY ?? 0;
-  const vz = unit.velocityZ ?? 0;
-  if (vx * vx + vy * vy + vz * vz > PREDICTION_VEL_EPSILON_SQ) return false;
+    if (target) {
+      const tvx = target.velocityX ?? 0;
+      const tvy = target.velocityY ?? 0;
+      const tvz = target.velocityZ ?? 0;
+      if (tvx * tvx + tvy * tvy + tvz * tvz > PREDICTION_VEL_EPSILON_SQ) return false;
 
-  if (target) {
-    const tvx = target.velocityX ?? 0;
-    const tvy = target.velocityY ?? 0;
-    const tvz = target.velocityZ ?? 0;
-    if (tvx * tvx + tvy * tvy + tvz * tvz > PREDICTION_VEL_EPSILON_SQ) return false;
-
-    const dx = entity.transform.x - target.x;
-    const dy = entity.transform.y - target.y;
-    const dz = entity.transform.z - target.z;
-    if (dx * dx + dy * dy + dz * dz > PREDICTION_POS_EPSILON_SQ) return false;
-    if (angleDeltaAbs(entity.transform.rotation, target.rotation) > PREDICTION_ROT_EPSILON) return false;
+      const dx = entity.transform.x - target.x;
+      const dy = entity.transform.y - target.y;
+      const dz = entity.transform.z - target.z;
+      if (dx * dx + dy * dy + dz * dz > PREDICTION_POS_EPSILON_SQ) return false;
+      if (angleDeltaAbs(entity.transform.rotation, target.rotation) > PREDICTION_ROT_EPSILON) return false;
+    }
   }
 
   const weapons = entity.combat?.turrets;

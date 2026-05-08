@@ -118,6 +118,28 @@ function qRot(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+function writeTurretsToPool(
+  pool: PooledEntry,
+  weapons: NonNullable<Entity['combat']>['turrets'],
+): NetworkServerSnapshotTurret[] {
+  const count = weapons.length;
+  while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
+  pool.turrets.length = count;
+  for (let i = 0; i < count; i++) {
+    const src = weapons[i];
+    const dst = pool.turrets[i];
+    const t = dst.turret;
+    t.id = turretIdToCode(src.config.id);
+    t.angular.rot = qRot(src.rotation);
+    t.angular.vel = qRot(src.angularVelocity);
+    t.angular.pitch = qRot(src.pitch);
+    dst.targetId = src.target ?? undefined;
+    dst.state = turretStateToCode(src.state);
+    dst.currentForceFieldRange = src.forceField?.range;
+  }
+  return pool.turrets;
+}
+
 /** Surface-normal quantization. Components are unit-vector floats in
  *  [-1, 1]; 0.001 precision (~0.06° of tilt at the rim) is far below
  *  visible chassis-tilt jitter and trims wire bytes vs. raw float64. */
@@ -319,6 +341,7 @@ type PrevEntityState = {
   weaponCount: number;
   turretRots: number[];     // per-weapon turret rotation
   turretAngVels: number[];  // per-weapon angular velocity
+  turretPitches: number[];  // per-weapon pitch
   forceFieldRanges: number[]; // per-weapon force field range
   // building
   buildProgress: number;
@@ -331,10 +354,12 @@ type PrevEntityState = {
 function createPrevEntityState(): PrevEntityState {
   const turretRots: number[] = [];
   const turretAngVels: number[] = [];
+  const turretPitches: number[] = [];
   const forceFieldRanges: number[] = [];
   for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) {
     turretRots.push(0);
     turretAngVels.push(0);
+    turretPitches.push(0);
     forceFieldRanges.push(0);
   }
   return {
@@ -342,7 +367,7 @@ function createPrevEntityState(): PrevEntityState {
     velocityX: 0, velocityY: 0,
     hp: 0, actionCount: 0, actionHash: 0,
     isEngagedBits: 0, targetBits: 0,
-    weaponCount: 0, turretRots, turretAngVels, forceFieldRanges,
+    weaponCount: 0, turretRots, turretAngVels, turretPitches, forceFieldRanges,
     buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
   };
 }
@@ -475,33 +500,34 @@ function getChangedFields(
     if (entity.buildable && next.buildProgress !== prev.buildProgress) {
       mask |= ENTITY_CHANGED_BUILDING;
     }
+  }
 
-    if (entity.combat) {
-      if (next.weaponCount !== prev.weaponCount) {
-        mask |= ENTITY_CHANGED_TURRETS;
-      } else {
-        // Once any turret has crossed a threshold the bit is set; we
-        // still need to compute the engaged / target bitmasks for the
-        // OTHER turrets on this unit (used as a dirty proxy below) so
-        // we can't break out of the loop early — but we CAN skip the
-        // 3-abs threshold check on subsequent turrets, which is the
-        // expensive part. At many turrets per unit this halves the
-        // work for active units (where any one turret moving means
-        // the row will be sent anyway).
-        let turretsAlreadyChanged = false;
-        for (let i = 0; i < next.weaponCount; i++) {
-          if (!turretsAlreadyChanged) {
-            if (Math.abs(next.turretRots[i] - prev.turretRots[i]) > rotPosTh ||
-                Math.abs(next.turretAngVels[i] - prev.turretAngVels[i]) > rotVelTh ||
-                Math.abs(next.forceFieldRanges[i] - prev.forceFieldRanges[i]) > 0.001) {
-              mask |= ENTITY_CHANGED_TURRETS;
-              turretsAlreadyChanged = true;
-            }
+  if (entity.combat) {
+    if (next.weaponCount !== prev.weaponCount) {
+      mask |= ENTITY_CHANGED_TURRETS;
+    } else {
+      // Once any turret has crossed a threshold the bit is set; we
+      // still need to compute the engaged / target bitmasks for the
+      // OTHER turrets on this entity (used as a dirty proxy below) so
+      // we can't break out of the loop early — but we CAN skip the
+      // 3-abs threshold check on subsequent turrets, which is the
+      // expensive part. At many turrets per entity this halves the
+      // work for active entities (where any one turret moving means
+      // the row will be sent anyway).
+      let turretsAlreadyChanged = false;
+      for (let i = 0; i < next.weaponCount; i++) {
+        if (!turretsAlreadyChanged) {
+          if (Math.abs(next.turretRots[i] - prev.turretRots[i]) > rotPosTh ||
+              Math.abs(next.turretAngVels[i] - prev.turretAngVels[i]) > rotVelTh ||
+              Math.abs(next.turretPitches[i] - prev.turretPitches[i]) > rotPosTh ||
+              Math.abs(next.forceFieldRanges[i] - prev.forceFieldRanges[i]) > 0.001) {
+            mask |= ENTITY_CHANGED_TURRETS;
+            turretsAlreadyChanged = true;
           }
         }
-        if (next.isEngagedBits !== prev.isEngagedBits || next.targetBits !== prev.targetBits) {
-          mask |= ENTITY_CHANGED_TURRETS;
-        }
+      }
+      if (next.isEngagedBits !== prev.isEngagedBits || next.targetBits !== prev.targetBits) {
+        mask |= ENTITY_CHANGED_TURRETS;
       }
     }
   }
@@ -558,6 +584,7 @@ function captureEntityState(entity: Entity, prev: PrevEntityState): void {
     while (prev.turretRots.length < combatTurrets.length) {
       prev.turretRots.push(0);
       prev.turretAngVels.push(0);
+      prev.turretPitches.push(0);
       prev.forceFieldRanges.push(0);
     }
     for (let i = 0; i < combatTurrets.length; i++) {
@@ -566,6 +593,7 @@ function captureEntityState(entity: Entity, prev: PrevEntityState): void {
       if (w.target) prev.targetBits |= (1 << i);
       prev.turretRots[i] = w.rotation;
       prev.turretAngVels[i] = w.angularVelocity;
+      prev.turretPitches[i] = w.pitch;
       prev.forceFieldRanges[i] = w.forceField?.range ?? 0;
     }
   }
@@ -1317,43 +1345,41 @@ function serializeEntity(
       // Actions
       u.actions = undefined;
       if (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS)) {
-        if (entity.unit.actions && entity.unit.actions.length > 0) {
-          const actions = entity.unit.actions;
-          const count = actions.length;
-          while (pool.actions.length < count) pool.actions.push(createPooledAction());
-          pool.actions.length = count;
-          for (let i = 0; i < count; i++) {
-            const src = actions[i];
-            const dst = pool.actions[i] as PooledActionStorage;
-            dst.type = actionTypeToCode(src.type);
-            if (src.x !== undefined) {
-              dst._pos.x = src.x;
-              dst._pos.y = src.y;
-              dst.pos = dst._pos;
-            } else {
-              dst.pos = undefined;
-            }
-            // src.z is the click-derived altitude (or terrain sample
-            // for path-expanded intermediates) — ship it so joining
-            // clients render dots at the same altitude as the issuing
-            // client, no terrain re-sample needed.
-            dst.posZ = src.z;
-            // Only send the flag when true — saves bytes; clients
-            // treat undefined as false.
-            dst.pathExp = src.isPathExpansion ? true : undefined;
-            dst.targetId = src.targetId;
-            dst.buildingType = src.buildingType;
-            if (src.gridX !== undefined) {
-              dst._grid.x = src.gridX;
-              dst._grid.y = src.gridY!;
-              dst.grid = dst._grid;
-            } else {
-              dst.grid = undefined;
-            }
-            dst.buildingId = src.buildingId;
+        const actions = entity.unit.actions ?? [];
+        const count = actions.length;
+        while (pool.actions.length < count) pool.actions.push(createPooledAction());
+        pool.actions.length = count;
+        for (let i = 0; i < count; i++) {
+          const src = actions[i];
+          const dst = pool.actions[i] as PooledActionStorage;
+          dst.type = actionTypeToCode(src.type);
+          if (src.x !== undefined) {
+            dst._pos.x = src.x;
+            dst._pos.y = src.y;
+            dst.pos = dst._pos;
+          } else {
+            dst.pos = undefined;
           }
-          u.actions = pool.actions;
+          // src.z is the click-derived altitude (or terrain sample
+          // for path-expanded intermediates) — ship it so joining
+          // clients render dots at the same altitude as the issuing
+          // client, no terrain re-sample needed.
+          dst.posZ = src.z;
+          // Only send the flag when true — saves bytes; clients
+          // treat undefined as false.
+          dst.pathExp = src.isPathExpansion ? true : undefined;
+          dst.targetId = src.targetId;
+          dst.buildingType = src.buildingType;
+          if (src.gridX !== undefined) {
+            dst._grid.x = src.gridX;
+            dst._grid.y = src.gridY!;
+            dst.grid = dst._grid;
+          } else {
+            dst.grid = undefined;
+          }
+          dst.buildingId = src.buildingId;
         }
+        u.actions = pool.actions;
       }
 
       // Turrets. Full records seed the client; deltas only carry this
@@ -1362,36 +1388,21 @@ function serializeEntity(
       u.turrets = undefined;
       const weapons0 = entity.combat?.turrets;
       if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
-        const weapons = weapons0;
-        const count = weapons.length;
-        while (pool.turrets.length < count) pool.turrets.push(createPooledTurret());
-        pool.turrets.length = count;
-        for (let i = 0; i < count; i++) {
-          const src = weapons[i];
-          const dst = pool.turrets[i];
-          const t = dst.turret;
-          t.id = turretIdToCode(src.config.id);
-          t.angular.rot = qRot(src.rotation);
-          t.angular.vel = qRot(src.angularVelocity);
-          t.angular.pitch = qRot(src.pitch);
-          dst.targetId = src.target ?? undefined;
-          dst.state = turretStateToCode(src.state);
-          dst.currentForceFieldRange = src.forceField?.range;
-        }
-        u.turrets = pool.turrets;
+        u.turrets = writeTurretsToPool(pool, weapons0);
       }
 
       // Serialize builder state (commander)
       u.buildTargetId = undefined;
       if (entity.builder) {
-        u.buildTargetId = entity.builder.currentBuildTarget ?? undefined;
+        u.buildTargetId = entity.builder.currentBuildTarget ?? null;
       }
     }
   }
 
   if (entity.type === 'building' && entity.building) {
     // Determine which building-specific field groups changed
-    const buildingFieldMask = ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING | ENTITY_CHANGED_FACTORY;
+    const buildingFieldMask = ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING |
+      ENTITY_CHANGED_FACTORY | ENTITY_CHANGED_TURRETS;
     const hasBuildingFields = isFull || (changedFields! & buildingFieldMask);
 
     // Only attach building sub-object when at least one building field changed
@@ -1400,6 +1411,7 @@ function serializeEntity(
       ne.building = b;
       b.solar = undefined;
       b.metalExtractionRate = undefined;
+      b.turrets = undefined;
 
       // Full records must be self-contained for the same reason as
       // unit records: clients can miss the first keyframe during a
@@ -1447,6 +1459,11 @@ function serializeEntity(
           s.open = entity.building.solar.open;
           b.solar = s;
         }
+      }
+
+      const weapons0 = entity.combat?.turrets;
+      if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
+        b.turrets = writeTurretsToPool(pool, weapons0);
       }
 
       // Factory

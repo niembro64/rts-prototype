@@ -554,7 +554,7 @@ export type NetworkServerSnapshotEntity = {
      *  change since last keyframe. */
     surfaceNormal?: { nx: number; ny: number; nz: number };
     isCommander?: boolean;
-    buildTargetId?: number;
+    buildTargetId?: number | null;
     actions?: NetworkServerSnapshotAction[];
     turrets?: NetworkServerSnapshotTurret[];
     /** Unit shell construction state. Present whenever the unit was
@@ -590,6 +590,9 @@ export type NetworkServerSnapshotEntity = {
     solar?: {
       open: boolean;
     };
+    /** Building-mounted combat turrets use the same compact wire shape
+     *  as unit turrets. Static authored data stays blueprint-derived. */
+    turrets?: NetworkServerSnapshotTurret[];
     factory?: {
       /** Queue of unit type codes (see UNIT_TYPE_* / unitTypeToCode). */
       queue: number[];

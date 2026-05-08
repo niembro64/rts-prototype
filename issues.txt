@@ -5,29 +5,7 @@ written; check the code and if the issue is no longer relevant, delete it.
 
 Audit findings - 2026-05-07
 
-1. DIFF SNAP cannot explicitly clear unit action lists.
-   - Server serialization omits `u.actions` when `entity.unit.actions.length === 0`, even when the action
-     dirty bit is set or during a full snapshot (`src/game/network/stateSerializer.ts`).
-   - The client applier only clears/replaces actions when `su.actions` is truthy
-     (`src/game/network/ClientSnapshotApplier.ts`).
-   - Result: when a unit finishes or cancels its last order, clients can retain stale action data and draw
-     old waypoints/orders. This is especially visible on the local host path, where snapshots are passed as
-     raw objects rather than through MessagePack.
-   - Fix direction: encode an explicit empty array when actions changed to empty, or make the applier clear
-     actions on a full snapshot or ACTIONS dirty bit even if the array is absent/null.
-
-2. Builder `currentBuildTarget` clears are implicit and transport-dependent.
-   - Serialization writes `u.buildTargetId = entity.builder.currentBuildTarget ?? undefined`
-     (`src/game/network/stateSerializer.ts`).
-   - The applier only updates when `su.buildTargetId !== undefined`
-     (`src/game/network/ClientSnapshotApplier.ts`).
-   - Remote MessagePack decode can turn an own `undefined` property into `null`, while the local host path
-     still sees real `undefined`. This can make builder target clearing behave differently between local and
-     remote clients.
-   - Fix direction: encode an explicit `null` for clear, or clear the target on full/ACTIONS updates when the
-     field is absent/null.
-
-3. MessagePack is encoding optional own `undefined` properties as `null`.
+1. MessagePack is encoding optional own `undefined` properties as `null`.
    - The snapshot DTO pools keep many optional fields as own properties assigned to `undefined`
      (`src/game/network/stateSerializer.ts`).
    - MessagePack does not omit those keys by default; it writes them as nil/null. This defeats the intended
@@ -38,7 +16,7 @@ Audit findings - 2026-05-07
    - Fix direction: delete optional keys before wire encoding, use minimal fresh DTOs for the wire format, or
      configure/normalize encoding so absent and intentionally-null fields are distinct.
 
-4. FULL SNAP is not self-contained for live projectiles.
+2. FULL SNAP is not self-contained for live projectiles.
    - Full keyframes serialize units and buildings, but exclude `shot` entities
      (`src/game/network/stateSerializer.ts`).
    - Projectile creation is sent as an event/side channel from `ServerSnapshotPublisher`, and whole state
@@ -49,26 +27,7 @@ Audit findings - 2026-05-07
    - Fix direction: include live projectile state in full snapshots, or make projectile spawn events reliable
      until acknowledged.
 
-5. Client prediction LOD accumulators can stay alive for settled units.
-   - `ClientPredictionLod.consumeDelta` keeps per-entity accumulated milliseconds for skipped frames.
-   - `ClientPredictionStepper` removes settled/missing units from `activeUnitPredictionIds`, but does not
-     clear the matching prediction LOD accumulator.
-   - Result: stale accumulator entries can remain for units that are no longer being predicted, and a later
-     reactivation can consume old accumulated time.
-   - Fix direction: call `predictionLod.clear(id)` whenever a unit is removed from active prediction due to
-     settling or missing state.
-
-6. Client homing projectile prediction order differs from HOST SERVER simulation.
-   - Client prediction applies homing steering before gravity/movement
-     (`src/game/network/ClientProjectilePrediction.ts`).
-   - Server projectile simulation applies gravity/movement first, then homing steering
-     (`src/game/sim/combat/projectileSystem.ts`).
-   - The client comment says the math is identical frame-for-frame, but the step order is not identical. This
-     can cause visible prediction drift, especially when projectile LOD accumulates larger dt values.
-   - Fix direction: extract a shared projectile integration step, or reorder the client step to match the
-     server exactly.
-
-7. Debug grid snapshots retain pooled/reused server references.
+3. Debug grid snapshots retain pooled/reused server references.
    - `ServerDebugGridPublisher.refresh` returns internal cached arrays.
    - `SnapshotBuffer` stores `state.grid` by reference and can attach that same grid object to a later pending
      snapshot.
@@ -78,15 +37,7 @@ Audit findings - 2026-05-07
    - Fix direction: copy debug grid rows/cells into the buffer/client, or make each emitted debug grid payload
      immutable.
 
-8. Snapshot clone/copy code is unnecessarily duplicated.
-   - `src/game/network/snapshotClone.ts` contains an allocating deep clone implementation and a separate
-     reusable copy-into implementation for the same snapshot schema.
-   - `cloneNetworkSnapshot` appears unused, while `ReusableNetworkSnapshotCloner` is used by the local
-     connection and snapshot buffer.
-   - Fix direction: remove the unused allocating clone path, or implement it as a thin wrapper over the
-     reusable copy-into implementation so future schema changes only need one copy path.
-
-9. Projectile/event DTO copy logic is duplicated in multiple places.
+4. Projectile/event DTO copy logic is duplicated in multiple places.
    - Projectile spawn, velocity, beam, and event copy helpers exist independently in:
      `src/game/scenes/helpers/SnapshotBuffer.ts`,
      `src/game/network/ProjectileSpawnQueue.ts`, and
@@ -96,7 +47,7 @@ Audit findings - 2026-05-07
    - Fix direction: centralize these DTO copy helpers and reuse them from the buffer, queue, and snapshot
      cloner.
 
-10. Dead or legacy protocol state should be removed or documented.
+5. Dead or legacy protocol state should be removed or documented.
    - `DeltaTrackingState.protocolSeeded` is allocated, tracked, cleared, and added to on full records, but no
      longer appears to gate serialization behavior (`src/game/network/stateSerializer.ts`).
    - `NetworkManager.broadcastState` appears unused and duplicates much of `sendStateTo`
@@ -107,7 +58,7 @@ Audit findings - 2026-05-07
    - Fix direction: delete the dead paths, or document the intended future protocol use so they do not drift
      silently.
 
-11. `NetworkManager.disconnect` leaves callbacks and connection timers behind.
+6. `NetworkManager.disconnect` leaves callbacks and connection timers behind.
    - `disconnect` clears many callbacks but omits `onLobbySettings`, `getLobbySettings`, and
      `onPlayerInfoUpdate`, which are assigned closures from `GameCanvas.vue`.
    - `hostGame` and `joinGame` create 10-second setup timeouts that are not stored or canceled on disconnect.
@@ -116,7 +67,7 @@ Audit findings - 2026-05-07
    - Fix direction: clear all callback fields on disconnect, store timeout IDs, cancel them on disconnect, and
      guard timeout callbacks by peer identity or session generation.
 
-12. HOST SERVER Tilt EMA setting is not included in snapshot meta.
+7. HOST SERVER Tilt EMA setting is not included in snapshot meta.
    - The host UI sends tilt EMA changes to the server, and `GameServer` applies them.
    - `ServerSnapshotMetaBuilder.build` includes other host-controlled settings such as sim LOD and wind, but
      does not include tilt EMA mode.
@@ -125,7 +76,7 @@ Audit findings - 2026-05-07
    - Fix direction: add tilt EMA mode to `NetworkServerSnapshotMeta` and reconcile/render it like the other
      host server settings.
 
-13. Surface normal / Tilt EMA updates only piggyback on position snapshots.
+8. Surface normal / Tilt EMA updates only piggyback on position snapshots.
    - Serialization sends `unit.surfaceNormal` only on full snapshots or position-dirty updates.
    - `updateUnitTilt` can change surface normals every simulation tick without marking the entity position
      dirty.

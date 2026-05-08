@@ -25,6 +25,7 @@ import {
   buildTurretMesh3D,
   type TurretMesh,
 } from './TurretMesh3D';
+import { applyTurretAimPose3D } from './TurretAimPose3D';
 
 const BUILDING_HEIGHT = 120;
 
@@ -388,8 +389,12 @@ export class BuildingEntityRenderer3D {
         turret.mount.z - headRadius,
         turret.mount.y,
       );
-      turretMesh.root.rotation.y = entity.transform.rotation - turret.rotation;
-      if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = turret.pitch;
+      applyTurretAimPose3D(
+        turretMesh,
+        entity.transform.rotation,
+        turret.rotation,
+        turret.pitch,
+      );
     }
   }
 }

@@ -64,6 +64,7 @@ import { isConstructionShell } from './EntityInstanceColor3D';
 import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { createMirrorReflectorPanelMaterial } from './MirrorReflectorVisual3D';
+import { applyTurretAimPose3D } from './TurretAimPose3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -104,10 +105,8 @@ const _tiltQuat = new THREE.Quaternion();
 // articulated yaw + pitch can compensate for the chassis tilt and
 // the rendered barrel still points at the sim's world target.
 const _invTiltQuat = new THREE.Quaternion();
-// Scratch direction vector reused by every turret's compensation
-// math each frame.
+// Scratch direction vector reused by mirror-panel compensation math.
 const _aimDir = new THREE.Vector3();
-
 // Mirror panels (reflective mirror-unit armor plates) are square slabs
 // mounted at the rigid mirror-arm's far end. The cache in
 // mirrorPanelCache.ts computes baseY/topY/halfWidth from the turret's
@@ -1271,23 +1270,13 @@ export class Render3DEntities {
         // identity and step 4 collapses to the original Euler formula
         // `e.transform.rotation - t.rotation`, so the fast path
         // matches existing visuals byte-for-byte.
-        const cosTRot = Math.cos(t.rotation);
-        const sinTRot = Math.sin(t.rotation);
-        const cosPitch = Math.cos(t.pitch);
-        const sinPitch = Math.sin(t.pitch);
-        // World direction in three.js coords:
-        //   sim (cos(r) cos(p), sin(r) cos(p), sin(p)) → three (cos(r) cos(p), sin(p), sin(r) cos(p)).
-        _aimDir.set(cosTRot * cosPitch, sinPitch, sinTRot * cosPitch);
-        if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
-        // Decompose into Ry(combinedYaw) · Rz(localPitch) · +X.
-        // Note three.js Ry(θ) rotates +X to (cos θ, 0, -sin θ), so
-        // recovering θ from (x, ?, z) needs atan2(-z, x).
-        const combinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
-        const localYaw = combinedYaw + e.transform.rotation;
-        const ny = _aimDir.y;
-        const localPitch = Math.asin(ny < -1 ? -1 : ny > 1 ? 1 : ny);
-        tm.root.rotation.y = localYaw;
-        if (tm.pitchGroup) tm.pitchGroup.rotation.z = localPitch;
+        applyTurretAimPose3D(
+          tm,
+          e.transform.rotation,
+          t.rotation,
+          t.pitch,
+          chassisTilted ? _invTiltQuat : undefined,
+        );
         // Spin: gatling roll around the LOCAL +X of the pitch group,
         // which is the actual barrel axis after the tilt-aware yaw
         // and pitch compose into the parent chain.

@@ -7,7 +7,7 @@ import {
   type PredictionLodContext,
 } from './ClientPredictionLod';
 import {
-  applyClientUnitExpensivePrediction,
+  applyClientCombatExpensivePrediction,
   applyClientUnitVisualPrediction,
   clientUnitPredictionIsSettled,
 } from './ClientUnitPrediction';
@@ -29,7 +29,7 @@ type ClientPredictionStepperOptions = {
   projectileSpawns: ProjectileSpawnQueue;
   predictionLod: ClientPredictionLod;
   rocketTargetFinder: ClientRocketTargetFinder;
-  activeUnitPredictionIds: Set<EntityId>;
+  activeEntityPredictionIds: Set<EntityId>;
   activeProjectilePredictionIds: Set<EntityId>;
   activeBeamPathIds: Set<EntityId>;
   dirtyUnitRenderIds: Set<EntityId>;
@@ -161,7 +161,7 @@ export class ClientPredictionStepper {
       projectileSpawns,
       predictionLod,
       rocketTargetFinder,
-      activeUnitPredictionIds,
+      activeEntityPredictionIds,
       activeProjectilePredictionIds,
       activeBeamPathIds,
       dirtyUnitRenderIds,
@@ -210,16 +210,19 @@ export class ClientPredictionStepper {
     }
     if (beamPathsChanged) markLineProjectilesChanged();
 
-    for (const id of activeUnitPredictionIds) {
+    for (const id of activeEntityPredictionIds) {
       const entity = entities.get(id);
-      if (!entity?.unit) {
-        activeUnitPredictionIds.delete(id);
+      if (!entity?.unit && !entity?.combat) {
+        activeEntityPredictionIds.delete(id);
+        predictionLod.clear(id);
         continue;
       }
 
       const target = serverTargets.get(id);
-      applyClientUnitVisualPrediction({ entity, target, deltaMs, preset });
-      dirtyUnitRenderIds.add(id);
+      if (entity.unit) {
+        applyClientUnitVisualPrediction({ entity, target, deltaMs, preset });
+        dirtyUnitRenderIds.add(id);
+      }
       if (entity.combat && entity.combat.turrets.length > 0) {
         const predictionTier = predictionLod.resolveTier(entity, lod);
         const predictionStride = predictionLod.frameStride(
@@ -235,7 +238,7 @@ export class ClientPredictionStepper {
           predictionStride,
         );
         if (predictionStep) {
-          applyClientUnitExpensivePrediction({
+          applyClientCombatExpensivePrediction({
             entity,
             target,
             predictionStep,
@@ -246,7 +249,8 @@ export class ClientPredictionStepper {
       }
 
       if (clientUnitPredictionIsSettled(entity, target, forceFieldsEnabled)) {
-        activeUnitPredictionIds.delete(id);
+        activeEntityPredictionIds.delete(id);
+        predictionLod.clear(id);
       }
     }
 

@@ -19,8 +19,8 @@ const TREAD_COLOR = 0x1a1d22;
 const WHEEL_COLOR = 0x2a2f36;
 export const TREAD_HEIGHT = TREAD_CHASSIS_LIFT_Y;
 const TREAD_Y = TREAD_HEIGHT / 2;
-const TREAD_CLEAT_HEIGHT = 2;
-const TREAD_CLEAT_WIDTH_FRAC = 0.85;
+const TREAD_CLEAT_HEIGHT = 1.1;
+const TREAD_CLEAT_WIDTH_FRAC = 1.0;
 const TREAD_CLEAT_LENGTH_FRAC = 0.36;
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
@@ -28,10 +28,7 @@ const treadEndGeom = new THREE.CylinderGeometry(1, 1, 1, 16);
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
 const treadMat = new THREE.MeshBasicMaterial({ color: TREAD_COLOR });
 const wheelMat = new THREE.MeshBasicMaterial({ color: WHEEL_COLOR });
-// Lighter gray for the animated cleats, mirroring the 2D
-// drawAnimatedTread track-line color (`GRAY_LIGHT`) so the moving
-// highlights read over the dark tread slab.
-const cleatMat = new THREE.MeshBasicMaterial({ color: 0x5a636d });
+const cleatMat = new THREE.MeshBasicMaterial({ color: 0x3a4046 });
 
 export type TreadMesh = {
   type: 'treads';
@@ -118,7 +115,7 @@ export function buildTreads(
     // makes treads read correctly from side/front/back instead of
     // looking like a square slab with only top markings.
     const loopLength = 2 * straightLength + 2 * Math.PI * treadRadius;
-    const cleatCount = Math.max(10, Math.round(loopLength / Math.max(1, r * 0.16)));
+    const cleatCount = Math.max(8, Math.round(loopLength / Math.max(1, r * 0.26)));
     cleatSpacing = loopLength / cleatCount;
     const cleatLen = cleatSpacing * TREAD_CLEAT_LENGTH_FRAC;
     const cleatWidth = width * TREAD_CLEAT_WIDTH_FRAC;

@@ -54,6 +54,18 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
     : undefined;
 }
 
+export function applyNetworkTurretNonVisualState(
+  entity: Entity,
+  netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
+): void {
+  if (!Array.isArray(netTurrets) || netTurrets.length === 0 || !entity.combat) return;
+  const turrets = entity.combat.turrets;
+  for (let i = 0; i < netTurrets.length && i < turrets.length; i++) {
+    turrets[i].target = netTurrets[i].targetId ?? null;
+    turrets[i].state = codeToTurretState(netTurrets[i].state);
+  }
+}
+
 function createTurretsFromNetwork(
   unitType: string,
   unitBodyRadius: number,
@@ -97,6 +109,35 @@ export function refreshUnitTurretsFromNetwork(
       }
     }
   }
+  entity.combat = entity.combat
+    ? { ...entity.combat, turrets }
+    : { turrets, activeTurretMask: 0, firingTurretMask: 0 };
+}
+
+export function refreshBuildingTurretsFromNetwork(
+  entity: Entity,
+  buildingType: BuildingType,
+  netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
+): void {
+  let turrets: Turret[];
+  try {
+    turrets = createBuildingRuntimeTurrets(buildingType);
+  } catch {
+    entity.combat = undefined;
+    return;
+  }
+
+  if (turrets.length === 0) {
+    entity.combat = undefined;
+    return;
+  }
+
+  if (Array.isArray(netTurrets)) {
+    for (let i = 0; i < netTurrets.length && i < turrets.length; i++) {
+      applyNetworkTurretState(turrets[i], netTurrets[i]);
+    }
+  }
+
   entity.combat = entity.combat
     ? { ...entity.combat, turrets }
     : { turrets, activeTurretMask: 0, firingTurretMask: 0 };
@@ -299,20 +340,13 @@ function createBuildingFromNetwork(
   }
 
   // Mirror the host's combat hydration. Building turret meshes are
-  // mounted by Render3DEntities on the client side, and the per-frame
-  // writer positions / aims them from entity.combat.turrets — without
+  // mounted by BuildingEntityRenderer3D on the client side, and the
+  // per-frame writer positions / aims them from entity.combat.turrets — without
   // a client-side combat component the turret root stays at default
   // (0, 0, 0) in building-local space, hiding the head inside the
   // body slab. Beam updates also reference the source's turret rig
   // for client-side prediction / aim smoothing.
-  const buildingTurrets = createBuildingRuntimeTurrets(buildingType);
-  if (buildingTurrets.length > 0) {
-    entity.combat = {
-      turrets: buildingTurrets,
-      activeTurretMask: 0,
-      firingTurretMask: 0,
-    };
-  }
+  refreshBuildingTurretsFromNetwork(entity, buildingType, b.turrets);
 
   const f = b?.factory;
   if (f) {

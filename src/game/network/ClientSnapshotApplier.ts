@@ -13,7 +13,11 @@ import {
   codeToUnitType,
 } from '../../types/network';
 import { getUnitLocomotion } from '../sim/blueprints';
-import { refreshUnitTurretsFromNetwork } from './helpers';
+import {
+  applyNetworkTurretNonVisualState,
+  refreshBuildingTurretsFromNetwork,
+  refreshUnitTurretsFromNetwork,
+} from './helpers';
 import {
   applyNetworkBuildState,
   getBuildingBuildRequired,
@@ -76,31 +80,33 @@ export function snapClientNonVisualState(
       );
     }
 
-    if ((isFull || cf! & ENTITY_CHANGED_ACTIONS) && su.actions) {
+    if (isFull || cf! & ENTITY_CHANGED_ACTIONS) {
       const src = su.actions;
       const actions = entity.unit.actions;
       actions.length = 0;
-      for (let i = 0; i < src.length; i++) {
-        const na = src[i];
-        if (!na.pos) continue;
-        actions.push({
-          type: codeToActionType(na.type) as
-            | 'move'
-            | 'patrol'
-            | 'fight'
-            | 'build'
-            | 'repair'
-            | 'attack',
-          x: na.pos.x,
-          y: na.pos.y,
-          z: na.posZ,
-          isPathExpansion: na.pathExp,
-          targetId: na.targetId,
-          buildingType: na.buildingType as BuildingType | undefined,
-          gridX: na.grid?.x,
-          gridY: na.grid?.y,
-          buildingId: na.buildingId,
-        });
+      if (src) {
+        for (let i = 0; i < src.length; i++) {
+          const na = src[i];
+          if (!na.pos) continue;
+          actions.push({
+            type: codeToActionType(na.type) as
+              | 'move'
+              | 'patrol'
+              | 'fight'
+              | 'build'
+              | 'repair'
+              | 'attack',
+            x: na.pos.x,
+            y: na.pos.y,
+            z: na.posZ,
+            isPathExpansion: na.pathExp,
+            targetId: na.targetId,
+            buildingType: na.buildingType as BuildingType | undefined,
+            gridX: na.grid?.x,
+            gridY: na.grid?.y,
+            buildingId: na.buildingId,
+          });
+        }
       }
     }
 
@@ -112,8 +118,12 @@ export function snapClientNonVisualState(
       }
     }
 
-    if (entity.builder && su.buildTargetId !== undefined) {
-      entity.builder.currentBuildTarget = su.buildTargetId;
+    if (entity.builder && (
+      su.buildTargetId !== undefined
+      || isFull
+      || cf! & ENTITY_CHANGED_ACTIONS
+    )) {
+      entity.builder.currentBuildTarget = su.buildTargetId ?? null;
     }
   }
 
@@ -132,6 +142,14 @@ export function snapClientNonVisualState(
   if (entity.building && sb?.type !== undefined && isFull) {
     const buildingType = codeToBuildingType(sb.type);
     if (buildingType) entity.buildingType = buildingType as BuildingType;
+  }
+
+  if (entity.building && sb?.turrets) {
+    if (isFull && entity.buildingType) {
+      refreshBuildingTurretsFromNetwork(entity, entity.buildingType, sb.turrets);
+    } else {
+      applyNetworkTurretNonVisualState(entity, sb.turrets);
+    }
   }
 
   if (entity.building && sb && (isFull || sb.metalExtractionRate !== undefined)) {

@@ -109,7 +109,7 @@ export class ClientViewState {
   // run less often instead of paying turret/projectile/beam prediction
   // cost every browser frame.
   private predictionLod = new ClientPredictionLod();
-  private activeUnitPredictionIds: Set<EntityId> = new Set();
+  private activeEntityPredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
   private selectionState = new ClientSelectionState(
     this.entities,
@@ -146,7 +146,7 @@ export class ClientViewState {
       projectileSpawns: this.projectileStore.projectileSpawns,
       predictionLod: this.predictionLod,
       rocketTargetFinder: this.rocketTargetFinder,
-      activeUnitPredictionIds: this.activeUnitPredictionIds,
+      activeEntityPredictionIds: this.activeEntityPredictionIds,
       activeProjectilePredictionIds: this.projectileStore.activeProjectilePredictionIds,
       activeBeamPathIds: this.projectileStore.activeBeamPathIds,
       dirtyUnitRenderIds: this.dirtyUnitRenderIds,
@@ -198,6 +198,44 @@ export class ClientViewState {
     this.predictionLod.clearTarget(id);
   }
 
+  private getOrCreateServerTarget(id: EntityId): ServerTarget {
+    let target = this.serverTargets.get(id);
+    if (!target) {
+      target = createServerTarget();
+      this.serverTargets.set(id, target);
+    }
+    return target;
+  }
+
+  private copyNetworkTurretsToTarget(
+    target: ServerTarget,
+    turrets:
+      | NonNullable<NetworkServerSnapshotEntity['unit']>['turrets']
+      | NonNullable<NetworkServerSnapshotEntity['building']>['turrets'],
+    isFull: boolean,
+  ): boolean {
+    if (turrets) {
+      while (target.turrets.length < turrets.length) {
+        target.turrets.push({
+          rotation: 0,
+          angularVelocity: 0,
+          pitch: 0,
+          forceFieldRange: undefined,
+        });
+      }
+      target.turrets.length = turrets.length;
+      for (let i = 0; i < turrets.length; i++) {
+        target.turrets[i].rotation = turrets[i].turret.angular.rot;
+        target.turrets[i].angularVelocity = turrets[i].turret.angular.vel;
+        target.turrets[i].pitch = turrets[i].turret.angular.pitch;
+        target.turrets[i].forceFieldRange = turrets[i].currentForceFieldRange ?? undefined;
+      }
+      return true;
+    }
+    if (isFull) target.turrets.length = 0;
+    return false;
+  }
+
   private deleteEntityLocalState(id: EntityId): void {
     const existing = this.entities.get(id);
     const wasLineProjectile = existing ? isLineProjectileEntity(existing) : false;
@@ -205,7 +243,7 @@ export class ClientViewState {
     this.serverTargets.delete(id);
     this.projectileStore.remove(id, wasLineProjectile);
     this.selectionState.delete(id);
-    this.activeUnitPredictionIds.delete(id);
+    this.activeEntityPredictionIds.delete(id);
     this.dirtyUnitRenderIds.delete(id);
     if (existed) {
       this.markEntitySetChanged(existing?.type !== 'shot');
@@ -236,19 +274,27 @@ export class ClientViewState {
 
   private markEntityPredictionActive(entity: Entity): void {
     if (entity.unit) {
-      this.activeUnitPredictionIds.add(entity.id);
+      this.activeEntityPredictionIds.add(entity.id);
       this.dirtyUnitRenderIds.add(entity.id);
+    } else if (entity.building && entity.combat?.turrets.length) {
+      this.activeEntityPredictionIds.add(entity.id);
     } else if (entity.projectile && !isLineProjectileEntity(entity)) {
       this.projectileStore.activeProjectilePredictionIds.add(entity.id);
     }
   }
 
-  private markNetworkUnitPredictionActive(
+  private markNetworkEntityPredictionActive(
     server: NetworkServerSnapshotEntity,
     entity?: Entity,
   ): void {
-    if (server.type !== 'unit') return;
     const cf = server.changedFields;
+    if (server.type === 'building') {
+      if (Array.isArray(server.building?.turrets)) {
+        this.activeEntityPredictionIds.add(server.id);
+      }
+      return;
+    }
+    if (server.type !== 'unit') return;
     if (
       cf == null &&
       entity &&
@@ -265,7 +311,7 @@ export class ClientViewState {
       (cf & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0 ||
       Array.isArray(server.unit?.turrets)
     ) {
-      this.activeUnitPredictionIds.add(server.id);
+      this.activeEntityPredictionIds.add(server.id);
       this.dirtyUnitRenderIds.add(server.id);
     }
   }
@@ -367,19 +413,28 @@ export class ClientViewState {
       const isFull = cf == null;
       const isBuildingUpdate = netEntity.type === 'building';
       if (isBuildingUpdate) {
-        // Buildings are static scene objects. Keep them out of the
-        // per-frame prediction maps entirely; their transform is snapped
-        // directly in snapClientNonVisualState() when the network record says
-        // it changed.
-        this.serverTargets.delete(netEntity.id);
-        this.clearPredictionAccum(netEntity.id);
+        // Building bodies are static, but armed buildings still use the
+        // same turret target/prediction path as units.
+        const turretSnapshot = netEntity.building?.turrets;
+        if (turretSnapshot) {
+          const target = this.getOrCreateServerTarget(netEntity.id);
+          this.clearTargetPredictionAccum(netEntity.id);
+          if (isFull || cf! & ENTITY_CHANGED_POS) {
+            target.x = netEntity.pos.x;
+            target.y = netEntity.pos.y;
+            target.z = netEntity.pos.z;
+          }
+          if (isFull || cf! & ENTITY_CHANGED_ROT) {
+            target.rotation = netEntity.rotation;
+          }
+          this.copyNetworkTurretsToTarget(target, turretSnapshot, isFull);
+        } else if (isFull) {
+          this.serverTargets.delete(netEntity.id);
+          this.clearPredictionAccum(netEntity.id);
+        }
       } else {
         // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
-        let target = this.serverTargets.get(netEntity.id);
-        if (!target) {
-          target = createServerTarget();
-          this.serverTargets.set(netEntity.id, target);
-        }
+        const target = this.getOrCreateServerTarget(netEntity.id);
         // A fresh server target supersedes any sparse-prediction time
         // accumulated before this snapshot. Otherwise far entities can
         // extrapolate the newest target by time that already belonged
@@ -416,32 +471,7 @@ export class ClientViewState {
             target.velocityZ = v.z;
           }
         }
-        // Server now ships u.turrets on every delta where the unit is
-        // present (not gated by ENTITY_CHANGED_TURRETS) so client-side
-        // turret aim stays smooth between threshold-crossing changes.
-        // Read whenever it's there.
-        {
-          const nw = netEntity.unit?.turrets;
-          if (nw) {
-            while (target.turrets.length < nw.length) {
-              target.turrets.push({
-                rotation: 0,
-                angularVelocity: 0,
-                pitch: 0,
-                forceFieldRange: undefined,
-              });
-            }
-            target.turrets.length = nw.length;
-            for (let i = 0; i < nw.length; i++) {
-              target.turrets[i].rotation = nw[i].turret.angular.rot;
-              target.turrets[i].angularVelocity = nw[i].turret.angular.vel;
-              target.turrets[i].pitch = nw[i].turret.angular.pitch;
-              target.turrets[i].forceFieldRange = nw[i].currentForceFieldRange ?? undefined;
-            }
-          } else if (isFull) {
-            target.turrets.length = 0;
-          }
-        }
+        this.copyNetworkTurretsToTarget(target, netEntity.unit?.turrets, isFull);
       }
 
       const existing = this.entities.get(netEntity.id);
@@ -470,7 +500,7 @@ export class ClientViewState {
         if (snapClientNonVisualState(existing, netEntity)) {
           this.cache.invalidate();
         }
-        this.markNetworkUnitPredictionActive(netEntity, existing);
+        this.markNetworkEntityPredictionActive(netEntity, existing);
       }
     }
 
@@ -701,12 +731,12 @@ export class ClientViewState {
 
   collectActiveUnitRenderEntities(out: Entity[]): Entity[] {
     out.length = 0;
-    for (const id of this.activeUnitPredictionIds) {
+    for (const id of this.activeEntityPredictionIds) {
       const entity = this.entities.get(id);
       if (entity?.unit) out.push(entity);
     }
     for (const id of this.dirtyUnitRenderIds) {
-      if (this.activeUnitPredictionIds.has(id)) continue;
+      if (this.activeEntityPredictionIds.has(id)) continue;
       const entity = this.entities.get(id);
       if (entity?.unit) out.push(entity);
     }
@@ -1013,7 +1043,7 @@ export class ClientViewState {
     this.predictionStepper.reset();
     this.predictionLod.clearAll();
     this.rocketTargetFinder.clear();
-    this.activeUnitPredictionIds.clear();
+    this.activeEntityPredictionIds.clear();
     this.dirtyUnitRenderIds.clear();
     this.entitySetVersion++;
     this.invalidateCaches();

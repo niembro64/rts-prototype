@@ -16,7 +16,7 @@ export const DEMO_CONFIG = {
   windCount: 4,
 
   /** Number of megaBeam defense towers per player on the innermost ring. */
-  megaBeamTowerCount: 2,
+  megaBeamTowerCount: 4,
 
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the
@@ -28,40 +28,25 @@ export const DEMO_CONFIG = {
   arcSectorFraction: 0.7,
 
   /**
-   * Radial gap (in build-grid cells) between concentric building arcs —
-   * commander arc (outermost) → solar arc → wind arc → factory arc →
-   * megaBeam tower arc (closest to map center). 1 cell = 20 px.
-   */
-  rowGapCells: 7,
-
-  /**
-   * Radial gap (in build-grid cells) between the factory arc and the
-   * megaBeam tower arc directly inward of it. The towers sit further
-   * inside than every other building so they cover the approach to
-   * the base from the map center.
-   */
-  megaBeamTowerGapCells: 14,
-
-  /**
-   * Radial gap (in build-grid cells) between the commander arc and the solar
-   * arc directly inward of it. 1 cell = 20 px.
-   */
-  commanderGapCells: 20,
-
-  /**
    * Spawn radius margin in px. Distance from map edge to spawn point.
    * Larger = spawn points further from edge, more room behind base.
    */
   spawnMarginPx: 100,
 
   /**
-   * Commander placement radius as a fraction of the outer spawn circle.
-   * Shared by DEMO BATTLE and REAL BATTLE so both modes use the same
-   * commander ring. 1.0 = commander sits at the outer edge of the spawn
-   * circle; <1.0 pulls each commander inward toward map center. In demo,
-   * the solar/factory arcs are spaced inward from this ring as well.
+   * DEMO BATTLE base-ring radii. These work like metal deposit
+   * `radiusFraction` values: 0 = map center, 1 = the outer spawn circle
+   * after `spawnMarginPx`. The commander value also remains the
+   * commander-only spawn radius for real battles, matching the previous
+   * shared behavior.
    */
-  commanderRadiusFraction: 0.75,
+  baseRings: {
+    commander: { radiusFraction: 0.7 },
+    solar: { radiusFraction: 0.66 },
+    wind: { radiusFraction: 0.63 },
+    fabricator: { radiusFraction: 0.6 },
+    megaBeamTower: { radiusFraction: 0.13 },
+  },
 
   /**
    * DEMO BATTLE initial-spawn unit order type. 'fight' makes the

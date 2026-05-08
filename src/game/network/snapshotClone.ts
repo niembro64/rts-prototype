@@ -47,276 +47,6 @@ function cloneTerrainBuildabilityGrid(grid: TerrainBuildabilityGrid): TerrainBui
   return grid;
 }
 
-function cloneAction(a: NetworkServerSnapshotAction): NetworkServerSnapshotAction {
-  return {
-    type: a.type,
-    pos: a.pos ? { x: a.pos.x, y: a.pos.y } : undefined,
-    posZ: a.posZ,
-    pathExp: a.pathExp,
-    targetId: a.targetId,
-    buildingType: a.buildingType,
-    grid: a.grid ? { x: a.grid.x, y: a.grid.y } : undefined,
-    buildingId: a.buildingId,
-  };
-}
-
-function cloneNetworkTurret(t: NetworkServerSnapshotTurret): NetworkServerSnapshotTurret {
-  return {
-    turret: {
-      id: t.turret.id,
-      angular: {
-        rot: t.turret.angular.rot,
-        vel: t.turret.angular.vel,
-        pitch: t.turret.angular.pitch,
-      },
-    },
-    targetId: t.targetId,
-    state: t.state,
-    currentForceFieldRange: t.currentForceFieldRange,
-  };
-}
-
-function cloneEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntity {
-  return {
-    id: e.id,
-    type: e.type,
-    pos: { x: e.pos.x, y: e.pos.y, z: e.pos.z },
-    rotation: e.rotation,
-    playerId: e.playerId,
-    changedFields: e.changedFields,
-    unit: e.unit ? {
-      unitType: e.unit.unitType,
-      hp: { curr: e.unit.hp.curr, max: e.unit.hp.max },
-      radius: e.unit.radius ? {
-        body: e.unit.radius.body,
-        shot: e.unit.radius.shot,
-        push: e.unit.radius.push,
-      } : undefined,
-      bodyCenterHeight: e.unit.bodyCenterHeight,
-      mass: e.unit.mass,
-      velocity: { x: e.unit.velocity.x, y: e.unit.velocity.y, z: e.unit.velocity.z },
-      surfaceNormal: e.unit.surfaceNormal
-        ? { nx: e.unit.surfaceNormal.nx, ny: e.unit.surfaceNormal.ny, nz: e.unit.surfaceNormal.nz }
-        : undefined,
-      isCommander: e.unit.isCommander,
-      buildTargetId: e.unit.buildTargetId,
-      actions: e.unit.actions?.map(cloneAction),
-      // `unit.turrets` is the network unit DTO field. Runtime entities
-      // hydrate these into `entity.combat.turrets` on the client.
-      turrets: e.unit.turrets?.map(cloneNetworkTurret),
-      build: e.unit.build ? {
-        complete: e.unit.build.complete,
-        paid: {
-          energy: e.unit.build.paid.energy,
-          mana: e.unit.build.paid.mana,
-          metal: e.unit.build.paid.metal,
-        },
-      } : undefined,
-    } : undefined,
-    building: e.building ? {
-      type: e.building.type,
-      dim: e.building.dim ? { x: e.building.dim.x, y: e.building.dim.y } : undefined,
-      hp: { curr: e.building.hp.curr, max: e.building.hp.max },
-      build: {
-        complete: e.building.build.complete,
-        paid: {
-          energy: e.building.build.paid.energy,
-          mana: e.building.build.paid.mana,
-          metal: e.building.build.paid.metal,
-        },
-      },
-      metalExtractionRate: e.building.metalExtractionRate,
-      solar: e.building.solar ? { open: e.building.solar.open } : undefined,
-      factory: e.building.factory ? {
-        queue: e.building.factory.queue.slice(),
-        progress: e.building.factory.progress,
-        producing: e.building.factory.producing,
-        energyRate: e.building.factory.energyRate,
-        manaRate: e.building.factory.manaRate,
-        metalRate: e.building.factory.metalRate,
-        waypoints: e.building.factory.waypoints.map((w) => ({
-          pos: { x: w.pos.x, y: w.pos.y },
-          posZ: w.posZ,
-          type: w.type,
-        })),
-      } : undefined,
-    } : undefined,
-    shot: e.shot ? {
-      type: e.shot.type,
-      source: e.shot.source,
-      turretId: e.shot.turretId,
-      shotId: e.shot.shotId,
-      sourceTurretId: e.shot.sourceTurretId,
-      turretIndex: e.shot.turretIndex,
-      velocity: e.shot.velocity ? { x: e.shot.velocity.x, y: e.shot.velocity.y, z: e.shot.velocity.z } : undefined,
-    } : undefined,
-  };
-}
-
-function cloneSpray(s: NetworkServerSnapshotSprayTarget): NetworkServerSnapshotSprayTarget {
-  return {
-    source: {
-      id: s.source.id,
-      pos: { x: s.source.pos.x, y: s.source.pos.y },
-      z: s.source.z,
-      playerId: s.source.playerId,
-    },
-    target: {
-      id: s.target.id,
-      pos: { x: s.target.pos.x, y: s.target.pos.y },
-      z: s.target.z,
-      dim: s.target.dim ? { x: s.target.dim.x, y: s.target.dim.y } : undefined,
-      radius: s.target.radius,
-    },
-    type: s.type,
-    intensity: s.intensity,
-    speed: s.speed,
-    particleRadius: s.particleRadius,
-  };
-}
-
-function cloneSimEvent(e: NetworkServerSnapshotSimEvent): NetworkServerSnapshotSimEvent {
-  return {
-    type: e.type,
-    turretId: e.turretId,
-    sourceType: e.sourceType,
-    sourceKey: e.sourceKey,
-    pos: { x: e.pos.x, y: e.pos.y, z: e.pos.z },
-    entityId: e.entityId,
-    deathContext: e.deathContext ? { ...e.deathContext } : undefined,
-    impactContext: e.impactContext ? { ...e.impactContext } : undefined,
-    forceFieldImpact: e.forceFieldImpact
-      ? {
-          normal: { ...e.forceFieldImpact.normal },
-          playerId: e.forceFieldImpact.playerId,
-        }
-      : undefined,
-  };
-}
-
-function cloneSpawn(s: NetworkServerSnapshotProjectileSpawn): NetworkServerSnapshotProjectileSpawn {
-  return {
-    id: s.id,
-    pos: { x: s.pos.x, y: s.pos.y, z: s.pos.z },
-    rotation: s.rotation,
-    velocity: { x: s.velocity.x, y: s.velocity.y, z: s.velocity.z },
-    projectileType: s.projectileType,
-    maxLifespan: s.maxLifespan,
-    turretId: s.turretId,
-    shotId: s.shotId,
-    sourceTurretId: s.sourceTurretId,
-    playerId: s.playerId,
-    sourceEntityId: s.sourceEntityId,
-    turretIndex: s.turretIndex,
-    barrelIndex: s.barrelIndex,
-    isDGun: s.isDGun,
-    fromParentDetonation: s.fromParentDetonation,
-    beam: s.beam ? {
-      start: { x: s.beam.start.x, y: s.beam.start.y, z: s.beam.start.z },
-      end: { x: s.beam.end.x, y: s.beam.end.y, z: s.beam.end.z },
-    } : undefined,
-    targetEntityId: s.targetEntityId,
-    homingTurnRate: s.homingTurnRate,
-  };
-}
-
-function cloneVelocityUpdate(v: NetworkServerSnapshotVelocityUpdate): NetworkServerSnapshotVelocityUpdate {
-  return {
-    id: v.id,
-    pos: { x: v.pos.x, y: v.pos.y, z: v.pos.z },
-    velocity: { x: v.velocity.x, y: v.velocity.y, z: v.velocity.z },
-  };
-}
-
-function cloneBeamUpdate(b: NetworkServerSnapshotBeamUpdate): NetworkServerSnapshotBeamUpdate {
-  return {
-    id: b.id,
-    obstructionT: b.obstructionT,
-    endpointDamageable: b.endpointDamageable,
-    points: b.points.map((p) => ({
-      x: p.x,
-      y: p.y,
-      z: p.z,
-      vx: p.vx,
-      vy: p.vy,
-      vz: p.vz,
-      mirrorEntityId: p.mirrorEntityId,
-      reflectorKind: p.reflectorKind,
-      reflectorPlayerId: p.reflectorPlayerId,
-      normalX: p.normalX,
-      normalY: p.normalY,
-      normalZ: p.normalZ,
-    })),
-  };
-}
-
-function cloneCell(c: NetworkServerSnapshotGridCell): NetworkServerSnapshotGridCell {
-  return {
-    cell: { x: c.cell.x, y: c.cell.y, z: c.cell.z },
-    players: c.players.slice(),
-  };
-}
-
-export function cloneNetworkSnapshot(state: NetworkServerSnapshot): NetworkServerSnapshot {
-  const economy = {} as NetworkServerSnapshot['economy'];
-  for (const key in state.economy) {
-    const playerId = Number(key) as keyof NetworkServerSnapshot['economy'];
-    economy[playerId] = cloneEconomyEntry(state.economy[playerId]);
-  }
-
-  return {
-    tick: state.tick,
-    entities: state.entities.map(cloneEntity),
-    economy,
-    sprayTargets: state.sprayTargets?.map(cloneSpray),
-    audioEvents: state.audioEvents?.map(cloneSimEvent),
-    projectiles: state.projectiles ? {
-      spawns: state.projectiles.spawns?.map(cloneSpawn),
-      despawns: state.projectiles.despawns?.map((d: NetworkServerSnapshotProjectileDespawn) => ({ id: d.id })),
-      velocityUpdates: state.projectiles.velocityUpdates?.map(cloneVelocityUpdate),
-      beamUpdates: state.projectiles.beamUpdates?.map(cloneBeamUpdate),
-    } : undefined,
-    gameState: state.gameState ? { phase: state.gameState.phase, winnerId: state.gameState.winnerId } : undefined,
-    serverMeta: state.serverMeta ? {
-      ticks: { ...state.serverMeta.ticks },
-      snaps: { ...state.serverMeta.snaps },
-      server: { ...state.serverMeta.server },
-      grid: state.serverMeta.grid,
-      units: state.serverMeta.units ? {
-        allowed: state.serverMeta.units.allowed?.slice(),
-        max: state.serverMeta.units.max,
-        count: state.serverMeta.units.count,
-      } : {},
-      mirrorsEnabled: state.serverMeta.mirrorsEnabled,
-      forceFieldsEnabled: state.serverMeta.forceFieldsEnabled,
-      cpu: state.serverMeta.cpu ? { ...state.serverMeta.cpu } : undefined,
-      simLod: state.serverMeta.simLod ? {
-        picked: state.serverMeta.simLod.picked,
-        effective: state.serverMeta.simLod.effective,
-        signals: state.serverMeta.simLod.signals ? { ...state.serverMeta.simLod.signals } : undefined,
-      } : undefined,
-      wind: state.serverMeta.wind ? { ...state.serverMeta.wind } : undefined,
-    } : undefined,
-    grid: state.grid ? {
-      cells: state.grid.cells.map(cloneCell),
-      searchCells: state.grid.searchCells.map(cloneCell),
-      cellSize: state.grid.cellSize,
-    } : undefined,
-    capture: state.capture ? {
-      tiles: state.capture.tiles.map((tile) => ({
-        cx: tile.cx,
-        cy: tile.cy,
-        heights: { ...tile.heights },
-      })),
-      cellSize: state.capture.cellSize,
-    } : undefined,
-    terrain: state.terrain ? cloneTerrainTileMap(state.terrain) : undefined,
-    buildability: state.buildability ? cloneTerrainBuildabilityGrid(state.buildability) : undefined,
-    isDelta: state.isDelta,
-    removedEntityIds: state.removedEntityIds?.slice(),
-  };
-}
-
 type ReusableEntityUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
 type ReusableEntityShot = NonNullable<NetworkServerSnapshotEntity['shot']>;
@@ -511,6 +241,18 @@ function copyBuildingInto(
     dst.solar.open = src.solar.open;
   } else {
     dst.solar = undefined;
+  }
+  if (src.turrets) {
+    const turrets = dst.turrets ?? (dst.turrets = []);
+    turrets.length = src.turrets.length;
+    for (let i = 0; i < src.turrets.length; i++) {
+      turrets[i] = copyNetworkTurretInto(
+        src.turrets[i],
+        turrets[i] ?? createReusableNetworkTurret(),
+      );
+    }
+  } else {
+    dst.turrets = undefined;
   }
   if (src.factory) {
     if (!dst.factory) {
@@ -1023,4 +765,8 @@ export class ReusableNetworkSnapshotCloner {
     }
     return this.despawns;
   }
+}
+
+export function cloneNetworkSnapshot(state: NetworkServerSnapshot): NetworkServerSnapshot {
+  return new ReusableNetworkSnapshotCloner().clone(state);
 }

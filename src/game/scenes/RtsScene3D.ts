@@ -28,6 +28,7 @@ import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
 import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
 import { MetalDepositRenderer3D } from '../render3d/MetalDepositRenderer3D';
+import { EnvironmentPropRenderer3D } from '../render3d/EnvironmentPropRenderer3D';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { isCommander } from '../sim/combat/combatUtils';
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
@@ -217,6 +218,7 @@ export class RtsScene3D {
   private captureTileRenderer!: CaptureTileRenderer3D;
   private metalDeposits: MetalDeposit[] = [];
   private metalDepositRenderer: MetalDepositRenderer3D | null = null;
+  private environmentPropRenderer: EnvironmentPropRenderer3D | null = null;
   private waterRenderer!: WaterRenderer3D;
   private explosionRenderer!: Explosion3D;
   private forceFieldImpactRenderer!: ForceFieldImpactRenderer3D;
@@ -654,6 +656,18 @@ export class RtsScene3D {
       this.metalDeposits,
       getGraphicsConfig().tier,
     );
+    this.environmentPropRenderer = new EnvironmentPropRenderer3D(
+      this.threeApp.world,
+      {
+        mapWidth: this.mapWidth,
+        mapHeight: this.mapHeight,
+        playerCount: this.playerIds.length,
+        metalDeposits: this.metalDeposits,
+        renderScope: this.renderScope,
+        sampleTerrainHeight: (x, z) =>
+          getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
+      },
+    );
     this.contactShadowRenderer = new ContactShadowRenderer3D(
       this.threeApp.world,
       this.mapWidth,
@@ -1008,6 +1022,11 @@ export class RtsScene3D {
     this.renderScope.setQuad(
       this._cameraQuad,
       this.computeRenderScopeBounds(this._cameraQuad),
+    );
+    this.environmentPropRenderer?.update(
+      graphicsConfig,
+      renderLod,
+      this.renderLodGrid,
     );
     // Emit the quad every frame — the minimap's camera box reads
     // this directly so it stays pinned to the view regardless of
@@ -2017,6 +2036,8 @@ export class RtsScene3D {
     this.entityRenderer?.destroy();
     this.metalDepositRenderer?.dispose();
     this.metalDepositRenderer = null;
+    this.environmentPropRenderer?.destroy();
+    this.environmentPropRenderer = null;
     this.contactShadowRenderer?.dispose();
     this.contactShadowRenderer = null;
     this.beamRenderer?.destroy();
