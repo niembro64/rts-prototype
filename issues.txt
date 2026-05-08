@@ -5,17 +5,6 @@ written; check the code and if the issue is no longer relevant, delete it.
 
 Audit findings - 2026-05-07
 
-1. MessagePack is encoding optional own `undefined` properties as `null`.
-   - The snapshot DTO pools keep many optional fields as own properties assigned to `undefined`
-     (`src/game/network/stateSerializer.ts`).
-   - MessagePack does not omit those keys by default; it writes them as nil/null. This defeats the intended
-     byte savings and changes presence semantics on remote clients.
-   - Correctness risk: appliers that test `!== undefined` can treat decoded `null` as a present value. One
-     example is `metalExtractionRate`, which can be applied as `null`
-     (`src/game/network/ClientSnapshotApplier.ts`).
-   - Fix direction: delete optional keys before wire encoding, use minimal fresh DTOs for the wire format, or
-     configure/normalize encoding so absent and intentionally-null fields are distinct.
-
 2. FULL SNAP is not self-contained for live projectiles.
    - Full keyframes serialize units and buildings, but exclude `shot` entities
      (`src/game/network/stateSerializer.ts`).

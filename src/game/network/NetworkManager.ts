@@ -90,6 +90,14 @@ const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;
 const SIGNALING_RECONNECT_MAX_DELAY_MS = 10000;
 const SNAPSHOT_BACKPRESSURE_DROP_BYTES = 2 * 1024 * 1024;
 
+// Snapshot DTOs are pooled, so optional fields stay as own properties
+// assigned to `undefined`. Default msgpack encodes those as `nil`,
+// which the client decodes as `null` and treats as a present value
+// (e.g. `metalExtractionRate !== undefined` would fire on null).
+// `ignoreUndefined: true` makes msgpack skip those keys entirely,
+// matching `JSON.stringify`'s behavior.
+const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
+
 export class NetworkManager {
   private peer: Peer | null = null;
   private connections: Map<PlayerId, DataConnection> = new Map();
@@ -1083,7 +1091,7 @@ export class NetworkManager {
 
     // Pre-serialize once for all clients (msgpack-javascript is fast,
     // does no per-call allocations beyond the result buffer).
-    const buf = msgpackEncode(state);
+    const buf = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
 
     // Log every 100th snapshot with connection health + payload size
     if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsSent % 100 === 0) {
@@ -1113,7 +1121,7 @@ export class NetworkManager {
     if (!conn || this.shouldDropSnapshotForBackpressure(playerId, conn)) return false;
 
     this.snapshotsSent++;
-    const buf = msgpackEncode(state);
+    const buf = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
 
     if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsSent % 100 === 0) {
       const dc = conn.dataChannel;
