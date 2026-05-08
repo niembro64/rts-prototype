@@ -131,6 +131,9 @@ export class SprayRenderer3D {
   private pAge = new Float32Array(MAX_PARTICLES);
   private pLife = new Float32Array(MAX_PARTICLES);
   private pSize = new Float32Array(MAX_PARTICLES);
+  // 1 for build particles (uniform size, no per-particle jitter or
+  // mid-flight growth), 0 for heal (existing per-particle variation).
+  private pUniformSize = new Uint8Array(MAX_PARTICLES);
   private pWobble = new Float32Array(MAX_PARTICLES);
   private pArc = new Float32Array(MAX_PARTICLES);
   private pSeed = new Float32Array(MAX_PARTICLES);
@@ -383,12 +386,18 @@ export class SprayRenderer3D {
     this.pEndZ[idx] = endZ;
     this.pAge[idx] = 0;
     this.pLife[idx] = life;
-    const baseRadius = spray.type === 'build'
-      ? BUILD_PARTICLE_BASE_RADIUS
-      : HEAL_PARTICLE_BASE_RADIUS;
-    this.pSize[idx] = baseRadius
-      * (0.72 + this.random() * 0.52)
-      * (0.5 + 0.5 * scaledIntensity);
+    if (spray.type === 'build') {
+      // All build particles render at exactly the blueprint
+      // visualRadius — no per-particle jitter, no LOD scaling, no
+      // mid-flight growth (see writeParticlesToMesh).
+      this.pSize[idx] = BUILD_PARTICLE_BASE_RADIUS;
+      this.pUniformSize[idx] = 1;
+    } else {
+      this.pSize[idx] = HEAL_PARTICLE_BASE_RADIUS
+        * (0.72 + this.random() * 0.52)
+        * (0.5 + 0.5 * scaledIntensity);
+      this.pUniformSize[idx] = 0;
+    }
     this.pWobble[idx] = len * 0.018 + targetSpread * 0.035;
     // Build sprays ignore gravity (the buildSpray shot config sets
     // `ignoresGravity: true`) — straight-line flight, no lob arc.
@@ -424,6 +433,7 @@ export class SprayRenderer3D {
       this.pAge[index] = this.pAge[last];
       this.pLife[index] = this.pLife[last];
       this.pSize[index] = this.pSize[last];
+      this.pUniformSize[index] = this.pUniformSize[last];
       this.pWobble[index] = this.pWobble[last];
       this.pArc[index] = this.pArc[last];
       this.pSeed[index] = this.pSeed[last];
@@ -465,11 +475,12 @@ export class SprayRenderer3D {
       // their full flight without visually dissolving mid-air.
       const alpha = PARTICLE_ALPHA;
 
-      // Size grows linearly from a slightly smaller start to a
-      // slightly larger end so each particle visibly inflates as it
-      // travels — replaces the previous mid-flight bulge from the
-      // sine envelope.
-      const size = this.pSize[i] * (0.78 + 0.36 * phase);
+      // Heal particles inflate slightly as they fly (start 0.78×, end
+      // 1.14×). Build particles render at uniform size — pSize is the
+      // exact final radius from the blueprint.
+      const size = this.pUniformSize[i]
+        ? this.pSize[i]
+        : this.pSize[i] * (0.78 + 0.36 * phase);
       this._scratchMat.makeScale(size, size, size);
       this._scratchMat.setPosition(px, py, pz);
       this.mesh.setMatrixAt(visibleCount, this._scratchMat);
