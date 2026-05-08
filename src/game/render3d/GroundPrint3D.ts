@@ -1,5 +1,6 @@
 // GroundPrint3D — wheel ruts, tread tracks, and footstep stamps drawn
-// onto the ground as fading quads.
+// onto the ground as fading quads. Leg stamps use a small shader mask
+// so their underlying quads read as circular ground prints.
 //
 // Rewrite goals (vs. the original frame-skip design):
 //
@@ -65,6 +66,8 @@ const PRINT_LIN = new THREE.Color(PRINT_HEX);
 const PRINT_BASE_LIFETIME_MS = 1000;
 const PRINT_INITIAL_ALPHA = 0.2;
 
+const STAMP_CIRCLE_RADIUS_MULT = 1.35;
+
 // At density = 0 lifetime is shrunk to this fraction of the base.
 // MIN tier therefore drains the buffer about 2.5× faster than MAX.
 const LIFETIME_MULT_AT_MIN = 0.4;
@@ -110,6 +113,58 @@ const EMIT_DENSITY_FLOOR = 0.02;
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+function makeGroundPrintMaterial(): THREE.MeshBasicMaterial {
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `
+attribute vec2 markUv;
+attribute float markShape;
+varying vec2 vMarkUv;
+varying float vMarkShape;
+#include <common>
+`,
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `
+#include <begin_vertex>
+vMarkUv = markUv;
+vMarkShape = markShape;
+`,
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <common>',
+      `
+varying vec2 vMarkUv;
+varying float vMarkShape;
+#include <common>
+`,
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <clipping_planes_fragment>',
+      `
+#include <clipping_planes_fragment>
+if (vMarkShape > 0.5) {
+  float circleMask = 1.0 - smoothstep(0.9, 1.0, dot(vMarkUv, vMarkUv));
+  if (circleMask <= 0.001) discard;
+  diffuseColor.a *= circleMask;
+}
+`,
+    );
+  };
+  return mat;
 }
 
 // ── Per-trail bookkeeping ──
@@ -160,13 +215,19 @@ export class GroundPrint3D {
   private geometry: THREE.BufferGeometry;
   private positions: Float32Array;
   private colors: Float32Array;
+  private markUvs: Float32Array;
+  private markShapes: Float32Array;
   private indices: Uint32Array;
   private mesh: THREE.Mesh;
   private mat: THREE.MeshBasicMaterial;
   private posAttr: THREE.BufferAttribute;
   private colAttr: THREE.BufferAttribute;
+  private uvAttr: THREE.BufferAttribute;
+  private shapeAttr: THREE.BufferAttribute;
   private posDirty = false;
   private colDirty = false;
+  private uvDirty = false;
+  private shapeDirty = false;
 
   private marks: Mark[] = [];
   private trails = new Map<TrailKey, TrailState>();
@@ -188,6 +249,8 @@ export class GroundPrint3D {
 
     this.positions = new Float32Array(HARD_CAP * 4 * 3);
     this.colors = new Float32Array(HARD_CAP * 4 * 4);
+    this.markUvs = new Float32Array(HARD_CAP * 4 * 2);
+    this.markShapes = new Float32Array(HARD_CAP * 4);
     this.indices = new Uint32Array(HARD_CAP * 6);
     for (let i = 0; i < HARD_CAP; i++) {
       const vBase = i * 4;
@@ -203,20 +266,16 @@ export class GroundPrint3D {
     this.geometry = new THREE.BufferGeometry();
     this.posAttr = new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage);
     this.colAttr = new THREE.BufferAttribute(this.colors, 4).setUsage(THREE.DynamicDrawUsage);
+    this.uvAttr = new THREE.BufferAttribute(this.markUvs, 2).setUsage(THREE.DynamicDrawUsage);
+    this.shapeAttr = new THREE.BufferAttribute(this.markShapes, 1).setUsage(THREE.DynamicDrawUsage);
     this.geometry.setAttribute('position', this.posAttr);
     this.geometry.setAttribute('color', this.colAttr);
+    this.geometry.setAttribute('markUv', this.uvAttr);
+    this.geometry.setAttribute('markShape', this.shapeAttr);
     this.geometry.setIndex(new THREE.BufferAttribute(this.indices, 1));
     this.geometry.setDrawRange(0, 0);
 
-    this.mat = new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3,
-    });
+    this.mat = makeGroundPrintMaterial();
     this.mesh = new THREE.Mesh(this.geometry, this.mat);
     this.mesh.renderOrder = 9;
     this.mesh.frustumCulled = false;
@@ -341,7 +400,7 @@ export class GroundPrint3D {
             if (!leg.initialized) continue;
             const key = `leg:${e.id}:${i}`;
             this._seenStampKeys.add(key);
-            this.sampleStamp(key, leg, e.transform.rotation);
+            this.sampleStamp(key, leg);
           }
           break;
         }
@@ -403,7 +462,6 @@ export class GroundPrint3D {
   private sampleStamp(
     key: TrailKey,
     leg: LegInstance,
-    rotation: number,
   ): void {
     let state = this.stamps.get(key);
     if (!state) {
@@ -417,7 +475,7 @@ export class GroundPrint3D {
       };
       this.stamps.set(key, state);
       if (!leg.isSliding) {
-        this.emitStamp(state, leg, rotation);
+        this.emitStamp(state, leg);
       }
       return;
     }
@@ -429,38 +487,28 @@ export class GroundPrint3D {
       const dz = leg.worldZ - state.lastY;
       if (dx * dx + dz * dz < STAMP_MIN_DIST_SQ) return;
     }
-    this.emitStamp(state, leg, rotation);
+    this.emitStamp(state, leg);
   }
 
   private emitStamp(
     state: StampState,
     leg: LegInstance,
-    rotation: number,
   ): void {
     const fx = leg.worldX;
     const fz = leg.worldZ;
-    const cosR = Math.cos(rotation);
-    const sinR = Math.sin(rotation);
-    // Body forward = (cosR, sinR); right perpendicular = (-sinR, cosR).
-    // Stamp aligned with body forward so a row of footprints reads
-    // like a gait rather than randomly-oriented speckle.
-    const halfL = leg.footPadRadius * 1.4;
-    const halfW = leg.footPadRadius * 1.0;
-    const fxL = cosR * halfL;
-    const fzL = sinR * halfL;
-    const rxW = -sinR * halfW;
-    const rzW = cosR * halfW;
-    const sLx = fx - fxL - rxW;
-    const sLz = fz - fzL - rzW;
-    const sRx = fx - fxL + rxW;
-    const sRz = fz - fzL + rzW;
-    const eRx = fx + fxL + rxW;
-    const eRz = fz + fzL + rzW;
-    const eLx = fx + fxL - rxW;
-    const eLz = fz + fzL - rzW;
+    const radius = leg.footPadRadius * STAMP_CIRCLE_RADIUS_MULT;
+    const sLx = fx - radius;
+    const sLz = fz - radius;
+    const sRx = fx + radius;
+    const sRz = fz - radius;
+    const eRx = fx + radius;
+    const eRz = fz + radius;
+    const eLx = fx - radius;
+    const eLz = fz + radius;
 
     const mark = this.allocateMark();
     this.writeQuad(mark.slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
+    this.writeCircleMask(mark.slot);
     this.writeQuadColor(mark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
     this.posDirty = true;
     this.colDirty = true;
@@ -539,6 +587,7 @@ export class GroundPrint3D {
       this.writeQuadEnd(prev!.slot, sRx, sRz, sLx, sLz);
     }
     this.writeQuad(newMark.slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
+    this.writeQuadMask(newMark.slot);
     this.writeQuadColor(newMark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
     this.posDirty = true;
     this.colDirty = true;
@@ -596,6 +645,31 @@ export class GroundPrint3D {
     p[b +  9] = eLx; p[b + 10] = MARK_Y; p[b + 11] = eLz;
   }
 
+  private writeQuadMask(slot: number): void {
+    const uv = this.markUvs;
+    const shape = this.markShapes;
+    const uvBase = slot * 8;
+    const shapeBase = slot * 4;
+    for (let i = 0; i < 8; i++) uv[uvBase + i] = 0;
+    for (let i = 0; i < 4; i++) shape[shapeBase + i] = 0;
+    this.uvDirty = true;
+    this.shapeDirty = true;
+  }
+
+  private writeCircleMask(slot: number): void {
+    const uv = this.markUvs;
+    const shape = this.markShapes;
+    const uvBase = slot * 8;
+    uv[uvBase     ] = -1; uv[uvBase + 1] = -1;
+    uv[uvBase + 2] =  1; uv[uvBase + 3] = -1;
+    uv[uvBase + 4] =  1; uv[uvBase + 5] =  1;
+    uv[uvBase + 6] = -1; uv[uvBase + 7] =  1;
+    const shapeBase = slot * 4;
+    for (let i = 0; i < 4; i++) shape[shapeBase + i] = 1;
+    this.uvDirty = true;
+    this.shapeDirty = true;
+  }
+
   private writeQuadEnd(
     slot: number,
     eRx: number, eRz: number,
@@ -630,16 +704,26 @@ export class GroundPrint3D {
       const moved = this.marks[last];
       const posBase = this.positions;
       const colBase = this.colors;
+      const uvBase = this.markUvs;
+      const shapeBase = this.markShapes;
       const pSrc = last * 12;
       const pDst = i * 12;
       for (let k = 0; k < 12; k++) posBase[pDst + k] = posBase[pSrc + k];
       const cSrc = last * 16;
       const cDst = i * 16;
       for (let k = 0; k < 16; k++) colBase[cDst + k] = colBase[cSrc + k];
+      const uSrc = last * 8;
+      const uDst = i * 8;
+      for (let k = 0; k < 8; k++) uvBase[uDst + k] = uvBase[uSrc + k];
+      const sSrc = last * 4;
+      const sDst = i * 4;
+      for (let k = 0; k < 4; k++) shapeBase[sDst + k] = shapeBase[sSrc + k];
       moved.slot = i;
       this.marks[i] = moved;
       this.posDirty = true;
       this.colDirty = true;
+      this.uvDirty = true;
+      this.shapeDirty = true;
     }
     this.marks.pop();
     this.geometry.setDrawRange(0, this.marks.length * 6);
@@ -672,9 +756,23 @@ export class GroundPrint3D {
         this.colAttr.needsUpdate = true;
         this.colDirty = false;
       }
+      if (this.uvDirty) {
+        this.uvAttr.clearUpdateRanges();
+        this.uvAttr.addUpdateRange(0, this.marks.length * 8);
+        this.uvAttr.needsUpdate = true;
+        this.uvDirty = false;
+      }
+      if (this.shapeDirty) {
+        this.shapeAttr.clearUpdateRanges();
+        this.shapeAttr.addUpdateRange(0, this.marks.length * 4);
+        this.shapeAttr.needsUpdate = true;
+        this.shapeDirty = false;
+      }
     } else {
       this.posDirty = false;
       this.colDirty = false;
+      this.uvDirty = false;
+      this.shapeDirty = false;
     }
   }
 
