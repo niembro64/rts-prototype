@@ -11,20 +11,6 @@ Earlier rounds centralized snapshot DTO factories, vector-length math
 (sim/combat/render3d/persistence) and largely orthogonal to the
 snapshot-DTO work. Each lift is small and self-contained.
 
-2. Damped-spring rotation integrator duplicated for yaw + pitch.
-   - `src/game/sim/combat/turretSystem.ts:179–192` runs the same
-     `diff = target − current; accel = diff*k − vel*c; vel += accel*dt;
-     new = current + vel*dt` four-line block twice — once for yaw
-     (with `normalizeAngle` on the diff and the integrated angle),
-     once for pitch (with PITCH_MIN/MAX clamp + zero-velocity-on-clamp).
-   - Drift kind: near-exact (same physics; yaw wraps via
-     `normalizeAngle`, pitch clamps with `if (n < min) { n = min; vel = 0; }`).
-   - Fix direction: extract `integrateDampedRotation(angle, vel,
-     target, kp, c, dtSec, options?: { wrap?: boolean; minAngle?: number;
-     maxAngle?: number }): { angle, vel }` to a new
-     `src/game/sim/combat/rotationIntegration.ts`. Both yaw and pitch
-     update sites collapse to one call each.
-
 3. Cooldown floor-to-zero pattern duplicated.
    - `src/game/sim/combat/targetingSystem.ts:362–365` and `:368–371`
      share the exact `if (cd > 0) { cd -= dtMs; if (cd < 0) cd = 0; }`

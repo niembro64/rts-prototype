@@ -14,8 +14,10 @@ export {
   angleDiff,
   lerpAngle,
   getTransformCosSin,
+  integrateDampedRotation,
   isFiniteNumber,
   shouldRunOnStride,
+  type DampedRotationOptions,
 } from './MathHelpers';
 
 export {

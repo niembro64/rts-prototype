@@ -23,7 +23,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { getMovementAngle, resolveWeaponWorldMount, turretBit, turretMaskIncludes } from './combatUtils';
-import { getTransformCosSin, normalizeAngle } from '../../math';
+import { getTransformCosSin, integrateDampedRotation, normalizeAngle } from '../../math';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 import { createTurretAimScratch, solveTurretAim } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
@@ -172,24 +172,29 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       const cCritical = 2 * Math.sqrt(k);
       const c = cCritical * (1 + weapon.drag);
 
-      // Yaw — use normalized angle difference so we always turn the
-      // short way around and don't blow up near ±π.
+      // Yaw — wraps to (−π, π] so we always turn the short way around
+      // and don't blow up near ±π.
       const aimTargetYaw = targetAngle!;
       const aimTargetPitch = targetPitch;
-      const yawDiff = normalizeAngle(aimTargetYaw - weapon.rotation);
-      const yawAccel = yawDiff * k - weapon.angularVelocity * c;
-      weapon.angularVelocity += yawAccel * dtSec;
-      weapon.rotation = normalizeAngle(weapon.rotation + weapon.angularVelocity * dtSec);
-
-      // Pitch — straight difference; clamp the integrated pitch so
-      // the barrel doesn't rotate past vertical.
-      const pitchDiff = aimTargetPitch - weapon.pitch;
-      const pitchAccel = pitchDiff * k - weapon.pitchVelocity * c;
-      weapon.pitchVelocity += pitchAccel * dtSec;
-      let newPitch = weapon.pitch + weapon.pitchVelocity * dtSec;
-      if (newPitch < PITCH_MIN) { newPitch = PITCH_MIN; weapon.pitchVelocity = 0; }
-      else if (newPitch > PITCH_MAX) { newPitch = PITCH_MAX; weapon.pitchVelocity = 0; }
-      weapon.pitch = newPitch;
+      {
+        const r = integrateDampedRotation(
+          weapon.rotation, weapon.angularVelocity, aimTargetYaw, k, c, dtSec,
+          { wrap: true },
+        );
+        weapon.rotation = r.angle;
+        weapon.angularVelocity = r.angularVel;
+      }
+      // Pitch — clamp to [PITCH_MIN, PITCH_MAX] so the barrel doesn't
+      // rotate past vertical; clamp also zeroes pitchVelocity so the
+      // damper doesn't keep pushing into the wall.
+      {
+        const r = integrateDampedRotation(
+          weapon.pitch, weapon.pitchVelocity, aimTargetPitch, k, c, dtSec,
+          { minAngle: PITCH_MIN, maxAngle: PITCH_MAX },
+        );
+        weapon.pitch = r.angle;
+        weapon.pitchVelocity = r.angularVel;
+      }
       weapon.aimTargetYaw = aimTargetYaw;
       weapon.aimTargetPitch = aimTargetPitch;
       weapon.aimErrorYaw = normalizeAngle(aimTargetYaw - weapon.rotation);

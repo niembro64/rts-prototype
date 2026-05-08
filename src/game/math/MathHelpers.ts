@@ -130,3 +130,58 @@ export function shouldRunOnStride(
   if (stride <= 1) return true;
   return ((tick + entityPhase) % stride) === 0;
 }
+
+export type DampedRotationOptions = {
+  /** Wrap the diff and the integrated angle through normalizeAngle.
+   *  Use for yaw axes that need to turn the short way around ±π. */
+  wrap?: boolean;
+  /** Inclusive lower clamp; when hit, angularVel snaps to 0. */
+  minAngle?: number;
+  /** Inclusive upper clamp; when hit, angularVel snaps to 0. */
+  maxAngle?: number;
+};
+
+/** Result object reused across calls — copy `angle` / `angularVel`
+ *  out before another `integrateDampedRotation` call. */
+const _dampedRotationResult = { angle: 0, angularVel: 0 };
+
+/** Damped-spring single-axis rotation integrator:
+ *
+ *    accel = (target − angle) · k  −  angularVel · c
+ *    angularVel += accel · dtSec
+ *    angle      += angularVel · dtSec
+ *
+ *  `k` is the stiffness; `c = 2·√k` produces critical damping (no
+ *  overshoot). Pass `{ wrap: true }` for yaw axes, or
+ *  `{ minAngle, maxAngle }` for clamped axes that should kill the
+ *  velocity at the limit (e.g. turret pitch). The returned object is
+ *  reused — destructure or copy out before the next call. */
+export function integrateDampedRotation(
+  angle: number,
+  angularVel: number,
+  targetAngle: number,
+  k: number,
+  c: number,
+  dtSec: number,
+  options?: DampedRotationOptions,
+): { angle: number; angularVel: number } {
+  const diff = options?.wrap
+    ? normalizeAngle(targetAngle - angle)
+    : targetAngle - angle;
+  const accel = diff * k - angularVel * c;
+  let newVel = angularVel + accel * dtSec;
+  let newAngle = angle + newVel * dtSec;
+  if (options?.wrap) {
+    newAngle = normalizeAngle(newAngle);
+  }
+  if (options?.minAngle !== undefined && newAngle < options.minAngle) {
+    newAngle = options.minAngle;
+    newVel = 0;
+  } else if (options?.maxAngle !== undefined && newAngle > options.maxAngle) {
+    newAngle = options.maxAngle;
+    newVel = 0;
+  }
+  _dampedRotationResult.angle = newAngle;
+  _dampedRotationResult.angularVel = newVel;
+  return _dampedRotationResult;
+}
