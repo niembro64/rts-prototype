@@ -62,11 +62,31 @@ export class ServerDebugGridPublisher {
     this.lastSnapshotMs = nowMs;
     this.computeOccupiedCells();
     this.computeSearchCells(world);
+    // The internal cellsCache / searchCellsCache are recycled into the
+    // cellPool on the next refresh — handing them straight to the
+    // snapshot would let those mutations land in data the client (or
+    // SnapshotBuffer) is still holding on the local-host path, where
+    // there's no msgpack copy. Emit a fresh array of fresh cell objects
+    // each refresh so emitted snapshots are immutable from here on.
     return {
-      cells: this.cellsCache,
-      searchCells: this.searchCellsCache,
+      cells: this.snapshotCells(this.cellsCache),
+      searchCells: this.snapshotCells(this.searchCellsCache),
       cellSize: spatialGrid.getCellSize(),
     };
+  }
+
+  private snapshotCells(
+    src: NetworkServerSnapshotGridCell[],
+  ): NetworkServerSnapshotGridCell[] {
+    const out: NetworkServerSnapshotGridCell[] = new Array(src.length);
+    for (let i = 0; i < src.length; i++) {
+      const s = src[i];
+      out[i] = {
+        cell: { x: s.cell.x, y: s.cell.y, z: s.cell.z },
+        players: s.players.slice(),
+      };
+    }
+    return out;
   }
 
   private acquireCell(

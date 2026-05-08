@@ -5,16 +5,6 @@ written; check the code and if the issue is no longer relevant, delete it.
 
 Audit findings - 2026-05-07
 
-3. Debug grid snapshots retain pooled/reused server references.
-   - `ServerDebugGridPublisher.refresh` returns internal cached arrays.
-   - `SnapshotBuffer` stores `state.grid` by reference and can attach that same grid object to a later pending
-     snapshot.
-   - `ClientViewState` also stores the grid arrays by reference.
-   - On the local host path, later server debug-grid refreshes can mutate data that the client already holds,
-     causing debug overlays to change outside normal snapshot application.
-   - Fix direction: copy debug grid rows/cells into the buffer/client, or make each emitted debug grid payload
-     immutable.
-
 4. Projectile/event DTO copy logic is duplicated in multiple places.
    - Projectile spawn, velocity, beam, and event copy helpers exist independently in:
      `src/game/scenes/helpers/SnapshotBuffer.ts`,
