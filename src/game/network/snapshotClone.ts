@@ -532,6 +532,7 @@ export class ReusableNetworkSnapshotCloner {
         signals: state.serverMeta.simLod.signals ? { ...state.serverMeta.simLod.signals } : undefined,
       } : undefined,
       wind: state.serverMeta.wind ? { ...state.serverMeta.wind } : undefined,
+      tiltEma: state.serverMeta.tiltEma,
     } : undefined;
     if (state.grid) {
       this.grid.cells = this.copyRequiredArray(state.grid.cells, this.grid.cells, createReusableCell, copyCellInto);

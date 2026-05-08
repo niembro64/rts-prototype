@@ -26,6 +26,7 @@ export type ServerSnapshotMetaInput = {
     speed: number;
     angle: number;
   };
+  tiltEmaMode: string;
 };
 
 export class ServerSnapshotMetaBuilder {
@@ -77,6 +78,7 @@ export class ServerSnapshotMetaBuilder {
         speed: input.wind.speed,
         angle: input.wind.angle,
       },
+      tiltEma: input.tiltEmaMode,
     };
   }
 

@@ -1,5 +1,6 @@
 import { SNAPSHOT_CONFIG } from '../../config';
 import { getSimSignalStates } from '../sim/simQuality';
+import { getTiltEmaMode } from '../sim/unitTilt';
 import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
@@ -103,6 +104,7 @@ export class ServerSnapshotPublisher {
       effectiveSimQuality: input.effectiveSimQuality,
       simSignals: getSimSignalStates(),
       wind,
+      tiltEmaMode: getTiltEmaMode(),
     });
 
     const gridDebug = input.debugGridPublisher.refresh(performance.now(), input.world);

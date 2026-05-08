@@ -1051,6 +1051,19 @@ watch(
   },
   { deep: true },
 );
+// HOST SERVER tilt EMA — the host applies its setting via the
+// setTiltEmaMode command, but remote clients render this control
+// from snapshot meta (their own localStorage is irrelevant once
+// connected). Reconcile when the host's value differs.
+watch(
+  () => serverMetaFromSnapshot.value?.tiltEma,
+  (mode) => {
+    if (!mode) return;
+    if (!SERVER_CONFIG.tiltEma.options.includes(mode as TiltEmaMode)) return;
+    if (mode === serverTiltEmaMode.value) return;
+    serverTiltEmaMode.value = mode as TiltEmaMode;
+  },
+);
 const displaySnapshotRate = computed(
   () =>
     serverMetaFromSnapshot.value?.snaps.rate ??

@@ -5,15 +5,6 @@ written; check the code and if the issue is no longer relevant, delete it.
 
 Audit findings - 2026-05-07
 
-7. HOST SERVER Tilt EMA setting is not included in snapshot meta.
-   - The host UI sends tilt EMA changes to the server, and `GameServer` applies them.
-   - `ServerSnapshotMetaBuilder.build` includes other host-controlled settings such as sim LOD and wind, but
-     does not include tilt EMA mode.
-   - Remote clients render HOST SERVER controls from snapshot meta, so their read-only tilt EMA value can show
-     a stale local persisted setting instead of the host's active setting.
-   - Fix direction: add tilt EMA mode to `NetworkServerSnapshotMeta` and reconcile/render it like the other
-     host server settings.
-
 8. Surface normal / Tilt EMA updates only piggyback on position snapshots.
    - Serialization sends `unit.surfaceNormal` only on full snapshots or position-dirty updates.
    - `updateUnitTilt` can change surface normals every simulation tick without marking the entity position

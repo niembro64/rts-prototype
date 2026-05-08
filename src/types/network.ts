@@ -417,6 +417,13 @@ export type NetworkServerSnapshotMeta = {
     speed: number;
     angle: number;
   };
+  /** HOST SERVER chassis-tilt EMA mode (TILT_EMA_HALF_LIFE_SEC key).
+   *  Bare string on the wire — the value space is just 'snap' / 'fast'
+   *  / 'mid' / 'slow', matching the same delta-friendly pattern as
+   *  simLod.picked. Remote clients read this so their HOST SERVER tilt
+   *  bar reflects the host's setting rather than their own stale
+   *  localStorage. */
+  tiltEma?: string;
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';
