@@ -10,6 +10,7 @@ import {
   getTerrainMeshHeight,
   getTerrainMeshNormal,
 } from '../sim/Terrain';
+import { shouldRunOnStride } from '../math';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { SUN_DIRECTION_SIM, writeSunDirectionThree } from './SunLighting';
 
@@ -73,7 +74,7 @@ export class ContactShadowRenderer3D {
     }
 
     const stride = Math.max(1, CONTACT_SHADOW_RENDER_CONFIG.frameStride[graphics.tier] | 0);
-    if (stride > 1 && frameIndex % stride !== 0 && this.mesh.count > 0) return;
+    if (!shouldRunOnStride(frameIndex, stride) && this.mesh.count > 0) return;
 
     const opacity = CONTACT_SHADOW_RENDER_CONFIG.opacity[graphics.tier];
     if (opacity !== this.lastOpacity) {

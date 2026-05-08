@@ -1,6 +1,7 @@
 import type { Entity, EntityId } from '../sim/types';
 import { landCellCenterForSize, landCellIndexForSize, packLandCellKey } from '../landGrid';
 import { normalizeLodCellSize } from '../lodGridMath';
+import { shouldRunOnStride } from '../math';
 
 export type PredictionLodTier = 'rich' | 'simple' | 'mass' | 'impostor' | 'marker';
 
@@ -147,7 +148,7 @@ export class ClientPredictionLod {
     let accum = this.accums.get(id);
     const accumulatedMs = Math.min((accum?.entityMs ?? 0) + deltaMs, 250);
     const targetAccumulatedMs = Math.min((accum?.targetMs ?? 0) + deltaMs, 250);
-    if ((frameCounter + id) % stride !== 0) {
+    if (!shouldRunOnStride(frameCounter, stride, id)) {
       if (!accum) {
         accum = { entityMs: accumulatedMs, targetMs: targetAccumulatedMs };
         this.accums.set(id, accum);

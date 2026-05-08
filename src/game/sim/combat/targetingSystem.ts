@@ -3,7 +3,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, HysteresisRange, Turret, TurretRanges } from '../types';
 import { getTargetRadius, turretBit, updateWeaponWorldKinematics } from './combatUtils';
-import { distanceSquared } from '../../math';
+import { distanceSquared, shouldRunOnStride } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimDetailConfig } from '../simQuality';
@@ -393,7 +393,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const forcedProbeDue = priorityId === undefined &&
       scheduledProbeTick !== undefined &&
       scheduledProbeTick <= tick;
-    const shouldReacquire = forcedProbeDue || stride <= 1 || ((unit.id + tick) % stride) === 0;
+    const shouldReacquire = forcedProbeDue || shouldRunOnStride(tick, stride, unit.id);
     if (priorityId === undefined && !hasLiveWeaponState && !hasCooldownState && !shouldReacquire) {
       combat.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
       continue;

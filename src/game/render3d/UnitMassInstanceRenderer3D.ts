@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import { landCellIndexForSize } from '../landGrid';
 import { normalizeLodCellSize } from '../lodGridMath';
+import { shouldRunOnStride } from '../math';
 import type { Entity, EntityId } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Lod3DState } from './Lod3D';
@@ -293,8 +294,7 @@ export class UnitMassInstanceRenderer3D {
     if (slotWasNew || wasHidden) return true;
     if (entity.selectable?.selected === true) return true;
     const stride = MASS_INSTANCE_MATRIX_STRIDE[tier] ?? 1;
-    if (stride <= 1) return true;
-    return (this.frame + entity.id) % stride === 0;
+    return shouldRunOnStride(this.frame, stride, entity.id);
   }
 
   private shouldRunFullPass(

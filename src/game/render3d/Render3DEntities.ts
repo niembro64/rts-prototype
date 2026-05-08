@@ -49,7 +49,7 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getGraphicsConfigFor } from '@/clientBarConfig';
-import { getTurretHeadRadius } from '../math';
+import { getTurretHeadRadius, shouldRunOnStride } from '../math';
 import { getTurretMountHeight, isCommander } from '../sim/combat/combatUtils';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D } from './MirrorMesh3D';
@@ -424,7 +424,7 @@ export class Render3DEntities {
       return true;
     }
     const stride = RICH_UNIT_DETAIL_STRIDE[tier] ?? 1;
-    return stride <= 1 || ((this.richUnitDetailFrame + entity.id) % stride) === 0;
+    return shouldRunOnStride(this.richUnitDetailFrame, stride, entity.id);
   }
 
   private markRichUnitDetailsUpdated(entity: Entity, mesh: EntityMesh): void {

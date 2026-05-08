@@ -20,6 +20,7 @@ import {
   PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN,
 } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
+import { shouldRunOnStride } from '../math';
 import {
   createActionDto,
   createSprayDto,
@@ -399,7 +400,7 @@ function shouldSendProjectileSideChannel(
     ? SNAPSHOT_CONFIG.ownedProjectileUpdateStride
     : SNAPSHOT_CONFIG.observedProjectileUpdateStride;
   const stride = Math.max(1, Math.floor(rawStride));
-  return stride <= 1 || tick % stride === 0;
+  return shouldRunOnStride(tick, stride);
 }
 
 /** Surface-normal change threshold. Matches the qNormal wire precision

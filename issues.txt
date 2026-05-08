@@ -11,30 +11,6 @@ Earlier rounds centralized snapshot DTO factories, vector-length math
 (sim/combat/render3d/persistence) and largely orthogonal to the
 snapshot-DTO work. Each lift is small and self-contained.
 
-1. Stride-modulo "should this tick run?" predicate.
-   - Seven sites compute `stride <= 1 || (tick + entityPhase) % stride === 0`
-     (or the negation) inline:
-   - `src/game/network/stateSerializer.ts:402` — `tick % stride === 0`
-     (no per-entity phase; spawn-event side channel cadence).
-   - `src/game/sim/combat/targetingSystem.ts:396` —
-     `stride <= 1 || ((unit.id + tick) % stride) === 0`.
-   - `src/game/sim/combat/targetingSystem.ts:66` — `(unitId + tick) % stride`
-     for the next-reacquire-tick math.
-   - `src/game/network/ClientPredictionLod.ts:150` —
-     `(frameCounter + id) % stride !== 0`.
-   - `src/game/render3d/UnitMassInstanceRenderer3D.ts:297` —
-     `(this.frame + entity.id) % stride === 0`.
-   - `src/game/render3d/Render3DEntities.ts:427` —
-     `stride <= 1 || ((this.richUnitDetailFrame + entity.id) % stride) === 0`.
-   - `src/game/render3d/ContactShadowRenderer3D.ts:76` —
-     `stride > 1 && frameIndex % stride !== 0` (negated form, no phase).
-   - Drift kind: near-exact (same predicate; some add an entity-id
-     phase to spread load across the stride window, some don't).
-   - Fix direction: add `shouldRunOnStride(tick: number, stride: number,
-     entityPhase?: number): boolean` to `src/game/math/MathHelpers.ts`
-     and route every site through it. The helper handles the
-     `stride <= 1` early-out so each call site collapses to one line.
-
 2. Damped-spring rotation integrator duplicated for yaw + pitch.
    - `src/game/sim/combat/turretSystem.ts:179–192` runs the same
      `diff = target − current; accel = diff*k − vel*c; vel += accel*dt;

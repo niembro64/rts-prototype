@@ -115,3 +115,18 @@ export function getTransformCosSin(t: { rotation: number; rotCos?: number; rotSi
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
+
+/** Stride-cadence predicate: returns true when this `tick` is the
+ *  one a stride-`stride` work bucket should fire on. The optional
+ *  `entityPhase` jitters the modulo so per-entity work spreads
+ *  evenly across the stride window instead of every entity firing on
+ *  the same tick. `stride <= 1` short-circuits to true so callers
+ *  don't have to special-case the disabled-stride path. */
+export function shouldRunOnStride(
+  tick: number,
+  stride: number,
+  entityPhase: number = 0,
+): boolean {
+  if (stride <= 1) return true;
+  return ((tick + entityPhase) % stride) === 0;
+}

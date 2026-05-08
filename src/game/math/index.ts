@@ -15,6 +15,7 @@ export {
   lerpAngle,
   getTransformCosSin,
   isFiniteNumber,
+  shouldRunOnStride,
 } from './MathHelpers';
 
 export {
