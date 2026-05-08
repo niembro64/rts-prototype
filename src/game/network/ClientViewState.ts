@@ -25,6 +25,7 @@ import {
   ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_NORMAL,
 } from '../../types/network';
 
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
@@ -308,7 +309,17 @@ export class ClientViewState {
     }
     if (
       cf == null ||
-      (cf & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0 ||
+      (cf & (
+        ENTITY_CHANGED_POS |
+        ENTITY_CHANGED_ROT |
+        ENTITY_CHANGED_VEL |
+        // Reactivate prediction when only the surface normal moved
+        // (host's tilt EMA is still settling on a stationary unit, or
+        // the host flipped tilt mode). Otherwise the new target.normal
+        // would land but applyClientUnitVisualPrediction's EMA — which
+        // owns the entity.unit.surfaceNormal lerp — wouldn't run.
+        ENTITY_CHANGED_NORMAL
+      )) !== 0 ||
       Array.isArray(server.unit?.turrets)
     ) {
       this.activeEntityPredictionIds.add(server.id);
@@ -446,10 +457,12 @@ export class ClientViewState {
           // netEntity.pos is a Vec3 — altitude must ride along or
           // airborne units render at stale ground-plane z on the client.
           target.z = netEntity.pos.z;
-          // Surface normal piggybacks on POS (it's a function of
-          // position). Wire shipped it in the same hunk; if absent
-          // (older snapshot or mid-rollout server), retain prior
-          // target value so client-side EMA keeps gliding.
+        }
+        // Surface normal rides POS when the unit moved AND a dedicated
+        // NORMAL bit when the host's tilt EMA is still settling on a
+        // stationary unit (or the host flipped tilt mode). When absent,
+        // keep the prior target so the client EMA keeps gliding.
+        if (isFull || cf! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL)) {
           const sn = netEntity.unit?.surfaceNormal;
           if (sn) {
             target.surfaceNormalX = sn.nx;

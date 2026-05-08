@@ -528,6 +528,12 @@ export const ENTITY_CHANGED_ACTIONS   = 1 << 4;
 export const ENTITY_CHANGED_TURRETS   = 1 << 5;
 export const ENTITY_CHANGED_BUILDING  = 1 << 6;
 export const ENTITY_CHANGED_FACTORY   = 1 << 7;
+/** The unit's smoothed surface normal moved past wire precision while
+ *  the unit didn't (e.g. EMA still settling after the unit stopped, or
+ *  a tilt-mode change kicked off fresh drift). Without this bit the
+ *  normal could only ride POS-bit deltas, so stationary units would
+ *  hold a stale tilt until they moved or until the next keyframe. */
+export const ENTITY_CHANGED_NORMAL    = 1 << 8;
 
 export type NetworkServerSnapshotEntity = {
   id: number;

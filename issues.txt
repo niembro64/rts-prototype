@@ -5,11 +5,3 @@ written; check the code and if the issue is no longer relevant, delete it.
 
 Audit findings - 2026-05-07
 
-8. Surface normal / Tilt EMA updates only piggyback on position snapshots.
-   - Serialization sends `unit.surfaceNormal` only on full snapshots or position-dirty updates.
-   - `updateUnitTilt` can change surface normals every simulation tick without marking the entity position
-     dirty.
-   - Stationary units whose normals are still EMA-settling, or units affected by a host tilt-mode change, may
-     not send updated normals until they move or until the next full snapshot.
-   - Fix direction: add a dedicated surface-normal dirty bit, mark relevant units dirty when tilt mode changes,
-     or send normals on a controlled low-rate cadence.

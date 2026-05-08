@@ -13,7 +13,7 @@ import type { SnapshotDeltaResolutionConfig } from '../../types/config';
 import {
   ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
-  ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY,
+  ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_NORMAL,
   actionTypeToCode, turretStateToCode,
   unitTypeToCode, buildingTypeToCode, projectileTypeToCode,
   turretIdToCode, shotIdToCode,
@@ -338,6 +338,11 @@ type PrevEntityState = {
   turretAngVels: number[];  // per-weapon angular velocity
   turretPitches: number[];  // per-weapon pitch
   forceFieldRanges: number[]; // per-weapon force field range
+  /** Last-shipped smoothed surface normal. Used to detect EMA-driven
+   *  drift on stationary units that POS-threshold detection misses. */
+  normalX: number;
+  normalY: number;
+  normalZ: number;
   // building
   buildProgress: number;
   solarOpen: number;       // 0 or 1
@@ -363,6 +368,7 @@ function createPrevEntityState(): PrevEntityState {
     hp: 0, actionCount: 0, actionHash: 0,
     isEngagedBits: 0, targetBits: 0,
     weaponCount: 0, turretRots, turretAngVels, turretPitches, forceFieldRanges,
+    normalX: 0, normalY: 0, normalZ: 1,
     buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
   };
 }
@@ -455,6 +461,13 @@ function shouldSendProjectileSideChannel(
   return stride <= 1 || tick % stride === 0;
 }
 
+/** Surface-normal change threshold. Matches the qNormal wire precision
+ *  (Math.round(n * 1000) / 1000 → ~0.001), so we only flip the
+ *  ENTITY_CHANGED_NORMAL bit when the encoded value would actually
+ *  differ. Smaller deltas are absorbed by the threshold and re-checked
+ *  on the next tick. */
+const NORMAL_THRESHOLD = 0.001;
+
 function getChangedFields(
   entity: Entity,
   prev: PrevEntityState,
@@ -486,6 +499,15 @@ function getChangedFields(
     }
     if (next.actionCount !== prev.actionCount || next.actionHash !== prev.actionHash) {
       mask |= ENTITY_CHANGED_ACTIONS;
+    }
+    // Surface normal drifts independently of position when the tilt EMA
+    // is still settling (e.g. unit just stopped) or when the host flips
+    // tilt mode. Threshold matches the wire quantization in qNormal so
+    // we only emit when the wire value would actually move.
+    if (Math.abs(next.normalX - prev.normalX) > NORMAL_THRESHOLD ||
+        Math.abs(next.normalY - prev.normalY) > NORMAL_THRESHOLD ||
+        Math.abs(next.normalZ - prev.normalZ) > NORMAL_THRESHOLD) {
+      mask |= ENTITY_CHANGED_NORMAL;
     }
     // Unit shells need the building-change bit to ship per-tick paid
     // updates. `buildProgress` here is the avg-of-three fill stored in
@@ -599,6 +621,10 @@ function captureEntityState(entity: Entity, prev: PrevEntityState): void {
   prev.factoryProgress = entity.factory?.currentBuildProgress ?? 0;
   prev.isProducing = entity.factory?.isProducing ? 1 : 0;
   prev.buildQueueLen = entity.factory?.buildQueue.length ?? 0;
+  const sn = entity.unit?.surfaceNormal;
+  prev.normalX = sn?.nx ?? 0;
+  prev.normalY = sn?.ny ?? 0;
+  prev.normalZ = sn?.nz ?? 1;
 }
 
 function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {
@@ -628,6 +654,9 @@ function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {
   to.factoryProgress = from.factoryProgress;
   to.isProducing = from.isProducing;
   to.buildQueueLen = from.buildQueueLen;
+  to.normalX = from.normalX;
+  to.normalY = from.normalY;
+  to.normalZ = from.normalZ;
 }
 
 const _nextStateScratch = createPrevEntityState();
@@ -1310,7 +1339,10 @@ function serializeEntity(
       ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT |
       // Unit shells now ride the building-change bit so each tick of
       // resource flow into a shell's `paid.{e,m,m}` ships to clients.
-      ENTITY_CHANGED_BUILDING;
+      ENTITY_CHANGED_BUILDING |
+      // Smoothed surface normal can drift past wire precision while
+      // POS holds steady (EMA still settling, host tilt-mode flip).
+      ENTITY_CHANGED_NORMAL;
     const hasUnitFields = isFull || (changedFields! & unitFieldMask);
 
     if (hasUnitFields) {
@@ -1348,11 +1380,14 @@ function serializeEntity(
         u.velocity.z = qVel(entity.unit.velocityZ ?? 0);
       }
 
-      // Smoothed surface normal — same shape as velocity. Piggybacked
-      // on POS bit because the normal is a function of (x, y) and
-      // changes when (and only when) the unit moves. Omitted when
-      // POS didn't change — the client keeps the last value.
-      if (isFull || (changedFields! & ENTITY_CHANGED_POS)) {
+      // Smoothed surface normal — same shape as velocity. Rides POS
+      // when the unit moved AND a dedicated NORMAL bit when the EMA
+      // is still settling on a stationary unit (or the host flipped
+      // tilt mode). Omitted otherwise; the client keeps the last value.
+      if (
+        isFull ||
+        (changedFields! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL))
+      ) {
         const sn = entity.unit.surfaceNormal;
         if (!u.surfaceNormal) u.surfaceNormal = { nx: 0, ny: 0, nz: 1 };
         u.surfaceNormal.nx = qNormal(sn.nx);
