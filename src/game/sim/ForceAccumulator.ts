@@ -12,6 +12,7 @@ type EntityForces = {
   contributionCount: number;  // How many contributions are active (avoids .length = 0 + push overhead)
   finalFx: number;
   finalFy: number;
+  finalFz: number;
   active: boolean;
 };
 
@@ -43,6 +44,7 @@ export class ForceAccumulator {
       entry.contributionCount = 0;
       entry.finalFx = 0;
       entry.finalFy = 0;
+      entry.finalFz = 0;
       entry.active = false;
     }
     this.activeIds.length = 0;
@@ -60,11 +62,26 @@ export class ForceAccumulator {
   /**
    * Add a raw force to an entity.
    * Use this for external effects like wave pull, knockback, explosions.
+   * `fz` defaults to 0 — pass a non-zero value for 3D pushes (lift,
+   * gravity-gun, scripted toss).
    */
-  addForce(entityId: EntityId, fx: number, fy: number, source: string = 'unknown'): void {
+  addForce(
+    entityId: EntityId,
+    fx: number,
+    fy: number,
+    source: string = 'unknown',
+    fz: number = 0,
+  ): void {
     let entry = this.forces.get(entityId);
     if (!entry) {
-      entry = { contributions: [], contributionCount: 0, finalFx: 0, finalFy: 0, active: false };
+      entry = {
+        contributions: [],
+        contributionCount: 0,
+        finalFx: 0,
+        finalFy: 0,
+        finalFz: 0,
+        active: false,
+      };
       this.forces.set(entityId, entry);
     }
     if (!entry.active) {
@@ -72,6 +89,7 @@ export class ForceAccumulator {
       entry.contributionCount = 0;
       entry.finalFx = 0;
       entry.finalFy = 0;
+      entry.finalFz = 0;
       this.activeIds.push(entityId);
     }
     const idx = entry.contributionCount++;
@@ -80,10 +98,11 @@ export class ForceAccumulator {
       const c = entry.contributions[idx];
       c.force.x = fx;
       c.force.y = fy;
+      c.forceZ = fz;
       c.source = source;
     } else {
       // Grow the array (rare after warmup)
-      entry.contributions.push({ force: { x: fx, y: fy }, source });
+      entry.contributions.push({ force: { x: fx, y: fy }, forceZ: fz, source });
     }
   }
 
@@ -170,16 +189,19 @@ export class ForceAccumulator {
       if (!entry) continue;
       entry.finalFx = 0;
       entry.finalFy = 0;
+      entry.finalFz = 0;
       const count = entry.contributionCount;
       for (let i = 0; i < count; i++) {
-        entry.finalFx += entry.contributions[i].force.x;
-        entry.finalFy += entry.contributions[i].force.y;
+        const c = entry.contributions[i];
+        entry.finalFx += c.force.x;
+        entry.finalFy += c.force.y;
+        entry.finalFz += c.forceZ ?? 0;
       }
     }
   }
 
   /** Reusable scratch for `readFinalForce`. */
-  private _scratchForce: { fx: number; fy: number } = { fx: 0, fy: 0 };
+  private _scratchForce: { fx: number; fy: number; fz: number } = { fx: 0, fy: 0, fz: 0 };
 
   /**
    * Get the final force for an entity (after finalize). Returns null
@@ -188,12 +210,13 @@ export class ForceAccumulator {
    * must read the components immediately and not retain the reference.
    * Avoids ~one allocation per dynamic unit per tick.
    */
-  getFinalForce(entityId: EntityId): { fx: number; fy: number } | null {
+  getFinalForce(entityId: EntityId): { fx: number; fy: number; fz: number } | null {
     const entry = this.forces.get(entityId);
     if (!entry || entry.contributionCount === 0) return null;
     const out = this._scratchForce;
     out.fx = entry.finalFx;
     out.fy = entry.finalFy;
+    out.fz = entry.finalFz;
     return out;
   }
 

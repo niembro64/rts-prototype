@@ -58,11 +58,13 @@ function pushKnockback(
   entityId: number,
   fx: number,
   fy: number,
+  fz: number = 0,
 ): void {
   const k = rentKnockback();
   k.entityId = entityId;
   k.force.x = fx;
   k.force.y = fy;
+  k.forceZ = fz;
   result.knockbacks.push(k);
 }
 function resetResult(): DamageResult {
@@ -948,13 +950,18 @@ export class DamageSystem {
       const damage = source.damage;
 
       // Knockback direction is still from center outward so units are
-      // pushed AWAY from the blast, not in a fixed direction.
+      // pushed AWAY from the blast — now full 3D so a blast below a
+      // unit lifts it, a blast above presses it down. dist already
+      // includes dz (line 929) so the normalized direction stays a
+      // unit vector in 3D.
       const invDist = dist > 0 ? 1 / dist : 0;
       const dirX = dx * invDist;
       const dirY = dy * invDist;
+      const dirZ = dz * invDist;
       const force = source.knockbackForce ?? (damage * KNOCKBACK.SPLASH);
       const forceX = dirX * force;
       const forceY = dirY * force;
+      const forceZ = dirZ * force;
 
       // For area damage, penetration direction is from explosion center
       // through unit (same as knockback direction — outward from center).
@@ -967,7 +974,7 @@ export class DamageSystem {
 
       // Add knockback (direction is from center outward)
       if (force > 0 && dist > 0) {
-        pushKnockback(result, unit.id, forceX, forceY);
+        pushKnockback(result, unit.id, forceX, forceY, forceZ);
       }
     }
 

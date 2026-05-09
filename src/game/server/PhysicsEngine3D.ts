@@ -105,6 +105,14 @@ export type Body3D = {
    *  static/ground contact work until a force or collision wakes them. */
   sleeping: boolean;
   sleepTicks: number;
+  /** True when the body is mid-flight — i.e. has been launched off the
+   *  ground by a vertical impulse exceeding LAUNCH_VEL_THRESHOLD, or
+   *  is in the bouncing phase after landing. Airborne spheres run
+   *  free 3D Euler with gravity instead of the surface-stick path,
+   *  and never sleep. Set automatically by the integrator on launch
+   *  and cleared on landing; callers can also set it via
+   *  `launchBody()` for explicit pop-up effects. */
+  airborne: boolean;
   /** Debug / log tag — entity type or id for tracing. */
   label: string;
   /** Owning sim entity id for dynamic unit bodies. */
@@ -147,6 +155,21 @@ const CONTACT_CELL_SIZE = 100;
 const SLEEP_SPEED_SQ = 0.25;
 const SLEEP_ACCEL_SQ = 1e-6;
 const SLEEP_TICKS = 12;
+
+/** Outward-normal velocity (wu/sec) above which a grounded sphere
+ *  switches to airborne. Per-tick gravity Δvz is GRAVITY/tickRate ≈
+ *  6.7 wu/s on the negative side at 60 Hz; a positive 10 wu/s
+ *  threshold sits comfortably above slope/numeric noise so normal
+ *  hill climbing never spuriously launches, but a serious knockback
+ *  impulse (explosion, gravity-gun pull) does. */
+const LAUNCH_VEL_THRESHOLD = 10;
+
+/** Minimum outward velocity along the ground normal at landing time
+ *  for the body to bounce instead of settling. Below this the body
+ *  is treated as inelastic (zeros the normal-component of velocity
+ *  and rejoins the surface-stick path). Above it the body continues
+ *  airborne with the post-restitution velocity. */
+const LANDING_BOUNCE_THRESHOLD = 5;
 
 export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
@@ -243,6 +266,7 @@ export class PhysicsEngine3D {
       az: 0,
       sleeping: false,
       sleepTicks: 0,
+      airborne: false,
       label,
       entityId,
     };
@@ -288,6 +312,7 @@ export class PhysicsEngine3D {
       az: 0,
       sleeping: false,
       sleepTicks: 0,
+      airborne: false,
       label,
     };
     this.addBody(body);
@@ -334,6 +359,21 @@ export class PhysicsEngine3D {
     body.ax += fx * body.invMass;
     body.ay += fy * body.invMass;
     body.az += fz * body.invMass;
+  }
+
+  /** Apply an instantaneous velocity impulse to a dynamic body and
+   *  immediately mark it airborne. Bypasses the surface-stick path so
+   *  even small lift impulses (below LAUNCH_VEL_THRESHOLD) take
+   *  effect. Use for explicit pop-up effects (gravity gun, trampoline,
+   *  scripted toss) where you want the unit to lift regardless of
+   *  whether the impulse exceeds the auto-launch threshold. */
+  launchBody(body: Body3D, dvx: number, dvy: number, dvz: number): void {
+    if (body.isStatic) return;
+    body.vx += dvx;
+    body.vy += dvy;
+    body.vz += dvz;
+    body.airborne = true;
+    this.wakeBody(body);
   }
 
   collectAwakeEntityIds(out: EntityId[]): void {
@@ -521,9 +561,9 @@ export class PhysicsEngine3D {
     }
     for (const b of this.dynamicBodies) {
       if (b.sleeping) continue;
-      let ax = b.ax;
-      let ay = b.ay;
-      let az = b.az - GRAVITY;
+      const ax = b.ax;
+      const ay = b.ay;
+      const az = b.az - GRAVITY;
 
       if (b.shape !== 'sphere') {
         // Static cuboids never get here (isStatic skips), but for
@@ -541,40 +581,125 @@ export class PhysicsEngine3D {
         continue;
       }
 
-      // Sphere = unit. Hard ground stick.
-      // (1) project velocity onto tangent at current position.
+      // ── Airborne sphere: free 3D Euler with gravity, no surface stick.
+      //    Triggered when an external impulse pushes vz above
+      //    LAUNCH_VEL_THRESHOLD in the grounded path below; cleared
+      //    when the body lands back on the surface.
+      if (b.airborne) {
+        b.vx += ax * dtSec;
+        b.vy += ay * dtSec;
+        b.vz += az * dtSec;
+        const damp = this.getDampForFriction(b.frictionAir, dtSec);
+        b.vx *= damp;
+        b.vy *= damp;
+        b.x += b.vx * dtSec;
+        b.y += b.vy * dtSec;
+        b.z += b.vz * dtSec;
+
+        const groundZ = this.getGroundZ(b.x, b.y) + b.groundOffset;
+        if (b.z <= groundZ && b.vz <= 0) {
+          // Landed. Reflect velocity across the surface normal with
+          // restitution. If the resulting outward speed is large
+          // enough, stay airborne (bounce). Otherwise zero the
+          // normal-component and rejoin the surface-stick path.
+          b.z = groundZ;
+          const n = this.getGroundNormal(b.x, b.y);
+          const vDotN = b.vx * n.nx + b.vy * n.ny + b.vz * n.nz;
+          if (vDotN < 0) {
+            const r = b.restitution;
+            const reflect = (1 + r) * vDotN;
+            b.vx -= reflect * n.nx;
+            b.vy -= reflect * n.ny;
+            b.vz -= reflect * n.nz;
+          }
+          const newVDotN = b.vx * n.nx + b.vy * n.ny + b.vz * n.nz;
+          if (newVDotN > LANDING_BOUNCE_THRESHOLD) {
+            // Real bounce — keep flying.
+            b.airborne = true;
+          } else {
+            // Settle. Project velocity onto tangent and rejoin the
+            // grounded path; sleep accounting resumes next tick.
+            b.vx -= newVDotN * n.nx;
+            b.vy -= newVDotN * n.ny;
+            b.vz -= newVDotN * n.nz;
+            b.airborne = false;
+          }
+        }
+        b.sleepTicks = 0;
+        continue;
+      }
+
+      // ── Grounded sphere. Surface-stick is the default; an off-tangent
+      //    impulse strong enough to overcome ground reaction transitions
+      //    the body into the airborne branch above.
+
+      // (1) project velocity onto tangent at current position. Drops
+      //     any vz that drifted in last tick (slope curvature, sub-
+      //     tick collision pushes).
       const n0 = this.getGroundNormal(b.x, b.y);
       const vDotN0 = b.vx * n0.nx + b.vy * n0.ny + b.vz * n0.nz;
       b.vx -= vDotN0 * n0.nx;
       b.vy -= vDotN0 * n0.ny;
       b.vz -= vDotN0 * n0.nz;
-      // (2) project accel onto tangent.
+
+      // (2) split acceleration into tangent + normal components.
+      //     Tangent = thrust on the slope. Normal = gravity (always
+      //     pulling -z, mostly into the surface) + any explicit
+      //     vertical force from a launch impulse. Tangent component
+      //     drives motion this tick; normal component is the candidate
+      //     launch trigger.
       const aDotN0 = ax * n0.nx + ay * n0.ny + az * n0.nz;
-      ax -= aDotN0 * n0.nx;
-      ay -= aDotN0 * n0.ny;
-      az -= aDotN0 * n0.nz;
-      const tangentAccelSq = ax * ax + ay * ay + az * az;
-      // (3) velocity update.
-      b.vx += ax * dtSec;
-      b.vy += ay * dtSec;
-      b.vz += az * dtSec;
-      // (4) horizontal drag.
+      const aTangentX = ax - aDotN0 * n0.nx;
+      const aTangentY = ay - aDotN0 * n0.ny;
+      const aTangentZ = az - aDotN0 * n0.nz;
+      const tangentAccelSq =
+        aTangentX * aTangentX + aTangentY * aTangentY + aTangentZ * aTangentZ;
+
+      // (3) tangent velocity update.
+      b.vx += aTangentX * dtSec;
+      b.vy += aTangentY * dtSec;
+      b.vz += aTangentZ * dtSec;
+
+      // (4) horizontal drag (only on the world-x/y components, not on
+      //     the slope-tangent z component). Same shape as before so
+      //     unit settling on inclines is unchanged.
       const damp = this.getDampForFriction(b.frictionAir, dtSec);
       b.vx *= damp;
       b.vy *= damp;
-      // (5) horizontal position update only — z is owned by step 6.
+
+      // (5) launch detection. If the off-tangent acceleration is
+      //     pointing OUT of the surface and the resulting outward
+      //     velocity over this tick exceeds LAUNCH_VEL_THRESHOLD,
+      //     transition to airborne. The +n component of velocity is
+      //     adopted (so the body carries that vz into the next tick's
+      //     airborne branch) and the surface stick is skipped.
+      const launchVel = aDotN0 * dtSec;
+      if (launchVel > LAUNCH_VEL_THRESHOLD) {
+        b.vx += launchVel * n0.nx;
+        b.vy += launchVel * n0.ny;
+        b.vz += launchVel * n0.nz;
+        b.airborne = true;
+        b.x += b.vx * dtSec;
+        b.y += b.vy * dtSec;
+        b.z += b.vz * dtSec;
+        b.sleepTicks = 0;
+        continue;
+      }
+
+      // (6) horizontal position update only — z is owned by step 7.
       b.x += b.vx * dtSec;
       b.y += b.vy * dtSec;
-      // (6) snap z to surface at the new (x, y). This is the line
-      //     that prevents flight on hill crests / steep climbs:
-      //     curvature drift gets absorbed every tick instead of
-      //     accumulating until the unit is "airborne" by tolerance.
+
+      // (7) snap z to surface at the new (x, y). Prevents flight on
+      //     hill crests / steep climbs: curvature drift gets absorbed
+      //     every tick instead of accumulating until the unit is
+      //     "airborne" by tolerance.
       b.z = this.getGroundZ(b.x, b.y) + b.groundOffset;
-      // (7) recompute vz from the slope constraint at the new
+
+      // (8) recompute vz from the slope constraint at the new
       //     position so velocity is tangent to wherever we just
-      //     landed. Near-vertical surfaces (n.z ≈ 0) would divide
-      //     by zero; clamp vz to 0 there. Horizontal speed is
-      //     preserved; vz becomes whatever the new slope demands.
+      //     landed. Near-vertical surfaces (n.z ≈ 0) would divide by
+      //     zero; clamp vz to 0 there.
       const n1 = this.getGroundNormal(b.x, b.y);
       if (Math.abs(n1.nz) > 1e-3) {
         b.vz = -(b.vx * n1.nx + b.vy * n1.ny) / n1.nz;
@@ -609,6 +734,11 @@ export class PhysicsEngine3D {
     for (const b of this.dynamicBodies) {
       if (b.sleeping) continue;
       if (b.shape !== 'sphere') continue;
+      // Airborne bodies own their own z via the integrator's flight
+      // path. Skipping them here keeps gravity from being short-
+      // circuited mid-flight by this backstop. The integrator's
+      // landing check is what re-grounds them.
+      if (b.airborne) continue;
       const groundZ = this.getGroundZ(b.x, b.y);
       const restingZ = groundZ + b.groundOffset;
       if (b.z >= restingZ - GROUND_PENETRATION_EPS) continue;

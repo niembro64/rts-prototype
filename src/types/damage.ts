@@ -65,6 +65,11 @@ export type AnyDamageSource = LineDamageSource | SweptDamageSource | AreaDamageS
 export type KnockbackInfo = {
   entityId: EntityId;
   force: Vec2;
+  /** Optional vertical force component for 3D pushes. Splash explosions
+   *  pass `dirZ * force` so a blast below a unit lifts it. Omitted/0
+   *  for purely horizontal knockback (line beams, recoil, etc.) so
+   *  existing callers keep their old 2D behavior unchanged. */
+  forceZ?: number;
 };
 
 export type DeathContext = {

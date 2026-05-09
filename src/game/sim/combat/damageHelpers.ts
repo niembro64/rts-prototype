@@ -219,7 +219,8 @@ export function applyKnockbackForces(
       knockback.entityId,
       knockback.force.x,
       knockback.force.y,
-      'knockback'
+      'knockback',
+      knockback.forceZ ?? 0,
     );
   }
 }

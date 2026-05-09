@@ -166,6 +166,11 @@ export type GridCell = {
 // Force contribution
 export type ForceContribution = {
   force: Vec2;
+  /** Optional vertical force component for 3D pushes (knockback lift,
+   *  gravity gun, etc.). Omitted/0 for the common horizontal-only
+   *  case. ForceAccumulator sums this into finalFz alongside finalFx
+   *  and finalFy. */
+  forceZ?: number;
   source: string;
 };
 

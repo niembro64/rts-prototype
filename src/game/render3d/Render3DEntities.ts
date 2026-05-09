@@ -65,6 +65,7 @@ import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { createMirrorReflectorPanelMaterial } from './MirrorReflectorVisual3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
+import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -142,6 +143,7 @@ export class Render3DEntities {
   private buildingRenderer: BuildingEntityRenderer3D;
   private unitMassInstances: UnitMassInstanceRenderer3D;
   private unitDetailInstances: UnitDetailInstanceRenderer3D;
+  private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
 
   // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
   // Angle advances by `speed` radians/sec; speed accelerates toward
@@ -274,6 +276,7 @@ export class Render3DEntities {
       radiusSphereGeom: this.radiusSphereGeom,
     });
     this.constructionVisuals = new ConstructionVisualController3D(this.clientViewState);
+    this.projectileRangeEnvelope = new ProjectileRangeEnvelope3D(this.world, this.clientViewState);
     this.buildingRenderer = new BuildingEntityRenderer3D({
       world: this.world,
       clientViewState: this.clientViewState,
@@ -359,6 +362,7 @@ export class Render3DEntities {
     this._spinDt = spinDt;
     this.updateUnits();
     this.buildingRenderer.update(this.lod, this._spinDt, this._currentDtMs, this._lastSpinMs);
+    this.projectileRangeEnvelope.update();
     this.projectileRenderer.update(this.lod);
     // One flush per frame uploads the per-instance leg cylinder
     // buffers (start / end / thickness) to the GPU. Every leg in
@@ -1457,6 +1461,7 @@ export class Render3DEntities {
     // future build will consume them.
     this.legStateCache.clear();
     this.buildingRenderer.destroy();
+    this.projectileRangeEnvelope.destroy();
     this.projectileRenderer.destroy();
     this.unitMeshes.clear();
     this.barrelSpins.clear();

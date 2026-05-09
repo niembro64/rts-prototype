@@ -116,6 +116,7 @@ export class UnitForceSystem {
       const externalForce = forceAccumulator.getFinalForce(entity.id);
       const externalFx = (externalForce?.fx ?? 0) / 3600;
       const externalFy = (externalForce?.fy ?? 0) / 3600;
+      const externalFz = (externalForce?.fz ?? 0) / 3600;
 
       // Unit faces its movement direction (yaw only — chassis tilt
       // is a render concern; sim transform.rotation stays a 2D yaw).
@@ -243,7 +244,7 @@ export class UnitForceSystem {
 
       const totalForceX = thrustForceX + externalFx;
       const totalForceY = thrustForceY + externalFy;
-      const totalForceZ = thrustForceZ;
+      const totalForceZ = thrustForceZ + externalFz;
 
       if (
         !Number.isFinite(totalForceX) ||
