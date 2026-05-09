@@ -11,25 +11,6 @@ the proposed remedy. Verify against current code before attacking — a few
 related sites may have already shifted.
 ==============================================================================
 
-PERF-1. Per-recipient full snapshot re-serialization
-  Sites:
-    - src/game/server/ServerSnapshotPublisher.ts:115-158 (serializeForListener
-      called inside the per-listener loop)
-    - src/game/network/stateSerializer.ts:839-856 (entity walk inside the
-      per-recipient serializeGameState)
-  Cost: With N player listeners, the dirty-entity loop runs N times per
-    snapshot. At 4 players × ~120 dirty entities per delta tick ≈ 480 entity
-    serializations per snapshot. Most per-entity work is recipient-independent
-    (capture state, build NetEntity, emit field bits); only the delta-tier
-    threshold (`getDeltaResolution` at stateSerializer.ts:384) and the
-    projectile-stride decision (`shouldSendProjectileSideChannel` at line 394)
-    actually depend on `recipientPlayerId`.
-  Proposed: Two-pass shape — (a) one recipient-independent capture pass that
-    computes `_nextStateScratch` and a "max-resolution" change bitmask once
-    per entity, (b) one per-recipient pass that only re-applies the
-    ownership-tier threshold to the already-captured fields. Same single
-    dirty-entity walk regardless of listener count.
-
 PERF-2. `getUnits()` + `getBuildings()` walked back-to-back
   Sites (all do "for u in getUnits(); for b in getBuildings()" with the same
   per-entity test):

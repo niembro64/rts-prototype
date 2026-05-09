@@ -584,11 +584,13 @@ function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {
   while (to.turretRots.length < from.weaponCount) {
     to.turretRots.push(0);
     to.turretAngVels.push(0);
+    to.turretPitches.push(0);
     to.forceFieldRanges.push(0);
   }
   for (let i = 0; i < from.weaponCount; i++) {
     to.turretRots[i] = from.turretRots[i];
     to.turretAngVels[i] = from.turretAngVels[i];
+    to.turretPitches[i] = from.turretPitches[i];
     to.forceFieldRanges[i] = from.forceFieldRanges[i];
   }
   to.buildProgress = from.buildProgress;
@@ -602,6 +604,68 @@ function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {
 }
 
 const _nextStateScratch = createPrevEntityState();
+
+/** Per-tick cache of captured "next" PrevEntityState, keyed by entity id.
+ *  Populated once by `captureSnapshotEntityStates` (called from
+ *  ServerSnapshotPublisher) and read by every per-recipient
+ *  `serializeGameState` invocation in the same tick — so the heavy
+ *  per-entity capture (action-hash compute, turret bit-pack, ~30 field
+ *  reads) runs ONCE per tick instead of N-recipients times. */
+const _capturedNextStates = new Map<EntityId, PrevEntityState>();
+const _capturedNextStatePool: PrevEntityState[] = [];
+let _capturedNextStatePoolIdx = 0;
+
+function acquireCapturedNextState(): PrevEntityState {
+  if (_capturedNextStatePoolIdx >= _capturedNextStatePool.length) {
+    _capturedNextStatePool.push(createPrevEntityState());
+  }
+  return _capturedNextStatePool[_capturedNextStatePoolIdx++];
+}
+
+/** Pre-capture entity states for this tick. Call ONCE per tick before
+ *  the per-recipient `serializeGameState` loop. The captured states are
+ *  recipient-independent — sharing them across all listeners avoids
+ *  re-running `captureEntityState` once per recipient per dirty entity.
+ *  Pass the SAME `dirtyEntityIds` and `isDelta` you'll pass to
+ *  `serializeGameState`. */
+export function captureSnapshotEntityStates(
+  world: WorldState,
+  isDelta: boolean,
+  dirtyEntityIds?: readonly EntityId[],
+): void {
+  _capturedNextStates.clear();
+  _capturedNextStatePoolIdx = 0;
+
+  const accepts = (e: Entity): boolean =>
+    e.type === 'unit' || e.type === 'building';
+
+  if (isDelta && SNAPSHOT_CONFIG.deltaEnabled) {
+    if (!dirtyEntityIds) return;
+    for (let i = 0; i < dirtyEntityIds.length; i++) {
+      const e = world.getEntity(dirtyEntityIds[i]);
+      if (!e || !accepts(e)) continue;
+      const captured = acquireCapturedNextState();
+      captureEntityState(e, captured);
+      _capturedNextStates.set(e.id, captured);
+    }
+    return;
+  }
+
+  const sources: ReadonlyArray<readonly Entity[]> = [
+    world.getUnits(),
+    world.getBuildings(),
+  ];
+  for (let s = 0; s < sources.length; s++) {
+    const src = sources[s];
+    for (let i = 0; i < src.length; i++) {
+      const e = src[i];
+      if (!accepts(e)) continue;
+      const captured = acquireCapturedNextState();
+      captureEntityState(e, captured);
+      _capturedNextStates.set(e.id, captured);
+    }
+  }
+}
 
 /** Reset delta tracking state (call between game sessions). */
 export function resetDeltaTracking(): void {
@@ -843,15 +907,24 @@ export function serializeGameState(
       const prev = getPrevState(tracking, entity.id);
       const isNew = !tracking.prevEntityIds.has(entity.id);
       tracking.prevEntityIds.add(entity.id);
-      captureEntityState(entity, _nextStateScratch);
+      // Prefer the per-tick cached capture (populated by
+      // captureSnapshotEntityStates) so the field reads + action-hash +
+      // turret bit-pack run once per tick instead of once per recipient.
+      // Fall back to inline capture for direct callers that didn't
+      // pre-warm the cache.
+      let next = _capturedNextStates.get(entity.id);
+      if (!next) {
+        captureEntityState(entity, _nextStateScratch);
+        next = _nextStateScratch;
+      }
       const changedFields = isNew
         ? undefined
-        : getChangedFields(entity, prev, _nextStateScratch, getDeltaResolution(entity, recipientPlayerId)) |
+        : getChangedFields(entity, prev, next, getDeltaResolution(entity, recipientPlayerId)) |
           (dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS);
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntity(entity, changedFields, world);
         if (netEntity) _entityBuf.push(netEntity);
-        copyPrevState(_nextStateScratch, prev);
+        copyPrevState(next, prev);
       }
     }
   } else {
@@ -875,7 +948,14 @@ export function serializeGameState(
         const netEntity = serializeEntity(entity, undefined, world);
         if (netEntity) _entityBuf.push(netEntity);
         const prev = getPrevState(tracking, entity.id);
-        captureEntityState(entity, prev);
+        // Same per-tick cache as the delta path: copy from the shared
+        // capture instead of re-running captureEntityState per recipient.
+        const cached = _capturedNextStates.get(entity.id);
+        if (cached) {
+          copyPrevState(cached, prev);
+        } else {
+          captureEntityState(entity, prev);
+        }
       }
     }
     if (!options?.dirtyEntityIds) {

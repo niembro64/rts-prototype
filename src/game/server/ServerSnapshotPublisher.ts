@@ -5,7 +5,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
-import { serializeGameState } from '../network/stateSerializer';
+import { captureSnapshotEntityStates, serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
@@ -111,6 +111,14 @@ export class ServerSnapshotPublisher {
     const gridCells = gridDebug.cells;
     const gridSearchCells = gridDebug.searchCells;
     const gridCellSize = gridDebug.cellSize;
+
+    // Recipient-independent entity capture: walk dirty (or all, on
+    // keyframe) entities ONCE and stash the captured state for each
+    // per-recipient serializeGameState below to read. With N player
+    // listeners this avoids running captureEntityState N times per
+    // entity. The serializer falls back to inline capture if the cache
+    // is missed (covers any direct caller that didn't precapture).
+    captureSnapshotEntityStates(input.world, isDelta, this.dirtyIdsBuf);
 
     const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
       const serializeOptions: SerializeGameStateOptions = {
