@@ -20,7 +20,7 @@ import type {
   ServerSimDetailConfig,
   ServerSimSignalStates,
 } from '../../types/serverSimLod';
-import type { SignalState } from '../../types/lod';
+import { isSignalState } from '../../types/lod';
 import {
   SERVER_SIM_DETAIL,
   SERVER_SIM_LOD_THRESHOLDS,
@@ -114,11 +114,9 @@ export function setSimUnitCap(cap: number): void {
  *  a single struct (see SetSimSignalStatesCommand). Validates each
  *  field; bad values fall through to the existing state. */
 export function setSimSignalStates(states: Partial<ServerSimSignalStates>): void {
-  const valid = (s: unknown): s is SignalState =>
-    s === 'off' || s === 'active' || s === 'solo';
-  if (valid(states.tps)) currentSignalStates.tps = states.tps;
-  if (valid(states.cpu)) currentSignalStates.cpu = states.cpu;
-  if (valid(states.units)) currentSignalStates.units = states.units;
+  if (isSignalState(states.tps)) currentSignalStates.tps = states.tps;
+  if (isSignalState(states.cpu)) currentSignalStates.cpu = states.cpu;
+  if (isSignalState(states.units)) currentSignalStates.units = states.units;
 }
 
 export function getSimSignalStates(): Readonly<ServerSimSignalStates> {

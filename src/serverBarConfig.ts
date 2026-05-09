@@ -1,6 +1,6 @@
 import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './types/server';
 import type { ServerSimQuality, ServerSimSignalStates } from './types/serverSimLod';
-import type { SignalState } from './types/lod';
+import { isSignalState } from './types/lod';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import {
   SERVER_SIM_LOD_SIGNAL_DEFAULTS,
@@ -110,12 +110,10 @@ export function loadStoredSimSignalStates(): ServerSimSignalStates {
   }
   try {
     const parsed = JSON.parse(storedSignals);
-    const valid = (s: unknown): s is SignalState =>
-      s === 'off' || s === 'active' || s === 'solo';
     if (parsed && typeof parsed === 'object') {
-      if (valid(parsed.tps)) def.tps = parsed.tps;
-      if (valid(parsed.cpu)) def.cpu = parsed.cpu;
-      if (valid(parsed.units)) def.units = parsed.units;
+      if (isSignalState(parsed.tps)) def.tps = parsed.tps;
+      if (isSignalState(parsed.cpu)) def.cpu = parsed.cpu;
+      if (isSignalState(parsed.units)) def.units = parsed.units;
     }
   } catch { /* ignore malformed */ }
   return def;

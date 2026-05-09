@@ -81,7 +81,7 @@ import {
 } from '../serverBarConfig';
 import type { TiltEmaMode } from '../shellConfig';
 import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
-import type { SignalState } from '../types/lod';
+import { isSignalState, type SignalState } from '../types/lod';
 import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
 import {
   SERVER_SIM_LOD_SIGNALS_ENABLED,
@@ -1040,13 +1040,11 @@ watch(
   () => serverMetaFromSnapshot.value?.simLod?.signals,
   (signals) => {
     if (!signals) return;
-    const valid = (s: unknown): s is SignalState =>
-      s === 'off' || s === 'active' || s === 'solo';
     const updated: ServerSimSignalStates = { ...serverSignalStates.value };
     let changed = false;
-    if (valid(signals.tps) && signals.tps !== updated.tps) { updated.tps = signals.tps; changed = true; }
-    if (valid(signals.cpu) && signals.cpu !== updated.cpu) { updated.cpu = signals.cpu; changed = true; }
-    if (valid(signals.units) && signals.units !== updated.units) { updated.units = signals.units; changed = true; }
+    if (isSignalState(signals.tps) && signals.tps !== updated.tps) { updated.tps = signals.tps; changed = true; }
+    if (isSignalState(signals.cpu) && signals.cpu !== updated.cpu) { updated.cpu = signals.cpu; changed = true; }
+    if (isSignalState(signals.units) && signals.units !== updated.units) { updated.units = signals.units; changed = true; }
     if (changed) serverSignalStates.value = updated;
   },
   { deep: true },

@@ -11,20 +11,6 @@ Earlier rounds centralized snapshot DTO factories, vector-length math
 (sim/combat/render3d/persistence) and largely orthogonal to the
 snapshot-DTO work. Each lift is small and self-contained.
 
-4. SignalState JSON-parse + per-key validate pattern duplicated.
-   - `src/clientBarConfig.ts:612–626` and `src/serverBarConfig.ts:111–120`
-     each pull a stored signal-states blob, run an inline
-     `valid = (s: unknown): s is SignalState => s === 'off' ||
-     s === 'active' || s === 'solo'` predicate, and apply it per key
-     with `if (valid(parsed.X)) target.X = parsed.X`. The validator is
-     identical; the per-key application differs (different field
-     sets, plus the client side has alias migrations).
-   - Drift kind: near-exact (same predicate, different field sets).
-   - Fix direction: lift the `SignalState` typeguard once — it lives
-     naturally in `src/types/lod.ts` next to the `SignalState` type.
-     Both bar-config files import it. The per-key application stays
-     local since the field sets diverge.
-
 5. Three.js mesh disposal triplet repeated across renderers.
    - Pattern: `mesh.dispose(); material.dispose(); geometry.dispose()`
      (or some subset, usually all three) appears in:

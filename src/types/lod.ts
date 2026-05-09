@@ -25,6 +25,15 @@ export type EmaStat = 'avg' | 'low';
  *  Identical shape on the HOST SERVER side (see types/serverSimLod.ts). */
 export type SignalState = 'off' | 'active' | 'solo';
 
+/** Runtime guard for `SignalState` — used at every persistence /
+ *  snapshot boundary that decodes a stored or wire-side value back
+ *  into a SignalState. The string set is closed and shared between
+ *  PLAYER CLIENT and HOST SERVER bars, so the predicate lives next to
+ *  the type, not in any one bar config. */
+export function isSignalState(value: unknown): value is SignalState {
+  return value === 'off' || value === 'active' || value === 'solo';
+}
+
 /** PLAYER CLIENT signals that can be toggled. */
 export type LodSignalStates = {
   zoom: SignalState;

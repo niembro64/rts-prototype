@@ -37,7 +37,7 @@ import {
   LOD_SIGNALS_ENABLED,
   LOD_SIGNAL_DEFAULTS,
 } from '@/lodConfig';
-import type { SignalState, LodSignalStates } from './types/lod';
+import { isSignalState, type SignalState, type LodSignalStates } from './types/lod';
 
 export type { CameraSmoothMode } from './types/client';
 
@@ -613,15 +613,13 @@ function loadFromStorage(): void {
   if (storedSignals) {
     try {
       const parsed = JSON.parse(storedSignals);
-      const valid = (s: unknown): s is SignalState =>
-        s === 'off' || s === 'active' || s === 'solo';
       if (parsed && typeof parsed === 'object') {
-        if (valid(parsed.zoom)) currentSignalStates.zoom = parsed.zoom;
-        if (valid(parsed.serverTps)) currentSignalStates.serverTps = parsed.serverTps;
-        else if (valid(parsed.tps)) currentSignalStates.serverTps = parsed.tps;
-        if (valid(parsed.renderTps)) currentSignalStates.renderTps = parsed.renderTps;
-        else if (valid(parsed.fps)) currentSignalStates.renderTps = parsed.fps;
-        if (valid(parsed.units)) currentSignalStates.units = parsed.units;
+        if (isSignalState(parsed.zoom)) currentSignalStates.zoom = parsed.zoom;
+        if (isSignalState(parsed.serverTps)) currentSignalStates.serverTps = parsed.serverTps;
+        else if (isSignalState(parsed.tps)) currentSignalStates.serverTps = parsed.tps;
+        if (isSignalState(parsed.renderTps)) currentSignalStates.renderTps = parsed.renderTps;
+        else if (isSignalState(parsed.fps)) currentSignalStates.renderTps = parsed.fps;
+        if (isSignalState(parsed.units)) currentSignalStates.units = parsed.units;
       }
     } catch { /* ignore malformed */ }
   }
