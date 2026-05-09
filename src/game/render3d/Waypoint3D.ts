@@ -26,6 +26,7 @@ import { LAND_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
 import { getWaypointDetail } from '../../clientBarConfig';
 import { getEntityTargetPoint } from '../sim/buildingAnchors';
 import { hexToRgb01, writeHexToRgb01Array } from './colorUtils';
+import { configureSpriteTexture } from './threeUtils';
 
 const STYLE = {
   /** Vertical lift above the terrain so lines / dots / flags clear
@@ -323,9 +324,7 @@ export class Waypoint3D {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Waypoint3D: 2d canvas context unavailable');
       const texture = new THREE.CanvasTexture(canvas);
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.generateMipmaps = false;
+      configureSpriteTexture(texture);
       const material = new THREE.SpriteMaterial({
         map: texture,
         transparent: true,

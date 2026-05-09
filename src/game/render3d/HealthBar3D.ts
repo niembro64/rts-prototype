@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { getBuildingHudBarsY, getUnitHudBarsY } from './HudAnchor';
+import { configureSpriteTexture } from './threeUtils';
 import { getResourceFillRatio } from '../sim/buildableHelpers';
 import type { Buildable } from '../sim/types';
 import { ENTITY_HUD_BAR_STACK_GAP } from '@/entityHudConfig';
@@ -93,9 +94,7 @@ export class HealthBar3D {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('HealthBar3D: 2d canvas context unavailable');
       const texture = new THREE.CanvasTexture(canvas);
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.generateMipmaps = false;
+      configureSpriteTexture(texture);
       const material = new THREE.SpriteMaterial({
         map: texture,
         transparent: true,

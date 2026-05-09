@@ -3,6 +3,7 @@ import {
   SUN_RENDER_CONFIG,
   TERRAIN_SHADOW_RENDER_CONFIG,
 } from '../../config';
+import { configureSpriteTexture } from './threeUtils';
 
 export type SimSunDirection = Readonly<{
   x: number;
@@ -49,9 +50,7 @@ function getSunDiskTexture(): THREE.CanvasTexture {
 
   sunDiskTexture = new THREE.CanvasTexture(canvas);
   sunDiskTexture.colorSpace = THREE.SRGBColorSpace;
-  sunDiskTexture.magFilter = THREE.LinearFilter;
-  sunDiskTexture.minFilter = THREE.LinearFilter;
-  sunDiskTexture.generateMipmaps = false;
+  configureSpriteTexture(sunDiskTexture);
   return sunDiskTexture;
 }
 

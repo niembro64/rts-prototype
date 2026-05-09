@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingHudNameY, getUnitHudNameY } from './HudAnchor';
+import { configureSpriteTexture } from './threeUtils';
 import {
   NAME_LABEL_WORLD_HEIGHT,
   NAME_LABEL_FONT_PX,
@@ -163,9 +164,7 @@ export class NameLabel3D {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('NameLabel3D: 2d canvas context unavailable');
       const texture = new THREE.CanvasTexture(canvas);
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.generateMipmaps = false;
+      configureSpriteTexture(texture);
       const material = new THREE.SpriteMaterial({
         map: texture,
         transparent: true,

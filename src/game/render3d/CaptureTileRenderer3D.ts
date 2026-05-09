@@ -46,6 +46,7 @@ import {
 } from '../landGrid';
 import type { Lod3DState } from './Lod3D';
 import type { RenderLodGrid } from './RenderLodGrid';
+import { configureSpriteTexture } from './threeUtils';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getOccupiedBuildingCells } from '../sim/buildPlacementValidation';
 import { getMetalDepositGridCells } from '../sim/metalDeposits';
@@ -399,9 +400,7 @@ export class CaptureTileRenderer3D {
       Math.max(1, height),
       THREE.RGBAFormat,
     );
-    texture.magFilter = THREE.NearestFilter;
-    texture.minFilter = THREE.NearestFilter;
-    texture.generateMipmaps = false;
+    configureSpriteTexture(texture, 'nearest');
     texture.flipY = false;
     texture.needsUpdate = true;
     return texture;

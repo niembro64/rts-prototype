@@ -46,3 +46,20 @@ export function disposeMesh(
     mesh.geometry?.dispose();
   }
 }
+
+/** Set the same minFilter + magFilter + `generateMipmaps = false`
+ *  triplet that every CanvasTexture / sprite texture in this
+ *  directory uses. `filter` picks Linear (smooth, default — health
+ *  bars, name labels, waypoints, sun disk) vs Nearest (pixel-crisp —
+ *  LOD grid debug overlay). Other texture flags (`flipY`,
+ *  `needsUpdate`, `colorSpace`) stay at the call site since they
+ *  vary per consumer. */
+export function configureSpriteTexture(
+  tex: THREE.Texture,
+  filter: 'linear' | 'nearest' = 'linear',
+): void {
+  const f = filter === 'nearest' ? THREE.NearestFilter : THREE.LinearFilter;
+  tex.minFilter = f;
+  tex.magFilter = f;
+  tex.generateMipmaps = false;
+}

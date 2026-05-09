@@ -11,6 +11,7 @@ import {
 } from '../landGrid';
 import { getTerrainMapBoundaryFade } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
+import { configureSpriteTexture } from './threeUtils';
 
 const STYLE = {
   initialLineCap: 4096,
@@ -233,9 +234,7 @@ export class LodGridCells2D {
       Math.max(1, height),
       THREE.RGBAFormat,
     );
-    texture.magFilter = THREE.NearestFilter;
-    texture.minFilter = THREE.NearestFilter;
-    texture.generateMipmaps = false;
+    configureSpriteTexture(texture, 'nearest');
     texture.flipY = false;
     texture.needsUpdate = true;
     return texture;

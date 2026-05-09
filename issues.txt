@@ -3,24 +3,3 @@ As we fix something here we should completely delete it from this file. You shou
 you know for a fact it has been addressed. Remember that our code may have changed since the issue was
 written; check the code and if the issue is no longer relevant, delete it.
 
-Duplicate-code audit (round 3) — 2026-05-08
-
-Earlier rounds centralized snapshot DTO factories, vector-length math
-(`magnitude`/`magnitude3`), inline cos/sin (`getTransformCosSin`), and
-`isFiniteNumber`. The clusters below are NEW — different layers
-(sim/combat/render3d/persistence) and largely orthogonal to the
-snapshot-DTO work. Each lift is small and self-contained.
-
-6. Canvas-texture filter + mipmap setup repeated.
-   - Five sites set the same three texture properties together:
-     `texture.minFilter = LinearFilter; texture.magFilter = LinearFilter;
-     texture.generateMipmaps = false`. Some flip Linear↔Nearest.
-   - `src/game/render3d/HealthBar3D.ts:96–98` (linear, no mips).
-   - `src/game/render3d/LodGridCells2D.ts:236–238` (nearest, no mips).
-   - `src/game/render3d/NameLabel3D.ts:166–168` (linear, no mips).
-   - `src/game/render3d/SunLighting.ts:52–54` (linear, no mips).
-   - `src/game/render3d/Waypoint3D.ts:326–328` (linear, no mips).
-   - Drift kind: near-exact.
-   - Fix direction: `configureSpriteTexture(tex: THREE.Texture, filter:
-     'linear' | 'nearest' = 'linear'): void` in the same
-     `src/game/render3d/threeUtils.ts` proposed for #5.

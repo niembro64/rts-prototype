@@ -8,6 +8,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
+import { configureSpriteTexture } from './threeUtils';
 import {
   CAMERA_PAN_MULTIPLIER,
   CAMERA_MIN_TERRAIN_CLEARANCE,
@@ -57,9 +58,7 @@ function makeSkyGradientTexture(): THREE.CanvasTexture {
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.magFilter = THREE.LinearFilter;
-  texture.minFilter = THREE.LinearFilter;
-  texture.generateMipmaps = false;
+  configureSpriteTexture(texture);
   return texture;
 }
 
