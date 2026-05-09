@@ -44,7 +44,7 @@ void main() {
 }
 `;
 
-function makeImpactMaterial(): THREE.ShaderMaterial {
+function makeImpactMaterial(blending: THREE.Blending = THREE.AdditiveBlending): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: IMPACT_VS,
     fragmentShader: IMPACT_FS,
@@ -52,7 +52,7 @@ function makeImpactMaterial(): THREE.ShaderMaterial {
     depthWrite: false,
     depthTest: true,
     side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
+    blending,
   });
 }
 
@@ -65,7 +65,13 @@ class ImpactPool {
   private alphaAttr: THREE.InstancedBufferAttribute;
   private colorAttr: THREE.InstancedBufferAttribute;
 
-  constructor(parent: THREE.Group, geom: THREE.BufferGeometry, readonly capacity: number, renderOrder: number) {
+  constructor(
+    parent: THREE.Group,
+    geom: THREE.BufferGeometry,
+    readonly capacity: number,
+    renderOrder: number,
+    blending: THREE.Blending = THREE.AdditiveBlending,
+  ) {
     this.geom = geom;
     this.alphaArr = new Float32Array(capacity);
     this.colorArr = new Float32Array(capacity * 3);
@@ -76,7 +82,7 @@ class ImpactPool {
     geom.setAttribute('aAlpha', this.alphaAttr);
     geom.setAttribute('aColor', this.colorAttr);
 
-    this.mat = makeImpactMaterial();
+    this.mat = makeImpactMaterial(blending);
     this.mesh = new THREE.InstancedMesh(geom, this.mat, capacity);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
@@ -141,7 +147,8 @@ export class ForceFieldImpactRenderer3D {
 
     // TorusGeometry lies in the xy-plane with its axis on z, matching
     // RingGeometry's orientation so the existing normal-aligned quaternion
-    // and surface offset still work unchanged.
+    // and surface offset still work unchanged. NormalBlending makes the
+    // tori read like rings of force-field/mirror material.
     this.ringPool = new ImpactPool(
       this.root,
       new THREE.TorusGeometry(1, tubeRadius, tubeSegments, ringSegments),
@@ -149,6 +156,7 @@ export class ForceFieldImpactRenderer3D {
         + ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP
           * ForceFieldImpactRenderer3D.CONTINUOUS_RING_COUNT,
       18,
+      THREE.NormalBlending,
     );
     this.corePool = new ImpactPool(
       this.root,
@@ -235,13 +243,14 @@ export class ForceFieldImpactRenderer3D {
         const ringAge = impact.ageMs - ring * cfg.ringDelayMs;
         if (ringAge < 0 || ringAge >= cfg.durationMs) continue;
         const t = ringAge / cfg.durationMs;
-        const ease = 1 - Math.pow(1 - t, 3);
-        const radius = cfg.startRadius + (cfg.endRadius - cfg.startRadius) * ease;
-        const fade = (1 - t) * (1 - t);
+        // Linear radius grow until the ring disappears at end-of-life;
+        // constant alpha so the tube reads as solid force-field material
+        // for its whole lifetime, then is removed by the age check above.
+        const radius = cfg.startRadius + (cfg.endRadius - cfg.startRadius) * t;
         // Uniform scale so the torus tube cross-section grows proportionally.
         this.scratchScale.set(radius, radius, radius);
         this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
-        this.ringPool.write(ringCursor++, this.scratchMat, impact.color, cfg.ringOpacity * fade);
+        this.ringPool.write(ringCursor++, this.scratchMat, impact.color, cfg.ringOpacity);
       }
 
       i++;

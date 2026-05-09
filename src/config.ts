@@ -723,7 +723,9 @@ export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig = {
   endRadius: 38,
   ringTubeRadiusFrac: 0.11,
   ringTubeSegments: 6,
-  ringOpacity: 0.82,
+  // Match the force-field/mirror panel transparency:
+  // FORCE_FIELD_BARRIER.alpha (0.05) * FORCE_FIELD_OPACITY_BOOST (2.0) = 0.1.
+  ringOpacity: 0.1,
   coreRadiusFrac: 0.42,
   coreOpacity: 0.22,
   coreDurationFrac: 0.45,
