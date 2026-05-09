@@ -19,6 +19,7 @@ import {
   createBuildingRuntimeTurrets,
   createUnitRuntimeTurrets,
 } from '../../sim/runtimeTurrets';
+import { updateCombatActivityFlags } from '../../sim/combat/combatActivity';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
 import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
@@ -60,6 +61,7 @@ export function applyNetworkTurretNonVisualState(
     turrets[i].target = netTurrets[i].targetId ?? null;
     turrets[i].state = codeToTurretState(netTurrets[i].state);
   }
+  updateCombatActivityFlags(entity.combat);
 }
 
 export function applyNetworkSuspensionState(
@@ -123,7 +125,8 @@ export function refreshUnitTurretsFromNetwork(
   }
   entity.combat = entity.combat
     ? { ...entity.combat, turrets }
-    : { turrets, activeTurretMask: 0, firingTurretMask: 0 };
+    : { turrets, hasActiveCombat: false, activeTurretMask: 0, firingTurretMask: 0 };
+  updateCombatActivityFlags(entity.combat);
 }
 
 export function refreshBuildingTurretsFromNetwork(
@@ -152,7 +155,8 @@ export function refreshBuildingTurretsFromNetwork(
 
   entity.combat = entity.combat
     ? { ...entity.combat, turrets }
-    : { turrets, activeTurretMask: 0, firingTurretMask: 0 };
+    : { turrets, hasActiveCombat: false, activeTurretMask: 0, firingTurretMask: 0 };
+  updateCombatActivityFlags(entity.combat);
 }
 
 /**
@@ -256,9 +260,11 @@ function createUnitFromNetwork(
   if (turrets) {
     entity.combat = {
       turrets,
+      hasActiveCombat: false,
       activeTurretMask: 0,
       firingTurretMask: 0,
     };
+    updateCombatActivityFlags(entity.combat);
   }
   applyNetworkSuspensionState(entity, u?.suspension);
 

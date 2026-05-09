@@ -10,25 +10,6 @@ Verify against current code before attacking — a few related sites may have
 already shifted.
 ==============================================================================
 
-PERF-3. shouldUpdateRichUnitDetails re-walks turrets every frame
-  Sites:
-    - src/game/render3d/Render3DEntities.ts:415-418 (turrets?.some)
-  Cost: Per visible unit per frame: an Array.some over all turrets
-    asking "is any turret tracking, engaged, or has a target?" For
-    ~200 visible units × ~3 turrets average = 600 checks per frame
-    just to decide whether to refresh detail. Short-circuits early in
-    the common case but still pays the some() closure-allocation cost
-    plus the field reads. The answer is already known to the sim —
-    targetingSystem and turretSystem flip exactly the state these
-    booleans track.
-  Proposed: Add `combat.hasActiveCombat: boolean` (or a packed
-    `combat.activeMask: number`) updated where state transitions
-    happen in targetingSystem / turretSystem. The renderer reads the
-    flag directly. Same pattern as the cached cos/sin and selection
-    sets we've already moved sim → render.
-  Risk: Low. Setter sites are localized to two files; renderer change
-    is one line.
-
 PERF-4. Turret head InstancedMesh write composes with identity quat
   Sites:
     - src/game/render3d/Render3DEntities.ts:1186-1192

@@ -10,6 +10,7 @@ import { beamIndex } from '../BeamIndex';
 import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, BEAM_MAX_SEGMENTS } from '../../../config';
 import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, turretMaskIncludes, updateWeaponWorldKinematics } from './combatUtils';
+import { updateCombatActivityFlags } from './combatActivity';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
@@ -577,6 +578,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       // cycle through the barrel set (index % N, wraps automatically).
       weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
     }
+    updateCombatActivityFlags(combat);
   }
 
   return { projectiles: newProjectiles, events: audioEvents, spawnEvents };

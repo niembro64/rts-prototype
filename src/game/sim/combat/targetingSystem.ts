@@ -2,7 +2,8 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, HysteresisRange, Turret, TurretRanges } from '../types';
-import { decrementCooldown, getTargetRadius, turretBit, updateWeaponWorldKinematics } from './combatUtils';
+import { decrementCooldown, getTargetRadius, updateWeaponWorldKinematics } from './combatUtils';
+import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { distanceSquared, shouldRunOnStride } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
@@ -18,48 +19,6 @@ import {
 
 const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
-
-function commitCombatMasks(entity: Entity): boolean {
-  const combat = entity.combat;
-  if (!combat) return false;
-  const weapons = combat.turrets;
-
-  let activeMask = 0;
-  let firingMask = 0;
-  let overflowActive = false;
-  let overflowFiring = false;
-
-  for (let i = 0; i < weapons.length; i++) {
-    const weapon = weapons[i];
-    if (weapon.config.visualOnly) continue;
-    const isActive =
-      weapon.target !== null ||
-      weapon.state !== 'idle' ||
-      Math.abs(weapon.angularVelocity) > 0.0001 ||
-      Math.abs(weapon.pitchVelocity) > 0.0001;
-    if (!isActive) continue;
-
-    const bit = turretBit(i);
-    if (bit !== 0) activeMask |= bit;
-    else overflowActive = true;
-
-    const shotType = weapon.config.shot?.type;
-    if (
-      weapon.state === 'engaged' &&
-      !weapon.config.passive &&
-      shotType !== 'force'
-    ) {
-      if (bit !== 0) firingMask |= bit;
-      else overflowFiring = true;
-    }
-  }
-
-  // Overflow entities are extremely unusual, but treating them as
-  // all-turret-active is safer than dropping turret 31+ from combat.
-  combat.activeTurretMask = overflowActive ? -1 : activeMask;
-  combat.firingTurretMask = overflowFiring ? -1 : firingMask;
-  return activeMask !== 0 || overflowActive;
-}
 
 function nextTargetingReacquireTick(unitId: number, tick: number, stride: number): number {
   if (stride <= 1) return tick + 1;
@@ -335,11 +294,16 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // entity.building. Combat is host-agnostic; the host components own
     // their own hp.
     const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
-    if (hostHp <= 0) continue;
+    if (hostHp <= 0) {
+      clearCombatActivityFlags(combat);
+      continue;
+    }
     // Inert shells skip targeting until construction completes.
-    if (unit.buildable && !unit.buildable.isComplete) continue;
-    combat.activeTurretMask = 0;
-    combat.firingTurretMask = 0;
+    if (unit.buildable && !unit.buildable.isComplete) {
+      clearCombatActivityFlags(combat);
+      continue;
+    }
+    clearCombatActivityFlags(combat);
     const priorityId = combat.priorityTargetId;
     const scheduledProbeTick = combat.nextCombatProbeTick;
     if (priorityId === undefined && scheduledProbeTick !== undefined && scheduledProbeTick > tick) {
@@ -482,7 +446,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             weapon.state = 'tracking';
           }
         }
-        if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
+        if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
         continue; // Skip auto-targeting entirely for this unit
       }
       // Priority target dead/gone — fall through to auto-targeting
@@ -573,7 +537,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // perceptible threshold for combat reaction. Validation already ran
     // above so an out-of-range or dead target was cleared this tick.
     if (!shouldReacquire) {
-      if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
+      if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
       else if (priorityId === undefined) {
         combat.nextCombatProbeTick = hasCooldownState
           ? tick + 1
@@ -797,7 +761,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
     }
 
-    if (commitCombatMasks(unit)) _activeCombatUnits.push(unit);
+    if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
     else if (priorityId === undefined) {
       combat.nextCombatProbeTick = hasCooldownState
         ? tick + 1

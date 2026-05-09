@@ -23,6 +23,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { getMovementAngle, resolveWeaponWorldMount, turretBit, turretMaskIncludes } from './combatUtils';
+import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { getTransformCosSin, integrateDampedRotation, normalizeAngle } from '../../math';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 import { createTurretAimScratch, solveTurretAim } from './aimSolver';
@@ -42,13 +43,19 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
 
   for (const unit of units) {
     if (!unit.combat || !unit.ownership) continue;
+    const combat = unit.combat;
     const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
-    if (hostHp <= 0) continue;
+    if (hostHp <= 0) {
+      clearCombatActivityFlags(combat);
+      continue;
+    }
     // Inert shells (in-progress buildable) skip combat entirely until
     // every resource bar tops up.
-    if (unit.buildable && !unit.buildable.isComplete) continue;
+    if (unit.buildable && !unit.buildable.isComplete) {
+      clearCombatActivityFlags(combat);
+      continue;
+    }
 
-    const combat = unit.combat;
     const { cos, sin } = getTransformCosSin(unit.transform);
     const activeMask = combat.activeTurretMask;
     const currentTick = world.getTick();
@@ -200,5 +207,6 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       weapon.aimErrorYaw = normalizeAngle(aimTargetYaw - weapon.rotation);
       weapon.aimErrorPitch = aimTargetPitch - weapon.pitch;
     }
+    updateCombatActivityFlags(combat);
   }
 }

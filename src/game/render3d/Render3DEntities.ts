@@ -427,10 +427,7 @@ export class Render3DEntities {
         }
       }
     }
-    const turrets = entity.combat?.turrets;
-    if (turrets?.some((t) => !t.config.visualOnly && (t.state === 'tracking' || t.state === 'engaged' || t.target !== null))) {
-      return true;
-    }
+    if (entity.combat?.hasActiveCombat) return true;
     const cachedX = mesh.unitDetailCachedX;
     if (
       cachedX === undefined ||

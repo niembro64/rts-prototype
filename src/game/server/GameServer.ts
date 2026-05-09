@@ -35,6 +35,7 @@ import { SERVER_SIM_LOD_EMA_SOURCE } from '../../serverSimLodConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { setTiltEmaMode } from '../sim/unitTilt';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
+import { updateCombatActivityFlags } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import type { CaptureSystem } from '../sim/CaptureSystem';
 import { factoryProductionSystem } from '../sim/factoryProduction';
@@ -519,8 +520,9 @@ export class GameServer {
     this.world.mirrorsEnabled = enabled;
     if (enabled) return;
     for (const unit of this.world.getMirrorUnits()) {
-      const turrets = unit.combat?.turrets;
-      if (!turrets) continue;
+      const combat = unit.combat;
+      if (!combat) continue;
+      const turrets = combat.turrets;
       for (let i = 0; i < turrets.length; i++) {
         const turret = turrets[i];
         if (!turret.config.passive) continue;
@@ -529,6 +531,7 @@ export class GameServer {
         turret.angularVelocity = 0;
         turret.pitchVelocity = 0;
       }
+      updateCombatActivityFlags(combat);
       this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
     }
   }
@@ -538,8 +541,9 @@ export class GameServer {
     this.world.forceFieldsEnabled = enabled;
     if (enabled) return;
     for (const unit of this.world.getForceFieldUnits()) {
-      const turrets = unit.combat?.turrets;
-      if (!turrets) continue;
+      const combat = unit.combat;
+      if (!combat) continue;
+      const turrets = combat.turrets;
       for (const turret of turrets) {
         if (turret.config.shot?.type !== 'force') continue;
         turret.target = null;
@@ -551,6 +555,7 @@ export class GameServer {
           turret.forceField.range = 0;
         }
       }
+      updateCombatActivityFlags(combat);
       this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
     }
   }

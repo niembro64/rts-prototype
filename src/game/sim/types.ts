@@ -29,6 +29,7 @@ export type {
   Unit,
   Building,
   ForceFieldBarrierConfig,
+  CombatComponent,
   ProjectileShot,
   BeamShot,
   LaserShot,

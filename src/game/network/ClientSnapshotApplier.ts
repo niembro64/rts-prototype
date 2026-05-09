@@ -11,7 +11,6 @@ import {
   ENTITY_CHANGED_SUSPENSION,
   codeToActionType,
   codeToBuildingType,
-  codeToTurretState,
   codeToUnitType,
 } from '../../types/network';
 import { isFiniteNumber } from '../math';
@@ -121,13 +120,7 @@ export function snapClientNonVisualState(
       refreshUnitActionHash(entity.unit);
     }
 
-    if (su.turrets && su.turrets.length > 0 && entity.combat) {
-      const turrets = entity.combat.turrets;
-      for (let i = 0; i < su.turrets.length && i < turrets.length; i++) {
-        turrets[i].target = su.turrets[i].targetId ?? null;
-        turrets[i].state = codeToTurretState(su.turrets[i].state);
-      }
-    }
+    applyNetworkTurretNonVisualState(entity, su.turrets);
 
     if (entity.builder && (
       su.buildTargetId !== undefined

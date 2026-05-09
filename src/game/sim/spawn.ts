@@ -256,6 +256,7 @@ function placeCompleteBuilding(
   if (buildingTurrets.length > 0) {
     entity.combat = {
       turrets: buildingTurrets,
+      hasActiveCombat: false,
       activeTurretMask: 0,
       firingTurretMask: 0,
     };
