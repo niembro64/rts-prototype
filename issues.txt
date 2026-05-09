@@ -11,23 +11,6 @@ the proposed remedy. Verify against current code before attacking — a few
 related sites may have already shifted.
 ==============================================================================
 
-PERF-5. `unit.transform.rotation` cos/sin not flowing into the renderer for
-  per-turret mirror panels
-  Sites:
-    - src/game/render3d/Render3DEntities.ts:1310-1318 (mirror panel
-      orientation: 4 raw Math.cos/sin per mirror-bearing unit per frame)
-  Cost: Sim already publishes `transform.rotCos / rotSin` and there's a
-    centralized `getTransformCosSin` helper (used at targetingSystem.ts:65
-    as the producer). The renderer should be a consumer; computing fresh
-    cos/sin for the chassis rotation when the cached value is one prop-read
-    away duplicates work the sim already paid for.
-  Proposed: Replace the chassis term with `const { cos: cosMirrorRot,
-    sin: sinMirrorRot } = getTransformCosSin(turretedEntity.transform);`.
-    Pitch is per-turret and not cached, so leave that pair as-is. Only
-    saves 2 trig ops per mirror-bearing unit per frame — small absolute
-    gain, but it's a "do the consistent thing" cleanup that prevents the
-    cache from rotting.
-
 ==============================================================================
 Lower-priority / one-time-cost items noted but NOT prioritized:
   - terrainPrecomputedShadow (SunLighting.ts:148-176): bilinear sample fired
