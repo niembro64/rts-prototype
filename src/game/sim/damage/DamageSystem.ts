@@ -157,9 +157,11 @@ export class DamageSystem {
     let closestT: number | null = null;
     let closestEntityId: EntityId | null = null;
 
-    // PERFORMANCE: Query only entities near the line using spatial grid
-    const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 50);
-    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 100);
+    // PERFORMANCE: Single line-cell sweep filling both arrays. Uses the
+    // wider building pad (+100); the per-entity intersection check below
+    // re-applies the precise width.
+    const { units: nearbyUnits, buildings: nearbyBuildings } =
+      spatialGrid.queryEntitiesAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 100);
 
     // Check units
     for (const unit of nearbyUnits) {
@@ -680,14 +682,12 @@ export class DamageSystem {
     let bestEntityId: EntityId = 0;
     let bestIsUnit = false;
 
-    const nearbyUnits = spatialGrid.queryUnitsAlongLine(
-      source.start.x, source.start.y, source.start.z,
-      source.end.x, source.end.y, source.end.z, source.width + 50
-    );
-    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
-      source.start.x, source.start.y, source.start.z,
-      source.end.x, source.end.y, source.end.z, source.width + 100
-    );
+    // PERFORMANCE: Single line-cell sweep — see findLineObstruction.
+    const { units: nearbyUnits, buildings: nearbyBuildings } =
+      spatialGrid.queryEntitiesAlongLine(
+        source.start.x, source.start.y, source.start.z,
+        source.end.x, source.end.y, source.end.z, source.width + 100,
+      );
 
     // Check units — 3D segment-vs-sphere: the beam is a line in 3D
     // space; a unit takes a hit when its sphere intersects that line
@@ -793,15 +793,12 @@ export class DamageSystem {
     _reusableHits.length = 0;
     const hits = _reusableHits;
 
-    // PERFORMANCE: Query only entities near the projectile path using spatial grid
-    const nearbyUnits = spatialGrid.queryUnitsAlongLine(
-      source.prev.x, source.prev.y, source.prev.z,
-      source.current.x, source.current.y, source.current.z, source.radius + 50
-    );
-    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
-      source.prev.x, source.prev.y, source.prev.z,
-      source.current.x, source.current.y, source.current.z, source.radius + 100
-    );
+    // PERFORMANCE: Single line-cell sweep — see findLineObstruction.
+    const { units: nearbyUnits, buildings: nearbyBuildings } =
+      spatialGrid.queryEntitiesAlongLine(
+        source.prev.x, source.prev.y, source.prev.z,
+        source.current.x, source.current.y, source.current.z, source.radius + 100,
+      );
 
     // Check units using swept 3D collision — segment prev→current vs a
     // sphere with the combined radius at unit.transform (full 3D: x, y,

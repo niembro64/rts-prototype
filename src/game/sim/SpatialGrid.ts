@@ -1014,6 +1014,59 @@ export class SpatialGrid {
   }
 
   /**
+   * Combined units + buildings query along a 3D segment, single cell
+   * sweep. Mirrors `queryEnemyUnitsAndProjectilesInRadius` — when a
+   * caller eagerly needs both arrays (e.g. DamageSystem closest-hit
+   * search) the back-to-back solo queries rebuild `nearbyCells` twice
+   * for the same line. This fills both reusable arrays in one cell
+   * walk. Pass the WIDER of the two desired pads as `lineWidth`; the
+   * downstream per-entity geometry test still does the precise filter,
+   * so a slightly over-fetched candidate set has no correctness cost.
+   *
+   * Returns the shared `_unitsAndBuildingsResult` wrapper — DO NOT
+   * STORE THE REFERENCE.
+   *
+   * NOT for short-circuiting callers (e.g. line-of-sight, which bails
+   * after the unit pass when a unit blocks): use the solo queries
+   * there so the building sweep never runs on a blocked line.
+   */
+  queryEntitiesAlongLine(
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    lineWidth: number,
+  ): { units: Entity[]; buildings: Entity[] } {
+    this.queryResultUnits.length = 0;
+    this.queryResultBuildings.length = 0;
+    this._unitsAndBuildingsResult.units = this.queryResultUnits;
+    this._unitsAndBuildingsResult.buildings = this.queryResultBuildings;
+    if (!this.queryCellsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth)) {
+      return this._unitsAndBuildingsResult;
+    }
+
+    this._dedup.clear();
+    for (const key of this.nearbyCells) {
+      const cell = this.cells.get(key);
+      if (!cell) continue;
+
+      for (const unit of cell.units) {
+        if (this._dedup.has(unit.id)) continue;
+        this._dedup.add(unit.id);
+        this.queryResultUnits.push(unit);
+      }
+      for (const building of cell.buildings) {
+        if (this._dedup.has(building.id)) continue;
+        this._dedup.add(building.id);
+        this.queryResultBuildings.push(building);
+      }
+    }
+
+    return this._unitsAndBuildingsResult;
+  }
+  private _unitsAndBuildingsResult: { units: Entity[]; buildings: Entity[] } = {
+    units: [], buildings: [],
+  };
+
+  /**
    * Get the cell size (for client rendering)
    */
   getCellSize(): number {

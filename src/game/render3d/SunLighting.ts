@@ -156,21 +156,41 @@ export function terrainPrecomputedShadow(
   const cfg = TERRAIN_SHADOW_RENDER_CONFIG.precomputed;
   if (!TERRAIN_SHADOW_RENDER_CONFIG.enabled || !cfg.enabled) return 1;
 
-  let shade = 1;
   const samples = Math.max(0, cfg.samples | 0);
+  if (samples === 0) return 1;
+
+  // Hoist invariants out of the per-sample loop. Caller invokes this
+  // per terrain mesh vertex during scene build, so even small per-iter
+  // savings compound across thousands of vertices.
+  const sampleDistance = cfg.sampleDistance;
+  const bias = cfg.bias;
+  const strength = cfg.strength;
+  const softness = Math.max(1, cfg.softness);
+  const samplesInv = 1 / samples;
+  // Per-vertex shade can never drop below this without further samples
+  // being clipped by terrainSunShade's clamp anyway. Once we hit it we
+  // can stop sampling — saves the tail of the ray walk on already-
+  // shaded vertices (the ones that need it most).
+  const minShade = TERRAIN_SHADOW_RENDER_CONFIG.minShade;
+
+  let shade = 1;
   for (let i = 1; i <= samples; i++) {
-    const distance = cfg.sampleDistance * i;
+    const distance = sampleDistance * i;
     const sx = x + sunHorizontalX * distance;
     const sy = y + sunHorizontalY * distance;
     if (sx < 0 || sy < 0 || sx > mapWidth || sy > mapHeight) continue;
 
-    const rayHeight = height + sunSlope * distance + cfg.bias;
+    const rayHeight = height + sunSlope * distance + bias;
     const blocker = sampleHeight(sx, sy) - rayHeight;
     if (blocker <= 0) continue;
 
-    const block = smoothstep(0, Math.max(1, cfg.softness), blocker);
-    const distanceWeight = 1 - (i - 1) / Math.max(1, samples);
-    shade = Math.min(shade, 1 - cfg.strength * block * distanceWeight);
+    const block = smoothstep(0, softness, blocker);
+    const distanceWeight = 1 - (i - 1) * samplesInv;
+    const candidate = 1 - strength * block * distanceWeight;
+    if (candidate < shade) {
+      shade = candidate;
+      if (shade <= minShade) return shade;
+    }
   }
   return shade;
 }

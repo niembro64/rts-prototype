@@ -4,21 +4,3 @@ you know for a fact it has been addressed. Remember that our code may have chang
 written; check the code and if the issue is no longer relevant, delete it.
 
 
-==============================================================================
-Performance audit (2026-05-08): areas where we can use better algorithms or
-fewer passes over the same items. Each cluster includes the cost model and
-the proposed remedy. Verify against current code before attacking — a few
-related sites may have already shifted.
-==============================================================================
-
-==============================================================================
-Lower-priority / one-time-cost items noted but NOT prioritized:
-  - terrainPrecomputedShadow (SunLighting.ts:148-176): bilinear sample fired
-    per shadow-tile × cfg.samples, but bakes into a cache keyed by
-    getTerrainShadowCacheKey — paid at scene init only.
-  - DamageSystem AOE / line queries call queryUnitsAlongLine +
-    queryBuildingsAlongLine back-to-back at 6+ sites. These do query a
-    unified spatial grid, so the cost is "two queries vs one." Could
-    consolidate to a single "queryEntitiesAlongLine" API but the savings
-    are within noise. Note for later, not now.
-==============================================================================
