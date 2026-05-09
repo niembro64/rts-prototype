@@ -11,19 +11,6 @@ the proposed remedy. Verify against current code before attacking — a few
 related sites may have already shifted.
 ==============================================================================
 
-PERF-3. Selection caches rebuilt by full entity walk
-  Sites:
-    - src/game/scenes/RtsScene3D.ts:1439-1456 (rebuildSelectedEntityCachesIfNeeded)
-    - src/game/scenes/RtsScene3D.ts:1421-1437 (preferUnitsOverBuildingsInSelection)
-  Cost: When the dirty flag fires (every selectEntity/deselectEntity call),
-    these scan ALL units and ALL buildings to find the ones with
-    `selectable.selected === true`. Worst case during band-select drag, this
-    refreshes per drag tick. O(N_total) per refresh where N_selected ≪ N_total.
-  Proposed: Maintain a `Set<EntityId>` of currently-selected entities updated
-    inline by selectEntity / deselectEntity in ClientViewState. Cache rebuild
-    becomes O(N_selected) — iterate the set, resolve to entity, push into
-    the typed cache.
-
 PERF-4. `getSurfaceNormal` resampled across same-tick callers
   Sites:
     - src/game/sim/combat/ProjectileCollisionHandler.ts:702-708 (fired per

@@ -394,6 +394,7 @@ export class RtsScene3D {
   };
   private _cachedSelectedUnits: Entity[] = [];
   private _cachedSelectedBuildings: Entity[] = [];
+  private _scratchSelectedBuildingIds: EntityId[] = [];
   private _selectedEntityCacheDirty = true;
   private clientRenderEnabled = true;
 
@@ -1417,20 +1418,30 @@ export class RtsScene3D {
   }
 
   private preferUnitsOverBuildingsInSelection(): void {
-    let hasSelectedUnit = false;
     const pid = this.localPlayerId;
-    for (const unit of this.clientViewState.getUnits()) {
-      if (unit.selectable?.selected && unit.ownership?.playerId === pid) {
+    const selectedIds = this.clientViewState.getSelectedIds();
+
+    let hasSelectedUnit = false;
+    for (const id of selectedIds) {
+      const e = this.clientViewState.getEntity(id);
+      if (e?.unit && e.selectable?.selected && e.ownership?.playerId === pid) {
         hasSelectedUnit = true;
         break;
       }
     }
     if (!hasSelectedUnit) return;
 
-    for (const building of this.clientViewState.getBuildings()) {
-      if (building.selectable?.selected && building.ownership?.playerId === pid) {
-        this.clientViewState.deselectEntity(building.id);
+    // Snapshot before mutating — deselectEntity drops from the live set.
+    const buildingsToDeselect = this._scratchSelectedBuildingIds;
+    buildingsToDeselect.length = 0;
+    for (const id of selectedIds) {
+      const e = this.clientViewState.getEntity(id);
+      if (e?.building && e.selectable?.selected && e.ownership?.playerId === pid) {
+        buildingsToDeselect.push(id);
       }
+    }
+    for (let i = 0; i < buildingsToDeselect.length; i++) {
+      this.clientViewState.deselectEntity(buildingsToDeselect[i]);
     }
   }
 
@@ -1441,15 +1452,14 @@ export class RtsScene3D {
     this._cachedSelectedUnits.length = 0;
     this._cachedSelectedBuildings.length = 0;
     const pid = this.localPlayerId;
-    for (const e of this.clientViewState.getUnits()) {
-      if (e.selectable?.selected && e.ownership?.playerId === pid) {
-        this._cachedSelectedUnits.push(e);
-      }
-    }
-    for (const b of this.clientViewState.getBuildings()) {
-      if (b.selectable?.selected && b.ownership?.playerId === pid) {
-        this._cachedSelectedBuildings.push(b);
-      }
+    // Was: walk every unit then every building (~hundreds of entities)
+    // looking for selected ones. Iterate the maintained selection set
+    // instead — O(N_selected) which is bounded by max box-select size.
+    for (const id of this.clientViewState.getSelectedIds()) {
+      const e = this.clientViewState.getEntity(id);
+      if (!e?.selectable?.selected || e.ownership?.playerId !== pid) continue;
+      if (e.unit) this._cachedSelectedUnits.push(e);
+      else if (e.building) this._cachedSelectedBuildings.push(e);
     }
   }
 
