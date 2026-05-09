@@ -879,18 +879,45 @@ export class OrbitCamera {
    *  camera; the result is a smooth "glide above terrain" — the
    *  camera always stays above the surface, even when the user has
    *  pitched it horizontal and the line-of-sight pivot would have
-   *  buried it inside a hill. */
+   *  buried it inside a hill.
+   *
+   *  Pitch persistence: a naive lift (just bumping y) leaves the
+   *  orbit pitch at whatever the user set, so as soon as they zoom
+   *  out and the lift no longer fires, the camera snaps back to the
+   *  flatter view — the steeper "looking down" angle they had when
+   *  close to the ground vanishes. To make that angle stick, when
+   *  lift kicks in we re-derive `pitch` so the orbit math itself
+   *  produces y = minY at the current distance. Subsequent zoom /
+   *  pan operations then use the steeper pitch and the angle carries
+   *  through. We recompute (x, y, z) from the new pitch so this same
+   *  frame already renders the post-lift orbit (no inter-frame jump
+   *  on the next render). */
   apply(): void {
     this.constrainTargets();
-    const sinP = Math.sin(this.pitch);
-    const cosP = Math.cos(this.pitch);
-    const x = this.target.x + this.distance * sinP * Math.sin(this.yaw);
+    let sinP = Math.sin(this.pitch);
+    let cosP = Math.cos(this.pitch);
+    let x = this.target.x + this.distance * sinP * Math.sin(this.yaw);
     let y = this.target.y + this.distance * cosP;
-    const z = this.target.z + this.distance * sinP * -Math.cos(this.yaw);
+    let z = this.target.z + this.distance * sinP * -Math.cos(this.yaw);
     if (this.getTerrainHeight) {
       const groundY = this.getTerrainHeight(x, z);
       const minY = groundY + this.minTerrainClearance;
-      if (y < minY) y = minY;
+      if (y < minY) {
+        // Solve for the pitch that puts the camera exactly at minY:
+        //   y = target.y + distance · cos(pitch)  →  cos(pitch) = (minY − target.y) / distance.
+        // When (minY − target.y) > distance the camera can't clear
+        // the terrain at this distance even pointed straight up;
+        // clamp to minPitch and let the safety lift below catch it.
+        const cosNeeded = (minY - this.target.y) / this.distance;
+        const newPitch = cosNeeded < 1 ? Math.acos(cosNeeded) : this.minPitch;
+        this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, newPitch));
+        sinP = Math.sin(this.pitch);
+        cosP = Math.cos(this.pitch);
+        x = this.target.x + this.distance * sinP * Math.sin(this.yaw);
+        y = this.target.y + this.distance * cosP;
+        z = this.target.z + this.distance * sinP * -Math.cos(this.yaw);
+        if (y < minY) y = minY;
+      }
     }
     this.camera.position.set(x, y, z);
     this.camera.lookAt(this.target);
