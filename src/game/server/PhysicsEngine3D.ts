@@ -778,8 +778,19 @@ export class PhysicsEngine3D {
     const bodies = this.dynamicBodies;
     for (let i = 0; i < bodies.length; i++) {
       const a = bodies[i];
-      if (a.sleeping) continue;
       if (a.shape !== 'sphere') continue;
+      // Sleeping bodies must STILL iterate the broad phase here even
+      // though they don't integrate motion. Pair dedup uses j > i; if
+      // a sleeping body at low index sat out, an awake neighbor at
+      // higher index would test j > iAwake (no candidates) and the
+      // sleeping body's outer pass would have been skipped — so the
+      // pair would never test. Result: a daddy that spawns into the
+      // exact slot of a sleeping daddy never separates, and once both
+      // sleep with overlap, step()'s early-return locks the state
+      // forever. Letting sleeping bodies iterate is cheap (one extra
+      // 3×3×3 cell walk per sleeping body, only when something else
+      // is awake) and the contact path itself wakes both via
+      // wakeBody() so the resolve still does real work.
       const acx = Math.floor(a.x / cs);
       const acy = Math.floor(a.y / cs);
       const acz = Math.floor((a.z + halfCs) / cs);
