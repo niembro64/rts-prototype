@@ -233,7 +233,10 @@ export class ClientProjectileStore {
       const weapon = source?.combat?.turrets?.[spawn.turretIndex];
       if (source && source.unit && weapon) {
         const { cos: unitCos, sin: unitSin } = getTransformCosSin(source.transform);
-        const sn = getSurfaceNormal(
+        // Source units already carry the wire-shipped surface normal in
+        // unit.surfaceNormal; fall back to a heightmap sample only when
+        // it hasn't been populated yet (rare — first frame after spawn).
+        const sn = source.unit.surfaceNormal ?? getSurfaceNormal(
           source.transform.x, source.transform.y,
           this.options.getMapWidth(), this.options.getMapHeight(), LAND_CELL_SIZE,
         );

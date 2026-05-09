@@ -11,29 +11,6 @@ the proposed remedy. Verify against current code before attacking — a few
 related sites may have already shifted.
 ==============================================================================
 
-PERF-4. `getSurfaceNormal` resampled across same-tick callers
-  Sites:
-    - src/game/sim/combat/ProjectileCollisionHandler.ts:702-708 (fired per
-      cluster-munition splash; multiple projectiles colliding in the same
-      tick at near-identical (x,y) each resample)
-    - src/game/network/ClientProjectileStore.ts:236 (client-side projectile
-      prediction)
-    - src/game/render3d/SelectionOverlayRenderer3D.ts:185 (selection ring
-      fallback when entity.unit?.surfaceNormal is missing)
-    - src/game/sim/Pathfinder.ts:170 (slope-aware pathing — per pathfind
-      call per candidate cell)
-  Cost: `getSurfaceNormal` does a bilinear gradient over the heightmap. The
-    sim and render fields `unit.surfaceNormal` already cache per-unit
-    (good — keep). The remaining hotspots are projectile-burst splash
-    (cluster munitions) and pathfinder cell-slope reads. ProjectileCollision
-    case can collapse N samples per tick to 1 when several submunitions land
-    in the same grid cell.
-  Proposed: Either (a) a tiny LRU keyed by `floor(x/cellSize)|floor(y/cellSize)`
-    that resets on tick boundary, or (b) explicitly hoist the normal lookup
-    above the projectile-iteration loop in ProjectileCollisionHandler when
-    splash fires multiple subs at the same impact cell. Pathfinder's per-cell
-    sampling is already amortized over the whole pathfind so lower priority.
-
 PERF-5. `unit.transform.rotation` cos/sin not flowing into the renderer for
   per-turret mirror panels
   Sites:
