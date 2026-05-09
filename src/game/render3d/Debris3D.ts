@@ -27,6 +27,7 @@ import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
 import { getMirrorPanelCenter } from '../sim/mirrorPanelCache';
 import { SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import { hexToRgb01 } from './colorUtils';
+import { disposeMesh } from './threeUtils';
 import { getBodyTopY } from '../math/BodyDimensions';
 import {
   type DebrisColorRole,
@@ -284,10 +285,7 @@ class InstancedDebrisPool {
   }
 
   destroy(): void {
-    this.mesh.parent?.remove(this.mesh);
-    this.mesh.dispose();
-    this.mat.dispose();
-    this.geom.dispose();
+    disposeMesh(this.mesh);
   }
 }
 

@@ -28,6 +28,7 @@ import type { ConcreteGraphicsQuality, FireExplosionStyle } from '@/types/graphi
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { hexToRgb01 } from './colorUtils';
+import { disposeMesh } from './threeUtils';
 
 /** Per-puff scope padding in sim-world units. Smoke trails extend
  *  BEHIND the projectile along its flight path, so a rocket whose
@@ -399,10 +400,7 @@ export class SmokeTrail3D {
   }
 
   destroy(): void {
-    this.root.remove(this.mesh);
-    this.mesh.dispose();
-    this.mat.dispose();
-    this.geom.dispose();
+    disposeMesh(this.mesh);
     this.active.length = 0;
     this.root.parent?.remove(this.root);
   }

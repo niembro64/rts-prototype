@@ -11,24 +11,6 @@ Earlier rounds centralized snapshot DTO factories, vector-length math
 (sim/combat/render3d/persistence) and largely orthogonal to the
 snapshot-DTO work. Each lift is small and self-contained.
 
-5. Three.js mesh disposal triplet repeated across renderers.
-   - Pattern: `mesh.dispose(); material.dispose(); geometry.dispose()`
-     (or some subset, usually all three) appears in:
-   - `src/game/render3d/Explosion3D.ts:128–130`.
-   - `src/game/render3d/Debris3D.ts:288–290`.
-   - `src/game/render3d/SprayRenderer3D.ts:517–519`.
-   - `src/game/render3d/UnitMassInstanceRenderer3D.ts:281,283`.
-   - `src/game/render3d/ContactShadowRenderer3D.ts:192–193` (mesh + material).
-   - `src/game/render3d/LegInstancedRenderer.ts:264–265,346,...`
-     (mesh + geometry, several spots).
-   - `src/game/render3d/HealthBar3D.ts:313–314` (texture + material).
-   - Drift kind: near-exact (same dispose order; some sites omit one
-     of the three when the resource isn't owned).
-   - Fix direction: add `disposeInstancedMesh(mesh: THREE.InstancedMesh
-     & { material?: THREE.Material; geometry?: THREE.BufferGeometry }):
-     void` (or a more general `disposeMesh` taking flags for which
-     resources to dispose) to a new `src/game/render3d/threeUtils.ts`.
-
 6. Canvas-texture filter + mipmap setup repeated.
    - Five sites set the same three texture properties together:
      `texture.minFilter = LinearFilter; texture.magFilter = LinearFilter;

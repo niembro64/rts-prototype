@@ -15,6 +15,7 @@ import {
   isConstructionShell,
   setEntityInstanceColor,
 } from './EntityInstanceColor3D';
+import { disposeMesh } from './threeUtils';
 
 const LOW_INSTANCED_CAP = 16384;
 const LOW_INSTANCED_COMPACT_MIN_FREE = 128;
@@ -278,10 +279,7 @@ export class UnitMassInstanceRenderer3D {
 
   destroy(): void {
     this.releaseAll();
-    this.world.remove(this.mesh);
-    this.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
-    this.mesh.dispose();
+    disposeMesh(this.mesh);
     this.seenIds.clear();
   }
 

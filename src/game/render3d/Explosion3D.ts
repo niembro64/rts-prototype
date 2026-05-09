@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import type { FireExplosionStyle } from '@/types/graphics';
 import { hexToRgb01 } from './colorUtils';
+import { disposeMesh } from './threeUtils';
 
 const CORE_COLOR = 0xffffff;
 const CORE_LIFETIME_MS = 180;
@@ -124,10 +125,7 @@ class InstancedSpherePool {
   }
 
   destroy(): void {
-    this.mesh.parent?.remove(this.mesh);
-    this.mesh.dispose();
-    this.mat.dispose();
-    this.geom.dispose();
+    disposeMesh(this.mesh);
   }
 }
 

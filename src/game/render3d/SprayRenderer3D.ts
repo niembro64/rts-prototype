@@ -42,6 +42,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { hexToRgb01 } from './colorUtils';
+import { disposeMesh } from './threeUtils';
 import { TURRET_CONFIGS } from '../sim/turretConfigs';
 
 // Default spray trail altitude for legacy 2D spray targets. Factory
@@ -513,10 +514,7 @@ export class SprayRenderer3D {
   }
 
   destroy(): void {
-    this.root.remove(this.mesh);
-    this.mesh.dispose();
-    this.mat.dispose();
-    this.geom.dispose();
+    disposeMesh(this.mesh);
     this._teamColorCache.clear();
     this.spraySpawnBudget.clear();
     this.activeSprayKeys.clear();

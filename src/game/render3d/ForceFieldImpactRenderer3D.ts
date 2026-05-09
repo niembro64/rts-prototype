@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { FORCE_FIELD_IMPACT_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity, type PlayerId } from '../sim/types';
 import { writeHexToRgb01Array } from './colorUtils';
+import { disposeMesh } from './threeUtils';
 
 type Impact = {
   ageMs: number;
@@ -110,10 +111,7 @@ class ImpactPool {
   }
 
   destroy(): void {
-    this.mesh.parent?.remove(this.mesh);
-    this.mesh.dispose();
-    this.mat.dispose();
-    this.geom.dispose();
+    disposeMesh(this.mesh);
   }
 }
 

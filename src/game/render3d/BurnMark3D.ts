@@ -24,6 +24,7 @@ import {
   BURN_COLOR_TAU,
   BURN_COOL_TAU,
 } from '../../config';
+import { disposeMesh } from './threeUtils';
 
 // ── World Y layout ──
 // Burn marks sit a couple units above the tile layer (y=0). The tile floor
@@ -587,8 +588,7 @@ export class BurnMark3D {
   destroy(): void {
     this.marks.length = 0;
     this.beams.clear();
-    this.geometry.dispose();
-    this.mat.dispose();
+    disposeMesh(this.mesh);
     this.root.parent?.remove(this.root);
   }
 }

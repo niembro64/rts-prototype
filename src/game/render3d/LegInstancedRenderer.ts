@@ -32,6 +32,7 @@
 
 import * as THREE from 'three';
 import { createShellMaterial } from './ShellMaterial';
+import { disposeMesh } from './threeUtils';
 
 /** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
  *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
@@ -187,9 +188,9 @@ class CylinderPool {
   }
 
   destroy(): void {
-    this.mesh.parent?.remove(this.mesh);
-    (this.mesh.material as THREE.Material).dispose();
-    this.mesh.geometry.dispose();
+    // THREE.Mesh has no .dispose() of its own; disposeMesh's
+    // optional-chain on `mesh.dispose?.()` handles that.
+    disposeMesh(this.mesh);
   }
 }
 
@@ -260,10 +261,7 @@ class JointSpherePool {
   }
 
   destroy(): void {
-    this.mesh.parent?.remove(this.mesh);
-    this.mesh.dispose();
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    disposeMesh(this.mesh);
   }
 }
 
@@ -342,10 +340,7 @@ class FootPadPool {
   }
 
   destroy(): void {
-    this.mesh.parent?.remove(this.mesh);
-    this.mesh.dispose();
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    disposeMesh(this.mesh);
   }
 }
 

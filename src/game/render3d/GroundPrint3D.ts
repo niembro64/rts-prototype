@@ -46,6 +46,7 @@ import { getGraphicsConfig, getGroundMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { LegInstance } from './LegRig3D';
+import { disposeMesh } from './threeUtils';
 
 // ── World Y layout ──
 // Sit slightly above the tile floor; under burn marks (Y=2.5) so a
@@ -780,8 +781,7 @@ export class GroundPrint3D {
     this.marks.length = 0;
     this.trails.clear();
     this.stamps.clear();
-    this.geometry.dispose();
-    this.mat.dispose();
+    disposeMesh(this.mesh);
     this.root.parent?.remove(this.root);
   }
 }

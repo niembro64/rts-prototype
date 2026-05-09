@@ -13,6 +13,7 @@ import {
 import { shouldRunOnStride } from '../math';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { SUN_DIRECTION_SIM, writeSunDirectionThree } from './SunLighting';
+import { disposeMesh } from './threeUtils';
 
 const SHADOW_GEOMETRY = new THREE.CircleGeometry(1, 28);
 SHADOW_GEOMETRY.rotateX(-Math.PI / 2);
@@ -189,8 +190,7 @@ export class ContactShadowRenderer3D {
   }
 
   dispose(): void {
-    this.mesh.parent?.remove(this.mesh);
-    this.mesh.dispose();
-    this.material.dispose();
+    // SHADOW_GEOMETRY is module-shared; skip the geometry leg.
+    disposeMesh(this.mesh, { geometry: false });
   }
 }
