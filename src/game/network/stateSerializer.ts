@@ -14,6 +14,7 @@ import {
   ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_NORMAL,
+  ENTITY_CHANGED_SUSPENSION, ENTITY_CHANGED_MOVEMENT_ACCEL,
   actionTypeToCode, turretStateToCode,
   unitTypeToCode, buildingTypeToCode, projectileTypeToCode,
   turretIdToCode, shotIdToCode,
@@ -21,6 +22,7 @@ import {
 } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
 import { shouldRunOnStride } from '../math';
+import { assertUnitActionHashSynced } from '../sim/unitActions';
 import {
   createActionDto,
   createSprayDto,
@@ -46,6 +48,8 @@ type FactorySub = NonNullable<BuildingSub['factory']>;
 type PooledEntry = {
   entity: NetworkServerSnapshotEntity;
   unitSub: UnitSub;
+  unitMovementAccel: Vec3;
+  unitSuspension: NonNullable<UnitSub['suspension']>;
   /** Persistent radius object reused across snapshots — unitSub.radius
    *  swaps between this and undefined depending on whether the entity
    *  needs a static-fields seed. */
@@ -108,6 +112,10 @@ function writeTurretsToPool(
  *  visible chassis-tilt jitter and trims wire bytes vs. raw float64. */
 function qNormal(n: number): number {
   return Math.round(n * 1000) / 1000;
+}
+
+function qSuspension(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
@@ -216,11 +224,16 @@ function createPooledEntry(): PooledEntry {
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createWaypointDto());
   return {
     entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
-      unitSub: {
-        unitType: undefined, hp: { curr: 0, max: 0 },
-        radius: undefined,
-        bodyCenterHeight: undefined,
-        mass: undefined, velocity: { x: 0, y: 0, z: 0 },
+    unitSub: {
+      unitType: undefined, hp: { curr: 0, max: 0 },
+      radius: undefined,
+      bodyCenterHeight: undefined,
+      mass: undefined, velocity: { x: 0, y: 0, z: 0 },
+    },
+    unitMovementAccel: { x: 0, y: 0, z: 0 },
+    unitSuspension: {
+      offset: { x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
     },
     unitRadius: { body: 0, shot: 0, push: 0 },
     buildingDim: { x: 0, y: 0 },
@@ -267,9 +280,14 @@ function getPooledEntry(): PooledEntry {
 type PrevEntityState = {
   x: number;
   y: number;
+  z: number;
   rotation: number;
   velocityX: number;
   velocityY: number;
+  velocityZ: number;
+  movementAccelX: number;
+  movementAccelY: number;
+  movementAccelZ: number;
   hp: number;
   actionCount: number;
   actionHash: number;       // cheap hash of action content (types + positions)
@@ -305,8 +323,9 @@ function createPrevEntityState(): PrevEntityState {
     forceFieldRanges.push(0);
   }
   return {
-    x: 0, y: 0, rotation: 0,
-    velocityX: 0, velocityY: 0,
+    x: 0, y: 0, z: 0, rotation: 0,
+    velocityX: 0, velocityY: 0, velocityZ: 0,
+    movementAccelX: 0, movementAccelY: 0, movementAccelZ: 0,
     hp: 0, actionCount: 0, actionHash: 0,
     isEngagedBits: 0, targetBits: 0,
     weaponCount: 0, turretRots, turretAngVels, turretPitches, forceFieldRanges,
@@ -344,7 +363,8 @@ const SNAPSHOT_DIRTY_FORCE_FIELDS =
   ENTITY_CHANGED_ACTIONS |
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING |
-  ENTITY_CHANGED_FACTORY;
+  ENTITY_CHANGED_FACTORY |
+  ENTITY_CHANGED_SUSPENSION;
 
 /** Entities that have already had their static (never-changes-after-
  *  spawn) fields shipped at least once over this session's protocol.
@@ -424,7 +444,8 @@ function getChangedFields(
   let mask = 0;
 
   if (Math.abs(next.x - prev.x) > posTh ||
-      Math.abs(next.y - prev.y) > posTh) {
+      Math.abs(next.y - prev.y) > posTh ||
+      Math.abs(next.z - prev.z) > posTh) {
     mask |= ENTITY_CHANGED_POS;
   }
   if (Math.abs(next.rotation - prev.rotation) > rotPosTh) {
@@ -433,8 +454,14 @@ function getChangedFields(
 
   if (entity.unit) {
     if (Math.abs(next.velocityX - prev.velocityX) > velTh ||
-        Math.abs(next.velocityY - prev.velocityY) > velTh) {
+        Math.abs(next.velocityY - prev.velocityY) > velTh ||
+        Math.abs(next.velocityZ - prev.velocityZ) > velTh) {
       mask |= ENTITY_CHANGED_VEL;
+    }
+    if (Math.abs(next.movementAccelX - prev.movementAccelX) > velTh ||
+        Math.abs(next.movementAccelY - prev.movementAccelY) > velTh ||
+        Math.abs(next.movementAccelZ - prev.movementAccelZ) > velTh) {
+      mask |= ENTITY_CHANGED_MOVEMENT_ACCEL;
     }
     if (next.hp !== prev.hp) {
       mask |= ENTITY_CHANGED_HP;
@@ -511,25 +538,22 @@ function getChangedFields(
 function captureEntityState(entity: Entity, prev: PrevEntityState): void {
   prev.x = entity.transform.x;
   prev.y = entity.transform.y;
+  prev.z = entity.transform.z;
   prev.rotation = entity.transform.rotation;
   prev.velocityX = entity.unit?.velocityX ?? 0;
   prev.velocityY = entity.unit?.velocityY ?? 0;
+  prev.velocityZ = entity.unit?.velocityZ ?? 0;
+  prev.movementAccelX = entity.unit?.movementAccelX ?? 0;
+  prev.movementAccelY = entity.unit?.movementAccelY ?? 0;
+  prev.movementAccelZ = entity.unit?.movementAccelZ ?? 0;
   prev.hp = entity.unit?.hp ?? entity.building?.hp ?? 0;
-  {
-    const actions = entity.unit?.actions;
-    const count = actions?.length ?? 0;
-    prev.actionCount = count;
-    let hash = count;
-    if (actions) {
-      for (let i = 0; i < count; i++) {
-        const a = actions[i];
-        hash = (hash * 31 + a.x * 1000) | 0;
-        hash = (hash * 31 + a.y * 1000) | 0;
-        hash = (hash * 31 + (a.z !== undefined ? a.z * 1000 : 0)) | 0;
-        hash = (hash * 31 + a.type.charCodeAt(0)) | 0;
-      }
-    }
-    prev.actionHash = hash;
+  if (entity.unit) {
+    assertUnitActionHashSynced(entity.unit, `captureEntityState(${entity.id})`);
+    prev.actionCount = entity.unit.actions.length;
+    prev.actionHash = entity.unit.actionHash;
+  } else {
+    prev.actionCount = 0;
+    prev.actionHash = 0;
   }
 
   prev.isEngagedBits = 0;
@@ -572,9 +596,14 @@ function captureEntityState(entity: Entity, prev: PrevEntityState): void {
 function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {
   to.x = from.x;
   to.y = from.y;
+  to.z = from.z;
   to.rotation = from.rotation;
   to.velocityX = from.velocityX;
   to.velocityY = from.velocityY;
+  to.velocityZ = from.velocityZ;
+  to.movementAccelX = from.movementAccelX;
+  to.movementAccelY = from.movementAccelY;
+  to.movementAccelZ = from.movementAccelZ;
   to.hp = from.hp;
   to.actionCount = from.actionCount;
   to.actionHash = from.actionHash;
@@ -1364,7 +1393,9 @@ function serializeEntity(
       ENTITY_CHANGED_BUILDING |
       // Smoothed surface normal can drift past wire precision while
       // POS holds steady (EMA still settling, host tilt-mode flip).
-      ENTITY_CHANGED_NORMAL;
+      ENTITY_CHANGED_NORMAL |
+      ENTITY_CHANGED_SUSPENSION |
+      ENTITY_CHANGED_MOVEMENT_ACCEL;
     const hasUnitFields = isFull || (changedFields! & unitFieldMask);
 
     if (hasUnitFields) {
@@ -1402,6 +1433,16 @@ function serializeEntity(
         u.velocity.z = qVel(entity.unit.velocityZ ?? 0);
       }
 
+      if (isFull || (changedFields! & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
+        const accel = pool.unitMovementAccel;
+        accel.x = qVel(entity.unit.movementAccelX ?? 0);
+        accel.y = qVel(entity.unit.movementAccelY ?? 0);
+        accel.z = qVel(entity.unit.movementAccelZ ?? 0);
+        u.movementAccel = accel;
+      } else {
+        u.movementAccel = undefined;
+      }
+
       // Smoothed surface normal — same shape as velocity. Rides POS
       // when the unit moved AND a dedicated NORMAL bit when the EMA
       // is still settling on a stationary unit (or the host flipped
@@ -1417,6 +1458,26 @@ function serializeEntity(
         u.surfaceNormal.nz = qNormal(sn.nz);
       } else {
         u.surfaceNormal = undefined;
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_SUSPENSION)) {
+        const suspension = entity.unit.suspension;
+        if (suspension) {
+          const out = pool.unitSuspension;
+          out.offset.x = qSuspension(suspension.offsetX);
+          out.offset.y = qSuspension(suspension.offsetY);
+          out.offset.z = qSuspension(suspension.offsetZ);
+          out.velocity.x = qVel(suspension.velocityX);
+          out.velocity.y = qVel(suspension.velocityY);
+          out.velocity.z = qVel(suspension.velocityZ);
+          out.jumpActive = suspension.jumpActive ? true : undefined;
+          out.legContact = suspension.legContact ? true : undefined;
+          u.suspension = out;
+        } else {
+          u.suspension = undefined;
+        }
+      } else {
+        u.suspension = undefined;
       }
 
       // HP

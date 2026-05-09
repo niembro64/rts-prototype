@@ -11,6 +11,7 @@ import type { TurretRangeOverrides } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import type { ResourceCost } from './economyTypes';
 import type { ForceFieldBarrierRatioConfig } from './shotTypes';
+import type { UnitJumpConfig, UnitSuspensionConfig } from './locomotionTypes';
 
 // Re-export for consumers
 export type {
@@ -227,6 +228,10 @@ export type LocomotionPhysics = {
    *  air resistance. Wheels have low traction, treads middle, legs
    *  high. */
   traction: number;
+  /** Optional force-driven jump actuator layered on top of suspension.
+   *  Belongs on locomotion because the actuator is a property of the
+   *  legs/wheels/treads, not the chassis. */
+  jump?: UnitJumpConfig;
 };
 
 export type LocomotionBlueprint =
@@ -304,6 +309,10 @@ export type UnitBlueprint = {
    *  custom rig rather than the logical bodyShape segment. */
   legAttachHeightFrac?: number;
   locomotion: LocomotionBlueprint;
+  /** Optional chassis-vs-locomotion spring. When omitted the unit
+   *  body stays rigidly attached to locomotion, matching legacy
+   *  behavior. */
+  suspension?: UnitSuspensionConfig;
   builder?: { buildRange: number; constructionRate: number };
   dgun?: { turretId: TurretId; energyCost: number };
   deathSound?: SoundEntry;

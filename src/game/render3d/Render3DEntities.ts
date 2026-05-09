@@ -411,6 +411,21 @@ export class Render3DEntities {
       const vy = unit.velocityY ?? 0;
       const vz = unit.velocityZ ?? 0;
       if (vx * vx + vy * vy + vz * vz > UNIT_DETAIL_VELOCITY_EPSILON_SQ) return true;
+      const suspension = unit.suspension;
+      if (suspension) {
+        const sx = suspension.offsetX;
+        const sy = suspension.offsetY;
+        const sz = suspension.offsetZ;
+        const svx = suspension.velocityX;
+        const svy = suspension.velocityY;
+        const svz = suspension.velocityZ;
+        if (
+          sx * sx + sy * sy + sz * sz > UNIT_DETAIL_TRANSFORM_EPSILON * UNIT_DETAIL_TRANSFORM_EPSILON ||
+          svx * svx + svy * svy + svz * svz > UNIT_DETAIL_VELOCITY_EPSILON_SQ
+        ) {
+          return true;
+        }
+      }
     }
     const turrets = entity.combat?.turrets;
     if (turrets?.some((t) => !t.config.visualOnly && (t.state === 'tracking' || t.state === 'engaged' || t.target !== null))) {
@@ -513,6 +528,20 @@ export class Render3DEntities {
     this.unitDetailInstances.syncShellColors(e, m);
   }
 
+  private updateUnitLiftGroupPose(m: EntityMesh, e: Entity): void {
+    if (!m.liftGroup) return;
+    const suspension = e.unit?.suspension;
+    if (!suspension) {
+      m.liftGroup.position.set(0, m.chassisLift ?? 0, 0);
+      return;
+    }
+    m.liftGroup.position.set(
+      suspension.offsetX,
+      (m.chassisLift ?? 0) + suspension.offsetZ,
+      suspension.offsetY,
+    );
+  }
+
   private updateUnits(): void {
     const unitRenderMode = this.lod.gfx.unitRenderMode;
 
@@ -567,6 +596,7 @@ export class Render3DEntities {
       if (existing) {
         existing.group.position.set(tx, getUnitGroundZ(e), ty);
         if (existing.yawGroup) existing.yawGroup.rotation.set(0, -tRot, 0);
+        this.updateUnitLiftGroupPose(existing, e);
         // Shell-state visual — two paths must agree:
         //   - applyShellOverride handles per-Mesh chassis fallbacks
         //     and treads (objects that own their own material).
@@ -661,7 +691,7 @@ export class Render3DEntities {
         // diameter for wheels, and a small per-radius lift for legs.
         const liftGroup = new THREE.Group();
         liftGroup.userData.entityId = e.id;
-        liftGroup.position.y = bp ? getChassisLift(bp, radius) : 0;
+        liftGroup.position.set(0, bp ? getChassisLift(bp, radius) : 0, 0);
         yawGroup.add(liftGroup);
 
         const chassis = new THREE.Group();
@@ -818,6 +848,7 @@ export class Render3DEntities {
         if (smoothChassisSlots) {
           this.unitDetailInstances.registerSmoothChassisSlots(e.id, smoothChassisSlots);
         }
+        this.updateUnitLiftGroupPose(m, e);
         // (polyChassisSlot is already registered in the pool's slots
         // map by allocPolyChassisSlot above — no extra bookkeeping
         // needed here.)
@@ -1006,8 +1037,10 @@ export class Render3DEntities {
         .copy(m.group.quaternion)
         .multiply(this._smoothYawQuat);
       {
-        const lift = m.chassisLift ?? 0;
-        this._smoothLiftOffset.set(0, lift, 0).applyQuaternion(this._smoothParentQuat);
+        const liftPos = m.liftGroup?.position;
+        this._smoothLiftOffset
+          .set(liftPos?.x ?? 0, liftPos?.y ?? (m.chassisLift ?? 0), liftPos?.z ?? 0)
+          .applyQuaternion(this._smoothParentQuat);
         this._smoothLiftedPos.copy(m.group.position).add(this._smoothLiftOffset);
       }
       // Unscaled prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`.
@@ -1166,7 +1199,7 @@ export class Render3DEntities {
           tm.headSlot !== undefined
           && tm.headRadius !== undefined
         ) {
-          const lift = m.chassisLift ?? 0;
+          const liftPos = m.liftGroup?.position;
           // parentQuat is already cached for this unit. Compute the
           // turret-head position by rotating its chassis-local offset
           // through parentQuat and adding to group.position. Note the
@@ -1175,9 +1208,9 @@ export class Render3DEntities {
           // explicitly here so we go from raw m.group.position, not
           // from liftedPos, to avoid double-counting lift.
           this._smoothPartLocalPos.set(
-            tm.root.position.x,
-            lift + tm.root.position.y + tm.headRadius,
-            tm.root.position.z,
+            (liftPos?.x ?? 0) + tm.root.position.x,
+            (liftPos?.y ?? (m.chassisLift ?? 0)) + tm.root.position.y + tm.headRadius,
+            (liftPos?.z ?? 0) + tm.root.position.z,
           );
           this._smoothPartLocalPos.applyQuaternion(this._smoothParentQuat);
           this._smoothLiftedPos

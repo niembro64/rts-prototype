@@ -11,7 +11,7 @@ import type { ShotBlueprint } from './types';
 
 const BEAM_WIDTH = 6;
 const BEAM_WIDTH_MEGA = 16;
-const BEAM_RECOIL_AND_HIT_FORCE = 3000;
+const BEAM_RECOIL_AND_HIT_FORCE = 200;
 const FIRE_EXPLOSION_RADIUS_MULTIPLIER = 3;
 const BEAM_DAMAGE_SPHERE_RADIUS = BEAM_WIDTH * 2;
 const BEAM_DAMAGE_SPHERE_RADIUS_MEGA = BEAM_WIDTH_MEGA * 2;
@@ -160,18 +160,6 @@ export const SHOT_BLUEPRINTS = {
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,
   },
-  laserShot: {
-    type: 'laser',
-    id: 'laserShot',
-    dps: 30,
-    force: BEAM_RECOIL_AND_HIT_FORCE,
-    recoil: BEAM_RECOIL_AND_HIT_FORCE,
-    radius: BEAM_WIDTH / 2,
-    width: BEAM_WIDTH,
-    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS },
-    duration: 300,
-    hitSound: AUDIO.event.hit.laserShot,
-  },
   beamShot: {
     type: 'beam',
     id: 'beamShot',
@@ -192,7 +180,7 @@ export const SHOT_BLUEPRINTS = {
     id: 'megaBeamShot',
     dps: 300,
     force: BEAM_RECOIL_AND_HIT_FORCE * 10,
-    recoil: BEAM_RECOIL_AND_HIT_FORCE,
+    recoil: BEAM_RECOIL_AND_HIT_FORCE * 10,
     radius: BEAM_WIDTH_MEGA / 2,
     width: BEAM_WIDTH_MEGA,
     damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS_MEGA },
@@ -209,7 +197,7 @@ export const SHOT_BLUEPRINTS = {
     id: 'towerBeamShot',
     dps: 3000,
     force: BEAM_RECOIL_AND_HIT_FORCE * 10,
-    recoil: BEAM_RECOIL_AND_HIT_FORCE,
+    recoil: BEAM_RECOIL_AND_HIT_FORCE * 10,
     radius: BEAM_WIDTH_MEGA / 2,
     width: BEAM_WIDTH_MEGA,
     damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS_MEGA },

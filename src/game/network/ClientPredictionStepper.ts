@@ -220,7 +220,14 @@ export class ClientPredictionStepper {
 
       const target = serverTargets.get(id);
       if (entity.unit) {
-        applyClientUnitVisualPrediction({ entity, target, deltaMs, preset });
+        applyClientUnitVisualPrediction({
+          entity,
+          target,
+          deltaMs,
+          preset,
+          mapWidth: getMapWidth(),
+          mapHeight: getMapHeight(),
+        });
         dirtyUnitRenderIds.add(id);
       }
       if (entity.combat && entity.combat.turrets.length > 0) {

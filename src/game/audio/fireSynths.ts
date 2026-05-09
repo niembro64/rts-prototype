@@ -35,12 +35,6 @@ export function grenade(tk: AudioToolkit, speed: number, vol: number): void {
   playTone(tk, 'triangle', 200 * speed, 80 * speed, 0.12 / speed, 0.3 * vol, 0.4 * vol);
 }
 
-// LaserGun - electric zap + crackle
-export function laserGun(tk: AudioToolkit, speed: number, vol: number): void {
-  playTone(tk, 'sawtooth', 2000 * speed, 500 * speed, 0.1 / speed, 0.2 * vol, 0.25 * vol);
-  playNoiseBurst(tk, 0.15 / speed, 'highpass', 3000, 1, 0.15 * vol, 0.2 * vol, 0.15 / speed);
-}
-
 // Burst rifle - quick noise tap
 export function burstRifle(tk: AudioToolkit, speed: number, vol: number): void {
   playNoiseBurst(tk, 0.04 / speed, 'bandpass', 2000 * speed, 1.5, 0.2 * vol, 0.3 * vol, 0.04 / speed);
@@ -69,7 +63,6 @@ export const FIRE_SYNTHS: Record<string, (tk: AudioToolkit, speed: number, vol: 
   'cannon': cannon,
   'shotgun': shotgun,
   'grenade': grenade,
-  'laserGun': laserGun,
   'burst-rifle': burstRifle,
   'insect': insect,
   'force-field': forceFieldFire,

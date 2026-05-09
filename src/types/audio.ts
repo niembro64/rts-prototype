@@ -6,7 +6,6 @@ export type SynthId =
   | 'cannon'
   | 'shotgun'
   | 'grenade'
-  | 'laserGun'
   | 'burst-rifle'
   | 'force-field'
   | 'insect'

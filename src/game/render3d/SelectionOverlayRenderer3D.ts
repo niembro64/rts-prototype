@@ -9,7 +9,12 @@ import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTransformCosSin } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { TurretMesh } from './TurretMesh3D';
-import type { EntityMesh, RadiusRingMeshes } from './EntityMesh3D';
+import type { EntityMesh, RangeRingMesh, RadiusRingMeshes } from './EntityMesh3D';
+import {
+  createClosedRibbonGeometry,
+  writeCircleRibbonGeometry,
+  type ClosedRibbonGeometry,
+} from './GroundCircleLine3D';
 
 const RANGE_CIRCLE_SEGMENTS = 96;
 const RANGE_CIRCLE_GROUND_LIFT = 6;
@@ -27,31 +32,14 @@ export type OverlayEntityMesh = Pick<
   | 'rangeRingsVisible'
 >;
 
-function makeRangeCircleGeometry(): THREE.BufferGeometry {
-  const positions = new Float32Array(RANGE_CIRCLE_SEGMENTS * 2 * 3);
-  let offset = 0;
-  for (let i = 0; i < RANGE_CIRCLE_SEGMENTS; i++) {
-    const a0 = (i / RANGE_CIRCLE_SEGMENTS) * Math.PI * 2;
-    const a1 = ((i + 1) / RANGE_CIRCLE_SEGMENTS) * Math.PI * 2;
-    positions[offset++] = Math.cos(a0);
-    positions[offset++] = 0;
-    positions[offset++] = Math.sin(a0);
-    positions[offset++] = Math.cos(a1);
-    positions[offset++] = 0;
-    positions[offset++] = Math.sin(a1);
-  }
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  return geom;
-}
-
-function makeRangeCircleMaterial(color: number, opacity: number): THREE.LineBasicMaterial {
-  return new THREE.LineBasicMaterial({
+function makeRangeCircleMaterial(color: number, opacity: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
     color,
     transparent: true,
     opacity,
     depthWrite: false,
     depthTest: false,
+    side: THREE.DoubleSide,
   });
 }
 
@@ -61,7 +49,6 @@ export class SelectionOverlayRenderer3D {
   private readonly radiusSphereGeom: THREE.BufferGeometry;
 
   private readonly ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
-  private readonly rangeCircleGeom = makeRangeCircleGeometry();
   private readonly radiusMatScale = new THREE.LineBasicMaterial({
     color: 0x44ffff, transparent: true, opacity: 0.7, depthWrite: false,
   });
@@ -152,7 +139,12 @@ export class SelectionOverlayRenderer3D {
     const showTrackAcquire = getRangeToggle('trackAcquire');
     const showTrackRelease = getRangeToggle('trackRelease');
     const showEngageAcquire = getRangeToggle('engageAcquire');
-    const showEngageRelease = getRangeToggle('engageRelease');
+    const showSingleSelectedUnitTurretCircle =
+      entity.unit !== undefined &&
+      entity.selectable?.selected === true &&
+      this.clientViewState.getSelectedIds().size === 1;
+    const showEngageRelease =
+      getRangeToggle('engageRelease') || showSingleSelectedUnitTurretCircle;
     const showEngageMinAcquire = getRangeToggle('engageMinAcquire');
     const showEngageMinRelease = getRangeToggle('engageMinRelease');
     const showBuild = getRangeToggle('build');
@@ -232,13 +224,13 @@ export class SelectionOverlayRenderer3D {
     const builder = entity.builder;
     if (showBuild && builder) {
       if (!m.buildRing) {
-        m.buildRing = new THREE.LineSegments(this.rangeCircleGeom, this.ringMatBuild);
+        m.buildRing = this.createRangeCircle(this.ringMatBuild);
         m.buildRing.renderOrder = RANGE_CIRCLE_RENDER_ORDER;
         this.world.add(m.buildRing);
       }
       m.buildRing.visible = true;
       m.buildRing.position.set(ux, unitGroundZ, uy);
-      m.buildRing.scale.setScalar(builder.buildRange);
+      this.writeRangeCircle(m.buildRing, builder.buildRange);
     } else if (m.buildRing) {
       m.buildRing.visible = false;
     }
@@ -246,22 +238,25 @@ export class SelectionOverlayRenderer3D {
   }
 
   removeWorldParentedOverlays(m: OverlayEntityMesh): void {
-    if (m.buildRing) this.world.remove(m.buildRing);
+    if (m.buildRing) {
+      this.removeRangeCircle(m.buildRing);
+      m.buildRing = undefined;
+    }
     for (const tm of m.turrets) {
       if (!tm.rangeRings) continue;
-      if (tm.rangeRings.trackAcquire)     this.world.remove(tm.rangeRings.trackAcquire);
-      if (tm.rangeRings.trackRelease)     this.world.remove(tm.rangeRings.trackRelease);
-      if (tm.rangeRings.engageAcquire)    this.world.remove(tm.rangeRings.engageAcquire);
-      if (tm.rangeRings.engageRelease)    this.world.remove(tm.rangeRings.engageRelease);
-      if (tm.rangeRings.engageMinAcquire) this.world.remove(tm.rangeRings.engageMinAcquire);
-      if (tm.rangeRings.engageMinRelease) this.world.remove(tm.rangeRings.engageMinRelease);
+      if (tm.rangeRings.trackAcquire)     this.removeRangeCircle(tm.rangeRings.trackAcquire);
+      if (tm.rangeRings.trackRelease)     this.removeRangeCircle(tm.rangeRings.trackRelease);
+      if (tm.rangeRings.engageAcquire)    this.removeRangeCircle(tm.rangeRings.engageAcquire);
+      if (tm.rangeRings.engageRelease)    this.removeRangeCircle(tm.rangeRings.engageRelease);
+      if (tm.rangeRings.engageMinAcquire) this.removeRangeCircle(tm.rangeRings.engageMinAcquire);
+      if (tm.rangeRings.engageMinRelease) this.removeRangeCircle(tm.rangeRings.engageMinRelease);
+      tm.rangeRings = undefined;
     }
     m.ring = undefined;
   }
 
   dispose(): void {
     this.ringGeom.dispose();
-    this.rangeCircleGeom.dispose();
     this.radiusMatScale.dispose();
     this.radiusMatShot.dispose();
     this.radiusMatPush.dispose();
@@ -329,22 +324,41 @@ export class SelectionOverlayRenderer3D {
     want: boolean,
     cx: number, cy: number, cz: number,
     radius: number | null,
-    mat: THREE.LineBasicMaterial,
+    mat: THREE.MeshBasicMaterial,
   ): void {
     const rings = tm.rangeRings ?? (tm.rangeRings = {});
     let ring = rings[key];
     if (want && radius !== null) {
       if (!ring) {
-        ring = new THREE.LineSegments(this.rangeCircleGeom, mat);
+        ring = this.createRangeCircle(mat);
         ring.renderOrder = RANGE_CIRCLE_RENDER_ORDER;
         this.world.add(ring);
         rings[key] = ring;
       }
       ring.visible = true;
       ring.position.set(cx, cz, cy);
-      ring.scale.setScalar(radius);
+      this.writeRangeCircle(ring, radius);
     } else if (ring) {
       ring.visible = false;
     }
+  }
+
+  private createRangeCircle(mat: THREE.MeshBasicMaterial): RangeRingMesh {
+    const ribbon = createClosedRibbonGeometry(RANGE_CIRCLE_SEGMENTS);
+    const mesh = new THREE.Mesh(ribbon.geometry, mat) as RangeRingMesh;
+    mesh.userData.ribbon = ribbon;
+    mesh.frustumCulled = false;
+    return mesh;
+  }
+
+  private writeRangeCircle(mesh: RangeRingMesh, radius: number): void {
+    if (mesh.userData.radius === radius) return;
+    mesh.userData.radius = radius;
+    writeCircleRibbonGeometry(mesh.userData.ribbon as ClosedRibbonGeometry, radius);
+  }
+
+  private removeRangeCircle(mesh: RangeRingMesh): void {
+    this.world.remove(mesh);
+    mesh.geometry.dispose();
   }
 }

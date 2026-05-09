@@ -1,7 +1,7 @@
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
-import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, RepairCommand, AttackCommand } from './commands';
+import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, JumpCommand, RepairCommand, AttackCommand } from './commands';
 import type { Entity, UnitAction } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
@@ -16,6 +16,8 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
+import { requestUnitJump } from './unitSuspension';
+import { pushUnitAction, setUnitActions } from './unitActions';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMuzzleVelocity = { x: 0, y: 0, z: 0 };
@@ -61,6 +63,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'fireDGun':
       executeFireDGunCommand(ctx, command);
+      break;
+    case 'jump':
+      executeJumpCommand(ctx, command);
       break;
     case 'repair':
       executeRepairCommand(ctx, command);
@@ -379,6 +384,14 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   ctx.pendingSimEvents.push(dgunSimEvent);
 }
 
+function executeJumpCommand(ctx: CommandContext, command: JumpCommand): void {
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (!entity?.unit) continue;
+    requestUnitJump(entity.unit);
+  }
+}
+
 function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
   const target = ctx.world.getEntity(command.targetId);
@@ -454,11 +467,11 @@ export function addActionToUnit(entity: Entity, action: UnitAction, queue: boole
 
   if (!queue) {
     // Replace all actions
-    entity.unit.actions = [action];
+    setUnitActions(entity.unit, [action]);
     entity.unit.patrolStartIndex = null;
   } else {
     // Add to existing actions
-    entity.unit.actions.push(action);
+    pushUnitAction(entity.unit, action);
   }
 
   // Update patrol start index if this is a patrol action

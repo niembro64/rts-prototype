@@ -40,7 +40,6 @@ const deathSounds = dedup(AUDIO.event.death);
 const rawSynths = [
   { name: 'burst-rifle', category: 'fire' },
   { name: 'cannon', category: 'fire' },
-  { name: 'laserGun', category: 'fire' },
   { name: 'laser-zap', category: 'fire' },
   { name: 'force-field', category: 'fire' },
   { name: 'minigun', category: 'fire' },

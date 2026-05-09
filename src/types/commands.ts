@@ -12,6 +12,7 @@ export type CommandType =
   | 'setRallyPoint'
   | 'setFactoryWaypoints'
   | 'fireDGun'
+  | 'jump'
   | 'repair'
   | 'attack'
   | 'setSnapshotRate'
@@ -112,6 +113,11 @@ export type FireDGunCommand = BaseCommand & {
   targetZ?: number;
 };
 
+export type JumpCommand = BaseCommand & {
+  type: 'jump';
+  entityIds: EntityId[];
+};
+
 export type RepairCommand = BaseCommand & {
   type: 'repair';
   commanderId: EntityId;
@@ -203,6 +209,7 @@ export type Command =
   | SetRallyPointCommand
   | SetFactoryWaypointsCommand
   | FireDGunCommand
+  | JumpCommand
   | RepairCommand
   | AttackCommand
   | SetSnapshotRateCommand

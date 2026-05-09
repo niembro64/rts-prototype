@@ -108,6 +108,12 @@ export function transformChassisToWorld(
   mapHeight: number,
   out: { x: number; y: number; z: number },
 ): void {
+  const suspension = entity.unit?.suspension;
+  if (suspension) {
+    cx += suspension.offsetX;
+    cy += suspension.offsetZ;
+    cz += suspension.offsetY;
+  }
   const rot = entity.transform.rotation;
   const cosR = Math.cos(rot);
   const sinR = Math.sin(rot);

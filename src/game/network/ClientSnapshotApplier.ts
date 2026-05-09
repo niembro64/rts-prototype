@@ -5,17 +5,21 @@ import {
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_MOVEMENT_ACCEL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_SUSPENSION,
   codeToActionType,
   codeToBuildingType,
   codeToTurretState,
   codeToUnitType,
 } from '../../types/network';
 import { isFiniteNumber } from '../math';
+import { refreshUnitActionHash } from '../sim/unitActions';
 import { getUnitLocomotion } from '../sim/blueprints';
 import {
   applyNetworkTurretNonVisualState,
+  applyNetworkSuspensionState,
   refreshBuildingTurretsFromNetwork,
   refreshUnitTurretsFromNetwork,
 } from './helpers';
@@ -67,6 +71,15 @@ export function snapClientNonVisualState(
       }
     }
     if (isFiniteNumber(su.mass)) entity.unit.mass = su.mass;
+    if (isFull || cf! & ENTITY_CHANGED_MOVEMENT_ACCEL) {
+      const accel = su.movementAccel;
+      entity.unit.movementAccelX = accel?.x ?? 0;
+      entity.unit.movementAccelY = accel?.y ?? 0;
+      entity.unit.movementAccelZ = accel?.z ?? 0;
+    }
+    if (isFull || cf! & ENTITY_CHANGED_SUSPENSION) {
+      applyNetworkSuspensionState(entity, su.suspension);
+    }
 
     if (isFull && Array.isArray(su.turrets)) {
       refreshUnitTurretsFromNetwork(
@@ -105,6 +118,7 @@ export function snapClientNonVisualState(
           });
         }
       }
+      refreshUnitActionHash(entity.unit);
     }
 
     if (su.turrets && su.turrets.length > 0 && entity.combat) {

@@ -442,6 +442,9 @@ export class Input3DManager {
       case 'm': this.setWaypointMode('move'); break;
       case 'f': this.setWaypointMode('fight'); break;
       case 'h': this.setWaypointMode('patrol'); break;
+      case 'j':
+        this.enqueueJumpCommand();
+        break;
       case 'b':
         if (!this.hasSelectedCommander()) break;
         if (!this.mode.isInBuildMode) this.mode.enterBuildMode(getDefaultBuildModeBuildingType());
@@ -461,6 +464,22 @@ export class Input3DManager {
         );
         break;
     }
+  }
+
+  private enqueueJumpCommand(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length === 0) return;
+    const entityIds: EntityId[] = [];
+    for (const unit of selectedUnits) {
+      if (!unit.unit?.suspension?.jump) continue;
+      entityIds.push(unit.id);
+    }
+    if (entityIds.length === 0) return;
+    this.localCommandQueue.enqueue({
+      type: 'jump',
+      tick: this.context.getTick(),
+      entityIds,
+    });
   }
 
   setEntitySource(source: EntitySource): void {

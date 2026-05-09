@@ -16,7 +16,7 @@ import type {
 import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import type { EntityId, PlayerId } from './entityTypes';
-import type { UnitLocomotion } from './locomotionTypes';
+import type { UnitLocomotion, UnitSuspensionState } from './locomotionTypes';
 import type { ResourceCost } from './economyTypes';
 import type {
   ActiveProjectileShot,
@@ -154,15 +154,26 @@ export type Unit = {
   hp: number;
   maxHp: number;
   actions: UnitAction[];
+  actionHash: number;
   patrolStartIndex: number | null;
   velocityX?: number;
   velocityY?: number;
   velocityZ?: number;
+  /** Authoritative movement/traction acceleration applied this tick,
+   *  excluding gravity, terrain spring, air/ground damping, jump
+   *  actuation, and transient external forces. Clients use this as the
+   *  powered-movement input for force-based visual prediction. */
+  movementAccelX?: number;
+  movementAccelY?: number;
+  movementAccelZ?: number;
   /** Desired thrust direction for this tick. Magnitude is irrelevant
    *  (applyForces normalizes), but the action system encodes
    *  "stationary" as (0, 0). */
   thrustDirX?: number;
   thrustDirY?: number;
+  /** Optional runtime spring state for the visible chassis relative
+   *  to the locomotion anchor. Omitted means rigid legacy attachment. */
+  suspension?: UnitSuspensionState;
   mirrorPanels: CachedMirrorPanel[];
   mirrorBoundRadius: number;
   /** Per-unit smoothed surface normal at the unit's footprint. The

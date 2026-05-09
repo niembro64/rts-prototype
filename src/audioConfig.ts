@@ -94,11 +94,6 @@ export const AUDIO = {
       },
       cannonTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 0.8 },
       mortarTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 1.0 },
-      laserTurret: {
-        synth: 'laserGun' as SynthId,
-        volume: 0.03,
-        playSpeed: 0.6,
-      },
       ..._beamFire,
       forceTurret: {
         synth: 'force-field' as SynthId,
@@ -126,7 +121,6 @@ export const AUDIO = {
       mortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.1 },
       heavyShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.05 },
       // hippoShot: { synth: 'heavy' as SynthId, volume: 0.7, playSpeed: 0.15 },
-      laserShot: { synth: 'sizzle' as SynthId, volume: 1.0, playSpeed: 1.0 },
       ..._beamHit,
       disruptorShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 1.0 },
     } satisfies Partial<Record<ShotId, SoundEntry>>,

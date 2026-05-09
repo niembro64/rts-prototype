@@ -1,4 +1,5 @@
 import type { LocomotionBlueprint, LocomotionPhysics } from '@/types/blueprints';
+import type { UnitJumpConfig } from '@/types/locomotionTypes';
 import type { UnitLocomotion } from './types';
 
 export const LOCOMOTION_TRACTION = {
@@ -18,11 +19,13 @@ function assertPositiveFinite(label: string, value: number): void {
 export function createLocomotionPhysics(
   type: LocomotionType,
   driveForce: number,
+  jump?: UnitJumpConfig,
 ): LocomotionPhysics {
   assertPositiveFinite(`${type}.driveForce`, driveForce);
   return {
     driveForce,
     traction: LOCOMOTION_TRACTION[type],
+    jump,
   };
 }
 

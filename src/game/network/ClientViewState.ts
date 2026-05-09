@@ -3,7 +3,7 @@
  *
  * Uses EMA (Exponential Moving Average) + DEAD RECKONING for smooth rendering:
  * - On snapshot: store server's authoritative state as "targets"
- * - Every frame: dead-reckon using velocity, then drift toward server targets
+ * - Every frame: predict using velocity/acceleration, then drift toward server targets
  * - Smooth at any snapshot rate, from 1/sec to 60/sec
  */
 
@@ -26,6 +26,8 @@ import {
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_NORMAL,
+  ENTITY_CHANGED_SUSPENSION,
+  ENTITY_CHANGED_MOVEMENT_ACCEL,
 } from '../../types/network';
 
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
@@ -49,6 +51,9 @@ export type { PredictionLodContext, PredictionLodTier } from './ClientPrediction
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
+const SPRAY_TARGET_POOL_MIN_CAP = 16;
+const SPRAY_TARGET_POOL_ACTIVE_MULTIPLIER = 4;
+const CAPTURE_TILE_POOL_FALLBACK_CAP = 256;
 
 function captureHeightsEmpty(heights: NetworkCaptureTile['heights']): boolean {
   for (const _key in heights) return false;
@@ -266,9 +271,26 @@ export class ClientViewState {
     return target;
   }
 
-  private releaseSprayTargets(): void {
+  private getSprayTargetPoolLimit(activeCount: number): number {
+    return Math.max(
+      SPRAY_TARGET_POOL_MIN_CAP,
+      activeCount * SPRAY_TARGET_POOL_ACTIVE_MULTIPLIER,
+    );
+  }
+
+  private trimSprayTargetPool(activeCount: number): void {
+    const limit = this.getSprayTargetPoolLimit(activeCount);
+    if (this.sprayTargetPool.length > limit) {
+      this.sprayTargetPool.length = limit;
+    }
+  }
+
+  private releaseSprayTargets(nextActiveCount = 0): void {
+    const limit = this.getSprayTargetPoolLimit(nextActiveCount);
     for (let i = 0; i < this.sprayTargets.length; i++) {
-      this.sprayTargetPool.push(this.sprayTargets[i]);
+      if (this.sprayTargetPool.length < limit) {
+        this.sprayTargetPool.push(this.sprayTargets[i]);
+      }
     }
     this.sprayTargets.length = 0;
   }
@@ -318,7 +340,10 @@ export class ClientViewState {
         // the host flipped tilt mode). Otherwise the new target.normal
         // would land but applyClientUnitVisualPrediction's EMA — which
         // owns the entity.unit.surfaceNormal lerp — wouldn't run.
-        ENTITY_CHANGED_NORMAL
+        ENTITY_CHANGED_NORMAL |
+        // Suspension carries jump/contact state; a delta can be relevant
+        // to prediction even if the quantized body position did not move.
+        ENTITY_CHANGED_SUSPENSION
       )) !== 0 ||
       Array.isArray(server.unit?.turrets)
     ) {
@@ -408,6 +433,7 @@ export class ClientViewState {
     }
     if (state.buildability) {
       this.terrainBuildabilityGrid = state.buildability;
+      this.trimCaptureTilePool();
     }
     this.currentTick = state.tick;
     let cacheNeedsInvalidate = false;
@@ -483,6 +509,12 @@ export class ClientViewState {
             target.velocityY = v.y;
             target.velocityZ = v.z;
           }
+        }
+        if (isFull || cf! & ENTITY_CHANGED_MOVEMENT_ACCEL) {
+          const accel = netEntity.unit?.movementAccel;
+          target.movementAccelX = accel?.x ?? 0;
+          target.movementAccelY = accel?.y ?? 0;
+          target.movementAccelZ = accel?.z ?? 0;
         }
         this.copyNetworkTurretsToTarget(target, netEntity.unit?.turrets, isFull);
       }
@@ -603,9 +635,11 @@ export class ClientViewState {
     // Store spray targets for rendering. Reuse nested objects instead
     // of retaining pooled snapshot references or allocating a fresh
     // object tree on every construction snapshot.
-    this.releaseSprayTargets();
-    if (state.sprayTargets && state.sprayTargets.length > 0) {
-      const src = state.sprayTargets;
+    const snapshotSprayTargets = state.sprayTargets;
+    const nextSprayTargetCount = snapshotSprayTargets?.length ?? 0;
+    this.releaseSprayTargets(nextSprayTargetCount);
+    if (snapshotSprayTargets && snapshotSprayTargets.length > 0) {
+      const src = snapshotSprayTargets;
       for (let i = 0; i < src.length; i++) {
         const st = src[i];
         const target = this.acquireSprayTarget();
@@ -627,6 +661,7 @@ export class ClientViewState {
         this.sprayTargets.push(target);
       }
     }
+    this.trimSprayTargetPool(nextSprayTargetCount);
 
     // Store audio events for processing (reuse constant for empty case)
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
@@ -706,7 +741,7 @@ export class ClientViewState {
 
   /**
    * Called every frame. Two steps:
-   * 1. Dead-reckon: advance positions using velocity
+   * 1. Predict: advance positions using velocity/acceleration
    * 2. Drift: EMA blend position/velocity/rotation toward server targets
    */
   applyPrediction(deltaMs: number, lod?: PredictionLodContext): void {
@@ -971,7 +1006,22 @@ export class ClientViewState {
 
   private releaseCaptureTile(tile: NetworkCaptureTile): void {
     for (const key in tile.heights) delete tile.heights[key];
-    this.captureTilePool.push(tile);
+    if (this.captureTilePool.length < this.getCaptureTilePoolLimit()) {
+      this.captureTilePool.push(tile);
+    }
+  }
+
+  private getCaptureTilePoolLimit(): number {
+    const grid = this.terrainBuildabilityGrid;
+    if (!grid) return CAPTURE_TILE_POOL_FALLBACK_CAP;
+    return Math.max(0, grid.cellsX * grid.cellsY);
+  }
+
+  private trimCaptureTilePool(): void {
+    const limit = this.getCaptureTilePoolLimit();
+    if (this.captureTilePool.length > limit) {
+      this.captureTilePool.length = limit;
+    }
   }
 
   private clearCaptureTileMaps(): void {
@@ -1048,7 +1098,8 @@ export class ClientViewState {
     this.entities.clear();
     this.serverTargets.clear();
     this.projectileStore.clear();
-    this.sprayTargets = [];
+    this.releaseSprayTargets(0);
+    this.sprayTargetPool.length = 0;
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.gameOverWinnerId = null;
     this.selectionState.reset();
@@ -1057,6 +1108,7 @@ export class ClientViewState {
     this.gridCellSize = 0;
     this.terrainBuildabilityGrid = null;
     this.clearCaptureTileMaps();
+    this.captureTilePool.length = 0;
     this.captureFullDirty = true;
     this.captureTilesDirty = true;
     this.captureVersion++;

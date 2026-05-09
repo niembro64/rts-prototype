@@ -12,22 +12,24 @@
 //
 // Body shapes:
 //   sphere — units. Radius + center. Rolls-free movement on the
-//            horizontal plane, constrained vertically by gravity and
-//            the ground plane.
+//            horizontal plane. Gravity always pulls down; terrain
+//            only pushes back when the unit's authored locomotion
+//            ground point penetrates the terrain surface.
 //   cuboid — buildings. Axis-aligned 3D box, always static for now
 //            (rotating buildings aren't a thing in this game). Units
 //            push off the cuboid's surface instead of clipping through.
 //
 // Collision dimension by pair type:
-//   unit ↔ ground    — z axis only (sphere vs z=0 plane).
+//   unit ↔ ground    — soft spring along the terrain normal, measured
+//                      from the unit's locomotion ground point.
 //   unit ↔ building  — full 3D (sphere vs cuboid) so tall buildings
 //                      are blockers and short ones can be jumped over
-//                      by airborne units.
+//                      by units whose ground point is above terrain.
 //   unit ↔ unit      — full 3D sphere-vs-sphere push. Two units at
 //                      the same altitude behave exactly like 2D
 //                      horizontal jostle; two at different altitudes
 //                      separate along the combined 3D contact normal,
-//                      so an airborne unit directly above a ground
+//                      so an elevated unit directly above a ground
 //                      unit doesn't slam it sideways for no reason.
 //   projectile hits  — full 3D; handled OUTSIDE this engine by
 //                      DamageSystem / ProjectileCollisionHandler.
@@ -36,12 +38,15 @@
 // simulation's fixed tick rate. Integration order per step:
 //
 //   1. Apply accumulated external forces + gravity → velocity
-//   2. Air friction (per-body `frictionAir`) damps velocity toward zero
-//   3. Integrate position from velocity
-//   4. Resolve sphere-plane (ground) contacts
-//   5. Resolve sphere-cuboid (unit-vs-building) contacts
-//   6. Resolve sphere-sphere (unit-vs-unit) contacts, iterated
-//   7. Clear per-step force accumulator
+//   2. Terrain spring adds normal force when the locomotion ground
+//      point is below terrain height
+//   3. Air drag damps velocity equally on x/y/z
+//   4. Ground friction damps velocity tangent to the terrain only
+//      while the locomotion ground point is at/below terrain height
+//   5. Integrate position from velocity
+//   6. Resolve sphere-cuboid (unit-vs-building) contacts
+//   7. Resolve sphere-sphere (unit-vs-unit) contacts, iterated
+//   8. Clear per-step force accumulator
 //
 // Contact resolution is position-level (push bodies apart) + velocity
 // reflection with restitution. No constraint solver, no sleeping —
@@ -49,6 +54,12 @@
 // code small enough to audit at a glance.
 
 import { UNIT_MASS_MULTIPLIER, GRAVITY } from '../../config';
+import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
+import {
+  getUnitGroundFrictionDamp,
+  isUnitGroundPenetrationInContact,
+} from '../sim/unitGroundPhysics';
+import { advanceUnitMotionPhysicsMutable } from '../sim/unitMotionIntegration';
 import type { EntityId } from '../sim/types';
 
 // Pack a (cx, cy, cz) integer cell coordinate into a single numeric
@@ -82,9 +93,9 @@ export type Body3D = {
   shape: 'sphere' | 'cuboid';
   /** Sphere radius (shape='sphere' only). 0 for cuboids. */
   radius: number;
-  /** Center height above terrain when resting. For unit spheres this
-   *  is authored separately from `radius`; the radius still controls
-   *  collision/push volume. */
+  /** Authored body-center height above the locomotion ground point.
+   *  The ground spring compares `z - groundOffset` against terrain
+   *  height; `radius` remains the unit-vs-unit/building push volume. */
   groundOffset: number;
   /** Cuboid half-extents (shape='cuboid' only). */
   halfX: number;
@@ -92,8 +103,6 @@ export type Body3D = {
   halfZ: number;
   mass: number;
   invMass: number;
-  /** Per-body linear damping. 1.0 = halt instantly, 0 = never slow. */
-  frictionAir: number;
   /** Bounciness on contact (0..1). 0 = inelastic, 1 = full bounce. */
   restitution: number;
   isStatic: boolean;
@@ -101,18 +110,16 @@ export type Body3D = {
   ax: number;
   ay: number;
   az: number;
+  /** Per-step acceleration from forces that are allowed to launch a
+   *  penetrating ground point upward. Passive terrain contact does
+   *  not set this; jump actuation does. */
+  groundLaunchAx: number;
+  groundLaunchAy: number;
+  groundLaunchAz: number;
   /** Idle-body sleep state. Sleeping spheres skip integration and
    *  static/ground contact work until a force or collision wakes them. */
   sleeping: boolean;
   sleepTicks: number;
-  /** True when the body is mid-flight — i.e. has been launched off the
-   *  ground by a vertical impulse exceeding LAUNCH_VEL_THRESHOLD, or
-   *  is in the bouncing phase after landing. Airborne spheres run
-   *  free 3D Euler with gravity instead of the surface-stick path,
-   *  and never sleep. Set automatically by the integrator on launch
-   *  and cleared on landing; callers can also set it via
-   *  `launchBody()` for explicit pop-up effects. */
-  airborne: boolean;
   /** Debug / log tag — entity type or id for tracing. */
   label: string;
   /** Owning sim entity id for dynamic unit bodies. */
@@ -136,14 +143,6 @@ const SPHERE_ITERATIONS = 4;
 const SPHERE_ITERATIONS_MID_COUNT = 2500;
 const SPHERE_ITERATIONS_HIGH_COUNT = 6000;
 
-// Floor used by resolveGroundContacts as a safety net when something
-// (sphere-sphere push, sphere-cuboid push, map clamp) leaves a unit
-// below the surface — we snap up. Per-tick driving on slopes is
-// handled inside `integrate` via a hard surface-stick model that
-// keeps every grounded unit at z = surface every tick, so this
-// resolver no longer needs a tolerance band; it's a backstop.
-const GROUND_PENETRATION_EPS = 1e-3;
-
 // Broad-phase cell size for sphere-sphere contact checks. Two bodies
 // in the same cell or any of the 8 neighbors are pair-tested; pairs
 // further apart can't overlap as long as `radiusA + radiusB ≤
@@ -155,27 +154,15 @@ const CONTACT_CELL_SIZE = 100;
 const SLEEP_SPEED_SQ = 0.25;
 const SLEEP_ACCEL_SQ = 1e-6;
 const SLEEP_TICKS = 12;
-
-/** Outward-normal velocity (wu/sec) above which a grounded sphere
- *  switches to airborne. Per-tick gravity Δvz is GRAVITY/tickRate ≈
- *  6.7 wu/s on the negative side at 60 Hz; a positive 10 wu/s
- *  threshold sits comfortably above slope/numeric noise so normal
- *  hill climbing never spuriously launches, but a serious knockback
- *  impulse (explosion, gravity-gun pull) does. */
-const LAUNCH_VEL_THRESHOLD = 10;
-
-/** Minimum outward velocity along the ground normal at landing time
- *  for the body to bounce instead of settling. Below this the body
- *  is treated as inelastic (zeros the normal-component of velocity
- *  and rejoins the surface-stick path). Above it the body continues
- *  airborne with the post-restitution velocity. */
-const LANDING_BOUNCE_THRESHOLD = 5;
+const SLEEP_GROUND_PENETRATION_EPS = 0.1;
 
 export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
   private dynamicBodies: Body3D[] = [];
   private staticBodies: Body3D[] = [];
   private awakeDynamicBodyCount = 0;
+  private stepSyncEntityIds: EntityId[] = [];
+  private stepSyncEntityIdSet = new Set<EntityId>();
   private mapWidth: number;
   private mapHeight: number;
 
@@ -206,12 +193,9 @@ export class PhysicsEngine3D {
    *  the same output, so the client can run the same lookup. */
   private getGroundZ: (x: number, y: number) => number = () => 0;
 
-  /** Surface tangent normal at (x, y). Used by the ground-contact
-   *  resolver to project a grounded body's velocity onto the slope
-   *  tangent plane every tick — keeps units glued to the surface as
-   *  they climb / descend instead of bobbing or launching off slope
-   *  transitions. Defaults to flat-up (0, 0, 1) so unwired engines
-   *  stay correct on flat ground. */
+  /** Surface normal at (x, y). Used by the ground spring and tangent
+   *  friction so terrain response pushes out of the actual surface
+   *  rather than world-up. Defaults to flat-up (0, 0, 1). */
   private getGroundNormal: (x: number, y: number) => { nx: number; ny: number; nz: number } = () => ({ nx: 0, ny: 0, nz: 1 });
 
   constructor(mapWidth: number, mapHeight: number) {
@@ -219,10 +203,8 @@ export class PhysicsEngine3D {
     this.mapHeight = mapHeight;
   }
 
-  /** Wire in the terrain heightmap so the ground contact resolver
-   *  lifts units to the top face of their cube tile (and projects
-   *  their velocity onto the slope tangent plane). Call once after
-   *  constructing the engine. */
+  /** Wire in the terrain heightmap so spring/friction contact uses
+   *  the same triangle surface as rendering and client prediction. */
   setGroundLookup(
     getZ: (x: number, y: number) => number,
     getNormal: (x: number, y: number) => { nx: number; ny: number; nz: number },
@@ -231,8 +213,10 @@ export class PhysicsEngine3D {
     this.getGroundNormal = getNormal;
   }
 
-  /** Dynamic sphere body (units). Spawns at (x, y) on the ground,
-   *  z starts at the authored body-center height above terrain. */
+  /** Dynamic sphere body (units). By default spawns at (x, y) with the
+   *  authored body-center height above terrain; callers that already
+   *  have an entity transform can pass its z so visual and physics
+   *  initialization stay identical. */
   createUnitBody(
     x: number,
     y: number,
@@ -241,12 +225,16 @@ export class PhysicsEngine3D {
     mass: number,
     label: string,
     entityId?: EntityId,
+    initialZ?: number,
   ): Body3D {
     const physicsMass = mass * UNIT_MASS_MULTIPLIER;
+    const z = Number.isFinite(initialZ)
+      ? initialZ!
+      : this.getGroundZ(x, y) + bodyCenterHeight;
     const body: Body3D = {
       x,
       y,
-      z: this.getGroundZ(x, y) + bodyCenterHeight,
+      z,
       vx: 0,
       vy: 0,
       vz: 0,
@@ -258,15 +246,16 @@ export class PhysicsEngine3D {
       halfZ: 0,
       mass: physicsMass,
       invMass: 1 / physicsMass,
-      frictionAir: 0.15,
       restitution: 0.2,
       isStatic: false,
       ax: 0,
       ay: 0,
       az: 0,
+      groundLaunchAx: 0,
+      groundLaunchAy: 0,
+      groundLaunchAz: 0,
       sleeping: false,
       sleepTicks: 0,
-      airborne: false,
       label,
       entityId,
     };
@@ -304,15 +293,16 @@ export class PhysicsEngine3D {
       halfZ: depth / 2,
       mass: 0,
       invMass: 0,
-      frictionAir: 0,
       restitution: 0.1,
       isStatic: true,
       ax: 0,
       ay: 0,
       az: 0,
+      groundLaunchAx: 0,
+      groundLaunchAy: 0,
+      groundLaunchAz: 0,
       sleeping: false,
       sleepTicks: 0,
-      airborne: false,
       label,
     };
     this.addBody(body);
@@ -350,29 +340,42 @@ export class PhysicsEngine3D {
   }
 
   /** Apply a 3D force to a dynamic body. Accumulates until the next
-   *  step() call, then integrates as F/m → Δv. */
-  applyForce(body: Body3D, fx: number, fy: number, fz: number): void {
+   *  step() call, then integrates as F/m → Δv. Forces marked
+   *  `canLaunchFromGround` contributes its own outward velocity above
+   *  the passive ground-rebound cap; terrain support and ordinary
+   *  friction cannot. */
+  applyForce(
+    body: Body3D,
+    fx: number,
+    fy: number,
+    fz: number,
+    options?: { canLaunchFromGround?: boolean },
+  ): void {
     if (body.isStatic) return;
     if ((fx * fx + fy * fy + fz * fz) > 0) {
       this.wakeBody(body);
     }
-    body.ax += fx * body.invMass;
-    body.ay += fy * body.invMass;
-    body.az += fz * body.invMass;
+    const ax = fx * body.invMass;
+    const ay = fy * body.invMass;
+    const az = fz * body.invMass;
+    body.ax += ax;
+    body.ay += ay;
+    body.az += az;
+    if (options?.canLaunchFromGround) {
+      body.groundLaunchAx += ax;
+      body.groundLaunchAy += ay;
+      body.groundLaunchAz += az;
+    }
   }
 
-  /** Apply an instantaneous velocity impulse to a dynamic body and
-   *  immediately mark it airborne. Bypasses the surface-stick path so
-   *  even small lift impulses (below LAUNCH_VEL_THRESHOLD) take
-   *  effect. Use for explicit pop-up effects (gravity gun, trampoline,
-   *  scripted toss) where you want the unit to lift regardless of
-   *  whether the impulse exceeds the auto-launch threshold. */
+  /** Apply an instantaneous velocity impulse to a dynamic body.
+   *  The unified integrator decides ground response from the body's
+   *  ground-point penetration on the next step. */
   launchBody(body: Body3D, dvx: number, dvy: number, dvz: number): void {
     if (body.isStatic) return;
     body.vx += dvx;
     body.vy += dvy;
     body.vz += dvz;
-    body.airborne = true;
     this.wakeBody(body);
   }
 
@@ -382,6 +385,12 @@ export class PhysicsEngine3D {
       const body = this.dynamicBodies[i];
       if (body.sleeping || body.entityId === undefined) continue;
       out.push(body.entityId);
+    }
+  }
+
+  collectLastStepEntityIds(out: EntityId[]): void {
+    for (let i = 0; i < this.stepSyncEntityIds.length; i++) {
+      out.push(this.stepSyncEntityIds[i]);
     }
   }
 
@@ -408,6 +417,33 @@ export class PhysicsEngine3D {
     body.ax = 0;
     body.ay = 0;
     body.az = 0;
+    body.groundLaunchAx = 0;
+    body.groundLaunchAy = 0;
+    body.groundLaunchAz = 0;
+  }
+
+  private addStepSyncEntity(body: Body3D): void {
+    const id = body.entityId;
+    if (id === undefined || this.stepSyncEntityIdSet.has(id)) return;
+    this.stepSyncEntityIdSet.add(id);
+    this.stepSyncEntityIds.push(id);
+  }
+
+  private isStepTouchedBody(body: Body3D): boolean {
+    const id = body.entityId;
+    return id !== undefined && this.stepSyncEntityIdSet.has(id);
+  }
+
+  private shouldProcessBodyThisStep(body: Body3D): boolean {
+    return !body.sleeping || this.isStepTouchedBody(body);
+  }
+
+  private collectAwakeStepSyncEntities(): void {
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const body = this.dynamicBodies[i];
+      if (body.sleeping) continue;
+      this.addStepSyncEntity(body);
+    }
   }
 
   private cellCoordXy(v: number): number {
@@ -466,10 +502,13 @@ export class PhysicsEngine3D {
   }
 
   step(dtSec: number): void {
+    this.stepSyncEntityIds.length = 0;
+    this.stepSyncEntityIdSet.clear();
     if (this.awakeDynamicBodyCount <= 0) return;
+    this.collectAwakeStepSyncEntities();
     this.integrate(dtSec);
-    if (this.awakeDynamicBodyCount <= 0) return;
-    this.resolveGroundContacts();
+    // Bodies touched this step still need final contact/clamp cleanup
+    // even if integration just put the last awake body to sleep.
     this.resolveSphereCuboidContacts();
     this.rebuildContactCells();
     const sphereIterations = this.getSphereIterationBudget();
@@ -477,11 +516,15 @@ export class PhysicsEngine3D {
       this.resolveSphereSphereContacts();
     }
     this.clampToMapBounds();
+    this.collectAwakeStepSyncEntities();
     // Clear per-step force accumulator.
     for (const body of this.dynamicBodies) {
       body.ax = 0;
       body.ay = 0;
       body.az = 0;
+      body.groundLaunchAx = 0;
+      body.groundLaunchAy = 0;
+      body.groundLaunchAz = 0;
     }
   }
 
@@ -492,265 +535,88 @@ export class PhysicsEngine3D {
     return SPHERE_ITERATIONS;
   }
 
-  /** Explicit-Euler integration with HARD surface-stick for spheres.
+  /** Explicit-Euler integration with a soft terrain contact model.
+   *  Every dynamic unit follows the same path:
    *
-   *  Each unit is treated as a vehicle constrained to the ground —
-   *  its position is always exactly on the surface and its velocity
-   *  is always exactly tangent to it. There's no tolerance band and
-   *  no airborne flag for ground units; the only failure mode is a
-   *  near-vertical local surface (n.z → 0), which we guard against
-   *  by zeroing vz instead of dividing.
+   *   1. Start with authored/external acceleration plus gravity.
+   *   2. Compute the locomotion ground point: body center minus
+   *      `groundOffset`.
+   *   3. If that point is below terrain height, add a spring-damper
+   *      acceleration along the terrain normal.
+   *   4. Integrate velocity, apply isotropic air drag, then apply
+   *      ground friction only to terrain-tangent velocity during
+   *      contact.
+   *   5. Integrate position.
    *
-   *  Per sphere per tick:
-   *   1. Project existing velocity onto the local tangent at the
-   *      CURRENT position. Cleans up any drift that built up from
-   *      the previous tick's tangent recompute landing on a
-   *      slightly different slope angle.
-   *   2. Project accel (gravity + thrust + external) onto the same
-   *      tangent plane. Gravity's downhill component stays;
-   *      perpendicular is absorbed by the implicit normal force.
-   *      Same for thrust's slope-aligned component.
-   *   3. Velocity += accel · dt.
-   *   4. Damp the horizontal velocity components (ground drag).
-   *   5. HORIZONTAL position update only: x += vx·dt, y += vy·dt.
-   *      Don't touch z yet — the tangent is only valid at the OLD
-   *      position, so straight-line tangent integration through z
-   *      drifts off curved surfaces (this was the "flies off the
-   *      crest of a hill" bug).
-   *   6. Snap z to the new surface: z = ground(x_new, y_new) +
-   *      groundOffset. The unit ALWAYS sits on the ground, regardless of
-   *      slope curvature or speed.
-   *   7. Recompute vz from the slope-tangent constraint at the new
-   *      position: v · n_new = 0 → vz = −(vx·n.x + vy·n.y) / n.z.
-   *      Velocity is now tangent to the new surface, ready for the
-   *      next tick's projection.
-   *
-   *  Steep slopes are stable: even a 70° slope (n.z ≈ 0.34, sin ≈
-   *  0.94) just produces a vz roughly 2.8× the horizontal speed,
-   *  which is then snapped to the surface and re-tangent-aligned
-   *  on the next tick. Cresting a hill is stable too: step 6's
-   *  snap absorbs the curvature drift.
-   *
-   *  Knockback / explosions: this strict-glue model can't launch a
-   *  unit into the air via an instantaneous velocity or force
-   *  impulse — the projection in step 1/2 kills any normal-direction
-   *  component. That matches the RTS-where-everything-stays-on-the-
-   *  ground design intent; when aircraft come online they'll need
-   *  their own non-grounded integration pipeline. */
-  /** Cached `Math.pow(1 - frictionAir, dtSec * 60)` keyed by frictionAir.
-   *  Cleared and rekeyed each integrate() call by the current dtSec.
-   *  In practice every dynamic body is a sphere with frictionAir = 0.15,
-   *  so the inner loop hits this map exactly once per tick instead of
-   *  paying ~50ns of Math.pow per body per tick. */
-  private _dampCache = new Map<number, number>();
-  private _dampCacheDtSec = 0;
-
-  private getDampForFriction(frictionAir: number, dtSec: number): number {
-    let damp = this._dampCache.get(frictionAir);
-    if (damp === undefined) {
-      damp = Math.pow(1 - frictionAir, dtSec * 60);
-      this._dampCache.set(frictionAir, damp);
-    }
-    return damp;
-  }
-
+   *  There is no separate "airborne" branch and no ground snap in the
+   *  normal path. "On ground" is just the shared ground-penetration
+   *  contact predicate used by locomotion, jump actuation, suspension,
+   *  and client prediction. */
   private integrate(dtSec: number): void {
-    if (dtSec !== this._dampCacheDtSec) {
-      this._dampCache.clear();
-      this._dampCacheDtSec = dtSec;
-    }
+    const airDamp = getUnitAirFrictionDamp(dtSec);
+    const groundDamp = getUnitGroundFrictionDamp(dtSec);
     for (const b of this.dynamicBodies) {
       if (b.sleeping) continue;
-      const ax = b.ax;
-      const ay = b.ay;
-      const az = b.az - GRAVITY;
+      const authoredAccelSq = b.ax * b.ax + b.ay * b.ay + b.az * b.az;
+      let ax = b.ax;
+      let ay = b.ay;
+      let az = b.az - GRAVITY;
 
       if (b.shape !== 'sphere') {
         // Static cuboids never get here (isStatic skips), but for
-        // completeness any non-sphere dynamic body uses standard
-        // 3D Euler. No surface stick.
+        // completeness any non-sphere dynamic body uses free 3D Euler.
         b.vx += ax * dtSec;
         b.vy += ay * dtSec;
         b.vz += az * dtSec;
-        const damp = this.getDampForFriction(b.frictionAir, dtSec);
-        b.vx *= damp;
-        b.vy *= damp;
+        b.vx *= airDamp;
+        b.vy *= airDamp;
+        b.vz *= airDamp;
         b.x += b.vx * dtSec;
         b.y += b.vy * dtSec;
         b.z += b.vz * dtSec;
         continue;
       }
 
-      // ── Airborne sphere: free 3D Euler with gravity, no surface stick.
-      //    Triggered when an external impulse pushes vz above
-      //    LAUNCH_VEL_THRESHOLD in the grounded path below; cleared
-      //    when the body lands back on the surface.
-      if (b.airborne) {
-        b.vx += ax * dtSec;
-        b.vy += ay * dtSec;
-        b.vz += az * dtSec;
-        const damp = this.getDampForFriction(b.frictionAir, dtSec);
-        b.vx *= damp;
-        b.vy *= damp;
-        b.x += b.vx * dtSec;
-        b.y += b.vy * dtSec;
-        b.z += b.vz * dtSec;
+      advanceUnitMotionPhysicsMutable(
+        b,
+        dtSec,
+        b.groundOffset,
+        ax,
+        ay,
+        az,
+        airDamp,
+        groundDamp,
+        b.groundLaunchAx,
+        b.groundLaunchAy,
+        b.groundLaunchAz,
+        this.getGroundZ,
+        this.getGroundNormal,
+      );
 
-        const groundZ = this.getGroundZ(b.x, b.y) + b.groundOffset;
-        if (b.z <= groundZ && b.vz <= 0) {
-          // Landed. Reflect velocity across the surface normal with
-          // restitution. If the resulting outward speed is large
-          // enough, stay airborne (bounce). Otherwise zero the
-          // normal-component and rejoin the surface-stick path.
-          b.z = groundZ;
-          const n = this.getGroundNormal(b.x, b.y);
-          const vDotN = b.vx * n.nx + b.vy * n.ny + b.vz * n.nz;
-          if (vDotN < 0) {
-            const r = b.restitution;
-            const reflect = (1 + r) * vDotN;
-            b.vx -= reflect * n.nx;
-            b.vy -= reflect * n.ny;
-            b.vz -= reflect * n.nz;
+      const speedSq = b.vx * b.vx + b.vy * b.vy + b.vz * b.vz;
+      if (
+        authoredAccelSq <= SLEEP_ACCEL_SQ &&
+        speedSq <= SLEEP_SPEED_SQ
+      ) {
+        const nextGroundZ = this.getGroundZ(b.x, b.y);
+        const nextPenetration = nextGroundZ - (b.z - b.groundOffset);
+        if (
+          isUnitGroundPenetrationInContact(nextPenetration) &&
+          nextPenetration <= SLEEP_GROUND_PENETRATION_EPS
+        ) {
+          b.sleepTicks++;
+          if (b.sleepTicks >= SLEEP_TICKS) {
+            b.z = nextGroundZ + b.groundOffset;
+            b.vx = 0;
+            b.vy = 0;
+            b.vz = 0;
+            this.sleepBody(b);
           }
-          const newVDotN = b.vx * n.nx + b.vy * n.ny + b.vz * n.nz;
-          if (newVDotN > LANDING_BOUNCE_THRESHOLD) {
-            // Real bounce — keep flying.
-            b.airborne = true;
-          } else {
-            // Settle. Project velocity onto tangent and rejoin the
-            // grounded path; sleep accounting resumes next tick.
-            b.vx -= newVDotN * n.nx;
-            b.vy -= newVDotN * n.ny;
-            b.vz -= newVDotN * n.nz;
-            b.airborne = false;
-          }
-        }
-        b.sleepTicks = 0;
-        continue;
-      }
-
-      // ── Grounded sphere. Surface-stick is the default; an off-tangent
-      //    impulse strong enough to overcome ground reaction transitions
-      //    the body into the airborne branch above.
-
-      // (1) project velocity onto tangent at current position. Drops
-      //     any vz that drifted in last tick (slope curvature, sub-
-      //     tick collision pushes).
-      const n0 = this.getGroundNormal(b.x, b.y);
-      const vDotN0 = b.vx * n0.nx + b.vy * n0.ny + b.vz * n0.nz;
-      b.vx -= vDotN0 * n0.nx;
-      b.vy -= vDotN0 * n0.ny;
-      b.vz -= vDotN0 * n0.nz;
-
-      // (2) split acceleration into tangent + normal components.
-      //     Tangent = thrust on the slope. Normal = gravity (always
-      //     pulling -z, mostly into the surface) + any explicit
-      //     vertical force from a launch impulse. Tangent component
-      //     drives motion this tick; normal component is the candidate
-      //     launch trigger.
-      const aDotN0 = ax * n0.nx + ay * n0.ny + az * n0.nz;
-      const aTangentX = ax - aDotN0 * n0.nx;
-      const aTangentY = ay - aDotN0 * n0.ny;
-      const aTangentZ = az - aDotN0 * n0.nz;
-      const tangentAccelSq =
-        aTangentX * aTangentX + aTangentY * aTangentY + aTangentZ * aTangentZ;
-
-      // (3) tangent velocity update.
-      b.vx += aTangentX * dtSec;
-      b.vy += aTangentY * dtSec;
-      b.vz += aTangentZ * dtSec;
-
-      // (4) horizontal drag (only on the world-x/y components, not on
-      //     the slope-tangent z component). Same shape as before so
-      //     unit settling on inclines is unchanged.
-      const damp = this.getDampForFriction(b.frictionAir, dtSec);
-      b.vx *= damp;
-      b.vy *= damp;
-
-      // (5) launch detection. If the off-tangent acceleration is
-      //     pointing OUT of the surface and the resulting outward
-      //     velocity over this tick exceeds LAUNCH_VEL_THRESHOLD,
-      //     transition to airborne. The +n component of velocity is
-      //     adopted (so the body carries that vz into the next tick's
-      //     airborne branch) and the surface stick is skipped.
-      const launchVel = aDotN0 * dtSec;
-      if (launchVel > LAUNCH_VEL_THRESHOLD) {
-        b.vx += launchVel * n0.nx;
-        b.vy += launchVel * n0.ny;
-        b.vz += launchVel * n0.nz;
-        b.airborne = true;
-        b.x += b.vx * dtSec;
-        b.y += b.vy * dtSec;
-        b.z += b.vz * dtSec;
-        b.sleepTicks = 0;
-        continue;
-      }
-
-      // (6) horizontal position update only — z is owned by step 7.
-      b.x += b.vx * dtSec;
-      b.y += b.vy * dtSec;
-
-      // (7) snap z to surface at the new (x, y). Prevents flight on
-      //     hill crests / steep climbs: curvature drift gets absorbed
-      //     every tick instead of accumulating until the unit is
-      //     "airborne" by tolerance.
-      b.z = this.getGroundZ(b.x, b.y) + b.groundOffset;
-
-      // (8) recompute vz from the slope constraint at the new
-      //     position so velocity is tangent to wherever we just
-      //     landed. Near-vertical surfaces (n.z ≈ 0) would divide by
-      //     zero; clamp vz to 0 there.
-      const n1 = this.getGroundNormal(b.x, b.y);
-      if (Math.abs(n1.nz) > 1e-3) {
-        b.vz = -(b.vx * n1.nx + b.vy * n1.ny) / n1.nz;
-      } else {
-        b.vz = 0;
-      }
-
-      const speedSq = b.vx * b.vx + b.vy * b.vy;
-      if (tangentAccelSq <= SLEEP_ACCEL_SQ && speedSq <= SLEEP_SPEED_SQ) {
-        b.sleepTicks++;
-        if (b.sleepTicks >= SLEEP_TICKS) {
-          b.vx = 0;
-          b.vy = 0;
-          b.vz = 0;
-          this.sleepBody(b);
+        } else {
+          b.sleepTicks = 0;
         }
       } else {
         b.sleepTicks = 0;
-      }
-    }
-  }
-
-  /** Ground-penetration backstop. The integrator already keeps
-   *  every grounded sphere exactly on the surface (z = ground +
-   *  radius) every tick, so this resolver is only here to catch
-   *  cases where one of the LATER step phases pushes a unit below
-   *  ground — sphere-sphere push, sphere-cuboid push, or the map-
-   *  bounds clamp. If a unit ends up below the surface we lift it
-   *  back up and zero out any inward-normal velocity component so
-   *  the next integrate doesn't fight the surface. */
-  private resolveGroundContacts(): void {
-    for (const b of this.dynamicBodies) {
-      if (b.sleeping) continue;
-      if (b.shape !== 'sphere') continue;
-      // Airborne bodies own their own z via the integrator's flight
-      // path. Skipping them here keeps gravity from being short-
-      // circuited mid-flight by this backstop. The integrator's
-      // landing check is what re-grounds them.
-      if (b.airborne) continue;
-      const groundZ = this.getGroundZ(b.x, b.y);
-      const restingZ = groundZ + b.groundOffset;
-      if (b.z >= restingZ - GROUND_PENETRATION_EPS) continue;
-      // Penetrated — lift up and re-tangent the velocity so it
-      // doesn't keep pushing through the surface next tick.
-      b.z = restingZ;
-      const n = this.getGroundNormal(b.x, b.y);
-      const vDotN = b.vx * n.nx + b.vy * n.ny + b.vz * n.nz;
-      if (vDotN < 0) {
-        b.vx -= vDotN * n.nx;
-        b.vy -= vDotN * n.ny;
-        b.vz -= vDotN * n.nz;
       }
     }
   }
@@ -760,7 +626,7 @@ export class PhysicsEngine3D {
    *  along the contact normal. Static cuboid doesn't move. */
   private resolveSphereCuboidContacts(): void {
     for (const dyn of this.dynamicBodies) {
-      if (dyn.sleeping) continue;
+      if (!this.shouldProcessBodyThisStep(dyn)) continue;
       if (dyn.shape !== 'sphere') continue;
       const stamp = ++this.staticQueryStamp;
       const ignored = this.ignoreStatic.get(dyn);
@@ -838,6 +704,7 @@ export class PhysicsEngine3D {
     dyn.x += nx * penetration;
     dyn.y += ny * penetration;
     dyn.z += nz * penetration;
+    if (dyn.sleeping) this.wakeBody(dyn);
     // Velocity reflection along the contact normal if moving into it.
     const vDotN = dyn.vx * nx + dyn.vy * ny + dyn.vz * nz;
     if (vDotN < 0) {
@@ -887,7 +754,7 @@ export class PhysicsEngine3D {
   /** Sphere-sphere push: full 3D. Two units at the same altitude push
    *  each other horizontally exactly as the old 2D path did — because
    *  dz is zero, the contact normal lies entirely in the XY plane —
-   *  but an airborne unit hovering directly above a ground unit now
+   *  but an elevated unit hovering directly above a ground unit now
    *  separates along +z / −z instead of the old behavior where their
    *  sphere overlap resolved through the horizontal axis and randomly
    *  shoved them sideways. Iterated SPHERE_ITERATIONS times per step
@@ -919,15 +786,16 @@ export class PhysicsEngine3D {
       // sleep with overlap, step()'s early-return locks the state
       // forever. Letting sleeping bodies iterate is cheap (one extra
       // 3×3×3 cell walk per sleeping body, only when something else
-      // is awake) and the contact path itself wakes both via
-      // wakeBody() so the resolve still does real work.
+      // was active at the start of this step) and the contact path
+      // itself wakes both via wakeBody() so the resolve still does
+      // real work.
       const acx = Math.floor(a.x / cs);
       const acy = Math.floor(a.y / cs);
       const acz = Math.floor((a.z + halfCs) / cs);
       // 3×3×3 neighborhood (self + 26 neighbors). Two bodies that
       // overlap must have centers within rA + rB ≤ CONTACT_CELL_SIZE
       // of each other, so they share a cube or sit in an adjacent
-      // cube along any axis (including +/- z for stacked airborne
+      // cube along any axis (including +/- z for stacked elevated
       // units above ground units).
       for (let dz = -1; dz <= 1; dz++) {
         for (let dy = -1; dy <= 1; dy++) {
@@ -998,7 +866,7 @@ export class PhysicsEngine3D {
    *  ground plane and above implicitly by gravity. */
   private clampToMapBounds(): void {
     for (const b of this.dynamicBodies) {
-      if (b.sleeping) continue;
+      if (!this.shouldProcessBodyThisStep(b)) continue;
       if (b.shape !== 'sphere') continue;
       if (b.x < b.radius) { b.x = b.radius; if (b.vx < 0) b.vx = 0; }
       else if (b.x > this.mapWidth - b.radius) {

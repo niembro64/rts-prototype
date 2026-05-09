@@ -317,7 +317,37 @@ export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE = 0.5;
  *  RTS-scale ballistics rather than real-world 9.8 m/s²; the map is
  *  ~3000 wu wide and shots travel hundreds of units per second, so
  *  heavier gravity would flatten every arc into a short lob. */
-export const GRAVITY = 400;
+export const GRAVITY = 150;
+
+/** Free-flight unit velocity damping per 60 Hz frame.
+ *  Applied equally to x/y/z while a unit is in free flight. This is
+ *  intentionally far weaker than grounded contact drag: 0.002 keeps
+ *  about 88.7% of velocity over one second. */
+export const UNIT_AIR_FRICTION_PER_60HZ_FRAME = 0.002;
+
+/** Ground-contact tangent velocity damping per 60 Hz frame.
+ *  Applied only while the unit's locomotion ground point is at or
+ *  below terrain height, and only to motion tangent to the terrain
+ *  plane. */
+export const UNIT_GROUND_FRICTION_PER_60HZ_FRAME = 0.15;
+
+/** Terrain spring acceleration per world-unit of ground-point
+ *  penetration. Force is mass * acceleration, so all unit masses
+ *  settle at the same tiny gravity sag depth. */
+export const UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT = 900;
+
+/** Damping ratio for the terrain spring along the terrain normal.
+ *  1 is critical damping for the spring's authored acceleration
+ *  frequency. The ground never pulls downward; damping only reduces
+ *  or increases the upward spring response. */
+export const UNIT_GROUND_SPRING_DAMPING_RATIO = 1;
+
+/** Maximum outward terrain-normal velocity passive ground contact can
+ *  produce. This permits small damped settling oscillation, but stops
+ *  the terrain spring from acting like a jump actuator. Explicit jump
+ *  forces can add their own per-tick outward velocity above this cap;
+ *  they do not let passive spring rebound bypass the cap entirely. */
+export const UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED = 5;
 
 /** D-gun wave altitude above local terrain. The D-gun is no longer a
  *  ballistic shell; it rides the terrain at this offset until its
@@ -802,6 +832,17 @@ export const UNIT_THRUST_MULTIPLIER_GAME = 20.0;
  * (units take twice as many hits to kill at the same incoming DPS).
  */
 export const UNIT_HP_MULTIPLIER = 2.0;
+
+/**
+ * Vertical distance between terrain and a unit's locomotion ground
+ * point at spawn. The unit body center is initialized at:
+ *
+ *   terrain height + bodyCenterHeight + this offset
+ *
+ * so newly-created units begin in freefall and settle through the same
+ * gravity / terrain-spring path as every other airborne unit.
+ */
+export const UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND = 3;
 
 // TARGETING_REACQUIRE_STRIDE moved to serverSimLodConfig.ts as part of
 // the HOST SERVER LOD ladder — the stride is now picked per-tick from

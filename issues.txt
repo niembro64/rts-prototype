@@ -3,60 +3,12 @@ As we fix something here we should completely delete it from this file. You shou
 you know for a fact it has been addressed. Remember that our code may have changed since the issue was
 written; check the code and if the issue is no longer relevant, delete it.
 
-
 ==============================================================================
 Performance audit (2026-05-08, round 2): sim + rendering hotspots verified
 against current code. Each cluster includes file:line refs and a remedy.
 Verify against current code before attacking — a few related sites may have
 already shifted.
 ==============================================================================
-
-PERF-1. Death scan walks every unit + every building every tick
-  Sites:
-    - src/game/sim/Simulation.ts:585-589 (units hp<=0 scan)
-    - src/game/sim/Simulation.ts:592-596 (buildings hp<=0 scan)
-  Cost: O(N_total) every sim tick. For a base of ~200 units + ~50
-    buildings that's 250 hp reads × 60 Hz = 15k/sec. Cheap individually,
-    but it's a full walk of stable entities every tick when only the
-    handful that took damage this tick can possibly have died.
-  Proposed: Maintain a `pendingDeathCheckIds: Set<EntityId>` on
-    WorldState (or Simulation) populated by the damage system every
-    time it applies a damage event. Each tick: drain the set, do hp<=0
-    checks only on the damaged entities. The damage path already calls
-    markSnapshotDirty(... ENTITY_CHANGED_HP) — the death-set add can
-    sit right next to it.
-  Risk: Low. New Set + drain helper; the trigger is a single line in
-    the damage application path. Existing CacheManager already
-    invalidates on entity removal so dead-entity bookkeeping is intact.
-
-PERF-2. Action hash recomputed for every dirty entity every tick
-  Sites:
-    - src/game/network/stateSerializer.ts:518-533 (action hash loop in
-      captureEntityState)
-    - Action mutation sites:
-      src/game/sim/factoryProduction.ts:172-176 (initial spawn queue)
-      src/game/sim/commandExecution.ts:457,461 (set / append)
-      src/game/sim/commanderAbilities.ts:103, energyDistribution.ts:155
-  Cost: captureEntityState runs once per tick per dirty entity (we
-    already hoisted the per-recipient redundancy out). For an entity
-    with N actions in the queue, the per-tick cost is N*4 hash steps
-    + N*4 multiplications + N field reads. Most entities sit on a
-    stable action queue (move-to-X then idle, or stable patrol cycle)
-    yet pay the full hash every tick they appear in the dirty set —
-    and any unit whose turret is actively rotating IS dirty (the
-    TURRETS bit fires).
-  Proposed: Cache `actionHash: number` on `unit` (alongside the action
-    array). Invalidate at every mutation site (push, replace, clear).
-    captureEntityState reads the cached value; the comparison vs prev
-    still works because the cache stays in lockstep with the array.
-    To minimize per-mutation-site instrumentation, encapsulate behind
-    a small helper (e.g. `setUnitActions(unit, actions)` /
-    `pushUnitAction(unit, action)`) that owns the rehash, and route
-    all mutations through it.
-  Risk: Medium. Touches every action-mutation site; new helpers reduce
-    the per-site burden but the audit must be careful (any direct
-    `.push()` left unwrapped silently breaks dirty-detection). Add a
-    dev-mode hash-vs-cached invariant check to catch drift.
 
 PERF-3. shouldUpdateRichUnitDetails re-walks turrets every frame
   Sites:

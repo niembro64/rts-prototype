@@ -13,7 +13,9 @@ import { getPlayerBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
 import { isFarFromWater } from '../sim/Terrain';
 import { makeMapOvalMetrics, mapOvalPointAt } from '../sim/mapOval';
 import { expandPathActions } from '../sim/Pathfinder';
+import { setUnitActions } from '../sim/unitActions';
 import type { BuildingGrid } from '../sim/buildGrid';
+import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 
 // Available unit types for background spawning (excludes commander)
 export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS];
@@ -114,25 +116,18 @@ function spawnUnit(
     // Demo order type is data-driven so initial waves can use cheap
     // normal move while still keeping the path expansion that routes
     // around valleys / mountains / building lines.
-    unit.unit.actions = expandPathActions(
-      x, y, targetX, targetY, waypointType,
-      world.mapWidth, world.mapHeight, buildingGrid,
+    setUnitActions(
+      unit.unit,
+      expandPathActions(
+        x, y, targetX, targetY, waypointType,
+        world.mapWidth, world.mapHeight, buildingGrid,
+      ),
     );
   }
 
   world.addEntity(unit);
 
-  if (unit.unit) {
-    const body = physics.createUnitBody(
-      x, y,
-      unit.unit.radius.push,
-      unit.unit.bodyCenterHeight,
-      unit.unit.mass,
-      `unit_${unit.id}`,
-      unit.id,
-    );
-    unit.body = { physicsBody: body };
-  }
+  createPhysicsBodyForUnit(world, physics, unit);
 
   return unit;
 }

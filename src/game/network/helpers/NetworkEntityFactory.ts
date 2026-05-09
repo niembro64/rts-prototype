@@ -21,6 +21,8 @@ import {
 } from '../../sim/runtimeTurrets';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
 import { isFiniteNumber } from '../../math';
+import { createUnitSuspension } from '../../sim/unitSuspension';
+import { computeUnitActionHash } from '../../sim/unitActions';
 
 function decodeNetworkUnitType(unitType: unknown): string | null {
   return isFiniteNumber(unitType) ? codeToUnitType(unitType) : null;
@@ -58,6 +60,22 @@ export function applyNetworkTurretNonVisualState(
     turrets[i].target = netTurrets[i].targetId ?? null;
     turrets[i].state = codeToTurretState(netTurrets[i].state);
   }
+}
+
+export function applyNetworkSuspensionState(
+  entity: Entity,
+  suspension: NonNullable<NetworkServerSnapshotEntity['unit']>['suspension'] | undefined | null,
+): void {
+  const state = entity.unit?.suspension;
+  if (!state || !suspension) return;
+  state.offsetX = suspension.offset.x;
+  state.offsetY = suspension.offset.y;
+  state.offsetZ = suspension.offset.z;
+  state.velocityX = suspension.velocity.x;
+  state.velocityY = suspension.velocity.y;
+  state.velocityZ = suspension.velocity.z;
+  state.jumpActive = suspension.jumpActive === true;
+  state.legContact = suspension.legContact === true;
 }
 
 function createTurretsFromNetwork(
@@ -212,10 +230,14 @@ function createUnitFromNetwork(
       locomotion: getUnitLocomotion(unitType),
       mass: u?.mass ?? 25,
       actions,
+      actionHash: computeUnitActionHash(actions),
       patrolStartIndex: null,
       velocityX: u?.velocity?.x ?? 0,
       velocityY: u?.velocity?.y ?? 0,
       velocityZ: u?.velocity?.z ?? 0,
+      movementAccelX: u?.movementAccel?.x ?? 0,
+      movementAccelY: u?.movementAccel?.y ?? 0,
+      movementAccelZ: u?.movementAccel?.z ?? 0,
       mirrorPanels: [],
       mirrorBoundRadius: 0,
       // Smoothed surface normal: hydrated from the wire when present
@@ -226,6 +248,7 @@ function createUnitFromNetwork(
       surfaceNormal: u?.surfaceNormal
         ? { nx: u.surfaceNormal.nx, ny: u.surfaceNormal.ny, nz: u.surfaceNormal.nz }
         : { nx: 0, ny: 0, nz: 1 },
+      suspension: createUnitSuspension(unitBlueprint?.suspension, unitBlueprint?.locomotion.physics.jump),
     },
   };
 
@@ -237,6 +260,7 @@ function createUnitFromNetwork(
       firingTurretMask: 0,
     };
   }
+  applyNetworkSuspensionState(entity, u?.suspension);
 
   // Cache mirror panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the
@@ -375,4 +399,3 @@ function createBuildingFromNetwork(
 
   return entity;
 }
-

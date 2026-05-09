@@ -80,7 +80,32 @@ function usesHostBodyCenterMount(
   return unit.unit !== undefined && turret.config?.mountMode === 'unitBodyCenter';
 }
 
-function writeHostBodyCenterMount(unit: Entity, out: Vec3): Vec3 {
+function writeHostBodyCenterMount(
+  unit: Entity,
+  cos: number,
+  sin: number,
+  options: { unitGroundZ?: number; surfaceN?: { nx: number; ny: number; nz: number } } | undefined,
+  out: Vec3,
+): Vec3 {
+  const suspension = unit.unit?.suspension;
+  if (suspension) {
+    const unitGroundZ = options?.unitGroundZ ?? getUnitGroundZ(unit);
+    const mount = getTurretWorldMount(
+      unit.transform.x,
+      unit.transform.y,
+      unitGroundZ,
+      cos,
+      sin,
+      suspension.offsetX,
+      suspension.offsetY,
+      unit.unit!.bodyCenterHeight + suspension.offsetZ,
+      options?.surfaceN ?? FLAT_SURFACE_NORMAL,
+    );
+    out.x = mount.x;
+    out.y = mount.y;
+    out.z = mount.z;
+    return out;
+  }
   out.x = unit.transform.x;
   out.y = unit.transform.y;
   out.z = unit.transform.z;
@@ -106,7 +131,7 @@ export function resolveWeaponWorldMount(
   out: Vec3 = _rwmOut,
 ): Vec3 {
   if (usesHostBodyCenterMount(unit, turret)) {
-    return writeHostBodyCenterMount(unit, out);
+    return writeHostBodyCenterMount(unit, cos, sin, options, out);
   }
 
   if (
@@ -121,10 +146,13 @@ export function resolveWeaponWorldMount(
 
   const unitGroundZ = options?.unitGroundZ ?? getUnitGroundZ(unit);
   const localMount = getRuntimeTurretMount(turret);
+  const suspension = unit.unit?.suspension;
   const mount = getTurretWorldMount(
     unit.transform.x, unit.transform.y, unitGroundZ,
     cos, sin,
-    localMount.x, localMount.y, localMount.z,
+    localMount.x + (suspension?.offsetX ?? 0),
+    localMount.y + (suspension?.offsetY ?? 0),
+    localMount.z + (suspension?.offsetZ ?? 0),
     options?.surfaceN ?? FLAT_SURFACE_NORMAL,
   );
   out.x = mount.x;
@@ -164,13 +192,16 @@ export function updateWeaponWorldKinematics(
   const unitGroundZ = options.unitGroundZ ?? getUnitGroundZ(unit);
   let mount: Vec3;
   if (bodyCenterMount) {
-    mount = writeHostBodyCenterMount(unit, out);
+    mount = writeHostBodyCenterMount(unit, cos, sin, options, out);
   } else {
     const localMount = getRuntimeTurretMount(turret);
+    const suspension = unit.unit?.suspension;
     mount = getTurretWorldMount(
       unit.transform.x, unit.transform.y, unitGroundZ,
       cos, sin,
-      localMount.x, localMount.y, localMount.z,
+      localMount.x + (suspension?.offsetX ?? 0),
+      localMount.y + (suspension?.offsetY ?? 0),
+      localMount.z + (suspension?.offsetZ ?? 0),
       options.surfaceN ?? FLAT_SURFACE_NORMAL,
     );
   }

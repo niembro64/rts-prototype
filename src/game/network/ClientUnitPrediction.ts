@@ -1,4 +1,5 @@
 import { getClientTiltEmaMode } from '@/clientBarConfig';
+import { GRAVITY, LAND_CELL_SIZE } from '../../config';
 import { TILT_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import type { Entity } from '../sim/types';
 import {
@@ -8,11 +9,29 @@ import {
 } from '../math';
 import { halfLifeBlend, type DriftPreset } from './driftEma';
 import type { PredictionStep } from './ClientPredictionLod';
+import { advanceUnitSuspension } from '../sim/unitSuspension';
+import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
+import {
+  advanceUnitMotionPhysicsMutable,
+  type MutableUnitMotion3,
+} from '../sim/unitMotionIntegration';
+import {
+  getUnitJumpAcceleration,
+  unitJumpWantsActuator,
+} from '../sim/unitJump';
+import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
+import {
+  getUnitGroundFrictionDamp,
+  getUnitGroundPenetration,
+  isUnitGroundPenetrationInContact,
+} from '../sim/unitGroundPhysics';
 
 const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
 const PREDICTION_VEL_EPSILON_SQ = 0.01 * 0.01;
+const PREDICTION_ACCEL_EPSILON_SQ = 0.1 * 0.1;
 const PREDICTION_ROT_EPSILON = 0.001;
 const PREDICTION_TURRET_EPSILON = 0.001;
+const PREDICTION_GROUND_REST_PENETRATION_EPSILON = 0.1;
 
 type UnitPredictionTarget = {
   x: number;
@@ -22,6 +41,9 @@ type UnitPredictionTarget = {
   velocityX: number;
   velocityY: number;
   velocityZ: number;
+  movementAccelX: number;
+  movementAccelY: number;
+  movementAccelZ: number;
   surfaceNormalX: number;
   surfaceNormalY: number;
   surfaceNormalZ: number;
@@ -37,34 +59,175 @@ function angleDeltaAbs(a: number, b: number): number {
   return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 }
 
+const motionScratch: MutableUnitMotion3 = {
+  x: 0,
+  y: 0,
+  z: 0,
+  vx: 0,
+  vy: 0,
+  vz: 0,
+};
+let predictionMapWidth = 2000;
+let predictionMapHeight = 2000;
+
+function getPredictionGroundZ(x: number, y: number): number {
+  return getSurfaceHeight(
+    x,
+    y,
+    predictionMapWidth,
+    predictionMapHeight,
+    LAND_CELL_SIZE,
+  );
+}
+
+function getPredictionGroundNormal(
+  x: number,
+  y: number,
+): { nx: number; ny: number; nz: number } {
+  return getSurfaceNormal(
+    x,
+    y,
+    predictionMapWidth,
+    predictionMapHeight,
+    LAND_CELL_SIZE,
+  );
+}
+
+function unitWantsPredictedJump(unit: Entity['unit']): boolean {
+  if (!unit) return false;
+  return unitJumpWantsActuator(unit) || unit.suspension?.jumpActive === true;
+}
+
+function advanceUnitMotionState(
+  unit: NonNullable<Entity['unit']>,
+  motion: MutableUnitMotion3,
+  dt: number,
+  airDamp: number,
+  groundDamp: number,
+  movementAccelX: number,
+  movementAccelY: number,
+  movementAccelZ: number,
+): boolean {
+  const groundZ = getPredictionGroundZ(motion.x, motion.y);
+  const penetration = getUnitGroundPenetration(unit, motion.z, groundZ);
+  const contact = isUnitGroundPenetrationInContact(penetration);
+  const jumpAcceleration = contact && unitWantsPredictedJump(unit)
+    ? getUnitJumpAcceleration(unit)
+    : 0;
+  const poweredAx = contact ? movementAccelX : 0;
+  const poweredAy = contact ? movementAccelY : 0;
+  const poweredAz = contact ? movementAccelZ : 0;
+  const poweredAccelSq =
+    poweredAx * poweredAx + poweredAy * poweredAy + poweredAz * poweredAz;
+
+  if (
+    contact &&
+    jumpAcceleration <= 0 &&
+    poweredAccelSq <= PREDICTION_ACCEL_EPSILON_SQ &&
+    penetration <= PREDICTION_GROUND_REST_PENETRATION_EPSILON &&
+    motion.vx * motion.vx +
+      motion.vy * motion.vy +
+      motion.vz * motion.vz <= PREDICTION_VEL_EPSILON_SQ
+  ) {
+    motion.z = groundZ + unit.bodyCenterHeight;
+    motion.vx = 0;
+    motion.vy = 0;
+    motion.vz = 0;
+    return true;
+  }
+
+  advanceUnitMotionPhysicsMutable(
+    motion,
+    dt,
+    unit.bodyCenterHeight,
+    poweredAx,
+    poweredAy,
+    poweredAz + jumpAcceleration - GRAVITY,
+    airDamp,
+    groundDamp,
+    0,
+    0,
+    jumpAcceleration,
+    getPredictionGroundZ,
+    getPredictionGroundNormal,
+  );
+
+  const nextGroundZ = getPredictionGroundZ(motion.x, motion.y);
+  return isUnitGroundPenetrationInContact(
+    getUnitGroundPenetration(unit, motion.z, nextGroundZ),
+  );
+}
+
 export function applyClientUnitVisualPrediction(options: {
   entity: Entity;
   target: UnitPredictionTarget | undefined;
   deltaMs: number;
   preset: DriftPreset;
+  mapWidth: number;
+  mapHeight: number;
 }): void {
-  const { entity, target, deltaMs, preset } = options;
+  const { entity, target, deltaMs, preset, mapWidth, mapHeight } = options;
   if (!entity.unit) return;
   const dt = deltaMs / 1000;
   const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
   const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
   const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
+  const airDamp = getUnitAirFrictionDamp(dt);
+  const groundDamp = getUnitGroundFrictionDamp(dt);
+  predictionMapWidth = mapWidth;
+  predictionMapHeight = mapHeight;
 
   if (target) {
     // Unit body motion is a visual contract, not an optional detail.
     // Keep this smooth at render cadence while LOD throttles heavier
     // turret / force-field prediction elsewhere.
-    target.x += target.velocityX * dt;
-    target.y += target.velocityY * dt;
-    target.z += target.velocityZ * dt;
+    motionScratch.x = target.x;
+    motionScratch.y = target.y;
+    motionScratch.z = target.z;
+    motionScratch.vx = target.velocityX ?? 0;
+    motionScratch.vy = target.velocityY ?? 0;
+    motionScratch.vz = target.velocityZ ?? 0;
+    advanceUnitMotionState(
+      entity.unit,
+      motionScratch,
+      dt,
+      airDamp,
+      groundDamp,
+      target.movementAccelX ?? 0,
+      target.movementAccelY ?? 0,
+      target.movementAccelZ ?? 0,
+    );
+    target.x = motionScratch.x;
+    target.y = motionScratch.y;
+    target.z = motionScratch.z;
+    target.velocityX = motionScratch.vx;
+    target.velocityY = motionScratch.vy;
+    target.velocityZ = motionScratch.vz;
   }
 
-  const vx = entity.unit.velocityX ?? 0;
-  const vy = entity.unit.velocityY ?? 0;
-  const vz = entity.unit.velocityZ ?? 0;
-  entity.transform.x += vx * dt;
-  entity.transform.y += vy * dt;
-  entity.transform.z += vz * dt;
+  motionScratch.x = entity.transform.x;
+  motionScratch.y = entity.transform.y;
+  motionScratch.z = entity.transform.z;
+  motionScratch.vx = entity.unit.velocityX ?? 0;
+  motionScratch.vy = entity.unit.velocityY ?? 0;
+  motionScratch.vz = entity.unit.velocityZ ?? 0;
+  const legContact = advanceUnitMotionState(
+    entity.unit,
+    motionScratch,
+    dt,
+    airDamp,
+    groundDamp,
+    entity.unit.movementAccelX ?? 0,
+    entity.unit.movementAccelY ?? 0,
+    entity.unit.movementAccelZ ?? 0,
+  );
+  entity.transform.x = motionScratch.x;
+  entity.transform.y = motionScratch.y;
+  entity.transform.z = motionScratch.z;
+  entity.unit.velocityX = motionScratch.vx;
+  entity.unit.velocityY = motionScratch.vy;
+  entity.unit.velocityZ = motionScratch.vz;
+  advanceUnitSuspension(entity.unit, entity.transform.rotation, deltaMs, { legContact });
 
   if (!target) return;
 
@@ -77,9 +240,21 @@ export function applyClientUnitVisualPrediction(options: {
     rotPosDrift,
   );
 
-  entity.unit.velocityX = lerp(vx, target.velocityX ?? 0, movVelDrift);
-  entity.unit.velocityY = lerp(vy, target.velocityY ?? 0, movVelDrift);
-  entity.unit.velocityZ = lerp(vz, target.velocityZ ?? 0, movVelDrift);
+  entity.unit.velocityX = lerp(
+    entity.unit.velocityX ?? 0,
+    target.velocityX ?? 0,
+    movVelDrift,
+  );
+  entity.unit.velocityY = lerp(
+    entity.unit.velocityY ?? 0,
+    target.velocityY ?? 0,
+    movVelDrift,
+  );
+  entity.unit.velocityZ = lerp(
+    entity.unit.velocityZ ?? 0,
+    target.velocityZ ?? 0,
+    movVelDrift,
+  );
 
   const tiltAlpha = halfLifeBlend(dt, TILT_EMA_HALF_LIFE_SEC[getClientTiltEmaMode()]);
   const sn = entity.unit.surfaceNormal;
@@ -174,16 +349,26 @@ export function clientUnitPredictionIsSettled(
 ): boolean {
   const unit = entity.unit;
   if (unit) {
+    if (unit.suspension?.jump?.mode === 'always') return false;
+
     const vx = unit.velocityX ?? 0;
     const vy = unit.velocityY ?? 0;
     const vz = unit.velocityZ ?? 0;
     if (vx * vx + vy * vy + vz * vz > PREDICTION_VEL_EPSILON_SQ) return false;
+    const ax = unit.movementAccelX ?? 0;
+    const ay = unit.movementAccelY ?? 0;
+    const az = unit.movementAccelZ ?? 0;
+    if (ax * ax + ay * ay + az * az > PREDICTION_ACCEL_EPSILON_SQ) return false;
 
     if (target) {
       const tvx = target.velocityX ?? 0;
       const tvy = target.velocityY ?? 0;
       const tvz = target.velocityZ ?? 0;
       if (tvx * tvx + tvy * tvy + tvz * tvz > PREDICTION_VEL_EPSILON_SQ) return false;
+      const tax = target.movementAccelX ?? 0;
+      const tay = target.movementAccelY ?? 0;
+      const taz = target.movementAccelZ ?? 0;
+      if (tax * tax + tay * tay + taz * taz > PREDICTION_ACCEL_EPSILON_SQ) return false;
 
       const dx = entity.transform.x - target.x;
       const dy = entity.transform.y - target.y;

@@ -13,12 +13,20 @@ import {
 } from '../sim/Terrain';
 import { getLocomotionForceProfile } from '../sim/locomotion';
 import {
+  getUnitJumpForce,
+  unitJumpWantsActuator,
+} from '../sim/unitJump';
+import { isUnitGroundPointAtOrBelowTerrain } from '../sim/unitGroundPhysics';
+import {
+  ENTITY_CHANGED_MOVEMENT_ACCEL,
+  ENTITY_CHANGED_SUSPENSION,
   ENTITY_CHANGED_ROT,
 } from '../../types/network';
 import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
-import type { EntityId } from '../sim/types';
+import type { EntityId, Unit } from '../sim/types';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
+import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 
 const WATER_PROBE_DX = [
   1, 0.7071067811865476, 0, -0.7071067811865475,
@@ -50,7 +58,9 @@ export class UnitForceSystem {
 
   private readonly physicsForceUnitIdsBuf: EntityId[] = [];
   private readonly physicsCandidateUnitIdsBuf: EntityId[] = [];
+  private readonly jumpActuatorUnitIds: EntityId[] = [];
   private readonly physicsActiveUnitIds = new Set<EntityId>();
+  private jumpActuatorUnitSetVersion = -1;
   private _idleBrakeForceX = 0;
   private _idleBrakeForceY = 0;
   private _idleBrakeForceZ = 0;
@@ -79,13 +89,21 @@ export class UnitForceSystem {
 
       const body = entity.body.physicsBody;
 
-      // Sync position from physics body (before force application, for
-      // rotation calc). z tracks gravity + ground contact — units sit on
-      // the ground at body.radius altitude; explosions or falls push them
-      // up and gravity pulls them back.
+      // Sync position from physics body before force application for
+      // rotation calc. z is fully dynamic: gravity always pulls down
+      // and the terrain spring only pushes while the locomotion ground
+      // point is at/below terrain.
       entity.transform.x = body.x;
       entity.transform.y = body.y;
       entity.transform.z = body.z;
+
+      if (entity.buildable && !entity.buildable.isComplete) {
+        if (setUnitMovementAcceleration(entity.unit, 0, 0, 0)) {
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
+        }
+        if (entity.combat) entity.combat.priorityTargetId = undefined;
+        continue;
+      }
 
       // Action-system thrust target — a HORIZONTAL desired direction.
       // Locomotion owns propulsion: driveForce is the authored motor
@@ -96,21 +114,22 @@ export class UnitForceSystem {
       // velocityX/Y/Z is authoritative physics, not touched here.
       const dirX = entity.unit.thrustDirX ?? 0;
       const dirY = entity.unit.thrustDirY ?? 0;
-      const dirMag = magnitude(dirX, dirY);
-      const locomotionForce = getLocomotionForceProfile(
-        entity.unit.locomotion,
-        entity.unit.mass,
-        this.world.thrustMultiplier,
-        MATTER_FORCE_SCALE,
-      );
+      const dirLenSq = dirX * dirX + dirY * dirY;
+      const hasThrustDir = dirLenSq > 0.0001;
 
-      // Sleeping units that aren't being asked to thrust short-circuit
-      // BEFORE the accumulator probe — `hasForce` is a single Map.has
-      // (no allocation) where `getFinalForce` would build a scratch
-      // tuple. Skip the rotation update too: dirMag is already below
-      // the threshold there.
-      if (body.sleeping && dirMag <= 0.01 && !forceAccumulator.hasForce(entity.id)) {
+      // Sleeping units that aren't being asked to thrust, react to a
+      // force, or run a leg actuator short-circuit before the heavier
+      // per-body work. `hasForce` is a single Map.has (no allocation)
+      // where `getFinalForce` would build a scratch tuple.
+      const hasJumpActuatorWork = this.hasJumpActuatorWork(entity.unit);
+      if (body.sleeping && !hasThrustDir && !forceAccumulator.hasForce(entity.id) && !hasJumpActuatorWork) {
         continue;
+      }
+
+      const groundContact = this.hasUnitGroundContact(entity.unit, body);
+      const jumpStateChanged = this.applyJumpActuator(entity.unit, body, groundContact);
+      if (jumpStateChanged) {
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_SUSPENSION);
       }
 
       const externalForce = forceAccumulator.getFinalForce(entity.id);
@@ -120,7 +139,7 @@ export class UnitForceSystem {
 
       // Unit faces its movement direction (yaw only — chassis tilt
       // is a render concern; sim transform.rotation stays a 2D yaw).
-      if (dirMag > 0.01) {
+      if (hasThrustDir) {
         const nextRotation = Math.atan2(dirY, dirX);
         if (nextRotation !== entity.transform.rotation) {
           entity.transform.rotation = nextRotation;
@@ -161,84 +180,94 @@ export class UnitForceSystem {
       // "solid" aspect: nothing rests on it, units never tilt to
       // its surface, and they bounce off the boundary like it's a
       // building wall.
-      const radius = body.radius || 10;
-      const inWater = isWaterAt(body.x, body.y, mw, mh);
+      if (groundContact) {
+        const locomotionForce = getLocomotionForceProfile(
+          entity.unit.locomotion,
+          entity.unit.mass,
+          this.world.thrustMultiplier,
+          MATTER_FORCE_SCALE,
+        );
+        const radius = body.radius || 10;
+        const inWater = isWaterAt(body.x, body.y, mw, mh);
 
-      if (inWater) {
-        // ESCAPE FORCE — push toward dry land. Try expanding probe
-        // radii so even a unit teleported deep into a valley gets a
-        // valid outward direction.
-        let hasOutDir = false;
-        for (let i = 0; i < WATER_ESCAPE_PROBE_MULTS.length; i++) {
-          hasOutDir = this.probeWaterOutward(
-            body.x, body.y,
-            radius * WATER_ESCAPE_PROBE_MULTS[i],
-            mw, mh,
-          );
-          if (hasOutDir) break;
-        }
-        if (hasOutDir) {
-          // 3× normal thrust strength — feels like a hard wall pushing
-          // the unit out, not a gentle current.
-          const wallPush = 3 * locomotionForce.rawForceMagnitude;
-          thrustForceX = this._waterOutX * wallPush;
-          thrustForceY = this._waterOutY * wallPush;
-          // No z thrust — water surface is flat, no slope to climb out of.
-        }
-      } else if (dirMag > 0.01) {
-        let useDirX = dirX / dirMag;
-        let useDirY = dirY / dirMag;
+        if (inWater) {
+          // ESCAPE FORCE — push toward dry land. Try expanding probe
+          // radii so even a unit teleported deep into a valley gets a
+          // valid outward direction.
+          let hasOutDir = false;
+          for (let i = 0; i < WATER_ESCAPE_PROBE_MULTS.length; i++) {
+            hasOutDir = this.probeWaterOutward(
+              body.x, body.y,
+              radius * WATER_ESCAPE_PROBE_MULTS[i],
+              mw,
+              mh,
+            );
+            if (hasOutDir) break;
+          }
+          if (hasOutDir) {
+            // 3× normal thrust strength — feels like a hard wall pushing
+            // the unit out, not a gentle current.
+            const wallPush = 3 * locomotionForce.rawForceMagnitude;
+            thrustForceX = this._waterOutX * wallPush;
+            thrustForceY = this._waterOutY * wallPush;
+            // No z thrust — water surface is flat, no slope to climb out of.
+          }
+        } else if (hasThrustDir) {
+          const invDirMag = 1 / Math.sqrt(dirLenSq);
+          let useDirX = dirX * invDirMag;
+          let useDirY = dirY * invDirMag;
 
-        // THRUST GATE — if a body-radius step ahead would put the
-        // body in water, project the thrust onto the local "along
-        // the shore" direction. The inward component (into water)
-        // gets zeroed; the parallel component (sliding along the
-        // boundary) is preserved.
-        const probe = radius + 5;
-        const aheadX = body.x + useDirX * probe;
-        const aheadY = body.y + useDirY * probe;
-        if (isWaterAt(aheadX, aheadY, mw, mh)) {
-          if (this.probeWaterOutward(aheadX, aheadY, radius, mw, mh)) {
-            // Decompose useDir against outward direction.
-            // dotOut > 0 ⇒ thrust outward (away from water) — fine.
-            // dotOut < 0 ⇒ thrust has inward component — remove it.
-            const dotOut = useDirX * this._waterOutX + useDirY * this._waterOutY;
-            if (dotOut < 0) {
-              useDirX -= dotOut * this._waterOutX;
-              useDirY -= dotOut * this._waterOutY;
-              const m = magnitude(useDirX, useDirY);
-              if (m > 1e-3) {
-                useDirX /= m;
-                useDirY /= m;
-              } else {
-                // Thrust was purely inward — nothing parallel to the
-                // shore left. Unit stops at the wall.
-                useDirX = 0;
-                useDirY = 0;
+          // THRUST GATE — if a body-radius step ahead would put the
+          // body in water, project the thrust onto the local "along
+          // the shore" direction. The inward component (into water)
+          // gets zeroed; the parallel component (sliding along the
+          // boundary) is preserved.
+          const probe = radius + 5;
+          const aheadX = body.x + useDirX * probe;
+          const aheadY = body.y + useDirY * probe;
+          if (isWaterAt(aheadX, aheadY, mw, mh)) {
+            if (this.probeWaterOutward(aheadX, aheadY, radius, mw, mh)) {
+              // Decompose useDir against outward direction.
+              // dotOut > 0 ⇒ thrust outward (away from water) — fine.
+              // dotOut < 0 ⇒ thrust has inward component — remove it.
+              const dotOut = useDirX * this._waterOutX + useDirY * this._waterOutY;
+              if (dotOut < 0) {
+                useDirX -= dotOut * this._waterOutX;
+                useDirY -= dotOut * this._waterOutY;
+                const m = magnitude(useDirX, useDirY);
+                if (m > 1e-3) {
+                  useDirX /= m;
+                  useDirY /= m;
+                } else {
+                  // Thrust was purely inward — nothing parallel to the
+                  // shore left. Unit stops at the wall.
+                  useDirX = 0;
+                  useDirY = 0;
+                }
               }
             }
           }
-        }
 
-        if (useDirX !== 0 || useDirY !== 0) {
-          const thrustMagnitude = locomotionForce.tractionForceMagnitude;
-          // Project horizontal thrust onto the slope tangent so
-          // hill-climbing produces the right z-aware force. Slope
-          // normal is land-only (Terrain.getSurfaceNormal excludes
-          // wet samples), so this never inherits the water plane's
-          // tilt.
+          if (useDirX !== 0 || useDirY !== 0) {
+            const thrustMagnitude = locomotionForce.tractionForceMagnitude;
+            // Project horizontal thrust onto the slope tangent so
+            // hill-climbing produces the right z-aware force. Slope
+            // normal is land-only (Terrain.getSurfaceNormal excludes
+            // wet samples), so this never inherits the water plane's
+            // tilt.
+            const n = this.world.getCachedSurfaceNormal(body.x, body.y);
+            const t = projectHorizontalOntoSlope(useDirX, useDirY, n);
+            thrustForceX = t.x * thrustMagnitude;
+            thrustForceY = t.y * thrustMagnitude;
+            thrustForceZ = t.z * thrustMagnitude;
+          }
+        } else {
           const n = this.world.getCachedSurfaceNormal(body.x, body.y);
-          const t = projectHorizontalOntoSlope(useDirX, useDirY, n);
-          thrustForceX = t.x * thrustMagnitude;
-          thrustForceY = t.y * thrustMagnitude;
-          thrustForceZ = t.z * thrustMagnitude;
-        }
-      } else {
-        const n = this.world.getCachedSurfaceNormal(body.x, body.y);
-        if (this.computeIdleBrakeForce(body, n, locomotionForce, dtSec)) {
-          thrustForceX = this._idleBrakeForceX;
-          thrustForceY = this._idleBrakeForceY;
-          thrustForceZ = this._idleBrakeForceZ;
+          if (this.computeIdleBrakeForce(body, n, locomotionForce, dtSec)) {
+            thrustForceX = this._idleBrakeForceX;
+            thrustForceY = this._idleBrakeForceY;
+            thrustForceZ = this._idleBrakeForceZ;
+          }
         }
       }
 
@@ -253,6 +282,21 @@ export class UnitForceSystem {
       ) {
         continue;
       }
+      // Ship only the persistent movement/traction acceleration for
+      // client prediction. Jump, gravity, terrain spring, damping, and
+      // transient external forces are handled through their own paths.
+      const movementAccelScale = body.mass > 0 ? 1e6 / body.mass : 0;
+      if (setUnitMovementAcceleration(
+        entity.unit,
+        thrustForceX * movementAccelScale,
+        thrustForceY * movementAccelScale,
+        thrustForceZ * movementAccelScale,
+      )) {
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
+      }
+      if (totalForceX === 0 && totalForceY === 0 && totalForceZ === 0) {
+        continue;
+      }
 
       // Matter.js Verlet integration uses (F/m) * deltaTimeMs², our Euler engine uses (F/m) * dtSec.
       // Conversion: (ms)² / (sec)² = 1000² = 1e6. With friction-first ordering this is exact.
@@ -265,6 +309,7 @@ export class UnitForceSystem {
   }
 
   private collectPhysicsForceUnitIds(): void {
+    this.refreshJumpActuatorUnitIds();
     const ids = this.physicsForceUnitIdsBuf;
     const seen = this.physicsActiveUnitIds;
     ids.length = 0;
@@ -293,6 +338,81 @@ export class UnitForceSystem {
     for (let i = 0; i < candidates.length; i++) {
       pushId(candidates[i]);
     }
+
+    const jumpIds = this.jumpActuatorUnitIds;
+    for (let i = 0; i < jumpIds.length; i++) {
+      const entity = this.world.getEntity(jumpIds[i]);
+      if (!entity?.unit || !entity.body?.physicsBody) continue;
+      if (entity.buildable && !entity.buildable.isComplete) continue;
+      if (this.hasJumpActuatorWork(entity.unit)) {
+        pushId(entity.id);
+      }
+    }
+  }
+
+  private refreshJumpActuatorUnitIds(): void {
+    const version = this.world.getUnitSetVersion();
+    if (version === this.jumpActuatorUnitSetVersion) return;
+    this.jumpActuatorUnitSetVersion = version;
+
+    const ids = this.jumpActuatorUnitIds;
+    ids.length = 0;
+    const units = this.world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i].unit;
+      if (!unit || getUnitJumpForce(unit) <= 0) continue;
+      ids.push(units[i].id);
+    }
+  }
+
+  private hasJumpActuatorWork(unit: Unit): boolean {
+    const suspension = unit.suspension;
+    const jump = suspension?.jump;
+    if (!jump || !Number.isFinite(jump.force) || jump.force <= 0) return false;
+    if (jump.mode === 'always' || suspension.jumpRequested) return true;
+    return suspension.jumpActive || !suspension.legContact;
+  }
+
+  private hasUnitGroundContact(unit: Unit, body: Body3D): boolean {
+    return isUnitGroundPointAtOrBelowTerrain(
+      unit,
+      body.z,
+      this.world.getGroundZ(body.x, body.y),
+    );
+  }
+
+  private applyJumpActuator(unit: Unit, body: Body3D, groundContact: boolean): boolean {
+    const suspension = unit.suspension;
+    const jump = suspension?.jump;
+    if (!jump) return false;
+
+    const beforeJumpRequested = suspension.jumpRequested;
+    const beforeJumpActive = suspension.jumpActive;
+    const beforeLegContact = suspension.legContact;
+
+    const wantsJump = unitJumpWantsActuator(unit);
+    suspension.jumpRequested = false;
+    suspension.legContact = groundContact;
+
+    const jumpForce = getUnitJumpForce(unit);
+    if (!groundContact || !wantsJump || jumpForce <= 0) {
+      suspension.jumpActive = false;
+      return (
+        suspension.jumpRequested !== beforeJumpRequested ||
+        suspension.jumpActive !== beforeJumpActive ||
+        suspension.legContact !== beforeLegContact
+      );
+    }
+
+    this.physics.applyForce(body, 0, 0, jumpForce, {
+      canLaunchFromGround: true,
+    });
+    suspension.jumpActive = true;
+    return (
+      suspension.jumpRequested !== beforeJumpRequested ||
+      suspension.jumpActive !== beforeJumpActive ||
+      suspension.legContact !== beforeLegContact
+    );
   }
 
   private computeIdleBrakeForce(
@@ -308,11 +428,10 @@ export class UnitForceSystem {
     const maxForce = locomotionForce.tractionForceMagnitude;
     if (dtSec <= 0 || maxForce <= 0 || body.mass <= 0) return false;
 
-    // Existing velocity and gravity are both constrained to the
-    // ground tangent by PhysicsEngine3D. When the action system is not
-    // asking this unit to move, use the same locomotion traction as a
-    // contact brake: cancel downhill gravity and bleed any current
-    // tangent velocity toward zero, capped by the unit's available grip.
+    // When the action system is not asking this unit to move, use the
+    // same locomotion traction as a contact brake: cancel gravity's
+    // downhill tangent component and bleed current tangent velocity
+    // toward zero, capped by the unit's available grip.
     const vDotN = body.vx * normal.nx + body.vy * normal.ny + body.vz * normal.nz;
     const tangentVx = body.vx - vDotN * normal.nx;
     const tangentVy = body.vy - vDotN * normal.ny;

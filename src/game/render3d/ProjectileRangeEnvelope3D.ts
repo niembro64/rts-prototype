@@ -8,6 +8,11 @@ import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getRuntimeTurretMount } from '../sim/turretMounts';
 import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
+import {
+  createClosedRibbonGeometry,
+  writeClosedRibbonGeometry,
+  type ClosedRibbonGeometry,
+} from './GroundCircleLine3D';
 
 const ENVELOPE_SLICES = 64;
 const RECOMPUTE_FRAMES = 6;
@@ -17,9 +22,8 @@ const RENDER_ORDER = 22;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 
 type EnvelopeRing = {
-  line: THREE.LineLoop;
-  positions: Float32Array;
-  attr: THREE.BufferAttribute;
+  mesh: THREE.Mesh;
+  ribbon: ClosedRibbonGeometry;
   cacheKey: string;
   framesUntilRecompute: number;
 };
@@ -27,12 +31,13 @@ type EnvelopeRing = {
 export class ProjectileRangeEnvelope3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
-  private readonly material = new THREE.LineBasicMaterial({
-    color: 0xffdd66,
+  private readonly material = new THREE.MeshBasicMaterial({
+    color: 0xff3333,
     transparent: true,
     opacity: 0.9,
     depthWrite: false,
     depthTest: false,
+    side: THREE.DoubleSide,
   });
   private readonly rings: EnvelopeRing[] = [];
   private activeEntityId: EntityId | null = null;
@@ -86,8 +91,8 @@ export class ProjectileRangeEnvelope3D {
       const baseY = getSurfaceHeight(mount.x, mount.y, mapWidth, mapHeight, LAND_CELL_SIZE)
         + GROUND_LIFT;
       const ring = this.ensureRing(ringIndex);
-      ring.line.visible = true;
-      ring.line.position.set(mount.x, baseY, mount.y);
+      ring.mesh.visible = true;
+      ring.mesh.position.set(mount.x, baseY, mount.y);
 
       const key = `${entity.id}:${turretIndex}:${shot.id}:${shot.launchForce}:${shot.mass}:`
         + `${shot.lifespan ?? 0}:${shot.ignoresGravity === true ? 1 : 0}:`
@@ -104,15 +109,15 @@ export class ProjectileRangeEnvelope3D {
     }
 
     for (let i = ringIndex; i < this.rings.length; i++) {
-      this.rings[i].line.visible = false;
+      this.rings[i].mesh.visible = false;
     }
     if (ringIndex === 0) this.activeEntityId = null;
   }
 
   destroy(): void {
     for (const ring of this.rings) {
-      this.world.remove(ring.line);
-      ring.line.geometry.dispose();
+      this.world.remove(ring.mesh);
+      ring.mesh.geometry.dispose();
     }
     this.rings.length = 0;
     this.material.dispose();
@@ -179,18 +184,14 @@ export class ProjectileRangeEnvelope3D {
     let ring = this.rings[index];
     if (ring) return ring;
 
-    const positions = new Float32Array(ENVELOPE_SLICES * 3);
-    const attr = new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage);
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', attr);
-    const line = new THREE.LineLoop(geometry, this.material);
-    line.renderOrder = RENDER_ORDER;
-    line.frustumCulled = false;
-    this.world.add(line);
+    const ribbon = createClosedRibbonGeometry(ENVELOPE_SLICES);
+    const mesh = new THREE.Mesh(ribbon.geometry, this.material);
+    mesh.renderOrder = RENDER_ORDER;
+    mesh.frustumCulled = false;
+    this.world.add(mesh);
     ring = {
-      line,
-      positions,
-      attr,
+      mesh,
+      ribbon,
       cacheKey: '',
       framesUntilRecompute: 0,
     };
@@ -209,7 +210,7 @@ export class ProjectileRangeEnvelope3D {
     mapHeight: number,
     baseY: number,
   ): void {
-    const p = ring.positions;
+    const centers = ring.ribbon.centers;
     for (let i = 0; i < ENVELOPE_SLICES; i++) {
       const a = (i / ENVELOPE_SLICES) * Math.PI * 2;
       const dirX = Math.cos(a);
@@ -229,11 +230,11 @@ export class ProjectileRangeEnvelope3D {
       const y = originY + dirY * dist;
       const groundY = getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE) + GROUND_LIFT;
       const o = i * 3;
-      p[o] = dirX * dist;
-      p[o + 1] = groundY - baseY;
-      p[o + 2] = dirY * dist;
+      centers[o] = dirX * dist;
+      centers[o + 1] = groundY - baseY;
+      centers[o + 2] = dirY * dist;
     }
-    ring.attr.needsUpdate = true;
+    writeClosedRibbonGeometry(ring.ribbon);
   }
 
   private findReachDistance(
@@ -324,7 +325,7 @@ export class ProjectileRangeEnvelope3D {
   }
 
   private hideAll(): void {
-    for (const ring of this.rings) ring.line.visible = false;
+    for (const ring of this.rings) ring.mesh.visible = false;
     this.activeEntityId = null;
   }
 

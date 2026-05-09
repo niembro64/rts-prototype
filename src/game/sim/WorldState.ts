@@ -10,6 +10,7 @@ import {
   DEFAULT_MIRRORS_ENABLED,
   DEFAULT_FORCE_FIELDS_ENABLED,
   UNIT_HP_MULTIPLIER,
+  UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
   LAND_CELL_SIZE,
   DGUN_TERRAIN_FOLLOW_HEIGHT,
 } from '../../config';
@@ -17,6 +18,8 @@ import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
+import { createUnitSuspension } from './unitSuspension';
+import { ENTITY_CHANGED_HP } from '../../types/network';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 type SurfaceNormal = { nx: number; ny: number; nz: number };
@@ -59,9 +62,11 @@ export class WorldState {
   private nextEntityId: EntityId = 1;
   private tick: number = 0;
   private buildingVersion: number = 0;
+  private unitSetVersion: number = 0;
   private removedSnapshotEntityIds: EntityId[] = [];
   private snapshotDirtyIds = new Set<EntityId>();
   private snapshotDirtyFields = new Map<EntityId, number>();
+  private pendingDeathCheckIds = new Set<EntityId>();
   private surfaceNormalCache = new Map<number, SurfaceNormal>();
   public rng: SeededRNG;
 
@@ -100,6 +105,10 @@ export class WorldState {
   public mirrorsEnabled: boolean = DEFAULT_MIRRORS_ENABLED;
   // Whether force-field turrets participate in targeting, simulation, and rendering
   public forceFieldsEnabled: boolean = DEFAULT_FORCE_FIELDS_ENABLED;
+  /** Optional server-side lifecycle hook. WorldState owns entity
+   *  removal, but host-only systems such as physics own external
+   *  resources that must be released before the entity disappears. */
+  public onEntityRemoving?: (entity: Entity) => void;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
@@ -201,6 +210,7 @@ export class WorldState {
   // Add entity to world
   addEntity(entity: Entity): void {
     this.entities.set(entity.id, entity);
+    if (entity.type === 'unit') this.unitSetVersion++;
     if (entity.type === 'building') this.buildingVersion++;
     this.markSnapshotDirty(entity.id, 0xff);
     this.cache.invalidate();
@@ -209,15 +219,18 @@ export class WorldState {
   // Remove entity from world
   removeEntity(id: EntityId): void {
     const entity = this.entities.get(id);
+    if (entity) this.onEntityRemoving?.(entity);
     if (entity?.unit) {
       // Drop any inverse-target index entries that referred to this
       // unit's beam weapons before its bookkeeping is gone.
       dropWeaponsForUnit(entity);
     }
+    if (entity?.type === 'unit') this.unitSetVersion++;
     if (entity?.type === 'building') this.buildingVersion++;
     if (entity?.type === 'unit' || entity?.type === 'building') {
       this.removedSnapshotEntityIds.push(id);
     }
+    this.pendingDeathCheckIds.delete(id);
     this.snapshotDirtyIds.delete(id);
     this.snapshotDirtyFields.delete(id);
     this.entities.delete(id);
@@ -228,8 +241,19 @@ export class WorldState {
     if (fields === 0) return;
     const entity = this.entities.get(id);
     if (!entity || (entity.type !== 'unit' && entity.type !== 'building')) return;
+    if (fields & ENTITY_CHANGED_HP) this.pendingDeathCheckIds.add(id);
     this.snapshotDirtyIds.add(id);
     this.snapshotDirtyFields.set(id, (this.snapshotDirtyFields.get(id) ?? 0) | fields);
+  }
+
+  drainPendingDeathCheckIds(out: EntityId[]): void {
+    out.length = 0;
+    for (const id of this.pendingDeathCheckIds) out.push(id);
+    this.pendingDeathCheckIds.clear();
+  }
+
+  clearPendingDeathCheckIds(): void {
+    this.pendingDeathCheckIds.clear();
   }
 
   drainSnapshotDirtyEntities(outIds: EntityId[], outFields: number[]): void {
@@ -252,6 +276,10 @@ export class WorldState {
 
   getBuildingVersion(): number {
     return this.buildingVersion;
+  }
+
+  getUnitSetVersion(): number {
+    return this.unitSetVersion;
   }
 
   // Get entity by ID
@@ -487,12 +515,10 @@ export class WorldState {
   ): Entity {
     const id = this.generateEntityId();
 
-    // Initial altitude = the local terrain height + the authored body
-    // center height. The push/collision radius is separate; this value
-    // is the canonical center used by rendering, turrets, legs, and
-    // physics rest altitude.
-    // Units spawned in the central ripple disc come in already on top
-    // of the elevated cubes; corner spawns sit at z = bodyCenterHeight.
+    // Initial altitude = local terrain + authored body-center height
+    // plus the shared spawn lift. The lift is measured at the
+    // locomotion ground point, so gravity/terrain spring settle every
+    // newly-created unit through the same physics path.
     const groundZ = this.getGroundZ(x, y);
     // Seed the per-unit smoothed normal with the raw normal at the
     // spawn position so the first tick after spawn doesn't snap from
@@ -502,7 +528,12 @@ export class WorldState {
     const entity: Entity = {
       id,
       type: 'unit',
-      transform: { x, y, z: groundZ + bodyCenterHeight, rotation: 0 },
+      transform: {
+        x,
+        y,
+        z: groundZ + bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
+        rotation: 0,
+      },
       selectable: { selected: false },
       ownership: { playerId },
       unit: {
@@ -514,6 +545,7 @@ export class WorldState {
         hp,
         maxHp: hp,
         actions: [],
+        actionHash: 0,
         patrolStartIndex: null,
         mirrorPanels: [],
         mirrorBoundRadius: 0,
@@ -543,6 +575,7 @@ export class WorldState {
       bp.mass,
       bp.hp * UNIT_HP_MULTIPLIER,
     );
+    entity.unit!.suspension = createUnitSuspension(bp.suspension, bp.locomotion.physics.jump);
 
     // Create combat component (turrets + per-host bookkeeping) from
     // blueprint. Every unit blueprint declares at least one turret, so

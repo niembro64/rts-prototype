@@ -20,6 +20,13 @@ export type RadiusRingMeshes = {
   push?: THREE.LineSegments;
 };
 
+export type RangeRingMesh = THREE.Mesh & {
+  userData: THREE.Object3D['userData'] & {
+    radius?: number;
+    ribbon?: unknown;
+  };
+};
+
 export type EntityMesh = {
   group: THREE.Group;
   /** Yaw subgroup. Hierarchy: `group` carries position + the surface
@@ -103,8 +110,8 @@ export type EntityMesh = {
   radiusRingsVisible?: boolean;
   /** Builder-unit BLD ground-plane circle. Build range is a 2D
    *  horizontal check, so this lives at the local terrain surface and
-   *  scales in the X/Y plane instead of drawing a 3D sphere. */
-  buildRing?: THREE.LineSegments;
+   *  draws as a fixed-width ground ribbon instead of a 3D sphere. */
+  buildRing?: RangeRingMesh;
   rangeRingsVisible?: boolean;
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary

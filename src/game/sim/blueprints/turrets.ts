@@ -62,10 +62,19 @@ const RANGE_FIRE_MIN: HysteresisRangeMultiplier = {
 };
 
 function fireEnvelope(params: {
+  engageRangeMax?: HysteresisRangeMultiplier | null;
   engageRangeMin: HysteresisRangeMultiplier | null;
   trackingRange: HysteresisRangeMultiplier | null;
 }): TurretBlueprint['rangeMultiplierOverrides'] {
-  const { engageRangeMin, trackingRange } = params;
+  const { engageRangeMin, trackingRange, engageRangeMax } = params;
+
+  if (engageRangeMax) {
+    return {
+      engageRangeMax: { ...engageRangeMax },
+      engageRangeMin: engageRangeMin ? { ...engageRangeMin } : null,
+      trackingRange: trackingRange ? { ...trackingRange } : null,
+    };
+  }
 
   return {
     engageRangeMax: { ...RANGE_FIRE_MAX },
@@ -354,27 +363,6 @@ export const TURRET_BLUEPRINTS = {
     // a count of 1 so the cache builder emits one panel per host.
     mirrorPanels: [{ offsetX: 0, offsetY: 0, angle: 0 }],
   },
-  laserTurret: {
-    id: 'laserTurret',
-    projectileId: 'laserShot',
-    range: 100,
-    cooldown: 1500,
-    turretTurnAccel: 40,
-    turretDrag: 0.15,
-    barrel: {
-      type: 'simpleSingleBarrel',
-      barrelLength: 0.5,
-    },
-    rangeMultiplierOverrides: fireEnvelope({
-      engageRangeMin: null,
-      trackingRange: null,
-    }),
-    eventsSmooth: false,
-    color: COLOR_WHITE,
-    spread: { angle: 0 },
-    radius: { body: 4 },
-    audio: { fireSound: AUDIO.event.fire.laserTurret },
-  },
   beamTurret: {
     id: 'beamTurret',
     projectileId: 'beamShot',
@@ -391,7 +379,7 @@ export const TURRET_BLUEPRINTS = {
     }),
     eventsSmooth: false,
     color: COLOR_WHITE,
-    radius: { body: 8 },
+    radius: { body: 5 },
     audio: {
       fireSound: AUDIO.event.fire.beamTurret,
     },

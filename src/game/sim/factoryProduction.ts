@@ -5,6 +5,7 @@ import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';
 import { expandPathActions } from './Pathfinder';
+import { setUnitActions } from './unitActions';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_FACTORY,
@@ -30,6 +31,7 @@ export class FactoryProductionSystem {
   // (waypoints + turret aim). Resource transfer into the shell is
   // handled by energyDistribution, the same path that funds buildings.
   update(world: WorldState, _dtMs: number, buildingGrid: BuildingGrid): FactoryProductionResult {
+    const spawnedUnits: Entity[] = [];
     const completedUnits: Entity[] = [];
 
     for (const factory of world.getFactoryBuildings()) {
@@ -107,10 +109,11 @@ export class FactoryProductionSystem {
       factoryComp.currentShellId = shell.id;
       factoryComp.isProducing = true;
       factoryComp.currentBuildProgress = 0;
+      spawnedUnits.push(shell);
       world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
     }
 
-    return { completedUnits };
+    return { spawnedUnits, completedUnits };
   }
 
   // Spawn an inert shell of `unitType` at the factory's build spot.
@@ -173,7 +176,7 @@ export class FactoryProductionSystem {
         anchorX = wp.x;
         anchorY = wp.y;
       }
-      unit.unit.actions = actions;
+      setUnitActions(unit.unit, actions);
       if (patrolStartActionIndex !== -1) {
         unit.unit.patrolStartIndex = patrolStartActionIndex;
       }

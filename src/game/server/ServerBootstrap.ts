@@ -43,6 +43,7 @@ import {
 import type { Entity, PlayerId } from '../sim/types';
 import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { PhysicsEngine3D } from './PhysicsEngine3D';
+import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 
 export interface BootstrappedServerWorld {
   physics: PhysicsEngine3D;
@@ -247,30 +248,10 @@ export class ServerBootstrap {
     // Pass 2: create unit bodies + set ignore-static for overlapping buildings
     for (const entity of entities) {
       if (entity.type === 'unit' && entity.unit) {
-        const body = physics.createUnitBody(
-          entity.transform.x,
-          entity.transform.y,
-          entity.unit.radius.push,
-          entity.unit.bodyCenterHeight,
-          entity.unit.mass,
-          `unit_${entity.id}`,
-          entity.id,
-        );
-        entity.body = { physicsBody: body };
-
-        // Skip collision with any building the unit overlaps at spawn
-        const spawnX = entity.transform.x;
-        const spawnY = entity.transform.y;
-        for (const building of world.getBuildings()) {
-          if (!building.body?.physicsBody || !building.building) continue;
-          const bw = building.building.width / 2;
-          const bh = building.building.height / 2;
-          if (Math.abs(spawnX - building.transform.x) < bw + entity.unit.radius.push &&
-              Math.abs(spawnY - building.transform.y) < bh + entity.unit.radius.push) {
-            physics.setIgnoreStatic(body, building.body.physicsBody);
-            break;
-          }
-        }
+        createPhysicsBodyForUnit(world, physics, entity, {
+          ignoreOverlappingBuildings: true,
+          overlapPadding: entity.unit.radius.push,
+        });
       }
     }
   }

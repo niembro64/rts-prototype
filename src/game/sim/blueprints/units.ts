@@ -10,7 +10,6 @@ import { AUDIO } from '../../../audioConfig';
 import { DEFAULT_UNIT_HUD_LAYOUT } from '../../../entityHudConfig';
 import type { TurretId } from '../../../types/blueprintIds';
 import type {
-  LegLayoutEntry,
   UnitBlueprint,
   MountOffset,
   TurretMount,
@@ -19,7 +18,8 @@ import type {
   UnitTurretMountZResolver,
 } from './types';
 import type { UnitLocomotion } from '../types';
-import { createLocomotionPhysics, createUnitLocomotion } from '../locomotion';
+import { createUnitLocomotion } from '../locomotion';
+import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
 import {
   LEG_BODY_LIFT_FRAC,
   getExpectedUnitBodyCenterHeightY,
@@ -169,97 +169,6 @@ const BODY_SHAPES = {
   loris: { kind: 'circle', radiusFrac: 0.55, yFrac: 0.55 },
 } satisfies Record<string, UnitBodyShape>;
 
-type LegGaitPreset = {
-  snapTriggerAnglePi: number;
-  snapTargetAnglePi: number;
-  snapDistanceMultiplier: number;
-  extensionThreshold: number;
-};
-
-const LEG_GAIT_FRONT: LegGaitPreset = {
-  snapTriggerAnglePi: 0.46,
-  snapTargetAnglePi: -0.31,
-  snapDistanceMultiplier: 0.74,
-  extensionThreshold: 0.96,
-};
-
-const LEG_GAIT_REAR: LegGaitPreset = {
-  snapTriggerAnglePi: 0.99,
-  snapTargetAnglePi: -0.58,
-  snapDistanceMultiplier: 0.5,
-  extensionThreshold: 0.99,
-};
-
-const FORMIK_GAITS: [LegGaitPreset, LegGaitPreset, LegGaitPreset] = [
-  {
-    snapTriggerAnglePi: 0.42,
-    snapTargetAnglePi: -0.28,
-    snapDistanceMultiplier: 0.7,
-    extensionThreshold: 0.96,
-  },
-  {
-    snapTriggerAnglePi: 0.72,
-    snapTargetAnglePi: -0.45,
-    snapDistanceMultiplier: 0.62,
-    extensionThreshold: 0.98,
-  },
-  {
-    snapTriggerAnglePi: 1.02,
-    snapTargetAnglePi: -0.62,
-    snapDistanceMultiplier: 0.54,
-    extensionThreshold: 0.99,
-  },
-];
-
-function legLayoutEntry(
-  attachOffsetXFrac: number,
-  attachOffsetYFrac: number,
-  legLengthFrac: number,
-  upperLengthRatio: number,
-  lowerLengthToUpperRatio: number,
-  gait: LegGaitPreset,
-): LegLayoutEntry {
-  const upperLegLengthFrac = legLengthFrac * upperLengthRatio;
-  return {
-    attachOffsetXFrac,
-    attachOffsetYFrac,
-    upperLegLengthFrac,
-    lowerLegLengthFrac: upperLegLengthFrac * lowerLengthToUpperRatio,
-    snapTriggerAngle: Math.PI * gait.snapTriggerAnglePi,
-    snapTargetAngle: Math.PI * gait.snapTargetAnglePi,
-    snapDistanceMultiplier: gait.snapDistanceMultiplier,
-    extensionThreshold: gait.extensionThreshold,
-  };
-}
-
-const LEG_LAYOUTS: Record<string, LegLayoutEntry[]> = {
-  daddy: [
-    legLayoutEntry(0.3, -0.2, 10, 0.45, 1.2, LEG_GAIT_FRONT),
-    legLayoutEntry(-0.3, -0.3, 10, 0.45, 1.2, LEG_GAIT_REAR),
-  ],
-  formik: [
-    legLayoutEntry(0.42, -0.28, 1.75, 0.52, 1.16, FORMIK_GAITS[0]),
-    legLayoutEntry(0.02, -0.36, 1.75, 0.52, 1.16, FORMIK_GAITS[1]),
-    legLayoutEntry(-0.48, -0.3, 1.75, 0.52, 1.16, FORMIK_GAITS[2]),
-  ],
-  tick: [
-    legLayoutEntry(0.25, -0.15, 1.0, 0.5, 1.1, LEG_GAIT_FRONT),
-    legLayoutEntry(-0.25, -0.15, 1.0, 0.5, 1.1, LEG_GAIT_REAR),
-  ],
-  commander: [
-    legLayoutEntry(0.4, -0.5, 2.2, 0.5, 1.2, LEG_GAIT_FRONT),
-    legLayoutEntry(-0.4, -0.5, 2.2, 0.5, 1.2, LEG_GAIT_REAR),
-  ],
-  tarantula: [
-    legLayoutEntry(0.3, -0.2, 1.9, 0.55, 1.2, LEG_GAIT_FRONT),
-    legLayoutEntry(-0.3, -0.2, 1.9, 0.55, 1.2, LEG_GAIT_REAR),
-  ],
-  widow: [
-    legLayoutEntry(0.4, -0.4, 1.9, 0.55, 1.2, LEG_GAIT_FRONT),
-    legLayoutEntry(-0.4, -0.4, 1.9, 0.55, 1.2, LEG_GAIT_REAR),
-  ],
-};
-
 const TARANTULA_ABDOMEN_FORWARD_FRAC = -0.65;
 const FORMIK_BACK_SEGMENT_FORWARD_FRAC = -0.85;
 const TICK_BODY_CENTER_HEIGHT = 8;
@@ -267,7 +176,7 @@ const TICK_TURRET_Z_FRAC = TICK_BODY_CENTER_HEIGHT / 10;
 const DADDY_VISUAL_RADIUS = 13;
 const DADDY_PUSH_RADIUS = 15;
 const DADDY_BODY_CENTER_HEIGHT = 60;
-const DADDY_LASER_TURRET_Z_FRAC =
+const DADDY_BEAM_TURRET_Z_FRAC =
   DADDY_BODY_CENTER_HEIGHT / DADDY_VISUAL_RADIUS;
 // Daddy's main body is authored high above the ground; this force-field
 // mount intentionally uses a >1 radius fraction to sit on its underside.
@@ -359,18 +268,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [turretMount('lightTurret', mountPoint(0, 0, 1.2))],
     bodyShape: BODY_SHAPES.scout,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'wheels',
-      physics: createLocomotionPhysics('wheels', 300),
-      config: {
-        wheelDistX: 0.6,
-        wheelDistY: 0.7,
-        treadLength: 0.5,
-        treadWidth: 0.15,
-        wheelRadius: 0.28,
-        rotationSpeed: 1.0,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.jackal,
     deathSound: AUDIO.event.death.jackal,
   },
   lynx: {
@@ -385,17 +283,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [turretMount('pulseTurret', mountPoint(0, 0, 1.3))],
     bodyShape: BODY_SHAPES.burst,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'treads',
-      physics: createLocomotionPhysics('treads', 170),
-      config: {
-        treadOffset: 0.8,
-        treadLength: 1.6,
-        treadWidth: 0.45,
-        wheelRadius: 0.12,
-        rotationSpeed: 1.0,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.lynx,
     deathSound: AUDIO.event.death.lynx,
   },
   daddy: {
@@ -412,7 +300,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     mass: 30,
     cost: { energy: 350, mana: 350, metal: 350 },
     turrets: [
-      turretMount('laserTurret', mountPoint(0, 0, DADDY_LASER_TURRET_Z_FRAC)),
+      turretMount('beamTurret', mountPoint(0, 0, DADDY_BEAM_TURRET_Z_FRAC)),
       turretMount(
         'forceTurret',
         mountPoint(0, 0, DADDY_FORCE_FIELD_TURRET_Z_FRAC),
@@ -422,18 +310,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hud: DEFAULT_UNIT_HUD_LAYOUT,
     hideChassis: true,
     legAttachHeightFrac: DADDY_LEG_ATTACH_HEIGHT_FRAC,
-    locomotion: {
-      type: 'legs',
-      physics: createLocomotionPhysics('legs', 200),
-      config: {
-        upperThickness: 2.5,
-        lowerThickness: 2,
-        hipRadius: 1.5,
-        kneeRadius: 0.8,
-        lerpDuration: 200,
-        leftSide: LEG_LAYOUTS.daddy,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.daddy,
     deathSound: AUDIO.event.death.daddy,
   },
   badger: {
@@ -448,17 +325,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [turretMount('salvoRocketTurret', mountPoint(0, 0, 1.4))],
     bodyShape: BODY_SHAPES.brawl,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'treads',
-      physics: createLocomotionPhysics('treads', 200),
-      config: {
-        treadOffset: 0.85,
-        treadLength: 1.7,
-        treadWidth: 0.55,
-        wheelRadius: 0.12,
-        rotationSpeed: 1.0,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.badger,
     deathSound: AUDIO.event.death.badger,
   },
   mongoose: {
@@ -473,18 +340,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [turretMount('mortarTurret', mountPoint(0, 0, 1.2))],
     bodyShape: BODY_SHAPES.mortar,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'wheels',
-      physics: createLocomotionPhysics('wheels', 220),
-      config: {
-        wheelDistX: 0.65,
-        wheelDistY: 0.7,
-        treadLength: 0.5,
-        treadWidth: 0.3,
-        wheelRadius: 0.22,
-        rotationSpeed: 1.0,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.mongoose,
     deathSound: AUDIO.event.death.mongoose,
   },
   tick: {
@@ -496,21 +352,15 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyCenterHeight: TICK_BODY_CENTER_HEIGHT,
     mass: 20,
     cost: { energy: 35, mana: 35, metal: 35 },
-    turrets: [turretMount('laserTurret', mountPoint(0, 0, TICK_TURRET_Z_FRAC))],
+    turrets: [turretMount('beamTurret', mountPoint(0, 0, TICK_TURRET_Z_FRAC))],
     bodyShape: BODY_SHAPES.snipe,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
     hideChassis: true,
-    locomotion: {
-      type: 'legs',
-      physics: createLocomotionPhysics('legs', 120),
-      config: {
-        upperThickness: 2,
-        lowerThickness: 1.5,
-        hipRadius: 1,
-        kneeRadius: 1.5,
-        lerpDuration: 100,
-        leftSide: LEG_LAYOUTS.tick,
-      },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.tick,
+    suspension: {
+      stiffness: 260_000,
+      dampingRatio: 0.55,
+      maxOffset: { x: 3, y: 3, z: 10 },
     },
     deathSound: AUDIO.event.death.tick,
   },
@@ -526,17 +376,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [turretMount('cannonTurret', mountPoint(0, 0, 1.5))],
     bodyShape: BODY_SHAPES.tank,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'treads',
-      physics: createLocomotionPhysics('treads', 60),
-      config: {
-        treadOffset: 0.9,
-        treadLength: 2.0,
-        treadWidth: 0.6,
-        wheelRadius: 0.175,
-        rotationSpeed: 1.0,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.mammoth,
     deathSound: AUDIO.event.death.mammoth,
   },
   formik: {
@@ -559,21 +399,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     // head sphere remains a body part, not a turret replacement.
     bodyShape: BODY_SHAPES.formik,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'legs',
-      physics: createLocomotionPhysics('legs', 60),
-      config: {
-        // Bigger thorax = beefier legs. Bumped over widow's
-        // (7/6/4/6/3.5) to keep limb thickness in proportion to
-        // the larger chassis.
-        upperThickness: 9,
-        lowerThickness: 8,
-        hipRadius: 5.5,
-        kneeRadius: 7.5,
-        lerpDuration: 320,
-        leftSide: LEG_LAYOUTS.formik,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.formik,
     deathSound: AUDIO.event.death.formik,
   },
   widow: {
@@ -591,18 +417,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: computeWidowTurrets(),
     bodyShape: BODY_SHAPES.arachnid,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'legs',
-      physics: createLocomotionPhysics('legs', 70),
-      config: {
-        upperThickness: 7,
-        lowerThickness: 6,
-        hipRadius: 4,
-        kneeRadius: 6,
-        lerpDuration: 300,
-        leftSide: LEG_LAYOUTS.widow,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.widow,
     deathSound: AUDIO.event.death.widow,
   },
   hippo: {
@@ -617,17 +432,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [turretMount('hippoGatlingTurret', mountPoint(0.2, 0, 1.8))],
     bodyShape: BODY_SHAPES.hippo,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'treads',
-      physics: createLocomotionPhysics('treads', 55),
-      config: {
-        treadOffset: 1.1,
-        treadLength: 2.6,
-        treadWidth: 0.55,
-        wheelRadius: 0.2,
-        rotationSpeed: 1.0,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.hippo,
     deathSound: AUDIO.event.death.hippo,
   },
   tarantula: {
@@ -649,18 +454,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     // head body sphere stays in place.
     bodyShape: BODY_SHAPES.beam,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'legs',
-      physics: createLocomotionPhysics('legs', 200),
-      config: {
-        upperThickness: 6.5,
-        lowerThickness: 6,
-        hipRadius: 3.5,
-        kneeRadius: 6,
-        lerpDuration: 200,
-        leftSide: LEG_LAYOUTS.tarantula,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.tarantula,
     deathSound: AUDIO.event.death.tarantula,
   },
   loris: {
@@ -678,17 +472,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.loris,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
     hideChassis: true,
-    locomotion: {
-      type: 'treads',
-      physics: createLocomotionPhysics('treads', 160),
-      config: {
-        treadOffset: 0.85,
-        treadLength: 1.7,
-        treadWidth: 0.5,
-        wheelRadius: 0.12,
-        rotationSpeed: 1.0,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.loris,
     deathSound: AUDIO.event.death.loris,
   },
   commander: {
@@ -711,18 +495,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     ],
     bodyShape: BODY_SHAPES.commander,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
-    locomotion: {
-      type: 'legs',
-      physics: createLocomotionPhysics('legs', 200),
-      config: {
-        upperThickness: 8,
-        lowerThickness: 7,
-        hipRadius: 5,
-        kneeRadius: 7,
-        lerpDuration: 200,
-        leftSide: LEG_LAYOUTS.commander,
-      },
-    },
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.commander,
     builder: { buildRange: 150, constructionRate: 50 },
     dgun: { turretId: 'dgunTurret', energyCost: 200 },
     deathSound: AUDIO.event.death.commander,

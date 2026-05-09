@@ -67,12 +67,25 @@ type ReusableEntityUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
 type ReusableFactory = NonNullable<ReusableEntityBuilding['factory']>;
 type ReusableBuildState = NonNullable<ReusableEntityUnit['build']>;
+type ReusableSuspensionState = NonNullable<ReusableEntityUnit['suspension']>;
 
 function createReusableUnit(): ReusableEntityUnit {
   return {
     hp: { curr: 0, max: 0 },
     velocity: { x: 0, y: 0, z: 0 },
   };
+}
+
+function copyVec3OptionalInto(
+  src: { x: number; y: number; z: number } | undefined,
+  dst: { x: number; y: number; z: number } | undefined,
+): { x: number; y: number; z: number } | undefined {
+  if (!src) return undefined;
+  const out = dst ?? { x: 0, y: 0, z: 0 };
+  out.x = src.x;
+  out.y = src.y;
+  out.z = src.z;
+  return out;
 }
 
 function copyBuildStateInto(
@@ -93,6 +106,13 @@ function createReusableBuildState(): ReusableBuildState {
   };
 }
 
+function createReusableSuspensionState(): ReusableSuspensionState {
+  return {
+    offset: { x: 0, y: 0, z: 0 },
+    velocity: { x: 0, y: 0, z: 0 },
+  };
+}
+
 function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): ReusableEntityUnit {
   dst.unitType = src.unitType;
   dst.hp.curr = src.hp.curr;
@@ -110,6 +130,10 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
   dst.velocity.z = src.velocity.z;
+  dst.movementAccel = copyVec3OptionalInto(
+    src.movementAccel,
+    dst.movementAccel,
+  );
   if (src.surfaceNormal) {
     if (!dst.surfaceNormal) dst.surfaceNormal = { nx: 0, ny: 0, nz: 1 };
     dst.surfaceNormal.nx = src.surfaceNormal.nx;
@@ -117,6 +141,19 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
     dst.surfaceNormal.nz = src.surfaceNormal.nz;
   } else {
     dst.surfaceNormal = undefined;
+  }
+  if (src.suspension) {
+    const suspension = dst.suspension ?? (dst.suspension = createReusableSuspensionState());
+    suspension.offset.x = src.suspension.offset.x;
+    suspension.offset.y = src.suspension.offset.y;
+    suspension.offset.z = src.suspension.offset.z;
+    suspension.velocity.x = src.suspension.velocity.x;
+    suspension.velocity.y = src.suspension.velocity.y;
+    suspension.velocity.z = src.suspension.velocity.z;
+    suspension.jumpActive = src.suspension.jumpActive;
+    suspension.legContact = src.suspension.legContact;
+  } else {
+    dst.suspension = undefined;
   }
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;

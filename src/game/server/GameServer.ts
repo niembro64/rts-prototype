@@ -47,6 +47,8 @@ import {
   type SnapshotListenerEntry,
 } from './ServerSnapshotPublisher';
 import { UnitForceSystem } from './UnitForceSystem';
+import { UnitSuspensionSystem } from './UnitSuspensionSystem';
+import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -89,6 +91,7 @@ export class GameServer {
   private gameOverListeners: GameOverCallback[] = [];
   private physicsSyncUnitIdsBuf: EntityId[] = [];
   private unitForceSystem: UnitForceSystem;
+  private unitSuspensionSystem: UnitSuspensionSystem;
 
   // Game over tracking
   private isGameOver: boolean = false;
@@ -163,6 +166,7 @@ export class GameServer {
     this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
 
     this.unitForceSystem = new UnitForceSystem(this.world, this.simulation, this.physics);
+    this.unitSuspensionSystem = new UnitSuspensionSystem(this.world, this.physics);
 
     // Setup simulation callbacks (need `this` references for physics
     // body cleanup and game-over fan-out, so they live here rather than
@@ -171,26 +175,28 @@ export class GameServer {
   }
 
   private setupSimulationCallbacks(): void {
-    // Handle unit deaths: remove physics bodies and entities
+    this.world.onEntityRemoving = (entity: Entity) => {
+      const body = entity.body?.physicsBody;
+      if (!body) return;
+      this.physics.removeBody(body);
+      entity.body = undefined;
+    };
+
+    // Handle unit deaths: remove entities. WorldState.onEntityRemoving
+    // releases physics bodies for every removal path.
     this.simulation.onUnitDeath = (deadUnitIds: EntityId[], _deathContexts?: Map<EntityId, DeathContext>) => {
       for (const id of deadUnitIds) {
-        const entity = this.world.getEntity(id);
-        if (entity?.body?.physicsBody) {
-          this.physics.removeBody(entity.body.physicsBody);
-        }
         this.world.removeEntity(id);
       }
     };
 
-    // Handle building deaths: remove physics bodies and entities
+    // Handle building deaths: run destruction effects, then remove
+    // entities. WorldState.onEntityRemoving releases physics bodies.
     this.simulation.onBuildingDeath = (deadBuildingIds: EntityId[]) => {
       const constructionSystem = this.simulation.getConstructionSystem();
       for (const id of deadBuildingIds) {
         const entity = this.world.getEntity(id);
         if (entity) {
-          if (entity.body?.physicsBody) {
-            this.physics.removeBody(entity.body.physicsBody);
-          }
           constructionSystem.onBuildingDestroyed(this.world, entity);
         }
         this.world.removeEntity(id);
@@ -200,33 +206,9 @@ export class GameServer {
     // Handle unit spawns: create physics bodies
     this.simulation.onUnitSpawn = (newUnits: Entity[]) => {
       for (const entity of newUnits) {
-        if (entity.type === 'unit' && entity.unit) {
-          const body = this.physics.createUnitBody(
-            entity.transform.x,
-            entity.transform.y,
-            entity.unit.radius.push,
-            entity.unit.bodyCenterHeight,
-            entity.unit.mass,
-            `unit_${entity.id}`,
-            entity.id,
-          );
-          entity.body = { physicsBody: body };
-
-          // Skip collision with the factory this unit spawned from
-          // (unit starts at factory center — would be pushed in random direction)
-          const spawnX = entity.transform.x;
-          const spawnY = entity.transform.y;
-          for (const building of this.world.getBuildings()) {
-            if (!building.body?.physicsBody || !building.building) continue;
-            const bw = building.building.width / 2;
-            const bh = building.building.height / 2;
-            if (Math.abs(spawnX - building.transform.x) < bw &&
-                Math.abs(spawnY - building.transform.y) < bh) {
-              this.physics.setIgnoreStatic(body, building.body.physicsBody);
-              break;
-            }
-          }
-        }
+        createPhysicsBodyForUnit(this.world, this.physics, entity, {
+          ignoreOverlappingBuildings: true,
+        });
       }
     };
 
@@ -407,6 +389,10 @@ export class GameServer {
     // Sync positions/velocities from physics to entities
     this.syncFromPhysics();
 
+    // Update visible chassis-vs-locomotion springs after the physics
+    // anchor has its authoritative velocity for this tick.
+    this.unitSuspensionSystem.update(dtMs);
+
     // Update territory capture (uses spatial grid occupancy). Same
     // skip-and-scale-dt pattern as other low-detail systems at low
     // LOD: the time-integral of flag accumulation matches the
@@ -434,12 +420,11 @@ export class GameServer {
   private syncFromPhysics(): void {
     const ids = this.physicsSyncUnitIdsBuf;
     ids.length = 0;
-    this.physics.collectAwakeEntityIds(ids);
+    this.physics.collectLastStepEntityIds(ids);
     for (let i = 0; i < ids.length; i++) {
       const entity = this.world.getEntity(ids[i]);
       if (!entity || !entity.body?.physicsBody || !entity.unit) continue;
       const body = entity.body.physicsBody;
-      if (body.sleeping) continue;
       entity.transform.x = body.x;
       entity.transform.y = body.y;
       entity.transform.z = body.z;
@@ -836,9 +821,6 @@ export class GameServer {
       // Kill all existing units of this type
       for (const unit of this.world.getUnits()) {
         if (unit.unit?.unitType === unitType) {
-          if (unit.body?.physicsBody) {
-            this.physics.removeBody(unit.body.physicsBody);
-          }
           this.world.removeEntity(unit.id);
         }
       }

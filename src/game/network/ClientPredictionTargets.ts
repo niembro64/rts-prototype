@@ -10,6 +10,9 @@ export type ServerTarget = {
   velocityX: number;
   velocityY: number;
   velocityZ: number;
+  movementAccelX: number;
+  movementAccelY: number;
+  movementAccelZ: number;
   surfaceNormalX: number;
   surfaceNormalY: number;
   surfaceNormalZ: number;
@@ -25,6 +28,7 @@ export function createServerTarget(): ServerTarget {
   return {
     x: 0, y: 0, z: 0, rotation: 0,
     velocityX: 0, velocityY: 0, velocityZ: 0,
+    movementAccelX: 0, movementAccelY: 0, movementAccelZ: 0,
     surfaceNormalX: 0, surfaceNormalY: 0, surfaceNormalZ: 1,
     turrets: [],
   };

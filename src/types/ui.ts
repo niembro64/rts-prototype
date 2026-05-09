@@ -203,6 +203,7 @@ export type CommanderAbilitiesResult = {
 
 // Factory production result
 export type FactoryProductionResult = {
+  spawnedUnits: Entity[];
   completedUnits: Entity[];
 };
 

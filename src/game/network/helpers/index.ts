@@ -1,6 +1,7 @@
 // Network helpers - re-exports
 
 export {
+  applyNetworkSuspensionState,
   applyNetworkTurretNonVisualState,
   createEntityFromNetwork,
   refreshBuildingTurretsFromNetwork,

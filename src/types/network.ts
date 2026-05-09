@@ -534,6 +534,14 @@ export const ENTITY_CHANGED_FACTORY   = 1 << 7;
  *  normal could only ride POS-bit deltas, so stationary units would
  *  hold a stale tilt until they moved or until the next keyframe. */
 export const ENTITY_CHANGED_NORMAL    = 1 << 8;
+/** Visible chassis suspension offset/velocity changed. This is
+ *  separate from POS because the locomotion anchor can remain still
+ *  while the chassis spring bounces relative to it. */
+export const ENTITY_CHANGED_SUSPENSION = 1 << 9;
+/** Current server-authored movement acceleration changed. This lets
+ *  clients predict powered ground movement with the same force input
+ *  the server applied, without cloning the full command planner. */
+export const ENTITY_CHANGED_MOVEMENT_ACCEL = 1 << 10;
 
 export type NetworkServerSnapshotEntity = {
   id: number;
@@ -556,6 +564,10 @@ export type NetworkServerSnapshotEntity = {
     bodyCenterHeight?: number;
     mass?: number;
     velocity: Vec3;
+    /** Server-authored movement/traction acceleration for client
+     *  prediction. Excludes gravity, terrain spring, damping, jump
+     *  actuation, and transient external knockback/recoil forces. */
+    movementAccel?: Vec3;
     /** Per-unit smoothed surface normal (unit-length nx, ny, nz). The
      *  sim EMA-blends raw → smoothed each tick (see updateUnitTilt) so
      *  the rendered chassis tilt and the slope-tilted turret world
@@ -566,6 +578,14 @@ export type NetworkServerSnapshotEntity = {
      *  encoding. Omitted on snapshots where the unit's tilt didn't
      *  change since last keyframe. */
     surfaceNormal?: { nx: number; ny: number; nz: number };
+    /** Runtime chassis suspension relative to the locomotion anchor.
+     *  Offsets are chassis-local: x = forward, y = lateral, z = up. */
+    suspension?: {
+      offset: Vec3;
+      velocity: Vec3;
+      jumpActive?: boolean;
+      legContact?: boolean;
+    };
     isCommander?: boolean;
     buildTargetId?: number | null;
     actions?: NetworkServerSnapshotAction[];

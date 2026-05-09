@@ -40,7 +40,11 @@ import { updateUnitTilt } from './unitTilt';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS } from '@/types/network';
+import {
+  ENTITY_CHANGED_ACTIONS,
+  ENTITY_CHANGED_MOVEMENT_ACCEL,
+  ENTITY_CHANGED_TURRETS,
+} from '@/types/network';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import { expandPathActions } from './Pathfinder';
@@ -48,6 +52,14 @@ import { updateSolarCollectors } from './solarCollector';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { WindPowerTracker, sampleWindState, type WindState } from './wind';
 import { isBuildTargetInRange } from './builderRange';
+import { setUnitMovementAcceleration } from './unitMovementAcceleration';
+import {
+  refreshUnitActionHash,
+  rotateFirstUnitActionToEnd,
+  setUnitActions,
+  shiftUnitAction,
+  spliceUnitActions,
+} from './unitActions';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
@@ -125,7 +137,6 @@ export class Simulation {
    *  grid. Buildings are static, so we only need to rescan them when
    *  one is added or removed instead of every simulation tick. */
   private spatialGridBuildingVersion = -1;
-  private static readonly SAFETY_CLEANUP_STRIDE = 8;
 
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
@@ -155,6 +166,7 @@ export class Simulation {
   // Reusable buffers for cleanupDeadEntities (avoid per-tick allocations)
   private _deadUnitIdsBuf: EntityId[] = [];
   private _deadBuildingIdsBuf: EntityId[] = [];
+  private _deathCheckIdsBuf: EntityId[] = [];
   private _movingUnitsBuf: Entity[] = [];
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
@@ -328,7 +340,13 @@ export class Simulation {
       this.world, dtMs,
       this.constructionSystem.getGrid(),
     );
-    // Notify about newly spawned units (need physics bodies)
+    // Notify about newly spawned unit shells immediately so their
+    // elevated initial position can fall/settle during construction.
+    if (productionResult.spawnedUnits.length > 0) {
+      this.onUnitSpawn?.(productionResult.spawnedUnits);
+    }
+    // Completed shells should already have bodies, but keep the
+    // activation notification as a defensive fallback for old paths.
     if (productionResult.completedUnits.length > 0) {
       this.onUnitSpawn?.(productionResult.completedUnits);
     }
@@ -565,35 +583,33 @@ export class Simulation {
     }
 
     // Safety cleanup - remove any dead entities that slipped through.
-    // Normal combat deaths are handled in the collision path above;
-    // this fallback is rate-limited so it does not rescan the world on
-    // every combat tick.
-    if (this.world.getTick() % Simulation.SAFETY_CLEANUP_STRIDE === 0) {
-      this.cleanupDeadEntities();
-    }
+    // WorldState records ids whose HP changed, so this drains only
+    // those candidates instead of walking every unit/building.
+    this.cleanupDeadEntities();
   }
 
   // Cleanup pass - removes any entities with HP <= 0 that weren't caught by normal death handling
   // This is a safety net to ensure dead entities don't persist in the world
   private cleanupDeadEntities(): void {
+    const deathCheckIds = this._deathCheckIdsBuf;
     const deadUnitIds = this._deadUnitIdsBuf;
     const deadBuildingIds = this._deadBuildingIdsBuf;
     deadUnitIds.length = 0;
     deadBuildingIds.length = 0;
+    this.world.drainPendingDeathCheckIds(deathCheckIds);
+    if (deathCheckIds.length === 0) return;
 
-    // Check all units for death
-    for (const entity of this.world.getUnits()) {
+    // Check only entities whose HP changed since the last drain.
+    for (let i = 0; i < deathCheckIds.length; i++) {
+      const entity = this.world.getEntity(deathCheckIds[i]);
+      if (!entity) continue;
       if (entity.unit && entity.unit.hp <= 0) {
         deadUnitIds.push(entity.id);
-      }
-    }
-
-    // Check all buildings for death
-    for (const entity of this.world.getBuildings()) {
-      if (entity.building && entity.building.hp <= 0) {
+      } else if (entity.building && entity.building.hp <= 0) {
         deadBuildingIds.push(entity.id);
       }
     }
+    deathCheckIds.length = 0;
 
     // Remove dead entities from spatial grid, notify callbacks, and remove from world
     if (deadUnitIds.length > 0) {
@@ -680,6 +696,9 @@ export class Simulation {
       if (entity.buildable && !entity.buildable.isComplete) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
+        if (setUnitMovementAcceleration(unit, 0, 0, 0)) {
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
+        }
         if (entity.combat) entity.combat.priorityTargetId = undefined;
         continue;
       }
@@ -687,6 +706,9 @@ export class Simulation {
       // Default: no thrust (contact braking/drag will slow or hold the unit)
       unit.thrustDirX = 0;
       unit.thrustDirY = 0;
+      if (setUnitMovementAcceleration(unit, 0, 0, 0)) {
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
+      }
 
       // Clear priority target — re-set below if current action is attack
       if (entity.combat) entity.combat.priorityTargetId = undefined;
@@ -747,9 +769,16 @@ export class Simulation {
         // moving units and keep building attack markers on the visual
         // building center/top instead of collider-center guesses).
         const targetPoint = getEntityTargetPoint(attackTarget);
-        currentAction.x = targetPoint.x;
-        currentAction.y = targetPoint.y;
-        currentAction.z = targetPoint.z;
+        if (
+          currentAction.x !== targetPoint.x ||
+          currentAction.y !== targetPoint.y ||
+          currentAction.z !== targetPoint.z
+        ) {
+          currentAction.x = targetPoint.x;
+          currentAction.y = targetPoint.y;
+          currentAction.z = targetPoint.z;
+          refreshUnitActionHash(unit);
+        }
 
         // Stop if any turret is engaged.
         if (this.shouldStopForEngagedCombat(entity)) {
@@ -819,7 +848,7 @@ export class Simulation {
 
       const targetId = this.getActionTargetId(action);
       const removeStart = this.getPathIntentStart(actions, i);
-      actions.splice(removeStart, i - removeStart + 1);
+      spliceUnitActions(unit, removeStart, i - removeStart + 1);
       if (targetId !== undefined && entity.builder?.currentBuildTarget === targetId) {
         entity.builder.currentBuildTarget = null;
       }
@@ -900,7 +929,7 @@ export class Simulation {
       if (!target || !isBuildTargetInRange(entity, target)) return;
 
       if (i > 0) {
-        actions.splice(0, i);
+        spliceUnitActions(unit, 0, i);
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
       return;
@@ -1037,7 +1066,7 @@ export class Simulation {
       last.y = finalAction.y;
       last.z = finalAction.z;
     }
-    entity.unit.actions = newPath;
+    setUnitActions(entity.unit, newPath);
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     return true;
   }
@@ -1065,11 +1094,10 @@ export class Simulation {
     // Check if we're in patrol mode and should loop
     if (completedAction.type === 'patrol' && unit.patrolStartIndex !== null) {
       // Move completed patrol action to end of queue (after all patrol actions)
-      unit.actions.shift();
-      unit.actions.push(completedAction);
+      rotateFirstUnitActionToEnd(unit);
     } else {
       // Remove completed action
-      unit.actions.shift();
+      shiftUnitAction(unit);
 
       // If we just finished the last non-patrol action and hit patrol section
       if (unit.actions.length > 0 && unit.actions[0].type === 'patrol') {
@@ -1102,6 +1130,8 @@ export class Simulation {
     this._velUpdateBufB.length = 0;
     this._deadUnitIdsBuf.length = 0;
     this._deadBuildingIdsBuf.length = 0;
+    this._deathCheckIdsBuf.length = 0;
+    this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     resetForceFieldBuffers();
     clearTargetIndex();

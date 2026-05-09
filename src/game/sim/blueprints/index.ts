@@ -5,6 +5,7 @@
 export * from './types';
 export * from './shots';
 export * from './turrets';
+export * from './locomotion';
 export * from './unitRoster';
 export * from './units';
 export * from './buildings';
