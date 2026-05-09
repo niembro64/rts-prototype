@@ -202,29 +202,18 @@ export function buildMinimapData(
   const entities = data.entities;
   let entityCount = 0;
 
-  // Add units to minimap
-  for (const unit of entitySource.getUnits()) {
+  // Single iteration over units + buildings — branch on entity kind
+  // inline. Avoids the back-to-back getUnits()/getBuildings() pair the
+  // minimap used to do every frame.
+  for (const e of entitySource.getUnitsAndBuildings()) {
     entityCount = writeMinimapEntity(
       entities,
       entityCount,
-      unit.transform.x,
-      unit.transform.y,
-      'unit',
-      minimapColor(getPlayerPrimaryColor(unit.ownership?.playerId)),
-      unit.selectable?.selected,
-    );
-  }
-
-  // Add buildings to minimap
-  for (const building of entitySource.getBuildings()) {
-    entityCount = writeMinimapEntity(
-      entities,
-      entityCount,
-      building.transform.x,
-      building.transform.y,
-      'building',
-      minimapColor(getPlayerPrimaryColor(building.ownership?.playerId)),
-      building.selectable?.selected,
+      e.transform.x,
+      e.transform.y,
+      e.unit ? 'unit' : 'building',
+      minimapColor(getPlayerPrimaryColor(e.ownership?.playerId)),
+      e.selectable?.selected,
     );
   }
   entities.length = entityCount;

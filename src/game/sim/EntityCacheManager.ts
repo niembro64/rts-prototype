@@ -45,6 +45,10 @@ export class EntityCacheManager {
    *  rare attribute. */
   private cachedMirrorUnits: Entity[] = [];
   private cachedAll: Entity[] = [];
+  /** Units + buildings in one list, no projectiles. UI hot loops
+   *  (minimap, name labels) want both kinds with one iteration; without
+   *  this they were back-to-back walking getUnits() then getBuildings(). */
+  private cachedUnitsAndBuildings: Entity[] = [];
   private cachedUnitsByPlayer: Map<PlayerId, Entity[]> = new Map();
   private cachedBuildingsByPlayer: Map<PlayerId, Entity[]> = new Map();
   private dirty: boolean = true;
@@ -74,6 +78,7 @@ export class EntityCacheManager {
     this.cachedBeamUnits.length = 0;
     this.cachedMirrorUnits.length = 0;
     this.cachedAll.length = 0;
+    this.cachedUnitsAndBuildings.length = 0;
     for (const list of this.cachedUnitsByPlayer.values()) list.length = 0;
     for (const list of this.cachedBuildingsByPlayer.values()) list.length = 0;
 
@@ -103,6 +108,7 @@ export class EntityCacheManager {
       switch (entity.type) {
         case 'unit':
           this.cachedUnits.push(entity);
+          this.cachedUnitsAndBuildings.push(entity);
           if (entity.ownership?.playerId !== undefined) {
             this.getOrCreateUnitsByPlayer(entity.ownership.playerId).push(entity);
           }
@@ -127,6 +133,7 @@ export class EntityCacheManager {
           break;
         case 'building':
           this.cachedBuildings.push(entity);
+          this.cachedUnitsAndBuildings.push(entity);
           if (entity.ownership?.playerId !== undefined) {
             this.getOrCreateBuildingsByPlayer(entity.ownership.playerId).push(entity);
           }
@@ -191,6 +198,10 @@ export class EntityCacheManager {
 
   getBuildings(): Entity[] {
     return this.cachedBuildings;
+  }
+
+  getUnitsAndBuildings(): Entity[] {
+    return this.cachedUnitsAndBuildings;
   }
 
   getUnitsByPlayer(playerId: PlayerId): Entity[] {

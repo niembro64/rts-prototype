@@ -131,6 +131,7 @@ export type { LobbyPlayer } from './network';
 export type UIEntitySource = {
   getUnits(): Entity[];
   getBuildings(): Entity[];
+  getUnitsAndBuildings(): Entity[];
   getSelectedUnits(): Entity[];
   getSelectedBuildings(): Entity[];
   getBuildingsByPlayer(playerId: PlayerId): Entity[];

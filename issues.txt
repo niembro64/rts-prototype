@@ -11,26 +11,6 @@ the proposed remedy. Verify against current code before attacking — a few
 related sites may have already shifted.
 ==============================================================================
 
-PERF-2. `getUnits()` + `getBuildings()` walked back-to-back
-  Sites (all do "for u in getUnits(); for b in getBuildings()" with the same
-  per-entity test):
-    - src/game/scenes/RtsScene3D.ts:1215-1222 (name labels)
-    - src/game/scenes/RtsScene3D.ts:1424-1436 (preferUnitsOverBuildings)
-    - src/game/scenes/RtsScene3D.ts:1446-1455 (rebuildSelectedEntityCaches)
-    - src/game/scenes/helpers/UIUpdateManager.ts:206-219
-    - src/game/input/helpers/RepairTargetHelper.ts:16,41
-    - src/game/input/helpers/AttackTargetHelper.ts:29,55
-    - src/game/network/stateSerializer.ts:865-868 (keyframe path — already
-      using a unified `keyframeSources` array, leave alone)
-  Cost: Two array iterations + two function calls per use site. With 6+ sites
-    fired per frame in UI-heavy moments and ~200-300 selectable entities,
-    this is ~3,000 redundant iterator steps/frame. Branch predictor handles
-    the kind-test cheaply; the wasted work is the duplication of plumbing.
-  Proposed: Add `clientViewState.forEachEntity(cb)` (or expose a single
-    concatenated read-only iterable) and let consumers branch on
-    `entity.unit` vs `entity.building` inline. Mirrors the pattern already
-    used by stateSerializer's keyframeSources array.
-
 PERF-3. Selection caches rebuilt by full entity walk
   Sites:
     - src/game/scenes/RtsScene3D.ts:1439-1456 (rebuildSelectedEntityCachesIfNeeded)

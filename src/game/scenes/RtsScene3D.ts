@@ -381,6 +381,7 @@ export class RtsScene3D {
   private entitySourceAdapter!: {
     getUnits: () => Entity[];
     getBuildings: () => Entity[];
+    getUnitsAndBuildings: () => Entity[];
     getProjectiles: () => Entity[];
     getAllEntities: () => Entity[];
     getEntity: (id: EntityId) => Entity | undefined;
@@ -595,6 +596,7 @@ export class RtsScene3D {
     this.entitySourceAdapter = {
       getUnits: () => this.clientViewState.getUnits(),
       getBuildings: () => this.clientViewState.getBuildings(),
+      getUnitsAndBuildings: () => this.clientViewState.getUnitsAndBuildings(),
       getProjectiles: () => this.clientViewState.getProjectiles(),
       getAllEntities: () => this.clientViewState.getAllEntities(),
       getEntity: (id) => this.clientViewState.getEntity(id),
@@ -1212,13 +1214,9 @@ export class RtsScene3D {
       this.nameLabel3D.beginFrame(hudFrustum);
       const lookup = (pid: PlayerId): string | null =>
         this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
-      for (const u of this.clientViewState.getUnits()) {
-        const name = resolveEntityDisplayName(u, lookup);
-        if (name !== null) this.nameLabel3D.perEntity(u, name);
-      }
-      for (const b of this.clientViewState.getBuildings()) {
-        const name = resolveEntityDisplayName(b, lookup);
-        if (name !== null) this.nameLabel3D.perEntity(b, name);
+      for (const e of this.clientViewState.getUnitsAndBuildings()) {
+        const name = resolveEntityDisplayName(e, lookup);
+        if (name !== null) this.nameLabel3D.perEntity(e, name);
       }
       this.nameLabel3D.endFrame();
     }

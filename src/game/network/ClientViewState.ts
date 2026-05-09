@@ -762,6 +762,15 @@ export class ClientViewState {
     return this.cache.getBuildings();
   }
 
+  /** Units + buildings as a single iterable. Hot per-frame UI loops
+   *  (minimap, name labels) used to call getUnits() and getBuildings()
+   *  back-to-back; this lets them iterate once and branch inline on
+   *  entity.unit vs entity.building. */
+  getUnitsAndBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getUnitsAndBuildings();
+  }
+
   getBuildingsByPlayer(playerId: PlayerId): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getBuildingsByPlayer(playerId);
