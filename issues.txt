@@ -3,3 +3,114 @@ As we fix something here we should completely delete it from this file. You shou
 you know for a fact it has been addressed. Remember that our code may have changed since the issue was
 written; check the code and if the issue is no longer relevant, delete it.
 
+
+==============================================================================
+Performance audit (2026-05-08): areas where we can use better algorithms or
+fewer passes over the same items. Each cluster includes the cost model and
+the proposed remedy. Verify against current code before attacking — a few
+related sites may have already shifted.
+==============================================================================
+
+PERF-1. Per-recipient full snapshot re-serialization
+  Sites:
+    - src/game/server/ServerSnapshotPublisher.ts:115-158 (serializeForListener
+      called inside the per-listener loop)
+    - src/game/network/stateSerializer.ts:839-856 (entity walk inside the
+      per-recipient serializeGameState)
+  Cost: With N player listeners, the dirty-entity loop runs N times per
+    snapshot. At 4 players × ~120 dirty entities per delta tick ≈ 480 entity
+    serializations per snapshot. Most per-entity work is recipient-independent
+    (capture state, build NetEntity, emit field bits); only the delta-tier
+    threshold (`getDeltaResolution` at stateSerializer.ts:384) and the
+    projectile-stride decision (`shouldSendProjectileSideChannel` at line 394)
+    actually depend on `recipientPlayerId`.
+  Proposed: Two-pass shape — (a) one recipient-independent capture pass that
+    computes `_nextStateScratch` and a "max-resolution" change bitmask once
+    per entity, (b) one per-recipient pass that only re-applies the
+    ownership-tier threshold to the already-captured fields. Same single
+    dirty-entity walk regardless of listener count.
+
+PERF-2. `getUnits()` + `getBuildings()` walked back-to-back
+  Sites (all do "for u in getUnits(); for b in getBuildings()" with the same
+  per-entity test):
+    - src/game/scenes/RtsScene3D.ts:1215-1222 (name labels)
+    - src/game/scenes/RtsScene3D.ts:1424-1436 (preferUnitsOverBuildings)
+    - src/game/scenes/RtsScene3D.ts:1446-1455 (rebuildSelectedEntityCaches)
+    - src/game/scenes/helpers/UIUpdateManager.ts:206-219
+    - src/game/input/helpers/RepairTargetHelper.ts:16,41
+    - src/game/input/helpers/AttackTargetHelper.ts:29,55
+    - src/game/network/stateSerializer.ts:865-868 (keyframe path — already
+      using a unified `keyframeSources` array, leave alone)
+  Cost: Two array iterations + two function calls per use site. With 6+ sites
+    fired per frame in UI-heavy moments and ~200-300 selectable entities,
+    this is ~3,000 redundant iterator steps/frame. Branch predictor handles
+    the kind-test cheaply; the wasted work is the duplication of plumbing.
+  Proposed: Add `clientViewState.forEachEntity(cb)` (or expose a single
+    concatenated read-only iterable) and let consumers branch on
+    `entity.unit` vs `entity.building` inline. Mirrors the pattern already
+    used by stateSerializer's keyframeSources array.
+
+PERF-3. Selection caches rebuilt by full entity walk
+  Sites:
+    - src/game/scenes/RtsScene3D.ts:1439-1456 (rebuildSelectedEntityCachesIfNeeded)
+    - src/game/scenes/RtsScene3D.ts:1421-1437 (preferUnitsOverBuildingsInSelection)
+  Cost: When the dirty flag fires (every selectEntity/deselectEntity call),
+    these scan ALL units and ALL buildings to find the ones with
+    `selectable.selected === true`. Worst case during band-select drag, this
+    refreshes per drag tick. O(N_total) per refresh where N_selected ≪ N_total.
+  Proposed: Maintain a `Set<EntityId>` of currently-selected entities updated
+    inline by selectEntity / deselectEntity in ClientViewState. Cache rebuild
+    becomes O(N_selected) — iterate the set, resolve to entity, push into
+    the typed cache.
+
+PERF-4. `getSurfaceNormal` resampled across same-tick callers
+  Sites:
+    - src/game/sim/combat/ProjectileCollisionHandler.ts:702-708 (fired per
+      cluster-munition splash; multiple projectiles colliding in the same
+      tick at near-identical (x,y) each resample)
+    - src/game/network/ClientProjectileStore.ts:236 (client-side projectile
+      prediction)
+    - src/game/render3d/SelectionOverlayRenderer3D.ts:185 (selection ring
+      fallback when entity.unit?.surfaceNormal is missing)
+    - src/game/sim/Pathfinder.ts:170 (slope-aware pathing — per pathfind
+      call per candidate cell)
+  Cost: `getSurfaceNormal` does a bilinear gradient over the heightmap. The
+    sim and render fields `unit.surfaceNormal` already cache per-unit
+    (good — keep). The remaining hotspots are projectile-burst splash
+    (cluster munitions) and pathfinder cell-slope reads. ProjectileCollision
+    case can collapse N samples per tick to 1 when several submunitions land
+    in the same grid cell.
+  Proposed: Either (a) a tiny LRU keyed by `floor(x/cellSize)|floor(y/cellSize)`
+    that resets on tick boundary, or (b) explicitly hoist the normal lookup
+    above the projectile-iteration loop in ProjectileCollisionHandler when
+    splash fires multiple subs at the same impact cell. Pathfinder's per-cell
+    sampling is already amortized over the whole pathfind so lower priority.
+
+PERF-5. `unit.transform.rotation` cos/sin not flowing into the renderer for
+  per-turret mirror panels
+  Sites:
+    - src/game/render3d/Render3DEntities.ts:1310-1318 (mirror panel
+      orientation: 4 raw Math.cos/sin per mirror-bearing unit per frame)
+  Cost: Sim already publishes `transform.rotCos / rotSin` and there's a
+    centralized `getTransformCosSin` helper (used at targetingSystem.ts:65
+    as the producer). The renderer should be a consumer; computing fresh
+    cos/sin for the chassis rotation when the cached value is one prop-read
+    away duplicates work the sim already paid for.
+  Proposed: Replace the chassis term with `const { cos: cosMirrorRot,
+    sin: sinMirrorRot } = getTransformCosSin(turretedEntity.transform);`.
+    Pitch is per-turret and not cached, so leave that pair as-is. Only
+    saves 2 trig ops per mirror-bearing unit per frame — small absolute
+    gain, but it's a "do the consistent thing" cleanup that prevents the
+    cache from rotting.
+
+==============================================================================
+Lower-priority / one-time-cost items noted but NOT prioritized:
+  - terrainPrecomputedShadow (SunLighting.ts:148-176): bilinear sample fired
+    per shadow-tile × cfg.samples, but bakes into a cache keyed by
+    getTerrainShadowCacheKey — paid at scene init only.
+  - DamageSystem AOE / line queries call queryUnitsAlongLine +
+    queryBuildingsAlongLine back-to-back at 6+ sites. These do query a
+    unified spatial grid, so the cost is "two queries vs one." Could
+    consolidate to a single "queryEntitiesAlongLine" API but the savings
+    are within noise. Note for later, not now.
+==============================================================================
