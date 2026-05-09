@@ -134,13 +134,17 @@ export class ForceFieldImpactRenderer3D {
   constructor(parentWorld: THREE.Group) {
     const cfg = FORCE_FIELD_IMPACT_VISUAL;
     const ringSegments = Math.max(12, Math.floor(cfg.ringSegments));
-    const inner = Math.min(0.98, Math.max(0.05, cfg.ringInnerRadiusFrac));
+    const tubeSegments = Math.max(3, Math.floor(cfg.ringTubeSegments));
+    const tubeRadius = Math.min(0.45, Math.max(0.01, cfg.ringTubeRadiusFrac));
     this.root = new THREE.Group();
     parentWorld.add(this.root);
 
+    // TorusGeometry lies in the xy-plane with its axis on z, matching
+    // RingGeometry's orientation so the existing normal-aligned quaternion
+    // and surface offset still work unchanged.
     this.ringPool = new ImpactPool(
       this.root,
-      new THREE.RingGeometry(inner, 1, ringSegments),
+      new THREE.TorusGeometry(1, tubeRadius, tubeSegments, ringSegments),
       cfg.maxImpacts * Math.max(1, cfg.ringCount)
         + ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP
           * ForceFieldImpactRenderer3D.CONTINUOUS_RING_COUNT,
@@ -234,7 +238,8 @@ export class ForceFieldImpactRenderer3D {
         const ease = 1 - Math.pow(1 - t, 3);
         const radius = cfg.startRadius + (cfg.endRadius - cfg.startRadius) * ease;
         const fade = (1 - t) * (1 - t);
-        this.scratchScale.set(radius, radius, 1);
+        // Uniform scale so the torus tube cross-section grows proportionally.
+        this.scratchScale.set(radius, radius, radius);
         this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
         this.ringPool.write(ringCursor++, this.scratchMat, impact.color, cfg.ringOpacity * fade);
       }
@@ -322,7 +327,8 @@ export class ForceFieldImpactRenderer3D {
           const ease = 1 - Math.pow(1 - t, 2);
           const radius = (cfg.startRadius + (cfg.endRadius * 0.72 - cfg.startRadius) * ease) * sizeMul;
           const fade = (1 - t) * (1 - t);
-          this.scratchScale.set(radius, radius, 1);
+          // Uniform scale for the torus tube to grow proportionally.
+          this.scratchScale.set(radius, radius, radius);
           this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
           this.ringPool.write(
             ringCursor++,

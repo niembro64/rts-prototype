@@ -65,7 +65,10 @@ export type ForceFieldImpactVisualConfig = {
   ringDelayMs: number;
   startRadius: number;
   endRadius: number;
-  ringInnerRadiusFrac: number;
+  /** Tube cross-section radius for the expanding torus, as a fraction of the ring's outer radius. */
+  ringTubeRadiusFrac: number;
+  /** Radial segments around the tube cross-section. 6 is plenty for thin tubes. */
+  ringTubeSegments: number;
   ringOpacity: number;
   coreRadiusFrac: number;
   coreOpacity: number;
