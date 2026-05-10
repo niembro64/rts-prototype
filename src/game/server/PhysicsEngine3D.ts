@@ -116,6 +116,11 @@ export type Body3D = {
   groundLaunchAx: number;
   groundLaunchAy: number;
   groundLaunchAz: number;
+  /** True when the previous collision pass found this sphere resting
+   *  against a non-terrain surface with an upward support normal.
+   *  Force systems read this on the next tick to allow jumps from
+   *  units/buildings without treating vertical walls as floors. */
+  upwardSurfaceContact: boolean;
   /** Idle-body sleep state. Sleeping spheres skip integration and
    *  static/ground contact work until a force or collision wakes them. */
   sleeping: boolean;
@@ -254,6 +259,7 @@ export class PhysicsEngine3D {
       groundLaunchAx: 0,
       groundLaunchAy: 0,
       groundLaunchAz: 0,
+      upwardSurfaceContact: false,
       sleeping: false,
       sleepTicks: 0,
       label,
@@ -301,6 +307,7 @@ export class PhysicsEngine3D {
       groundLaunchAx: 0,
       groundLaunchAy: 0,
       groundLaunchAz: 0,
+      upwardSurfaceContact: false,
       sleeping: false,
       sleepTicks: 0,
       label,
@@ -386,6 +393,10 @@ export class PhysicsEngine3D {
       if (body.sleeping || body.entityId === undefined) continue;
       out.push(body.entityId);
     }
+  }
+
+  hasUpwardSurfaceContact(body: Body3D): boolean {
+    return body.upwardSurfaceContact === true;
   }
 
   collectLastStepEntityIds(out: EntityId[]): void {
@@ -506,6 +517,7 @@ export class PhysicsEngine3D {
     this.stepSyncEntityIdSet.clear();
     if (this.awakeDynamicBodyCount <= 0) return;
     this.collectAwakeStepSyncEntities();
+    this.clearDynamicSurfaceContacts();
     this.integrate(dtSec);
     // Bodies touched this step still need final contact/clamp cleanup
     // even if integration just put the last awake body to sleep.
@@ -533,6 +545,16 @@ export class PhysicsEngine3D {
     if (count >= SPHERE_ITERATIONS_HIGH_COUNT) return 1;
     if (count >= SPHERE_ITERATIONS_MID_COUNT) return 2;
     return SPHERE_ITERATIONS;
+  }
+
+  private clearDynamicSurfaceContacts(): void {
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      this.dynamicBodies[i].upwardSurfaceContact = false;
+    }
+  }
+
+  private recordUpwardSurfaceContact(body: Body3D, normalZ: number): void {
+    if (normalZ > 0.35) body.upwardSurfaceContact = true;
   }
 
   /** Explicit-Euler integration with a soft terrain contact model.
@@ -705,6 +727,7 @@ export class PhysicsEngine3D {
     dyn.y += ny * penetration;
     dyn.z += nz * penetration;
     if (dyn.sleeping) this.wakeBody(dyn);
+    this.recordUpwardSurfaceContact(dyn, nz);
     // Velocity reflection along the contact normal if moving into it.
     const vDotN = dyn.vx * nx + dyn.vy * ny + dyn.vz * nz;
     if (vDotN < 0) {
@@ -837,6 +860,11 @@ export class PhysicsEngine3D {
             b.x += nx * penetration * wB;
             b.y += ny * penetration * wB;
             b.z += nz * penetration * wB;
+            if (nz > 0.35) {
+              this.recordUpwardSurfaceContact(b, nz);
+            } else if (nz < -0.35) {
+              this.recordUpwardSurfaceContact(a, -nz);
+            }
             // Relative velocity along the 3D contact normal.
             const rvx = b.vx - a.vx;
             const rvy = b.vy - a.vy;

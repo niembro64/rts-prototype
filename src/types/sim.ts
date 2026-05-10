@@ -171,8 +171,8 @@ export type Unit = {
    *  "stationary" as (0, 0). */
   thrustDirX?: number;
   thrustDirY?: number;
-  /** Optional grounded jump actuator. Units without this use the exact
-   *  same force/contact path and simply never add launch force. */
+  /** Optional surface-contact jump actuator. Units without this use the
+   *  exact same force/contact path and simply never add launch force. */
   jump?: UnitJumpState;
   /** Optional runtime spring state for the visible chassis relative
    *  to the locomotion anchor. Omitted means rigid legacy attachment. */

@@ -5,6 +5,11 @@ import type { UnitJumpConfig, UnitJumpState } from '@/types/locomotionTypes';
 const JUMP_RECHARGE_OUTWARD_VELOCITY_EPSILON = 1;
 const MIN_RANDOM_POWER_MULTIPLIER = 0.05;
 
+export type UnitJumpIntent = {
+  moving: boolean;
+  combat: boolean;
+};
+
 function cloneJumpConfig(config: UnitJumpConfig): UnitJumpConfig {
   return {
     springStiffness: config.springStiffness,
@@ -81,29 +86,41 @@ export function getUnitJumpSpringAcceleration(unit: Unit, dtSec: number): number
   return mass > 0 ? getUnitJumpSpringForce(unit, dtSec) / mass : 0;
 }
 
-export function unitJumpWantsActuator(unit: Unit): boolean {
+function unitJumpHasAutomaticIntent(intent: UnitJumpIntent | undefined): boolean {
+  return intent?.moving === true || intent?.combat === true;
+}
+
+export function unitJumpWantsActuator(
+  unit: Unit,
+  intent?: UnitJumpIntent,
+): boolean {
   const jump = unit.jump;
   if (!jump) return false;
-  return jump.config.mode === 'always' || jump.requested;
+  if (jump.requested) return true;
+  return jump.config.mode === 'always' && unitJumpHasAutomaticIntent(intent);
 }
 
 export function unitJumpCanRelease(
   unit: Unit,
-  groundContact: boolean,
-  normalVelocity: number,
+  surfaceContact: boolean,
+  releaseVelocity: number,
+  intent?: UnitJumpIntent,
 ): boolean {
   const jump = unit.jump;
-  if (!jump || !groundContact || !unitJumpWantsActuator(unit)) return false;
+  if (!jump || !surfaceContact || !unitJumpWantsActuator(unit, intent)) return false;
   if (!jump.active) return true;
   return (
-    Number.isFinite(normalVelocity) &&
-    normalVelocity <= JUMP_RECHARGE_OUTWARD_VELOCITY_EPSILON
+    Number.isFinite(releaseVelocity) &&
+    releaseVelocity <= JUMP_RECHARGE_OUTWARD_VELOCITY_EPSILON
   );
 }
 
-export function unitJumpHasActuatorWork(unit: Unit): boolean {
+export function unitJumpHasActuatorWork(
+  unit: Unit,
+  intent?: UnitJumpIntent,
+): boolean {
   const jump = unit.jump;
   if (!jump || getUnitJumpSpringEnergy(unit) <= 0) return false;
-  if (jump.config.mode === 'always' || jump.requested) return true;
+  if (unitJumpWantsActuator(unit, intent)) return true;
   return jump.active;
 }
