@@ -35,6 +35,7 @@ import {
 
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
+import { ClientCaptureTileStore } from './ClientCaptureTileStore';
 import {
   createServerTarget,
   type ServerTarget,
@@ -58,13 +59,7 @@ export type { PredictionLodContext, PredictionLodTier } from './ClientPrediction
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 const SPRAY_TARGET_POOL_MIN_CAP = 16;
 const SPRAY_TARGET_POOL_ACTIVE_MULTIPLIER = 4;
-const CAPTURE_TILE_POOL_FALLBACK_CAP = 256;
 const minimapColorCache = new Map<number, string>();
-
-function captureHeightsEmpty(heights: NetworkCaptureTile['heights']): boolean {
-  for (const _key in heights) return false;
-  return true;
-}
 
 function minimapColor(color: number): string {
   let cached = minimapColorCache.get(color);
@@ -105,17 +100,7 @@ export class ClientViewState {
   private gridSearchCells: NetworkServerSnapshotGridCell[] = [];
   private gridCellSize: number = 0;
   private terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null;
-
-  // Capture tile data — Map for delta merge, array cache for rendering
-  private captureTileMap: Map<number, NetworkCaptureTile> = new Map();
-  private captureTilesCache: NetworkCaptureTile[] = [];
-  private captureDirtyTileMap: Map<number, NetworkCaptureTile> = new Map();
-  private captureDirtyTilesScratch: NetworkCaptureTile[] = [];
-  private captureTilePool: NetworkCaptureTile[] = [];
-  private captureFullDirty: boolean = true;
-  private captureTilesDirty: boolean = true;
-  private captureVersion: number = 0;
-  private captureCellSize: number = 0;
+  private captureTileStore = new ClientCaptureTileStore();
 
   // Server metadata from latest snapshot
   private serverMeta: NetworkServerSnapshotMeta | null = null;
@@ -499,7 +484,7 @@ export class ClientViewState {
     }
     if (state.buildability) {
       this.terrainBuildabilityGrid = state.buildability;
-      this.trimCaptureTilePool();
+      this.captureTileStore.setTerrainBuildabilityGrid(state.buildability);
     }
     this.currentTick = state.tick;
     if (state.minimapEntities !== undefined) {
@@ -726,50 +711,7 @@ export class ClientViewState {
       this.gridCellSize = 0;
     }
 
-    // Merge capture tile data (delta-aware)
-    if (state.capture) {
-      this.captureCellSize = state.capture.cellSize;
-      if (!state.isDelta) {
-        // Keyframe: replace all
-        this.clearCaptureTileMaps();
-        this.captureFullDirty = true;
-      }
-      for (const tile of state.capture.tiles) {
-        const key = ((tile.cx + 32768) & 0xFFFF) << 16 | ((tile.cy + 32768) & 0xFFFF);
-        if (captureHeightsEmpty(tile.heights)) {
-          const removed = this.captureTileMap.get(key);
-          const previousDirty = this.captureDirtyTileMap.get(key);
-          if (removed) {
-            this.captureTileMap.delete(key);
-            this.releaseCaptureTile(removed);
-          }
-          if (!this.captureFullDirty) {
-            const dirty = this.acquireCaptureTile(tile.cx, tile.cy, undefined);
-            if (previousDirty && previousDirty !== removed) this.releaseCaptureTile(previousDirty);
-            this.captureDirtyTileMap.set(key, dirty);
-          }
-        } else {
-          // Copy heights — tile objects may be pooled/reused by the server
-          const copy = this.acquireCaptureTile(tile.cx, tile.cy, tile.heights);
-          const previous = this.captureTileMap.get(key);
-          const previousDirty = this.captureDirtyTileMap.get(key);
-          if (previous) this.releaseCaptureTile(previous);
-          this.captureTileMap.set(key, copy);
-          if (!this.captureFullDirty) {
-            if (previousDirty && previousDirty !== previous) this.releaseCaptureTile(previousDirty);
-            this.captureDirtyTileMap.set(key, copy);
-          }
-        }
-      }
-      this.captureTilesDirty = true;
-      this.captureVersion++;
-    } else if (!state.isDelta) {
-      // Keyframe with no capture data: clear
-      this.clearCaptureTileMaps();
-      this.captureFullDirty = true;
-      this.captureTilesDirty = true;
-      this.captureVersion++;
-    }
+    this.captureTileStore.applySnapshot(state.capture, state.isDelta);
 
     // Store server metadata
     if (state.serverMeta) {
@@ -1028,64 +970,8 @@ export class ClientViewState {
     return this.gridCellSize;
   }
 
-  // === Capture tile data ===
-
-  private acquireCaptureTile(
-    cx: number,
-    cy: number,
-    heights: NetworkCaptureTile['heights'] | undefined,
-  ): NetworkCaptureTile {
-    const tile = this.captureTilePool.pop() ?? { cx: 0, cy: 0, heights: {} };
-    tile.cx = cx;
-    tile.cy = cy;
-    const dst = tile.heights;
-    for (const key in dst) delete dst[key];
-    if (heights) {
-      for (const key in heights) dst[Number(key)] = heights[key];
-    }
-    return tile;
-  }
-
-  private releaseCaptureTile(tile: NetworkCaptureTile): void {
-    for (const key in tile.heights) delete tile.heights[key];
-    if (this.captureTilePool.length < this.getCaptureTilePoolLimit()) {
-      this.captureTilePool.push(tile);
-    }
-  }
-
-  private getCaptureTilePoolLimit(): number {
-    const grid = this.terrainBuildabilityGrid;
-    if (!grid) return CAPTURE_TILE_POOL_FALLBACK_CAP;
-    return Math.max(0, grid.cellsX * grid.cellsY);
-  }
-
-  private trimCaptureTilePool(): void {
-    const limit = this.getCaptureTilePoolLimit();
-    if (this.captureTilePool.length > limit) {
-      this.captureTilePool.length = limit;
-    }
-  }
-
-  private clearCaptureTileMaps(): void {
-    for (const [key, tile] of this.captureDirtyTileMap) {
-      if (this.captureTileMap.get(key) !== tile) this.releaseCaptureTile(tile);
-    }
-    this.captureDirtyTileMap.clear();
-    for (const tile of this.captureTileMap.values()) this.releaseCaptureTile(tile);
-    this.captureTileMap.clear();
-    this.captureTilesCache.length = 0;
-    this.captureDirtyTilesScratch.length = 0;
-  }
-
   getCaptureTiles(): NetworkCaptureTile[] {
-    if (this.captureTilesDirty) {
-      this.captureTilesCache.length = 0;
-      for (const tile of this.captureTileMap.values()) {
-        this.captureTilesCache.push(tile);
-      }
-      this.captureTilesDirty = false;
-    }
-    return this.captureTilesCache;
+    return this.captureTileStore.getTiles();
   }
 
   consumeCaptureTileChanges(): {
@@ -1093,43 +979,15 @@ export class ClientViewState {
     full: boolean;
     tiles: NetworkCaptureTile[];
   } {
-    if (this.captureFullDirty) {
-      this.captureFullDirty = false;
-      this.captureDirtyTileMap.clear();
-      return {
-        version: this.captureVersion,
-        full: true,
-        tiles: this.getCaptureTiles(),
-      };
-    }
-
-    if (this.captureDirtyTileMap.size === 0) {
-      return {
-        version: this.captureVersion,
-        full: false,
-        tiles: [],
-      };
-    }
-
-    const tiles = this.captureDirtyTilesScratch;
-    tiles.length = 0;
-    for (const tile of this.captureDirtyTileMap.values()) {
-      tiles.push(tile);
-    }
-    this.captureDirtyTileMap.clear();
-    return {
-      version: this.captureVersion,
-      full: false,
-      tiles,
-    };
+    return this.captureTileStore.consumeChanges();
   }
 
   getCaptureCellSize(): number {
-    return this.captureCellSize;
+    return this.captureTileStore.getCellSize();
   }
 
   getCaptureVersion(): number {
-    return this.captureVersion;
+    return this.captureTileStore.getVersion();
   }
 
   getServerMeta(): NetworkServerSnapshotMeta | null {
@@ -1149,12 +1007,7 @@ export class ClientViewState {
     this.gridSearchCells = [];
     this.gridCellSize = 0;
     this.terrainBuildabilityGrid = null;
-    this.clearCaptureTileMaps();
-    this.captureTilePool.length = 0;
-    this.captureFullDirty = true;
-    this.captureTilesDirty = true;
-    this.captureVersion++;
-    this.captureCellSize = 0;
+    this.captureTileStore.reset();
     this.serverMeta = null;
     this.predictionStepper.reset();
     this.predictionLod.clearAll();
