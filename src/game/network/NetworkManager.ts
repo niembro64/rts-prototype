@@ -35,7 +35,6 @@ export type {
 } from './NetworkTypes';
 
 import {
-  BATTLE_HANDOFF_PROTOCOL,
   type BattleHandoff,
   type LobbySettings,
 } from '@/types/network';
@@ -46,27 +45,19 @@ import type {
   NetworkMessage,
   NetworkRole,
 } from './NetworkTypes';
+import {
+  applyBattleHandoffPlayers,
+  buildBattleHandoff,
+  normalizeBattleHandoffMessage,
+} from './NetworkBattleHandoff';
 import { NetworkDataChannelMonitor } from './NetworkDataChannelMonitor';
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
+import {
+  generateRoomCode,
+  normalizeRoomCode,
+  roomCodeToGameId,
+} from './NetworkRoomCode';
 import { NetworkSnapshotTransport } from './NetworkSnapshotTransport';
-
-// Generate a short room code (4 characters)
-function generateRoomCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude confusing chars
-  let code = '';
-  for (let i = 0; i < 4; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
-
-function normalizeRoomCode(roomCode: string): string {
-  return roomCode.trim().toUpperCase();
-}
-
-function roomCodeToGameId(roomCode: string): string {
-  return `ba-${normalizeRoomCode(roomCode)}`;
-}
 
 // Player-name policy lives in @/playerNamesConfig — single source of
 // truth for both seeding (random funny name keyed by playerId) and the
@@ -616,52 +607,6 @@ export class NetworkManager {
     return !message.gameId || message.gameId === this.getUniversalGameId();
   }
 
-  private buildBattleHandoff(playerIds: PlayerId[]): BattleHandoff {
-    const normalizedPlayerIds = [...new Set(playerIds)].sort((a, b) => a - b);
-    const players = normalizedPlayerIds.map((playerId) => {
-      const existing = this.players.get(playerId);
-      return existing
-        ? { ...existing }
-        : {
-            playerId,
-            name: getDefaultPlayerName(playerId),
-            isHost: playerId === 1,
-          };
-    });
-    return {
-      protocol: BATTLE_HANDOFF_PROTOCOL,
-      gameId: this.getUniversalGameId(),
-      roomCode: this.getRoomCode(),
-      hostPlayerId: 1 as PlayerId,
-      playerIds: normalizedPlayerIds,
-      players,
-      settings: this.getLobbySettings?.(),
-    };
-  }
-
-  private normalizeBattleHandoff(message: { gameId?: string; playerIds: PlayerId[]; handoff?: BattleHandoff }): BattleHandoff {
-    const handoff = message.handoff;
-    if (
-      handoff &&
-      handoff.protocol === BATTLE_HANDOFF_PROTOCOL &&
-      handoff.gameId === this.getUniversalGameId()
-    ) {
-      return {
-        ...handoff,
-        roomCode: normalizeRoomCode(handoff.roomCode),
-        playerIds: [...new Set(handoff.playerIds)].sort((a, b) => a - b),
-        players: handoff.players.map((player) => ({ ...player })),
-      };
-    }
-    return this.buildBattleHandoff(message.playerIds);
-  }
-
-  private applyBattleHandoff(handoff: BattleHandoff): void {
-    for (const player of handoff.players) {
-      this.players.set(player.playerId, { ...player });
-    }
-  }
-
   // Handle incoming message
   private handleMessage(message: NetworkMessage, fromPlayerId: PlayerId): void {
     // Any inbound message is also a sign of life — refresh the
@@ -756,8 +701,14 @@ export class NetworkManager {
             this.localPlayerId = message.assignedPlayerId;
             this.onPlayerAssignment?.(message.assignedPlayerId);
           }
-          const handoff = this.normalizeBattleHandoff(message);
-          this.applyBattleHandoff(handoff);
+          const handoff = normalizeBattleHandoffMessage(message, {
+            gameId: this.getUniversalGameId(),
+            roomCode: this.getRoomCode(),
+            playerIds: message.playerIds,
+            players: this.players,
+            settings: this.getLobbySettings?.(),
+          });
+          applyBattleHandoffPlayers(this.players, handoff);
           this.gameStarted = true;
           console.log(`[NET] Game start as player ${this.localPlayerId}; players=${handoff.playerIds.join(',')}`);
           this.onGameStart?.(handoff);
@@ -1009,8 +960,14 @@ export class NetworkManager {
     // (LobbyManager → spawnInitialBases) already iterates `playerIds`
     // unconditionally, so a single id produces a single base.
 
-    const handoff = this.buildBattleHandoff(playerIds);
-    this.applyBattleHandoff(handoff);
+    const handoff = buildBattleHandoff({
+      gameId: this.getUniversalGameId(),
+      roomCode: this.getRoomCode(),
+      playerIds,
+      players: this.players,
+      settings: this.getLobbySettings?.(),
+    });
+    applyBattleHandoffPlayers(this.players, handoff);
 
     for (const [playerId, conn] of this.connections) {
       this.safeSend(conn, {
