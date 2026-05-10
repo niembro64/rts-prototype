@@ -179,13 +179,7 @@ import { useGameCanvasSoundTest } from './gameCanvasSoundTest';
 import { useGameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
 import { useGameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
 import { useGameCanvasForegroundGame } from './gameCanvasForegroundGame';
-import {
-  applySettingsAndStartRealBattleServer,
-  createLocalRealBattleConnection,
-  createRealBattleServer,
-  createRemoteRealBattleConnection,
-  loadAndApplyRealBattleTerrain,
-} from './gameCanvasRealBattleStartup';
+import { startRealBattleWithPlayers } from './gameCanvasRealBattleStart';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -1744,138 +1738,40 @@ function applyLobbySettingsFromHost(settings: {
 }
 
 async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): Promise<void> {
-  showLobby.value = false;
-  gameStarted.value = true;
-  battleLoading.value = true;
-  battleStartTime = Date.now();
-  if (networkRole.value !== null) {
-    localPlayerId.value = networkManager.getLocalPlayerId();
-    activePlayer.value = localPlayerId.value;
-  }
-
-  // Stop the background battle first
-  stopBackgroundBattle();
-  const startGen = realBattleLifecycle.beginStart();
-
-  // Small delay to ensure WebGL cleanup before creating new game
-  realBattleLifecycle.setStartTimeout(setTimeout(async () => {
-    realBattleLifecycle.markStartTimeoutFired();
-    if (!realBattleLifecycle.isCurrentStart(startGen) || !containerRef.value) {
-      battleLoading.value = false;
-      return;
-    }
-
-    const rect = containerRef.value.getBoundingClientRect();
-
-    let gameConnection: GameConnection;
-
-    const realBattleTerrain = loadAndApplyRealBattleTerrain();
-
-    if (networkRole.value !== 'client') {
-      const createdServer = await createRealBattleServer({
-        playerIds,
-        aiPlayerIds,
-        terrain: realBattleTerrain,
-      });
-      if (!realBattleLifecycle.isCurrentStart(startGen) || !gameStarted.value || !containerRef.value) {
-        createdServer.stop();
-        battleLoading.value = false;
-        return;
-      }
-      realBattleLifecycle.clearSnapshotListeners(currentServer);
-      currentServer = createdServer;
-
-      // If hosting, send each remote client its own authoritative
-      // real-battle snapshot. Scoped listeners let the server apply
-      // per-recipient delta history and fidelity thresholds instead of
-      // sharing one global diff history across peers.
-      //
-      // The PeerJS peer instance + every connection established
-      // during the lobby phase persist into the real battle — we
-      // never call `disconnect()` or `new Peer(...)` between the
-      // two phases. So the host's `ba-${roomCode}` peer ID and the
-      // existing client peer connections are the SAME identifiers
-      // the lobby gameStart broadcast just used. Routing snapshots
-      // to those connections continues to work; clients don't
-      // re-handshake.
-      //
-      if (networkRole.value === 'host') {
-        realBattleLifecycle.bindHostNetwork(
-          currentServer,
-          networkManager,
-          () => currentServer,
-        );
-      }
-
-      // Create LocalGameConnection for the local player. In hosted
-      // real battles, scope the host's own client exactly like remote
-      // clients so red uses the same per-recipient delta history and
-      // fidelity thresholds as every other player.
-      const localConnection = createLocalRealBattleConnection(
-        currentServer,
-        networkRole.value === 'host' ? localPlayerId.value : undefined,
-      );
-      activeConnection = localConnection;
-      gameConnection = localConnection;
-
-      applySettingsAndStartRealBattleServer(currentServer, {
-        ipAddress: localIpAddress.value,
-        simQuality: serverSimQuality.value,
-        simSignalStates: serverSignalStates.value,
-      });
-      if (networkRole.value === 'host') {
-        realBattleLifecycle.scheduleRecoveryKeyframes(
-          currentServer,
-          startGen,
-          () => currentServer,
-        );
-      }
-      hasServer.value = true;
-    } else {
-      // Client: create RemoteGameConnection wrapping networkManager
-      const remoteConnection = createRemoteRealBattleConnection();
-      activeConnection = remoteConnection;
-      gameConnection = remoteConnection;
-    }
-
-    // Create game with player configuration
-    const gameInstance = foregroundGame.create({
-      parent: containerRef.value!,
-      width: rect.width || window.innerWidth,
-      height: rect.height || window.innerHeight,
-      playerIds,
-      localPlayerId: localPlayerId.value,
-      gameConnection,
-      mapWidth: realBattleTerrain.mapSize.width,
-      mapHeight: realBattleTerrain.mapSize.height,
-      terrainCenter: realBattleTerrain.terrainCenter,
-      terrainDividers: realBattleTerrain.terrainDividers,
-      terrainMapShape: realBattleTerrain.terrainMapShape,
-      backgroundMode: false,
-      lookupPlayerName: (pid) => resolvePlayerName(pid, null),
-    });
-    setPlayerClientRenderEnabled(gameInstance, playerClientEnabled.value);
-    setInstanceCameraFovDegrees(gameInstance, cameraFovDegrees.value);
-    const scene = gameInstance.getScene();
-    if (scene) {
-      scene.onStartupReady = () => {
-        if (realBattleLifecycle.isCurrentStart(startGen)) battleLoading.value = false;
-      };
-    }
-
-    // Setup scene callbacks
-    setupSceneCallbacks();
-  }, 100));
-}
-
-function setupSceneCallbacks(): void {
-  foregroundSceneBinding.bind(
-    () => foregroundGame.getScene(),
-    (scene) => {
-      scene.setClientRenderEnabled(playerClientEnabled.value);
+  await startRealBattleWithPlayers(playerIds, aiPlayerIds, {
+    containerRef,
+    showLobby,
+    gameStarted,
+    battleLoading,
+    activePlayer,
+    localPlayerId,
+    networkRole,
+    playerClientEnabled,
+    cameraFovDegrees,
+    localIpAddress,
+    serverSimQuality,
+    serverSignalStates,
+    hasServer,
+    network: networkManager,
+    lifecycle: realBattleLifecycle,
+    foregroundGame,
+    foregroundSceneBinding,
+    stopBackgroundBattle,
+    getCurrentServer: () => currentServer,
+    setCurrentServer: (server) => {
+      currentServer = server;
+    },
+    setActiveConnection: (connection) => {
+      activeConnection = connection;
+    },
+    setBattleStartTime: (time) => {
+      battleStartTime = time;
+    },
+    lookupPlayerName: (pid) => resolvePlayerName(pid, null),
+    bindSceneUi: (scene) => {
       bindGameSceneUi(scene, true);
     },
-  );
+  });
 }
 
 function setNetworkUpdateRate(rate: SnapshotRate): void {
