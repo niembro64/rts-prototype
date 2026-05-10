@@ -11,48 +11,6 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 ==============================================================================
  ISSUES:
 
-1. Split src/game/network/NetworkManager.ts by networking responsibility.
-   Evidence:
-   - src/game/network/NetworkManager.ts is still 945 lines.
-   - Snapshot encoding/decoding, pending-state buffering, and backpressure
-     counters now live in src/game/network/NetworkSnapshotTransport.ts, but
-     PeerJS lifecycle and connection handlers remain concentrated in
-     NetworkManager.
-   - DataChannel listener/interval lifecycle now lives in
-     src/game/network/NetworkDataChannelMonitor.ts.
-   - Heartbeat timers, received-timestamp tracking, and stale-peer timeout
-     checks now live in src/game/network/NetworkHeartbeatTracker.ts.
-   - Battle handoff build/normalize logic now lives in
-     src/game/network/NetworkBattleHandoff.ts, with room-code helpers in
-     src/game/network/NetworkRoomCode.ts.
-   - Lobby roster storage, player-info merging, local info payloads, and
-     player-info update message construction now live in
-     src/game/network/NetworkLobbyRoster.ts.
-   - Command/client-ready send and receive dispatch now lives in
-     src/game/network/NetworkCommandTransport.ts.
-   Impact:
-   - Peer/session/lobby/snapshot concerns still share one large ownership
-     surface.
-   Remedy:
-   - Extract the next coherent networking responsibility into a helper or
-     service while keeping NetworkManager as the coordinator.
-
-2. Split src/game/network/ClientViewState.ts by client-state ownership.
-   Evidence:
-   - src/game/network/ClientViewState.ts is still 912 lines.
-   - Capture tile map/cache/pool/version ownership now lives in
-     src/game/network/ClientCaptureTileStore.ts.
-   - Construction spray target snapshot copying/pooling now lives in
-     src/game/network/ClientSprayTargetStore.ts.
-   - Minimap override snapshot copying, color caching, and selected-state
-     marking now live in src/game/network/ClientMinimapOverrideStore.ts.
-   Impact:
-   - Unit, building, projectile, beam, economy, and minimap client state remain
-     coupled in one file.
-   Remedy:
-   - Move one client-state family at a time into focused modules and keep
-     cross-family ordering explicit.
-
 3. We don't want units in water. We need to find a good solution for jumping units. My initial though is that we predict all landing points of a jump before we do it, and if it is on water (or too near water) we cancel it. This might go along with jumping units only jumping sometimes, only when engaged with a target or when moving. Maybe we have "able to jump" status turned on when it meets any necessary criteria, including next jump wouoldn't jump into water. Jumping should also ignore the ground normal angle, so units can jump up hills (i.e. a jump on a hill won't be in the direction of the normal of the surface, it will be up). Jumps should also happen off of any surface, not just the ground - units, buildings, etc.
 
 4. Beam segments should never just end in the air. Currently we are ending them if they reach a max radius, but that isn't physically correct. We either need to simulate the beam to its logical ending point (including infinity space) or just keep what we have on the simulation, and fake the infinity beam by extending last leg of the beam segments to extend that direction to infinity. Whatever is necessary but doesn't kill performance.
