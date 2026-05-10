@@ -11,6 +11,7 @@ import {
 } from '../landGrid';
 import { getTerrainMapBoundaryFade } from '../sim/Terrain';
 import { getCaptureTileDisplayColor } from '../sim/manaProduction';
+import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
 import { configureSpriteTexture } from './threeUtils';
 
 const STYLE = {
@@ -58,10 +59,7 @@ export class LodGridCells2D {
   private fillActive = false;
   private lastCaptureVersion = -1;
   private lastOverlayIntensity = -1;
-  private lineCap = STYLE.initialLineCap;
-  private linePositions = new Float32Array(this.lineCap * 2 * 3);
-  private lineColors = new Float32Array(this.lineCap * 2 * 3);
-  private lineGeom = new THREE.BufferGeometry();
+  private lineBuffer = new DynamicLineBuffer3D(STYLE.initialLineCap);
   private lineMesh: THREE.LineSegments;
   private lastKey = '';
 
@@ -131,15 +129,6 @@ export class LodGridCells2D {
     this.fillMesh.visible = false;
     this.parent.add(this.fillMesh);
 
-    this.lineGeom.setAttribute(
-      'position',
-      new THREE.BufferAttribute(this.linePositions, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-    this.lineGeom.setAttribute(
-      'color',
-      new THREE.BufferAttribute(this.lineColors, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-
     const material = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
@@ -147,7 +136,7 @@ export class LodGridCells2D {
       depthTest: false,
       depthWrite: false,
     });
-    this.lineMesh = new THREE.LineSegments(this.lineGeom, material);
+    this.lineMesh = new THREE.LineSegments(this.lineBuffer.geometry, material);
     this.lineMesh.frustumCulled = false;
     this.lineMesh.renderOrder = 7;
     this.lineMesh.visible = false;
@@ -183,27 +172,23 @@ export class LodGridCells2D {
     }
     this.lastKey = key;
 
-    const state = { lineSeg: 0 };
     const xSteps = Math.floor((x1 - x0) / size) + 1;
     const zSteps = Math.floor((z1 - z0) / size) + 1;
-    this.growLineCap(xSteps + zSteps);
+    this.lineBuffer.resetDrawRange();
+    this.lineBuffer.ensureCapacity(xSteps + zSteps);
     const xColor = { r: 0.4, g: 0.94, b: 1.0 };
     const zColor = { r: 0.72, g: 0.62, b: 1.0 };
     const y = FLOATING_CELL_Y + 0.6;
 
     for (let z = z0; z <= z1; z += size) {
-      this.pushSegment(state, x0, y, z, x1, y, z, xColor);
+      this.lineBuffer.pushSegment(x0, y, z, x1, y, z, xColor.r, xColor.g, xColor.b);
     }
     for (let x = x0; x <= x1; x += size) {
-      this.pushSegment(state, x, y, z0, x, y, z1, zColor);
+      this.lineBuffer.pushSegment(x, y, z0, x, y, z1, zColor.r, zColor.g, zColor.b);
     }
 
-    this.lineGeom.setDrawRange(0, state.lineSeg * 2);
-    const position = this.lineGeom.getAttribute('position') as THREE.BufferAttribute;
-    const color = this.lineGeom.getAttribute('color') as THREE.BufferAttribute;
-    position.needsUpdate = true;
-    color.needsUpdate = true;
-    this.lineMesh.visible = state.lineSeg > 0;
+    const lineSeg = this.lineBuffer.finishFrame();
+    this.lineMesh.visible = lineSeg > 0;
   }
 
   destroy(): void {
@@ -217,7 +202,7 @@ export class LodGridCells2D {
       fillMaterial.dispose();
     }
     this.overlayTexture.dispose();
-    this.lineGeom.dispose();
+    this.lineBuffer.dispose();
     const material = this.lineMesh.material;
     if (Array.isArray(material)) {
       for (const mat of material) mat.dispose();
@@ -374,52 +359,8 @@ export class LodGridCells2D {
 
   private hideLines(): void {
     if (!this.lineMesh.visible && this.lastKey === '') return;
-    this.lineGeom.setDrawRange(0, 0);
+    this.lineBuffer.resetDrawRange();
     this.lineMesh.visible = false;
     this.lastKey = '';
-  }
-
-  private pushSegment(
-    state: { lineSeg: number },
-    ax: number,
-    ay: number,
-    az: number,
-    bx: number,
-    by: number,
-    bz: number,
-    color: { r: number; g: number; b: number },
-  ): void {
-    this.growLineCap(state.lineSeg + 1);
-    const base = state.lineSeg * 6;
-    this.linePositions[base] = ax;
-    this.linePositions[base + 1] = ay;
-    this.linePositions[base + 2] = az;
-    this.linePositions[base + 3] = bx;
-    this.linePositions[base + 4] = by;
-    this.linePositions[base + 5] = bz;
-    this.lineColors[base] = color.r;
-    this.lineColors[base + 1] = color.g;
-    this.lineColors[base + 2] = color.b;
-    this.lineColors[base + 3] = color.r;
-    this.lineColors[base + 4] = color.g;
-    this.lineColors[base + 5] = color.b;
-    state.lineSeg++;
-  }
-
-  private growLineCap(needed: number): void {
-    let cap = this.lineCap;
-    while (cap < needed) cap *= 2;
-    if (cap === this.lineCap) return;
-    this.lineCap = cap;
-    this.linePositions = new Float32Array(cap * 2 * 3);
-    this.lineColors = new Float32Array(cap * 2 * 3);
-    this.lineGeom.setAttribute(
-      'position',
-      new THREE.BufferAttribute(this.linePositions, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-    this.lineGeom.setAttribute(
-      'color',
-      new THREE.BufferAttribute(this.lineColors, 3).setUsage(THREE.DynamicDrawUsage),
-    );
   }
 }

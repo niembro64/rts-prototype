@@ -9,6 +9,12 @@ import {
   objectLodToGraphicsTier,
   type RenderObjectLodTier,
 } from './RenderObjectLod';
+import {
+  detachObject,
+  disposeGeometries,
+  disposeMaterials,
+  disposeMesh,
+} from './threeUtils';
 
 const PROJECTILE_MIN_RADIUS = 1.5;
 const PROJECTILE_INSTANCED_CAP = 8192;
@@ -206,25 +212,24 @@ export class ProjectileRenderer3D {
   }
 
   destroy(): void {
-    this.world.remove(this.sphereInstanced);
-    this.sphereInstanced.dispose();
-    this.world.remove(this.cylinderInstanced);
-    this.cylinderInstanced.dispose();
+    disposeMesh(this.sphereInstanced, { material: false, geometry: false });
+    disposeMesh(this.cylinderInstanced, { material: false, geometry: false });
     for (const radii of this.projectileRadiusMeshes.values()) {
-      if (radii.collision) this.world.remove(radii.collision);
-      if (radii.explosion) this.world.remove(radii.explosion);
+      if (radii.collision) {
+        disposeMesh(radii.collision, { material: false, geometry: false });
+      }
+      if (radii.explosion) {
+        disposeMesh(radii.explosion, { material: false, geometry: false });
+      }
     }
     for (const mesh of this.projectileRadiusMeshPool) {
-      this.world.remove(mesh);
+      disposeMesh(mesh, { material: false, geometry: false });
     }
     this.seenProjectileIds.clear();
     this.projectileRadiusMeshes.clear();
     this.projectileRadiusMeshPool.length = 0;
-    this.projectileGeom.dispose();
-    this.projectileCylinderGeom.dispose();
-    this.projectileMat.dispose();
-    this.projMatCollision.dispose();
-    this.projMatExplosion.dispose();
+    disposeGeometries([this.projectileGeom, this.projectileCylinderGeom]);
+    disposeMaterials([this.projectileMat, this.projMatCollision, this.projMatExplosion]);
   }
 
   private updateProjRadiusMeshes(
@@ -306,7 +311,7 @@ export class ProjectileRenderer3D {
   private releaseProjRadiusMesh(mesh?: THREE.LineSegments): void {
     if (!mesh) return;
     mesh.visible = false;
-    this.world.remove(mesh);
+    detachObject(mesh);
     this.projectileRadiusMeshPool.push(mesh);
   }
 

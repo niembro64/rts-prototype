@@ -48,6 +48,7 @@ import { ClientRocketTargetFinder } from './ClientRocketTargetFinder';
 import { ClientPredictionStepper } from './ClientPredictionStepper';
 import { ClientProjectileStore } from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
+import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
 export type { PredictionLodContext, PredictionLodTier } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
@@ -360,6 +361,7 @@ export class ClientViewState {
         ENTITY_CHANGED_POS |
         ENTITY_CHANGED_ROT |
         ENTITY_CHANGED_VEL |
+        ENTITY_CHANGED_MOVEMENT_ACCEL |
         // Reactivate prediction when only the surface normal moved
         // (host's tilt EMA is still settling on a stationary unit, or
         // the host flipped tilt mode). Otherwise the new target.normal
@@ -503,45 +505,7 @@ export class ClientViewState {
         // extrapolate the newest target by time that already belonged
         // to an older target and visibly overshoot.
         this.clearTargetPredictionAccum(netEntity.id);
-        if (isFull || cf! & ENTITY_CHANGED_POS) {
-          target.x = netEntity.pos.x;
-          target.y = netEntity.pos.y;
-          // netEntity.pos is a Vec3 — altitude must ride along or
-          // airborne units render at stale ground-plane z on the client.
-          target.z = netEntity.pos.z;
-        }
-        // Surface normal rides POS when the unit moved AND a dedicated
-        // NORMAL bit when the host's tilt EMA is still settling on a
-        // stationary unit (or the host flipped tilt mode). When absent,
-        // keep the prior target so the client EMA keeps gliding.
-        if (isFull || cf! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL)) {
-          const sn = netEntity.unit?.surfaceNormal;
-          if (sn) {
-            target.surfaceNormalX = sn.nx;
-            target.surfaceNormalY = sn.ny;
-            target.surfaceNormalZ = sn.nz;
-          }
-        }
-        if (isFull || cf! & ENTITY_CHANGED_ROT) {
-          target.rotation = netEntity.rotation;
-        }
-        // Velocity ships on full records and on deltas where
-        // ENTITY_CHANGED_VEL is set. The wire field is still optional
-        // (older / future deltas may omit it) so guard with `?.`.
-        if (isFull || cf! & ENTITY_CHANGED_VEL) {
-          const v = netEntity.unit?.velocity;
-          if (v !== undefined) {
-            target.velocityX = v.x;
-            target.velocityY = v.y;
-            target.velocityZ = v.z;
-          }
-        }
-        if (isFull || cf! & ENTITY_CHANGED_MOVEMENT_ACCEL) {
-          const accel = netEntity.unit?.movementAccel;
-          target.movementAccelX = accel?.x ?? 0;
-          target.movementAccelY = accel?.y ?? 0;
-          target.movementAccelZ = accel?.z ?? 0;
-        }
+        applyNetworkUnitDriftFieldsToTarget(target, netEntity, isFull, cf);
         this.copyNetworkTurretsToTarget(target, netEntity.unit?.turrets, isFull);
       }
 

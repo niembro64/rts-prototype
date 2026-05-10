@@ -11,7 +11,6 @@ import type {
 } from './NetworkTypes';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
-  copyActionInto,
   copyBeamInto,
   copyCellInto,
   copySimEventInto,
@@ -20,7 +19,6 @@ import {
   copyTurretInto,
   copyVelocityInto,
   copyWaypointInto,
-  createActionDto,
   createBeamDto,
   createCellDto,
   createSimEventDto,
@@ -30,6 +28,10 @@ import {
   createVelocityDto,
   createWaypointDto,
 } from './snapshotDtoCopy';
+import {
+  copyNetworkUnitSnapshotInto,
+  createNetworkUnitSnapshot,
+} from './unitSnapshotFields';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -63,31 +65,9 @@ function cloneTerrainBuildabilityGrid(grid: TerrainBuildabilityGrid): TerrainBui
   return grid;
 }
 
-type ReusableEntityUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
 type ReusableFactory = NonNullable<ReusableEntityBuilding['factory']>;
-type ReusableBuildState = NonNullable<ReusableEntityUnit['build']>;
-type ReusableSuspensionState = NonNullable<ReusableEntityUnit['suspension']>;
-type ReusableJumpState = NonNullable<ReusableEntityUnit['jump']>;
-
-function createReusableUnit(): ReusableEntityUnit {
-  return {
-    hp: { curr: 0, max: 0 },
-    velocity: { x: 0, y: 0, z: 0 },
-  };
-}
-
-function copyVec3OptionalInto(
-  src: { x: number; y: number; z: number } | undefined,
-  dst: { x: number; y: number; z: number } | undefined,
-): { x: number; y: number; z: number } | undefined {
-  if (!src) return undefined;
-  const out = dst ?? { x: 0, y: 0, z: 0 };
-  out.x = src.x;
-  out.y = src.y;
-  out.z = src.z;
-  return out;
-}
+type ReusableBuildState = NonNullable<ReusableEntityBuilding['build']>;
 
 function copyBuildStateInto(
   src: ReusableBuildState,
@@ -97,104 +77,6 @@ function copyBuildStateInto(
   dst.paid.energy = src.paid.energy;
   dst.paid.mana = src.paid.mana;
   dst.paid.metal = src.paid.metal;
-  return dst;
-}
-
-function createReusableBuildState(): ReusableBuildState {
-  return {
-    complete: false,
-    paid: { energy: 0, mana: 0, metal: 0 },
-  };
-}
-
-function createReusableSuspensionState(): ReusableSuspensionState {
-  return {
-    offset: { x: 0, y: 0, z: 0 },
-    velocity: { x: 0, y: 0, z: 0 },
-  };
-}
-
-function createReusableJumpState(): ReusableJumpState {
-  return {};
-}
-
-function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): ReusableEntityUnit {
-  dst.unitType = src.unitType;
-  dst.hp.curr = src.hp.curr;
-  dst.hp.max = src.hp.max;
-  if (src.radius) {
-    if (!dst.radius) dst.radius = { body: 0, shot: 0, push: 0 };
-    dst.radius.body = src.radius.body;
-    dst.radius.shot = src.radius.shot;
-    dst.radius.push = src.radius.push;
-  } else {
-    dst.radius = undefined;
-  }
-  dst.bodyCenterHeight = src.bodyCenterHeight;
-  dst.mass = src.mass;
-  dst.velocity.x = src.velocity.x;
-  dst.velocity.y = src.velocity.y;
-  dst.velocity.z = src.velocity.z;
-  dst.movementAccel = copyVec3OptionalInto(
-    src.movementAccel,
-    dst.movementAccel,
-  );
-  if (src.surfaceNormal) {
-    if (!dst.surfaceNormal) dst.surfaceNormal = { nx: 0, ny: 0, nz: 1 };
-    dst.surfaceNormal.nx = src.surfaceNormal.nx;
-    dst.surfaceNormal.ny = src.surfaceNormal.ny;
-    dst.surfaceNormal.nz = src.surfaceNormal.nz;
-  } else {
-    dst.surfaceNormal = undefined;
-  }
-  if (src.suspension) {
-    const suspension = dst.suspension ?? (dst.suspension = createReusableSuspensionState());
-    suspension.offset.x = src.suspension.offset.x;
-    suspension.offset.y = src.suspension.offset.y;
-    suspension.offset.z = src.suspension.offset.z;
-    suspension.velocity.x = src.suspension.velocity.x;
-    suspension.velocity.y = src.suspension.velocity.y;
-    suspension.velocity.z = src.suspension.velocity.z;
-    suspension.legContact = src.suspension.legContact;
-  } else {
-    dst.suspension = undefined;
-  }
-  if (src.jump) {
-    const jump = dst.jump ?? (dst.jump = createReusableJumpState());
-    jump.active = src.jump.active;
-    jump.launchSeq = src.jump.launchSeq;
-  } else {
-    dst.jump = undefined;
-  }
-  dst.isCommander = src.isCommander;
-  dst.buildTargetId = src.buildTargetId;
-  dst.build = src.build
-    ? copyBuildStateInto(src.build, dst.build ?? createReusableBuildState())
-    : undefined;
-
-  if (src.actions) {
-    const actions = dst.actions ?? (dst.actions = []);
-    actions.length = src.actions.length;
-    for (let i = 0; i < src.actions.length; i++) {
-      actions[i] = copyActionInto(src.actions[i], actions[i] ?? createActionDto());
-    }
-  } else {
-    dst.actions = undefined;
-  }
-
-  if (src.turrets) {
-    const turrets = dst.turrets ?? (dst.turrets = []);
-    turrets.length = src.turrets.length;
-    for (let i = 0; i < src.turrets.length; i++) {
-      turrets[i] = copyTurretInto(
-        src.turrets[i],
-        turrets[i] ?? createTurretDto(),
-      );
-    }
-  } else {
-    dst.turrets = undefined;
-  }
-
   return dst;
 }
 
@@ -294,7 +176,7 @@ function copyEntityInto(
   dst.playerId = src.playerId;
   dst.changedFields = src.changedFields;
   dst.unit = src.unit
-    ? copyUnitInto(src.unit, dst.unit ?? createReusableUnit())
+    ? copyNetworkUnitSnapshotInto(src.unit, dst.unit ?? createNetworkUnitSnapshot())
     : undefined;
   dst.building = src.building
     ? copyBuildingInto(src.building, dst.building ?? createReusableBuilding())

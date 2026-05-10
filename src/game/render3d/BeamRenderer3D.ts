@@ -20,6 +20,7 @@ import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjec
 import { RenderLodGrid } from './RenderLodGrid';
 import { normalizeLodCellSize } from '../lodGridMath';
 import { landCellIndexForSize } from '../landGrid';
+import { detachObject, disposeMesh } from './threeUtils';
 
 // Cylinder radius is the sim's `shot.radius` (= shot.width / 2), scaled
 // down and floored so a very-thin beam still renders as a visible line.
@@ -565,14 +566,8 @@ export class BeamRenderer3D {
   }
 
   destroy(): void {
-    this.root.remove(this.segmentMesh);
-    this.segmentMesh.dispose();
-    this.segmentMat.dispose();
-    this.segmentGeom.dispose();
-    this.root.remove(this.endpointMesh);
-    this.endpointMesh.dispose();
-    this.endpointMat.dispose();
-    this.endpointGeom.dispose();
-    this.root.parent?.remove(this.root);
+    disposeMesh(this.segmentMesh);
+    disposeMesh(this.endpointMesh);
+    detachObject(this.root);
   }
 }

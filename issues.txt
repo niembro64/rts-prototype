@@ -16,181 +16,37 @@ candidates. Goal: small files, shared atomic helpers, no duplicated lifecycle
 logic, and no unbounded resource retention. Verify line numbers before fixing.
 ==============================================================================
 
-1. Network unit snapshot schema is duplicated across serializer, cloner,
-   factory, non-visual applier, and drift-target applier.
-   Evidence:
-   - src/types/network.ts:558 defines the unit wire shape.
-   - src/game/network/stateSerializer.ts:1390 serializes unit fields.
-   - src/game/network/snapshotClone.ts:121 deep-copies unit fields.
-   - src/game/network/helpers/NetworkEntityFactory.ts:246 hydrates unit fields
-     during entity creation.
-   - src/game/network/ClientSnapshotApplier.ts:74 applies non-visual unit
-     fields.
-   - src/game/network/ClientViewState.ts:499 copies drift-relevant unit fields
-     into ServerTarget.
-   Impact:
-   - Every new networked unit field has to be added in several files. Missing
-     one site causes silent stale client state, pooled object field bleed, or
-     missing full-keyframe recovery.
-   Remedy:
-   - Move unit wire-field copy/apply logic into shared helpers, for example
-     src/game/network/unitSnapshotFields.ts. Serializer, snapshotClone,
-     NetworkEntityFactory, ClientSnapshotApplier, and ClientViewState should
-     call the same field-specific functions instead of duplicating field lists.
-
-2. Oversized orchestration files violate the small-file goal and hide lifecycle
+1. Oversized orchestration files violate the small-file goal and hide lifecycle
    coupling.
    Evidence:
-   - src/components/GameCanvas.vue is about 4220 lines and owns UI state,
-     server lifecycle, real-battle handoff, localStorage, intervals, audio UI,
-     and scene startup/teardown. Timer/listener state is spread across
-     src/components/GameCanvas.vue:256, src/components/GameCanvas.vue:688, and
-     cleanup at src/components/GameCanvas.vue:2364.
+   - src/components/GameCanvas.vue is still about 4067 lines after extracting
+     persisted chrome state to src/components/gameCanvasChromeState.ts and
+     client telemetry to src/components/gameCanvasTelemetry.ts. It still owns
+     server lifecycle, real-battle handoff, background/scene wait intervals,
+     audio UI, and scene startup/teardown. Timer/listener state is spread
+     across src/components/GameCanvas.vue:583,
+     src/components/GameCanvas.vue:2033, and cleanup at
+     src/components/GameCanvas.vue:2215.
    - src/game/scenes/RtsScene3D.ts is about 2081 lines and owns snapshot intake,
      prediction, audio scheduling, camera, selection, minimap data, renderer
      update ordering, and renderer teardown. See the large update loop at
      src/game/scenes/RtsScene3D.ts:820 and shutdown at
      src/game/scenes/RtsScene3D.ts:2032.
    - Other large split candidates: src/game/network/stateSerializer.ts
-     (~1700 lines), src/game/render3d/Render3DEntities.ts (~1573 lines),
+     (~1640 lines), src/game/render3d/Render3DEntities.ts (~1573 lines),
      src/game/network/NetworkManager.ts (~1267 lines),
-     src/game/network/ClientViewState.ts (~1156 lines),
-     src/game/render3d/EnvironmentPropRenderer3D.ts (~1518 lines).
+     src/game/network/ClientViewState.ts (~1120 lines).
    Impact:
    - Lifecycle ownership is hard to prove, duplicate helpers reappear, and
      fixes often touch unrelated concerns.
    Remedy:
-   - Split by ownership: GameCanvas composables for server lifecycle, real
-     battle handoff, persisted bars, and telemetry; RtsScene3D systems for
-     snapshot intake/audio/prediction/render phases; stateSerializer modules
-     by DTO family; Render3DEntities into unit/body/turret/building overlay
+   - Continue splitting by ownership: GameCanvas composables for server
+     lifecycle and real battle handoff; RtsScene3D systems for snapshot
+     intake/audio/prediction/render phases; stateSerializer modules by DTO
+     family; Render3DEntities into unit/body/turret/building overlay
      renderers.
 
-3. SpatialGrid repeats cell-scan, distance, and building AABB math.
-   Evidence:
-   - src/game/sim/SpatialGrid.ts:621 computes sphere-vs-building AABB distance.
-   - src/game/sim/SpatialGrid.ts:815 repeats the same AABB distance block.
-   - src/game/sim/SpatialGrid.ts:673 scans enemy units in radius.
-   - src/game/sim/SpatialGrid.ts:702 scans enemy projectiles in radius.
-   - src/game/sim/SpatialGrid.ts:736 repeats both loops in the combined
-     unit/projectile query.
-   Impact:
-   - Collision/query fixes must be repeated across functions; missed edits can
-     make targeting, force fields, and splash damage disagree.
-   Remedy:
-   - Extract helpers such as distanceSqToBuildingAabb3, entityDistanceSq3, and
-     scanCellsInRadius(callback). Keep public query methods as thin wrappers
-     over shared iteration primitives.
-
-4. Target acquisition duplicates candidate scan logic between "engage current
-   fire target" and "idle acquire" passes.
-   Evidence:
-   - src/game/sim/combat/targetingSystem.ts:628 starts dense-scan/LOS/mirror
-     selection for pass 2.
-   - src/game/sim/combat/targetingSystem.ts:700 repeats the same setup for
-     pass 3 with a different ranking function and final state.
-   Impact:
-   - Targeting bugs and performance tweaks have to be applied twice.
-   Remedy:
-   - Extract chooseBestTargetCandidate(options) that takes the rank function,
-     minimum acceptable rank, current best seed, and passive mirror policy.
-
-5. Burn marks and ground prints duplicate ribbon/miter/quad buffer code.
-   Evidence:
-   - src/game/render3d/BurnMark3D.ts:438 computes mitered start/end quad
-     vertices and rewrites predecessor ends.
-   - src/game/render3d/GroundPrint3D.ts:553 repeats the same miter math.
-   - src/game/render3d/BurnMark3D.ts:512 and
-     src/game/render3d/GroundPrint3D.ts:634 repeat quad buffer writers.
-   Impact:
-   - Visual trail fixes and buffer optimizations must be made twice.
-   Remedy:
-   - Extract a shared RibbonTrailBuffer or MiteredQuadStrip helper that owns
-     miter calculation, quad position writes, end rewrites, draw range, and
-     dirty flags. BurnMark3D and GroundPrint3D should provide color/mask policy
-     only.
-
-6. Dynamic line-buffer growth is duplicated in multiple renderers.
-   Evidence:
-   - src/game/render3d/LodGridCells2D.ts:409 growLineCap reallocates position
-     and color buffers.
-   - src/game/render3d/LodShellGround3D.ts:168 repeats the same growth logic.
-   - src/game/render3d/Waypoint3D.ts:105 owns a similar dynamic line buffer
-     setup and growth path.
-   Impact:
-   - Buffer usage, draw-range defaults, and color attribute behavior can drift
-     between overlays.
-   Remedy:
-   - Add a DynamicLineBuffer3D helper with ensureCapacity, pushSegment,
-     resetDrawRange, dispose, and shared attribute setup.
-
-7. Canvas sprite pool creation/destruction is duplicated.
-   Evidence:
-   - src/game/render3d/HealthBar3D.ts:90 creates canvas, 2D context,
-     CanvasTexture, SpriteMaterial, Sprite, and adds it to the parent.
-   - src/game/render3d/NameLabel3D.ts:160 repeats the same sprite creation.
-   - src/game/render3d/Waypoint3D.ts:320 repeats it for flag sprites.
-   - Destroy paths at src/game/render3d/HealthBar3D.ts:309,
-     src/game/render3d/NameLabel3D.ts:143, and
-     src/game/render3d/Waypoint3D.ts:502 repeat cleanup.
-   Impact:
-   - Texture configuration and disposal rules can drift. New HUD sprites are
-     likely to copy the same boilerplate again.
-   Remedy:
-   - Add CanvasSpritePool with acquire, repaint callback, hideUnused, and
-     destroy. Specialized renderers should only supply canvas dimensions,
-     sprite scale/depth policy, and repaint behavior.
-
-8. Three.js resource disposal is still duplicated despite threeUtils.disposeMesh.
-   Evidence:
-   - src/game/render3d/threeUtils.ts:28 provides disposeMesh.
-   - src/game/render3d/BeamRenderer3D.ts:567 manually removes/disposes meshes,
-     materials, and geometries.
-   - src/game/render3d/UnitDetailInstanceRenderer3D.ts:389 manually repeats
-     the same disposal pattern across instanced pools.
-   - src/game/render3d/ProjectileRenderer3D.ts:208 manually removes instanced
-     meshes and pooled radius meshes, then separately disposes shared geometry
-     and materials.
-   Impact:
-   - Cleanup order and ownership flags can drift, creating either leaks or
-     double-dispose bugs.
-   Remedy:
-   - Use disposeMesh or a broader disposeObjectTree/resource-owner helper in
-     every renderer. Shared-geometry pools should express ownership via
-     explicit options instead of handwritten custom destroy blocks.
-
-9. Environment asset registry/config is embedded in the renderer and repeats
-    row-shaped data.
-    Evidence:
-    - src/game/render3d/EnvironmentPropRenderer3D.ts:607 contains the random
-      environment asset enable/scale/frequency table inside a 1500+ line
-      renderer.
-    - The renderer also owns asset catalog constants, active filters, loading,
-      placement, material caches, and disposal.
-    Impact:
-    - Renderer code has to be edited for asset tuning, and the data table makes
-      an already large file harder to reason about.
-    Remedy:
-    - Move asset catalog/config to environmentPropAssets.ts and placement
-      policy to environmentPropPlacement.ts. Keep EnvironmentPropRenderer3D
-      focused on loading/rendering and disposal.
-
-10. Beam shot blueprints duplicate the same object shape.
-   Evidence:
-   - src/game/sim/blueprints/shots.ts:165 miniBeamShot,
-     src/game/sim/blueprints/shots.ts:176 beamShot,
-     src/game/sim/blueprints/shots.ts:191 megaBeamShot, and
-     src/game/sim/blueprints/shots.ts:208 towerBeamShot all repeat
-     type/id/dps/force/recoil/radius/width/damageSphere/hitSound structure
-     with scalar changes.
-   Impact:
-   - Adding a new beam variant invites copy-paste and inconsistent recoil,
-     width, damage sphere, or audio settings.
-   Remedy:
-   - Add a createBeamShot(id, options) factory with named size presets
-     (mini/base/mega) and explicit dps/force/audio overrides.
-
-11. Client unit visual prediction runs two coupled physics passes per frame.
+2. Client unit visual prediction runs two coupled physics passes per frame.
    Evidence:
    - src/game/network/ClientUnitPrediction.ts:202 predicts the ServerTarget
      through unit motion physics.
@@ -207,3 +63,11 @@ logic, and no unbounded resource retention. Verify line numbers before fixing.
      own immutable target jump/launch state, or disable target-side full physics
      for event-driven jump units. Keep the local visual body predictor separate
      from network target extrapolation.
+
+3. Regarding AOI (area of interest) we should send regularly send coordinates of our camera's four points so that we can receive only full info about units/buildings/terrain that are visible to us. This will reduce the amount of data we need to process on the client and also allow us to have more units on the map without causing performance issues. We have a "PLAYER CLIENT" item that has "WINDOW"/"PAD"/"ALL" that should be uwsed to wire this up. We probably don't have to send the camera information every single frame, but pretty freqently, so the server knows what to send to any client. We may want to send minimap info separately from the AOI-culled info, because the minimap should show everything. The minimap just shows positions of things, and can be low resolution in time and space.
+
+4. We don't want units in water. We need to find a good solution for jumping units. My initial though is that we predict all landing points of a jump before we do it, and if it is on water (or too near water) we cancel it. This might go along with jumping units only jumping sometimes, only when engaged with a target or when moving. Maybe we have "able to jump" status turned on when it meets any necessary criteria, including next jump wouoldn't jump into water. Jumping should also ignore the ground normal angle, so units can jump up hills (i.e. a jump on a hill won't be in the direction of the normal of the surface, it will be up). Jumps should also happen off of any surface, not just the ground - units, buildings, etc.
+
+5. Beam segments should never just end in the air. Currently we are ending them if they reach a max radius, but that isn't physically correct. We either need to simulate the beam to its logical ending point (including infinity space) or just keep what we have on the simulation, and fake the infinity beam by extending last leg of the beam segments to extend that direction to infinity. Whatever is necessary but doesn't kill performance.
+
+6. Because we have "falling" (jumping) units now, we need to update our ballistics and aiming solvers to account for acceleration as well. Make sure that all instances of aiming and ballistics require 3d position, 3d velocity, and 3d acceleration (can be gravity + other stuff potentially) for both the origin point as well as the target point. This will allow us to have more accurate aiming and ballistics for all turrets against all units / buildings. have that function be atomic and reusable. We may have different things generating acceleration so make sure we don't just hardcode gravity to be used in the function.

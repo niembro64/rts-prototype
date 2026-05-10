@@ -317,7 +317,7 @@ export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE = 0.5;
  *  RTS-scale ballistics rather than real-world 9.8 m/s²; the map is
  *  ~3000 wu wide and shots travel hundreds of units per second, so
  *  heavier gravity would flatten every arc into a short lob. */
-export const GRAVITY = 500;
+export const GRAVITY = 200;
 
 /** Free-flight unit velocity damping per 60 Hz frame.
  *  Applied equally to x/y/z while a unit is in free flight. This is

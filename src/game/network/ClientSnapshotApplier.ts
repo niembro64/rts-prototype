@@ -10,20 +10,21 @@ import {
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_SUSPENSION,
-  codeToActionType,
   codeToBuildingType,
   codeToUnitType,
 } from '../../types/network';
-import { isFiniteNumber } from '../math';
-import { refreshUnitActionHash } from '../sim/unitActions';
-import { getUnitLocomotion } from '../sim/blueprints';
 import {
-  applyNetworkJumpState,
   applyNetworkTurretNonVisualState,
-  applyNetworkSuspensionState,
   refreshBuildingTurretsFromNetwork,
   refreshUnitTurretsFromNetwork,
 } from './helpers';
+import {
+  applyNetworkJumpState,
+  applyNetworkSuspensionState,
+  applyNetworkUnitActions,
+  applyNetworkUnitMovementAccel,
+  applyNetworkUnitStaticFields,
+} from './unitSnapshotFields';
 import {
   applyNetworkBuildState,
   getBuildingBuildRequired,
@@ -56,27 +57,9 @@ export function snapClientNonVisualState(
         getUnitBuildRequired(entity.unit.unitType),
       ) || cacheDirty;
     }
-    if (su.radius) {
-      if (isFiniteNumber(su.radius.body)) entity.unit.radius.body = su.radius.body;
-      if (isFiniteNumber(su.radius.shot)) entity.unit.radius.shot = su.radius.shot;
-      if (isFiniteNumber(su.radius.push)) entity.unit.radius.push = su.radius.push;
-    }
-    if (isFiniteNumber(su.bodyCenterHeight)) {
-      entity.unit.bodyCenterHeight = su.bodyCenterHeight;
-    }
-    if (typeof su.unitType === 'number') {
-      const unitType = codeToUnitType(su.unitType);
-      if (unitType) {
-        entity.unit.unitType = unitType;
-        entity.unit.locomotion = getUnitLocomotion(unitType);
-      }
-    }
-    if (isFiniteNumber(su.mass)) entity.unit.mass = su.mass;
+    applyNetworkUnitStaticFields(entity.unit, su);
     if (isFull || cf! & ENTITY_CHANGED_MOVEMENT_ACCEL) {
-      const accel = su.movementAccel;
-      entity.unit.movementAccelX = accel?.x ?? 0;
-      entity.unit.movementAccelY = accel?.y ?? 0;
-      entity.unit.movementAccelZ = accel?.z ?? 0;
+      applyNetworkUnitMovementAccel(entity.unit, su);
     }
     if (isFull || cf! & ENTITY_CHANGED_SUSPENSION) {
       applyNetworkSuspensionState(entity, su.suspension);
@@ -95,34 +78,7 @@ export function snapClientNonVisualState(
     }
 
     if (isFull || cf! & ENTITY_CHANGED_ACTIONS) {
-      const src = su.actions;
-      const actions = entity.unit.actions;
-      actions.length = 0;
-      if (src) {
-        for (let i = 0; i < src.length; i++) {
-          const na = src[i];
-          if (!na.pos) continue;
-          actions.push({
-            type: codeToActionType(na.type) as
-              | 'move'
-              | 'patrol'
-              | 'fight'
-              | 'build'
-              | 'repair'
-              | 'attack',
-            x: na.pos.x,
-            y: na.pos.y,
-            z: na.posZ,
-            isPathExpansion: na.pathExp,
-            targetId: na.targetId,
-            buildingType: na.buildingType as BuildingType | undefined,
-            gridX: na.grid?.x,
-            gridY: na.grid?.y,
-            buildingId: na.buildingId,
-          });
-        }
-      }
-      refreshUnitActionHash(entity.unit);
+      applyNetworkUnitActions(entity.unit, su.actions);
     }
 
     applyNetworkTurretNonVisualState(entity, su.turrets);

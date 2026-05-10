@@ -33,7 +33,7 @@ import {
 import { getMapSize } from '../config';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
-import { LOD_EMA_SOURCE, GOOD_TPS } from '../lodConfig';
+import { GOOD_TPS } from '../lodConfig';
 import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
 import {
   BATTLE_CONFIG,
@@ -57,10 +57,6 @@ import {
   saveMapLandDimensions,
   getDefaultMapLandDimensions,
   getDefaultDemoUnits,
-  loadStoredDemoBarsCollapsed,
-  saveDemoBarsCollapsed,
-  loadStoredRealBarsCollapsed,
-  saveRealBarsCollapsed,
   type BattleMode,
 } from '../battleBarConfig';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
@@ -111,7 +107,6 @@ import {
   cycleLodSignalState,
   resetLodSignalStates,
   getLodSignalStates,
-  getEffectiveQuality,
   getRenderMode,
   setRenderMode,
   getRangeToggle,
@@ -158,17 +153,10 @@ import {
   getSoundToggle,
   setSoundToggle,
   SOUND_CATEGORIES,
-  getLobbyVisible,
-  setLobbyVisible,
   getGridOverlay,
   setGridOverlay,
   getWaypointDetail,
   setWaypointDetail,
-  setCurrentServerTpsRatio,
-  setCurrentRenderTpsRatio,
-  setCurrentUnitCount,
-  setCurrentUnitCap,
-  setServerTpsAvailable,
 } from '../clientBarConfig';
 import type { CameraSmoothMode } from '../clientBarConfig';
 import type { GraphicsQuality, ConcreteGraphicsQuality, RenderMode } from '../types/graphics';
@@ -194,6 +182,11 @@ import {
   bindSceneUiCallbacks,
   waitForSceneAndBind,
 } from './gameSceneBindings';
+import {
+  setPlayerClientRenderEnabled,
+  useGameCanvasChromeState,
+} from './gameCanvasChromeState';
+import { useGameCanvasTelemetry } from './gameCanvasTelemetry';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -207,38 +200,6 @@ const backgroundContainerRef = ref<HTMLDivElement | null>(null);
 // modal's preview slot (`#lobby-preview-target`). Captured as a
 // ref so the watcher doesn't depend on selector lookups.
 const gameAreaRef = ref<HTMLDivElement | null>(null);
-const mobileBarsVisible = ref(false);
-// When true, hide the BUDGET ANNIHILATION lobby modal so the demo
-// battle is full-screen in the background (the user's "watch the
-// demo battle" mode). The hamburger ☰ button is what brings the
-// lobby back. Persisted under `demo-battle-lobby-visible`.
-const spectateMode = ref(!getLobbyVisible());
-// Bottom-bars collapsed state, persisted PER MODE — demo and real
-// each remember their own preference. The watcher below swaps the
-// value when `gameStarted` flips, so transitioning lobby → real
-// game (or back) restores the appropriate stored state. Initial
-// value uses the demo key because gameStarted starts at false.
-const bottomBarsCollapsed = ref(loadStoredDemoBarsCollapsed());
-const PLAYER_CLIENT_ENABLED_STORAGE_KEY = 'player-client-game-enabled';
-
-function loadStoredPlayerClientEnabled(): boolean {
-  try {
-    const raw = window.localStorage.getItem(PLAYER_CLIENT_ENABLED_STORAGE_KEY);
-    return raw === null ? true : raw !== 'false';
-  } catch {
-    return true;
-  }
-}
-
-function savePlayerClientEnabled(enabled: boolean): void {
-  try {
-    window.localStorage.setItem(PLAYER_CLIENT_ENABLED_STORAGE_KEY, enabled ? 'true' : 'false');
-  } catch {
-    // Ignore storage failures; the button still works for this session.
-  }
-}
-
-const playerClientEnabled = ref(loadStoredPlayerClientEnabled());
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 const battleLoading = ref(false);
@@ -355,6 +316,15 @@ function onPlayerNameChange(name: string): void {
 const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
+const {
+  mobileBarsVisible,
+  spectateMode,
+  bottomBarsCollapsed,
+  playerClientEnabled,
+  toggleBottomBars,
+  togglePlayerClientEnabled,
+  toggleSpectateMode,
+} = useGameCanvasChromeState(gameStarted, applyPlayerClientEnabled);
 
 // Camera tutorial — shown the first time the player enters a real
 // game. Three flashing cards (ZOOM / PAN / ROTATE) clear themselves
@@ -388,30 +358,6 @@ const networkStatus = computed(() => {
   return networkNotice.value ? 'NETWORK' : '';
 });
 
-// When the user switches between demo battle and real battle, restore
-// THAT mode's saved bottom-bars collapse preference. Persistence
-// happens in `toggleBottomBars` below — this watcher only handles the
-// READ side of the per-mode split, so swapping modes doesn't clobber
-// the destination mode's stored state.
-watch(gameStarted, (started) => {
-  bottomBarsCollapsed.value = started
-    ? loadStoredRealBarsCollapsed()
-    : loadStoredDemoBarsCollapsed();
-});
-
-function toggleBottomBars(): void {
-  const next = !bottomBarsCollapsed.value;
-  bottomBarsCollapsed.value = next;
-  if (gameStarted.value) saveRealBarsCollapsed(next);
-  else saveDemoBarsCollapsed(next);
-}
-
-function setInstancePlayerClientEnabled(instance: GameInstance | null | undefined, enabled: boolean): void {
-  if (!instance) return;
-  instance.app.setRenderEnabled(enabled);
-  instance.getScene()?.setClientRenderEnabled(enabled);
-}
-
 function setInstanceCameraFovDegrees(
   instance: GameInstance | null | undefined,
   fov: CameraFovDegrees,
@@ -420,23 +366,14 @@ function setInstanceCameraFovDegrees(
 }
 
 function applyPlayerClientEnabled(): void {
-  setInstancePlayerClientEnabled(backgroundBattle?.gameInstance, playerClientEnabled.value);
-  setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
+  setPlayerClientRenderEnabled(backgroundBattle?.gameInstance, playerClientEnabled.value);
+  setPlayerClientRenderEnabled(gameInstance, playerClientEnabled.value);
 }
 
 function applyCameraFovDegrees(): void {
   setInstanceCameraFovDegrees(backgroundBattle?.gameInstance, cameraFovDegrees.value);
   setInstanceCameraFovDegrees(gameInstance, cameraFovDegrees.value);
 }
-
-function togglePlayerClientEnabled(): void {
-  playerClientEnabled.value = !playerClientEnabled.value;
-}
-
-watch(playerClientEnabled, (enabled) => {
-  savePlayerClientEnabled(enabled);
-  applyPlayerClientEnabled();
-});
 
 // Server metadata received from snapshots (for remote clients to display server bar)
 const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
@@ -482,9 +419,6 @@ const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
 const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
 const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
-const effectiveQuality = ref<ConcreteGraphicsQuality>(
-  getEffectiveQuality(),
-);
 // Reactive snapshot of the per-signal tri-state. cycleClientSignal()
 // re-reads it after each cycle; the template binds button classes
 // against this object.
@@ -555,37 +489,6 @@ const legsRadiusToggle = ref(getLegsRadiusToggle());
 const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
 const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
 
-// Frame timing tracking (EMA-based, polled from scene)
-const frameMsAvg = ref(0);
-const frameMsHi = ref(0);
-const renderMsAvg = ref(0);
-const renderMsHi = ref(0);
-const logicMsAvg = ref(0);
-const logicMsHi = ref(0);
-// Real-GPU-time from EXT_disjoint_timer_query_webgl2 (nanoseconds → ms).
-// Supported on Chrome/Edge/recent Firefox; not Safari. When unsupported,
-// `gpuTimerSupported` is false and the UI falls back to renderMs.
-const gpuTimerMs = ref(0);
-const gpuTimerSupported = ref(false);
-// Longtask API signal — blocked ms / sec of wall-clock time. 100+ = the
-// main thread lost ≥10% of real time to single ≥50 ms tasks.
-const longtaskMsPerSec = ref(0);
-const longtaskSupported = ref(false);
-
-// Client cadence, snapshot rate, and zoom tracking (EMA-based, polled from scene)
-const renderTpsAvg = ref(0);
-const renderTpsWorst = ref(0);
-const snapAvgRate = ref(0);
-const snapWorstRate = ref(0);
-// Parallel pair tracking ONLY full-keyframe arrivals — used by the
-// FSPS stat bar so the user can see how often the protocol re-seeds
-// statics. Hosts with a tight keyframe ratio show a high FSPS;
-// 'NONE' keyframe ratio holds FSPS at zero after the initial snap.
-const fullSnapAvgRate = ref(0);
-const fullSnapWorstRate = ref(0);
-const currentZoom = ref(0.4);
-let clientTelemetryUpdateInterval: ReturnType<typeof setInterval> | null = null;
-
 // Selection state for the panel
 const selectionInfo = reactive<SelectionInfo>({
   unitCount: 0,
@@ -632,15 +535,6 @@ const minimapData = reactive<MinimapData>(createInitialMinimapData());
 const showSoundTest = ref(false);
 const battleElapsed = ref('00:00:00');
 let battleStartTime = 0;
-
-function setRefIfChanged<T>(target: { value: T }, value: T): void {
-  if (!Object.is(target.value, value)) target.value = value;
-}
-
-function setNumberRefIfChanged(target: { value: number }, value: number, epsilon = 0.01): void {
-  if (!Number.isFinite(value)) return;
-  if (Math.abs(target.value - value) > epsilon) target.value = value;
-}
 
 function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
   bindSceneUiCallbacks(scene, {
@@ -744,7 +638,7 @@ async function startBackgroundBattle(): Promise<void> {
   activeConnection = backgroundBattle.connection;
   hasServer.value = true;
   battleStartTime = Date.now();
-  setInstancePlayerClientEnabled(backgroundBattle.gameInstance, playerClientEnabled.value);
+  setPlayerClientRenderEnabled(backgroundBattle.gameInstance, playerClientEnabled.value);
   setInstanceCameraFovDegrees(backgroundBattle.gameInstance, cameraFovDegrees.value);
 
   checkBgSceneInterval = waitForSceneAndBind(
@@ -958,21 +852,38 @@ const displayServerTpsAvg = computed(
 const displayServerTpsWorst = computed(
   () => serverMetaFromSnapshot.value?.ticks.low ?? 0,
 );
+const {
+  currentZoom,
+  displayGpuMs,
+  effectiveQuality,
+  frameMsAvg,
+  frameMsHi,
+  fullSnapAvgRate,
+  fullSnapWorstRate,
+  gpuSourceLabel,
+  gpuTimerSupported,
+  logicMsAvg,
+  logicMsHi,
+  longtaskMsPerSec,
+  longtaskSupported,
+  renderMsAvg,
+  renderMsHi,
+  renderTpsAvg,
+  renderTpsWorst,
+  snapAvgRate,
+  snapWorstRate,
+} = useGameCanvasTelemetry({
+  getScene: () => backgroundBattle?.gameInstance?.getScene() ?? gameInstance?.getScene() ?? null,
+  displayServerTpsAvg,
+  displayServerTpsWorst,
+  serverMetaFromSnapshot,
+  showServerControls,
+});
 const displayServerCpuAvg = computed(
   () => serverMetaFromSnapshot.value?.cpu?.avg ?? 0,
 );
 const displayServerCpuHi = computed(
   () => serverMetaFromSnapshot.value?.cpu?.hi ?? 0,
-);
-// GPU displayed time: prefer the real EXT_disjoint_timer_query_webgl2
-// result (true GPU-side execution time); fall back to renderMs, which is
-// the CPU wall-clock of renderer.render() — mostly draw-call submission,
-// but correlates with GPU cost.
-const displayGpuMs = computed(() =>
-  gpuTimerSupported.value ? gpuTimerMs.value : renderMsAvg.value,
-);
-const gpuSourceLabel = computed(() =>
-  gpuTimerSupported.value ? 'GPU time query' : 'renderer.render() wall-clock',
 );
 const displayTickRate = computed(
   () =>
@@ -1621,11 +1532,6 @@ function handleOffline(): void {
   });
 }
 
-function toggleSpectateMode(): void {
-  spectateMode.value = !spectateMode.value;
-  setLobbyVisible(!spectateMode.value);
-}
-
 function changeGraphicsQuality(quality: GraphicsQuality): void {
   setGraphicsQuality(quality);
   graphicsQuality.value = quality;
@@ -1849,58 +1755,6 @@ const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
   field: 'Continuous force field sounds',
   music: 'Background music (procedural or MIDI)',
 };
-
-function updateClientTelemetryStats(): void {
-  const scene = backgroundBattle?.gameInstance?.getScene() ?? gameInstance?.getScene();
-  if (scene) {
-    // Display camera altitude — distance from the y=0 ground plane
-    // along its normal. Universal: same physical state → same number
-    // regardless of pan / wheel-tick / target-y history. The wheel
-    // clamp also rides on altitude (in OrbitCamera), so "min/max
-    // zoom" matches what the user feels: at the floor you're grazing
-    // the surface, at the ceiling you're at panoramic altitude. The
-    // `zoom` ratio is still used internally for LOD + save/restore.
-    setNumberRefIfChanged(currentZoom, scene.cameras.main.altitude ?? scene.cameras.main.zoom, 0.05);
-
-    const timing = scene.getFrameTiming();
-    setNumberRefIfChanged(frameMsAvg, timing.frameMsAvg);
-    setNumberRefIfChanged(frameMsHi, timing.frameMsHi);
-    setNumberRefIfChanged(renderMsAvg, timing.renderMsAvg);
-    setNumberRefIfChanged(renderMsHi, timing.renderMsHi);
-    setNumberRefIfChanged(logicMsAvg, timing.logicMsAvg);
-    setNumberRefIfChanged(logicMsHi, timing.logicMsHi);
-    setNumberRefIfChanged(gpuTimerMs, timing.gpuTimerMs);
-    setRefIfChanged(gpuTimerSupported, timing.gpuTimerSupported);
-    setNumberRefIfChanged(longtaskMsPerSec, timing.longtaskMsPerSec);
-    setRefIfChanged(longtaskSupported, timing.longtaskSupported);
-
-    const renderTpsStats = scene.getRenderTpsStats();
-    setNumberRefIfChanged(renderTpsAvg, renderTpsStats.avgRate, 0.05);
-    setNumberRefIfChanged(renderTpsWorst, renderTpsStats.worstRate, 0.05);
-
-    const snapStats = scene.getSnapshotStats();
-    setNumberRefIfChanged(snapAvgRate, snapStats.avgRate, 0.05);
-    setNumberRefIfChanged(snapWorstRate, snapStats.worstRate, 0.05);
-    const fullSnapStats = scene.getFullSnapshotStats();
-    setNumberRefIfChanged(fullSnapAvgRate, fullSnapStats.avgRate, 0.05);
-    setNumberRefIfChanged(fullSnapWorstRate, fullSnapStats.worstRate, 0.05);
-  }
-  const serverTpsVal = LOD_EMA_SOURCE.serverTps === 'avg' ? displayServerTpsAvg.value : displayServerTpsWorst.value;
-  const renderTpsVal = LOD_EMA_SOURCE.renderTps === 'avg' ? renderTpsAvg.value : renderTpsWorst.value;
-  setCurrentServerTpsRatio(serverTpsVal / GOOD_TPS);
-  setCurrentRenderTpsRatio(renderTpsVal / GOOD_TPS);
-  // UNITS auto-LOD reads (count, cap) from the server's snapshot
-  // meta. The LOD ladder operates on `1 − count/cap` (fullness ratio)
-  // so visual quality drops at the same proportional milestones
-  // whether the cap is 1k or 16k. Pre-snapshot the count stays at
-  // 0 (sparse world ⇒ MAX tier) and the cap falls back to the
-  // bundled default until a real snapshot arrives.
-  const meta = serverMetaFromSnapshot.value;
-  setCurrentUnitCount(meta?.units.count ?? 0);
-  if (meta?.units.max !== undefined) setCurrentUnitCap(meta.units.max);
-  setServerTpsAvailable(showServerControls.value);
-  setRefIfChanged(effectiveQuality, getEffectiveQuality());
-}
 
 function setupNetworkCallbacks(): void {
   networkManager.onPlayerJoined = (player: LobbyPlayer) => {
@@ -2162,7 +2016,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       backgroundMode: false,
       lookupPlayerName: (pid) => resolvePlayerName(pid, null),
     });
-    setInstancePlayerClientEnabled(gameInstance, playerClientEnabled.value);
+    setPlayerClientRenderEnabled(gameInstance, playerClientEnabled.value);
     setInstanceCameraFovDegrees(gameInstance, cameraFovDegrees.value);
     const scene = gameInstance.getScene();
     if (scene) {
@@ -2297,9 +2151,6 @@ onMounted(() => {
     startBackgroundBattle();
   });
 
-  // Poll client/server telemetry for the bottom bars and AUTO LOD.
-  clientTelemetryUpdateInterval = setInterval(updateClientTelemetryStats, 100);
-
   // Public IP + coarse location for the server bar AND the GAME
   // LOBBY player list. Avoid geo-IP providers that commonly return
   // browser-visible 403s; use ipify for the IP and derive the
@@ -2363,10 +2214,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   clearRealBattleTimeouts();
-  if (clientTelemetryUpdateInterval) {
-    clearInterval(clientTelemetryUpdateInterval);
-    clientTelemetryUpdateInterval = null;
-  }
   if (checkSceneInterval) {
     clearInterval(checkSceneInterval);
     checkSceneInterval = null;

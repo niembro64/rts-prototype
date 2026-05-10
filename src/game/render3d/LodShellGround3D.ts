@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { RenderObjectLodTier } from './RenderObjectLod';
 import { hexToRgb01 } from './colorUtils';
+import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
 
 type LodShell = {
   tier: Exclude<RenderObjectLodTier, 'marker' | 'hero'>;
@@ -35,10 +36,7 @@ export class LodShellGround3D {
   private mapWidth: number;
   private mapHeight: number;
   private getGroundHeight: (x: number, z: number) => number;
-  private lineCap = STYLE.initialLineCap;
-  private linePositions = new Float32Array(this.lineCap * 2 * 3);
-  private lineColors = new Float32Array(this.lineCap * 2 * 3);
-  private lineGeom = new THREE.BufferGeometry();
+  private lineBuffer = new DynamicLineBuffer3D(STYLE.initialLineCap);
   private lineMesh: THREE.LineSegments;
   private hadVisible = false;
   private lastUpdateKey = '';
@@ -55,15 +53,6 @@ export class LodShellGround3D {
     this.mapHeight = mapHeight;
     this.getGroundHeight = getGroundHeight;
 
-    this.lineGeom.setAttribute(
-      'position',
-      new THREE.BufferAttribute(this.linePositions, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-    this.lineGeom.setAttribute(
-      'color',
-      new THREE.BufferAttribute(this.lineColors, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-
     const lineMat = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
@@ -74,7 +63,7 @@ export class LodShellGround3D {
       depthTest: false,
       depthWrite: false,
     });
-    this.lineMesh = new THREE.LineSegments(this.lineGeom, lineMat);
+    this.lineMesh = new THREE.LineSegments(this.lineBuffer.geometry, lineMat);
     this.lineMesh.frustumCulled = false;
     this.lineMesh.renderOrder = 7;
     this.lineMesh.visible = false;
@@ -102,27 +91,23 @@ export class LodShellGround3D {
     this.lastUpdateKey = updateKey;
     this.lastUpdateMs = now;
 
-    const state = { lineSeg: 0 };
+    this.lineBuffer.resetDrawRange();
     const cx = camera.position.x;
     const cy = camera.position.y;
     const cz = camera.position.z;
 
     for (const shell of drawableShells) {
-      this.pushShellRing(state, cx, cy, cz, shell.distance, shell);
+      this.pushShellRing(cx, cy, cz, shell.distance, shell);
     }
 
-    this.lineGeom.setDrawRange(0, state.lineSeg * 2);
-    const position = this.lineGeom.getAttribute('position') as THREE.BufferAttribute;
-    const color = this.lineGeom.getAttribute('color') as THREE.BufferAttribute;
-    position.needsUpdate = true;
-    color.needsUpdate = true;
-    this.lineMesh.visible = state.lineSeg > 0;
+    const lineSeg = this.lineBuffer.finishFrame();
+    this.lineMesh.visible = lineSeg > 0;
     this.hadVisible = this.lineMesh.visible;
   }
 
   destroy(): void {
     this.parent.remove(this.lineMesh);
-    this.lineGeom.dispose();
+    this.lineBuffer.dispose();
     const material = this.lineMesh.material;
     if (Array.isArray(material)) {
       for (const mat of material) mat.dispose();
@@ -137,7 +122,7 @@ export class LodShellGround3D {
       this.lastUpdateMs = 0;
       return;
     }
-    this.lineGeom.setDrawRange(0, 0);
+    this.lineBuffer.resetDrawRange();
     this.lineMesh.visible = false;
     this.hadVisible = false;
     this.lastUpdateKey = '';
@@ -165,25 +150,7 @@ export class LodShellGround3D {
     return key;
   }
 
-  private growLineCap(needed: number): void {
-    let cap = this.lineCap;
-    while (cap < needed) cap *= 2;
-    if (cap === this.lineCap) return;
-    this.lineCap = cap;
-    this.linePositions = new Float32Array(cap * 2 * 3);
-    this.lineColors = new Float32Array(cap * 2 * 3);
-    this.lineGeom.setAttribute(
-      'position',
-      new THREE.BufferAttribute(this.linePositions, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-    this.lineGeom.setAttribute(
-      'color',
-      new THREE.BufferAttribute(this.lineColors, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-  }
-
   private pushShellRing(
-    state: { lineSeg: number },
     cx: number,
     cy: number,
     cz: number,
@@ -205,11 +172,13 @@ export class LodShellGround3D {
         continue;
       }
       if (!first) first = point;
-      if (prev) this.pushSegment(state, prev, point, r, g, b);
+      if (prev) this.lineBuffer.pushPointSegment(prev, point, r, g, b);
       prev = point;
     }
 
-    if (!hadGap && first && prev && first !== prev) this.pushSegment(state, prev, first, r, g, b);
+    if (!hadGap && first && prev && first !== prev) {
+      this.lineBuffer.pushPointSegment(prev, first, r, g, b);
+    }
   }
 
   private findGroundPoint(
@@ -334,32 +303,5 @@ export class LodShellGround3D {
     if (!applySlab(cz, dirZ, 0, this.mapHeight)) return null;
     if (exit < 0) return null;
     return { enter, exit };
-  }
-
-  private pushSegment(
-    state: { lineSeg: number },
-    a: GroundPoint,
-    b: GroundPoint,
-    r: number,
-    g: number,
-    colorB: number,
-  ): void {
-    if (state.lineSeg + 1 > this.lineCap) {
-      this.growLineCap(state.lineSeg + 1);
-    }
-    const o = state.lineSeg * 6;
-    this.linePositions[o + 0] = a.x;
-    this.linePositions[o + 1] = a.y;
-    this.linePositions[o + 2] = a.z;
-    this.linePositions[o + 3] = b.x;
-    this.linePositions[o + 4] = b.y;
-    this.linePositions[o + 5] = b.z;
-    this.lineColors[o + 0] = r;
-    this.lineColors[o + 1] = g;
-    this.lineColors[o + 2] = colorB;
-    this.lineColors[o + 3] = r;
-    this.lineColors[o + 4] = g;
-    this.lineColors[o + 5] = colorB;
-    state.lineSeg++;
   }
 }

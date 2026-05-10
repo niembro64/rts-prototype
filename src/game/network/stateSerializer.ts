@@ -15,7 +15,7 @@ import {
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_SUSPENSION, ENTITY_CHANGED_JUMP, ENTITY_CHANGED_MOVEMENT_ACCEL,
-  actionTypeToCode, turretStateToCode,
+  turretStateToCode,
   unitTypeToCode, buildingTypeToCode, projectileTypeToCode,
   turretIdToCode, shotIdToCode,
   PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN,
@@ -30,6 +30,22 @@ import {
   createWaypointDto,
   type WaypointDto,
 } from './snapshotDtoCopy';
+import {
+  clearNetworkUnitActions,
+  clearNetworkUnitJump,
+  clearNetworkUnitMovementAccel,
+  clearNetworkUnitStaticFields,
+  clearNetworkUnitSurfaceNormal,
+  clearNetworkUnitSuspension,
+  createNetworkUnitSnapshot,
+  writeNetworkUnitActions,
+  writeNetworkUnitJump,
+  writeNetworkUnitMovementAccel,
+  writeNetworkUnitStaticFields,
+  writeNetworkUnitSurfaceNormal,
+  writeNetworkUnitSuspension,
+  writeNetworkUnitVelocity,
+} from './unitSnapshotFields';
 
 // === Object pool for NetworkServerSnapshotEntity (eliminates per-frame allocations) ===
 // Each frame we reset the pool index and overwrite existing objects.
@@ -225,12 +241,7 @@ function createPooledEntry(): PooledEntry {
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createWaypointDto());
   return {
     entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
-    unitSub: {
-      unitType: undefined, hp: { curr: 0, max: 0 },
-      radius: undefined,
-      bodyCenterHeight: undefined,
-      mass: undefined, velocity: { x: 0, y: 0, z: 0 },
-    },
+    unitSub: createNetworkUnitSnapshot(),
     unitMovementAccel: { x: 0, y: 0, z: 0 },
     unitSuspension: {
       offset: { x: 0, y: 0, z: 0 },
@@ -1417,39 +1428,27 @@ function serializeEntity(
       // the client can never create those entities and renders an
       // empty battlefield even while snapshots keep arriving.
       if (isFull) {
-        u.unitType = unitTypeToCode(entity.unit.unitType);
-        u.radius = pool.unitRadius;
-        u.radius.body = entity.unit.radius.body;
-        u.radius.shot = entity.unit.radius.shot;
-        u.radius.push = entity.unit.radius.push;
-        u.bodyCenterHeight = entity.unit.bodyCenterHeight;
-        u.mass = entity.unit.mass;
-        u.isCommander = isCommander(entity) ? true : undefined;
+        writeNetworkUnitStaticFields(
+          u,
+          entity.unit,
+          pool.unitRadius,
+          isCommander(entity),
+        );
       } else {
-        u.unitType = undefined;
-        u.radius = undefined;
-        u.bodyCenterHeight = undefined;
-        u.mass = undefined;
-        u.isCommander = undefined;
+        clearNetworkUnitStaticFields(u);
       }
 
       // Velocity — full keyframes always carry it; on deltas it ships
       // when ENTITY_CHANGED_VEL is set (velocity moved more than the
       // threshold). Quantized to 0.1 wu/s for shorter JSON.
       if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
-        u.velocity.x = qVel(entity.unit.velocityX ?? 0);
-        u.velocity.y = qVel(entity.unit.velocityY ?? 0);
-        u.velocity.z = qVel(entity.unit.velocityZ ?? 0);
+        writeNetworkUnitVelocity(u, entity.unit, qVel);
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
-        const accel = pool.unitMovementAccel;
-        accel.x = qVel(entity.unit.movementAccelX ?? 0);
-        accel.y = qVel(entity.unit.movementAccelY ?? 0);
-        accel.z = qVel(entity.unit.movementAccelZ ?? 0);
-        u.movementAccel = accel;
+        writeNetworkUnitMovementAccel(u, entity.unit, pool.unitMovementAccel, qVel);
       } else {
-        u.movementAccel = undefined;
+        clearNetworkUnitMovementAccel(u);
       }
 
       // Smoothed surface normal — same shape as velocity. Rides POS
@@ -1460,46 +1459,21 @@ function serializeEntity(
         isFull ||
         (changedFields! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL))
       ) {
-        const sn = entity.unit.surfaceNormal;
-        if (!u.surfaceNormal) u.surfaceNormal = { nx: 0, ny: 0, nz: 1 };
-        u.surfaceNormal.nx = qNormal(sn.nx);
-        u.surfaceNormal.ny = qNormal(sn.ny);
-        u.surfaceNormal.nz = qNormal(sn.nz);
+        writeNetworkUnitSurfaceNormal(u, entity.unit, qNormal);
       } else {
-        u.surfaceNormal = undefined;
+        clearNetworkUnitSurfaceNormal(u);
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_SUSPENSION)) {
-        const suspension = entity.unit.suspension;
-        if (suspension) {
-          const out = pool.unitSuspension;
-          out.offset.x = qSuspension(suspension.offsetX);
-          out.offset.y = qSuspension(suspension.offsetY);
-          out.offset.z = qSuspension(suspension.offsetZ);
-          out.velocity.x = qVel(suspension.velocityX);
-          out.velocity.y = qVel(suspension.velocityY);
-          out.velocity.z = qVel(suspension.velocityZ);
-          out.legContact = suspension.legContact ? true : undefined;
-          u.suspension = out;
-        } else {
-          u.suspension = undefined;
-        }
+        writeNetworkUnitSuspension(u, entity.unit, pool.unitSuspension, qSuspension, qVel);
       } else {
-        u.suspension = undefined;
+        clearNetworkUnitSuspension(u);
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_JUMP)) {
-        const jump = entity.unit.jump;
-        if (jump) {
-          const out = pool.unitJump;
-          out.active = jump.active ? true : undefined;
-          out.launchSeq = jump.launchSeq > 0 ? jump.launchSeq : undefined;
-          u.jump = out;
-        } else {
-          u.jump = undefined;
-        }
+        writeNetworkUnitJump(u, entity.unit, pool.unitJump);
       } else {
-        u.jump = undefined;
+        clearNetworkUnitJump(u);
       }
 
       // HP
@@ -1524,43 +1498,9 @@ function serializeEntity(
       }
 
       // Actions
-      u.actions = undefined;
+      clearNetworkUnitActions(u);
       if (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS)) {
-        const actions = entity.unit.actions ?? [];
-        const count = actions.length;
-        while (pool.actions.length < count) pool.actions.push(createActionDto());
-        pool.actions.length = count;
-        for (let i = 0; i < count; i++) {
-          const src = actions[i];
-          const dst = pool.actions[i];
-          dst.type = actionTypeToCode(src.type);
-          if (src.x !== undefined) {
-            if (!dst.pos) dst.pos = { x: 0, y: 0 };
-            dst.pos.x = src.x;
-            dst.pos.y = src.y;
-          } else {
-            dst.pos = undefined;
-          }
-          // src.z is the click-derived altitude (or terrain sample
-          // for path-expanded intermediates) — ship it so joining
-          // clients render dots at the same altitude as the issuing
-          // client, no terrain re-sample needed.
-          dst.posZ = src.z;
-          // Only send the flag when true — saves bytes; clients
-          // treat undefined as false.
-          dst.pathExp = src.isPathExpansion ? true : undefined;
-          dst.targetId = src.targetId;
-          dst.buildingType = src.buildingType;
-          if (src.gridX !== undefined) {
-            if (!dst.grid) dst.grid = { x: 0, y: 0 };
-            dst.grid.x = src.gridX;
-            dst.grid.y = src.gridY!;
-          } else {
-            dst.grid = undefined;
-          }
-          dst.buildingId = src.buildingId;
-        }
-        u.actions = pool.actions;
+        writeNetworkUnitActions(u, entity.unit, pool.actions);
       }
 
       // Turrets. Full records seed the client; deltas only carry this

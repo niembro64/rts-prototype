@@ -223,6 +223,104 @@ function hasWeaponLineOfSight(
   );
 }
 
+type CandidateRanker = (
+  ranges: TurretRanges,
+  edge: 'acquire' | 'release',
+  distSq: number,
+  targetRadius: number,
+) => TargetPreferenceRank;
+
+type TargetCandidateChoice = {
+  target: Entity | null;
+  rank: TargetPreferenceRank;
+  distSq: number;
+  mirrorScore: number;
+};
+
+function getTargetCandidateRadius(enemy: Entity): number {
+  return enemy.unit
+    ? enemy.unit.radius.shot
+    : (enemy.building ? getTargetRadius(enemy) : 0);
+}
+
+function chooseBestTargetCandidate(
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
+  candidates: Entity[],
+  tick: number,
+  densityThreshold: number,
+  densityStride: number,
+  rankCandidate: CandidateRanker,
+  minimumRank: TargetPreferenceRank,
+  seed: TargetCandidateChoice,
+): TargetCandidateChoice {
+  const weaponX = weapon.worldPos!.x;
+  const weaponY = weapon.worldPos!.y;
+  const weaponZ = weapon.worldPos!.z;
+  const denseScan = candidates.length > densityThreshold;
+  const scanStride = denseScan ? densityStride : 1;
+  const scanStart = denseScan ? tick % scanStride : 0;
+  const needsLOS = weaponNeedsLineOfSight(weapon);
+
+  let bestTarget = seed.target;
+  let bestDistSq = seed.distSq;
+  let bestRank = seed.rank;
+  let bestMirrorScore = seed.mirrorScore;
+
+  for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
+    const enemy = candidates[ci];
+    let mirrorScore = 0;
+    if (weapon.config.passive) {
+      mirrorScore = getMirrorTargetScore(enemy, source.id);
+      if (mirrorScore <= 0) continue;
+    }
+
+    const enemyRadius = getTargetCandidateRadius(enemy);
+    const distSq = distanceSquared(
+      weaponX, weaponY,
+      enemy.transform.x, enemy.transform.y,
+    );
+    const rank = rankCandidate(
+      weapon.ranges,
+      'acquire',
+      distSq,
+      enemyRadius,
+    );
+
+    if (rank < minimumRank) continue;
+    if (
+      needsLOS &&
+      !hasWeaponLineOfSight(
+        world,
+        source,
+        weapon,
+        enemy,
+        weaponX, weaponY, weaponZ,
+      )
+    ) {
+      continue;
+    }
+
+    const betterTarget = weapon.config.passive
+      ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, bestMirrorScore, bestRank, bestDistSq)
+      : isBetterTargetCandidate(rank, distSq, bestRank, bestDistSq);
+    if (!betterTarget) continue;
+
+    bestTarget = enemy;
+    bestDistSq = distSq;
+    bestRank = rank;
+    bestMirrorScore = mirrorScore;
+  }
+
+  return {
+    target: bestTarget,
+    rank: bestRank,
+    distSq: bestDistSq,
+    mirrorScore: bestMirrorScore,
+  };
+}
+
 function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, weaponIndex: number): boolean {
   if (!weaponSystemDisabled(world, weapon)) return false;
   setWeaponTarget(weapon, unit, weaponIndex, null);
@@ -606,73 +704,38 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         continue;
       }
 
-      const weaponX = weapon.worldPos!.x;
-      const weaponY = weapon.worldPos!.y;
-      const weaponZ = weapon.worldPos!.z;
-      const r = weapon.ranges;
-
       if (!batchedEnemies) continue;
-      const candidates = batchedEnemies;
 
-      let closestEngageable: Entity | null = null;
-      let closestDistSq = currentFireRank.distSq;
-      let closestRank = currentFireRank.rank;
-      let closestMirrorScore = 0;
+      let seedMirrorScore = 0;
       if (weapon.config.passive && weapon.target !== null) {
         const currentTarget = world.getEntity(weapon.target);
         if (currentTarget) {
-          closestMirrorScore = getMirrorTargetScore(currentTarget, unit.id);
+          seedMirrorScore = getMirrorTargetScore(currentTarget, unit.id);
         }
       }
 
-      const denseScan = candidates.length > densityThreshold;
-      const scanStride = denseScan ? densityStride : 1;
-      const scanStart = denseScan ? tick % scanStride : 0;
-      const needsLOS = weaponNeedsLineOfSight(weapon);
-      for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
-        const enemy = candidates[ci];
-        let mirrorScore = 0;
-        if (weapon.config.passive) {
-          mirrorScore = getMirrorTargetScore(enemy, unit.id);
-          if (mirrorScore <= 0) continue;
-        }
-        const enemyRadius = enemy.unit ? enemy.unit.radius.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const distSq = distanceSquared(
-          weaponX, weaponY,
-          enemy.transform.x, enemy.transform.y,
-        );
-        const rank = fireTargetPreferenceRankSq(r, 'acquire', distSq, enemyRadius);
-        if (
-          rank >= TARGET_RANK_FIRE_FALLBACK &&
-          needsLOS &&
-          !hasWeaponLineOfSight(
-            world,
-            unit,
-            weapon,
-            enemy,
-            weaponX, weaponY, weaponZ,
-          )
-        ) {
-          continue;
-        }
-        const betterTarget = weapon.config.passive
-          ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, closestMirrorScore, closestRank, closestDistSq)
-          : isBetterTargetCandidate(rank, distSq, closestRank, closestDistSq);
-        if (
-          rank >= TARGET_RANK_FIRE_FALLBACK &&
-          betterTarget
-        ) {
-          closestDistSq = distSq;
-          closestRank = rank;
-          closestMirrorScore = mirrorScore;
-          closestEngageable = enemy;
-        }
-      }
+      const choice = chooseBestTargetCandidate(
+        world,
+        unit,
+        weapon,
+        batchedEnemies,
+        tick,
+        densityThreshold,
+        densityStride,
+        fireTargetPreferenceRankSq,
+        TARGET_RANK_FIRE_FALLBACK,
+        {
+          target: null,
+          distSq: currentFireRank.distSq,
+          rank: currentFireRank.rank,
+          mirrorScore: seedMirrorScore,
+        },
+      );
 
-      if (closestEngageable) {
+      if (choice.target) {
         // Found a target we can actually fire at. Preferred-band
         // targets outrank close fallbacks; within a rank, nearer wins.
-        setWeaponTarget(weapon, unit, wi, closestEngageable.id);
+        setWeaponTarget(weapon, unit, wi, choice.target.id);
         weapon.state = 'engaged';
       }
     }
@@ -684,72 +747,29 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       if (weapon.config.isManualFire) continue;
       if (weapon.target !== null) continue;
 
-      const weaponX = weapon.worldPos!.x;
-      const weaponY = weapon.worldPos!.y;
-      const weaponZ = weapon.worldPos!.z;
-      const r = weapon.ranges;
-
       if (!batchedEnemies) continue;
-      const candidates = batchedEnemies;
 
-      let closestEnemy: Entity | null = null;
-      let closestDistSq = Infinity;
-      let closestRank: TargetPreferenceRank = TARGET_RANK_NONE;
-      let closestMirrorScore = 0;
+      const choice = chooseBestTargetCandidate(
+        world,
+        unit,
+        weapon,
+        batchedEnemies,
+        tick,
+        densityThreshold,
+        densityStride,
+        acquisitionTargetPreferenceRankSq,
+        TARGET_RANK_TRACKING_ONLY,
+        {
+          target: null,
+          distSq: Infinity,
+          rank: TARGET_RANK_NONE,
+          mirrorScore: 0,
+        },
+      );
 
-      const denseScan = candidates.length > densityThreshold;
-      const scanStride = denseScan ? densityStride : 1;
-      const scanStart = denseScan ? tick % scanStride : 0;
-      const needsLOS = weaponNeedsLineOfSight(weapon);
-      for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
-        const enemy = candidates[ci];
-        let mirrorScore = 0;
-        if (weapon.config.passive) {
-          mirrorScore = getMirrorTargetScore(enemy, unit.id);
-          if (mirrorScore <= 0) continue;
-        }
-
-        const enemyRadius = enemy.unit ? enemy.unit.radius.shot : (enemy.building ? getTargetRadius(enemy) : 0);
-        const distSq = distanceSquared(
-          weaponX, weaponY,
-          enemy.transform.x, enemy.transform.y,
-        );
-        const rank = acquisitionTargetPreferenceRankSq(
-          r,
-          'acquire',
-          distSq,
-          enemyRadius,
-        );
-
-        if (
-          rank !== TARGET_RANK_NONE &&
-          needsLOS &&
-          !hasWeaponLineOfSight(
-            world,
-            unit,
-            weapon,
-            enemy,
-            weaponX, weaponY, weaponZ,
-          )
-        ) {
-          continue;
-        }
-
-        const betterTarget = weapon.config.passive
-          ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, closestMirrorScore, closestRank, closestDistSq)
-          : isBetterTargetCandidate(rank, distSq, closestRank, closestDistSq);
-
-        if (rank !== TARGET_RANK_NONE && betterTarget) {
-          closestDistSq = distSq;
-          closestRank = rank;
-          closestMirrorScore = mirrorScore;
-          closestEnemy = enemy;
-        }
-      }
-
-      if (closestEnemy) {
-        setWeaponTarget(weapon, unit, wi, closestEnemy.id);
-        weapon.state = closestRank >= TARGET_RANK_FIRE_FALLBACK ? 'engaged' : 'tracking';
+      if (choice.target) {
+        setWeaponTarget(weapon, unit, wi, choice.target.id);
+        weapon.state = choice.rank >= TARGET_RANK_FIRE_FALLBACK ? 'engaged' : 'tracking';
       } else {
         setWeaponTarget(weapon, unit, wi, null);
         weapon.state = 'idle';

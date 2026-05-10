@@ -433,6 +433,221 @@ export class SpatialGrid {
   private static _pickUnits = (cell: GridCell): Entity[] => cell.units;
   private static _pickProjectiles = (cell: GridCell): Entity[] => cell.projectiles;
 
+  private static distanceSq3(entity: Entity, x: number, y: number, z: number): number {
+    const dx = entity.transform.x - x;
+    const dy = entity.transform.y - y;
+    const dz = entity.transform.z - z;
+    return dx * dx + dy * dy + dz * dz;
+  }
+
+  private static distanceSq2(entity: Entity, x: number, y: number): number {
+    const dx = entity.transform.x - x;
+    const dy = entity.transform.y - y;
+    return dx * dx + dy * dy;
+  }
+
+  private static distanceSqToBuildingAabb3(
+    building: Entity,
+    x: number,
+    y: number,
+    z: number,
+  ): number {
+    const b = building.building;
+    if (!b) return Number.POSITIVE_INFINITY;
+    const minX = building.transform.x - b.width / 2;
+    const maxX = building.transform.x + b.width / 2;
+    const minY = building.transform.y - b.height / 2;
+    const maxY = building.transform.y + b.height / 2;
+    const minZ = building.transform.z - b.depth / 2;
+    const maxZ = building.transform.z + b.depth / 2;
+    const cxp = x < minX ? minX : x > maxX ? maxX : x;
+    const cyp = y < minY ? minY : y > maxY ? maxY : y;
+    const czp = z < minZ ? minZ : z > maxZ ? maxZ : z;
+    const dx = cxp - x;
+    const dy = cyp - y;
+    const dz = czp - z;
+    return dx * dx + dy * dy + dz * dz;
+  }
+
+  private static distanceSqToBuildingAabb2(
+    building: Entity,
+    x: number,
+    y: number,
+  ): number {
+    const b = building.building;
+    if (!b) return Number.POSITIVE_INFINITY;
+    const minX = building.transform.x - b.width / 2;
+    const maxX = building.transform.x + b.width / 2;
+    const minY = building.transform.y - b.height / 2;
+    const maxY = building.transform.y + b.height / 2;
+    const cxp = x < minX ? minX : x > maxX ? maxX : x;
+    const cyp = y < minY ? minY : y > maxY ? maxY : y;
+    const dx = cxp - x;
+    const dy = cyp - y;
+    return dx * dx + dy * dy;
+  }
+
+  private pushUnitIfInRadius(
+    out: Entity[],
+    unit: Entity,
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+    radiusSq: number,
+    excludePlayerId: PlayerId | undefined,
+    requireAlive: boolean,
+    includeShotRadius: boolean,
+    groundPlaneOnly: boolean,
+  ): void {
+    if (excludePlayerId !== undefined && unit.ownership?.playerId === excludePlayerId) return;
+    if (requireAlive && (!unit.unit || unit.unit.hp <= 0)) return;
+
+    let checkRadiusSq = radiusSq;
+    if (includeShotRadius) {
+      const shotRadius = unit.unit?.radius.shot;
+      if (shotRadius === undefined) return;
+      const checkRadius = radius + shotRadius;
+      checkRadiusSq = checkRadius * checkRadius;
+    }
+
+    const distanceSq = groundPlaneOnly
+      ? SpatialGrid.distanceSq2(unit, x, y)
+      : SpatialGrid.distanceSq3(unit, x, y, z);
+    if (distanceSq <= checkRadiusSq) out.push(unit);
+  }
+
+  private pushEnemyProjectileIfInRadius(
+    out: Entity[],
+    projectile: Entity,
+    x: number,
+    y: number,
+    z: number,
+    radiusSq: number,
+    excludePlayerId: PlayerId,
+  ): void {
+    const proj = projectile.projectile;
+    if (!proj || proj.projectileType !== 'projectile') return;
+    if (proj.ownerId === excludePlayerId) return;
+    if (SpatialGrid.distanceSq3(projectile, x, y, z) <= radiusSq) {
+      out.push(projectile);
+    }
+  }
+
+  private pushBuildingIfInRadius(
+    out: Entity[],
+    building: Entity,
+    x: number,
+    y: number,
+    z: number,
+    radiusSq: number,
+    excludePlayerId: PlayerId | undefined,
+    requireAlive: boolean,
+    groundPlaneOnly: boolean,
+  ): void {
+    if (this._dedup.has(building.id)) return;
+    this._dedup.add(building.id);
+    const b = building.building;
+    if (!b) return;
+    if (excludePlayerId !== undefined && building.ownership?.playerId === excludePlayerId) return;
+    if (requireAlive && b.hp <= 0) return;
+
+    const distanceSq = groundPlaneOnly
+      ? SpatialGrid.distanceSqToBuildingAabb2(building, x, y)
+      : SpatialGrid.distanceSqToBuildingAabb3(building, x, y, z);
+    if (distanceSq <= radiusSq) out.push(building);
+  }
+
+  private collectUnitsInNearbyCells(
+    out: Entity[],
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+    excludePlayerId?: PlayerId,
+    requireAlive = false,
+    includeShotRadius = false,
+    groundPlaneOnly = false,
+  ): void {
+    const radiusSq = radius * radius;
+    for (const key of this.nearbyCells) {
+      const cell = this.cells.get(key);
+      if (!cell) continue;
+      for (const unit of cell.units) {
+        this.pushUnitIfInRadius(
+          out,
+          unit,
+          x,
+          y,
+          z,
+          radius,
+          radiusSq,
+          excludePlayerId,
+          requireAlive,
+          includeShotRadius,
+          groundPlaneOnly,
+        );
+      }
+    }
+  }
+
+  private collectBuildingsInNearbyCells(
+    out: Entity[],
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+    excludePlayerId?: PlayerId,
+    requireAlive = false,
+    groundPlaneOnly = false,
+  ): void {
+    const radiusSq = radius * radius;
+    this._dedup.clear();
+    for (const key of this.nearbyCells) {
+      const cell = this.cells.get(key);
+      if (!cell) continue;
+      for (const building of cell.buildings) {
+        this.pushBuildingIfInRadius(
+          out,
+          building,
+          x,
+          y,
+          z,
+          radiusSq,
+          excludePlayerId,
+          requireAlive,
+          groundPlaneOnly,
+        );
+      }
+    }
+  }
+
+  private collectEnemyProjectilesInNearbyCells(
+    out: Entity[],
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+    excludePlayerId: PlayerId,
+  ): void {
+    const radiusSq = radius * radius;
+    for (const key of this.nearbyCells) {
+      const cell = this.cells.get(key);
+      if (!cell) continue;
+      for (const projectile of cell.projectiles) {
+        this.pushEnemyProjectileIfInRadius(
+          out,
+          projectile,
+          x,
+          y,
+          z,
+          radiusSq,
+          excludePlayerId,
+        );
+      }
+    }
+  }
+
   /**
    * Add a building to the grid. Buildings span every cube their
    * (width × height × depth) AABB touches. The footprint is centered
@@ -573,23 +788,7 @@ export class SpatialGrid {
   queryUnitsInRadius(x: number, y: number, z: number, radius: number): Entity[] {
     this.queryResultUnits.length = 0;
     this.getCellsInRadius(x, y, z, radius);
-
-    const radiusSq = radius * radius;
-
-    for (const key of this.nearbyCells) {
-      const cell = this.cells.get(key);
-      if (!cell) continue;
-
-      for (const unit of cell.units) {
-        const dx = unit.transform.x - x;
-        const dy = unit.transform.y - y;
-        const dz = unit.transform.z - z;
-        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
-          this.queryResultUnits.push(unit);
-        }
-      }
-    }
-
+    this.collectUnitsInNearbyCells(this.queryResultUnits, x, y, z, radius);
     return this.queryResultUnits;
   }
 
@@ -604,45 +803,7 @@ export class SpatialGrid {
   queryBuildingsInRadius(x: number, y: number, z: number, radius: number): Entity[] {
     this.queryResultBuildings.length = 0;
     this.getCellsInRadius(x, y, z, radius);
-
-    // Reusable dedup set (buildings can span multiple cells)
-    this._dedup.clear();
-
-    const radiusSq = radius * radius;
-
-    for (const key of this.nearbyCells) {
-      const cell = this.cells.get(key);
-      if (!cell) continue;
-
-      for (const building of cell.buildings) {
-        if (this._dedup.has(building.id)) continue;
-        this._dedup.add(building.id);
-
-        // Sphere-vs-AABB: closest point on the building box to the
-        // query center, then squared distance compared to (radius)².
-        // Building Z range is `transform.z ± depth/2` so terrain-lifted
-        // buildings (base on a tall cube tile) test against the right
-        // vertical column.
-        const b = building.building!;
-        const minX = building.transform.x - b.width / 2;
-        const maxX = building.transform.x + b.width / 2;
-        const minY = building.transform.y - b.height / 2;
-        const maxY = building.transform.y + b.height / 2;
-        const minZ = building.transform.z - b.depth / 2;
-        const maxZ = building.transform.z + b.depth / 2;
-        const cxp = x < minX ? minX : x > maxX ? maxX : x;
-        const cyp = y < minY ? minY : y > maxY ? maxY : y;
-        const czp = z < minZ ? minZ : z > maxZ ? maxZ : z;
-        const dx = cxp - x;
-        const dy = cyp - y;
-        const dz = czp - z;
-
-        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
-          this.queryResultBuildings.push(building);
-        }
-      }
-    }
-
+    this.collectBuildingsInNearbyCells(this.queryResultBuildings, x, y, z, radius);
     return this.queryResultBuildings;
   }
 
@@ -673,25 +834,7 @@ export class SpatialGrid {
   queryEnemyUnitsInRadius(x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     this.queryResultUnits.length = 0;
     this.getCellsInRadius(x, y, z, radius);
-
-    const radiusSq = radius * radius;
-
-    for (const key of this.nearbyCells) {
-      const cell = this.cells.get(key);
-      if (!cell) continue;
-
-      for (const unit of cell.units) {
-        if (unit.ownership?.playerId === excludePlayerId) continue;
-
-        const dx = unit.transform.x - x;
-        const dy = unit.transform.y - y;
-        const dz = unit.transform.z - z;
-        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
-          this.queryResultUnits.push(unit);
-        }
-      }
-    }
-
+    this.collectUnitsInNearbyCells(this.queryResultUnits, x, y, z, radius, excludePlayerId);
     return this.queryResultUnits;
   }
 
@@ -702,26 +845,14 @@ export class SpatialGrid {
   queryEnemyProjectilesInRadius(x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     this.queryResultProjectiles.length = 0;
     this.getCellsInRadius(x, y, z, radius);
-
-    const radiusSq = radius * radius;
-
-    for (const key of this.nearbyCells) {
-      const cell = this.cells.get(key);
-      if (!cell) continue;
-
-      for (const proj of cell.projectiles) {
-        if (!proj.projectile || proj.projectile.projectileType !== 'projectile') continue;
-        if (proj.projectile.ownerId === excludePlayerId) continue;
-
-        const dx = proj.transform.x - x;
-        const dy = proj.transform.y - y;
-        const dz = proj.transform.z - z;
-        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
-          this.queryResultProjectiles.push(proj);
-        }
-      }
-    }
-
+    this.collectEnemyProjectilesInNearbyCells(
+      this.queryResultProjectiles,
+      x,
+      y,
+      z,
+      radius,
+      excludePlayerId,
+    );
     return this.queryResultProjectiles;
   }
 
@@ -747,24 +878,31 @@ export class SpatialGrid {
       if (!cell) continue;
 
       for (const unit of cell.units) {
-        if (unit.ownership?.playerId === excludePlayerId) continue;
-        const dx = unit.transform.x - x;
-        const dy = unit.transform.y - y;
-        const dz = unit.transform.z - z;
-        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
-          this.queryResultUnits.push(unit);
-        }
+        this.pushUnitIfInRadius(
+          this.queryResultUnits,
+          unit,
+          x,
+          y,
+          z,
+          radius,
+          radiusSq,
+          excludePlayerId,
+          false,
+          false,
+          false,
+        );
       }
 
       for (const proj of cell.projectiles) {
-        if (!proj.projectile || proj.projectile.projectileType !== 'projectile') continue;
-        if (proj.projectile.ownerId === excludePlayerId) continue;
-        const dx = proj.transform.x - x;
-        const dy = proj.transform.y - y;
-        const dz = proj.transform.z - z;
-        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
-          this.queryResultProjectiles.push(proj);
-        }
+        this.pushEnemyProjectileIfInRadius(
+          this.queryResultProjectiles,
+          proj,
+          x,
+          y,
+          z,
+          radiusSq,
+          excludePlayerId,
+        );
       }
     }
 
@@ -786,50 +924,40 @@ export class SpatialGrid {
     // are in searched cells (per-unit distance check below does precise filtering)
     this.getCellsInRadius(x, y, z, radius + MAX_UNIT_SHOT_RADIUS);
     this._dedup.clear();
+    const radiusSq = radius * radius;
 
     for (const key of this.nearbyCells) {
       const cell = this.cells.get(key);
       if (!cell) continue;
 
       for (const unit of cell.units) {
-        if (unit.ownership?.playerId === excludePlayerId) continue;
-        if (!unit.unit || unit.unit.hp <= 0) continue;
-
-        const dx = unit.transform.x - x;
-        const dy = unit.transform.y - y;
-        const dz = unit.transform.z - z;
-        // Add unit shot collider radius to distance check (matches building behavior)
-        // so units at edge of tracking range + radius are not incorrectly excluded
-        const unitCheckRadius = radius + unit.unit.radius.shot;
-        if (dx * dx + dy * dy + dz * dz <= unitCheckRadius * unitCheckRadius) {
-          this.queryResultAll.push(unit);
-        }
+        this.pushUnitIfInRadius(
+          this.queryResultAll,
+          unit,
+          x,
+          y,
+          z,
+          radius,
+          radiusSq,
+          excludePlayerId,
+          true,
+          true,
+          false,
+        );
       }
 
       for (const building of cell.buildings) {
-        if (building.ownership?.playerId === excludePlayerId) continue;
-        if (this._dedup.has(building.id)) continue;
-        if (!building.building || building.building.hp <= 0) continue;
-        this._dedup.add(building.id);
-
-        // Sphere-vs-AABB closest-point distance (matches queryBuildingsInRadius).
-        const b = building.building;
-        const minX = building.transform.x - b.width / 2;
-        const maxX = building.transform.x + b.width / 2;
-        const minY = building.transform.y - b.height / 2;
-        const maxY = building.transform.y + b.height / 2;
-        const minZ = building.transform.z - b.depth / 2;
-        const maxZ = building.transform.z + b.depth / 2;
-        const cxp = x < minX ? minX : x > maxX ? maxX : x;
-        const cyp = y < minY ? minY : y > maxY ? maxY : y;
-        const czp = z < minZ ? minZ : z > maxZ ? maxZ : z;
-        const dx = cxp - x;
-        const dy = cyp - y;
-        const dz = czp - z;
-
-        if (dx * dx + dy * dy + dz * dz <= radius * radius) {
-          this.queryResultAll.push(building);
-        }
+        this.pushBuildingIfInRadius(
+          this.queryResultAll,
+          building,
+          x,
+          y,
+          z,
+          radiusSq,
+          excludePlayerId,
+          true,
+          false,
+        );
       }
     }
 
@@ -846,42 +974,40 @@ export class SpatialGrid {
     this.queryResultAll.length = 0;
     this.getCellsInCircle2D(x, y, radius + MAX_UNIT_SHOT_RADIUS);
     this._dedup.clear();
+    const radiusSq = radius * radius;
 
     for (const key of this.nearbyCells) {
       const cell = this.cells.get(key);
       if (!cell) continue;
 
       for (const unit of cell.units) {
-        if (unit.ownership?.playerId === excludePlayerId) continue;
-        if (!unit.unit || unit.unit.hp <= 0) continue;
-
-        const dx = unit.transform.x - x;
-        const dy = unit.transform.y - y;
-        const unitCheckRadius = radius + unit.unit.radius.shot;
-        if (dx * dx + dy * dy <= unitCheckRadius * unitCheckRadius) {
-          this.queryResultAll.push(unit);
-        }
+        this.pushUnitIfInRadius(
+          this.queryResultAll,
+          unit,
+          x,
+          y,
+          0,
+          radius,
+          radiusSq,
+          excludePlayerId,
+          true,
+          true,
+          true,
+        );
       }
 
       for (const building of cell.buildings) {
-        if (building.ownership?.playerId === excludePlayerId) continue;
-        if (this._dedup.has(building.id)) continue;
-        if (!building.building || building.building.hp <= 0) continue;
-        this._dedup.add(building.id);
-
-        const b = building.building;
-        const minX = building.transform.x - b.width / 2;
-        const maxX = building.transform.x + b.width / 2;
-        const minY = building.transform.y - b.height / 2;
-        const maxY = building.transform.y + b.height / 2;
-        const cxp = x < minX ? minX : x > maxX ? maxX : x;
-        const cyp = y < minY ? minY : y > maxY ? maxY : y;
-        const dx = cxp - x;
-        const dy = cyp - y;
-
-        if (dx * dx + dy * dy <= radius * radius) {
-          this.queryResultAll.push(building);
-        }
+        this.pushBuildingIfInRadius(
+          this.queryResultAll,
+          building,
+          x,
+          y,
+          0,
+          radiusSq,
+          excludePlayerId,
+          true,
+          true,
+        );
       }
     }
 

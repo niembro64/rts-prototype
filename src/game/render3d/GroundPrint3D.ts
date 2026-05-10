@@ -47,6 +47,15 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { LegInstance } from './LegRig3D';
 import { disposeMesh } from './threeUtils';
+import {
+  computeMiteredQuad,
+  copyQuadSlot,
+  createQuadIndexBuffer,
+  writeFlatQuadEndXZ,
+  writeFlatQuadXZ,
+  writeQuadRgba,
+  type RibbonQuadCorners,
+} from './RibbonTrailBuffer3D';
 
 // ── World Y layout ──
 // Sit slightly above the tile floor; under burn marks (Y=2.5) so a
@@ -252,17 +261,7 @@ export class GroundPrint3D {
     this.colors = new Float32Array(HARD_CAP * 4 * 4);
     this.markUvs = new Float32Array(HARD_CAP * 4 * 2);
     this.markShapes = new Float32Array(HARD_CAP * 4);
-    this.indices = new Uint32Array(HARD_CAP * 6);
-    for (let i = 0; i < HARD_CAP; i++) {
-      const vBase = i * 4;
-      const iBase = i * 6;
-      this.indices[iBase] = vBase;
-      this.indices[iBase + 1] = vBase + 1;
-      this.indices[iBase + 2] = vBase + 2;
-      this.indices[iBase + 3] = vBase;
-      this.indices[iBase + 4] = vBase + 2;
-      this.indices[iBase + 5] = vBase + 3;
-    }
+    this.indices = createQuadIndexBuffer(HARD_CAP);
 
     this.geometry = new THREE.BufferGeometry();
     this.posAttr = new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage);
@@ -340,7 +339,7 @@ export class GroundPrint3D {
         continue;
       }
       const alpha = PRINT_INITIAL_ALPHA * (1 - lifeFrac);
-      this.writeQuadColor(i, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, alpha);
+      writeQuadRgba(this.colors, i, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, alpha);
       this.colDirty = true;
     }
 
@@ -508,9 +507,10 @@ export class GroundPrint3D {
     const eLz = fz + radius;
 
     const mark = this.allocateMark();
-    this.writeQuad(mark.slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
+    const corners: RibbonQuadCorners = { sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz };
+    writeFlatQuadXZ(this.positions, mark.slot, MARK_Y, corners);
     this.writeCircleMask(mark.slot);
-    this.writeQuadColor(mark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
+    writeQuadRgba(this.colors, mark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
     this.posDirty = true;
     this.colDirty = true;
 
@@ -531,11 +531,6 @@ export class GroundPrint3D {
     dirX: number, dirZ: number,
     width: number,
   ): void {
-    const halfW = width * 0.5;
-    const perpRX = -dirZ;
-    const perpRZ = dirX;
-    const startCx = state.lastEmitX;
-    const startCz = state.lastEmitY;
     // Capture lastDir before allocateMark; allocateMark won't
     // touch state, but we read these before any branching anyway.
     const lastDirX = state.lastDirX;
@@ -546,50 +541,34 @@ export class GroundPrint3D {
     const newMark = this.allocateMark();
 
     const haveLivePrev = prev !== null && !prev.removed;
-    let sLx: number, sLz: number, sRx: number, sRz: number;
+    const corners = computeMiteredQuad(
+      state.lastEmitX,
+      state.lastEmitY,
+      endX,
+      endY,
+      dirX,
+      dirZ,
+      lastDirX,
+      lastDirY,
+      width * 0.5,
+      MITER_LIMIT,
+      haveLivePrev,
+    );
 
     if (haveLivePrev) {
-      // Bisector of (lastDir + newDir). Length = 2·cos(θ/2). Miter
-      // offset along its perpendicular is halfW · 2 / |sum|.
-      const sumX = lastDirX + dirX;
-      const sumZ = lastDirY + dirZ;
-      const sumLen = Math.sqrt(sumX * sumX + sumZ * sumZ);
-      if (sumLen > 1e-4) {
-        let miter = (halfW * 2) / sumLen;
-        if (miter > halfW * MITER_LIMIT) miter = halfW * MITER_LIMIT;
-        const bX = sumX / sumLen;
-        const bZ = sumZ / sumLen;
-        const perpBX = -bZ;
-        const perpBZ = bX;
-        sLx = startCx - perpBX * miter;
-        sLz = startCz - perpBZ * miter;
-        sRx = startCx + perpBX * miter;
-        sRz = startCz + perpBZ * miter;
-      } else {
-        // 180° turn — fall back to square cap.
-        sLx = startCx - perpRX * halfW;
-        sLz = startCz - perpRZ * halfW;
-        sRx = startCx + perpRX * halfW;
-        sRz = startCz + perpRZ * halfW;
-      }
-    } else {
-      sLx = startCx - perpRX * halfW;
-      sLz = startCz - perpRZ * halfW;
-      sRx = startCx + perpRX * halfW;
-      sRz = startCz + perpRZ * halfW;
+      writeFlatQuadEndXZ(
+        this.positions,
+        prev!.slot,
+        MARK_Y,
+        corners.sRx,
+        corners.sRz,
+        corners.sLx,
+        corners.sLz,
+      );
     }
-
-    const eLx = endX - perpRX * halfW;
-    const eLz = endY - perpRZ * halfW;
-    const eRx = endX + perpRX * halfW;
-    const eRz = endY + perpRZ * halfW;
-
-    if (haveLivePrev) {
-      this.writeQuadEnd(prev!.slot, sRx, sRz, sLx, sLz);
-    }
-    this.writeQuad(newMark.slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
+    writeFlatQuadXZ(this.positions, newMark.slot, MARK_Y, corners);
     this.writeQuadMask(newMark.slot);
-    this.writeQuadColor(newMark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
+    writeQuadRgba(this.colors, newMark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
     this.posDirty = true;
     this.colDirty = true;
 
@@ -627,25 +606,6 @@ export class GroundPrint3D {
     return mark;
   }
 
-  // ── Buffer writers ──
-  // Quad vertex order: 0=startL, 1=startR, 2=endR, 3=endL (matches
-  // the prebuilt index buffer).
-
-  private writeQuad(
-    slot: number,
-    sLx: number, sLz: number,
-    sRx: number, sRz: number,
-    eRx: number, eRz: number,
-    eLx: number, eLz: number,
-  ): void {
-    const p = this.positions;
-    const b = slot * 12;
-    p[b     ] = sLx; p[b +  1] = MARK_Y; p[b +  2] = sLz;
-    p[b +  3] = sRx; p[b +  4] = MARK_Y; p[b +  5] = sRz;
-    p[b +  6] = eRx; p[b +  7] = MARK_Y; p[b +  8] = eRz;
-    p[b +  9] = eLx; p[b + 10] = MARK_Y; p[b + 11] = eLz;
-  }
-
   private writeQuadMask(slot: number): void {
     const uv = this.markUvs;
     const shape = this.markShapes;
@@ -671,29 +631,6 @@ export class GroundPrint3D {
     this.shapeDirty = true;
   }
 
-  private writeQuadEnd(
-    slot: number,
-    eRx: number, eRz: number,
-    eLx: number, eLz: number,
-  ): void {
-    const p = this.positions;
-    const b = slot * 12;
-    p[b +  6] = eRx; p[b +  7] = MARK_Y; p[b +  8] = eRz;
-    p[b +  9] = eLx; p[b + 10] = MARK_Y; p[b + 11] = eLz;
-    this.posDirty = true;
-  }
-
-  private writeQuadColor(
-    slot: number, r: number, g: number, b: number, a: number,
-  ): void {
-    const c = this.colors;
-    const base = slot * 16;
-    for (let i = 0; i < 4; i++) {
-      const o = base + i * 4;
-      c[o] = r; c[o + 1] = g; c[o + 2] = b; c[o + 3] = a;
-    }
-  }
-
   /** Swap-pop deletion: copy the last mark's data into slot `i`,
    *  pop the array, and update the moved mark's `slot` field. The
    *  removed mark's `removed` flag is set so any TrailState still
@@ -703,22 +640,10 @@ export class GroundPrint3D {
     this.marks[i].removed = true;
     if (i !== last) {
       const moved = this.marks[last];
-      const posBase = this.positions;
-      const colBase = this.colors;
-      const uvBase = this.markUvs;
-      const shapeBase = this.markShapes;
-      const pSrc = last * 12;
-      const pDst = i * 12;
-      for (let k = 0; k < 12; k++) posBase[pDst + k] = posBase[pSrc + k];
-      const cSrc = last * 16;
-      const cDst = i * 16;
-      for (let k = 0; k < 16; k++) colBase[cDst + k] = colBase[cSrc + k];
-      const uSrc = last * 8;
-      const uDst = i * 8;
-      for (let k = 0; k < 8; k++) uvBase[uDst + k] = uvBase[uSrc + k];
-      const sSrc = last * 4;
-      const sDst = i * 4;
-      for (let k = 0; k < 4; k++) shapeBase[sDst + k] = shapeBase[sSrc + k];
+      copyQuadSlot(this.positions, 12, last, i);
+      copyQuadSlot(this.colors, 16, last, i);
+      copyQuadSlot(this.markUvs, 8, last, i);
+      copyQuadSlot(this.markShapes, 4, last, i);
       moved.slot = i;
       this.marks[i] = moved;
       this.posDirty = true;

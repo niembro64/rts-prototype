@@ -26,7 +26,8 @@ import { LAND_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
 import { getWaypointDetail } from '../../clientBarConfig';
 import { getEntityTargetPoint } from '../sim/buildingAnchors';
 import { hexToRgb01, writeHexToRgb01Array } from './colorUtils';
-import { configureSpriteTexture } from './threeUtils';
+import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
+import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
 
 const STYLE = {
   /** Vertical lift above the terrain so lines / dots / flags clear
@@ -54,15 +55,35 @@ const STYLE = {
   flagWorldSize: 14,
 };
 
-type FlagSlot = {
-  sprite: THREE.Sprite;
-  canvas: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-  texture: THREE.CanvasTexture;
-  material: THREE.SpriteMaterial;
+type FlagState = {
   /** Last hex color we drew so we skip canvas work between frames. */
   lastColor: number;
 };
+
+type FlagSlot = CanvasSpriteSlot<FlagState>;
+
+function configureFlagSprite(slot: FlagSlot): void {
+  slot.sprite.scale.set(STYLE.flagWorldSize, STYLE.flagWorldSize, 1);
+}
+
+function repaintFlag(slot: FlagSlot, color: number): boolean {
+  if (slot.state.lastColor === color) return false;
+  slot.state.lastColor = color;
+  const css = `#${color.toString(16).padStart(6, '0')}`;
+  const ctx = slot.ctx;
+  ctx.clearRect(0, 0, 32, 32);
+  // Vertical pole on the left, triangle flag pointing right.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(7, 4, 2, 24);
+  ctx.fillStyle = css;
+  ctx.beginPath();
+  ctx.moveTo(9, 4);
+  ctx.lineTo(26, 11);
+  ctx.lineTo(9, 18);
+  ctx.closePath();
+  ctx.fill();
+  return true;
+}
 
 export class Waypoint3D {
   private parent: THREE.Group;
@@ -71,11 +92,8 @@ export class Waypoint3D {
   private getEntity?: (id: number) => Entity | undefined;
 
   // Line buffer (path segments + rect outlines).
-  private lineGeom: THREE.BufferGeometry;
-  private linePositions: Float32Array;
-  private lineColors: Float32Array;
+  private lineBuffer = new DynamicLineBuffer3D(STYLE.initialLineCap);
   private lineMesh: THREE.LineSegments;
-  private lineCap: number;
 
   // Point buffer (dot markers).
   private dotGeom: THREE.BufferGeometry;
@@ -85,7 +103,7 @@ export class Waypoint3D {
   private dotCap: number;
 
   // Pooled flag sprites.
-  private flagPool: FlagSlot[] = [];
+  private flagPool: CanvasSpritePool<FlagState, [number]>;
   private hadVisible = false;
 
   constructor(
@@ -98,31 +116,23 @@ export class Waypoint3D {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.getEntity = getEntity;
+    this.flagPool = new CanvasSpritePool<FlagState, [number]>({
+      parent,
+      canvasWidth: 32,
+      canvasHeight: 32,
+      debugName: 'Waypoint3D',
+      makeState: () => ({ lastColor: -1 }),
+      configureSprite: configureFlagSprite,
+      repaint: repaintFlag,
+    });
 
     // Lines.
-    this.lineCap = STYLE.initialLineCap;
-    this.linePositions = new Float32Array(this.lineCap * 2 * 3);
-    this.lineColors = new Float32Array(this.lineCap * 2 * 3);
-    this.lineGeom = new THREE.BufferGeometry();
-    this.lineGeom.setAttribute(
-      'position',
-      new THREE.BufferAttribute(this.linePositions, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-    this.lineGeom.setAttribute(
-      'color',
-      new THREE.BufferAttribute(this.lineColors, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-    // Don't render anything until the first update() populates the
-    // buffer. Without this, THREE.js defaults the draw range to the
-    // entire backing buffer — and since Float32Array starts zeroed,
-    // every initial line endpoint is at (0,0,0) with color black.
-    this.lineGeom.setDrawRange(0, 0);
     const lineMat = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: false,
       depthTest: true,
     });
-    this.lineMesh = new THREE.LineSegments(this.lineGeom, lineMat);
+    this.lineMesh = new THREE.LineSegments(this.lineBuffer.geometry, lineMat);
     this.lineMesh.frustumCulled = false;
     this.lineMesh.renderOrder = 5;
     parent.add(this.lineMesh);
@@ -173,23 +183,6 @@ export class Waypoint3D {
       + STYLE.worldLift;
   }
 
-  private growLineCap(needed: number): void {
-    let cap = this.lineCap;
-    while (cap < needed) cap *= 2;
-    if (cap === this.lineCap) return;
-    this.lineCap = cap;
-    this.linePositions = new Float32Array(cap * 2 * 3);
-    this.lineColors = new Float32Array(cap * 2 * 3);
-    this.lineGeom.setAttribute(
-      'position',
-      new THREE.BufferAttribute(this.linePositions, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-    this.lineGeom.setAttribute(
-      'color',
-      new THREE.BufferAttribute(this.lineColors, 3).setUsage(THREE.DynamicDrawUsage),
-    );
-  }
-
   private growDotCap(needed: number): void {
     let cap = this.dotCap;
     while (cap < needed) cap *= 2;
@@ -210,20 +203,11 @@ export class Waypoint3D {
   /** Push one straight 3D line segment endpoint pair into the buffer
    *  with a single per-vertex color (alpha pre-multiplied). */
   private pushSegment(
-    state: { lineSeg: number },
     ax: number, ay: number, az: number,
     bx: number, by: number, bz: number,
     r: number, g: number, b: number,
   ): void {
-    if (state.lineSeg + 1 > this.lineCap) {
-      this.growLineCap(state.lineSeg + 1);
-    }
-    const o = state.lineSeg * 6;
-    this.linePositions[o + 0] = ax; this.linePositions[o + 1] = az; this.linePositions[o + 2] = ay;
-    this.linePositions[o + 3] = bx; this.linePositions[o + 4] = bz; this.linePositions[o + 5] = by;
-    this.lineColors[o + 0] = r; this.lineColors[o + 1] = g; this.lineColors[o + 2] = b;
-    this.lineColors[o + 3] = r; this.lineColors[o + 4] = g; this.lineColors[o + 5] = b;
-    state.lineSeg++;
+    this.lineBuffer.pushSegment(ax, az, ay, bx, bz, by, r, g, b);
   }
 
   /** Push a long line A→B as several short sub-segments that follow
@@ -235,7 +219,6 @@ export class Waypoint3D {
    *  intermediate steps still terrain-sample so the line traces the
    *  ground between waypoints (the unit walks the ground). */
   private pushTerrainLine(
-    state: { lineSeg: number },
     ax: number, ay: number, bx: number, by: number,
     color: number, alpha: number,
     az?: number, bz?: number,
@@ -258,7 +241,7 @@ export class Waypoint3D {
       // Last step pins to the b-endpoint's altitude (when provided)
       // so a click on a hilltop's final dot meets the line cleanly.
       const nz = i === steps ? this.resolveY(nx, ny, bz) : this.resolveY(nx, ny);
-      this.pushSegment(state, prevX, prevY, prevZ, nx, ny, nz, r, g, b);
+      this.pushSegment(prevX, prevY, prevZ, nx, ny, nz, r, g, b);
       prevX = nx; prevY = ny; prevZ = nz;
     }
   }
@@ -267,7 +250,6 @@ export class Waypoint3D {
    *  elevation — used for build / repair commands. Edges go into
    *  the same line buffer as path lines. */
   private pushRectOutline(
-    state: { lineSeg: number },
     x: number, y: number, color: number, zHint?: number,
   ): void {
     const c = hexToRgb01(color);
@@ -281,10 +263,10 @@ export class Waypoint3D {
     const cx1 = x + h, cy1 = y - h;
     const cx2 = x + h, cy2 = y + h;
     const cx3 = x - h, cy3 = y + h;
-    this.pushSegment(state, cx0, cy0, z, cx1, cy1, z, r, g, b);
-    this.pushSegment(state, cx1, cy1, z, cx2, cy2, z, r, g, b);
-    this.pushSegment(state, cx2, cy2, z, cx3, cy3, z, r, g, b);
-    this.pushSegment(state, cx3, cy3, z, cx0, cy0, z, r, g, b);
+    this.pushSegment(cx0, cy0, z, cx1, cy1, z, r, g, b);
+    this.pushSegment(cx1, cy1, z, cx2, cy2, z, r, g, b);
+    this.pushSegment(cx2, cy2, z, cx3, cy3, z, r, g, b);
+    this.pushSegment(cx3, cy3, z, cx0, cy0, z, r, g, b);
   }
 
   private pushDot(
@@ -316,44 +298,8 @@ export class Waypoint3D {
   /** Pool slot for a flag sprite. Lazily creates a small canvas
    *  on first use; recolors only when the team color changes. */
   private acquireFlag(i: number, color: number, x: number, y: number, zHint?: number): void {
-    let slot = this.flagPool[i];
-    if (!slot) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 32;
-      canvas.height = 32;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Waypoint3D: 2d canvas context unavailable');
-      const texture = new THREE.CanvasTexture(canvas);
-      configureSpriteTexture(texture);
-      const material = new THREE.SpriteMaterial({
-        map: texture,
-        transparent: true,
-        depthTest: true,
-      });
-      const sprite = new THREE.Sprite(material);
-      sprite.scale.set(STYLE.flagWorldSize, STYLE.flagWorldSize, 1);
-      this.parent.add(sprite);
-      slot = { sprite, canvas, ctx, texture, material, lastColor: -1 };
-      this.flagPool.push(slot);
-    }
-    if (slot.lastColor !== color) {
-      slot.lastColor = color;
-      const css = `#${color.toString(16).padStart(6, '0')}`;
-      const ctx = slot.ctx;
-      ctx.clearRect(0, 0, 32, 32);
-      // Vertical pole on the left, triangle flag pointing right.
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(7, 4, 2, 24);
-      ctx.fillStyle = css;
-      ctx.beginPath();
-      ctx.moveTo(9, 4);
-      ctx.lineTo(26, 11);
-      ctx.lineTo(9, 18);
-      ctx.closePath();
-      ctx.fill();
-      slot.texture.needsUpdate = true;
-    }
-    slot.sprite.visible = true;
+    const slot = this.flagPool.acquire(i);
+    this.flagPool.repaintIfChanged(slot, color);
     const z = this.resolveY(x, y, zHint);
     // Centerline of the sprite raised by half its height so the pole
     // base meets the terrain rather than hovering above it.
@@ -368,17 +314,16 @@ export class Waypoint3D {
   ): void {
     if (selectedUnits.length === 0 && selectedBuildings.length === 0) {
       if (this.hadVisible) {
-        this.lineGeom.setDrawRange(0, 0);
+        this.lineBuffer.resetDrawRange();
         this.dotGeom.setDrawRange(0, 0);
-        for (let i = 0; i < this.flagPool.length; i++) {
-          this.flagPool[i].sprite.visible = false;
-        }
+        this.flagPool.hideAll();
         this.hadVisible = false;
       }
       return;
     }
 
-    const state = { lineSeg: 0, dotCount: 0 };
+    const state = { dotCount: 0 };
+    this.lineBuffer.resetDrawRange();
     let flagCount = 0;
 
     // Per-unit action chains. Action `z` (when present) is the
@@ -410,13 +355,13 @@ export class Waypoint3D {
         const color = ACTION_COLORS[a.type] ?? 0xffffff;
         // Always draw the connecting line — this traces the unit's
         // physical route, regardless of mode.
-        this.pushTerrainLine(state, prevX, prevY, p.x, p.y, color, STYLE.lineAlpha, prevZ, p.z);
+        this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha, prevZ, p.z);
         // Endpoint markers (dots / rect outlines) get suppressed in
         // SIMPLE mode for path-expansion intermediates so only
         // user-issued endpoints carry a visible marker.
         if (!simple || !a.isPathExpansion) {
           if (a.type === 'build' || a.type === 'repair') {
-            this.pushRectOutline(state, p.x, p.y, color, p.z);
+            this.pushRectOutline(p.x, p.y, color, p.z);
           } else {
             this.pushDot(state, p.x, p.y, color, p.z);
           }
@@ -438,7 +383,6 @@ export class Waypoint3D {
         const first = actions[u.unit!.patrolStartIndex];
         if (last && last.type === 'patrol' && first) {
           this.pushTerrainLine(
-            state,
             last.x, last.y, first.x, first.y,
             ACTION_COLORS['patrol'], STYLE.patrolReturnAlpha,
             last.z, first.z,
@@ -457,7 +401,7 @@ export class Waypoint3D {
       for (let i = 0; i < wps.length; i++) {
         const w = wps[i];
         const color = WAYPOINT_COLORS[w.type] ?? 0xffffff;
-        this.pushTerrainLine(state, prevX, prevY, w.x, w.y, color, STYLE.lineAlpha, prevZ, w.z);
+        this.pushTerrainLine(prevX, prevY, w.x, w.y, color, STYLE.lineAlpha, prevZ, w.z);
         this.pushDot(state, w.x, w.y, color, w.z);
         if (i === wps.length - 1) {
           this.acquireFlag(flagCount++, color, w.x, w.y, w.z);
@@ -474,7 +418,6 @@ export class Waypoint3D {
           if (firstIdx >= 0) {
             const first = wps[firstIdx];
             this.pushTerrainLine(
-              state,
               last.x, last.y, first.x, first.y,
               WAYPOINT_COLORS['patrol'], STYLE.patrolReturnAlpha,
               last.z, first.z,
@@ -487,30 +430,21 @@ export class Waypoint3D {
     // Push GPU buffer updates and trim the visible counts to what
     // we filled this frame. Hidden flags stay in the pool ready
     // for the next frame.
-    this.lineGeom.setDrawRange(0, state.lineSeg * 2);
-    (this.lineGeom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-    (this.lineGeom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+    const lineSeg = this.lineBuffer.finishFrame();
     this.dotGeom.setDrawRange(0, state.dotCount);
     (this.dotGeom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.dotGeom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
-    for (let i = flagCount; i < this.flagPool.length; i++) {
-      this.flagPool[i].sprite.visible = false;
-    }
-    this.hadVisible = state.lineSeg > 0 || state.dotCount > 0 || flagCount > 0;
+    this.flagPool.hideUnused(flagCount);
+    this.hadVisible = lineSeg > 0 || state.dotCount > 0 || flagCount > 0;
   }
 
   destroy(): void {
     this.parent.remove(this.lineMesh);
     this.parent.remove(this.dotMesh);
-    this.lineGeom.dispose();
+    this.lineBuffer.dispose();
     this.dotGeom.dispose();
     (this.lineMesh.material as THREE.Material).dispose();
     (this.dotMesh.material as THREE.Material).dispose();
-    for (const flag of this.flagPool) {
-      this.parent.remove(flag.sprite);
-      flag.texture.dispose();
-      flag.material.dispose();
-    }
-    this.flagPool.length = 0;
+    this.flagPool.destroy();
   }
 }

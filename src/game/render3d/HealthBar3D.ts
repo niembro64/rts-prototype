@@ -12,10 +12,10 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { getBuildingHudBarsY, getUnitHudBarsY } from './HudAnchor';
-import { configureSpriteTexture } from './threeUtils';
 import { getResourceFillRatio } from '../sim/buildableHelpers';
 import type { Buildable } from '../sim/types';
 import { ENTITY_HUD_BAR_STACK_GAP } from '@/entityHudConfig';
+import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
 import {
   SHELL_BAR_COLORS,
   SHELL_BAR_BG_COLOR,
@@ -59,12 +59,7 @@ type BarMode =
   | 'manaBar'
   | 'metalBar';
 
-type Bar = {
-  sprite: THREE.Sprite;
-  canvas: HTMLCanvasElement;
-  ctx: CanvasRenderingContext2D;
-  texture: THREE.CanvasTexture;
-  material: THREE.SpriteMaterial;
+type BarState = {
   /** Last-baked ratio. The canvas is only repainted when this
    *  changes by more than one texture pixel — one HP point of
    *  variation produces no work most frames. */
@@ -72,68 +67,60 @@ type Bar = {
   lastMode: BarMode | null;
 };
 
+type Bar = CanvasSpriteSlot<BarState>;
+
+function repaintBar(bar: Bar, ratio: number, mode: BarMode): boolean {
+  const ratioPx = Math.round(ratio * STYLE.canvasWidth);
+  if (bar.state.lastRatioPx === ratioPx && bar.state.lastMode === mode) return false;
+  bar.state.lastRatioPx = ratioPx;
+  bar.state.lastMode = mode;
+  const ctx = bar.ctx;
+  const w = STYLE.canvasWidth;
+  const h = STYLE.canvasHeight;
+  ctx.clearRect(0, 0, w, h);
+  ctx.globalAlpha = STYLE.bgAlpha;
+  ctx.fillStyle = STYLE.bgColor;
+  ctx.fillRect(0, 0, w, h);
+  const fg =
+    mode === 'build' ? STYLE.fgColorBuild :
+    mode === 'healthLow' ? STYLE.fgColorLow :
+    mode === 'energyBar' ? STYLE.fgColorEnergy :
+    mode === 'manaBar' ? STYLE.fgColorMana :
+    mode === 'metalBar' ? STYLE.fgColorMetal :
+    STYLE.fgColorHigh;
+  ctx.globalAlpha = STYLE.fgAlpha;
+  ctx.fillStyle = fg;
+  ctx.fillRect(0, 0, ratioPx, h);
+  ctx.globalAlpha = 1;
+  return true;
+}
+
 export class HealthBar3D {
   /** Module-shared scratch vector reused by every frustum probe so
    *  the per-frame loop allocates nothing. */
   private static readonly _probeVec = new THREE.Vector3();
 
-  private parent: THREE.Group;
-  private pool: Bar[] = [];
+  private pool: CanvasSpritePool<BarState, [number, BarMode]>;
 
   constructor(parent: THREE.Group) {
-    this.parent = parent;
+    this.pool = new CanvasSpritePool<BarState, [number, BarMode]>({
+      parent,
+      canvasWidth: STYLE.canvasWidth,
+      canvasHeight: STYLE.canvasHeight,
+      debugName: 'HealthBar3D',
+      makeState: () => ({ lastRatioPx: -1, lastMode: null }),
+      repaint: repaintBar,
+    });
   }
 
   /** Acquire (or grow) a pool slot and ensure its sprite is visible. */
   private acquire(i: number): Bar {
-    let bar = this.pool[i];
-    if (!bar) {
-      const canvas = document.createElement('canvas');
-      canvas.width = STYLE.canvasWidth;
-      canvas.height = STYLE.canvasHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('HealthBar3D: 2d canvas context unavailable');
-      const texture = new THREE.CanvasTexture(canvas);
-      configureSpriteTexture(texture);
-      const material = new THREE.SpriteMaterial({
-        map: texture,
-        transparent: true,
-        depthTest: true,
-      });
-      const sprite = new THREE.Sprite(material);
-      this.parent.add(sprite);
-      bar = { sprite, canvas, ctx, texture, material, lastRatioPx: -1, lastMode: null };
-      this.pool.push(bar);
-    }
-    bar.sprite.visible = true;
-    return bar;
+    return this.pool.acquire(i);
   }
 
   /** Repaint the canvas if (mode, ratio) changed; otherwise no-op. */
   private repaintIfChanged(bar: Bar, ratio: number, mode: BarMode): void {
-    const ratioPx = Math.round(ratio * STYLE.canvasWidth);
-    if (bar.lastRatioPx === ratioPx && bar.lastMode === mode) return;
-    bar.lastRatioPx = ratioPx;
-    bar.lastMode = mode;
-    const ctx = bar.ctx;
-    const w = STYLE.canvasWidth;
-    const h = STYLE.canvasHeight;
-    ctx.clearRect(0, 0, w, h);
-    ctx.globalAlpha = STYLE.bgAlpha;
-    ctx.fillStyle = STYLE.bgColor;
-    ctx.fillRect(0, 0, w, h);
-    const fg =
-      mode === 'build' ? STYLE.fgColorBuild :
-      mode === 'healthLow' ? STYLE.fgColorLow :
-      mode === 'energyBar' ? STYLE.fgColorEnergy :
-      mode === 'manaBar' ? STYLE.fgColorMana :
-      mode === 'metalBar' ? STYLE.fgColorMetal :
-      STYLE.fgColorHigh;
-    ctx.globalAlpha = STYLE.fgAlpha;
-    ctx.fillStyle = fg;
-    ctx.fillRect(0, 0, ratioPx, h);
-    ctx.globalAlpha = 1;
-    bar.texture.needsUpdate = true;
+    this.pool.repaintIfChanged(bar, ratio, mode);
   }
 
   /** Frame-state cursor. The fused-iteration entry points (beginFrame /
@@ -286,9 +273,7 @@ export class HealthBar3D {
   /** Fused-iteration entry: hide trailing pool entries past the live
    *  prefix. Sprites stay in the pool ready for the next frame. */
   endFrame(): void {
-    for (let i = this._used; i < this.pool.length; i++) {
-      this.pool[i].sprite.visible = false;
-    }
+    this.pool.hideUnused(this._used);
     this._frustum = null;
   }
 
@@ -307,11 +292,6 @@ export class HealthBar3D {
   }
 
   destroy(): void {
-    for (const bar of this.pool) {
-      this.parent.remove(bar.sprite);
-      bar.texture.dispose();
-      bar.material.dispose();
-    }
-    this.pool.length = 0;
+    this.pool.destroy();
   }
 }

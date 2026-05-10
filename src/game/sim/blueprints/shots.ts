@@ -7,16 +7,11 @@
 
 import { AUDIO } from '../../../audioConfig';
 import { isShotId, type ShotId } from '../../../types/blueprintIds';
+import { createBeamShot } from './beamShotFactory';
 import type { ShotBlueprint } from './types';
 
-const BEAM_WIDTH_MINI = 3;
-const BEAM_WIDTH = 6;
-const BEAM_WIDTH_MEGA = 16;
 const BEAM_RECOIL_AND_HIT_FORCE = 200;
 const FIRE_EXPLOSION_RADIUS_MULTIPLIER = 3;
-const BEAM_DAMAGE_SPHERE_RADIUS_MINI = BEAM_WIDTH_MINI * 2;
-const BEAM_DAMAGE_SPHERE_RADIUS = BEAM_WIDTH * 2;
-const BEAM_DAMAGE_SPHERE_RADIUS_MEGA = BEAM_WIDTH_MEGA * 2;
 
 const SHOT_MASS_LIGHT: number = 4;
 const SHOT_MASS_MEDIUM: number = 10;
@@ -162,60 +157,37 @@ export const SHOT_BLUEPRINTS = {
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,
   },
-  miniBeamShot: {
-    type: 'beam',
-    id: 'miniBeamShot',
+  miniBeamShot: createBeamShot('miniBeamShot', {
+    preset: 'mini',
     dps: 15,
     force: BEAM_RECOIL_AND_HIT_FORCE * 0.5,
-    recoil: BEAM_RECOIL_AND_HIT_FORCE * 0.5,
-    radius: BEAM_WIDTH_MINI / 2,
-    width: BEAM_WIDTH_MINI,
-    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS_MINI },
     hitSound: AUDIO.event.hit.miniBeamShot,
-  },
-  beamShot: {
-    type: 'beam',
-    id: 'beamShot',
+  }),
+  beamShot: createBeamShot('beamShot', {
+    preset: 'base',
     dps: 30,
     force: BEAM_RECOIL_AND_HIT_FORCE,
-    recoil: BEAM_RECOIL_AND_HIT_FORCE,
-    radius: BEAM_WIDTH / 2,
-    width: BEAM_WIDTH,
-    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS },
     hitSound: AUDIO.event.hit.beamShot,
-  },
+  }),
   // megaBeam: beefy single-emitter beam used by Widow's rear abdomen
   // mount and any future heavy beam mounts. Higher dps and a thicker
-  // beam, same recoil so it doesn't shove the host unit harder than
-  // the standard beams already do.
-  megaBeamShot: {
-    type: 'beam',
-    id: 'megaBeamShot',
+  // beam, with stronger force/recoil than the standard beam.
+  megaBeamShot: createBeamShot('megaBeamShot', {
+    preset: 'mega',
     dps: 300,
     force: BEAM_RECOIL_AND_HIT_FORCE * 10,
-    recoil: BEAM_RECOIL_AND_HIT_FORCE * 10,
-    radius: BEAM_WIDTH_MEGA / 2,
-    width: BEAM_WIDTH_MEGA,
-    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS_MEGA },
     hitSound: AUDIO.event.hit.megaBeamShot,
-  },
-  // Tower beam — same physical shape and audio as megaBeamShot, but
-  // 10× the dps. Mounted on the static megaBeam tower so its damage
-  // doesn't drift onto the Widow (which still fires the regular
-  // megaBeamShot from its own megaBeamTurret). Recoil stays at the
-  // base value because the tower is static — extra recoil would
-  // accumulate on a body that can't move and just waste a force slot.
-  towerBeamShot: {
-    type: 'beam',
-    id: 'towerBeamShot',
+  }),
+  // Tower beam — same physical shape, force/recoil, and audio as
+  // megaBeamShot, but 10× the dps. Mounted on the static megaBeam
+  // tower so its damage doesn't drift onto the Widow (which still fires
+  // the regular megaBeamShot from its own megaBeamTurret).
+  towerBeamShot: createBeamShot('towerBeamShot', {
+    preset: 'mega',
     dps: 3000,
     force: BEAM_RECOIL_AND_HIT_FORCE * 10,
-    recoil: BEAM_RECOIL_AND_HIT_FORCE * 10,
-    radius: BEAM_WIDTH_MEGA / 2,
-    width: BEAM_WIDTH_MEGA,
-    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS_MEGA },
     hitSound: AUDIO.event.hit.megaBeamShot,
-  },
+  }),
 } satisfies Record<ShotId, ShotBlueprint>;
 
 export function getShotBlueprint(id: string): ShotBlueprint {

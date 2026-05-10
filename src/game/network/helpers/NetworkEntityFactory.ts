@@ -1,9 +1,8 @@
 // Network entity creation helpers
 
-import type { Entity, BuildingType, Turret, UnitAction } from '../../sim/types';
+import type { Entity, BuildingType, Turret } from '../../sim/types';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import {
-  codeToActionType,
   codeToTurretState,
   codeToUnitType,
   codeToBuildingType,
@@ -25,10 +24,18 @@ import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
 import { createUnitJump } from '../../sim/unitJump';
 import { computeUnitActionHash } from '../../sim/unitActions';
-
-function decodeNetworkUnitType(unitType: unknown): string | null {
-  return isFiniteNumber(unitType) ? codeToUnitType(unitType) : null;
-}
+import {
+  applyNetworkJumpState,
+  applyNetworkSuspensionState,
+  decodeNetworkUnitActions,
+  decodeNetworkUnitType,
+  readNetworkUnitBodyCenterHeight,
+  readNetworkUnitMass,
+  readNetworkUnitMovementAccel,
+  readNetworkUnitRadius,
+  readNetworkUnitSurfaceNormal,
+  readNetworkUnitVelocity,
+} from '../unitSnapshotFields';
 
 function decodeNetworkBuildingType(buildingType: unknown): BuildingType | null {
   if (!isFiniteNumber(buildingType)) return null;
@@ -63,35 +70,6 @@ export function applyNetworkTurretNonVisualState(
     turrets[i].state = codeToTurretState(netTurrets[i].state);
   }
   updateCombatActivityFlags(entity.combat);
-}
-
-export function applyNetworkSuspensionState(
-  entity: Entity,
-  suspension: NonNullable<NetworkServerSnapshotEntity['unit']>['suspension'] | undefined | null,
-): void {
-  const state = entity.unit?.suspension;
-  if (!state || !suspension) return;
-  state.offsetX = suspension.offset.x;
-  state.offsetY = suspension.offset.y;
-  state.offsetZ = suspension.offset.z;
-  state.velocityX = suspension.velocity.x;
-  state.velocityY = suspension.velocity.y;
-  state.velocityZ = suspension.velocity.z;
-  state.legContact = suspension.legContact === true;
-}
-
-export function applyNetworkJumpState(
-  entity: Entity,
-  jump: NonNullable<NetworkServerSnapshotEntity['unit']>['jump'] | undefined | null,
-): boolean {
-  const state = entity.unit?.jump;
-  if (!state || !jump) return false;
-  const prevLaunchSeq = state.launchSeq;
-  state.active = jump.active === true;
-  if (isFiniteNumber(jump.launchSeq)) {
-    state.launchSeq = jump.launchSeq;
-  }
-  return state.launchSeq !== prevLaunchSeq;
 }
 
 function createTurretsFromNetwork(
@@ -202,29 +180,14 @@ function createUnitFromNetwork(
 ): Entity | null {
   const u = netEntity.unit;
 
-  const actions: UnitAction[] = [];
-  if (u?.actions) {
-    for (let i = 0; i < u.actions.length; i++) {
-      const na = u.actions[i];
-      if (!na.pos) continue;
-      actions.push({
-        type: codeToActionType(na.type) as 'move' | 'patrol' | 'fight' | 'build' | 'repair' | 'attack',
-        x: na.pos.x,
-        y: na.pos.y,
-        z: na.posZ,
-        isPathExpansion: na.pathExp,
-        targetId: na.targetId,
-        buildingType: na.buildingType as BuildingType | undefined,
-        gridX: na.grid?.x,
-        gridY: na.grid?.y,
-        buildingId: na.buildingId,
-      });
-    }
-  }
-
   const defaultRadius = 15;
   const unitType = decodeNetworkUnitType(u?.unitType);
   if (!unitType) return null;
+  const actions = decodeNetworkUnitActions(u?.actions);
+  const radius = readNetworkUnitRadius(u, defaultRadius);
+  const velocity = readNetworkUnitVelocity(u);
+  const movementAccel = readNetworkUnitMovementAccel(u);
+  const surfaceNormal = readNetworkUnitSurfaceNormal(u);
   let unitBlueprint: ReturnType<typeof getUnitBlueprint> | undefined;
   try {
     unitBlueprint = getUnitBlueprint(unitType);
@@ -239,23 +202,19 @@ function createUnitFromNetwork(
       unitType,
       hp: u?.hp.curr ?? 100,
       maxHp: u?.hp.max ?? 100,
-      radius: {
-        body: u?.radius?.body ?? defaultRadius,
-        shot: u?.radius?.shot ?? defaultRadius,
-        push: u?.radius?.push ?? defaultRadius,
-      },
-      bodyCenterHeight: u?.bodyCenterHeight ?? u?.radius?.push ?? defaultRadius,
+      radius,
+      bodyCenterHeight: readNetworkUnitBodyCenterHeight(u, radius.push),
       locomotion: getUnitLocomotion(unitType),
-      mass: u?.mass ?? 25,
+      mass: readNetworkUnitMass(u, 25),
       actions,
       actionHash: computeUnitActionHash(actions),
       patrolStartIndex: null,
-      velocityX: u?.velocity?.x ?? 0,
-      velocityY: u?.velocity?.y ?? 0,
-      velocityZ: u?.velocity?.z ?? 0,
-      movementAccelX: u?.movementAccel?.x ?? 0,
-      movementAccelY: u?.movementAccel?.y ?? 0,
-      movementAccelZ: u?.movementAccel?.z ?? 0,
+      velocityX: velocity.x,
+      velocityY: velocity.y,
+      velocityZ: velocity.z,
+      movementAccelX: movementAccel.x,
+      movementAccelY: movementAccel.y,
+      movementAccelZ: movementAccel.z,
       jump: createUnitJump(unitBlueprint?.locomotion.physics.jump),
       mirrorPanels: [],
       mirrorBoundRadius: 0,
@@ -264,9 +223,7 @@ function createUnitFromNetwork(
       // ENTITY_CHANGED_POS). Defaults to flat-up so non-keyframe
       // creations or pre-tilt-EMA snapshots don't leave a zero normal
       // for downstream consumers.
-      surfaceNormal: u?.surfaceNormal
-        ? { nx: u.surfaceNormal.nx, ny: u.surfaceNormal.ny, nz: u.surfaceNormal.nz }
-        : { nx: 0, ny: 0, nz: 1 },
+      surfaceNormal,
       suspension: createUnitSuspension(unitBlueprint?.suspension),
     },
   };

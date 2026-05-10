@@ -21,6 +21,33 @@ type DisposableMesh = THREE.Object3D & {
   geometry?: THREE.BufferGeometry;
 };
 
+type DisposableMaterial = THREE.Material | THREE.Material[] | null | undefined;
+type DisposableGeometry = THREE.BufferGeometry | null | undefined;
+
+export function disposeMaterial(material: DisposableMaterial): void {
+  if (Array.isArray(material)) {
+    for (const mat of material) mat.dispose();
+  } else if (material) {
+    material.dispose();
+  }
+}
+
+export function disposeMaterials(materials: Iterable<DisposableMaterial>): void {
+  for (const material of materials) {
+    disposeMaterial(material);
+  }
+}
+
+export function disposeGeometries(geometries: Iterable<DisposableGeometry>): void {
+  for (const geometry of geometries) {
+    geometry?.dispose();
+  }
+}
+
+export function detachObject(object: THREE.Object3D | null | undefined): void {
+  object?.parent?.remove(object);
+}
+
 /** Detach `mesh` from its parent (if any), then dispose the mesh
  *  itself, its material(s), and its geometry. Each step is guarded
  *  so the helper handles meshes whose `dispose()` doesn't exist
@@ -32,15 +59,10 @@ export function disposeMesh(
   mesh: DisposableMesh,
   options?: { material?: boolean; geometry?: boolean },
 ): void {
-  mesh.parent?.remove(mesh);
+  detachObject(mesh);
   mesh.dispose?.();
   if (options?.material !== false) {
-    const m = mesh.material;
-    if (Array.isArray(m)) {
-      for (const mat of m) mat.dispose();
-    } else if (m) {
-      m.dispose();
-    }
+    disposeMaterial(mesh.material);
   }
   if (options?.geometry !== false) {
     mesh.geometry?.dispose();

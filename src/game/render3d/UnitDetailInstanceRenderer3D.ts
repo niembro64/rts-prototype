@@ -12,6 +12,7 @@ import {
   MIRROR_REFLECTOR_PANEL_COLOR,
   resolveMirrorReflectorPanelColor,
 } from './MirrorReflectorVisual3D';
+import { disposeMesh } from './threeUtils';
 
 const SMOOTH_CHASSIS_CAP = 16384;
 const POLY_CHASSIS_CAP = 4096;
@@ -389,27 +390,18 @@ export class UnitDetailInstanceRenderer3D {
   destroy(): void {
     this.releaseAllSlots();
     for (const pool of this.polyChassis.values()) {
-      this.world.remove(pool.mesh);
-      pool.mesh.geometry.dispose();
-      (pool.mesh.material as THREE.Material).dispose();
-      pool.mesh.dispose();
+      disposeMesh(pool.mesh);
     }
     this.polyChassis.clear();
 
-    this.world.remove(this.smoothChassis);
-    (this.smoothChassis.material as THREE.Material).dispose();
-    this.smoothChassis.dispose();
-    this.smoothChassisGeom.dispose();
+    disposeMesh(this.smoothChassis);
 
     for (const mesh of [
       this.turretHeadInstanced,
       this.barrelInstanced,
       this.mirrorPanelInstanced,
     ]) {
-      this.world.remove(mesh);
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
-      mesh.dispose();
+      disposeMesh(mesh);
     }
   }
 

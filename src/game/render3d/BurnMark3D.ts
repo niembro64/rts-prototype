@@ -25,6 +25,14 @@ import {
   BURN_COOL_TAU,
 } from '../../config';
 import { disposeMesh } from './threeUtils';
+import {
+  computeMiteredQuad,
+  copyQuadSlot,
+  createQuadIndexBuffer,
+  writeFlatQuadEndXZ,
+  writeFlatQuadXZ,
+  writeQuadRgba,
+} from './RibbonTrailBuffer3D';
 
 // ── World Y layout ──
 // Burn marks sit a couple units above the tile layer (y=0). The tile floor
@@ -198,20 +206,7 @@ export class BurnMark3D {
 
     this.positions = new Float32Array(MAX_MARKS * 4 * 3);
     this.colors = new Float32Array(MAX_MARKS * 4 * 4);
-    this.indices = new Uint32Array(MAX_MARKS * 6);
-    // Pre-build the index buffer — two triangles per quad (0-1-2, 0-2-3)
-    // gives a CCW-wound quad given the (startL, startR, endR, endL) vertex
-    // order used throughout.
-    for (let i = 0; i < MAX_MARKS; i++) {
-      const vBase = i * 4;
-      const iBase = i * 6;
-      this.indices[iBase] = vBase;
-      this.indices[iBase + 1] = vBase + 1;
-      this.indices[iBase + 2] = vBase + 2;
-      this.indices[iBase + 3] = vBase;
-      this.indices[iBase + 4] = vBase + 2;
-      this.indices[iBase + 5] = vBase + 3;
-    }
+    this.indices = createQuadIndexBuffer(MAX_MARKS);
 
     this.geometry = new THREE.BufferGeometry();
     this.posAttr = new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage);
@@ -393,7 +388,7 @@ export class BurnMark3D {
       const r = HOT_LIN.r * hotDecay + COOL_LIN.r * coolBlend;
       const g = HOT_LIN.g * hotDecay + COOL_LIN.g * coolBlend;
       const b = HOT_LIN.b * hotDecay + COOL_LIN.b * coolBlend;
-      this.writeQuadColor(i, r, g, b, alpha);
+      writeQuadRgba(this.colors, i, r, g, b, alpha);
       this.colDirty = true;
     }
 
@@ -494,61 +489,33 @@ export class BurnMark3D {
       return;
     }
 
-    const halfW = width * 0.5;
-    // Right-hand perpendicular of the NEW segment direction (XZ plane).
-    const perpRX = -dirZ;
-    const perpRZ = dirX;
-
-    const startCx = state.lastEndX;
-    const startCz = state.lastEndY;
-
-    // ── Start vertices: miter onto previous mark if there is one alive ──
     const prev = state.prevMark;
     const haveLivePrev = prev !== null && !prev.removed;
-    let sLx: number, sLz: number, sRx: number, sRz: number;
-
-    if (haveLivePrev) {
-      // Bisector of (prevDir + newDir). Its length = 2·cos(θ/2) where θ is
-      // the turn angle. The miter offset along the bisector's
-      // perpendicular is halfW * 2 / |sum|.
-      const sumX = state.lastDirX + dirX;
-      const sumZ = state.lastDirY + dirZ;
-      const sumLen = Math.sqrt(sumX * sumX + sumZ * sumZ);
-      if (sumLen > 1e-4) {
-        let miter = (halfW * 2) / sumLen;
-        if (miter > halfW * MITER_LIMIT) miter = halfW * MITER_LIMIT;
-        const bX = sumX / sumLen;
-        const bZ = sumZ / sumLen;
-        const perpBX = -bZ;
-        const perpBZ = bX;
-        sLx = startCx - perpBX * miter;
-        sLz = startCz - perpBZ * miter;
-        sRx = startCx + perpBX * miter;
-        sRz = startCz + perpBZ * miter;
-      } else {
-        // Degenerate (180° turn) — fall back to square cap.
-        sLx = startCx - perpRX * halfW;
-        sLz = startCz - perpRZ * halfW;
-        sRx = startCx + perpRX * halfW;
-        sRz = startCz + perpRZ * halfW;
-      }
-    } else {
-      // Square start cap — no live predecessor.
-      sLx = startCx - perpRX * halfW;
-      sLz = startCz - perpRZ * halfW;
-      sRx = startCx + perpRX * halfW;
-      sRz = startCz + perpRZ * halfW;
-    }
-
-    // ── End vertices: square cap. Rewritten later when a successor joins. ──
-    const eLx = endX - perpRX * halfW;
-    const eLz = endY - perpRZ * halfW;
-    const eRx = endX + perpRX * halfW;
-    const eRz = endY + perpRZ * halfW;
+    const corners = computeMiteredQuad(
+      state.lastEndX,
+      state.lastEndY,
+      endX,
+      endY,
+      dirX,
+      dirZ,
+      state.lastDirX,
+      state.lastDirY,
+      width * 0.5,
+      MITER_LIMIT,
+      haveLivePrev,
+    );
 
     // Rewrite predecessor's end vertices to match the shared miter edge.
     if (haveLivePrev) {
-      this.writeQuadEnd(prev!.slot, sRx, sRz, sLx, sLz);
+      writeFlatQuadEndXZ(
+        this.positions,
+        prev!.slot,
+        MARK_Y,
+        corners.sRx,
+        corners.sRz,
+        corners.sLx,
+        corners.sLz,
+      );
     }
 
     // Allocate the new slot and write its vertex data.
@@ -561,10 +528,10 @@ export class BurnMark3D {
       removed: false,
     };
     this.marks.push(mark);
-    this.writeQuad(slot, sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz);
+    writeFlatQuadXZ(this.positions, slot, MARK_Y, corners);
     // Fresh marks render at hot color + full alpha — age sweep will take
     // over from the next frame. Writing once here avoids a 1-frame flicker.
-    this.writeQuadColor(slot, HOT_LIN.r, HOT_LIN.g, HOT_LIN.b, 1);
+    writeQuadRgba(this.colors, slot, HOT_LIN.r, HOT_LIN.g, HOT_LIN.b, 1);
 
     this.posDirty = true;
     this.colDirty = true;
@@ -577,50 +544,6 @@ export class BurnMark3D {
     state.prevMark = mark;
   }
 
-  // ── Buffer writers ──
-  // Quad vertex order: 0=startL, 1=startR, 2=endR, 3=endL (matches the
-  // index buffer: tris [0,1,2] and [0,2,3] form a CCW quad).
-
-  private writeQuad(
-    slot: number,
-    sLx: number, sLz: number,
-    sRx: number, sRz: number,
-    eRx: number, eRz: number,
-    eLx: number, eLz: number,
-  ): void {
-    const p = this.positions;
-    const b = slot * 12;
-    p[b     ] = sLx; p[b +  1] = MARK_Y; p[b +  2] = sLz;
-    p[b +  3] = sRx; p[b +  4] = MARK_Y; p[b +  5] = sRz;
-    p[b +  6] = eRx; p[b +  7] = MARK_Y; p[b +  8] = eRz;
-    p[b +  9] = eLx; p[b + 10] = MARK_Y; p[b + 11] = eLz;
-  }
-
-  /** Rewrite just the end-side two vertices of a quad. Used when a new
-   *  mark joins this one — the shared edge becomes the bisector. */
-  private writeQuadEnd(
-    slot: number,
-    eRx: number, eRz: number,
-    eLx: number, eLz: number,
-  ): void {
-    const p = this.positions;
-    const b = slot * 12;
-    p[b +  6] = eRx; p[b +  7] = MARK_Y; p[b +  8] = eRz;
-    p[b +  9] = eLx; p[b + 10] = MARK_Y; p[b + 11] = eLz;
-    this.posDirty = true;
-  }
-
-  private writeQuadColor(
-    slot: number, r: number, g: number, b: number, a: number,
-  ): void {
-    const c = this.colors;
-    const base = slot * 16;
-    for (let i = 0; i < 4; i++) {
-      const o = base + i * 4;
-      c[o] = r; c[o + 1] = g; c[o + 2] = b; c[o + 3] = a;
-    }
-  }
-
   /** Remove the mark at slot index `i`. Swap the last active mark into
    *  slot `i` (copying its buffer data) and pop — O(1). */
   private removeMarkAt(i: number): void {
@@ -628,15 +551,8 @@ export class BurnMark3D {
     this.marks[i].removed = true;
     if (i !== last) {
       const moved = this.marks[last];
-      // Copy position + color data from `last` into `i`.
-      const posBase = this.positions;
-      const colBase = this.colors;
-      const pSrc = last * 12;
-      const pDst = i * 12;
-      for (let k = 0; k < 12; k++) posBase[pDst + k] = posBase[pSrc + k];
-      const cSrc = last * 16;
-      const cDst = i * 16;
-      for (let k = 0; k < 16; k++) colBase[cDst + k] = colBase[cSrc + k];
+      copyQuadSlot(this.positions, 12, last, i);
+      copyQuadSlot(this.colors, 16, last, i);
       moved.slot = i;
       this.marks[i] = moved;
       this.posDirty = true;
