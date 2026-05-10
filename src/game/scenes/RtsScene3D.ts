@@ -17,6 +17,7 @@ import type { SprayTarget } from '@/types/ui';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { LongtaskTracker } from './helpers/LongtaskTracker';
+import { RtsScene3DCameraControl, type CameraShim } from './helpers/RtsScene3DCameraControl';
 import { RtsScene3DCameraFootprintSystem } from './helpers/RtsScene3DCameraFootprintSystem';
 import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
@@ -146,41 +147,6 @@ export type RtsScene3DConfig = {
   lookupPlayerName?: (playerId: PlayerId) => string | null;
 };
 
-// Mini "camera" accessor that PhaserCanvas.vue reads for zoom display. We derive
-// a Pixi-equivalent zoom number from the 3D orbit distance so UI sliders show a
-// consistent value. baseDistance is the default camera distance.
-//
-// Two zoom-shaped values:
-//
-//   `zoom`     — LOD ratio (`baseDistance / orbit.distance`). Higher = more
-//                zoomed in. Used for save/restore camera state, UI/legacy
-//                camera reads, and any code path that needs a multiplicative
-//                scalar relative to the default framing. Counts wheel ticks
-//                multiplicatively. Object-level view LOD uses camera
-//                projection instead of this raw ratio.
-//
-//   `altitude` — Camera world Y, i.e. distance from the y=0 ground plane
-//                along its normal. Universal: same physical state → same
-//                number, regardless of pan / wheel / target-y history.
-//                Smaller = closer to surface, larger = farther up. The
-//                wheel-zoom rail also clamps on this (in OrbitCamera) so
-//                hitting "min/max zoom" matches what the user feels — at
-//                the floor you're grazing the surface, at the ceiling
-//                you're at panoramic altitude. Replaces the old
-//                `viewSpan` (focal-plane span) which was meaningful in
-//                isolation but didn't match the wheel clamp's actual
-//                rail.
-type CameraShim = {
-  main: {
-    zoom: number;
-    altitude: number;
-    scrollX: number;
-    scrollY: number;
-    width: number;
-    height: number;
-  };
-};
-
 type SceneLifecycle = {
   onRestart(cb: () => void): void;
   restart(): void;
@@ -239,6 +205,7 @@ export class RtsScene3D {
   private nameLabel3D: NameLabel3D | null = null;
   private contactShadowRenderer: ContactShadowRenderer3D | null = null;
   private predictionPhase!: RtsScene3DPredictionPhase;
+  private cameraControl!: RtsScene3DCameraControl;
   /** Resolves a player ID to its display name. Hooked up via
    *  RtsScene3DConfig.lookupPlayerName; null result falls back to
    *  `getDefaultPlayerName(playerId)` so commander labels still
@@ -341,12 +308,7 @@ export class RtsScene3D {
 
   // Dynamic camera shim — exposes a zoom-like number derived from the orbit
   // distance so UI (zoom display, minimap viewport) has a consistent axis to read.
-  public readonly cameras: CameraShim = {
-    main: {
-      // Filled by the getters below via Object.defineProperty in constructor
-      zoom: 0, altitude: 0, scrollX: 0, scrollY: 0, width: 0, height: 0,
-    },
-  };
+  public readonly cameras: CameraShim;
 
   private _baseDistance: number;
 
@@ -428,6 +390,8 @@ export class RtsScene3D {
     );
     this.predictionPhase = new RtsScene3DPredictionPhase(this.clientViewState);
     this._baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
+    this.cameraControl = new RtsScene3DCameraControl(this.threeApp, this._baseDistance);
+    this.cameras = this.cameraControl.cameras;
 
     // Seed orbit camera from the same per-mode target logic used after
     // snapshots arrive, while keeping per-mode zoom distances.
@@ -463,27 +427,6 @@ export class RtsScene3D {
     });
     this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
 
-    // Redefine cameras.main as live getters bound to orbit + renderer
-    Object.defineProperties(this.cameras.main, {
-      zoom: {
-        get: () => this._baseDistance / this.threeApp.orbit.distance,
-      },
-      // Camera altitude (world Y, distance from the y=0 ground plane
-      // along its normal). Read directly off the rendered camera so
-      // it reflects the actual displayed framing — including any
-      // terrain-clearance lift `apply()` may have applied.
-      altitude: {
-        get: () => this.threeApp.camera.position.y,
-      },
-      scrollX: {
-        get: () => this.threeApp.orbit.target.x - this._visibleHalfWidth(),
-      },
-      scrollY: {
-        get: () => this.threeApp.orbit.target.z - this._visibleHalfHeight(),
-      },
-      width: { get: () => this.threeApp.renderer.domElement.clientWidth },
-      height: { get: () => this.threeApp.renderer.domElement.clientHeight },
-    });
   }
 
   public setClientRenderEnabled(enabled: boolean): void {
@@ -503,21 +446,6 @@ export class RtsScene3D {
 
   public isClientRenderEnabled(): boolean {
     return this.clientRenderEnabled;
-  }
-
-  /** Approximate visible world-width at the ground plane (for minimap viewport). */
-  private _visibleHalfWidth(): number {
-    // perspective view: half-angle * distance, scaled by aspect ratio
-    const cam = this.threeApp.camera;
-    const vFov = (cam.fov * Math.PI) / 180;
-    const halfH = Math.tan(vFov / 2) * this.threeApp.orbit.distance;
-    return halfH * cam.aspect;
-  }
-
-  private _visibleHalfHeight(): number {
-    const cam = this.threeApp.camera;
-    const vFov = (cam.fov * Math.PI) / 180;
-    return Math.tan(vFov / 2) * this.threeApp.orbit.distance;
   }
 
   create(): void {
@@ -1542,7 +1470,7 @@ export class RtsScene3D {
    *  watch yaw / target / distance for input-detection — keeps
    *  ThreeApp itself private to the scene. */
   public getOrbitCamera(): import('../render3d/OrbitCamera').OrbitCamera {
-    return this.threeApp.orbit;
+    return this.cameraControl.getOrbitCamera();
   }
 
   public markSelectionDirty(): void {
@@ -1587,37 +1515,21 @@ export class RtsScene3D {
   }
 
   public centerCameraOn(x: number, y: number): void {
-    this.threeApp.orbit.setTarget(x, 0, y);
+    this.cameraControl.centerOn(x, y);
   }
 
   /** Capture the orbit camera's current framing in the portable
    *  `SceneCameraState` shape — 2D-equivalent zoom + the (x, y)
    *  world-space target point. */
   public captureCameraState(): SceneCameraState {
-    const orbit = this.threeApp.orbit;
-    return {
-      x: orbit.target.x,
-      y: orbit.target.z,
-      zoom: this._baseDistance / orbit.distance,
-      targetZ: orbit.target.y,
-      yaw: orbit.yaw,
-      pitch: orbit.pitch,
-    };
+    return this.cameraControl.captureState();
   }
 
   /** Apply a captured camera state. Works with states captured from
    *  either renderer — the zoom scalar is in 2D-equivalent units and
    *  maps back to an orbit distance via the scene's base distance. */
   public applyCameraState(state: SceneCameraState): void {
-    const orbit = this.threeApp.orbit;
-    orbit.setState({
-      targetX: state.x,
-      targetY: state.targetZ ?? 0,
-      targetZ: state.y,
-      distance: this._baseDistance / Math.max(state.zoom, 0.001),
-      yaw: state.yaw ?? orbit.yaw,
-      pitch: state.pitch ?? orbit.pitch,
-    });
+    this.cameraControl.applyState(state);
   }
 
   public getFrameTiming(): {
