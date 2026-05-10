@@ -21,7 +21,7 @@ Please always commit and push before and after any code changes we make. If ther
 
 2. Split src/game/network/stateSerializer.ts by DTO family.
    Evidence:
-   - src/game/network/stateSerializer.ts is still 1558 lines.
+   - src/game/network/stateSerializer.ts is still 1178 lines.
    - Economy DTO serialization has moved to
      src/game/network/stateSerializerEconomy.ts, and minimap entity DTO
      serialization has moved to src/game/network/stateSerializerMinimap.ts,
@@ -29,13 +29,16 @@ Please always commit and push before and after any code changes we make. If ther
      src/game/network/stateSerializerSpray.ts, and audio event DTO
      serialization has moved to src/game/network/stateSerializerAudio.ts, but
      grid serialization has moved to src/game/network/stateSerializerGrid.ts,
-     but entity and projectile serialization still share the main file.
+     and projectile serialization has moved to
+     src/game/network/stateSerializerProjectiles.ts.
+   - Entity snapshot assembly and entity delta tracking still share the main
+     file.
    Impact:
    - Serialization changes for one DTO family risk touching unrelated network
      formats.
    Remedy:
-   - Move the next DTO family into a focused serializer module and keep a small
-     index/orchestration layer.
+   - Move the next entity serialization or delta-tracking responsibility into a
+     focused module and keep a small index/orchestration layer.
 
 3. Split src/game/render3d/Render3DEntities.ts by rendered object family.
    Evidence:
@@ -72,3 +75,5 @@ Please always commit and push before and after any code changes we make. If ther
 7. Beam segments should never just end in the air. Currently we are ending them if they reach a max radius, but that isn't physically correct. We either need to simulate the beam to its logical ending point (including infinity space) or just keep what we have on the simulation, and fake the infinity beam by extending last leg of the beam segments to extend that direction to infinity. Whatever is necessary but doesn't kill performance.
 
 8. Because we have "falling" (jumping) units now, we need to update our ballistics and aiming solvers to account for acceleration as well. Make sure that all instances of aiming and ballistics require 3d position, 3d velocity, and 3d acceleration (can be gravity + other stuff potentially) for both the origin point as well as the target point. This will allow us to have more accurate aiming and ballistics for all turrets against all units / buildings. have that function be atomic and reusable. We may have different things generating acceleration so make sure we don't just hardcode gravity to be used in the function.
+
+ 9. let's add another config piece to our jump config for a unit, this will be how much of a random multiplier to add to our jump power

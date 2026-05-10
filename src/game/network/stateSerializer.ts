@@ -2,7 +2,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -15,12 +15,10 @@ import {
   ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_SUSPENSION, ENTITY_CHANGED_JUMP, ENTITY_CHANGED_MOVEMENT_ACCEL,
   turretStateToCode,
-  unitTypeToCode, buildingTypeToCode, projectileTypeToCode,
-  turretIdToCode, shotIdToCode,
-  PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN,
+  unitTypeToCode, buildingTypeToCode,
+  turretIdToCode,
 } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
-import { shouldRunOnStride } from '../math';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import {
   createActionDto,
@@ -48,6 +46,7 @@ import { serializeAudioEvents } from './stateSerializerAudio';
 import { serializeEconomySnapshot } from './stateSerializerEconomy';
 import { serializeGridSnapshot } from './stateSerializerGrid';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
+import { serializeProjectileSnapshot } from './stateSerializerProjectiles';
 import { serializeSprayTargets } from './stateSerializerSpray';
 
 // === Object pool for NetworkServerSnapshotEntity (eliminates per-frame allocations) ===
@@ -136,82 +135,6 @@ function qNormal(n: number): number {
 
 function qSuspension(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
-  return {
-    id: 0,
-    points: [],
-    obstructionT: undefined,
-    endpointDamageable: undefined,
-  };
-}
-
-function createPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
-  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
-}
-
-type PooledProjectileSpawn = NetworkServerSnapshotProjectileSpawn & {
-  _pos: Vec3;
-  _velocity: Vec3;
-  _beamStart: Vec3;
-  _beamEnd: Vec3;
-  _beam: { start: Vec3; end: Vec3 };
-};
-
-function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
-  const spawn: PooledProjectileSpawn = {
-    id: 0,
-    pos: { x: 0, y: 0, z: 0 },
-    rotation: 0,
-    velocity: { x: 0, y: 0, z: 0 },
-    projectileType: PROJECTILE_TYPE_UNKNOWN,
-    maxLifespan: undefined,
-    turretId: TURRET_ID_UNKNOWN,
-    shotId: undefined,
-    sourceTurretId: undefined,
-    playerId: 1,
-    sourceEntityId: 0,
-    turretIndex: 0,
-    barrelIndex: 0,
-    isDGun: undefined,
-    fromParentDetonation: undefined,
-    beam: undefined,
-    targetEntityId: undefined,
-    homingTurnRate: undefined,
-    _pos: { x: 0, y: 0, z: 0 },
-    _velocity: { x: 0, y: 0, z: 0 },
-    _beamStart: { x: 0, y: 0, z: 0 },
-    _beamEnd: { x: 0, y: 0, z: 0 },
-    _beam: { start: { x: 0, y: 0, z: 0 }, end: { x: 0, y: 0, z: 0 } },
-  };
-  spawn.pos = spawn._pos;
-  spawn.velocity = spawn._velocity;
-  spawn._beam.start = spawn._beamStart;
-  spawn._beam.end = spawn._beamEnd;
-  return spawn;
-}
-
-function createPooledProjectileDespawn(): NetworkServerSnapshotProjectileDespawn {
-  return { id: 0 };
-}
-
-type PooledVelocityUpdate = NetworkServerSnapshotVelocityUpdate & {
-  _pos: Vec3;
-  _velocity: Vec3;
-};
-
-function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
-  const update: PooledVelocityUpdate = {
-    id: 0,
-    pos: { x: 0, y: 0, z: 0 },
-    velocity: { x: 0, y: 0, z: 0 },
-    _pos: { x: 0, y: 0, z: 0 },
-    _velocity: { x: 0, y: 0, z: 0 },
-  };
-  update.pos = update._pos;
-  update.velocity = update._velocity;
-  return update;
 }
 
 function createPooledEntry(): PooledEntry {
@@ -405,18 +328,6 @@ function getDeltaResolution(
   return entity.ownership?.playerId === recipientPlayerId
     ? SNAPSHOT_CONFIG.ownedEntityDelta
     : SNAPSHOT_CONFIG.observedEntityDelta;
-}
-
-function shouldSendProjectileSideChannel(
-  ownerId: PlayerId | undefined,
-  recipientPlayerId: PlayerId | undefined,
-  tick: number,
-): boolean {
-  const rawStride = recipientPlayerId === undefined || ownerId === recipientPlayerId
-    ? SNAPSHOT_CONFIG.ownedProjectileUpdateStride
-    : SNAPSHOT_CONFIG.observedProjectileUpdateStride;
-  const stride = Math.max(1, Math.floor(rawStride));
-  return shouldRunOnStride(tick, stride);
 }
 
 /** Surface-normal change threshold. Matches the qNormal wire precision
@@ -706,30 +617,9 @@ export function resetDeltaTrackingForKey(key: string | number | undefined): void
 
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
-const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
-const _despawnBuf: NetworkServerSnapshotProjectileDespawn[] = [];
-const _velUpdateBuf: NetworkServerSnapshotVelocityUpdate[] = [];
-const _spawnPool: NetworkServerSnapshotProjectileSpawn[] = [];
-const _despawnPool: NetworkServerSnapshotProjectileDespawn[] = [];
-const _velUpdatePool: NetworkServerSnapshotVelocityUpdate[] = [];
-const _beamUpdateBuf: NetworkServerSnapshotBeamUpdate[] = [];
-const _beamUpdatePool: NetworkServerSnapshotBeamUpdate[] = [];
-const _beamPointPool: NetworkServerSnapshotBeamPoint[] = [];
 const _aoiRemovedIdsBuf: EntityId[] = [];
-let _spawnPoolIndex = 0;
-let _despawnPoolIndex = 0;
-let _velUpdatePoolIndex = 0;
-let _beamUpdatePoolIndex = 0;
-let _beamPointPoolIndex = 0;
-const _resyncSeenIds = new Set<number>();
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
-const _projectilesBuf: NonNullable<NetworkServerSnapshot['projectiles']> = {
-  spawns: undefined,
-  despawns: undefined,
-  velocityUpdates: undefined,
-  beamUpdates: undefined,
-};
 const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
   phase: 'battle',
   winnerId: undefined,
@@ -749,65 +639,6 @@ const _snapshotBuf: NetworkServerSnapshot = {
   isDelta: false,
   removedEntityIds: undefined,
 };
-
-function getPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
-  let update = _beamUpdatePool[_beamUpdatePoolIndex];
-  if (!update) {
-    update = createPooledBeamUpdate();
-    _beamUpdatePool[_beamUpdatePoolIndex] = update;
-  }
-  _beamUpdatePoolIndex++;
-  update.points.length = 0;
-  update.obstructionT = undefined;
-  update.endpointDamageable = undefined;
-  return update;
-}
-
-function getPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
-  let point = _beamPointPool[_beamPointPoolIndex];
-  if (!point) {
-    point = createPooledBeamPoint();
-    _beamPointPool[_beamPointPoolIndex] = point;
-  }
-  _beamPointPoolIndex++;
-  point.mirrorEntityId = undefined;
-  point.reflectorKind = undefined;
-  point.reflectorPlayerId = undefined;
-  point.normalX = undefined;
-  point.normalY = undefined;
-  point.normalZ = undefined;
-  return point;
-}
-
-function getPooledProjectileSpawn(): PooledProjectileSpawn {
-  let spawn = _spawnPool[_spawnPoolIndex] as PooledProjectileSpawn | undefined;
-  if (!spawn) {
-    spawn = createPooledProjectileSpawn() as PooledProjectileSpawn;
-    _spawnPool[_spawnPoolIndex] = spawn;
-  }
-  _spawnPoolIndex++;
-  return spawn;
-}
-
-function getPooledProjectileDespawn(): NetworkServerSnapshotProjectileDespawn {
-  let despawn = _despawnPool[_despawnPoolIndex];
-  if (!despawn) {
-    despawn = createPooledProjectileDespawn();
-    _despawnPool[_despawnPoolIndex] = despawn;
-  }
-  _despawnPoolIndex++;
-  return despawn;
-}
-
-function getPooledVelocityUpdate(): PooledVelocityUpdate {
-  let update = _velUpdatePool[_velUpdatePoolIndex] as PooledVelocityUpdate | undefined;
-  if (!update) {
-    update = createPooledVelocityUpdate() as PooledVelocityUpdate;
-    _velUpdatePool[_velUpdatePoolIndex] = update;
-  }
-  _velUpdatePoolIndex++;
-  return update;
-}
 
 export type SerializeGameStateOptions = {
   /**
@@ -890,11 +721,6 @@ export function serializeGameState(
 
   // Reset entity pool for this frame
   _poolIndex = 0;
-  _spawnPoolIndex = 0;
-  _despawnPoolIndex = 0;
-  _velUpdatePoolIndex = 0;
-  _beamUpdatePoolIndex = 0;
-  _beamPointPoolIndex = 0;
   _entityBuf.length = 0;
   _removedIdsBuf.length = 0;
 
@@ -1039,221 +865,15 @@ export function serializeGameState(
 
   const netAudioEvents = serializeAudioEvents(audioEvents);
 
-  // Serialize projectile spawns (reuse buffer). Full keyframes also
-  // synthesize spawns for every live projectile entity so a client that
-  // missed the original spawn event can still recover the projectile —
-  // delta snapshots only carry units and buildings, and `whole state`
-  // messages can be dropped under backpressure in NetworkManager.
-  let netProjectileSpawns: NetworkServerSnapshotProjectileSpawn[] | undefined;
-  const wantKeyframeProjectileResync = !deltaEnabled;
-  const tickSpawnCount = projectileSpawns?.length ?? 0;
-  if (tickSpawnCount > 0 || wantKeyframeProjectileResync) {
-    _spawnBuf.length = 0;
-    if (wantKeyframeProjectileResync) _resyncSeenIds.clear();
-    if (projectileSpawns) {
-      for (let i = 0; i < tickSpawnCount; i++) {
-        const ps = projectileSpawns[i];
-        const out = getPooledProjectileSpawn();
-        out.id = ps.id;
-        out._pos.x = ps.pos.x;
-        out._pos.y = ps.pos.y;
-        out._pos.z = ps.pos.z;
-        out.rotation = ps.rotation;
-        out._velocity.x = ps.velocity.x;
-        out._velocity.y = ps.velocity.y;
-        out._velocity.z = ps.velocity.z;
-        out.projectileType = projectileTypeToCode(ps.projectileType);
-        out.maxLifespan = ps.maxLifespan;
-        out.turretId = turretIdToCode(ps.turretId);
-        out.shotId = shotIdToCode(ps.shotId);
-        out.sourceTurretId = ps.sourceTurretId !== undefined
-          ? turretIdToCode(ps.sourceTurretId)
-          : undefined;
-        out.playerId = ps.playerId;
-        out.sourceEntityId = ps.sourceEntityId;
-        out.turretIndex = ps.turretIndex;
-        out.barrelIndex = ps.barrelIndex;
-        out.isDGun = ps.isDGun;
-        out.fromParentDetonation = ps.fromParentDetonation;
-        if (ps.beam) {
-          out._beamStart.x = ps.beam.start.x;
-          out._beamStart.y = ps.beam.start.y;
-          out._beamStart.z = ps.beam.start.z;
-          out._beamEnd.x = ps.beam.end.x;
-          out._beamEnd.y = ps.beam.end.y;
-          out._beamEnd.z = ps.beam.end.z;
-          out.beam = out._beam;
-        } else {
-          out.beam = undefined;
-        }
-        out.targetEntityId = ps.targetEntityId;
-        out.homingTurnRate = ps.homingTurnRate;
-        _spawnBuf.push(out);
-        if (wantKeyframeProjectileResync) _resyncSeenIds.add(ps.id);
-      }
-    }
-    if (wantKeyframeProjectileResync) {
-      const liveProjectiles = world.getProjectiles();
-      for (let i = 0; i < liveProjectiles.length; i++) {
-        const entity = liveProjectiles[i];
-        if (_resyncSeenIds.has(entity.id)) continue;
-        const proj = entity.projectile;
-        if (!proj) continue;
-        const out = getPooledProjectileSpawn();
-        out.id = entity.id;
-        out._pos.x = entity.transform.x;
-        out._pos.y = entity.transform.y;
-        out._pos.z = entity.transform.z;
-        out.rotation = entity.transform.rotation;
-        out._velocity.x = proj.velocityX;
-        out._velocity.y = proj.velocityY;
-        out._velocity.z = proj.velocityZ;
-        out.projectileType = projectileTypeToCode(proj.projectileType);
-        out.maxLifespan = proj.maxLifespan;
-        out.turretId = proj.sourceTurretId !== undefined
-          ? turretIdToCode(proj.sourceTurretId)
-          : TURRET_ID_UNKNOWN;
-        out.shotId = shotIdToCode(proj.shotId);
-        out.sourceTurretId = proj.sourceTurretId !== undefined
-          ? turretIdToCode(proj.sourceTurretId)
-          : undefined;
-        out.playerId = proj.ownerId;
-        out.sourceEntityId = proj.sourceEntityId;
-        out.turretIndex = proj.config.turretIndex ?? 0;
-        out.barrelIndex = proj.sourceBarrelIndex ?? 0;
-        out.isDGun = entity.dgunProjectile?.isDGun ? true : undefined;
-        // Re-sync spawns carry the projectile's CURRENT pos, not its
-        // muzzle origin. Setting `fromParentDetonation` tells the client
-        // applier to skip the barrel-tip override and treat `pos` as
-        // authoritative — same flag submunitions use for the same
-        // reason.
-        out.fromParentDetonation = true;
-        const pts = proj.points;
-        if (pts && pts.length >= 2) {
-          const start = pts[0];
-          const end = pts[pts.length - 1];
-          out._beamStart.x = start.x;
-          out._beamStart.y = start.y;
-          out._beamStart.z = start.z;
-          out._beamEnd.x = end.x;
-          out._beamEnd.y = end.y;
-          out._beamEnd.z = end.z;
-          out.beam = out._beam;
-        } else {
-          out.beam = undefined;
-        }
-        out.targetEntityId = proj.homingTargetId;
-        out.homingTurnRate = proj.homingTurnRate;
-        _spawnBuf.push(out);
-      }
-    }
-    if (_spawnBuf.length > 0) netProjectileSpawns = _spawnBuf;
-  }
-
-  // Serialize projectile despawns (reuse buffer)
-  let netProjectileDespawns: NetworkServerSnapshotProjectileDespawn[] | undefined;
-  if (projectileDespawns && projectileDespawns.length > 0) {
-    _despawnBuf.length = 0;
-    for (let i = 0; i < projectileDespawns.length; i++) {
-      const out = getPooledProjectileDespawn();
-      out.id = projectileDespawns[i].id;
-      _despawnBuf.push(out);
-    }
-    netProjectileDespawns = _despawnBuf;
-  }
-
-  // Serialize projectile velocity updates (reuse buffer)
-  let netVelocityUpdates: NetworkServerSnapshotVelocityUpdate[] | undefined;
-  if (projectileVelocityUpdates && projectileVelocityUpdates.length > 0) {
-    _velUpdateBuf.length = 0;
-    for (let i = 0; i < projectileVelocityUpdates.length; i++) {
-      const vu = projectileVelocityUpdates[i];
-      const projectile = world.getEntity(vu.id)?.projectile;
-      if (!shouldSendProjectileSideChannel(projectile?.ownerId, recipientPlayerId, tick)) continue;
-      const out = getPooledVelocityUpdate();
-      out.id = vu.id;
-      out._pos.x = vu.pos.x;
-      out._pos.y = vu.pos.y;
-      out._pos.z = vu.pos.z;
-      out._velocity.x = vu.velocity.x;
-      out._velocity.y = vu.velocity.y;
-      out._velocity.z = vu.velocity.z;
-      _velUpdateBuf.push(out);
-    }
-    if (_velUpdateBuf.length > 0) netVelocityUpdates = _velUpdateBuf;
-  }
-
-  // Serialize authoritative live beam/laser paths. Spawns only carry
-  // the initial line; reflected beams move every tick with turret aim
-  // and mirror intersections, so clients need the current path in
-  // snapshots to draw without re-running beam tracing locally. Each
-  // beam is one polyline (start, ...reflections, end) with per-vertex
-  // velocity — clients extrapolate every vertex independently between
-  // snapshots, mirroring the turret rotation+angularVelocity pattern.
-  let netBeamUpdates: NetworkServerSnapshotBeamUpdate[] | undefined;
-  const lineProjectiles = world.getLineProjectiles();
-  if (lineProjectiles.length > 0) {
-    _beamUpdateBuf.length = 0;
-    for (let i = 0; i < lineProjectiles.length; i++) {
-      const entity = lineProjectiles[i];
-      const proj = entity.projectile;
-      if (!proj) continue;
-      if (!shouldSendProjectileSideChannel(proj.ownerId, recipientPlayerId, tick)) continue;
-      const srcPts = proj.points;
-      if (!srcPts || srcPts.length < 2) continue;
-
-      const update = getPooledBeamUpdate();
-      update.id = entity.id;
-      update.obstructionT = proj.obstructionT === undefined ? undefined : qRot(proj.obstructionT);
-      update.endpointDamageable = proj.endpointDamageable === false ? false : undefined;
-      const dstPts = update.points;
-      dstPts.length = srcPts.length;
-      for (let p = 0; p < srcPts.length; p++) {
-        const sp = srcPts[p];
-        const out = getPooledBeamPoint();
-        out.x = qPos(sp.x);
-        out.y = qPos(sp.y);
-        out.z = qPos(sp.z);
-        // Velocities are quantized at the same precision as projectile
-        // velocities (qVel = 0.1 wu/sec). Lets the client extrapolate
-        // each vertex between snapshots — same role the turret
-        // rotation+angularVelocity pair plays for turret pose.
-        //
-        // Common case: a vertex anchored to a static structure (mirror
-        // panel on a building, or beam endpoint on a stationary unit)
-        // has all-zero velocity every tick. Skip the three Math.round
-        // calls in that case — qVel(0) === 0.
-        if (sp.vx === 0 && sp.vy === 0 && sp.vz === 0) {
-          out.vx = 0;
-          out.vy = 0;
-          out.vz = 0;
-        } else {
-          out.vx = qVel(sp.vx);
-          out.vy = qVel(sp.vy);
-          out.vz = qVel(sp.vz);
-        }
-        out.mirrorEntityId = sp.mirrorEntityId;
-        out.reflectorKind = sp.reflectorKind;
-        out.reflectorPlayerId = sp.reflectorPlayerId;
-        out.normalX = sp.normalX === undefined ? undefined : qNormal(sp.normalX);
-        out.normalY = sp.normalY === undefined ? undefined : qNormal(sp.normalY);
-        out.normalZ = sp.normalZ === undefined ? undefined : qNormal(sp.normalZ);
-        dstPts[p] = out;
-      }
-
-      _beamUpdateBuf.push(update);
-    }
-    if (_beamUpdateBuf.length > 0) netBeamUpdates = _beamUpdateBuf;
-  }
-
-  // Nest projectile events (undefined when all empty)
-  const hasProjectiles = netProjectileSpawns || netProjectileDespawns || netVelocityUpdates || netBeamUpdates;
-  if (hasProjectiles) {
-    _projectilesBuf.spawns = netProjectileSpawns;
-    _projectilesBuf.despawns = netProjectileDespawns;
-    _projectilesBuf.velocityUpdates = netVelocityUpdates;
-    _projectilesBuf.beamUpdates = netBeamUpdates;
-  }
+  const netProjectiles = serializeProjectileSnapshot({
+    world,
+    deltaEnabled,
+    tick,
+    recipientPlayerId,
+    projectileSpawns,
+    projectileDespawns,
+    projectileVelocityUpdates,
+  });
 
   const netGrid = serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize);
 
@@ -1268,7 +888,7 @@ export function serializeGameState(
   _snapshotBuf.economy = netEconomy;
   _snapshotBuf.sprayTargets = netSprayTargets;
   _snapshotBuf.audioEvents = netAudioEvents;
-  _snapshotBuf.projectiles = hasProjectiles ? _projectilesBuf : undefined;
+  _snapshotBuf.projectiles = netProjectiles;
   _snapshotBuf.gameState = _gameStateBuf;
   _snapshotBuf.grid = netGrid;
   _snapshotBuf.isDelta = deltaEnabled;
