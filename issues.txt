@@ -12,28 +12,9 @@ Please always commit and push before and after any code changes you make. If the
 1. Oversized orchestration files violate the small-file goal and hide lifecycle
    coupling.
    Evidence:
-   - src/components/GameCanvas.vue is still about 3345 lines after extracting
-     persisted chrome state to src/components/gameCanvasChromeState.ts,
-     client telemetry to src/components/gameCanvasTelemetry.ts, background
-     battle lifecycle to src/components/gameCanvasBackgroundBattle.ts,
-     client presence/clock to src/components/gameCanvasPresence.ts, and the
-     sound-test shortcut to src/components/gameCanvasSoundTest.ts, and
-     real-battle timers/listeners/host command forwarding to
-     src/components/gameCanvasRealBattleLifecycle.ts, and foreground scene
-     wait-interval cleanup to
-     src/components/gameCanvasForegroundSceneBinding.ts, and foreground game
-     instance/client-view-state create/destroy to
-     src/components/gameCanvasForegroundGame.ts, and real-battle terrain/server
-     startup helpers to src/components/gameCanvasRealBattleStartup.ts, and
-     real-battle foreground startup/scene binding to
-     src/components/gameCanvasRealBattleStart.ts, and lobby preview
-     restart/re-parenting to src/components/gameCanvasLobbyPreview.ts, and
-     NetworkManager callback binding to
-     src/components/gameCanvasNetworkCallbacks.ts, and lobby action handlers to
-     src/components/gameCanvasLobbyActions.ts, and lobby terrain/settings sync
-     to src/components/gameCanvasLobbySettings.ts. It still owns high-level
-     real-battle handoff entrypoints and several server/client bar setting
-     handlers.
+   - src/components/GameCanvas.vue is still about 3265 lines and still owns
+     high-level real-battle handoff entrypoints plus several server/client bar
+     setting handlers.
    - src/game/scenes/RtsScene3D.ts is about 2151 lines and owns snapshot intake,
      prediction, audio scheduling, camera, selection, minimap data, renderer
      update ordering, and renderer teardown. See the large update loop at

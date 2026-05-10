@@ -30,20 +30,14 @@ import { GOOD_TPS } from '../lodConfig';
 import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
 import {
   BATTLE_CONFIG,
-  saveDemoUnits,
-  getDefaultCap,
   loadStoredCap,
-  saveStoredCap,
   getDefaultGrid,
   loadStoredGrid,
   saveStoredGrid,
-  saveMirrorsEnabled,
-  saveForceFieldsEnabled,
   loadStoredTerrainCenter,
   loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
   loadStoredMapLandDimensions,
-  getDefaultDemoUnits,
   type BattleMode,
 } from '../battleBarConfig';
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
@@ -176,6 +170,7 @@ import { useGameCanvasLobbyPreview } from './gameCanvasLobbyPreview';
 import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
 import { useGameCanvasLobbyActions } from './gameCanvasLobbyActions';
 import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
+import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -812,82 +807,6 @@ const displayServerIp = computed(
   () => serverMetaFromSnapshot.value?.server.ip ?? '',
 );
 
-// Single source of truth for "the current value of every battle
-// setting on the host" — `serverMetaFromSnapshot` (snapshot meta is
-// authoritative) with `BATTLE_CONFIG` defaults as the only fallback
-// when no snapshot has arrived yet. The bottom BATTLE bar template,
-// the LobbyModal, the toggle/setter functions below, and any read
-// elsewhere all consume these computeds rather than re-deriving the
-// same fallback chain inline. Add a new battle-config field and you
-// touch this block once instead of every consumer.
-const currentAllowedUnits = computed<readonly string[]>(
-  () =>
-    serverMetaFromSnapshot.value?.units.allowed ??
-    demoUnitTypes.filter((ut) => BATTLE_CONFIG.units[ut]?.default ?? false),
-);
-const allDemoUnitsActive = computed(() =>
-  demoUnitTypes.every((ut) => currentAllowedUnits.value.includes(ut)),
-);
-const currentMirrorsEnabled = computed(
-  () => serverMetaFromSnapshot.value?.mirrorsEnabled ?? BATTLE_CONFIG.mirrorsEnabled.default,
-);
-const currentForceFieldsEnabled = computed(
-  () => serverMetaFromSnapshot.value?.forceFieldsEnabled ?? BATTLE_CONFIG.forceFieldsEnabled.default,
-);
-
-function toggleDemoUnitType(unitType: string): void {
-  const allowed = currentAllowedUnits.value;
-  const current = allowed.includes(unitType);
-  activeConnection?.sendCommand({
-    type: 'setBackgroundUnitType',
-    tick: 0,
-    unitType,
-    enabled: !current,
-  });
-
-  // Persist updated unit list to localStorage
-  const newList = current
-    ? allowed.filter((ut) => ut !== unitType)
-    : [...allowed, unitType];
-  saveDemoUnits(newList);
-}
-
-function toggleAllDemoUnits(): void {
-  const enableAll = !allDemoUnitsActive.value;
-  for (const ut of demoUnitTypes) {
-    activeConnection?.sendCommand({
-      type: 'setBackgroundUnitType',
-      tick: 0,
-      unitType: ut,
-      enabled: enableAll,
-    });
-  }
-  saveDemoUnits(enableAll ? [...demoUnitTypes] : []);
-}
-
-function changeMaxTotalUnits(value: number): void {
-  activeConnection?.sendCommand({
-    type: 'setMaxTotalUnits',
-    tick: 0,
-    maxTotalUnits: value,
-  });
-  // Cap is mode-namespaced: GAME LOBBY changes write to the
-  // real-battle key (alongside the running real battle), demo
-  // mutations write to the demo key. Same pattern every shared
-  // setting below uses via `currentBattleMode`.
-  saveStoredCap(currentBattleMode.value, value);
-}
-
-function setMirrorsEnabled(enabled: boolean): void {
-  activeConnection?.sendCommand({ type: 'setMirrorsEnabled', tick: 0, enabled });
-  saveMirrorsEnabled(enabled, currentBattleMode.value);
-}
-
-function setForceFieldsEnabled(enabled: boolean): void {
-  activeConnection?.sendCommand({ type: 'setForceFieldsEnabled', tick: 0, enabled });
-  saveForceFieldsEnabled(enabled, currentBattleMode.value);
-}
-
 const {
   currentLobbySettings,
   broadcastLobbySettingsIfHost,
@@ -911,32 +830,33 @@ const {
   startBackgroundBattle,
 });
 
-function resetDemoDefaults(): void {
-  const defaultUnits = getDefaultDemoUnits();
-  const defaultSet = new Set(defaultUnits);
-  for (const ut of demoUnitTypes) {
-    activeConnection?.sendCommand({
-      type: 'setBackgroundUnitType',
-      tick: 0,
-      unitType: ut,
-      enabled: defaultSet.has(ut),
-    });
-  }
-  saveDemoUnits(defaultUnits);
-  changeMaxTotalUnits(getDefaultCap(currentBattleMode.value));
-  // DEFAULTS only resets the CURRENTLY-ACTIVE mode's namespace —
-  // resetting demo while in the lobby would wipe the user's solo
-  // demo prefs out from under them, and vice versa.
-  setMirrorsEnabled(BATTLE_CONFIG.mirrorsEnabled.default);
-  setForceFieldsEnabled(BATTLE_CONFIG.forceFieldsEnabled.default);
-  resetTerrainDefaults();
-  // Reset grid to mode default
+function resetGridInfoToDefault(): void {
   const gridDefault = getDefaultGrid(currentBattleMode.value);
   if (displayGridInfo.value !== gridDefault) {
     toggleSendGridInfo();
   }
-  broadcastLobbySettingsIfHost();
 }
+
+const {
+  currentAllowedUnits,
+  allDemoUnitsActive,
+  currentMirrorsEnabled,
+  currentForceFieldsEnabled,
+  toggleDemoUnitType,
+  toggleAllDemoUnits,
+  changeMaxTotalUnits,
+  setMirrorsEnabled,
+  setForceFieldsEnabled,
+  resetDemoDefaults,
+} = useGameCanvasBattleSettings({
+  serverMetaFromSnapshot,
+  currentBattleMode,
+  demoUnitTypes,
+  getActiveConnection: () => activeConnection,
+  resetTerrainDefaults,
+  resetGridInfoToDefault,
+  broadcastLobbySettingsIfHost,
+});
 
 function resetServerDefaults(): void {
   setTickRateValue(SERVER_CONFIG.tickRate.default);
