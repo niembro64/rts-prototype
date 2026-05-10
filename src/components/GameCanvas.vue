@@ -3,26 +3,26 @@ import { ref, computed, watch } from 'vue';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
-import BarDivider from './BarDivider.vue';
-import BarLabel from './BarLabel.vue';
-import BarButton from './BarButton.vue';
-import BarButtonGroup from './BarButtonGroup.vue';
-import BarControlGroup from './BarControlGroup.vue';
 import SelectionPanel from './SelectionPanel.vue';
 import TopBar from './TopBar.vue';
 import Minimap from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import GameCanvasOverlays from './GameCanvasOverlays.vue';
+import GameCanvasBattleControlBar from './GameCanvasBattleControlBar.vue';
+import GameCanvasServerControlBar from './GameCanvasServerControlBar.vue';
+import GameCanvasClientControlBar from './GameCanvasClientControlBar.vue';
+import type {
+  GameCanvasBattleControlBarModel,
+  GameCanvasClientControlBarModel,
+  GameCanvasServerControlBarModel,
+} from './gameCanvasControlBarModels';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import {
   networkManager,
   type NetworkRole,
 } from '../game/network/NetworkManager';
-import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
-import { GOOD_TPS } from '../lodConfig';
 import {
-  BATTLE_CONFIG,
   loadStoredCap,
   loadStoredGrid,
   loadStoredTerrainCenter,
@@ -40,16 +40,7 @@ import {
 import type { TiltEmaMode } from '../shellConfig';
 import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
 import { isSignalState } from '../types/lod';
-import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
-import {
-  SERVER_SIM_LOD_SIGNALS_ENABLED,
-} from '../serverSimLodConfig';
-import {
-  fmt4,
-  statBarStyle,
-  msBarStyle,
-  getPlayerColor,
-} from './uiUtils';
+import { getPlayerColor } from './uiUtils';
 import type { GameServer } from '../game/server/GameServer';
 import type { GameConnection } from '../game/server/GameConnection';
 import type { ConcreteGraphicsQuality } from '../types/graphics';
@@ -692,25 +683,156 @@ const {
   startGameWithPlayers,
 });
 
-/** Display labels for the TILT EMA bar. Keys stay as the canonical
- *  TiltEmaMode strings (storage / wire / config-table) so a future
- *  rename only touches this map. 'mid' renders as MED for visual
- *  symmetry with the surrounding 3-letter labels. */
-const TILT_EMA_LABEL: Record<TiltEmaMode, string> = {
-  snap: 'SNAP',
-  fast: 'FAST',
-  mid: 'MED',
-  slow: 'SLOW',
-};
+const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
+  isReadonly: serverBarReadonly.value,
+  barStyle: battleBarVars.value,
+  battleLabel: battleLabel.value,
+  battleElapsed: battleElapsed.value,
+  allDemoUnitsActive: allDemoUnitsActive.value,
+  demoUnitTypes,
+  currentAllowedUnits: currentAllowedUnits.value,
+  displayUnitCap: displayUnitCap.value,
+  gameStarted: gameStarted.value,
+  mapWidthLandCells: mapWidthLandCells.value,
+  mapLengthLandCells: mapLengthLandCells.value,
+  terrainCenter: terrainCenter.value,
+  terrainDividers: terrainDividers.value,
+  terrainMapShape: terrainMapShape.value,
+  displayUnitCount: displayUnitCount.value,
+  currentMirrorsEnabled: currentMirrorsEnabled.value,
+  currentForceFieldsEnabled: currentForceFieldsEnabled.value,
+  resetDemoDefaults,
+  toggleAllDemoUnits,
+  toggleDemoUnitType,
+  changeMaxTotalUnits,
+  applyMapLandDimensions,
+  applyTerrainShape,
+  applyTerrainMapShape,
+  setMirrorsEnabled,
+  setForceFieldsEnabled,
+}));
 
-function secPerFullsnap(ratio: number): string {
-  const sps =
-    displaySnapshotRate.value === 'none'
-      ? displayTickRate.value
-      : displaySnapshotRate.value;
-  const sec = 1 / (sps * ratio);
-  return `~1 fullsnap every ${+sec.toPrecision(2)}s`;
-}
+const serverControlBarModel = computed<GameCanvasServerControlBarModel>(() => ({
+  isReadonly: serverBarReadonly.value,
+  barStyle: serverBarVars.value,
+  displayServerTime: displayServerTime.value,
+  displayServerIp: displayServerIp.value,
+  displayTargetTickRate: displayTargetTickRate.value,
+  displayTickRate: displayTickRate.value,
+  serverTiltEmaMode: serverTiltEmaMode.value,
+  displayServerTpsAvg: displayServerTpsAvg.value,
+  displayServerTpsWorst: displayServerTpsWorst.value,
+  displayServerCpuAvg: displayServerCpuAvg.value,
+  displayServerCpuHi: displayServerCpuHi.value,
+  displaySnapshotRate: displaySnapshotRate.value,
+  displayKeyframeRatio: displayKeyframeRatio.value,
+  serverSimQuality: serverSimQuality.value,
+  serverAnySolo: serverAnySolo.value,
+  serverSignalStates: serverSignalStates.value,
+  effectiveSimQuality: effectiveSimQuality.value,
+  resetServerDefaults,
+  setTickRateValue,
+  setTiltEmaModeValue,
+  setNetworkUpdateRate,
+  setKeyframeRatioValue,
+  setSimQualityValue,
+  cycleServerSignal,
+}));
+
+const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
+  barStyle: clientBarVars.value,
+  playerClientEnabled: playerClientEnabled.value,
+  displayedClientTime: displayedClientTime.value,
+  displayedClientIp: displayedClientIp.value,
+  gridOverlay: gridOverlay.value,
+  waypointDetail: waypointDetail.value,
+  logicMsAvg: logicMsAvg.value,
+  logicMsHi: logicMsHi.value,
+  renderMsAvg: renderMsAvg.value,
+  renderMsHi: renderMsHi.value,
+  displayGpuMs: displayGpuMs.value,
+  gpuSourceLabel: gpuSourceLabel.value,
+  gpuTimerSupported: gpuTimerSupported.value,
+  frameMsAvg: frameMsAvg.value,
+  frameMsHi: frameMsHi.value,
+  longtaskSupported: longtaskSupported.value,
+  longtaskMsPerSec: longtaskMsPerSec.value,
+  renderTpsAvg: renderTpsAvg.value,
+  renderTpsWorst: renderTpsWorst.value,
+  currentZoom: currentZoom.value,
+  snapAvgRate: snapAvgRate.value,
+  snapWorstRate: snapWorstRate.value,
+  displaySnapshotRate: displaySnapshotRate.value,
+  fullSnapAvgRate: fullSnapAvgRate.value,
+  fullSnapWorstRate: fullSnapWorstRate.value,
+  fullSnapBarTarget: fullSnapBarTarget.value,
+  audioSmoothing: audioSmoothing.value,
+  groundMarks: groundMarks.value,
+  beamSnapToBarrel: beamSnapToBarrel.value,
+  driftMode: driftMode.value,
+  clientTiltEmaMode: clientTiltEmaMode.value,
+  allPanActive: allPanActive.value,
+  dragPanEnabled: dragPanEnabled.value,
+  edgeScrollEnabled: edgeScrollEnabled.value,
+  graphicsQuality: graphicsQuality.value,
+  effectiveQuality: effectiveQuality.value,
+  clientAnySolo: clientAnySolo.value,
+  clientSignalStates: clientSignalStates.value,
+  showServerControls: showServerControls.value,
+  baseLodMode: baseLodMode.value,
+  lodShellRings: lodShellRings.value,
+  lodGridBorders: lodGridBorders.value,
+  triangleDebug: triangleDebug.value,
+  buildGridDebug: buildGridDebug.value,
+  renderMode: renderMode.value,
+  audioScope: audioScope.value,
+  allSoundsActive: allSoundsActive.value,
+  soundToggles,
+  sfxCategories: SFX_CATEGORIES,
+  soundLabels: SOUND_LABELS,
+  soundTooltips: SOUND_TOOLTIPS,
+  allRangesActive: allRangesActive.value,
+  rangeToggles,
+  allProjRangesActive: allProjRangesActive.value,
+  projRangeToggles,
+  allUnitRadiiActive: allUnitRadiiActive.value,
+  unitRadiusToggles,
+  legsRadiusToggle: legsRadiusToggle.value,
+  cameraFovDegrees: cameraFovDegrees.value,
+  cameraSmoothMode: cameraSmoothMode.value,
+  resetClientDefaults,
+  togglePlayerClientEnabled,
+  changeGridOverlay,
+  changeWaypointDetail,
+  toggleAudioSmoothing,
+  toggleGroundMarks,
+  toggleBeamSnapToBarrel,
+  changeDriftMode,
+  changeClientTiltEmaMode,
+  toggleAllPan,
+  toggleDragPan,
+  toggleEdgeScroll,
+  changeGraphicsQuality,
+  cycleClientSignal,
+  toggleBaseLodMode,
+  toggleLodShellRings,
+  toggleLodGridBorders,
+  toggleTriangleDebug,
+  toggleBuildGridDebug,
+  changeRenderMode,
+  changeAudioScope,
+  toggleAllSounds,
+  toggleSoundCategory,
+  toggleAllRanges,
+  toggleRange,
+  toggleAllProjRanges,
+  toggleProjRange,
+  toggleAllUnitRadii,
+  toggleUnitRadius,
+  toggleLegsRadius,
+  changeCameraFovDegrees,
+  setCameraMode,
+}));
 
 </script>
 
@@ -815,1093 +937,15 @@ function secPerFullsnap(ratio: number): string {
       </button>
 
       <div v-show="isMobile || !bottomBarsCollapsed" class="bottom-controls">
-        <!-- BATTLE CONTROLS — DEMO BATTLE only. The REAL BATTLE bar
-             was retired: every config item it carried (UNITS, CAP,
-             CENTER/DIVIDERS/PERIMETER, FF, SYSTEM) is now decided in
-             the GAME LOBBY before the real battle starts and is locked
-             in once the host clicks Start. The lobby modal carries
-             matching controls; this bar stays clickable any time during
-             the demo battle. `currentBattleMode === 'real'` covers both
-             the lobby preview (modal already covers the bar) and the
-             live real battle (bar simply hidden). -->
-        <div
+        <GameCanvasBattleControlBar
           v-if="showServerControls && currentBattleMode === 'demo'"
-          class="control-bar"
-          :class="{ 'bar-readonly': serverBarReadonly }"
-          :style="battleBarVars"
-        >
-        <div class="bar-info">
-          <BarButton
-            :active="true"
-            class="bar-label"
-            title="Click to reset battle settings to defaults"
-            @click="resetDemoDefaults"
-          >
-            <span class="bar-label-text">{{ battleLabel }}</span
-            ><span class="bar-label-hover">DEFAULTS</span>
-          </BarButton>
-        </div>
-        <div class="bar-controls">
-          <BarControlGroup>
-            <BarDivider />
-            <span class="time-display" title="Battle elapsed time">{{
-              battleElapsed
-            }}</span>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>UNITS:</BarLabel>
-            <BarButton
-              :active="allDemoUnitsActive"
-              title="Toggle all unit types on/off"
-              @click="toggleAllDemoUnits"
-            >ALL</BarButton>
-            <BarButtonGroup>
-              <BarButton
-                v-for="ut in demoUnitTypes"
-                :key="ut"
-                :active="currentAllowedUnits.includes(ut)"
-                :title="`Toggle ${ut} units in demo battle`"
-                @click="toggleDemoUnitType(ut)"
-              >{{ getUnitDisplayShortName(ut) }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>CAP:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in BATTLE_CONFIG.cap.options"
-                :key="opt"
-                :active="displayUnitCap === opt"
-                :title="`Max ${opt} total units`"
-                @click="changeMaxTotalUnits(opt)"
-              >{{ opt.toLocaleString() }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <!-- CENTER / DIVIDERS only in DEMO BATTLE — terrain is baked
-               into the heightmap at game construction, so changing it
-               mid-real-battle would desync against the rendered tile
-               mesh. Lobby modal owns the SAME components for these
-               controls (BarControlGroup + BarButtonGroup + BarButton),
-               so the bottom-bar's pre-game terrain pickers and the
-               GAME LOBBY's pre-game terrain pickers render from one
-               component tree — single source of truth. -->
-          <BarControlGroup v-if="!gameStarted">
-            <BarDivider />
-            <BarLabel>WIDTH:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in BATTLE_CONFIG.mapSize.width.options"
-                :key="opt.label"
-                :active="mapWidthLandCells === opt.valueLandCells"
-                :title="`Set map width to ${opt.label} land cells`"
-                @click="applyMapLandDimensions({ widthLandCells: opt.valueLandCells, lengthLandCells: mapLengthLandCells })"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup v-if="!gameStarted">
-            <BarDivider />
-            <BarLabel>LENGTH:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in BATTLE_CONFIG.mapSize.length.options"
-                :key="opt.label"
-                :active="mapLengthLandCells === opt.valueLandCells"
-                :title="`Set map length to ${opt.label} land cells`"
-                @click="applyMapLandDimensions({ widthLandCells: mapWidthLandCells, lengthLandCells: opt.valueLandCells })"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup v-if="!gameStarted">
-            <BarDivider />
-            <BarLabel>CENTER:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in BATTLE_CONFIG.center.options"
-                :key="opt.value"
-                :active="terrainCenter === opt.value"
-                :title="`Set the central ripple to ${opt.label.toLowerCase()}`"
-                @click="applyTerrainShape('center', opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup v-if="!gameStarted">
-            <BarDivider />
-            <BarLabel>DIVIDERS:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in BATTLE_CONFIG.dividers.options"
-                :key="opt.value"
-                :active="terrainDividers === opt.value"
-                :title="`Set the team-separator ridges to ${opt.label.toLowerCase()}`"
-                @click="applyTerrainShape('dividers', opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup v-if="!gameStarted">
-            <BarDivider />
-            <BarLabel>PERIMETER:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in BATTLE_CONFIG.mapShape.options"
-                :key="opt.value"
-                :active="terrainMapShape === opt.value"
-                :title="`Set the map perimeter to ${opt.label.toLowerCase()}`"
-                @click="applyTerrainMapShape(opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Total units alive / unit cap">UNITS:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ displayUnitCount }}</span>
-                  <span class="fps-label">/ {{ displayUnitCap }}</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="statBarStyle(displayUnitCount, displayUnitCap)"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>SYSTEM:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                :active="currentMirrorsEnabled"
-                title="Enable mirror turrets and laser/beam reflections"
-                @click="setMirrorsEnabled(!currentMirrorsEnabled)"
-              >MIRROR</BarButton>
-              <BarButton
-                :active="currentForceFieldsEnabled"
-                title="Enable force-field turrets, force-field simulation, and force-field rendering"
-                @click="setForceFieldsEnabled(!currentForceFieldsEnabled)"
-              >FIELD</BarButton>
-            </BarButtonGroup>
-            <BarDivider />
-          </BarControlGroup>
-        </div>
-      </div>
-
-      <!-- SERVER CONTROLS (visible when we own a server or receive server meta) -->
-      <div
-        v-if="showServerControls"
-        class="control-bar"
-        :class="{ 'bar-readonly': serverBarReadonly }"
-        :style="serverBarVars"
-      >
-        <div class="bar-info">
-          <BarButton
-            :active="true"
-            class="bar-label"
-            title="Click to reset server settings to defaults"
-            @click="resetServerDefaults"
-          >
-            <span class="bar-label-text">HOST SERVER</span
-            ><span class="bar-label-hover">DEFAULTS</span>
-          </BarButton>
-        </div>
-        <div class="bar-controls">
-          <BarControlGroup v-if="displayServerTime">
-            <BarDivider />
-            <span
-              class="time-display"
-              title="Server wall-clock time"
-              >{{ displayServerTime }}</span
-            >
-          </BarControlGroup>
-          <BarControlGroup v-if="displayServerIp">
-            <BarDivider />
-            <span
-              class="ip-display"
-              title="Server IP address"
-              >{{ displayServerIp }}</span
-            >
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>TARGET TPS:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="rate in SERVER_CONFIG.tickRate.options"
-                :key="rate"
-                :active="displayTargetTickRate === rate"
-                :active-level="displayTickRate === rate && displayTargetTickRate !== rate"
-                :title="`Target ${rate} simulation ticks per second. Effective TPS cap is currently ${displayTickRate}.`"
-                @click="setTickRateValue(rate)"
-              >{{ rate }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Per-unit chassis-tilt EMA. SNAP = no smoothing (raw triangle-jump), FAST/MED/SLOW progressively heavier blending. Drives the sim's updateUnitTilt half-life.">TILT EMA:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="mode in SERVER_CONFIG.tiltEma.options"
-                :key="mode"
-                :active="serverTiltEmaMode === mode"
-                :title="`Set chassis-tilt EMA to ${TILT_EMA_LABEL[mode]}.`"
-                @click="setTiltEmaModeValue(mode)"
-              >{{ TILT_EMA_LABEL[mode] }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Server simulation ticks per second">S-TPS:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(displayServerTpsAvg) }}</span>
-                  <span class="fps-label">avg</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="
-                      statBarStyle(displayServerTpsAvg, GOOD_TPS, serverBarReadonly)
-                    "
-                  ></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{
-                    fmt4(displayServerTpsWorst)
-                  }}</span>
-                  <span class="fps-label">low</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="
-                      statBarStyle(displayServerTpsWorst, GOOD_TPS, serverBarReadonly)
-                    "
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <!--
-            Host CPU load: how much of each tick's budget (1000 / tickRate
-            ms) the sim actually spent working. Ticked here as avg + hi,
-            same semantics as the client CPU/GPU bars. >100 means the host
-            is falling behind the target TPS.
-          -->
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Host CPU load — simulation tick time as a percent of the target tick budget. >100% means the host is falling behind.">CPU:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(displayServerCpuAvg) }}%</span>
-                  <span class="fps-label">avg</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="msBarStyle(displayServerCpuAvg, 100)"
-                  ></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(displayServerCpuHi) }}%</span>
-                  <span class="fps-label">hi</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="msBarStyle(displayServerCpuHi, 100)"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>TARGET SPS:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="rate in SERVER_CONFIG.snapshot.options"
-                :key="String(rate)"
-                :active="displaySnapshotRate === rate"
-                :title="`Cap snapshots at ${rate === 'none' ? 'no limit (every tick)' : rate + '/sec'}`"
-                @click="setNetworkUpdateRate(rate)"
-              >{{ rate === 'none' ? 'NONE' : (rate as number) }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>FULLSNAP:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in SERVER_CONFIG.keyframe.options"
-                :key="String(opt)"
-                :active="displayKeyframeRatio === opt"
-                :title="
-                  opt === 'ALL'
-                    ? 'Every snapshot is a full keyframe'
-                    : opt === 'NONE'
-                      ? 'Never send full keyframes (delta only)'
-                      : secPerFullsnap(opt as number)
-                "
-                @click="setKeyframeRatioValue(opt)"
-              >{{
-                opt === 'ALL'
-                  ? 'ALL'
-                  : opt === 'NONE'
-                    ? 'NONE'
-                    : `1e-${Math.round(-Math.log10(opt as number))}`
-              }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>LOD:</BarLabel>
-            <BarButton
-              :active="serverSimQuality === 'auto' && !serverAnySolo"
-              :active-level="serverSimQuality === 'auto' && serverAnySolo"
-              title="Auto-adjust sim throttling (lowest of TPS, CPU, units)"
-              @click="setSimQualityValue('auto')"
-            >AUTO</BarButton>
-            <BarButtonGroup>
-              <BarButton
-                v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.tps"
-                :active="serverSimQuality === 'auto' && serverSignalStates.tps === 'solo'"
-                :active-level="
-                  serverSimQuality === 'auto'
-                    && serverSignalStates.tps === 'active'
-                    && !serverAnySolo
-                "
-                :title="`Server TPS signal — click to cycle off / active / solo. Currently ${serverSignalStates.tps}.`"
-                @click="cycleServerSignal('tps')"
-              >TPS</BarButton>
-              <BarButton
-                v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.cpu"
-                :active="serverSimQuality === 'auto' && serverSignalStates.cpu === 'solo'"
-                :active-level="
-                  serverSimQuality === 'auto'
-                    && serverSignalStates.cpu === 'active'
-                    && !serverAnySolo
-                "
-                :title="`Host CPU load signal — click to cycle off / active / solo. Currently ${serverSignalStates.cpu}.`"
-                @click="cycleServerSignal('cpu')"
-              >CPU</BarButton>
-              <BarButton
-                v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.units"
-                :active="serverSimQuality === 'auto' && serverSignalStates.units === 'solo'"
-                :active-level="
-                  serverSimQuality === 'auto'
-                    && serverSignalStates.units === 'active'
-                    && !serverAnySolo
-                "
-                :title="`World fullness signal — click to cycle off / active / solo. Currently ${serverSignalStates.units}.`"
-                @click="cycleServerSignal('units')"
-              >UNITS</BarButton>
-            </BarButtonGroup>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in CLIENT_CONFIG.graphics.options"
-                :key="opt.value"
-                :active="serverSimQuality === opt.value"
-                :active-level="
-                  effectiveSimQuality === opt.value &&
-                  serverSimQuality !== opt.value
-                "
-                :title="`Lock sim throttling to ${opt.value} tier`"
-                @click="setSimQualityValue(opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-            <BarDivider />
-          </BarControlGroup>
-        </div>
-      </div>
-
-      <!-- CLIENT CONTROLS (always visible) -->
-      <div class="control-bar" :style="clientBarVars">
-        <div class="bar-info">
-          <BarButton
-            :active="true"
-            class="bar-label"
-            title="Click to reset client settings to defaults"
-            @click="resetClientDefaults"
-          >
-            <span class="bar-label-text">PLAYER CLIENT</span
-            ><span class="bar-label-hover">DEFAULTS</span>
-          </BarButton>
-          <BarButton
-            :active="playerClientEnabled"
-            class="client-power-button"
-            :title="playerClientEnabled ? 'Turn PLAYER CLIENT game rendering off' : 'Turn PLAYER CLIENT game rendering on'"
-            @click="togglePlayerClientEnabled"
-          >{{ playerClientEnabled ? 'ON' : 'OFF' }}</BarButton>
-        </div>
-        <div class="bar-controls">
-          <BarControlGroup v-if="displayedClientTime">
-            <BarDivider />
-            <span
-              class="time-display"
-              title="Host-propagated client wall-clock time"
-              >{{ displayedClientTime }}</span
-            >
-          </BarControlGroup>
-          <BarControlGroup v-if="displayedClientIp">
-            <BarDivider />
-            <span
-              class="ip-display"
-              title="Host-propagated public IP address"
-              >{{ displayedClientIp }}</span
-            >
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>GRID:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in CLIENT_CONFIG.gridOverlay.options"
-                :key="opt.value"
-                :active="gridOverlay === opt.value"
-                title="Territory capture overlay intensity"
-                @click="changeGridOverlay(opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>WAYPOINTS:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in CLIENT_CONFIG.waypointDetail.options"
-                :key="opt.value"
-                :active="waypointDetail === opt.value"
-                title="Waypoint visualization — SIMPLE shows only your click points; DETAILED shows the planner's intermediates too"
-                @click="changeWaypointDetail(opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <!--
-            Bottleneck-first ordering: CPU (sim/update work) then GPU (real
-            execution time if the EXT_disjoint_timer_query_webgl2 extension
-            is available, otherwise renderer.render() wall-clock), then
-            FRAME (total), then LONG (main-thread blocks ≥50 ms from the
-            Longtask API). Raw ms throughout — no arbitrary 100%.
-          -->
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Client CPU — simulation prediction, input, HUD updates. Raw logicMs avg/hi in milliseconds per frame.">CPU:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(logicMsAvg) }}</span>
-                  <span class="fps-label">avg</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(logicMsAvg)"></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(logicMsHi) }}</span>
-                  <span class="fps-label">hi</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(logicMsHi)"></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel :title="`Client GPU — source: ${gpuSourceLabel}. Raw renderMs avg/hi ${fmt4(renderMsAvg)} / ${fmt4(renderMsHi)} ms. Timer-query (when supported) shows the actual GPU-side execution time in milliseconds; otherwise shows renderer.render() wall-clock which is mostly CPU draw-call submission.`">GPU:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(displayGpuMs) }}</span>
-                  <span class="fps-label">
-                    {{ gpuTimerSupported ? 'hw' : 'cpu' }}
-                  </span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(displayGpuMs)"></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(renderMsHi) }}</span>
-                  <span class="fps-label">hi</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(renderMsHi)"></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Total frame time — CPU + GPU wall-clock per frame (ms)">FRAME:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(frameMsAvg) }}</span>
-                  <span class="fps-label">avg</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(frameMsAvg)"></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(frameMsHi) }}</span>
-                  <span class="fps-label">hi</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div class="stat-bar-fill" :style="msBarStyle(frameMsHi)"></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <BarControlGroup v-if="longtaskSupported">
-            <BarDivider />
-            <!--
-              Longtask API: any single main-thread task ≥50 ms counts. This
-              shows how many ms per second of wall-clock time were "lost"
-              to those long tasks — a direct CPU-saturation indicator that
-              complements CPU ms (which can't distinguish sustained heavy
-              work from a single giant stall). Scaled to 200 ms/sec = red
-              (20% of wall-clock blocked).
-            -->
-            <BarLabel title="Long-task blocked time from PerformanceObserver — ms per second of wall-clock time lost to main-thread tasks ≥50 ms. 0 = smooth; 200+ = heavy main-thread contention. Not available in Safari.">LONG:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(longtaskMsPerSec) }}</span>
-                  <span class="fps-label">ms/s</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="msBarStyle(longtaskMsPerSec, 200)"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="PLAYER CLIENT update-loop ticks per second. This includes prediction/input/render prep cadence and is the client-side TPS signal for LOD.">R-TPS:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(renderTpsAvg) }}</span>
-                  <span class="fps-label">avg</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="statBarStyle(renderTpsAvg, GOOD_TPS)"
-                  ></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(renderTpsWorst) }}</span>
-                  <span class="fps-label">low</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="statBarStyle(renderTpsWorst, GOOD_TPS)"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <div class="fps-stats">
-              <BarLabel title="Camera altitude (world units, distance from the ground plane). Smaller = closer to surface. Wheel clamp rides on altitude too — at the floor / ceiling you're at the actual physical limit, no more 'stuck' states.">ZOOM:</BarLabel>
-              <span class="fps-value">{{ fmt4(currentZoom) }}</span>
-            </div>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Snapshots received per second from server">SPS:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(snapAvgRate) }}</span>
-                  <span class="fps-label">avg</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="
-                      statBarStyle(
-                        snapAvgRate,
-                        displaySnapshotRate === 'none'
-                          ? 60
-                          : displaySnapshotRate,
-                      )
-                    "
-                  ></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(snapWorstRate) }}</span>
-                  <span class="fps-label">low</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="
-                      statBarStyle(
-                        snapWorstRate,
-                        displaySnapshotRate === 'none'
-                          ? 60
-                          : displaySnapshotRate,
-                      )
-                    "
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <!-- FSPS — full snapshots per second. Counts only keyframes
-               (state.isDelta === false). The bar is scaled by the host's
-               configured keyframeRatio × snapshotRate so a healthy
-               host fills the bar. A high reading means the protocol
-               is re-seeding statics often (catch-up cheap, late-joiner
-               friendly); a low reading saves bandwidth at the cost of
-               longer recovery if a delta gets lost. -->
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Full keyframe snapshots received per second (state.isDelta === false). Driven by the host's keyframe ratio.">FSPS:</BarLabel>
-            <div class="stat-bar-group">
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(fullSnapAvgRate) }}</span>
-                  <span class="fps-label">avg</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="statBarStyle(fullSnapAvgRate, fullSnapBarTarget)"
-                  ></div>
-                </div>
-              </div>
-              <div class="stat-bar">
-                <div class="stat-bar-top">
-                  <span class="fps-value">{{ fmt4(fullSnapWorstRate) }}</span>
-                  <span class="fps-label">low</span>
-                </div>
-                <div class="stat-bar-track">
-                  <div
-                    class="stat-bar-fill"
-                    :style="statBarStyle(fullSnapWorstRate, fullSnapBarTarget)"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>EVENTS:</BarLabel>
-            <BarButton
-              :active="audioSmoothing"
-              title="Smooth one-shot events and turret projectile spawns across snapshot intervals"
-              @click="toggleAudioSmoothing"
-            >SMOOTH</BarButton>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>MARKS:</BarLabel>
-            <BarButton
-              :active="groundMarks"
-              title="Draw all ground marks: beam/laser scorches plus wheel, tread, and footstep prints"
-              @click="toggleGroundMarks"
-            >ALL</BarButton>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>BEAMS:</BarLabel>
-            <BarButton
-              :active="beamSnapToBarrel"
-              title="Snap beam origins to live rendered barrel tips"
-              @click="toggleBeamSnapToBarrel"
-            >BARREL</BarButton>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>DRIFT:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                :active="driftMode === 'snap'"
-                title="Snap instantly to new server state"
-                @click="changeDriftMode('snap')"
-              >SNAP</BarButton>
-              <BarButton
-                :active="driftMode === 'fast'"
-                title="Fast interpolation to server state"
-                @click="changeDriftMode('fast')"
-              >FAST</BarButton>
-              <BarButton
-                :active="driftMode === 'mid'"
-                title="Medium interpolation to server state"
-                @click="changeDriftMode('mid')"
-              >MID</BarButton>
-              <BarButton
-                :active="driftMode === 'slow'"
-                title="Slow interpolation to server state"
-                @click="changeDriftMode('slow')"
-              >SLOW</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Per-frame chassis-tilt EMA on the client. Layered on top of the HOST SERVER TILT EMA — sim smooths first, then this knob smooths further at render cadence.">TILT EMA:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in CLIENT_CONFIG.tiltEma.options"
-                :key="opt.value"
-                :active="clientTiltEmaMode === opt.value"
-                :title="`Set client-side chassis-tilt EMA to ${opt.label}.`"
-                @click="changeClientTiltEmaMode(opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>PAN:</BarLabel>
-            <BarButton
-              :active="allPanActive"
-              title="Toggle all camera pan methods on/off"
-              @click="toggleAllPan"
-            >ALL</BarButton>
-            <BarButtonGroup>
-              <BarButton
-                :active="dragPanEnabled"
-                title="Middle-click drag to pan camera"
-                @click="toggleDragPan"
-              >DRAG</BarButton>
-              <BarButton
-                :active="edgeScrollEnabled"
-                title="Edge scroll — move camera when mouse near viewport border"
-                @click="toggleEdgeScroll"
-              >EDGE</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>LOD:</BarLabel>
-            <BarButton
-              :active="graphicsQuality === 'auto' && !clientAnySolo"
-              :active-level="graphicsQuality === 'auto' && clientAnySolo"
-              title="Auto-adjust graphics quality from the lowest active client signal"
-              @click="changeGraphicsQuality('auto')"
-            >AUTO</BarButton>
-            <BarButtonGroup>
-              <BarButton
-                v-if="LOD_SIGNALS_ENABLED.zoom"
-                :active="graphicsQuality === 'auto' && clientSignalStates.zoom === 'solo'"
-                :active-level="
-                  graphicsQuality === 'auto'
-                    && clientSignalStates.zoom === 'active'
-                    && !clientAnySolo
-                "
-                :title="`Zoom signal — click to cycle off / active / solo. Currently ${clientSignalStates.zoom}.`"
-                @click="cycleClientSignal('zoom')"
-              >ZOOM</BarButton>
-              <BarButton
-                v-if="LOD_SIGNALS_ENABLED.serverTps"
-                :active="graphicsQuality === 'auto' && clientSignalStates.serverTps === 'solo'"
-                :active-level="
-                  graphicsQuality === 'auto'
-                    && clientSignalStates.serverTps === 'active'
-                    && !clientAnySolo
-                    && showServerControls
-                "
-                :title="`Server TPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.serverTps}.`"
-                @click="cycleClientSignal('serverTps')"
-              >S-TPS</BarButton>
-              <BarButton
-                v-if="LOD_SIGNALS_ENABLED.renderTps"
-                :active="graphicsQuality === 'auto' && clientSignalStates.renderTps === 'solo'"
-                :active-level="
-                  graphicsQuality === 'auto'
-                    && clientSignalStates.renderTps === 'active'
-                    && !clientAnySolo
-                "
-                :title="`Render TPS signal — click to cycle off / active / solo. Currently ${clientSignalStates.renderTps}.`"
-                @click="cycleClientSignal('renderTps')"
-              >R-TPS</BarButton>
-              <BarButton
-                v-if="LOD_SIGNALS_ENABLED.units"
-                :active="graphicsQuality === 'auto' && clientSignalStates.units === 'solo'"
-                :active-level="
-                  graphicsQuality === 'auto'
-                    && clientSignalStates.units === 'active'
-                    && !clientAnySolo
-                "
-                :title="`World fullness signal — click to cycle off / active / solo. Currently ${clientSignalStates.units}.`"
-                @click="cycleClientSignal('units')"
-              >UNITS</BarButton>
-            </BarButtonGroup>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in CLIENT_CONFIG.graphics.options"
-                :key="opt.value"
-                :active="graphicsQuality === opt.value"
-                :active-level="
-                  effectiveQuality === opt.value &&
-                  graphicsQuality !== opt.value
-                "
-                :title="`${opt.value} graphics quality`"
-                @click="changeGraphicsQuality(opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-            <BarButton
-              :active="baseLodMode"
-              title="BASE — when ON, the chosen MIN/LOW/MED/HI/MAX tier applies UNIFORMLY to every entity (camera-sphere distance resolution disabled). When OFF, tiers cap a per-entity object-tier resolved from camera distance, so close units render richer than far units."
-              @click="toggleBaseLodMode"
-            >BASE</BarButton>
-            <BarButton
-              :active="lodShellRings"
-              title="Show object-LOD shell intersections on the terrain around the camera"
-              @click="toggleLodShellRings"
-            >RINGS</BarButton>
-            <BarButton
-              :active="lodGridBorders"
-              title="Show object-LOD spatial grid tiles as 2D ground-plane outlines"
-              @click="toggleLodGridBorders"
-            >CELLS</BarButton>
-            <BarButton
-              :active="triangleDebug"
-              title="TRIS — debug-color every terrain/mana mesh triangle so triangle reduction and flat-tile optimization are visually obvious"
-              @click="toggleTriangleDebug"
-            >TRIS</BarButton>
-            <BarButton
-              :active="buildGridDebug"
-              title="BUILD — show every fine build-placement cell using the same green/red/blue colors as the building ghost"
-              @click="toggleBuildGridDebug"
-            >BUILD</BarButton>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>RENDER:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in CLIENT_CONFIG.render.options"
-                :key="opt.value"
-                :active="renderMode === opt.value"
-                :title="
-                  opt.value === 'window'
-                    ? 'Render only visible window'
-                    : opt.value === 'padded'
-                      ? 'Render window plus padding'
-                      : 'Render entire map'
-                "
-                @click="changeRenderMode(opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>AUDIO:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in CLIENT_CONFIG.audio.options"
-                :key="opt.value"
-                :active="audioScope === opt.value"
-                :title="
-                  opt.value === 'window'
-                    ? 'Play audio from visible area'
-                    : opt.value === 'padded'
-                      ? 'Play audio from visible area plus padding'
-                      : 'Play audio from entire map'
-                "
-                @click="changeAudioScope(opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>SOUNDS:</BarLabel>
-            <BarButton
-              :active="allSoundsActive"
-              title="Toggle all sound categories on/off"
-              @click="toggleAllSounds"
-            >ALL</BarButton>
-            <BarButtonGroup>
-              <BarButton
-                v-for="cat in SFX_CATEGORIES"
-                :key="cat"
-                :active="soundToggles[cat]"
-                :title="SOUND_TOOLTIPS[cat]"
-                @click="toggleSoundCategory(cat)"
-              >{{ SOUND_LABELS[cat] }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>MUSIC:</BarLabel>
-            <BarButton
-              :active="soundToggles.music"
-              :title="SOUND_TOOLTIPS.music"
-              @click="toggleSoundCategory('music')"
-            >{{ soundToggles.music ? 'ON' : 'OFF' }}</BarButton>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>TURR CIR:</BarLabel>
-            <BarButton
-              :active="allRangesActive"
-              title="Toggle every 2D turret/build circle viz on/off"
-              @click="toggleAllRanges"
-            >ALL</BarButton>
-            <BarButtonGroup>
-              <BarButton
-                :active="rangeToggles.trackAcquire"
-                title="Show tracking acquire circle (2D ground-plane start tracking target range)"
-                @click="toggleRange('trackAcquire')"
-              >T.A</BarButton>
-              <BarButton
-                :active="rangeToggles.trackRelease"
-                title="Show tracking release circle (2D ground-plane lose target range)"
-                @click="toggleRange('trackRelease')"
-              >T.R</BarButton>
-              <BarButton
-                :active="rangeToggles.engageAcquire"
-                title="Show engage acquire circle (2D ground-plane start firing range)"
-                @click="toggleRange('engageAcquire')"
-              >E.A</BarButton>
-              <BarButton
-                :active="rangeToggles.engageRelease"
-                title="Show engage release circle (2D ground-plane stop firing range)"
-                @click="toggleRange('engageRelease')"
-              >E.R</BarButton>
-              <BarButton
-                :active="rangeToggles.engageMinAcquire"
-                title="Show minimum engage acquire circle (2D inner dead-zone start firing boundary)"
-                @click="toggleRange('engageMinAcquire')"
-              >M.A</BarButton>
-              <BarButton
-                :active="rangeToggles.engageMinRelease"
-                title="Show minimum engage release circle (2D inner dead-zone stop firing boundary)"
-                @click="toggleRange('engageMinRelease')"
-              >M.R</BarButton>
-              <BarButton
-                :active="rangeToggles.build"
-                title="Show build circle (2D ground-plane builder range)"
-                @click="toggleRange('build')"
-              >BLD</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>SHOT SPH:</BarLabel>
-            <BarButton
-              :active="allProjRangesActive"
-              title="Toggle every 3D projectile sphere viz on/off"
-              @click="toggleAllProjRanges"
-            >ALL</BarButton>
-            <BarButtonGroup>
-              <BarButton
-                :active="projRangeToggles.collision"
-                title="Show projectile collision sphere (3D hit volume)"
-                @click="toggleProjRange('collision')"
-              >COL</BarButton>
-              <BarButton
-                :active="projRangeToggles.explosion"
-                title="Show projectile explosion sphere (3D splash volume)"
-                @click="toggleProjRange('explosion')"
-              >EXP</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>UNIT SPH:</BarLabel>
-            <BarButton
-              :active="allUnitRadiiActive"
-              title="Toggle every 3D unit sphere viz on/off"
-              @click="toggleAllUnitRadii"
-            >ALL</BarButton>
-            <BarButtonGroup>
-              <BarButton
-                :active="unitRadiusToggles.visual"
-                title="Show unit body sphere (unit.radius.body — visible chassis size)"
-                @click="toggleUnitRadius('visual')"
-              >BODY</BarButton>
-              <BarButton
-                :active="unitRadiusToggles.shot"
-                title="Show unit shot sphere (radius.shot — projectile/beam hit detection)"
-                @click="toggleUnitRadius('shot')"
-              >SHOT</BarButton>
-              <BarButton
-                :active="unitRadiusToggles.push"
-                title="Show unit push sphere (radius.push — unit-unit push physics, ground-click selection fallback)"
-                @click="toggleUnitRadius('push')"
-              >PUSH</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>LEGS:</BarLabel>
-            <BarButton
-              :active="legsRadiusToggle"
-              title="Show each leg's rest circle (chassis-local — the foot wanders inside this radius before snapping to the opposite edge)"
-              @click="toggleLegsRadius"
-            >RAD</BarButton>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel title="Main 3D camera vertical field-of-view in degrees. Lower is narrower/telephoto; higher is wider-angle.">FOV:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="opt in CLIENT_CONFIG.cameraFov.options"
-                :key="opt.value"
-                :active="cameraFovDegrees === opt.value"
-                :title="`Set camera field-of-view to ${opt.value} degrees`"
-                @click="changeCameraFovDegrees(opt.value)"
-              >{{ opt.label }}</BarButton>
-            </BarButtonGroup>
-          </BarControlGroup>
-          <BarControlGroup>
-            <BarDivider />
-            <BarLabel>CAMERA:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                :active="cameraSmoothMode === 'snap'"
-                title="Zoom and pan apply instantly — original behavior, no animation"
-                @click="setCameraMode('snap')"
-              >SNAP</BarButton>
-              <BarButton
-                :active="cameraSmoothMode === 'fast'"
-                title="Zoom and pan ease with EMA τ ≈ 50 ms — quick settle"
-                @click="setCameraMode('fast')"
-              >FAST</BarButton>
-              <BarButton
-                :active="cameraSmoothMode === 'mid'"
-                title="Zoom and pan ease with EMA τ ≈ 120 ms — default-feeling smoothness"
-                @click="setCameraMode('mid')"
-              >MID</BarButton>
-              <BarButton
-                :active="cameraSmoothMode === 'slow'"
-                title="Zoom and pan ease with EMA τ ≈ 400 ms — deliberate, weighty feel"
-                @click="setCameraMode('slow')"
-              >SLOW</BarButton>
-            </BarButtonGroup>
-            <BarDivider />
-          </BarControlGroup>
-        </div>
-        </div>
+          :model="battleControlBarModel"
+        />
+        <GameCanvasServerControlBar
+          v-if="showServerControls"
+          :model="serverControlBarModel"
+        />
+        <GameCanvasClientControlBar :model="clientControlBarModel" />
       </div>
 
     </div>
@@ -2174,175 +1218,4 @@ function secPerFullsnap(ratio: number): string {
   display: block;
 }
 
-.control-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  background: var(--bar-bg);
-  border: 1px solid #444;
-  border-radius: 0;
-  font-family: monospace;
-  pointer-events: auto;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Mobile: stack title above options */
-@media (pointer: coarse) {
-  .control-bar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 4px;
-    padding: 4px 8px;
-  }
-  .control-bar > .bar-info {
-    flex-direction: row;
-    justify-content: center;
-  }
-  .control-bar > .bar-controls {
-    justify-content: center;
-  }
-}
-
-.control-bar:not(:last-child) {
-  border-bottom: none;
-}
-
-.bar-info {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.bar-controls {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  flex: 1;
-}
-
-.bar-label {
-  display: inline-grid;
-  font-weight: bold;
-  letter-spacing: 1px;
-  text-align: center;
-  min-width: 105px;
-}
-
-.client-power-button {
-  width: 100%;
-  min-width: 105px;
-  padding-block: 2px;
-}
-
-.bar-label-text,
-.bar-label-hover {
-  grid-area: 1 / 1;
-}
-
-.bar-label-hover {
-  visibility: hidden;
-}
-
-.bar-label:hover .bar-label-text {
-  visibility: hidden;
-}
-
-.bar-label:hover .bar-label-hover {
-  visibility: visible;
-}
-
-/* `.control-group` and `.control-label` rules now live in
- * `src/styles/barControls.css` (single source of truth shared
- * with the GAME LOBBY's BarControlGroup / BarLabel components). */
-
-.fps-stats {
-  display: flex;
-  align-items: baseline;
-  gap: 2px;
-}
-
-.fps-stats .fps-label + .fps-value {
-  margin-left: 4px;
-}
-
-.fps-value {
-  color: #b0b0b0;
-  font-size: 13px;
-  font-weight: bold;
-  font-family: 'Courier New', Courier, monospace;
-  font-variant-numeric: tabular-nums;
-  display: inline-block;
-  width: 4ch;
-  text-align: right;
-}
-
-.fps-label {
-  color: #666;
-  font-size: 9px;
-  text-transform: uppercase;
-}
-
-.stat-bar-group {
-  display: flex;
-  gap: 6px;
-}
-
-.stat-bar {
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-bar-top {
-  display: flex;
-  align-items: baseline;
-  gap: 2px;
-}
-
-.stat-bar-track {
-  height: 3px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 1px;
-  overflow: hidden;
-}
-
-.stat-bar-fill {
-  height: 100%;
-  border-radius: 1px;
-}
-
-.fps-divider {
-  color: #444;
-  margin: 0 6px;
-}
-
-/* `.button-group` and `.control-btn` rules — including the
- * disabled-active fix — now live in `src/styles/barControls.css`.
- * Bottom-bar bare HTML, BarButton/BarButtonGroup components, and
- * the GAME LOBBY all draw from the same source. The bar-specific
- * `.button-group.view-toggle` width override stays here because
- * it's a one-off used by a single bar. */
-.button-group.view-toggle {
-  width: 105px;
-}
-
-.time-display {
-  font-size: 10px;
-  font-family: monospace;
-  color: var(--bar-time, #999);
-  margin-left: 4px;
-  white-space: nowrap;
-}
-
-.ip-display {
-  font-size: 10px;
-  font-family: monospace;
-  color: var(--bar-time, #888);
-  white-space: nowrap;
-}
 </style>

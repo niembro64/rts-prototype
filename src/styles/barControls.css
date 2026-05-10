@@ -179,3 +179,157 @@
   pointer-events: none;
   cursor: default;
 }
+
+.control-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bar-bg);
+  border: 1px solid #444;
+  border-radius: 0;
+  font-family: monospace;
+  pointer-events: auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (pointer: coarse) {
+  .control-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 4px 8px;
+  }
+
+  .control-bar > .bar-info {
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .control-bar > .bar-controls {
+    justify-content: center;
+  }
+}
+
+.control-bar:not(:last-child) {
+  border-bottom: none;
+}
+
+.bar-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.bar-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.bar-label {
+  display: inline-grid;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-align: center;
+  min-width: 105px;
+}
+
+.client-power-button {
+  width: 100%;
+  min-width: 105px;
+  padding-block: 2px;
+}
+
+.bar-label-text,
+.bar-label-hover {
+  grid-area: 1 / 1;
+}
+
+.bar-label-hover {
+  visibility: hidden;
+}
+
+.bar-label:hover .bar-label-text {
+  visibility: hidden;
+}
+
+.bar-label:hover .bar-label-hover {
+  visibility: visible;
+}
+
+.fps-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.fps-stats .fps-label + .fps-value {
+  margin-left: 4px;
+}
+
+.fps-value {
+  color: #b0b0b0;
+  font-size: 13px;
+  font-weight: bold;
+  font-family: 'Courier New', Courier, monospace;
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  width: 4ch;
+  text-align: right;
+}
+
+.fps-label {
+  color: #666;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.stat-bar-group {
+  display: flex;
+  gap: 6px;
+}
+
+.stat-bar {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-bar-top {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.stat-bar-track {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  border-radius: 1px;
+}
+
+.time-display {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--bar-time, #999);
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+.ip-display {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--bar-time, #888);
+  white-space: nowrap;
+}
