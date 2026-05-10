@@ -12,7 +12,7 @@ Please always commit and push before and after any code changes we make. If ther
 1. Move RtsScene3D camera ownership out of
    src/game/scenes/RtsScene3D.ts.
    Evidence:
-   - src/game/scenes/RtsScene3D.ts is still 1915 lines.
+   - src/game/scenes/RtsScene3D.ts is still 1916 lines.
    - src/game/scenes/RtsScene3D.ts still owns camera data while also managing
      renderer lifecycle.
    Impact:
@@ -21,16 +21,15 @@ Please always commit and push before and after any code changes we make. If ther
    - Extract one coherent camera slice that can be tested/reviewed
      independently.
 
-2. Move RtsScene3D renderer update ordering and teardown ownership out of
+2. Move RtsScene3D renderer update ordering out of
    src/game/scenes/RtsScene3D.ts.
    Evidence:
-   - src/game/scenes/RtsScene3D.ts still owns renderer update ordering and
-     teardown, with shutdown around src/game/scenes/RtsScene3D.ts:2017.
+   - src/game/scenes/RtsScene3D.ts still owns renderer update ordering inside
+     its main update loop.
    Impact:
-   - Renderer lifetime rules are hidden inside the scene orchestrator.
+   - Renderer frame-phase rules are hidden inside the scene orchestrator.
    Remedy:
-   - Extract renderer phase coordination and teardown into a focused lifecycle
-     helper.
+   - Extract renderer phase coordination into a focused lifecycle helper.
 
 3. Split src/game/network/stateSerializer.ts by DTO family.
    Evidence:

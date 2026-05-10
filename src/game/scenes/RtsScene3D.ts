@@ -18,6 +18,7 @@ import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { LongtaskTracker } from './helpers/LongtaskTracker';
 import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
+import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
@@ -1862,40 +1863,42 @@ export class RtsScene3D {
    * renderer swap can reuse the same connection across the new scene.
    */
   public shutdown(opts: { keepConnection?: boolean } = {}): void {
-    this.inputManager?.destroy();
+    teardownRtsScene3DRenderers({
+      inputManager: this.inputManager,
+      healthBar3D: this.healthBar3D,
+      nameLabel3D: this.nameLabel3D,
+      waypoint3D: this.waypoint3D,
+      lodShellGround3D: this.lodShellGround3D,
+      lodGridCells2D: this.lodGridCells2D,
+      entityRenderer: this.entityRenderer,
+      metalDepositRenderer: this.metalDepositRenderer,
+      environmentPropRenderer: this.environmentPropRenderer,
+      contactShadowRenderer: this.contactShadowRenderer,
+      beamRenderer: this.beamRenderer,
+      forceFieldRenderer: this.forceFieldRenderer,
+      captureTileRenderer: this.captureTileRenderer,
+      waterRenderer: this.waterRenderer,
+      explosionRenderer: this.explosionRenderer,
+      forceFieldImpactRenderer: this.forceFieldImpactRenderer,
+      debrisRenderer: this.debrisRenderer,
+      burnMarkRenderer: this.burnMarkRenderer,
+      groundPrintRenderer: this.groundPrintRenderer,
+      lineDragRenderer: this.lineDragRenderer,
+      buildGhostRenderer: this.buildGhostRenderer,
+      sprayRenderer: this.sprayRenderer,
+      smokeTrailRenderer: this.smokeTrailRenderer,
+      longtaskTracker: this.longtaskTracker,
+      audioSystem: this.audioSystem,
+    });
     this.inputManager = null;
-    this.healthBar3D?.destroy();
     this.healthBar3D = null;
-    this.nameLabel3D?.destroy();
     this.nameLabel3D = null;
-    this.waypoint3D?.destroy();
     this.waypoint3D = null;
-    this.lodShellGround3D?.destroy();
     this.lodShellGround3D = null;
-    this.lodGridCells2D?.destroy();
     this.lodGridCells2D = null;
-    this.entityRenderer?.destroy();
-    this.metalDepositRenderer?.dispose();
     this.metalDepositRenderer = null;
-    this.environmentPropRenderer?.destroy();
     this.environmentPropRenderer = null;
-    this.contactShadowRenderer?.dispose();
     this.contactShadowRenderer = null;
-    this.beamRenderer?.destroy();
-    this.forceFieldRenderer?.destroy();
-    this.captureTileRenderer?.destroy();
-    this.waterRenderer?.destroy();
-    this.explosionRenderer?.destroy();
-    this.forceFieldImpactRenderer?.destroy();
-    this.debrisRenderer?.destroy();
-    this.burnMarkRenderer?.destroy();
-    this.groundPrintRenderer?.destroy();
-    this.lineDragRenderer?.destroy();
-    this.buildGhostRenderer?.destroy();
-    this.sprayRenderer?.destroy();
-    this.smokeTrailRenderer?.destroy();
-    this.longtaskTracker.destroy();
-    this.audioSystem.clear();
     if (!opts.keepConnection) {
       this.gameConnection?.disconnect();
     }
