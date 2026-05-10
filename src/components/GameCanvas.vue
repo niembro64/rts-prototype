@@ -1,24 +1,20 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
-import type { GameInstance, GameScene } from '../game/createGame';
-import { type BuildingType, type PlayerId, type WaypointType } from '../game/sim/types';
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
+import type { GameInstance } from '../game/createGame';
+import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
-import SelectionPanel, {
-  type SelectionInfo,
-  type SelectionActions,
-} from './SelectionPanel.vue';
-import TopBar, { type EconomyInfo } from './TopBar.vue';
+import SelectionPanel from './SelectionPanel.vue';
+import TopBar from './TopBar.vue';
 import Minimap from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import CameraTutorial from './CameraTutorial.vue';
 import { persist, readPersisted } from '../persistence';
 import SoundTestModal from './SoundTestModal.vue';
-import type { MinimapData } from '@/types/ui';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import {
   networkManager,
@@ -68,12 +64,6 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { ConcreteGraphicsQuality } from '../types/graphics';
 import type { CameraFovDegrees } from '../types/client';
 import {
-  applyMinimapCameraQuad,
-  applyMinimapContentData,
-  createInitialMinimapData,
-} from './minimapHelpers';
-import { bindSceneUiCallbacks } from './gameSceneBindings';
-import {
   setPlayerClientRenderEnabled,
   useGameCanvasChromeState,
 } from './gameCanvasChromeState';
@@ -91,6 +81,7 @@ import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
 import { useGameCanvasServerSettings } from './gameCanvasServerSettings';
 import { useGameCanvasClientSettings } from './gameCanvasClientSettings';
 import { useGameCanvasRealBattleHandoff } from './gameCanvasRealBattleHandoff';
+import { useGameCanvasSceneUi } from './gameCanvasSceneUi';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -378,83 +369,23 @@ const {
   toggleSoundCategory,
 } = useGameCanvasClientSettings({ applyCameraFovDegrees });
 
-// Selection state for the panel
-const selectionInfo = reactive<SelectionInfo>({
-  unitCount: 0,
-  hasCommander: false,
-  hasBuilder: false,
-  hasDGun: false,
-  hasFactory: false,
-  factoryId: undefined,
-  commanderId: undefined,
-  waypointMode: 'move',
-  isBuildMode: false,
-  selectedBuildingType: null,
-  isDGunMode: false,
-  factoryQueue: [],
-  factoryProgress: 0,
-  factoryIsProducing: false,
-});
-
-// Economy state for the top bar
-const economyInfo = reactive<EconomyInfo>({
-  stockpile: { curr: 250, max: 1000 },
-  income: { base: 5, production: 0, total: 5 },
-  expenditure: 0,
-  netFlow: 5,
-  mana: {
-    stockpile: { curr: 200, max: 1000 },
-    income: { base: 5, territory: 0, total: 5 },
-    expenditure: 0,
-    netFlow: 5,
-  },
-  metal: {
-    stockpile: { curr: 200, max: 1000 },
-    income: { base: 2, extraction: 0, total: 2 },
-    expenditure: 0,
-    netFlow: 2,
-  },
-  units: { count: 1, cap: 120 },
-  buildings: { solar: 0, wind: 0, factory: 0, extractor: 0 },
-});
-
-// Minimap state
-const minimapData = reactive<MinimapData>(createInitialMinimapData());
-
 const { showSoundTest } = useGameCanvasSoundTest();
 
-function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
-  bindSceneUiCallbacks(scene, {
-    onPlayerChange: (playerId) => {
-      activePlayer.value = playerId;
-    },
-    onSelectionChange: (info) => {
-      Object.assign(selectionInfo, info);
-    },
-    onEconomyChange: (info) => {
-      Object.assign(economyInfo, info);
-    },
-    onMinimapUpdate: (data) => {
-      applyMinimapContentData(minimapData, data);
-    },
-    onCameraQuadUpdate: (quad, cameraYaw) => {
-      applyMinimapCameraQuad(minimapData, quad, cameraYaw);
-    },
-    onServerMetaUpdate: (meta) => {
-      serverMetaFromSnapshot.value = meta;
-    },
-    ...(includeGameLifecycle
-      ? {
-          onGameOver: (winnerId: PlayerId) => {
-            gameOverWinner.value = winnerId;
-          },
-          onGameRestart: () => {
-            gameOverWinner.value = null;
-          },
-        }
-      : {}),
-  });
-}
+const {
+  selectionInfo,
+  economyInfo,
+  minimapData,
+  bindGameSceneUi,
+  togglePlayer,
+  handleMinimapClick,
+  selectionActions,
+} = useGameCanvasSceneUi({
+  activePlayer,
+  gameOverWinner,
+  serverMetaFromSnapshot,
+  foregroundGame,
+  getBackgroundBattle: () => getBackgroundBattle(),
+});
 
 ({
   getBackgroundBattle,
@@ -487,10 +418,6 @@ function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
     }
   },
 }));
-
-function getActiveBattleScene(): GameScene | null {
-  return foregroundGame.getScene() ?? getBackgroundBattle()?.gameInstance?.getScene() ?? null;
-}
 
 // Show player toggle only in single-player mode (offline or hosting alone)
 const showPlayerToggle = computed(() => {
@@ -832,19 +759,6 @@ const {
   },
 });
 
-function togglePlayer(): void {
-  const scene = getActiveBattleScene();
-  if (scene) {
-    scene.togglePlayer();
-    activePlayer.value = scene.getActivePlayer();
-  }
-}
-
-function handleMinimapClick(x: number, y: number): void {
-  const scene = getActiveBattleScene();
-  scene?.centerCameraOn(x, y);
-}
-
 function restartGame(): void {
   gameOverWinner.value = null;
   battleStartTime = 0;
@@ -878,34 +792,6 @@ function restartGame(): void {
     startBackgroundBattle();
   });
 }
-
-// Selection panel actions
-const selectionActions: SelectionActions = {
-  setWaypointMode: (mode: WaypointType) => {
-    const scene = getActiveBattleScene();
-    scene?.setWaypointMode(mode);
-  },
-  startBuild: (buildingType: BuildingType) => {
-    const scene = getActiveBattleScene();
-    scene?.startBuildMode(buildingType);
-  },
-  cancelBuild: () => {
-    const scene = getActiveBattleScene();
-    scene?.cancelBuildMode();
-  },
-  toggleDGun: () => {
-    const scene = getActiveBattleScene();
-    scene?.toggleDGunMode();
-  },
-  queueUnit: (factoryId: number, unitId: string) => {
-    const scene = getActiveBattleScene();
-    scene?.queueFactoryUnit(factoryId, unitId);
-  },
-  cancelQueueItem: (factoryId: number, index: number) => {
-    const scene = getActiveBattleScene();
-    scene?.cancelFactoryQueueItem(factoryId, index);
-  },
-};
 
 const {
   handleHost,
