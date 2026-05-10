@@ -23,7 +23,6 @@ import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import {
   networkManager,
   type NetworkRole,
-  type BattleHandoff,
 } from '../game/network/NetworkManager';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
@@ -181,6 +180,7 @@ import { useGameCanvasForegroundSceneBinding } from './gameCanvasForegroundScene
 import { useGameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import { startRealBattleWithPlayers } from './gameCanvasRealBattleStart';
 import { useGameCanvasLobbyPreview } from './gameCanvasLobbyPreview';
+import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -1550,70 +1550,24 @@ const SOUND_TOOLTIPS: Record<SoundCategory, string> = {
 };
 
 function setupNetworkCallbacks(): void {
-  networkManager.onPlayerJoined = (player: LobbyPlayer) => {
-    networkNotice.value = null;
-    upsertLobbyPlayer(player);
-  };
-
-  networkManager.onPlayerLeft = (playerId: PlayerId) => {
-    // Resolve BEFORE removing from the roster — once the entry is
-    // gone, resolvePlayerName falls back to the funny-default which
-    // would not match the displayed name in the leaving notice.
-    const playerName = resolvePlayerName(playerId);
-    lobbyPlayers.value = lobbyPlayers.value.filter(
-      (p) => p.playerId !== playerId,
-    );
-    realBattleLifecycle.removeSnapshotListener(currentServer, playerId);
-    if (gameStarted.value) {
-      networkNotice.value = `${playerName} disconnected`;
-    }
-  };
-
-  networkManager.onPlayerAssignment = (playerId: PlayerId) => {
-    networkNotice.value = null;
-    localPlayerId.value = playerId;
-    activePlayer.value = playerId;
-  };
-
-  networkManager.onGameStart = (handoff: BattleHandoff) => {
-    networkNotice.value = null;
-    roomCode.value = handoff.roomCode;
-    lobbyPlayers.value = handoff.players.map((player) => ({ ...player }));
-    if (handoff.settings) {
-      applyLobbySettingsFromHost(handoff.settings, { restartPreview: false });
-    }
-    startGameWithPlayers(handoff.playerIds);
-  };
-
-  networkManager.onClientReady = (playerId: PlayerId) => {
-    currentServer?.markPlayerReady(playerId);
-  };
-
-  networkManager.onError = (error: string) => {
-    lobbyError.value = error;
-    networkNotice.value = error;
-  };
-
-  // Player IP + location reports flow in here for both the host
-  // (own + every joining client's report) and clients (host
-  // re-broadcast). Update the matching entry in lobbyPlayers so
-  // the GAME LOBBY player list re-renders with the new columns.
-  networkManager.onPlayerInfoUpdate = (player) => {
-    if (player.playerId === localPlayerId.value && player.name) {
-      localUsername.value = player.name;
-    }
-    upsertLobbyPlayer(player);
-  };
-
-  // Lobby-settings sync. The host registers a getter so the
-  // network layer can grab fresh terrain values whenever a new
-  // client joins (initial handshake push). Clients always write
-  // these into the real-match namespace, even if the packet arrives
-  // before `roomCode` flips the UI out of demo mode.
-  networkManager.getLobbySettings = currentLobbySettings;
-  networkManager.onLobbySettings = (settings) => {
-    applyLobbySettingsFromHost(settings);
-  };
+  bindGameCanvasNetworkCallbacks({
+    network: networkManager,
+    realBattleLifecycle,
+    networkNotice,
+    lobbyError,
+    lobbyPlayers,
+    roomCode,
+    localPlayerId,
+    activePlayer,
+    localUsername,
+    gameStarted,
+    getCurrentServer: () => currentServer,
+    resolvePlayerName,
+    upsertLobbyPlayer,
+    applyLobbySettingsFromHost,
+    currentLobbySettings,
+    startGameWithPlayers,
+  });
 }
 
 function applyLobbySettingsFromHost(settings: {
