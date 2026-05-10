@@ -14,7 +14,6 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { SprayTarget } from '@/types/ui';
 import { getPlayerColors } from '../sim/types';
 import { applyShellOverride } from './ShellMaterial';
-import type { SpinConfig } from '../../config';
 import { LAND_CELL_SIZE } from '../../config';
 import { getSurfaceNormal } from '../sim/Terrain';
 import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
@@ -66,6 +65,8 @@ import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { createMirrorReflectorPanelMaterial } from './MirrorReflectorVisual3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
+import { BarrelTipCache3D, type BarrelTipEntry } from './BarrelTipCache3D';
+import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -115,21 +116,6 @@ const _aimDir = new THREE.Vector3();
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
 
-/** Barrel tip in sim/world coordinates: x/y ground plane, z height.
- *  The matrix path computes Three.js coordinates first, then maps
- *  three (x, y-up, z) -> sim (x, z, y) before caching so beam render
- *  code can consume the same coordinate convention as projectile
- *  polylines. */
-type BarrelTipEntry = { x: number; y: number; z: number };
-
-/** Pack `(entityId, turretIdx, barrelIdx)` into a single number safely
- *  within JS's 53-bit integer range. Caps: entityId fits in the top
- *  bits, 16 turret slots, 16 barrel slots — comfortably above any real
- *  unit's blueprint. */
-function packBarrelTipKey(entityId: number, turretIdx: number, barrelIdx: number): number {
-  return entityId * 256 + (turretIdx & 0xf) * 16 + (barrelIdx & 0xf);
-}
-
 export class Render3DEntities {
   private world: THREE.Group;
   private clientViewState: ClientViewState;
@@ -160,12 +146,7 @@ export class Render3DEntities {
   private unitDetailInstances: UnitDetailInstanceRenderer3D;
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
 
-  // Per-unit barrel-spin state (one per unit with any multi-barrel turret).
-  // Angle advances by `speed` radians/sec; speed accelerates toward
-  // spinConfig.max while any turret on the unit is engaged, decelerates toward
-  // spinConfig.idle otherwise. Mirrors the 2D barrel-spin system exactly.
-  private barrelSpins = new Map<EntityId, { angle: number; speed: number }>();
-  private _lastSpinMs = performance.now();
+  private barrelSpinState = new UnitBarrelSpinState3D();
 
   // Per-entity leg-state snapshots stashed right before an LOD-driven
   // mesh teardown and consumed immediately after rebuild, so feet keep
@@ -265,11 +246,7 @@ export class Render3DEntities {
    *  when the player-client `beamSnapToBarrel` toggle is on, so the
    *  start of the first beam segment exactly matches the rendered
    *  barrel mesh's tip rather than the snapshot-extrapolated point. */
-  private _barrelTipCache = new Map<number, BarrelTipEntry>();
-  private _barrelTipPool: BarrelTipEntry[] = [];
-  private _barrelTipPoolIdx = 0;
-  private static readonly _BARREL_TIP_LOCAL = new THREE.Vector3(0, 0.5, 0);
-  private _barrelTipScratch = new THREE.Vector3();
+  private barrelTipCache = new BarrelTipCache3D();
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
@@ -376,24 +353,15 @@ export class Render3DEntities {
     if (!sharedLodGrid) this.objectLodGrid.beginFrame(this.lod.view, this.lod.gfx);
     this.mirrorsEnabled = featureFlags?.mirrorsEnabled ?? true;
 
-    // Time step for continuous-rotation effects (barrel spin, wheel roll).
-    // Clamp in case the tab was backgrounded.
-    const now = performance.now();
-    const spinDt = Math.min((now - this._lastSpinMs) / 1000, 0.1);
-    this._lastSpinMs = now;
-    this._currentDtMs = spinDt * 1000;
-
-    // Barrel-spin advancement is fused into updateUnits' per-entity
-    // loop so the unit list is iterated once instead of twice. Cache
-    // the dt on the instance so the per-unit body can read it.
-    this._spinDt = spinDt;
+    const frameSpin = this.barrelSpinState.beginFrame();
+    this._currentDtMs = frameSpin.currentDtMs;
+    this._spinDt = frameSpin.spinDtSec;
     // Reset the per-frame barrel-tip cache before updateUnits writes
     // fresh entries. The pool is reused across frames so steady-state
     // beam combat allocates zero per frame.
-    this._barrelTipCache.clear();
-    this._barrelTipPoolIdx = 0;
+    this.barrelTipCache.reset();
     this.updateUnits();
-    this.buildingRenderer.update(this.lod, this._spinDt, this._currentDtMs, this._lastSpinMs);
+    this.buildingRenderer.update(this.lod, this._spinDt, this._currentDtMs, frameSpin.timeMs);
     this.projectileRangeEnvelope.update();
     this.projectileRenderer.update(this.lod);
     // One flush per frame uploads the per-instance leg cylinder
@@ -423,7 +391,7 @@ export class Render3DEntities {
       this.disposeWorldParentedOverlays(m);
     }
     this.unitMeshes.clear();
-    this.barrelSpins.clear();
+    this.barrelSpinState.clear();
     this.unitDetailInstances.releaseAllSlots();
   }
 
@@ -499,45 +467,6 @@ export class Render3DEntities {
     this.disposeWorldParentedOverlays(m);
     this.unitDetailInstances.freeMeshSlots(id, m);
     this.unitMeshes.delete(id);
-  }
-
-
-  /** Advance the barrel-spin state for one unit. Picks the first
-   *  multi-barrel turret as the spin source, accelerates toward max
-   *  while any turret is engaged, decelerates toward idle otherwise.
-   *  Called inline from the per-entity loop in updateUnits — fuses
-   *  what used to be a separate full sweep over getUnits(). */
-  private advanceBarrelSpin(entity: Entity, dt: number): void {
-    const turrets = entity.combat?.turrets;
-    if (!turrets) return;
-    let spinConfig: SpinConfig | undefined;
-    for (const w of turrets) {
-      if (w.config.visualOnly) continue;
-      const bc = w.config.barrel;
-      if (
-        bc
-        && (bc.type === 'simpleMultiBarrel' || bc.type === 'coneMultiBarrel')
-      ) {
-        spinConfig = bc.spin;
-        break;
-      }
-    }
-    if (!spinConfig) return;
-
-    let state = this.barrelSpins.get(entity.id);
-    if (!state) {
-      state = { angle: 0, speed: spinConfig.idle };
-      this.barrelSpins.set(entity.id, state);
-    }
-
-    const firing = turrets.some((w) => !w.config.visualOnly && w.state === 'engaged');
-    if (firing) {
-      state.speed = Math.min(state.speed + spinConfig.accel * dt, spinConfig.max);
-    } else {
-      state.speed = Math.max(state.speed - spinConfig.decel * dt, spinConfig.idle);
-    }
-    // Keep angle bounded to [0, 2π) so Float32 precision doesn't drift over long games.
-    state.angle = (state.angle + state.speed * dt) % (Math.PI * 2);
   }
 
   private resolveEntityObjectLod(entity: Entity): RenderObjectLodTier {
@@ -647,7 +576,7 @@ export class Render3DEntities {
       // Barrel spin is visual-only, so advance it only for units that
       // are in the active render scope. Off-scope units catch up to
       // their current firing/idle state on the first visible frame.
-      this.advanceBarrelSpin(e, spinDt);
+      this.barrelSpinState.advance(e, spinDt);
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
       // footprint, matching the 2D renderer. Body height is per-unit
       // (see BodyShape3D / BodyDimensions); turrets mount on top of
@@ -1177,7 +1106,7 @@ export class Render3DEntities {
       // forward, height, lateral.
       // On mirror-host units (e.g. Loris) turret[0] owns the mirror panel
       // and the visible host turret body.
-      const spinState = this.barrelSpins.get(e.id);
+      const spinAngle = this.barrelSpinState.angleFor(e.id);
       for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
         const tm = m.turrets[i];
         const t = turrets[i];
@@ -1247,7 +1176,7 @@ export class Render3DEntities {
         // and pitch compose into the parent chain.
         if (tm.spinGroup) {
           tm.spinGroup.rotation.x = unitGfx.barrelSpin
-            ? spinState?.angle ?? 0
+            ? spinAngle ?? 0
             : 0;
         }
 
@@ -1350,16 +1279,7 @@ export class Render3DEntities {
             // bakes in the per-barrel length scale) yields the Three.js
             // muzzle position the rendered cylinder front face sits at
             // this frame; cache it in sim axes for beam polylines.
-            this._barrelTipScratch
-              .copy(Render3DEntities._BARREL_TIP_LOCAL)
-              .applyMatrix4(this._smoothFinalMat);
-            const tipEntry = this._barrelTipPool[this._barrelTipPoolIdx]
-              ?? (this._barrelTipPool[this._barrelTipPoolIdx] = { x: 0, y: 0, z: 0 });
-            tipEntry.x = this._barrelTipScratch.x;
-            tipEntry.y = this._barrelTipScratch.z;
-            tipEntry.z = this._barrelTipScratch.y;
-            this._barrelTipPoolIdx++;
-            this._barrelTipCache.set(packBarrelTipKey(e.id, i, bi), tipEntry);
+            this.barrelTipCache.write(e.id, i, bi, this._smoothFinalMat);
           }
         }
       }
@@ -1482,14 +1402,13 @@ export class Render3DEntities {
         // foot positions.
         this.legStateCache.delete(id);
         this.unitMeshes.delete(id);
+        this.barrelSpinState.delete(id);
       }
     }
     // Drop barrel-spin state for units that no longer exist. Reuses
     // the same `seen` set populated by the unit loop above — no
     // separate sweep needed.
-    for (const id of this.barrelSpins.keys()) {
-      if (!seen.has(id)) this.barrelSpins.delete(id);
-    }
+    this.barrelSpinState.prune(seen);
     this.unitDetailInstances.flush(this.mirrorsEnabled);
   }
 
@@ -1521,7 +1440,7 @@ export class Render3DEntities {
    *  its mesh hasn't been built yet — caller should fall back to
    *  `points[0]` from the snapshot polyline. */
   getBarrelTipWorldPos(entityId: EntityId, turretIdx: number, barrelIdx: number): BarrelTipEntry | null {
-    return this._barrelTipCache.get(packBarrelTipKey(entityId, turretIdx, barrelIdx)) ?? null;
+    return this.barrelTipCache.get(entityId, turretIdx, barrelIdx);
   }
 
   /** Look up an entity's currently built locomotion mesh — undefined
@@ -1549,7 +1468,7 @@ export class Render3DEntities {
     this.projectileRangeEnvelope.destroy();
     this.projectileRenderer.destroy();
     this.unitMeshes.clear();
-    this.barrelSpins.clear();
+    this.barrelSpinState.clear();
     this._seenUnitIds.clear();
     this.constructionVisuals.destroy();
     this.unitMassInstances.destroy();
