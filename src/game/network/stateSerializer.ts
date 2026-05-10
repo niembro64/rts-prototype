@@ -2,7 +2,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -44,6 +44,7 @@ import {
   writeNetworkUnitSuspension,
   writeNetworkUnitVelocity,
 } from './unitSnapshotFields';
+import { serializeAudioEvents } from './stateSerializerAudio';
 import { serializeEconomySnapshot } from './stateSerializerEconomy';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 import { serializeSprayTargets } from './stateSerializerSpray';
@@ -147,27 +148,6 @@ function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
 
 function createPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
   return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
-}
-
-type PooledSimEvent = NetworkServerSnapshotSimEvent & {
-  _pos: Vec3;
-};
-
-function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
-  const event: PooledSimEvent = {
-    type: 'fire',
-    turretId: '',
-    sourceType: undefined,
-    sourceKey: undefined,
-    pos: { x: 0, y: 0, z: 0 },
-    entityId: undefined,
-    deathContext: undefined,
-    impactContext: undefined,
-    forceFieldImpact: undefined,
-    _pos: { x: 0, y: 0, z: 0 },
-  };
-  event.pos = event._pos;
-  return event;
 }
 
 type PooledProjectileSpawn = NetworkServerSnapshotProjectileSpawn & {
@@ -725,11 +705,9 @@ export function resetDeltaTrackingForKey(key: string | number | undefined): void
 
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
-const _audioBuf: NetworkServerSnapshotSimEvent[] = [];
 const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
 const _despawnBuf: NetworkServerSnapshotProjectileDespawn[] = [];
 const _velUpdateBuf: NetworkServerSnapshotVelocityUpdate[] = [];
-const _audioPool: NetworkServerSnapshotSimEvent[] = [];
 const _spawnPool: NetworkServerSnapshotProjectileSpawn[] = [];
 const _despawnPool: NetworkServerSnapshotProjectileDespawn[] = [];
 const _velUpdatePool: NetworkServerSnapshotVelocityUpdate[] = [];
@@ -737,7 +715,6 @@ const _beamUpdateBuf: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamUpdatePool: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamPointPool: NetworkServerSnapshotBeamPoint[] = [];
 const _aoiRemovedIdsBuf: EntityId[] = [];
-let _audioPoolIndex = 0;
 let _spawnPoolIndex = 0;
 let _despawnPoolIndex = 0;
 let _velUpdatePoolIndex = 0;
@@ -804,16 +781,6 @@ function getPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
   point.normalY = undefined;
   point.normalZ = undefined;
   return point;
-}
-
-function getPooledSimEvent(): PooledSimEvent {
-  let event = _audioPool[_audioPoolIndex] as PooledSimEvent | undefined;
-  if (!event) {
-    event = createPooledSimEvent() as PooledSimEvent;
-    _audioPool[_audioPoolIndex] = event;
-  }
-  _audioPoolIndex++;
-  return event;
 }
 
 function getPooledProjectileSpawn(): PooledProjectileSpawn {
@@ -927,7 +894,6 @@ export function serializeGameState(
 
   // Reset entity pool for this frame
   _poolIndex = 0;
-  _audioPoolIndex = 0;
   _spawnPoolIndex = 0;
   _despawnPoolIndex = 0;
   _velUpdatePoolIndex = 0;
@@ -1075,28 +1041,7 @@ export function serializeGameState(
 
   const netSprayTargets = serializeSprayTargets(sprayTargets);
 
-  // Serialize audio events (reuse buffer)
-  let netAudioEvents: NetworkServerSnapshotSimEvent[] | undefined;
-  if (audioEvents && audioEvents.length > 0) {
-    _audioBuf.length = 0;
-    for (let i = 0; i < audioEvents.length; i++) {
-      const ae = audioEvents[i];
-      const out = getPooledSimEvent();
-      out.type = ae.type;
-      out.turretId = ae.turretId;
-      out.sourceType = ae.sourceType;
-      out.sourceKey = ae.sourceKey;
-      out._pos.x = ae.pos.x;
-      out._pos.y = ae.pos.y;
-      out._pos.z = ae.pos.z;
-      out.entityId = ae.entityId;
-      out.deathContext = ae.deathContext;
-      out.impactContext = ae.impactContext;
-      out.forceFieldImpact = ae.forceFieldImpact;
-      _audioBuf.push(out);
-    }
-    if (_audioBuf.length > 0) netAudioEvents = _audioBuf;
-  }
+  const netAudioEvents = serializeAudioEvents(audioEvents);
 
   // Serialize projectile spawns (reuse buffer). Full keyframes also
   // synthesize spawns for every live projectile entity so a client that
