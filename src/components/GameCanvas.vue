@@ -181,6 +181,7 @@ import { useGameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import { startRealBattleWithPlayers } from './gameCanvasRealBattleStart';
 import { useGameCanvasLobbyPreview } from './gameCanvasLobbyPreview';
 import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
+import { useGameCanvasLobbyActions } from './gameCanvasLobbyActions';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -1220,110 +1221,27 @@ const selectionActions: SelectionActions = {
   },
 };
 
-// Lobby handlers
-async function handleHost(): Promise<void> {
-  try {
-    isConnecting.value = true;
-    lobbyError.value = null;
-    networkNotice.value = null;
-
-    await networkManager.hostGame();
-    roomCode.value = networkManager.getRoomCode();
-    isHost.value = true;
-    networkRole.value = 'host';
-    localPlayerId.value = 1;
-
-    // Add self from NetworkManager's canonical host roster. IP/time
-    // arrive through reportLocalPlayerInfo and host heartbeat updates.
-    lobbyPlayers.value = networkManager.getPlayers().map((player) => ({ ...player }));
-
-    // Setup network callbacks
-    setupNetworkCallbacks();
-
-    // Always broadcast on host start — we have at least the local
-    // timezone (synchronously available via Intl), and may also
-    // have IP/location if the IP fetch already resolved. Future
-    // joiners receive this via the playerJoined handshake's
-    // info-update follow-up; a later fetch resolution overwrites.
-    reportLocalPlayerInfo();
-
-    isConnecting.value = false;
-  } catch (err) {
-    lobbyError.value = (err as Error).message || 'Failed to host game';
-    networkNotice.value = lobbyError.value;
-    isConnecting.value = false;
-  }
-}
-
-async function handleJoin(code: string): Promise<void> {
-  try {
-    isConnecting.value = true;
-    lobbyError.value = null;
-    networkNotice.value = null;
-
-    // Wire callbacks BEFORE joining. The host sends `playerAssignment`
-    // immediately on `conn.on('open')`, so the message can land in
-    // the joiner's data handler the moment the await unwraps —
-    // before any code AFTER the await has had a chance to run.
-    // If the callbacks aren't set up by then, the message is still
-    // processed (`networkManager.localPlayerId` is updated internally)
-    // but `onPlayerAssignment` is `undefined` so the Vue ref
-    // `localPlayerId.value` never gets the assigned seat. The joiner
-    // would then build their scene with the default `localPlayerId=1`,
-    // and centerCameraOnCommander would look for player 1's commander
-    // instead of the joiner's assigned commander.
-    networkRole.value = 'client';
-    setupNetworkCallbacks();
-
-    await networkManager.joinGame(code);
-    roomCode.value = networkManager.getRoomCode();
-    isHost.value = false;
-
-    // Same eager-report rule as `handleHost` above — timezone is
-    // always available, IP/location may still be pending; the
-    // onMounted fetch's .then() will re-call this once IP
-    // resolves to fill in the remaining columns.
-    reportLocalPlayerInfo();
-
-    isConnecting.value = false;
-  } catch (err) {
-    lobbyError.value = (err as Error).message || 'Failed to join game';
-    networkNotice.value = lobbyError.value;
-    isConnecting.value = false;
-  }
-}
-
-function handleLobbyStart(): void {
-  // Host starts the game
-  networkManager.startGame();
-}
-
-function handleLobbyCancel(): void {
-  battleLoading.value = false;
-  networkManager.disconnect();
-  networkRole.value = null;
-  roomCode.value = '';
-  isHost.value = false;
-  lobbyPlayers.value = [];
-  lobbyError.value = null;
-  networkNotice.value = null;
-  isConnecting.value = false;
-}
-
-function handleOffline(): void {
-  // Start game in offline mode — 4-player AI game, user controls player 1
-  networkRole.value = null;
-  networkNotice.value = null;
-  battleLoading.value = true;
-  localPlayerId.value = 1;
-
-  nextTick(() => {
-    startGameWithPlayers(
-      [1, 2, 3, 4] as PlayerId[],
-      [2, 3, 4] as PlayerId[],
-    );
-  });
-}
+const {
+  handleHost,
+  handleJoin,
+  handleLobbyStart,
+  handleLobbyCancel,
+  handleOffline,
+} = useGameCanvasLobbyActions({
+  network: networkManager,
+  isConnecting,
+  lobbyError,
+  networkNotice,
+  roomCode,
+  isHost,
+  networkRole,
+  localPlayerId,
+  lobbyPlayers,
+  battleLoading,
+  setupNetworkCallbacks,
+  reportLocalPlayerInfo,
+  startGameWithPlayers,
+});
 
 function changeGraphicsQuality(quality: GraphicsQuality): void {
   setGraphicsQuality(quality);
