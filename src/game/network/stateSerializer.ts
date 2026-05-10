@@ -3,7 +3,7 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction, NetworkServerSnapshotMinimapEntity } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -25,6 +25,7 @@ import { shouldRunOnStride } from '../math';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import {
   createActionDto,
+  createMinimapEntityDto,
   createSprayDto,
   createTurretDto,
   createWaypointDto,
@@ -230,6 +231,10 @@ function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
   update.pos = update._pos;
   update.velocity = update._velocity;
   return update;
+}
+
+function createPooledMinimapEntity(): NetworkServerSnapshotMinimapEntity {
+  return createMinimapEntityDto();
 }
 
 function createPooledEntry(): PooledEntry {
@@ -730,18 +735,22 @@ const _audioBuf: NetworkServerSnapshotSimEvent[] = [];
 const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
 const _despawnBuf: NetworkServerSnapshotProjectileDespawn[] = [];
 const _velUpdateBuf: NetworkServerSnapshotVelocityUpdate[] = [];
+const _minimapEntityBuf: NetworkServerSnapshotMinimapEntity[] = [];
 const _audioPool: NetworkServerSnapshotSimEvent[] = [];
 const _spawnPool: NetworkServerSnapshotProjectileSpawn[] = [];
 const _despawnPool: NetworkServerSnapshotProjectileDespawn[] = [];
 const _velUpdatePool: NetworkServerSnapshotVelocityUpdate[] = [];
+const _minimapEntityPool: NetworkServerSnapshotMinimapEntity[] = [];
 const _beamUpdateBuf: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamUpdatePool: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamPointPool: NetworkServerSnapshotBeamPoint[] = [];
+const _aoiRemovedIdsBuf: EntityId[] = [];
 let _sprayPoolIndex = 0;
 let _audioPoolIndex = 0;
 let _spawnPoolIndex = 0;
 let _despawnPoolIndex = 0;
 let _velUpdatePoolIndex = 0;
+let _minimapEntityPoolIndex = 0;
 let _beamUpdatePoolIndex = 0;
 let _beamPointPoolIndex = 0;
 const _resyncSeenIds = new Set<number>();
@@ -769,6 +778,7 @@ const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
 const _snapshotBuf: NetworkServerSnapshot = {
   tick: 0,
   entities: _entityBuf,
+  minimapEntities: undefined,
   economy: _economyBuf,
   sprayTargets: undefined,
   audioEvents: undefined,
@@ -858,6 +868,16 @@ function getPooledVelocityUpdate(): PooledVelocityUpdate {
   return update;
 }
 
+function getPooledMinimapEntity(): NetworkServerSnapshotMinimapEntity {
+  let entity = _minimapEntityPool[_minimapEntityPoolIndex];
+  if (!entity) {
+    entity = createPooledMinimapEntity();
+    _minimapEntityPool[_minimapEntityPoolIndex] = entity;
+  }
+  _minimapEntityPoolIndex++;
+  return entity;
+}
+
 export type SerializeGameStateOptions = {
   /**
    * Delta histories are per recipient so prev-state/removal bookkeeping
@@ -872,7 +892,57 @@ export type SerializeGameStateOptions = {
    * baseline precision; observed entities can use coarser thresholds.
    */
   recipientPlayerId?: PlayerId;
+  aoi?: SnapshotAoiBounds;
 };
+
+export type SnapshotAoiBounds = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
+
+function getAoiPadding(entity: Entity): number {
+  if (entity.unit) return 100;
+  const building = entity.building;
+  if (!building) return 100;
+  return Math.max(building.width, building.height) * 0.5 + 150;
+}
+
+function isEntityInsideAoi(
+  entity: Entity,
+  aoi: SnapshotAoiBounds | undefined,
+  recipientPlayerId: PlayerId | undefined,
+): boolean {
+  if (!aoi) return true;
+  // Keep owned entities authoritative even while the camera is away so
+  // selections and queued orders do not evaporate as the user pans.
+  if (
+    recipientPlayerId !== undefined &&
+    entity.ownership?.playerId === recipientPlayerId
+  ) {
+    return true;
+  }
+  const padding = getAoiPadding(entity);
+  const x = entity.transform.x;
+  const y = entity.transform.y;
+  return (
+    x >= aoi.minX - padding &&
+    x <= aoi.maxX + padding &&
+    y >= aoi.minY - padding &&
+    y <= aoi.maxY + padding
+  );
+}
+
+function writeMinimapEntity(entity: Entity): NetworkServerSnapshotMinimapEntity {
+  const out = getPooledMinimapEntity();
+  out.id = entity.id;
+  out.type = entity.unit ? 'unit' : 'building';
+  out.playerId = (entity.ownership?.playerId ?? 1) as PlayerId;
+  out.pos.x = qPos(entity.transform.x);
+  out.pos.y = qPos(entity.transform.y);
+  return out;
+}
 
 // Serialize WorldState to network format.
 // When isDelta=true, only changed/new entities are included plus removedEntityIds.
@@ -894,6 +964,7 @@ export function serializeGameState(
 ): NetworkServerSnapshot {
   const tracking = getDeltaTrackingState(options?.trackingKey);
   const recipientPlayerId = options?.recipientPlayerId;
+  const aoi = options?.aoi;
   const tick = world.getTick();
 
   // Reset entity pool for this frame
@@ -903,6 +974,7 @@ export function serializeGameState(
   _spawnPoolIndex = 0;
   _despawnPoolIndex = 0;
   _velUpdatePoolIndex = 0;
+  _minimapEntityPoolIndex = 0;
   _beamUpdatePoolIndex = 0;
   _beamPointPoolIndex = 0;
   _entityBuf.length = 0;
@@ -911,7 +983,8 @@ export function serializeGameState(
   // Serialize units and buildings (projectiles handled via spawn/despawn events)
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
   const acceptsEntity = (entity: Entity): boolean =>
-    entity.type === 'unit' || entity.type === 'building';
+    (entity.type === 'unit' || entity.type === 'building') &&
+    isEntityInsideAoi(entity, aoi, recipientPlayerId);
 
   const forgetTrackedEntity = (id: EntityId, emitRemoval: boolean): void => {
     const wasVisible = tracking.prevEntityIds.delete(id);
@@ -932,6 +1005,19 @@ export function serializeGameState(
       for (const id of _removedIdsBuf) {
         tracking.prevEntityIds.delete(id);
         tracking.prevStates.delete(id);
+      }
+    }
+
+    if (aoi) {
+      _aoiRemovedIdsBuf.length = 0;
+      for (const id of tracking.prevEntityIds) {
+        const entity = world.getEntity(id);
+        if (!entity || !acceptsEntity(entity)) {
+          _aoiRemovedIdsBuf.push(id);
+        }
+      }
+      for (let i = 0; i < _aoiRemovedIdsBuf.length; i++) {
+        forgetTrackedEntity(_aoiRemovedIdsBuf[i], true);
       }
     }
 
@@ -1025,6 +1111,24 @@ export function serializeGameState(
         tracking.prevStates.delete(id);
       }
     }
+  }
+
+  let netMinimapEntities: NetworkServerSnapshotMinimapEntity[] | undefined;
+  if (aoi) {
+    _minimapEntityBuf.length = 0;
+    const minimapSources: ReadonlyArray<readonly Entity[]> = [
+      world.getUnits(),
+      world.getBuildings(),
+    ];
+    for (let s = 0; s < minimapSources.length; s++) {
+      const source = minimapSources[s];
+      for (let i = 0; i < source.length; i++) {
+        const entity = source[i];
+        if (entity.type !== 'unit' && entity.type !== 'building') continue;
+        _minimapEntityBuf.push(writeMinimapEntity(entity));
+      }
+    }
+    netMinimapEntities = _minimapEntityBuf;
   }
 
   // Serialize economy (reuse object to avoid per-snapshot allocation).
@@ -1347,6 +1451,7 @@ export function serializeGameState(
   // Reuse snapshot object
   _snapshotBuf.tick = tick;
   _snapshotBuf.entities = _entityBuf;
+  _snapshotBuf.minimapEntities = netMinimapEntities;
   _snapshotBuf.economy = _economyBuf;
   _snapshotBuf.sprayTargets = netSprayTargets;
   _snapshotBuf.audioEvents = netAudioEvents;

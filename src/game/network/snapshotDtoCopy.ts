@@ -14,6 +14,7 @@ import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotGridCell,
+  NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
@@ -106,6 +107,27 @@ export function copyVelocityInto(
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
   dst.velocity.z = src.velocity.z;
+  return dst;
+}
+
+export function createMinimapEntityDto(): NetworkServerSnapshotMinimapEntity {
+  return {
+    id: 0,
+    pos: { x: 0, y: 0 },
+    type: 'unit',
+    playerId: 1,
+  };
+}
+
+export function copyMinimapEntityInto(
+  src: NetworkServerSnapshotMinimapEntity,
+  dst: NetworkServerSnapshotMinimapEntity,
+): NetworkServerSnapshotMinimapEntity {
+  dst.id = src.id;
+  dst.pos.x = src.pos.x;
+  dst.pos.y = src.pos.y;
+  dst.type = src.type;
+  dst.playerId = src.playerId;
   return dst;
 }
 

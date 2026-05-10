@@ -183,6 +183,7 @@ export function buildMinimapData(
   gridOverlayIntensity: number,
   showTerrain: boolean,
   wind?: { x: number; y: number; speed: number },
+  entityOverride?: readonly MinimapEntity[] | null,
   out?: MinimapData,
 ): MinimapData {
   const data = out ?? {
@@ -202,19 +203,34 @@ export function buildMinimapData(
   const entities = data.entities;
   let entityCount = 0;
 
-  // Single iteration over units + buildings — branch on entity kind
-  // inline. Avoids the back-to-back getUnits()/getBuildings() pair the
-  // minimap used to do every frame.
-  for (const e of entitySource.getUnitsAndBuildings()) {
-    entityCount = writeMinimapEntity(
-      entities,
-      entityCount,
-      e.transform.x,
-      e.transform.y,
-      e.unit ? 'unit' : 'building',
-      minimapColor(getPlayerPrimaryColor(e.ownership?.playerId)),
-      e.selectable?.selected,
-    );
+  if (entityOverride) {
+    for (let i = 0; i < entityOverride.length; i++) {
+      const e = entityOverride[i];
+      entityCount = writeMinimapEntity(
+        entities,
+        entityCount,
+        e.pos.x,
+        e.pos.y,
+        e.type,
+        e.color,
+        e.isSelected,
+      );
+    }
+  } else {
+    // Single iteration over units + buildings — branch on entity kind
+    // inline. Avoids the back-to-back getUnits()/getBuildings() pair the
+    // minimap used to do every frame.
+    for (const e of entitySource.getUnitsAndBuildings()) {
+      entityCount = writeMinimapEntity(
+        entities,
+        entityCount,
+        e.transform.x,
+        e.transform.y,
+        e.unit ? 'unit' : 'building',
+        minimapColor(getPlayerPrimaryColor(e.ownership?.playerId)),
+        e.selectable?.selected,
+      );
+    }
   }
   entities.length = entityCount;
 

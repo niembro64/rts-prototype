@@ -6,7 +6,10 @@ import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { captureSnapshotEntityStates, serializeGameState } from '../network/stateSerializer';
-import type { SerializeGameStateOptions } from '../network/stateSerializer';
+import type {
+  SerializeGameStateOptions,
+  SnapshotAoiBounds,
+} from '../network/stateSerializer';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
 import type { CaptureSystem } from '../sim/CaptureSystem';
@@ -18,6 +21,9 @@ export type SnapshotListenerEntry = {
   playerId?: PlayerId;
   trackingKey: string;
   deltaTrackingKey: string;
+  aoi?: SnapshotAoiBounds;
+  forceKeyframe?: boolean;
+  staticTerrainSent?: boolean;
 };
 
 export type ServerSnapshotPublisherInput = {
@@ -121,16 +127,21 @@ export class ServerSnapshotPublisher {
     captureSnapshotEntityStates(input.world, isDelta, this.dirtyIdsBuf);
 
     const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
+      const forceKeyframe = listener.forceKeyframe === true;
+      const listenerIsDelta = isDelta && !forceKeyframe;
+      const aoiRefreshKeyframe = isDelta && forceKeyframe;
+      listener.forceKeyframe = false;
       const serializeOptions: SerializeGameStateOptions = {
         trackingKey: listener.deltaTrackingKey,
         dirtyEntityIds: this.dirtyIdsBuf,
         dirtyEntityFields: this.dirtyFieldsBuf,
         removedEntityIds: this.removedIdsBuf,
         recipientPlayerId: listener.playerId,
+        aoi: listener.aoi,
       };
       const state = serializeGameState(
         input.world,
-        isDelta,
+        listenerIsDelta,
         gamePhase,
         winnerId,
         sprayTargets,
@@ -147,8 +158,19 @@ export class ServerSnapshotPublisher {
       state.capture = captureTiles.length > 0
         ? { tiles: captureTiles, cellSize: input.captureSystem.getCellSize() }
         : undefined;
-      state.terrain = isDelta ? undefined : input.terrainTileMap;
-      state.buildability = isDelta ? undefined : input.terrainBuildabilityGrid;
+      // AOI movement can force a recipient-only full entity snapshot.
+      // Terrain/buildability are static after battle start. Keep the
+      // initial seed, then avoid resending those large blobs on AOI
+      // refreshes or regular AOI-scoped full keyframes.
+      const shouldSendStaticTerrain =
+        !listenerIsDelta &&
+        !aoiRefreshKeyframe &&
+        (listener.aoi === undefined || listener.staticTerrainSent !== true);
+      state.terrain = shouldSendStaticTerrain ? input.terrainTileMap : undefined;
+      state.buildability = shouldSendStaticTerrain
+        ? input.terrainBuildabilityGrid
+        : undefined;
+      if (shouldSendStaticTerrain) listener.staticTerrainSent = true;
       state.serverMeta = serverMeta;
       return state;
     };

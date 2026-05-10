@@ -12,9 +12,11 @@ import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotGridCell,
+  NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotMeta,
 } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
+import type { MinimapEntity } from '@/types/ui';
 import type { NetworkCaptureTile } from '@/types/capture';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { economyManager } from '../sim/economy';
@@ -49,6 +51,7 @@ import { ClientPredictionStepper } from './ClientPredictionStepper';
 import { ClientProjectileStore } from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
+import { getPlayerPrimaryColor } from '../sim/types';
 export type { PredictionLodContext, PredictionLodTier } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
@@ -56,10 +59,20 @@ const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 const SPRAY_TARGET_POOL_MIN_CAP = 16;
 const SPRAY_TARGET_POOL_ACTIVE_MULTIPLIER = 4;
 const CAPTURE_TILE_POOL_FALLBACK_CAP = 256;
+const minimapColorCache = new Map<number, string>();
 
 function captureHeightsEmpty(heights: NetworkCaptureTile['heights']): boolean {
   for (const _key in heights) return false;
   return true;
+}
+
+function minimapColor(color: number): string {
+  let cached = minimapColorCache.get(color);
+  if (!cached) {
+    cached = '#' + color.toString(16).padStart(6, '0');
+    minimapColorCache.set(color, cached);
+  }
+  return cached;
 }
 
 export class ClientViewState {
@@ -76,6 +89,7 @@ export class ClientViewState {
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
+  private minimapEntitiesOverride: MinimapEntity[] | null = null;
 
   // Game over state
   private gameOverWinnerId: PlayerId | null = null;
@@ -311,6 +325,30 @@ export class ClientViewState {
     }
   }
 
+  private applyMinimapEntityOverride(
+    source: readonly NetworkServerSnapshotMinimapEntity[] | undefined,
+  ): void {
+    if (!source) {
+      this.minimapEntitiesOverride = null;
+      return;
+    }
+    const out = this.minimapEntitiesOverride ?? (this.minimapEntitiesOverride = []);
+    out.length = source.length;
+    for (let i = 0; i < source.length; i++) {
+      const src = source[i];
+      let dst = out[i];
+      if (!dst) {
+        dst = { pos: { x: 0, y: 0 }, type: 'unit', color: '' };
+        out[i] = dst;
+      }
+      dst.pos.x = src.pos.x;
+      dst.pos.y = src.pos.y;
+      dst.type = src.type;
+      dst.color = minimapColor(getPlayerPrimaryColor(src.playerId));
+      dst.isSelected = this.selectionState.has(src.id) || undefined;
+    }
+  }
+
   private releaseSprayTargets(nextActiveCount = 0): void {
     const limit = this.getSprayTargetPoolLimit(nextActiveCount);
     for (let i = 0; i < this.sprayTargets.length; i++) {
@@ -464,6 +502,11 @@ export class ClientViewState {
       this.trimCaptureTilePool();
     }
     this.currentTick = state.tick;
+    if (state.minimapEntities !== undefined) {
+      this.applyMinimapEntityOverride(state.minimapEntities);
+    } else if (!state.isDelta) {
+      this.applyMinimapEntityOverride(undefined);
+    }
     let cacheNeedsInvalidate = false;
     const now = performance.now();
     this.projectileStore.projectileSpawns.recordSnapshot(now);
@@ -760,6 +803,10 @@ export class ClientViewState {
   getAllEntities(): Entity[] {
     this.rebuildCachesIfNeeded(true);
     return this.cache.getAll();
+  }
+
+  getMinimapEntitiesOverride(): readonly MinimapEntity[] | null {
+    return this.minimapEntitiesOverride;
   }
 
   getUnits(): Entity[] {

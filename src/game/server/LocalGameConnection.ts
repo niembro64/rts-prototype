@@ -15,9 +15,11 @@ export class LocalGameConnection implements GameConnection {
   private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
   private snapshotListenerKey: string;
   private gameOverListenerRef: GameOverCallback;
+  private playerId?: PlayerId;
 
   constructor(server: GameServer, playerId?: PlayerId) {
     this.server = server;
+    this.playerId = playerId;
 
     // Wire server snapshot emissions to this connection
     this.snapshotListenerKey = server.addSnapshotListener((state) => {
@@ -36,7 +38,7 @@ export class LocalGameConnection implements GameConnection {
   }
 
   sendCommand(command: Command): void {
-    this.server.receiveCommand(command);
+    this.server.receiveCommand(command, this.playerId);
   }
 
   markClientReady(): void {

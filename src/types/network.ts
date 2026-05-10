@@ -431,6 +431,7 @@ export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';
 export type NetworkServerSnapshot = {
   tick: number;
   entities: NetworkServerSnapshotEntity[];
+  minimapEntities?: NetworkServerSnapshotMinimapEntity[];
   economy: Record<PlayerId, NetworkServerSnapshotEconomy>;
   sprayTargets?: NetworkServerSnapshotSprayTarget[];
   audioEvents?: NetworkServerSnapshotSimEvent[];
@@ -458,6 +459,13 @@ export type NetworkServerSnapshot = {
   buildability?: TerrainBuildabilityGrid;
   isDelta: boolean;
   removedEntityIds?: number[];
+};
+
+export type NetworkServerSnapshotMinimapEntity = {
+  id: number;
+  pos: Vec2;
+  type: 'unit' | 'building';
+  playerId: PlayerId;
 };
 
 export type NetworkServerSnapshotSprayTarget = {

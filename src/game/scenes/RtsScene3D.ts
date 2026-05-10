@@ -71,6 +71,7 @@ import {
   setCurrentZoom,
   getGridOverlay,
   getGridOverlayIntensity,
+  getRenderMode,
 } from '@/clientBarConfig';
 import { CommandQueue, type SelectCommand } from '../sim/commands';
 import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
@@ -124,6 +125,8 @@ import {
 } from '../../config';
 
 const RENDER_SCOPE_AERIAL_HEADROOM_Y = 700;
+const CAMERA_AOI_SEND_INTERVAL_MS = 250;
+const CAMERA_AOI_BOUNDS_EPSILON = 64;
 const RENDER_SCOPE_PLANE_Y = [
   TILE_FLOOR_Y,
   0,
@@ -343,6 +346,9 @@ export class RtsScene3D {
   private selectionDirty = true;
   private economyUpdateTimer = 0;
   private minimapUpdateTimer = 0;
+  private cameraAoiUpdateTimer = CAMERA_AOI_SEND_INTERVAL_MS;
+  private lastCameraAoiMode: ReturnType<typeof getRenderMode> | null = null;
+  private lastCameraAoiBounds: FootprintBounds | null = null;
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
   private readonly MINIMAP_UPDATE_INTERVAL = 50;
   private _minimapDataScratch: MinimapData = {
@@ -1022,10 +1028,12 @@ export class RtsScene3D {
     // without re-querying camera state or getRenderMode(). The same
     // quad feeds the minimap (see updateMinimapData).
     this._cameraQuad = this.computeCameraQuad();
+    const renderScopeBounds = this.computeRenderScopeBounds(this._cameraQuad);
     this.renderScope.setQuad(
       this._cameraQuad,
-      this.computeRenderScopeBounds(this._cameraQuad),
+      renderScopeBounds,
     );
+    this.maybeSendCameraAoi(delta, this._cameraQuad, renderScopeBounds);
     this.environmentPropRenderer?.update(
       graphicsConfig,
       renderLod,
@@ -1749,6 +1757,7 @@ export class RtsScene3D {
         intensity,
         showTerrain,
         this.clientViewState.getServerMeta()?.wind,
+        this.clientViewState.getMinimapEntitiesOverride(),
         this._minimapDataScratch,
       ),
     );
@@ -1781,6 +1790,67 @@ export class RtsScene3D {
   ] = [
     { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
   ];
+
+  private cameraAoiBoundsChanged(
+    next: FootprintBounds,
+    mode: ReturnType<typeof getRenderMode>,
+  ): boolean {
+    const prev = this.lastCameraAoiBounds;
+    if (this.lastCameraAoiMode !== mode || !prev) return true;
+    return (
+      Math.abs(prev.minX - next.minX) > CAMERA_AOI_BOUNDS_EPSILON ||
+      Math.abs(prev.maxX - next.maxX) > CAMERA_AOI_BOUNDS_EPSILON ||
+      Math.abs(prev.minY - next.minY) > CAMERA_AOI_BOUNDS_EPSILON ||
+      Math.abs(prev.maxY - next.maxY) > CAMERA_AOI_BOUNDS_EPSILON
+    );
+  }
+
+  private maybeSendCameraAoi(
+    deltaMs: number,
+    quad: FootprintQuad,
+    bounds: FootprintBounds,
+  ): void {
+    if (this.backgroundMode || this.lobbyPreview) return;
+    this.cameraAoiUpdateTimer += deltaMs;
+    const mode = getRenderMode();
+    const modeChanged = this.lastCameraAoiMode !== mode;
+    if (
+      this.cameraAoiUpdateTimer < CAMERA_AOI_SEND_INTERVAL_MS &&
+      !modeChanged
+    ) {
+      return;
+    }
+    if (mode !== 'all' && !this.cameraAoiBoundsChanged(bounds, mode)) return;
+
+    this.cameraAoiUpdateTimer = 0;
+    this.lastCameraAoiMode = mode;
+    this.lastCameraAoiBounds = {
+      minX: bounds.minX,
+      maxX: bounds.maxX,
+      minY: bounds.minY,
+      maxY: bounds.maxY,
+    };
+    this.gameConnection.sendCommand({
+      type: 'setCameraAoi',
+      tick: this.clientViewState.getTick(),
+      playerId: this.localPlayerId,
+      mode,
+      quad: [
+        { x: Math.round(quad[0].x), y: Math.round(quad[0].y) },
+        { x: Math.round(quad[1].x), y: Math.round(quad[1].y) },
+        { x: Math.round(quad[2].x), y: Math.round(quad[2].y) },
+        { x: Math.round(quad[3].x), y: Math.round(quad[3].y) },
+      ],
+      bounds: mode === 'all'
+        ? undefined
+        : {
+            minX: Math.round(bounds.minX),
+            maxX: Math.round(bounds.maxX),
+            minY: Math.round(bounds.minY),
+            maxY: Math.round(bounds.maxY),
+          },
+    });
+  }
 
   private computeRenderScopeBounds(
     baseQuad: FootprintQuad,

@@ -3,8 +3,12 @@
 
 import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
-import type { CommandQueue, Command } from '../sim/commands';
-import { resetDeltaTracking, resetDeltaTrackingForKey } from '../network/stateSerializer';
+import type { CommandQueue, Command, SetCameraAoiCommand } from '../sim/commands';
+import {
+  resetDeltaTracking,
+  resetDeltaTrackingForKey,
+  type SnapshotAoiBounds,
+} from '../network/stateSerializer';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
@@ -53,6 +57,73 @@ import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
+
+const CAMERA_AOI_BOUNDS_EPSILON = 64;
+
+function finiteOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function boundsFromCameraAoiCommand(command: SetCameraAoiCommand): SnapshotAoiBounds | undefined {
+  if (command.mode === 'all') return undefined;
+  const b = command.bounds;
+  if (b) {
+    const minX = finiteOrUndefined(b.minX);
+    const maxX = finiteOrUndefined(b.maxX);
+    const minY = finiteOrUndefined(b.minY);
+    const maxY = finiteOrUndefined(b.maxY);
+    if (
+      minX !== undefined &&
+      maxX !== undefined &&
+      minY !== undefined &&
+      maxY !== undefined
+    ) {
+      return {
+        minX: Math.min(minX, maxX),
+        maxX: Math.max(minX, maxX),
+        minY: Math.min(minY, maxY),
+        maxY: Math.max(minY, maxY),
+      };
+    }
+  }
+  const quad = command.quad;
+  if (!quad) return undefined;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const p of quad) {
+    const x = finiteOrUndefined(p.x);
+    const y = finiteOrUndefined(p.y);
+    if (x === undefined || y === undefined) continue;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return undefined;
+  if (command.mode === 'padded') {
+    const pad = Math.max(maxX - minX, maxY - minY) * 0.3;
+    minX -= pad;
+    maxX += pad;
+    minY -= pad;
+    maxY += pad;
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+function aoiBoundsChanged(
+  prev: SnapshotAoiBounds | undefined,
+  next: SnapshotAoiBounds | undefined,
+): boolean {
+  if (!prev || !next) return prev !== next;
+  return (
+    Math.abs(prev.minX - next.minX) > CAMERA_AOI_BOUNDS_EPSILON ||
+    Math.abs(prev.maxX - next.maxX) > CAMERA_AOI_BOUNDS_EPSILON ||
+    Math.abs(prev.minY - next.minY) > CAMERA_AOI_BOUNDS_EPSILON ||
+    Math.abs(prev.maxY - next.maxY) > CAMERA_AOI_BOUNDS_EPSILON
+  );
+}
 
 export class GameServer {
   private physics: PhysicsEngine3D;
@@ -465,7 +536,7 @@ export class GameServer {
   }
 
   // Receive a command from a client
-  receiveCommand(command: Command): void {
+  receiveCommand(command: Command, fromPlayerId?: PlayerId): void {
     // Intercept server config commands (don't need tick synchronization)
     switch (command.type) {
       case 'setSnapshotRate':
@@ -511,8 +582,23 @@ export class GameServer {
           units: command.units as ('off' | 'active' | 'solo' | undefined),
         });
         return;
+      case 'setCameraAoi':
+        this.setCameraAoi(command, fromPlayerId);
+        return;
     }
     this.commandQueue.enqueue(command);
+  }
+
+  private setCameraAoi(command: SetCameraAoiCommand, fromPlayerId?: PlayerId): void {
+    const playerId = fromPlayerId ?? command.playerId;
+    if (playerId === undefined) return;
+    const next = boundsFromCameraAoiCommand(command);
+    for (const listener of this.snapshotListeners) {
+      if (listener.playerId !== playerId) continue;
+      if (!aoiBoundsChanged(listener.aoi, next)) continue;
+      listener.aoi = next;
+      listener.forceKeyframe = true;
+    }
   }
 
   private setMirrorsEnabled(enabled: boolean): void {

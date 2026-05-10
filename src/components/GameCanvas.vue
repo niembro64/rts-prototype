@@ -1867,8 +1867,8 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         }
 
         // Receive commands from remote clients
-        networkManager.onCommandReceived = (command, _fromPlayerId) => {
-          currentServer?.receiveCommand(command);
+        networkManager.onCommandReceived = (command, fromPlayerId) => {
+          currentServer?.receiveCommand(command, fromPlayerId);
         };
       }
 

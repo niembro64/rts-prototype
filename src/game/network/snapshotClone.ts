@@ -2,6 +2,7 @@ import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEconomy,
   NetworkServerSnapshotEntity,
+  NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotBeamUpdate,
@@ -13,6 +14,7 @@ import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
   copyBeamInto,
   copyCellInto,
+  copyMinimapEntityInto,
   copySimEventInto,
   copySpawnInto,
   copySprayInto,
@@ -21,6 +23,7 @@ import {
   copyWaypointInto,
   createBeamDto,
   createCellDto,
+  createMinimapEntityDto,
   createSimEventDto,
   createSpawnDto,
   createSprayDto,
@@ -250,6 +253,7 @@ export class ReusableNetworkSnapshotCloner {
   private spawns: NetworkServerSnapshotProjectileSpawn[] = [];
   private despawns: NetworkServerSnapshotProjectileDespawn[] = [];
   private velocityUpdates: NetworkServerSnapshotVelocityUpdate[] = [];
+  private minimapEntities: NetworkServerSnapshotMinimapEntity[] = [];
   private beamUpdates: NetworkServerSnapshotBeamUpdate[] = [];
   private projectiles: NonNullable<NetworkServerSnapshot['projectiles']> = {};
   private grid: NonNullable<NetworkServerSnapshot['grid']> = { cells: [], searchCells: [], cellSize: 0 };
@@ -268,6 +272,7 @@ export class ReusableNetworkSnapshotCloner {
     this.spawns.length = 0;
     this.despawns.length = 0;
     this.velocityUpdates.length = 0;
+    this.minimapEntities.length = 0;
     this.beamUpdates.length = 0;
     this.projectiles.spawns = undefined;
     this.projectiles.despawns = undefined;
@@ -279,6 +284,7 @@ export class ReusableNetworkSnapshotCloner {
     this.removedEntityIds.length = 0;
     this.snapshot.sprayTargets = undefined;
     this.snapshot.audioEvents = undefined;
+    this.snapshot.minimapEntities = undefined;
     this.snapshot.projectiles = undefined;
     this.snapshot.grid = undefined;
     this.snapshot.capture = undefined;
@@ -297,6 +303,14 @@ export class ReusableNetworkSnapshotCloner {
     for (let i = 0; i < state.entities.length; i++) {
       entities[i] = copyEntityInto(state.entities[i], entities[i] ?? createReusableEntity());
     }
+    dst.minimapEntities = state.minimapEntities !== undefined
+      ? this.copyRequiredArray(
+          state.minimapEntities,
+          this.minimapEntities,
+          createMinimapEntityDto,
+          copyMinimapEntityInto,
+        )
+      : undefined;
 
     const economy = dst.economy;
     for (let i = 0; i < this.economyKeys.length; i++) {
