@@ -180,6 +180,7 @@ import { useGameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycl
 import { useGameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
 import { useGameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import { startRealBattleWithPlayers } from './gameCanvasRealBattleStart';
+import { useGameCanvasLobbyPreview } from './gameCanvasLobbyPreview';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -391,8 +392,8 @@ const demoUnitTypes = BACKGROUND_UNIT_TYPES;
 // Initial load is always demo mode — at component-mount time the
 // user is on the BUDGET ANNIHILATION screen (gameStarted=false,
 // roomCode=''). Switching into the GAME LOBBY flips
-// `currentBattleMode` to `real`; the watcher below re-loads these
-// refs from the real-battle keys at that point.
+// `currentBattleMode` to `real`; the lobby-preview composable reloads
+// these refs from the real-battle keys at that point.
 const terrainCenter = ref<TerrainShape>(loadStoredTerrainCenter('demo'));
 const terrainDividers = ref<TerrainShape>(loadStoredTerrainDividers('demo'));
 const terrainMapShape = ref<TerrainMapShape>(loadStoredTerrainMapShape('demo'));
@@ -598,102 +599,22 @@ const showPlayerToggle = computed(() => {
 const lobbyModalVisible = computed(
   () => !isMobile && showLobby.value && !spectateMode.value,
 );
-// True ONLY when the user is on the GAME LOBBY screen AND the
-// lobby modal is mounted. The watcher below uses this to decide
-// where the demo-battle container should be DOM-parented.
-const inGameLobby = computed(
-  () => roomCode.value !== '' && lobbyModalVisible.value,
-);
-
-// When the active namespace flips, refresh the reactive UI refs so
-// the BATTLE bar + terrain options reflect THAT mode's stored
-// values, AND restart the running demo battle so the preview pane
-// rebuilds against the new mode's settings (terrain shape, sim
-// rules). The first-write-falls-back-to-demo logic in the loaders
-// means a user entering the lobby for the first time sees their
-// existing demo settings, after which lobby mutations save under
-// real-battle-* and the two namespaces diverge. Skipped when
-// `gameStarted` is true — by then the real battle owns the
-// container and the demo isn't running.
-watch(currentBattleMode, (mode) => {
-  terrainCenter.value = loadStoredTerrainCenter(mode);
-  terrainDividers.value = loadStoredTerrainDividers(mode);
-  terrainMapShape.value = loadStoredTerrainMapShape(mode);
-  const mapDimensions = loadStoredMapLandDimensions(mode);
-  mapWidthLandCells.value = mapDimensions.widthLandCells;
-  mapLengthLandCells.value = mapDimensions.lengthLandCells;
-  if (!gameStarted.value) {
-    stopBackgroundBattle();
-    nextTick(() => {
-      startBackgroundBattle();
-    });
-  }
-});
-
-// GAME LOBBY preview keeps its commander count in sync with the
-// actual lobby roster — every join / leave triggers a demo
-// rebuild so the preview reflects who's connected. Only fires in
-// lobby-preview mode (real namespace + lobby active); the
-// full-screen demo backdrop stays at DEMO_CONFIG.playerCount.
-watch(() => lobbyPlayers.value.length, () => {
-  if (
-    currentBattleMode.value === 'real' &&
-    !gameStarted.value &&
-    inGameLobby.value
-  ) {
-    stopBackgroundBattle();
-    nextTick(() => {
-      startBackgroundBattle();
-    });
-  }
-});
-
-// Local seat assignment (`onPlayerAssignment`) can land AFTER the
-// initial roster sync — a fresh joiner first sees the player list
-// arrive, then receives their seat. Rebuild the preview when our
-// own seat changes so the local commander reflects who we are,
-// not seat 1.
-watch(localPlayerId, () => {
-  if (
-    currentBattleMode.value === 'real' &&
-    !gameStarted.value &&
-    inGameLobby.value
-  ) {
-    stopBackgroundBattle();
-    nextTick(() => {
-      startBackgroundBattle();
-    });
-  }
-});
-
-// Re-parent the demo-battle container into the lobby's preview
-// pane when in the GAME LOBBY state, and back to its original spot
-// otherwise. Imperative DOM move (not Vue Teleport) because the
-// demo battle pumps reactive refs every frame, and Vue Teleport
-// with a reactive `:disabled` interacts badly with that traffic —
-// the patcher hits stale vnodes ("Cannot set properties of null
-// setting '__vnode'"). Pure DOM moves bypass Vue's vnode tracking
-// entirely; the element's vnode→DOM mapping stays fixed via its
-// `el` reference, and Three.js's ResizeObserver on the parent
-// picks up the new size automatically.
-watch(inGameLobby, (active) => {
-  const container = backgroundContainerRef.value;
-  if (!container) return;
-  // Wait one tick so the LobbyModal has rendered the target div
-  // (or torn it down) before we attempt to move into / out of it.
-  nextTick(() => {
-    if (active) {
-      const target = document.getElementById('lobby-preview-target');
-      if (target && container.parentElement !== target) {
-        target.appendChild(container);
-      }
-    } else {
-      const home = gameAreaRef.value;
-      if (home && container.parentElement !== home) {
-        home.appendChild(container);
-      }
-    }
-  });
+useGameCanvasLobbyPreview({
+  backgroundContainerRef,
+  gameAreaRef,
+  currentBattleMode,
+  lobbyModalVisible,
+  roomCode,
+  gameStarted,
+  lobbyPlayerCount: computed(() => lobbyPlayers.value.length),
+  localPlayerId,
+  terrainCenter,
+  terrainDividers,
+  terrainMapShape,
+  mapWidthLandCells,
+  mapLengthLandCells,
+  stopBackgroundBattle,
+  startBackgroundBattle,
 });
 
 // Show server controls when we own a server OR when we receive server meta from snapshots (remote client)
@@ -1921,10 +1842,10 @@ onUnmounted(() => {
       <!-- Background battle container (demo game).
            Loads full-screen behind the BUDGET ANNIHILATION screen
            exactly as before. Once the user clicks Host/Join AND
-           lands in the GAME LOBBY state (`inGameLobby` true), an
-           imperative watcher (see script) re-parents this element
-           into the lobby modal's `#lobby-preview-target` so the
-           demo runs as a small preview pane. Vue Teleport was the
+           lands in the GAME LOBBY state, the lobby-preview composable
+           re-parents this element into the lobby modal's
+           `#lobby-preview-target` so the demo runs as a small preview
+           pane. Vue Teleport was the
            obvious tool but its interaction with the demo battle's
            per-frame reactive updates triggered "Cannot set
            properties of null" patcher crashes on initial mount;
@@ -3229,9 +3150,9 @@ onUnmounted(() => {
    *     position: relative, sized 480x270) → fills that small
    *     box, framing the demo as a mini-simulation preview.
    *
-   * The watcher on `inGameLobby` does the DOM move; the element's
-   * own CSS doesn't need to change because both parents resolve
-   * `position: absolute; width/height: 100%` to the right thing. */
+   * The lobby-preview composable does the DOM move; the element's own
+   * CSS doesn't need to change because both parents resolve `position:
+   * absolute; width/height: 100%` to the right thing. */
   position: absolute;
   top: 0;
   left: 0;
