@@ -100,7 +100,22 @@ type BeamState = {
    *  next sample can miter-join onto it. Null if the beam has no marks
    *  yet (first sample) or if the prev mark was culled by aging. */
   prevMark: Mark | null;
+  /** Endpoints sampled BEFORE lastEnd, oldest-first, flat as
+   *  [x0, y0, x1, y1]. Together with lastEnd and the next incoming
+   *  sample, gives the 4 control points used by appendCurvedSegment to
+   *  fit a cubic-Lagrange curve and tessellate the missing segment. An
+   *  empty/short history falls back to a straight quad until enough
+   *  samples accumulate. */
+  history: number[];
 };
+
+// Curve tessellation: number of sub-quads laid down between two beam
+// samples once we have 4 control points. K=4 strikes a good balance
+// between visible curvature and mark-count blow-up (4× the marks per
+// original sample). The cubic still passes through both endpoints
+// exactly, so any K only changes how piecewise-linearly the curve is
+// rasterized.
+const CURVE_TESS_STEPS = 4;
 
 type BeamStateKey = number | string;
 const BEAM_KEY_TURRET_STRIDE = 1024;
@@ -317,6 +332,7 @@ export class BurnMark3D {
             existing.lastEndY = ez;
             existing.lastDirX = 0;
             existing.lastDirY = 0;
+            existing.history.length = 0;
           }
           continue;
         }
@@ -333,16 +349,14 @@ export class BurnMark3D {
           lastDirX: 0,
           lastDirY: 0,
           prevMark: null,
+          history: [],
         };
         this.beams.set(key, state);
       } else if (sampleNow) {
         const dx = ex - state.lastEndX;
         const dz = ez - state.lastEndY;
         if (dx * dx + dz * dz > MIN_SEGMENT_DIST_SQ) {
-          const invLen = 1 / Math.sqrt(dx * dx + dz * dz);
-          const dirX = dx * invLen;
-          const dirZ = dz * invLen;
-          this.appendMark(state, ex, ez, dirX, dirZ, beamWidth);
+          this.appendCurvedSegment(state, ex, ez, beamWidth);
         }
       }
 
@@ -400,6 +414,64 @@ export class BurnMark3D {
       this.posDirty = false;
       this.colDirty = false;
     }
+  }
+
+  /** Replace the missing segment between state.lastEnd and (endX,endY) with
+   *  a 4-point cubic-Lagrange curve through P0..P3, where P0/P1 come from
+   *  state.history (the two sampled endpoints before lastEnd), P2 is
+   *  lastEnd, and P3 is the new sample. The cubic passes through all four
+   *  control points exactly; we tessellate from u=1 (P2) to u=2 (P3) into
+   *  CURVE_TESS_STEPS short mitered sub-quads via repeated appendMark
+   *  calls. With fewer than 4 control points (warmup) we fall back to a
+   *  single straight quad. After drawing, lastEnd's pre-call value is
+   *  pushed into history so the *next* sample has 4 control points again.
+   *  Same idea as 4-point cubic resamplers in audio. */
+  private appendCurvedSegment(
+    state: BeamState,
+    endX: number, endY: number,
+    width: number,
+  ): void {
+    const px = state.lastEndX;
+    const py = state.lastEndY;
+    const h = state.history;
+
+    if (h.length >= 4) {
+      const P0x = h[0], P0y = h[1];
+      const P1x = h[2], P1y = h[3];
+      const P2x = px,   P2y = py;
+      const P3x = endX, P3y = endY;
+      let prevX = P2x, prevY = P2y;
+      for (let k = 1; k <= CURVE_TESS_STEPS; k++) {
+        const u = 1 + k / CURVE_TESS_STEPS;
+        // Lagrange basis at sample-parametrization u with knots at -1,0,1,2.
+        const L0 = -u * (u - 1) * (u - 2) / 6;
+        const L1 = (u + 1) * (u - 1) * (u - 2) / 2;
+        const L2 = -(u + 1) * u * (u - 2) / 2;
+        const L3 = (u + 1) * u * (u - 1) / 6;
+        const x = L0 * P0x + L1 * P1x + L2 * P2x + L3 * P3x;
+        const y = L0 * P0y + L1 * P1y + L2 * P2y + L3 * P3y;
+        const dx = x - prevX;
+        const dy = y - prevY;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq > 1e-6) {
+          const invLen = 1 / Math.sqrt(lenSq);
+          this.appendMark(state, x, y, dx * invLen, dy * invLen, width);
+        }
+        prevX = x;
+        prevY = y;
+      }
+    } else {
+      const dx = endX - px;
+      const dy = endY - py;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq > 1e-6) {
+        const invLen = 1 / Math.sqrt(lenSq);
+        this.appendMark(state, endX, endY, dx * invLen, dy * invLen, width);
+      }
+    }
+
+    h.push(px, py);
+    while (h.length > 4) h.shift();
   }
 
   /** Append one mitered quad to the trail. `appendX/Y` is the NEW endpoint;
