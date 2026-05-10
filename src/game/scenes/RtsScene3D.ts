@@ -17,6 +17,7 @@ import type { SprayTarget } from '@/types/ui';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { LongtaskTracker } from './helpers/LongtaskTracker';
+import { RtsScene3DCameraFootprintSystem } from './helpers/RtsScene3DCameraFootprintSystem';
 import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
@@ -45,7 +46,6 @@ import {
  *  across the whole shared pool — legs aren't team-tinted. */
 const LEG_COLOR = 0x2a2f36;
 import { ViewportFootprint } from '../ViewportFootprint';
-import type { FootprintBounds, FootprintQuad } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
 import { Explosion3D } from '../render3d/Explosion3D';
@@ -67,7 +67,6 @@ import {
   getLodGridBorders,
   getGridOverlay,
   getGridOverlayIntensity,
-  getRenderMode,
 } from '@/clientBarConfig';
 import { CommandQueue } from '../sim/commands';
 import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
@@ -80,8 +79,6 @@ import {
   setTerrainDividersShape,
   setTerrainMapShape,
   setMetalDepositFlatZones,
-  TERRAIN_MAX_RENDER_Y,
-  TILE_FLOOR_Y,
 } from '../sim/Terrain';
 import {
   normalizeLodCellSize,
@@ -119,20 +116,6 @@ import {
   LOBBY_PREVIEW_SPIN_RATE,
   LAND_CELL_SIZE,
 } from '../../config';
-
-const RENDER_SCOPE_AERIAL_HEADROOM_Y = 700;
-const CAMERA_AOI_SEND_INTERVAL_MS = 250;
-const CAMERA_AOI_BOUNDS_EPSILON = 64;
-const RENDER_SCOPE_PLANE_Y = [
-  TILE_FLOOR_Y,
-  0,
-  TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
-] as const;
-const RENDER_SCOPE_NDC_SAMPLES = [
-  [-1,  1], [0,  1], [1,  1],
-  [-1,  0], [0,  0], [1,  0],
-  [-1, -1], [0, -1], [1, -1],
-] as const;
 
 export type RtsScene3DConfig = {
   playerIds: PlayerId[];
@@ -249,6 +232,7 @@ export class RtsScene3D {
   private gameConnection!: GameConnection;
   private snapshotIntake!: RtsScene3DSnapshotIntake;
   private localCommandQueue = new CommandQueue();
+  private cameraFootprintSystem!: RtsScene3DCameraFootprintSystem;
   private minimapSystem!: RtsScene3DMinimapSystem;
   private selectionSystem!: RtsScene3DSelectionSystem;
   private healthBar3D: HealthBar3D | null = null;
@@ -308,24 +292,8 @@ export class RtsScene3D {
   private predMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.predMs, EMA_INITIAL_VALUES.predMs);
   private longtaskTracker = new LongtaskTracker();
 
-  // Reusable raycaster + horizontal-plane scratch for projecting
-  // viewport samples into world/sim space. Allocated once; every
-  // frame reuses them for the minimap quad and render scope.
-  private _minimapRay = new THREE.Raycaster();
-  private _minimapNdc = new THREE.Vector2();
-  private _minimapHit = new THREE.Vector3();
-  private _renderScopeBounds: FootprintBounds = {
-    minX: -Infinity,
-    maxX: Infinity,
-    minY: -Infinity,
-    maxY: Infinity,
-  };
-
   // UI update throttling (mirror RtsScene)
   private economyUpdateTimer = 0;
-  private cameraAoiUpdateTimer = CAMERA_AOI_SEND_INTERVAL_MS;
-  private lastCameraAoiMode: ReturnType<typeof getRenderMode> | null = null;
-  private lastCameraAoiBounds: FootprintBounds | null = null;
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
   private _lineProjectilesScratch: Entity[] = [];
   private _burnMarkProjectilesScratch: Entity[] = [];
@@ -437,6 +405,14 @@ export class RtsScene3D {
     // ClientViewState is owned by GameCanvas so its state (units, buildings,
     // prediction, selection) survives a live 2D↔3D renderer swap.
     this.clientViewState = config.clientViewState;
+    this.cameraFootprintSystem = new RtsScene3DCameraFootprintSystem(
+      this.mapWidth,
+      this.mapHeight,
+      this.gameConnection,
+      () => this.clientViewState.getTick(),
+      () => this.localPlayerId,
+      () => !this.backgroundMode && !this.lobbyPreview,
+    );
     this.minimapSystem = new RtsScene3DMinimapSystem(
       this.clientViewState,
       this.mapWidth,
@@ -910,13 +886,15 @@ export class RtsScene3D {
     // per-entity hot loop below can early-out on off-screen entities
     // without re-querying camera state or getRenderMode(). The same
     // quad feeds the minimap (see updateMinimapData).
-    this._cameraQuad = this.computeCameraQuad();
-    const renderScopeBounds = this.computeRenderScopeBounds(this._cameraQuad);
-    this.renderScope.setQuad(
-      this._cameraQuad,
-      renderScopeBounds,
+    const cameraFootprint = this.cameraFootprintSystem.update(
+      this.threeApp.camera,
+      delta,
     );
-    this.maybeSendCameraAoi(delta, this._cameraQuad, renderScopeBounds);
+    const cameraQuad = cameraFootprint.quad;
+    this.renderScope.setQuad(
+      cameraQuad,
+      cameraFootprint.bounds,
+    );
     this.environmentPropRenderer?.update(
       graphicsConfig,
       renderLod,
@@ -925,7 +903,7 @@ export class RtsScene3D {
     // Emit the quad every frame — the minimap's camera box reads
     // this directly so it stays pinned to the view regardless of
     // the (throttled) entity-list refresh.
-    this.onCameraQuadUpdate?.(this._cameraQuad, this.threeApp.orbit.yaw);
+    this.onCameraQuadUpdate?.(cameraQuad, this.threeApp.orbit.yaw);
     const serverMeta = this.clientViewState.getServerMeta();
     this.entityRenderer.update(
       renderLod,
@@ -1152,7 +1130,7 @@ export class RtsScene3D {
       delta,
       graphicsConfig,
       this.entitySourceAdapter,
-      this._cameraQuad,
+      cameraQuad,
       this.threeApp.orbit.yaw,
       this.onMinimapUpdate,
     );
@@ -1528,170 +1506,10 @@ export class RtsScene3D {
     // ViewportFootprint; the minimap system consumes it without raycasting.
     this.minimapSystem.emit(
       this.entitySourceAdapter,
-      this._cameraQuad,
+      this.cameraFootprintSystem.getQuad(),
       this.threeApp.orbit.yaw,
       this.onMinimapUpdate,
     );
-  }
-
-  /** Raycast each of the four NDC viewport corners (±1, ±1) through
-   *  the perspective camera onto the y=0 ground plane, returning a
-   *  ground-plane quad (TL, TR, BR, BL in screen order). Reused by
-   *  the scope footprint and the minimap — called once per frame
-   *  in update(). */
-  private computeCameraQuad(): [
-    { x: number; y: number },
-    { x: number; y: number },
-    { x: number; y: number },
-    { x: number; y: number },
-  ] {
-    return [
-      this.cornerOnGround(-1,  1),
-      this.cornerOnGround( 1,  1),
-      this.cornerOnGround( 1, -1),
-      this.cornerOnGround(-1, -1),
-    ];
-  }
-
-  private _cameraQuad: [
-    { x: number; y: number },
-    { x: number; y: number },
-    { x: number; y: number },
-    { x: number; y: number },
-  ] = [
-    { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 },
-  ];
-
-  private cameraAoiBoundsChanged(
-    next: FootprintBounds,
-    mode: ReturnType<typeof getRenderMode>,
-  ): boolean {
-    const prev = this.lastCameraAoiBounds;
-    if (this.lastCameraAoiMode !== mode || !prev) return true;
-    return (
-      Math.abs(prev.minX - next.minX) > CAMERA_AOI_BOUNDS_EPSILON ||
-      Math.abs(prev.maxX - next.maxX) > CAMERA_AOI_BOUNDS_EPSILON ||
-      Math.abs(prev.minY - next.minY) > CAMERA_AOI_BOUNDS_EPSILON ||
-      Math.abs(prev.maxY - next.maxY) > CAMERA_AOI_BOUNDS_EPSILON
-    );
-  }
-
-  private maybeSendCameraAoi(
-    deltaMs: number,
-    quad: FootprintQuad,
-    bounds: FootprintBounds,
-  ): void {
-    if (this.backgroundMode || this.lobbyPreview) return;
-    this.cameraAoiUpdateTimer += deltaMs;
-    const mode = getRenderMode();
-    const modeChanged = this.lastCameraAoiMode !== mode;
-    if (
-      this.cameraAoiUpdateTimer < CAMERA_AOI_SEND_INTERVAL_MS &&
-      !modeChanged
-    ) {
-      return;
-    }
-    if (mode !== 'all' && !this.cameraAoiBoundsChanged(bounds, mode)) return;
-
-    this.cameraAoiUpdateTimer = 0;
-    this.lastCameraAoiMode = mode;
-    this.lastCameraAoiBounds = {
-      minX: bounds.minX,
-      maxX: bounds.maxX,
-      minY: bounds.minY,
-      maxY: bounds.maxY,
-    };
-    this.gameConnection.sendCommand({
-      type: 'setCameraAoi',
-      tick: this.clientViewState.getTick(),
-      playerId: this.localPlayerId,
-      mode,
-      quad: [
-        { x: Math.round(quad[0].x), y: Math.round(quad[0].y) },
-        { x: Math.round(quad[1].x), y: Math.round(quad[1].y) },
-        { x: Math.round(quad[2].x), y: Math.round(quad[2].y) },
-        { x: Math.round(quad[3].x), y: Math.round(quad[3].y) },
-      ],
-      bounds: mode === 'all'
-        ? undefined
-        : {
-            minX: Math.round(bounds.minX),
-            maxX: Math.round(bounds.maxX),
-            minY: Math.round(bounds.minY),
-            maxY: Math.round(bounds.maxY),
-          },
-    });
-  }
-
-  private computeRenderScopeBounds(
-    baseQuad: FootprintQuad,
-  ): FootprintBounds {
-    const b = this._renderScopeBounds;
-    b.minX = Infinity;
-    b.maxX = -Infinity;
-    b.minY = Infinity;
-    b.maxY = -Infinity;
-    const include = (p: { x: number; y: number }) => {
-      if (p.x < b.minX) b.minX = p.x;
-      if (p.x > b.maxX) b.maxX = p.x;
-      if (p.y < b.minY) b.minY = p.y;
-      if (p.y > b.maxY) b.maxY = p.y;
-    };
-
-    for (const p of baseQuad) include(p);
-
-    // WIN/PAD culling must be conservative in 3D. The minimap quad is
-    // intentionally the y=0 ground-plane footprint, but visible units
-    // can stand on mountains above that plane or on lowered/water
-    // terrain below it. Sample a small NDC grid against the world
-    // height band and use the AABB of those intersections for CPU
-    // scope tests. That keeps "window" mode from popping hilltop
-    // units as the camera pitches or yaws.
-    for (const [ndcX, ndcY] of RENDER_SCOPE_NDC_SAMPLES) {
-      for (const planeY of RENDER_SCOPE_PLANE_Y) {
-        include(this.pointOnHorizontalPlane(ndcX, ndcY, planeY));
-      }
-    }
-
-    return b;
-  }
-
-  /** Project a viewport corner (in NDC: x,y ∈ [-1,1]) onto the y=0
-   *  ground plane. When the corner ray points above the horizon (no
-   *  intersection with positive t), fall back to a point far along
-   *  the ray's ground-plane projection so the minimap still draws a
-   *  non-degenerate quad. */
-  private cornerOnGround(ndcX: number, ndcY: number): { x: number; y: number } {
-    return this.pointOnHorizontalPlane(ndcX, ndcY, 0);
-  }
-
-  private pointOnHorizontalPlane(
-    ndcX: number,
-    ndcY: number,
-    worldY: number,
-  ): { x: number; y: number } {
-    this._minimapNdc.set(ndcX, ndcY);
-    this._minimapRay.setFromCamera(this._minimapNdc, this.threeApp.camera);
-    const ray = this._minimapRay.ray;
-    const denom = ray.direction.y;
-    if (Math.abs(denom) > 1e-6) {
-      const t = (worldY - ray.origin.y) / denom;
-      if (t >= 0) {
-        this._minimapHit.set(
-          ray.origin.x + ray.direction.x * t,
-          worldY,
-          ray.origin.z + ray.direction.z * t,
-        );
-        return { x: this._minimapHit.x, y: this._minimapHit.z };
-      }
-    }
-    const origin = ray.origin;
-    const dir = ray.direction;
-    const farT = Math.max(this.mapWidth, this.mapHeight) * 4;
-    return {
-      x: origin.x + dir.x * farT,
-      y: origin.z + dir.z * farT,
-    };
   }
 
   // ── Public methods matching RtsScene's surface ──

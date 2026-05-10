@@ -9,17 +9,19 @@ Please always commit and push before and after any code changes we make. If ther
 ==============================================================================
  ISSUES:
 
-1. Move RtsScene3D camera ownership out of
+1. Move remaining RtsScene3D camera control ownership out of
    src/game/scenes/RtsScene3D.ts.
    Evidence:
-   - src/game/scenes/RtsScene3D.ts is still 1916 lines.
-   - src/game/scenes/RtsScene3D.ts still owns camera data while also managing
-     renderer lifecycle.
+   - src/game/scenes/RtsScene3D.ts is still 1734 lines.
+   - Camera footprint/AOI state moved to
+     src/game/scenes/helpers/RtsScene3DCameraFootprintSystem.ts, but
+     src/game/scenes/RtsScene3D.ts still owns camera shim/control methods
+     while also managing renderer lifecycle.
    Impact:
    - View state and render lifecycle remain tangled.
    Remedy:
-   - Extract one coherent camera slice that can be tested/reviewed
-     independently.
+   - Extract the next coherent camera shim/control slice that can be
+     tested/reviewed independently.
 
 2. Move RtsScene3D renderer update ordering out of
    src/game/scenes/RtsScene3D.ts.
