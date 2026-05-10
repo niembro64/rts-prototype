@@ -39,11 +39,12 @@ const ENDPOINT_OPACITY = 0.18;
 const LASER_ENDPOINT_OPACITY = 0.26;
 const ENDPOINT_MIN_RADIUS = 2.5;
 
-/** Per-frame lookup that returns the world-space barrel-tip position
- *  the rendered cylinder is drawn at. Render3DEntities populates this
- *  in its per-barrel matrix-compose loop. Returns null when the source
- *  unit's mesh isn't built / is off-scope, in which case the renderer
- *  falls back to `points[0]` from the snapshot polyline. */
+/** Per-frame lookup that returns the rendered barrel tip in sim/world
+ *  coordinates (x/y ground plane, z height), matching beam polyline
+ *  points. Render3DEntities populates this in its per-barrel matrix-
+ *  compose loop. Returns null when the source unit's mesh isn't built /
+ *  is off-scope, in which case the renderer falls back to `points[0]`
+ *  from the snapshot polyline. */
 export type BarrelTipResolver = {
   getBarrelTipWorldPos(
     entityId: number,

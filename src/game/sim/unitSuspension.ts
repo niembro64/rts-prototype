@@ -1,7 +1,6 @@
 import { UNIT_MASS_MULTIPLIER } from '../../config';
 import type { Unit } from './types';
 import type {
-  UnitJumpConfig,
   UnitSuspensionConfig,
   UnitSuspensionState,
 } from '@/types/locomotionTypes';
@@ -24,43 +23,24 @@ function cloneSuspensionConfig(config: UnitSuspensionConfig): UnitSuspensionConf
   };
 }
 
-function cloneJumpConfig(config: UnitJumpConfig | undefined): UnitJumpConfig | undefined {
-  if (!config) return undefined;
-  return {
-    force: config.force,
-    mode: config.mode,
-  };
-}
-
 export function createUnitSuspension(
   config: UnitSuspensionConfig | undefined,
-  jump: UnitJumpConfig | undefined,
 ): UnitSuspensionState | undefined {
   if (!config) return undefined;
   return {
     config: cloneSuspensionConfig(config),
-    jump: cloneJumpConfig(jump),
     offsetX: 0,
     offsetY: 0,
     offsetZ: 0,
     velocityX: 0,
     velocityY: 0,
     velocityZ: 0,
-    jumpRequested: false,
-    jumpActive: false,
     legContact: true,
     anchorVelocityX: 0,
     anchorVelocityY: 0,
     anchorVelocityZ: 0,
     anchorVelocityInitialized: false,
   };
-}
-
-export function requestUnitJump(unit: Unit): boolean {
-  const suspension = unit.suspension;
-  if (!suspension?.jump) return false;
-  suspension.jumpRequested = true;
-  return true;
 }
 
 function clampAxis(value: number, velocity: number, maxAbs: number | undefined): { value: number; velocity: number } {
@@ -98,7 +78,6 @@ export function advanceUnitSuspension(
   const beforeVelocityX = s.velocityX;
   const beforeVelocityY = s.velocityY;
   const beforeVelocityZ = s.velocityZ;
-  const beforeJumpActive = s.jumpActive;
   const beforeLegContact = s.legContact;
 
   const dtSec = dtMs / 1000;
@@ -111,9 +90,6 @@ export function advanceUnitSuspension(
 
   if (options.legContact !== undefined) {
     s.legContact = options.legContact;
-    if (!s.legContact) {
-      s.jumpActive = false;
-    }
   }
 
   const anchorVx = unit.velocityX ?? 0;
@@ -167,7 +143,7 @@ export function advanceUnitSuspension(
     s.velocityZ = clampedZ.velocity;
   }
 
-  if (s.legContact && !s.jumpActive && isUnitSuspensionNearRest(s)) {
+  if (s.legContact && isUnitSuspensionNearRest(s)) {
     s.offsetX = 0;
     s.offsetY = 0;
     s.offsetZ = 0;
@@ -183,7 +159,6 @@ export function advanceUnitSuspension(
     Math.abs(s.velocityX - beforeVelocityX) > SUSPENSION_REST_VELOCITY_EPSILON ||
     Math.abs(s.velocityY - beforeVelocityY) > SUSPENSION_REST_VELOCITY_EPSILON ||
     Math.abs(s.velocityZ - beforeVelocityZ) > SUSPENSION_REST_VELOCITY_EPSILON ||
-    s.jumpActive !== beforeJumpActive ||
     s.legContact !== beforeLegContact
   );
 }

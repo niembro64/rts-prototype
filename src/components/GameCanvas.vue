@@ -139,6 +139,8 @@ import {
   setAudioSmoothing,
   getGroundMarks,
   setGroundMarks,
+  getBeamSnapToBarrel,
+  setBeamSnapToBarrel,
   getLodShellRings,
   setLodShellRings,
   getLodGridBorders,
@@ -501,6 +503,7 @@ const renderMode = ref<RenderMode>(getRenderMode());
 const audioScope = ref<AudioScope>(getAudioScope());
 const audioSmoothing = ref<boolean>(getAudioSmoothing());
 const groundMarks = ref<boolean>(getGroundMarks());
+const beamSnapToBarrel = ref<boolean>(getBeamSnapToBarrel());
 const lodShellRings = ref<boolean>(getLodShellRings());
 const lodGridBorders = ref<boolean>(getLodGridBorders());
 const triangleDebug = ref<boolean>(getTriangleDebug());
@@ -1378,6 +1381,8 @@ function resetClientDefaults(): void {
   audioSmoothing.value = cd.audioSmoothing.default;
   setGroundMarks(cd.groundMarks.default);
   groundMarks.value = cd.groundMarks.default;
+  setBeamSnapToBarrel(cd.beamSnapToBarrel.default);
+  beamSnapToBarrel.value = cd.beamSnapToBarrel.default;
   setLodShellRings(cd.lodShellRings.default);
   lodShellRings.value = cd.lodShellRings.default;
   setLodGridBorders(cd.lodGridBorders.default);
@@ -1731,6 +1736,12 @@ function toggleGroundMarks(): void {
   const newValue = !groundMarks.value;
   setGroundMarks(newValue);
   groundMarks.value = newValue;
+}
+
+function toggleBeamSnapToBarrel(): void {
+  const newValue = !beamSnapToBarrel.value;
+  setBeamSnapToBarrel(newValue);
+  beamSnapToBarrel.value = newValue;
 }
 
 function toggleLodShellRings(): void {
@@ -3198,6 +3209,15 @@ onUnmounted(() => {
               title="Draw all ground marks: beam/laser scorches plus wheel, tread, and footstep prints"
               @click="toggleGroundMarks"
             >ALL</BarButton>
+          </BarControlGroup>
+          <BarControlGroup>
+            <BarDivider />
+            <BarLabel>BEAMS:</BarLabel>
+            <BarButton
+              :active="beamSnapToBarrel"
+              title="Snap beam origins to live rendered barrel tips"
+              @click="toggleBeamSnapToBarrel"
+            >BARREL</BarButton>
           </BarControlGroup>
           <BarControlGroup>
             <BarDivider />

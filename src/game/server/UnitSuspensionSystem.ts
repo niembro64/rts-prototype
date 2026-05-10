@@ -78,19 +78,6 @@ export class UnitSuspensionSystem {
   private shouldKeepSuspensionActive(suspension: UnitSuspensionState, bodySleeping: boolean): boolean {
     if (!bodySleeping) return true;
     if (!suspension.anchorVelocityInitialized) return true;
-    if (this.hasJumpStateWork(suspension)) return true;
     return !isUnitSuspensionNearRest(suspension);
-  }
-
-  private hasJumpStateWork(suspension: UnitSuspensionState): boolean {
-    const jumpForce = suspension.jump?.force ?? 0;
-    if (
-      suspension.jump?.mode === 'always' &&
-      Number.isFinite(jumpForce) &&
-      jumpForce > 0
-    ) {
-      return true;
-    }
-    return suspension.jumpRequested || suspension.jumpActive || !suspension.legContact;
   }
 }

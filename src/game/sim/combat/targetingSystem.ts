@@ -546,18 +546,21 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       continue;
     }
 
-    // Pre-scan: find any weapon that needs an acquisition query plus
-    // the max acquire range + max weapon offset, so a single
-    // unit-centered query covers every weapon's reach. A weapon that
-    // is currently firing at a close fallback target also gets a query:
-    // engageRangeMin is a soft preference, so preferred-band targets
-    // should take over when they become available.
+    // Pre-scan: find whether any weapon needs a candidate scan, plus
+    // the max acquire range + max weapon offset across every enabled
+    // weapon. The radius is intentionally unit-centered and wide
+    // enough to cover each weapon-centered acquisition circle; the
+    // per-weapon distance/rank checks below still enforce exact ranges.
     let needsAnyQuery = false;
     let maxAcquireRange = 0;
     let maxWeaponOffset = 0;
     for (const weapon of weapons) {
       if (weaponSystemDisabled(world, weapon)) continue;
       if (weapon.config.isManualFire) continue;
+      const acquireRange = outermostAcquireDistance(weapon.ranges);
+      if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
+      const offset = Math.hypot(weapon.mount.x, weapon.mount.y);
+      if (offset > maxWeaponOffset) maxWeaponOffset = offset;
       const currentFireRank = weapon.state === 'engaged' && weapon.ranges.fire.min
         ? currentFireTargetRankSq(world, weapon, 'release').rank
         : TARGET_RANK_NONE;
@@ -569,14 +572,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         currentFireRank === TARGET_RANK_FIRE_FALLBACK
       ) {
         needsAnyQuery = true;
-        const acquireRange = outermostAcquireDistance(weapon.ranges);
-        if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
-        const offset = Math.hypot(weapon.mount.x, weapon.mount.y);
-        if (offset > maxWeaponOffset) maxWeaponOffset = offset;
       }
     }
 
-    // Always batch when ANY weapon needs acquisition. The spatial grid
+    // Always batch when ANY weapon needs candidates. The spatial grid
     // returns a reused array, so consume it directly before any other
     // spatial query can overwrite the result.
     let batchedEnemies: Entity[] | null = null;
@@ -612,9 +611,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const weaponZ = weapon.worldPos!.z;
       const r = weapon.ranges;
 
-      const candidates = batchedEnemies
-        ? batchedEnemies
-        : spatialGrid.queryEnemyEntitiesInCircle2D(weaponX, weaponY, outermostAcquireDistance(r), playerId);
+      if (!batchedEnemies) continue;
+      const candidates = batchedEnemies;
 
       let closestEngageable: Entity | null = null;
       let closestDistSq = currentFireRank.distSq;
@@ -691,11 +689,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const weaponZ = weapon.worldPos!.z;
       const r = weapon.ranges;
 
-      // Use batched results when available, otherwise fall back to a
-      // per-weapon query if this path is reached without a unit batch.
-      const candidates = batchedEnemies
-        ? batchedEnemies
-        : spatialGrid.queryEnemyEntitiesInCircle2D(weaponX, weaponY, outermostAcquireDistance(r), playerId);
+      if (!batchedEnemies) continue;
+      const candidates = batchedEnemies;
 
       let closestEnemy: Entity | null = null;
       let closestDistSq = Infinity;

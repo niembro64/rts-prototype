@@ -14,7 +14,7 @@ import {
   ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_NORMAL,
-  ENTITY_CHANGED_SUSPENSION, ENTITY_CHANGED_MOVEMENT_ACCEL,
+  ENTITY_CHANGED_SUSPENSION, ENTITY_CHANGED_JUMP, ENTITY_CHANGED_MOVEMENT_ACCEL,
   actionTypeToCode, turretStateToCode,
   unitTypeToCode, buildingTypeToCode, projectileTypeToCode,
   turretIdToCode, shotIdToCode,
@@ -50,6 +50,7 @@ type PooledEntry = {
   unitSub: UnitSub;
   unitMovementAccel: Vec3;
   unitSuspension: NonNullable<UnitSub['suspension']>;
+  unitJump: NonNullable<UnitSub['jump']>;
   /** Persistent radius object reused across snapshots — unitSub.radius
    *  swaps between this and undefined depending on whether the entity
    *  needs a static-fields seed. */
@@ -235,6 +236,7 @@ function createPooledEntry(): PooledEntry {
       offset: { x: 0, y: 0, z: 0 },
       velocity: { x: 0, y: 0, z: 0 },
     },
+    unitJump: {},
     unitRadius: { body: 0, shot: 0, push: 0 },
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
@@ -364,7 +366,8 @@ const SNAPSHOT_DIRTY_FORCE_FIELDS =
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_FACTORY |
-  ENTITY_CHANGED_SUSPENSION;
+  ENTITY_CHANGED_SUSPENSION |
+  ENTITY_CHANGED_JUMP;
 
 /** Entities that have already had their static (never-changes-after-
  *  spawn) fields shipped at least once over this session's protocol.
@@ -946,10 +949,15 @@ export function serializeGameState(
         captureEntityState(entity, _nextStateScratch);
         next = _nextStateScratch;
       }
+      const dirtyForcedFields = dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS;
+      const jumpAnchorFields = (dirtyFields & ENTITY_CHANGED_JUMP)
+        ? ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL
+        : 0;
       const changedFields = isNew
         ? undefined
         : getChangedFields(entity, prev, next, getDeltaResolution(entity, recipientPlayerId)) |
-          (dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS);
+          dirtyForcedFields |
+          jumpAnchorFields;
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntity(entity, changedFields, world);
         if (netEntity) _entityBuf.push(netEntity);
@@ -1395,6 +1403,7 @@ function serializeEntity(
       // POS holds steady (EMA still settling, host tilt-mode flip).
       ENTITY_CHANGED_NORMAL |
       ENTITY_CHANGED_SUSPENSION |
+      ENTITY_CHANGED_JUMP |
       ENTITY_CHANGED_MOVEMENT_ACCEL;
     const hasUnitFields = isFull || (changedFields! & unitFieldMask);
 
@@ -1470,7 +1479,6 @@ function serializeEntity(
           out.velocity.x = qVel(suspension.velocityX);
           out.velocity.y = qVel(suspension.velocityY);
           out.velocity.z = qVel(suspension.velocityZ);
-          out.jumpActive = suspension.jumpActive ? true : undefined;
           out.legContact = suspension.legContact ? true : undefined;
           u.suspension = out;
         } else {
@@ -1478,6 +1486,20 @@ function serializeEntity(
         }
       } else {
         u.suspension = undefined;
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_JUMP)) {
+        const jump = entity.unit.jump;
+        if (jump) {
+          const out = pool.unitJump;
+          out.active = jump.active ? true : undefined;
+          out.launchSeq = jump.launchSeq > 0 ? jump.launchSeq : undefined;
+          u.jump = out;
+        } else {
+          u.jump = undefined;
+        }
+      } else {
+        u.jump = undefined;
       }
 
       // HP

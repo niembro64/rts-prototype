@@ -34,7 +34,12 @@ export type AudioToolkit = {
 export type ContinuousSound = {
   oscillator: OscillatorNode;
   gainNode: GainNode;
+  filter: BiquadFilterNode;
+  highpass?: BiquadFilterNode;
+  lfo?: OscillatorNode;
+  lfoGain?: GainNode;
   noiseSource?: AudioBufferSourceNode;
+  noiseFilter?: BiquadFilterNode;
   noiseGain?: GainNode;
   targetVolume: number;
   noiseTargetVolume: number;

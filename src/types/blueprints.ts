@@ -228,7 +228,7 @@ export type LocomotionPhysics = {
    *  air resistance. Wheels have low traction, treads middle, legs
    *  high. */
   traction: number;
-  /** Optional force-driven jump actuator layered on top of suspension.
+  /** Optional spring-energy jump actuator layered on locomotion.
    *  Belongs on locomotion because the actuator is a property of the
    *  legs/wheels/treads, not the chassis. */
   jump?: UnitJumpConfig;

@@ -153,7 +153,11 @@ export const UNIT_LOCOMOTION_BLUEPRINTS = {
   },
   tick: {
     type: 'legs',
-    physics: createLocomotionPhysics('legs', 120, { force: 10000, mode: 'always' }),
+    physics: createLocomotionPhysics('legs', 120, {
+      springStiffness: 10_000,
+      compression: 34,
+      mode: 'always',
+    }),
     config: {
       upperThickness: 2,
       lowerThickness: 1.5,

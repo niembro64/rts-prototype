@@ -68,6 +68,7 @@ type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building'
 type ReusableFactory = NonNullable<ReusableEntityBuilding['factory']>;
 type ReusableBuildState = NonNullable<ReusableEntityUnit['build']>;
 type ReusableSuspensionState = NonNullable<ReusableEntityUnit['suspension']>;
+type ReusableJumpState = NonNullable<ReusableEntityUnit['jump']>;
 
 function createReusableUnit(): ReusableEntityUnit {
   return {
@@ -113,6 +114,10 @@ function createReusableSuspensionState(): ReusableSuspensionState {
   };
 }
 
+function createReusableJumpState(): ReusableJumpState {
+  return {};
+}
+
 function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): ReusableEntityUnit {
   dst.unitType = src.unitType;
   dst.hp.curr = src.hp.curr;
@@ -150,10 +155,16 @@ function copyUnitInto(src: ReusableEntityUnit, dst: ReusableEntityUnit): Reusabl
     suspension.velocity.x = src.suspension.velocity.x;
     suspension.velocity.y = src.suspension.velocity.y;
     suspension.velocity.z = src.suspension.velocity.z;
-    suspension.jumpActive = src.suspension.jumpActive;
     suspension.legContact = src.suspension.legContact;
   } else {
     dst.suspension = undefined;
+  }
+  if (src.jump) {
+    const jump = dst.jump ?? (dst.jump = createReusableJumpState());
+    jump.active = src.jump.active;
+    jump.launchSeq = src.jump.launchSeq;
+  } else {
+    dst.jump = undefined;
   }
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;

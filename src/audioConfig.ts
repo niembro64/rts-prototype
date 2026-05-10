@@ -32,9 +32,15 @@ import type { ShotId, TurretId, UnitTypeId } from './types/blueprintIds';
 // harmonic-series index so the widow's four beams played a chord;
 // the four-turret unit was reduced to a single beamTurret blueprint
 // so the per-index variation is no longer needed. Keeps a single
-// canonical entry plus a beefier megaBeam pair for the megaBeamTurret.
+// canonical entry plus mini / mega variants for the lighter Tick beam
+// and heavier megaBeamTurret.
 const _beamPlaySpeed = harmonicSeries[8] / harmonicSeries[6];
 const _beamFire = {
+  miniBeam: {
+    synth: 'laser-zap' as SynthId,
+    volume: 0.14,
+    playSpeed: harmonicSeries[8] / harmonicSeries[8],
+  },
   beamTurret: {
     synth: 'laser-zap' as SynthId,
     volume: 0.2,
@@ -48,6 +54,11 @@ const _beamFire = {
   },
 } satisfies Partial<Record<TurretId, SoundEntry>>;
 const _beamHit = {
+  miniBeamShot: {
+    synth: 'sizzle' as SynthId,
+    volume: 0.7,
+    playSpeed: harmonicSeries[8] / harmonicSeries[8],
+  },
   beamShot: {
     synth: 'sizzle' as SynthId,
     volume: 1.0,

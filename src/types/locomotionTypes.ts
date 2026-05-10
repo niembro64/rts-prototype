@@ -25,24 +25,33 @@ export type UnitSuspensionConfig = {
 };
 
 export type UnitJumpConfig = {
-  /** Upward actuator force. Applied only while the locomotion ground
-   *  point is at or below terrain height. */
-  force: number;
-  /** Manual jumps consume a command; always jumps fire every grounded tick. */
+  /** Spring constant for the charged launch spring, in force / world-unit. */
+  springStiffness: number;
+  /** Preloaded spring compression distance. Potential energy is
+   *  0.5 * springStiffness * compression^2. */
+  compression: number;
+  /** Manual jumps consume a command; always jumps release once per ground contact. */
   mode?: 'manual' | 'always';
+};
+
+export type UnitJumpState = {
+  config: UnitJumpConfig;
+  /** Set by player/AI command and consumed by the next actuator tick. */
+  requested: boolean;
+  /** True after a spring release; recharge is allowed once grounded and no longer moving outward. */
+  active: boolean;
+  /** Monotonic server-authored launch edge counter used by clients to reset visual drift. */
+  launchSeq: number;
 };
 
 export type UnitSuspensionState = {
   config: UnitSuspensionConfig;
-  jump?: UnitJumpConfig;
   offsetX: number;
   offsetY: number;
   offsetZ: number;
   velocityX: number;
   velocityY: number;
   velocityZ: number;
-  jumpRequested: boolean;
-  jumpActive: boolean;
   legContact: boolean;
   anchorVelocityX: number;
   anchorVelocityY: number;

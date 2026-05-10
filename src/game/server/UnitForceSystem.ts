@@ -13,13 +13,16 @@ import {
 } from '../sim/Terrain';
 import { getLocomotionForceProfile } from '../sim/locomotion';
 import {
-  getUnitJumpForce,
+  unitJumpCanRelease,
+  getUnitJumpSpringEnergy,
+  getUnitJumpSpringForce,
+  unitJumpHasActuatorWork,
   unitJumpWantsActuator,
 } from '../sim/unitJump';
 import { isUnitGroundPointAtOrBelowTerrain } from '../sim/unitGroundPhysics';
 import {
   ENTITY_CHANGED_MOVEMENT_ACCEL,
-  ENTITY_CHANGED_SUSPENSION,
+  ENTITY_CHANGED_JUMP,
   ENTITY_CHANGED_ROT,
 } from '../../types/network';
 import type { Simulation } from '../sim/Simulation';
@@ -127,9 +130,9 @@ export class UnitForceSystem {
       }
 
       const groundContact = this.hasUnitGroundContact(entity.unit, body);
-      const jumpStateChanged = this.applyJumpActuator(entity.unit, body, groundContact);
+      const jumpStateChanged = this.applyJumpActuator(entity.unit, body, groundContact, dtSec);
       if (jumpStateChanged) {
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_SUSPENSION);
+        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_JUMP);
       }
 
       const externalForce = forceAccumulator.getFinalForce(entity.id);
@@ -360,17 +363,13 @@ export class UnitForceSystem {
     const units = this.world.getUnits();
     for (let i = 0; i < units.length; i++) {
       const unit = units[i].unit;
-      if (!unit || getUnitJumpForce(unit) <= 0) continue;
+      if (!unit || getUnitJumpSpringEnergy(unit) <= 0) continue;
       ids.push(units[i].id);
     }
   }
 
   private hasJumpActuatorWork(unit: Unit): boolean {
-    const suspension = unit.suspension;
-    const jump = suspension?.jump;
-    if (!jump || !Number.isFinite(jump.force) || jump.force <= 0) return false;
-    if (jump.mode === 'always' || suspension.jumpRequested) return true;
-    return suspension.jumpActive || !suspension.legContact;
+    return unitJumpHasActuatorWork(unit);
   }
 
   private hasUnitGroundContact(unit: Unit, body: Body3D): boolean {
@@ -381,37 +380,53 @@ export class UnitForceSystem {
     );
   }
 
-  private applyJumpActuator(unit: Unit, body: Body3D, groundContact: boolean): boolean {
-    const suspension = unit.suspension;
-    const jump = suspension?.jump;
+  private applyJumpActuator(unit: Unit, body: Body3D, groundContact: boolean, dtSec: number): boolean {
+    const jump = unit.jump;
     if (!jump) return false;
 
-    const beforeJumpRequested = suspension.jumpRequested;
-    const beforeJumpActive = suspension.jumpActive;
-    const beforeLegContact = suspension.legContact;
+    const beforeRequested = jump.requested;
+    const beforeActive = jump.active;
+    const beforeLaunchSeq = jump.launchSeq;
 
     const wantsJump = unitJumpWantsActuator(unit);
-    suspension.jumpRequested = false;
-    suspension.legContact = groundContact;
+    const normal = groundContact && wantsJump
+      ? this.world.getCachedSurfaceNormal(body.x, body.y)
+      : undefined;
+    const normalVelocity = normal
+      ? body.vx * normal.nx + body.vy * normal.ny + body.vz * normal.nz
+      : 0;
+    const releaseJump = unitJumpCanRelease(unit, groundContact, normalVelocity);
+    jump.requested = false;
 
-    const jumpForce = getUnitJumpForce(unit);
-    if (!groundContact || !wantsJump || jumpForce <= 0) {
-      suspension.jumpActive = false;
+    if (!groundContact || !wantsJump) {
+      jump.active = false;
       return (
-        suspension.jumpRequested !== beforeJumpRequested ||
-        suspension.jumpActive !== beforeJumpActive ||
-        suspension.legContact !== beforeLegContact
+        jump.requested !== beforeRequested ||
+        jump.active !== beforeActive
+      );
+    }
+    if (!releaseJump || !normal) {
+      return jump.requested !== beforeRequested;
+    }
+
+    const jumpForce = getUnitJumpSpringForce(unit, dtSec);
+    if (jumpForce <= 0) {
+      jump.active = false;
+      return (
+        jump.requested !== beforeRequested ||
+        jump.active !== beforeActive
       );
     }
 
-    this.physics.applyForce(body, 0, 0, jumpForce, {
+    this.physics.applyForce(body, normal.nx * jumpForce, normal.ny * jumpForce, normal.nz * jumpForce, {
       canLaunchFromGround: true,
     });
-    suspension.jumpActive = true;
+    jump.launchSeq++;
+    jump.active = true;
     return (
-      suspension.jumpRequested !== beforeJumpRequested ||
-      suspension.jumpActive !== beforeJumpActive ||
-      suspension.legContact !== beforeLegContact
+      jump.requested !== beforeRequested ||
+      jump.active !== beforeActive ||
+      jump.launchSeq !== beforeLaunchSeq
     );
   }
 

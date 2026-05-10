@@ -23,6 +23,7 @@ import { updateCombatActivityFlags } from '../../sim/combat/combatActivity';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
 import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
+import { createUnitJump } from '../../sim/unitJump';
 import { computeUnitActionHash } from '../../sim/unitActions';
 
 function decodeNetworkUnitType(unitType: unknown): string | null {
@@ -76,8 +77,21 @@ export function applyNetworkSuspensionState(
   state.velocityX = suspension.velocity.x;
   state.velocityY = suspension.velocity.y;
   state.velocityZ = suspension.velocity.z;
-  state.jumpActive = suspension.jumpActive === true;
   state.legContact = suspension.legContact === true;
+}
+
+export function applyNetworkJumpState(
+  entity: Entity,
+  jump: NonNullable<NetworkServerSnapshotEntity['unit']>['jump'] | undefined | null,
+): boolean {
+  const state = entity.unit?.jump;
+  if (!state || !jump) return false;
+  const prevLaunchSeq = state.launchSeq;
+  state.active = jump.active === true;
+  if (isFiniteNumber(jump.launchSeq)) {
+    state.launchSeq = jump.launchSeq;
+  }
+  return state.launchSeq !== prevLaunchSeq;
 }
 
 function createTurretsFromNetwork(
@@ -242,6 +256,7 @@ function createUnitFromNetwork(
       movementAccelX: u?.movementAccel?.x ?? 0,
       movementAccelY: u?.movementAccel?.y ?? 0,
       movementAccelZ: u?.movementAccel?.z ?? 0,
+      jump: createUnitJump(unitBlueprint?.locomotion.physics.jump),
       mirrorPanels: [],
       mirrorBoundRadius: 0,
       // Smoothed surface normal: hydrated from the wire when present
@@ -252,7 +267,7 @@ function createUnitFromNetwork(
       surfaceNormal: u?.surfaceNormal
         ? { nx: u.surfaceNormal.nx, ny: u.surfaceNormal.ny, nz: u.surfaceNormal.nz }
         : { nx: 0, ny: 0, nz: 1 },
-      suspension: createUnitSuspension(unitBlueprint?.suspension, unitBlueprint?.locomotion.physics.jump),
+      suspension: createUnitSuspension(unitBlueprint?.suspension),
     },
   };
 
@@ -267,6 +282,7 @@ function createUnitFromNetwork(
     updateCombatActivityFlags(entity.combat);
   }
   applyNetworkSuspensionState(entity, u?.suspension);
+  applyNetworkJumpState(entity, u?.jump);
 
   // Cache mirror panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the

@@ -16,7 +16,7 @@ import type {
 import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import type { EntityId, PlayerId } from './entityTypes';
-import type { UnitLocomotion, UnitSuspensionState } from './locomotionTypes';
+import type { UnitJumpState, UnitLocomotion, UnitSuspensionState } from './locomotionTypes';
 import type { ResourceCost } from './economyTypes';
 import type {
   ActiveProjectileShot,
@@ -45,7 +45,7 @@ export type {
   TurretRanges,
 } from './combatTypes';
 export type { EntityId, PlayerId } from './entityTypes';
-export type { UnitLocomotion } from './locomotionTypes';
+export type { UnitJumpState, UnitLocomotion } from './locomotionTypes';
 export type { ResourceCost } from './economyTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 export type {
@@ -171,6 +171,9 @@ export type Unit = {
    *  "stationary" as (0, 0). */
   thrustDirX?: number;
   thrustDirY?: number;
+  /** Optional grounded jump actuator. Units without this use the exact
+   *  same force/contact path and simply never add launch force. */
+  jump?: UnitJumpState;
   /** Optional runtime spring state for the visible chassis relative
    *  to the locomotion anchor. Omitted means rigid legacy attachment. */
   suspension?: UnitSuspensionState;

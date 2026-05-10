@@ -21,6 +21,8 @@ export function startContinuousSound(
   const osc = ctx.createOscillator();
   const gain = tk.createGain(0, 0);
   if (!gain) return null;
+  let lfo: OscillatorNode | undefined;
+  let lfoGain: GainNode | undefined;
 
   osc.type = config.wave;
   const freqOffset = config.randomFrequencyRange
@@ -38,8 +40,8 @@ export function startContinuousSound(
 
   // Optional LFO for frequency wobble
   if (config.lfoRate && config.lfoDepth) {
-    const lfo = ctx.createOscillator();
-    const lfoGain = ctx.createGain();
+    lfo = ctx.createOscillator();
+    lfoGain = ctx.createGain();
     lfo.type = 'sine';
     lfo.frequency.value = config.lfoRate * speed;
     lfoGain.gain.value = config.lfoDepth * speed;
@@ -83,13 +85,14 @@ export function startContinuousSound(
   const noiseBuffer = tk.createNoiseBuffer(10);
   let noiseSource: AudioBufferSourceNode | undefined;
   let noiseGain: GainNode | undefined;
+  let noiseFilter: BiquadFilterNode | undefined;
 
   if (noiseBuffer) {
     noiseSource = ctx.createBufferSource();
     noiseSource.buffer = noiseBuffer;
     noiseSource.loop = true;
 
-    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter = ctx.createBiquadFilter();
     noiseFilter.type = 'bandpass';
     noiseFilter.frequency.value = config.noiseBandFreq * speed;
     noiseFilter.Q.value = config.noiseBandQ;
@@ -106,7 +109,12 @@ export function startContinuousSound(
   return {
     oscillator: osc,
     gainNode: gain,
+    filter,
+    highpass,
+    lfo,
+    lfoGain,
     noiseSource,
+    noiseFilter,
     noiseGain,
     targetVolume: baseOsc * zoomVolume,
     noiseTargetVolume: noiseGain ? baseNoise * zoomVolume : 0,
@@ -115,6 +123,32 @@ export function startContinuousSound(
     audible: true,
     sourceEntityId: Math.floor(entityId / 100),
   };
+}
+
+function stopSource(source: AudioScheduledSourceNode | undefined): void {
+  if (!source) return;
+  try { source.stop(); } catch { /* already stopped */ }
+}
+
+function disconnectNode(node: AudioNode | undefined): void {
+  if (!node) return;
+  try { node.disconnect(); } catch { /* already disconnected */ }
+}
+
+function disposeContinuousSound(sound: ContinuousSound): void {
+  stopSource(sound.lfo);
+  stopSource(sound.oscillator);
+  stopSource(sound.noiseSource);
+
+  disconnectNode(sound.lfo);
+  disconnectNode(sound.lfoGain);
+  disconnectNode(sound.oscillator);
+  disconnectNode(sound.filter);
+  disconnectNode(sound.highpass);
+  disconnectNode(sound.gainNode);
+  disconnectNode(sound.noiseSource);
+  disconnectNode(sound.noiseFilter);
+  disconnectNode(sound.noiseGain);
 }
 
 // Stop a continuous sound with smooth fade-out
@@ -131,12 +165,7 @@ export function stopContinuousSound(
 
   const timeoutId = setTimeout(() => {
     pendingTimeouts.delete(timeoutId);
-    try {
-      sound.oscillator.stop();
-      sound.noiseSource?.stop();
-    } catch {
-      // Ignore if already stopped
-    }
+    disposeContinuousSound(sound);
   }, fadeTime * 1000 + 20);
   pendingTimeouts.add(timeoutId);
 }

@@ -22,6 +22,7 @@ export const SHOT_IDS = [
   'beamShot',
   'megaBeamShot',
   'towerBeamShot',
+  'miniBeamShot',
 ] as const;
 export type ShotId = typeof SHOT_IDS[number];
 
@@ -40,6 +41,7 @@ export const TURRET_IDS = [
   'forceTurret',
   'constructionTurret',
   'towerBeamTurret',
+  'miniBeam',
 ] as const;
 export type TurretId = typeof TURRET_IDS[number];
 

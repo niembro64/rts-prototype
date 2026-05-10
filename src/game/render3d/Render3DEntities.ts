@@ -115,6 +115,11 @@ const _aimDir = new THREE.Vector3();
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
 
+/** Barrel tip in sim/world coordinates: x/y ground plane, z height.
+ *  The matrix path computes Three.js coordinates first, then maps
+ *  three (x, y-up, z) -> sim (x, z, y) before caching so beam render
+ *  code can consume the same coordinate convention as projectile
+ *  polylines. */
 type BarrelTipEntry = { x: number; y: number; z: number };
 
 /** Pack `(entityId, turretIdx, barrelIdx)` into a single number safely
@@ -254,7 +259,7 @@ export class Render3DEntities {
   private _barrelStepMat = new THREE.Matrix4();
   private _barrelOneVec = new THREE.Vector3(1, 1, 1);
 
-  /** Per-frame cache of barrel-tip world positions, keyed by
+  /** Per-frame cache of barrel-tip sim/world positions, keyed by
    *  `(entityId * 256) + (turretIdx << 4) + barrelIdx`. Populated in
    *  the per-barrel matrix-compose loop and consumed by BeamRenderer3D
    *  when the player-client `beamSnapToBarrel` toggle is on, so the
@@ -1210,6 +1215,42 @@ export class Render3DEntities {
           continue;
         }
 
+        // Turret aim through the new hierarchy:
+        //
+        //   world barrel = tilt · Ry(yawGroup) · Ry(localYaw) · Rz(localPitch) · +X
+        //
+        // and we want the world barrel to equal the sim's intended
+        // world direction (so the projectile spawn velocity, range
+        // gates, and rendered barrel all agree). Solving:
+        //
+        //   1. Build the WORLD barrel direction in three.js coords
+        //      from sim's t.rotation + t.pitch.
+        //   2. Inverse-rotate by the chassis tilt to undo the parent
+        //      tilt — this is the direction we need expressed in the
+        //      tilted unit-yaw frame.
+        //   3. Decompose into Ry(combinedYaw) · Rz(localPitch) · +X
+        //      where combinedYaw = yawGroup.rotation.y + tm.root.rotation.y.
+        //   4. tm.root.rotation.y = combinedYaw - yawGroup.rotation.y
+        //                        = combinedYaw + e.transform.rotation.
+        //
+        // Do this before writing instanced barrel matrices and the
+        // snap-to-barrel cache; both need the current frame's pose.
+        applyTurretAimPose3D(
+          tm,
+          e.transform.rotation,
+          t.rotation,
+          t.pitch,
+          chassisTilted ? _invTiltQuat : undefined,
+        );
+        // Spin: gatling roll around the LOCAL +X of the pitch group,
+        // which is the actual barrel axis after the tilt-aware yaw
+        // and pitch compose into the parent chain.
+        if (tm.spinGroup) {
+          tm.spinGroup.rotation.x = unitGfx.barrelSpin
+            ? spinState?.angle ?? 0
+            : 0;
+        }
+
         // Head InstancedMesh write — the head sphere's chassis-local
         // position is (mount.x, mountY + headRadius, mount.y) inside
         // liftGroup, which world-transforms via:
@@ -1302,62 +1343,24 @@ export class Render3DEntities {
               this._barrelParentMat, this._barrelStepMat,
             );
             this.unitDetailInstances.writeBarrelMatrix(slot, this._smoothFinalMat);
-            // Cache the world-space barrel tip for the BeamRenderer
+            // Cache the sim/world barrel tip for the BeamRenderer
             // snap-to-barrel toggle. The cylinder geometry is unit
             // height centered at origin, so local (0, 0.5, 0) is the
             // tip; multiplying by `_smoothFinalMat` (which already
-            // bakes in the per-barrel length scale) yields the world
-            // muzzle position the rendered cylinder front face sits
-            // at this frame.
+            // bakes in the per-barrel length scale) yields the Three.js
+            // muzzle position the rendered cylinder front face sits at
+            // this frame; cache it in sim axes for beam polylines.
             this._barrelTipScratch
               .copy(Render3DEntities._BARREL_TIP_LOCAL)
               .applyMatrix4(this._smoothFinalMat);
             const tipEntry = this._barrelTipPool[this._barrelTipPoolIdx]
               ?? (this._barrelTipPool[this._barrelTipPoolIdx] = { x: 0, y: 0, z: 0 });
             tipEntry.x = this._barrelTipScratch.x;
-            tipEntry.y = this._barrelTipScratch.y;
-            tipEntry.z = this._barrelTipScratch.z;
+            tipEntry.y = this._barrelTipScratch.z;
+            tipEntry.z = this._barrelTipScratch.y;
             this._barrelTipPoolIdx++;
             this._barrelTipCache.set(packBarrelTipKey(e.id, i, bi), tipEntry);
           }
-        }
-
-        // Turret aim through the new hierarchy:
-        //
-        //   world barrel = tilt · Ry(yawGroup) · Ry(localYaw) · Rz(localPitch) · +X
-        //
-        // and we want the world barrel to equal the sim's intended
-        // world direction (so the projectile spawn velocity, range
-        // gates, and rendered barrel all agree). Solving:
-        //
-        //   1. Build the WORLD barrel direction in three.js coords
-        //      from sim's t.rotation + t.pitch.
-        //   2. Inverse-rotate by the chassis tilt to undo the parent
-        //      tilt — this is the direction we need expressed in the
-        //      tilted unit-yaw frame.
-        //   3. Decompose into Ry(combinedYaw) · Rz(localPitch) · +X
-        //      where combinedYaw = yawGroup.rotation.y + tm.root.rotation.y.
-        //   4. tm.root.rotation.y = combinedYaw - yawGroup.rotation.y
-        //                        = combinedYaw + e.transform.rotation.
-        //
-        // On flat ground (chassisTilted == false) the inverse-tilt is
-        // identity and step 4 collapses to the original Euler formula
-        // `e.transform.rotation - t.rotation`, so the fast path
-        // matches existing visuals byte-for-byte.
-        applyTurretAimPose3D(
-          tm,
-          e.transform.rotation,
-          t.rotation,
-          t.pitch,
-          chassisTilted ? _invTiltQuat : undefined,
-        );
-        // Spin: gatling roll around the LOCAL +X of the pitch group,
-        // which is the actual barrel axis after the tilt-aware yaw
-        // and pitch compose into the parent chain.
-        if (tm.spinGroup) {
-          tm.spinGroup.rotation.x = unitGfx.barrelSpin
-            ? spinState?.angle ?? 0
-            : 0;
         }
       }
 
@@ -1509,8 +1512,8 @@ export class Render3DEntities {
     return this.constructionVisuals.getFactorySprayTargets();
   }
 
-  /** Look up the world-space barrel-tip position the rendered cylinder
-   *  is drawn at this frame, for `(entityId, turretIdx, barrelIdx)`.
+  /** Look up the sim/world barrel-tip position the rendered cylinder is
+   *  drawn at this frame, for `(entityId, turretIdx, barrelIdx)`.
    *  Populated by updateUnits' per-barrel matrix compose; consumed by
    *  BeamRenderer3D when the `beamSnapToBarrel` toggle is on so the
    *  start of the first beam segment exactly matches the visible

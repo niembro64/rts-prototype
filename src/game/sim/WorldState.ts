@@ -19,6 +19,7 @@ import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { createUnitSuspension } from './unitSuspension';
+import { createUnitJump } from './unitJump';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
@@ -575,7 +576,8 @@ export class WorldState {
       bp.mass,
       bp.hp * UNIT_HP_MULTIPLIER,
     );
-    entity.unit!.suspension = createUnitSuspension(bp.suspension, bp.locomotion.physics.jump);
+    entity.unit!.jump = createUnitJump(bp.locomotion.physics.jump);
+    entity.unit!.suspension = createUnitSuspension(bp.suspension);
 
     // Create combat component (turrets + per-host bookkeeping) from
     // blueprint. Every unit blueprint declares at least one turret, so

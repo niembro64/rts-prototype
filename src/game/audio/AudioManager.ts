@@ -34,6 +34,7 @@ export class AudioManager {
   private activeLaserSounds: Map<number, ContinuousSound> = new Map();
   private activeForceFieldSounds: Map<number, ContinuousSound> = new Map();
   private pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
+  private gainCleanupTimeouts = new Set<ReturnType<typeof setTimeout>>();
 
   // Volume controls
   public masterVolume = AUDIO.masterVolume;
@@ -69,7 +70,11 @@ export class AudioManager {
         gain.gain.value = volume * sfx;
         gain.connect(mgain);
         if (autoDisconnectMs > 0) {
-          setTimeout(() => { try { gain.disconnect(); } catch {} }, autoDisconnectMs);
+          const timeoutId = setTimeout(() => {
+            this.gainCleanupTimeouts.delete(timeoutId);
+            try { gain.disconnect(); } catch {}
+          }, autoDisconnectMs);
+          this.gainCleanupTimeouts.add(timeoutId);
         }
         return gain;
       },
@@ -157,8 +162,6 @@ export class AudioManager {
 
   stopAllLaserSounds(): void {
     for (const entityId of this.activeLaserSounds.keys()) this.stopLaserSound(entityId);
-    for (const id of this.pendingTimeouts) clearTimeout(id);
-    this.pendingTimeouts.clear();
   }
 
   startForceFieldSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
@@ -179,6 +182,11 @@ export class AudioManager {
 
   stopAllForceFieldSounds(): void {
     for (const entityId of this.activeForceFieldSounds.keys()) this.stopForceFieldSound(entityId);
+  }
+
+  stopAllContinuousSounds(): void {
+    this.stopAllLaserSounds();
+    this.stopAllForceFieldSounds();
   }
 
   // Get active continuous sounds as [soundId, sourceEntityId] pairs

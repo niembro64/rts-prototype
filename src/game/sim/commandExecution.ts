@@ -16,7 +16,7 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
-import { requestUnitJump } from './unitSuspension';
+import { requestUnitJump } from './unitJump';
 import { pushUnitAction, setUnitActions } from './unitActions';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };

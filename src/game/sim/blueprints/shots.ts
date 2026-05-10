@@ -9,10 +9,12 @@ import { AUDIO } from '../../../audioConfig';
 import { isShotId, type ShotId } from '../../../types/blueprintIds';
 import type { ShotBlueprint } from './types';
 
+const BEAM_WIDTH_MINI = 3;
 const BEAM_WIDTH = 6;
 const BEAM_WIDTH_MEGA = 16;
 const BEAM_RECOIL_AND_HIT_FORCE = 200;
 const FIRE_EXPLOSION_RADIUS_MULTIPLIER = 3;
+const BEAM_DAMAGE_SPHERE_RADIUS_MINI = BEAM_WIDTH_MINI * 2;
 const BEAM_DAMAGE_SPHERE_RADIUS = BEAM_WIDTH * 2;
 const BEAM_DAMAGE_SPHERE_RADIUS_MEGA = BEAM_WIDTH_MEGA * 2;
 
@@ -159,6 +161,17 @@ export const SHOT_BLUEPRINTS = {
     detonateOnExpiry: true,
     lifespan: 2000,
     hitSound: AUDIO.event.hit.disruptorShot,
+  },
+  miniBeamShot: {
+    type: 'beam',
+    id: 'miniBeamShot',
+    dps: 15,
+    force: BEAM_RECOIL_AND_HIT_FORCE * 0.5,
+    recoil: BEAM_RECOIL_AND_HIT_FORCE * 0.5,
+    radius: BEAM_WIDTH_MINI / 2,
+    width: BEAM_WIDTH_MINI,
+    damageSphere: { radius: BEAM_DAMAGE_SPHERE_RADIUS_MINI },
+    hitSound: AUDIO.event.hit.miniBeamShot,
   },
   beamShot: {
     type: 'beam',

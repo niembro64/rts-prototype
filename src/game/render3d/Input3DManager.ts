@@ -471,7 +471,7 @@ export class Input3DManager {
     if (selectedUnits.length === 0) return;
     const entityIds: EntityId[] = [];
     for (const unit of selectedUnits) {
-      if (!unit.unit?.suspension?.jump) continue;
+      if (!unit.unit?.jump) continue;
       entityIds.push(unit.id);
     }
     if (entityIds.length === 0) return;

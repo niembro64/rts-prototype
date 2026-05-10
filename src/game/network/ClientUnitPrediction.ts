@@ -15,10 +15,6 @@ import {
   advanceUnitMotionPhysicsMutable,
   type MutableUnitMotion3,
 } from '../sim/unitMotionIntegration';
-import {
-  getUnitJumpAcceleration,
-  unitJumpWantsActuator,
-} from '../sim/unitJump';
 import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
 import {
   getUnitGroundFrictionDamp,
@@ -93,11 +89,6 @@ function getPredictionGroundNormal(
   );
 }
 
-function unitWantsPredictedJump(unit: Entity['unit']): boolean {
-  if (!unit) return false;
-  return unitJumpWantsActuator(unit) || unit.suspension?.jumpActive === true;
-}
-
 function advanceUnitMotionState(
   unit: NonNullable<Entity['unit']>,
   motion: MutableUnitMotion3,
@@ -111,9 +102,6 @@ function advanceUnitMotionState(
   const groundZ = getPredictionGroundZ(motion.x, motion.y);
   const penetration = getUnitGroundPenetration(unit, motion.z, groundZ);
   const contact = isUnitGroundPenetrationInContact(penetration);
-  const jumpAcceleration = contact && unitWantsPredictedJump(unit)
-    ? getUnitJumpAcceleration(unit)
-    : 0;
   const poweredAx = contact ? movementAccelX : 0;
   const poweredAy = contact ? movementAccelY : 0;
   const poweredAz = contact ? movementAccelZ : 0;
@@ -122,7 +110,6 @@ function advanceUnitMotionState(
 
   if (
     contact &&
-    jumpAcceleration <= 0 &&
     poweredAccelSq <= PREDICTION_ACCEL_EPSILON_SQ &&
     penetration <= PREDICTION_GROUND_REST_PENETRATION_EPSILON &&
     motion.vx * motion.vx +
@@ -142,12 +129,14 @@ function advanceUnitMotionState(
     unit.bodyCenterHeight,
     poweredAx,
     poweredAy,
-    poweredAz + jumpAcceleration - GRAVITY,
+    poweredAz - GRAVITY,
     airDamp,
     groundDamp,
+    // Jump launches are server-authored events; prediction only
+    // integrates the resulting position/velocity after that snap.
     0,
     0,
-    jumpAcceleration,
+    0,
     getPredictionGroundZ,
     getPredictionGroundNormal,
   );
@@ -349,8 +338,6 @@ export function clientUnitPredictionIsSettled(
 ): boolean {
   const unit = entity.unit;
   if (unit) {
-    if (unit.suspension?.jump?.mode === 'always') return false;
-
     const vx = unit.velocityX ?? 0;
     const vy = unit.velocityY ?? 0;
     const vz = unit.velocityZ ?? 0;

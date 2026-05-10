@@ -197,7 +197,7 @@ export const TURRET_BLUEPRINTS = {
     // every shot. 22 000 yields ~1344 wu max range with comfortable
     // headroom over the 1000 cap.
     launchForce: 26_000,
-    turretTurnAccel: 200,
+    turretTurnAccel: 20,
     turretDrag: 0.15,
     barrel: {
       type: 'simpleMultiBarrel',
@@ -379,9 +379,33 @@ export const TURRET_BLUEPRINTS = {
     }),
     eventsSmooth: false,
     color: COLOR_WHITE,
-    radius: { body: 5 },
+    radius: { body: 8 },
     audio: {
       fireSound: AUDIO.event.fire.beamTurret,
+    },
+  },
+  // miniBeam — Tick-scale beam mount. Keeps the same direct-fire
+  // behavior as beamTurret but with a smaller head/barrel, shorter
+  // reach, and the thinner miniBeamShot profile.
+  miniBeam: {
+    id: 'miniBeam',
+    projectileId: 'miniBeamShot',
+    range: 180,
+    turretTurnAccel: 200,
+    turretDrag: 0.15,
+    barrel: {
+      type: 'simpleSingleBarrel',
+      barrelLength: 0.5,
+    },
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: null,
+      trackingRange: null,
+    }),
+    eventsSmooth: false,
+    color: COLOR_WHITE,
+    radius: { body: 3 },
+    audio: {
+      fireSound: AUDIO.event.fire.miniBeam,
     },
   },
   // megaBeamTurret — bigger beam mount for "boss" beam units. Same

@@ -5,6 +5,7 @@ import {
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_JUMP,
   ENTITY_CHANGED_MOVEMENT_ACCEL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -17,6 +18,7 @@ import { isFiniteNumber } from '../math';
 import { refreshUnitActionHash } from '../sim/unitActions';
 import { getUnitLocomotion } from '../sim/blueprints';
 import {
+  applyNetworkJumpState,
   applyNetworkTurretNonVisualState,
   applyNetworkSuspensionState,
   refreshBuildingTurretsFromNetwork,
@@ -78,6 +80,9 @@ export function snapClientNonVisualState(
     }
     if (isFull || cf! & ENTITY_CHANGED_SUSPENSION) {
       applyNetworkSuspensionState(entity, su.suspension);
+    }
+    if (isFull || cf! & ENTITY_CHANGED_JUMP) {
+      applyNetworkJumpState(entity, su.jump);
     }
 
     if (isFull && Array.isArray(su.turrets)) {

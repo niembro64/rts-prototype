@@ -542,6 +542,9 @@ export const ENTITY_CHANGED_SUSPENSION = 1 << 9;
  *  clients predict powered ground movement with the same force input
  *  the server applied, without cloning the full command planner. */
 export const ENTITY_CHANGED_MOVEMENT_ACCEL = 1 << 10;
+/** Grounded jump actuator state changed. This is separate from visible
+ *  suspension so jump-capable units do not need chassis spring state. */
+export const ENTITY_CHANGED_JUMP = 1 << 11;
 
 export type NetworkServerSnapshotEntity = {
   id: number;
@@ -583,8 +586,11 @@ export type NetworkServerSnapshotEntity = {
     suspension?: {
       offset: Vec3;
       velocity: Vec3;
-      jumpActive?: boolean;
       legContact?: boolean;
+    };
+    jump?: {
+      active?: boolean;
+      launchSeq?: number;
     };
     isCommander?: boolean;
     buildTargetId?: number | null;
