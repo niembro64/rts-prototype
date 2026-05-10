@@ -19,14 +19,16 @@ logic, and no unbounded resource retention. Verify line numbers before fixing.
 1. Oversized orchestration files violate the small-file goal and hide lifecycle
    coupling.
    Evidence:
-   - src/components/GameCanvas.vue is still about 4067 lines after extracting
-     persisted chrome state to src/components/gameCanvasChromeState.ts and
-     client telemetry to src/components/gameCanvasTelemetry.ts. It still owns
-     server lifecycle, real-battle handoff, background/scene wait intervals,
-     audio UI, and scene startup/teardown. Timer/listener state is spread
-     across src/components/GameCanvas.vue:583,
-     src/components/GameCanvas.vue:2033, and cleanup at
-     src/components/GameCanvas.vue:2215.
+   - src/components/GameCanvas.vue is still about 3907 lines after extracting
+     persisted chrome state to src/components/gameCanvasChromeState.ts,
+     client telemetry to src/components/gameCanvasTelemetry.ts, background
+     battle lifecycle to src/components/gameCanvasBackgroundBattle.ts,
+     client presence/clock to src/components/gameCanvasPresence.ts, and the
+     sound-test shortcut to src/components/gameCanvasSoundTest.ts. It still
+     owns server lifecycle, real-battle handoff, the foreground scene wait
+     interval, and scene startup/teardown. Timer/listener state remains around
+     src/components/GameCanvas.vue:1948 and cleanup at
+     src/components/GameCanvas.vue:2064.
    - src/game/scenes/RtsScene3D.ts is about 2081 lines and owns snapshot intake,
      prediction, audio scheduling, camera, selection, minimap data, renderer
      update ordering, and renderer teardown. See the large update loop at

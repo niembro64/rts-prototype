@@ -3,11 +3,7 @@ import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from
 import { createGame, destroyGame, type GameInstance, type GameScene } from '../game/createGame';
 import { ClientViewState } from '../game/network/ClientViewState';
 import { type BuildingType, type PlayerId, type WaypointType } from '../game/sim/types';
-import {
-  createBackgroundBattle,
-  destroyBackgroundBattle,
-  type BackgroundBattleState,
-} from '../game/lobby/LobbyManager';
+import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import BarButton from './BarButton.vue';
@@ -85,7 +81,6 @@ import {
 } from '../serverSimLodConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
 import {
-  formatDuration,
   fmt4,
   statBarStyle,
   msBarStyle,
@@ -187,6 +182,9 @@ import {
   useGameCanvasChromeState,
 } from './gameCanvasChromeState';
 import { useGameCanvasTelemetry } from './gameCanvasTelemetry';
+import { useGameCanvasBackgroundBattle } from './gameCanvasBackgroundBattle';
+import { useGameCanvasPresence } from './gameCanvasPresence';
+import { useGameCanvasSoundTest } from './gameCanvasSoundTest';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -204,15 +202,9 @@ const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 const battleLoading = ref(false);
 
-// Background battle state (managed by LobbyManager)
-let backgroundBattle: BackgroundBattleState | null = null;
-// Monotonic counter incremented at the start of every
-// `startBackgroundBattle` call. Lets concurrent invocations (e.g.
-// multiple lobby-roster-change watcher firings during initial
-// handshake) racing through the async createBackgroundBattle
-// await detect that they've been superseded — see
-// startBackgroundBattle below.
-let backgroundBattleGen = 0;
+let getBackgroundBattle = (): BackgroundBattleState | null => null;
+let startBackgroundBattle = async (): Promise<void> => {};
+let stopBackgroundBattle = (): void => {};
 
 // Current game server (owned by this component)
 let currentServer: GameServer | null = null;
@@ -358,6 +350,44 @@ const networkStatus = computed(() => {
   return networkNotice.value ? 'NETWORK' : '';
 });
 
+// Which battle storage namespace is active right now.
+//   `demo` = the visual demo behind the BUDGET ANNIHILATION screen
+//            (initial page load + return-to-lobby cancel).
+//   `real` = the GAME LOBBY (preview pane) AND the actual REAL
+//            BATTLE — both share the `real-battle-*` keys so the
+//            lobby preview reflects what the upcoming real game
+//            will look like, and any host adjustments in the lobby
+//            persist into the real battle and across sessions.
+//
+// `roomCode` is set the moment the user clicks Host/Join (or
+// finishes joining), and `gameStarted` covers the actual game; the
+// union of those two flips the namespace at exactly the right
+// boundary without depending on modal visibility (so a brief
+// hide-modal during transitions doesn't accidentally write to demo
+// keys mid-lobby).
+const currentBattleMode = computed<BattleMode>(
+  () => (gameStarted.value || roomCode.value !== '' ? 'real' : 'demo'),
+);
+
+const localLobbyPlayer = computed(
+  () => lobbyPlayers.value.find((p) => p.playerId === localPlayerId.value) ?? null,
+);
+
+let battleStartTime = 0;
+const {
+  battleElapsed,
+  displayedClientIp,
+  displayedClientTime,
+  localIpAddress,
+  reportLocalPlayerInfo,
+} = useGameCanvasPresence({
+  currentBattleMode,
+  localLobbyPlayer,
+  getBattleStartTime: () => battleStartTime,
+  getBackgroundBattle: () => getBackgroundBattle(),
+  getCurrentServer: () => currentServer,
+});
+
 function setInstanceCameraFovDegrees(
   instance: GameInstance | null | undefined,
   fov: CameraFovDegrees,
@@ -366,34 +396,17 @@ function setInstanceCameraFovDegrees(
 }
 
 function applyPlayerClientEnabled(): void {
-  setPlayerClientRenderEnabled(backgroundBattle?.gameInstance, playerClientEnabled.value);
+  setPlayerClientRenderEnabled(getBackgroundBattle()?.gameInstance, playerClientEnabled.value);
   setPlayerClientRenderEnabled(gameInstance, playerClientEnabled.value);
 }
 
 function applyCameraFovDegrees(): void {
-  setInstanceCameraFovDegrees(backgroundBattle?.gameInstance, cameraFovDegrees.value);
+  setInstanceCameraFovDegrees(getBackgroundBattle()?.gameInstance, cameraFovDegrees.value);
   setInstanceCameraFovDegrees(gameInstance, cameraFovDegrees.value);
 }
 
 // Server metadata received from snapshots (for remote clients to display server bar)
 const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
-// Local lookup values are inputs to NetworkManager only. In real
-// battles the UI displays the host-propagated LobbyPlayer record.
-const localIpAddress = ref<string>('N/A');
-// Coarse "City, Country" string from the IP-services lookup,
-// or a timezone-derived fallback if the IP service didn't yield
-// one. Used in the GAME LOBBY player list. Empty until resolved.
-const localLocation = ref<string>('');
-// IANA timezone string (e.g. "America/Los_Angeles") for the
-// local browser. Available synchronously via Intl, populated
-// once at script init and never changes for the session.
-const localTimezone = ref<string>(
-  (() => {
-    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }
-    catch { return ''; }
-  })(),
-);
-const clientTime = ref<string>('');
 
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
@@ -532,9 +545,7 @@ const economyInfo = reactive<EconomyInfo>({
 // Minimap state
 const minimapData = reactive<MinimapData>(createInitialMinimapData());
 
-const showSoundTest = ref(false);
-const battleElapsed = ref('00:00:00');
-let battleStartTime = 0;
+const { showSoundTest } = useGameCanvasSoundTest();
 
 function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
   bindSceneUiCallbacks(scene, {
@@ -575,99 +586,44 @@ let gameInstance: GameInstance | null = null;
 // the match starts, cleared when the match ends.
 let clientViewState: ClientViewState | null = null;
 
-function getActiveBattleScene(): GameScene | null {
-  return gameInstance?.getScene() ?? backgroundBattle?.gameInstance?.getScene() ?? null;
-}
-
-// Polling interval IDs for cleanup
-let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
-let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
-let clientTimeInterval: ReturnType<typeof setInterval> | null = null;
-
-// Start the background battle (runs behind lobby).
-//
-// The "background battle" is the live demo simulation we use as the
-// pre-game backdrop AND the GAME LOBBY preview pane. Pass the
-// active battle mode so the demo reads its terrain + sim settings
-// from the right namespace: `demo` keys when the user is on the
-// BUDGET ANNIHILATION screen (solo prefs), `real` keys once they
-// click Host/Join (so the preview shows what the upcoming real
-// battle will look like).
-//
-// In lobby-preview mode we also pass the live lobby player count
-// so the spawn circle reflects who's actually in the room — the
-// watcher below restarts the demo whenever that count changes.
-async function startBackgroundBattle(): Promise<void> {
-  if (!backgroundContainerRef.value) return;
-  // Always teardown any existing battle first — this function is
-  // the canonical "rebuild the simulation NOW" entry point, called
-  // from every watcher (mode flip, terrain change, lobby roster
-  // change). Concurrent calls during the async createBattle await
-  // are handled by the generation counter below: each invocation
-  // claims a fresh `gen`, and only the call whose `gen` still
-  // matches the latest counter value gets to install its result.
-  // Earlier-generation results are silently destroyed so we don't
-  // leak GameServer instances.
-  stopBackgroundBattle();
-  const myGen = ++backgroundBattleGen;
-  // For the GAME LOBBY preview we pass the ACTUAL lobby seat IDs
-  // (not a generic 1..N) and the local player's seat — so the
-  // preview spawns commanders at the same seats the real battle
-  // will use AND the camera/HUD treats the local player's
-  // commander as "yours" instead of always defaulting to seat 1.
-  const previewPlayerIds = currentBattleMode.value === 'real'
+({
+  getBackgroundBattle,
+  startBackgroundBattle,
+  stopBackgroundBattle,
+} = useGameCanvasBackgroundBattle({
+  backgroundContainerRef,
+  getLocalIpAddress: () => localIpAddress.value,
+  getBattleMode: () => currentBattleMode.value,
+  getPreviewPlayerIds: () => currentBattleMode.value === 'real'
     ? lobbyPlayers.value.map((p) => p.playerId)
-    : undefined;
-  const previewLocalPlayerId = currentBattleMode.value === 'real'
+    : undefined,
+  getPreviewLocalPlayerId: () => currentBattleMode.value === 'real'
     ? localPlayerId.value
-    : undefined;
-  const battle = await createBackgroundBattle(
-    backgroundContainerRef.value,
-    localIpAddress.value,
-    currentBattleMode.value,
-    previewPlayerIds,
-    previewLocalPlayerId,
-  );
-  if (myGen !== backgroundBattleGen) {
-    // Superseded by a later restart while we were awaiting —
-    // discard this instance instead of installing it.
-    destroyBackgroundBattle(battle);
-    return;
-  }
-  backgroundBattle = battle;
-  activeConnection = backgroundBattle.connection;
-  hasServer.value = true;
-  battleStartTime = Date.now();
-  setPlayerClientRenderEnabled(backgroundBattle.gameInstance, playerClientEnabled.value);
-  setInstanceCameraFovDegrees(backgroundBattle.gameInstance, cameraFovDegrees.value);
+    : undefined,
+  getPlayerClientEnabled: () => playerClientEnabled.value,
+  bindSceneUi: (scene) => bindGameSceneUi(scene),
+  onStarted: (battle) => {
+    activeConnection = battle.connection;
+    hasServer.value = true;
+    battleStartTime = Date.now();
+    setPlayerClientRenderEnabled(battle.gameInstance, playerClientEnabled.value);
+    setInstanceCameraFovDegrees(battle.gameInstance, cameraFovDegrees.value);
+  },
+  onStopped: () => {
+    if (!currentServer) {
+      activeConnection = null;
+      hasServer.value = false;
+      if (!gameStarted.value) battleStartTime = 0;
+    }
+  },
+}));
 
-  checkBgSceneInterval = waitForSceneAndBind(
-    () => backgroundBattle?.gameInstance?.getScene(),
-    (bgScene) => {
-      bgScene.setClientRenderEnabled(playerClientEnabled.value);
-      bindGameSceneUi(bgScene);
-      checkBgSceneInterval = null;
-    },
-  );
+function getActiveBattleScene(): GameScene | null {
+  return gameInstance?.getScene() ?? getBackgroundBattle()?.gameInstance?.getScene() ?? null;
 }
 
-// Stop the background battle
-function stopBackgroundBattle(): void {
-  if (checkBgSceneInterval) {
-    clearInterval(checkBgSceneInterval);
-    checkBgSceneInterval = null;
-  }
-  if (backgroundBattle) {
-    destroyBackgroundBattle(backgroundBattle);
-    backgroundBattle = null;
-  }
-  // Only clear hasServer/activeConnection if there's no game server either
-  if (!currentServer) {
-    activeConnection = null;
-    hasServer.value = false;
-    if (!gameStarted.value) battleStartTime = 0;
-  }
-}
+// Foreground scene polling interval ID for cleanup
+let checkSceneInterval: ReturnType<typeof setInterval> | null = null;
 
 // Show player toggle only in single-player mode (offline or hosting alone)
 const showPlayerToggle = computed(() => {
@@ -688,39 +644,6 @@ const lobbyModalVisible = computed(
 // where the demo-battle container should be DOM-parented.
 const inGameLobby = computed(
   () => roomCode.value !== '' && lobbyModalVisible.value,
-);
-
-// Which battle storage namespace is active right now.
-//   `demo` = the visual demo behind the BUDGET ANNIHILATION screen
-//            (initial page load + return-to-lobby cancel).
-//   `real` = the GAME LOBBY (preview pane) AND the actual REAL
-//            BATTLE — both share the `real-battle-*` keys so the
-//            lobby preview reflects what the upcoming real game
-//            will look like, and any host adjustments in the lobby
-//            persist into the real battle and across sessions.
-//
-// `roomCode` is set the moment the user clicks Host/Join (or
-// finishes joining), and `gameStarted` covers the actual game; the
-// union of those two flips the namespace at exactly the right
-// boundary without depending on modal visibility (so a brief
-// hide-modal during transitions doesn't accidentally write to demo
-// keys mid-lobby).
-const currentBattleMode = computed<BattleMode>(
-  () => (gameStarted.value || roomCode.value !== '' ? 'real' : 'demo'),
-);
-
-const localLobbyPlayer = computed(
-  () => lobbyPlayers.value.find((p) => p.playerId === localPlayerId.value) ?? null,
-);
-const displayedClientTime = computed(() =>
-  currentBattleMode.value === 'real'
-    ? localLobbyPlayer.value?.localTime ?? ''
-    : clientTime.value,
-);
-const displayedClientIp = computed(() =>
-  currentBattleMode.value === 'real'
-    ? localLobbyPlayer.value?.ipAddress ?? ''
-    : (localIpAddress.value !== 'N/A' ? localIpAddress.value : ''),
 );
 
 // When the active namespace flips, refresh the reactive UI refs so
@@ -873,7 +796,7 @@ const {
   snapAvgRate,
   snapWorstRate,
 } = useGameCanvasTelemetry({
-  getScene: () => backgroundBattle?.gameInstance?.getScene() ?? gameInstance?.getScene() ?? null,
+  getScene: () => getBackgroundBattle()?.gameInstance?.getScene() ?? gameInstance?.getScene() ?? null,
   displayServerTpsAvg,
   displayServerTpsWorst,
   serverMetaFromSnapshot,
@@ -1444,11 +1367,7 @@ async function handleHost(): Promise<void> {
     // have IP/location if the IP fetch already resolved. Future
     // joiners receive this via the playerJoined handshake's
     // info-update follow-up; a later fetch resolution overwrites.
-    networkManager.reportLocalPlayerInfo(
-      localIpAddress.value !== 'N/A' ? localIpAddress.value : undefined,
-      localLocation.value || undefined,
-      localTimezone.value || undefined,
-    );
+    reportLocalPlayerInfo();
 
     isConnecting.value = false;
   } catch (err) {
@@ -1486,11 +1405,7 @@ async function handleJoin(code: string): Promise<void> {
     // always available, IP/location may still be pending; the
     // onMounted fetch's .then() will re-call this once IP
     // resolves to fill in the remaining columns.
-    networkManager.reportLocalPlayerInfo(
-      localIpAddress.value !== 'N/A' ? localIpAddress.value : undefined,
-      localLocation.value || undefined,
-      localTimezone.value || undefined,
-    );
+    reportLocalPlayerInfo();
 
     isConnecting.value = false;
   } catch (err) {
@@ -2139,77 +2054,11 @@ function dismissGameOver(): void {
   gameOverWinner.value = null;
 }
 
-function handleSoundTestKeydown(e: KeyboardEvent): void {
-  if (e.key === '~') {
-    showSoundTest.value = !showSoundTest.value;
-  }
-}
-
 onMounted(() => {
   // Start the background battle behind the lobby
   nextTick(() => {
     startBackgroundBattle();
   });
-
-  // Public IP + coarse location for the server bar AND the GAME
-  // LOBBY player list. Avoid geo-IP providers that commonly return
-  // browser-visible 403s; use ipify for the IP and derive the
-  // readable location from the browser timezone.
-  function deriveLocationFromTimezone(): string {
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (!tz) return '';
-      const parts = tz.split('/');
-      const tzCity = (parts[parts.length - 1] ?? '').replace(/_/g, ' ');
-      const tzRegion = parts.length > 1 ? parts[0] : '';
-      return [tzCity, tzRegion].filter((s) => s.length > 0).join(', ');
-    } catch {
-      return '';
-    }
-  }
-
-  fetch('https://api.ipify.org?format=text')
-    .then((r) => (r.ok ? r.text() : ''))
-    .catch(() => '')
-    .then((ipText) => {
-      const ip = ipText.trim();
-      const loc = deriveLocationFromTimezone();
-      if (ip) {
-        localIpAddress.value = ip;
-        backgroundBattle?.server.setIpAddress(ip);
-        currentServer?.setIpAddress(ip);
-      }
-      if (loc) localLocation.value = loc;
-      // Fan out to peers so every player's row in the lobby has
-      // populated IP + location + timezone columns. No-op when
-      // not connected to a network session.
-      networkManager.reportLocalPlayerInfo(
-        ip || undefined,
-        loc || undefined,
-        localTimezone.value || undefined,
-      );
-    });
-
-  // Update client time every second
-  function updateClientTime() {
-    clientTime.value = new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZoneName: 'short',
-    }).format(new Date());
-    if (battleStartTime > 0) {
-      battleElapsed.value = formatDuration(Date.now() - battleStartTime);
-    } else {
-      battleElapsed.value = '00:00:00';
-    }
-  }
-  updateClientTime();
-  clientTimeInterval = setInterval(updateClientTime, 1000);
-
-  // Listen for backtick to toggle combat stats
-  window.addEventListener('keydown', handleSoundTestKeydown);
 });
 
 onUnmounted(() => {
@@ -2218,15 +2067,6 @@ onUnmounted(() => {
     clearInterval(checkSceneInterval);
     checkSceneInterval = null;
   }
-  if (clientTimeInterval) {
-    clearInterval(clientTimeInterval);
-    clientTimeInterval = null;
-  }
-  if (checkBgSceneInterval) {
-    clearInterval(checkBgSceneInterval);
-    checkBgSceneInterval = null;
-  }
-  window.removeEventListener('keydown', handleSoundTestKeydown);
   // Stop servers
   if (currentServer) {
     clearRealBattleSnapshotListeners();
