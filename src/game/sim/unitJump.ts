@@ -3,11 +3,13 @@ import type { Unit } from './types';
 import type { UnitJumpConfig, UnitJumpState } from '@/types/locomotionTypes';
 
 const JUMP_RECHARGE_OUTWARD_VELOCITY_EPSILON = 1;
+const MIN_RANDOM_POWER_MULTIPLIER = 0.05;
 
 function cloneJumpConfig(config: UnitJumpConfig): UnitJumpConfig {
   return {
     springStiffness: config.springStiffness,
     compression: config.compression,
+    powerRandomMultiplier: config.powerRandomMultiplier,
     mode: config.mode,
   };
 }
@@ -59,6 +61,19 @@ export function getUnitJumpSpringForce(unit: Unit, dtSec: number): number {
   if (dtSec <= 0) return 0;
   const impulse = getUnitJumpSpringImpulse(unit);
   return impulse > 0 ? impulse / dtSec : 0;
+}
+
+export function sampleUnitJumpPowerMultiplier(unit: Unit): number {
+  const amount = unit.jump?.config.powerRandomMultiplier ?? 0;
+  if (!Number.isFinite(amount) || amount <= 0) return 1;
+  return Math.max(
+    MIN_RANDOM_POWER_MULTIPLIER,
+    1 + (Math.random() * 2 - 1) * amount,
+  );
+}
+
+export function getUnitJumpLaunchForce(unit: Unit, dtSec: number): number {
+  return getUnitJumpSpringForce(unit, dtSec) * sampleUnitJumpPowerMultiplier(unit);
 }
 
 export function getUnitJumpSpringAcceleration(unit: Unit, dtSec: number): number {

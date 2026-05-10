@@ -15,7 +15,7 @@ import { getLocomotionForceProfile } from '../sim/locomotion';
 import {
   unitJumpCanRelease,
   getUnitJumpSpringEnergy,
-  getUnitJumpSpringForce,
+  getUnitJumpLaunchForce,
   unitJumpHasActuatorWork,
   unitJumpWantsActuator,
 } from '../sim/unitJump';
@@ -409,7 +409,7 @@ export class UnitForceSystem {
       return jump.requested !== beforeRequested;
     }
 
-    const jumpForce = getUnitJumpSpringForce(unit, dtSec);
+    const jumpForce = getUnitJumpLaunchForce(unit, dtSec);
     if (jumpForce <= 0) {
       jump.active = false;
       return (

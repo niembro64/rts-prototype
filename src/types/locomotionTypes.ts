@@ -30,6 +30,8 @@ export type UnitJumpConfig = {
   /** Preloaded spring compression distance. Potential energy is
    *  0.5 * springStiffness * compression^2. */
   compression: number;
+  /** Symmetric per-launch power variation. 0.2 means 80%-120% jump power. */
+  powerRandomMultiplier?: number;
   /** Manual jumps consume a command; always jumps release once per ground contact. */
   mode?: 'manual' | 'always';
 };
