@@ -2,7 +2,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -24,7 +24,6 @@ import { shouldRunOnStride } from '../math';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import {
   createActionDto,
-  createSprayDto,
   createTurretDto,
   createWaypointDto,
   type WaypointDto,
@@ -47,6 +46,7 @@ import {
 } from './unitSnapshotFields';
 import { serializeEconomySnapshot } from './stateSerializerEconomy';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
+import { serializeSprayTargets } from './stateSerializerSpray';
 
 // === Object pool for NetworkServerSnapshotEntity (eliminates per-frame allocations) ===
 // Each frame we reset the pool index and overwrite existing objects.
@@ -725,8 +725,6 @@ export function resetDeltaTrackingForKey(key: string | number | undefined): void
 
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
-const _sprayBuf: NetworkServerSnapshotSprayTarget[] = [];
-const _sprayPool: NetworkServerSnapshotSprayTarget[] = [];
 const _audioBuf: NetworkServerSnapshotSimEvent[] = [];
 const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
 const _despawnBuf: NetworkServerSnapshotProjectileDespawn[] = [];
@@ -739,7 +737,6 @@ const _beamUpdateBuf: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamUpdatePool: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamPointPool: NetworkServerSnapshotBeamPoint[] = [];
 const _aoiRemovedIdsBuf: EntityId[] = [];
-let _sprayPoolIndex = 0;
 let _audioPoolIndex = 0;
 let _spawnPoolIndex = 0;
 let _despawnPoolIndex = 0;
@@ -807,16 +804,6 @@ function getPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
   point.normalY = undefined;
   point.normalZ = undefined;
   return point;
-}
-
-function getPooledSprayTarget(): NetworkServerSnapshotSprayTarget {
-  let spray = _sprayPool[_sprayPoolIndex];
-  if (!spray) {
-    spray = createSprayDto();
-    _sprayPool[_sprayPoolIndex] = spray;
-  }
-  _sprayPoolIndex++;
-  return spray;
 }
 
 function getPooledSimEvent(): PooledSimEvent {
@@ -940,7 +927,6 @@ export function serializeGameState(
 
   // Reset entity pool for this frame
   _poolIndex = 0;
-  _sprayPoolIndex = 0;
   _audioPoolIndex = 0;
   _spawnPoolIndex = 0;
   _despawnPoolIndex = 0;
@@ -1087,38 +1073,7 @@ export function serializeGameState(
 
   const netEconomy = serializeEconomySnapshot(world.playerCount, recipientPlayerId);
 
-  // Serialize spray targets (reuse buffer)
-  let netSprayTargets: NetworkServerSnapshotSprayTarget[] | undefined;
-  if (sprayTargets && sprayTargets.length > 0) {
-    _sprayBuf.length = 0;
-    for (let i = 0; i < sprayTargets.length; i++) {
-      const st = sprayTargets[i];
-      const out = getPooledSprayTarget();
-      out.source.id = st.source.id;
-      out.source.pos.x = st.source.pos.x;
-      out.source.pos.y = st.source.pos.y;
-      out.source.z = st.source.z;
-      out.source.playerId = st.source.playerId;
-      out.target.id = st.target.id;
-      out.target.pos.x = st.target.pos.x;
-      out.target.pos.y = st.target.pos.y;
-      out.target.z = st.target.z;
-      if (st.target.dim) {
-        if (!out.target.dim) out.target.dim = { x: 0, y: 0 };
-        out.target.dim.x = st.target.dim.x;
-        out.target.dim.y = st.target.dim.y;
-      } else {
-        out.target.dim = undefined;
-      }
-      out.target.radius = st.target.radius;
-      out.type = st.type;
-      out.intensity = st.intensity;
-      out.speed = st.speed;
-      out.particleRadius = st.particleRadius;
-      _sprayBuf.push(out);
-    }
-    if (_sprayBuf.length > 0) netSprayTargets = _sprayBuf;
-  }
+  const netSprayTargets = serializeSprayTargets(sprayTargets);
 
   // Serialize audio events (reuse buffer)
   let netAudioEvents: NetworkServerSnapshotSimEvent[] | undefined;
