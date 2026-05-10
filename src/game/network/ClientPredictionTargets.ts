@@ -16,6 +16,10 @@ export type ServerTarget = {
   surfaceNormalX: number;
   surfaceNormalY: number;
   surfaceNormalZ: number;
+  bodyCenterHeight: number;
+  jumpActive: boolean;
+  jumpLaunchSeq: number;
+  predictedGroundContact: boolean;
   turrets: {
     rotation: number;
     angularVelocity: number;
@@ -30,6 +34,10 @@ export function createServerTarget(): ServerTarget {
     velocityX: 0, velocityY: 0, velocityZ: 0,
     movementAccelX: 0, movementAccelY: 0, movementAccelZ: 0,
     surfaceNormalX: 0, surfaceNormalY: 0, surfaceNormalZ: 1,
+    bodyCenterHeight: 0,
+    jumpActive: false,
+    jumpLaunchSeq: 0,
+    predictedGroundContact: true,
     turrets: [],
   };
 }

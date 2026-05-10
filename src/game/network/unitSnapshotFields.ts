@@ -9,6 +9,7 @@ import {
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_JUMP,
   ENTITY_CHANGED_VEL,
   actionTypeToCode,
   codeToActionType,
@@ -482,6 +483,9 @@ export function applyNetworkUnitDriftFieldsToTarget(
     target.y = src.pos.y;
     target.z = src.pos.z;
   }
+  if (isFull && isFiniteNumber(src.unit?.bodyCenterHeight)) {
+    target.bodyCenterHeight = src.unit.bodyCenterHeight;
+  }
   if (isFull || (cf & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL))) {
     const sn = src.unit?.surfaceNormal;
     if (sn) {
@@ -506,5 +510,17 @@ export function applyNetworkUnitDriftFieldsToTarget(
     target.movementAccelX = accel?.x ?? 0;
     target.movementAccelY = accel?.y ?? 0;
     target.movementAccelZ = accel?.z ?? 0;
+  }
+  if (isFull || (cf & ENTITY_CHANGED_JUMP)) {
+    const jump = src.unit?.jump;
+    target.jumpActive = jump?.active === true;
+    if (isFiniteNumber(jump?.launchSeq)) {
+      const launchSeq = jump.launchSeq;
+      if (launchSeq > target.jumpLaunchSeq) {
+        target.predictedGroundContact = false;
+      }
+      target.jumpLaunchSeq = launchSeq;
+    }
+    if (!target.jumpActive) target.predictedGroundContact = true;
   }
 }

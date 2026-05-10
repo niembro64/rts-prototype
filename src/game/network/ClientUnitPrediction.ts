@@ -21,6 +21,7 @@ import {
   getUnitGroundPenetration,
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
+import type { ServerTarget } from './ClientPredictionTargets';
 
 const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
 const PREDICTION_VEL_EPSILON_SQ = 0.01 * 0.01;
@@ -29,27 +30,7 @@ const PREDICTION_ROT_EPSILON = 0.001;
 const PREDICTION_TURRET_EPSILON = 0.001;
 const PREDICTION_GROUND_REST_PENETRATION_EPSILON = 0.1;
 
-type UnitPredictionTarget = {
-  x: number;
-  y: number;
-  z: number;
-  rotation: number;
-  velocityX: number;
-  velocityY: number;
-  velocityZ: number;
-  movementAccelX: number;
-  movementAccelY: number;
-  movementAccelZ: number;
-  surfaceNormalX: number;
-  surfaceNormalY: number;
-  surfaceNormalZ: number;
-  turrets: {
-    rotation: number;
-    angularVelocity: number;
-    pitch: number;
-    forceFieldRange: number | undefined;
-  }[];
-};
+type UnitPredictionTarget = ServerTarget;
 
 function angleDeltaAbs(a: number, b: number): number {
   return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
@@ -87,6 +68,92 @@ function getPredictionGroundNormal(
     predictionMapHeight,
     LAND_CELL_SIZE,
   );
+}
+
+function getTargetGroundPenetration(target: UnitPredictionTarget): number {
+  return getPredictionGroundZ(target.x, target.y) -
+    (target.z - target.bodyCenterHeight);
+}
+
+function targetVelocitySq(target: UnitPredictionTarget): number {
+  const vx = target.velocityX ?? 0;
+  const vy = target.velocityY ?? 0;
+  const vz = target.velocityZ ?? 0;
+  return vx * vx + vy * vy + vz * vz;
+}
+
+function targetMovementAccelSq(target: UnitPredictionTarget): number {
+  const ax = target.movementAccelX ?? 0;
+  const ay = target.movementAccelY ?? 0;
+  const az = target.movementAccelZ ?? 0;
+  return ax * ax + ay * ay + az * az;
+}
+
+function advanceTargetExtrapolation(
+  target: UnitPredictionTarget,
+  dt: number,
+  airDamp: number,
+  groundDamp: number,
+): void {
+  const penetration = getTargetGroundPenetration(target);
+  const contact = isUnitGroundPenetrationInContact(penetration);
+  const jumpAirborne = target.jumpActive && !target.predictedGroundContact;
+  const upwardLaunch = (target.velocityZ ?? 0) > 0.05;
+  const airborne = !contact || jumpAirborne || upwardLaunch;
+
+  if (
+    !airborne &&
+    targetMovementAccelSq(target) <= PREDICTION_ACCEL_EPSILON_SQ &&
+    penetration <= PREDICTION_GROUND_REST_PENETRATION_EPSILON &&
+    targetVelocitySq(target) <= PREDICTION_VEL_EPSILON_SQ
+  ) {
+    target.z = getPredictionGroundZ(target.x, target.y) + target.bodyCenterHeight;
+    target.velocityX = 0;
+    target.velocityY = 0;
+    target.velocityZ = 0;
+    target.predictedGroundContact = true;
+    return;
+  }
+
+  if (!airborne) {
+    target.velocityX =
+      ((target.velocityX ?? 0) + (target.movementAccelX ?? 0) * dt) *
+      airDamp *
+      groundDamp;
+    target.velocityY =
+      ((target.velocityY ?? 0) + (target.movementAccelY ?? 0) * dt) *
+      airDamp *
+      groundDamp;
+    target.velocityZ = 0;
+    target.x += target.velocityX * dt;
+    target.y += target.velocityY * dt;
+    target.z = getPredictionGroundZ(target.x, target.y) + target.bodyCenterHeight;
+    target.predictedGroundContact = true;
+    return;
+  }
+
+  target.velocityX =
+    ((target.velocityX ?? 0) + (target.movementAccelX ?? 0) * dt) *
+    airDamp;
+  target.velocityY =
+    ((target.velocityY ?? 0) + (target.movementAccelY ?? 0) * dt) *
+    airDamp;
+  target.velocityZ =
+    ((target.velocityZ ?? 0) + ((target.movementAccelZ ?? 0) - GRAVITY) * dt) *
+    airDamp;
+  target.x += target.velocityX * dt;
+  target.y += target.velocityY * dt;
+  target.z += target.velocityZ * dt;
+
+  const nextGroundZ = getPredictionGroundZ(target.x, target.y);
+  const nextGroundPointZ = target.z - target.bodyCenterHeight;
+  if (target.velocityZ <= 0 && nextGroundPointZ <= nextGroundZ) {
+    target.z = nextGroundZ + target.bodyCenterHeight;
+    target.velocityZ = 0;
+    target.predictedGroundContact = true;
+  } else {
+    target.predictedGroundContact = false;
+  }
 }
 
 function advanceUnitMotionState(
@@ -170,28 +237,7 @@ export function applyClientUnitVisualPrediction(options: {
     // Unit body motion is a visual contract, not an optional detail.
     // Keep this smooth at render cadence while LOD throttles heavier
     // turret / force-field prediction elsewhere.
-    motionScratch.x = target.x;
-    motionScratch.y = target.y;
-    motionScratch.z = target.z;
-    motionScratch.vx = target.velocityX ?? 0;
-    motionScratch.vy = target.velocityY ?? 0;
-    motionScratch.vz = target.velocityZ ?? 0;
-    advanceUnitMotionState(
-      entity.unit,
-      motionScratch,
-      dt,
-      airDamp,
-      groundDamp,
-      target.movementAccelX ?? 0,
-      target.movementAccelY ?? 0,
-      target.movementAccelZ ?? 0,
-    );
-    target.x = motionScratch.x;
-    target.y = motionScratch.y;
-    target.z = motionScratch.z;
-    target.velocityX = motionScratch.vx;
-    target.velocityY = motionScratch.vy;
-    target.velocityZ = motionScratch.vz;
+    advanceTargetExtrapolation(target, dt, airDamp, groundDamp);
   }
 
   motionScratch.x = entity.transform.x;
