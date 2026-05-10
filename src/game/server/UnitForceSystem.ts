@@ -19,6 +19,7 @@ import {
   unitJumpHasActuatorWork,
   unitJumpWantsActuator,
 } from '../sim/unitJump';
+import { canJumpLandAwayFromWater } from '../sim/unitJumpLanding';
 import { isUnitGroundPointAtOrBelowTerrain } from '../sim/unitGroundPhysics';
 import {
   ENTITY_CHANGED_MOVEMENT_ACCEL,
@@ -389,13 +390,7 @@ export class UnitForceSystem {
     const beforeLaunchSeq = jump.launchSeq;
 
     const wantsJump = unitJumpWantsActuator(unit);
-    const normal = groundContact && wantsJump
-      ? this.world.getCachedSurfaceNormal(body.x, body.y)
-      : undefined;
-    const normalVelocity = normal
-      ? body.vx * normal.nx + body.vy * normal.ny + body.vz * normal.nz
-      : 0;
-    const releaseJump = unitJumpCanRelease(unit, groundContact, normalVelocity);
+    const releaseJump = unitJumpCanRelease(unit, groundContact, body.vz);
     jump.requested = false;
 
     if (!groundContact || !wantsJump) {
@@ -405,7 +400,7 @@ export class UnitForceSystem {
         jump.active !== beforeActive
       );
     }
-    if (!releaseJump || !normal) {
+    if (!releaseJump) {
       return jump.requested !== beforeRequested;
     }
 
@@ -418,7 +413,21 @@ export class UnitForceSystem {
       );
     }
 
-    this.physics.applyForce(body, normal.nx * jumpForce, normal.ny * jumpForce, normal.nz * jumpForce, {
+    if (!canJumpLandAwayFromWater(body, {
+      dtSec,
+      launchForce: jumpForce,
+      mapWidth: this.world.mapWidth,
+      mapHeight: this.world.mapHeight,
+      getGroundZ: (x, y) => this.world.getGroundZ(x, y),
+    })) {
+      jump.active = false;
+      return (
+        jump.requested !== beforeRequested ||
+        jump.active !== beforeActive
+      );
+    }
+
+    this.physics.applyForce(body, 0, 0, jumpForce, {
       canLaunchFromGround: true,
     });
     jump.launchSeq++;
