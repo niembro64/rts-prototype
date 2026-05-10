@@ -12,8 +12,7 @@ Please always commit and push before and after any code changes you make. If the
 1. Oversized orchestration files violate the small-file goal and hide lifecycle
    coupling.
    Evidence:
-   - src/components/GameCanvas.vue is still about 2813 lines and still owns
-     high-level real-battle handoff entrypoints.
+   - src/components/GameCanvas.vue is still about 2800 lines.
    - src/game/scenes/RtsScene3D.ts is about 2151 lines and owns snapshot intake,
      prediction, audio scheduling, camera, selection, minimap data, renderer
      update ordering, and renderer teardown. See the large update loop at
@@ -27,11 +26,10 @@ Please always commit and push before and after any code changes you make. If the
    - Lifecycle ownership is hard to prove, duplicate helpers reappear, and
      fixes often touch unrelated concerns.
    Remedy:
-   - Continue splitting by ownership: GameCanvas composables for remaining
-     real battle handoff; RtsScene3D systems for snapshot
-     intake/audio/prediction/render phases; stateSerializer modules by DTO
-     family; Render3DEntities into unit/body/turret/building overlay
-     renderers.
+   - Continue splitting by ownership: remaining GameCanvas UI/lifecycle
+     sections; RtsScene3D systems for snapshot intake/audio/prediction/render
+     phases; stateSerializer modules by DTO family; Render3DEntities into
+     unit/body/turret/building overlay renderers.
 
 2. We don't want units in water. We need to find a good solution for jumping units. My initial though is that we predict all landing points of a jump before we do it, and if it is on water (or too near water) we cancel it. This might go along with jumping units only jumping sometimes, only when engaged with a target or when moving. Maybe we have "able to jump" status turned on when it meets any necessary criteria, including next jump wouoldn't jump into water. Jumping should also ignore the ground normal angle, so units can jump up hills (i.e. a jump on a hill won't be in the direction of the normal of the surface, it will be up). Jumps should also happen off of any surface, not just the ground - units, buildings, etc.
 

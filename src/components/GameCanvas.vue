@@ -84,14 +84,13 @@ import { useGameCanvasSoundTest } from './gameCanvasSoundTest';
 import { useGameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
 import { useGameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
 import { useGameCanvasForegroundGame } from './gameCanvasForegroundGame';
-import { startRealBattleWithPlayers } from './gameCanvasRealBattleStart';
 import { useGameCanvasLobbyPreview } from './gameCanvasLobbyPreview';
-import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
 import { useGameCanvasLobbyActions } from './gameCanvasLobbyActions';
 import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
 import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
 import { useGameCanvasServerSettings } from './gameCanvasServerSettings';
 import { useGameCanvasClientSettings } from './gameCanvasClientSettings';
+import { useGameCanvasRealBattleHandoff } from './gameCanvasRealBattleHandoff';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -787,6 +786,52 @@ const {
   broadcastLobbySettingsIfHost,
 });
 
+const {
+  setupNetworkCallbacks,
+  startGameWithPlayers,
+} = useGameCanvasRealBattleHandoff({
+  containerRef,
+  showLobby,
+  gameStarted,
+  battleLoading,
+  activePlayer,
+  localPlayerId,
+  networkRole,
+  playerClientEnabled,
+  cameraFovDegrees,
+  localIpAddress,
+  serverSimQuality,
+  serverSignalStates,
+  hasServer,
+  networkNotice,
+  lobbyError,
+  lobbyPlayers,
+  roomCode,
+  localUsername,
+  network: networkManager,
+  lifecycle: realBattleLifecycle,
+  foregroundGame,
+  foregroundSceneBinding,
+  stopBackgroundBattle,
+  getCurrentServer: () => currentServer,
+  setCurrentServer: (server) => {
+    currentServer = server;
+  },
+  setActiveConnection: (connection) => {
+    activeConnection = connection;
+  },
+  setBattleStartTime: (time) => {
+    battleStartTime = time;
+  },
+  resolvePlayerName,
+  upsertLobbyPlayer,
+  applyLobbySettingsFromHost,
+  currentLobbySettings,
+  bindSceneUi: (scene) => {
+    bindGameSceneUi(scene, true);
+  },
+});
+
 function togglePlayer(): void {
   const scene = getActiveBattleScene();
   if (scene) {
@@ -883,64 +928,6 @@ const {
   reportLocalPlayerInfo,
   startGameWithPlayers,
 });
-
-function setupNetworkCallbacks(): void {
-  bindGameCanvasNetworkCallbacks({
-    network: networkManager,
-    realBattleLifecycle,
-    networkNotice,
-    lobbyError,
-    lobbyPlayers,
-    roomCode,
-    localPlayerId,
-    activePlayer,
-    localUsername,
-    gameStarted,
-    getCurrentServer: () => currentServer,
-    resolvePlayerName,
-    upsertLobbyPlayer,
-    applyLobbySettingsFromHost,
-    currentLobbySettings,
-    startGameWithPlayers,
-  });
-}
-
-async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): Promise<void> {
-  await startRealBattleWithPlayers(playerIds, aiPlayerIds, {
-    containerRef,
-    showLobby,
-    gameStarted,
-    battleLoading,
-    activePlayer,
-    localPlayerId,
-    networkRole,
-    playerClientEnabled,
-    cameraFovDegrees,
-    localIpAddress,
-    serverSimQuality,
-    serverSignalStates,
-    hasServer,
-    network: networkManager,
-    lifecycle: realBattleLifecycle,
-    foregroundGame,
-    foregroundSceneBinding,
-    stopBackgroundBattle,
-    getCurrentServer: () => currentServer,
-    setCurrentServer: (server) => {
-      currentServer = server;
-    },
-    setActiveConnection: (connection) => {
-      activeConnection = connection;
-    },
-    setBattleStartTime: (time) => {
-      battleStartTime = time;
-    },
-    lookupPlayerName: (pid) => resolvePlayerName(pid, null),
-    bindSceneUi: (scene) => {
-      bindGameSceneUi(scene, true);
-    },
-  });
-}
 
 /** Display labels for the TILT EMA bar. Keys stay as the canonical
  *  TiltEmaMode strings (storage / wire / config-table) so a future
