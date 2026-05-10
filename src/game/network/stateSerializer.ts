@@ -8,7 +8,6 @@ import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
 import type { Vec3 } from '../../types/vec2';
 import type { GamePhase } from '../../types/network';
-import type { SnapshotDeltaResolutionConfig } from '../../types/config';
 import {
   ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP, ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_TURRETS,
@@ -19,7 +18,6 @@ import {
   turretIdToCode,
 } from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
-import { assertUnitActionHashSynced } from '../sim/unitActions';
 import {
   createActionDto,
   createTurretDto,
@@ -48,6 +46,24 @@ import { serializeGridSnapshot } from './stateSerializerGrid';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 import { serializeProjectileSnapshot } from './stateSerializerProjectiles';
 import { serializeSprayTargets } from './stateSerializerSpray';
+import {
+  SNAPSHOT_DIRTY_FORCE_FIELDS,
+  aoiRemovedEntityIdsBuf as _aoiRemovedIdsBuf,
+  copyPrevState,
+  dirtyEntityFieldsBuf as _dirtyEntityFieldsBuf,
+  dirtyEntityIdsBuf as _dirtyEntityIdsBuf,
+  getDeltaTrackingState,
+  getEntityDeltaChangedFields,
+  getNextEntityState,
+  getPrevState,
+  removedEntityIdsBuf as _removedIdsBuf,
+} from './stateSerializerEntityDelta';
+
+export {
+  captureSnapshotEntityStates,
+  resetDeltaTracking,
+  resetDeltaTrackingForKey,
+} from './stateSerializerEntityDelta';
 
 // === Object pool for NetworkServerSnapshotEntity (eliminates per-frame allocations) ===
 // Each frame we reset the pool index and overwrite existing objects.
@@ -191,433 +207,8 @@ function getPooledEntry(): PooledEntry {
   return _pool[_poolIndex++];
 }
 
-// === Delta change tracking ===
-// Stores lightweight fingerprint of each entity from the previous snapshot.
-// Compared against current state to detect changes.
-
-type PrevEntityState = {
-  x: number;
-  y: number;
-  z: number;
-  rotation: number;
-  velocityX: number;
-  velocityY: number;
-  velocityZ: number;
-  movementAccelX: number;
-  movementAccelY: number;
-  movementAccelZ: number;
-  hp: number;
-  actionCount: number;
-  actionHash: number;       // cheap hash of action content (types + positions)
-  isEngagedBits: number;    // bit-packed isEngaged for all weapons
-  targetBits: number;       // bit-packed hasTarget for all weapons
-  weaponCount: number;
-  turretRots: number[];     // per-weapon turret rotation
-  turretAngVels: number[];  // per-weapon angular velocity
-  turretPitches: number[];  // per-weapon pitch
-  forceFieldRanges: number[]; // per-weapon force field range
-  /** Last-shipped smoothed surface normal. Used to detect EMA-driven
-   *  drift on stationary units that POS-threshold detection misses. */
-  normalX: number;
-  normalY: number;
-  normalZ: number;
-  // building
-  buildProgress: number;
-  solarOpen: number;       // 0 or 1
-  factoryProgress: number;
-  isProducing: number;      // 0 or 1
-  buildQueueLen: number;
-};
-
-function createPrevEntityState(): PrevEntityState {
-  const turretRots: number[] = [];
-  const turretAngVels: number[] = [];
-  const turretPitches: number[] = [];
-  const forceFieldRanges: number[] = [];
-  for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) {
-    turretRots.push(0);
-    turretAngVels.push(0);
-    turretPitches.push(0);
-    forceFieldRanges.push(0);
-  }
-  return {
-    x: 0, y: 0, z: 0, rotation: 0,
-    velocityX: 0, velocityY: 0, velocityZ: 0,
-    movementAccelX: 0, movementAccelY: 0, movementAccelZ: 0,
-    hp: 0, actionCount: 0, actionHash: 0,
-    isEngagedBits: 0, targetBits: 0,
-    weaponCount: 0, turretRots, turretAngVels, turretPitches, forceFieldRanges,
-    normalX: 0, normalY: 0, normalZ: 1,
-    buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
-  };
-}
-
-type DeltaTrackingState = {
-  prevStates: Map<number, PrevEntityState>;
-  prevEntityIds: Set<number>;
-  currentEntityIds: Set<number>;
-  prevStatePool: PrevEntityState[];
-  prevStatePoolIndex: number;
-};
-
-function createDeltaTrackingState(): DeltaTrackingState {
-  return {
-    prevStates: new Map<number, PrevEntityState>(),
-    prevEntityIds: new Set<number>(),
-    currentEntityIds: new Set<number>(),
-    prevStatePool: [],
-    prevStatePoolIndex: 0,
-  };
-}
-
-const DEFAULT_TRACKING_KEY = 'default';
-const _trackingStates = new Map<string, DeltaTrackingState>();
-const _removedIdsBuf: number[] = [];
-const _dirtyEntityIdsBuf: EntityId[] = [];
-const _dirtyEntityFieldsBuf: number[] = [];
-
-const SNAPSHOT_DIRTY_FORCE_FIELDS =
-  ENTITY_CHANGED_HP |
-  ENTITY_CHANGED_ACTIONS |
-  ENTITY_CHANGED_TURRETS |
-  ENTITY_CHANGED_BUILDING |
-  ENTITY_CHANGED_FACTORY |
-  ENTITY_CHANGED_SUSPENSION |
-  ENTITY_CHANGED_JUMP;
-
-/** Entities that have already had their static (never-changes-after-
- *  spawn) fields shipped at least once over this session's protocol.
- *  Delta snapshots use this to avoid re-sending unit type/radius,
- *  building type/dimensions, and turret static config after creation.
- *  Full keyframes remain self-contained so a client that missed an
- *  earlier keyframe can recover. */
-function getTrackingKey(key: string | number | undefined): string {
-  return key === undefined ? DEFAULT_TRACKING_KEY : String(key);
-}
-
-function getDeltaTrackingState(key: string | number | undefined): DeltaTrackingState {
-  const trackingKey = getTrackingKey(key);
-  let tracking = _trackingStates.get(trackingKey);
-  if (!tracking) {
-    tracking = createDeltaTrackingState();
-    _trackingStates.set(trackingKey, tracking);
-  }
-  return tracking;
-}
-
-function getPrevState(tracking: DeltaTrackingState, entityId: number): PrevEntityState {
-  let prev = tracking.prevStates.get(entityId);
-  if (!prev) {
-    if (tracking.prevStatePoolIndex < tracking.prevStatePool.length) {
-      prev = tracking.prevStatePool[tracking.prevStatePoolIndex++];
-    } else {
-      prev = createPrevEntityState();
-      tracking.prevStatePool.push(prev);
-      tracking.prevStatePoolIndex++;
-    }
-    tracking.prevStates.set(entityId, prev);
-  }
-  return prev;
-}
-
-function getDeltaResolution(
-  entity: Entity,
-  recipientPlayerId: PlayerId | undefined,
-): SnapshotDeltaResolutionConfig {
-  if (recipientPlayerId === undefined) return SNAPSHOT_CONFIG.ownedEntityDelta;
-  return entity.ownership?.playerId === recipientPlayerId
-    ? SNAPSHOT_CONFIG.ownedEntityDelta
-    : SNAPSHOT_CONFIG.observedEntityDelta;
-}
-
-/** Surface-normal change threshold. Matches the qNormal wire precision
- *  (Math.round(n * 1000) / 1000 → ~0.001), so we only flip the
- *  ENTITY_CHANGED_NORMAL bit when the encoded value would actually
- *  differ. Smaller deltas are absorbed by the threshold and re-checked
- *  on the next tick. */
-const NORMAL_THRESHOLD = 0.001;
-
-function getChangedFields(
-  entity: Entity,
-  prev: PrevEntityState,
-  next: PrevEntityState,
-  resolution: SnapshotDeltaResolutionConfig,
-): number {
-  const posTh = SNAPSHOT_CONFIG.positionThreshold * resolution.positionThresholdMultiplier;
-  const velTh = SNAPSHOT_CONFIG.velocityThreshold * resolution.velocityThresholdMultiplier;
-  const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier;
-  const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold * resolution.rotationVelocityThresholdMultiplier;
-
-  let mask = 0;
-
-  if (Math.abs(next.x - prev.x) > posTh ||
-      Math.abs(next.y - prev.y) > posTh ||
-      Math.abs(next.z - prev.z) > posTh) {
-    mask |= ENTITY_CHANGED_POS;
-  }
-  if (Math.abs(next.rotation - prev.rotation) > rotPosTh) {
-    mask |= ENTITY_CHANGED_ROT;
-  }
-
-  if (entity.unit) {
-    if (Math.abs(next.velocityX - prev.velocityX) > velTh ||
-        Math.abs(next.velocityY - prev.velocityY) > velTh ||
-        Math.abs(next.velocityZ - prev.velocityZ) > velTh) {
-      mask |= ENTITY_CHANGED_VEL;
-    }
-    if (Math.abs(next.movementAccelX - prev.movementAccelX) > velTh ||
-        Math.abs(next.movementAccelY - prev.movementAccelY) > velTh ||
-        Math.abs(next.movementAccelZ - prev.movementAccelZ) > velTh) {
-      mask |= ENTITY_CHANGED_MOVEMENT_ACCEL;
-    }
-    if (next.hp !== prev.hp) {
-      mask |= ENTITY_CHANGED_HP;
-    }
-    if (next.actionCount !== prev.actionCount || next.actionHash !== prev.actionHash) {
-      mask |= ENTITY_CHANGED_ACTIONS;
-    }
-    // Surface normal drifts independently of position when the tilt EMA
-    // is still settling (e.g. unit just stopped) or when the host flips
-    // tilt mode. Threshold matches the wire quantization in qNormal so
-    // we only emit when the wire value would actually move.
-    if (Math.abs(next.normalX - prev.normalX) > NORMAL_THRESHOLD ||
-        Math.abs(next.normalY - prev.normalY) > NORMAL_THRESHOLD ||
-        Math.abs(next.normalZ - prev.normalZ) > NORMAL_THRESHOLD) {
-      mask |= ENTITY_CHANGED_NORMAL;
-    }
-    // Unit shells need the building-change bit to ship per-tick paid
-    // updates. `buildProgress` here is the avg-of-three fill stored in
-    // captureEntityState — even small changes cross the != check.
-    if (entity.buildable && next.buildProgress !== prev.buildProgress) {
-      mask |= ENTITY_CHANGED_BUILDING;
-    }
-  }
-
-  if (entity.combat) {
-    if (next.weaponCount !== prev.weaponCount) {
-      mask |= ENTITY_CHANGED_TURRETS;
-    } else {
-      // Once any turret has crossed a threshold the bit is set; we
-      // still need to compute the engaged / target bitmasks for the
-      // OTHER turrets on this entity (used as a dirty proxy below) so
-      // we can't break out of the loop early — but we CAN skip the
-      // 3-abs threshold check on subsequent turrets, which is the
-      // expensive part. At many turrets per entity this halves the
-      // work for active entities (where any one turret moving means
-      // the row will be sent anyway).
-      let turretsAlreadyChanged = false;
-      for (let i = 0; i < next.weaponCount; i++) {
-        if (!turretsAlreadyChanged) {
-          if (Math.abs(next.turretRots[i] - prev.turretRots[i]) > rotPosTh ||
-              Math.abs(next.turretAngVels[i] - prev.turretAngVels[i]) > rotVelTh ||
-              Math.abs(next.turretPitches[i] - prev.turretPitches[i]) > rotPosTh ||
-              Math.abs(next.forceFieldRanges[i] - prev.forceFieldRanges[i]) > 0.001) {
-            mask |= ENTITY_CHANGED_TURRETS;
-            turretsAlreadyChanged = true;
-          }
-        }
-      }
-      if (next.isEngagedBits !== prev.isEngagedBits || next.targetBits !== prev.targetBits) {
-        mask |= ENTITY_CHANGED_TURRETS;
-      }
-    }
-  }
-
-  if (entity.building) {
-    if (next.hp !== prev.hp) {
-      mask |= ENTITY_CHANGED_HP;
-    }
-    if (next.buildProgress !== prev.buildProgress || next.solarOpen !== prev.solarOpen) {
-      mask |= ENTITY_CHANGED_BUILDING;
-    }
-    if (entity.factory) {
-      if (next.factoryProgress !== prev.factoryProgress ||
-          next.isProducing !== prev.isProducing ||
-          next.buildQueueLen !== prev.buildQueueLen) {
-        mask |= ENTITY_CHANGED_FACTORY;
-      }
-    }
-  }
-
-  return mask;
-}
-
-function captureEntityState(entity: Entity, prev: PrevEntityState): void {
-  prev.x = entity.transform.x;
-  prev.y = entity.transform.y;
-  prev.z = entity.transform.z;
-  prev.rotation = entity.transform.rotation;
-  prev.velocityX = entity.unit?.velocityX ?? 0;
-  prev.velocityY = entity.unit?.velocityY ?? 0;
-  prev.velocityZ = entity.unit?.velocityZ ?? 0;
-  prev.movementAccelX = entity.unit?.movementAccelX ?? 0;
-  prev.movementAccelY = entity.unit?.movementAccelY ?? 0;
-  prev.movementAccelZ = entity.unit?.movementAccelZ ?? 0;
-  prev.hp = entity.unit?.hp ?? entity.building?.hp ?? 0;
-  if (entity.unit) {
-    assertUnitActionHashSynced(entity.unit, `captureEntityState(${entity.id})`);
-    prev.actionCount = entity.unit.actions.length;
-    prev.actionHash = entity.unit.actionHash;
-  } else {
-    prev.actionCount = 0;
-    prev.actionHash = 0;
-  }
-
-  prev.isEngagedBits = 0;
-  prev.targetBits = 0;
-  const combatTurrets = entity.combat?.turrets;
-  prev.weaponCount = combatTurrets?.length ?? 0;
-  if (combatTurrets) {
-    // Grow turret arrays if needed
-    while (prev.turretRots.length < combatTurrets.length) {
-      prev.turretRots.push(0);
-      prev.turretAngVels.push(0);
-      prev.turretPitches.push(0);
-      prev.forceFieldRanges.push(0);
-    }
-    for (let i = 0; i < combatTurrets.length; i++) {
-      const w = combatTurrets[i];
-      if (w.state === 'engaged') prev.isEngagedBits |= (1 << i);
-      if (w.target) prev.targetBits |= (1 << i);
-      prev.turretRots[i] = w.rotation;
-      prev.turretAngVels[i] = w.angularVelocity;
-      prev.turretPitches[i] = w.pitch;
-      prev.forceFieldRanges[i] = w.forceField?.range ?? 0;
-    }
-  }
-
-  prev.buildProgress = entity.buildable ? getBuildFraction(entity.buildable) : 0;
-  prev.solarOpen = entity.building?.solar?.open === false ? 0 : 1;
-  // Factory progress is a server-side mirror of the current shell's
-  // build fraction. energyDistribution updates it and marks the
-  // factory dirty whenever resources flow into that shell.
-  prev.factoryProgress = entity.factory?.currentBuildProgress ?? 0;
-  prev.isProducing = entity.factory?.isProducing ? 1 : 0;
-  prev.buildQueueLen = entity.factory?.buildQueue.length ?? 0;
-  const sn = entity.unit?.surfaceNormal;
-  prev.normalX = sn?.nx ?? 0;
-  prev.normalY = sn?.ny ?? 0;
-  prev.normalZ = sn?.nz ?? 1;
-}
-
-function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {
-  to.x = from.x;
-  to.y = from.y;
-  to.z = from.z;
-  to.rotation = from.rotation;
-  to.velocityX = from.velocityX;
-  to.velocityY = from.velocityY;
-  to.velocityZ = from.velocityZ;
-  to.movementAccelX = from.movementAccelX;
-  to.movementAccelY = from.movementAccelY;
-  to.movementAccelZ = from.movementAccelZ;
-  to.hp = from.hp;
-  to.actionCount = from.actionCount;
-  to.actionHash = from.actionHash;
-  to.isEngagedBits = from.isEngagedBits;
-  to.targetBits = from.targetBits;
-  to.weaponCount = from.weaponCount;
-  while (to.turretRots.length < from.weaponCount) {
-    to.turretRots.push(0);
-    to.turretAngVels.push(0);
-    to.turretPitches.push(0);
-    to.forceFieldRanges.push(0);
-  }
-  for (let i = 0; i < from.weaponCount; i++) {
-    to.turretRots[i] = from.turretRots[i];
-    to.turretAngVels[i] = from.turretAngVels[i];
-    to.turretPitches[i] = from.turretPitches[i];
-    to.forceFieldRanges[i] = from.forceFieldRanges[i];
-  }
-  to.buildProgress = from.buildProgress;
-  to.solarOpen = from.solarOpen;
-  to.factoryProgress = from.factoryProgress;
-  to.isProducing = from.isProducing;
-  to.buildQueueLen = from.buildQueueLen;
-  to.normalX = from.normalX;
-  to.normalY = from.normalY;
-  to.normalZ = from.normalZ;
-}
-
-const _nextStateScratch = createPrevEntityState();
-
-/** Per-tick cache of captured "next" PrevEntityState, keyed by entity id.
- *  Populated once by `captureSnapshotEntityStates` (called from
- *  ServerSnapshotPublisher) and read by every per-recipient
- *  `serializeGameState` invocation in the same tick — so the heavy
- *  per-entity capture (action-hash compute, turret bit-pack, ~30 field
- *  reads) runs ONCE per tick instead of N-recipients times. */
-const _capturedNextStates = new Map<EntityId, PrevEntityState>();
-const _capturedNextStatePool: PrevEntityState[] = [];
-let _capturedNextStatePoolIdx = 0;
-
-function acquireCapturedNextState(): PrevEntityState {
-  if (_capturedNextStatePoolIdx >= _capturedNextStatePool.length) {
-    _capturedNextStatePool.push(createPrevEntityState());
-  }
-  return _capturedNextStatePool[_capturedNextStatePoolIdx++];
-}
-
-/** Pre-capture entity states for this tick. Call ONCE per tick before
- *  the per-recipient `serializeGameState` loop. The captured states are
- *  recipient-independent — sharing them across all listeners avoids
- *  re-running `captureEntityState` once per recipient per dirty entity.
- *  Pass the SAME `dirtyEntityIds` and `isDelta` you'll pass to
- *  `serializeGameState`. */
-export function captureSnapshotEntityStates(
-  world: WorldState,
-  isDelta: boolean,
-  dirtyEntityIds?: readonly EntityId[],
-): void {
-  _capturedNextStates.clear();
-  _capturedNextStatePoolIdx = 0;
-
-  const accepts = (e: Entity): boolean =>
-    e.type === 'unit' || e.type === 'building';
-
-  if (isDelta && SNAPSHOT_CONFIG.deltaEnabled) {
-    if (!dirtyEntityIds) return;
-    for (let i = 0; i < dirtyEntityIds.length; i++) {
-      const e = world.getEntity(dirtyEntityIds[i]);
-      if (!e || !accepts(e)) continue;
-      const captured = acquireCapturedNextState();
-      captureEntityState(e, captured);
-      _capturedNextStates.set(e.id, captured);
-    }
-    return;
-  }
-
-  const sources: ReadonlyArray<readonly Entity[]> = [
-    world.getUnits(),
-    world.getBuildings(),
-  ];
-  for (let s = 0; s < sources.length; s++) {
-    const src = sources[s];
-    for (let i = 0; i < src.length; i++) {
-      const e = src[i];
-      if (!accepts(e)) continue;
-      const captured = acquireCapturedNextState();
-      captureEntityState(e, captured);
-      _capturedNextStates.set(e.id, captured);
-    }
-  }
-}
-
-/** Reset delta tracking state (call between game sessions). */
-export function resetDeltaTracking(): void {
-  _trackingStates.clear();
-}
-
-/** Drop delta tracking state for one snapshot stream. Call when that
- *  stream's listener is removed so per-client prev-state pools do not
- *  live until the next full game reset. */
-export function resetDeltaTrackingForKey(key: string | number | undefined): void {
-  _trackingStates.delete(getTrackingKey(key));
-}
-
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
-const _aoiRemovedIdsBuf: EntityId[] = [];
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
 const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
@@ -780,23 +371,14 @@ export function serializeGameState(
       const prev = getPrevState(tracking, entity.id);
       const isNew = !tracking.prevEntityIds.has(entity.id);
       tracking.prevEntityIds.add(entity.id);
-      // Prefer the per-tick cached capture (populated by
-      // captureSnapshotEntityStates) so the field reads + action-hash +
-      // turret bit-pack run once per tick instead of once per recipient.
-      // Fall back to inline capture for direct callers that didn't
-      // pre-warm the cache.
-      let next = _capturedNextStates.get(entity.id);
-      if (!next) {
-        captureEntityState(entity, _nextStateScratch);
-        next = _nextStateScratch;
-      }
+      const next = getNextEntityState(entity);
       const dirtyForcedFields = dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS;
       const jumpAnchorFields = (dirtyFields & ENTITY_CHANGED_JUMP)
         ? ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL
         : 0;
       const changedFields = isNew
         ? undefined
-        : getChangedFields(entity, prev, next, getDeltaResolution(entity, recipientPlayerId)) |
+        : getEntityDeltaChangedFields(entity, prev, next, recipientPlayerId) |
           dirtyForcedFields |
           jumpAnchorFields;
       if (isNew || changedFields! > 0) {
@@ -826,14 +408,7 @@ export function serializeGameState(
         const netEntity = serializeEntity(entity, undefined, world);
         if (netEntity) _entityBuf.push(netEntity);
         const prev = getPrevState(tracking, entity.id);
-        // Same per-tick cache as the delta path: copy from the shared
-        // capture instead of re-running captureEntityState per recipient.
-        const cached = _capturedNextStates.get(entity.id);
-        if (cached) {
-          copyPrevState(cached, prev);
-        } else {
-          captureEntityState(entity, prev);
-        }
+        copyPrevState(getNextEntityState(entity), prev);
       }
     }
     if (!options?.dirtyEntityIds) {

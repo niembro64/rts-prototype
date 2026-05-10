@@ -11,7 +11,7 @@ Please always commit and push before and after any code changes we make. If ther
 
 1. Split src/game/network/stateSerializer.ts by DTO family.
    Evidence:
-   - src/game/network/stateSerializer.ts is still 1178 lines.
+   - src/game/network/stateSerializer.ts is still 755 lines.
    - Economy DTO serialization has moved to
      src/game/network/stateSerializerEconomy.ts, and minimap entity DTO
      serialization has moved to src/game/network/stateSerializerMinimap.ts,
@@ -21,8 +21,9 @@ Please always commit and push before and after any code changes we make. If ther
      grid serialization has moved to src/game/network/stateSerializerGrid.ts,
      and projectile serialization has moved to
      src/game/network/stateSerializerProjectiles.ts.
-   - Entity snapshot assembly and entity delta tracking still share the main
-     file.
+   - Entity delta tracking has moved to
+     src/game/network/stateSerializerEntityDelta.ts, but entity snapshot
+     assembly still owns the main file.
    Impact:
    - Serialization changes for one DTO family risk touching unrelated network
      formats.
