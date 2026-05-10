@@ -1,9 +1,8 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import { economyManager } from '../sim/economy';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotEconomy, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction, NetworkServerSnapshotMinimapEntity } from './NetworkManager';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction, NetworkServerSnapshotMinimapEntity } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -47,6 +46,7 @@ import {
   writeNetworkUnitSuspension,
   writeNetworkUnitVelocity,
 } from './unitSnapshotFields';
+import { serializeEconomySnapshot } from './stateSerializerEconomy';
 
 // === Object pool for NetworkServerSnapshotEntity (eliminates per-frame allocations) ===
 // Each frame we reset the pool index and overwrite existing objects.
@@ -754,8 +754,6 @@ let _minimapEntityPoolIndex = 0;
 let _beamUpdatePoolIndex = 0;
 let _beamPointPoolIndex = 0;
 const _resyncSeenIds = new Set<number>();
-const _economyBuf: Record<PlayerId, NetworkServerSnapshotEconomy> = {} as Record<PlayerId, NetworkServerSnapshotEconomy>;
-const _economyKeys: PlayerId[] = [];
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
 const _projectilesBuf: NonNullable<NetworkServerSnapshot['projectiles']> = {
@@ -779,7 +777,7 @@ const _snapshotBuf: NetworkServerSnapshot = {
   tick: 0,
   entities: _entityBuf,
   minimapEntities: undefined,
-  economy: _economyBuf,
+  economy: serializeEconomySnapshot(0, undefined),
   sprayTargets: undefined,
   audioEvents: undefined,
   projectiles: undefined,
@@ -1131,39 +1129,7 @@ export function serializeGameState(
     netMinimapEntities = _minimapEntityBuf;
   }
 
-  // Serialize economy (reuse object to avoid per-snapshot allocation).
-  // Unscoped/local streams keep the full table for debug/sandbox player
-  // toggling. Per-player network streams only need the recipient's
-  // economy for the top bar; enemy economy is neither rendered nor a
-  // useful thing to leak over the wire every snapshot.
-  for (const key of _economyKeys) {
-    delete _economyBuf[key];
-  }
-  _economyKeys.length = 0;
-  const economyPlayerCount = Math.max(0, Math.floor(world.playerCount));
-  for (let playerId = 1; playerId <= economyPlayerCount; playerId++) {
-    if (recipientPlayerId !== undefined && playerId !== recipientPlayerId) continue;
-    const eco = economyManager.getEconomy(playerId as PlayerId);
-    if (eco) {
-      const pid = playerId as PlayerId;
-      _economyKeys.push(pid);
-      _economyBuf[pid] = {
-        stockpile: { curr: eco.stockpile.curr, max: eco.stockpile.max },
-        income: { base: eco.income.base, production: eco.income.production },
-        expenditure: eco.expenditure,
-        mana: {
-          stockpile: { curr: eco.mana.stockpile.curr, max: eco.mana.stockpile.max },
-          income: { base: eco.mana.income.base, territory: eco.mana.income.territory },
-          expenditure: eco.mana.expenditure,
-        },
-        metal: {
-          stockpile: { curr: eco.metal.stockpile.curr, max: eco.metal.stockpile.max },
-          income: { base: eco.metal.income.base, extraction: eco.metal.income.extraction },
-          expenditure: eco.metal.expenditure,
-        },
-      };
-    }
-  }
+  const netEconomy = serializeEconomySnapshot(world.playerCount, recipientPlayerId);
 
   // Serialize spray targets (reuse buffer)
   let netSprayTargets: NetworkServerSnapshotSprayTarget[] | undefined;
@@ -1452,7 +1418,7 @@ export function serializeGameState(
   _snapshotBuf.tick = tick;
   _snapshotBuf.entities = _entityBuf;
   _snapshotBuf.minimapEntities = netMinimapEntities;
-  _snapshotBuf.economy = _economyBuf;
+  _snapshotBuf.economy = netEconomy;
   _snapshotBuf.sprayTargets = netSprayTargets;
   _snapshotBuf.audioEvents = netAudioEvents;
   _snapshotBuf.projectiles = hasProjectiles ? _projectilesBuf : undefined;

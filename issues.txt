@@ -33,13 +33,16 @@ Please always commit and push before and after any code changes we make. If ther
 
 3. Split src/game/network/stateSerializer.ts by DTO family.
    Evidence:
-   - src/game/network/stateSerializer.ts is still 1745 lines.
+   - src/game/network/stateSerializer.ts is still 1711 lines.
+   - Economy DTO serialization has moved to
+     src/game/network/stateSerializerEconomy.ts, but entity, projectile,
+     minimap, spray, audio, and grid serialization still share the main file.
    Impact:
    - Serialization changes for one DTO family risk touching unrelated network
      formats.
    Remedy:
-   - Move one DTO family at a time into focused serializer modules and keep a
-     small index/orchestration layer.
+   - Move the next DTO family into a focused serializer module and keep a small
+     index/orchestration layer.
 
 4. Split src/game/render3d/Render3DEntities.ts by rendered object family.
    Evidence:
