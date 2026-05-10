@@ -47,6 +47,7 @@ import type {
   NetworkRole,
 } from './NetworkTypes';
 import { NetworkDataChannelMonitor } from './NetworkDataChannelMonitor';
+import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
 import { NetworkSnapshotTransport } from './NetworkSnapshotTransport';
 
 // Generate a short room code (4 characters)
@@ -99,17 +100,14 @@ export class NetworkManager {
   private players: Map<PlayerId, LobbyPlayer> = new Map();
   private gameStarted: boolean = false;
   private snapshotTransport = new NetworkSnapshotTransport();
-
-  // Heartbeat presence tracking for the lobby roster. Once the real
-  // battle starts, we keep sending heartbeats but stop force-closing
-  // peers from this timer; WebRTC's own close/error events are the
-  // source of truth for an active match.
-  private lastHeartbeatReceived: Map<PlayerId, number> = new Map();
   private dataChannelMonitor = new NetworkDataChannelMonitor();
-  private heartbeatSendInterval: ReturnType<typeof setInterval> | null = null;
-  private heartbeatCheckInterval: ReturnType<typeof setInterval> | null = null;
-  private readonly heartbeatSendIntervalMs = 2000;
-  private readonly heartbeatTimeoutMs = 30000;
+  private heartbeatTracker = new NetworkHeartbeatTracker({
+    buildHeartbeat: () => this.buildHeartbeatMessage(),
+    closeConnection: (playerId) => this.connections.get(playerId)?.close(),
+    getConnections: () => this.connections,
+    isGameStarted: () => this.gameStarted,
+    send: (conn, message) => this.safeSend(conn, message),
+  });
   private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
   /** 10s connection-setup deadline created by hostGame/joinGame. Held
@@ -346,7 +344,7 @@ export class NetworkManager {
         if (resolved) return;
         resolved = true;
         this.clearSetupTimeout();
-        this.startHeartbeats();
+        this.heartbeatTracker.start();
         console.log('Host peer opened with ID:', this.peer?.id);
         resolve(this.roomCode);
       });
@@ -376,7 +374,7 @@ export class NetworkManager {
             if (resolved) return;
             resolved = true;
             this.clearSetupTimeout();
-            this.startHeartbeats();
+            this.heartbeatTracker.start();
             resolve(this.roomCode);
           });
           this.peer.on('connection', (conn) => this.handleIncomingConnection(conn));
@@ -438,8 +436,8 @@ export class NetworkManager {
           // Track host's heartbeats — if the host stops sending
           // for too long, the check loop closes our side of the
           // connection and the regular `playerLeft` path fires.
-          this.lastHeartbeatReceived.set(1, Date.now());
-          this.startHeartbeats();
+          this.heartbeatTracker.track(1);
+          this.heartbeatTracker.start();
           this.onConnected?.();
           resolve();
         });
@@ -513,11 +511,8 @@ export class NetworkManager {
     conn.on('open', () => {
       console.log(`Player ${playerId} connected`);
 
-      // Begin tracking heartbeats from this peer; if it goes
-      // silent for `heartbeatTimeoutMs`, the check loop will
-      // close the connection and trigger normal cleanup.
-      this.lastHeartbeatReceived.set(playerId, Date.now());
-      this.startHeartbeats();
+      this.heartbeatTracker.track(playerId);
+      this.heartbeatTracker.start();
 
       const playerName = getDefaultPlayerName(playerId);
 
@@ -596,7 +591,7 @@ export class NetworkManager {
       console.warn(`[NET] Player ${playerId} connection CLOSED (role=${this.role})`);
       this.connections.delete(playerId);
       this.players.delete(playerId);
-      this.lastHeartbeatReceived.delete(playerId);
+      this.heartbeatTracker.untrack(playerId);
       this.snapshotTransport.clearPlayer(playerId);
       this.dataChannelMonitor.detach(playerId);
       this.onPlayerLeft?.(playerId);
@@ -674,9 +669,7 @@ export class NetworkManager {
     // type. That prevents the timeout sweep from kicking peers
     // who are sending plenty of state but happen to skip a
     // heartbeat tick (snapshots, commands, etc. all count).
-    if (this.lastHeartbeatReceived.has(fromPlayerId)) {
-      this.lastHeartbeatReceived.set(fromPlayerId, Date.now());
-    }
+    this.heartbeatTracker.markReceived(fromPlayerId);
     switch (message.type) {
       case 'heartbeat':
         if (!this.isMessageForCurrentGame(message)) return;
@@ -830,58 +823,17 @@ export class NetworkManager {
     });
   }
 
-  /** Begin emitting heartbeat pings to every open connection +
-   *  start the timeout sweep. Idempotent — calling twice is a
-   *  no-op once timers exist. Called from hostGame / joinGame
-   *  once a peer is established; stopped on `disconnect`. */
-  private startHeartbeats(): void {
-    if (this.heartbeatSendInterval !== null) return;
-    const now = Date.now();
-    for (const pid of this.connections.keys()) {
-      this.lastHeartbeatReceived.set(pid, now);
-    }
-    this.heartbeatSendInterval = setInterval(() => {
-      const self = this.refreshLocalPlayerInfo(true);
-      const beat: NetworkMessage = {
-        type: 'heartbeat',
-        gameId: this.getUniversalGameId(),
-        playerId: this.localPlayerId,
-        playerInfo: self ? this.buildLocalPlayerInfo() : undefined,
-        players: this.role === 'host'
-          ? Array.from(this.players.values()).map((player) => this.copyPlayer(player))
-          : undefined,
-      };
-      for (const conn of this.connections.values()) {
-        this.safeSend(conn, beat);
-      }
-    }, this.heartbeatSendIntervalMs);
-    this.heartbeatCheckInterval = setInterval(() => {
-      if (this.gameStarted) return;
-      const cutoff = Date.now() - this.heartbeatTimeoutMs;
-      for (const [pid, lastSeen] of this.lastHeartbeatReceived) {
-        if (lastSeen < cutoff) {
-          // Force-close the silent connection — its close handler
-          // (setupConnectionHandlers) cleans up `players` /
-          // `connections` and fires `onPlayerLeft`, so the lobby
-          // roster updates without any extra plumbing here.
-          const conn = this.connections.get(pid);
-          if (conn) conn.close();
-          this.lastHeartbeatReceived.delete(pid);
-        }
-      }
-    }, 1000);
-  }
-
-  private stopHeartbeats(): void {
-    if (this.heartbeatSendInterval) {
-      clearInterval(this.heartbeatSendInterval);
-      this.heartbeatSendInterval = null;
-    }
-    if (this.heartbeatCheckInterval) {
-      clearInterval(this.heartbeatCheckInterval);
-      this.heartbeatCheckInterval = null;
-    }
-    this.lastHeartbeatReceived.clear();
+  private buildHeartbeatMessage(): NetworkMessage {
+    const self = this.refreshLocalPlayerInfo(true);
+    return {
+      type: 'heartbeat',
+      gameId: this.getUniversalGameId(),
+      playerId: this.localPlayerId,
+      playerInfo: self ? this.buildLocalPlayerInfo() : undefined,
+      players: this.role === 'host'
+        ? Array.from(this.players.values()).map((player) => this.copyPlayer(player))
+        : undefined,
+    };
   }
 
   /** Report the LOCAL player's IP / location / timezone and current
@@ -1121,7 +1073,7 @@ export class NetworkManager {
   disconnect(): void {
     this.clearSignalingReconnect();
     this.clearSetupTimeout();
-    this.stopHeartbeats();
+    this.heartbeatTracker.stop();
     this.dataChannelMonitor.clear();
     for (const conn of this.connections.values()) {
       conn.close();
