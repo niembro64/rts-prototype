@@ -2,13 +2,16 @@ import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { isLineShotType } from '@/types/sim';
 import { GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
 import { getSurfaceHeight } from '../sim/Terrain';
-import { getEntityVelocity3 } from '../sim/combat/combatUtils';
+import { getEntityAcceleration3, getEntityVelocity3 } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
   applyHomingSteering,
-  computeInterceptTime,
   lerp,
   magnitude3,
+  solveKinematicIntercept,
+  type KinematicInterceptSolution,
+  type KinematicState3,
+  type KinematicVec3,
 } from '../math';
 import { halfLifeBlend, type DriftPreset } from './driftEma';
 import type { PredictionStep } from './ClientPredictionLod';
@@ -29,16 +32,37 @@ export type ClientProjectilePredictionResult = {
 
 const _clientHomingAimPoint = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
+const _clientHomingTargetAcceleration = { x: 0, y: 0, z: 0 };
+const _clientHomingProjectileAcceleration: KinematicVec3 = { x: 0, y: 0, z: 0 };
+const _clientHomingOriginState: KinematicState3 = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  acceleration: { x: 0, y: 0, z: 0 },
+};
+const _clientHomingTargetState: KinematicState3 = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  acceleration: { x: 0, y: 0, z: 0 },
+};
+const _clientHomingIntercept: KinematicInterceptSolution = {
+  time: 0,
+  aimPoint: { x: 0, y: 0, z: 0 },
+  launchVelocity: { x: 0, y: 0, z: 0 },
+};
 
 function applyClientProjectileHoming(options: {
   entity: Entity;
   dt: number;
+  mapWidth: number;
+  mapHeight: number;
   getEntity: (id: EntityId) => Entity | undefined;
   findNearestEnemyForRocket: (projectile: Entity, ownerId: PlayerId) => Entity | null;
 }): void {
   const {
     entity,
     dt,
+    mapWidth,
+    mapHeight,
     getEntity,
     findNearestEnemyForRocket,
   } = options;
@@ -73,27 +97,56 @@ function applyClientProjectileHoming(options: {
     let steerY = aimPoint.y;
     let steerZ = aimPoint.z;
     const targetVelocity = getEntityVelocity3(homingTarget, _clientHomingTargetVelocity);
+    const targetAcceleration = getEntityAcceleration3(
+      homingTarget,
+      _clientHomingTargetAcceleration,
+      (x, y) => getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
+    );
     const targetSpeedSq =
       targetVelocity.x * targetVelocity.x +
       targetVelocity.y * targetVelocity.y +
       targetVelocity.z * targetVelocity.z;
+    const targetAccelSq =
+      targetAcceleration.x * targetAcceleration.x +
+      targetAcceleration.y * targetAcceleration.y +
+      targetAcceleration.z * targetAcceleration.z;
     const projectileSpeed = magnitude3(proj.velocityX, proj.velocityY, proj.velocityZ);
-    if (targetSpeedSq > 1e-6 && projectileSpeed > 1e-6) {
-      const tLead = computeInterceptTime(
-        steerX - entity.transform.x,
-        steerY - entity.transform.y,
-        steerZ - entity.transform.z,
-        targetVelocity.x, targetVelocity.y, targetVelocity.z,
+    if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
+      _clientHomingOriginState.position.x = entity.transform.x;
+      _clientHomingOriginState.position.y = entity.transform.y;
+      _clientHomingOriginState.position.z = entity.transform.z;
+      _clientHomingOriginState.velocity.x = 0;
+      _clientHomingOriginState.velocity.y = 0;
+      _clientHomingOriginState.velocity.z = 0;
+      _clientHomingOriginState.acceleration.x = 0;
+      _clientHomingOriginState.acceleration.y = 0;
+      _clientHomingOriginState.acceleration.z = 0;
+      _clientHomingTargetState.position.x = steerX;
+      _clientHomingTargetState.position.y = steerY;
+      _clientHomingTargetState.position.z = steerZ;
+      _clientHomingTargetState.velocity.x = targetVelocity.x;
+      _clientHomingTargetState.velocity.y = targetVelocity.y;
+      _clientHomingTargetState.velocity.z = targetVelocity.z;
+      _clientHomingTargetState.acceleration.x = targetAcceleration.x;
+      _clientHomingTargetState.acceleration.y = targetAcceleration.y;
+      _clientHomingTargetState.acceleration.z = targetAcceleration.z;
+      _clientHomingProjectileAcceleration.x = 0;
+      _clientHomingProjectileAcceleration.y = 0;
+      _clientHomingProjectileAcceleration.z = proj.config.shotProfile.runtime.ignoresGravity ? 0 : -GRAVITY;
+      const remainingSec = Number.isFinite(proj.maxLifespan)
+        ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
+        : undefined;
+      const intercept = solveKinematicIntercept({
+        origin: _clientHomingOriginState,
+        target: _clientHomingTargetState,
         projectileSpeed,
-      );
-      if (tLead > 0) {
-        const remainingSec = Number.isFinite(proj.maxLifespan)
-          ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
-          : tLead;
-        const leadT = remainingSec > 0 ? Math.min(tLead, remainingSec) : tLead;
-        steerX += targetVelocity.x * leadT;
-        steerY += targetVelocity.y * leadT;
-        steerZ += targetVelocity.z * leadT;
+        projectileAcceleration: _clientHomingProjectileAcceleration,
+        maxTimeSec: remainingSec,
+      }, _clientHomingIntercept);
+      if (intercept) {
+        steerX = intercept.aimPoint.x;
+        steerY = intercept.aimPoint.y;
+        steerZ = intercept.aimPoint.z;
       }
     }
     const steered = applyHomingSteering(
@@ -194,6 +247,8 @@ export function applyClientProjectilePrediction(options: {
   applyClientProjectileHoming({
     entity,
     dt,
+    mapWidth,
+    mapHeight,
     getEntity,
     findNearestEnemyForRocket,
   });

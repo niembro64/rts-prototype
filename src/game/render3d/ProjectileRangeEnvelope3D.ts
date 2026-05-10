@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import { GRAVITY, LAND_CELL_SIZE } from '../../config';
-import { ballisticSolutions, getTransformCosSin, getTurretWorldMount } from '../math';
+import {
+  getTransformCosSin,
+  getTurretWorldMount,
+  solveKinematicIntercept,
+  type KinematicInterceptSolution,
+  type KinematicState3,
+  type KinematicVec3,
+} from '../math';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId, ProjectileShot, Turret } from '../sim/types';
 import { getShotMaxLifespan, isProjectileShot } from '../sim/types';
@@ -20,6 +27,22 @@ const SEARCH_ITERATIONS = 14;
 const GROUND_LIFT = 9;
 const RENDER_ORDER = 22;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
+const _rangeOriginState: KinematicState3 = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  acceleration: { x: 0, y: 0, z: 0 },
+};
+const _rangeTargetState: KinematicState3 = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  acceleration: { x: 0, y: 0, z: 0 },
+};
+const _rangeProjectileAcceleration: KinematicVec3 = { x: 0, y: 0, z: -GRAVITY };
+const _rangeIntercept: KinematicInterceptSolution = {
+  time: 0,
+  aimPoint: { x: 0, y: 0, z: 0 },
+  launchVelocity: { x: 0, y: 0, z: 0 },
+};
 
 type EnvelopeRing = {
   mesh: THREE.Mesh;
@@ -289,21 +312,33 @@ export class ProjectileRangeEnvelope3D {
     if (dist <= 1e-3) return true;
     const x = originX + dirX * dist;
     const y = originY + dirY * dist;
-    const heightDiff = getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE) - launchZ;
-    const solutions = ballisticSolutions(dist, heightDiff, speed, GRAVITY);
-    if (!solutions) return false;
-
     const lifeMs = getShotMaxLifespan(shot);
-    if (!Number.isFinite(lifeMs)) return true;
-    const maxLifeSec = lifeMs / 1000;
-    return this.flightTime(dist, speed, solutions.low) <= maxLifeSec
-      || this.flightTime(dist, speed, solutions.high) <= maxLifeSec;
-  }
-
-  private flightTime(dist: number, speed: number, pitch: number): number {
-    const horizSpeed = speed * Math.cos(pitch);
-    if (horizSpeed <= 1e-6) return Infinity;
-    return dist / horizSpeed;
+    _rangeOriginState.position.x = originX;
+    _rangeOriginState.position.y = originY;
+    _rangeOriginState.position.z = launchZ;
+    _rangeOriginState.velocity.x = 0;
+    _rangeOriginState.velocity.y = 0;
+    _rangeOriginState.velocity.z = 0;
+    _rangeOriginState.acceleration.x = 0;
+    _rangeOriginState.acceleration.y = 0;
+    _rangeOriginState.acceleration.z = 0;
+    _rangeTargetState.position.x = x;
+    _rangeTargetState.position.y = y;
+    _rangeTargetState.position.z = getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE);
+    _rangeTargetState.velocity.x = 0;
+    _rangeTargetState.velocity.y = 0;
+    _rangeTargetState.velocity.z = 0;
+    _rangeTargetState.acceleration.x = 0;
+    _rangeTargetState.acceleration.y = 0;
+    _rangeTargetState.acceleration.z = 0;
+    const intercept = solveKinematicIntercept({
+      origin: _rangeOriginState,
+      target: _rangeTargetState,
+      projectileSpeed: speed,
+      projectileAcceleration: _rangeProjectileAcceleration,
+      maxTimeSec: Number.isFinite(lifeMs) ? lifeMs / 1000 : undefined,
+    }, _rangeIntercept);
+    return intercept !== null;
   }
 
   private rayDistanceToMapEdge(

@@ -6,6 +6,7 @@ import { getTurretWorldMount } from '../../math';
 import type { Vec3 } from '@/types/vec2';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMounts';
+import { GRAVITY } from '../../../config';
 
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
@@ -255,6 +256,42 @@ export function getEntityVelocity3(entity: Entity, out: Vec3): Vec3 {
     out.x = entity.projectile.velocityX;
     out.y = entity.projectile.velocityY;
     out.z = entity.projectile.velocityZ;
+  } else {
+    out.x = 0;
+    out.y = 0;
+    out.z = 0;
+  }
+  return out;
+}
+
+export type GroundHeightLookup = (x: number, y: number) => number;
+
+function isUnitAirborneForAcceleration(entity: Entity, groundHeightAt?: GroundHeightLookup): boolean {
+  const unit = entity.unit;
+  if (!unit) return false;
+  const verticalSpeed = Math.abs(unit.velocityZ ?? 0);
+  if (!groundHeightAt) return unit.jump?.active === true || verticalSpeed > 0.05;
+  const groundPointZ = entity.transform.z - unit.bodyCenterHeight;
+  return (
+    groundPointZ > groundHeightAt(entity.transform.x, entity.transform.y) + 0.25 ||
+    verticalSpeed > 0.05
+  );
+}
+
+export function getEntityAcceleration3(
+  entity: Entity,
+  out: Vec3,
+  groundHeightAt?: GroundHeightLookup,
+): Vec3 {
+  if (entity.unit) {
+    out.x = entity.unit.movementAccelX ?? 0;
+    out.y = entity.unit.movementAccelY ?? 0;
+    out.z = entity.unit.movementAccelZ ?? 0;
+    if (isUnitAirborneForAcceleration(entity, groundHeightAt)) out.z -= GRAVITY;
+  } else if (entity.projectile) {
+    out.x = 0;
+    out.y = 0;
+    out.z = entity.projectile.config.shotProfile.runtime.ignoresGravity ? 0 : -GRAVITY;
   } else {
     out.x = 0;
     out.y = 0;

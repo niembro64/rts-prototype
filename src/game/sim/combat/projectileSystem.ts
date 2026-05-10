@@ -7,9 +7,25 @@ import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
 import { beamIndex } from '../BeamIndex';
-import { getTransformCosSin, applyHomingSteering, computeInterceptTime, getBarrelTip, countBarrels } from '../../math';
+import {
+  getTransformCosSin,
+  applyHomingSteering,
+  getBarrelTip,
+  countBarrels,
+  solveKinematicIntercept,
+  type KinematicInterceptSolution,
+  type KinematicState3,
+  type KinematicVec3,
+} from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, BEAM_MAX_SEGMENTS } from '../../../config';
-import { computeTurretPointVelocity, getEntityVelocity3, getProjectileLaunchSpeed, turretMaskIncludes, updateWeaponWorldKinematics } from './combatUtils';
+import {
+  computeTurretPointVelocity,
+  getEntityAcceleration3,
+  getEntityVelocity3,
+  getProjectileLaunchSpeed,
+  turretMaskIncludes,
+  updateWeaponWorldKinematics,
+} from './combatUtils';
 import { updateCombatActivityFlags } from './combatActivity';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
@@ -97,7 +113,24 @@ const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
 const _lineShotRangeCircle: LineShotRangeCircle = { centerX: 0, centerY: 0, radius: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
+const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
+const _homingProjectileAcceleration: KinematicVec3 = { x: 0, y: 0, z: 0 };
+const _homingOriginState: KinematicState3 = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  acceleration: { x: 0, y: 0, z: 0 },
+};
+const _homingTargetState: KinematicState3 = {
+  position: { x: 0, y: 0, z: 0 },
+  velocity: { x: 0, y: 0, z: 0 },
+  acceleration: { x: 0, y: 0, z: 0 },
+};
+const _homingIntercept: KinematicInterceptSolution = {
+  time: 0,
+  aimPoint: { x: 0, y: 0, z: 0 },
+  launchVelocity: { x: 0, y: 0, z: 0 },
+};
 const FIRE_YAW_TOLERANCE = 0.16;
 const FIRE_PITCH_TOLERANCE = 0.16;
 
@@ -768,27 +801,56 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         let steerY = aimPoint.y;
         let steerZ = aimPoint.z;
         const targetVelocity = getEntityVelocity3(homingTarget, _homingTargetVelocity);
+        const targetAcceleration = getEntityAcceleration3(
+          homingTarget,
+          _homingTargetAcceleration,
+          (x, y) => world.getGroundZ(x, y),
+        );
         const targetSpeedSq =
           targetVelocity.x * targetVelocity.x +
           targetVelocity.y * targetVelocity.y +
           targetVelocity.z * targetVelocity.z;
+        const targetAccelSq =
+          targetAcceleration.x * targetAcceleration.x +
+          targetAcceleration.y * targetAcceleration.y +
+          targetAcceleration.z * targetAcceleration.z;
         const projectileSpeed = Math.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
-        if (targetSpeedSq > 1e-6 && projectileSpeed > 1e-6) {
-          const tLead = computeInterceptTime(
-            steerX - entity.transform.x,
-            steerY - entity.transform.y,
-            steerZ - entity.transform.z,
-            targetVelocity.x, targetVelocity.y, targetVelocity.z,
+        if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
+          _homingOriginState.position.x = entity.transform.x;
+          _homingOriginState.position.y = entity.transform.y;
+          _homingOriginState.position.z = entity.transform.z;
+          _homingOriginState.velocity.x = 0;
+          _homingOriginState.velocity.y = 0;
+          _homingOriginState.velocity.z = 0;
+          _homingOriginState.acceleration.x = 0;
+          _homingOriginState.acceleration.y = 0;
+          _homingOriginState.acceleration.z = 0;
+          _homingTargetState.position.x = steerX;
+          _homingTargetState.position.y = steerY;
+          _homingTargetState.position.z = steerZ;
+          _homingTargetState.velocity.x = targetVelocity.x;
+          _homingTargetState.velocity.y = targetVelocity.y;
+          _homingTargetState.velocity.z = targetVelocity.z;
+          _homingTargetState.acceleration.x = targetAcceleration.x;
+          _homingTargetState.acceleration.y = targetAcceleration.y;
+          _homingTargetState.acceleration.z = targetAcceleration.z;
+          _homingProjectileAcceleration.x = 0;
+          _homingProjectileAcceleration.y = 0;
+          _homingProjectileAcceleration.z = proj.config.shotProfile.runtime.ignoresGravity ? 0 : -GRAVITY;
+          const remainingSec = Number.isFinite(proj.maxLifespan)
+            ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
+            : undefined;
+          const intercept = solveKinematicIntercept({
+            origin: _homingOriginState,
+            target: _homingTargetState,
             projectileSpeed,
-          );
-          if (tLead > 0) {
-            const remainingSec = Number.isFinite(proj.maxLifespan)
-              ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
-              : tLead;
-            const leadT = remainingSec > 0 ? Math.min(tLead, remainingSec) : tLead;
-            steerX += targetVelocity.x * leadT;
-            steerY += targetVelocity.y * leadT;
-            steerZ += targetVelocity.z * leadT;
+            projectileAcceleration: _homingProjectileAcceleration,
+            maxTimeSec: remainingSec,
+          }, _homingIntercept);
+          if (intercept) {
+            steerX = intercept.aimPoint.x;
+            steerY = intercept.aimPoint.y;
+            steerZ = intercept.aimPoint.z;
           }
         }
         const steered = applyHomingSteering(

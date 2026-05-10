@@ -50,9 +50,14 @@ export {
 
 export {
   type BallisticSolution,
+  type KinematicInterceptInput,
+  type KinematicInterceptSolution,
+  type KinematicState3,
+  type KinematicVec3,
   ballisticSolutions,
   solveBallisticPitch,
   computeInterceptTime,
+  solveKinematicIntercept,
 } from './Ballistics';
 
 export { getTurretWorldMount } from './MountGeometry';
