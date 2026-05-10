@@ -19,6 +19,7 @@ import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { LongtaskTracker } from './helpers/LongtaskTracker';
 import { RtsScene3DCameraControl, type CameraShim } from './helpers/RtsScene3DCameraControl';
 import { RtsScene3DCameraFootprintSystem } from './helpers/RtsScene3DCameraFootprintSystem';
+import { RtsScene3DCameraFramingSystem } from './helpers/RtsScene3DCameraFramingSystem';
 import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
@@ -31,7 +32,6 @@ import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
 import { MetalDepositRenderer3D } from '../render3d/MetalDepositRenderer3D';
 import { EnvironmentPropRenderer3D } from '../render3d/EnvironmentPropRenderer3D';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
-import { isCommander } from '../sim/combat/combatUtils';
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
@@ -61,7 +61,6 @@ import { RtsScene3DAudioSystem } from './helpers/RtsScene3DAudioSystem';
 import { RtsScene3DPredictionPhase } from './helpers/RtsScene3DPredictionPhase';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
-  getCameraSmoothMode,
   getGraphicsConfig,
   getGraphicsConfigFor,
   getLodShellRings,
@@ -70,7 +69,6 @@ import {
   getGridOverlayIntensity,
 } from '@/clientBarConfig';
 import { CommandQueue } from '../sim/commands';
-import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
 import {
   getTerrainMeshHeight,
@@ -111,10 +109,6 @@ import {
   FRAME_TIMING_EMA,
   EMA_INITIAL_VALUES,
   WORLD_PADDING_PERCENT,
-  ZOOM_INITIAL_GAME,
-  ZOOM_INITIAL_DEMO,
-  ZOOM_INITIAL_LOBBY_PREVIEW,
-  LOBBY_PREVIEW_SPIN_RATE,
   LAND_CELL_SIZE,
 } from '../../config';
 
@@ -206,6 +200,7 @@ export class RtsScene3D {
   private contactShadowRenderer: ContactShadowRenderer3D | null = null;
   private predictionPhase!: RtsScene3DPredictionPhase;
   private cameraControl!: RtsScene3DCameraControl;
+  private cameraFramingSystem!: RtsScene3DCameraFramingSystem;
   /** Resolves a player ID to its display name. Hooked up via
    *  RtsScene3DConfig.lookupPlayerName; null result falls back to
    *  `getDefaultPlayerName(playerId)` so commander labels still
@@ -242,7 +237,6 @@ export class RtsScene3D {
   private lobbyPreview: boolean;
 
   private isGameOver = false;
-  private hasCenteredCamera = false;
   /** Frame counter used to drive the one-shot shader precompile sweep
    *  during early gameplay. THREE compiles shaders lazily — sweeping
    *  the first ~60 update frames catches most material variants
@@ -309,8 +303,6 @@ export class RtsScene3D {
   // Dynamic camera shim — exposes a zoom-like number derived from the orbit
   // distance so UI (zoom display, minimap viewport) has a consistent axis to read.
   public readonly cameras: CameraShim;
-
-  private _baseDistance: number;
 
   private get renderLodGrid() {
     return this.predictionPhase.renderLodGrid;
@@ -389,43 +381,20 @@ export class RtsScene3D {
       this.gameConnection,
     );
     this.predictionPhase = new RtsScene3DPredictionPhase(this.clientViewState);
-    this._baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
-    this.cameraControl = new RtsScene3DCameraControl(this.threeApp, this._baseDistance);
+    const baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
+    this.cameraControl = new RtsScene3DCameraControl(this.threeApp, baseDistance);
+    this.cameraFramingSystem = new RtsScene3DCameraFramingSystem(
+      this.threeApp,
+      baseDistance,
+      this.mapWidth,
+      this.mapHeight,
+      this.playerIds,
+      () => this.localPlayerId,
+      this.backgroundMode,
+      this.lobbyPreview,
+    );
     this.cameras = this.cameraControl.cameras;
-
-    // Seed orbit camera from the same per-mode target logic used after
-    // snapshots arrive, while keeping per-mode zoom distances.
-    //
-    // REAL BATTLE frames the local commander from behind, looking toward
-    // the map center. DEMO BATTLE and GAME LOBBY preview start on the
-    // middle of the battlefield so the opening view reads as an overview.
-    // GAME LOBBY preview also keeps its continuous slow orbit in `update()`.
-    const initialZoom = this.lobbyPreview
-      ? ZOOM_INITIAL_LOBBY_PREVIEW
-      : this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
-    // Target the local seat's spawn position only for a real battle so
-    // the commander is in-frame from frame 1, before any snapshot arrives.
-    const framesLocalCommander = !this.backgroundMode && !this.lobbyPreview;
-    const seatIndex = framesLocalCommander
-      ? Math.max(0, this.playerIds.indexOf(this.localPlayerId))
-      : 0;
-    const initialTarget = framesLocalCommander
-      ? getSpawnPositionForSeat(
-          seatIndex,
-          Math.max(1, this.playerIds.length),
-          this.mapWidth,
-          this.mapHeight,
-        )
-      : { x: this.mapWidth / 2, y: this.mapHeight / 2 };
-    this.threeApp.orbit.setState({
-      targetX: initialTarget.x,
-      targetY: 0,
-      targetZ: initialTarget.y,
-      distance: this._baseDistance / initialZoom,
-      yaw: this._povYawForLocalSeat(),
-      pitch: this.threeApp.orbit.pitch,
-    });
-    this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
+    this.cameraFramingSystem.seedInitialCamera();
 
   }
 
@@ -704,13 +673,9 @@ export class RtsScene3D {
         this.handleGameOver(snapshotResult.gameOverWinnerId);
       }
 
-      // First-snapshot camera framing. Real battles center on the local
-      // player's commander (yaw tilts so the map center is forward);
-      // DEMO BATTLE and GAME LOBBY preview remain spectator-wide.
-      if (!this.hasCenteredCamera) {
-        if (this.backgroundMode || this.lobbyPreview) this.centerCameraOnMap();
-        else this.centerCameraOnCommander();
-      }
+      this.cameraFramingSystem.centerAfterFirstSnapshot(
+        this.clientViewState.getUnits(),
+      );
 
       this.selectionSystem.markSelectionDirty();
     }
@@ -754,20 +719,7 @@ export class RtsScene3D {
       ? 0
       : Math.min(effectNow - this.lastEffectsTickMs, 100);
     this.lastEffectsTickMs = effectNow;
-    this.threeApp.orbit.setSmoothTau(this._cameraSmoothTauSec());
-    this.threeApp.orbit.tick(effectDt / 1000);
-    // GAME LOBBY preview: continuous slow orbit around the map
-    // center, like an unattended alt+middle-drag. `effectDt` is
-    // the same clamped per-frame ms the orbit tick uses, so the
-    // spin stays smooth at any frame rate and pauses cleanly
-    // when the tab backgrounds (the clamp caps catch-up bursts).
-    if (this.lobbyPreview) {
-      const dtSec = effectDt / 1000;
-      this.threeApp.orbit.setOrbitAngles(
-        this.threeApp.orbit.yaw + LOBBY_PREVIEW_SPIN_RATE * dtSec,
-        this.threeApp.orbit.pitch,
-      );
-    }
+    this.cameraFramingSystem.tickCameraSmoothing(effectDt / 1000);
     const viewportHeightPx = this.threeApp.renderer.domElement.clientHeight;
     const {
       renderLod,
@@ -1077,96 +1029,6 @@ export class RtsScene3D {
     this.logicMsTracker.update(logicMs);
     this.predMsTracker.update(predMs);
     this.longtaskTracker.tick();
-  }
-
-  private centerCameraOnCommander(): void {
-    const units = this.clientViewState.getUnits();
-    const commander = units.find(
-      (e) => isCommander(e) && e.ownership?.playerId === this.localPlayerId,
-    );
-    if (commander) {
-      const cx = commander.transform.x;
-      const cz = commander.transform.y;
-      this.threeApp.orbit.setTarget(cx, 0, cz);
-
-      // Place the camera "behind" the commander looking toward the map
-      // center — natural RTS framing on spawn where the battlefield
-      // opens up in front of the unit. Yaw math:
-      //
-      //   forward vector (commander → center) = normalize(center − pos)
-      //   OrbitCamera's yaw=0 convention puts the camera on the -Z side
-      //   of the target looking toward +Z. yaw=π flips that. In general
-      //   the camera sits at target + distance · (sin(yaw), 0,
-      //   -cos(yaw)) and looks back at the target, so for a forward
-      //   vector (fx, fz) we want the camera OPPOSITE that vector —
-      //   i.e. yaw = atan2(-fx, fz).
-      //
-      // Commanders spawn in even oval-space angles around the map center
-      // (sim/spawn.ts), so this makes every player's first view look
-      // the same relative to their own commander regardless of seat.
-      const forwardX = this.mapWidth / 2 - cx;
-      const forwardZ = this.mapHeight / 2 - cz;
-      if (forwardX * forwardX + forwardZ * forwardZ > 1) {
-        this.threeApp.orbit.setOrbitAngles(
-          Math.atan2(-forwardX, forwardZ),
-          this.threeApp.orbit.pitch,
-        );
-      }
-      this.hasCenteredCamera = true;
-    }
-  }
-
-  // Center the orbit camera on the map center — used by DEMO BATTLE
-  // and the GAME LOBBY preview so the battlefield is visible instead
-  // of framing a specific commander's seat. Yaw is held at the
-  // constructor seed for stable spectator framing.
-  private centerCameraOnMap(): void {
-    this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
-    this.hasCenteredCamera = true;
-  }
-
-  /** Translate the persisted camera-smooth mode into the orbit
-   *  camera's EMA time-constant (seconds). 0 = snap (no animation).
-   *  Larger τ = gentler easing. After τ seconds the rendered camera
-   *  is ~63% of the way to the to-state; after 3·τ it's ~95%.
-   *
-   *    fast → ~150 ms perceived settle.
-   *    mid  → ~360 ms.
-   *    slow → ~1.2 s — properly slow / weighty. */
-  private _cameraSmoothTauSec(): number {
-    switch (getCameraSmoothMode()) {
-      case 'fast': return 0.05;
-      case 'mid':  return 0.12;
-      case 'slow': return 0.4;
-      case 'snap':
-      default: return 0;
-    }
-  }
-
-  /** Compute the orbit yaw that would put the camera "behind" a
-   *  player's spawn position on the commander oval, looking toward
-   *  the map center. REAL BATTLE uses the active local player's
-   *  index; DEMO BATTLE also has a stable local seat, and GAME LOBBY
-   *  preview uses red (index 0) for stable spectator framing. Math
-   *  mirrors centerCameraOnCommander:
-   *  yaw = atan2(−forwardX, forwardZ) where forward is the unit
-   *  vector from the player's spawn to the map center. */
-  private _povYawForLocalSeat(): number {
-    const playerCount = Math.max(1, this.playerIds.length);
-    const seatIndex = this.lobbyPreview
-      ? 0
-      : Math.max(0, this.playerIds.indexOf(this.localPlayerId));
-    const angle = getPlayerBaseAngle(seatIndex, playerCount);
-    // Spawn position relative to map center: (cos(angle), sin(angle))
-    // scaled by the spawn radius. The spawn → center forward vector is
-    // therefore the negation of that direction. We don't need the
-    // actual radius — yaw only depends on direction.
-    const forwardSimX = -Math.cos(angle);
-    const forwardSimY = -Math.sin(angle);
-    // sim x → three x, sim y → three z.
-    const fx = forwardSimX;
-    const fz = forwardSimY;
-    return Math.atan2(-fx, fz);
   }
 
   private processLocalCommands(): void {
