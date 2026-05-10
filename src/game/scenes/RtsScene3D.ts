@@ -10,7 +10,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
 import { isUnitTypeId } from '@/types/blueprintIds';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
-import { SnapshotBuffer } from './helpers/SnapshotBuffer';
+import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import {
   buildSelectionInfo,
   buildEconomyInfo,
@@ -251,7 +251,7 @@ export class RtsScene3D {
   private combinedSprayTargets: SprayTarget[] = [];
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
-  private snapshotBuffer = new SnapshotBuffer();
+  private snapshotIntake!: RtsScene3DSnapshotIntake;
   private localCommandQueue = new CommandQueue();
   private currentWaypointMode: WaypointType = 'move';
   // Mirrors Input3DManager's shared CommanderModeController so the
@@ -314,15 +314,6 @@ export class RtsScene3D {
 
   // Performance trackers (mirror RtsScene)
   private renderTpsTracker = new EmaTracker(EMA_CONFIG.tps, EMA_INITIAL_VALUES.tps);
-  private snapTracker = new EmaTracker(EMA_CONFIG.snaps, EMA_INITIAL_VALUES.snaps);
-  // Parallel tracker that ONLY updates on full keyframes (state.isDelta=false).
-  //
-  // No initialValue passed on purpose — the EMA's "wait for first
-  // sample" mode seeds at the actual rate as soon as a real interval
-  // is observed. FSPS samples arrive at ~0.5 Hz by default, so even a
-  // small nonzero seed can linger too long and make FSPS look higher
-  // than SPS, which is logically impossible.
-  private fullSnapTracker = new EmaTracker(EMA_CONFIG.snaps);
   private frameMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs, EMA_INITIAL_VALUES.frameMs);
   private renderMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.renderMs, EMA_INITIAL_VALUES.renderMs);
   private logicMsTracker = new EmaMsTracker(FRAME_TIMING_EMA.logicMs, EMA_INITIAL_VALUES.logicMs);
@@ -373,16 +364,6 @@ export class RtsScene3D {
   private _lineProjectilesScratch: Entity[] = [];
   private _burnMarkProjectilesScratch: Entity[] = [];
   private _smokeTrailProjectilesScratch: Entity[] = [];
-
-  // Snapshot-arrival tracking for snap-rate EMA
-  private lastSnapArrivalMs = 0;
-  // Separate timestamp for the full-keyframe rate. Stays 0 until the
-  // first keyframe arrives, then updates only on subsequent keyframes.
-  private lastFullSnapArrivalMs = 0;
-  private startupReadyAckSent = false;
-  private startupFullSnapshotApplied = false;
-  private startupReleased = false;
-
   // Entity source adapter, kept shape-compatible with RtsScene's for UI helpers
   private entitySourceAdapter!: {
     getUnits: () => Entity[];
@@ -505,6 +486,10 @@ export class RtsScene3D {
     // ClientViewState is owned by GameCanvas so its state (units, buildings,
     // prediction, selection) survives a live 2D↔3D renderer swap.
     this.clientViewState = config.clientViewState;
+    this.snapshotIntake = new RtsScene3DSnapshotIntake(
+      this.clientViewState,
+      this.gameConnection,
+    );
     this._baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
 
     // Seed orbit camera from the same per-mode target logic used after
@@ -615,7 +600,7 @@ export class RtsScene3D {
       getTerrainBuildabilityGrid: () => this.clientViewState.getTerrainBuildabilityGrid(),
     };
 
-    this.snapshotBuffer.attach(this.gameConnection);
+    this.snapshotIntake.attach();
 
     this.gameConnection.onGameOver((winnerId: PlayerId) => {
       if (!this.isGameOver) this.handleGameOver(winnerId);
@@ -844,58 +829,24 @@ export class RtsScene3D {
       this.audioScheduler.drain(nowDrain, (event) => this.handleSimEvent3D(event));
     }
 
-    // Consume newest snapshot (if any)
-    const state = this.snapshotBuffer.consume();
-    if (state) {
-      this.clientViewState.applyNetworkState(state);
-      if (!this.startupReadyAckSent && !state.isDelta) {
-        this.startupFullSnapshotApplied = true;
+    const snapshotResult = this.snapshotIntake.consumeLatestSnapshot({
+      clientRenderEnabled: this.clientRenderEnabled,
+      audio: this.clientRenderEnabled
+        ? {
+            scheduler: this.audioScheduler,
+            smoothingEnabled: getAudioSmoothing(),
+            play: (event) => this.handleSimEvent3D(event),
+          }
+        : undefined,
+    });
+    if (snapshotResult.appliedSnapshot) {
+      if (snapshotResult.startupReleased) this.onStartupReady?.();
+      if (snapshotResult.serverMeta && this.onServerMetaUpdate) {
+        this.onServerMetaUpdate(snapshotResult.serverMeta);
       }
-      if (!this.startupReleased && state.tick > 0) {
-        this.startupReleased = true;
-        this.onStartupReady?.();
+      if (snapshotResult.gameOverWinnerId !== null && !this.isGameOver) {
+        this.handleGameOver(snapshotResult.gameOverWinnerId);
       }
-
-      const now = performance.now();
-      if (this.lastSnapArrivalMs > 0) {
-        const dt = now - this.lastSnapArrivalMs;
-        if (dt > 0) this.snapTracker.update(1000 / dt);
-      }
-      this.lastSnapArrivalMs = now;
-      // Full-keyframe rate — only ticks on keyframe snaps. The first
-      // keyframe seeds; the second one starts producing a non-zero
-      // EMA reading.
-      if (!state.isDelta) {
-        if (this.lastFullSnapArrivalMs > 0) {
-          const dt = now - this.lastFullSnapArrivalMs;
-          if (dt > 0) this.fullSnapTracker.update(1000 / dt);
-        }
-        this.lastFullSnapArrivalMs = now;
-      }
-
-      if (this.clientRenderEnabled) {
-        // Schedule any new SimEvents that came in with this snapshot. Smoothing
-        // staggers one-shot events across the snapshot interval; continuous
-        // start/stop events fire immediately (handled inside AudioEventScheduler).
-        this.audioScheduler.recordSnapshot(now);
-        const events = this.clientViewState.getPendingAudioEvents();
-        if (events && events.length > 0) {
-          this.audioScheduler.schedule(
-            events,
-            now,
-            getAudioSmoothing(),
-            (event) => this.handleSimEvent3D(event),
-          );
-        }
-      }
-
-      // Forward server meta to UI
-      const serverMeta = this.clientViewState.getServerMeta();
-      if (serverMeta && this.onServerMetaUpdate) this.onServerMetaUpdate(serverMeta);
-
-      // Game over
-      const winnerId = this.clientViewState.getGameOverWinnerId();
-      if (winnerId !== null && !this.isGameOver) this.handleGameOver(winnerId);
 
       // First-snapshot camera framing. Real battles center on the local
       // player's commander (yaw tilts so the map center is forward);
@@ -1061,10 +1012,7 @@ export class RtsScene3D {
       renderLod,
       this.renderLodGrid,
     );
-    if (this.startupFullSnapshotApplied && !this.startupReadyAckSent) {
-      this.startupReadyAckSent = true;
-      this.gameConnection.markClientReady();
-    }
+    this.snapshotIntake.markClientReadyAfterRender();
     const lineProjectiles = this.clientViewState.collectLineProjectiles(this._lineProjectilesScratch);
     const smokeTrailProjectiles = updateEffectsThisFrame
       ? this.clientViewState.collectSmokeTrailProjectiles(this._smokeTrailProjectilesScratch)
@@ -2077,10 +2025,7 @@ export class RtsScene3D {
   }
 
   public getSnapshotStats(): { avgRate: number; worstRate: number } {
-    return {
-      avgRate: this.snapTracker.getAvg(),
-      worstRate: this.snapTracker.getLow(),
-    };
+    return this.snapshotIntake.getSnapshotStats();
   }
 
   /** Full-keyframe arrival rate. Only counts snaps where
@@ -2088,10 +2033,7 @@ export class RtsScene3D {
    *  keyframe ratio (full snaps every tick) vs a sparse one (full
    *  every few seconds). */
   public getFullSnapshotStats(): { avgRate: number; worstRate: number } {
-    return {
-      avgRate: this.fullSnapTracker.getAvg(),
-      worstRate: this.fullSnapTracker.getLow(),
-    };
+    return this.snapshotIntake.getFullSnapshotStats();
   }
 
   /**
@@ -2137,7 +2079,7 @@ export class RtsScene3D {
     if (!opts.keepConnection) {
       this.gameConnection?.disconnect();
     }
-    this.snapshotBuffer.clear();
+    this.snapshotIntake.clear();
     this.localCommandQueue.clear();
     this.onPlayerChange = undefined;
     this.onSelectionChange = undefined;
