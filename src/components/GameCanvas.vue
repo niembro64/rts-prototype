@@ -185,6 +185,7 @@ import { useGameCanvasTelemetry } from './gameCanvasTelemetry';
 import { useGameCanvasBackgroundBattle } from './gameCanvasBackgroundBattle';
 import { useGameCanvasPresence } from './gameCanvasPresence';
 import { useGameCanvasSoundTest } from './gameCanvasSoundTest';
+import { useGameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -208,36 +209,7 @@ let stopBackgroundBattle = (): void => {};
 
 // Current game server (owned by this component)
 let currentServer: GameServer | null = null;
-let realBattleStartGen = 0;
-let realBattleStartTimeout: ReturnType<typeof setTimeout> | null = null;
-let recoveryKeyframeTimeouts: ReturnType<typeof setTimeout>[] = [];
-const realBattleSnapshotListenerKeys = new Map<PlayerId, string>();
-
-function clearRealBattleTimeouts(): void {
-  realBattleStartGen++;
-  if (realBattleStartTimeout) {
-    clearTimeout(realBattleStartTimeout);
-    realBattleStartTimeout = null;
-  }
-  for (const timeout of recoveryKeyframeTimeouts) clearTimeout(timeout);
-  recoveryKeyframeTimeouts = [];
-}
-
-function removeRealBattleSnapshotListener(playerId: PlayerId): void {
-  const key = realBattleSnapshotListenerKeys.get(playerId);
-  if (!key) return;
-  currentServer?.removeSnapshotListener(key);
-  realBattleSnapshotListenerKeys.delete(playerId);
-}
-
-function clearRealBattleSnapshotListeners(): void {
-  if (currentServer) {
-    for (const key of realBattleSnapshotListenerKeys.values()) {
-      currentServer.removeSnapshotListener(key);
-    }
-  }
-  realBattleSnapshotListenerKeys.clear();
-}
+const realBattleLifecycle = useGameCanvasRealBattleLifecycle();
 
 // Lobby state
 const showLobby = ref(true);
@@ -1282,7 +1254,7 @@ function restartGame(): void {
   gameOverWinner.value = null;
   battleStartTime = 0;
   battleLoading.value = false;
-  clearRealBattleTimeouts();
+  realBattleLifecycle.clearTimers();
   // Return to lobby
   gameStarted.value = false;
   showLobby.value = true;
@@ -1295,7 +1267,7 @@ function restartGame(): void {
 
   // Stop current server
   if (currentServer) {
-    clearRealBattleSnapshotListeners();
+    realBattleLifecycle.clearSnapshotListeners(currentServer);
     currentServer.stop();
     currentServer = null;
   }
@@ -1685,7 +1657,7 @@ function setupNetworkCallbacks(): void {
     lobbyPlayers.value = lobbyPlayers.value.filter(
       (p) => p.playerId !== playerId,
     );
-    removeRealBattleSnapshotListener(playerId);
+    realBattleLifecycle.removeSnapshotListener(currentServer, playerId);
     if (gameStarted.value) {
       networkNotice.value = `${playerName} disconnected`;
     }
@@ -1792,13 +1764,12 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
   // Stop the background battle first
   stopBackgroundBattle();
-  clearRealBattleTimeouts();
-  const startGen = realBattleStartGen;
+  const startGen = realBattleLifecycle.beginStart();
 
   // Small delay to ensure WebGL cleanup before creating new game
-  realBattleStartTimeout = setTimeout(async () => {
-    realBattleStartTimeout = null;
-    if (startGen !== realBattleStartGen || !containerRef.value) {
+  realBattleLifecycle.setStartTimeout(setTimeout(async () => {
+    realBattleLifecycle.markStartTimeoutFired();
+    if (!realBattleLifecycle.isCurrentStart(startGen) || !containerRef.value) {
       battleLoading.value = false;
       return;
     }
@@ -1835,12 +1806,12 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
         mapWidthLandCells: realMapDimensions.widthLandCells,
         mapLengthLandCells: realMapDimensions.lengthLandCells,
       });
-      if (startGen !== realBattleStartGen || !gameStarted.value || !containerRef.value) {
+      if (!realBattleLifecycle.isCurrentStart(startGen) || !gameStarted.value || !containerRef.value) {
         createdServer.stop();
         battleLoading.value = false;
         return;
       }
-      realBattleSnapshotListenerKeys.clear();
+      realBattleLifecycle.clearSnapshotListeners(currentServer);
       currentServer = createdServer;
 
       // If hosting, send each remote client its own authoritative
@@ -1858,18 +1829,11 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       // re-handshake.
       //
       if (networkRole.value === 'host') {
-        for (const playerId of networkManager.getConnectedPlayerIds()) {
-          const trackingKey = currentServer.addSnapshotListener((state) => {
-            const sent = networkManager.sendStateTo(playerId, state);
-            if (!sent) currentServer?.forceNextSnapshotKeyframe();
-          }, playerId);
-          realBattleSnapshotListenerKeys.set(playerId, trackingKey);
-        }
-
-        // Receive commands from remote clients
-        networkManager.onCommandReceived = (command, fromPlayerId) => {
-          currentServer?.receiveCommand(command, fromPlayerId);
-        };
+        realBattleLifecycle.bindHostNetwork(
+          currentServer,
+          networkManager,
+          () => currentServer,
+        );
       }
 
       // Create LocalGameConnection for the local player. In hosted
@@ -1891,16 +1855,11 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       });
       currentServer.start();
       if (networkRole.value === 'host') {
-        const serverForRecoveryKeyframes = currentServer;
-        for (const delayMs of [500, 1500]) {
-          const timeout = setTimeout(() => {
-            recoveryKeyframeTimeouts = recoveryKeyframeTimeouts.filter((item) => item !== timeout);
-            if (startGen === realBattleStartGen && currentServer === serverForRecoveryKeyframes) {
-              serverForRecoveryKeyframes.forceNextSnapshotKeyframe();
-            }
-          }, delayMs);
-          recoveryKeyframeTimeouts.push(timeout);
-        }
+        realBattleLifecycle.scheduleRecoveryKeyframes(
+          currentServer,
+          startGen,
+          () => currentServer,
+        );
       }
       hasServer.value = true;
     } else {
@@ -1936,13 +1895,13 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
     const scene = gameInstance.getScene();
     if (scene) {
       scene.onStartupReady = () => {
-        if (startGen === realBattleStartGen) battleLoading.value = false;
+        if (realBattleLifecycle.isCurrentStart(startGen)) battleLoading.value = false;
       };
     }
 
     // Setup scene callbacks
     setupSceneCallbacks();
-  }, 100);
+  }, 100));
 }
 
 function setupSceneCallbacks(): void {
@@ -2062,14 +2021,14 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  clearRealBattleTimeouts();
+  realBattleLifecycle.clearTimers();
   if (checkSceneInterval) {
     clearInterval(checkSceneInterval);
     checkSceneInterval = null;
   }
   // Stop servers
   if (currentServer) {
-    clearRealBattleSnapshotListeners();
+    realBattleLifecycle.clearSnapshotListeners(currentServer);
     currentServer.stop();
     currentServer = null;
   }

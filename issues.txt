@@ -12,25 +12,27 @@ Please always commit and push befor and after any code changes you make. If ther
 1. Oversized orchestration files violate the small-file goal and hide lifecycle
    coupling.
    Evidence:
-   - src/components/GameCanvas.vue is still about 3907 lines after extracting
+   - src/components/GameCanvas.vue is still about 3866 lines after extracting
      persisted chrome state to src/components/gameCanvasChromeState.ts,
      client telemetry to src/components/gameCanvasTelemetry.ts, background
      battle lifecycle to src/components/gameCanvasBackgroundBattle.ts,
      client presence/clock to src/components/gameCanvasPresence.ts, and the
-     sound-test shortcut to src/components/gameCanvasSoundTest.ts. It still
-     owns server lifecycle, real-battle handoff, the foreground scene wait
-     interval, and scene startup/teardown. Timer/listener state remains around
-     src/components/GameCanvas.vue:1948 and cleanup at
-     src/components/GameCanvas.vue:2064.
-   - src/game/scenes/RtsScene3D.ts is about 2081 lines and owns snapshot intake,
+     sound-test shortcut to src/components/gameCanvasSoundTest.ts, and
+     real-battle timers/listeners/host command forwarding to
+     src/components/gameCanvasRealBattleLifecycle.ts. It still owns server
+     creation, real-battle handoff, the foreground scene wait interval, and
+     scene startup/teardown. The foreground scene polling state remains around
+     src/components/GameCanvas.vue:597 and cleanup at
+     src/components/GameCanvas.vue:2023.
+   - src/game/scenes/RtsScene3D.ts is about 2151 lines and owns snapshot intake,
      prediction, audio scheduling, camera, selection, minimap data, renderer
      update ordering, and renderer teardown. See the large update loop at
-     src/game/scenes/RtsScene3D.ts:820 and shutdown at
-     src/game/scenes/RtsScene3D.ts:2032.
+     src/game/scenes/RtsScene3D.ts:826 and shutdown at
+     src/game/scenes/RtsScene3D.ts:2102.
    - Other large split candidates: src/game/network/stateSerializer.ts
-     (~1640 lines), src/game/render3d/Render3DEntities.ts (~1573 lines),
-     src/game/network/NetworkManager.ts (~1267 lines),
-     src/game/network/ClientViewState.ts (~1120 lines).
+     (~1745 lines), src/game/render3d/Render3DEntities.ts (~1573 lines),
+     src/game/network/NetworkManager.ts (~1268 lines),
+     src/game/network/ClientViewState.ts (~1167 lines).
    Impact:
    - Lifecycle ownership is hard to prove, duplicate helpers reappear, and
      fixes often touch unrelated concerns.
