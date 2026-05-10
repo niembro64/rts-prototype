@@ -47,6 +47,7 @@ import {
   buildBattleHandoff,
   normalizeBattleHandoffMessage,
 } from './NetworkBattleHandoff';
+import { NetworkCommandTransport } from './NetworkCommandTransport';
 import { NetworkDataChannelMonitor } from './NetworkDataChannelMonitor';
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
 import { NetworkLobbyRoster } from './NetworkLobbyRoster';
@@ -89,6 +90,15 @@ export class NetworkManager {
   private roster = new NetworkLobbyRoster();
   private gameStarted: boolean = false;
   private snapshotTransport = new NetworkSnapshotTransport();
+  private commandTransport = new NetworkCommandTransport({
+    getGameId: () => this.getUniversalGameId(),
+    getHostConnection: () => this.connections.get(1),
+    getRole: () => this.role,
+    isMessageForCurrentGame: (message) => this.isMessageForCurrentGame(message),
+    onClientReady: (playerId) => this.onClientReady?.(playerId),
+    onCommandReceived: (command, fromPlayerId) => this.onCommandReceived?.(command, fromPlayerId),
+    send: (conn, message) => this.safeSend(conn, message),
+  });
   private dataChannelMonitor = new NetworkDataChannelMonitor();
   private heartbeatTracker = new NetworkHeartbeatTracker({
     buildHeartbeat: () => this.buildHeartbeatMessage(),
@@ -560,18 +570,8 @@ export class NetworkManager {
         break;
 
       case 'command':
-        // Host receives command from client
-        if (this.role === 'host') {
-          if (!this.isMessageForCurrentGame(message)) return;
-          this.onCommandReceived?.(message.data, fromPlayerId);
-        }
-        break;
-
       case 'clientReady':
-        if (this.role === 'host') {
-          if (!this.isMessageForCurrentGame(message)) return;
-          this.onClientReady?.(fromPlayerId);
-        }
+        this.commandTransport.handleMessage(message, fromPlayerId);
         break;
 
       case 'playerInfo':
@@ -816,26 +816,11 @@ export class NetworkManager {
 
   // Send command to host (client only)
   sendCommand(command: Command): void {
-    if (this.role !== 'client') return;
-    const hostConn = this.connections.get(1);
-    if (hostConn) {
-      this.safeSend(hostConn, {
-        type: 'command',
-        gameId: this.getUniversalGameId(),
-        data: command,
-      });
-    }
+    this.commandTransport.sendCommand(command);
   }
 
   sendClientReady(): void {
-    if (this.role !== 'client') return;
-    const hostConn = this.connections.get(1);
-    if (hostConn) {
-      this.safeSend(hostConn, {
-        type: 'clientReady',
-        gameId: this.getUniversalGameId(),
-      });
-    }
+    this.commandTransport.sendClientReady();
   }
 
   consumePendingState(): NetworkServerSnapshot | null {
