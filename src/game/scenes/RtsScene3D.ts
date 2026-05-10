@@ -2,8 +2,8 @@
 //
 // Implements the same public API surface (callbacks + methods) so PhaserCanvas.vue
 // can drive it interchangeably with the 2D scene. Internally it uses ThreeApp and
-// Render3DEntities instead of Pixi graphics, and currently has no selection/input
-// (view-only). Selection/commands will be added in a later pass.
+// Render3DEntities instead of Pixi graphics while delegating focused input/view
+// state to helpers.
 
 import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -12,15 +12,15 @@ import { isUnitTypeId } from '@/types/blueprintIds';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import {
-  buildSelectionInfo,
   buildEconomyInfo,
   buildMinimapData,
 } from './helpers';
-import type { EconomyInfo, MinimapData } from './helpers';
-import type { SprayTarget, UIInputState } from '@/types/ui';
+import type { EconomyInfo, MinimapData, SelectionInfo } from './helpers';
+import type { SprayTarget } from '@/types/ui';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { LongtaskTracker } from './helpers/LongtaskTracker';
+import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
@@ -70,7 +70,7 @@ import {
   getGridOverlayIntensity,
   getRenderMode,
 } from '@/clientBarConfig';
-import { CommandQueue, type SelectCommand } from '../sim/commands';
+import { CommandQueue } from '../sim/commands';
 import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../sim/spawn';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
 import {
@@ -250,12 +250,7 @@ export class RtsScene3D {
   private gameConnection!: GameConnection;
   private snapshotIntake!: RtsScene3DSnapshotIntake;
   private localCommandQueue = new CommandQueue();
-  private currentWaypointMode: WaypointType = 'move';
-  // Mirrors Input3DManager's shared CommanderModeController so the
-  // SelectionPanel's "SOLAR / FACTORY / D-GUN" chips stay accurate
-  // (scene.updateSelectionInfo reads these each frame).
-  private currentBuildType: BuildingType | null = null;
-  private currentDGunActive = false;
+  private selectionSystem!: RtsScene3DSelectionSystem;
   private healthBar3D: HealthBar3D | null = null;
   private nameLabel3D: NameLabel3D | null = null;
   private contactShadowRenderer: ContactShadowRenderer3D | null = null;
@@ -327,7 +322,6 @@ export class RtsScene3D {
   };
 
   // UI update throttling (mirror RtsScene)
-  private selectionDirty = true;
   private economyUpdateTimer = 0;
   private minimapUpdateTimer = 0;
   private cameraAoiUpdateTimer = CAMERA_AOI_SEND_INTERVAL_MS;
@@ -372,30 +366,11 @@ export class RtsScene3D {
     getEntitySetVersion: () => number;
     getTerrainBuildabilityGrid: () => ReturnType<ClientViewState['getTerrainBuildabilityGrid']>;
   };
-  private _cachedSelectedUnits: Entity[] = [];
-  private _cachedSelectedBuildings: Entity[] = [];
-  private _scratchSelectedBuildingIds: EntityId[] = [];
-  private _selectedEntityCacheDirty = true;
   private clientRenderEnabled = true;
 
   // ── Callback interface matching RtsScene ──
   public onPlayerChange?: (playerId: PlayerId) => void;
-  public onSelectionChange?: (info: {
-    unitCount: number;
-    hasCommander: boolean;
-    hasBuilder: boolean;
-    hasDGun: boolean;
-    hasFactory: boolean;
-    factoryId?: number;
-    commanderId?: number;
-    waypointMode: WaypointType;
-    isBuildMode: boolean;
-    selectedBuildingType: string | null;
-    isDGunMode: boolean;
-    factoryQueue?: { unitId: string; label: string }[];
-    factoryProgress?: number;
-    factoryIsProducing?: boolean;
-  }) => void;
+  public onSelectionChange?: (info: SelectionInfo) => void;
   public onEconomyChange?: (info: EconomyInfo) => void;
   public onMinimapUpdate?: (data: MinimapData) => void;
   /** Separate per-frame callback for just the camera footprint quad.
@@ -483,6 +458,10 @@ export class RtsScene3D {
     // ClientViewState is owned by GameCanvas so its state (units, buildings,
     // prediction, selection) survives a live 2D↔3D renderer swap.
     this.clientViewState = config.clientViewState;
+    this.selectionSystem = new RtsScene3DSelectionSystem(
+      this.clientViewState,
+      () => this.localPlayerId,
+    );
     this.snapshotIntake = new RtsScene3DSnapshotIntake(
       this.clientViewState,
       this.gameConnection,
@@ -590,8 +569,8 @@ export class RtsScene3D {
       getProjectiles: () => this.clientViewState.getProjectiles(),
       getAllEntities: () => this.clientViewState.getAllEntities(),
       getEntity: (id) => this.clientViewState.getEntity(id),
-      getSelectedUnits: () => this._cachedSelectedUnits,
-      getSelectedBuildings: () => this._cachedSelectedBuildings,
+      getSelectedUnits: () => this.selectionSystem.getSelectedUnits(),
+      getSelectedBuildings: () => this.selectionSystem.getSelectedBuildings(),
       getBuildingsByPlayer: (pid) => this.clientViewState.getBuildingsByPlayer(pid),
       getUnitsByPlayer: (pid) => this.clientViewState.getUnitsByPlayer(pid),
       getEntitySetVersion: () => this.clientViewState.getEntitySetVersion(),
@@ -781,18 +760,15 @@ export class RtsScene3D {
     // Keep scene's waypointMode in lockstep with the InputManager so the
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.
     this.inputManager.onWaypointModeChange = (mode) => {
-      this.currentWaypointMode = mode;
-      this.selectionDirty = true;
+      this.selectionSystem.setWaypointMode(mode);
     };
     // Keep the SelectionPanel's mode chips (build / D-gun) in sync
     // with the shared CommanderModeController inside Input3DManager.
     this.inputManager.onBuildModeChange = (type) => {
-      this.currentBuildType = type;
-      this.selectionDirty = true;
+      this.selectionSystem.setBuildMode(type);
     };
     this.inputManager.onDGunModeChange = (active) => {
-      this.currentDGunActive = active;
-      this.selectionDirty = true;
+      this.selectionSystem.setDGunMode(active);
     };
 
     // Camera clamping: keep the orbit target inside a padded map region.
@@ -848,8 +824,7 @@ export class RtsScene3D {
         else this.centerCameraOnCommander();
       }
 
-      this.selectionDirty = true;
-      this._selectedEntityCacheDirty = true;
+      this.selectionSystem.markSelectionDirty();
     }
 
     // Process local commands — select/clearSelection apply to ClientViewState,
@@ -879,7 +854,7 @@ export class RtsScene3D {
       return;
     }
 
-    this.rebuildSelectedEntityCachesIfNeeded();
+    this.selectionSystem.rebuildEntityCachesIfNeeded();
 
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
     // Camera smoothing must step BEFORE visibility scope and view-LOD
@@ -1156,8 +1131,8 @@ export class RtsScene3D {
     // tracking entities, so per-frame updates would be wasted work.
     if (updateHudThisFrame) {
       this.waypoint3D?.update(
-        this._cachedSelectedUnits,
-        this._cachedSelectedBuildings,
+        this.selectionSystem.getSelectedUnits(),
+        this.selectionSystem.getSelectedBuildings(),
       );
     }
 
@@ -1176,20 +1151,12 @@ export class RtsScene3D {
     }
     const renderEnd = performance.now();
 
-    // UI updates — throttled like RtsScene. A producing factory's
-    // queue/progress changes continuously, so force a selection-info
-    // push whenever one is selected — mirrors RtsScene so the
-    // SelectionPanel's build progress bar ticks live.
-    if (!this.selectionDirty) {
-      const hasProducingFactory = this._cachedSelectedBuildings.some(
-        (b) => b.factory?.isProducing,
-      );
-      if (hasProducingFactory) this.selectionDirty = true;
-    }
-    if (this.selectionDirty) {
-      this.updateSelectionInfo();
-      this.selectionDirty = false;
-    }
+    // UI updates -- throttled like RtsScene. Producing-factory progress
+    // invalidation lives with the rest of the 3D selection state.
+    this.selectionSystem.emitSelectionInfoIfDirty(
+      this.entitySourceAdapter,
+      this.onSelectionChange,
+    );
 
     this.economyUpdateTimer += delta;
     if (this.economyUpdateTimer >= this.ECONOMY_UPDATE_INTERVAL) {
@@ -1328,68 +1295,11 @@ export class RtsScene3D {
     const commands = this.localCommandQueue.getAll();
     this.localCommandQueue.clear();
     for (const command of commands) {
-      if (command.type === 'select') {
-        const sc = command as SelectCommand;
-        if (!sc.additive) this.clientViewState.clearSelection();
-        for (const id of sc.entityIds) this.clientViewState.selectEntity(id);
-        this.preferUnitsOverBuildingsInSelection();
-        this.inputManager?.setWaypointMode('move');
-        this.selectionDirty = true;
-        this._selectedEntityCacheDirty = true;
-      } else if (command.type === 'clearSelection') {
-        this.clientViewState.clearSelection();
-        this.inputManager?.setWaypointMode('move');
-        this.selectionDirty = true;
-        this._selectedEntityCacheDirty = true;
-      } else {
-        this.gameConnection.sendCommand(command);
-      }
-    }
-  }
-
-  private preferUnitsOverBuildingsInSelection(): void {
-    const pid = this.localPlayerId;
-    const selectedIds = this.clientViewState.getSelectedIds();
-
-    let hasSelectedUnit = false;
-    for (const id of selectedIds) {
-      const e = this.clientViewState.getEntity(id);
-      if (e?.unit && e.selectable?.selected && e.ownership?.playerId === pid) {
-        hasSelectedUnit = true;
-        break;
-      }
-    }
-    if (!hasSelectedUnit) return;
-
-    // Snapshot before mutating — deselectEntity drops from the live set.
-    const buildingsToDeselect = this._scratchSelectedBuildingIds;
-    buildingsToDeselect.length = 0;
-    for (const id of selectedIds) {
-      const e = this.clientViewState.getEntity(id);
-      if (e?.building && e.selectable?.selected && e.ownership?.playerId === pid) {
-        buildingsToDeselect.push(id);
-      }
-    }
-    for (let i = 0; i < buildingsToDeselect.length; i++) {
-      this.clientViewState.deselectEntity(buildingsToDeselect[i]);
-    }
-  }
-
-  private rebuildSelectedEntityCachesIfNeeded(): void {
-    if (!this._selectedEntityCacheDirty) return;
-    this._selectedEntityCacheDirty = false;
-
-    this._cachedSelectedUnits.length = 0;
-    this._cachedSelectedBuildings.length = 0;
-    const pid = this.localPlayerId;
-    // Was: walk every unit then every building (~hundreds of entities)
-    // looking for selected ones. Iterate the maintained selection set
-    // instead — O(N_selected) which is bounded by max box-select size.
-    for (const id of this.clientViewState.getSelectedIds()) {
-      const e = this.clientViewState.getEntity(id);
-      if (!e?.selectable?.selected || e.ownership?.playerId !== pid) continue;
-      if (e.unit) this._cachedSelectedUnits.push(e);
-      else if (e.building) this._cachedSelectedBuildings.push(e);
+      const handledSelectionCommand = this.selectionSystem.handleLocalCommand(
+        command,
+        () => this.inputManager?.setWaypointMode('move'),
+      );
+      if (!handledSelectionCommand) this.gameConnection.sendCommand(command);
     }
   }
 
@@ -1623,17 +1533,9 @@ export class RtsScene3D {
   }
 
   public updateSelectionInfo(): void {
-    if (!this.onSelectionChange) return;
-    // Input-state mirror for the SelectionPanel UI — reads the live
-    // build/waypoint/d-gun flags so the panel's mode chips stay in sync.
-    const inputState: UIInputState = {
-      waypointMode: this.currentWaypointMode,
-      isBuildMode: this.currentBuildType !== null,
-      selectedBuildingType: this.currentBuildType,
-      isDGunMode: this.currentDGunActive,
-    };
-    this.onSelectionChange(
-      buildSelectionInfo(this.entitySourceAdapter, inputState),
+    this.selectionSystem.emitSelectionInfo(
+      this.entitySourceAdapter,
+      this.onSelectionChange,
     );
   }
 
@@ -1878,14 +1780,12 @@ export class RtsScene3D {
   }
 
   public markSelectionDirty(): void {
-    this.selectionDirty = true;
-    this._selectedEntityCacheDirty = true;
+    this.selectionSystem.markSelectionDirty();
   }
 
   public setWaypointMode(mode: WaypointType): void {
-    this.currentWaypointMode = mode;
+    this.selectionSystem.setWaypointMode(mode);
     this.inputManager?.setWaypointMode(mode);
-    this.selectionDirty = true;
   }
   /** Enter build mode — forwards to Input3DManager which handles the
    *  left-click-places-building / right-click-cancels flow. */
