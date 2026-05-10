@@ -121,7 +121,7 @@ export const TURRET_BLUEPRINTS = {
       barrelCount: 2,
       barrelLength: 1.2,
       orbitRadius: 0.65,
-      spin: { idle: 2, max: 30, accel: 80, decel: 30 },
+      spin: { idle: 2, max: 10, accel: 80, decel: 30 },
     },
     rangeMultiplierOverrides: fireEnvelope({
       engageRangeMin: null,
@@ -204,7 +204,7 @@ export const TURRET_BLUEPRINTS = {
       barrelCount: 6,
       barrelLength: 1.0,
       orbitRadius: 0.9,
-      spin: { idle: 2, max: 5, accel: 30, decel: 10 },
+      spin: { idle: 2, max: 10, accel: 30, decel: 10 },
     },
     rangeMultiplierOverrides: fireEnvelope({
       engageRangeMin: RANGE_FIRE_MIN,
@@ -279,7 +279,7 @@ export const TURRET_BLUEPRINTS = {
       barrelLength: 0.01,
       baseOrbit: 0.0,
       tipOrbit: 0.9,
-      spin: { idle: 2, max: 20, accel: 10, decel: 5 },
+      spin: { idle: 2, max: 10, accel: 10, decel: 5 },
     },
     rangeMultiplierOverrides: fireEnvelope({
       engageRangeMin: RANGE_FIRE_MIN,
