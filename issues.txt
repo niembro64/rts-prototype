@@ -11,21 +11,7 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 ==============================================================================
  ISSUES:
 
-1. Split src/game/render3d/Render3DEntities.ts by rendered object family.
-   Evidence:
-   - src/game/render3d/Render3DEntities.ts is still 1164 lines.
-   - Building, projectile/range, unit mass/detail instancing, overlay,
-     turret barrel-spin state, barrel-tip cache, and mirror pose/panel instance
-     updates, chassis instance transform writes, and turret pose/barrel instance
-     updates now live in focused modules, but unit mesh build is still
-     concentrated in the main file.
-   Impact:
-   - The remaining unit-family rendering logic is still hard to reason about
-     independently.
-   Remedy:
-   - Extract unit mesh build into focused modules with explicit dependencies.
-
-2. Split src/game/network/NetworkManager.ts by networking responsibility.
+1. Split src/game/network/NetworkManager.ts by networking responsibility.
    Evidence:
    - src/game/network/NetworkManager.ts is still 1268 lines.
    Impact:
@@ -35,7 +21,7 @@ As we go make sure we are not creating duplicate code, we should be reusing code
    - Extract the next coherent networking responsibility into a helper or
      service while keeping NetworkManager as the coordinator.
 
-3. Split src/game/network/ClientViewState.ts by client-state ownership.
+2. Split src/game/network/ClientViewState.ts by client-state ownership.
    Evidence:
    - src/game/network/ClientViewState.ts is still 1167 lines.
    Impact:
@@ -45,8 +31,8 @@ As we go make sure we are not creating duplicate code, we should be reusing code
    - Move one client-state family at a time into focused modules and keep
      cross-family ordering explicit.
 
-4. We don't want units in water. We need to find a good solution for jumping units. My initial though is that we predict all landing points of a jump before we do it, and if it is on water (or too near water) we cancel it. This might go along with jumping units only jumping sometimes, only when engaged with a target or when moving. Maybe we have "able to jump" status turned on when it meets any necessary criteria, including next jump wouoldn't jump into water. Jumping should also ignore the ground normal angle, so units can jump up hills (i.e. a jump on a hill won't be in the direction of the normal of the surface, it will be up). Jumps should also happen off of any surface, not just the ground - units, buildings, etc.
+3. We don't want units in water. We need to find a good solution for jumping units. My initial though is that we predict all landing points of a jump before we do it, and if it is on water (or too near water) we cancel it. This might go along with jumping units only jumping sometimes, only when engaged with a target or when moving. Maybe we have "able to jump" status turned on when it meets any necessary criteria, including next jump wouoldn't jump into water. Jumping should also ignore the ground normal angle, so units can jump up hills (i.e. a jump on a hill won't be in the direction of the normal of the surface, it will be up). Jumps should also happen off of any surface, not just the ground - units, buildings, etc.
 
-5. Beam segments should never just end in the air. Currently we are ending them if they reach a max radius, but that isn't physically correct. We either need to simulate the beam to its logical ending point (including infinity space) or just keep what we have on the simulation, and fake the infinity beam by extending last leg of the beam segments to extend that direction to infinity. Whatever is necessary but doesn't kill performance.
+4. Beam segments should never just end in the air. Currently we are ending them if they reach a max radius, but that isn't physically correct. We either need to simulate the beam to its logical ending point (including infinity space) or just keep what we have on the simulation, and fake the infinity beam by extending last leg of the beam segments to extend that direction to infinity. Whatever is necessary but doesn't kill performance.
 
-6. Because we have "falling" (jumping) units now, we need to update our ballistics and aiming solvers to account for acceleration as well. Make sure that all instances of aiming and ballistics require 3d position, 3d velocity, and 3d acceleration (can be gravity + other stuff potentially) for both the origin point as well as the target point. This will allow us to have more accurate aiming and ballistics for all turrets against all units / buildings. have that function be atomic and reusable. We may have different things generating acceleration so make sure we don't just hardcode gravity to be used in the function.
+5. Because we have "falling" (jumping) units now, we need to update our ballistics and aiming solvers to account for acceleration as well. Make sure that all instances of aiming and ballistics require 3d position, 3d velocity, and 3d acceleration (can be gravity + other stuff potentially) for both the origin point as well as the target point. This will allow us to have more accurate aiming and ballistics for all turrets against all units / buildings. have that function be atomic and reusable. We may have different things generating acceleration so make sure we don't just hardcode gravity to be used in the function.

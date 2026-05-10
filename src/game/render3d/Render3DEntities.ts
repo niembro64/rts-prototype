@@ -16,15 +16,11 @@ import { getPlayerColors } from '../sim/types';
 import { applyShellOverride } from './ShellMaterial';
 import { LAND_CELL_SIZE } from '../../config';
 import { getSurfaceNormal } from '../sim/Terrain';
-import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
-  buildLocomotion,
   updateLocomotion,
   destroyLocomotion,
-  getChassisLift,
   captureLegState,
-  applyLegState,
   type LegStateSnapshot,
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
@@ -40,18 +36,13 @@ import {
 } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
-import { getUnitBodyShapeKey } from '../math/BodyDimensions';
 import {
   disposeBuildingGeoms,
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getGraphicsConfigFor } from '@/clientBarConfig';
 import { shouldRunOnStride } from '../math';
-import { isCommander } from '../sim/combat/combatUtils';
-import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
-import { buildMirrorMesh3D } from './MirrorMesh3D';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
@@ -68,6 +59,7 @@ import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { MirrorPose3D } from './MirrorPose3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
+import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -77,10 +69,6 @@ import { UnitTurretPose3D } from './UnitTurretPose3D';
 // barrel tip and sim muzzle stay locked together.
 
 const BARREL_COLOR = 0xffffff;
-// Detailed unit parts use shared instanced pools by default. The
-// per-mesh path remains only as an allocation fallback, not as the
-// normal rendering route.
-const USE_DETAILED_UNIT_INSTANCING = true;
 
 // Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
@@ -143,6 +131,7 @@ export class Render3DEntities {
   private buildingRenderer: BuildingEntityRenderer3D;
   private unitMassInstances: UnitMassInstanceRenderer3D;
   private unitDetailInstances: UnitDetailInstanceRenderer3D;
+  private unitMeshBuilder!: UnitMeshBuilder3D;
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
 
   private barrelSpinState = new UnitBarrelSpinState3D();
@@ -303,6 +292,22 @@ export class Render3DEntities {
       barrelGeom: this.barrelGeom,
       barrelMat: this.barrelMat,
       mirrorGeom: this.mirrorGeom,
+    });
+    this.unitMeshBuilder = new UnitMeshBuilder3D({
+      world: this.world,
+      unitDetailInstances: this.unitDetailInstances,
+      commanderVisualKit: this.commanderVisualKit,
+      legRenderer: this.legRenderer,
+      turretHeadGeom: this.turretHeadGeom,
+      barrelGeom: this.barrelGeom,
+      barrelMat: this.barrelMat,
+      mirrorGeom: this.mirrorGeom,
+      mirrorArmGeom: this.mirrorArmGeom,
+      mirrorSupportGeom: this.mirrorSupportGeom,
+      getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
+      getMirrorShinyMat: () => this.getMirrorShinyMat(),
+      getMapWidth: () => this.clientViewState.getMapWidth(),
+      getMapHeight: () => this.clientViewState.getMapHeight(),
     });
   }
 
@@ -470,20 +475,6 @@ export class Render3DEntities {
     this.unitDetailInstances.syncShellColors(e, m);
   }
 
-  private updateUnitLiftGroupPose(m: EntityMesh, e: Entity): void {
-    if (!m.liftGroup) return;
-    const suspension = e.unit?.suspension;
-    if (!suspension) {
-      m.liftGroup.position.set(0, m.chassisLift ?? 0, 0);
-      return;
-    }
-    m.liftGroup.position.set(
-      suspension.offsetX,
-      (m.chassisLift ?? 0) + suspension.offsetZ,
-      suspension.offsetY,
-    );
-  }
-
   private updateUnits(): void {
     const unitRenderMode = this.lod.gfx.unitRenderMode;
 
@@ -538,7 +529,7 @@ export class Render3DEntities {
       if (existing) {
         existing.group.position.set(tx, getUnitGroundZ(e), ty);
         if (existing.yawGroup) existing.yawGroup.rotation.set(0, -tRot, 0);
-        this.updateUnitLiftGroupPose(existing, e);
+        applyUnitLiftGroupPose3D(existing, e);
         // Shell-state visual — two paths must agree:
         //   - applyShellOverride handles per-Mesh chassis fallbacks
         //     and treads (objects that own their own material).
@@ -571,7 +562,6 @@ export class Render3DEntities {
       const pid = e.ownership?.playerId;
       const turrets = e.combat?.turrets ?? [];
       const objectTier = this.unitMassInstances.getRichObjectTier(e.id) ?? this.resolveEntityObjectLod(e);
-      const isCommanderUnit = isCommander(e);
       const fullUnitDetail =
         isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor';
       const unitGraphicsTier = objectTier === 'impostor'
@@ -595,285 +585,20 @@ export class Render3DEntities {
       }
       const meshWasBuilt = !m;
       if (!m) {
-        const group = new THREE.Group();
-        // Pull the authored body shape from the unit blueprint and use
-        // it for both the visible chassis geometry and the instanced
-        // pool key. Falls back to the shared body-shape fallback for
-        // unknown unit types.
-        let bp: ReturnType<typeof getUnitBlueprint> | undefined;
-        try { bp = getUnitBlueprint(e.unit!.unitType); }
-        catch { /* leave undefined; fallback handled below */ }
-        const bodyShape = bp?.bodyShape ?? FALLBACK_UNIT_BODY_SHAPE;
-        const bodyShapeKey = getUnitBodyShapeKey(bodyShape);
-        const bodyEntry = getBodyGeom(bodyShape);
-        const hideChassis = bp?.hideChassis === true;
-        // The chassis is a group so composite bodies (arachnid, beam,
-        // commander — multiple spheres/spheroids) and single-part bodies
-        // (tank, loris, …) share one code path. Each BodyMeshPart's
-        // center offset and per-axis scale are expressed in
-        // unit-radius-1 space, so we uniformly scale the whole chassis
-        // group by the unit's render radius below and every part ends
-        // up at the right world size and position.
-        // Yaw subgroup. The unit's facing rotation lives here so that
-        // the parent `group` can carry the surface TILT in world frame
-        // — i.e., yaw is INNER (around the chassis-local up = slope
-        // up) and tilt is OUTER (around world up before yaw). That's
-        // the realistic "vehicle yaws along the slope" hierarchy.
-        const yawGroup = new THREE.Group();
-        yawGroup.userData.entityId = e.id;
-        group.add(yawGroup);
-
-        // Lift subgroup. Treads / wheels / legs (locomotion) live
-        // directly inside yawGroup and touch the ground; the BODY
-        // (chassis, turret roots, mirrors, force-field) lives in
-        // liftGroup and rides above the ground at the locomotion's
-        // natural height. Vehicle on its wheels, spider on its legs.
-        // `getChassisLift` reads the blueprint's locomotion config
-        // once at build time — TREAD_HEIGHT for treads, full wheel
-        // diameter for wheels, and a small per-radius lift for legs.
-        const liftGroup = new THREE.Group();
-        liftGroup.userData.entityId = e.id;
-        liftGroup.position.set(0, bp ? getChassisLift(bp, radius) : 0, 0);
-        yawGroup.add(liftGroup);
-
-        const chassis = new THREE.Group();
-        chassis.userData.entityId = e.id;
-        const chassisMeshes: THREE.Mesh[] = [];
-        const useDetailedUnitInstancing = USE_DETAILED_UNIT_INSTANCING && !unitIsShell;
-        // Chassis routing — three paths in priority order:
-        //   1. Smooth body  → `smoothChassis` InstancedMesh (one shared
-        //      sphere geometry, multiple slots per composite).
-        //   2. Polygon / rect → body-shape `polyChassis` pool (one
-        //      InstancedMesh per body-shape key, single slot per unit
-        //      because polygonal bodies are single-part).
-        //   3. Cap exhausted → fall back to per-Mesh chassis (one Mesh
-        //      per part, shared team-primary material).
-        // Per-instance matrix + color are written by the per-frame
-        // transform pipeline below; the per-Mesh fallback is rendered
-        // by the scenegraph chain like before.
-        let smoothChassisSlots: number[] | undefined;
-        let polyChassisSlot: number | undefined;
-        if (
-          useDetailedUnitInstancing &&
-          !hideChassis &&
-          bodyEntry.isSmooth &&
-          bodyEntry.parts.length > 0
-        ) {
-          smoothChassisSlots = this.unitDetailInstances.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
-        } else if (
-          useDetailedUnitInstancing &&
-          !hideChassis &&
-          !bodyEntry.isSmooth &&
-          bodyEntry.parts.length > 0
-        ) {
-          const allocated = this.unitDetailInstances.allocPolyChassisSlot(
-            bodyShapeKey,
-            bodyEntry.parts[0].geometry,
-            e.id,
-          );
-          if (allocated !== null) polyChassisSlot = allocated;
-        }
-        if (!hideChassis && !smoothChassisSlots && polyChassisSlot === undefined) {
-          for (const part of bodyEntry.parts) {
-            const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(pid));
-            mesh.position.set(part.x, part.y, part.z);
-            mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
-            mesh.userData.entityId = e.id;
-            chassis.add(mesh);
-            chassisMeshes.push(mesh);
-          }
-        }
-        liftGroup.add(chassis);
-        if (e.commander) {
-          const commanderKit = this.commanderVisualKit.buildKit(unitGraphicsTier);
-          commanderKit.userData.entityId = e.id;
-          commanderKit.traverse((obj) => { obj.userData.entityId = e.id; });
-          chassis.add(commanderKit);
-        }
-
-        // Build one TurretMesh per actual turret on the entity. Each turret
-        // has an optional head + barrel cylinders matching its barrel config.
-        const turretMeshes: TurretMesh[] = [];
-        const turretOff = unitGfx.turretStyle === 'none';
-        const commanderDgunTurretId = isCommanderUnit ? bp?.dgun?.turretId : undefined;
-        for (let ti = 0; ti < turrets.length; ti++) {
-          const t = turrets[ti];
-          // Decide whether to route this turret's head through the
-          // shared `turretHeadInstanced` InstancedMesh. The same
-          // hideHead conditions buildTurretMesh3D uses (turret-off
-          // / force-field) skip the slot entirely; for
-          // visible heads, alloc a slot and pass `skipHead: true`
-          // so buildTurretMesh3D doesn't ALSO build a per-Mesh head
-          // (would double-render). Slot alloc returns null on cap
-          // exhaustion → fall back to per-Mesh head.
-          const isForceField = (t.config.barrel as { type?: string } | undefined)?.type === 'complexSingleEmitter';
-          const isConstructionEmitter = t.config.constructionEmitter !== undefined;
-          const hideHead = turretOff || isForceField || isConstructionEmitter;
-          let headSlot: number | undefined;
-          if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
-            const allocated = this.unitDetailInstances.allocTurretHeadSlot();
-            if (allocated !== null) headSlot = allocated;
-          }
-          // Decide whether to route this turret's barrels through the
-          // shared `barrelInstanced` InstancedMesh. Force-field and
-          // turretOff turrets have no barrels. For
-          // shooting turrets, we don't yet know how many barrels
-          // until buildTurretMesh3D runs (multiBarrel patterns vary
-          // by config). Build first; if barrels are produced, walk
-          // them and try to alloc slots. If ALL allocs succeed, skip
-          // attaching to spinGroup (we re-parent them to nowhere
-          // below). If ANY alloc fails, free the partials and let
-          // the per-Mesh path render — keeps the fallback simple,
-          // never a hybrid render where some barrels of a turret are
-          // instanced and some aren't.
-          //
-          // To support this, we build with skipBarrels = false first,
-          // then re-detach on the success path. Simpler than running
-          // pushSegment twice or threading a "build silently then
-          // attach later" flag through TurretMesh3D.
-          // Turrets parent to `liftGroup` so they ride on top of the
-          // chassis at the locomotion's lift height — wheels carry
-          // both chassis AND turret, treads do the same. Articulated
-          // yaw + pitch (per-frame, below) compensate for chassis
-          // tilt so the world barrel direction still matches the
-          // sim's weapon.rotation / weapon.pitch even though the
-          // parent chain is tilted.
-          const tm = buildTurretMesh3D(liftGroup, t, unitGfx, {
-            headGeom: this.turretHeadGeom,
-            barrelGeom: this.barrelGeom,
-            barrelMat: this.barrelMat,
-            primaryMat: this.getPrimaryMat(pid),
-            skipHead: headSlot !== undefined,
-            skipBarrels: false, // try to attach for fallback safety
-          });
-          if (tm.head) tm.head.userData.entityId = e.id;
-          if (isCommanderUnit && !hideHead) {
-            this.commanderVisualKit.decorateTurret(
-              tm,
-              t.config.id === commanderDgunTurretId,
-              unitGraphicsTier,
-            );
-          }
-          for (const b of tm.barrels) b.userData.entityId = e.id;
-          tm.headSlot = headSlot;
-          // Try to allocate one barrel slot per barrel. All-or-nothing:
-          // partial allocations get freed and we leave the per-Mesh
-          // barrels in the scene as the fallback.
-          if (useDetailedUnitInstancing && tm.barrels.length > 0) {
-            const barrelSlots = this.unitDetailInstances.allocBarrelSlots(tm.barrels.length);
-            if (barrelSlots) {
-              tm.barrelSlots = barrelSlots;
-              // Detach the per-Mesh barrels from spinGroup so they
-              // don't double-render — we still keep the Mesh
-              // references in tm.barrels[] as the per-frame writer
-              // reads .position / .quaternion / .scale off them.
-              for (const b of tm.barrels) b.parent?.remove(b);
-            }
-          }
-          turretMeshes.push(tm);
-        }
-
-        this.world.add(group);
-        m = {
-          group, yawGroup, liftGroup, chassis, chassisMeshes, bodyShapeKey, bodyShape,
-          hideChassis,
-          turrets: turretMeshes, lodKey: unitRenderKey,
-          smoothChassisSlots,
-          polyChassisSlot,
-          // Cache the lift so the chassis instance writers can
-          // reproduce the liftGroup translation in their manual
-          // matrix composition (their slots are parented to the
-          // world group, not liftGroup, so the scenegraph chain
-          // doesn't apply lift for them).
-          chassisLift: liftGroup.position.y,
-        };
-        if (smoothChassisSlots) {
-          this.unitDetailInstances.registerSmoothChassisSlots(e.id, smoothChassisSlots);
-        }
-        this.updateUnitLiftGroupPose(m, e);
-        // (polyChassisSlot is already registered in the pool's slots
-        // map by allocPolyChassisSlot above — no extra bookkeeping
-        // needed here.)
-
-        // Locomotion (tank treads / vehicle wheels / arachnid legs).
-        // Treads + wheels parent to `yawGroup` so they yaw + tilt
-        // with the chassis. LEGS are world-space again — they parent
-        // to `this.world` so each foot can be planted at a real
-        // terrain XYZ that doesn't move when the body moves or yaws.
-        // The map dims feed the leg builder + per-frame logic so
-        // snap targets can sample terrain elevation directly.
-        m.locomotion = buildLocomotion(
-          yawGroup, this.world, e, radius, pid, unitGfx,
-          this.clientViewState.getMapWidth(),
-          this.clientViewState.getMapHeight(),
-          this.legRenderer,
-        );
-        // Restore leg state if this was an LOD-driven rebuild — feet
-        // resume from where they were planted instead of snapping
-        // back to rest. Cache entry consumed (deleted) on restore so
-        // a stale snapshot doesn't pollute a future genuinely-fresh
-        // build (e.g. spawn after death). Non-legged locomotion
-        // ignores the call (applyLegState early-outs on type !== 'legs').
         const legSnap = this.legStateCache.get(e.id);
-        if (legSnap !== undefined) {
-          applyLegState(m.locomotion, legSnap);
-          this.legStateCache.delete(e.id);
-        }
-
-
-        // Mirror panels (e.g. Loris): square slabs mounted at arm's
-        // length out from the turret body sphere. The panel offset
-        // (= arm length) lives on each panel's `offsetX` from
-        // mirrorPanelCache; we use the first panel's value here so the
-        // visual arm + panel match the sim's collision rectangle.
-        const mirrorPanels = e.unit?.mirrorPanels;
-        if (mirrorPanels && mirrorPanels.length > 0 && e.unit) {
-          // Read panel size from the cached collision rectangle so
-          // the visual panel and the sim panel are guaranteed to
-          // agree — bumping MIRROR_PANEL_SIZE_MULT in
-          // mirrorPanelCache.ts flows through here automatically.
-          const panelHalfSide = mirrorPanels[0].halfWidth;
-          const panelArmLength = mirrorPanels[0].offsetX;
-          // Panel world-y should be the unit's bodyCenterHeight; the
-          // mesh is parented to liftGroup at y = chassisLift, so the
-          // panel-local y must subtract chassisLift to land at
-          // bodyCenterHeight in world space — same trick the turret
-          // head root uses.
-          const panelCenterY =
-            getUnitBodyCenterHeight(e.unit) - liftGroup.position.y;
-          // Mirror panels parent to liftGroup like turrets — they're
-          // physically attached to the chassis. Try to alloc one
-          // slot per panel through the shared mirrorPanelInstanced
-          // (all-or-nothing: partial alloc gets freed and per-Mesh
-          // panels stay attached as the fallback). On success, the
-          // per-Mesh panels are kept in m.mirrors.panels[] purely
-          // as data carriers (their .position / .quaternion / .scale
-          // are read each frame to compose the world matrix written
-          // to the slot).
-          const panelCount = mirrorPanels.length;
-          const allocedPanelSlots = useDetailedUnitInstancing && panelCount > 0
-            ? this.unitDetailInstances.allocMirrorPanelSlots(panelCount)
-            : null;
-          const allMirrorAlloc = allocedPanelSlots !== null;
-          m.mirrors = buildMirrorMesh3D(
-            liftGroup, mirrorPanels,
-            panelCenterY, panelHalfSide, panelArmLength,
-            this.mirrorGeom, this.mirrorArmGeom, this.mirrorSupportGeom,
-            this.getMirrorShinyMat(), this.getPrimaryMat(pid),
-            allMirrorAlloc, // skipPerMesh when instancing is on
-          );
-          if (allMirrorAlloc) m.mirrors.panelSlots = allocedPanelSlots;
-          for (const panel of m.mirrors.panels) {
-            panel.userData.entityId = e.id;
-            panel.renderOrder = 7;
-          }
-          for (const frame of m.mirrors.frames) {
-            frame.userData.entityId = e.id;
-          }
-        }
-
-        const isShellState = isConstructionShell(e);
-        applyShellOverride(group, isShellState);
+        m = this.unitMeshBuilder.build({
+          entity: e,
+          radius,
+          ownerId: pid,
+          turrets,
+          unitGfx,
+          unitGraphicsTier,
+          unitRenderKey,
+          unitIsShell,
+          legState: legSnap,
+        });
+        if (legSnap !== undefined) this.legStateCache.delete(e.id);
+        applyShellOverride(m.group, unitIsShell);
         this.updateShellInstanceColors(e, m);
         this.unitMeshes.set(e.id, m);
       } else {
