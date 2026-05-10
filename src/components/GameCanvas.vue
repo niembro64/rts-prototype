@@ -31,7 +31,6 @@ import {
   loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
   loadStoredMapLandDimensions,
-  type BattleMode,
 } from '../battleBarConfig';
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
 import {
@@ -47,7 +46,6 @@ import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
 import {
   SERVER_SIM_LOD_SIGNALS_ENABLED,
 } from '../serverSimLodConfig';
-import { BAR_THEMES, barVars } from '../barThemes';
 import {
   fmt4,
   statBarStyle,
@@ -83,6 +81,7 @@ import { useGameCanvasClientSettings } from './gameCanvasClientSettings';
 import { useGameCanvasRealBattleHandoff } from './gameCanvasRealBattleHandoff';
 import { useGameCanvasSceneUi } from './gameCanvasSceneUi';
 import { useGameCanvasSessionLifecycle } from './gameCanvasSessionLifecycle';
+import { useGameCanvasShellDisplay } from './gameCanvasShellDisplay';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -208,41 +207,37 @@ function getActiveOrbitCamera(): import('../game/render3d/OrbitCamera').OrbitCam
 const networkRole = ref<NetworkRole | null>(null);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
 const networkNotice = ref<string | null>(null);
+// Server metadata received from snapshots (for remote clients to display server bar)
+const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
 
-const networkStatus = computed(() => {
-  if (networkRole.value === 'host') {
-    const players = lobbyPlayers.value.length > 0 ? ` ${lobbyPlayers.value.length}P` : '';
-    return roomCode.value ? `HOST ${roomCode.value}${players}` : `HOST${players}`;
-  }
-  if (networkRole.value === 'client') {
-    return roomCode.value ? `CLIENT ${roomCode.value}` : 'CLIENT';
-  }
-  if (gameStarted.value) return 'OFFLINE';
-  return networkNotice.value ? 'NETWORK' : '';
+const {
+  lobbyPlayerCount,
+  networkStatus,
+  currentBattleMode,
+  localLobbyPlayer,
+  showPlayerToggle,
+  lobbyModalVisible,
+  showServerControls,
+  serverBarReadonly,
+  battleBarVars,
+  serverBarVars,
+  clientBarVars,
+  battleLabel,
+  battleLoadingTitle,
+  battleLoadingDetail,
+} = useGameCanvasShellDisplay({
+  isMobile,
+  showLobby,
+  spectateMode,
+  gameStarted,
+  roomCode,
+  lobbyPlayers,
+  localPlayerId,
+  networkRole,
+  networkNotice,
+  hasServer,
+  serverMetaFromSnapshot,
 });
-
-// Which battle storage namespace is active right now.
-//   `demo` = the visual demo behind the BUDGET ANNIHILATION screen
-//            (initial page load + return-to-lobby cancel).
-//   `real` = the GAME LOBBY (preview pane) AND the actual REAL
-//            BATTLE — both share the `real-battle-*` keys so the
-//            lobby preview reflects what the upcoming real game
-//            will look like, and any host adjustments in the lobby
-//            persist into the real battle and across sessions.
-//
-// `roomCode` is set the moment the user clicks Host/Join (or
-// finishes joining), and `gameStarted` covers the actual game; the
-// union of those two flips the namespace at exactly the right
-// boundary without depending on modal visibility (so a brief
-// hide-modal during transitions doesn't accidentally write to demo
-// keys mid-lobby).
-const currentBattleMode = computed<BattleMode>(
-  () => (gameStarted.value || roomCode.value !== '' ? 'real' : 'demo'),
-);
-
-const localLobbyPlayer = computed(
-  () => lobbyPlayers.value.find((p) => p.playerId === localPlayerId.value) ?? null,
-);
 
 let battleStartTime = 0;
 const {
@@ -275,9 +270,6 @@ function applyCameraFovDegrees(fov: CameraFovDegrees): void {
   setInstanceCameraFovDegrees(getBackgroundBattle()?.gameInstance, fov);
   setInstanceCameraFovDegrees(foregroundGame.getInstance(), fov);
 }
-
-// Server metadata received from snapshots (for remote clients to display server bar)
-const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
 
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
@@ -420,20 +412,6 @@ const {
   },
 }));
 
-// Show player toggle only in single-player mode (offline or hosting alone)
-const showPlayerToggle = computed(() => {
-  // Demo game: always allow toggling
-  if (!gameStarted.value) return true;
-  // Real game: only host in single-player
-  const isSinglePlayer = lobbyPlayers.value.length === 1;
-  return networkRole.value === null ||
-    (networkRole.value === 'host' && isSinglePlayer);
-});
-
-// Is the lobby modal actually visible on screen? (desktop only)
-const lobbyModalVisible = computed(
-  () => !isMobile && showLobby.value && !spectateMode.value,
-);
 useGameCanvasLobbyPreview({
   backgroundContainerRef,
   gameAreaRef,
@@ -441,7 +419,7 @@ useGameCanvasLobbyPreview({
   lobbyModalVisible,
   roomCode,
   gameStarted,
-  lobbyPlayerCount: computed(() => lobbyPlayers.value.length),
+  lobbyPlayerCount,
   localPlayerId,
   terrainCenter,
   terrainDividers,
@@ -451,37 +429,6 @@ useGameCanvasLobbyPreview({
   stopBackgroundBattle,
   startBackgroundBattle,
 });
-
-// Show server controls when we own a server OR when we receive server meta from snapshots (remote client)
-const showServerControls = computed(
-  () => hasServer.value || serverMetaFromSnapshot.value !== null,
-);
-
-// Server bar is read-only for remote clients (no local server)
-const serverBarReadonly = computed(() => !hasServer.value);
-
-// Bar color theming — `barVars` lives in `src/barThemes.ts` so the
-// LobbyModal's CENTER / DIVIDERS controls can apply the same battle
-// palette without duplicating the CSS-var dictionary.
-const battleBarVars = computed(() =>
-  barVars(serverBarReadonly.value
-    ? BAR_THEMES.disabled
-    : gameStarted.value ? BAR_THEMES.realBattle : BAR_THEMES.battle),
-);
-const serverBarVars = computed(() =>
-  barVars(serverBarReadonly.value ? BAR_THEMES.disabled : BAR_THEMES.server),
-);
-const clientBarVars = computed(() => barVars(BAR_THEMES.client));
-
-const battleLabel = computed(() => gameStarted.value ? 'REAL BATTLE' : 'DEMO BATTLE');
-const battleLoadingTitle = computed(() =>
-  networkRole.value === 'client' ? 'Receiving Terrain' : 'Generating Terrain',
-);
-const battleLoadingDetail = computed(() =>
-  networkRole.value === 'host'
-    ? 'Waiting for every player to install the authoritative map.'
-    : 'Installing the authoritative map before simulation starts.',
-);
 
 // Display values: always read from snapshot meta (server→snapshot→display)
 const displayServerTpsAvg = computed(
