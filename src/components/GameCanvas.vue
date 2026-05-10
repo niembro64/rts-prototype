@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
-import { createGame, destroyGame, type GameInstance, type GameScene } from '../game/createGame';
-import { ClientViewState } from '../game/network/ClientViewState';
+import type { GameInstance, GameScene } from '../game/createGame';
 import { type BuildingType, type PlayerId, type WaypointType } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import BarDivider from './BarDivider.vue';
@@ -184,6 +183,7 @@ import { useGameCanvasPresence } from './gameCanvasPresence';
 import { useGameCanvasSoundTest } from './gameCanvasSoundTest';
 import { useGameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
 import { useGameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
+import { useGameCanvasForegroundGame } from './gameCanvasForegroundGame';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -209,6 +209,7 @@ let stopBackgroundBattle = (): void => {};
 let currentServer: GameServer | null = null;
 const realBattleLifecycle = useGameCanvasRealBattleLifecycle();
 const foregroundSceneBinding = useGameCanvasForegroundSceneBinding();
+const foregroundGame = useGameCanvasForegroundGame();
 
 // Lobby state
 const showLobby = ref(true);
@@ -303,7 +304,7 @@ function handleCameraTutorialDone(): void {
   persist(CAMERA_TUTORIAL_DONE_KEY, 'true');
 }
 function getActiveOrbitCamera(): import('../game/render3d/OrbitCamera').OrbitCamera | null {
-  return gameInstance?.getScene()?.getOrbitCamera() ?? null;
+  return foregroundGame.getScene()?.getOrbitCamera() ?? null;
 }
 const networkRole = ref<NetworkRole | null>(null);
 const hasServer = ref(false); // True when we own a GameServer (host/offline/background)
@@ -368,12 +369,12 @@ function setInstanceCameraFovDegrees(
 
 function applyPlayerClientEnabled(): void {
   setPlayerClientRenderEnabled(getBackgroundBattle()?.gameInstance, playerClientEnabled.value);
-  setPlayerClientRenderEnabled(gameInstance, playerClientEnabled.value);
+  setPlayerClientRenderEnabled(foregroundGame.getInstance(), playerClientEnabled.value);
 }
 
 function applyCameraFovDegrees(): void {
   setInstanceCameraFovDegrees(getBackgroundBattle()?.gameInstance, cameraFovDegrees.value);
-  setInstanceCameraFovDegrees(gameInstance, cameraFovDegrees.value);
+  setInstanceCameraFovDegrees(foregroundGame.getInstance(), cameraFovDegrees.value);
 }
 
 // Server metadata received from snapshots (for remote clients to display server bar)
@@ -551,12 +552,6 @@ function bindGameSceneUi(scene: GameScene, includeGameLifecycle = false): void {
   });
 }
 
-let gameInstance: GameInstance | null = null;
-// Hoisted from the scene so state survives a live 2D↔3D renderer swap.
-// One instance per game session — created alongside gameConnection when
-// the match starts, cleared when the match ends.
-let clientViewState: ClientViewState | null = null;
-
 ({
   getBackgroundBattle,
   startBackgroundBattle,
@@ -590,7 +585,7 @@ let clientViewState: ClientViewState | null = null;
 }));
 
 function getActiveBattleScene(): GameScene | null {
-  return gameInstance?.getScene() ?? getBackgroundBattle()?.gameInstance?.getScene() ?? null;
+  return foregroundGame.getScene() ?? getBackgroundBattle()?.gameInstance?.getScene() ?? null;
 }
 
 // Show player toggle only in single-player mode (offline or hosting alone)
@@ -764,7 +759,7 @@ const {
   snapAvgRate,
   snapWorstRate,
 } = useGameCanvasTelemetry({
-  getScene: () => getBackgroundBattle()?.gameInstance?.getScene() ?? gameInstance?.getScene() ?? null,
+  getScene: () => getBackgroundBattle()?.gameInstance?.getScene() ?? foregroundGame.getScene(),
   displayServerTpsAvg,
   displayServerTpsWorst,
   serverMetaFromSnapshot,
@@ -1272,10 +1267,7 @@ function restartGame(): void {
   hasServer.value = false;
   serverMetaFromSnapshot.value = null;
 
-  if (gameInstance) {
-    destroyGame(gameInstance);
-    gameInstance = null;
-  }
+  foregroundGame.destroy();
 
   // Restart the background battle
   nextTick(() => {
@@ -1866,19 +1858,14 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       gameConnection = remoteConnection;
     }
 
-    // Create ClientViewState once per game session.
-    clientViewState = new ClientViewState();
-    clientViewState.setMapDimensions(realMapSize.width, realMapSize.height);
-
     // Create game with player configuration
-    gameInstance = createGame({
+    const gameInstance = foregroundGame.create({
       parent: containerRef.value!,
       width: rect.width || window.innerWidth,
       height: rect.height || window.innerHeight,
       playerIds,
       localPlayerId: localPlayerId.value,
       gameConnection,
-      clientViewState,
       mapWidth: realMapSize.width,
       mapHeight: realMapSize.height,
       terrainCenter: realTerrainCenter,
@@ -1903,7 +1890,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
 function setupSceneCallbacks(): void {
   foregroundSceneBinding.bind(
-    () => gameInstance?.getScene(),
+    () => foregroundGame.getScene(),
     (scene) => {
       scene.setClientRenderEnabled(playerClientEnabled.value);
       bindGameSceneUi(scene, true);
@@ -2027,10 +2014,7 @@ onUnmounted(() => {
   }
   networkManager.disconnect();
   stopBackgroundBattle();
-  if (gameInstance) {
-    destroyGame(gameInstance);
-    gameInstance = null;
-  }
+  foregroundGame.destroy();
 });
 </script>
 
