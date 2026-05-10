@@ -11,15 +11,13 @@ import type { SceneCameraState } from '@/types/game';
 import { isUnitTypeId } from '@/types/blueprintIds';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
-import {
-  buildEconomyInfo,
-  buildMinimapData,
-} from './helpers';
+import { buildEconomyInfo } from './helpers';
 import type { EconomyInfo, MinimapData, SelectionInfo } from './helpers';
 import type { SprayTarget } from '@/types/ui';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { LongtaskTracker } from './helpers/LongtaskTracker';
+import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
@@ -250,6 +248,7 @@ export class RtsScene3D {
   private gameConnection!: GameConnection;
   private snapshotIntake!: RtsScene3DSnapshotIntake;
   private localCommandQueue = new CommandQueue();
+  private minimapSystem!: RtsScene3DMinimapSystem;
   private selectionSystem!: RtsScene3DSelectionSystem;
   private healthBar3D: HealthBar3D | null = null;
   private nameLabel3D: NameLabel3D | null = null;
@@ -323,31 +322,10 @@ export class RtsScene3D {
 
   // UI update throttling (mirror RtsScene)
   private economyUpdateTimer = 0;
-  private minimapUpdateTimer = 0;
   private cameraAoiUpdateTimer = CAMERA_AOI_SEND_INTERVAL_MS;
   private lastCameraAoiMode: ReturnType<typeof getRenderMode> | null = null;
   private lastCameraAoiBounds: FootprintBounds | null = null;
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
-  private readonly MINIMAP_UPDATE_INTERVAL = 50;
-  private _minimapDataScratch: MinimapData = {
-    contentVersion: 0,
-    captureVersion: 0,
-    mapWidth: 0,
-    mapHeight: 0,
-    entities: [],
-    cameraQuad: [
-      { x: 0, y: 0 },
-      { x: 0, y: 0 },
-      { x: 0, y: 0 },
-      { x: 0, y: 0 },
-    ],
-    cameraYaw: 0,
-    captureTiles: [],
-    captureCellSize: 0,
-    gridOverlayIntensity: 0,
-    showTerrain: true,
-    wind: undefined,
-  };
   private _lineProjectilesScratch: Entity[] = [];
   private _burnMarkProjectilesScratch: Entity[] = [];
   private _smokeTrailProjectilesScratch: Entity[] = [];
@@ -458,6 +436,11 @@ export class RtsScene3D {
     // ClientViewState is owned by GameCanvas so its state (units, buildings,
     // prediction, selection) survives a live 2D↔3D renderer swap.
     this.clientViewState = config.clientViewState;
+    this.minimapSystem = new RtsScene3DMinimapSystem(
+      this.clientViewState,
+      this.mapWidth,
+      this.mapHeight,
+    );
     this.selectionSystem = new RtsScene3DSelectionSystem(
       this.clientViewState,
       () => this.localPlayerId,
@@ -1164,12 +1147,14 @@ export class RtsScene3D {
       this.updateEconomyInfo();
     }
 
-    this.minimapUpdateTimer += delta;
-    const minimapInterval = this.getMinimapUpdateInterval(graphicsConfig);
-    if (this.minimapUpdateTimer >= minimapInterval) {
-      this.minimapUpdateTimer = 0;
-      this.updateMinimapData();
-    }
+    this.minimapSystem.tick(
+      delta,
+      graphicsConfig,
+      this.entitySourceAdapter,
+      this._cameraQuad,
+      this.threeApp.orbit.yaw,
+      this.onMinimapUpdate,
+    );
 
     // Track frame timing. logicMs = frameMs - renderMs - predMs so
     // the three buckets sum to frameMs and a long applyPrediction
@@ -1185,20 +1170,6 @@ export class RtsScene3D {
     this.logicMsTracker.update(logicMs);
     this.predMsTracker.update(predMs);
     this.longtaskTracker.tick();
-  }
-
-  private getMinimapUpdateInterval(graphicsConfig: GraphicsConfig): number {
-    const renderStrideScale = Math.min(
-      4,
-      Math.max(1, graphicsConfig.captureTileFrameStride | 0),
-    );
-    const unitCount = this.clientViewState.getServerMeta()?.units?.count ?? 0;
-    const unitScale =
-      unitCount >= 8000 ? 6 :
-      unitCount >= 4000 ? 4 :
-      unitCount >= 1500 ? 2 :
-      1;
-    return this.MINIMAP_UPDATE_INTERVAL * renderStrideScale * unitScale;
   }
 
   private centerCameraOnCommander(): void {
@@ -1552,37 +1523,13 @@ export class RtsScene3D {
   }
 
   public updateMinimapData(): void {
-    if (!this.onMinimapUpdate) return;
-    // The camera quad is already computed once per frame for the
-    // shared ViewportFootprint (scope culling); the minimap just
-    // reads it so we don't pay 4× raycasts twice per frame.
-    //
-    // Capture-overlay parity: hand the minimap the same tiles +
-    // cellSize the 3D floating cells overlay consumes, plus the GRID
-    // intensity from clientBarConfig. GRID controls ownership tint only;
-    // terrain/water stay visible and are optimized by LOD.
-    const captureTiles = this.clientViewState.getCaptureTiles();
-    const captureVersion = this.clientViewState.getCaptureVersion();
-    const captureCellSize = this.clientViewState.getCaptureCellSize();
-    const gridMode = getGridOverlay();
-    const showTerrain = true;
-    const intensity = gridMode !== 'off' ? getGridOverlayIntensity() : 0;
-    this.onMinimapUpdate(
-      buildMinimapData(
-        this.entitySourceAdapter,
-        this.mapWidth,
-        this.mapHeight,
-        this._cameraQuad,
-        this.threeApp.orbit.yaw,
-        captureTiles,
-        captureVersion,
-        captureCellSize,
-        intensity,
-        showTerrain,
-        this.clientViewState.getServerMeta()?.wind,
-        this.clientViewState.getMinimapEntitiesOverride(),
-        this._minimapDataScratch,
-      ),
+    // The camera quad is already computed once per frame for the shared
+    // ViewportFootprint; the minimap system consumes it without raycasting.
+    this.minimapSystem.emit(
+      this.entitySourceAdapter,
+      this._cameraQuad,
+      this.threeApp.orbit.yaw,
+      this.onMinimapUpdate,
     );
   }
 

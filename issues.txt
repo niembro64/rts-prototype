@@ -9,16 +9,16 @@ Please always commit and push before and after any code changes we make. If ther
 ==============================================================================
  ISSUES:
 
-1. Move RtsScene3D camera and minimap data ownership out of
+1. Move RtsScene3D camera ownership out of
    src/game/scenes/RtsScene3D.ts.
    Evidence:
-   - src/game/scenes/RtsScene3D.ts is still 1966 lines.
-   - src/game/scenes/RtsScene3D.ts still owns camera and minimap data while
-     also managing renderer lifecycle.
+   - src/game/scenes/RtsScene3D.ts is still 1915 lines.
+   - src/game/scenes/RtsScene3D.ts still owns camera data while also managing
+     renderer lifecycle.
    Impact:
    - View state and render lifecycle remain tangled.
    Remedy:
-   - Extract one coherent camera or minimap slice that can be tested/reviewed
+   - Extract one coherent camera slice that can be tested/reviewed
      independently.
 
 2. Move RtsScene3D renderer update ordering and teardown ownership out of
