@@ -67,7 +67,7 @@ export function buildMirrorMesh3D(
    *  panel center (chassis-local, along turret +X). Matches the sim
    *  cache's `panel.offsetX`. */
   panelArmLength: number,
-  panelGeom: THREE.PlaneGeometry,
+  panelGeom: THREE.BoxGeometry,
   armGeom: THREE.BoxGeometry,
   supportGeom: THREE.CylinderGeometry,
   panelMaterial: THREE.Material,
@@ -116,15 +116,21 @@ export function buildMirrorMesh3D(
     return mesh;
   };
 
+  // Visible mirror slab depth, along the panel normal. Kept very small
+  // so the slab reads as a square with a hint of extrusion rather than
+  // a brick; tied to supportDiameter so it scales with the panel's other
+  // frame pieces.
+  const panelThickness = supportDiameter * 0.6;
   for (let i = 0; i < panels.length; i++) {
-    // Panel face — square plane perpendicular to the arm. PlaneGeometry
-    // default lies in the XY plane with normal +Z. Rotating Y(-π/2)
-    // takes the normal to +X (along the arm). The whole assembly's
-    // pitch comes from root's quaternion, so the panel keeps a
-    // static local rotation here.
+    // Panel face — thin square slab perpendicular to the arm. BoxGeometry
+    // default is axis-aligned with faces at ±X/±Y/±Z. Rotating Y(-π/2)
+    // takes the geometry's +Z (front face normal) to root-local +X
+    // (along the arm), so the Z scale becomes the slab thickness along
+    // the panel normal. The whole assembly's pitch comes from root's
+    // quaternion, so the panel keeps a static local rotation here.
     const m = new THREE.Mesh(panelGeom, panelMaterial);
     m.rotation.y = -Math.PI / 2;
-    m.scale.set(side, side, 1);
+    m.scale.set(side, side, panelThickness);
     // Panel center at the END of the arm, root-local Y = 0.
     m.position.set(panelArmLength, 0, 0);
     if (!skipPerMesh) root.add(m);

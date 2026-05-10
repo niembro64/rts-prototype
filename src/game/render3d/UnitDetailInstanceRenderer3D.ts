@@ -35,7 +35,7 @@ type UnitDetailInstanceRendererOptions = {
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
   barrelMat: THREE.Material;
-  mirrorGeom: THREE.PlaneGeometry;
+  mirrorGeom: THREE.BoxGeometry;
 };
 
 export class UnitDetailInstanceRenderer3D {

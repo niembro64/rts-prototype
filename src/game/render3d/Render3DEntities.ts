@@ -178,11 +178,12 @@ export class Render3DEntities {
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   // Mirror panel = flat unit square plane. Default orientation: face
   // in XY plane with normal +Z; we rotate it into the panel-local frame
-  // (edge → +Z, normal → +X) per panel below. Plane has zero physical
-  // thickness so the visible mesh and the sim collision rectangle live
-  // on EXACTLY the same surface — no front/back offset where a beam
-  // could appear to clip the visible mirror but miss the sim plane.
-  private mirrorGeom = new THREE.PlaneGeometry(1, 1);
+  // (edge → +Z, normal → +X) per panel below. The mesh is a thin BoxGeometry
+  // so the mirror reads as a slab with a hint of depth; the slab is
+  // centered on the sim collision plane (depth distributed equally to
+  // both sides) so the visible surface and the sim rectangle still share
+  // the same center plane.
+  private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorSupportGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
   // Unit-radius indicator wireframe spheres (BODY/SHOT/PUSH). Unit
