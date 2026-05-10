@@ -68,6 +68,7 @@ import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { BarrelTipCache3D, type BarrelTipEntry } from './BarrelTipCache3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { MirrorPose3D } from './MirrorPose3D';
+import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -147,6 +148,7 @@ export class Render3DEntities {
 
   private barrelSpinState = new UnitBarrelSpinState3D();
   private mirrorPose = new MirrorPose3D();
+  private chassisInstancePose = new UnitChassisInstancePose3D();
 
   // Per-entity leg-state snapshots stashed right before an LOD-driven
   // mesh teardown and consumed immediately after rebuild, so feet keep
@@ -203,10 +205,7 @@ export class Render3DEntities {
   private objectLodGrid = this.ownedObjectLodGrid;
   private richUnitDetailFrame = 0;
 
-  /** Per-frame scratch: combined parent (group + yaw + radius-scale) matrix
-   *  cached once per smooth-body unit, then multiplied with each part's
-   *  local matrix to produce the per-slot world matrix. */
-  private _smoothParentMat = new THREE.Matrix4();
+  /** Per-frame scratch for turret head and barrel instance matrices. */
   private _smoothPartMat = new THREE.Matrix4();
   private _smoothFinalMat = new THREE.Matrix4();
   /** Per-frame scratch: combined `tilt · Ry(yaw)` quaternion + scratch
@@ -215,9 +214,7 @@ export class Render3DEntities {
    *  axis (`_INST_UP`) drives the yaw quaternion. */
   private _smoothParentQuat = new THREE.Quaternion();
   private _smoothYawQuat = new THREE.Quaternion();
-  private _smoothParentScale = new THREE.Vector3();
   private _smoothPartLocalPos = new THREE.Vector3();
-  private _smoothPartScale = new THREE.Vector3();
   /** Lift offset (0, chassisLift, 0) rotated by parentQuat, added to
    *  groupPos so parentMat reproduces the scenegraph chain
    *    group → yawGroup → liftGroup → chassis
@@ -228,7 +225,6 @@ export class Render3DEntities {
    *  chassis-instanced unit at LOW+ tier. */
   private _smoothLiftOffset = new THREE.Vector3();
   private _smoothLiftedPos = new THREE.Vector3();
-  private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
 
   /** Scratch state for the per-barrel instance write. The chain
    *  group → yawGroup → liftGroup → turretRoot → pitchGroup →
@@ -1015,85 +1011,16 @@ export class Render3DEntities {
         .applyQuaternion(this._unitParentInvQuat);
       this._unitBodyCenterLocal.y -= m.chassisLift ?? 0;
 
-      // Smooth-body chassis: write each part's per-instance world
-      // matrix + team color into the shared `smoothChassis`
-      // InstancedMesh. The composition mirrors the per-Mesh
-      // scenegraph chain (group → yawGroup → chassis → mesh):
-      //
-      //   parentMat = T(group.position)
-      //             · R(group.quaternion · Ry(yaw))
-      //             · S(radius, radius, radius)
-      //   partMat   = T(part.x, part.y, part.z) · S(part.scale*)
-      //   slotMat   = parentMat · partMat
-      //
-      // Doing it per-part means an arachnid's two segments take two
-      // slots, a snipe / loris / forceField takes one. All slots feed
-      // the same shared draw call.
-      if (!fullUnitDetail || m.hideChassis) {
-        this.unitDetailInstances.hideChassisSlots(m);
-      } else if (m.smoothChassisSlots) {
-        // Reuse cached parentQuat / liftedPos from the per-unit prefix
-        // block above. Chassis adds its own radius scale on top of the
-        // shared chain. parentMat = T(liftedPos) · R(parentQuat) · S(radius).
-        this._smoothParentScale.set(radius, radius, radius);
-        this._smoothParentMat.compose(
-          this._smoothLiftedPos,
-          this._smoothParentQuat,
-          this._smoothParentScale,
-        );
-        const writeColor = this.unitDetailInstances.prepareSmoothChassisColor(e);
-        const slotCount = Math.min(bodyEntry.parts.length, m.smoothChassisSlots.length);
-        for (let pi = 0; pi < slotCount; pi++) {
-          const part = bodyEntry.parts[pi];
-          const slot = m.smoothChassisSlots[pi];
-          this._smoothPartLocalPos.set(part.x, part.y, part.z);
-          this._smoothPartScale.set(part.scaleX, part.scaleY, part.scaleZ);
-          this._smoothPartMat.compose(
-            this._smoothPartLocalPos,
-            Render3DEntities._IDENTITY_QUAT,
-            this._smoothPartScale,
-          );
-          this._smoothFinalMat.multiplyMatrices(
-            this._smoothParentMat,
-            this._smoothPartMat,
-          );
-          this.unitDetailInstances.writeSmoothChassisMatrix(
-            slot,
-            this._smoothFinalMat,
-            e,
-            writeColor,
-          );
-        }
-      } else if (m.polyChassisSlot !== undefined) {
-        // Polygonal/rect chassis: same parentMat × partMat composition
-        // as the smooth path, including the lift translation.
-        // Same per-unit chain as smooth chassis — reuse cached
-        // parentQuat / liftedPos.
-        this._smoothParentScale.set(radius, radius, radius);
-        this._smoothParentMat.compose(
-          this._smoothLiftedPos,
-          this._smoothParentQuat,
-          this._smoothParentScale,
-        );
-        const part = bodyEntry.parts[0];
-        this._smoothPartLocalPos.set(part.x, part.y, part.z);
-        this._smoothPartScale.set(part.scaleX, part.scaleY, part.scaleZ);
-        this._smoothPartMat.compose(
-          this._smoothPartLocalPos,
-          Render3DEntities._IDENTITY_QUAT,
-          this._smoothPartScale,
-        );
-        this._smoothFinalMat.multiplyMatrices(
-          this._smoothParentMat,
-          this._smoothPartMat,
-        );
-        this.unitDetailInstances.writePolyChassisMatrix(
-          e,
-          m.bodyShapeKey,
-          m.polyChassisSlot,
-          this._smoothFinalMat,
-        );
-      }
+      this.chassisInstancePose.update({
+        entity: e,
+        mesh: m,
+        bodyEntry,
+        radius,
+        fullUnitDetail,
+        parentPosition: this._smoothLiftedPos,
+        parentQuaternion: this._smoothParentQuat,
+        unitDetailInstances: this.unitDetailInstances,
+      });
 
       const selected = e.selectable?.selected === true;
       this.selectionOverlays.updateSelectionRing(m, selected, radius * 1.35);
