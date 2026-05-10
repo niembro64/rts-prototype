@@ -5,7 +5,6 @@
 // Render3DEntities instead of Pixi graphics while delegating focused input/view
 // state to helpers.
 
-import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
 import { isUnitTypeId } from '@/types/blueprintIds';
@@ -13,7 +12,6 @@ import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import { buildEconomyInfo } from './helpers';
 import type { EconomyInfo, MinimapData, SelectionInfo } from './helpers';
-import type { SprayTarget } from '@/types/ui';
 import { EmaTracker } from './helpers/EmaTracker';
 import { EmaMsTracker } from './helpers/EmaMsTracker';
 import { LongtaskTracker } from './helpers/LongtaskTracker';
@@ -21,6 +19,7 @@ import { RtsScene3DCameraControl, type CameraShim } from './helpers/RtsScene3DCa
 import { RtsScene3DCameraFootprintSystem } from './helpers/RtsScene3DCameraFootprintSystem';
 import { RtsScene3DCameraFramingSystem } from './helpers/RtsScene3DCameraFramingSystem';
 import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
+import { RtsScene3DRenderPhase } from './helpers/RtsScene3DRenderPhase';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { ThreeApp } from '../render3d/ThreeApp';
@@ -63,10 +62,6 @@ import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
   getGraphicsConfig,
   getGraphicsConfigFor,
-  getLodShellRings,
-  getLodGridBorders,
-  getGridOverlay,
-  getGridOverlayIntensity,
 } from '@/clientBarConfig';
 import { CommandQueue } from '../sim/commands';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
@@ -85,8 +80,6 @@ import {
 import { landCellCenterForSize, landCellIndexForSize } from '../landGrid';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { NameLabel3D } from '../render3d/NameLabel3D';
-import { resolveEntityDisplayName } from '../render3d/EntityName';
-import { getDefaultPlayerName } from '@/playerNamesConfig';
 import { Waypoint3D } from '../render3d/Waypoint3D';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 
@@ -179,15 +172,6 @@ export class RtsScene3D {
   private sprayRenderer!: SprayRenderer3D;
   private smokeTrailRenderer!: SmokeTrail3D;
   private audioSystem = new RtsScene3DAudioSystem();
-  private lastEffectsTickMs = 0;
-  private renderFrameIndex = 0;
-  private fireExplosionAccumMs = 0;
-  private debrisAccumMs = 0;
-  private burnMarkAccumMs = 0;
-  private groundPrintAccumMs = 0;
-  private smokeTrailAccumMs = 0;
-  private sprayAccumMs = 0;
-  private combinedSprayTargets: SprayTarget[] = [];
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
   private snapshotIntake!: RtsScene3DSnapshotIntake;
@@ -201,6 +185,7 @@ export class RtsScene3D {
   private predictionPhase!: RtsScene3DPredictionPhase;
   private cameraControl!: RtsScene3DCameraControl;
   private cameraFramingSystem!: RtsScene3DCameraFramingSystem;
+  private renderPhase: RtsScene3DRenderPhase | null = null;
   /** Resolves a player ID to its display name. Hooked up via
    *  RtsScene3DConfig.lookupPlayerName; null result falls back to
    *  `getDefaultPlayerName(playerId)` so commander labels still
@@ -210,14 +195,6 @@ export class RtsScene3D {
   private waypoint3D: Waypoint3D | null = null;
   private lodShellGround3D: LodShellGround3D | null = null;
   private lodGridCells2D: LodGridCells2D | null = null;
-
-  // Camera frustum cached once per frame and shared with the HUD
-  // renderers so they can skip the bake / position update for every
-  // entity outside the view. With ~5k units on the map but only a few
-  // hundred visible at any zoom the savings are large; the test itself
-  // is six plane dot products.
-  private _frustum = new THREE.Frustum();
-  private _frustumMatrix = new THREE.Matrix4();
 
   // Single canonical cursor → 3D ground picker (raycaster against
   // the rendered terrain mesh). Shared by the orbit camera and the
@@ -237,13 +214,6 @@ export class RtsScene3D {
   private lobbyPreview: boolean;
 
   private isGameOver = false;
-  /** Frame counter used to drive the one-shot shader precompile sweep
-   *  during early gameplay. THREE compiles shaders lazily — sweeping
-   *  the first ~60 update frames catches most material variants
-   *  (units, buildings, beams, force fields, explosions, debris,
-   *  smoke, sprays) right after they're added to the scene, instead
-   *  of paying a 100-150ms getProgramInfoLog stall mid-battle. */
-  private precompileFramesRemaining = 60;
 
   // Performance trackers (mirror RtsScene)
   private renderTpsTracker = new EmaTracker(EMA_CONFIG.tps, EMA_INITIAL_VALUES.tps);
@@ -256,9 +226,6 @@ export class RtsScene3D {
   // UI update throttling (mirror RtsScene)
   private economyUpdateTimer = 0;
   private readonly ECONOMY_UPDATE_INTERVAL = 100;
-  private _lineProjectilesScratch: Entity[] = [];
-  private _burnMarkProjectilesScratch: Entity[] = [];
-  private _smokeTrailProjectilesScratch: Entity[] = [];
   // Entity source adapter, kept shape-compatible with RtsScene's for UI helpers
   private entitySourceAdapter!: {
     getUnits: () => Entity[];
@@ -303,10 +270,6 @@ export class RtsScene3D {
   // Dynamic camera shim — exposes a zoom-like number derived from the orbit
   // distance so UI (zoom display, minimap viewport) has a consistent axis to read.
   public readonly cameras: CameraShim;
-
-  private get renderLodGrid() {
-    return this.predictionPhase.renderLodGrid;
-  }
 
   constructor(threeApp: ThreeApp, config: RtsScene3DConfig) {
     this.threeApp = threeApp;
@@ -404,12 +367,7 @@ export class RtsScene3D {
     this.threeApp.setRenderEnabled(enabled);
     if (!enabled) {
       this.audioSystem.clear();
-      this.fireExplosionAccumMs = 0;
-      this.debrisAccumMs = 0;
-      this.burnMarkAccumMs = 0;
-      this.groundPrintAccumMs = 0;
-      this.smokeTrailAccumMs = 0;
-      this.sprayAccumMs = 0;
+      this.renderPhase?.resetEffectAccumulators();
     }
   }
 
@@ -628,6 +586,41 @@ export class RtsScene3D {
       this.selectionSystem.setDGunMode(active);
     };
 
+    this.renderPhase = new RtsScene3DRenderPhase(
+      this.threeApp,
+      this.clientViewState,
+      this.renderScope,
+      this.cameraFootprintSystem,
+      this.snapshotIntake,
+      this.selectionSystem,
+      {
+        entityRenderer: this.entityRenderer,
+        beamRenderer: this.beamRenderer,
+        forceFieldRenderer: this.forceFieldRenderer,
+        captureTileRenderer: this.captureTileRenderer,
+        metalDepositRenderer: this.metalDepositRenderer,
+        environmentPropRenderer: this.environmentPropRenderer,
+        contactShadowRenderer: this.contactShadowRenderer,
+        waterRenderer: this.waterRenderer,
+        explosionRenderer: this.explosionRenderer,
+        forceFieldImpactRenderer: this.forceFieldImpactRenderer,
+        debrisRenderer: this.debrisRenderer,
+        burnMarkRenderer: this.burnMarkRenderer,
+        groundPrintRenderer: this.groundPrintRenderer,
+        lineDragRenderer: this.lineDragRenderer,
+        sprayRenderer: this.sprayRenderer,
+        smokeTrailRenderer: this.smokeTrailRenderer,
+        healthBar3D: this.healthBar3D,
+        nameLabel3D: this.nameLabel3D,
+        waypoint3D: this.waypoint3D,
+        lodShellGround3D: this.lodShellGround3D,
+        lodGridCells2D: this.lodGridCells2D,
+      },
+      () => this.inputManager,
+      (playerId) => this.lookupPlayerName(playerId),
+      () => this.onCameraQuadUpdate,
+    );
+
     // Camera clamping: keep the orbit target inside a padded map region.
     const paddingX = this.mapWidth * WORLD_PADDING_PERCENT;
     const paddingY = this.mapHeight * WORLD_PADDING_PERCENT;
@@ -648,8 +641,7 @@ export class RtsScene3D {
       this.renderTpsTracker.update(rate);
     }
     if (this.clientRenderEnabled) {
-      this.explosionRenderer.beginFrame();
-      this.debrisRenderer.beginFrame();
+      this.renderPhase?.beginEnabledFrame();
     }
 
     this.audioSystem.drainReady(
@@ -707,19 +699,17 @@ export class RtsScene3D {
       return;
     }
 
+    const renderPhase = this.renderPhase;
+    if (!renderPhase) return;
+
     this.selectionSystem.rebuildEntityCachesIfNeeded();
 
-    this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
+    const { effectDtMs } = renderPhase.beginRenderFrame();
     // Camera smoothing must step BEFORE visibility scope and view-LOD
     // decisions. Otherwise CPU culling, prediction cadence, and
     // rich-unit selection trail the rendered camera by one frame
     // during dolly/pan.
-    const effectNow = performance.now();
-    const effectDt = this.lastEffectsTickMs === 0
-      ? 0
-      : Math.min(effectNow - this.lastEffectsTickMs, 100);
-    this.lastEffectsTickMs = effectNow;
-    this.cameraFramingSystem.tickCameraSmoothing(effectDt / 1000);
+    this.cameraFramingSystem.tickCameraSmoothing(effectDtMs / 1000);
     const viewportHeightPx = this.threeApp.renderer.domElement.clientHeight;
     const {
       renderLod,
@@ -732,266 +722,13 @@ export class RtsScene3D {
       zoom: this.cameras.main.zoom,
     });
 
-    // Render phase
-    const renderStart = performance.now();
-    const lodShells = getRenderObjectLodShellDistances(graphicsConfig);
-    this.lodShellGround3D?.update(
-      this.threeApp.camera,
-      [
-        { tier: 'rich', distance: lodShells.rich },
-        { tier: 'simple', distance: lodShells.simple },
-        { tier: 'mass', distance: lodShells.mass },
-        { tier: 'impostor', distance: lodShells.impostor },
-      ],
-      getLodShellRings(),
-    );
-    const gridMode = getGridOverlay();
-    const gridOverlayIntensity = gridMode !== 'off' ? getGridOverlayIntensity() : 0;
-    this.lodGridCells2D?.update(
-      graphicsConfig.objectLodCellSize,
-      getLodGridBorders(),
-      gridMode !== 'off',
-      gridOverlayIntensity,
-    );
-    this.metalDepositRenderer?.update(
+    const { cameraQuad, renderMs } = renderPhase.run({
+      deltaMs: delta,
+      effectDtMs,
       graphicsConfig,
       renderLod,
-      this.renderLodGrid,
-    );
-    const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
-    const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
-    const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
-    const updateEffectsThisFrame = effectFrameStride <= 1 || this.renderFrameIndex % effectFrameStride === 0;
-    // Refresh the shared visibility footprint once per frame so every
-    // per-entity hot loop below can early-out on off-screen entities
-    // without re-querying camera state or getRenderMode(). The same
-    // quad feeds the minimap (see updateMinimapData).
-    const cameraFootprint = this.cameraFootprintSystem.update(
-      this.threeApp.camera,
-      delta,
-    );
-    const cameraQuad = cameraFootprint.quad;
-    this.renderScope.setQuad(
-      cameraQuad,
-      cameraFootprint.bounds,
-    );
-    this.environmentPropRenderer?.update(
-      graphicsConfig,
-      renderLod,
-      this.renderLodGrid,
-    );
-    // Emit the quad every frame — the minimap's camera box reads
-    // this directly so it stays pinned to the view regardless of
-    // the (throttled) entity-list refresh.
-    this.onCameraQuadUpdate?.(cameraQuad, this.threeApp.orbit.yaw);
-    const serverMeta = this.clientViewState.getServerMeta();
-    this.entityRenderer.update(
-      renderLod,
-      this.renderLodGrid,
-      { mirrorsEnabled: serverMeta?.mirrorsEnabled ?? true },
-    );
-    this.contactShadowRenderer?.update(
-      this.clientViewState.getUnits(),
-      this.clientViewState.getBuildings(),
-      graphicsConfig,
-      this.renderFrameIndex,
-      this.renderScope,
-    );
-    this.captureTileRenderer.update(
-      graphicsConfig,
-      renderLod,
-      this.renderLodGrid,
-    );
-    this.snapshotIntake.markClientReadyAfterRender();
-    const lineProjectiles = this.clientViewState.collectLineProjectiles(this._lineProjectilesScratch);
-    const smokeTrailProjectiles = updateEffectsThisFrame
-      ? this.clientViewState.collectSmokeTrailProjectiles(this._smokeTrailProjectilesScratch)
-      : this._smokeTrailProjectilesScratch;
-    this.beamRenderer.update(
-      lineProjectiles,
-      graphicsConfig,
-      renderLod,
-      this.renderLodGrid,
-      this.clientViewState.getLineProjectileRenderVersion(),
-      this.entityRenderer,
-    );
-    // Force-field iteration is deferred — fused with HealthBar3D's
-    // per-unit walk below, after the camera frustum is computed.
-    // Single getUnits() iteration drives both per-unit renderers.
-
-    // Effects integrate their own lightweight physics. Debris/material
-    // explosions apply their PLAYER CLIENT LOD physics-frame skip internally;
-    // burn marks sample live beams to trace scorches on the ground. We feed
-    // the scheduler's clamped dt so backgrounded tabs don't jump-forward.
-    // Water is static and opaque; update is now just a visibility /
-    // lazy-geometry check.
-    this.waterRenderer.update(
-      effectDt / 1000,
-      graphicsConfig,
-      renderLod,
-      this.renderLodGrid,
-    );
-    this.fireExplosionAccumMs += effectDt;
-    this.debrisAccumMs += effectDt;
-    if (updateEffectsThisFrame) {
-      this.explosionRenderer.update(this.fireExplosionAccumMs);
-      this.debrisRenderer.update(this.debrisAccumMs);
-      this.fireExplosionAccumMs = 0;
-      this.debrisAccumMs = 0;
-    }
-    this.forceFieldImpactRenderer.update(effectDt, lineProjectiles);
-    this.burnMarkAccumMs += effectDt;
-    if (updateEffectsThisFrame) {
-      const burnMarkProjectiles = this.clientViewState.collectBurnMarkProjectiles(this._burnMarkProjectilesScratch);
-      this.burnMarkRenderer.update(burnMarkProjectiles, this.burnMarkAccumMs);
-      this.burnMarkAccumMs = 0;
-    }
-    // Wheel/tread/foot ground prints. We pull each unit's locomotion
-    // mesh from the entity renderer (which built it earlier in this
-    // tick during updateAll), so this runs AFTER updateLocomotion has
-    // refreshed every contact's worldX/Z for the frame.
-    this.groundPrintAccumMs += effectDt;
-    if (updateEffectsThisFrame) {
-      const units = this.clientViewState.getUnits();
-      this.groundPrintRenderer.update(
-        units,
-        (e) => this.entityRenderer.getLocomotionMesh(e.id),
-        this.groundPrintAccumMs,
-      );
-      this.groundPrintAccumMs = 0;
-    }
-    // Commander build/heal spray comes from sim state; factory unit
-    // construction spray is derived from the client-side factory tower
-    // rig so it can originate at the rendered nozzle height.
-    this.sprayAccumMs += effectDt;
-    if (updateEffectsThisFrame) {
-      const commanderSprays = this.clientViewState.getSprayTargets();
-      const factorySprays = this.entityRenderer.getFactorySprayTargets();
-      if (factorySprays.length > 0) {
-        this.combinedSprayTargets.length = 0;
-        for (const spray of commanderSprays) this.combinedSprayTargets.push(spray);
-        for (const spray of factorySprays) this.combinedSprayTargets.push(spray);
-        this.sprayRenderer.update(this.combinedSprayTargets, this.sprayAccumMs);
-      } else {
-        this.sprayRenderer.update(commanderSprays, this.sprayAccumMs);
-      }
-      this.sprayAccumMs = 0;
-    }
-    // Rocket smoke trails: reads the same projectile list the beam
-    // renderer consumes; puffs fall back to pooled meshes once their
-    // fade completes.
-    this.smokeTrailAccumMs += effectDt;
-    if (updateEffectsThisFrame) {
-      this.smokeTrailRenderer.update(
-        smokeTrailProjectiles,
-        this.smokeTrailAccumMs,
-        this.renderFrameIndex,
-        this.renderScope,
-      );
-      this.smokeTrailAccumMs = 0;
-    }
-    // Input selection-change bookkeeping is handled when local
-    // selection commands are processed. Do not poll all units here:
-    // at 10k units that turns a rare UI state change into a permanent
-    // per-frame full-unit scan.
-    // Line-drag preview reads directly from the input manager's live state.
-    if (this.inputManager) {
-      this.lineDragRenderer.update(this.inputManager.getLineDragState());
-    }
-    // Refresh the camera frustum once per frame from the current
-    // view-projection matrix; HUD renderers test entity positions
-    // against it to skip off-screen work.
-    //
-    // RENDER mode integration: when the player explicitly selected
-    // RENDER:ALL they want every HP bar / selection label visible,
-    // including off-screen ones (e.g. for AOE awareness during a
-    // pulled-back screenshot). Pass `undefined` instead of the
-    // frustum so the HUD renderers skip the per-sprite cull. WIN
-    // and PAD modes still get the precise per-pixel frustum test —
-    // for HUD elements with negligible world-space footprint, frustum
-    // is the right tool (AABB scope's padding doesn't add value).
-    const cam = this.threeApp.camera;
-    this._frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
-    this._frustum.setFromProjectionMatrix(this._frustumMatrix);
-    const hudFrustum = this.renderScope.getMode() === 'all' ? undefined : this._frustum;
-
-    // Force fields are rare compared to total unit count, so feed the
-    // renderer its cached subset instead of asking every normal unit
-    // to run the force-field branch. Health bars still walk broad
-    // entity lists because HP/build progress are dynamic per snapshot.
-    this.forceFieldRenderer.beginFrame(graphicsConfig);
-    if (this.clientViewState.getServerMeta()?.forceFieldsEnabled ?? true) {
-      for (const u of this.clientViewState.getForceFieldUnits()) {
-        this.forceFieldRenderer.perUnit(u);
-      }
-    }
-    this.forceFieldRenderer.endFrame();
-
-    // Health bars track unit positions and run EVERY frame — the
-    // sprites are siblings of the unit groups (not children), so
-    // without a per-frame position update they visibly "snap" to the
-    // unit's last hud-stride position while the unit's own mesh
-    // continues moving smoothly. The expensive part is gated
-    // internally by `repaintIfChanged`, so per-frame iteration just
-    // sets sprite positions and frustum-probes for small damaged /
-    // hovered entity lists.
-    const hoveredEntity = this.inputManager?.getHoveredEntity() ?? null;
-    if (this.healthBar3D) {
-      this.healthBar3D.beginFrame(hudFrustum);
-      const damagedUnits = this.clientViewState.getDamagedUnits();
-      for (const u of damagedUnits) {
-        this.healthBar3D.perUnit(u);
-      }
-      const healthBarBuildings = this.clientViewState.getHealthBarBuildings();
-      for (const b of healthBarBuildings) {
-        this.healthBar3D.perBuilding(b);
-      }
-      if (hoveredEntity?.unit) {
-        this.healthBar3D.perUnit(hoveredEntity, true);
-      } else if (hoveredEntity?.building) {
-        this.healthBar3D.perBuilding(hoveredEntity, true);
-      }
-      this.healthBar3D.endFrame();
-    }
-
-    // Entity labels: commanders show player names, selected units and
-    // buildings show their blueprint names. Same fallback story as the
-    // rest of the renderer — if no roster lookup was wired up,
-    // getDefaultPlayerName(pid) gives a stable name keyed by player id.
-    if (this.nameLabel3D) {
-      this.nameLabel3D.beginFrame(hudFrustum);
-      const lookup = (pid: PlayerId): string | null =>
-        this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
-      for (const e of this.clientViewState.getUnitsAndBuildings()) {
-        const name = resolveEntityDisplayName(e, lookup);
-        if (name !== null) this.nameLabel3D.perEntity(e, name);
-      }
-      this.nameLabel3D.endFrame();
-    }
-    // Waypoint markers stay gated — their world points are fixed
-    // command goals (move target, build site, rally point), not
-    // tracking entities, so per-frame updates would be wasted work.
-    if (updateHudThisFrame) {
-      this.waypoint3D?.update(
-        this.selectionSystem.getSelectedUnits(),
-        this.selectionSystem.getSelectedBuildings(),
-      );
-    }
-
-    // Shader precompile sweep — every per-frame renderer above has had
-    // a chance to add its current materials to the scene by now. THREE
-    // compiles shaders lazily on first render of each program, and the
-    // sync getProgramInfoLog read after compile blocks the frame for
-    // 100-150ms (caught in the wild on a 144ms profile). Sweeping the
-    // first ~60 frames forces every just-added material's program
-    // through the compiler at a known time, so first-of-its-kind
-    // beams / explosions / debris / force fields don't stall the frame
-    // they appear on. compile() is a no-op for already-cached programs.
-    if (this.precompileFramesRemaining > 0) {
-      this.threeApp.precompileShaders();
-      this.precompileFramesRemaining--;
-    }
-    const renderEnd = performance.now();
+      renderLodGrid: this.predictionPhase.renderLodGrid,
+    });
 
     // UI updates -- throttled like RtsScene. Producing-factory progress
     // invalidation lives with the rest of the 3D selection state.
@@ -1022,7 +759,6 @@ export class RtsScene3D {
     // practice negligible but defensive).
     const frameEnd = performance.now();
     const frameMs = frameEnd - frameStart;
-    const renderMs = renderEnd - renderStart;
     const logicMs = Math.max(0, frameMs - renderMs - predMs);
     this.frameMsTracker.update(frameMs);
     this.renderMsTracker.update(renderMs);
@@ -1491,6 +1227,7 @@ export class RtsScene3D {
     this.metalDepositRenderer = null;
     this.environmentPropRenderer = null;
     this.contactShadowRenderer = null;
+    this.renderPhase = null;
     if (!opts.keepConnection) {
       this.gameConnection?.disconnect();
     }
