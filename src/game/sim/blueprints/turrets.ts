@@ -159,7 +159,7 @@ export const TURRET_BLUEPRINTS = {
     projectileId: 'mortarShot',
     range: 1000,
     cooldown: 6000,
-    launchForce: 20_000,
+    launchForce: 30_000,
     turretTurnAccel: 200,
     turretDrag: 0.15,
     barrel: { type: 'simpleSingleBarrel', barrelLength: 0.75 },
@@ -196,7 +196,7 @@ export const TURRET_BLUEPRINTS = {
     // target and the fire-gate at projectileSystem.ts:257 skipped
     // every shot. 22 000 yields ~1344 wu max range with comfortable
     // headroom over the 1000 cap.
-    launchForce: 26_000,
+    launchForce: 40_000,
     turretTurnAccel: 20,
     turretDrag: 0.15,
     barrel: {
