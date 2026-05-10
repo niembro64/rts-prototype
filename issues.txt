@@ -9,21 +9,10 @@ Please always commit and push before and after any code changes we make. If ther
 ==============================================================================
  ISSUES:
 
-1. Move RtsScene3D audio scheduling ownership out of
+1. Move RtsScene3D camera, selection, and minimap data ownership out of
    src/game/scenes/RtsScene3D.ts.
    Evidence:
-   - src/game/scenes/RtsScene3D.ts still owns audio scheduling while also
-     managing rendering and scene lifecycle.
-   - src/game/scenes/RtsScene3D.ts is still 2073 lines.
-   Impact:
-   - Audio timing changes have to pass through the scene orchestrator.
-   Remedy:
-   - Extract audio scheduling into a dedicated scene audio system with explicit
-     inputs from snapshots and frame timing.
-
-2. Move RtsScene3D camera, selection, and minimap data ownership out of
-   src/game/scenes/RtsScene3D.ts.
-   Evidence:
+   - src/game/scenes/RtsScene3D.ts is still 2066 lines.
    - src/game/scenes/RtsScene3D.ts still owns camera, selection, and minimap
      data while also managing renderer lifecycle.
    Impact:
@@ -33,18 +22,18 @@ Please always commit and push before and after any code changes we make. If ther
      smallest camera, selection, or minimap slice that can be tested/reviewed
      independently.
 
-3. Move RtsScene3D renderer update ordering and teardown ownership out of
+2. Move RtsScene3D renderer update ordering and teardown ownership out of
    src/game/scenes/RtsScene3D.ts.
    Evidence:
    - src/game/scenes/RtsScene3D.ts still owns renderer update ordering and
-     teardown, with shutdown around src/game/scenes/RtsScene3D.ts:2024.
+     teardown, with shutdown around src/game/scenes/RtsScene3D.ts:2017.
    Impact:
    - Renderer lifetime rules are hidden inside the scene orchestrator.
    Remedy:
    - Extract renderer phase coordination and teardown into a focused lifecycle
      helper.
 
-4. Split src/game/network/stateSerializer.ts by DTO family.
+3. Split src/game/network/stateSerializer.ts by DTO family.
    Evidence:
    - src/game/network/stateSerializer.ts is still 1745 lines.
    Impact:
@@ -54,7 +43,7 @@ Please always commit and push before and after any code changes we make. If ther
    - Move one DTO family at a time into focused serializer modules and keep a
      small index/orchestration layer.
 
-5. Split src/game/render3d/Render3DEntities.ts by rendered object family.
+4. Split src/game/render3d/Render3DEntities.ts by rendered object family.
    Evidence:
    - src/game/render3d/Render3DEntities.ts is still 1573 lines.
    Impact:
@@ -64,7 +53,7 @@ Please always commit and push before and after any code changes we make. If ther
    - Extract one renderer family at a time into focused modules with explicit
      dependencies.
 
-6. Split src/game/network/NetworkManager.ts by networking responsibility.
+5. Split src/game/network/NetworkManager.ts by networking responsibility.
    Evidence:
    - src/game/network/NetworkManager.ts is still 1268 lines.
    Impact:
@@ -74,7 +63,7 @@ Please always commit and push before and after any code changes we make. If ther
    - Extract the next coherent networking responsibility into a helper or
      service while keeping NetworkManager as the coordinator.
 
-7. Split src/game/network/ClientViewState.ts by client-state ownership.
+6. Split src/game/network/ClientViewState.ts by client-state ownership.
    Evidence:
    - src/game/network/ClientViewState.ts is still 1167 lines.
    Impact:
@@ -84,8 +73,8 @@ Please always commit and push before and after any code changes we make. If ther
    - Move one client-state family at a time into focused modules and keep
      cross-family ordering explicit.
 
-8. We don't want units in water. We need to find a good solution for jumping units. My initial though is that we predict all landing points of a jump before we do it, and if it is on water (or too near water) we cancel it. This might go along with jumping units only jumping sometimes, only when engaged with a target or when moving. Maybe we have "able to jump" status turned on when it meets any necessary criteria, including next jump wouoldn't jump into water. Jumping should also ignore the ground normal angle, so units can jump up hills (i.e. a jump on a hill won't be in the direction of the normal of the surface, it will be up). Jumps should also happen off of any surface, not just the ground - units, buildings, etc.
+7. We don't want units in water. We need to find a good solution for jumping units. My initial though is that we predict all landing points of a jump before we do it, and if it is on water (or too near water) we cancel it. This might go along with jumping units only jumping sometimes, only when engaged with a target or when moving. Maybe we have "able to jump" status turned on when it meets any necessary criteria, including next jump wouoldn't jump into water. Jumping should also ignore the ground normal angle, so units can jump up hills (i.e. a jump on a hill won't be in the direction of the normal of the surface, it will be up). Jumps should also happen off of any surface, not just the ground - units, buildings, etc.
 
-9. Beam segments should never just end in the air. Currently we are ending them if they reach a max radius, but that isn't physically correct. We either need to simulate the beam to its logical ending point (including infinity space) or just keep what we have on the simulation, and fake the infinity beam by extending last leg of the beam segments to extend that direction to infinity. Whatever is necessary but doesn't kill performance.
+8. Beam segments should never just end in the air. Currently we are ending them if they reach a max radius, but that isn't physically correct. We either need to simulate the beam to its logical ending point (including infinity space) or just keep what we have on the simulation, and fake the infinity beam by extending last leg of the beam segments to extend that direction to infinity. Whatever is necessary but doesn't kill performance.
 
-10. Because we have "falling" (jumping) units now, we need to update our ballistics and aiming solvers to account for acceleration as well. Make sure that all instances of aiming and ballistics require 3d position, 3d velocity, and 3d acceleration (can be gravity + other stuff potentially) for both the origin point as well as the target point. This will allow us to have more accurate aiming and ballistics for all turrets against all units / buildings. have that function be atomic and reusable. We may have different things generating acceleration so make sure we don't just hardcode gravity to be used in the function.
+9. Because we have "falling" (jumping) units now, we need to update our ballistics and aiming solvers to account for acceleration as well. Make sure that all instances of aiming and ballistics require 3d position, 3d velocity, and 3d acceleration (can be gravity + other stuff potentially) for both the origin point as well as the target point. This will allow us to have more accurate aiming and ballistics for all turrets against all units / buildings. have that function be atomic and reusable. We may have different things generating acceleration so make sure we don't just hardcode gravity to be used in the function.

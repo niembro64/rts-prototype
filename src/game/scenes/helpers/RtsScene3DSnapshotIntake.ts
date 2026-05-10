@@ -6,12 +6,21 @@ import type {
 } from '../../network/NetworkTypes';
 import type { GameConnection } from '../../server/GameConnection';
 import type { PlayerId } from '../../sim/types';
-import type { AudioEventScheduler } from './AudioEventScheduler';
 import { EmaTracker } from './EmaTracker';
 import { SnapshotBuffer } from './SnapshotBuffer';
 
+export type RtsScene3DSnapshotEventScheduler = {
+  recordSnapshot(now: number): number;
+  schedule(
+    events: NetworkServerSnapshotSimEvent[],
+    now: number,
+    smoothingEnabled: boolean,
+    play: (event: NetworkServerSnapshotSimEvent) => void,
+  ): void;
+};
+
 export type RtsScene3DSnapshotAudioOptions = {
-  scheduler: AudioEventScheduler;
+  scheduler: RtsScene3DSnapshotEventScheduler;
   smoothingEnabled: boolean;
   play(event: NetworkServerSnapshotSimEvent): void;
 };

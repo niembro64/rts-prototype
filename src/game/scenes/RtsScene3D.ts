@@ -57,11 +57,10 @@ import { GroundPrint3D } from '../render3d/GroundPrint3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
 import { BuildGhost3D } from '../render3d/BuildGhost3D';
 import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
-import { AudioEventScheduler } from './helpers/AudioEventScheduler';
+import { RtsScene3DAudioSystem } from './helpers/RtsScene3DAudioSystem';
 import { RtsScene3DPredictionPhase } from './helpers/RtsScene3DPredictionPhase';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
-  getAudioSmoothing,
   getCameraSmoothMode,
   getGraphicsConfig,
   getGraphicsConfigFor,
@@ -237,7 +236,7 @@ export class RtsScene3D {
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
   private smokeTrailRenderer!: SmokeTrail3D;
-  private audioScheduler = new AudioEventScheduler();
+  private audioSystem = new RtsScene3DAudioSystem();
   private lastEffectsTickMs = 0;
   private renderFrameIndex = 0;
   private fireExplosionAccumMs = 0;
@@ -553,7 +552,7 @@ export class RtsScene3D {
     this.clientRenderEnabled = enabled;
     this.threeApp.setRenderEnabled(enabled);
     if (!enabled) {
-      this.audioScheduler.clear();
+      this.audioSystem.clear();
       this.fireExplosionAccumMs = 0;
       this.debrisAccumMs = 0;
       this.burnMarkAccumMs = 0;
@@ -820,23 +819,17 @@ export class RtsScene3D {
       this.debrisRenderer.beginFrame();
     }
 
-    // Drain any audio events whose scheduled playback time has arrived. This
-    // runs every frame (not just on snapshot arrival) because scheduled events
-    // are staggered across the snapshot interval.
-    if (this.clientRenderEnabled) {
-      const nowDrain = performance.now();
-      this.audioScheduler.drain(nowDrain, (event) => this.handleSimEvent3D(event));
-    }
+    this.audioSystem.drainReady(
+      this.clientRenderEnabled,
+      (event) => this.handleSimEvent3D(event),
+    );
 
     const snapshotResult = this.snapshotIntake.consumeLatestSnapshot({
       clientRenderEnabled: this.clientRenderEnabled,
-      audio: this.clientRenderEnabled
-        ? {
-            scheduler: this.audioScheduler,
-            smoothingEnabled: getAudioSmoothing(),
-            play: (event) => this.handleSimEvent3D(event),
-          }
-        : undefined,
+      audio: this.audioSystem.snapshotAudioOptions(
+        this.clientRenderEnabled,
+        (event) => this.handleSimEvent3D(event),
+      ),
     });
     if (snapshotResult.appliedSnapshot) {
       if (snapshotResult.startupReleased) this.onStartupReady?.();
@@ -2055,7 +2048,7 @@ export class RtsScene3D {
     this.sprayRenderer?.destroy();
     this.smokeTrailRenderer?.destroy();
     this.longtaskTracker.destroy();
-    this.audioScheduler.clear();
+    this.audioSystem.clear();
     if (!opts.keepConnection) {
       this.gameConnection?.disconnect();
     }
