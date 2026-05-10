@@ -12,9 +12,8 @@ Please always commit and push before and after any code changes you make. If the
 1. Oversized orchestration files violate the small-file goal and hide lifecycle
    coupling.
    Evidence:
-   - src/components/GameCanvas.vue is still about 3178 lines and still owns
-     high-level real-battle handoff entrypoints plus several client bar setting
-     handlers.
+   - src/components/GameCanvas.vue is still about 2813 lines and still owns
+     high-level real-battle handoff entrypoints.
    - src/game/scenes/RtsScene3D.ts is about 2151 lines and owns snapshot intake,
      prediction, audio scheduling, camera, selection, minimap data, renderer
      update ordering, and renderer teardown. See the large update loop at
@@ -28,8 +27,8 @@ Please always commit and push before and after any code changes you make. If the
    - Lifecycle ownership is hard to prove, duplicate helpers reappear, and
      fixes often touch unrelated concerns.
    Remedy:
-   - Continue splitting by ownership: GameCanvas composables for server
-     lifecycle and real battle handoff; RtsScene3D systems for snapshot
+   - Continue splitting by ownership: GameCanvas composables for remaining
+     real battle handoff; RtsScene3D systems for snapshot
      intake/audio/prediction/render phases; stateSerializer modules by DTO
      family; Render3DEntities into unit/body/turret/building overlay
      renderers.
