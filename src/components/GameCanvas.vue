@@ -25,7 +25,6 @@ import {
   type NetworkRole,
   type BattleHandoff,
 } from '../game/network/NetworkManager';
-import { getMapSize } from '../config';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
 import { GOOD_TPS } from '../lodConfig';
@@ -36,7 +35,6 @@ import {
   getDefaultCap,
   loadStoredCap,
   saveStoredCap,
-  loadStoredRealCap,
   getDefaultGrid,
   loadStoredGrid,
   saveStoredGrid,
@@ -90,10 +88,7 @@ import {
   getDefaultPlayerName,
   saveUsername,
 } from '@/playerNamesConfig';
-import { GameServer } from '../game/server/GameServer';
-import { LocalGameConnection } from '../game/server/LocalGameConnection';
-import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
-import { applyStoredBattleServerSettings } from '../game/server/battleServerSettings';
+import type { GameServer } from '../game/server/GameServer';
 import type { GameConnection } from '../game/server/GameConnection';
 import {
   getGraphicsQuality,
@@ -184,6 +179,13 @@ import { useGameCanvasSoundTest } from './gameCanvasSoundTest';
 import { useGameCanvasRealBattleLifecycle } from './gameCanvasRealBattleLifecycle';
 import { useGameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
 import { useGameCanvasForegroundGame } from './gameCanvasForegroundGame';
+import {
+  applySettingsAndStartRealBattleServer,
+  createLocalRealBattleConnection,
+  createRealBattleServer,
+  createRemoteRealBattleConnection,
+  loadAndApplyRealBattleTerrain,
+} from './gameCanvasRealBattleStartup';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -1767,33 +1769,13 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
 
     let gameConnection: GameConnection;
 
-    // Apply the real-match terrain before constructing either the
-    // authoritative server or a remote client's renderer. The host
-    // persisted this through lobbySettings, so clients must read the
-    // same namespace before baking their terrain mesh.
-    const realTerrainCenter = loadStoredTerrainCenter('real');
-    const realTerrainDividers = loadStoredTerrainDividers('real');
-    const realTerrainMapShape = loadStoredTerrainMapShape('real');
-    const realMapDimensions = loadStoredMapLandDimensions('real');
-    const realMapSize = getMapSize(
-      false,
-      realMapDimensions.widthLandCells,
-      realMapDimensions.lengthLandCells,
-    );
-    setTerrainCenterShape(realTerrainCenter);
-    setTerrainDividersShape(realTerrainDividers);
-    setTerrainMapShape(realTerrainMapShape);
+    const realBattleTerrain = loadAndApplyRealBattleTerrain();
 
     if (networkRole.value !== 'client') {
-      // Create GameServer for host/offline (WASM physics)
-      const createdServer = await GameServer.create({
+      const createdServer = await createRealBattleServer({
         playerIds,
         aiPlayerIds,
-        terrainCenter: realTerrainCenter,
-        terrainDividers: realTerrainDividers,
-        terrainMapShape: realTerrainMapShape,
-        mapWidthLandCells: realMapDimensions.widthLandCells,
-        mapLengthLandCells: realMapDimensions.lengthLandCells,
+        terrain: realBattleTerrain,
       });
       if (!realBattleLifecycle.isCurrentStart(startGen) || !gameStarted.value || !containerRef.value) {
         createdServer.stop();
@@ -1829,20 +1811,18 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       // real battles, scope the host's own client exactly like remote
       // clients so red uses the same per-recipient delta history and
       // fidelity thresholds as every other player.
-      const localConnection = new LocalGameConnection(
+      const localConnection = createLocalRealBattleConnection(
         currentServer,
         networkRole.value === 'host' ? localPlayerId.value : undefined,
       );
       activeConnection = localConnection;
       gameConnection = localConnection;
 
-      applyStoredBattleServerSettings(currentServer, 'real', {
+      applySettingsAndStartRealBattleServer(currentServer, {
         ipAddress: localIpAddress.value,
-        maxTotalUnits: loadStoredRealCap(),
         simQuality: serverSimQuality.value,
         simSignalStates: serverSignalStates.value,
       });
-      currentServer.start();
       if (networkRole.value === 'host') {
         realBattleLifecycle.scheduleRecoveryKeyframes(
           currentServer,
@@ -1853,7 +1833,7 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       hasServer.value = true;
     } else {
       // Client: create RemoteGameConnection wrapping networkManager
-      const remoteConnection = new RemoteGameConnection();
+      const remoteConnection = createRemoteRealBattleConnection();
       activeConnection = remoteConnection;
       gameConnection = remoteConnection;
     }
@@ -1866,11 +1846,11 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
       playerIds,
       localPlayerId: localPlayerId.value,
       gameConnection,
-      mapWidth: realMapSize.width,
-      mapHeight: realMapSize.height,
-      terrainCenter: realTerrainCenter,
-      terrainDividers: realTerrainDividers,
-      terrainMapShape: realTerrainMapShape,
+      mapWidth: realBattleTerrain.mapSize.width,
+      mapHeight: realBattleTerrain.mapSize.height,
+      terrainCenter: realBattleTerrain.terrainCenter,
+      terrainDividers: realBattleTerrain.terrainDividers,
+      terrainMapShape: realBattleTerrain.terrainMapShape,
       backgroundMode: false,
       lookupPlayerName: (pid) => resolvePlayerName(pid, null),
     });
