@@ -1,8 +1,6 @@
 import Peer, { DataConnection, util, type PeerOptions } from 'peerjs';
-import { encode as msgpackEncode, decode as msgpackDecode } from '@msgpack/msgpack';
 import type { PlayerId } from '../sim/types';
 import type { Command } from '../sim/commands';
-import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import {
   getDefaultPlayerName,
   getInitialLocalUsername,
@@ -48,6 +46,7 @@ import type {
   NetworkMessage,
   NetworkRole,
 } from './NetworkTypes';
+import { NetworkSnapshotTransport } from './NetworkSnapshotTransport';
 
 // Generate a short room code (4 characters)
 function generateRoomCode(): string {
@@ -88,15 +87,6 @@ const PEER_OPTIONS: PeerOptions = {
 
 const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;
 const SIGNALING_RECONNECT_MAX_DELAY_MS = 10000;
-const SNAPSHOT_BACKPRESSURE_DROP_BYTES = 2 * 1024 * 1024;
-
-// Snapshot DTOs are pooled, so optional fields stay as own properties
-// assigned to `undefined`. Default msgpack encodes those as `nil`,
-// which the client decodes as `null` and treats as a present value
-// (e.g. `metalExtractionRate !== undefined` would fire on null).
-// `ignoreUndefined: true` makes msgpack skip those keys entirely,
-// matching `JSON.stringify`'s behavior.
-const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
 export class NetworkManager {
   private peer: Peer | null = null;
@@ -107,11 +97,7 @@ export class NetworkManager {
   private nextPlayerId: PlayerId = 2;
   private players: Map<PlayerId, LobbyPlayer> = new Map();
   private gameStarted: boolean = false;
-  private snapshotsSent: number = 0;
-  private snapshotsReceived: number = 0;
-  private snapshotsDropped: number = 0;
-  private snapshotDropCounts: Map<PlayerId, number> = new Map();
-  private pendingReceivedState: NetworkServerSnapshot | null = null;
+  private snapshotTransport = new NetworkSnapshotTransport();
 
   // Heartbeat presence tracking for the lobby roster. Once the real
   // battle starts, we keep sending heartbeats but stop force-closing
@@ -616,7 +602,7 @@ export class NetworkManager {
       this.connections.delete(playerId);
       this.players.delete(playerId);
       this.lastHeartbeatReceived.delete(playerId);
-      this.snapshotDropCounts.delete(playerId);
+      this.snapshotTransport.clearPlayer(playerId);
       this.detachDataChannelListeners(playerId);
       this.onPlayerLeft?.(playerId);
 
@@ -765,27 +751,15 @@ export class NetworkManager {
         // on the first frame after upgrade.
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message)) return;
-          this.snapshotsReceived++;
-          if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsReceived % 100 === 0) {
-            const hostConn = this.connections.get(1);
-            const dc = hostConn?.dataChannel;
-            debugLog(true, `[NET] Client received snapshot #${this.snapshotsReceived} (dc=${dc?.readyState ?? 'none'})`);
-          }
-          const raw = message.data;
-          let state: NetworkServerSnapshot;
-          if (raw instanceof Uint8Array) {
-            state = msgpackDecode(raw) as NetworkServerSnapshot;
-          } else if (raw instanceof ArrayBuffer) {
-            state = msgpackDecode(new Uint8Array(raw)) as NetworkServerSnapshot;
-          } else if (typeof raw === 'string') {
-            state = JSON.parse(raw);
-          } else {
-            state = raw as NetworkServerSnapshot;
-          }
+          const hostConn = this.connections.get(1);
+          const state = this.snapshotTransport.decodeReceivedState(
+            message.data,
+            hostConn?.dataChannel,
+          );
           if (this.onStateReceived) {
             this.onStateReceived(state);
-          } else if (!this.pendingReceivedState || (this.pendingReceivedState.isDelta && !state.isDelta)) {
-            this.pendingReceivedState = state;
+          } else {
+            this.snapshotTransport.storePendingState(state);
           }
         }
         break;
@@ -1073,23 +1047,6 @@ export class NetworkManager {
     }
   }
 
-  private shouldDropSnapshotForBackpressure(playerId: PlayerId, conn: DataConnection): boolean {
-    const dc = conn.dataChannel;
-    if (!conn.open || !dc || dc.readyState !== 'open') return true;
-    if (dc.bufferedAmount < SNAPSHOT_BACKPRESSURE_DROP_BYTES) return false;
-
-    this.snapshotsDropped++;
-    const playerDrops = (this.snapshotDropCounts.get(playerId) ?? 0) + 1;
-    this.snapshotDropCounts.set(playerId, playerDrops);
-    if (GAME_DIAGNOSTICS.networkSnapshots && (playerDrops === 1 || playerDrops % 100 === 0)) {
-      debugLog(
-        true,
-        `[NET] Dropping snapshot for player ${playerId}: data channel buffered=${dc.bufferedAmount} dropped=${playerDrops} totalDropped=${this.snapshotsDropped}`,
-      );
-    }
-    return true;
-  }
-
   // Send game state to a specific client (host only).
   // Pre-serializes to a MessagePack Uint8Array so PeerJS's BinaryPack
   // only handles a flat byte buffer (trivial) instead of a deep object
@@ -1099,23 +1056,14 @@ export class NetworkManager {
   sendStateTo(playerId: PlayerId, state: NetworkServerSnapshot): boolean {
     if (this.role !== 'host') return false;
     const conn = this.connections.get(playerId);
-    if (!conn || this.shouldDropSnapshotForBackpressure(playerId, conn)) return false;
-
-    this.snapshotsSent++;
-    const buf = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
-
-    if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsSent % 100 === 0) {
-      const dc = conn.dataChannel;
-      const buffered = dc ? dc.bufferedAmount : -1;
-      const dcState = dc ? dc.readyState : 'no-dc';
-      debugLog(true, `[NET] Host snapshot #${this.snapshotsSent} -> player ${playerId}: open=${conn.open} dc=${dcState} buffered=${buffered} size=${buf.byteLength} dropped=${this.snapshotDropCounts.get(playerId) ?? 0}`);
-    }
-
-    return this.sendTo(playerId, {
-      type: 'state',
-      gameId: this.getUniversalGameId(),
-      data: buf,
-    });
+    if (!conn) return false;
+    const message = this.snapshotTransport.buildStateMessage(
+      playerId,
+      conn,
+      this.getUniversalGameId(),
+      state,
+    );
+    return message !== null ? this.sendTo(playerId, message) : false;
   }
 
   // Send command to host (client only)
@@ -1143,9 +1091,7 @@ export class NetworkManager {
   }
 
   consumePendingState(): NetworkServerSnapshot | null {
-    const state = this.pendingReceivedState;
-    this.pendingReceivedState = null;
-    return state;
+    return this.snapshotTransport.consumePendingState();
   }
 
   // Start the game (host only)
@@ -1244,9 +1190,7 @@ export class NetworkManager {
     this.role = null;
     this.gameStarted = false;
     this.players.clear();
-    this.pendingReceivedState = null;
-    this.snapshotDropCounts.clear();
-    this.snapshotsDropped = 0;
+    this.snapshotTransport.reset();
 
     // Clear all callbacks to release closure references
     this.onPlayerJoined = undefined;
