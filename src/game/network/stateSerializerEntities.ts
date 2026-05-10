@@ -1,0 +1,404 @@
+import type { WorldState } from '../sim/WorldState';
+import type { Entity, PlayerId } from '../sim/types';
+import { getBuildFraction } from '../sim/buildableHelpers';
+import { isCommander } from '../sim/combat/combatUtils';
+import type {
+  NetworkServerSnapshotAction,
+  NetworkServerSnapshotEntity,
+  NetworkServerSnapshotTurret,
+} from './NetworkManager';
+import type { Vec3 } from '../../types/vec2';
+import {
+  ENTITY_CHANGED_ACTIONS,
+  ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_FACTORY,
+  ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_JUMP,
+  ENTITY_CHANGED_MOVEMENT_ACCEL,
+  ENTITY_CHANGED_NORMAL,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_SUSPENSION,
+  ENTITY_CHANGED_TURRETS,
+  ENTITY_CHANGED_VEL,
+  buildingTypeToCode,
+  turretIdToCode,
+  turretStateToCode,
+  unitTypeToCode,
+} from '../../types/network';
+import {
+  createActionDto,
+  createTurretDto,
+  createWaypointDto,
+  type WaypointDto,
+} from './snapshotDtoCopy';
+import {
+  clearNetworkUnitActions,
+  clearNetworkUnitJump,
+  clearNetworkUnitMovementAccel,
+  clearNetworkUnitStaticFields,
+  clearNetworkUnitSurfaceNormal,
+  clearNetworkUnitSuspension,
+  createNetworkUnitSnapshot,
+  writeNetworkUnitActions,
+  writeNetworkUnitJump,
+  writeNetworkUnitMovementAccel,
+  writeNetworkUnitStaticFields,
+  writeNetworkUnitSurfaceNormal,
+  writeNetworkUnitSuspension,
+  writeNetworkUnitVelocity,
+} from './unitSnapshotFields';
+
+const INITIAL_ENTITY_POOL = 200;
+const MAX_WEAPONS_PER_ENTITY = 8;
+const MAX_ACTIONS_PER_ENTITY = 16;
+const MAX_WAYPOINTS_PER_ENTITY = 16;
+
+type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
+type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
+type FactorySub = NonNullable<BuildingSub['factory']>;
+
+type PooledEntry = {
+  entity: NetworkServerSnapshotEntity;
+  unitSub: UnitSub;
+  unitMovementAccel: Vec3;
+  unitSuspension: NonNullable<UnitSub['suspension']>;
+  unitJump: NonNullable<UnitSub['jump']>;
+  unitRadius: { body: number; shot: number; push: number };
+  buildingDim: { x: number; y: number };
+  solarSub: { open: boolean };
+  buildingSub: BuildingSub;
+  factorySub: FactorySub;
+  turrets: NetworkServerSnapshotTurret[];
+  actions: NetworkServerSnapshotAction[];
+  waypoints: WaypointDto[];
+  buildQueue: number[];
+};
+
+function qPos(n: number): number {
+  return Math.round(n);
+}
+
+function qVel(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function qRot(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
+function qNormal(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
+function qSuspension(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function writeTurretsToPool(
+  pool: PooledEntry,
+  weapons: NonNullable<Entity['combat']>['turrets'],
+): NetworkServerSnapshotTurret[] {
+  const count = weapons.length;
+  while (pool.turrets.length < count) pool.turrets.push(createTurretDto());
+  pool.turrets.length = count;
+  for (let i = 0; i < count; i++) {
+    const src = weapons[i];
+    const dst = pool.turrets[i];
+    const t = dst.turret;
+    t.id = turretIdToCode(src.config.id);
+    t.angular.rot = qRot(src.rotation);
+    t.angular.vel = qRot(src.angularVelocity);
+    t.angular.pitch = qRot(src.pitch);
+    dst.targetId = src.target ?? undefined;
+    dst.state = turretStateToCode(src.state);
+    dst.currentForceFieldRange = src.forceField?.range;
+  }
+  return pool.turrets;
+}
+
+function createPooledEntry(): PooledEntry {
+  const turrets: NetworkServerSnapshotTurret[] = [];
+  for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) turrets.push(createTurretDto());
+  const actions: NetworkServerSnapshotAction[] = [];
+  for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createActionDto());
+  const waypoints: WaypointDto[] = [];
+  for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createWaypointDto());
+  return {
+    entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
+    unitSub: createNetworkUnitSnapshot(),
+    unitMovementAccel: { x: 0, y: 0, z: 0 },
+    unitSuspension: {
+      offset: { x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+    },
+    unitJump: {},
+    unitRadius: { body: 0, shot: 0, push: 0 },
+    buildingDim: { x: 0, y: 0 },
+    solarSub: { open: false },
+    buildingSub: {
+      type: undefined, dim: undefined, hp: { curr: 0, max: 0 },
+      build: {
+        complete: false,
+        paid: { energy: 0, mana: 0, metal: 0 },
+      },
+      metalExtractionRate: undefined,
+    },
+    factorySub: {
+      queue: [], progress: 0, producing: false,
+      energyRate: 0, manaRate: 0, metalRate: 0,
+      waypoints: [],
+    },
+    turrets,
+    actions,
+    waypoints,
+    buildQueue: [],
+  };
+}
+
+const pool: PooledEntry[] = [];
+let poolIndex = 0;
+
+for (let i = 0; i < INITIAL_ENTITY_POOL; i++) {
+  pool.push(createPooledEntry());
+}
+
+function getPooledEntry(): PooledEntry {
+  if (poolIndex >= pool.length) {
+    pool.push(createPooledEntry());
+  }
+  return pool[poolIndex++];
+}
+
+export function resetEntitySnapshotPool(): void {
+  poolIndex = 0;
+}
+
+export function serializeEntitySnapshot(
+  entity: Entity,
+  changedFields: number | undefined,
+  world: WorldState,
+): NetworkServerSnapshotEntity | null {
+  const poolEntry = getPooledEntry();
+  const ne = poolEntry.entity;
+  const isFull = changedFields === undefined;
+
+  ne.id = entity.id;
+  ne.type = entity.type;
+  ne.playerId = entity.ownership?.playerId ?? 1 as PlayerId;
+  if (isFull) {
+    delete ne.changedFields;
+  } else {
+    ne.changedFields = changedFields;
+  }
+
+  if (isFull || (changedFields & ENTITY_CHANGED_POS)) {
+    ne.pos.x = qPos(entity.transform.x);
+    ne.pos.y = qPos(entity.transform.y);
+    ne.pos.z = qPos(entity.transform.z);
+  }
+  if (isFull || (changedFields & ENTITY_CHANGED_ROT)) {
+    ne.rotation = qRot(entity.transform.rotation);
+  }
+
+  ne.unit = undefined;
+  ne.building = undefined;
+
+  if (entity.type === 'unit' && entity.unit) {
+    const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
+      ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS |
+      ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT |
+      ENTITY_CHANGED_BUILDING |
+      ENTITY_CHANGED_NORMAL |
+      ENTITY_CHANGED_SUSPENSION |
+      ENTITY_CHANGED_JUMP |
+      ENTITY_CHANGED_MOVEMENT_ACCEL;
+    const hasUnitFields = isFull || (changedFields! & unitFieldMask);
+
+    if (hasUnitFields) {
+      const u = poolEntry.unitSub;
+      ne.unit = u;
+
+      if (isFull) {
+        writeNetworkUnitStaticFields(
+          u,
+          entity.unit,
+          poolEntry.unitRadius,
+          isCommander(entity),
+        );
+      } else {
+        clearNetworkUnitStaticFields(u);
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
+        writeNetworkUnitVelocity(u, entity.unit, qVel);
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
+        writeNetworkUnitMovementAccel(u, entity.unit, poolEntry.unitMovementAccel, qVel);
+      } else {
+        clearNetworkUnitMovementAccel(u);
+      }
+
+      if (
+        isFull ||
+        (changedFields! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL))
+      ) {
+        writeNetworkUnitSurfaceNormal(u, entity.unit, qNormal);
+      } else {
+        clearNetworkUnitSurfaceNormal(u);
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_SUSPENSION)) {
+        writeNetworkUnitSuspension(u, entity.unit, poolEntry.unitSuspension, qSuspension, qVel);
+      } else {
+        clearNetworkUnitSuspension(u);
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_JUMP)) {
+        writeNetworkUnitJump(u, entity.unit, poolEntry.unitJump);
+      } else {
+        clearNetworkUnitJump(u);
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {
+        u.hp.curr = entity.unit.hp;
+        u.hp.max = entity.unit.maxHp;
+      }
+
+      u.build = undefined;
+      if ((isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) && entity.buildable) {
+        u.build = {
+          complete: entity.buildable.isComplete,
+          paid: {
+            energy: entity.buildable.paid.energy,
+            mana: entity.buildable.paid.mana,
+            metal: entity.buildable.paid.metal,
+          },
+        };
+      }
+
+      clearNetworkUnitActions(u);
+      if (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS)) {
+        writeNetworkUnitActions(u, entity.unit, poolEntry.actions);
+      }
+
+      u.turrets = undefined;
+      const weapons0 = entity.combat?.turrets;
+      if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
+        u.turrets = writeTurretsToPool(poolEntry, weapons0);
+      }
+
+      u.buildTargetId = undefined;
+      if (entity.builder) {
+        u.buildTargetId = entity.builder.currentBuildTarget ?? null;
+      }
+    }
+  }
+
+  if (entity.type === 'building' && entity.building) {
+    const buildingFieldMask = ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING |
+      ENTITY_CHANGED_FACTORY | ENTITY_CHANGED_TURRETS;
+    const hasBuildingFields = isFull || (changedFields! & buildingFieldMask);
+
+    if (hasBuildingFields) {
+      const b = poolEntry.buildingSub;
+      ne.building = b;
+      b.solar = undefined;
+      b.metalExtractionRate = undefined;
+      b.turrets = undefined;
+
+      if (isFull) {
+        b.dim = poolEntry.buildingDim;
+        b.dim.x = entity.building.width;
+        b.dim.y = entity.building.height;
+        b.type = entity.buildingType !== undefined
+          ? buildingTypeToCode(entity.buildingType)
+          : undefined;
+        b.metalExtractionRate = entity.buildingType === 'extractor'
+          ? entity.metalExtractionRate ?? 0
+          : undefined;
+      } else {
+        b.dim = undefined;
+        b.type = undefined;
+        b.metalExtractionRate = undefined;
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {
+        b.hp.curr = entity.building.hp;
+        b.hp.max = entity.building.maxHp;
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) {
+        if (entity.buildable) {
+          const buildable = entity.buildable;
+          b.build.complete = buildable.isComplete;
+          b.build.paid.energy = buildable.paid.energy;
+          b.build.paid.mana = buildable.paid.mana;
+          b.build.paid.metal = buildable.paid.metal;
+        } else {
+          b.build.complete = true;
+          b.build.paid.energy = 0;
+          b.build.paid.mana = 0;
+          b.build.paid.metal = 0;
+        }
+        if (entity.building.solar) {
+          const s = poolEntry.solarSub;
+          s.open = entity.building.solar.open;
+          b.solar = s;
+        }
+      }
+
+      const weapons0 = entity.combat?.turrets;
+      if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
+        b.turrets = writeTurretsToPool(poolEntry, weapons0);
+      }
+
+      b.factory = undefined;
+      if (isFull || (changedFields! & ENTITY_CHANGED_FACTORY)) {
+        if (entity.factory) {
+          const f = poolEntry.factorySub;
+          b.factory = f;
+
+          const srcQueue = entity.factory.buildQueue;
+          poolEntry.buildQueue.length = srcQueue.length;
+          for (let i = 0; i < srcQueue.length; i++) {
+            poolEntry.buildQueue[i] = unitTypeToCode(srcQueue[i]);
+          }
+          f.queue = poolEntry.buildQueue;
+
+          if (entity.factory.currentShellId != null) {
+            const shell = world.getEntity(entity.factory.currentShellId);
+            f.progress = shell?.buildable
+              ? getBuildFraction(shell.buildable)
+              : entity.factory.currentBuildProgress;
+          } else {
+            f.progress = 0;
+          }
+          f.producing = entity.factory.isProducing;
+          f.energyRate = entity.factory.energyRateFraction;
+          f.manaRate = entity.factory.manaRateFraction;
+          f.metalRate = entity.factory.metalRateFraction;
+
+          const wps = entity.factory.waypoints;
+          const wpCount = 1 + wps.length;
+          while (poolEntry.waypoints.length < wpCount) poolEntry.waypoints.push(createWaypointDto());
+          poolEntry.waypoints.length = wpCount;
+          poolEntry.waypoints[0].pos.x = entity.factory.rallyX;
+          poolEntry.waypoints[0].pos.y = entity.factory.rallyY;
+          poolEntry.waypoints[0].posZ = undefined;
+          poolEntry.waypoints[0].type = 'move';
+          for (let i = 0; i < wps.length; i++) {
+            poolEntry.waypoints[i + 1].pos.x = wps[i].x;
+            poolEntry.waypoints[i + 1].pos.y = wps[i].y;
+            poolEntry.waypoints[i + 1].posZ = wps[i].z;
+            poolEntry.waypoints[i + 1].type = wps[i].type;
+          }
+          f.waypoints = poolEntry.waypoints;
+        }
+      }
+    }
+  }
+
+  return ne;
+}
