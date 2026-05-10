@@ -12,7 +12,6 @@ import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotGridCell,
-  NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotMeta,
 } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
@@ -36,6 +35,7 @@ import {
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { ClientCaptureTileStore } from './ClientCaptureTileStore';
+import { ClientMinimapOverrideStore } from './ClientMinimapOverrideStore';
 import { ClientSprayTargetStore } from './ClientSprayTargetStore';
 import {
   createServerTarget,
@@ -53,21 +53,10 @@ import { ClientPredictionStepper } from './ClientPredictionStepper';
 import { ClientProjectileStore } from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
-import { getPlayerPrimaryColor } from '../sim/types';
 export type { PredictionLodContext, PredictionLodTier } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
-const minimapColorCache = new Map<number, string>();
-
-function minimapColor(color: number): string {
-  let cached = minimapColorCache.get(color);
-  if (!cached) {
-    cached = '#' + color.toString(16).padStart(6, '0');
-    minimapColorCache.set(color, cached);
-  }
-  return cached;
-}
 
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
@@ -81,7 +70,9 @@ export class ClientViewState {
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
-  private minimapEntitiesOverride: MinimapEntity[] | null = null;
+  private minimapOverrideStore = new ClientMinimapOverrideStore({
+    isSelected: (id) => this.selectionState.has(id),
+  });
 
   // Game over state
   private gameOverWinnerId: PlayerId | null = null;
@@ -278,30 +269,6 @@ export class ClientViewState {
     }
   }
 
-  private applyMinimapEntityOverride(
-    source: readonly NetworkServerSnapshotMinimapEntity[] | undefined,
-  ): void {
-    if (!source) {
-      this.minimapEntitiesOverride = null;
-      return;
-    }
-    const out = this.minimapEntitiesOverride ?? (this.minimapEntitiesOverride = []);
-    out.length = source.length;
-    for (let i = 0; i < source.length; i++) {
-      const src = source[i];
-      let dst = out[i];
-      if (!dst) {
-        dst = { pos: { x: 0, y: 0 }, type: 'unit', color: '' };
-        out[i] = dst;
-      }
-      dst.pos.x = src.pos.x;
-      dst.pos.y = src.pos.y;
-      dst.type = src.type;
-      dst.color = minimapColor(getPlayerPrimaryColor(src.playerId));
-      dst.isSelected = this.selectionState.has(src.id) || undefined;
-    }
-  }
-
   private markEntityPredictionActive(entity: Entity): void {
     if (entity.unit) {
       this.activeEntityPredictionIds.add(entity.id);
@@ -445,11 +412,7 @@ export class ClientViewState {
       this.captureTileStore.setTerrainBuildabilityGrid(state.buildability);
     }
     this.currentTick = state.tick;
-    if (state.minimapEntities !== undefined) {
-      this.applyMinimapEntityOverride(state.minimapEntities);
-    } else if (!state.isDelta) {
-      this.applyMinimapEntityOverride(undefined);
-    }
+    this.minimapOverrideStore.applySnapshot(state.minimapEntities, state.isDelta);
     let cacheNeedsInvalidate = false;
     const now = performance.now();
     this.projectileStore.projectileSpawns.recordSnapshot(now);
@@ -677,7 +640,7 @@ export class ClientViewState {
   }
 
   getMinimapEntitiesOverride(): readonly MinimapEntity[] | null {
-    return this.minimapEntitiesOverride;
+    return this.minimapOverrideStore.getOverride();
   }
 
   getUnits(): Entity[] {
@@ -929,6 +892,7 @@ export class ClientViewState {
     this.projectileStore.clear();
     this.sprayTargetStore.reset();
     this.pendingAudioEvents = EMPTY_AUDIO;
+    this.minimapOverrideStore.reset();
     this.gameOverWinnerId = null;
     this.selectionState.reset();
     this.gridCells = [];
