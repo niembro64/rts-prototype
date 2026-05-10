@@ -12,7 +12,7 @@ Please always commit and push before and after any code changes you make. If the
 1. Oversized orchestration files violate the small-file goal and hide lifecycle
    coupling.
    Evidence:
-   - src/components/GameCanvas.vue is still about 2557 lines.
+   - src/components/GameCanvas.vue is still about 2348 lines.
    - src/game/scenes/RtsScene3D.ts is about 2151 lines and owns snapshot intake,
      prediction, audio scheduling, camera, selection, minimap data, renderer
      update ordering, and renderer teardown. See the large update loop at
@@ -26,7 +26,7 @@ Please always commit and push before and after any code changes you make. If the
    - Lifecycle ownership is hard to prove, duplicate helpers reappear, and
      fixes often touch unrelated concerns.
    Remedy:
-   - Continue splitting by ownership: remaining GameCanvas template/overlay
+   - Continue splitting by ownership: remaining GameCanvas template/control-bar
      sections; RtsScene3D systems for snapshot intake/audio/prediction/render
      phases; stateSerializer modules by DTO family; Render3DEntities into
      unit/body/turret/building overlay renderers.

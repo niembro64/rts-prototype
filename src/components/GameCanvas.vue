@@ -12,9 +12,7 @@ import SelectionPanel from './SelectionPanel.vue';
 import TopBar from './TopBar.vue';
 import Minimap from './Minimap.vue';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
-import CameraTutorial from './CameraTutorial.vue';
-import { persist, readPersisted } from '../persistence';
-import SoundTestModal from './SoundTestModal.vue';
+import GameCanvasOverlays from './GameCanvasOverlays.vue';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import {
   networkManager,
@@ -124,19 +122,6 @@ const {
   toggleSpectateMode,
 } = useGameCanvasChromeState(gameStarted, applyPlayerClientEnabled);
 
-// Camera tutorial — shown the first time the player enters a real
-// game. Three flashing cards (ZOOM / PAN / ROTATE) clear themselves
-// when the player performs each input. Once all three are cleared
-// the completion is persisted and the overlay never shows again.
-// Persistence key uses the same prefix as other RTS settings so a
-// localStorage clear wipes it alongside the rest of the user's
-// preferences. Reset by clearing the key from devtools.
-const CAMERA_TUTORIAL_DONE_KEY = 'rts-camera-tutorial-done';
-const cameraTutorialDone = ref(readPersisted(CAMERA_TUTORIAL_DONE_KEY) === 'true');
-function handleCameraTutorialDone(): void {
-  cameraTutorialDone.value = true;
-  persist(CAMERA_TUTORIAL_DONE_KEY, 'true');
-}
 function getActiveOrbitCamera(): import('../game/render3d/OrbitCamera').OrbitCamera | null {
   return foregroundGame.getScene()?.getOrbitCamera() ?? null;
 }
@@ -727,9 +712,6 @@ function secPerFullsnap(ratio: number): string {
   return `~1 fullsnap every ${+sec.toPrecision(2)}s`;
 }
 
-function dismissGameOver(): void {
-  gameOverWinner.value = null;
-}
 </script>
 
 <template>
@@ -1970,69 +1952,24 @@ function dismissGameOver(): void {
       @reset-defaults="resetDemoDefaults"
     />
 
-    <!-- Camera tutorial — only shown during a REAL game and only
-         until the player has performed all three movements once.
-         pointer-events are off on the overlay so it never blocks
-         clicks on units or terrain underneath. -->
-    <CameraTutorial
-      v-if="gameStarted && currentBattleMode === 'real' && !cameraTutorialDone"
+    <GameCanvasOverlays
+      :is-mobile="isMobile"
+      :show-lobby="showLobby"
+      :spectate-mode="spectateMode"
+      :mobile-bars-visible="mobileBarsVisible"
+      :show-sound-test="showSoundTest"
+      :game-started="gameStarted"
+      :current-battle-mode="currentBattleMode"
       :get-orbit="getActiveOrbitCamera"
-      @done="handleCameraTutorialDone"
+      :game-over-winner="gameOverWinner"
+      :winner-name="gameOverWinner === null ? '' : resolvePlayerName(gameOverWinner)"
+      :winner-color="gameOverWinner === null ? '' : getPlayerColor(gameOverWinner)"
+      @toggle-spectate-mode="toggleSpectateMode"
+      @toggle-mobile-bars="mobileBarsVisible = !mobileBarsVisible"
+      @close-sound-test="showSoundTest = false"
+      @dismiss-game-over="gameOverWinner = null"
+      @restart-game="restartGame"
     />
-
-    <!-- Spectate mode toggle — restored. When the user has hidden
-         the lobby to watch the demo battle full-screen, this ☰
-         button brings the lobby back. -->
-    <button
-      v-if="!isMobile && showLobby && spectateMode"
-      class="spectate-toggle-btn"
-      @click="toggleSpectateMode"
-      title="Show Menu"
-    >
-      ☰
-    </button>
-
-    <!-- Mobile: toggle bottom bars -->
-    <button
-      v-if="isMobile"
-      class="mobile-bars-toggle"
-      :class="{ active: mobileBarsVisible }"
-      @click="mobileBarsVisible = !mobileBarsVisible"
-      :title="mobileBarsVisible ? 'Hide Controls' : 'Show Controls'"
-    >
-      ☰
-    </button>
-
-    <!-- Sound Test Modal -->
-    <SoundTestModal
-      :visible="showSoundTest"
-      @close="showSoundTest = false"
-    />
-
-    <!-- Game Over Banner (dismissible, game keeps running) -->
-    <div
-      v-if="gameOverWinner !== null"
-      class="game-over-banner"
-      @click="dismissGameOver"
-    >
-      <div class="game-over-content" @click.stop>
-        <h1
-          class="winner-text"
-          :style="{ color: getPlayerColor(gameOverWinner) }"
-        >
-          {{ resolvePlayerName(gameOverWinner) }} wins!
-        </h1>
-        <p class="loser-text">All other commanders were destroyed</p>
-        <div class="game-over-actions">
-          <button class="restart-btn" @click="restartGame">
-            Return to Lobby
-          </button>
-          <button class="dismiss-btn" @click="dismissGameOver">
-            Continue Watching
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -2163,152 +2100,6 @@ function dismissGameOver(): void {
 }
 
 
-
-/* Game Over Banner */
-.game-over-banner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  cursor: pointer;
-}
-
-.game-over-content {
-  /* Aligned with the bottom-bar aesthetic: dark semi-transparent
-   * base + muted gray border. Rounded corners stay; the soft glow
-   * is preserved as the game-over moment's accent. */
-  text-align: center;
-  padding: 40px 60px;
-  background: rgba(15, 18, 24, 0.92);
-  border: 1px solid #444;
-  border-radius: 16px;
-  box-shadow: 0 0 40px rgba(68, 68, 170, 0.4);
-  cursor: default;
-}
-
-.winner-text {
-  font-family: monospace;
-  font-size: 48px;
-  margin: 0 0 20px 0;
-  text-shadow: 0 0 20px currentColor;
-}
-
-.loser-text {
-  font-family: monospace;
-  font-size: 20px;
-  color: #cccccc;
-  margin: 0 0 30px 0;
-}
-
-.game-over-actions {
-  display: flex;
-  gap: 16px;
-  justify-content: center;
-}
-
-.restart-btn {
-  font-family: monospace;
-  font-size: 16px;
-  padding: 12px 32px;
-  background: #4444aa;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.restart-btn:hover {
-  background: #5555cc;
-  transform: scale(1.05);
-}
-
-.restart-btn:active {
-  transform: scale(0.98);
-}
-
-.dismiss-btn {
-  font-family: monospace;
-  font-size: 16px;
-  padding: 12px 32px;
-  background: rgba(60, 60, 60, 0.9);
-  color: #ccc;
-  border: 1px solid #666;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.dismiss-btn:hover {
-  background: rgba(80, 80, 80, 0.9);
-  border-color: #888;
-  color: white;
-  transform: scale(1.05);
-}
-
-.dismiss-btn:active {
-  transform: scale(0.98);
-}
-
-/* Spectate mode toggle button — restored. Aligned with the
- * bottom-bar aesthetic: dark base + muted gray border. */
-.spectate-toggle-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 3001;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background: rgba(15, 18, 24, 0.92);
-  border: 1px solid #444;
-  border-radius: 8px;
-  color: #aaa;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.spectate-toggle-btn:hover {
-  background: rgba(35, 35, 48, 0.96);
-  border-color: #777;
-  color: white;
-}
-
-/* Mobile bars toggle button */
-.mobile-bars-toggle {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 3001;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background: rgba(20, 20, 35, 0.8);
-  border: 2px solid #555;
-  border-radius: 8px;
-  color: #667;
-  font-size: 18px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mobile-bars-toggle.active {
-  background: rgba(40, 60, 40, 0.9);
-  border-color: #6a6;
-  color: #fff;
-}
 
 /* Bottom control bars */
 .bottom-controls-shell {
