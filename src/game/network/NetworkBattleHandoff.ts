@@ -71,15 +71,6 @@ export function normalizeBattleHandoffMessage(
   return buildBattleHandoff(fallback);
 }
 
-export function applyBattleHandoffPlayers(
-  roster: Map<PlayerId, LobbyPlayer>,
-  handoff: BattleHandoff,
-): void {
-  for (const player of handoff.players) {
-    roster.set(player.playerId, { ...player });
-  }
-}
-
 function normalizePlayerIds(playerIds: Iterable<PlayerId>): PlayerId[] {
   return [...new Set(playerIds)].sort((a, b) => a - b);
 }

@@ -13,18 +13,21 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 
 1. Split src/game/network/NetworkManager.ts by networking responsibility.
    Evidence:
-   - src/game/network/NetworkManager.ts is still 1063 lines.
+   - src/game/network/NetworkManager.ts is still 960 lines.
    - Snapshot encoding/decoding, pending-state buffering, and backpressure
      counters now live in src/game/network/NetworkSnapshotTransport.ts, but
-     PeerJS lifecycle, lobby roster/player-info handling, connection
-     handlers, and commands remain concentrated in NetworkManager.
+     PeerJS lifecycle, connection handlers, and commands remain concentrated
+     in NetworkManager.
    - DataChannel listener/interval lifecycle now lives in
      src/game/network/NetworkDataChannelMonitor.ts.
    - Heartbeat timers, received-timestamp tracking, and stale-peer timeout
      checks now live in src/game/network/NetworkHeartbeatTracker.ts.
-   - Battle handoff build/normalize/apply logic now lives in
+   - Battle handoff build/normalize logic now lives in
      src/game/network/NetworkBattleHandoff.ts, with room-code helpers in
      src/game/network/NetworkRoomCode.ts.
+   - Lobby roster storage, player-info merging, local info payloads, and
+     player-info update message construction now live in
+     src/game/network/NetworkLobbyRoster.ts.
    Impact:
    - Peer/session/lobby/snapshot/command concerns share one large ownership
      surface.

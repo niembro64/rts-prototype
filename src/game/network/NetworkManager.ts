@@ -3,7 +3,6 @@ import type { PlayerId } from '../sim/types';
 import type { Command } from '../sim/commands';
 import {
   getDefaultPlayerName,
-  getInitialLocalUsername,
   saveUsername,
   MAX_NAME_LENGTH,
 } from '@/playerNamesConfig';
@@ -40,18 +39,17 @@ import {
 } from '@/types/network';
 import type {
   NetworkServerSnapshot,
-  LobbyPlayerInfoPayload,
   LobbyPlayer,
   NetworkMessage,
   NetworkRole,
 } from './NetworkTypes';
 import {
-  applyBattleHandoffPlayers,
   buildBattleHandoff,
   normalizeBattleHandoffMessage,
 } from './NetworkBattleHandoff';
 import { NetworkDataChannelMonitor } from './NetworkDataChannelMonitor';
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
+import { NetworkLobbyRoster } from './NetworkLobbyRoster';
 import {
   generateRoomCode,
   normalizeRoomCode,
@@ -88,7 +86,7 @@ export class NetworkManager {
   private roomCode: string = '';
   private localPlayerId: PlayerId = 1;
   private nextPlayerId: PlayerId = 2;
-  private players: Map<PlayerId, LobbyPlayer> = new Map();
+  private roster = new NetworkLobbyRoster();
   private gameStarted: boolean = false;
   private snapshotTransport = new NetworkSnapshotTransport();
   private dataChannelMonitor = new NetworkDataChannelMonitor();
@@ -192,100 +190,16 @@ export class NetworkManager {
     }, delay);
   }
 
-  private getBrowserTimezone(): string {
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    } catch {
-      return '';
-    }
-  }
-
-  private formatLocalTime(timezone: string | undefined): string | undefined {
-    if (!timezone) return undefined;
-    try {
-      return new Intl.DateTimeFormat('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-        timeZone: timezone,
-        timeZoneName: 'short',
-      }).format(new Date());
-    } catch {
-      return undefined;
-    }
-  }
-
-  private applyPlayerInfo(player: LobbyPlayer, info: LobbyPlayerInfoPayload): boolean {
-    let changed = false;
-    const setIfChanged = <K extends keyof LobbyPlayer>(key: K, value: LobbyPlayer[K] | undefined): void => {
-      if (value === undefined || player[key] === value) return;
-      player[key] = value;
-      changed = true;
-    };
-
-    setIfChanged('ipAddress', info.ipAddress);
-    setIfChanged('location', info.location);
-    setIfChanged('timezone', info.timezone);
-    setIfChanged('localTime', info.localTime);
-    if (info.name !== undefined && info.name.length > 0) {
-      const trimmed = info.name.trim().slice(0, MAX_NAME_LENGTH);
-      if (trimmed.length > 0 && player.name !== trimmed) {
-        player.name = trimmed;
-        changed = true;
-      }
-    }
-    return changed;
-  }
-
-  private copyPlayer(player: LobbyPlayer): LobbyPlayer {
-    return { ...player };
-  }
-
-  private playerInfoUpdateMessage(player: LobbyPlayer): NetworkMessage {
-    return {
-      type: 'playerInfoUpdate',
-      gameId: this.getUniversalGameId(),
-      playerId: player.playerId,
-      ipAddress: player.ipAddress,
-      location: player.location,
-      timezone: player.timezone,
-      localTime: player.localTime,
-      name: player.name,
-    };
-  }
-
-  private buildLocalPlayerInfo(): LobbyPlayerInfoPayload {
-    const self = this.players.get(this.localPlayerId);
-    const timezone = self?.timezone || this.getBrowserTimezone();
-    return {
-      name: self?.name ?? getInitialLocalUsername(),
-      ipAddress: self?.ipAddress,
-      location: self?.location,
-      timezone: timezone || undefined,
-      localTime: this.formatLocalTime(timezone),
-    };
-  }
-
   private refreshLocalPlayerInfo(notify = true): LobbyPlayer | null {
-    const self = this.players.get(this.localPlayerId);
-    if (!self) return null;
-    const changed = this.applyPlayerInfo(self, this.buildLocalPlayerInfo());
-    if (changed && notify) this.onPlayerInfoUpdate?.(this.copyPlayer(self));
-    return self;
+    const { player, changed } = this.roster.refreshLocalPlayerInfo(this.localPlayerId);
+    if (player && changed && notify) this.onPlayerInfoUpdate?.(this.roster.copy(player));
+    return player;
   }
 
   private mergeRosterPlayer(player: LobbyPlayer): LobbyPlayer {
-    const existing = this.players.get(player.playerId);
-    if (!existing) {
-      const copy = this.copyPlayer(player);
-      this.players.set(copy.playerId, copy);
-      this.onPlayerJoined?.(this.copyPlayer(copy));
-      return copy;
-    }
-    existing.isHost = player.isHost;
-    this.applyPlayerInfo(existing, player);
-    return existing;
+    const result = this.roster.merge(player);
+    if (result.joined) this.onPlayerJoined?.(this.roster.copy(result.player));
+    return result.player;
   }
 
   // Host a new game
@@ -294,7 +208,7 @@ export class NetworkManager {
     this.role = 'host';
     this.localPlayerId = 1;
     this.nextPlayerId = 2;
-    this.players.clear();
+    this.roster.clear();
     this.connections.clear();
 
     // Add host as player 1. The host IS the local player when hosting,
@@ -303,12 +217,7 @@ export class NetworkManager {
     // gets persisted immediately so subsequent loads are stable). The
     // user can edit this from their lobby player slot; setLocalPlayerName below
     // persists + broadcasts the change.
-    const hostPlayer: LobbyPlayer = {
-      playerId: 1,
-      name: getInitialLocalUsername(),
-      isHost: true,
-    };
-    this.players.set(1, hostPlayer);
+    this.roster.seedHost(1);
 
     return new Promise((resolve, reject) => {
       let resolved = false;
@@ -401,7 +310,7 @@ export class NetworkManager {
   async joinGame(roomCode: string): Promise<void> {
     this.roomCode = normalizeRoomCode(roomCode);
     this.role = 'client';
-    this.players.clear();
+    this.roster.clear();
     this.connections.clear();
 
     return new Promise((resolve, reject) => {
@@ -512,7 +421,7 @@ export class NetworkManager {
         name: playerName,
         isHost: false,
       };
-      this.players.set(playerId, player);
+      this.roster.set(player);
 
       // Send player their assignment
       this.sendTo(playerId, {
@@ -528,7 +437,7 @@ export class NetworkManager {
        // info-update follow-up the joiner would see existing
        // players in the list but with their IP/location columns
        // blank until those players happened to re-report.
-      for (const p of this.players.values()) {
+      for (const p of this.roster.values()) {
         this.sendTo(playerId, {
           type: 'playerJoined',
           gameId: this.getUniversalGameId(),
@@ -541,7 +450,7 @@ export class NetworkManager {
           p.timezone !== undefined ||
           p.localTime !== undefined
         ) {
-          this.sendTo(playerId, this.playerInfoUpdateMessage(p));
+          this.sendTo(playerId, this.roster.buildPlayerInfoUpdateMessage(p, this.getUniversalGameId()));
         }
       }
 
@@ -581,7 +490,7 @@ export class NetworkManager {
     conn.on('close', () => {
       console.warn(`[NET] Player ${playerId} connection CLOSED (role=${this.role})`);
       this.connections.delete(playerId);
-      this.players.delete(playerId);
+      this.roster.delete(playerId);
       this.heartbeatTracker.untrack(playerId);
       this.snapshotTransport.clearPlayer(playerId);
       this.dataChannelMonitor.detach(playerId);
@@ -619,14 +528,14 @@ export class NetworkManager {
       case 'heartbeat':
         if (!this.isMessageForCurrentGame(message)) return;
         if (this.role === 'host' && message.playerInfo) {
-          const player = this.players.get(fromPlayerId);
-          if (player && this.applyPlayerInfo(player, message.playerInfo)) {
-            this.onPlayerInfoUpdate?.(this.copyPlayer(player));
+          const { player, changed } = this.roster.applyInfo(fromPlayerId, message.playerInfo);
+          if (player && changed) {
+            this.onPlayerInfoUpdate?.(this.roster.copy(player));
           }
         } else if (this.role === 'client' && message.players) {
           for (const rosterPlayer of message.players) {
             const merged = this.mergeRosterPlayer(rosterPlayer);
-            this.onPlayerInfoUpdate?.(this.copyPlayer(merged));
+            this.onPlayerInfoUpdate?.(this.roster.copy(merged));
           }
         }
         return;
@@ -675,11 +584,10 @@ export class NetworkManager {
         // already-resolved IP.
         if (this.role === 'host') {
           if (!this.isMessageForCurrentGame(message)) return;
-          const player = this.players.get(fromPlayerId);
+          const { player } = this.roster.applyInfo(fromPlayerId, message);
           if (player) {
-            this.applyPlayerInfo(player, message);
-            this.onPlayerInfoUpdate?.(this.copyPlayer(player));
-            this.broadcast(this.playerInfoUpdateMessage(player));
+            this.onPlayerInfoUpdate?.(this.roster.copy(player));
+            this.broadcast(this.roster.buildPlayerInfoUpdateMessage(player, this.getUniversalGameId()));
           }
         }
         break;
@@ -705,10 +613,10 @@ export class NetworkManager {
             gameId: this.getUniversalGameId(),
             roomCode: this.getRoomCode(),
             playerIds: message.playerIds,
-            players: this.players,
+            players: this.roster.asReadonlyMap(),
             settings: this.getLobbySettings?.(),
           });
-          applyBattleHandoffPlayers(this.players, handoff);
+          this.roster.applyBattleHandoff(handoff);
           this.gameStarted = true;
           console.log(`[NET] Game start as player ${this.localPlayerId}; players=${handoff.playerIds.join(',')}`);
           this.onGameStart?.(handoff);
@@ -728,7 +636,7 @@ export class NetworkManager {
 
       case 'playerLeft':
         if (!this.isMessageForCurrentGame(message)) return;
-        this.players.delete(message.playerId);
+        this.roster.delete(message.playerId);
         this.onPlayerLeft?.(message.playerId);
         break;
 
@@ -745,8 +653,8 @@ export class NetworkManager {
             name: message.name ?? getDefaultPlayerName(message.playerId),
             isHost: message.playerId === 1,
           });
-          this.applyPlayerInfo(target, message);
-          this.onPlayerInfoUpdate?.(this.copyPlayer(target));
+          this.roster.applyPlayerInfo(target, message);
+          this.onPlayerInfoUpdate?.(this.roster.copy(target));
         }
         break;
 
@@ -780,10 +688,8 @@ export class NetworkManager {
       type: 'heartbeat',
       gameId: this.getUniversalGameId(),
       playerId: this.localPlayerId,
-      playerInfo: self ? this.buildLocalPlayerInfo() : undefined,
-      players: this.role === 'host'
-        ? Array.from(this.players.values()).map((player) => this.copyPlayer(player))
-        : undefined,
+      playerInfo: self ? this.roster.buildLocalPlayerInfo(this.localPlayerId) : undefined,
+      players: this.role === 'host' ? this.roster.toArray() : undefined,
     };
   }
 
@@ -799,25 +705,17 @@ export class NetworkManager {
     location: string | undefined,
     timezone: string | undefined,
   ): void {
-    const payload: LobbyPlayerInfoPayload = {
-      ipAddress,
-      location,
-      timezone,
-      localTime: this.formatLocalTime(timezone || this.getBrowserTimezone()),
-      name: getInitialLocalUsername(),
-    };
+    const payload = this.roster.buildReportedLocalPlayerInfo(ipAddress, location, timezone);
     if (this.role === 'host') {
-      const self = this.players.get(this.localPlayerId);
+      const { player: self } = this.roster.applyInfo(this.localPlayerId, payload);
       if (self) {
-        this.applyPlayerInfo(self, payload);
-        this.onPlayerInfoUpdate?.(this.copyPlayer(self));
-        this.broadcast(this.playerInfoUpdateMessage(self));
+        this.onPlayerInfoUpdate?.(this.roster.copy(self));
+        this.broadcast(this.roster.buildPlayerInfoUpdateMessage(self, this.getUniversalGameId()));
       }
     } else if (this.role === 'client') {
-      const self = this.players.get(this.localPlayerId);
+      const { player: self } = this.roster.applyInfo(this.localPlayerId, payload);
       if (self) {
-        this.applyPlayerInfo(self, payload);
-        this.onPlayerInfoUpdate?.(this.copyPlayer(self));
+        this.onPlayerInfoUpdate?.(this.roster.copy(self));
       }
       const hostConn = this.connections.get(1);
       if (hostConn) {
@@ -840,19 +738,19 @@ export class NetworkManager {
     const trimmed = name.trim().slice(0, MAX_NAME_LENGTH);
     if (trimmed.length === 0) return;
     saveUsername(trimmed);
-    const self = this.players.get(this.localPlayerId);
+    const self = this.roster.get(this.localPlayerId);
     if (self && self.name !== trimmed) {
       self.name = trimmed;
       this.refreshLocalPlayerInfo(false);
-      this.onPlayerInfoUpdate?.(this.copyPlayer(self));
+      this.onPlayerInfoUpdate?.(this.roster.copy(self));
     }
     if (this.role === 'host') {
       const player = this.refreshLocalPlayerInfo(false);
-      if (player) this.broadcast(this.playerInfoUpdateMessage(player));
+      if (player) this.broadcast(this.roster.buildPlayerInfoUpdateMessage(player, this.getUniversalGameId()));
     } else if (this.role === 'client') {
       const hostConn = this.connections.get(1);
       if (hostConn) {
-        const payload = this.buildLocalPlayerInfo();
+        const payload = this.roster.buildLocalPlayerInfo(this.localPlayerId);
         payload.name = trimmed;
         this.safeSend(hostConn, {
           type: 'playerInfo',
@@ -868,8 +766,7 @@ export class NetworkManager {
    *  deterministic-by-id default if for some reason the roster hasn't
    *  been populated yet. */
   getLocalPlayerName(): string {
-    return this.players.get(this.localPlayerId)?.name
-      ?? getDefaultPlayerName(this.localPlayerId);
+    return this.roster.getLocalPlayerName(this.localPlayerId);
   }
 
   // Send message to specific player (host only)
@@ -964,10 +861,10 @@ export class NetworkManager {
       gameId: this.getUniversalGameId(),
       roomCode: this.getRoomCode(),
       playerIds,
-      players: this.players,
+      players: this.roster.asReadonlyMap(),
       settings: this.getLobbySettings?.(),
     });
-    applyBattleHandoffPlayers(this.players, handoff);
+    this.roster.applyBattleHandoff(handoff);
 
     for (const [playerId, conn] of this.connections) {
       this.safeSend(conn, {
@@ -1007,7 +904,7 @@ export class NetworkManager {
   }
 
   getPlayers(): LobbyPlayer[] {
-    return Array.from(this.players.values()).map((player) => this.copyPlayer(player));
+    return this.roster.toArray();
   }
 
   getConnectedPlayerIds(): PlayerId[] {
@@ -1015,7 +912,7 @@ export class NetworkManager {
   }
 
   getPlayerCount(): number {
-    return this.players.size;
+    return this.roster.size;
   }
 
   isHost(): boolean {
@@ -1040,7 +937,7 @@ export class NetworkManager {
     this.peer = null;
     this.role = null;
     this.gameStarted = false;
-    this.players.clear();
+    this.roster.clear();
     this.snapshotTransport.reset();
 
     // Clear all callbacks to release closure references
