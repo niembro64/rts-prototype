@@ -51,6 +51,14 @@ export type ClientBarConfig = {
    *  GroundPrint3D. Off by default — turning it on enables every mark
    *  type at once (LOD tiers still cap density). */
   readonly groundMarks: BooleanSetting;
+  /** When ON, the BeamRenderer overrides the first beam segment's
+   *  start with the live world position of the firing barrel's tip,
+   *  sampled from the same matrix chain that places the rendered
+   *  cylinder. Eliminates the small gap between the visible barrel
+   *  mouth and the beam origin caused by sim/render pose desync
+   *  (chassis-tilt EMA, turret yaw/pitch prediction, snapshot-vertex
+   *  linearization). */
+  readonly beamSnapToBarrel: BooleanSetting;
   readonly lodShellRings: BooleanSetting;
   readonly lodGridBorders: BooleanSetting;
   readonly triangleDebug: BooleanSetting;

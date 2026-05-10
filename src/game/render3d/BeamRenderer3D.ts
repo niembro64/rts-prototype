@@ -14,7 +14,7 @@ import type { Entity } from '../sim/types';
 import { isLineShotType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { BeamStyle, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
-import { getGraphicsConfig } from '@/clientBarConfig';
+import { getBeamSnapToBarrel, getGraphicsConfig } from '@/clientBarConfig';
 import type { Lod3DState } from './Lod3D';
 import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
@@ -38,6 +38,19 @@ const BEAM_ENDPOINT_CAP = 4096;
 const ENDPOINT_OPACITY = 0.18;
 const LASER_ENDPOINT_OPACITY = 0.26;
 const ENDPOINT_MIN_RADIUS = 2.5;
+
+/** Per-frame lookup that returns the world-space barrel-tip position
+ *  the rendered cylinder is drawn at. Render3DEntities populates this
+ *  in its per-barrel matrix-compose loop. Returns null when the source
+ *  unit's mesh isn't built / is off-scope, in which case the renderer
+ *  falls back to `points[0]` from the snapshot polyline. */
+export type BarrelTipResolver = {
+  getBarrelTipWorldPos(
+    entityId: number,
+    turretIdx: number,
+    barrelIdx: number,
+  ): { x: number; y: number; z: number } | null;
+};
 
 const BEAM_LOD_ORDER: Record<RenderObjectLodTier, number> = {
   marker: 0,
@@ -363,6 +376,7 @@ export class BeamRenderer3D {
     lod?: Lod3DState,
     sharedLodGrid?: RenderLodGrid,
     contentVersion?: number,
+    barrelTipResolver?: BarrelTipResolver,
   ): void {
     if (projectiles.length === 0 && this.activeSegmentCount === 0 && this.activeEndpointCount === 0) return;
     this.flowTimeUniform.value = performance.now() * 0.001;
@@ -372,8 +386,15 @@ export class BeamRenderer3D {
     if (lod) {
       if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, this.frameGfx);
     }
+    const snapToBarrel = getBeamSnapToBarrel() && !!barrelTipResolver;
     const renderKey = this.makeRenderKey(lod);
     if (
+      // Skip the contentVersion early-return when snap-to-barrel is on:
+      // the live barrel tip can move every frame (chassis-tilt EMA,
+      // turret yaw/pitch prediction) even when the beam polyline
+      // version hasn't bumped. Forcing a redraw keeps the first
+      // segment glued to the barrel mouth at all times.
+      !snapToBarrel &&
       contentVersion !== undefined &&
       contentVersion === this.lastContentVersion &&
       renderKey === this.lastRenderKey
@@ -445,16 +466,45 @@ export class BeamRenderer3D {
       const segAlpha = baseAlpha * opacityMul;
       const lastIdx = points.length - 1;
       const stride = drawReflections ? 1 : lastIdx;
+
+      // Resolve the live barrel tip for the FIRST segment when the
+      // snap toggle is on. The rendered cylinder mouth and the beam
+      // start drift apart slightly each frame because they come from
+      // different code paths (rendered chassis-tilt EMA + predicted
+      // turret pose vs snapshot-frozen `points[0]` extrapolated by a
+      // single linear velocity hint). When a tip is found, replace
+      // the start of the first segment ONLY — reflection vertices
+      // and the endpoint sphere stay on the server-traced polyline.
+      let snapStartX = 0, snapStartY = 0, snapStartZ = 0;
+      let hasSnapStart = false;
+      if (snapToBarrel) {
+        const turretIdx = proj.config.turretIndex ?? 0;
+        const barrelIdx = proj.sourceBarrelIndex ?? 0;
+        const tip = barrelTipResolver!.getBarrelTipWorldPos(
+          proj.sourceEntityId, turretIdx, barrelIdx,
+        );
+        if (tip) {
+          snapStartX = tip.x;
+          snapStartY = tip.y;
+          snapStartZ = tip.z;
+          hasSnapStart = true;
+        }
+      }
+
       for (let i = 0; i < lastIdx; i += stride) {
         const a = points[i];
         const b = points[Math.min(i + stride, lastIdx)];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const dz = b.z - a.z;
+        const useSnap = hasSnapStart && i === 0;
+        const ax = useSnap ? snapStartX : a.x;
+        const ay = useSnap ? snapStartY : a.y;
+        const az = useSnap ? snapStartZ : a.z;
+        const dx = b.x - ax;
+        const dy = b.y - ay;
+        const dz = b.z - az;
         const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (this.writeSegment(
           segIdx,
-          a.x, a.y, a.z,
+          ax, ay, az,
           b.x, b.y, b.z,
           cylRadius,
           segAlpha,

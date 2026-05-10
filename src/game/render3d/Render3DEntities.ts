@@ -115,6 +115,16 @@ const _aimDir = new THREE.Vector3();
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
 
+type BarrelTipEntry = { x: number; y: number; z: number };
+
+/** Pack `(entityId, turretIdx, barrelIdx)` into a single number safely
+ *  within JS's 53-bit integer range. Caps: entityId fits in the top
+ *  bits, 16 turret slots, 16 barrel slots — comfortably above any real
+ *  unit's blueprint. */
+function packBarrelTipKey(entityId: number, turretIdx: number, barrelIdx: number): number {
+  return entityId * 256 + (turretIdx & 0xf) * 16 + (barrelIdx & 0xf);
+}
+
 export class Render3DEntities {
   private world: THREE.Group;
   private clientViewState: ClientViewState;
@@ -244,6 +254,18 @@ export class Render3DEntities {
   private _barrelStepMat = new THREE.Matrix4();
   private _barrelOneVec = new THREE.Vector3(1, 1, 1);
 
+  /** Per-frame cache of barrel-tip world positions, keyed by
+   *  `(entityId * 256) + (turretIdx << 4) + barrelIdx`. Populated in
+   *  the per-barrel matrix-compose loop and consumed by BeamRenderer3D
+   *  when the player-client `beamSnapToBarrel` toggle is on, so the
+   *  start of the first beam segment exactly matches the rendered
+   *  barrel mesh's tip rather than the snapshot-extrapolated point. */
+  private _barrelTipCache = new Map<number, BarrelTipEntry>();
+  private _barrelTipPool: BarrelTipEntry[] = [];
+  private _barrelTipPoolIdx = 0;
+  private static readonly _BARREL_TIP_LOCAL = new THREE.Vector3(0, 0.5, 0);
+  private _barrelTipScratch = new THREE.Vector3();
+
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
    *  once at the top of the per-unit body. Reused as the BARREL parent-
@@ -360,6 +382,11 @@ export class Render3DEntities {
     // loop so the unit list is iterated once instead of twice. Cache
     // the dt on the instance so the per-unit body can read it.
     this._spinDt = spinDt;
+    // Reset the per-frame barrel-tip cache before updateUnits writes
+    // fresh entries. The pool is reused across frames so steady-state
+    // beam combat allocates zero per frame.
+    this._barrelTipCache.clear();
+    this._barrelTipPoolIdx = 0;
     this.updateUnits();
     this.buildingRenderer.update(this.lod, this._spinDt, this._currentDtMs, this._lastSpinMs);
     this.projectileRangeEnvelope.update();
@@ -1213,12 +1240,8 @@ export class Render3DEntities {
           this._smoothLiftedPos
             .copy(m.group.position)
             .add(this._smoothPartLocalPos);
-          this._smoothPartScale.set(tm.headRadius, tm.headRadius, tm.headRadius);
-          this._smoothPartMat.compose(
-            this._smoothLiftedPos,
-            Render3DEntities._IDENTITY_QUAT,
-            this._smoothPartScale,
-          );
+          this._smoothPartMat.makeScale(tm.headRadius, tm.headRadius, tm.headRadius);
+          this._smoothPartMat.setPosition(this._smoothLiftedPos);
           this.unitDetailInstances.writeTurretHeadMatrix(tm.headSlot, this._smoothPartMat, e);
         }
 
@@ -1279,6 +1302,23 @@ export class Render3DEntities {
               this._barrelParentMat, this._barrelStepMat,
             );
             this.unitDetailInstances.writeBarrelMatrix(slot, this._smoothFinalMat);
+            // Cache the world-space barrel tip for the BeamRenderer
+            // snap-to-barrel toggle. The cylinder geometry is unit
+            // height centered at origin, so local (0, 0.5, 0) is the
+            // tip; multiplying by `_smoothFinalMat` (which already
+            // bakes in the per-barrel length scale) yields the world
+            // muzzle position the rendered cylinder front face sits
+            // at this frame.
+            this._barrelTipScratch
+              .copy(Render3DEntities._BARREL_TIP_LOCAL)
+              .applyMatrix4(this._smoothFinalMat);
+            const tipEntry = this._barrelTipPool[this._barrelTipPoolIdx]
+              ?? (this._barrelTipPool[this._barrelTipPoolIdx] = { x: 0, y: 0, z: 0 });
+            tipEntry.x = this._barrelTipScratch.x;
+            tipEntry.y = this._barrelTipScratch.y;
+            tipEntry.z = this._barrelTipScratch.z;
+            this._barrelTipPoolIdx++;
+            this._barrelTipCache.set(packBarrelTipKey(e.id, i, bi), tipEntry);
           }
         }
 
@@ -1467,6 +1507,18 @@ export class Render3DEntities {
 
   getFactorySprayTargets(): readonly SprayTarget[] {
     return this.constructionVisuals.getFactorySprayTargets();
+  }
+
+  /** Look up the world-space barrel-tip position the rendered cylinder
+   *  is drawn at this frame, for `(entityId, turretIdx, barrelIdx)`.
+   *  Populated by updateUnits' per-barrel matrix compose; consumed by
+   *  BeamRenderer3D when the `beamSnapToBarrel` toggle is on so the
+   *  start of the first beam segment exactly matches the visible
+   *  barrel mouth. Returns null when the source unit is off-scope or
+   *  its mesh hasn't been built yet — caller should fall back to
+   *  `points[0]` from the snapshot polyline. */
+  getBarrelTipWorldPos(entityId: EntityId, turretIdx: number, barrelIdx: number): BarrelTipEntry | null {
+    return this._barrelTipCache.get(packBarrelTipKey(entityId, turretIdx, barrelIdx)) ?? null;
   }
 
   /** Look up an entity's currently built locomotion mesh — undefined

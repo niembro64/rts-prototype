@@ -1067,6 +1067,7 @@ export class RtsScene3D {
       renderLod,
       this.renderLodGrid,
       this.clientViewState.getLineProjectileRenderVersion(),
+      this.entityRenderer,
     );
     // Force-field iteration is deferred — fused with HealthBar3D's
     // per-unit walk below, after the camera frustum is computed.

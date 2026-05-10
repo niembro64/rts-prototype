@@ -273,6 +273,7 @@ export class ClientProjectileStore {
         config,
         shotId: shotId ?? config.shot.id,
         sourceTurretId: sourceTurretId ?? config.sourceTurretId,
+        sourceBarrelIndex: spawn.barrelIndex,
         projectileType,
         velocityX: spawn.velocity.x,
         velocityY: spawn.velocity.y,
