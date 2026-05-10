@@ -2,7 +2,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction, NetworkServerSnapshotMinimapEntity } from './NetworkManager';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotSprayTarget, NetworkServerSnapshotSimEvent, NetworkServerSnapshotProjectileSpawn, NetworkServerSnapshotProjectileDespawn, NetworkServerSnapshotVelocityUpdate, NetworkServerSnapshotBeamPoint, NetworkServerSnapshotBeamUpdate, NetworkServerSnapshotGridCell, NetworkServerSnapshotTurret, NetworkServerSnapshotAction } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -24,7 +24,6 @@ import { shouldRunOnStride } from '../math';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import {
   createActionDto,
-  createMinimapEntityDto,
   createSprayDto,
   createTurretDto,
   createWaypointDto,
@@ -47,6 +46,7 @@ import {
   writeNetworkUnitVelocity,
 } from './unitSnapshotFields';
 import { serializeEconomySnapshot } from './stateSerializerEconomy';
+import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 
 // === Object pool for NetworkServerSnapshotEntity (eliminates per-frame allocations) ===
 // Each frame we reset the pool index and overwrite existing objects.
@@ -231,10 +231,6 @@ function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
   update.pos = update._pos;
   update.velocity = update._velocity;
   return update;
-}
-
-function createPooledMinimapEntity(): NetworkServerSnapshotMinimapEntity {
-  return createMinimapEntityDto();
 }
 
 function createPooledEntry(): PooledEntry {
@@ -735,12 +731,10 @@ const _audioBuf: NetworkServerSnapshotSimEvent[] = [];
 const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
 const _despawnBuf: NetworkServerSnapshotProjectileDespawn[] = [];
 const _velUpdateBuf: NetworkServerSnapshotVelocityUpdate[] = [];
-const _minimapEntityBuf: NetworkServerSnapshotMinimapEntity[] = [];
 const _audioPool: NetworkServerSnapshotSimEvent[] = [];
 const _spawnPool: NetworkServerSnapshotProjectileSpawn[] = [];
 const _despawnPool: NetworkServerSnapshotProjectileDespawn[] = [];
 const _velUpdatePool: NetworkServerSnapshotVelocityUpdate[] = [];
-const _minimapEntityPool: NetworkServerSnapshotMinimapEntity[] = [];
 const _beamUpdateBuf: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamUpdatePool: NetworkServerSnapshotBeamUpdate[] = [];
 const _beamPointPool: NetworkServerSnapshotBeamPoint[] = [];
@@ -750,7 +744,6 @@ let _audioPoolIndex = 0;
 let _spawnPoolIndex = 0;
 let _despawnPoolIndex = 0;
 let _velUpdatePoolIndex = 0;
-let _minimapEntityPoolIndex = 0;
 let _beamUpdatePoolIndex = 0;
 let _beamPointPoolIndex = 0;
 const _resyncSeenIds = new Set<number>();
@@ -866,16 +859,6 @@ function getPooledVelocityUpdate(): PooledVelocityUpdate {
   return update;
 }
 
-function getPooledMinimapEntity(): NetworkServerSnapshotMinimapEntity {
-  let entity = _minimapEntityPool[_minimapEntityPoolIndex];
-  if (!entity) {
-    entity = createPooledMinimapEntity();
-    _minimapEntityPool[_minimapEntityPoolIndex] = entity;
-  }
-  _minimapEntityPoolIndex++;
-  return entity;
-}
-
 export type SerializeGameStateOptions = {
   /**
    * Delta histories are per recipient so prev-state/removal bookkeeping
@@ -932,16 +915,6 @@ function isEntityInsideAoi(
   );
 }
 
-function writeMinimapEntity(entity: Entity): NetworkServerSnapshotMinimapEntity {
-  const out = getPooledMinimapEntity();
-  out.id = entity.id;
-  out.type = entity.unit ? 'unit' : 'building';
-  out.playerId = (entity.ownership?.playerId ?? 1) as PlayerId;
-  out.pos.x = qPos(entity.transform.x);
-  out.pos.y = qPos(entity.transform.y);
-  return out;
-}
-
 // Serialize WorldState to network format.
 // When isDelta=true, only changed/new entities are included plus removedEntityIds.
 // When isDelta=false (keyframe), all entities are included (same as before).
@@ -972,7 +945,6 @@ export function serializeGameState(
   _spawnPoolIndex = 0;
   _despawnPoolIndex = 0;
   _velUpdatePoolIndex = 0;
-  _minimapEntityPoolIndex = 0;
   _beamUpdatePoolIndex = 0;
   _beamPointPoolIndex = 0;
   _entityBuf.length = 0;
@@ -1111,23 +1083,7 @@ export function serializeGameState(
     }
   }
 
-  let netMinimapEntities: NetworkServerSnapshotMinimapEntity[] | undefined;
-  if (aoi) {
-    _minimapEntityBuf.length = 0;
-    const minimapSources: ReadonlyArray<readonly Entity[]> = [
-      world.getUnits(),
-      world.getBuildings(),
-    ];
-    for (let s = 0; s < minimapSources.length; s++) {
-      const source = minimapSources[s];
-      for (let i = 0; i < source.length; i++) {
-        const entity = source[i];
-        if (entity.type !== 'unit' && entity.type !== 'building') continue;
-        _minimapEntityBuf.push(writeMinimapEntity(entity));
-      }
-    }
-    netMinimapEntities = _minimapEntityBuf;
-  }
+  const netMinimapEntities = serializeMinimapSnapshotEntities(world, aoi !== undefined);
 
   const netEconomy = serializeEconomySnapshot(world.playerCount, recipientPlayerId);
 
