@@ -39,9 +39,11 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 
 2. Split src/game/network/ClientViewState.ts by client-state ownership.
    Evidence:
-   - src/game/network/ClientViewState.ts is still 1020 lines.
+   - src/game/network/ClientViewState.ts is still 948 lines.
    - Capture tile map/cache/pool/version ownership now lives in
      src/game/network/ClientCaptureTileStore.ts.
+   - Construction spray target snapshot copying/pooling now lives in
+     src/game/network/ClientSprayTargetStore.ts.
    Impact:
    - Unit, building, projectile, beam, economy, and minimap client state remain
      coupled in one file.

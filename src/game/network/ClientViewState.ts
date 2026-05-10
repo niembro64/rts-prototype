@@ -36,6 +36,7 @@ import {
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { ClientCaptureTileStore } from './ClientCaptureTileStore';
+import { ClientSprayTargetStore } from './ClientSprayTargetStore';
 import {
   createServerTarget,
   type ServerTarget,
@@ -57,8 +58,6 @@ export type { PredictionLodContext, PredictionLodTier } from './ClientPrediction
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
-const SPRAY_TARGET_POOL_MIN_CAP = 16;
-const SPRAY_TARGET_POOL_ACTIVE_MULTIPLIER = 4;
 const minimapColorCache = new Map<number, string>();
 
 function minimapColor(color: number): string {
@@ -78,9 +77,7 @@ export class ClientViewState {
   private serverTargets: Map<EntityId, ServerTarget> = new Map();
   private projectileStore!: ClientProjectileStore;
 
-  // Current spray targets for rendering
-  private sprayTargets: SprayTarget[] = [];
-  private sprayTargetPool: SprayTarget[] = [];
+  private sprayTargetStore = new ClientSprayTargetStore();
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
@@ -281,35 +278,6 @@ export class ClientViewState {
     }
   }
 
-  private acquireSprayTarget(): SprayTarget {
-    let target = this.sprayTargetPool.pop();
-    if (!target) {
-      target = {
-        source: { id: 0, pos: { x: 0, y: 0 }, z: 0, playerId: 1 as PlayerId },
-        target: { id: 0, pos: { x: 0, y: 0 }, z: 0 },
-        type: 'build',
-        intensity: 0,
-      };
-    }
-    target.speed = undefined;
-    target.particleRadius = undefined;
-    return target;
-  }
-
-  private getSprayTargetPoolLimit(activeCount: number): number {
-    return Math.max(
-      SPRAY_TARGET_POOL_MIN_CAP,
-      activeCount * SPRAY_TARGET_POOL_ACTIVE_MULTIPLIER,
-    );
-  }
-
-  private trimSprayTargetPool(activeCount: number): void {
-    const limit = this.getSprayTargetPoolLimit(activeCount);
-    if (this.sprayTargetPool.length > limit) {
-      this.sprayTargetPool.length = limit;
-    }
-  }
-
   private applyMinimapEntityOverride(
     source: readonly NetworkServerSnapshotMinimapEntity[] | undefined,
   ): void {
@@ -332,16 +300,6 @@ export class ClientViewState {
       dst.color = minimapColor(getPlayerPrimaryColor(src.playerId));
       dst.isSelected = this.selectionState.has(src.id) || undefined;
     }
-  }
-
-  private releaseSprayTargets(nextActiveCount = 0): void {
-    const limit = this.getSprayTargetPoolLimit(nextActiveCount);
-    for (let i = 0; i < this.sprayTargets.length; i++) {
-      if (this.sprayTargetPool.length < limit) {
-        this.sprayTargetPool.push(this.sprayTargets[i]);
-      }
-    }
-    this.sprayTargets.length = 0;
   }
 
   private markEntityPredictionActive(entity: Entity): void {
@@ -655,36 +613,7 @@ export class ClientViewState {
       );
     }
 
-    // Store spray targets for rendering. Reuse nested objects instead
-    // of retaining pooled snapshot references or allocating a fresh
-    // object tree on every construction snapshot.
-    const snapshotSprayTargets = state.sprayTargets;
-    const nextSprayTargetCount = snapshotSprayTargets?.length ?? 0;
-    this.releaseSprayTargets(nextSprayTargetCount);
-    if (snapshotSprayTargets && snapshotSprayTargets.length > 0) {
-      const src = snapshotSprayTargets;
-      for (let i = 0; i < src.length; i++) {
-        const st = src[i];
-        const target = this.acquireSprayTarget();
-        target.source.id = st.source.id;
-        target.source.pos.x = st.source.pos.x;
-        target.source.pos.y = st.source.pos.y;
-        target.source.z = st.source.z;
-        target.source.playerId = st.source.playerId;
-        target.target.id = st.target.id;
-        target.target.pos.x = st.target.pos.x;
-        target.target.pos.y = st.target.pos.y;
-        target.target.z = st.target.z;
-        target.target.dim = st.target.dim;
-        target.target.radius = st.target.radius;
-        target.type = st.type;
-        target.intensity = st.intensity;
-        target.speed = st.speed;
-        target.particleRadius = st.particleRadius;
-        this.sprayTargets.push(target);
-      }
-    }
-    this.trimSprayTargetPool(nextSprayTargetCount);
+    this.sprayTargetStore.applySnapshot(state.sprayTargets);
 
     // Store audio events for processing (reuse constant for empty case)
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
@@ -851,7 +780,7 @@ export class ClientViewState {
   }
 
   getSprayTargets(): SprayTarget[] {
-    return this.sprayTargets;
+    return this.sprayTargetStore.getTargets();
   }
 
   getPendingAudioEvents(): NetworkServerSnapshot['audioEvents'] {
@@ -998,8 +927,7 @@ export class ClientViewState {
     this.entities.clear();
     this.serverTargets.clear();
     this.projectileStore.clear();
-    this.releaseSprayTargets(0);
-    this.sprayTargetPool.length = 0;
+    this.sprayTargetStore.reset();
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.gameOverWinnerId = null;
     this.selectionState.reset();
