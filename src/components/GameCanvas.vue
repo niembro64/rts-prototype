@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
@@ -82,6 +82,7 @@ import { useGameCanvasServerSettings } from './gameCanvasServerSettings';
 import { useGameCanvasClientSettings } from './gameCanvasClientSettings';
 import { useGameCanvasRealBattleHandoff } from './gameCanvasRealBattleHandoff';
 import { useGameCanvasSceneUi } from './gameCanvasSceneUi';
+import { useGameCanvasSessionLifecycle } from './gameCanvasSessionLifecycle';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -759,39 +760,35 @@ const {
   },
 });
 
-function restartGame(): void {
-  gameOverWinner.value = null;
-  battleStartTime = 0;
-  battleLoading.value = false;
-  realBattleLifecycle.clearTimers();
-  foregroundSceneBinding.clear();
-  // Return to lobby
-  gameStarted.value = false;
-  showLobby.value = true;
-  networkManager.disconnect();
-  networkRole.value = null;
-  lobbyPlayers.value = [];
-  roomCode.value = '';
-  lobbyError.value = null;
-  networkNotice.value = null;
-
-  // Stop current server
-  if (currentServer) {
-    realBattleLifecycle.clearSnapshotListeners(currentServer);
-    currentServer.stop();
-    currentServer = null;
-  }
-  activeConnection = null;
-  hasServer.value = false;
-  serverMetaFromSnapshot.value = null;
-
-  foregroundGame.destroy();
-
-  // Restart the background battle
-  nextTick(() => {
-    startBackgroundBattle();
-  });
-}
+const { restartGame } = useGameCanvasSessionLifecycle({
+  gameOverWinner,
+  battleLoading,
+  gameStarted,
+  showLobby,
+  networkRole,
+  lobbyPlayers,
+  roomCode,
+  lobbyError,
+  networkNotice,
+  hasServer,
+  serverMetaFromSnapshot,
+  network: networkManager,
+  lifecycle: realBattleLifecycle,
+  foregroundSceneBinding,
+  foregroundGame,
+  getCurrentServer: () => currentServer,
+  setCurrentServer: (server) => {
+    currentServer = server;
+  },
+  setActiveConnection: (connection) => {
+    activeConnection = connection;
+  },
+  setBattleStartTime: (time) => {
+    battleStartTime = time;
+  },
+  startBackgroundBattle,
+  stopBackgroundBattle,
+});
 
 const {
   handleHost,
@@ -838,27 +835,6 @@ function secPerFullsnap(ratio: number): string {
 function dismissGameOver(): void {
   gameOverWinner.value = null;
 }
-
-onMounted(() => {
-  // Start the background battle behind the lobby
-  nextTick(() => {
-    startBackgroundBattle();
-  });
-});
-
-onUnmounted(() => {
-  realBattleLifecycle.clearTimers();
-  foregroundSceneBinding.clear();
-  // Stop servers
-  if (currentServer) {
-    realBattleLifecycle.clearSnapshotListeners(currentServer);
-    currentServer.stop();
-    currentServer = null;
-  }
-  networkManager.disconnect();
-  stopBackgroundBattle();
-  foregroundGame.destroy();
-});
 </script>
 
 <template>
