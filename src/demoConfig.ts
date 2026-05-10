@@ -4,7 +4,7 @@ export type DemoBattleWaypointType = 'move' | 'fight';
 
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
-  playerCount: 5,
+  playerCount: 6,
 
   /** Number of solar collectors per player on the dedicated solar arc. */
   solarCount: 5,
