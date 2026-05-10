@@ -39,6 +39,7 @@ const BEAM_ENDPOINT_CAP = 4096;
 const ENDPOINT_OPACITY = 0.18;
 const LASER_ENDPOINT_OPACITY = 0.26;
 const ENDPOINT_MIN_RADIUS = 2.5;
+const OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
 
 /** Per-frame lookup that returns the rendered barrel tip in sim/world
  *  coordinates (x/y ground plane, z height), matching beam polyline
@@ -357,6 +358,17 @@ export class BeamRenderer3D {
     return Math.max(1, Math.min(80, length / spacing));
   }
 
+  private isOpenEndedLinePath(proj: NonNullable<Entity['projectile']>): boolean {
+    if (proj.endpointDamageable !== false) return false;
+    const points = proj.points;
+    if (!points || points.length < 2) return false;
+    const endPoint = points[points.length - 1];
+    return (
+      endPoint.mirrorEntityId === undefined &&
+      endPoint.reflectorKind === undefined
+    );
+  }
+
   private makeRenderKey(lod?: Lod3DState): string {
     if (!lod) return `none|${this.frameGfx.tier}|${this.scope.getVersion()}`;
     const size = normalizeLodCellSize(this.frameGfx.objectLodCellSize);
@@ -460,14 +472,16 @@ export class BeamRenderer3D {
       // Walk the polyline pairwise and draw one cylinder per segment.
       // Each reflection vertex carries its own (x, y, z), so pitched
       // beams bouncing off vertical mirrors trace the correct 3D path.
-      // Every segment renders at the same uniform alpha — the beam
-      // already expires at the firing turret's `range` or wherever it
-      // hit / reflected, so no global length-based fade is needed.
+      // Every segment renders at the same uniform alpha. No-hit range
+      // endpoints are open-ended: simulation damage remains clipped at
+      // the authored range, but the final rendered leg extends forward
+      // so the beam does not visibly stop in empty air.
       // At low render LODs we collapse the polyline to a single
       // start→end segment (skip drawing reflections).
       const segAlpha = baseAlpha * opacityMul;
       const lastIdx = points.length - 1;
       const stride = drawReflections ? 1 : lastIdx;
+      const openEndedLine = this.isOpenEndedLinePath(proj);
 
       // Resolve the live barrel tip for the FIRST segment when the
       // snap toggle is on. The rendered cylinder mouth and the beam
@@ -500,14 +514,36 @@ export class BeamRenderer3D {
         const ax = useSnap ? snapStartX : a.x;
         const ay = useSnap ? snapStartY : a.y;
         const az = useSnap ? snapStartZ : a.z;
-        const dx = b.x - ax;
-        const dy = b.y - ay;
-        const dz = b.z - az;
+        let bx = b.x;
+        let by = b.y;
+        let bz = b.z;
+        if (openEndedLine && Math.min(i + stride, lastIdx) === lastIdx) {
+          const prev = points[Math.max(0, lastIdx - 1)];
+          let tailDx = endPoint.x - prev.x;
+          let tailDy = endPoint.y - prev.y;
+          let tailDz = endPoint.z - prev.z;
+          let tailLen = Math.sqrt(tailDx * tailDx + tailDy * tailDy + tailDz * tailDz);
+          if (tailLen <= 1e-6) {
+            tailDx = endPoint.x - ax;
+            tailDy = endPoint.y - ay;
+            tailDz = endPoint.z - az;
+            tailLen = Math.sqrt(tailDx * tailDx + tailDy * tailDy + tailDz * tailDz);
+          }
+          if (tailLen > 1e-6) {
+            const tailScale = OPEN_ENDED_LINE_VISUAL_LENGTH / tailLen;
+            bx = endPoint.x + tailDx * tailScale;
+            by = endPoint.y + tailDy * tailScale;
+            bz = endPoint.z + tailDz * tailScale;
+          }
+        }
+        const dx = bx - ax;
+        const dy = by - ay;
+        const dz = bz - az;
         const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (this.writeSegment(
           segIdx,
           ax, ay, az,
-          b.x, b.y, b.z,
+          bx, by, bz,
           cylRadius,
           segAlpha,
           segLen,

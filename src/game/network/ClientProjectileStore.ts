@@ -282,7 +282,7 @@ export class ClientProjectileStore {
         maxLifespan: spawn.maxLifespan ?? config.shotProfile.runtime.maxLifespan,
         hitEntities: new Set(),
         maxHits: 1,
-        endpointDamageable: true,
+        endpointDamageable: projectileType !== 'beam' && projectileType !== 'laser',
         segmentLimitReached: false,
         points: spawn.beam ? [
           {

@@ -782,15 +782,16 @@ export class WorldState {
     entity.transform.z = beamZ;
 
     if (entity.projectile) {
-      // Seed a 2-point polyline (start, end). The per-tick beam handler
-      // will overwrite positions and append/remove reflection vertices
-      // each re-trace; we own these objects in place so the array
-      // reference is stable across the projectile's lifetime.
+      // Seed a 2-point open-ended polyline (start, authored range end).
+      // The per-tick beam handler will overwrite positions and
+      // append/remove reflection vertices each re-trace; we own these
+      // objects in place so the array reference is stable across the
+      // projectile's lifetime.
       entity.projectile.points = [
         { x: startX, y: startY, z: beamZ, vx: 0, vy: 0, vz: 0 },
         { x: endX, y: endY, z: beamZ, vx: 0, vy: 0, vz: 0 },
       ];
-      entity.projectile.endpointDamageable = true;
+      entity.projectile.endpointDamageable = false;
       entity.projectile.segmentLimitReached = false;
     }
 

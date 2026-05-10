@@ -439,9 +439,9 @@ export type Projectile = {
    *  the array length and overwrites the per-vertex fields, so the
    *  array reference is stable. */
   points?: BeamPoint[];
-  /** False when the path ended because BEAM_MAX_SEGMENTS was exhausted
-   *  on a reflector. The beam is still rendered to that contact point,
-   *  but no endpoint damage sphere is applied there. */
+  /** False when the path has no physical impact endpoint, such as a
+   *  no-hit range boundary or BEAM_MAX_SEGMENTS ending on a reflector.
+   *  The beam is still rendered, but no endpoint damage sphere applies. */
   endpointDamageable?: boolean;
   segmentLimitReached?: boolean;
   /** Physical source barrel for persistent beam/laser muzzle updates.

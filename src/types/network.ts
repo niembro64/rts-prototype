@@ -369,8 +369,8 @@ export type NetworkServerSnapshotBeamUpdate = {
    *  cadence. */
   points: NetworkServerSnapshotBeamPoint[];
   obstructionT?: number;
-  /** False when the authoritative path stopped at BEAM_MAX_SEGMENTS on
-   *  a reflector, so clients should not render an endpoint damage orb. */
+  /** False when the authoritative path has no physical impact endpoint,
+   *  so clients should not render an endpoint damage orb. */
   endpointDamageable?: boolean;
 };
 

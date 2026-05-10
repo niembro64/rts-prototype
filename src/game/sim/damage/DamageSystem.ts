@@ -212,11 +212,12 @@ export class DamageSystem {
   // Find beam path with reflections off mirror units and force-field
   // spheres — full 3D.
   //
-  // The beam terminates at the first of: a unit hit, a building hit,
-  // a ground hit, the firing turret's 2D range circle, or the configured
+  // Damage is clipped at the first of: a unit hit, a building hit, a
+  // ground hit, the firing turret's 2D range circle, or the configured
   // max segment count. Mirrors and force fields bounce; reflected
   // segments are clipped against the same original range circle instead
-  // of a separate 3D max length.
+  // of a separate 3D max length. A range-circle endpoint is an open
+  // ray for visuals, not a physical impact point.
   //
   // Mirror panels are tilted rectangles; force fields are spherical
   // reflectors that only catch outside-to-inside crossings. Buildings
@@ -280,7 +281,7 @@ export class DamageSystem {
           endY: curEY,
           endZ: curEZ,
           reflections,
-          endpointDamageable: true,
+          endpointDamageable: rangeCircle === undefined,
           segmentLimitReached: false,
         };
       }
@@ -429,7 +430,7 @@ export class DamageSystem {
       endY: curEY,
       endZ: curEZ,
       reflections,
-      endpointDamageable: true,
+      endpointDamageable: rangeCircle === undefined,
       segmentLimitReached: false,
     };
   }
