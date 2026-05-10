@@ -138,7 +138,7 @@ export const TURRET_BLUEPRINTS = {
   cannonTurret: {
     id: 'cannonTurret',
     projectileId: 'heavyShot',
-    range: 600,
+    range: 1000,
     cooldown: 2300,
     launchForce: 20_000,
     turretTurnAccel: 200,
@@ -157,7 +157,7 @@ export const TURRET_BLUEPRINTS = {
   mortarTurret: {
     id: 'mortarTurret',
     projectileId: 'mortarShot',
-    range: 600,
+    range: 1000,
     cooldown: 6000,
     launchForce: 20_000,
     turretTurnAccel: 200,
@@ -186,7 +186,7 @@ export const TURRET_BLUEPRINTS = {
   gatlingMortarTurret: {
     id: 'gatlingMortarTurret',
     projectileId: 'mortarShot',
-    range: 1000,
+    range: 2000,
     cooldown: 500,
     // Ballistic max range = (launchForce / mass)² / GRAVITY. With
     // mortarShot.mass = SHOT_MASS_MEDIUM × 3 = 30 and GRAVITY = 400,
@@ -260,7 +260,7 @@ export const TURRET_BLUEPRINTS = {
   salvoRocketTurret: {
     id: 'salvoRocketTurret',
     projectileId: 'lightRocket',
-    range: 400,
+    range: 500,
     cooldown: 2000,
     launchForce: 400,
     turretTurnAccel: 200,
