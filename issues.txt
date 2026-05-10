@@ -1,20 +1,13 @@
+INFO:
 This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here.
 As we fix something here we should completely delete it from this file. You should also delete an item if
 you know for a fact it has been addressed. Remember that our code may have changed since the issue was
 written; check the code and if the issue is no longer relevant, delete it.
 
-==============================================================================
-Performance audit (2026-05-08, round 2): sim + rendering hotspots verified
-against current code. Each cluster includes file:line refs and a remedy.
-Verify against current code before attacking — a few related sites may have
-already shifted.
-==============================================================================
+Please always commit and push befor and after any code changes you make. If there was unchecked code before, just commit and push before you start making your edits.
 
 ==============================================================================
-Code health audit (2026-05-10): duplicate code, memory-leak risks, and split
-candidates. Goal: small files, shared atomic helpers, no duplicated lifecycle
-logic, and no unbounded resource retention. Verify line numbers before fixing.
-==============================================================================
+ ISSUES:
 
 1. Oversized orchestration files violate the small-file goal and hide lifecycle
    coupling.
