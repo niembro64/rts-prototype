@@ -37,14 +37,15 @@ Please always commit and push before and after any code changes we make. If ther
 
 3. Split src/game/network/stateSerializer.ts by DTO family.
    Evidence:
-   - src/game/network/stateSerializer.ts is still 1567 lines.
+   - src/game/network/stateSerializer.ts is still 1558 lines.
    - Economy DTO serialization has moved to
      src/game/network/stateSerializerEconomy.ts, and minimap entity DTO
      serialization has moved to src/game/network/stateSerializerMinimap.ts,
      and spray target DTO serialization has moved to
      src/game/network/stateSerializerSpray.ts, and audio event DTO
      serialization has moved to src/game/network/stateSerializerAudio.ts, but
-     entity, projectile, and grid serialization still share the main file.
+     grid serialization has moved to src/game/network/stateSerializerGrid.ts,
+     but entity and projectile serialization still share the main file.
    Impact:
    - Serialization changes for one DTO family risk touching unrelated network
      formats.

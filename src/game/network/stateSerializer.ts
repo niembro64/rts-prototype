@@ -46,6 +46,7 @@ import {
 } from './unitSnapshotFields';
 import { serializeAudioEvents } from './stateSerializerAudio';
 import { serializeEconomySnapshot } from './stateSerializerEconomy';
+import { serializeGridSnapshot } from './stateSerializerGrid';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 import { serializeSprayTargets } from './stateSerializerSpray';
 
@@ -729,11 +730,6 @@ const _projectilesBuf: NonNullable<NetworkServerSnapshot['projectiles']> = {
   velocityUpdates: undefined,
   beamUpdates: undefined,
 };
-const _gridBuf: NonNullable<NetworkServerSnapshot['grid']> = {
-  cells: [],
-  searchCells: [],
-  cellSize: 0,
-};
 const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
   phase: 'battle',
   winnerId: undefined,
@@ -1259,12 +1255,7 @@ export function serializeGameState(
     _projectilesBuf.beamUpdates = netBeamUpdates;
   }
 
-  // Nest grid info (undefined when grid off)
-  if (gridCells) {
-    _gridBuf.cells = gridCells;
-    _gridBuf.searchCells = gridSearchCells ?? [];
-    _gridBuf.cellSize = gridCellSize ?? 0;
-  }
+  const netGrid = serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize);
 
   // Nest game state
   _gameStateBuf.phase = gamePhase;
@@ -1279,7 +1270,7 @@ export function serializeGameState(
   _snapshotBuf.audioEvents = netAudioEvents;
   _snapshotBuf.projectiles = hasProjectiles ? _projectilesBuf : undefined;
   _snapshotBuf.gameState = _gameStateBuf;
-  _snapshotBuf.grid = gridCells ? _gridBuf : undefined;
+  _snapshotBuf.grid = netGrid;
   _snapshotBuf.isDelta = deltaEnabled;
   _snapshotBuf.removedEntityIds = deltaEnabled && _removedIdsBuf.length > 0 ? _removedIdsBuf : undefined;
 
