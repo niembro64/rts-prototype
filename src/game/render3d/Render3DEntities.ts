@@ -67,6 +67,7 @@ import { applyTurretAimPose3D } from './TurretAimPose3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { BarrelTipCache3D, type BarrelTipEntry } from './BarrelTipCache3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
+import { MirrorPose3D } from './MirrorPose3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -107,8 +108,6 @@ const _tiltQuat = new THREE.Quaternion();
 // articulated yaw + pitch can compensate for the chassis tilt and
 // the rendered barrel still points at the sim's world target.
 const _invTiltQuat = new THREE.Quaternion();
-// Scratch direction vector reused by mirror-panel compensation math.
-const _aimDir = new THREE.Vector3();
 // Mirror panels (reflective mirror-unit armor plates) are square slabs
 // mounted at the rigid mirror-arm's far end. The cache in
 // mirrorPanelCache.ts computes baseY/topY/halfWidth from the turret's
@@ -147,6 +146,7 @@ export class Render3DEntities {
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
 
   private barrelSpinState = new UnitBarrelSpinState3D();
+  private mirrorPose = new MirrorPose3D();
 
   // Per-entity leg-state snapshots stashed right before an LOD-driven
   // mesh teardown and consumed immediately after rebuild, so feet keep
@@ -1284,93 +1284,17 @@ export class Render3DEntities {
         }
       }
 
-      // Mirror panels: track the first turret's full world-space
-      // normal. Like standard turret barrels above, yaw + pitch must
-      // be decomposed through the tilted chassis parent so the visible
-      // mirror stays aimed at the same world direction the sim solved.
       if (m.mirrors) {
-        m.mirrors.root.position.copy(this._unitBodyCenterLocal);
-        m.mirrors.root.visible = this.mirrorsEnabled;
-        if (this.mirrorsEnabled) {
-          const mirrorRot = turrets[0]?.rotation ?? e.transform.rotation;
-          const mirrorPitch = turrets[0]?.pitch ?? 0;
-          // SINGLE JOINT at the turret attachment point. The whole
-          // rigid arm + panel assembly is parented to mirrors.root,
-          // and ALL rotation lives there. Yaw + pitch are two
-          // descriptions of one ball-joint orientation — applied as
-          // one Euler 'YZX' (yaw first around world Y, then pitch
-          // around the post-yaw side axis Z). No per-arm or per-panel
-          // rotation; the arms and panels keep their static
-          // build-time transforms (arm at visibleArmLength/2 forward,
-          // panel at panelArmLength forward, both at panelCenterY up)
-          // and sweep through 3D as one body when root rotates.
-          const cosMirrorRot = Math.cos(mirrorRot);
-          const sinMirrorRot = Math.sin(mirrorRot);
-          const cosMirrorPitch = Math.cos(mirrorPitch);
-          const sinMirrorPitch = Math.sin(mirrorPitch);
-          _aimDir.set(
-            cosMirrorRot * cosMirrorPitch,
-            sinMirrorPitch,
-            sinMirrorRot * cosMirrorPitch,
-          );
-          if (chassisTilted) _aimDir.applyQuaternion(_invTiltQuat);
-          const mCombinedYaw = Math.atan2(-_aimDir.z, _aimDir.x);
-          const mNy = _aimDir.y;
-          const mLocalPitch = Math.asin(mNy < -1 ? -1 : mNy > 1 ? 1 : mNy);
-          m.mirrors.root.rotation.set(
-            0,
-            mCombinedYaw + e.transform.rotation,
-            mLocalPitch,
-            'YZX',
-          );
-
-          // Mirror-panel InstancedMesh write. parentMat = group ·
-          // yawGroup · liftGroup · mirrors.root — first three groups
-          // come from the cached unit chain, mirrors.root contributes
-          // the full ball-joint rotation. Reading the root's full
-          // quaternion (auto-synced from .rotation by Three) instead
-          // of building a yaw-only quat is what makes the panel
-          // render where the sim collides: pitch sweeps the panel
-          // through 3D via the parent matrix, not by per-mesh
-          // post-rotations.
-          if (m.mirrors.panelSlots) {
-            // parentMat = group · yawGroup · liftGroup · root.local.
-            // root.local is now T(0, panelCenterY, 0) · R(quaternion)
-            // — the translation lifts the joint to the body-center
-            // height, the quaternion is the single ball-joint
-            // rotation. Compose with root's actual position (not
-            // zero) so the writer agrees with the scene-graph that
-            // would render the per-Mesh fallback path.
-            this._barrelParentMat.copy(this._unitChainMat);
-            this._barrelStepMat.compose(
-              m.mirrors.root.position,
-              m.mirrors.root.quaternion,
-              this._barrelOneVec,
-            );
-            this._barrelParentMat.multiply(this._barrelStepMat);
-
-            const slotCount = Math.min(
-              m.mirrors.panels.length,
-              m.mirrors.panelSlots.length,
-            );
-            for (let pi = 0; pi < slotCount; pi++) {
-              const panel = m.mirrors.panels[pi];
-              const slot = m.mirrors.panelSlots[pi];
-              // panel.quaternion auto-syncs with panel.rotation
-              // (Euler XYZ for the rotation-order detection — note
-              // mirror panels use 'YXZ' order for the panel→world
-              // sandwich; THREE syncs whichever order is set on
-              // .rotation.order).
-              this._barrelStepMat.compose(
-                panel.position, panel.quaternion, panel.scale,
-              );
-              this._smoothFinalMat.multiplyMatrices(
-                this._barrelParentMat, this._barrelStepMat,
-              );
-              this.unitDetailInstances.writeMirrorPanelMatrix(slot, this._smoothFinalMat, e);
-            }
-          }
-        }
+        this.mirrorPose.update({
+          entity: e,
+          mirrors: m.mirrors,
+          turrets,
+          bodyCenterLocal: this._unitBodyCenterLocal,
+          unitChainMat: this._unitChainMat,
+          chassisTiltInverse: chassisTilted ? _invTiltQuat : undefined,
+          mirrorsEnabled: this.mirrorsEnabled,
+          unitDetailInstances: this.unitDetailInstances,
+        });
       }
 
       // Locomotion: spin tread wheels per velocity; legs write per-
