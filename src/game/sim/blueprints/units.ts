@@ -352,7 +352,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyCenterHeight: TICK_BODY_CENTER_HEIGHT,
     mass: 20,
     cost: { energy: 35, mana: 35, metal: 35 },
-    turrets: [turretMount('beamTurret', mountPoint(0, 0, TICK_TURRET_Z_FRAC))],
+    turrets: [turretMount('miniBeam', mountPoint(0, 0, TICK_TURRET_Z_FRAC))],
     bodyShape: BODY_SHAPES.snipe,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
     hideChassis: true,
@@ -447,7 +447,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [
       turretMount(
         'beamTurret',
-        mountPoint(TARANTULA_ABDOMEN_FORWARD_FRAC, 0, 1.8),
+        mountPoint(TARANTULA_ABDOMEN_FORWARD_FRAC, 0, 2.5),
       ),
     ],
     // Mount the beam turret on the rear abdomen segment; the forward
