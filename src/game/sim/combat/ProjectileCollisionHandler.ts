@@ -309,9 +309,8 @@ function spawnSubmunitions(
       sourceEntityId,
       turretIndex: 0,
       barrelIndex: 0,
-      // Submunitions spawn AT the parent's detonation point, not out of
-      // the original shooter's barrel. Without this flag the client
-      // would snap the visual back to the shooter's muzzle each frame.
+      // Submunitions spawn AT the parent's detonation point, not at
+      // the original shooter's turret launch origin.
       fromParentDetonation: true,
     });
   }

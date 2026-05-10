@@ -10,7 +10,6 @@ import { beamIndex } from '../BeamIndex';
 import {
   getTransformCosSin,
   applyHomingSteering,
-  getBarrelTip,
   countBarrels,
   solveKinematicIntercept,
   type KinematicInterceptSolution,
@@ -19,7 +18,6 @@ import {
 } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, BEAM_MAX_SEGMENTS } from '../../../config';
 import {
-  computeTurretPointVelocity,
   getEntityAcceleration3,
   getEntityVelocity3,
   getProjectileLaunchSpeed,
@@ -107,7 +105,7 @@ let _packedProjectileTimeAlive = new Float64Array(0);
 let _packedProjectileHasGravity = new Uint8Array(0);
 const _packedProjectileEntities: Entity[] = [];
 const _packedProjectileSlots = new Map<EntityId, number>();
-const _fireMuzzleVelocity = { x: 0, y: 0, z: 0 };
+const _fireMountVelocity = { x: 0, y: 0, z: 0 };
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
@@ -412,34 +410,25 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const fireBaseIndex = weapon.barrelFireIndex ?? 0;
 
       for (let i = 0; i < pellets; i++) {
-        // Keep the round-robin barrel index as real muzzle metadata:
-        // the same index feeds the authoritative spawn and the client
-        // correction path.
+        // Keep the round-robin barrel index as visual/audio cadence
+        // metadata, but all shots now launch from the turret mount
+        // center.
         const barrelIndex = (fireBaseIndex + i) % barrelCount;
 
         // Optional random yaw jitter for cone-shotgun spread. Applied
-        // AFTER the primitive resolves the muzzle tip — yaw jitter only tweaks
-        // the outbound direction per pellet.
+        // only to the outbound direction per pellet.
         let yaw = turretAngle;
         if (spreadAngle > 0) {
           yaw += (world.rng.next() - 0.5) * spreadAngle;
         }
 
-        // Barrel length comes from the turret blueprint, matching the 3D
-        // renderer's turret mesh and keeping muzzle math unit-agnostic.
-        const tip = getBarrelTip(
-          weaponX, weaponY, mountZ,
-          turretAngle, turretPitch,
-          config,
-          barrelIndex,
-        );
-        const spawnX = tip.x;
-        const spawnY = tip.y;
-        const spawnZ = tip.z;
+        const spawnX = weaponX;
+        const spawnY = weaponY;
+        const spawnZ = mountZ;
 
-        // Fire audio event from the FIRST pellet's muzzle tip so the
-        // muzzle-flash visual originates at the authoritative spawn. Non-
-        // beam weapons only — continuous beams use start/stop lifecycle.
+        // Fire audio event from the FIRST pellet's authoritative
+        // turret-center spawn. Non-beam weapons only — continuous
+        // beams use start/stop lifecycle.
         if (i === 0 && shot.type !== 'beam') {
           audioEvents.push({
             type: 'fire',
@@ -459,9 +448,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         //  back toward the target from there.
         //
         //  Standard turret: use the jittered yaw combined with the
-        //  barrel's own pitch contribution (ballistic arc aim). The
-        //  primitive's own direction is already correct for pitch;
-        //  we re-base the horizontal component onto the jittered yaw.
+        //  turret's pitch contribution (ballistic arc aim).
         let dirX: number;
         let dirY: number;
         let dirZ: number;
@@ -473,8 +460,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           dirY = sinA * Math.sin(phi);
           dirZ = Math.cos(alpha);
         } else {
-          const dirPitchSin = tip.dirZ;
-          const dirPitchCos = Math.hypot(tip.dirX, tip.dirY);
+          const dirPitchSin = Math.sin(turretPitch);
+          const dirPitchCos = Math.cos(turretPitch);
           const fireCos = Math.cos(yaw);
           const fireSin = Math.sin(yaw);
           dirX = fireCos * dirPitchCos;
@@ -536,27 +523,22 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           // Note: Beam recoil is applied continuously above while weapon is engaged
         } else {
           // Create traveling projectile with 3D launch velocity using
-          // the per-barrel firing direction. Total speed is the same
-          // as before; the direction comes entirely from the primitive
-          // + per-pellet yaw jitter.
+          // the per-pellet firing direction.
           const projShot = shot as ProjectileShot;
           const speed = getProjectileLaunchSpeed(projShot);
           let projVx = dirX * speed;
           let projVy = dirY * speed;
           let projVz = dirZ * speed;
-          // Inherit the turret muzzle's own 3D velocity, not just
-          // the carrier unit's velocity. The mount velocity is cached
-          // from world-position deltas; yaw/pitch angular velocity
-          // adds the barrel-tip tangential component.
-          const inherited = computeTurretPointVelocity(
-            weapon,
-            weaponX, weaponY, mountZ,
-            spawnX, spawnY, spawnZ,
-            _fireMuzzleVelocity,
-          );
-          projVx += inherited.x;
-          projVy += inherited.y;
-          projVz += inherited.z;
+          // Inherit the turret mount center's own 3D velocity. Barrel
+          // yaw/pitch no longer contributes tangential endpoint
+          // velocity because the launch origin is the attachment point.
+          const inherited = weapon.worldVelocity;
+          _fireMountVelocity.x = inherited?.x ?? 0;
+          _fireMountVelocity.y = inherited?.y ?? 0;
+          _fireMountVelocity.z = inherited?.z ?? 0;
+          projVx += _fireMountVelocity.x;
+          projVy += _fireMountVelocity.y;
+          projVz += _fireMountVelocity.z;
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const projectile = world.createProjectile(
             spawnX,
@@ -969,10 +951,9 @@ export function updateProjectiles(
           if (isContinuous) proj.timeAlive = 0;
         }
 
-        // Delegate the whole turret-rotation stack (unit yaw → turret
-        // yaw → turret pitch) to the single primitive so beam origin and
-        // direction are computed from the exact same centerline numbers
-        // the projectile-spawn path uses.
+        // Keep beam starts on the turret mount center, matching the
+        // projectile-spawn path. Direction still follows the current
+        // yaw + pitch, so the visible barrel points along the shot.
         const turretAngle = weapon.rotation;
         const turretPitch = weapon.pitch;
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
@@ -989,25 +970,21 @@ export function updateProjectiles(
           },
           _beamWeaponMount,
         );
-        const tip = getBarrelTip(
-          beamMount.x, beamMount.y, beamMount.z,
-          turretAngle, turretPitch,
-          proj.config,
-          proj.sourceBarrelIndex ?? 0,
-        );
+        const dirPitchCos = Math.cos(turretPitch);
+        const dirX = Math.cos(turretAngle) * dirPitchCos;
+        const dirY = Math.sin(turretAngle) * dirPitchCos;
+        const dirZ = Math.sin(turretPitch);
         // Ensure points polyline exists (createBeam seeds 2-point line at
         // spawn; defensive-init covers any path that forgot to).
         const points = proj.points ?? (proj.points = [
-          { x: tip.x, y: tip.y, z: tip.z, vx: 0, vy: 0, vz: 0 },
-          { x: tip.x, y: tip.y, z: tip.z, vx: 0, vy: 0, vz: 0 },
+          { x: beamMount.x, y: beamMount.y, z: beamMount.z, vx: 0, vy: 0, vz: 0 },
+          { x: beamMount.x, y: beamMount.y, z: beamMount.z, vx: 0, vy: 0, vz: 0 },
         ]);
 
         // Start-point velocity = (current start − last tick's start) / dt.
-        // Updated every tick because the start follows the muzzle (which
-        // moves with the unit body + turret yaw/pitch every tick). On
-        // the FIRST tick the prevStart fields are undefined → velocity
-        // resolves to 0, which is the correct semantic ("just spawned,
-        // no history yet").
+        // Updated every tick because the start follows the turret
+        // mount center. On the FIRST tick the prevStart fields are
+        // undefined, so velocity resolves to 0.
         const startPoint = points[0];
         if (
           dtSec > 0 &&
@@ -1016,20 +993,20 @@ export function updateProjectiles(
           proj.prevStartZ !== undefined
         ) {
           const inv = 1 / dtSec;
-          startPoint.vx = (tip.x - proj.prevStartX) * inv;
-          startPoint.vy = (tip.y - proj.prevStartY) * inv;
-          startPoint.vz = (tip.z - proj.prevStartZ) * inv;
+          startPoint.vx = (beamMount.x - proj.prevStartX) * inv;
+          startPoint.vy = (beamMount.y - proj.prevStartY) * inv;
+          startPoint.vz = (beamMount.z - proj.prevStartZ) * inv;
         } else {
           startPoint.vx = 0;
           startPoint.vy = 0;
           startPoint.vz = 0;
         }
-        proj.prevStartX = tip.x;
-        proj.prevStartY = tip.y;
-        proj.prevStartZ = tip.z;
-        startPoint.x = tip.x;
-        startPoint.y = tip.y;
-        startPoint.z = tip.z;
+        proj.prevStartX = beamMount.x;
+        proj.prevStartY = beamMount.y;
+        proj.prevStartZ = beamMount.z;
+        startPoint.x = beamMount.x;
+        startPoint.y = beamMount.y;
+        startPoint.z = beamMount.z;
         clearBeamReflectorMetadata(startPoint);
 
         // Per-tick re-trace. The beam is bounded by the firing
@@ -1041,8 +1018,8 @@ export function updateProjectiles(
         rangeCircle.centerY = beamMount.y;
         rangeCircle.radius = weapon.ranges.fire.max.release;
         const endpoint = resolveLineShotRangeCircleEndpoint(
-          tip.x, tip.y, tip.z,
-          tip.dirX, tip.dirY, tip.dirZ,
+          beamMount.x, beamMount.y, beamMount.z,
+          dirX, dirY, dirZ,
           rangeCircle,
           _lineShotRangeEnd,
         );

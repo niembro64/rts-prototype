@@ -234,7 +234,6 @@ export class RtsScene3DRenderPhase {
       renderLod,
       renderLodGrid,
       this.clientViewState.getLineProjectileRenderVersion(),
-      entityRenderer,
     );
 
     waterRenderer.update(

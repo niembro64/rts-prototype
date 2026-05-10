@@ -300,49 +300,6 @@ export function getEntityAcceleration3(
   return out;
 }
 
-export function computeTurretPointVelocity(
-  turret: {
-    rotation: number;
-    angularVelocity: number;
-    pitchVelocity: number;
-    worldVelocity?: Vec3;
-  },
-  mountX: number,
-  mountY: number,
-  mountZ: number,
-  pointX: number,
-  pointY: number,
-  pointZ: number,
-  out: Vec3,
-  fallbackMountVelocity?: Vec3,
-): Vec3 {
-  const base = turret.worldVelocity ?? fallbackMountVelocity;
-  out.x = base?.x ?? 0;
-  out.y = base?.y ?? 0;
-  out.z = base?.z ?? 0;
-
-  const rx = pointX - mountX;
-  const ry = pointY - mountY;
-  const rz = pointZ - mountZ;
-
-  const yawOmega = turret.angularVelocity;
-  if (yawOmega !== 0) {
-    out.x += -ry * yawOmega;
-    out.y += rx * yawOmega;
-  }
-
-  const pitchOmega = turret.pitchVelocity;
-  if (pitchOmega !== 0) {
-    const pitchAxisX = Math.sin(turret.rotation) * pitchOmega;
-    const pitchAxisY = -Math.cos(turret.rotation) * pitchOmega;
-    out.x += pitchAxisY * rz;
-    out.y += -pitchAxisX * rz;
-    out.z += pitchAxisX * ry - pitchAxisY * rx;
-  }
-
-  return out;
-}
-
 // Get angle to face based on movement (or body direction if stationary)
 // Used by weapons when they have no target - they face movement direction
 export function getMovementAngle(unit: Entity): number {

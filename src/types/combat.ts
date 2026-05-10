@@ -117,19 +117,13 @@ export type ProjectileSpawnEvent = {
   playerId: PlayerId;
   sourceEntityId: EntityId;
   turretIndex: number;
-  /** Which physical barrel in the turret's cluster this shot came out
-   *  of (0..barrelCount−1). Sent so the client can call getBarrelTip
-   *  with the same barrelIndex the server used — spawn visuals emerge
-   *  from the exact barrel the server picked, even on multi-barrel
-   *  gatlings cycling through their cluster. */
+  /** Which physical barrel in the turret's cluster was selected for
+   *  visual/audio cadence (0..barrelCount-1). Authoritative shots
+   *  spawn from the turret mount center. */
   barrelIndex: number;
   isDGun?: boolean;
-  /** True for cluster-flak submunitions and any other projectile that
-   *  did NOT emerge from the shooter's barrel — the client should
-   *  spawn the visual at `pos` as-is and skip the barrel-tip override
-   *  it normally applies so the shot flies from the turret. Without
-   *  this flag submunitions would snap back to the original shooter's
-   *  gun muzzle every frame they're created. */
+  /** True for cluster-flak submunitions and any other projectile whose
+   *  source is a parent detonation rather than a turret launch. */
   fromParentDetonation?: boolean;
   beam?: { start: Vec3; end: Vec3 };
   targetEntityId?: EntityId;

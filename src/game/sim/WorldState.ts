@@ -762,8 +762,8 @@ export class WorldState {
   }
 
   // Create a beam / laser projectile. Beams are instantaneous line
-  // weapons — the z coord is the muzzle altitude at the moment of
-  // firing (same altitude for start and end; beams don't droop under
+  // weapons — the z coord is the launch-origin altitude at the moment
+  // of firing (same altitude for start and end; beams don't droop under
   // gravity). Passing z lets the renderer draw the beam at the right
   // height and lets the damage system's line-sphere test find
   // targets at that altitude instead of assuming z=0.

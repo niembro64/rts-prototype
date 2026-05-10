@@ -3,17 +3,14 @@ import type { Entity, ProjectileShot, Turret, TurretConfig } from '../types';
 import { getShotMaxLifespan, isProjectileShot } from '../types';
 import {
   clamp,
-  getBarrelTip,
   getTransformCosSin,
   solveKinematicIntercept,
   type KinematicInterceptSolution,
   type KinematicState3,
   type KinematicVec3,
 } from '../../math';
-import type { BarrelEndpoint } from '../../math/BarrelGeometry';
 import { GRAVITY } from '../../../config';
 import {
-  computeTurretPointVelocity,
   getEntityAcceleration3,
   getEntityVelocity3,
   getProjectileLaunchSpeed,
@@ -45,7 +42,7 @@ const _interceptSolution: KinematicInterceptSolution = {
 
 export type DirectTurretAim = {
   aim: Vec3;
-  tip: BarrelEndpoint;
+  origin: TurretAimOrigin;
   yaw: number;
   pitch: number;
 };
@@ -53,17 +50,23 @@ export type DirectTurretAim = {
 export type ProjectileTurretAim = DirectTurretAim & {
   targetVelocity: Vec3;
   targetAcceleration: Vec3;
-  muzzleVelocity: Vec3;
-  muzzleAcceleration: Vec3;
+  originVelocity: Vec3;
+  originAcceleration: Vec3;
   hasBallisticSolution: boolean;
 };
 
 export type TurretAimSolution = ProjectileTurretAim;
 
+type TurretAimOrigin = Vec3 & {
+  dirX: number;
+  dirY: number;
+  dirZ: number;
+};
+
 export function createDirectTurretAimScratch(): DirectTurretAim {
   return {
     aim: { x: 0, y: 0, z: 0 },
-    tip: { x: 0, y: 0, z: 0, dirX: 1, dirY: 0, dirZ: 0 },
+    origin: { x: 0, y: 0, z: 0, dirX: 1, dirY: 0, dirZ: 0 },
     yaw: 0,
     pitch: 0,
   };
@@ -74,8 +77,8 @@ export function createProjectileTurretAimScratch(): ProjectileTurretAim {
     ...createDirectTurretAimScratch(),
     targetVelocity: { x: 0, y: 0, z: 0 },
     targetAcceleration: { x: 0, y: 0, z: 0 },
-    muzzleVelocity: { x: 0, y: 0, z: 0 },
-    muzzleAcceleration: { x: 0, y: 0, z: 0 },
+    originVelocity: { x: 0, y: 0, z: 0 },
+    originAcceleration: { x: 0, y: 0, z: 0 },
     hasBallisticSolution: true,
   };
 }
@@ -87,7 +90,7 @@ export function createTurretAimScratch(): TurretAimSolution {
 /**
  * Resolve the point a turret should aim at on a target's gameplay
  * collider. Buildings are AABBs, so the correct point is the closest
- * point on that box from the muzzle/turret, not always the building
+ * point on that box from the turret launch origin, not always the building
  * center. This is what keeps weapons from visually shooting over a
  * building sitting at a different terrain height.
  */
@@ -132,36 +135,47 @@ export function resolveTargetAimPoint(
   return out;
 }
 
-/**
- * Three-iteration refinement of `out.aim` toward a target through the
- * actual barrel tip. A long barrel can move the firing origin enough
- * to change which point on a building AABB is closest, so the loop
- * resolves the aim point once from the mount, recomputes the tip,
- * resolves again, and re-resolves once more to settle. Returns the
- * settled barrel tip and yaw; `out.aim` is mutated in place.
- *
- * Shared by solveDirectTurretAim and solveProjectileTurretAim — they
- * differ only in what they do AFTER this refinement (lead-time
- * solving, ballistic pitch, ground-aim folding) and used to inline
- * the chain identically.
- */
-function iterateMuzzleAim(
-  target: Entity,
-  mountX: number,
-  mountY: number,
-  mountZ: number,
-  currentPitch: number,
-  config: TurretConfig,
+function writeTurretAimOrigin(
+  out: TurretAimOrigin,
+  x: number,
+  y: number,
+  z: number,
+  yaw: number,
+  pitch: number,
+): TurretAimOrigin {
+  const cosPitch = Math.cos(pitch);
+  out.x = x;
+  out.y = y;
+  out.z = z;
+  out.dirX = Math.cos(yaw) * cosPitch;
+  out.dirY = Math.sin(yaw) * cosPitch;
+  out.dirZ = Math.sin(pitch);
+  return out;
+}
+
+function writeZeroVec3(out: Vec3): Vec3 {
+  out.x = 0;
+  out.y = 0;
+  out.z = 0;
+  return out;
+}
+
+function writeTurretMountVelocity(
+  weapon: Turret,
+  source: Entity,
+  inheritVelocity: boolean,
   out: Vec3,
-): { tip: BarrelEndpoint; yaw: number } {
-  resolveTargetAimPoint(target, mountX, mountY, mountZ, out);
-  let yaw = Math.atan2(out.y - mountY, out.x - mountX);
-  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
-  resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out);
-  yaw = Math.atan2(out.y - tip.y, out.x - tip.x);
-  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
-  resolveTargetAimPoint(target, tip.x, tip.y, tip.z, out);
-  return { tip, yaw };
+): Vec3 {
+  if (!inheritVelocity) return writeZeroVec3(out);
+
+  const mountVelocity = weapon.worldVelocity;
+  if (mountVelocity) {
+    out.x = mountVelocity.x;
+    out.y = mountVelocity.y;
+    out.z = mountVelocity.z;
+    return out;
+  }
+  return getEntityVelocity3(source, out);
 }
 
 function writeFallbackDirectionAimPoint(
@@ -252,37 +266,26 @@ export function solveTurretAimAtPoint(
   mountX: number,
   mountY: number,
   mountZ: number,
-  currentPitch: number,
-  config: TurretConfig,
+  _currentPitch: number,
+  _config: TurretConfig,
   out: TurretAimSolution,
 ): TurretAimSolution {
   out.aim.x = aimPoint.x;
   out.aim.y = aimPoint.y;
   out.aim.z = aimPoint.z;
 
-  let yaw = Math.atan2(aimPoint.y - mountY, aimPoint.x - mountX);
-  let tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
-  yaw = Math.atan2(aimPoint.y - tip.y, aimPoint.x - tip.x);
-  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, config, 0);
-
-  const horizDist = Math.hypot(aimPoint.x - tip.x, aimPoint.y - tip.y);
-  const heightDiff = aimPoint.z - tip.z;
+  const yaw = Math.atan2(aimPoint.y - mountY, aimPoint.x - mountX);
+  const horizDist = Math.hypot(aimPoint.x - mountX, aimPoint.y - mountY);
+  const heightDiff = aimPoint.z - mountZ;
+  const pitch = Math.atan2(heightDiff, horizDist);
   out.yaw = yaw;
-  out.pitch = Math.atan2(heightDiff, horizDist);
-  out.tip = tip;
+  out.pitch = pitch;
+  writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, yaw, pitch);
   out.hasBallisticSolution = true;
-  out.targetVelocity.x = 0;
-  out.targetVelocity.y = 0;
-  out.targetVelocity.z = 0;
-  out.targetAcceleration.x = 0;
-  out.targetAcceleration.y = 0;
-  out.targetAcceleration.z = 0;
-  out.muzzleVelocity.x = 0;
-  out.muzzleVelocity.y = 0;
-  out.muzzleVelocity.z = 0;
-  out.muzzleAcceleration.x = 0;
-  out.muzzleAcceleration.y = 0;
-  out.muzzleAcceleration.z = 0;
+  writeZeroVec3(out.targetVelocity);
+  writeZeroVec3(out.targetAcceleration);
+  writeZeroVec3(out.originVelocity);
+  writeZeroVec3(out.originAcceleration);
   return out;
 }
 
@@ -291,19 +294,17 @@ export function solveDirectTurretAim(
   mountX: number,
   mountY: number,
   mountZ: number,
-  currentPitch: number,
-  config: TurretConfig,
+  _currentPitch: number,
+  _config: TurretConfig,
   out: DirectTurretAim,
 ): DirectTurretAim {
-  const { tip } = iterateMuzzleAim(
-    target, mountX, mountY, mountZ, currentPitch, config, out.aim,
-  );
+  resolveTargetAimPoint(target, mountX, mountY, mountZ, out.aim);
 
-  const horizDist = Math.hypot(out.aim.x - tip.x, out.aim.y - tip.y);
-  const heightDiff = out.aim.z - tip.z;
-  out.yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
+  const horizDist = Math.hypot(out.aim.x - mountX, out.aim.y - mountY);
+  const heightDiff = out.aim.z - mountZ;
+  out.yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
   out.pitch = Math.atan2(heightDiff, horizDist);
-  out.tip = tip;
+  writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, out.yaw, out.pitch);
   return out;
 }
 
@@ -374,52 +375,37 @@ export function solveProjectileTurretAim(
   mountX: number,
   mountY: number,
   mountZ: number,
-  currentPitch: number,
-  inheritMuzzleVelocity: boolean,
+  _currentPitch: number,
+  inheritOriginVelocity: boolean,
   groundHeightAt: GroundHeightLookup,
   out: ProjectileTurretAim,
 ): ProjectileTurretAim {
   const shot = weapon.config.shot as ProjectileShot;
   const launchSpeed = getProjectileLaunchSpeed(shot);
 
-  const refined = iterateMuzzleAim(
-    target, mountX, mountY, mountZ, currentPitch, weapon.config, out.aim,
-  );
-  let yaw = refined.yaw;
-  let tip = refined.tip;
+  resolveTargetAimPoint(target, mountX, mountY, mountZ, out.aim);
+  let yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
 
   const targetVelocity = getEntityVelocity3(target, out.targetVelocity);
-  const muzzleVelocity = out.muzzleVelocity;
-  if (inheritMuzzleVelocity) {
-    computeTurretPointVelocity(
-      weapon,
-      mountX, mountY, mountZ,
-      tip.x, tip.y, tip.z,
-      muzzleVelocity,
-    );
-  } else {
-    muzzleVelocity.x = 0;
-    muzzleVelocity.y = 0;
-    muzzleVelocity.z = 0;
-  }
+  const originVelocity = writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
 
-  const relVx = targetVelocity.x - muzzleVelocity.x;
-  const relVy = targetVelocity.y - muzzleVelocity.y;
-  const relVz = targetVelocity.z - muzzleVelocity.z;
+  const relVx = targetVelocity.x - originVelocity.x;
+  const relVy = targetVelocity.y - originVelocity.y;
+  const relVz = targetVelocity.z - originVelocity.z;
 
   const targetAcceleration = getEntityAcceleration3(target, out.targetAcceleration, groundHeightAt);
-  const muzzleAcceleration = getEntityAcceleration3(source, out.muzzleAcceleration, groundHeightAt);
-  const relAx = targetAcceleration.x - muzzleAcceleration.x;
-  const relAy = targetAcceleration.y - muzzleAcceleration.y;
-  const relAz = targetAcceleration.z - muzzleAcceleration.z;
+  const originAcceleration = getEntityAcceleration3(source, out.originAcceleration, groundHeightAt);
+  const relAx = targetAcceleration.x - originAcceleration.x;
+  const relAy = targetAcceleration.y - originAcceleration.y;
+  const relAz = targetAcceleration.z - originAcceleration.z;
   const relChanges =
     (relVx * relVx + relVy * relVy + relVz * relVz +
       relAx * relAx + relAy * relAy + relAz * relAz) > 1e-6;
 
   if (relChanges) {
-    writeKinematicVec3(_originState.position, tip.x, tip.y, tip.z);
-    writeKinematicVec3(_originState.velocity, muzzleVelocity.x, muzzleVelocity.y, muzzleVelocity.z);
-    writeKinematicVec3(_originState.acceleration, muzzleAcceleration.x, muzzleAcceleration.y, muzzleAcceleration.z);
+    writeKinematicVec3(_originState.position, mountX, mountY, mountZ);
+    writeKinematicVec3(_originState.velocity, originVelocity.x, originVelocity.y, originVelocity.z);
+    writeKinematicVec3(_originState.acceleration, originAcceleration.x, originAcceleration.y, originAcceleration.z);
     writeKinematicVec3(_targetState.position, out.aim.x, out.aim.y, out.aim.z);
     writeKinematicVec3(_targetState.velocity, targetVelocity.x, targetVelocity.y, targetVelocity.z);
     writeKinematicVec3(_targetState.acceleration, targetAcceleration.x, targetAcceleration.y, targetAcceleration.z);
@@ -436,7 +422,7 @@ export function solveProjectileTurretAim(
       out.aim.y = intercept.aimPoint.y;
       out.aim.z = intercept.aimPoint.z;
     }
-    yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
+    yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
   }
 
   const groundAimFraction = weapon.config.groundAimFraction;
@@ -444,32 +430,30 @@ export function solveProjectileTurretAim(
   const leadAimY = out.aim.y;
   if (groundAimFraction !== undefined && groundAimFraction > 0) {
     const f = groundAimFraction;
-    out.aim.x = tip.x + f * (out.aim.x - tip.x);
-    out.aim.y = tip.y + f * (out.aim.y - tip.y);
+    out.aim.x = mountX + f * (out.aim.x - mountX);
+    out.aim.y = mountY + f * (out.aim.y - mountY);
     out.aim.z = groundHeightAt(out.aim.x, out.aim.y);
   }
 
-  yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
-  tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, 0);
+  yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
   if (groundAimFraction !== undefined && groundAimFraction > 0) {
     const f = groundAimFraction;
-    out.aim.x = tip.x + f * (leadAimX - tip.x);
-    out.aim.y = tip.y + f * (leadAimY - tip.y);
+    out.aim.x = mountX + f * (leadAimX - mountX);
+    out.aim.y = mountY + f * (leadAimY - mountY);
     out.aim.z = groundHeightAt(out.aim.x, out.aim.y);
-    yaw = Math.atan2(out.aim.y - tip.y, out.aim.x - tip.x);
-    tip = getBarrelTip(mountX, mountY, mountZ, yaw, currentPitch, weapon.config, 0);
+    yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
   }
 
-  const horizDist = Math.hypot(out.aim.x - tip.x, out.aim.y - tip.y);
-  const heightDiff = out.aim.z - tip.z;
+  const horizDist = Math.hypot(out.aim.x - mountX, out.aim.y - mountY);
+  const heightDiff = out.aim.z - mountZ;
   out.yaw = yaw;
   const staticIntercept = solveStaticProjectileAim(
     shot,
     launchSpeed,
     !shot.ignoresGravity && (weapon.config.highArc ?? false),
-    writeKinematicVec3(_staticOriginPosition, tip.x, tip.y, tip.z),
-    muzzleVelocity,
-    muzzleAcceleration,
+    writeKinematicVec3(_staticOriginPosition, mountX, mountY, mountZ),
+    originVelocity,
+    originAcceleration,
     out.aim,
     _interceptSolution,
   );
@@ -481,7 +465,7 @@ export function solveProjectileTurretAim(
     out.hasBallisticSolution = shot.ignoresGravity === true;
     out.pitch = Math.atan2(heightDiff, horizDist);
   }
-  out.tip = tip;
+  writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, yaw, out.pitch);
   return out;
 }
 
@@ -543,11 +527,7 @@ export function solveTurretAim(
   out.targetAcceleration.x = 0;
   out.targetAcceleration.y = 0;
   out.targetAcceleration.z = 0;
-  out.muzzleVelocity.x = 0;
-  out.muzzleVelocity.y = 0;
-  out.muzzleVelocity.z = 0;
-  out.muzzleAcceleration.x = 0;
-  out.muzzleAcceleration.y = 0;
-  out.muzzleAcceleration.z = 0;
+  writeZeroVec3(out.originVelocity);
+  writeZeroVec3(out.originAcceleration);
   return out;
 }

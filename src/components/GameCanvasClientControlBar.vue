@@ -299,15 +299,6 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>BEAMS:</BarLabel>
-        <BarButton
-          :active="model.beamSnapToBarrel"
-          title="Snap beam origins to live rendered barrel tips"
-          @click="model.toggleBeamSnapToBarrel"
-        >BARREL</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
         <BarLabel>DRIFT:</BarLabel>
         <BarButtonGroup>
           <BarButton

@@ -6,8 +6,8 @@ import type { Entity, UnitAction } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
-import { magnitude, getTransformCosSin, getBarrelTip } from '../math';
-import { computeTurretPointVelocity, getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/combatUtils';
+import { magnitude, getTransformCosSin } from '../math';
+import { getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions } from './Pathfinder';
@@ -20,7 +20,7 @@ import { requestUnitJump } from './unitJump';
 import { pushUnitAction, setUnitActions } from './unitActions';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
-const _dgunMuzzleVelocity = { x: 0, y: 0, z: 0 };
+const _dgunMountVelocity = { x: 0, y: 0, z: 0 };
 
 function getCommanderDGunTurretId(commander: Entity): string | null {
   const unitType = commander.unit?.unitType;
@@ -284,33 +284,25 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   const { cos, sin } = getTransformCosSin(commander.transform);
 
-  // Resolve the d-gun's barrel tip + direction through the shared
-  // primitive — exactly the same call AI turrets use — so the
-  // commander-fired shot emerges from the same point and axis the
-  // renderer draws. Surface normal comes from the unit's smoothed-
-  // tilt EMA (updateUnitTilt) so the slope-tilted mount doesn't snap
-  // when the commander crosses a terrain triangle edge.
+  // Resolve the d-gun's turret mount center. Surface normal comes from
+  // the unit's smoothed-tilt EMA (updateUnitTilt) so the slope-tilted
+  // mount doesn't snap when the commander crosses a terrain triangle
+  // edge.
   const mount = updateWeaponWorldKinematics(
     commander, dgunTurret, dgunIdx,
     cos, sin,
     { currentTick: ctx.world.getTick(), surfaceN: commander.unit?.surfaceNormal },
     _dgunMount,
   );
-  const tip = getBarrelTip(
-    mount.x, mount.y, mount.z,
-    fireAngle, 0,
-    dgunTurret.config,
-    0,
-  );
-  const spawnX = tip.x;
-  const spawnY = tip.y;
+  const spawnX = mount.x;
+  const spawnY = mount.y;
   const dgunFireZ = ctx.world.getGroundZ(spawnX, spawnY) + DGUN_TERRAIN_FOLLOW_HEIGHT;
 
   // D-gun is a terrain-following wave: it travels horizontally in the
   // commanded direction and snaps to local terrain height during
-  // integration. Keep horizontal muzzle inheritance so firing from a
-  // moving commander still uses the turret's own motion, but never let
-  // vertical muzzle velocity turn it into a ballistic shell.
+  // integration. Keep horizontal mount-center inheritance so firing
+  // from a moving commander still uses the turret's own motion, but
+  // never let vertical mount velocity turn it into a ballistic shell.
   const dgunShot = dgunTurret.config.shot;
   if (!dgunShot || dgunShot.type === 'force') {
     throw new Error('D-gun turret must use a projectile, beam, or laser shot');
@@ -321,16 +313,13 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   let velocityZ = 0;
   if (commander.unit) {
     // Manual D-gun shots update the same turret kinematics cache used
-    // by automated weapons above, so inherited velocity is the turret's
-    // own 3D motion plus yaw/pitch tangential muzzle motion.
-    const inherited = computeTurretPointVelocity(
-      dgunTurret,
-      mount.x, mount.y, mount.z,
-      tip.x, tip.y, tip.z,
-      _dgunMuzzleVelocity,
-    );
-    velocityX += inherited.x;
-    velocityY += inherited.y;
+    // by automated weapons above, so inherited velocity is the turret
+    // mount center's own 3D motion.
+    const inherited = dgunTurret.worldVelocity;
+    _dgunMountVelocity.x = inherited?.x ?? 0;
+    _dgunMountVelocity.y = inherited?.y ?? 0;
+    velocityX += _dgunMountVelocity.x;
+    velocityY += _dgunMountVelocity.y;
   }
 
   // Create D-gun projectile
@@ -352,9 +341,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   ctx.world.addEntity(projectile);
 
-  // Emit projectile spawn event for D-gun. Spawn pos + altitude came
-  // from the shared BarrelGeometry primitive (see getBarrelTip call
-  // above) so the event lines up with the visible barrel tip.
+  // Emit projectile spawn event for D-gun. Spawn XY comes from the
+  // turret mount center; altitude remains terrain-following.
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },
@@ -372,9 +360,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     isDGun: true,
   });
 
-  // Emit audio event — muzzle-flash position matches the projectile
-  // spawn z (commander ground-footprint + muzzle height) so the
-  // visible flash aligns with where the shot actually came out.
+  // Emit audio event at the authoritative projectile spawn.
   const dgunSimEvent: SimEvent = {
     type: 'fire',
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },

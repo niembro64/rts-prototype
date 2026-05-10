@@ -312,14 +312,12 @@ export type NetworkServerSnapshotProjectileSpawn = {
   playerId: number;
   sourceEntityId: number;
   turretIndex: number;
-  /** Physical barrel within the source turret's cluster. Client passes
-   *  it to getBarrelTip so the spawn visual lines up with the exact
-   *  barrel the server picked. */
+  /** Barrel selected for visual/audio cadence within the source turret's cluster.
+   *  Authoritative shots spawn from the turret mount center. */
   barrelIndex: number;
   isDGun?: boolean;
   /** True when this projectile came from a parent detonation (e.g.
-   *  cluster-flak submunitions). Client skips the barrel-tip spawn-
-   *  position override and uses `pos` as-is. */
+   *  cluster-flak submunitions) rather than a turret launch. */
   fromParentDetonation?: boolean;
   beam?: { start: Vec3; end: Vec3 };
   targetEntityId?: number;
@@ -362,7 +360,7 @@ export type NetworkServerSnapshotBeamPoint = {
 
 export type NetworkServerSnapshotBeamUpdate = {
   id: number;
-  /** Polyline vertices (≥ 2). Index 0 = start (muzzle), last = end
+  /** Polyline vertices (≥ 2). Index 0 = start (turret mount center), last = end
    *  (range / hit / ground / terminal reflector), middles = reflections. Each carries its
    *  own (vx, vy, vz) — the start finite-diffs every tick, the end
    *  and reflections finite-diff across the (LOD-strided) re-trace

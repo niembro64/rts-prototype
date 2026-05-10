@@ -3,7 +3,6 @@ import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { getTurretHeadRadius } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { Entity, Turret } from '../sim/types';
-import type { BarrelTipCache3D } from './BarrelTipCache3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
@@ -24,7 +23,6 @@ export type UnitTurretPose3DUpdate = {
   spinAngle?: number;
   currentDtMs: number;
   unitDetailInstances: UnitDetailInstanceRenderer3D;
-  barrelTipCache: BarrelTipCache3D;
   constructionVisuals: ConstructionVisualController3D;
 };
 
@@ -51,7 +49,6 @@ export class UnitTurretPose3D {
       spinAngle,
       currentDtMs,
       unitDetailInstances,
-      barrelTipCache,
       constructionVisuals,
     } = options;
 
@@ -116,12 +113,9 @@ export class UnitTurretPose3D {
       }
 
       this.writeBarrelInstances(
-        entity,
-        turretIdx,
         turretMesh,
         unitChainMat,
         unitDetailInstances,
-        barrelTipCache,
       );
     }
   }
@@ -149,12 +143,9 @@ export class UnitTurretPose3D {
   }
 
   private writeBarrelInstances(
-    entity: Entity,
-    turretIdx: number,
     turretMesh: TurretMesh,
     unitChainMat: THREE.Matrix4,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
-    barrelTipCache: BarrelTipCache3D,
   ): void {
     if (
       !turretMesh.barrelSlots ||
@@ -199,7 +190,6 @@ export class UnitTurretPose3D {
       );
       this.barrelWorldMat.multiplyMatrices(this.barrelParentMat, this.barrelStepMat);
       unitDetailInstances.writeBarrelMatrix(slot, this.barrelWorldMat);
-      barrelTipCache.write(entity.id, turretIdx, barrelIdx, this.barrelWorldMat);
     }
   }
 }

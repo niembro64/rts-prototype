@@ -290,7 +290,7 @@ export const EMA_INITIAL_VALUES = {
 export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
 
 /** Maximum authoritative beam/laser path segments traced per re-path.
- *  Segment 1 is muzzle -> first hit/range, segment 2 is after the
+ *  Segment 1 is launch origin -> first hit/range, segment 2 is after the
  *  first reflector, and so on. If the final allowed segment ends on a
  *  reflector, the beam terminates there and does not get endpoint
  *  damage. This prevents mirror/force-field loops from producing

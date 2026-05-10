@@ -1,20 +1,16 @@
-// BarrelGeometry — single source of truth for "where does a shot come out
-// of a turret?" in full 3D.
+// BarrelGeometry — shared visual barrel layout in full 3D.
 //
 // Every call site that needed the 3D barrel tip used to unroll the same
 // transform chain (unit yaw → turret yaw → turret pitch → per-barrel orbit
 // offset) by hand, and each place did it slightly differently. This module
-// folds the whole chain into one pure function that the sim's spawn path,
-// the sim's beam tracer, and the client's beam predictor all call — so
-// projectile origin, beam origin, ballistic target math, and the rendered
-// barrel centerline stay locked to the same numbers.
+// folds the whole chain into one pure function used by the renderer and
+// visual helpers.
 //
 // The firing-frame forward vector lines up 1-to-1 with the renderer's
 // nested pitchGroup hierarchy:
 //   forward = barrel axis (the direction a shot leaves in)
 // Multi-barrel turrets use the same per-barrel local offsets as
-// TurretMesh3D, so the barrelIndex carried in projectile spawn events is
-// real muzzle metadata rather than just visual cadence.
+// TurretMesh3D, so barrelIndex remains meaningful visual cadence metadata.
 
 import type { BarrelShape } from '@/types/blueprints';
 import type { ActiveProjectileShot, ShotConfig, TurretConfig } from '../sim/types';
@@ -25,8 +21,8 @@ export const TURRET_BARREL_MIN_DIAMETER = 2;
 
 /** Maximum barrel orbit radius — fractions of the turret body sphere
  *  radius — applied to authored blueprint orbit values so a barrel
- *  cluster cannot fan outside its own turret silhouette. All muzzle,
- *  render, HUD, and debris paths use the helpers below so the same
+ *  cluster cannot fan outside its own turret silhouette. Render, HUD,
+ *  and debris paths use the helpers below so the same
  *  blueprint geometry is used everywhere. */
 const BARREL_ORBIT_CLAMP_FRAC = {
   /** simpleMultiBarrel — single orbit ring of parallel barrels. */
@@ -121,9 +117,8 @@ export function countBarrels(config: Pick<TurretConfig, 'barrel'>): number {
  *  spaced on a circle, half-step offset so the i=0 barrel is NOT on
  *  any cardinal axis (which would visually align with the chassis edge
  *  at one orientation). Same convention used by the renderer's
- *  YZ-plane multi-barrel layout AND the sim's firing-frame barrel-tip
- *  computation; centralizing keeps a future change to the spacing
- *  rule (e.g. anti-aliased sub-step jitter) atomic across both. */
+ *  YZ-plane multi-barrel layout; centralizing keeps a future change
+ *  to the spacing rule atomic across visual systems. */
 export function getBarrelOrbitAngle(idx: number, n: number): number {
   return ((idx + 0.5) / n) * Math.PI * 2;
 }
@@ -200,13 +195,12 @@ export function getTurretBarrelDiameter(
  *  mounts it.
  *
  *  mountX/Y/Z — world-space turret pivot (weapon's cached worldPos +
- *    unit-ground + muzzle-height).
+ *    unit-ground + mount height).
  *  turretYaw  — absolute world yaw of the turret (radians).
  *  turretPitch — elevation above horizontal (radians; +π/2 = up).
- *  config     — the turret blueprint; emitters fire from the mount,
- *               barrel configs fire from the indexed barrel tip.
- *  barrelIndex — physical barrel in the authored cluster. The same
- *                index is serialized to clients for spawn correction.
+ *  config     — the turret blueprint; emitters report the mount,
+ *               barrel configs report the indexed barrel tip.
+ *  barrelIndex — physical barrel in the authored cluster.
  *  spinAngle   — optional barrel-cluster rotation around the firing
  *                axis. Defaults to the unspun authored cluster.
  */
@@ -250,7 +244,7 @@ export function getBarrelTip(
   // mesh, so visually you only see the protruding portion.)
   //
   // The renderer uses this exact helper when building the cylinder, so
-  // the muzzle stays at the visible barrel tip.
+  // the returned endpoint stays at the visible barrel tip.
   const barrelLen = getTurretBarrelCenterToTipLength(config);
 
   if (b.type === 'simpleSingleBarrel') {

@@ -1,6 +1,6 @@
 // Ballistic aim solver — pick the pitch angle that lands a projectile
 // with speed `v` under constant gravity `g` on a target at horizontal
-// distance `d` and vertical offset `h` from the muzzle.
+// distance `d` and vertical offset `h` from the launch origin.
 //
 // Given a flat-ground starting point, the projectile equation is:
 //   x(t) = v·cos(θ)·t
@@ -226,8 +226,8 @@ export function ballisticSolutions(
   g: number,
 ): BallisticSolution | null {
   if (d <= 1e-6) {
-    // Target directly above / below the muzzle — straight up or down
-    // is the only angle.
+    // Target directly above / below the launch origin — straight up
+    // or down is the only angle.
     const pitch = h >= 0 ? Math.PI / 2 : -Math.PI / 2;
     return { low: pitch, high: pitch };
   }

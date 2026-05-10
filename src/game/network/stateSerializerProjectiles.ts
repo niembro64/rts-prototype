@@ -321,9 +321,8 @@ export function serializeProjectileSnapshot({
         out.turretIndex = proj.config.turretIndex ?? 0;
         out.barrelIndex = proj.sourceBarrelIndex ?? 0;
         out.isDGun = entity.dgunProjectile?.isDGun ? true : undefined;
-        // Re-sync spawns carry the projectile's current pos. Setting
-        // fromParentDetonation tells the client applier to skip barrel-tip
-        // override and treat pos as authoritative.
+        // Re-sync spawns carry the projectile's current pos; mark it
+        // as authoritative rather than a fresh turret launch.
         out.fromParentDetonation = true;
         const pts = proj.points;
         if (pts && pts.length >= 2) {

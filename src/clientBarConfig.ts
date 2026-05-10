@@ -70,7 +70,6 @@ export const CLIENT_CONFIG = {
   },
   audioSmoothing: { default: true },
   groundMarks: { default: true },
-  beamSnapToBarrel: { default: true },
   lodShellRings: { default: false },
   lodGridBorders: { default: false },
   triangleDebug: { default: false },
@@ -419,7 +418,6 @@ const RENDER_MODE_STORAGE_KEY = 'player-client-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'player-client-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
 const GROUND_MARKS_STORAGE_KEY = 'player-client-ground-marks';
-const BEAM_SNAP_TO_BARREL_STORAGE_KEY = 'player-client-beam-snap-to-barrel';
 const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
 const LOD_GRID_BORDERS_STORAGE_KEY = 'player-client-lod-grid-borders';
 const TRIANGLE_DEBUG_STORAGE_KEY = 'player-client-triangle-debug';
@@ -523,7 +521,6 @@ let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentGroundMarks: boolean = _cd.groundMarks.default;
-let currentBeamSnapToBarrel: boolean = _cd.beamSnapToBarrel.default;
 let currentLodShellRings: boolean = _cd.lodShellRings.default;
 let currentLodGridBorders: boolean = _cd.lodGridBorders.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
@@ -652,10 +649,6 @@ function loadFromStorage(): void {
   const storedGroundMarks = readPersisted(GROUND_MARKS_STORAGE_KEY);
   if (storedGroundMarks !== null) {
     currentGroundMarks = storedGroundMarks === 'true';
-  }
-  const storedBeamSnapToBarrel = readPersisted(BEAM_SNAP_TO_BARREL_STORAGE_KEY);
-  if (storedBeamSnapToBarrel !== null) {
-    currentBeamSnapToBarrel = storedBeamSnapToBarrel === 'true';
   }
   const storedLodShellRings = readPersisted(LOD_SHELL_RINGS_STORAGE_KEY);
   if (storedLodShellRings !== null) {
@@ -1106,23 +1099,6 @@ export function getGroundMarks(): boolean {
 export function setGroundMarks(enabled: boolean): void {
   currentGroundMarks = enabled;
   persist(GROUND_MARKS_STORAGE_KEY, String(enabled));
-}
-
-/** When ON, the BeamRenderer overrides the first beam segment's start
- *  with the live world position of the firing barrel's tip — sampled
- *  from the same matrix chain that places the rendered barrel cylinder.
- *  Eliminates the small gap between the visible barrel and the beam
- *  origin that comes from sim/render pose desync (chassis-tilt EMA,
- *  turret yaw/pitch prediction, snapshot-extrapolation linearization).
- *  May produce a sub-degree kink at the first segment when the rendered
- *  turret pose lags the aimed direction. */
-export function getBeamSnapToBarrel(): boolean {
-  return currentBeamSnapToBarrel;
-}
-
-export function setBeamSnapToBarrel(enabled: boolean): void {
-  currentBeamSnapToBarrel = enabled;
-  persist(BEAM_SNAP_TO_BARREL_STORAGE_KEY, String(enabled));
 }
 
 export function getLodShellRings(): boolean {

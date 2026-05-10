@@ -297,8 +297,7 @@ export type TurretConfig = {
    *  submunitions (if any) bounce + spread the rest of the way. See
    *  TurretBlueprint.groundAimFraction. */
   groundAimFraction?: number;
-  /** World-space radius of the rendered turret body sphere and the
-   *  source scale for barrel-tip math. See TurretBlueprint.radius. */
+  /** World-space radius of the rendered turret body sphere. */
   radius: TurretRadiusConfig;
   /** Visual-only turret hardpoints do not acquire targets or fire.
    *  They exist so reusable turret art, such as construction emitters,
@@ -310,7 +309,7 @@ export type TurretConfig = {
 
 // Runtime projectile configuration. This is intentionally smaller than
 // TurretConfig: projectiles own a shot blueprint plus the small amount of
-// source-turret metadata needed for muzzle-following line weapons. A
+// source-turret metadata needed for active line weapons. A
 // submunition can therefore be a real shot without masquerading as a turret.
 export type ProjectileConfig = {
   shot: ActiveProjectileShot;
@@ -322,7 +321,7 @@ export type ProjectileConfig = {
   range: number;
   /** Source-turret cooldown. Used when laser projectiles expire. */
   cooldown: number;
-  /** Source-turret muzzle geometry. Present only for turret-fired shots. */
+  /** Source-turret visual barrel geometry. Present only for turret-fired shots. */
   barrel?: BarrelShape;
   radius?: TurretRadiusConfig;
   /** Source turret slot on the owning unit. Used by active beam bookkeeping. */
@@ -372,7 +371,7 @@ export type Turret = {
    *  updateWeaponWorldKinematics from worldPos deltas when current, or
    *  from the carrier's velocity as a stale/first-tick fallback. This is
    *  the turret's own 3D motion, so moving/tilted/lateral mounts feed
-   *  projectile lead and inherited muzzle velocity correctly. */
+   *  projectile lead and inherited launch-origin velocity correctly. */
   worldVelocity?: Vec3;
   /** Simulation tick corresponding to worldPos/worldVelocity. */
   worldPosTick?: number;
@@ -431,7 +430,7 @@ export type Projectile = {
   collisionStartZ?: number;
   timeAlive: number;
   maxLifespan: number;
-  /** Beam/laser polyline. Index 0 = start (muzzle), last = end
+  /** Beam/laser polyline. Index 0 = start (turret mount center), last = end
    *  (range/hit/ground/terminal reflector), middles = reflections.
    *  Reflection vertices carry reflector metadata via the legacy
    *  mirrorEntityId field plus reflectorKind/normal*. Undefined on
@@ -444,10 +443,7 @@ export type Projectile = {
    *  The beam is still rendered, but no endpoint damage sphere applies. */
   endpointDamageable?: boolean;
   segmentLimitReached?: boolean;
-  /** Physical source barrel for persistent beam/laser muzzle updates.
-   *  Normal projectile spawns carry barrelIndex on their spawn event;
-   *  beams need to remember it because their start point is re-traced
-   *  every tick while the source turret moves. */
+  /** Source barrel index for visual/audio cadence metadata on turret shots. */
   sourceBarrelIndex?: number;
   /** Internal: previous tick's start position. Used to compute the
    *  per-tick start-point velocity (points[0].vx/vy/vz). Not

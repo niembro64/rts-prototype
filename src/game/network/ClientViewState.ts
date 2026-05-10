@@ -129,8 +129,6 @@ export class ClientViewState {
     });
     this.projectileStore = new ClientProjectileStore({
       entities: this.entities,
-      getMapWidth: () => this.mapWidth,
-      getMapHeight: () => this.mapHeight,
       clearPredictionAccum: (id) => this.clearPredictionAccum(id),
       markEntitySetChanged: (invalidateCaches) => this.markEntitySetChanged(invalidateCaches),
     });

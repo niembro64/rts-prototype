@@ -228,7 +228,7 @@ export function getTurretRootY(
 }
 
 /** Chassis-local Y of the turret head center. This is the value used
- *  by sim muzzle math before chassis lift and world terrain altitude
+ *  by turret mount math before chassis lift and world terrain altitude
  *  are applied. */
 export function getTurretHeadCenterY(
   bodyShape: UnitBodyShape,

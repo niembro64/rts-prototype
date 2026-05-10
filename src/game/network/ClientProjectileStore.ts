@@ -3,11 +3,7 @@ import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotProjectileSpawn,
 } from './NetworkManager';
-import { DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
-import { getSurfaceNormal } from '../sim/Terrain';
-import { getUnitGroundZ } from '../sim/unitGeometry';
-import { getTurretMountHeight } from '../sim/combat/combatUtils';
-import { getBarrelTip, getTransformCosSin, getTurretWorldMount } from '../math';
+import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { getProjectileConfigForSpawn } from '../sim/projectileConfigs';
 import {
   codeToProjectileType,
@@ -29,8 +25,6 @@ import {
 
 type ClientProjectileStoreOptions = {
   entities: Map<EntityId, Entity>;
-  getMapWidth: () => number;
-  getMapHeight: () => number;
   clearPredictionAccum: (id: EntityId) => void;
   markEntitySetChanged: (invalidateCaches?: boolean) => void;
 };
@@ -221,43 +215,9 @@ export class ClientProjectileStore {
       turretIndex: spawn.turretIndex,
     };
 
-    let spawnX = spawn.pos.x;
-    let spawnY = spawn.pos.y;
-    let spawnZ = spawn.pos.z;
-
-    if (
-      !isLineProjectileTypeCode(spawn.projectileType) &&
-      !spawn.fromParentDetonation
-    ) {
-      const source = this.options.entities.get(spawn.sourceEntityId);
-      const weapon = source?.combat?.turrets?.[spawn.turretIndex];
-      if (source && source.unit && weapon) {
-        const { cos: unitCos, sin: unitSin } = getTransformCosSin(source.transform);
-        // Source units already carry the wire-shipped surface normal in
-        // unit.surfaceNormal; fall back to a heightmap sample only when
-        // it hasn't been populated yet (rare — first frame after spawn).
-        const sn = source.unit.surfaceNormal ?? getSurfaceNormal(
-          source.transform.x, source.transform.y,
-          this.options.getMapWidth(), this.options.getMapHeight(), LAND_CELL_SIZE,
-        );
-        const unitGroundZ = getUnitGroundZ(source);
-        const mount = getTurretWorldMount(
-          source.transform.x, source.transform.y, unitGroundZ,
-          unitCos, unitSin,
-          weapon.mount.x, weapon.mount.y, getTurretMountHeight(source, spawn.turretIndex),
-          sn,
-        );
-        const tip = getBarrelTip(
-          mount.x, mount.y, mount.z,
-          weapon.rotation, weapon.pitch,
-          config,
-          spawn.barrelIndex,
-        );
-        spawnX = tip.x;
-        spawnY = tip.y;
-        spawnZ = tip.z;
-      }
-    }
+    const spawnX = spawn.pos.x;
+    const spawnY = spawn.pos.y;
+    const spawnZ = spawn.pos.z;
 
     const projectileType = codeToProjectileType(spawn.projectileType);
     if (!projectileType) throw new Error(`Unknown projectile type code: ${spawn.projectileType}`);

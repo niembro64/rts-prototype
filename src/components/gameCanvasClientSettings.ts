@@ -10,7 +10,6 @@ import {
   getAudioScope,
   getAudioSmoothing,
   getBaseLodMode,
-  getBeamSnapToBarrel,
   getBuildGridDebug,
   getCameraFovDegrees,
   getCameraSmoothMode,
@@ -36,7 +35,6 @@ import {
   setAudioScope,
   setAudioSmoothing,
   setBaseLodMode,
-  setBeamSnapToBarrel,
   setBuildGridDebug,
   setCameraFovDegrees,
   setCameraSmoothMode,
@@ -93,7 +91,6 @@ export function useGameCanvasClientSettings({
   const audioScope = ref<AudioScope>(getAudioScope());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
   const groundMarks = ref<boolean>(getGroundMarks());
-  const beamSnapToBarrel = ref<boolean>(getBeamSnapToBarrel());
   const lodShellRings = ref<boolean>(getLodShellRings());
   const lodGridBorders = ref<boolean>(getLodGridBorders());
   const triangleDebug = ref<boolean>(getTriangleDebug());
@@ -238,12 +235,6 @@ export function useGameCanvasClientSettings({
     groundMarks.value = newValue;
   }
 
-  function toggleBeamSnapToBarrel(): void {
-    const newValue = !beamSnapToBarrel.value;
-    setBeamSnapToBarrel(newValue);
-    beamSnapToBarrel.value = newValue;
-  }
-
   function toggleLodShellRings(): void {
     const newValue = !lodShellRings.value;
     setLodShellRings(newValue);
@@ -350,8 +341,6 @@ export function useGameCanvasClientSettings({
     audioSmoothing.value = cd.audioSmoothing.default;
     setGroundMarks(cd.groundMarks.default);
     groundMarks.value = cd.groundMarks.default;
-    setBeamSnapToBarrel(cd.beamSnapToBarrel.default);
-    beamSnapToBarrel.value = cd.beamSnapToBarrel.default;
     setLodShellRings(cd.lodShellRings.default);
     lodShellRings.value = cd.lodShellRings.default;
     setLodGridBorders(cd.lodGridBorders.default);
@@ -423,7 +412,6 @@ export function useGameCanvasClientSettings({
     audioScope,
     audioSmoothing,
     groundMarks,
-    beamSnapToBarrel,
     lodShellRings,
     lodGridBorders,
     triangleDebug,
@@ -466,7 +454,6 @@ export function useGameCanvasClientSettings({
     toggleAllUnitRadii,
     toggleAudioSmoothing,
     toggleGroundMarks,
-    toggleBeamSnapToBarrel,
     toggleLodShellRings,
     toggleLodGridBorders,
     toggleTriangleDebug,

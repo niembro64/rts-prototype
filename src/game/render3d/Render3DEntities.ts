@@ -54,7 +54,6 @@ import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { createMirrorReflectorPanelMaterial } from './MirrorReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
-import { BarrelTipCache3D, type BarrelTipEntry } from './BarrelTipCache3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { MirrorPose3D } from './MirrorPose3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
@@ -63,10 +62,8 @@ import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
-// The sim's projectile-spawn point is derived by getBarrelTip
-// (src/game/math/BarrelGeometry.ts) pivoted at the world mount returned
-// by resolveWeaponWorldMount (sim/combat/combatUtils.ts), so visual
-// barrel tip and sim muzzle stay locked together.
+// The sim's projectile-spawn point is the turret world mount center;
+// barrel endpoint geometry is visual-only.
 
 const BARREL_COLOR = 0xffffff;
 
@@ -213,14 +210,6 @@ export class Render3DEntities {
 
   private _unitOneVec = new THREE.Vector3(1, 1, 1);
 
-  /** Per-frame cache of barrel-tip sim/world positions, keyed by
-   *  `(entityId * 256) + (turretIdx << 4) + barrelIdx`. Populated in
-   *  the per-barrel matrix-compose loop and consumed by BeamRenderer3D
-   *  when the player-client `beamSnapToBarrel` toggle is on, so the
-   *  start of the first beam segment exactly matches the rendered
-   *  barrel mesh's tip rather than the snapshot-extrapolated point. */
-  private barrelTipCache = new BarrelTipCache3D();
-
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
    *  once at the top of the per-unit body. Reused as the BARREL parent-
@@ -345,10 +334,6 @@ export class Render3DEntities {
     const frameSpin = this.barrelSpinState.beginFrame();
     this._currentDtMs = frameSpin.currentDtMs;
     this._spinDt = frameSpin.spinDtSec;
-    // Reset the per-frame barrel-tip cache before updateUnits writes
-    // fresh entries. The pool is reused across frames so steady-state
-    // beam combat allocates zero per frame.
-    this.barrelTipCache.reset();
     this.updateUnits();
     this.buildingRenderer.update(this.lod, this._spinDt, this._currentDtMs, frameSpin.timeMs);
     this.projectileRangeEnvelope.update();
@@ -753,7 +738,6 @@ export class Render3DEntities {
         spinAngle: this.barrelSpinState.angleFor(e.id),
         currentDtMs: this._currentDtMs,
         unitDetailInstances: this.unitDetailInstances,
-        barrelTipCache: this.barrelTipCache,
         constructionVisuals: this.constructionVisuals,
       });
 
@@ -826,18 +810,6 @@ export class Render3DEntities {
 
   getFactorySprayTargets(): readonly SprayTarget[] {
     return this.constructionVisuals.getFactorySprayTargets();
-  }
-
-  /** Look up the sim/world barrel-tip position the rendered cylinder is
-   *  drawn at this frame, for `(entityId, turretIdx, barrelIdx)`.
-   *  Populated by updateUnits' per-barrel matrix compose; consumed by
-   *  BeamRenderer3D when the `beamSnapToBarrel` toggle is on so the
-   *  start of the first beam segment exactly matches the visible
-   *  barrel mouth. Returns null when the source unit is off-scope or
-   *  its mesh hasn't been built yet — caller should fall back to
-   *  `points[0]` from the snapshot polyline. */
-  getBarrelTipWorldPos(entityId: EntityId, turretIdx: number, barrelIdx: number): BarrelTipEntry | null {
-    return this.barrelTipCache.get(entityId, turretIdx, barrelIdx);
   }
 
   /** Look up an entity's currently built locomotion mesh — undefined
