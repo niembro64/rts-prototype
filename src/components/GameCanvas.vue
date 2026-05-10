@@ -27,13 +27,10 @@ import {
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
 import { GOOD_TPS } from '../lodConfig';
-import type { SnapshotRate, KeyframeRatio, TickRate } from '../types/server';
 import {
   BATTLE_CONFIG,
   loadStoredCap,
-  getDefaultGrid,
   loadStoredGrid,
-  saveStoredGrid,
   loadStoredTerrainCenter,
   loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
@@ -43,24 +40,16 @@ import {
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
 import {
   SERVER_CONFIG,
-  saveSnapshotRate,
-  saveKeyframeRatio,
-  saveTickRate,
   loadStoredSimQuality,
-  saveSimQuality,
   loadStoredSimSignalStates,
-  saveSimSignalStates,
-  resetSimSignalStates,
   loadStoredTiltEmaMode,
-  saveTiltEmaMode,
 } from '../serverBarConfig';
 import type { TiltEmaMode } from '../shellConfig';
 import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
-import { isSignalState, type SignalState } from '../types/lod';
+import { isSignalState } from '../types/lod';
 import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
 import {
   SERVER_SIM_LOD_SIGNALS_ENABLED,
-  SERVER_SIM_QUALITY_DEFAULT,
 } from '../serverSimLodConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
 import {
@@ -171,6 +160,7 @@ import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
 import { useGameCanvasLobbyActions } from './gameCanvasLobbyActions';
 import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
 import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
+import { useGameCanvasServerSettings } from './gameCanvasServerSettings';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -830,12 +820,23 @@ const {
   startBackgroundBattle,
 });
 
-function resetGridInfoToDefault(): void {
-  const gridDefault = getDefaultGrid(currentBattleMode.value);
-  if (displayGridInfo.value !== gridDefault) {
-    toggleSendGridInfo();
-  }
-}
+const {
+  resetServerDefaults,
+  setNetworkUpdateRate,
+  setTickRateValue,
+  setTiltEmaModeValue,
+  setSimQualityValue,
+  cycleServerSignal,
+  setKeyframeRatioValue,
+  resetGridInfoToDefault,
+} = useGameCanvasServerSettings({
+  currentBattleMode,
+  displayGridInfo,
+  serverSimQuality,
+  serverTiltEmaMode,
+  serverSignalStates,
+  getActiveConnection: () => activeConnection,
+});
 
 const {
   currentAllowedUnits,
@@ -857,30 +858,6 @@ const {
   resetGridInfoToDefault,
   broadcastLobbySettingsIfHost,
 });
-
-function resetServerDefaults(): void {
-  setTickRateValue(SERVER_CONFIG.tickRate.default);
-  setNetworkUpdateRate(SERVER_CONFIG.snapshot.default);
-  setKeyframeRatioValue(SERVER_CONFIG.keyframe.default);
-  // Sim quality (auto / min / low / med / high / max). Was missing
-  // from the reset path — clicking DEFAULTS reverted everything else
-  // but left this at whatever the user last picked, so a refresh
-  // would replay the stale value while every other server setting
-  // came back at default.
-  setSimQualityValue(SERVER_SIM_QUALITY_DEFAULT);
-  // Reset every HOST SERVER LOD signal to the centralized
-  // SERVER_SIM_LOD_SIGNAL_DEFAULTS table, persist, and ship the new
-  // states so the simulation's auto-LOD picks them up immediately.
-  const fresh = resetSimSignalStates();
-  serverSignalStates.value = fresh;
-  activeConnection?.sendCommand({
-    type: 'setSimSignalStates',
-    tick: 0,
-    tps: fresh.tps,
-    cpu: fresh.cpu,
-    units: fresh.units,
-  });
-}
 
 function resetClientDefaults(): void {
   const cd = CLIENT_CONFIG;
@@ -1320,22 +1297,6 @@ async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerI
   });
 }
 
-function setNetworkUpdateRate(rate: SnapshotRate): void {
-  activeConnection?.sendCommand({ type: 'setSnapshotRate', tick: 0, rate });
-  saveSnapshotRate(rate);
-}
-
-function setTickRateValue(rate: TickRate): void {
-  activeConnection?.sendCommand({ type: 'setTickRate', tick: 0, rate });
-  saveTickRate(rate);
-}
-
-function setTiltEmaModeValue(mode: TiltEmaMode): void {
-  activeConnection?.sendCommand({ type: 'setTiltEmaMode', tick: 0, mode });
-  saveTiltEmaMode(mode);
-  serverTiltEmaMode.value = mode;
-}
-
 /** Display labels for the TILT EMA bar. Keys stay as the canonical
  *  TiltEmaMode strings (storage / wire / config-table) so a future
  *  rename only touches this map. 'mid' renders as MED for visual
@@ -1347,39 +1308,6 @@ const TILT_EMA_LABEL: Record<TiltEmaMode, string> = {
   slow: 'SLOW',
 };
 
-function setSimQualityValue(q: ServerSimQuality): void {
-  activeConnection?.sendCommand({ type: 'setSimQuality', tick: 0, quality: q });
-  saveSimQuality(q);
-  serverSimQuality.value = q;
-}
-
-// Tri-state click handler for the HOST SERVER signal buttons. Same
-// shape as cycleClientSignal, but the canonical state lives on the
-// server — we cycle locally for snappy UI, persist, and ship the
-// resolved struct via setSimSignalStates command. Snapshot brings
-// it back for non-host clients (see watcher below).
-function cycleServerSignal(signal: keyof ServerSimSignalStates): void {
-  const cur = serverSignalStates.value[signal];
-  const next: SignalState =
-    cur === 'off' ? 'active' : cur === 'active' ? 'solo' : 'off';
-  const updated: ServerSimSignalStates = { ...serverSignalStates.value, [signal]: next };
-  if (next === 'solo') {
-    // Demote any other SOLO so only one signal is solo at a time.
-    (Object.keys(updated) as (keyof ServerSimSignalStates)[]).forEach((k) => {
-      if (k !== signal && updated[k] === 'solo') updated[k] = 'active';
-    });
-  }
-  serverSignalStates.value = updated;
-  saveSimSignalStates(updated);
-  activeConnection?.sendCommand({
-    type: 'setSimSignalStates',
-    tick: 0,
-    tps: updated.tps,
-    cpu: updated.cpu,
-    units: updated.units,
-  });
-}
-
 function secPerFullsnap(ratio: number): string {
   const sps =
     displaySnapshotRate.value === 'none'
@@ -1387,21 +1315,6 @@ function secPerFullsnap(ratio: number): string {
       : displaySnapshotRate.value;
   const sec = 1 / (sps * ratio);
   return `~1 fullsnap every ${+sec.toPrecision(2)}s`;
-}
-
-function setKeyframeRatioValue(ratio: KeyframeRatio): void {
-  activeConnection?.sendCommand({ type: 'setKeyframeRatio', tick: 0, ratio });
-  saveKeyframeRatio(ratio);
-}
-
-function toggleSendGridInfo(): void {
-  const current = displayGridInfo.value;
-  activeConnection?.sendCommand({
-    type: 'setSendGridInfo',
-    tick: 0,
-    enabled: !current,
-  });
-  saveStoredGrid(currentBattleMode.value, !current);
 }
 
 function changeGridOverlay(mode: GridOverlay): void {
