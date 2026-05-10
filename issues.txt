@@ -6,6 +6,8 @@ written; check the code and if the issue is no longer relevant, delete it.
 
 Please always commit and push before and after any code changes we make. If there was unchecked code before, just commit and push before you start making your edits.
 
+As we go make sure we are not creating duplicate code, we should be reusing code as much as possible. If we find ourselves copy/pasting code, we should stop and refactor to reuse code instead. This is especially important for the new code we are writing, but also applies to existing code. If we see duplicate code in existing files, we should refactor it to be reusable and delete the duplicates. Create new helper files for reusable code if necessary, we prefer small file sizes.
+
 ==============================================================================
  ISSUES:
 
