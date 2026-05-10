@@ -52,11 +52,6 @@ import {
   msBarStyle,
   getPlayerColor,
 } from './uiUtils';
-import {
-  getInitialLocalUsername,
-  getDefaultPlayerName,
-  saveUsername,
-} from '@/playerNamesConfig';
 import type { GameServer } from '../game/server/GameServer';
 import type { GameConnection } from '../game/server/GameConnection';
 import type { ConcreteGraphicsQuality } from '../types/graphics';
@@ -82,6 +77,7 @@ import { useGameCanvasRealBattleHandoff } from './gameCanvasRealBattleHandoff';
 import { useGameCanvasSceneUi } from './gameCanvasSceneUi';
 import { useGameCanvasSessionLifecycle } from './gameCanvasSessionLifecycle';
 import { useGameCanvasShellDisplay } from './gameCanvasShellDisplay';
+import { useGameCanvasLobbyRoster } from './gameCanvasLobbyRoster';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -115,66 +111,6 @@ const isHost = ref(false);
 const roomCode = ref('');
 const lobbyPlayers = ref<LobbyPlayer[]>([]);
 const localPlayerId = ref<PlayerId>(1);
-// LOCAL user's username — persisted in localStorage by playerNamesConfig.
-// The lobby is the only place the user can edit it; this ref is still
-// the demo/offline fallback and the source we hand to NetworkManager
-// when the local lobby slot commits a rename.
-const localUsername = ref<string>(getInitialLocalUsername());
-
-/** Resolves a playerId to the name to render in the UI (TopBar) or
- *  above a commander in 3D (NameLabel3D). Lookup priority:
- *    1. lobbyPlayers (real battle): roster name kept in sync by
- *       NetworkManager via playerInfoUpdate.
- *    2. localUsername (when asked for the local player and the roster
- *       hasn't seeded yet — covers DEMO BATTLE and the brief window
- *       between hostGame() and the first roster mirror).
- *    3. Funny default keyed by playerId so every viewer agrees on what
- *       to call AI seats with no host-side rename. */
-function resolvePlayerName(pid: PlayerId): string;
-function resolvePlayerName(pid: PlayerId, fallback: null): string | null;
-function resolvePlayerName(pid: PlayerId, fallback?: string | null): string | null {
-  const roster = lobbyPlayers.value.find((p) => p.playerId === pid);
-  if (roster && roster.name && roster.name.length > 0) return roster.name;
-  if (pid === localPlayerId.value) return localUsername.value;
-  return fallback === undefined ? getDefaultPlayerName(pid) : fallback;
-}
-
-function upsertLobbyPlayer(player: LobbyPlayer): void {
-  const idx = lobbyPlayers.value.findIndex((p) => p.playerId === player.playerId);
-  if (idx === -1) {
-    lobbyPlayers.value = [...lobbyPlayers.value, { ...player }];
-    return;
-  }
-  lobbyPlayers.value = lobbyPlayers.value.map((existing, i) => {
-    if (i !== idx) return existing;
-    return {
-      ...existing,
-      playerId: player.playerId,
-      isHost: player.isHost,
-      name: player.name || existing.name,
-      ipAddress: player.ipAddress ?? existing.ipAddress,
-      location: player.location ?? existing.location,
-      timezone: player.timezone ?? existing.timezone,
-      localTime: player.localTime ?? existing.localTime,
-    };
-  });
-}
-
-/** Commit a local lobby-slot rename — updates the local ref, persists
- *  to localStorage, and (in real battle) hands off to NetworkManager
- *  which broadcasts the change to every other client. */
-function onPlayerNameChange(name: string): void {
-  const trimmed = name.trim();
-  if (trimmed.length === 0) return;
-  localUsername.value = trimmed;
-  saveUsername(trimmed);
-  // Real-battle: NetworkManager owns the lobby roster broadcast.
-  // Demo: no networking, the localUsername ref is the only state we
-  // need to update — resolvePlayerName picks it up automatically.
-  if (currentBattleMode.value === 'real') {
-    networkManager.setLocalPlayerName(trimmed);
-  }
-}
 const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
@@ -237,6 +173,18 @@ const {
   networkNotice,
   hasServer,
   serverMetaFromSnapshot,
+});
+
+const {
+  localUsername,
+  resolvePlayerName,
+  upsertLobbyPlayer,
+  onPlayerNameChange,
+} = useGameCanvasLobbyRoster({
+  network: networkManager,
+  currentBattleMode,
+  lobbyPlayers,
+  localPlayerId,
 });
 
 let battleStartTime = 0;
