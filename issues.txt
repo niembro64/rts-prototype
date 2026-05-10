@@ -11,18 +11,17 @@ Please always commit and push before and after any code changes we make. If ther
 
 1. Split src/game/render3d/Render3DEntities.ts by rendered object family.
    Evidence:
-   - src/game/render3d/Render3DEntities.ts is still 1345 lines.
+   - src/game/render3d/Render3DEntities.ts is still 1164 lines.
    - Building, projectile/range, unit mass/detail instancing, overlay,
      turret barrel-spin state, barrel-tip cache, and mirror pose/panel instance
-     updates, and chassis instance transform writes now live in focused
-     modules, but unit mesh build and turret pose/barrel instance updates are
-     still concentrated in the main file.
+     updates, chassis instance transform writes, and turret pose/barrel instance
+     updates now live in focused modules, but unit mesh build is still
+     concentrated in the main file.
    Impact:
    - The remaining unit-family rendering logic is still hard to reason about
      independently.
    Remedy:
-   - Extract turret pose/barrel instance updates or unit mesh build into focused
-     modules with explicit dependencies.
+   - Extract unit mesh build into focused modules with explicit dependencies.
 
 2. Split src/game/network/NetworkManager.ts by networking responsibility.
    Evidence:

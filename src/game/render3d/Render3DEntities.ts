@@ -48,8 +48,8 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getGraphicsConfigFor } from '@/clientBarConfig';
-import { getTurretHeadRadius, shouldRunOnStride } from '../math';
-import { getTurretMountHeight, isCommander } from '../sim/combat/combatUtils';
+import { shouldRunOnStride } from '../math';
+import { isCommander } from '../sim/combat/combatUtils';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import { buildMirrorMesh3D } from './MirrorMesh3D';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
@@ -57,18 +57,17 @@ import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
-import { buildingTierAtLeast } from './RenderTier3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
 import { isConstructionShell } from './EntityInstanceColor3D';
 import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { createMirrorReflectorPanelMaterial } from './MirrorReflectorVisual3D';
-import { applyTurretAimPose3D } from './TurretAimPose3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { BarrelTipCache3D, type BarrelTipEntry } from './BarrelTipCache3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { MirrorPose3D } from './MirrorPose3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
+import { UnitTurretPose3D } from './UnitTurretPose3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -149,6 +148,7 @@ export class Render3DEntities {
   private barrelSpinState = new UnitBarrelSpinState3D();
   private mirrorPose = new MirrorPose3D();
   private chassisInstancePose = new UnitChassisInstancePose3D();
+  private turretPose = new UnitTurretPose3D();
 
   // Per-entity leg-state snapshots stashed right before an LOD-driven
   // mesh teardown and consumed immediately after rebuild, so feet keep
@@ -206,16 +206,11 @@ export class Render3DEntities {
   private objectLodGrid = this.ownedObjectLodGrid;
   private richUnitDetailFrame = 0;
 
-  /** Per-frame scratch for turret head and barrel instance matrices. */
-  private _smoothPartMat = new THREE.Matrix4();
-  private _smoothFinalMat = new THREE.Matrix4();
   /** Per-frame scratch: combined `tilt · Ry(yaw)` quaternion + scratch
-   *  yaw-only quaternion + uniform-radius scale vector + part local
-   *  position + part per-axis scale + identity quaternion. Module-local
-   *  axis (`_INST_UP`) drives the yaw quaternion. */
+   *  yaw-only quaternion. Module-local axis (`_INST_UP`) drives the yaw
+   *  quaternion. */
   private _smoothParentQuat = new THREE.Quaternion();
   private _smoothYawQuat = new THREE.Quaternion();
-  private _smoothPartLocalPos = new THREE.Vector3();
   /** Lift offset (0, chassisLift, 0) rotated by parentQuat, added to
    *  groupPos so parentMat reproduces the scenegraph chain
    *    group → yawGroup → liftGroup → chassis
@@ -227,15 +222,7 @@ export class Render3DEntities {
   private _smoothLiftOffset = new THREE.Vector3();
   private _smoothLiftedPos = new THREE.Vector3();
 
-  /** Scratch state for the per-barrel instance write. The chain
-   *  group → yawGroup → liftGroup → turretRoot → pitchGroup →
-   *  spinGroup is composed progressively into `_barrelParentMat`
-   *  per turret, then each barrel's `T·R·S` local matrix is
-   *  multiplied in to produce the final world matrix. `_barrelOneVec`
-   *  is immutable scratch so the inner loop allocates nothing. */
-  private _barrelParentMat = new THREE.Matrix4();
-  private _barrelStepMat = new THREE.Matrix4();
-  private _barrelOneVec = new THREE.Vector3(1, 1, 1);
+  private _unitOneVec = new THREE.Vector3(1, 1, 1);
 
   /** Per-frame cache of barrel-tip sim/world positions, keyed by
    *  `(entityId * 256) + (turretIdx << 4) + barrelIdx`. Populated in
@@ -1004,7 +991,7 @@ export class Render3DEntities {
       this._unitChainMat.compose(
         this._smoothLiftedPos,
         this._smoothParentQuat,
-        this._barrelOneVec,
+        this._unitOneVec,
       );
       this._unitParentInvQuat.copy(this._smoothParentQuat).invert();
       this._unitBodyCenterLocal
@@ -1028,189 +1015,22 @@ export class Render3DEntities {
       this.selectionOverlays.updateUnitRadiusRings(m, e);
       this.selectionOverlays.updateRangeRings(m, e);
 
-      // Per-turret placement. The runtime 3D mount is derived from the
-      // unit blueprint's `turrets[i].mount` in body-radius fractions.
-      // Sim coords (x, y, z) map to Three local (x, y, z) as
-      // forward, height, lateral.
-      // On mirror-host units (e.g. Loris) turret[0] owns the mirror panel
-      // and the visible host turret body.
-      const spinAngle = this.barrelSpinState.angleFor(e.id);
-      for (let i = 0; i < m.turrets.length && i < turrets.length; i++) {
-        const tm = m.turrets[i];
-        const t = turrets[i];
-        const headRadius = tm.headRadius ?? getTurretHeadRadius(t.config);
-        if (t.config.passive && m.mirrors) {
-          // The mirror turret is the Loris body center in gameplay
-          // terms. Keep the visible turret head/joint at the exact
-          // same world XYZ as entity.transform, even under a tilted
-          // parent chain.
-          tm.root.position.set(
-            this._unitBodyCenterLocal.x,
-            this._unitBodyCenterLocal.y - headRadius,
-            this._unitBodyCenterLocal.z,
-          );
-        } else {
-          const turretHeadCenterY = getTurretMountHeight(e, i);
-          const turretMountY = turretHeadCenterY - (m.chassisLift ?? 0) - headRadius;
-          tm.root.position.set(t.mount.x, turretMountY, t.mount.y);
-        }
-
-        if (tm.constructionEmitter) {
-          const visible = buildingTierAtLeast(unitGraphicsTier, 'low');
-          tm.root.visible = visible;
-          tm.root.rotation.y = 0;
-          if (tm.pitchGroup) tm.pitchGroup.rotation.z = 0;
-          if (tm.spinGroup) tm.spinGroup.rotation.x = 0;
-          if (visible) {
-            this.constructionVisuals.updateCommanderEmitter(
-              tm.constructionEmitter,
-              e,
-              unitGraphicsTier,
-              this._currentDtMs,
-            );
-          }
-          continue;
-        }
-
-        // Turret aim through the new hierarchy:
-        //
-        //   world barrel = tilt · Ry(yawGroup) · Ry(localYaw) · Rz(localPitch) · +X
-        //
-        // and we want the world barrel to equal the sim's intended
-        // world direction (so the projectile spawn velocity, range
-        // gates, and rendered barrel all agree). Solving:
-        //
-        //   1. Build the WORLD barrel direction in three.js coords
-        //      from sim's t.rotation + t.pitch.
-        //   2. Inverse-rotate by the chassis tilt to undo the parent
-        //      tilt — this is the direction we need expressed in the
-        //      tilted unit-yaw frame.
-        //   3. Decompose into Ry(combinedYaw) · Rz(localPitch) · +X
-        //      where combinedYaw = yawGroup.rotation.y + tm.root.rotation.y.
-        //   4. tm.root.rotation.y = combinedYaw - yawGroup.rotation.y
-        //                        = combinedYaw + e.transform.rotation.
-        //
-        // Do this before writing instanced barrel matrices and the
-        // snap-to-barrel cache; both need the current frame's pose.
-        applyTurretAimPose3D(
-          tm,
-          e.transform.rotation,
-          t.rotation,
-          t.pitch,
-          chassisTilted ? _invTiltQuat : undefined,
-        );
-        // Spin: gatling roll around the LOCAL +X of the pitch group,
-        // which is the actual barrel axis after the tilt-aware yaw
-        // and pitch compose into the parent chain.
-        if (tm.spinGroup) {
-          tm.spinGroup.rotation.x = unitGfx.barrelSpin
-            ? spinAngle ?? 0
-            : 0;
-        }
-
-        // Head InstancedMesh write — the head sphere's chassis-local
-        // position is (mount.x, mountY + headRadius, mount.y) inside
-        // liftGroup, which world-transforms via:
-        //   worldPos = groupPos + R(tilt·yaw)·(localX, lift + localY, localZ)
-        //   matrix   = T(worldPos) · S(headRadius)
-        // Head is rotation-invariant (sphere on the +Y rotation axis
-        // of the turret root, where turret yaw rotates around — pitch
-        // lives on a sub-group below the head). headRadius is cached
-        // on the TurretMesh so we don't re-call getTurretHeadRadius.
-        if (
-          tm.headSlot !== undefined
-          && tm.headRadius !== undefined
-        ) {
-          const liftPos = m.liftGroup?.position;
-          // parentQuat is already cached for this unit. Compute the
-          // turret-head position by rotating its chassis-local offset
-          // through parentQuat and adding to group.position. Note the
-          // cached liftedPos already includes the lift offset, but the
-          // head's own y-component supplies (lift + mountY + headRadius)
-          // explicitly here so we go from raw m.group.position, not
-          // from liftedPos, to avoid double-counting lift.
-          this._smoothPartLocalPos.set(
-            (liftPos?.x ?? 0) + tm.root.position.x,
-            (liftPos?.y ?? (m.chassisLift ?? 0)) + tm.root.position.y + tm.headRadius,
-            (liftPos?.z ?? 0) + tm.root.position.z,
-          );
-          this._smoothPartLocalPos.applyQuaternion(this._smoothParentQuat);
-          this._smoothLiftedPos
-            .copy(m.group.position)
-            .add(this._smoothPartLocalPos);
-          this._smoothPartMat.makeScale(tm.headRadius, tm.headRadius, tm.headRadius);
-          this._smoothPartMat.setPosition(this._smoothLiftedPos);
-          this.unitDetailInstances.writeTurretHeadMatrix(tm.headSlot, this._smoothPartMat, e);
-        }
-
-        // Barrel InstancedMesh write — compose the FULL chain
-        // (group · yawGroup · liftGroup · turretRoot · pitchGroup ·
-        // spinGroup) once per turret, then for each barrel multiply
-        // by its base local matrix (T(base.pos) · R(base.quat) ·
-        // S(base.scale) — read off the per-Mesh barrel which holds
-        // those values from pushSegment at build time even though
-        // the Mesh is no longer attached to the scene). Each per-
-        // turret matrix step uses Matrix4.compose on the relevant
-        // group's stored position / rotation / scale so we don't
-        // depend on THREE's lazy matrixWorld update timing.
-        if (
-          tm.barrelSlots
-          && tm.barrels.length > 0
-          && tm.barrelSlots.length === tm.barrels.length
-        ) {
-          // _barrelParentMat = group · yawGroup · liftGroup · turretRoot · pitchGroup · spinGroup
-          // The first three groups (group · yawGroup · liftGroup) are
-          // identical across every turret + every chassis pass on this
-          // unit, so they're precomposed into `_unitChainMat` at the
-          // top of the per-unit body. Seed _barrelParentMat from that
-          // cached prefix matrix — saves three Matrix4.compose +
-          // two Matrix4.multiply calls per turret per frame, plus the
-          // setFromAxisAngle that built the yaw quaternion.
-          this._barrelParentMat.copy(this._unitChainMat);
-          // turretRoot: T(turret root pos) · R(turret root quat) · S(1).
-          // Read directly off the (still-extant, in-scene) tm.root
-          // so the per-frame yaw rotation set above is reflected.
-          this._barrelStepMat.compose(
-            tm.root.position, tm.root.quaternion, this._barrelOneVec,
-          );
-          this._barrelParentMat.multiply(this._barrelStepMat);
-          // pitchGroup: T(pitch pos) · R(pitch quat) · S(1)
-          if (tm.pitchGroup) {
-            this._barrelStepMat.compose(
-              tm.pitchGroup.position, tm.pitchGroup.quaternion, this._barrelOneVec,
-            );
-            this._barrelParentMat.multiply(this._barrelStepMat);
-          }
-          // spinGroup: T(0) · R(spin quat) · S(1)
-          if (tm.spinGroup) {
-            this._barrelStepMat.compose(
-              tm.spinGroup.position, tm.spinGroup.quaternion, this._barrelOneVec,
-            );
-            this._barrelParentMat.multiply(this._barrelStepMat);
-          }
-          // Per-barrel: barrelLocalMat = T(barrel.pos) · R(barrel.quat) · S(barrel.scale)
-          // worldMat = parentMat · barrelLocalMat
-          for (let bi = 0; bi < tm.barrels.length; bi++) {
-            const barrel = tm.barrels[bi];
-            const slot = tm.barrelSlots[bi];
-            this._barrelStepMat.compose(
-              barrel.position, barrel.quaternion, barrel.scale,
-            );
-            this._smoothFinalMat.multiplyMatrices(
-              this._barrelParentMat, this._barrelStepMat,
-            );
-            this.unitDetailInstances.writeBarrelMatrix(slot, this._smoothFinalMat);
-            // Cache the sim/world barrel tip for the BeamRenderer
-            // snap-to-barrel toggle. The cylinder geometry is unit
-            // height centered at origin, so local (0, 0.5, 0) is the
-            // tip; multiplying by `_smoothFinalMat` (which already
-            // bakes in the per-barrel length scale) yields the Three.js
-            // muzzle position the rendered cylinder front face sits at
-            // this frame; cache it in sim axes for beam polylines.
-            this.barrelTipCache.write(e.id, i, bi, this._smoothFinalMat);
-          }
-        }
-      }
+      this.turretPose.update({
+        entity: e,
+        mesh: m,
+        turrets,
+        bodyCenterLocal: this._unitBodyCenterLocal,
+        parentQuaternion: this._smoothParentQuat,
+        unitChainMat: this._unitChainMat,
+        chassisTiltInverse: chassisTilted ? _invTiltQuat : undefined,
+        graphicsTier: unitGraphicsTier,
+        barrelSpinEnabled: unitGfx.barrelSpin,
+        spinAngle: this.barrelSpinState.angleFor(e.id),
+        currentDtMs: this._currentDtMs,
+        unitDetailInstances: this.unitDetailInstances,
+        barrelTipCache: this.barrelTipCache,
+        constructionVisuals: this.constructionVisuals,
+      });
 
       if (m.mirrors) {
         this.mirrorPose.update({
