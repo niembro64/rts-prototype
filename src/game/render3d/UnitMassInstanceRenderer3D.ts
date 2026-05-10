@@ -23,6 +23,8 @@ const LOW_INSTANCED_COMPACT_INTERVAL_FRAMES = 30;
 const LOW_INSTANCED_COMPACT_MAX_MOVES = 256;
 const UNIT_INSTANCED_FULL_REFRESH_INTERVAL_FRAMES = 120;
 const RICH_UNIT_PROMOTION_BUDGET_PER_FRAME = 64;
+const MASS_INSTANCE_VERTICAL_TRANSFORM_EPSILON = 0.05;
+const MASS_INSTANCE_VERTICAL_VELOCITY_EPSILON = 0.05;
 const MASS_INSTANCE_MATRIX_STRIDE: Record<RenderObjectLodTier, number> = {
   hero: 1,
   rich: 1,
@@ -60,6 +62,7 @@ export class UnitMassInstanceRenderer3D {
   private readonly slots = new Map<EntityId, number>();
   private readonly entityBySlot: (EntityId | undefined)[] = [];
   private readonly colorKeys = new Map<EntityId, number>();
+  private readonly lastMatrixZ = new Map<EntityId, number>();
   private readonly hiddenIds = new Set<EntityId>();
   private readonly freeSlots: number[] = [];
   private readonly seenIds = new Set<EntityId>();
@@ -202,6 +205,7 @@ export class UnitMassInstanceRenderer3D {
         this.scale.set(radius, radius, radius);
         this.matrix.compose(this.pos, this.quat, this.scale);
         this.mesh.setMatrixAt(slot, this.matrix);
+        this.lastMatrixZ.set(entity.id, entity.transform.z);
         if (slot < matrixDirty.matrixMinSlot) matrixDirty.matrixMinSlot = slot;
         if (slot > matrixDirty.matrixMaxSlot) matrixDirty.matrixMaxSlot = slot;
       }
@@ -226,6 +230,7 @@ export class UnitMassInstanceRenderer3D {
           this.entityBySlot[slot] = undefined;
           this.slots.delete(id);
           this.colorKeys.delete(id);
+          this.lastMatrixZ.delete(id);
           this.hiddenIds.delete(id);
         }
       }
@@ -259,6 +264,7 @@ export class UnitMassInstanceRenderer3D {
     this.slots.clear();
     this.entityBySlot.length = 0;
     this.colorKeys.clear();
+    this.lastMatrixZ.clear();
     this.hiddenIds.clear();
     this.clearRichUnits();
     this.freeSlots.length = 0;
@@ -291,8 +297,22 @@ export class UnitMassInstanceRenderer3D {
   ): boolean {
     if (slotWasNew || wasHidden) return true;
     if (entity.selectable?.selected === true) return true;
+    if (this.hasFreshVerticalMatrixNeed(entity)) return true;
     const stride = MASS_INSTANCE_MATRIX_STRIDE[tier] ?? 1;
     return shouldRunOnStride(this.frame, stride, entity.id);
+  }
+
+  private hasFreshVerticalMatrixNeed(entity: Entity): boolean {
+    const unit = entity.unit;
+    if (!unit) return false;
+    if (Math.abs(unit.velocityZ ?? 0) > MASS_INSTANCE_VERTICAL_VELOCITY_EPSILON) {
+      return true;
+    }
+    const lastZ = this.lastMatrixZ.get(entity.id);
+    return (
+      lastZ !== undefined &&
+      Math.abs(entity.transform.z - lastZ) > MASS_INSTANCE_VERTICAL_TRANSFORM_EPSILON
+    );
   }
 
   private shouldRunFullPass(
