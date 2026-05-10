@@ -12,7 +12,7 @@ Please always commit and push before and after any code changes you make. If the
 1. Oversized orchestration files violate the small-file goal and hide lifecycle
    coupling.
    Evidence:
-   - src/components/GameCanvas.vue is still about 3512 lines after extracting
+   - src/components/GameCanvas.vue is still about 3345 lines after extracting
      persisted chrome state to src/components/gameCanvasChromeState.ts,
      client telemetry to src/components/gameCanvasTelemetry.ts, background
      battle lifecycle to src/components/gameCanvasBackgroundBattle.ts,
@@ -30,8 +30,10 @@ Please always commit and push before and after any code changes you make. If the
      restart/re-parenting to src/components/gameCanvasLobbyPreview.ts, and
      NetworkManager callback binding to
      src/components/gameCanvasNetworkCallbacks.ts, and lobby action handlers to
-     src/components/gameCanvasLobbyActions.ts. It still owns high-level
-     real-battle handoff entrypoints and battle/lobby settings helpers.
+     src/components/gameCanvasLobbyActions.ts, and lobby terrain/settings sync
+     to src/components/gameCanvasLobbySettings.ts. It still owns high-level
+     real-battle handoff entrypoints and several server/client bar setting
+     handlers.
    - src/game/scenes/RtsScene3D.ts is about 2151 lines and owns snapshot intake,
      prediction, audio scheduling, camera, selection, minimap data, renderer
      update ordering, and renderer teardown. See the large update loop at

@@ -40,19 +40,12 @@ import {
   saveMirrorsEnabled,
   saveForceFieldsEnabled,
   loadStoredTerrainCenter,
-  saveTerrainCenter,
   loadStoredTerrainDividers,
-  saveTerrainDividers,
   loadStoredTerrainMapShape,
-  saveTerrainMapShape,
   loadStoredMapLandDimensions,
-  saveMapLandDimensions,
-  getDefaultMapLandDimensions,
   getDefaultDemoUnits,
   type BattleMode,
 } from '../battleBarConfig';
-import type { MapLandCellDimensions } from '../mapSizeConfig';
-import { setTerrainCenterShape, setTerrainDividersShape, setTerrainMapShape } from '../game/sim/Terrain';
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
 import {
   SERVER_CONFIG,
@@ -182,6 +175,7 @@ import { startRealBattleWithPlayers } from './gameCanvasRealBattleStart';
 import { useGameCanvasLobbyPreview } from './gameCanvasLobbyPreview';
 import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
 import { useGameCanvasLobbyActions } from './gameCanvasLobbyActions';
+import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
 
 const isMobile =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -894,110 +888,28 @@ function setForceFieldsEnabled(enabled: boolean): void {
   saveForceFieldsEnabled(enabled, currentBattleMode.value);
 }
 
-function currentLobbySettings() {
-  return {
-    terrainCenter: terrainCenter.value,
-    terrainDividers: terrainDividers.value,
-    terrainMapShape: terrainMapShape.value,
-    mapWidthLandCells: mapWidthLandCells.value,
-    mapLengthLandCells: mapLengthLandCells.value,
-  };
-}
-
-function broadcastLobbySettingsIfHost(): void {
-  if (networkRole.value === 'host' && roomCode.value !== '') {
-    networkManager.broadcastLobbySettings(currentLobbySettings());
-  }
-}
-
-/** Pick a new terrain shape (CENTER or DIVIDERS). Persists the choice
- *  and, if a demo battle is running, restarts it so the new heightmap
- *  takes effect immediately. The demo path stops + recreates the
- *  background server (which is what `restartGame` does for the lobby
- *  return); we skip the network teardown since we're staying in the
- *  same lobby. During a real battle, the choice is saved but won't
- *  be visible until the next game start — terrain meshes are baked
- *  once at scene construction. */
-function applyTerrainShape(
-  kind: 'center' | 'dividers',
-  shape: TerrainShape,
-  broadcast = true,
-): void {
-  const mode = currentBattleMode.value;
-  if (kind === 'center') {
-    terrainCenter.value = shape;
-    saveTerrainCenter(shape, mode);
-  } else {
-    terrainDividers.value = shape;
-    saveTerrainDividers(shape, mode);
-  }
-  // Live preview only when the demo battle is the active scene; a real
-  // battle keeps the host's choice queued for the next game start.
-  if (!gameStarted.value) {
-    stopBackgroundBattle();
-    nextTick(() => {
-      startBackgroundBattle();
-    });
-  }
-  // Sync the change to remote clients when the host is in the
-  // GAME LOBBY. `broadcast=false` is the path used by the
-  // `onLobbySettings` listener below (a client receiving the
-  // host's broadcast applies it locally without re-broadcasting,
-  // so there's no echo loop).
-  if (
-    broadcast &&
-    networkRole.value === 'host' &&
-    roomCode.value !== ''
-  ) {
-    broadcastLobbySettingsIfHost();
-  }
-}
-
-function applyTerrainMapShape(shape: TerrainMapShape, broadcast = true): void {
-  const mode = currentBattleMode.value;
-  terrainMapShape.value = shape;
-  saveTerrainMapShape(shape, mode);
-  if (!gameStarted.value) {
-    stopBackgroundBattle();
-    nextTick(() => {
-      startBackgroundBattle();
-    });
-  }
-  if (
-    broadcast &&
-    networkRole.value === 'host' &&
-    roomCode.value !== ''
-  ) {
-    broadcastLobbySettingsIfHost();
-  }
-}
-
-function sameMapLandDimensions(
-  a: MapLandCellDimensions,
-  b: MapLandCellDimensions,
-): boolean {
-  return (
-    a.widthLandCells === b.widthLandCells &&
-    a.lengthLandCells === b.lengthLandCells
-  );
-}
-
-function applyMapLandDimensions(
-  dimensions: MapLandCellDimensions,
-  broadcast = true,
-): void {
-  const mode = currentBattleMode.value;
-  mapWidthLandCells.value = dimensions.widthLandCells;
-  mapLengthLandCells.value = dimensions.lengthLandCells;
-  saveMapLandDimensions(dimensions, mode);
-  if (!gameStarted.value) {
-    stopBackgroundBattle();
-    nextTick(() => {
-      startBackgroundBattle();
-    });
-  }
-  if (broadcast) broadcastLobbySettingsIfHost();
-}
+const {
+  currentLobbySettings,
+  broadcastLobbySettingsIfHost,
+  applyTerrainShape,
+  applyTerrainMapShape,
+  applyMapLandDimensions,
+  applyLobbySettingsFromHost,
+  resetTerrainDefaults,
+} = useGameCanvasLobbySettings({
+  network: networkManager,
+  currentBattleMode,
+  networkRole,
+  roomCode,
+  gameStarted,
+  terrainCenter,
+  terrainDividers,
+  terrainMapShape,
+  mapWidthLandCells,
+  mapLengthLandCells,
+  stopBackgroundBattle,
+  startBackgroundBattle,
+});
 
 function resetDemoDefaults(): void {
   const defaultUnits = getDefaultDemoUnits();
@@ -1015,46 +927,9 @@ function resetDemoDefaults(): void {
   // DEFAULTS only resets the CURRENTLY-ACTIVE mode's namespace —
   // resetting demo while in the lobby would wipe the user's solo
   // demo prefs out from under them, and vice versa.
-  const mode = currentBattleMode.value;
   setMirrorsEnabled(BATTLE_CONFIG.mirrorsEnabled.default);
   setForceFieldsEnabled(BATTLE_CONFIG.forceFieldsEnabled.default);
-  // Reset terrain shape to defaults. applyTerrainShape handles the
-  // demo-battle restart so the new heightmap is visible immediately.
-  // Skip the restart if both values already match the defaults — a
-  // restart wipes in-flight units in the current demo and would feel
-  // janky for a no-op click on RESET DEFAULTS.
-  const centerDefault = BATTLE_CONFIG.center.default;
-  const dividersDefault = BATTLE_CONFIG.dividers.default;
-  const mapShapeDefault = BATTLE_CONFIG.mapShape.default;
-  const mapDimensionsDefault = getDefaultMapLandDimensions();
-  if (
-    terrainCenter.value !== centerDefault ||
-    terrainDividers.value !== dividersDefault ||
-    terrainMapShape.value !== mapShapeDefault ||
-    !sameMapLandDimensions(
-      {
-        widthLandCells: mapWidthLandCells.value,
-        lengthLandCells: mapLengthLandCells.value,
-      },
-      mapDimensionsDefault,
-    )
-  ) {
-    terrainCenter.value = centerDefault;
-    terrainDividers.value = dividersDefault;
-    terrainMapShape.value = mapShapeDefault;
-    mapWidthLandCells.value = mapDimensionsDefault.widthLandCells;
-    mapLengthLandCells.value = mapDimensionsDefault.lengthLandCells;
-    saveTerrainCenter(centerDefault, mode);
-    saveTerrainDividers(dividersDefault, mode);
-    saveTerrainMapShape(mapShapeDefault, mode);
-    saveMapLandDimensions(mapDimensionsDefault, mode);
-    if (!gameStarted.value) {
-      stopBackgroundBattle();
-      nextTick(() => {
-        startBackgroundBattle();
-      });
-    }
-  }
+  resetTerrainDefaults();
   // Reset grid to mode default
   const gridDefault = getDefaultGrid(currentBattleMode.value);
   if (displayGridInfo.value !== gridDefault) {
@@ -1486,48 +1361,6 @@ function setupNetworkCallbacks(): void {
     currentLobbySettings,
     startGameWithPlayers,
   });
-}
-
-function applyLobbySettingsFromHost(settings: {
-  terrainCenter: TerrainShape;
-  terrainDividers: TerrainShape;
-  terrainMapShape: TerrainMapShape;
-  mapWidthLandCells: number;
-  mapLengthLandCells: number;
-}, options: { restartPreview?: boolean } = {}): void {
-  const changed =
-    settings.terrainCenter !== terrainCenter.value ||
-    settings.terrainDividers !== terrainDividers.value ||
-    settings.terrainMapShape !== terrainMapShape.value ||
-    settings.mapWidthLandCells !== mapWidthLandCells.value ||
-    settings.mapLengthLandCells !== mapLengthLandCells.value;
-
-  terrainCenter.value = settings.terrainCenter;
-  terrainDividers.value = settings.terrainDividers;
-  terrainMapShape.value = settings.terrainMapShape;
-  mapWidthLandCells.value = settings.mapWidthLandCells;
-  mapLengthLandCells.value = settings.mapLengthLandCells;
-  saveTerrainCenter(settings.terrainCenter, 'real');
-  saveTerrainDividers(settings.terrainDividers, 'real');
-  saveTerrainMapShape(settings.terrainMapShape, 'real');
-  saveMapLandDimensions(
-    {
-      widthLandCells: settings.mapWidthLandCells,
-      lengthLandCells: settings.mapLengthLandCells,
-    },
-    'real',
-  );
-  setTerrainCenterShape(settings.terrainCenter);
-  setTerrainDividersShape(settings.terrainDividers);
-  setTerrainMapShape(settings.terrainMapShape);
-
-  const restartPreview = options.restartPreview ?? true;
-  if (restartPreview && changed && !gameStarted.value && currentBattleMode.value === 'real') {
-    stopBackgroundBattle();
-    nextTick(() => {
-      startBackgroundBattle();
-    });
-  }
 }
 
 async function startGameWithPlayers(playerIds: PlayerId[], aiPlayerIds?: PlayerId[]): Promise<void> {
