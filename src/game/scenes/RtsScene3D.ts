@@ -36,8 +36,6 @@ import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 import { LodShellGround3D } from '../render3d/LodShellGround3D';
 import { LodGridCells2D } from '../render3d/LodGridCells2D';
-import { RenderLodGrid } from '../render3d/RenderLodGrid';
-import { snapshotLod } from '../render3d/Lod3D';
 import {
   getRenderObjectLodShellDistances,
   objectLodToGraphicsTier,
@@ -60,6 +58,7 @@ import { LineDrag3D } from '../render3d/LineDrag3D';
 import { BuildGhost3D } from '../render3d/BuildGhost3D';
 import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
 import { AudioEventScheduler } from './helpers/AudioEventScheduler';
+import { RtsScene3DPredictionPhase } from './helpers/RtsScene3DPredictionPhase';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
 import {
   getAudioSmoothing,
@@ -68,7 +67,6 @@ import {
   getGraphicsConfigFor,
   getLodShellRings,
   getLodGridBorders,
-  setCurrentZoom,
   getGridOverlay,
   getGridOverlayIntensity,
   getRenderMode,
@@ -262,6 +260,7 @@ export class RtsScene3D {
   private healthBar3D: HealthBar3D | null = null;
   private nameLabel3D: NameLabel3D | null = null;
   private contactShadowRenderer: ContactShadowRenderer3D | null = null;
+  private predictionPhase!: RtsScene3DPredictionPhase;
   /** Resolves a player ID to its display name. Hooked up via
    *  RtsScene3DConfig.lookupPlayerName; null result falls back to
    *  `getDefaultPlayerName(playerId)` so commander labels still
@@ -271,11 +270,6 @@ export class RtsScene3D {
   private waypoint3D: Waypoint3D | null = null;
   private lodShellGround3D: LodShellGround3D | null = null;
   private lodGridCells2D: LodGridCells2D | null = null;
-  private renderLodGrid = new RenderLodGrid();
-  private readonly predictionLodResolver = (worldX: number, worldY: number, worldZ: number) => {
-    const tier = this.renderLodGrid.resolve(worldX, worldY, worldZ);
-    return tier === 'hero' ? 'rich' : tier;
-  };
 
   // Camera frustum cached once per frame and shared with the HUD
   // renderers so they can skip the bake / position update for every
@@ -435,6 +429,10 @@ export class RtsScene3D {
 
   private _baseDistance: number;
 
+  private get renderLodGrid() {
+    return this.predictionPhase.renderLodGrid;
+  }
+
   constructor(threeApp: ThreeApp, config: RtsScene3DConfig) {
     this.threeApp = threeApp;
     this.clientRenderEnabled = threeApp.isRenderEnabled();
@@ -490,6 +488,7 @@ export class RtsScene3D {
       this.clientViewState,
       this.gameConnection,
     );
+    this.predictionPhase = new RtsScene3DPredictionPhase(this.clientViewState);
     this._baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
 
     // Seed orbit camera from the same per-mode target logic used after
@@ -913,36 +912,17 @@ export class RtsScene3D {
         this.threeApp.orbit.pitch,
       );
     }
-    // Publish camera zoom for UI/legacy signal reads after camera
-    // smoothing has advanced. In 3D the global AUTO tier no longer
-    // depends on zoom by default; view scale is consumed inside
-    // Render3DEntities for per-object rich mesh selection instead.
-    setCurrentZoom(this.cameras.main.zoom);
     const viewportHeightPx = this.threeApp.renderer.domElement.clientHeight;
-    const renderLod = snapshotLod(this.threeApp.camera, viewportHeightPx);
-    const graphicsConfig = renderLod.gfx;
-    this.renderLodGrid.beginFrame(renderLod.view, graphicsConfig);
-
-    // Dead-reckon + drift through the exact same camera-sphere cell
-    // resolver used by renderers this frame. Near entities predict
-    // every frame; far cells update on sparse staggered strides.
-    // Wall-clock the prediction pass independently so the PLAYER
-    // CLIENT bar can isolate prediction cost from the broader
-    // logic/render/frame timing — see getFrameTiming().
-    const predStart = performance.now();
-    this.clientViewState.applyPrediction(delta, {
-      cameraX: renderLod.view.cameraX,
-      cameraY: renderLod.view.cameraY,
-      cameraZ: renderLod.view.cameraZ,
-      richDistance: 0,
-      simpleDistance: 0,
-      massDistance: 0,
-      impostorDistance: 0,
-      cellSize: graphicsConfig.objectLodCellSize,
-      physicsPredictionFramesSkip: graphicsConfig.clientPhysicsPredictionFramesSkip,
-      resolveTier: this.predictionLodResolver,
+    const {
+      renderLod,
+      graphicsConfig,
+      predMs,
+    } = this.predictionPhase.run({
+      deltaMs: delta,
+      camera: this.threeApp.camera,
+      viewportHeightPx,
+      zoom: this.cameras.main.zoom,
     });
-    const predMs = performance.now() - predStart;
 
     // Render phase
     const renderStart = performance.now();
