@@ -20,7 +20,7 @@ Please always commit and push before and after any code changes we make. If ther
    Impact:
    - View state and render lifecycle remain tangled.
    Remedy:
-   - Extract the next coherent camera shim/control slice that can be
+   - Extract all coherent camera shim/control slices that can be
      tested/reviewed independently.
 
 2. Move RtsScene3D renderer update ordering out of
