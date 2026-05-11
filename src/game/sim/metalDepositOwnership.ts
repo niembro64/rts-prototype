@@ -38,6 +38,7 @@ import type { Entity } from './types';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
+import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 import {
   getMetalDepositsOverlappingBuildingFootprint,
   metalDepositOverlapsBuildingFootprint,
@@ -181,6 +182,7 @@ export function releaseDepositsForExtractor(
       // Promoted extractor gains exactly one deposit's worth of
       // income. Update both its stored rate and the player's tally.
       syncExtractorRate(promoted);
+      world.markSnapshotDirty(promoted.id, ENTITY_CHANGED_BUILDING);
       economyManager.addMetalExtraction(promoted.ownership.playerId, perDeposit);
     }
   }

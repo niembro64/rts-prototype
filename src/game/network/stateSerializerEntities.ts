@@ -75,8 +75,12 @@ type PooledEntry = {
   buildQueue: number[];
 };
 
+// Keep more precision than the delta threshold so snapshots don't
+// round away the small separations produced by unit contact resolution.
+const POSITION_WIRE_PRECISION = 100;
+
 function qPos(n: number): number {
-  return Math.round(n);
+  return Math.round(n * POSITION_WIRE_PRECISION) / POSITION_WIRE_PRECISION;
 }
 
 function qVel(n: number): number {
@@ -321,7 +325,10 @@ export function serializeEntitySnapshot(
       } else {
         b.dim = undefined;
         b.type = undefined;
-        b.metalExtractionRate = undefined;
+        b.metalExtractionRate = (changedFields! & ENTITY_CHANGED_BUILDING) !== 0 &&
+          entity.buildingType === 'extractor'
+          ? entity.metalExtractionRate ?? 0
+          : undefined;
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {

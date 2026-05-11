@@ -8,6 +8,8 @@ import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 
 export class LocalGameConnection implements GameConnection {
+  readonly sharesAuthoritativeState = true;
+
   private server: GameServer;
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;

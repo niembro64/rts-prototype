@@ -400,7 +400,10 @@ export class ClientViewState {
    * Apply received network state — store server targets, snap non-visual state.
    * Visual blending toward these targets happens in applyPrediction() each frame.
    */
-  applyNetworkState(state: NetworkServerSnapshot): void {
+  applyNetworkState(
+    state: NetworkServerSnapshot,
+    options: { syncEconomy?: boolean } = {},
+  ): void {
     if (state.terrain) {
       this.setMapDimensions(state.terrain.mapWidth, state.terrain.mapHeight);
       setAuthoritativeTerrainTileMap(state.terrain);
@@ -564,14 +567,19 @@ export class ClientViewState {
 
     if (cacheNeedsInvalidate) this.invalidateCaches();
 
-    // Update economy state (immediate). Avoid Object.entries here:
-    // snapshots arrive frequently and this path should not allocate an
-    // intermediate [key,value][] array just to walk up to six players.
-    for (const playerIdStr in state.economy) {
-      economyManager.setEconomyState(
-        Number(playerIdStr) as PlayerId,
-        state.economy[Number(playerIdStr) as PlayerId],
-      );
+    // Update economy state (immediate). Local in-memory clients share
+    // the authoritative server's economy singleton, so they must not
+    // replay older snapshots back into the server state.
+    if (options.syncEconomy !== false) {
+      // Avoid Object.entries here: snapshots arrive frequently and this
+      // path should not allocate an intermediate [key,value][] array
+      // just to walk up to six players.
+      for (const playerIdStr in state.economy) {
+        economyManager.setEconomyState(
+          Number(playerIdStr) as PlayerId,
+          state.economy[Number(playerIdStr) as PlayerId],
+        );
+      }
     }
 
     this.sprayTargetStore.applySnapshot(state.sprayTargets);

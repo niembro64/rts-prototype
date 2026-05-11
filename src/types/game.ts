@@ -67,6 +67,9 @@ export type SimEventCallback = (event: SimEvent) => void;
 export type GameOverCallback = (winnerId: PlayerId) => void;
 
 export type GameConnection = {
+  /** True for in-memory connections where the client scene and
+   *  authoritative server share process-level simulation singletons. */
+  readonly sharesAuthoritativeState?: boolean;
   sendCommand(command: Command): void;
   markClientReady(): void;
   onSnapshot(callback: SnapshotCallback): void;

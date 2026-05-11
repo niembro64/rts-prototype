@@ -72,7 +72,9 @@ export class RtsScene3DSnapshotIntake {
       };
     }
 
-    this.clientViewState.applyNetworkState(state);
+    this.clientViewState.applyNetworkState(state, {
+      syncEconomy: this.gameConnection.sharesAuthoritativeState !== true,
+    });
     if (!this.startupReadyAckSent && !state.isDelta) {
       this.startupFullSnapshotApplied = true;
     }
