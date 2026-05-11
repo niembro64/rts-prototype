@@ -61,6 +61,14 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-label">{{ wm.label }}</span>
           <span class="btn-key">{{ wm.key }}</span>
         </button>
+        <button
+          class="action-btn"
+          :style="{ '--btn-color': '#d6d6d6' }"
+          @click="actions.stopSelectedUnits()"
+        >
+          <span class="btn-label">Stop</span>
+          <span class="btn-key">S</span>
+        </button>
       </div>
     </div>
 

@@ -1,7 +1,7 @@
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
-import type { Command, MoveCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, JumpCommand, RepairCommand, AttackCommand } from './commands';
+import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, JumpCommand, RepairCommand, AttackCommand } from './commands';
 import type { Entity, UnitAction } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
@@ -47,6 +47,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'move':
       executeMoveCommand(ctx, command);
+      break;
+    case 'stop':
+      executeStopCommand(ctx, command);
       break;
     case 'clearSelection':
       ctx.world.clearSelection();
@@ -141,6 +144,25 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
       );
       index++;
     }
+  }
+}
+
+function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (!entity?.unit) continue;
+
+    setUnitActions(entity.unit, []);
+    entity.unit.patrolStartIndex = null;
+    entity.unit.stuckTicks = 0;
+    entity.unit.thrustDirX = 0;
+    entity.unit.thrustDirY = 0;
+    if (entity.builder) entity.builder.currentBuildTarget = null;
+    if (entity.combat) {
+      entity.combat.priorityTargetId = undefined;
+      entity.combat.nextCombatProbeTick = undefined;
+    }
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
 }
 

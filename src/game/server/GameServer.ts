@@ -10,6 +10,7 @@ import type {
   JumpCommand,
   MoveCommand,
   SetCameraAoiCommand,
+  StopCommand,
 } from '../sim/commands';
 import {
   resetDeltaTracking,
@@ -626,6 +627,9 @@ export class GameServer {
       case 'move':
         return this.authorizeMoveCommand(command, fromPlayerId);
 
+      case 'stop':
+        return this.authorizeUnitListCommand(command, fromPlayerId);
+
       case 'jump':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
@@ -684,9 +688,9 @@ export class GameServer {
   }
 
   private authorizeUnitListCommand(
-    command: JumpCommand | AttackCommand,
+    command: JumpCommand | AttackCommand | StopCommand,
     playerId: PlayerId,
-  ): JumpCommand | AttackCommand | null {
+  ): JumpCommand | AttackCommand | StopCommand | null {
     const sourceIds = command.entityIds;
     if (sourceIds.length === 0) return null;
 

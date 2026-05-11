@@ -6,6 +6,7 @@ import type { RenderMode } from './graphics';
 export type CommandType =
   | 'select'
   | 'move'
+  | 'stop'
   | 'clearSelection'
   | 'startBuild'
   | 'queueUnit'
@@ -59,6 +60,11 @@ export type MoveCommand = BaseCommand & {
   individualTargets?: WaypointTarget[];
   waypointType: WaypointType;
   queue: boolean;
+};
+
+export type StopCommand = BaseCommand & {
+  type: 'stop';
+  entityIds: EntityId[];
 };
 
 export type ClearSelectionCommand = BaseCommand & {
@@ -221,6 +227,7 @@ export type SetCameraAoiCommand = BaseCommand & {
 export type Command =
   | SelectCommand
   | MoveCommand
+  | StopCommand
   | ClearSelectionCommand
   | StartBuildCommand
   | QueueUnitCommand

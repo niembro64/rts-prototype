@@ -15,26 +15,26 @@ As we go make sure we are not creating duplicate code, we should be reusing code
  RTS PROFESSIONAL AUDIT - 2026-05-11
 ------------------------------------------------------------------------------
 
-1. P2 - Core RTS command ergonomics are still missing.
+1. P2 - Core RTS command ergonomics still have remaining gaps.
 
    Evidence:
    - docs/command-ux-direction.md describes expected RTS command parity:
      formation move, fight/attack area, guard, patrol, reclaim, repair area,
      stop, wait, repeat, stances, pings, and more.
-   - src/types/commands.ts currently exposes only the narrower set: select,
-     move, clearSelection, startBuild, queue/cancel unit, rally/factory
-     waypoints, fireDGun, jump, repair, attack, and server/AOI settings.
+   - The code now covers select, move/fight/patrol waypoints, stop,
+     client-local control groups, startBuild, queue/cancel unit,
+     rally/factory waypoints, fireDGun, jump, repair, attack, and
+     server/AOI settings.
 
    Impact:
-   The game will feel hard to control at RTS scale even if the sim works. Missing
-   stop/hold-position, guard/assist, reclaim, repair-area, attack-move/attack-
-   ground, control groups, queue editing, and stance controls block serious
-   player evaluation.
+   The game will still feel hard to control at RTS scale even if the sim works.
+   Missing guard/assist, reclaim, repair-area, attack-area/attack-ground, queue
+   editing, stance controls, waits, and pings block serious player evaluation.
 
    Fix direction:
    Prioritize a small competitive command set before adding more unit variety:
-   stop/hold, guard/assist, reclaim/repair area, attack-move or attack-area,
-   control groups, visible/editable command queues, and factory repeat/loop UI.
+   guard/assist, reclaim/repair area, attack-area, editable command queues,
+   stance controls, waits, and pings.
 
 2. P2 - Submunition spread uses Math.random() inside sim projectile creation.
 

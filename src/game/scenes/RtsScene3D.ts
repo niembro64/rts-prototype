@@ -1079,6 +1079,11 @@ export class RtsScene3D {
     this.selectionSystem.setWaypointMode(mode);
     this.inputManager?.setWaypointMode(mode);
   }
+
+  public stopSelectedUnits(): void {
+    this.inputManager?.stopSelectedUnits();
+  }
+
   /** Enter build mode — forwards to Input3DManager which handles the
    *  left-click-places-building / right-click-cancels flow. */
   public startBuildMode(buildingType: BuildingType): void {

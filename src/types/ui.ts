@@ -28,6 +28,7 @@ export type SelectionInfo = {
 
 export type SelectionActions = {
   setWaypointMode: (mode: WaypointType) => void;
+  stopSelectedUnits: () => void;
   startBuild: (buildingType: BuildingType) => void;
   cancelBuild: () => void;
   toggleDGun: () => void;

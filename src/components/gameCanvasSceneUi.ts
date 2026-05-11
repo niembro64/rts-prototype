@@ -120,6 +120,9 @@ export function useGameCanvasSceneUi({
     setWaypointMode: (mode) => {
       getActiveBattleScene()?.setWaypointMode(mode);
     },
+    stopSelectedUnits: () => {
+      getActiveBattleScene()?.stopSelectedUnits();
+    },
     startBuild: (buildingType) => {
       getActiveBattleScene()?.startBuildMode(buildingType);
     },

@@ -4,6 +4,7 @@ export type {
   SelectCommand,
   WaypointTarget,
   MoveCommand,
+  StopCommand,
   ClearSelectionCommand,
   StartBuildCommand,
   QueueUnitCommand,

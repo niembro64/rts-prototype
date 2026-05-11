@@ -55,6 +55,13 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 const HOVER_RAYCAST_INTERVAL_MS = 50;
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
+const CONTROL_GROUP_COUNT = 9;
+
+function controlGroupIndexForKey(e: KeyboardEvent): number {
+  const codeMatch = /^Digit([1-9])$/.exec(e.code);
+  if (codeMatch) return Number(codeMatch[1]) - 1;
+  return /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
+}
 
 /** Approximate world-space vertical center for box-select projection,
  *  picked per entity kind so the screen-projected point lands near
@@ -169,6 +176,7 @@ export class Input3DManager {
   // changes — matches the 2D SelectionController's rule so squads
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
   private selectionChangeTracker = new SelectionChangeTracker();
+  private controlGroups: EntityId[][] = Array.from({ length: CONTROL_GROUP_COUNT }, () => []);
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -310,6 +318,10 @@ export class Input3DManager {
     if (this.hasSelectedCommander()) this.mode.toggleDGunMode();
   }
 
+  stopSelectedUnits(): void {
+    this.enqueueStopCommand();
+  }
+
   /** True if D-gun mode is currently active. */
   isInDGunMode(): boolean {
     return this.mode.isInDGunMode;
@@ -426,9 +438,22 @@ export class Input3DManager {
       (target && target.isContentEditable)
     ) return;
 
-    // Mirror the 2D hotkeys one-for-one. M/F/H switch waypoint mode;
-    // B/number/D drive the commander mode state machine; Escape runs
-    // the shared cancel-mode-or-clear-selection convention.
+    const controlGroupIndex = controlGroupIndexForKey(e);
+    if (controlGroupIndex >= 0) {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        this.storeControlGroup(controlGroupIndex);
+        return;
+      }
+      if (this.enqueueControlGroupSelect(controlGroupIndex, e.shiftKey)) {
+        e.preventDefault();
+        return;
+      }
+    }
+
+    // Mirror the command hotkeys one-for-one. M/F/H switch waypoint mode;
+    // S stops selected units; B/number/D drive the commander mode state
+    // machine; Escape runs the shared cancel-mode-or-clear-selection convention.
     const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
     if (numericBuildHotkey >= 0) {
       const buildingType = getBuildModeBuildingTypeByIndex(numericBuildHotkey);
@@ -442,6 +467,9 @@ export class Input3DManager {
       case 'm': this.setWaypointMode('move'); break;
       case 'f': this.setWaypointMode('fight'); break;
       case 'h': this.setWaypointMode('patrol'); break;
+      case 's':
+        this.enqueueStopCommand();
+        break;
       case 'j':
         this.enqueueJumpCommand();
         break;
@@ -464,6 +492,58 @@ export class Input3DManager {
         );
         break;
     }
+  }
+
+  private storeControlGroup(index: number): void {
+    const ids = this.getSelectedGroupEntityIds();
+    if (ids.length === 0) return;
+    this.controlGroups[index] = ids;
+  }
+
+  private enqueueControlGroupSelect(index: number, additive: boolean): boolean {
+    const group = this.controlGroups[index];
+    if (group.length === 0) return false;
+
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < group.length; i++) {
+      const entity = this.entitySource.getEntity(group[i]) ?? null;
+      if (this.isSelectableByActivePlayer(entity)) entityIds.push(group[i]);
+    }
+
+    if (entityIds.length === 0) {
+      group.length = 0;
+      return true;
+    }
+
+    if (entityIds.length !== group.length) this.controlGroups[index] = entityIds.slice();
+    this.localCommandQueue.enqueue({
+      type: 'select',
+      tick: this.context.getTick(),
+      entityIds,
+      additive,
+    });
+    return true;
+  }
+
+  private getSelectedGroupEntityIds(): EntityId[] {
+    const entityIds: EntityId[] = [];
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
+    const selectedBuildings = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedBuildings.length; i++) entityIds.push(selectedBuildings[i].id);
+    return entityIds;
+  }
+
+  private enqueueStopCommand(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length === 0) return;
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
+    this.localCommandQueue.enqueue({
+      type: 'stop',
+      tick: this.context.getTick(),
+      entityIds,
+    });
   }
 
   private enqueueJumpCommand(): void {
