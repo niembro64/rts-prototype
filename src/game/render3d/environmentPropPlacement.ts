@@ -65,7 +65,7 @@ export const SCOPE_PADDING_EXTRA = 120;
 const RANDOM_ENVIRONMENT_PLACEMENT_MAX_ATTEMPTS_PER_TARGET = 80;
 
 // Uses the terrain shader slope metric: 0 is flat, 1 is vertical.
-export const RANDOM_ENVIRONMENT_ASSET_MIN_SLOPE = 0.03;
+export const RANDOM_ENVIRONMENT_ASSET_MIN_SLOPE = 0.001;
 export const RANDOM_ENVIRONMENT_ASSET_MAX_SLOPE = 0.3;
 export const RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT = 100;
 
