@@ -243,14 +243,16 @@ export class ForceFieldImpactRenderer3D {
         const ringAge = impact.ageMs - ring * cfg.ringDelayMs;
         if (ringAge < 0 || ringAge >= cfg.durationMs) continue;
         const t = ringAge / cfg.durationMs;
-        // Linear radius grow until the ring disappears at end-of-life;
-        // constant alpha so the tube reads as solid force-field material
-        // for its whole lifetime, then is removed by the age check above.
+        // Linear radius grow with a quadratic ease-out alpha fade — the
+        // torus stays mostly visible for the first half of its life and
+        // tapers away as it reaches end-of-life. Matches the core ring's
+        // (1-t)² fade so the two visuals decay in step.
+        const fade = (1 - t) * (1 - t);
         const radius = cfg.startRadius + (cfg.endRadius - cfg.startRadius) * t;
         // Uniform scale so the torus tube cross-section grows proportionally.
         this.scratchScale.set(radius, radius, radius);
         this.scratchMat.compose(this.scratchPos, this.scratchQuat, this.scratchScale);
-        this.ringPool.write(ringCursor++, this.scratchMat, impact.color, cfg.ringOpacity);
+        this.ringPool.write(ringCursor++, this.scratchMat, impact.color, cfg.ringOpacity * fade);
       }
 
       i++;
