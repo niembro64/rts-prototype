@@ -607,7 +607,7 @@ export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 40;
  *  correctly. Toggle, base color, and contrast knob mirror the ground set. */
 export const TERRAIN_ROCK_DETAIL_ENABLED = true;
 export const TERRAIN_ROCK_BASE_COLOR = 0x6f6a5b;
-export const TERRAIN_ROCK_DETAIL_CONTRAST = 0.3;
+export const TERRAIN_ROCK_DETAIL_CONTRAST = 0.1;
 
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion
