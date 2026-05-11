@@ -91,10 +91,10 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     // building the turret. Distance-LOD can briefly drop a tower to
     // marker/min while the camera is framing in, and the building mesh
     // is cached forever after that.
+    const isDefenseTower =
+      shapeType === 'megaBeamTower' || shapeType === 'cannonTower';
     const buildingTurretTier =
-      shapeType === 'megaBeamTower' && globalGraphicsTier === 'min'
-        ? 'low'
-        : globalGraphicsTier;
+      isDefenseTower && globalGraphicsTier === 'min' ? 'low' : globalGraphicsTier;
     const buildingGfx = getGraphicsConfigFor(buildingTurretTier);
     for (let ti = 0; ti < buildingTurrets.length; ti++) {
       const turret = buildingTurrets[ti];

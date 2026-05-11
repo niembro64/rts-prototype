@@ -385,14 +385,15 @@ function placeFactoryArcRowForUnitTypes(
 }
 
 /**
- * Spawn a full base for each player on five concentric oval arcs centered
+ * Spawn a full base for each player on concentric oval arcs centered
  * on the map. Each ring's radius comes directly from DEMO_CONFIG:
  *
  *           commander  ← outermost
  *           solar arc
  *           wind arc
  *           fabricator arc
- *           megaBeam tower arc ← closest to map center
+ *           megaBeam tower arc
+ *           cannon tower arc ← closest to map center
  *
  * Each arc spans the same angular sector for the player, and every
  * building faces the map center. Solar/wind/tower counts and oval radius
@@ -423,9 +424,9 @@ export function spawnInitialBases(
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
   const factoryUnitTypes = getAvailableDemoFactoryUnitTypes(availableUnitTypes);
 
-  // Five concentric radii — outermost to innermost: commander, solar,
-  // wind, fabricator, megaBeam tower. Each ring is explicit so the demo
-  // layout can be tuned the same way metal deposit rings are tuned.
+  // Concentric radii — outermost to innermost: commander, solar, wind,
+  // fabricator, megaBeam tower, cannon tower. Each ring is explicit so
+  // the demo layout can be tuned the same way metal deposit rings are tuned.
   const commanderRadius = commanderRadiusFromOuterSpawnRadius(spawnRadius);
   const solarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
@@ -442,6 +443,10 @@ export function spawnInitialBases(
   const megaBeamTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.megaBeamTower.radiusFraction,
+  );
+  const cannonTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.cannonTower.radiusFraction,
   );
 
   // Each player's slice of the spawn oval is ONE HALF of the
@@ -490,11 +495,18 @@ export function spawnInitialBases(
       oval, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
-    // megaBeam tower arc — innermost, covers the approach to the base
-    // from the map center.
+    // megaBeam tower arc — covers the approach to the base from the
+    // map center.
     entities.push(...placeArcRow(
       world, construction, 'megaBeamTower', DEMO_CONFIG.megaBeamTowerCount,
       oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+    ));
+
+    // Cannon tower arc — companion static-defense ring for long-range
+    // heavy shots.
+    entities.push(...placeArcRow(
+      world, construction, 'cannonTower', DEMO_CONFIG.cannonTowerCount,
+      oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
   }
 

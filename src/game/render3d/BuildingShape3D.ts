@@ -11,6 +11,7 @@
 //   factory — compact radial construction tower. Produced units are
 //             assembled outside the tower footprint by spray particles.
 //   extractor — squat metal pump with a rotating top extractor head.
+//   cannonTower — static defense tower with a heavy cannon mount.
 //
 // Shapes are additive — the caller owns a `THREE.Group` containing the
 // whole building and plugs in the primary + detail meshes returned by
@@ -41,6 +42,7 @@ import {
   disposeBuildingMeshPrimitives,
 } from './BuildingMeshPrimitives3D';
 import {
+  buildCannonTowerMesh,
   buildMegaBeamTowerMesh,
   disposeMegaBeamTowerMeshGeoms,
 } from './MegaBeamTowerMesh3D';
@@ -153,6 +155,8 @@ export function buildBuildingShape(
       return buildMetalExtractorMesh(width, depth, primaryMat);
     case 'megaBeamTower':
       return buildMegaBeamTowerMesh(primaryMat);
+    case 'cannonTower':
+      return buildCannonTowerMesh(primaryMat);
     case 'unknown':
       return buildUnknown(primaryMat);
     default:

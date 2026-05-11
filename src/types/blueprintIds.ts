@@ -9,7 +9,7 @@ export const UNIT_TYPE_IDS = [
 export type UnitTypeId = typeof UNIT_TYPE_IDS[number];
 
 export const BUILDING_TYPE_IDS = [
-  'solar', 'wind', 'factory', 'extractor', 'megaBeamTower',
+  'solar', 'wind', 'factory', 'extractor', 'megaBeamTower', 'cannonTower',
 ] as const;
 
 export const SHOT_IDS = [
@@ -42,6 +42,7 @@ export const TURRET_IDS = [
   'constructionTurret',
   'towerBeamTurret',
   'miniBeam',
+  'towerCannonTurret',
 ] as const;
 export type TurretId = typeof TURRET_IDS[number];
 

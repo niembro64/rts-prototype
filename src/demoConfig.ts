@@ -15,8 +15,11 @@ export const DEMO_CONFIG = {
    *  own ring. */
   windCount: 4,
 
-  /** Number of megaBeam defense towers per player on the innermost ring. */
+  /** Number of megaBeam defense towers per player on the beam tower ring. */
   megaBeamTowerCount: 4,
+
+  /** Number of cannon defense towers per player on the cannon tower ring. */
+  cannonTowerCount: 4,
 
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the
@@ -46,6 +49,7 @@ export const DEMO_CONFIG = {
     wind: { radiusFraction: 0.75 },
     fabricator: { radiusFraction: 0.7 },
     megaBeamTower: { radiusFraction: 0.65 },
+    cannonTower: { radiusFraction: 0.6 },
   },
 
   /**

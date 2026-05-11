@@ -47,11 +47,14 @@ export const WIND_BUILDING_VISUAL_HEIGHT = 250;
 export const FACTORY_BASE_VISUAL_HEIGHT = 30;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 50;
 export const MEGA_BEAM_TOWER_VISUAL_HEIGHT = 80;
+export const CANNON_TOWER_VISUAL_HEIGHT = 72;
 export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
   FACTORY_BASE_VISUAL_HEIGHT + CONSTRUCTION_TURRET_HEAD_RADIUS;
 /** Pivot height for the megaBeam turret on the tower — head sits just
  *  above the body socket so the barrel clears the tapered hex shaft. */
 export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z = MEGA_BEAM_TOWER_VISUAL_HEIGHT + 18;
+/** Pivot height for the cannon tower's heavier static turret head. */
+export const CANNON_TOWER_TURRET_MOUNT_Z = CANNON_TOWER_VISUAL_HEIGHT + 16;
 
 export type FactoryBuildingVisualMetrics = {
   minDim: number;
@@ -204,6 +207,27 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
         // its balance and silhouette are unchanged.
         turretId: 'towerBeamTurret',
         mount: { x: 0, y: 0, z: MEGA_BEAM_TOWER_TURRET_MOUNT_Z },
+      },
+    ],
+  },
+  cannonTower: {
+    id: 'cannonTower',
+    name: 'Cannon Tower',
+    gridWidth: 2,
+    gridHeight: 2,
+    gridDepth: 4,
+    hp: 8000,
+    cost: { energy: 1500, mana: 1500, metal: 1500 },
+    renderProfile: 'cannonTower',
+    visualHeight: CANNON_TOWER_VISUAL_HEIGHT,
+    anchorProfile: 'constantVisualTop',
+    hud: {
+      barsOffsetAboveTop: 12,
+    },
+    turrets: [
+      {
+        turretId: 'towerCannonTurret',
+        mount: { x: 0, y: 0, z: CANNON_TOWER_TURRET_MOUNT_Z },
       },
     ],
   },

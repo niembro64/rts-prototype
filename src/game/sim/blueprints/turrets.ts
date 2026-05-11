@@ -516,6 +516,33 @@ export const TURRET_BLUEPRINTS = {
       fireSound: AUDIO.event.fire.megaBeamTurret,
     },
   },
+  // Tower cannon turret — static defensive variant of cannonTurret.
+  // It keeps the same heavyShot damage profile as unit cannons, but
+  // uses a larger head, longer visible barrel, and faster reload so
+  // the tower can stand apart without changing mobile cannon balance.
+  towerCannonTurret: {
+    id: 'towerCannonTurret',
+    projectileId: 'heavyShot',
+    range: 1000,
+    cooldown: 1500,
+    launchForce: 22_000,
+    turretTurnAccel: 180,
+    turretDrag: 0.15,
+    barrel: {
+      type: 'simpleSingleBarrel',
+      barrelLength: 1.8,
+      barrelThickness: 9,
+    },
+    rangeMultiplierOverrides: fireEnvelope({
+      engageRangeMin: RANGE_FIRE_MIN,
+      trackingRange: null,
+    }),
+    eventsSmooth: false,
+    color: COLOR_WHITE,
+    spread: { angle: 0 },
+    radius: { body: 16 },
+    audio: { fireSound: AUDIO.event.fire.cannonTurret },
+  },
 } satisfies Record<TurretId, TurretBlueprint>;
 
 export function getTurretBlueprint(id: string): TurretBlueprint {

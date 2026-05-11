@@ -33,6 +33,7 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
   factory: buildBuildingConfig('factory'),
   extractor: buildBuildingConfig('extractor'),
   megaBeamTower: buildBuildingConfig('megaBeamTower'),
+  cannonTower: buildBuildingConfig('cannonTower'),
 };
 
 // Helper to get building config

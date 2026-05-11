@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { MEGA_BEAM_TOWER_VISUAL_HEIGHT } from '../sim/blueprints';
+import {
+  CANNON_TOWER_VISUAL_HEIGHT,
+  MEGA_BEAM_TOWER_VISUAL_HEIGHT,
+} from '../sim/blueprints';
 import type { BuildingShape } from './BuildingShape3D';
 import {
   createHexFrustumGeometry,
@@ -11,12 +14,73 @@ import {
 } from './BuildingMeshPrimitives3D';
 
 const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.36);
+const cannonTowerBodyGeom = createHexFrustumGeometry(0.46, 0.58);
+
+type DefenseTowerMeshProfile = {
+  height: number;
+  foot: number;
+  baseHeight: number;
+  baseRadiusFactor: number;
+  lowerBandRadiusFactor: number;
+  strutCount: number;
+  strutAngleOffset: number;
+  strutBottomRadiusFactor: number;
+  strutTopRadiusFactor: number;
+  strutBottomY: number;
+  strutTopY: number;
+  strutRadius: number;
+  neckRadiusFactor: number;
+  neckHeight: number;
+  socketRadiusFactor: number;
+  socketHeight: number;
+  socketY: number;
+};
+
+const beamTowerProfile: DefenseTowerMeshProfile = {
+  height: MEGA_BEAM_TOWER_VISUAL_HEIGHT,
+  foot: 40,
+  baseHeight: 14,
+  baseRadiusFactor: 0.68,
+  lowerBandRadiusFactor: 0.57,
+  strutCount: 6,
+  strutAngleOffset: Math.PI / 6,
+  strutBottomRadiusFactor: 0.42,
+  strutTopRadiusFactor: 0.29,
+  strutBottomY: 17,
+  strutTopY: MEGA_BEAM_TOWER_VISUAL_HEIGHT - 8,
+  strutRadius: 1.7,
+  neckRadiusFactor: 0.41,
+  neckHeight: 7,
+  socketRadiusFactor: 0.44,
+  socketHeight: 4,
+  socketY: MEGA_BEAM_TOWER_VISUAL_HEIGHT + 2,
+};
+
+const cannonTowerProfile: DefenseTowerMeshProfile = {
+  height: CANNON_TOWER_VISUAL_HEIGHT,
+  foot: 40,
+  baseHeight: 16,
+  baseRadiusFactor: 0.74,
+  lowerBandRadiusFactor: 0.62,
+  strutCount: 4,
+  strutAngleOffset: Math.PI / 4,
+  strutBottomRadiusFactor: 0.46,
+  strutTopRadiusFactor: 0.33,
+  strutBottomY: 20,
+  strutTopY: CANNON_TOWER_VISUAL_HEIGHT - 10,
+  strutRadius: 2.2,
+  neckRadiusFactor: 0.45,
+  neckHeight: 8,
+  socketRadiusFactor: 0.5,
+  socketHeight: 5,
+  socketY: CANNON_TOWER_VISUAL_HEIGHT + 2.5,
+};
 
 /** Static beam tower — wider stepped base, hex-prism shaft, and a
  *  collar platform under the turret. The primary slab gets scaled to
  *  the building's full cuboid by the per-frame writer (so the
  *  silhouette inside the build grid stays correct); detail meshes
- *  carry the visible character — base flange, four corner ribs, and
+ *  carry the visible character — base flange, sloped spars, and
  *  a turret collar — and ride along in absolute world units, so they
  *  don't deform when the primary scales.
  *
@@ -26,22 +90,36 @@ const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.36);
  *  shape builder owns body geometry only; turret meshes are added on
  *  top by the caller from `entity.combat.turrets`. */
 export function buildMegaBeamTowerMesh(primaryMat: THREE.Material): BuildingShape {
-  const primary = new THREE.Mesh(megaBeamTowerBodyGeom, primaryMat);
+  return buildDefenseTowerMesh(primaryMat, megaBeamTowerBodyGeom, beamTowerProfile);
+}
+
+/** Static cannon tower — same shared armed-tower body language as the
+ *  beam tower, with a slightly squatter four-spar shaft and larger top
+ *  socket for the heavier cannon turret. */
+export function buildCannonTowerMesh(primaryMat: THREE.Material): BuildingShape {
+  return buildDefenseTowerMesh(primaryMat, cannonTowerBodyGeom, cannonTowerProfile);
+}
+
+function buildDefenseTowerMesh(
+  primaryMat: THREE.Material,
+  bodyGeom: THREE.BufferGeometry,
+  profile: DefenseTowerMeshProfile,
+): BuildingShape {
+  const primary = new THREE.Mesh(bodyGeom, primaryMat);
 
   // World-unit dimensions. The primary tapered shaft scales inside
-  // the building's logical 40x80x40 cuboid (set by gridWidth/gridHeight
-  // x cellSize and the visualHeight constant); details are sized in
-  // those terms.
-  const h = MEGA_BEAM_TOWER_VISUAL_HEIGHT;
-  const foot = 40; // gridWidth x cellSize for the megaBeamTower entry
+  // the building's logical footprint; details are sized in those terms
+  // so the authored silhouette does not deform when the primary scales.
+  const h = profile.height;
+  const foot = profile.foot;
   const details: BuildingShape['details'] = [];
 
   // Stepped hex foundation flange — slightly wider, low and squat.
   // Reads as "this thing is bolted into the ground, not floating".
-  const baseHeight = 14;
+  const baseHeight = profile.baseHeight;
   const base = makeCylinder(
     primaryMat,
-    foot * 0.68,
+    foot * profile.baseRadiusFactor,
     baseHeight,
     0,
     baseHeight / 2,
@@ -52,7 +130,7 @@ export function buildMegaBeamTowerMesh(primaryMat: THREE.Material): BuildingShap
 
   const lowerBand = makeCylinder(
     extractorBladeMat,
-    foot * 0.57,
+    foot * profile.lowerBandRadiusFactor,
     3,
     0,
     baseHeight + 1.5,
@@ -61,16 +139,16 @@ export function buildMegaBeamTowerMesh(primaryMat: THREE.Material): BuildingShap
   );
   details.push(detail(lowerBand, 'min', undefined, 'static'));
 
-  // Six sloped metal spars follow the taper from the wide base to the
-  // narrower turret neck, making the shaft read as hexagonal and
-  // engineered instead of a scaled box.
-  const strutBottomRadius = foot * 0.42;
-  const strutTopRadius = foot * 0.29;
-  const strutBottomY = baseHeight + 3;
-  const strutTopY = h - 8;
-  const strutRadius = 1.7;
-  for (let i = 0; i < 6; i++) {
-    const angle = Math.PI / 6 + (i / 6) * Math.PI * 2;
+  // Sloped metal spars follow the taper from the wide base to the
+  // narrower turret neck, making the shaft read as engineered instead
+  // of a scaled box.
+  const strutBottomRadius = foot * profile.strutBottomRadiusFactor;
+  const strutTopRadius = foot * profile.strutTopRadiusFactor;
+  const strutBottomY = profile.strutBottomY;
+  const strutTopY = profile.strutTopY;
+  const strutRadius = profile.strutRadius;
+  for (let i = 0; i < profile.strutCount; i++) {
+    const angle = profile.strutAngleOffset + (i / profile.strutCount) * Math.PI * 2;
     const bottom = new THREE.Vector3(
       Math.cos(angle) * strutBottomRadius,
       strutBottomY,
@@ -95,10 +173,10 @@ export function buildMegaBeamTowerMesh(primaryMat: THREE.Material): BuildingShap
   // Render3DEntities.
   const neck = makeCylinder(
     primaryMat,
-    foot * 0.41,
-    7,
+    foot * profile.neckRadiusFactor,
+    profile.neckHeight,
     0,
-    h - 3.5,
+    h - profile.neckHeight / 2,
     0,
     hexCylinderGeom,
   );
@@ -106,10 +184,10 @@ export function buildMegaBeamTowerMesh(primaryMat: THREE.Material): BuildingShap
 
   const socket = makeCylinder(
     extractorBladeMat,
-    foot * 0.44,
-    4,
+    foot * profile.socketRadiusFactor,
+    profile.socketHeight,
     0,
-    h + 2,
+    profile.socketY,
     0,
     hexCylinderGeom,
   );
@@ -120,4 +198,5 @@ export function buildMegaBeamTowerMesh(primaryMat: THREE.Material): BuildingShap
 
 export function disposeMegaBeamTowerMeshGeoms(): void {
   megaBeamTowerBodyGeom.dispose();
+  cannonTowerBodyGeom.dispose();
 }

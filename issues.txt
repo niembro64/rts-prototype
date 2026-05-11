@@ -10,5 +10,3 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 
 ==============================================================================
  ISSUES:
-
-7. We need a "cannon tower" similar to how we have a "beam tower". Create a "towerCannonTurret" for it like we have "towerBeamTurret" for the "beam tower". Also create the same "demo battle" ring for this tower, as we have for the beam tower.
