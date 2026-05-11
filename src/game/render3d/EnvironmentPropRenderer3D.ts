@@ -4,6 +4,8 @@ import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import type { GraphicsConfig, RenderObjectLodTier } from '@/types/graphics';
 import { FOREST_SPRUCE2_LEAF_COLOR, FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
+import { getTreeLeafTexture } from './TreeLeafTexture';
+import { getTreeTrunkTexture } from './TreeTrunkTexture';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { ViewportFootprint } from '../ViewportFootprint';
 import type { Lod3DState } from './Lod3D';
@@ -278,30 +280,43 @@ export class EnvironmentPropRenderer3D {
   ): THREE.MeshLambertMaterial | null {
     if (!isRandomEnvironmentAssetUsable(spec.id)) return null;
     if (spec.kind === 'grass') {
+      // Grass props deliberately keep the plain leaf-color material with no
+      // texture map. The user-facing distinction: grass clumps blend into
+      // the ground green carpet uniformly, while tree foliage carries the
+      // tree-leaf texture's per-fragment color variation.
       return this.sharedMaterial(
-        'randomEnvironment.forestSpruce2.leaves',
+        'randomEnvironment.forestSpruce2.grass-leaves',
         FOREST_SPRUCE2_LEAF_COLOR,
       );
     }
-    const color = isWoodMaterialForAsset(spec, sourceName)
-      ? FOREST_SPRUCE2_WOOD_COLOR
-      : FOREST_SPRUCE2_LEAF_COLOR;
+    const isWood = isWoodMaterialForAsset(spec, sourceName);
+    if (isWood) {
+      return this.sharedMaterial(
+        'randomEnvironment.forestSpruce2.tree-trunk',
+        FOREST_SPRUCE2_WOOD_COLOR,
+        getTreeTrunkTexture(),
+      );
+    }
     return this.sharedMaterial(
-      color === FOREST_SPRUCE2_WOOD_COLOR
-        ? 'randomEnvironment.forestSpruce2.wood'
-        : 'randomEnvironment.forestSpruce2.leaves',
-      color,
+      'randomEnvironment.forestSpruce2.tree-leaves',
+      FOREST_SPRUCE2_LEAF_COLOR,
+      getTreeLeafTexture(),
     );
   }
 
   private sharedMaterial(
     key: string,
     color: number,
+    map?: THREE.Texture,
   ): THREE.MeshLambertMaterial {
     let material = this.materialCache.get(key);
     if (!material) {
+      // When a texture map is supplied, the canvas was pre-filled with the
+      // exact same hex color, so the map carries the prop's overall hue and
+      // the material's color stays white to avoid double-multiplying.
       material = new THREE.MeshLambertMaterial({
-        color,
+        color: map ? 0xffffff : color,
+        map: map ?? null,
         flatShading: true,
       });
       material.name = key;
