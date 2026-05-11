@@ -23,7 +23,8 @@ export const ROCK_DETAIL_TEXTURE_PIXELS = 4096;
 export const ROCK_DETAIL_TILE_WORLD_SIZE = 512;
 const ITEM_COUNT = 83200;
 
-type ShapeKind = 'box' | 'tri' | 'circle' | 'hex';
+// Only hard-cornered shapes — rock fractures along straight lines, not curves.
+type ShapeKind = 'box' | 'tri' | 'hex';
 
 type Item = {
   x: number;
@@ -121,38 +122,48 @@ function randIn(rng: () => number, min: number, max: number): number {
 function generateItems(rng: () => number): Item[] {
   const items: Item[] = [];
   for (let i = 0; i < ITEM_COUNT; i++) {
-    // Same log-uniform t² distribution as the grass texture — many small
-    // pebbles / cracks, few large slabs. Matches natural rock-debris fields.
+    // Log-uniform size with a t^1.5 squash. Range stretched up to 500 px so
+    // the texture now spans from tiny debris through chunky boulders and
+    // full slabs — many small pieces dominate, but big pieces show up often
+    // enough to land prominently across the tile. The eased exponent
+    // (vs t² for the grass texture) deliberately gives large slabs more
+    // representation than the grass-side "many small grass blades" curve.
     const sizeT = rng();
+    const tSquashed = Math.pow(sizeT, 1.5);
     const size = Math.exp(
-      Math.log(5) + sizeT * sizeT * (Math.log(220) - Math.log(5)),
+      Math.log(5) + tSquashed * (Math.log(500) - Math.log(5)),
     );
 
     let shapeKind: ShapeKind;
     const shapeRoll = rng();
-    if (size > 100) {
-      // Big rocks: hex slabs dominate, with the occasional jagged chunk.
+    if (size > 200) {
+      // Giant slabs: hexagonal rock plates dominate, with chunky wedges mixed in.
+      shapeKind = shapeRoll < 0.65 ? 'hex' : 'tri';
+    } else if (size > 80) {
+      // Big chunks: still hex-led, plus jagged wedges and the occasional
+      // rectangular slab.
       shapeKind = shapeRoll < 0.55 ? 'hex'
-        : shapeRoll < 0.85 ? 'tri'
-        : 'circle';
-    } else if (size > 40) {
-      shapeKind = shapeRoll < 0.40 ? 'hex'
-        : shapeRoll < 0.65 ? 'circle'
         : shapeRoll < 0.90 ? 'tri'
         : 'box';
+    } else if (size > 30) {
+      shapeKind = shapeRoll < 0.40 ? 'hex'
+        : shapeRoll < 0.75 ? 'tri'
+        : 'box';
     } else {
-      // Small detritus: pebbles (circles) and cracks (thin boxes).
-      shapeKind = shapeRoll < 0.55 ? 'circle'
-        : shapeRoll < 0.78 ? 'box'
-        : shapeRoll < 0.95 ? 'tri'
+      // Small debris: cracks (thin boxes), hex shards, tri chips.
+      shapeKind = shapeRoll < 0.40 ? 'box'
+        : shapeRoll < 0.72 ? 'tri'
         : 'hex';
     }
 
     let shapeParam: number;
     switch (shapeKind) {
       case 'box':
-        // Skinny cracks rather than long sticks.
-        shapeParam = randIn(rng, 0.04, 0.14);
+        // Mostly thin cracks; occasionally wider rectangular slab chunks so
+        // the angular variety extends to "blocky rock" shapes too.
+        shapeParam = rng() < 0.75
+          ? randIn(rng, 0.04, 0.14)
+          : randIn(rng, 0.30, 0.65);
         break;
       case 'tri':
         // Squat jagged triangles, not pointed leaves.
@@ -195,12 +206,6 @@ function drawShape(ctx: CanvasRenderingContext2D, item: Item): void {
       ctx.lineTo(halfBase, s / 2);
       ctx.lineTo(-halfBase, s / 2);
       ctx.closePath();
-      ctx.fill();
-      return;
-    }
-    case 'circle': {
-      ctx.beginPath();
-      ctx.arc(0, 0, s / 2, 0, Math.PI * 2);
       ctx.fill();
       return;
     }
