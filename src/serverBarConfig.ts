@@ -18,7 +18,7 @@ export const SERVER_CONFIG = {
     options: ['snap', 'fast', 'mid', 'slow'] as readonly TiltEmaMode[],
   },
   snapshot: {
-    default: 32 as SnapshotRate,
+    default: 64 as SnapshotRate,
     options: [1, 4, 8, 16, 32, 64, 128] as readonly SnapshotRate[],
     // 'none' removed — uncapped SPS at high TPS causes delta snapshot issues
   },
