@@ -199,6 +199,12 @@ export class CaptureTileRenderer3D {
       side: THREE.DoubleSide,
       vertexColors: false,
     });
+    // dFdx/dFdy in the fragment shader for per-fragment geometric slope.
+    // No-op on WebGL2 (derivatives are core); enables the OES extension on
+    // the WebGL1 fallback path.
+    (this.terrainMaterial as unknown as { extensions: Record<string, boolean> }).extensions = {
+      derivatives: true,
+    };
     this.installTerrainShader();
     this.terrainMesh = new THREE.Mesh(this.terrainGeometry, this.terrainMaterial);
     this.terrainMesh.frustumCulled = false;
@@ -303,7 +309,17 @@ export class CaptureTileRenderer3D {
             'terrainRgb = mix(terrainRgb, sunBleachedRock, highDry * 0.38);',
             'terrainRgb = mix(terrainRgb, wetSoil, shoreline * 0.72);',
             'if (uGroundDetailEnabled > 0.0) {',
-            '  float flatDetail = (1.0 - smoothstep(0.035, 0.16, vTerrainSlope)) * (1.0 - shoreline);',
+            '  // Per-fragment geometric slope from world-position derivatives. The',
+            '  // vertex-shader vTerrainSlope is interpolated from smooth-shaded',
+            '  // normals, so a vertex shared between a flat triangle and a vertical',
+            '  // triangle would bleed "flat" slope values down the vertical face.',
+            '  // Reconstructing the face normal here gives an exact per-fragment',
+            '  // slope independent of vertex normal averaging — 90° edges and all.',
+            '  vec3 dpdx = dFdx(vTerrainWorldPos);',
+            '  vec3 dpdy = dFdy(vTerrainWorldPos);',
+            '  vec3 geomNormal = normalize(cross(dpdx, dpdy));',
+            '  float geomSlope = 1.0 - abs(geomNormal.y);',
+            '  float flatDetail = (1.0 - smoothstep(0.035, 0.16, geomSlope)) * (1.0 - shoreline);',
             '  float flatGreenDetail = flatDetail * (1.0 - smoothstep(0.38, 0.92, upland)) * (1.0 - exposedRock * 0.82) * (1.0 - highDry * 0.72);',
             '  // Pull the base ground toward the tree/grass color in flat green areas',
             '  // so props feel rooted in matching-color ground regardless of contrast.',
@@ -355,7 +371,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v22';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v23';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
