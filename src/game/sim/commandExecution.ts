@@ -1,7 +1,7 @@
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
-import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, JumpCommand, RepairCommand, AttackCommand } from './commands';
+import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, SetJumpEnabledCommand, RepairCommand, AttackCommand } from './commands';
 import type { Entity, UnitAction } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
@@ -11,12 +11,12 @@ import { getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_JUMP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
-import { requestUnitJump } from './unitJump';
+import { setUnitJumpEnabled } from './unitJump';
 import { pushUnitAction, setUnitActions } from './unitActions';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
@@ -72,8 +72,8 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'fireDGun':
       executeFireDGunCommand(ctx, command);
       break;
-    case 'jump':
-      executeJumpCommand(ctx, command);
+    case 'setJumpEnabled':
+      executeSetJumpEnabledCommand(ctx, command);
       break;
     case 'repair':
       executeRepairCommand(ctx, command);
@@ -397,11 +397,13 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   ctx.pendingSimEvents.push(dgunSimEvent);
 }
 
-function executeJumpCommand(ctx: CommandContext, command: JumpCommand): void {
+function executeSetJumpEnabledCommand(ctx: CommandContext, command: SetJumpEnabledCommand): void {
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (!entity?.unit) continue;
-    requestUnitJump(entity.unit);
+    if (setUnitJumpEnabled(entity.unit, command.enabled)) {
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_JUMP);
+    }
   }
 }
 

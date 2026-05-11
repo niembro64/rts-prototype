@@ -39,13 +39,15 @@ export type UnitJumpConfig = {
   /** Maximum random horizontal launch force as a fraction of vertical force.
    *  0.25 means each jump gets 0%-25% extra force in a random XY direction. */
   horizontalRandomMultiplier?: number;
-  /** Manual jumps consume a command; always jumps release once per ground contact. */
+  /** Manual jumps require a scripted request; always jumps release once per ground contact. */
   mode?: 'manual' | 'always';
 };
 
 export type UnitJumpState = {
   config: UnitJumpConfig;
-  /** Set by player/AI command and consumed by the next actuator tick. */
+  /** Player-controlled permission for automatic jump release. */
+  enabled: boolean;
+  /** Reserved for direct jump requests and consumed by the next actuator tick. */
   requested: boolean;
   /** True after a spring release; recharge is allowed once grounded and no longer moving outward. */
   active: boolean;

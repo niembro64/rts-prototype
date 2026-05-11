@@ -135,6 +135,7 @@ export function applyNetworkJumpState(
   const state = entity.unit?.jump;
   if (!state || !jump) return false;
   const prevLaunchSeq = state.launchSeq;
+  state.enabled = jump.enabled !== false;
   state.active = jump.active === true;
   if (isFiniteNumber(jump.launchSeq)) {
     state.launchSeq = jump.launchSeq;
@@ -301,6 +302,7 @@ export function writeNetworkUnitJump(
     dst.jump = undefined;
     return;
   }
+  out.enabled = jump.enabled;
   out.active = jump.active ? true : undefined;
   out.launchSeq = jump.launchSeq > 0 ? jump.launchSeq : undefined;
   dst.jump = out;
@@ -439,6 +441,7 @@ export function copyNetworkUnitSnapshotInto(
   }
   if (src.jump) {
     const jump = dst.jump ?? (dst.jump = createNetworkUnitJumpState());
+    jump.enabled = src.jump.enabled;
     jump.active = src.jump.active;
     jump.launchSeq = src.jump.launchSeq;
   } else {

@@ -603,6 +603,7 @@ export type NetworkServerSnapshotEntity = {
       legContact?: boolean;
     };
     jump?: {
+      enabled?: boolean;
       active?: boolean;
       launchSeq?: number;
     };

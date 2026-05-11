@@ -7,9 +7,9 @@ import type {
   AttackCommand,
   CommandQueue,
   Command,
-  JumpCommand,
   MoveCommand,
   SetCameraAoiCommand,
+  SetJumpEnabledCommand,
   StopCommand,
 } from '../sim/commands';
 import {
@@ -630,7 +630,7 @@ export class GameServer {
       case 'stop':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
-      case 'jump':
+      case 'setJumpEnabled':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
       case 'attack':
@@ -688,9 +688,9 @@ export class GameServer {
   }
 
   private authorizeUnitListCommand(
-    command: JumpCommand | AttackCommand | StopCommand,
+    command: SetJumpEnabledCommand | AttackCommand | StopCommand,
     playerId: PlayerId,
-  ): JumpCommand | AttackCommand | StopCommand | null {
+  ): SetJumpEnabledCommand | AttackCommand | StopCommand | null {
     const sourceIds = command.entityIds;
     if (sourceIds.length === 0) return null;
 

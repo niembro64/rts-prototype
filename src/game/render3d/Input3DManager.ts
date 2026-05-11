@@ -323,8 +323,8 @@ export class Input3DManager {
     this.enqueueStopCommand();
   }
 
-  jumpSelectedUnits(): void {
-    this.enqueueJumpCommand();
+  toggleSelectedJump(): void {
+    this.enqueueSetJumpEnabledCommand();
   }
 
   storeControlGroupSlot(index: number): void {
@@ -495,8 +495,8 @@ export class Input3DManager {
     }
 
     // Mirror the command hotkeys one-for-one. M/F/H switch waypoint mode;
-    // S stops selected units; B/number/D drive the commander mode state
-    // machine; Escape runs the shared cancel-mode-or-clear-selection convention.
+    // S stops selected units; J toggles jump permission; B/number/D drive
+    // the commander mode state machine; Escape runs the shared cancel-mode-or-clear-selection convention.
     const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
     if (numericBuildHotkey >= 0) {
       const buildingType = getBuildModeBuildingTypeByIndex(numericBuildHotkey);
@@ -514,7 +514,7 @@ export class Input3DManager {
         this.enqueueStopCommand();
         break;
       case 'j':
-        this.enqueueJumpCommand();
+        this.enqueueSetJumpEnabledCommand();
         break;
       case 'b':
         if (!this.hasSelectedCommander()) break;
@@ -562,19 +562,23 @@ export class Input3DManager {
     });
   }
 
-  private enqueueJumpCommand(): void {
+  private enqueueSetJumpEnabledCommand(): void {
     const selectedUnits = this.entitySource.getSelectedUnits();
     if (selectedUnits.length === 0) return;
     const entityIds: EntityId[] = [];
-    for (const unit of selectedUnits) {
+    let allEnabled = true;
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
       if (!unit.unit?.jump) continue;
       entityIds.push(unit.id);
+      if (unit.unit.jump.enabled === false) allEnabled = false;
     }
     if (entityIds.length === 0) return;
     this.localCommandQueue.enqueue({
-      type: 'jump',
+      type: 'setJumpEnabled',
       tick: this.context.getTick(),
       entityIds,
+      enabled: !allEnabled,
     });
   }
 

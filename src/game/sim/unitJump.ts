@@ -30,17 +30,21 @@ export function createUnitJump(config: UnitJumpConfig | undefined): UnitJumpStat
   if (!config) return undefined;
   return {
     config: cloneJumpConfig(config),
+    enabled: true,
     requested: false,
     active: false,
     launchSeq: 0,
   };
 }
 
-export function requestUnitJump(unit: Unit): boolean {
+export function setUnitJumpEnabled(unit: Unit, enabled: boolean): boolean {
   const jump = unit.jump;
   if (!jump) return false;
-  jump.requested = true;
-  return true;
+  const next = enabled === true;
+  const changed = jump.enabled !== next || (!next && jump.requested);
+  jump.enabled = next;
+  if (!next) jump.requested = false;
+  return changed;
 }
 
 function getUnitPhysicsMass(unit: Unit): number {
@@ -127,6 +131,7 @@ export function unitJumpWantsActuator(
 ): boolean {
   const jump = unit.jump;
   if (!jump) return false;
+  if (!jump.enabled) return false;
   if (jump.requested) return true;
   return jump.config.mode === 'always' && unitJumpHasAutomaticIntent(intent);
 }

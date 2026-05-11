@@ -13,7 +13,7 @@ export type {
   FactoryWaypoint,
   SetFactoryWaypointsCommand,
   FireDGunCommand,
-  JumpCommand,
+  SetJumpEnabledCommand,
   RepairCommand,
   AttackCommand,
   SetSnapshotRateCommand,

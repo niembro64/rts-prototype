@@ -21,6 +21,7 @@ export type SelectionInfo = {
   hasBuilder: boolean;
   hasDGun: boolean;
   hasJump: boolean;
+  jumpEnabled: boolean;
   hasFactory: boolean;
   factoryId?: number;
   commanderId?: number;
@@ -37,7 +38,7 @@ export type SelectionInfo = {
 export type SelectionActions = {
   setWaypointMode: (mode: WaypointType) => void;
   stopSelectedUnits: () => void;
-  jumpSelectedUnits: () => void;
+  toggleSelectedJump: () => void;
   storeControlGroup: (index: number) => void;
   recallControlGroup: (index: number, additive: boolean) => void;
   startBuild: (buildingType: BuildingType) => void;
