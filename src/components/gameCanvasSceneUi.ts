@@ -32,6 +32,7 @@ export function useGameCanvasSceneUi({
     hasCommander: false,
     hasBuilder: false,
     hasDGun: false,
+    hasJump: false,
     hasFactory: false,
     factoryId: undefined,
     commanderId: undefined,
@@ -42,6 +43,7 @@ export function useGameCanvasSceneUi({
     factoryQueue: [],
     factoryProgress: 0,
     factoryIsProducing: false,
+    controlGroups: [],
   });
 
   const economyInfo = reactive<EconomyInfo>({
@@ -122,6 +124,15 @@ export function useGameCanvasSceneUi({
     },
     stopSelectedUnits: () => {
       getActiveBattleScene()?.stopSelectedUnits();
+    },
+    jumpSelectedUnits: () => {
+      getActiveBattleScene()?.jumpSelectedUnits();
+    },
+    storeControlGroup: (index) => {
+      getActiveBattleScene()?.storeControlGroup(index);
+    },
+    recallControlGroup: (index, additive) => {
+      getActiveBattleScene()?.recallControlGroup(index, additive);
     },
     startBuild: (buildingType) => {
       getActiveBattleScene()?.startBuildMode(buildingType);

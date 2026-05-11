@@ -105,6 +105,7 @@ export class Input3DManager {
   // Fires when the mode changes (from hotkey or setter). RtsScene3D hooks this
   // to refresh the selection panel so the active mode chip stays in sync.
   public onWaypointModeChange?: (mode: WaypointType) => void;
+  public onControlGroupsChange?: (groups: readonly (readonly EntityId[])[]) => void;
 
   // Shared commander-mode state machine (build + D-gun). The 2D
   // BuildingPlacementController owns one of these too so the two
@@ -322,6 +323,48 @@ export class Input3DManager {
     this.enqueueStopCommand();
   }
 
+  jumpSelectedUnits(): void {
+    this.enqueueJumpCommand();
+  }
+
+  storeControlGroupSlot(index: number): void {
+    if (index < 0 || index >= CONTROL_GROUP_COUNT) return;
+    const ids = this.getSelectedGroupEntityIds();
+    if (ids.length === 0) return;
+    this.controlGroups[index] = ids;
+    this.emitControlGroupsChange();
+  }
+
+  recallControlGroupSlot(index: number, additive: boolean): boolean {
+    if (index < 0 || index >= CONTROL_GROUP_COUNT) return false;
+    const group = this.controlGroups[index];
+    if (group.length === 0) return false;
+
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < group.length; i++) {
+      const entity = this.entitySource.getEntity(group[i]) ?? null;
+      if (this.isSelectableByActivePlayer(entity)) entityIds.push(group[i]);
+    }
+
+    if (entityIds.length === 0) {
+      group.length = 0;
+      this.emitControlGroupsChange();
+      return true;
+    }
+
+    if (entityIds.length !== group.length) {
+      this.controlGroups[index] = entityIds.slice();
+      this.emitControlGroupsChange();
+    }
+    this.localCommandQueue.enqueue({
+      type: 'select',
+      tick: this.context.getTick(),
+      entityIds,
+      additive,
+    });
+    return true;
+  }
+
   /** True if D-gun mode is currently active. */
   isInDGunMode(): boolean {
     return this.mode.isInDGunMode;
@@ -442,10 +485,10 @@ export class Input3DManager {
     if (controlGroupIndex >= 0) {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        this.storeControlGroup(controlGroupIndex);
+        this.storeControlGroupSlot(controlGroupIndex);
         return;
       }
-      if (this.enqueueControlGroupSelect(controlGroupIndex, e.shiftKey)) {
+      if (this.recallControlGroupSlot(controlGroupIndex, e.shiftKey)) {
         e.preventDefault();
         return;
       }
@@ -494,37 +537,6 @@ export class Input3DManager {
     }
   }
 
-  private storeControlGroup(index: number): void {
-    const ids = this.getSelectedGroupEntityIds();
-    if (ids.length === 0) return;
-    this.controlGroups[index] = ids;
-  }
-
-  private enqueueControlGroupSelect(index: number, additive: boolean): boolean {
-    const group = this.controlGroups[index];
-    if (group.length === 0) return false;
-
-    const entityIds: EntityId[] = [];
-    for (let i = 0; i < group.length; i++) {
-      const entity = this.entitySource.getEntity(group[i]) ?? null;
-      if (this.isSelectableByActivePlayer(entity)) entityIds.push(group[i]);
-    }
-
-    if (entityIds.length === 0) {
-      group.length = 0;
-      return true;
-    }
-
-    if (entityIds.length !== group.length) this.controlGroups[index] = entityIds.slice();
-    this.localCommandQueue.enqueue({
-      type: 'select',
-      tick: this.context.getTick(),
-      entityIds,
-      additive,
-    });
-    return true;
-  }
-
   private getSelectedGroupEntityIds(): EntityId[] {
     const entityIds: EntityId[] = [];
     const selectedUnits = this.entitySource.getSelectedUnits();
@@ -532,6 +544,10 @@ export class Input3DManager {
     const selectedBuildings = this.entitySource.getSelectedBuildings();
     for (let i = 0; i < selectedBuildings.length; i++) entityIds.push(selectedBuildings[i].id);
     return entityIds;
+  }
+
+  private emitControlGroupsChange(): void {
+    this.onControlGroupsChange?.(this.controlGroups.map((group) => group.slice()));
   }
 
   private enqueueStopCommand(): void {

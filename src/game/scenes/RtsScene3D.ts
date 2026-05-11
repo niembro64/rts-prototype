@@ -577,6 +577,9 @@ export class RtsScene3D {
     this.inputManager.onWaypointModeChange = (mode) => {
       this.selectionSystem.setWaypointMode(mode);
     };
+    this.inputManager.onControlGroupsChange = (groups) => {
+      this.selectionSystem.setControlGroups(groups);
+    };
     // Keep the SelectionPanel's mode chips (build / D-gun) in sync
     // with the shared CommanderModeController inside Input3DManager.
     this.inputManager.onBuildModeChange = (type) => {
@@ -1082,6 +1085,18 @@ export class RtsScene3D {
 
   public stopSelectedUnits(): void {
     this.inputManager?.stopSelectedUnits();
+  }
+
+  public jumpSelectedUnits(): void {
+    this.inputManager?.jumpSelectedUnits();
+  }
+
+  public storeControlGroup(index: number): void {
+    this.inputManager?.storeControlGroupSlot(index);
+  }
+
+  public recallControlGroup(index: number, additive: boolean): void {
+    this.inputManager?.recallControlGroupSlot(index, additive);
   }
 
   /** Enter build mode — forwards to Input3DManager which handles the

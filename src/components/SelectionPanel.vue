@@ -7,14 +7,28 @@ import {
 } from '../game/sim/blueprints/displayRosters';
 
 export type { QueueItem, SelectionInfo, SelectionActions } from '@/types/ui';
-import type { SelectionInfo, SelectionActions } from '@/types/ui';
+import type { ControlGroupInfo, SelectionInfo, SelectionActions } from '@/types/ui';
 
 const props = defineProps<{
   selection: SelectionInfo;
   actions: SelectionActions;
 }>();
 
-const showPanel = computed(() => props.selection.unitCount > 0 || props.selection.hasFactory);
+const controlGroupSlots = computed<ControlGroupInfo[]>(() => {
+  const groups = props.selection.controlGroups ?? [];
+  return Array.from({ length: 9 }, (_, index) => (
+    groups.find((group) => group.index === index) ?? { index, count: 0, active: false }
+  ));
+});
+const hasStoredControlGroups = computed(() =>
+  controlGroupSlots.value.some((group) => group.count > 0),
+);
+const canStoreControlGroup = computed(() =>
+  props.selection.unitCount > 0 || props.selection.hasFactory,
+);
+const showPanel = computed(() =>
+  props.selection.unitCount > 0 || props.selection.hasFactory || hasStoredControlGroups.value,
+);
 
 // Repeat-build: queue holds 0-or-1 entries; queue[0] is the unit type
 // currently being looped. Used to light up the matching button.
@@ -69,6 +83,54 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-label">Stop</span>
           <span class="btn-key">S</span>
         </button>
+        <button
+          v-if="selection.hasJump"
+          class="action-btn"
+          :style="{ '--btn-color': '#ffe08a' }"
+          @click="actions.jumpSelectedUnits()"
+        >
+          <span class="btn-label">Jump</span>
+          <span class="btn-key">J</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Control group buttons -->
+    <div v-if="canStoreControlGroup || hasStoredControlGroups" class="button-group">
+      <div class="group-label">Groups</div>
+      <div class="control-group-grid">
+        <div
+          v-for="slot in controlGroupSlots"
+          :key="slot.index"
+          class="control-group-slot"
+        >
+          <button
+            class="group-store-btn"
+            :disabled="!canStoreControlGroup"
+            :title="`Store group ${slot.index + 1}`"
+            @click="actions.storeControlGroup(slot.index)"
+          >
+            Set
+          </button>
+          <button
+            class="group-recall-btn"
+            :class="{ active: slot.active }"
+            :disabled="slot.count === 0"
+            :title="`Recall group ${slot.index + 1}`"
+            @click="actions.recallControlGroup(slot.index, false)"
+          >
+            <span class="group-number">{{ slot.index + 1 }}</span>
+            <span class="group-count">{{ slot.count > 0 ? slot.count : '-' }}</span>
+          </button>
+          <button
+            class="group-add-btn"
+            :disabled="slot.count === 0"
+            :title="`Add group ${slot.index + 1} to selection`"
+            @click="actions.recallControlGroup(slot.index, true)"
+          >
+            +
+          </button>
+        </div>
       </div>
     </div>
 
@@ -206,6 +268,83 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.control-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: 6px;
+}
+
+.control-group-slot {
+  display: grid;
+  grid-template-columns: 34px minmax(36px, 1fr) 28px;
+  gap: 3px;
+  align-items: stretch;
+}
+
+.group-store-btn,
+.group-recall-btn,
+.group-add-btn {
+  height: 36px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: white;
+  font-family: monospace;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.group-store-btn {
+  font-size: 10px;
+  padding: 0;
+}
+
+.group-recall-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  --btn-color: #8fd2ff;
+}
+
+.group-add-btn {
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.group-store-btn:hover:not(:disabled),
+.group-recall-btn:hover:not(:disabled),
+.group-add-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: #8fd2ff;
+}
+
+.group-recall-btn.active {
+  background: rgba(143, 210, 255, 0.24);
+  border-color: #8fd2ff;
+  box-shadow: 0 0 8px rgba(143, 210, 255, 0.7);
+}
+
+.group-store-btn:disabled,
+.group-recall-btn:disabled,
+.group-add-btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.group-number {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.group-count {
+  margin-top: 1px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .action-btn {

@@ -8,14 +8,19 @@ import type {
   PlayerId,
   WaypointType,
 } from '../../sim/types';
-import type { SelectionInfo, UIEntitySource, UIInputState } from '@/types/ui';
+import type { ControlGroupInfo, SelectionInfo, UIEntitySource, UIInputState } from '@/types/ui';
 
 export type SelectionChangeHandler = ((info: SelectionInfo) => void) | undefined;
+const CONTROL_GROUP_COUNT = 9;
 
 export class RtsScene3DSelectionSystem {
   private selectedUnits: Entity[] = [];
   private selectedBuildings: Entity[] = [];
   private scratchSelectedBuildingIds: EntityId[] = [];
+  private controlGroupEntityIds: EntityId[][] = Array.from(
+    { length: CONTROL_GROUP_COUNT },
+    () => [],
+  );
   private selectedEntityCacheDirty = true;
   private selectionInfoDirty = true;
   private waypointMode: WaypointType = 'move';
@@ -54,6 +59,13 @@ export class RtsScene3DSelectionSystem {
 
   setDGunMode(active: boolean): void {
     this.dgunActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setControlGroups(groups: readonly (readonly EntityId[])[]): void {
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      this.controlGroupEntityIds[i] = [...(groups[i] ?? [])];
+    }
     this.selectionInfoDirty = true;
   }
 
@@ -126,7 +138,37 @@ export class RtsScene3DSelectionSystem {
       isBuildMode: this.buildType !== null,
       selectedBuildingType: this.buildType,
       isDGunMode: this.dgunActive,
+      controlGroups: this.buildControlGroupInfo(),
     };
+  }
+
+  private buildControlGroupInfo(): ControlGroupInfo[] {
+    const selectedIds = this.clientViewState.getSelectedIds();
+    const playerId = this.getLocalPlayerId();
+    const groups: ControlGroupInfo[] = [];
+
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      const group = this.controlGroupEntityIds[i];
+      let count = 0;
+      let allSelected = selectedIds.size > 0;
+
+      for (let j = 0; j < group.length; j++) {
+        const entity = this.clientViewState.getEntity(group[j]);
+        if (!entity?.selectable || entity.ownership?.playerId !== playerId) continue;
+        if (entity.unit && entity.unit.hp <= 0) continue;
+        if (entity.building && entity.building.hp <= 0) continue;
+        count++;
+        if (!selectedIds.has(entity.id)) allSelected = false;
+      }
+
+      groups.push({
+        index: i,
+        count,
+        active: count > 0 && selectedIds.size === count && allSelected,
+      });
+    }
+
+    return groups;
   }
 
   private preferUnitsOverBuildingsInSelection(): void {

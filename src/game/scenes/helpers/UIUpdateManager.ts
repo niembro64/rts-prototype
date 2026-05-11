@@ -70,6 +70,7 @@ export function buildSelectionInfo(
   const commander = selectedUnits.find(isCommander);
   const builder = selectedUnits.find(u => u.builder !== undefined);
   const dgunner = commander;
+  const jumper = selectedUnits.find(u => u.unit?.jump !== undefined);
 
   // Check for factory
   const factory = selectedBuildings.find(b => b.factory !== undefined);
@@ -94,6 +95,7 @@ export function buildSelectionInfo(
     hasCommander: commander !== undefined,
     hasBuilder: builder !== undefined,
     hasDGun: dgunner !== undefined,
+    hasJump: jumper !== undefined,
     hasFactory: factory !== undefined,
     factoryId: factory?.id,
     commanderId: commander?.id,
@@ -104,6 +106,7 @@ export function buildSelectionInfo(
     factoryQueue,
     factoryProgress,
     factoryIsProducing,
+    controlGroups: inputState?.controlGroups ?? [],
   };
 }
 

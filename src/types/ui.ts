@@ -9,11 +9,18 @@ export type QueueItem = {
   label: string;
 };
 
+export type ControlGroupInfo = {
+  index: number;
+  count: number;
+  active: boolean;
+};
+
 export type SelectionInfo = {
   unitCount: number;
   hasCommander: boolean;
   hasBuilder: boolean;
   hasDGun: boolean;
+  hasJump: boolean;
   hasFactory: boolean;
   factoryId?: number;
   commanderId?: number;
@@ -24,11 +31,15 @@ export type SelectionInfo = {
   factoryQueue?: QueueItem[];
   factoryProgress?: number;
   factoryIsProducing?: boolean;
+  controlGroups: ControlGroupInfo[];
 };
 
 export type SelectionActions = {
   setWaypointMode: (mode: WaypointType) => void;
   stopSelectedUnits: () => void;
+  jumpSelectedUnits: () => void;
+  storeControlGroup: (index: number) => void;
+  recallControlGroup: (index: number, additive: boolean) => void;
   startBuild: (buildingType: BuildingType) => void;
   cancelBuild: () => void;
   toggleDGun: () => void;
@@ -145,6 +156,7 @@ export type UIInputState = {
   isBuildMode: boolean;
   selectedBuildingType: string | null;
   isDGunMode: boolean;
+  controlGroups: ControlGroupInfo[];
 };
 
 // Unit valuation
