@@ -166,6 +166,13 @@ defineProps<{
             title="Enable force-field turrets, force-field simulation, and force-field rendering"
             @click="model.setForceFieldsEnabled(!model.currentForceFieldsEnabled)"
           >FIELD</BarButton>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.forceFieldReflectionMode.options"
+            :key="opt.value"
+            :active="model.currentForceFieldReflectionMode === opt.value"
+            :title="`Force fields reflect ${opt.label === 'IN' ? 'outside-to-inside crossings' : opt.label === 'OUT' ? 'inside-to-outside crossings' : 'crossings in both directions'}`"
+            @click="model.setForceFieldReflectionMode(opt.value)"
+          >{{ opt.label }}</BarButton>
         </BarButtonGroup>
         <BarDivider />
       </BarControlGroup>

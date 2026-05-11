@@ -1,4 +1,5 @@
 import type { MapLandCellDimensions } from '../mapSizeConfig';
+import type { ForceFieldReflectionMode } from '../types/shotTypes';
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
 import type {
   AudioScope,
@@ -42,6 +43,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly displayUnitCount: number;
   readonly currentMirrorsEnabled: boolean;
   readonly currentForceFieldsEnabled: boolean;
+  readonly currentForceFieldReflectionMode: ForceFieldReflectionMode;
   resetDemoDefaults(): void;
   toggleAllDemoUnits(): void;
   toggleDemoUnitType(unitType: string): void;
@@ -51,6 +53,7 @@ export type GameCanvasBattleControlBarModel = {
   applyTerrainMapShape(shape: TerrainMapShape): void;
   setMirrorsEnabled(enabled: boolean): void;
   setForceFieldsEnabled(enabled: boolean): void;
+  setForceFieldReflectionMode(mode: ForceFieldReflectionMode): void;
 };
 
 export type GameCanvasServerControlBarModel = {

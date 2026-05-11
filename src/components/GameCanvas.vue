@@ -569,11 +569,13 @@ const {
   allDemoUnitsActive,
   currentMirrorsEnabled,
   currentForceFieldsEnabled,
+  currentForceFieldReflectionMode,
   toggleDemoUnitType,
   toggleAllDemoUnits,
   changeMaxTotalUnits,
   setMirrorsEnabled,
   setForceFieldsEnabled,
+  setForceFieldReflectionMode,
   resetDemoDefaults,
 } = useGameCanvasBattleSettings({
   serverMetaFromSnapshot,
@@ -701,6 +703,7 @@ const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
   displayUnitCount: displayUnitCount.value,
   currentMirrorsEnabled: currentMirrorsEnabled.value,
   currentForceFieldsEnabled: currentForceFieldsEnabled.value,
+  currentForceFieldReflectionMode: currentForceFieldReflectionMode.value,
   resetDemoDefaults,
   toggleAllDemoUnits,
   toggleDemoUnitType,
@@ -710,6 +713,7 @@ const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
   applyTerrainMapShape,
   setMirrorsEnabled,
   setForceFieldsEnabled,
+  setForceFieldReflectionMode,
 }));
 
 const serverControlBarModel = computed<GameCanvasServerControlBarModel>(() => ({
@@ -977,6 +981,7 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
       :unit-cap="displayUnitCap"
       :mirrors-enabled="currentMirrorsEnabled"
       :force-fields-enabled="currentForceFieldsEnabled"
+      :force-field-reflection-mode="currentForceFieldReflectionMode"
       @host="handleHost"
       @join="handleJoin"
       @start="handleLobbyStart"
@@ -992,6 +997,7 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
       @set-mirrors-enabled="(e) => setMirrorsEnabled(e)"
       @set-force-fields-enabled="(e) => setForceFieldsEnabled(e)"
+      @set-force-field-reflection-mode="(m) => setForceFieldReflectionMode(m)"
       @set-player-name="onPlayerNameChange"
       @reset-defaults="resetDemoDefaults"
     />

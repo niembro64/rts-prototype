@@ -366,6 +366,7 @@ export class ReusableNetworkSnapshotCloner {
       } : {},
       mirrorsEnabled: state.serverMeta.mirrorsEnabled,
       forceFieldsEnabled: state.serverMeta.forceFieldsEnabled,
+      forceFieldReflectionMode: state.serverMeta.forceFieldReflectionMode,
       cpu: state.serverMeta.cpu ? { ...state.serverMeta.cpu } : undefined,
       simLod: state.serverMeta.simLod ? {
         picked: state.serverMeta.simLod.picked,

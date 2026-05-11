@@ -9,11 +9,13 @@ import {
   MAX_TOTAL_UNITS,
   DEFAULT_MIRRORS_ENABLED,
   DEFAULT_FORCE_FIELDS_ENABLED,
+  DEFAULT_FORCE_FIELD_REFLECTION_MODE,
   UNIT_HP_MULTIPLIER,
   UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
   LAND_CELL_SIZE,
   DGUN_TERRAIN_FOLLOW_HEIGHT,
 } from '../../config';
+import type { ForceFieldReflectionMode } from '../../types/shotTypes';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
@@ -114,6 +116,8 @@ export class WorldState {
   public mirrorsEnabled: boolean = DEFAULT_MIRRORS_ENABLED;
   // Whether force-field turrets participate in targeting, simulation, and rendering
   public forceFieldsEnabled: boolean = DEFAULT_FORCE_FIELDS_ENABLED;
+  // Which force-field boundary crossings reflect shots/beams.
+  public forceFieldReflectionMode: ForceFieldReflectionMode = DEFAULT_FORCE_FIELD_REFLECTION_MODE;
   /** Optional server-side lifecycle hook. WorldState owns entity
    *  removal, but host-only systems such as physics own external
    *  resources that must be released before the entity disappears. */

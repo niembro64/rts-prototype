@@ -26,6 +26,13 @@ export type ForceFieldBarrierRatioConfig = {
   particleAlpha: number;
 };
 
+export const FORCE_FIELD_REFLECTION_MODES = ['outside-in', 'inside-out', 'both'] as const;
+export type ForceFieldReflectionMode = typeof FORCE_FIELD_REFLECTION_MODES[number];
+
+export function isForceFieldReflectionMode(value: unknown): value is ForceFieldReflectionMode {
+  return value === 'outside-in' || value === 'inside-out' || value === 'both';
+}
+
 export type ShotCollision = {
   /** Sphere radius for swept-collision and area-damage centering.
    *  Damage now lives entirely in the explosion block (primary +

@@ -523,14 +523,14 @@ export const TURRET_BLUEPRINTS = {
   towerCannonTurret: {
     id: 'towerCannonTurret',
     projectileId: 'heavyShot',
-    range: 1000,
+    range: 1500,
     cooldown: 1500,
     launchForce: 22_000,
     turretTurnAccel: 180,
     turretDrag: 0.15,
     barrel: {
       type: 'simpleSingleBarrel',
-      barrelLength: 1.8,
+      barrelLength: 3,
       barrelThickness: 9,
     },
     rangeMultiplierOverrides: fireEnvelope({

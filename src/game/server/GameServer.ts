@@ -70,6 +70,10 @@ import {
 import { UnitForceSystem } from './UnitForceSystem';
 import { UnitSuspensionSystem } from './UnitSuspensionSystem';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
+import {
+  isForceFieldReflectionMode,
+  type ForceFieldReflectionMode,
+} from '../../types/shotTypes';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -595,6 +599,10 @@ export class GameServer {
         if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setForceFieldsEnabled(command.enabled);
         return;
+      case 'setForceFieldReflectionMode':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
+        this.setForceFieldReflectionMode(command.mode);
+        return;
       case 'setSimQuality':
         if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setSimQuality(command.quality as ServerSimQuality);
@@ -813,6 +821,12 @@ export class GameServer {
       updateCombatActivityFlags(combat);
       this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
     }
+  }
+
+  private setForceFieldReflectionMode(mode: ForceFieldReflectionMode): void {
+    if (!isForceFieldReflectionMode(mode)) return;
+    if (this.world.forceFieldReflectionMode === mode) return;
+    this.world.forceFieldReflectionMode = mode;
   }
 
   // Add a snapshot listener. Returns the trackingKey so callers can

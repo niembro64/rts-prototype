@@ -1,4 +1,5 @@
 import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
+import type { ForceFieldReflectionMode } from '../../types/shotTypes';
 
 export type ServerSnapshotMetaInput = {
   tickAvg: number;
@@ -14,6 +15,7 @@ export type ServerSnapshotMetaInput = {
   unitCount?: number;
   mirrorsEnabled?: boolean;
   forceFieldsEnabled?: boolean;
+  forceFieldReflectionMode?: ForceFieldReflectionMode;
   tickMsAvg: number;
   tickMsHi: number;
   tickMsInitialized: boolean;
@@ -66,6 +68,7 @@ export class ServerSnapshotMetaBuilder {
       },
       mirrorsEnabled: input.mirrorsEnabled,
       forceFieldsEnabled: input.forceFieldsEnabled,
+      forceFieldReflectionMode: input.forceFieldReflectionMode,
       cpu: { avg: cpuAvg, hi: cpuHi },
       simLod: {
         picked: input.simQuality,

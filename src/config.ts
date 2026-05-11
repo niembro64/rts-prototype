@@ -618,8 +618,8 @@ export const TERRAIN_ROCK_DETAIL_CONTRAST = 0.1;
  *  texture-generation time (trees use stock MeshLambertMaterial so there's
  *  nowhere to mix at shader time). Changing this value requires a reload —
  *  the textures are generated once and cached. */
-export const TREE_LEAF_DETAIL_CONTRAST = 0.99;
-export const TREE_TRUNK_DETAIL_CONTRAST = 0.99;
+export const TREE_LEAF_DETAIL_CONTRAST = 0.3;
+export const TREE_TRUNK_DETAIL_CONTRAST = 0.3;
 
 /** How many times the tree-leaf / tree-trunk texture tiles per UV unit on
  *  the model. Trees come in at a small global scale, so a face that covers

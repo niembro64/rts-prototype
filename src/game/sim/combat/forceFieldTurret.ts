@@ -2,6 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { ForceShot } from '../types';
+import type { ForceFieldReflectionMode } from '../../../types/shotTypes';
 import { getTransformCosSin } from '../../math';
 import { updateWeaponWorldKinematics } from './combatUtils';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -102,7 +103,17 @@ export type ForceFieldProjectileIntersection = {
   entityId: number;
 };
 
-function intersectOutsideToInsideSphere(
+function forceFieldModeAllowsCrossing(
+  mode: ForceFieldReflectionMode,
+  radialVelocity: number,
+): boolean {
+  const eps = 1e-6;
+  if (radialVelocity < -eps) return mode === 'outside-in' || mode === 'both';
+  if (radialVelocity > eps) return mode === 'inside-out' || mode === 'both';
+  return false;
+}
+
+function intersectForceFieldSphere(
   startX: number,
   startY: number,
   startZ: number,
@@ -113,11 +124,11 @@ function intersectOutsideToInsideSphere(
   centerY: number,
   centerZ: number,
   radius: number,
+  reflectionMode: ForceFieldReflectionMode,
 ): number | null {
   const sx = startX - centerX;
   const sy = startY - centerY;
   const sz = startZ - centerZ;
-  const radiusSq = radius * radius;
 
   if (
     Math.max(startX, endX) < centerX - radius ||
@@ -130,35 +141,44 @@ function intersectOutsideToInsideSphere(
     return null;
   }
 
-  const startDistSq = sx * sx + sy * sy + sz * sz;
-  // Shield only stops projectiles that begin outside and cross inward.
-  // Inside-starting projectiles, including friendly shots fired from
-  // inside the bubble, are not clipped by the barrier.
-  if (startDistSq <= radiusSq) return null;
-
   const dx = endX - startX;
   const dy = endY - startY;
   const dz = endZ - startZ;
   const a = dx * dx + dy * dy + dz * dz;
   if (a <= 1e-9) return null;
+
+  const radiusSq = radius * radius;
+  const startDistSq = sx * sx + sy * sy + sz * sz;
   const startDotVelocity = sx * dx + sy * dy + sz * dz;
-  if (startDotVelocity >= 0) return null;
   const b = 2 * startDotVelocity;
   const c = startDistSq - radiusSq;
   const disc = b * b - 4 * a * c;
   if (disc < 0) return null;
   const sqrtDisc = Math.sqrt(disc);
   const invDenom = 1 / (2 * a);
-  const t = (-b - sqrtDisc) * invDenom;
-  if (t < 0 || t > 1) return null;
+  const t0 = (-b - sqrtDisc) * invDenom;
+  const t1 = (-b + sqrtDisc) * invDenom;
 
-  const hitX = startX + dx * t - centerX;
-  const hitY = startY + dy * t - centerY;
-  const hitZ = startZ + dz * t - centerZ;
-  // Negative dot means the segment is entering the sphere at this
-  // intersection. Exiting or tangential paths are unaffected.
-  const radialVelocity = dx * hitX + dy * hitY + dz * hitZ;
-  return radialVelocity < 0 ? t : null;
+  const firstT = Math.min(t0, t1);
+  const secondT = Math.max(t0, t1);
+
+  if (firstT > 1e-6 && firstT <= 1) {
+    const hitX = startX + dx * firstT - centerX;
+    const hitY = startY + dy * firstT - centerY;
+    const hitZ = startZ + dz * firstT - centerZ;
+    const radialVelocity = dx * hitX + dy * hitY + dz * hitZ;
+    if (forceFieldModeAllowsCrossing(reflectionMode, radialVelocity)) return firstT;
+  }
+
+  if (secondT > 1e-6 && secondT <= 1 && secondT !== firstT) {
+    const t = secondT;
+    const hitX = startX + dx * t - centerX;
+    const hitY = startY + dy * t - centerY;
+    const hitZ = startZ + dz * t - centerZ;
+    const radialVelocity = dx * hitX + dy * hitY + dz * hitZ;
+    if (forceFieldModeAllowsCrossing(reflectionMode, radialVelocity)) return t;
+  }
+  return null;
 }
 
 export function findForceFieldSegmentIntersection(
@@ -171,10 +191,11 @@ export function findForceFieldSegmentIntersection(
   endZ: number,
 ): ForceFieldProjectileIntersection | null {
   // Intentionally no projectile-owner/player filter here: a force-field
-  // barrier is purely geometric and stops any non-rocket projectile that
-  // crosses from outside the sphere to inside.
+  // barrier is purely geometric. The world setting decides whether it
+  // reflects incoming, outgoing, or both boundary crossings.
   const activeFields = _activeForceFields;
   if (activeFields.length === 0) return null;
+  const reflectionMode = _world.forceFieldReflectionMode;
   let bestT = Infinity;
   let bestX = 0;
   let bestY = 0;
@@ -187,11 +208,12 @@ export function findForceFieldSegmentIntersection(
 
   for (let activeOrdinal = 0; activeOrdinal < activeFields.length; activeOrdinal++) {
     const active = activeFields[activeOrdinal];
-    const t = intersectOutsideToInsideSphere(
+    const t = intersectForceFieldSphere(
       startX, startY, startZ,
       endX, endY, endZ,
       active.centerX, active.centerY, active.centerZ,
       active.radius,
+      reflectionMode,
     );
     if (t === null || t >= bestT) continue;
 

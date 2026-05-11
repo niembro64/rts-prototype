@@ -1,6 +1,8 @@
 import type { BattleBarConfig } from './types/battle';
+import type { ForceFieldReflectionMode } from './types/shotTypes';
 import type { TerrainMapShape, TerrainShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
+import { isForceFieldReflectionMode } from './types/shotTypes';
 import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
 import {
   BUILDABLE_UNIT_IDS,
@@ -52,6 +54,14 @@ export const BATTLE_CONFIG = {
   },
   mirrorsEnabled: { default: true },
   forceFieldsEnabled: { default: true },
+  forceFieldReflectionMode: {
+    default: 'both',
+    options: [
+      { value: 'outside-in', label: 'IN' },
+      { value: 'inside-out', label: 'OUT' },
+      { value: 'both', label: 'BOTH' },
+    ],
+  },
   // Terrain shape — applied at game-construction time via
   // setTerrainCenterShape / setTerrainDividersShape (Terrain.ts).
   center: {
@@ -134,6 +144,8 @@ const STORAGE_DEMO_MIRRORS_ENABLED = 'demo-battle-mirrors-enabled';
 const STORAGE_REAL_MIRRORS_ENABLED = 'real-battle-mirrors-enabled';
 const STORAGE_DEMO_FORCE_FIELDS_ENABLED = 'demo-battle-force-fields-enabled';
 const STORAGE_REAL_FORCE_FIELDS_ENABLED = 'real-battle-force-fields-enabled';
+const STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE = 'demo-battle-force-field-reflection-mode';
+const STORAGE_REAL_FORCE_FIELD_REFLECTION_MODE = 'real-battle-force-field-reflection-mode';
 const STORAGE_DEMO_TERRAIN_CENTER = 'demo-battle-terrain-center';
 const STORAGE_REAL_TERRAIN_CENTER = 'real-battle-terrain-center';
 const STORAGE_DEMO_TERRAIN_DIVIDERS = 'demo-battle-terrain-dividers';
@@ -331,6 +343,23 @@ function loadModeBool(
   return defaultValue;
 }
 
+function loadModeValue<T extends string>(
+  mode: BattleMode,
+  realKey: string,
+  demoKey: string,
+  defaultValue: T,
+  parse: (value: unknown) => value is T,
+): T {
+  ensureBattleMigrations();
+  const primary = readPersisted(mode === 'real' ? realKey : demoKey);
+  if (parse(primary)) return primary;
+  if (mode === 'real') {
+    const demoFallback = readPersisted(demoKey);
+    if (parse(demoFallback)) return demoFallback;
+  }
+  return defaultValue;
+}
+
 export function loadStoredMirrorsEnabled(mode: BattleMode): boolean {
   return loadModeBool(
     mode,
@@ -364,6 +393,28 @@ export function saveForceFieldsEnabled(enabled: boolean, mode: BattleMode): void
       ? STORAGE_REAL_FORCE_FIELDS_ENABLED
       : STORAGE_DEMO_FORCE_FIELDS_ENABLED,
     String(enabled),
+  );
+}
+
+export function loadStoredForceFieldReflectionMode(mode: BattleMode): ForceFieldReflectionMode {
+  return loadModeValue(
+    mode,
+    STORAGE_REAL_FORCE_FIELD_REFLECTION_MODE,
+    STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE,
+    BATTLE_CONFIG.forceFieldReflectionMode.default,
+    isForceFieldReflectionMode,
+  );
+}
+
+export function saveForceFieldReflectionMode(
+  reflectionMode: ForceFieldReflectionMode,
+  mode: BattleMode,
+): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_FORCE_FIELD_REFLECTION_MODE
+      : STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE,
+    reflectionMode,
   );
 }
 

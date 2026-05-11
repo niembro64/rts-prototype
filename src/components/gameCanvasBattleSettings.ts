@@ -3,12 +3,14 @@ import {
   BATTLE_CONFIG,
   getDefaultCap,
   getDefaultDemoUnits,
+  saveForceFieldReflectionMode,
   saveDemoUnits,
   saveForceFieldsEnabled,
   saveMirrorsEnabled,
   saveStoredCap,
   type BattleMode,
 } from '../battleBarConfig';
+import type { ForceFieldReflectionMode } from '../types/shotTypes';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import type { GameConnection } from '../game/server/GameConnection';
 
@@ -17,11 +19,13 @@ export type GameCanvasBattleSettings = {
   allDemoUnitsActive: ComputedRef<boolean>;
   currentMirrorsEnabled: ComputedRef<boolean>;
   currentForceFieldsEnabled: ComputedRef<boolean>;
+  currentForceFieldReflectionMode: ComputedRef<ForceFieldReflectionMode>;
   toggleDemoUnitType(unitType: string): void;
   toggleAllDemoUnits(): void;
   changeMaxTotalUnits(value: number): void;
   setMirrorsEnabled(enabled: boolean): void;
   setForceFieldsEnabled(enabled: boolean): void;
+  setForceFieldReflectionMode(mode: ForceFieldReflectionMode): void;
   resetDemoDefaults(): void;
 };
 
@@ -57,6 +61,11 @@ export function useGameCanvasBattleSettings({
   );
   const currentForceFieldsEnabled = computed(
     () => serverMetaFromSnapshot.value?.forceFieldsEnabled ?? BATTLE_CONFIG.forceFieldsEnabled.default,
+  );
+  const currentForceFieldReflectionMode = computed<ForceFieldReflectionMode>(
+    () =>
+      serverMetaFromSnapshot.value?.forceFieldReflectionMode ??
+      BATTLE_CONFIG.forceFieldReflectionMode.default,
   );
 
   function toggleDemoUnitType(unitType: string): void {
@@ -107,6 +116,15 @@ export function useGameCanvasBattleSettings({
     saveForceFieldsEnabled(enabled, currentBattleMode.value);
   }
 
+  function setForceFieldReflectionMode(mode: ForceFieldReflectionMode): void {
+    getActiveConnection()?.sendCommand({
+      type: 'setForceFieldReflectionMode',
+      tick: 0,
+      mode,
+    });
+    saveForceFieldReflectionMode(mode, currentBattleMode.value);
+  }
+
   function resetDemoDefaults(): void {
     const defaultUnits = getDefaultDemoUnits();
     const defaultSet = new Set(defaultUnits);
@@ -122,6 +140,7 @@ export function useGameCanvasBattleSettings({
     changeMaxTotalUnits(getDefaultCap(currentBattleMode.value));
     setMirrorsEnabled(BATTLE_CONFIG.mirrorsEnabled.default);
     setForceFieldsEnabled(BATTLE_CONFIG.forceFieldsEnabled.default);
+    setForceFieldReflectionMode(BATTLE_CONFIG.forceFieldReflectionMode.default);
     resetTerrainDefaults();
     resetGridInfoToDefault();
     broadcastLobbySettingsIfHost();
@@ -132,11 +151,13 @@ export function useGameCanvasBattleSettings({
     allDemoUnitsActive,
     currentMirrorsEnabled,
     currentForceFieldsEnabled,
+    currentForceFieldReflectionMode,
     toggleDemoUnitType,
     toggleAllDemoUnits,
     changeMaxTotalUnits,
     setMirrorsEnabled,
     setForceFieldsEnabled,
+    setForceFieldReflectionMode,
     resetDemoDefaults,
   };
 }

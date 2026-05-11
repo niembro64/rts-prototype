@@ -220,7 +220,7 @@ export class DamageSystem {
   // ray for visuals, not a physical impact point.
   //
   // Mirror panels are tilted rectangles; force fields are spherical
-  // reflectors that only catch outside-to-inside crossings. Buildings
+  // reflectors whose crossing direction comes from battle config. Buildings
   // are 3D AABBs (x/y footprint × z depth), so a high-arc beam can pass
   // over a short building and hit the reflector behind it.
   findBeamPath(

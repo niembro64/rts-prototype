@@ -110,6 +110,7 @@ export class ServerSnapshotPublisher {
       unitCount: input.world.getUnits().length,
       mirrorsEnabled: input.world.mirrorsEnabled,
       forceFieldsEnabled: input.world.forceFieldsEnabled,
+      forceFieldReflectionMode: input.world.forceFieldReflectionMode,
       tickMsAvg: input.tickMsAvg,
       tickMsHi: input.tickMsHi,
       tickMsInitialized: input.tickMsInitialized,

@@ -182,6 +182,7 @@ export function codeToTurretId(c: number): TurretId | null {
 }
 import type { Command } from './commands';
 import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ForceFieldImpactContext } from './combat';
+import type { ForceFieldReflectionMode } from './shotTypes';
 import type { Vec2, Vec3 } from './vec2';
 import type {
   TerrainBuildabilityGrid,
@@ -416,6 +417,7 @@ export type NetworkServerSnapshotMeta = {
   units: { allowed?: string[]; max?: number; count?: number };
   mirrorsEnabled?: boolean;
   forceFieldsEnabled?: boolean;
+  forceFieldReflectionMode?: ForceFieldReflectionMode;
   /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).
    *  `avg` = EMA-smoothed steady-state load; `hi` = EMA spike, climbs fast
    *  on jumps and decays slowly. Both can exceed 100 when the server is

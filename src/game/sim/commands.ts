@@ -35,6 +35,7 @@ export type {
   SetMaxTotalUnitsCommand,
   SetMirrorsEnabledCommand,
   SetForceFieldsEnabledCommand,
+  SetForceFieldReflectionModeCommand,
   SetCameraAoiCommand,
   Command,
 } from '@/types/commands';

@@ -467,7 +467,8 @@ export function checkProjectileCollisions(
       }
       // Rocket-class shots punch through reflectors. All other projectile
       // shots are checked geometrically, with no projectile-owner/friendly
-      // filtering: outside-to-inside crossing is the force-field rule.
+      // filtering. The force-field mode selects incoming, outgoing, or
+      // both boundary crossings.
       const shieldHit = world.forceFieldsEnabled && !isRocketShot
         ? findForceFieldProjectileIntersection(
             world,

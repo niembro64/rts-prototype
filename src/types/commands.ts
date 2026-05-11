@@ -2,6 +2,7 @@
 
 import type { EntityId, WaypointType, BuildingType, PlayerId } from './sim';
 import type { RenderMode } from './graphics';
+import type { ForceFieldReflectionMode } from './shotTypes';
 
 export type CommandType =
   | 'select'
@@ -36,6 +37,7 @@ export type CommandType =
   | 'setMaxTotalUnits'
   | 'setMirrorsEnabled'
   | 'setForceFieldsEnabled'
+  | 'setForceFieldReflectionMode'
   | 'setSimQuality'
   | 'setSimSignalStates'
   | 'setCameraAoi';
@@ -275,6 +277,11 @@ export type SetForceFieldsEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
+export type SetForceFieldReflectionModeCommand = BaseCommand & {
+  type: 'setForceFieldReflectionMode';
+  mode: ForceFieldReflectionMode;
+};
+
 export type SetSimQualityCommand = BaseCommand & {
   type: 'setSimQuality';
   // Stored as the raw string union — keeps the wire format simple
@@ -341,6 +348,7 @@ export type Command =
   | SetMaxTotalUnitsCommand
   | SetMirrorsEnabledCommand
   | SetForceFieldsEnabledCommand
+  | SetForceFieldReflectionModeCommand
   | SetSimQualityCommand
   | SetSimSignalStatesCommand
   | SetCameraAoiCommand;

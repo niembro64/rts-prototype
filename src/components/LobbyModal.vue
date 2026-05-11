@@ -9,6 +9,7 @@ import BarButton from './BarButton.vue';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
+import type { ForceFieldReflectionMode } from '@/types/shotTypes';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 
 export type { LobbyPlayer } from '@/types/ui';
@@ -32,6 +33,7 @@ const props = defineProps<{
   unitCap: number;
   mirrorsEnabled: boolean;
   forceFieldsEnabled: boolean;
+  forceFieldReflectionMode: ForceFieldReflectionMode;
 }>();
 
 const emit = defineEmits<{
@@ -49,6 +51,7 @@ const emit = defineEmits<{
   (e: 'setUnitCap', cap: number): void;
   (e: 'setMirrorsEnabled', enabled: boolean): void;
   (e: 'setForceFieldsEnabled', enabled: boolean): void;
+  (e: 'setForceFieldReflectionMode', mode: ForceFieldReflectionMode): void;
   (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
 }>();
@@ -62,6 +65,7 @@ const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
 const capOptions = BATTLE_CONFIG.cap.options;
+const forceFieldReflectionOptions = BATTLE_CONFIG.forceFieldReflectionMode.options;
 
 const allUnitsActive = computed(() =>
   props.unitTypes.every((ut) => props.allowedUnits.includes(ut)),
@@ -121,6 +125,11 @@ function pickMirrors(enabled: boolean): void {
 function pickForceFields(enabled: boolean): void {
   if (!props.isHost) return;
   emit('setForceFieldsEnabled', enabled);
+}
+
+function pickForceFieldReflectionMode(mode: ForceFieldReflectionMode): void {
+  if (!props.isHost) return;
+  emit('setForceFieldReflectionMode', mode);
 }
 
 function unitShortName(unitType: string): string {
@@ -578,6 +587,14 @@ const terrainSectionVars = computed(() =>
                   :title="isHost ? 'Enable force-field turrets, force-field simulation, and force-field rendering' : 'Only the host can change battle settings'"
                   @click="pickForceFields(!forceFieldsEnabled)"
                 >FIELD</BarButton>
+                <BarButton
+                  v-for="opt in forceFieldReflectionOptions"
+                  :key="opt.value"
+                  size="large"
+                  :active="forceFieldReflectionMode === opt.value"
+                  :title="isHost ? `Force fields reflect ${opt.label === 'IN' ? 'outside-to-inside crossings' : opt.label === 'OUT' ? 'inside-to-outside crossings' : 'crossings in both directions'}` : 'Only the host can change battle settings'"
+                  @click="pickForceFieldReflectionMode(opt.value)"
+                >{{ opt.label }}</BarButton>
               </BarButtonGroup>
             </div>
             <!-- Reset row sits inside the same options block as the
