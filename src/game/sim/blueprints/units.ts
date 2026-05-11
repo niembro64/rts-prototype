@@ -352,7 +352,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyCenterHeight: TICK_BODY_CENTER_HEIGHT,
     mass: 20,
     cost: { energy: 35, mana: 35, metal: 35 },
-    turrets: [turretMount('miniBeam', mountPoint(0, 0, TICK_TURRET_Z_FRAC))],
+    turrets: [turretMount('lightTurret', mountPoint(0, 0, TICK_TURRET_Z_FRAC))],
     bodyShape: BODY_SHAPES.snipe,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
     hideChassis: true,
