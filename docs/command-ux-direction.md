@@ -7,6 +7,9 @@ main view, minimap, and UI panels.
 
 Reference: https://www.beyondallreason.info/commands-20#Movement
 
+Local snapshot of the BAR Legacy/Grid command tables:
+[bar-command-reference.md](./bar-command-reference.md)
+
 ## Command Parity Goal
 
 We want to eventually support BAR-style command coverage, including movement,
