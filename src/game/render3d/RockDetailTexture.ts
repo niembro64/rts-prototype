@@ -20,7 +20,13 @@ import * as THREE from 'three';
 import { TERRAIN_ROCK_BASE_COLOR } from '../../config';
 
 export const ROCK_DETAIL_TEXTURE_PIXELS = 4096;
-export const ROCK_DETAIL_TILE_WORLD_SIZE = 512;
+// 5× the grass tile's world span (grass = 512). Same canvas, same item count
+// and same generation parameters as before — only the world projection is
+// stretched, so every rock shape covers 5× the world area when sampled.
+// That coarseness visually differentiates the rock material from the much
+// finer-grained grass / sticks texture. Pixel density drops from 8 → 1.6 px
+// per world unit, which is intentional: rocks should read as chunky.
+export const ROCK_DETAIL_TILE_WORLD_SIZE = 2560;
 const ITEM_COUNT = 83200;
 
 // Only hard-cornered shapes — rock fractures along straight lines, not curves.
