@@ -788,8 +788,8 @@ export class WorldState {
       // objects in place so the array reference is stable across the
       // projectile's lifetime.
       entity.projectile.points = [
-        { x: startX, y: startY, z: beamZ, vx: 0, vy: 0, vz: 0 },
-        { x: endX, y: endY, z: beamZ, vx: 0, vy: 0, vz: 0 },
+        { x: startX, y: startY, z: beamZ, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+        { x: endX, y: endY, z: beamZ, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
       ];
       entity.projectile.endpointDamageable = false;
       entity.projectile.segmentLimitReached = false;

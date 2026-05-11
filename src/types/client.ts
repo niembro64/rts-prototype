@@ -51,6 +51,7 @@ export type ClientBarConfig = {
    *  GroundPrint3D. Off by default — turning it on enables every mark
    *  type at once (LOD tiers still cap density). */
   readonly groundMarks: BooleanSetting;
+  readonly beamSnapToTurret: BooleanSetting;
   readonly lodShellRings: BooleanSetting;
   readonly lodGridBorders: BooleanSetting;
   readonly triangleDebug: BooleanSetting;

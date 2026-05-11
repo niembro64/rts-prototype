@@ -300,6 +300,31 @@ export function getEntityAcceleration3(
   return out;
 }
 
+export function updateProjectileSourceClearance(
+  source: Entity | undefined,
+  projectile: { hasLeftSource?: boolean },
+  pointX: number,
+  pointY: number,
+  pointZ: number,
+  pointRadius: number,
+): boolean {
+  if (projectile.hasLeftSource) return true;
+  if (!source?.unit) {
+    projectile.hasLeftSource = true;
+    return true;
+  }
+
+  const dx = pointX - source.transform.x;
+  const dy = pointY - source.transform.y;
+  const dz = pointZ - source.transform.z;
+  const clearance = source.unit.radius.shot + Math.max(0, pointRadius) + 2;
+  if (dx * dx + dy * dy + dz * dz > clearance * clearance) {
+    projectile.hasLeftSource = true;
+    return true;
+  }
+  return false;
+}
+
 // Get angle to face based on movement (or body direction if stationary)
 // Used by weapons when they have no target - they face movement direction
 export function getMovementAngle(unit: Entity): number {

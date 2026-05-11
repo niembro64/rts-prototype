@@ -261,6 +261,9 @@ export type BeamPoint = {
   vx: number;
   vy: number;
   vz: number;
+  ax: number;
+  ay: number;
+  az: number;
   /** Legacy name: any beam reflector entity, not only mirrors. */
   mirrorEntityId?: EntityId;
   reflectorKind?: BeamReflectorKind;

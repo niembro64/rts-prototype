@@ -14,7 +14,7 @@ import type { Entity } from '../sim/types';
 import { isLineShotType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { BeamStyle, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
-import { getGraphicsConfig } from '@/clientBarConfig';
+import { getBeamSnapToTurret, getGraphicsConfig } from '@/clientBarConfig';
 import type { Lod3DState } from './Lod3D';
 import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
@@ -40,6 +40,13 @@ const ENDPOINT_OPACITY = 0.18;
 const LASER_ENDPOINT_OPACITY = 0.26;
 const ENDPOINT_MIN_RADIUS = 2.5;
 const OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
+
+export type TurretMountResolver = {
+  getTurretMountWorldState(
+    entityId: number,
+    turretIdx: number,
+  ): { x: number; y: number; z: number; vx: number; vy: number; vz: number; ax: number; ay: number; az: number } | null;
+};
 
 const BEAM_LOD_ORDER: Record<RenderObjectLodTier, number> = {
   marker: 0,
@@ -376,6 +383,7 @@ export class BeamRenderer3D {
     lod?: Lod3DState,
     sharedLodGrid?: RenderLodGrid,
     contentVersion?: number,
+    turretMountResolver?: TurretMountResolver,
   ): void {
     if (projectiles.length === 0 && this.activeSegmentCount === 0 && this.activeEndpointCount === 0) return;
     this.flowTimeUniform.value = performance.now() * 0.001;
@@ -385,8 +393,10 @@ export class BeamRenderer3D {
     if (lod) {
       if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, this.frameGfx);
     }
+    const snapToTurret = getBeamSnapToTurret() && !!turretMountResolver;
     const renderKey = this.makeRenderKey(lod);
     if (
+      !snapToTurret &&
       contentVersion !== undefined &&
       contentVersion === this.lastContentVersion &&
       renderKey === this.lastRenderKey
@@ -461,12 +471,28 @@ export class BeamRenderer3D {
       const stride = drawReflections ? 1 : lastIdx;
       const openEndedLine = this.isOpenEndedLinePath(proj);
 
+      let snapStartX = 0, snapStartY = 0, snapStartZ = 0;
+      let hasSnapStart = false;
+      if (snapToTurret) {
+        const turretIdx = proj.config.turretIndex ?? 0;
+        const mount = turretMountResolver!.getTurretMountWorldState(
+          proj.sourceEntityId, turretIdx,
+        );
+        if (mount) {
+          snapStartX = mount.x;
+          snapStartY = mount.y;
+          snapStartZ = mount.z;
+          hasSnapStart = true;
+        }
+      }
+
       for (let i = 0; i < lastIdx; i += stride) {
         const a = points[i];
         const b = points[Math.min(i + stride, lastIdx)];
-        const ax = a.x;
-        const ay = a.y;
-        const az = a.z;
+        const useSnap = hasSnapStart && i === 0;
+        const ax = useSnap ? snapStartX : a.x;
+        const ay = useSnap ? snapStartY : a.y;
+        const az = useSnap ? snapStartZ : a.z;
         let bx = b.x;
         let by = b.y;
         let bz = b.z;

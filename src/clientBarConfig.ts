@@ -70,6 +70,7 @@ export const CLIENT_CONFIG = {
   },
   audioSmoothing: { default: true },
   groundMarks: { default: true },
+  beamSnapToTurret: { default: true },
   lodShellRings: { default: false },
   lodGridBorders: { default: false },
   triangleDebug: { default: false },
@@ -418,6 +419,7 @@ const RENDER_MODE_STORAGE_KEY = 'player-client-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'player-client-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
 const GROUND_MARKS_STORAGE_KEY = 'player-client-ground-marks';
+const BEAM_SNAP_TO_TURRET_STORAGE_KEY = 'player-client-beam-snap-to-turret';
 const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
 const LOD_GRID_BORDERS_STORAGE_KEY = 'player-client-lod-grid-borders';
 const TRIANGLE_DEBUG_STORAGE_KEY = 'player-client-triangle-debug';
@@ -521,6 +523,7 @@ let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentGroundMarks: boolean = _cd.groundMarks.default;
+let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentLodShellRings: boolean = _cd.lodShellRings.default;
 let currentLodGridBorders: boolean = _cd.lodGridBorders.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
@@ -649,6 +652,10 @@ function loadFromStorage(): void {
   const storedGroundMarks = readPersisted(GROUND_MARKS_STORAGE_KEY);
   if (storedGroundMarks !== null) {
     currentGroundMarks = storedGroundMarks === 'true';
+  }
+  const storedBeamSnapToTurret = readPersisted(BEAM_SNAP_TO_TURRET_STORAGE_KEY);
+  if (storedBeamSnapToTurret !== null) {
+    currentBeamSnapToTurret = storedBeamSnapToTurret === 'true';
   }
   const storedLodShellRings = readPersisted(LOD_SHELL_RINGS_STORAGE_KEY);
   if (storedLodShellRings !== null) {
@@ -1099,6 +1106,15 @@ export function getGroundMarks(): boolean {
 export function setGroundMarks(enabled: boolean): void {
   currentGroundMarks = enabled;
   persist(GROUND_MARKS_STORAGE_KEY, String(enabled));
+}
+
+export function getBeamSnapToTurret(): boolean {
+  return currentBeamSnapToTurret;
+}
+
+export function setBeamSnapToTurret(enabled: boolean): void {
+  currentBeamSnapToTurret = enabled;
+  persist(BEAM_SNAP_TO_TURRET_STORAGE_KEY, String(enabled));
 }
 
 export function getLodShellRings(): boolean {

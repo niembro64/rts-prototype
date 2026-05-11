@@ -445,31 +445,49 @@ export type Projectile = {
   segmentLimitReached?: boolean;
   /** Source barrel index for visual/audio cadence metadata on turret shots. */
   sourceBarrelIndex?: number;
-  /** Internal: previous tick's start position. Used to compute the
-   *  per-tick start-point velocity (points[0].vx/vy/vz). Not
-   *  serialized. */
+  /** Internal: previous tick's start position/velocity. Used to
+   *  compute points[0] velocity and acceleration. Not serialized. */
   prevStartX?: number;
   prevStartY?: number;
   prevStartZ?: number;
+  prevStartVx?: number;
+  prevStartVy?: number;
+  prevStartVz?: number;
   /** Internal: previous re-trace tick's end position. Used to compute
-   *  the end-point velocity across the re-trace stride. Not
-   *  serialized. */
+   *  the end-point velocity/acceleration across the re-trace stride.
+   *  Not serialized. */
   prevEndX?: number;
   prevEndY?: number;
   prevEndZ?: number;
+  prevEndVx?: number;
+  prevEndVy?: number;
+  prevEndVz?: number;
   /** Internal: tick at which prevEnd* was captured, used as the dt for
    *  the next end-velocity finite difference. Not serialized. */
   prevEndTick?: number;
   /** Internal: previous re-trace tick's reflection points keyed by
    *  mirrorEntityId. Used to finite-diff each reflection point's
    *  velocity across the re-trace stride. Not serialized. */
-  prevReflectionPoints?: { mirrorEntityId: EntityId; x: number; y: number; z: number; tick: number }[];
+  prevReflectionPoints?: {
+    mirrorEntityId: EntityId;
+    x: number;
+    y: number;
+    z: number;
+    vx: number;
+    vy: number;
+    vz: number;
+    tick: number;
+  }[];
   targetEntityId?: EntityId;
   obstructionT?: number;
   obstructionTick?: number;
   hitEntities?: Set<EntityId>;
   maxHits: number;
   hasExploded?: boolean;
+  /** False until the shot's active point has cleared the source unit's
+   *  shot sphere. Traveling projectiles use their center; line shots
+   *  use their endpoint damage point. While false, collision damage and
+   *  explosion effects are suppressed. */
   hasLeftSource?: boolean;
   homingTargetId?: EntityId;
   homingTurnRate?: number;

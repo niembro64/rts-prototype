@@ -153,11 +153,12 @@ export function copyBeamInto(
     const sp = src.points[i];
     let dp = dstPts[i];
     if (!dp) {
-      dp = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+      dp = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 };
       dstPts[i] = dp;
     }
     dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
     dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
+    dp.ax = sp.ax; dp.ay = sp.ay; dp.az = sp.az;
     dp.mirrorEntityId = sp.mirrorEntityId;
     dp.reflectorKind = sp.reflectorKind;
     dp.reflectorPlayerId = sp.reflectorPlayerId;

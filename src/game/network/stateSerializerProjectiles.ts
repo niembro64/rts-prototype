@@ -80,6 +80,10 @@ function qVel(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+function qAccel(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
 function qRot(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
@@ -98,7 +102,7 @@ function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
 }
 
 function createPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
-  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 };
 }
 
 function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
@@ -409,6 +413,15 @@ export function serializeProjectileSnapshot({
           out.vx = qVel(sp.vx);
           out.vy = qVel(sp.vy);
           out.vz = qVel(sp.vz);
+        }
+        if (sp.ax === 0 && sp.ay === 0 && sp.az === 0) {
+          out.ax = 0;
+          out.ay = 0;
+          out.az = 0;
+        } else {
+          out.ax = qAccel(sp.ax);
+          out.ay = qAccel(sp.ay);
+          out.az = qAccel(sp.az);
         }
         out.mirrorEntityId = sp.mirrorEntityId;
         out.reflectorKind = sp.reflectorKind;

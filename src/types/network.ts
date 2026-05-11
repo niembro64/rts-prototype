@@ -349,6 +349,9 @@ export type NetworkServerSnapshotBeamPoint = {
   vx: number;
   vy: number;
   vz: number;
+  ax: number;
+  ay: number;
+  az: number;
   /** Legacy name: any beam reflector entity, not only mirrors. */
   mirrorEntityId?: number;
   reflectorKind?: BeamReflectorKind;
@@ -362,9 +365,9 @@ export type NetworkServerSnapshotBeamUpdate = {
   id: number;
   /** Polyline vertices (≥ 2). Index 0 = start (turret mount center), last = end
    *  (range / hit / ground / terminal reflector), middles = reflections. Each carries its
-   *  own (vx, vy, vz) — the start finite-diffs every tick, the end
-   *  and reflections finite-diff across the (LOD-strided) re-trace
-   *  cadence. */
+   *  own position, velocity, and acceleration — the start updates
+   *  every tick, while the end and reflections finite-diff across the
+   *  (LOD-strided) re-trace cadence. */
   points: NetworkServerSnapshotBeamPoint[];
   obstructionT?: number;
   /** False when the authoritative path has no physical impact endpoint,

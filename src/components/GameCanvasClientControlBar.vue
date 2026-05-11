@@ -299,6 +299,15 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>BEAMS:</BarLabel>
+        <BarButton
+          :active="model.beamSnapToTurret"
+          title="Snap beam origins to live rendered turret centers"
+          @click="model.toggleBeamSnapToTurret"
+        >TURRET</BarButton>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>DRIFT:</BarLabel>
         <BarButtonGroup>
           <BarButton

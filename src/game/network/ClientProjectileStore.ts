@@ -96,6 +96,7 @@ export class ClientProjectileStore {
       const dp = ensureBeamPoint(dstTarget, i);
       dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
       dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
+      dp.ax = sp.ax; dp.ay = sp.ay; dp.az = sp.az;
       dp.mirrorEntityId = sp.mirrorEntityId;
       dp.reflectorKind = sp.reflectorKind;
       dp.reflectorPlayerId = sp.reflectorPlayerId;
@@ -112,6 +113,7 @@ export class ClientProjectileStore {
         const pp = ensureBeamPoint(projPts, i);
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
+        pp.ax = sp.ax; pp.ay = sp.ay; pp.az = sp.az;
         pp.mirrorEntityId = sp.mirrorEntityId;
         pp.reflectorKind = sp.reflectorKind;
         pp.reflectorPlayerId = sp.reflectorPlayerId;
@@ -133,6 +135,7 @@ export class ClientProjectileStore {
         const pp = ensureBeamPoint(projPts, i);
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
+        pp.ax = sp.ax; pp.ay = sp.ay; pp.az = sp.az;
         pp.mirrorEntityId = sp.mirrorEntityId;
         pp.reflectorKind = sp.reflectorKind;
         pp.reflectorPlayerId = sp.reflectorPlayerId;
@@ -248,10 +251,12 @@ export class ClientProjectileStore {
           {
             x: spawn.beam.start.x, y: spawn.beam.start.y, z: spawn.beam.start.z,
             vx: 0, vy: 0, vz: 0,
+            ax: 0, ay: 0, az: 0,
           },
           {
             x: spawn.beam.end.x, y: spawn.beam.end.y, z: spawn.beam.end.z,
             vx: 0, vy: 0, vz: 0,
+            ax: 0, ay: 0, az: 0,
           },
         ] : undefined,
       },

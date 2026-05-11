@@ -9,6 +9,7 @@ import { buildingTierAtLeast } from './RenderTier3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
 import type { TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
+import type { TurretMountCache3D } from './TurretMountCache3D';
 
 export type UnitTurretPose3DUpdate = {
   entity: Entity;
@@ -23,6 +24,7 @@ export type UnitTurretPose3DUpdate = {
   spinAngle?: number;
   currentDtMs: number;
   unitDetailInstances: UnitDetailInstanceRenderer3D;
+  turretMountCache: TurretMountCache3D;
   constructionVisuals: ConstructionVisualController3D;
 };
 
@@ -49,6 +51,7 @@ export class UnitTurretPose3D {
       spinAngle,
       currentDtMs,
       unitDetailInstances,
+      turretMountCache,
       constructionVisuals,
     } = options;
 
@@ -68,6 +71,7 @@ export class UnitTurretPose3D {
         const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
         turretMesh.root.position.set(turret.mount.x, turretMountY, turret.mount.y);
       }
+      this.writeMountCache(entity, turretIdx, mesh, turretMesh, headRadius, parentQuaternion, turretMountCache);
 
       if (turretMesh.constructionEmitter) {
         const visible = buildingTierAtLeast(graphicsTier, 'low');
@@ -140,6 +144,32 @@ export class UnitTurretPose3D {
     this.headMat.makeScale(headRadius, headRadius, headRadius);
     this.headMat.setPosition(this.headWorldPos);
     unitDetailInstances.writeTurretHeadMatrix(turretMesh.headSlot, this.headMat, entity);
+  }
+
+  private writeMountCache(
+    entity: Entity,
+    turretIdx: number,
+    mesh: EntityMesh,
+    turretMesh: TurretMesh,
+    headRadius: number,
+    parentQuaternion: THREE.Quaternion,
+    turretMountCache: TurretMountCache3D,
+  ): void {
+    const liftPos = mesh.liftGroup?.position;
+    this.headLocalPos.set(
+      (liftPos?.x ?? 0) + turretMesh.root.position.x,
+      (liftPos?.y ?? (mesh.chassisLift ?? 0)) + turretMesh.root.position.y + headRadius,
+      (liftPos?.z ?? 0) + turretMesh.root.position.z,
+    );
+    this.headLocalPos.applyQuaternion(parentQuaternion);
+    this.headWorldPos.copy(mesh.group.position).add(this.headLocalPos);
+    turretMountCache.write(
+      entity.id,
+      turretIdx,
+      this.headWorldPos.x,
+      this.headWorldPos.z,
+      this.headWorldPos.y,
+    );
   }
 
   private writeBarrelInstances(

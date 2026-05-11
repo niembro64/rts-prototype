@@ -22,6 +22,7 @@ import {
   getEntityVelocity3,
   getProjectileLaunchSpeed,
   turretMaskIncludes,
+  updateProjectileSourceClearance,
   updateWeaponWorldKinematics,
 } from './combatUtils';
 import { updateCombatActivityFlags } from './combatActivity';
@@ -139,6 +140,19 @@ function clearBeamReflectorMetadata(point: BeamPoint): void {
   point.normalX = undefined;
   point.normalY = undefined;
   point.normalZ = undefined;
+}
+
+function writeZeroBeamMotion(point: BeamPoint): void {
+  point.vx = 0;
+  point.vy = 0;
+  point.vz = 0;
+  point.ax = 0;
+  point.ay = 0;
+  point.az = 0;
+}
+
+function createBeamPoint(x: number, y: number, z: number): BeamPoint {
+  return { x, y, z, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 };
 }
 
 function copyBeamReflectorMetadata(
@@ -661,21 +675,16 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
     proj.velocityY = vy;
     proj.velocityZ = vz;
 
-    if (!proj.hasLeftSource) {
-      const source = world.getEntity(proj.sourceEntityId);
-      if (!source?.unit) {
-        proj.hasLeftSource = true;
-      } else {
-        const dx = (proj.prevX ?? 0) - source.transform.x;
-        const dy = (proj.prevY ?? 0) - source.transform.y;
-        const dz = (proj.prevZ ?? 0) - source.transform.z;
-        const distSq = dx * dx + dy * dy + dz * dz;
-        const clearance =
-          source.unit.radius.shot + proj.config.shotProfile.runtime.collisionRadius + 2;
-        if (distSq > clearance * clearance) {
-          proj.hasLeftSource = true;
-        }
-      }
+    const wasSourceCleared = !!proj.hasLeftSource;
+    if (updateProjectileSourceClearance(
+      world.getEntity(proj.sourceEntityId),
+      proj,
+      x, y, z,
+      proj.config.shotProfile.runtime.collisionRadius,
+    ) && !wasSourceCleared) {
+      proj.collisionStartX = x;
+      proj.collisionStartY = y;
+      proj.collisionStartZ = z;
     }
 
     slot++;
@@ -725,21 +734,16 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
       entity.transform.z += proj.velocityZ * dtSec;
     }
 
-    if (!proj.hasLeftSource) {
-      const source = world.getEntity(proj.sourceEntityId);
-      if (!source?.unit) {
-        proj.hasLeftSource = true;
-      } else {
-        const dx = proj.prevX - source.transform.x;
-        const dy = proj.prevY - source.transform.y;
-        const dz = (proj.prevZ ?? 0) - source.transform.z;
-        const distSq = dx * dx + dy * dy + dz * dz;
-        const clearance =
-          source.unit.radius.shot + proj.config.shotProfile.runtime.collisionRadius + 2;
-        if (distSq > clearance * clearance) {
-          proj.hasLeftSource = true;
-        }
-      }
+    const wasSourceCleared = !!proj.hasLeftSource;
+    if (updateProjectileSourceClearance(
+      world.getEntity(proj.sourceEntityId),
+      proj,
+      entity.transform.x, entity.transform.y, entity.transform.z,
+      proj.config.shotProfile.runtime.collisionRadius,
+    ) && !wasSourceCleared) {
+      proj.collisionStartX = entity.transform.x;
+      proj.collisionStartY = entity.transform.y;
+      proj.collisionStartZ = entity.transform.z;
     }
 
     // Homing rotates the full 3D velocity vector toward a live
@@ -977,8 +981,8 @@ export function updateProjectiles(
         // Ensure points polyline exists (createBeam seeds 2-point line at
         // spawn; defensive-init covers any path that forgot to).
         const points = proj.points ?? (proj.points = [
-          { x: beamMount.x, y: beamMount.y, z: beamMount.z, vx: 0, vy: 0, vz: 0 },
-          { x: beamMount.x, y: beamMount.y, z: beamMount.z, vx: 0, vy: 0, vz: 0 },
+          createBeamPoint(beamMount.x, beamMount.y, beamMount.z),
+          createBeamPoint(beamMount.x, beamMount.y, beamMount.z),
         ]);
 
         // Start-point velocity = (current start − last tick's start) / dt.
@@ -993,17 +997,34 @@ export function updateProjectiles(
           proj.prevStartZ !== undefined
         ) {
           const inv = 1 / dtSec;
-          startPoint.vx = (beamMount.x - proj.prevStartX) * inv;
-          startPoint.vy = (beamMount.y - proj.prevStartY) * inv;
-          startPoint.vz = (beamMount.z - proj.prevStartZ) * inv;
+          const vx = (beamMount.x - proj.prevStartX) * inv;
+          const vy = (beamMount.y - proj.prevStartY) * inv;
+          const vz = (beamMount.z - proj.prevStartZ) * inv;
+          startPoint.vx = vx;
+          startPoint.vy = vy;
+          startPoint.vz = vz;
+          if (
+            proj.prevStartVx !== undefined &&
+            proj.prevStartVy !== undefined &&
+            proj.prevStartVz !== undefined
+          ) {
+            startPoint.ax = (vx - proj.prevStartVx) * inv;
+            startPoint.ay = (vy - proj.prevStartVy) * inv;
+            startPoint.az = (vz - proj.prevStartVz) * inv;
+          } else {
+            startPoint.ax = 0;
+            startPoint.ay = 0;
+            startPoint.az = 0;
+          }
         } else {
-          startPoint.vx = 0;
-          startPoint.vy = 0;
-          startPoint.vz = 0;
+          writeZeroBeamMotion(startPoint);
         }
         proj.prevStartX = beamMount.x;
         proj.prevStartY = beamMount.y;
         proj.prevStartZ = beamMount.z;
+        proj.prevStartVx = startPoint.vx;
+        proj.prevStartVy = startPoint.vy;
+        proj.prevStartVz = startPoint.vz;
         startPoint.x = beamMount.x;
         startPoint.y = beamMount.y;
         startPoint.z = beamMount.z;
@@ -1051,7 +1072,7 @@ export function updateProjectiles(
             const refs = beamPath.reflections;
             const newLen = 2 + refs.length;
             while (points.length < newLen) {
-              points.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 });
+              points.push(createBeamPoint(0, 0, 0));
             }
             if (points.length > newLen) points.length = newLen;
 
@@ -1068,6 +1089,7 @@ export function updateProjectiles(
               point.z = refl.z;
               copyBeamReflectorMetadata(point, refl);
               let vx = 0, vy = 0, vz = 0;
+              let ax = 0, ay = 0, az = 0;
               if (prevRefs && dtSec > 0) {
                 for (let p = 0; p < prevRefs.length; p++) {
                   const pr = prevRefs[p];
@@ -1078,6 +1100,9 @@ export function updateProjectiles(
                     vx = (refl.x - pr.x) * inv;
                     vy = (refl.y - pr.y) * inv;
                     vz = (refl.z - pr.z) * inv;
+                    ax = (vx - pr.vx) * inv;
+                    ay = (vy - pr.vy) * inv;
+                    az = (vz - pr.vz) * inv;
                   }
                   break;
                 }
@@ -1085,6 +1110,9 @@ export function updateProjectiles(
               point.vx = vx;
               point.vy = vy;
               point.vz = vz;
+              point.ax = ax;
+              point.ay = ay;
+              point.az = az;
             }
 
             // Cache this trace's reflections (by mirrorEntityId; legacy
@@ -1093,7 +1121,12 @@ export function updateProjectiles(
             // to avoid GC churn on every re-trace.
             const cache = proj.prevReflectionPoints ?? (proj.prevReflectionPoints = []);
             while (cache.length < refs.length) {
-              cache.push({ mirrorEntityId: 0 as EntityId, x: 0, y: 0, z: 0, tick: 0 });
+              cache.push({
+                mirrorEntityId: 0 as EntityId,
+                x: 0, y: 0, z: 0,
+                vx: 0, vy: 0, vz: 0,
+                tick: 0,
+              });
             }
             if (cache.length > refs.length) cache.length = refs.length;
             for (let r = 0; r < refs.length; r++) {
@@ -1103,6 +1136,9 @@ export function updateProjectiles(
               slot.x = refl.x;
               slot.y = refl.y;
               slot.z = refl.z;
+              slot.vx = points[1 + r].vx;
+              slot.vy = points[1 + r].vy;
+              slot.vz = points[1 + r].vz;
               slot.tick = currentTick;
             }
 
@@ -1120,18 +1156,30 @@ export function updateProjectiles(
               const tickDelta = currentTick - proj.prevEndTick;
               if (tickDelta > 0 && dtSec > 0) {
                 const inv = 1 / (tickDelta * dtSec);
-                endPoint.vx = (beamPath.endX - proj.prevEndX) * inv;
-                endPoint.vy = (beamPath.endY - proj.prevEndY) * inv;
-                endPoint.vz = (beamPath.endZ - proj.prevEndZ) * inv;
+                const vx = (beamPath.endX - proj.prevEndX) * inv;
+                const vy = (beamPath.endY - proj.prevEndY) * inv;
+                const vz = (beamPath.endZ - proj.prevEndZ) * inv;
+                endPoint.vx = vx;
+                endPoint.vy = vy;
+                endPoint.vz = vz;
+                if (
+                  proj.prevEndVx !== undefined &&
+                  proj.prevEndVy !== undefined &&
+                  proj.prevEndVz !== undefined
+                ) {
+                  endPoint.ax = (vx - proj.prevEndVx) * inv;
+                  endPoint.ay = (vy - proj.prevEndVy) * inv;
+                  endPoint.az = (vz - proj.prevEndVz) * inv;
+                } else {
+                  endPoint.ax = 0;
+                  endPoint.ay = 0;
+                  endPoint.az = 0;
+                }
               } else {
-                endPoint.vx = 0;
-                endPoint.vy = 0;
-                endPoint.vz = 0;
+                writeZeroBeamMotion(endPoint);
               }
             } else {
-              endPoint.vx = 0;
-              endPoint.vy = 0;
-              endPoint.vz = 0;
+              writeZeroBeamMotion(endPoint);
             }
             endPoint.x = beamPath.endX;
             endPoint.y = beamPath.endY;
@@ -1144,6 +1192,9 @@ export function updateProjectiles(
             proj.prevEndX = beamPath.endX;
             proj.prevEndY = beamPath.endY;
             proj.prevEndZ = beamPath.endZ;
+            proj.prevEndVx = endPoint.vx;
+            proj.prevEndVy = endPoint.vy;
+            proj.prevEndVz = endPoint.vz;
             proj.prevEndTick = currentTick;
             proj.obstructionT = beamPath.obstructionT;
             proj.obstructionTick = currentTick;

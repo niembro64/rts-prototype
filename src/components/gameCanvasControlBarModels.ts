@@ -109,6 +109,7 @@ export type GameCanvasClientControlBarModel = {
   readonly fullSnapBarTarget: number;
   readonly audioSmoothing: boolean;
   readonly groundMarks: boolean;
+  readonly beamSnapToTurret: boolean;
   readonly driftMode: DriftMode;
   readonly clientTiltEmaMode: DriftMode;
   readonly allPanActive: boolean;
@@ -146,6 +147,7 @@ export type GameCanvasClientControlBarModel = {
   changeWaypointDetail(mode: WaypointDetail): void;
   toggleAudioSmoothing(): void;
   toggleGroundMarks(): void;
+  toggleBeamSnapToTurret(): void;
   changeDriftMode(mode: DriftMode): void;
   changeClientTiltEmaMode(mode: DriftMode): void;
   toggleAllPan(): void;

@@ -55,6 +55,7 @@ import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { createMirrorReflectorPanelMaterial } from './MirrorReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
+import { TurretMountCache3D, type TurretMountEntry } from './TurretMountCache3D';
 import { MirrorPose3D } from './MirrorPose3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
@@ -209,6 +210,7 @@ export class Render3DEntities {
   private _smoothLiftedPos = new THREE.Vector3();
 
   private _unitOneVec = new THREE.Vector3(1, 1, 1);
+  private turretMountCache = new TurretMountCache3D();
 
   /** Per-unit cached prefix matrix `T(liftedPos) · R(parentQuat) · S(1)`
    *  — i.e. the scenegraph chain `group · yawGroup · liftGroup` evaluated
@@ -334,6 +336,7 @@ export class Render3DEntities {
     const frameSpin = this.barrelSpinState.beginFrame();
     this._currentDtMs = frameSpin.currentDtMs;
     this._spinDt = frameSpin.spinDtSec;
+    this.turretMountCache.reset(this._currentDtMs);
     this.updateUnits();
     this.buildingRenderer.update(this.lod, this._spinDt, this._currentDtMs, frameSpin.timeMs);
     this.projectileRangeEnvelope.update();
@@ -738,6 +741,7 @@ export class Render3DEntities {
         spinAngle: this.barrelSpinState.angleFor(e.id),
         currentDtMs: this._currentDtMs,
         unitDetailInstances: this.unitDetailInstances,
+        turretMountCache: this.turretMountCache,
         constructionVisuals: this.constructionVisuals,
       });
 
@@ -810,6 +814,10 @@ export class Render3DEntities {
 
   getFactorySprayTargets(): readonly SprayTarget[] {
     return this.constructionVisuals.getFactorySprayTargets();
+  }
+
+  getTurretMountWorldState(entityId: EntityId, turretIdx: number): TurretMountEntry | null {
+    return this.turretMountCache.get(entityId, turretIdx);
   }
 
   /** Look up an entity's currently built locomotion mesh — undefined

@@ -70,9 +70,13 @@ function applyBeamPathPrediction(
 
   for (let i = 0; i < tgtPts.length; i++) {
     const tp = tgtPts[i];
-    tp.x += tp.vx * dt;
-    tp.y += tp.vy * dt;
-    tp.z += tp.vz * dt;
+    const halfDtSq = 0.5 * dt * dt;
+    tp.x += tp.vx * dt + tp.ax * halfDtSq;
+    tp.y += tp.vy * dt + tp.ay * halfDtSq;
+    tp.z += tp.vz * dt + tp.az * halfDtSq;
+    tp.vx += tp.ax * dt;
+    tp.vy += tp.ay * dt;
+    tp.vz += tp.az * dt;
   }
 
   for (let i = 0; i < tgtPts.length; i++) {
@@ -82,6 +86,7 @@ function applyBeamPathPrediction(
       pp = ensureBeamPoint(projPts, i);
       pp.x = tp.x; pp.y = tp.y; pp.z = tp.z;
       pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
+      pp.ax = tp.ax; pp.ay = tp.ay; pp.az = tp.az;
       pp.mirrorEntityId = tp.mirrorEntityId;
       pp.reflectorKind = tp.reflectorKind;
       pp.reflectorPlayerId = tp.reflectorPlayerId;
@@ -105,6 +110,9 @@ function applyBeamPathPrediction(
       || pp.normalX !== tp.normalX
       || pp.normalY !== tp.normalY
       || pp.normalZ !== tp.normalZ
+      || pp.ax !== tp.ax
+      || pp.ay !== tp.ay
+      || pp.az !== tp.az
     ) {
       changed = true;
     }
@@ -112,6 +120,7 @@ function applyBeamPathPrediction(
     pp.y = ny;
     pp.z = nz;
     pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
+    pp.ax = tp.ax; pp.ay = tp.ay; pp.az = tp.az;
     pp.mirrorEntityId = tp.mirrorEntityId;
     pp.reflectorKind = tp.reflectorKind;
     pp.reflectorPlayerId = tp.reflectorPlayerId;
