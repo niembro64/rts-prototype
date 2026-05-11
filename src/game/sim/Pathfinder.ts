@@ -26,8 +26,12 @@
 //     ejects, so the wider halo earns its keep there.
 //   • Connected-component pre-flight. If start and goal are in
 //     different components A* would just thrash; instead we snap
-//     the goal to the nearest cell in start's component. A*
-//     proper always succeeds within budget by construction.
+//     the goal to the nearest cell in start's component. A fast
+//     local radius handles common water/slope clicks; a full
+//     component scan handles isolated reachable islands beyond
+//     that radius. Unit-specific slope gates can still split a
+//     global component, so A* falls back to the closest reachable
+//     cell it discovered instead of returning no movement.
 //   • Euclidean-sorted snap offsets — no compass bias.
 //   • Stay-put bail: when there's no possible path, return a
 //     single waypoint at the unit's current position so the queue
@@ -50,6 +54,13 @@ import type { ActionType, UnitAction } from './types';
 
 type Vec2 = { x: number; y: number };
 
+type GridPathResult = {
+  cells: number[];
+  goalGx: number;
+  goalGy: number;
+  reachedGoal: boolean;
+};
+
 export type PathTerrainFilter = {
   minSurfaceNormalZ?: number;
 };
@@ -71,15 +82,15 @@ const BUILDING_INFLATION_CELLS = 1;
  *  0.34 ≈ 70°, matches PhysicsEngine3D.integrate's stable limit. */
 const SLOPE_BLOCK_NZ = 0.34;
 
-/** Snap radius for blocked endpoints, in cells. 32 cells = 640 wu;
- *  enough to find a shore from the deepest part of the demo's
- *  central valley. */
+/** Fast snap radius for blocked endpoints, in cells. 32 cells = 640
+ *  wu; enough to find a shore from the deepest part of the demo's
+ *  central valley. Open-but-unreachable goals fall back to a full
+ *  component scan if no reachable cell is inside this radius. */
 const SNAP_RADIUS_CELLS = 32;
 
-/** Hard cap on A* expansions per query. With the CC pre-flight
- *  we should never come close (the path is guaranteed to exist),
- *  but the cap is here to keep a hypothetical pathological query
- *  from stalling a tick. */
+/** Hard cap on A* expansions per query. The CC pre-flight keeps
+ *  normal paths well below this, but the cap is here to keep a
+ *  hypothetical pathological query from stalling a tick. */
 const MAX_A_STAR_NODES = 50_000;
 
 /** When true, every path produced by `expandPathActions` is walked
@@ -357,6 +368,13 @@ function findNearestOpenCell(
   return null;
 }
 
+function cellCenter(gx: number, gy: number): Vec2 {
+  return {
+    x: (gx + 0.5) * BUILD_GRID_CELL_SIZE,
+    y: (gy + 0.5) * BUILD_GRID_CELL_SIZE,
+  };
+}
+
 function findNearestCellInComponent(
   gx: number,
   gy: number,
@@ -375,6 +393,27 @@ function findNearestCellInComponent(
       return { gx: nx, gy: ny };
     }
   }
+
+  let bestGx = -1;
+  let bestGy = -1;
+  let bestD2 = Infinity;
+  for (let ny = 0; ny < gridH; ny++) {
+    const row = ny * gridW;
+    const dy = ny - gy;
+    for (let nx = 0; nx < gridW; nx++) {
+      const idx = row + nx;
+      if (labels[idx] !== componentLabel || !isCellPassable(idx, minSurfaceNormalZ)) continue;
+      const dx = nx - gx;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        bestGx = nx;
+        bestGy = ny;
+      }
+    }
+  }
+
+  if (bestGx >= 0) return { gx: bestGx, gy: bestGy };
   return null;
 }
 
@@ -463,7 +502,7 @@ function aStar(
   goalGx: number,
   goalGy: number,
   minSurfaceNormalZ?: number,
-): number[] | null {
+): GridPathResult | null {
   const gridW = _gridW, gridH = _gridH;
   const n = gridW * gridH;
 
@@ -477,6 +516,8 @@ function aStar(
   fScore[startIdx] = octile(startGx, startGy, goalGx, goalGy);
   heapPush(startIdx);
 
+  let bestIdx = startIdx;
+  let bestD2 = (startGx - goalGx) * (startGx - goalGx) + (startGy - goalGy) * (startGy - goalGy);
   let expanded = 0;
   let found = false;
   while (_heap.length > 0 && expanded < MAX_A_STAR_NODES) {
@@ -499,18 +540,33 @@ function aStar(
         parent[nidx] = cur;
         gScore[nidx] = tentative;
         fScore[nidx] = tentative + octile(nx, ny, goalGx, goalGy);
+        const dx = nx - goalGx;
+        const dy = ny - goalGy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          bestIdx = nidx;
+        }
         heapPush(nidx);
       }
     }
   }
-  if (!found) return null;
 
+  const pathTarget = found ? goalIdx : bestIdx;
   const path: number[] = [];
-  for (let n = goalIdx; n !== startIdx && n !== -1; n = parent[n]) {
+  for (let n = pathTarget; n !== startIdx && n !== -1; n = parent[n]) {
     path.push(n);
   }
+  if (path.length > 0 && parent[path[path.length - 1]] === -1) return null;
   path.reverse();
-  return path;
+  const pathTargetGx = pathTarget % gridW;
+  const pathTargetGy = (pathTarget - pathTargetGx) / gridW;
+  return {
+    cells: path,
+    goalGx: pathTargetGx,
+    goalGy: pathTargetGy,
+    reachedGoal: found,
+  };
 }
 
 // ── LOS check (supercover Bresenham) ─────────────────────────────
@@ -590,8 +646,11 @@ function findPath(
   // Snap goal to start's connected component. Catches both blocked
   // goal cells AND open-but-unreachable goal cells (e.g. a click on
   // an island the unit can't get to). After this snap A* is
-  // guaranteed to succeed — start and goal are in the same
-  // component by construction.
+  // guaranteed to share the global terrain/building component —
+  // start and goal are in the same component by construction. A
+  // stricter per-unit slope filter can still split that component;
+  // in that case A* below falls back to the closest reachable cell
+  // it discovered.
   const startLabel = ccLabels[startCellGy * gridW + startCellGx];
   let goalCellGx = ggx, goalCellGy = ggy;
   let goalWasSnapped = false;
@@ -609,16 +668,22 @@ function findPath(
   // Same cell after snapping — no A* needed.
   if (startCellGx === goalCellGx && startCellGy === goalCellGy) {
     if (goalWasSnapped) {
-      return [{
-        x: (goalCellGx + 0.5) * BUILD_GRID_CELL_SIZE,
-        y: (goalCellGy + 0.5) * BUILD_GRID_CELL_SIZE,
-      }];
+      return [cellCenter(goalCellGx, goalCellGy)];
     }
     return [{ x: goalX, y: goalY }];
   }
 
-  const cellPath = aStar(startCellGx, startCellGy, goalCellGx, goalCellGy, minSurfaceNormalZ);
-  if (!cellPath) return [{ x: startX, y: startY }];
+  const pathResult = aStar(startCellGx, startCellGy, goalCellGx, goalCellGy, minSurfaceNormalZ);
+  if (!pathResult) return [{ x: startX, y: startY }];
+  if (!pathResult.reachedGoal) {
+    goalCellGx = pathResult.goalGx;
+    goalCellGy = pathResult.goalGy;
+    goalWasSnapped = true;
+    if (startCellGx === goalCellGx && startCellGy === goalCellGy) {
+      return startWasSnapped ? [cellCenter(startCellGx, startCellGy)] : [{ x: startX, y: startY }];
+    }
+  }
+  const cellPath = pathResult.cells;
 
   // String-pull LOS smoothing. Keep candidate cells only when LOS
   // from the previous anchor to the cell AFTER the candidate fails.
@@ -626,11 +691,10 @@ function findPath(
   const smoothed: Vec2[] = [];
   let anchorX: number, anchorY: number;
   if (startWasSnapped) {
-    const sxw = (startCellGx + 0.5) * BUILD_GRID_CELL_SIZE;
-    const syw = (startCellGy + 0.5) * BUILD_GRID_CELL_SIZE;
-    smoothed.push({ x: sxw, y: syw });
-    anchorX = sxw;
-    anchorY = syw;
+    const startCenter = cellCenter(startCellGx, startCellGy);
+    smoothed.push(startCenter);
+    anchorX = startCenter.x;
+    anchorY = startCenter.y;
   } else {
     anchorX = startX;
     anchorY = startY;
@@ -653,10 +717,7 @@ function findPath(
     }
   }
   if (goalWasSnapped) {
-    smoothed.push({
-      x: (goalCellGx + 0.5) * BUILD_GRID_CELL_SIZE,
-      y: (goalCellGy + 0.5) * BUILD_GRID_CELL_SIZE,
-    });
+    smoothed.push(cellCenter(goalCellGx, goalCellGy));
   } else {
     smoothed.push({ x: goalX, y: goalY });
   }

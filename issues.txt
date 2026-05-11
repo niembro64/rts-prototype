@@ -15,10 +15,7 @@ As we go make sure we are not creating duplicate code, we should be reusing code
  RTS PROFESSIONAL AUDIT - 2026-05-11
 ------------------------------------------------------------------------------
 
-1. Pathfinding should treat a click in an "island" the same as a click on a zone that is too steep to traverse. Currently the pathinfindin does great when i click in the water or click on a steep hill, it finds the closest reachable point and moves there, but if i click in an "island" or "flat mountain top", the algorithm returns no solution - we always want a solution, the clostest point that is possible to what we clicked on. This is a problem because it can be frustrating to click on a location and have the unit do nothing, especially if the player doesn't understand why. The pathfinding should be more forgiving and always provide a valid destination, even if it's not exactly where the player clicked.
-
-
-2. P1 - No fog-of-war or hidden information boundary is present in network state.
+1. P1 - No fog-of-war or hidden information boundary is present in network state.
 
    Evidence:
    - src/game/network/stateSerializer.ts:95-118 filters entity state by AOI only,
@@ -39,7 +36,7 @@ As we go make sure we are not creating duplicate code, we should be reusing code
    snapshots, minimap data, selection/target details, and combat events by the
    recipient's visibility, with explicit spectator/debug bypasses.
 
-3. P2 - Core RTS command ergonomics are still missing.
+2. P2 - Core RTS command ergonomics are still missing.
 
    Evidence:
    - docs/command-ux-direction.md describes expected RTS command parity:
@@ -60,7 +57,7 @@ As we go make sure we are not creating duplicate code, we should be reusing code
    stop/hold, guard/assist, reclaim/repair area, attack-move or attack-area,
    control groups, visible/editable command queues, and factory repeat/loop UI.
 
-4. P2 - Submunition spread uses Math.random() inside sim projectile creation.
+3. P2 - Submunition spread uses Math.random() inside sim projectile creation.
 
    Evidence:
    - src/game/sim/combat/ProjectileCollisionHandler.ts:241-244 comments that
@@ -79,7 +76,7 @@ As we go make sure we are not creating duplicate code, we should be reusing code
    spawnSubmunitions. Add a seeded replay/test case that confirms identical
    projectile outcomes across runs.
 
-5. P2 - D-gun spends energy before validating a usable target direction.
+4. P2 - D-gun spends energy before validating a usable target direction.
 
    Evidence:
    - src/game/sim/commandExecution.ts:249-268 spends the D-gun energy cost before
@@ -95,4 +92,4 @@ As we go make sure we are not creating duplicate code, we should be reusing code
    Validate non-zero target distance before spendInstant, or refund the cost if
    the command cannot emit a projectile.
 
-6. The "tick" unit legs used to be stretched downwards while in the air, which made the landing seem logical, normally when animals land they land with extended legs that can compress over time, absorbing the impact. The current tick legs are pulled up to their body while in the air. Look up how animals actually have their legs positioned when jumping, while in the air, and then when landing, and adjust the tick legs to match that. This will make the jump and landing look more natural. We may need a more advanced leg extension system to handle how animals actually do it, where the amount the legs are stretched or pulled up depends on distance from the ground?
+5. The "tick" unit legs used to be stretched downwards while in the air, which made the landing seem logical, normally when animals land they land with extended legs that can compress over time, absorbing the impact. The current tick legs are pulled up to their body while in the air. Look up how animals actually have their legs positioned when jumping, while in the air, and then when landing, and adjust the tick legs to match that. This will make the jump and landing look more natural. We may need a more advanced leg extension system to handle how animals actually do it, where the amount the legs are stretched or pulled up depends on distance from the ground?
