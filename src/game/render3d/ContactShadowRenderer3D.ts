@@ -13,14 +13,76 @@ import {
 import { shouldRunOnStride } from '../math';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { SUN_DIRECTION_SIM, writeSunDirectionThree } from './SunLighting';
+import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import { disposeMesh } from './threeUtils';
 
 const SHADOW_GEOMETRY = new THREE.CircleGeometry(1, 28);
 SHADOW_GEOMETRY.rotateX(-Math.PI / 2);
+const UNIT_AIR_SHADOW_FADE_BODY_HEIGHTS = 4;
+const UNIT_AIR_SHADOW_FADE_MIN_HEIGHT = 80;
+const UNIT_AIR_SHADOW_MIN_ALPHA = 0.18;
+const UNIT_AIR_SHADOW_CROSS_SCALE_BOOST = 0.45;
+const UNIT_AIR_SHADOW_SUN_SCALE_BOOST = 0.7;
+
+function clamp01(value: number): number {
+  return value < 0 ? 0 : value > 1 ? 1 : value;
+}
+
+function makeContactShadowMaterial(): THREE.MeshBasicMaterial {
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.16,
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.SrcAlphaFactor,
+    blendDst: THREE.OneMinusSrcAlphaFactor,
+    depthWrite: false,
+    depthTest: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+    side: THREE.DoubleSide,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `
+attribute float contactShadowAlpha;
+varying float vContactShadowAlpha;
+#include <common>
+`,
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `
+#include <begin_vertex>
+vContactShadowAlpha = contactShadowAlpha;
+`,
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <common>',
+      `
+varying float vContactShadowAlpha;
+#include <common>
+`,
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <opaque_fragment>',
+      `
+diffuseColor.a *= vContactShadowAlpha;
+#include <opaque_fragment>
+`,
+    );
+  };
+  return material;
+}
 
 export class ContactShadowRenderer3D {
   private readonly mesh: THREE.InstancedMesh;
   private readonly material: THREE.MeshBasicMaterial;
+  private readonly alphas: Float32Array;
+  private readonly alphaAttr: THREE.InstancedBufferAttribute;
   private readonly mapWidth: number;
   private readonly mapHeight: number;
   private readonly matrix = new THREE.Matrix4();
@@ -35,26 +97,16 @@ export class ContactShadowRenderer3D {
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
-    this.material = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: false,
-      opacity: 0.16,
-      blending: THREE.CustomBlending,
-      blendEquation: THREE.AddEquation,
-      blendSrc: THREE.SrcAlphaFactor,
-      blendDst: THREE.OneMinusSrcAlphaFactor,
-      depthWrite: false,
-      depthTest: true,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-      side: THREE.DoubleSide,
-    });
+    this.material = makeContactShadowMaterial();
+    this.alphas = new Float32Array(CONTACT_SHADOW_RENDER_CONFIG.maxInstances);
+    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphas, 1)
+      .setUsage(THREE.DynamicDrawUsage);
     this.mesh = new THREE.InstancedMesh(
       SHADOW_GEOMETRY,
       this.material,
       CONTACT_SHADOW_RENDER_CONFIG.maxInstances,
     );
+    this.mesh.geometry.setAttribute('contactShadowAlpha', this.alphaAttr);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
     this.mesh.frustumCulled = false;
@@ -93,18 +145,38 @@ export class ContactShadowRenderer3D {
       const unit = entity.unit;
       if (!unit || unit.hp <= 0) continue;
       const radius = unit.radius.shot * CONTACT_SHADOW_RENDER_CONFIG.unitShotRadiusMultiplier;
-      const height = unit.bodyCenterHeight ?? unit.radius.body;
-      if (!scope.inScope(entity.transform.x, entity.transform.y, radius + CONTACT_SHADOW_RENDER_CONFIG.maxSunOffset)) {
+      const restHeight = Math.max(1, unit.bodyCenterHeight ?? unit.radius.body);
+      const groundZ = getLocomotionSurfaceHeight(
+        entity.transform.x,
+        entity.transform.y,
+        this.mapWidth,
+        this.mapHeight,
+      );
+      const casterHeight = Math.max(0, entity.transform.z - groundZ);
+      const airHeight = Math.max(0, casterHeight - restHeight);
+      const airFadeHeight = Math.max(
+        UNIT_AIR_SHADOW_FADE_MIN_HEIGHT,
+        restHeight * UNIT_AIR_SHADOW_FADE_BODY_HEIGHTS,
+      );
+      const airT = clamp01(airHeight / airFadeHeight);
+      const crossScale = 1 + airT * UNIT_AIR_SHADOW_CROSS_SCALE_BOOST;
+      const sunScale = 1 + airT * UNIT_AIR_SHADOW_SUN_SCALE_BOOST;
+      const alpha = 1 - airT * (1 - UNIT_AIR_SHADOW_MIN_ALPHA);
+      const scopeRadius =
+        radius * Math.max(crossScale, sunScale) +
+        CONTACT_SHADOW_RENDER_CONFIG.maxSunOffset;
+      if (!scope.inScope(entity.transform.x, entity.transform.y, scopeRadius)) {
         continue;
       }
       if (this.writeShadow(
         cursor,
         entity.transform.x,
         entity.transform.y,
-        radius * CONTACT_SHADOW_RENDER_CONFIG.crossSunSquash,
-        radius * CONTACT_SHADOW_RENDER_CONFIG.sunStretch,
-        height,
+        radius * CONTACT_SHADOW_RENDER_CONFIG.crossSunSquash * crossScale,
+        radius * CONTACT_SHADOW_RENDER_CONFIG.sunStretch * sunScale,
+        casterHeight,
         CONTACT_SHADOW_RENDER_CONFIG.unitSunOffsetPerHeight,
+        alpha,
       )) {
         cursor++;
       }
@@ -134,6 +206,7 @@ export class ContactShadowRenderer3D {
         halfDepth * CONTACT_SHADOW_RENDER_CONFIG.sunStretch,
         height,
         CONTACT_SHADOW_RENDER_CONFIG.buildingSunOffsetPerHeight,
+        1,
       )) {
         cursor++;
       }
@@ -144,6 +217,7 @@ export class ContactShadowRenderer3D {
       this.mesh.instanceMatrix.clearUpdateRanges();
       this.mesh.instanceMatrix.addUpdateRange(0, cursor * 16);
       this.mesh.instanceMatrix.needsUpdate = true;
+      this.alphaAttr.needsUpdate = true;
     }
   }
 
@@ -155,6 +229,7 @@ export class ContactShadowRenderer3D {
     sunRadius: number,
     casterHeight: number,
     offsetPerHeight: number,
+    alpha: number,
   ): boolean {
     const offset = Math.min(
       CONTACT_SHADOW_RENDER_CONFIG.maxSunOffset,
@@ -186,6 +261,7 @@ export class ContactShadowRenderer3D {
     this.matrix.scale(this.scale);
     this.matrix.setPosition(this.pos);
     this.mesh.setMatrixAt(slot, this.matrix);
+    this.alphas[slot] = alpha;
     return true;
   }
 
