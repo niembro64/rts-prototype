@@ -18,6 +18,7 @@ export type {
   RepairCommand,
   RepairAreaCommand,
   AttackCommand,
+  AttackAreaCommand,
   SetSnapshotRateCommand,
   SetKeyframeRatioCommand,
   SetTickRateCommand,

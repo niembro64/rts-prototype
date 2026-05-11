@@ -123,6 +123,7 @@ export function buildSelectionInfo(
     selectedBuildingType: inputState?.selectedBuildingType ?? null,
     isDGunMode: inputState?.isDGunMode ?? false,
     isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
+    isAttackAreaMode: inputState?.isAttackAreaMode ?? false,
     factoryQueue,
     factoryProgress,
     factoryIsProducing,

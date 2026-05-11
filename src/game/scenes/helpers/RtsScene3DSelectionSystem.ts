@@ -27,6 +27,7 @@ export class RtsScene3DSelectionSystem {
   private buildType: BuildingType | null = null;
   private dgunActive = false;
   private repairAreaActive = false;
+  private attackAreaActive = false;
 
   constructor(
     private readonly clientViewState: ClientViewState,
@@ -65,6 +66,11 @@ export class RtsScene3DSelectionSystem {
 
   setRepairAreaMode(active: boolean): void {
     this.repairAreaActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setAttackAreaMode(active: boolean): void {
+    this.attackAreaActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -145,6 +151,7 @@ export class RtsScene3DSelectionSystem {
       selectedBuildingType: this.buildType,
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
+      isAttackAreaMode: this.attackAreaActive,
       controlGroups: this.buildControlGroupInfo(),
     };
   }

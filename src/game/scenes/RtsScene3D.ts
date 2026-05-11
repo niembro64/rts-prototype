@@ -591,6 +591,9 @@ export class RtsScene3D {
     this.inputManager.onRepairAreaModeChange = (active) => {
       this.selectionSystem.setRepairAreaMode(active);
     };
+    this.inputManager.onAttackAreaModeChange = (active) => {
+      this.selectionSystem.setAttackAreaMode(active);
+    };
 
     this.renderPhase = new RtsScene3DRenderPhase(
       this.threeApp,
@@ -1096,6 +1099,10 @@ export class RtsScene3D {
 
   public toggleSelectedFire(): void {
     this.inputManager?.toggleSelectedFire();
+  }
+
+  public toggleAttackAreaMode(): void {
+    this.inputManager?.toggleAttackAreaMode();
   }
 
   public storeControlGroup(index: number): void {

@@ -1,8 +1,8 @@
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
-import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, SetJumpEnabledCommand, SetFireEnabledCommand, RepairCommand, RepairAreaCommand, AttackCommand } from './commands';
-import type { Entity, UnitAction } from './types';
+import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, SetJumpEnabledCommand, SetFireEnabledCommand, RepairCommand, RepairAreaCommand, AttackCommand, AttackAreaCommand } from './commands';
+import type { Entity, PlayerId, UnitAction } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
@@ -24,6 +24,7 @@ import { setWeaponTarget } from './combat/targetIndex';
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMountVelocity = { x: 0, y: 0, z: 0 };
 const REPAIR_AREA_MAX_RADIUS = 500;
+const ATTACK_AREA_MAX_RADIUS = 700;
 
 function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
   const minSurfaceNormalZ = unit.unit?.locomotion.minSurfaceNormalZ;
@@ -89,6 +90,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'attack':
       executeAttackCommand(ctx, command);
+      break;
+    case 'attackArea':
+      executeAttackAreaCommand(ctx, command);
       break;
   }
 }
@@ -479,7 +483,7 @@ function isRepairableByCommander(commander: Entity, target: Entity | undefined):
   return isIncompleteBuilding || isDamagedUnit;
 }
 
-function repairAreaDistanceSq(target: Entity, x: number, y: number): number {
+function entityAreaDistanceSq(target: Entity, x: number, y: number): number {
   if (target.building) {
     const halfW = target.building.width / 2;
     const halfH = target.building.height / 2;
@@ -508,7 +512,7 @@ function findRepairAreaTarget(
   for (let i = 0; i < buildings.length; i++) {
     const target = buildings[i];
     if (!isRepairableByCommander(commander, target)) continue;
-    const distSq = repairAreaDistanceSq(target, x, y);
+    const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
     bestDistanceSq = distSq;
     bestTarget = target;
@@ -518,7 +522,7 @@ function findRepairAreaTarget(
   for (let i = 0; i < units.length; i++) {
     const target = units[i];
     if (!isRepairableByCommander(commander, target)) continue;
-    const distSq = repairAreaDistanceSq(target, x, y);
+    const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
     bestDistanceSq = distSq;
     bestTarget = target;
@@ -558,35 +562,126 @@ function enqueueRepairAction(
 
 function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void {
   const target = ctx.world.getEntity(command.targetId);
-  if (!target) return;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    enqueueAttackAction(ctx, entity, target, command.queue);
+  }
+}
 
-  // Target must be alive (unit or building)
-  const isAliveUnit = target.unit && target.unit.hp > 0;
-  const isAliveBuilding = target.building && target.building.hp > 0;
-  if (!isAliveUnit && !isAliveBuilding) return;
+function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaCommand): void {
+  const radius = clampAttackAreaRadius(command.radius);
+  const playerId = getCommandUnitPlayerId(ctx, command.entityIds);
+  if (playerId === undefined) return;
+
+  const target = findAttackAreaTarget(
+    ctx,
+    playerId,
+    command.targetX,
+    command.targetY,
+    radius,
+  );
+
+  if (!target) {
+    executeMoveCommand(ctx, {
+      type: 'move',
+      tick: command.tick,
+      entityIds: command.entityIds,
+      targetX: command.targetX,
+      targetY: command.targetY,
+      targetZ: command.targetZ,
+      waypointType: 'fight',
+      queue: command.queue,
+    });
+    return;
+  }
 
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    if (!entity || entity.type !== 'unit' || !entity.unit) continue;
-
-    // Route the approach through pathfinding so the unit walks
-    // AROUND water / mountains to reach the attack target. Without
-    // this, an `attack` action whose (x, y) is the target's
-    // position bee-lined the unit straight at the target — even
-    // through a valley — leaving the visualized line cutting across
-    // water while the unit pressed into the shore. The final
-    // waypoint keeps targetId so the targeting handler engages
-    // the right entity once the unit is in range.
-    const targetPoint = getEntityTargetPoint(target);
-    const action: UnitAction = {
-      type: 'attack',
-      x: targetPoint.x,
-      y: targetPoint.y,
-      z: targetPoint.z,
-      targetId: command.targetId,
-    };
-    addPathActionsWithFinal(entity, action, command.queue, ctx);
+    enqueueAttackAction(ctx, entity, target, command.queue);
   }
+}
+
+function clampAttackAreaRadius(radius: number): number {
+  if (!Number.isFinite(radius)) return ATTACK_AREA_MAX_RADIUS;
+  return Math.max(1, Math.min(radius, ATTACK_AREA_MAX_RADIUS));
+}
+
+function getCommandUnitPlayerId(ctx: CommandContext, entityIds: readonly number[]): PlayerId | undefined {
+  for (let i = 0; i < entityIds.length; i++) {
+    const entity = ctx.world.getEntity(entityIds[i]);
+    if (entity?.unit && entity.ownership) return entity.ownership.playerId;
+  }
+  return undefined;
+}
+
+function isAliveAttackTarget(target: Entity | undefined): target is Entity {
+  if (!target) return false;
+  if (target.unit) return target.unit.hp > 0;
+  if (target.building) return target.building.hp > 0;
+  return false;
+}
+
+function isAttackableEnemyTargetForPlayer(target: Entity | undefined, playerId: PlayerId): target is Entity {
+  return isAliveAttackTarget(target) &&
+    target.ownership !== undefined &&
+    target.ownership.playerId !== playerId;
+}
+
+function findAttackAreaTarget(
+  ctx: CommandContext,
+  playerId: PlayerId,
+  x: number,
+  y: number,
+  radius: number,
+): Entity | undefined {
+  const radiusSq = radius * radius;
+  let bestTarget: Entity | undefined;
+  let bestDistanceSq = Infinity;
+
+  const units = ctx.world.getUnits();
+  for (let i = 0; i < units.length; i++) {
+    const target = units[i];
+    if (!isAttackableEnemyTargetForPlayer(target, playerId)) continue;
+    const distSq = entityAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
+    bestDistanceSq = distSq;
+    bestTarget = target;
+  }
+
+  const buildings = ctx.world.getBuildings();
+  for (let i = 0; i < buildings.length; i++) {
+    const target = buildings[i];
+    if (!isAttackableEnemyTargetForPlayer(target, playerId)) continue;
+    const distSq = entityAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
+    bestDistanceSq = distSq;
+    bestTarget = target;
+  }
+
+  return bestTarget;
+}
+
+function enqueueAttackAction(
+  ctx: CommandContext,
+  entity: Entity | undefined,
+  target: Entity | undefined,
+  queue: boolean,
+): void {
+  if (!entity || entity.type !== 'unit' || !entity.unit) return;
+  if (!entity.ownership || !isAttackableEnemyTargetForPlayer(target, entity.ownership.playerId)) return;
+
+  // Route the approach through pathfinding so the unit walks around water
+  // and mountains. The final waypoint keeps targetId so the targeting
+  // handler engages the right entity once the unit is in range.
+  const targetPoint = getEntityTargetPoint(target);
+  const action: UnitAction = {
+    type: 'attack',
+    x: targetPoint.x,
+    y: targetPoint.y,
+    z: targetPoint.z,
+    targetId: target.id,
+  };
+  addPathActionsWithFinal(entity, action, queue, ctx);
 }
 
 // Add an action to a unit (respecting queue flag)

@@ -24,6 +24,7 @@ export { SelectionChangeTracker } from './SelectionChangeTracker';
 export { LinePathAccumulator } from './LinePathAccumulator';
 
 export {
+  buildAttackAreaCommand,
   buildAttackCommandForTarget,
   buildAttackCommandAt,
   buildLinePathMoveCommand,

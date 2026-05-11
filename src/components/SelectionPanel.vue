@@ -77,6 +77,16 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         </button>
         <button
           class="action-btn"
+          :class="{ active: selection.isAttackAreaMode }"
+          :style="{ '--btn-color': '#ff5a5a' }"
+          title="Toggle area attack targeting for selected units"
+          @click="actions.toggleAttackArea()"
+        >
+          <span class="btn-label">Attack</span>
+          <span class="btn-key">A</span>
+        </button>
+        <button
+          class="action-btn"
           :style="{ '--btn-color': '#d6d6d6' }"
           @click="actions.stopSelectedUnits()"
         >
@@ -229,7 +239,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
     <!-- Message area (always present to prevent modal resize) -->
     <div class="message-area">
-      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode">
+      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode || selection.isAttackAreaMode">
         Press ESC or Right-click to cancel
       </span>
       <span v-else>&nbsp;</span>

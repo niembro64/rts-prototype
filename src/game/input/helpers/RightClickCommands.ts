@@ -12,6 +12,7 @@
 
 import type { Entity, EntityId, WaypointType, PlayerId } from '../../sim/types';
 import type {
+  AttackAreaCommand,
   AttackCommand,
   MoveCommand,
   WaypointTarget,
@@ -64,6 +65,28 @@ export function buildAttackCommandAt(
 ): AttackCommand | null {
   const target = findAttackTargetAt(source, worldX, worldY, playerId);
   return buildAttackCommandForTarget(target, selectedUnits, playerId, tick, queue);
+}
+
+export function buildAttackAreaCommand(
+  selectedUnits: readonly Entity[],
+  worldX: number,
+  worldY: number,
+  radius: number,
+  tick: number,
+  queue: boolean,
+  worldZ?: number,
+): AttackAreaCommand | null {
+  if (selectedUnits.length === 0) return null;
+  return {
+    type: 'attackArea',
+    tick,
+    entityIds: selectedUnits.map((u) => u.id),
+    targetX: worldX,
+    targetY: worldY,
+    targetZ: worldZ,
+    radius,
+    queue,
+  };
 }
 
 /** Turn a finished line path into a MoveCommand. Short paths

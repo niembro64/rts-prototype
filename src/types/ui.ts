@@ -32,6 +32,7 @@ export type SelectionInfo = {
   selectedBuildingType: string | null;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isAttackAreaMode: boolean;
   factoryQueue?: QueueItem[];
   factoryProgress?: number;
   factoryIsProducing?: boolean;
@@ -43,6 +44,7 @@ export type SelectionActions = {
   stopSelectedUnits: () => void;
   toggleSelectedJump: () => void;
   toggleSelectedFire: () => void;
+  toggleAttackArea: () => void;
   storeControlGroup: (index: number) => void;
   recallControlGroup: (index: number, additive: boolean) => void;
   startBuild: (buildingType: BuildingType) => void;
@@ -163,6 +165,7 @@ export type UIInputState = {
   selectedBuildingType: string | null;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isAttackAreaMode: boolean;
   controlGroups: ControlGroupInfo[];
 };
 

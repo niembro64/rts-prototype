@@ -19,6 +19,7 @@ export type CommandType =
   | 'repair'
   | 'repairArea'
   | 'attack'
+  | 'attackArea'
   | 'setSnapshotRate'
   | 'setKeyframeRatio'
   | 'setTickRate'
@@ -159,6 +160,16 @@ export type AttackCommand = BaseCommand & {
   queue: boolean;
 };
 
+export type AttackAreaCommand = BaseCommand & {
+  type: 'attackArea';
+  entityIds: EntityId[];
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+  radius: number;
+  queue: boolean;
+};
+
 export type SetSnapshotRateCommand = BaseCommand & {
   type: 'setSnapshotRate';
   rate: number | 'none';
@@ -259,6 +270,7 @@ export type Command =
   | RepairCommand
   | RepairAreaCommand
   | AttackCommand
+  | AttackAreaCommand
   | SetSnapshotRateCommand
   | SetKeyframeRatioCommand
   | SetTickRateCommand
