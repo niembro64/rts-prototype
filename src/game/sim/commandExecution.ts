@@ -6,6 +6,7 @@ import type {
   AttackCommand,
   AttackGroundCommand,
   CancelQueueItemCommand,
+  ClearQueuedOrdersCommand,
   Command,
   FireDGunCommand,
   GuardCommand,
@@ -15,6 +16,7 @@ import type {
   ReclaimCommand,
   RepairAreaCommand,
   RepairCommand,
+  RemoveLastQueuedOrderCommand,
   SelectCommand,
   SetFactoryWaypointsCommand,
   SetFireEnabledCommand,
@@ -39,11 +41,17 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { setUnitJumpEnabled } from './unitJump';
-import { pushUnitAction, setUnitActions, shiftUnitAction, unshiftUnitAction } from './unitActions';
+import { pushUnitAction, setUnitActions, shiftUnitAction, spliceUnitActions, unshiftUnitAction } from './unitActions';
 import { clearCombatActivityFlags } from './combat/combatActivity';
 import { setWeaponTarget } from './combat/targetIndex';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
+import {
+  getActionIntentStart,
+  getFirstActionIntentEnd,
+  getLastActionIntentFinalIndex,
+  getUnitActionTargetId,
+} from './unitActionIntents';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMountVelocity = { x: 0, y: 0, z: 0 };
@@ -83,6 +91,12 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'stop':
       executeStopCommand(ctx, command);
+      break;
+    case 'clearQueuedOrders':
+      executeClearQueuedOrdersCommand(ctx, command);
+      break;
+    case 'removeLastQueuedOrder':
+      executeRemoveLastQueuedOrderCommand(ctx, command);
       break;
     case 'wait':
       executeWaitCommand(ctx, command);
@@ -236,6 +250,59 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
       entity.combat.priorityTargetPoint = undefined;
       entity.combat.nextCombatProbeTick = undefined;
     }
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+}
+
+function clearBuilderTargetIfRemoved(entity: Entity, removedActions: readonly UnitAction[]): void {
+  const builder = entity.builder;
+  if (!builder || builder.currentBuildTarget === null) return;
+  for (let i = 0; i < removedActions.length; i++) {
+    if (getUnitActionTargetId(removedActions[i]) === builder.currentBuildTarget) {
+      builder.currentBuildTarget = null;
+      return;
+    }
+  }
+}
+
+function executeClearQueuedOrdersCommand(ctx: CommandContext, command: ClearQueuedOrdersCommand): void {
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    const unit = entity?.unit;
+    if (!entity || !unit) continue;
+
+    const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
+    if (activeIntentEnd < 0 || activeIntentEnd === unit.actions.length - 1) continue;
+
+    const removedActions = spliceUnitActions(
+      unit,
+      activeIntentEnd + 1,
+      unit.actions.length - activeIntentEnd - 1,
+    );
+    clearBuilderTargetIfRemoved(entity, removedActions);
+    refreshPatrolStartIndex(unit);
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+}
+
+function executeRemoveLastQueuedOrderCommand(ctx: CommandContext, command: RemoveLastQueuedOrderCommand): void {
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    const unit = entity?.unit;
+    if (!entity || !unit) continue;
+
+    const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
+    const lastIntentFinalIndex = getLastActionIntentFinalIndex(unit.actions);
+    if (activeIntentEnd < 0 || lastIntentFinalIndex <= activeIntentEnd) continue;
+
+    const lastIntentStart = getActionIntentStart(unit.actions, lastIntentFinalIndex);
+    const removedActions = spliceUnitActions(
+      unit,
+      lastIntentStart,
+      unit.actions.length - lastIntentStart,
+    );
+    clearBuilderTargetIfRemoved(entity, removedActions);
+    refreshPatrolStartIndex(unit);
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
 }

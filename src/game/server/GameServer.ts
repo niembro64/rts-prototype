@@ -7,11 +7,13 @@ import type {
   AttackCommand,
   AttackAreaCommand,
   AttackGroundCommand,
+  ClearQueuedOrdersCommand,
   CommandQueue,
   Command,
   GuardCommand,
   MoveCommand,
   PingCommand,
+  RemoveLastQueuedOrderCommand,
   SetCameraAoiCommand,
   SetFireEnabledCommand,
   SetJumpEnabledCommand,
@@ -637,6 +639,8 @@ export class GameServer {
         return this.authorizeMoveCommand(command, fromPlayerId);
 
       case 'stop':
+      case 'clearQueuedOrders':
+      case 'removeLastQueuedOrder':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
       case 'wait':
@@ -721,9 +725,9 @@ export class GameServer {
   }
 
   private authorizeUnitListCommand(
-    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand,
+    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand,
     playerId: PlayerId,
-  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | null {
+  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand | null {
     const sourceIds = command.entityIds;
     if (sourceIds.length === 0) return null;
 

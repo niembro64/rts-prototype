@@ -5,6 +5,8 @@ export type {
   WaypointTarget,
   MoveCommand,
   StopCommand,
+  ClearQueuedOrdersCommand,
+  RemoveLastQueuedOrderCommand,
   ClearSelectionCommand,
   PingCommand,
   StartBuildCommand,

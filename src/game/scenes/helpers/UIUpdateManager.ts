@@ -5,6 +5,7 @@ import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
 import { isCommander } from '../../sim/combat/combatUtils';
+import { hasQueuedActionIntents } from '../../sim/unitActionIntents';
 
 function unitLabel(unitType: string): string {
   try {
@@ -75,9 +76,12 @@ export function buildSelectionInfo(
   let fireControlCount = 0;
   let allFireEnabled = true;
   let waitingCount = 0;
+  let hasQueuedOrders = false;
   for (let i = 0; i < selectedUnits.length; i++) {
     const selectedUnit = selectedUnits[i];
-    if (selectedUnit.unit?.actions[0]?.type === 'wait') waitingCount++;
+    const actions = selectedUnit.unit?.actions;
+    if (actions?.[0]?.type === 'wait') waitingCount++;
+    if (actions && hasQueuedActionIntents(actions)) hasQueuedOrders = true;
     const jump = selectedUnit.unit?.jump;
     if (jump) {
       jumpCount++;
@@ -118,6 +122,7 @@ export function buildSelectionInfo(
     hasFireControl: fireControlCount > 0,
     fireEnabled: fireControlCount > 0 && allFireEnabled,
     isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
+    hasQueuedOrders,
     hasFactory: factory !== undefined,
     factoryId: factory?.id,
     commanderId: commander?.id,

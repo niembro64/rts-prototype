@@ -25,6 +25,7 @@ export type SelectionInfo = {
   hasFireControl: boolean;
   fireEnabled: boolean;
   isWaiting: boolean;
+  hasQueuedOrders: boolean;
   hasFactory: boolean;
   factoryId?: number;
   commanderId?: number;
@@ -47,6 +48,8 @@ export type SelectionInfo = {
 export type SelectionActions = {
   setWaypointMode: (mode: WaypointType) => void;
   stopSelectedUnits: () => void;
+  clearQueuedOrders: () => void;
+  removeLastQueuedOrder: () => void;
   toggleSelectedWait: () => void;
   toggleSelectedJump: () => void;
   toggleSelectedFire: () => void;

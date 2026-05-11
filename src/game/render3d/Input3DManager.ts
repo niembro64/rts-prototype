@@ -369,6 +369,14 @@ export class Input3DManager {
     this.enqueueStopCommand();
   }
 
+  clearQueuedOrders(): void {
+    this.enqueueClearQueuedOrdersCommand();
+  }
+
+  removeLastQueuedOrder(): void {
+    this.enqueueRemoveLastQueuedOrderCommand();
+  }
+
   toggleSelectedWait(queue = false): void {
     this.enqueueWaitCommand(queue);
   }
@@ -749,7 +757,8 @@ export class Input3DManager {
     }
 
     // Mirror the command hotkeys one-for-one. M/F/H switch waypoint mode;
-    // S stops selected units; W toggles wait; J toggles jump permission; E toggles fire permission;
+    // S stops selected units; U removes the last queued order; X clears queued orders; W toggles wait;
+    // J toggles jump permission; E toggles fire permission;
     // A toggles area attack; T toggles attack-ground; G toggles guard; R toggles area repair; C toggles reclaim; P toggles ping;
     // B/number/D drive the commander mode state machine;
     // Escape runs the shared cancel-mode-or-clear-selection convention.
@@ -774,6 +783,12 @@ export class Input3DManager {
       case 'h': this.setWaypointMode('patrol'); break;
       case 's':
         this.enqueueStopCommand();
+        break;
+      case 'u':
+        this.enqueueRemoveLastQueuedOrderCommand();
+        break;
+      case 'x':
+        this.enqueueClearQueuedOrdersCommand();
         break;
       case 'w':
         this.enqueueWaitCommand(e.shiftKey);
@@ -855,6 +870,30 @@ export class Input3DManager {
     for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
     this.localCommandQueue.enqueue({
       type: 'stop',
+      tick: this.context.getTick(),
+      entityIds,
+    });
+  }
+
+  private enqueueClearQueuedOrdersCommand(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length === 0) return;
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
+    this.localCommandQueue.enqueue({
+      type: 'clearQueuedOrders',
+      tick: this.context.getTick(),
+      entityIds,
+    });
+  }
+
+  private enqueueRemoveLastQueuedOrderCommand(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length === 0) return;
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
+    this.localCommandQueue.enqueue({
+      type: 'removeLastQueuedOrder',
       tick: this.context.getTick(),
       entityIds,
     });

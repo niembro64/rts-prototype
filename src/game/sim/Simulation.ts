@@ -55,6 +55,7 @@ import { WindPowerTracker, sampleWindState, type WindState } from './wind';
 import { isBuildTargetInRange } from './builderRange';
 import { isReclaimableTarget } from './reclaim';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
+import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
 import {
   rotateFirstUnitActionToEnd,
   setUnitActions,
@@ -922,8 +923,8 @@ export class Simulation {
       const action = actions[i];
       if (!this.isTargetedActionInvalid(action)) continue;
 
-      const targetId = this.getActionTargetId(action);
-      const removeStart = this.getPathIntentStart(actions, i);
+      const targetId = getUnitActionTargetId(action);
+      const removeStart = getActionIntentStart(actions, i);
       spliceUnitActions(unit, removeStart, i - removeStart + 1);
       if (targetId !== undefined && entity.builder?.currentBuildTarget === targetId) {
         entity.builder.currentBuildTarget = null;
@@ -939,23 +940,6 @@ export class Simulation {
     return changed;
   }
 
-  private getPathIntentStart(actions: readonly UnitAction[], finalActionIndex: number): number {
-    let start = finalActionIndex;
-    while (start > 0 && actions[start - 1].isPathExpansion) start--;
-    return start;
-  }
-
-  private getActionTargetId(action: UnitAction): EntityId | undefined {
-    if (action.type === 'build') return action.buildingId;
-    if (
-      action.type === 'attack' ||
-      action.type === 'repair' ||
-      action.type === 'reclaim' ||
-      action.type === 'guard'
-    ) return action.targetId;
-    return undefined;
-  }
-
   private isTargetedActionInvalid(action: UnitAction): boolean {
     if (
       action.type !== 'attack' &&
@@ -967,7 +951,7 @@ export class Simulation {
       return false;
     }
 
-    const targetId = this.getActionTargetId(action);
+    const targetId = getUnitActionTargetId(action);
     const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
     if (!target) return true;
 

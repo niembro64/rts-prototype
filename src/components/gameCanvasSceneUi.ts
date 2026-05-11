@@ -37,6 +37,7 @@ export function useGameCanvasSceneUi({
     hasFireControl: false,
     fireEnabled: false,
     isWaiting: false,
+    hasQueuedOrders: false,
     hasFactory: false,
     factoryId: undefined,
     commanderId: undefined,
@@ -134,6 +135,12 @@ export function useGameCanvasSceneUi({
     },
     stopSelectedUnits: () => {
       getActiveBattleScene()?.stopSelectedUnits();
+    },
+    clearQueuedOrders: () => {
+      getActiveBattleScene()?.clearQueuedOrders();
+    },
+    removeLastQueuedOrder: () => {
+      getActiveBattleScene()?.removeLastQueuedOrder();
     },
     toggleSelectedWait: () => {
       getActiveBattleScene()?.toggleSelectedWait();

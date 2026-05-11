@@ -1125,6 +1125,14 @@ export class RtsScene3D {
     this.inputManager?.stopSelectedUnits();
   }
 
+  public clearQueuedOrders(): void {
+    this.inputManager?.clearQueuedOrders();
+  }
+
+  public removeLastQueuedOrder(): void {
+    this.inputManager?.removeLastQueuedOrder();
+  }
+
   public toggleSelectedWait(): void {
     this.inputManager?.toggleSelectedWait();
   }

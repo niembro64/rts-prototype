@@ -15,29 +15,6 @@ As we go make sure we are not creating duplicate code, we should be reusing code
  RTS PROFESSIONAL AUDIT - 2026-05-11
 ------------------------------------------------------------------------------
 
-1. P2 - Core RTS command ergonomics still have remaining gaps.
-
-   Evidence:
-   - docs/command-ux-direction.md describes expected RTS command parity:
-     formation move, fight/attack area, guard, patrol, reclaim, repair area,
-     stop, wait, repeat, stances, pings, and more.
-   - The code now covers select, move/fight/patrol waypoints, stop,
-     client-local control groups, startBuild, queue/cancel unit,
-     rally/factory waypoints, fireDGun, jump, repair, attack, and
-     server/AOI settings.
-   - Fire/hold-fire, wait/release-wait, map pings, commander repair-area,
-     area attack/fight-ground targeting, attack-ground, guard/assist, and
-     commander reclaim now have hotkeys, buttons, network command handling, and
-     server-authoritative execution.
-
-   Impact:
-   The game will still feel hard to control at RTS scale even if the sim works.
-   Missing queue editing blocks serious player evaluation.
-
-   Fix direction:
-   Prioritize a small competitive command set before adding more unit variety:
-   editable command queues.
-
 2. P2 - Submunition spread uses Math.random() inside sim projectile creation.
 
    Evidence:
@@ -60,7 +37,7 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 3. P2 - D-gun spends energy before validating a usable target direction.
 
    Evidence:
-   - src/game/sim/commandExecution.ts:249-268 spends the D-gun energy cost before
+   - src/game/sim/commandExecution.ts:480-486 spends the D-gun energy cost before
      checking whether the target point is exactly on the commander/mount.
    - The zero-distance check returns without firing after the resource spend.
 

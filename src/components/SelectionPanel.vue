@@ -134,6 +134,26 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-key">W</span>
         </button>
         <button
+          class="action-btn"
+          :disabled="!selection.hasQueuedOrders"
+          :style="{ '--btn-color': '#b9f1ff' }"
+          title="Remove the last queued order"
+          @click="actions.removeLastQueuedOrder()"
+        >
+          <span class="btn-label">Undo Q</span>
+          <span class="btn-key">U</span>
+        </button>
+        <button
+          class="action-btn"
+          :disabled="!selection.hasQueuedOrders"
+          :style="{ '--btn-color': '#c7d0ff' }"
+          title="Clear queued orders after the active order"
+          @click="actions.clearQueuedOrders()"
+        >
+          <span class="btn-label">Clear Q</span>
+          <span class="btn-key">X</span>
+        </button>
+        <button
           v-if="selection.hasJump"
           class="action-btn"
           :class="{ active: selection.jumpEnabled }"
@@ -453,6 +473,16 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 .action-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   border-color: var(--btn-color);
+}
+
+.action-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.action-btn:disabled:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .action-btn.active {

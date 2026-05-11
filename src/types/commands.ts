@@ -7,6 +7,8 @@ export type CommandType =
   | 'select'
   | 'move'
   | 'stop'
+  | 'clearQueuedOrders'
+  | 'removeLastQueuedOrder'
   | 'clearSelection'
   | 'ping'
   | 'startBuild'
@@ -72,6 +74,16 @@ export type MoveCommand = BaseCommand & {
 
 export type StopCommand = BaseCommand & {
   type: 'stop';
+  entityIds: EntityId[];
+};
+
+export type ClearQueuedOrdersCommand = BaseCommand & {
+  type: 'clearQueuedOrders';
+  entityIds: EntityId[];
+};
+
+export type RemoveLastQueuedOrderCommand = BaseCommand & {
+  type: 'removeLastQueuedOrder';
   entityIds: EntityId[];
 };
 
@@ -300,6 +312,8 @@ export type Command =
   | SelectCommand
   | MoveCommand
   | StopCommand
+  | ClearQueuedOrdersCommand
+  | RemoveLastQueuedOrderCommand
   | ClearSelectionCommand
   | PingCommand
   | StartBuildCommand
