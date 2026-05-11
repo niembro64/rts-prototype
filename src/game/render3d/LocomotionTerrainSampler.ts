@@ -1,6 +1,10 @@
 import { LAND_CELL_SIZE } from '../../config';
 import type { Entity } from '../sim/types';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
+import {
+  getUnitGroundPenetration,
+  isUnitGroundPenetrationInContact,
+} from '../sim/unitGroundPhysics';
 
 export type LocomotionSurfaceNormal = {
   nx: number;
@@ -11,6 +15,12 @@ export type LocomotionSurfaceNormal = {
 export type LocomotionFootSurfaceSample = LocomotionSurfaceNormal & {
   groundY: number;
   visualFootY: number;
+};
+
+export type LocomotionGroundContactSample = {
+  grounded: boolean;
+  groundY: number;
+  penetration: number;
 };
 
 export function getLocomotionSurfaceNormal(
@@ -34,6 +44,41 @@ export function getLocomotionSurfaceHeight(
   mapHeight: number,
 ): number {
   return getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE);
+}
+
+export function sampleLocomotionGroundContact(
+  entity: Entity,
+  mapWidth: number,
+  mapHeight: number,
+): LocomotionGroundContactSample {
+  const groundY = getLocomotionSurfaceHeight(
+    entity.transform.x,
+    entity.transform.y,
+    mapWidth,
+    mapHeight,
+  );
+  const unit = entity.unit;
+  if (!unit) {
+    return { grounded: false, groundY, penetration: Number.NEGATIVE_INFINITY };
+  }
+
+  const penetration = getUnitGroundPenetration(unit, entity.transform.z, groundY);
+  const suspensionAllowsContact = unit.suspension?.legContact !== false;
+  return {
+    grounded:
+      suspensionAllowsContact &&
+      isUnitGroundPenetrationInContact(penetration),
+    groundY,
+    penetration,
+  };
+}
+
+export function isLocomotionGrounded(
+  entity: Entity,
+  mapWidth: number,
+  mapHeight: number,
+): boolean {
+  return sampleLocomotionGroundContact(entity, mapWidth, mapHeight).grounded;
 }
 
 export function sampleLocomotionFootSurface(

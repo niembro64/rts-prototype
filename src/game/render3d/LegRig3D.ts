@@ -27,6 +27,7 @@ import type { Entity } from '../sim/types';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import {
+  isLocomotionGrounded,
   getLocomotionSurfaceHeight,
   getLocomotionSurfaceNormal,
   sampleLocomotionFootSurface,
@@ -101,6 +102,9 @@ const FOOT_PAD_HALF_HEIGHT_MULT = 0.45;
 const FOOT_PAD_MIN_RADIUS = 1.1;
 const FOOT_PAD_MIN_HALF_HEIGHT = 0.35;
 const FOOT_PAD_GROUND_CLEARANCE = 0.35;
+const AIRBORNE_TUCK_REST_DISTANCE_MULT = 0.45;
+const AIRBORNE_TUCK_HIP_Y_FRACTION = 0.4;
+const AIRBORNE_TUCK_HIP_CLEARANCE = 0.5;
 
 // LEGS-radius debug viz: a wireframe SPHERE in world space at the
 // leg's rest center, scaled to stepRadius. A real 3D ball, not a
@@ -456,6 +460,7 @@ export function updateLegs(
   const bodyCenterHeight = getUnitBodyCenterHeight(entity.unit);
   const stepRadius = mesh.stepRadius;
   const showViz = getLegsRadiusToggle();
+  const grounded = isLocomotionGrounded(entity, mapWidth, mapHeight);
   // Chassis-UP direction in three.js world coords — the surface
   // normal at the unit's footprint, mapped from sim (sim z up) to
   // three (sim z → three y). Sampled once per unit per frame and
@@ -474,6 +479,21 @@ export function updateLegs(
   const sinYaw = Math.sin(yaw);
   const vLocalForward = cosYaw * vx + sinYaw * vy;
   const vLocalLateral = -sinYaw * vx + cosYaw * vy;
+
+  if (!grounded) {
+    updateAirborneLegPose(
+      mesh,
+      entity,
+      bodyCenterHeight,
+      mapWidth,
+      mapHeight,
+      legRenderer,
+      chassisUpX,
+      chassisUpY,
+      chassisUpZ,
+    );
+    return;
+  }
 
   for (const leg of mesh.legs) {
     const c = leg.config;
@@ -657,51 +677,14 @@ export function updateLegs(
     );
     const visualFootY = Math.max(footY, footSurface.visualFootY);
 
-    // Write the leg's two cylinder slots into the shared instanced
-    // renderer's per-instance buffers. After this loop (across every
-    // unit's every leg), the scene calls legRenderer.flush() once
-    // and the GPU draws every leg cylinder in two draw calls total.
-    if (mesh.legLod === 'simple') {
-      // 'simple' = single cylinder hip → foot, no knee bend.
-      legRenderer.updateUpper(
-        leg.upperSlot,
-        hipWorldX, hipWorldY, hipWorldZ,
-        footX, visualFootY, footZ,
-        leg.upperThick,
-        leg.shellPool,
-      );
-      // No lower slot allocated; nothing to do.
-    } else {
-      const knee = kneeFromIK(
-        hipWorldX, hipWorldY, hipWorldZ,
-        footX, visualFootY, footZ,
-        c.upperLegLength, c.lowerLegLength,
-        chassisUpX, chassisUpY, chassisUpZ,
-      );
-      legRenderer.updateUpper(
-        leg.upperSlot,
-        hipWorldX, hipWorldY, hipWorldZ,
-        knee.x, knee.y, knee.z,
-        leg.upperThick,
-        leg.shellPool,
-      );
-      legRenderer.updateLower(
-        leg.lowerSlot,
-        knee.x, knee.y, knee.z,
-        footX, visualFootY, footZ,
-        leg.lowerThick,
-        leg.shellPool,
-      );
-      if (leg.hipJointSlot >= 0)  legRenderer.updateJoint(leg.hipJointSlot,  hipWorldX, hipWorldY, hipWorldZ, leg.hipJointRadius, leg.shellPool);
-      if (leg.kneeJointSlot >= 0) legRenderer.updateJoint(leg.kneeJointSlot, knee.x, knee.y, knee.z, leg.kneeJointRadius, leg.shellPool);
-    }
-    legRenderer.updateFootPad(
-      leg.footPadSlot,
+    writeLegRenderPose(
+      mesh,
+      leg,
+      legRenderer,
+      hipWorldX, hipWorldY, hipWorldZ,
       footX, visualFootY, footZ,
-      leg.footPadRadius,
-      leg.footPadHalfHeight,
       footSurface.nx, footSurface.nz, footSurface.ny,
-      leg.shellPool,
+      chassisUpX, chassisUpY, chassisUpZ,
     );
   }
 }
@@ -712,6 +695,149 @@ function totalLegLength(c: ArachnidLegConfig): number {
 
 // Scratch output struct reused across the per-leg loop.
 const _worldOut = { x: 0, y: 0, z: 0 };
+
+function updateAirborneLegPose(
+  mesh: LegMesh,
+  entity: Entity,
+  bodyCenterHeight: number,
+  mapWidth: number,
+  mapHeight: number,
+  legRenderer: LegInstancedRenderer,
+  chassisUpX: number,
+  chassisUpY: number,
+  chassisUpZ: number,
+): void {
+  for (const leg of mesh.legs) {
+    if (leg.restSphere) leg.restSphere.visible = false;
+
+    const c = leg.config;
+    const restDistance = totalLegLength(c) * c.snapDistanceMultiplier;
+    const hipLocalX = c.attachOffsetX;
+    const hipLocalY = leg.hipY;
+    const hipLocalZ = c.attachOffsetY;
+    const tuckDistance = restDistance * AIRBORNE_TUCK_REST_DISTANCE_MULT;
+    const maxTuckY = Math.max(FOOT_Y, leg.hipY - AIRBORNE_TUCK_HIP_CLEARANCE);
+    const tuckLocalY = Math.min(
+      maxTuckY,
+      Math.max(FOOT_Y, leg.hipY * AIRBORNE_TUCK_HIP_Y_FRACTION),
+    );
+    const tuckLocalX = hipLocalX + Math.cos(c.snapTargetAngle) * tuckDistance;
+    const tuckLocalZ = hipLocalZ + Math.sin(c.snapTargetAngle) * tuckDistance;
+
+    transformChassisToWorld(
+      hipLocalX, hipLocalY, hipLocalZ,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+    );
+    const hipWorldX = _worldOut.x;
+    const hipWorldY = _worldOut.y;
+    const hipWorldZ = _worldOut.z;
+
+    transformChassisToWorld(
+      tuckLocalX, tuckLocalY, tuckLocalZ,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+    );
+    const footX = _worldOut.x;
+    const footY = _worldOut.y;
+    const footZ = _worldOut.z;
+
+    leg.worldX = footX;
+    leg.worldY = footY;
+    leg.worldZ = footZ;
+    leg.startWorldX = footX;
+    leg.startWorldY = footY;
+    leg.startWorldZ = footZ;
+    leg.targetWorldX = footX;
+    leg.targetWorldY = footY;
+    leg.targetWorldZ = footZ;
+    leg.isSliding = false;
+    leg.lerpProgress = 0;
+    leg.initialized = false;
+
+    writeLegRenderPose(
+      mesh,
+      leg,
+      legRenderer,
+      hipWorldX, hipWorldY, hipWorldZ,
+      footX, footY, footZ,
+      chassisUpX, chassisUpY, chassisUpZ,
+      chassisUpX, chassisUpY, chassisUpZ,
+    );
+  }
+}
+
+function writeLegRenderPose(
+  mesh: LegMesh,
+  leg: LegInstance,
+  legRenderer: LegInstancedRenderer,
+  hipWorldX: number,
+  hipWorldY: number,
+  hipWorldZ: number,
+  footX: number,
+  footY: number,
+  footZ: number,
+  footNormalX: number,
+  footNormalY: number,
+  footNormalZ: number,
+  chassisUpX: number,
+  chassisUpY: number,
+  chassisUpZ: number,
+): void {
+  const c = leg.config;
+  if (mesh.legLod === 'simple') {
+    legRenderer.updateUpper(
+      leg.upperSlot,
+      hipWorldX, hipWorldY, hipWorldZ,
+      footX, footY, footZ,
+      leg.upperThick,
+      leg.shellPool,
+    );
+  } else {
+    const knee = kneeFromIK(
+      hipWorldX, hipWorldY, hipWorldZ,
+      footX, footY, footZ,
+      c.upperLegLength, c.lowerLegLength,
+      chassisUpX, chassisUpY, chassisUpZ,
+    );
+    legRenderer.updateUpper(
+      leg.upperSlot,
+      hipWorldX, hipWorldY, hipWorldZ,
+      knee.x, knee.y, knee.z,
+      leg.upperThick,
+      leg.shellPool,
+    );
+    legRenderer.updateLower(
+      leg.lowerSlot,
+      knee.x, knee.y, knee.z,
+      footX, footY, footZ,
+      leg.lowerThick,
+      leg.shellPool,
+    );
+    if (leg.hipJointSlot >= 0) {
+      legRenderer.updateJoint(
+        leg.hipJointSlot,
+        hipWorldX, hipWorldY, hipWorldZ,
+        leg.hipJointRadius,
+        leg.shellPool,
+      );
+    }
+    if (leg.kneeJointSlot >= 0) {
+      legRenderer.updateJoint(
+        leg.kneeJointSlot,
+        knee.x, knee.y, knee.z,
+        leg.kneeJointRadius,
+        leg.shellPool,
+      );
+    }
+  }
+  legRenderer.updateFootPad(
+    leg.footPadSlot,
+    footX, footY, footZ,
+    leg.footPadRadius,
+    leg.footPadHalfHeight,
+    footNormalX, footNormalY, footNormalZ,
+    leg.shellPool,
+  );
+}
 
 function initializeLegAt(
   leg: LegInstance,

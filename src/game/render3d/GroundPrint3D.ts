@@ -41,11 +41,12 @@
 // allocate nothing in steady state.
 
 import * as THREE from 'three';
-import type { Entity } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 import { getGraphicsConfig, getGroundMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { LegInstance } from './LegRig3D';
+import { isLocomotionGrounded } from './LocomotionTerrainSampler';
 import { disposeMesh } from './threeUtils';
 import {
   computeMiteredQuad,
@@ -186,6 +187,15 @@ if (vMarkShape > 0.5) {
 
 type TrailKey = string;
 
+function unitIdFromTrailKey(key: TrailKey): EntityId | undefined {
+  const firstColon = key.indexOf(':');
+  if (firstColon < 0) return undefined;
+  const secondColon = key.indexOf(':', firstColon + 1);
+  if (secondColon < 0) return undefined;
+  const id = Number(key.slice(firstColon + 1, secondColon));
+  return Number.isFinite(id) ? id as EntityId : undefined;
+}
+
 type TrailState = {
   lastEmitX: number;
   lastEmitY: number;
@@ -244,6 +254,8 @@ export class GroundPrint3D {
   private _seenTrailKeys = new Set<TrailKey>();
   private stamps = new Map<TrailKey, StampState>();
   private _seenStampKeys = new Set<TrailKey>();
+  private _activeUnitIds = new Set<EntityId>();
+  private _groundedUnitIds = new Set<EntityId>();
 
   /** EMA-smoothed copy of the LOD-resolved density. -1 = "not
    *  initialized yet" so the first update snaps to the resolved
@@ -287,6 +299,8 @@ export class GroundPrint3D {
     units: readonly Entity[],
     getMesh: (e: Entity) => Locomotion3DMesh,
     dtMs: number,
+    mapWidth: number,
+    mapHeight: number,
   ): void {
     // Toggle: if marks are off, drain everything and idle.
     if (!getGroundMarks()) {
@@ -343,11 +357,13 @@ export class GroundPrint3D {
       this.colDirty = true;
     }
 
+    this.refreshGroundedUnits(units, mapWidth, mapHeight);
+
     // Below the floor, skip the emit pass — keep the smoothed
-    // density alive so the next frame can pick up smoothly. Do NOT
-    // wipe trails/stamps; if the tier flips back up we want their
-    // "last emit" point to still be valid so the next quad
-    // continues from where the trail left off.
+    // density alive so the next frame can pick up smoothly. Ground
+    // contact loss is already retired above; grounded contacts keep
+    // their last emit point for a clean continuation if density
+    // rises again.
     if (density < EMIT_DENSITY_FLOOR) {
       this.flushBuffers();
       return;
@@ -364,6 +380,7 @@ export class GroundPrint3D {
     this._seenStampKeys.clear();
 
     for (const e of units) {
+      if (!this._groundedUnitIds.has(e.id)) continue;
       const loc = getMesh(e);
       if (!loc) continue;
       // Off-scope units: skip sampling entirely. Their trail/stamp
@@ -416,6 +433,38 @@ export class GroundPrint3D {
     }
 
     this.flushBuffers();
+  }
+
+  private refreshGroundedUnits(
+    units: readonly Entity[],
+    mapWidth: number,
+    mapHeight: number,
+  ): void {
+    this._activeUnitIds.clear();
+    this._groundedUnitIds.clear();
+
+    for (const e of units) {
+      this._activeUnitIds.add(e.id);
+      if (isLocomotionGrounded(e, mapWidth, mapHeight)) {
+        this._groundedUnitIds.add(e.id);
+      }
+    }
+
+    this.retireUnavailableContactState(this.trails);
+    this.retireUnavailableContactState(this.stamps);
+  }
+
+  private retireUnavailableContactState<T>(states: Map<TrailKey, T>): void {
+    for (const key of states.keys()) {
+      const unitId = unitIdFromTrailKey(key);
+      if (
+        unitId === undefined ||
+        !this._activeUnitIds.has(unitId) ||
+        !this._groundedUnitIds.has(unitId)
+      ) {
+        states.delete(key);
+      }
+    }
   }
 
   // ── Trail sampling (wheels, tread sides) ──

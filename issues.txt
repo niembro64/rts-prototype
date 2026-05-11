@@ -11,18 +11,7 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 ==============================================================================
  ISSUES:
 
-  1. Render ground contacts ignore actual airborne state.
-     GroundPrint3D emits wheel/tread trails and leg stamps from initialized rig contacts
-     without checking terrain contact, altitude, or suspension.legContact: src/game/render3d/
-     GroundPrint3D.ts:366. Leg rendering keeps feet planted on terrain/rest spheres even when
-     the body is jumping: src/game/render3d/LegRig3D.ts:438, src/game/render3d/
-     LegRig3D.ts:577.
-     Impact: jump units can leave ground prints while airborne and visually stretch/clamp
-     legs toward the ground.
-     Fix: derive a shared render isGrounded from the same penetration predicate, clear trail
-     state while airborne, and switch leg rigs to an airborne/tucked pose until contact
-     resumes.
-  2. Contact shadows do not reflect jump height.
+  1. Contact shadows do not reflect jump height.
      Unit shadow caster height is fixed to bodyCenterHeight, not actual height above terrain:
      src/game/render3d/ContactShadowRenderer3D.ts:95.
      Impact: airborne units still look shadowed like grounded units.

@@ -265,6 +265,8 @@ export class RtsScene3DRenderPhase {
         this.clientViewState.getUnits(),
         (e) => entityRenderer.getLocomotionMesh(e.id),
         this.groundPrintAccumMs,
+        this.clientViewState.getMapWidth(),
+        this.clientViewState.getMapHeight(),
       );
       this.groundPrintAccumMs = 0;
     }
