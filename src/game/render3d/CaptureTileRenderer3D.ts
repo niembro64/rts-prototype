@@ -318,8 +318,8 @@ export class CaptureTileRenderer3D {
             '  vec2 uvB = (secondaryRot * worldXZ) / (uGroundDetailTileWorldSize * 0.7367);',
             '  vec4 detailA = texture2D(uGroundDetailTexture, uvA);',
             '  vec4 detailB = texture2D(uGroundDetailTexture, uvB);',
-            '  float bx = sin(worldXZ.x * 0.0089 + worldXZ.z * 0.0067);',
-            '  float bz = cos(worldXZ.x * 0.0073 - worldXZ.z * 0.0091);',
+            '  float bx = sin(worldXZ.x * 0.0089 + worldXZ.y * 0.0067);',
+            '  float bz = cos(worldXZ.x * 0.0073 - worldXZ.y * 0.0091);',
             '  float blendN = clamp(0.5 + 0.55 * bx * bz, 0.0, 1.0);',
             '  vec4 detail = mix(detailA, detailB, blendN);',
             '  terrainRgb = mix(terrainRgb, detail.rgb, detail.a * flatGreenDetail * uGroundDetailContrast);',
@@ -355,7 +355,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v20';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v21';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
