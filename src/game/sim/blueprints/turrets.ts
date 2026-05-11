@@ -260,7 +260,7 @@ export const TURRET_BLUEPRINTS = {
   salvoRocketTurret: {
     id: 'salvoRocketTurret',
     projectileId: 'lightRocket',
-    range: 500,
+    range: 700,
     cooldown: 2000,
     launchForce: 400,
     turretTurnAccel: 200,

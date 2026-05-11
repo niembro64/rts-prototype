@@ -71,7 +71,7 @@ export const SHOT_BLUEPRINTS = {
     detonateOnExpiry: true,
     lifespan: 5000,
     ignoresGravity: true,
-    homingTurnRate: 1,
+    homingTurnRate: 0.7,
     // Render as a velocity-aligned cylinder (purely cosmetic — sim
     // collision is still sphere-based via collision.radius).
     shape: 'cylinder',
