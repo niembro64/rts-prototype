@@ -68,6 +68,276 @@ const BUILD_GRID_COLOR_METAL = [0, 58, 153, 185] as const;
 const FOREST_SPRUCE2_WOOD_SHADER_RGB = shaderRgbLiteral(FOREST_SPRUCE2_WOOD_COLOR);
 const FOREST_SPRUCE2_LEAF_SHADER_RGB = shaderRgbLiteral(FOREST_SPRUCE2_LEAF_COLOR);
 
+type GroundDetailShape =
+  | { kind: 'box'; hx: number; hy: number }
+  | { kind: 'tri'; h: number; w: number }
+  | { kind: 'circle'; r: number }
+  | { kind: 'hex'; r: number }
+  | { kind: 'rosette'; r: number; petals: number };
+
+type GroundDetailLayer = {
+  scale: number;
+  seedAt: readonly [number, number];
+  offsetAAt: readonly [number, number];
+  offsetBAt: readonly [number, number];
+  angleAt: readonly [number, number];
+  shadeAt: readonly [number, number];
+  offsetFactor: number;
+  angleRange: number;
+  angleCentered: boolean;
+  threshold: number;
+  shape: GroundDetailShape;
+  palette: 'wood' | 'leaf';
+  darkScale: readonly [number, number, number];
+  lightScale: readonly [number, number, number];
+  lightAdd?: readonly [number, number, number];
+  mix: number;
+};
+
+// Inspired by shapes in the tree and grass props: hexagons (low-poly trunk and
+// foliage cross-sections), pointed triangles (spruce foliage facets, pine
+// needles), and rosettes (grass clumps splaying outward). Brown layers reuse
+// the spruce wood color, green layers the spruce leaf color.
+const GROUND_DETAIL_LAYERS: readonly GroundDetailLayer[] = [
+  // Background: largest features painted first; smaller details overlay later.
+  {
+    scale: 18.0,
+    seedAt: [133.7, 211.4], offsetAAt: [81.2, 17.3], offsetBAt: [9.8, 65.4],
+    angleAt: [45.1, 91.7], shadeAt: [12.7, 88.9],
+    offsetFactor: 0.30, angleRange: Math.PI, angleCentered: false,
+    threshold: 0.80, shape: { kind: 'hex', r: 0.30 }, palette: 'wood',
+    darkScale: [0.32, 0.32, 0.28], lightScale: [0.95, 0.88, 0.70], mix: 0.55,
+  },
+  {
+    scale: 15.2,
+    seedAt: [57.3, 81.1], offsetAAt: [22.7, 6.5], offsetBAt: [9.2, 44.1],
+    angleAt: [77.4, 31.8], shadeAt: [44.1, 15.6],
+    offsetFactor: 0.42, angleRange: Math.PI, angleCentered: false,
+    threshold: 0.72, shape: { kind: 'box', hx: 0.028, hy: 0.49 }, palette: 'wood',
+    darkScale: [0.32, 0.31, 0.26], lightScale: [1.05, 0.98, 0.74], mix: 0.78,
+  },
+  {
+    scale: 13.0,
+    seedAt: [78.4, 42.1], offsetAAt: [38.7, 91.3], offsetBAt: [7.2, 23.9],
+    angleAt: [19.6, 73.2], shadeAt: [54.3, 11.7],
+    offsetFactor: 0.34, angleRange: Math.PI, angleCentered: false,
+    threshold: 0.74, shape: { kind: 'hex', r: 0.22 }, palette: 'wood',
+    darkScale: [0.36, 0.35, 0.30], lightScale: [1.05, 0.96, 0.80], mix: 0.60,
+  },
+  {
+    scale: 11.0,
+    seedAt: [11.2, 99.8], offsetAAt: [42.8, 1.7], offsetBAt: [3.5, 81.4],
+    angleAt: [26.4, 12.3], shadeAt: [38.9, 5.2],
+    offsetFactor: 0.42, angleRange: Math.PI, angleCentered: false,
+    threshold: 0.68, shape: { kind: 'box', hx: 0.024, hy: 0.45 }, palette: 'wood',
+    darkScale: [0.42, 0.40, 0.34], lightScale: [1.15, 1.10, 0.90], mix: 0.70,
+  },
+  {
+    scale: 10.5,
+    seedAt: [89.1, 33.4], offsetAAt: [52.7, 4.1], offsetBAt: [8.4, 67.2],
+    angleAt: [21.5, 88.6], shadeAt: [67.2, 32.8],
+    offsetFactor: 0.34, angleRange: 2 * Math.PI, angleCentered: false,
+    threshold: 0.62, shape: { kind: 'tri', h: 0.32, w: 0.18 }, palette: 'wood',
+    darkScale: [0.40, 0.38, 0.32], lightScale: [1.15, 1.05, 0.85], mix: 0.65,
+  },
+  {
+    scale: 9.5,
+    seedAt: [143.2, 22.7], offsetAAt: [67.9, 14.5], offsetBAt: [2.3, 58.6],
+    angleAt: [31.7, 49.5], shadeAt: [22.9, 71.3],
+    offsetFactor: 0.38, angleRange: 2 * Math.PI, angleCentered: false,
+    threshold: 0.65, shape: { kind: 'rosette', r: 0.30, petals: 4 }, palette: 'leaf',
+    darkScale: [0.38, 0.54, 0.36], lightScale: [1.18, 1.22, 1.05], mix: 0.55,
+  },
+  {
+    scale: 8.8,
+    seedAt: [101.0, 17.0], offsetAAt: [41.2, 8.6], offsetBAt: [5.4, 73.8],
+    angleAt: [13.7, 91.1], shadeAt: [63.4, 12.9],
+    offsetFactor: 0.44, angleRange: Math.PI, angleCentered: false,
+    threshold: 0.55, shape: { kind: 'box', hx: 0.022, hy: 0.49 }, palette: 'wood',
+    darkScale: [0.45, 0.44, 0.38], lightScale: [1.25, 1.20, 1.03], mix: 0.70,
+  },
+  {
+    scale: 7.5,
+    seedAt: [31.5, 78.9], offsetAAt: [13.8, 9.4], offsetBAt: [45.7, 22.1],
+    angleAt: [55.3, 13.4], shadeAt: [91.4, 6.7],
+    offsetFactor: 0.42, angleRange: Math.PI, angleCentered: false,
+    threshold: 0.55, shape: { kind: 'box', hx: 0.020, hy: 0.42 }, palette: 'wood',
+    darkScale: [0.48, 0.46, 0.40], lightScale: [1.20, 1.15, 0.95], mix: 0.65,
+  },
+  {
+    scale: 7.0,
+    seedAt: [56.7, 34.8], offsetAAt: [7.4, 91.2], offsetBAt: [28.1, 15.6],
+    angleAt: [64.8, 51.4], shadeAt: [83.1, 27.5],
+    offsetFactor: 0.32, angleRange: 2 * Math.PI, angleCentered: false,
+    threshold: 0.55, shape: { kind: 'rosette', r: 0.34, petals: 5 }, palette: 'leaf',
+    darkScale: [0.45, 0.62, 0.42], lightScale: [1.22, 1.25, 1.10],
+    lightAdd: [0.025, 0.030, 0.015], mix: 0.60,
+  },
+  {
+    scale: 6.0,
+    seedAt: [122.5, 38.6], offsetAAt: [74.9, 5.2], offsetBAt: [16.3, 87.4],
+    angleAt: [43.1, 64.7], shadeAt: [11.6, 99.3],
+    offsetFactor: 0.40, angleRange: Math.PI, angleCentered: false,
+    threshold: 0.55, shape: { kind: 'box', hx: 0.018, hy: 0.38 }, palette: 'wood',
+    darkScale: [0.50, 0.48, 0.42], lightScale: [1.30, 1.20, 0.98], mix: 0.62,
+  },
+  {
+    scale: 5.5,
+    seedAt: [15.8, 88.2], offsetAAt: [94.5, 21.3], offsetBAt: [8.7, 73.6],
+    angleAt: [37.2, 12.9], shadeAt: [65.4, 9.1],
+    offsetFactor: 0.34, angleRange: 2 * Math.PI, angleCentered: false,
+    threshold: 0.50, shape: { kind: 'tri', h: 0.30, w: 0.20 }, palette: 'leaf',
+    darkScale: [0.48, 0.60, 0.42], lightScale: [1.25, 1.28, 1.10], mix: 0.55,
+  },
+  {
+    scale: 5.0,
+    seedAt: [58.3, 17.1], offsetAAt: [36.7, 81.5], offsetBAt: [2.4, 9.8],
+    angleAt: [0, 0], shadeAt: [72.6, 41.4],
+    offsetFactor: 0.36, angleRange: 0, angleCentered: false,
+    threshold: 0.62, shape: { kind: 'circle', r: 0.10 }, palette: 'wood',
+    darkScale: [0.55, 0.52, 0.45], lightScale: [1.20, 1.10, 0.92], mix: 0.60,
+  },
+  {
+    scale: 4.5,
+    seedAt: [91.7, 47.3], offsetAAt: [11.2, 78.5], offsetBAt: [63.1, 14.9],
+    angleAt: [28.4, 35.7], shadeAt: [7.3, 84.6],
+    offsetFactor: 0.36, angleRange: Math.PI, angleCentered: false,
+    threshold: 0.65, shape: { kind: 'hex', r: 0.10 }, palette: 'wood',
+    darkScale: [0.50, 0.45, 0.38], lightScale: [1.18, 1.05, 0.86], mix: 0.58,
+  },
+  {
+    scale: 4.4,
+    seedAt: [0, 0], offsetAAt: [11.7, 4.2], offsetBAt: [3.1, 19.4],
+    angleAt: [23.3, 51.9], shadeAt: [7.7, 2.9],
+    offsetFactor: 0.38, angleRange: Math.PI, angleCentered: true,
+    threshold: 0.20, shape: { kind: 'box', hx: 0.034, hy: 0.49 }, palette: 'leaf',
+    darkScale: [0.50, 0.65, 0.48], lightScale: [1.30, 1.28, 1.18],
+    lightAdd: [0.035, 0.040, 0.020], mix: 0.70,
+  },
+  {
+    scale: 3.8,
+    seedAt: [33.1, 79.6], offsetAAt: [54.7, 8.3], offsetBAt: [2.9, 41.5],
+    angleAt: [48.6, 16.4], shadeAt: [89.4, 25.7],
+    offsetFactor: 0.36, angleRange: 2 * Math.PI, angleCentered: false,
+    threshold: 0.55, shape: { kind: 'tri', h: 0.28, w: 0.16 }, palette: 'leaf',
+    darkScale: [0.42, 0.55, 0.38], lightScale: [1.18, 1.22, 1.05], mix: 0.55,
+  },
+  {
+    scale: 3.3,
+    seedAt: [64.2, 81.7], offsetAAt: [28.5, 13.6], offsetBAt: [7.1, 92.4],
+    angleAt: [35.9, 47.1], shadeAt: [74.1, 11.6],
+    offsetFactor: 0.42, angleRange: Math.PI, angleCentered: false,
+    threshold: 0.62, shape: { kind: 'box', hx: 0.016, hy: 0.34 }, palette: 'wood',
+    darkScale: [0.52, 0.48, 0.42], lightScale: [1.18, 1.06, 0.88], mix: 0.55,
+  },
+  {
+    scale: 3.0,
+    seedAt: [85.4, 12.3], offsetAAt: [43.6, 71.8], offsetBAt: [8.9, 25.1],
+    angleAt: [52.7, 39.6], shadeAt: [16.8, 92.7],
+    offsetFactor: 0.34, angleRange: 2 * Math.PI, angleCentered: false,
+    threshold: 0.55, shape: { kind: 'rosette', r: 0.30, petals: 4 }, palette: 'leaf',
+    darkScale: [0.46, 0.62, 0.42], lightScale: [1.25, 1.30, 1.12], mix: 0.55,
+  },
+  {
+    scale: 2.6,
+    seedAt: [67.3, 29.1], offsetAAt: [31.4, 14.8], offsetBAt: [2.7, 47.6],
+    angleAt: [19.1, 33.7], shadeAt: [5.1, 88.2],
+    offsetFactor: 0.40, angleRange: Math.PI, angleCentered: true,
+    threshold: 0.35, shape: { kind: 'box', hx: 0.020, hy: 0.49 }, palette: 'leaf',
+    darkScale: [0.38, 0.55, 0.36], lightScale: [1.18, 1.24, 1.05],
+    lightAdd: [0.020, 0.025, 0.015], mix: 0.65,
+  },
+  {
+    scale: 2.2,
+    seedAt: [74.6, 53.2], offsetAAt: [18.4, 67.5], offsetBAt: [5.3, 11.7],
+    angleAt: [42.8, 28.3], shadeAt: [33.7, 81.4],
+    offsetFactor: 0.42, angleRange: 2 * Math.PI, angleCentered: false,
+    threshold: 0.50, shape: { kind: 'tri', h: 0.24, w: 0.10 }, palette: 'leaf',
+    darkScale: [0.45, 0.58, 0.40], lightScale: [1.22, 1.25, 1.08], mix: 0.50,
+  },
+  {
+    scale: 1.7,
+    seedAt: [13.4, 76.8], offsetAAt: [48.1, 17.5], offsetBAt: [7.6, 39.2],
+    angleAt: [63.8, 21.4], shadeAt: [86.5, 14.9],
+    offsetFactor: 0.44, angleRange: Math.PI, angleCentered: true,
+    threshold: 0.45, shape: { kind: 'box', hx: 0.014, hy: 0.42 }, palette: 'leaf',
+    darkScale: [0.42, 0.55, 0.38], lightScale: [1.20, 1.22, 1.10], mix: 0.50,
+  },
+];
+
+function f(n: number): string {
+  return Number.isFinite(n) ? n.toFixed(6) : '0.0';
+}
+
+function buildGroundDetailLayerGlsl(layer: GroundDetailLayer): string[] {
+  const palette = layer.palette === 'wood' ? 'forestSpruce2WoodRgb' : 'forestSpruce2LeafRgb';
+  const angleHashExpr = `terrainHash12(c + vec2(${f(layer.angleAt[0])}, ${f(layer.angleAt[1])}))`;
+  const angleExpr =
+    layer.angleRange === 0
+      ? '0.0'
+      : layer.angleCentered
+        ? `(${angleHashExpr} - 0.5) * ${f(layer.angleRange)}`
+        : `${angleHashExpr} * ${f(layer.angleRange)}`;
+  let shapeExpr: string;
+  switch (layer.shape.kind) {
+    case 'box':
+      shapeExpr = `terrainBoxMark(lp, vec2(${f(layer.shape.hx)}, ${f(layer.shape.hy)}))`;
+      break;
+    case 'tri':
+      shapeExpr = `terrainTriMark(lp, ${f(layer.shape.h)}, ${f(layer.shape.w)})`;
+      break;
+    case 'circle':
+      shapeExpr = `terrainCircleMark(lp, ${f(layer.shape.r)})`;
+      break;
+    case 'hex':
+      shapeExpr = `terrainHexMark(lp, ${f(layer.shape.r)})`;
+      break;
+    case 'rosette':
+      shapeExpr = `terrainRosetteMark(lp, ${f(layer.shape.r)}, ${f(layer.shape.petals)})`;
+      break;
+  }
+  const lightAdd = layer.lightAdd
+    ? ` + vec3(${f(layer.lightAdd[0])}, ${f(layer.lightAdd[1])}, ${f(layer.lightAdd[2])})`
+    : '';
+  const rotateExpr =
+    layer.angleRange === 0 ? '(uv - off * ' + f(layer.offsetFactor) + ')'
+      : `terrainRot2(ang) * (uv - off * ${f(layer.offsetFactor)})`;
+  return [
+    '{',
+    `  vec2 g = detailPos / ${f(layer.scale)};`,
+    '  vec2 c = floor(g);',
+    '  vec2 uv = fract(g) - vec2(0.5);',
+    `  float seed = terrainHash12(c + vec2(${f(layer.seedAt[0])}, ${f(layer.seedAt[1])}));`,
+    `  vec2 off = vec2(`,
+    `    terrainHash12(c + vec2(${f(layer.offsetAAt[0])}, ${f(layer.offsetAAt[1])})),`,
+    `    terrainHash12(c + vec2(${f(layer.offsetBAt[0])}, ${f(layer.offsetBAt[1])}))`,
+    `  ) - vec2(0.5);`,
+    `  float ang = ${angleExpr};`,
+    `  vec2 lp = ${rotateExpr};`,
+    `  float mark = ${shapeExpr} * step(${f(layer.threshold)}, seed);`,
+    `  vec3 dRgb = ${palette} * vec3(${f(layer.darkScale[0])}, ${f(layer.darkScale[1])}, ${f(layer.darkScale[2])});`,
+    `  vec3 lRgb = min(${palette} * vec3(${f(layer.lightScale[0])}, ${f(layer.lightScale[1])}, ${f(layer.lightScale[2])})${lightAdd}, vec3(1.0));`,
+    `  vec3 rgb = mix(dRgb, lRgb, terrainHash12(c + vec2(${f(layer.shadeAt[0])}, ${f(layer.shadeAt[1])})));`,
+    `  terrainRgb = mix(terrainRgb, rgb, mark * flatGreenDetail * ${f(layer.mix)});`,
+    '}',
+  ];
+}
+
+function buildGroundDetailLayersGlsl(): string[] {
+  if (!TERRAIN_GROUND_DETAIL_ENABLED) return [];
+  const lines: string[] = [
+    'float flatDetail = (1.0 - smoothstep(0.035, 0.16, vTerrainSlope)) * (1.0 - shoreline);',
+    'float flatGreenDetail = flatDetail * (1.0 - smoothstep(0.38, 0.92, upland)) * (1.0 - exposedRock * 0.82) * (1.0 - highDry * 0.72);',
+    `vec3 forestSpruce2LeafRgb = ${FOREST_SPRUCE2_LEAF_SHADER_RGB};`,
+    `vec3 forestSpruce2WoodRgb = ${FOREST_SPRUCE2_WOOD_SHADER_RGB};`,
+    'vec2 detailPos = vTerrainWorldPos.xz;',
+  ];
+  for (const layer of GROUND_DETAIL_LAYERS) {
+    lines.push(...buildGroundDetailLayerGlsl(layer));
+  }
+  return lines;
+}
+
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
 const TRIANGLE_DEBUG_COLOR = new THREE.Color();
 const TERRAIN_HORIZON_COLOR = new THREE.Color(TERRAIN_HORIZON_BLEND_CONFIG.color);
@@ -262,6 +532,27 @@ export class CaptureTileRenderer3D {
             '  vec2 hit = step(abs(p), halfSize);',
             '  return hit.x * hit.y;',
             '}',
+            'float terrainTriMark(vec2 p, float h, float w) {',
+            '  if (p.y < -h || p.y > h) return 0.0;',
+            '  float t = (h - p.y) / max(2.0 * h, 1e-5);',
+            '  return step(abs(p.x), w * t);',
+            '}',
+            'float terrainCircleMark(vec2 p, float radius) {',
+            '  return step(dot(p, p), radius * radius);',
+            '}',
+            'float terrainHexMark(vec2 p, float apothem) {',
+            '  float d1 = abs(p.x);',
+            '  float d2 = abs(p.x * 0.5 + p.y * 0.8660254);',
+            '  float d3 = abs(p.x * 0.5 - p.y * 0.8660254);',
+            '  return step(max(d1, max(d2, d3)), apothem);',
+            '}',
+            'float terrainRosetteMark(vec2 p, float radius, float petals) {',
+            '  float rad = length(p);',
+            '  if (rad > radius) return 0.0;',
+            '  float a = atan(p.y, p.x);',
+            '  float petalR = radius * (0.50 + 0.50 * cos(petals * a));',
+            '  return step(rad, petalR);',
+            '}',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
@@ -289,75 +580,7 @@ export class CaptureTileRenderer3D {
             'terrainRgb = mix(terrainRgb, rock, max(exposedRock * 0.58, steepRock * 0.48));',
             'terrainRgb = mix(terrainRgb, sunBleachedRock, highDry * 0.38);',
             'terrainRgb = mix(terrainRgb, wetSoil, shoreline * 0.72);',
-            ...(TERRAIN_GROUND_DETAIL_ENABLED
-              ? [
-                  'float flatDetail = (1.0 - smoothstep(0.035, 0.16, vTerrainSlope)) * (1.0 - shoreline);',
-                  'float flatGreenDetail = flatDetail * (1.0 - smoothstep(0.38, 0.92, upland)) * (1.0 - exposedRock * 0.82) * (1.0 - highDry * 0.72);',
-                  `vec3 forestSpruce2LeafRgb = ${FOREST_SPRUCE2_LEAF_SHADER_RGB};`,
-                  `vec3 forestSpruce2WoodRgb = ${FOREST_SPRUCE2_WOOD_SHADER_RGB};`,
-                  'vec2 detailPos = vTerrainWorldPos.xz;',
-                  'vec2 bladeGrid = detailPos / 4.4;',
-                  'vec2 bladeCell = floor(bladeGrid);',
-                  'vec2 bladeUv = fract(bladeGrid) - vec2(0.5);',
-                  'float bladeSeed = terrainHash12(bladeCell);',
-                  'vec2 bladeOffset = vec2(',
-                  '  terrainHash12(bladeCell + vec2(11.7, 4.2)),',
-                  '  terrainHash12(bladeCell + vec2(3.1, 19.4))',
-                  ') - vec2(0.5);',
-                  'float bladeAngle = (terrainHash12(bladeCell + vec2(23.3, 51.9)) - 0.5) * 3.14159265;',
-                  'vec2 bladeLocal = terrainRot2(bladeAngle) * (bladeUv - bladeOffset * 0.38);',
-                  'float bladeMark = terrainBoxMark(bladeLocal, vec2(0.034, 0.49)) * step(0.20, bladeSeed);',
-                  'vec3 bladeDarkRgb = forestSpruce2LeafRgb * vec3(0.50, 0.65, 0.48);',
-                  'vec3 bladeLightRgb = min(forestSpruce2LeafRgb * vec3(1.30, 1.28, 1.18) + vec3(0.035, 0.040, 0.020), vec3(1.0));',
-                  'vec3 bladeRgb = mix(bladeDarkRgb, bladeLightRgb, terrainHash12(bladeCell + vec2(7.7, 2.9)));',
-                  'terrainRgb = mix(terrainRgb, bladeRgb, bladeMark * flatGreenDetail * 0.70);',
-                  'vec2 blade2Grid = detailPos / 2.6;',
-                  'vec2 blade2Cell = floor(blade2Grid);',
-                  'vec2 blade2Uv = fract(blade2Grid) - vec2(0.5);',
-                  'float blade2Seed = terrainHash12(blade2Cell + vec2(67.3, 29.1));',
-                  'vec2 blade2Offset = vec2(',
-                  '  terrainHash12(blade2Cell + vec2(31.4, 14.8)),',
-                  '  terrainHash12(blade2Cell + vec2(2.7, 47.6))',
-                  ') - vec2(0.5);',
-                  'float blade2Angle = (terrainHash12(blade2Cell + vec2(19.1, 33.7)) - 0.5) * 3.14159265;',
-                  'vec2 blade2Local = terrainRot2(blade2Angle) * (blade2Uv - blade2Offset * 0.40);',
-                  'float blade2Mark = terrainBoxMark(blade2Local, vec2(0.020, 0.49)) * step(0.35, blade2Seed);',
-                  'vec3 blade2DarkRgb = forestSpruce2LeafRgb * vec3(0.38, 0.55, 0.36);',
-                  'vec3 blade2LightRgb = min(forestSpruce2LeafRgb * vec3(1.18, 1.24, 1.05) + vec3(0.020, 0.025, 0.015), vec3(1.0));',
-                  'vec3 blade2Rgb = mix(blade2DarkRgb, blade2LightRgb, terrainHash12(blade2Cell + vec2(5.1, 88.2)));',
-                  'terrainRgb = mix(terrainRgb, blade2Rgb, blade2Mark * flatGreenDetail * 0.65);',
-                  'vec2 stickGrid = detailPos / 8.8;',
-                  'vec2 stickCell = floor(stickGrid);',
-                  'vec2 stickUv = fract(stickGrid) - vec2(0.5);',
-                  'float stickSeed = terrainHash12(stickCell + vec2(101.0, 17.0));',
-                  'vec2 stickOffset = vec2(',
-                  '  terrainHash12(stickCell + vec2(41.2, 8.6)),',
-                  '  terrainHash12(stickCell + vec2(5.4, 73.8))',
-                  ') - vec2(0.5);',
-                  'float stickAngle = terrainHash12(stickCell + vec2(13.7, 91.1)) * 3.14159265;',
-                  'vec2 stickLocal = terrainRot2(stickAngle) * (stickUv - stickOffset * 0.44);',
-                  'float stickMark = terrainBoxMark(stickLocal, vec2(0.022, 0.49)) * step(0.55, stickSeed);',
-                  'vec3 stickDarkRgb = forestSpruce2WoodRgb * vec3(0.45, 0.44, 0.38);',
-                  'vec3 stickLightRgb = min(forestSpruce2WoodRgb * vec3(1.25, 1.20, 1.03), vec3(1.0));',
-                  'vec3 stickRgb = mix(stickDarkRgb, stickLightRgb, terrainHash12(stickCell + vec2(63.4, 12.9)));',
-                  'terrainRgb = mix(terrainRgb, stickRgb, stickMark * flatGreenDetail * 0.70);',
-                  'vec2 stick2Grid = detailPos / 15.2;',
-                  'vec2 stick2Cell = floor(stick2Grid);',
-                  'vec2 stick2Uv = fract(stick2Grid) - vec2(0.5);',
-                  'float stick2Seed = terrainHash12(stick2Cell + vec2(57.3, 81.1));',
-                  'vec2 stick2Offset = vec2(',
-                  '  terrainHash12(stick2Cell + vec2(22.7, 6.5)),',
-                  '  terrainHash12(stick2Cell + vec2(9.2, 44.1))',
-                  ') - vec2(0.5);',
-                  'float stick2Angle = terrainHash12(stick2Cell + vec2(77.4, 31.8)) * 3.14159265;',
-                  'vec2 stick2Local = terrainRot2(stick2Angle) * (stick2Uv - stick2Offset * 0.42);',
-                  'float stick2Mark = terrainBoxMark(stick2Local, vec2(0.028, 0.49)) * step(0.72, stick2Seed);',
-                  'vec3 stick2DarkRgb = forestSpruce2WoodRgb * vec3(0.32, 0.31, 0.26);',
-                  'vec3 stick2LightRgb = min(forestSpruce2WoodRgb * vec3(1.05, 0.98, 0.74), vec3(1.0));',
-                  'vec3 stick2Rgb = mix(stick2DarkRgb, stick2LightRgb, terrainHash12(stick2Cell + vec2(44.1, 15.6)));',
-                  'terrainRgb = mix(terrainRgb, stick2Rgb, stick2Mark * flatGreenDetail * 0.78);',
-                ]
-              : []),
+            ...buildGroundDetailLayersGlsl(),
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
             'float terrainFinalShade = mix(vTerrainShade, uTerrainHorizonShade, horizonBlend);',
@@ -389,7 +612,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v15';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v16';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
