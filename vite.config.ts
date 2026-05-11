@@ -7,6 +7,34 @@ import { resolve } from 'path';
 const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 const usePollingWatcher = process.env.RTS_WATCH_POLLING === '1';
 
+function getSrcPath(normalizedId: string): string | undefined {
+  const marker = '/src/';
+  const markerIndex = normalizedId.indexOf(marker);
+  return markerIndex >= 0 ? normalizedId.slice(markerIndex + marker.length) : undefined;
+}
+
+function isSharedAppModule(srcPath: string): boolean {
+  return (
+    srcPath === 'config.ts' ||
+    srcPath === 'audioConfig.ts' ||
+    srcPath === 'battleBarConfig.ts' ||
+    srcPath === 'barThemes.ts' ||
+    srcPath === 'clientBarConfig.ts' ||
+    srcPath === 'demoConfig.ts' ||
+    srcPath === 'gamePhase.ts' ||
+    srcPath === 'lodConfig.ts' ||
+    srcPath === 'mapSizeConfig.ts' ||
+    srcPath === 'persistence.ts' ||
+    srcPath === 'playerNamesConfig.ts' ||
+    srcPath === 'serverBarConfig.ts' ||
+    srcPath === 'serverSimLodConfig.ts' ||
+    srcPath === 'shellConfig.ts' ||
+    srcPath === 'uiLabels.ts' ||
+    srcPath === 'game/sim/blueprints/unitRoster.ts' ||
+    srcPath.startsWith('types/')
+  );
+}
+
 export default defineConfig({
   base: isTauri ? '/' : '/budget-annihilation/',
   plugins: [vue(), wasm(), topLevelAwait()],
@@ -48,10 +76,20 @@ export default defineConfig({
             return 'vendor';
           }
 
-          if (normalizedId.includes('/src/game/render3d/')) return 'app-render3d';
-          if (normalizedId.includes('/src/game/scenes/')) return 'app-scenes';
-          if (normalizedId.includes('/src/game/sim/')) return 'app-sim';
-          if (normalizedId.includes('/src/game/network/')) return 'app-network';
+          const srcPath = getSrcPath(normalizedId);
+          if (!srcPath) return;
+          if (isSharedAppModule(srcPath)) return 'app-shared';
+
+          if (
+            normalizedId.includes('/src/game/render3d/') ||
+            normalizedId.includes('/src/game/scenes/') ||
+            normalizedId.includes('/src/game/input/')
+          ) return 'app-render3d';
+          if (
+            normalizedId.includes('/src/game/math/') ||
+            normalizedId.includes('/src/game/sim/') ||
+            normalizedId.includes('/src/game/network/')
+          ) return 'app-engine';
           if (normalizedId.includes('/src/game/server/')) return 'app-server';
           if (normalizedId.includes('/src/game/audio/')) return 'app-audio';
           if (normalizedId.includes('/src/components/')) return 'app-components';
