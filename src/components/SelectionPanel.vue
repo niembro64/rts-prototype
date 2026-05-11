@@ -114,6 +114,16 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-key">S</span>
         </button>
         <button
+          class="action-btn"
+          :class="{ active: selection.isWaiting }"
+          :style="{ '--btn-color': '#e8e8e8' }"
+          title="Toggle wait for selected units"
+          @click="actions.toggleSelectedWait()"
+        >
+          <span class="btn-label">Wait</span>
+          <span class="btn-key">W</span>
+        </button>
+        <button
           v-if="selection.hasJump"
           class="action-btn"
           :class="{ active: selection.jumpEnabled }"

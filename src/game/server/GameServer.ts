@@ -15,6 +15,7 @@ import type {
   SetFireEnabledCommand,
   SetJumpEnabledCommand,
   StopCommand,
+  WaitCommand,
 } from '../sim/commands';
 import {
   resetDeltaTracking,
@@ -634,6 +635,9 @@ export class GameServer {
       case 'stop':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
+      case 'wait':
+        return this.authorizeUnitListCommand(command, fromPlayerId);
+
       case 'setJumpEnabled':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
@@ -707,9 +711,9 @@ export class GameServer {
   }
 
   private authorizeUnitListCommand(
-    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand,
+    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand,
     playerId: PlayerId,
-  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | null {
+  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | null {
     const sourceIds = command.entityIds;
     if (sourceIds.length === 0) return null;
 

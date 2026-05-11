@@ -21,8 +21,9 @@ import type {
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
+  WaitCommand,
 } from './commands';
-import type { Entity, PlayerId, UnitAction } from './types';
+import type { Entity, PlayerId, Unit, UnitAction } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
@@ -37,7 +38,7 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { setUnitJumpEnabled } from './unitJump';
-import { pushUnitAction, setUnitActions } from './unitActions';
+import { pushUnitAction, setUnitActions, shiftUnitAction, unshiftUnitAction } from './unitActions';
 import { clearCombatActivityFlags } from './combat/combatActivity';
 import { setWeaponTarget } from './combat/targetIndex';
 import { isAliveGuardTarget } from './guard';
@@ -51,6 +52,11 @@ const ATTACK_AREA_MAX_RADIUS = 700;
 function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
   const minSurfaceNormalZ = unit.unit?.locomotion.minSurfaceNormalZ;
   return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
+}
+
+function refreshPatrolStartIndex(unit: Unit): void {
+  const index = unit.actions.findIndex((action) => action.type === 'patrol');
+  unit.patrolStartIndex = index >= 0 ? index : null;
 }
 
 function getCommanderDGunTurretId(commander: Entity): string | null {
@@ -76,6 +82,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'stop':
       executeStopCommand(ctx, command);
+      break;
+    case 'wait':
+      executeWaitCommand(ctx, command);
       break;
     case 'clearSelection':
       ctx.world.clearSelection();
@@ -207,6 +216,51 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
       entity.combat.priorityTargetPoint = undefined;
       entity.combat.nextCombatProbeTick = undefined;
     }
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+}
+
+function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
+  const units: Entity[] = [];
+  let allWaiting = true;
+
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (!entity?.unit) continue;
+    units.push(entity);
+    if (entity.unit.actions[0]?.type !== 'wait') allWaiting = false;
+  }
+  if (units.length === 0) return;
+
+  const releaseCurrentWait = !command.queue && allWaiting;
+  for (let i = 0; i < units.length; i++) {
+    const entity = units[i];
+    const unit = entity.unit!;
+
+    if (releaseCurrentWait) {
+      shiftUnitAction(unit);
+      refreshPatrolStartIndex(unit);
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      continue;
+    }
+
+    if (!command.queue && unit.actions[0]?.type === 'wait') continue;
+    const anchor = command.queue ? unit.actions[unit.actions.length - 1] : undefined;
+    const x = anchor?.x ?? entity.transform.x;
+    const y = anchor?.y ?? entity.transform.y;
+    const action: UnitAction = {
+      type: 'wait',
+      x,
+      y,
+      z: anchor?.z ?? ctx.world.getGroundZ(x, y),
+    };
+
+    if (command.queue) {
+      pushUnitAction(unit, action);
+    } else {
+      unshiftUnitAction(unit, action);
+    }
+    refreshPatrolStartIndex(unit);
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
 }

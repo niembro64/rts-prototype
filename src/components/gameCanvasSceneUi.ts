@@ -36,6 +36,7 @@ export function useGameCanvasSceneUi({
     jumpEnabled: false,
     hasFireControl: false,
     fireEnabled: false,
+    isWaiting: false,
     hasFactory: false,
     factoryId: undefined,
     commanderId: undefined,
@@ -132,6 +133,9 @@ export function useGameCanvasSceneUi({
     },
     stopSelectedUnits: () => {
       getActiveBattleScene()?.stopSelectedUnits();
+    },
+    toggleSelectedWait: () => {
+      getActiveBattleScene()?.toggleSelectedWait();
     },
     toggleSelectedJump: () => {
       getActiveBattleScene()?.toggleSelectedJump();

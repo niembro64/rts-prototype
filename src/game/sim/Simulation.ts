@@ -739,6 +739,11 @@ export class Simulation {
       // Get current action
       const currentAction = unit.actions[0];
 
+      if (currentAction.type === 'wait') {
+        unit.stuckTicks = 0;
+        continue;
+      }
+
       // For build/repair/reclaim actions, check if we're in range
       if (
         currentAction.type === 'build' ||

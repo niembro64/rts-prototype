@@ -33,6 +33,11 @@ export function pushUnitAction(unit: Unit, action: UnitAction): void {
   refreshUnitActionHash(unit);
 }
 
+export function unshiftUnitAction(unit: Unit, action: UnitAction): void {
+  unit.actions.unshift(action);
+  refreshUnitActionHash(unit);
+}
+
 export function spliceUnitActions(
   unit: Unit,
   start: number,

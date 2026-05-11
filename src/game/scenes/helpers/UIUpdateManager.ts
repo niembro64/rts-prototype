@@ -74,8 +74,10 @@ export function buildSelectionInfo(
   let allJumpEnabled = true;
   let fireControlCount = 0;
   let allFireEnabled = true;
+  let waitingCount = 0;
   for (let i = 0; i < selectedUnits.length; i++) {
     const selectedUnit = selectedUnits[i];
+    if (selectedUnit.unit?.actions[0]?.type === 'wait') waitingCount++;
     const jump = selectedUnit.unit?.jump;
     if (jump) {
       jumpCount++;
@@ -115,6 +117,7 @@ export function buildSelectionInfo(
     jumpEnabled: jumpCount > 0 && allJumpEnabled,
     hasFireControl: fireControlCount > 0,
     fireEnabled: fireControlCount > 0 && allFireEnabled,
+    isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
     hasFactory: factory !== undefined,
     factoryId: factory?.id,
     commanderId: commander?.id,
