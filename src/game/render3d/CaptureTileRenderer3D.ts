@@ -96,6 +96,10 @@ type GroundDetailLayer = {
   // patches on the ground perfectly match the tree and grass props sitting
   // on top of them.
   pureColor?: boolean;
+  // Optional per-layer grid rotation override. When absent, the rotation is
+  // taken from LAYER_GRID_ANGLES indexed by the layer's position in the
+  // combined layer list.
+  gridAngle?: number;
 };
 
 // Per-layer rotations applied to detailPos before computing the grid. Each
@@ -113,7 +117,7 @@ const LAYER_GRID_ANGLES: readonly number[] = [
 // foliage cross-sections), pointed triangles (spruce foliage facets, pine
 // needles), and rosettes (grass clumps splaying outward). Brown layers reuse
 // the spruce wood color, green layers the spruce leaf color.
-const GROUND_DETAIL_LAYERS: readonly GroundDetailLayer[] = [
+const HAND_CRAFTED_GROUND_DETAIL_LAYERS: readonly GroundDetailLayer[] = [
   // Background: largest features painted first; smaller details overlay later.
   {
     scale: 18.0,
@@ -284,6 +288,118 @@ const GROUND_DETAIL_LAYERS: readonly GroundDetailLayer[] = [
   },
 ];
 
+// Mulberry32 — small deterministic PRNG. Seeded so the generated layer pile
+// is identical across builds; we want the texture to be reproducible.
+function makeSeededRng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randIn(rng: () => number, min: number, max: number): number {
+  return min + rng() * (max - min);
+}
+
+function generateExtraGroundDetailLayers(count: number): GroundDetailLayer[] {
+  const rng = makeSeededRng(0xC0FFEE);
+  const layers: GroundDetailLayer[] = [];
+  for (let i = 0; i < count; i++) {
+    const shapeRoll = rng();
+    let shape: GroundDetailShape;
+    let angleRange: number;
+    let angleCentered: boolean;
+    let offsetFactor: number;
+    if (shapeRoll < 0.32) {
+      // Box — stick / blade / twig.
+      shape = {
+        kind: 'box',
+        hx: randIn(rng, 0.012, 0.036),
+        hy: randIn(rng, 0.30, 0.50),
+      };
+      angleRange = Math.PI;
+      angleCentered = rng() < 0.4;
+      offsetFactor = randIn(rng, 0.34, 0.46);
+    } else if (shapeRoll < 0.52) {
+      // Pointed triangle — leaf, pine-needle tip, wood chip.
+      shape = {
+        kind: 'tri',
+        h: randIn(rng, 0.18, 0.36),
+        w: randIn(rng, 0.08, 0.22),
+      };
+      angleRange = 2 * Math.PI;
+      angleCentered = false;
+      offsetFactor = randIn(rng, 0.30, 0.44);
+    } else if (shapeRoll < 0.68) {
+      // Hexagon — log slice / trunk cross-section / seed.
+      shape = { kind: 'hex', r: randIn(rng, 0.08, 0.30) };
+      angleRange = Math.PI;
+      angleCentered = false;
+      offsetFactor = randIn(rng, 0.28, 0.42);
+    } else if (shapeRoll < 0.82) {
+      // Circle — pebble / berry.
+      shape = { kind: 'circle', r: randIn(rng, 0.05, 0.18) };
+      angleRange = 0;
+      angleCentered = false;
+      offsetFactor = randIn(rng, 0.32, 0.44);
+    } else {
+      // Rosette — grass clump from above / foliage facet.
+      const pRoll = rng();
+      const petals = pRoll < 0.3 ? 4 : pRoll < 0.6 ? 5 : pRoll < 0.85 ? 6 : 3;
+      shape = { kind: 'rosette', r: randIn(rng, 0.18, 0.38), petals };
+      angleRange = 2 * Math.PI;
+      angleCentered = false;
+      offsetFactor = randIn(rng, 0.28, 0.40);
+    }
+
+    // Log-uniform scale gives even visual coverage across magnitudes.
+    const scale = Math.exp(randIn(rng, Math.log(1.4), Math.log(19.0)));
+    const palette: 'wood' | 'leaf' = rng() < 0.42 ? 'wood' : 'leaf';
+    const threshold = randIn(rng, 0.42, 0.86);
+    const darkScale: [number, number, number] = palette === 'wood'
+      ? [randIn(rng, 0.30, 0.56), randIn(rng, 0.30, 0.52), randIn(rng, 0.26, 0.46)]
+      : [randIn(rng, 0.38, 0.54), randIn(rng, 0.50, 0.70), randIn(rng, 0.36, 0.50)];
+    const lightScale: [number, number, number] = palette === 'wood'
+      ? [randIn(rng, 0.95, 1.32), randIn(rng, 0.88, 1.24), randIn(rng, 0.72, 1.05)]
+      : [randIn(rng, 1.15, 1.34), randIn(rng, 1.20, 1.34), randIn(rng, 1.05, 1.20)];
+    const mix = randIn(rng, 0.45, 0.78);
+    const pureColor = rng() < 0.10;
+    const hashAt = (): [number, number] => [randIn(rng, 1, 199), randIn(rng, 1, 199)];
+    const gridAngle = rng() * (Math.PI / 2);
+
+    const layer: GroundDetailLayer = {
+      scale,
+      seedAt: hashAt(),
+      offsetAAt: hashAt(),
+      offsetBAt: hashAt(),
+      angleAt: hashAt(),
+      shadeAt: hashAt(),
+      offsetFactor,
+      angleRange,
+      angleCentered,
+      threshold,
+      shape,
+      palette,
+      darkScale,
+      lightScale,
+      mix,
+      gridAngle,
+    };
+    if (pureColor) layer.pureColor = true;
+    layers.push(layer);
+  }
+  return layers;
+}
+
+const GROUND_DETAIL_LAYERS: readonly GroundDetailLayer[] = [
+  ...HAND_CRAFTED_GROUND_DETAIL_LAYERS,
+  ...generateExtraGroundDetailLayers(100),
+];
+
 function f(n: number): string {
   return Number.isFinite(n) ? n.toFixed(6) : '0.0';
 }
@@ -325,7 +441,10 @@ function buildGroundDetailLayerGlsl(
     layer.angleRange === 0
       ? '(uv - off * ' + f(layer.offsetFactor) + ')'
       : `terrainRot2(ang) * (uv - off * ${f(layer.offsetFactor)})`;
-  const gridAngle = LAYER_GRID_ANGLES[index % LAYER_GRID_ANGLES.length] ?? 0;
+  const gridAngle =
+    layer.gridAngle ??
+    LAYER_GRID_ANGLES[index % LAYER_GRID_ANGLES.length] ??
+    0;
   const gridPosExpr =
     gridAngle === 0 ? 'detailPos' : `(terrainRot2(${f(gridAngle)}) * detailPos)`;
   const colorLines = layer.pureColor
@@ -644,7 +763,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v17';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v18';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
