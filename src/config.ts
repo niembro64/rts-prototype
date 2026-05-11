@@ -581,6 +581,17 @@ export const TERRAIN_HORIZON_BLEND_CONFIG = {
  *  grass, rock, shoreline soil) without any of the four box-mark layers. */
 export const TERRAIN_GROUND_DETAIL_ENABLED = true;
 
+/** The base color flat green ground gets pulled toward before the detail
+ *  texture is applied. Defaults to the spruce leaf color so that grass clumps
+ *  and tree foliage sit on a matching-color ground patch instead of standing
+ *  out against a different-shade base. */
+export const TERRAIN_GROUND_BASE_COLOR = FOREST_SPRUCE2_LEAF_COLOR;
+
+/** How strongly the generated detail PNG overrides the base ground color in
+ *  flat green areas, in [0, 1]. 0 = pure base color (clean, props rooted in
+ *  a single color), 1 = full texture influence (noisy / busy). */
+export const TERRAIN_GROUND_DETAIL_CONTRAST = 0.7;
+
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion
 // tests) but before units/buildings (so entities overdraw shadows

@@ -14,13 +14,15 @@ import * as THREE from 'three';
 import { FOREST_SPRUCE2_LEAF_COLOR, FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
 
 // Texture resolution in pixels (square). Power of two for clean mipmaps.
-export const GROUND_DETAIL_TEXTURE_PIXELS = 1024;
-// How many world units one tile spans. Wider tile = less obvious repeat at
-// typical zoom; narrower tile = more pixels per world unit (sharper detail).
-export const GROUND_DETAIL_TILE_WORLD_SIZE = 128;
-// Total drawn items per tile. Hundreds of overlapping shapes give the
-// "heavy random overlap" feel without any grid quantization.
-const ITEM_COUNT = 5200;
+export const GROUND_DETAIL_TEXTURE_PIXELS = 2048;
+// How many world units one tile spans. The shader also samples a second
+// rotated+rescaled copy of this texture (see CaptureTileRenderer3D), so the
+// *visible* repeat period is the LCM of two co-prime scales — effectively
+// far larger than the literal tile.
+export const GROUND_DETAIL_TILE_WORLD_SIZE = 256;
+// Item count scales with tile area (4× area vs the original 128-unit / 1024-px
+// tile) so per-world-unit density stays constant.
+const ITEM_COUNT = 20800;
 
 type ShapeKind = 'box' | 'tri' | 'circle' | 'hex' | 'rosette';
 
@@ -70,7 +72,12 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   texture.generateMipmaps = true;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
-  texture.colorSpace = THREE.SRGBColorSpace;
+  // LinearSRGBColorSpace means "sample the texel as-is, no conversion". The
+  // rest of the terrain shader writes raw vec3 literals (lowGrass, dryGrass,
+  // etc.) and treats them as already in working space, so the detail texture
+  // must match that convention — otherwise the sampled colors come out
+  // noticeably darker than the same color drawn in a PNG viewer.
+  texture.colorSpace = THREE.LinearSRGBColorSpace;
   texture.anisotropy = 8;
   texture.needsUpdate = true;
   return { canvas, texture };

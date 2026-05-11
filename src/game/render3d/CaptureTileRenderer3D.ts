@@ -18,6 +18,8 @@ import {
   MANA_TILE_GROUND_LIFT,
   HORIZON_RENDER_EXTEND,
   GROUND_RENDER_ORDER,
+  TERRAIN_GROUND_BASE_COLOR,
+  TERRAIN_GROUND_DETAIL_CONTRAST,
   TERRAIN_GROUND_DETAIL_ENABLED,
   TERRAIN_HORIZON_BLEND_CONFIG,
 } from '../../config';
@@ -81,6 +83,18 @@ function smoothstep01(t: number): number {
   return clamped * clamped * (3 - 2 * clamped);
 }
 
+// Pass an sRGB hex into the terrain shader as a raw vec3. The rest of the
+// terrain shader's color literals (lowGrass, dryGrass, etc.) are written as
+// raw 0–1 components without sRGB→linear conversion, so uniforms must match
+// that convention to mix cleanly.
+function rawSrgbVec3(hex: number): THREE.Vector3 {
+  return new THREE.Vector3(
+    ((hex >> 16) & 0xff) / 255,
+    ((hex >> 8) & 0xff) / 255,
+    (hex & 0xff) / 255,
+  );
+}
+
 function triangleDebugHash01(n: number): number {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
   return x - Math.floor(x);
@@ -140,6 +154,8 @@ export class CaptureTileRenderer3D {
   private groundDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
   private groundDetailTileWorldSizeUniform = { value: GROUND_DETAIL_TILE_WORLD_SIZE };
   private groundDetailEnabledUniform = { value: 0 };
+  private groundBaseColorUniform = { value: rawSrgbVec3(TERRAIN_GROUND_BASE_COLOR) };
+  private groundDetailContrastUniform = { value: TERRAIN_GROUND_DETAIL_CONTRAST };
 
   private gridCellsX = 0;
   private gridCellsY = 0;
@@ -209,6 +225,8 @@ export class CaptureTileRenderer3D {
       shader.uniforms.uGroundDetailTexture = this.groundDetailTextureUniform;
       shader.uniforms.uGroundDetailTileWorldSize = this.groundDetailTileWorldSizeUniform;
       shader.uniforms.uGroundDetailEnabled = this.groundDetailEnabledUniform;
+      shader.uniforms.uGroundBaseColor = this.groundBaseColorUniform;
+      shader.uniforms.uGroundDetailContrast = this.groundDetailContrastUniform;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -255,6 +273,8 @@ export class CaptureTileRenderer3D {
             'uniform sampler2D uGroundDetailTexture;',
             'uniform float uGroundDetailTileWorldSize;',
             'uniform float uGroundDetailEnabled;',
+            'uniform vec3 uGroundBaseColor;',
+            'uniform float uGroundDetailContrast;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
@@ -285,9 +305,24 @@ export class CaptureTileRenderer3D {
             'if (uGroundDetailEnabled > 0.0) {',
             '  float flatDetail = (1.0 - smoothstep(0.035, 0.16, vTerrainSlope)) * (1.0 - shoreline);',
             '  float flatGreenDetail = flatDetail * (1.0 - smoothstep(0.38, 0.92, upland)) * (1.0 - exposedRock * 0.82) * (1.0 - highDry * 0.72);',
-            '  vec2 detailUv = vTerrainWorldPos.xz / uGroundDetailTileWorldSize;',
-            '  vec4 detail = texture2D(uGroundDetailTexture, detailUv);',
-            '  terrainRgb = mix(terrainRgb, detail.rgb, detail.a * flatGreenDetail);',
+            '  // Pull the base ground toward the tree/grass color in flat green areas',
+            '  // so props feel rooted in matching-color ground regardless of contrast.',
+            '  terrainRgb = mix(terrainRgb, uGroundBaseColor, flatGreenDetail);',
+            '  // Multi-scale stochastic sampling: sample the same tile at two co-prime',
+            '  // scales+rotations and blend by a smooth position-varying weight so each',
+            '  // region is mostly dominated by one sample. The apparent repeat period',
+            '  // becomes the LCM of the two scales — effectively unbounded.',
+            '  vec2 worldXZ = vTerrainWorldPos.xz;',
+            '  vec2 uvA = worldXZ / uGroundDetailTileWorldSize;',
+            '  mat2 secondaryRot = mat2(0.7174, 0.6967, -0.6967, 0.7174);',
+            '  vec2 uvB = (secondaryRot * worldXZ) / (uGroundDetailTileWorldSize * 0.7367);',
+            '  vec4 detailA = texture2D(uGroundDetailTexture, uvA);',
+            '  vec4 detailB = texture2D(uGroundDetailTexture, uvB);',
+            '  float bx = sin(worldXZ.x * 0.0089 + worldXZ.z * 0.0067);',
+            '  float bz = cos(worldXZ.x * 0.0073 - worldXZ.z * 0.0091);',
+            '  float blendN = clamp(0.5 + 0.55 * bx * bz, 0.0, 1.0);',
+            '  vec4 detail = mix(detailA, detailB, blendN);',
+            '  terrainRgb = mix(terrainRgb, detail.rgb, detail.a * flatGreenDetail * uGroundDetailContrast);',
             '}',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
@@ -320,7 +355,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v19';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v20';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
