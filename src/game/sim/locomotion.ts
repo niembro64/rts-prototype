@@ -11,9 +11,9 @@ export const LOCOMOTION_TRACTION = {
 export type LocomotionType = keyof typeof LOCOMOTION_TRACTION;
 
 export const LOCOMOTION_MAX_SLOPE_DEG: Record<LocomotionType, number> = {
-  wheels: 2,
-  treads: 55,
-  legs: 68,
+  wheels: 10,
+  treads: 20,
+  legs: 70,
 };
 
 function assertPositiveFinite(label: string, value: number): void {

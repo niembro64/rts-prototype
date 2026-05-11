@@ -15,24 +15,8 @@ As we go make sure we are not creating duplicate code, we should be reusing code
  RTS PROFESSIONAL AUDIT - 2026-05-11
 ------------------------------------------------------------------------------
 
-1. P1 - Group movement scales as one A* path request per selected unit.
+1. Pathfinding should treat a click in an "island" the same as a click on a zone that is too steep to traverse. Currently the pathinfindin does great when i click in the water or click on a steep hill, it finds the closest reachable point and moves there, but if i click in an "island" or "flat mountain top", the algorithm returns no solution - we always want a solution, the clostest point that is possible to what we clicked on. This is a problem because it can be frustrating to click on a location and have the unit do nothing, especially if the player doesn't understand why. The pathfinding should be more forgiving and always provide a valid destination, even if it's not exactly where the player clicked.
 
-   Evidence:
-   - src/game/sim/commandExecution.ts:99-130 creates path actions separately for
-     each selected unit, including formation moves.
-   - src/game/sim/Pathfinder.ts:746-760 expands each path action by calling
-     findPath, so a large selection can trigger hundreds or thousands of searches
-     from a single command.
-
-   Impact:
-   Large armies will spike the sim thread on initial move/attack commands. This
-   is especially risky for an RTS where 500-1000 unit selections should remain
-   responsive.
-
-   Fix direction:
-   Add shared group pathing, leader paths with local steering, flow fields, or
-   hierarchical pathing. At minimum, coalesce same-target path requests and fan
-   out formation offsets after a shared route is found.
 
 2. P1 - No fog-of-war or hidden information boundary is present in network state.
 
