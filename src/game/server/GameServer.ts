@@ -342,11 +342,8 @@ export class GameServer {
       const workStart = performance.now();
       if (!this.areStartupClientsReady()) {
         const elapsed = tickNow - this.lastSnapshotTime;
-        const baseInterval = this.maxSnapshotIntervalMs;
-        const effectiveInterval = baseInterval === 0
-          ? 0
-          : baseInterval * this.snapshotIntervalMultiplier();
-        if (effectiveInterval === 0 || elapsed >= effectiveInterval) {
+        const interval = this.maxSnapshotIntervalMs;
+        if (interval === 0 || elapsed >= interval) {
           this.emitStartupSnapshot(tickNow);
         }
         this.recordTickWork(performance.now() - workStart);
@@ -356,19 +353,8 @@ export class GameServer {
       this.tick(delta);
 
       const elapsed = tickNow - this.lastSnapshotTime;
-      // Auto-throttle: at high unit counts the snapshot serialization +
-      // bandwidth dominates, so stretch the interval as the world
-      // gets denser. The base interval comes from the user-configured
-      // maxSnapshotsPerSec; the multiplier is 1× below 2k units and
-      // climbs to 4× past 12k. Below the threshold the gate is
-      // identical to before. Manual `none` (interval = 0) still
-      // means "every tick" — no reason to throttle when the user has
-      // explicitly opted out.
-      const baseInterval = this.maxSnapshotIntervalMs;
-      const effectiveInterval = baseInterval === 0
-        ? 0
-        : baseInterval * this.snapshotIntervalMultiplier();
-      if (effectiveInterval === 0 || elapsed >= effectiveInterval) {
+      const interval = this.maxSnapshotIntervalMs;
+      if (interval === 0 || elapsed >= interval) {
         this.lastSnapshotTime = tickNow;
         this.emitSnapshot();
       }
@@ -945,41 +931,6 @@ export class GameServer {
     // Units fullness — same shape as the client side.
     setSimUnitCount(this.world.getUnits().length);
     setSimUnitCap(this.world.maxTotalUnits);
-  }
-
-  /** Multiplier on the snapshot interval, driven by unit count AND
-   *  CPU load — whichever forces the bigger multiplier wins. The
-   *  intent: at high unit counts the per-snapshot serialization plus
-   *  network bytes dominate the tick; at high CPU load the snapshot
-   *  emission itself fights the sim for the budget, so stretch the
-   *  interval the same way. Returns 1.0 in calm conditions; both
-   *  signals only kick in past their thresholds.
-   *
-   *  Unit-count thresholds line up with the UNITS auto-LOD ladder
-   *  (2k/4k/8k/12k). CPU thresholds line up with "have we missed
-   *  the budget for a sustained period" — 100% load is the budget,
-   *  150%+ is in trouble. */
-  private snapshotIntervalMultiplier(): number {
-    const n = this.world.getUnits().length;
-    let unitMul = 1;
-    if (n >= 12000) unitMul = 4;
-    else if (n >= 8000) unitMul = 3;
-    else if (n >= 4000) unitMul = 2;
-    else if (n >= 2000) unitMul = 1.5;
-
-    // tickMsHi is the EMA-spike CPU load. At >100% the host is
-    // already over budget; throttle snapshots to free up CPU.
-    const tickBudgetMs = 1000 / this.tickRateHz;
-    const cpuPct = this.tickMsInitialized
-      ? (this.tickMsHi / tickBudgetMs) * 100
-      : 0;
-    let cpuMul = 1;
-    if (cpuPct >= 250) cpuMul = 4;
-    else if (cpuPct >= 175) cpuMul = 3;
-    else if (cpuPct >= 125) cpuMul = 2;
-    else if (cpuPct >= 100) cpuMul = 1.5;
-
-    return Math.max(unitMul, cpuMul);
   }
 
   // Change simulation tick rate (restarts the game loop interval).
