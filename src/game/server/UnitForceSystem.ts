@@ -108,7 +108,10 @@ export class UnitForceSystem {
         if (setUnitMovementAcceleration(entity.unit, 0, 0, 0)) {
           this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
         }
-        if (entity.combat) entity.combat.priorityTargetId = undefined;
+        if (entity.combat) {
+          entity.combat.priorityTargetId = undefined;
+          entity.combat.priorityTargetPoint = undefined;
+        }
         continue;
       }
 
@@ -403,6 +406,7 @@ export class UnitForceSystem {
   private hasCombatJumpIntent(combat: CombatComponent | undefined): boolean {
     return !!combat && (
       combat.priorityTargetId !== undefined ||
+      combat.priorityTargetPoint !== undefined ||
       combat.hasActiveCombat ||
       combat.activeTurretMask !== 0 ||
       combat.firingTurretMask !== 0

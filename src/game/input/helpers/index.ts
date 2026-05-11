@@ -27,6 +27,7 @@ export {
   buildAttackAreaCommand,
   buildAttackCommandForTarget,
   buildAttackCommandAt,
+  buildAttackGroundCommand,
   buildGuardCommandAt,
   buildGuardCommandForTarget,
   buildLinePathMoveCommand,

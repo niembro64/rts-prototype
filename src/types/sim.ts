@@ -220,6 +220,9 @@ export type CombatComponent = {
    *  entity is forced toward it and fires as soon as it enters fire
    *  range, ignoring the auto-acquisition picker. */
   priorityTargetId?: EntityId;
+  /** Player attack-ground target. Sim-only; action snapshots carry the
+   *  visible queued order while targeting/firing reads this per tick. */
+  priorityTargetPoint?: Vec3;
   /** Tick before which fully-idle armed entities can skip the targeting
    *  pass. Attack commands clear this implicitly by setting
    *  priorityTargetId; live/cooldown weapons process every tick. */

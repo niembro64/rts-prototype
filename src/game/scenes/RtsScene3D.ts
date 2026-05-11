@@ -594,6 +594,9 @@ export class RtsScene3D {
     this.inputManager.onAttackAreaModeChange = (active) => {
       this.selectionSystem.setAttackAreaMode(active);
     };
+    this.inputManager.onAttackGroundModeChange = (active) => {
+      this.selectionSystem.setAttackGroundMode(active);
+    };
     this.inputManager.onGuardModeChange = (active) => {
       this.selectionSystem.setGuardMode(active);
     };
@@ -1109,6 +1112,10 @@ export class RtsScene3D {
 
   public toggleAttackAreaMode(): void {
     this.inputManager?.toggleAttackAreaMode();
+  }
+
+  public toggleAttackGroundMode(): void {
+    this.inputManager?.toggleAttackGroundMode();
   }
 
   public toggleGuardMode(): void {

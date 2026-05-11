@@ -19,5 +19,6 @@ export const ACTION_COLORS: Record<ActionType, number> = {
   repair: 0x44ff44,  // Light green for repair
   reclaim: 0xd6b45f, // Brass for reclaim
   attack: 0xff0000,  // Red for attack
+  attackGround: 0xff7a18, // Orange for attack-ground
   guard: 0x9ef28d,   // Soft green for guard
 };

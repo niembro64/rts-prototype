@@ -40,7 +40,8 @@ export const ACTION_TYPE_REPAIR = 4;
 export const ACTION_TYPE_ATTACK = 5;
 export const ACTION_TYPE_GUARD = 6;
 export const ACTION_TYPE_RECLAIM = 7;
-export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export const ACTION_TYPE_ATTACK_GROUND = 8;
+export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   move: ACTION_TYPE_MOVE,
@@ -50,9 +51,20 @@ const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   repair: ACTION_TYPE_REPAIR,
   reclaim: ACTION_TYPE_RECLAIM,
   attack: ACTION_TYPE_ATTACK,
+  attackGround: ACTION_TYPE_ATTACK_GROUND,
   guard: ACTION_TYPE_GUARD,
 };
-const _CODE_TO_ACTION: string[] = ['move', 'patrol', 'fight', 'build', 'repair', 'attack', 'guard', 'reclaim'];
+const _CODE_TO_ACTION: string[] = [
+  'move',
+  'patrol',
+  'fight',
+  'build',
+  'repair',
+  'attack',
+  'guard',
+  'reclaim',
+  'attackGround',
+];
 
 export function actionTypeToCode(s: string): ActionTypeCode {
   return _ACTION_TO_CODE[s] ?? ACTION_TYPE_MOVE;

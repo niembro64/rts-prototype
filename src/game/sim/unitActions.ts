@@ -9,7 +9,10 @@ export function computeUnitActionHash(actions: readonly UnitAction[]): number {
     hash = (hash * 31 + action.x * 1000) | 0;
     hash = (hash * 31 + action.y * 1000) | 0;
     hash = (hash * 31 + (action.z !== undefined ? action.z * 1000 : 0)) | 0;
-    hash = (hash * 31 + action.type.charCodeAt(0)) | 0;
+    hash = (hash * 31 + action.type.length) | 0;
+    for (let j = 0; j < action.type.length; j++) {
+      hash = (hash * 31 + action.type.charCodeAt(j)) | 0;
+    }
   }
   return hash;
 }

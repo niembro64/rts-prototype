@@ -14,6 +14,7 @@ import type { Entity, EntityId, WaypointType, PlayerId } from '../../sim/types';
 import type {
   AttackAreaCommand,
   AttackCommand,
+  AttackGroundCommand,
   GuardCommand,
   MoveCommand,
   WaypointTarget,
@@ -88,6 +89,26 @@ export function buildAttackAreaCommand(
     targetY: worldY,
     targetZ: worldZ,
     radius,
+    queue,
+  };
+}
+
+export function buildAttackGroundCommand(
+  selectedUnits: readonly Entity[],
+  worldX: number,
+  worldY: number,
+  tick: number,
+  queue: boolean,
+  worldZ?: number,
+): AttackGroundCommand | null {
+  if (selectedUnits.length === 0) return null;
+  return {
+    type: 'attackGround',
+    tick,
+    entityIds: selectedUnits.map((u) => u.id),
+    targetX: worldX,
+    targetY: worldY,
+    targetZ: worldZ,
     queue,
   };
 }

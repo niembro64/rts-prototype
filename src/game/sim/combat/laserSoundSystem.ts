@@ -99,7 +99,10 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
       // Targeting already validated the full 3D fire envelope, including
       // optional minimum fire range. Reuse that state here instead of
       // doing a second 2D distance check for every beam turret.
-      const hasTargetInRange = weapon.target !== null && weapon.state === 'engaged';
+      const hasTargetInRange = (
+        weapon.target !== null ||
+        unit.combat.priorityTargetPoint !== undefined
+      ) && weapon.state === 'engaged';
 
       if (hasTargetInRange) {
         audioEvents.push({

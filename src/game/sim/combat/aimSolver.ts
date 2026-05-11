@@ -469,6 +469,97 @@ export function solveProjectileTurretAim(
   return out;
 }
 
+export function solveProjectileTurretAimAtPoint(
+  source: Entity,
+  weapon: Turret,
+  aimPoint: Vec3,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  inheritOriginVelocity: boolean,
+  groundHeightAt: GroundHeightLookup,
+  out: ProjectileTurretAim,
+): ProjectileTurretAim {
+  const shot = weapon.config.shot as ProjectileShot;
+  const launchSpeed = getProjectileLaunchSpeed(shot);
+  out.aim.x = aimPoint.x;
+  out.aim.y = aimPoint.y;
+  out.aim.z = aimPoint.z;
+
+  const originVelocity = writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
+  const originAcceleration = getEntityAcceleration3(source, out.originAcceleration, groundHeightAt);
+  writeZeroVec3(out.targetVelocity);
+  writeZeroVec3(out.targetAcceleration);
+
+  const groundAimFraction = weapon.config.groundAimFraction;
+  if (groundAimFraction !== undefined && groundAimFraction > 0) {
+    const f = groundAimFraction;
+    out.aim.x = mountX + f * (out.aim.x - mountX);
+    out.aim.y = mountY + f * (out.aim.y - mountY);
+    out.aim.z = groundHeightAt(out.aim.x, out.aim.y);
+  }
+
+  const yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
+  const horizDist = Math.hypot(out.aim.x - mountX, out.aim.y - mountY);
+  const heightDiff = out.aim.z - mountZ;
+  out.yaw = yaw;
+
+  const staticIntercept = solveStaticProjectileAim(
+    shot,
+    launchSpeed,
+    !shot.ignoresGravity && (weapon.config.highArc ?? false),
+    writeKinematicVec3(_staticOriginPosition, mountX, mountY, mountZ),
+    originVelocity,
+    originAcceleration,
+    out.aim,
+    _interceptSolution,
+  );
+  if (staticIntercept) {
+    const lv = staticIntercept.launchVelocity;
+    out.hasBallisticSolution = true;
+    out.pitch = Math.atan2(lv.z, Math.hypot(lv.x, lv.y));
+  } else {
+    out.hasBallisticSolution = shot.ignoresGravity === true;
+    out.pitch = Math.atan2(heightDiff, horizDist);
+  }
+  writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, yaw, out.pitch);
+  return out;
+}
+
+export function solveTurretAimAtGroundPoint(
+  source: Entity,
+  weapon: Turret,
+  aimPoint: Vec3,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  currentPitch: number,
+  groundHeightAt: GroundHeightLookup,
+  out: TurretAimSolution,
+): TurretAimSolution {
+  const shot = weapon.config.shot;
+  if (shot && isProjectileShot(shot)) {
+    return solveProjectileTurretAimAtPoint(
+      source,
+      weapon,
+      aimPoint,
+      mountX, mountY, mountZ,
+      true,
+      groundHeightAt,
+      out,
+    );
+  }
+
+  solveTurretAimAtPoint(
+    aimPoint,
+    mountX, mountY, mountZ,
+    currentPitch,
+    weapon.config,
+    out,
+  );
+  return out;
+}
+
 export function solveTurretAim(
   unit: Entity,
   weapon: Turret,

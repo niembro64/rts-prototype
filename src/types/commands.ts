@@ -20,6 +20,7 @@ export type CommandType =
   | 'repairArea'
   | 'reclaim'
   | 'attack'
+  | 'attackGround'
   | 'attackArea'
   | 'guard'
   | 'setSnapshotRate'
@@ -169,6 +170,15 @@ export type AttackCommand = BaseCommand & {
   queue: boolean;
 };
 
+export type AttackGroundCommand = BaseCommand & {
+  type: 'attackGround';
+  entityIds: EntityId[];
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+  queue: boolean;
+};
+
 export type AttackAreaCommand = BaseCommand & {
   type: 'attackArea';
   entityIds: EntityId[];
@@ -287,6 +297,7 @@ export type Command =
   | RepairAreaCommand
   | ReclaimCommand
   | AttackCommand
+  | AttackGroundCommand
   | AttackAreaCommand
   | GuardCommand
   | SetSnapshotRateCommand

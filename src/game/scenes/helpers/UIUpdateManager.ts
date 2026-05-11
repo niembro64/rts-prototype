@@ -124,6 +124,7 @@ export function buildSelectionInfo(
     isDGunMode: inputState?.isDGunMode ?? false,
     isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
     isAttackAreaMode: inputState?.isAttackAreaMode ?? false,
+    isAttackGroundMode: inputState?.isAttackGroundMode ?? false,
     isGuardMode: inputState?.isGuardMode ?? false,
     isReclaimMode: inputState?.isReclaimMode ?? false,
     factoryQueue,

@@ -6,6 +6,7 @@ import type { Simulation } from '../sim/Simulation';
 import type {
   AttackCommand,
   AttackAreaCommand,
+  AttackGroundCommand,
   CommandQueue,
   Command,
   GuardCommand,
@@ -640,6 +641,7 @@ export class GameServer {
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
       case 'attack':
+      case 'attackGround':
       case 'attackArea':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
@@ -705,9 +707,9 @@ export class GameServer {
   }
 
   private authorizeUnitListCommand(
-    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackAreaCommand | GuardCommand | StopCommand,
+    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand,
     playerId: PlayerId,
-  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackAreaCommand | GuardCommand | StopCommand | null {
+  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | null {
     const sourceIds = command.entityIds;
     if (sourceIds.length === 0) return null;
 

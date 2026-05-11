@@ -87,6 +87,16 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         </button>
         <button
           class="action-btn"
+          :class="{ active: selection.isAttackGroundMode }"
+          :style="{ '--btn-color': '#ff7a18' }"
+          title="Toggle attack-ground targeting for selected units"
+          @click="actions.toggleAttackGround()"
+        >
+          <span class="btn-label">Ground</span>
+          <span class="btn-key">T</span>
+        </button>
+        <button
+          class="action-btn"
           :class="{ active: selection.isGuardMode }"
           :style="{ '--btn-color': '#9ef28d' }"
           title="Toggle guard targeting for selected units"
@@ -260,7 +270,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
     <!-- Message area (always present to prevent modal resize) -->
     <div class="message-area">
-      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode || selection.isAttackAreaMode || selection.isGuardMode || selection.isReclaimMode">
+      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode || selection.isAttackAreaMode || selection.isAttackGroundMode || selection.isGuardMode || selection.isReclaimMode">
         Press ESC or Right-click to cancel
       </span>
       <span v-else>&nbsp;</span>

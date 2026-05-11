@@ -354,12 +354,13 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         forceAccumulator.addForce(unit.id, -dirX * knockBackPerTick, -dirY * knockBackPerTick, 'recoil');
       }
 
-      const target = world.getEntity(weapon.target!);
-      if (!target) {
+      const groundTargetPoint = combat.priorityTargetPoint;
+      if (weapon.target !== null && !world.getEntity(weapon.target)) {
         setWeaponTarget(weapon, unit, weaponIndex, null);
         weapon.state = 'idle';
         continue;
       }
+      if (weapon.target === null && groundTargetPoint === undefined) continue;
       if (!isWeaponAimedForFire(weapon)) continue;
 
       // Use the canonical 3D turret mount cache. Targeting normally

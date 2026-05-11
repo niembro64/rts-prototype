@@ -28,6 +28,7 @@ export class RtsScene3DSelectionSystem {
   private dgunActive = false;
   private repairAreaActive = false;
   private attackAreaActive = false;
+  private attackGroundActive = false;
   private guardActive = false;
   private reclaimActive = false;
 
@@ -73,6 +74,11 @@ export class RtsScene3DSelectionSystem {
 
   setAttackAreaMode(active: boolean): void {
     this.attackAreaActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setAttackGroundMode(active: boolean): void {
+    this.attackGroundActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -164,6 +170,7 @@ export class RtsScene3DSelectionSystem {
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
       isAttackAreaMode: this.attackAreaActive,
+      isAttackGroundMode: this.attackGroundActive,
       isGuardMode: this.guardActive,
       isReclaimMode: this.reclaimActive,
       controlGroups: this.buildControlGroupInfo(),

@@ -4,6 +4,7 @@
 import type {
   AttackAreaCommand,
   AttackCommand,
+  AttackGroundCommand,
   CancelQueueItemCommand,
   Command,
   FireDGunCommand,
@@ -115,6 +116,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'attack':
       executeAttackCommand(ctx, command);
       break;
+    case 'attackGround':
+      executeAttackGroundCommand(ctx, command);
+      break;
     case 'attackArea':
       executeAttackAreaCommand(ctx, command);
       break;
@@ -200,6 +204,7 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
     if (entity.builder) entity.builder.currentBuildTarget = null;
     if (entity.combat) {
       entity.combat.priorityTargetId = undefined;
+      entity.combat.priorityTargetPoint = undefined;
       entity.combat.nextCombatProbeTick = undefined;
     }
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
@@ -458,6 +463,7 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
     combat.fireEnabled = enabled;
     if (!enabled) {
       combat.priorityTargetId = undefined;
+      combat.priorityTargetPoint = undefined;
       combat.nextCombatProbeTick = undefined;
       clearCombatActivityFlags(combat);
       for (let wi = 0; wi < combat.turrets.length; wi++) {
@@ -622,6 +628,20 @@ function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void
   }
 }
 
+function executeAttackGroundCommand(ctx: CommandContext, command: AttackGroundCommand): void {
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    enqueueAttackGroundAction(
+      ctx,
+      entity,
+      command.targetX,
+      command.targetY,
+      command.targetZ,
+      command.queue,
+    );
+  }
+}
+
 function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaCommand): void {
   const radius = clampAttackAreaRadius(command.radius);
   const playerId = getCommandUnitPlayerId(ctx, command.entityIds);
@@ -753,6 +773,24 @@ function enqueueAttackAction(
     y: targetPoint.y,
     z: targetPoint.z,
     targetId: target.id,
+  };
+  addPathActionsWithFinal(entity, action, queue, ctx);
+}
+
+function enqueueAttackGroundAction(
+  ctx: CommandContext,
+  entity: Entity | undefined,
+  targetX: number,
+  targetY: number,
+  targetZ: number | undefined,
+  queue: boolean,
+): void {
+  if (!entity || entity.type !== 'unit' || !entity.unit || !entity.combat) return;
+  const action: UnitAction = {
+    type: 'attackGround',
+    x: targetX,
+    y: targetY,
+    z: targetZ,
   };
   addPathActionsWithFinal(entity, action, queue, ctx);
 }

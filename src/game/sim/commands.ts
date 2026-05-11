@@ -19,6 +19,7 @@ export type {
   RepairAreaCommand,
   ReclaimCommand,
   AttackCommand,
+  AttackGroundCommand,
   AttackAreaCommand,
   GuardCommand,
   SetSnapshotRateCommand,

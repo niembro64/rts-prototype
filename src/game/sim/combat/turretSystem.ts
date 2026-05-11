@@ -26,7 +26,7 @@ import { getMovementAngle, resolveWeaponWorldMount, turretBit, turretMaskInclude
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { getTransformCosSin, integrateDampedRotation, normalizeAngle } from '../../math';
 import { TURRET_RETURN_TO_FORWARD } from '../../../config';
-import { createTurretAimScratch, solveTurretAim } from './aimSolver';
+import { createTurretAimScratch, solveTurretAim, solveTurretAimAtGroundPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { getUnitGroundZ } from '../unitGeometry';
 
@@ -93,7 +93,36 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       let hasActiveTarget = false;
       weapon.ballisticAimInRange = true;
 
-      if (weapon.target !== null) {
+      if (unit.combat.priorityTargetPoint !== undefined) {
+        const targetPoint = unit.combat.priorityTargetPoint;
+        const mount = resolveWeaponWorldMount(
+          unit, weapon, weaponIndex,
+          cos, sin,
+          { currentTick, unitGroundZ, surfaceN: unit.unit?.surfaceNormal },
+          _turretMount,
+        );
+        const solved = solveTurretAimAtGroundPoint(
+          unit,
+          weapon,
+          targetPoint,
+          mount.x, mount.y, mount.z,
+          weapon.pitch,
+          (x, y) => world.getGroundZ(x, y),
+          _turretAim,
+        );
+        weapon.ballisticAimInRange = solved.hasBallisticSolution;
+        if (!solved.hasBallisticSolution) {
+          const bit = turretBit(weaponIndex);
+          if (bit !== 0 && combat.firingTurretMask >= 0) {
+            combat.firingTurretMask &= ~bit;
+          }
+          weapon.state = 'tracking';
+        } else {
+          targetAngle = solved.yaw;
+          targetPitch = solved.pitch;
+          hasActiveTarget = true;
+        }
+      } else if (weapon.target !== null) {
         const target = world.getEntity(weapon.target);
         if (target) {
           // Origin (weapon mount) in true 3D world coords. The

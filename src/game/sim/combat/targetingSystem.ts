@@ -2,6 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, HysteresisRange, Turret, TurretRanges } from '../types';
+import type { Vec3 } from '@/types/vec2';
 import { decrementCooldown, getTargetRadius, updateWeaponWorldKinematics } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { distanceSquared, shouldRunOnStride } from '../../math';
@@ -223,6 +224,25 @@ function hasWeaponLineOfSight(
   );
 }
 
+function hasWeaponLineOfSightToPoint(
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
+  point: Vec3,
+  weaponX: number,
+  weaponY: number,
+  weaponZ: number,
+): boolean {
+  if (!weaponNeedsLineOfSight(weapon)) return true;
+  return hasCombatLineOfSight(
+    world,
+    weaponX, weaponY, weaponZ,
+    point.x, point.y, point.z,
+    source.id,
+    undefined,
+  );
+}
+
 type CandidateRanker = (
   ranges: TurretRanges,
   edge: 'acquire' | 'release',
@@ -404,6 +424,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     clearCombatActivityFlags(combat);
     if (combat.fireEnabled === false) {
       combat.priorityTargetId = undefined;
+      combat.priorityTargetPoint = undefined;
       combat.nextCombatProbeTick = undefined;
       const weapons = combat.turrets;
       for (let wi = 0; wi < weapons.length; wi++) {
@@ -414,8 +435,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       continue;
     }
     const priorityId = combat.priorityTargetId;
+    const priorityPoint = combat.priorityTargetPoint;
     const scheduledProbeTick = combat.nextCombatProbeTick;
-    if (priorityId === undefined && scheduledProbeTick !== undefined && scheduledProbeTick > tick) {
+    if (
+      priorityId === undefined &&
+      priorityPoint === undefined &&
+      scheduledProbeTick !== undefined &&
+      scheduledProbeTick > tick
+    ) {
       continue;
     }
 
@@ -462,10 +489,17 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
     }
     const forcedProbeDue = priorityId === undefined &&
+      priorityPoint === undefined &&
       scheduledProbeTick !== undefined &&
       scheduledProbeTick <= tick;
     const shouldReacquire = forcedProbeDue || shouldRunOnStride(tick, stride, unit.id);
-    if (priorityId === undefined && !hasLiveWeaponState && !hasCooldownState && !shouldReacquire) {
+    if (
+      priorityId === undefined &&
+      priorityPoint === undefined &&
+      !hasLiveWeaponState &&
+      !hasCooldownState &&
+      !shouldReacquire
+    ) {
       combat.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
       continue;
     }
@@ -491,6 +525,48 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         cos, sin,
         { currentTick: tick, dtMs, unitGroundZ, surfaceN },
       );
+    }
+
+    // Check for attack-ground priority target.
+    if (priorityPoint !== undefined) {
+      for (let wi = 0; wi < weapons.length; wi++) {
+        const weapon = weapons[wi];
+        if (weaponSystemDisabled(world, weapon)) continue;
+        if (weapon.config.isManualFire) continue;
+
+        if (weapon.config.passive) {
+          setWeaponTarget(weapon, unit, wi, null);
+          weapon.state = 'idle';
+          continue;
+        }
+
+        const wpx = weapon.worldPos!.x;
+        const wpy = weapon.worldPos!.y;
+        const wpz = weapon.worldPos!.z;
+        const losClear = hasWeaponLineOfSightToPoint(
+          world,
+          unit,
+          weapon,
+          priorityPoint,
+          wpx, wpy, wpz,
+        );
+        setWeaponTarget(weapon, unit, wi, null);
+        if (!losClear) {
+          weapon.state = 'idle';
+          continue;
+        }
+
+        const distSq = distanceSquared(wpx, wpy, priorityPoint.x, priorityPoint.y);
+        if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, 0)) {
+          weapon.state = 'engaged';
+        } else if (withinFireMaxSq(weapon.ranges, 'release', distSq, 0)) {
+          weapon.state = weapon.state === 'engaged' ? 'engaged' : 'tracking';
+        } else {
+          weapon.state = 'tracking';
+        }
+      }
+      if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
+      continue;
     }
 
     // Check for attack command priority target

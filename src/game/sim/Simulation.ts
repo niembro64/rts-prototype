@@ -700,7 +700,10 @@ export class Simulation {
         if (setUnitMovementAcceleration(unit, 0, 0, 0)) {
           this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
         }
-        if (entity.combat) entity.combat.priorityTargetId = undefined;
+        if (entity.combat) {
+          entity.combat.priorityTargetId = undefined;
+          entity.combat.priorityTargetPoint = undefined;
+        }
         continue;
       }
 
@@ -711,8 +714,11 @@ export class Simulation {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
       }
 
-      // Clear priority target — re-set below if current action is attack
-      if (entity.combat) entity.combat.priorityTargetId = undefined;
+      // Clear priority target — re-set below by attack / attack-ground actions.
+      if (entity.combat) {
+        entity.combat.priorityTargetId = undefined;
+        entity.combat.priorityTargetPoint = undefined;
+      }
 
       // Sweep targeted intents whose target disappeared or no longer
       // needs work. Pathfinding stores intermediate `move` waypoints
@@ -796,6 +802,32 @@ export class Simulation {
             unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
             continue;
           }
+          unit.stuckTicks = 0;
+        }
+        continue;
+      }
+
+      if (currentAction.type === 'attackGround') {
+        if (entity.combat) {
+          const targetPoint = entity.combat.priorityTargetPoint ??
+            (entity.combat.priorityTargetPoint = { x: 0, y: 0, z: 0 });
+          targetPoint.x = currentAction.x;
+          targetPoint.y = currentAction.y;
+          targetPoint.z = currentAction.z ?? this.world.getGroundZ(currentAction.x, currentAction.y);
+        }
+
+        if (this.shouldStopForEngagedCombat(entity)) {
+          unit.stuckTicks = 0;
+          continue;
+        }
+
+        const dx = currentAction.x - transform.x;
+        const dy = currentAction.y - transform.y;
+        const distance = magnitude(dx, dy);
+        if (distance > 15) {
+          this.applyThrustToward(unit, dx, dy, distance);
+          movingUnits.push(entity);
+        } else {
           unit.stuckTicks = 0;
         }
         continue;
@@ -1031,7 +1063,10 @@ export class Simulation {
     if (!combat || combat.turrets.length === 0) return false;
     for (const turret of combat.turrets) {
       if (turret.config.visualOnly) continue;
-      if (turret.state === 'engaged' && turret.target !== null) return true;
+      if (
+        turret.state === 'engaged' &&
+        (turret.target !== null || combat.priorityTargetPoint !== undefined)
+      ) return true;
     }
     return false;
   }
@@ -1089,6 +1124,7 @@ export class Simulation {
       finalAction.type !== 'move' &&
       finalAction.type !== 'fight' &&
       finalAction.type !== 'attack' &&
+      finalAction.type !== 'attackGround' &&
       finalAction.type !== 'guard'
     ) {
       return false;
@@ -1097,7 +1133,9 @@ export class Simulation {
     // click-derived final-waypoint z (used by Waypoint3D rendering)
     // instead of falling back to a fresh terrain sample.
     const pathActionType =
-      finalAction.type === 'attack' || finalAction.type === 'guard'
+      finalAction.type === 'attack' ||
+      finalAction.type === 'attackGround' ||
+      finalAction.type === 'guard'
         ? 'move'
         : finalAction.type;
     const newPath = expandPathActions(
@@ -1123,10 +1161,17 @@ export class Simulation {
     // detection re-fires next tick if the unit is still wedged,
     // so we'll retry the replan on the next stuck-tick threshold.
     if (newPath.length <= 1 && actions.length > 1) return false;
-    if ((finalAction.type === 'attack' || finalAction.type === 'guard') && finalAction.targetId !== undefined) {
+    if (
+      (finalAction.type === 'attack' || finalAction.type === 'guard') &&
+      finalAction.targetId !== undefined
+    ) {
       const last = newPath[newPath.length - 1];
       last.type = finalAction.type;
       last.targetId = finalAction.targetId;
+      last.isPathExpansion = undefined;
+    } else if (finalAction.type === 'attackGround') {
+      const last = newPath[newPath.length - 1];
+      last.type = finalAction.type;
       last.isPathExpansion = undefined;
     }
     setUnitActions(entity.unit, newPath);
