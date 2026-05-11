@@ -1,8 +1,5 @@
 INFO:
-This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here.
-As we fix something here we should completely delete it from this file. You should also delete an item if
-you know for a fact it has been addressed. Remember that our code may have changed since the issue was
-written; check the code and if the issue is no longer relevant, delete it.
+This file is called "issues.txt". Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. Remember that our code may have changed since the issue was written; check the code and if the issue is no longer relevant, delete it.
 
 Please always commit and push before and after any code changes we make. If there was unchecked code before, just commit and push before you start making your edits.
 
