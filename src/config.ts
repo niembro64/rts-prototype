@@ -609,6 +609,16 @@ export const TERRAIN_ROCK_DETAIL_ENABLED = true;
 export const TERRAIN_ROCK_BASE_COLOR = 0x6f6a5b;
 export const TERRAIN_ROCK_DETAIL_CONTRAST = 0.1;
 
+/** How strongly the procedural tree-leaf / tree-trunk textures override the
+ *  prop's solid base color, in [0, 1]. 0 = pure base color (the original
+ *  flat green / brown look), 1 = full texture variation. Same semantics as
+ *  the terrain detail contrast knobs above, but baked into the canvas at
+ *  texture-generation time (trees use stock MeshLambertMaterial so there's
+ *  nowhere to mix at shader time). Changing this value requires a reload —
+ *  the textures are generated once and cached. */
+export const TREE_LEAF_DETAIL_CONTRAST = 0.3;
+export const TREE_TRUNK_DETAIL_CONTRAST = 0.3;
+
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion
 // tests) but before units/buildings (so entities overdraw shadows
@@ -773,11 +783,11 @@ export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig = {
   colorMode: 'config',
   fallbackColor: 0xffffff,
   maxImpacts: 192,
-  durationMs: 420,
-  ringCount: 3,
-  ringSegments: 48,
-  ringDelayMs: 55,
-  startRadius: 5,
+  durationMs: 1000,
+  ringCount: 1,
+  ringSegments: 24,
+  ringDelayMs: 0,
+  startRadius: 0,
   endRadius: 38,
   ringTubeRadiusFrac: 0.11,
   ringTubeSegments: 6,

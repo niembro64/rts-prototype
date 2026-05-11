@@ -17,7 +17,10 @@
 // consistent). Palette is warm browns through deep shadow.
 
 import * as THREE from 'three';
-import { FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
+import {
+  FOREST_SPRUCE2_WOOD_COLOR,
+  TREE_TRUNK_DETAIL_CONTRAST,
+} from '../../config';
 
 export const TREE_TRUNK_TEXTURE_PIXELS = 1024;
 const ITEM_COUNT = 5200;
@@ -86,6 +89,17 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   const items = generateItems(rng);
   for (const item of items) {
     drawItemWithWrap(ctx, item);
+  }
+
+  // Contrast knob: pull every pixel back toward the base color by
+  // (1 - contrast). 0 = flat base brown (no variation), 1 = full bark detail.
+  // Baked into the canvas because trees use stock MeshLambertMaterial.
+  const contrast = Math.max(0, Math.min(1, TREE_TRUNK_DETAIL_CONTRAST));
+  if (contrast < 1) {
+    ctx.globalAlpha = 1 - contrast;
+    ctx.fillStyle = cssRgb(FOREST_SPRUCE2_WOOD_COLOR);
+    ctx.fillRect(0, 0, TREE_TRUNK_TEXTURE_PIXELS, TREE_TRUNK_TEXTURE_PIXELS);
+    ctx.globalAlpha = 1;
   }
 
   const texture = new THREE.CanvasTexture(canvas);

@@ -11,7 +11,10 @@
 // [0, 1] interval and the model decides how the wrap looks on the mesh.
 
 import * as THREE from 'three';
-import { FOREST_SPRUCE2_LEAF_COLOR } from '../../config';
+import {
+  FOREST_SPRUCE2_LEAF_COLOR,
+  TREE_LEAF_DETAIL_CONTRAST,
+} from '../../config';
 
 export const TREE_LEAF_TEXTURE_PIXELS = 1024;
 const ITEM_COUNT = 5200;
@@ -72,6 +75,19 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   const items = generateItems(rng);
   for (const item of items) {
     drawItemWithWrap(ctx, item);
+  }
+
+  // Contrast knob: pull every pixel back toward the base color by
+  // (1 - contrast). At contrast=0 the final canvas is a flat field of base
+  // color (no variation visible); at contrast=1 the shapes are left
+  // unchanged. Same semantics as TERRAIN_GROUND/ROCK_DETAIL_CONTRAST, just
+  // baked into the canvas instead of mixed at shader time.
+  const contrast = Math.max(0, Math.min(1, TREE_LEAF_DETAIL_CONTRAST));
+  if (contrast < 1) {
+    ctx.globalAlpha = 1 - contrast;
+    ctx.fillStyle = cssRgb(FOREST_SPRUCE2_LEAF_COLOR);
+    ctx.fillRect(0, 0, TREE_LEAF_TEXTURE_PIXELS, TREE_LEAF_TEXTURE_PIXELS);
+    ctx.globalAlpha = 1;
   }
 
   const texture = new THREE.CanvasTexture(canvas);
