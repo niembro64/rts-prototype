@@ -213,7 +213,7 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     spread: { angle: 0 },
-    radius: { body: 40 },
+    radius: { body: 32 },
     audio: { fireSound: AUDIO.event.fire.gatlingMortarTurret },
     // Fast high-arc carrier. The submunitions do the area spread; this
     // keeps the gatling role readable without adding another cluster

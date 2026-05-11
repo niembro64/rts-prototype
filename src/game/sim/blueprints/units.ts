@@ -392,7 +392,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     turrets: [
       turretMount(
         'gatlingMortarTurret',
-        mountPoint(FORMIK_BACK_SEGMENT_FORWARD_FRAC, 0, 1.7),
+        mountPoint(FORMIK_BACK_SEGMENT_FORWARD_FRAC, 0, 3.3),
       ),
     ],
     // Mount on the top of the rear abdomen/back segment. The forward
