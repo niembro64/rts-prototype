@@ -601,6 +601,14 @@ export const TERRAIN_GROUND_DETAIL_CONTRAST = 0.3;
 export const TERRAIN_GROUND_DETAIL_HEIGHT_MIN = 5;
 export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 40;
 
+/** Same idea as the ground detail texture, but applied to every surface that
+ *  is NOT part of the base 0-height flat zone — cliffs, mountain faces,
+ *  plateaus. Sampled triplanar in the shader so vertical surfaces render
+ *  correctly. Toggle, base color, and contrast knob mirror the ground set. */
+export const TERRAIN_ROCK_DETAIL_ENABLED = true;
+export const TERRAIN_ROCK_BASE_COLOR = 0x6f6a5b;
+export const TERRAIN_ROCK_DETAIL_CONTRAST = 0.3;
+
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion
 // tests) but before units/buildings (so entities overdraw shadows

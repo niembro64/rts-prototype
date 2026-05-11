@@ -24,11 +24,18 @@ import {
   TERRAIN_GROUND_DETAIL_HEIGHT_MAX,
   TERRAIN_GROUND_DETAIL_HEIGHT_MIN,
   TERRAIN_HORIZON_BLEND_CONFIG,
+  TERRAIN_ROCK_BASE_COLOR,
+  TERRAIN_ROCK_DETAIL_CONTRAST,
+  TERRAIN_ROCK_DETAIL_ENABLED,
 } from '../../config';
 import {
   getGroundDetailTexture,
   GROUND_DETAIL_TILE_WORLD_SIZE,
 } from './GroundDetailTexture';
+import {
+  getRockDetailTexture,
+  ROCK_DETAIL_TILE_WORLD_SIZE,
+} from './RockDetailTexture';
 import {
   getTerrainMapBoundaryFade,
   getTerrainMeshSample,
@@ -160,6 +167,11 @@ export class CaptureTileRenderer3D {
   private groundDetailContrastUniform = { value: TERRAIN_GROUND_DETAIL_CONTRAST };
   private groundDetailHeightMinUniform = { value: TERRAIN_GROUND_DETAIL_HEIGHT_MIN };
   private groundDetailHeightMaxUniform = { value: TERRAIN_GROUND_DETAIL_HEIGHT_MAX };
+  private rockDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
+  private rockDetailTileWorldSizeUniform = { value: ROCK_DETAIL_TILE_WORLD_SIZE };
+  private rockDetailEnabledUniform = { value: 0 };
+  private rockBaseColorUniform = { value: rawSrgbVec3(TERRAIN_ROCK_BASE_COLOR) };
+  private rockDetailContrastUniform = { value: TERRAIN_ROCK_DETAIL_CONTRAST };
 
   private gridCellsX = 0;
   private gridCellsY = 0;
@@ -195,6 +207,10 @@ export class CaptureTileRenderer3D {
     if (TERRAIN_GROUND_DETAIL_ENABLED) {
       this.groundDetailTextureUniform.value = getGroundDetailTexture();
       this.groundDetailEnabledUniform.value = 1;
+    }
+    if (TERRAIN_ROCK_DETAIL_ENABLED) {
+      this.rockDetailTextureUniform.value = getRockDetailTexture();
+      this.rockDetailEnabledUniform.value = 1;
     }
 
     this.terrainGeometry = new THREE.BufferGeometry();
@@ -239,6 +255,11 @@ export class CaptureTileRenderer3D {
       shader.uniforms.uGroundDetailContrast = this.groundDetailContrastUniform;
       shader.uniforms.uGroundDetailHeightMin = this.groundDetailHeightMinUniform;
       shader.uniforms.uGroundDetailHeightMax = this.groundDetailHeightMaxUniform;
+      shader.uniforms.uRockDetailTexture = this.rockDetailTextureUniform;
+      shader.uniforms.uRockDetailTileWorldSize = this.rockDetailTileWorldSizeUniform;
+      shader.uniforms.uRockDetailEnabled = this.rockDetailEnabledUniform;
+      shader.uniforms.uRockBaseColor = this.rockBaseColorUniform;
+      shader.uniforms.uRockDetailContrast = this.rockDetailContrastUniform;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -289,6 +310,11 @@ export class CaptureTileRenderer3D {
             'uniform float uGroundDetailContrast;',
             'uniform float uGroundDetailHeightMin;',
             'uniform float uGroundDetailHeightMax;',
+            'uniform sampler2D uRockDetailTexture;',
+            'uniform float uRockDetailTileWorldSize;',
+            'uniform float uRockDetailEnabled;',
+            'uniform vec3 uRockBaseColor;',
+            'uniform float uRockDetailContrast;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
@@ -316,7 +342,8 @@ export class CaptureTileRenderer3D {
             'terrainRgb = mix(terrainRgb, rock, max(exposedRock * 0.58, steepRock * 0.48));',
             'terrainRgb = mix(terrainRgb, sunBleachedRock, highDry * 0.38);',
             'terrainRgb = mix(terrainRgb, wetSoil, shoreline * 0.72);',
-            'if (uGroundDetailEnabled > 0.0) {',
+            'if (uGroundDetailEnabled > 0.0 || uRockDetailEnabled > 0.0) {',
+            '  // ===== Shared mask infrastructure (used by both detail textures) =====',
             '  // Per-fragment geometric slope from world-position derivatives — the',
             '  // exact triangle face slope. Guarantees actually-vertical fragments',
             '  // fully mask out (90° edges and all), regardless of vertex normal',
@@ -327,43 +354,66 @@ export class CaptureTileRenderer3D {
             '  float geomSlope = 1.0 - abs(geomNormal.y);',
             '  // The smooth-shaded vTerrainSlope leaks tilt from cliff-edge vertices',
             '  // into neighboring flat fragments via vertex-normal averaging. That',
-            '  // leak is what gives us a smooth buffer on the flat top approaching',
-            '  // a ridge — at a sharp 90° edge the geometric term has no fade of its',
-            '  // own, so the smooth term is the only thing that can make the',
-            '  // transition gradual. Amplifying it strongly widens the buffer so the',
-            '  // fade reaches further into the genuinely flat ground next to any',
-            '  // steep edge (accepting that flat fragments close to a ridge simply',
-            '  // won\'t get the green pull or the texture — that is the smoothness).',
+            '  // leak gives us a smooth buffer on the flat top approaching a ridge —',
+            '  // at a sharp 90° edge the geometric term has no fade of its own.',
+            '  // Amplifying the smooth term widens the buffer so the fade reaches',
+            '  // further into the genuinely flat ground next to any steep edge.',
             '  float bufferSlope = clamp(vTerrainSlope * 2.5, 0.0, 1.0);',
             '  float maskSlope = max(geomSlope, bufferSlope);',
             '  float flatDetail = (1.0 - smoothstep(0.05, 0.50, maskSlope)) * (1.0 - shoreline);',
-            '  // Restrict detail to the base 0-height flat zone only. Anything raised',
-            '  // above uGroundDetailHeightMax (plateaus, uplands, cliff tops) gets the',
-            '  // regular slope/height terrain colors with no green carpet or texture.',
+            '  // Restrict the grass texture to the base 0-height flat zone only.',
             '  float baseZoneMask = 1.0 - smoothstep(uGroundDetailHeightMin, uGroundDetailHeightMax, vTerrainWorldPos.y);',
             '  float flatGreenDetail = flatDetail * baseZoneMask;',
-            '  // Pull base ground toward the tree/grass color. Gated by exactly the',
-            '  // same flatGreenDetail mask the texture below uses, so green and',
-            '  // texture appear/disappear in perfect lockstep. Texture sample also',
-            '  // has detail.a = 1 everywhere (canvas is pre-filled with this base',
-            '  // color), so there are no gaps in the texture where green appears',
-            '  // without the texture or vice-versa.',
-            '  terrainRgb = mix(terrainRgb, uGroundBaseColor, flatGreenDetail);',
-            '  // Multi-scale stochastic sampling: sample the same tile at two co-prime',
-            '  // scales+rotations and blend by a smooth position-varying weight so each',
-            '  // region is mostly dominated by one sample. The apparent repeat period',
-            '  // becomes the LCM of the two scales — effectively unbounded.',
-            '  vec2 worldXZ = vTerrainWorldPos.xz;',
-            '  vec2 uvA = worldXZ / uGroundDetailTileWorldSize;',
-            '  mat2 secondaryRot = mat2(0.7174, 0.6967, -0.6967, 0.7174);',
-            '  vec2 uvB = (secondaryRot * worldXZ) / (uGroundDetailTileWorldSize * 0.7367);',
-            '  vec4 detailA = texture2D(uGroundDetailTexture, uvA);',
-            '  vec4 detailB = texture2D(uGroundDetailTexture, uvB);',
-            '  float bx = sin(worldXZ.x * 0.0089 + worldXZ.y * 0.0067);',
-            '  float bz = cos(worldXZ.x * 0.0073 - worldXZ.y * 0.0091);',
-            '  float blendN = clamp(0.5 + 0.55 * bx * bz, 0.0, 1.0);',
-            '  vec4 detail = mix(detailA, detailB, blendN);',
-            '  terrainRgb = mix(terrainRgb, detail.rgb, detail.a * flatGreenDetail * uGroundDetailContrast);',
+            '  // The rock zone is the exact complement: everywhere on land that the',
+            '  // grass zone does not cover. They sum to (1 - shoreline) — they never',
+            '  // overlap, and they never leave a gap. Shoreline itself stays as the',
+            '  // wetSoil base.',
+            '  float rockMask = clamp((1.0 - shoreline) - flatGreenDetail, 0.0, 1.0);',
+            '',
+            '  // ===== Grass / sticks texture (flat 0-height zone) =====',
+            '  if (uGroundDetailEnabled > 0.0) {',
+            '    // Pull base ground toward the tree/grass color. Gated by exactly the',
+            '    // same flatGreenDetail mask the texture below uses, so green and',
+            '    // texture appear/disappear in perfect lockstep. Texture sample has',
+            '    // detail.a = 1 everywhere (canvas is pre-filled with this base color).',
+            '    terrainRgb = mix(terrainRgb, uGroundBaseColor, flatGreenDetail);',
+            '    // Multi-scale stochastic sampling: sample the same tile at two',
+            '    // co-prime scales+rotations and blend by a smooth position-varying',
+            '    // weight. Apparent repeat period becomes the LCM of the two scales.',
+            '    vec2 worldXZ = vTerrainWorldPos.xz;',
+            '    vec2 uvA = worldXZ / uGroundDetailTileWorldSize;',
+            '    mat2 secondaryRot = mat2(0.7174, 0.6967, -0.6967, 0.7174);',
+            '    vec2 uvB = (secondaryRot * worldXZ) / (uGroundDetailTileWorldSize * 0.7367);',
+            '    vec4 detailA = texture2D(uGroundDetailTexture, uvA);',
+            '    vec4 detailB = texture2D(uGroundDetailTexture, uvB);',
+            '    float bx = sin(worldXZ.x * 0.0089 + worldXZ.y * 0.0067);',
+            '    float bz = cos(worldXZ.x * 0.0073 - worldXZ.y * 0.0091);',
+            '    float blendN = clamp(0.5 + 0.55 * bx * bz, 0.0, 1.0);',
+            '    vec4 detail = mix(detailA, detailB, blendN);',
+            '    terrainRgb = mix(terrainRgb, detail.rgb, detail.a * flatGreenDetail * uGroundDetailContrast);',
+            '  }',
+            '',
+            '  // ===== Rock texture (everywhere outside the flat zone, non-shoreline) =====',
+            '  if (uRockDetailEnabled > 0.0) {',
+            '    // Pull base toward rock color in the rock zone (same mechanism as',
+            '    // the grass pull, gated by the complement mask).',
+            '    terrainRgb = mix(terrainRgb, uRockBaseColor, rockMask);',
+            '    // Triplanar projection: sample the texture three times (XZ, YZ, XY)',
+            '    // and blend by the dominant axis of the geometric normal. Vertical',
+            '    // cliff faces (normal.y ≈ 0) sample mostly from the XY/YZ projections',
+            '    // so the texture flows along the cliff instead of smearing into a',
+            '    // single horizontal stripe like a pure XZ sample would produce.',
+            '    vec3 triW = pow(abs(geomNormal), vec3(8.0));',
+            '    triW /= max(triW.x + triW.y + triW.z, 1e-5);',
+            '    vec2 rockUvXZ = vTerrainWorldPos.xz / uRockDetailTileWorldSize;',
+            '    vec2 rockUvYZ = vTerrainWorldPos.yz / uRockDetailTileWorldSize;',
+            '    vec2 rockUvXY = vTerrainWorldPos.xy / uRockDetailTileWorldSize;',
+            '    vec4 rockXZ = texture2D(uRockDetailTexture, rockUvXZ);',
+            '    vec4 rockYZ = texture2D(uRockDetailTexture, rockUvYZ);',
+            '    vec4 rockXY = texture2D(uRockDetailTexture, rockUvXY);',
+            '    vec4 rockDetail = rockXZ * triW.y + rockYZ * triW.x + rockXY * triW.z;',
+            '    terrainRgb = mix(terrainRgb, rockDetail.rgb, rockDetail.a * rockMask * uRockDetailContrast);',
+            '  }',
             '}',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
             'terrainRgb = mix(terrainRgb, uTerrainHorizonColor, horizonBlend);',
@@ -396,7 +446,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v25';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v26';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
