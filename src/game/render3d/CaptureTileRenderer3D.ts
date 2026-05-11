@@ -309,20 +309,30 @@ export class CaptureTileRenderer3D {
             'terrainRgb = mix(terrainRgb, sunBleachedRock, highDry * 0.38);',
             'terrainRgb = mix(terrainRgb, wetSoil, shoreline * 0.72);',
             'if (uGroundDetailEnabled > 0.0) {',
-            '  // Per-fragment geometric slope from world-position derivatives. The',
-            '  // vertex-shader vTerrainSlope is interpolated from smooth-shaded',
-            '  // normals, so a vertex shared between a flat triangle and a vertical',
-            '  // triangle would bleed "flat" slope values down the vertical face.',
-            '  // Reconstructing the face normal here gives an exact per-fragment',
-            '  // slope independent of vertex normal averaging — 90° edges and all.',
+            '  // Per-fragment geometric slope from world-position derivatives — the',
+            '  // exact triangle face slope. Guarantees actually-vertical fragments',
+            '  // fully mask out (90° edges and all), regardless of vertex normal',
+            '  // averaging.',
             '  vec3 dpdx = dFdx(vTerrainWorldPos);',
             '  vec3 dpdy = dFdy(vTerrainWorldPos);',
             '  vec3 geomNormal = normalize(cross(dpdx, dpdy));',
             '  float geomSlope = 1.0 - abs(geomNormal.y);',
-            '  float flatDetail = (1.0 - smoothstep(0.035, 0.16, geomSlope)) * (1.0 - shoreline);',
+            '  // The smooth-shaded vTerrainSlope leaks tilt from cliff-edge vertices',
+            '  // into neighboring flat fragments via vertex-normal averaging. That',
+            '  // leak is what gives us a smooth buffer on the flat top approaching',
+            '  // a ridge — at a sharp 90° edge the geometric term has no fade of its',
+            '  // own, so the smooth term is the only thing that can make the',
+            '  // transition gradual. Amplifying it strongly widens the buffer so the',
+            '  // fade reaches further into the genuinely flat ground next to any',
+            '  // steep edge (accepting that flat fragments close to a ridge simply',
+            '  // won\'t get the green pull or the texture — that is the smoothness).',
+            '  float bufferSlope = clamp(vTerrainSlope * 2.5, 0.0, 1.0);',
+            '  float maskSlope = max(geomSlope, bufferSlope);',
+            '  float flatDetail = (1.0 - smoothstep(0.05, 0.50, maskSlope)) * (1.0 - shoreline);',
             '  float flatGreenDetail = flatDetail * (1.0 - smoothstep(0.38, 0.92, upland)) * (1.0 - exposedRock * 0.82) * (1.0 - highDry * 0.72);',
-            '  // Pull the base ground toward the tree/grass color in flat green areas',
-            '  // so props feel rooted in matching-color ground regardless of contrast.',
+            '  // Pull base ground toward the tree/grass color. Gated by exactly the',
+            '  // same flatGreenDetail mask the texture below uses, so green and',
+            '  // texture fade out together at ridges.',
             '  terrainRgb = mix(terrainRgb, uGroundBaseColor, flatGreenDetail);',
             '  // Multi-scale stochastic sampling: sample the same tile at two co-prime',
             '  // scales+rotations and blend by a smooth position-varying weight so each',
@@ -371,7 +381,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v23';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v24';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
