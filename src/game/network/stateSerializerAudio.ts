@@ -1,6 +1,7 @@
 import type { SimEvent } from '../sim/combat';
 import type { Vec3 } from '../../types/vec2';
 import type { NetworkServerSnapshotSimEvent } from './NetworkManager';
+import type { SnapshotVisibility } from './stateSerializerVisibility';
 
 type PooledSimEvent = NetworkServerSnapshotSimEvent & {
   _pos: Vec3;
@@ -39,6 +40,7 @@ function getPooledSimEvent(): PooledSimEvent {
 
 export function serializeAudioEvents(
   audioEvents?: SimEvent[],
+  visibility?: SnapshotVisibility,
 ): NetworkServerSnapshotSimEvent[] | undefined {
   audioPoolIndex = 0;
   if (!audioEvents || audioEvents.length === 0) return undefined;
@@ -46,6 +48,7 @@ export function serializeAudioEvents(
   audioBuf.length = 0;
   for (let i = 0; i < audioEvents.length; i++) {
     const source = audioEvents[i];
+    if (visibility && !visibility.isPointVisible(source.pos.x, source.pos.y)) continue;
     const out = getPooledSimEvent();
     out.type = source.type;
     out.turretId = source.turretId;

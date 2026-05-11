@@ -1,6 +1,7 @@
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { NetworkServerSnapshotSprayTarget } from './NetworkManager';
 import { createSprayDto } from './snapshotDtoCopy';
+import type { SnapshotVisibility } from './stateSerializerVisibility';
 
 const sprayBuf: NetworkServerSnapshotSprayTarget[] = [];
 const sprayPool: NetworkServerSnapshotSprayTarget[] = [];
@@ -18,6 +19,7 @@ function getPooledSprayTarget(): NetworkServerSnapshotSprayTarget {
 
 export function serializeSprayTargets(
   sprayTargets?: SprayTarget[],
+  visibility?: SnapshotVisibility,
 ): NetworkServerSnapshotSprayTarget[] | undefined {
   sprayPoolIndex = 0;
   if (!sprayTargets || sprayTargets.length === 0) return undefined;
@@ -25,6 +27,13 @@ export function serializeSprayTargets(
   sprayBuf.length = 0;
   for (let i = 0; i < sprayTargets.length; i++) {
     const source = sprayTargets[i];
+    if (
+      visibility &&
+      !visibility.isPointVisible(source.source.pos.x, source.source.pos.y) &&
+      !visibility.isPointVisible(source.target.pos.x, source.target.pos.y)
+    ) {
+      continue;
+    }
     const out = getPooledSprayTarget();
     out.source.id = source.source.id;
     out.source.pos.x = source.source.pos.x;

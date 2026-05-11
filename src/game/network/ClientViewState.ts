@@ -494,14 +494,16 @@ export class ClientViewState {
       }
     }
 
-    if (state.isDelta) {
-      // Delta snapshot: only remove entities explicitly listed in removedEntityIds
-      if (state.removedEntityIds) {
-        for (const id of state.removedEntityIds) {
-          this.deleteEntityLocalState(id);
-        }
+    if (state.removedEntityIds) {
+      for (const id of state.removedEntityIds) {
+        this.deleteEntityLocalState(id);
       }
-    } else {
+    }
+
+    // Visibility-filtered full keyframes omit out-of-sight entities by
+    // design. Keep absent ones as last-seen ghosts until the server
+    // sends an explicit removal.
+    if (!state.isDelta && state.visibilityFiltered !== true) {
       // Full keyframe: remove non-projectile entities not present in the snapshot
       this._serverIds.clear();
       for (const netEntity of state.entities) {

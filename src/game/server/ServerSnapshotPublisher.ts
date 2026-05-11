@@ -2,6 +2,7 @@ import { SNAPSHOT_CONFIG } from '../../config';
 import { getSimSignalStates } from '../sim/simQuality';
 import { getTiltEmaMode } from '../sim/unitTilt';
 import type { WorldState } from '../sim/WorldState';
+import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
@@ -10,6 +11,7 @@ import type {
   SerializeGameStateOptions,
   SnapshotAoiBounds,
 } from '../network/stateSerializer';
+import { SnapshotVisibility } from '../network/stateSerializerVisibility';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
 import type { CaptureSystem } from '../sim/CaptureSystem';
@@ -56,6 +58,7 @@ export class ServerSnapshotPublisher {
   private readonly dirtyIdsBuf: EntityId[] = [];
   private readonly dirtyFieldsBuf: number[] = [];
   private readonly removedIdsBuf: EntityId[] = [];
+  private readonly removedEntitiesBuf: RemovedSnapshotEntity[] = [];
   private isFirstSnapshot = true;
   private snapshotCounter = 0;
 
@@ -84,8 +87,12 @@ export class ServerSnapshotPublisher {
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
     this.removedIdsBuf.length = 0;
+    this.removedEntitiesBuf.length = 0;
     input.world.drainSnapshotDirtyEntities(this.dirtyIdsBuf, this.dirtyFieldsBuf);
-    input.world.drainRemovedSnapshotEntityIds(this.removedIdsBuf);
+    input.world.drainRemovedSnapshotEntities(this.removedEntitiesBuf);
+    for (let i = 0; i < this.removedEntitiesBuf.length; i++) {
+      this.removedIdsBuf.push(this.removedEntitiesBuf[i].id);
+    }
 
     const captureTiles = input.captureSystem.consumeSnapshot(isDelta);
     const wind = input.simulation.getWindState();
@@ -131,13 +138,16 @@ export class ServerSnapshotPublisher {
       const listenerIsDelta = isDelta && !forceKeyframe;
       const aoiRefreshKeyframe = isDelta && forceKeyframe;
       listener.forceKeyframe = false;
+      const visibility = SnapshotVisibility.forRecipient(input.world, listener.playerId);
       const serializeOptions: SerializeGameStateOptions = {
         trackingKey: listener.deltaTrackingKey,
         dirtyEntityIds: this.dirtyIdsBuf,
         dirtyEntityFields: this.dirtyFieldsBuf,
         removedEntityIds: this.removedIdsBuf,
+        removedEntities: this.removedEntitiesBuf,
         recipientPlayerId: listener.playerId,
         aoi: listener.aoi,
+        visibility,
       };
       const state = serializeGameState(
         input.world,

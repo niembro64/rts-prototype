@@ -48,6 +48,7 @@ import {
   writeNetworkUnitSuspension,
   writeNetworkUnitVelocity,
 } from './unitSnapshotFields';
+import type { SnapshotVisibility } from './stateSerializerVisibility';
 
 const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
@@ -102,6 +103,7 @@ function qSuspension(n: number): number {
 function writeTurretsToPool(
   pool: PooledEntry,
   weapons: NonNullable<Entity['combat']>['turrets'],
+  canReferenceEntityId?: (id: number | undefined) => boolean,
 ): NetworkServerSnapshotTurret[] {
   const count = weapons.length;
   while (pool.turrets.length < count) pool.turrets.push(createTurretDto());
@@ -114,7 +116,9 @@ function writeTurretsToPool(
     t.angular.rot = qRot(src.rotation);
     t.angular.vel = qRot(src.angularVelocity);
     t.angular.pitch = qRot(src.pitch);
-    dst.targetId = src.target ?? undefined;
+    dst.targetId = canReferenceEntityId?.(src.target ?? undefined) === false
+      ? undefined
+      : src.target ?? undefined;
     dst.state = turretStateToCode(src.state);
     dst.currentForceFieldRange = src.forceField?.range;
   }
@@ -182,10 +186,14 @@ export function serializeEntitySnapshot(
   entity: Entity,
   changedFields: number | undefined,
   world: WorldState,
+  visibility?: SnapshotVisibility,
 ): NetworkServerSnapshotEntity | null {
   const poolEntry = getPooledEntry();
   const ne = poolEntry.entity;
   const isFull = changedFields === undefined;
+  const canSeePrivateDetails = visibility?.canSeePrivateEntityDetails(entity) ?? true;
+  const canReferenceEntityId = (id: number | undefined): boolean =>
+    id === undefined || (visibility?.canReferenceEntityId(world, id) ?? true);
 
   ne.id = entity.id;
   ne.type = entity.type;
@@ -235,11 +243,21 @@ export function serializeEntitySnapshot(
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
-        writeNetworkUnitVelocity(u, entity.unit, qVel);
+        if (canSeePrivateDetails) {
+          writeNetworkUnitVelocity(u, entity.unit, qVel);
+        } else {
+          u.velocity.x = 0;
+          u.velocity.y = 0;
+          u.velocity.z = 0;
+        }
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
-        writeNetworkUnitMovementAccel(u, entity.unit, poolEntry.unitMovementAccel, qVel);
+        if (canSeePrivateDetails) {
+          writeNetworkUnitMovementAccel(u, entity.unit, poolEntry.unitMovementAccel, qVel);
+        } else {
+          clearNetworkUnitMovementAccel(u);
+        }
       } else {
         clearNetworkUnitMovementAccel(u);
       }
@@ -283,19 +301,24 @@ export function serializeEntitySnapshot(
       }
 
       clearNetworkUnitActions(u);
-      if (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS)) {
-        writeNetworkUnitActions(u, entity.unit, poolEntry.actions);
+      if (canSeePrivateDetails && (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS))) {
+        writeNetworkUnitActions(u, entity.unit, poolEntry.actions, canReferenceEntityId);
       }
 
       u.turrets = undefined;
       const weapons0 = entity.combat?.turrets;
       if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
-        u.turrets = writeTurretsToPool(poolEntry, weapons0);
+        u.turrets = writeTurretsToPool(
+          poolEntry,
+          weapons0,
+          canSeePrivateDetails ? canReferenceEntityId : () => false,
+        );
       }
 
       u.buildTargetId = undefined;
-      if (entity.builder) {
-        u.buildTargetId = entity.builder.currentBuildTarget ?? null;
+      if (canSeePrivateDetails && entity.builder) {
+        const targetId = entity.builder.currentBuildTarget ?? undefined;
+        u.buildTargetId = canReferenceEntityId(targetId) ? targetId ?? null : null;
       }
     }
   }
@@ -358,11 +381,15 @@ export function serializeEntitySnapshot(
 
       const weapons0 = entity.combat?.turrets;
       if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
-        b.turrets = writeTurretsToPool(poolEntry, weapons0);
+        b.turrets = writeTurretsToPool(
+          poolEntry,
+          weapons0,
+          canSeePrivateDetails ? canReferenceEntityId : () => false,
+        );
       }
 
       b.factory = undefined;
-      if (isFull || (changedFields! & ENTITY_CHANGED_FACTORY)) {
+      if (canSeePrivateDetails && (isFull || (changedFields! & ENTITY_CHANGED_FACTORY))) {
         if (entity.factory) {
           const f = poolEntry.factorySub;
           b.factory = f;

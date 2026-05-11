@@ -2,6 +2,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshotMinimapEntity } from './NetworkManager';
 import { createMinimapEntityDto } from './snapshotDtoCopy';
+import type { SnapshotVisibility } from './stateSerializerVisibility';
 
 const minimapEntityBuf: NetworkServerSnapshotMinimapEntity[] = [];
 const minimapEntityPool: NetworkServerSnapshotMinimapEntity[] = [];
@@ -34,6 +35,7 @@ function writeMinimapEntity(entity: Entity): NetworkServerSnapshotMinimapEntity 
 export function serializeMinimapSnapshotEntities(
   world: WorldState,
   enabled: boolean,
+  visibility?: SnapshotVisibility,
 ): NetworkServerSnapshotMinimapEntity[] | undefined {
   if (!enabled) return undefined;
 
@@ -48,6 +50,7 @@ export function serializeMinimapSnapshotEntities(
     for (let i = 0; i < source.length; i++) {
       const entity = source[i];
       if (entity.type !== 'unit' && entity.type !== 'building') continue;
+      if (visibility && !visibility.isEntityVisible(entity)) continue;
       minimapEntityBuf.push(writeMinimapEntity(entity));
     }
   }

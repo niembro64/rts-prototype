@@ -25,6 +25,14 @@ import { ENTITY_CHANGED_HP } from '../../types/network';
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 
+export type RemovedSnapshotEntity = {
+  id: EntityId;
+  playerId?: PlayerId;
+  x: number;
+  y: number;
+  type: 'unit' | 'building';
+};
+
 // Seeded random number generator for determinism
 export class SeededRNG {
   private seed: number;
@@ -64,7 +72,7 @@ export class WorldState {
   private tick: number = 0;
   private buildingVersion: number = 0;
   private unitSetVersion: number = 0;
-  private removedSnapshotEntityIds: EntityId[] = [];
+  private removedSnapshotEntities: RemovedSnapshotEntity[] = [];
   private snapshotDirtyIds = new Set<EntityId>();
   private snapshotDirtyFields = new Map<EntityId, number>();
   private pendingDeathCheckIds = new Set<EntityId>();
@@ -229,7 +237,13 @@ export class WorldState {
     if (entity?.type === 'unit') this.unitSetVersion++;
     if (entity?.type === 'building') this.buildingVersion++;
     if (entity?.type === 'unit' || entity?.type === 'building') {
-      this.removedSnapshotEntityIds.push(id);
+      this.removedSnapshotEntities.push({
+        id,
+        playerId: entity.ownership?.playerId,
+        x: entity.transform.x,
+        y: entity.transform.y,
+        type: entity.type,
+      });
     }
     this.pendingDeathCheckIds.delete(id);
     this.snapshotDirtyIds.delete(id);
@@ -269,10 +283,17 @@ export class WorldState {
   }
 
   drainRemovedSnapshotEntityIds(out: EntityId[]): void {
-    for (let i = 0; i < this.removedSnapshotEntityIds.length; i++) {
-      out.push(this.removedSnapshotEntityIds[i]);
+    for (let i = 0; i < this.removedSnapshotEntities.length; i++) {
+      out.push(this.removedSnapshotEntities[i].id);
     }
-    this.removedSnapshotEntityIds.length = 0;
+    this.removedSnapshotEntities.length = 0;
+  }
+
+  drainRemovedSnapshotEntities(out: RemovedSnapshotEntity[]): void {
+    for (let i = 0; i < this.removedSnapshotEntities.length; i++) {
+      out.push(this.removedSnapshotEntities[i]);
+    }
+    this.removedSnapshotEntities.length = 0;
   }
 
   getBuildingVersion(): number {

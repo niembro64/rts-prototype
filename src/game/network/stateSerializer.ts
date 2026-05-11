@@ -1,4 +1,5 @@
 import type { WorldState } from '../sim/WorldState';
+import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotGridCell } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
@@ -18,6 +19,7 @@ import { serializeGridSnapshot } from './stateSerializerGrid';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 import { serializeProjectileSnapshot } from './stateSerializerProjectiles';
 import { serializeSprayTargets } from './stateSerializerSpray';
+import { SnapshotVisibility } from './stateSerializerVisibility';
 import {
   SNAPSHOT_DIRTY_FORCE_FIELDS,
   aoiRemovedEntityIdsBuf as _aoiRemovedIdsBuf,
@@ -59,6 +61,7 @@ const _snapshotBuf: NetworkServerSnapshot = {
   grid: undefined,
   isDelta: false,
   removedEntityIds: undefined,
+  visibilityFiltered: undefined,
 };
 
 export type SerializeGameStateOptions = {
@@ -70,12 +73,14 @@ export type SerializeGameStateOptions = {
   dirtyEntityIds?: readonly EntityId[];
   dirtyEntityFields?: readonly number[];
   removedEntityIds?: readonly EntityId[];
+  removedEntities?: readonly RemovedSnapshotEntity[];
   /**
    * Recipient used for owner-aware diff resolution. Owned entities keep
    * baseline precision; observed entities can use coarser thresholds.
    */
   recipientPlayerId?: PlayerId;
   aoi?: SnapshotAoiBounds;
+  visibility?: SnapshotVisibility;
 };
 
 export type SnapshotAoiBounds = {
@@ -138,6 +143,7 @@ export function serializeGameState(
   const tracking = getDeltaTrackingState(options?.trackingKey);
   const recipientPlayerId = options?.recipientPlayerId;
   const aoi = options?.aoi;
+  const visibility = options?.visibility ?? SnapshotVisibility.forRecipient(world, recipientPlayerId);
   const tick = world.getTick();
 
   // Reset entity pool for this frame
@@ -149,7 +155,8 @@ export function serializeGameState(
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
   const acceptsEntity = (entity: Entity): boolean =>
     (entity.type === 'unit' || entity.type === 'building') &&
-    isEntityInsideAoi(entity, aoi, recipientPlayerId);
+    isEntityInsideAoi(entity, aoi, recipientPlayerId) &&
+    visibility.isEntityVisible(entity);
 
   const forgetTrackedEntity = (id: EntityId, emitRemoval: boolean): void => {
     const wasVisible = tracking.prevEntityIds.delete(id);
@@ -159,9 +166,24 @@ export function serializeGameState(
     }
   };
 
+  const processRemovedEntities = (records: readonly RemovedSnapshotEntity[]): void => {
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      if (visibility.shouldSendRemoval(record)) {
+        forgetTrackedEntity(record.id, true);
+      }
+    }
+  };
+
+  if (options?.removedEntities) {
+    processRemovedEntities(options.removedEntities);
+  }
+
   if (deltaEnabled) {
     const removedIds = options?.removedEntityIds;
-    if (removedIds) {
+    if (options?.removedEntities) {
+      // Already filtered above with removal metadata.
+    } else if (removedIds) {
       for (let i = 0; i < removedIds.length; i++) {
         forgetTrackedEntity(removedIds[i], true);
       }
@@ -177,7 +199,18 @@ export function serializeGameState(
       _aoiRemovedIdsBuf.length = 0;
       for (const id of tracking.prevEntityIds) {
         const entity = world.getEntity(id);
-        if (!entity || !acceptsEntity(entity)) {
+        if (!entity) {
+          if (!visibility.isFiltered) _aoiRemovedIdsBuf.push(id);
+          continue;
+        }
+        if (
+          entity.type !== 'unit' &&
+          entity.type !== 'building'
+        ) {
+          _aoiRemovedIdsBuf.push(id);
+          continue;
+        }
+        if (!isEntityInsideAoi(entity, aoi, recipientPlayerId)) {
           _aoiRemovedIdsBuf.push(id);
         }
       }
@@ -212,7 +245,7 @@ export function serializeGameState(
           dirtyForcedFields |
           jumpAnchorFields;
       if (isNew || changedFields! > 0) {
-        const netEntity = serializeEntitySnapshot(entity, changedFields, world);
+        const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);
         copyPrevState(next, prev);
       }
@@ -235,7 +268,7 @@ export function serializeGameState(
         const entity = source[i];
         if (!acceptsEntity(entity)) continue;
         tracking.currentEntityIds.add(entity.id);
-        const netEntity = serializeEntitySnapshot(entity, undefined, world);
+        const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);
         const prev = getPrevState(tracking, entity.id);
         copyPrevState(getNextEntityState(entity), prev);
@@ -245,7 +278,7 @@ export function serializeGameState(
       world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
     }
 
-    if (!options?.removedEntityIds) {
+    if (!options?.removedEntityIds && !options?.removedEntities) {
       world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
     }
 
@@ -262,19 +295,20 @@ export function serializeGameState(
     }
   }
 
-  const netMinimapEntities = serializeMinimapSnapshotEntities(world, aoi !== undefined);
+  const netMinimapEntities = serializeMinimapSnapshotEntities(world, aoi !== undefined, visibility);
 
   const netEconomy = serializeEconomySnapshot(world.playerCount, recipientPlayerId);
 
-  const netSprayTargets = serializeSprayTargets(sprayTargets);
+  const netSprayTargets = serializeSprayTargets(sprayTargets, visibility);
 
-  const netAudioEvents = serializeAudioEvents(audioEvents);
+  const netAudioEvents = serializeAudioEvents(audioEvents, visibility);
 
   const netProjectiles = serializeProjectileSnapshot({
     world,
     deltaEnabled,
     tick,
     recipientPlayerId,
+    visibility,
     projectileSpawns,
     projectileDespawns,
     projectileVelocityUpdates,
@@ -297,7 +331,8 @@ export function serializeGameState(
   _snapshotBuf.gameState = _gameStateBuf;
   _snapshotBuf.grid = netGrid;
   _snapshotBuf.isDelta = deltaEnabled;
-  _snapshotBuf.removedEntityIds = deltaEnabled && _removedIdsBuf.length > 0 ? _removedIdsBuf : undefined;
+  _snapshotBuf.removedEntityIds = _removedIdsBuf.length > 0 ? _removedIdsBuf : undefined;
+  _snapshotBuf.visibilityFiltered = visibility.isFiltered ? true : undefined;
 
   return _snapshotBuf;
 }

@@ -293,6 +293,7 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.gameState = undefined;
     this.snapshot.serverMeta = undefined;
     this.snapshot.removedEntityIds = undefined;
+    this.snapshot.visibilityFiltered = undefined;
   }
 
   clone(state: NetworkServerSnapshot): NetworkServerSnapshot {
@@ -399,6 +400,7 @@ export class ReusableNetworkSnapshotCloner {
       ? cloneTerrainBuildabilityGrid(state.buildability)
       : undefined;
     dst.isDelta = state.isDelta;
+    dst.visibilityFiltered = state.visibilityFiltered === true ? true : undefined;
     if (state.removedEntityIds && state.removedEntityIds.length > 0) {
       this.removedEntityIds.length = state.removedEntityIds.length;
       for (let i = 0; i < state.removedEntityIds.length; i++) {

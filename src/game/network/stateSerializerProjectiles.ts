@@ -14,6 +14,7 @@ import type {
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkManager';
+import type { SnapshotVisibility } from './stateSerializerVisibility';
 import { SNAPSHOT_CONFIG } from '../../config';
 import { shouldRunOnStride } from '../math';
 import {
@@ -44,6 +45,7 @@ export type SerializeProjectileSnapshotOptions = {
   deltaEnabled: boolean;
   tick: number;
   recipientPlayerId?: PlayerId;
+  visibility?: SnapshotVisibility;
   projectileSpawns?: ProjectileSpawnEvent[];
   projectileDespawns?: ProjectileDespawnEvent[];
   projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[];
@@ -226,6 +228,49 @@ function shouldSendProjectileSideChannel(
   return shouldRunOnStride(tick, stride);
 }
 
+function shouldSendProjectileAtPoint(
+  ownerId: PlayerId | undefined,
+  recipientPlayerId: PlayerId | undefined,
+  visibility: SnapshotVisibility | undefined,
+  x: number,
+  y: number,
+): boolean {
+  if (!visibility || !visibility.isFiltered) return true;
+  if (ownerId !== undefined && ownerId === recipientPlayerId) return true;
+  return visibility.isPointVisible(x, y);
+}
+
+function shouldSendBeamPath(
+  ownerId: PlayerId | undefined,
+  recipientPlayerId: PlayerId | undefined,
+  visibility: SnapshotVisibility | undefined,
+  points: ReadonlyArray<{ x: number; y: number }>,
+): boolean {
+  if (!visibility || !visibility.isFiltered) return true;
+  if (ownerId !== undefined && ownerId === recipientPlayerId) return true;
+  const sourcePoint = points[0];
+  return visibility.isPointVisible(sourcePoint.x, sourcePoint.y);
+}
+
+function shouldSendProjectileSpawnEvent(
+  spawn: ProjectileSpawnEvent,
+  recipientPlayerId: PlayerId | undefined,
+  visibility: SnapshotVisibility | undefined,
+): boolean {
+  if (!visibility || !visibility.isFiltered) return true;
+  if (spawn.playerId === recipientPlayerId) return true;
+  return visibility.isPointVisible(spawn.pos.x, spawn.pos.y);
+}
+
+function canReferenceEntityId(
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+  entityId: number | undefined,
+): boolean {
+  if (entityId === undefined) return false;
+  return visibility?.canReferenceEntityId(world, entityId) ?? true;
+}
+
 function resetProjectilePools(): void {
   _spawnPoolIndex = 0;
   _despawnPoolIndex = 0;
@@ -239,6 +284,7 @@ export function serializeProjectileSnapshot({
   deltaEnabled,
   tick,
   recipientPlayerId,
+  visibility,
   projectileSpawns,
   projectileDespawns,
   projectileVelocityUpdates,
@@ -256,6 +302,7 @@ export function serializeProjectileSnapshot({
     if (projectileSpawns) {
       for (let i = 0; i < tickSpawnCount; i++) {
         const ps = projectileSpawns[i];
+        if (!shouldSendProjectileSpawnEvent(ps, recipientPlayerId, visibility)) continue;
         const out = getPooledProjectileSpawn();
         out.id = ps.id;
         out._pos.x = ps.pos.x;
@@ -273,7 +320,9 @@ export function serializeProjectileSnapshot({
           ? turretIdToCode(ps.sourceTurretId)
           : undefined;
         out.playerId = ps.playerId;
-        out.sourceEntityId = ps.sourceEntityId;
+        out.sourceEntityId = canReferenceEntityId(world, visibility, ps.sourceEntityId)
+          ? ps.sourceEntityId
+          : 0;
         out.turretIndex = ps.turretIndex;
         out.barrelIndex = ps.barrelIndex;
         out.isDGun = ps.isDGun;
@@ -289,7 +338,9 @@ export function serializeProjectileSnapshot({
         } else {
           out.beam = undefined;
         }
-        out.targetEntityId = ps.targetEntityId;
+        out.targetEntityId = canReferenceEntityId(world, visibility, ps.targetEntityId)
+          ? ps.targetEntityId
+          : undefined;
         out.homingTurnRate = ps.homingTurnRate;
         _spawnBuf.push(out);
         if (wantKeyframeProjectileResync) _resyncSeenIds.add(ps.id);
@@ -302,6 +353,17 @@ export function serializeProjectileSnapshot({
         if (_resyncSeenIds.has(entity.id)) continue;
         const proj = entity.projectile;
         if (!proj) continue;
+        if (
+          !shouldSendProjectileAtPoint(
+            proj.ownerId,
+            recipientPlayerId,
+            visibility,
+            entity.transform.x,
+            entity.transform.y,
+          )
+        ) {
+          continue;
+        }
         const out = getPooledProjectileSpawn();
         out.id = entity.id;
         out._pos.x = entity.transform.x;
@@ -321,7 +383,9 @@ export function serializeProjectileSnapshot({
           ? turretIdToCode(proj.sourceTurretId)
           : undefined;
         out.playerId = proj.ownerId;
-        out.sourceEntityId = proj.sourceEntityId;
+        out.sourceEntityId = canReferenceEntityId(world, visibility, proj.sourceEntityId)
+          ? proj.sourceEntityId
+          : 0;
         out.turretIndex = proj.config.turretIndex ?? 0;
         out.barrelIndex = proj.sourceBarrelIndex ?? 0;
         out.isDGun = entity.dgunProjectile?.isDGun ? true : undefined;
@@ -342,7 +406,9 @@ export function serializeProjectileSnapshot({
         } else {
           out.beam = undefined;
         }
-        out.targetEntityId = proj.homingTargetId;
+        out.targetEntityId = canReferenceEntityId(world, visibility, proj.homingTargetId)
+          ? proj.homingTargetId
+          : undefined;
         out.homingTurnRate = proj.homingTurnRate;
         _spawnBuf.push(out);
       }
@@ -368,6 +434,17 @@ export function serializeProjectileSnapshot({
       const vu = projectileVelocityUpdates[i];
       const projectile = world.getEntity(vu.id)?.projectile;
       if (!shouldSendProjectileSideChannel(projectile?.ownerId, recipientPlayerId, tick)) continue;
+      if (
+        !shouldSendProjectileAtPoint(
+          projectile?.ownerId,
+          recipientPlayerId,
+          visibility,
+          vu.pos.x,
+          vu.pos.y,
+        )
+      ) {
+        continue;
+      }
       const out = getPooledVelocityUpdate();
       out.id = vu.id;
       out._pos.x = vu.pos.x;
@@ -392,6 +469,7 @@ export function serializeProjectileSnapshot({
       if (!shouldSendProjectileSideChannel(proj.ownerId, recipientPlayerId, tick)) continue;
       const srcPts = proj.points;
       if (!srcPts || srcPts.length < 2) continue;
+      if (!shouldSendBeamPath(proj.ownerId, recipientPlayerId, visibility, srcPts)) continue;
 
       const update = getPooledBeamUpdate();
       update.id = entity.id;
@@ -423,12 +501,13 @@ export function serializeProjectileSnapshot({
           out.ay = qAccel(sp.ay);
           out.az = qAccel(sp.az);
         }
-        out.mirrorEntityId = sp.mirrorEntityId;
-        out.reflectorKind = sp.reflectorKind;
-        out.reflectorPlayerId = sp.reflectorPlayerId;
-        out.normalX = sp.normalX === undefined ? undefined : qNormal(sp.normalX);
-        out.normalY = sp.normalY === undefined ? undefined : qNormal(sp.normalY);
-        out.normalZ = sp.normalZ === undefined ? undefined : qNormal(sp.normalZ);
+        const canReferenceReflector = canReferenceEntityId(world, visibility, sp.mirrorEntityId);
+        out.mirrorEntityId = canReferenceReflector ? sp.mirrorEntityId : undefined;
+        out.reflectorKind = canReferenceReflector ? sp.reflectorKind : undefined;
+        out.reflectorPlayerId = canReferenceReflector ? sp.reflectorPlayerId : undefined;
+        out.normalX = canReferenceReflector && sp.normalX !== undefined ? qNormal(sp.normalX) : undefined;
+        out.normalY = canReferenceReflector && sp.normalY !== undefined ? qNormal(sp.normalY) : undefined;
+        out.normalZ = canReferenceReflector && sp.normalZ !== undefined ? qNormal(sp.normalZ) : undefined;
         dstPts[p] = out;
       }
 

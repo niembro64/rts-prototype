@@ -314,6 +314,7 @@ export function writeNetworkUnitActions(
   dst: NetworkUnitSnapshot,
   unit: Unit,
   actionPool: NetworkServerSnapshotAction[],
+  canReferenceEntityId?: (id: number | undefined) => boolean,
 ): void {
   const actions = unit.actions ?? [];
   const count = actions.length;
@@ -332,7 +333,9 @@ export function writeNetworkUnitActions(
     }
     action.posZ = src.z;
     action.pathExp = src.isPathExpansion ? true : undefined;
-    action.targetId = src.targetId;
+    action.targetId = canReferenceEntityId?.(src.targetId) === false
+      ? undefined
+      : src.targetId;
     action.buildingType = src.buildingType;
     if (src.gridX !== undefined) {
       if (!action.grid) action.grid = { x: 0, y: 0 };
@@ -341,7 +344,9 @@ export function writeNetworkUnitActions(
     } else {
       action.grid = undefined;
     }
-    action.buildingId = src.buildingId;
+    action.buildingId = canReferenceEntityId?.(src.buildingId) === false
+      ? undefined
+      : src.buildingId;
   }
   dst.actions = actionPool;
 }

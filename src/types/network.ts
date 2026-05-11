@@ -459,6 +459,11 @@ export type NetworkServerSnapshot = {
   terrain?: TerrainTileMap;
   buildability?: TerrainBuildabilityGrid;
   isDelta: boolean;
+  /** True when the authoritative snapshot intentionally omits entities
+   *  outside the recipient player's current vision. Clients must keep
+   *  absent full-keyframe entities as last-seen state unless an explicit
+   *  removal arrives. */
+  visibilityFiltered?: boolean;
   removedEntityIds?: number[];
 };
 
