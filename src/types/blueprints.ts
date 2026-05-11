@@ -228,6 +228,9 @@ export type LocomotionPhysics = {
    *  air resistance. Wheels have low traction, treads middle, legs
    *  high. */
   traction: number;
+  /** Maximum traversable terrain slope in degrees from horizontal.
+   *  A* treats steeper cells as blocked for this locomotion profile. */
+  maxSlopeDeg: number;
   /** Optional spring-energy jump actuator layered on locomotion.
    *  Belongs on locomotion because the actuator is a property of the
    *  legs/wheels/treads, not the chassis. */

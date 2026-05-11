@@ -4,7 +4,7 @@ import type { BuildingGrid } from './buildGrid';
 import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';
-import { expandPathActions } from './Pathfinder';
+import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
 import { setUnitActions } from './unitActions';
 import {
   ENTITY_CHANGED_ACTIONS,
@@ -22,6 +22,11 @@ import {
 
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
+
+function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
+  const minSurfaceNormalZ = unit.unit?.locomotion.minSurfaceNormalZ;
+  return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
+}
 
 // Factory production system
 export class FactoryProductionSystem {
@@ -168,6 +173,7 @@ export class FactoryProductionSystem {
           anchorX, anchorY, wp.x, wp.y, wp.type,
           world.mapWidth, world.mapHeight, buildingGrid,
           wp.z,
+          pathTerrainFilterForUnit(unit),
         );
         if (wp.type === 'patrol' && patrolStartActionIndex === -1) {
           patrolStartActionIndex = actions.length;

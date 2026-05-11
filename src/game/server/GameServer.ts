@@ -3,7 +3,14 @@
 
 import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
-import type { CommandQueue, Command, SetCameraAoiCommand } from '../sim/commands';
+import type {
+  AttackCommand,
+  CommandQueue,
+  Command,
+  JumpCommand,
+  MoveCommand,
+  SetCameraAoiCommand,
+} from '../sim/commands';
 import {
   resetDeltaTracking,
   resetDeltaTrackingForKey,
@@ -540,15 +547,19 @@ export class GameServer {
     // Intercept server config commands (don't need tick synchronization)
     switch (command.type) {
       case 'setSnapshotRate':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setSnapshotRate(command.rate);
         return;
       case 'setKeyframeRatio':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setKeyframeRatio(command.ratio);
         return;
       case 'setTickRate':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setTickRate(command.rate);
         return;
       case 'setTiltEmaMode':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         // updateUnitTilt reads its mode from the unitTilt module's
         // private state; flipping it from a command keeps host +
         // every client running with the same effective EMA the
@@ -556,24 +567,31 @@ export class GameServer {
         setTiltEmaMode(command.mode);
         return;
       case 'setSendGridInfo':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setSendGridInfo(command.enabled);
         return;
       case 'setBackgroundUnitType':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setBackgroundUnitTypeEnabled(command.unitType, command.enabled);
         return;
       case 'setMaxTotalUnits':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.world.maxTotalUnits = command.maxTotalUnits;
         return;
       case 'setMirrorsEnabled':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setMirrorsEnabled(command.enabled);
         return;
       case 'setForceFieldsEnabled':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setForceFieldsEnabled(command.enabled);
         return;
       case 'setSimQuality':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setSimQuality(command.quality as ServerSimQuality);
         return;
       case 'setSimSignalStates':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         // Each field is optional; only the ones the user just clicked
         // will be present. setSimSignalStates validates internally.
         setSimSignalStates({
@@ -586,7 +604,117 @@ export class GameServer {
         this.setCameraAoi(command, fromPlayerId);
         return;
     }
-    this.commandQueue.enqueue(command);
+    const authorizedCommand = this.authorizeGameplayCommand(command, fromPlayerId);
+    if (authorizedCommand) this.commandQueue.enqueue(authorizedCommand);
+  }
+
+  private canApplyServerControlCommand(fromPlayerId?: PlayerId): boolean {
+    if (fromPlayerId === undefined) return true;
+    return fromPlayerId === this.playerIds[0];
+  }
+
+  private authorizeGameplayCommand(command: Command, fromPlayerId?: PlayerId): Command | null {
+    if (fromPlayerId === undefined) return command;
+
+    switch (command.type) {
+      case 'select':
+      case 'clearSelection':
+        // Selection is client-local. Never let a network command mutate
+        // authoritative world selection state for other players.
+        return null;
+
+      case 'move':
+        return this.authorizeMoveCommand(command, fromPlayerId);
+
+      case 'jump':
+        return this.authorizeUnitListCommand(command, fromPlayerId);
+
+      case 'attack':
+        return this.authorizeUnitListCommand(command, fromPlayerId);
+
+      case 'startBuild':
+        return this.isOwnedEntity(command.builderId, fromPlayerId) ? command : null;
+
+      case 'queueUnit':
+      case 'cancelQueueItem':
+      case 'setRallyPoint':
+      case 'setFactoryWaypoints':
+        return this.isOwnedFactory(command.factoryId, fromPlayerId) ? command : null;
+
+      case 'fireDGun':
+        return this.isOwnedEntity(command.commanderId, fromPlayerId) ? command : null;
+
+      case 'repair':
+        if (!this.isOwnedEntity(command.commanderId, fromPlayerId)) return null;
+        return this.isOwnedEntity(command.targetId, fromPlayerId) ? command : null;
+
+      default:
+        return null;
+    }
+  }
+
+  private authorizeMoveCommand(command: MoveCommand, playerId: PlayerId): MoveCommand | null {
+    const sourceIds = command.entityIds;
+    if (sourceIds.length === 0) return null;
+
+    const hasPerUnitTargets =
+      command.individualTargets !== undefined &&
+      command.individualTargets.length === sourceIds.length;
+
+    const entityIds: EntityId[] = [];
+
+    if (hasPerUnitTargets) {
+      const individualTargets: MoveCommand['individualTargets'] = [];
+      for (let i = 0; i < sourceIds.length; i++) {
+        const id = sourceIds[i];
+        if (!this.isOwnedUnit(id, playerId)) continue;
+        entityIds.push(id);
+        individualTargets.push(command.individualTargets![i]);
+      }
+      if (entityIds.length === 0) return null;
+      return { ...command, entityIds, individualTargets };
+    }
+
+    for (let i = 0; i < sourceIds.length; i++) {
+      const id = sourceIds[i];
+      if (this.isOwnedUnit(id, playerId)) entityIds.push(id);
+    }
+    if (entityIds.length === 0) return null;
+    return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  }
+
+  private authorizeUnitListCommand(
+    command: JumpCommand | AttackCommand,
+    playerId: PlayerId,
+  ): JumpCommand | AttackCommand | null {
+    const sourceIds = command.entityIds;
+    if (sourceIds.length === 0) return null;
+
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < sourceIds.length; i++) {
+      const id = sourceIds[i];
+      if (this.isOwnedUnit(id, playerId)) entityIds.push(id);
+    }
+    if (entityIds.length === 0) return null;
+    return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  }
+
+  private isOwnedEntity(entityId: EntityId, playerId: PlayerId): boolean {
+    return this.world.getEntity(entityId)?.ownership?.playerId === playerId;
+  }
+
+  private isOwnedUnit(entityId: EntityId, playerId: PlayerId): boolean {
+    const entity = this.world.getEntity(entityId);
+    return (
+      entity?.type === 'unit' &&
+      entity.unit !== undefined &&
+      entity.ownership?.playerId === playerId
+    );
+  }
+
+  private isOwnedFactory(entityId: EntityId, playerId: PlayerId): boolean {
+    const entity = this.world.getEntity(entityId);
+    return entity?.factory !== undefined && entity.ownership?.playerId === playerId;
   }
 
   private setCameraAoi(command: SetCameraAoiCommand, fromPlayerId?: PlayerId): void {

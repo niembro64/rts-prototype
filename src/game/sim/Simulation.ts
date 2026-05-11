@@ -47,14 +47,13 @@ import {
 } from '@/types/network';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
-import { expandPathActions } from './Pathfinder';
+import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
 import { updateSolarCollectors } from './solarCollector';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { WindPowerTracker, sampleWindState, type WindState } from './wind';
 import { isBuildTargetInRange } from './builderRange';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
 import {
-  refreshUnitActionHash,
   rotateFirstUnitActionToEnd,
   setUnitActions,
   shiftUnitAction,
@@ -765,35 +764,32 @@ export class Simulation {
         // Set priority target for turret system
         if (entity.combat) entity.combat.priorityTargetId = currentAction.targetId;
 
-        // Update action position to target's current anchor (follow
-        // moving units and keep building attack markers on the visual
-        // building center/top instead of collider-center guesses).
-        const targetPoint = getEntityTargetPoint(attackTarget);
-        if (
-          currentAction.x !== targetPoint.x ||
-          currentAction.y !== targetPoint.y ||
-          currentAction.z !== targetPoint.z
-        ) {
-          currentAction.x = targetPoint.x;
-          currentAction.y = targetPoint.y;
-          currentAction.z = targetPoint.z;
-          refreshUnitActionHash(unit);
-        }
-
         // Stop if any turret is engaged.
         if (this.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }
 
-        // Thrust toward target
-        const dx = targetPoint.x - transform.x;
-        const dy = targetPoint.y - transform.y;
+        // Move toward the pathfinder-approved approach point, not the
+        // target's raw position. If the target moved and this approach
+        // point no longer gets us into range, replan only after reaching
+        // the approach point so we do not recreate an obstacle beeline.
+        const dx = currentAction.x - transform.x;
+        const dy = currentAction.y - transform.y;
         const distance = magnitude(dx, dy);
-        if (distance > 5) {
+        if (distance > 15) {
           this.applyThrustToward(unit, dx, dy, distance);
           movingUnits.push(entity);
         } else {
+          if ((unit.stuckTicks ?? 0) < 0) {
+            unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
+            continue;
+          }
+          const targetPoint = getEntityTargetPoint(attackTarget);
+          if (!this.tryRefreshAttackApproach(entity, currentAction, targetPoint)) {
+            unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
+            continue;
+          }
           unit.stuckTicks = 0;
         }
         continue;
@@ -1037,13 +1033,15 @@ export class Simulation {
     // Forward the original action's altitude so a replan keeps the
     // click-derived final-waypoint z (used by Waypoint3D rendering)
     // instead of falling back to a fresh terrain sample.
+    const pathActionType = finalAction.type === 'attack' ? 'move' : finalAction.type;
     const newPath = expandPathActions(
       entity.transform.x, entity.transform.y,
       finalAction.x, finalAction.y,
-      finalAction.type,
+      pathActionType,
       this.world.mapWidth, this.world.mapHeight,
       this.constructionSystem.getGrid(),
       finalAction.z,
+      this.pathTerrainFilterForUnit(entity),
     );
     if (newPath.length === 0) return false;
     // CRITICAL: a single-waypoint result is the planner's
@@ -1061,14 +1059,65 @@ export class Simulation {
     if (newPath.length <= 1 && actions.length > 1) return false;
     if (finalAction.type === 'attack' && finalAction.targetId !== undefined) {
       const last = newPath[newPath.length - 1];
+      last.type = 'attack';
       last.targetId = finalAction.targetId;
-      last.x = finalAction.x;
-      last.y = finalAction.y;
-      last.z = finalAction.z;
+      last.isPathExpansion = undefined;
     }
     setUnitActions(entity.unit, newPath);
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     return true;
+  }
+
+  private tryRefreshAttackApproach(
+    entity: Entity,
+    currentAction: UnitAction,
+    targetPoint: { x: number; y: number; z?: number },
+  ): boolean {
+    if (!entity.unit || currentAction.type !== 'attack' || currentAction.targetId === undefined) {
+      return false;
+    }
+    const newPath = expandPathActions(
+      entity.transform.x,
+      entity.transform.y,
+      targetPoint.x,
+      targetPoint.y,
+      'move',
+      this.world.mapWidth,
+      this.world.mapHeight,
+      this.constructionSystem.getGrid(),
+      targetPoint.z,
+      this.pathTerrainFilterForUnit(entity),
+    );
+    if (newPath.length === 0) return false;
+
+    const last = newPath[newPath.length - 1];
+    last.type = 'attack';
+    last.targetId = currentAction.targetId;
+    last.isPathExpansion = undefined;
+
+    if (newPath.length === 1 && this.sameAttackApproach(currentAction, last)) {
+      return false;
+    }
+
+    const suffix = entity.unit.actions.slice(1);
+    setUnitActions(entity.unit, newPath.concat(suffix));
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+    return true;
+  }
+
+  private sameAttackApproach(a: UnitAction, b: UnitAction): boolean {
+    return (
+      a.type === b.type &&
+      a.targetId === b.targetId &&
+      Math.abs(a.x - b.x) < 1 &&
+      Math.abs(a.y - b.y) < 1 &&
+      Math.abs((a.z ?? 0) - (b.z ?? 0)) < 1
+    );
+  }
+
+  private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | undefined {
+    const minSurfaceNormalZ = entity.unit?.locomotion.minSurfaceNormalZ;
+    return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
   }
 
   // Get force accumulator for external force application (used by RtsScene)

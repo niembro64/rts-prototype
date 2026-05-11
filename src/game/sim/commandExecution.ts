@@ -10,7 +10,7 @@ import { magnitude, getTransformCosSin } from '../math';
 import { getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
-import { expandPathActions } from './Pathfinder';
+import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
@@ -21,6 +21,11 @@ import { pushUnitAction, setUnitActions } from './unitActions';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMountVelocity = { x: 0, y: 0, z: 0 };
+
+function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
+  const minSurfaceNormalZ = unit.unit?.locomotion.minSurfaceNormalZ;
+  return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
+}
 
 function getCommanderDGunTurretId(commander: Entity): string | null {
   const unitType = commander.unit?.unitType;
@@ -511,6 +516,7 @@ function addPathActions(
     ctx.world.mapWidth, ctx.world.mapHeight,
     ctx.constructionSystem.getGrid(),
     goalZ,
+    pathTerrainFilterForUnit(unit),
   );
   if (GAME_DIAGNOSTICS.commandPlans) {
     // Diagnostic: dump the plan for player-issued move commands so we
@@ -594,6 +600,7 @@ function addPathActionsWithFinal(
     ctx.world.mapWidth, ctx.world.mapHeight,
     ctx.constructionSystem.getGrid(),
     finalAction.z,
+    pathTerrainFilterForUnit(unit),
   );
   if (actions.length === 0) return;
   // Promote the LAST waypoint to the original action's type and
@@ -605,11 +612,6 @@ function addPathActionsWithFinal(
   // approach to the target rather than pushing into water.
   const last = actions[actions.length - 1];
   last.type = finalAction.type;
-  if (finalAction.type === 'attack') {
-    last.x = finalAction.x;
-    last.y = finalAction.y;
-    last.z = finalAction.z;
-  }
   if (finalAction.targetId !== undefined) last.targetId = finalAction.targetId;
   if (finalAction.buildingType !== undefined) last.buildingType = finalAction.buildingType;
   if (finalAction.buildingId !== undefined) last.buildingId = finalAction.buildingId;

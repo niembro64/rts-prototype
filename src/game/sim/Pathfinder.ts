@@ -50,6 +50,10 @@ import type { ActionType, UnitAction } from './types';
 
 type Vec2 = { x: number; y: number };
 
+export type PathTerrainFilter = {
+  minSurfaceNormalZ?: number;
+};
+
 // ── Tunables ─────────────────────────────────────────────────────
 
 /** Cells dilated around water/slope/map-edge. 2 cells = 40 wu of
@@ -124,9 +128,29 @@ let _ccLabels: Int16Array | null = null;  // 0 = blocked, 1+ = component id
 // shape (host re-config) or grid dimensions change.
 let _terrainBlockedKey = '';
 let _terrainBlocked: Uint8Array | null = null;
+let _terrainNormalZ: Float32Array | null = null;
+
+function normalizeMinSurfaceNormalZ(filter?: PathTerrainFilter): number | undefined {
+  const value = filter?.minSurfaceNormalZ;
+  if (value === undefined || !Number.isFinite(value) || value <= SLOPE_BLOCK_NZ) return undefined;
+  return Math.min(1, value);
+}
+
+function isCellPassable(idx: number, minSurfaceNormalZ?: number): boolean {
+  if (_blocked![idx] === 1) return false;
+  if (minSurfaceNormalZ === undefined) return true;
+  return (_terrainNormalZ?.[idx] ?? 1) >= minSurfaceNormalZ;
+}
+
+function isGridCellPassable(gx: number, gy: number, minSurfaceNormalZ?: number): boolean {
+  const gridW = _gridW, gridH = _gridH;
+  if (gx < 0 || gy < 0 || gx >= gridW || gy >= gridH) return false;
+  return isCellPassable(gy * gridW + gx, minSurfaceNormalZ);
+}
 
 function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
   terrainBlocked: Uint8Array;
+  terrainNormalZ: Float32Array;
   gridW: number;
   gridH: number;
   n: number;
@@ -139,9 +163,11 @@ function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
   if (
     tKey === _terrainBlockedKey &&
     _terrainBlocked !== null &&
-    _terrainBlocked.length === n
+    _terrainBlocked.length === n &&
+    _terrainNormalZ !== null &&
+    _terrainNormalZ.length === n
   ) {
-    return { terrainBlocked: _terrainBlocked, gridW, gridH, n };
+    return { terrainBlocked: _terrainBlocked, terrainNormalZ: _terrainNormalZ, gridW, gridH, n };
   }
 
   // Step 1 — terrain mask. Water is a flat plane at WATER_LEVEL —
@@ -153,8 +179,10 @@ function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
   // those extra samples were trying to produce). Slope check stays
   // since steep cells can show up well above water.
   const terrainMask = new Uint8Array(n);
+  const terrainNormalZ = new Float32Array(n);
   for (let gy = 0; gy < gridH; gy++) {
     for (let gx = 0; gx < gridW; gx++) {
+      const idx = gy * gridW + gx;
       const cx = (gx + 0.5) * BUILD_GRID_CELL_SIZE;
       const cy = (gy + 0.5) * BUILD_GRID_CELL_SIZE;
       let blk = false;
@@ -166,11 +194,13 @@ function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
       // check below is O(1) too.
       if (getTerrainMeshHeight(cx, cy, mapWidth, mapHeight) < WATER_LEVEL) {
         blk = true;
+        terrainNormalZ[idx] = 0;
       } else {
         const norm = getSurfaceNormal(cx, cy, mapWidth, mapHeight, LAND_CELL_SIZE);
+        terrainNormalZ[idx] = norm.nz;
         if (norm.nz < SLOPE_BLOCK_NZ) blk = true;
       }
-      if (blk) terrainMask[gy * gridW + gx] = 1;
+      if (blk) terrainMask[idx] = 1;
     }
   }
 
@@ -200,7 +230,8 @@ function ensureTerrainBlocked(mapWidth: number, mapHeight: number): {
 
   _terrainBlockedKey = tKey;
   _terrainBlocked = terrainBlocked;
-  return { terrainBlocked, gridW, gridH, n };
+  _terrainNormalZ = terrainNormalZ;
+  return { terrainBlocked, terrainNormalZ, gridW, gridH, n };
 }
 
 function ensureMaskAndCC(
@@ -311,20 +342,26 @@ const _snapOffsets: Int16Array = (() => {
   return buf;
 })();
 
-function findNearestOpenCell(gx: number, gy: number): { gx: number; gy: number } | null {
-  const blocked = _blocked!;
+function findNearestOpenCell(
+  gx: number,
+  gy: number,
+  minSurfaceNormalZ?: number,
+): { gx: number; gy: number } | null {
   const gridW = _gridW, gridH = _gridH;
   for (let i = 0; i < _snapOffsets.length; i += 2) {
     const nx = gx + _snapOffsets[i];
     const ny = gy + _snapOffsets[i + 1];
     if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
-    if (blocked[ny * gridW + nx] === 0) return { gx: nx, gy: ny };
+    if (isCellPassable(ny * gridW + nx, minSurfaceNormalZ)) return { gx: nx, gy: ny };
   }
   return null;
 }
 
 function findNearestCellInComponent(
-  gx: number, gy: number, componentLabel: number,
+  gx: number,
+  gy: number,
+  componentLabel: number,
+  minSurfaceNormalZ?: number,
 ): { gx: number; gy: number } | null {
   if (componentLabel <= 0) return null;
   const labels = _ccLabels!;
@@ -333,7 +370,10 @@ function findNearestCellInComponent(
     const nx = gx + _snapOffsets[i];
     const ny = gy + _snapOffsets[i + 1];
     if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
-    if (labels[ny * gridW + nx] === componentLabel) return { gx: nx, gy: ny };
+    const idx = ny * gridW + nx;
+    if (labels[idx] === componentLabel && isCellPassable(idx, minSurfaceNormalZ)) {
+      return { gx: nx, gy: ny };
+    }
   }
   return null;
 }
@@ -417,9 +457,14 @@ function heapPop(): number {
   return top;
 }
 
-function aStar(startGx: number, startGy: number, goalGx: number, goalGy: number): number[] | null {
+function aStar(
+  startGx: number,
+  startGy: number,
+  goalGx: number,
+  goalGy: number,
+  minSurfaceNormalZ?: number,
+): number[] | null {
   const gridW = _gridW, gridH = _gridH;
-  const blocked = _blocked!;
   const n = gridW * gridH;
 
   ensureScratch(n);
@@ -448,7 +493,7 @@ function aStar(startGx: number, startGy: number, goalGx: number, goalGy: number)
       const ny = cgy + NEIGHBOR_DY[k];
       if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
       const nidx = ny * gridW + nx;
-      if (blocked[nidx] === 1 || closed[nidx]) continue;
+      if (!isCellPassable(nidx, minSurfaceNormalZ) || closed[nidx]) continue;
       const tentative = gScore[cur] + NEIGHBOR_COST[k];
       if (tentative < gScore[nidx]) {
         parent[nidx] = cur;
@@ -474,8 +519,13 @@ function aStar(startGx: number, startGy: number, goalGx: number, goalGy: number)
  *  crosses is unblocked. Standard Bresenham + a side-cell check on
  *  diagonal steps so the line can't corner-cut past a single
  *  inflated halo cell. */
-function hasLineOfSight(x0: number, y0: number, x1: number, y1: number): boolean {
-  const blocked = _blocked!;
+function hasLineOfSight(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  minSurfaceNormalZ?: number,
+): boolean {
   const gridW = _gridW, gridH = _gridH;
   let gx = Math.floor(x0 / BUILD_GRID_CELL_SIZE);
   let gy = Math.floor(y0 / BUILD_GRID_CELL_SIZE);
@@ -489,14 +539,14 @@ function hasLineOfSight(x0: number, y0: number, x1: number, y1: number): boolean
   const maxSteps = dx + dy + 2;
   for (let step = 0; step < maxSteps; step++) {
     if (gx < 0 || gy < 0 || gx >= gridW || gy >= gridH) return false;
-    if (blocked[gy * gridW + gx] === 1) return false;
+    if (!isGridCellPassable(gx, gy, minSurfaceNormalZ)) return false;
     if (gx === tgx && gy === tgy) return true;
     const e2 = 2 * err;
     const aX = e2 > -dy;
     const aY = e2 < dx;
     if (aX && aY) {
-      if (blocked[gy * gridW + (gx + sx)] === 1) return false;
-      if (blocked[(gy + sy) * gridW + gx] === 1) return false;
+      if (!isGridCellPassable(gx + sx, gy, minSurfaceNormalZ)) return false;
+      if (!isGridCellPassable(gx, gy + sy, minSurfaceNormalZ)) return false;
     }
     if (aX) { err -= dy; gx += sx; }
     if (aY) { err += dx; gy += sy; }
@@ -511,11 +561,12 @@ function findPath(
   goalX: number, goalY: number,
   mapWidth: number, mapHeight: number,
   buildingGrid: BuildingGrid,
+  terrainFilter?: PathTerrainFilter,
 ): Vec2[] {
   ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
-  const blocked = _blocked!;
   const ccLabels = _ccLabels!;
   const gridW = _gridW, gridH = _gridH;
+  const minSurfaceNormalZ = normalizeMinSurfaceNormalZ(terrainFilter);
 
   const sgx = Math.max(0, Math.min(gridW - 1, Math.floor(startX / BUILD_GRID_CELL_SIZE)));
   const sgy = Math.max(0, Math.min(gridH - 1, Math.floor(startY / BUILD_GRID_CELL_SIZE)));
@@ -528,8 +579,8 @@ function findPath(
   // cell instead.
   let startCellGx = sgx, startCellGy = sgy;
   let startWasSnapped = false;
-  if (blocked[sgy * gridW + sgx] === 1) {
-    const open = findNearestOpenCell(sgx, sgy);
+  if (!isCellPassable(sgy * gridW + sgx, minSurfaceNormalZ)) {
+    const open = findNearestOpenCell(sgx, sgy, minSurfaceNormalZ);
     if (!open) return [{ x: startX, y: startY }];
     startCellGx = open.gx;
     startCellGy = open.gy;
@@ -544,8 +595,11 @@ function findPath(
   const startLabel = ccLabels[startCellGy * gridW + startCellGx];
   let goalCellGx = ggx, goalCellGy = ggy;
   let goalWasSnapped = false;
-  if (ccLabels[ggy * gridW + ggx] !== startLabel) {
-    const remap = findNearestCellInComponent(ggx, ggy, startLabel);
+  if (
+    ccLabels[ggy * gridW + ggx] !== startLabel ||
+    !isCellPassable(ggy * gridW + ggx, minSurfaceNormalZ)
+  ) {
+    const remap = findNearestCellInComponent(ggx, ggy, startLabel, minSurfaceNormalZ);
     if (!remap) return [{ x: startX, y: startY }];
     goalCellGx = remap.gx;
     goalCellGy = remap.gy;
@@ -563,7 +617,7 @@ function findPath(
     return [{ x: goalX, y: goalY }];
   }
 
-  const cellPath = aStar(startCellGx, startCellGy, goalCellGx, goalCellGy);
+  const cellPath = aStar(startCellGx, startCellGy, goalCellGx, goalCellGy, minSurfaceNormalZ);
   if (!cellPath) return [{ x: startX, y: startY }];
 
   // String-pull LOS smoothing. Keep candidate cells only when LOS
@@ -592,7 +646,7 @@ function findPath(
     const candY = (cgy + 0.5) * BUILD_GRID_CELL_SIZE;
     const nextX = (ngx + 0.5) * BUILD_GRID_CELL_SIZE;
     const nextY = (ngy + 0.5) * BUILD_GRID_CELL_SIZE;
-    if (!hasLineOfSight(anchorX, anchorY, nextX, nextY)) {
+    if (!hasLineOfSight(anchorX, anchorY, nextX, nextY, minSurfaceNormalZ)) {
       smoothed.push({ x: candX, y: candY });
       anchorX = candX;
       anchorY = candY;
@@ -690,7 +744,12 @@ function validatePathDoesNotCrossWater(
  *  When provided AND the planner did NOT have to snap the goal, the
  *  click's altitude is used verbatim on the final waypoint —
  *  preserving "the cursor was there, the dot is there" precision.
- *  Otherwise z falls back to a terrain sample at the waypoint's xy. */
+ *  Otherwise z falls back to a terrain sample at the waypoint's xy.
+ *
+ *  `terrainFilter.minSurfaceNormalZ` adds a per-unit locomotion slope
+ *  gate on top of the global terrain mask. Higher values mean flatter
+ *  required terrain; cells whose surface normal z falls below the
+ *  threshold are treated as blocked for that path query. */
 export function expandPathActions(
   startX: number, startY: number,
   goalX: number, goalY: number,
@@ -698,8 +757,18 @@ export function expandPathActions(
   mapWidth: number, mapHeight: number,
   buildingGrid: BuildingGrid,
   goalZ?: number,
+  terrainFilter?: PathTerrainFilter,
 ): UnitAction[] {
-  const path = findPath(startX, startY, goalX, goalY, mapWidth, mapHeight, buildingGrid);
+  const path = findPath(
+    startX,
+    startY,
+    goalX,
+    goalY,
+    mapWidth,
+    mapHeight,
+    buildingGrid,
+    terrainFilter,
+  );
   if (VALIDATE_PATHS) {
     validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
   }

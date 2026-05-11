@@ -6,6 +6,10 @@ export type UnitLocomotion = {
   driveForce: number;
   /** Ground traction coefficient. This is coupling to terrain, not drag. */
   traction: number;
+  /** Maximum traversable slope in degrees from horizontal. */
+  maxSlopeDeg: number;
+  /** Precomputed cosine threshold for pathfinding against terrain normals. */
+  minSurfaceNormalZ: number;
 };
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local

@@ -121,6 +121,8 @@ function spawnUnit(
       expandPathActions(
         x, y, targetX, targetY, waypointType,
         world.mapWidth, world.mapHeight, buildingGrid,
+        undefined,
+        { minSurfaceNormalZ: unit.unit.locomotion.minSurfaceNormalZ },
       ),
     );
   }

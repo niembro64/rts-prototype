@@ -579,7 +579,7 @@ export const TERRAIN_HORIZON_BLEND_CONFIG = {
  *  rectangles that hash-place themselves across flat green ground. When
  *  false, the terrain keeps just the underlying biome colors (low/dry
  *  grass, rock, shoreline soil) without any of the four box-mark layers. */
-export const TERRAIN_GROUND_DETAIL_ENABLED = false;
+export const TERRAIN_GROUND_DETAIL_ENABLED = true;
 
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion

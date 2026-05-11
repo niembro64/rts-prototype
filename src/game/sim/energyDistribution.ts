@@ -112,22 +112,28 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     // 2a) Factory currently funding a unit shell?
     if (entity.factory?.isProducing && entity.factory.currentShellId !== null
         && entity.ownership && isEntityActive(entity)) {
-      if (world.canPlayerBuildUnit(entity.ownership.playerId)) {
-        const shell = world.getEntity(entity.factory.currentShellId);
-        if (shell?.buildable && !shell.buildable.isComplete && !shell.buildable.isGhost) {
-          const remainingCost = getTotalRemainingCost(shell.buildable);
-          if (remainingCost > 0) {
-            const config = getBuildingConfig(entity.buildingType!);
-            const rateCap = (config.constructionRate ?? Infinity) * dtSec;
-            addConsumer(
-              entity.ownership.playerId,
-              shell,
-              'build',
-              remainingCost,
-              rateCap,
-              entity.id,
-            );
-          }
+      // currentShellId was admitted by factoryProduction at shell-spawn
+      // time. Do not re-check the unit cap here: the incomplete shell
+      // already counts as a unit, so a cap-1 spawn would otherwise starve.
+      const shell = world.getEntity(entity.factory.currentShellId);
+      if (
+        shell?.buildable &&
+        shell.ownership?.playerId === entity.ownership.playerId &&
+        !shell.buildable.isComplete &&
+        !shell.buildable.isGhost
+      ) {
+        const remainingCost = getTotalRemainingCost(shell.buildable);
+        if (remainingCost > 0) {
+          const config = getBuildingConfig(entity.buildingType!);
+          const rateCap = (config.constructionRate ?? Infinity) * dtSec;
+          addConsumer(
+            entity.ownership.playerId,
+            shell,
+            'build',
+            remainingCost,
+            rateCap,
+            entity.id,
+          );
         }
       }
     }
