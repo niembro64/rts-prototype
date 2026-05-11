@@ -18,7 +18,6 @@ import {
 import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
 import {
   getUnitGroundFrictionDamp,
-  getUnitGroundPenetration,
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
 import type { ServerTarget } from './ClientPredictionTargets';
@@ -44,6 +43,16 @@ const motionScratch: MutableUnitMotion3 = {
   vy: 0,
   vz: 0,
 };
+
+const targetMotionScratch: MutableUnitMotion3 = {
+  x: 0,
+  y: 0,
+  z: 0,
+  vx: 0,
+  vy: 0,
+  vz: 0,
+};
+
 let predictionMapWidth = 2000;
 let predictionMapHeight = 2000;
 
@@ -70,96 +79,17 @@ function getPredictionGroundNormal(
   );
 }
 
-function getTargetGroundPenetration(target: UnitPredictionTarget): number {
-  return getPredictionGroundZ(target.x, target.y) -
-    (target.z - target.bodyCenterHeight);
-}
-
-function targetVelocitySq(target: UnitPredictionTarget): number {
-  const vx = target.velocityX ?? 0;
-  const vy = target.velocityY ?? 0;
-  const vz = target.velocityZ ?? 0;
+function motionVelocitySq(motion: MutableUnitMotion3): number {
+  const vx = motion.vx;
+  const vy = motion.vy;
+  const vz = motion.vz;
   return vx * vx + vy * vy + vz * vz;
 }
 
-function targetMovementAccelSq(target: UnitPredictionTarget): number {
-  const ax = target.movementAccelX ?? 0;
-  const ay = target.movementAccelY ?? 0;
-  const az = target.movementAccelZ ?? 0;
-  return ax * ax + ay * ay + az * az;
-}
-
-function advanceTargetExtrapolation(
-  target: UnitPredictionTarget,
-  dt: number,
-  airDamp: number,
-  groundDamp: number,
-): void {
-  const penetration = getTargetGroundPenetration(target);
-  const contact = isUnitGroundPenetrationInContact(penetration);
-  const jumpAirborne = target.jumpActive && !target.predictedGroundContact;
-  const upwardLaunch = (target.velocityZ ?? 0) > 0.05;
-  const airborne = !contact || jumpAirborne || upwardLaunch;
-
-  if (
-    !airborne &&
-    targetMovementAccelSq(target) <= PREDICTION_ACCEL_EPSILON_SQ &&
-    penetration <= PREDICTION_GROUND_REST_PENETRATION_EPSILON &&
-    targetVelocitySq(target) <= PREDICTION_VEL_EPSILON_SQ
-  ) {
-    target.z = getPredictionGroundZ(target.x, target.y) + target.bodyCenterHeight;
-    target.velocityX = 0;
-    target.velocityY = 0;
-    target.velocityZ = 0;
-    target.predictedGroundContact = true;
-    return;
-  }
-
-  if (!airborne) {
-    target.velocityX =
-      ((target.velocityX ?? 0) + (target.movementAccelX ?? 0) * dt) *
-      airDamp *
-      groundDamp;
-    target.velocityY =
-      ((target.velocityY ?? 0) + (target.movementAccelY ?? 0) * dt) *
-      airDamp *
-      groundDamp;
-    target.velocityZ = 0;
-    target.x += target.velocityX * dt;
-    target.y += target.velocityY * dt;
-    target.z = getPredictionGroundZ(target.x, target.y) + target.bodyCenterHeight;
-    target.predictedGroundContact = true;
-    return;
-  }
-
-  target.velocityX =
-    ((target.velocityX ?? 0) + (target.movementAccelX ?? 0) * dt) *
-    airDamp;
-  target.velocityY =
-    ((target.velocityY ?? 0) + (target.movementAccelY ?? 0) * dt) *
-    airDamp;
-  target.velocityZ =
-    ((target.velocityZ ?? 0) + ((target.movementAccelZ ?? 0) - GRAVITY) * dt) *
-    airDamp;
-  target.x += target.velocityX * dt;
-  target.y += target.velocityY * dt;
-  target.z += target.velocityZ * dt;
-
-  const nextGroundZ = getPredictionGroundZ(target.x, target.y);
-  const nextGroundPointZ = target.z - target.bodyCenterHeight;
-  if (target.velocityZ <= 0 && nextGroundPointZ <= nextGroundZ) {
-    target.z = nextGroundZ + target.bodyCenterHeight;
-    target.velocityZ = 0;
-    target.predictedGroundContact = true;
-  } else {
-    target.predictedGroundContact = false;
-  }
-}
-
-function advanceUnitMotionState(
-  unit: NonNullable<Entity['unit']>,
+function advanceSharedUnitMotionPrediction(
   motion: MutableUnitMotion3,
   dt: number,
+  groundOffset: number,
   airDamp: number,
   groundDamp: number,
   movementAccelX: number,
@@ -167,7 +97,7 @@ function advanceUnitMotionState(
   movementAccelZ: number,
 ): boolean {
   const groundZ = getPredictionGroundZ(motion.x, motion.y);
-  const penetration = getUnitGroundPenetration(unit, motion.z, groundZ);
+  const penetration = groundZ - (motion.z - groundOffset);
   const contact = isUnitGroundPenetrationInContact(penetration);
   const poweredAx = contact ? movementAccelX : 0;
   const poweredAy = contact ? movementAccelY : 0;
@@ -179,11 +109,9 @@ function advanceUnitMotionState(
     contact &&
     poweredAccelSq <= PREDICTION_ACCEL_EPSILON_SQ &&
     penetration <= PREDICTION_GROUND_REST_PENETRATION_EPSILON &&
-    motion.vx * motion.vx +
-      motion.vy * motion.vy +
-      motion.vz * motion.vz <= PREDICTION_VEL_EPSILON_SQ
+    motionVelocitySq(motion) <= PREDICTION_VEL_EPSILON_SQ
   ) {
-    motion.z = groundZ + unit.bodyCenterHeight;
+    motion.z = groundZ + groundOffset;
     motion.vx = 0;
     motion.vy = 0;
     motion.vz = 0;
@@ -193,7 +121,7 @@ function advanceUnitMotionState(
   advanceUnitMotionPhysicsMutable(
     motion,
     dt,
-    unit.bodyCenterHeight,
+    groundOffset,
     poweredAx,
     poweredAy,
     poweredAz - GRAVITY,
@@ -210,7 +138,61 @@ function advanceUnitMotionState(
 
   const nextGroundZ = getPredictionGroundZ(motion.x, motion.y);
   return isUnitGroundPenetrationInContact(
-    getUnitGroundPenetration(unit, motion.z, nextGroundZ),
+    nextGroundZ - (motion.z - groundOffset),
+  );
+}
+
+function advanceTargetExtrapolation(
+  target: UnitPredictionTarget,
+  dt: number,
+  airDamp: number,
+  groundDamp: number,
+): void {
+  targetMotionScratch.x = target.x;
+  targetMotionScratch.y = target.y;
+  targetMotionScratch.z = target.z;
+  targetMotionScratch.vx = target.velocityX ?? 0;
+  targetMotionScratch.vy = target.velocityY ?? 0;
+  targetMotionScratch.vz = target.velocityZ ?? 0;
+
+  target.predictedGroundContact = advanceSharedUnitMotionPrediction(
+    targetMotionScratch,
+    dt,
+    target.bodyCenterHeight,
+    airDamp,
+    groundDamp,
+    target.movementAccelX ?? 0,
+    target.movementAccelY ?? 0,
+    target.movementAccelZ ?? 0,
+  );
+
+  target.x = targetMotionScratch.x;
+  target.y = targetMotionScratch.y;
+  target.z = targetMotionScratch.z;
+  target.velocityX = targetMotionScratch.vx;
+  target.velocityY = targetMotionScratch.vy;
+  target.velocityZ = targetMotionScratch.vz;
+}
+
+function advanceUnitMotionState(
+  unit: NonNullable<Entity['unit']>,
+  motion: MutableUnitMotion3,
+  dt: number,
+  airDamp: number,
+  groundDamp: number,
+  movementAccelX: number,
+  movementAccelY: number,
+  movementAccelZ: number,
+): boolean {
+  return advanceSharedUnitMotionPrediction(
+    motion,
+    dt,
+    unit.bodyCenterHeight,
+    airDamp,
+    groundDamp,
+    movementAccelX,
+    movementAccelY,
+    movementAccelZ,
   );
 }
 

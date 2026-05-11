@@ -26,8 +26,10 @@ import type { WorldState } from './WorldState';
 import { magnitude3 } from '../math';
 import { halfLifeBlend } from '../network/driftEma';
 import { TILT_EMA_HALF_LIFE_SEC, TILT_EMA_MODE_DEFAULT, type TiltEmaMode } from '../../shellConfig';
+import { ENTITY_CHANGED_NORMAL } from '../../types/network';
 
 let _activeMode: TiltEmaMode = TILT_EMA_MODE_DEFAULT;
+const SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
 
 /** Set the active tilt EMA mode. Wired to the HOST SERVER bar in
  *  Phase 3; until then this is a programmatic knob. */
@@ -57,6 +59,9 @@ export function updateUnitTilt(world: WorldState, dtMs: number): void {
     if (!u) continue;
     const raw = world.getCachedSurfaceNormal(entity.transform.x, entity.transform.y);
     const stored = u.surfaceNormal;
+    const beforeNx = stored.nx;
+    const beforeNy = stored.ny;
+    const beforeNz = stored.nz;
 
     if (alpha >= 1) {
       // SNAP mode (or first-tick on a fresh unit if alpha resolves to 1
@@ -65,6 +70,7 @@ export function updateUnitTilt(world: WorldState, dtMs: number): void {
       stored.nx = raw.nx;
       stored.ny = raw.ny;
       stored.nz = raw.nz;
+      markSurfaceNormalDirtyIfChanged(world, entity.id, stored, beforeNx, beforeNy, beforeNz);
       continue;
     }
 
@@ -89,5 +95,24 @@ export function updateUnitTilt(world: WorldState, dtMs: number): void {
       stored.ny = raw.ny;
       stored.nz = raw.nz;
     }
+    markSurfaceNormalDirtyIfChanged(world, entity.id, stored, beforeNx, beforeNy, beforeNz);
   }
+}
+
+function markSurfaceNormalDirtyIfChanged(
+  world: WorldState,
+  entityId: number,
+  normal: { nx: number; ny: number; nz: number },
+  beforeNx: number,
+  beforeNy: number,
+  beforeNz: number,
+): void {
+  if (
+    Math.abs(normal.nx - beforeNx) <= SURFACE_NORMAL_DIRTY_EPSILON &&
+    Math.abs(normal.ny - beforeNy) <= SURFACE_NORMAL_DIRTY_EPSILON &&
+    Math.abs(normal.nz - beforeNz) <= SURFACE_NORMAL_DIRTY_EPSILON
+  ) {
+    return;
+  }
+  world.markSnapshotDirty(entityId, ENTITY_CHANGED_NORMAL);
 }
