@@ -89,7 +89,6 @@ export class RtsScene3DRenderPhase {
   private readonly smokeTrailProjectilesScratch: Entity[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
-  private precompileFramesRemaining = 60;
 
   constructor(
     private readonly threeApp: ThreeApp,
@@ -354,11 +353,6 @@ export class RtsScene3DRenderPhase {
         this.selectionSystem.getSelectedUnits(),
         this.selectionSystem.getSelectedBuildings(),
       );
-    }
-
-    if (this.precompileFramesRemaining > 0) {
-      this.threeApp.precompileShaders();
-      this.precompileFramesRemaining--;
     }
 
     return {

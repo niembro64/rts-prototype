@@ -133,6 +133,7 @@ export type RtsScene3DConfig = {
    *  funny-name default. Optional for back-compat with callers that
    *  don't yet pass it (lobby preview, demo standalones). */
   lookupPlayerName?: (playerId: PlayerId) => string | null;
+  onRendererWarmupChange?: (warming: boolean) => void;
 };
 
 type SceneLifecycle = {
@@ -261,6 +262,11 @@ export class RtsScene3D {
   public onGameRestart?: () => void;
   public onServerMetaUpdate?: (meta: NetworkServerSnapshotMeta) => void;
   public onStartupReady?: () => void;
+  public onRendererWarmupChange?: (warming: boolean) => void;
+  private rendererWarmupStarted = false;
+  private rendererWarmupActive = false;
+  private rendererWarmupToken = 0;
+  private destroyed = false;
 
   // Phaser-compat accessors used by PhaserCanvas.vue
   private _restartCb: (() => void) | null = null;
@@ -279,6 +285,7 @@ export class RtsScene3D {
     this.localPlayerId = config.localPlayerId;
     this.playerIds = config.playerIds;
     if (config.lookupPlayerName) this.lookupPlayerName = config.lookupPlayerName;
+    this.onRendererWarmupChange = config.onRendererWarmupChange;
     this.terrainCenter = config.terrainCenter ?? 'valley';
     this.terrainDividers = config.terrainDividers ?? 'valley';
     this.terrainMapShape = config.terrainMapShape ?? 'circle';
@@ -657,6 +664,23 @@ export class RtsScene3D {
     );
   }
 
+  private setRendererWarmupActive(active: boolean): void {
+    if (this.rendererWarmupActive === active) return;
+    this.rendererWarmupActive = active;
+    this.onRendererWarmupChange?.(active);
+  }
+
+  private startRendererWarmup(): void {
+    if (this.rendererWarmupStarted) return;
+    this.rendererWarmupStarted = true;
+    this.setRendererWarmupActive(true);
+    const token = ++this.rendererWarmupToken;
+    void this.threeApp.precompileShadersAsync().finally(() => {
+      if (this.destroyed || token !== this.rendererWarmupToken) return;
+      this.setRendererWarmupActive(false);
+    });
+  }
+
   update(_time: number, delta: number): void {
     const frameStart = performance.now();
 
@@ -754,6 +778,12 @@ export class RtsScene3D {
       renderLod,
       renderLodGrid: this.predictionPhase.renderLodGrid,
     });
+    if (
+      !this.rendererWarmupStarted &&
+      (snapshotResult.appliedSnapshot || this.clientViewState.getTick() > 0)
+    ) {
+      this.startRendererWarmup();
+    }
 
     // UI updates -- throttled like RtsScene. Producing-factory progress
     // invalidation lives with the rest of the 3D selection state.
@@ -1290,6 +1320,9 @@ export class RtsScene3D {
    * renderer swap can reuse the same connection across the new scene.
    */
   public shutdown(opts: { keepConnection?: boolean } = {}): void {
+    this.destroyed = true;
+    this.rendererWarmupToken++;
+    this.setRendererWarmupActive(false);
     teardownRtsScene3DRenderers({
       inputManager: this.inputManager,
       healthBar3D: this.healthBar3D,
@@ -1341,5 +1374,6 @@ export class RtsScene3D {
     this.onGameOverUI = undefined;
     this.onGameRestart = undefined;
     this.onServerMetaUpdate = undefined;
+    this.onRendererWarmupChange = undefined;
   }
 }

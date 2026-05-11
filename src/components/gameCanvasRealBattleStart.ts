@@ -1,4 +1,4 @@
-import type { Ref } from 'vue';
+import { nextTick, type Ref } from 'vue';
 import type { GameScene } from '../game/createGame';
 import type { NetworkManager, NetworkRole } from '../game/network/NetworkManager';
 import type { GameConnection } from '../game/server/GameConnection';
@@ -17,6 +17,15 @@ import {
   createRemoteRealBattleConnection,
   loadAndApplyRealBattleTerrain,
 } from './gameCanvasRealBattleStartup';
+
+async function waitForLoadingOverlayPaint(): Promise<void> {
+  await nextTick();
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      window.setTimeout(resolve, 0);
+    });
+  });
+}
 
 export type StartRealBattleWithPlayersOptions = {
   containerRef: Ref<HTMLDivElement | null>;
@@ -64,6 +73,11 @@ export async function startRealBattleWithPlayers(
 
   options.lifecycle.setStartTimeout(setTimeout(async () => {
     options.lifecycle.markStartTimeoutFired();
+    if (!options.lifecycle.isCurrentStart(startGen) || !options.containerRef.value) {
+      options.battleLoading.value = false;
+      return;
+    }
+    await waitForLoadingOverlayPaint();
     if (!options.lifecycle.isCurrentStart(startGen) || !options.containerRef.value) {
       options.battleLoading.value = false;
       return;
@@ -132,6 +146,18 @@ export async function startRealBattleWithPlayers(
       return;
     }
 
+    let startupReady = false;
+    let rendererWarmupDone = !options.playerClientEnabled.value;
+    const maybeFinishLoading = () => {
+      if (
+        options.lifecycle.isCurrentStart(startGen) &&
+        startupReady &&
+        rendererWarmupDone
+      ) {
+        options.battleLoading.value = false;
+      }
+    };
+
     const gameInstance = options.foregroundGame.create({
       parent: container,
       width: rect.width || window.innerWidth,
@@ -146,15 +172,18 @@ export async function startRealBattleWithPlayers(
       terrainMapShape: realBattleTerrain.terrainMapShape,
       backgroundMode: false,
       lookupPlayerName: options.lookupPlayerName,
+      onRendererWarmupChange: (warming) => {
+        rendererWarmupDone = !warming;
+        maybeFinishLoading();
+      },
     });
     setPlayerClientRenderEnabled(gameInstance, options.playerClientEnabled.value);
     gameInstance.app.setCameraFovDegrees(options.cameraFovDegrees.value);
     const scene = gameInstance.getScene();
     if (scene) {
       scene.onStartupReady = () => {
-        if (options.lifecycle.isCurrentStart(startGen)) {
-          options.battleLoading.value = false;
-        }
+        startupReady = true;
+        maybeFinishLoading();
       };
     }
 

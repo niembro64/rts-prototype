@@ -83,6 +83,8 @@ const gameAreaRef = ref<HTMLDivElement | null>(null);
 const activePlayer = ref<PlayerId>(1);
 const gameOverWinner = ref<PlayerId | null>(null);
 const battleLoading = ref(false);
+const rendererWarmupLoading = ref(true);
+const showLoadingOverlay = computed(() => battleLoading.value || rendererWarmupLoading.value);
 
 let getBackgroundBattle = (): BackgroundBattleState | null => null;
 let startBackgroundBattle = async (): Promise<void> => {};
@@ -150,6 +152,20 @@ const {
   hasServer,
   serverMetaFromSnapshot,
 });
+
+const loadingInLobbyPreview = computed(
+  () =>
+    !gameStarted.value &&
+    currentBattleMode.value === 'real' &&
+    lobbyModalVisible.value &&
+    showLoadingOverlay.value,
+);
+const showDemoLoadingOverlay = computed(
+  () => showLoadingOverlay.value && !gameStarted.value && !loadingInLobbyPreview.value,
+);
+const showRealLoadingOverlay = computed(
+  () => showLoadingOverlay.value && gameStarted.value,
+);
 
 const {
   localUsername,
@@ -320,6 +336,9 @@ const {
     : undefined,
   getPlayerClientEnabled: () => playerClientEnabled.value,
   bindSceneUi: (scene) => bindGameSceneUi(scene),
+  onRendererWarmupChange: (warming) => {
+    if (!gameStarted.value) rendererWarmupLoading.value = warming;
+  },
   onStarted: (battle) => {
     activeConnection = battle.connection;
     hasServer.value = true;
@@ -521,6 +540,14 @@ const displayServerTime = computed(
 );
 const displayServerIp = computed(
   () => serverMetaFromSnapshot.value?.server.ip ?? '',
+);
+const loadingOverlayTitle = computed(() =>
+  rendererWarmupLoading.value ? 'Preparing Renderer' : battleLoadingTitle.value,
+);
+const loadingOverlayDetail = computed(() =>
+  rendererWarmupLoading.value
+    ? 'Generating the map, creating the scene, and compiling the 3D renderer.'
+    : battleLoadingDetail.value,
 );
 
 const {
@@ -879,24 +906,35 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
         ref="backgroundContainerRef"
         class="background-battle-container"
         v-show="!gameStarted"
-      ></div>
+      >
+        <div
+          v-if="showDemoLoadingOverlay"
+          class="battle-loading-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <div class="battle-loading-spinner"></div>
+          <div class="battle-loading-title">{{ loadingOverlayTitle }}</div>
+          <div class="battle-loading-detail">{{ loadingOverlayDetail }}</div>
+        </div>
+      </div>
 
       <!-- Main game container (real game) -->
       <div
         ref="containerRef"
         class="phaser-container"
         v-show="gameStarted"
-      ></div>
-
-      <div
-        v-if="battleLoading"
-        class="battle-loading-overlay"
-        role="status"
-        aria-live="polite"
       >
-        <div class="battle-loading-spinner"></div>
-        <div class="battle-loading-title">{{ battleLoadingTitle }}</div>
-        <div class="battle-loading-detail">{{ battleLoadingDetail }}</div>
+        <div
+          v-if="showRealLoadingOverlay"
+          class="battle-loading-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <div class="battle-loading-spinner"></div>
+          <div class="battle-loading-title">{{ loadingOverlayTitle }}</div>
+          <div class="battle-loading-detail">{{ loadingOverlayDetail }}</div>
+        </div>
       </div>
 
       <div
@@ -982,6 +1020,9 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
       :mirrors-enabled="currentMirrorsEnabled"
       :force-fields-enabled="currentForceFieldsEnabled"
       :force-field-reflection-mode="currentForceFieldReflectionMode"
+      :preview-loading="loadingInLobbyPreview"
+      :preview-loading-title="loadingOverlayTitle"
+      :preview-loading-detail="loadingOverlayDetail"
       @host="handleHost"
       @join="handleJoin"
       @start="handleLobbyStart"
@@ -1040,6 +1081,7 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
 }
 
 .phaser-container {
+  position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -1073,7 +1115,7 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
 .battle-loading-overlay {
   position: absolute;
   inset: 0;
-  z-index: 1200;
+  z-index: 3200;
   display: flex;
   flex-direction: column;
   align-items: center;

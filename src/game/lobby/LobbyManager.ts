@@ -59,6 +59,7 @@ export async function createBackgroundBattle(
   mode: BattleMode = 'demo',
   playerIds?: PlayerId[],
   localPlayerId?: PlayerId,
+  onRendererWarmupChange?: (warming: boolean) => void,
 ): Promise<BackgroundBattleState> {
   const rect = container.getBoundingClientRect();
 
@@ -182,6 +183,7 @@ export async function createBackgroundBattle(
     terrainMapShape,
     backgroundMode: true,
     lobbyPreview: isLobbyPreview,
+    onRendererWarmupChange,
   });
 
   return { gameInstance, server, connection, clientViewState };

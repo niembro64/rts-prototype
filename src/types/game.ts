@@ -40,6 +40,9 @@ export type GameConfig = {
    *  roster through the scene. Returns null when the player isn't in
    *  the roster (renderer falls back to a deterministic funny default). */
   lookupPlayerName?: (playerId: PlayerId) => string | null;
+  /** Emits true while the 3D renderer is warming shader programs for a
+   *  newly-created scene, and false once the scene is ready to reveal. */
+  onRendererWarmupChange?: (warming: boolean) => void;
 };
 
 export type GameScene = import('../game/scenes/RtsScene3D').RtsScene3D;

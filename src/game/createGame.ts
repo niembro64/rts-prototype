@@ -35,6 +35,7 @@ export function createGame(config: GameConfig): GameInstance {
       backgroundMode,
       lobbyPreview,
       lookupPlayerName: config.lookupPlayerName,
+      onRendererWarmupChange: config.onRendererWarmupChange,
     });
 
   let scene = buildScene();

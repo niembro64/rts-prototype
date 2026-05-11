@@ -11,28 +11,6 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 ==============================================================================
  ISSUES:
 
-------------------------------------------------------------------------------
- RTS PROFESSIONAL AUDIT - 2026-05-11
-------------------------------------------------------------------------------
-
-2. P2 - Submunition spread uses Math.random() inside sim projectile creation.
-
-   Evidence:
-   - src/game/sim/combat/ProjectileCollisionHandler.ts:241-244 comments that
-     submunition spread is cosmetic and does not feed back into deterministic sim
-     state.
-   - src/game/sim/combat/ProjectileCollisionHandler.ts:259-300 uses Math.random()
-     to set child projectile velocities; those projectiles are real sim entities
-     that can later collide and deal damage.
-
-   Impact:
-   Live server authority may hide this in normal multiplayer, but replay,
-   deterministic test, lockstep, save/load, or host migration paths will diverge.
-
-   Fix direction:
-   Use the world's deterministic RNG, or pass a deterministic RNG into
-   spawnSubmunitions. Add a seeded replay/test case that confirms identical
-   projectile outcomes across runs.
 
 3. P2 - D-gun spends energy before validating a usable target direction.
 

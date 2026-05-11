@@ -34,6 +34,9 @@ const props = defineProps<{
   mirrorsEnabled: boolean;
   forceFieldsEnabled: boolean;
   forceFieldReflectionMode: ForceFieldReflectionMode;
+  previewLoading: boolean;
+  previewLoadingTitle: string;
+  previewLoadingDetail: string;
 }>();
 
 const emit = defineEmits<{
@@ -319,7 +322,18 @@ const terrainSectionVars = computed(() =>
         id="lobby-preview-target"
         class="preview-pane"
         v-show="isInLobby"
-      ></div>
+      >
+        <div
+          v-if="previewLoading"
+          class="preview-loading-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <div class="preview-loading-spinner"></div>
+          <div class="preview-loading-title">{{ previewLoadingTitle }}</div>
+          <div class="preview-loading-detail">{{ previewLoadingDetail }}</div>
+        </div>
+      </div>
 
       <!-- Initial screen -->
       <template v-if="!isInLobby && !isConnecting">
@@ -843,6 +857,44 @@ const terrainSectionVars = computed(() =>
   border: 1px solid #444;
   border-radius: 8px;
   overflow: hidden;
+}
+
+.preview-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px;
+  background: rgba(5, 7, 10, 0.9);
+  color: #edf3ff;
+  text-align: center;
+}
+
+.preview-loading-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(237, 243, 255, 0.18);
+  border-top-color: #80c7ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.preview-loading-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.preview-loading-detail {
+  max-width: 360px;
+  color: rgba(237, 243, 255, 0.72);
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 .title {

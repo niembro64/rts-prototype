@@ -1,4 +1,4 @@
-import type { Ref } from 'vue';
+import { nextTick, type Ref } from 'vue';
 import {
   createBackgroundBattle,
   destroyBackgroundBattle,
@@ -9,6 +9,15 @@ import type { PlayerId } from '../game/sim/types';
 import type { BattleMode } from '../battleBarConfig';
 import { waitForSceneAndBind } from './gameSceneBindings';
 
+async function waitForLoadingOverlayPaint(): Promise<void> {
+  await nextTick();
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      window.setTimeout(resolve, 0);
+    });
+  });
+}
+
 type BackgroundBattleOptions = {
   backgroundContainerRef: Ref<HTMLDivElement | null>;
   getLocalIpAddress: () => string;
@@ -17,6 +26,7 @@ type BackgroundBattleOptions = {
   getPreviewLocalPlayerId: () => PlayerId | undefined;
   getPlayerClientEnabled: () => boolean;
   bindSceneUi: (scene: GameScene) => void;
+  onRendererWarmupChange: (warming: boolean) => void;
   onStarted: (battle: BackgroundBattleState) => void;
   onStopped: () => void;
 };
@@ -29,6 +39,7 @@ export function useGameCanvasBackgroundBattle({
   getPreviewLocalPlayerId,
   getPlayerClientEnabled,
   bindSceneUi,
+  onRendererWarmupChange,
   onStarted,
   onStopped,
 }: BackgroundBattleOptions): {
@@ -53,22 +64,34 @@ export function useGameCanvasBackgroundBattle({
       destroyBackgroundBattle(backgroundBattle);
       backgroundBattle = null;
     }
+    onRendererWarmupChange(false);
     onStopped();
   }
 
   async function startBackgroundBattle(): Promise<void> {
-    if (!backgroundContainerRef.value) return;
+    if (!backgroundContainerRef.value) {
+      onRendererWarmupChange(false);
+      return;
+    }
     stopBackgroundBattle();
+    onRendererWarmupChange(getPlayerClientEnabled());
     const myGen = backgroundBattleGen;
+    await waitForLoadingOverlayPaint();
+    if (myGen !== backgroundBattleGen || !backgroundContainerRef.value) {
+      onRendererWarmupChange(false);
+      return;
+    }
     const battle = await createBackgroundBattle(
       backgroundContainerRef.value,
       getLocalIpAddress(),
       getBattleMode(),
       getPreviewPlayerIds(),
       getPreviewLocalPlayerId(),
+      (warming) => onRendererWarmupChange(warming && getPlayerClientEnabled()),
     );
     if (myGen !== backgroundBattleGen) {
       destroyBackgroundBattle(battle);
+      onRendererWarmupChange(false);
       return;
     }
     backgroundBattle = battle;
