@@ -592,6 +592,15 @@ export const TERRAIN_GROUND_BASE_COLOR = FOREST_SPRUCE2_LEAF_COLOR;
  *  a single color), 1 = full texture influence (noisy / busy). */
 export const TERRAIN_GROUND_DETAIL_CONTRAST = 0.3;
 
+/** World-Y range where the ground detail (the green base-color pull *and*
+ *  the sticks-and-grass texture, both gated by the same mask) is allowed.
+ *  Below MIN: full strength. Above MAX: zero. Smooth fade in between.
+ *  Restricts the detail to the map's base 0-height flat zone — raised
+ *  plateaus, uplands, and cliff sides all get the regular slope/height
+ *  terrain colors with no green carpet or texture. */
+export const TERRAIN_GROUND_DETAIL_HEIGHT_MIN = 5;
+export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 40;
+
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion
 // tests) but before units/buildings (so entities overdraw shadows

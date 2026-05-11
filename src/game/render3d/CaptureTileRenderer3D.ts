@@ -21,6 +21,8 @@ import {
   TERRAIN_GROUND_BASE_COLOR,
   TERRAIN_GROUND_DETAIL_CONTRAST,
   TERRAIN_GROUND_DETAIL_ENABLED,
+  TERRAIN_GROUND_DETAIL_HEIGHT_MAX,
+  TERRAIN_GROUND_DETAIL_HEIGHT_MIN,
   TERRAIN_HORIZON_BLEND_CONFIG,
 } from '../../config';
 import {
@@ -156,6 +158,8 @@ export class CaptureTileRenderer3D {
   private groundDetailEnabledUniform = { value: 0 };
   private groundBaseColorUniform = { value: rawSrgbVec3(TERRAIN_GROUND_BASE_COLOR) };
   private groundDetailContrastUniform = { value: TERRAIN_GROUND_DETAIL_CONTRAST };
+  private groundDetailHeightMinUniform = { value: TERRAIN_GROUND_DETAIL_HEIGHT_MIN };
+  private groundDetailHeightMaxUniform = { value: TERRAIN_GROUND_DETAIL_HEIGHT_MAX };
 
   private gridCellsX = 0;
   private gridCellsY = 0;
@@ -233,6 +237,8 @@ export class CaptureTileRenderer3D {
       shader.uniforms.uGroundDetailEnabled = this.groundDetailEnabledUniform;
       shader.uniforms.uGroundBaseColor = this.groundBaseColorUniform;
       shader.uniforms.uGroundDetailContrast = this.groundDetailContrastUniform;
+      shader.uniforms.uGroundDetailHeightMin = this.groundDetailHeightMinUniform;
+      shader.uniforms.uGroundDetailHeightMax = this.groundDetailHeightMaxUniform;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -281,6 +287,8 @@ export class CaptureTileRenderer3D {
             'uniform float uGroundDetailEnabled;',
             'uniform vec3 uGroundBaseColor;',
             'uniform float uGroundDetailContrast;',
+            'uniform float uGroundDetailHeightMin;',
+            'uniform float uGroundDetailHeightMax;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
@@ -329,10 +337,17 @@ export class CaptureTileRenderer3D {
             '  float bufferSlope = clamp(vTerrainSlope * 2.5, 0.0, 1.0);',
             '  float maskSlope = max(geomSlope, bufferSlope);',
             '  float flatDetail = (1.0 - smoothstep(0.05, 0.50, maskSlope)) * (1.0 - shoreline);',
-            '  float flatGreenDetail = flatDetail * (1.0 - smoothstep(0.38, 0.92, upland)) * (1.0 - exposedRock * 0.82) * (1.0 - highDry * 0.72);',
+            '  // Restrict detail to the base 0-height flat zone only. Anything raised',
+            '  // above uGroundDetailHeightMax (plateaus, uplands, cliff tops) gets the',
+            '  // regular slope/height terrain colors with no green carpet or texture.',
+            '  float baseZoneMask = 1.0 - smoothstep(uGroundDetailHeightMin, uGroundDetailHeightMax, vTerrainWorldPos.y);',
+            '  float flatGreenDetail = flatDetail * baseZoneMask;',
             '  // Pull base ground toward the tree/grass color. Gated by exactly the',
             '  // same flatGreenDetail mask the texture below uses, so green and',
-            '  // texture fade out together at ridges.',
+            '  // texture appear/disappear in perfect lockstep. Texture sample also',
+            '  // has detail.a = 1 everywhere (canvas is pre-filled with this base',
+            '  // color), so there are no gaps in the texture where green appears',
+            '  // without the texture or vice-versa.',
             '  terrainRgb = mix(terrainRgb, uGroundBaseColor, flatGreenDetail);',
             '  // Multi-scale stochastic sampling: sample the same tile at two co-prime',
             '  // scales+rotations and blend by a smooth position-varying weight so each',
@@ -381,7 +396,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v24';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v25';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {

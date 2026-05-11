@@ -11,7 +11,11 @@
 // PNG to disk for inspection.
 
 import * as THREE from 'three';
-import { FOREST_SPRUCE2_LEAF_COLOR, FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
+import {
+  FOREST_SPRUCE2_LEAF_COLOR,
+  FOREST_SPRUCE2_WOOD_COLOR,
+  TERRAIN_GROUND_BASE_COLOR,
+} from '../../config';
 
 // Texture resolution in pixels (square). Power of two for clean mipmaps.
 // 4096² @ 8 px/world = 512 world unit tile; 64 MB GPU memory.
@@ -59,7 +63,13 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   canvas.height = GROUND_DETAIL_TEXTURE_PIXELS;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('GroundDetailTexture: 2D context unavailable');
-  ctx.clearRect(0, 0, GROUND_DETAIL_TEXTURE_PIXELS, GROUND_DETAIL_TEXTURE_PIXELS);
+  // Fill the entire tile with the base tree/grass color first. This makes the
+  // texture's alpha effectively 1 everywhere so the shader's "green pull" and
+  // "texture overlay" are in lockstep — both gated by the same flatGreenDetail
+  // mask, both fully present or fully absent together. Shapes drawn on top of
+  // this base composite over the green via standard source-over blending.
+  ctx.fillStyle = cssRgb(TERRAIN_GROUND_BASE_COLOR);
+  ctx.fillRect(0, 0, GROUND_DETAIL_TEXTURE_PIXELS, GROUND_DETAIL_TEXTURE_PIXELS);
 
   const rng = makeSeededRng(0xC0FFEE);
   const items = generateItems(rng);
@@ -82,6 +92,13 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   texture.anisotropy = 8;
   texture.needsUpdate = true;
   return { canvas, texture };
+}
+
+function cssRgb(hex: number): string {
+  const r = (hex >> 16) & 0xff;
+  const g = (hex >> 8) & 0xff;
+  const b = hex & 0xff;
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 function makeSeededRng(seed: number): () => number {
