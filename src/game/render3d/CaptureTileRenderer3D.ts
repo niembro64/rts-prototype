@@ -92,7 +92,22 @@ type GroundDetailLayer = {
   lightScale: readonly [number, number, number];
   lightAdd?: readonly [number, number, number];
   mix: number;
+  // When true the shape uses the spruce wood/leaf color exactly, so the
+  // patches on the ground perfectly match the tree and grass props sitting
+  // on top of them.
+  pureColor?: boolean;
 };
+
+// Per-layer rotations applied to detailPos before computing the grid. Each
+// layer tiles along a different orientation so cell boundaries between
+// layers never align — this breaks the axis-aligned "rows of items" feel
+// without changing the shapes themselves. Values are spread across
+// [0, π/2) (the square grid's symmetry interval) and intentionally
+// non-uniform to avoid sub-patterns.
+const LAYER_GRID_ANGLES: readonly number[] = [
+  1.27, 0.43, 0.91, 0.07, 1.41, 0.59, 1.04, 0.31, 1.18, 0.73,
+  0.18, 1.32, 0.85, 0.47, 1.51, 0.96, 0.27, 1.13, 0.63, 1.39,
+];
 
 // Inspired by shapes in the tree and grass props: hexagons (low-poly trunk and
 // foliage cross-sections), pointed triangles (spruce foliage facets, pine
@@ -138,7 +153,8 @@ const GROUND_DETAIL_LAYERS: readonly GroundDetailLayer[] = [
     angleAt: [21.5, 88.6], shadeAt: [67.2, 32.8],
     offsetFactor: 0.34, angleRange: 2 * Math.PI, angleCentered: false,
     threshold: 0.62, shape: { kind: 'tri', h: 0.32, w: 0.18 }, palette: 'wood',
-    darkScale: [0.40, 0.38, 0.32], lightScale: [1.15, 1.05, 0.85], mix: 0.65,
+    darkScale: [0.40, 0.38, 0.32], lightScale: [1.15, 1.05, 0.85], mix: 0.78,
+    pureColor: true,
   },
   {
     scale: 9.5,
@@ -154,7 +170,8 @@ const GROUND_DETAIL_LAYERS: readonly GroundDetailLayer[] = [
     angleAt: [13.7, 91.1], shadeAt: [63.4, 12.9],
     offsetFactor: 0.44, angleRange: Math.PI, angleCentered: false,
     threshold: 0.55, shape: { kind: 'box', hx: 0.022, hy: 0.49 }, palette: 'wood',
-    darkScale: [0.45, 0.44, 0.38], lightScale: [1.25, 1.20, 1.03], mix: 0.70,
+    darkScale: [0.45, 0.44, 0.38], lightScale: [1.25, 1.20, 1.03], mix: 0.80,
+    pureColor: true,
   },
   {
     scale: 7.5,
@@ -171,7 +188,8 @@ const GROUND_DETAIL_LAYERS: readonly GroundDetailLayer[] = [
     offsetFactor: 0.32, angleRange: 2 * Math.PI, angleCentered: false,
     threshold: 0.55, shape: { kind: 'rosette', r: 0.34, petals: 5 }, palette: 'leaf',
     darkScale: [0.45, 0.62, 0.42], lightScale: [1.22, 1.25, 1.10],
-    lightAdd: [0.025, 0.030, 0.015], mix: 0.60,
+    lightAdd: [0.025, 0.030, 0.015], mix: 0.78,
+    pureColor: true,
   },
   {
     scale: 6.0,
@@ -187,7 +205,8 @@ const GROUND_DETAIL_LAYERS: readonly GroundDetailLayer[] = [
     angleAt: [37.2, 12.9], shadeAt: [65.4, 9.1],
     offsetFactor: 0.34, angleRange: 2 * Math.PI, angleCentered: false,
     threshold: 0.50, shape: { kind: 'tri', h: 0.30, w: 0.20 }, palette: 'leaf',
-    darkScale: [0.48, 0.60, 0.42], lightScale: [1.25, 1.28, 1.10], mix: 0.55,
+    darkScale: [0.48, 0.60, 0.42], lightScale: [1.25, 1.28, 1.10], mix: 0.72,
+    pureColor: true,
   },
   {
     scale: 5.0,
@@ -269,7 +288,10 @@ function f(n: number): string {
   return Number.isFinite(n) ? n.toFixed(6) : '0.0';
 }
 
-function buildGroundDetailLayerGlsl(layer: GroundDetailLayer): string[] {
+function buildGroundDetailLayerGlsl(
+  layer: GroundDetailLayer,
+  index: number,
+): string[] {
   const palette = layer.palette === 'wood' ? 'forestSpruce2WoodRgb' : 'forestSpruce2LeafRgb';
   const angleHashExpr = `terrainHash12(c + vec2(${f(layer.angleAt[0])}, ${f(layer.angleAt[1])}))`;
   const angleExpr =
@@ -300,11 +322,23 @@ function buildGroundDetailLayerGlsl(layer: GroundDetailLayer): string[] {
     ? ` + vec3(${f(layer.lightAdd[0])}, ${f(layer.lightAdd[1])}, ${f(layer.lightAdd[2])})`
     : '';
   const rotateExpr =
-    layer.angleRange === 0 ? '(uv - off * ' + f(layer.offsetFactor) + ')'
+    layer.angleRange === 0
+      ? '(uv - off * ' + f(layer.offsetFactor) + ')'
       : `terrainRot2(ang) * (uv - off * ${f(layer.offsetFactor)})`;
+  const gridAngle = LAYER_GRID_ANGLES[index % LAYER_GRID_ANGLES.length] ?? 0;
+  const gridPosExpr =
+    gridAngle === 0 ? 'detailPos' : `(terrainRot2(${f(gridAngle)}) * detailPos)`;
+  const colorLines = layer.pureColor
+    ? []
+    : [
+      `  vec3 dRgb = ${palette} * vec3(${f(layer.darkScale[0])}, ${f(layer.darkScale[1])}, ${f(layer.darkScale[2])});`,
+      `  vec3 lRgb = min(${palette} * vec3(${f(layer.lightScale[0])}, ${f(layer.lightScale[1])}, ${f(layer.lightScale[2])})${lightAdd}, vec3(1.0));`,
+      `  vec3 rgb = mix(dRgb, lRgb, terrainHash12(c + vec2(${f(layer.shadeAt[0])}, ${f(layer.shadeAt[1])})));`,
+    ];
+  const finalRgb = layer.pureColor ? palette : 'rgb';
   return [
     '{',
-    `  vec2 g = detailPos / ${f(layer.scale)};`,
+    `  vec2 g = ${gridPosExpr} / ${f(layer.scale)};`,
     '  vec2 c = floor(g);',
     '  vec2 uv = fract(g) - vec2(0.5);',
     `  float seed = terrainHash12(c + vec2(${f(layer.seedAt[0])}, ${f(layer.seedAt[1])}));`,
@@ -315,10 +349,8 @@ function buildGroundDetailLayerGlsl(layer: GroundDetailLayer): string[] {
     `  float ang = ${angleExpr};`,
     `  vec2 lp = ${rotateExpr};`,
     `  float mark = ${shapeExpr} * step(${f(layer.threshold)}, seed);`,
-    `  vec3 dRgb = ${palette} * vec3(${f(layer.darkScale[0])}, ${f(layer.darkScale[1])}, ${f(layer.darkScale[2])});`,
-    `  vec3 lRgb = min(${palette} * vec3(${f(layer.lightScale[0])}, ${f(layer.lightScale[1])}, ${f(layer.lightScale[2])})${lightAdd}, vec3(1.0));`,
-    `  vec3 rgb = mix(dRgb, lRgb, terrainHash12(c + vec2(${f(layer.shadeAt[0])}, ${f(layer.shadeAt[1])})));`,
-    `  terrainRgb = mix(terrainRgb, rgb, mark * flatGreenDetail * ${f(layer.mix)});`,
+    ...colorLines,
+    `  terrainRgb = mix(terrainRgb, ${finalRgb}, mark * flatGreenDetail * ${f(layer.mix)});`,
     '}',
   ];
 }
@@ -332,9 +364,9 @@ function buildGroundDetailLayersGlsl(): string[] {
     `vec3 forestSpruce2WoodRgb = ${FOREST_SPRUCE2_WOOD_SHADER_RGB};`,
     'vec2 detailPos = vTerrainWorldPos.xz;',
   ];
-  for (const layer of GROUND_DETAIL_LAYERS) {
-    lines.push(...buildGroundDetailLayerGlsl(layer));
-  }
+  GROUND_DETAIL_LAYERS.forEach((layer, index) => {
+    lines.push(...buildGroundDetailLayerGlsl(layer, index));
+  });
   return lines;
 }
 
@@ -612,7 +644,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v16';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v17';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
