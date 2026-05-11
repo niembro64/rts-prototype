@@ -155,7 +155,7 @@ export const UNIT_LOCOMOTION_BLUEPRINTS = {
     type: 'legs',
     physics: createLocomotionPhysics('legs', 120, {
       springStiffness: 10_000,
-      compression: 20,
+      compression: 5,
       powerRandomMultiplier: 0.95,
       horizontalRandomMultiplier: 0.35,
       mode: 'always',

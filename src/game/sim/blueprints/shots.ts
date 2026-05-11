@@ -69,7 +69,7 @@ export const SHOT_BLUEPRINTS = {
       force: 800,
     },
     detonateOnExpiry: true,
-    lifespan: 4000,
+    lifespan: 5000,
     ignoresGravity: true,
     homingTurnRate: 1,
     // Render as a velocity-aligned cylinder (purely cosmetic — sim
