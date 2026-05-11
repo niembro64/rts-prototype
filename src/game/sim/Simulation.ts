@@ -53,6 +53,7 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
 import { WindPowerTracker, sampleWindState, type WindState } from './wind';
 import { isBuildTargetInRange } from './builderRange';
+import { isReclaimableTarget } from './reclaim';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
 import {
   rotateFirstUnitActionToEnd,
@@ -732,8 +733,12 @@ export class Simulation {
       // Get current action
       const currentAction = unit.actions[0];
 
-      // For build/repair actions, check if we're in range
-      if (currentAction.type === 'build' || currentAction.type === 'repair') {
+      // For build/repair/reclaim actions, check if we're in range
+      if (
+        currentAction.type === 'build' ||
+        currentAction.type === 'repair' ||
+        currentAction.type === 'reclaim'
+      ) {
         const targetId = currentAction.type === 'build'
           ? currentAction.buildingId
           : currentAction.targetId;
@@ -905,12 +910,23 @@ export class Simulation {
 
   private getActionTargetId(action: UnitAction): EntityId | undefined {
     if (action.type === 'build') return action.buildingId;
-    if (action.type === 'attack' || action.type === 'repair' || action.type === 'guard') return action.targetId;
+    if (
+      action.type === 'attack' ||
+      action.type === 'repair' ||
+      action.type === 'reclaim' ||
+      action.type === 'guard'
+    ) return action.targetId;
     return undefined;
   }
 
   private isTargetedActionInvalid(action: UnitAction): boolean {
-    if (action.type !== 'attack' && action.type !== 'build' && action.type !== 'repair' && action.type !== 'guard') {
+    if (
+      action.type !== 'attack' &&
+      action.type !== 'build' &&
+      action.type !== 'repair' &&
+      action.type !== 'reclaim' &&
+      action.type !== 'guard'
+    ) {
       return false;
     }
 
@@ -928,6 +944,10 @@ export class Simulation {
 
     if (action.type === 'guard') {
       return !this.isAliveAttackTarget(target);
+    }
+
+    if (action.type === 'reclaim') {
+      return !isReclaimableTarget(target);
     }
 
     return !this.isIncompleteBuildableTarget(target) && !this.isDamagedRepairUnit(target);
@@ -957,7 +977,7 @@ export class Simulation {
     const actions = unit.actions;
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
-      if (action.type !== 'build' && action.type !== 'repair') {
+      if (action.type !== 'build' && action.type !== 'repair' && action.type !== 'reclaim') {
         if (!action.isPathExpansion) return;
         continue;
       }

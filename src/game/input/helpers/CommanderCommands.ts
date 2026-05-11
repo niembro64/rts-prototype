@@ -6,12 +6,16 @@
 
 import type { Entity, WaypointType } from '../../sim/types';
 import type {
+  ReclaimCommand,
   RepairAreaCommand,
   RepairCommand,
   SetFactoryWaypointsCommand,
 } from '../../sim/commands';
 import { findRepairTargetAt } from './RepairTargetHelper';
 import type { RepairEntitySource } from './RepairTargetHelper';
+import { findReclaimTargetAt } from './ReclaimTargetHelper';
+import type { ReclaimEntitySource } from './ReclaimTargetHelper';
+import { isReclaimableTarget } from '../../sim/reclaim';
 
 /** Build a RepairCommand if the commander (if any) is right-clicking
  *  on a repairable target — an incomplete friendly building or a
@@ -59,6 +63,35 @@ export function buildRepairAreaCommand(
     radius,
     queue,
   };
+}
+
+export function buildReclaimCommandForTarget(
+  target: Entity | null | undefined,
+  commander: Entity | null,
+  tick: number,
+  queue: boolean,
+): ReclaimCommand | null {
+  if (!commander?.ownership) return null;
+  if (commander.id === target?.id || !isReclaimableTarget(target)) return null;
+  return {
+    type: 'reclaim',
+    tick,
+    commanderId: commander.id,
+    targetId: target.id,
+    queue,
+  };
+}
+
+export function buildReclaimCommandAt(
+  source: ReclaimEntitySource,
+  worldX: number,
+  worldY: number,
+  commander: Entity | null,
+  tick: number,
+  queue: boolean,
+): ReclaimCommand | null {
+  const target = findReclaimTargetAt(source, worldX, worldY);
+  return buildReclaimCommandForTarget(target, commander, tick, queue);
 }
 
 /** Build one SetFactoryWaypointsCommand per selected factory at the

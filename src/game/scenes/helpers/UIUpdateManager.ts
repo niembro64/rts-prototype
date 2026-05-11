@@ -125,6 +125,7 @@ export function buildSelectionInfo(
     isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
     isAttackAreaMode: inputState?.isAttackAreaMode ?? false,
     isGuardMode: inputState?.isGuardMode ?? false,
+    isReclaimMode: inputState?.isReclaimMode ?? false,
     factoryQueue,
     factoryProgress,
     factoryIsProducing,

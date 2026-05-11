@@ -1,4 +1,4 @@
-import type { EconomyState, PlayerId } from './types';
+import type { EconomyState, PlayerId, ResourceCost } from './types';
 import {
   STARTING_STOCKPILE,
   MAX_STOCKPILE,
@@ -167,6 +167,17 @@ export class EconomyManager {
       return true;
     }
     return false;
+  }
+
+  addStockpile(playerId: PlayerId, amount: ResourceCost): ResourceCost {
+    const economy = this.getOrCreateEconomy(playerId);
+    const energy = Math.max(0, Math.min(amount.energy, economy.stockpile.max - economy.stockpile.curr));
+    const mana = Math.max(0, Math.min(amount.mana, economy.mana.stockpile.max - economy.mana.stockpile.curr));
+    const metal = Math.max(0, Math.min(amount.metal, economy.metal.stockpile.max - economy.metal.stockpile.curr));
+    economy.stockpile.curr += energy;
+    economy.mana.stockpile.curr += mana;
+    economy.metal.stockpile.curr += metal;
+    return { energy, mana, metal };
   }
 
   // Try to spend mana (returns amount actually spent)

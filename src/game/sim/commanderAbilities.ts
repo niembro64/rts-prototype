@@ -1,9 +1,12 @@
 import type { WorldState } from './WorldState';
-import type { Entity, EntityId } from './types';
+import type { Entity, EntityId, PlayerId } from './types';
 import { isBuildTargetInRange } from './builderRange';
 import { updateWeaponWorldKinematics } from './combat/combatUtils';
 import { getUnitGroundZ } from './unitGeometry';
 import { getTransformCosSin } from '../math';
+import { economyManager } from './economy';
+import { getReclaimResourceValue, isReclaimableTarget, RECLAIM_REFUND_FRACTION } from './reclaim';
+import { ENTITY_CHANGED_HP } from '../../types/network';
 
 export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -60,9 +63,17 @@ export class CommanderAbilitiesSystem {
       // Get current target from queue (only work on ONE thing at a time)
       const currentTarget = this.getCurrentTarget(world, commander);
       if (!currentTarget) continue;
+      const currentAction = commander.unit.actions[0];
 
       // Energy spending is handled by the shared energy distribution system.
       // Commander building progress is advanced there.
+
+      if (currentAction?.type === 'reclaim') {
+        if (this.reclaimTarget(world, playerId, commander, currentTarget, dtMs)) {
+          completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
+        }
+        continue;
+      }
 
       // Build sprays for buildables are emitted render-side (per-pylon
       // colored sprays driven by buildable.paid deltas in
@@ -93,7 +104,7 @@ export class CommanderAbilitiesSystem {
     return { sprayTargets, completedBuildings };
   }
 
-  // Get the current build/repair target from commander's action queue
+  // Get the current build/repair/reclaim target from commander's action queue
   private getCurrentTarget(
     world: WorldState,
     commander: Entity
@@ -106,8 +117,12 @@ export class CommanderAbilitiesSystem {
     // Get the first action
     const currentAction = actions[0];
 
-    // Only process build/repair actions
-    if (currentAction.type !== 'build' && currentAction.type !== 'repair') {
+    // Only process build/repair/reclaim actions
+    if (
+      currentAction.type !== 'build' &&
+      currentAction.type !== 'repair' &&
+      currentAction.type !== 'reclaim'
+    ) {
       return null;
     }
 
@@ -117,6 +132,12 @@ export class CommanderAbilitiesSystem {
 
     const target = world.getEntity(targetId);
     if (!target) return null;
+
+    if (currentAction.type === 'reclaim') {
+      return isReclaimableTarget(target) && isBuildTargetInRange(commander, target)
+        ? target
+        : null;
+    }
 
     // Check if target is valid (incomplete building or damaged unit)
     const isValidBuilding = target.buildable && !target.buildable.isComplete && !target.buildable.isGhost;
@@ -131,6 +152,35 @@ export class CommanderAbilitiesSystem {
     }
 
     return null;
+  }
+
+  private reclaimTarget(
+    world: WorldState,
+    playerId: PlayerId,
+    commander: Entity,
+    target: Entity,
+    dtMs: number,
+  ): boolean {
+    if (!commander.builder || !isReclaimableTarget(target)) return false;
+    const hpState = target.unit ?? target.building;
+    if (!hpState || hpState.hp <= 0) return false;
+
+    const hpBefore = hpState.hp;
+    const maxHp = Math.max(1, hpState.maxHp);
+    const hpRemoved = Math.min(hpBefore, commander.builder.constructionRate * dtMs / 1000);
+    if (hpRemoved <= 0) return false;
+
+    const value = getReclaimResourceValue(target);
+    const refundScale = RECLAIM_REFUND_FRACTION * (hpRemoved / maxHp);
+    economyManager.addStockpile(playerId, {
+      energy: value.energy * refundScale,
+      mana: value.mana * refundScale,
+      metal: value.metal * refundScale,
+    });
+
+    hpState.hp = Math.max(0, hpBefore - hpRemoved);
+    world.markSnapshotDirty(target.id, ENTITY_CHANGED_HP);
+    return hpState.hp <= 0;
   }
 }
 

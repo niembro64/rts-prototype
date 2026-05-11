@@ -18,6 +18,7 @@ export type CommandType =
   | 'setFireEnabled'
   | 'repair'
   | 'repairArea'
+  | 'reclaim'
   | 'attack'
   | 'attackArea'
   | 'guard'
@@ -154,6 +155,13 @@ export type RepairAreaCommand = BaseCommand & {
   queue: boolean;
 };
 
+export type ReclaimCommand = BaseCommand & {
+  type: 'reclaim';
+  commanderId: EntityId;
+  targetId: EntityId;
+  queue: boolean;
+};
+
 export type AttackCommand = BaseCommand & {
   type: 'attack';
   entityIds: EntityId[];
@@ -277,6 +285,7 @@ export type Command =
   | SetFireEnabledCommand
   | RepairCommand
   | RepairAreaCommand
+  | ReclaimCommand
   | AttackCommand
   | AttackAreaCommand
   | GuardCommand

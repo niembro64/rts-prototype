@@ -210,6 +210,17 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-label">Repair</span>
           <span class="btn-key">R</span>
         </button>
+        <button
+          v-if="selection.hasCommander"
+          class="action-btn"
+          :class="{ active: selection.isReclaimMode }"
+          :style="{ '--btn-color': '#d6b45f' }"
+          title="Toggle reclaim targeting for the selected commander"
+          @click="actions.toggleReclaim()"
+        >
+          <span class="btn-label">Reclaim</span>
+          <span class="btn-key">C</span>
+        </button>
       </div>
     </div>
 
@@ -249,7 +260,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
     <!-- Message area (always present to prevent modal resize) -->
     <div class="message-area">
-      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode || selection.isAttackAreaMode || selection.isGuardMode">
+      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode || selection.isAttackAreaMode || selection.isGuardMode || selection.isReclaimMode">
         Press ESC or Right-click to cancel
       </span>
       <span v-else>&nbsp;</span>

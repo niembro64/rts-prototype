@@ -666,6 +666,9 @@ export class GameServer {
       case 'repairArea':
         return this.isOwnedEntity(command.commanderId, fromPlayerId) ? command : null;
 
+      case 'reclaim':
+        return this.isOwnedEntity(command.commanderId, fromPlayerId) ? command : null;
+
       default:
         return null;
     }

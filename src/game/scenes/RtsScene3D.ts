@@ -597,6 +597,9 @@ export class RtsScene3D {
     this.inputManager.onGuardModeChange = (active) => {
       this.selectionSystem.setGuardMode(active);
     };
+    this.inputManager.onReclaimModeChange = (active) => {
+      this.selectionSystem.setReclaimMode(active);
+    };
 
     this.renderPhase = new RtsScene3DRenderPhase(
       this.threeApp,
@@ -1110,6 +1113,10 @@ export class RtsScene3D {
 
   public toggleGuardMode(): void {
     this.inputManager?.toggleGuardMode();
+  }
+
+  public toggleReclaimMode(): void {
+    this.inputManager?.toggleReclaimMode();
   }
 
   public storeControlGroup(index: number): void {

@@ -46,6 +46,7 @@ export function useGameCanvasSceneUi({
     isRepairAreaMode: false,
     isAttackAreaMode: false,
     isGuardMode: false,
+    isReclaimMode: false,
     factoryQueue: [],
     factoryProgress: 0,
     factoryIsProducing: false,
@@ -142,6 +143,9 @@ export function useGameCanvasSceneUi({
     },
     toggleGuard: () => {
       getActiveBattleScene()?.toggleGuardMode();
+    },
+    toggleReclaim: () => {
+      getActiveBattleScene()?.toggleReclaimMode();
     },
     storeControlGroup: (index) => {
       getActiveBattleScene()?.storeControlGroup(index);

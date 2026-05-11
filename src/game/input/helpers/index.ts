@@ -44,6 +44,8 @@ export {
 export {
   buildRepairAreaCommand,
   buildRepairCommandAt,
+  buildReclaimCommandAt,
+  buildReclaimCommandForTarget,
   buildFactoryWaypointCommands,
 } from './CommanderCommands';
 
@@ -64,6 +66,11 @@ export {
   findGuardTargetAt,
   isGuardableFriendlyTarget,
 } from './GuardTargetHelper';
+
+export {
+  type ReclaimEntitySource,
+  findReclaimTargetAt,
+} from './ReclaimTargetHelper';
 
 export {
   type BuildPlacementCellDiagnostic,

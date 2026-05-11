@@ -29,6 +29,7 @@ export class RtsScene3DSelectionSystem {
   private repairAreaActive = false;
   private attackAreaActive = false;
   private guardActive = false;
+  private reclaimActive = false;
 
   constructor(
     private readonly clientViewState: ClientViewState,
@@ -77,6 +78,11 @@ export class RtsScene3DSelectionSystem {
 
   setGuardMode(active: boolean): void {
     this.guardActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setReclaimMode(active: boolean): void {
+    this.reclaimActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -159,6 +165,7 @@ export class RtsScene3DSelectionSystem {
       isRepairAreaMode: this.repairAreaActive,
       isAttackAreaMode: this.attackAreaActive,
       isGuardMode: this.guardActive,
+      isReclaimMode: this.reclaimActive,
       controlGroups: this.buildControlGroupInfo(),
     };
   }

@@ -17,6 +17,7 @@ export type {
   SetFireEnabledCommand,
   RepairCommand,
   RepairAreaCommand,
+  ReclaimCommand,
   AttackCommand,
   AttackAreaCommand,
   GuardCommand,

@@ -1,7 +1,26 @@
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
-import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, SetJumpEnabledCommand, SetFireEnabledCommand, RepairCommand, RepairAreaCommand, AttackCommand, AttackAreaCommand, GuardCommand } from './commands';
+import type {
+  AttackAreaCommand,
+  AttackCommand,
+  CancelQueueItemCommand,
+  Command,
+  FireDGunCommand,
+  GuardCommand,
+  MoveCommand,
+  QueueUnitCommand,
+  ReclaimCommand,
+  RepairAreaCommand,
+  RepairCommand,
+  SelectCommand,
+  SetFactoryWaypointsCommand,
+  SetFireEnabledCommand,
+  SetJumpEnabledCommand,
+  SetRallyPointCommand,
+  StartBuildCommand,
+  StopCommand,
+} from './commands';
 import type { Entity, PlayerId, UnitAction } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
@@ -21,6 +40,7 @@ import { pushUnitAction, setUnitActions } from './unitActions';
 import { clearCombatActivityFlags } from './combat/combatActivity';
 import { setWeaponTarget } from './combat/targetIndex';
 import { isAliveGuardTarget } from './guard';
+import { isReclaimableTarget } from './reclaim';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMountVelocity = { x: 0, y: 0, z: 0 };
@@ -88,6 +108,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'repairArea':
       executeRepairAreaCommand(ctx, command);
+      break;
+    case 'reclaim':
+      executeReclaimCommand(ctx, command);
       break;
     case 'attack':
       executeAttackCommand(ctx, command);
@@ -468,6 +491,12 @@ function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaComman
   enqueueRepairAction(ctx, commander, target, command.queue);
 }
 
+function executeReclaimCommand(ctx: CommandContext, command: ReclaimCommand): void {
+  const commander = ctx.world.getEntity(command.commanderId);
+  const target = ctx.world.getEntity(command.targetId);
+  enqueueReclaimAction(ctx, commander, target, command.queue);
+}
+
 function clampRepairAreaRadius(radius: number): number {
   if (!Number.isFinite(radius)) return REPAIR_AREA_MAX_RADIUS;
   return Math.max(1, Math.min(radius, REPAIR_AREA_MAX_RADIUS));
@@ -555,6 +584,27 @@ function enqueueRepairAction(
   const targetPoint = getEntityTargetPoint(target);
   const action: UnitAction = {
     type: 'repair',
+    x: targetPoint.x,
+    y: targetPoint.y,
+    z: targetPoint.z,
+    targetId: target.id,
+  };
+
+  addPathActionsWithFinal(commander, action, queue, ctx);
+}
+
+function enqueueReclaimAction(
+  ctx: CommandContext,
+  commander: Entity | undefined,
+  target: Entity | undefined,
+  queue: boolean,
+): void {
+  if (!commander?.commander || !commander.unit || !commander.builder) return;
+  if (commander.id === target?.id || !isReclaimableTarget(target)) return;
+
+  const targetPoint = getEntityTargetPoint(target);
+  const action: UnitAction = {
+    type: 'reclaim',
     x: targetPoint.x,
     y: targetPoint.y,
     z: targetPoint.z,
