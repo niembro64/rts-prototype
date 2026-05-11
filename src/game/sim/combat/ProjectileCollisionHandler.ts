@@ -22,7 +22,7 @@ import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal } from '../Terrain';
 import { getSimDetailConfig } from '../simQuality';
 import { spatialGrid } from '../SpatialGrid';
-import { LAND_CELL_SIZE } from '../../../config';
+import { LAND_CELL_SIZE, ROCKET_REFLECTOR_COLLISION_MODE } from '../../../config';
 import { getUnitGroundZ } from '../unitGeometry';
 import { findForceFieldProjectileIntersection } from './forceFieldTurret';
 import { getTransformCosSin } from '../../math';
@@ -114,6 +114,30 @@ function ensureProjectileHitEntities(proj: { hitEntities?: Set<EntityId> }): Set
 
 function getProjectileHitCount(proj: { hitEntities?: Set<EntityId> }): number {
   return proj.hitEntities?.size ?? 0;
+}
+
+function pushReflectorImpactEvent(
+  audioEvents: SimEvent[],
+  hitForceField: boolean,
+  x: number,
+  y: number,
+  z: number,
+  normalX: number,
+  normalY: number,
+  normalZ: number,
+  playerId: number | undefined,
+): void {
+  audioEvents.push({
+    type: 'forceFieldImpact',
+    turretId: 'forceTurret',
+    sourceType: 'turret',
+    sourceKey: hitForceField ? 'forceTurret' : 'mirrorTurret',
+    pos: { x, y, z },
+    forceFieldImpact: {
+      normal: { x: normalX, y: normalY, z: normalZ },
+      playerId: playerId ?? 0,
+    },
+  });
 }
 
 function reflectVelocityPreserveSpeed(
@@ -379,10 +403,11 @@ export function checkProjectileCollisions(
       }
     }
 
-    // Reflector contacts — a traveling projectile whose flight path this
-    // tick crosses a mirror panel or enters a force-field sphere skips
-    // off the surface with the same vector reflection math beams use.
-    // Beams/lasers are handled by their own line path.
+    // Reflector contacts — mirror panels and force-field spheres are the
+    // same reflector material. Normal traveling projectiles skip off the
+    // surface with the same vector reflection math beams use; rocket-class
+    // behavior is controlled by ROCKET_REFLECTOR_COLLISION_MODE. Beams/lasers
+    // are handled by their own line path.
     let hitMirrorPanel = false;
     let hitForceField = false;
     let reflectedProjectile = false;
@@ -402,7 +427,7 @@ export function checkProjectileCollisions(
       const curZ = projEntity.transform.z;
       let bestT = Infinity;
       let bestX = 0, bestY = 0, bestZ = 0;
-      if (!isRocketShot && world.mirrorsEnabled) {
+      if (world.mirrorsEnabled) {
         const mirrorCandidates = world.getMirrorUnits();
         const projectileRadius = runtimeProfile.collisionRadius;
         for (const u of mirrorCandidates) {
@@ -465,11 +490,10 @@ export function checkProjectileCollisions(
           }
         }
       }
-      // Rocket-class shots punch through reflectors. All other projectile
-      // shots are checked geometrically, with no projectile-owner/friendly
-      // filtering. The force-field mode selects incoming, outgoing, or
-      // both boundary crossings.
-      const shieldHit = world.forceFieldsEnabled && !isRocketShot
+      // Reflector contacts are checked geometrically, with no
+      // projectile-owner/friendly filtering. The force-field mode selects
+      // incoming, outgoing, or both boundary crossings.
+      const shieldHit = world.forceFieldsEnabled
         ? findForceFieldProjectileIntersection(
             world,
             prevX, prevY, prevZ,
@@ -489,7 +513,10 @@ export function checkProjectileCollisions(
         hitForceField = true;
       }
       if (bestT < Infinity) {
-        const reflected = reflectorNormalX !== undefined &&
+        const shouldReflectProjectile =
+          !isRocketShot || ROCKET_REFLECTOR_COLLISION_MODE === 'reflect';
+        const reflected = shouldReflectProjectile &&
+          reflectorNormalX !== undefined &&
           reflectorNormalY !== undefined &&
           reflectorNormalZ !== undefined
           ? reflectVelocityPreserveSpeed(
@@ -544,6 +571,16 @@ export function checkProjectileCollisions(
             velocity: { x: reflected.x, y: reflected.y, z: reflected.z },
           });
           reflectedProjectile = true;
+          if (reflectorImpactEvents < MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS) {
+            reflectorImpactEvents++;
+            pushReflectorImpactEvent(
+              audioEvents,
+              hitForceField,
+              reflectorHitX, reflectorHitY, reflectorHitZ,
+              reflectorNormalX!, reflectorNormalY!, reflectorNormalZ!,
+              reflectorPlayerId,
+            );
+          }
         } else {
           projEntity.transform.x = bestX;
           projEntity.transform.y = bestY;
@@ -574,31 +611,6 @@ export function checkProjectileCollisions(
       projEntity.transform.z = groundZAtProj;
     }
 
-    if (
-      reflectedProjectile &&
-      reflectorNormalX !== undefined &&
-      reflectorNormalY !== undefined &&
-      reflectorNormalZ !== undefined &&
-      reflectorImpactEvents < MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS
-    ) {
-      reflectorImpactEvents++;
-      audioEvents.push({
-        type: 'forceFieldImpact',
-        turretId: 'forceTurret',
-        sourceType: 'turret',
-        sourceKey: hitForceField ? 'forceTurret' : 'mirrorTurret',
-        pos: {
-          x: reflectorHitX,
-          y: reflectorHitY,
-          z: reflectorHitZ,
-        },
-        forceFieldImpact: {
-          normal: { x: reflectorNormalX, y: reflectorNormalY, z: reflectorNormalZ },
-          playerId: reflectorPlayerId ?? 0,
-        },
-      });
-    }
-
     // Check if projectile expired (lifespan OR ground/barrier impact)
     const terminalReflectorHit = (hitMirrorPanel || hitForceField) && !reflectedProjectile;
     if (proj.timeAlive >= proj.maxLifespan || hitGround || terminalReflectorHit) {
@@ -611,17 +623,13 @@ export function checkProjectileCollisions(
         reflectorImpactEvents < MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS
       ) {
         reflectorImpactEvents++;
-        audioEvents.push({
-          type: 'forceFieldImpact',
-          turretId: 'forceTurret',
-          sourceType: 'turret',
-          sourceKey: hitForceField ? 'forceTurret' : 'mirrorTurret',
-          pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-          forceFieldImpact: {
-            normal: { x: reflectorNormalX, y: reflectorNormalY, z: reflectorNormalZ },
-            playerId: reflectorPlayerId ?? 0,
-          },
-        });
+        pushReflectorImpactEvent(
+          audioEvents,
+          hitForceField,
+          projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+          reflectorNormalX, reflectorNormalY, reflectorNormalZ,
+          reflectorPlayerId,
+        );
       }
 
       // Detonate on lifespan expiry when detonateOnExpiry is set AND the

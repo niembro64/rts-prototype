@@ -299,6 +299,13 @@ export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
  *  unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = 4;
 
+export type RocketReflectorCollisionMode = 'explode' | 'reflect';
+
+/** Rocket behavior when hitting mirror panels or force-field barriers.
+ *  "explode" detonates at the reflector contact point. "reflect" uses the
+ *  same velocity-preserving reflection path as normal projectiles. */
+export const ROCKET_REFLECTOR_COLLISION_MODE: RocketReflectorCollisionMode = 'reflect';
+
 // =============================================================================
 // BATTLE WAYPOINT DEFAULTS
 // =============================================================================
