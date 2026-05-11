@@ -590,7 +590,7 @@ export const TERRAIN_GROUND_BASE_COLOR = FOREST_SPRUCE2_LEAF_COLOR;
 /** How strongly the generated detail PNG overrides the base ground color in
  *  flat green areas, in [0, 1]. 0 = pure base color (clean, props rooted in
  *  a single color), 1 = full texture influence (noisy / busy). */
-export const TERRAIN_GROUND_DETAIL_CONTRAST = 0.7;
+export const TERRAIN_GROUND_DETAIL_CONTRAST = 0.3;
 
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion
