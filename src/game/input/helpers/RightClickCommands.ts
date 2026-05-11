@@ -14,11 +14,14 @@ import type { Entity, EntityId, WaypointType, PlayerId } from '../../sim/types';
 import type {
   AttackAreaCommand,
   AttackCommand,
+  GuardCommand,
   MoveCommand,
   WaypointTarget,
 } from '../../sim/commands';
 import { findAttackTargetAt, isAttackableEnemyTarget } from './AttackTargetHelper';
 import type { AttackEntitySource } from './AttackTargetHelper';
+import { findGuardTargetAt, isGuardableFriendlyTarget } from './GuardTargetHelper';
+import type { GuardEntitySource } from './GuardTargetHelper';
 import { getPathLength, assignUnitsToTargets } from './PathDistribution';
 import type { LinePathAccumulator } from './LinePathAccumulator';
 
@@ -87,6 +90,41 @@ export function buildAttackAreaCommand(
     radius,
     queue,
   };
+}
+
+export function buildGuardCommandForTarget(
+  target: Entity | null | undefined,
+  selectedUnits: readonly Entity[],
+  playerId: PlayerId,
+  tick: number,
+  queue: boolean,
+): GuardCommand | null {
+  if (!isGuardableFriendlyTarget(target, playerId)) return null;
+  const entityIds: EntityId[] = [];
+  for (const unit of selectedUnits) {
+    if (unit.id !== target.id) entityIds.push(unit.id);
+  }
+  if (entityIds.length === 0) return null;
+  return {
+    type: 'guard',
+    tick,
+    entityIds,
+    targetId: target.id,
+    queue,
+  };
+}
+
+export function buildGuardCommandAt(
+  source: GuardEntitySource,
+  worldX: number,
+  worldY: number,
+  selectedUnits: readonly Entity[],
+  playerId: PlayerId,
+  tick: number,
+  queue: boolean,
+): GuardCommand | null {
+  const target = findGuardTargetAt(source, worldX, worldY, playerId);
+  return buildGuardCommandForTarget(target, selectedUnits, playerId, tick, queue);
 }
 
 /** Turn a finished line path into a MoveCommand. Short paths

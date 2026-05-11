@@ -10,6 +10,7 @@ export type CommandCursorKind =
   | 'fight'
   | 'patrol'
   | 'attack'
+  | 'guard'
   | 'repair'
   | 'build'
   | 'blocked'
@@ -30,6 +31,7 @@ const S = {
   fight: '#ffb340',
   patrol: '#45bcff',
   attack: '#ff4054',
+  guard: '#9ef28d',
   repair: '#63e7ff',
   build: '#ffd33f',
   dgun: '#ff8d24',
@@ -117,6 +119,17 @@ const ATTACK = svg(`
   </g>
 `);
 
+const GUARD = svg(`
+  <g fill="none" stroke="${S.outline}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 5l9 4v6c0 6-4 10-9 12-5-2-9-6-9-12V9z"/>
+    <path d="M16 11v9M11.5 15.5h9"/>
+  </g>
+  <g fill="none" stroke="${S.guard}" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 5l9 4v6c0 6-4 10-9 12-5-2-9-6-9-12V9z"/>
+    <path d="M16 11v9M11.5 15.5h9"/>
+  </g>
+`);
+
 const REPAIR = svg(`
   <g fill="none" stroke="${S.outline}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="16" cy="16" r="8"/>
@@ -175,6 +188,7 @@ const CURSOR_SPECS: Record<Exclude<CommandCursorKind, 'default'>, CursorSpec> = 
   fight: { svg: FIGHT, hotX: 16, hotY: 16, fallback: 'crosshair' },
   patrol: { svg: PATROL, hotX: 16, hotY: 16, fallback: 'crosshair' },
   attack: { svg: ATTACK, hotX: 16, hotY: 16, fallback: 'crosshair' },
+  guard: { svg: GUARD, hotX: 16, hotY: 16, fallback: 'crosshair' },
   repair: { svg: REPAIR, hotX: 11, hotY: 17, fallback: 'crosshair' },
   build: { svg: BUILD, hotX: 8, hotY: 20, fallback: 'crosshair' },
   blocked: { svg: BLOCKED, hotX: 16, hotY: 16, fallback: 'not-allowed' },
@@ -190,6 +204,7 @@ const CURSOR_STYLES: Record<CommandCursorKind, string> = {
   fight: cursorUrl(CURSOR_SPECS.fight),
   patrol: cursorUrl(CURSOR_SPECS.patrol),
   attack: cursorUrl(CURSOR_SPECS.attack),
+  guard: cursorUrl(CURSOR_SPECS.guard),
   repair: cursorUrl(CURSOR_SPECS.repair),
   build: cursorUrl(CURSOR_SPECS.build),
   blocked: cursorUrl(CURSOR_SPECS.blocked),

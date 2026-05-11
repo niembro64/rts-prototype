@@ -27,6 +27,8 @@ export {
   buildAttackAreaCommand,
   buildAttackCommandForTarget,
   buildAttackCommandAt,
+  buildGuardCommandAt,
+  buildGuardCommandForTarget,
   buildLinePathMoveCommand,
 } from './RightClickCommands';
 
@@ -56,6 +58,12 @@ export {
   type AttackEntitySource,
   findAttackTargetAt,
 } from './AttackTargetHelper';
+
+export {
+  type GuardEntitySource,
+  findGuardTargetAt,
+  isGuardableFriendlyTarget,
+} from './GuardTargetHelper';
 
 export {
   type BuildPlacementCellDiagnostic,

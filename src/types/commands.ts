@@ -20,6 +20,7 @@ export type CommandType =
   | 'repairArea'
   | 'attack'
   | 'attackArea'
+  | 'guard'
   | 'setSnapshotRate'
   | 'setKeyframeRatio'
   | 'setTickRate'
@@ -170,6 +171,13 @@ export type AttackAreaCommand = BaseCommand & {
   queue: boolean;
 };
 
+export type GuardCommand = BaseCommand & {
+  type: 'guard';
+  entityIds: EntityId[];
+  targetId: EntityId;
+  queue: boolean;
+};
+
 export type SetSnapshotRateCommand = BaseCommand & {
   type: 'setSnapshotRate';
   rate: number | 'none';
@@ -271,6 +279,7 @@ export type Command =
   | RepairAreaCommand
   | AttackCommand
   | AttackAreaCommand
+  | GuardCommand
   | SetSnapshotRateCommand
   | SetKeyframeRatioCommand
   | SetTickRateCommand

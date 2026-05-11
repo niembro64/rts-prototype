@@ -83,3 +83,9 @@ export type AttackEntitySource = {
   getUnits(): Entity[];
   getBuildings(): Entity[];
 };
+
+// Entity source for guard/assist target queries
+export type GuardEntitySource = {
+  getUnits(): Entity[];
+  getBuildings(): Entity[];
+};

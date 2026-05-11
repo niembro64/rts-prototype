@@ -25,19 +25,18 @@ As we go make sure we are not creating duplicate code, we should be reusing code
      client-local control groups, startBuild, queue/cancel unit,
      rally/factory waypoints, fireDGun, jump, repair, attack, and
      server/AOI settings.
-   - Fire/hold-fire, commander repair-area, and area attack/fight-ground
-     targeting now have hotkeys, buttons, network command handling, and
-     server-authoritative execution.
+   - Fire/hold-fire, commander repair-area, area attack/fight-ground
+     targeting, and guard/assist now have hotkeys, buttons, network command
+     handling, and server-authoritative execution.
 
    Impact:
    The game will still feel hard to control at RTS scale even if the sim works.
-   Missing guard/assist, reclaim, attack-ground, queue editing, waits, and
-   pings block serious player evaluation.
+   Missing reclaim, attack-ground, queue editing, waits, and pings block
+   serious player evaluation.
 
    Fix direction:
    Prioritize a small competitive command set before adding more unit variety:
-   guard/assist, reclaim, attack-ground, editable command queues, waits, and
-   pings.
+   reclaim, attack-ground, editable command queues, waits, and pings.
 
 2. P2 - Submunition spread uses Math.random() inside sim projectile creation.
 

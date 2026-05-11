@@ -1,7 +1,7 @@
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
-import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, SetJumpEnabledCommand, SetFireEnabledCommand, RepairCommand, RepairAreaCommand, AttackCommand, AttackAreaCommand } from './commands';
+import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, SetJumpEnabledCommand, SetFireEnabledCommand, RepairCommand, RepairAreaCommand, AttackCommand, AttackAreaCommand, GuardCommand } from './commands';
 import type { Entity, PlayerId, UnitAction } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
@@ -20,6 +20,7 @@ import { setUnitJumpEnabled } from './unitJump';
 import { pushUnitAction, setUnitActions } from './unitActions';
 import { clearCombatActivityFlags } from './combat/combatActivity';
 import { setWeaponTarget } from './combat/targetIndex';
+import { isAliveGuardTarget } from './guard';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMountVelocity = { x: 0, y: 0, z: 0 };
@@ -93,6 +94,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'attackArea':
       executeAttackAreaCommand(ctx, command);
+      break;
+    case 'guard':
+      executeGuardCommand(ctx, command);
       break;
   }
 }
@@ -601,6 +605,25 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
   }
 }
 
+function executeGuardCommand(ctx: CommandContext, command: GuardCommand): void {
+  const target = ctx.world.getEntity(command.targetId);
+  if (!target?.ownership) return;
+
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (!entity?.unit || !entity.ownership) continue;
+    if (entity.id === target.id) continue;
+    if (entity.ownership.playerId !== target.ownership.playerId) continue;
+
+    if (entity.commander && isRepairableByCommander(entity, target)) {
+      enqueueRepairAction(ctx, entity, target, command.queue);
+      continue;
+    }
+
+    enqueueGuardAction(ctx, entity, target, command.queue);
+  }
+}
+
 function clampAttackAreaRadius(radius: number): number {
   if (!Number.isFinite(radius)) return ATTACK_AREA_MAX_RADIUS;
   return Math.max(1, Math.min(radius, ATTACK_AREA_MAX_RADIUS));
@@ -676,6 +699,24 @@ function enqueueAttackAction(
   const targetPoint = getEntityTargetPoint(target);
   const action: UnitAction = {
     type: 'attack',
+    x: targetPoint.x,
+    y: targetPoint.y,
+    z: targetPoint.z,
+    targetId: target.id,
+  };
+  addPathActionsWithFinal(entity, action, queue, ctx);
+}
+
+function enqueueGuardAction(
+  ctx: CommandContext,
+  entity: Entity,
+  target: Entity,
+  queue: boolean,
+): void {
+  if (!isAliveGuardTarget(target)) return;
+  const targetPoint = getEntityTargetPoint(target);
+  const action: UnitAction = {
+    type: 'guard',
     x: targetPoint.x,
     y: targetPoint.y,
     z: targetPoint.z,

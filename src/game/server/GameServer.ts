@@ -8,6 +8,7 @@ import type {
   AttackAreaCommand,
   CommandQueue,
   Command,
+  GuardCommand,
   MoveCommand,
   SetCameraAoiCommand,
   SetFireEnabledCommand,
@@ -642,6 +643,10 @@ export class GameServer {
       case 'attackArea':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
+      case 'guard':
+        if (!this.isOwnedEntity(command.targetId, fromPlayerId)) return null;
+        return this.authorizeUnitListCommand(command, fromPlayerId);
+
       case 'startBuild':
         return this.isOwnedEntity(command.builderId, fromPlayerId) ? command : null;
 
@@ -697,9 +702,9 @@ export class GameServer {
   }
 
   private authorizeUnitListCommand(
-    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackAreaCommand | StopCommand,
+    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackAreaCommand | GuardCommand | StopCommand,
     playerId: PlayerId,
-  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackAreaCommand | StopCommand | null {
+  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackAreaCommand | GuardCommand | StopCommand | null {
     const sourceIds = command.entityIds;
     if (sourceIds.length === 0) return null;
 

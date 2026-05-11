@@ -33,6 +33,7 @@ export type SelectionInfo = {
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
   isAttackAreaMode: boolean;
+  isGuardMode: boolean;
   factoryQueue?: QueueItem[];
   factoryProgress?: number;
   factoryIsProducing?: boolean;
@@ -45,6 +46,7 @@ export type SelectionActions = {
   toggleSelectedJump: () => void;
   toggleSelectedFire: () => void;
   toggleAttackArea: () => void;
+  toggleGuard: () => void;
   storeControlGroup: (index: number) => void;
   recallControlGroup: (index: number, additive: boolean) => void;
   startBuild: (buildingType: BuildingType) => void;
@@ -166,6 +168,7 @@ export type UIInputState = {
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
   isAttackAreaMode: boolean;
+  isGuardMode: boolean;
   controlGroups: ControlGroupInfo[];
 };
 

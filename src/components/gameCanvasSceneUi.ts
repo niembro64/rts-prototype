@@ -45,6 +45,7 @@ export function useGameCanvasSceneUi({
     isDGunMode: false,
     isRepairAreaMode: false,
     isAttackAreaMode: false,
+    isGuardMode: false,
     factoryQueue: [],
     factoryProgress: 0,
     factoryIsProducing: false,
@@ -138,6 +139,9 @@ export function useGameCanvasSceneUi({
     },
     toggleAttackArea: () => {
       getActiveBattleScene()?.toggleAttackAreaMode();
+    },
+    toggleGuard: () => {
+      getActiveBattleScene()?.toggleGuardMode();
     },
     storeControlGroup: (index) => {
       getActiveBattleScene()?.storeControlGroup(index);

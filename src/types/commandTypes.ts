@@ -13,7 +13,7 @@ export type Waypoint = {
 };
 
 // Action types for unified action queue.
-export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair' | 'attack';
+export type ActionType = 'move' | 'fight' | 'patrol' | 'build' | 'repair' | 'attack' | 'guard';
 
 export type UnitAction = {
   type: ActionType;

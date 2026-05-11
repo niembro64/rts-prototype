@@ -38,7 +38,8 @@ export const ACTION_TYPE_FIGHT = 2;
 export const ACTION_TYPE_BUILD = 3;
 export const ACTION_TYPE_REPAIR = 4;
 export const ACTION_TYPE_ATTACK = 5;
-export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5;
+export const ACTION_TYPE_GUARD = 6;
+export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   move: ACTION_TYPE_MOVE,
@@ -47,8 +48,9 @@ const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   build: ACTION_TYPE_BUILD,
   repair: ACTION_TYPE_REPAIR,
   attack: ACTION_TYPE_ATTACK,
+  guard: ACTION_TYPE_GUARD,
 };
-const _CODE_TO_ACTION: string[] = ['move', 'patrol', 'fight', 'build', 'repair', 'attack'];
+const _CODE_TO_ACTION: string[] = ['move', 'patrol', 'fight', 'build', 'repair', 'attack', 'guard'];
 
 export function actionTypeToCode(s: string): ActionTypeCode {
   return _ACTION_TO_CODE[s] ?? ACTION_TYPE_MOVE;

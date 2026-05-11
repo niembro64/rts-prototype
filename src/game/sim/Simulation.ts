@@ -50,6 +50,7 @@ import { updateAiProduction } from './aiProduction';
 import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
 import { updateSolarCollectors } from './solarCollector';
 import { getEntityTargetPoint } from './buildingAnchors';
+import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
 import { WindPowerTracker, sampleWindState, type WindState } from './wind';
 import { isBuildTargetInRange } from './builderRange';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
@@ -795,6 +796,43 @@ export class Simulation {
         continue;
       }
 
+      if (currentAction.type === 'guard' && currentAction.targetId !== undefined) {
+        const guardTarget = this.world.getEntity(currentAction.targetId);
+        if (!entity.ownership || !isFriendlyGuardTarget(guardTarget, entity.ownership.playerId)) {
+          this.advanceAction(entity);
+          unit.stuckTicks = 0;
+          continue;
+        }
+
+        if (this.shouldStopForEngagedCombat(entity)) {
+          unit.stuckTicks = 0;
+          continue;
+        }
+
+        const targetPoint = getEntityTargetPoint(guardTarget);
+        const targetDx = targetPoint.x - transform.x;
+        const targetDy = targetPoint.y - transform.y;
+        const targetDistance = magnitude(targetDx, targetDy);
+        if (targetDistance <= getGuardFollowRadius(entity, guardTarget)) {
+          unit.stuckTicks = 0;
+          continue;
+        }
+
+        const dx = currentAction.x - transform.x;
+        const dy = currentAction.y - transform.y;
+        const distance = magnitude(dx, dy);
+        if (distance > 15) {
+          this.applyThrustToward(unit, dx, dy, distance);
+          movingUnits.push(entity);
+        } else if (this.tryRefreshGuardApproach(entity, currentAction, targetPoint)) {
+          unit.stuckTicks = 0;
+        } else {
+          this.applyThrustToward(unit, targetDx, targetDy, targetDistance);
+          movingUnits.push(entity);
+        }
+        continue;
+      }
+
       // Check if unit should stop for combat (fight or patrol mode with any engaged turret)
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
         if (this.shouldStopForEngagedCombat(entity)) {
@@ -867,12 +905,12 @@ export class Simulation {
 
   private getActionTargetId(action: UnitAction): EntityId | undefined {
     if (action.type === 'build') return action.buildingId;
-    if (action.type === 'attack' || action.type === 'repair') return action.targetId;
+    if (action.type === 'attack' || action.type === 'repair' || action.type === 'guard') return action.targetId;
     return undefined;
   }
 
   private isTargetedActionInvalid(action: UnitAction): boolean {
-    if (action.type !== 'attack' && action.type !== 'build' && action.type !== 'repair') {
+    if (action.type !== 'attack' && action.type !== 'build' && action.type !== 'repair' && action.type !== 'guard') {
       return false;
     }
 
@@ -886,6 +924,10 @@ export class Simulation {
 
     if (action.type === 'build') {
       return !this.isIncompleteBuildableTarget(target);
+    }
+
+    if (action.type === 'guard') {
+      return !this.isAliveAttackTarget(target);
     }
 
     return !this.isIncompleteBuildableTarget(target) && !this.isDamagedRepairUnit(target);
@@ -1026,14 +1068,18 @@ export class Simulation {
     if (
       finalAction.type !== 'move' &&
       finalAction.type !== 'fight' &&
-      finalAction.type !== 'attack'
+      finalAction.type !== 'attack' &&
+      finalAction.type !== 'guard'
     ) {
       return false;
     }
     // Forward the original action's altitude so a replan keeps the
     // click-derived final-waypoint z (used by Waypoint3D rendering)
     // instead of falling back to a fresh terrain sample.
-    const pathActionType = finalAction.type === 'attack' ? 'move' : finalAction.type;
+    const pathActionType =
+      finalAction.type === 'attack' || finalAction.type === 'guard'
+        ? 'move'
+        : finalAction.type;
     const newPath = expandPathActions(
       entity.transform.x, entity.transform.y,
       finalAction.x, finalAction.y,
@@ -1057,9 +1103,9 @@ export class Simulation {
     // detection re-fires next tick if the unit is still wedged,
     // so we'll retry the replan on the next stuck-tick threshold.
     if (newPath.length <= 1 && actions.length > 1) return false;
-    if (finalAction.type === 'attack' && finalAction.targetId !== undefined) {
+    if ((finalAction.type === 'attack' || finalAction.type === 'guard') && finalAction.targetId !== undefined) {
       const last = newPath[newPath.length - 1];
-      last.type = 'attack';
+      last.type = finalAction.type;
       last.targetId = finalAction.targetId;
       last.isPathExpansion = undefined;
     }
@@ -1113,6 +1159,43 @@ export class Simulation {
       Math.abs(a.y - b.y) < 1 &&
       Math.abs((a.z ?? 0) - (b.z ?? 0)) < 1
     );
+  }
+
+  private tryRefreshGuardApproach(
+    entity: Entity,
+    currentAction: UnitAction,
+    targetPoint: { x: number; y: number; z?: number },
+  ): boolean {
+    if (!entity.unit || currentAction.type !== 'guard' || currentAction.targetId === undefined) {
+      return false;
+    }
+    const newPath = expandPathActions(
+      entity.transform.x,
+      entity.transform.y,
+      targetPoint.x,
+      targetPoint.y,
+      'move',
+      this.world.mapWidth,
+      this.world.mapHeight,
+      this.constructionSystem.getGrid(),
+      targetPoint.z,
+      this.pathTerrainFilterForUnit(entity),
+    );
+    if (newPath.length === 0) return false;
+
+    const last = newPath[newPath.length - 1];
+    last.type = 'guard';
+    last.targetId = currentAction.targetId;
+    last.isPathExpansion = undefined;
+
+    if (newPath.length === 1 && this.sameAttackApproach(currentAction, last)) {
+      return false;
+    }
+
+    const suffix = entity.unit.actions.slice(1);
+    setUnitActions(entity.unit, newPath.concat(suffix));
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+    return true;
   }
 
   private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | undefined {
