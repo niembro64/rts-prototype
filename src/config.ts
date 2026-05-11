@@ -220,6 +220,8 @@ export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
 export const DEFAULT_MIRRORS_ENABLED = BATTLE_CONFIG.mirrorsEnabled.default;
 export const DEFAULT_FORCE_FIELDS_ENABLED =
   BATTLE_CONFIG.forceFieldsEnabled.default;
+export const DEFAULT_FORCE_FIELD_REFLECTION_MODE =
+  BATTLE_CONFIG.forceFieldReflectionMode.default;
 export const BAR_COLORS = BAR_THEMES;
 
 // =============================================================================
@@ -616,8 +618,20 @@ export const TERRAIN_ROCK_DETAIL_CONTRAST = 0.1;
  *  texture-generation time (trees use stock MeshLambertMaterial so there's
  *  nowhere to mix at shader time). Changing this value requires a reload —
  *  the textures are generated once and cached. */
-export const TREE_LEAF_DETAIL_CONTRAST = 0.3;
-export const TREE_TRUNK_DETAIL_CONTRAST = 0.3;
+export const TREE_LEAF_DETAIL_CONTRAST = 0.99;
+export const TREE_TRUNK_DETAIL_CONTRAST = 0.99;
+
+/** How many times the tree-leaf / tree-trunk texture tiles per UV unit on
+ *  the model. Trees come in at a small global scale, so a face that covers
+ *  most of UV [0, 1] is only a few dozen screen pixels — mipmaps average
+ *  away the individual shapes and only the texture's mean color comes
+ *  through. Tiling repeats packs more pattern copies into each face so the
+ *  shapes survive even at heavy minification. Bark especially benefits
+ *  from a higher repeat because the look depends on seeing many vertical
+ *  cracks per trunk height. Trade-off: too high and the pattern reads as
+ *  obvious tiling instead of organic surface. */
+export const TREE_LEAF_TEXTURE_REPEAT = 4;
+export const TREE_TRUNK_TEXTURE_REPEAT = 6;
 
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion

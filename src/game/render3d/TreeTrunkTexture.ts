@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import {
   FOREST_SPRUCE2_WOOD_COLOR,
   TREE_TRUNK_DETAIL_CONTRAST,
+  TREE_TRUNK_TEXTURE_REPEAT,
 } from '../../config';
 
 export const TREE_TRUNK_TEXTURE_PIXELS = 1024;
@@ -105,6 +106,12 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
+  // See TreeLeafTexture for the rationale — tile multiple times per UV unit
+  // so the bark patterns survive minification on small-scale trees. Trunk
+  // benefits from a higher repeat than leaves because the bark look depends
+  // on seeing many vertical cracks per trunk height.
+  const repeat = Math.max(1, TREE_TRUNK_TEXTURE_REPEAT);
+  texture.repeat.set(repeat, repeat);
   texture.generateMipmaps = true;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;

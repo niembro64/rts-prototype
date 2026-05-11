@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import {
   FOREST_SPRUCE2_LEAF_COLOR,
   TREE_LEAF_DETAIL_CONTRAST,
+  TREE_LEAF_TEXTURE_REPEAT,
 } from '../../config';
 
 export const TREE_LEAF_TEXTURE_PIXELS = 1024;
@@ -93,6 +94,13 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
+  // Tile the texture multiple times per UV unit. Trees come in at a small
+  // global scale so individual faces are minified hard; without this, the
+  // mipmaps average the shapes into the mean color and you only see the
+  // overall hue change. Repeating multiplies the pattern density per face
+  // so shapes survive minification.
+  const repeat = Math.max(1, TREE_LEAF_TEXTURE_REPEAT);
+  texture.repeat.set(repeat, repeat);
   texture.generateMipmaps = true;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
