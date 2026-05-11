@@ -10,6 +10,7 @@ import type {
   FireDGunCommand,
   GuardCommand,
   MoveCommand,
+  PingCommand,
   QueueUnitCommand,
   ReclaimCommand,
   RepairAreaCommand,
@@ -89,6 +90,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'clearSelection':
       ctx.world.clearSelection();
       break;
+    case 'ping':
+      executePingCommand(ctx, command);
+      break;
     case 'startBuild':
       executeStartBuildCommand(ctx, command);
       break;
@@ -142,6 +146,22 @@ function executeSelectCommand(ctx: CommandContext, command: SelectCommand): void
     ctx.world.clearSelection();
   }
   ctx.world.selectEntities(command.entityIds);
+}
+
+function executePingCommand(ctx: CommandContext, command: PingCommand): void {
+  const x = Math.max(0, Math.min(command.targetX, ctx.world.mapWidth));
+  const y = Math.max(0, Math.min(command.targetY, ctx.world.mapHeight));
+  const z = command.targetZ ?? ctx.world.getGroundZ(x, y);
+  const event: SimEvent = {
+    type: 'ping',
+    turretId: '',
+    sourceType: 'system',
+    sourceKey: 'ping',
+    playerId: command.playerId,
+    pos: { x, y, z },
+  };
+  ctx.onSimEvent?.(event);
+  ctx.pendingSimEvents.push(event);
 }
 
 function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {

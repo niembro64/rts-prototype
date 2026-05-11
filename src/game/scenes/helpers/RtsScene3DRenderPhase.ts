@@ -25,6 +25,7 @@ import type { Debris3D } from '../../render3d/Debris3D';
 import type { BurnMark3D } from '../../render3d/BurnMark3D';
 import type { GroundPrint3D } from '../../render3d/GroundPrint3D';
 import type { LineDrag3D } from '../../render3d/LineDrag3D';
+import type { PingRenderer3D } from '../../render3d/PingRenderer3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
 import type { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
@@ -58,6 +59,7 @@ export type RtsScene3DRenderPhaseResources = {
   burnMarkRenderer: BurnMark3D;
   groundPrintRenderer: GroundPrint3D;
   lineDragRenderer: LineDrag3D;
+  pingRenderer: PingRenderer3D;
   sprayRenderer: SprayRenderer3D;
   smokeTrailRenderer: SmokeTrail3D;
   healthBar3D: HealthBar3D | null;
@@ -150,6 +152,7 @@ export class RtsScene3DRenderPhase {
       burnMarkRenderer,
       groundPrintRenderer,
       lineDragRenderer,
+      pingRenderer,
       sprayRenderer,
       smokeTrailRenderer,
       healthBar3D,
@@ -252,6 +255,7 @@ export class RtsScene3DRenderPhase {
       this.debrisAccumMs = 0;
     }
     forceFieldImpactRenderer.update(effectDtMs, lineProjectiles);
+    pingRenderer.update(effectDtMs);
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       const burnMarkProjectiles = this.clientViewState.collectBurnMarkProjectiles(this.burnMarkProjectilesScratch);

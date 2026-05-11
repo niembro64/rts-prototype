@@ -8,6 +8,7 @@ export type CommandType =
   | 'move'
   | 'stop'
   | 'clearSelection'
+  | 'ping'
   | 'startBuild'
   | 'queueUnit'
   | 'cancelQueueItem'
@@ -76,6 +77,14 @@ export type StopCommand = BaseCommand & {
 
 export type ClearSelectionCommand = BaseCommand & {
   type: 'clearSelection';
+};
+
+export type PingCommand = BaseCommand & {
+  type: 'ping';
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+  playerId?: PlayerId;
 };
 
 export type StartBuildCommand = BaseCommand & {
@@ -292,6 +301,7 @@ export type Command =
   | MoveCommand
   | StopCommand
   | ClearSelectionCommand
+  | PingCommand
   | StartBuildCommand
   | QueueUnitCommand
   | CancelQueueItemCommand

@@ -37,6 +37,7 @@ export type SelectionInfo = {
   isAttackGroundMode: boolean;
   isGuardMode: boolean;
   isReclaimMode: boolean;
+  isPingMode: boolean;
   factoryQueue?: QueueItem[];
   factoryProgress?: number;
   factoryIsProducing?: boolean;
@@ -53,6 +54,7 @@ export type SelectionActions = {
   toggleAttackGround: () => void;
   toggleGuard: () => void;
   toggleReclaim: () => void;
+  togglePing: () => void;
   storeControlGroup: (index: number) => void;
   recallControlGroup: (index: number, additive: boolean) => void;
   startBuild: (buildingType: BuildingType) => void;
@@ -177,6 +179,7 @@ export type UIInputState = {
   isAttackGroundMode: boolean;
   isGuardMode: boolean;
   isReclaimMode: boolean;
+  isPingMode: boolean;
   controlGroups: ControlGroupInfo[];
 };
 

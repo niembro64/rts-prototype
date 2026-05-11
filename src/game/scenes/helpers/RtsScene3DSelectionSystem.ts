@@ -31,6 +31,7 @@ export class RtsScene3DSelectionSystem {
   private attackGroundActive = false;
   private guardActive = false;
   private reclaimActive = false;
+  private pingActive = false;
 
   constructor(
     private readonly clientViewState: ClientViewState,
@@ -89,6 +90,11 @@ export class RtsScene3DSelectionSystem {
 
   setReclaimMode(active: boolean): void {
     this.reclaimActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setPingMode(active: boolean): void {
+    this.pingActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -173,6 +179,7 @@ export class RtsScene3DSelectionSystem {
       isAttackGroundMode: this.attackGroundActive,
       isGuardMode: this.guardActive,
       isReclaimMode: this.reclaimActive,
+      isPingMode: this.pingActive,
       controlGroups: this.buildControlGroupInfo(),
     };
   }

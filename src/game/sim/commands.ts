@@ -6,6 +6,7 @@ export type {
   MoveCommand,
   StopCommand,
   ClearSelectionCommand,
+  PingCommand,
   StartBuildCommand,
   QueueUnitCommand,
   CancelQueueItemCommand,

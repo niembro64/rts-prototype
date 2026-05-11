@@ -54,6 +54,7 @@ import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { GroundPrint3D } from '../render3d/GroundPrint3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
+import { PingRenderer3D } from '../render3d/PingRenderer3D';
 import { BuildGhost3D } from '../render3d/BuildGhost3D';
 import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
 import { RtsScene3DAudioSystem } from './helpers/RtsScene3DAudioSystem';
@@ -168,6 +169,7 @@ export class RtsScene3D {
   private burnMarkRenderer!: BurnMark3D;
   private groundPrintRenderer!: GroundPrint3D;
   private lineDragRenderer!: LineDrag3D;
+  private pingRenderer!: PingRenderer3D;
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
   private smokeTrailRenderer!: SmokeTrail3D;
@@ -512,6 +514,7 @@ export class RtsScene3D {
     );
     this.groundPrintRenderer = new GroundPrint3D(this.threeApp.world, this.renderScope);
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
+    this.pingRenderer = new PingRenderer3D(this.threeApp.world);
     this.buildGhostRenderer = new BuildGhost3D(
       this.threeApp.world,
       (x, y) => getTerrainMeshHeight(x, y, this.mapWidth, this.mapHeight),
@@ -603,6 +606,9 @@ export class RtsScene3D {
     this.inputManager.onReclaimModeChange = (active) => {
       this.selectionSystem.setReclaimMode(active);
     };
+    this.inputManager.onPingModeChange = (active) => {
+      this.selectionSystem.setPingMode(active);
+    };
 
     this.renderPhase = new RtsScene3DRenderPhase(
       this.threeApp,
@@ -626,6 +632,7 @@ export class RtsScene3D {
         burnMarkRenderer: this.burnMarkRenderer,
         groundPrintRenderer: this.groundPrintRenderer,
         lineDragRenderer: this.lineDragRenderer,
+        pingRenderer: this.pingRenderer,
         sprayRenderer: this.sprayRenderer,
         smokeTrailRenderer: this.smokeTrailRenderer,
         healthBar3D: this.healthBar3D,
@@ -837,6 +844,22 @@ export class RtsScene3D {
    * visuals come from FLAG toggles on their turret state.
    */
   private handleSimEvent3D(event: NetworkServerSnapshotSimEvent): void {
+    if (event.type === 'ping') {
+      const effectGfx = this.graphicsConfigForEffectCell(
+        event.pos.x,
+        event.pos.y,
+        event.pos.y,
+      );
+      if (!effectGfx) return;
+      this.pingRenderer.spawn(
+        event.pos.x,
+        event.pos.y,
+        event.pos.z,
+        getPlayerPrimaryColor(event.playerId),
+      );
+      return;
+    }
+
     const effectGfx = this.graphicsConfigForEffectCell(
       event.pos.x,
       event.pos.y,
@@ -1130,6 +1153,10 @@ export class RtsScene3D {
     this.inputManager?.toggleReclaimMode();
   }
 
+  public togglePingMode(): void {
+    this.inputManager?.togglePingMode();
+  }
+
   public storeControlGroup(index: number): void {
     this.inputManager?.storeControlGroupSlot(index);
   }
@@ -1276,6 +1303,7 @@ export class RtsScene3D {
       burnMarkRenderer: this.burnMarkRenderer,
       groundPrintRenderer: this.groundPrintRenderer,
       lineDragRenderer: this.lineDragRenderer,
+      pingRenderer: this.pingRenderer,
       buildGhostRenderer: this.buildGhostRenderer,
       sprayRenderer: this.sprayRenderer,
       smokeTrailRenderer: this.smokeTrailRenderer,

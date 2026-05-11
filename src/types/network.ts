@@ -300,12 +300,14 @@ export type NetworkServerSnapshotSimEvent = {
     | 'forceFieldStart'
     | 'forceFieldStop'
     | 'forceFieldImpact'
+    | 'ping'
     | 'projectileExpire';
   turretId: SimEventAudioKey;
   sourceType?: SimEventSourceType;
   sourceKey?: string;
   /** Event origin in 3D sim coords. See SimEvent in types/combat.ts. */
   pos: Vec3;
+  playerId?: PlayerId;
   entityId?: number;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;

@@ -16,6 +16,7 @@ export type CommandCursorKind =
   | 'build'
   | 'blocked'
   | 'dgun'
+  | 'ping'
   | 'factoryWaypoint';
 
 type CursorSpec = {
@@ -37,6 +38,7 @@ const S = {
   reclaim: '#d6b45f',
   build: '#ffd33f',
   dgun: '#ff8d24',
+  ping: '#f7fbff',
   game: '#9bd8ff',
 } as const;
 
@@ -183,6 +185,19 @@ const DGUN = svg(`
   <path d="M18 3L7 17h8l-1 12 11-16h-8z" fill="${S.dgun}" stroke="${S.white}" stroke-width="1.1" stroke-linejoin="round"/>
 `);
 
+const PING = svg(`
+  <g fill="none" stroke="${S.outline}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="16" cy="16" r="7"/>
+    <path d="M16 4v5M16 23v5M4 16h5M23 16h5"/>
+    <path d="M16 16v-5"/>
+  </g>
+  <g fill="none" stroke="${S.ping}" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="16" cy="16" r="7"/>
+    <path d="M16 4v5M16 23v5M4 16h5M23 16h5"/>
+    <path d="M16 16v-5"/>
+  </g>
+`);
+
 const FACTORY_WAYPOINT = svg(`
   <g fill="none" stroke="${S.outline}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M10 26V6"/>
@@ -209,6 +224,7 @@ const CURSOR_SPECS: Record<Exclude<CommandCursorKind, 'default'>, CursorSpec> = 
   build: { svg: BUILD, hotX: 8, hotY: 20, fallback: 'crosshair' },
   blocked: { svg: BLOCKED, hotX: 16, hotY: 16, fallback: 'not-allowed' },
   dgun: { svg: DGUN, hotX: 16, hotY: 16, fallback: 'crosshair' },
+  ping: { svg: PING, hotX: 16, hotY: 16, fallback: 'crosshair' },
   factoryWaypoint: { svg: FACTORY_WAYPOINT, hotX: 10, hotY: 27, fallback: 'crosshair' },
 };
 
@@ -226,6 +242,7 @@ const CURSOR_STYLES: Record<CommandCursorKind, string> = {
   build: cursorUrl(CURSOR_SPECS.build),
   blocked: cursorUrl(CURSOR_SPECS.blocked),
   dgun: cursorUrl(CURSOR_SPECS.dgun),
+  ping: cursorUrl(CURSOR_SPECS.ping),
   factoryWaypoint: cursorUrl(CURSOR_SPECS.factoryWaypoint),
 };
 

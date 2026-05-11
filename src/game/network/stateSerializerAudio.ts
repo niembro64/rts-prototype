@@ -18,6 +18,7 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
     sourceType: undefined,
     sourceKey: undefined,
     pos: { x: 0, y: 0, z: 0 },
+    playerId: undefined,
     entityId: undefined,
     deathContext: undefined,
     impactContext: undefined,
@@ -57,6 +58,7 @@ export function serializeAudioEvents(
     out._pos.x = source.pos.x;
     out._pos.y = source.pos.y;
     out._pos.z = source.pos.z;
+    out.playerId = source.playerId;
     out.entityId = source.entityId;
     out.deathContext = source.deathContext;
     out.impactContext = source.impactContext;

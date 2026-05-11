@@ -129,11 +129,13 @@ export class Input3DManager {
   public onAttackGroundModeChange?: (active: boolean) => void;
   public onGuardModeChange?: (active: boolean) => void;
   public onReclaimModeChange?: (active: boolean) => void;
+  public onPingModeChange?: (active: boolean) => void;
   private repairAreaMode = false;
   private attackAreaMode = false;
   private attackGroundMode = false;
   private guardMode = false;
   private reclaimMode = false;
+  private pingMode = false;
   private hoveredEntityId: EntityId | null = null;
   private hoveredSelectableEntityId: EntityId | null = null;
   private lastHoverRaycastMs = 0;
@@ -302,6 +304,7 @@ export class Input3DManager {
     this.exitAttackGroundMode();
     this.exitGuardMode();
     this.exitReclaimMode();
+    this.exitPingMode();
     if (this.waypointMode === mode) return;
     this.waypointMode = mode;
     this.refreshCursor();
@@ -319,6 +322,7 @@ export class Input3DManager {
     this.exitAttackGroundMode();
     this.exitGuardMode();
     this.exitReclaimMode();
+    this.exitPingMode();
     this.setWaypointMode('move');
     this.clearHoveredEntities();
     this.refreshCursor();
@@ -334,6 +338,7 @@ export class Input3DManager {
     this.exitAttackGroundMode();
     this.exitGuardMode();
     this.exitReclaimMode();
+    this.exitPingMode();
     this.mode.enterBuildMode(type);
   }
 
@@ -356,6 +361,7 @@ export class Input3DManager {
     this.exitAttackGroundMode();
     this.exitGuardMode();
     this.exitReclaimMode();
+    this.exitPingMode();
     this.mode.toggleDGunMode();
   }
 
@@ -365,6 +371,23 @@ export class Input3DManager {
 
   toggleSelectedWait(queue = false): void {
     this.enqueueWaitCommand(queue);
+  }
+
+  togglePingMode(): void {
+    if (this.pingMode) {
+      this.exitPingMode();
+      return;
+    }
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitRepairAreaMode();
+    this.exitAttackAreaMode();
+    this.exitAttackGroundMode();
+    this.exitGuardMode();
+    this.exitReclaimMode();
+    this.pingMode = true;
+    this.refreshCursor();
+    this.onPingModeChange?.(true);
   }
 
   toggleSelectedJump(): void {
@@ -387,6 +410,7 @@ export class Input3DManager {
     this.exitAttackGroundMode();
     this.exitGuardMode();
     this.exitReclaimMode();
+    this.exitPingMode();
     this.attackAreaMode = true;
     this.refreshCursor();
     this.onAttackAreaModeChange?.(true);
@@ -404,6 +428,7 @@ export class Input3DManager {
     this.exitAttackAreaMode();
     this.exitGuardMode();
     this.exitReclaimMode();
+    this.exitPingMode();
     this.attackGroundMode = true;
     this.refreshCursor();
     this.onAttackGroundModeChange?.(true);
@@ -421,6 +446,7 @@ export class Input3DManager {
     this.exitAttackAreaMode();
     this.exitAttackGroundMode();
     this.exitReclaimMode();
+    this.exitPingMode();
     this.guardMode = true;
     this.refreshCursor();
     this.onGuardModeChange?.(true);
@@ -438,6 +464,7 @@ export class Input3DManager {
     this.exitAttackGroundMode();
     this.exitGuardMode();
     this.exitReclaimMode();
+    this.exitPingMode();
     this.repairAreaMode = true;
     this.refreshCursor();
     this.onRepairAreaModeChange?.(true);
@@ -455,6 +482,7 @@ export class Input3DManager {
     this.exitAttackAreaMode();
     this.exitAttackGroundMode();
     this.exitGuardMode();
+    this.exitPingMode();
     this.reclaimMode = true;
     this.refreshCursor();
     this.onReclaimModeChange?.(true);
@@ -528,6 +556,11 @@ export class Input3DManager {
     return this.reclaimMode;
   }
 
+  /** True while the next left-click will issue a map ping. */
+  isInPingMode(): boolean {
+    return this.pingMode;
+  }
+
   private exitRepairAreaMode(): void {
     if (!this.repairAreaMode) return;
     this.repairAreaMode = false;
@@ -561,6 +594,13 @@ export class Input3DManager {
     this.reclaimMode = false;
     this.refreshCursor();
     this.onReclaimModeChange?.(false);
+  }
+
+  private exitPingMode(): void {
+    if (!this.pingMode) return;
+    this.pingMode = false;
+    this.refreshCursor();
+    this.onPingModeChange?.(false);
   }
 
   private hasSelectedCommander(): boolean {
@@ -635,6 +675,7 @@ export class Input3DManager {
     if (this.attackGroundMode) return 'attack';
     if (this.guardMode) return 'guard';
     if (this.reclaimMode) return 'reclaim';
+    if (this.pingMode) return 'ping';
     if (this.leftDown) return 'select';
     if (this.rightDown) return this.waypointCursorKind();
 
@@ -709,7 +750,7 @@ export class Input3DManager {
 
     // Mirror the command hotkeys one-for-one. M/F/H switch waypoint mode;
     // S stops selected units; W toggles wait; J toggles jump permission; E toggles fire permission;
-    // A toggles area attack; T toggles attack-ground; G toggles guard; R toggles area repair; C toggles reclaim;
+    // A toggles area attack; T toggles attack-ground; G toggles guard; R toggles area repair; C toggles reclaim; P toggles ping;
     // B/number/D drive the commander mode state machine;
     // Escape runs the shared cancel-mode-or-clear-selection convention.
     const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
@@ -721,6 +762,7 @@ export class Input3DManager {
         this.exitAttackGroundMode();
         this.exitGuardMode();
         this.exitReclaimMode();
+        this.exitPingMode();
         this.mode.enterBuildMode(buildingType);
       }
       return;
@@ -757,6 +799,9 @@ export class Input3DManager {
       case 'r':
         this.toggleRepairAreaMode();
         break;
+      case 'p':
+        this.togglePingMode();
+        break;
       case 'b':
         if (!this.hasSelectedCommander()) break;
         this.exitRepairAreaMode();
@@ -764,6 +809,7 @@ export class Input3DManager {
         this.exitAttackGroundMode();
         this.exitGuardMode();
         this.exitReclaimMode();
+        this.exitPingMode();
         if (!this.mode.isInBuildMode) this.mode.enterBuildMode(getDefaultBuildModeBuildingType());
         else this.mode.cycleBuildingType();
         break;
@@ -780,6 +826,7 @@ export class Input3DManager {
             { isActive: () => this.attackGroundMode, cancel: () => this.exitAttackGroundMode() },
             { isActive: () => this.guardMode, cancel: () => this.exitGuardMode() },
             { isActive: () => this.reclaimMode, cancel: () => this.exitReclaimMode() },
+            { isActive: () => this.pingMode, cancel: () => this.exitPingMode() },
           ],
           this.localCommandQueue,
           this.context.getTick(),
@@ -823,6 +870,16 @@ export class Input3DManager {
       tick: this.context.getTick(),
       entityIds,
       queue,
+    });
+  }
+
+  private enqueuePingCommand(world: SimGroundPoint): void {
+    this.localCommandQueue.enqueue({
+      type: 'ping',
+      tick: this.context.getTick(),
+      targetX: world.x,
+      targetY: world.y,
+      targetZ: world.z,
     });
   }
 
@@ -982,7 +1039,7 @@ export class Input3DManager {
     // (command / cancel), Button 1 (middle) is handled by OrbitCamera.
     //
     // While a commander mode is active, left-click commits that
-    // mode's action (place building / fire D-gun / area repair / area attack / attack-ground / guard / reclaim) and right-click
+    // mode's action (place building / fire D-gun / area repair / area attack / attack-ground / guard / reclaim / ping) and right-click
     // cancels the mode — mirrors the 2D BuildingPlacementController.
     if (
       this.mode.isInBuildMode ||
@@ -991,7 +1048,8 @@ export class Input3DManager {
       this.attackAreaMode ||
       this.attackGroundMode ||
       this.guardMode ||
-      this.reclaimMode
+      this.reclaimMode ||
+      this.pingMode
     ) {
       e.preventDefault();
       if (e.button === 0) {
@@ -1001,7 +1059,8 @@ export class Input3DManager {
         else if (this.attackAreaMode) this.handleAttackAreaClick(e);
         else if (this.attackGroundMode) this.handleAttackGroundClick(e);
         else if (this.guardMode) this.handleGuardClick(e);
-        else this.handleReclaimClick(e);
+        else if (this.reclaimMode) this.handleReclaimClick(e);
+        else this.handlePingClick(e);
       } else if (e.button === 2) {
         if (this.mode.isInBuildMode) this.mode.exitBuildMode();
         else if (this.mode.isInDGunMode) this.mode.exitDGunMode();
@@ -1009,7 +1068,8 @@ export class Input3DManager {
         else if (this.attackAreaMode) this.exitAttackAreaMode();
         else if (this.attackGroundMode) this.exitAttackGroundMode();
         else if (this.guardMode) this.exitGuardMode();
-        else this.exitReclaimMode();
+        else if (this.reclaimMode) this.exitReclaimMode();
+        else this.exitPingMode();
       }
       return;
     }
@@ -1193,6 +1253,14 @@ export class Input3DManager {
     if (!e.shiftKey) this.exitAttackGroundMode();
   }
 
+  private handlePingClick(e: MouseEvent): void {
+    const world = this.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+    this.enqueuePingCommand(world);
+    this.applyCursor('ping');
+    if (!e.shiftKey) this.exitPingMode();
+  }
+
   private handleGuardClick(e: MouseEvent): void {
     const selectedUnits = this.entitySource.getSelectedUnits();
     if (selectedUnits.length === 0) {
@@ -1287,7 +1355,8 @@ export class Input3DManager {
       this.attackAreaMode ||
       this.attackGroundMode ||
       this.guardMode ||
-      this.reclaimMode
+      this.reclaimMode ||
+      this.pingMode
     ) {
       this.clearHoveredEntities();
     } else if (this.lastHoverClientX !== e.clientX || this.lastHoverClientY !== e.clientY) {
@@ -1334,6 +1403,11 @@ export class Input3DManager {
 
     if (this.reclaimMode) {
       this.applyCursor('reclaim');
+      return;
+    }
+
+    if (this.pingMode) {
+      this.applyCursor('ping');
       return;
     }
 
@@ -1758,6 +1832,7 @@ export class Input3DManager {
     this.onAttackGroundModeChange = undefined;
     this.onGuardModeChange = undefined;
     this.onReclaimModeChange = undefined;
+    this.onPingModeChange = undefined;
     this.marquee.remove();
   }
 }

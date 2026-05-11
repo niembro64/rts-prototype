@@ -176,6 +176,7 @@ export function createSimEventDto(): NetworkServerSnapshotSimEvent {
     sourceType: undefined,
     sourceKey: undefined,
     pos: { x: 0, y: 0, z: 0 },
+    playerId: undefined,
     forceFieldImpact: undefined,
   };
 }
@@ -191,6 +192,7 @@ export function copySimEventInto(
   dst.pos.x = src.pos.x;
   dst.pos.y = src.pos.y;
   dst.pos.z = src.pos.z;
+  dst.playerId = src.playerId;
   dst.entityId = src.entityId;
   // deathContext / impactContext are emitted as fresh literals per tick
   // by the simulation and never reused, so a ref copy is safe and cheap.

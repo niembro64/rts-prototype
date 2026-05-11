@@ -130,6 +130,7 @@ export function buildSelectionInfo(
     isAttackGroundMode: inputState?.isAttackGroundMode ?? false,
     isGuardMode: inputState?.isGuardMode ?? false,
     isReclaimMode: inputState?.isReclaimMode ?? false,
+    isPingMode: inputState?.isPingMode ?? false,
     factoryQueue,
     factoryProgress,
     factoryIsProducing,

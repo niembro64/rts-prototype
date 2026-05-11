@@ -11,6 +11,7 @@ import type {
   Command,
   GuardCommand,
   MoveCommand,
+  PingCommand,
   SetCameraAoiCommand,
   SetFireEnabledCommand,
   SetJumpEnabledCommand,
@@ -629,6 +630,9 @@ export class GameServer {
         // authoritative world selection state for other players.
         return null;
 
+      case 'ping':
+        return this.authorizePingCommand(command, fromPlayerId);
+
       case 'move':
         return this.authorizeMoveCommand(command, fromPlayerId);
 
@@ -678,6 +682,12 @@ export class GameServer {
       default:
         return null;
     }
+  }
+
+  private authorizePingCommand(command: PingCommand, playerId: PlayerId): PingCommand | null {
+    if (!Number.isFinite(command.targetX) || !Number.isFinite(command.targetY)) return null;
+    if (command.targetZ !== undefined && !Number.isFinite(command.targetZ)) return null;
+    return { ...command, playerId };
   }
 
   private authorizeMoveCommand(command: MoveCommand, playerId: PlayerId): MoveCommand | null {

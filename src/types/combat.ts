@@ -70,6 +70,7 @@ export type SimEvent = {
     | 'forceFieldStart'
     | 'forceFieldStop'
     | 'forceFieldImpact'
+    | 'ping'
     | 'projectileExpire';
   /** Legacy wire field for the one-shot audio routing key. Fire,
    *  laser, and force-field events use turret ids; hit/projectile
@@ -89,6 +90,7 @@ export type SimEvent = {
    *  altitude so the event visuals line up with what the sim
    *  computed. */
   pos: Vec3;
+  playerId?: PlayerId;
   entityId?: EntityId;
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;

@@ -49,6 +49,7 @@ export function useGameCanvasSceneUi({
     isAttackGroundMode: false,
     isGuardMode: false,
     isReclaimMode: false,
+    isPingMode: false,
     factoryQueue: [],
     factoryProgress: 0,
     factoryIsProducing: false,
@@ -154,6 +155,9 @@ export function useGameCanvasSceneUi({
     },
     toggleReclaim: () => {
       getActiveBattleScene()?.toggleReclaimMode();
+    },
+    togglePing: () => {
+      getActiveBattleScene()?.togglePingMode();
     },
     storeControlGroup: (index) => {
       getActiveBattleScene()?.storeControlGroup(index);
