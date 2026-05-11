@@ -267,8 +267,8 @@ export function solveBallisticPitch(
   if (sol) return preferHigh ? sol.high : sol.low;
 
   // Out of range. Keep low-arc weapons low even when no exact solution
-  // exists; otherwise `highArc: false` and `highArc: true` collapse to
-  // the same 45-degree fallback at the edge of reach.
+  // exists; otherwise low/high aiming styles collapse to the same
+  // 45-degree fallback at the edge of reach.
   if (horizDist <= 1e-6) return heightDiff >= 0 ? Math.PI / 2 : -Math.PI / 2;
   if (!preferHigh) return Math.atan2(heightDiff, horizDist);
 

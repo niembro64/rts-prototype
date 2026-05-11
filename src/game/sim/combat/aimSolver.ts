@@ -344,6 +344,14 @@ function getProjectileMaxTimeSec(shot: ProjectileShot): number | undefined {
   return Number.isFinite(lifeMs) ? lifeMs / 1000 : undefined;
 }
 
+function usesHighBallisticPath(config: TurretConfig, shot: ProjectileShot): boolean {
+  return !shot.ignoresGravity && config.aimStyle === 'high';
+}
+
+function usesBallisticAim(config: TurretConfig): boolean {
+  return config.aimStyle === 'low' || config.aimStyle === 'high';
+}
+
 function solveStaticProjectileAim(
   shot: ProjectileShot,
   launchSpeed: number,
@@ -414,7 +422,7 @@ export function solveProjectileTurretAim(
       target: _targetState,
       projectileSpeed: launchSpeed,
       projectileAcceleration: getProjectileAcceleration(shot, _projectileAcceleration),
-      preferLateSolution: !shot.ignoresGravity && (weapon.config.highArc ?? false),
+      preferLateSolution: usesHighBallisticPath(weapon.config, shot),
       maxTimeSec: getProjectileMaxTimeSec(shot),
     }, _interceptSolution);
     if (intercept) {
@@ -450,7 +458,7 @@ export function solveProjectileTurretAim(
   const staticIntercept = solveStaticProjectileAim(
     shot,
     launchSpeed,
-    !shot.ignoresGravity && (weapon.config.highArc ?? false),
+    usesHighBallisticPath(weapon.config, shot),
     writeKinematicVec3(_staticOriginPosition, mountX, mountY, mountZ),
     originVelocity,
     originAcceleration,
@@ -507,7 +515,7 @@ export function solveProjectileTurretAimAtPoint(
   const staticIntercept = solveStaticProjectileAim(
     shot,
     launchSpeed,
-    !shot.ignoresGravity && (weapon.config.highArc ?? false),
+    usesHighBallisticPath(weapon.config, shot),
     writeKinematicVec3(_staticOriginPosition, mountX, mountY, mountZ),
     originVelocity,
     originAcceleration,
@@ -537,8 +545,22 @@ export function solveTurretAimAtGroundPoint(
   groundHeightAt: GroundHeightLookup,
   out: TurretAimSolution,
 ): TurretAimSolution {
+  if (weapon.config.aimStyle === 'none') {
+    return solveTurretAimAtPoint(
+      writeFallbackDirectionAimPoint(
+        mountX, mountY, mountZ,
+        weapon.rotation, currentPitch,
+        out.aim,
+      ),
+      mountX, mountY, mountZ,
+      currentPitch,
+      weapon.config,
+      out,
+    );
+  }
+
   const shot = weapon.config.shot;
-  if (shot && isProjectileShot(shot)) {
+  if (shot && isProjectileShot(shot) && usesBallisticAim(weapon.config)) {
     return solveProjectileTurretAimAtPoint(
       source,
       weapon,
@@ -572,6 +594,8 @@ export function solveTurretAim(
   groundHeightAt: GroundHeightLookup,
   out: TurretAimSolution,
 ): TurretAimSolution | null {
+  if (weapon.config.aimStyle === 'none') return null;
+
   if (weapon.config.passive) {
     const aimPoint = resolveMirrorTurretAimPoint(
       unit, target,
@@ -591,7 +615,7 @@ export function solveTurretAim(
   }
 
   const shot = weapon.config.shot;
-  if (shot && isProjectileShot(shot)) {
+  if (shot && isProjectileShot(shot) && usesBallisticAim(weapon.config)) {
     return solveProjectileTurretAim(
       unit,
       weapon,

@@ -61,6 +61,8 @@ export type TurretRadiusConfig = {
   body: number;
 };
 
+export type TurretAimStyle = 'low' | 'high' | 'direct' | 'none';
+
 export type TurretBlueprint = {
   id: TurretId;
   projectileId?: ShotId;
@@ -91,13 +93,12 @@ export type TurretBlueprint = {
   mirrorPanels?: MirrorPanel[];
   audio?: { fireSound?: SoundEntry };
   radius: TurretRadiusConfig;
-  /** Ballistic arc preference for the aim solver. Two solutions exist
-   *  for any in-range target under gravity — a low flat arc and a
-   *  high lofted arc. Default (omitted / false) picks the low arc
-   *  for fast line-of-sight shots. `true` picks the high arc so
-   *  mortars lob their rounds over terrain / walls. Irrelevant for
-   *  beams and lasers (instantaneous, direct-aim). */
-  highArc?: boolean;
+  /** Explicit aiming solver mode:
+   *  - low: gravity projectile, lower ballistic solution
+   *  - high: gravity projectile, lofted ballistic solution
+   *  - direct: straight line toward the target/aim point
+   *  - none: turret does not solve a target-facing pose */
+  aimStyle: TurretAimStyle;
   /** Vertical launch system. When true, the turret ignores the normal
    *  yaw+pitch aim math and stays pointed straight up (pitch = π/2).
    *  Each fired projectile launches upward with a random cone

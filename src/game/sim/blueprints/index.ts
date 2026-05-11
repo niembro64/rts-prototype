@@ -223,6 +223,30 @@ function validateTurretRangeMultipliers(
   }
 }
 
+function validateTurretAimStyle(
+  turretId: string,
+  turretBlueprint: TurretBlueprint,
+  shot: ShotConfig | undefined,
+): void {
+  switch (turretBlueprint.aimStyle) {
+    case 'low':
+    case 'high':
+      if (!shot || (shot.type !== 'projectile' && shot.type !== 'rocket')) {
+        throw new Error(
+          `Turret ${turretId} uses aimStyle "${turretBlueprint.aimStyle}" without a projectile shot`,
+        );
+      }
+      return;
+    case 'direct':
+      if (!shot || (shot.type !== 'beam' && shot.type !== 'laser')) {
+        throw new Error(`Turret ${turretId} uses direct aim without a line shot`);
+      }
+      return;
+    case 'none':
+      return;
+  }
+}
+
 /** Compute a ForceFieldBarrierConfig from ratio-based blueprint data and weapon range. */
 function computeBarrierConfig(
   barrier: ForceFieldBarrierRatioConfig | undefined,
@@ -373,6 +397,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
       `Turret ${turretId} has neither projectileId, forceField, nor constructionEmitter`,
     );
   }
+  validateTurretAimStyle(turretId, turretBlueprint, shot);
 
   const config: TurretConfig = {
     id: turretBlueprint.id,
@@ -387,7 +412,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     rangeOverrides: turretBlueprint.rangeMultiplierOverrides,
     eventsSmooth: turretBlueprint.eventsSmooth,
     shot,
-    highArc: turretBlueprint.highArc ?? false,
+    aimStyle: turretBlueprint.aimStyle,
     verticalLauncher: turretBlueprint.verticalLauncher ?? false,
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction,

@@ -3,7 +3,7 @@
 import type { BarrelShape } from './config';
 import type { ShotId, TurretId } from './blueprintIds';
 import type { Vec3 } from './vec2';
-import type { TurretRadiusConfig } from './blueprints';
+import type { TurretAimStyle, TurretRadiusConfig } from './blueprints';
 import type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
@@ -48,6 +48,7 @@ export type { EntityId, PlayerId } from './entityTypes';
 export type { UnitJumpState, UnitLocomotion } from './locomotionTypes';
 export type { ResourceCost } from './economyTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
+export type { TurretAimStyle } from './blueprints';
 export type {
   ActiveProjectileShot,
   BeamReflectorKind,
@@ -287,10 +288,8 @@ export type TurretConfig = {
    *  simulated weapon or projectile. */
   shot?: ShotConfig;
   turretIndex?: number;
-  /** Ballistic arc choice for the aim solver — `true` = lofted (high
-   *  arc, mortar-style); `false`/omitted = flat (low arc, direct-fire
-   *  style). See TurretBlueprint.highArc. */
-  highArc?: boolean;
+  /** Explicit aiming solver mode. See TurretBlueprint.aimStyle. */
+  aimStyle: TurretAimStyle;
   /** VLS: turret stays pitched straight up and fires every pellet
    *  into a random cone around vertical. See TurretBlueprint
    *  .verticalLauncher. */
