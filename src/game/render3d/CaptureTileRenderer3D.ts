@@ -355,7 +355,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v21';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v22';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
