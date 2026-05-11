@@ -157,6 +157,7 @@ export const UNIT_LOCOMOTION_BLUEPRINTS = {
       springStiffness: 10_000,
       compression: 20,
       powerRandomMultiplier: 0.95,
+      horizontalRandomMultiplier: 0.35,
       mode: 'always',
     }),
     config: {

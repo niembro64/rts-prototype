@@ -15,9 +15,10 @@ import { getLocomotionForceProfile } from '../sim/locomotion';
 import {
   unitJumpCanRelease,
   getUnitJumpSpringEnergy,
-  getUnitJumpLaunchForce,
+  sampleUnitJumpLaunchForce,
   unitJumpHasActuatorWork,
   unitJumpWantsActuator,
+  type UnitJumpLaunchForce,
   type UnitJumpIntent,
 } from '../sim/unitJump';
 import { canJumpLandAwayFromWater } from '../sim/unitJumpLanding';
@@ -71,6 +72,7 @@ export class UnitForceSystem {
   private _idleBrakeForceZ = 0;
   private _waterOutX = 0;
   private _waterOutY = 0;
+  private readonly _jumpLaunchForce: UnitJumpLaunchForce = { x: 0, y: 0, z: 0 };
   private waterOutCache = new Map<number, WaterOutCacheEntry>();
   private waterOutCacheTerrainVersion = -1;
 
@@ -448,8 +450,8 @@ export class UnitForceSystem {
       return jump.requested !== beforeRequested;
     }
 
-    const jumpForce = getUnitJumpLaunchForce(unit, dtSec);
-    if (jumpForce <= 0) {
+    const jumpForce = sampleUnitJumpLaunchForce(unit, dtSec, this._jumpLaunchForce);
+    if (jumpForce.z <= 0) {
       jump.active = false;
       return (
         jump.requested !== beforeRequested ||
@@ -459,7 +461,9 @@ export class UnitForceSystem {
 
     if (!canJumpLandAwayFromWater(body, {
       dtSec,
-      launchForce: jumpForce,
+      launchForce: jumpForce.z,
+      launchForceX: jumpForce.x,
+      launchForceY: jumpForce.y,
       mapWidth: this.world.mapWidth,
       mapHeight: this.world.mapHeight,
       getGroundZ: (x, y) => this.world.getGroundZ(x, y),
@@ -471,7 +475,7 @@ export class UnitForceSystem {
       );
     }
 
-    this.physics.applyForce(body, 0, 0, jumpForce, {
+    this.physics.applyForce(body, jumpForce.x, jumpForce.y, jumpForce.z, {
       canLaunchFromGround: true,
     });
     jump.launchSeq++;

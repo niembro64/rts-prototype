@@ -25,6 +25,8 @@ export type JumpLandingBody = {
 export type JumpLandingOptions = {
   dtSec: number;
   launchForce: number;
+  launchForceX?: number;
+  launchForceY?: number;
   mapWidth: number;
   mapHeight: number;
   getGroundZ: (x: number, y: number) => number;
@@ -60,6 +62,8 @@ export function canJumpLandAwayFromWater(
     !isFiniteJumpBody(body) ||
     !Number.isFinite(options.dtSec) ||
     !Number.isFinite(options.launchForce) ||
+    !Number.isFinite(options.launchForceX ?? 0) ||
+    !Number.isFinite(options.launchForceY ?? 0) ||
     body.mass <= 0 ||
     options.dtSec <= 0 ||
     options.launchForce <= 0
@@ -68,6 +72,8 @@ export function canJumpLandAwayFromWater(
   }
 
   const launchDeltaVz = (options.launchForce / body.mass) * options.dtSec;
+  const launchVx = body.vx + ((options.launchForceX ?? 0) / body.mass) * options.dtSec;
+  const launchVy = body.vy + ((options.launchForceY ?? 0) / body.mass) * options.dtSec;
   const launchVz = body.vz + launchDeltaVz;
   const startGroundPointZ = body.z - body.groundOffset;
   const startGroundZ = options.getGroundZ(body.x, body.y);
@@ -95,8 +101,8 @@ export function canJumpLandAwayFromWater(
   let finalY = body.y;
   for (let i = 1; i <= sampleCount; i++) {
     const t = (maxFlightTime * i) / sampleCount;
-    const x = body.x + body.vx * t;
-    const y = body.y + body.vy * t;
+    const x = body.x + launchVx * t;
+    const y = body.y + launchVy * t;
     const groundPointZ = startGroundPointZ + launchVz * t - 0.5 * GRAVITY * t * t;
     const groundZ = options.getGroundZ(x, y);
     finalX = x;

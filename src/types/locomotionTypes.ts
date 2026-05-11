@@ -32,6 +32,9 @@ export type UnitJumpConfig = {
   compression: number;
   /** Symmetric per-launch power variation. 0.2 means 80%-120% jump power. */
   powerRandomMultiplier?: number;
+  /** Maximum random horizontal launch force as a fraction of vertical force.
+   *  0.25 means each jump gets 0%-25% extra force in a random XY direction. */
+  horizontalRandomMultiplier?: number;
   /** Manual jumps consume a command; always jumps release once per ground contact. */
   mode?: 'manual' | 'always';
 };

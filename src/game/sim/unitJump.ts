@@ -5,6 +5,12 @@ import type { UnitJumpConfig, UnitJumpState } from '@/types/locomotionTypes';
 const JUMP_RECHARGE_OUTWARD_VELOCITY_EPSILON = 1;
 const MIN_RANDOM_POWER_MULTIPLIER = 0.05;
 
+export type UnitJumpLaunchForce = {
+  x: number;
+  y: number;
+  z: number;
+};
+
 export type UnitJumpIntent = {
   moving: boolean;
   combat: boolean;
@@ -15,6 +21,7 @@ function cloneJumpConfig(config: UnitJumpConfig): UnitJumpConfig {
     springStiffness: config.springStiffness,
     compression: config.compression,
     powerRandomMultiplier: config.powerRandomMultiplier,
+    horizontalRandomMultiplier: config.horizontalRandomMultiplier,
     mode: config.mode,
   };
 }
@@ -79,6 +86,30 @@ export function sampleUnitJumpPowerMultiplier(unit: Unit): number {
 
 export function getUnitJumpLaunchForce(unit: Unit, dtSec: number): number {
   return getUnitJumpSpringForce(unit, dtSec) * sampleUnitJumpPowerMultiplier(unit);
+}
+
+export function sampleUnitJumpLaunchForce(
+  unit: Unit,
+  dtSec: number,
+  out: UnitJumpLaunchForce,
+): UnitJumpLaunchForce {
+  const verticalForce = getUnitJumpLaunchForce(unit, dtSec);
+  const horizontalAmount = unit.jump?.config.horizontalRandomMultiplier ?? 0;
+  let horizontalForce = 0;
+  if (Number.isFinite(horizontalAmount) && horizontalAmount > 0 && verticalForce > 0) {
+    horizontalForce = verticalForce * horizontalAmount * Math.random();
+  }
+
+  if (horizontalForce > 0) {
+    const angle = Math.random() * Math.PI * 2;
+    out.x = Math.cos(angle) * horizontalForce;
+    out.y = Math.sin(angle) * horizontalForce;
+  } else {
+    out.x = 0;
+    out.y = 0;
+  }
+  out.z = verticalForce;
+  return out;
 }
 
 export function getUnitJumpSpringAcceleration(unit: Unit, dtSec: number): number {
