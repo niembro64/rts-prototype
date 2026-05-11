@@ -87,9 +87,10 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           v-if="selection.hasJump"
           class="action-btn"
           :style="{ '--btn-color': '#ffe08a' }"
+          title="Order selected jump-capable units to jump now"
           @click="actions.jumpSelectedUnits()"
         >
-          <span class="btn-label">Jump</span>
+          <span class="btn-label">Jump Now</span>
           <span class="btn-key">J</span>
         </button>
       </div>
