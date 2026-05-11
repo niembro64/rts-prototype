@@ -18,6 +18,8 @@ command ergonomics; it is not a source for copying BAR art, text, or code.
 - Patrol is `P` in Legacy and `H` in Grid.
 - Grid uses `P` for Gather Wait, not Patrol.
 - Grid uses `G` for Stop and `O` for Guard.
+- The Move command card is right-click driven; the detail text also names `M`
+  as the Move hotkey in both Legacy and Grid.
 
 ## Selection
 
@@ -27,7 +29,7 @@ command ergonomics; it is not a source for copying BAR art, text, or code.
 | Select Commander | `Ctrl+C` | `Tab` |
 | Select all units | `Ctrl+A` | `Ctrl+E` |
 | Select all matching units | `Ctrl+Z` | `Ctrl+W` |
-| Select all matching units in view | Double Left Mouse | `Q` |
+| Select all matching units in view | Double + Left Mouse | `Q` |
 | Split Army | - | `Ctrl+Q` |
 | Select idle Builders | `Ctrl+B` | `Ctrl+Tab` |
 | Select waiting units | - | `Ctrl+Y` |
@@ -41,7 +43,7 @@ command ergonomics; it is not a source for copying BAR art, text, or code.
 
 | Command | Legacy input | Grid input |
 | --- | --- | --- |
-| Move | Right Mouse | Right Mouse |
+| Move | Right Mouse; hotkey `M` | Right Mouse; hotkey `M` |
 | Move in Formation | `Ctrl` + Right Mouse | `Ctrl` + Right Mouse |
 | Move Line Drag | Right Mouse Drag | Right Mouse Drag |
 
@@ -51,7 +53,7 @@ command ergonomics; it is not a source for copying BAR art, text, or code.
 | --- | --- | --- |
 | Attack | `A` | `A` |
 | Attack Line | - | `A` + Right Mouse Drag |
-| Attack Area | `Alt+A` + Left Mouse Drag | `Ctrl+A` + Left Mouse Drag |
+| Attack Area | `Alt` + `A` + Left Mouse Drag | `Ctrl` + `A` + Left Mouse Drag |
 | Fight | `F` | `F` |
 | Guard | `G` | `O` |
 | Patrol | `P` | `H` |
@@ -78,7 +80,7 @@ command ergonomics; it is not a source for copying BAR art, text, or code.
 | Repair Area | `R` + Left Mouse Drag | `R` + Left Mouse Drag |
 | Rotate Buildings | `[+]` | `[+]` |
 | Upgrade T1 Mex Area | Left Mouse Drag | Left Mouse Drag |
-| Upgrade T1 -> T2 | Right Mouse | Right Mouse |
+| Upgrade T1 » T2 | Right Mouse | Right Mouse |
 
 ## Factories
 
@@ -97,10 +99,14 @@ command ergonomics; it is not a source for copying BAR art, text, or code.
 | Command | Legacy input | Grid input |
 | --- | --- | --- |
 | Cloak | `K` | `K` |
-| On/Off | `X` | `B` |
-| Positioning | - | `:` |
-| Repeat | - | `T` |
-| Stance | - | `L` |
+| On/Off | `X` | - |
+| On/Off (Stateful) | - | `B` |
+| Positioning | - | - |
+| Positioning (Stateful) | - | `:` |
+| Repeat | - | - |
+| Repeat (Stateful) | - | `T` |
+| Stance | - | - |
+| Stance (Stateful) | - | `L` |
 | Stop | `S` | `G` |
 | Trajectory | - | `B` |
 | Wait | `W` | `Y` |
@@ -130,13 +136,13 @@ command ergonomics; it is not a source for copying BAR art, text, or code.
 | Chat | `Enter` | `Enter` |
 | Draw on Map | `Q` + Left Mouse Drag | `` ` `` + Left Mouse Drag |
 | Erase Drawings on Map | `Q` + Right Mouse Drag | `` ` `` + Right Mouse Drag |
-| Gamespeed Adjust | `Alt` + `+` / `-` | `Alt` + `+` / `-` |
+| Gamespeed Adjust | `Alt` + `+` / `Alt` + `-` | `Alt` + `+` / `Alt` + `-` |
 | Go to last Ping | `F3` | - |
-| Map Details Info | `I` | `Ctrl+I` |
+| Map Details Info | `i` | `Ctrl+i` |
 | Map Overview Switch | `Tab` | `Ctrl+T` |
 | Mute Sound | `F6` | `Backspace` |
 | Options Menu | `F10` | `F10` |
-| Pause Game | `Pause` / `Break` | `Pause` / `Break` |
+| Pause Game | `Pause` \| `Break` | `Pause` \| `Break` |
 | Ping to map | `Q` + Middle Mouse | `` ` `` + Middle Mouse |
 | Show / Hide UI | `F5` | `Ctrl+F7` |
 | Show Map Elevation | `F1` | `F8` |
