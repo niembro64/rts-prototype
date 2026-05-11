@@ -94,6 +94,17 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-label">Jump</span>
           <span class="btn-key">J</span>
         </button>
+        <button
+          v-if="selection.hasFireControl"
+          class="action-btn"
+          :class="{ active: selection.fireEnabled }"
+          :style="{ '--btn-color': '#ff9f5a' }"
+          title="Toggle whether selected units are allowed to fire automatically"
+          @click="actions.toggleSelectedFire()"
+        >
+          <span class="btn-label">{{ selection.fireEnabled ? 'Fire' : 'Hold' }}</span>
+          <span class="btn-key">E</span>
+        </button>
       </div>
     </div>
 
@@ -154,11 +165,12 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       </div>
     </div>
 
-    <!-- D-Gun (for units with d-gun capability) -->
-    <div v-if="selection.hasDGun" class="button-group">
+    <!-- Commander specials -->
+    <div v-if="selection.hasDGun || selection.hasCommander" class="button-group">
       <div class="group-label">Special</div>
       <div class="buttons">
         <button
+          v-if="selection.hasDGun"
           class="action-btn dgun-btn"
           :class="{ active: selection.isDGunMode }"
           @click="actions.toggleDGun()"
@@ -166,6 +178,17 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-label">D-Gun</span>
           <span class="btn-cost"><span class="cost-energy">200E</span></span>
           <span class="btn-key">D</span>
+        </button>
+        <button
+          v-if="selection.hasCommander"
+          class="action-btn"
+          :class="{ active: selection.isRepairAreaMode }"
+          :style="{ '--btn-color': '#63e7ff' }"
+          title="Toggle area repair targeting for the selected commander"
+          @click="actions.toggleRepairArea()"
+        >
+          <span class="btn-label">Repair</span>
+          <span class="btn-key">R</span>
         </button>
       </div>
     </div>
@@ -206,7 +229,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
     <!-- Message area (always present to prevent modal resize) -->
     <div class="message-area">
-      <span v-if="selection.isBuildMode || selection.isDGunMode">
+      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode">
         Press ESC or Right-click to cancel
       </span>
       <span v-else>&nbsp;</span>

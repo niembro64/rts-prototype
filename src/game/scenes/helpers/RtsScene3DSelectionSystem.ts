@@ -26,6 +26,7 @@ export class RtsScene3DSelectionSystem {
   private waypointMode: WaypointType = 'move';
   private buildType: BuildingType | null = null;
   private dgunActive = false;
+  private repairAreaActive = false;
 
   constructor(
     private readonly clientViewState: ClientViewState,
@@ -59,6 +60,11 @@ export class RtsScene3DSelectionSystem {
 
   setDGunMode(active: boolean): void {
     this.dgunActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setRepairAreaMode(active: boolean): void {
+    this.repairAreaActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -138,6 +144,7 @@ export class RtsScene3DSelectionSystem {
       isBuildMode: this.buildType !== null,
       selectedBuildingType: this.buildType,
       isDGunMode: this.dgunActive,
+      isRepairAreaMode: this.repairAreaActive,
       controlGroups: this.buildControlGroupInfo(),
     };
   }

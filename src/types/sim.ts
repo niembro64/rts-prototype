@@ -213,6 +213,9 @@ export type CombatComponent = {
    *  spawn from the host blueprint's `turrets[]` and persisted across
    *  the entity's lifetime. */
   turrets: Turret[];
+  /** Player-controlled fire permission. False is hold-fire: weapons keep
+   *  cooldown state but do not acquire, track, or fire at targets. */
+  fireEnabled?: boolean;
   /** Player attack-command target. When set, every turret on this
    *  entity is forced toward it and fires as soon as it enters fire
    *  range, ignoring the auto-acquisition picker. */

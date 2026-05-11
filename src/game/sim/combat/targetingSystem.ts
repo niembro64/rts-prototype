@@ -402,6 +402,17 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       continue;
     }
     clearCombatActivityFlags(combat);
+    if (combat.fireEnabled === false) {
+      combat.priorityTargetId = undefined;
+      combat.nextCombatProbeTick = undefined;
+      const weapons = combat.turrets;
+      for (let wi = 0; wi < weapons.length; wi++) {
+        const weapon = weapons[wi];
+        setWeaponTarget(weapon, unit, wi, null);
+        weapon.state = 'idle';
+      }
+      continue;
+    }
     const priorityId = combat.priorityTargetId;
     const scheduledProbeTick = combat.nextCombatProbeTick;
     if (priorityId === undefined && scheduledProbeTick !== undefined && scheduledProbeTick > tick) {

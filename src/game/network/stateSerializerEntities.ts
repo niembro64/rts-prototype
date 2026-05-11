@@ -11,6 +11,7 @@ import type { Vec3 } from '../../types/vec2';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_COMBAT_MODE,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_JUMP,
@@ -34,6 +35,7 @@ import {
 } from './snapshotDtoCopy';
 import {
   clearNetworkUnitActions,
+  clearNetworkUnitCombatMode,
   clearNetworkUnitJump,
   clearNetworkUnitMovementAccel,
   clearNetworkUnitStaticFields,
@@ -41,6 +43,7 @@ import {
   clearNetworkUnitSuspension,
   createNetworkUnitSnapshot,
   writeNetworkUnitActions,
+  writeNetworkUnitCombatMode,
   writeNetworkUnitJump,
   writeNetworkUnitMovementAccel,
   writeNetworkUnitStaticFields,
@@ -281,6 +284,12 @@ export function serializeEntitySnapshot(
         writeNetworkUnitJump(u, entity.unit, poolEntry.unitJump);
       } else {
         clearNetworkUnitJump(u);
+      }
+
+      if (isFull || (changedFields! & ENTITY_CHANGED_COMBAT_MODE)) {
+        writeNetworkUnitCombatMode(u, entity);
+      } else {
+        clearNetworkUnitCombatMode(u);
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {

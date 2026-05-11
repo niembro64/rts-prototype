@@ -34,6 +34,8 @@ export function useGameCanvasSceneUi({
     hasDGun: false,
     hasJump: false,
     jumpEnabled: false,
+    hasFireControl: false,
+    fireEnabled: false,
     hasFactory: false,
     factoryId: undefined,
     commanderId: undefined,
@@ -41,6 +43,7 @@ export function useGameCanvasSceneUi({
     isBuildMode: false,
     selectedBuildingType: null,
     isDGunMode: false,
+    isRepairAreaMode: false,
     factoryQueue: [],
     factoryProgress: 0,
     factoryIsProducing: false,
@@ -129,6 +132,9 @@ export function useGameCanvasSceneUi({
     toggleSelectedJump: () => {
       getActiveBattleScene()?.toggleSelectedJump();
     },
+    toggleSelectedFire: () => {
+      getActiveBattleScene()?.toggleSelectedFire();
+    },
     storeControlGroup: (index) => {
       getActiveBattleScene()?.storeControlGroup(index);
     },
@@ -143,6 +149,9 @@ export function useGameCanvasSceneUi({
     },
     toggleDGun: () => {
       getActiveBattleScene()?.toggleDGunMode();
+    },
+    toggleRepairArea: () => {
+      getActiveBattleScene()?.toggleRepairAreaMode();
     },
     queueUnit: (factoryId, unitId) => {
       getActiveBattleScene()?.queueFactoryUnit(factoryId, unitId);

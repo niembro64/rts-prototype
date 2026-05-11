@@ -588,6 +588,9 @@ export class RtsScene3D {
     this.inputManager.onDGunModeChange = (active) => {
       this.selectionSystem.setDGunMode(active);
     };
+    this.inputManager.onRepairAreaModeChange = (active) => {
+      this.selectionSystem.setRepairAreaMode(active);
+    };
 
     this.renderPhase = new RtsScene3DRenderPhase(
       this.threeApp,
@@ -1091,6 +1094,10 @@ export class RtsScene3D {
     this.inputManager?.toggleSelectedJump();
   }
 
+  public toggleSelectedFire(): void {
+    this.inputManager?.toggleSelectedFire();
+  }
+
   public storeControlGroup(index: number): void {
     this.inputManager?.storeControlGroupSlot(index);
   }
@@ -1111,6 +1118,11 @@ export class RtsScene3D {
   public toggleDGunMode(): void {
     this.inputManager?.toggleDGunMode();
   }
+
+  public toggleRepairAreaMode(): void {
+    this.inputManager?.toggleRepairAreaMode();
+  }
+
   public queueFactoryUnit(factoryId: number, unitId: string): void {
     // Factory build queue is server-authoritative, so this command
     // goes straight through gameConnection (same path the 2D scene's

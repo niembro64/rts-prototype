@@ -1,7 +1,7 @@
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
-import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, SetJumpEnabledCommand, RepairCommand, AttackCommand } from './commands';
+import type { Command, MoveCommand, StopCommand, SelectCommand, StartBuildCommand, QueueUnitCommand, CancelQueueItemCommand, SetRallyPointCommand, SetFactoryWaypointsCommand, FireDGunCommand, SetJumpEnabledCommand, SetFireEnabledCommand, RepairCommand, RepairAreaCommand, AttackCommand } from './commands';
 import type { Entity, UnitAction } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
@@ -11,16 +11,19 @@ import { getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_JUMP, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_JUMP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { setUnitJumpEnabled } from './unitJump';
 import { pushUnitAction, setUnitActions } from './unitActions';
+import { clearCombatActivityFlags } from './combat/combatActivity';
+import { setWeaponTarget } from './combat/targetIndex';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMountVelocity = { x: 0, y: 0, z: 0 };
+const REPAIR_AREA_MAX_RADIUS = 500;
 
 function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
   const minSurfaceNormalZ = unit.unit?.locomotion.minSurfaceNormalZ;
@@ -75,8 +78,14 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setJumpEnabled':
       executeSetJumpEnabledCommand(ctx, command);
       break;
+    case 'setFireEnabled':
+      executeSetFireEnabledCommand(ctx, command);
+      break;
     case 'repair':
       executeRepairCommand(ctx, command);
+      break;
+    case 'repairArea':
+      executeRepairAreaCommand(ctx, command);
       break;
     case 'attack':
       executeAttackCommand(ctx, command);
@@ -407,40 +416,144 @@ function executeSetJumpEnabledCommand(ctx: CommandContext, command: SetJumpEnabl
   }
 }
 
+function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabledCommand): void {
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    const combat = entity?.combat;
+    if (!entity || !combat) continue;
+
+    const enabled = command.enabled === true;
+    if (combat.fireEnabled === enabled) continue;
+    combat.fireEnabled = enabled;
+    if (!enabled) {
+      combat.priorityTargetId = undefined;
+      combat.nextCombatProbeTick = undefined;
+      clearCombatActivityFlags(combat);
+      for (let wi = 0; wi < combat.turrets.length; wi++) {
+        const weapon = combat.turrets[wi];
+        setWeaponTarget(weapon, entity, wi, null);
+        weapon.state = 'idle';
+      }
+    }
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);
+  }
+}
+
 function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
   const target = ctx.world.getEntity(command.targetId);
+  enqueueRepairAction(ctx, commander, target, command.queue);
+}
 
+function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaCommand): void {
+  const commander = ctx.world.getEntity(command.commanderId);
   if (!commander?.commander || !commander.unit || !commander.builder) return;
-  if (!target) return;
 
-  // Target must be a buildable (incomplete building) or a damaged unit
-  const isIncompleteBuilding = target.buildable && !target.buildable.isComplete && !target.buildable.isGhost;
-  const isDamagedUnit = target.unit && target.unit.hp < target.unit.maxHp && target.unit.hp > 0;
+  const radius = clampRepairAreaRadius(command.radius);
+  const target = findRepairAreaTarget(
+    ctx,
+    commander,
+    command.targetX,
+    command.targetY,
+    radius,
+  );
+  enqueueRepairAction(ctx, commander, target, command.queue);
+}
 
-  if (!isIncompleteBuilding && !isDamagedUnit) return;
+function clampRepairAreaRadius(radius: number): number {
+  if (!Number.isFinite(radius)) return REPAIR_AREA_MAX_RADIUS;
+  return Math.max(1, Math.min(radius, REPAIR_AREA_MAX_RADIUS));
+}
 
-  // Create repair action — the action's z is the target's actual
-  // altitude (already correct on the entity's transform), not a
-  // re-sample of the terrain at (x, y). For a damaged unit this
-  // tracks the unit's current altitude; for a building it sits on
-  // the ground above its footprint.
+function isRepairableByCommander(commander: Entity, target: Entity | undefined): target is Entity {
+  if (!commander.ownership || !target?.ownership) return false;
+  if (target.ownership.playerId !== commander.ownership.playerId) return false;
+
+  const isIncompleteBuilding = !!target.buildable &&
+    !target.buildable.isComplete &&
+    !target.buildable.isGhost;
+  const isDamagedUnit = !!target.unit &&
+    target.unit.hp < target.unit.maxHp &&
+    target.unit.hp > 0;
+
+  return isIncompleteBuilding || isDamagedUnit;
+}
+
+function repairAreaDistanceSq(target: Entity, x: number, y: number): number {
+  if (target.building) {
+    const halfW = target.building.width / 2;
+    const halfH = target.building.height / 2;
+    const dx = Math.max(Math.abs(target.transform.x - x) - halfW, 0);
+    const dy = Math.max(Math.abs(target.transform.y - y) - halfH, 0);
+    return dx * dx + dy * dy;
+  }
+
+  const dx = target.transform.x - x;
+  const dy = target.transform.y - y;
+  return dx * dx + dy * dy;
+}
+
+function findRepairAreaTarget(
+  ctx: CommandContext,
+  commander: Entity,
+  x: number,
+  y: number,
+  radius: number,
+): Entity | undefined {
+  const radiusSq = radius * radius;
+  let bestTarget: Entity | undefined;
+  let bestDistanceSq = Infinity;
+
+  const buildings = ctx.world.getBuildings();
+  for (let i = 0; i < buildings.length; i++) {
+    const target = buildings[i];
+    if (!isRepairableByCommander(commander, target)) continue;
+    const distSq = repairAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
+    bestDistanceSq = distSq;
+    bestTarget = target;
+  }
+
+  const units = ctx.world.getUnits();
+  for (let i = 0; i < units.length; i++) {
+    const target = units[i];
+    if (!isRepairableByCommander(commander, target)) continue;
+    const distSq = repairAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
+    bestDistanceSq = distSq;
+    bestTarget = target;
+  }
+
+  return bestTarget;
+}
+
+function enqueueRepairAction(
+  ctx: CommandContext,
+  commander: Entity | undefined,
+  target: Entity | undefined,
+  queue: boolean,
+): void {
+  if (!commander?.commander || !commander.unit || !commander.builder) return;
+  if (!isRepairableByCommander(commander, target)) return;
+
+  // The action's z is the target's actual altitude (already correct on
+  // the entity transform), not a terrain re-sample at (x, y). For a
+  // damaged unit this tracks the unit's current altitude; for a building
+  // it sits on the ground above its footprint.
   //
-  // Route through pathfinding so the commander walks AROUND water
-  // to reach the repair target — straight lines toward a target
-  // across a valley used to push the commander into the shore. The
-  // final waypoint keeps targetId so the repair handler fires when
-  // the commander arrives.
+  // Route through pathfinding so the commander walks around water to reach
+  // the repair target. The final waypoint keeps targetId so the repair
+  // handler fires when the commander arrives.
   const targetPoint = getEntityTargetPoint(target);
   const action: UnitAction = {
     type: 'repair',
     x: targetPoint.x,
     y: targetPoint.y,
     z: targetPoint.z,
-    targetId: command.targetId,
+    targetId: target.id,
   };
 
-  addPathActionsWithFinal(commander, action, command.queue, ctx);
+  addPathActionsWithFinal(commander, action, queue, ctx);
 }
 
 function executeAttackCommand(ctx: CommandContext, command: AttackCommand): void {

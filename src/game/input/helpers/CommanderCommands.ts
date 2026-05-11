@@ -6,6 +6,7 @@
 
 import type { Entity, WaypointType } from '../../sim/types';
 import type {
+  RepairAreaCommand,
   RepairCommand,
   SetFactoryWaypointsCommand,
 } from '../../sim/commands';
@@ -34,6 +35,28 @@ export function buildRepairCommandAt(
     tick,
     commanderId: commander.id,
     targetId: target.id,
+    queue,
+  };
+}
+
+export function buildRepairAreaCommand(
+  commander: Entity | null,
+  worldX: number,
+  worldY: number,
+  radius: number,
+  tick: number,
+  queue: boolean,
+  worldZ?: number,
+): RepairAreaCommand | null {
+  if (!commander?.ownership) return null;
+  return {
+    type: 'repairArea',
+    tick,
+    commanderId: commander.id,
+    targetX: worldX,
+    targetY: worldY,
+    targetZ: worldZ,
+    radius,
     queue,
   };
 }

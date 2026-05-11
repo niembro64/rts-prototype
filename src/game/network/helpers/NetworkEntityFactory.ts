@@ -232,6 +232,7 @@ function createUnitFromNetwork(
   if (turrets) {
     entity.combat = {
       turrets,
+      fireEnabled: u?.fireEnabled !== false,
       hasActiveCombat: false,
       activeTurretMask: 0,
       firingTurretMask: 0,

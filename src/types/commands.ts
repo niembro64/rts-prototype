@@ -15,7 +15,9 @@ export type CommandType =
   | 'setFactoryWaypoints'
   | 'fireDGun'
   | 'setJumpEnabled'
+  | 'setFireEnabled'
   | 'repair'
+  | 'repairArea'
   | 'attack'
   | 'setSnapshotRate'
   | 'setKeyframeRatio'
@@ -127,10 +129,26 @@ export type SetJumpEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
+export type SetFireEnabledCommand = BaseCommand & {
+  type: 'setFireEnabled';
+  entityIds: EntityId[];
+  enabled: boolean;
+};
+
 export type RepairCommand = BaseCommand & {
   type: 'repair';
   commanderId: EntityId;
   targetId: EntityId;
+  queue: boolean;
+};
+
+export type RepairAreaCommand = BaseCommand & {
+  type: 'repairArea';
+  commanderId: EntityId;
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+  radius: number;
   queue: boolean;
 };
 
@@ -237,7 +255,9 @@ export type Command =
   | SetFactoryWaypointsCommand
   | FireDGunCommand
   | SetJumpEnabledCommand
+  | SetFireEnabledCommand
   | RepairCommand
+  | RepairAreaCommand
   | AttackCommand
   | SetSnapshotRateCommand
   | SetKeyframeRatioCommand

@@ -143,6 +143,14 @@ export function applyNetworkJumpState(
   return state.launchSeq !== prevLaunchSeq;
 }
 
+export function applyNetworkUnitCombatMode(
+  entity: Entity,
+  src: NetworkUnitSnapshot,
+): void {
+  if (!entity.combat) return;
+  entity.combat.fireEnabled = src.fireEnabled !== false;
+}
+
 function finiteOr(value: unknown, fallback: number): number {
   return isFiniteNumber(value) ? value : fallback;
 }
@@ -308,6 +316,17 @@ export function writeNetworkUnitJump(
   dst.jump = out;
 }
 
+export function writeNetworkUnitCombatMode(
+  dst: NetworkUnitSnapshot,
+  entity: Entity,
+): void {
+  dst.fireEnabled = entity.combat?.fireEnabled === false ? false : undefined;
+}
+
+export function clearNetworkUnitCombatMode(dst: NetworkUnitSnapshot): void {
+  dst.fireEnabled = undefined;
+}
+
 export function clearNetworkUnitJump(dst: NetworkUnitSnapshot): void {
   dst.jump = undefined;
 }
@@ -447,6 +466,7 @@ export function copyNetworkUnitSnapshotInto(
   } else {
     dst.jump = undefined;
   }
+  dst.fireEnabled = src.fireEnabled;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
   dst.build = src.build

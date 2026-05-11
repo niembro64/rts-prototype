@@ -33,6 +33,7 @@ import {
   LinePathAccumulator,
   buildAttackCommandForTarget,
   buildAttackCommandAt,
+  buildRepairAreaCommand,
   buildLinePathMoveCommand,
   buildRepairCommandAt,
   buildFactoryWaypointCommands,
@@ -56,6 +57,7 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 const HOVER_RAYCAST_INTERVAL_MS = 50;
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 const CONTROL_GROUP_COUNT = 9;
+const REPAIR_AREA_RADIUS = 220;
 
 function controlGroupIndexForKey(e: KeyboardEvent): number {
   const codeMatch = /^Digit([1-9])$/.exec(e.code);
@@ -115,6 +117,8 @@ export class Input3DManager {
   private mode = new CommanderModeController();
   public onBuildModeChange?: (type: BuildingType | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
+  public onRepairAreaModeChange?: (active: boolean) => void;
+  private repairAreaMode = false;
   private hoveredEntityId: EntityId | null = null;
   private hoveredSelectableEntityId: EntityId | null = null;
   private lastHoverRaycastMs = 0;
@@ -290,6 +294,7 @@ export class Input3DManager {
     this.selectionChangeTracker.reset();
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
+    this.exitRepairAreaMode();
     this.setWaypointMode('move');
     this.clearHoveredEntities();
     this.refreshCursor();
@@ -300,6 +305,7 @@ export class Input3DManager {
    *  ground will issue a startBuild command for the selected
    *  commander. */
   setBuildMode(type: BuildingType): void {
+    this.exitRepairAreaMode();
     this.mode.enterBuildMode(type);
   }
 
@@ -316,7 +322,9 @@ export class Input3DManager {
   /** Toggle D-gun mode from UI. Only enters if a commander is
    *  selected — mirrors the 2D BuildingPlacementController's gate. */
   toggleDGunMode(): void {
-    if (this.hasSelectedCommander()) this.mode.toggleDGunMode();
+    if (!this.hasSelectedCommander()) return;
+    this.exitRepairAreaMode();
+    this.mode.toggleDGunMode();
   }
 
   stopSelectedUnits(): void {
@@ -325,6 +333,23 @@ export class Input3DManager {
 
   toggleSelectedJump(): void {
     this.enqueueSetJumpEnabledCommand();
+  }
+
+  toggleSelectedFire(): void {
+    this.enqueueSetFireEnabledCommand();
+  }
+
+  toggleRepairAreaMode(): void {
+    if (this.repairAreaMode) {
+      this.exitRepairAreaMode();
+      return;
+    }
+    if (!this.hasSelectedCommander()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.repairAreaMode = true;
+    this.refreshCursor();
+    this.onRepairAreaModeChange?.(true);
   }
 
   storeControlGroupSlot(index: number): void {
@@ -368,6 +393,18 @@ export class Input3DManager {
   /** True if D-gun mode is currently active. */
   isInDGunMode(): boolean {
     return this.mode.isInDGunMode;
+  }
+
+  /** True while the next left-click will issue an area-repair command. */
+  isInRepairAreaMode(): boolean {
+    return this.repairAreaMode;
+  }
+
+  private exitRepairAreaMode(): void {
+    if (!this.repairAreaMode) return;
+    this.repairAreaMode = false;
+    this.refreshCursor();
+    this.onRepairAreaModeChange?.(false);
   }
 
   private hasSelectedCommander(): boolean {
@@ -437,6 +474,7 @@ export class Input3DManager {
         : 'build';
     }
     if (this.mode.isInDGunMode) return 'dgun';
+    if (this.repairAreaMode) return 'repair';
     if (this.leftDown) return 'select';
     if (this.rightDown) return this.waypointCursorKind();
 
@@ -468,6 +506,9 @@ export class Input3DManager {
       this.context.activePlayerId,
     );
     if (changed) this.setWaypointMode('move');
+    if (this.repairAreaMode && !this.hasSelectedCommander()) {
+      this.exitRepairAreaMode();
+    }
     this.refreshCursor();
   }
 
@@ -495,12 +536,14 @@ export class Input3DManager {
     }
 
     // Mirror the command hotkeys one-for-one. M/F/H switch waypoint mode;
-    // S stops selected units; J toggles jump permission; B/number/D drive
-    // the commander mode state machine; Escape runs the shared cancel-mode-or-clear-selection convention.
+    // S stops selected units; J toggles jump permission; E toggles fire permission;
+    // R toggles area repair; B/number/D drive the commander mode state machine;
+    // Escape runs the shared cancel-mode-or-clear-selection convention.
     const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
     if (numericBuildHotkey >= 0) {
       const buildingType = getBuildModeBuildingTypeByIndex(numericBuildHotkey);
       if (buildingType && (this.mode.isInBuildMode || this.hasSelectedCommander())) {
+        this.exitRepairAreaMode();
         this.mode.enterBuildMode(buildingType);
       }
       return;
@@ -516,19 +559,27 @@ export class Input3DManager {
       case 'j':
         this.enqueueSetJumpEnabledCommand();
         break;
+      case 'e':
+        this.enqueueSetFireEnabledCommand();
+        break;
+      case 'r':
+        this.toggleRepairAreaMode();
+        break;
       case 'b':
         if (!this.hasSelectedCommander()) break;
+        this.exitRepairAreaMode();
         if (!this.mode.isInBuildMode) this.mode.enterBuildMode(getDefaultBuildModeBuildingType());
         else this.mode.cycleBuildingType();
         break;
       case 'd':
-        if (this.hasSelectedCommander()) this.mode.toggleDGunMode();
+        this.toggleDGunMode();
         break;
       case 'escape':
         handleEscape(
           [
             { isActive: () => this.mode.isInBuildMode, cancel: () => this.mode.exitBuildMode() },
             { isActive: () => this.mode.isInDGunMode, cancel: () => this.mode.exitDGunMode() },
+            { isActive: () => this.repairAreaMode, cancel: () => this.exitRepairAreaMode() },
           ],
           this.localCommandQueue,
           this.context.getTick(),
@@ -576,6 +627,26 @@ export class Input3DManager {
     if (entityIds.length === 0) return;
     this.localCommandQueue.enqueue({
       type: 'setJumpEnabled',
+      tick: this.context.getTick(),
+      entityIds,
+      enabled: !allEnabled,
+    });
+  }
+
+  private enqueueSetFireEnabledCommand(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length === 0) return;
+    const entityIds: EntityId[] = [];
+    let allEnabled = true;
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
+      if (!unit.combat || unit.combat.turrets.length === 0) continue;
+      entityIds.push(unit.id);
+      if (unit.combat.fireEnabled === false) allEnabled = false;
+    }
+    if (entityIds.length === 0) return;
+    this.localCommandQueue.enqueue({
+      type: 'setFireEnabled',
       tick: this.context.getTick(),
       entityIds,
       enabled: !allEnabled,
@@ -698,16 +769,18 @@ export class Input3DManager {
     // (command / cancel), Button 1 (middle) is handled by OrbitCamera.
     //
     // While a commander mode is active, left-click commits that
-    // mode's action (place building / fire D-gun) and right-click
+    // mode's action (place building / fire D-gun / area repair) and right-click
     // cancels the mode — mirrors the 2D BuildingPlacementController.
-    if (this.mode.isInBuildMode || this.mode.isInDGunMode) {
+    if (this.mode.isInBuildMode || this.mode.isInDGunMode || this.repairAreaMode) {
       e.preventDefault();
       if (e.button === 0) {
         if (this.mode.isInBuildMode) this.handleBuildClick(e);
-        else this.handleDGunClick(e);
+        else if (this.mode.isInDGunMode) this.handleDGunClick(e);
+        else this.handleRepairAreaClick(e);
       } else if (e.button === 2) {
         if (this.mode.isInBuildMode) this.mode.exitBuildMode();
-        else this.mode.exitDGunMode();
+        else if (this.mode.isInDGunMode) this.mode.exitDGunMode();
+        else this.exitRepairAreaMode();
       }
       return;
     }
@@ -823,8 +896,31 @@ export class Input3DManager {
     this.localCommandQueue.enqueue(cmd);
   }
 
+  private handleRepairAreaClick(e: MouseEvent): void {
+    const commander = this.getSelectedCommander();
+    if (!commander) {
+      this.exitRepairAreaMode();
+      return;
+    }
+    const world = this.raycastGround(e.clientX, e.clientY);
+    if (!world) return;
+    const cmd = buildRepairAreaCommand(
+      commander,
+      world.x,
+      world.y,
+      REPAIR_AREA_RADIUS,
+      this.context.getTick(),
+      e.shiftKey,
+      world.z,
+    );
+    if (!cmd) return;
+    this.localCommandQueue.enqueue(cmd);
+    this.applyCursor('repair');
+    if (!e.shiftKey) this.exitRepairAreaMode();
+  }
+
   private handleMouseMove(e: MouseEvent): void {
-    if (this.leftDown || this.rightDown || this.mode.isInBuildMode || this.mode.isInDGunMode) {
+    if (this.leftDown || this.rightDown || this.mode.isInBuildMode || this.mode.isInDGunMode || this.repairAreaMode) {
       this.clearHoveredEntities();
     } else if (this.lastHoverClientX !== e.clientX || this.lastHoverClientY !== e.clientY) {
       this.updateHoveredEntity(e.clientX, e.clientY);
@@ -850,6 +946,11 @@ export class Input3DManager {
         this.buildGhostDiagnostics = undefined;
         this.applyCursor('blocked');
       }
+      return;
+    }
+
+    if (this.repairAreaMode) {
+      this.applyCursor('repair');
       return;
     }
 
@@ -1264,6 +1365,7 @@ export class Input3DManager {
     this.onWaypointModeChange = undefined;
     this.onBuildModeChange = undefined;
     this.onDGunModeChange = undefined;
+    this.onRepairAreaModeChange = undefined;
     this.marquee.remove();
   }
 }

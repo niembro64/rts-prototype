@@ -9,6 +9,7 @@ import type {
   Command,
   MoveCommand,
   SetCameraAoiCommand,
+  SetFireEnabledCommand,
   SetJumpEnabledCommand,
   StopCommand,
 } from '../sim/commands';
@@ -633,6 +634,9 @@ export class GameServer {
       case 'setJumpEnabled':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
+      case 'setFireEnabled':
+        return this.authorizeUnitListCommand(command, fromPlayerId);
+
       case 'attack':
         return this.authorizeUnitListCommand(command, fromPlayerId);
 
@@ -651,6 +655,9 @@ export class GameServer {
       case 'repair':
         if (!this.isOwnedEntity(command.commanderId, fromPlayerId)) return null;
         return this.isOwnedEntity(command.targetId, fromPlayerId) ? command : null;
+
+      case 'repairArea':
+        return this.isOwnedEntity(command.commanderId, fromPlayerId) ? command : null;
 
       default:
         return null;
@@ -688,9 +695,9 @@ export class GameServer {
   }
 
   private authorizeUnitListCommand(
-    command: SetJumpEnabledCommand | AttackCommand | StopCommand,
+    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | StopCommand,
     playerId: PlayerId,
-  ): SetJumpEnabledCommand | AttackCommand | StopCommand | null {
+  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | StopCommand | null {
     const sourceIds = command.entityIds;
     if (sourceIds.length === 0) return null;
 

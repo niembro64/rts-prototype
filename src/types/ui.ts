@@ -22,6 +22,8 @@ export type SelectionInfo = {
   hasDGun: boolean;
   hasJump: boolean;
   jumpEnabled: boolean;
+  hasFireControl: boolean;
+  fireEnabled: boolean;
   hasFactory: boolean;
   factoryId?: number;
   commanderId?: number;
@@ -29,6 +31,7 @@ export type SelectionInfo = {
   isBuildMode: boolean;
   selectedBuildingType: string | null;
   isDGunMode: boolean;
+  isRepairAreaMode: boolean;
   factoryQueue?: QueueItem[];
   factoryProgress?: number;
   factoryIsProducing?: boolean;
@@ -39,11 +42,13 @@ export type SelectionActions = {
   setWaypointMode: (mode: WaypointType) => void;
   stopSelectedUnits: () => void;
   toggleSelectedJump: () => void;
+  toggleSelectedFire: () => void;
   storeControlGroup: (index: number) => void;
   recallControlGroup: (index: number, additive: boolean) => void;
   startBuild: (buildingType: BuildingType) => void;
   cancelBuild: () => void;
   toggleDGun: () => void;
+  toggleRepairArea: () => void;
   queueUnit: (factoryId: number, unitId: string) => void;
   cancelQueueItem: (factoryId: number, index: number) => void;
 };
@@ -157,6 +162,7 @@ export type UIInputState = {
   isBuildMode: boolean;
   selectedBuildingType: string | null;
   isDGunMode: boolean;
+  isRepairAreaMode: boolean;
   controlGroups: ControlGroupInfo[];
 };
 

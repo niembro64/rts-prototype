@@ -3,6 +3,7 @@ import type { NetworkServerSnapshotEntity } from './NetworkManager';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_COMBAT_MODE,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_JUMP,
@@ -20,6 +21,7 @@ import {
 } from './helpers';
 import {
   applyNetworkJumpState,
+  applyNetworkUnitCombatMode,
   applyNetworkSuspensionState,
   applyNetworkUnitActions,
   applyNetworkUnitMovementAccel,
@@ -66,6 +68,9 @@ export function snapClientNonVisualState(
     }
     if (isFull || cf! & ENTITY_CHANGED_JUMP) {
       applyNetworkJumpState(entity, su.jump);
+    }
+    if (isFull || cf! & ENTITY_CHANGED_COMBAT_MODE) {
+      applyNetworkUnitCombatMode(entity, su);
     }
 
     if (isFull && Array.isArray(su.turrets)) {

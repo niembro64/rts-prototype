@@ -39,6 +39,7 @@ export {
 } from './CommanderModeController';
 
 export {
+  buildRepairAreaCommand,
   buildRepairCommandAt,
   buildFactoryWaypointCommands,
 } from './CommanderCommands';

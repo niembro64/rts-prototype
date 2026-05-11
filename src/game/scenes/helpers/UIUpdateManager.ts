@@ -72,11 +72,20 @@ export function buildSelectionInfo(
   const dgunner = commander;
   let jumpCount = 0;
   let allJumpEnabled = true;
+  let fireControlCount = 0;
+  let allFireEnabled = true;
   for (let i = 0; i < selectedUnits.length; i++) {
-    const jump = selectedUnits[i].unit?.jump;
-    if (!jump) continue;
-    jumpCount++;
-    if (jump.enabled === false) allJumpEnabled = false;
+    const selectedUnit = selectedUnits[i];
+    const jump = selectedUnit.unit?.jump;
+    if (jump) {
+      jumpCount++;
+      if (jump.enabled === false) allJumpEnabled = false;
+    }
+    const combat = selectedUnit.combat;
+    if (combat && combat.turrets.length > 0) {
+      fireControlCount++;
+      if (combat.fireEnabled === false) allFireEnabled = false;
+    }
   }
 
   // Check for factory
@@ -104,6 +113,8 @@ export function buildSelectionInfo(
     hasDGun: dgunner !== undefined,
     hasJump: jumpCount > 0,
     jumpEnabled: jumpCount > 0 && allJumpEnabled,
+    hasFireControl: fireControlCount > 0,
+    fireEnabled: fireControlCount > 0 && allFireEnabled,
     hasFactory: factory !== undefined,
     factoryId: factory?.id,
     commanderId: commander?.id,
@@ -111,6 +122,7 @@ export function buildSelectionInfo(
     isBuildMode: inputState?.isBuildMode ?? false,
     selectedBuildingType: inputState?.selectedBuildingType ?? null,
     isDGunMode: inputState?.isDGunMode ?? false,
+    isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
     factoryQueue,
     factoryProgress,
     factoryIsProducing,

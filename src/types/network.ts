@@ -559,6 +559,8 @@ export const ENTITY_CHANGED_MOVEMENT_ACCEL = 1 << 10;
 /** Grounded jump actuator state changed. This is separate from visible
  *  suspension so jump-capable units do not need chassis spring state. */
 export const ENTITY_CHANGED_JUMP = 1 << 11;
+/** Player-controlled combat mode such as fire/hold-fire changed. */
+export const ENTITY_CHANGED_COMBAT_MODE = 1 << 12;
 
 export type NetworkServerSnapshotEntity = {
   id: number;
@@ -607,6 +609,7 @@ export type NetworkServerSnapshotEntity = {
       active?: boolean;
       launchSeq?: number;
     };
+    fireEnabled?: boolean;
     isCommander?: boolean;
     buildTargetId?: number | null;
     actions?: NetworkServerSnapshotAction[];
