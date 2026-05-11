@@ -460,6 +460,10 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   if (!commander?.commander || !commander.ownership || !commander.combat) return;
 
   const playerId = commander.ownership.playerId;
+  const dx = command.targetX - commander.transform.x;
+  const dy = command.targetY - commander.transform.y;
+  const dist = magnitude(dx, dy);
+  if (!Number.isFinite(dist) || dist <= 1e-6) return;
 
   // Check if we have enough energy
   const dgunCost = commander.commander.dgunEnergyCost;
@@ -480,12 +484,6 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   economyManager.spendInstant(playerId, dgunCost);
 
   // Calculate direction to target
-  const dx = command.targetX - commander.transform.x;
-  const dy = command.targetY - commander.transform.y;
-  const dist = magnitude(dx, dy);
-
-  if (dist === 0) return;
-
   const fireAngle = Math.atan2(dy, dx);
 
   // Snap dgun turret to target direction

@@ -10,22 +10,3 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 
 ==============================================================================
  ISSUES:
-
-
-3. P2 - D-gun spends energy before validating a usable target direction.
-
-   Evidence:
-   - src/game/sim/commandExecution.ts:480-486 spends the D-gun energy cost before
-     checking whether the target point is exactly on the commander/mount.
-   - The zero-distance check returns without firing after the resource spend.
-
-   Impact:
-   A misclick directly on the firing unit consumes energy and produces no shot.
-   This is small but feels unfair because the player receives no effect for a
-   high-value tactical resource spend.
-
-   Fix direction:
-   Validate non-zero target distance before spendInstant, or refund the cost if
-   the command cannot emit a projectile.
-
-4. The "tick" unit legs used to be stretched downwards while in the air, which made the landing seem logical, normally when animals land they land with extended legs that can compress over time, absorbing the impact. The current tick legs are pulled up to their body while in the air. Look up how animals actually have their legs positioned when jumping, while in the air, and then when landing, and adjust the tick legs to match that. This will make the jump and landing look more natural. We may need a more advanced leg extension system to handle how animals actually do it, where the amount the legs are stretched or pulled up depends on distance from the ground?

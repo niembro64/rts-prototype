@@ -102,9 +102,11 @@ const FOOT_PAD_HALF_HEIGHT_MULT = 0.45;
 const FOOT_PAD_MIN_RADIUS = 1.1;
 const FOOT_PAD_MIN_HALF_HEIGHT = 0.35;
 const FOOT_PAD_GROUND_CLEARANCE = 0.35;
-const AIRBORNE_TUCK_REST_DISTANCE_MULT = 0.45;
-const AIRBORNE_TUCK_HIP_Y_FRACTION = 0.4;
-const AIRBORNE_TUCK_HIP_CLEARANCE = 0.5;
+const AIRBORNE_TOUCHDOWN_REST_DISTANCE_MULT = 0.7;
+const AIRBORNE_MAX_REACH_FRACTION = 0.96;
+const AIRBORNE_BASE_EXTENSION = 0.65;
+const AIRBORNE_NEAR_GROUND_REACH_FRACTION = 1.2;
+const AIRBORNE_DESCENT_SPEED_FOR_FULL_EXTENSION = 45;
 
 // LEGS-radius debug viz: a wireframe SPHERE in world space at the
 // leg's rest center, scaled to stepRadius. A real 3D ball, not a
@@ -693,6 +695,12 @@ function totalLegLength(c: ArachnidLegConfig): number {
   return c.upperLegLength + c.lowerLegLength;
 }
 
+function clamp01(value: number): number {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
 // Scratch output struct reused across the per-leg loop.
 const _worldOut = { x: 0, y: 0, z: 0 };
 
@@ -707,22 +715,28 @@ function updateAirborneLegPose(
   chassisUpY: number,
   chassisUpZ: number,
 ): void {
+  const bodyBaseY = entity.transform.z - bodyCenterHeight;
+  const bodyGroundY = getLocomotionSurfaceHeight(
+    entity.transform.x,
+    entity.transform.y,
+    mapWidth,
+    mapHeight,
+  );
+  const bodyClearance = Math.max(0, bodyBaseY - bodyGroundY);
+  const descentSpeed = Math.max(0, -(entity.unit?.velocityZ ?? 0));
+
   for (const leg of mesh.legs) {
     if (leg.restSphere) leg.restSphere.visible = false;
 
     const c = leg.config;
-    const restDistance = totalLegLength(c) * c.snapDistanceMultiplier;
+    const tl = totalLegLength(c);
+    const restDistance = tl * c.snapDistanceMultiplier;
     const hipLocalX = c.attachOffsetX;
     const hipLocalY = leg.hipY;
     const hipLocalZ = c.attachOffsetY;
-    const tuckDistance = restDistance * AIRBORNE_TUCK_REST_DISTANCE_MULT;
-    const maxTuckY = Math.max(FOOT_Y, leg.hipY - AIRBORNE_TUCK_HIP_CLEARANCE);
-    const tuckLocalY = Math.min(
-      maxTuckY,
-      Math.max(FOOT_Y, leg.hipY * AIRBORNE_TUCK_HIP_Y_FRACTION),
-    );
-    const tuckLocalX = hipLocalX + Math.cos(c.snapTargetAngle) * tuckDistance;
-    const tuckLocalZ = hipLocalZ + Math.sin(c.snapTargetAngle) * tuckDistance;
+    const touchdownDistance = restDistance * AIRBORNE_TOUCHDOWN_REST_DISTANCE_MULT;
+    const touchdownLocalX = hipLocalX + Math.cos(c.snapTargetAngle) * touchdownDistance;
+    const touchdownLocalZ = hipLocalZ + Math.sin(c.snapTargetAngle) * touchdownDistance;
 
     transformChassisToWorld(
       hipLocalX, hipLocalY, hipLocalZ,
@@ -733,12 +747,56 @@ function updateAirborneLegPose(
     const hipWorldZ = _worldOut.z;
 
     transformChassisToWorld(
-      tuckLocalX, tuckLocalY, tuckLocalZ,
+      touchdownLocalX, FOOT_Y, touchdownLocalZ,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+    );
+    const footCylinderRadius = mesh.legLod === 'simple' ? leg.upperThick : leg.lowerThick;
+    const firstSurface = sampleLocomotionFootSurface(
+      _worldOut.x,
+      _worldOut.z,
+      mapWidth,
+      mapHeight,
+      footCylinderRadius,
+      leg.footPadHalfHeight,
+      FOOT_PAD_GROUND_CLEARANCE,
+    );
+    const horizontalReach = Math.hypot(
+      touchdownLocalX - hipLocalX,
+      touchdownLocalZ - hipLocalZ,
+    );
+    const maxReach = tl * AIRBORNE_MAX_REACH_FRACTION;
+    const verticalReach = Math.sqrt(
+      Math.max(0, maxReach * maxReach - horizontalReach * horizontalReach),
+    );
+    const fullyExtendedLocalY = hipLocalY - verticalReach;
+    const terrainReadyLocalY = firstSurface.visualFootY - bodyBaseY;
+    const touchdownLocalY = Math.min(
+      hipLocalY - FOOT_PAD_GROUND_CLEARANCE,
+      Math.max(terrainReadyLocalY, fullyExtendedLocalY),
+    );
+    const nearGround01 = 1 - clamp01(
+      bodyClearance / Math.max(1, maxReach * AIRBORNE_NEAR_GROUND_REACH_FRACTION),
+    );
+    const descent01 = clamp01(descentSpeed / AIRBORNE_DESCENT_SPEED_FOR_FULL_EXTENSION);
+    const extension01 = Math.max(AIRBORNE_BASE_EXTENSION, nearGround01, descent01);
+    const footLocalY = hipLocalY + (touchdownLocalY - hipLocalY) * extension01;
+
+    transformChassisToWorld(
+      touchdownLocalX, footLocalY, touchdownLocalZ,
       entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
     );
     const footX = _worldOut.x;
-    const footY = _worldOut.y;
     const footZ = _worldOut.z;
+    const footSurface = sampleLocomotionFootSurface(
+      footX,
+      footZ,
+      mapWidth,
+      mapHeight,
+      footCylinderRadius,
+      leg.footPadHalfHeight,
+      FOOT_PAD_GROUND_CLEARANCE,
+    );
+    const footY = Math.max(_worldOut.y, footSurface.visualFootY);
 
     leg.worldX = footX;
     leg.worldY = footY;
@@ -759,7 +817,7 @@ function updateAirborneLegPose(
       legRenderer,
       hipWorldX, hipWorldY, hipWorldZ,
       footX, footY, footZ,
-      chassisUpX, chassisUpY, chassisUpZ,
+      footSurface.nx, footSurface.nz, footSurface.ny,
       chassisUpX, chassisUpY, chassisUpZ,
     );
   }
