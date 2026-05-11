@@ -264,37 +264,11 @@ export class EnvironmentPropRenderer3D {
         ? this.sharedMaterial('lowTree.trunk', 0x5f4b34)
         : this.sharedMaterial('lowTree.leaves', 0x496f31);
     }
-    if (spec.palette === 'lowGrass') {
-      return sourceName.includes('mat_01')
-        ? this.sharedMaterial('lowGrass.dark', 0x3a6a2d)
-        : this.sharedMaterial('lowGrass.light', 0x6c8f3f);
-    }
     if (spec.palette === 'forestTree') {
       return sourceName.includes('leaf')
         ? this.sharedMaterial('forestTree.leaves', 0x416f35)
         : this.sharedMaterial('forestTree.trunk', 0x5b4230);
     }
-    if (spec.palette === 'forestDeadTree') {
-      return sourceName.includes('leaf')
-        ? this.sharedMaterial('forestDeadTree.needles', 0x475341)
-        : this.sharedMaterial('forestDeadTree.trunk', 0x645845);
-    }
-    if (spec.palette === 'devilsTree') {
-      return sourceName.includes('bark')
-        ? this.sharedMaterial('devilsTree.bark', 0x5a4631)
-        : this.sharedMaterial('devilsTree.leaves', 0x3f6f34);
-    }
-    if (spec.palette === 'simpleTree') {
-      return sourceName.includes('wood') ||
-        sourceName.includes('bark') ||
-        sourceName.includes('trunk')
-        ? this.sharedMaterial('simpleTree.wood', 0x6a4c2f)
-        : this.sharedMaterial('simpleTree.leaves', 0x49723a);
-    }
-    if (spec.palette === 'simpleGrass')
-      return this.sharedMaterial('simpleGrass.green', 0x5e8538);
-    if (spec.palette === 'freeGrass')
-      return this.sharedMaterial('freeGrass.green', 0x608b39);
     return source;
   }
 
