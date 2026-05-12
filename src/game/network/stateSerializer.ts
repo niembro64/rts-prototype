@@ -22,7 +22,6 @@ import { serializeSprayTargets } from './stateSerializerSpray';
 import {
   SnapshotVisibility,
   serializeScanPulses,
-  serializeShroudPayload,
 } from './stateSerializerVisibility';
 import {
   SNAPSHOT_DIRTY_FORCE_FIELDS,
@@ -415,13 +414,11 @@ export function serializeGameState(
 
   const netScanPulses = serializeScanPulses(world, visibility);
 
-  // FOW-11: keyframes ship the recipient's team-merged shroud bitmap
-  // so reconnects / replays / mid-game joins can seed
-  // FogOfWarShroudRenderer3D from the authoritative record. Skipped
-  // on deltas — the client's local OR pass keeps up between keyframes.
-  const netShroud = !deltaEnabled && recipientPlayerId !== undefined && world.fogOfWarEnabled
-    ? serializeShroudPayload(world, recipientPlayerId)
-    : undefined;
+  // FOW-11 shroud payload is decided by the publisher — it owns the
+  // per-listener "have I sent this yet" tracking for the FOW-OPT-02
+  // skip-when-unchanged gate. Leave the slot undefined here; the
+  // publisher overwrites it after this serialize call returns.
+  const netShroud = undefined;
 
   const netProjectiles = serializeProjectileSnapshot({
     world,

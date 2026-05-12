@@ -172,7 +172,9 @@ export class FogOfWarShroudRenderer3D {
    *  reveal-anywhere flag in the server bitmap lights up the
    *  corresponding canvas pixels regardless of resolution mismatch.
    *  Never CLEARS pixels — explored history is monotonic from the
-   *  client's perspective. */
+   *  client's perspective. The wire bitmap is bit-packed
+   *  (issues.txt FOW-OPT-02): cell `i = sy * gridW + sx` is bit
+   *  `i & 7` of byte `i >> 3`. */
   private applyServerShroud(shroud: NetworkServerSnapshotShroud): void {
     const srcGridW = shroud.gridW;
     const srcGridH = shroud.gridH;
@@ -194,7 +196,10 @@ export class FogOfWarShroudRenderer3D {
       for (let cx = 0; cx < canvasW; cx++) {
         const wx = ((cx + 0.5) / canvasW) * worldW;
         const sx = Math.min(srcGridW - 1, Math.max(0, Math.floor(wx / srcCell)));
-        if (srcBits[srcRow + sx]) this.revealed[dstRow + cx] = 1;
+        const cellIdx = srcRow + sx;
+        if ((srcBits[cellIdx >> 3] & (1 << (cellIdx & 7))) !== 0) {
+          this.revealed[dstRow + cx] = 1;
+        }
       }
     }
   }

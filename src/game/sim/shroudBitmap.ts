@@ -32,7 +32,10 @@ const UPDATE_EVERY_N_TICKS = 6;
 /** Mark cells revealed by a player's current vision sources. Called by
  *  Simulation.update each tick (sub-sampled to UPDATE_EVERY_N_TICKS).
  *  Allocates the bitmap lazily so a player who never produces a
- *  vision source never owns one. */
+ *  vision source never owns one. Bumps the player's
+ *  shroudBitmapVersions counter whenever at least one new cell
+ *  flipped 0→1 so the publisher can detect "nothing changed since
+ *  the last ship" (issues.txt FOW-OPT-02). */
 export function updateShroudBitmaps(world: WorldState, tick: number): void {
   if (!world.fogOfWarEnabled) return;
   if (tick % UPDATE_EVERY_N_TICKS !== 0) return;
@@ -45,22 +48,28 @@ export function updateShroudBitmaps(world: WorldState, tick: number): void {
       bitmap = new Uint8Array(gridW * gridH);
       world.shroudBitmaps.set(playerId, bitmap);
     }
-    revealForSources(
+    let modified = revealForSources(
       bitmap,
       gridW,
       gridH,
       world.getUnitsByPlayer(playerId),
     );
-    revealForSources(
+    modified = revealForSources(
       bitmap,
       gridW,
       gridH,
       world.getBuildingsByPlayer(playerId),
-    );
+    ) || modified;
     // Active scanner sweeps also count as exploration: a tile lit by
     // a sweep should stay in the dark-shroud state forever even after
     // the sweep ends, the same way a passing scout reveals tiles.
-    revealForScanPulses(bitmap, gridW, gridH, world, playerId);
+    modified = revealForScanPulses(bitmap, gridW, gridH, world, playerId) || modified;
+    if (modified) {
+      world.shroudBitmapVersions.set(
+        playerId,
+        (world.shroudBitmapVersions.get(playerId) ?? 0) + 1,
+      );
+    }
   }
 }
 
@@ -69,21 +78,25 @@ function revealForSources(
   gridW: number,
   gridH: number,
   entities: readonly Entity[],
-): void {
+): boolean {
+  let modified = false;
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
     if (!canEntityProvideVision(entity)) continue;
     const radius = getEntityVisionRadius(entity);
     if (radius <= 0) continue;
-    markCircle(
+    if (markCircle(
       bitmap,
       gridW,
       gridH,
       entity.transform.x,
       entity.transform.y,
       radius,
-    );
+    )) {
+      modified = true;
+    }
   }
+  return modified;
 }
 
 function revealForScanPulses(
@@ -92,13 +105,17 @@ function revealForScanPulses(
   gridH: number,
   world: WorldState,
   playerId: PlayerId,
-): void {
+): boolean {
   const pulses = world.scanPulses;
+  let modified = false;
   for (let i = 0; i < pulses.length; i++) {
     const pulse = pulses[i];
     if (pulse.playerId !== playerId) continue;
-    markCircle(bitmap, gridW, gridH, pulse.x, pulse.y, pulse.radius);
+    if (markCircle(bitmap, gridW, gridH, pulse.x, pulse.y, pulse.radius)) {
+      modified = true;
+    }
   }
+  return modified;
 }
 
 function markCircle(
@@ -108,7 +125,7 @@ function markCircle(
   cx: number,
   cy: number,
   radius: number,
-): void {
+): boolean {
   const cellSize = SHROUD_CELL_SIZE;
   const cellRadius = radius / cellSize;
   const cellCx = cx / cellSize;
@@ -118,38 +135,75 @@ function markCircle(
   const minY = Math.max(0, Math.floor(cellCy - cellRadius));
   const maxY = Math.min(gridH - 1, Math.ceil(cellCy + cellRadius));
   const r2 = cellRadius * cellRadius;
+  let modified = false;
   for (let y = minY; y <= maxY; y++) {
     const dy = y + 0.5 - cellCy;
     const row = y * gridW;
     for (let x = minX; x <= maxX; x++) {
       const dx = x + 0.5 - cellCx;
-      if (dx * dx + dy * dy <= r2) bitmap[row + x] = 1;
+      if (dx * dx + dy * dy <= r2) {
+        const idx = row + x;
+        if (bitmap[idx] === 0) {
+          bitmap[idx] = 1;
+          modified = true;
+        }
+      }
     }
   }
+  return modified;
+}
+
+/** Sum of the recipient's and their allies' bitmap versions —
+ *  monotonically increases iff the team-merged bitmap has new content
+ *  since the last poll. The publisher caches the last-sent sum per
+ *  listener and skips the shroud field entirely on keyframes where
+ *  the sum is unchanged (issues.txt FOW-OPT-02). */
+export function computeTeamShroudVersionSum(
+  world: WorldState,
+  recipientPlayerId: PlayerId,
+): number {
+  let sum = world.shroudBitmapVersions.get(recipientPlayerId) ?? 0;
+  for (const allyId of world.getAllies(recipientPlayerId)) {
+    sum += world.shroudBitmapVersions.get(allyId) ?? 0;
+  }
+  return sum;
+}
+
+/** Scratch byte-per-cell merge buffer. Sized lazily on first use and
+ *  resized if the shroud grid grows; reused across recipients so the
+ *  per-emit publish doesn't allocate gridW*gridH bytes per listener. */
+let _mergeScratch: Uint8Array | null = null;
+
+function getMergeScratch(size: number): Uint8Array {
+  if (!_mergeScratch || _mergeScratch.length !== size) {
+    _mergeScratch = new Uint8Array(size);
+  } else {
+    _mergeScratch.fill(0);
+  }
+  return _mergeScratch;
 }
 
 /** Compose a per-recipient view bitmap by ORing the recipient's own
- *  history with every ally's. Returns a fresh Uint8Array (sized to
- *  the shroud grid) so the serializer can ship it directly without
- *  worrying about aliasing the authoritative arrays. Returns null
- *  when the recipient has no recorded history yet — the snapshot
- *  field stays absent in that case. */
+ *  history with every ally's, then bit-pack to one bit per cell for
+ *  the wire (issues.txt FOW-OPT-02 — 8× smaller payload). Returns a
+ *  fresh packed Uint8Array (the merge scratch is shared, the packed
+ *  result is not). Returns null only when both the recipient and
+ *  every ally have a zero version sum (no exploration recorded yet)
+ *  so the snapshot field stays absent. */
 export function buildRecipientShroudView(
   world: WorldState,
   recipientPlayerId: PlayerId,
 ): Uint8Array | null {
-  const allies = world.getAllies(recipientPlayerId);
+  if (computeTeamShroudVersionSum(world, recipientPlayerId) === 0) return null;
+  const gridSize = world.shroudGridW * world.shroudGridH;
+  const scratch = getMergeScratch(gridSize);
   const ownBitmap = world.shroudBitmaps.get(recipientPlayerId);
-  if (!ownBitmap && allies.size === 0) return null;
-  const view = new Uint8Array(world.shroudGridW * world.shroudGridH);
-  if (ownBitmap) orInto(view, ownBitmap);
-  for (const allyId of allies) {
+  if (ownBitmap) orInto(scratch, ownBitmap);
+  for (const allyId of world.getAllies(recipientPlayerId)) {
     const ally = world.shroudBitmaps.get(allyId);
-    if (ally) orInto(view, ally);
+    if (ally) orInto(scratch, ally);
   }
-  // No allies, no own bitmap → all zeros; skip the alloc.
-  for (let i = 0; i < view.length; i++) if (view[i]) return view;
-  return null;
+  return packBitmap(scratch);
 }
 
 function orInto(dst: Uint8Array, src: Uint8Array): void {
@@ -157,4 +211,16 @@ function orInto(dst: Uint8Array, src: Uint8Array): void {
   for (let i = 0; i < n; i++) {
     if (src[i]) dst[i] = 1;
   }
+}
+
+/** Pack a byte-per-cell bitmap (each byte 0 or 1) into a bit-per-cell
+ *  Uint8Array. Bit order: cell index i lives in byte (i >> 3) at bit
+ *  (i & 7). The client unpacks with the symmetric pattern; this is
+ *  internal-only wire encoding, not externally consumed. */
+function packBitmap(src: Uint8Array): Uint8Array {
+  const packed = new Uint8Array((src.length + 7) >> 3);
+  for (let i = 0; i < src.length; i++) {
+    if (src[i]) packed[i >> 3] |= 1 << (i & 7);
+  }
+  return packed;
 }

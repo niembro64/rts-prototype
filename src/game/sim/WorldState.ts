@@ -141,6 +141,14 @@ export class WorldState {
    *  state. Updated lazily from updateShroudBitmaps() — the entries
    *  are created on first vision touch, not at construction. */
   public shroudBitmaps: Map<PlayerId, Uint8Array> = new Map();
+  /** Per-player monotonic counter bumped by updateShroudBitmaps() each
+   *  time at least one new cell flipped 0→1 for that player
+   *  (issues.txt FOW-OPT-02). The publisher sums the recipient's and
+   *  their allies' counters to derive a single team-version that only
+   *  ever increases when the team-merged bitmap has new content;
+   *  per-listener "have I shipped this yet?" tracking compares against
+   *  this sum to skip resending the full bitmap on every keyframe. */
+  public shroudBitmapVersions: Map<PlayerId, number> = new Map();
   /** Bitmap cell dimensions for shroudBitmaps. Sized at construction
    *  so a scenario change (different map size) gets the right grid. */
   public readonly shroudGridW: number;

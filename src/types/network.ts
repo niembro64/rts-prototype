@@ -338,9 +338,15 @@ export type NetworkServerSnapshotSimEvent = {
 
 /** Wire shape for the FOW-11 keyframe shroud payload. cellSize is
  *  echoed for forwards-compat — clients can render at any resolution
- *  by resampling. The bitmap is row-major, gridW × gridH bytes; 0 =
+ *  by resampling. The bitmap is BIT-PACKED row-major
+ *  (issues.txt FOW-OPT-02): cell index `i = cy * gridW + cx` lives in
+ *  byte `i >> 3` at bit `i & 7`, so the wire array length is
+ *  `((gridW * gridH) + 7) >> 3` — 1/8 the byte-per-cell cost. 0 =
  *  never explored, 1 = ever explored. Already team-merged
- *  (recipient + allies) on the server. */
+ *  (recipient + allies) on the server. Skipped on keyframes when the
+ *  team's bitmap is unchanged since the last ship to this listener,
+ *  so the field stays absent on long static stretches even at
+ *  keyframe cadence. */
 export type NetworkServerSnapshotShroud = {
   gridW: number;
   gridH: number;

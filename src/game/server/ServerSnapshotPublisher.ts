@@ -14,7 +14,9 @@ import type {
 import {
   createSnapshotVisibilityCache,
   getOrBuildVisibility,
+  serializeShroudPayload,
 } from '../network/stateSerializerVisibility';
+import { computeTeamShroudVersionSum } from '../sim/shroudBitmap';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
 import type { CaptureSystem } from '../sim/CaptureSystem';
@@ -29,6 +31,11 @@ export type SnapshotListenerEntry = {
   aoi?: SnapshotAoiBounds;
   forceKeyframe?: boolean;
   staticTerrainSent?: boolean;
+  /** Team shroud-version sum at the last keyframe where we shipped
+   *  the shroud bitmap to this listener (issues.txt FOW-OPT-02).
+   *  Compared against the live sum each keyframe to skip the
+   *  multi-KB payload when no new cells were explored. */
+  lastSentShroudVersionSum?: number;
 };
 
 export type ServerSnapshotPublisherInput = {
@@ -192,6 +199,27 @@ export class ServerSnapshotPublisher {
         ? input.terrainBuildabilityGrid
         : undefined;
       if (shouldSendStaticTerrain) listener.staticTerrainSent = true;
+      // FOW-11 shroud payload: ship only on keyframes, only when the
+      // team's bitmap has new content since the last ship to this
+      // listener (FOW-OPT-02). The version sum monotonically increases
+      // whenever any allied player explores a new cell — when it
+      // matches what we last sent, the merged bitmap is identical and
+      // the client's local OR pass has kept it current.
+      state.shroud = undefined;
+      if (
+        !listenerIsDelta &&
+        listener.playerId !== undefined &&
+        input.world.fogOfWarEnabled
+      ) {
+        const versionSum = computeTeamShroudVersionSum(input.world, listener.playerId);
+        if (versionSum !== listener.lastSentShroudVersionSum) {
+          const payload = serializeShroudPayload(input.world, listener.playerId);
+          if (payload) {
+            state.shroud = payload;
+            listener.lastSentShroudVersionSum = versionSum;
+          }
+        }
+      }
       state.serverMeta = serverMeta;
       return state;
     };
