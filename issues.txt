@@ -99,16 +99,6 @@ Mismatches with the canonical model (each a discrete issue below):
   the client (reuse the local vision sources the shroud renderer
   already computes), then swap to a grayscale primaryMat variant.
 
-[FOW-02b] Dead-ghost cleanup when player re-scouts. If an enemy
-  building is destroyed while out of the player's vision, the server's
-  removal record is dropped by shouldSendRemoval (correct — don't
-  reveal off-screen deaths). The ghost id stays in prevEntityIds
-  forever and the client keeps rendering it. When the player later
-  re-enters that area and the server has nothing to send for that
-  position, the ghost should be removed. Needs server-side
-  "ghosted-but-gone" tracking that emits a removal once the player's
-  vision finally covers the ghost's last position.
-
 [FOW-04] No line-of-sight blocking by terrain. A unit on the far side
   of a hill, behind a forest, or beyond a wall is visible if it falls
   within the circle. The world has a heightmap (Terrain) but the

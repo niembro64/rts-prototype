@@ -172,6 +172,13 @@ export function serializeGameState(
       const record = records[i];
       if (visibility.shouldSendRemoval(record)) {
         forgetTrackedEntity(record.id, true);
+        tracking.ghostedBuildingPositions.delete(record.id);
+      } else if (record.type === 'building' && tracking.prevEntityIds.has(record.id)) {
+        // Building died out of the recipient's vision but the client
+        // has it as a ghost (issues.txt FOW-02b). Stash the death
+        // position so the cleanup pass below can emit a removal once
+        // the player's vision later confirms the building is gone.
+        tracking.ghostedBuildingPositions.set(record.id, { x: record.x, y: record.y });
       }
     }
   };
@@ -225,18 +232,31 @@ export function serializeGameState(
       for (const id of tracking.prevEntityIds) {
         const entity = world.getEntity(id);
         if (!entity) continue;
-        // Buildings stay as last-seen ghosts when they exit vision
-        // (issues.txt FOW-02): the dirty loop's acceptsEntity check
-        // already gates state updates while the building is invisible,
-        // so the client's copy stops receiving fresh data without
-        // disappearing, and prevEntityIds / prevStates stay populated
-        // so the next time it re-enters vision the dirty loop resumes
-        // against the same delta baseline. Only mobile units are
-        // dropped — a stale ghost at the wrong position would be a lie.
-        if (entity.type !== 'unit') continue;
         if (!isEntityInsideAoi(entity, aoi, recipientPlayerId)) continue;
-        if (!visibility.isEntityVisible(entity)) {
+        if (visibility.isEntityVisible(entity)) {
+          // Re-entered vision: any ghost-position record from a prior
+          // out-of-sight stretch is now stale. The dirty loop below
+          // will resume normal delta updates against the existing
+          // prevStates baseline (issues.txt FOW-02).
+          tracking.ghostedBuildingPositions.delete(id);
+          continue;
+        }
+        if (entity.type === 'unit') {
+          // Mobile unit out of vision: drop the client's copy entirely.
+          // A stale ghost at a no-longer-current position would be a lie.
           _visibilityHiddenIdsBuf.push(id);
+        } else if (entity.type === 'building') {
+          // Static building out of vision: keep the client's last-seen
+          // copy (FOW-02) AND record the position so a future cleanup
+          // pass can drop the ghost once the player re-scouts the area
+          // and either confirms the building is still there (dirty loop
+          // handles it) or finds it gone (FOW-02b cleanup below).
+          if (!tracking.ghostedBuildingPositions.has(id)) {
+            tracking.ghostedBuildingPositions.set(id, {
+              x: entity.transform.x,
+              y: entity.transform.y,
+            });
+          }
         }
       }
       for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
@@ -295,9 +315,33 @@ export function serializeGameState(
           copyPrevState(next, prev);
         }
       }
+
+      // FOW-02b dead-ghost cleanup: walk the per-recipient ghost
+      // positions and emit removals for buildings that have since been
+      // destroyed AND whose last-known position is now back in the
+      // player's vision. The "still alive" entries are no-ops — they
+      // got cleared from the map up in the visibility-hidden loop when
+      // they returned to vision, or they stay ghosted while still out.
+      if (tracking.ghostedBuildingPositions.size > 0) {
+        for (const [id, pos] of tracking.ghostedBuildingPositions) {
+          if (world.getEntity(id)) continue;
+          if (!visibility.isPointVisible(pos.x, pos.y)) continue;
+          if (tracking.prevEntityIds.delete(id)) {
+            _removedIdsBuf.push(id);
+          }
+          tracking.prevStates.delete(id);
+          tracking.ghostedBuildingPositions.delete(id);
+        }
+      }
     }
   } else {
     tracking.currentEntityIds.clear();
+    // FOW-02b: a keyframe rebuilds tracking from scratch, so any
+    // ghost-position records become stale (their ids are about to be
+    // re-derived from the current visibility set or dropped). The
+    // client also rebuilds its view from the keyframe, so on-screen
+    // ghosts disappear with the data — no removal emit needed.
+    tracking.ghostedBuildingPositions.clear();
     // Keyframe: serialize every accepted unit + building. Both
     // categories take exactly the same path — pool an entry, capture
     // its prev state for delta tracking — so we walk both source

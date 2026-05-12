@@ -55,12 +55,24 @@ export type PrevEntityState = {
   buildQueueLen: number;
 };
 
+export type GhostedBuildingPosition = {
+  x: number;
+  y: number;
+};
+
 export type DeltaTrackingState = {
   prevStates: Map<number, PrevEntityState>;
   prevEntityIds: Set<number>;
   currentEntityIds: Set<number>;
   prevStatePool: PrevEntityState[];
   prevStatePoolIndex: number;
+  /** Per-recipient last-seen positions for enemy buildings the client
+   *  has as ghosts (issues.txt FOW-02b). Populated when a building
+   *  exits the recipient's vision or dies out-of-vision; cleared when
+   *  the recipient's vision later confirms the position (either the
+   *  building is still there → normal delta resumes, or it's gone →
+   *  removal emitted so the ghost cleans up on the client). */
+  ghostedBuildingPositions: Map<EntityId, GhostedBuildingPosition>;
 };
 
 export const removedEntityIdsBuf: number[] = [];
@@ -114,6 +126,7 @@ function createDeltaTrackingState(): DeltaTrackingState {
     currentEntityIds: new Set<number>(),
     prevStatePool: [],
     prevStatePoolIndex: 0,
+    ghostedBuildingPositions: new Map<EntityId, GhostedBuildingPosition>(),
   };
 }
 
