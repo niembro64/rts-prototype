@@ -24,6 +24,7 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
     impactContext: undefined,
     forceFieldImpact: undefined,
     killerPlayerId: undefined,
+    victimPlayerId: undefined,
     _pos: { x: 0, y: 0, z: 0 },
   };
   event.pos = event._pos;
@@ -50,7 +51,12 @@ export function serializeAudioEvents(
   audioBuf.length = 0;
   for (let i = 0; i < audioEvents.length; i++) {
     const source = audioEvents[i];
-    if (visibility && !visibility.isPointVisible(source.pos.x, source.pos.y)) {
+    // attackAlert is strictly victim-routed: it never flows on
+    // vision, only when the recipient owns the victim. Skip the
+    // visibility gate entirely and decide solely on victimPlayerId.
+    if (source.type === 'attackAlert') {
+      if (!visibility || !visibility.isAuthoredByRecipient(source.victimPlayerId)) continue;
+    } else if (visibility && !visibility.isPointVisible(source.pos.x, source.pos.y)) {
       // FOW-17: forward death events to the killer's recipient (they
       // still hear the kill confirmation even when the corpse is in
       // fog). Also forward own pings: a player pinging a fog point
@@ -75,6 +81,7 @@ export function serializeAudioEvents(
     out.impactContext = source.impactContext;
     out.forceFieldImpact = source.forceFieldImpact;
     out.killerPlayerId = source.killerPlayerId;
+    out.victimPlayerId = source.victimPlayerId;
     audioBuf.push(out);
   }
   return audioBuf.length > 0 ? audioBuf : undefined;

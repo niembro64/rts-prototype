@@ -302,6 +302,7 @@ export type NetworkServerSnapshotSimEvent = {
     | 'forceFieldStop'
     | 'forceFieldImpact'
     | 'ping'
+    | 'attackAlert'
     | 'projectileExpire';
   turretId: SimEventAudioKey;
   sourceType?: SimEventSourceType;
@@ -320,6 +321,12 @@ export type NetworkServerSnapshotSimEvent = {
    *  isn't in their vision, so they get the "+1, you got it" hit
    *  even on off-screen kills. */
   killerPlayerId?: PlayerId;
+  /** For 'attackAlert' events: playerId of the victim taking damage.
+   *  Drives the FOW-08-followup remainder routing — the alert is
+   *  forwarded to this player's snapshot regardless of vision so they
+   *  see a marker at the attacker's position when un-homed splash
+   *  damage from inside the fog lands on their unit. */
+  victimPlayerId?: PlayerId;
 };
 
 export type NetworkServerSnapshotProjectileSpawn = {

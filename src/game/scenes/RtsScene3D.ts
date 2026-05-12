@@ -899,6 +899,26 @@ export class RtsScene3D {
       );
       return;
     }
+    if (event.type === 'attackAlert') {
+      // FOW-08-followup remainder: a marker at the attacker's
+      // position, drawn for the victim's recipient even when the
+      // attacker is in their fog. Red instead of player-colored so
+      // the visual reads as "incoming fire" and stays distinct from
+      // a deliberate teammate ping.
+      const effectGfx = this.graphicsConfigForEffectCell(
+        event.pos.x,
+        event.pos.y,
+        event.pos.z,
+      );
+      if (!effectGfx) return;
+      this.pingRenderer.spawn(
+        event.pos.x,
+        event.pos.y,
+        event.pos.z,
+        0xff3030,
+      );
+      return;
+    }
 
     const effectGfx = this.graphicsConfigForEffectCell(
       event.pos.x,

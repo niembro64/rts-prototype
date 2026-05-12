@@ -98,20 +98,21 @@ Mismatches with the canonical model (each a discrete issue below):
   acceptable for an admin/observer but means there is no path to "spectate
   as if you were Player N" for casting / replays.
 
-[FOW-08-followup] Splash / area damage from fog still produces a
-  silent HP drop with no visual. Beams and homing projectiles now
-  forward when EITHER endpoint of the beam is visible to the
-  recipient OR when a homing projectile is locked onto one of the
-  recipient's entities, so a laser landing on the player's tank
-  flashes the beam line from the (still-shrouded) attacker, and an
-  incoming missile veering toward the player's unit shows up in
-  flight. Remaining gap: dumb / un-homed projectiles flying out of
-  fog and landing splash on the recipient still arrive only as the
-  hit event at the impact point — no incoming arc, since the
-  projectile isn't homing and the spawn fell inside the shroud.
-  Fixing the splash case will likely need either an explicit
-  "victimPlayerIds" channel on hit events, or a Starcraft-style ping
-  at the attacker position emitted from the damage system.
+[FOW-08-followup] Beams and homing projectiles forward when EITHER
+  endpoint of the beam is visible to the recipient OR when a homing
+  projectile is locked onto one of the recipient's entities. For dumb
+  / un-homed splash that lands silently from inside fog, the
+  damageHelpers.collectKillsAndDeathContexts path now emits one
+  'attackAlert' SimEvent per (attacker, victim playerId) pair carrying
+  a victimPlayerId field. The audio serializer routes those strictly
+  by victim ownership — bypassing the vision gate — so the victim
+  sees a red marker at the attacker's current position even when the
+  shot, the projectile, and the firing unit are all in their fog.
+  Other recipients ignore the event entirely so it doesn't leak the
+  attacker's position to uninvolved players. Future polish: render an
+  arrow from each affected victim toward the alert position so the
+  player can read "incoming fire from over there" without scrubbing
+  the minimap.
 
 [FOW-09] Audio reveal is binary on vision (PREREQ: 3D audio not wired
   yet). serializeAudioEvents already filters by full vision, but the
@@ -124,10 +125,15 @@ Mismatches with the canonical model (each a discrete issue below):
   flag (so the client suppresses visuals but plays the sound) is
   the right shape.
 
-[FOW-11] No persistent vision history. The server does not track which
-  tiles a player has ever seen. Without this, EXPLORED-BUT-DARK cannot
-  be implemented even if the renderer were added back, because there
-  is no source of truth for "has player X ever seen tile (cx,cy)?".
+[FOW-11] Vision history is client-only. FogOfWarShroudRenderer3D
+  already tracks a per-tile revealed bitmap for the local player and
+  renders three-state shroud (unexplored / explored-dark / currently
+  visible), so the canonical RTS model is in place visually. The
+  authoritative side, however, has no record — mid-game joins, replays,
+  and reconnects all start with a blank shroud, and a tampered client
+  could pretend to have explored more than it actually did. Future
+  enhancement: mirror the per-player revealed bitmap on the server and
+  ship the keyframe diff so reconnects restore their map state.
 
 [FOW-14] No "scan" / temporary reveal API. There is no command type that
   reveals an arbitrary area for a fixed duration (Starcraft scanner

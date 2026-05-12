@@ -71,6 +71,7 @@ export type SimEvent = {
     | 'forceFieldStop'
     | 'forceFieldImpact'
     | 'ping'
+    | 'attackAlert'
     | 'projectileExpire';
   /** Legacy wire field for the one-shot audio routing key. Fire,
    *  laser, and force-field events use turret ids; hit/projectile
@@ -102,6 +103,15 @@ export type SimEvent = {
    *  cover the corpse, so the killer learns the result of off-screen
    *  hits instead of the target silently vanishing. */
   killerPlayerId?: PlayerId;
+  /** For 'attackAlert' events: the playerId that owns the victim
+   *  taking damage. Drives the FOW-08-followup remainder routing in
+   *  the audio serializer — the alert is forwarded to this player's
+   *  snapshot regardless of vision so they see a marker at the
+   *  attacker's position when an un-homed splash projectile lands on
+   *  their unit from inside the fog. Other recipients ignore the
+   *  event entirely, so it doesn't leak the attacker's location to
+   *  uninvolved players. */
+  victimPlayerId?: PlayerId;
 };
 
 export type ProjectileSpawnEvent = {

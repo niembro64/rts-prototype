@@ -665,6 +665,7 @@ export function checkProjectileCollisions(
             collectKillsAndDeathContexts(
               splashResult, world, damageSourceKey, damageSourceType,
               unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+              proj.sourceEntityId,
             );
             splashHitCount = splashResult.hitEntityIds.length;
             firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
@@ -847,6 +848,7 @@ export function checkProjectileCollisions(
           collectKillsWithDeathAudio(
             result, world, damageSourceKey, damageSourceType,
             unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+            proj.sourceEntityId,
           );
         }
 
@@ -938,6 +940,7 @@ export function checkProjectileCollisions(
           collectKillsWithDeathAudio(
             result, world, damageSourceKey, damageSourceType,
             unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+            proj.sourceEntityId,
           );
 
           // Detonate on direct hit when the shot has either an explosion
@@ -969,6 +972,7 @@ export function checkProjectileCollisions(
               collectKillsAndDeathContexts(
                 splash, world, damageSourceKey, damageSourceType,
                 unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+                proj.sourceEntityId,
               );
             }
 

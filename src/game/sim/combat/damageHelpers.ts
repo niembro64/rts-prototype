@@ -249,6 +249,7 @@ export function collectKillsAndDeathContexts(
   buildingsToRemove: Set<EntityId>,
   audioEvents: SimEvent[],
   deathContexts: Map<EntityId, DeathContext>,
+  attackerSourceEntityId?: EntityId,
 ): void {
   for (const id of result.killedUnitIds) {
     if (!unitsToRemove.has(id)) {
@@ -269,6 +270,55 @@ export function collectKillsAndDeathContexts(
   }
   for (const [id, ctx] of result.deathContexts) {
     deathContexts.set(id, ctx);
+  }
+  if (attackerSourceEntityId !== undefined) {
+    emitAttackAlerts(result, world, attackerSourceEntityId, audioEvents);
+  }
+}
+
+/** Reusable set so the attack-alert dedupe doesn't allocate per damage
+ *  application. Cleared at the start of every call; never read after
+ *  returning so it can be a module-level singleton safely. */
+const _attackAlertSeenVictims = new Set<PlayerId>();
+
+/** Emit one 'attackAlert' SimEvent per (attacker, victim playerId)
+ *  pair touched by this damage application (issues.txt FOW-08-followup
+ *  remainder). The audio serializer routes these strictly by
+ *  victimPlayerId — they never leak the attacker's position to a
+ *  recipient that wasn't hit. The visual is what tells the player
+ *  "your unit is taking fire from over there" even when a dumb splash
+ *  shell from inside fog lands silently on their unit; without the
+ *  alert the HP drop is the only signal. */
+function emitAttackAlerts(
+  result: DamageResult,
+  world: WorldState,
+  attackerSourceEntityId: EntityId,
+  audioEvents: SimEvent[],
+): void {
+  const attacker = world.getEntity(attackerSourceEntityId);
+  if (!attacker?.ownership) return;
+  const attackerPlayerId = attacker.ownership.playerId;
+  const hits = result.hitEntityIds;
+  if (hits.length === 0) return;
+  _attackAlertSeenVictims.clear();
+  for (let i = 0; i < hits.length; i++) {
+    const victim = world.getEntity(hits[i]);
+    const victimPlayerId = victim?.ownership?.playerId;
+    if (victimPlayerId === undefined || victimPlayerId === attackerPlayerId) continue;
+    if (_attackAlertSeenVictims.has(victimPlayerId)) continue;
+    _attackAlertSeenVictims.add(victimPlayerId);
+    audioEvents.push({
+      type: 'attackAlert',
+      turretId: '',
+      sourceType: 'system',
+      sourceKey: 'attackAlert',
+      pos: {
+        x: attacker.transform.x,
+        y: attacker.transform.y,
+        z: attacker.transform.z,
+      },
+      victimPlayerId,
+    });
   }
 }
 

@@ -181,6 +181,7 @@ export function createSimEventDto(): NetworkServerSnapshotSimEvent {
     playerId: undefined,
     forceFieldImpact: undefined,
     killerPlayerId: undefined,
+    victimPlayerId: undefined,
   };
 }
 
@@ -211,6 +212,7 @@ export function copySimEventInto(
       }
     : undefined;
   dst.killerPlayerId = src.killerPlayerId;
+  dst.victimPlayerId = src.victimPlayerId;
   return dst;
 }
 
