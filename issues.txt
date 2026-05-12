@@ -98,22 +98,6 @@ Mismatches with the canonical model (each a discrete issue below):
   acceptable for an admin/observer but means there is no path to "spectate
   as if you were Player N" for casting / replays.
 
-[FOW-08-followup] Beams and homing projectiles forward when EITHER
-  endpoint of the beam is visible to the recipient OR when a homing
-  projectile is locked onto one of the recipient's entities. For dumb
-  / un-homed splash that lands silently from inside fog, the
-  damageHelpers.collectKillsAndDeathContexts path now emits one
-  'attackAlert' SimEvent per (attacker, victim playerId) pair carrying
-  a victimPlayerId field. The audio serializer routes those strictly
-  by victim ownership — bypassing the vision gate — so the victim
-  sees a red marker at the attacker's current position even when the
-  shot, the projectile, and the firing unit are all in their fog.
-  Other recipients ignore the event entirely so it doesn't leak the
-  attacker's position to uninvolved players. Future polish: render an
-  arrow from each affected victim toward the alert position so the
-  player can read "incoming fire from over there" without scrubbing
-  the minimap.
-
 [FOW-09] Audio reveal is binary on vision (PREREQ: 3D audio not wired
   yet). serializeAudioEvents already filters by full vision, but the
   3D scene's handleSimEvent3D currently only fires visuals — none of
