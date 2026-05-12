@@ -96,32 +96,6 @@ Each item is a concrete optimization or a latent fragility found during the
 full-system audit. Ordered roughly by impact; the upper entries dominate
 per-snapshot cost or wire bandwidth.
 
-[FOW-OPT-01] SnapshotVisibility is rebuilt from scratch per recipient
-  every snapshot. ServerSnapshotPublisher loops listeners and calls
-  SnapshotVisibility.forRecipient(world, listener.playerId) inside the
-  per-recipient loop. The constructor iterates every unit + building
-  + scan pulse the recipient (and each ally) owns and inserts each
-  vision source into 1–3 spatial-hash maps. For N listeners with
-  shared teams the same player's sources are walked N times. Cost is
-  O(listeners × team-entities × cells-per-radius). Fix: cache one
-  visibility per *team* per snapshot (keyed by sorted ally-id tuple)
-  and share the same instance across listeners on that team. Allocate
-  the per-cell arrays once at server boot and clear by length=0
-  instead of `new Map()` each construction. Reusing the buckets would
-  also let us skip the per-construction Map of Maps allocation
-  entirely.
-
-[FOW-OPT-02] Shroud bitmap ships uncompressed full-frame on every
-  keyframe. NetworkServerSnapshotShroud carries gridW × gridH bytes
-  (4 KB on a 4096-wu map at SHROUD_CELL_SIZE=64) per recipient per
-  keyframe — and keyframes run several times per second. Two cheap
-  wins: (a) pack 1 bit per cell instead of 1 byte (8× reduction;
-  bitmap is monotonic-set, fits trivially), and (b) ship only on the
-  recipient's FIRST keyframe + when set bits actually change since
-  last ship. Once a client has the history, local OR keeps it
-  current; resending the whole bitmap every 3 seconds wastes most of
-  the audioEvents-equivalent bandwidth budget.
-
 [FOW-OPT-03] FogOfWarShroudRenderer3D.applyServerShroud is
   O(canvasW × canvasH) with float divides per pixel. On the 512×192
   canvas that's ~100k pixels each with two world-to-cell conversions.
@@ -130,14 +104,6 @@ per-snapshot cost or wire bandwidth.
   tables once per shroud-grid change, OR use
   `ctx.drawImage(serverCanvas, …)` with a tiny offscreen canvas
   preloaded from the bitmap so the GPU handles the resample.
-
-[FOW-OPT-04] paintAlphaMap rewrites the entire canvas every
-  UPDATE_INTERVAL_MS (110 ms) regardless of whether anything moved.
-  Even on a static base with no unit motion the full-pixel pass +
-  putImageData runs at ~9 Hz. Cheap dirty-region tracking: hash the
-  source positions/radii at top of paint, skip if unchanged from last
-  paint. For real maps that don't change every tick this drops the
-  paint cost to near-zero.
 
 [FOW-OPT-05] markRevealed and shroudBitmap.markCircle both walk every
   cell in the bounding box and test (dx²+dy²) ≤ r² per cell. A
