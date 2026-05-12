@@ -80,6 +80,17 @@ export class FogOfWarShroudRenderer3D {
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.magFilter = THREE.LinearFilter;
     this.texture.generateMipmaps = false;
+    // Disable the default vertical flip on upload. The paint code lays
+    // out the canvas with `cy = (1 - source.y / mapHeight) * height`
+    // so canvas-bottom corresponds to world 2D Y=0 — matching the
+    // post-rotation plane's UV V=1-at-Y=0 mapping ONLY when flipY is
+    // off. With flipY left at its default true, the texture is
+    // mirrored on upload and every vision circle renders at the
+    // opposite end of the map from its source unit (so e.g. a unit on
+    // the south edge punches its circle through the shroud at the
+    // north edge — its own position stays opaque and the player sees
+    // the unit "hidden" by the shroud).
+    this.texture.flipY = false;
 
     this.material = new THREE.MeshBasicMaterial({
       color: 0x000000,
