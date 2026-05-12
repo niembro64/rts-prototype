@@ -173,12 +173,29 @@ export function serializeGameState(
       if (visibility.shouldSendRemoval(record)) {
         forgetTrackedEntity(record.id, true);
         tracking.ghostedBuildingPositions.delete(record.id);
-      } else if (record.type === 'building' && tracking.prevEntityIds.has(record.id)) {
+        continue;
+      }
+      if (!tracking.prevEntityIds.has(record.id)) {
+        // Recipient never had this entity — nothing to send or
+        // clean up.
+        continue;
+      }
+      if (record.type === 'building') {
         // Building died out of the recipient's vision but the client
         // has it as a ghost (issues.txt FOW-02b). Stash the death
         // position so the cleanup pass below can emit a removal once
         // the player's vision later confirms the building is gone.
         tracking.ghostedBuildingPositions.set(record.id, { x: record.x, y: record.y });
+      } else {
+        // Unit died out of the recipient's vision (issues.txt FOW-17).
+        // Mobile units don't persist as ghosts — without an emitted
+        // removal here the stale entity stays in prevEntityIds and on
+        // the client at its last-seen position forever (mostly hidden
+        // behind shroud, but a real memory leak per kill). Emit a
+        // silent removal: the recipient already lost sight of this
+        // unit, so the deletion looks the same as a move-out-of-vision
+        // and no extra info leaks.
+        forgetTrackedEntity(record.id, true);
       }
     }
   };

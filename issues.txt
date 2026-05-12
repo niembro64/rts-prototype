@@ -132,10 +132,14 @@ Mismatches with the canonical model (each a discrete issue below):
   sweep, Supreme Commander recon drone). All vision today is tied to
   a long-lived entity.
 
-[FOW-17] Dead-but-corpse entities don't appear in the test (hp > 0
-  check filters them), but visible entity removals on death only emit
-  if the dying entity is currently in vision (shouldSendRemoval). If a
-  player saw an enemy unit die just outside their vision, they never
-  learn it died — the entity simply vanishes the same way a unit
-  leaving vision does. Distinguishing "out-of-sight" from "destroyed"
-  matters for player feedback ("did I kill it?").
+[FOW-17] No "you killed it" signal to the killer when an enemy dies
+  out of their vision. The orphan bug underneath this is now fixed
+  (out-of-sight unit deaths emit a silent removal so the stale entity
+  doesn't linger on the client), but the recipient still can't tell
+  whether their target died or just retreated — both look like "the
+  entity vanished from my view". Standard RTS solution: when an enemy
+  unit dies, route a one-shot "kill" event to the recipient that owned
+  the killer (regardless of vision), so the client can play a kill
+  ping / pop a +1 counter / brief reveal at the death position.
+  Requires sim damage events to carry killer info up to the snapshot
+  layer.
