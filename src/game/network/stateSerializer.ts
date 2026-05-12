@@ -410,7 +410,7 @@ export function serializeGameState(
 
   const netSprayTargets = serializeSprayTargets(sprayTargets, visibility);
 
-  const netAudioEvents = serializeAudioEvents(audioEvents, visibility);
+  const netAudioEvents = serializeAudioEvents(audioEvents, visibility, options?.trackingKey);
 
   const netScanPulses = serializeScanPulses(world, visibility);
 

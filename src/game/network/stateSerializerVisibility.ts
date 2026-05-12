@@ -51,6 +51,17 @@ type VisionSource = {
   radius: number;
 };
 
+/** Three-way classification returned by classifyPointVisibility
+ *  (issues.txt FOW-OPT-08). The audio serializer is the primary
+ *  consumer: it routes IN_VISION events normally, gates IN_EARSHOT
+ *  events through audioOnly forwarding, and drops OUT_OF_RANGE
+ *  events (unless authored by the recipient). Numeric literals so
+ *  the hot loop can branch on a single int compare. */
+export const VISIBILITY_CLASS_OUT_OF_RANGE = 0;
+export const VISIBILITY_CLASS_IN_EARSHOT = 1;
+export const VISIBILITY_CLASS_IN_VISION = 2;
+export type VisibilityClass = 0 | 1 | 2;
+
 /** Per-recipient visibility filter.
  *
  *  Two parallel source pools (issues.txt FOW-03):
@@ -84,8 +95,14 @@ export class SnapshotVisibility {
    *  even with `fogOfWarEnabled=false`. Used by isOwnedByRecipientOrAlly
    *  so every ownership check across the serializer treats allies
    *  symmetrically with the recipient — private fields, AOI
-   *  persistence, delta resolution, kill credit, the lot. */
-  private readonly viewPlayerIds: Set<PlayerId> = new Set();
+   *  persistence, delta resolution, kill credit, the lot.
+   *
+   *  Stored as a number bitmask (issues.txt FOW-OPT-10) — playerId p
+   *  maps to bit (p - 1), so PlayerIds 1..31 fit. isOwnedByRecipientOrAlly
+   *  collapses to a single AND + compare per probe, vs Set.has()'s
+   *  hashmap lookup. Same convention already used by
+   *  ServerDebugGridPublisher.playerMask. */
+  private viewMask: number = 0;
 
   /** True when fog-of-war filtering is active for this snapshot
    *  (recipient set AND world.fogOfWarEnabled). Distinct from "has a
@@ -104,9 +121,9 @@ export class SnapshotVisibility {
     this.gridW = Math.max(1, Math.ceil(mapWidth / VISION_CELL_SIZE));
     this.gridH = Math.max(1, Math.ceil(mapHeight / VISION_CELL_SIZE));
     if (recipientPlayerId !== undefined) {
-      this.viewPlayerIds.add(recipientPlayerId);
+      this.viewMask |= 1 << (recipientPlayerId - 1);
       for (const allyId of world.getAllies(recipientPlayerId)) {
-        this.viewPlayerIds.add(allyId);
+        this.viewMask |= 1 << (allyId - 1);
       }
     }
   }
@@ -120,28 +137,37 @@ export class SnapshotVisibility {
       world.mapHeight,
     );
     if (!visibility.isFiltered) return visibility;
-    for (const playerId of visibility.viewPlayerIds) {
+    // Walk the set bits of viewMask in ascending playerId order to add
+    // each viewable player's sources to the spatial hash. PlayerIds
+    // are 1..31; (32 - clz32(lowBit)) recovers the id from the lowest
+    // set bit, and XOR-out advances to the next.
+    let pending = visibility.viewMask;
+    while (pending !== 0) {
+      const lowBit = pending & -pending;
+      const playerId = (32 - Math.clz32(lowBit)) as PlayerId;
       visibility.addPlayerSources(world, playerId);
+      pending ^= lowBit;
     }
     visibility.addScanPulseSources(world);
     return visibility;
   }
 
-  /** Stable identity for the recipient's view-team — the sorted tuple
-   *  of recipient + allies. Two recipients on the same team share the
-   *  same key, so a per-emit cache (issues.txt FOW-OPT-01) can hand
-   *  back one SnapshotVisibility instance for the whole team instead
-   *  of rebuilding the spatial hash per listener. Returns undefined
-   *  for admin/spectator visibilities (no recipient), which the cache
-   *  uses to skip caching entirely. */
+  /** Stable identity for the recipient's view-team — the bitmask of
+   *  recipient + allies, rendered as a base-36 string. Two recipients
+   *  on the same team share the same mask (since the mask is just
+   *  "which playerIds count as ours"), so a per-emit cache
+   *  (issues.txt FOW-OPT-01) can hand back one SnapshotVisibility
+   *  instance for the whole team instead of rebuilding the spatial
+   *  hash per listener. Returns undefined for admin/spectator
+   *  visibilities (no recipient), which the cache uses to skip
+   *  caching entirely. */
   static teamCacheKey(world: WorldState, recipientPlayerId: PlayerId | undefined): string | undefined {
     if (recipientPlayerId === undefined) return undefined;
-    const allies = world.getAllies(recipientPlayerId);
-    if (allies.size === 0) return `${recipientPlayerId}`;
-    const ids: PlayerId[] = [recipientPlayerId];
-    for (const id of allies) ids.push(id);
-    ids.sort((a, b) => a - b);
-    return ids.join(',');
+    let mask = 1 << (recipientPlayerId - 1);
+    for (const allyId of world.getAllies(recipientPlayerId)) {
+      mask |= 1 << (allyId - 1);
+    }
+    return mask.toString(36);
   }
 
   /** True when the given playerId belongs to the recipient or one of
@@ -150,7 +176,7 @@ export class SnapshotVisibility {
    *  answer for delta resolution, AOI persistence, etc. */
   isOwnedByRecipientOrAlly(playerId: PlayerId | undefined): boolean {
     if (playerId === undefined) return false;
-    return this.viewPlayerIds.has(playerId);
+    return (this.viewMask & (1 << (playerId - 1))) !== 0;
   }
 
   /** True when this visibility object was built for a specific
@@ -160,7 +186,7 @@ export class SnapshotVisibility {
    *  routing. Admin / spectator-style observers (no recipient) get
    *  false. */
   get hasRecipient(): boolean {
-    return this.viewPlayerIds.size > 0;
+    return this.viewMask !== 0;
   }
 
   canSeePrivateEntityDetails(entity: Entity): boolean {
@@ -259,6 +285,47 @@ export class SnapshotVisibility {
     return this.isPointVisibleIn(this.fullSources, this.fullSourceCells, x, y, EARSHOT_PAD);
   }
 
+  /** Combined vision/earshot test in a single bucket walk
+   *  (issues.txt FOW-OPT-08). The audio path used to call
+   *  isPointVisible AND isPointWithinEarshot in sequence — two
+   *  spatial-hash lookups + two walks of the same cell bucket per
+   *  fog-shrouded event. This single helper returns IN_VISION as
+   *  soon as one source covers the point (mirrors isPointVisible's
+   *  early-return), demotes to IN_EARSHOT when only the padded
+   *  radius reaches, and returns OUT_OF_RANGE when no candidate
+   *  qualifies. With fog disabled the recipient hears everything,
+   *  so it returns IN_VISION unconditionally. */
+  classifyPointVisibility(x: number, y: number): VisibilityClass {
+    if (!this.isFiltered) return VISIBILITY_CLASS_IN_VISION;
+    const cx = Math.floor(x / VISION_CELL_SIZE);
+    const cy = Math.floor(y / VISION_CELL_SIZE);
+    if (cx < 0 || cy < 0 || cx >= this.gridW || cy >= this.gridH) {
+      return VISIBILITY_CLASS_OUT_OF_RANGE;
+    }
+    const sourceIndexes = this.fullSourceCells.get(this.cellKey(cx, cy));
+    if (!sourceIndexes) return VISIBILITY_CLASS_OUT_OF_RANGE;
+    let result: VisibilityClass = VISIBILITY_CLASS_OUT_OF_RANGE;
+    for (let i = 0; i < sourceIndexes.length; i++) {
+      const source = this.fullSources[sourceIndexes[i]];
+      const dx = x - source.x;
+      const dy = y - source.y;
+      const distSq = dx * dx + dy * dy;
+      const visionR = source.radius;
+      if (distSq <= visionR * visionR) return VISIBILITY_CLASS_IN_VISION;
+      // Vision dominates earshot — only check the padded radius
+      // when we haven't already promoted to IN_EARSHOT. (The hash
+      // bucket only covers the source's vision radius, so some
+      // earshot-edge points may not appear in this cell's bucket
+      // at all; this matches the prior isPointWithinEarshot
+      // approximation rather than changing it.)
+      if (result === VISIBILITY_CLASS_OUT_OF_RANGE) {
+        const earshotR = source.radius + EARSHOT_PAD;
+        if (distSq <= earshotR * earshotR) result = VISIBILITY_CLASS_IN_EARSHOT;
+      }
+    }
+    return result;
+  }
+
   shouldSendRemoval(record: RemovedSnapshotEntity): boolean {
     if (!this.isFiltered) return true;
     if (this.isOwnedByRecipientOrAlly(record.playerId)) return true;
@@ -351,7 +418,7 @@ export class SnapshotVisibility {
     if (pulses.length === 0) return;
     for (let i = 0; i < pulses.length; i++) {
       const pulse = pulses[i];
-      if (!this.viewPlayerIds.has(pulse.playerId)) continue;
+      if ((this.viewMask & (1 << (pulse.playerId - 1))) === 0) continue;
       this.addSource(
         this.fullSources,
         this.fullSourceCells,
