@@ -17,11 +17,22 @@ export class LocalGameConnection implements GameConnection {
   private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
   private snapshotListenerKey: string;
   private gameOverListenerRef: GameOverCallback;
-  private playerId?: PlayerId;
+  /** Who this client acts as for command attribution. `undefined` =
+   *  admin / spectator (no command authority — sendCommand still
+   *  reaches the server but with `fromPlayerId` blank, so the
+   *  server's authorization layer treats every gameplay command as
+   *  an admin override). */
+  private commandPlayerId?: PlayerId;
+  /** Whose snapshot view this client receives. `undefined` = global
+   *  observer (no fog filter; sees every entity). Decoupled from
+   *  commandPlayerId so a true spectator can view-as-N without being
+   *  able to issue orders as N (issues.txt FOW-07). */
+  private filterPlayerId?: PlayerId;
 
   constructor(server: GameServer, playerId?: PlayerId) {
     this.server = server;
-    this.playerId = playerId;
+    this.commandPlayerId = playerId;
+    this.filterPlayerId = playerId;
     this.snapshotListenerKey = this.subscribeSnapshots(playerId);
 
     this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
@@ -29,16 +40,33 @@ export class LocalGameConnection implements GameConnection {
     });
   }
 
-  /** Rebind the snapshot listener to a new recipient player. Used when
-   *  the demo / lobby-preview / offline scene toggles which seat the
-   *  user is viewing as — the server's per-recipient fog-of-war filter
-   *  has to follow the toggle, otherwise the client view state stays
-   *  populated from the original seat and the shroud / minimap / world
-   *  render for "the new player" using the old player's vision sources. */
+  /** Rebind the snapshot listener to a new recipient player AND
+   *  re-attribute commands to that player. Used by the demo /
+   *  lobby-preview / offline flow when the user toggles which seat
+   *  they're playing — they expect both their view and their command
+   *  authority to follow the toggle. For pure spectating (no command
+   *  authority) call setSpectatorTarget instead. */
   setRecipientPlayerId(playerId: PlayerId | undefined): void {
-    if (this.playerId === playerId) return;
+    if (this.commandPlayerId === playerId && this.filterPlayerId === playerId) return;
+    this.commandPlayerId = playerId;
+    this.rebindFilter(playerId);
+  }
+
+  /** Re-aim ONLY the snapshot filter at a new player, leaving command
+   *  attribution alone. A spectator client constructs the connection
+   *  with playerId=undefined (no command authority) and then calls
+   *  setSpectatorTarget(N) whenever the user picks a player to follow
+   *  — the server filters as if the spectator were N, but sendCommand
+   *  still reaches the server with no attribution so the spectator
+   *  cannot order N's units. (issues.txt FOW-07) */
+  setSpectatorTarget(playerId: PlayerId | undefined): void {
+    if (this.filterPlayerId === playerId) return;
+    this.rebindFilter(playerId);
+  }
+
+  private rebindFilter(playerId: PlayerId | undefined): void {
     this.server.removeSnapshotListener(this.snapshotListenerKey);
-    this.playerId = playerId;
+    this.filterPlayerId = playerId;
     // Drop any held pending-snapshot from the previous binding — its
     // delta baseline is for the old recipient, so applying it on top
     // of the new view would produce nonsense.
@@ -62,7 +90,7 @@ export class LocalGameConnection implements GameConnection {
   }
 
   sendCommand(command: Command): void {
-    this.server.receiveCommand(command, this.playerId);
+    this.server.receiveCommand(command, this.commandPlayerId);
   }
 
   markClientReady(): void {

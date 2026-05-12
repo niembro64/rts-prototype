@@ -79,16 +79,23 @@ export type GameConnection = {
   onSimEvent(callback: SimEventCallback): void;
   onGameOver(callback: GameOverCallback): void;
   disconnect(): void;
-  /** Re-bind which player the server should filter snapshots for.
-   *  Used by demo / lobby-preview / offline single-player flows where
-   *  the user toggles the active scene-local player at runtime — the
-   *  server's fog-of-war filter has to follow the toggle, otherwise
-   *  snapshots keep arriving filtered for the original seat and the
-   *  new player's units never enter the client view state.
+  /** Re-bind which player the server should filter snapshots for AND
+   *  re-attribute commands to that player. Used by demo /
+   *  lobby-preview / offline single-player flows where the user
+   *  toggles the active scene-local seat — they expect both their
+   *  view and their command authority to follow the toggle. For pure
+   *  spectating (snapshot follow without command authority) call
+   *  setSpectatorTarget instead.
    *
    *  Optional: remote connections don't implement it (the recipient
    *  is fixed at the network layer). */
   setRecipientPlayerId?(playerId: PlayerId | undefined): void;
+  /** Re-aim ONLY the snapshot filter at a new player; command
+   *  attribution stays at whatever the connection was constructed
+   *  with. A spectator client constructed with playerId=undefined
+   *  uses this to follow a specific player's POV without being able
+   *  to issue orders as that player (issues.txt FOW-07). */
+  setSpectatorTarget?(playerId: PlayerId | undefined): void;
 };
 
 export type GameServerConfig = {
