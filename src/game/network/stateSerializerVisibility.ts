@@ -65,33 +65,66 @@ export class SnapshotVisibility {
   private readonly detectorSourceCells = new Map<number, number[]>();
   private readonly gridW: number;
   private readonly gridH: number;
+  /** Recipient + their declared allies (FOW-06). Populated whenever a
+   *  recipient is set, regardless of fog status — that way delta
+   *  resolution still distinguishes owned from observed entities
+   *  even with `fogOfWarEnabled=false`. Used by isOwnedByRecipientOrAlly
+   *  so every ownership check across the serializer treats allies
+   *  symmetrically with the recipient — private fields, AOI
+   *  persistence, delta resolution, kill credit, the lot. */
+  private readonly viewPlayerIds: Set<PlayerId> = new Set();
 
+  /** True when fog-of-war filtering is active for this snapshot
+   *  (recipient set AND world.fogOfWarEnabled). Distinct from "has a
+   *  recipient" — a recipient with fog disabled still wants
+   *  owned-vs-observed delta resolution. */
   readonly isFiltered: boolean;
 
   private constructor(
-    private readonly recipientPlayerId: PlayerId | undefined,
+    recipientPlayerId: PlayerId | undefined,
+    fogEnabled: boolean,
     private readonly world: WorldState,
     mapWidth: number,
     mapHeight: number,
   ) {
-    this.isFiltered = recipientPlayerId !== undefined;
+    this.isFiltered = fogEnabled && recipientPlayerId !== undefined;
     this.gridW = Math.max(1, Math.ceil(mapWidth / VISION_CELL_SIZE));
     this.gridH = Math.max(1, Math.ceil(mapHeight / VISION_CELL_SIZE));
+    if (recipientPlayerId !== undefined) {
+      this.viewPlayerIds.add(recipientPlayerId);
+      for (const allyId of world.getAllies(recipientPlayerId)) {
+        this.viewPlayerIds.add(allyId);
+      }
+    }
   }
 
   static forRecipient(world: WorldState, recipientPlayerId: PlayerId | undefined): SnapshotVisibility {
-    const filteredPlayerId = world.fogOfWarEnabled ? recipientPlayerId : undefined;
-    const visibility = new SnapshotVisibility(filteredPlayerId, world, world.mapWidth, world.mapHeight);
-    if (filteredPlayerId === undefined) return visibility;
-    visibility.addPlayerSources(world, filteredPlayerId);
+    const visibility = new SnapshotVisibility(
+      recipientPlayerId,
+      world.fogOfWarEnabled,
+      world,
+      world.mapWidth,
+      world.mapHeight,
+    );
+    if (!visibility.isFiltered) return visibility;
+    for (const playerId of visibility.viewPlayerIds) {
+      visibility.addPlayerSources(world, playerId);
+    }
     return visibility;
   }
 
+  /** True when the given playerId belongs to the recipient or one of
+   *  their allies. Works regardless of fog status — a recipient with
+   *  fog disabled still gets the team-aware "this is one of ours"
+   *  answer for delta resolution, AOI persistence, etc. */
+  isOwnedByRecipientOrAlly(playerId: PlayerId | undefined): boolean {
+    if (playerId === undefined) return false;
+    return this.viewPlayerIds.has(playerId);
+  }
+
   canSeePrivateEntityDetails(entity: Entity): boolean {
-    return (
-      !this.isFiltered ||
-      entity.ownership?.playerId === this.recipientPlayerId
-    );
+    if (!this.isFiltered) return true;
+    return this.isOwnedByRecipientOrAlly(entity.ownership?.playerId);
   }
 
   canReferenceEntityId(world: WorldState, entityId: EntityId | undefined): boolean {
@@ -108,7 +141,7 @@ export class SnapshotVisibility {
    *  (FOW-04). Radar coverage does NOT grant full visibility. */
   isEntityVisible(entity: Entity): boolean {
     if (!this.isFiltered) return true;
-    if (entity.ownership?.playerId === this.recipientPlayerId) return true;
+    if (this.isOwnedByRecipientOrAlly(entity.ownership?.playerId)) return true;
     const padding = getEntityVisibilityPadding(entity);
     if (!this.canSeeCloakedEntity(entity, padding)) return false;
     return this.isEntityVisibleWithLos(
@@ -158,7 +191,7 @@ export class SnapshotVisibility {
    *  without leaking the rest of the snapshot. */
   isEntityOnRadar(entity: Entity): boolean {
     if (!this.isFiltered) return true;
-    if (entity.ownership?.playerId === this.recipientPlayerId) return true;
+    if (this.isOwnedByRecipientOrAlly(entity.ownership?.playerId)) return true;
     const padding = getEntityVisibilityPadding(entity);
     if (!this.canSeeCloakedEntity(entity, padding)) return false;
     if (this.isPointVisibleIn(this.fullSources, this.fullSourceCells, entity.transform.x, entity.transform.y, padding)) {
@@ -176,25 +209,25 @@ export class SnapshotVisibility {
 
   shouldSendRemoval(record: RemovedSnapshotEntity): boolean {
     if (!this.isFiltered) return true;
-    if (record.playerId === this.recipientPlayerId) return true;
+    if (this.isOwnedByRecipientOrAlly(record.playerId)) return true;
     return this.isPointVisible(record.x, record.y);
   }
 
-  /** True when the recipient authored the event and so should receive
-   *  it regardless of vision. Two callers:
+  /** True when the recipient (or any of their allies under FOW-06)
+   *  authored the event and so should receive it regardless of vision.
+   *  Callers:
    *
    *    - FOW-17 kill credit. Death SimEvents carry the killer's
    *      playerId; passing that here keeps the death notification in
-   *      the killer's audio stream even when the corpse falls outside
-   *      their full vision (sniper through radar, off-screen splash).
-   *    - Own pings. Minimap pings author their own SimEvent with
-   *      playerId = the pinger; without this branch the audio
-   *      serializer's isPointVisible gate would drop a player's own
-   *      ping at a fog point. */
+   *      the killer's (and their teammates') audio stream even when
+   *      the corpse falls outside their full vision.
+   *    - Own pings. Minimap pings carry the pinger's playerId; the
+   *      pinger plus their team see the marker even on fog points.
+   *    - FOW-08 attackAlert (victimPlayerId). The victim and their
+   *      allies see the marker at the attacker's position when an
+   *      otherwise-silent splash from fog lands on a teammate's unit. */
   isAuthoredByRecipient(authorPlayerId: PlayerId | undefined): boolean {
-    if (!this.isFiltered) return false;
-    if (authorPlayerId === undefined) return false;
-    return authorPlayerId === this.recipientPlayerId;
+    return this.isOwnedByRecipientOrAlly(authorPlayerId);
   }
 
   private canSeeCloakedEntity(entity: Entity, padding: number): boolean {

@@ -88,11 +88,6 @@ What our project currently has:
 
 Mismatches with the canonical model (each a discrete issue below):
 
-[FOW-06] No team / shared vision. SnapshotVisibility.forRecipient takes a
-  single PlayerId. If allies are added, each ally needs its own filter
-  pass OR the visibility mask needs to union all allied players. The
-  current code is structurally per-player only.
-
 [FOW-09] Audio reveal is binary on vision (PREREQ: 3D audio not wired
   yet). serializeAudioEvents already filters by full vision, but the
   3D scene's handleSimEvent3D currently only fires visuals — none of

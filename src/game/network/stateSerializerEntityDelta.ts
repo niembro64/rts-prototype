@@ -1,5 +1,6 @@
 import type { WorldState } from '../sim/WorldState';
-import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
+import type { SnapshotVisibility } from './stateSerializerVisibility';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import { SNAPSHOT_CONFIG } from '../../config';
@@ -136,10 +137,16 @@ function getTrackingKey(key: string | number | undefined): string {
 
 function getDeltaResolution(
   entity: Entity,
-  recipientPlayerId: PlayerId | undefined,
+  visibility: SnapshotVisibility | undefined,
 ): SnapshotDeltaResolutionConfig {
-  if (recipientPlayerId === undefined) return SNAPSHOT_CONFIG.ownedEntityDelta;
-  return entity.ownership?.playerId === recipientPlayerId
+  // No filter (admin / global observer) treats every entity as owned
+  // so deltas stay at full precision — matches the original
+  // recipientPlayerId === undefined branch.
+  if (!visibility || !visibility.isFiltered) return SNAPSHOT_CONFIG.ownedEntityDelta;
+  // FOW-06: allies share full-precision deltas the same as the
+  // recipient's own entities, so teammates' units don't smear during
+  // shared-camera plays.
+  return visibility.isOwnedByRecipientOrAlly(entity.ownership?.playerId)
     ? SNAPSHOT_CONFIG.ownedEntityDelta
     : SNAPSHOT_CONFIG.observedEntityDelta;
 }
@@ -180,9 +187,9 @@ export function getEntityDeltaChangedFields(
   entity: Entity,
   prev: PrevEntityState,
   next: PrevEntityState,
-  recipientPlayerId: PlayerId | undefined,
+  visibility: SnapshotVisibility | undefined,
 ): number {
-  const resolution = getDeltaResolution(entity, recipientPlayerId);
+  const resolution = getDeltaResolution(entity, visibility);
   const posTh = SNAPSHOT_CONFIG.positionThreshold * resolution.positionThresholdMultiplier;
   const velTh = SNAPSHOT_CONFIG.velocityThreshold * resolution.velocityThresholdMultiplier;
   const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier;

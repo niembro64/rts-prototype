@@ -101,15 +101,14 @@ function getAoiPadding(entity: Entity): number {
 function isEntityInsideAoi(
   entity: Entity,
   aoi: SnapshotAoiBounds | undefined,
-  recipientPlayerId: PlayerId | undefined,
+  visibility: SnapshotVisibility | undefined,
 ): boolean {
   if (!aoi) return true;
-  // Keep owned entities authoritative even while the camera is away so
-  // selections and queued orders do not evaporate as the user pans.
-  if (
-    recipientPlayerId !== undefined &&
-    entity.ownership?.playerId === recipientPlayerId
-  ) {
+  // Keep owned-or-allied entities authoritative even while the camera
+  // is away so selections, queued orders, and team intel do not
+  // evaporate as the user pans. FOW-06 broadens this from "recipient"
+  // to "recipient or ally" via the shared visibility helper.
+  if (visibility && visibility.isOwnedByRecipientOrAlly(entity.ownership?.playerId)) {
     return true;
   }
   const padding = getAoiPadding(entity);
@@ -156,7 +155,7 @@ export function serializeGameState(
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
   const acceptsEntity = (entity: Entity): boolean =>
     (entity.type === 'unit' || entity.type === 'building') &&
-    isEntityInsideAoi(entity, aoi, recipientPlayerId) &&
+    isEntityInsideAoi(entity, aoi, visibility) &&
     visibility.isEntityVisible(entity);
 
   const forgetTrackedEntity = (id: EntityId, emitRemoval: boolean): void => {
@@ -235,7 +234,7 @@ export function serializeGameState(
           _aoiRemovedIdsBuf.push(id);
           continue;
         }
-        if (!isEntityInsideAoi(entity, aoi, recipientPlayerId)) {
+        if (!isEntityInsideAoi(entity, aoi, visibility)) {
           _aoiRemovedIdsBuf.push(id);
         }
       }
@@ -249,7 +248,7 @@ export function serializeGameState(
       for (const id of tracking.prevEntityIds) {
         const entity = world.getEntity(id);
         if (!entity) continue;
-        if (!isEntityInsideAoi(entity, aoi, recipientPlayerId)) continue;
+        if (!isEntityInsideAoi(entity, aoi, visibility)) continue;
         if (visibility.isEntityVisible(entity)) {
           // Re-entered vision: any ghost-position record from a prior
           // out-of-sight stretch is now stale. The dirty loop below
@@ -303,7 +302,7 @@ export function serializeGameState(
         : 0;
       const changedFields = isNew
         ? undefined
-        : getEntityDeltaChangedFields(entity, prev, next, recipientPlayerId) |
+        : getEntityDeltaChangedFields(entity, prev, next, visibility) |
           dirtyForcedFields |
           jumpAnchorFields;
       if (isNew || changedFields! > 0) {

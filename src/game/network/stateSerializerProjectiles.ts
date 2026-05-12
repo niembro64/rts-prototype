@@ -230,7 +230,7 @@ function shouldSendProjectileSideChannel(
 
 function shouldSendProjectileAtPoint(
   ownerId: PlayerId | undefined,
-  recipientPlayerId: PlayerId | undefined,
+  _recipientPlayerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
   x: number,
   y: number,
@@ -238,27 +238,29 @@ function shouldSendProjectileAtPoint(
   world?: WorldState,
 ): boolean {
   if (!visibility || !visibility.isFiltered) return true;
-  if (ownerId !== undefined && ownerId === recipientPlayerId) return true;
+  if (visibility.isOwnedByRecipientOrAlly(ownerId)) return true;
   if (visibility.isPointVisible(x, y)) return true;
   // FOW-08-followup: forward in-flight updates when the projectile is
-  // homing on one of the recipient's own entities, so the player at
-  // least sees the missile veering toward their unit instead of
-  // taking a silent HP drop from an attacker still hidden in fog.
+  // homing on one of the recipient's (or their allies') entities, so
+  // the player at least sees the missile veering toward their unit
+  // instead of taking a silent HP drop from an attacker still hidden
+  // in fog. FOW-06 broadens the target check from recipient-only to
+  // team-aware via isOwnedByRecipientOrAlly.
   if (homingTargetId !== undefined && world) {
     const target = world.getEntity(homingTargetId);
-    if (target?.ownership?.playerId === recipientPlayerId) return true;
+    if (visibility.isOwnedByRecipientOrAlly(target?.ownership?.playerId)) return true;
   }
   return false;
 }
 
 function shouldSendBeamPath(
   ownerId: PlayerId | undefined,
-  recipientPlayerId: PlayerId | undefined,
+  _recipientPlayerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
   points: ReadonlyArray<{ x: number; y: number }>,
 ): boolean {
   if (!visibility || !visibility.isFiltered) return true;
-  if (ownerId !== undefined && ownerId === recipientPlayerId) return true;
+  if (visibility.isOwnedByRecipientOrAlly(ownerId)) return true;
   // FOW-08-followup: forward the beam if EITHER end is visible. A
   // laser fired from fog that lands on the recipient's unit now
   // flashes for them — the source still falls inside the shroud, but
@@ -273,23 +275,23 @@ function shouldSendBeamPath(
 
 function shouldSendProjectileSpawnEvent(
   spawn: ProjectileSpawnEvent,
-  recipientPlayerId: PlayerId | undefined,
+  _recipientPlayerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
   world: WorldState,
 ): boolean {
   if (!visibility || !visibility.isFiltered) return true;
-  if (spawn.playerId === recipientPlayerId) return true;
+  if (visibility.isOwnedByRecipientOrAlly(spawn.playerId)) return true;
   if (visibility.isPointVisible(spawn.pos.x, spawn.pos.y)) return true;
   // FOW-08: forward the spawn when the shot is targeting one of the
-  // recipient's own entities. Without this, an attacker hidden in fog
-  // can land a kill on the player without the player ever seeing a
-  // projectile in flight — the unit just takes a silent HP drop. With
-  // this, the client renders the trail from (the still-shrouded)
-  // spawn position toward the player's unit, so the player at least
-  // sees the incoming arc and can guess the attacker's direction.
+  // recipient's (or their allies') entities. Without this, an attacker
+  // hidden in fog can land a kill on the player without the player
+  // ever seeing a projectile in flight — the unit just takes a silent
+  // HP drop. FOW-06 broadens the target check from recipient-only to
+  // team-aware via isOwnedByRecipientOrAlly so allied units get the
+  // same incoming-arc reveal.
   if (spawn.targetEntityId !== undefined) {
     const target = world.getEntity(spawn.targetEntityId);
-    if (target?.ownership?.playerId === recipientPlayerId) return true;
+    if (visibility.isOwnedByRecipientOrAlly(target?.ownership?.playerId)) return true;
   }
   return false;
 }

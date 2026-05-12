@@ -26,6 +26,7 @@ import { applyEntitySensorBlueprint } from './cloakDetection';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
+const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 
 export type RemovedSnapshotEntity = {
@@ -87,6 +88,18 @@ export class WorldState {
 
   // Number of players in the game (for unit cap calculation)
   public playerCount: number = 2;
+
+  /** Per-player alliance map (issues.txt FOW-06). The set holds the
+   *  OTHER players considered allies — a player is implicitly allied
+   *  with themselves and that's never listed here. FFA: every set is
+   *  empty (or absent), which is the default for a fresh world. Team
+   *  play: pairs / triples / etc. of players list each other. The
+   *  visibility filter unions all allied players' vision sources, and
+   *  the snapshot serializer treats allied entities as friendly for
+   *  private-detail / delta-resolution / AOI purposes. Populated at
+   *  game start by ServerBootstrap when the lobby has team configuration;
+   *  never mutated mid-game (alliances are not currently switchable). */
+  public alliesByPlayer: Map<PlayerId, ReadonlySet<PlayerId>> = new Map();
 
   // Map dimensions
   public readonly mapWidth: number;
@@ -461,6 +474,22 @@ export class WorldState {
   getBuildingsByPlayer(playerId: PlayerId): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getBuildingsByPlayer(playerId);
+  }
+
+  /** Get the per-player ally set, NOT including the player itself.
+   *  An empty set means FFA (no allies). The visibility filter and
+   *  snapshot serializer iterate these to union allied vision
+   *  sources and treat allied entities as friendly. See FOW-06. */
+  getAllies(playerId: PlayerId): ReadonlySet<PlayerId> {
+    return this.alliesByPlayer.get(playerId) ?? EMPTY_PLAYER_SET;
+  }
+
+  /** True when two players are on the same team (including the
+   *  trivial self-allied case). Drives ownership-vs-recipient checks
+   *  across the snapshot serializers. See FOW-06. */
+  arePlayersAllied(a: PlayerId, b: PlayerId): boolean {
+    if (a === b) return true;
+    return this.getAllies(a).has(b);
   }
 
   // Get factories by player
