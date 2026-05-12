@@ -118,11 +118,16 @@ Mismatches with the canonical model (each a discrete issue below):
   reveal event at the attacker's position when damage lands on a
   recipient-owned entity, regardless of weapon type.
 
-[FOW-09] Audio reveal is binary on vision. Currently a sound event is
-  only sent if its origin is in vision. Many RTS games play attenuated
-  audio from out-of-vision events to hint at distant fights ("I hear
-  shooting from the south but can't see"). Our current setup gives no
-  such hint.
+[FOW-09] Audio reveal is binary on vision (PREREQ: 3D audio not wired
+  yet). serializeAudioEvents already filters by full vision, but the
+  3D scene's handleSimEvent3D currently only fires visuals — none of
+  the AudioManager's playWeaponFire / playWeaponHit / playDeath calls
+  are reached from gameplay, so even in-vision events produce no
+  audio. Attenuated out-of-vision "I hear distant gunfire" hints
+  can't ship until audio playback is hooked into the 3D path; once
+  it is, the wider earshot-pad serializer filter + an audioOnly
+  flag (so the client suppresses visuals but plays the sound) is
+  the right shape.
 
 [FOW-11] No persistent vision history. The server does not track which
   tiles a player has ever seen. Without this, EXPLORED-BUT-DARK cannot
