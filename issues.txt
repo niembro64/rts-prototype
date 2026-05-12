@@ -7,3 +7,183 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 
 ==============================================================================
  ISSUES:
+
+------------------------------------------------------------------------------
+ FOG OF WAR — design vs. current implementation
+------------------------------------------------------------------------------
+
+How fog of war should work in an RTS (the canonical model, à la Total Annihilation /
+Supreme Commander, Starcraft, Age of Empires):
+
+Every map cell, from a given player's POV, exists in one of THREE states:
+
+  1. UNEXPLORED. Never seen by any of that player's vision sources.
+     Rendered as solid black/heavy fog. Terrain unknown, no entities shown.
+
+  2. EXPLORED-BUT-DARK ("shroud" or "soft fog"). Seen at some point, but not
+     currently in vision. Rendered as a dimmed/desaturated overlay.
+       - Static features (terrain, neutral resources, ENEMY BUILDINGS): shown as
+         their LAST-SEEN snapshot — the building stays as a "ghost" at the
+         position the player last observed it. If it has since been destroyed
+         or moved, the player only finds out by re-visiting.
+       - Mobile units (enemy units): NOT shown. They could have moved, so
+         showing a ghost would be a lie. Once a player loses LOS on an enemy
+         unit, it disappears.
+
+  3. CURRENTLY VISIBLE. At least one of the player's units/buildings has line
+     of sight to this tile right now. Real-time information; all entities and
+     their state are shown accurately.
+
+Unit sight (line of sight, LOS):
+  - Each entity has a sight radius — usually a circle around the entity.
+  - Scout-type units typically have larger radii than line units.
+  - Buildings have a smaller "passive" radius.
+  - Vision is BLOCKED by terrain features in many RTS games (high ground,
+     forests, structures). A unit on the far side of a mountain shouldn't
+     be visible just because it's inside the circle.
+  - Day/night cycles or weather can reduce sight radius (some games).
+  - Vision is shared between allies (team play).
+
+Radar (and the related "sonar" / "scanner"):
+  - Larger radius than unit sight, but provides STRICTLY LESS information
+     than direct vision: it shows enemies as blips on the minimap (and in
+     some games, as generic dots in the world) without identifying the unit
+     type, owner-specific state, HP, orders, etc.
+  - Radar does NOT lift the fog-of-war shroud — visited tiles stay
+     "explored-but-dark," radar just adds a contemporaneous blip overlay.
+  - Stealth/cloaked units do not appear on radar. Radar jamming hides
+     friendly units from enemy radar. (Standard counters.)
+  - Air units may need air radar (separate channel) in some games.
+
+Detection (counter to stealth):
+  - Cloaked/stealth units are invisible to normal vision.
+  - Specific detector units/buildings reveal cloak within their detect
+     radius. Without a detector, cloaked enemies are blind spots — even
+     while standing in your camp.
+
+Sound / audio reveal:
+  - Many RTS games play unit sounds even from out-of-vision positions when
+     close enough, hinting at enemy presence without revealing position.
+
+Initial reveal:
+  - At game start, the area around each player's starting base is already
+     in CURRENTLY VISIBLE. The rest of the map is UNEXPLORED.
+
+What our project currently has:
+
+  - One boolean: world.fogOfWarEnabled. When on, the per-recipient snapshot
+     is filtered through SnapshotVisibility (point-in-circle, with a spatial
+     hash grid).
+  - Vision sources: a player's own UNITS (1200), COMMANDERS (1600), buildings
+     (1000), RADAR building (4200), with extra range pads for turret reach
+     and builder reach. All sources contribute to the same merged vision
+     mask — radar is just "a building with a bigger circle."
+  - Entity-private fields (HP, action state, orders) stripped for enemies.
+  - When an enemy entity leaves the player's vision, the server emits an
+     explicit removal so the client DELETES the entity. Re-entering vision
+     re-sends it as a full snapshot.
+  - Audio events and projectile spawns are gated by isPointVisible(spawn pos).
+  - The dark canvas-alpha overlay that used to dim explored areas was
+     removed when "keep enemies as ghosts" was scrapped.
+
+Mismatches with the canonical model (each a discrete issue below):
+
+[FOW-01] No three-state shroud. The canvas does not distinguish UNEXPLORED
+  from EXPLORED-BUT-DARK from CURRENTLY VISIBLE. After the overlay was
+  removed there is NO visual indication of explored vs. unexplored
+  terrain at all — the player just sees the bare ground/sky everywhere.
+
+[FOW-02] No last-seen ghosts for enemy BUILDINGS. Standard RTS keeps
+  enemy buildings at their last-observed position once you've seen them,
+  since buildings rarely move. Current behavior drops them the moment
+  they exit vision, which is correct for mobile units but wrong for
+  static structures. (The user explicitly asked for this drop behavior
+  for UNITS — but the same change also wiped building memory, which is
+  a regression vs. typical RTS expectations.)
+
+[FOW-03] Radar is "just a bigger vision circle." Radar should provide a
+  WEAKER form of awareness (blips/positions only, no unit identification,
+  no HP, no orders) at a LARGER radius — not a strict superset of direct
+  vision. As written, a radar building reveals enemies in full fidelity
+  the same as a commander.
+
+[FOW-04] No line-of-sight blocking by terrain. A unit on the far side
+  of a hill, behind a forest, or beyond a wall is visible if it falls
+  within the circle. The world has a heightmap (Terrain) but the
+  visibility test is purely 2D point-in-circle.
+
+[FOW-05] No stealth/cloak mechanic and therefore no detector mechanic.
+  Every unit is visible to anyone with overlapping vision. Adding cloak
+  later will require new entity flags and a "detector radius" field
+  separate from vision radius.
+
+[FOW-06] No team / shared vision. SnapshotVisibility.forRecipient takes a
+  single PlayerId. If allies are added, each ally needs its own filter
+  pass OR the visibility mask needs to union all allied players. The
+  current code is structurally per-player only.
+
+[FOW-07] Spectators have no proper view. A spectator (no recipientPlayerId)
+  currently bypasses fog filtering entirely (sees everything), which is
+  acceptable for an admin/observer but means there is no path to "spectate
+  as if you were Player N" for casting / replays.
+
+[FOW-08] Phantom damage from out-of-vision attackers. A projectile fired
+  by an invisible enemy is filtered out at spawn (shouldSendProjectileSpawnEvent
+  checks the spawn point). The simulation still resolves the damage
+  authoritatively, so the player's unit takes HP loss with no visible
+  projectile and no visible source. Standard RTS shows the impact + a
+  blood/spark effect and often briefly reveals the attacker (Starcraft's
+  "ping the source" behavior).
+
+[FOW-09] Audio reveal is binary on vision. Currently a sound event is
+  only sent if its origin is in vision. Many RTS games play attenuated
+  audio from out-of-vision events to hint at distant fights ("I hear
+  shooting from the south but can't see"). Our current setup gives no
+  such hint.
+
+[FOW-10] No initial spawn reveal independent of vision. The starting
+  area is visible only because the commander stands there and provides
+  vision. If a future commander has zero starting vision (e.g., a
+  burrowed start), the player would see nothing at all. There is no
+  separate "reveal the spawn box at t=0" pass.
+
+[FOW-11] No persistent vision history. The server does not track which
+  tiles a player has ever seen. Without this, EXPLORED-BUT-DARK cannot
+  be implemented even if the renderer were added back, because there
+  is no source of truth for "has player X ever seen tile (cx,cy)?".
+
+[FOW-12] Vision toggling forces a full keyframe per recipient. When the
+  host toggles fog mid-game, GameServer.forceNextSnapshotKeyframe makes
+  the next snapshot a keyframe for ALL listeners, not just per-recipient.
+  Acceptable today (toggle is rare) but worth documenting if/when
+  finer-grained reveal mechanics (scans, pings) land.
+
+[FOW-13] Owner-aware filter is correct but undocumented. isEntityVisible
+  short-circuits true for owned entities — this is right (you always see
+  your own stuff), but the invariant lives only in the function body. If
+  team-vision is added later, this becomes "owned OR allied."
+
+[FOW-14] No "scan" / temporary reveal API. There is no command type that
+  reveals an arbitrary area for a fixed duration (Starcraft scanner
+  sweep, Supreme Commander recon drone). All vision today is tied to
+  a long-lived entity.
+
+[FOW-15] Vision radius constants are file-scoped magic numbers. UNIT,
+  COMMANDER, BUILDING, RADAR radii live as `export const` at the top
+  of stateSerializerVisibility.ts. The radar value (4200) duplicates
+  the design intent expressed in DEMO_CONFIG.baseRings.radar but there
+  is no single declarative source — changing radar's effective coverage
+  means editing both files.
+
+[FOW-16] Buildings under construction provide vision (canEntityProvideVision
+  returns hp > 0). A half-built radar with 1 HP currently exposes its
+  full 4200 radius. Usually RTS games either gate radar vision on
+  "construction complete" or scale it with build progress.
+
+[FOW-17] Dead-but-corpse entities don't appear in the test (hp > 0
+  check filters them), but visible entity removals on death only emit
+  if the dying entity is currently in vision (shouldSendRemoval). If a
+  player saw an enemy unit die just outside their vision, they never
+  learn it died — the entity simply vanishes the same way a unit
+  leaving vision does. Distinguishing "out-of-sight" from "destroyed"
+  matters for player feedback ("did I kill it?").
