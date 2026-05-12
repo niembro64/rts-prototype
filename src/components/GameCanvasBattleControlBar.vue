@@ -154,23 +154,18 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>SYSTEM:</BarLabel>
+        <BarLabel>REFLECTIONS:</BarLabel>
+        <BarButton
+          :active="model.currentMirrorsEnabled"
+          title="Enable mirror turrets and laser/beam reflections"
+          @click="model.setMirrorsEnabled(!model.currentMirrorsEnabled)"
+        >MIRROR</BarButton>
+        <BarButton
+          :active="model.currentForceFieldsEnabled"
+          title="Enable force-field turrets, force-field simulation, and force-field rendering"
+          @click="model.setForceFieldsEnabled(!model.currentForceFieldsEnabled)"
+        >FIELD</BarButton>
         <BarButtonGroup>
-          <BarButton
-            :active="model.currentMirrorsEnabled"
-            title="Enable mirror turrets and laser/beam reflections"
-            @click="model.setMirrorsEnabled(!model.currentMirrorsEnabled)"
-          >MIRROR</BarButton>
-          <BarButton
-            :active="model.currentForceFieldsEnabled"
-            title="Enable force-field turrets, force-field simulation, and force-field rendering"
-            @click="model.setForceFieldsEnabled(!model.currentForceFieldsEnabled)"
-          >FIELD</BarButton>
-          <BarButton
-            :active="model.currentFogOfWarEnabled"
-            title="Enable player vision, radar coverage, and fog-of-war rendering"
-            @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
-          >FOG</BarButton>
           <BarButton
             v-for="opt in BATTLE_CONFIG.forceFieldReflectionMode.options"
             :key="opt.value"
@@ -179,6 +174,15 @@ defineProps<{
             @click="model.setForceFieldReflectionMode(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>FOG:</BarLabel>
+        <BarButton
+          :active="model.currentFogOfWarEnabled"
+          title="Enable player vision, radar coverage, and fog-of-war rendering"
+          @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
+        >FOG</BarButton>
         <BarDivider />
       </BarControlGroup>
     </div>

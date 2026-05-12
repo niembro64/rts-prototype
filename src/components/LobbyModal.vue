@@ -591,7 +591,7 @@ const terrainSectionVars = computed(() =>
               </BarButtonGroup>
             </div>
             <div class="terrain-control-row">
-              <div class="terrain-control-label">SYSTEM:</div>
+              <div class="terrain-control-label">REFLECTIONS:</div>
               <BarButtonGroup>
                 <BarButton
                   size="large"
@@ -606,12 +606,6 @@ const terrainSectionVars = computed(() =>
                   @click="pickForceFields(!forceFieldsEnabled)"
                 >FIELD</BarButton>
                 <BarButton
-                  size="large"
-                  :active="fogOfWarEnabled"
-                  :title="isHost ? 'Enable player vision, radar coverage, and fog-of-war rendering' : 'Only the host can change battle settings'"
-                  @click="pickFogOfWar(!fogOfWarEnabled)"
-                >FOG</BarButton>
-                <BarButton
                   v-for="opt in forceFieldReflectionOptions"
                   :key="opt.value"
                   size="large"
@@ -619,6 +613,17 @@ const terrainSectionVars = computed(() =>
                   :title="isHost ? `Force fields reflect ${opt.label === 'IN' ? 'outside-to-inside crossings' : opt.label === 'OUT' ? 'inside-to-outside crossings' : 'crossings in both directions'}` : 'Only the host can change battle settings'"
                   @click="pickForceFieldReflectionMode(opt.value)"
                 >{{ opt.label }}</BarButton>
+              </BarButtonGroup>
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">FOG:</div>
+              <BarButtonGroup>
+                <BarButton
+                  size="large"
+                  :active="fogOfWarEnabled"
+                  :title="isHost ? 'Enable player vision, radar coverage, and fog-of-war rendering' : 'Only the host can change battle settings'"
+                  @click="pickFogOfWar(!fogOfWarEnabled)"
+                >FOG</BarButton>
               </BarButtonGroup>
             </div>
             <!-- Reset row sits inside the same options block as the
