@@ -35,7 +35,6 @@ export type RtsScene3DRendererResources = {
   buildGhostRenderer?: Destroyable | null;
   sprayRenderer?: Destroyable | null;
   smokeTrailRenderer?: Destroyable | null;
-  fogOfWarRenderer?: Destroyable | null;
   longtaskTracker: Destroyable;
   audioSystem: Clearable;
 };
@@ -67,7 +66,6 @@ export function teardownRtsScene3DRenderers(
   resources.buildGhostRenderer?.destroy();
   resources.sprayRenderer?.destroy();
   resources.smokeTrailRenderer?.destroy();
-  resources.fogOfWarRenderer?.destroy();
   resources.longtaskTracker.destroy();
   resources.audioSystem.clear();
 }

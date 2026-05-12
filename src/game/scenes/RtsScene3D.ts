@@ -48,7 +48,6 @@ const LEG_COLOR = 0x2a2f36;
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
-import { FogOfWarRenderer3D } from '../render3d/FogOfWarRenderer3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { ForceFieldImpactRenderer3D } from '../render3d/ForceFieldImpactRenderer3D';
 import { Debris3D } from '../render3d/Debris3D';
@@ -175,7 +174,6 @@ export class RtsScene3D {
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
   private smokeTrailRenderer!: SmokeTrail3D;
-  private fogOfWarRenderer!: FogOfWarRenderer3D;
   private audioSystem = new RtsScene3DAudioSystem();
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
@@ -530,11 +528,6 @@ export class RtsScene3D {
     );
     this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
     this.smokeTrailRenderer = new SmokeTrail3D(this.threeApp.world);
-    this.fogOfWarRenderer = new FogOfWarRenderer3D(
-      this.threeApp.world,
-      this.mapWidth,
-      this.mapHeight,
-    );
 
     const canvasParent = this.threeApp.canvas.parentElement;
     if (canvasParent) {
@@ -649,14 +642,12 @@ export class RtsScene3D {
         pingRenderer: this.pingRenderer,
         sprayRenderer: this.sprayRenderer,
         smokeTrailRenderer: this.smokeTrailRenderer,
-        fogOfWarRenderer: this.fogOfWarRenderer,
         healthBar3D: this.healthBar3D,
         nameLabel3D: this.nameLabel3D,
         waypoint3D: this.waypoint3D,
         lodShellGround3D: this.lodShellGround3D,
         lodGridCells2D: this.lodGridCells2D,
       },
-      () => this.localPlayerId,
       () => this.inputManager,
       (playerId) => this.lookupPlayerName(playerId),
       () => this.onCameraQuadUpdate,
@@ -1357,7 +1348,6 @@ export class RtsScene3D {
       buildGhostRenderer: this.buildGhostRenderer,
       sprayRenderer: this.sprayRenderer,
       smokeTrailRenderer: this.smokeTrailRenderer,
-      fogOfWarRenderer: this.fogOfWarRenderer,
       longtaskTracker: this.longtaskTracker,
       audioSystem: this.audioSystem,
     });

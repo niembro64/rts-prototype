@@ -28,7 +28,6 @@ import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { PingRenderer3D } from '../../render3d/PingRenderer3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
-import type { FogOfWarRenderer3D } from '../../render3d/FogOfWarRenderer3D';
 import type { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
 import type { HealthBar3D } from '../../render3d/HealthBar3D';
 import type { NameLabel3D } from '../../render3d/NameLabel3D';
@@ -63,7 +62,6 @@ export type RtsScene3DRenderPhaseResources = {
   pingRenderer: PingRenderer3D;
   sprayRenderer: SprayRenderer3D;
   smokeTrailRenderer: SmokeTrail3D;
-  fogOfWarRenderer: FogOfWarRenderer3D;
   healthBar3D: HealthBar3D | null;
   nameLabel3D: NameLabel3D | null;
   waypoint3D: Waypoint3D | null;
@@ -100,7 +98,6 @@ export class RtsScene3DRenderPhase {
     private readonly snapshotIntake: RtsScene3DSnapshotIntake,
     private readonly selectionSystem: RtsScene3DSelectionSystem,
     private readonly resources: RtsScene3DRenderPhaseResources,
-    private readonly getLocalPlayerId: () => PlayerId,
     private readonly getInputManager: () => Input3DManager | null,
     private readonly lookupPlayerName: (id: PlayerId) => string | null,
     private readonly getCameraQuadUpdate: () => (((quad: FootprintQuad, cameraYaw: number) => void) | undefined),
@@ -157,7 +154,6 @@ export class RtsScene3DRenderPhase {
       pingRenderer,
       sprayRenderer,
       smokeTrailRenderer,
-      fogOfWarRenderer,
       healthBar3D,
       nameLabel3D,
       waypoint3D,
@@ -211,12 +207,6 @@ export class RtsScene3DRenderPhase {
     this.getCameraQuadUpdate()?.(cameraQuad, this.threeApp.orbit.yaw);
 
     const serverMeta = this.clientViewState.getServerMeta();
-    fogOfWarRenderer.update(
-      this.clientViewState,
-      this.getLocalPlayerId(),
-      serverMeta?.fogOfWarEnabled === true,
-      deltaMs,
-    );
     entityRenderer.update(
       renderLod,
       renderLodGrid,
