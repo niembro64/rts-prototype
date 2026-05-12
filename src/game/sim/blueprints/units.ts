@@ -269,6 +269,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     bodyShape: BODY_SHAPES.scout,
     hud: DEFAULT_UNIT_HUD_LAYOUT,
     locomotion: UNIT_LOCOMOTION_BLUEPRINTS.jackal,
+    detector: { radius: 900 },
     deathSound: AUDIO.event.death.jackal,
   },
   lynx: {
@@ -362,6 +363,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
       dampingRatio: 0.55,
       maxOffset: { x: 3, y: 3, z: 10 },
     },
+    cloak: { enabled: true },
     deathSound: AUDIO.event.death.tick,
   },
   mammoth: {
@@ -498,6 +500,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     locomotion: UNIT_LOCOMOTION_BLUEPRINTS.commander,
     builder: { buildRange: 150, constructionRate: 50 },
     dgun: { turretId: 'dgunTurret', energyCost: 200 },
+    detector: { radius: 1100 },
     deathSound: AUDIO.event.death.commander,
   },
 };
@@ -519,6 +522,12 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
     throw new Error(
       `Invalid HUD layout for ${bp.id}: barsOffsetAboveTop must be finite`,
+    );
+  }
+
+  if (bp.detector && (!Number.isFinite(bp.detector.radius) || bp.detector.radius <= 0)) {
+    throw new Error(
+      `Invalid detector for ${bp.id}: detector radius must be positive`,
     );
   }
 

@@ -9,7 +9,7 @@ import {
   buildingTypeToCode,
   codeToTurretId,
 } from '../../../types/network';
-import { getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
+import { getBuildingBlueprint, getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../../sim/buildGrid';
 import { COST_MULTIPLIER } from '../../../config';
@@ -24,6 +24,7 @@ import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
 import { createUnitJump } from '../../sim/unitJump';
 import { computeUnitActionHash } from '../../sim/unitActions';
+import { applyEntitySensorBlueprint } from '../../sim/cloakDetection';
 import {
   applyNetworkJumpState,
   applyNetworkSuspensionState,
@@ -227,6 +228,7 @@ function createUnitFromNetwork(
       suspension: createUnitSuspension(unitBlueprint?.suspension),
     },
   };
+  if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);
 
   const turrets = createTurretsFromNetwork(unitType, entity.unit!.radius.body, u?.turrets);
   if (turrets) {
@@ -326,6 +328,7 @@ function createBuildingFromNetwork(
       ? b.metalExtractionRate ?? 0
       : undefined,
   };
+  applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
 
   if (b.build && !b.build.complete) {
     // required is re-derived from the local building config — it's a

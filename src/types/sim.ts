@@ -105,6 +105,14 @@ export type Ownership = {
   playerId: PlayerId;
 };
 
+export type Cloak = {
+  enabled: boolean;
+};
+
+export type Detector = {
+  radius: number;
+};
+
 // Cached mirror panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
 //             value is used for both the horizontal-edge half and the
@@ -640,6 +648,8 @@ export type Entity = {
   body?: Body;
   selectable?: Selectable;
   ownership?: Ownership;
+  cloak?: Cloak;
+  detector?: Detector;
   unit?: Unit;
   building?: Building;
   /** Combat capability — turrets + per-host bookkeeping. Present iff

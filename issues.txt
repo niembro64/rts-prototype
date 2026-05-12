@@ -88,11 +88,6 @@ What our project currently has:
 
 Mismatches with the canonical model (each a discrete issue below):
 
-[FOW-05] No stealth/cloak mechanic and therefore no detector mechanic.
-  Every unit is visible to anyone with overlapping vision. Adding cloak
-  later will require new entity flags and a "detector radius" field
-  separate from vision radius.
-
 [FOW-06] No team / shared vision. SnapshotVisibility.forRecipient takes a
   single PlayerId. If allies are added, each ally needs its own filter
   pass OR the visibility mask needs to union all allied players. The

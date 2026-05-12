@@ -1,6 +1,12 @@
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { hasTerrainLineOfSight } from '../sim/combat/lineOfSight';
+import {
+  canEntityProvideDetection,
+  getEntityDetectionPadding,
+  getEntityDetectorRadius,
+  isEntityCloaked,
+} from '../sim/cloakDetection';
 
 export const VISION_CELL_SIZE = 512;
 export const UNIT_VISION_RADIUS = 1200;
@@ -44,12 +50,19 @@ type VisionSource = {
  *
  *  The owner of an entity always sees their own stuff in full; the
  *  owner-aware short-circuit lives in isEntityVisible() and
- *  isEntityOnRadar(). */
+ *  isEntityOnRadar().
+ *
+ *  Cloak detection is a third, independent source pool: detector
+ *  coverage never grants vision by itself, but cloaked entities must
+ *  be inside detector coverage before normal full/radar checks can
+ *  reveal them. */
 export class SnapshotVisibility {
   private readonly fullSources: VisionSource[] = [];
   private readonly fullSourceCells = new Map<number, number[]>();
   private readonly radarSources: VisionSource[] = [];
   private readonly radarSourceCells = new Map<number, number[]>();
+  private readonly detectorSources: VisionSource[] = [];
+  private readonly detectorSourceCells = new Map<number, number[]>();
   private readonly gridW: number;
   private readonly gridH: number;
 
@@ -96,11 +109,13 @@ export class SnapshotVisibility {
   isEntityVisible(entity: Entity): boolean {
     if (!this.isFiltered) return true;
     if (entity.ownership?.playerId === this.recipientPlayerId) return true;
+    const padding = getEntityVisibilityPadding(entity);
+    if (!this.canSeeCloakedEntity(entity, padding)) return false;
     return this.isEntityVisibleWithLos(
       entity.transform.x,
       entity.transform.y,
       entity.transform.z,
-      getEntityVisibilityPadding(entity),
+      padding,
     );
   }
 
@@ -145,6 +160,7 @@ export class SnapshotVisibility {
     if (!this.isFiltered) return true;
     if (entity.ownership?.playerId === this.recipientPlayerId) return true;
     const padding = getEntityVisibilityPadding(entity);
+    if (!this.canSeeCloakedEntity(entity, padding)) return false;
     if (this.isPointVisibleIn(this.fullSources, this.fullSourceCells, entity.transform.x, entity.transform.y, padding)) {
       return true;
     }
@@ -175,6 +191,17 @@ export class SnapshotVisibility {
     if (!this.isFiltered) return false;
     if (killerPlayerId === undefined) return false;
     return killerPlayerId === this.recipientPlayerId;
+  }
+
+  private canSeeCloakedEntity(entity: Entity, padding: number): boolean {
+    if (!isEntityCloaked(entity)) return true;
+    return this.isPointVisibleIn(
+      this.detectorSources,
+      this.detectorSourceCells,
+      entity.transform.x,
+      entity.transform.y,
+      padding,
+    );
   }
 
   private addPlayerSources(world: WorldState, playerId: PlayerId): void {
@@ -210,6 +237,16 @@ export class SnapshotVisibility {
             entity.transform.y,
             eyeZ,
             getEntityRadarRadius(entity),
+          );
+        }
+        if (canEntityProvideDetectorVision(entity)) {
+          this.addSource(
+            this.detectorSources,
+            this.detectorSourceCells,
+            entity.transform.x,
+            entity.transform.y,
+            eyeZ,
+            getEntityDetectorRadius(entity),
           );
         }
       }
@@ -298,6 +335,10 @@ export function canEntityProvideRadarVision(entity: Entity): boolean {
   return true;
 }
 
+export function canEntityProvideDetectorVision(entity: Entity): boolean {
+  return canEntityProvideDetection(entity);
+}
+
 /** Legacy: returns true if entity contributes ANY vision (full OR
  *  radar). Kept for the client-side shroud renderer, which lights up
  *  terrain wherever the local player has any kind of coverage. */
@@ -338,15 +379,5 @@ export function getEntityVisionRadius(entity: Entity): number {
 }
 
 export function getEntityVisibilityPadding(entity: Entity): number {
-  if (entity.unit) {
-    return Math.max(
-      entity.unit.radius.body,
-      entity.unit.radius.shot,
-      entity.unit.radius.push,
-    );
-  }
-  if (entity.building) {
-    return Math.max(entity.building.width, entity.building.height) * 0.5;
-  }
-  return 0;
+  return getEntityDetectionPadding(entity);
 }

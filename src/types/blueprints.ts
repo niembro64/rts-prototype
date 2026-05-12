@@ -278,6 +278,14 @@ export type EntityHudBlueprint = {
   barsOffsetAboveTop: number;
 };
 
+export type CloakBlueprint = {
+  enabled: boolean;
+};
+
+export type DetectorBlueprint = {
+  radius: number;
+};
+
 export type UnitBlueprint = {
   id: UnitTypeId;
   name: string;
@@ -319,5 +327,7 @@ export type UnitBlueprint = {
   suspension?: UnitSuspensionConfig;
   builder?: { buildRange: number; constructionRate: number };
   dgun?: { turretId: TurretId; energyCost: number };
+  cloak?: CloakBlueprint;
+  detector?: DetectorBlueprint;
   deathSound?: SoundEntry;
 };

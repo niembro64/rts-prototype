@@ -2,6 +2,7 @@ import type { WorldState } from './WorldState';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, EntityId, PlayerId, BuildingType } from './types';
 import { getBuildingConfig } from './buildConfigs';
+import { getBuildingBlueprint } from './blueprints';
 import { BuildingGrid, BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { computeFactoryWaypoint } from './spawn';
 import { getBuildingPlacementDiagnosticsForGrid } from './buildPlacementValidation';
@@ -14,6 +15,7 @@ import { ensureSolarCollectorState } from './solarCollector';
 import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
 import { createBuildable, getInitialBuildHp } from './buildableHelpers';
+import { applyEntitySensorBlueprint } from './cloakDetection';
 
 // Construction system - authoritative building placement and footprint grid.
 // Runtime resource/HP/completion semantics live in constructionLifecycle.ts.
@@ -101,6 +103,7 @@ export class ConstructionSystem {
 
     // Set building type
     entity.buildingType = buildingType;
+    applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
     if (buildingType === 'solar') {
       ensureSolarCollectorState(entity);
     }
@@ -189,6 +192,7 @@ export class ConstructionSystem {
     entity.buildable = createBuildable(config.cost, { isGhost: true });
 
     entity.buildingType = buildingType;
+    applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
     if (buildingType === 'solar') {
       ensureSolarCollectorState(entity);
     }

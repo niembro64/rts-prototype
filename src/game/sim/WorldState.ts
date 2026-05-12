@@ -22,6 +22,7 @@ import { dropWeaponsForUnit } from './combat/targetIndex';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { createUnitSuspension } from './unitSuspension';
 import { createUnitJump } from './unitJump';
+import { applyEntitySensorBlueprint } from './cloakDetection';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
@@ -605,6 +606,7 @@ export class WorldState {
     );
     entity.unit!.jump = createUnitJump(bp.locomotion.physics.jump);
     entity.unit!.suspension = createUnitSuspension(bp.suspension);
+    applyEntitySensorBlueprint(entity, bp);
 
     // Create combat component (turrets + per-host bookkeeping) from
     // blueprint. Every unit blueprint declares at least one turret, so

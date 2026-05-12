@@ -17,6 +17,8 @@ export type {
   Body,
   Selectable,
   Ownership,
+  Cloak,
+  Detector,
   WaypointType,
   Waypoint,
   ActionType,

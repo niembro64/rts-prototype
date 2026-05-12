@@ -6,7 +6,8 @@ import { aimTurretsToward } from './turretInit';
 import { createBuildingRuntimeTurrets } from './runtimeTurrets';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
-import { BUILDABLE_UNIT_IDS } from './blueprints';
+import { BUILDABLE_UNIT_IDS, getBuildingBlueprint } from './blueprints';
+import { applyEntitySensorBlueprint } from './cloakDetection';
 import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
 import {
   REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
@@ -205,6 +206,7 @@ function placeCompleteBuilding(
   );
 
   entity.buildingType = buildingType;
+  applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
   if (buildingType === 'solar') {
     ensureSolarCollectorState(entity);
   }

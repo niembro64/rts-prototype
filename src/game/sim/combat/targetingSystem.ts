@@ -17,6 +17,7 @@ import {
   hasCombatLineOfSight,
   weaponNeedsLineOfSight,
 } from './lineOfSight';
+import { canPlayerObserveCloakedEntity } from '../cloakDetection';
 
 const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
@@ -287,9 +288,16 @@ function chooseBestTargetCandidate(
   let bestDistSq = seed.distSq;
   let bestRank = seed.rank;
   let bestMirrorScore = seed.mirrorScore;
+  const sourcePlayerId = source.ownership?.playerId;
 
   for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
     const enemy = candidates[ci];
+    if (
+      sourcePlayerId === undefined ||
+      !canPlayerObserveCloakedEntity(world, enemy, sourcePlayerId)
+    ) {
+      continue;
+    }
     let mirrorScore = 0;
     if (weapon.config.passive) {
       mirrorScore = getMirrorTargetScore(enemy, source.id);
@@ -575,10 +583,18 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const pt = world.getEntity(priorityId);
       let priorityTarget: Entity | null = null;
       let priorityRadius = 0;
-      if (pt?.unit && pt.unit.hp > 0) {
+      if (
+        pt?.unit &&
+        pt.unit.hp > 0 &&
+        canPlayerObserveCloakedEntity(world, pt, playerId)
+      ) {
         priorityTarget = pt;
         priorityRadius = pt.unit.radius.shot;
-      } else if (pt?.building && pt.building.hp > 0) {
+      } else if (
+        pt?.building &&
+        pt.building.hp > 0 &&
+        canPlayerObserveCloakedEntity(world, pt, playerId)
+      ) {
         priorityTarget = pt;
         priorityRadius = getTargetRadius(pt);
       }
@@ -649,8 +665,16 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const target = world.getEntity(weapon.target);
       let targetIsValid = false;
       let targetRadius = 0;
-      if (target?.unit && target.unit.hp > 0) { targetIsValid = true; targetRadius = target.unit.radius.shot; }
-      else if (target?.building && target.building.hp > 0) { targetIsValid = true; targetRadius = getTargetRadius(target); }
+      if (
+        target?.unit &&
+        target.unit.hp > 0 &&
+        canPlayerObserveCloakedEntity(world, target, playerId)
+      ) { targetIsValid = true; targetRadius = target.unit.radius.shot; }
+      else if (
+        target?.building &&
+        target.building.hp > 0 &&
+        canPlayerObserveCloakedEntity(world, target, playerId)
+      ) { targetIsValid = true; targetRadius = getTargetRadius(target); }
 
       // Per-tick re-validation of an existing lock. For passive
       // (mirror) weapons we only require that the enemy still has a

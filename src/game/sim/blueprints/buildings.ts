@@ -7,7 +7,11 @@
  */
 
 import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingType, ResourceCost } from '../types';
-import type { BuildingTurretMount, EntityHudBlueprint } from '../../../types/blueprints';
+import type {
+  BuildingTurretMount,
+  DetectorBlueprint,
+  EntityHudBlueprint,
+} from '../../../types/blueprints';
 import {
   EXTRACTOR_METAL_PER_SECOND,
   METAL_DEPOSIT_RESOURCE_CELLS,
@@ -39,6 +43,7 @@ export type BuildingBlueprint = {
    *  Building mount coordinates are absolute world units relative to
    *  the building center/base, not body-radius fractions like units. */
   turrets?: BuildingTurretMount[];
+  detector?: DetectorBlueprint;
 };
 
 export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
@@ -197,6 +202,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     hud: {
       barsOffsetAboveTop: 16,
     },
+    detector: { radius: 1800 },
   },
   megaBeamTower: {
     id: 'megaBeamTower',
@@ -271,6 +277,14 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   ) {
     throw new Error(
       `Invalid building blueprint ${id}: HUD barsOffsetAboveTop must be finite`,
+    );
+  }
+  if (
+    blueprint.detector &&
+    (!Number.isFinite(blueprint.detector.radius) || blueprint.detector.radius <= 0)
+  ) {
+    throw new Error(
+      `Invalid building blueprint ${id}: detector radius must be positive`,
     );
   }
   if (blueprint.turrets) {
