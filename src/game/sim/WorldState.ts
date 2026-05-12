@@ -149,6 +149,15 @@ export class WorldState {
    *  per-listener "have I shipped this yet?" tracking compares against
    *  this sum to skip resending the full bitmap on every keyframe. */
   public shroudBitmapVersions: Map<PlayerId, number> = new Map();
+  /** Bitmask of player ids whose shroud bitmap actively feeds at least
+   *  one snapshot listener's team-merged view (issues.txt FOW-OPT-12).
+   *  Maintained by GameServer on listener add / remove: each listener
+   *  contributes its own player + every ally to the mask. Bit p-1
+   *  set ⇒ updateShroudBitmaps runs the OR pass for player p. When
+   *  the mask is 0, no listener cares about any team's shroud and the
+   *  whole routine no-ops. AI-only / background / spectator-only
+   *  sessions hit this fast path naturally. */
+  public shroudUpdatePlayerMask: number = 0;
   /** Bitmap cell dimensions for shroudBitmaps. Sized at construction
    *  so a scenario change (different map size) gets the right grid. */
   public readonly shroudGridW: number;

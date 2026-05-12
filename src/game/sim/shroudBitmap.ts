@@ -36,15 +36,25 @@ const UPDATE_EVERY_N_TICKS = 6;
  *  vision source never owns one. Bumps the player's
  *  shroudBitmapVersions counter whenever at least one new cell
  *  flipped 0→1 so the publisher can detect "nothing changed since
- *  the last ship" (issues.txt FOW-OPT-02). */
+ *  the last ship" (issues.txt FOW-OPT-02).
+ *
+ *  FOW-OPT-12: walks only player ids set in world.shroudUpdatePlayerMask
+ *  (recipient + allies for every connected listener). Players whose
+ *  bitmap won't feed a listener's team-view skip the OR pass entirely;
+ *  AI-only / background / spectator-only sessions hit a zero-mask
+ *  no-op. */
 export function updateShroudBitmaps(world: WorldState, tick: number): void {
   if (!world.fogOfWarEnabled) return;
   if (tick % UPDATE_EVERY_N_TICKS !== 0) return;
-
-  for (let playerId = 1; playerId <= world.playerCount; playerId++) {
+  let pending = world.shroudUpdatePlayerMask;
+  if (pending === 0) return;
+  const gridW = world.shroudGridW;
+  const gridH = world.shroudGridH;
+  while (pending !== 0) {
+    const lowBit = pending & -pending;
+    const playerId = (32 - Math.clz32(lowBit)) as PlayerId;
+    pending ^= lowBit;
     let bitmap = world.shroudBitmaps.get(playerId);
-    const gridW = world.shroudGridW;
-    const gridH = world.shroudGridH;
     if (!bitmap) {
       bitmap = new Uint8Array(gridW * gridH);
       world.shroudBitmaps.set(playerId, bitmap);

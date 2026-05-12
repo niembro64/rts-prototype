@@ -111,35 +111,12 @@ per-snapshot cost or wire bandwidth.
   circuit on bounding-box overlap before LOS, or share LOS results
   across recipients on the same team via a per-snapshot cache.
 
-[FOW-OPT-11] Shroud bitmap recomputed per recipient even when teams
-  are static. buildRecipientShroudView builds a fresh ORed Uint8Array
-  per recipient. Two teammates on the same team always get an
-  identical bitmap. Cache per (sorted ally-id tuple) → bitmap inside
-  a single snapshot publish so a 2-vs-2 game does 2 ORs instead of 4.
-
-[FOW-OPT-12] markCircle in shroudBitmap.ts uses a per-cell distance
-  test (same issue as FOW-OPT-05). Plus updateShroudBitmaps iterates
-  every player from 1..world.playerCount even when many players have
-  no connected listener — wasted work for players whose bitmap won't
-  ship. Skip per-player update unless a listener for that team
-  exists.
-
 [FOW-OPT-13] Closure allocations per serializeGameState call. The
   function builds fresh `acceptsEntity`, `forgetTrackedEntity`, and
   `processRemovedEntities` arrow functions every call (per recipient
   per snapshot, so several times per tick). Lifting them to module
   scope and threading `tracking` / `visibility` / buffers through
   parameters eliminates the per-snapshot closure GC.
-
-[FOW-OPT-14] shouldSendProjectileSideChannel still uses
-  `ownerId === recipientPlayerId` instead of the team-aware
-  isOwnedByRecipientOrAlly. Allied projectiles end up on the
-  observed (lower-frequency) update stride instead of the owned
-  stride, defeating the FOW-06 team-vision invariant for projectile
-  smoothness. Small fix: change the check to
-  `visibility.isOwnedByRecipientOrAlly(ownerId)` and drop the unused
-  `_recipientPlayerId` parameter from the three sibling
-  shouldSendProjectile* helpers.
 
 [FOW-OPT-15] getEntityFullVisionRadius recomputes max(unit radius,
   turret ranges, builder range) on every call. SnapshotVisibility

@@ -424,7 +424,6 @@ export function serializeGameState(
     world,
     deltaEnabled,
     tick,
-    recipientPlayerId,
     visibility,
     projectileSpawns,
     projectileDespawns,

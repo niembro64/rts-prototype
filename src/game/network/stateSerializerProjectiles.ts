@@ -44,7 +44,6 @@ export type SerializeProjectileSnapshotOptions = {
   world: WorldState;
   deltaEnabled: boolean;
   tick: number;
-  recipientPlayerId?: PlayerId;
   visibility?: SnapshotVisibility;
   projectileSpawns?: ProjectileSpawnEvent[];
   projectileDespawns?: ProjectileDespawnEvent[];
@@ -216,12 +215,22 @@ function getPooledVelocityUpdate(): PooledVelocityUpdate {
   return update;
 }
 
+/** Pick the owned vs observed projectile update stride for this
+ *  recipient. FOW-OPT-14 broadens the owned-side check from a bare
+ *  ownerId === recipientPlayerId equality to the team-aware
+ *  isOwnedByRecipientOrAlly: under FOW-06, allied projectiles should
+ *  ride the smoother owned-stride update cadence — otherwise a
+ *  teammate's missile arc snaps along at the lower-rate observed
+ *  stride from the local player's POV, defeating the team-vision
+ *  invariant. Falls back to the owned stride when no visibility is
+ *  present (admin / spectator observers see everything as theirs). */
 function shouldSendProjectileSideChannel(
   ownerId: PlayerId | undefined,
-  recipientPlayerId: PlayerId | undefined,
+  visibility: SnapshotVisibility | undefined,
   tick: number,
 ): boolean {
-  const rawStride = recipientPlayerId === undefined || ownerId === recipientPlayerId
+  const ownedStride = !visibility || visibility.isOwnedByRecipientOrAlly(ownerId);
+  const rawStride = ownedStride
     ? SNAPSHOT_CONFIG.ownedProjectileUpdateStride
     : SNAPSHOT_CONFIG.observedProjectileUpdateStride;
   const stride = Math.max(1, Math.floor(rawStride));
@@ -230,7 +239,6 @@ function shouldSendProjectileSideChannel(
 
 function shouldSendProjectileAtPoint(
   ownerId: PlayerId | undefined,
-  _recipientPlayerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
   x: number,
   y: number,
@@ -255,7 +263,6 @@ function shouldSendProjectileAtPoint(
 
 function shouldSendBeamPath(
   ownerId: PlayerId | undefined,
-  _recipientPlayerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
   points: ReadonlyArray<{ x: number; y: number }>,
 ): boolean {
@@ -275,7 +282,6 @@ function shouldSendBeamPath(
 
 function shouldSendProjectileSpawnEvent(
   spawn: ProjectileSpawnEvent,
-  _recipientPlayerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
   world: WorldState,
 ): boolean {
@@ -317,7 +323,6 @@ export function serializeProjectileSnapshot({
   world,
   deltaEnabled,
   tick,
-  recipientPlayerId,
   visibility,
   projectileSpawns,
   projectileDespawns,
@@ -336,7 +341,7 @@ export function serializeProjectileSnapshot({
     if (projectileSpawns) {
       for (let i = 0; i < tickSpawnCount; i++) {
         const ps = projectileSpawns[i];
-        if (!shouldSendProjectileSpawnEvent(ps, recipientPlayerId, visibility, world)) continue;
+        if (!shouldSendProjectileSpawnEvent(ps, visibility, world)) continue;
         const out = getPooledProjectileSpawn();
         out.id = ps.id;
         out._pos.x = ps.pos.x;
@@ -390,7 +395,6 @@ export function serializeProjectileSnapshot({
         if (
           !shouldSendProjectileAtPoint(
             proj.ownerId,
-            recipientPlayerId,
             visibility,
             entity.transform.x,
             entity.transform.y,
@@ -469,11 +473,10 @@ export function serializeProjectileSnapshot({
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
       const projectile = world.getEntity(vu.id)?.projectile;
-      if (!shouldSendProjectileSideChannel(projectile?.ownerId, recipientPlayerId, tick)) continue;
+      if (!shouldSendProjectileSideChannel(projectile?.ownerId, visibility, tick)) continue;
       if (
         !shouldSendProjectileAtPoint(
           projectile?.ownerId,
-          recipientPlayerId,
           visibility,
           vu.pos.x,
           vu.pos.y,
@@ -504,10 +507,10 @@ export function serializeProjectileSnapshot({
       const entity = lineProjectiles[i];
       const proj = entity.projectile;
       if (!proj) continue;
-      if (!shouldSendProjectileSideChannel(proj.ownerId, recipientPlayerId, tick)) continue;
+      if (!shouldSendProjectileSideChannel(proj.ownerId, visibility, tick)) continue;
       const srcPts = proj.points;
       if (!srcPts || srcPts.length < 2) continue;
-      if (!shouldSendBeamPath(proj.ownerId, recipientPlayerId, visibility, srcPts)) continue;
+      if (!shouldSendBeamPath(proj.ownerId, visibility, srcPts)) continue;
 
       const update = getPooledBeamUpdate();
       update.id = entity.id;

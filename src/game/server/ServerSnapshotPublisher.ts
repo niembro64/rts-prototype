@@ -15,13 +15,29 @@ import {
   createSnapshotVisibilityCache,
   getOrBuildVisibility,
   serializeShroudPayload,
+  SnapshotVisibility,
 } from '../network/stateSerializerVisibility';
 import { computeTeamShroudVersionSum } from '../sim/shroudBitmap';
+import type { NetworkServerSnapshotShroud } from '../../types/network';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
 import type { CaptureSystem } from '../sim/CaptureSystem';
 import type { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerSnapshotMetaBuilder } from './ServerSnapshotMetaBuilder';
+
+/** Per-emit cache slot for a team's shroud payload (issues.txt
+ *  FOW-OPT-11). Two teammates on the same team always merge the
+ *  same per-player bitmaps into the same packed wire payload, so
+ *  building it once per team per emit replaces N builds with 1.
+ *  versionSum is the cheap team-wide invalidation signal — cached
+ *  on entry to avoid recomputing it for each teammate. payload is
+ *  built lazily so the first teammate to *need* it triggers the OR
+ *  + pack work; later teammates share the same Uint8Array. */
+type ShroudPayloadCacheEntry = {
+  versionSum: number;
+  payload: NetworkServerSnapshotShroud | undefined;
+  built: boolean;
+};
 
 export type SnapshotListenerEntry = {
   callback: SnapshotCallback;
@@ -151,6 +167,12 @@ export class ServerSnapshotPublisher {
     // we'd rebuild the same structure once per listener.
     const visibilityCache = createSnapshotVisibilityCache();
 
+    // Per-team shroud cache (issues.txt FOW-OPT-11). One slot per
+    // team-mask key; the build cost (OR ally bitmaps + bit-pack) runs
+    // once per team per emit, then every teammate's listener reuses
+    // the same packed Uint8Array.
+    const shroudPayloadCache = new Map<string, ShroudPayloadCacheEntry>();
+
     const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
       const forceKeyframe = listener.forceKeyframe === true;
       const listenerIsDelta = isDelta && !forceKeyframe;
@@ -204,19 +226,37 @@ export class ServerSnapshotPublisher {
       // listener (FOW-OPT-02). The version sum monotonically increases
       // whenever any allied player explores a new cell — when it
       // matches what we last sent, the merged bitmap is identical and
-      // the client's local OR pass has kept it current.
+      // the client's local OR pass has kept it current. The actual
+      // OR + pack work is deduplicated per team across teammates
+      // (FOW-OPT-11) via shroudPayloadCache.
       state.shroud = undefined;
       if (
         !listenerIsDelta &&
         listener.playerId !== undefined &&
         input.world.fogOfWarEnabled
       ) {
-        const versionSum = computeTeamShroudVersionSum(input.world, listener.playerId);
-        if (versionSum !== listener.lastSentShroudVersionSum) {
-          const payload = serializeShroudPayload(input.world, listener.playerId);
-          if (payload) {
-            state.shroud = payload;
-            listener.lastSentShroudVersionSum = versionSum;
+        const teamKey = SnapshotVisibility.teamCacheKey(input.world, listener.playerId);
+        if (teamKey !== undefined) {
+          let entry = shroudPayloadCache.get(teamKey);
+          if (!entry) {
+            entry = {
+              versionSum: computeTeamShroudVersionSum(input.world, listener.playerId),
+              payload: undefined,
+              built: false,
+            };
+            shroudPayloadCache.set(teamKey, entry);
+          }
+          if (entry.versionSum !== listener.lastSentShroudVersionSum) {
+            if (!entry.built) {
+              entry.payload = entry.versionSum !== 0
+                ? serializeShroudPayload(input.world, listener.playerId)
+                : undefined;
+              entry.built = true;
+            }
+            if (entry.payload) {
+              state.shroud = entry.payload;
+              listener.lastSentShroudVersionSum = entry.versionSum;
+            }
           }
         }
       }
