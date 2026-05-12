@@ -103,15 +103,20 @@ Mismatches with the canonical model (each a discrete issue below):
   acceptable for an admin/observer but means there is no path to "spectate
   as if you were Player N" for casting / replays.
 
-[FOW-08-followup] Phantom damage from non-targeted sources still
-  silent. Targeted projectile spawns now forward to the recipient when
-  their entity is the target (the player sees the incoming arc even
-  from a fog-hidden attacker), but splash / area / beam / homing
-  in-flight updates fired from fog still aren't reported. Beams in
-  particular hit the player's unit without flashing. A more general
-  fix is the Starcraft-style "ping the source" — emit a one-shot
-  reveal event at the attacker's position when damage lands on a
-  recipient-owned entity, regardless of weapon type.
+[FOW-08-followup] Splash / area damage from fog still produces a
+  silent HP drop with no visual. Beams and homing projectiles now
+  forward when EITHER endpoint of the beam is visible to the
+  recipient OR when a homing projectile is locked onto one of the
+  recipient's entities, so a laser landing on the player's tank
+  flashes the beam line from the (still-shrouded) attacker, and an
+  incoming missile veering toward the player's unit shows up in
+  flight. Remaining gap: dumb / un-homed projectiles flying out of
+  fog and landing splash on the recipient still arrive only as the
+  hit event at the impact point — no incoming arc, since the
+  projectile isn't homing and the spawn fell inside the shroud.
+  Fixing the splash case will likely need either an explicit
+  "victimPlayerIds" channel on hit events, or a Starcraft-style ping
+  at the attacker position emitted from the damage system.
 
 [FOW-09] Audio reveal is binary on vision (PREREQ: 3D audio not wired
   yet). serializeAudioEvents already filters by full vision, but the
@@ -133,17 +138,3 @@ Mismatches with the canonical model (each a discrete issue below):
   reveals an arbitrary area for a fixed duration (Starcraft scanner
   sweep, Supreme Commander recon drone). All vision today is tied to
   a long-lived entity.
-
-[CLOSED FOW-17] Killer recipient now receives the death event even
-  when the corpse position is outside their full vision. DamageSystem
-  stamps killerPlayerIds on the DamageResult; damageHelpers threads it
-  through buildUnitDeathEvent / buildBuildingDeathEvent so the SimEvent
-  carries the killer's playerId. stateSerializerAudio uses the new
-  SnapshotVisibility.shouldSendKillCredit() helper to keep the death
-  event in the recipient's per-tick audio stream regardless of vision.
-  The 3D scene's existing handleSimEvent3D death branch already
-  reconstructs a fallback deathContext when the entity isn't in the
-  client view state, so the killer sees the explosion / debris at the
-  exact death position without leaking the rest of the snapshot.
-  Synthetic deaths (Simulation.emitSyntheticDeathEvent) leave the field
-  undefined, which is correct — no killer to credit.

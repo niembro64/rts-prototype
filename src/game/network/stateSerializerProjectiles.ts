@@ -234,10 +234,21 @@ function shouldSendProjectileAtPoint(
   visibility: SnapshotVisibility | undefined,
   x: number,
   y: number,
+  homingTargetId?: number,
+  world?: WorldState,
 ): boolean {
   if (!visibility || !visibility.isFiltered) return true;
   if (ownerId !== undefined && ownerId === recipientPlayerId) return true;
-  return visibility.isPointVisible(x, y);
+  if (visibility.isPointVisible(x, y)) return true;
+  // FOW-08-followup: forward in-flight updates when the projectile is
+  // homing on one of the recipient's own entities, so the player at
+  // least sees the missile veering toward their unit instead of
+  // taking a silent HP drop from an attacker still hidden in fog.
+  if (homingTargetId !== undefined && world) {
+    const target = world.getEntity(homingTargetId);
+    if (target?.ownership?.playerId === recipientPlayerId) return true;
+  }
+  return false;
 }
 
 function shouldSendBeamPath(
@@ -248,8 +259,16 @@ function shouldSendBeamPath(
 ): boolean {
   if (!visibility || !visibility.isFiltered) return true;
   if (ownerId !== undefined && ownerId === recipientPlayerId) return true;
+  // FOW-08-followup: forward the beam if EITHER end is visible. A
+  // laser fired from fog that lands on the recipient's unit now
+  // flashes for them — the source still falls inside the shroud, but
+  // the beam line is drawn from the (still-shrouded) attacker toward
+  // the visible endpoint, so the player can see the direction of
+  // fire rather than HP melting from nothing.
   const sourcePoint = points[0];
-  return visibility.isPointVisible(sourcePoint.x, sourcePoint.y);
+  if (visibility.isPointVisible(sourcePoint.x, sourcePoint.y)) return true;
+  const endPoint = points[points.length - 1];
+  return visibility.isPointVisible(endPoint.x, endPoint.y);
 }
 
 function shouldSendProjectileSpawnEvent(
@@ -373,6 +392,8 @@ export function serializeProjectileSnapshot({
             visibility,
             entity.transform.x,
             entity.transform.y,
+            proj.homingTargetId,
+            world,
           )
         ) {
           continue;
@@ -454,6 +475,8 @@ export function serializeProjectileSnapshot({
           visibility,
           vu.pos.x,
           vu.pos.y,
+          projectile?.homingTargetId,
+          world,
         )
       ) {
         continue;
