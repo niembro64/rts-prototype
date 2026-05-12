@@ -260,9 +260,9 @@ export const TURRET_BLUEPRINTS = {
   salvoRocketTurret: {
     id: 'salvoRocketTurret',
     projectileId: 'lightRocket',
-    range: 700,
+    range: 800,
     cooldown: 2000,
-    launchForce: 400,
+    launchForce: 500,
     turretTurnAccel: 200,
     turretDrag: 0.15,
     barrel: {
@@ -282,7 +282,10 @@ export const TURRET_BLUEPRINTS = {
       spin: { idle: 2, max: 10, accel: 10, decel: 5 },
     },
     rangeMultiplierOverrides: fireEnvelope({
-      engageRangeMin: RANGE_FIRE_MIN,
+      engageRangeMin: {
+        acquire: 0.6,
+        release: 0.55,
+      },
       trackingRange: null,
     }),
     eventsSmooth: false,
