@@ -19,7 +19,11 @@ import { serializeGridSnapshot } from './stateSerializerGrid';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 import { serializeProjectileSnapshot } from './stateSerializerProjectiles';
 import { serializeSprayTargets } from './stateSerializerSpray';
-import { SnapshotVisibility, serializeScanPulses } from './stateSerializerVisibility';
+import {
+  SnapshotVisibility,
+  serializeScanPulses,
+  serializeShroudPayload,
+} from './stateSerializerVisibility';
 import {
   SNAPSHOT_DIRTY_FORCE_FIELDS,
   aoiRemovedEntityIdsBuf as _aoiRemovedIdsBuf,
@@ -411,6 +415,14 @@ export function serializeGameState(
 
   const netScanPulses = serializeScanPulses(world, visibility);
 
+  // FOW-11: keyframes ship the recipient's team-merged shroud bitmap
+  // so reconnects / replays / mid-game joins can seed
+  // FogOfWarShroudRenderer3D from the authoritative record. Skipped
+  // on deltas — the client's local OR pass keeps up between keyframes.
+  const netShroud = !deltaEnabled && recipientPlayerId !== undefined && world.fogOfWarEnabled
+    ? serializeShroudPayload(world, recipientPlayerId)
+    : undefined;
+
   const netProjectiles = serializeProjectileSnapshot({
     world,
     deltaEnabled,
@@ -436,6 +448,7 @@ export function serializeGameState(
   _snapshotBuf.sprayTargets = netSprayTargets;
   _snapshotBuf.audioEvents = netAudioEvents;
   _snapshotBuf.scanPulses = netScanPulses;
+  _snapshotBuf.shroud = netShroud;
   _snapshotBuf.projectiles = netProjectiles;
   _snapshotBuf.gameState = _gameStateBuf;
   _snapshotBuf.grid = netGrid;

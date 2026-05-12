@@ -88,13 +88,3 @@ What our project currently has:
 
 Mismatches with the canonical model (each a discrete issue below):
 
-[FOW-11] Vision history is client-only. FogOfWarShroudRenderer3D
-  already tracks a per-tile revealed bitmap for the local player and
-  renders three-state shroud (unexplored / explored-dark / currently
-  visible), so the canonical RTS model is in place visually. The
-  authoritative side, however, has no record — mid-game joins, replays,
-  and reconnects all start with a blank shroud, and a tampered client
-  could pretend to have explored more than it actually did. Future
-  enhancement: mirror the per-player revealed bitmap on the server and
-  ship the keyframe diff so reconnects restore their map state.
-

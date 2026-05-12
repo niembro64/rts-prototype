@@ -336,6 +336,18 @@ export type NetworkServerSnapshotSimEvent = {
   audioOnly?: boolean;
 };
 
+/** Wire shape for the FOW-11 keyframe shroud payload. cellSize is
+ *  echoed for forwards-compat — clients can render at any resolution
+ *  by resampling. The bitmap is row-major, gridW × gridH bytes; 0 =
+ *  never explored, 1 = ever explored. Already team-merged
+ *  (recipient + allies) on the server. */
+export type NetworkServerSnapshotShroud = {
+  gridW: number;
+  gridH: number;
+  cellSize: number;
+  bitmap: Uint8Array;
+};
+
 /** Wire shape for an active scan pulse (FOW-14). Only the geometric
  *  info the client needs to draw vision through the shroud — the
  *  authoritative TTL stays on the server, but a copy of expiresAtTick
@@ -502,6 +514,14 @@ export type NetworkServerSnapshot = {
    *  does around a unit's vision circle. Omitted when no pulses are
    *  live for the recipient's team. */
   scanPulses?: NetworkServerSnapshotScanPulse[];
+  /** Authoritative explored-tile bitmap for this recipient
+   *  (FOW-11). One byte per (cellSize × cellSize) cell, 0 = never
+   *  explored, 1 = ever explored. Sent on keyframes only — the
+   *  client OR-s its local bitmap with this so a mid-game join /
+   *  reconnect restores the dark-shroud history that local vision
+   *  tracking alone can't reconstruct. Already team-merged on the
+   *  server (recipient + allies). */
+  shroud?: NetworkServerSnapshotShroud;
   projectiles?: {
     spawns?: NetworkServerSnapshotProjectileSpawn[];
     despawns?: NetworkServerSnapshotProjectileDespawn[];

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, PlayerId } from '../sim/types';
+import type { NetworkServerSnapshotShroud } from '../network/NetworkTypes';
 import {
   canEntityProvideVision,
   getEntityVisionRadius,
@@ -129,6 +130,15 @@ export class FogOfWarShroudRenderer3D {
       this.updateAccumMs = UPDATE_INTERVAL_MS;
     }
 
+    // FOW-11: fold any authoritative bitmap from the latest keyframe
+    // into the local revealed array BEFORE the live OR pass. The
+    // server's record covers anything the recipient (and their
+    // allies) ever explored — a mid-game join / reconnect lands with
+    // a populated bitmap so the dark-shroud history shows up
+    // immediately, then live vision keeps it current.
+    const shroud = clientViewState.consumePendingShroud();
+    if (shroud) this.applyServerShroud(shroud);
+
     this.updateAccumMs += deltaMs;
     if (this.updateAccumMs < UPDATE_INTERVAL_MS) return;
     this.updateAccumMs = 0;
@@ -137,6 +147,39 @@ export class FogOfWarShroudRenderer3D {
     this.markRevealed();
     this.paintAlphaMap();
     this.texture.needsUpdate = true;
+  }
+
+  /** OR the server-side shroud bitmap into the local revealed array.
+   *  Server cells map onto the local canvas pixels by nearest-cell
+   *  sampling — the two grids share their world-space mapping so a
+   *  reveal-anywhere flag in the server bitmap lights up the
+   *  corresponding canvas pixels regardless of resolution mismatch.
+   *  Never CLEARS pixels — explored history is monotonic from the
+   *  client's perspective. */
+  private applyServerShroud(shroud: NetworkServerSnapshotShroud): void {
+    const srcGridW = shroud.gridW;
+    const srcGridH = shroud.gridH;
+    const srcCell = shroud.cellSize;
+    const srcBits = shroud.bitmap;
+    const canvasW = this.canvas.width;
+    const canvasH = this.canvas.height;
+    const worldW = srcGridW * srcCell;
+    const worldH = srcGridH * srcCell;
+    for (let cy = 0; cy < canvasH; cy++) {
+      // Server bitmap rows run y=0 at world y=0; the local canvas
+      // flips Y on upload (texture.flipY=false + paint with
+      // 1 - sy/mapHeight), so sample the server row matching the
+      // SAME world Y as the canvas row.
+      const wy = ((canvasH - 1 - cy + 0.5) / canvasH) * worldH;
+      const sy = Math.min(srcGridH - 1, Math.max(0, Math.floor(wy / srcCell)));
+      const srcRow = sy * srcGridW;
+      const dstRow = cy * canvasW;
+      for (let cx = 0; cx < canvasW; cx++) {
+        const wx = ((cx + 0.5) / canvasW) * worldW;
+        const sx = Math.min(srcGridW - 1, Math.max(0, Math.floor(wx / srcCell)));
+        if (srcBits[srcRow + sx]) this.revealed[dstRow + cx] = 1;
+      }
+    }
   }
 
   destroy(): void {

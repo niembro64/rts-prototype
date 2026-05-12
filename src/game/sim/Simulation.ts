@@ -3,6 +3,7 @@ import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId, UnitAction } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { buildUnitDeathEvent, buildBuildingDeathEvent } from './combat/damageHelpers';
+import { updateShroudBitmaps } from './shroudBitmap';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
@@ -298,6 +299,11 @@ export class Simulation {
     // (issues.txt FOW-14). Done before commands so a new scan command
     // this tick lands in a clean list.
     this.world.pruneExpiredScanPulses(tick);
+
+    // FOW-11: OR live vision into each player's shroud bitmap. The
+    // routine sub-samples to UPDATE_EVERY_N_TICKS internally, so the
+    // unconditional call here is cheap.
+    updateShroudBitmaps(this.world, tick);
 
     // Process commands for this tick
     const cmdCtx: CommandContext = {

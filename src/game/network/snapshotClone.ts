@@ -290,6 +290,7 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.sprayTargets = undefined;
     this.snapshot.audioEvents = undefined;
     this.snapshot.scanPulses = undefined;
+    this.snapshot.shroud = undefined;
     this.snapshot.minimapEntities = undefined;
     this.snapshot.projectiles = undefined;
     this.snapshot.grid = undefined;
@@ -335,6 +336,14 @@ export class ReusableNetworkSnapshotCloner {
     dst.sprayTargets = this.copyArray(state.sprayTargets, this.sprayTargets, createSprayDto, copySprayInto);
     dst.audioEvents = this.copyArray(state.audioEvents, this.audioEvents, createSimEventDto, copySimEventInto);
     dst.scanPulses = this.copyArray(state.scanPulses, this.scanPulses, createScanPulseDto, copyScanPulseInto);
+    if (state.shroud) {
+      // Bitmaps are immutable references built freshly by the
+      // serializer (buildRecipientShroudView allocates per call) so a
+      // ref copy is safe — we don't need to deep-copy the byte array.
+      dst.shroud = state.shroud;
+    } else {
+      dst.shroud = undefined;
+    }
     if (state.projectiles) {
       this.projectiles.spawns = this.copyArray(state.projectiles.spawns, this.spawns, createSpawnDto, copySpawnInto);
       this.projectiles.despawns = this.copyDespawnArray(state.projectiles.despawns);

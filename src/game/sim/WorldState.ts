@@ -28,6 +28,13 @@ import { ENTITY_CHANGED_HP } from '../../types/network';
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
 
+/** Cell edge length (sim units) for the FOW-11 server-side shroud
+ *  bitmaps. Larger = cheaper to update but coarser shroud; smaller =
+ *  finer shroud edges but more cells per OR pass. 64 wu gives a
+ *  ~64×64 bitmap on a 4096-wu map — small enough that a full keyframe
+ *  ships in well under a kilobyte even before bit-packing. */
+export const SHROUD_CELL_SIZE = 64;
+
 /** Temporary vision pulse owned by a single player, contributing a
  *  full-vision source for the ticks between spawn and expiresAtTick.
  *  See WorldState.scanPulses. */
@@ -124,6 +131,21 @@ export class WorldState {
    *  reveal mid-sweep. */
   public scanPulses: ScanPulse[] = [];
 
+  /** Per-player explored-tile bitmap (issues.txt FOW-11). One
+   *  Uint8Array per player, sized shroudGridW × shroudGridH. A cell
+   *  byte is 1 once the player (or one of their allies) has ever had
+   *  a full-vision source covering it, and stays 1 forever. Server-
+   *  authoritative copy; clients receive a snapshot on keyframes and
+   *  seed FogOfWarShroudRenderer3D's local bitmap from it so
+   *  reconnects, replays, and mid-game joins restore the shroud
+   *  state. Updated lazily from updateShroudBitmaps() — the entries
+   *  are created on first vision touch, not at construction. */
+  public shroudBitmaps: Map<PlayerId, Uint8Array> = new Map();
+  /** Bitmap cell dimensions for shroudBitmaps. Sized at construction
+   *  so a scenario change (different map size) gets the right grid. */
+  public readonly shroudGridW: number;
+  public readonly shroudGridH: number;
+
   // Map dimensions
   public readonly mapWidth: number;
   public readonly mapHeight: number;
@@ -173,6 +195,8 @@ export class WorldState {
     this.rng = new SeededRNG(seed);
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+    this.shroudGridW = Math.max(1, Math.ceil(mapWidth / SHROUD_CELL_SIZE));
+    this.shroudGridH = Math.max(1, Math.ceil(mapHeight / SHROUD_CELL_SIZE));
   }
 
   /** Canonical ground-surface elevation at world point (x, y). One

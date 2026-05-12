@@ -1,7 +1,12 @@
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import type { NetworkServerSnapshotScanPulse } from '../../types/network';
+import type {
+  NetworkServerSnapshotScanPulse,
+  NetworkServerSnapshotShroud,
+} from '../../types/network';
 import { hasTerrainLineOfSight } from '../sim/combat/lineOfSight';
+import { SHROUD_CELL_SIZE } from '../sim/WorldState';
+import { buildRecipientShroudView } from '../sim/shroudBitmap';
 import {
   canEntityProvideDetection,
   getEntityDetectionPadding,
@@ -458,6 +463,24 @@ export function getEntityVisionRadius(entity: Entity): number {
 
 export function getEntityVisibilityPadding(entity: Entity): number {
   return getEntityDetectionPadding(entity);
+}
+
+/** Build the FOW-11 keyframe shroud payload for the given recipient,
+ *  team-merging with their allies. Returns undefined when the
+ *  recipient has no recorded history yet so the snapshot field stays
+ *  absent on the empty-keyframe-1 case. */
+export function serializeShroudPayload(
+  world: WorldState,
+  recipientPlayerId: PlayerId,
+): NetworkServerSnapshotShroud | undefined {
+  const view = buildRecipientShroudView(world, recipientPlayerId);
+  if (!view) return undefined;
+  return {
+    gridW: world.shroudGridW,
+    gridH: world.shroudGridH,
+    cellSize: SHROUD_CELL_SIZE,
+    bitmap: view,
+  };
 }
 
 /** Reusable buffer so we don't allocate per snapshot — the wire shape
