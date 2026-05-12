@@ -88,3 +88,183 @@ What our project currently has:
 
 Mismatches with the canonical model (each a discrete issue below):
 
+------------------------------------------------------------------------------
+ FOG OF WAR — performance, bandwidth, and architecture audit
+------------------------------------------------------------------------------
+
+Each item is a concrete optimization or a latent fragility found during the
+full-system audit. Ordered roughly by impact; the upper entries dominate
+per-snapshot cost or wire bandwidth.
+
+[FOW-OPT-01] SnapshotVisibility is rebuilt from scratch per recipient
+  every snapshot. ServerSnapshotPublisher loops listeners and calls
+  SnapshotVisibility.forRecipient(world, listener.playerId) inside the
+  per-recipient loop. The constructor iterates every unit + building
+  + scan pulse the recipient (and each ally) owns and inserts each
+  vision source into 1–3 spatial-hash maps. For N listeners with
+  shared teams the same player's sources are walked N times. Cost is
+  O(listeners × team-entities × cells-per-radius). Fix: cache one
+  visibility per *team* per snapshot (keyed by sorted ally-id tuple)
+  and share the same instance across listeners on that team. Allocate
+  the per-cell arrays once at server boot and clear by length=0
+  instead of `new Map()` each construction. Reusing the buckets would
+  also let us skip the per-construction Map of Maps allocation
+  entirely.
+
+[FOW-OPT-02] Shroud bitmap ships uncompressed full-frame on every
+  keyframe. NetworkServerSnapshotShroud carries gridW × gridH bytes
+  (4 KB on a 4096-wu map at SHROUD_CELL_SIZE=64) per recipient per
+  keyframe — and keyframes run several times per second. Two cheap
+  wins: (a) pack 1 bit per cell instead of 1 byte (8× reduction;
+  bitmap is monotonic-set, fits trivially), and (b) ship only on the
+  recipient's FIRST keyframe + when set bits actually change since
+  last ship. Once a client has the history, local OR keeps it
+  current; resending the whole bitmap every 3 seconds wastes most of
+  the audioEvents-equivalent bandwidth budget.
+
+[FOW-OPT-03] FogOfWarShroudRenderer3D.applyServerShroud is
+  O(canvasW × canvasH) with float divides per pixel. On the 512×192
+  canvas that's ~100k pixels each with two world-to-cell conversions.
+  Runs every keyframe even when the bitmap is identical to the
+  previous payload. Two paths: precompute the cx→sx / cy→sy lookup
+  tables once per shroud-grid change, OR use
+  `ctx.drawImage(serverCanvas, …)` with a tiny offscreen canvas
+  preloaded from the bitmap so the GPU handles the resample.
+
+[FOW-OPT-04] paintAlphaMap rewrites the entire canvas every
+  UPDATE_INTERVAL_MS (110 ms) regardless of whether anything moved.
+  Even on a static base with no unit motion the full-pixel pass +
+  putImageData runs at ~9 Hz. Cheap dirty-region tracking: hash the
+  source positions/radii at top of paint, skip if unchanged from last
+  paint. For real maps that don't change every tick this drops the
+  paint cost to near-zero.
+
+[FOW-OPT-05] markRevealed and shroudBitmap.markCircle both walk every
+  cell in the bounding box and test (dx²+dy²) ≤ r² per cell. A
+  scanline implementation (compute x-range per row from y, use
+  Uint8Array.fill on the row slice) is 3–5× faster for large radii
+  and avoids the per-cell multiply. Same algorithm shared between
+  client renderer + server bitmap module.
+
+[FOW-OPT-06] FogOfWarShroudRenderer3D.collectFrom walks the entire
+  unit list AND the entire building list each paint, filtering by
+  `entity.ownership?.playerId !== localPlayerId`. ClientViewState
+  already maintains per-player caches via EntityCacheManager
+  (getUnitsByPlayer is used server-side); expose the same on the
+  client and the per-frame iteration drops from O(all-entities) to
+  O(local-team-entities). Same fix applies to
+  BuildingEntityRenderer3D.refreshLocalVisionSources, which iterates
+  every entity each frame for the FOW-02a ghost-detection sweep.
+
+[FOW-OPT-07] Audio event pool has cross-recipient aliasing.
+  stateSerializerAudio.ts uses a module-global `audioBuf` and
+  `audioPool` reset to index 0 at the top of every serializeAudioEvents
+  call. ServerSnapshotPublisher calls it per-listener; each call
+  overwrites the previous recipient's pooled events in place. This is
+  only safe because msgpack encoding is synchronous before the next
+  listener's serialize runs. If the publisher ever batches snapshots
+  or holds references for late delivery (e.g. for the network-loss
+  retransmit path) the previous recipient's audio mutates underneath
+  it. Fix: per-tracking-key pool, or pass the buffer in instead of
+  reusing a singleton.
+
+[FOW-OPT-08] Earshot check is a second spatial query instead of a
+  single pass. serializeAudioEvents runs isPointVisible(x,y); when
+  that returns false, the FOW-09 branch then runs isPointWithinEarshot
+  which is the same spatial-hash lookup with a larger padding. Both
+  walk the same cell's source list. A single helper returning
+  "in-vision | in-earshot | out-of-range" via one bucket walk halves
+  the cost of every audio event from a fog-shrouded point — the
+  common case in big fights.
+
+[FOW-OPT-09] hasTerrainLineOfSight is called per candidate source
+  with no memoization. isEntityVisibleWithLos iterates every full
+  source whose cell could cover the target and runs a heightmap
+  raycast for each one that passes the distance check. For an enemy
+  unit inside the overlap of three of the recipient's tanks, the
+  same target z is raycast three times against the same heightmap.
+  Two caches help: (a) per-source memo within one
+  SnapshotVisibility (`source.id → first-target-tried-z` returns the
+  earlier answer), (b) early-out on the first hit, which already
+  exists — but the for-loop continues to add candidates after a hit.
+  Actually we DO early-return on first hit; the real waste is when
+  no source has LOS, then we always pay N raycasts. Could short-
+  circuit on bounding-box overlap before LOS, or share LOS results
+  across recipients on the same team via a per-snapshot cache.
+
+[FOW-OPT-10] viewPlayerIds is a Set<PlayerId>; the hot path
+  isOwnedByRecipientOrAlly does Set.has() in roughly every snapshot
+  serializer hot loop (entity visibility, ghost check, ownership
+  short-circuit, audio routing). PlayerIds are 1–31 by convention,
+  so the Set can be a number bitmask: `(this.viewMask & (1 <<
+  (playerId-1))) !== 0` is a single ALU op vs the hashmap probe.
+  Same pattern already used by ServerDebugGridPublisher.playerMask.
+
+[FOW-OPT-11] Shroud bitmap recomputed per recipient even when teams
+  are static. buildRecipientShroudView builds a fresh ORed Uint8Array
+  per recipient. Two teammates on the same team always get an
+  identical bitmap. Cache per (sorted ally-id tuple) → bitmap inside
+  a single snapshot publish so a 2-vs-2 game does 2 ORs instead of 4.
+
+[FOW-OPT-12] markCircle in shroudBitmap.ts uses a per-cell distance
+  test (same issue as FOW-OPT-05). Plus updateShroudBitmaps iterates
+  every player from 1..world.playerCount even when many players have
+  no connected listener — wasted work for players whose bitmap won't
+  ship. Skip per-player update unless a listener for that team
+  exists.
+
+[FOW-OPT-13] Closure allocations per serializeGameState call. The
+  function builds fresh `acceptsEntity`, `forgetTrackedEntity`, and
+  `processRemovedEntities` arrow functions every call (per recipient
+  per snapshot, so several times per tick). Lifting them to module
+  scope and threading `tracking` / `visibility` / buffers through
+  parameters eliminates the per-snapshot closure GC.
+
+[FOW-OPT-14] shouldSendProjectileSideChannel still uses
+  `ownerId === recipientPlayerId` instead of the team-aware
+  isOwnedByRecipientOrAlly. Allied projectiles end up on the
+  observed (lower-frequency) update stride instead of the owned
+  stride, defeating the FOW-06 team-vision invariant for projectile
+  smoothness. Small fix: change the check to
+  `visibility.isOwnedByRecipientOrAlly(ownerId)` and drop the unused
+  `_recipientPlayerId` parameter from the three sibling
+  shouldSendProjectile* helpers.
+
+[FOW-OPT-15] getEntityFullVisionRadius recomputes max(unit radius,
+  turret ranges, builder range) on every call. SnapshotVisibility
+  calls this once per source per construction (= per recipient per
+  snapshot), and the FogOfWarShroudRenderer3D calls it once per
+  source per paint. The values change only when an entity gains /
+  loses a turret or builder — which is never for static blueprints.
+  Cache the computed radius on the entity's combat / unit struct at
+  construction; invalidate only on blueprint reassign (rare).
+
+[FOW-OPT-16] Scan pulses are duplicated through two parallel paths.
+  WorldState.scanPulses is iterated by SnapshotVisibility.forRecipient
+  (vision source merge), by serializeScanPulses (wire serialization),
+  AND by shroudBitmap.revealForScanPulses (server-side history). The
+  three loops share the same filter logic ("does this pulse belong
+  to the recipient's team?"); could be one walk that produces all
+  three outputs. Same applies to the client side, where
+  collectSources iterates pulses and the shroud applies them.
+
+[FOW-OPT-17] paintAlphaMap radial-gradient pass overlays gradients
+  on top of the just-pushed ImageData. The base-coat putImageData
+  paints alphas across the WHOLE canvas, then the gradient pass
+  immediately overwrites pixels inside vision circles. With N
+  sources covering 20–40% of the canvas, that's 20–40% wasted base
+  pixels. Composite order alternative: paint base coat ONLY in
+  cells without an active source, OR skip the base coat entirely
+  and rely on the canvas's prior pixels for explored-dark state
+  (with dirty-region invalidation when revealed flips).
+
+[FOW-OPT-18] Shroud renderer's revealed[] array is sized to the
+  alphaMap canvas (192×512 pixels = 98k bytes). The server bitmap
+  is sized to the world grid (64×64 cells = 4k bytes). The
+  applyServerShroud resample is a fundamental mismatch — every
+  server cell maps to ~24 canvas pixels. Align the two: either
+  drop the canvas resolution to match the server grid (one alpha
+  per cell, GPU bilinear handles the rest) or raise the server
+  grid. Today both grids spend CPU on a translation step that
+  could be eliminated by sharing one resolution.
+
