@@ -153,34 +153,15 @@ Mismatches with the canonical model (each a discrete issue below):
   shooting from the south but can't see"). Our current setup gives no
   such hint.
 
-[FOW-10] No initial spawn reveal independent of vision. The starting
-  area is visible only because the commander stands there and provides
-  vision. If a future commander has zero starting vision (e.g., a
-  burrowed start), the player would see nothing at all. There is no
-  separate "reveal the spawn box at t=0" pass.
-
 [FOW-11] No persistent vision history. The server does not track which
   tiles a player has ever seen. Without this, EXPLORED-BUT-DARK cannot
   be implemented even if the renderer were added back, because there
   is no source of truth for "has player X ever seen tile (cx,cy)?".
 
-[FOW-12] Vision toggling forces a full keyframe per recipient. When the
-  host toggles fog mid-game, GameServer.forceNextSnapshotKeyframe makes
-  the next snapshot a keyframe for ALL listeners, not just per-recipient.
-  Acceptable today (toggle is rare) but worth documenting if/when
-  finer-grained reveal mechanics (scans, pings) land.
-
 [FOW-14] No "scan" / temporary reveal API. There is no command type that
   reveals an arbitrary area for a fixed duration (Starcraft scanner
   sweep, Supreme Commander recon drone). All vision today is tied to
   a long-lived entity.
-
-[FOW-15] Vision radius constants are file-scoped magic numbers. UNIT,
-  COMMANDER, BUILDING, RADAR radii live as `export const` at the top
-  of stateSerializerVisibility.ts. The radar value (4200) duplicates
-  the design intent expressed in DEMO_CONFIG.baseRings.radar but there
-  is no single declarative source — changing radar's effective coverage
-  means editing both files.
 
 [FOW-17] Dead-but-corpse entities don't appear in the test (hp > 0
   check filters them), but visible entity removals on death only emit
