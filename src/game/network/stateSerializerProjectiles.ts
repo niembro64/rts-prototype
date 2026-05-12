@@ -256,10 +256,23 @@ function shouldSendProjectileSpawnEvent(
   spawn: ProjectileSpawnEvent,
   recipientPlayerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
+  world: WorldState,
 ): boolean {
   if (!visibility || !visibility.isFiltered) return true;
   if (spawn.playerId === recipientPlayerId) return true;
-  return visibility.isPointVisible(spawn.pos.x, spawn.pos.y);
+  if (visibility.isPointVisible(spawn.pos.x, spawn.pos.y)) return true;
+  // FOW-08: forward the spawn when the shot is targeting one of the
+  // recipient's own entities. Without this, an attacker hidden in fog
+  // can land a kill on the player without the player ever seeing a
+  // projectile in flight — the unit just takes a silent HP drop. With
+  // this, the client renders the trail from (the still-shrouded)
+  // spawn position toward the player's unit, so the player at least
+  // sees the incoming arc and can guess the attacker's direction.
+  if (spawn.targetEntityId !== undefined) {
+    const target = world.getEntity(spawn.targetEntityId);
+    if (target?.ownership?.playerId === recipientPlayerId) return true;
+  }
+  return false;
 }
 
 function canReferenceEntityId(
@@ -302,7 +315,7 @@ export function serializeProjectileSnapshot({
     if (projectileSpawns) {
       for (let i = 0; i < tickSpawnCount; i++) {
         const ps = projectileSpawns[i];
-        if (!shouldSendProjectileSpawnEvent(ps, recipientPlayerId, visibility)) continue;
+        if (!shouldSendProjectileSpawnEvent(ps, recipientPlayerId, visibility, world)) continue;
         const out = getPooledProjectileSpawn();
         out.id = ps.id;
         out._pos.x = ps.pos.x;

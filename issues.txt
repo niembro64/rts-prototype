@@ -108,13 +108,15 @@ Mismatches with the canonical model (each a discrete issue below):
   acceptable for an admin/observer but means there is no path to "spectate
   as if you were Player N" for casting / replays.
 
-[FOW-08] Phantom damage from out-of-vision attackers. A projectile fired
-  by an invisible enemy is filtered out at spawn (shouldSendProjectileSpawnEvent
-  checks the spawn point). The simulation still resolves the damage
-  authoritatively, so the player's unit takes HP loss with no visible
-  projectile and no visible source. Standard RTS shows the impact + a
-  blood/spark effect and often briefly reveals the attacker (Starcraft's
-  "ping the source" behavior).
+[FOW-08-followup] Phantom damage from non-targeted sources still
+  silent. Targeted projectile spawns now forward to the recipient when
+  their entity is the target (the player sees the incoming arc even
+  from a fog-hidden attacker), but splash / area / beam / homing
+  in-flight updates fired from fog still aren't reported. Beams in
+  particular hit the player's unit without flashing. A more general
+  fix is the Starcraft-style "ping the source" — emit a one-shot
+  reveal event at the attacker's position when damage lands on a
+  recipient-owned entity, regardless of weapon type.
 
 [FOW-09] Audio reveal is binary on vision. Currently a sound event is
   only sent if its origin is in vision. Many RTS games play attenuated
