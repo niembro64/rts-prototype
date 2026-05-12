@@ -51,13 +51,15 @@ export function serializeAudioEvents(
   for (let i = 0; i < audioEvents.length; i++) {
     const source = audioEvents[i];
     if (visibility && !visibility.isPointVisible(source.pos.x, source.pos.y)) {
-      // FOW-17: forward death events to the killer's recipient even
-      // when they don't have vision of the corpse, so the player
-      // hearing the shot also hears the kill confirmation. Other
-      // event types stay strictly gated by vision.
-      if (source.type !== 'death' || !visibility.shouldSendKillCredit(source.killerPlayerId)) {
-        continue;
-      }
+      // FOW-17: forward death events to the killer's recipient (they
+      // still hear the kill confirmation even when the corpse is in
+      // fog). Also forward own pings: a player pinging a fog point
+      // must see their own marker — without this the audio gate
+      // silently drops it.
+      const authoredByRecipient =
+        (source.type === 'death' && visibility.isAuthoredByRecipient(source.killerPlayerId)) ||
+        (source.type === 'ping' && visibility.isAuthoredByRecipient(source.playerId));
+      if (!authoredByRecipient) continue;
     }
     const out = getPooledSimEvent();
     out.type = source.type;

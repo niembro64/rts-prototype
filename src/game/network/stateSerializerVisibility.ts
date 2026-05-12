@@ -180,17 +180,21 @@ export class SnapshotVisibility {
     return this.isPointVisible(record.x, record.y);
   }
 
-  /** True when the recipient should receive a death event purely
-   *  because they own the killer — even when the corpse position falls
-   *  outside their vision. Drives the FOW-17 kill-credit routing in
-   *  serializeAudioEvents: a sniper shooting an unseen target through
-   *  radar coverage still gets the death notification so they learn
-   *  the shot connected, instead of the target silently vanishing on
-   *  the other side of the map. */
-  shouldSendKillCredit(killerPlayerId: PlayerId | undefined): boolean {
+  /** True when the recipient authored the event and so should receive
+   *  it regardless of vision. Two callers:
+   *
+   *    - FOW-17 kill credit. Death SimEvents carry the killer's
+   *      playerId; passing that here keeps the death notification in
+   *      the killer's audio stream even when the corpse falls outside
+   *      their full vision (sniper through radar, off-screen splash).
+   *    - Own pings. Minimap pings author their own SimEvent with
+   *      playerId = the pinger; without this branch the audio
+   *      serializer's isPointVisible gate would drop a player's own
+   *      ping at a fog point. */
+  isAuthoredByRecipient(authorPlayerId: PlayerId | undefined): boolean {
     if (!this.isFiltered) return false;
-    if (killerPlayerId === undefined) return false;
-    return killerPlayerId === this.recipientPlayerId;
+    if (authorPlayerId === undefined) return false;
+    return authorPlayerId === this.recipientPlayerId;
   }
 
   private canSeeCloakedEntity(entity: Entity, padding: number): boolean {
