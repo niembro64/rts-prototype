@@ -232,10 +232,11 @@ export function serializeGameState(
         }
       }
       for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
-        // Fog hides the entity without proving it was removed. Keep the
-        // client's last-known copy, but forget the delta baseline so the
-        // next reveal sends a full entity even if the entity stayed static.
-        forgetTrackedEntity(_visibilityHiddenIdsBuf[i], false);
+        // Fog hides the entity from the recipient — emit a removal so the
+        // client drops it from its world. Once it re-enters vision the
+        // "new entities not yet tracked" pass below will send it back as a
+        // full entity snapshot.
+        forgetTrackedEntity(_visibilityHiddenIdsBuf[i], true);
       }
     }
 
