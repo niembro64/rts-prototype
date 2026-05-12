@@ -84,15 +84,6 @@ export function useGameCanvasShellDisplay({
   const clientBarVars = computed(() => barVars(BAR_THEMES.client));
 
   const battleLabel = computed(() => gameStarted.value ? 'REAL BATTLE' : 'DEMO BATTLE');
-  const battleLoadingTitle = computed(() =>
-    networkRole.value === 'client' ? 'Receiving Terrain' : 'Generating Terrain',
-  );
-  const battleLoadingDetail = computed(() =>
-    networkRole.value === 'host'
-      ? 'Waiting for every player to install the authoritative map.'
-      : 'Installing the authoritative map before simulation starts.',
-  );
-
   return {
     lobbyPlayerCount,
     networkStatus,
@@ -106,7 +97,5 @@ export function useGameCanvasShellDisplay({
     serverBarVars,
     clientBarVars,
     battleLabel,
-    battleLoadingTitle,
-    battleLoadingDetail,
   };
 }

@@ -6,6 +6,7 @@ import { BAR_THEMES, barVars } from '../barThemes';
 import CommanderAvatar from './CommanderAvatar.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarButton from './BarButton.vue';
+import LoadingEmblem from './LoadingEmblem.vue';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
@@ -34,9 +35,8 @@ const props = defineProps<{
   mirrorsEnabled: boolean;
   forceFieldsEnabled: boolean;
   forceFieldReflectionMode: ForceFieldReflectionMode;
+  fogOfWarEnabled: boolean;
   previewLoading: boolean;
-  previewLoadingTitle: string;
-  previewLoadingDetail: string;
 }>();
 
 const emit = defineEmits<{
@@ -55,6 +55,7 @@ const emit = defineEmits<{
   (e: 'setMirrorsEnabled', enabled: boolean): void;
   (e: 'setForceFieldsEnabled', enabled: boolean): void;
   (e: 'setForceFieldReflectionMode', mode: ForceFieldReflectionMode): void;
+  (e: 'setFogOfWarEnabled', enabled: boolean): void;
   (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
 }>();
@@ -133,6 +134,11 @@ function pickForceFields(enabled: boolean): void {
 function pickForceFieldReflectionMode(mode: ForceFieldReflectionMode): void {
   if (!props.isHost) return;
   emit('setForceFieldReflectionMode', mode);
+}
+
+function pickFogOfWar(enabled: boolean): void {
+  if (!props.isHost) return;
+  emit('setFogOfWarEnabled', enabled);
 }
 
 function unitShortName(unitType: string): string {
@@ -329,9 +335,7 @@ const terrainSectionVars = computed(() =>
           role="status"
           aria-live="polite"
         >
-          <div class="preview-loading-spinner"></div>
-          <div class="preview-loading-title">{{ previewLoadingTitle }}</div>
-          <div class="preview-loading-detail">{{ previewLoadingDetail }}</div>
+          <LoadingEmblem compact />
         </div>
       </div>
 
@@ -601,6 +605,12 @@ const terrainSectionVars = computed(() =>
                   :title="isHost ? 'Enable force-field turrets, force-field simulation, and force-field rendering' : 'Only the host can change battle settings'"
                   @click="pickForceFields(!forceFieldsEnabled)"
                 >FIELD</BarButton>
+                <BarButton
+                  size="large"
+                  :active="fogOfWarEnabled"
+                  :title="isHost ? 'Enable player vision, radar coverage, and fog-of-war rendering' : 'Only the host can change battle settings'"
+                  @click="pickFogOfWar(!fogOfWarEnabled)"
+                >FOG</BarButton>
                 <BarButton
                   v-for="opt in forceFieldReflectionOptions"
                   :key="opt.value"
@@ -872,29 +882,6 @@ const terrainSectionVars = computed(() =>
   background: rgba(5, 7, 10, 0.9);
   color: #edf3ff;
   text-align: center;
-}
-
-.preview-loading-spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid rgba(237, 243, 255, 0.18);
-  border-top-color: #80c7ff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.preview-loading-title {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.preview-loading-detail {
-  max-width: 360px;
-  color: rgba(237, 243, 255, 0.72);
-  font-size: 11px;
-  line-height: 1.3;
 }
 
 .title {

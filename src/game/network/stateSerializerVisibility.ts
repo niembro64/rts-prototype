@@ -1,12 +1,13 @@
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 
-const VISION_CELL_SIZE = 512;
-const UNIT_VISION_RADIUS = 1200;
-const COMMANDER_VISION_RADIUS = 1600;
-const BUILDING_VISION_RADIUS = 1000;
-const TURRET_VISION_PAD = 250;
-const BUILDER_VISION_PAD = 250;
+export const VISION_CELL_SIZE = 512;
+export const UNIT_VISION_RADIUS = 1200;
+export const COMMANDER_VISION_RADIUS = 1600;
+export const BUILDING_VISION_RADIUS = 1000;
+export const RADAR_VISION_RADIUS = 4200;
+export const TURRET_VISION_PAD = 250;
+export const BUILDER_VISION_PAD = 250;
 
 type VisionSource = {
   x: number;
@@ -33,9 +34,10 @@ export class SnapshotVisibility {
   }
 
   static forRecipient(world: WorldState, recipientPlayerId: PlayerId | undefined): SnapshotVisibility {
-    const visibility = new SnapshotVisibility(recipientPlayerId, world.mapWidth, world.mapHeight);
-    if (recipientPlayerId === undefined) return visibility;
-    visibility.addPlayerSources(world, recipientPlayerId);
+    const filteredPlayerId = world.fogOfWarEnabled ? recipientPlayerId : undefined;
+    const visibility = new SnapshotVisibility(filteredPlayerId, world.mapWidth, world.mapHeight);
+    if (filteredPlayerId === undefined) return visibility;
+    visibility.addPlayerSources(world, filteredPlayerId);
     return visibility;
   }
 
@@ -95,7 +97,7 @@ export class SnapshotVisibility {
       const source = sources[s];
       for (let i = 0; i < source.length; i++) {
         const entity = source[i];
-        if (!canProvideVision(entity)) continue;
+        if (!canEntityProvideVision(entity)) continue;
         this.addSource(entity.transform.x, entity.transform.y, getEntityVisionRadius(entity));
       }
     }
@@ -126,16 +128,18 @@ export class SnapshotVisibility {
   }
 }
 
-function canProvideVision(entity: Entity): boolean {
+export function canEntityProvideVision(entity: Entity): boolean {
   if (entity.unit) return entity.unit.hp > 0;
   if (entity.building) return entity.building.hp > 0;
   return false;
 }
 
-function getEntityVisionRadius(entity: Entity): number {
+export function getEntityVisionRadius(entity: Entity): number {
   let radius = entity.unit
     ? (entity.commander ? COMMANDER_VISION_RADIUS : UNIT_VISION_RADIUS)
-    : BUILDING_VISION_RADIUS;
+    : entity.buildingType === 'radar'
+      ? RADAR_VISION_RADIUS
+      : BUILDING_VISION_RADIUS;
 
   const turrets = entity.combat?.turrets;
   if (turrets) {
@@ -149,7 +153,7 @@ function getEntityVisionRadius(entity: Entity): number {
   return radius;
 }
 
-function getEntityVisibilityPadding(entity: Entity): number {
+export function getEntityVisibilityPadding(entity: Entity): number {
   if (entity.unit) {
     return Math.max(
       entity.unit.radius.body,

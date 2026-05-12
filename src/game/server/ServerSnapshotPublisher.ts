@@ -111,6 +111,7 @@ export class ServerSnapshotPublisher {
       mirrorsEnabled: input.world.mirrorsEnabled,
       forceFieldsEnabled: input.world.forceFieldsEnabled,
       forceFieldReflectionMode: input.world.forceFieldReflectionMode,
+      fogOfWarEnabled: input.world.fogOfWarEnabled,
       tickMsAvg: input.tickMsAvg,
       tickMsHi: input.tickMsHi,
       tickMsInitialized: input.tickMsInitialized,

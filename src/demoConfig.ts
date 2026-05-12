@@ -21,6 +21,9 @@ export const DEMO_CONFIG = {
   /** Number of cannon defense towers per player on the cannon tower ring. */
   cannonTowerCount: 4,
 
+  /** Number of radar towers per player on the sensor ring. */
+  radarCount: 2,
+
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the
    * 360°/N angular cycle) actually used for placing buildings
@@ -47,8 +50,9 @@ export const DEMO_CONFIG = {
     commander: { radiusFraction: 0.85 },
     solar: { radiusFraction: 0.8 },
     wind: { radiusFraction: 0.75 },
-    fabricator: { radiusFraction: 0.7 },
-    megaBeamTower: { radiusFraction: 0.65 },
+    radar: { radiusFraction: 0.71 },
+    fabricator: { radiusFraction: 0.67 },
+    megaBeamTower: { radiusFraction: 0.62 },
     cannonTower: { radiusFraction: 0.6 },
   },
 

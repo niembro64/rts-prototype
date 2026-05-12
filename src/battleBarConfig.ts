@@ -54,6 +54,7 @@ export const BATTLE_CONFIG = {
   },
   mirrorsEnabled: { default: true },
   forceFieldsEnabled: { default: true },
+  fogOfWarEnabled: { default: true },
   forceFieldReflectionMode: {
     default: 'both',
     options: [
@@ -101,11 +102,13 @@ export const BATTLE_MODE_DEFAULTS = {
   demo: {
     cap: DEMO_CAP_DEFAULT,
     grid: true,
+    fogOfWar: false,
     barsCollapsed: false,
   },
   real: {
     cap: REAL_CAP_DEFAULT,
     grid: false,
+    fogOfWar: true,
     barsCollapsed: false,
   },
 } as const;
@@ -144,6 +147,8 @@ const STORAGE_DEMO_MIRRORS_ENABLED = 'demo-battle-mirrors-enabled';
 const STORAGE_REAL_MIRRORS_ENABLED = 'real-battle-mirrors-enabled';
 const STORAGE_DEMO_FORCE_FIELDS_ENABLED = 'demo-battle-force-fields-enabled';
 const STORAGE_REAL_FORCE_FIELDS_ENABLED = 'real-battle-force-fields-enabled';
+const STORAGE_DEMO_FOG_OF_WAR_ENABLED = 'demo-battle-fog-of-war-enabled';
+const STORAGE_REAL_FOG_OF_WAR_ENABLED = 'real-battle-fog-of-war-enabled';
 const STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE = 'demo-battle-force-field-reflection-mode';
 const STORAGE_REAL_FORCE_FIELD_REFLECTION_MODE = 'real-battle-force-field-reflection-mode';
 const STORAGE_DEMO_TERRAIN_CENTER = 'demo-battle-terrain-center';
@@ -174,6 +179,7 @@ const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-real-grid', STORAGE_REAL_GRID],
   ['rts-mirrors-enabled', STORAGE_DEMO_MIRRORS_ENABLED],
   ['rts-force-fields-enabled', STORAGE_DEMO_FORCE_FIELDS_ENABLED],
+  ['rts-fog-of-war-enabled', STORAGE_DEMO_FOG_OF_WAR_ENABLED],
   ['rts-terrain-center', STORAGE_DEMO_TERRAIN_CENTER],
   ['rts-terrain-dividers', STORAGE_DEMO_TERRAIN_DIVIDERS],
   ['rts-terrain-map-shape', STORAGE_DEMO_TERRAIN_MAP_SHAPE],
@@ -323,6 +329,10 @@ export function getDefaultGrid(mode: BattleMode): boolean {
   return BATTLE_MODE_DEFAULTS[mode].grid;
 }
 
+export function getDefaultFogOfWar(mode: BattleMode): boolean {
+  return BATTLE_MODE_DEFAULTS[mode].fogOfWar;
+}
+
 /** Read a per-mode boolean. When `mode === 'real'` and the real
  *  key has never been written, falls back to the demo key (so a
  *  user's existing demo customizations seed real-battle on first
@@ -392,6 +402,24 @@ export function saveForceFieldsEnabled(enabled: boolean, mode: BattleMode): void
     mode === 'real'
       ? STORAGE_REAL_FORCE_FIELDS_ENABLED
       : STORAGE_DEMO_FORCE_FIELDS_ENABLED,
+    String(enabled),
+  );
+}
+
+export function loadStoredFogOfWarEnabled(mode: BattleMode): boolean {
+  return loadModeBool(
+    mode,
+    STORAGE_REAL_FOG_OF_WAR_ENABLED,
+    STORAGE_DEMO_FOG_OF_WAR_ENABLED,
+    BATTLE_MODE_DEFAULTS[mode].fogOfWar,
+  );
+}
+
+export function saveFogOfWarEnabled(enabled: boolean, mode: BattleMode): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_FOG_OF_WAR_ENABLED
+      : STORAGE_DEMO_FOG_OF_WAR_ENABLED,
     String(enabled),
   );
 }

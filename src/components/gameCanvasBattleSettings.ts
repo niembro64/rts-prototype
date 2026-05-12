@@ -2,10 +2,13 @@ import { computed, type ComputedRef, type Ref } from 'vue';
 import {
   BATTLE_CONFIG,
   getDefaultCap,
+  getDefaultFogOfWar,
   getDefaultDemoUnits,
+  loadStoredFogOfWarEnabled,
   saveForceFieldReflectionMode,
   saveDemoUnits,
   saveForceFieldsEnabled,
+  saveFogOfWarEnabled,
   saveMirrorsEnabled,
   saveStoredCap,
   type BattleMode,
@@ -20,12 +23,14 @@ export type GameCanvasBattleSettings = {
   currentMirrorsEnabled: ComputedRef<boolean>;
   currentForceFieldsEnabled: ComputedRef<boolean>;
   currentForceFieldReflectionMode: ComputedRef<ForceFieldReflectionMode>;
+  currentFogOfWarEnabled: ComputedRef<boolean>;
   toggleDemoUnitType(unitType: string): void;
   toggleAllDemoUnits(): void;
   changeMaxTotalUnits(value: number): void;
   setMirrorsEnabled(enabled: boolean): void;
   setForceFieldsEnabled(enabled: boolean): void;
   setForceFieldReflectionMode(mode: ForceFieldReflectionMode): void;
+  setFogOfWarEnabled(enabled: boolean): void;
   resetDemoDefaults(): void;
 };
 
@@ -66,6 +71,11 @@ export function useGameCanvasBattleSettings({
     () =>
       serverMetaFromSnapshot.value?.forceFieldReflectionMode ??
       BATTLE_CONFIG.forceFieldReflectionMode.default,
+  );
+  const currentFogOfWarEnabled = computed(
+    () =>
+      serverMetaFromSnapshot.value?.fogOfWarEnabled ??
+      loadStoredFogOfWarEnabled(currentBattleMode.value),
   );
 
   function toggleDemoUnitType(unitType: string): void {
@@ -125,6 +135,12 @@ export function useGameCanvasBattleSettings({
     saveForceFieldReflectionMode(mode, currentBattleMode.value);
   }
 
+  function setFogOfWarEnabled(enabled: boolean): void {
+    getActiveConnection()?.sendCommand({ type: 'setFogOfWarEnabled', tick: 0, enabled });
+    saveFogOfWarEnabled(enabled, currentBattleMode.value);
+    if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
+  }
+
   function resetDemoDefaults(): void {
     const defaultUnits = getDefaultDemoUnits();
     const defaultSet = new Set(defaultUnits);
@@ -141,6 +157,7 @@ export function useGameCanvasBattleSettings({
     setMirrorsEnabled(BATTLE_CONFIG.mirrorsEnabled.default);
     setForceFieldsEnabled(BATTLE_CONFIG.forceFieldsEnabled.default);
     setForceFieldReflectionMode(BATTLE_CONFIG.forceFieldReflectionMode.default);
+    setFogOfWarEnabled(getDefaultFogOfWar(currentBattleMode.value));
     resetTerrainDefaults();
     resetGridInfoToDefault();
     broadcastLobbySettingsIfHost();
@@ -152,12 +169,14 @@ export function useGameCanvasBattleSettings({
     currentMirrorsEnabled,
     currentForceFieldsEnabled,
     currentForceFieldReflectionMode,
+    currentFogOfWarEnabled,
     toggleDemoUnitType,
     toggleAllDemoUnits,
     changeMaxTotalUnits,
     setMirrorsEnabled,
     setForceFieldsEnabled,
     setForceFieldReflectionMode,
+    setFogOfWarEnabled,
     resetDemoDefaults,
   };
 }

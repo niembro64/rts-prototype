@@ -40,7 +40,12 @@ import {
 import {
   boxGeom,
   disposeBuildingMeshPrimitives,
+  detail,
+  hexCylinderGeom,
+  makeCylinder,
+  makeSphere,
 } from './BuildingMeshPrimitives3D';
+import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import {
   buildCannonTowerMesh,
   buildMegaBeamTowerMesh,
@@ -104,6 +109,14 @@ export type BuildingShape = {
 /** Default fallback block height for unknown buildings. */
 const DEFAULT_HEIGHT = DEFAULT_BUILDING_VISUAL_HEIGHT;
 
+const radarFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
+const radarDishMat = new THREE.MeshStandardMaterial({
+  color: BUILDING_PALETTE.structureLight,
+  metalness: 0.72,
+  roughness: 0.2,
+});
+const radarGlowMat = new THREE.MeshBasicMaterial({ color: BUILDING_PALETTE.cyanGlow });
+
 function shaderRgb(rgb: readonly [number, number, number]): string {
   return `vec3(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
@@ -153,6 +166,8 @@ export function buildBuildingShape(
       return buildFactoryMesh(width, depth, primaryMat);
     case 'extractor':
       return buildMetalExtractorMesh(width, depth, primaryMat);
+    case 'radar':
+      return buildRadarMesh(primaryMat);
     case 'megaBeamTower':
       return buildMegaBeamTowerMesh(primaryMat);
     case 'cannonTower':
@@ -170,6 +185,29 @@ function buildUnknown(primaryMat: THREE.Material): BuildingShape {
   return { primary, details: [], height: DEFAULT_HEIGHT };
 }
 
+function buildRadarMesh(primaryMat: THREE.Material): BuildingShape {
+  const primary = new THREE.Mesh(boxGeom, primaryMat);
+  const mast = makeCylinder(radarFrameMat, 8, 110, 0, 76, 0, hexCylinderGeom);
+  const hub = makeSphere(radarGlowMat, 12, 0, 120, 0);
+  const dish = makeCylinder(radarDishMat, 0.5, 1, 0, 126, -10, hexCylinderGeom);
+  dish.scale.set(58, 6, 46);
+  dish.rotation.x = Math.PI / 2.35;
+  const rim = makeCylinder(radarFrameMat, 0.5, 1, 0, 126, -11, hexCylinderGeom);
+  rim.scale.set(64, 4, 52);
+  rim.rotation.x = dish.rotation.x;
+
+  return {
+    primary,
+    height: 150,
+    details: [
+      detail(mast, 'low'),
+      detail(hub, 'low'),
+      detail(rim, 'medium'),
+      detail(dish, 'medium'),
+    ],
+  };
+}
+
 /** Tear down shared geometries + materials on renderer destroy. Callers
  *  (Render3DEntities.destroy) invoke once at app teardown. */
 export function disposeBuildingGeoms(): void {
@@ -178,5 +216,8 @@ export function disposeBuildingGeoms(): void {
   disposeMetalExtractorMeshGeoms();
   disposeFactoryMeshGeoms();
   disposeSolarCollectorGeoms();
+  radarFrameMat.dispose();
+  radarDishMat.dispose();
+  radarGlowMat.dispose();
   hazardStripeMat.dispose();
 }

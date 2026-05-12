@@ -41,6 +41,7 @@ export {
 
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
+const _visibilityHiddenIdsBuf: EntityId[] = [];
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
 const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
@@ -219,6 +220,25 @@ export function serializeGameState(
       }
     }
 
+    if (visibility.isFiltered) {
+      _visibilityHiddenIdsBuf.length = 0;
+      for (const id of tracking.prevEntityIds) {
+        const entity = world.getEntity(id);
+        if (!entity) continue;
+        if (entity.type !== 'unit' && entity.type !== 'building') continue;
+        if (!isEntityInsideAoi(entity, aoi, recipientPlayerId)) continue;
+        if (!visibility.isEntityVisible(entity)) {
+          _visibilityHiddenIdsBuf.push(id);
+        }
+      }
+      for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
+        // Fog hides the entity without proving it was removed. Keep the
+        // client's last-known copy, but forget the delta baseline so the
+        // next reveal sends a full entity even if the entity stayed static.
+        forgetTrackedEntity(_visibilityHiddenIdsBuf[i], false);
+      }
+    }
+
     const dirtyIds = options?.dirtyEntityIds;
     const dirtyFieldsList = options?.dirtyEntityFields;
     if (!dirtyIds) {
@@ -248,6 +268,27 @@ export function serializeGameState(
         const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);
         copyPrevState(next, prev);
+      }
+    }
+
+    if (visibility.isFiltered) {
+      const visibilitySources: ReadonlyArray<readonly Entity[]> = [
+        world.getUnits(),
+        world.getBuildings(),
+      ];
+      for (let s = 0; s < visibilitySources.length; s++) {
+        const source = visibilitySources[s];
+        for (let i = 0; i < source.length; i++) {
+          const entity = source[i];
+          if (tracking.prevEntityIds.has(entity.id)) continue;
+          if (!acceptsEntity(entity)) continue;
+          tracking.prevEntityIds.add(entity.id);
+          const next = getNextEntityState(entity);
+          const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
+          if (netEntity) _entityBuf.push(netEntity);
+          const prev = getPrevState(tracking, entity.id);
+          copyPrevState(next, prev);
+        }
       }
     }
   } else {

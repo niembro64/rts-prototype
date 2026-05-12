@@ -118,6 +118,8 @@ export class WorldState {
   public forceFieldsEnabled: boolean = DEFAULT_FORCE_FIELDS_ENABLED;
   // Which force-field boundary crossings reflect shots/beams.
   public forceFieldReflectionMode: ForceFieldReflectionMode = DEFAULT_FORCE_FIELD_REFLECTION_MODE;
+  // Whether player-specific snapshots and the client fog overlay use vision.
+  public fogOfWarEnabled: boolean = true;
   /** Optional server-side lifecycle hook. WorldState owns entity
    *  removal, but host-only systems such as physics own external
    *  resources that must be released before the entity disappears. */

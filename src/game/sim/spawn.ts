@@ -440,6 +440,10 @@ export function spawnInitialBases(
     spawnRadius,
     DEMO_CONFIG.baseRings.fabricator.radiusFraction,
   );
+  const radarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.radar.radiusFraction,
+  );
   const megaBeamTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.megaBeamTower.radiusFraction,
@@ -484,6 +488,12 @@ export function spawnInitialBases(
     entities.push(...placeArcRow(
       world, construction, 'wind', DEMO_CONFIG.windCount,
       oval, windRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+    ));
+
+    // Radar arc — long sensor coverage without adding more weapons.
+    entities.push(...placeArcRow(
+      world, construction, 'radar', DEMO_CONFIG.radarCount,
+      oval, radarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
     // Fabricator arc — one fabricator per available demo unit type.

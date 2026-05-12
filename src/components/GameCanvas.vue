@@ -11,6 +11,7 @@ import GameCanvasOverlays from './GameCanvasOverlays.vue';
 import GameCanvasBattleControlBar from './GameCanvasBattleControlBar.vue';
 import GameCanvasServerControlBar from './GameCanvasServerControlBar.vue';
 import GameCanvasClientControlBar from './GameCanvasClientControlBar.vue';
+import LoadingEmblem from './LoadingEmblem.vue';
 import type {
   GameCanvasBattleControlBarModel,
   GameCanvasClientControlBarModel,
@@ -137,8 +138,6 @@ const {
   serverBarVars,
   clientBarVars,
   battleLabel,
-  battleLoadingTitle,
-  battleLoadingDetail,
 } = useGameCanvasShellDisplay({
   isMobile,
   showLobby,
@@ -541,15 +540,6 @@ const displayServerTime = computed(
 const displayServerIp = computed(
   () => serverMetaFromSnapshot.value?.server.ip ?? '',
 );
-const loadingOverlayTitle = computed(() =>
-  rendererWarmupLoading.value ? 'Preparing Renderer' : battleLoadingTitle.value,
-);
-const loadingOverlayDetail = computed(() =>
-  rendererWarmupLoading.value
-    ? 'Generating the map, creating the scene, and compiling the 3D renderer.'
-    : battleLoadingDetail.value,
-);
-
 const {
   currentLobbySettings,
   broadcastLobbySettingsIfHost,
@@ -597,12 +587,14 @@ const {
   currentMirrorsEnabled,
   currentForceFieldsEnabled,
   currentForceFieldReflectionMode,
+  currentFogOfWarEnabled,
   toggleDemoUnitType,
   toggleAllDemoUnits,
   changeMaxTotalUnits,
   setMirrorsEnabled,
   setForceFieldsEnabled,
   setForceFieldReflectionMode,
+  setFogOfWarEnabled,
   resetDemoDefaults,
 } = useGameCanvasBattleSettings({
   serverMetaFromSnapshot,
@@ -731,6 +723,7 @@ const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
   currentMirrorsEnabled: currentMirrorsEnabled.value,
   currentForceFieldsEnabled: currentForceFieldsEnabled.value,
   currentForceFieldReflectionMode: currentForceFieldReflectionMode.value,
+  currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   resetDemoDefaults,
   toggleAllDemoUnits,
   toggleDemoUnitType,
@@ -741,6 +734,7 @@ const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
   setMirrorsEnabled,
   setForceFieldsEnabled,
   setForceFieldReflectionMode,
+  setFogOfWarEnabled,
 }));
 
 const serverControlBarModel = computed<GameCanvasServerControlBarModel>(() => ({
@@ -913,9 +907,7 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
           role="status"
           aria-live="polite"
         >
-          <div class="battle-loading-spinner"></div>
-          <div class="battle-loading-title">{{ loadingOverlayTitle }}</div>
-          <div class="battle-loading-detail">{{ loadingOverlayDetail }}</div>
+          <LoadingEmblem />
         </div>
       </div>
 
@@ -931,9 +923,7 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
           role="status"
           aria-live="polite"
         >
-          <div class="battle-loading-spinner"></div>
-          <div class="battle-loading-title">{{ loadingOverlayTitle }}</div>
-          <div class="battle-loading-detail">{{ loadingOverlayDetail }}</div>
+          <LoadingEmblem />
         </div>
       </div>
 
@@ -1020,9 +1010,8 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
       :mirrors-enabled="currentMirrorsEnabled"
       :force-fields-enabled="currentForceFieldsEnabled"
       :force-field-reflection-mode="currentForceFieldReflectionMode"
+      :fog-of-war-enabled="currentFogOfWarEnabled"
       :preview-loading="loadingInLobbyPreview"
-      :preview-loading-title="loadingOverlayTitle"
-      :preview-loading-detail="loadingOverlayDetail"
       @host="handleHost"
       @join="handleJoin"
       @start="handleLobbyStart"
@@ -1039,6 +1028,7 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
       @set-mirrors-enabled="(e) => setMirrorsEnabled(e)"
       @set-force-fields-enabled="(e) => setForceFieldsEnabled(e)"
       @set-force-field-reflection-mode="(m) => setForceFieldReflectionMode(m)"
+      @set-fog-of-war-enabled="(e) => setFogOfWarEnabled(e)"
       @set-player-name="onPlayerNameChange"
       @reset-defaults="resetDemoDefaults"
     />
@@ -1124,34 +1114,6 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
   background: rgba(5, 7, 10, 0.92);
   color: #edf3ff;
   pointer-events: auto;
-}
-
-.battle-loading-spinner {
-  width: 34px;
-  height: 34px;
-  border: 3px solid rgba(237, 243, 255, 0.18);
-  border-top-color: #80c7ff;
-  border-radius: 50%;
-  animation: battle-loading-spin 0.8s linear infinite;
-}
-
-.battle-loading-title {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.battle-loading-detail {
-  max-width: min(420px, calc(100vw - 40px));
-  color: rgba(237, 243, 255, 0.72);
-  font-size: 12px;
-  line-height: 1.35;
-  text-align: center;
-}
-
-@keyframes battle-loading-spin {
-  to { transform: rotate(360deg); }
 }
 
 .player-client-off .phaser-container canvas,

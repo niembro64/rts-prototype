@@ -167,6 +167,11 @@ defineProps<{
             @click="model.setForceFieldsEnabled(!model.currentForceFieldsEnabled)"
           >FIELD</BarButton>
           <BarButton
+            :active="model.currentFogOfWarEnabled"
+            title="Enable player vision, radar coverage, and fog-of-war rendering"
+            @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
+          >FOG</BarButton>
+          <BarButton
             v-for="opt in BATTLE_CONFIG.forceFieldReflectionMode.options"
             :key="opt.value"
             :active="model.currentForceFieldReflectionMode === opt.value"

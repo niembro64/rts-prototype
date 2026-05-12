@@ -238,8 +238,7 @@ export type NetworkPlayerActionMessage =
     };
 
 // Host → Client lobby-settings sync. Carries the host's
-// pre-game choices (terrain shape today, extensible to other
-// host-only knobs in the future) so every connected client sees
+// pre-game choices (terrain shape and system toggles) so every connected client sees
 // the same map preview and starts the real battle from the same
 // configuration. The host broadcasts on every change AND on
 // each new player joining (so late-joiners get the current state
@@ -253,6 +252,7 @@ export type LobbySettings = {
   terrainMapShape: TerrainMapShape;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
+  fogOfWarEnabled?: boolean;
 };
 
 // Server → Client
@@ -418,6 +418,7 @@ export type NetworkServerSnapshotMeta = {
   mirrorsEnabled?: boolean;
   forceFieldsEnabled?: boolean;
   forceFieldReflectionMode?: ForceFieldReflectionMode;
+  fogOfWarEnabled?: boolean;
   /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).
    *  `avg` = EMA-smoothed steady-state load; `hi` = EMA spike, climbs fast
    *  on jumps and decays slowly. Both can exceed 100 when the server is

@@ -2,7 +2,9 @@ import { nextTick, type ComputedRef, type Ref } from 'vue';
 import {
   BATTLE_CONFIG,
   getDefaultMapLandDimensions,
+  loadStoredFogOfWarEnabled,
   saveMapLandDimensions,
+  saveFogOfWarEnabled,
   saveTerrainCenter,
   saveTerrainDividers,
   saveTerrainMapShape,
@@ -91,6 +93,7 @@ export function useGameCanvasLobbySettings({
       terrainMapShape: terrainMapShape.value,
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
+      fogOfWarEnabled: loadStoredFogOfWarEnabled('real'),
     };
   }
 
@@ -141,12 +144,16 @@ export function useGameCanvasLobbySettings({
     settings: LobbySettings,
     options: { restartPreview?: boolean } = {},
   ): void {
+    const fogOfWarChanged =
+      settings.fogOfWarEnabled !== undefined &&
+      settings.fogOfWarEnabled !== loadStoredFogOfWarEnabled('real');
     const changed =
       settings.terrainCenter !== terrainCenter.value ||
       settings.terrainDividers !== terrainDividers.value ||
       settings.terrainMapShape !== terrainMapShape.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
-      settings.mapLengthLandCells !== mapLengthLandCells.value;
+      settings.mapLengthLandCells !== mapLengthLandCells.value ||
+      fogOfWarChanged;
 
     terrainCenter.value = settings.terrainCenter;
     terrainDividers.value = settings.terrainDividers;
@@ -163,6 +170,9 @@ export function useGameCanvasLobbySettings({
       },
       'real',
     );
+    if (settings.fogOfWarEnabled !== undefined) {
+      saveFogOfWarEnabled(settings.fogOfWarEnabled, 'real');
+    }
     setTerrainCenterShape(settings.terrainCenter);
     setTerrainDividersShape(settings.terrainDividers);
     setTerrainMapShape(settings.terrainMapShape);

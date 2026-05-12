@@ -116,7 +116,7 @@ export async function startRealBattleWithPlayers(
 
       const localConnection = createLocalRealBattleConnection(
         createdServer,
-        options.networkRole.value === 'host' ? options.localPlayerId.value : undefined,
+        options.localPlayerId.value,
       );
       options.setActiveConnection(localConnection);
       gameConnection = localConnection;

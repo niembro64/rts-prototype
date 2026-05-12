@@ -13,6 +13,7 @@ export type BattleBarConfig = {
   readonly mirrorsEnabled: BooleanSetting;
   readonly forceFieldsEnabled: BooleanSetting;
   readonly forceFieldReflectionMode: LabeledOptionsConfig<ForceFieldReflectionMode>;
+  readonly fogOfWarEnabled: BooleanSetting;
   /** Shape of the central ripple zone (CENTER button group). */
   readonly center: LabeledOptionsConfig<TerrainShape>;
   /** Shape of the team-separator ridges (DIVIDERS button group). */

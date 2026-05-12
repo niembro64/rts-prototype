@@ -46,6 +46,7 @@ export const SOLAR_BUILDING_VISUAL_HEIGHT = 52;
 export const WIND_BUILDING_VISUAL_HEIGHT = 250;
 export const FACTORY_BASE_VISUAL_HEIGHT = 30;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 50;
+export const RADAR_BUILDING_VISUAL_HEIGHT = 150;
 export const MEGA_BEAM_TOWER_VISUAL_HEIGHT = 80;
 export const CANNON_TOWER_VISUAL_HEIGHT = 72;
 export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
@@ -180,6 +181,21 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     anchorProfile: 'constantVisualTop',
     hud: {
       barsOffsetAboveTop: 38,
+    },
+  },
+  radar: {
+    id: 'radar',
+    name: 'Radar',
+    gridWidth: 2,
+    gridHeight: 2,
+    gridDepth: 7,
+    hp: 450,
+    cost: { energy: 400, mana: 180, metal: 280 },
+    renderProfile: 'radar',
+    visualHeight: RADAR_BUILDING_VISUAL_HEIGHT,
+    anchorProfile: 'constantVisualTop',
+    hud: {
+      barsOffsetAboveTop: 16,
     },
   },
   megaBeamTower: {

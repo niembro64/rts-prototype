@@ -5,6 +5,7 @@ export type BuildingType =
   | 'wind'
   | 'factory'
   | 'extractor'
+  | 'radar'
   | 'megaBeamTower'
   | 'cannonTower';
 export type BuildingRenderProfile = BuildingType | 'unknown';

@@ -589,6 +589,10 @@ export class GameServer {
         if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setForceFieldReflectionMode(command.mode);
         return;
+      case 'setFogOfWarEnabled':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
+        this.setFogOfWarEnabled(command.enabled);
+        return;
       case 'setSimQuality':
         if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setSimQuality(command.quality as ServerSimQuality);
@@ -813,6 +817,12 @@ export class GameServer {
     if (!isForceFieldReflectionMode(mode)) return;
     if (this.world.forceFieldReflectionMode === mode) return;
     this.world.forceFieldReflectionMode = mode;
+  }
+
+  private setFogOfWarEnabled(enabled: boolean): void {
+    if (this.world.fogOfWarEnabled === enabled) return;
+    this.world.fogOfWarEnabled = enabled;
+    this.forceNextSnapshotKeyframe();
   }
 
   // Add a snapshot listener. Returns the trackingKey so callers can

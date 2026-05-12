@@ -44,6 +44,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly currentMirrorsEnabled: boolean;
   readonly currentForceFieldsEnabled: boolean;
   readonly currentForceFieldReflectionMode: ForceFieldReflectionMode;
+  readonly currentFogOfWarEnabled: boolean;
   resetDemoDefaults(): void;
   toggleAllDemoUnits(): void;
   toggleDemoUnitType(unitType: string): void;
@@ -54,6 +55,7 @@ export type GameCanvasBattleControlBarModel = {
   setMirrorsEnabled(enabled: boolean): void;
   setForceFieldsEnabled(enabled: boolean): void;
   setForceFieldReflectionMode(mode: ForceFieldReflectionMode): void;
+  setFogOfWarEnabled(enabled: boolean): void;
 };
 
 export type GameCanvasServerControlBarModel = {

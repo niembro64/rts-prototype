@@ -38,6 +38,7 @@ export type CommandType =
   | 'setMirrorsEnabled'
   | 'setForceFieldsEnabled'
   | 'setForceFieldReflectionMode'
+  | 'setFogOfWarEnabled'
   | 'setSimQuality'
   | 'setSimSignalStates'
   | 'setCameraAoi';
@@ -282,6 +283,11 @@ export type SetForceFieldReflectionModeCommand = BaseCommand & {
   mode: ForceFieldReflectionMode;
 };
 
+export type SetFogOfWarEnabledCommand = BaseCommand & {
+  type: 'setFogOfWarEnabled';
+  enabled: boolean;
+};
+
 export type SetSimQualityCommand = BaseCommand & {
   type: 'setSimQuality';
   // Stored as the raw string union — keeps the wire format simple
@@ -349,6 +355,7 @@ export type Command =
   | SetMirrorsEnabledCommand
   | SetForceFieldsEnabledCommand
   | SetForceFieldReflectionModeCommand
+  | SetFogOfWarEnabledCommand
   | SetSimQualityCommand
   | SetSimSignalStatesCommand
   | SetCameraAoiCommand;
