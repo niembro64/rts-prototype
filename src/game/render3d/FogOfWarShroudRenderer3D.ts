@@ -6,6 +6,7 @@ import {
   canEntityProvideVision,
   getEntityVisionRadius,
 } from '../network/stateSerializerVisibility';
+import { markCircleScanline } from '../sim/circleFill';
 
 // Texture resolution caps. The map sampled into a coarse alpha grid;
 // finer resolution smooths the shroud edges at proportional CPU cost.
@@ -70,6 +71,20 @@ export class FogOfWarShroudRenderer3D {
    *  to null whenever the canvas needs an unconditional repaint
    *  (seat swap, fog toggle on, server shroud applied). */
   private lastSourcesHash: number | null = null;
+  /** Resample lookup tables for applyServerShroud (issues.txt
+   *  FOW-OPT-03). Map canvas-pixel column→server bitmap column and
+   *  canvas-pixel row→server-row-index-base. The inner loop reads
+   *  these instead of running two float divides + a floor per pixel
+   *  (~100k operations on a 512×192 canvas). Rebuilt only when the
+   *  server's shroud grid changes (gridW / gridH / cellSize), which
+   *  is once per game in practice. Null until the first shroud
+   *  applies. */
+  private shroudSxLut: Int32Array | null = null;
+  private shroudSrcRowLut: Int32Array | null = null;
+  /** Signature of the LUTs' source grid — quick equality check on
+   *  every applyServerShroud call. Stays in sync with the LUT
+   *  arrays. */
+  private shroudLutSignature: string | null = null;
 
   constructor(
     world: THREE.Group,
@@ -214,34 +229,75 @@ export class FogOfWarShroudRenderer3D {
    *  Never CLEARS pixels — explored history is monotonic from the
    *  client's perspective. The wire bitmap is bit-packed
    *  (issues.txt FOW-OPT-02): cell `i = sy * gridW + sx` is bit
-   *  `i & 7` of byte `i >> 3`. */
+   *  `i & 7` of byte `i >> 3`.
+   *
+   *  FOW-OPT-03: the per-pixel world→cell conversion uses a pair of
+   *  precomputed Int32Array LUTs that get rebuilt only when the
+   *  server grid changes (gridW/gridH/cellSize). The hot loop then
+   *  reads sxLut[cx] and srcRowLut[cy] instead of running two float
+   *  divides + a clamp + a floor per pixel. */
   private applyServerShroud(shroud: NetworkServerSnapshotShroud): void {
-    const srcGridW = shroud.gridW;
-    const srcGridH = shroud.gridH;
-    const srcCell = shroud.cellSize;
     const srcBits = shroud.bitmap;
     const canvasW = this.canvas.width;
     const canvasH = this.canvas.height;
+    const { sxLut, srcRowLut } = this.ensureShroudLuts(shroud);
+    for (let cy = 0; cy < canvasH; cy++) {
+      const srcRow = srcRowLut[cy];
+      const dstRow = cy * canvasW;
+      for (let cx = 0; cx < canvasW; cx++) {
+        const cellIdx = srcRow + sxLut[cx];
+        if ((srcBits[cellIdx >> 3] & (1 << (cellIdx & 7))) !== 0) {
+          this.revealed[dstRow + cx] = 1;
+        }
+      }
+    }
+  }
+
+  /** Rebuild the resample LUTs when the server grid changes; reuse
+   *  the cached pair otherwise. The signature key is cheap to
+   *  compare against on every shroud apply. */
+  private ensureShroudLuts(
+    shroud: NetworkServerSnapshotShroud,
+  ): { sxLut: Int32Array; srcRowLut: Int32Array } {
+    const srcGridW = shroud.gridW;
+    const srcGridH = shroud.gridH;
+    const srcCell = shroud.cellSize;
+    const canvasW = this.canvas.width;
+    const canvasH = this.canvas.height;
+    const signature = `${srcGridW}x${srcGridH}@${srcCell}`;
+    if (
+      this.shroudLutSignature === signature &&
+      this.shroudSxLut !== null &&
+      this.shroudSrcRowLut !== null
+    ) {
+      return { sxLut: this.shroudSxLut, srcRowLut: this.shroudSrcRowLut };
+    }
     const worldW = srcGridW * srcCell;
     const worldH = srcGridH * srcCell;
+    const sxLut = new Int32Array(canvasW);
+    for (let cx = 0; cx < canvasW; cx++) {
+      const wx = ((cx + 0.5) / canvasW) * worldW;
+      let sx = Math.floor(wx / srcCell);
+      if (sx < 0) sx = 0;
+      else if (sx >= srcGridW) sx = srcGridW - 1;
+      sxLut[cx] = sx;
+    }
+    const srcRowLut = new Int32Array(canvasH);
     for (let cy = 0; cy < canvasH; cy++) {
       // Server bitmap rows run y=0 at world y=0; the local canvas
       // flips Y on upload (texture.flipY=false + paint with
       // 1 - sy/mapHeight), so sample the server row matching the
       // SAME world Y as the canvas row.
       const wy = ((canvasH - 1 - cy + 0.5) / canvasH) * worldH;
-      const sy = Math.min(srcGridH - 1, Math.max(0, Math.floor(wy / srcCell)));
-      const srcRow = sy * srcGridW;
-      const dstRow = cy * canvasW;
-      for (let cx = 0; cx < canvasW; cx++) {
-        const wx = ((cx + 0.5) / canvasW) * worldW;
-        const sx = Math.min(srcGridW - 1, Math.max(0, Math.floor(wx / srcCell)));
-        const cellIdx = srcRow + sx;
-        if ((srcBits[cellIdx >> 3] & (1 << (cellIdx & 7))) !== 0) {
-          this.revealed[dstRow + cx] = 1;
-        }
-      }
+      let sy = Math.floor(wy / srcCell);
+      if (sy < 0) sy = 0;
+      else if (sy >= srcGridH) sy = srcGridH - 1;
+      srcRowLut[cy] = sy * srcGridW;
     }
+    this.shroudSxLut = sxLut;
+    this.shroudSrcRowLut = srcRowLut;
+    this.shroudLutSignature = signature;
+    return { sxLut, srcRowLut };
   }
 
   destroy(): void {
@@ -253,8 +309,14 @@ export class FogOfWarShroudRenderer3D {
 
   private collectSources(clientViewState: ClientViewState, localPlayerId: PlayerId): void {
     this.sources.length = 0;
-    this.collectFrom(clientViewState.getUnits(), localPlayerId);
-    this.collectFrom(clientViewState.getBuildings(), localPlayerId);
+    // FOW-OPT-06: pull the local player's units/buildings directly
+    // from the per-player cache instead of filtering the world-wide
+    // list. On a 1k-entity map the prior code paid one ownership
+    // check per entity each paint; the cache slice is exactly the
+    // set we care about so we skip straight to the
+    // canEntityProvideVision predicate.
+    this.collectFromOwned(clientViewState.getUnitsByPlayer(localPlayerId));
+    this.collectFromOwned(clientViewState.getBuildingsByPlayer(localPlayerId));
     // FOW-14: temporary scanner sweeps clear the shroud for the
     // duration of the pulse. Server already filtered the list to this
     // recipient's team, so every entry is one we should honor.
@@ -265,10 +327,12 @@ export class FogOfWarShroudRenderer3D {
     }
   }
 
-  private collectFrom(entities: readonly Entity[], localPlayerId: PlayerId): void {
+  /** Append vision sources from a slice already restricted to the
+   *  local player by the cache. Skipping the ownership check matches
+   *  the FOW-OPT-06 optimization comment in collectSources. */
+  private collectFromOwned(entities: readonly Entity[]): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (entity.ownership?.playerId !== localPlayerId) continue;
       if (!canEntityProvideVision(entity)) continue;
       this.sources.push({
         x: entity.transform.x,
@@ -279,6 +343,10 @@ export class FogOfWarShroudRenderer3D {
   }
 
   private markRevealed(): void {
+    // Pixel-corner sampling (cellAnchor=0) matches the original loop's
+    // `dx = x - cx`. Defers per-row span math to the shared scanline
+    // helper (issues.txt FOW-OPT-05) so the per-cell distance test
+    // is one sqrt per row instead of per pixel.
     const width = this.canvas.width;
     const height = this.canvas.height;
     for (let i = 0; i < this.sources.length; i++) {
@@ -286,19 +354,7 @@ export class FogOfWarShroudRenderer3D {
       const cx = (source.x / this.mapWidth) * width;
       const cy = (1 - source.y / this.mapHeight) * height;
       const r = (source.radius / this.mapWidth) * width;
-      const minX = Math.max(0, Math.floor(cx - r));
-      const maxX = Math.min(width - 1, Math.ceil(cx + r));
-      const minY = Math.max(0, Math.floor(cy - r));
-      const maxY = Math.min(height - 1, Math.ceil(cy + r));
-      const r2 = r * r;
-      for (let y = minY; y <= maxY; y++) {
-        const dy = y - cy;
-        const row = y * width;
-        for (let x = minX; x <= maxX; x++) {
-          const dx = x - cx;
-          if (dx * dx + dy * dy <= r2) this.revealed[row + x] = 1;
-        }
-      }
+      markCircleScanline(this.revealed, width, height, cx, cy, r, 0);
     }
   }
 

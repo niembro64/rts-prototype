@@ -96,32 +96,6 @@ Each item is a concrete optimization or a latent fragility found during the
 full-system audit. Ordered roughly by impact; the upper entries dominate
 per-snapshot cost or wire bandwidth.
 
-[FOW-OPT-03] FogOfWarShroudRenderer3D.applyServerShroud is
-  O(canvasW × canvasH) with float divides per pixel. On the 512×192
-  canvas that's ~100k pixels each with two world-to-cell conversions.
-  Runs every keyframe even when the bitmap is identical to the
-  previous payload. Two paths: precompute the cx→sx / cy→sy lookup
-  tables once per shroud-grid change, OR use
-  `ctx.drawImage(serverCanvas, …)` with a tiny offscreen canvas
-  preloaded from the bitmap so the GPU handles the resample.
-
-[FOW-OPT-05] markRevealed and shroudBitmap.markCircle both walk every
-  cell in the bounding box and test (dx²+dy²) ≤ r² per cell. A
-  scanline implementation (compute x-range per row from y, use
-  Uint8Array.fill on the row slice) is 3–5× faster for large radii
-  and avoids the per-cell multiply. Same algorithm shared between
-  client renderer + server bitmap module.
-
-[FOW-OPT-06] FogOfWarShroudRenderer3D.collectFrom walks the entire
-  unit list AND the entire building list each paint, filtering by
-  `entity.ownership?.playerId !== localPlayerId`. ClientViewState
-  already maintains per-player caches via EntityCacheManager
-  (getUnitsByPlayer is used server-side); expose the same on the
-  client and the per-frame iteration drops from O(all-entities) to
-  O(local-team-entities). Same fix applies to
-  BuildingEntityRenderer3D.refreshLocalVisionSources, which iterates
-  every entity each frame for the FOW-02a ghost-detection sweep.
-
 [FOW-OPT-07] Audio event pool has cross-recipient aliasing.
   stateSerializerAudio.ts uses a module-global `audioBuf` and
   `audioPool` reset to index 0 at the top of every serializeAudioEvents

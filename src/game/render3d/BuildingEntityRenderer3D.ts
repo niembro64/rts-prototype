@@ -268,7 +268,9 @@ export class BuildingEntityRenderer3D {
 
   /** Walk the client's units + buildings and pull out the local player's
    *  alive full-vision sources for this frame. Result goes into a
-   *  pre-allocated array (no per-frame allocation in the hot path). */
+   *  pre-allocated array (no per-frame allocation in the hot path).
+   *  FOW-OPT-06: reads from the per-player cache slice rather than
+   *  filtering the world-wide list per frame. */
   private refreshLocalVisionSources(): void {
     this.localVisionSources.length = 0;
     const localPlayerId = this.getLocalPlayerId();
@@ -276,7 +278,6 @@ export class BuildingEntityRenderer3D {
     const collect = (entities: readonly Entity[]): void => {
       for (let i = 0; i < entities.length; i++) {
         const entity = entities[i];
-        if (entity.ownership?.playerId !== localPlayerId) continue;
         if (!canEntityProvideFullVision(entity)) continue;
         this.localVisionSources.push({
           x: entity.transform.x,
@@ -285,8 +286,8 @@ export class BuildingEntityRenderer3D {
         });
       }
     };
-    collect(this.clientViewState.getUnits());
-    collect(this.clientViewState.getBuildings());
+    collect(this.clientViewState.getUnitsByPlayer(localPlayerId));
+    collect(this.clientViewState.getBuildingsByPlayer(localPlayerId));
   }
 
   /** True when the building is in the local view but no local vision

@@ -22,6 +22,7 @@ import {
   canEntityProvideVision,
   getEntityVisionRadius,
 } from '../network/stateSerializerVisibility';
+import { markCircleScanline } from './circleFill';
 
 /** Update cadence in ticks. Run the OR pass every Nth tick to amortize
  *  cost across the simulation loop — shroud is a low-frequency
@@ -126,31 +127,20 @@ function markCircle(
   cy: number,
   radius: number,
 ): boolean {
+  // Convert world units → cell units, then defer to the shared
+  // scanline helper (issues.txt FOW-OPT-05). Cell-center sampling
+  // (cellAnchor=0.5) matches the original per-cell test that used
+  // `dx = x + 0.5 - cellCx`.
   const cellSize = SHROUD_CELL_SIZE;
-  const cellRadius = radius / cellSize;
-  const cellCx = cx / cellSize;
-  const cellCy = cy / cellSize;
-  const minX = Math.max(0, Math.floor(cellCx - cellRadius));
-  const maxX = Math.min(gridW - 1, Math.ceil(cellCx + cellRadius));
-  const minY = Math.max(0, Math.floor(cellCy - cellRadius));
-  const maxY = Math.min(gridH - 1, Math.ceil(cellCy + cellRadius));
-  const r2 = cellRadius * cellRadius;
-  let modified = false;
-  for (let y = minY; y <= maxY; y++) {
-    const dy = y + 0.5 - cellCy;
-    const row = y * gridW;
-    for (let x = minX; x <= maxX; x++) {
-      const dx = x + 0.5 - cellCx;
-      if (dx * dx + dy * dy <= r2) {
-        const idx = row + x;
-        if (bitmap[idx] === 0) {
-          bitmap[idx] = 1;
-          modified = true;
-        }
-      }
-    }
-  }
-  return modified;
+  return markCircleScanline(
+    bitmap,
+    gridW,
+    gridH,
+    cx / cellSize,
+    cy / cellSize,
+    radius / cellSize,
+    0.5,
+  );
 }
 
 /** Sum of the recipient's and their allies' bitmap versions —
