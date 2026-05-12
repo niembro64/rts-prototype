@@ -134,14 +134,16 @@ Mismatches with the canonical model (each a discrete issue below):
   sweep, Supreme Commander recon drone). All vision today is tied to
   a long-lived entity.
 
-[FOW-17] No "you killed it" signal to the killer when an enemy dies
-  out of their vision. The orphan bug underneath this is now fixed
-  (out-of-sight unit deaths emit a silent removal so the stale entity
-  doesn't linger on the client), but the recipient still can't tell
-  whether their target died or just retreated — both look like "the
-  entity vanished from my view". Standard RTS solution: when an enemy
-  unit dies, route a one-shot "kill" event to the recipient that owned
-  the killer (regardless of vision), so the client can play a kill
-  ping / pop a +1 counter / brief reveal at the death position.
-  Requires sim damage events to carry killer info up to the snapshot
-  layer.
+[CLOSED FOW-17] Killer recipient now receives the death event even
+  when the corpse position is outside their full vision. DamageSystem
+  stamps killerPlayerIds on the DamageResult; damageHelpers threads it
+  through buildUnitDeathEvent / buildBuildingDeathEvent so the SimEvent
+  carries the killer's playerId. stateSerializerAudio uses the new
+  SnapshotVisibility.shouldSendKillCredit() helper to keep the death
+  event in the recipient's per-tick audio stream regardless of vision.
+  The 3D scene's existing handleSimEvent3D death branch already
+  reconstructs a fallback deathContext when the entity isn't in the
+  client view state, so the killer sees the explosion / debris at the
+  exact death position without leaking the rest of the snapshot.
+  Synthetic deaths (Simulation.emitSyntheticDeathEvent) leave the field
+  undefined, which is correct — no killer to credit.

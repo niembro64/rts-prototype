@@ -164,6 +164,19 @@ export class SnapshotVisibility {
     return this.isPointVisible(record.x, record.y);
   }
 
+  /** True when the recipient should receive a death event purely
+   *  because they own the killer — even when the corpse position falls
+   *  outside their vision. Drives the FOW-17 kill-credit routing in
+   *  serializeAudioEvents: a sniper shooting an unseen target through
+   *  radar coverage still gets the death notification so they learn
+   *  the shot connected, instead of the target silently vanishing on
+   *  the other side of the map. */
+  shouldSendKillCredit(killerPlayerId: PlayerId | undefined): boolean {
+    if (!this.isFiltered) return false;
+    if (killerPlayerId === undefined) return false;
+    return killerPlayerId === this.recipientPlayerId;
+  }
+
   private addPlayerSources(world: WorldState, playerId: PlayerId): void {
     const sources: ReadonlyArray<readonly Entity[]> = [
       world.getUnitsByPlayer(playerId),

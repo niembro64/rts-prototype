@@ -41,6 +41,7 @@ const _reusableResult: DamageResult = {
   killedBuildingIds: new Set(),
   knockbacks: [],
   deathContexts: new Map(),
+  killerPlayerIds: new Map(),
 };
 // Pool for KnockbackInfo + its inner Vec2. The result.knockbacks array
 // itself is reused, but each entry pushed during an explosion was a
@@ -77,6 +78,7 @@ function resetResult(): DamageResult {
   _reusableResult.knockbacks.length = 0;
   _reusableResult.recoil = undefined;
   _reusableResult.deathContexts.clear();
+  _reusableResult.killerPlayerIds.clear();
   return _reusableResult;
 }
 
@@ -92,6 +94,7 @@ export function resetDamageBuffers(): void {
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
   _reusableResult.knockbacks.length = 0;
   _reusableResult.deathContexts.clear();
+  _reusableResult.killerPlayerIds.clear();
   _reusableHits.length = 0;
 }
 
@@ -1062,12 +1065,12 @@ export class DamageSystem {
     sourceEntityId: EntityId,
     deathContext?: DeathContext
   ): void {
-    void sourceEntityId;
     if (entity.unit && entity.unit.hp > 0) {
       entity.unit.hp -= damage;
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
       if (entity.unit.hp <= 0 && !result.killedUnitIds.has(entity.id)) {
         result.killedUnitIds.add(entity.id);
+        this.recordKiller(result, entity.id, sourceEntityId);
         // Store death context for explosion effects
         if (deathContext) {
           result.deathContexts.set(entity.id, deathContext);
@@ -1084,7 +1087,23 @@ export class DamageSystem {
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
       if (entity.building.hp <= 0 && !result.killedBuildingIds.has(entity.id)) {
         result.killedBuildingIds.add(entity.id);
+        this.recordKiller(result, entity.id, sourceEntityId);
       }
     }
+  }
+
+  /** Stash the killer's playerId for the death event channel (FOW-17).
+   *  Used by the audio serializer to route the death SimEvent to the
+   *  killer's recipient regardless of fog-of-war vision — so a player
+   *  whose missile lands a kill off-screen still gets the "+1, you
+   *  got it" feedback. */
+  private recordKiller(
+    result: DamageResult,
+    deadEntityId: EntityId,
+    sourceEntityId: EntityId,
+  ): void {
+    if (result.killerPlayerIds.has(deadEntityId)) return;
+    const killer = this.world.getEntity(sourceEntityId);
+    result.killerPlayerIds.set(deadEntityId, killer?.ownership?.playerId);
   }
 }

@@ -95,6 +95,13 @@ export type SimEvent = {
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;
   forceFieldImpact?: ForceFieldImpactContext;
+  /** For 'death' events: the playerId that owned the killer (the
+   *  entity dealing the killing blow). Drives the kill-credit routing
+   *  in the audio serializer (issues.txt FOW-17) — the death event
+   *  reaches this player's snapshot even when their vision doesn't
+   *  cover the corpse, so the killer learns the result of off-screen
+   *  hits instead of the target silently vanishing. */
+  killerPlayerId?: PlayerId;
 };
 
 export type ProjectileSpawnEvent = {

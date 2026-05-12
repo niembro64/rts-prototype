@@ -23,6 +23,7 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
     deathContext: undefined,
     impactContext: undefined,
     forceFieldImpact: undefined,
+    killerPlayerId: undefined,
     _pos: { x: 0, y: 0, z: 0 },
   };
   event.pos = event._pos;
@@ -49,7 +50,15 @@ export function serializeAudioEvents(
   audioBuf.length = 0;
   for (let i = 0; i < audioEvents.length; i++) {
     const source = audioEvents[i];
-    if (visibility && !visibility.isPointVisible(source.pos.x, source.pos.y)) continue;
+    if (visibility && !visibility.isPointVisible(source.pos.x, source.pos.y)) {
+      // FOW-17: forward death events to the killer's recipient even
+      // when they don't have vision of the corpse, so the player
+      // hearing the shot also hears the kill confirmation. Other
+      // event types stay strictly gated by vision.
+      if (source.type !== 'death' || !visibility.shouldSendKillCredit(source.killerPlayerId)) {
+        continue;
+      }
+    }
     const out = getPooledSimEvent();
     out.type = source.type;
     out.turretId = source.turretId;
@@ -63,6 +72,7 @@ export function serializeAudioEvents(
     out.deathContext = source.deathContext;
     out.impactContext = source.impactContext;
     out.forceFieldImpact = source.forceFieldImpact;
+    out.killerPlayerId = source.killerPlayerId;
     audioBuf.push(out);
   }
   return audioBuf.length > 0 ? audioBuf : undefined;

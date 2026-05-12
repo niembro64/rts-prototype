@@ -313,6 +313,13 @@ export type NetworkServerSnapshotSimEvent = {
   deathContext?: SimDeathContext;
   impactContext?: ImpactContext;
   forceFieldImpact?: ForceFieldImpactContext;
+  /** For 'death' events: playerId of the entity that landed the
+   *  killing blow. Carries through serializeAudioEvents' kill-credit
+   *  branch (issues.txt FOW-17) — the audio serializer forwards the
+   *  event to this player's snapshot even when the death position
+   *  isn't in their vision, so they get the "+1, you got it" hit
+   *  even on off-screen kills. */
+  killerPlayerId?: PlayerId;
 };
 
 export type NetworkServerSnapshotProjectileSpawn = {

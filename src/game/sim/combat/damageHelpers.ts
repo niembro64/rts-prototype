@@ -2,7 +2,7 @@
 // Extracted from projectileSystem.ts to reduce duplication
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, BeamShot, LaserShot } from '../types';
+import type { Entity, EntityId, BeamShot, LaserShot, PlayerId } from '../types';
 import { getPlayerPrimaryColor } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
@@ -84,6 +84,7 @@ export function buildUnitDeathEvent(
   sourceKey: string,
   ctx: DeathContext | undefined,
   sourceType: SimEventSourceType = 'turret',
+  killerPlayerId?: PlayerId,
 ): SimEvent {
   const playerColor = getPlayerPrimaryColor(target?.ownership?.playerId);
   const unitVel = {
@@ -155,6 +156,7 @@ export function buildUnitDeathEvent(
     },
     entityId: id,
     deathContext,
+    killerPlayerId,
   };
 }
 
@@ -169,6 +171,7 @@ export function buildBuildingDeathEvent(
   id: EntityId,
   sourceKey: string,
   sourceType: SimEventSourceType = 'turret',
+  killerPlayerId?: PlayerId,
 ): SimEvent {
   const playerColor = getPlayerPrimaryColor(building?.ownership?.playerId);
   const footprintRadius = Math.hypot(
@@ -203,6 +206,7 @@ export function buildBuildingDeathEvent(
       baseZ,
       color: playerColor,
     },
+    killerPlayerId,
   };
 }
 
@@ -250,14 +254,16 @@ export function collectKillsAndDeathContexts(
     if (!unitsToRemove.has(id)) {
       const target = world.getEntity(id);
       const ctx = result.deathContexts.get(id);
-      audioEvents.push(buildUnitDeathEvent(target, id, sourceKey, ctx, sourceType));
+      const killerPlayerId = result.killerPlayerIds.get(id);
+      audioEvents.push(buildUnitDeathEvent(target, id, sourceKey, ctx, sourceType, killerPlayerId));
       unitsToRemove.add(id);
     }
   }
   for (const id of result.killedBuildingIds) {
     if (!buildingsToRemove.has(id)) {
       const building = world.getEntity(id);
-      audioEvents.push(buildBuildingDeathEvent(building, id, sourceKey, sourceType));
+      const killerPlayerId = result.killerPlayerIds.get(id);
+      audioEvents.push(buildBuildingDeathEvent(building, id, sourceKey, sourceType, killerPlayerId));
       buildingsToRemove.add(id);
     }
   }
