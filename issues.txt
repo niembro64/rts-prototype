@@ -12,7 +12,7 @@ As we go make sure we are not creating duplicate code, we should be reusing code
  FOG OF WAR — design vs. current implementation
 ------------------------------------------------------------------------------
 
-How fog of war should work in an RTS (the canonical model, à la Total Annihilation /
+How fog of war should work in an RTS (the canonical model, à la Beyond All Reason / Total Annihilation /
 Supreme Commander, Starcraft, Age of Empires):
 
 Every map cell, from a given player's POV, exists in one of THREE states:
