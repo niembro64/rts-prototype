@@ -139,6 +139,12 @@ export type EntityMesh = {
   buildingCachedZ?: number;
   buildingCachedRotation?: number;
   buildingCachedDetailsReady?: boolean;
+  /** Whether this foreign building rendered last frame as a fog-of-war
+   *  ghost (no current local-player vision covering it). Drives the
+   *  material swap to the desaturated ghost variant — flagged as a
+   *  cache key so that toggling vision in/out of the building re-runs
+   *  updateBuildingMesh. */
+  buildingCachedIsGhost?: boolean;
   unitDetailCachedX?: number;
   unitDetailCachedY?: number;
   unitDetailCachedZ?: number;

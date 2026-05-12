@@ -88,17 +88,6 @@ What our project currently has:
 
 Mismatches with the canonical model (each a discrete issue below):
 
-[FOW-02a] Ghost-building visual differentiation. The server now keeps
-  enemy buildings on the client after they exit vision (last-seen
-  state preserved), and the shroud renderer dims the surrounding
-  ground, but the building mesh itself still renders with its live
-  material — its taller geometry sticks up above the shroud plane
-  unmodified. Should fade ghosts to a desaturated/dimmed look so the
-  player can distinguish current intel from stale memory. Likely
-  implementation: per-frame "is in current local vision" check on
-  the client (reuse the local vision sources the shroud renderer
-  already computes), then swap to a grayscale primaryMat variant.
-
 [FOW-04] No line-of-sight blocking by terrain. A unit on the far side
   of a hill, behind a forest, or beyond a wall is visible if it falls
   within the circle. The world has a heightmap (Terrain) but the

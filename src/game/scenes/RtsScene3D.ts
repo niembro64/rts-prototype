@@ -428,6 +428,7 @@ export class RtsScene3D {
       this.legInstancedRenderer,
       this.threeApp.camera,
       () => this.threeApp.renderer.domElement.clientHeight,
+      () => this.localPlayerId,
     );
     this.beamRenderer = new BeamRenderer3D(this.threeApp.world, this.renderScope);
     // ForceFieldRenderer3D parents each unit's force-field meshes onto

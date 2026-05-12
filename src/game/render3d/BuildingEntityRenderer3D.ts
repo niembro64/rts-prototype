@@ -26,6 +26,11 @@ import {
   type TurretMesh,
 } from './TurretMesh3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
+import {
+  canEntityProvideFullVision,
+  getEntityFullVisionRadius,
+  getEntityVisibilityPadding,
+} from '../network/stateSerializerVisibility';
 
 const BUILDING_HEIGHT = 120;
 
@@ -151,6 +156,18 @@ export type BuildingEntityRenderer3DOptions = {
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   resolveObjectLod: (entity: Entity) => RenderObjectLodTier;
   disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
+  /** Current local player id, for ghost-building detection (FOW-02a).
+   *  A foreign building stays on the client after exiting vision
+   *  (FOW-02 server change); the renderer needs to know which seat
+   *  is "us" to decide whether each building is in current vision or
+   *  should render with the desaturated ghost material. */
+  getLocalPlayerId: () => PlayerId | undefined;
+};
+
+type VisionSource = {
+  x: number;
+  y: number;
+  radius: number;
 };
 
 export class BuildingEntityRenderer3D {
@@ -165,10 +182,21 @@ export class BuildingEntityRenderer3D {
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly resolveObjectLod: (entity: Entity) => RenderObjectLodTier;
   private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
+  private readonly getLocalPlayerId: () => PlayerId | undefined;
   private readonly animations: BuildingAnimationController3D;
   private readonly meshes = new Map<EntityId, EntityMesh>();
   private readonly seenIds = new Set<EntityId>();
   private lastEntitySetVersion = -1;
+  /** Shared desaturated material applied to ghost buildings. Single
+   *  instance (not per-player) — once a building is out of vision, the
+   *  player's last-seen intel doesn't include current ownership shifts,
+   *  and stripping team color is the standard "this is stale" cue. */
+  private readonly ghostMat: THREE.MeshLambertMaterial;
+  /** Per-frame scratch of local player's vision sources, used to mark
+   *  ghost state on each building. Recomputed at the top of update()
+   *  so it stays in sync with whichever seat the user is currently
+   *  toggled to. */
+  private readonly localVisionSources: VisionSource[] = [];
 
   constructor(options: BuildingEntityRenderer3DOptions) {
     this.world = options.world;
@@ -182,6 +210,13 @@ export class BuildingEntityRenderer3D {
     this.getPrimaryMat = options.getPrimaryMat;
     this.resolveObjectLod = options.resolveObjectLod;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
+    this.getLocalPlayerId = options.getLocalPlayerId;
+    this.ghostMat = new THREE.MeshLambertMaterial({
+      color: 0x6a6f78,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    });
     this.animations = new BuildingAnimationController3D(
       this.clientViewState,
       this.constructionVisuals,
@@ -194,6 +229,12 @@ export class BuildingEntityRenderer3D {
     const pruneBuildings = entitySetVersion !== this.lastEntitySetVersion;
     if (pruneBuildings) this.seenIds.clear();
     this.constructionVisuals.beginFrame();
+
+    // Refresh local vision sources once per frame for ghost detection
+    // (FOW-02a). Reuses the same predicate / radius helpers the server
+    // uses for snapshot filtering so a building rendered as a ghost
+    // here matches what the server would consider out-of-vision.
+    this.refreshLocalVisionSources();
 
     for (const entity of buildings) {
       if (pruneBuildings) this.seenIds.add(entity.id);
@@ -222,6 +263,51 @@ export class BuildingEntityRenderer3D {
     this.seenIds.clear();
     this.lastEntitySetVersion = -1;
     this.animations.destroy();
+    this.ghostMat.dispose();
+  }
+
+  /** Walk the client's units + buildings and pull out the local player's
+   *  alive full-vision sources for this frame. Result goes into a
+   *  pre-allocated array (no per-frame allocation in the hot path). */
+  private refreshLocalVisionSources(): void {
+    this.localVisionSources.length = 0;
+    const localPlayerId = this.getLocalPlayerId();
+    if (localPlayerId === undefined) return;
+    const collect = (entities: readonly Entity[]): void => {
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
+        if (entity.ownership?.playerId !== localPlayerId) continue;
+        if (!canEntityProvideFullVision(entity)) continue;
+        this.localVisionSources.push({
+          x: entity.transform.x,
+          y: entity.transform.y,
+          radius: getEntityFullVisionRadius(entity),
+        });
+      }
+    };
+    collect(this.clientViewState.getUnits());
+    collect(this.clientViewState.getBuildings());
+  }
+
+  /** True when the building is in the local view but no local vision
+   *  source currently covers its footprint. Owned buildings are never
+   *  ghosts (you always see your own). When the local-player id is
+   *  undefined (spectator / global view) nothing is ghosted. */
+  private isBuildingGhost(entity: Entity): boolean {
+    const localPlayerId = this.getLocalPlayerId();
+    if (localPlayerId === undefined) return false;
+    if (entity.ownership?.playerId === localPlayerId) return false;
+    const padding = getEntityVisibilityPadding(entity);
+    const px = entity.transform.x;
+    const py = entity.transform.y;
+    for (let i = 0; i < this.localVisionSources.length; i++) {
+      const src = this.localVisionSources[i];
+      const dx = px - src.x;
+      const dy = py - src.y;
+      const r = src.radius + padding;
+      if (dx * dx + dy * dy <= r * r) return false;
+    }
+    return true;
   }
 
   private updateBuilding(entity: Entity, lod: Lod3DState): void {
@@ -264,6 +350,7 @@ export class BuildingEntityRenderer3D {
     const selected = entity.selectable?.selected === true;
     const buildingBaseY = entity.building ? entity.transform.z - entity.building.depth / 2 : 0;
     const detailsReady = !markerOnly && progress >= 1;
+    const isGhost = this.isBuildingGhost(entity);
     const renderDirty =
       mesh.buildingCachedTier !== objectTier ||
       mesh.buildingCachedGraphicsTier !== graphicsTier ||
@@ -275,7 +362,8 @@ export class BuildingEntityRenderer3D {
       mesh.buildingCachedX !== entity.transform.x ||
       mesh.buildingCachedY !== entity.transform.y ||
       mesh.buildingCachedZ !== entity.transform.z ||
-      mesh.buildingCachedRotation !== entity.transform.rotation;
+      mesh.buildingCachedRotation !== entity.transform.rotation ||
+      mesh.buildingCachedIsGhost !== isGhost;
 
     if (renderDirty) {
       this.updateBuildingMesh(
@@ -290,6 +378,7 @@ export class BuildingEntityRenderer3D {
         selected,
         buildingBaseY,
         detailsReady,
+        isGhost,
       );
     } else {
       mesh.group.visible = true;
@@ -311,14 +400,22 @@ export class BuildingEntityRenderer3D {
     selected: boolean,
     buildingBaseY: number,
     detailsReady: boolean,
+    isGhost: boolean,
   ): void {
     mesh.group.visible = true;
+    // Ghost buildings (FOW-02a) override the team-colored primary
+    // material with a shared desaturated mat — same shape, different
+    // shading, so the player can tell at a glance that this is
+    // last-seen intel rather than live data. The material-locked
+    // skip path is preserved for buildings that own their own material
+    // (e.g. specialty meshes that bake team color in).
+    const ghostMat = isGhost ? this.ghostMat : null;
     if (!mesh.buildingPrimaryMaterialLocked) {
-      const primaryMat = this.getPrimaryMat(ownerId);
+      const primaryMat = ghostMat ?? this.getPrimaryMat(ownerId);
       for (const chassisMesh of mesh.chassisMeshes) chassisMesh.material = primaryMat;
     }
     if (mesh.buildingDetails) {
-      const primaryMat = this.getPrimaryMat(ownerId);
+      const primaryMat = ghostMat ?? this.getPrimaryMat(ownerId);
       for (const detail of mesh.buildingDetails) {
         if (detail.role === 'solarTeamAccent') detail.mesh.material = primaryMat;
       }
@@ -342,12 +439,12 @@ export class BuildingEntityRenderer3D {
     primary.visible = objectTier !== 'marker';
 
     if (!mesh.lodMarker) {
-      const marker = new THREE.Mesh(this.markerBoxGeom, this.getPrimaryMat(ownerId));
+      const marker = new THREE.Mesh(this.markerBoxGeom, ghostMat ?? this.getPrimaryMat(ownerId));
       marker.userData.entityId = entity.id;
       mesh.group.add(marker);
       mesh.lodMarker = marker;
     } else {
-      mesh.lodMarker.material = this.getPrimaryMat(ownerId);
+      mesh.lodMarker.material = ghostMat ?? this.getPrimaryMat(ownerId);
     }
     const markerHeight = entity.building?.depth ?? (mesh.buildingHeight ?? BUILDING_HEIGHT);
     mesh.lodMarker.visible = objectTier === 'marker';
@@ -374,6 +471,7 @@ export class BuildingEntityRenderer3D {
     mesh.buildingCachedZ = entity.transform.z;
     mesh.buildingCachedRotation = entity.transform.rotation;
     mesh.buildingCachedDetailsReady = detailsReady;
+    mesh.buildingCachedIsGhost = isGhost;
   }
 
   private updateTurretPoses(entity: Entity, mesh: EntityMesh): void {

@@ -224,6 +224,8 @@ export class Render3DEntities {
 
   private mirrorsEnabled = true;
 
+  private getLocalPlayerId: () => PlayerId | undefined;
+
   constructor(
     world: THREE.Group,
     clientViewState: ClientViewState,
@@ -231,6 +233,7 @@ export class Render3DEntities {
     legRenderer: LegInstancedRenderer,
     camera: THREE.PerspectiveCamera,
     getViewportHeight: () => number,
+    getLocalPlayerId: () => PlayerId | undefined,
   ) {
     this.world = world;
     this.clientViewState = clientViewState;
@@ -238,6 +241,7 @@ export class Render3DEntities {
     this.legRenderer = legRenderer;
     this.camera = camera;
     this.getViewportHeight = getViewportHeight;
+    this.getLocalPlayerId = getLocalPlayerId;
     this.selectionOverlays = new SelectionOverlayRenderer3D({
       world: this.world,
       clientViewState: this.clientViewState,
@@ -257,6 +261,7 @@ export class Render3DEntities {
       getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
       resolveObjectLod: (entity) => this.resolveEntityObjectLod(entity),
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
+      getLocalPlayerId: () => this.getLocalPlayerId(),
     });
     this.projectileRenderer = new ProjectileRenderer3D({
       world: this.world,
