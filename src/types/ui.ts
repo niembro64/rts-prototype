@@ -96,6 +96,11 @@ export type MinimapEntity = {
   type: 'unit' | 'building';
   color: string;
   isSelected?: boolean;
+  /** True when the recipient only knows about this entity through
+   *  radar coverage (issues.txt FOW-03a). Minimap renderer should
+   *  draw a generic positional blip rather than the identifiable
+   *  team-colored marker. */
+  radarOnly?: boolean;
 };
 
 /** One captured grid cell carried across to the minimap. Mirrors the

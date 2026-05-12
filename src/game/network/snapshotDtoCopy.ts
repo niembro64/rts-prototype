@@ -128,6 +128,8 @@ export function copyMinimapEntityInto(
   dst.pos.y = src.pos.y;
   dst.type = src.type;
   dst.playerId = src.playerId;
+  if (src.radarOnly) dst.radarOnly = true;
+  else delete dst.radarOnly;
   return dst;
 }
 

@@ -34,6 +34,7 @@ function writeMinimapEntity(
   type: MinimapEntity['type'],
   color: string,
   isSelected: boolean | undefined,
+  radarOnly: boolean | undefined,
 ): number {
   let entity = entities[index];
   if (!entity) {
@@ -45,6 +46,7 @@ function writeMinimapEntity(
   entity.type = type;
   entity.color = color;
   entity.isSelected = isSelected;
+  entity.radarOnly = radarOnly;
   return index + 1;
 }
 export type {
@@ -250,6 +252,7 @@ export function buildMinimapData(
         e.type,
         e.color,
         e.isSelected,
+        e.radarOnly,
       );
     }
   } else {
@@ -265,6 +268,7 @@ export function buildMinimapData(
         e.unit ? 'unit' : 'building',
         minimapColor(getPlayerPrimaryColor(e.ownership?.playerId)),
         e.selectable?.selected,
+        undefined,
       );
     }
   }

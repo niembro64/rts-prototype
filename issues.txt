@@ -109,16 +109,6 @@ Mismatches with the canonical model (each a discrete issue below):
   "ghosted-but-gone" tracking that emits a removal once the player's
   vision finally covers the ghost's last position.
 
-[FOW-03a] Radar minimap blips are visually indistinguishable from
-  full-vision contacts. Server-side split is in place — radar buildings
-  feed only the minimap channel and the main snapshot drops them — so
-  the player now sees enemy positions through radar without HP / orders
-  / unit details. But the minimap entity DTO still ships `type`
-  ('unit' | 'building') and renders identically to full-vision entries.
-  Should add a `radarOnly` flag (or omit `type`) so the client minimap
-  can render radar contacts as generic positional dots rather than
-  identifiable icons.
-
 [FOW-04] No line-of-sight blocking by terrain. A unit on the far side
   of a hill, behind a forest, or beyond a wall is visible if it falls
   within the circle. The world has a heightmap (Terrain) but the

@@ -496,6 +496,13 @@ export type NetworkServerSnapshotMinimapEntity = {
   pos: Vec2;
   type: 'unit' | 'building';
   playerId: PlayerId;
+  /** True when the recipient only learned about this entity through
+   *  radar coverage (no full-vision source covers its position). The
+   *  client should render it as a generic positional blip — no unit
+   *  type / owner-color identification — since the player only has
+   *  positional intel. Omitted (treated as false) for entities the
+   *  recipient sees in full. */
+  radarOnly?: boolean;
 };
 
 export type NetworkServerSnapshotSprayTarget = {

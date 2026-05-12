@@ -308,7 +308,16 @@ function drawEntityLayer(): void {
   for (const entity of entities) {
     const x = entity.pos.x * scaleX;
     const y = entity.pos.y * scaleY;
-    if (entity.type === 'building') {
+    if (entity.radarOnly) {
+      // FOW-03a: radar contacts render as small neutral dots — same
+      // shape whether they're a unit or a building, since radar
+      // doesn't reveal identity. Color is already neutralized by
+      // ClientMinimapOverrideStore.
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+      setFill(entity.color);
+      ctx.fill();
+    } else if (entity.type === 'building') {
       const size = entity.isSelected ? 5 : 4;
       setFill(entity.color);
       ctx.fillRect(x - size / 2, y - size / 2, size, size);

@@ -46,11 +46,20 @@ export class ClientMinimapOverrideStore {
       dst.pos.x = src.pos.x;
       dst.pos.y = src.pos.y;
       dst.type = src.type;
-      dst.color = minimapColor(getPlayerPrimaryColor(src.playerId));
-      dst.isSelected = this.options.isSelected(src.id) || undefined;
+      // Radar-only contacts (FOW-03a) render as generic blips — strip
+      // the team color and clear selection / hover so the player gets
+      // positional intel without leaking identity.
+      const radarOnly = src.radarOnly === true;
+      dst.radarOnly = radarOnly || undefined;
+      dst.color = radarOnly
+        ? RADAR_BLIP_COLOR
+        : minimapColor(getPlayerPrimaryColor(src.playerId));
+      dst.isSelected = radarOnly ? undefined : this.options.isSelected(src.id) || undefined;
     }
   }
 }
+
+const RADAR_BLIP_COLOR = '#9aa3ad';
 
 function minimapColor(color: number): string {
   let cached = minimapColorCache.get(color);
