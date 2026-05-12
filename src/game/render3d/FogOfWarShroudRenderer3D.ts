@@ -150,6 +150,14 @@ export class FogOfWarShroudRenderer3D {
     this.sources.length = 0;
     this.collectFrom(clientViewState.getUnits(), localPlayerId);
     this.collectFrom(clientViewState.getBuildings(), localPlayerId);
+    // FOW-14: temporary scanner sweeps clear the shroud for the
+    // duration of the pulse. Server already filtered the list to this
+    // recipient's team, so every entry is one we should honor.
+    const pulses = clientViewState.getScanPulses();
+    for (let i = 0; i < pulses.length; i++) {
+      const pulse = pulses[i];
+      this.sources.push({ x: pulse.x, y: pulse.y, radius: pulse.radius });
+    }
   }
 
   private collectFrom(entities: readonly Entity[], localPlayerId: PlayerId): void {

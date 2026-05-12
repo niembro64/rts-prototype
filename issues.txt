@@ -109,7 +109,3 @@ Mismatches with the canonical model (each a discrete issue below):
   enhancement: mirror the per-player revealed bitmap on the server and
   ship the keyframe diff so reconnects restore their map state.
 
-[FOW-14] No "scan" / temporary reveal API. There is no command type that
-  reveals an arbitrary area for a fixed duration (Starcraft scanner
-  sweep, Supreme Commander recon drone). All vision today is tied to
-  a long-lived entity.

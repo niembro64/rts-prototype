@@ -9,6 +9,7 @@ export type {
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotVelocityUpdate,
   NetworkServerSnapshotMinimapEntity,
+  NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotBeamPoint,
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotGridCell,

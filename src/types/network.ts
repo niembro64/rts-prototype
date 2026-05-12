@@ -329,6 +329,20 @@ export type NetworkServerSnapshotSimEvent = {
   victimPlayerId?: PlayerId;
 };
 
+/** Wire shape for an active scan pulse (FOW-14). Only the geometric
+ *  info the client needs to draw vision through the shroud — the
+ *  authoritative TTL stays on the server, but a copy of expiresAtTick
+ *  rides along so a freshly-joined / reconnected client knows how
+ *  much of the sweep is left. */
+export type NetworkServerSnapshotScanPulse = {
+  playerId: PlayerId;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  expiresAtTick: number;
+};
+
 export type NetworkServerSnapshotProjectileSpawn = {
   id: number;
   pos: Vec3;
@@ -474,6 +488,13 @@ export type NetworkServerSnapshot = {
   economy: Record<PlayerId, NetworkServerSnapshotEconomy>;
   sprayTargets?: NetworkServerSnapshotSprayTarget[];
   audioEvents?: NetworkServerSnapshotSimEvent[];
+  /** Active temporary vision pulses (FOW-14 — scanner sweeps) owned
+   *  by the recipient or one of their allies, with the tick they
+   *  expire on. The client passes these into FogOfWarShroudRenderer3D
+   *  so the shroud lifts inside the sweep radius the same way it
+   *  does around a unit's vision circle. Omitted when no pulses are
+   *  live for the recipient's team. */
+  scanPulses?: NetworkServerSnapshotScanPulse[];
   projectiles?: {
     spawns?: NetworkServerSnapshotProjectileSpawn[];
     despawns?: NetworkServerSnapshotProjectileDespawn[];

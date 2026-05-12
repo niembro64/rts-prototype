@@ -13,6 +13,7 @@ import type {
   GuardCommand,
   MoveCommand,
   PingCommand,
+  ScanCommand,
   RemoveLastQueuedOrderCommand,
   SetCameraAoiCommand,
   SetFireEnabledCommand,
@@ -633,6 +634,9 @@ export class GameServer {
       case 'ping':
         return this.authorizePingCommand(command, fromPlayerId);
 
+      case 'scan':
+        return this.authorizeScanCommand(command, fromPlayerId);
+
       case 'move':
         return this.authorizeMoveCommand(command, fromPlayerId);
 
@@ -689,6 +693,11 @@ export class GameServer {
   private authorizePingCommand(command: PingCommand, playerId: PlayerId): PingCommand | null {
     if (!Number.isFinite(command.targetX) || !Number.isFinite(command.targetY)) return null;
     if (command.targetZ !== undefined && !Number.isFinite(command.targetZ)) return null;
+    return { ...command, playerId };
+  }
+
+  private authorizeScanCommand(command: ScanCommand, playerId: PlayerId): ScanCommand | null {
+    if (!Number.isFinite(command.targetX) || !Number.isFinite(command.targetY)) return null;
     return { ...command, playerId };
   }
 

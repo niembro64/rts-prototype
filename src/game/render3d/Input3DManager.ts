@@ -817,6 +817,13 @@ export class Input3DManager {
       case 'p':
         this.togglePingMode();
         break;
+      case 'y':
+        // FOW-14: one-shot scan sweep at the current cursor position.
+        // Reveals an area for a few seconds. Bound to keypress (not a
+        // toggle-mode) so it stays out of the way of build/attack
+        // flows — just point and press.
+        this.enqueueScanAtCursor();
+        break;
       case 'b':
         if (!this.hasSelectedCommander()) break;
         this.exitRepairAreaMode();
@@ -919,6 +926,23 @@ export class Input3DManager {
       targetX: world.x,
       targetY: world.y,
       targetZ: world.z,
+    });
+  }
+
+  /** Fire a one-shot scan sweep at the last-known hover position
+   *  (FOW-14). Reads lastHoverClientX/Y, raycasts to the ground, then
+   *  enqueues a 'scan' command — the authoritative side spawns a
+   *  short-lived vision pulse there. No mode toggle: press once, the
+   *  sweep happens, no further state to manage. */
+  private enqueueScanAtCursor(): void {
+    if (!Number.isFinite(this.lastHoverClientX) || !Number.isFinite(this.lastHoverClientY)) return;
+    const world = this.raycastGround(this.lastHoverClientX, this.lastHoverClientY);
+    if (!world) return;
+    this.localCommandQueue.enqueue({
+      type: 'scan',
+      tick: this.context.getTick(),
+      targetX: world.x,
+      targetY: world.y,
     });
   }
 

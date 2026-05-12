@@ -12,6 +12,7 @@ import type {
   GuardCommand,
   MoveCommand,
   PingCommand,
+  ScanCommand,
   QueueUnitCommand,
   ReclaimCommand,
   RepairAreaCommand,
@@ -107,6 +108,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'ping':
       executePingCommand(ctx, command);
       break;
+    case 'scan':
+      executeScanCommand(ctx, command);
+      break;
     case 'startBuild':
       executeStartBuildCommand(ctx, command);
       break;
@@ -171,6 +175,45 @@ function executePingCommand(ctx: CommandContext, command: PingCommand): void {
     turretId: '',
     sourceType: 'system',
     sourceKey: 'ping',
+    playerId: command.playerId,
+    pos: { x, y, z },
+  };
+  ctx.onSimEvent?.(event);
+  ctx.pendingSimEvents.push(event);
+}
+
+/** Scan duration in ticks. With the 60 Hz tick rate this is a
+ *  ~6-second sweep — long enough to see who's there, short enough
+ *  that the player needs to commit a real probe (a scout, a radar)
+ *  for sustained coverage. */
+const SCAN_PULSE_DURATION_TICKS = 360;
+/** Reveal radius for a scanner sweep. Tuned slightly larger than a
+ *  unit's vision so the sweep meaningfully exposes a chunk of the
+ *  map rather than spotting a single tank. */
+const SCAN_PULSE_RADIUS = 1400;
+
+function executeScanCommand(ctx: CommandContext, command: ScanCommand): void {
+  if (command.playerId === undefined) return;
+  const x = Math.max(0, Math.min(command.targetX, ctx.world.mapWidth));
+  const y = Math.max(0, Math.min(command.targetY, ctx.world.mapHeight));
+  const z = ctx.world.getGroundZ(x, y);
+  ctx.world.addScanPulse({
+    playerId: command.playerId,
+    x,
+    y,
+    z,
+    radius: SCAN_PULSE_RADIUS,
+    expiresAtTick: ctx.world.getTick() + SCAN_PULSE_DURATION_TICKS,
+  });
+  // Pulse the marker visual through the existing ping channel so the
+  // player sees where their sweep landed without a separate renderer.
+  // The ping author is the scanning player, so isAuthoredByRecipient
+  // already team-shares the marker (kept in mind for FOW-06 allies).
+  const event: SimEvent = {
+    type: 'ping',
+    turretId: '',
+    sourceType: 'system',
+    sourceKey: 'scan',
     playerId: command.playerId,
     pos: { x, y, z },
   };

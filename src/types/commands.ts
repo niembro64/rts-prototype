@@ -12,6 +12,7 @@ export type CommandType =
   | 'removeLastQueuedOrder'
   | 'clearSelection'
   | 'ping'
+  | 'scan'
   | 'startBuild'
   | 'queueUnit'
   | 'cancelQueueItem'
@@ -99,6 +100,18 @@ export type PingCommand = BaseCommand & {
   targetX: number;
   targetY: number;
   targetZ?: number;
+  playerId?: PlayerId;
+};
+
+/** Drop a temporary full-vision pulse at the target point. The pulse
+ *  is owned by the issuing playerId and expires after a fixed
+ *  duration (FOW-14 — the canonical Starcraft scanner sweep / SupCom
+ *  recon drone). All clients on the issuer's team see whatever falls
+ *  inside the pulse for as long as it's live. */
+export type ScanCommand = BaseCommand & {
+  type: 'scan';
+  targetX: number;
+  targetY: number;
   playerId?: PlayerId;
 };
 
@@ -329,6 +342,7 @@ export type Command =
   | RemoveLastQueuedOrderCommand
   | ClearSelectionCommand
   | PingCommand
+  | ScanCommand
   | StartBuildCommand
   | QueueUnitCommand
   | CancelQueueItemCommand

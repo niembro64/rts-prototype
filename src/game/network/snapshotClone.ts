@@ -6,6 +6,7 @@ import type {
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotBeamUpdate,
+  NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotVelocityUpdate,
@@ -15,6 +16,7 @@ import {
   copyBeamInto,
   copyCellInto,
   copyMinimapEntityInto,
+  copyScanPulseInto,
   copySimEventInto,
   copySpawnInto,
   copySprayInto,
@@ -24,6 +26,7 @@ import {
   createBeamDto,
   createCellDto,
   createMinimapEntityDto,
+  createScanPulseDto,
   createSimEventDto,
   createSpawnDto,
   createSprayDto,
@@ -250,6 +253,7 @@ export class ReusableNetworkSnapshotCloner {
   private economyKeys: string[] = [];
   private sprayTargets: NetworkServerSnapshotSprayTarget[] = [];
   private audioEvents: NetworkServerSnapshotSimEvent[] = [];
+  private scanPulses: NetworkServerSnapshotScanPulse[] = [];
   private spawns: NetworkServerSnapshotProjectileSpawn[] = [];
   private despawns: NetworkServerSnapshotProjectileDespawn[] = [];
   private velocityUpdates: NetworkServerSnapshotVelocityUpdate[] = [];
@@ -269,6 +273,7 @@ export class ReusableNetworkSnapshotCloner {
     this.economyKeys.length = 0;
     this.sprayTargets.length = 0;
     this.audioEvents.length = 0;
+    this.scanPulses.length = 0;
     this.spawns.length = 0;
     this.despawns.length = 0;
     this.velocityUpdates.length = 0;
@@ -284,6 +289,7 @@ export class ReusableNetworkSnapshotCloner {
     this.removedEntityIds.length = 0;
     this.snapshot.sprayTargets = undefined;
     this.snapshot.audioEvents = undefined;
+    this.snapshot.scanPulses = undefined;
     this.snapshot.minimapEntities = undefined;
     this.snapshot.projectiles = undefined;
     this.snapshot.grid = undefined;
@@ -328,6 +334,7 @@ export class ReusableNetworkSnapshotCloner {
     }
     dst.sprayTargets = this.copyArray(state.sprayTargets, this.sprayTargets, createSprayDto, copySprayInto);
     dst.audioEvents = this.copyArray(state.audioEvents, this.audioEvents, createSimEventDto, copySimEventInto);
+    dst.scanPulses = this.copyArray(state.scanPulses, this.scanPulses, createScanPulseDto, copyScanPulseInto);
     if (state.projectiles) {
       this.projectiles.spawns = this.copyArray(state.projectiles.spawns, this.spawns, createSpawnDto, copySpawnInto);
       this.projectiles.despawns = this.copyDespawnArray(state.projectiles.despawns);

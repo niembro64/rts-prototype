@@ -19,7 +19,7 @@ import { serializeGridSnapshot } from './stateSerializerGrid';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 import { serializeProjectileSnapshot } from './stateSerializerProjectiles';
 import { serializeSprayTargets } from './stateSerializerSpray';
-import { SnapshotVisibility } from './stateSerializerVisibility';
+import { SnapshotVisibility, serializeScanPulses } from './stateSerializerVisibility';
 import {
   SNAPSHOT_DIRTY_FORCE_FIELDS,
   aoiRemovedEntityIdsBuf as _aoiRemovedIdsBuf,
@@ -409,6 +409,8 @@ export function serializeGameState(
 
   const netAudioEvents = serializeAudioEvents(audioEvents, visibility);
 
+  const netScanPulses = serializeScanPulses(world, visibility);
+
   const netProjectiles = serializeProjectileSnapshot({
     world,
     deltaEnabled,
@@ -433,6 +435,7 @@ export function serializeGameState(
   _snapshotBuf.economy = netEconomy;
   _snapshotBuf.sprayTargets = netSprayTargets;
   _snapshotBuf.audioEvents = netAudioEvents;
+  _snapshotBuf.scanPulses = netScanPulses;
   _snapshotBuf.projectiles = netProjectiles;
   _snapshotBuf.gameState = _gameStateBuf;
   _snapshotBuf.grid = netGrid;

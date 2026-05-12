@@ -1,5 +1,6 @@
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasTerrainLineOfSight } from '../sim/combat/lineOfSight';
 import {
   canEntityProvideDetection,
@@ -110,6 +111,7 @@ export class SnapshotVisibility {
     for (const playerId of visibility.viewPlayerIds) {
       visibility.addPlayerSources(world, playerId);
     }
+    visibility.addScanPulseSources(world);
     return visibility;
   }
 
@@ -290,6 +292,27 @@ export class SnapshotVisibility {
     }
   }
 
+  /** Merge active scan pulses into the full-vision source pool for any
+   *  pulse owned by the recipient or one of their allies (FOW-14 +
+   *  FOW-06). Pulses don't currently grant radar or detector vision —
+   *  treat them as a brief floodlight only. */
+  private addScanPulseSources(world: WorldState): void {
+    const pulses = world.scanPulses;
+    if (pulses.length === 0) return;
+    for (let i = 0; i < pulses.length; i++) {
+      const pulse = pulses[i];
+      if (!this.viewPlayerIds.has(pulse.playerId)) continue;
+      this.addSource(
+        this.fullSources,
+        this.fullSourceCells,
+        pulse.x,
+        pulse.y,
+        pulse.z + VISION_SOURCE_EYE_HEIGHT,
+        pulse.radius,
+      );
+    }
+  }
+
   private addSource(
     sources: VisionSource[],
     cells: Map<number, number[]>,
@@ -417,4 +440,36 @@ export function getEntityVisionRadius(entity: Entity): number {
 
 export function getEntityVisibilityPadding(entity: Entity): number {
   return getEntityDetectionPadding(entity);
+}
+
+/** Reusable buffer so we don't allocate per snapshot — the wire shape
+ *  is small and tightly bounded (a handful of pulses at most). */
+const _scanPulseBuf: NetworkServerSnapshotScanPulse[] = [];
+
+/** Filter the world's active scan pulses down to the ones the
+ *  recipient's team owns (FOW-14 + FOW-06). When no team owns any
+ *  live pulses, returns undefined so the snapshot field stays absent.
+ *  When fog is disabled, returns all pulses regardless of owner —
+ *  admin / observer modes should see the whole picture. */
+export function serializeScanPulses(
+  world: WorldState,
+  visibility: SnapshotVisibility,
+): NetworkServerSnapshotScanPulse[] | undefined {
+  const pulses = world.scanPulses;
+  if (pulses.length === 0) return undefined;
+  _scanPulseBuf.length = 0;
+  const filtered = visibility.isFiltered;
+  for (let i = 0; i < pulses.length; i++) {
+    const pulse = pulses[i];
+    if (filtered && !visibility.isOwnedByRecipientOrAlly(pulse.playerId)) continue;
+    _scanPulseBuf.push({
+      playerId: pulse.playerId,
+      x: pulse.x,
+      y: pulse.y,
+      z: pulse.z,
+      radius: pulse.radius,
+      expiresAtTick: pulse.expiresAtTick,
+    });
+  }
+  return _scanPulseBuf.length > 0 ? _scanPulseBuf : undefined;
 }

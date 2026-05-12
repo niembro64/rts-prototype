@@ -70,6 +70,13 @@ export class ClientViewState {
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
+
+  /** Active temporary vision pulses (FOW-14) the server has confirmed
+   *  for this client's team. Mirror of WorldState.scanPulses filtered
+   *  through SnapshotVisibility. Snapshot applier overwrites this on
+   *  each keyframe; expired entries are pruned authoritatively before
+   *  the snapshot is built so the client never needs to drop them. */
+  private scanPulses: NonNullable<NetworkServerSnapshot['scanPulses']> = [];
   private minimapOverrideStore = new ClientMinimapOverrideStore({
     isSelected: (id) => this.selectionState.has(id),
   });
@@ -589,6 +596,19 @@ export class ClientViewState {
     // Store audio events for processing (reuse constant for empty case)
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
 
+    // Snapshot owns the full list of active scan pulses for this
+    // client's team. Length is small (a few at most), so a fresh copy
+    // each snapshot is cheaper than maintaining incremental state.
+    const incomingPulses = state.scanPulses;
+    if (incomingPulses && incomingPulses.length > 0) {
+      this.scanPulses.length = incomingPulses.length;
+      for (let i = 0; i < incomingPulses.length; i++) {
+        this.scanPulses[i] = incomingPulses[i];
+      }
+    } else {
+      this.scanPulses.length = 0;
+    }
+
     // Check game over
     if (
       state.gameState?.phase === 'gameOver' &&
@@ -760,6 +780,14 @@ export class ClientViewState {
     return events;
   }
 
+  /** Active scan pulses for this client's team (FOW-14). The
+   *  shroud renderer reads these to clear fog inside each sweep for
+   *  the pulse's remaining lifetime. Returned array is the live
+   *  store — callers must not mutate it. */
+  getScanPulses(): ReadonlyArray<NonNullable<NetworkServerSnapshot['scanPulses']>[number]> {
+    return this.scanPulses;
+  }
+
   getGameOverWinnerId(): PlayerId | null {
     return this.gameOverWinnerId;
   }
@@ -900,6 +928,7 @@ export class ClientViewState {
     this.projectileStore.clear();
     this.sprayTargetStore.reset();
     this.pendingAudioEvents = EMPTY_AUDIO;
+    this.scanPulses.length = 0;
     this.minimapOverrideStore.reset();
     this.gameOverWinnerId = null;
     this.selectionState.reset();

@@ -9,6 +9,7 @@ export type {
   RemoveLastQueuedOrderCommand,
   ClearSelectionCommand,
   PingCommand,
+  ScanCommand,
   StartBuildCommand,
   QueueUnitCommand,
   CancelQueueItemCommand,

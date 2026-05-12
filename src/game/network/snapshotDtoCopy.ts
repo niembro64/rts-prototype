@@ -16,6 +16,7 @@ import type {
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotProjectileSpawn,
+  NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotTurret,
@@ -330,6 +331,30 @@ export function copyWaypointInto(src: WaypointDto, dst: WaypointDto): WaypointDt
   dst.pos.y = src.pos.y;
   dst.posZ = src.posZ;
   dst.type = src.type;
+  return dst;
+}
+
+export function createScanPulseDto(): NetworkServerSnapshotScanPulse {
+  return {
+    playerId: 1 as PlayerId,
+    x: 0,
+    y: 0,
+    z: 0,
+    radius: 0,
+    expiresAtTick: 0,
+  };
+}
+
+export function copyScanPulseInto(
+  src: NetworkServerSnapshotScanPulse,
+  dst: NetworkServerSnapshotScanPulse,
+): NetworkServerSnapshotScanPulse {
+  dst.playerId = src.playerId;
+  dst.x = src.x;
+  dst.y = src.y;
+  dst.z = src.z;
+  dst.radius = src.radius;
+  dst.expiresAtTick = src.expiresAtTick;
   return dst;
 }
 

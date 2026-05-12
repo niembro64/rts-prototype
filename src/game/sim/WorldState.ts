@@ -27,6 +27,18 @@ import { ENTITY_CHANGED_HP } from '../../types/network';
 
 const TERRAIN_NORMAL_CACHE_CELL_SIZE = 25;
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
+
+/** Temporary vision pulse owned by a single player, contributing a
+ *  full-vision source for the ticks between spawn and expiresAtTick.
+ *  See WorldState.scanPulses. */
+export type ScanPulse = {
+  playerId: PlayerId;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  expiresAtTick: number;
+};
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 
 export type RemovedSnapshotEntity = {
@@ -100,6 +112,17 @@ export class WorldState {
    *  game start by ServerBootstrap when the lobby has team configuration;
    *  never mutated mid-game (alliances are not currently switchable). */
   public alliesByPlayer: Map<PlayerId, ReadonlySet<PlayerId>> = new Map();
+
+  /** Active temporary vision pulses (issues.txt FOW-14 — Starcraft
+   *  scanner sweep / SupCom recon drone). Each pulse contributes a
+   *  full-vision source to its owner's team for the ticks between
+   *  spawn and expiresAtTick. Simulation prunes expired entries at
+   *  the top of every tick; SnapshotVisibility iterates the live
+   *  entries during forRecipient() to merge them with the recipient's
+   *  durable vision sources. Pulses are scoped to playerId rather
+   *  than an entity so a destroyed scan source doesn't truncate the
+   *  reveal mid-sweep. */
+  public scanPulses: ScanPulse[] = [];
 
   // Map dimensions
   public readonly mapWidth: number;
@@ -490,6 +513,27 @@ export class WorldState {
   arePlayersAllied(a: PlayerId, b: PlayerId): boolean {
     if (a === b) return true;
     return this.getAllies(a).has(b);
+  }
+
+  /** Push a new scan pulse onto the active list. See FOW-14. */
+  addScanPulse(pulse: ScanPulse): void {
+    this.scanPulses.push(pulse);
+  }
+
+  /** Drop every scan pulse whose expiresAtTick has elapsed. Called by
+   *  Simulation at the top of each tick — keeping the prune in one
+   *  place means the snapshot serializer always sees a clean live
+   *  list, and avoids per-recipient filtering of expired pulses. */
+  pruneExpiredScanPulses(currentTick: number): void {
+    const pulses = this.scanPulses;
+    let writeIndex = 0;
+    for (let i = 0; i < pulses.length; i++) {
+      if (pulses[i].expiresAtTick > currentTick) {
+        if (writeIndex !== i) pulses[writeIndex] = pulses[i];
+        writeIndex++;
+      }
+    }
+    pulses.length = writeIndex;
   }
 
   // Get factories by player
