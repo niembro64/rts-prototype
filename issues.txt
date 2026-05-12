@@ -88,11 +88,6 @@ What our project currently has:
 
 Mismatches with the canonical model (each a discrete issue below):
 
-[FOW-01] No three-state shroud. The canvas does not distinguish UNEXPLORED
-  from EXPLORED-BUT-DARK from CURRENTLY VISIBLE. After the overlay was
-  removed there is NO visual indication of explored vs. unexplored
-  terrain at all — the player just sees the bare ground/sky everywhere.
-
 [FOW-02] No last-seen ghosts for enemy BUILDINGS. Standard RTS keeps
   enemy buildings at their last-observed position once you've seen them,
   since buildings rarely move. Current behavior drops them the moment
