@@ -170,11 +170,6 @@ Mismatches with the canonical model (each a discrete issue below):
   Acceptable today (toggle is rare) but worth documenting if/when
   finer-grained reveal mechanics (scans, pings) land.
 
-[FOW-13] Owner-aware filter is correct but undocumented. isEntityVisible
-  short-circuits true for owned entities — this is right (you always see
-  your own stuff), but the invariant lives only in the function body. If
-  team-vision is added later, this becomes "owned OR allied."
-
 [FOW-14] No "scan" / temporary reveal API. There is no command type that
   reveals an arbitrary area for a fixed duration (Starcraft scanner
   sweep, Supreme Commander recon drone). All vision today is tied to
@@ -186,11 +181,6 @@ Mismatches with the canonical model (each a discrete issue below):
   the design intent expressed in DEMO_CONFIG.baseRings.radar but there
   is no single declarative source — changing radar's effective coverage
   means editing both files.
-
-[FOW-16] Buildings under construction provide vision (canEntityProvideVision
-  returns hp > 0). A half-built radar with 1 HP currently exposes its
-  full 4200 radius. Usually RTS games either gate radar vision on
-  "construction complete" or scale it with build progress.
 
 [FOW-17] Dead-but-corpse entities don't appear in the test (hp > 0
   check filters them), but visible entity removals on death only emit

@@ -196,21 +196,30 @@ export class SnapshotVisibility {
 }
 
 /** True when the entity contributes a normal line-of-sight source
- *  (units, non-radar buildings — alive). Radar buildings are
- *  intentionally excluded: they are sensors, not eyes. */
+ *  (units, non-radar buildings — alive AND finished). Radar buildings
+ *  are intentionally excluded: they are sensors, not eyes. Buildings
+ *  under construction or still in placement-ghost state provide no
+ *  vision (issues.txt FOW-16): they don't physically exist yet, so a
+ *  half-built sensor exposing its full radius from 1 HP would leak
+ *  intel before the structure is online. */
 export function canEntityProvideFullVision(entity: Entity): boolean {
   if (entity.unit) return entity.unit.hp > 0;
-  if (entity.building && entity.buildingType !== 'radar') return entity.building.hp > 0;
-  return false;
+  if (!entity.building || entity.building.hp <= 0) return false;
+  if (entity.buildingType === 'radar') return false;
+  if (entity.buildable && !entity.buildable.isComplete) return false;
+  return true;
 }
 
-/** True when the entity is a radar-class sensor (alive). Currently
- *  only the radar building qualifies; mobile-radar units could be
- *  added by extending this predicate without touching callers. */
+/** True when the entity is a radar-class sensor (alive AND finished).
+ *  Same construction-gate as full vision — a half-built radar has no
+ *  signal output. Currently only the radar building qualifies; mobile-
+ *  radar units could be added by extending this predicate without
+ *  touching callers. */
 export function canEntityProvideRadarVision(entity: Entity): boolean {
-  if (!entity.building) return false;
-  if (entity.building.hp <= 0) return false;
-  return entity.buildingType === 'radar';
+  if (!entity.building || entity.building.hp <= 0) return false;
+  if (entity.buildingType !== 'radar') return false;
+  if (entity.buildable && !entity.buildable.isComplete) return false;
+  return true;
 }
 
 /** Legacy: returns true if entity contributes ANY vision (full OR
