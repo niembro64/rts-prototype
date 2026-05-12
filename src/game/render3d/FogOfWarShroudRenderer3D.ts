@@ -63,6 +63,13 @@ export class FogOfWarShroudRenderer3D {
    *  shroud snaps in only on the next UPDATE_INTERVAL_MS tick (110ms
    *  of visible flash). */
   private lastEnabled = false;
+  /** Hash of the source pool at the LAST paint (issues.txt
+   *  FOW-OPT-04). Identical hash + no shroud-apply since last paint
+   *  ⇒ the alphaMap output would be byte-for-byte identical, so we
+   *  skip collectSources/markRevealed/paintAlphaMap entirely. Reset
+   *  to null whenever the canvas needs an unconditional repaint
+   *  (seat swap, fog toggle on, server shroud applied). */
+  private lastSourcesHash: number | null = null;
 
   constructor(
     world: THREE.Group,
@@ -137,6 +144,7 @@ export class FogOfWarShroudRenderer3D {
       this.lastPlayerId = localPlayerId;
       this.revealed.fill(0);
       this.updateAccumMs = UPDATE_INTERVAL_MS;
+      this.lastSourcesHash = null;
     }
 
     // Fog just toggled back on — force a repaint this frame so the
@@ -145,6 +153,7 @@ export class FogOfWarShroudRenderer3D {
     if (!this.lastEnabled) {
       this.updateAccumMs = UPDATE_INTERVAL_MS;
       this.lastEnabled = true;
+      this.lastSourcesHash = null;
     }
 
     // FOW-11: fold any authoritative bitmap from the latest keyframe
@@ -154,16 +163,47 @@ export class FogOfWarShroudRenderer3D {
     // a populated bitmap so the dark-shroud history shows up
     // immediately, then live vision keeps it current.
     const shroud = clientViewState.consumePendingShroud();
-    if (shroud) this.applyServerShroud(shroud);
+    if (shroud) {
+      this.applyServerShroud(shroud);
+      // Server reveals can light up explored cells we haven't observed
+      // locally — force a repaint regardless of source-hash stability.
+      this.lastSourcesHash = null;
+    }
 
     this.updateAccumMs += deltaMs;
     if (this.updateAccumMs < UPDATE_INTERVAL_MS) return;
     this.updateAccumMs = 0;
 
     this.collectSources(clientViewState, localPlayerId);
+    // FOW-OPT-04: skip the full paint when the local source pool is
+    // byte-identical to the last paint. With no source movement (an
+    // idle base) and no fresh shroud apply, the alphaMap output would
+    // be identical to what's already on the canvas — the per-pixel
+    // base coat + radial-gradient pass is the dominant cost of this
+    // class, and a hash compare keeps the static case near-free.
+    const sourcesHash = this.hashSources();
+    if (sourcesHash === this.lastSourcesHash) return;
     this.markRevealed();
     this.paintAlphaMap();
     this.texture.needsUpdate = true;
+    this.lastSourcesHash = sourcesHash;
+  }
+
+  /** Cheap rolling hash of the current source pool. Quantizes positions
+   *  and radii to integer world units (sub-unit drift is below the
+   *  alphaMap's per-pixel resolution anyway, ~mapWidth/512) so a unit
+   *  parked in place doesn't trigger repaints from float noise. The
+   *  hash is order-sensitive — fine because collectSources walks
+   *  ClientViewState's units/buildings/pulses in a stable order. */
+  private hashSources(): number {
+    let h = this.sources.length;
+    for (let i = 0; i < this.sources.length; i++) {
+      const s = this.sources[i];
+      h = (Math.imul(h, 31) + (s.x | 0)) | 0;
+      h = (Math.imul(h, 31) + (s.y | 0)) | 0;
+      h = (Math.imul(h, 31) + (s.radius | 0)) | 0;
+    }
+    return h;
   }
 
   /** OR the server-side shroud bitmap into the local revealed array.
