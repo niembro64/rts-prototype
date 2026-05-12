@@ -127,6 +127,23 @@ export class SnapshotVisibility {
     return visibility;
   }
 
+  /** Stable identity for the recipient's view-team — the sorted tuple
+   *  of recipient + allies. Two recipients on the same team share the
+   *  same key, so a per-emit cache (issues.txt FOW-OPT-01) can hand
+   *  back one SnapshotVisibility instance for the whole team instead
+   *  of rebuilding the spatial hash per listener. Returns undefined
+   *  for admin/spectator visibilities (no recipient), which the cache
+   *  uses to skip caching entirely. */
+  static teamCacheKey(world: WorldState, recipientPlayerId: PlayerId | undefined): string | undefined {
+    if (recipientPlayerId === undefined) return undefined;
+    const allies = world.getAllies(recipientPlayerId);
+    if (allies.size === 0) return `${recipientPlayerId}`;
+    const ids: PlayerId[] = [recipientPlayerId];
+    for (const id of allies) ids.push(id);
+    ids.sort((a, b) => a - b);
+    return ids.join(',');
+  }
+
   /** True when the given playerId belongs to the recipient or one of
    *  their allies. Works regardless of fog status — a recipient with
    *  fog disabled still gets the team-aware "this is one of ours"
@@ -473,6 +490,40 @@ export function getEntityVisionRadius(entity: Entity): number {
 
 export function getEntityVisibilityPadding(entity: Entity): number {
   return getEntityDetectionPadding(entity);
+}
+
+/** Per-emit cache used to share one SnapshotVisibility across every
+ *  recipient on the same team (issues.txt FOW-OPT-01). The publisher
+ *  creates one of these at the top of each emit() and threads it into
+ *  the per-listener serializer; the rebuild cost — iterating every
+ *  team unit + building + scan pulse and inserting them into the
+ *  spatial hash — runs once per team per snapshot instead of once per
+ *  listener per snapshot. */
+export type SnapshotVisibilityCache = Map<string, SnapshotVisibility>;
+
+export function createSnapshotVisibilityCache(): SnapshotVisibilityCache {
+  return new Map();
+}
+
+/** Look up the team's SnapshotVisibility in the cache, building it on
+ *  first call and reusing it for every subsequent teammate. Admin /
+ *  spectator visibilities (no recipient) are not cacheable — every
+ *  caller wants the same unfiltered instance, but mixing them with
+ *  the team map would collide on the missing key — so they fall
+ *  through to the standard constructor. */
+export function getOrBuildVisibility(
+  world: WorldState,
+  recipientPlayerId: PlayerId | undefined,
+  cache: SnapshotVisibilityCache | undefined,
+): SnapshotVisibility {
+  if (!cache) return SnapshotVisibility.forRecipient(world, recipientPlayerId);
+  const key = SnapshotVisibility.teamCacheKey(world, recipientPlayerId);
+  if (key === undefined) return SnapshotVisibility.forRecipient(world, recipientPlayerId);
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const fresh = SnapshotVisibility.forRecipient(world, recipientPlayerId);
+  cache.set(key, fresh);
+  return fresh;
 }
 
 /** Build the FOW-11 keyframe shroud payload for the given recipient,

@@ -11,7 +11,10 @@ import type {
   SerializeGameStateOptions,
   SnapshotAoiBounds,
 } from '../network/stateSerializer';
-import { SnapshotVisibility } from '../network/stateSerializerVisibility';
+import {
+  createSnapshotVisibilityCache,
+  getOrBuildVisibility,
+} from '../network/stateSerializerVisibility';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
 import type { CaptureSystem } from '../sim/CaptureSystem';
@@ -135,12 +138,18 @@ export class ServerSnapshotPublisher {
     // is missed (covers any direct caller that didn't precapture).
     captureSnapshotEntityStates(input.world, isDelta, this.dirtyIdsBuf);
 
+    // Share one SnapshotVisibility per team across the listener loop
+    // (issues.txt FOW-OPT-01). Two teammates merge the same set of
+    // ally vision sources into the same spatial hash; without this
+    // we'd rebuild the same structure once per listener.
+    const visibilityCache = createSnapshotVisibilityCache();
+
     const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
       const forceKeyframe = listener.forceKeyframe === true;
       const listenerIsDelta = isDelta && !forceKeyframe;
       const aoiRefreshKeyframe = isDelta && forceKeyframe;
       listener.forceKeyframe = false;
-      const visibility = SnapshotVisibility.forRecipient(input.world, listener.playerId);
+      const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       const serializeOptions: SerializeGameStateOptions = {
         trackingKey: listener.deltaTrackingKey,
         dirtyEntityIds: this.dirtyIdsBuf,
