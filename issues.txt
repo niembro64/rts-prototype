@@ -88,11 +88,6 @@ What our project currently has:
 
 Mismatches with the canonical model (each a discrete issue below):
 
-[FOW-04] No line-of-sight blocking by terrain. A unit on the far side
-  of a hill, behind a forest, or beyond a wall is visible if it falls
-  within the circle. The world has a heightmap (Terrain) but the
-  visibility test is purely 2D point-in-circle.
-
 [FOW-05] No stealth/cloak mechanic and therefore no detector mechanic.
   Every unit is visible to anyone with overlapping vision. Adding cloak
   later will require new entity flags and a "detector radius" field

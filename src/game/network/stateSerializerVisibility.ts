@@ -1,5 +1,6 @@
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
+import { hasTerrainLineOfSight } from '../sim/combat/lineOfSight';
 
 export const VISION_CELL_SIZE = 512;
 export const UNIT_VISION_RADIUS = 1200;
@@ -9,9 +10,25 @@ export const RADAR_VISION_RADIUS = 4200;
 export const TURRET_VISION_PAD = 250;
 export const BUILDER_VISION_PAD = 250;
 
+/** Eye-height above transform.z assumed for vision sources when
+ *  running the terrain LOS check (issues.txt FOW-04). Constant rather
+ *  than per-entity-type because the existing transform.z already
+ *  encodes ground elevation, so a unit standing on a hill gets the
+ *  hill's lift "for free" — this just adds a body/turret-mount offset
+ *  on top so two units on flat ground can still see each other over
+ *  a small bump. */
+const VISION_SOURCE_EYE_HEIGHT = 30;
+
+/** Target-side z offset above transform.z when running the LOS check.
+ *  Slightly less than VISION_SOURCE_EYE_HEIGHT — the source is
+ *  actively looking (turret head, sensor mast), the target is just a
+ *  body to be observed. */
+const VISION_TARGET_BODY_HEIGHT = 15;
+
 type VisionSource = {
   x: number;
   y: number;
+  z: number;
   radius: number;
 };
 
@@ -40,6 +57,7 @@ export class SnapshotVisibility {
 
   private constructor(
     private readonly recipientPlayerId: PlayerId | undefined,
+    private readonly world: WorldState,
     mapWidth: number,
     mapHeight: number,
   ) {
@@ -50,7 +68,7 @@ export class SnapshotVisibility {
 
   static forRecipient(world: WorldState, recipientPlayerId: PlayerId | undefined): SnapshotVisibility {
     const filteredPlayerId = world.fogOfWarEnabled ? recipientPlayerId : undefined;
-    const visibility = new SnapshotVisibility(filteredPlayerId, world.mapWidth, world.mapHeight);
+    const visibility = new SnapshotVisibility(filteredPlayerId, world, world.mapWidth, world.mapHeight);
     if (filteredPlayerId === undefined) return visibility;
     visibility.addPlayerSources(world, filteredPlayerId);
     return visibility;
@@ -73,15 +91,51 @@ export class SnapshotVisibility {
   /** Full-vision check: gates the MAIN snapshot. Owned entities are
    *  always full-visible; for foreign entities the recipient must have
    *  a full-vision source (unit / non-radar building) covering the
-   *  entity position. Radar coverage does NOT grant full visibility. */
+   *  entity position AND have an unobstructed terrain sightline to it
+   *  (FOW-04). Radar coverage does NOT grant full visibility. */
   isEntityVisible(entity: Entity): boolean {
     if (!this.isFiltered) return true;
     if (entity.ownership?.playerId === this.recipientPlayerId) return true;
-    return this.isPointVisible(
+    return this.isEntityVisibleWithLos(
       entity.transform.x,
       entity.transform.y,
+      entity.transform.z,
       getEntityVisibilityPadding(entity),
     );
+  }
+
+  /** Distance-then-LOS scan over fullSources. Reuses the spatial hash
+   *  for the distance candidate set, then runs hasTerrainLineOfSight
+   *  against the heightmap only on the candidates that pass distance
+   *  — so a tank behind a tall ridge falls out of vision even when
+   *  the source's 2D circle covers its position. */
+  private isEntityVisibleWithLos(
+    x: number,
+    y: number,
+    z: number,
+    padding: number,
+  ): boolean {
+    const cx = Math.floor(x / VISION_CELL_SIZE);
+    const cy = Math.floor(y / VISION_CELL_SIZE);
+    if (cx < 0 || cy < 0 || cx >= this.gridW || cy >= this.gridH) return false;
+    const sourceIndexes = this.fullSourceCells.get(this.cellKey(cx, cy));
+    if (!sourceIndexes) return false;
+    const targetZ = z + VISION_TARGET_BODY_HEIGHT;
+    for (let i = 0; i < sourceIndexes.length; i++) {
+      const source = this.fullSources[sourceIndexes[i]];
+      const dx = x - source.x;
+      const dy = y - source.y;
+      const r = source.radius + padding;
+      if (dx * dx + dy * dy > r * r) continue;
+      if (hasTerrainLineOfSight(
+        this.world,
+        source.x, source.y, source.z,
+        x, y, targetZ,
+      )) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Minimap-tier check: full vision OR radar coverage. Used by the
@@ -119,12 +173,19 @@ export class SnapshotVisibility {
       const source = sources[s];
       for (let i = 0; i < source.length; i++) {
         const entity = source[i];
+        // Eye z = entity's ground height plus a fixed offset (FOW-04).
+        // A unit standing on a hill already has transform.z lifted by
+        // the hill, so the constant just adds the body / turret mount
+        // height — units on flat ground can still see over a small
+        // bump, units behind a tall ridge can't.
+        const eyeZ = entity.transform.z + VISION_SOURCE_EYE_HEIGHT;
         if (canEntityProvideFullVision(entity)) {
           this.addSource(
             this.fullSources,
             this.fullSourceCells,
             entity.transform.x,
             entity.transform.y,
+            eyeZ,
             getEntityFullVisionRadius(entity),
           );
         }
@@ -134,6 +195,7 @@ export class SnapshotVisibility {
             this.radarSourceCells,
             entity.transform.x,
             entity.transform.y,
+            eyeZ,
             getEntityRadarRadius(entity),
           );
         }
@@ -146,11 +208,12 @@ export class SnapshotVisibility {
     cells: Map<number, number[]>,
     x: number,
     y: number,
+    z: number,
     radius: number,
   ): void {
     if (radius <= 0) return;
     const index = sources.length;
-    sources.push({ x, y, radius });
+    sources.push({ x, y, z, radius });
     const minCx = Math.max(0, Math.floor((x - radius) / VISION_CELL_SIZE));
     const maxCx = Math.min(this.gridW - 1, Math.floor((x + radius) / VISION_CELL_SIZE));
     const minCy = Math.max(0, Math.floor((y - radius) / VISION_CELL_SIZE));
