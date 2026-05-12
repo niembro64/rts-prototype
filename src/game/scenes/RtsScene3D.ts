@@ -1129,6 +1129,12 @@ export class RtsScene3D {
   public switchPlayer(playerId: PlayerId): void {
     this.localPlayerId = playerId;
     this.inputManager?.setActivePlayerId(playerId);
+    // Tell the connection to filter snapshots for the new player. On
+    // local connections this re-binds the server-side listener so the
+    // client view state, minimap, and fog-of-war shroud pick up the
+    // new player's vision sources on the next snapshot. Remote
+    // connections don't expose this — the network recipient is fixed.
+    this.gameConnection.setRecipientPlayerId?.(playerId);
     this.markSelectionDirty();
     this.onPlayerChange?.(playerId);
   }

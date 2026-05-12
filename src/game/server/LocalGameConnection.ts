@@ -22,9 +22,35 @@ export class LocalGameConnection implements GameConnection {
   constructor(server: GameServer, playerId?: PlayerId) {
     this.server = server;
     this.playerId = playerId;
+    this.snapshotListenerKey = this.subscribeSnapshots(playerId);
 
-    // Wire server snapshot emissions to this connection
-    this.snapshotListenerKey = server.addSnapshotListener((state) => {
+    this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
+      this.gameOverCallback?.(winnerId);
+    });
+  }
+
+  /** Rebind the snapshot listener to a new recipient player. Used when
+   *  the demo / lobby-preview / offline scene toggles which seat the
+   *  user is viewing as — the server's per-recipient fog-of-war filter
+   *  has to follow the toggle, otherwise the client view state stays
+   *  populated from the original seat and the shroud / minimap / world
+   *  render for "the new player" using the old player's vision sources. */
+  setRecipientPlayerId(playerId: PlayerId | undefined): void {
+    if (this.playerId === playerId) return;
+    this.server.removeSnapshotListener(this.snapshotListenerKey);
+    this.playerId = playerId;
+    // Drop any held pending-snapshot from the previous binding — its
+    // delta baseline is for the old recipient, so applying it on top
+    // of the new view would produce nonsense.
+    this.pendingSnapshot = null;
+    this.snapshotListenerKey = this.subscribeSnapshots(playerId);
+    // Mark the fresh listener ready immediately; we know the client
+    // scene is already past startup (only running scenes toggle).
+    this.server.markSnapshotListenerReady(this.snapshotListenerKey);
+  }
+
+  private subscribeSnapshots(playerId: PlayerId | undefined): string {
+    return this.server.addSnapshotListener((state) => {
       if (this.snapshotCallback) {
         this.snapshotCallback(state);
       } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
@@ -33,10 +59,6 @@ export class LocalGameConnection implements GameConnection {
           : this.pendingSnapshotCloner.clone(state);
       }
     }, playerId);
-
-    this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
-      this.gameOverCallback?.(winnerId);
-    });
   }
 
   sendCommand(command: Command): void {

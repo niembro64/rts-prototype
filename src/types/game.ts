@@ -79,6 +79,16 @@ export type GameConnection = {
   onSimEvent(callback: SimEventCallback): void;
   onGameOver(callback: GameOverCallback): void;
   disconnect(): void;
+  /** Re-bind which player the server should filter snapshots for.
+   *  Used by demo / lobby-preview / offline single-player flows where
+   *  the user toggles the active scene-local player at runtime — the
+   *  server's fog-of-war filter has to follow the toggle, otherwise
+   *  snapshots keep arriving filtered for the original seat and the
+   *  new player's units never enter the client view state.
+   *
+   *  Optional: remote connections don't implement it (the recipient
+   *  is fixed at the network layer). */
+  setRecipientPlayerId?(playerId: PlayerId | undefined): void;
 };
 
 export type GameServerConfig = {
