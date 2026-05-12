@@ -88,13 +88,26 @@ What our project currently has:
 
 Mismatches with the canonical model (each a discrete issue below):
 
-[FOW-02] No last-seen ghosts for enemy BUILDINGS. Standard RTS keeps
-  enemy buildings at their last-observed position once you've seen them,
-  since buildings rarely move. Current behavior drops them the moment
-  they exit vision, which is correct for mobile units but wrong for
-  static structures. (The user explicitly asked for this drop behavior
-  for UNITS — but the same change also wiped building memory, which is
-  a regression vs. typical RTS expectations.)
+[FOW-02a] Ghost-building visual differentiation. The server now keeps
+  enemy buildings on the client after they exit vision (last-seen
+  state preserved), and the shroud renderer dims the surrounding
+  ground, but the building mesh itself still renders with its live
+  material — its taller geometry sticks up above the shroud plane
+  unmodified. Should fade ghosts to a desaturated/dimmed look so the
+  player can distinguish current intel from stale memory. Likely
+  implementation: per-frame "is in current local vision" check on
+  the client (reuse the local vision sources the shroud renderer
+  already computes), then swap to a grayscale primaryMat variant.
+
+[FOW-02b] Dead-ghost cleanup when player re-scouts. If an enemy
+  building is destroyed while out of the player's vision, the server's
+  removal record is dropped by shouldSendRemoval (correct — don't
+  reveal off-screen deaths). The ghost id stays in prevEntityIds
+  forever and the client keeps rendering it. When the player later
+  re-enters that area and the server has nothing to send for that
+  position, the ghost should be removed. Needs server-side
+  "ghosted-but-gone" tracking that emits a removal once the player's
+  vision finally covers the ghost's last position.
 
 [FOW-03] Radar is "just a bigger vision circle." Radar should provide a
   WEAKER form of awareness (blips/positions only, no unit identification,

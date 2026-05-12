@@ -225,17 +225,21 @@ export function serializeGameState(
       for (const id of tracking.prevEntityIds) {
         const entity = world.getEntity(id);
         if (!entity) continue;
-        if (entity.type !== 'unit' && entity.type !== 'building') continue;
+        // Buildings stay as last-seen ghosts when they exit vision
+        // (issues.txt FOW-02): the dirty loop's acceptsEntity check
+        // already gates state updates while the building is invisible,
+        // so the client's copy stops receiving fresh data without
+        // disappearing, and prevEntityIds / prevStates stay populated
+        // so the next time it re-enters vision the dirty loop resumes
+        // against the same delta baseline. Only mobile units are
+        // dropped — a stale ghost at the wrong position would be a lie.
+        if (entity.type !== 'unit') continue;
         if (!isEntityInsideAoi(entity, aoi, recipientPlayerId)) continue;
         if (!visibility.isEntityVisible(entity)) {
           _visibilityHiddenIdsBuf.push(id);
         }
       }
       for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
-        // Fog hides the entity from the recipient — emit a removal so the
-        // client drops it from its world. Once it re-enters vision the
-        // "new entities not yet tracked" pass below will send it back as a
-        // full entity snapshot.
         forgetTrackedEntity(_visibilityHiddenIdsBuf[i], true);
       }
     }
