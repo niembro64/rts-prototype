@@ -292,11 +292,15 @@ export class BuildingEntityRenderer3D {
   /** True when the building is in the local view but no local vision
    *  source currently covers its footprint. Owned buildings are never
    *  ghosts (you always see your own). When the local-player id is
-   *  undefined (spectator / global view) nothing is ghosted. */
+   *  undefined (spectator / global view) nothing is ghosted. Also
+   *  short-circuits when fog of war is disabled — the player can see
+   *  the whole map, so every foreign building should render in full
+   *  team color rather than desaturated. */
   private isBuildingGhost(entity: Entity): boolean {
     const localPlayerId = this.getLocalPlayerId();
     if (localPlayerId === undefined) return false;
     if (entity.ownership?.playerId === localPlayerId) return false;
+    if (this.clientViewState.getServerMeta()?.fogOfWarEnabled !== true) return false;
     const padding = getEntityVisibilityPadding(entity);
     const px = entity.transform.x;
     const py = entity.transform.y;

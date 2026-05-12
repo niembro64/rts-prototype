@@ -57,6 +57,12 @@ export class FogOfWarShroudRenderer3D {
   private readonly sources: VisionSource[] = [];
   private updateAccumMs = UPDATE_INTERVAL_MS;
   private lastPlayerId: PlayerId | null = null;
+  /** Last `enabled` state we drew at. Tracked so toggling fog back on
+   *  forces an immediate repaint instead of leaving the canvas at
+   *  whatever it held when fog last turned off — without this the
+   *  shroud snaps in only on the next UPDATE_INTERVAL_MS tick (110ms
+   *  of visible flash). */
+  private lastEnabled = false;
 
   constructor(
     world: THREE.Group,
@@ -120,7 +126,10 @@ export class FogOfWarShroudRenderer3D {
     deltaMs: number,
   ): void {
     this.mesh.visible = enabled;
-    if (!enabled) return;
+    if (!enabled) {
+      this.lastEnabled = false;
+      return;
+    }
 
     // Lobby seat swap or replay scrub → exploration is per-player, so
     // start a fresh history.
@@ -128,6 +137,14 @@ export class FogOfWarShroudRenderer3D {
       this.lastPlayerId = localPlayerId;
       this.revealed.fill(0);
       this.updateAccumMs = UPDATE_INTERVAL_MS;
+    }
+
+    // Fog just toggled back on — force a repaint this frame so the
+    // shroud snaps in immediately instead of showing the canvas in
+    // whatever state it held last.
+    if (!this.lastEnabled) {
+      this.updateAccumMs = UPDATE_INTERVAL_MS;
+      this.lastEnabled = true;
     }
 
     // FOW-11: fold any authoritative bitmap from the latest keyframe

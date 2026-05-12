@@ -136,6 +136,16 @@ export class SnapshotVisibility {
     return this.viewPlayerIds.has(playerId);
   }
 
+  /** True when this visibility object was built for a specific
+   *  player (with or without fog filtering). Distinct from isFiltered
+   *  — the latter is false when fog is off, but a player-bound
+   *  visibility still wants per-team delta resolution and ownership
+   *  routing. Admin / spectator-style observers (no recipient) get
+   *  false. */
+  get hasRecipient(): boolean {
+    return this.viewPlayerIds.size > 0;
+  }
+
   canSeePrivateEntityDetails(entity: Entity): boolean {
     if (!this.isFiltered) return true;
     return this.isOwnedByRecipientOrAlly(entity.ownership?.playerId);

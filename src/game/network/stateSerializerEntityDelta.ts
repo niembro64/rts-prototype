@@ -139,13 +139,18 @@ function getDeltaResolution(
   entity: Entity,
   visibility: SnapshotVisibility | undefined,
 ): SnapshotDeltaResolutionConfig {
-  // No filter (admin / global observer) treats every entity as owned
-  // so deltas stay at full precision — matches the original
-  // recipientPlayerId === undefined branch.
-  if (!visibility || !visibility.isFiltered) return SNAPSHOT_CONFIG.ownedEntityDelta;
+  // No recipient at all (admin / global observer) treats every entity
+  // as owned so deltas stay at full precision — matches the original
+  // recipientPlayerId === undefined branch. We check hasRecipient
+  // rather than isFiltered so the fog-off-but-recipient-set path
+  // (demo battle's local player view with fog disabled) still picks
+  // owned-vs-observed correctly: the player wants full precision on
+  // their own units and coarser updates for the enemies they happen
+  // to see, regardless of whether the fog overlay is up.
   // FOW-06: allies share full-precision deltas the same as the
   // recipient's own entities, so teammates' units don't smear during
   // shared-camera plays.
+  if (!visibility || !visibility.hasRecipient) return SNAPSHOT_CONFIG.ownedEntityDelta;
   return visibility.isOwnedByRecipientOrAlly(entity.ownership?.playerId)
     ? SNAPSHOT_CONFIG.ownedEntityDelta
     : SNAPSHOT_CONFIG.observedEntityDelta;
