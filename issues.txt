@@ -109,11 +109,15 @@ Mismatches with the canonical model (each a discrete issue below):
   "ghosted-but-gone" tracking that emits a removal once the player's
   vision finally covers the ghost's last position.
 
-[FOW-03] Radar is "just a bigger vision circle." Radar should provide a
-  WEAKER form of awareness (blips/positions only, no unit identification,
-  no HP, no orders) at a LARGER radius — not a strict superset of direct
-  vision. As written, a radar building reveals enemies in full fidelity
-  the same as a commander.
+[FOW-03a] Radar minimap blips are visually indistinguishable from
+  full-vision contacts. Server-side split is in place — radar buildings
+  feed only the minimap channel and the main snapshot drops them — so
+  the player now sees enemy positions through radar without HP / orders
+  / unit details. But the minimap entity DTO still ships `type`
+  ('unit' | 'building') and renders identically to full-vision entries.
+  Should add a `radarOnly` flag (or omit `type`) so the client minimap
+  can render radar contacts as generic positional dots rather than
+  identifiable icons.
 
 [FOW-04] No line-of-sight blocking by terrain. A unit on the far side
   of a hill, behind a forest, or beyond a wall is visible if it falls

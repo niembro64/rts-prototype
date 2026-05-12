@@ -50,7 +50,11 @@ export function serializeMinimapSnapshotEntities(
     for (let i = 0; i < source.length; i++) {
       const entity = source[i];
       if (entity.type !== 'unit' && entity.type !== 'building') continue;
-      if (visibility && !visibility.isEntityVisible(entity)) continue;
+      // Minimap uses the wider full-vision-OR-radar check (FOW-03):
+      // radar buildings reveal enemy positions on the minimap without
+      // sending them through the main snapshot. Audio events and
+      // projectiles still gate on isPointVisible (full vision only).
+      if (visibility && !visibility.isEntityOnRadar(entity)) continue;
       minimapEntityBuf.push(writeMinimapEntity(entity));
     }
   }
