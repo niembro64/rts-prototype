@@ -6,8 +6,9 @@
 // state to helpers.
 
 import type { ClientViewState } from '../network/ClientViewState';
+import { audioManager } from '../audio/AudioManager';
 import type { SceneCameraState } from '@/types/game';
-import { isUnitTypeId } from '@/types/blueprintIds';
+import { isShotId, isTurretId, isUnitTypeId } from '@/types/blueprintIds';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import { buildEconomyInfo } from './helpers';
@@ -884,6 +885,16 @@ export class RtsScene3D {
    * visuals come from FLAG toggles on their turret state.
    */
   private handleSimEvent3D(event: NetworkServerSnapshotSimEvent): void {
+    // FOW-09 prereq: play the audio side of every SimEvent before
+    // any visual branch returns early. Audio stays on even when the
+    // camera/effect-cell gating drops the visual — that's what makes
+    // off-screen gunfire audible, the whole point of an RTS soundscape.
+    this.playSimEventAudio(event);
+    // FOW-09 main: events forwarded by the audio earshot pad arrive
+    // with audioOnly=true. The sound has already played above; skip
+    // every visual branch so the explosion sprite / debris / ping
+    // marker don't leak the still-shrouded source's position.
+    if (event.audioOnly) return;
     if (event.type === 'ping') {
       const effectGfx = this.graphicsConfigForEffectCell(
         event.pos.x,
@@ -1100,6 +1111,57 @@ export class RtsScene3D {
         effectGfx.fireExplosionStyle,
       );
       this.debrisRenderer.spawn(event.pos.x, event.pos.y, event.pos.z, ctx, effectGfx);
+    }
+  }
+
+  /** Play the audio side of a SimEvent (FOW-09 prereq). Called once
+   *  per event by handleSimEvent3D ahead of the visual branches so
+   *  off-screen action stays audible even when the visual gating
+   *  trims the explosion sprite. Continuous laser / force-field
+   *  sounds are looped state, not one-shots, so they start/stop on
+   *  the matching SimEvent pair. */
+  private playSimEventAudio(event: NetworkServerSnapshotSimEvent): void {
+    switch (event.type) {
+      case 'fire':
+        // turretId on a 'fire' event is the firing turret blueprint id.
+        // Narrow before passing so we don't accidentally feed a shot
+        // or unit id when the event was authored unexpectedly.
+        if (event.turretId && isTurretId(event.turretId)) {
+          audioManager.playWeaponFire(event.turretId);
+        }
+        return;
+      case 'hit':
+      case 'projectileExpire':
+        // hit / expire audio is keyed by the shot blueprint id. Beam
+        // and laser hits carry a turret id in this same field; the
+        // blueprintId helper distinguishes shot vs turret so we route
+        // it through the right AudioManager method.
+        if (event.turretId) {
+          if (isShotId(event.turretId)) audioManager.playWeaponHit(event.turretId);
+          else if (isTurretId(event.turretId)) audioManager.playWeaponFire(event.turretId);
+        }
+        return;
+      case 'death': {
+        const unitType = event.deathContext?.unitType;
+        if (unitType && isUnitTypeId(unitType)) audioManager.playUnitDeath(unitType);
+        return;
+      }
+      case 'laserStart':
+        if (event.entityId !== undefined) {
+          audioManager.startLaserSound(event.entityId, undefined);
+        }
+        return;
+      case 'laserStop':
+        if (event.entityId !== undefined) audioManager.stopLaserSound(event.entityId);
+        return;
+      case 'forceFieldStart':
+        if (event.entityId !== undefined) audioManager.startForceFieldSound(event.entityId);
+        return;
+      case 'forceFieldStop':
+        if (event.entityId !== undefined) audioManager.stopForceFieldSound(event.entityId);
+        return;
+      // ping / attackAlert / forceFieldImpact have no one-shot sound
+      // wired yet; the visual is the whole UX. Drop through.
     }
   }
 

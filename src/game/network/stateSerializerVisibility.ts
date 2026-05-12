@@ -16,6 +16,13 @@ export const BUILDING_VISION_RADIUS = 1000;
 export const RADAR_VISION_RADIUS = 4200;
 export const TURRET_VISION_PAD = 250;
 export const BUILDER_VISION_PAD = 250;
+/** Additional radius beyond a full-vision source where sounds carry
+ *  but visuals do not (FOW-09). A vision-source's effective audio
+ *  reach is `radius + EARSHOT_PAD`. Tuned roughly half the unit
+ *  vision radius — enough to hear gunfire just over the rim of your
+ *  scout's circle, not enough to hear a base under attack across
+ *  the map. */
+export const EARSHOT_PAD = 600;
 
 /** Eye-height above transform.z assumed for vision sources when
  *  running the terrain LOS check (issues.txt FOW-04). Constant rather
@@ -207,6 +214,17 @@ export class SnapshotVisibility {
   isPointVisible(x: number, y: number, padding = 0): boolean {
     if (!this.isFiltered) return true;
     return this.isPointVisibleIn(this.fullSources, this.fullSourceCells, x, y, padding);
+  }
+
+  /** True when the point sits inside any of the recipient's
+   *  full-vision sources extended by EARSHOT_PAD. Used by the audio
+   *  serializer for the FOW-09 distant-gunfire forwarding: events
+   *  outside isPointVisible but inside the earshot pad ride along
+   *  with audioOnly=true. Returns true unconditionally when fog is
+   *  off, so admin observers still hear everything. */
+  isPointWithinEarshot(x: number, y: number): boolean {
+    if (!this.isFiltered) return true;
+    return this.isPointVisibleIn(this.fullSources, this.fullSourceCells, x, y, EARSHOT_PAD);
   }
 
   shouldSendRemoval(record: RemovedSnapshotEntity): boolean {

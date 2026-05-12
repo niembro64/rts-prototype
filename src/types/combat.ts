@@ -112,6 +112,13 @@ export type SimEvent = {
    *  event entirely, so it doesn't leak the attacker's location to
    *  uninvolved players. */
   victimPlayerId?: PlayerId;
+  /** True when the event was forwarded for the FOW-09 earshot reveal
+   *  rather than because the recipient has direct vision of its
+   *  position. The client plays the audio but suppresses every
+   *  visual branch — "I hear distant gunfire" without exposing the
+   *  attacker. Server-only flag (set by serializeAudioEvents), never
+   *  read by the simulation itself. */
+  audioOnly?: boolean;
 };
 
 export type ProjectileSpawnEvent = {

@@ -88,17 +88,6 @@ What our project currently has:
 
 Mismatches with the canonical model (each a discrete issue below):
 
-[FOW-09] Audio reveal is binary on vision (PREREQ: 3D audio not wired
-  yet). serializeAudioEvents already filters by full vision, but the
-  3D scene's handleSimEvent3D currently only fires visuals — none of
-  the AudioManager's playWeaponFire / playWeaponHit / playDeath calls
-  are reached from gameplay, so even in-vision events produce no
-  audio. Attenuated out-of-vision "I hear distant gunfire" hints
-  can't ship until audio playback is hooked into the 3D path; once
-  it is, the wider earshot-pad serializer filter + an audioOnly
-  flag (so the client suppresses visuals but plays the sound) is
-  the right shape.
-
 [FOW-11] Vision history is client-only. FogOfWarShroudRenderer3D
   already tracks a per-tile revealed bitmap for the local player and
   renders three-state shroud (unexplored / explored-dark / currently

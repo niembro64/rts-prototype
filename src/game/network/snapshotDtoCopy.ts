@@ -183,6 +183,7 @@ export function createSimEventDto(): NetworkServerSnapshotSimEvent {
     forceFieldImpact: undefined,
     killerPlayerId: undefined,
     victimPlayerId: undefined,
+    audioOnly: undefined,
   };
 }
 
@@ -214,6 +215,7 @@ export function copySimEventInto(
     : undefined;
   dst.killerPlayerId = src.killerPlayerId;
   dst.victimPlayerId = src.victimPlayerId;
+  dst.audioOnly = src.audioOnly;
   return dst;
 }
 

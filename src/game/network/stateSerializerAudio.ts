@@ -25,10 +25,31 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
     forceFieldImpact: undefined,
     killerPlayerId: undefined,
     victimPlayerId: undefined,
+    audioOnly: undefined,
     _pos: { x: 0, y: 0, z: 0 },
   };
   event.pos = event._pos;
   return event;
+}
+
+/** Event types whose audio carries beyond their visual through the
+ *  FOW-09 earshot pad. ping / attackAlert / forceFieldImpact have no
+ *  one-shot audio in playSimEventAudio, so out-of-vision earshot
+ *  forwarding for them would be silent — drop them at the gate. */
+function eventHasEarshotAudio(type: NetworkServerSnapshotSimEvent['type']): boolean {
+  switch (type) {
+    case 'fire':
+    case 'hit':
+    case 'projectileExpire':
+    case 'death':
+    case 'laserStart':
+    case 'laserStop':
+    case 'forceFieldStart':
+    case 'forceFieldStop':
+      return true;
+    default:
+      return false;
+  }
 }
 
 function getPooledSimEvent(): PooledSimEvent {
@@ -51,6 +72,7 @@ export function serializeAudioEvents(
   audioBuf.length = 0;
   for (let i = 0; i < audioEvents.length; i++) {
     const source = audioEvents[i];
+    let audioOnly = false;
     // attackAlert is strictly victim-routed: it never flows on
     // vision, only when the recipient owns the victim. Skip the
     // visibility gate entirely and decide solely on victimPlayerId.
@@ -65,7 +87,22 @@ export function serializeAudioEvents(
       const authoredByRecipient =
         (source.type === 'death' && visibility.isAuthoredByRecipient(source.killerPlayerId)) ||
         (source.type === 'ping' && visibility.isAuthoredByRecipient(source.playerId));
-      if (!authoredByRecipient) continue;
+      if (!authoredByRecipient) {
+        // FOW-09: distant-gunfire reveal. Audible event types
+        // outside vision but inside the earshot pad ride along with
+        // audioOnly=true; the client plays the sound but skips every
+        // visual branch. Inaudible types (ping, attackAlert,
+        // forceFieldImpact) fall through and stay dropped — no point
+        // forwarding a silent event past its visual gate.
+        if (
+          eventHasEarshotAudio(source.type) &&
+          visibility.isPointWithinEarshot(source.pos.x, source.pos.y)
+        ) {
+          audioOnly = true;
+        } else {
+          continue;
+        }
+      }
     }
     const out = getPooledSimEvent();
     out.type = source.type;
@@ -82,6 +119,7 @@ export function serializeAudioEvents(
     out.forceFieldImpact = source.forceFieldImpact;
     out.killerPlayerId = source.killerPlayerId;
     out.victimPlayerId = source.victimPlayerId;
+    out.audioOnly = audioOnly ? true : undefined;
     audioBuf.push(out);
   }
   return audioBuf.length > 0 ? audioBuf : undefined;

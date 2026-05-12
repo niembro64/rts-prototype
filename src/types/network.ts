@@ -327,6 +327,13 @@ export type NetworkServerSnapshotSimEvent = {
    *  see a marker at the attacker's position when un-homed splash
    *  damage from inside the fog lands on their unit. */
   victimPlayerId?: PlayerId;
+  /** FOW-09 earshot reveal flag. When true, the client should play
+   *  the audio side of the event but skip every visual branch —
+   *  "distant gunfire from over there" without leaking the position
+   *  through an explosion sprite. Server sets it when forwarding an
+   *  event outside the recipient's vision but within their earshot
+   *  pad; never set in-vision. */
+  audioOnly?: boolean;
 };
 
 /** Wire shape for an active scan pulse (FOW-14). Only the geometric
