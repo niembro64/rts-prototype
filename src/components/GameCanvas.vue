@@ -778,7 +778,11 @@ watchEffect(() => {
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
 });
 
-const serverControlBarModel = computed<GameCanvasServerControlBarModel>(() => ({
+// Same reactive() pattern as battleControlBarModel: stable proxy
+// identity so per-field changes only trigger renders of bindings that
+// actually read the changed field. See the battle bar comment above
+// for the why.
+const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   isReadonly: serverBarReadonly.value,
   barStyle: serverBarVars.value,
   displayServerTime: displayServerTime.value,
@@ -803,9 +807,35 @@ const serverControlBarModel = computed<GameCanvasServerControlBarModel>(() => ({
   setKeyframeRatioValue,
   setSimQualityValue,
   cycleServerSignal,
-}));
+});
+watchEffect(() => {
+  const m = serverControlBarModel as {
+    -readonly [K in keyof GameCanvasServerControlBarModel]: GameCanvasServerControlBarModel[K];
+  };
+  m.isReadonly = serverBarReadonly.value;
+  m.barStyle = serverBarVars.value;
+  m.displayServerTime = displayServerTime.value;
+  m.displayServerIp = displayServerIp.value;
+  m.displayTargetTickRate = displayTargetTickRate.value;
+  m.displayTickRate = displayTickRate.value;
+  m.serverTiltEmaMode = serverTiltEmaMode.value;
+  m.displayServerTpsAvg = displayServerTpsAvg.value;
+  m.displayServerTpsWorst = displayServerTpsWorst.value;
+  m.displayServerCpuAvg = displayServerCpuAvg.value;
+  m.displayServerCpuHi = displayServerCpuHi.value;
+  m.displaySnapshotRate = displaySnapshotRate.value;
+  m.displayKeyframeRatio = displayKeyframeRatio.value;
+  m.serverSimQuality = serverSimQuality.value;
+  m.serverAnySolo = serverAnySolo.value;
+  m.serverSignalStates = serverSignalStates.value;
+  m.effectiveSimQuality = effectiveSimQuality.value;
+});
 
-const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
+// Same reactive() pattern as the other two bar models. This one is
+// the biggest (~60 fields) so the parent + child re-render savings
+// scale the most here in a fully-instrumented client (LOD signals,
+// sound/range/radius toggles all push fields per tick).
+const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   barStyle: clientBarVars.value,
   playerClientEnabled: playerClientEnabled.value,
   displayedClientTime: displayedClientTime.value,
@@ -900,7 +930,66 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
   toggleLegsRadius,
   changeCameraFovDegrees,
   setCameraMode,
-}));
+});
+watchEffect(() => {
+  const m = clientControlBarModel as {
+    -readonly [K in keyof GameCanvasClientControlBarModel]: GameCanvasClientControlBarModel[K];
+  };
+  m.barStyle = clientBarVars.value;
+  m.playerClientEnabled = playerClientEnabled.value;
+  m.displayedClientTime = displayedClientTime.value;
+  m.displayedClientIp = displayedClientIp.value;
+  m.gridOverlay = gridOverlay.value;
+  m.waypointDetail = waypointDetail.value;
+  m.logicMsAvg = logicMsAvg.value;
+  m.logicMsHi = logicMsHi.value;
+  m.renderMsAvg = renderMsAvg.value;
+  m.renderMsHi = renderMsHi.value;
+  m.displayGpuMs = displayGpuMs.value;
+  m.gpuSourceLabel = gpuSourceLabel.value;
+  m.gpuTimerSupported = gpuTimerSupported.value;
+  m.frameMsAvg = frameMsAvg.value;
+  m.frameMsHi = frameMsHi.value;
+  m.longtaskSupported = longtaskSupported.value;
+  m.longtaskMsPerSec = longtaskMsPerSec.value;
+  m.renderTpsAvg = renderTpsAvg.value;
+  m.renderTpsWorst = renderTpsWorst.value;
+  m.currentZoom = currentZoom.value;
+  m.snapAvgRate = snapAvgRate.value;
+  m.snapWorstRate = snapWorstRate.value;
+  m.displaySnapshotRate = displaySnapshotRate.value;
+  m.fullSnapAvgRate = fullSnapAvgRate.value;
+  m.fullSnapWorstRate = fullSnapWorstRate.value;
+  m.fullSnapBarTarget = fullSnapBarTarget.value;
+  m.audioSmoothing = audioSmoothing.value;
+  m.burnMarks = burnMarks.value;
+  m.locomotionMarks = locomotionMarks.value;
+  m.beamSnapToTurret = beamSnapToTurret.value;
+  m.driftMode = driftMode.value;
+  m.clientTiltEmaMode = clientTiltEmaMode.value;
+  m.allPanActive = allPanActive.value;
+  m.dragPanEnabled = dragPanEnabled.value;
+  m.edgeScrollEnabled = edgeScrollEnabled.value;
+  m.graphicsQuality = graphicsQuality.value;
+  m.effectiveQuality = effectiveQuality.value;
+  m.clientAnySolo = clientAnySolo.value;
+  m.clientSignalStates = clientSignalStates.value;
+  m.showServerControls = showServerControls.value;
+  m.baseLodMode = baseLodMode.value;
+  m.lodShellRings = lodShellRings.value;
+  m.lodGridBorders = lodGridBorders.value;
+  m.triangleDebug = triangleDebug.value;
+  m.buildGridDebug = buildGridDebug.value;
+  m.renderMode = renderMode.value;
+  m.audioScope = audioScope.value;
+  m.allSoundsActive = allSoundsActive.value;
+  m.allRangesActive = allRangesActive.value;
+  m.allProjRangesActive = allProjRangesActive.value;
+  m.allUnitRadiiActive = allUnitRadiiActive.value;
+  m.legsRadiusToggle = legsRadiusToggle.value;
+  m.cameraFovDegrees = cameraFovDegrees.value;
+  m.cameraSmoothMode = cameraSmoothMode.value;
+});
 
 </script>
 
