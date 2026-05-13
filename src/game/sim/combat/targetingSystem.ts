@@ -249,10 +249,14 @@ function hasWeaponLineOfSightToPoint(
 }
 
 /** Force-field clearance for a turret aiming at a target entity. Runs
- *  regardless of `weaponNeedsLineOfSight` — even high-arc shells and
- *  force-emitter turrets are blocked by intervening shields, per the
- *  "shields are physical, team-agnostic barriers" gameplay rule. */
+ *  regardless of `weaponNeedsLineOfSight` — even high-arc shells obey
+ *  intervening shields, per the "shields are physical, team-agnostic
+ *  barriers" gameplay rule. The source unit's OWN field is skipped so
+ *  a force-field emitter can target enemies outside its shield, and
+ *  any other weapon mounted on the same unit can fight from within
+ *  the protective sphere. */
 function hasWeaponForceFieldClearance(
+  sourceEntityId: number,
   target: Entity,
   weaponX: number,
   weaponY: number,
@@ -269,10 +273,12 @@ function hasWeaponForceFieldClearance(
     weaponX, weaponY, weaponZ,
     targetPoint.x, targetPoint.y, targetPoint.z,
     activeForceFields,
+    { excludeOwnerEntityId: sourceEntityId },
   );
 }
 
 function hasWeaponForceFieldClearanceToPoint(
+  sourceEntityId: number,
   point: Vec3,
   weaponX: number,
   weaponY: number,
@@ -284,6 +290,7 @@ function hasWeaponForceFieldClearanceToPoint(
     weaponX, weaponY, weaponZ,
     point.x, point.y, point.z,
     activeForceFields,
+    { excludeOwnerEntityId: sourceEntityId },
   );
 }
 
@@ -376,7 +383,7 @@ function chooseBestTargetCandidate(
     }
     if (
       needsForceFieldClearance &&
-      !hasWeaponForceFieldClearance(enemy, weaponX, weaponY, weaponZ, activeForceFields)
+      !hasWeaponForceFieldClearance(source.id, enemy, weaponX, weaponY, weaponZ, activeForceFields)
     ) {
       continue;
     }
@@ -617,7 +624,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           wpx, wpy, wpz,
         );
         const ffClear = hasWeaponForceFieldClearanceToPoint(
-          priorityPoint, wpx, wpy, wpz, activeForceFields,
+          unit.id, priorityPoint, wpx, wpy, wpz, activeForceFields,
         );
         setWeaponTarget(weapon, unit, wi, null);
         if (!losClear || !ffClear) {
@@ -688,7 +695,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             wpx, wpy, wpz,
           );
           const ffClear = hasWeaponForceFieldClearance(
-            priorityTarget, wpx, wpy, wpz, activeForceFields,
+            unit.id, priorityTarget, wpx, wpy, wpz, activeForceFields,
           );
           if (!losClear || !ffClear) {
             setWeaponTarget(weapon, unit, wi, null);
@@ -776,7 +783,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
               wpx, wpy, wpz,
             )) ||
           !hasWeaponForceFieldClearance(
-            target, wpx, wpy, wpz, activeForceFields,
+            unit.id, target, wpx, wpy, wpz, activeForceFields,
           );
         weapon.losBlockedTicks = losBlocked
           ? (weapon.losBlockedTicks ?? 0) + 1

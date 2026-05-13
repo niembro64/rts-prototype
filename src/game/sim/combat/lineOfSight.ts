@@ -182,14 +182,20 @@ export type ForceFieldClearanceOptions = {
    *  intervening field blocks lock-on (default). Future targeting
    *  brain upgrades raise this per-player to pierce N shields. */
   maxCrossings?: number;
+  /** Entity id of the unit firing. Fields emitted by this same unit
+   *  are skipped so a unit can fight from inside its own shield —
+   *  the whole point of a force-field turret is to target enemies
+   *  outside its protective sphere. Fields emitted by any other
+   *  unit (teammate or enemy) still block. */
+  excludeOwnerEntityId?: number;
 };
 
 /** True if no active force-field sphere stands between the segment's
  *  endpoints. Force fields are physical, team-agnostic barriers — the
- *  same rule applies to every turret in either direction, including
- *  the turret emitting the field. A field is "in the way" when the
- *  line from source to target crosses its boundary at any point
- *  strictly inside the segment.
+ *  same rule applies to every turret in either direction. A field is
+ *  "in the way" when the line from source to target crosses its
+ *  boundary at any point strictly inside the segment. The only
+ *  exemption is the unit's own field (see options.excludeOwnerEntityId).
  *
  *  Performance: caller passes the per-tick cached field list (from
  *  getActiveForceFields()). With a typical handful of fields and the
@@ -202,9 +208,11 @@ export function hasForceFieldClearance(
 ): boolean {
   if (fields.length === 0) return true;
   const maxCrossings = options.maxCrossings ?? 0;
+  const excludeOwnerEntityId = options.excludeOwnerEntityId;
   let crossings = 0;
   for (let i = 0; i < fields.length; i++) {
     const f = fields[i];
+    if (f.entityId === excludeOwnerEntityId) continue;
     if (
       segmentCrossesForceFieldBoundary(
         sx, sy, sz,
