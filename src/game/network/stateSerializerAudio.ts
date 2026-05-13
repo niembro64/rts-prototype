@@ -6,36 +6,25 @@ import {
   VISIBILITY_CLASS_IN_VISION,
   VISIBILITY_CLASS_IN_EARSHOT,
 } from './stateSerializerVisibility';
+import {
+  deleteSnapshotPoolForKey,
+  getOrCreateSnapshotPool,
+  getPooledItem,
+  resolveSnapshotPoolKey,
+  type SnapshotPool,
+} from './snapshotPool';
 
 type PooledSimEvent = NetworkServerSnapshotSimEvent & {
   _pos: Vec3;
 };
 
 /** Per-listener pool of pooled NetworkServerSnapshotSimEvent objects
- *  plus the snapshot's outbound buf (issues.txt FOW-OPT-07). Sharing
- *  a single module-global pool across recipients was only safe
- *  because the publisher consumes each listener's audioEvents
- *  synchronously before serializing the next; a per-key pool removes
- *  that hidden coupling so any caller (retransmit, batch send,
- *  cloner skipping a frame) can hold the returned array without
- *  having it mutate underneath them. */
-type AudioPoolState = {
-  buf: NetworkServerSnapshotSimEvent[];
-  pool: NetworkServerSnapshotSimEvent[];
-  index: number;
-};
-
-const audioPools = new Map<string, AudioPoolState>();
-const DEFAULT_AUDIO_POOL_KEY = '__default__';
-
-function getAudioPool(key: string): AudioPoolState {
-  let pool = audioPools.get(key);
-  if (!pool) {
-    pool = { buf: [], pool: [], index: 0 };
-    audioPools.set(key, pool);
-  }
-  return pool;
-}
+ *  plus the snapshot's outbound buf (issues.txt FOW-OPT-07). Keyed by
+ *  the listener's tracking key so the returned array stays stable for
+ *  any consumer that holds it across the publisher's listener loop;
+ *  the shared snapshotPool.ts helper owns the get / advance / reset
+ *  bookkeeping. */
+const audioPools = new Map<string, SnapshotPool<NetworkServerSnapshotSimEvent>>();
 
 function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
   const event: PooledSimEvent = {
@@ -78,23 +67,12 @@ function eventHasEarshotAudio(type: NetworkServerSnapshotSimEvent['type']): bool
   }
 }
 
-function getPooledSimEvent(state: AudioPoolState): PooledSimEvent {
-  let event = state.pool[state.index] as PooledSimEvent | undefined;
-  if (!event) {
-    event = createPooledSimEvent() as PooledSimEvent;
-    state.pool[state.index] = event;
-  }
-  state.index++;
-  return event;
-}
-
 /** Drop the pool for a tracking key — called from
  *  GameServer.removeSnapshotListener so per-listener pools don't
  *  accumulate forever across lobby joins / disconnects. Safe to call
  *  with an unknown key. */
 export function resetAudioPoolForKey(key: string | number | undefined): void {
-  if (key === undefined) return;
-  audioPools.delete(String(key));
+  deleteSnapshotPoolForKey(audioPools, key);
 }
 
 export function serializeAudioEvents(
@@ -102,9 +80,7 @@ export function serializeAudioEvents(
   visibility?: SnapshotVisibility,
   trackingKey?: string | number,
 ): NetworkServerSnapshotSimEvent[] | undefined {
-  const state = getAudioPool(
-    trackingKey !== undefined ? String(trackingKey) : DEFAULT_AUDIO_POOL_KEY,
-  );
+  const state = getOrCreateSnapshotPool(audioPools, resolveSnapshotPoolKey(trackingKey));
   state.index = 0;
   if (!audioEvents || audioEvents.length === 0) return undefined;
 
@@ -154,7 +130,7 @@ export function serializeAudioEvents(
         }
       }
     }
-    const out = getPooledSimEvent(state);
+    const out = getPooledItem(state, createPooledSimEvent) as PooledSimEvent;
     out.type = source.type;
     out.turretId = source.turretId;
     out.sourceType = source.sourceType;

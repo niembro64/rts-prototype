@@ -129,31 +129,51 @@ export class SnapshotVisibility {
    *  memoizing it). */
   private readonly entityVisibilityMemo = new Map<EntityId, boolean>();
 
+  /** Stable identity for the recipient's view-team — the bitmask of
+   *  recipient + allies, rendered as a base-36 string. Two recipients
+   *  on the same team share the same key (the mask is just "which
+   *  playerIds count as ours"), so the per-emit visibility cache
+   *  (issues.txt FOW-OPT-01) and the per-team shroud cache (FOW-OPT-11)
+   *  both key off this. Undefined for admin/spectator visibilities
+   *  (no recipient), which the caches use to skip caching entirely.
+   *  Materialized once in the constructor so callers holding the
+   *  instance don't re-walk getAllies (issues.txt FOW-OPT-21). */
+  readonly teamMaskKey: string | undefined;
+
   private constructor(
     recipientPlayerId: PlayerId | undefined,
     fogEnabled: boolean,
     private readonly world: WorldState,
     mapWidth: number,
     mapHeight: number,
+    precomputedTeamMask?: number,
   ) {
     this.isFiltered = fogEnabled && recipientPlayerId !== undefined;
     this.gridW = Math.max(1, Math.ceil(mapWidth / VISION_CELL_SIZE));
     this.gridH = Math.max(1, Math.ceil(mapHeight / VISION_CELL_SIZE));
-    if (recipientPlayerId !== undefined) {
+    if (precomputedTeamMask !== undefined) {
+      this.viewMask = precomputedTeamMask;
+    } else if (recipientPlayerId !== undefined) {
       this.viewMask |= 1 << (recipientPlayerId - 1);
       for (const allyId of world.getAllies(recipientPlayerId)) {
         this.viewMask |= 1 << (allyId - 1);
       }
     }
+    this.teamMaskKey = this.viewMask !== 0 ? this.viewMask.toString(36) : undefined;
   }
 
-  static forRecipient(world: WorldState, recipientPlayerId: PlayerId | undefined): SnapshotVisibility {
+  static forRecipient(
+    world: WorldState,
+    recipientPlayerId: PlayerId | undefined,
+    precomputedTeamMask?: number,
+  ): SnapshotVisibility {
     const visibility = new SnapshotVisibility(
       recipientPlayerId,
       world.fogOfWarEnabled,
       world,
       world.mapWidth,
       world.mapHeight,
+      precomputedTeamMask,
     );
     if (!visibility.isFiltered) return visibility;
     // Walk the set bits of viewMask in ascending playerId order to add
@@ -169,24 +189,6 @@ export class SnapshotVisibility {
     }
     visibility.addScanPulseSources(world);
     return visibility;
-  }
-
-  /** Stable identity for the recipient's view-team — the bitmask of
-   *  recipient + allies, rendered as a base-36 string. Two recipients
-   *  on the same team share the same mask (since the mask is just
-   *  "which playerIds count as ours"), so a per-emit cache
-   *  (issues.txt FOW-OPT-01) can hand back one SnapshotVisibility
-   *  instance for the whole team instead of rebuilding the spatial
-   *  hash per listener. Returns undefined for admin/spectator
-   *  visibilities (no recipient), which the cache uses to skip
-   *  caching entirely. */
-  static teamCacheKey(world: WorldState, recipientPlayerId: PlayerId | undefined): string | undefined {
-    if (recipientPlayerId === undefined) return undefined;
-    let mask = 1 << (recipientPlayerId - 1);
-    for (const allyId of world.getAllies(recipientPlayerId)) {
-      mask |= 1 << (allyId - 1);
-    }
-    return mask.toString(36);
   }
 
   /** True when the given playerId belongs to the recipient or one of
@@ -647,12 +649,23 @@ export function getOrBuildVisibility(
   recipientPlayerId: PlayerId | undefined,
   cache: SnapshotVisibilityCache | undefined,
 ): SnapshotVisibility {
-  if (!cache) return SnapshotVisibility.forRecipient(world, recipientPlayerId);
-  const key = SnapshotVisibility.teamCacheKey(world, recipientPlayerId);
-  if (key === undefined) return SnapshotVisibility.forRecipient(world, recipientPlayerId);
+  // Admin / spectator visibilities are never cached — each caller wants
+  // its own unfiltered instance, and they don't share a team-mask key.
+  if (recipientPlayerId === undefined || !cache) {
+    return SnapshotVisibility.forRecipient(world, recipientPlayerId);
+  }
+  // Compute the team mask once (one getAllies walk) and use it for
+  // both the cache key AND the SnapshotVisibility's viewMask, so a
+  // cache miss doesn't pay a second walk in the constructor
+  // (issues.txt FOW-OPT-21).
+  let mask = 1 << (recipientPlayerId - 1);
+  for (const allyId of world.getAllies(recipientPlayerId)) {
+    mask |= 1 << (allyId - 1);
+  }
+  const key = mask.toString(36);
   const cached = cache.get(key);
   if (cached) return cached;
-  const fresh = SnapshotVisibility.forRecipient(world, recipientPlayerId);
+  const fresh = SnapshotVisibility.forRecipient(world, recipientPlayerId, mask);
   cache.set(key, fresh);
   return fresh;
 }

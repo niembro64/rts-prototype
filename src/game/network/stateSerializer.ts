@@ -1,7 +1,14 @@
 import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import type { NetworkServerSnapshot, NetworkServerSnapshotEntity, NetworkServerSnapshotGridCell } from './NetworkManager';
+import type {
+  NetworkServerSnapshot,
+  NetworkServerSnapshotEntity,
+  NetworkServerSnapshotGridCell,
+  NetworkServerSnapshotMinimapEntity,
+  NetworkServerSnapshotSimEvent,
+  NetworkServerSnapshotSprayTarget,
+} from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
@@ -86,6 +93,29 @@ export type SerializeGameStateOptions = {
   recipientPlayerId?: PlayerId;
   aoi?: SnapshotAoiBounds;
   visibility?: SnapshotVisibility;
+  /**
+   * When the publisher has already built a team-shared output for this
+   * recipient's team (issues.txt FOW-OPT-20), pass the precomputed
+   * value through the matching `*Override` and the per-piece
+   * serializer call is skipped. Wrapping is intentional so a
+   * present-but-undefined value (no audio events, empty spray array,
+   * minimap disabled) is distinguishable from "no override supplied".
+   */
+  audioOverride?: SerializerAudioOverride;
+  sprayOverride?: SerializerSprayOverride;
+  minimapOverride?: SerializerMinimapOverride;
+};
+
+export type SerializerAudioOverride = {
+  value: NetworkServerSnapshotSimEvent[] | undefined;
+};
+
+export type SerializerSprayOverride = {
+  value: NetworkServerSnapshotSprayTarget[] | undefined;
+};
+
+export type SerializerMinimapOverride = {
+  value: NetworkServerSnapshotMinimapEntity[] | undefined;
 };
 
 export type SnapshotAoiBounds = {
@@ -438,13 +468,26 @@ export function serializeGameState(
     }
   }
 
-  const netMinimapEntities = serializeMinimapSnapshotEntities(world, aoi !== undefined, visibility);
+  // FOW-OPT-20: per-team caching of audio / spray / minimap output
+  // lives in the publisher; when it has already built a buffer for
+  // this listener's team it passes the result through `*Override`,
+  // which short-circuits the per-listener serializer call below.
+  // Each override wraps the value (which may itself be undefined for
+  // "no events / no targets / minimap disabled") so an absent wrapper
+  // is distinguishable from a present-but-undefined value.
+  const netMinimapEntities = options?.minimapOverride
+    ? options.minimapOverride.value
+    : serializeMinimapSnapshotEntities(world, aoi !== undefined, visibility, options?.trackingKey);
 
   const netEconomy = serializeEconomySnapshot(world.playerCount, recipientPlayerId);
 
-  const netSprayTargets = serializeSprayTargets(sprayTargets, visibility);
+  const netSprayTargets = options?.sprayOverride
+    ? options.sprayOverride.value
+    : serializeSprayTargets(sprayTargets, visibility, options?.trackingKey);
 
-  const netAudioEvents = serializeAudioEvents(audioEvents, visibility, options?.trackingKey);
+  const netAudioEvents = options?.audioOverride
+    ? options.audioOverride.value
+    : serializeAudioEvents(audioEvents, visibility, options?.trackingKey);
 
   const netScanPulses = serializeScanPulses(world, visibility);
 

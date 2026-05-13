@@ -51,6 +51,17 @@ export class EntityCacheManager {
   private cachedUnitsAndBuildings: Entity[] = [];
   private cachedUnitsByPlayer: Map<PlayerId, Entity[]> = new Map();
   private cachedBuildingsByPlayer: Map<PlayerId, Entity[]> = new Map();
+  /** Entities (unit or building) that carry a `detector` component,
+   *  grouped by owning player (issues.txt FOW-OPT-19). cloak-vs-detect
+   *  checks in targeting + damage routing call canPlayerObserveCloakedEntity
+   *  per candidate per victim — without this they walked every owned unit
+   *  AND every owned building just to filter out the ~1% with a detector
+   *  radius. The blueprint pass sets entity.detector at construction
+   *  before addEntity, so by the time the cache rebuild walks an entity
+   *  the property is already final; entity offline-status (hp / buildable
+   *  completion) is filtered at query time via getEntityDetectorRadius,
+   *  the same as the radar / full-vision predicates. */
+  private cachedDetectorsByPlayer: Map<PlayerId, Entity[]> = new Map();
   private dirty: boolean = true;
 
   invalidate(): void {
@@ -81,9 +92,17 @@ export class EntityCacheManager {
     this.cachedUnitsAndBuildings.length = 0;
     for (const list of this.cachedUnitsByPlayer.values()) list.length = 0;
     for (const list of this.cachedBuildingsByPlayer.values()) list.length = 0;
+    for (const list of this.cachedDetectorsByPlayer.values()) list.length = 0;
 
     for (const entity of entities.values()) {
       this.cachedAll.push(entity);
+      if (
+        entity.detector !== undefined &&
+        entity.ownership?.playerId !== undefined &&
+        (entity.type === 'unit' || entity.type === 'building')
+      ) {
+        this.getOrCreateDetectorsByPlayer(entity.ownership.playerId).push(entity);
+      }
       // Combat capability is host-agnostic: any entity with a
       // CombatComponent that owns a non-visualOnly turret enters the
       // armed list, regardless of whether it's a unit or a building.
@@ -192,6 +211,15 @@ export class EntityCacheManager {
     return list;
   }
 
+  private getOrCreateDetectorsByPlayer(playerId: PlayerId): Entity[] {
+    let list = this.cachedDetectorsByPlayer.get(playerId);
+    if (!list) {
+      list = [];
+      this.cachedDetectorsByPlayer.set(playerId, list);
+    }
+    return list;
+  }
+
   getUnits(): Entity[] {
     return this.cachedUnits;
   }
@@ -210,6 +238,10 @@ export class EntityCacheManager {
 
   getBuildingsByPlayer(playerId: PlayerId): Entity[] {
     return this.cachedBuildingsByPlayer.get(playerId) ?? EMPTY_ENTITIES;
+  }
+
+  getDetectorsByPlayer(playerId: PlayerId): Entity[] {
+    return this.cachedDetectorsByPlayer.get(playerId) ?? EMPTY_ENTITIES;
   }
 
   getProjectiles(): Entity[] {

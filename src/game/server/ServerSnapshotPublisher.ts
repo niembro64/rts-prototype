@@ -15,8 +15,15 @@ import {
   createSnapshotVisibilityCache,
   getOrBuildVisibility,
   serializeShroudPayload,
-  SnapshotVisibility,
 } from '../network/stateSerializerVisibility';
+import { serializeAudioEvents } from '../network/stateSerializerAudio';
+import { serializeSprayTargets } from '../network/stateSerializerSpray';
+import { serializeMinimapSnapshotEntities } from '../network/stateSerializerMinimap';
+import type {
+  SerializerAudioOverride,
+  SerializerMinimapOverride,
+  SerializerSprayOverride,
+} from '../network/stateSerializer';
 import { computeTeamShroudVersionSum } from '../sim/shroudBitmap';
 import type { NetworkServerSnapshotShroud } from '../../types/network';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
@@ -83,7 +90,6 @@ export class ServerSnapshotPublisher {
   private readonly metaBuilder = new ServerSnapshotMetaBuilder();
   private readonly dirtyIdsBuf: EntityId[] = [];
   private readonly dirtyFieldsBuf: number[] = [];
-  private readonly removedIdsBuf: EntityId[] = [];
   private readonly removedEntitiesBuf: RemovedSnapshotEntity[] = [];
   private isFirstSnapshot = true;
   private snapshotCounter = 0;
@@ -112,13 +118,14 @@ export class ServerSnapshotPublisher {
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
-    this.removedIdsBuf.length = 0;
     this.removedEntitiesBuf.length = 0;
     input.world.drainSnapshotDirtyEntities(this.dirtyIdsBuf, this.dirtyFieldsBuf);
     input.world.drainRemovedSnapshotEntities(this.removedEntitiesBuf);
-    for (let i = 0; i < this.removedEntitiesBuf.length; i++) {
-      this.removedIdsBuf.push(this.removedEntitiesBuf[i].id);
-    }
+    // FOW-OPT-21: removedEntities supersedes removedEntityIds in the
+    // serializer — when both are present, the entity-records form
+    // already covers every id with position metadata for the FOW-02b
+    // ghost cleanup, so the parallel id array would be dead-loaded.
+    // We only pass removedEntities below.
 
     const captureTiles = input.captureSystem.consumeSnapshot(isDelta);
     const wind = input.simulation.getWindState();
@@ -173,21 +180,76 @@ export class ServerSnapshotPublisher {
     // the same packed Uint8Array.
     const shroudPayloadCache = new Map<string, ShroudPayloadCacheEntry>();
 
+    // FOW-OPT-20: per-team output cache for the three team-uniform
+    // serializers. The first teammate's serializeForListener call
+    // fills the slot (which goes through that listener's per-listener
+    // pool — see FOW-OPT-07 / snapshotPool.ts); subsequent teammates
+    // hand back the same array reference. Admin / spectator listeners
+    // (no team mask) fall through to fresh per-call serialization.
+    // Minimap is keyed by team + aoi-enabled status because the output
+    // collapses to `undefined` when aoi is unset; bundling both cohorts
+    // into one slot would hand mismatched data to whichever teammate
+    // arrived second.
+    const teamAudioCache = new Map<string, SerializerAudioOverride>();
+    const teamSprayCache = new Map<string, SerializerSprayOverride>();
+    const teamMinimapCache = new Map<string, SerializerMinimapOverride>();
+
     const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
       const forceKeyframe = listener.forceKeyframe === true;
       const listenerIsDelta = isDelta && !forceKeyframe;
       const aoiRefreshKeyframe = isDelta && forceKeyframe;
       listener.forceKeyframe = false;
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
+      // FOW-OPT-20: look up (or fill) the team-shared audio / spray /
+      // minimap payloads. The first teammate to hit each cache slot
+      // triggers the underlying serializer using THIS listener's
+      // pool; subsequent teammates pass the cached wrapper into
+      // serializeGameState which short-circuits to the same value.
+      const teamKey = visibility.teamMaskKey;
+      let audioOverride: SerializerAudioOverride | undefined;
+      let sprayOverride: SerializerSprayOverride | undefined;
+      let minimapOverride: SerializerMinimapOverride | undefined;
+      if (teamKey !== undefined) {
+        audioOverride = teamAudioCache.get(teamKey);
+        if (!audioOverride) {
+          audioOverride = {
+            value: serializeAudioEvents(audioEvents, visibility, listener.deltaTrackingKey),
+          };
+          teamAudioCache.set(teamKey, audioOverride);
+        }
+        sprayOverride = teamSprayCache.get(teamKey);
+        if (!sprayOverride) {
+          sprayOverride = {
+            value: serializeSprayTargets(sprayTargets, visibility, listener.deltaTrackingKey),
+          };
+          teamSprayCache.set(teamKey, sprayOverride);
+        }
+        const minimapAoiEnabled = listener.aoi !== undefined;
+        const minimapKey = `${teamKey}:${minimapAoiEnabled ? '1' : '0'}`;
+        minimapOverride = teamMinimapCache.get(minimapKey);
+        if (!minimapOverride) {
+          minimapOverride = {
+            value: serializeMinimapSnapshotEntities(
+              input.world,
+              minimapAoiEnabled,
+              visibility,
+              listener.deltaTrackingKey,
+            ),
+          };
+          teamMinimapCache.set(minimapKey, minimapOverride);
+        }
+      }
       const serializeOptions: SerializeGameStateOptions = {
         trackingKey: listener.deltaTrackingKey,
         dirtyEntityIds: this.dirtyIdsBuf,
         dirtyEntityFields: this.dirtyFieldsBuf,
-        removedEntityIds: this.removedIdsBuf,
         removedEntities: this.removedEntitiesBuf,
         recipientPlayerId: listener.playerId,
         aoi: listener.aoi,
         visibility,
+        audioOverride,
+        sprayOverride,
+        minimapOverride,
       };
       const state = serializeGameState(
         input.world,
@@ -235,7 +297,10 @@ export class ServerSnapshotPublisher {
         listener.playerId !== undefined &&
         input.world.fogOfWarEnabled
       ) {
-        const teamKey = SnapshotVisibility.teamCacheKey(input.world, listener.playerId);
+        // FOW-OPT-21: read the team-mask key off the SnapshotVisibility
+        // instance instead of recomputing it (which would walk
+        // getAllies a second time per player listener).
+        const teamKey = visibility.teamMaskKey;
         if (teamKey !== undefined) {
           let entry = shroudPayloadCache.get(teamKey);
           if (!entry) {

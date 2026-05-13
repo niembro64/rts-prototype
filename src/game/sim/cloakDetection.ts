@@ -66,11 +66,16 @@ export function isEntityDetectedByPlayer(
   padding = getEntityDetectionPadding(target),
 ): boolean {
   if (target.ownership?.playerId === playerId) return true;
-  const targetX = target.transform.x;
-  const targetY = target.transform.y;
-  return (
-    isDetectedBySources(world.getUnitsByPlayer(playerId), targetX, targetY, padding) ||
-    isDetectedBySources(world.getBuildingsByPlayer(playerId), targetX, targetY, padding)
+  // FOW-OPT-19: detector-equipped entities are a tiny minority of a
+  // player's roster, so iterate just the cached slice instead of
+  // scanning every owned unit + building to filter for the rare
+  // detector property. Online status is still checked at query time
+  // via getEntityDetectorRadius — same contract as before.
+  return isDetectedBySources(
+    world.getDetectorsByPlayer(playerId),
+    target.transform.x,
+    target.transform.y,
+    padding,
   );
 }
 

@@ -27,6 +27,8 @@ import {
   type SnapshotAoiBounds,
 } from '../network/stateSerializer';
 import { resetAudioPoolForKey } from '../network/stateSerializerAudio';
+import { resetSprayPoolForKey } from '../network/stateSerializerSpray';
+import { resetMinimapPoolForKey } from '../network/stateSerializerMinimap';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { DeathContext } from '../sim/combat';
@@ -871,9 +873,12 @@ export class GameServer {
     if (!this.snapshotListeners.some((l) => l.deltaTrackingKey === removed.deltaTrackingKey)) {
       resetDeltaTrackingForKey(removed.deltaTrackingKey);
     }
-    // FOW-OPT-07: drop the per-listener audio pool so disconnects /
-    // lobby seat swaps don't accumulate stale pools across sessions.
+    // FOW-OPT-07 / FOW-OPT-20: drop the per-listener pools for every
+    // snapshot serializer so disconnects / lobby seat swaps don't
+    // accumulate stale pool entries across sessions.
     resetAudioPoolForKey(removed.deltaTrackingKey);
+    resetSprayPoolForKey(removed.deltaTrackingKey);
+    resetMinimapPoolForKey(removed.deltaTrackingKey);
     this.recomputeShroudUpdatePlayerMask();
   }
 
