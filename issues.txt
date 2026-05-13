@@ -96,3 +96,50 @@ Each item is a concrete optimization or a latent fragility found during the
 full-system audit. Ordered roughly by impact; the upper entries dominate
 per-snapshot cost or wire bandwidth.
 
+[FOW-OPT-19] canPlayerObserveCloakedEntity walks every unit and
+  every building the player owns to find ones with a detector
+  radius. Targeting (targetingSystem.ts lines 297, 589, 596, 671,
+  676) and attack-alert routing (damageHelpers.ts line 316) call
+  it in tight per-victim / per-candidate loops. For a player with
+  300 units of which 4 are detectors, every call burns ~298
+  irrelevant iterations. EntityCacheManager already exposes per-
+  player slices (FOW-OPT-06); a parallel cachedDetectorsByPlayer
+  list (rebuilt by the same mark-dirty pass that maintains the
+  other lists) reduces the inner walk to O(detectors). Same shape
+  applies on the snapshot-visibility side — SnapshotVisibility
+  iterates all of a player's units + buildings just to test the
+  canEntityProvideDetectorVision predicate; a precomputed slice
+  feeds both call sites for free.
+
+[FOW-OPT-20] Audio, spray, and minimap serializations are
+  rebuilt independently per listener even when teammates share a
+  SnapshotVisibility (FOW-OPT-01). For two teammates the
+  serializer walks the world audio queue twice with the same
+  visibility, runs the same point-vis check per event, fills two
+  copies of the per-listener pool. The wire content is byte-
+  identical for a team — same as the shroud payload (FOW-OPT-11)
+  and the scan-pulse DTO array (FOW-OPT-16). Cache the produced
+  buffer per team (keyed off SnapshotVisibility.teamCacheKey)
+  inside ServerSnapshotPublisher.emit so the first teammate's
+  serialize fills the team slot and later teammates hand back
+  the same array reference. Per-listener pools (FOW-OPT-07) still
+  exist for audio so the produced array stays stable across
+  consumers; spray + minimap pools are still module-global today
+  and inherit the same hidden coupling FOW-OPT-07 fixed for audio
+  — bundle that fix in alongside the team caching.
+
+[FOW-OPT-21] Two small cleanups in ServerSnapshotPublisher.emit:
+  (a) removedIdsBuf is rebuilt by copying every id out of the
+  already-populated removedEntitiesBuf, but the serializer prefers
+  removedEntities and ignores removedEntityIds when both are
+  passed (stateSerializer.ts lines 239-247 — "Already filtered
+  above with removal metadata"). Drop the rebuild and the
+  removedEntityIds field on the SerializeGameStateOptions when
+  removedEntities is present. (b) SnapshotVisibility.teamCacheKey
+  is computed twice per player listener — once inside
+  getOrBuildVisibility, again explicitly for the shroud cache
+  lookup at the bottom of serializeForListener. Each call walks
+  world.getAllies(playerId). Expose the team-mask string from
+  the resolved SnapshotVisibility instance so the publisher reads
+  it once.
+
