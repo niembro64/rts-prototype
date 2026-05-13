@@ -33,6 +33,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly allDemoUnitsActive: boolean;
   readonly demoUnitTypes: readonly string[];
   readonly currentAllowedUnits: readonly string[];
+  readonly currentAllowedUnitsSet: ReadonlySet<string>;
   readonly displayUnitCap: number;
   readonly gameStarted: boolean;
   readonly mapWidthLandCells: number;

@@ -20,6 +20,10 @@ import type { GameConnection } from '../game/server/GameConnection';
 
 export type GameCanvasBattleSettings = {
   currentAllowedUnits: ComputedRef<readonly string[]>;
+  /** Set-backed view of currentAllowedUnits so consumers in v-for
+   *  templates can do O(1) membership lookups instead of array
+   *  .includes on every parent re-render. */
+  currentAllowedUnitsSet: ComputedRef<ReadonlySet<string>>;
   allDemoUnitsActive: ComputedRef<boolean>;
   currentMirrorsEnabled: ComputedRef<boolean>;
   currentForceFieldsEnabled: ComputedRef<boolean>;
@@ -61,9 +65,16 @@ export function useGameCanvasBattleSettings({
       serverMetaFromSnapshot.value?.units.allowed ??
       demoUnitTypes.filter((unitType) => BATTLE_CONFIG.units[unitType]?.default ?? false),
   );
-  const allDemoUnitsActive = computed(() =>
-    demoUnitTypes.every((unitType) => currentAllowedUnits.value.includes(unitType)),
+  const currentAllowedUnitsSet = computed<ReadonlySet<string>>(
+    () => new Set(currentAllowedUnits.value),
   );
+  const allDemoUnitsActive = computed(() => {
+    const allowed = currentAllowedUnitsSet.value;
+    for (let i = 0; i < demoUnitTypes.length; i++) {
+      if (!allowed.has(demoUnitTypes[i])) return false;
+    }
+    return true;
+  });
   const currentMirrorsEnabled = computed(
     () => serverMetaFromSnapshot.value?.mirrorsEnabled ?? BATTLE_CONFIG.mirrorsEnabled.default,
   );
@@ -179,6 +190,7 @@ export function useGameCanvasBattleSettings({
 
   return {
     currentAllowedUnits,
+    currentAllowedUnitsSet,
     allDemoUnitsActive,
     currentMirrorsEnabled,
     currentForceFieldsEnabled,

@@ -55,13 +55,6 @@ time and should be measured (or read more code) before touching.
   is overkill; a 4-level quadtree or 64-unit cell grid works) and query
   per-listener AoI rect for the small set of entities inside it.
 
-[MEDIUM] Projectile snapshot re-serialized per recipient
-  src/game/network/stateSerializerProjectiles.ts (called per listener)
-  Projectile visibility is barely filtered (no FOW hides in-flight
-  projectiles), so the same payload gets serialized N times.
-  Fix: cache the projectile snapshot per emit at publisher level (same
-  pattern audio/spray uses under FOW-OPT-20).
-
 [MEDIUM] Client over-predicts entities at 60fps for 10Hz snapshots [VERIFY]
   src/game/network/ClientPredictionStepper.ts:165-200
   ClientUnitPrediction.ts:199-250
@@ -125,13 +118,5 @@ time and should be measured (or read more code) before touching.
   at sim-tick frequency, then internally throttles to RENDER_INTERVAL_MS.
   Fix: replace the watch with watchThrottled at 33ms (matches the
   internal throttle); avoids the queued RAF storm in the first place.
-
-[SMALL] Inline `:active` expressions inside v-for buttons
-  src/components/GameCanvasBattleControlBar.vue:50-56 (and similar)
-  `:active="model.currentAllowedUnits.includes(ut)"` runs on every parent
-  re-render; combined with model-identity churn above, every button
-  recomputes its active state every model rebuild.
-  Fix: hoist the .includes check into a computed Set lookup, or memoize
-  BarButton's active prop with a shallow-equal comparator.
 
 ==============================================================================

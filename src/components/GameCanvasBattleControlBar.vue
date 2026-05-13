@@ -50,7 +50,7 @@ defineProps<{
           <BarButton
             v-for="ut in model.demoUnitTypes"
             :key="ut"
-            :active="model.currentAllowedUnits.includes(ut)"
+            :active="model.currentAllowedUnitsSet.has(ut)"
             :title="`Toggle ${ut} units in demo battle`"
             @click="model.toggleDemoUnitType(ut)"
           >{{ getUnitDisplayShortName(ut) }}</BarButton>

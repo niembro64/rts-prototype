@@ -73,9 +73,16 @@ const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
 const capOptions = BATTLE_CONFIG.cap.options;
 const forceFieldReflectionOptions = BATTLE_CONFIG.forceFieldReflectionMode.options;
 
-const allUnitsActive = computed(() =>
-  props.unitTypes.every((ut) => props.allowedUnits.includes(ut)),
-);
+// Set view of allowedUnits so per-button lookups in the v-for below
+// are O(1) instead of O(allowedUnits.length) on every parent re-render.
+const allowedUnitsSet = computed(() => new Set(props.allowedUnits));
+const allUnitsActive = computed(() => {
+  const allowed = allowedUnitsSet.value;
+  for (let i = 0; i < props.unitTypes.length; i++) {
+    if (!allowed.has(props.unitTypes[i])) return false;
+  }
+  return true;
+});
 
 function pickTerrainCenter(shape: TerrainShape): void {
   if (!props.isHost) return;
@@ -578,7 +585,7 @@ const terrainSectionVars = computed(() =>
                   v-for="ut in unitTypes"
                   :key="ut"
                   size="large"
-                  :active="allowedUnits.includes(ut)"
+                  :active="allowedUnitsSet.has(ut)"
                   :title="isHost ? `Toggle ${ut}` : 'Only the host can change battle settings'"
                   @click="pickToggleUnit(ut)"
                 >{{ unitShortName(ut) }}</BarButton>

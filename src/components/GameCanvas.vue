@@ -585,6 +585,7 @@ const {
 
 const {
   currentAllowedUnits,
+  currentAllowedUnitsSet,
   allDemoUnitsActive,
   currentMirrorsEnabled,
   currentForceFieldsEnabled,
@@ -716,6 +717,7 @@ const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
   allDemoUnitsActive: allDemoUnitsActive.value,
   demoUnitTypes,
   currentAllowedUnits: currentAllowedUnits.value,
+  currentAllowedUnitsSet: currentAllowedUnitsSet.value,
   displayUnitCap: displayUnitCap.value,
   gameStarted: gameStarted.value,
   mapWidthLandCells: mapWidthLandCells.value,
