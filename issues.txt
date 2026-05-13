@@ -6,5 +6,381 @@ Please always commit and push before and after any code changes we make. If ther
 As we go make sure we are not creating duplicate code, we should be reusing code as much as possible. If we find ourselves copy/pasting code, we should stop and refactor to reuse code instead. This is especially important for the new code we are writing, but also applies to existing code. If we see duplicate code in existing files, we should refactor it to be reusable and delete the duplicates. Create new helper files for reusable code if necessary, we prefer small file sizes.
 
 ==============================================================================
+ OPTIMIZATION AUDIT — 2026-05-13
+==============================================================================
+
+Findings from a five-part read-only audit (sim hot path, network /
+serialization, spatial grid, Three.js rendering, Vue UI). Each item has a
+file:line citation, a one-line observation of the cost, and a concrete fix.
+
+Impact scale:
+  LARGE   ≈ ms+ tick/frame win, or material bandwidth / GC reduction
+  MEDIUM  ≈ sub-ms but reproducible; matters under load
+  SMALL   ≈ microseconds saved, cleanliness, or correctness guard
+
+Items are grouped by subsystem and ordered LARGE → MEDIUM → SMALL within each.
+Some items are marked [VERIFY] — the cost claim wasn't 100% confirmed at audit
+time and should be measured (or read more code) before touching.
+
+==============================================================================
  ISSUES:
 
+------------------------------------------------------------------------------
+ SPATIAL GRID
+------------------------------------------------------------------------------
+
+[LARGE] Z-band 32 cells wide on every 2D circle query
+  src/game/sim/SpatialGrid.ts:765-782
+  getCellsInCircle2D hardcodes Z span as [-13, +18] cells (~ -1200..+1600
+  world units) regardless of caller intent. Targeting (which calls
+  queryEnemyEntitiesInCircle2D every reacquire) and damage queries pay
+  for ~32× more cells than the ground-plane gameplay actually uses.
+  Fix: add an optional `zBand` arg (zMin, zMax). Default to the current
+  wide span for back-compat, but pass a tight band from targeting / damage
+  callers (e.g., unit altitude ±50). Cascades to a measurable win on the
+  targeting hot loop — see targetingSystem.ts:871 batched query.
+
+[MEDIUM] queryEntitiesInRadius runs the cell sweep twice
+  src/game/sim/SpatialGrid.ts:814-828
+  Calls queryUnitsInRadius then queryBuildingsInRadius back-to-back with
+  identical (x,y,z,r); each rebuilds nearbyCells from scratch.
+  Fix: add queryUnitsAndBuildingsInRadius (mirrors the existing
+  queryEnemyUnitsAndProjectilesInRadius helper) and route callers through it.
+
+[MEDIUM] queryEnemyEntitiesInRadius iterates the same cells twice
+  src/game/sim/SpatialGrid.ts:921-965
+  Same shape as above for the enemy variant — pads cell search and then
+  walks units / buildings separately.
+  Fix: collapse into one cell-loop walk that branches per occupant type.
+
+[MEDIUM] Damage system pads area queries with magic constants
+  src/game/sim/damage/DamageSystem.ts:917-918 (and lines 495, 612, 169)
+  Splash queries add +50 for units and +100 for buildings, on top of
+  whatever padding the spatial grid already applies, then re-filter by
+  exact distance. Double padding bloats cell traversal.
+  Fix: justify each pad per-entity geometry, prefer 0 unless the radius
+  truly excludes near-edge hits. Use one consolidated padding helper.
+
+[MEDIUM] GridCell objects never pooled / pruned
+  src/game/sim/SpatialGrid.ts:156-161
+  Every getOrCreateCell allocates a fresh object; cells whose contents
+  drained to empty stay in `this.cells`. Long sessions grow the map.
+  Fix: pool GridCell on first emptying (move to a free list) and reclaim
+  in subsequent allocations.
+
+[MEDIUM] Line-query overflow defeats partitioning entirely
+  src/game/sim/SpatialGrid.ts:1070-1072
+  When a line query would span > 4096 cells, the fallback dumps EVERY
+  occupied cell into nearbyCells. Safety valve, but turns one pathological
+  beam into an O(world) scan.
+  Fix: at minimum, fast-reject cells whose AABB doesn't intersect the
+  segment (cheap) before adding. Or cap the result count and let the
+  caller's per-entity filter do the work.
+
+[SMALL] Capture vote removal is linear scan of cell players
+  src/game/sim/SpatialGrid.ts:196-208
+  removeCaptureVote walks entry.players backwards every time a unit moves
+  land cells. If many units share a cell it's O(k).
+  Fix: store players as Map<playerId, refCount> instead of array.
+
+[SMALL] _dedup Set has implicit "consume result first" invariant
+  src/game/sim/SpatialGrid.ts:548-549, 605, 926, 976, 1097, 1126, 1172
+  Multiple query methods clear _dedup at entry; if a caller starts a new
+  query while still iterating an earlier result, it silently breaks.
+  Fix: document the invariant loudly at the top of the file, or assert in
+  dev builds that nearby results aren't held across calls.
+
+------------------------------------------------------------------------------
+ SIM HOT PATH
+------------------------------------------------------------------------------
+
+[MEDIUM] LOS checked on every passing-rank candidate in dense crowds
+  src/game/sim/combat/targetingSystem.ts:372-382
+  chooseBestTargetCandidate runs hasWeaponLineOfSight for every candidate
+  whose rank gate passes — that's hundreds of segment-vs-terrain walks
+  per tick on a busy map. The eventual best target wins, but LOS for the
+  losers is wasted.
+  Fix: rank candidates by distance/rank first, then LOS-check only the
+  top-K (3-5). The current best survives until a closer, LOS-clear one
+  appears. The existing density-stride helps but doesn't change shape.
+
+[MEDIUM] Force-field clearance per candidate
+  src/game/sim/combat/targetingSystem.ts:384-388
+  hasWeaponForceFieldClearance iterates the active-fields list for every
+  candidate. Most candidates have nothing to do with any field, but the
+  inner loop still runs.
+  Fix: per-tick, build a cheap "fields-near-this-unit" sub-list once,
+  pass that to chooseBestTargetCandidate. Falls back to full list when
+  empty. Pairs with the Z-band fix above.
+
+[SMALL] weaponSystemDisabled re-evaluated 8+ times per weapon per tick
+  src/game/sim/combat/targetingSystem.ts:553, 591, 607, 674, 732, 845,
+  883, 936
+  Same property reads (visualOnly, passive, shot.type==='force') run on
+  every pass.
+  Fix: compute once into a per-weapon boolean during the Pass 0 walk and
+  reuse across Passes 1-3.
+
+[SMALL] getTargetRadius called 3-4 times for the same priority target
+  src/game/sim/combat/targetingSystem.ts:155-157, 313-314, 660-667, 738-748
+  Each pass independently resolves the same target's radius.
+  Fix: stash on the entity (transient field) at start of pass, or thread
+  through as a parameter once it's computed.
+
+[SMALL] weapon.worldPos extracted into x/y/z separately in each branch
+  src/game/sim/combat/targetingSystem.ts:330-332, 616-618, 687-689, 759-761
+  Same `wpx/wpy/wpz` triple destructured multiple times per weapon.
+  Fix: extract once at the top of the weapon loop.
+
+[SMALL] prevReflectionPoints array allocated on first reflection
+  src/game/sim/combat/projectileSystem.ts:1123
+  `proj.prevReflectionPoints ?? (proj.prevReflectionPoints = [])` —
+  allocates inside the per-tick projectile loop on first reflect.
+  Fix: pre-allocate empty arrays on projectile creation; reset length
+  between ticks.
+
+[SMALL] hitEntities Set lazily allocated per first-hit projectile
+  src/game/sim/combat/ProjectileCollisionHandler.ts:111-113
+  Single-hit projectiles allocate the Set on impact even though they
+  won't reuse it.
+  Fix: skip the set entirely for projectiles whose blueprint says
+  pierce=false; or pre-allocate one shared Set per projectile lifetime.
+
+[SMALL] Math.hypot(x, y, z) on hot reflection path
+  src/game/sim/combat/ProjectileCollisionHandler.ts:151-152, 161
+  3-arg Math.hypot is materially slower than `Math.sqrt(x*x+y*y+z*z)` on
+  V8.
+  Fix: inline the sqrt expression; keeps the hot loop primitive.
+
+[SMALL] currentFireTargetRankSq computed twice on engaged weapons
+  src/game/sim/combat/targetingSystem.ts:851-852, 886-888
+  Once in the pre-scan to decide whether to reacquire, again in Pass 2 to
+  seed the candidate choice.
+  Fix: thread the pre-scan result into Pass 2 instead of recomputing.
+
+[SMALL] weapon.worldVelocity?.x optional-chain repeated 3×
+  src/game/sim/combat/projectileSystem.ts:550-556
+  Per-axis optional access of the same property.
+  Fix: read once into a local; null-coalesce per axis from there.
+
+------------------------------------------------------------------------------
+ NETWORK / SERIALIZATION
+------------------------------------------------------------------------------
+
+[LARGE] AoI filter is O(entities × recipients) AABB scan
+  src/game/network/stateSerializer.ts:208-229
+  isEntityInsideAoi runs per-entity per-recipient with no spatial index.
+  10k entities × 10 listeners = 100k AABB tests per delta.
+  Fix: build a per-emit spatial coarse index (the existing spatial grid
+  is overkill; a 4-level quadtree or 64-unit cell grid works) and query
+  per-listener AoI rect for the small set of entities inside it.
+
+[MEDIUM] Projectile snapshot re-serialized per recipient
+  src/game/network/stateSerializerProjectiles.ts (called per listener)
+  Projectile visibility is barely filtered (no FOW hides in-flight
+  projectiles), so the same payload gets serialized N times.
+  Fix: cache the projectile snapshot per emit at publisher level (same
+  pattern audio/spray uses under FOW-OPT-20).
+
+[MEDIUM] prevEntityIds walked three times per delta
+  src/game/network/stateSerializer.ts:289-348, 408-418
+  AoI cleanup, visibility cleanup, and ghost cleanup are three separate
+  walks of the same set.
+  Fix: merge into one classifying loop that branches per entity (AoI-out
+  vs. vis-hidden vs. ghost-eligible).
+
+[MEDIUM] Client over-predicts entities at 60fps for 10Hz snapshots [VERIFY]
+  src/game/network/ClientPredictionStepper.ts:165-200
+  ClientUnitPrediction.ts:199-250
+  Every render frame steps every active-prediction entity forward, even
+  though the next server snapshot will overwrite. ~5 wasted prediction
+  steps between snaps in steady state.
+  Fix: short-circuit the step when (velocity, acceleration) variance is
+  below a threshold, OR cap prediction to expected-server-arrival time
+  (RTT-aware).
+  Caveat: prediction is what hides snap jitter — measure before touching.
+
+[MEDIUM] Spray visibility is double point-check per recipient
+  src/game/network/stateSerializerSpray.ts:38-46
+  For each spray, isPointVisible is called twice (source, target) per
+  recipient. Each call walks the vision source hash.
+  Fix: early-out — if the source point fails, skip the target check.
+  Better: pre-filter sprays per team once (same FOW-OPT-20 cache shape).
+
+[MEDIUM] capturedSnapshotEntityStates cache misses on visibility re-entry
+  src/game/network/stateSerializerEntityDelta.ts:395-405
+  src/game/network/stateSerializer.ts:382-400
+  When an entity becomes visible again, getNextEntityState falls back to
+  nextStateScratch and re-captures, even though the per-emit cache could
+  have served it.
+  Fix: in the visibility-walk loop, populate the cache for newly visible
+  entities so the entity-delta encoder doesn't recompute.
+
+[MEDIUM] Beam path points reallocated per prediction step
+  src/game/network/ClientPredictionStepper.ts:64-68
+  projPts.length resized to match tgtPts every frame; trailing point
+  objects dropped & re-created.
+  Fix: pool beam-point objects on a free list (same pattern as the
+  existing _beamPointPool elsewhere); reuse instead of recreate.
+
+[SMALL] serverMeta clone spreads 6 sub-objects per recipient per keyframe
+  src/game/network/snapshotClone.ts:374-394
+  Metadata barely changes tick-to-tick but the clone does 6 spread copies.
+  Fix: pool the serverMeta object and copy scalars by name; only allocate
+  on actual change.
+
+[SMALL] Ghost-cleanup map walked every delta even when empty
+  src/game/network/stateSerializer.ts:408-418
+  tracking.ghostedBuildingPositions iterated unconditionally.
+  Fix: short-circuit on map.size === 0 (cheap).
+
+[SMALL] turretRots arrays grow but never shrink
+  src/game/network/stateSerializerEntityDelta.ts:307-313
+  An entity that briefly had 8 turrets keeps 8 slots forever, even after
+  dropping back to 1.
+  Fix: trim to weaponCount when copyPrevState runs after compare.
+
+------------------------------------------------------------------------------
+ THREE.JS RENDERING
+------------------------------------------------------------------------------
+
+[LARGE] BeamRenderer3D uploads the full instance buffer every frame
+  src/game/render3d/BeamRenderer3D.ts:556-564
+  Always marks [0, segIdx*16] dirty on instance matrix + full flow/alpha,
+  even when only a tiny subset of slots changed. With 1k active segments
+  in heavy combat, but a buffer of 8k slots, that's 8× the upload.
+  Fix: track dirty min/max slot indices (UnitMassInstanceRenderer already
+  does this) and use addUpdateRange to upload only the dirty span.
+
+[MEDIUM] SelectionOverlayRenderer3D and ProjectileRangeEnvelope3D
+        allocate Mesh per ring [VERIFY]
+  src/game/render3d/SelectionOverlayRenderer3D.ts:88, 348
+  src/game/render3d/ProjectileRangeEnvelope3D.ts:211
+  `new THREE.Mesh(...)` per selection ring / range overlay = one draw
+  call per ring. With many selected units or many ranges visible, this
+  scales draw count linearly.
+  Fix: use InstancedMesh with a shared ring geometry; encode color/scale
+  per instance. Verify how often these are created — if they're pooled
+  across selection lifetimes this is a non-issue.
+
+[MEDIUM] UnitDetailInstanceRenderer3D clones geometries / materials unnecessarily
+  src/game/render3d/UnitDetailInstanceRenderer3D.ts:83, 90-91, 97, 435-436
+  Constructor `.clone()`s the input turretHeadGeom / barrelGeom /
+  barrelMat / mirrorGeom; createPool clones again per poly variant.
+  Duplicates GPU memory and breaks sharing across pools.
+  Fix: drop the .clone() calls unless a per-pool variant is actually
+  required; share a global poly-geometry cache keyed by shape ID.
+
+[MEDIUM] Lazy per-player material allocation can hit render path
+  src/game/render3d/Render3DEntities.ts:315-322
+  getPrimaryMat instantiates MeshLambertMaterial on first use per team;
+  if it fires mid-render (new spectator, late replay swap), it triggers
+  shader compile (1-10ms stall).
+  Fix: pre-allocate materials for max-supported team count (16) during
+  init. Cheap upfront, no mid-frame compiles.
+
+[MEDIUM] Leg instance count not trimmed to in-scope units
+  src/game/render3d/LegInstancedRenderer.ts:149, 228, 291
+  frustumCulled=false everywhere; instance count is total-units-with-legs
+  rather than on-screen units with legs.
+  Fix: write leg matrices only for in-scope units (Render3DEntities
+  already has the scope set) and shrink instanceCount accordingly.
+
+[MEDIUM] Render targets / shadow maps not verified [VERIFY]
+  src/game/render3d/ThreeApp.ts
+  An RTS with real-time shadow maps is usually a frame-time disaster.
+  Confirm shadows are off (or limited to 1-2 cheap lights at low res) and
+  that any post-fx render targets are allocated once per resolution
+  change, not per frame.
+
+[SMALL] ContactShadowRenderer3D dirties the whole alpha buffer
+  src/game/render3d/ContactShadowRenderer3D.ts:220
+  Sets alphaAttr.needsUpdate=true without addUpdateRange, so the full
+  attribute uploads. Compare with GroundPrint3D line 403 which gets it
+  right.
+  Fix: clearUpdateRanges + addUpdateRange(0, cursor) before needsUpdate.
+
+[SMALL] ContactShadowRenderer3D sets material.needsUpdate unconditionally
+  src/game/render3d/ContactShadowRenderer3D.ts:133-137
+  Inside the "opacity changed" branch, material.needsUpdate is set even
+  when the new value equals the cached one (the guard reads lastOpacity
+  but doesn't skip needsUpdate).
+  Fix: gate needsUpdate behind the actual value-change check.
+
+[SMALL] CanvasSpritePool flags every slot dirty on use
+  src/game/render3d/CanvasSpritePool.ts:49
+  slot.texture.needsUpdate=true every draw, even if the canvas didn't
+  change.
+  Fix: track a dirty flag on the slot; mark needsUpdate only when the
+  canvas was actually redrawn.
+
+[SMALL] Various `frustumCulled = false` without intent comments
+  Multiple files in src/game/render3d/
+  Setting frustumCulled=false on world-spanning effect meshes is correct;
+  on per-entity meshes it's wrong. Most are correct here, but the
+  pattern is uncommented so future edits are easy to get wrong.
+  Fix: one-line comment on each frustumCulled=false explaining why
+  (world-spanning vs. known-coverage).
+
+------------------------------------------------------------------------------
+ VUE UI
+------------------------------------------------------------------------------
+
+[LARGE] reactive() wrapping high-frequency snapshot data
+  src/components/gameCanvasSceneUi.ts:50-79, 92
+  economyInfo, minimapData, selectionInfo are reactive objects mutated
+  via Object.assign() on every render-frame snapshot apply. Every nested
+  property read in templates pays proxy overhead, and every assignment
+  triggers Vue's tracker. TopBar reads ~12 nested paths per render.
+  Fix: replace reactive() with individual refs for the scalars TopBar /
+  Minimap / SelectionPanel actually read (currEnergy, totalIncome,
+  manaCurr, manaMax, ...). Set them only when the value changes.
+
+[MEDIUM] Control-bar models rebuilt as fresh objects on every dep change
+  src/components/GameCanvas.vue:707-738 (battleControlBarModel)
+  src/components/GameCanvas.vue:740-771 (serverControlBarModel)
+  computed<...>(() => ({ ... 30+ fields ... })) returns a new object
+  identity any time any dependency changes. Every child BarButton /
+  BarLabel re-renders since they can't memoize on prop identity.
+  Fix: use shallowRef for the model; manually assign only properties
+  whose source values changed. Or split into smaller per-section
+  computeds so unrelated changes don't cross-pollinate.
+
+[MEDIUM] Minimap composes the full canvas every camera-quad change (60Hz)
+  src/components/Minimap.vue:458-461
+  watch on props.data.cameraQuad fires every render frame; compose()
+  redraws the minimap overlay each time.
+  Fix: split the watch — camera-quad-only updates use a 30 Hz RAF
+  throttle and redraw just the camera-box layer; entity layer keeps its
+  existing 20 Hz throttle.
+
+[MEDIUM] :style="{...}" allocates an object literal per render
+  src/components/TopBar.vue:85, 104, 148, 179, 210
+  `:style="{ width: energyPct + '%' }"` etc. Each render allocates the
+  object even when the value didn't change.
+  Fix: lift each into a computed (`energyBarStyle = computed(...)`) so
+  Vue caches the object identity until the value changes.
+
+[SMALL] Format functions called inline in templates
+  src/components/TopBar.vue:142, 153, 157, 173, 184, 188, 204, 215, 219
+  `{{ fmtStock(economy.stockpile.curr) }}` — pure function but a new
+  string allocates every render.
+  Fix: wrap each in a computed; the cached string survives across
+  unrelated re-renders.
+
+[SMALL] WorldDirectionHud watches 5 wind/camera sub-fields
+  src/components/WorldDirectionHud.vue:400-409
+  Watch array depends on cameraYaw + wind.{x,y,speed} + compact; fires
+  at sim-tick frequency, then internally throttles to RENDER_INTERVAL_MS.
+  Fix: replace the watch with watchThrottled at 33ms (matches the
+  internal throttle); avoids the queued RAF storm in the first place.
+
+[SMALL] Inline `:active` expressions inside v-for buttons
+  src/components/GameCanvasBattleControlBar.vue:50-56 (and similar)
+  `:active="model.currentAllowedUnits.includes(ut)"` runs on every parent
+  re-render; combined with model-identity churn above, every button
+  recomputes its active state every model rebuild.
+  Fix: hoist the .includes check into a computed Set lookup, or memoize
+  BarButton's active prop with a shallow-equal comparator.
+
+==============================================================================
