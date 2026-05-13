@@ -96,4 +96,3 @@ Each item is a concrete optimization or a latent fragility found during the
 full-system audit. Ordered roughly by impact; the upper entries dominate
 per-snapshot cost or wire bandwidth.
 
-[OTHER-1] the audio button "SOUNDS:" in our "PLAYER CLIENT" is not wired up to turn on/off whether we play sounds. Wire it up again. 

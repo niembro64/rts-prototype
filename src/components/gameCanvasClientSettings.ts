@@ -114,6 +114,13 @@ export function useGameCanvasClientSettings({
     music: getSoundToggle('music'),
   });
   audioManager.setMuted(audioScope.value === 'off');
+  // OTHER-1: push the persisted per-category state into AudioManager
+  // so the SOUNDS: buttons gate actual playback. Music goes through
+  // musicPlayer below; AudioManager ignores it.
+  for (const cat of SOUND_CATEGORIES) {
+    audioManager.setCategoryEnabled(cat, soundToggles[cat]);
+  }
+  if (!soundToggles.music) musicPlayer.stop();
   const rangeToggles = reactive<Record<RangeType, boolean>>({
     trackAcquire: getRangeToggle('trackAcquire'),
     trackRelease: getRangeToggle('trackRelease'),
@@ -333,12 +340,15 @@ export function useGameCanvasClientSettings({
     const newValue = !soundToggles[category];
     setSoundToggle(category, newValue);
     soundToggles[category] = newValue;
-    if (!newValue) {
-      if (category === 'beam') audioManager.stopAllLaserSounds();
-      if (category === 'field') audioManager.stopAllForceFieldSounds();
-      if (category === 'music') musicPlayer.stop();
+    // OTHER-1: route the change through AudioManager so all play
+    // methods gate on the new state (and any continuous sounds in
+    // beam / field stop immediately when the user clicks OFF). Music
+    // bypasses AudioManager — musicPlayer.start / stop drives it.
+    audioManager.setCategoryEnabled(category, newValue);
+    if (category === 'music') {
+      if (newValue) musicPlayer.start();
+      else musicPlayer.stop();
     }
-    if (newValue && category === 'music') musicPlayer.start();
   }
 
   function resetClientDefaults(): void {

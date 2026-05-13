@@ -8,6 +8,7 @@ import { FIRE_SYNTHS } from './fireSynths';
 import { HIT_SYNTHS } from './hitSynths';
 import { DEATH_SYNTHS } from './deathSynths';
 import type { TurretAudioId } from '../../types/combat';
+import type { SoundCategory } from '../../types/client';
 import {
   type ContinuousSound,
   startContinuousSound,
@@ -25,6 +26,13 @@ const SYNTH_DISPATCH: Record<string, (tk: AudioToolkit, speed: number, vol: numb
   ...DEATH_SYNTHS,
 };
 
+/** Subset of SoundCategory handled inside AudioManager — every value
+ *  here gates one or more play methods below. `music` is excluded
+ *  because musicPlayer owns music playback; the SOUNDS: button for
+ *  music is wired directly to musicPlayer.start / stop in
+ *  gameCanvasClientSettings. */
+type AudioCategory = Exclude<SoundCategory, 'music'>;
+
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -40,6 +48,21 @@ export class AudioManager {
   public masterVolume = AUDIO.masterVolume;
   public sfxVolume = AUDIO.sfxVolume;
   public muted = true;
+
+  /** Per-category mute gate (issues.txt OTHER-1). Each category maps
+   *  1:1 to one of the SOUNDS: buttons in the client control bar; when
+   *  the button is OFF the matching play method short-circuits before
+   *  building any audio nodes. The 'music' category never plays through
+   *  AudioManager (musicPlayer owns it) and is intentionally absent.
+   *  Defaults to "everything on" so a fresh AudioManager before the
+   *  client settings have been applied still produces audio. */
+  private categoryEnabled: Record<AudioCategory, boolean> = {
+    fire: true,
+    hit: true,
+    dead: true,
+    beam: true,
+    field: true,
+  };
 
   // Initialize audio context (must be called after user interaction)
   init(): void {
@@ -92,6 +115,7 @@ export class AudioManager {
 
   // Generic weapon fire by blueprint ID
   playWeaponFire(turretId: TurretAudioId, _pitch: number = 1, volumeMultiplier: number = 1): void {
+    if (!this.categoryEnabled.fire) return;
     if (!AUDIO.fireGain) return;
     let entry;
     try { entry = getTurretBlueprint(turretId).audio?.fireSound; } catch { return; }
@@ -109,6 +133,7 @@ export class AudioManager {
 
   // Generic hit by projectile type ID
   playWeaponHit(projectileId: string, volumeMultiplier: number = 1): void {
+    if (!this.categoryEnabled.hit) return;
     if (!AUDIO.hitGain) return;
     let entry;
     try { entry = getShotBlueprint(projectileId).hitSound; } catch { return; }
@@ -125,6 +150,7 @@ export class AudioManager {
 
   // Death sound based on dying unit type
   playUnitDeath(unitType: string, volumeMultiplier: number = 1): void {
+    if (!this.categoryEnabled.dead) return;
     if (!AUDIO.deadGain) return;
     let entry;
     try { entry = getUnitBlueprint(unitType).deathSound; } catch { return; }
@@ -142,6 +168,7 @@ export class AudioManager {
   // ==================== CONTINUOUS SOUNDS ====================
 
   startLaserSound(entityId: number, freqOverride: number | undefined, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
+    if (!this.categoryEnabled.beam) return;
     if (this.activeLaserSounds.has(entityId)) return;
     const tk = this.getToolkit();
     if (!tk) return;
@@ -165,6 +192,7 @@ export class AudioManager {
   }
 
   startForceFieldSound(entityId: number, speed: number = 1, volumeMultiplier: number = 1, zoomVolume: number = 1): void {
+    if (!this.categoryEnabled.field) return;
     if (this.activeForceFieldSounds.has(entityId)) return;
     const tk = this.getToolkit();
     if (!tk) return;
@@ -251,6 +279,22 @@ export class AudioManager {
   toggleMute(): boolean {
     this.setMuted(!this.muted);
     return this.muted;
+  }
+
+  /** Enable / disable a SOUNDS: category from the client control bar
+   *  (issues.txt OTHER-1). Disabling 'beam' or 'field' also stops any
+   *  continuous sound currently playing in that category — without this
+   *  a beam that started before the user clicked OFF would keep
+   *  looping until its laserStop event eventually arrived. The 'music'
+   *  category is owned by musicPlayer; calls naming it here are a
+   *  no-op so the toggle wiring in gameCanvasClientSettings can stay
+   *  uniform across categories. */
+  setCategoryEnabled(category: SoundCategory, enabled: boolean): void {
+    if (category === 'music') return;
+    this.categoryEnabled[category] = enabled;
+    if (enabled) return;
+    if (category === 'beam') this.stopAllLaserSounds();
+    else if (category === 'field') this.stopAllForceFieldSounds();
   }
 }
 
