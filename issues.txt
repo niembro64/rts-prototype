@@ -94,28 +94,4 @@ time and should be measured (or read more code) before touching.
   Minimap / SelectionPanel actually read (currEnergy, totalIncome,
   manaCurr, manaMax, ...). Set them only when the value changes.
 
-[MEDIUM] Server + Client control-bar models still rebuilt as fresh objects
-  src/components/GameCanvas.vue (serverControlBarModel,
-  clientControlBarModel)
-  battleControlBarModel was converted to reactive() + watchEffect so
-  child renders only trigger on the field that actually changed.
-  Apply the same pattern to the server and client bar models — same
-  identity-churn problem, same fix. Client is the biggest of the
-  three (~60 fields) so the win there is largest.
-
-[MEDIUM] Minimap composes the full canvas every camera-quad change (60Hz)
-  src/components/Minimap.vue:458-461
-  watch on props.data.cameraQuad fires every render frame; compose()
-  redraws the minimap overlay each time.
-  Fix: split the watch — camera-quad-only updates use a 30 Hz RAF
-  throttle and redraw just the camera-box layer; entity layer keeps its
-  existing 20 Hz throttle.
-
-[SMALL] WorldDirectionHud watches 5 wind/camera sub-fields
-  src/components/WorldDirectionHud.vue:400-409
-  Watch array depends on cameraYaw + wind.{x,y,speed} + compact; fires
-  at sim-tick frequency, then internally throttles to RENDER_INTERVAL_MS.
-  Fix: replace the watch with watchThrottled at 33ms (matches the
-  internal throttle); avoids the queued RAF storm in the first place.
-
 ==============================================================================
