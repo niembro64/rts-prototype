@@ -110,13 +110,6 @@ time and should be measured (or read more code) before touching.
   Fix: cache the projectile snapshot per emit at publisher level (same
   pattern audio/spray uses under FOW-OPT-20).
 
-[MEDIUM] prevEntityIds walked three times per delta
-  src/game/network/stateSerializer.ts:289-348, 408-418
-  AoI cleanup, visibility cleanup, and ghost cleanup are three separate
-  walks of the same set.
-  Fix: merge into one classifying loop that branches per entity (AoI-out
-  vs. vis-hidden vs. ghost-eligible).
-
 [MEDIUM] Client over-predicts entities at 60fps for 10Hz snapshots [VERIFY]
   src/game/network/ClientPredictionStepper.ts:165-200
   ClientUnitPrediction.ts:199-250
@@ -127,13 +120,6 @@ time and should be measured (or read more code) before touching.
   below a threshold, OR cap prediction to expected-server-arrival time
   (RTT-aware).
   Caveat: prediction is what hides snap jitter — measure before touching.
-
-[MEDIUM] Spray visibility is double point-check per recipient
-  src/game/network/stateSerializerSpray.ts:38-46
-  For each spray, isPointVisible is called twice (source, target) per
-  recipient. Each call walks the vision source hash.
-  Fix: early-out — if the source point fails, skip the target check.
-  Better: pre-filter sprays per team once (same FOW-OPT-20 cache shape).
 
 [MEDIUM] capturedSnapshotEntityStates cache misses on visibility re-entry
   src/game/network/stateSerializerEntityDelta.ts:395-405
@@ -202,13 +188,6 @@ time and should be measured (or read more code) before touching.
   Confirm shadows are off (or limited to 1-2 cheap lights at low res) and
   that any post-fx render targets are allocated once per resolution
   change, not per frame.
-
-[SMALL] CanvasSpritePool flags every slot dirty on use
-  src/game/render3d/CanvasSpritePool.ts:49
-  slot.texture.needsUpdate=true every draw, even if the canvas didn't
-  change.
-  Fix: track a dirty flag on the slot; mark needsUpdate only when the
-  canvas was actually redrawn.
 
 [SMALL] Various `frustumCulled = false` without intent comments
   Multiple files in src/game/render3d/

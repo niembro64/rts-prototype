@@ -286,64 +286,76 @@ export function serializeGameState(
       }
     }
 
-    if (aoi) {
-      _aoiRemovedIdsBuf.length = 0;
+    // Merged AoI + visibility cleanup. Both filters used to iterate
+    // tracking.prevEntityIds independently — for a player with both
+    // AoI and FOW that's two passes over the same set plus a redundant
+    // AoI re-check in the visibility pass. One classifying loop now
+    // handles it: each entity is checked against AoI first (when
+    // active) and then, if it passes, against visibility (when active).
+    const aoiActive = aoi !== undefined;
+    const visibilityActive = visibility.isFiltered;
+    if (aoiActive || visibilityActive) {
+      if (aoiActive) _aoiRemovedIdsBuf.length = 0;
+      if (visibilityActive) _visibilityHiddenIdsBuf.length = 0;
       for (const id of tracking.prevEntityIds) {
         const entity = world.getEntity(id);
         if (!entity) {
-          if (!visibility.isFiltered) _aoiRemovedIdsBuf.push(id);
+          // Missing entity. Pre-merge, the AoI pass pushed it to
+          // _aoiRemovedIdsBuf only when visibility was inactive
+          // (visibility-active cleanup is handled by the ghost-position
+          // sweep further down). Keep the same gating here.
+          if (aoiActive && !visibilityActive) _aoiRemovedIdsBuf.push(id);
           continue;
         }
-        if (
-          entity.type !== 'unit' &&
-          entity.type !== 'building'
-        ) {
-          _aoiRemovedIdsBuf.push(id);
-          continue;
+        if (aoiActive) {
+          if (entity.type !== 'unit' && entity.type !== 'building') {
+            _aoiRemovedIdsBuf.push(id);
+            continue;
+          }
+          if (!isEntityInsideAoi(entity, aoi, visibility)) {
+            _aoiRemovedIdsBuf.push(id);
+            continue;
+          }
         }
-        if (!isEntityInsideAoi(entity, aoi, visibility)) {
-          _aoiRemovedIdsBuf.push(id);
-        }
-      }
-      for (let i = 0; i < _aoiRemovedIdsBuf.length; i++) {
-        forgetTrackedEntity(tracking, _aoiRemovedIdsBuf[i], true);
-      }
-    }
-
-    if (visibility.isFiltered) {
-      _visibilityHiddenIdsBuf.length = 0;
-      for (const id of tracking.prevEntityIds) {
-        const entity = world.getEntity(id);
-        if (!entity) continue;
-        if (!isEntityInsideAoi(entity, aoi, visibility)) continue;
-        if (visibility.isEntityVisible(entity)) {
-          // Re-entered vision: any ghost-position record from a prior
-          // out-of-sight stretch is now stale. The dirty loop below
-          // will resume normal delta updates against the existing
-          // prevStates baseline (issues.txt FOW-02).
-          tracking.ghostedBuildingPositions.delete(id);
-          continue;
-        }
-        if (entity.type === 'unit') {
-          // Mobile unit out of vision: drop the client's copy entirely.
-          // A stale ghost at a no-longer-current position would be a lie.
-          _visibilityHiddenIdsBuf.push(id);
-        } else if (entity.type === 'building') {
-          // Static building out of vision: keep the client's last-seen
-          // copy (FOW-02) AND record the position so a future cleanup
-          // pass can drop the ghost once the player re-scouts the area
-          // and either confirms the building is still there (dirty loop
-          // handles it) or finds it gone (FOW-02b cleanup below).
-          if (!tracking.ghostedBuildingPositions.has(id)) {
-            tracking.ghostedBuildingPositions.set(id, {
-              x: entity.transform.x,
-              y: entity.transform.y,
-            });
+        if (visibilityActive) {
+          if (visibility.isEntityVisible(entity)) {
+            // Re-entered vision: any ghost-position record from a
+            // prior out-of-sight stretch is now stale. The dirty loop
+            // below will resume normal delta updates against the
+            // existing prevStates baseline (issues.txt FOW-02).
+            tracking.ghostedBuildingPositions.delete(id);
+            continue;
+          }
+          if (entity.type === 'unit') {
+            // Mobile unit out of vision: drop the client's copy
+            // entirely. A stale ghost at a no-longer-current position
+            // would be a lie.
+            _visibilityHiddenIdsBuf.push(id);
+          } else if (entity.type === 'building') {
+            // Static building out of vision: keep the client's
+            // last-seen copy (FOW-02) AND record the position so a
+            // future cleanup pass can drop the ghost once the player
+            // re-scouts the area and either confirms the building is
+            // still there (dirty loop handles it) or finds it gone
+            // (FOW-02b cleanup below).
+            if (!tracking.ghostedBuildingPositions.has(id)) {
+              tracking.ghostedBuildingPositions.set(id, {
+                x: entity.transform.x,
+                y: entity.transform.y,
+              });
+            }
           }
         }
       }
-      for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
-        forgetTrackedEntity(tracking, _visibilityHiddenIdsBuf[i], true);
+      if (aoiActive) {
+        for (let i = 0; i < _aoiRemovedIdsBuf.length; i++) {
+          forgetTrackedEntity(tracking, _aoiRemovedIdsBuf[i], true);
+        }
+      }
+      if (visibilityActive) {
+        for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
+          forgetTrackedEntity(tracking, _visibilityHiddenIdsBuf[i], true);
+        }
       }
     }
 
