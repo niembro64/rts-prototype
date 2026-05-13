@@ -30,6 +30,14 @@ const _emptyForceFields: readonly ActiveForceFieldRef[] = [];
 // calling weaponSystemDisabled 8+ times per weapon per tick (~9× the
 // property reads across passes for the same unchanging condition).
 const _weaponDisabled: boolean[] = [];
+// Per-unit reusable cache of pre-scan's currentFireTargetRankSq result.
+// Pre-scan populates for `engaged && ranges.fire.min` weapons (the only
+// case where the rank distinction matters); Pass 2 reads back the same
+// {rank, distSq} pair instead of recomputing. Slots for skipped weapons
+// (disabled / manual-fire / non-engaged / no fire.min) hold the default
+// {NONE, Infinity}; Pass 2 still gates those slots out before reading.
+const _cachedFireRanks: TargetPreferenceRank[] = [];
+const _cachedFireDistSqs: number[] = [];
 
 function nextTargetingReacquireTick(unitId: number, tick: number, stride: number): number {
   if (stride <= 1) return tick + 1;
@@ -850,6 +858,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     let maxAcquireRange = 0;
     let maxWeaponOffset = 0;
     for (let wi = 0; wi < weapons.length; wi++) {
+      _cachedFireRanks[wi] = TARGET_RANK_NONE;
+      _cachedFireDistSqs[wi] = Infinity;
       if (_weaponDisabled[wi]) continue;
       const weapon = weapons[wi];
       if (weapon.config.isManualFire) continue;
@@ -857,19 +867,23 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
       const offset = Math.hypot(weapon.mount.x, weapon.mount.y);
       if (offset > maxWeaponOffset) maxWeaponOffset = offset;
-      const currentFireRank = weapon.state === 'engaged' && weapon.ranges.fire.min
-        ? currentFireTargetRankSq(world, weapon, 'release').rank
-        : TARGET_RANK_NONE;
+      if (weapon.state === 'engaged' && weapon.ranges.fire.min) {
+        const result = currentFireTargetRankSq(world, weapon, 'release');
+        _cachedFireRanks[wi] = result.rank;
+        _cachedFireDistSqs[wi] = result.distSq;
+      }
       // Needs query if: no target (idle), tracking but not engaged, or
       // engaged on a close fallback while the turret has a min preference.
       if (
         weapon.target === null ||
         weapon.state === 'tracking' ||
-        currentFireRank === TARGET_RANK_FIRE_FALLBACK
+        _cachedFireRanks[wi] === TARGET_RANK_FIRE_FALLBACK
       ) {
         needsAnyQuery = true;
       }
     }
+    _cachedFireRanks.length = weapons.length;
+    _cachedFireDistSqs.length = weapons.length;
 
     // Always batch when ANY weapon needs candidates. The spatial grid
     // returns a reused array, so consume it directly before any other
@@ -904,12 +918,16 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       if (_weaponDisabled[wi]) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.target === null) continue;
-      const currentFireRank = weapon.state === 'engaged'
-        ? currentFireTargetRankSq(world, weapon, 'release')
-        : { rank: TARGET_RANK_NONE as TargetPreferenceRank, distSq: Infinity };
+      // Pre-scan already computed the rank+distSq for `engaged &&
+      // fire.min` weapons (the only ones whose rank can be
+      // FIRE_FALLBACK). For tracking weapons and engaged-but-no-fire.min
+      // weapons the cache holds the same defaults the old recompute
+      // would have produced once filtered by the gate below.
+      const cachedRank = _cachedFireRanks[wi];
+      const cachedDistSq = _cachedFireDistSqs[wi];
       if (
         weapon.state !== 'tracking' &&
-        currentFireRank.rank !== TARGET_RANK_FIRE_FALLBACK
+        cachedRank !== TARGET_RANK_FIRE_FALLBACK
       ) {
         continue;
       }
@@ -936,8 +954,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         TARGET_RANK_FIRE_FALLBACK,
         {
           target: null,
-          distSq: currentFireRank.distSq,
-          rank: currentFireRank.rank,
+          distSq: cachedDistSq,
+          rank: cachedRank,
           mirrorScore: seedMirrorScore,
         },
         activeForceFields,

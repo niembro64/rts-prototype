@@ -103,7 +103,16 @@ export class SpatialGrid {
   private unitCaptureVotes: Map<EntityId, CaptureVote> = new Map();
   private buildingCaptureVotes: Map<EntityId, CaptureVote[]> = new Map();
 
-  // Reusable dedup Set for multi-cell building queries (avoids per-query allocation)
+  // Reusable dedup Set for multi-cell building queries (avoids per-query
+  // allocation). LIFETIME INVARIANT: every query method that touches
+  // _dedup calls `.clear()` at entry, which means a caller MUST fully
+  // consume the result array of one query before starting another —
+  // including indirect calls inside the per-entity iteration (e.g.,
+  // calling another spatial-grid helper while still walking a result).
+  // The shared `nearbyCells` buffer has the same constraint; the two
+  // travel together and are documented as a pair in the public-method
+  // JSDoc above each query (`Returns a reused array — DO NOT STORE
+  // THE REFERENCE`).
   private _dedup: Set<EntityId> = new Set();
 
   // Cached arrays to avoid allocations during queries

@@ -38,13 +38,6 @@ time and should be measured (or read more code) before touching.
   segment (cheap) before adding. Or cap the result count and let the
   caller's per-entity filter do the work.
 
-[SMALL] _dedup Set has implicit "consume result first" invariant
-  src/game/sim/SpatialGrid.ts:548-549, 605, 926, 976, 1097, 1126, 1172
-  Multiple query methods clear _dedup at entry; if a caller starts a new
-  query while still iterating an earlier result, it silently breaks.
-  Fix: document the invariant loudly at the top of the file, or assert in
-  dev builds that nearby results aren't held across calls.
-
 ------------------------------------------------------------------------------
  SIM HOT PATH
 ------------------------------------------------------------------------------
@@ -67,16 +60,6 @@ time and should be measured (or read more code) before touching.
   Fix: per-tick, build a cheap "fields-near-this-unit" sub-list once,
   pass that to chooseBestTargetCandidate. Falls back to full list when
   empty. Pairs with the Z-band fix above.
-
-[SMALL] currentFireTargetRankSq computed twice on engaged weapons
-  src/game/sim/combat/targetingSystem.ts:861, 908
-  Pre-scan computes the rank to decide if a candidate query is needed
-  (gated on `state==='engaged' && ranges.fire.min`); Pass 2 then
-  recomputes both rank AND distSq (gated on `state==='engaged'`). For
-  the overlap subset (engaged + has fire.min), both calls do identical
-  spatial work. The gating mismatch makes a direct cache awkward; a
-  cleanest fix is a per-weapon `{rank, distSq}` slot that pre-scan
-  populates and Pass 2 reads-or-recomputes.
 
 ------------------------------------------------------------------------------
  NETWORK / SERIALIZATION
