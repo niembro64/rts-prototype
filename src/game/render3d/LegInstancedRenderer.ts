@@ -185,6 +185,15 @@ class CylinderPool {
     this.startBuf.needsUpdate = true;
     this.endBuf.needsUpdate = true;
     this.thickBuf.needsUpdate = true;
+    // Trim the GPU instance count to the high-water mark of allocated
+    // slots. Without this, instanceCount stays at SLOT_CAP (16384) for
+    // the lifetime of the pool — the GPU runs the vertex shader on
+    // every phantom instance even though they collapse to zero
+    // thickness. JointSpherePool / FootPadPool already do this via
+    // `mesh.count = nextSlot`; InstancedBufferGeometry exposes the
+    // equivalent as `instanceCount`.
+    (this.mesh.geometry as THREE.InstancedBufferGeometry).instanceCount =
+      this.nextSlot;
   }
 
   destroy(): void {
