@@ -838,6 +838,21 @@ export class Input3DManager {
       case 'd':
         this.toggleDGunMode();
         break;
+      case 'tab': {
+        e.preventDefault();
+        const commander = this.entitySource
+          .getUnitsByPlayer(this.context.activePlayerId)
+          .find(isCommander);
+        if (commander) {
+          this.localCommandQueue.enqueue({
+            type: 'select',
+            tick: this.context.getTick(),
+            entityIds: [commander.id],
+            additive: e.shiftKey,
+          });
+        }
+        break;
+      }
       case 'escape':
         handleEscape(
           [
