@@ -155,9 +155,9 @@ export const UNIT_LOCOMOTION_BLUEPRINTS = {
     type: 'legs',
     physics: createLocomotionPhysics('legs', 120, {
       springStiffness: 10_000,
-      compression: 15,
-      powerRandomMultiplier: 0.95,
-      horizontalRandomMultiplier: 0.35,
+      compression: 50,
+      powerRandomMultiplier: 0.5,
+      horizontalRandomMultiplier: 0.0,
       mode: 'always',
       // Roll a 2% chance per server tick (60 TPS) to actually release
       // the spring while the rest of the conditions hold. Mean spacing

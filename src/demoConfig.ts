@@ -52,8 +52,8 @@ export const DEMO_CONFIG = {
     wind: { radiusFraction: 0.75 },
     radar: { radiusFraction: 0.71 },
     fabricator: { radiusFraction: 0.67 },
-    megaBeamTower: { radiusFraction: 0.62 },
-    cannonTower: { radiusFraction: 0.6 },
+    cannonTower: { radiusFraction: 0.55 },
+    megaBeamTower: { radiusFraction: 0.5 },
   },
 
   /**
