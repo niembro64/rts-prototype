@@ -110,6 +110,25 @@ export class SnapshotVisibility {
    *  owned-vs-observed delta resolution. */
   readonly isFiltered: boolean;
 
+  /** Per-emit memo for isEntityVisible (issues.txt FOW-OPT-09). The
+   *  same SnapshotVisibility instance is shared across every
+   *  teammate via getOrBuildVisibility's per-emit cache (FOW-OPT-01);
+   *  within a single emit, the entity serializer also revisits the
+   *  same entity from multiple sites (the dirty loop, the full
+   *  visibility walk, canReferenceEntityId for turret/build/repair
+   *  targets, the visibility-hidden cleanup). Without a memo each
+   *  call repeats the spatial-hash walk AND every hasTerrainLineOfSight
+   *  raycast against the heightmap — for an enemy unit sitting in
+   *  the overlap of three friendly tanks, that's three raycasts per
+   *  call, redone per call. The world is frozen during emit() so
+   *  caching the boolean is safe; the map is cleared once at
+   *  construction and lives until the SnapshotVisibility is dropped
+   *  at end-of-emit. Only stores answers when isFiltered (unfiltered
+   *  short-circuits to true unconditionally) and only after the
+   *  owner-or-ally short-circuit (which is already O(1) — no point
+   *  memoizing it). */
+  private readonly entityVisibilityMemo = new Map<EntityId, boolean>();
+
   private constructor(
     recipientPlayerId: PlayerId | undefined,
     fogEnabled: boolean,
@@ -209,14 +228,22 @@ export class SnapshotVisibility {
   isEntityVisible(entity: Entity): boolean {
     if (!this.isFiltered) return true;
     if (this.isOwnedByRecipientOrAlly(entity.ownership?.playerId)) return true;
+    const cached = this.entityVisibilityMemo.get(entity.id);
+    if (cached !== undefined) return cached;
     const padding = getEntityVisibilityPadding(entity);
-    if (!this.canSeeCloakedEntity(entity, padding)) return false;
-    return this.isEntityVisibleWithLos(
-      entity.transform.x,
-      entity.transform.y,
-      entity.transform.z,
-      padding,
-    );
+    let result: boolean;
+    if (!this.canSeeCloakedEntity(entity, padding)) {
+      result = false;
+    } else {
+      result = this.isEntityVisibleWithLos(
+        entity.transform.x,
+        entity.transform.y,
+        entity.transform.z,
+        padding,
+      );
+    }
+    this.entityVisibilityMemo.set(entity.id, result);
+    return result;
   }
 
   /** Distance-then-LOS scan over fullSources. Reuses the spatial hash

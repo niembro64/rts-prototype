@@ -7,11 +7,7 @@ import {
   getEntityVisionRadius,
 } from '../network/stateSerializerVisibility';
 import { markCircleScanline } from '../sim/circleFill';
-
-// Texture resolution caps. The map sampled into a coarse alpha grid;
-// finer resolution smooths the shroud edges at proportional CPU cost.
-const MAX_TEXTURE_AXIS = 512;
-const MIN_TEXTURE_AXIS = 192;
+import { SHROUD_CELL_SIZE } from '../sim/WorldState';
 
 // Repaint cadence. The shroud is purely cosmetic; sub-100ms updates are
 // imperceptible at RTS pace and let us keep the canvas-paint cost low.
@@ -71,37 +67,36 @@ export class FogOfWarShroudRenderer3D {
    *  to null whenever the canvas needs an unconditional repaint
    *  (seat swap, fog toggle on, server shroud applied). */
   private lastSourcesHash: number | null = null;
-  /** Resample lookup tables for applyServerShroud (issues.txt
-   *  FOW-OPT-03). Map canvas-pixel column→server bitmap column and
-   *  canvas-pixel row→server-row-index-base. The inner loop reads
-   *  these instead of running two float divides + a floor per pixel
-   *  (~100k operations on a 512×192 canvas). Rebuilt only when the
-   *  server's shroud grid changes (gridW / gridH / cellSize), which
-   *  is once per game in practice. Null until the first shroud
-   *  applies. */
-  private shroudSxLut: Int32Array | null = null;
-  private shroudSrcRowLut: Int32Array | null = null;
-  /** Signature of the LUTs' source grid — quick equality check on
-   *  every applyServerShroud call. Stays in sync with the LUT
-   *  arrays. */
-  private shroudLutSignature: string | null = null;
 
   constructor(
     world: THREE.Group,
     private readonly mapWidth: number,
     private readonly mapHeight: number,
   ) {
-    const dims = textureDimensions(mapWidth, mapHeight);
+    // FOW-OPT-18: canvas grid matches the server's shroud grid exactly
+    // so applyServerShroud can byte-copy with a Y-flip instead of
+    // running a per-pixel resample. Both grids derive from the same
+    // SHROUD_CELL_SIZE + (mapWidth, mapHeight) so they stay in lockstep
+    // by construction. Texture filtering on the GPU (LinearFilter) takes
+    // care of smoothing the coarse grid back up to screen space.
+    const gridW = Math.max(1, Math.ceil(mapWidth / SHROUD_CELL_SIZE));
+    const gridH = Math.max(1, Math.ceil(mapHeight / SHROUD_CELL_SIZE));
     this.canvas = document.createElement('canvas');
-    this.canvas.width = dims.width;
-    this.canvas.height = dims.height;
+    this.canvas.width = gridW;
+    this.canvas.height = gridH;
     const ctx = this.canvas.getContext('2d', { willReadFrequently: false });
     if (!ctx) {
       throw new Error('FogOfWarShroudRenderer3D failed to create 2D canvas context');
     }
     this.ctx = ctx;
-    this.imageData = ctx.createImageData(dims.width, dims.height);
-    this.revealed = new Uint8Array(dims.width * dims.height);
+    this.imageData = ctx.createImageData(gridW, gridH);
+    this.revealed = new Uint8Array(gridW * gridH);
+    // FOW-OPT-17: seed the ImageData buffer to UNEXPLORED + alpha=255
+    // up front. markRevealed / applyServerShroud then mutate only the
+    // cells that flip 0→1 (writing EXPLORED into the same buffer), and
+    // paintAlphaMap can putImageData straight through without rebuilding
+    // the per-pixel base coat every frame.
+    fillImageDataUnexplored(this.imageData);
 
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.wrapS = THREE.ClampToEdgeWrapping;
@@ -154,10 +149,13 @@ export class FogOfWarShroudRenderer3D {
     }
 
     // Lobby seat swap or replay scrub → exploration is per-player, so
-    // start a fresh history.
+    // start a fresh history. Reset both the revealed bitmap AND the
+    // ImageData base-coat buffer (FOW-OPT-17 keeps the buffer in sync
+    // with revealed, so the two must reset together).
     if (this.lastPlayerId !== localPlayerId) {
       this.lastPlayerId = localPlayerId;
       this.revealed.fill(0);
+      fillImageDataUnexplored(this.imageData);
       this.updateAccumMs = UPDATE_INTERVAL_MS;
       this.lastSourcesHash = null;
     }
@@ -193,9 +191,9 @@ export class FogOfWarShroudRenderer3D {
     // FOW-OPT-04: skip the full paint when the local source pool is
     // byte-identical to the last paint. With no source movement (an
     // idle base) and no fresh shroud apply, the alphaMap output would
-    // be identical to what's already on the canvas — the per-pixel
-    // base coat + radial-gradient pass is the dominant cost of this
-    // class, and a hash compare keeps the static case near-free.
+    // be identical to what's already on the canvas — putImageData +
+    // radial-gradient pass would just repaint identical pixels, and a
+    // hash compare keeps the static case near-free.
     const sourcesHash = this.hashSources();
     if (sourcesHash === this.lastSourcesHash) return;
     this.markRevealed();
@@ -206,10 +204,11 @@ export class FogOfWarShroudRenderer3D {
 
   /** Cheap rolling hash of the current source pool. Quantizes positions
    *  and radii to integer world units (sub-unit drift is below the
-   *  alphaMap's per-pixel resolution anyway, ~mapWidth/512) so a unit
-   *  parked in place doesn't trigger repaints from float noise. The
-   *  hash is order-sensitive — fine because collectSources walks
-   *  ClientViewState's units/buildings/pulses in a stable order. */
+   *  alphaMap's per-cell resolution anyway — one cell is SHROUD_CELL_SIZE
+   *  world units after FOW-OPT-18) so a unit parked in place doesn't
+   *  trigger repaints from float noise. The hash is order-sensitive —
+   *  fine because collectSources walks ClientViewState's units / buildings
+   *  / pulses in a stable order. */
   private hashSources(): number {
     let h = this.sources.length;
     for (let i = 0; i < this.sources.length; i++) {
@@ -222,82 +221,45 @@ export class FogOfWarShroudRenderer3D {
   }
 
   /** OR the server-side shroud bitmap into the local revealed array.
-   *  Server cells map onto the local canvas pixels by nearest-cell
-   *  sampling — the two grids share their world-space mapping so a
-   *  reveal-anywhere flag in the server bitmap lights up the
-   *  corresponding canvas pixels regardless of resolution mismatch.
-   *  Never CLEARS pixels — explored history is monotonic from the
-   *  client's perspective. The wire bitmap is bit-packed
-   *  (issues.txt FOW-OPT-02): cell `i = sy * gridW + sx` is bit
-   *  `i & 7` of byte `i >> 3`.
+   *  Wire bitmap is bit-packed (issues.txt FOW-OPT-02): cell
+   *  `i = sy * gridW + sx` is bit `i & 7` of byte `i >> 3`. Never
+   *  CLEARS pixels — explored history is monotonic from the client's
+   *  perspective.
    *
-   *  FOW-OPT-03: the per-pixel world→cell conversion uses a pair of
-   *  precomputed Int32Array LUTs that get rebuilt only when the
-   *  server grid changes (gridW/gridH/cellSize). The hot loop then
-   *  reads sxLut[cx] and srcRowLut[cy] instead of running two float
-   *  divides + a clamp + a floor per pixel. */
+   *  FOW-OPT-18: server and canvas grids are sized identically (both
+   *  derive from SHROUD_CELL_SIZE + map dimensions), so the only
+   *  per-cell work is a Y-flip — server row 0 is world y=0 (bottom),
+   *  canvas row 0 is world y=mapHeight (top, see texture.flipY=false
+   *  + the paint code's `1 - source.y/mapHeight` mapping). Any
+   *  size-mismatch is treated as an invariant violation and skipped
+   *  (a future grid-resolution divergence would need to bring back a
+   *  resample path; not worth the LUT complexity until then).
+   *
+   *  FOW-OPT-17: cells that flip 0→1 also write EXPLORED_ALPHA into
+   *  the ImageData base-coat buffer at the matching index, keeping it
+   *  in sync with `revealed`. */
   private applyServerShroud(shroud: NetworkServerSnapshotShroud): void {
+    const gridW = this.canvas.width;
+    const gridH = this.canvas.height;
+    if (shroud.gridW !== gridW || shroud.gridH !== gridH) return;
     const srcBits = shroud.bitmap;
-    const canvasW = this.canvas.width;
-    const canvasH = this.canvas.height;
-    const { sxLut, srcRowLut } = this.ensureShroudLuts(shroud);
-    for (let cy = 0; cy < canvasH; cy++) {
-      const srcRow = srcRowLut[cy];
-      const dstRow = cy * canvasW;
-      for (let cx = 0; cx < canvasW; cx++) {
-        const cellIdx = srcRow + sxLut[cx];
-        if ((srcBits[cellIdx >> 3] & (1 << (cellIdx & 7))) !== 0) {
-          this.revealed[dstRow + cx] = 1;
-        }
+    const rgb = this.imageData.data;
+    for (let cy = 0; cy < gridH; cy++) {
+      const sy = gridH - 1 - cy;
+      const srcRowStart = sy * gridW;
+      const dstRowStart = cy * gridW;
+      for (let cx = 0; cx < gridW; cx++) {
+        const cellIdx = srcRowStart + cx;
+        if ((srcBits[cellIdx >> 3] & (1 << (cellIdx & 7))) === 0) continue;
+        const dstIdx = dstRowStart + cx;
+        if (this.revealed[dstIdx] !== 0) continue;
+        this.revealed[dstIdx] = 1;
+        const p = dstIdx << 2;
+        rgb[p] = EXPLORED_ALPHA;
+        rgb[p + 1] = EXPLORED_ALPHA;
+        rgb[p + 2] = EXPLORED_ALPHA;
       }
     }
-  }
-
-  /** Rebuild the resample LUTs when the server grid changes; reuse
-   *  the cached pair otherwise. The signature key is cheap to
-   *  compare against on every shroud apply. */
-  private ensureShroudLuts(
-    shroud: NetworkServerSnapshotShroud,
-  ): { sxLut: Int32Array; srcRowLut: Int32Array } {
-    const srcGridW = shroud.gridW;
-    const srcGridH = shroud.gridH;
-    const srcCell = shroud.cellSize;
-    const canvasW = this.canvas.width;
-    const canvasH = this.canvas.height;
-    const signature = `${srcGridW}x${srcGridH}@${srcCell}`;
-    if (
-      this.shroudLutSignature === signature &&
-      this.shroudSxLut !== null &&
-      this.shroudSrcRowLut !== null
-    ) {
-      return { sxLut: this.shroudSxLut, srcRowLut: this.shroudSrcRowLut };
-    }
-    const worldW = srcGridW * srcCell;
-    const worldH = srcGridH * srcCell;
-    const sxLut = new Int32Array(canvasW);
-    for (let cx = 0; cx < canvasW; cx++) {
-      const wx = ((cx + 0.5) / canvasW) * worldW;
-      let sx = Math.floor(wx / srcCell);
-      if (sx < 0) sx = 0;
-      else if (sx >= srcGridW) sx = srcGridW - 1;
-      sxLut[cx] = sx;
-    }
-    const srcRowLut = new Int32Array(canvasH);
-    for (let cy = 0; cy < canvasH; cy++) {
-      // Server bitmap rows run y=0 at world y=0; the local canvas
-      // flips Y on upload (texture.flipY=false + paint with
-      // 1 - sy/mapHeight), so sample the server row matching the
-      // SAME world Y as the canvas row.
-      const wy = ((canvasH - 1 - cy + 0.5) / canvasH) * worldH;
-      let sy = Math.floor(wy / srcCell);
-      if (sy < 0) sy = 0;
-      else if (sy >= srcGridH) sy = srcGridH - 1;
-      srcRowLut[cy] = sy * srcGridW;
-    }
-    this.shroudSxLut = sxLut;
-    this.shroudSrcRowLut = srcRowLut;
-    this.shroudLutSignature = signature;
-    return { sxLut, srcRowLut };
   }
 
   destroy(): void {
@@ -347,30 +309,31 @@ export class FogOfWarShroudRenderer3D {
     // `dx = x - cx`. Defers per-row span math to the shared scanline
     // helper (issues.txt FOW-OPT-05) so the per-cell distance test
     // is one sqrt per row instead of per pixel.
+    //
+    // FOW-OPT-17: pass the ImageData byte array + EXPLORED_ALPHA so
+    // any cell flipping 0→1 also gets its RGB written into the
+    // base-coat buffer in the same scan, keeping the paint state in
+    // sync with `revealed` without a per-frame full-buffer rebuild.
     const width = this.canvas.width;
     const height = this.canvas.height;
+    const rgb = this.imageData.data;
     for (let i = 0; i < this.sources.length; i++) {
       const source = this.sources[i];
       const cx = (source.x / this.mapWidth) * width;
       const cy = (1 - source.y / this.mapHeight) * height;
       const r = (source.radius / this.mapWidth) * width;
-      markCircleScanline(this.revealed, width, height, cx, cy, r, 0);
+      markCircleScanline(this.revealed, width, height, cx, cy, r, 0, rgb, EXPLORED_ALPHA);
     }
   }
 
   private paintAlphaMap(): void {
-    // Base coat: every pixel paints its persistent state — either
-    // explored-dark or fully unexplored. The vision-circle pass below
-    // punches transparent holes through this base where the local
-    // player currently has sight.
-    const data = this.imageData.data;
-    for (let i = 0, p = 0; i < this.revealed.length; i++, p += 4) {
-      const v = this.revealed[i] ? EXPLORED_ALPHA : UNEXPLORED_ALPHA;
-      data[p] = v;
-      data[p + 1] = v;
-      data[p + 2] = v;
-      data[p + 3] = 255;
-    }
+    // FOW-OPT-17: the ImageData buffer is maintained incrementally —
+    // initialized to UNEXPLORED at construction / seat-swap, with
+    // EXPLORED written into individual cells by markRevealed and
+    // applyServerShroud the instant a cell flips 0→1. So pushing
+    // the buffer is a single putImageData with no per-frame
+    // base-coat loop. The radial-gradient pass below then paints
+    // live vision circles on top.
     this.ctx.putImageData(this.imageData, 0, 0);
 
     // Vision-circle pass: paint each source as a radial gradient from
@@ -395,16 +358,19 @@ export class FogOfWarShroudRenderer3D {
   }
 }
 
-function textureDimensions(mapWidth: number, mapHeight: number): { width: number; height: number } {
-  const aspect = mapWidth / Math.max(1, mapHeight);
-  if (aspect >= 1) {
-    return {
-      width: MAX_TEXTURE_AXIS,
-      height: Math.max(MIN_TEXTURE_AXIS, Math.round(MAX_TEXTURE_AXIS / aspect)),
-    };
+/** Seed (or re-seed) the ImageData base-coat buffer to the UNEXPLORED
+ *  state — RGB = UNEXPLORED_ALPHA, alpha channel = 255. Called once at
+ *  construction and again whenever exploration history resets
+ *  (FOW-OPT-17: the buffer mirrors `revealed`, so both reset together).
+ *  The 4-byte memset is the only place that writes the alpha channel;
+ *  the incremental-update paths in markRevealed/applyServerShroud touch
+ *  RGB only so this value persists. */
+function fillImageDataUnexplored(imageData: ImageData): void {
+  const data = imageData.data;
+  for (let p = 0; p < data.length; p += 4) {
+    data[p] = UNEXPLORED_ALPHA;
+    data[p + 1] = UNEXPLORED_ALPHA;
+    data[p + 2] = UNEXPLORED_ALPHA;
+    data[p + 3] = 255;
   }
-  return {
-    width: Math.max(MIN_TEXTURE_AXIS, Math.round(MAX_TEXTURE_AXIS * aspect)),
-    height: MAX_TEXTURE_AXIS,
-  };
 }

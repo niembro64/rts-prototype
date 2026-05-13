@@ -96,38 +96,3 @@ Each item is a concrete optimization or a latent fragility found during the
 full-system audit. Ordered roughly by impact; the upper entries dominate
 per-snapshot cost or wire bandwidth.
 
-[FOW-OPT-09] hasTerrainLineOfSight is called per candidate source
-  with no memoization. isEntityVisibleWithLos iterates every full
-  source whose cell could cover the target and runs a heightmap
-  raycast for each one that passes the distance check. For an enemy
-  unit inside the overlap of three of the recipient's tanks, the
-  same target z is raycast three times against the same heightmap.
-  Two caches help: (a) per-source memo within one
-  SnapshotVisibility (`source.id → first-target-tried-z` returns the
-  earlier answer), (b) early-out on the first hit, which already
-  exists — but the for-loop continues to add candidates after a hit.
-  Actually we DO early-return on first hit; the real waste is when
-  no source has LOS, then we always pay N raycasts. Could short-
-  circuit on bounding-box overlap before LOS, or share LOS results
-  across recipients on the same team via a per-snapshot cache.
-
-[FOW-OPT-17] paintAlphaMap radial-gradient pass overlays gradients
-  on top of the just-pushed ImageData. The base-coat putImageData
-  paints alphas across the WHOLE canvas, then the gradient pass
-  immediately overwrites pixels inside vision circles. With N
-  sources covering 20–40% of the canvas, that's 20–40% wasted base
-  pixels. Composite order alternative: paint base coat ONLY in
-  cells without an active source, OR skip the base coat entirely
-  and rely on the canvas's prior pixels for explored-dark state
-  (with dirty-region invalidation when revealed flips).
-
-[FOW-OPT-18] Shroud renderer's revealed[] array is sized to the
-  alphaMap canvas (192×512 pixels = 98k bytes). The server bitmap
-  is sized to the world grid (64×64 cells = 4k bytes). The
-  applyServerShroud resample is a fundamental mismatch — every
-  server cell maps to ~24 canvas pixels. Align the two: either
-  drop the canvas resolution to match the server grid (one alpha
-  per cell, GPU bilinear handles the rest) or raise the server
-  grid. Today both grids spend CPU on a translation step that
-  could be eliminated by sharing one resolution.
-

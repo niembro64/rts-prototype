@@ -25,7 +25,16 @@
  *  the server shroud, pixels for the client alphaMap). cellAnchor
  *  picks how the bitmap cell at index `(x, y)` is positioned for the
  *  inside-circle test: 0.5 = cell-center sampling, 0 = cell-corner /
- *  pixel sampling. */
+ *  pixel sampling.
+ *
+ *  Optional rgbBuffer + rgbValue (issues.txt FOW-OPT-17): when the
+ *  caller passes an RGBA-byte buffer aligned 1:1 with `bitmap` (4
+ *  bytes per cell), each cell that flips 0→1 also writes `rgbValue`
+ *  into the RGB channels at the matching offset (alpha channel left
+ *  alone — the buffer is expected to have alpha=255 pre-seeded). The
+ *  client renderer uses this to keep its alphaMap ImageData
+ *  incrementally in sync with `revealed` so paintAlphaMap can skip
+ *  the per-frame base-coat loop. */
 export function markCircleScanline(
   bitmap: Uint8Array,
   gridW: number,
@@ -34,12 +43,16 @@ export function markCircleScanline(
   cy: number,
   r: number,
   cellAnchor: number,
+  rgbBuffer?: Uint8ClampedArray,
+  rgbValue?: number,
 ): boolean {
   if (r <= 0) return false;
   const r2 = r * r;
   const minY = Math.max(0, Math.floor(cy - r));
   const maxY = Math.min(gridH - 1, Math.ceil(cy + r));
   let modified = false;
+  const paint = rgbBuffer !== undefined;
+  const v = rgbValue ?? 0;
   for (let y = minY; y <= maxY; y++) {
     const dy = y + cellAnchor - cy;
     const dySq = dy * dy;
@@ -54,6 +67,12 @@ export function markCircleScanline(
       if (bitmap[idx] === 0) {
         bitmap[idx] = 1;
         modified = true;
+        if (paint) {
+          const p = idx << 2;
+          rgbBuffer![p] = v;
+          rgbBuffer![p + 1] = v;
+          rgbBuffer![p + 2] = v;
+        }
       }
     }
   }
