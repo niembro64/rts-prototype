@@ -211,10 +211,20 @@ export class RtsScene3DRenderPhase {
     this.getCameraQuadUpdate()?.(cameraQuad, this.threeApp.orbit.yaw);
 
     const serverMeta = this.clientViewState.getServerMeta();
+    // Visual shroud overlay is intentionally disabled — it darkens
+    // unexplored / explored cells of the in-bounds terrain only, and
+    // the dark stops cold at the map edge while the off-map "infinity"
+    // shelf and horizon water plane stay un-darkened. That seam was
+    // jarring enough that we'd rather have NO visual shroud than a
+    // disjointed one. Server-side fog-of-war filtering is unaffected —
+    // SnapshotVisibility still strips entities the player can't see
+    // and the renderer's bookkeeping (revealed bitmap, server shroud
+    // ingestion) stays in place so this is a one-line revert if a
+    // future design solves the seam.
     fogOfWarShroudRenderer.update(
       this.clientViewState,
       this.getLocalPlayerId(),
-      serverMeta?.fogOfWarEnabled === true,
+      false,
       deltaMs,
     );
     entityRenderer.update(
