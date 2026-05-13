@@ -16,6 +16,7 @@ import {
 import {
   createBeamPathTarget,
   ensureBeamPoint,
+  shrinkBeamPoints,
   type BeamPathTarget,
 } from './ClientPredictionTargets';
 import {
@@ -129,7 +130,11 @@ export class ClientProjectileStore {
       }
     } else if (projPts.length !== srcPts.length) {
       const oldLen = projPts.length;
-      projPts.length = srcPts.length;
+      if (oldLen > srcPts.length) {
+        shrinkBeamPoints(projPts, srcPts.length);
+      } else {
+        projPts.length = srcPts.length;
+      }
       for (let i = oldLen; i < srcPts.length; i++) {
         const sp = srcPts[i];
         const pp = ensureBeamPoint(projPts, i);

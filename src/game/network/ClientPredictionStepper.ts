@@ -18,6 +18,7 @@ import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 import {
   type BeamPathTarget,
   ensureBeamPoint,
+  shrinkBeamPoints,
   type ServerTarget,
 } from './ClientPredictionTargets';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
@@ -64,7 +65,11 @@ function applyBeamPathPrediction(
   const projPts = proj.points ?? (proj.points = []);
   const oldLen = projPts.length;
   if (oldLen !== tgtPts.length) {
-    projPts.length = tgtPts.length;
+    if (oldLen > tgtPts.length) {
+      shrinkBeamPoints(projPts, tgtPts.length);
+    } else {
+      projPts.length = tgtPts.length;
+    }
     changed = true;
   }
 

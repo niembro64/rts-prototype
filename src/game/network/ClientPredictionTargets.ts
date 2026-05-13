@@ -52,10 +52,50 @@ export function createBeamPathTarget(): BeamPathTarget {
   return { points: [] };
 }
 
+// Module-level free list of BeamPoint objects. Beam paths grow and
+// shrink as reflections come and go (a beam tracking a moving target
+// across mirrors can gain or lose entries every frame). Without a
+// pool, every length truncation drops the trailing point objects to
+// GC and every regrowth allocates fresh ones — pure churn for a value
+// type that's recycled minutes later.
+const _beamPointFreeList: BeamPoint[] = [];
+
+function clearBeamPoint(p: BeamPoint): void {
+  p.x = 0; p.y = 0; p.z = 0;
+  p.vx = 0; p.vy = 0; p.vz = 0;
+  p.ax = 0; p.ay = 0; p.az = 0;
+  p.mirrorEntityId = undefined;
+  p.reflectorKind = undefined;
+  p.reflectorPlayerId = undefined;
+  p.normalX = undefined;
+  p.normalY = undefined;
+  p.normalZ = undefined;
+}
+
+function acquireBeamPoint(): BeamPoint {
+  const pooled = _beamPointFreeList.pop();
+  if (pooled) return pooled;
+  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 };
+}
+
+/** Truncate `arr` to `newLength`, returning the trailing point objects
+ *  to the free list. Optional fields are cleared so the next acquire
+ *  gets a clean slate without stale reflector metadata. */
+export function shrinkBeamPoints(arr: BeamPoint[], newLength: number): void {
+  for (let i = arr.length - 1; i >= newLength; i--) {
+    const p = arr[i];
+    if (p) {
+      clearBeamPoint(p);
+      _beamPointFreeList.push(p);
+    }
+  }
+  arr.length = newLength;
+}
+
 export function ensureBeamPoint(arr: BeamPoint[], i: number): BeamPoint {
   let point = arr[i];
   if (!point) {
-    point = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 };
+    point = acquireBeamPoint();
     arr[i] = point;
   }
   return point;

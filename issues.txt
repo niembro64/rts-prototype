@@ -91,20 +91,6 @@ time and should be measured (or read more code) before touching.
   (RTT-aware).
   Caveat: prediction is what hides snap jitter — measure before touching.
 
-[MEDIUM] Beam path points reallocated per prediction step
-  src/game/network/ClientPredictionStepper.ts:64-68
-  projPts.length resized to match tgtPts every frame; trailing point
-  objects dropped & re-created.
-  Fix: pool beam-point objects on a free list (same pattern as the
-  existing _beamPointPool elsewhere); reuse instead of recreate.
-
-[SMALL] serverMeta clone spreads 6 sub-objects per recipient per keyframe
-  src/game/network/snapshotClone.ts:374-394
-  Metadata barely changes tick-to-tick but the clone does 6 spread copies.
-  Fix: pool the serverMeta object and copy scalars by name; only allocate
-  on actual change.
-
-
 ------------------------------------------------------------------------------
  THREE.JS RENDERING
 ------------------------------------------------------------------------------
@@ -118,14 +104,6 @@ time and should be measured (or read more code) before touching.
   frame.
   Fix: defragment the slot pool periodically so nextSlot tracks the
   actual live-leg high-water mark, not the historical peak.
-
-[SMALL] Various `frustumCulled = false` without intent comments
-  Multiple files in src/game/render3d/
-  Setting frustumCulled=false on world-spanning effect meshes is correct;
-  on per-entity meshes it's wrong. Most are correct here, but the
-  pattern is uncommented so future edits are easy to get wrong.
-  Fix: one-line comment on each frustumCulled=false explaining why
-  (world-spanning vs. known-coverage).
 
 ------------------------------------------------------------------------------
  VUE UI

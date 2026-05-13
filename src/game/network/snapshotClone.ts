@@ -263,6 +263,27 @@ export class ReusableNetworkSnapshotCloner {
   private grid: NonNullable<NetworkServerSnapshot['grid']> = { cells: [], searchCells: [], cellSize: 0 };
   private capture: NonNullable<NetworkServerSnapshot['capture']> = { tiles: [], cellSize: 0 };
   private gameState: NonNullable<NetworkServerSnapshot['gameState']> = { phase: 'battle' };
+  // Pooled serverMeta + each of its optional sub-objects. The previous
+  // implementation rebuilt the whole tree as a fresh object literal
+  // every snapshot (6 nested spreads); these reusable slots cut that
+  // to in-place field copies. Inner objects (cpu/simLod/wind) are kept
+  // allocated even when src lacks them; the dst.serverMeta.cpu pointer
+  // toggles to undefined instead of dropping the buffer.
+  private serverMeta: NonNullable<NetworkServerSnapshot['serverMeta']> = {
+    ticks: { avg: 0, low: 0, rate: 0, target: 0 },
+    snaps: { rate: 0, keyframes: 0 },
+    server: { time: '', ip: '' },
+    grid: false,
+    units: {},
+  };
+  private serverMetaUnitsAllowed: string[] = [];
+  private serverMetaCpu = { avg: 0, hi: 0 };
+  private serverMetaSimLodSignals = { tps: '', cpu: '', units: '' };
+  private serverMetaSimLod: NonNullable<NonNullable<NetworkServerSnapshot['serverMeta']>['simLod']> = {
+    picked: '',
+    effective: '',
+  };
+  private serverMetaWind = { x: 0, y: 0, speed: 0, angle: 0 };
   private removedEntityIds: number[] = [];
 
   clear(): void {
@@ -370,30 +391,72 @@ export class ReusableNetworkSnapshotCloner {
     } else {
       dst.gameState = undefined;
     }
-    dst.serverMeta = state.serverMeta ? {
-      ticks: { ...state.serverMeta.ticks },
-      snaps: { ...state.serverMeta.snaps },
-      server: { ...state.serverMeta.server },
-      grid: state.serverMeta.grid,
-      units: state.serverMeta.units ? {
-        allowed: state.serverMeta.units.allowed?.slice(),
-        max: state.serverMeta.units.max,
-        count: state.serverMeta.units.count,
-      } : {},
-      mirrorsEnabled: state.serverMeta.mirrorsEnabled,
-      forceFieldsEnabled: state.serverMeta.forceFieldsEnabled,
-      forceFieldsBlockTargeting: state.serverMeta.forceFieldsBlockTargeting,
-      forceFieldReflectionMode: state.serverMeta.forceFieldReflectionMode,
-      fogOfWarEnabled: state.serverMeta.fogOfWarEnabled,
-      cpu: state.serverMeta.cpu ? { ...state.serverMeta.cpu } : undefined,
-      simLod: state.serverMeta.simLod ? {
-        picked: state.serverMeta.simLod.picked,
-        effective: state.serverMeta.simLod.effective,
-        signals: state.serverMeta.simLod.signals ? { ...state.serverMeta.simLod.signals } : undefined,
-      } : undefined,
-      wind: state.serverMeta.wind ? { ...state.serverMeta.wind } : undefined,
-      tiltEma: state.serverMeta.tiltEma,
-    } : undefined;
+    if (state.serverMeta) {
+      const sm = state.serverMeta;
+      const dsm = this.serverMeta;
+      dsm.ticks.avg = sm.ticks.avg;
+      dsm.ticks.low = sm.ticks.low;
+      dsm.ticks.rate = sm.ticks.rate;
+      dsm.ticks.target = sm.ticks.target;
+      dsm.snaps.rate = sm.snaps.rate;
+      dsm.snaps.keyframes = sm.snaps.keyframes;
+      dsm.server.time = sm.server.time;
+      dsm.server.ip = sm.server.ip;
+      dsm.grid = sm.grid;
+      const dunits = dsm.units;
+      if (sm.units.allowed) {
+        const allowed = this.serverMetaUnitsAllowed;
+        allowed.length = sm.units.allowed.length;
+        for (let i = 0; i < sm.units.allowed.length; i++) {
+          allowed[i] = sm.units.allowed[i];
+        }
+        dunits.allowed = allowed;
+      } else {
+        dunits.allowed = undefined;
+      }
+      dunits.max = sm.units.max;
+      dunits.count = sm.units.count;
+      dsm.mirrorsEnabled = sm.mirrorsEnabled;
+      dsm.forceFieldsEnabled = sm.forceFieldsEnabled;
+      dsm.forceFieldsBlockTargeting = sm.forceFieldsBlockTargeting;
+      dsm.forceFieldReflectionMode = sm.forceFieldReflectionMode;
+      dsm.fogOfWarEnabled = sm.fogOfWarEnabled;
+      if (sm.cpu) {
+        this.serverMetaCpu.avg = sm.cpu.avg;
+        this.serverMetaCpu.hi = sm.cpu.hi;
+        dsm.cpu = this.serverMetaCpu;
+      } else {
+        dsm.cpu = undefined;
+      }
+      if (sm.simLod) {
+        this.serverMetaSimLod.picked = sm.simLod.picked;
+        this.serverMetaSimLod.effective = sm.simLod.effective;
+        if (sm.simLod.signals) {
+          this.serverMetaSimLodSignals.tps = sm.simLod.signals.tps;
+          this.serverMetaSimLodSignals.cpu = sm.simLod.signals.cpu;
+          this.serverMetaSimLodSignals.units = sm.simLod.signals.units;
+          this.serverMetaSimLod.signals = this.serverMetaSimLodSignals;
+        } else {
+          this.serverMetaSimLod.signals = undefined;
+        }
+        dsm.simLod = this.serverMetaSimLod;
+      } else {
+        dsm.simLod = undefined;
+      }
+      if (sm.wind) {
+        this.serverMetaWind.x = sm.wind.x;
+        this.serverMetaWind.y = sm.wind.y;
+        this.serverMetaWind.speed = sm.wind.speed;
+        this.serverMetaWind.angle = sm.wind.angle;
+        dsm.wind = this.serverMetaWind;
+      } else {
+        dsm.wind = undefined;
+      }
+      dsm.tiltEma = sm.tiltEma;
+      dst.serverMeta = dsm;
+    } else {
+      dst.serverMeta = undefined;
+    }
     if (state.grid) {
       this.grid.cells = this.copyRequiredArray(state.grid.cells, this.grid.cells, createCellDto, copyCellInto);
       this.grid.searchCells = this.copyRequiredArray(state.grid.searchCells, this.grid.searchCells, createCellDto, copyCellInto);
