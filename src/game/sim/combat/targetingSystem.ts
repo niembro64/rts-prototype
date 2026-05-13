@@ -25,6 +25,11 @@ const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
 const _ffTargetPoint = { x: 0, y: 0, z: 0 };
 const _emptyForceFields: readonly ActiveForceFieldRef[] = [];
+// Per-unit reusable mask of "weapon system disabled" flags, filled in
+// the Pass 0 reset walk and consumed by every subsequent pass. Avoids
+// calling weaponSystemDisabled 8+ times per weapon per tick (~9× the
+// property reads across passes for the same unchanging condition).
+const _weaponDisabled: boolean[] = [];
 
 function nextTargetingReacquireTick(unitId: number, tick: number, stride: number): number {
   if (stride <= 1) return tick + 1;
@@ -530,7 +535,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     let hasEnabledWeapon = false;
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
-      if (resetDisabledWeapon(world, unit, weapon, wi)) continue;
+      const disabled = resetDisabledWeapon(world, unit, weapon, wi);
+      _weaponDisabled[wi] = disabled;
+      if (disabled) continue;
       hasEnabledWeapon = true;
       if (weapon.cooldown > 0) {
         hasCooldownState = true;
@@ -542,6 +549,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         weapon.burst.cooldown = decrementCooldown(weapon.burst.cooldown, dtMs);
       }
     }
+    _weaponDisabled.length = weapons.length;
     if (!hasEnabledWeapon) {
       combat.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
       continue;
@@ -550,7 +558,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     let hasLiveWeaponState = false;
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
-      if (weaponSystemDisabled(world, weapon)) continue;
+      if (_weaponDisabled[i]) continue;
       if (
         weapon.target !== null ||
         weapon.state !== 'idle' ||
@@ -588,7 +596,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const surfaceN = unit.unit?.surfaceNormal;
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
-      if (weaponSystemDisabled(world, weapon)) continue;
+      if (_weaponDisabled[i]) continue;
       if (weapon.config.isManualFire) {
         weapon.state = 'idle';
         continue;
@@ -604,7 +612,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     if (priorityPoint !== undefined) {
       for (let wi = 0; wi < weapons.length; wi++) {
         const weapon = weapons[wi];
-        if (weaponSystemDisabled(world, weapon)) continue;
+        if (_weaponDisabled[wi]) continue;
         if (weapon.config.isManualFire) continue;
 
         if (weapon.config.passive) {
@@ -671,7 +679,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         // ATTACK MODE: try the priority target, firing only inside hard max range.
         for (let wi = 0; wi < weapons.length; wi++) {
           const weapon = weapons[wi];
-          if (weaponSystemDisabled(world, weapon)) continue;
+          if (_weaponDisabled[wi]) continue;
           if (weapon.config.isManualFire) continue;
           // Passive turrets (mirrors) only lock onto enemies whose
           // turrets actually deal damage. The shared mirror scorer
@@ -729,7 +737,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // Pass 1: Validate existing targets with hysteresis
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
-      if (weaponSystemDisabled(world, weapon)) continue;
+      if (_weaponDisabled[wi]) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.target === null) continue;
 
@@ -841,8 +849,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     let needsAnyQuery = false;
     let maxAcquireRange = 0;
     let maxWeaponOffset = 0;
-    for (const weapon of weapons) {
-      if (weaponSystemDisabled(world, weapon)) continue;
+    for (let wi = 0; wi < weapons.length; wi++) {
+      if (_weaponDisabled[wi]) continue;
+      const weapon = weapons[wi];
       if (weapon.config.isManualFire) continue;
       const acquireRange = outermostAcquireDistance(weapon.ranges);
       if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
@@ -892,7 +901,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // evaluates independently.
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
-      if (weaponSystemDisabled(world, weapon)) continue;
+      if (_weaponDisabled[wi]) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.target === null) continue;
       const currentFireRank = weapon.state === 'engaged'
@@ -945,7 +954,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // Pass 3: Acquire targets for weapons with no target (idle)
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
-      if (weaponSystemDisabled(world, weapon)) continue;
+      if (_weaponDisabled[wi]) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.target !== null) continue;
 

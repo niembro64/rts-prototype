@@ -81,14 +81,6 @@ time and should be measured (or read more code) before touching.
   pass that to chooseBestTargetCandidate. Falls back to full list when
   empty. Pairs with the Z-band fix above.
 
-[SMALL] weaponSystemDisabled re-evaluated 8+ times per weapon per tick
-  src/game/sim/combat/targetingSystem.ts:553, 591, 607, 674, 732, 845,
-  883, 936
-  Same property reads (visualOnly, passive, shot.type==='force') run on
-  every pass.
-  Fix: compute once into a per-weapon boolean during the Pass 0 walk and
-  reuse across Passes 1-3.
-
 [SMALL] getTargetRadius called 3-4 times for the same priority target
   src/game/sim/combat/targetingSystem.ts:155-157, 313-314, 660-667, 738-748
   Each pass independently resolves the same target's radius.
@@ -113,12 +105,6 @@ time and should be measured (or read more code) before touching.
   won't reuse it.
   Fix: skip the set entirely for projectiles whose blueprint says
   pierce=false; or pre-allocate one shared Set per projectile lifetime.
-
-[SMALL] Math.hypot(x, y, z) on hot reflection path
-  src/game/sim/combat/ProjectileCollisionHandler.ts:151-152, 161
-  3-arg Math.hypot is materially slower than `Math.sqrt(x*x+y*y+z*z)` on
-  V8.
-  Fix: inline the sqrt expression; keeps the hot loop primitive.
 
 [SMALL] currentFireTargetRankSq computed twice on engaged weapons
   src/game/sim/combat/targetingSystem.ts:851-852, 886-888
@@ -211,14 +197,6 @@ time and should be measured (or read more code) before touching.
 ------------------------------------------------------------------------------
  THREE.JS RENDERING
 ------------------------------------------------------------------------------
-
-[LARGE] BeamRenderer3D uploads the full instance buffer every frame
-  src/game/render3d/BeamRenderer3D.ts:556-564
-  Always marks [0, segIdx*16] dirty on instance matrix + full flow/alpha,
-  even when only a tiny subset of slots changed. With 1k active segments
-  in heavy combat, but a buffer of 8k slots, that's 8× the upload.
-  Fix: track dirty min/max slot indices (UnitMassInstanceRenderer already
-  does this) and use addUpdateRange to upload only the dirty span.
 
 [MEDIUM] SelectionOverlayRenderer3D and ProjectileRangeEnvelope3D
         allocate Mesh per ring [VERIFY]

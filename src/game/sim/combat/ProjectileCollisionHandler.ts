@@ -148,8 +148,12 @@ function reflectVelocityPreserveSpeed(
   normalY: number,
   normalZ: number,
 ): { x: number; y: number; z: number } | null {
-  const speed = Math.hypot(vx, vy, vz);
-  const nLen = Math.hypot(normalX, normalY, normalZ);
+  // Inline sqrt over 3-arg Math.hypot: V8 const-folds and inlines the
+  // squared expression aggressively; Math.hypot adds overflow-safe
+  // scaling we don't need at sim scale and runs measurably slower in
+  // this reflection-per-collision hot path.
+  const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
+  const nLen = Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ);
   if (speed <= 1e-9 || nLen <= 1e-9) return null;
   const nx = normalX / nLen;
   const ny = normalY / nLen;
@@ -158,7 +162,7 @@ function reflectVelocityPreserveSpeed(
   let rx = vx - 2 * dot * nx;
   let ry = vy - 2 * dot * ny;
   let rz = vz - 2 * dot * nz;
-  const rLen = Math.hypot(rx, ry, rz);
+  const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz);
   if (rLen <= 1e-9) return null;
   const scale = speed / rLen;
   rx *= scale;
