@@ -929,6 +929,69 @@ export class SpatialGrid {
   }
 
   /**
+   * Iterate units + buildings whose cell overlaps the XY rectangle
+   * (`minX..maxX`, `minY..maxY`). Z spans the terrain play volume,
+   * matching the default in getCellsInCircle2D — covers every ground
+   * unit and building altitude the game currently supports.
+   *
+   * The snapshot serializer uses this to scope per-listener AoI
+   * candidate enumeration: instead of walking every unit + building
+   * in the world per recipient and rejecting most via the rect AABB,
+   * it asks the grid for just the entities whose cells touch the
+   * AoI rect. Buildings span their footprint's cells, so they're
+   * deduplicated via the shared _dedup set.
+   *
+   * Returns dedicated reusable arrays (NOT the queryResultUnits/Buildings
+   * shared with radius queries) so the serializer can safely call this
+   * while iteration of other reusable results is in progress. DO NOT
+   * STORE THE REFERENCE.
+   */
+  queryUnitsAndBuildingsInRect2D(
+    minX: number, maxX: number, minY: number, maxY: number,
+  ): { units: Entity[]; buildings: Entity[] } {
+    this._rectUnits.length = 0;
+    this._rectBuildings.length = 0;
+    this._dedup.clear();
+    const cs = this.cellSize;
+    const hcs = this.halfCellSize;
+    const minCx = Math.floor(minX / cs);
+    const maxCx = Math.floor(maxX / cs);
+    const minCy = Math.floor(minY / cs);
+    const maxCy = Math.floor(maxY / cs);
+    const minCz = Math.floor((TILE_FLOOR_Y - cs + hcs) / cs);
+    const maxCz = Math.floor((TERRAIN_MAX_RENDER_Y + cs * 2 + hcs) / cs);
+
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        for (let cz = minCz; cz <= maxCz; cz++) {
+          const cell = this.cells.get(this.packCell(cx, cy, cz));
+          if (!cell) continue;
+          // Units bucket to exactly one cell each — no dedup needed.
+          const cellUnits = cell.units;
+          for (let i = 0; i < cellUnits.length; i++) {
+            this._rectUnits.push(cellUnits[i]);
+          }
+          // Buildings span their footprint's cells — dedup across cells.
+          const cellBuildings = cell.buildings;
+          for (let i = 0; i < cellBuildings.length; i++) {
+            const b = cellBuildings[i];
+            if (this._dedup.has(b.id)) continue;
+            this._dedup.add(b.id);
+            this._rectBuildings.push(b);
+          }
+        }
+      }
+    }
+    return this._rectResult;
+  }
+  private readonly _rectUnits: Entity[] = [];
+  private readonly _rectBuildings: Entity[] = [];
+  private readonly _rectResult: { units: Entity[]; buildings: Entity[] } = {
+    units: this._rectUnits,
+    buildings: this._rectBuildings,
+  };
+
+  /**
    * Query enemy units within a 3D sphere (filtered by player)
    * Returns a reused array - DO NOT STORE THE REFERENCE
    */

@@ -43,6 +43,7 @@ import {
   getPrevState,
   removedEntityIdsBuf as _removedIdsBuf,
 } from './stateSerializerEntityDelta';
+import { spatialGrid } from '../sim/SpatialGrid';
 
 export {
   captureSnapshotEntityStates,
@@ -53,6 +54,16 @@ export {
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
 const _visibilityHiddenIdsBuf: EntityId[] = [];
+const _aoiCandidateUnits: Entity[] = [];
+const _aoiCandidateBuildings: Entity[] = [];
+
+// Upper bound for getAoiPadding across every entity shape: unit
+// padding is 100; building padding is max(width, height) * 0.5 + 150
+// (~250 for the largest buildings currently in the game). The spatial
+// grid query rect is expanded by this so entities at the precise
+// padded edge still appear in the candidate set; the exact per-entity
+// pad check downstream (isEntityInsideAoi) culls them precisely.
+const AOI_RECT_PADDING = 300;
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
 const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
@@ -229,6 +240,65 @@ function isEntityInsideAoi(
   );
 }
 
+/** Pre-filter units + buildings by AoI rect via the spatial grid,
+ *  augmented by per-player owned-or-ally entities (which bypass AoI).
+ *  The per-listener entity sweeps used to walk world.getUnits() and
+ *  world.getBuildings() in full and reject the ~95% outside the
+ *  camera with the per-entity AABB test in isEntityInsideAoi. With
+ *  10k entities and 4 listeners that's 80k entity touches per delta.
+ *  Asking the grid for cells overlapping the (padded) AoI rect drops
+ *  the foreign-entity walk to just the cells the camera actually sees;
+ *  owned-or-ally entities are picked up via the per-player caches.
+ *
+ *  Buckets are disjoint by construction so callers never see a
+ *  duplicate: the spatial-grid walk emits ONLY non-owned-or-ally
+ *  entities, the per-player walk emits ONLY recipient + ally entities.
+ *  Same union of accepted entities as the old full-world walk under
+ *  isEntityInsideAoi, just with the bulk of the rejection moved into
+ *  the spatial broadphase. */
+function buildAoiCandidates(
+  world: WorldState,
+  aoi: SnapshotAoiBounds,
+  visibility: SnapshotVisibility,
+  recipientPlayerId: PlayerId | undefined,
+): void {
+  _aoiCandidateUnits.length = 0;
+  _aoiCandidateBuildings.length = 0;
+
+  const rect = spatialGrid.queryUnitsAndBuildingsInRect2D(
+    aoi.minX - AOI_RECT_PADDING,
+    aoi.maxX + AOI_RECT_PADDING,
+    aoi.minY - AOI_RECT_PADDING,
+    aoi.maxY + AOI_RECT_PADDING,
+  );
+  const rectUnits = rect.units;
+  for (let i = 0; i < rectUnits.length; i++) {
+    const u = rectUnits[i];
+    if (visibility.isOwnedByRecipientOrAlly(u.ownership?.playerId)) continue;
+    _aoiCandidateUnits.push(u);
+  }
+  const rectBuildings = rect.buildings;
+  for (let i = 0; i < rectBuildings.length; i++) {
+    const b = rectBuildings[i];
+    if (visibility.isOwnedByRecipientOrAlly(b.ownership?.playerId)) continue;
+    _aoiCandidateBuildings.push(b);
+  }
+
+  if (recipientPlayerId !== undefined) {
+    const ownUnits = world.getUnitsByPlayer(recipientPlayerId);
+    for (let i = 0; i < ownUnits.length; i++) _aoiCandidateUnits.push(ownUnits[i]);
+    const ownBuildings = world.getBuildingsByPlayer(recipientPlayerId);
+    for (let i = 0; i < ownBuildings.length; i++) _aoiCandidateBuildings.push(ownBuildings[i]);
+    const allies = world.getAllies(recipientPlayerId);
+    for (const allyId of allies) {
+      const allyUnits = world.getUnitsByPlayer(allyId);
+      for (let i = 0; i < allyUnits.length; i++) _aoiCandidateUnits.push(allyUnits[i]);
+      const allyBuildings = world.getBuildingsByPlayer(allyId);
+      for (let i = 0; i < allyBuildings.length; i++) _aoiCandidateBuildings.push(allyBuildings[i]);
+    }
+  }
+}
+
 // Serialize WorldState to network format.
 // When isDelta=true, only changed/new entities are included plus removedEntityIds.
 // When isDelta=false (keyframe), all entities are included (same as before).
@@ -392,10 +462,18 @@ export function serializeGameState(
     }
 
     if (visibility.isFiltered) {
-      const visibilitySources: ReadonlyArray<readonly Entity[]> = [
-        world.getUnits(),
-        world.getBuildings(),
-      ];
+      let visibilitySources: ReadonlyArray<readonly Entity[]>;
+      if (aoi !== undefined) {
+        // Spatial-broadphase: ask the grid for entities inside the
+        // AoI rect, then re-attach owned-or-ally entities (which bypass
+        // AoI and may sit anywhere on the map). The precise per-entity
+        // pad + visibility check inside acceptsSerializedEntity below
+        // still runs.
+        buildAoiCandidates(world, aoi, visibility, recipientPlayerId);
+        visibilitySources = [_aoiCandidateUnits, _aoiCandidateBuildings];
+      } else {
+        visibilitySources = [world.getUnits(), world.getBuildings()];
+      }
       for (let s = 0; s < visibilitySources.length; s++) {
         const source = visibilitySources[s];
         for (let i = 0; i < source.length; i++) {
@@ -443,10 +521,19 @@ export function serializeGameState(
     // arrays through one body. Adding a new entity-shaped category
     // (e.g. capture-tile entities) means appending one more source
     // here, not duplicating another loop.
-    const keyframeSources: ReadonlyArray<readonly Entity[]> = [
-      world.getUnits(),
-      world.getBuildings(),
-    ];
+    //
+    // When the listener has an AoI, scope the source arrays via the
+    // spatial grid the same way the delta visibility sweep does —
+    // foreign entities by AoI-rect broadphase + owned-or-ally by
+    // per-player cache. The precise rect + visibility filter inside
+    // acceptsSerializedEntity still culls the candidate set.
+    let keyframeSources: ReadonlyArray<readonly Entity[]>;
+    if (aoi !== undefined) {
+      buildAoiCandidates(world, aoi, visibility, recipientPlayerId);
+      keyframeSources = [_aoiCandidateUnits, _aoiCandidateBuildings];
+    } else {
+      keyframeSources = [world.getUnits(), world.getBuildings()];
+    }
     for (let s = 0; s < keyframeSources.length; s++) {
       const source = keyframeSources[s];
       for (let i = 0; i < source.length; i++) {
