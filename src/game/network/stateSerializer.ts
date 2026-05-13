@@ -27,6 +27,7 @@ import {
   SNAPSHOT_DIRTY_FORCE_FIELDS,
   aoiRemovedEntityIdsBuf as _aoiRemovedIdsBuf,
   copyPrevState,
+  type DeltaTrackingState,
   dirtyEntityFieldsBuf as _dirtyEntityFieldsBuf,
   dirtyEntityIdsBuf as _dirtyEntityIdsBuf,
   getDeltaTrackingState,
@@ -101,6 +102,79 @@ function getAoiPadding(entity: Entity): number {
   return Math.max(building.width, building.height) * 0.5 + 150;
 }
 
+/** Entity acceptance gate for the per-recipient snapshot pass
+ *  (issues.txt FOW-OPT-13 — hoisted from a per-call closure to avoid
+ *  allocating a fresh arrow function per recipient per snapshot). */
+function acceptsSerializedEntity(
+  entity: Entity,
+  aoi: SnapshotAoiBounds | undefined,
+  visibility: SnapshotVisibility,
+): boolean {
+  return (
+    (entity.type === 'unit' || entity.type === 'building') &&
+    isEntityInsideAoi(entity, aoi, visibility) &&
+    visibility.isEntityVisible(entity)
+  );
+}
+
+/** Forget an entity from delta tracking, optionally emitting a removal
+ *  on the wire (issues.txt FOW-OPT-13 — hoisted closure). The removal
+ *  is appended to the module-scope _removedIdsBuf which the active
+ *  serializeGameState call drains at the end. */
+function forgetTrackedEntity(
+  tracking: DeltaTrackingState,
+  id: EntityId,
+  emitRemoval: boolean,
+): void {
+  const wasVisible = tracking.prevEntityIds.delete(id);
+  tracking.prevStates.delete(id);
+  if (emitRemoval && wasVisible) {
+    _removedIdsBuf.push(id);
+  }
+}
+
+/** Apply the world's per-tick removal records to the recipient's
+ *  delta-tracking bookkeeping (issues.txt FOW-OPT-13 — hoisted
+ *  closure). For each removal: if the recipient could see it,
+ *  emit + forget. Otherwise stash the dead position so the FOW-02b
+ *  cleanup pass can drop the ghost when the recipient re-scouts. */
+function processRemovedEntities(
+  records: readonly RemovedSnapshotEntity[],
+  tracking: DeltaTrackingState,
+  visibility: SnapshotVisibility,
+): void {
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
+    if (visibility.shouldSendRemoval(record)) {
+      forgetTrackedEntity(tracking, record.id, true);
+      tracking.ghostedBuildingPositions.delete(record.id);
+      continue;
+    }
+    if (!tracking.prevEntityIds.has(record.id)) {
+      // Recipient never had this entity — nothing to send or
+      // clean up.
+      continue;
+    }
+    if (record.type === 'building') {
+      // Building died out of the recipient's vision but the client
+      // has it as a ghost (issues.txt FOW-02b). Stash the death
+      // position so the cleanup pass below can emit a removal once
+      // the player's vision later confirms the building is gone.
+      tracking.ghostedBuildingPositions.set(record.id, { x: record.x, y: record.y });
+    } else {
+      // Unit died out of the recipient's vision (issues.txt FOW-17).
+      // Mobile units don't persist as ghosts — without an emitted
+      // removal here the stale entity stays in prevEntityIds and on
+      // the client at its last-seen position forever (mostly hidden
+      // behind shroud, but a real memory leak per kill). Emit a
+      // silent removal: the recipient already lost sight of this
+      // unit, so the deletion looks the same as a move-out-of-vision
+      // and no extra info leaks.
+      forgetTrackedEntity(tracking, record.id, true);
+    }
+  }
+}
+
 function isEntityInsideAoi(
   entity: Entity,
   aoi: SnapshotAoiBounds | undefined,
@@ -154,56 +228,16 @@ export function serializeGameState(
   _entityBuf.length = 0;
   _removedIdsBuf.length = 0;
 
-  // Serialize units and buildings (projectiles handled via spawn/despawn events)
+  // Serialize units and buildings (projectiles handled via spawn/despawn events).
+  // FOW-OPT-13: acceptsSerializedEntity / forgetTrackedEntity /
+  // processRemovedEntities used to be per-call closures here; they're
+  // now module-scope helpers that take (tracking, visibility, aoi)
+  // as explicit params, dropping three closure allocations per
+  // serialize.
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
-  const acceptsEntity = (entity: Entity): boolean =>
-    (entity.type === 'unit' || entity.type === 'building') &&
-    isEntityInsideAoi(entity, aoi, visibility) &&
-    visibility.isEntityVisible(entity);
-
-  const forgetTrackedEntity = (id: EntityId, emitRemoval: boolean): void => {
-    const wasVisible = tracking.prevEntityIds.delete(id);
-    tracking.prevStates.delete(id);
-    if (emitRemoval && wasVisible) {
-      _removedIdsBuf.push(id);
-    }
-  };
-
-  const processRemovedEntities = (records: readonly RemovedSnapshotEntity[]): void => {
-    for (let i = 0; i < records.length; i++) {
-      const record = records[i];
-      if (visibility.shouldSendRemoval(record)) {
-        forgetTrackedEntity(record.id, true);
-        tracking.ghostedBuildingPositions.delete(record.id);
-        continue;
-      }
-      if (!tracking.prevEntityIds.has(record.id)) {
-        // Recipient never had this entity — nothing to send or
-        // clean up.
-        continue;
-      }
-      if (record.type === 'building') {
-        // Building died out of the recipient's vision but the client
-        // has it as a ghost (issues.txt FOW-02b). Stash the death
-        // position so the cleanup pass below can emit a removal once
-        // the player's vision later confirms the building is gone.
-        tracking.ghostedBuildingPositions.set(record.id, { x: record.x, y: record.y });
-      } else {
-        // Unit died out of the recipient's vision (issues.txt FOW-17).
-        // Mobile units don't persist as ghosts — without an emitted
-        // removal here the stale entity stays in prevEntityIds and on
-        // the client at its last-seen position forever (mostly hidden
-        // behind shroud, but a real memory leak per kill). Emit a
-        // silent removal: the recipient already lost sight of this
-        // unit, so the deletion looks the same as a move-out-of-vision
-        // and no extra info leaks.
-        forgetTrackedEntity(record.id, true);
-      }
-    }
-  };
 
   if (options?.removedEntities) {
-    processRemovedEntities(options.removedEntities);
+    processRemovedEntities(options.removedEntities, tracking, visibility);
   }
 
   if (deltaEnabled) {
@@ -212,7 +246,7 @@ export function serializeGameState(
       // Already filtered above with removal metadata.
     } else if (removedIds) {
       for (let i = 0; i < removedIds.length; i++) {
-        forgetTrackedEntity(removedIds[i], true);
+        forgetTrackedEntity(tracking, removedIds[i], true);
       }
     } else {
       world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
@@ -242,7 +276,7 @@ export function serializeGameState(
         }
       }
       for (let i = 0; i < _aoiRemovedIdsBuf.length; i++) {
-        forgetTrackedEntity(_aoiRemovedIdsBuf[i], true);
+        forgetTrackedEntity(tracking, _aoiRemovedIdsBuf[i], true);
       }
     }
 
@@ -279,7 +313,7 @@ export function serializeGameState(
         }
       }
       for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
-        forgetTrackedEntity(_visibilityHiddenIdsBuf[i], true);
+        forgetTrackedEntity(tracking, _visibilityHiddenIdsBuf[i], true);
       }
     }
 
@@ -293,7 +327,7 @@ export function serializeGameState(
 
     for (let i = 0; i < sourceDirtyIds.length; i++) {
       const entity = world.getEntity(sourceDirtyIds[i]);
-      if (!entity || !acceptsEntity(entity)) continue;
+      if (!entity || !acceptsSerializedEntity(entity, aoi, visibility)) continue;
       const dirtyFields = sourceDirtyFields[i] ?? 0;
       const prev = getPrevState(tracking, entity.id);
       const isNew = !tracking.prevEntityIds.has(entity.id);
@@ -325,7 +359,7 @@ export function serializeGameState(
         for (let i = 0; i < source.length; i++) {
           const entity = source[i];
           if (tracking.prevEntityIds.has(entity.id)) continue;
-          if (!acceptsEntity(entity)) continue;
+          if (!acceptsSerializedEntity(entity, aoi, visibility)) continue;
           tracking.prevEntityIds.add(entity.id);
           const next = getNextEntityState(entity);
           const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
@@ -375,7 +409,7 @@ export function serializeGameState(
       const source = keyframeSources[s];
       for (let i = 0; i < source.length; i++) {
         const entity = source[i];
-        if (!acceptsEntity(entity)) continue;
+        if (!acceptsSerializedEntity(entity, aoi, visibility)) continue;
         tracking.currentEntityIds.add(entity.id);
         const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);

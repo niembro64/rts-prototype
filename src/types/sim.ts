@@ -679,4 +679,13 @@ export type Entity = {
    *  derived) so the renderer's spin animator and the wire format
    *  can read it without re-running the ownership math each frame. */
   metalExtractionRate?: number;
+  /** Cached blueprint full-vision radius (issues.txt FOW-OPT-15).
+   *  getEntityFullVisionRadius walks turrets + builder ranges on
+   *  every call; the inputs are blueprint-constant (turret config
+   *  ranges, builder buildRange, commander/unit defaults) so the
+   *  computed max is the same every call. Populated lazily on first
+   *  query; -1 means "not yet computed". The eligibility gate
+   *  (HP > 0, building complete, etc.) stays dynamic and is checked
+   *  before this cache is consulted. */
+  _cachedFullVisionRadius?: number;
 };

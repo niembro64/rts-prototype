@@ -111,31 +111,6 @@ per-snapshot cost or wire bandwidth.
   circuit on bounding-box overlap before LOS, or share LOS results
   across recipients on the same team via a per-snapshot cache.
 
-[FOW-OPT-13] Closure allocations per serializeGameState call. The
-  function builds fresh `acceptsEntity`, `forgetTrackedEntity`, and
-  `processRemovedEntities` arrow functions every call (per recipient
-  per snapshot, so several times per tick). Lifting them to module
-  scope and threading `tracking` / `visibility` / buffers through
-  parameters eliminates the per-snapshot closure GC.
-
-[FOW-OPT-15] getEntityFullVisionRadius recomputes max(unit radius,
-  turret ranges, builder range) on every call. SnapshotVisibility
-  calls this once per source per construction (= per recipient per
-  snapshot), and the FogOfWarShroudRenderer3D calls it once per
-  source per paint. The values change only when an entity gains /
-  loses a turret or builder — which is never for static blueprints.
-  Cache the computed radius on the entity's combat / unit struct at
-  construction; invalidate only on blueprint reassign (rare).
-
-[FOW-OPT-16] Scan pulses are duplicated through two parallel paths.
-  WorldState.scanPulses is iterated by SnapshotVisibility.forRecipient
-  (vision source merge), by serializeScanPulses (wire serialization),
-  AND by shroudBitmap.revealForScanPulses (server-side history). The
-  three loops share the same filter logic ("does this pulse belong
-  to the recipient's team?"); could be one walk that produces all
-  three outputs. Same applies to the client side, where
-  collectSources iterates pulses and the shroud applies them.
-
 [FOW-OPT-17] paintAlphaMap radial-gradient pass overlays gradients
   on top of the just-pushed ImageData. The base-coat putImageData
   paints alphas across the WHOLE canvas, then the gradient pass

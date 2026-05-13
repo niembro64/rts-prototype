@@ -409,11 +409,22 @@ export class SnapshotVisibility {
     }
   }
 
+  /** Wire DTOs for the recipient's team-owned scan pulses, built in
+   *  the same pass that seeds the spatial-hash sources
+   *  (issues.txt FOW-OPT-16). Shared across teammates via the
+   *  per-emit visibility cache so two teammates' snapshots ship the
+   *  same array reference instead of each walking world.scanPulses
+   *  independently to produce identical content. */
+  private readonly cachedScanPulseDtos: NetworkServerSnapshotScanPulse[] = [];
+
   /** Merge active scan pulses into the full-vision source pool for any
    *  pulse owned by the recipient or one of their allies (FOW-14 +
    *  FOW-06). Pulses don't currently grant radar or detector vision —
-   *  treat them as a brief floodlight only. */
+   *  treat them as a brief floodlight only. Also populates the
+   *  cached wire-DTO array for serializeScanPulses (FOW-OPT-16) so
+   *  the wire serialization is a lookup, not a second filter walk. */
   private addScanPulseSources(world: WorldState): void {
+    this.cachedScanPulseDtos.length = 0;
     const pulses = world.scanPulses;
     if (pulses.length === 0) return;
     for (let i = 0; i < pulses.length; i++) {
@@ -427,7 +438,24 @@ export class SnapshotVisibility {
         pulse.z + VISION_SOURCE_EYE_HEIGHT,
         pulse.radius,
       );
+      this.cachedScanPulseDtos.push({
+        playerId: pulse.playerId,
+        x: pulse.x,
+        y: pulse.y,
+        z: pulse.z,
+        radius: pulse.radius,
+        expiresAtTick: pulse.expiresAtTick,
+      });
     }
+  }
+
+  /** Per-team scan-pulse DTO array built alongside the spatial hash
+   *  (issues.txt FOW-OPT-16). Filtered visibilities only — admin /
+   *  spectator paths fall back to a full re-walk in
+   *  serializeScanPulses. Callers must not mutate the returned
+   *  array; it's shared across teammates via the visibility cache. */
+  getCachedScanPulseDtos(): NetworkServerSnapshotScanPulse[] {
+    return this.cachedScanPulseDtos;
   }
 
   private addSource(
@@ -525,6 +553,14 @@ export function canEntityProvideVision(entity: Entity): boolean {
 
 export function getEntityFullVisionRadius(entity: Entity): number {
   if (!canEntityProvideFullVision(entity)) return 0;
+  // FOW-OPT-15: the radius is determined by blueprint-constant inputs
+  // (unit/commander default, turret config ranges, builder.buildRange)
+  // so the max is the same every call once the entity exists. Cache it
+  // on the entity the first time we compute it; the eligibility gate
+  // above keeps the lookup correct across construction completion and
+  // death (HP→0).
+  const cached = entity._cachedFullVisionRadius;
+  if (cached !== undefined) return cached;
   let radius = entity.unit
     ? (entity.commander ? COMMANDER_VISION_RADIUS : UNIT_VISION_RADIUS)
     : BUILDING_VISION_RADIUS;
@@ -538,6 +574,7 @@ export function getEntityFullVisionRadius(entity: Entity): number {
   if (entity.builder) {
     radius = Math.max(radius, entity.builder.buildRange + BUILDER_VISION_PAD);
   }
+  entity._cachedFullVisionRadius = radius;
   return radius;
 }
 
@@ -611,26 +648,35 @@ export function serializeShroudPayload(
   };
 }
 
-/** Reusable buffer so we don't allocate per snapshot — the wire shape
- *  is small and tightly bounded (a handful of pulses at most). */
+/** Reusable buffer for the admin / spectator path only — filtered
+ *  visibilities read from SnapshotVisibility.cachedScanPulseDtos
+ *  (issues.txt FOW-OPT-16) which is built once per team during
+ *  forRecipient's source-merge pass. */
 const _scanPulseBuf: NetworkServerSnapshotScanPulse[] = [];
 
 /** Filter the world's active scan pulses down to the ones the
  *  recipient's team owns (FOW-14 + FOW-06). When no team owns any
  *  live pulses, returns undefined so the snapshot field stays absent.
  *  When fog is disabled, returns all pulses regardless of owner —
- *  admin / observer modes should see the whole picture. */
+ *  admin / observer modes should see the whole picture.
+ *
+ *  FOW-OPT-16: for filtered (player-bound) visibilities this just
+ *  hands back the cached DTO array that addScanPulseSources already
+ *  built; two teammates ship the same reference without each
+ *  re-walking world.scanPulses to produce identical content. */
 export function serializeScanPulses(
   world: WorldState,
   visibility: SnapshotVisibility,
 ): NetworkServerSnapshotScanPulse[] | undefined {
+  if (visibility.isFiltered) {
+    const cached = visibility.getCachedScanPulseDtos();
+    return cached.length > 0 ? cached : undefined;
+  }
   const pulses = world.scanPulses;
   if (pulses.length === 0) return undefined;
   _scanPulseBuf.length = 0;
-  const filtered = visibility.isFiltered;
   for (let i = 0; i < pulses.length; i++) {
     const pulse = pulses[i];
-    if (filtered && !visibility.isOwnedByRecipientOrAlly(pulse.playerId)) continue;
     _scanPulseBuf.push({
       playerId: pulse.playerId,
       x: pulse.x,
