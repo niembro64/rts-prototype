@@ -11,8 +11,9 @@ const _forceFieldMount = { x: 0, y: 0, z: 0 };
 const _forceFieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 0, entityId: 0 };
 
 // Compact list of force field weapons with progress > 0, built by
-// updateForceFieldState() and consumed by projectile collision.
-type ActiveForceFieldRef = {
+// updateForceFieldState() and consumed by projectile collision and the
+// targeting LOS clearance check.
+export type ActiveForceFieldRef = {
   centerX: number;
   centerY: number;
   centerZ: number;
@@ -25,6 +26,16 @@ const _activeForceFields: ActiveForceFieldRef[] = [];
 // Reset module-level buffers (call between game sessions)
 export function resetForceFieldBuffers(): void {
   _activeForceFields.length = 0;
+}
+
+/** Read-only view of the active force-field list maintained by
+ *  updateForceFieldState. The targeting system reads this once per tick
+ *  to gate lock-on against shield boundaries. Cached from the previous
+ *  tick (force-field update runs after targeting in Simulation.ts), so
+ *  there is at most a one-tick lag when a field first forms or decays —
+ *  imperceptible at 60 TPS. */
+export function getActiveForceFields(): readonly ActiveForceFieldRef[] {
+  return _activeForceFields;
 }
 
 // Update force field state (transition progress 0→1)

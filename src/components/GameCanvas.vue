@@ -586,6 +586,7 @@ const {
   allDemoUnitsActive,
   currentMirrorsEnabled,
   currentForceFieldsEnabled,
+  currentForceFieldsBlockTargeting,
   currentForceFieldReflectionMode,
   currentFogOfWarEnabled,
   toggleDemoUnitType,
@@ -593,6 +594,7 @@ const {
   changeMaxTotalUnits,
   setMirrorsEnabled,
   setForceFieldsEnabled,
+  setForceFieldsBlockTargeting,
   setForceFieldReflectionMode,
   setFogOfWarEnabled,
   resetDemoDefaults,
@@ -722,6 +724,7 @@ const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
   displayUnitCount: displayUnitCount.value,
   currentMirrorsEnabled: currentMirrorsEnabled.value,
   currentForceFieldsEnabled: currentForceFieldsEnabled.value,
+  currentForceFieldsBlockTargeting: currentForceFieldsBlockTargeting.value,
   currentForceFieldReflectionMode: currentForceFieldReflectionMode.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   resetDemoDefaults,
@@ -733,6 +736,7 @@ const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
   applyTerrainMapShape,
   setMirrorsEnabled,
   setForceFieldsEnabled,
+  setForceFieldsBlockTargeting,
   setForceFieldReflectionMode,
   setFogOfWarEnabled,
 }));
@@ -1009,6 +1013,7 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
       :unit-cap="displayUnitCap"
       :mirrors-enabled="currentMirrorsEnabled"
       :force-fields-enabled="currentForceFieldsEnabled"
+      :force-fields-block-targeting="currentForceFieldsBlockTargeting"
       :force-field-reflection-mode="currentForceFieldReflectionMode"
       :fog-of-war-enabled="currentFogOfWarEnabled"
       :preview-loading="loadingInLobbyPreview"
@@ -1027,6 +1032,7 @@ const clientControlBarModel = computed<GameCanvasClientControlBarModel>(() => ({
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
       @set-mirrors-enabled="(e) => setMirrorsEnabled(e)"
       @set-force-fields-enabled="(e) => setForceFieldsEnabled(e)"
+      @set-force-fields-block-targeting="(e) => setForceFieldsBlockTargeting(e)"
       @set-force-field-reflection-mode="(m) => setForceFieldReflectionMode(m)"
       @set-fog-of-war-enabled="(e) => setFogOfWarEnabled(e)"
       @set-player-name="onPlayerNameChange"

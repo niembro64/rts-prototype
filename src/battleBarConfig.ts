@@ -54,6 +54,7 @@ export const BATTLE_CONFIG = {
   },
   mirrorsEnabled: { default: true },
   forceFieldsEnabled: { default: true },
+  forceFieldsBlockTargeting: { default: true },
   fogOfWarEnabled: { default: true },
   forceFieldReflectionMode: {
     default: 'both',
@@ -147,6 +148,8 @@ const STORAGE_DEMO_MIRRORS_ENABLED = 'demo-battle-mirrors-enabled';
 const STORAGE_REAL_MIRRORS_ENABLED = 'real-battle-mirrors-enabled';
 const STORAGE_DEMO_FORCE_FIELDS_ENABLED = 'demo-battle-force-fields-enabled';
 const STORAGE_REAL_FORCE_FIELDS_ENABLED = 'real-battle-force-fields-enabled';
+const STORAGE_DEMO_FORCE_FIELDS_BLOCK_TARGETING = 'demo-battle-force-fields-block-targeting';
+const STORAGE_REAL_FORCE_FIELDS_BLOCK_TARGETING = 'real-battle-force-fields-block-targeting';
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = 'demo-battle-fog-of-war-enabled';
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = 'real-battle-fog-of-war-enabled';
 const STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE = 'demo-battle-force-field-reflection-mode';
@@ -402,6 +405,24 @@ export function saveForceFieldsEnabled(enabled: boolean, mode: BattleMode): void
     mode === 'real'
       ? STORAGE_REAL_FORCE_FIELDS_ENABLED
       : STORAGE_DEMO_FORCE_FIELDS_ENABLED,
+    String(enabled),
+  );
+}
+
+export function loadStoredForceFieldsBlockTargeting(mode: BattleMode): boolean {
+  return loadModeBool(
+    mode,
+    STORAGE_REAL_FORCE_FIELDS_BLOCK_TARGETING,
+    STORAGE_DEMO_FORCE_FIELDS_BLOCK_TARGETING,
+    BATTLE_CONFIG.forceFieldsBlockTargeting.default,
+  );
+}
+
+export function saveForceFieldsBlockTargeting(enabled: boolean, mode: BattleMode): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_FORCE_FIELDS_BLOCK_TARGETING
+      : STORAGE_DEMO_FORCE_FIELDS_BLOCK_TARGETING,
     String(enabled),
   );
 }

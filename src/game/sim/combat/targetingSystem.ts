@@ -15,12 +15,16 @@ import { resolveTargetAimPoint } from './aimSolver';
 import {
   LOS_DROP_GRACE_TICKS,
   hasCombatLineOfSight,
+  hasForceFieldClearance,
   weaponNeedsLineOfSight,
 } from './lineOfSight';
 import { canPlayerObserveCloakedEntity } from '../cloakDetection';
+import { getActiveForceFields, type ActiveForceFieldRef } from './forceFieldTurret';
 
 const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
+const _ffTargetPoint = { x: 0, y: 0, z: 0 };
+const _emptyForceFields: readonly ActiveForceFieldRef[] = [];
 
 function nextTargetingReacquireTick(unitId: number, tick: number, stride: number): number {
   if (stride <= 1) return tick + 1;
@@ -244,6 +248,45 @@ function hasWeaponLineOfSightToPoint(
   );
 }
 
+/** Force-field clearance for a turret aiming at a target entity. Runs
+ *  regardless of `weaponNeedsLineOfSight` — even high-arc shells and
+ *  force-emitter turrets are blocked by intervening shields, per the
+ *  "shields are physical, team-agnostic barriers" gameplay rule. */
+function hasWeaponForceFieldClearance(
+  target: Entity,
+  weaponX: number,
+  weaponY: number,
+  weaponZ: number,
+  activeForceFields: readonly ActiveForceFieldRef[],
+): boolean {
+  if (activeForceFields.length === 0) return true;
+  const targetPoint = resolveTargetAimPoint(
+    target,
+    weaponX, weaponY, weaponZ,
+    _ffTargetPoint,
+  );
+  return hasForceFieldClearance(
+    weaponX, weaponY, weaponZ,
+    targetPoint.x, targetPoint.y, targetPoint.z,
+    activeForceFields,
+  );
+}
+
+function hasWeaponForceFieldClearanceToPoint(
+  point: Vec3,
+  weaponX: number,
+  weaponY: number,
+  weaponZ: number,
+  activeForceFields: readonly ActiveForceFieldRef[],
+): boolean {
+  if (activeForceFields.length === 0) return true;
+  return hasForceFieldClearance(
+    weaponX, weaponY, weaponZ,
+    point.x, point.y, point.z,
+    activeForceFields,
+  );
+}
+
 type CandidateRanker = (
   ranges: TurretRanges,
   edge: 'acquire' | 'release',
@@ -275,6 +318,7 @@ function chooseBestTargetCandidate(
   rankCandidate: CandidateRanker,
   minimumRank: TargetPreferenceRank,
   seed: TargetCandidateChoice,
+  activeForceFields: readonly ActiveForceFieldRef[],
 ): TargetCandidateChoice {
   const weaponX = weapon.worldPos!.x;
   const weaponY = weapon.worldPos!.y;
@@ -283,6 +327,7 @@ function chooseBestTargetCandidate(
   const scanStride = denseScan ? densityStride : 1;
   const scanStart = denseScan ? tick % scanStride : 0;
   const needsLOS = weaponNeedsLineOfSight(weapon);
+  const needsForceFieldClearance = activeForceFields.length > 0;
 
   let bestTarget = seed.target;
   let bestDistSq = seed.distSq;
@@ -326,6 +371,12 @@ function chooseBestTargetCandidate(
         enemy,
         weaponX, weaponY, weaponZ,
       )
+    ) {
+      continue;
+    }
+    if (
+      needsForceFieldClearance &&
+      !hasWeaponForceFieldClearance(enemy, weaponX, weaponY, weaponZ, activeForceFields)
     ) {
       continue;
     }
@@ -412,6 +463,13 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const tick = world.getTick();
   const densityThreshold = lod.targetingDensityThreshold;
   const densityStride = Math.max(1, lod.targetingDensityStride | 0);
+  // Force-field LOS gate. Cached once per tick — every turret and
+  // candidate pair reads the same list. The list is populated by the
+  // previous tick's updateForceFieldState, so newly-formed fields take
+  // effect on the next targeting pass (≤16 ms at 60 TPS).
+  const activeForceFields = world.forceFieldsBlockTargeting
+    ? getActiveForceFields()
+    : _emptyForceFields;
 
   for (const unit of world.getArmedEntities()) {
     if (!unit.ownership || !unit.combat) continue;
@@ -558,8 +616,11 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           priorityPoint,
           wpx, wpy, wpz,
         );
+        const ffClear = hasWeaponForceFieldClearanceToPoint(
+          priorityPoint, wpx, wpy, wpz, activeForceFields,
+        );
         setWeaponTarget(weapon, unit, wi, null);
-        if (!losClear) {
+        if (!losClear || !ffClear) {
           weapon.state = 'idle';
           continue;
         }
@@ -626,7 +687,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             priorityTarget,
             wpx, wpy, wpz,
           );
-          if (!losClear) {
+          const ffClear = hasWeaponForceFieldClearance(
+            priorityTarget, wpx, wpy, wpz, activeForceFields,
+          );
+          if (!losClear || !ffClear) {
             setWeaponTarget(weapon, unit, wi, null);
             weapon.state = 'idle';
             continue;
@@ -693,19 +757,26 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           target.transform.x, target.transform.y,
         );
 
-        // LOS gating for direct-fire weapons. A blocked sightline
-        // demotes engaged → tracking immediately so the turret stops
-        // firing blind, and runs a small grace counter before dropping
-        // the lock entirely so a target briefly clipping a corner
-        // doesn't reset the spatial-grid reacquisition cycle.
+        // LOS gating: a blocked sightline (direct-fire terrain/entity
+        // occluders) or an intervening force-field sphere demotes
+        // engaged → tracking immediately so the turret stops firing
+        // blind. A small grace counter then runs before dropping the
+        // lock entirely so a brief clip doesn't restart the
+        // spatial-grid reacquisition cycle. Force-field blocking
+        // applies to ALL weapons (high-arc shells lob into the sphere
+        // surface, force-emitter turrets see their own shield as a
+        // barrier too — shields are physical, team-agnostic).
         const losBlocked =
-          weaponNeedsLineOfSight(weapon) &&
-          !hasWeaponLineOfSight(
-            world,
-            unit,
-            weapon,
-            target,
-            wpx, wpy, wpz,
+          (weaponNeedsLineOfSight(weapon) &&
+            !hasWeaponLineOfSight(
+              world,
+              unit,
+              weapon,
+              target,
+              wpx, wpy, wpz,
+            )) ||
+          !hasWeaponForceFieldClearance(
+            target, wpx, wpy, wpz, activeForceFields,
           );
         weapon.losBlockedTicks = losBlocked
           ? (weapon.losBlockedTicks ?? 0) + 1
@@ -841,6 +912,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           rank: currentFireRank.rank,
           mirrorScore: seedMirrorScore,
         },
+        activeForceFields,
       );
 
       if (choice.target) {
@@ -876,6 +948,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           rank: TARGET_RANK_NONE,
           mirrorScore: 0,
         },
+        activeForceFields,
       );
 
       if (choice.target) {

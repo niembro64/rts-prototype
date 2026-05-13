@@ -143,6 +143,7 @@ export class ServerSnapshotPublisher {
       unitCount: input.world.getUnits().length,
       mirrorsEnabled: input.world.mirrorsEnabled,
       forceFieldsEnabled: input.world.forceFieldsEnabled,
+      forceFieldsBlockTargeting: input.world.forceFieldsBlockTargeting,
       forceFieldReflectionMode: input.world.forceFieldReflectionMode,
       fogOfWarEnabled: input.world.fogOfWarEnabled,
       tickMsAvg: input.tickMsAvg,

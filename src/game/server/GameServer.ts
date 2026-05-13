@@ -592,6 +592,10 @@ export class GameServer {
         if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setForceFieldsEnabled(command.enabled);
         return;
+      case 'setForceFieldsBlockTargeting':
+        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
+        this.setForceFieldsBlockTargeting(command.enabled);
+        return;
       case 'setForceFieldReflectionMode':
         if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setForceFieldReflectionMode(command.mode);
@@ -832,6 +836,14 @@ export class GameServer {
     if (!isForceFieldReflectionMode(mode)) return;
     if (this.world.forceFieldReflectionMode === mode) return;
     this.world.forceFieldReflectionMode = mode;
+  }
+
+  private setForceFieldsBlockTargeting(enabled: boolean): void {
+    if (this.world.forceFieldsBlockTargeting === enabled) return;
+    this.world.forceFieldsBlockTargeting = enabled;
+    // No cleanup needed: per-tick target re-validation will drop any
+    // existing lock whose line crosses an active shield on the next
+    // pass, and turning the rule off just stops the check from running.
   }
 
   private setFogOfWarEnabled(enabled: boolean): void {

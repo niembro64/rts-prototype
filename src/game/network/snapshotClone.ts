@@ -382,6 +382,7 @@ export class ReusableNetworkSnapshotCloner {
       } : {},
       mirrorsEnabled: state.serverMeta.mirrorsEnabled,
       forceFieldsEnabled: state.serverMeta.forceFieldsEnabled,
+      forceFieldsBlockTargeting: state.serverMeta.forceFieldsBlockTargeting,
       forceFieldReflectionMode: state.serverMeta.forceFieldReflectionMode,
       fogOfWarEnabled: state.serverMeta.fogOfWarEnabled,
       cpu: state.serverMeta.cpu ? { ...state.serverMeta.cpu } : undefined,

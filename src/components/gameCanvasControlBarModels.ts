@@ -43,6 +43,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly displayUnitCount: number;
   readonly currentMirrorsEnabled: boolean;
   readonly currentForceFieldsEnabled: boolean;
+  readonly currentForceFieldsBlockTargeting: boolean;
   readonly currentForceFieldReflectionMode: ForceFieldReflectionMode;
   readonly currentFogOfWarEnabled: boolean;
   resetDemoDefaults(): void;
@@ -54,6 +55,7 @@ export type GameCanvasBattleControlBarModel = {
   applyTerrainMapShape(shape: TerrainMapShape): void;
   setMirrorsEnabled(enabled: boolean): void;
   setForceFieldsEnabled(enabled: boolean): void;
+  setForceFieldsBlockTargeting(enabled: boolean): void;
   setForceFieldReflectionMode(mode: ForceFieldReflectionMode): void;
   setFogOfWarEnabled(enabled: boolean): void;
 };

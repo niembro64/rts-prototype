@@ -165,6 +165,11 @@ defineProps<{
           title="Enable force-field turrets, force-field simulation, and force-field rendering"
           @click="model.setForceFieldsEnabled(!model.currentForceFieldsEnabled)"
         >FIELD</BarButton>
+        <BarButton
+          :active="model.currentForceFieldsBlockTargeting"
+          title="Force fields block turret lock-on through their boundary (applies to every turret, both directions)"
+          @click="model.setForceFieldsBlockTargeting(!model.currentForceFieldsBlockTargeting)"
+        >BLOCK LOS</BarButton>
         <BarButtonGroup>
           <BarButton
             v-for="opt in BATTLE_CONFIG.forceFieldReflectionMode.options"

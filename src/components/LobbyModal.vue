@@ -34,6 +34,7 @@ const props = defineProps<{
   unitCap: number;
   mirrorsEnabled: boolean;
   forceFieldsEnabled: boolean;
+  forceFieldsBlockTargeting: boolean;
   forceFieldReflectionMode: ForceFieldReflectionMode;
   fogOfWarEnabled: boolean;
   previewLoading: boolean;
@@ -54,6 +55,7 @@ const emit = defineEmits<{
   (e: 'setUnitCap', cap: number): void;
   (e: 'setMirrorsEnabled', enabled: boolean): void;
   (e: 'setForceFieldsEnabled', enabled: boolean): void;
+  (e: 'setForceFieldsBlockTargeting', enabled: boolean): void;
   (e: 'setForceFieldReflectionMode', mode: ForceFieldReflectionMode): void;
   (e: 'setFogOfWarEnabled', enabled: boolean): void;
   (e: 'setPlayerName', name: string): void;
@@ -129,6 +131,11 @@ function pickMirrors(enabled: boolean): void {
 function pickForceFields(enabled: boolean): void {
   if (!props.isHost) return;
   emit('setForceFieldsEnabled', enabled);
+}
+
+function pickForceFieldsBlockTargeting(enabled: boolean): void {
+  if (!props.isHost) return;
+  emit('setForceFieldsBlockTargeting', enabled);
 }
 
 function pickForceFieldReflectionMode(mode: ForceFieldReflectionMode): void {
@@ -605,6 +612,12 @@ const terrainSectionVars = computed(() =>
                   :title="isHost ? 'Enable force-field turrets, force-field simulation, and force-field rendering' : 'Only the host can change battle settings'"
                   @click="pickForceFields(!forceFieldsEnabled)"
                 >FIELD</BarButton>
+                <BarButton
+                  size="large"
+                  :active="forceFieldsBlockTargeting"
+                  :title="isHost ? 'Force fields block turret lock-on through their boundary (applies to every turret, both directions)' : 'Only the host can change battle settings'"
+                  @click="pickForceFieldsBlockTargeting(!forceFieldsBlockTargeting)"
+                >BLOCK LOS</BarButton>
                 <BarButton
                   v-for="opt in forceFieldReflectionOptions"
                   :key="opt.value"

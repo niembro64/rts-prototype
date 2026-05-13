@@ -220,6 +220,8 @@ export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
 export const DEFAULT_MIRRORS_ENABLED = BATTLE_CONFIG.mirrorsEnabled.default;
 export const DEFAULT_FORCE_FIELDS_ENABLED =
   BATTLE_CONFIG.forceFieldsEnabled.default;
+export const DEFAULT_FORCE_FIELDS_BLOCK_TARGETING =
+  BATTLE_CONFIG.forceFieldsBlockTargeting.default;
 export const DEFAULT_FORCE_FIELD_REFLECTION_MODE =
   BATTLE_CONFIG.forceFieldReflectionMode.default;
 export const BAR_COLORS = BAR_THEMES;

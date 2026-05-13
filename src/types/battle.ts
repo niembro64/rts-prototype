@@ -12,6 +12,7 @@ export type BattleBarConfig = {
   readonly cap: OptionsConfig<number>;
   readonly mirrorsEnabled: BooleanSetting;
   readonly forceFieldsEnabled: BooleanSetting;
+  readonly forceFieldsBlockTargeting: BooleanSetting;
   readonly forceFieldReflectionMode: LabeledOptionsConfig<ForceFieldReflectionMode>;
   readonly fogOfWarEnabled: BooleanSetting;
   /** Shape of the central ripple zone (CENTER button group). */
