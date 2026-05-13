@@ -94,15 +94,14 @@ time and should be measured (or read more code) before touching.
   Minimap / SelectionPanel actually read (currEnergy, totalIncome,
   manaCurr, manaMax, ...). Set them only when the value changes.
 
-[MEDIUM] Control-bar models rebuilt as fresh objects on every dep change
-  src/components/GameCanvas.vue:707-738 (battleControlBarModel)
-  src/components/GameCanvas.vue:740-771 (serverControlBarModel)
-  computed<...>(() => ({ ... 30+ fields ... })) returns a new object
-  identity any time any dependency changes. Every child BarButton /
-  BarLabel re-renders since they can't memoize on prop identity.
-  Fix: use shallowRef for the model; manually assign only properties
-  whose source values changed. Or split into smaller per-section
-  computeds so unrelated changes don't cross-pollinate.
+[MEDIUM] Server + Client control-bar models still rebuilt as fresh objects
+  src/components/GameCanvas.vue (serverControlBarModel,
+  clientControlBarModel)
+  battleControlBarModel was converted to reactive() + watchEffect so
+  child renders only trigger on the field that actually changed.
+  Apply the same pattern to the server and client bar models — same
+  identity-churn problem, same fix. Client is the biggest of the
+  three (~60 fields) so the win there is largest.
 
 [MEDIUM] Minimap composes the full canvas every camera-quad change (60Hz)
   src/components/Minimap.vue:458-461

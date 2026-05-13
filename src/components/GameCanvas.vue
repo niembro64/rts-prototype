@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, reactive, watch, watchEffect } from 'vue';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
@@ -709,7 +709,15 @@ const {
   startGameWithPlayers,
 });
 
-const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
+// Reactive object instead of computed-returning-fresh-literal so the
+// model identity stays stable across snapshot ticks. The previous
+// pattern allocated a brand new 30-field object on every dep change,
+// forcing the child <GameCanvasBattleControlBar> + its 50-odd
+// BarButton children through a full prop diff. With per-field
+// reactivity the only re-evaluations are templates that actually
+// read the changed field. Methods and the demoUnitTypes ref are
+// stable references so they sit on the object once at construction.
+const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   isReadonly: serverBarReadonly.value,
   barStyle: battleBarVars.value,
   battleLabel: battleLabel.value,
@@ -743,7 +751,32 @@ const battleControlBarModel = computed<GameCanvasBattleControlBarModel>(() => ({
   setForceFieldsBlockTargeting,
   setForceFieldReflectionMode,
   setFogOfWarEnabled,
-}));
+});
+watchEffect(() => {
+  const m = battleControlBarModel as {
+    -readonly [K in keyof GameCanvasBattleControlBarModel]: GameCanvasBattleControlBarModel[K];
+  };
+  m.isReadonly = serverBarReadonly.value;
+  m.barStyle = battleBarVars.value;
+  m.battleLabel = battleLabel.value;
+  m.battleElapsed = battleElapsed.value;
+  m.allDemoUnitsActive = allDemoUnitsActive.value;
+  m.currentAllowedUnits = currentAllowedUnits.value;
+  m.currentAllowedUnitsSet = currentAllowedUnitsSet.value;
+  m.displayUnitCap = displayUnitCap.value;
+  m.gameStarted = gameStarted.value;
+  m.mapWidthLandCells = mapWidthLandCells.value;
+  m.mapLengthLandCells = mapLengthLandCells.value;
+  m.terrainCenter = terrainCenter.value;
+  m.terrainDividers = terrainDividers.value;
+  m.terrainMapShape = terrainMapShape.value;
+  m.displayUnitCount = displayUnitCount.value;
+  m.currentMirrorsEnabled = currentMirrorsEnabled.value;
+  m.currentForceFieldsEnabled = currentForceFieldsEnabled.value;
+  m.currentForceFieldsBlockTargeting = currentForceFieldsBlockTargeting.value;
+  m.currentForceFieldReflectionMode = currentForceFieldReflectionMode.value;
+  m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
+});
 
 const serverControlBarModel = computed<GameCanvasServerControlBarModel>(() => ({
   isReadonly: serverBarReadonly.value,
