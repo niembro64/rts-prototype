@@ -362,6 +362,15 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
     to.turretPitches[i] = from.turretPitches[i];
     to.forceFieldRanges[i] = from.forceFieldRanges[i];
   }
+  // Shrink to the actual weapon count so entities that briefly carried
+  // extra turrets (or that load a higher-weapon profile during one snap
+  // and a lower one the next) don't keep stale trailing slots alive.
+  if (to.turretRots.length > from.weaponCount) {
+    to.turretRots.length = from.weaponCount;
+    to.turretAngVels.length = from.weaponCount;
+    to.turretPitches.length = from.weaponCount;
+    to.forceFieldRanges.length = from.weaponCount;
+  }
   to.buildProgress = from.buildProgress;
   to.solarOpen = from.solarOpen;
   to.factoryProgress = from.factoryProgress;

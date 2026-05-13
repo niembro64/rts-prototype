@@ -81,41 +81,15 @@ time and should be measured (or read more code) before touching.
   pass that to chooseBestTargetCandidate. Falls back to full list when
   empty. Pairs with the Z-band fix above.
 
-[SMALL] getTargetRadius called 3-4 times for the same priority target
-  src/game/sim/combat/targetingSystem.ts:155-157, 313-314, 660-667, 738-748
-  Each pass independently resolves the same target's radius.
-  Fix: stash on the entity (transient field) at start of pass, or thread
-  through as a parameter once it's computed.
-
-[SMALL] weapon.worldPos extracted into x/y/z separately in each branch
-  src/game/sim/combat/targetingSystem.ts:330-332, 616-618, 687-689, 759-761
-  Same `wpx/wpy/wpz` triple destructured multiple times per weapon.
-  Fix: extract once at the top of the weapon loop.
-
-[SMALL] prevReflectionPoints array allocated on first reflection
-  src/game/sim/combat/projectileSystem.ts:1123
-  `proj.prevReflectionPoints ?? (proj.prevReflectionPoints = [])` —
-  allocates inside the per-tick projectile loop on first reflect.
-  Fix: pre-allocate empty arrays on projectile creation; reset length
-  between ticks.
-
-[SMALL] hitEntities Set lazily allocated per first-hit projectile
-  src/game/sim/combat/ProjectileCollisionHandler.ts:111-113
-  Single-hit projectiles allocate the Set on impact even though they
-  won't reuse it.
-  Fix: skip the set entirely for projectiles whose blueprint says
-  pierce=false; or pre-allocate one shared Set per projectile lifetime.
-
 [SMALL] currentFireTargetRankSq computed twice on engaged weapons
-  src/game/sim/combat/targetingSystem.ts:851-852, 886-888
-  Once in the pre-scan to decide whether to reacquire, again in Pass 2 to
-  seed the candidate choice.
-  Fix: thread the pre-scan result into Pass 2 instead of recomputing.
-
-[SMALL] weapon.worldVelocity?.x optional-chain repeated 3×
-  src/game/sim/combat/projectileSystem.ts:550-556
-  Per-axis optional access of the same property.
-  Fix: read once into a local; null-coalesce per axis from there.
+  src/game/sim/combat/targetingSystem.ts:861, 908
+  Pre-scan computes the rank to decide if a candidate query is needed
+  (gated on `state==='engaged' && ranges.fire.min`); Pass 2 then
+  recomputes both rank AND distSq (gated on `state==='engaged'`). For
+  the overlap subset (engaged + has fire.min), both calls do identical
+  spatial work. The gating mismatch makes a direct cache awkward; a
+  cleanest fix is a per-weapon `{rank, distSq}` slot that pre-scan
+  populates and Pass 2 reads-or-recomputes.
 
 ------------------------------------------------------------------------------
  NETWORK / SERIALIZATION
@@ -183,16 +157,6 @@ time and should be measured (or read more code) before touching.
   Fix: pool the serverMeta object and copy scalars by name; only allocate
   on actual change.
 
-[SMALL] Ghost-cleanup map walked every delta even when empty
-  src/game/network/stateSerializer.ts:408-418
-  tracking.ghostedBuildingPositions iterated unconditionally.
-  Fix: short-circuit on map.size === 0 (cheap).
-
-[SMALL] turretRots arrays grow but never shrink
-  src/game/network/stateSerializerEntityDelta.ts:307-313
-  An entity that briefly had 8 turrets keeps 8 slots forever, even after
-  dropping back to 1.
-  Fix: trim to weaponCount when copyPrevState runs after compare.
 
 ------------------------------------------------------------------------------
  THREE.JS RENDERING
@@ -238,20 +202,6 @@ time and should be measured (or read more code) before touching.
   Confirm shadows are off (or limited to 1-2 cheap lights at low res) and
   that any post-fx render targets are allocated once per resolution
   change, not per frame.
-
-[SMALL] ContactShadowRenderer3D dirties the whole alpha buffer
-  src/game/render3d/ContactShadowRenderer3D.ts:220
-  Sets alphaAttr.needsUpdate=true without addUpdateRange, so the full
-  attribute uploads. Compare with GroundPrint3D line 403 which gets it
-  right.
-  Fix: clearUpdateRanges + addUpdateRange(0, cursor) before needsUpdate.
-
-[SMALL] ContactShadowRenderer3D sets material.needsUpdate unconditionally
-  src/game/render3d/ContactShadowRenderer3D.ts:133-137
-  Inside the "opacity changed" branch, material.needsUpdate is set even
-  when the new value equals the cached one (the guard reads lastOpacity
-  but doesn't skip needsUpdate).
-  Fix: gate needsUpdate behind the actual value-change check.
 
 [SMALL] CanvasSpritePool flags every slot dirty on use
   src/game/render3d/CanvasSpritePool.ts:49

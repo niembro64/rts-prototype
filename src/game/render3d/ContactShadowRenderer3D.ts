@@ -217,6 +217,8 @@ export class ContactShadowRenderer3D {
       this.mesh.instanceMatrix.clearUpdateRanges();
       this.mesh.instanceMatrix.addUpdateRange(0, cursor * 16);
       this.mesh.instanceMatrix.needsUpdate = true;
+      this.alphaAttr.clearUpdateRanges();
+      this.alphaAttr.addUpdateRange(0, cursor);
       this.alphaAttr.needsUpdate = true;
     }
   }
