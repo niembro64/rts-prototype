@@ -47,13 +47,13 @@ export const DEMO_CONFIG = {
    * shared behavior.
    */
   baseRings: {
-    commander: { radiusFraction: 0.85 },
     solar: { radiusFraction: 0.8 },
     wind: { radiusFraction: 0.75 },
-    radar: { radiusFraction: 0.71 },
-    fabricator: { radiusFraction: 0.67 },
-    cannonTower: { radiusFraction: 0.55 },
-    megaBeamTower: { radiusFraction: 0.5 },
+    commander: { radiusFraction: 0.7 },
+    radar: { radiusFraction: 0.65 },
+    fabricator: { radiusFraction: 0.6 },
+    cannonTower: { radiusFraction: 0.45 },
+    megaBeamTower: { radiusFraction: 0.4 },
   },
 
   /**
