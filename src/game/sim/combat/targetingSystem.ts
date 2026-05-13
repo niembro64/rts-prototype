@@ -38,6 +38,13 @@ const _weaponDisabled: boolean[] = [];
 // {NONE, Infinity}; Pass 2 still gates those slots out before reading.
 const _cachedFireRanks: TargetPreferenceRank[] = [];
 const _cachedFireDistSqs: number[] = [];
+// Per-unit reusable sub-list of force fields whose sphere overlaps the
+// firing unit's candidate-scan radius. Pass 2 / Pass 3 hand this to
+// chooseBestTargetCandidate so the per-candidate clearance loop only
+// considers fields that could possibly intersect a segment to anything
+// inside batchRadius. Priority-target and Pass-1 paths keep using the
+// full list (their targets can sit beyond batchRadius).
+const _unitNearForceFields: ActiveForceFieldRef[] = [];
 
 function nextTargetingReacquireTick(unitId: number, tick: number, stride: number): number {
   if (stride <= 1) return tick + 1;
@@ -899,13 +906,34 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // ~18 cells deep (full terrain span) to 3-6 cells in ground
     // engagements.
     let batchedEnemies: Entity[] | null = null;
+    _unitNearForceFields.length = 0;
     if (needsAnyQuery) {
       const batchRadius = maxAcquireRange + maxWeaponOffset;
+      const ux = unit.transform.x;
+      const uy = unit.transform.y;
       const uz = unit.transform.z;
       batchedEnemies = spatialGrid.queryEnemyEntitiesInCircle2D(
-        unit.transform.x, unit.transform.y, batchRadius, playerId,
+        ux, uy, batchRadius, playerId,
         uz - batchRadius, uz + batchRadius,
       );
+      // Pre-filter active force fields to ones whose sphere overlaps
+      // the firing unit's candidate-scan sphere. Any field outside
+      // (unit center ± batchRadius + field radius) cannot intersect a
+      // segment from the unit to a candidate inside batchRadius — its
+      // boundary check would always return "no crossing" so iterating
+      // it per candidate is pure waste.
+      if (activeForceFields.length > 0) {
+        for (let i = 0; i < activeForceFields.length; i++) {
+          const f = activeForceFields[i];
+          const dx = f.centerX - ux;
+          const dy = f.centerY - uy;
+          const dz = f.centerZ - uz;
+          const r = f.radius + batchRadius;
+          if (dx * dx + dy * dy + dz * dz <= r * r) {
+            _unitNearForceFields.push(f);
+          }
+        }
+      }
     }
 
     // Pass 2: Re-evaluate tracking weapons and close-range fallback
@@ -958,7 +986,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           rank: cachedRank,
           mirrorScore: seedMirrorScore,
         },
-        activeForceFields,
+        _unitNearForceFields,
       );
 
       if (choice.target) {
@@ -994,7 +1022,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           rank: TARGET_RANK_NONE,
           mirrorScore: 0,
         },
-        activeForceFields,
+        _unitNearForceFields,
       );
 
       if (choice.target) {

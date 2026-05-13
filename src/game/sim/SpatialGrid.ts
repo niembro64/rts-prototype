@@ -140,12 +140,46 @@ export class SpatialGrid {
     return cxB * CX_MULT + cyB * CY_MULT + czB;
   }
 
-  private fillOccupiedCellsForLargeLineQuery(): boolean {
+  /** Fallback path when a single line query would span more than
+   *  MAX_LINE_QUERY_CELLS cubes (typically a near-world-spanning beam
+   *  with a wide kerf). Walking the cell box directly would push tens
+   *  of thousands of empty keys into nearbyCells; instead we walk the
+   *  occupied cells and keep only those whose cube AABB intersects
+   *  the line's padded bounding box. That keeps the broadphase O(k)
+   *  in the count of populated cells rather than O(line.cells), and
+   *  rejects most of them with cheap unpack + per-axis comparisons. */
+  private fillOccupiedCellsForLargeLineQuery(
+    minX: number, maxX: number,
+    minY: number, maxY: number,
+    minZ: number, maxZ: number,
+  ): boolean {
     this.nearbyCells.length = 0;
     if (this.cells.size > MAX_LINE_QUERY_OCCUPIED_FALLBACK_CELLS) {
       return false;
     }
+    const cs = this.cellSize;
+    const hcs = this.halfCellSize;
     for (const key of this.cells.keys()) {
+      // Unpack the 48-bit packed cell key. Bitwise ops are 32-bit-only
+      // in JS, so we use division/modulo to extract the three biased
+      // 16-bit fields cxB / cyB / czB; subtracting CELL_BIAS recovers
+      // the signed cell index.
+      const czB = key % CY_MULT;
+      const after = (key - czB) / CY_MULT;
+      const cyB = after % 0x10000;
+      const cxB = (after - cyB) / 0x10000;
+      const cx = cxB - CELL_BIAS;
+      const cy = cyB - CELL_BIAS;
+      const cz = czB - CELL_BIAS;
+      const cellMinX = cx * cs;
+      const cellMaxX = cellMinX + cs;
+      if (cellMaxX < minX || cellMinX > maxX) continue;
+      const cellMinY = cy * cs;
+      const cellMaxY = cellMinY + cs;
+      if (cellMaxY < minY || cellMinY > maxY) continue;
+      const cellMinZ = cz * cs - hcs;
+      const cellMaxZ = cellMinZ + cs;
+      if (cellMaxZ < minZ || cellMinZ > maxZ) continue;
       this.nearbyCells.push(key);
     }
     return true;
@@ -1138,7 +1172,9 @@ export class SpatialGrid {
       return false;
     }
     if (cellCount > MAX_LINE_QUERY_CELLS) {
-      return this.fillOccupiedCellsForLargeLineQuery();
+      return this.fillOccupiedCellsForLargeLineQuery(
+        minX, maxX, minY, maxY, minZ, maxZ,
+      );
     }
 
     for (let cx = minCx; cx <= maxCx; cx++) {

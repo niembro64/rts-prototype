@@ -29,15 +29,6 @@ time and should be measured (or read more code) before touching.
  SPATIAL GRID
 ------------------------------------------------------------------------------
 
-[MEDIUM] Line-query overflow defeats partitioning entirely
-  src/game/sim/SpatialGrid.ts:1070-1072
-  When a line query would span > 4096 cells, the fallback dumps EVERY
-  occupied cell into nearbyCells. Safety valve, but turns one pathological
-  beam into an O(world) scan.
-  Fix: at minimum, fast-reject cells whose AABB doesn't intersect the
-  segment (cheap) before adding. Or cap the result count and let the
-  caller's per-entity filter do the work.
-
 ------------------------------------------------------------------------------
  SIM HOT PATH
 ------------------------------------------------------------------------------
@@ -51,15 +42,6 @@ time and should be measured (or read more code) before touching.
   Fix: rank candidates by distance/rank first, then LOS-check only the
   top-K (3-5). The current best survives until a closer, LOS-clear one
   appears. The existing density-stride helps but doesn't change shape.
-
-[MEDIUM] Force-field clearance per candidate
-  src/game/sim/combat/targetingSystem.ts:384-388
-  hasWeaponForceFieldClearance iterates the active-fields list for every
-  candidate. Most candidates have nothing to do with any field, but the
-  inner loop still runs.
-  Fix: per-tick, build a cheap "fields-near-this-unit" sub-list once,
-  pass that to chooseBestTargetCandidate. Falls back to full list when
-  empty. Pairs with the Z-band fix above.
 
 ------------------------------------------------------------------------------
  NETWORK / SERIALIZATION
