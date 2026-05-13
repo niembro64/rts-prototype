@@ -10,7 +10,7 @@ import { TILT_EMA_MODE_DEFAULT, type TiltEmaMode } from './shellConfig';
 
 export const SERVER_CONFIG = {
   tickRate: {
-    default: 128 as TickRate,
+    default: 32 as TickRate,
     options: [1, 4, 8, 16, 32, 64, 128, 256, 512] as readonly TickRate[],
   },
   tiltEma: {
@@ -23,7 +23,7 @@ export const SERVER_CONFIG = {
     // 'none' removed — uncapped SPS at high TPS causes delta snapshot issues
   },
   keyframe: {
-    default: (1 / Math.pow(2, 6)) as KeyframeRatio,
+    default: (1 / Math.pow(2, 9)) as KeyframeRatio,
     options: [
       'ALL',
       1 / Math.pow(2, 3),
