@@ -913,9 +913,17 @@ export class DamageSystem {
     const sliceHalfAngle = hasSlice ? source.sliceAngle! / 2 : Math.PI;
     const sliceDirection = source.sliceDirection ?? 0;
 
-    // PERFORMANCE: Query only entities within the damage radius using spatial grid
-    const nearbyUnits = spatialGrid.queryUnitsInRadius(source.center.x, source.center.y, source.center.z, source.radius + 50);
-    const nearbyBuildings = spatialGrid.queryBuildingsInRadius(source.center.x, source.center.y, source.center.z, source.radius + 100);
+    // PERFORMANCE: Query only entities within the damage radius using spatial grid.
+    // Combined single-sweep query — the prior back-to-back unit + building
+    // calls rebuilt nearbyCells twice for the same (center, radius). Cell
+    // pad is the larger of the two old pads (+100) so neither broadphase
+    // misses a candidate; the per-entity distance checks below stay
+    // precise.
+    const nearby = spatialGrid.queryUnitsAndBuildingsInRadius(
+      source.center.x, source.center.y, source.center.z, source.radius + 100,
+    );
+    const nearbyUnits = nearby.units;
+    const nearbyBuildings = nearby.buildings;
 
     // Check units — full 3D sphere-vs-sphere: the AOE sphere around
     // source.center must overlap the unit's collision sphere. A mortar

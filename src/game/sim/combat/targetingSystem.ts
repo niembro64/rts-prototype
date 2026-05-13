@@ -865,11 +865,23 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // Always batch when ANY weapon needs candidates. The spatial grid
     // returns a reused array, so consume it directly before any other
     // spatial query can overwrite the result.
+    //
+    // Z-band optimization: the 2D circle filter ignores Z in the
+    // exact distance check, so we only need to visit cells that might
+    // contain a unit our weapons could care about. Anything outside a
+    // 3D sphere of `batchRadius` around this unit is unreachable by
+    // any weapon mounted on this chassis — the per-weapon range tests
+    // downstream would reject it anyway. The clamp to the unit's
+    // altitude ± batchRadius typically narrows the cell sweep from
+    // ~18 cells deep (full terrain span) to 3-6 cells in ground
+    // engagements.
     let batchedEnemies: Entity[] | null = null;
     if (needsAnyQuery) {
       const batchRadius = maxAcquireRange + maxWeaponOffset;
+      const uz = unit.transform.z;
       batchedEnemies = spatialGrid.queryEnemyEntitiesInCircle2D(
-        unit.transform.x, unit.transform.y, batchRadius, playerId
+        unit.transform.x, unit.transform.y, batchRadius, playerId,
+        uz - batchRadius, uz + batchRadius,
       );
     }
 

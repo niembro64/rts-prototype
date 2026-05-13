@@ -757,20 +757,30 @@ export class SpatialGrid {
   }
 
   /**
-   * Collect cells in an XY circle/cylinder across the terrain-height
-   * play volume. Turret targeting ranges are ground-plane circles: high
-   * terrain should not make a target disappear from the broadphase just
-   * because its Z differs from the shooter.
+   * Collect cells in an XY circle/cylinder. Turret targeting ranges
+   * are ground-plane circles: high terrain should not make a target
+   * disappear from the broadphase just because its Z differs from
+   * the shooter.
+   *
+   * Default Z span covers the full terrain play volume (TILE_FLOOR_Y
+   * to TERRAIN_MAX_RENDER_Y), ~18 cells deep at canonical cell size.
+   * Most callers can pass a tight `zMin/zMax` band centered on the
+   * querying entity — at typical engagement altitudes that cuts the
+   * cell sweep by 3-5× vs. the full terrain span.
    */
-  private getCellsInCircle2D(x: number, y: number, radius: number): void {
+  private getCellsInCircle2D(
+    x: number, y: number, radius: number,
+    zMin: number = TILE_FLOOR_Y - this.cellSize,
+    zMax: number = TERRAIN_MAX_RENDER_Y + this.cellSize * 2,
+  ): void {
     this.nearbyCells.length = 0;
 
     const minCx = Math.floor((x - radius) / this.cellSize);
     const maxCx = Math.floor((x + radius) / this.cellSize);
     const minCy = Math.floor((y - radius) / this.cellSize);
     const maxCy = Math.floor((y + radius) / this.cellSize);
-    const minCz = Math.floor((TILE_FLOOR_Y - this.cellSize + this.halfCellSize) / this.cellSize);
-    const maxCz = Math.floor((TERRAIN_MAX_RENDER_Y + this.cellSize * 2 + this.halfCellSize) / this.cellSize);
+    const minCz = Math.floor((zMin + this.halfCellSize) / this.cellSize);
+    const maxCz = Math.floor((zMax + this.halfCellSize) / this.cellSize);
 
     for (let cx = minCx; cx <= maxCx; cx++) {
       for (let cy = minCy; cy <= maxCy; cy++) {
@@ -808,23 +818,57 @@ export class SpatialGrid {
   }
 
   /**
-   * Query all entities (units + buildings) within a 3D sphere
-   * Returns a reused array - DO NOT STORE THE REFERENCE
+   * Combined units + buildings query in a single cell sweep. Area
+   * damage and similar consumers used to call queryUnitsInRadius and
+   * queryBuildingsInRadius back-to-back, paying for two cell rebuilds
+   * over the same (x, y, z, radius). This version walks the cells
+   * once and fills both arrays via the standard per-entity filters.
+   * Returns the shared `_unitsAndBuildingsResult` wrapper — DO NOT
+   * STORE THE REFERENCE.
    */
-  queryEntitiesInRadius(x: number, y: number, z: number, radius: number): Entity[] {
-    this.queryResultAll.length = 0;
+  queryUnitsAndBuildingsInRadius(
+    x: number, y: number, z: number, radius: number,
+  ): { units: Entity[]; buildings: Entity[] } {
+    this.queryResultUnits.length = 0;
+    this.queryResultBuildings.length = 0;
+    this.getCellsInRadius(x, y, z, radius);
+    this._dedup.clear();
+    const radiusSq = radius * radius;
 
-    const units = this.queryUnitsInRadius(x, y, z, radius);
-    for (const unit of units) {
-      this.queryResultAll.push(unit);
+    for (const key of this.nearbyCells) {
+      const cell = this.cells.get(key);
+      if (!cell) continue;
+
+      for (const unit of cell.units) {
+        this.pushUnitIfInRadius(
+          this.queryResultUnits,
+          unit,
+          x, y, z,
+          radius,
+          radiusSq,
+          undefined,
+          false,
+          false,
+          false,
+        );
+      }
+
+      for (const building of cell.buildings) {
+        this.pushBuildingIfInRadius(
+          this.queryResultBuildings,
+          building,
+          x, y, z,
+          radiusSq,
+          undefined,
+          false,
+          false,
+        );
+      }
     }
 
-    const buildings = this.queryBuildingsInRadius(x, y, z, radius);
-    for (const building of buildings) {
-      this.queryResultAll.push(building);
-    }
-
-    return this.queryResultAll;
+    this._unitsAndBuildingsResult.units = this.queryResultUnits;
+    this._unitsAndBuildingsResult.buildings = this.queryResultBuildings;
+    return this._unitsAndBuildingsResult;
   }
 
   /**
@@ -970,9 +1014,12 @@ export class SpatialGrid {
    * are still respected. Returns a reused array - DO NOT STORE THE
    * REFERENCE.
    */
-  queryEnemyEntitiesInCircle2D(x: number, y: number, radius: number, excludePlayerId: PlayerId): Entity[] {
+  queryEnemyEntitiesInCircle2D(
+    x: number, y: number, radius: number, excludePlayerId: PlayerId,
+    zMin?: number, zMax?: number,
+  ): Entity[] {
     this.queryResultAll.length = 0;
-    this.getCellsInCircle2D(x, y, radius + MAX_UNIT_SHOT_RADIUS);
+    this.getCellsInCircle2D(x, y, radius + MAX_UNIT_SHOT_RADIUS, zMin, zMax);
     this._dedup.clear();
     const radiusSq = radius * radius;
 

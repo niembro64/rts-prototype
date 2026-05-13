@@ -29,38 +29,6 @@ time and should be measured (or read more code) before touching.
  SPATIAL GRID
 ------------------------------------------------------------------------------
 
-[LARGE] Z-band 32 cells wide on every 2D circle query
-  src/game/sim/SpatialGrid.ts:765-782
-  getCellsInCircle2D hardcodes Z span as [-13, +18] cells (~ -1200..+1600
-  world units) regardless of caller intent. Targeting (which calls
-  queryEnemyEntitiesInCircle2D every reacquire) and damage queries pay
-  for ~32× more cells than the ground-plane gameplay actually uses.
-  Fix: add an optional `zBand` arg (zMin, zMax). Default to the current
-  wide span for back-compat, but pass a tight band from targeting / damage
-  callers (e.g., unit altitude ±50). Cascades to a measurable win on the
-  targeting hot loop — see targetingSystem.ts:871 batched query.
-
-[MEDIUM] queryEntitiesInRadius runs the cell sweep twice
-  src/game/sim/SpatialGrid.ts:814-828
-  Calls queryUnitsInRadius then queryBuildingsInRadius back-to-back with
-  identical (x,y,z,r); each rebuilds nearbyCells from scratch.
-  Fix: add queryUnitsAndBuildingsInRadius (mirrors the existing
-  queryEnemyUnitsAndProjectilesInRadius helper) and route callers through it.
-
-[MEDIUM] queryEnemyEntitiesInRadius iterates the same cells twice
-  src/game/sim/SpatialGrid.ts:921-965
-  Same shape as above for the enemy variant — pads cell search and then
-  walks units / buildings separately.
-  Fix: collapse into one cell-loop walk that branches per occupant type.
-
-[MEDIUM] Damage system pads area queries with magic constants
-  src/game/sim/damage/DamageSystem.ts:917-918 (and lines 495, 612, 169)
-  Splash queries add +50 for units and +100 for buildings, on top of
-  whatever padding the spatial grid already applies, then re-filter by
-  exact distance. Double padding bloats cell traversal.
-  Fix: justify each pad per-entity geometry, prefer 0 unless the radius
-  truly excludes near-edge hits. Use one consolidated padding helper.
-
 [MEDIUM] GridCell objects never pooled / pruned
   src/game/sim/SpatialGrid.ts:156-161
   Every getOrCreateCell allocates a fresh object; cells whose contents
