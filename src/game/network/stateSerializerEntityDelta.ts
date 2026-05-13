@@ -92,7 +92,6 @@ export const SNAPSHOT_DIRTY_FORCE_FIELDS =
   ENTITY_CHANGED_JUMP;
 
 const trackingStates = new Map<string, DeltaTrackingState>();
-const nextStateScratch = createPrevEntityState();
 const capturedNextStates = new Map<EntityId, PrevEntityState>();
 const capturedNextStatePool: PrevEntityState[] = [];
 let capturedNextStatePoolIndex = 0;
@@ -384,8 +383,14 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
 export function getNextEntityState(entity: Entity): PrevEntityState {
   let next = capturedNextStates.get(entity.id);
   if (!next) {
-    captureEntityState(entity, nextStateScratch);
-    next = nextStateScratch;
+    // Cache miss path. captureSnapshotEntityStates seeds the cache
+    // with dirty entities; visibility re-entry (a non-dirty entity
+    // crossing back into a recipient's vision) lands here. Promote
+    // the miss into a pooled slot so the next recipient in the same
+    // emit reuses our work instead of recapturing the same fields.
+    next = acquireCapturedNextState();
+    captureEntityState(entity, next);
+    capturedNextStates.set(entity.id, next);
   }
   return next;
 }
