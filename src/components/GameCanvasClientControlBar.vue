@@ -292,10 +292,15 @@ defineProps<{
         <BarDivider />
         <BarLabel>MARKS:</BarLabel>
         <BarButton
-          :active="model.groundMarks"
-          title="Draw all ground marks: beam/laser scorches plus wheel, tread, and footstep prints"
-          @click="model.toggleGroundMarks"
-        >ALL</BarButton>
+          :active="model.burnMarks"
+          title="Draw beam, laser, and dgun scorch trails on the ground"
+          @click="model.toggleBurnMarks"
+        >BURN</BarButton>
+        <BarButton
+          :active="model.locomotionMarks"
+          title="Draw wheel, tread, and footstep prints from unit movement"
+          @click="model.toggleLocomotionMarks"
+        >LOCO</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

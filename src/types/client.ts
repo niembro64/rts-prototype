@@ -46,11 +46,14 @@ export type ClientBarConfig = {
   readonly render: LabeledOptionsConfig<RenderMode>;
   readonly audio: LabeledOptionsConfig<Exclude<AudioScope, 'off'>>;
   readonly audioSmoothing: BooleanSetting;
-  /** Single toggle gating ALL ground-plane marks: beam/laser scorches
-   *  drawn by BurnMark3D AND wheel/tread/foot prints drawn by
-   *  GroundPrint3D. Off by default — turning it on enables every mark
-   *  type at once (LOD tiers still cap density). */
-  readonly groundMarks: BooleanSetting;
+  /** Beam, laser, and dgun scorch trails drawn by BurnMark3D.
+   *  Default off — scorches accumulate fast in long fights and the
+   *  player typically wants the live battlefield, not its history. */
+  readonly burnMarks: BooleanSetting;
+  /** Wheel, tread, and footstep prints drawn by GroundPrint3D from
+   *  unit movement. Default on — these decay quickly and read as
+   *  part of the unit silhouettes' motion. */
+  readonly locomotionMarks: BooleanSetting;
   readonly beamSnapToTurret: BooleanSetting;
   readonly lodShellRings: BooleanSetting;
   readonly lodGridBorders: BooleanSetting;

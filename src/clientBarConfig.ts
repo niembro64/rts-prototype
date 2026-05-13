@@ -69,7 +69,8 @@ export const CLIENT_CONFIG = {
     ],
   },
   audioSmoothing: { default: true },
-  groundMarks: { default: true },
+  burnMarks: { default: false },
+  locomotionMarks: { default: true },
   beamSnapToTurret: { default: true },
   lodShellRings: { default: false },
   lodGridBorders: { default: false },
@@ -418,7 +419,8 @@ const STORAGE_KEY = 'player-client-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'player-client-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'player-client-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
-const GROUND_MARKS_STORAGE_KEY = 'player-client-ground-marks';
+const BURN_MARKS_STORAGE_KEY = 'player-client-burn-marks-v2';
+const LOCOMOTION_MARKS_STORAGE_KEY = 'player-client-locomotion-marks';
 const BEAM_SNAP_TO_TURRET_STORAGE_KEY = 'player-client-beam-snap-to-turret';
 const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
 const LOD_GRID_BORDERS_STORAGE_KEY = 'player-client-lod-grid-borders';
@@ -454,13 +456,13 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-render-mode', RENDER_MODE_STORAGE_KEY],
   ['rts-audio-scope', AUDIO_SCOPE_STORAGE_KEY],
   ['rts-audio-smoothing', AUDIO_SMOOTHING_STORAGE_KEY],
-  // Old standalone "burn marks" key folded into the unified
-   //  ground-marks toggle. Honoring both legacy paths so existing
-   //  preferences carry over: original `rts-burn-marks` from the very
-   //  first naming, and `player-client-burn-marks` from the prefix
-   //  rename that landed before the toggle was repurposed.
-  ['rts-burn-marks', GROUND_MARKS_STORAGE_KEY],
-  ['player-client-burn-marks', GROUND_MARKS_STORAGE_KEY],
+  // The unified "ground marks" toggle was split into separate burn /
+  // locomotion controls (with their own defaults), so the prior
+  // single-key value is intentionally NOT migrated — each new toggle
+  // starts from its own default. The legacy keys
+  // `rts-burn-marks`, `player-client-burn-marks`, and
+  // `player-client-ground-marks` are left as dead localStorage data;
+  // they will eventually fall out as users press RESET CLIENT.
   ['rts-lod-shell-rings', LOD_SHELL_RINGS_STORAGE_KEY],
   ['rts-lod-grid-borders', LOD_GRID_BORDERS_STORAGE_KEY],
   ['rts-triangle-debug', TRIANGLE_DEBUG_STORAGE_KEY],
@@ -522,7 +524,8 @@ let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
 let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
-let currentGroundMarks: boolean = _cd.groundMarks.default;
+let currentBurnMarks: boolean = _cd.burnMarks.default;
+let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentLodShellRings: boolean = _cd.lodShellRings.default;
 let currentLodGridBorders: boolean = _cd.lodGridBorders.default;
@@ -649,9 +652,13 @@ function loadFromStorage(): void {
   if (storedAudioSmoothing !== null) {
     currentAudioSmoothing = storedAudioSmoothing === 'true';
   }
-  const storedGroundMarks = readPersisted(GROUND_MARKS_STORAGE_KEY);
-  if (storedGroundMarks !== null) {
-    currentGroundMarks = storedGroundMarks === 'true';
+  const storedBurnMarks = readPersisted(BURN_MARKS_STORAGE_KEY);
+  if (storedBurnMarks !== null) {
+    currentBurnMarks = storedBurnMarks === 'true';
+  }
+  const storedLocomotionMarks = readPersisted(LOCOMOTION_MARKS_STORAGE_KEY);
+  if (storedLocomotionMarks !== null) {
+    currentLocomotionMarks = storedLocomotionMarks === 'true';
   }
   const storedBeamSnapToTurret = readPersisted(BEAM_SNAP_TO_TURRET_STORAGE_KEY);
   if (storedBeamSnapToTurret !== null) {
@@ -1095,17 +1102,29 @@ export function setAudioSmoothing(enabled: boolean): void {
   persist(AUDIO_SMOOTHING_STORAGE_KEY, String(enabled));
 }
 
-/** Master ground-marks toggle: when false, BurnMark3D, GroundPrint3D,
- *  and any future ground-plane decoration system stay invisible/idle.
- *  Persisted under `player-client-ground-marks`; legacy
- *  `player-client-burn-marks` / `rts-burn-marks` values migrate here. */
-export function getGroundMarks(): boolean {
-  return currentGroundMarks;
+/** Burn-mark toggle: beam, laser, and dgun projectile scorch trails
+ *  on the ground plane. Default off — scorches accumulate fast in
+ *  long battles and the player typically wants to see the live
+ *  battlefield, not its history. */
+export function getBurnMarks(): boolean {
+  return currentBurnMarks;
 }
 
-export function setGroundMarks(enabled: boolean): void {
-  currentGroundMarks = enabled;
-  persist(GROUND_MARKS_STORAGE_KEY, String(enabled));
+export function setBurnMarks(enabled: boolean): void {
+  currentBurnMarks = enabled;
+  persist(BURN_MARKS_STORAGE_KEY, String(enabled));
+}
+
+/** Locomotion-mark toggle: wheel, tread, and footstep prints from
+ *  unit movement. Default on — these decay quickly (≈1s base) and
+ *  the motion cues read as part of the unit silhouettes. */
+export function getLocomotionMarks(): boolean {
+  return currentLocomotionMarks;
+}
+
+export function setLocomotionMarks(enabled: boolean): void {
+  currentLocomotionMarks = enabled;
+  persist(LOCOMOTION_MARKS_STORAGE_KEY, String(enabled));
 }
 
 export function getBeamSnapToTurret(): boolean {

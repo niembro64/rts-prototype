@@ -19,9 +19,10 @@ import {
   getDriftMode,
   getEdgeScrollEnabled,
   getGraphicsQuality,
+  getBurnMarks,
   getGridOverlay,
-  getGroundMarks,
   getLegsRadiusToggle,
+  getLocomotionMarks,
   getLodGridBorders,
   getLodShellRings,
   getLodSignalStates,
@@ -45,9 +46,10 @@ import {
   setDriftMode,
   setEdgeScrollEnabled,
   setGraphicsQuality,
+  setBurnMarks,
   setGridOverlay,
-  setGroundMarks,
   setLegsRadiusToggle,
+  setLocomotionMarks,
   setLodGridBorders,
   setLodShellRings,
   setProjRangeToggle,
@@ -92,7 +94,8 @@ export function useGameCanvasClientSettings({
   const renderMode = ref<RenderMode>(getRenderMode());
   const audioScope = ref<AudioScope>(getAudioScope());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
-  const groundMarks = ref<boolean>(getGroundMarks());
+  const burnMarks = ref<boolean>(getBurnMarks());
+  const locomotionMarks = ref<boolean>(getLocomotionMarks());
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
   const lodShellRings = ref<boolean>(getLodShellRings());
   const lodGridBorders = ref<boolean>(getLodGridBorders());
@@ -239,10 +242,16 @@ export function useGameCanvasClientSettings({
     audioSmoothing.value = newValue;
   }
 
-  function toggleGroundMarks(): void {
-    const newValue = !groundMarks.value;
-    setGroundMarks(newValue);
-    groundMarks.value = newValue;
+  function toggleBurnMarks(): void {
+    const newValue = !burnMarks.value;
+    setBurnMarks(newValue);
+    burnMarks.value = newValue;
+  }
+
+  function toggleLocomotionMarks(): void {
+    const newValue = !locomotionMarks.value;
+    setLocomotionMarks(newValue);
+    locomotionMarks.value = newValue;
   }
 
   function toggleBeamSnapToTurret(): void {
@@ -358,8 +367,10 @@ export function useGameCanvasClientSettings({
     changeAudioScope(cd.audio.default);
     setAudioSmoothing(cd.audioSmoothing.default);
     audioSmoothing.value = cd.audioSmoothing.default;
-    setGroundMarks(cd.groundMarks.default);
-    groundMarks.value = cd.groundMarks.default;
+    setBurnMarks(cd.burnMarks.default);
+    burnMarks.value = cd.burnMarks.default;
+    setLocomotionMarks(cd.locomotionMarks.default);
+    locomotionMarks.value = cd.locomotionMarks.default;
     setBeamSnapToTurret(cd.beamSnapToTurret.default);
     beamSnapToTurret.value = cd.beamSnapToTurret.default;
     setLodShellRings(cd.lodShellRings.default);
@@ -432,7 +443,8 @@ export function useGameCanvasClientSettings({
     renderMode,
     audioScope,
     audioSmoothing,
-    groundMarks,
+    burnMarks,
+    locomotionMarks,
     beamSnapToTurret,
     lodShellRings,
     lodGridBorders,
@@ -475,7 +487,8 @@ export function useGameCanvasClientSettings({
     toggleAllProjRanges,
     toggleAllUnitRadii,
     toggleAudioSmoothing,
-    toggleGroundMarks,
+    toggleBurnMarks,
+    toggleLocomotionMarks,
     toggleBeamSnapToTurret,
     toggleLodShellRings,
     toggleLodGridBorders,

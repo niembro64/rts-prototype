@@ -42,7 +42,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
-import { getGraphicsConfig, getGroundMarks } from '@/clientBarConfig';
+import { getGraphicsConfig, getLocomotionMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { LegInstance } from './LegRig3D';
@@ -303,7 +303,7 @@ export class GroundPrint3D {
     mapHeight: number,
   ): void {
     // Toggle: if marks are off, drain everything and idle.
-    if (!getGroundMarks()) {
+    if (!getLocomotionMarks()) {
       if (this.marks.length > 0) this.clearMarksOnly();
       this.trails.clear();
       this.stamps.clear();

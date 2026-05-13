@@ -115,7 +115,8 @@ export type GameCanvasClientControlBarModel = {
   readonly fullSnapWorstRate: number;
   readonly fullSnapBarTarget: number;
   readonly audioSmoothing: boolean;
-  readonly groundMarks: boolean;
+  readonly burnMarks: boolean;
+  readonly locomotionMarks: boolean;
   readonly beamSnapToTurret: boolean;
   readonly driftMode: DriftMode;
   readonly clientTiltEmaMode: DriftMode;
@@ -153,7 +154,8 @@ export type GameCanvasClientControlBarModel = {
   changeGridOverlay(mode: GridOverlay): void;
   changeWaypointDetail(mode: WaypointDetail): void;
   toggleAudioSmoothing(): void;
-  toggleGroundMarks(): void;
+  toggleBurnMarks(): void;
+  toggleLocomotionMarks(): void;
   toggleBeamSnapToTurret(): void;
   changeDriftMode(mode: DriftMode): void;
   changeClientTiltEmaMode(mode: DriftMode): void;
