@@ -23,6 +23,7 @@ function cloneJumpConfig(config: UnitJumpConfig): UnitJumpConfig {
     powerRandomMultiplier: config.powerRandomMultiplier,
     horizontalRandomMultiplier: config.horizontalRandomMultiplier,
     mode: config.mode,
+    releaseChancePerTick: config.releaseChancePerTick,
   };
 }
 
@@ -144,11 +145,26 @@ export function unitJumpCanRelease(
 ): boolean {
   const jump = unit.jump;
   if (!jump || !surfaceContact || !unitJumpWantsActuator(unit, intent)) return false;
-  if (!jump.active) return true;
-  return (
-    Number.isFinite(releaseVelocity) &&
-    releaseVelocity <= JUMP_RECHARGE_OUTWARD_VELOCITY_EPSILON
-  );
+  let recharged: boolean;
+  if (!jump.active) {
+    recharged = true;
+  } else {
+    recharged = Number.isFinite(releaseVelocity) &&
+      releaseVelocity <= JUMP_RECHARGE_OUTWARD_VELOCITY_EPSILON;
+  }
+  if (!recharged) return false;
+  // Random per-tick gate for `always`-mode units that should hop with
+  // irregular timing instead of relaunching every ground-contact tick
+  // (tick unit). Manual jump requests bypass the gate so a scripted
+  // command still fires immediately.
+  if (jump.config.mode === 'always' && !jump.requested) {
+    const chance = jump.config.releaseChancePerTick;
+    if (chance !== undefined && chance < 1) {
+      if (chance <= 0) return false;
+      if (Math.random() >= chance) return false;
+    }
+  }
+  return true;
 }
 
 export function unitJumpHasActuatorWork(

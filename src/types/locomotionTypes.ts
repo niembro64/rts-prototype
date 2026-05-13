@@ -41,6 +41,14 @@ export type UnitJumpConfig = {
   horizontalRandomMultiplier?: number;
   /** Manual jumps require a scripted request; always jumps release once per ground contact. */
   mode?: 'manual' | 'always';
+  /** Per-tick probability that an `always`-mode unit actually fires its
+   *  spring while the rest of the release conditions hold. Default 1
+   *  (the legacy behavior — every tick on the ground re-launches). At
+   *  values below 1 the unit hops with random spacing — e.g. 0.02 at
+   *  60 TPS gives an average of one launch every ~0.83 s instead of
+   *  the continuous "every landing" bounce. Manual jumps (jump.requested)
+   *  bypass the gate so a scripted command still fires immediately. */
+  releaseChancePerTick?: number;
 };
 
 export type UnitJumpState = {

@@ -159,6 +159,11 @@ export const UNIT_LOCOMOTION_BLUEPRINTS = {
       powerRandomMultiplier: 0.95,
       horizontalRandomMultiplier: 0.35,
       mode: 'always',
+      // Roll a 2% chance per server tick (60 TPS) to actually release
+      // the spring while the rest of the conditions hold. Mean spacing
+      // between hops is ~50 ticks (~0.83 s) so the tick fidgets in
+      // place instead of pogo-sticking every landing.
+      releaseChancePerTick: 0.02,
     }),
     config: {
       upperThickness: 2,
@@ -240,7 +245,7 @@ export const UNIT_LOCOMOTION_BLUEPRINTS = {
   },
   commander: {
     type: 'legs',
-    physics: createLocomotionPhysics('legs', 200),
+    physics: createLocomotionPhysics('legs', 50),
     config: {
       upperThickness: 8,
       lowerThickness: 7,
