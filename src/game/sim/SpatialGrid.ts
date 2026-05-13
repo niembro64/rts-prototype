@@ -75,6 +75,13 @@ export class SpatialGrid {
   private cellSize: number;
   private halfCellSize: number;
   private cells: Map<number, GridCell> = new Map();
+  // Recycled GridCell objects. pruneCellIfEmpty drains a cell out of
+  // `this.cells` and pushes it here with its three internal arrays
+  // already empty; getOrCreateCell pops one back instead of allocating
+  // a fresh shape. Avoids steady-state churn as units traverse the map
+  // across long sessions — every cell ever touched used to allocate a
+  // new object, even though most are reused minutes later.
+  private cellPool: GridCell[] = [];
 
   // Track which cell each unit is in (single cell per unit)
   private unitCellKey: Map<EntityId, number> = new Map();
@@ -148,12 +155,13 @@ export class SpatialGrid {
   }
 
   /**
-   * Get or create a cell
+   * Get or create a cell. Prefers reusing a pooled instance whose
+   * occupant arrays were drained by pruneCellIfEmpty.
    */
   private getOrCreateCell(key: number): GridCell {
     let cell = this.cells.get(key);
     if (!cell) {
-      cell = {
+      cell = this.cellPool.pop() ?? {
         units: [],
         buildings: [],
         projectiles: [],
@@ -181,6 +189,12 @@ export class SpatialGrid {
       cell.projectiles.length === 0
     ) {
       this.cells.delete(key);
+      // The three internal arrays are already empty (their last items
+      // were swap-and-popped by the remove-entity helpers that drove
+      // this prune). Returning the cell to the pool keeps both the
+      // outer object and the inner empty-array allocations alive for
+      // the next cell that needs them.
+      this.cellPool.push(cell);
     }
   }
 
