@@ -59,6 +59,27 @@ const unitCapColor = computed(() => {
 });
 
 const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.units.cap);
+
+// Style objects + formatted strings wrapped in computeds so Vue caches
+// the returned identity across re-renders. Without these, every parent
+// snapshot tick (TopBar receives economy props at 20 Hz) reallocates the
+// inline `:style="{ ... }"` object and reruns each fmt*() template call,
+// producing GC churn on otherwise unchanged values.
+const playerDotStyle = computed(() => ({ backgroundColor: props.playerColor }));
+const unitCapStyle = computed(() => ({ color: unitCapColor.value }));
+const energyBarStyle = computed(() => ({ width: energyPct.value + '%' }));
+const manaBarStyle = computed(() => ({ width: manaPct.value + '%' }));
+const metalBarStyle = computed(() => ({ width: metalPct.value + '%' }));
+
+const energyStockDisplay = computed(() => fmtStock(props.economy.stockpile.curr));
+const energyProduceDisplay = computed(() => fmtMag(props.economy.income.total));
+const energyConsumeDisplay = computed(() => fmtMag(props.economy.expenditure));
+const manaStockDisplay = computed(() => fmtStock(props.economy.mana.stockpile.curr));
+const manaProduceDisplay = computed(() => fmtMag(props.economy.mana.income.total));
+const manaConsumeDisplay = computed(() => fmtMag(props.economy.mana.expenditure));
+const metalStockDisplay = computed(() => fmtStock(props.economy.metal.stockpile.curr));
+const metalProduceDisplay = computed(() => fmtMag(props.economy.metal.income.total));
+const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditure));
 </script>
 
 <template>
@@ -82,7 +103,7 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
         :disabled="!canTogglePlayer"
         @click="emit('togglePlayer')"
       >
-        <span class="player-dot" :style="{ backgroundColor: playerColor }"></span>
+        <span class="player-dot" :style="playerDotStyle"></span>
       </button>
       <span class="player-name" title="Username">{{ playerName }}</span>
     </div>
@@ -101,7 +122,7 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
     <div class="counts-section">
       <div class="count-row">
         <span class="count-label">UNITS</span>
-        <span class="count-value" :style="{ color: unitCapColor }">
+        <span class="count-value" :style="unitCapStyle">
           {{ economy.units.count }}/{{ economy.units.cap }}
           <span
             class="cap-warning"
@@ -139,22 +160,22 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
           <span class="resource-label">ENERGY</span>
         </div>
         <div class="resource-row">
-          <span class="resource-stock">{{ fmtStock(economy.stockpile.curr) }}</span>
+          <span class="resource-stock">{{ energyStockDisplay }}</span>
           <span class="resource-sep">/</span>
           <span class="resource-max">{{ economy.stockpile.max }}</span>
         </div>
       </div>
       <div class="resource-bar">
-        <div class="resource-bar-fill energy-fill" :style="{ width: energyPct + '%' }"></div>
+        <div class="resource-bar-fill energy-fill" :style="energyBarStyle"></div>
       </div>
       <div class="resource-flows">
         <span class="resource-flow">
           <span class="flow-label">produce</span>
-          <span class="flow-value">{{ fmtMag(economy.income.total) }}</span>
+          <span class="flow-value">{{ energyProduceDisplay }}</span>
         </span>
         <span class="resource-flow">
           <span class="flow-label">consume</span>
-          <span class="flow-value">{{ fmtMag(economy.expenditure) }}</span>
+          <span class="flow-value">{{ energyConsumeDisplay }}</span>
         </span>
       </div>
     </div>
@@ -170,22 +191,22 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
           <span class="resource-label">MANA</span>
         </div>
         <div class="resource-row">
-          <span class="resource-stock">{{ fmtStock(economy.mana.stockpile.curr) }}</span>
+          <span class="resource-stock">{{ manaStockDisplay }}</span>
           <span class="resource-sep">/</span>
           <span class="resource-max">{{ economy.mana.stockpile.max }}</span>
         </div>
       </div>
       <div class="resource-bar">
-        <div class="resource-bar-fill mana-fill" :style="{ width: manaPct + '%' }"></div>
+        <div class="resource-bar-fill mana-fill" :style="manaBarStyle"></div>
       </div>
       <div class="resource-flows">
         <span class="resource-flow">
           <span class="flow-label">produce</span>
-          <span class="flow-value">{{ fmtMag(economy.mana.income.total) }}</span>
+          <span class="flow-value">{{ manaProduceDisplay }}</span>
         </span>
         <span class="resource-flow">
           <span class="flow-label">consume</span>
-          <span class="flow-value">{{ fmtMag(economy.mana.expenditure) }}</span>
+          <span class="flow-value">{{ manaConsumeDisplay }}</span>
         </span>
       </div>
     </div>
@@ -201,22 +222,22 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
           <span class="resource-label">METAL</span>
         </div>
         <div class="resource-row">
-          <span class="resource-stock">{{ fmtStock(economy.metal.stockpile.curr) }}</span>
+          <span class="resource-stock">{{ metalStockDisplay }}</span>
           <span class="resource-sep">/</span>
           <span class="resource-max">{{ economy.metal.stockpile.max }}</span>
         </div>
       </div>
       <div class="resource-bar">
-        <div class="resource-bar-fill metal-fill" :style="{ width: metalPct + '%' }"></div>
+        <div class="resource-bar-fill metal-fill" :style="metalBarStyle"></div>
       </div>
       <div class="resource-flows">
         <span class="resource-flow">
           <span class="flow-label">produce</span>
-          <span class="flow-value">{{ fmtMag(economy.metal.income.total) }}</span>
+          <span class="flow-value">{{ metalProduceDisplay }}</span>
         </span>
         <span class="resource-flow">
           <span class="flow-label">consume</span>
-          <span class="flow-value">{{ fmtMag(economy.metal.expenditure) }}</span>
+          <span class="flow-value">{{ metalConsumeDisplay }}</span>
         </span>
       </div>
     </div>

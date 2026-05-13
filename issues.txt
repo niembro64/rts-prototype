@@ -250,20 +250,6 @@ time and should be measured (or read more code) before touching.
   throttle and redraw just the camera-box layer; entity layer keeps its
   existing 20 Hz throttle.
 
-[MEDIUM] :style="{...}" allocates an object literal per render
-  src/components/TopBar.vue:85, 104, 148, 179, 210
-  `:style="{ width: energyPct + '%' }"` etc. Each render allocates the
-  object even when the value didn't change.
-  Fix: lift each into a computed (`energyBarStyle = computed(...)`) so
-  Vue caches the object identity until the value changes.
-
-[SMALL] Format functions called inline in templates
-  src/components/TopBar.vue:142, 153, 157, 173, 184, 188, 204, 215, 219
-  `{{ fmtStock(economy.stockpile.curr) }}` — pure function but a new
-  string allocates every render.
-  Fix: wrap each in a computed; the cached string survives across
-  unrelated re-renders.
-
 [SMALL] WorldDirectionHud watches 5 wind/camera sub-fields
   src/components/WorldDirectionHud.vue:400-409
   Watch array depends on cameraYaw + wind.{x,y,speed} + compact; fires
