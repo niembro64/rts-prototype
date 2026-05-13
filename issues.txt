@@ -47,14 +47,6 @@ time and should be measured (or read more code) before touching.
  NETWORK / SERIALIZATION
 ------------------------------------------------------------------------------
 
-[LARGE] AoI filter is O(entities × recipients) AABB scan
-  src/game/network/stateSerializer.ts:208-229
-  isEntityInsideAoi runs per-entity per-recipient with no spatial index.
-  10k entities × 10 listeners = 100k AABB tests per delta.
-  Fix: build a per-emit spatial coarse index (the existing spatial grid
-  is overkill; a 4-level quadtree or 64-unit cell grid works) and query
-  per-listener AoI rect for the small set of entities inside it.
-
 [MEDIUM] Client over-predicts entities at 60fps for 10Hz snapshots [VERIFY]
   src/game/network/ClientPredictionStepper.ts:165-200
   ClientUnitPrediction.ts:199-250
