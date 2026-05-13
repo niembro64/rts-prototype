@@ -229,8 +229,8 @@ function validateTurretAimStyle(
   shot: ShotConfig | undefined,
 ): void {
   switch (turretBlueprint.aimStyle) {
-    case 'low':
-    case 'high':
+    case 'lowArc':
+    case 'highArc':
       if (!shot || (shot.type !== 'projectile' && shot.type !== 'rocket')) {
         throw new Error(
           `Turret ${turretId} uses aimStyle "${turretBlueprint.aimStyle}" without a projectile shot`,

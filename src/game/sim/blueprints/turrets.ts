@@ -104,7 +104,7 @@ export const TURRET_BLUEPRINTS = {
     spread: { angle: 0 },
     radius: { body: 3 },
     audio: { fireSound: AUDIO.event.fire.lightTurret },
-    aimStyle: 'low',
+    aimStyle: 'lowArc',
   },
   pulseTurret: {
     id: 'pulseTurret',
@@ -133,7 +133,7 @@ export const TURRET_BLUEPRINTS = {
     burst: { count: 4, delay: 100 },
     radius: { body: 9 },
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
-    aimStyle: 'low',
+    aimStyle: 'lowArc',
   },
   cannonTurret: {
     id: 'cannonTurret',
@@ -153,7 +153,7 @@ export const TURRET_BLUEPRINTS = {
     spread: { angle: 0 },
     radius: { body: 10 },
     audio: { fireSound: AUDIO.event.fire.cannonTurret },
-    aimStyle: 'low',
+    aimStyle: 'lowArc',
   },
   mortarTurret: {
     id: 'mortarTurret',
@@ -173,7 +173,7 @@ export const TURRET_BLUEPRINTS = {
     spread: { angle: 0 },
     radius: { body: 9 },
     audio: { fireSound: AUDIO.event.fire.mortarTurret },
-    aimStyle: 'high',
+    aimStyle: 'highArc',
     // Aim directly at the target point. mortarShot detonates on
     // ground impact and releases mediumShot fragments from there.
     groundAimFraction: 1.0,
@@ -217,7 +217,7 @@ export const TURRET_BLUEPRINTS = {
     // Fast high-arc carrier. The submunitions do the area spread; this
     // keeps the gatling role readable without adding another cluster
     // layer.
-    aimStyle: 'high',
+    aimStyle: 'highArc',
     // Aim directly at the target group; the carrier's submunition spray
     // creates the area coverage.
     groundAimFraction: 1.0,
@@ -247,7 +247,7 @@ export const TURRET_BLUEPRINTS = {
     burst: { count: 1, delay: 80 },
     radius: { body: 12 },
     audio: { fireSound: AUDIO.event.fire.hippoGatlingTurret },
-    aimStyle: 'low',
+    aimStyle: 'lowArc',
   },
   // Salvo rocket pod — vertical-launch system. The turret is pinned
   // pointing straight up (verticalLauncher=true → turretSystem locks
@@ -554,7 +554,7 @@ export const TURRET_BLUEPRINTS = {
     spread: { angle: 0 },
     radius: { body: 16 },
     audio: { fireSound: AUDIO.event.fire.cannonTurret },
-    aimStyle: 'low',
+    aimStyle: 'lowArc',
   },
 } satisfies Record<TurretId, TurretBlueprint>;
 

@@ -61,7 +61,7 @@ export type TurretRadiusConfig = {
   body: number;
 };
 
-export type TurretAimStyle = 'low' | 'high' | 'direct' | 'none';
+export type TurretAimStyle = 'lowArc' | 'highArc' | 'direct' | 'none';
 
 export type TurretBlueprint = {
   id: TurretId;
@@ -94,9 +94,9 @@ export type TurretBlueprint = {
   audio?: { fireSound?: SoundEntry };
   radius: TurretRadiusConfig;
   /** Explicit aiming solver mode:
-   *  - low: gravity projectile, lower ballistic solution
-   *  - high: gravity projectile, lofted ballistic solution
-   *  - direct: straight line toward the target/aim point
+   *  - lowArc: gravity projectile, lower ballistic solution (flat, fast shells)
+   *  - highArc: gravity projectile, lofted ballistic solution (mortars)
+   *  - direct: straight line toward the target/aim point (beams, lasers)
    *  - none: turret does not solve a target-facing pose */
   aimStyle: TurretAimStyle;
   /** Vertical launch system. When true, the turret ignores the normal

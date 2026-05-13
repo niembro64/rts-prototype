@@ -345,11 +345,11 @@ function getProjectileMaxTimeSec(shot: ProjectileShot): number | undefined {
 }
 
 function usesHighBallisticPath(config: TurretConfig, shot: ProjectileShot): boolean {
-  return !shot.ignoresGravity && config.aimStyle === 'high';
+  return !shot.ignoresGravity && config.aimStyle === 'highArc';
 }
 
 function usesBallisticAim(config: TurretConfig): boolean {
-  return config.aimStyle === 'low' || config.aimStyle === 'high';
+  return config.aimStyle === 'lowArc' || config.aimStyle === 'highArc';
 }
 
 function solveStaticProjectileAim(
