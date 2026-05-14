@@ -107,22 +107,30 @@ function qSuspension(n: number): number {
 function writeTurretsToPool(
   pool: PooledEntry,
   weapons: NonNullable<Entity['combat']>['turrets'],
-  canReferenceEntityId?: (id: number | undefined) => boolean,
+  canReferenceEntityId: ((id: number | undefined) => boolean) | undefined,
+  predictionMode: PredictionMode,
 ): NetworkServerSnapshotTurret[] {
   const count = weapons.length;
   while (pool.turrets.length < count) pool.turrets.push(createTurretDto());
   pool.turrets.length = count;
+  // PREDICT-aware bandwidth gate, mirrored from the unit-body path:
+  // POS clients integrate nothing → zero both axes' velocity AND
+  // acceleration. VEL clients integrate ω → keep velocities, zero
+  // accelerations. ACC sends everything. Zeros encode in 1 byte each
+  // via MessagePack's positive-fixint vs ~5 for a qRot float.
+  const sendAngularVel = predictionMode !== 'pos';
+  const sendAngularAcc = predictionMode === 'acc';
   for (let i = 0; i < count; i++) {
     const src = weapons[i];
     const dst = pool.turrets[i];
     const t = dst.turret;
     t.id = turretIdToCode(src.config.id);
     t.angular.rot = qRot(src.rotation);
-    t.angular.vel = qRot(src.angularVelocity);
-    t.angular.acc = qRot(src.angularAcceleration);
+    t.angular.vel = sendAngularVel ? qRot(src.angularVelocity) : 0;
+    t.angular.acc = sendAngularAcc ? qRot(src.angularAcceleration) : 0;
     t.angular.pitch = qRot(src.pitch);
-    t.angular.pitchVel = qRot(src.pitchVelocity);
-    t.angular.pitchAcc = qRot(src.pitchAcceleration);
+    t.angular.pitchVel = sendAngularVel ? qRot(src.pitchVelocity) : 0;
+    t.angular.pitchAcc = sendAngularAcc ? qRot(src.pitchAcceleration) : 0;
     dst.targetId = canReferenceEntityId?.(src.target ?? undefined) === false
       ? undefined
       : src.target ?? undefined;
@@ -340,6 +348,7 @@ export function serializeEntitySnapshot(
           poolEntry,
           weapons0,
           canSeePrivateDetails ? canReferenceEntityId : () => false,
+          predictionMode,
         );
       }
 
@@ -413,6 +422,7 @@ export function serializeEntitySnapshot(
           poolEntry,
           weapons0,
           canSeePrivateDetails ? canReferenceEntityId : () => false,
+          predictionMode,
         );
       }
 

@@ -1,5 +1,6 @@
 import type { WorldState } from '../sim/WorldState';
 import type { PlayerId } from '../sim/types';
+import type { PredictionMode } from '@/types/client';
 import type {
   ProjectileDespawnEvent,
   ProjectileSpawnEvent,
@@ -48,6 +49,12 @@ export type SerializeProjectileSnapshotOptions = {
   projectileSpawns?: ProjectileSpawnEvent[];
   projectileDespawns?: ProjectileDespawnEvent[];
   projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[];
+  /** Per-recipient PREDICT mode (see stateSerializer.ts). When 'pos'
+   *  the serializer zeros projectile spawn / beam-path velocities,
+   *  skips velocity-update emission entirely, and zeros beam-path
+   *  accelerations. When 'vel' it only zeros the accelerations. ACC
+   *  is unchanged. */
+  predictionMode?: PredictionMode;
 };
 
 const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
@@ -327,8 +334,17 @@ export function serializeProjectileSnapshot({
   projectileSpawns,
   projectileDespawns,
   projectileVelocityUpdates,
+  predictionMode = 'acc',
 }: SerializeProjectileSnapshotOptions): ProjectileSnapshot | undefined {
   resetProjectilePools();
+  // PREDICT-aware bandwidth gate. POS clients integrate nothing →
+  // spawn velocities zero out, beam-path point velocities AND
+  // accelerations zero out, and velocity-update events are skipped
+  // entirely (their entire purpose is to ship a velocity). VEL still
+  // wants velocities but drops the beam-path point accelerations.
+  // ACC unchanged.
+  const sendVelocity = predictionMode !== 'pos';
+  const sendBeamPointAccel = predictionMode === 'acc';
 
   // Full keyframes synthesize spawns for every live projectile entity so a
   // client that missed the original spawn event can still recover it.
@@ -348,9 +364,15 @@ export function serializeProjectileSnapshot({
         out._pos.y = ps.pos.y;
         out._pos.z = ps.pos.z;
         out.rotation = ps.rotation;
-        out._velocity.x = ps.velocity.x;
-        out._velocity.y = ps.velocity.y;
-        out._velocity.z = ps.velocity.z;
+        if (sendVelocity) {
+          out._velocity.x = ps.velocity.x;
+          out._velocity.y = ps.velocity.y;
+          out._velocity.z = ps.velocity.z;
+        } else {
+          out._velocity.x = 0;
+          out._velocity.y = 0;
+          out._velocity.z = 0;
+        }
         out.projectileType = projectileTypeToCode(ps.projectileType);
         out.maxLifespan = ps.maxLifespan;
         out.turretId = turretIdToCode(ps.turretId);
@@ -410,9 +432,15 @@ export function serializeProjectileSnapshot({
         out._pos.y = entity.transform.y;
         out._pos.z = entity.transform.z;
         out.rotation = entity.transform.rotation;
-        out._velocity.x = proj.velocityX;
-        out._velocity.y = proj.velocityY;
-        out._velocity.z = proj.velocityZ;
+        if (sendVelocity) {
+          out._velocity.x = proj.velocityX;
+          out._velocity.y = proj.velocityY;
+          out._velocity.z = proj.velocityZ;
+        } else {
+          out._velocity.x = 0;
+          out._velocity.y = 0;
+          out._velocity.z = 0;
+        }
         out.projectileType = projectileTypeToCode(proj.projectileType);
         out.maxLifespan = proj.maxLifespan;
         out.turretId = proj.sourceTurretId !== undefined
@@ -468,7 +496,11 @@ export function serializeProjectileSnapshot({
   }
 
   let netVelocityUpdates: NetworkServerSnapshotVelocityUpdate[] | undefined;
-  if (projectileVelocityUpdates && projectileVelocityUpdates.length > 0) {
+  // Velocity-update events exist solely to ship a new velocity vector
+  // to the client between snapshots. Under POS the client doesn't
+  // integrate velocity at all, so the entire event is dead bytes —
+  // skip the array.
+  if (sendVelocity && projectileVelocityUpdates && projectileVelocityUpdates.length > 0) {
     _velUpdateBuf.length = 0;
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
@@ -524,7 +556,7 @@ export function serializeProjectileSnapshot({
         out.x = qPos(sp.x);
         out.y = qPos(sp.y);
         out.z = qPos(sp.z);
-        if (sp.vx === 0 && sp.vy === 0 && sp.vz === 0) {
+        if (!sendVelocity || (sp.vx === 0 && sp.vy === 0 && sp.vz === 0)) {
           out.vx = 0;
           out.vy = 0;
           out.vz = 0;
@@ -533,7 +565,7 @@ export function serializeProjectileSnapshot({
           out.vy = qVel(sp.vy);
           out.vz = qVel(sp.vz);
         }
-        if (sp.ax === 0 && sp.ay === 0 && sp.az === 0) {
+        if (!sendBeamPointAccel || (sp.ax === 0 && sp.ay === 0 && sp.az === 0)) {
           out.ax = 0;
           out.ay = 0;
           out.az = 0;

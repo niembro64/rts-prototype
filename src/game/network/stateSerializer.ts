@@ -613,6 +613,7 @@ export function serializeGameState(
     projectileSpawns,
     projectileDespawns,
     projectileVelocityUpdates,
+    predictionMode,
   });
 
   const netGrid = serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize);

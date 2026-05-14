@@ -137,37 +137,45 @@ snapshot rebuilds with the new mode (no delta gaps). The mode is
 re-applied on every rebindFilter (seat swap / spectator follow) and
 on connection (re)creation in GameCanvas.vue.
 
-WIRED gating in stateSerializerEntities.ts:
-  - POS  — u.velocity zeroed (1-byte MessagePack ints vs ~5-byte
-           quantized floats per component); movementAccel cleared
-           (already-optional field omitted from the wire).
-  - VEL  — velocity unchanged; movementAccel cleared.
-  - ACC  — full payload (default; no behaviour change).
-The client's local PREDICT integrator gate is the authoritative one
-for correctness; this layer is purely a bandwidth optimization.
+WIRED gating (zeros encode in 1-byte MessagePack ints vs ~5-byte
+quantized floats per component, so zeroing is a real wire-byte win
+even without making fields optional):
+  stateSerializerEntities.ts:
+    - POS — u.velocity zeroed; movementAccel cleared (already-optional
+            field, fully omitted from the wire).
+    - VEL — velocity unchanged; movementAccel cleared.
+    - ACC — full payload.
+    Plus per-turret writeTurretsToPool:
+    - POS — angular.vel, angular.acc, angular.pitchVel, angular.pitchAcc
+            all zeroed.
+    - VEL — angular.vel + angular.pitchVel kept; angular.acc +
+            angular.pitchAcc zeroed.
+    - ACC — full payload.
+  stateSerializerProjectiles.ts:
+    - POS — spawn velocity zeroed (both fresh-spawn and keyframe
+            resync paths); the entire projectileVelocityUpdates array
+            is skipped (its only purpose is to ship velocity);
+            beam-path point .vx/.vy/.vz AND .ax/.ay/.az all zeroed.
+    - VEL — spawn velocity + velocity updates unchanged; beam-path
+            point .ax/.ay/.az zeroed.
+    - ACC — full payload.
+The client's local PREDICT integrator gate from earlier work remains
+the authoritative one for correctness; this layer is purely a
+bandwidth optimization.
 
-NOT YET WIRED (next chunks of work, all bounded):
+NOT YET WIRED (remaining bounded follow-ups):
   1. Remote (WebRTC) connection. RemoteGameConnection.setPredictionMode
      is a TODO no-op; remote clients always receive the full 'acc'
      payload. Needs a ClientPredictionModeChanged data-channel
      message routed through NetworkManager → server-side
      receiveCommand → setSnapshotListenerPredictionMode.
-  2. Additional gated fields. Today only unit body velocity and
-     movementAccel are gated. Same per-listener mode could trim:
-       - turret.angular.vel / .acc / .pitchVel / .pitchAcc when POS
-       - turret.angular.acc / .pitchAcc when VEL
-       - beam-point .vx,.vy,.vz,.ax,.ay,.az when POS
-                    .ax,.ay,.az when VEL
-       - projectile spawn velocity / acceleration components
-     Each one is a small targeted edit in its respective serializer
-     plus a defaulted decode path. Stage these as appetite allows;
-     each compounds the bandwidth win.
-  3. Decoder defaults. Velocity is currently a non-optional Vec3 in
-     the wire type so we zero rather than omit. To get the full
-     bandwidth saving (omit the field, MessagePack drops it entirely)
-     the type would need to become optional and every reader path
-     would need `?? 0` defaults. Bigger lift; lower marginal payoff
-     than steps 1-2.
+  2. Decoder defaults / fully optional wire fields. Today velocity is
+     a non-optional Vec3 in the wire type, so we zero rather than
+     omit. Making velocity optional (and every reader path tolerant
+     of `undefined → 0`) lets MessagePack drop the whole field for
+     POS clients — bigger bandwidth saving but a much wider blast
+     radius across consumers. Lower marginal payoff than (1); save
+     for after profiling.
 
 ==============================================================================
  PREDICT block — STATUS SUMMARY
