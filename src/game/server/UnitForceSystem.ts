@@ -33,6 +33,13 @@ import type { WorldState } from '../sim/WorldState';
 import type { CombatComponent, EntityId, Unit } from '../sim/types';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
+import {
+  quatDampedSpringStep,
+  quatFromYawPitchRoll,
+  quatYaw,
+  type AngularVec3,
+  type Quat,
+} from '../math/Quaternion';
 
 const WATER_PROBE_DX = [
   1, 0.7071067811865476, 0, -0.7071067811865475,
@@ -44,6 +51,26 @@ const WATER_PROBE_DY = [
 ];
 const WATER_ESCAPE_PROBE_MULTS = [1.5, 3, 6];
 const MATTER_FORCE_SCALE = 150000;
+
+// Per-step scratch for the hover orientation spring. Allocated once
+// at module load and reused so the inner loop allocates nothing.
+const _hoverTargetQuat: Quat = { x: 0, y: 0, z: 0, w: 1 };
+const _hoverAlpha: AngularVec3 = { x: 0, y: 0, z: 0 };
+
+// Hover bank/pitch behaviour constants. Both are dimensionless
+// "radians of bank/pitch per world-unit/second of body-frame
+// velocity"; the clamps keep the unit from doing barrel rolls under
+// large transient pushes (knockback / collision spikes).
+const HOVER_BANK_PER_LATERAL_V = 0.012;
+const HOVER_PITCH_PER_FORWARD_V = 0.008;
+const HOVER_BANK_MAX = Math.PI * 0.25;   // 45° bank
+const HOVER_PITCH_MAX = Math.PI * 0.18;  // ~32° nose-down/up
+// Critically-damped spring stiffness for the hover orientation. Low
+// enough that the bank lags behind input (so it READS as a real
+// banking motion) but high enough to settle in well under a second
+// at typical RTS pacing.
+const HOVER_ORIENTATION_K = 30;
+const HOVER_ORIENTATION_C = 2 * Math.sqrt(HOVER_ORIENTATION_K);
 const WATER_OUT_CACHE_CELL_SIZE = 25;
 const WATER_OUT_CACHE_BUCKET_SCALE = 10;
 // Hard cap on the probe cache. At cell-size 25 a 4k×4k map has ~25k
@@ -156,7 +183,11 @@ export class UnitForceSystem {
 
       // Unit faces its movement direction (yaw only — chassis tilt
       // is a render concern; sim transform.rotation stays a 2D yaw).
-      if (hasThrustDir) {
+      // Hover units skip this snap; their orientation is driven by
+      // the quaternion spring in the hover branch below so yaw,
+      // pitch, and roll all evolve together as a damped continuous
+      // motion.
+      if (hasThrustDir && entity.unit.locomotion.type !== 'hover') {
         const nextRotation = Math.atan2(dirY, dirX);
         if (nextRotation !== entity.transform.rotation) {
           entity.transform.rotation = nextRotation;
@@ -210,6 +241,58 @@ export class UnitForceSystem {
           );
           thrustForceX = useDirX * locomotionForce.tractionForceMagnitude;
           thrustForceY = useDirY * locomotionForce.tractionForceMagnitude;
+        }
+
+        // Quaternion orientation spring. Target yaw points along the
+        // current thrust direction (or holds the current heading if
+        // idle); target pitch and roll are derived from body-frame
+        // velocity components so the drone visibly leans forward
+        // when accelerating and banks INTO the turn when its
+        // velocity has a sideways component (the classic aircraft
+        // bank). The damped spring on the unit-quaternion advances
+        // all three axes through ONE law — α = k · (axis·angle) −
+        // c · ω — with no preferred axis or gimbal lock.
+        const orientation = entity.unit.orientation;
+        const omega = entity.unit.angularVelocity3;
+        if (orientation && omega) {
+          const currentYaw = quatYaw(orientation);
+          const targetYaw = hasThrustDir
+            ? Math.atan2(dirY, dirX)
+            : currentYaw;
+          const cosY = Math.cos(currentYaw);
+          const sinY = Math.sin(currentYaw);
+          const vForward = body.vx * cosY + body.vy * sinY;
+          const vLateral = -body.vx * sinY + body.vy * cosY;
+          let targetPitch = -HOVER_PITCH_PER_FORWARD_V * vForward;
+          let targetRoll = HOVER_BANK_PER_LATERAL_V * vLateral;
+          if (targetPitch > HOVER_PITCH_MAX) targetPitch = HOVER_PITCH_MAX;
+          else if (targetPitch < -HOVER_PITCH_MAX) targetPitch = -HOVER_PITCH_MAX;
+          if (targetRoll > HOVER_BANK_MAX) targetRoll = HOVER_BANK_MAX;
+          else if (targetRoll < -HOVER_BANK_MAX) targetRoll = -HOVER_BANK_MAX;
+          quatFromYawPitchRoll(targetYaw, targetPitch, targetRoll, _hoverTargetQuat);
+          quatDampedSpringStep(
+            orientation,
+            omega,
+            _hoverTargetQuat,
+            HOVER_ORIENTATION_K,
+            HOVER_ORIENTATION_C,
+            dtSec,
+            _hoverAlpha,
+          );
+          const angularAccel = entity.unit.angularAcceleration3;
+          if (angularAccel) {
+            angularAccel.x = _hoverAlpha.x;
+            angularAccel.y = _hoverAlpha.y;
+            angularAccel.z = _hoverAlpha.z;
+          }
+          // Sync transform.rotation to the quaternion's yaw extraction
+          // so every existing consumer of the 2D yaw scalar (turret
+          // mounts, camera, AI, network code) stays correct.
+          const newYaw = quatYaw(orientation);
+          if (newYaw !== entity.transform.rotation) {
+            entity.transform.rotation = newYaw;
+            this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
+          }
         }
 
         // Fall through to the shared totalForce / applyForce block

@@ -710,6 +710,21 @@ export class WorldState {
         mirrorPanels: [],
         mirrorBoundRadius: 0,
         surfaceNormal: { nx: spawnNormal.nx, ny: spawnNormal.ny, nz: spawnNormal.nz },
+        // Hover units carry a full quaternion + ω-vector + α-vector
+        // orientation triad so they can express roll (banking into a
+        // turn). Ground units stay yaw-scalar-only (transform.rotation).
+        // The identity quat matches transform.rotation = 0 with zero
+        // pitch/roll, so spawning a hover unit looks the same as
+        // spawning a ground unit until forces start acting on it.
+        orientation: locomotion.type === 'hover'
+          ? { x: 0, y: 0, z: 0, w: 1 }
+          : undefined,
+        angularVelocity3: locomotion.type === 'hover'
+          ? { x: 0, y: 0, z: 0 }
+          : undefined,
+        angularAcceleration3: locomotion.type === 'hover'
+          ? { x: 0, y: 0, z: 0 }
+          : undefined,
       },
       // combat is attached by the caller (createUnitFromBlueprint) once
       // it knows the runtime turret list. The base entity has no combat

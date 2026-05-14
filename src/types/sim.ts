@@ -196,6 +196,25 @@ export type Unit = {
    *  smoothed-but-physically-grounded value. Initialized at spawn to
    *  the raw normal at the spawn position; written by the tilt system. */
   surfaceNormal: { nx: number; ny: number; nz: number };
+  /** Optional full 3-DOF orientation, used by entities that need
+   *  roll or arbitrary orientation (hover drones banking into turns,
+   *  free-flying projectiles with spin, future ragdoll debris).
+   *  Undefined for ground units that only need a yaw scalar — those
+   *  continue to read transform.rotation as before.
+   *
+   *  Convention: unit quaternion using ZYX intrinsic Euler order
+   *  (yaw about world Z, pitch about body Y after yaw, roll about
+   *  body X after yaw+pitch). Identity {x:0,y:0,z:0,w:1} matches
+   *  transform.rotation = 0 with zero pitch/roll. Renderer/turret
+   *  worldPos math can read transform.rotation (kept in sync to the
+   *  quat's yaw component) when only heading matters. */
+  orientation?: { x: number; y: number; z: number; w: number };
+  /** Angular velocity 3-vector in world frame (rad/s). Paired with
+   *  `orientation`; undefined when orientation is undefined. */
+  angularVelocity3?: { x: number; y: number; z: number };
+  /** Angular acceleration 3-vector in world frame (rad/s²). Paired
+   *  with `orientation`; undefined when orientation is undefined. */
+  angularAcceleration3?: { x: number; y: number; z: number };
   /** Consecutive ticks the unit has wanted to move but failed to make
    *  meaningful progress. Reset on either no-movement-intent ticks or
    *  ticks where physics velocity exceeds the stuck threshold. When
