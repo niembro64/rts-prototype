@@ -17,6 +17,7 @@ import __wbg_init, {
   version,
   step_unit_motion,
   step_unit_motions_batch,
+  resolve_sphere_sphere_contacts,
 } from './pkg/rts_sim_wasm';
 
 /** Layout stride for `stepUnitMotionsBatch`. Each body occupies
@@ -25,6 +26,13 @@ import __wbg_init, {
  *  the field map. Mirrors `STEP_UNIT_MOTIONS_BATCH_STRIDE` in
  *  rts-sim-wasm/src/lib.rs. */
 export const STEP_UNIT_MOTIONS_BATCH_STRIDE = 19;
+
+/** Layout stride for `resolveSphereSphereContacts`. Mirrors the
+ *  RESOLVE_SPHERE_SPHERE_STRIDE constant in rts-sim-wasm/src/lib.rs.
+ *  Field map per body: 0..6 motion, 6 radius, 7 inv_mass, 8
+ *  restitution, 9 entity_id_or_zero, 10 sleeping_flag (in),
+ *  11 wake_flag (out), 12 upward_contact_flag (out). */
+export const RESOLVE_SPHERE_SPHERE_STRIDE = 13;
 
 /** Public handle to the loaded WASM module. Re-exported kernels
  *  go here as later phases land — e.g. `physicsTick`,
@@ -89,6 +97,21 @@ export interface SimWasm {
     airDamp: number,
     groundDamp: number,
   ) => void;
+  /** Iterated sphere-vs-sphere contact resolver — Phase 3c. Runs
+   *  PhysicsEngine3D's full `rebuildContactCells` + N-pass
+   *  `resolveSphereSphereContacts` loop in one WASM call. JS packs
+   *  every dynamic sphere body into the buffer (sleeping ones still
+   *  participate — see PhysicsEngine3D.ts line ~806 for why
+   *  sleeping-body iteration is required for correctness), then
+   *  reads back positions, velocities, wake_flag and upward
+   *  contact_flag. Caller handles `wakeBody` + per-body
+   *  `recordUpwardSurfaceContact` based on the output flags. */
+  readonly resolveSphereSphereContacts: (
+    buf: Float64Array,
+    count: number,
+    iterations: number,
+    cellSize: number,
+  ) => void;
 }
 
 let cached: Promise<SimWasm> | undefined;
@@ -105,6 +128,7 @@ export function initSimWasm(): Promise<SimWasm> {
         version: version(),
         stepUnitMotion: step_unit_motion,
         stepUnitMotionsBatch: step_unit_motions_batch,
+        resolveSphereSphereContacts: resolve_sphere_sphere_contacts,
       };
       resolvedHandle = handle;
       return handle;

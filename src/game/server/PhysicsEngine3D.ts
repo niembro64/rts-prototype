@@ -64,6 +64,7 @@ import { advanceUnitMotionPhysicsMutable } from '../sim/unitMotionIntegration';
 import {
   getSimWasm,
   STEP_UNIT_MOTIONS_BATCH_STRIDE,
+  RESOLVE_SPHERE_SPHERE_STRIDE,
 } from '../sim-wasm/init';
 import type { EntityId } from '../sim/types';
 
@@ -78,6 +79,14 @@ let _integrateBatchBuf: Float64Array = new Float64Array(0);
 // _integrateBatchBuf — used to read results back into the same
 // body objects after the WASM call. Sized to match the buf.
 let _integrateBatchBodies: Body3D[] = [];
+
+// Separate scratch for the sphere-sphere resolver batch (Phase 3c).
+// Layout is different from the integrate batch (stride 13 vs 19) AND
+// it includes sleeping bodies (the resolver iterates them so a body
+// spawning into a sleeping body's slot can still get pushed apart),
+// so a shared buffer would be wasteful.
+let _sphereSphereBatchBuf: Float64Array = new Float64Array(0);
+let _sphereSphereBatchBodies: Body3D[] = [];
 
 // Pack a (cx, cy, cz) integer cell coordinate into a single numeric
 // key. Each axis is 16-bit biased; the packed value is a 48-bit
@@ -539,11 +548,8 @@ export class PhysicsEngine3D {
     // Bodies touched this step still need final contact/clamp cleanup
     // even if integration just put the last awake body to sleep.
     this.resolveSphereCuboidContacts();
-    this.rebuildContactCells();
     const sphereIterations = this.getSphereIterationBudget();
-    for (let i = 0; i < sphereIterations; i++) {
-      this.resolveSphereSphereContacts();
-    }
+    this.resolveSphereSphereContacts(sphereIterations);
     this.clampToMapBounds();
     this.collectAwakeStepSyncEntities();
     // Clear per-step force accumulator.
@@ -884,6 +890,90 @@ export class PhysicsEngine3D {
     }
   }
 
+  /** Iterated sphere-vs-sphere resolver. Phase 3c port: when WASM is
+   *  loaded, the whole broadphase rebuild + N-pass resolver runs in
+   *  one Rust call. JS handles the wake/upward-contact callbacks
+   *  after the call returns. Bootstrap window falls back to the
+   *  pure-TS path below — bit-identical for non-degenerate cases
+   *  (the random-tie-break seed in the centers-coincident degenerate
+   *  case is computed slightly differently in Rust vs TS — see the
+   *  comment in lib.rs — but the case fires on co-located spheres
+   *  which won't happen during the bootstrap window). */
+  private resolveSphereSphereContacts(iterations: number): void {
+    const sim = getSimWasm();
+    if (sim !== undefined) {
+      this.resolveSphereSphereContactsBatchedWasm(sim, iterations);
+      return;
+    }
+    this.rebuildContactCells();
+    for (let i = 0; i < iterations; i++) {
+      this.resolveSphereSphereContactsTsIteration();
+    }
+  }
+
+  private resolveSphereSphereContactsBatchedWasm(
+    sim: NonNullable<ReturnType<typeof getSimWasm>>,
+    iterations: number,
+  ): void {
+    const bodies = this.dynamicBodies;
+    const stride = RESOLVE_SPHERE_SPHERE_STRIDE;
+    const maxCount = bodies.length;
+    if (maxCount === 0 || iterations <= 0) return;
+    const requiredLen = maxCount * stride;
+    if (_sphereSphereBatchBuf.length < requiredLen) {
+      _sphereSphereBatchBuf = new Float64Array(requiredLen);
+    }
+    if (_sphereSphereBatchBodies.length < maxCount) {
+      _sphereSphereBatchBodies = new Array(maxCount);
+    }
+    const buf = _sphereSphereBatchBuf;
+    let n = 0;
+    for (let i = 0; i < maxCount; i++) {
+      const b = bodies[i];
+      if (b.shape !== 'sphere') continue;
+      const base = n * stride;
+      buf[base + 0] = b.x;
+      buf[base + 1] = b.y;
+      buf[base + 2] = b.z;
+      buf[base + 3] = b.vx;
+      buf[base + 4] = b.vy;
+      buf[base + 5] = b.vz;
+      buf[base + 6] = b.radius;
+      buf[base + 7] = b.invMass;
+      buf[base + 8] = b.restitution;
+      // entityId is `number | undefined`. Pass 0 for undefined so Rust
+      // can fall back to the buffer index for the tie-break seed.
+      buf[base + 9] = b.entityId ?? 0;
+      buf[base + 10] = b.sleeping ? 1 : 0;
+      buf[base + 11] = 0; // wake_flag (out)
+      buf[base + 12] = 0; // upward_contact_flag (out)
+      _sphereSphereBatchBodies[n] = b;
+      n++;
+    }
+    if (n === 0) return;
+    sim.resolveSphereSphereContacts(buf, n, iterations, CONTACT_CELL_SIZE);
+    for (let i = 0; i < n; i++) {
+      const base = i * stride;
+      const b = _sphereSphereBatchBodies[i];
+      b.x = buf[base + 0];
+      b.y = buf[base + 1];
+      b.z = buf[base + 2];
+      b.vx = buf[base + 3];
+      b.vy = buf[base + 4];
+      b.vz = buf[base + 5];
+      if (buf[base + 11] === 1) {
+        // wakeBody is idempotent on already-awake bodies — same as
+        // the TS path's unconditional wakeBody(a); wakeBody(b);
+        // after a pair resolves.
+        this.wakeBody(b);
+      }
+      if (buf[base + 12] === 1) {
+        b.upwardSurfaceContact = true;
+      }
+      _sphereSphereBatchBodies[i] = undefined as unknown as Body3D;
+    }
+  }
+
   /** Bucket every dynamic sphere into a single broad-phase cube keyed
    *  by its center. Reused across the SPHERE_ITERATIONS sub-steps via
    *  a single rebuild per call to resolveSphereSphereContacts; small
@@ -940,8 +1030,12 @@ export class PhysicsEngine3D {
    *  O(N²) every-pair scan we had before.
    *
    *  Projectile/laser vs unit collisions are ALSO 3D but handled
-   *  outside this engine — see ProjectileCollisionHandler + DamageSystem. */
-  private resolveSphereSphereContacts(): void {
+   *  outside this engine — see ProjectileCollisionHandler + DamageSystem.
+   *
+   *  This is the pure-TS per-iteration body; Phase 3c's dispatcher
+   *  `resolveSphereSphereContacts(iterations)` invokes it
+   *  `iterations` times when the WASM module isn't loaded yet. */
+  private resolveSphereSphereContactsTsIteration(): void {
     const cs = CONTACT_CELL_SIZE;
     const halfCs = cs / 2;
     const bodies = this.dynamicBodies;

@@ -138,8 +138,10 @@ with a Body3D pool and the contact resolvers.
 Split into sub-phases to keep each ship-able and reviewable.
 
   Phase 3a — Batched integrate() + sleep state machine. DONE.
-  Phase 3b — Sphere-vs-cuboid resolver port.
-  Phase 3c — Sphere-vs-sphere resolver + broadphase port.
+  Phase 3b — Sphere-vs-cuboid resolver port. (Deferred behind 3d — per-pair
+             WASM calls would currently cost more than they save; revisit
+             after Body3D state lives in linear memory.)
+  Phase 3c — Sphere-vs-sphere resolver + broadphase port. DONE.
   Phase 3d — Body3D SoA pool in WASM linear memory (state ownership).
   Phase 3e — Hover lift + quat-spring + bank-into-turn (or roll into Phase 4).
   Phase 3f — Static cuboid broadphase port.
@@ -194,6 +196,53 @@ and JS will read body fields through typed-array views over the
 WASM linear memory. The current 19-f64-per-body marshal is fine
 at the unit counts we run (< 30 KB per tick) but goes to zero
 under the SoA pool.
+
+------------------------------------------------------------------------------
+ Phase 3c — Sphere-vs-sphere resolver + broadphase. DONE.
+------------------------------------------------------------------------------
+Landed: `resolve_sphere_sphere_contacts` in rts-sim-wasm/src/lib.rs.
+Runs PhysicsEngine3D.ts's `rebuildContactCells()` + the iterated
+`resolveSphereSphereContacts` loop (SPHERE_ITERATIONS sub-passes)
+inside a single WASM call. This was the biggest pure-physics hot
+loop in the engine — at typical RTS unit counts the broadphase
+walk (~21k cell lookups per tick) dominated PhysicsEngine3D CPU
+time. Moving it across the boundary entirely (one call per step
+instead of one per pair) is a meaningful per-tick win.
+
+Buffer layout: 13 f64s per body (motion, radius, inv_mass,
+restitution, entity_id, sleeping_flag in; wake_flag,
+upward_contact_flag out). Stride = RESOLVE_SPHERE_SPHERE_STRIDE.
+
+Behavior preserved:
+  - Sleeping bodies still iterate the broadphase (PhysicsEngine3D.ts
+    line ~806 documents why: a freshly-spawned body landing in a
+    sleeping body's slot must still get pushed apart).
+  - Pair dedup via `j > i` (buffer index).
+  - Cell key encoding matches the TS 48-bit packed scheme so log
+    dumps can be cross-referenced.
+  - Neighbor-range scaling on max radius.
+  - Position re-read per pair within an iteration so prior pushes
+    propagate.
+  - Velocity reflection with `min(a.restitution, b.restitution)`.
+  - wake_flag → JS-side wakeBody (idempotent on already-awake).
+  - upward_contact_flag → b.upwardSurfaceContact = true.
+
+Tiny divergence (acceptable): the degenerate-case random tie-break
+(both sphere centers exactly coincident, distSq < 1e-12) uses a
+slightly different seed derivation in Rust vs TS. JS's `>>> 0` and
+implicit int32 coercion in `^` aren't trivially replicable in Rust
+without a JS-ToInt32 helper; Rust uses `u64.wrapping_mul` instead.
+Same statistical distribution, different exact seed when entity ids
+exceed int32 range. The case fires on co-located spheres which won't
+realistically happen during the bootstrap-window swap from TS→WASM,
+so this is safe in practice. Document if/when full bit-determinism
+across the WASM/TS swap is needed (Cross-cutting concerns §3).
+
+TS fallback path preserved: `resolveSphereSphereContactsTsIteration`
+(renamed from the original) runs once per sub-pass when the WASM
+module isn't loaded yet. The dispatcher `resolveSphereSphereContacts
+(iterations)` picks the path. step() now calls the dispatcher with
+the budget computed by `getSphereIterationBudget()`.
 
   - SoA Body3D representation in linear memory: separate Vec<f32>
     for x, y, z, vx, vy, vz, ax, ay, az, mass, invMass, radius,

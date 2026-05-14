@@ -17,6 +17,7 @@
 //   9  pathfinder              — A* over the walk grid
 //  10  snapshot serializer     — per-entity quantize + delta path
 
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
@@ -380,5 +381,244 @@ pub fn step_unit_motions_batch(
         }
         slot[17] = sleeping_flag;
         slot[18] = sleep_ticks;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 3c — Sphere-vs-sphere contact resolver + broadphase
+//
+//  Ports PhysicsEngine3D.ts `rebuildContactCells()` AND the
+//  iterated `resolveSphereSphereContacts()` loop into one batched
+//  WASM call. JS-side per-tick work shrinks to: pack body state,
+//  call this once, unpack body state + wake/upward-contact flags.
+//
+//  Cell broadphase matches the TS implementation exactly:
+//    - Bucket each body by its CENTER (one cell each).
+//    - cx/cy: floor(v / cell_size).
+//    - cz:    floor((v + cell_size/2) / cell_size)   ← half-cell bias
+//             so z=0 falls in the MIDDLE of the bottom cell instead
+//             of straddling an edge (ground units cluster cleanly).
+//    - Cell key encoding: same 48-bit pack as packContactCellKey
+//      in PhysicsEngine3D.ts — useful when cross-reading WASM and
+//      TS log dumps side-by-side.
+//    - Neighbor range scales with max radius across all bodies so
+//      the largest active push pair stays in-window even if its
+//      centers are more than one cell apart.
+//
+//  Iteration: caller passes the sub-iteration budget (TS computes
+//  it from awake-body count via getSphereIterationBudget). The
+//  whole 1..4-pass loop happens inside this one WASM call.
+//
+//  Sleeping bodies: TS iterates them in the broadphase even when
+//  sleeping (see the long comment around line 806 of
+//  PhysicsEngine3D.ts) so that a sleeping body which spawns into
+//  another body's slot still gets pushed apart. We match that here:
+//  every body gets a broadphase entry, no sleep filter. The
+//  wake_flag in the output buffer is set when a pair resolves; JS
+//  then runs `wakeBody` on the marked entries (no-op if already
+//  awake — same as the TS path).
+//
+//  Buffer layout per body (RESOLVE_SPHERE_SPHERE_STRIDE = 13 f64s):
+//    0..6  x, y, z, vx, vy, vz             in/out
+//    6     radius                           in
+//    7     inv_mass                         in
+//    8     restitution                      in
+//    9     entity_id_or_zero                in   (0 = use buffer index)
+//    10    sleeping_flag                    in   (informational; resolver doesn't gate)
+//    11    wake_flag                        out  (1.0 if a pair resolved on this body)
+//    12    upward_contact_flag              out  (1.0 if got an upward-normal contact)
+// ─────────────────────────────────────────────────────────────────
+
+pub const RESOLVE_SPHERE_SPHERE_STRIDE: usize = 13;
+
+const CONTACT_CELL_BIAS: i64 = 32768;
+const CONTACT_CELL_MASK: i64 = 0xFFFF;
+
+#[inline]
+fn pack_contact_cell_key(cx: i32, cy: i32, cz: i32) -> u64 {
+    let cxb = ((cx as i64 + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK) as u64;
+    let cyb = ((cy as i64 + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK) as u64;
+    let czb = ((cz as i64 + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK) as u64;
+    (cxb << 32) | (cyb << 16) | czb
+}
+
+#[wasm_bindgen]
+pub fn resolve_sphere_sphere_contacts(
+    buf: &mut [f64],
+    count: usize,
+    iterations: usize,
+    cell_size: f64,
+) {
+    let stride = RESOLVE_SPHERE_SPHERE_STRIDE;
+    debug_assert!(
+        buf.len() >= count * stride,
+        "resolve_sphere_sphere_contacts buffer too small"
+    );
+    if count == 0 || iterations == 0 || cell_size <= 0.0 {
+        return;
+    }
+
+    let half_cs = cell_size * 0.5;
+
+    // Bucket bodies by center cell. Done once, reused across all
+    // sub-iterations — matches the TS path where rebuildContactCells
+    // runs once before the iteration loop and small positional drift
+    // from sub-passes is well below CONTACT_CELL_SIZE.
+    let mut cells: HashMap<u64, Vec<u32>> = HashMap::new();
+    let mut max_radius = 0.0_f64;
+    for i in 0..count {
+        let base = i * stride;
+        let x = buf[base];
+        let y = buf[base + 1];
+        let z = buf[base + 2];
+        let r = buf[base + 6];
+        if r > max_radius {
+            max_radius = r;
+        }
+        let cx = (x / cell_size).floor() as i32;
+        let cy = (y / cell_size).floor() as i32;
+        let cz = ((z + half_cs) / cell_size).floor() as i32;
+        let key = pack_contact_cell_key(cx, cy, cz);
+        cells.entry(key).or_default().push(i as u32);
+    }
+    let range = (((max_radius * 2.0) / cell_size).ceil() as i32).max(1);
+
+    for _iter in 0..iterations {
+        for i in 0..count {
+            let base_a = i * stride;
+            let ar = buf[base_a + 6];
+            let a_inv_mass = buf[base_a + 7];
+            let a_restitution = buf[base_a + 8];
+
+            // Re-cell the body each iteration on its CURRENT position.
+            // Drift across sub-passes is small but visible; the TS path
+            // also re-reads `a.x`, `a.y`, `a.z` each iter through the
+            // outer cell-coord computation.
+            let acx = (buf[base_a] / cell_size).floor() as i32;
+            let acy = (buf[base_a + 1] / cell_size).floor() as i32;
+            let acz = ((buf[base_a + 2] + half_cs) / cell_size).floor() as i32;
+
+            for dz in -range..=range {
+                for dy in -range..=range {
+                    for dx in -range..=range {
+                        let key = pack_contact_cell_key(acx + dx, acy + dy, acz + dz);
+                        let bucket = match cells.get(&key) {
+                            Some(b) => b,
+                            None => continue,
+                        };
+                        for &j_u32 in bucket.iter() {
+                            let j = j_u32 as usize;
+                            if j <= i {
+                                continue;
+                            }
+                            let base_b = j * stride;
+                            let br = buf[base_b + 6];
+
+                            // Re-read positions fresh per pair — earlier
+                            // pairs may have pushed a or b this iter.
+                            let ax = buf[base_a];
+                            let ay = buf[base_a + 1];
+                            let az = buf[base_a + 2];
+                            let bx = buf[base_b];
+                            let by = buf[base_b + 1];
+                            let bz = buf[base_b + 2];
+
+                            let ddx = bx - ax;
+                            let ddy = by - ay;
+                            let ddz = bz - az;
+                            let r_sum = ar + br;
+                            let dist_sq = ddx * ddx + ddy * ddy + ddz * ddz;
+                            if dist_sq >= r_sum * r_sum {
+                                continue;
+                            }
+
+                            // Both bodies got involved in a pair → mark
+                            // wake flags. wakeBody on the JS side is
+                            // idempotent so we don't gate on prior state.
+                            buf[base_a + 11] = 1.0;
+                            buf[base_b + 11] = 1.0;
+
+                            let dist: f64;
+                            let nx: f64;
+                            let ny: f64;
+                            let nz: f64;
+                            if dist_sq < 1e-12 {
+                                // Degenerate: pick a deterministic random
+                                // horizontal direction from the entity-id
+                                // hash. Matches the TS path's seed scheme
+                                // bit-for-bit when entity ids are small
+                                // enough to fit JS int32 mul; for ids that
+                                // wrap, the seed differs but the case is
+                                // vanishingly rare (two centers exactly
+                                // co-located).
+                                let a_id_raw = buf[base_a + 9] as u64;
+                                let b_id_raw = buf[base_b + 9] as u64;
+                                let a_id = if a_id_raw == 0 { i as u64 } else { a_id_raw };
+                                let b_id = if b_id_raw == 0 { j as u64 } else { b_id_raw };
+                                let seed = (a_id
+                                    .wrapping_mul(73856093)
+                                    ^ b_id.wrapping_mul(19349663))
+                                    as u32;
+                                let angle =
+                                    (seed as f64 / 4294967296.0) * core::f64::consts::PI * 2.0;
+                                dist = 1e-6;
+                                nx = angle.cos();
+                                ny = angle.sin();
+                                nz = 0.0;
+                            } else {
+                                dist = dist_sq.sqrt();
+                                let inv_dist = 1.0 / dist;
+                                nx = ddx * inv_dist;
+                                ny = ddy * inv_dist;
+                                nz = ddz * inv_dist;
+                            }
+                            let penetration = r_sum - dist;
+                            let b_inv_mass = buf[base_b + 7];
+                            let inv_mass_sum_inv = 1.0 / (a_inv_mass + b_inv_mass);
+                            let w_a = a_inv_mass * inv_mass_sum_inv;
+                            let w_b = b_inv_mass * inv_mass_sum_inv;
+                            buf[base_a] = ax - nx * penetration * w_a;
+                            buf[base_a + 1] = ay - ny * penetration * w_a;
+                            buf[base_a + 2] = az - nz * penetration * w_a;
+                            buf[base_b] = bx + nx * penetration * w_b;
+                            buf[base_b + 1] = by + ny * penetration * w_b;
+                            buf[base_b + 2] = bz + nz * penetration * w_b;
+
+                            if nz > 0.35 {
+                                buf[base_b + 12] = 1.0;
+                            } else if nz < -0.35 {
+                                buf[base_a + 12] = 1.0;
+                            }
+
+                            let a_vx = buf[base_a + 3];
+                            let a_vy = buf[base_a + 4];
+                            let a_vz = buf[base_a + 5];
+                            let b_vx = buf[base_b + 3];
+                            let b_vy = buf[base_b + 4];
+                            let b_vz = buf[base_b + 5];
+                            let rvx = b_vx - a_vx;
+                            let rvy = b_vy - a_vy;
+                            let rvz = b_vz - a_vz;
+                            let v_dot_n = rvx * nx + rvy * ny + rvz * nz;
+                            if v_dot_n >= 0.0 {
+                                continue;
+                            }
+                            let b_restitution = buf[base_b + 8];
+                            let e = a_restitution.min(b_restitution);
+                            let j_mag = -(1.0 + e) * v_dot_n * inv_mass_sum_inv;
+                            let ix = j_mag * nx;
+                            let iy = j_mag * ny;
+                            let iz = j_mag * nz;
+                            buf[base_a + 3] = a_vx - ix * a_inv_mass;
+                            buf[base_a + 4] = a_vy - iy * a_inv_mass;
+                            buf[base_a + 5] = a_vz - iz * a_inv_mass;
+                            buf[base_b + 3] = b_vx + ix * b_inv_mass;
+                            buf[base_b + 4] = b_vy + iy * b_inv_mass;
+                            buf[base_b + 5] = b_vz + iz * b_inv_mass;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
