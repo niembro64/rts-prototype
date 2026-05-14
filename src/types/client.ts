@@ -8,6 +8,17 @@ import type { ConcreteGraphicsQuality, GraphicsQuality, RenderMode } from './gra
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
+/** Client-side prediction physics order. Selected on the PLAYER
+ *  CLIENT bar; the prediction integrators read it before stepping
+ *  position / velocity / acceleration each frame.
+ *    pos — snap straight to the snapshot position; do not integrate
+ *          velocity or acceleration. Most jittery, lowest cpu.
+ *    vel — integrate position from velocity each frame; ignore the
+ *          server-reported acceleration when extrapolating.
+ *    acc — full F=ma: integrate position from velocity AND velocity
+ *          from acceleration each frame. Smoothest motion under high
+ *          server-frame intervals; matches the simulation's authority. */
+export type PredictionMode = 'pos' | 'vel' | 'acc';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type CameraFovDegrees = 10 | 20 | 30 | 60 | 120;
 export type GridOverlay = 'off' | 'zero' | 'low' | 'medium' | 'high';
@@ -65,6 +76,10 @@ export type ClientBarConfig = {
    *  — they cap a per-entity object-tier resolved from camera distance. */
   readonly baseLodMode: BooleanSetting;
   readonly driftMode: DefaultSetting<DriftMode>;
+  /** Prediction physics order — POS / VEL / ACC. See PredictionMode
+   *  for semantics. Default 'acc' matches existing behaviour (full
+   *  F=ma extrapolation). */
+  readonly predictionMode: LabeledOptionsConfig<PredictionMode>;
   /** Per-frame chassis-tilt EMA on the client. Layered on top of the
    *  HOST SERVER tilt EMA. Same SNAP/FAST/MID/SLOW shape as
    *  driftMode (DriftMode) so the half-life table is reused. */

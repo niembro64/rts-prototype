@@ -21,6 +21,7 @@ import type {
   CameraFovDegrees,
   CameraSmoothMode,
   DriftMode,
+  PredictionMode,
   GridOverlay,
   SoundCategory,
   RangeType,
@@ -78,6 +79,18 @@ export const CLIENT_CONFIG = {
   buildGridDebug: { default: false },
   baseLodMode: { default: false },
   driftMode: { default: 'mid' as const },
+  /** Prediction physics order: POS / VEL / ACC. Default 'acc' (full
+   *  F=ma extrapolation — matches the original behaviour); 'vel'
+   *  ignores reported acceleration when extrapolating; 'pos' skips
+   *  integration entirely and snaps straight to snapshot position. */
+  predictionMode: {
+    default: 'acc' as const,
+    options: [
+      { value: 'pos' as const, label: 'POS' },
+      { value: 'vel' as const, label: 'VEL' },
+      { value: 'acc' as const, label: 'ACC' },
+    ],
+  },
   /** Client-side chassis-tilt EMA. Layered ON TOP of the host's
    *  HOST SERVER TILT EMA — sim-side smoothing reduces triangle-jump
    *  noise before serialization, then this knob smooths further on
@@ -428,6 +441,7 @@ const TRIANGLE_DEBUG_STORAGE_KEY = 'player-client-triangle-debug';
 const BUILD_GRID_DEBUG_STORAGE_KEY = 'player-client-build-grid-debug';
 const BASE_LOD_MODE_STORAGE_KEY = 'player-client-base-lod-mode';
 const DRIFT_MODE_STORAGE_KEY = 'player-client-drift-mode';
+const PREDICTION_MODE_STORAGE_KEY = 'player-client-prediction-mode';
 const TILT_EMA_MODE_STORAGE_KEY = 'player-client-tilt-ema-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'player-client-sound-toggles';
 const RANGE_TOGGLES_STORAGE_KEY = 'player-client-range-toggles';
@@ -536,6 +550,7 @@ let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 // above for the full picture.
 let currentBaseLodMode: boolean = _cd.baseLodMode.default;
 let currentDriftMode: DriftMode = _cd.driftMode.default;
+let currentPredictionMode: PredictionMode = _cd.predictionMode.default;
 let currentClientTiltEmaMode: DriftMode = _cd.tiltEma.default;
 const currentSoundToggles: Record<SoundCategory, boolean> = {
   ..._cd.sounds.default,
@@ -719,6 +734,14 @@ function loadFromStorage(): void {
       storedDriftMode === 'slow')
   ) {
     currentDriftMode = storedDriftMode;
+  }
+  const storedPredictionMode = readPersisted(PREDICTION_MODE_STORAGE_KEY);
+  if (
+    storedPredictionMode === 'pos' ||
+    storedPredictionMode === 'vel' ||
+    storedPredictionMode === 'acc'
+  ) {
+    currentPredictionMode = storedPredictionMode;
   }
   const storedClientTilt = readPersisted(TILT_EMA_MODE_STORAGE_KEY);
   if (
@@ -1188,6 +1211,15 @@ export function getDriftMode(): DriftMode {
 export function setDriftMode(mode: DriftMode): void {
   currentDriftMode = mode;
   persist(DRIFT_MODE_STORAGE_KEY, mode);
+}
+
+export function getPredictionMode(): PredictionMode {
+  return currentPredictionMode;
+}
+
+export function setPredictionMode(mode: PredictionMode): void {
+  currentPredictionMode = mode;
+  persist(PREDICTION_MODE_STORAGE_KEY, mode);
 }
 
 /** Active client-side chassis-tilt EMA mode. Returns the user's bar

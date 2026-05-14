@@ -249,6 +249,7 @@ const {
   buildGridDebug,
   baseLodMode,
   driftMode,
+  predictionMode,
   clientTiltEmaMode,
   edgeScrollEnabled,
   dragPanEnabled,
@@ -293,6 +294,7 @@ const {
   toggleBuildGridDebug,
   toggleBaseLodMode,
   changeDriftMode,
+  changePredictionMode,
   changeClientTiltEmaMode,
   changeGridOverlay,
   changeWaypointDetail,
@@ -867,6 +869,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   locomotionMarks: locomotionMarks.value,
   beamSnapToTurret: beamSnapToTurret.value,
   driftMode: driftMode.value,
+  predictionMode: predictionMode.value,
   clientTiltEmaMode: clientTiltEmaMode.value,
   allPanActive: allPanActive.value,
   dragPanEnabled: dragPanEnabled.value,
@@ -906,6 +909,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleLocomotionMarks,
   toggleBeamSnapToTurret,
   changeDriftMode,
+  changePredictionMode,
   changeClientTiltEmaMode,
   toggleAllPan,
   toggleDragPan,
@@ -966,6 +970,7 @@ watchEffect(() => {
   m.locomotionMarks = locomotionMarks.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
   m.driftMode = driftMode.value;
+  m.predictionMode = predictionMode.value;
   m.clientTiltEmaMode = clientTiltEmaMode.value;
   m.allPanActive = allPanActive.value;
   m.dragPanEnabled = dragPanEnabled.value;

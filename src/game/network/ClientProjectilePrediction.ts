@@ -1,6 +1,7 @@
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { isLineShotType } from '@/types/sim';
 import { GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
+import { getPredictionMode } from '@/clientBarConfig';
 import { getSurfaceHeight } from '../sim/Terrain';
 import { getEntityAcceleration3, getEntityVelocity3 } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
@@ -195,6 +196,16 @@ export function applyClientProjectilePrediction(options: {
   const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
   proj.timeAlive += entityDeltaMs;
 
+  // PREDICT mode gates how the client extrapolates between snapshots.
+  // 'pos' freezes both the snapshot target and the locally rendered
+  // projectile in place between snaps (the lerp drift below still
+  // pulls render → target each frame). 'vel' integrates position from
+  // velocity each frame but does NOT apply gravity to the velocity.
+  // 'acc' is the full ballistic chain (default).
+  const predictionMode = getPredictionMode();
+  const integratePosition = predictionMode !== 'pos';
+  const integrateAcceleration = predictionMode === 'acc';
+
   // Drift projectile position + velocity toward server target
   // (smooth correction). Server velocity updates are sparse, so gravity
   // is also applied to the target path between corrections.
@@ -203,18 +214,20 @@ export function applyClientProjectilePrediction(options: {
   if (target) {
     const targetIgnoresGravity =
       proj.config.shotProfile.runtime.ignoresGravity;
-    if (!targetIgnoresGravity && !terrainFollow) {
+    if (integrateAcceleration && !targetIgnoresGravity && !terrainFollow) {
       target.velocityZ -= GRAVITY * targetDt;
     }
-    const targetPrevZ = target.z;
-    target.x += target.velocityX * targetDt;
-    target.y += target.velocityY * targetDt;
-    if (terrainFollow) {
-      const nextZ = getSurfaceHeight(target.x, target.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-      target.velocityZ = targetDt > 0 ? (nextZ - targetPrevZ) / targetDt : 0;
-      target.z = nextZ;
-    } else {
-      target.z += target.velocityZ * targetDt;
+    if (integratePosition) {
+      const targetPrevZ = target.z;
+      target.x += target.velocityX * targetDt;
+      target.y += target.velocityY * targetDt;
+      if (terrainFollow) {
+        const nextZ = getSurfaceHeight(target.x, target.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
+        target.velocityZ = targetDt > 0 ? (nextZ - targetPrevZ) / targetDt : 0;
+        target.z = nextZ;
+      } else {
+        target.z += target.velocityZ * targetDt;
+      }
     }
     entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
     entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
@@ -231,17 +244,19 @@ export function applyClientProjectilePrediction(options: {
   const ignoresGravity =
     proj.config.shotProfile.runtime.ignoresGravity;
   const prevTerrainFollowZ = entity.transform.z;
-  if (!ignoresGravity && !terrainFollow) {
+  if (integrateAcceleration && !ignoresGravity && !terrainFollow) {
     proj.velocityZ -= GRAVITY * dt;
   }
-  entity.transform.x += proj.velocityX * dt;
-  entity.transform.y += proj.velocityY * dt;
-  if (terrainFollow) {
-    const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-    proj.velocityZ = dt > 0 ? (nextZ - prevTerrainFollowZ) / dt : 0;
-    entity.transform.z = nextZ;
-  } else {
-    entity.transform.z += proj.velocityZ * dt;
+  if (integratePosition) {
+    entity.transform.x += proj.velocityX * dt;
+    entity.transform.y += proj.velocityY * dt;
+    if (terrainFollow) {
+      const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
+      proj.velocityZ = dt > 0 ? (nextZ - prevTerrainFollowZ) / dt : 0;
+      entity.transform.z = nextZ;
+    } else {
+      entity.transform.z += proj.velocityZ * dt;
+    }
   }
 
   applyClientProjectileHoming({

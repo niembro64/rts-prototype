@@ -17,6 +17,7 @@ import {
   getClientTiltEmaMode,
   getDragPanEnabled,
   getDriftMode,
+  getPredictionMode,
   getEdgeScrollEnabled,
   getGraphicsQuality,
   getBurnMarks,
@@ -44,6 +45,7 @@ import {
   setClientTiltEmaMode,
   setDragPanEnabled,
   setDriftMode,
+  setPredictionMode,
   setEdgeScrollEnabled,
   setGraphicsQuality,
   setBurnMarks,
@@ -67,6 +69,7 @@ import type {
   AudioScope,
   CameraFovDegrees,
   DriftMode,
+  PredictionMode,
   GridOverlay,
   ProjRangeType,
   RangeType,
@@ -103,6 +106,7 @@ export function useGameCanvasClientSettings({
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const baseLodMode = ref<boolean>(getBaseLodMode());
   const driftMode = ref<DriftMode>(getDriftMode());
+  const predictionMode = ref<PredictionMode>(getPredictionMode());
   const clientTiltEmaMode = ref<DriftMode>(getClientTiltEmaMode());
   const edgeScrollEnabled = ref(getEdgeScrollEnabled());
   const dragPanEnabled = ref(getDragPanEnabled());
@@ -295,6 +299,11 @@ export function useGameCanvasClientSettings({
     driftMode.value = mode;
   }
 
+  function changePredictionMode(mode: PredictionMode): void {
+    setPredictionMode(mode);
+    predictionMode.value = mode;
+  }
+
   function changeClientTiltEmaMode(mode: DriftMode): void {
     setClientTiltEmaMode(mode);
     clientTiltEmaMode.value = mode;
@@ -385,6 +394,8 @@ export function useGameCanvasClientSettings({
     baseLodMode.value = cd.baseLodMode.default;
     setDriftMode(cd.driftMode.default);
     driftMode.value = cd.driftMode.default;
+    setPredictionMode(cd.predictionMode.default);
+    predictionMode.value = cd.predictionMode.default;
     setClientTiltEmaMode(cd.tiltEma.default);
     clientTiltEmaMode.value = cd.tiltEma.default;
     if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();
@@ -452,6 +463,7 @@ export function useGameCanvasClientSettings({
     buildGridDebug,
     baseLodMode,
     driftMode,
+    predictionMode,
     clientTiltEmaMode,
     edgeScrollEnabled,
     dragPanEnabled,
@@ -496,6 +508,7 @@ export function useGameCanvasClientSettings({
     toggleBuildGridDebug,
     toggleBaseLodMode,
     changeDriftMode,
+    changePredictionMode,
     changeClientTiltEmaMode,
     changeGridOverlay,
     changeWaypointDetail,

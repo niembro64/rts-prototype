@@ -1,4 +1,4 @@
-import { getClientTiltEmaMode } from '@/clientBarConfig';
+import { getClientTiltEmaMode, getPredictionMode } from '@/clientBarConfig';
 import { GRAVITY, LAND_CELL_SIZE } from '../../config';
 import { TILT_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import type { Entity } from '../sim/types';
@@ -96,12 +96,31 @@ function advanceSharedUnitMotionPrediction(
   movementAccelY: number,
   movementAccelZ: number,
 ): boolean {
+  // PLAYER CLIENT bar: PREDICT mode gates how aggressively the
+  // client extrapolates physics between snapshots.
+  //   'pos' — no integration. The drift lerp toward target.x downstream
+  //            still pulls the entity to snapshot position; this just
+  //            stops the client from running the F=ma chain itself.
+  //   'vel' — integrate position from velocity but treat acceleration
+  //            (movement input AND gravity) as zero, so velocity stays
+  //            at whatever the snapshot last said.
+  //   'acc' — full F=ma extrapolation (default).
+  const mode = getPredictionMode();
   const groundZ = getPredictionGroundZ(motion.x, motion.y);
   const penetration = groundZ - (motion.z - groundOffset);
   const contact = isUnitGroundPenetrationInContact(penetration);
-  const poweredAx = contact ? movementAccelX : 0;
-  const poweredAy = contact ? movementAccelY : 0;
-  const poweredAz = contact ? movementAccelZ : 0;
+
+  if (mode === 'pos') {
+    if (contact) {
+      motion.z = groundZ + groundOffset;
+    }
+    return contact;
+  }
+
+  const useAccel = mode === 'acc';
+  const poweredAx = useAccel && contact ? movementAccelX : 0;
+  const poweredAy = useAccel && contact ? movementAccelY : 0;
+  const poweredAz = useAccel && contact ? movementAccelZ : 0;
   const poweredAccelSq =
     poweredAx * poweredAx + poweredAy * poweredAy + poweredAz * poweredAz;
 
@@ -124,7 +143,7 @@ function advanceSharedUnitMotionPrediction(
     groundOffset,
     poweredAx,
     poweredAy,
-    poweredAz - GRAVITY,
+    poweredAz - (useAccel ? GRAVITY : 0),
     airDamp,
     groundDamp,
     // Jump launches are server-authored events; prediction only
@@ -301,15 +320,24 @@ export function applyClientCombatExpensivePrediction(options: {
   const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
   const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
 
+  // Turret yaw has no server-reported angular acceleration, so VEL
+  // and ACC behave the same here — both integrate rotation from
+  // angularVelocity. POS skips integration entirely (rotation snaps
+  // to the target via the lerp below).
+  const integrateRotation = getPredictionMode() !== 'pos';
   const turrets = entity.combat.turrets;
   for (let i = 0; i < turrets.length; i++) {
     const weapon = turrets[i];
     if (weapon.config.visualOnly) continue;
-    weapon.rotation += weapon.angularVelocity * dt;
+    if (integrateRotation) {
+      weapon.rotation += weapon.angularVelocity * dt;
+    }
 
     const tw = target?.turrets?.[i];
     if (tw) {
-      tw.rotation += tw.angularVelocity * targetDt;
+      if (integrateRotation) {
+        tw.rotation += tw.angularVelocity * targetDt;
+      }
       weapon.rotation = lerpAngle(
         weapon.rotation,
         tw.rotation,

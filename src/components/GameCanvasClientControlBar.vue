@@ -313,6 +313,19 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel title="Client prediction physics order: POS snaps to snapshot position only; VEL also integrates server-reported velocity each frame; ACC integrates the full F=ma chain (position from velocity AND velocity from acceleration).">PREDICT:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.predictionMode.options"
+            :key="opt.value"
+            :active="model.predictionMode === opt.value"
+            :title="`Prediction physics: ${opt.label}.`"
+            @click="model.changePredictionMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>DRIFT:</BarLabel>
         <BarButtonGroup>
           <BarButton

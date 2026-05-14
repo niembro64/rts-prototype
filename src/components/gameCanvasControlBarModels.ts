@@ -6,6 +6,7 @@ import type {
   CameraFovDegrees,
   CameraSmoothMode,
   DriftMode,
+  PredictionMode,
   GridOverlay,
   ProjRangeType,
   RangeType,
@@ -120,6 +121,7 @@ export type GameCanvasClientControlBarModel = {
   readonly locomotionMarks: boolean;
   readonly beamSnapToTurret: boolean;
   readonly driftMode: DriftMode;
+  readonly predictionMode: PredictionMode;
   readonly clientTiltEmaMode: DriftMode;
   readonly allPanActive: boolean;
   readonly dragPanEnabled: boolean;
@@ -159,6 +161,7 @@ export type GameCanvasClientControlBarModel = {
   toggleLocomotionMarks(): void;
   toggleBeamSnapToTurret(): void;
   changeDriftMode(mode: DriftMode): void;
+  changePredictionMode(mode: PredictionMode): void;
   changeClientTiltEmaMode(mode: DriftMode): void;
   toggleAllPan(): void;
   toggleDragPan(): void;

@@ -1,4 +1,4 @@
-import { getDriftMode } from '@/clientBarConfig';
+import { getDriftMode, getPredictionMode } from '@/clientBarConfig';
 import type { Entity, EntityId } from '../sim/types';
 import { lerp } from '../math';
 import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
@@ -73,15 +73,30 @@ function applyBeamPathPrediction(
     changed = true;
   }
 
-  for (let i = 0; i < tgtPts.length; i++) {
-    const tp = tgtPts[i];
+  // PREDICT mode gates whether we step the snapshot beam-path target
+  // forward each frame. 'pos' freezes the target at its last snapshot
+  // value (the lerp below still pulls the rendered point toward it).
+  // 'vel' steps position from velocity but treats acceleration as
+  // zero. 'acc' is the full F=ma extrapolation.
+  const predictionMode = getPredictionMode();
+  if (predictionMode !== 'pos') {
+    const useAccel = predictionMode === 'acc';
     const halfDtSq = 0.5 * dt * dt;
-    tp.x += tp.vx * dt + tp.ax * halfDtSq;
-    tp.y += tp.vy * dt + tp.ay * halfDtSq;
-    tp.z += tp.vz * dt + tp.az * halfDtSq;
-    tp.vx += tp.ax * dt;
-    tp.vy += tp.ay * dt;
-    tp.vz += tp.az * dt;
+    for (let i = 0; i < tgtPts.length; i++) {
+      const tp = tgtPts[i];
+      if (useAccel) {
+        tp.x += tp.vx * dt + tp.ax * halfDtSq;
+        tp.y += tp.vy * dt + tp.ay * halfDtSq;
+        tp.z += tp.vz * dt + tp.az * halfDtSq;
+        tp.vx += tp.ax * dt;
+        tp.vy += tp.ay * dt;
+        tp.vz += tp.az * dt;
+      } else {
+        tp.x += tp.vx * dt;
+        tp.y += tp.vy * dt;
+        tp.z += tp.vz * dt;
+      }
+    }
   }
 
   for (let i = 0; i < tgtPts.length; i++) {
