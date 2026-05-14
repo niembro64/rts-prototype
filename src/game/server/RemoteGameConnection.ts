@@ -31,12 +31,16 @@ export class RemoteGameConnection implements GameConnection {
     networkManager.sendCommand(command);
   }
 
-  setPredictionMode(_mode: PredictionMode): void {
-    // TODO: wire a ClientPredictionModeChanged data-channel message
-    // through NetworkManager so the remote host can apply the
-    // per-recipient bandwidth gate. Until then remote clients always
-    // receive the full 'acc' payload — correct, just not optimized.
-    // See issues.txt PREDICT-aware serializer block.
+  setPredictionMode(mode: PredictionMode): void {
+    // Routed through the regular command channel — flows over the
+    // WebRTC data channel via NetworkCommandTransport just like every
+    // other client→server command. The remote host's receiveCommand
+    // intercepts the setPredictionMode type and applies it to every
+    // snapshot listener belonging to the sender's player. tick=0 is
+    // fine here because this is an out-of-band control command (the
+    // server-control switch in receiveCommand short-circuits before
+    // any tick-synchronization queueing).
+    networkManager.sendCommand({ type: 'setPredictionMode', tick: 0, mode });
   }
 
   markClientReady(): void {

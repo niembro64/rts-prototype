@@ -622,6 +622,22 @@ export class GameServer {
       case 'setCameraAoi':
         this.setCameraAoi(command, fromPlayerId);
         return;
+      case 'setPredictionMode':
+        // PLAYER CLIENT bar PREDICT mode. Per-listener, not a server-
+        // wide setting — apply to every snapshot listener belonging
+        // to the sender. fromPlayerId === undefined comes from the
+        // host/admin path (local-only); the local connection already
+        // routes through setSnapshotListenerPredictionMode directly,
+        // so an undefined attribution here is a no-op fall-through
+        // to keep the command from accidentally re-applying to global
+        // observers (which are uniformly 'acc' by intent).
+        if (fromPlayerId === undefined) return;
+        for (const listener of this.snapshotListeners) {
+          if (listener.playerId === fromPlayerId) {
+            this.setSnapshotListenerPredictionMode(listener.trackingKey, command.mode);
+          }
+        }
+        return;
     }
     const authorizedCommand = this.authorizeGameplayCommand(command, fromPlayerId);
     if (authorizedCommand) this.commandQueue.enqueue(authorizedCommand);

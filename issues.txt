@@ -163,19 +163,27 @@ The client's local PREDICT integrator gate from earlier work remains
 the authoritative one for correctness; this layer is purely a
 bandwidth optimization.
 
-NOT YET WIRED (remaining bounded follow-ups):
-  1. Remote (WebRTC) connection. RemoteGameConnection.setPredictionMode
-     is a TODO no-op; remote clients always receive the full 'acc'
-     payload. Needs a ClientPredictionModeChanged data-channel
-     message routed through NetworkManager → server-side
-     receiveCommand → setSnapshotListenerPredictionMode.
-  2. Decoder defaults / fully optional wire fields. Today velocity is
+REMOTE WIRE — DONE: PREDICT mode now rides the existing command
+channel for WebRTC clients. SetPredictionModeCommand is a new
+out-of-band server-control command (intercepted by GameServer
+.receiveCommand before the gameplay-authorization branch, mirrors
+setSnapshotRate / setTickRate / etc.). The remote host applies the
+mode to every snapshot listener whose playerId matches the sender,
+forcing a keyframe on each so the next snapshot rebuilds with the
+new gate. RemoteGameConnection.setPredictionMode now sends the
+command; the existing GameCanvas.vue wiring (applyPredictionMode →
+activeConnection.setPredictionMode) covers both local and remote
+connections uniformly.
+
+NOT YET WIRED (one item left):
+  1. Decoder defaults / fully optional wire fields. Today velocity is
      a non-optional Vec3 in the wire type, so we zero rather than
      omit. Making velocity optional (and every reader path tolerant
      of `undefined → 0`) lets MessagePack drop the whole field for
      POS clients — bigger bandwidth saving but a much wider blast
-     radius across consumers. Lower marginal payoff than (1); save
-     for after profiling.
+     radius across consumers. Lower marginal payoff than the gates
+     already in place; save for after profiling shows the zero-write
+     payload isn't already meeting bandwidth targets.
 
 ==============================================================================
  PREDICT block — STATUS SUMMARY
@@ -188,9 +196,12 @@ RESOLVED     — gap B (turret angular acceleration on the wire),
                gap C (turret pitch velocity + acceleration on the wire).
 NOT GATED    — suspension EMA (downstream visual), pure client effects
                (Debris3D, ProjectileRangeEnvelope3D).
-PARTIAL      — PREDICT-aware serializer: local connection wired,
-               unit-body velocity + movementAccel gated. Remote wire
-               message + additional field gates pending (see above).
+PARTIAL      — PREDICT-aware serializer: local + remote connections
+               wired; unit body, turret angular, projectile spawn /
+               velocity-update / beam-path fields all gated. Only the
+               "make velocity optional to fully omit" lift remains —
+               defer until profiling shows the current zero-write
+               wire isn't already hitting bandwidth targets.
 ARCH ALT.    — quaternion + ω-vector + α-vector representation note
                (see ANGLE-POS / ANGLE-VEL / ANGLE-ACC section above);
                supersedes the per-axis scalar scheme when adopted.
