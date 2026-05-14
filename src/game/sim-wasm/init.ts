@@ -13,7 +13,18 @@
 // reuses whatever pkg/ already contains, so run `build:wasm`
 // once after a fresh clone and re-run after any Rust edit.
 
-import __wbg_init, { version, step_unit_motion } from './pkg/rts_sim_wasm';
+import __wbg_init, {
+  version,
+  step_unit_motion,
+  step_unit_motions_batch,
+} from './pkg/rts_sim_wasm';
+
+/** Layout stride for `stepUnitMotionsBatch`. Each body occupies
+ *  STEP_UNIT_MOTIONS_BATCH_STRIDE consecutive f64 slots in the
+ *  buffer; see the docstring on `SimWasm.stepUnitMotionsBatch` for
+ *  the field map. Mirrors `STEP_UNIT_MOTIONS_BATCH_STRIDE` in
+ *  rts-sim-wasm/src/lib.rs. */
+export const STEP_UNIT_MOTIONS_BATCH_STRIDE = 19;
 
 /** Public handle to the loaded WASM module. Re-exported kernels
  *  go here as later phases land — e.g. `physicsTick`,
@@ -52,6 +63,32 @@ export interface SimWasm {
     normalY: number,
     normalZ: number,
   ) => void;
+  /** Batched PhysicsEngine3D.integrate() — Phase 3a. Runs the
+   *  whole per-tick integrate loop over every awake dynamic
+   *  sphere body in one WASM call (no per-body marshalling).
+   *
+   *  `buf` is a Float64Array packed at stride
+   *  STEP_UNIT_MOTIONS_BATCH_STRIDE per body. Field map:
+   *    0..6  motion (x, y, z, vx, vy, vz)        in/out
+   *    6..9  authored ax, ay, az                  in  (gravity added inside)
+   *    9..12 launch_ax, launch_ay, launch_az      in  (rebound cap only)
+   *    12    ground_offset                        in
+   *    13..17 ground_z, normal_x, normal_y, normal_z  in (pre-sampled JS-side)
+   *    17    sleeping_flag (out: 1.0 if just slept this step)
+   *    18    sleep_ticks                          in/out
+   *
+   *  Caller responsibility: pack only awake dynamic spheres in
+   *  index order; on return, scan slot+17 for 1.0 to detect
+   *  bodies that just transitioned to sleep, then clear their
+   *  force accumulators in the JS Body3D mirror and decrement
+   *  awakeDynamicBodyCount. */
+  readonly stepUnitMotionsBatch: (
+    buf: Float64Array,
+    count: number,
+    dtSec: number,
+    airDamp: number,
+    groundDamp: number,
+  ) => void;
 }
 
 let cached: Promise<SimWasm> | undefined;
@@ -67,6 +104,7 @@ export function initSimWasm(): Promise<SimWasm> {
       const handle: SimWasm = {
         version: version(),
         stepUnitMotion: step_unit_motion,
+        stepUnitMotionsBatch: step_unit_motions_batch,
       };
       resolvedHandle = handle;
       return handle;

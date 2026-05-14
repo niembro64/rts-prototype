@@ -58,9 +58,26 @@ import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
 import {
   getUnitGroundFrictionDamp,
   isUnitGroundPenetrationInContact,
+  UNIT_GROUND_CONTACT_EPSILON,
 } from '../sim/unitGroundPhysics';
 import { advanceUnitMotionPhysicsMutable } from '../sim/unitMotionIntegration';
+import {
+  getSimWasm,
+  STEP_UNIT_MOTIONS_BATCH_STRIDE,
+} from '../sim-wasm/init';
 import type { EntityId } from '../sim/types';
+
+// Reusable Float64Array scratch for the batched WASM integrate
+// kernel. Grown on demand; never shrunk so we don't churn
+// allocations across ticks. Single module-scope buffer is safe
+// because integrate() is never called re-entrantly within one
+// JS turn (server ticks at 60 Hz on a setInterval — each tick
+// is a separate microtask).
+let _integrateBatchBuf: Float64Array = new Float64Array(0);
+// Parallel array of the Body3D references at each slot in
+// _integrateBatchBuf — used to read results back into the same
+// body objects after the WASM call. Sized to match the buf.
+let _integrateBatchBodies: Body3D[] = [];
 
 // Pack a (cx, cy, cz) integer cell coordinate into a single numeric
 // key. Each axis is 16-bit biased; the packed value is a 48-bit
@@ -573,20 +590,149 @@ export class PhysicsEngine3D {
    *  There is no separate "airborne" branch and no ground snap in the
    *  normal path. "On ground" is just the shared ground-penetration
    *  contact predicate used by locomotion, jump actuation, suspension,
-   *  and client prediction. */
+   *  and client prediction.
+   *
+   *  Phase 3a (Rust/WASM port): once `sim-wasm` has loaded, the whole
+   *  per-tick body loop runs in ONE WASM call via
+   *  `stepUnitMotionsBatch`. JS pre-samples ground state per body,
+   *  packs into a Float64Array, calls into Rust once, reads results
+   *  back. Eliminates the N per-body marshal cost that Phase 2 still
+   *  paid (one call per body per tick). Bootstrap window before the
+   *  WASM module resolves falls back to the per-body path below,
+   *  which itself uses Phase 2's per-body WASM call when available
+   *  and TS otherwise — every branch is numerically identical. */
   private integrate(dtSec: number): void {
     const airDamp = getUnitAirFrictionDamp(dtSec);
     const groundDamp = getUnitGroundFrictionDamp(dtSec);
+    const sim = getSimWasm();
+    if (sim !== undefined) {
+      this.integrateBatchedWasm(dtSec, airDamp, groundDamp, sim);
+      return;
+    }
+    this.integratePerBodyFallback(dtSec, airDamp, groundDamp);
+  }
+
+  /** Phase 3a batched WASM path. Sphere bodies get packed into the
+   *  scratch buffer and integrated in one Rust call; non-sphere
+   *  dynamic bodies (none exist today but the code path remains
+   *  defensive) run free-Euler inline. Sleep transitions are
+   *  signalled via the buffer's sleeping_flag slot and applied to
+   *  the matching Body3D JS object after the call. */
+  private integrateBatchedWasm(
+    dtSec: number,
+    airDamp: number,
+    groundDamp: number,
+    sim: NonNullable<ReturnType<typeof getSimWasm>>,
+  ): void {
+    const stride = STEP_UNIT_MOTIONS_BATCH_STRIDE;
+    const maxCount = this.dynamicBodies.length;
+    const requiredLen = maxCount * stride;
+    if (_integrateBatchBuf.length < requiredLen) {
+      _integrateBatchBuf = new Float64Array(requiredLen);
+    }
+    if (_integrateBatchBodies.length < maxCount) {
+      _integrateBatchBodies = new Array(maxCount);
+    }
+    const buf = _integrateBatchBuf;
+    let count = 0;
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const b = this.dynamicBodies[i];
+      if (b.sleeping) continue;
+      if (b.shape !== 'sphere') {
+        // Free-Euler for non-sphere dynamics — matches the original
+        // PhysicsEngine3D.ts non-sphere branch exactly.
+        const ax = b.ax;
+        const ay = b.ay;
+        const az = b.az - GRAVITY;
+        b.vx += ax * dtSec;
+        b.vy += ay * dtSec;
+        b.vz += az * dtSec;
+        b.vx *= airDamp;
+        b.vy *= airDamp;
+        b.vz *= airDamp;
+        b.x += b.vx * dtSec;
+        b.y += b.vy * dtSec;
+        b.z += b.vz * dtSec;
+        continue;
+      }
+      // Pre-sample ground state JS-side. Normal sample is gated on
+      // penetration so airborne bodies skip the expensive gradient
+      // lookup (same optimization as Phase 2's per-body path).
+      const groundZ = this.getGroundZ(b.x, b.y);
+      const penetration = groundZ - (b.z - b.groundOffset);
+      let nx = 0;
+      let ny = 0;
+      let nz = 1;
+      if (penetration >= -UNIT_GROUND_CONTACT_EPSILON) {
+        const n = this.getGroundNormal(b.x, b.y);
+        nx = n.nx;
+        ny = n.ny;
+        nz = n.nz;
+      }
+      const base = count * stride;
+      buf[base + 0] = b.x;
+      buf[base + 1] = b.y;
+      buf[base + 2] = b.z;
+      buf[base + 3] = b.vx;
+      buf[base + 4] = b.vy;
+      buf[base + 5] = b.vz;
+      buf[base + 6] = b.ax;
+      buf[base + 7] = b.ay;
+      buf[base + 8] = b.az;
+      buf[base + 9] = b.groundLaunchAx;
+      buf[base + 10] = b.groundLaunchAy;
+      buf[base + 11] = b.groundLaunchAz;
+      buf[base + 12] = b.groundOffset;
+      buf[base + 13] = groundZ;
+      buf[base + 14] = nx;
+      buf[base + 15] = ny;
+      buf[base + 16] = nz;
+      buf[base + 17] = 0;
+      buf[base + 18] = b.sleepTicks;
+      _integrateBatchBodies[count] = b;
+      count++;
+    }
+    if (count === 0) return;
+    sim.stepUnitMotionsBatch(buf, count, dtSec, airDamp, groundDamp);
+    for (let i = 0; i < count; i++) {
+      const base = i * stride;
+      const b = _integrateBatchBodies[i];
+      b.x = buf[base + 0];
+      b.y = buf[base + 1];
+      b.z = buf[base + 2];
+      b.vx = buf[base + 3];
+      b.vy = buf[base + 4];
+      b.vz = buf[base + 5];
+      b.sleepTicks = buf[base + 18];
+      if (buf[base + 17] === 1) {
+        // Rust kernel snapped position + zeroed velocity in the
+        // buffer; sleepBody() handles the awake-count decrement +
+        // accumulator clear that the JS sleepBody() always did.
+        this.sleepBody(b);
+      }
+      // Release the Body3D reference so it can be GC'd if the
+      // body is removed before the next tick.
+      _integrateBatchBodies[i] = undefined as unknown as Body3D;
+    }
+  }
+
+  /** Bootstrap-window fallback. Used before initSimWasm() resolves
+   *  (a handful of frames at startup) and during dev when a
+   *  developer swaps WASM out for debugging. Kept bit-identical to
+   *  the WASM batch path so motion never shifts across the swap. */
+  private integratePerBodyFallback(
+    dtSec: number,
+    airDamp: number,
+    groundDamp: number,
+  ): void {
     for (const b of this.dynamicBodies) {
       if (b.sleeping) continue;
       const authoredAccelSq = b.ax * b.ax + b.ay * b.ay + b.az * b.az;
-      let ax = b.ax;
-      let ay = b.ay;
-      let az = b.az - GRAVITY;
+      const ax = b.ax;
+      const ay = b.ay;
+      const az = b.az - GRAVITY;
 
       if (b.shape !== 'sphere') {
-        // Static cuboids never get here (isStatic skips), but for
-        // completeness any non-sphere dynamic body uses free 3D Euler.
         b.vx += ax * dtSec;
         b.vy += ay * dtSec;
         b.vz += az * dtSec;

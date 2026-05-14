@@ -135,6 +135,66 @@ Port the full 926-line PhysicsEngine3D.ts to Rust. The shared
 integrator from Phase 2 is the inner kernel; this phase wraps it
 with a Body3D pool and the contact resolvers.
 
+Split into sub-phases to keep each ship-able and reviewable.
+
+  Phase 3a — Batched integrate() + sleep state machine. DONE.
+  Phase 3b — Sphere-vs-cuboid resolver port.
+  Phase 3c — Sphere-vs-sphere resolver + broadphase port.
+  Phase 3d — Body3D SoA pool in WASM linear memory (state ownership).
+  Phase 3e — Hover lift + quat-spring + bank-into-turn (or roll into Phase 4).
+  Phase 3f — Static cuboid broadphase port.
+
+------------------------------------------------------------------------------
+ Phase 3a — Batched PhysicsEngine3D.integrate(). DONE.
+------------------------------------------------------------------------------
+Landed: `step_unit_motions_batch` in rts-sim-wasm/src/lib.rs. Runs
+the whole per-tick integrate() loop over every awake dynamic sphere
+body in ONE WASM call instead of N per-body boundary calls. Pre-
+sampled ground state (groundZ + optional normal) is packed into a
+JS-side Float64Array at stride STEP_UNIT_MOTIONS_BATCH_STRIDE = 19
+f64s per body; Rust loops in-WASM, mutates motion + sleep counters
+in place, signals 0→1 sleep transitions via the buffer's
+sleeping_flag slot. JS reads results back and calls `sleepBody()`
+on transitioned bodies to handle the awake-count decrement and the
+eager accumulator clear (resolvers may otherwise see stale ax/ay/az
+on a body that re-wakes from collision the same step).
+
+Bit-identical to the existing TS path: same constants
+(SLEEP_SPEED_SQ, SLEEP_ACCEL_SQ, SLEEP_TICKS, SLEEP_GROUND_
+PENETRATION_EPS, GRAVITY all hardcoded in lib.rs matching
+PhysicsEngine3D.ts + config.ts), same operation order, same f64
+math. Internal helper `integrate_unit_motion_inline` is shared by
+both `step_unit_motion` (per-body — used by Phase 2's TS fallback
+shim) and the new `step_unit_motions_batch` (per-tick — used by
+the live integrate loop), so the inner-kernel math has one
+implementation.
+
+Sleep heuristic approximation: the TS path re-samples groundZ at
+the body's POST-integration (x, y) for the sleep contact check.
+The batched Rust path reuses the STARTING groundZ. Sleep-eligible
+bodies have speed ≤ 0.5 wu/s, so per-tick displacement is ≤ 0.008
+wu — terrain elevation can't change meaningfully across that
+distance. Numerically equivalent today; revisit if any future
+change makes high-speed bodies sleep-eligible.
+
+Non-sphere dynamic bodies (none exist in the current scope) still
+run free-Euler inline JS-side, both in the batched-WASM path and
+the bootstrap-fallback path. If a non-sphere dynamic ever appears,
+no behavior change.
+
+TS fallback path preserved: `integratePerBodyFallback` covers the
+boot window before `initSimWasm()` resolves AND mid-session WASM
+swaps for debugging. Kept structurally identical to the batched
+path so motion is bit-identical across the swap.
+
+Open follow-up for this kernel: Phase 3d (Body3D SoA pool in
+linear memory) will eliminate the per-tick pack/unpack marshal
+entirely — `integrate()` will operate on Rust-owned state directly,
+and JS will read body fields through typed-array views over the
+WASM linear memory. The current 19-f64-per-body marshal is fine
+at the unit counts we run (< 30 KB per tick) but goes to zero
+under the SoA pool.
+
   - SoA Body3D representation in linear memory: separate Vec<f32>
     for x, y, z, vx, vy, vz, ax, ay, az, mass, invMass, radius,
     groundOffset, ground_launch_ax/ay/az, plus a Vec<u8> bitfield
