@@ -489,7 +489,9 @@ function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, we
   weapon.state = 'idle';
   weapon.cooldown = 0;
   weapon.angularVelocity = 0;
+  weapon.angularAcceleration = 0;
   weapon.pitchVelocity = 0;
+  weapon.pitchAcceleration = 0;
   if (weapon.burst) {
     weapon.burst.remaining = 0;
     weapon.burst.cooldown = 0;

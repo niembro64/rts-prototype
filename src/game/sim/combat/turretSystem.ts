@@ -77,8 +77,10 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       if (weapon.config.verticalLauncher) {
         weapon.rotation = 0;
         weapon.angularVelocity = 0;
+        weapon.angularAcceleration = 0;
         weapon.pitch = Math.PI / 2;
         weapon.pitchVelocity = 0;
+        weapon.pitchAcceleration = 0;
         weapon.aimTargetYaw = 0;
         weapon.aimTargetPitch = Math.PI / 2;
         weapon.aimErrorYaw = 0;
@@ -219,6 +221,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         );
         weapon.rotation = r.angle;
         weapon.angularVelocity = r.angularVel;
+        weapon.angularAcceleration = r.angularAcc;
       }
       // Pitch — clamp to [PITCH_MIN, PITCH_MAX] so the barrel doesn't
       // rotate past vertical; clamp also zeroes pitchVelocity so the
@@ -230,6 +233,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         );
         weapon.pitch = r.angle;
         weapon.pitchVelocity = r.angularVel;
+        weapon.pitchAcceleration = r.angularAcc;
       }
       weapon.aimTargetYaw = aimTargetYaw;
       weapon.aimTargetPitch = aimTargetPitch;

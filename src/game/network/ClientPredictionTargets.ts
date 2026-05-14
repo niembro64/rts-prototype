@@ -23,7 +23,10 @@ export type ServerTarget = {
   turrets: {
     rotation: number;
     angularVelocity: number;
+    angularAcceleration: number;
     pitch: number;
+    pitchVelocity: number;
+    pitchAcceleration: number;
     forceFieldRange: number | undefined;
   }[];
 };

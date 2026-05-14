@@ -263,7 +263,7 @@ export function createTurretDto(): NetworkServerSnapshotTurret {
   return {
     turret: {
       id: TURRET_ID_UNKNOWN,
-      angular: { rot: 0, vel: 0, pitch: 0 },
+      angular: { rot: 0, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 },
     },
     targetId: undefined,
     state: 0,
@@ -278,7 +278,10 @@ export function copyTurretInto(
   dst.turret.id = src.turret.id;
   dst.turret.angular.rot = src.turret.angular.rot;
   dst.turret.angular.vel = src.turret.angular.vel;
+  dst.turret.angular.acc = src.turret.angular.acc;
   dst.turret.angular.pitch = src.turret.angular.pitch;
+  dst.turret.angular.pitchVel = src.turret.angular.pitchVel;
+  dst.turret.angular.pitchAcc = src.turret.angular.pitchAcc;
   dst.targetId = src.targetId;
   dst.state = src.state;
   dst.currentForceFieldRange = src.currentForceFieldRange;

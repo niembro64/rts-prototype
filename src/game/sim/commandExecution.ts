@@ -533,7 +533,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   dgunTurret.rotation = fireAngle;
   dgunTurret.pitch = 0;
   dgunTurret.angularVelocity = 0;
+  dgunTurret.angularAcceleration = 0;
   dgunTurret.pitchVelocity = 0;
+  dgunTurret.pitchAcceleration = 0;
   ctx.world.markSnapshotDirty(commander.id, ENTITY_CHANGED_TURRETS);
 
   const { cos, sin } = getTransformCosSin(commander.transform);

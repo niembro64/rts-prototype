@@ -46,22 +46,14 @@ WIRED (reads getPredictionMode() and gates accordingly):
       zero accel + zero gravity to the integrator; ACC unchanged.
       Affects both the entity body AND the snapshot target it drifts
       toward (advanceTargetExtrapolation calls the same helper).
-      applyClientCombatExpensivePrediction — gates the per-turret
-      `weapon.rotation += weapon.angularVelocity * dt` step.
-      POS: skip (rotation snaps via lerpAngle to target).
-      VEL: integrate rotation from angularVelocity (correct).
-      ACC: ALSO integrate rotation from angularVelocity, BUT see
-      the angular-data gap below — the snapshot doesn't carry an
-      `angularAcceleration` field today, so VEL and ACC behave
-      identically here. To make ACC distinguishable we'd need to
-      add `weapon.angularAcceleration` to ServerTarget.turrets and
-      run `weapon.angularVelocity += angularAcceleration * dt`
-      before the rotation update. The sim itself currently produces
-      angularVelocity via a critically-damped spring (turretSystem.ts);
-      it does not store an explicit angular acceleration value, so
-      surfacing one would require either deriving it from
-      (k * (aimYaw - rotation) - c * angularVelocity) at serialize
-      time or letting the spring step expose its α output.
+      applyClientCombatExpensivePrediction — gates per-turret yaw AND
+      pitch integration. POS skips both (lerpAngle drift handles it).
+      VEL integrates `weapon.rotation += angularVelocity * dt` and
+      `weapon.pitch += pitchVelocity * dt` only. ACC additionally runs
+      `weapon.angularVelocity += angularAcceleration * dt` and
+      `weapon.pitchVelocity += pitchAcceleration * dt` first, so the
+      full ω̇ → ω → θ chain is followed. Same gating runs against the
+      ServerTarget-side projection used by the drift lerps.
   - src/game/network/ClientPredictionStepper.ts
       applyBeamPathPrediction — beam-path point integration
       `tp.x += vx*dt + ax*halfDt²` is gated. POS skips; VEL drops the
@@ -90,14 +82,16 @@ ANGULAR DATA GAPS (semantics intended but data missing):
      To honor ACC semantics on the unit body, additionally serialize
      a `rotationAcceleration` (or angular-jerk) field and integrate
      `rotationVelocity += rotationAcceleration * dt` first.
-  B. Turret yaw has angularVelocity but no angularAcceleration
-     (see the inline note in the WIRED section above). VEL == ACC
-     today for turret yaw.
-  C. Turret pitch is currently lerp-only on the client
-     (`weapon.pitch = lerpAngle(weapon.pitch, tw.pitch, rotPosDrift)`)
-     with no pitch velocity on the wire — same gap as the unit body.
-     To honor VEL/ACC for pitch, mirror the (A) plan with
-     `weapon.pitchVelocity` and (optionally) `pitchAcceleration`.
+  B. RESOLVED — Turret yaw now ships `angularAcceleration` on the
+     wire. Sourced from integrateDampedRotation's spring α output in
+     turretSystem.ts; serialized as `turret.angular.acc` in the
+     snapshot; ingested into ServerTarget.turrets[i].angularAcceleration
+     in ClientViewState; integrated by ACC mode in the prediction
+     step (see WIRED above).
+  C. RESOLVED — Turret pitch now ships `pitchVelocity` AND
+     `pitchAcceleration` on the wire (`turret.angular.pitchVel` /
+     `pitchAcc`). Same path as (B); pitch is no longer lerp-only on
+     the client under VEL/ACC.
 
 NOT YET WIRED (future work — not gated; runs at full ACC always):
   1. ClientProjectilePrediction.ts → applyClientProjectileHoming.

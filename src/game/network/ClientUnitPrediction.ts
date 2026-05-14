@@ -320,23 +320,35 @@ export function applyClientCombatExpensivePrediction(options: {
   const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
   const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
 
-  // Turret yaw has no server-reported angular acceleration, so VEL
-  // and ACC behave the same here — both integrate rotation from
-  // angularVelocity. POS skips integration entirely (rotation snaps
-  // to the target via the lerp below).
-  const integrateRotation = getPredictionMode() !== 'pos';
+  // PREDICT mode gates turret yaw / pitch integration, mirroring the
+  // translational gate. POS skips both; VEL integrates angle from
+  // angular velocity but treats angular acceleration as zero; ACC
+  // additionally integrates ω += α · dt before stepping the angle.
+  const predictionMode = getPredictionMode();
+  const integrateRotation = predictionMode !== 'pos';
+  const integrateAngularAccel = predictionMode === 'acc';
   const turrets = entity.combat.turrets;
   for (let i = 0; i < turrets.length; i++) {
     const weapon = turrets[i];
     if (weapon.config.visualOnly) continue;
     if (integrateRotation) {
+      if (integrateAngularAccel) {
+        weapon.angularVelocity += weapon.angularAcceleration * dt;
+        weapon.pitchVelocity += weapon.pitchAcceleration * dt;
+      }
       weapon.rotation += weapon.angularVelocity * dt;
+      weapon.pitch += weapon.pitchVelocity * dt;
     }
 
     const tw = target?.turrets?.[i];
     if (tw) {
       if (integrateRotation) {
+        if (integrateAngularAccel) {
+          tw.angularVelocity += tw.angularAcceleration * targetDt;
+          tw.pitchVelocity += tw.pitchAcceleration * targetDt;
+        }
         tw.rotation += tw.angularVelocity * targetDt;
+        tw.pitch += tw.pitchVelocity * targetDt;
       }
       weapon.rotation = lerpAngle(
         weapon.rotation,
@@ -352,6 +364,11 @@ export function applyClientCombatExpensivePrediction(options: {
         weapon.pitch,
         tw.pitch,
         rotPosDrift,
+      );
+      weapon.pitchVelocity = lerp(
+        weapon.pitchVelocity,
+        tw.pitchVelocity,
+        rotVelDrift,
       );
     }
 

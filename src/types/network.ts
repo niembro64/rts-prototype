@@ -616,10 +616,18 @@ export type NetworkServerSnapshotTurret = {
     angular: {
       /** Yaw (horizontal heading, rot around z-axis). */
       rot: number;
-      /** Yaw angular velocity. */
+      /** Yaw angular velocity (rad/s). */
       vel: number;
+      /** Yaw angular acceleration (rad/s²) from this tick's
+       *  damped-spring step. PREDICT ACC clients integrate
+       *  `vel += acc · dt` before stepping `rot`. */
+      acc: number;
       /** Pitch (vertical aim, elevation angle). */
       pitch: number;
+      /** Pitch angular velocity (rad/s). */
+      pitchVel: number;
+      /** Pitch angular acceleration (rad/s²); same role as `acc`. */
+      pitchAcc: number;
     };
   };
   targetId?: number;

@@ -118,7 +118,10 @@ function writeTurretsToPool(
     t.id = turretIdToCode(src.config.id);
     t.angular.rot = qRot(src.rotation);
     t.angular.vel = qRot(src.angularVelocity);
+    t.angular.acc = qRot(src.angularAcceleration);
     t.angular.pitch = qRot(src.pitch);
+    t.angular.pitchVel = qRot(src.pitchVelocity);
+    t.angular.pitchAcc = qRot(src.pitchAcceleration);
     dst.targetId = canReferenceEntityId?.(src.target ?? undefined) === false
       ? undefined
       : src.target ?? undefined;

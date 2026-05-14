@@ -251,15 +251,22 @@ export class ClientViewState {
         target.turrets.push({
           rotation: 0,
           angularVelocity: 0,
+          angularAcceleration: 0,
           pitch: 0,
+          pitchVelocity: 0,
+          pitchAcceleration: 0,
           forceFieldRange: undefined,
         });
       }
       target.turrets.length = turrets.length;
       for (let i = 0; i < turrets.length; i++) {
-        target.turrets[i].rotation = turrets[i].turret.angular.rot;
-        target.turrets[i].angularVelocity = turrets[i].turret.angular.vel;
-        target.turrets[i].pitch = turrets[i].turret.angular.pitch;
+        const wireAng = turrets[i].turret.angular;
+        target.turrets[i].rotation = wireAng.rot;
+        target.turrets[i].angularVelocity = wireAng.vel;
+        target.turrets[i].angularAcceleration = wireAng.acc;
+        target.turrets[i].pitch = wireAng.pitch;
+        target.turrets[i].pitchVelocity = wireAng.pitchVel;
+        target.turrets[i].pitchAcceleration = wireAng.pitchAcc;
         target.turrets[i].forceFieldRange = turrets[i].currentForceFieldRange ?? undefined;
       }
       return true;

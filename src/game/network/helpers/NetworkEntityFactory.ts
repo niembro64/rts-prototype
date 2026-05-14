@@ -54,7 +54,9 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   turret.rotation = wire.angular.rot;
   turret.pitch = wire.angular.pitch;
   turret.angularVelocity = wire.angular.vel;
-  turret.pitchVelocity = 0;
+  turret.angularAcceleration = wire.angular.acc;
+  turret.pitchVelocity = wire.angular.pitchVel;
+  turret.pitchAcceleration = wire.angular.pitchAcc;
   turret.forceField = nw.currentForceFieldRange !== undefined && nw.currentForceFieldRange !== null
     ? { range: nw.currentForceFieldRange, transition: turret.forceField?.transition ?? 0 }
     : undefined;

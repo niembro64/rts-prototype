@@ -801,7 +801,9 @@ export class GameServer {
         turret.target = null;
         turret.state = 'idle';
         turret.angularVelocity = 0;
+        turret.angularAcceleration = 0;
         turret.pitchVelocity = 0;
+        turret.pitchAcceleration = 0;
       }
       updateCombatActivityFlags(combat);
       this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
@@ -821,7 +823,9 @@ export class GameServer {
         turret.target = null;
         turret.state = 'idle';
         turret.angularVelocity = 0;
+        turret.angularAcceleration = 0;
         turret.pitchVelocity = 0;
+        turret.pitchAcceleration = 0;
         if (turret.forceField) {
           turret.forceField.transition = 0;
           turret.forceField.range = 0;

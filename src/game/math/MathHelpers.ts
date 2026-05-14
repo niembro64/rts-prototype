@@ -141,9 +141,13 @@ export type DampedRotationOptions = {
   maxAngle?: number;
 };
 
-/** Result object reused across calls — copy `angle` / `angularVel`
- *  out before another `integrateDampedRotation` call. */
-const _dampedRotationResult = { angle: 0, angularVel: 0 };
+/** Result object reused across calls — copy `angle` / `angularVel` /
+ *  `angularAcc` out before another `integrateDampedRotation` call.
+ *  `angularAcc` is the spring acceleration that produced `angularVel`
+ *  this step (rad/s²); callers serializing for client extrapolation
+ *  read it so the client can integrate ω += α·dt under the PREDICT
+ *  ACC mode. */
+const _dampedRotationResult = { angle: 0, angularVel: 0, angularAcc: 0 };
 
 /** Damped-spring single-axis rotation integrator:
  *
@@ -164,24 +168,28 @@ export function integrateDampedRotation(
   c: number,
   dtSec: number,
   options?: DampedRotationOptions,
-): { angle: number; angularVel: number } {
+): { angle: number; angularVel: number; angularAcc: number } {
   const diff = options?.wrap
     ? normalizeAngle(targetAngle - angle)
     : targetAngle - angle;
   const accel = diff * k - angularVel * c;
   let newVel = angularVel + accel * dtSec;
   let newAngle = angle + newVel * dtSec;
+  let outAcc = accel;
   if (options?.wrap) {
     newAngle = normalizeAngle(newAngle);
   }
   if (options?.minAngle !== undefined && newAngle < options.minAngle) {
     newAngle = options.minAngle;
     newVel = 0;
+    outAcc = 0;
   } else if (options?.maxAngle !== undefined && newAngle > options.maxAngle) {
     newAngle = options.maxAngle;
     newVel = 0;
+    outAcc = 0;
   }
   _dampedRotationResult.angle = newAngle;
   _dampedRotationResult.angularVel = newVel;
+  _dampedRotationResult.angularAcc = outAcc;
   return _dampedRotationResult;
 }

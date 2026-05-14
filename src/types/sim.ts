@@ -361,6 +361,11 @@ export type Turret = {
   rotation: number;
   pitch: number;
   angularVelocity: number;
+  /** Yaw angular acceleration (rad/s²) produced by this tick's
+   *  damped-spring step (`α = k·(aim − rot) − c·ω`). Serialized so
+   *  PREDICT ACC clients can integrate `ω += α·dt` between snapshots;
+   *  PREDICT POS / VEL clients ignore it. */
+  angularAcceleration: number;
   /** Angular velocity of the pitch axis (rad/s). Driven by the
    *  damped-spring integrator in turretSystem — the solver sets a
    *  target pitch each tick and the damper converges on it without
@@ -368,6 +373,9 @@ export type Turret = {
    *  (e.g. from moving targets) doesn't propagate into visible
    *  barrel oscillation. */
   pitchVelocity: number;
+  /** Pitch angular acceleration (rad/s²); same shape as
+   *  angularAcceleration, only for the elevation axis. */
+  pitchAcceleration: number;
   turnAccel: number;
   drag: number;
   /** Chassis-local 3D weapon pivot in world units. Derived once from
