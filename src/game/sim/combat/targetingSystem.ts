@@ -45,6 +45,15 @@ const _cachedFireDistSqs: number[] = [];
 // inside batchRadius. Priority-target and Pass-1 paths keep using the
 // full list (their targets can sit beyond batchRadius).
 const _unitNearForceFields: ActiveForceFieldRef[] = [];
+// Top-K pool used by chooseBestTargetCandidate to defer LOS / force-field
+// segment walks until after a cheap rank+distance ranking pass. Sized at
+// TARGETING_TOPK_LOS so the expensive segment-vs-terrain walk runs at
+// most K times per call, instead of once per LOS-eligible candidate.
+const TARGETING_TOPK_LOS = 4;
+const _candPoolEnemies: Entity[] = [];
+const _candPoolRanks: TargetPreferenceRank[] = [];
+const _candPoolDistSqs: number[] = [];
+const _candPoolMirrorScores: number[] = [];
 
 function nextTargetingReacquireTick(unitId: number, tick: number, stride: number): number {
   if (stride <= 1) return tick + 1;
@@ -355,12 +364,19 @@ function chooseBestTargetCandidate(
   const scanStart = denseScan ? tick % scanStride : 0;
   const needsLOS = weaponNeedsLineOfSight(weapon);
   const needsForceFieldClearance = activeForceFields.length > 0;
-
-  let bestTarget = seed.target;
-  let bestDistSq = seed.distSq;
-  let bestRank = seed.rank;
-  let bestMirrorScore = seed.mirrorScore;
   const sourcePlayerId = source.ownership?.playerId;
+  const isPassive = weapon.config.passive === true;
+
+  // Pass A: cheap rank+distance filter. Collect the top-K best
+  // pre-LOS candidates (sorted best-first) so the expensive
+  // segment-vs-terrain LOS walks and force-field intersect checks
+  // only run on at most K entries in Pass B. In dense crowds this
+  // turns hundreds of LOS walks per call into K.
+  _candPoolEnemies.length = 0;
+  _candPoolRanks.length = 0;
+  _candPoolDistSqs.length = 0;
+  _candPoolMirrorScores.length = 0;
+  let topCount = 0;
 
   for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
     const enemy = candidates[ci];
@@ -371,7 +387,7 @@ function chooseBestTargetCandidate(
       continue;
     }
     let mirrorScore = 0;
-    if (weapon.config.passive) {
+    if (isPassive) {
       mirrorScore = getMirrorTargetScore(enemy, source.id);
       if (mirrorScore <= 0) continue;
     }
@@ -387,17 +403,61 @@ function chooseBestTargetCandidate(
       distSq,
       enemyRadius,
     );
-
     if (rank < minimumRank) continue;
+
+    const beatsSeed = isPassive
+      ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, seed.mirrorScore, seed.rank, seed.distSq)
+      : isBetterTargetCandidate(rank, distSq, seed.rank, seed.distSq);
+    if (!beatsSeed) continue;
+
+    if (topCount < TARGETING_TOPK_LOS) {
+      _candPoolEnemies[topCount] = enemy;
+      _candPoolRanks[topCount] = rank;
+      _candPoolDistSqs[topCount] = distSq;
+      _candPoolMirrorScores[topCount] = mirrorScore;
+      topCount++;
+    } else {
+      const last = topCount - 1;
+      const beatsWorst = isPassive
+        ? isBetterMirrorTargetCandidate(
+            mirrorScore, rank, distSq,
+            _candPoolMirrorScores[last], _candPoolRanks[last], _candPoolDistSqs[last])
+        : isBetterTargetCandidate(
+            rank, distSq,
+            _candPoolRanks[last], _candPoolDistSqs[last]);
+      if (!beatsWorst) continue;
+      _candPoolEnemies[last] = enemy;
+      _candPoolRanks[last] = rank;
+      _candPoolDistSqs[last] = distSq;
+      _candPoolMirrorScores[last] = mirrorScore;
+    }
+    // Bubble the freshly placed entry up to its sorted position.
+    for (let i = topCount - 1; i > 0; i--) {
+      const j = i - 1;
+      const better = isPassive
+        ? isBetterMirrorTargetCandidate(
+            _candPoolMirrorScores[i], _candPoolRanks[i], _candPoolDistSqs[i],
+            _candPoolMirrorScores[j], _candPoolRanks[j], _candPoolDistSqs[j])
+        : isBetterTargetCandidate(
+            _candPoolRanks[i], _candPoolDistSqs[i],
+            _candPoolRanks[j], _candPoolDistSqs[j]);
+      if (!better) break;
+      const tmpE = _candPoolEnemies[i]; _candPoolEnemies[i] = _candPoolEnemies[j]; _candPoolEnemies[j] = tmpE;
+      const tmpR = _candPoolRanks[i]; _candPoolRanks[i] = _candPoolRanks[j]; _candPoolRanks[j] = tmpR;
+      const tmpD = _candPoolDistSqs[i]; _candPoolDistSqs[i] = _candPoolDistSqs[j]; _candPoolDistSqs[j] = tmpD;
+      const tmpM = _candPoolMirrorScores[i]; _candPoolMirrorScores[i] = _candPoolMirrorScores[j]; _candPoolMirrorScores[j] = tmpM;
+    }
+  }
+
+  // Pass B: LOS + force-field clearance, best-first. The first
+  // top-K entry that passes both gates wins; remaining (worse) entries
+  // are skipped. If all top-K are blocked, the seed survives — matching
+  // the old behaviour where every blocked candidate was simply rejected.
+  for (let k = 0; k < topCount; k++) {
+    const enemy = _candPoolEnemies[k];
     if (
       needsLOS &&
-      !hasWeaponLineOfSight(
-        world,
-        source,
-        weapon,
-        enemy,
-        weaponX, weaponY, weaponZ,
-      )
+      !hasWeaponLineOfSight(world, source, weapon, enemy, weaponX, weaponY, weaponZ)
     ) {
       continue;
     }
@@ -407,23 +467,19 @@ function chooseBestTargetCandidate(
     ) {
       continue;
     }
-
-    const betterTarget = weapon.config.passive
-      ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, bestMirrorScore, bestRank, bestDistSq)
-      : isBetterTargetCandidate(rank, distSq, bestRank, bestDistSq);
-    if (!betterTarget) continue;
-
-    bestTarget = enemy;
-    bestDistSq = distSq;
-    bestRank = rank;
-    bestMirrorScore = mirrorScore;
+    return {
+      target: enemy,
+      rank: _candPoolRanks[k],
+      distSq: _candPoolDistSqs[k],
+      mirrorScore: _candPoolMirrorScores[k],
+    };
   }
 
   return {
-    target: bestTarget,
-    rank: bestRank,
-    distSq: bestDistSq,
-    mirrorScore: bestMirrorScore,
+    target: seed.target,
+    rank: seed.rank,
+    distSq: seed.distSq,
+    mirrorScore: seed.mirrorScore,
   };
 }
 
