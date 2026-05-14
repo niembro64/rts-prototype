@@ -6,43 +6,6 @@ Please always commit and push before and after any code changes we make. If ther
 As we go make sure we are not creating duplicate code, we should be reusing code as much as possible. If we find ourselves copy/pasting code, we should stop and refactor to reuse code instead. This is especially important for the new code we are writing, but also applies to existing code. If we see duplicate code in existing files, we should refactor it to be reusable and delete the duplicates. Create new helper files for reusable code if necessary, we prefer small file sizes.
 
 ==============================================================================
- OPTIMIZATION AUDIT — 2026-05-13
-==============================================================================
 
-Findings from a five-part read-only audit (sim hot path, network /
-serialization, spatial grid, Three.js rendering, Vue UI). Each item has a
-file:line citation, a one-line observation of the cost, and a concrete fix.
 
-Impact scale:
-  LARGE   ≈ ms+ tick/frame win, or material bandwidth / GC reduction
-  MEDIUM  ≈ sub-ms but reproducible; matters under load
-  SMALL   ≈ microseconds saved, cleanliness, or correctness guard
-
-Items are grouped by subsystem and ordered LARGE → MEDIUM → SMALL within each.
-Some items are marked [VERIFY] — the cost claim wasn't 100% confirmed at audit
-time and should be measured (or read more code) before touching.
-
-==============================================================================
- ISSUES:
-
-------------------------------------------------------------------------------
- SPATIAL GRID
-------------------------------------------------------------------------------
-
-------------------------------------------------------------------------------
- SIM HOT PATH
-------------------------------------------------------------------------------
-
-------------------------------------------------------------------------------
- NETWORK / SERIALIZATION
-------------------------------------------------------------------------------
-
-------------------------------------------------------------------------------
- THREE.JS RENDERING
-------------------------------------------------------------------------------
-
-------------------------------------------------------------------------------
- VUE UI
-------------------------------------------------------------------------------
-
-==============================================================================
+1. Let's add up to three levels of prediction for any element that accelerates due to force, or moves etc. Basically we always need to send "position" updates to the client, we sometimes need to send "velocity" updates to the client, and sometimes we even want "acceleration" updates sent to the client. Our main objective for this game is to have full F=MA style movement, where we have position, velocity, and acceleration - all driven by acceleration = force / mass. Let's add a section in our "PLAYER CLIENT" bar for physics predictions, where we can turn on/off "velocity" prediction and "acceleration" prediction. This should be some sort of three-way toggle, "POS","VEL","ACC", where "POS" would only use the "position" information from the snaps, "VEL" would use the "position" and "velocity" information, and "ACC" would use the "position", "velocity", and "acceleration" information sent from the backend for the client prediction. This should be for any item that moves via acceleration = force / mass. Really we should be trying to do all movement in this way. Add the buttons, find all offenders, and document the changes made and future changes needed in "issues.txt". 
