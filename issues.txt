@@ -128,3 +128,168 @@ NOT YET WIRED (future work — not gated; runs at full ACC always):
      across src/game/sim could surface stragglers (jump arcs, knockback
      impulses, force-field push, etc.) that the PREDICT mode should
      also gate when added.
+
+==============================================================================
+ ANGLE-POS / ANGLE-VEL / ANGLE-ACC — PHYSICAL PURITY (open question)
+==============================================================================
+
+The PREDICT scheme above treats angle-pos, angle-vel, and angle-acc as
+the rotational analogues of position, velocity, and acceleration. The
+intent is that a body's orientation evolves under the same physical law
+no matter which way it's rotating: there should be NO preferred axis,
+NO singularity, and NO direction-dependent bias in either the sim or
+the client extrapolation.
+
+What "physically pure, coordinate-bias-free" means
+─────────────────────────────────────────────────
+Angular velocity in classical mechanics is a true 3-vector ω whose
+direction is the instantaneous axis of rotation and whose magnitude is
+the rate of spin (rad/s). Likewise angular acceleration α = dω/dt is a
+3-vector. They satisfy:
+
+    q̇ = ½ · (ω as pure-imaginary quaternion) · q
+    ω̇ = α    (in body frame — Euler's equations if we cared about inertia)
+
+Orientation itself is best stored as a unit quaternion q (or a 3×3
+rotation matrix) — both representations are isotropic: no axis gets
+special treatment, no singularities, composition is one operation.
+"Shortest-path drift" between two orientations is just the axis-angle
+form of  Δq = q_target · q_current⁻¹ . A damped spring driving an
+orientation toward a target is then a single law applied to the full
+3-vector error:
+
+    Δq          = q_target · q_current⁻¹      (shortest-path)
+    (axis, θ)   = log(Δq)                     (axis-angle of error)
+    α_spring    = k · θ · axis  −  c · ω      (3-vector torque)
+
+That law looks the same for yaw, pitch, roll, or any oblique axis —
+that's the property the user is asking for.
+
+What we have today (Euler-decomposed scalar springs)
+───────────────────────────────────────────────────
+Turrets store orientation as TWO independent scalars and integrate
+them with TWO independent springs:
+
+    weapon.rotation        // yaw   — wraps in (−π, π]
+    weapon.angularVelocity // ω_yaw — scalar (rad/s about z only)
+    weapon.angularAcceleration
+    weapon.pitch           // pitch — clamped to [PITCH_MIN, PITCH_MAX]
+    weapon.pitchVelocity   // ω_pitch — scalar (rad/s about a body axis)
+    weapon.pitchAcceleration
+
+Two separate calls to integrateDampedRotation each tick (turretSystem.ts
+~lines 215-233). Wire format mirrors the same shape: turret.angular
+ships rot/vel/acc + pitch/pitchVel/pitchAcc as six independent scalars.
+
+Unit bodies have it even more degraded: only `transform.rotation` (a
+single yaw scalar) plus a separate `surfaceNormal` triple smoothed by
+the tilt EMA. There's no actual rotational state in any other axis;
+chassis tilt is a per-frame visual effect derived from terrain normal,
+not a physics quantity.
+
+What this costs
+───────────────
+1. Coordinate bias. The yaw axis (world +Z) and the pitch axis (turret
+   local) are privileged by construction. A turret that wanted to roll
+   (e.g. a ship listing in heavy seas, a unit climbing a steeply
+   banked surface) has nowhere to put that rotation.
+2. Order ambiguity. Yaw-then-pitch ≠ pitch-then-yaw whenever both are
+   nonzero. The serializer / renderer all pick a fixed convention; any
+   system that doesn't agree silently produces wrong orientations.
+3. Gimbal lock. Pitch is clamped well short of ±π/2, partly to dodge
+   the singularity. That means the sim cannot represent a turret aimed
+   straight up except at the clamp boundary, where pitchVelocity is
+   force-zeroed (turretSystem.ts integrateDampedRotation `min/maxAngle`
+   branch) — a special case not present in the underlying physics.
+4. Two springs that don't compose. The yaw spring and the pitch spring
+   each see only their own axis's error. A target requiring a 30° yaw
+   AND 60° pitch reorientation does not take the shortest 67° great-
+   circle path; it traces an L-shape in (yaw, pitch) space and spends
+   different amounts of time on each axis depending on `k` and `c`.
+5. Wire payload duplication. Six scalars instead of one quaternion (4)
+   plus one ω vector (3) plus one α vector (3) — moot for one turret
+   but the schema invites adding more axes piecemeal.
+6. PREDICT layering. The current ω = scalar means the client does ONE
+   `θ += ω·dt` step per axis. With ω as a vector and q as a quaternion,
+   the same code becomes ONE `q ← q ⊕ (ω · dt)` step regardless of the
+   rotation direction — VEL and ACC modes apply uniformly without per-
+   axis branches.
+
+The elegant alternative
+───────────────────────
+Replace the per-turret scalar bundle with:
+
+    type Orientation = { qx: number; qy: number; qz: number; qw: number };
+    type AngularVel  = { x: number; y: number; z: number };  // rad/s
+    type AngularAcc  = { x: number; y: number; z: number };  // rad/s²
+
+    // turretSystem replacement (one spring law, all axes):
+    Δq      = qTarget · conjugate(qCurrent)
+    if Δq.w < 0 then negate Δq   // pick shortest hemisphere
+    angle   = 2 · atan2(|Δq.xyz|, Δq.w)
+    axis    = Δq.xyz / |Δq.xyz|  (with the |Δq.xyz| → 0 fallback)
+    α       = k · angle · axis  −  c · ω
+    ω      += α · dt
+    q      += 0.5 · (ω as quaternion) · q · dt
+    q       = normalize(q)
+
+    // Optional pitch clamp becomes a constraint that projects q back
+    //   onto the allowed cone after integration, instead of a per-axis
+    //   velocity kill.
+
+PREDICT then collapses to:
+
+    POS — q drifts toward q_target via slerp; no integration.
+    VEL — q ← integrate(q, ω, dt); ω carried untouched.
+    ACC — ω ← ω + α·dt;  q ← integrate(q, ω, dt).
+
+The same shape works for unit bodies, turret yaw+pitch, and any future
+freely-orientable mount (rolling, banking, gyroscopic effects, ragdoll
+debris) without inventing new axes or new springs.
+
+Costs of the switch
+───────────────────
+- Wire payload grows for ground units that currently only ship a yaw
+  scalar (rotation: 1 float → q: 4 floats; +ω: 3 + α: 3). 6.5× before
+  any compression. Worth it only if multi-axis rotation actually
+  becomes a gameplay element; otherwise scalar yaw is enough for the
+  unit body and quaternions are wanted only for turrets/projectiles
+  that legitimately rotate freely.
+- Quaternion renormalization every step (cheap; ~5 ops).
+- Aim solver (resolveTargetAimPoint + the targetAngle/targetPitch
+  scaffolding in turretSystem.ts) needs to emit a target quaternion
+  instead of two scalars. That's a real refactor — every aim-related
+  helper either needs to learn quaternions or the system has to hold
+  the (yaw, pitch) → quaternion conversion at the seam.
+- Renderer needs to consume q (Three.js already does — entity.transform
+  carries quaternions natively in many spots). The bigger work is the
+  lots of `.rotation` reads scattered through the codebase.
+- Pitch clamping becomes a cone constraint. Slightly fiddlier than
+  `if (a < min) { a = min; vel = 0; }` — needs to project the angle
+  back onto the cone and zero only the component of ω that points out
+  of the cone, leaving the tangent component intact.
+
+Recommendation
+──────────────
+Adopt the quaternion + ω-vector + α-vector representation incrementally,
+top-down from the layer that benefits most:
+
+  Phase 1 — turret runtime only. Internal Turret state goes quaternion;
+            external aim solver still hands in (yaw, pitch). Conversion
+            at the seam. Wire format stays the six scalars for now —
+            client-side reconstruction is local. This is the cheapest
+            way to prove the integrator/spring rewrite without touching
+            anything outside combat.
+  Phase 2 — wire format. Replace turret.angular's six scalars with
+            { q, ω, α } once Phase 1 has shaken out. PREDICT integrator
+            becomes single-line, gap A (unit body) becomes "add the
+            same struct to the unit body" instead of "add three new
+            fields per axis."
+  Phase 3 — unit bodies, projectile orientation, debris. Anywhere a
+            rotation is currently a scalar that pretends gimbal lock
+            doesn't exist.
+
+Until that lands, the current scalar setup remains correct for the one
+yaw + one clamped pitch case it's used for, and the PREDICT scheme
+above is the right local fix — it just inherits the Euler bias of the
+underlying state.
