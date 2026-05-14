@@ -202,9 +202,18 @@ PARTIAL      — PREDICT-aware serializer: local + remote connections
                "make velocity optional to fully omit" lift remains —
                defer until profiling shows the current zero-write
                wire isn't already hitting bandwidth targets.
-ARCH ALT.    — quaternion + ω-vector + α-vector representation note
-               (see ANGLE-POS / ANGLE-VEL / ANGLE-ACC section above);
-               supersedes the per-axis scalar scheme when adopted.
+DEFERRED     — Quaternion + ω-vector + α-vector representation: NOT
+               a refactor of existing turret math (the decoupled
+               scalar springs are already physically correct for
+               tank-style two-motor turrets, and yield the same
+               trajectory under critical damping). Adopt when new
+               content lands that genuinely needs roll / arbitrary
+               orientation (banking hovercraft, spinning projectiles,
+               ragdoll debris). Build that content on quaternions
+               from day one; don't refactor existing scalar code.
+(See the DEFERRED row above for the angle-pos / angle-vel / angle-acc
+quaternion option and the rationale for not refactoring existing
+scalar code.)
 
 CLIENT-SIDE INTEGRATOR AUDIT — RESOLVED 2026-05-13
 ──────────────────────────────────────────────────
@@ -367,27 +376,51 @@ Costs of the switch
   back onto the cone and zero only the component of ω that points out
   of the cone, leaving the tangent component intact.
 
-Recommendation
-──────────────
-Adopt the quaternion + ω-vector + α-vector representation incrementally,
-top-down from the layer that benefits most:
+Recommendation — REVISED 2026-05-14
+───────────────────────────────────
+On closer analysis the original "refactor existing turret math to
+quaternion" recommendation is the wrong framing. The decoupled-Euler
+model already in place IS physically correct for the entities it's
+applied to, and the elegant alternative only buys something for
+entities that don't exist yet. Details:
 
-  Phase 1 — turret runtime only. Internal Turret state goes quaternion;
-            external aim solver still hands in (yaw, pitch). Conversion
-            at the seam. Wire format stays the six scalars for now —
-            client-side reconstruction is local. This is the cheapest
-            way to prove the integrator/spring rewrite without touching
-            anything outside combat.
-  Phase 2 — wire format. Replace turret.angular's six scalars with
-            { q, ω, α } once Phase 1 has shaken out. PREDICT integrator
-            becomes single-line, gap A (unit body) becomes "add the
-            same struct to the unit body" instead of "add three new
-            fields per axis."
-  Phase 3 — unit bodies, projectile orientation, debris. Anywhere a
-            rotation is currently a scalar that pretends gimbal lock
-            doesn't exist.
+  Convergence proportionality. Both turret axes (yaw, pitch) use the
+  SAME spring constants `k` and `c`. Under critical damping the error
+  decays as θ(t) = θ_0·(1 + ωt)·exp(−ωt) on each axis independently,
+  so yawError(t) / yawError(0) ≡ pitchError(t) / pitchError(0) for all
+  t. The trajectory in (yaw, pitch) Euler-angle space is a straight
+  line from initial to target pose, traced at the same time constant.
 
-Until that lands, the current scalar setup remains correct for the one
-yaw + one clamped pitch case it's used for, and the PREDICT scheme
-above is the right local fix — it just inherits the Euler bias of the
-underlying state.
+  Mechanical fidelity. A real tank turret has two independent motors —
+  the yaw ring and the pitch trunnion — that are mechanically
+  decoupled. The current decoupled-spring sim is a faithful model of
+  that mechanism. A quaternion-based "shortest-path great-circle"
+  spring would model a single 3-DOF gimbal (free-floating gyro)
+  instead. For tank turrets the Euler model is MORE physical, not less.
+
+  What the quaternion approach actually buys:
+    - Roll on the unit body (hovercraft banking into a turn).
+    - Projectile orientation with spin around the flight axis.
+    - Free-orientation entities (ragdoll debris, ships listing in
+      waves, ships rolling on impact, etc.).
+  These are FUTURE FEATURES — entities that don't currently exist in
+  the codebase. Once such an entity is added, building it on a
+  quaternion + ω-vector + α-vector representation from day one is the
+  right move; refactoring the existing yaw+pitch turret math to
+  quaternion just to share an abstraction would change physical
+  behaviour for no gameplay gain.
+
+  Where this leaves the scheme:
+    - Existing turret yaw + pitch math: keep the decoupled scalar
+      springs. Already correct for the physical model.
+    - Existing unit body rotation: keep the snap-to-thrust-direction
+      model (see gap A closure earlier in this file). Continuous
+      rotation isn't gameplay-required for tanks/hovercraft today.
+    - NEW gameplay content that requires roll or arbitrary
+      orientation: build it on quaternion + ω-vector + α-vector
+      directly. PREDICT-style POS / VEL / ACC semantics fall out
+      naturally from that representation (single quat integrate; one
+      ω·dt step; one α·dt step) without needing a per-axis scalar
+      bundle on the wire.
+
+Until such a feature ships, no quaternion refactor is queued.
