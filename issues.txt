@@ -87,27 +87,46 @@ Open follow-ups within Phase 1:
     needs `cargo` + `wasm-pack` on PATH).
 
 ------------------------------------------------------------------------------
- Phase 2 — Shared unit-motion integrator (advanceUnitMotionPhysicsMutable).
+ Phase 2 — Shared unit-motion integrator. DONE.
 ------------------------------------------------------------------------------
-This is the smallest piece that's already shared between server +
-client today (server uses it from PhysicsEngine3D.integrate, client
-uses it from ClientUnitPrediction.advanceSharedUnitMotionPrediction).
-Porting it first proves the dual-consumer pipeline with the smallest
-possible API surface AND makes both sides faster on the same commit.
+Landed: `step_unit_motion` in rts-sim-wasm/src/lib.rs. Mirrors the
+existing TS `advanceUnitMotionPhysicsMutable` exactly — same
+constants (UNIT_GROUND_CONTACT_EPSILON, UNIT_GROUND_SPRING_ACCEL
+_PER_WORLD_UNIT = 900, UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED = 5,
+GROUND_SPRING_DAMPING_ACCEL_PER_SPEED = 60), same operation order
+(spring contribution → v += a·dt → air-damp v → ground tangent damp
+→ rebound cap → pos += v·dt), same f64 precision throughout. Motion
+is a Float64Array of length 6 ([x, y, z, vx, vy, vz]) read/written
+in place by the WASM kernel; module-scope scratch buffer in
+unitMotionIntegration.ts avoids a per-call typed-array allocation.
 
-  - Rust function: `step_unit_motion(state: &mut UnitMotion, dt: f32,
-    ground_offset: f32, ax, ay, az, air_damp, ground_damp,
-    launch_ax, launch_ay, launch_az, ground_z_sampler: fn,
-    ground_normal_sampler: fn) -> bool`.
-  - Sampler callbacks: terrain isn't ported yet (Phase 8), so the
-    samplers stay JS-side and the kernel calls back through
-    wasm-bindgen js_sys::Function. Boundary cost is real (one
-    call per body per tick) — accept it for now; Phase 8 moves
-    samplers into Rust and the callback goes away.
-  - Both server-side PhysicsEngine3D.integrate AND client-side
-    advanceSharedUnitMotionPrediction call into this. TS shim
-    stays for the few non-hot consumers, but the per-tick path
-    routes through WASM.
+Departure from the original phase-plan: rather than have the WASM
+kernel call back into JS via js_sys::Function for ground sampling,
+the JS wrapper now pre-samples groundZ and (only when penetration
+is in contact) groundNormal, then passes both as plain f64 params
+into Rust. This preserves the existing "skip getGroundNormal for
+airborne bodies" optimization AND avoids per-body WASM→JS callback
+overhead. Phase 8 will move the heightmap into linear memory and
+the wrapper's sampler calls will collapse into pure Rust reads.
+
+Both consumers are now on the WASM path on the same commit:
+  - Server: PhysicsEngine3D.integrate → advanceUnitMotionPhysicsMutable
+  - Client: ClientUnitPrediction.advanceSharedUnitMotionPrediction →
+    advanceUnitMotionPhysicsMutable
+
+TS fallback is preserved inside the same function, gated on
+`getSimWasm() === undefined`. It runs during the boot window
+before initSimWasm() resolves (every tick after that uses WASM)
+and when a dev intentionally drops the WASM module out for
+debugging. The TS branch is kept structurally + numerically
+identical to the Rust kernel so swapping mid-session doesn't
+shift motion.
+
+Open follow-up for this kernel: Phase 3's Body3D SoA pool will
+move the [x,y,z,vx,vy,vz] state into linear memory directly,
+and `step_unit_motion` will operate on slot indices instead of a
+copy-in/copy-out Float64Array. The 48-byte marshal cost is
+negligible at 60 Hz but disappears entirely under the SoA pool.
 
 ------------------------------------------------------------------------------
  Phase 3 — PhysicsEngine3D core → Rust/WASM. (THE BIG ONE.)
