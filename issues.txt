@@ -65,23 +65,33 @@ WIRED (reads getPredictionMode() and gates accordingly):
       skipped in POS only.
 
 ANGULAR DATA GAPS (semantics intended but data missing):
-  A. Unit body rotation has NO velocity / acceleration data on the
-     wire. ServerTarget carries `rotation` but no `rotationVelocity`
-     or `rotationAcceleration`. As a result, POS and VEL behave
-     identically for the unit body angle — both effectively snap
-     toward target.rotation via lerpAngle each frame because the
-     client has nothing to integrate with.
-     To honor VEL semantics on the unit body:
-       - Add `unit.angularVelocity` to the entity (or derive from the
-         heading change in the sim).
-       - Serialize it into ServerTarget.rotationVelocity (with a
-         per-tier quantization threshold like rotationVelocityThreshold).
-       - In applyClientUnitVisualPrediction, when mode != 'pos',
-         integrate `entity.transform.rotation += rotationVelocity * dt`
-         BEFORE the existing lerpAngle drift.
-     To honor ACC semantics on the unit body, additionally serialize
-     a `rotationAcceleration` (or angular-jerk) field and integrate
-     `rotationVelocity += rotationAcceleration * dt` first.
+  A. CLOSED AS NOT-A-PLUMBING-PROBLEM — Unit body rotation is
+     instantaneously snapped to the thrust direction each tick:
+
+         // UnitForceSystem.ts ~line 159
+         if (hasThrustDir) {
+           const nextRotation = Math.atan2(dirY, dirX);
+           if (nextRotation !== entity.transform.rotation) {
+             entity.transform.rotation = nextRotation;
+             this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
+           }
+         }
+
+     There is no continuous angular motion to extrapolate. Adding
+     `rotationVelocity` / `rotationAcceleration` fields to the wire
+     would be 0 the vast majority of ticks and a one-tick spike when
+     heading changes — using either for forward extrapolation would
+     OVERSHOOT the target angle, since the spike represents a
+     completed step rather than ongoing motion. The existing
+     lerpAngle drift toward target.rotation is therefore the correct
+     behaviour under POS, VEL, and ACC alike for this gameplay model.
+
+     The only honest way to make VEL/ACC distinguishable for the
+     unit body is to switch the sim from snap-rotation to a
+     continuous rotation model (damped spring or quaternion + ω + α
+     law). That's a gameplay-affecting change and naturally falls
+     out of Phase 3 of the quaternion adoption recommended below —
+     not a wire-format gap that PREDICT can close on its own.
   B. RESOLVED — Turret yaw now ships `angularAcceleration` on the
      wire. Sourced from integrateDampedRotation's spring α output in
      turretSystem.ts; serialized as `turret.angular.acc` in the
@@ -93,28 +103,70 @@ ANGULAR DATA GAPS (semantics intended but data missing):
      `pitchAcc`). Same path as (B); pitch is no longer lerp-only on
      the client under VEL/ACC.
 
-NOT YET WIRED (future work — not gated; runs at full ACC always):
+DELIBERATELY NOT GATED (closed; documented for future readers):
   1. unitSuspension / chassis tilt EMA. `advanceUnitSuspension` runs
      each frame regardless of PREDICT mode — it's a visual smoothing
-     effect, not an authoritative integration, so leaving it alone is
-     defensible, but a strict reading of "POS = no client integration"
-     would freeze it too.
-  2. Server-side integrators that COULD be gated by snapshot
-     emission rate (i.e. only send velocity/acceleration when needed).
-     stateSerializer.ts always writes velocity/acceleration into every
-     snapshot today; a future per-recipient PREDICT-aware serializer
-     could omit fields when the recipient is in POS/VEL mode and save
-     bandwidth. Not done — would require client→server PREDICT mode
-     announcement.
-  3. Pure client-side effects that are NOT server-predicted and so
-     have no "snapshot to snap to" (deliberately out of scope):
-       - src/game/render3d/Debris3D.ts (gravity-driven debris particles)
+     effect, not an authoritative integration. A strict reading of
+     "POS = no client integration" would freeze the suspension, but
+     the suspension is reading the *current* chassis pose and
+     producing a per-frame visual offset; it's downstream of, not
+     part of, the prediction integration. Leaving it on under all
+     PREDICT modes is the right call.
+  2. Pure client-side effects that have no server snapshot to predict
+     against:
+       - src/game/render3d/Debris3D.ts        (gravity-driven debris)
        - src/game/render3d/ProjectileRangeEnvelope3D.ts (range preview)
      POS mode would freeze them in mid-air; VEL would strip gravity
      and they'd float away. These are authoritatively-client effects,
      not predictions of server state, so the PREDICT toggle leaves
-     them at their full F=ma integration. Document this distinction in
-     any future "purely client physics" toggle if one is wanted.
+     them at their full F=ma integration. A future "purely client
+     physics quality" toggle could control these separately.
+
+==============================================================================
+ FUTURE FEATURE — PREDICT-aware serializer (per-recipient bandwidth opt)
+==============================================================================
+Once the dust settles on the PREDICT scheme above, there is a follow-up
+optimization worth doing as its own feature: have the server omit
+fields the recipient won't use.
+
+  - In POS mode, the client integrates nothing — every velocity and
+    acceleration field in the snapshot is dead bytes for that recipient.
+  - In VEL mode, every acceleration field is dead bytes (linear and
+    angular).
+  - In ACC mode (default), everything is sent.
+
+Required pieces:
+  - A new client→server message ClientPredictionModeChanged that
+    fires on every setPredictionMode() call.
+  - GameConnection / GameServer plumbing to track per-connection
+    PredictionMode state (default 'acc' for new connections to keep
+    backward compatibility).
+  - stateSerializer per-recipient gating: skip writing velocity /
+    acceleration / movementAccel / target.velocity* / target.accel* /
+    turret.angular.vel / turret.angular.acc / turret.angular.pitchVel
+    / turret.angular.pitchAcc / beam-point .vx,.ax,etc. when the
+    recipient's mode rules them out.
+  - Snapshot decoder needs to default any omitted fields to 0 so the
+    integrators above produce no spurious motion.
+
+Bandwidth win is meaningful for low-end clients on POS (drop ~half
+the per-entity payload); modest for VEL; zero for ACC. Not done.
+
+==============================================================================
+ PREDICT block — STATUS SUMMARY
+==============================================================================
+WIRED        — unit body, turret yaw + pitch (full ω + α), beam-path
+               points, projectiles (incl. homing intercept solver).
+CLOSED       — gap A (sim model snaps unit body rotation; no
+               continuous angular motion to extrapolate).
+RESOLVED     — gap B (turret angular acceleration on the wire),
+               gap C (turret pitch velocity + acceleration on the wire).
+NOT GATED    — suspension EMA (downstream visual), pure client effects
+               (Debris3D, ProjectileRangeEnvelope3D).
+FUTURE FEAT. — PREDICT-aware serializer (own feature, see above).
+ARCH ALT.    — quaternion + ω-vector + α-vector representation note
+               (see ANGLE-POS / ANGLE-VEL / ANGLE-ACC section above);
+               supersedes the per-axis scalar scheme when adopted.
 
 CLIENT-SIDE INTEGRATOR AUDIT — RESOLVED 2026-05-13
 ──────────────────────────────────────────────────
