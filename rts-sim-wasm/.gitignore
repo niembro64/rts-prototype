@@ -1,0 +1,5 @@
+# Cargo build artifacts. The compiled .wasm output lives in
+# ../src/game/sim-wasm/pkg/ (the wasm-pack --out-dir target),
+# which is gitignored at the repo root. Cargo.lock IS checked
+# in for reproducible builds.
+target/

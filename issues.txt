@@ -57,34 +57,34 @@ What that means concretely:
   same .wasm.
 
 ------------------------------------------------------------------------------
- Phase 1 — Crate scaffolding + dual-load pipeline. (BLOCKS EVERYTHING.)
+ Phase 1 — Crate scaffolding + dual-load pipeline. DONE.
 ------------------------------------------------------------------------------
-Re-establish what M12 ripped out, but with both consumers in mind
-this time.
+Landed: rts-sim-wasm/ Rust crate at repo root (Cargo.toml + lib.rs
+skeleton with a `version()` export and `#[wasm_bindgen(start)]`
+panic-hook installer). `npm run build:wasm` invokes wasm-pack and
+writes to src/game/sim-wasm/pkg/. Shared singleton loader at
+src/game/sim-wasm/init.ts (module-level Promise — concurrent
+awaiters share one fetch + compile). main.ts kicks the load in
+parallel with Vue mount so the first GameServer.create() / client
+ClientViewState construction await is a no-op. .gitignore covers
+target/ and pkg/; Cargo.lock IS checked in for reproducible
+builds. Final .wasm is ~18 KB (well under the 250 KB budget;
+scaffolding only, will grow as kernels land).
 
-  - rts-sim-wasm/ Rust crate at the repo root. Cargo.toml +
-    src/lib.rs skeleton. Naming: NOT rts-physics-wasm/ — we're
-    building a sim core, not just physics.
-  - npm "build:wasm" script that produces src/game/sim-wasm/pkg/
-    (move out of server/ since the client loads it too).
-  - vite-plugin-wasm hookup in vite.config.ts.
-  - One shared init module: src/game/sim-wasm/init.ts that exposes
-    `await initSimWasm()` and returns a singleton handle. Both
-    GameServer.create() AND the client's ClientViewState
-    construction path await this — module-level Promise so
-    concurrent awaits share one fetch + compile.
-  - Cross-platform build instructions (macOS / Linux / CI). The
-    earlier "Fix build:wasm — source Cargo env for wasm-pack"
-    incident (10ee2bf9) bit on env-setup; document it in
-    README + a CI script.
-  - .gitignore for target/ and pkg/, but keep Cargo.lock checked
-    in for reproducible builds.
-  - wasm-pack release profile with opt-level=3, lto=true, strip=
-    "symbols". Verify final .wasm bundle stays under ~250 KB so
-    initial load is fast on slow networks.
-  - SIMD: emit `+simd128` target feature; provide a non-SIMD
-    fallback for Safari (Safari shipped wasm SIMD in 16.4 but
-    older iOS clients still exist).
+Open follow-ups within Phase 1:
+  - **wasm-opt is disabled** via Cargo metadata. The wasm-pack-
+    bundled wasm-opt errors on "Bulk memory operations require
+    bulk memory [--enable-bulk-memory]" against modern rustc
+    output. Either bundle a newer wasm-opt locally and pass
+    `--enable-bulk-memory`, or wait for wasm-pack to ship one.
+    No size impact yet (release profile already opt-level=3 +
+    lto); revisit when the .wasm grows past ~100 KB.
+  - **SIMD target feature**: `+simd128` not yet enabled. Phase 2/3
+    inner loops are the place to opt in (target_feature attr +
+    runtime detection / non-SIMD fallback for older iOS Safari).
+  - **CI hookup**: README + CI script that runs `build:wasm` before
+    `build` (the npm `build` target already chains it; CI just
+    needs `cargo` + `wasm-pack` on PATH).
 
 ------------------------------------------------------------------------------
  Phase 2 — Shared unit-motion integrator (advanceUnitMotionPhysicsMutable).

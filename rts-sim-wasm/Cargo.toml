@@ -1,0 +1,39 @@
+[package]
+name = "rts-sim-wasm"
+version = "0.0.1"
+edition = "2021"
+description = "Bespoke RTS simulation core. Compiled to WebAssembly and loaded by both the authoritative server tick and the client prediction stepper."
+license = "MIT"
+
+[lib]
+# cdylib produces a .wasm with C-style exported symbols that
+# wasm-bindgen + wasm-pack can wrap with JS glue.
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
+
+[profile.release]
+# Strip-everything release config. wasm-opt -Oz inside wasm-pack
+# trims further; this gets us most of the way there.
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.dev]
+# Keep dev builds fast — wasm-pack defaults to --dev for `cargo
+# watch` style rebuilds; release is used by `npm run build:wasm`.
+opt-level = 0
+debug = true
+
+[package.metadata.wasm-pack.profile.release]
+# Disable the bundled wasm-opt pass. The version wasm-pack ships
+# (and lazily downloads) is too old to handle modern wasm features
+# our `rustc` emits (bulk memory operations in particular). Re-enable
+# once wasm-pack ships a wasm-opt with --enable-bulk-memory, or once
+# we add a separate `wasm-opt -Oz` step in the build script using a
+# locally-installed binemaryen.
+wasm-opt = false
