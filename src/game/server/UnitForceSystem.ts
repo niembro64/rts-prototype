@@ -217,17 +217,28 @@ export class UnitForceSystem {
         const groundZ = this.world.getGroundZ(body.x, body.y);
         const altitude = Math.max(body.z - groundZ, 0.5);
         const hoverHeight = entity.unit.locomotion.hoverHeight ?? altitude;
-        // F_up = K / altitude, K = m · g · hoverHeight  (raw force).
+        // F_up = K / altitude  −  c · vz
+        // K   = m · g · hoverHeight   (raw force)
+        // c   = 2 · m · √(g / hoverHeight)  ≈ critical damping for the
+        //   linearized oscillator near equilibrium. Without this the
+        //   pure inverse-distance lift is an undamped harmonic
+        //   oscillator at ω = √(g / hoverHeight) — a ~3-second period
+        //   at hoverHeight=120, which feels like the drone is bouncing.
+        //   Critical damping settles within ~1 period instead of
+        //   relying on the slow global air-friction multiplier.
+        //
         // applyForce below multiplies thrustForceZ by 1e6 (Matter.js
         // ms² → sec² conversion) and then divides by mass internally,
         // so we pre-divide by 1e6 here to land at the intended raw
-        // F_up. The other thrust pieces in this branch reuse the
+        // force. The other thrust pieces in this branch reuse the
         // existing ground-locomotion forceMagnitude convention
         // (MATTER_FORCE_SCALE = 150000) because they're authored as
-        // Matter.js drive forces; lift is a clean Newtonian formula
-        // and bypasses that scale.
-        const liftK = entity.unit.mass * GRAVITY * hoverHeight;
-        thrustForceZ = (liftK / altitude) / 1e6;
+        // Matter.js drive forces; lift + damping are clean Newtonian
+        // formulas and bypass that scale.
+        const mass = entity.unit.mass;
+        const liftK = mass * GRAVITY * hoverHeight;
+        const vzDampPerMass = 2 * Math.sqrt(GRAVITY / hoverHeight);
+        thrustForceZ = (liftK / altitude - mass * vzDampPerMass * body.vz) / 1e6;
 
         if (hasThrustDir) {
           const invDirMag = 1 / Math.sqrt(dirLenSq);
