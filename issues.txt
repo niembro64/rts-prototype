@@ -94,25 +94,19 @@ ANGULAR DATA GAPS (semantics intended but data missing):
      the client under VEL/ACC.
 
 NOT YET WIRED (future work — not gated; runs at full ACC always):
-  1. ClientProjectilePrediction.ts → applyClientProjectileHoming.
-     The intercept solver (`solveKinematicIntercept`) seeds the target
-     state with the homing target's reported acceleration. In VEL mode
-     we should pass accel=0 to the solver; in POS mode we should
-     probably skip homing steering entirely so the projectile flies
-     ballistically.
-  2. unitSuspension / chassis tilt EMA. `advanceUnitSuspension` runs
+  1. unitSuspension / chassis tilt EMA. `advanceUnitSuspension` runs
      each frame regardless of PREDICT mode — it's a visual smoothing
      effect, not an authoritative integration, so leaving it alone is
      defensible, but a strict reading of "POS = no client integration"
      would freeze it too.
-  3. Server-side integrators that COULD be gated by snapshot
+  2. Server-side integrators that COULD be gated by snapshot
      emission rate (i.e. only send velocity/acceleration when needed).
      stateSerializer.ts always writes velocity/acceleration into every
      snapshot today; a future per-recipient PREDICT-aware serializer
      could omit fields when the recipient is in POS/VEL mode and save
      bandwidth. Not done — would require client→server PREDICT mode
      announcement.
-  4. Pure client-side effects that are NOT server-predicted and so
+  3. Pure client-side effects that are NOT server-predicted and so
      have no "snapshot to snap to" (deliberately out of scope):
        - src/game/render3d/Debris3D.ts (gravity-driven debris particles)
        - src/game/render3d/ProjectileRangeEnvelope3D.ts (range preview)
@@ -121,13 +115,27 @@ NOT YET WIRED (future work — not gated; runs at full ACC always):
      not predictions of server state, so the PREDICT toggle leaves
      them at their full F=ma integration. Document this distinction in
      any future "purely client physics" toggle if one is wanted.
-  5. Audit pass for any sim-side movement that bypasses the shared
-     advanceUnitMotionPhysicsMutable helper. The audit found unit
-     bodies, ballistic projectiles, and beam-path points all flow
-     through the shared integrators, but a follow-up grep for `+= .* dt`
-     across src/game/sim could surface stragglers (jump arcs, knockback
-     impulses, force-field push, etc.) that the PREDICT mode should
-     also gate when added.
+
+CLIENT-SIDE INTEGRATOR AUDIT — RESOLVED 2026-05-13
+──────────────────────────────────────────────────
+A grep for `+= .* dt` across src/game finds nine files. The four
+client-prediction files are now PREDICT-gated:
+  - ClientUnitPrediction.ts       (unit body motion + turret yaw/pitch)
+  - ClientPredictionStepper.ts    (beam-path point integration)
+  - ClientProjectilePrediction.ts (projectile motion + homing intercept)
+The remaining five are NOT predictors and don't need gating — they
+are either the server-authoritative source-of-truth (which the
+snapshots come FROM) or pure client visual effects (no server state
+to predict against):
+  - server/PhysicsEngine3D.ts          (authoritative server physics)
+  - sim/unitMotionIntegration.ts      (the shared integrator the
+                                        client's prediction wraps)
+  - sim/combat/projectileSystem.ts    (authoritative projectile sim)
+  - sim/unitSuspension.ts             (server suspension; client
+                                        copy noted in item 1 above)
+  - render3d/Debris3D.ts +
+    render3d/SprayRenderer3D.ts       (client effects, item 3 above)
+No sim-side stragglers found that need a parallel client gate.
 
 ==============================================================================
  ANGLE-POS / ANGLE-VEL / ANGLE-ACC — PHYSICAL PURITY (open question)

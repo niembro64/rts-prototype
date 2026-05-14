@@ -89,6 +89,17 @@ function applyClientProjectileHoming(options: {
     }
   }
   if (targetValid && homingTarget) {
+    // PREDICT mode gates how much physics the homing intercept solver
+    // gets to use. POS skips homing steering entirely — the projectile
+    // flies ballistically until the next snapshot corrects it. VEL
+    // keeps steering but feeds zero acceleration into the solver
+    // (target accel and projectile gravity), so the intercept assumes
+    // constant velocities. ACC is the full kinematic intercept.
+    const predictionMode = getPredictionMode();
+    if (predictionMode === 'pos') {
+      return;
+    }
+    const useAccel = predictionMode === 'acc';
     const aimPoint = resolveTargetAimPoint(
       homingTarget,
       entity.transform.x, entity.transform.y, entity.transform.z,
@@ -98,11 +109,18 @@ function applyClientProjectileHoming(options: {
     let steerY = aimPoint.y;
     let steerZ = aimPoint.z;
     const targetVelocity = getEntityVelocity3(homingTarget, _clientHomingTargetVelocity);
-    const targetAcceleration = getEntityAcceleration3(
-      homingTarget,
-      _clientHomingTargetAcceleration,
-      (x, y) => getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
-    );
+    const targetAcceleration = useAccel
+      ? getEntityAcceleration3(
+          homingTarget,
+          _clientHomingTargetAcceleration,
+          (x, y) => getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
+        )
+      : (
+          _clientHomingTargetAcceleration.x = 0,
+          _clientHomingTargetAcceleration.y = 0,
+          _clientHomingTargetAcceleration.z = 0,
+          _clientHomingTargetAcceleration
+        );
     const targetSpeedSq =
       targetVelocity.x * targetVelocity.x +
       targetVelocity.y * targetVelocity.y +
@@ -133,7 +151,10 @@ function applyClientProjectileHoming(options: {
       _clientHomingTargetState.acceleration.z = targetAcceleration.z;
       _clientHomingProjectileAcceleration.x = 0;
       _clientHomingProjectileAcceleration.y = 0;
-      _clientHomingProjectileAcceleration.z = proj.config.shotProfile.runtime.ignoresGravity ? 0 : -GRAVITY;
+      _clientHomingProjectileAcceleration.z =
+        useAccel && !proj.config.shotProfile.runtime.ignoresGravity
+          ? -GRAVITY
+          : 0;
       const remainingSec = Number.isFinite(proj.maxLifespan)
         ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
         : undefined;
