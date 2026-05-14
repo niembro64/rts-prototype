@@ -5,6 +5,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
+import type { PredictionMode } from '@/types/client';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { captureSnapshotEntityStates, serializeGameState } from '../network/stateSerializer';
 import type {
@@ -59,6 +60,13 @@ export type SnapshotListenerEntry = {
    *  Compared against the live sum each keyframe to skip the
    *  multi-KB payload when no new cells were explored. */
   lastSentShroudVersionSum?: number;
+  /** PLAYER CLIENT bar PREDICT mode this listener wants. Undefined =
+   *  treat as 'acc' (full F=ma — every snapshot field always sent).
+   *  When the client sets POS, the server zeroes velocity fields and
+   *  drops movementAccel; when VEL, movementAccel is dropped. The
+   *  client's local PREDICT integrator gate is the authoritative one
+   *  for correctness — this is purely a bandwidth optimization. */
+  predictionMode?: PredictionMode;
 };
 
 export type ServerSnapshotPublisherInput = {
@@ -251,6 +259,7 @@ export class ServerSnapshotPublisher {
         audioOverride,
         sprayOverride,
         minimapOverride,
+        predictionMode: listener.predictionMode,
       };
       const state = serializeGameState(
         input.world,

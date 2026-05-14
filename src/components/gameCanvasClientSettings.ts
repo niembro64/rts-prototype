@@ -81,10 +81,15 @@ import type { GraphicsQuality, RenderMode } from '../types/graphics';
 
 type UseGameCanvasClientSettingsOptions = {
   applyCameraFovDegrees: (fov: CameraFovDegrees) => void;
+  /** Push the current PREDICT mode to the active GameConnection so
+   *  the server can gate snapshot bandwidth per-recipient. Optional
+   *  no-op for tests / standalone callers. */
+  applyPredictionMode?: (mode: PredictionMode) => void;
 };
 
 export function useGameCanvasClientSettings({
   applyCameraFovDegrees,
+  applyPredictionMode,
 }: UseGameCanvasClientSettingsOptions) {
   const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
   const clientSignalStates = ref({ ...getLodSignalStates() });
@@ -302,6 +307,7 @@ export function useGameCanvasClientSettings({
   function changePredictionMode(mode: PredictionMode): void {
     setPredictionMode(mode);
     predictionMode.value = mode;
+    applyPredictionMode?.(mode);
   }
 
   function changeClientTiltEmaMode(mode: DriftMode): void {
@@ -396,6 +402,7 @@ export function useGameCanvasClientSettings({
     driftMode.value = cd.driftMode.default;
     setPredictionMode(cd.predictionMode.default);
     predictionMode.value = cd.predictionMode.default;
+    applyPredictionMode?.(cd.predictionMode.default);
     setClientTiltEmaMode(cd.tiltEma.default);
     clientTiltEmaMode.value = cd.tiltEma.default;
     if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();

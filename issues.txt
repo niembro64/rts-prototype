@@ -123,34 +123,51 @@ DELIBERATELY NOT GATED (closed; documented for future readers):
      physics quality" toggle could control these separately.
 
 ==============================================================================
- FUTURE FEATURE — PREDICT-aware serializer (per-recipient bandwidth opt)
+ PREDICT-aware serializer (per-recipient bandwidth gate) — PARTIAL
 ==============================================================================
-Once the dust settles on the PREDICT scheme above, there is a follow-up
-optimization worth doing as its own feature: have the server omit
-fields the recipient won't use.
+Per-recipient PREDICT mode is now plumbed end-to-end on the LOCAL
+connection path. Each SnapshotListenerEntry carries an optional
+`predictionMode`; the per-listener serializeForListener call passes it
+into serializeGameState which threads it into serializeEntitySnapshot.
+The local client's setPredictionMode() (PLAYER CLIENT bar) routes
+through gameCanvasClientSettings.applyPredictionMode →
+LocalGameConnection.setPredictionMode → GameServer.setSnapshotListener
+PredictionMode → listener.predictionMode + forceKeyframe so the next
+snapshot rebuilds with the new mode (no delta gaps). The mode is
+re-applied on every rebindFilter (seat swap / spectator follow) and
+on connection (re)creation in GameCanvas.vue.
 
-  - In POS mode, the client integrates nothing — every velocity and
-    acceleration field in the snapshot is dead bytes for that recipient.
-  - In VEL mode, every acceleration field is dead bytes (linear and
-    angular).
-  - In ACC mode (default), everything is sent.
+WIRED gating in stateSerializerEntities.ts:
+  - POS  — u.velocity zeroed (1-byte MessagePack ints vs ~5-byte
+           quantized floats per component); movementAccel cleared
+           (already-optional field omitted from the wire).
+  - VEL  — velocity unchanged; movementAccel cleared.
+  - ACC  — full payload (default; no behaviour change).
+The client's local PREDICT integrator gate is the authoritative one
+for correctness; this layer is purely a bandwidth optimization.
 
-Required pieces:
-  - A new client→server message ClientPredictionModeChanged that
-    fires on every setPredictionMode() call.
-  - GameConnection / GameServer plumbing to track per-connection
-    PredictionMode state (default 'acc' for new connections to keep
-    backward compatibility).
-  - stateSerializer per-recipient gating: skip writing velocity /
-    acceleration / movementAccel / target.velocity* / target.accel* /
-    turret.angular.vel / turret.angular.acc / turret.angular.pitchVel
-    / turret.angular.pitchAcc / beam-point .vx,.ax,etc. when the
-    recipient's mode rules them out.
-  - Snapshot decoder needs to default any omitted fields to 0 so the
-    integrators above produce no spurious motion.
-
-Bandwidth win is meaningful for low-end clients on POS (drop ~half
-the per-entity payload); modest for VEL; zero for ACC. Not done.
+NOT YET WIRED (next chunks of work, all bounded):
+  1. Remote (WebRTC) connection. RemoteGameConnection.setPredictionMode
+     is a TODO no-op; remote clients always receive the full 'acc'
+     payload. Needs a ClientPredictionModeChanged data-channel
+     message routed through NetworkManager → server-side
+     receiveCommand → setSnapshotListenerPredictionMode.
+  2. Additional gated fields. Today only unit body velocity and
+     movementAccel are gated. Same per-listener mode could trim:
+       - turret.angular.vel / .acc / .pitchVel / .pitchAcc when POS
+       - turret.angular.acc / .pitchAcc when VEL
+       - beam-point .vx,.vy,.vz,.ax,.ay,.az when POS
+                    .ax,.ay,.az when VEL
+       - projectile spawn velocity / acceleration components
+     Each one is a small targeted edit in its respective serializer
+     plus a defaulted decode path. Stage these as appetite allows;
+     each compounds the bandwidth win.
+  3. Decoder defaults. Velocity is currently a non-optional Vec3 in
+     the wire type so we zero rather than omit. To get the full
+     bandwidth saving (omit the field, MessagePack drops it entirely)
+     the type would need to become optional and every reader path
+     would need `?? 0` defaults. Bigger lift; lower marginal payoff
+     than steps 1-2.
 
 ==============================================================================
  PREDICT block — STATUS SUMMARY
@@ -163,7 +180,9 @@ RESOLVED     — gap B (turret angular acceleration on the wire),
                gap C (turret pitch velocity + acceleration on the wire).
 NOT GATED    — suspension EMA (downstream visual), pure client effects
                (Debris3D, ProjectileRangeEnvelope3D).
-FUTURE FEAT. — PREDICT-aware serializer (own feature, see above).
+PARTIAL      — PREDICT-aware serializer: local connection wired,
+               unit-body velocity + movementAccel gated. Remote wire
+               message + additional field gates pending (see above).
 ARCH ALT.    — quaternion + ω-vector + α-vector representation note
                (see ANGLE-POS / ANGLE-VEL / ANGLE-ACC section above);
                supersedes the per-axis scalar scheme when adopted.

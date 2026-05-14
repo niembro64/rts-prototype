@@ -52,6 +52,7 @@ import {
   writeNetworkUnitVelocity,
 } from './unitSnapshotFields';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
+import type { PredictionMode } from '@/types/client';
 
 const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
@@ -193,6 +194,7 @@ export function serializeEntitySnapshot(
   changedFields: number | undefined,
   world: WorldState,
   visibility?: SnapshotVisibility,
+  predictionMode: PredictionMode = 'acc',
 ): NetworkServerSnapshotEntity | null {
   const poolEntry = getPooledEntry();
   const ne = poolEntry.entity;
@@ -248,8 +250,19 @@ export function serializeEntitySnapshot(
         clearNetworkUnitStaticFields(u);
       }
 
+      // PREDICT-aware bandwidth gate (per-recipient): a POS client
+      // doesn't integrate velocity OR acceleration, so we zero the
+      // velocity (MessagePack encodes the integer 0 in 1 byte vs ~5
+      // for a quantized float) and drop movementAccel entirely. A
+      // VEL client integrates velocity but not acceleration, so it
+      // still wants velocity but not movementAccel. Writing zeros vs
+      // omitting is cosmetic; what matters is the wire payload is
+      // smaller and the client's local PREDICT integrator gate (the
+      // authoritative one) treats them as 0.
+      const sendVelocity = predictionMode !== 'pos';
+      const sendMovementAccel = predictionMode === 'acc';
       if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
-        if (canSeePrivateDetails) {
+        if (canSeePrivateDetails && sendVelocity) {
           writeNetworkUnitVelocity(u, entity.unit, qVel);
         } else {
           u.velocity.x = 0;
@@ -258,7 +271,10 @@ export function serializeEntitySnapshot(
         }
       }
 
-      if (isFull || (changedFields! & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
+      if (
+        sendMovementAccel &&
+        (isFull || (changedFields! & ENTITY_CHANGED_MOVEMENT_ACCEL))
+      ) {
         if (canSeePrivateDetails) {
           writeNetworkUnitMovementAccel(u, entity.unit, poolEntry.unitMovementAccel, qVel);
         } else {

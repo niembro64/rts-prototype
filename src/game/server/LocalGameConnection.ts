@@ -4,6 +4,7 @@ import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallba
 import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
+import type { PredictionMode } from '@/types/client';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 
@@ -28,6 +29,10 @@ export class LocalGameConnection implements GameConnection {
    *  commandPlayerId so a true spectator can view-as-N without being
    *  able to issue orders as N (issues.txt FOW-07). */
   private filterPlayerId?: PlayerId;
+  /** Locally-cached PREDICT mode so re-binding the snapshot listener
+   *  (setRecipientPlayerId / setSpectatorTarget) carries the user's
+   *  bandwidth preference across to the new listener. */
+  private predictionMode: PredictionMode = 'acc';
 
   constructor(server: GameServer, playerId?: PlayerId) {
     this.server = server;
@@ -75,6 +80,14 @@ export class LocalGameConnection implements GameConnection {
     // Mark the fresh listener ready immediately; we know the client
     // scene is already past startup (only running scenes toggle).
     this.server.markSnapshotListenerReady(this.snapshotListenerKey);
+    // Re-apply the cached PREDICT mode to the new listener so the
+    // bandwidth gate doesn't reset to 'acc' on every seat swap.
+    if (this.predictionMode !== 'acc') {
+      this.server.setSnapshotListenerPredictionMode(
+        this.snapshotListenerKey,
+        this.predictionMode,
+      );
+    }
   }
 
   private subscribeSnapshots(playerId: PlayerId | undefined): string {
@@ -91,6 +104,12 @@ export class LocalGameConnection implements GameConnection {
 
   sendCommand(command: Command): void {
     this.server.receiveCommand(command, this.commandPlayerId);
+  }
+
+  setPredictionMode(mode: PredictionMode): void {
+    if (this.predictionMode === mode) return;
+    this.predictionMode = mode;
+    this.server.setSnapshotListenerPredictionMode(this.snapshotListenerKey, mode);
   }
 
   markClientReady(): void {

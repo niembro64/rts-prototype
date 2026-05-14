@@ -4,6 +4,7 @@ import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallba
 import type { Command } from '../sim/commands';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { networkManager } from '../network/NetworkManager';
+import type { PredictionMode } from '@/types/client';
 
 export class RemoteGameConnection implements GameConnection {
   private snapshotCallback: SnapshotCallback | null = null;
@@ -28,6 +29,14 @@ export class RemoteGameConnection implements GameConnection {
 
   sendCommand(command: Command): void {
     networkManager.sendCommand(command);
+  }
+
+  setPredictionMode(_mode: PredictionMode): void {
+    // TODO: wire a ClientPredictionModeChanged data-channel message
+    // through NetworkManager so the remote host can apply the
+    // per-recipient bandwidth gate. Until then remote clients always
+    // receive the full 'acc' payload — correct, just not optimized.
+    // See issues.txt PREDICT-aware serializer block.
   }
 
   markClientReady(): void {

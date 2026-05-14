@@ -303,7 +303,12 @@ const {
   toggleAllPan,
   toggleAllSounds,
   toggleSoundCategory,
-} = useGameCanvasClientSettings({ applyCameraFovDegrees });
+} = useGameCanvasClientSettings({
+  applyCameraFovDegrees,
+  applyPredictionMode: (mode) => {
+    activeConnection?.setPredictionMode?.(mode);
+  },
+});
 
 const { showSoundTest } = useGameCanvasSoundTest();
 
@@ -348,6 +353,10 @@ const {
     battleStartTime = Date.now();
     setPlayerClientRenderEnabled(battle.gameInstance, playerClientEnabled.value);
     setInstanceCameraFovDegrees(battle.gameInstance, cameraFovDegrees.value);
+    // Push the user's current PREDICT mode to the new connection so
+    // the per-recipient bandwidth gate matches the bar selection from
+    // the very first snapshot, not just after the next manual change.
+    activeConnection.setPredictionMode?.(predictionMode.value);
   },
   onStopped: () => {
     if (!currentServer) {
@@ -646,6 +655,10 @@ const {
   },
   setActiveConnection: (connection) => {
     activeConnection = connection;
+    // Push the user's current PREDICT mode to the new connection so
+    // the per-recipient bandwidth gate matches the bar selection from
+    // the first snapshot.
+    activeConnection?.setPredictionMode?.(predictionMode.value);
   },
   setBattleStartTime: (time) => {
     battleStartTime = time;
@@ -681,6 +694,10 @@ const { restartGame } = useGameCanvasSessionLifecycle({
   },
   setActiveConnection: (connection) => {
     activeConnection = connection;
+    // Push the user's current PREDICT mode to the new connection so
+    // the per-recipient bandwidth gate matches the bar selection from
+    // the first snapshot.
+    activeConnection?.setPredictionMode?.(predictionMode.value);
   },
   setBattleStartTime: (time) => {
     battleStartTime = time;
