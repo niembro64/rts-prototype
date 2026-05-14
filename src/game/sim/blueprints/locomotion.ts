@@ -255,4 +255,16 @@ export const UNIT_LOCOMOTION_BLUEPRINTS = {
       leftSide: LEG_LAYOUTS.commander,
     },
   },
+  // Hover drone: no ground gear, target altitude 30 world units. The
+  // inverse-distance lift integrator in UnitForceSystem sizes the
+  // upward force so equilibrium sits at hoverHeight (F_up = m·g there);
+  // below that altitude the lift is stronger and pushes the drone up,
+  // above it the lift weakens and gravity pulls it back down.
+  hovercraft: {
+    type: 'hover',
+    physics: createLocomotionPhysics('hover', 240),
+    config: {
+      hoverHeight: 30,
+    },
+  },
 } satisfies Record<string, LocomotionBlueprint>;

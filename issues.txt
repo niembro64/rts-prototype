@@ -8,46 +8,57 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 ==============================================================================
 
 ==============================================================================
+ Hovercraft → quaternion adoption (NOW UNBLOCKED)
+==============================================================================
+A `hovercraft` unit blueprint just landed. It uses a new `'hover'`
+locomotion type with no ground gear; the body is held aloft by an
+inverse-distance lift integrator in UnitForceSystem:
+
+    F_up = K / altitude,  K = m · g · hoverHeight
+
+so equilibrium (F_up = m·g) sits exactly at the authored hoverHeight.
+For now the unit still has only a yaw scalar for orientation — same
+as every other ground unit — and so does NOT yet exhibit the bank-
+into-a-turn behaviour that would benefit from a roll axis.
+
+That makes the hovercraft the natural first candidate for adopting
+the quaternion + ω-vector + α-vector representation discussed earlier.
+The recommended path:
+
+  Step 1. Extend Unit with an `orientation: Quat`, `angularVel: Vec3`,
+          `angularAcc: Vec3` triad GATED on locomotion type. Tanks /
+          hovers with ground locomotion stay yaw-only (existing scalar
+          model); hover units get the full quaternion bundle.
+  Step 2. UnitForceSystem hover branch derives roll from horizontal
+          acceleration: target roll about the forward axis ∝ lateral
+          accel / g, driven by a damped-spring on the orientation quat.
+          Pitch can mirror longitudinal accel (nose down when
+          accelerating forward, nose up when decelerating).
+  Step 3. Wire format: ServerTarget gains an optional Quat/ω/α triad
+          (only emitted for entities that have one); the PREDICT POS/
+          VEL/ACC scheme integrates it the same shape as the
+          translational chain (q drifts via slerp; q ⊕ ω·dt; ω + α·dt).
+  Step 4. Renderer reads the quaternion when present, falls back to
+          yaw scalar otherwise — Three.js already takes quaternions
+          natively, so this is a small mesh-pose plumbing change at
+          the chassis builder level.
+
+Tank turret math stays scalar (decoupled Euler springs are physically
+correct for two-motor turrets — see the analysis in earlier commits).
+Quaternions apply to the unit-body orientation of the hovercraft and
+any future entity that needs roll / arbitrary orientation.
+
+==============================================================================
  PREDICT serializer — fully-omit-via-optional-wire-fields (deferred)
 ==============================================================================
-The PREDICT POS/VEL/ACC scheme (PLAYER CLIENT bar three-way toggle for
-client-side extrapolation between server snapshots) is fully wired
-end-to-end. The local + remote bandwidth gate zeros velocity /
-acceleration fields on the wire for recipients in POS / VEL mode
-(zero encodes in 1-byte MessagePack ints vs ~5-byte quantized floats,
-so this is a real wire-byte saving even without making the fields
-optional).
+The PREDICT POS/VEL/ACC scheme is fully wired end-to-end. The local +
+remote bandwidth gate zeros velocity / acceleration fields on the
+wire for recipients in POS / VEL mode (zero encodes in 1-byte
+MessagePack ints vs ~5-byte quantized floats, so this is a real
+wire-byte saving even without making the fields optional).
 
 One follow-up remains: make velocity / accel wire fields OPTIONAL so
 MessagePack drops them entirely instead of shipping zeros. Bigger
 saving, much wider blast radius (every reader path needs `?? 0`
 defaults). Defer until profiling shows the current zero-write payload
 isn't already meeting bandwidth targets.
-
-==============================================================================
- Quaternion + ω-vector + α-vector representation (future feature)
-==============================================================================
-Don't refactor existing turret yaw+pitch math to quaternion. The
-decoupled-Euler scalar springs are already physically correct for
-tank-style two-motor turrets:
-  - Same k and c on both axes → under critical damping, yaw and pitch
-    errors decay proportionally and the (yaw, pitch) Euler-space
-    trajectory is a straight line from initial to target.
-  - Real tank turrets have two independent motors (yaw ring + pitch
-    trunnion); the decoupled scalar springs are a faithful model of
-    that mechanism. A quaternion shortest-path geodesic spring models
-    a single 3-DOF free gimbal instead — less physical for tanks, not
-    more.
-
-Where quaternion + ω-vector + α-vector representation actually buys
-something is FUTURE content that needs roll or arbitrary orientation:
-  - Hovercraft banking into a turn
-  - Spinning projectiles around the flight axis
-  - Ragdoll debris, ships listing in waves, etc.
-
-When such an entity is added, build it on quaternions from day one.
-PREDICT POS/VEL/ACC semantics fall out naturally from that
-representation (single quat integrate; one ω·dt step; one α·dt step)
-without needing a per-axis scalar bundle on the wire.
-
-Until such a feature ships, no quaternion refactor is queued.

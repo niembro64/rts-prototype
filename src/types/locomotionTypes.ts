@@ -1,15 +1,25 @@
 // Runtime locomotion profile used by movement physics and rendering.
 
 export type UnitLocomotion = {
-  type: 'wheels' | 'treads' | 'legs';
+  type: 'wheels' | 'treads' | 'legs' | 'hover';
   /** Authored propulsion scalar supplied by the locomotion blueprint. */
   driveForce: number;
-  /** Ground traction coefficient. This is coupling to terrain, not drag. */
+  /** Ground traction coefficient. This is coupling to terrain, not drag.
+   *  For hover units this acts as a horizontal-thrust scalar (no actual
+   *  ground contact); 1.0 is full authority. */
   traction: number;
-  /** Maximum traversable slope in degrees from horizontal. */
+  /** Maximum traversable slope in degrees from horizontal. Hovers
+   *  ignore terrain slope, but the field stays for path-validity
+   *  uniformity (set near 90°). */
   maxSlopeDeg: number;
   /** Precomputed cosine threshold for pathfinding against terrain normals. */
   minSurfaceNormalZ: number;
+  /** Hover-only: target altitude above the ground directly below the
+   *  unit, in world units. The hover physics integrator uses this to
+   *  size the inverse-distance lift force so that the equilibrium
+   *  height (where F_up = m·g) sits at hoverHeight. Undefined for
+   *  non-hover locomotion. */
+  hoverHeight?: number;
 };
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local

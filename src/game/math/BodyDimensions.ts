@@ -47,6 +47,11 @@ export function getDefaultLocomotionBodyLiftY(
     }
     case 'legs':
       return unitRadius * LEG_BODY_LIFT_FRAC;
+    case 'hover':
+      // Hover units have no chassis-attached ground gear; the body
+      // sits at chassis-local Y=0 and the inverse-distance lift
+      // integrator owns the body's world-space altitude entirely.
+      return 0;
   }
 }
 
@@ -67,6 +72,17 @@ export function getWheelBodyCenterHeightY(
 ): number {
   return Math.max(1, unitRadius * wheelRadiusFrac) * 2
     + getBodyCenterLocalY(bodyShape, unitRadius);
+}
+
+/** Hover units sit with their visible body at chassis-local Y=0
+ *  (no wheels/legs/treads beneath); the world-space altitude is
+ *  owned entirely by the inverse-distance lift integrator. So the
+ *  body-center height is just the local center of the body shape. */
+export function getHoverBodyCenterHeightY(
+  bodyShape: UnitBodyShape,
+  unitRadius: number,
+): number {
+  return getBodyCenterLocalY(bodyShape, unitRadius);
 }
 
 export function getTreadBodyCenterHeightY(

@@ -151,6 +151,7 @@ export const AUDIO = {
       commander: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       hippo: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       loris: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
+      hovercraft: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.35 },
     } satisfies Record<UnitTypeId, SoundEntry>,
   },
 

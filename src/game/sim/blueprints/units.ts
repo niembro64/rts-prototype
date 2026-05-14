@@ -23,6 +23,7 @@ import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
 import {
   LEG_BODY_LIFT_FRAC,
   getExpectedUnitBodyCenterHeightY,
+  getHoverBodyCenterHeightY,
   getLegBodyCenterHeightY,
   getTreadBodyCenterHeightY,
   getWheelBodyCenterHeightY,
@@ -476,6 +477,26 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     hideChassis: true,
     locomotion: UNIT_LOCOMOTION_BLUEPRINTS.loris,
     deathSound: AUDIO.event.death.loris,
+  },
+  // Hovercraft drone — flies at a target altitude held by an
+  // inverse-distance lift integrator (see UnitForceSystem). Carries a
+  // miniBeam turret. No ground gear: the renderer's locomotion switch
+  // falls through for 'hover', so the chassis body is the only thing
+  // drawn.
+  hovercraft: {
+    id: 'hovercraft',
+    name: 'Hovercraft',
+    shortName: 'HVR',
+    hp: 70,
+    radius: { body: 9, shot: 8, push: 9 * 1.2 },
+    bodyCenterHeight: getHoverBodyCenterHeightY(BODY_SHAPES.scout, 9),
+    mass: 25,
+    cost: { energy: 120, mana: 120, metal: 120 },
+    turrets: [turretMount('miniBeam', mountPoint(0, 0, 0.8))],
+    bodyShape: BODY_SHAPES.scout,
+    hud: DEFAULT_UNIT_HUD_LAYOUT,
+    locomotion: UNIT_LOCOMOTION_BLUEPRINTS.hovercraft,
+    deathSound: AUDIO.event.death.hovercraft,
   },
   commander: {
     id: 'commander',

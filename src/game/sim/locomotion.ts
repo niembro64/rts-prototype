@@ -6,6 +6,9 @@ export const LOCOMOTION_TRACTION = {
   wheels: 0.45,
   treads: 0.75,
   legs: 1.0,
+  // Hover units have no terrain contact patch; the "traction" here is
+  // applied as a uniform horizontal-thrust scalar (1.0 = full authority).
+  hover: 1.0,
 } as const;
 
 export type LocomotionType = keyof typeof LOCOMOTION_TRACTION;
@@ -14,6 +17,9 @@ export const LOCOMOTION_MAX_SLOPE_DEG: Record<LocomotionType, number> = {
   wheels: 10,
   treads: 20,
   legs: 70,
+  // Hovers fly over arbitrary terrain — set near 90° so pathfinding
+  // treats every land cell as traversable.
+  hover: 89,
 };
 
 function assertPositiveFinite(label: string, value: number): void {
@@ -54,12 +60,19 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
   assertPositiveFinite(`${type}.traction`, physics.traction);
   const maxSlopeDeg = physics.maxSlopeDeg ?? LOCOMOTION_MAX_SLOPE_DEG[type];
   assertSlopeDegrees(`${type}.maxSlopeDeg`, maxSlopeDeg);
+  const hoverHeight = type === 'hover'
+    ? locomotion.config.hoverHeight
+    : undefined;
+  if (type === 'hover') {
+    assertPositiveFinite('hover.hoverHeight', hoverHeight ?? NaN);
+  }
   return {
     type,
     driveForce: physics.driveForce,
     traction: physics.traction,
     maxSlopeDeg,
     minSurfaceNormalZ: maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg),
+    hoverHeight,
   };
 }
 
@@ -70,6 +83,7 @@ export function cloneUnitLocomotion(locomotion: UnitLocomotion): UnitLocomotion 
     traction: locomotion.traction,
     maxSlopeDeg: locomotion.maxSlopeDeg,
     minSurfaceNormalZ: locomotion.minSurfaceNormalZ,
+    hoverHeight: locomotion.hoverHeight,
   };
 }
 

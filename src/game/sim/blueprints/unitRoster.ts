@@ -16,6 +16,7 @@ export const BUILDABLE_UNIT_IDS = [
   'widow',
   'formik',
   'hippo',
+  'hovercraft',
 ] as const;
 
 export type BuildableUnitId = typeof BUILDABLE_UNIT_IDS[number];

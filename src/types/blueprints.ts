@@ -238,10 +238,20 @@ export type LocomotionPhysics = {
   jump?: UnitJumpConfig;
 };
 
+/** Hover locomotion (drones, gunships) — no ground contact, no
+ *  wheels/treads/legs render. The hoverHeight specifies the target
+ *  altitude above the terrain directly under the unit; the inverse-
+ *  distance lift integrator in UnitForceSystem sizes the upward force
+ *  so equilibrium sits at this altitude (F_up = m·g there). */
+export type HoverConfig = {
+  hoverHeight: number;
+};
+
 export type LocomotionBlueprint =
   | { type: 'wheels'; physics: LocomotionPhysics; config: WheelConfig }
   | { type: 'treads'; physics: LocomotionPhysics; config: TreadConfig }
-  | { type: 'legs'; physics: LocomotionPhysics; config: LegConfig };
+  | { type: 'legs'; physics: LocomotionPhysics; config: LegConfig }
+  | { type: 'hover'; physics: LocomotionPhysics; config: HoverConfig };
 
 export type UnitBodyShapePart =
   | {

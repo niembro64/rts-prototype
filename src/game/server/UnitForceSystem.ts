@@ -168,6 +168,75 @@ export class UnitForceSystem {
       let thrustForceY = 0;
       let thrustForceZ = 0;
 
+      // Hover locomotion (drones, gunships). No ground contact, no
+      // slope projection. Lift force is inversely proportional to the
+      // distance from the ground directly below the unit:
+      //
+      //   F_up = K / altitude,  K = m · g · hoverHeight
+      //
+      // The equilibrium altitude (where F_up = m·g) is exactly
+      // hoverHeight. Below it the lift grows large and pushes the
+      // unit up; above it the lift drops and gravity pulls it back.
+      // A near-zero floor on altitude keeps the force finite when the
+      // unit clips into terrain during a violent push.
+      //
+      // Horizontal thrust is applied directly (no slope tangent) —
+      // hovers fly over arbitrary terrain at constant altitude.
+      if (entity.unit.locomotion.type === 'hover') {
+        const groundZ = this.world.getGroundZ(body.x, body.y);
+        const altitude = Math.max(body.z - groundZ, 0.5);
+        const hoverHeight = entity.unit.locomotion.hoverHeight ?? altitude;
+        // F_up = K / altitude, K = m · g · hoverHeight  (raw force).
+        // applyForce below multiplies thrustForceZ by 1e6 (Matter.js
+        // ms² → sec² conversion) and then divides by mass internally,
+        // so we pre-divide by 1e6 here to land at the intended raw
+        // F_up. The other thrust pieces in this branch reuse the
+        // existing ground-locomotion forceMagnitude convention
+        // (MATTER_FORCE_SCALE = 150000) because they're authored as
+        // Matter.js drive forces; lift is a clean Newtonian formula
+        // and bypasses that scale.
+        const liftK = entity.unit.mass * GRAVITY * hoverHeight;
+        thrustForceZ = (liftK / altitude) / 1e6;
+
+        if (hasThrustDir) {
+          const invDirMag = 1 / Math.sqrt(dirLenSq);
+          const useDirX = dirX * invDirMag;
+          const useDirY = dirY * invDirMag;
+          const locomotionForce = getLocomotionForceProfile(
+            entity.unit.locomotion,
+            entity.unit.mass,
+            this.world.thrustMultiplier,
+            MATTER_FORCE_SCALE,
+          );
+          thrustForceX = useDirX * locomotionForce.tractionForceMagnitude;
+          thrustForceY = useDirY * locomotionForce.tractionForceMagnitude;
+        }
+
+        // Fall through to the shared totalForce / applyForce block
+        // below; skip the ground-locomotion branch entirely.
+        const totalForceX = thrustForceX + externalFx;
+        const totalForceY = thrustForceY + externalFy;
+        const totalForceZ = thrustForceZ + externalFz;
+        if (
+          !Number.isFinite(totalForceX) ||
+          !Number.isFinite(totalForceY) ||
+          !Number.isFinite(totalForceZ)
+        ) {
+          continue;
+        }
+        const movementAccelScale = body.mass > 0 ? 1e6 / body.mass : 0;
+        if (setUnitMovementAcceleration(
+          entity.unit,
+          thrustForceX * movementAccelScale,
+          thrustForceY * movementAccelScale,
+          thrustForceZ * movementAccelScale,
+        )) {
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
+        }
+        this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6, totalForceZ * 1e6);
+        continue;
+      }
+
       // Water as a WALL.
       //
       // Two-pronged behaviour, both built on `isWaterAt` against the
