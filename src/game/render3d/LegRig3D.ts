@@ -317,28 +317,9 @@ export function buildLegs(
     const sideParity = side === 1 ? 1 : 0;
     const phaseShift01 = ((sideIndex & 1) ^ sideParity) as 0 | 1;
 
-    // Cylinders are NOT per-Mesh — they're slots in the shared
-    // LegInstancedRenderer's two InstancedBufferGeometries (upper +
-    // lower). Allocate one upper-slot for every leg; only allocate a
-    // lower-slot for 'animated'/'full' (the IK-bend tiers — 'simple'
-    // is a single hip→foot cylinder in the upper pool). If the pool
-    // is exhausted, alloc returns -1 and the leg quietly skips
-    // rendering.
-    const upperSlot = legRenderer.allocUpper(shellPool);
-    let lowerSlot = -1;
-    if (legLod === 'animated' || legLod === 'full') {
-      lowerSlot = legRenderer.allocLower(shellPool);
-    }
-    const footPadSlot = legRenderer.allocFootPad(shellPool);
-
-    // Joint spheres at 'full' LOD only — both slots allocate into
-    // the shared joint-sphere InstancedMesh pool. Radii are baked
-    // here (joint sizes are constant per leg config) and re-applied
-    // each frame alongside the world position via the slot's
-    // instanceMatrix. -1 means "no slot" (non-full LOD or the pool
-    // was exhausted; the leg just skips that joint).
-    let hipJointSlot = -1;
-    let kneeJointSlot = -1;
+    // Joint sphere / foot-pad sizing — baked here once because joint
+    // and pad geometry is constant per-leg (only world transform
+    // changes per frame).
     const hipJointRadius = Math.max(1, cfg.hipRadius);
     const kneeJointRadius = Math.max(1, cfg.kneeRadius);
     const footPadRadius = Math.max(FOOT_PAD_MIN_RADIUS, lowerThick * FOOT_PAD_RADIUS_MULT);
@@ -346,10 +327,6 @@ export function buildLegs(
       FOOT_PAD_MIN_HALF_HEIGHT,
       lowerThick * FOOT_PAD_HALF_HEIGHT_MULT,
     );
-    if (legLod === 'full') {
-      hipJointSlot = legRenderer.allocJoint(shellPool);
-      kneeJointSlot = legRenderer.allocJoint(shellPool);
-    }
 
     // Hip Y defaults to the lifted vertical mid-point of whichever
     // body segment the leg sits under. Units whose visible body is a
@@ -359,7 +336,10 @@ export function buildLegs(
       ? legAttachHeightFrac * r
       : chassisLiftY + getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
 
-    legs.push({
+    // Build the leg object with placeholder slot indices first, then
+    // alloc — the alloc relocator callbacks need to write back to
+    // `leg.upperSlot` etc. when defrag moves a slot.
+    const leg: LegInstance = {
       config: legCfg,
       side,
       hipY,
@@ -372,18 +352,34 @@ export function buildLegs(
       lerpProgress: 0,
       lerpDuration: legCfg.lerpDuration ?? cfg.lerpDuration,
       initialized: false,
-      upperSlot,
-      lowerSlot,
-      hipJointSlot,
-      kneeJointSlot,
-      footPadSlot,
+      upperSlot: -1,
+      lowerSlot: -1,
+      hipJointSlot: -1,
+      kneeJointSlot: -1,
+      footPadSlot: -1,
       hipJointRadius,
       kneeJointRadius,
       footPadRadius,
       footPadHalfHeight,
       upperThick,
       lowerThick,
-    });
+    };
+
+    // Cylinders / joints / pads are slots in the shared
+    // LegInstancedRenderer pools. Each alloc registers a relocator
+    // so a future flush()-time defrag can call back into the leg and
+    // update the stored index when a slot is packed downward.
+    leg.upperSlot = legRenderer.allocUpper(shellPool, (s) => { leg.upperSlot = s; });
+    if (legLod === 'animated' || legLod === 'full') {
+      leg.lowerSlot = legRenderer.allocLower(shellPool, (s) => { leg.lowerSlot = s; });
+    }
+    leg.footPadSlot = legRenderer.allocFootPad(shellPool, (s) => { leg.footPadSlot = s; });
+    if (legLod === 'full') {
+      leg.hipJointSlot = legRenderer.allocJoint(shellPool, (s) => { leg.hipJointSlot = s; });
+      leg.kneeJointSlot = legRenderer.allocJoint(shellPool, (s) => { leg.kneeJointSlot = s; });
+    }
+
+    legs.push(leg);
   }
 
   // Unit-level step-sphere radius. Every leg on this unit shares the

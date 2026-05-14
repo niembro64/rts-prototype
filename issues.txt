@@ -52,18 +52,6 @@ time and should be measured (or read more code) before touching.
  THREE.JS RENDERING
 ------------------------------------------------------------------------------
 
-[MEDIUM] Leg pool nextSlot tracks historical peak, not live count
-  src/game/render3d/LegInstancedRenderer.ts (CylinderPool / JointSpherePool /
-  FootPadPool)
-  flush() now trims GPU instanceCount/count to nextSlot for all three
-  pools, so the historical peak is the cap — not SLOT_CAP=16384. But
-  nextSlot itself never shrinks: once a peak of 4000 legs is reached
-  and most are freed, the high-water mark stays at 4000 even with
-  500 legs live.
-  Fix: defragment by tracking slot owners and swapping freed slots
-  with live slots above the new high-water mark. Requires a slot →
-  owner back-reference (legs currently hold slot indices one-way).
-
 ------------------------------------------------------------------------------
  VUE UI
 ------------------------------------------------------------------------------

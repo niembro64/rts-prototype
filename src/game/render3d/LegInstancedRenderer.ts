@@ -41,6 +41,68 @@ import { disposeMesh } from './threeUtils';
  *  (logic still updates its planted-foot state). */
 const SLOT_CAP = 16384;
 
+/** Defrag is run from flush() when freed slots make up at least this
+ *  many entries AND at least this fraction of nextSlot. Keeps the
+ *  scan/relocate work off the frame budget when fragmentation is
+ *  insignificant; kicks in after meaningful unit losses so nextSlot
+ *  shrinks back toward the live count. */
+const DEFRAG_MIN_FREE = 32;
+const DEFRAG_MIN_FREE_FRAC = 0.25;
+
+/** Callback invoked when defrag relocates a live slot: receives the
+ *  new slot index, lets the owner update its stored reference. */
+type SlotRelocator = (newSlot: number) => void;
+
+/** Pack live entries down to the bottom of a slot pool. Walks
+ *  top-down; for each topmost free slot just shrinks `nextSlot`,
+ *  for each topmost live slot copies its data into the lowest
+ *  remaining hole and notifies the owner. After the pass, all
+ *  slots in `[0, returned nextSlot)` are live and `freeList` is
+ *  empty. */
+function defragSlots(
+  nextSlot: number,
+  freeList: number[],
+  relocators: (SlotRelocator | null)[],
+  copyData: (src: number, dst: number) => void,
+): number {
+  if (freeList.length === 0) return nextSlot;
+  freeList.sort((a, b) => a - b);
+  let writeFreeIdx = 0;
+  while (nextSlot > 0) {
+    const topSlot = nextSlot - 1;
+    const topRelocator = relocators[topSlot];
+    if (topRelocator === null) {
+      nextSlot--;
+      continue;
+    }
+    if (
+      writeFreeIdx >= freeList.length ||
+      freeList[writeFreeIdx] >= topSlot
+    ) {
+      break;
+    }
+    const dst = freeList[writeFreeIdx];
+    copyData(topSlot, dst);
+    relocators[dst] = topRelocator;
+    relocators[topSlot] = null;
+    topRelocator(dst);
+    nextSlot--;
+    writeFreeIdx++;
+  }
+  freeList.length = 0;
+  for (let i = 0; i < nextSlot; i++) {
+    if (relocators[i] === null) freeList.push(i);
+  }
+  return nextSlot;
+}
+
+function shouldDefrag(freeListLen: number, nextSlot: number): boolean {
+  return (
+    freeListLen >= DEFRAG_MIN_FREE &&
+    freeListLen * (1 / DEFRAG_MIN_FREE_FRAC) >= nextSlot
+  );
+}
+
 /** Hand-edited vertex transform chunk injected into the material shader
  *  so each instance positions / orients its cylinder along
  *  the (instStart → instEnd) axis with `instThickness` in XZ.
@@ -131,6 +193,7 @@ class CylinderPool {
   private mesh: THREE.Mesh;
   private nextSlot = 0;
   private freeList: number[] = [];
+  private relocators: (SlotRelocator | null)[] = [];
 
   constructor(parent: THREE.Group, color: number, shell: boolean) {
     this.startBuf = new THREE.InstancedBufferAttribute(
@@ -150,10 +213,17 @@ class CylinderPool {
     parent.add(this.mesh);
   }
 
-  alloc(): number {
-    if (this.freeList.length > 0) return this.freeList.pop()!;
-    if (this.nextSlot < SLOT_CAP) return this.nextSlot++;
-    return -1;
+  alloc(onRelocate: SlotRelocator): number {
+    let slot: number;
+    if (this.freeList.length > 0) {
+      slot = this.freeList.pop()!;
+    } else if (this.nextSlot < SLOT_CAP) {
+      slot = this.nextSlot++;
+    } else {
+      return -1;
+    }
+    this.relocators[slot] = onRelocate;
+    return slot;
   }
 
   free(slot: number): void {
@@ -161,8 +231,25 @@ class CylinderPool {
     // Hide by collapsing thickness to 0 — the cylinder shrinks to
     // a degenerate line (zero radius) and contributes no pixels.
     this.thickBuf.array[slot] = 0;
+    this.relocators[slot] = null;
     this.freeList.push(slot);
   }
+
+  private copyData = (src: number, dst: number): void => {
+    const sa = this.startBuf.array as Float32Array;
+    const ea = this.endBuf.array as Float32Array;
+    const ta = this.thickBuf.array as Float32Array;
+    const s3 = src * 3;
+    const d3 = dst * 3;
+    sa[d3 + 0] = sa[s3 + 0];
+    sa[d3 + 1] = sa[s3 + 1];
+    sa[d3 + 2] = sa[s3 + 2];
+    ea[d3 + 0] = ea[s3 + 0];
+    ea[d3 + 1] = ea[s3 + 1];
+    ea[d3 + 2] = ea[s3 + 2];
+    ta[dst] = ta[src];
+    ta[src] = 0;
+  };
 
   update(
     slot: number,
@@ -182,6 +269,11 @@ class CylinderPool {
   }
 
   flush(): void {
+    if (shouldDefrag(this.freeList.length, this.nextSlot)) {
+      this.nextSlot = defragSlots(
+        this.nextSlot, this.freeList, this.relocators, this.copyData,
+      );
+    }
     this.startBuf.needsUpdate = true;
     this.endBuf.needsUpdate = true;
     this.thickBuf.needsUpdate = true;
@@ -218,6 +310,7 @@ class JointSpherePool {
   private readonly mesh: THREE.InstancedMesh;
   private nextSlot = 0;
   private freeList: number[] = [];
+  private relocators: (SlotRelocator | null)[] = [];
   private static readonly _scratchMat = new THREE.Matrix4();
   private static readonly _scratchPos = new THREE.Vector3();
   private static readonly _scratchScale = new THREE.Vector3();
@@ -238,17 +331,35 @@ class JointSpherePool {
     parent.add(this.mesh);
   }
 
-  alloc(): number {
-    if (this.freeList.length > 0) return this.freeList.pop()!;
-    if (this.nextSlot < SLOT_CAP) return this.nextSlot++;
-    return -1;
+  alloc(onRelocate: SlotRelocator): number {
+    let slot: number;
+    if (this.freeList.length > 0) {
+      slot = this.freeList.pop()!;
+    } else if (this.nextSlot < SLOT_CAP) {
+      slot = this.nextSlot++;
+    } else {
+      return -1;
+    }
+    this.relocators[slot] = onRelocate;
+    return slot;
   }
 
   free(slot: number): void {
     if (slot < 0) return;
     this.mesh.setMatrixAt(slot, JointSpherePool._ZERO_MATRIX);
+    this.relocators[slot] = null;
     this.freeList.push(slot);
   }
+
+  private copyData = (src: number, dst: number): void => {
+    const arr = this.mesh.instanceMatrix.array as Float32Array;
+    const s16 = src * 16;
+    const d16 = dst * 16;
+    for (let i = 0; i < 16; i++) arr[d16 + i] = arr[s16 + i];
+    // Source matrix becomes the visually-zero matrix; trim by
+    // instanceCount keeps it off-screen but be defensive.
+    for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
+  };
 
   update(slot: number, x: number, y: number, z: number, radius: number): void {
     if (slot < 0) return;
@@ -263,6 +374,11 @@ class JointSpherePool {
   }
 
   flush(): void {
+    if (shouldDefrag(this.freeList.length, this.nextSlot)) {
+      this.nextSlot = defragSlots(
+        this.nextSlot, this.freeList, this.relocators, this.copyData,
+      );
+    }
     this.mesh.count = this.nextSlot;
     if (this.nextSlot > 0) {
       this.mesh.instanceMatrix.needsUpdate = true;
@@ -281,6 +397,7 @@ class FootPadPool {
   private readonly mesh: THREE.InstancedMesh;
   private nextSlot = 0;
   private freeList: number[] = [];
+  private relocators: (SlotRelocator | null)[] = [];
   private static readonly _scratchMat = new THREE.Matrix4();
   private static readonly _scratchPos = new THREE.Vector3();
   private static readonly _scratchScale = new THREE.Vector3();
@@ -301,17 +418,33 @@ class FootPadPool {
     parent.add(this.mesh);
   }
 
-  alloc(): number {
-    if (this.freeList.length > 0) return this.freeList.pop()!;
-    if (this.nextSlot < SLOT_CAP) return this.nextSlot++;
-    return -1;
+  alloc(onRelocate: SlotRelocator): number {
+    let slot: number;
+    if (this.freeList.length > 0) {
+      slot = this.freeList.pop()!;
+    } else if (this.nextSlot < SLOT_CAP) {
+      slot = this.nextSlot++;
+    } else {
+      return -1;
+    }
+    this.relocators[slot] = onRelocate;
+    return slot;
   }
 
   free(slot: number): void {
     if (slot < 0) return;
     this.mesh.setMatrixAt(slot, FootPadPool._ZERO_MATRIX);
+    this.relocators[slot] = null;
     this.freeList.push(slot);
   }
+
+  private copyData = (src: number, dst: number): void => {
+    const arr = this.mesh.instanceMatrix.array as Float32Array;
+    const s16 = src * 16;
+    const d16 = dst * 16;
+    for (let i = 0; i < 16; i++) arr[d16 + i] = arr[s16 + i];
+    for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
+  };
 
   update(
     slot: number,
@@ -342,6 +475,11 @@ class FootPadPool {
   }
 
   flush(): void {
+    if (shouldDefrag(this.freeList.length, this.nextSlot)) {
+      this.nextSlot = defragSlots(
+        this.nextSlot, this.freeList, this.relocators, this.copyData,
+      );
+    }
     this.mesh.count = this.nextSlot;
     if (this.nextSlot > 0) {
       this.mesh.instanceMatrix.needsUpdate = true;
@@ -376,13 +514,26 @@ export class LegInstancedRenderer {
 
   /** Allocate an upper-cylinder slot. Returns -1 if the pool is
    *  full; the caller should treat that as "leg won't render this
-   *  unit" and continue (no exception, no error spam). */
-  allocUpper(shell = false): number { return (shell ? this.shellUpper : this.upper).alloc(); }
-  allocLower(shell = false): number { return (shell ? this.shellLower : this.lower).alloc(); }
+   *  unit" and continue (no exception, no error spam).
+   *  `onRelocate` is invoked if a future flush() defrags the pool and
+   *  this slot is moved — the caller MUST update its stored slot
+   *  index in the callback or subsequent updates will write the wrong
+   *  buffer entries. */
+  allocUpper(shell: boolean, onRelocate: SlotRelocator): number {
+    return (shell ? this.shellUpper : this.upper).alloc(onRelocate);
+  }
+  allocLower(shell: boolean, onRelocate: SlotRelocator): number {
+    return (shell ? this.shellLower : this.lower).alloc(onRelocate);
+  }
   /** Allocate a joint-sphere slot (used at FULL LOD for hip / knee).
-   *  Returns -1 if the pool is full. */
-  allocJoint(shell = false): number { return (shell ? this.shellJoints : this.joints).alloc(); }
-  allocFootPad(shell = false): number { return (shell ? this.shellPads : this.pads).alloc(); }
+   *  Returns -1 if the pool is full. See allocUpper for relocator
+   *  semantics. */
+  allocJoint(shell: boolean, onRelocate: SlotRelocator): number {
+    return (shell ? this.shellJoints : this.joints).alloc(onRelocate);
+  }
+  allocFootPad(shell: boolean, onRelocate: SlotRelocator): number {
+    return (shell ? this.shellPads : this.pads).alloc(onRelocate);
+  }
 
   freeUpper(slot: number, shell = false): void { (shell ? this.shellUpper : this.upper).free(slot); }
   freeLower(slot: number, shell = false): void { (shell ? this.shellLower : this.lower).free(slot); }
