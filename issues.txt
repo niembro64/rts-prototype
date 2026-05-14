@@ -7,420 +7,47 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 
 ==============================================================================
 
+==============================================================================
+ PREDICT serializer — fully-omit-via-optional-wire-fields (deferred)
+==============================================================================
+The PREDICT POS/VEL/ACC scheme (PLAYER CLIENT bar three-way toggle for
+client-side extrapolation between server snapshots) is fully wired
+end-to-end. The local + remote bandwidth gate zeros velocity /
+acceleration fields on the wire for recipients in POS / VEL mode
+(zero encodes in 1-byte MessagePack ints vs ~5-byte quantized floats,
+so this is a real wire-byte saving even without making the fields
+optional).
+
+One follow-up remains: make velocity / accel wire fields OPTIONAL so
+MessagePack drops them entirely instead of shipping zeros. Bigger
+saving, much wider blast radius (every reader path needs `?? 0`
+defaults). Defer until profiling shows the current zero-write payload
+isn't already meeting bandwidth targets.
 
 ==============================================================================
- PREDICT (POS / VEL / ACC) — implementation status, 2026-05-13
+ Quaternion + ω-vector + α-vector representation (future feature)
 ==============================================================================
+Don't refactor existing turret yaw+pitch math to quaternion. The
+decoupled-Euler scalar springs are already physically correct for
+tank-style two-motor turrets:
+  - Same k and c on both axes → under critical damping, yaw and pitch
+    errors decay proportionally and the (yaw, pitch) Euler-space
+    trajectory is a straight line from initial to target.
+  - Real tank turrets have two independent motors (yaw ring + pitch
+    trunnion); the decoupled scalar springs are a faithful model of
+    that mechanism. A quaternion shortest-path geodesic spring models
+    a single 3-DOF free gimbal instead — less physical for tanks, not
+    more.
 
-A new three-way toggle "PREDICT: POS / VEL / ACC" lives in the PLAYER
-CLIENT bar (label PREDICT, group of three buttons). It selects how
-aggressively the client extrapolates physics between server snapshots.
+Where quaternion + ω-vector + α-vector representation actually buys
+something is FUTURE content that needs roll or arbitrary orientation:
+  - Hovercraft banking into a turn
+  - Spinning projectiles around the flight axis
+  - Ragdoll debris, ships listing in waves, etc.
 
-The semantics apply to BOTH translational and angular state — angle
-gets the same three levels as position:
-   translational      angular
-   ───────────────    ────────────────────────
-   position           rotation (angle)
-   velocity           angular velocity (rad/s)
-   acceleration       angular acceleration (rad/s²)
-
-  POS — no integration. Render state drifts toward the snapshot value
-        via the existing lerp / lerpAngle; no velocity / acceleration
-        integration runs on the client this frame. This applies to
-        position AND rotation.
-  VEL — integrate position from server-reported velocity each frame
-        AND integrate rotation from server-reported angular velocity
-        each frame; ignore both linear acceleration (no gravity, no
-        movement-input thrust, no a*dt² term) and angular acceleration.
-  ACC — full F=ma + τ=Iα extrapolation (default; matches old
-        behaviour). Integrates v += a*dt and ω += α*dt where the
-        respective acceleration data is available.
-
-Stored in localStorage under `player-client-prediction-mode`; default
-is `acc` so behaviour for existing users is unchanged.
-
-WIRED (reads getPredictionMode() and gates accordingly):
-  - src/game/network/ClientUnitPrediction.ts
-      advanceSharedUnitMotionPrediction — gates the entire
-      advanceUnitMotionPhysicsMutable call. POS skips; VEL passes
-      zero accel + zero gravity to the integrator; ACC unchanged.
-      Affects both the entity body AND the snapshot target it drifts
-      toward (advanceTargetExtrapolation calls the same helper).
-      applyClientCombatExpensivePrediction — gates per-turret yaw AND
-      pitch integration. POS skips both (lerpAngle drift handles it).
-      VEL integrates `weapon.rotation += angularVelocity * dt` and
-      `weapon.pitch += pitchVelocity * dt` only. ACC additionally runs
-      `weapon.angularVelocity += angularAcceleration * dt` and
-      `weapon.pitchVelocity += pitchAcceleration * dt` first, so the
-      full ω̇ → ω → θ chain is followed. Same gating runs against the
-      ServerTarget-side projection used by the drift lerps.
-  - src/game/network/ClientPredictionStepper.ts
-      applyBeamPathPrediction — beam-path point integration
-      `tp.x += vx*dt + ax*halfDt²` is gated. POS skips; VEL drops the
-      ax*halfDt² and v += a*dt updates; ACC unchanged.
-  - src/game/network/ClientProjectilePrediction.ts
-      Both the snapshot-target integration (lines ~218-229) and the
-      live projectile dead-reckon (lines ~248-258) are gated by mode.
-      Gravity is skipped in POS and VEL; position integration is
-      skipped in POS only.
-
-ANGULAR DATA GAPS (semantics intended but data missing):
-  A. CLOSED AS NOT-A-PLUMBING-PROBLEM — Unit body rotation is
-     instantaneously snapped to the thrust direction each tick:
-
-         // UnitForceSystem.ts ~line 159
-         if (hasThrustDir) {
-           const nextRotation = Math.atan2(dirY, dirX);
-           if (nextRotation !== entity.transform.rotation) {
-             entity.transform.rotation = nextRotation;
-             this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
-           }
-         }
-
-     There is no continuous angular motion to extrapolate. Adding
-     `rotationVelocity` / `rotationAcceleration` fields to the wire
-     would be 0 the vast majority of ticks and a one-tick spike when
-     heading changes — using either for forward extrapolation would
-     OVERSHOOT the target angle, since the spike represents a
-     completed step rather than ongoing motion. The existing
-     lerpAngle drift toward target.rotation is therefore the correct
-     behaviour under POS, VEL, and ACC alike for this gameplay model.
-
-     The only honest way to make VEL/ACC distinguishable for the
-     unit body is to switch the sim from snap-rotation to a
-     continuous rotation model (damped spring or quaternion + ω + α
-     law). That's a gameplay-affecting change and naturally falls
-     out of Phase 3 of the quaternion adoption recommended below —
-     not a wire-format gap that PREDICT can close on its own.
-  B. RESOLVED — Turret yaw now ships `angularAcceleration` on the
-     wire. Sourced from integrateDampedRotation's spring α output in
-     turretSystem.ts; serialized as `turret.angular.acc` in the
-     snapshot; ingested into ServerTarget.turrets[i].angularAcceleration
-     in ClientViewState; integrated by ACC mode in the prediction
-     step (see WIRED above).
-  C. RESOLVED — Turret pitch now ships `pitchVelocity` AND
-     `pitchAcceleration` on the wire (`turret.angular.pitchVel` /
-     `pitchAcc`). Same path as (B); pitch is no longer lerp-only on
-     the client under VEL/ACC.
-
-DELIBERATELY NOT GATED (closed; documented for future readers):
-  1. unitSuspension / chassis tilt EMA. `advanceUnitSuspension` runs
-     each frame regardless of PREDICT mode — it's a visual smoothing
-     effect, not an authoritative integration. A strict reading of
-     "POS = no client integration" would freeze the suspension, but
-     the suspension is reading the *current* chassis pose and
-     producing a per-frame visual offset; it's downstream of, not
-     part of, the prediction integration. Leaving it on under all
-     PREDICT modes is the right call.
-  2. Pure client-side effects that have no server snapshot to predict
-     against:
-       - src/game/render3d/Debris3D.ts        (gravity-driven debris)
-       - src/game/render3d/ProjectileRangeEnvelope3D.ts (range preview)
-     POS mode would freeze them in mid-air; VEL would strip gravity
-     and they'd float away. These are authoritatively-client effects,
-     not predictions of server state, so the PREDICT toggle leaves
-     them at their full F=ma integration. A future "purely client
-     physics quality" toggle could control these separately.
-
-==============================================================================
- PREDICT-aware serializer (per-recipient bandwidth gate) — PARTIAL
-==============================================================================
-Per-recipient PREDICT mode is now plumbed end-to-end on the LOCAL
-connection path. Each SnapshotListenerEntry carries an optional
-`predictionMode`; the per-listener serializeForListener call passes it
-into serializeGameState which threads it into serializeEntitySnapshot.
-The local client's setPredictionMode() (PLAYER CLIENT bar) routes
-through gameCanvasClientSettings.applyPredictionMode →
-LocalGameConnection.setPredictionMode → GameServer.setSnapshotListener
-PredictionMode → listener.predictionMode + forceKeyframe so the next
-snapshot rebuilds with the new mode (no delta gaps). The mode is
-re-applied on every rebindFilter (seat swap / spectator follow) and
-on connection (re)creation in GameCanvas.vue.
-
-WIRED gating (zeros encode in 1-byte MessagePack ints vs ~5-byte
-quantized floats per component, so zeroing is a real wire-byte win
-even without making fields optional):
-  stateSerializerEntities.ts:
-    - POS — u.velocity zeroed; movementAccel cleared (already-optional
-            field, fully omitted from the wire).
-    - VEL — velocity unchanged; movementAccel cleared.
-    - ACC — full payload.
-    Plus per-turret writeTurretsToPool:
-    - POS — angular.vel, angular.acc, angular.pitchVel, angular.pitchAcc
-            all zeroed.
-    - VEL — angular.vel + angular.pitchVel kept; angular.acc +
-            angular.pitchAcc zeroed.
-    - ACC — full payload.
-  stateSerializerProjectiles.ts:
-    - POS — spawn velocity zeroed (both fresh-spawn and keyframe
-            resync paths); the entire projectileVelocityUpdates array
-            is skipped (its only purpose is to ship velocity);
-            beam-path point .vx/.vy/.vz AND .ax/.ay/.az all zeroed.
-    - VEL — spawn velocity + velocity updates unchanged; beam-path
-            point .ax/.ay/.az zeroed.
-    - ACC — full payload.
-The client's local PREDICT integrator gate from earlier work remains
-the authoritative one for correctness; this layer is purely a
-bandwidth optimization.
-
-REMOTE WIRE — DONE: PREDICT mode now rides the existing command
-channel for WebRTC clients. SetPredictionModeCommand is a new
-out-of-band server-control command (intercepted by GameServer
-.receiveCommand before the gameplay-authorization branch, mirrors
-setSnapshotRate / setTickRate / etc.). The remote host applies the
-mode to every snapshot listener whose playerId matches the sender,
-forcing a keyframe on each so the next snapshot rebuilds with the
-new gate. RemoteGameConnection.setPredictionMode now sends the
-command; the existing GameCanvas.vue wiring (applyPredictionMode →
-activeConnection.setPredictionMode) covers both local and remote
-connections uniformly.
-
-NOT YET WIRED (one item left):
-  1. Decoder defaults / fully optional wire fields. Today velocity is
-     a non-optional Vec3 in the wire type, so we zero rather than
-     omit. Making velocity optional (and every reader path tolerant
-     of `undefined → 0`) lets MessagePack drop the whole field for
-     POS clients — bigger bandwidth saving but a much wider blast
-     radius across consumers. Lower marginal payoff than the gates
-     already in place; save for after profiling shows the zero-write
-     payload isn't already meeting bandwidth targets.
-
-==============================================================================
- PREDICT block — STATUS SUMMARY
-==============================================================================
-WIRED        — unit body, turret yaw + pitch (full ω + α), beam-path
-               points, projectiles (incl. homing intercept solver).
-CLOSED       — gap A (sim model snaps unit body rotation; no
-               continuous angular motion to extrapolate).
-RESOLVED     — gap B (turret angular acceleration on the wire),
-               gap C (turret pitch velocity + acceleration on the wire).
-NOT GATED    — suspension EMA (downstream visual), pure client effects
-               (Debris3D, ProjectileRangeEnvelope3D).
-PARTIAL      — PREDICT-aware serializer: local + remote connections
-               wired; unit body, turret angular, projectile spawn /
-               velocity-update / beam-path fields all gated. Only the
-               "make velocity optional to fully omit" lift remains —
-               defer until profiling shows the current zero-write
-               wire isn't already hitting bandwidth targets.
-DEFERRED     — Quaternion + ω-vector + α-vector representation: NOT
-               a refactor of existing turret math (the decoupled
-               scalar springs are already physically correct for
-               tank-style two-motor turrets, and yield the same
-               trajectory under critical damping). Adopt when new
-               content lands that genuinely needs roll / arbitrary
-               orientation (banking hovercraft, spinning projectiles,
-               ragdoll debris). Build that content on quaternions
-               from day one; don't refactor existing scalar code.
-(See the DEFERRED row above for the angle-pos / angle-vel / angle-acc
-quaternion option and the rationale for not refactoring existing
-scalar code.)
-
-CLIENT-SIDE INTEGRATOR AUDIT — RESOLVED 2026-05-13
-──────────────────────────────────────────────────
-A grep for `+= .* dt` across src/game finds nine files. The four
-client-prediction files are now PREDICT-gated:
-  - ClientUnitPrediction.ts       (unit body motion + turret yaw/pitch)
-  - ClientPredictionStepper.ts    (beam-path point integration)
-  - ClientProjectilePrediction.ts (projectile motion + homing intercept)
-The remaining five are NOT predictors and don't need gating — they
-are either the server-authoritative source-of-truth (which the
-snapshots come FROM) or pure client visual effects (no server state
-to predict against):
-  - server/PhysicsEngine3D.ts          (authoritative server physics)
-  - sim/unitMotionIntegration.ts      (the shared integrator the
-                                        client's prediction wraps)
-  - sim/combat/projectileSystem.ts    (authoritative projectile sim)
-  - sim/unitSuspension.ts             (server suspension; client
-                                        copy noted in item 1 above)
-  - render3d/Debris3D.ts +
-    render3d/SprayRenderer3D.ts       (client effects, item 3 above)
-No sim-side stragglers found that need a parallel client gate.
-
-==============================================================================
- ANGLE-POS / ANGLE-VEL / ANGLE-ACC — PHYSICAL PURITY (open question)
-==============================================================================
-
-The PREDICT scheme above treats angle-pos, angle-vel, and angle-acc as
-the rotational analogues of position, velocity, and acceleration. The
-intent is that a body's orientation evolves under the same physical law
-no matter which way it's rotating: there should be NO preferred axis,
-NO singularity, and NO direction-dependent bias in either the sim or
-the client extrapolation.
-
-What "physically pure, coordinate-bias-free" means
-─────────────────────────────────────────────────
-Angular velocity in classical mechanics is a true 3-vector ω whose
-direction is the instantaneous axis of rotation and whose magnitude is
-the rate of spin (rad/s). Likewise angular acceleration α = dω/dt is a
-3-vector. They satisfy:
-
-    q̇ = ½ · (ω as pure-imaginary quaternion) · q
-    ω̇ = α    (in body frame — Euler's equations if we cared about inertia)
-
-Orientation itself is best stored as a unit quaternion q (or a 3×3
-rotation matrix) — both representations are isotropic: no axis gets
-special treatment, no singularities, composition is one operation.
-"Shortest-path drift" between two orientations is just the axis-angle
-form of  Δq = q_target · q_current⁻¹ . A damped spring driving an
-orientation toward a target is then a single law applied to the full
-3-vector error:
-
-    Δq          = q_target · q_current⁻¹      (shortest-path)
-    (axis, θ)   = log(Δq)                     (axis-angle of error)
-    α_spring    = k · θ · axis  −  c · ω      (3-vector torque)
-
-That law looks the same for yaw, pitch, roll, or any oblique axis —
-that's the property the user is asking for.
-
-What we have today (Euler-decomposed scalar springs)
-───────────────────────────────────────────────────
-Turrets store orientation as TWO independent scalars and integrate
-them with TWO independent springs:
-
-    weapon.rotation        // yaw   — wraps in (−π, π]
-    weapon.angularVelocity // ω_yaw — scalar (rad/s about z only)
-    weapon.angularAcceleration
-    weapon.pitch           // pitch — clamped to [PITCH_MIN, PITCH_MAX]
-    weapon.pitchVelocity   // ω_pitch — scalar (rad/s about a body axis)
-    weapon.pitchAcceleration
-
-Two separate calls to integrateDampedRotation each tick (turretSystem.ts
-~lines 215-233). Wire format mirrors the same shape: turret.angular
-ships rot/vel/acc + pitch/pitchVel/pitchAcc as six independent scalars.
-
-Unit bodies have it even more degraded: only `transform.rotation` (a
-single yaw scalar) plus a separate `surfaceNormal` triple smoothed by
-the tilt EMA. There's no actual rotational state in any other axis;
-chassis tilt is a per-frame visual effect derived from terrain normal,
-not a physics quantity.
-
-What this costs
-───────────────
-1. Coordinate bias. The yaw axis (world +Z) and the pitch axis (turret
-   local) are privileged by construction. A turret that wanted to roll
-   (e.g. a ship listing in heavy seas, a unit climbing a steeply
-   banked surface) has nowhere to put that rotation.
-2. Order ambiguity. Yaw-then-pitch ≠ pitch-then-yaw whenever both are
-   nonzero. The serializer / renderer all pick a fixed convention; any
-   system that doesn't agree silently produces wrong orientations.
-3. Gimbal lock. Pitch is clamped well short of ±π/2, partly to dodge
-   the singularity. That means the sim cannot represent a turret aimed
-   straight up except at the clamp boundary, where pitchVelocity is
-   force-zeroed (turretSystem.ts integrateDampedRotation `min/maxAngle`
-   branch) — a special case not present in the underlying physics.
-4. Two springs that don't compose. The yaw spring and the pitch spring
-   each see only their own axis's error. A target requiring a 30° yaw
-   AND 60° pitch reorientation does not take the shortest 67° great-
-   circle path; it traces an L-shape in (yaw, pitch) space and spends
-   different amounts of time on each axis depending on `k` and `c`.
-5. Wire payload duplication. Six scalars instead of one quaternion (4)
-   plus one ω vector (3) plus one α vector (3) — moot for one turret
-   but the schema invites adding more axes piecemeal.
-6. PREDICT layering. The current ω = scalar means the client does ONE
-   `θ += ω·dt` step per axis. With ω as a vector and q as a quaternion,
-   the same code becomes ONE `q ← q ⊕ (ω · dt)` step regardless of the
-   rotation direction — VEL and ACC modes apply uniformly without per-
-   axis branches.
-
-The elegant alternative
-───────────────────────
-Replace the per-turret scalar bundle with:
-
-    type Orientation = { qx: number; qy: number; qz: number; qw: number };
-    type AngularVel  = { x: number; y: number; z: number };  // rad/s
-    type AngularAcc  = { x: number; y: number; z: number };  // rad/s²
-
-    // turretSystem replacement (one spring law, all axes):
-    Δq      = qTarget · conjugate(qCurrent)
-    if Δq.w < 0 then negate Δq   // pick shortest hemisphere
-    angle   = 2 · atan2(|Δq.xyz|, Δq.w)
-    axis    = Δq.xyz / |Δq.xyz|  (with the |Δq.xyz| → 0 fallback)
-    α       = k · angle · axis  −  c · ω
-    ω      += α · dt
-    q      += 0.5 · (ω as quaternion) · q · dt
-    q       = normalize(q)
-
-    // Optional pitch clamp becomes a constraint that projects q back
-    //   onto the allowed cone after integration, instead of a per-axis
-    //   velocity kill.
-
-PREDICT then collapses to:
-
-    POS — q drifts toward q_target via slerp; no integration.
-    VEL — q ← integrate(q, ω, dt); ω carried untouched.
-    ACC — ω ← ω + α·dt;  q ← integrate(q, ω, dt).
-
-The same shape works for unit bodies, turret yaw+pitch, and any future
-freely-orientable mount (rolling, banking, gyroscopic effects, ragdoll
-debris) without inventing new axes or new springs.
-
-Costs of the switch
-───────────────────
-- Wire payload grows for ground units that currently only ship a yaw
-  scalar (rotation: 1 float → q: 4 floats; +ω: 3 + α: 3). 6.5× before
-  any compression. Worth it only if multi-axis rotation actually
-  becomes a gameplay element; otherwise scalar yaw is enough for the
-  unit body and quaternions are wanted only for turrets/projectiles
-  that legitimately rotate freely.
-- Quaternion renormalization every step (cheap; ~5 ops).
-- Aim solver (resolveTargetAimPoint + the targetAngle/targetPitch
-  scaffolding in turretSystem.ts) needs to emit a target quaternion
-  instead of two scalars. That's a real refactor — every aim-related
-  helper either needs to learn quaternions or the system has to hold
-  the (yaw, pitch) → quaternion conversion at the seam.
-- Renderer needs to consume q (Three.js already does — entity.transform
-  carries quaternions natively in many spots). The bigger work is the
-  lots of `.rotation` reads scattered through the codebase.
-- Pitch clamping becomes a cone constraint. Slightly fiddlier than
-  `if (a < min) { a = min; vel = 0; }` — needs to project the angle
-  back onto the cone and zero only the component of ω that points out
-  of the cone, leaving the tangent component intact.
-
-Recommendation — REVISED 2026-05-14
-───────────────────────────────────
-On closer analysis the original "refactor existing turret math to
-quaternion" recommendation is the wrong framing. The decoupled-Euler
-model already in place IS physically correct for the entities it's
-applied to, and the elegant alternative only buys something for
-entities that don't exist yet. Details:
-
-  Convergence proportionality. Both turret axes (yaw, pitch) use the
-  SAME spring constants `k` and `c`. Under critical damping the error
-  decays as θ(t) = θ_0·(1 + ωt)·exp(−ωt) on each axis independently,
-  so yawError(t) / yawError(0) ≡ pitchError(t) / pitchError(0) for all
-  t. The trajectory in (yaw, pitch) Euler-angle space is a straight
-  line from initial to target pose, traced at the same time constant.
-
-  Mechanical fidelity. A real tank turret has two independent motors —
-  the yaw ring and the pitch trunnion — that are mechanically
-  decoupled. The current decoupled-spring sim is a faithful model of
-  that mechanism. A quaternion-based "shortest-path great-circle"
-  spring would model a single 3-DOF gimbal (free-floating gyro)
-  instead. For tank turrets the Euler model is MORE physical, not less.
-
-  What the quaternion approach actually buys:
-    - Roll on the unit body (hovercraft banking into a turn).
-    - Projectile orientation with spin around the flight axis.
-    - Free-orientation entities (ragdoll debris, ships listing in
-      waves, ships rolling on impact, etc.).
-  These are FUTURE FEATURES — entities that don't currently exist in
-  the codebase. Once such an entity is added, building it on a
-  quaternion + ω-vector + α-vector representation from day one is the
-  right move; refactoring the existing yaw+pitch turret math to
-  quaternion just to share an abstraction would change physical
-  behaviour for no gameplay gain.
-
-  Where this leaves the scheme:
-    - Existing turret yaw + pitch math: keep the decoupled scalar
-      springs. Already correct for the physical model.
-    - Existing unit body rotation: keep the snap-to-thrust-direction
-      model (see gap A closure earlier in this file). Continuous
-      rotation isn't gameplay-required for tanks/hovercraft today.
-    - NEW gameplay content that requires roll or arbitrary
-      orientation: build it on quaternion + ω-vector + α-vector
-      directly. PREDICT-style POS / VEL / ACC semantics fall out
-      naturally from that representation (single quat integrate; one
-      ω·dt step; one α·dt step) without needing a per-axis scalar
-      bundle on the wire.
+When such an entity is added, build it on quaternions from day one.
+PREDICT POS/VEL/ACC semantics fall out naturally from that
+representation (single quat integrate; one ω·dt step; one α·dt step)
+without needing a per-axis scalar bundle on the wire.
 
 Until such a feature ships, no quaternion refactor is queued.
