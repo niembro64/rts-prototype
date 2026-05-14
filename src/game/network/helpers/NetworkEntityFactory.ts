@@ -228,6 +228,18 @@ function createUnitFromNetwork(
       // for downstream consumers.
       surfaceNormal,
       suspension: createUnitSuspension(unitBlueprint?.suspension),
+      // Optional 3-DOF orientation triad — hydrated from the wire
+      // for hover-style units that need roll. Ground units have no
+      // orientation field on the wire, so these stay undefined.
+      orientation: u?.orientation
+        ? { x: u.orientation.x, y: u.orientation.y, z: u.orientation.z, w: u.orientation.w }
+        : undefined,
+      angularVelocity3: u?.angularVelocity3
+        ? { x: u.angularVelocity3.x, y: u.angularVelocity3.y, z: u.angularVelocity3.z }
+        : (u?.orientation ? { x: 0, y: 0, z: 0 } : undefined),
+      angularAcceleration3: u?.angularAcceleration3
+        ? { x: u.angularAcceleration3.x, y: u.angularAcceleration3.y, z: u.angularAcceleration3.z }
+        : (u?.orientation ? { x: 0, y: 0, z: 0 } : undefined),
     },
   };
   if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);

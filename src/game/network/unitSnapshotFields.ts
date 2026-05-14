@@ -466,6 +466,17 @@ export function copyNetworkUnitSnapshotInto(
   } else {
     dst.jump = undefined;
   }
+  if (src.orientation) {
+    const o = dst.orientation ?? (dst.orientation = { x: 0, y: 0, z: 0, w: 1 });
+    o.x = src.orientation.x;
+    o.y = src.orientation.y;
+    o.z = src.orientation.z;
+    o.w = src.orientation.w;
+  } else {
+    dst.orientation = undefined;
+  }
+  dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
+  dst.angularAcceleration3 = copyVec3OptionalInto(src.angularAcceleration3, dst.angularAcceleration3);
   dst.fireEnabled = src.fireEnabled;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
@@ -550,5 +561,39 @@ export function applyNetworkUnitDriftFieldsToTarget(
       target.jumpLaunchSeq = launchSeq;
     }
     if (!target.jumpActive) target.predictedGroundContact = true;
+  }
+  // Full 3-DOF orientation triad for hover-style entities. The
+  // wire field is gated on the entity having one server-side, so
+  // ground units never produce these and we leave the cached
+  // target fields undefined.
+  const o = src.unit?.orientation;
+  if (o) {
+    const t = target.orientation ?? (target.orientation = { x: 0, y: 0, z: 0, w: 1 });
+    t.x = o.x;
+    t.y = o.y;
+    t.z = o.z;
+    t.w = o.w;
+  } else if (isFull) {
+    target.orientation = undefined;
+  }
+  const av = src.unit?.angularVelocity3;
+  if (av) {
+    target.angularVelocityX = av.x;
+    target.angularVelocityY = av.y;
+    target.angularVelocityZ = av.z;
+  } else if (isFull || (cf & ENTITY_CHANGED_VEL)) {
+    target.angularVelocityX = undefined;
+    target.angularVelocityY = undefined;
+    target.angularVelocityZ = undefined;
+  }
+  const aa = src.unit?.angularAcceleration3;
+  if (aa) {
+    target.angularAccelerationX = aa.x;
+    target.angularAccelerationY = aa.y;
+    target.angularAccelerationZ = aa.z;
+  } else if (isFull || (cf & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
+    target.angularAccelerationX = undefined;
+    target.angularAccelerationY = undefined;
+    target.angularAccelerationZ = undefined;
   }
 }

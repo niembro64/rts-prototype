@@ -717,6 +717,21 @@ export type NetworkServerSnapshotEntity = {
       active?: boolean;
       launchSeq?: number;
     };
+    /** Full 3-DOF orientation triad for entities that need roll or
+     *  arbitrary orientation (hover drones banking into turns, future
+     *  free-flying projectiles with spin). Omitted entirely for
+     *  ground units, which continue to ship `rotation` (yaw scalar)
+     *  on the parent NetworkServerSnapshotEntity. The client reads
+     *  this when present and falls back to the yaw scalar otherwise. */
+    orientation?: { x: number; y: number; z: number; w: number };
+    /** Angular velocity 3-vector in world frame (rad/s). Paired with
+     *  `orientation`; used by PREDICT VEL/ACC clients to extrapolate
+     *  rotation between snapshots. */
+    angularVelocity3?: Vec3;
+    /** Angular acceleration 3-vector in world frame (rad/s²). Paired
+     *  with `orientation`; used by PREDICT ACC clients (omega += alpha
+     *  * dt before the orientation step). */
+    angularAcceleration3?: Vec3;
     fireEnabled?: boolean;
     isCommander?: boolean;
     buildTargetId?: number | null;

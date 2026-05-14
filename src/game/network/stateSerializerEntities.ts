@@ -313,6 +313,36 @@ export function serializeEntitySnapshot(
         clearNetworkUnitJump(u);
       }
 
+      // Full orientation triad (quat + omega + alpha) for entities
+      // that have one — currently hover units. Ground units have
+      // these undefined on the entity and we omit them from the
+      // wire entirely (MessagePack drops undefined fields), so this
+      // adds zero overhead for the vast majority of snapshots.
+      //
+      // PREDICT serializer gate: under POS clients see no
+      // extrapolatable angular state, so omega+alpha are dropped.
+      // Under VEL only alpha is dropped. ACC ships the full triad.
+      const orient = entity.unit.orientation;
+      if (orient) {
+        u.orientation = orient;
+        const av = entity.unit.angularVelocity3;
+        if (av && predictionMode !== 'pos') {
+          u.angularVelocity3 = av;
+        } else {
+          u.angularVelocity3 = undefined;
+        }
+        const aa = entity.unit.angularAcceleration3;
+        if (aa && predictionMode === 'acc') {
+          u.angularAcceleration3 = aa;
+        } else {
+          u.angularAcceleration3 = undefined;
+        }
+      } else {
+        u.orientation = undefined;
+        u.angularVelocity3 = undefined;
+        u.angularAcceleration3 = undefined;
+      }
+
       if (isFull || (changedFields! & ENTITY_CHANGED_COMBAT_MODE)) {
         writeNetworkUnitCombatMode(u, entity);
       } else {

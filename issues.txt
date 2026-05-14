@@ -8,45 +8,56 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 ==============================================================================
 
 ==============================================================================
- Hovercraft → quaternion adoption (NOW UNBLOCKED)
+ Quaternion adoption for hover units — DONE
 ==============================================================================
-A `hovercraft` unit blueprint just landed. It uses a new `'hover'`
-locomotion type with no ground gear; the body is held aloft by an
-inverse-distance lift integrator in UnitForceSystem:
+The full quaternion + ω-vector + α-vector representation is now wired
+end-to-end for the `hovercraft` unit (and any future hover-class
+content). Ground units / turrets stay on their existing scalar
+yaw/pitch model per the earlier analysis — the new triad is gated on
+`locomotion.type === 'hover'`. Summary of what landed:
 
-    F_up = K / altitude,  K = m · g · hoverHeight
+  Sim state. Unit gains optional `orientation: Quat`,
+  `angularVelocity3: Vec3`, `angularAcceleration3: Vec3`. Identity
+  quat on spawn for hover units; undefined for ground units.
 
-so equilibrium (F_up = m·g) sits exactly at the authored hoverHeight.
-For now the unit still has only a yaw scalar for orientation — same
-as every other ground unit — and so does NOT yet exhibit the bank-
-into-a-turn behaviour that would benefit from a roll axis.
+  Math helper. src/game/math/Quaternion.ts — Quat ops (mul, conjugate,
+  normalize, integrate, axis-angle of shortest-path Δq) plus the
+  one-law damped-spring step: α = k · (axis·angle) − c · ω. No
+  preferred axis, no gimbal lock — the elegant alternative the
+  earlier note described.
 
-That makes the hovercraft the natural first candidate for adopting
-the quaternion + ω-vector + α-vector representation discussed earlier.
-The recommended path:
+  Sim physics. UnitForceSystem hover branch builds a target quat from
+  (target yaw from thrust dir, target pitch ∝ −forward velocity,
+  target roll ∝ +lateral velocity, both clamped) and runs the
+  quat-spring at critical damping. Yaw is no longer instantaneously
+  snapped for hover units; it evolves coordinately with pitch and
+  roll. transform.rotation is kept in sync to the quat's yaw
+  extraction so every existing 2D-yaw consumer (turret world mount
+  math, camera, AI, network code) stays correct.
 
-  Step 1. Extend Unit with an `orientation: Quat`, `angularVel: Vec3`,
-          `angularAcc: Vec3` triad GATED on locomotion type. Tanks /
-          hovers with ground locomotion stay yaw-only (existing scalar
-          model); hover units get the full quaternion bundle.
-  Step 2. UnitForceSystem hover branch derives roll from horizontal
-          acceleration: target roll about the forward axis ∝ lateral
-          accel / g, driven by a damped-spring on the orientation quat.
-          Pitch can mirror longitudinal accel (nose down when
-          accelerating forward, nose up when decelerating).
-  Step 3. Wire format: ServerTarget gains an optional Quat/ω/α triad
-          (only emitted for entities that have one); the PREDICT POS/
-          VEL/ACC scheme integrates it the same shape as the
-          translational chain (q drifts via slerp; q ⊕ ω·dt; ω + α·dt).
-  Step 4. Renderer reads the quaternion when present, falls back to
-          yaw scalar otherwise — Three.js already takes quaternions
-          natively, so this is a small mesh-pose plumbing change at
-          the chassis builder level.
+  Wire format. NetworkServerSnapshotEntity.unit gains optional
+  `orientation` / `angularVelocity3` / `angularAcceleration3`.
+  Serializer ships them only when the entity has one (ground units
+  pay zero overhead — MessagePack drops undefined fields). PREDICT
+  serializer gate already covers them: POS drops omega+alpha, VEL
+  drops alpha, ACC ships all three.
 
-Tank turret math stays scalar (decoupled Euler springs are physically
-correct for two-motor turrets — see the analysis in earlier commits).
-Quaternions apply to the unit-body orientation of the hovercraft and
-any future entity that needs roll / arbitrary orientation.
+  Client. ServerTarget carries the triad; applyClientUnitVisualPredic
+  tion drifts the entity's orientation quat toward target via
+  componentwise lerp + renormalize each frame.
+
+  Renderer. yawGroup uses quaternion.set when orientation is present;
+  falls back to the existing `rotation.set(0, -yaw, 0)` Euler write
+  otherwise. World→Three.js basis swap is
+  `q_three = (-q_world.x, -q_world.z, q_world.y, q_world.w)`
+  (verified manually against yaw/pitch/roll basis mappings).
+
+The hovercraft now visibly banks INTO turns and noses down when
+moving forward — a real continuous rotation, not snap-yaw. The
+machinery is in place to give roll / arbitrary orientation to any
+future entity (spinning projectiles, ragdoll debris, ships listing,
+etc.) — just declare locomotion type 'hover' (or extend the gating
+predicate) and the quat triad and bank physics come for free.
 
 ==============================================================================
  PREDICT serializer — fully-omit-via-optional-wire-fields (deferred)

@@ -292,6 +292,29 @@ export function applyClientUnitVisualPrediction(options: {
     movVelDrift,
   );
 
+  // Full 3-DOF orientation drift for hover-style units. Snap toward
+  // the server target's quaternion using the same per-frame drift
+  // factor as position. We use componentwise lerp + renormalize
+  // rather than slerp because the per-frame drift is small (a few
+  // percent of the remaining error) and componentwise lerp is much
+  // cheaper. For PREDICT VEL/ACC the integration step against omega
+  // (and alpha) is owned by the server-side spring already; the
+  // client only needs to track the resulting orientation.
+  if (target.orientation && entity.unit.orientation) {
+    const eo = entity.unit.orientation;
+    const to = target.orientation;
+    eo.x = lerp(eo.x, to.x, movPosDrift);
+    eo.y = lerp(eo.y, to.y, movPosDrift);
+    eo.z = lerp(eo.z, to.z, movPosDrift);
+    eo.w = lerp(eo.w, to.w, movPosDrift);
+    // Renormalize cheaply.
+    const m2 = eo.x * eo.x + eo.y * eo.y + eo.z * eo.z + eo.w * eo.w;
+    if (m2 > 1e-12) {
+      const inv = 1 / Math.sqrt(m2);
+      eo.x *= inv; eo.y *= inv; eo.z *= inv; eo.w *= inv;
+    }
+  }
+
   const tiltAlpha = halfLifeBlend(dt, TILT_EMA_HALF_LIFE_SEC[getClientTiltEmaMode()]);
   const sn = entity.unit.surfaceNormal;
   const tnx = sn.nx + (target.surfaceNormalX - sn.nx) * tiltAlpha;

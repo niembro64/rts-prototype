@@ -20,6 +20,17 @@ export type ServerTarget = {
   jumpActive: boolean;
   jumpLaunchSeq: number;
   predictedGroundContact: boolean;
+  /** Full 3-DOF orientation triad, populated only when the snapshot
+   *  carries an `orientation` field (hover units etc.). Undefined for
+   *  ground units — the client reads `rotation` (yaw scalar) when
+   *  these are absent. */
+  orientation?: { x: number; y: number; z: number; w: number };
+  angularVelocityX?: number;
+  angularVelocityY?: number;
+  angularVelocityZ?: number;
+  angularAccelerationX?: number;
+  angularAccelerationY?: number;
+  angularAccelerationZ?: number;
   turrets: {
     rotation: number;
     angularVelocity: number;

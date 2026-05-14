@@ -521,7 +521,26 @@ export class Render3DEntities {
       const existing = this.unitMeshes.get(e.id);
       if (existing) {
         existing.group.position.set(tx, getUnitGroundZ(e), ty);
-        if (existing.yawGroup) existing.yawGroup.rotation.set(0, -tRot, 0);
+        if (existing.yawGroup) {
+          const orient = e.unit?.orientation;
+          if (orient) {
+            // Full 3-DOF orientation for hover-style units. Map our
+            // world-frame quat (Z-up) to Three.js (Y-up):
+            //   q_three = (-q_world.x, -q_world.z, q_world.y, q_world.w)
+            // Verified by hand against the yaw / pitch / roll basis
+            // mappings: yaw about world Z → -yaw about three Y;
+            // pitch about world Y → +pitch about three Z; roll
+            // about world X → -roll about three X.
+            existing.yawGroup.quaternion.set(
+              -orient.x,
+              -orient.z,
+              orient.y,
+              orient.w,
+            );
+          } else {
+            existing.yawGroup.rotation.set(0, -tRot, 0);
+          }
+        }
         applyUnitLiftGroupPose3D(existing, e);
         // Shell-state visual — two paths must agree:
         //   - applyShellOverride handles per-Mesh chassis fallbacks
