@@ -498,8 +498,14 @@ Sub-phases:
   Phase 5c — Homing steering Rodrigues rotation port. DONE (per-call
              WASM dispatch from HomingSteering.ts; output via 4-f64
              scratch buffer; TS fallback retained).
-  Phase 5c2 — Terrain-follow path (DGUN_TERRAIN_FOLLOW_HEIGHT). Needs
-              Phase 8 (terrain in linear memory) to be fully WASM.
+  Phase 5c2 — Terrain-follow path (DGUN_TERRAIN_FOLLOW_HEIGHT). OBVIATED
+              by Phase 8. The only WASM-eligible cost in the dgun
+              loop was world.getGroundZ() → getSurfaceHeight(), which
+              now dispatches through WASM linear memory. The
+              remaining per-tick math (vx*dt, vy*dt, vz = delta/dt)
+              is scalar and doesn't justify a separate packed-batch
+              kernel — typical dgun count is 0–3 active and the JS
+              loop already ran at trivial cost. No further work.
   Phase 5d — Beam-path point integration. DEFERRED (not porting).
              The PREDICT-gated per-point ax/ay/az step lives in
              ClientPredictionStepper.applyBeamSnapshotPrediction.
