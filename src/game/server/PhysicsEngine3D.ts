@@ -600,6 +600,14 @@ export class PhysicsEngine3D {
   }
 
   step(dtSec: number): void {
+    // Refresh BodyPool typed-array views in case the WASM linear
+    // memory grew since the last step. Vec growths (sphere-sphere
+    // resolver's HashMap, static broadphase per-cell Vecs, etc.)
+    // can trigger memory.grow(), which detaches every existing
+    // typed-array view JS holds — and writing through a detached
+    // view crashes the renderer. Cheap to refresh (~22 typed-array
+    // constructions) and idempotent when nothing actually grew.
+    getSimWasm()!.pool.refreshViews();
     this.stepSyncEntityIds.length = 0;
     this.stepSyncEntityIdSet.clear();
     if (this.awakeDynamicBodyCount <= 0) return;

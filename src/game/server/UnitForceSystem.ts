@@ -110,6 +110,10 @@ export class UnitForceSystem {
 
   // Apply thrust and external forces to physics bodies
   applyForces(dtSec: number): void {
+    // Defensive: refresh BodyPool views in case WASM memory grew
+    // since the last tick. See PhysicsEngine3D.step() for the
+    // detached-view crash this guards against.
+    getSimWasm()!.pool.refreshViews();
     const forceAccumulator = this.simulation.getForceAccumulator();
     const mw = this.world.mapWidth;
     const mh = this.world.mapHeight;

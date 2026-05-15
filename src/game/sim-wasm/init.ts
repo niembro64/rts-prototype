@@ -251,6 +251,27 @@ export function initSimWasm(): Promise<SimWasm> {
   if (cached === undefined) {
     cached = (async () => {
       const initOutput = await __wbg_init();
+
+      // Pre-grow WASM linear memory BEFORE pool_init() so the
+      // BodyPool's Vec allocations land in a comfortably-sized
+      // memory region. Subsequent per-tick Rust allocations
+      // (HashMap rebuilds in the sphere-sphere resolver, per-cell
+      // Vec growths in the static broadphase) then fit without
+      // triggering memory.grow() — which would detach every typed-
+      // array view JS holds over linear memory and cause the
+      // "Aw, Snap!" renderer crash on the next view access.
+      //
+      // 32 MB upper-bounds steady-state allocations comfortably:
+      // pool ~720 KB + per-engine static cells + transient
+      // HashMaps. Memory still grows on demand if we exceed this,
+      // but refreshViews below catches that case too.
+      const PRE_GROW_TARGET_PAGES = 512;  // 64 KiB/page * 512 = 32 MiB
+      const currentPages = initOutput.memory.buffer.byteLength / 65536;
+      const growBy = PRE_GROW_TARGET_PAGES - currentPages;
+      if (growBy > 0) {
+        initOutput.memory.grow(growBy);
+      }
+
       pool_init();
       const memory = initOutput.memory;
       const capacity = pool_capacity();
