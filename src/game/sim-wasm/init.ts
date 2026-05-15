@@ -48,6 +48,32 @@ import __wbg_init, {
   terrain_get_surface_height,
   terrain_get_surface_normal,
   terrain_has_line_of_sight,
+  spatial_init,
+  spatial_clear,
+  spatial_alloc_slot,
+  spatial_free_slot,
+  spatial_set_unit,
+  spatial_set_projectile,
+  spatial_set_building,
+  spatial_sync_building_capture_for_slot,
+  spatial_unset_slot,
+  spatial_query_units_in_radius,
+  spatial_query_buildings_in_radius,
+  spatial_query_units_and_buildings_in_radius,
+  spatial_query_units_and_buildings_in_rect_2d,
+  spatial_query_enemy_entities_in_radius,
+  spatial_query_enemy_entities_in_circle_2d,
+  spatial_query_units_along_line,
+  spatial_query_buildings_along_line,
+  spatial_query_entities_along_line,
+  spatial_query_enemy_units_in_radius,
+  spatial_query_enemy_projectiles_in_radius,
+  spatial_query_enemy_units_and_projectiles_in_radius,
+  spatial_query_occupied_cells_for_capture,
+  spatial_query_occupied_cells_debug,
+  spatial_scratch_ptr,
+  spatial_scratch_len,
+  spatial_slot_kind,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -328,6 +354,169 @@ export interface SimWasm {
     tx: number, ty: number, tz: number,
     stepLen: number,
   ) => number;
+  /** Phase 7 — SpatialGrid 3D voxel hash in WASM linear memory.
+   *  Big-bang replacement for SpatialGrid.ts. Same public API on
+   *  the JS wrapper; per-query traffic is one WASM call + one
+   *  Uint32Array view over the scratch buffer. EntityId↔slot map
+   *  is JS-side; Rust only sees u32 slot ids. */
+  readonly spatial: SpatialApi;
+  /** The WASM linear memory — JS wrapper code constructs typed-array
+   *  views over this for zero-copy result reads. Re-bind views after
+   *  any operation that might grow the memory (rare). */
+  readonly memory: WebAssembly.Memory;
+}
+
+/** Constants exposed alongside the SpatialGrid API. Mirrors the
+ *  SPATIAL_KIND_* values in rts-sim-wasm/src/lib.rs. */
+export const SPATIAL_KIND_UNSET = 0;
+export const SPATIAL_KIND_UNIT = 1;
+export const SPATIAL_KIND_BUILDING = 2;
+export const SPATIAL_KIND_PROJECTILE = 3;
+
+/** Public surface of the WASM-backed spatial grid. Each query returns
+ *  a count; the result slot ids land in the shared scratch buffer
+ *  accessed via `scratchPtr()` and `scratchLen()`. JS-side wrappers
+ *  build a `Uint32Array(memory.buffer, scratchPtr(), count)` view
+ *  per call. The view is invalidated by the NEXT call (the scratch
+ *  Vec is re-written), so consume results synchronously. */
+export interface SpatialApi {
+  /** Initialize the grid. Must be called once before any other
+   *  spatial.* method. Cell size matches the JS LAND_CELL_SIZE
+   *  constant. `initialSlotCapacity` is a hint — pools grow on
+   *  demand if exceeded. */
+  init: (cellSize: number, initialSlotCapacity: number) => void;
+  /** Drop all cells, capture votes, and slot kind tags. Slot
+   *  storage is retained (free list reset). */
+  clear: () => void;
+  /** Allocate a new slot or pop one off the free list. Returns the
+   *  slot id; the JS-side wrapper stores `Map<EntityId, slot>`. */
+  allocSlot: () => number;
+  /** Return a slot to the free list. Unsets bucket membership. */
+  freeSlot: (slot: number) => void;
+  /** Insert or update a unit at slot. owner_player=0 means "no owner".
+   *  hp_alive=0 unsets the slot from the grid (matches updateUnit's
+   *  dead-unit fast path). radius_push is currently unused by queries
+   *  but kept in the per-slot SoA for future use. */
+  setUnit: (
+    slot: number,
+    x: number, y: number, z: number,
+    radiusPush: number, radiusShot: number,
+    ownerPlayer: number,
+    hpAlive: number,
+  ) => void;
+  /** Insert or update a projectile at slot. isProjectileType=1 if
+   *  proj.projectileType === 'projectile' (the only kind queries
+   *  return via queryEnemyProjectilesInRadius). */
+  setProjectile: (
+    slot: number,
+    x: number, y: number, z: number,
+    ownerPlayer: number,
+    isProjectileType: number,
+  ) => void;
+  /** Insert / re-insert a building at slot. The grid buckets the
+   *  building into every cell its (hx, hy, hz) half-extents touch.
+   *  Capture votes resync — pass entity_active=0 to suppress votes
+   *  without unbucketing the slot. */
+  setBuilding: (
+    slot: number,
+    x: number, y: number, z: number,
+    hx: number, hy: number, hz: number,
+    ownerPlayer: number,
+    hpAlive: number,
+    entityActive: number,
+  ) => void;
+  /** Re-sync the building's capture votes after isEntityActive flips
+   *  (e.g. construction completion). Cell membership is unchanged. */
+  syncBuildingCaptureForSlot: (slot: number) => void;
+  /** Drop the slot from any cell bucket + capture vote it currently
+   *  holds. Marks the slot kind as UNSET so future queries skip it. */
+  unsetSlot: (slot: number) => void;
+
+  // ---------- Queries (return slot-id counts) ----------
+
+  /** Units in a 3D sphere. exclude_player=0 disables the filter. */
+  queryUnitsInRadius: (
+    x: number, y: number, z: number, r: number,
+    excludePlayer: number,
+    requireAlive: number,
+  ) => number;
+  /** Buildings whose AABB closest-point ≤ r from (x, y, z). */
+  queryBuildingsInRadius: (
+    x: number, y: number, z: number, r: number,
+    excludePlayer: number,
+    requireAlive: number,
+  ) => number;
+  /** Combined: writes [nUnits, nBuildings, unit_slots..., building_slots...]. */
+  queryUnitsAndBuildingsInRadius: (
+    x: number, y: number, z: number, r: number,
+  ) => number;
+  /** 2D rect AoI: [nUnits, nBuildings, unit_slots..., building_slots...]. */
+  queryUnitsAndBuildingsInRect2D: (
+    minX: number, maxX: number, minY: number, maxY: number,
+  ) => number;
+  /** Enemy units + buildings in a 3D sphere. shotRadius padding +
+   *  hp>0 + AABB filter. Output: [nUnits, nBuildings, ...]. */
+  queryEnemyEntitiesInRadius: (
+    x: number, y: number, z: number, r: number,
+    excludePlayer: number,
+  ) => number;
+  /** Enemy units + buildings in a 2D ground-plane circle. */
+  queryEnemyEntitiesInCircle2D: (
+    x: number, y: number, r: number,
+    excludePlayer: number,
+    zMin: number, zMax: number,
+  ) => number;
+  /** Units whose cell overlaps the line's swept AABB (line + lineWidth). */
+  queryUnitsAlongLine: (
+    sx: number, sy: number, sz: number,
+    tx: number, ty: number, tz: number,
+    lineWidth: number,
+  ) => number;
+  /** Buildings whose cell overlaps the line's swept AABB. */
+  queryBuildingsAlongLine: (
+    sx: number, sy: number, sz: number,
+    tx: number, ty: number, tz: number,
+    lineWidth: number,
+  ) => number;
+  /** Combined: [nUnits, nBuildings, unit_slots..., building_slots...]. */
+  queryEntitiesAlongLine: (
+    sx: number, sy: number, sz: number,
+    tx: number, ty: number, tz: number,
+    lineWidth: number,
+  ) => number;
+  /** Enemy units in a 3D sphere (no shot-radius pad, no alive filter). */
+  queryEnemyUnitsInRadius: (
+    x: number, y: number, z: number, r: number,
+    excludePlayer: number,
+  ) => number;
+  /** Enemy projectiles in a 3D sphere (only `proj.projectileType==='projectile'`). */
+  queryEnemyProjectilesInRadius: (
+    x: number, y: number, z: number, r: number,
+    excludePlayer: number,
+  ) => number;
+  /** Combined: [nUnits, nProjectiles, unit_slots..., projectile_slots...]. */
+  queryEnemyUnitsAndProjectilesInRadius: (
+    x: number, y: number, z: number, r: number,
+    excludePlayer: number,
+  ) => number;
+  /** Capture-vote summary. Output: [nCells, per cell: (landKey: i32,
+   *  nPlayers, p0, p1, ...)]. PlayerIds are u8. */
+  queryOccupiedCellsForCapture: () => number;
+  /** Debug: per-cell unique-player listing. Output: [nCells, per
+   *  cell: (cx: i32, cy: i32, cz: i32, nPlayers, p0, p1, ...)]. */
+  queryOccupiedCellsDebug: () => number;
+
+  // ---------- Scratch buffer access ----------
+
+  /** Raw pointer to the start of the scratch_u32 Vec. Build a fresh
+   *  Uint32Array(memory.buffer, ptr, count) view per query and
+   *  consume immediately — the Vec relocates on growth. */
+  scratchPtr: () => number;
+  /** Current scratch buffer length (== last query's return value). */
+  scratchLen: () => number;
+  /** Read a slot's kind tag. Useful when consuming combined query
+   *  results that intermix units / buildings / projectiles. */
+  slotKind: (slot: number) => number;
 }
 
 /** Bit flags for `integrateDampedRotation`. Mirrors the
@@ -444,6 +633,10 @@ export function initSimWasm(): Promise<SimWasm> {
 
       pool_init();
       projectile_pool_init();
+      // Phase 7 — initialize SpatialGrid singleton. Cell size mirrors
+      // CANONICAL_LAND_CELL_SIZE in landGrid.ts; the grid auto-grows
+      // its per-slot SoA arrays past the initial capacity hint.
+      spatial_init(200, 1024);
       const memory = initOutput.memory;
       const capacity = pool_capacity();
       const projCapacity = projectile_pool_capacity();
@@ -593,6 +786,35 @@ export function initSimWasm(): Promise<SimWasm> {
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainHasLineOfSight: terrain_has_line_of_sight,
+        memory,
+        spatial: {
+          init: spatial_init,
+          clear: spatial_clear,
+          allocSlot: spatial_alloc_slot,
+          freeSlot: spatial_free_slot,
+          setUnit: spatial_set_unit,
+          setProjectile: spatial_set_projectile,
+          setBuilding: spatial_set_building,
+          syncBuildingCaptureForSlot: spatial_sync_building_capture_for_slot,
+          unsetSlot: spatial_unset_slot,
+          queryUnitsInRadius: spatial_query_units_in_radius,
+          queryBuildingsInRadius: spatial_query_buildings_in_radius,
+          queryUnitsAndBuildingsInRadius: spatial_query_units_and_buildings_in_radius,
+          queryUnitsAndBuildingsInRect2D: spatial_query_units_and_buildings_in_rect_2d,
+          queryEnemyEntitiesInRadius: spatial_query_enemy_entities_in_radius,
+          queryEnemyEntitiesInCircle2D: spatial_query_enemy_entities_in_circle_2d,
+          queryUnitsAlongLine: spatial_query_units_along_line,
+          queryBuildingsAlongLine: spatial_query_buildings_along_line,
+          queryEntitiesAlongLine: spatial_query_entities_along_line,
+          queryEnemyUnitsInRadius: spatial_query_enemy_units_in_radius,
+          queryEnemyProjectilesInRadius: spatial_query_enemy_projectiles_in_radius,
+          queryEnemyUnitsAndProjectilesInRadius: spatial_query_enemy_units_and_projectiles_in_radius,
+          queryOccupiedCellsForCapture: spatial_query_occupied_cells_for_capture,
+          queryOccupiedCellsDebug: spatial_query_occupied_cells_debug,
+          scratchPtr: spatial_scratch_ptr,
+          scratchLen: spatial_scratch_len,
+          slotKind: spatial_slot_kind,
+        },
       };
       resolvedHandle = handle;
       return handle;
