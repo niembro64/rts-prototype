@@ -67,6 +67,14 @@ export type SnapshotListenerEntry = {
    *  client's local PREDICT integrator gate is the authoritative one
    *  for correctness — this is purely a bandwidth optimization. */
   predictionMode?: PredictionMode;
+  /** Phase 10 D.3e — Rust-side snapshot baseline handle for this
+   *  listener (u32 index into the WASM SnapshotBaselineRegistry).
+   *  Allocated via sim.snapshotBaseline.create() on add, released
+   *  via destroy() on remove. The mirror of the JS-side
+   *  DeltaTrackingState.prevStates map for the same listener;
+   *  populated per-tick by the (upcoming) capture pass. Undefined
+   *  if the listener was registered before initSimWasm resolved. */
+  snapshotBaselineHandle?: number;
 };
 
 export type ServerSnapshotPublisherInput = {

@@ -58,6 +58,7 @@ import {
 } from '../../config';
 import { SERVER_SIM_LOD_EMA_SOURCE } from '../../serverSimLodConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
+import { getSimWasm } from '../sim-wasm/init';
 import { setTiltEmaMode } from '../sim/unitTilt';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { updateCombatActivityFlags } from '../sim/combat/combatActivity';
@@ -894,7 +895,13 @@ export class GameServer {
     const trackingScope = playerId === undefined ? 'global' : `player-${playerId}`;
     const trackingKey = `${trackingScope}-${this.snapshotListenerId++}`;
     const deltaTrackingKey = playerId === undefined ? 'global-shared' : trackingKey;
-    this.snapshotListeners.push({ callback, playerId, trackingKey, deltaTrackingKey });
+    // Phase 10 D.3e — allocate a Rust-side snapshot baseline handle
+    // for this listener. Undefined if WASM hasn't booted yet (the
+    // serialize path skips baseline ops when undefined).
+    const snapshotBaselineHandle = getSimWasm()?.snapshotBaseline.create();
+    this.snapshotListeners.push({
+      callback, playerId, trackingKey, deltaTrackingKey, snapshotBaselineHandle,
+    });
     this.recomputeShroudUpdatePlayerMask();
     return trackingKey;
   }
@@ -931,6 +938,9 @@ export class GameServer {
     if (idx < 0) return;
     const [removed] = this.snapshotListeners.splice(idx, 1);
     this.startupReadyListenerKeys.delete(removed.trackingKey);
+    if (removed.snapshotBaselineHandle !== undefined) {
+      getSimWasm()?.snapshotBaseline.destroy(removed.snapshotBaselineHandle);
+    }
     if (!this.snapshotListeners.some((l) => l.deltaTrackingKey === removed.deltaTrackingKey)) {
       resetDeltaTrackingForKey(removed.deltaTrackingKey);
     }
