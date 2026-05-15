@@ -5,6 +5,8 @@ import { getBuildFraction } from '../sim/buildableHelpers';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import { SNAPSHOT_CONFIG } from '../../config';
 import type { SnapshotDeltaResolutionConfig } from '../../types/config';
+import { spatialGrid } from '../sim/SpatialGrid';
+import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
@@ -395,6 +397,61 @@ export function getNextEntityState(entity: Entity): PrevEntityState {
   return next;
 }
 
+/** Phase 10 D.3a — mirror the snapshot-relevant scalars + per-turret
+ *  state of one entity into the WASM-side entity-meta + turret pools.
+ *  No consumer reads these yet; the encoder lands in D.3b. */
+function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
+  const slot = spatialGrid.getSlot(e.id);
+  if (slot < 0) return;
+  const playerId = e.ownership?.playerId ?? 0;
+  if (e.unit) {
+    const u = e.unit;
+    const buildable = e.buildable;
+    sim.entityMeta.setUnit(
+      slot,
+      playerId,
+      u.hp, u.maxHp,
+      e.combat?.fireEnabled === false ? 0 : 1,
+      e.commander ? 1 : 0,
+      buildable && !buildable.isComplete ? 0 : 1,
+      buildable?.paid.energy ?? 0,
+      buildable?.paid.mana ?? 0,
+      buildable?.paid.metal ?? 0,
+      e.builder?.currentBuildTarget ?? -1,
+      u.suspension?.offsetZ ?? 0,
+      u.suspension?.velocityZ ?? 0,
+      u.jump?.active ? 1 : 0,
+      u.jump?.launchSeq ?? 0,
+    );
+    const turrets = e.combat?.turrets;
+    const turretCount = turrets ? turrets.length : 0;
+    sim.turretPool.setCount(slot, turretCount);
+    for (let t = 0; t < turretCount; t++) {
+      const w = turrets![t];
+      sim.turretPool.setTurret(
+        slot, t,
+        w.rotation, w.angularVelocity, w.angularAcceleration,
+        w.pitch, w.pitchVelocity, w.pitchAcceleration,
+        w.forceField?.range ?? 0,
+        w.target ?? -1,
+      );
+    }
+  } else if (e.building) {
+    const b = e.building;
+    const f = e.factory;
+    sim.entityMeta.setBuilding(
+      slot,
+      playerId,
+      b.hp, b.maxHp,
+      f?.isProducing ? 1 : 0,
+      Math.min(f?.buildQueue.length ?? 0, 255),
+      f?.currentBuildProgress ?? 0,
+      b.solar?.open === false ? 0 : 1,
+      e.buildable ? getBuildFraction(e.buildable) : 1,
+    );
+  }
+}
+
 export function captureSnapshotEntityStates(
   world: WorldState,
   isDelta: boolean,
@@ -406,6 +463,8 @@ export function captureSnapshotEntityStates(
   const accepts = (e: Entity): boolean =>
     e.type === 'unit' || e.type === 'building';
 
+  const sim = getSimWasm();
+
   if (isDelta && SNAPSHOT_CONFIG.deltaEnabled) {
     if (!dirtyEntityIds) return;
     for (let i = 0; i < dirtyEntityIds.length; i++) {
@@ -414,6 +473,7 @@ export function captureSnapshotEntityStates(
       const captured = acquireCapturedNextState();
       captureEntityState(e, captured);
       capturedNextStates.set(e.id, captured);
+      if (sim !== undefined) syncEntityMetaPools(e, sim);
     }
     return;
   }
@@ -430,6 +490,7 @@ export function captureSnapshotEntityStates(
       const captured = acquireCapturedNextState();
       captureEntityState(e, captured);
       capturedNextStates.set(e.id, captured);
+      if (sim !== undefined) syncEntityMetaPools(e, sim);
     }
   }
 }
