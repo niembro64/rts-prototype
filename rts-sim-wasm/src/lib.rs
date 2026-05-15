@@ -5726,3 +5726,173 @@ pub fn snapshot_baseline_slot_last_tick(handle: u32, slot: u32) -> u32 {
     if s >= b.last_tick.len() { return 0; }
     b.last_tick[s]
 }
+
+// Changed-fields bit constants (mirror src/types/network.ts).
+const ENTITY_CHANGED_POS: u32 = 1 << 0;
+const ENTITY_CHANGED_ROT: u32 = 1 << 1;
+const ENTITY_CHANGED_VEL: u32 = 1 << 2;
+const ENTITY_CHANGED_HP: u32 = 1 << 3;
+const ENTITY_CHANGED_ACTIONS: u32 = 1 << 4;
+const ENTITY_CHANGED_TURRETS: u32 = 1 << 5;
+const ENTITY_CHANGED_BUILDING: u32 = 1 << 6;
+const ENTITY_CHANGED_FACTORY: u32 = 1 << 7;
+const ENTITY_CHANGED_NORMAL: u32 = 1 << 8;
+const ENTITY_CHANGED_MOVEMENT_ACCEL: u32 = 1 << 10;
+
+const SNAPSHOT_NORMAL_THRESHOLD: f32 = 0.001;
+const SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD: f32 = 0.001;
+
+// Kind tags for snapshot_baseline_diff_slot (mirror EntityType strings
+// 'unit' / 'building' — kept separate from ENTITY_META_TYPE_* because
+// callers may want to diff a unit slot without populating the
+// entity-meta pool first).
+pub const SNAPSHOT_DIFF_KIND_UNIT: u8 = 1;
+pub const SNAPSHOT_DIFF_KIND_BUILDING: u8 = 2;
+
+/// Phase 10 D.3d — diff kernel. Returns the CHANGED-FIELDS mask for
+/// one slot by comparing the caller-supplied `current` scalars (and
+/// the pool-resident hp / turret / build / factory / solar state)
+/// against the per-recipient baseline. Caller is responsible for
+/// skipping this call entirely when the baseline is unset
+/// (snapshot_baseline_slot_used returns 0 — emit full DTO in that
+/// case to match getEntityDeltaChangedFields's isNew path).
+///
+/// Threshold math is byte-equivalent with
+/// stateSerializerEntityDelta.ts:getEntityDeltaChangedFields: each
+/// per-axis |next-prev| > th comparison runs independently and the
+/// per-field mask bit ORs into the result.
+#[wasm_bindgen]
+pub fn snapshot_baseline_diff_slot(
+    handle: u32,
+    slot: u32,
+    kind: u8,
+    x: f32, y: f32, z: f32,
+    rotation: f32,
+    velocity_x: f32, velocity_y: f32, velocity_z: f32,
+    movement_accel_x: f32, movement_accel_y: f32, movement_accel_z: f32,
+    normal_x: f32, normal_y: f32, normal_z: f32,
+    action_count: u16,
+    action_hash: u32,
+    is_engaged_bits: u32,
+    target_bits: u32,
+    pos_threshold: f32,
+    rot_pos_threshold: f32,
+    vel_threshold: f32,
+    rot_vel_threshold: f32,
+    has_buildable: u8,
+    has_combat: u8,
+    has_factory: u8,
+) -> u32 {
+    let registry = snapshot_baseline_registry();
+    let Some(b) = registry.get_mut(handle) else { return 0; };
+    let s = slot as usize;
+    if s >= b.used.len() || b.used[s] == 0 { return 0; }
+
+    let mut mask: u32 = 0;
+
+    if (x - b.x[s]).abs() > pos_threshold
+        || (y - b.y[s]).abs() > pos_threshold
+        || (z - b.z[s]).abs() > pos_threshold
+    {
+        mask |= ENTITY_CHANGED_POS;
+    }
+    if (rotation - b.rotation[s]).abs() > rot_pos_threshold {
+        mask |= ENTITY_CHANGED_ROT;
+    }
+
+    if kind == SNAPSHOT_DIFF_KIND_UNIT {
+        if (velocity_x - b.velocity_x[s]).abs() > vel_threshold
+            || (velocity_y - b.velocity_y[s]).abs() > vel_threshold
+            || (velocity_z - b.velocity_z[s]).abs() > vel_threshold
+        {
+            mask |= ENTITY_CHANGED_VEL;
+        }
+        if (movement_accel_x - b.movement_accel_x[s]).abs() > vel_threshold
+            || (movement_accel_y - b.movement_accel_y[s]).abs() > vel_threshold
+            || (movement_accel_z - b.movement_accel_z[s]).abs() > vel_threshold
+        {
+            mask |= ENTITY_CHANGED_MOVEMENT_ACCEL;
+        }
+        let cur_hp = {
+            let meta = entity_meta_pool();
+            if s < meta.hp_curr.len() { meta.hp_curr[s] } else { 0.0 }
+        };
+        if cur_hp != b.hp[s] {
+            mask |= ENTITY_CHANGED_HP;
+        }
+        if action_count != b.action_count[s] || action_hash != b.action_hash[s] {
+            mask |= ENTITY_CHANGED_ACTIONS;
+        }
+        if (normal_x - b.normal_x[s]).abs() > SNAPSHOT_NORMAL_THRESHOLD
+            || (normal_y - b.normal_y[s]).abs() > SNAPSHOT_NORMAL_THRESHOLD
+            || (normal_z - b.normal_z[s]).abs() > SNAPSHOT_NORMAL_THRESHOLD
+        {
+            mask |= ENTITY_CHANGED_NORMAL;
+        }
+        if has_buildable != 0 {
+            let cur_build = {
+                let meta = entity_meta_pool();
+                if s < meta.build_progress.len() { meta.build_progress[s] } else { 0.0 }
+            };
+            if cur_build != b.build_progress[s] {
+                mask |= ENTITY_CHANGED_BUILDING;
+            }
+        }
+    }
+
+    if has_combat != 0 {
+        let turret = turret_pool();
+        let cur_weapon_count = if s < turret.count_per_entity.len() {
+            turret.count_per_entity[s]
+        } else { 0 };
+        if cur_weapon_count != b.weapon_count[s] {
+            mask |= ENTITY_CHANGED_TURRETS;
+        } else if cur_weapon_count > 0 {
+            let base = s * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize);
+            let mut turrets_changed = false;
+            for t in 0..(cur_weapon_count as usize) {
+                let idx = base + t;
+                if (turret.rotation[idx] - b.turret_rots[idx]).abs() > rot_pos_threshold
+                    || (turret.angular_velocity[idx] - b.turret_ang_vels[idx]).abs() > rot_vel_threshold
+                    || (turret.pitch[idx] - b.turret_pitches[idx]).abs() > rot_pos_threshold
+                    || (turret.force_field_range[idx] - b.force_field_ranges[idx]).abs() > SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD
+                {
+                    turrets_changed = true;
+                    break;
+                }
+            }
+            if turrets_changed {
+                mask |= ENTITY_CHANGED_TURRETS;
+            }
+        }
+        if is_engaged_bits != b.is_engaged_bits[s] || target_bits != b.target_bits[s] {
+            mask |= ENTITY_CHANGED_TURRETS;
+        }
+    }
+
+    if kind == SNAPSHOT_DIFF_KIND_BUILDING {
+        let meta = entity_meta_pool();
+        let cur_hp = if s < meta.hp_curr.len() { meta.hp_curr[s] } else { 0.0 };
+        if cur_hp != b.hp[s] {
+            mask |= ENTITY_CHANGED_HP;
+        }
+        let cur_build = if s < meta.build_progress.len() { meta.build_progress[s] } else { 0.0 };
+        let cur_solar = if s < meta.solar_open.len() { meta.solar_open[s] } else { 1 };
+        if cur_build != b.build_progress[s] || cur_solar != b.solar_open[s] {
+            mask |= ENTITY_CHANGED_BUILDING;
+        }
+        if has_factory != 0 {
+            let cur_fp = if s < meta.factory_progress.len() { meta.factory_progress[s] } else { 0.0 };
+            let cur_ip = if s < meta.factory_is_producing.len() { meta.factory_is_producing[s] } else { 0 };
+            let cur_bql = if s < meta.factory_build_queue_len.len() { meta.factory_build_queue_len[s] } else { 0 };
+            if cur_fp != b.factory_progress[s]
+                || cur_ip != b.is_producing[s]
+                || cur_bql != b.build_queue_len[s]
+            {
+                mask |= ENTITY_CHANGED_FACTORY;
+            }
+        }
+    }
+
+    mask
+}

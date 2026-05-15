@@ -135,6 +135,7 @@ import __wbg_init, {
   snapshot_baseline_capture_building_slot,
   snapshot_baseline_slot_used,
   snapshot_baseline_slot_last_tick,
+  snapshot_baseline_diff_slot,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -757,7 +758,40 @@ export interface SnapshotBaselineApi {
   slotUsed: (handle: number, slot: number) => number;
   /** Tick at which a slot's baseline was last captured (0 if unset). */
   slotLastTick: (handle: number, slot: number) => number;
+  /** D.3d — compute the ENTITY_CHANGED_* bitmask between the
+   *  caller-supplied current scalars (plus the pool-resident hp /
+   *  turret / build / factory / solar state) and this recipient's
+   *  stored baseline. Returns 0 when the baseline is unset (caller
+   *  should treat that case as "emit full DTO" — matches the
+   *  isNew branch in serializer.ts). Threshold math mirrors
+   *  stateSerializerEntityDelta.ts:getEntityDeltaChangedFields. */
+  diffSlot: (
+    handle: number,
+    slot: number,
+    kind: number,
+    x: number, y: number, z: number,
+    rotation: number,
+    velocityX: number, velocityY: number, velocityZ: number,
+    movementAccelX: number, movementAccelY: number, movementAccelZ: number,
+    normalX: number, normalY: number, normalZ: number,
+    actionCount: number,
+    actionHash: number,
+    isEngagedBits: number,
+    targetBits: number,
+    posThreshold: number,
+    rotPosThreshold: number,
+    velThreshold: number,
+    rotVelThreshold: number,
+    hasBuildable: number,
+    hasCombat: number,
+    hasFactory: number,
+  ) => number;
 }
+
+/** Kind tags for SnapshotBaselineApi.diffSlot. Mirrors
+ *  SNAPSHOT_DIFF_KIND_* in lib.rs. */
+export const SNAPSHOT_DIFF_KIND_UNIT = 1;
+export const SNAPSHOT_DIFF_KIND_BUILDING = 2;
 
 /** Phase 9 — Pathfinder. Mirror of Pathfinder.ts findPath. Full
  *  pipeline (mask + CC + A* + LOS smoothing) runs inside a single
@@ -1146,6 +1180,7 @@ export function initSimWasm(): Promise<SimWasm> {
           captureBuildingSlot: snapshot_baseline_capture_building_slot,
           slotUsed: snapshot_baseline_slot_used,
           slotLastTick: snapshot_baseline_slot_last_tick,
+          diffSlot: snapshot_baseline_diff_slot,
         },
         spatial: {
           init: spatial_init,
