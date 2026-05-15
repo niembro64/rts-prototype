@@ -119,6 +119,14 @@ export class SpatialGrid {
     const slot = this.slotByEntityId.get(id);
     if (slot === undefined) return;
     this.api().unsetSlot(slot);
+    // Phase 10 D.1 / D.1b — also clear meta-pool + turret-pool state
+    // for this slot so a recycled slot doesn't inherit stale snapshot
+    // fields from the previous occupant.
+    const sim = getSimWasm();
+    if (sim !== undefined) {
+      sim.entityMeta.unset(slot);
+      sim.turretPool.unsetEntity(slot);
+    }
     this.api().freeSlot(slot);
     this.slotByEntityId.delete(id);
     this.entityBySlot[slot] = undefined;
@@ -127,8 +135,23 @@ export class SpatialGrid {
     }
   }
 
+  /** Returns the WASM-pool slot for an entity, or -1 if the entity
+   *  is not currently tracked by the grid. Used by other systems
+   *  (entity-meta, turret-pool) that share the slot space. */
+  getSlot(entityId: EntityId): number {
+    const slot = this.slotByEntityId.get(entityId);
+    return slot === undefined ? -1 : slot;
+  }
+
   clear(): void {
     this.api().clear();
+    // Phase 10 D.1 / D.1b — drop the meta-pool + turret-pool state
+    // alongside the spatial cells so a fresh session starts clean.
+    const sim = getSimWasm();
+    if (sim !== undefined) {
+      sim.entityMeta.clear();
+      sim.turretPool.clear();
+    }
     this.slotByEntityId.clear();
     this.entityBySlot.length = 0;
     this.kindBySlot.fill(0);
