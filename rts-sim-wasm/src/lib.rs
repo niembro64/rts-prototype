@@ -5919,36 +5919,22 @@ pub fn snapshot_baseline_diff_slot(
 pub const SNAPSHOT_ENTITY_TYPE_UNIT: u8 = 1;
 pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 
-/// Encode the always-present entity envelope: `{id, type, pos,
-/// rotation, playerId [, changedFields]}` — the five fields every
-/// NetworkServerSnapshotEntity carries plus the optional delta mask.
-/// Output written to the D.2 writer; returns the number of bytes.
-///
-/// Field order matches the JS DTO's property insertion order so the
-/// MessagePack key sequence is identical: id → type → pos → rotation
-/// → playerId → changedFields. Quantized integers are passed in as
-/// i32 (caller does qPos / qRot conversion).
-#[wasm_bindgen]
-pub fn snapshot_encode_entity_basic(
+/// Write the six envelope key-value pairs (id, type, pos, rotation,
+/// playerId, changedFields) shared by every encoder kernel. Caller
+/// is responsible for writing the parent map header with the right
+/// key count (envelope keys + sub-object keys). `changed_fields` is
+/// emitted only when `has_changed_fields != 0` so the full-snapshot
+/// path can omit the key entirely.
+fn write_entity_envelope_keys(
+    w: &mut MessagePackWriter,
     id: u32,
     type_tag: u8,
-    qpos_x: i32,
-    qpos_y: i32,
-    qpos_z: i32,
+    qpos_x: i32, qpos_y: i32, qpos_z: i32,
     qrot: i32,
     player_id: u8,
     has_changed_fields: u8,
     changed_fields: u32,
-) -> u32 {
-    let w = messagepack_writer();
-    w.buf.clear();
-
-    let mut key_count: usize = 5;
-    if has_changed_fields != 0 {
-        key_count += 1;
-    }
-    w.write_map_header(key_count);
-
+) {
     w.write_str("id");
     w.write_uint(id as u64);
 
@@ -5978,6 +5964,95 @@ pub fn snapshot_encode_entity_basic(
         w.write_str("changedFields");
         w.write_uint(changed_fields as u64);
     }
+}
+
+/// Encode the always-present entity envelope: `{id, type, pos,
+/// rotation, playerId [, changedFields]}` — the five fields every
+/// NetworkServerSnapshotEntity carries plus the optional delta mask.
+/// Output written to the D.2 writer; returns the number of bytes.
+///
+/// Field order matches the JS DTO's property insertion order so the
+/// MessagePack key sequence is identical: id → type → pos → rotation
+/// → playerId → changedFields. Quantized integers are passed in as
+/// i32 (caller does qPos / qRot conversion).
+#[wasm_bindgen]
+pub fn snapshot_encode_entity_basic(
+    id: u32,
+    type_tag: u8,
+    qpos_x: i32,
+    qpos_y: i32,
+    qpos_z: i32,
+    qrot: i32,
+    player_id: u8,
+    has_changed_fields: u8,
+    changed_fields: u32,
+) -> u32 {
+    let w = messagepack_writer();
+    w.buf.clear();
+
+    let mut key_count: usize = 5;
+    if has_changed_fields != 0 {
+        key_count += 1;
+    }
+    w.write_map_header(key_count);
+    write_entity_envelope_keys(
+        w, id, type_tag,
+        qpos_x, qpos_y, qpos_z, qrot,
+        player_id, has_changed_fields, changed_fields,
+    );
+    w.buf.len() as u32
+}
+
+/// Encode an entity with a unit sub-object covering the always-present
+/// `hp` + `velocity` keys: `{...envelope, unit: {hp: {curr, max},
+/// velocity: {x, y, z}}}`. HP values are written as msgpack `number`
+/// (auto-picks int or f64 branch based on fract); velocity components
+/// are pre-quantized i32 (caller does qVel).
+#[wasm_bindgen]
+pub fn snapshot_encode_entity_unit_hp_vel(
+    id: u32,
+    type_tag: u8,
+    qpos_x: i32, qpos_y: i32, qpos_z: i32,
+    qrot: i32,
+    player_id: u8,
+    has_changed_fields: u8,
+    changed_fields: u32,
+    hp_curr: f64,
+    hp_max: f64,
+    qvel_x: i32, qvel_y: i32, qvel_z: i32,
+) -> u32 {
+    let w = messagepack_writer();
+    w.buf.clear();
+
+    let mut key_count: usize = 5 + 1; // envelope + unit
+    if has_changed_fields != 0 {
+        key_count += 1;
+    }
+    w.write_map_header(key_count);
+    write_entity_envelope_keys(
+        w, id, type_tag,
+        qpos_x, qpos_y, qpos_z, qrot,
+        player_id, has_changed_fields, changed_fields,
+    );
+
+    w.write_str("unit");
+    w.write_map_header(2);  // hp + velocity
+
+    w.write_str("hp");
+    w.write_map_header(2);
+    w.write_str("curr");
+    w.write_number(hp_curr);
+    w.write_str("max");
+    w.write_number(hp_max);
+
+    w.write_str("velocity");
+    w.write_map_header(3);
+    w.write_str("x");
+    w.write_int(qvel_x as i64);
+    w.write_str("y");
+    w.write_int(qvel_y as i64);
+    w.write_str("z");
+    w.write_int(qvel_z as i64);
 
     w.buf.len() as u32
 }

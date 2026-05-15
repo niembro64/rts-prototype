@@ -137,6 +137,7 @@ import __wbg_init, {
   snapshot_baseline_slot_last_tick,
   snapshot_baseline_diff_slot,
   snapshot_encode_entity_basic,
+  snapshot_encode_entity_unit_hp_vel,
   messagepack_writer_ptr,
   messagepack_writer_len,
   pool_pos_x_ptr,
@@ -822,6 +823,22 @@ export interface SnapshotEncodeApi {
     hasChangedFields: number,
     changedFields: number,
   ) => number;
+  /** Encode envelope + `unit: {hp: {curr, max}, velocity: {x, y, z}}`.
+   *  HP values written as raw msgpack `number` (int branch for
+   *  integer-valued doubles, f64 branch otherwise). Velocity
+   *  components are pre-quantized i32 (caller does qVel). */
+  encodeEntityUnitHpVel: (
+    id: number,
+    typeTag: number,
+    qposX: number, qposY: number, qposZ: number,
+    qrot: number,
+    playerId: number,
+    hasChangedFields: number,
+    changedFields: number,
+    hpCurr: number,
+    hpMax: number,
+    qvelX: number, qvelY: number, qvelZ: number,
+  ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
    *  by every encoder call. */
   writerPtr: () => number;
@@ -1233,6 +1250,7 @@ export function initSimWasm(): Promise<SimWasm> {
         },
         snapshotEncode: {
           encodeEntityBasic: snapshot_encode_entity_basic,
+          encodeEntityUnitHpVel: snapshot_encode_entity_unit_hp_vel,
           writerPtr: messagepack_writer_ptr,
           writerLen: messagepack_writer_len,
         },

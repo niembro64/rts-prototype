@@ -7,6 +7,7 @@
 import { encode as msgpackEncode } from '@msgpack/msgpack';
 import {
   snapshot_encode_entity_basic,
+  snapshot_encode_entity_unit_hp_vel,
   messagepack_writer_ptr,
   messagepack_writer_len,
 } from './pkg/rts_sim_wasm';
@@ -89,19 +90,95 @@ function runEntityBasicCases(memory: WebAssembly.Memory): { passed: number; fail
   return { passed, failed };
 }
 
+type UnitHpVelFixture = BasicEntityFixture & {
+  unit: {
+    hp: { curr: number; max: number };
+    velocity: { x: number; y: number; z: number };
+  };
+};
+
+function runEntityUnitHpVelCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
+  const fixtures: UnitHpVelFixture[] = [
+    // Integer HP values + zero velocity (most common idle case)
+    {
+      id: 1, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: { hp: { curr: 100, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
+    },
+    // Damaged unit, signed quantized velocity
+    {
+      id: 42, type: 'unit', pos: { x: 1000, y: -2000, z: 50 }, rotation: 314, playerId: 2,
+      unit: { hp: { curr: 73, max: 250 }, velocity: { x: 15, y: -8, z: 0 } },
+    },
+    // Fractional HP (mid-construction shell — exercises f64 encoding branch)
+    {
+      id: 99, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: { hp: { curr: 12.5, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
+    },
+    // Delta path with changedFields + larger velocity magnitudes
+    {
+      id: 7, type: 'unit', pos: { x: 1, y: 2, z: 3 }, rotation: 100, playerId: 1, changedFields: 4,
+      unit: { hp: { curr: 200, max: 200 }, velocity: { x: 500, y: -500, z: 100 } },
+    },
+    // High id + large hp values
+    {
+      id: 0xFFFFFF, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 0,
+      unit: { hp: { curr: 1234567, max: 9999999 }, velocity: { x: 0, y: 0, z: 0 } },
+    },
+  ];
+
+  let passed = 0;
+  let failed = 0;
+  for (const f of fixtures) {
+    const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
+    const typeTag = f.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
+    const hasChanged = f.changedFields !== undefined ? 1 : 0;
+    const changed = f.changedFields ?? 0;
+    snapshot_encode_entity_unit_hp_vel(
+      f.id, typeTag,
+      f.pos.x, f.pos.y, f.pos.z,
+      f.rotation, f.playerId,
+      hasChanged, changed,
+      f.unit.hp.curr, f.unit.hp.max,
+      f.unit.velocity.x, f.unit.velocity.y, f.unit.velocity.z,
+    );
+    const ptr = messagepack_writer_ptr();
+    const len = messagepack_writer_len();
+    const rustBytes = new Uint8Array(memory.buffer, ptr, len).slice();
+    if (bytesEqual(jsBytes, rustBytes)) {
+      passed++;
+    } else {
+      failed++;
+      console.error(
+        '[snapshot encoder] unit hp+vel byte mismatch',
+        {
+          fixture: f,
+          jsLen: jsBytes.length,
+          rustLen: rustBytes.length,
+          jsHex: hex(jsBytes),
+          rustHex: hex(rustBytes),
+        },
+      );
+    }
+  }
+  return { passed, failed };
+}
+
 export async function runSnapshotEncoderByteEqualityTest(
   memory: WebAssembly.Memory,
 ): Promise<void> {
   const basic = runEntityBasicCases(memory);
-  const total = basic.passed + basic.failed;
-  if (basic.failed > 0) {
+  const unitHpVel = runEntityUnitHpVelCases(memory);
+  const passed = basic.passed + unitHpVel.passed;
+  const failed = basic.failed + unitHpVel.failed;
+  const total = passed + failed;
+  if (failed > 0) {
     console.error(
-      `[snapshot encoder] FAILED ${basic.failed}/${total} byte-equality cases. ` +
-      `Run dev console to inspect the per-fixture diff above.`,
+      `[snapshot encoder] FAILED ${failed}/${total} byte-equality cases. ` +
+      `Inspect the per-fixture diff above.`,
     );
     return;
   }
   console.info(
-    `[snapshot encoder] D.3j byte-equality: ${basic.passed}/${total} fixtures passed.`,
+    `[snapshot encoder] D.3j byte-equality: ${passed}/${total} fixtures passed.`,
   );
 }
