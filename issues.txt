@@ -541,10 +541,20 @@ Sub-phases:
              scratch buffer; TS fallback retained).
   Phase 5c — Terrain-follow path (DGUN_TERRAIN_FOLLOW_HEIGHT). Needs
              Phase 8 (terrain in linear memory) to be fully WASM.
-  Phase 5d — Beam-path point integration (per-point ax/ay/az chain
-             PREDICT-gated by POS/VEL/ACC). Beams have variable
-             segment counts so this benefits from a flattened buffer
-             with per-beam offsets.
+  Phase 5d — Beam-path point integration. DEFERRED (not porting).
+             The PREDICT-gated per-point ax/ay/az step lives in
+             ClientPredictionStepper.applyBeamSnapshotPrediction.
+             At a realistic busy-scene load (10 simultaneous beams ×
+             ~5 points each = 50 point steps per FRAME, 7–9 float
+             ops per step) total per-frame work is ~350 ops. Data
+             lives in JS BeamPoint object arrays, so a WASM call
+             would have to pack/scatter Float64Array(50 × 6) every
+             frame just to integrate ~350 ops — net regression.
+             Server-side finite-diff (projectileSystem ~line 1080+)
+             is sparse (runs every `beamPathStride` ticks) and has
+             the same packing-cost problem. Revisit only if a
+             stress test ever shows the beam point loop on the
+             profiler.
   Phase 5e — Traveling (non-packed) projectile path. Larger surface;
              likely won't move state to WASM until per-projectile
              collision queries also need it.
