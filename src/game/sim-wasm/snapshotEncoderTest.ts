@@ -198,17 +198,19 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
 export async function runSnapshotEncoderByteEqualityTest(
   memory: WebAssembly.Memory,
 ): Promise<void> {
+  console.log('[snapshot encoder] running D.3j byte-equality fixtures…');
   const basic = runEntityBasicCases(memory);
   const unit = runEntityUnitCases(memory);
   const passed = basic.passed + unit.passed;
   const failed = basic.failed + unit.failed;
   const total = passed + failed;
   if (failed > 0) {
-    console.error(
-      `[snapshot encoder] FAILED ${failed}/${total} byte-equality cases. ` +
-      `Inspect the per-fixture diff above.`,
+    throw new Error(
+      `[snapshot encoder] FAILED ${failed}/${total} byte-equality fixtures. ` +
+      `Per-fixture hex diff was console.error'd above; building more encoder ` +
+      `kernels on a broken foundation is pointless. Fix the divergence first ` +
+      `(usually a missing int-encoding branch in the D.2 writer) or revert.`,
     );
-    return;
   }
   console.info(
     `[snapshot encoder] D.3j byte-equality: ${passed}/${total} fixtures passed.`,

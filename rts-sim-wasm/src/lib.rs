@@ -5104,6 +5104,7 @@ pub fn entity_meta_set_unit(
     suspension_spring_velocity: f32,
     jump_airborne: u8,
     jump_timer: f32,
+    build_progress: f32,
 ) {
     let pool = entity_meta_pool();
     pool.ensure_capacity(slot);
@@ -5123,6 +5124,7 @@ pub fn entity_meta_set_unit(
     pool.suspension_spring_velocity[s] = suspension_spring_velocity;
     pool.jump_airborne[s] = jump_airborne;
     pool.jump_timer[s] = jump_timer;
+    pool.build_progress[s] = build_progress;
 }
 
 /// Bulk per-building setter. Building-only fields, plus the shared

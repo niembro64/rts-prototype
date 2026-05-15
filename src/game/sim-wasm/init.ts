@@ -629,6 +629,7 @@ export interface EntityMetaApi {
     buildTargetId: number,
     suspensionSpringOffset: number, suspensionSpringVelocity: number,
     jumpAirborne: number, jumpTimer: number,
+    buildProgress: number,
   ) => void;
   setBuilding: (
     slot: number,

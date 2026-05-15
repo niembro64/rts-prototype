@@ -508,6 +508,7 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       u.suspension?.velocityZ ?? 0,
       u.jump?.active ? 1 : 0,
       u.jump?.launchSeq ?? 0,
+      buildable ? getBuildFraction(buildable) : 0,
     );
     const turrets = e.combat?.turrets;
     const turretCount = turrets ? turrets.length : 0;
