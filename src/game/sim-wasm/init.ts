@@ -22,7 +22,10 @@ import __wbg_init, {
   pool_free_slot,
   pool_step_integrate,
   pool_resolve_sphere_sphere,
-  pool_resolve_sphere_cuboid_pairs,
+  engine_statics_create,
+  engine_statics_add,
+  engine_statics_remove,
+  pool_resolve_sphere_cuboid_full,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -124,23 +127,42 @@ export interface SimWasm {
     cellSize: number,
     wakeTransitionsOut: Uint32Array,
   ) => number;
-  /** Pool-backed sphere-vs-cuboid pair resolver — Phase 3b. JS
-   *  iterates the existing static-cell broadphase to build a flat
-   *  pair list (dyn_slot, static_slot interleaved); one WASM call
-   *  resolves every pair in place. Both bodies' state lives in
-   *  the BodyPool; only the pair list and a wake-transition output
-   *  cross the boundary.
-   *
-   *  Wake bookkeeping: the kernel emits a wake transition for every
-   *  pair that pushes — sleeping bodies and already-awake bodies
-   *  alike. JS calls wakeBody() on each (idempotent on already-awake)
-   *  to handle the awake-count + sleepTicks reset. Duplicates from
-   *  a single dyn body hitting multiple cuboids in one tick are
-   *  safe under wakeBody's idempotence.
-   *
-   *  Returns count of wake transitions written into the buffer. */
-  readonly poolResolveSphereCuboidPairs: (
-    pairs: Uint32Array,
+  /** Phase 3f — per-engine static-cuboid broadphase. Each
+   *  PhysicsEngine3D constructs its own handle at startup so the
+   *  foreground game and the LobbyManager background battle's
+   *  static cells stay isolated even though they share the global
+   *  BodyPool. */
+  readonly engineStaticsCreate: () => number;
+  /** Insert a cuboid (by pool slot) into this engine's static
+   *  broadphase. Reads pos + half-extents from the pool, walks
+   *  every overlapping cell, and pushes the slot id onto each
+   *  cell's bucket. Idempotent only in the sense that a removed
+   *  slot can be re-added — calling add twice for the same slot
+   *  WILL produce duplicates in the cell buckets. */
+  readonly engineStaticsAdd: (handle: number, slot: number, cellSize: number) => void;
+  /** Remove a cuboid from this engine's static broadphase, using
+   *  the same pos + half-extent walk as `engineStaticsAdd`. The
+   *  caller must invoke this BEFORE freeing the pool slot or
+   *  changing the cuboid's geometry, otherwise the broadphase
+   *  state diverges from the pool. */
+  readonly engineStaticsRemove: (handle: number, slot: number, cellSize: number) => void;
+  /** Phase 3f unified sphere-vs-cuboid kernel. JS passes:
+   *    - dynSlots: the dyn sphere slot ids to test (typically every
+   *      `shouldProcessBodyThisStep` sphere this tick)
+   *    - ignoredStaticSlots: parallel u32 array, value u32::MAX
+   *      (= 0xFFFFFFFF) meaning "no ignore" for that dyn; otherwise
+   *      the static slot id to skip (one-per-dyn ignore matches
+   *      the JS Map<dyn,static> semantics from `setIgnoreStatic`).
+   *    - cellSize: PhysicsEngine3D's CONTACT_CELL_SIZE.
+   *    - wakeTransitionsOut: written with the slot ids of dyn
+   *      bodies that resolved at least one pair (one entry per
+   *      dyn that hit any cuboid).
+   *  Returns the count of wake transitions written. */
+  readonly poolResolveSphereCuboidFull: (
+    handle: number,
+    dynSlots: Uint32Array,
+    ignoredStaticSlots: Uint32Array,
+    cellSize: number,
     wakeTransitionsOut: Uint32Array,
   ) => number;
 }
@@ -303,7 +325,10 @@ export function initSimWasm(): Promise<SimWasm> {
         pool,
         poolStepIntegrate: pool_step_integrate,
         poolResolveSphereSphere: pool_resolve_sphere_sphere,
-        poolResolveSphereCuboidPairs: pool_resolve_sphere_cuboid_pairs,
+        engineStaticsCreate: engine_statics_create,
+        engineStaticsAdd: engine_statics_add,
+        engineStaticsRemove: engine_statics_remove,
+        poolResolveSphereCuboidFull: pool_resolve_sphere_cuboid_full,
       };
       resolvedHandle = handle;
       return handle;

@@ -86,27 +86,17 @@ let _integrateSleepTransitions: Uint32Array = new Uint32Array(0);
 let _sphereSphereSlots: Uint32Array = new Uint32Array(0);
 let _sphereSphereWakeTransitions: Uint32Array = new Uint32Array(0);
 
-// Phase 3b sphere-vs-cuboid scratch buffers. JS broadphase iteration
-// fills `_sphereCuboidPairs` with interleaved (dyn_slot, static_slot)
-// u32s; the wake transitions buffer holds at most one slot per pair.
-let _sphereCuboidPairs: Uint32Array = new Uint32Array(0);
+// Phase 3f sphere-vs-cuboid scratch. The static broadphase itself
+// lives in WASM (per-engine via engineStatics handle). JS only
+// needs to marshal the per-tick dyn slot list, the parallel ignore-
+// pair lookup, and the wake-transition output buffer.
+let _sphereCuboidDynSlots: Uint32Array = new Uint32Array(0);
+let _sphereCuboidIgnoredStatics: Uint32Array = new Uint32Array(0);
 let _sphereCuboidWakeTransitions: Uint32Array = new Uint32Array(0);
-
-// Pack a (cx, cy, cz) integer cell coordinate into a single numeric
-// key. Each axis is 16-bit biased; the packed value is a 48-bit
-// non-negative safe integer (well under JS's 2^53 ceiling). Mirrors
-// the encoding the sim-side SpatialGrid uses so the two indices are
-// readable side by side.
-const CONTACT_CELL_BIAS = 32768;
-const CONTACT_CELL_MASK = 0xFFFF;
-const CONTACT_CX_MULT = 0x100000000;  // 2^32
-const CONTACT_CY_MULT = 0x10000;      // 2^16
-function packContactCellKey(cx: number, cy: number, cz: number): number {
-  const cxB = (cx + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK;
-  const cyB = (cy + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK;
-  const czB = (cz + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK;
-  return cxB * CONTACT_CX_MULT + cyB * CONTACT_CY_MULT + czB;
-}
+// Sentinel "no ignore" value passed to the kernel (matches Rust
+// u32::MAX). Real slot ids are 0..POOL_CAPACITY-1 so 0xFFFFFFFF
+// can never collide with a real slot.
+const NO_IGNORE_SLOT = 0xFFFFFFFF;
 
 // Module-scope cached pool views — bound once when PhysicsEngine3D
 // is first constructed (which awaits initSimWasm via GameServer.create).
@@ -154,10 +144,6 @@ export class Body3D {
   label: string;
   /** Owning sim entity id for dynamic unit bodies. */
   entityId?: EntityId;
-  /** Internal broad-phase query stamp. Avoids duplicate narrow-phase
-   *  checks when a large static cuboid spans several queried cells.
-   *  Pure JS-side — Rust never touches this. */
-  _staticQueryStamp?: number;
 
   private constructor(args: {
     slot: number;
@@ -336,12 +322,11 @@ export class PhysicsEngine3D {
   private mapWidth: number;
   private mapHeight: number;
 
-  // Static cuboid broad-phase: buildings do not move, so index them
-  // once on creation into every CONTACT_CELL_SIZE cell overlapped by
-  // their AABB. Unit-vs-building collision then only checks cells
-  // touched by the unit sphere instead of every building in the game.
-  private staticCells = new Map<number, Body3D[]>();
-  private staticQueryStamp = 0;
+  // Static cuboid broadphase lives in the WASM-side EngineStatics
+  // (Phase 3f). Each engine instance gets its own handle so the
+  // foreground game and the background battle don't share static
+  // cells. Set in the constructor.
+  private staticsHandle: number = 0;
 
   // Ignore a specific static body for a specific dynamic body. Same
   // purpose as the 2D engine: a newly spawned unit shouldn't immediately
@@ -376,6 +361,10 @@ export class PhysicsEngine3D {
       );
     }
     bindBody3DPool(sim.pool);
+    // Phase 3f: allocate this engine's static-cuboid broadphase
+    // handle. Foreground game + LobbyManager background battle each
+    // call new PhysicsEngine3D and so each get their own handle.
+    this.staticsHandle = sim.engineStaticsCreate();
   }
 
   /** Wire in the terrain heightmap so spring/friction contact uses
@@ -600,59 +589,14 @@ export class PhysicsEngine3D {
     }
   }
 
-  private cellCoordXy(v: number): number {
-    return Math.floor(v / CONTACT_CELL_SIZE);
-  }
-
-  private cellCoordZ(v: number): number {
-    return Math.floor((v + CONTACT_CELL_SIZE / 2) / CONTACT_CELL_SIZE);
-  }
-
   private addStaticToBroadphase(body: Body3D): void {
     if (body.shape !== 'cuboid') return;
-    const minCx = this.cellCoordXy(body.x - body.halfX);
-    const maxCx = this.cellCoordXy(body.x + body.halfX);
-    const minCy = this.cellCoordXy(body.y - body.halfY);
-    const maxCy = this.cellCoordXy(body.y + body.halfY);
-    const minCz = this.cellCoordZ(body.z - body.halfZ);
-    const maxCz = this.cellCoordZ(body.z + body.halfZ);
-
-    for (let cz = minCz; cz <= maxCz; cz++) {
-      for (let cy = minCy; cy <= maxCy; cy++) {
-        for (let cx = minCx; cx <= maxCx; cx++) {
-          const key = packContactCellKey(cx, cy, cz);
-          let bucket = this.staticCells.get(key);
-          if (!bucket) {
-            bucket = [];
-            this.staticCells.set(key, bucket);
-          }
-          bucket.push(body);
-        }
-      }
-    }
+    getSimWasm()!.engineStaticsAdd(this.staticsHandle, body.slot, CONTACT_CELL_SIZE);
   }
 
   private removeStaticFromBroadphase(body: Body3D): void {
     if (body.shape !== 'cuboid') return;
-    const minCx = this.cellCoordXy(body.x - body.halfX);
-    const maxCx = this.cellCoordXy(body.x + body.halfX);
-    const minCy = this.cellCoordXy(body.y - body.halfY);
-    const maxCy = this.cellCoordXy(body.y + body.halfY);
-    const minCz = this.cellCoordZ(body.z - body.halfZ);
-    const maxCz = this.cellCoordZ(body.z + body.halfZ);
-
-    for (let cz = minCz; cz <= maxCz; cz++) {
-      for (let cy = minCy; cy <= maxCy; cy++) {
-        for (let cx = minCx; cx <= maxCx; cx++) {
-          const key = packContactCellKey(cx, cy, cz);
-          const bucket = this.staticCells.get(key);
-          if (!bucket) continue;
-          const i = bucket.indexOf(body);
-          if (i >= 0) bucket.splice(i, 1);
-          if (bucket.length === 0) this.staticCells.delete(key);
-        }
-      }
-    }
+    getSimWasm()!.engineStaticsRemove(this.staticsHandle, body.slot, CONTACT_CELL_SIZE);
   }
 
   step(dtSec: number): void {
@@ -802,92 +746,51 @@ export class PhysicsEngine3D {
     }
   }
 
-  /** Sphere-vs-cuboid contact resolver — Phase 3b: JS broadphase
-   *  builds a flat (dyn_slot, static_slot) pair list, one batched
-   *  WASM call resolves every pair. Both bodies' state lives in the
-   *  BodyPool, so only the pair list and a wake-transitions output
-   *  buffer cross the boundary. The static-cell broadphase + the
-   *  ignoreStatic / staticQueryStamp dedup stay in JS for now —
-   *  Phase 3f will move the broadphase itself into Rust. */
+  /** Phase 3f sphere-vs-cuboid contact resolver. The static
+   *  broadphase lives in the WASM-side EngineStatics; one Rust call
+   *  walks every dyn sphere's overlapping cells, dedups via the
+   *  per-static visit-stamp counter, and runs the resolver in
+   *  place. JS only marshals the dyn slot list, the parallel
+   *  ignored-static-slot lookup, and a wake-transition output. */
   private resolveSphereCuboidContacts(): void {
-    const sim = getSimWasm();
-    if (sim === undefined) {
-      // GameServer.create awaits initSimWasm so the pool is always
-      // ready by the time step() runs. This branch is genuine dead
-      // code in production but kept as a defensive guard.
-      return;
+    const sim = getSimWasm()!;
+    const bodies = this.dynamicBodies;
+    const maxCount = bodies.length;
+    if (maxCount === 0) return;
+    if (_sphereCuboidDynSlots.length < maxCount) {
+      _sphereCuboidDynSlots = new Uint32Array(maxCount);
+      _sphereCuboidIgnoredStatics = new Uint32Array(maxCount);
+      _sphereCuboidWakeTransitions = new Uint32Array(maxCount);
     }
-
-    const dynCount = this.dynamicBodies.length;
-    if (dynCount === 0) return;
-
-    // Pre-size the pair scratch generously (16 cuboids per dyn is
-    // very generous in practice). The grow-on-demand block below
-    // handles overflow for pathological cases.
-    const initialCap = Math.max(64, dynCount * 16) * 2;
-    if (_sphereCuboidPairs.length < initialCap) {
-      _sphereCuboidPairs = new Uint32Array(initialCap);
-    }
-
-    let pairCount = 0; // count of u32 entries (not pairs); each pair occupies 2
-    for (const dyn of this.dynamicBodies) {
+    let n = 0;
+    for (let i = 0; i < maxCount; i++) {
+      const dyn = bodies[i];
       if (!this.shouldProcessBodyThisStep(dyn)) continue;
       if (dyn.shape !== 'sphere') continue;
-      const stamp = ++this.staticQueryStamp;
+      _sphereCuboidDynSlots[n] = dyn.slot;
       const ignored = this.ignoreStatic.get(dyn);
-      const dynRadius = dyn.radius;
-      const dynX = dyn.x;
-      const dynY = dyn.y;
-      const dynZ = dyn.z;
-      const minCx = this.cellCoordXy(dynX - dynRadius);
-      const maxCx = this.cellCoordXy(dynX + dynRadius);
-      const minCy = this.cellCoordXy(dynY - dynRadius);
-      const maxCy = this.cellCoordXy(dynY + dynRadius);
-      const minCz = this.cellCoordZ(dynZ - dynRadius);
-      const maxCz = this.cellCoordZ(dynZ + dynRadius);
-      const dynSlot = dyn.slot;
-
-      for (let cz = minCz; cz <= maxCz; cz++) {
-        for (let cy = minCy; cy <= maxCy; cy++) {
-          for (let cx = minCx; cx <= maxCx; cx++) {
-            const bucket = this.staticCells.get(packContactCellKey(cx, cy, cz));
-            if (!bucket) continue;
-            for (let bi = 0; bi < bucket.length; bi++) {
-              const st = bucket[bi];
-              if (st._staticQueryStamp === stamp) continue;
-              st._staticQueryStamp = stamp;
-              if (st === ignored) continue;
-              if (pairCount + 2 > _sphereCuboidPairs.length) {
-                const grown = new Uint32Array(_sphereCuboidPairs.length * 2);
-                grown.set(_sphereCuboidPairs);
-                _sphereCuboidPairs = grown;
-              }
-              _sphereCuboidPairs[pairCount] = dynSlot;
-              _sphereCuboidPairs[pairCount + 1] = st.slot;
-              pairCount += 2;
-            }
-          }
-        }
-      }
+      _sphereCuboidIgnoredStatics[n] = ignored !== undefined ? ignored.slot : NO_IGNORE_SLOT;
+      n++;
     }
-
-    if (pairCount === 0) return;
-
-    const numPairs = pairCount / 2;
-    if (_sphereCuboidWakeTransitions.length < numPairs) {
-      _sphereCuboidWakeTransitions = new Uint32Array(numPairs);
-    }
-    const pairsView = _sphereCuboidPairs.subarray(0, pairCount);
-    const wakeView = _sphereCuboidWakeTransitions.subarray(0, numPairs);
-    const wakeCount = sim.poolResolveSphereCuboidPairs(pairsView, wakeView);
+    if (n === 0) return;
+    const dynSlotsView = _sphereCuboidDynSlots.subarray(0, n);
+    const ignoredView = _sphereCuboidIgnoredStatics.subarray(0, n);
+    const wakeView = _sphereCuboidWakeTransitions.subarray(0, n);
+    const wakeCount = sim.poolResolveSphereCuboidFull(
+      this.staticsHandle,
+      dynSlotsView,
+      ignoredView,
+      CONTACT_CELL_SIZE,
+      wakeView,
+    );
     for (let i = 0; i < wakeCount; i++) {
       const slot = wakeView[i];
       const b = this.bodyBySlot[slot];
       if (b !== undefined) {
-        // wakeBody() is idempotent; safe even when the same dyn slot
-        // appears multiple times in wake_transitions_out (one entry
-        // per pair that resolved, may include duplicates from a body
-        // hitting multiple cuboids).
+        // wakeBody() is idempotent; safe even if the same dyn slot
+        // appears multiple times (kernel emits one entry per dyn
+        // that hit any cuboid; future duplicate-suppression upstream
+        // doesn't change behavior here).
         this.wakeBody(b);
       }
     }

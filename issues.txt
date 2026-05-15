@@ -150,7 +150,7 @@ Split into sub-phases to keep each ship-able and reviewable.
              pre-sampled ground state + transition output buffers
              cross the boundary now.
   Phase 3e — Hover lift + quat-spring + bank-into-turn (or roll into Phase 4).
-  Phase 3f — Static cuboid broadphase port.
+  Phase 3f — Static cuboid broadphase port. DONE.
 
 ------------------------------------------------------------------------------
  Phase 3a — Batched PhysicsEngine3D.integrate(). DONE.
@@ -386,10 +386,59 @@ clearDynamicSurfaceContacts → resolver-sets-flag → renderer-reads
 chain works through the existing Body3D getter without per-pair
 JS round-trip.
 
-Phase 3f follow-up (move the static-cell broadphase itself into
-Rust) is now unblocked — the ignoreStatic Map stays JS-side as a
-per-engine dedup state, but the spatial bucketing and the
-broadphase walk can move to the pool's static-cell SoA mirror.
+Phase 3f follow-up landed — see below.
+
+------------------------------------------------------------------------------
+ Phase 3f — Static cuboid broadphase in Rust. DONE.
+------------------------------------------------------------------------------
+Landed: `EngineStatics` struct in rts-sim-wasm/src/lib.rs, plus
+`engine_statics_create`, `engine_statics_add`, `engine_statics_remove`,
+and the unified `pool_resolve_sphere_cuboid_full` kernel. Each
+PhysicsEngine3D constructs its own EngineStatics handle (`sim.
+engineStaticsCreate()`) at startup so the foreground game and the
+LobbyManager background battle keep their cuboid buckets isolated
+even though they share the global BodyPool.
+
+PhysicsEngine3D's JS-side static-cell map / staticQueryStamp /
+packContactCellKey / cellCoordXy / cellCoordZ / Body3D.
+_staticQueryStamp are all GONE — bucketing + per-static-body visit
+dedup runs entirely in Rust. The remaining JS state is the
+ignoreStatic Map (per-dyn override that says "don't collide with
+this specific cuboid as you exit your factory") which is encoded
+into a parallel u32 array (NO_IGNORE_SLOT = 0xFFFFFFFF for "no
+ignore") and passed to the kernel each tick.
+
+Per-tick boundary cost for sphere-cuboid resolution drops to one
+WASM call carrying:
+  - dyn slot list (one u32 per active dyn sphere, ~200)
+  - parallel ignored-static-slot list (same length)
+  - wake-transition output buffer (same length, written by Rust)
+  - cell_size scalar
+Internally Rust walks each dyn body's overlapping cells, dedups via
+the per-static visit-stamp counter (per-engine, persistent across
+calls), and runs the closest-point-on-AABB resolver in place. The
+~5400 cell lookups that used to happen JS-side per tick (200 dyn ×
+27 cells) are gone.
+
+Numerical behavior bit-identical to Phase 3b's pair-list path:
+same closest-point math, same restitution, same upward-contact
+flag logic. The internal `resolve_sphere_cuboid_pair_in_pool`
+helper is shared between both code paths — it's the only place
+the pair-resolve math lives now.
+
+PhysicsEngine3D shrinks from 964 → 867 lines. Phase 3 (the entire
+PhysicsEngine3D core) is now fully in Rust/WASM:
+  - integrate() + sleep state          (3a / 3d-2)
+  - sphere-vs-cuboid resolver          (3b → unified in 3f)
+  - sphere-vs-sphere resolver + grid   (3c / 3d-2)
+  - body state pool                    (3d / 3d-2)
+  - static cuboid broadphase           (3f)
+
+Open follow-up: engine_statics_destroy is not yet implemented.
+The foreground/background pattern doesn't currently destroy
+PhysicsEngine3D mid-session, so handles accumulate (one per
+engine instance ever constructed). Add destroy + a free list when
+hot-reloading PhysicsEngine3D becomes a thing.
 
   - SoA Body3D representation in linear memory: separate Vec<f32>
     for x, y, z, vx, vy, vz, ax, ay, az, mass, invMass, radius,

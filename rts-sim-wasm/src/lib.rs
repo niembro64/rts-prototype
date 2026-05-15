@@ -850,113 +850,303 @@ pub fn pool_resolve_sphere_sphere(
 //  dyn body's pool flags byte when contact normal nz > 0.35.
 // ─────────────────────────────────────────────────────────────────
 
+/// Internal sphere-vs-cuboid pair resolver (single pair). Reads
+/// dyn body geometry + cuboid extents from the pool, mutates dyn
+/// pos/vel/flags in place. Returns true iff the pair overlapped
+/// (so the caller can mark a wake transition / set upward-contact).
+#[inline]
+fn resolve_sphere_cuboid_pair_in_pool(p: &mut BodyPool, dyn_slot: usize, st_slot: usize) -> bool {
+    let dyn_x = p.pos_x[dyn_slot];
+    let dyn_y = p.pos_y[dyn_slot];
+    let dyn_z = p.pos_z[dyn_slot];
+    let dyn_r = p.radius[dyn_slot];
+    let st_x = p.pos_x[st_slot];
+    let st_y = p.pos_y[st_slot];
+    let st_z = p.pos_z[st_slot];
+    let st_hx = p.half_x[st_slot];
+    let st_hy = p.half_y[st_slot];
+    let st_hz = p.half_z[st_slot];
+
+    let dx = dyn_x - st_x;
+    let dy = dyn_y - st_y;
+    let dz = dyn_z - st_z;
+    let cx = dx.max(-st_hx).min(st_hx);
+    let cy = dy.max(-st_hy).min(st_hy);
+    let cz = dz.max(-st_hz).min(st_hz);
+    let sep_x = dx - cx;
+    let sep_y = dy - cy;
+    let sep_z = dz - cz;
+    let dist_sq = sep_x * sep_x + sep_y * sep_y + sep_z * sep_z;
+    if dist_sq >= dyn_r * dyn_r {
+        return false;
+    }
+    let dist = dist_sq.sqrt();
+
+    let nx: f64;
+    let ny: f64;
+    let nz: f64;
+    let penetration: f64;
+    if dist < 1e-6 {
+        let over_x = st_hx - dx.abs();
+        let over_y = st_hy - dy.abs();
+        let over_z = st_hz - dz.abs();
+        if over_x <= over_y && over_x <= over_z {
+            nx = if dx >= 0.0 { 1.0 } else { -1.0 };
+            ny = 0.0;
+            nz = 0.0;
+            penetration = over_x + dyn_r;
+        } else if over_y <= over_z {
+            nx = 0.0;
+            ny = if dy >= 0.0 { 1.0 } else { -1.0 };
+            nz = 0.0;
+            penetration = over_y + dyn_r;
+        } else {
+            nx = 0.0;
+            ny = 0.0;
+            nz = if dz >= 0.0 { 1.0 } else { -1.0 };
+            penetration = over_z + dyn_r;
+        }
+    } else {
+        let inv_dist = 1.0 / dist;
+        nx = sep_x * inv_dist;
+        ny = sep_y * inv_dist;
+        nz = sep_z * inv_dist;
+        penetration = dyn_r - dist;
+    }
+
+    p.pos_x[dyn_slot] = dyn_x + nx * penetration;
+    p.pos_y[dyn_slot] = dyn_y + ny * penetration;
+    p.pos_z[dyn_slot] = dyn_z + nz * penetration;
+
+    if nz > 0.35 {
+        p.flags[dyn_slot] |= BODY_FLAG_UPWARD_CONTACT;
+    }
+
+    let dyn_vx = p.vel_x[dyn_slot];
+    let dyn_vy = p.vel_y[dyn_slot];
+    let dyn_vz = p.vel_z[dyn_slot];
+    let v_dot_n = dyn_vx * nx + dyn_vy * ny + dyn_vz * nz;
+    if v_dot_n < 0.0 {
+        let restitution = p.restitution[dyn_slot];
+        let j = (1.0 + restitution) * v_dot_n;
+        p.vel_x[dyn_slot] = dyn_vx - j * nx;
+        p.vel_y[dyn_slot] = dyn_vy - j * ny;
+        p.vel_z[dyn_slot] = dyn_vz - j * nz;
+    }
+    true
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 3f — Static cuboid broadphase in WASM linear memory
+//
+//  Per-engine state. The foreground game and the LobbyManager
+//  background battle each construct their own PhysicsEngine3D in
+//  the same JS context, so a shared global static-cell map would
+//  conflate cuboids from both engines. Instead each engine creates
+//  its own EngineStatics handle at construction time and uses it
+//  for every static_add / static_remove / resolve call.
+//
+//  EngineStatics holds:
+//    - cells: HashMap<packed_cell_key, Vec<slot_id>>
+//    - visit_stamps: per-slot u32 marker for per-query dedup (a
+//      static body that spans multiple cells gets visited from
+//      every overlapping cell in a sphere's query window — without
+//      dedup we'd run the resolver math against the same pair
+//      multiple times in one tick).
+// ─────────────────────────────────────────────────────────────────
+
+struct EngineStatics {
+    cells: HashMap<u64, Vec<u32>>,
+    visit_stamps: Vec<u32>,
+    next_stamp: u32,
+}
+
+impl EngineStatics {
+    fn new() -> Self {
+        Self {
+            cells: HashMap::new(),
+            visit_stamps: vec![0u32; POOL_CAPACITY_USIZE],
+            next_stamp: 0,
+        }
+    }
+}
+
+struct EngineStaticsHolder(UnsafeCell<Vec<EngineStatics>>);
+unsafe impl Sync for EngineStaticsHolder {}
+static ENGINE_STATICS: EngineStaticsHolder = EngineStaticsHolder(UnsafeCell::new(Vec::new()));
+
+#[inline]
+fn engine_statics(handle: u32) -> &'static mut EngineStatics {
+    // SAFETY: WASM is single-threaded; only one Rust call active at a
+    // time. The Vec never shrinks (engine_statics_create only pushes)
+    // so existing &mut references stay valid across calls.
+    unsafe {
+        let v = &mut *ENGINE_STATICS.0.get();
+        &mut v[handle as usize]
+    }
+}
+
+#[inline]
+fn cell_xy(v: f64, cs: f64) -> i32 {
+    (v / cs).floor() as i32
+}
+
+#[inline]
+fn cell_z_with_bias(v: f64, cs: f64) -> i32 {
+    ((v + cs * 0.5) / cs).floor() as i32
+}
+
 #[wasm_bindgen]
-pub fn pool_resolve_sphere_cuboid_pairs(
-    pairs: &[u32],
+pub fn engine_statics_create() -> u32 {
+    // SAFETY: see `engine_statics`.
+    unsafe {
+        let v = &mut *ENGINE_STATICS.0.get();
+        let handle = v.len() as u32;
+        v.push(EngineStatics::new());
+        handle
+    }
+}
+
+#[wasm_bindgen]
+pub fn engine_statics_add(handle: u32, slot: u32, cell_size: f64) {
+    let p = pool();
+    let s = engine_statics(handle);
+    let slot_usize = slot as usize;
+    let x = p.pos_x[slot_usize];
+    let y = p.pos_y[slot_usize];
+    let z = p.pos_z[slot_usize];
+    let hx = p.half_x[slot_usize];
+    let hy = p.half_y[slot_usize];
+    let hz = p.half_z[slot_usize];
+    let min_cx = cell_xy(x - hx, cell_size);
+    let max_cx = cell_xy(x + hx, cell_size);
+    let min_cy = cell_xy(y - hy, cell_size);
+    let max_cy = cell_xy(y + hy, cell_size);
+    let min_cz = cell_z_with_bias(z - hz, cell_size);
+    let max_cz = cell_z_with_bias(z + hz, cell_size);
+    for cz in min_cz..=max_cz {
+        for cy in min_cy..=max_cy {
+            for cx in min_cx..=max_cx {
+                let key = pack_contact_cell_key(cx, cy, cz);
+                s.cells.entry(key).or_default().push(slot);
+            }
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn engine_statics_remove(handle: u32, slot: u32, cell_size: f64) {
+    let p = pool();
+    let s = engine_statics(handle);
+    let slot_usize = slot as usize;
+    let x = p.pos_x[slot_usize];
+    let y = p.pos_y[slot_usize];
+    let z = p.pos_z[slot_usize];
+    let hx = p.half_x[slot_usize];
+    let hy = p.half_y[slot_usize];
+    let hz = p.half_z[slot_usize];
+    let min_cx = cell_xy(x - hx, cell_size);
+    let max_cx = cell_xy(x + hx, cell_size);
+    let min_cy = cell_xy(y - hy, cell_size);
+    let max_cy = cell_xy(y + hy, cell_size);
+    let min_cz = cell_z_with_bias(z - hz, cell_size);
+    let max_cz = cell_z_with_bias(z + hz, cell_size);
+    for cz in min_cz..=max_cz {
+        for cy in min_cy..=max_cy {
+            for cx in min_cx..=max_cx {
+                let key = pack_contact_cell_key(cx, cy, cz);
+                if let Some(bucket) = s.cells.get_mut(&key) {
+                    if let Some(pos) = bucket.iter().position(|&v| v == slot) {
+                        bucket.swap_remove(pos);
+                    }
+                    if bucket.is_empty() {
+                        s.cells.remove(&key);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Phase 3f unified broadphase + sphere-cuboid resolver. JS hands
+/// over a flat list of dynamic sphere slots to test, plus a parallel
+/// `ignored_static_slots` array (u32::MAX = no ignore for this dyn).
+/// Rust walks each dyn body's overlapping cells, dedups via the
+/// per-static visit-stamp counter, runs the per-pair resolver in
+/// place. wake_transitions_out is filled with slot ids of dyn
+/// bodies that got pushed (one entry per dyn that hit any cuboid).
+#[wasm_bindgen]
+pub fn pool_resolve_sphere_cuboid_full(
+    handle: u32,
+    dyn_slots: &[u32],
+    ignored_static_slots: &[u32],
+    cell_size: f64,
     wake_transitions_out: &mut [u32],
 ) -> u32 {
-    let pair_count = pairs.len() / 2;
-    if pair_count == 0 {
+    debug_assert_eq!(dyn_slots.len(), ignored_static_slots.len());
+    debug_assert!(wake_transitions_out.len() >= dyn_slots.len());
+    if dyn_slots.is_empty() || cell_size <= 0.0 {
         return 0;
     }
-    debug_assert!(wake_transitions_out.len() >= pair_count);
 
     let p = pool();
-    let mut woken_count = 0_u32;
+    let s = engine_statics(handle);
+    let mut wake_count = 0_u32;
 
-    for i in 0..pair_count {
-        let dyn_slot_u32 = pairs[i * 2];
+    for i in 0..dyn_slots.len() {
+        let dyn_slot_u32 = dyn_slots[i];
         let dyn_slot = dyn_slot_u32 as usize;
-        let st_slot = pairs[i * 2 + 1] as usize;
+        let ignored = ignored_static_slots[i];
 
         let dyn_x = p.pos_x[dyn_slot];
         let dyn_y = p.pos_y[dyn_slot];
         let dyn_z = p.pos_z[dyn_slot];
         let dyn_r = p.radius[dyn_slot];
-        let st_x = p.pos_x[st_slot];
-        let st_y = p.pos_y[st_slot];
-        let st_z = p.pos_z[st_slot];
-        let st_hx = p.half_x[st_slot];
-        let st_hy = p.half_y[st_slot];
-        let st_hz = p.half_z[st_slot];
 
-        // Closest point on AABB (cuboid) to sphere center, expressed
-        // in the cuboid's local frame.
-        let dx = dyn_x - st_x;
-        let dy = dyn_y - st_y;
-        let dz = dyn_z - st_z;
-        let cx = dx.max(-st_hx).min(st_hx);
-        let cy = dy.max(-st_hy).min(st_hy);
-        let cz = dz.max(-st_hz).min(st_hz);
-        let sep_x = dx - cx;
-        let sep_y = dy - cy;
-        let sep_z = dz - cz;
-        let dist_sq = sep_x * sep_x + sep_y * sep_y + sep_z * sep_z;
-        if dist_sq >= dyn_r * dyn_r {
-            continue;
-        }
-        let dist = dist_sq.sqrt();
+        let min_cx = cell_xy(dyn_x - dyn_r, cell_size);
+        let max_cx = cell_xy(dyn_x + dyn_r, cell_size);
+        let min_cy = cell_xy(dyn_y - dyn_r, cell_size);
+        let max_cy = cell_xy(dyn_y + dyn_r, cell_size);
+        let min_cz = cell_z_with_bias(dyn_z - dyn_r, cell_size);
+        let max_cz = cell_z_with_bias(dyn_z + dyn_r, cell_size);
 
-        let nx: f64;
-        let ny: f64;
-        let nz: f64;
-        let penetration: f64;
-        if dist < 1e-6 {
-            // Degenerate: sphere center inside the box. Push out
-            // along the shortest face normal. Matches the TS path's
-            // `Math.sign(dx) || 1` semantics for dx == 0.
-            let over_x = st_hx - dx.abs();
-            let over_y = st_hy - dy.abs();
-            let over_z = st_hz - dz.abs();
-            if over_x <= over_y && over_x <= over_z {
-                nx = if dx >= 0.0 { 1.0 } else { -1.0 };
-                ny = 0.0;
-                nz = 0.0;
-                penetration = over_x + dyn_r;
-            } else if over_y <= over_z {
-                nx = 0.0;
-                ny = if dy >= 0.0 { 1.0 } else { -1.0 };
-                nz = 0.0;
-                penetration = over_y + dyn_r;
-            } else {
-                nx = 0.0;
-                ny = 0.0;
-                nz = if dz >= 0.0 { 1.0 } else { -1.0 };
-                penetration = over_z + dyn_r;
+        // Bump the per-static visit stamp for this dyn body's query;
+        // wrapping_add handles the (vanishingly unlikely) u32 overflow
+        // — old visit_stamps will just look stale across the rollover.
+        s.next_stamp = s.next_stamp.wrapping_add(1);
+        let stamp = s.next_stamp;
+        let mut hit = false;
+
+        for cz in min_cz..=max_cz {
+            for cy in min_cy..=max_cy {
+                for cx in min_cx..=max_cx {
+                    let key = pack_contact_cell_key(cx, cy, cz);
+                    let bucket = match s.cells.get(&key) {
+                        Some(b) => b,
+                        None => continue,
+                    };
+                    for &st_slot_u32 in bucket.iter() {
+                        let st_slot = st_slot_u32 as usize;
+                        if s.visit_stamps[st_slot] == stamp {
+                            continue;
+                        }
+                        s.visit_stamps[st_slot] = stamp;
+                        if st_slot_u32 == ignored {
+                            continue;
+                        }
+                        if resolve_sphere_cuboid_pair_in_pool(p, dyn_slot, st_slot) {
+                            hit = true;
+                        }
+                    }
+                }
             }
-        } else {
-            let inv_dist = 1.0 / dist;
-            nx = sep_x * inv_dist;
-            ny = sep_y * inv_dist;
-            nz = sep_z * inv_dist;
-            penetration = dyn_r - dist;
         }
 
-        p.pos_x[dyn_slot] = dyn_x + nx * penetration;
-        p.pos_y[dyn_slot] = dyn_y + ny * penetration;
-        p.pos_z[dyn_slot] = dyn_z + nz * penetration;
-
-        // Always emit wake transition. JS wakeBody is idempotent;
-        // duplicates from a body hitting multiple cuboids are safe.
-        wake_transitions_out[woken_count as usize] = dyn_slot_u32;
-        woken_count += 1;
-
-        if nz > 0.35 {
-            p.flags[dyn_slot] |= BODY_FLAG_UPWARD_CONTACT;
-        }
-
-        let dyn_vx = p.vel_x[dyn_slot];
-        let dyn_vy = p.vel_y[dyn_slot];
-        let dyn_vz = p.vel_z[dyn_slot];
-        let v_dot_n = dyn_vx * nx + dyn_vy * ny + dyn_vz * nz;
-        if v_dot_n < 0.0 {
-            let restitution = p.restitution[dyn_slot];
-            let j = (1.0 + restitution) * v_dot_n;
-            p.vel_x[dyn_slot] = dyn_vx - j * nx;
-            p.vel_y[dyn_slot] = dyn_vy - j * ny;
-            p.vel_z[dyn_slot] = dyn_vz - j * nz;
+        if hit {
+            wake_transitions_out[wake_count as usize] = dyn_slot_u32;
+            wake_count += 1;
         }
     }
 
-    woken_count
+    wake_count
 }
