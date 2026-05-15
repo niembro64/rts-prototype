@@ -656,6 +656,17 @@ critical per-tick than the items above (paths are recomputed on
 order issue, not every tick) but ports cleanly: open / closed set,
 binary heap, g/f-cost arrays — all numeric.
 
+DEFERRED (multi-session work). Like Phase 7, a full port requires
+moving the build/walk grid representation into WASM linear memory
+AND wiring every buildGrid mutation site (place/destroy building,
+terrain refresh) to also mirror state across the boundary. The
+mask + CC pre-computation, the per-unit slope filter (uses
+getSurfaceNormal — already in WASM), and the expandPathActions
+post-pass all add surface area. Path queries are spiky but not
+per-tick; per-tick win is modest, end-to-end test risk is high.
+Revisit alongside Phase 7 when budgeting a multi-session port.
+
+When we revisit, the right shape is:
   - Grid representation in linear memory; cell flags for buildable
     / walkable / blocked.
   - A* kernel returning a path as a Rust-owned slice of (x, y).
@@ -663,12 +674,22 @@ binary heap, g/f-cost arrays — all numeric.
     Vec2[] for the action system.
 
 ------------------------------------------------------------------------------
- Phase 10 — Snapshot serializer hot loops → Rust/WASM.
+ Phase 10 — Snapshot serializer hot loops → Rust/WASM.  DEFERRED.
 ------------------------------------------------------------------------------
 stateSerializer*.ts is ~3000 lines across several files. The per-
 entity inner loop (qPos / qVel / qRot quantization, delta encoding,
 FOW visibility, AoI gate) is hot under load — every server tick
 that ships a snapshot pays it per visible entity per recipient.
+
+DEFERRED. The user opted for "full port" over partial — moving
+MessagePack encoder AND the entire per-recipient build path to
+Rust as a single WASM call per recipient. That's the biggest
+remaining item in the plan (~3000 lines + an MP encoder), with
+the strictest correctness requirement (snapshot bytes must be
+byte-equal pre/post for any non-breaking change). And it depends
+on Phase 7 (FOW/AoI feeds from SpatialGrid) being in WASM to
+hit the single-call-per-recipient pattern that avoids
+boundary-cost regressions. Revisit after Phase 7 lands.
 
 Tradeoff: boundary cost. A naive port that calls into Rust per
 entity per recipient would be slower than today. The right shape is
