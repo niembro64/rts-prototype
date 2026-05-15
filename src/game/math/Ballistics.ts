@@ -31,12 +31,6 @@ function simHandle() {
   return getSimWasm();
 }
 
-/** Two real solutions to the ballistic equation, in radians. */
-export type BallisticSolution = {
-  low: number;
-  high: number;
-};
-
 export type KinematicVec3 = {
   x: number;
   y: number;
@@ -294,69 +288,6 @@ function solveKinematicInterceptTs(
   return writeInterceptSolution(input, selectedRoot, out);
 }
 
-/** Return the ballistic pitch pair for a target at horizontal distance
- *  `d` and vertical offset `h` (positive = target above shooter),
- *  fired at speed `v` under gravity `g`. Returns `null` when the
- *  target is unreachable with that speed. */
-export function ballisticSolutions(
-  d: number,
-  h: number,
-  v: number,
-  g: number,
-): BallisticSolution | null {
-  if (d <= 1e-6) {
-    // Target directly above / below the launch origin — straight up
-    // or down is the only angle.
-    const pitch = h >= 0 ? Math.PI / 2 : -Math.PI / 2;
-    return { low: pitch, high: pitch };
-  }
-  if (v <= 1e-6 || g <= 0) return null;
-
-  const v2 = v * v;
-  const v4 = v2 * v2;
-  const disc = v4 - g * (g * d * d + 2 * h * v2);
-  if (disc < 0) return null;
-
-  const sqrtDisc = Math.sqrt(disc);
-  const gd = g * d;
-  const tanLow = (v2 - sqrtDisc) / gd;
-  const tanHigh = (v2 + sqrtDisc) / gd;
-  return {
-    low: Math.atan(tanLow),
-    high: Math.atan(tanHigh),
-  };
-}
-
-/** Convenience wrapper: pick the preferred arc (low by default, high
- *  for lobbing weapons) and fall back to a sensible "best effort"
- *  pitch when the target is out of ballistic range. That fallback is
- *  the elevation angle of maximum horizontal range for the given
- *  height difference — approximately 45° for level targets, tilted
- *  slightly up/down when the target is above/below. This keeps the
- *  turret aimed in a reasonable direction so a future in-range shot
- *  lands where the turret was already pointing. */
-export function solveBallisticPitch(
-  horizDist: number,
-  heightDiff: number,
-  launchSpeed: number,
-  gravity: number,
-  preferHigh: boolean,
-): number {
-  const sol = ballisticSolutions(horizDist, heightDiff, launchSpeed, gravity);
-  if (sol) return preferHigh ? sol.high : sol.low;
-
-  // Out of range. Keep low-arc weapons low even when no exact solution
-  // exists; otherwise low/high aiming styles collapse to the same
-  // 45-degree fallback at the edge of reach.
-  if (horizDist <= 1e-6) return heightDiff >= 0 ? Math.PI / 2 : -Math.PI / 2;
-  if (!preferHigh) return Math.atan2(heightDiff, horizDist);
-
-  // High-arc fallback: maximum-range pitch for a launch that lands at
-  // a height `h` relative to launcher is π/4 + atan(h/d)/2 (for large
-  // enough v); at shorter v this collapses toward 45°. Use that as the
-  // best-we-can-do lob.
-  return Math.PI / 4 + Math.atan2(heightDiff, horizDist) * 0.5;
-}
 
 /**
  * Closed-form projectile-intercept time for a target moving with
