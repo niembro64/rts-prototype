@@ -438,47 +438,6 @@ PhysicsEngine3D core) is now fully in Rust/WASM:
   - body state pool                    (3d / 3d-2)
   - static cuboid broadphase           (3f)
 
-Open follow-up: engine_statics_destroy is not yet implemented.
-The foreground/background pattern doesn't currently destroy
-PhysicsEngine3D mid-session, so handles accumulate (one per
-engine instance ever constructed). Add destroy + a free list when
-hot-reloading PhysicsEngine3D becomes a thing.
-
-  - SoA Body3D representation in linear memory: separate Vec<f32>
-    for x, y, z, vx, vy, vz, ax, ay, az, mass, invMass, radius,
-    groundOffset, ground_launch_ax/ay/az, plus a Vec<u8> bitfield
-    for sleeping / isStatic / shape (sphere = 0, cuboid = 1).
-    Index = entity slot id; entities lookup their slot via a
-    JS-side Map<EntityId, slot>.
-  - Explicit Euler integrator matching the exact order documented
-    at the top of PhysicsEngine3D.ts (forces+gravity → terrain
-    spring → air drag → ground tangent damp → position).
-  - Sphere-vs-cuboid resolver (unit ↔ building). Closest-point on
-    AABB; push out along normal; reflect velocity with restitution.
-  - Sphere-vs-sphere resolver, iterated. Broadphase via the spatial
-    grid (Phase 7) once that lands; until then accept O(n²) for
-    pairs within the per-tick awake set — acceptable for the unit
-    counts we run.
-  - Ground spring + terrain normal sampling — uses the Phase 2
-    sampler callbacks until Phase 8 moves terrain into Rust.
-  - Sleep state machine + sleepTicks accounting; wakeBody() called
-    from JS via an applyForce-style API. Wake on collision in the
-    sphere-sphere / sphere-cuboid resolvers.
-  - applyForce, applyImpulse, hasUpwardSurfaceContact, the awake
-    body iterator, etc.
-  - NEW since the last port — must be in the Rust version:
-      * Hover lift integrator: F_up = K/altitude − c·vz with
-        K = m·g·hoverHeight (UnitForceSystem hover branch).
-      * Quaternion orientation triad (orientation/angularVel3/
-        angularAccel3) + damped-spring law over axis-angle of Δq
-        for hover-style entities.
-      * Bank-into-turn target-quat construction from body-frame
-        velocity components.
-  - JS shim PhysicsEngineWasm.ts re-implementing the public
-    surface by marshalling through SoA typed arrays exposed from
-    WASM as Uint8Array / Float32Array views (zero-copy where
-    possible).
-
 ------------------------------------------------------------------------------
  Phase 4 + 3e — Quaternion math + batched hover orientation kernel. DONE.
 ------------------------------------------------------------------------------
@@ -539,8 +498,8 @@ Sub-phases:
   Phase 5c — Homing steering Rodrigues rotation port. DONE (per-call
              WASM dispatch from HomingSteering.ts; output via 4-f64
              scratch buffer; TS fallback retained).
-  Phase 5c — Terrain-follow path (DGUN_TERRAIN_FOLLOW_HEIGHT). Needs
-             Phase 8 (terrain in linear memory) to be fully WASM.
+  Phase 5c2 — Terrain-follow path (DGUN_TERRAIN_FOLLOW_HEIGHT). Needs
+              Phase 8 (terrain in linear memory) to be fully WASM.
   Phase 5d — Beam-path point integration. DEFERRED (not porting).
              The PREDICT-gated per-point ax/ay/az step lives in
              ClientPredictionStepper.applyBeamSnapshotPrediction.
