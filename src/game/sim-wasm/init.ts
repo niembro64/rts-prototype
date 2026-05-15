@@ -80,6 +80,7 @@ import __wbg_init, {
   pathfinder_waypoints_ptr,
   pathfinder_grid_size_w,
   pathfinder_grid_size_h,
+  messagepack_self_test,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -680,6 +681,17 @@ export function initSimWasm(): Promise<SimWasm> {
       // CANONICAL_LAND_CELL_SIZE in landGrid.ts; the grid auto-grows
       // its per-slot SoA arrays past the initial capacity hint.
       spatial_init(200, 1024);
+      // Phase 10 D.2 — verify the hand-rolled MessagePack encoder
+      // matches its expected byte output across 21 fixture cases.
+      // Returns a bitmask of failed cases (0 = all pass). Future
+      // Phase 10 sub-commits depend on byte-equality with the JS
+      // @msgpack/msgpack output, so a regression here is fatal.
+      const mpFailures = messagepack_self_test();
+      if (mpFailures !== 0) {
+        throw new Error(
+          `(rust) rts-sim-wasm MessagePack encoder self-test failed: 0x${mpFailures.toString(16)}`,
+        );
+      }
       const memory = initOutput.memory;
       const capacity = pool_capacity();
       const projCapacity = projectile_pool_capacity();
