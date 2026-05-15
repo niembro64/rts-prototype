@@ -6029,11 +6029,13 @@ pub fn snapshot_encode_entity_basic(
 
 /// Encode an entity with a unit sub-object. Mandatory keys: `hp` +
 /// `velocity` (always present when the unit sub-object exists).
-/// Optional keys gated by their `has_*` flags: surfaceNormal.
+/// Optional keys gated by their `has_*` flags: movementAccel,
+/// surfaceNormal.
 ///
 /// Field order inside `unit` mirrors NetworkUnitSnapshot's type
-/// declaration so the MessagePack key sequence is stable as more
-/// optional fields land in successive commits.
+/// declaration (movementAccel between velocity and surfaceNormal)
+/// so the MessagePack key sequence stays stable as future commits
+/// add more optional fields.
 #[wasm_bindgen]
 pub fn snapshot_encode_entity_unit(
     id: u32,
@@ -6046,6 +6048,8 @@ pub fn snapshot_encode_entity_unit(
     hp_curr: f64,
     hp_max: f64,
     qvel_x: i32, qvel_y: i32, qvel_z: i32,
+    has_movement_accel: u8,
+    qmov_x: i32, qmov_y: i32, qmov_z: i32,
     has_surface_normal: u8,
     qnormal_x: i32, qnormal_y: i32, qnormal_z: i32,
 ) -> u32 {
@@ -6064,6 +6068,7 @@ pub fn snapshot_encode_entity_unit(
     );
 
     let mut unit_field_count: usize = 2; // hp + velocity
+    if has_movement_accel != 0 { unit_field_count += 1; }
     if has_surface_normal != 0 { unit_field_count += 1; }
 
     w.write_str("unit");
@@ -6084,6 +6089,17 @@ pub fn snapshot_encode_entity_unit(
     w.write_int(qvel_y as i64);
     w.write_str("z");
     w.write_int(qvel_z as i64);
+
+    if has_movement_accel != 0 {
+        w.write_str("movementAccel");
+        w.write_map_header(3);
+        w.write_str("x");
+        w.write_int(qmov_x as i64);
+        w.write_str("y");
+        w.write_int(qmov_y as i64);
+        w.write_str("z");
+        w.write_int(qmov_z as i64);
+    }
 
     if has_surface_normal != 0 {
         w.write_str("surfaceNormal");

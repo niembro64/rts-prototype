@@ -94,6 +94,7 @@ type UnitFixture = BasicEntityFixture & {
   unit: {
     hp: { curr: number; max: number };
     velocity: { x: number; y: number; z: number };
+    movementAccel?: { x: number; y: number; z: number };
     surfaceNormal?: { nx: number; ny: number; nz: number };
   };
 };
@@ -152,6 +153,34 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         surfaceNormal: { nx: -707, ny: 0, nz: 707 },
       },
     },
+    // movementAccel only (e.g. a unit accelerating from rest on flat ground)
+    {
+      id: 2, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        movementAccel: { x: 50, y: 0, z: 0 },
+      },
+    },
+    // movementAccel + surfaceNormal together (cruising up a slope)
+    {
+      id: 33, type: 'unit', pos: { x: 5000, y: 5000, z: 200 }, rotation: 1571, playerId: 2,
+      unit: {
+        hp: { curr: 88, max: 120 },
+        velocity: { x: 100, y: 50, z: 5 },
+        movementAccel: { x: 80, y: 40, z: 0 },
+        surfaceNormal: { nx: 100, ny: 100, nz: 985 },
+      },
+    },
+    // movementAccel with delta path + negative components
+    {
+      id: 511, type: 'unit', pos: { x: 1, y: 2, z: 3 }, rotation: -100, playerId: 3, changedFields: 0x404,
+      unit: {
+        hp: { curr: 200, max: 200 },
+        velocity: { x: -200, y: 0, z: 0 },
+        movementAccel: { x: -150, y: -100, z: 0 },
+      },
+    },
   ];
 
   let passed = 0;
@@ -161,6 +190,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const typeTag = f.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
+    const ma = f.unit.movementAccel;
+    const hasMovementAccel = ma !== undefined ? 1 : 0;
     const sn = f.unit.surfaceNormal;
     const hasNormal = sn !== undefined ? 1 : 0;
     snapshot_encode_entity_unit(
@@ -170,6 +201,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       hasChanged, changed,
       f.unit.hp.curr, f.unit.hp.max,
       f.unit.velocity.x, f.unit.velocity.y, f.unit.velocity.z,
+      hasMovementAccel,
+      ma?.x ?? 0, ma?.y ?? 0, ma?.z ?? 0,
       hasNormal,
       sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
     );
