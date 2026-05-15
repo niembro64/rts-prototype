@@ -6,7 +6,20 @@ import { assertUnitActionHashSynced } from '../sim/unitActions';
 import { SNAPSHOT_CONFIG } from '../../config';
 import type { SnapshotDeltaResolutionConfig } from '../../types/config';
 import { spatialGrid } from '../sim/SpatialGrid';
-import { getSimWasm, type SimWasm } from '../sim-wasm/init';
+import {
+  getSimWasm,
+  type SimWasm,
+  SNAPSHOT_DIFF_KIND_UNIT,
+  SNAPSHOT_DIFF_KIND_BUILDING,
+} from '../sim-wasm/init';
+
+/** Phase 10 D.3g — flip to `true` (in dev only) to compare the
+ *  Rust-side snapshot_baseline_diff_slot result against the JS-side
+ *  getEntityDeltaChangedFields output every per-entity per-recipient
+ *  emit. Mismatches are console.warn'd with the entity id and both
+ *  masks. Default OFF because even no-op divergence checking adds
+ *  one WASM call per emitted entity per recipient. */
+const VERIFY_RUST_DIFF = false;
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
@@ -332,6 +345,62 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
   prev.normalX = sn?.nx ?? 0;
   prev.normalY = sn?.ny ?? 0;
   prev.normalZ = sn?.nz ?? 1;
+}
+
+/** Phase 10 D.3g — compute the Rust-side diff mask for one entity
+ *  and warn if it doesn't match `expectedJsMask` (the raw
+ *  getEntityDeltaChangedFields output, before dirtyForcedFields and
+ *  jumpAnchorFields are OR'd in). Caller must gate on
+ *  `VERIFY_RUST_DIFF`, `!isNew`, and the listener actually having a
+ *  WASM baseline handle. Cheap no-op when slotUsed returns 0
+ *  (baseline isn't fresh yet — the JS path's isNew check covers
+ *  that case). */
+export function verifyRustDiffMask(
+  entity: Entity,
+  next: PrevEntityState,
+  visibility: SnapshotVisibility | undefined,
+  expectedJsMask: number,
+  baselineHandle: number,
+): void {
+  if (!VERIFY_RUST_DIFF) return;
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  const slot = spatialGrid.getSlot(entity.id);
+  if (slot < 0) return;
+  if (sim.snapshotBaseline.slotUsed(baselineHandle, slot) === 0) return;
+
+  const resolution = getDeltaResolution(entity, visibility);
+  const posTh = SNAPSHOT_CONFIG.positionThreshold * resolution.positionThresholdMultiplier;
+  const velTh = SNAPSHOT_CONFIG.velocityThreshold * resolution.velocityThresholdMultiplier;
+  const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier;
+  const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold * resolution.rotationVelocityThresholdMultiplier;
+
+  const kind = entity.type === 'unit' ? SNAPSHOT_DIFF_KIND_UNIT : SNAPSHOT_DIFF_KIND_BUILDING;
+  const rustMask = sim.snapshotBaseline.diffSlot(
+    baselineHandle, slot, kind,
+    next.x, next.y, next.z, next.rotation,
+    next.velocityX, next.velocityY, next.velocityZ,
+    next.movementAccelX, next.movementAccelY, next.movementAccelZ,
+    next.normalX, next.normalY, next.normalZ,
+    next.actionCount, next.actionHash,
+    next.isEngagedBits, next.targetBits,
+    posTh, rotPosTh, velTh, rotVelTh,
+    entity.buildable ? 1 : 0,
+    entity.combat ? 1 : 0,
+    entity.factory ? 1 : 0,
+  );
+  if (rustMask !== expectedJsMask) {
+    console.warn(
+      '[snapshot diff] Rust/JS mask divergence',
+      {
+        entityId: entity.id,
+        entityType: entity.type,
+        jsMask: expectedJsMask.toString(2),
+        rustMask: rustMask.toString(2),
+        diff: (expectedJsMask ^ rustMask).toString(2),
+      },
+    );
+  }
 }
 
 export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {

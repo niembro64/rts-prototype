@@ -44,6 +44,7 @@ import {
   getNextEntityState,
   getPrevState,
   removedEntityIdsBuf as _removedIdsBuf,
+  verifyRustDiffMask,
 } from './stateSerializerEntityDelta';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
@@ -502,11 +503,15 @@ export function serializeGameState(
       const jumpAnchorFields = (dirtyFields & ENTITY_CHANGED_JUMP)
         ? ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL
         : 0;
+      const rawDeltaMask = isNew
+        ? 0
+        : getEntityDeltaChangedFields(entity, prev, next, visibility);
       const changedFields = isNew
         ? undefined
-        : getEntityDeltaChangedFields(entity, prev, next, visibility) |
-          dirtyForcedFields |
-          jumpAnchorFields;
+        : rawDeltaMask | dirtyForcedFields | jumpAnchorFields;
+      if (!isNew && baselineHandle !== undefined) {
+        verifyRustDiffMask(entity, next, visibility, rawDeltaMask, baselineHandle);
+      }
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility, predictionMode);
         if (netEntity) _entityBuf.push(netEntity);
