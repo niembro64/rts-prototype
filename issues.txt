@@ -63,8 +63,11 @@ port preserves those shortcuts.
             D.1b turret sub-pool (foundation, no JS sync yet)       DONE
             D.1c action sub-pool                                    pending
             D.2 hand-rolled MessagePack encoder + self-test         DONE
-            D.3 quantize + delta-encode kernel                      pending
-                (also wires JS-side per-tick population of D.1)
+            D.3a JS-side population of entity-meta + turret pools   DONE
+            D.3b per-recipient baseline registry (Rust storage)     DONE
+            D.3c baseline capture kernels (Rust)                    DONE
+            D.3d diff/emit kernel (returns mask + bytes)            pending
+            D.3e JS-side wiring of capture + diff path              pending
             D.4 snapshot_build_for_recipient (FOW + AoI)            pending
             D.5 stateSerializer*.ts wholesale replacement           pending
   Tier E    SIMD inner loops (auto-vec via +simd128)               DONE
@@ -119,14 +122,41 @@ Remaining sub-commits:
         needs a stable u8 mapping before porting. Defer until D.3
         forces the schema decision.
 
-  D.3 — Per-entity quantize + delta-encode kernel. Reads entity-
-        meta (D.1) + Body3D pool + projectile pool, applies
-        quantization (qPos×100, qVel×10, qRot×1000, qNormal,
-        qSuspension), compares against per-recipient baseline, emits
-        delta bytes using the D.2 encoder. ALSO wires the JS-side
-        per-tick population of the D.1 pool — captureSnapshotEntityStates
-        in stateSerializer.ts gets a new pass that calls
-        sim.entityMeta.setUnit / setBuilding for every dirty entity.
+  D.3 — Per-entity quantize + delta-encode kernel. Split into a/b/c/d/e.
+
+        D.3a DONE — captureSnapshotEntityStates in
+        stateSerializerEntityDelta.ts now syncs each captured entity
+        into the entity-meta + turret pools via SpatialGrid.getSlot.
+        Both delta and keyframe branches mirror the JS-side fields.
+        Guarded on getSimWasm() !== undefined (boot window) and
+        spatial slot != -1 (entity not yet in grid).
+
+        D.3b DONE — per-recipient SnapshotBaseline registry in Rust.
+        Free-list-managed pool of per-slot SoA arrays mirroring
+        stateSerializerEntityDelta.ts:PrevEntityState (transform,
+        velocity, hp, weapon counts + turret state, normal, build/
+        factory/solar/jump/suspension). Each network listener
+        registers a u32 handle via snapshot_baseline_create() at
+        session start. Float storage — quantization happens at emit
+        time so threshold compares stay byte-equal with the JS path.
+
+        D.3c DONE — snapshot_baseline_capture_unit_slot /
+        _capture_building_slot. One WASM call per emitted entity per
+        recipient. Pulls HP + build/factory/solar/suspension/jump
+        from the entity-meta pool, turret state from the turret pool;
+        takes transform / velocity / movement accel / normal /
+        action hash / engagement bits as parameters. No JS consumer
+        wires these calls yet — D.3e will land that.
+
+        D.3d pending — diff/emit kernel. Reads current pool +
+        baseline, applies quantization (qPos×100, qVel×10,
+        qRot×1000, qNormal, qSuspension), threshold-compares,
+        returns a CHANGED-FIELDS mask + emits MessagePack delta
+        bytes via the D.2 encoder.
+
+        D.3e pending — JS-side wiring. serializeGameState's
+        per-listener loop calls D.3d to compute mask + bytes, then
+        D.3c to update the baseline on successful emit.
 
   D.4 — `snapshot_build_for_recipient`. One WASM call per recipient
         per snapshot tick. Reads SpatialGrid (Phase 7) for AoI
