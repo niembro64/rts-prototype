@@ -66,8 +66,13 @@ port preserves those shortcuts.
             D.3a JS-side population of entity-meta + turret pools   DONE
             D.3b per-recipient baseline registry (Rust storage)     DONE
             D.3c baseline capture kernels (Rust)                    DONE
-            D.3d diff/emit kernel (returns mask + bytes)            pending
-            D.3e JS-side wiring of capture + diff path              pending
+            D.3d diff kernel returning mask (Rust)                  DONE
+            D.3e per-listener baseline handle lifecycle (JS)        DONE
+            D.3f per-emit capture into baseline (JS wiring)         DONE
+            D.3g dev-mode Rust-vs-JS diff verification (default OFF) DONE
+            D.3h baseline cleanup on removal / dropout (JS wiring)  DONE
+            D.3i swap JS diff for Rust diff (drop JS prevStates)    pending
+            D.3j byte-equal MessagePack delta encoder (Rust)        pending
             D.4 snapshot_build_for_recipient (FOW + AoI)            pending
             D.5 stateSerializer*.ts wholesale replacement           pending
   Tier E    SIMD inner loops (auto-vec via +simd128)               DONE
@@ -148,15 +153,53 @@ Remaining sub-commits:
         action hash / engagement bits as parameters. No JS consumer
         wires these calls yet — D.3e will land that.
 
-        D.3d pending — diff/emit kernel. Reads current pool +
-        baseline, applies quantization (qPos×100, qVel×10,
-        qRot×1000, qNormal, qSuspension), threshold-compares,
-        returns a CHANGED-FIELDS mask + emits MessagePack delta
-        bytes via the D.2 encoder.
+        D.3d DONE — Rust diff kernel snapshot_baseline_diff_slot
+        returns the ENTITY_CHANGED_* mask by threshold-comparing
+        JS-supplied current scalars + pool-resident hp / turret /
+        build / factory / solar state against the per-recipient
+        baseline. Mirrors stateSerializerEntityDelta.ts:
+        getEntityDeltaChangedFields bit-for-bit. Returns 0 when
+        baseline is unset (caller treats as isNew / emit full).
 
-        D.3e pending — JS-side wiring. serializeGameState's
-        per-listener loop calls D.3d to compute mask + bytes, then
-        D.3c to update the baseline on successful emit.
+        D.3e DONE — Per-listener baseline handle lifecycle.
+        GameServer.addSnapshotListener allocates a Rust handle via
+        snapshot_baseline_create; removeSnapshotListener frees it.
+        Stored on SnapshotListenerEntry; threaded through
+        SerializeGameStateOptions.snapshotBaselineHandle.
+
+        D.3f DONE — Per-emit capture into baseline. After every
+        successful entity emit (delta dirty path, visibility
+        re-entry, keyframe), serializeGameState calls
+        captureToRustBaseline to mirror copyPrevState into the
+        recipient's WASM baseline. D.3a's pool-sync pass broadened
+        to cover ALL entities every emit so the capture kernel
+        reads fresh pool data even for non-dirty re-entries.
+
+        D.3g DONE — Dev-mode Rust/JS diff verification.
+        verifyRustDiffMask helper calls snapshot_baseline_diff_slot
+        alongside the JS getEntityDeltaChangedFields and
+        console.warns on mismatch. Default OFF
+        (VERIFY_RUST_DIFF const in stateSerializerEntityDelta.ts).
+        Flip true in dev to validate the Rust threshold math
+        before D.3i swaps the JS diff out for production.
+
+        D.3h DONE — Baseline cleanup on entity removal / dropout.
+        forgetTrackedEntity + processRemovedEntities now also call
+        snapshot_baseline_unset_slot through the listener's handle
+        so slot reuse can't replay stale baseline data. Covers all
+        four removal paths (world-supplied, fallback, AoI dropout,
+        visibility hide) + the FOW-02b ghost-cleanup pass + the
+        keyframe end-of-frame stale-state sweep.
+
+        D.3i pending — Drop JS prevStates / copyPrevState, swap to
+        Rust diff. Requires confidence from D.3g verification
+        being clean across a range of scenarios.
+
+        D.3j pending — Byte-equal MessagePack delta encoder.
+        Wraps the D.2 writer with the quantize + per-field-emit
+        logic from stateSerializerEntities.ts. The verification
+        gate is per-tick Uint8Array byte-equality against the
+        existing JS encode path (golden capture replay).
 
   D.4 — `snapshot_build_for_recipient`. One WASM call per recipient
         per snapshot tick. Reads SpatialGrid (Phase 7) for AoI
