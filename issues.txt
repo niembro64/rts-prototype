@@ -59,9 +59,10 @@ port preserves those shortcuts.
   Phase 8   terrain heightmap into WASM linear memory              DONE
   Phase 9   Pathfinder A* + LOS smoothing                          DONE
   Phase 10  Snapshot serializer FULL PORT                          IN PROGRESS
-            D.1 entity-meta SoA pool                                pending
+            D.1 entity-meta SoA pool (foundation, no JS sync yet)   DONE
             D.2 hand-rolled MessagePack encoder + self-test         DONE
             D.3 quantize + delta-encode kernel                      pending
+                (also wires JS-side per-tick population of D.1)
             D.4 snapshot_build_for_recipient (FOW + AoI)            pending
             D.5 stateSerializer*.ts wholesale replacement           pending
   Tier E    SIMD inner loops (auto-vec via +simd128)               DONE
@@ -89,20 +90,36 @@ any case fails. Verified byte-equal with the JS lib on 23 inputs.
 
 Remaining sub-commits:
 
-  D.1 — Entity-meta SoA pool. ~300 lines Rust + ~150 lines JS
-        sync. Mirrors snapshot-relevant fields (HP curr/max, owner
-        playerId, unit/building tag, build state, combat mode,
-        actions array, turret array, orientation triad, suspension,
-        jump). Variable-length sub-arrays (turrets, actions) need a
-        separate sub-pool. Slot id matches the SpatialGrid slot
-        (Phase 7) — one canonical entity slot for both spatial
-        lookups and snapshot serialization.
+  D.1 — Entity-meta SoA pool. DONE for fixed-scalar fields.
+        Rust-side `EntityMetaPool` covers HP curr/max, owner playerId,
+        entity-type tag (unit/building), combat mode, is_commander
+        flag, build state (complete + paid energy/mana/metal +
+        target id), suspension spring offset/velocity, jump airborne/
+        timer, factory state (producing + queue len + progress),
+        solar open, build progress. Setters: entity_meta_set_unit /
+        entity_meta_set_building (one bulk call per dirty entity per
+        tick — amortises boundary overhead). Per-field raw pointers
+        exposed for typed-array view reads.
 
-  D.3 — Per-entity quantize + delta-encode kernel. ~400 lines Rust.
-        Reads entity-meta + Body3D pool state, applies quantization
-        (qPos×100, qVel×10, qRot×1000, qNormal, qSuspension),
-        compares against per-recipient baseline, emits delta bytes
-        using the D.2 encoder.
+        Slot space is shared with SpatialGrid — the JS-side
+        slotByEntityId map in SpatialGrid.ts is the canonical
+        mapping. JS-side per-tick population lands with D.3.
+
+        FOLLOW-UP D.1b: variable-length sub-pools for turrets +
+        actions. Snapshot reads up to 8 turrets per unit (rotation,
+        pitch, angular vel/accel, pitch vel/accel, forceField range,
+        target id). Actions are variable-length per unit (move /
+        attack / build / etc commands). Both need their own SoA
+        with `(entity_slot → base_offset, length)` indexing.
+
+  D.3 — Per-entity quantize + delta-encode kernel. Reads entity-
+        meta (D.1) + Body3D pool + projectile pool, applies
+        quantization (qPos×100, qVel×10, qRot×1000, qNormal,
+        qSuspension), compares against per-recipient baseline, emits
+        delta bytes using the D.2 encoder. ALSO wires the JS-side
+        per-tick population of the D.1 pool — captureSnapshotEntityStates
+        in stateSerializer.ts gets a new pass that calls
+        sim.entityMeta.setUnit / setBuilding for every dirty entity.
 
   D.4 — `snapshot_build_for_recipient`. One WASM call per recipient
         per snapshot tick. Reads SpatialGrid (Phase 7) for AoI

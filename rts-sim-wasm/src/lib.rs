@@ -4916,3 +4916,291 @@ pub fn messagepack_self_test() -> u32 {
 
     failures
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 10 D.1 — Entity-meta SoA pool
+//
+//  Per-entity scalar fields the snapshot serializer reads. Position,
+//  velocity, orientation, etc. already live in BodyPool / projectile
+//  pool / quat orientation views. This pool covers the *snapshot-
+//  only* state: HP, ownership tag, combat mode, build progress,
+//  suspension/jump kinematics, factory/solar booleans, build target
+//  reference.
+//
+//  Slot space is shared with SpatialGrid (Phase 7) — JS resolves the
+//  entity's slot via spatial.allocSlot(); both systems read/write the
+//  same slot id. No separate EntityId↔slot map needed.
+//
+//  This commit ships the data layout + setters + lifecycle. JS-side
+//  population (the per-tick capture from WorldState into the pool)
+//  lands with D.3 alongside the quantize + delta-encode kernel that
+//  reads from these fields.
+//
+//  Variable-length per-entity arrays (turrets, actions) are NOT in
+//  this pool — they'll get their own sub-pool in D.1b when D.3
+//  needs them. The fixed-scalar fields below cover everything else.
+// ─────────────────────────────────────────────────────────────────
+
+const ENTITY_META_TYPE_UNSET: u8 = 0;
+const ENTITY_META_TYPE_UNIT: u8 = 1;
+const ENTITY_META_TYPE_BUILDING: u8 = 2;
+
+struct EntityMetaPool {
+    // Common
+    entity_type: Vec<u8>,
+    player_id: Vec<u8>,
+    hp_curr: Vec<f32>,
+    hp_max: Vec<f32>,
+
+    // Unit-specific
+    combat_mode: Vec<u8>,
+    is_commander: Vec<u8>,
+    build_complete: Vec<u8>,
+    build_paid_energy: Vec<f32>,
+    build_paid_mana: Vec<f32>,
+    build_paid_metal: Vec<f32>,
+    /// -1 sentinel for "no build target"; otherwise the target EntityId.
+    build_target_id: Vec<i32>,
+    suspension_spring_offset: Vec<f32>,
+    suspension_spring_velocity: Vec<f32>,
+    jump_airborne: Vec<u8>,
+    jump_timer: Vec<f32>,
+
+    // Building-specific
+    factory_is_producing: Vec<u8>,
+    factory_build_queue_len: Vec<u8>,
+    factory_progress: Vec<f32>,
+    solar_open: Vec<u8>,
+    build_progress: Vec<f32>,
+}
+
+impl EntityMetaPool {
+    fn empty() -> Self {
+        Self {
+            entity_type: Vec::new(),
+            player_id: Vec::new(),
+            hp_curr: Vec::new(),
+            hp_max: Vec::new(),
+            combat_mode: Vec::new(),
+            is_commander: Vec::new(),
+            build_complete: Vec::new(),
+            build_paid_energy: Vec::new(),
+            build_paid_mana: Vec::new(),
+            build_paid_metal: Vec::new(),
+            build_target_id: Vec::new(),
+            suspension_spring_offset: Vec::new(),
+            suspension_spring_velocity: Vec::new(),
+            jump_airborne: Vec::new(),
+            jump_timer: Vec::new(),
+            factory_is_producing: Vec::new(),
+            factory_build_queue_len: Vec::new(),
+            factory_progress: Vec::new(),
+            solar_open: Vec::new(),
+            build_progress: Vec::new(),
+        }
+    }
+
+    fn ensure_capacity(&mut self, slot: u32) {
+        let needed = (slot as usize) + 1;
+        if self.entity_type.len() >= needed { return; }
+        self.entity_type.resize(needed, ENTITY_META_TYPE_UNSET);
+        self.player_id.resize(needed, 0);
+        self.hp_curr.resize(needed, 0.0);
+        self.hp_max.resize(needed, 0.0);
+        self.combat_mode.resize(needed, 0);
+        self.is_commander.resize(needed, 0);
+        self.build_complete.resize(needed, 0);
+        self.build_paid_energy.resize(needed, 0.0);
+        self.build_paid_mana.resize(needed, 0.0);
+        self.build_paid_metal.resize(needed, 0.0);
+        self.build_target_id.resize(needed, -1);
+        self.suspension_spring_offset.resize(needed, 0.0);
+        self.suspension_spring_velocity.resize(needed, 0.0);
+        self.jump_airborne.resize(needed, 0);
+        self.jump_timer.resize(needed, 0.0);
+        self.factory_is_producing.resize(needed, 0);
+        self.factory_build_queue_len.resize(needed, 0);
+        self.factory_progress.resize(needed, 0.0);
+        self.solar_open.resize(needed, 0);
+        self.build_progress.resize(needed, 0.0);
+    }
+
+    fn unset_slot(&mut self, slot: u32) {
+        let s = slot as usize;
+        if s >= self.entity_type.len() { return; }
+        self.entity_type[s] = ENTITY_META_TYPE_UNSET;
+        self.player_id[s] = 0;
+        self.hp_curr[s] = 0.0;
+        self.hp_max[s] = 0.0;
+        self.combat_mode[s] = 0;
+        self.is_commander[s] = 0;
+        self.build_complete[s] = 0;
+        self.build_paid_energy[s] = 0.0;
+        self.build_paid_mana[s] = 0.0;
+        self.build_paid_metal[s] = 0.0;
+        self.build_target_id[s] = -1;
+        self.suspension_spring_offset[s] = 0.0;
+        self.suspension_spring_velocity[s] = 0.0;
+        self.jump_airborne[s] = 0;
+        self.jump_timer[s] = 0.0;
+        self.factory_is_producing[s] = 0;
+        self.factory_build_queue_len[s] = 0;
+        self.factory_progress[s] = 0.0;
+        self.solar_open[s] = 0;
+        self.build_progress[s] = 0.0;
+    }
+}
+
+struct EntityMetaHolder(UnsafeCell<Option<EntityMetaPool>>);
+unsafe impl Sync for EntityMetaHolder {}
+static ENTITY_META: EntityMetaHolder = EntityMetaHolder(UnsafeCell::new(None));
+
+#[inline]
+fn entity_meta_pool() -> &'static mut EntityMetaPool {
+    unsafe {
+        let cell = &mut *ENTITY_META.0.get();
+        if cell.is_none() {
+            *cell = Some(EntityMetaPool::empty());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn entity_meta_init(initial_capacity: u32) {
+    let pool = entity_meta_pool();
+    pool.ensure_capacity(initial_capacity);
+    // Reset slot tags so a re-init drops stale state.
+    for k in pool.entity_type.iter_mut() { *k = ENTITY_META_TYPE_UNSET; }
+}
+
+#[wasm_bindgen]
+pub fn entity_meta_clear() {
+    let pool = entity_meta_pool();
+    for k in pool.entity_type.iter_mut() { *k = ENTITY_META_TYPE_UNSET; }
+    // Other fields stay at their resize-defaults; tag check gates
+    // any future read.
+}
+
+/// Bulk per-unit setter. JS calls this once per dirty unit per
+/// snapshot tick (D.3 will wire it). All unit-specific scalar
+/// fields land in one call to amortise boundary overhead. Building-
+/// only fields are left at their previous value; the entity_type
+/// tag gates which fields a reader trusts.
+#[wasm_bindgen]
+pub fn entity_meta_set_unit(
+    slot: u32,
+    player_id: u8,
+    hp_curr: f32,
+    hp_max: f32,
+    combat_mode: u8,
+    is_commander: u8,
+    build_complete: u8,
+    build_paid_energy: f32,
+    build_paid_mana: f32,
+    build_paid_metal: f32,
+    build_target_id: i32,
+    suspension_spring_offset: f32,
+    suspension_spring_velocity: f32,
+    jump_airborne: u8,
+    jump_timer: f32,
+) {
+    let pool = entity_meta_pool();
+    pool.ensure_capacity(slot);
+    let s = slot as usize;
+    pool.entity_type[s] = ENTITY_META_TYPE_UNIT;
+    pool.player_id[s] = player_id;
+    pool.hp_curr[s] = hp_curr;
+    pool.hp_max[s] = hp_max;
+    pool.combat_mode[s] = combat_mode;
+    pool.is_commander[s] = is_commander;
+    pool.build_complete[s] = build_complete;
+    pool.build_paid_energy[s] = build_paid_energy;
+    pool.build_paid_mana[s] = build_paid_mana;
+    pool.build_paid_metal[s] = build_paid_metal;
+    pool.build_target_id[s] = build_target_id;
+    pool.suspension_spring_offset[s] = suspension_spring_offset;
+    pool.suspension_spring_velocity[s] = suspension_spring_velocity;
+    pool.jump_airborne[s] = jump_airborne;
+    pool.jump_timer[s] = jump_timer;
+}
+
+/// Bulk per-building setter. Building-only fields, plus the shared
+/// HP and player_id.
+#[wasm_bindgen]
+pub fn entity_meta_set_building(
+    slot: u32,
+    player_id: u8,
+    hp_curr: f32,
+    hp_max: f32,
+    factory_is_producing: u8,
+    factory_build_queue_len: u8,
+    factory_progress: f32,
+    solar_open: u8,
+    build_progress: f32,
+) {
+    let pool = entity_meta_pool();
+    pool.ensure_capacity(slot);
+    let s = slot as usize;
+    pool.entity_type[s] = ENTITY_META_TYPE_BUILDING;
+    pool.player_id[s] = player_id;
+    pool.hp_curr[s] = hp_curr;
+    pool.hp_max[s] = hp_max;
+    pool.factory_is_producing[s] = factory_is_producing;
+    pool.factory_build_queue_len[s] = factory_build_queue_len;
+    pool.factory_progress[s] = factory_progress;
+    pool.solar_open[s] = solar_open;
+    pool.build_progress[s] = build_progress;
+}
+
+#[wasm_bindgen]
+pub fn entity_meta_unset(slot: u32) {
+    entity_meta_pool().unset_slot(slot);
+}
+
+#[wasm_bindgen]
+pub fn entity_meta_type(slot: u32) -> u8 {
+    let pool = entity_meta_pool();
+    if (slot as usize) >= pool.entity_type.len() { return ENTITY_META_TYPE_UNSET; }
+    pool.entity_type[slot as usize]
+}
+
+// Field-pointer exports — JS builds typed-array views once and reads
+// per-slot. Same pattern as BodyPool / ProjectilePool. Per-slot
+// access is JIT-fast through the views; bulk reads of N slots are
+// O(N) without WASM boundary crossings.
+
+macro_rules! entity_meta_ptr_export {
+    ($name:ident, $field:ident, $ty:ty) => {
+        #[wasm_bindgen]
+        pub fn $name() -> *const $ty {
+            entity_meta_pool().$field.as_ptr()
+        }
+    };
+}
+
+entity_meta_ptr_export!(entity_meta_type_ptr, entity_type, u8);
+entity_meta_ptr_export!(entity_meta_player_id_ptr, player_id, u8);
+entity_meta_ptr_export!(entity_meta_hp_curr_ptr, hp_curr, f32);
+entity_meta_ptr_export!(entity_meta_hp_max_ptr, hp_max, f32);
+entity_meta_ptr_export!(entity_meta_combat_mode_ptr, combat_mode, u8);
+entity_meta_ptr_export!(entity_meta_is_commander_ptr, is_commander, u8);
+entity_meta_ptr_export!(entity_meta_build_complete_ptr, build_complete, u8);
+entity_meta_ptr_export!(entity_meta_build_paid_energy_ptr, build_paid_energy, f32);
+entity_meta_ptr_export!(entity_meta_build_paid_mana_ptr, build_paid_mana, f32);
+entity_meta_ptr_export!(entity_meta_build_paid_metal_ptr, build_paid_metal, f32);
+entity_meta_ptr_export!(entity_meta_build_target_id_ptr, build_target_id, i32);
+entity_meta_ptr_export!(entity_meta_suspension_spring_offset_ptr, suspension_spring_offset, f32);
+entity_meta_ptr_export!(entity_meta_suspension_spring_velocity_ptr, suspension_spring_velocity, f32);
+entity_meta_ptr_export!(entity_meta_jump_airborne_ptr, jump_airborne, u8);
+entity_meta_ptr_export!(entity_meta_jump_timer_ptr, jump_timer, f32);
+entity_meta_ptr_export!(entity_meta_factory_is_producing_ptr, factory_is_producing, u8);
+entity_meta_ptr_export!(entity_meta_factory_build_queue_len_ptr, factory_build_queue_len, u8);
+entity_meta_ptr_export!(entity_meta_factory_progress_ptr, factory_progress, f32);
+entity_meta_ptr_export!(entity_meta_solar_open_ptr, solar_open, u8);
+entity_meta_ptr_export!(entity_meta_build_progress_ptr, build_progress, f32);
+
+#[wasm_bindgen]
+pub fn entity_meta_capacity() -> u32 {
+    entity_meta_pool().entity_type.len() as u32
+}

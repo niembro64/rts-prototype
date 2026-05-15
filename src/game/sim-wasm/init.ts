@@ -81,6 +81,33 @@ import __wbg_init, {
   pathfinder_grid_size_w,
   pathfinder_grid_size_h,
   messagepack_self_test,
+  entity_meta_init,
+  entity_meta_clear,
+  entity_meta_set_unit,
+  entity_meta_set_building,
+  entity_meta_unset,
+  entity_meta_type,
+  entity_meta_type_ptr,
+  entity_meta_player_id_ptr,
+  entity_meta_hp_curr_ptr,
+  entity_meta_hp_max_ptr,
+  entity_meta_combat_mode_ptr,
+  entity_meta_is_commander_ptr,
+  entity_meta_build_complete_ptr,
+  entity_meta_build_paid_energy_ptr,
+  entity_meta_build_paid_mana_ptr,
+  entity_meta_build_paid_metal_ptr,
+  entity_meta_build_target_id_ptr,
+  entity_meta_suspension_spring_offset_ptr,
+  entity_meta_suspension_spring_velocity_ptr,
+  entity_meta_jump_airborne_ptr,
+  entity_meta_jump_timer_ptr,
+  entity_meta_factory_is_producing_ptr,
+  entity_meta_factory_build_queue_len_ptr,
+  entity_meta_factory_progress_ptr,
+  entity_meta_solar_open_ptr,
+  entity_meta_build_progress_ptr,
+  entity_meta_capacity,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -370,6 +397,10 @@ export interface SimWasm {
   /** Phase 9 — Pathfinder A* over the build/walk grid. Mask + CC +
    *  A* + LOS smoothing all in one WASM call. */
   readonly pathfinder: PathfinderApi;
+  /** Phase 10 D.1 — Entity-meta SoA pool. Foundation for future
+   *  D.3 quantize/delta-encode kernel; JS-side population lands in
+   *  D.3 when there's a consumer. */
+  readonly entityMeta: EntityMetaApi;
   /** The WASM linear memory — JS wrapper code constructs typed-array
    *  views over this for zero-copy result reads. Re-bind views after
    *  any operation that might grow the memory (rare). */
@@ -529,6 +560,72 @@ export interface SpatialApi {
   slotKind: (slot: number) => number;
 }
 
+/** Phase 10 D.1 — Entity-meta SoA pool. Per-entity scalar fields
+ *  the snapshot serializer reads (HP, build state, combat mode,
+ *  suspension, jump, factory/solar booleans). Slot space is shared
+ *  with SpatialGrid — JS calls `setUnit(slot, ...)` /
+ *  `setBuilding(slot, ...)` once per dirty entity per snapshot
+ *  tick. Position / velocity / orientation continue to live in
+ *  BodyPool (Phase 3d). Variable-length arrays (turrets, actions)
+ *  will land in a follow-up sub-pool. */
+export interface EntityMetaApi {
+  init: (initialCapacity: number) => void;
+  clear: () => void;
+  setUnit: (
+    slot: number,
+    playerId: number,
+    hpCurr: number, hpMax: number,
+    combatMode: number,
+    isCommander: number,
+    buildComplete: number,
+    buildPaidEnergy: number, buildPaidMana: number, buildPaidMetal: number,
+    buildTargetId: number,
+    suspensionSpringOffset: number, suspensionSpringVelocity: number,
+    jumpAirborne: number, jumpTimer: number,
+  ) => void;
+  setBuilding: (
+    slot: number,
+    playerId: number,
+    hpCurr: number, hpMax: number,
+    factoryIsProducing: number, factoryBuildQueueLen: number, factoryProgress: number,
+    solarOpen: number,
+    buildProgress: number,
+  ) => void;
+  unset: (slot: number) => void;
+  /** Returns 0 (unset) / 1 (unit) / 2 (building) for the slot. */
+  type: (slot: number) => number;
+  /** Current per-slot SoA capacity (auto-grows on set*). */
+  capacity: () => number;
+  /** Per-field raw pointers — JS builds typed-array views once and
+   *  re-builds them if `memory.grow` ever detaches them. Same
+   *  pattern as BodyPool / ProjectilePool. */
+  readonly typePtr: () => number;
+  readonly playerIdPtr: () => number;
+  readonly hpCurrPtr: () => number;
+  readonly hpMaxPtr: () => number;
+  readonly combatModePtr: () => number;
+  readonly isCommanderPtr: () => number;
+  readonly buildCompletePtr: () => number;
+  readonly buildPaidEnergyPtr: () => number;
+  readonly buildPaidManaPtr: () => number;
+  readonly buildPaidMetalPtr: () => number;
+  readonly buildTargetIdPtr: () => number;
+  readonly suspensionSpringOffsetPtr: () => number;
+  readonly suspensionSpringVelocityPtr: () => number;
+  readonly jumpAirbornePtr: () => number;
+  readonly jumpTimerPtr: () => number;
+  readonly factoryIsProducingPtr: () => number;
+  readonly factoryBuildQueueLenPtr: () => number;
+  readonly factoryProgressPtr: () => number;
+  readonly solarOpenPtr: () => number;
+  readonly buildProgressPtr: () => number;
+}
+
+/** Entity-meta type tag values (mirrors lib.rs ENTITY_META_TYPE_*). */
+export const ENTITY_META_TYPE_UNSET = 0;
+export const ENTITY_META_TYPE_UNIT = 1;
+export const ENTITY_META_TYPE_BUILDING = 2;
+
 /** Phase 9 — Pathfinder. Mirror of Pathfinder.ts findPath. Full
  *  pipeline (mask + CC + A* + LOS smoothing) runs inside a single
  *  WASM call. Caller passes the building-occupied cells list per
@@ -681,6 +778,10 @@ export function initSimWasm(): Promise<SimWasm> {
       // CANONICAL_LAND_CELL_SIZE in landGrid.ts; the grid auto-grows
       // its per-slot SoA arrays past the initial capacity hint.
       spatial_init(200, 1024);
+      // Phase 10 D.1 — entity-meta SoA pool. Same initial slot
+      // capacity hint as SpatialGrid since the slot spaces are
+      // shared (one EntityId<->slot map JS-side).
+      entity_meta_init(1024);
       // Phase 10 D.2 — verify the hand-rolled MessagePack encoder
       // matches its expected byte output across 21 fixture cases.
       // Returns a bitmask of failed cases (0 = all pass). Future
@@ -849,6 +950,35 @@ export function initSimWasm(): Promise<SimWasm> {
           waypointsPtr: pathfinder_waypoints_ptr,
           gridWidth: pathfinder_grid_size_w,
           gridHeight: pathfinder_grid_size_h,
+        },
+        entityMeta: {
+          init: entity_meta_init,
+          clear: entity_meta_clear,
+          setUnit: entity_meta_set_unit,
+          setBuilding: entity_meta_set_building,
+          unset: entity_meta_unset,
+          type: entity_meta_type,
+          capacity: entity_meta_capacity,
+          typePtr: entity_meta_type_ptr,
+          playerIdPtr: entity_meta_player_id_ptr,
+          hpCurrPtr: entity_meta_hp_curr_ptr,
+          hpMaxPtr: entity_meta_hp_max_ptr,
+          combatModePtr: entity_meta_combat_mode_ptr,
+          isCommanderPtr: entity_meta_is_commander_ptr,
+          buildCompletePtr: entity_meta_build_complete_ptr,
+          buildPaidEnergyPtr: entity_meta_build_paid_energy_ptr,
+          buildPaidManaPtr: entity_meta_build_paid_mana_ptr,
+          buildPaidMetalPtr: entity_meta_build_paid_metal_ptr,
+          buildTargetIdPtr: entity_meta_build_target_id_ptr,
+          suspensionSpringOffsetPtr: entity_meta_suspension_spring_offset_ptr,
+          suspensionSpringVelocityPtr: entity_meta_suspension_spring_velocity_ptr,
+          jumpAirbornePtr: entity_meta_jump_airborne_ptr,
+          jumpTimerPtr: entity_meta_jump_timer_ptr,
+          factoryIsProducingPtr: entity_meta_factory_is_producing_ptr,
+          factoryBuildQueueLenPtr: entity_meta_factory_build_queue_len_ptr,
+          factoryProgressPtr: entity_meta_factory_progress_ptr,
+          solarOpenPtr: entity_meta_solar_open_ptr,
+          buildProgressPtr: entity_meta_build_progress_ptr,
         },
         spatial: {
           init: spatial_init,
