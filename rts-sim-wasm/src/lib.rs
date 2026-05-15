@@ -5390,3 +5390,212 @@ turret_pool_ptr_export!(turret_pool_target_id_ptr, target_id, i32);
 pub fn turret_pool_entity_capacity() -> u32 {
     turret_pool().count_per_entity.len() as u32
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Snapshot baselines (Phase 10 D.3b)
+//
+// Per-recipient snapshot of the last-shipped entity state. Mirrors
+// the JS-side DeltaTrackingState.prevStates map: parallel SoA arrays
+// keyed by entity slot (the SpatialGrid slot space). Fields are
+// stored as floats — the quantize/diff/encode kernels (D.3c+) read
+// from this and the entity-meta / turret / body pools, and emit
+// MessagePack bytes via the D.2 writer.
+//
+// Each listener registers once at session start via
+// `snapshot_baseline_create()` and is freed at session end via
+// `snapshot_baseline_destroy(handle)`. Handles are u32 indices into
+// a registry with free-list reuse.
+// ─────────────────────────────────────────────────────────────────
+
+pub const SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY: u32 = TURRET_POOL_MAX_PER_ENTITY;
+
+struct SnapshotBaseline {
+    used: Vec<u8>,
+    last_tick: Vec<u32>,
+    x: Vec<f32>, y: Vec<f32>, z: Vec<f32>,
+    rotation: Vec<f32>,
+    velocity_x: Vec<f32>, velocity_y: Vec<f32>, velocity_z: Vec<f32>,
+    movement_accel_x: Vec<f32>, movement_accel_y: Vec<f32>, movement_accel_z: Vec<f32>,
+    hp: Vec<f32>,
+    action_count: Vec<u16>,
+    action_hash: Vec<u32>,
+    is_engaged_bits: Vec<u32>,
+    target_bits: Vec<u32>,
+    weapon_count: Vec<u8>,
+    turret_rots: Vec<f32>,
+    turret_ang_vels: Vec<f32>,
+    turret_pitches: Vec<f32>,
+    force_field_ranges: Vec<f32>,
+    normal_x: Vec<f32>, normal_y: Vec<f32>, normal_z: Vec<f32>,
+    build_progress: Vec<f32>,
+    solar_open: Vec<u8>,
+    factory_progress: Vec<f32>,
+    is_producing: Vec<u8>,
+    build_queue_len: Vec<u8>,
+}
+
+impl SnapshotBaseline {
+    fn new() -> Self {
+        Self {
+            used: Vec::new(),
+            last_tick: Vec::new(),
+            x: Vec::new(), y: Vec::new(), z: Vec::new(),
+            rotation: Vec::new(),
+            velocity_x: Vec::new(), velocity_y: Vec::new(), velocity_z: Vec::new(),
+            movement_accel_x: Vec::new(), movement_accel_y: Vec::new(), movement_accel_z: Vec::new(),
+            hp: Vec::new(),
+            action_count: Vec::new(),
+            action_hash: Vec::new(),
+            is_engaged_bits: Vec::new(),
+            target_bits: Vec::new(),
+            weapon_count: Vec::new(),
+            turret_rots: Vec::new(),
+            turret_ang_vels: Vec::new(),
+            turret_pitches: Vec::new(),
+            force_field_ranges: Vec::new(),
+            normal_x: Vec::new(), normal_y: Vec::new(), normal_z: Vec::new(),
+            build_progress: Vec::new(),
+            solar_open: Vec::new(),
+            factory_progress: Vec::new(),
+            is_producing: Vec::new(),
+            build_queue_len: Vec::new(),
+        }
+    }
+
+    fn ensure_capacity(&mut self, slot: u32) {
+        let needed = (slot as usize) + 1;
+        if self.used.len() >= needed { return; }
+        self.used.resize(needed, 0);
+        self.last_tick.resize(needed, 0);
+        self.x.resize(needed, 0.0);
+        self.y.resize(needed, 0.0);
+        self.z.resize(needed, 0.0);
+        self.rotation.resize(needed, 0.0);
+        self.velocity_x.resize(needed, 0.0);
+        self.velocity_y.resize(needed, 0.0);
+        self.velocity_z.resize(needed, 0.0);
+        self.movement_accel_x.resize(needed, 0.0);
+        self.movement_accel_y.resize(needed, 0.0);
+        self.movement_accel_z.resize(needed, 0.0);
+        self.hp.resize(needed, 0.0);
+        self.action_count.resize(needed, 0);
+        self.action_hash.resize(needed, 0);
+        self.is_engaged_bits.resize(needed, 0);
+        self.target_bits.resize(needed, 0);
+        self.weapon_count.resize(needed, 0);
+        let turret_needed = needed * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize);
+        self.turret_rots.resize(turret_needed, 0.0);
+        self.turret_ang_vels.resize(turret_needed, 0.0);
+        self.turret_pitches.resize(turret_needed, 0.0);
+        self.force_field_ranges.resize(turret_needed, 0.0);
+        self.normal_x.resize(needed, 0.0);
+        self.normal_y.resize(needed, 0.0);
+        self.normal_z.resize(needed, 1.0);
+        self.build_progress.resize(needed, 0.0);
+        self.solar_open.resize(needed, 1);
+        self.factory_progress.resize(needed, 0.0);
+        self.is_producing.resize(needed, 0);
+        self.build_queue_len.resize(needed, 0);
+    }
+
+    fn unset_slot(&mut self, slot: u32) {
+        let s = slot as usize;
+        if s >= self.used.len() { return; }
+        self.used[s] = 0;
+    }
+
+    fn clear(&mut self) {
+        for u in self.used.iter_mut() { *u = 0; }
+    }
+}
+
+struct SnapshotBaselineRegistry {
+    baselines: Vec<Option<SnapshotBaseline>>,
+    free_list: Vec<u32>,
+}
+
+impl SnapshotBaselineRegistry {
+    fn new() -> Self {
+        Self { baselines: Vec::new(), free_list: Vec::new() }
+    }
+
+    fn create(&mut self) -> u32 {
+        if let Some(handle) = self.free_list.pop() {
+            self.baselines[handle as usize] = Some(SnapshotBaseline::new());
+            return handle;
+        }
+        let handle = self.baselines.len() as u32;
+        self.baselines.push(Some(SnapshotBaseline::new()));
+        handle
+    }
+
+    fn destroy(&mut self, handle: u32) {
+        let h = handle as usize;
+        if h >= self.baselines.len() { return; }
+        if self.baselines[h].is_some() {
+            self.baselines[h] = None;
+            self.free_list.push(handle);
+        }
+    }
+
+    #[allow(dead_code)]
+    fn get_mut(&mut self, handle: u32) -> Option<&mut SnapshotBaseline> {
+        self.baselines.get_mut(handle as usize)?.as_mut()
+    }
+
+    fn live_count(&self) -> u32 {
+        (self.baselines.len() - self.free_list.len()) as u32
+    }
+}
+
+struct SnapshotBaselineRegistryHolder(UnsafeCell<Option<SnapshotBaselineRegistry>>);
+unsafe impl Sync for SnapshotBaselineRegistryHolder {}
+static SNAPSHOT_BASELINE_REGISTRY: SnapshotBaselineRegistryHolder =
+    SnapshotBaselineRegistryHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_baseline_registry() -> &'static mut SnapshotBaselineRegistry {
+    unsafe {
+        let cell = &mut *SNAPSHOT_BASELINE_REGISTRY.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotBaselineRegistry::new());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_baseline_create() -> u32 {
+    snapshot_baseline_registry().create()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_baseline_destroy(handle: u32) {
+    snapshot_baseline_registry().destroy(handle);
+}
+
+#[wasm_bindgen]
+pub fn snapshot_baseline_clear(handle: u32) {
+    if let Some(b) = snapshot_baseline_registry().get_mut(handle) {
+        b.clear();
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_baseline_unset_slot(handle: u32, slot: u32) {
+    if let Some(b) = snapshot_baseline_registry().get_mut(handle) {
+        b.unset_slot(slot);
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_baseline_ensure_capacity(handle: u32, slot: u32) {
+    if let Some(b) = snapshot_baseline_registry().get_mut(handle) {
+        b.ensure_capacity(slot);
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_baseline_live_count() -> u32 {
+    snapshot_baseline_registry().live_count()
+}

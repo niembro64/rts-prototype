@@ -125,6 +125,12 @@ import __wbg_init, {
   turret_pool_pitch_acceleration_ptr,
   turret_pool_force_field_range_ptr,
   turret_pool_target_id_ptr,
+  snapshot_baseline_create,
+  snapshot_baseline_destroy,
+  snapshot_baseline_clear,
+  snapshot_baseline_unset_slot,
+  snapshot_baseline_ensure_capacity,
+  snapshot_baseline_live_count,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -422,6 +428,10 @@ export interface SimWasm {
    *  indexed at fixed offsets. JS-side population lands with D.3
    *  alongside the entity-meta capture pass. */
   readonly turretPool: TurretPoolApi;
+  /** Phase 10 D.3b — Per-recipient snapshot baseline registry.
+   *  Foundation for the D.3c quantize + D.3d delta-encode kernels;
+   *  no consumer reads from it yet. */
+  readonly snapshotBaseline: SnapshotBaselineApi;
   /** The WASM linear memory — JS wrapper code constructs typed-array
    *  views over this for zero-copy result reads. Re-bind views after
    *  any operation that might grow the memory (rare). */
@@ -682,6 +692,32 @@ export interface TurretPoolApi {
   readonly pitchAccelerationPtr: () => number;
   readonly forceFieldRangePtr: () => number;
   readonly targetIdPtr: () => number;
+}
+
+/** Phase 10 D.3b — Per-recipient snapshot baseline registry. Each
+ *  network listener registers once at session start via `create()`
+ *  and is freed at session end via `destroy()`. The handle is the
+ *  u32 index used by the (future) D.3c quantize + D.3d delta-encode
+ *  kernels to look up that listener's last-shipped scalars. Storage
+ *  is the parallel-SoA mirror of stateSerializerEntityDelta.ts's
+ *  PrevEntityState — fields auto-grow as `ensureCapacity` is called
+ *  with larger slot ids. */
+export interface SnapshotBaselineApi {
+  /** Allocate a baseline slot, returning its u32 handle. Reuses any
+   *  freed handle from `destroy()` via the registry's free list. */
+  create: () => number;
+  /** Free a baseline by handle; the handle is recycled on next create. */
+  destroy: (handle: number) => void;
+  /** Mark every slot's `used` flag back to 0 without dropping
+   *  capacity — used on session reset / keyframe forced re-emit. */
+  clear: (handle: number) => void;
+  /** Drop the baseline for one slot (entity removed / out of vision). */
+  unsetSlot: (handle: number, slot: number) => void;
+  /** Pre-grow the per-slot arrays to cover at least `slot`. Optional
+   *  hint — kernels that write a slot auto-grow as needed. */
+  ensureCapacity: (handle: number, slot: number) => void;
+  /** How many baselines are currently live (created minus destroyed). */
+  liveCount: () => number;
 }
 
 /** Phase 9 — Pathfinder. Mirror of Pathfinder.ts findPath. Full
@@ -1059,6 +1095,14 @@ export function initSimWasm(): Promise<SimWasm> {
           pitchAccelerationPtr: turret_pool_pitch_acceleration_ptr,
           forceFieldRangePtr: turret_pool_force_field_range_ptr,
           targetIdPtr: turret_pool_target_id_ptr,
+        },
+        snapshotBaseline: {
+          create: snapshot_baseline_create,
+          destroy: snapshot_baseline_destroy,
+          clear: snapshot_baseline_clear,
+          unsetSlot: snapshot_baseline_unset_slot,
+          ensureCapacity: snapshot_baseline_ensure_capacity,
+          liveCount: snapshot_baseline_live_count,
         },
         spatial: {
           init: spatial_init,
