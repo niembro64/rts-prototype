@@ -131,6 +131,10 @@ import __wbg_init, {
   snapshot_baseline_unset_slot,
   snapshot_baseline_ensure_capacity,
   snapshot_baseline_live_count,
+  snapshot_baseline_capture_unit_slot,
+  snapshot_baseline_capture_building_slot,
+  snapshot_baseline_slot_used,
+  snapshot_baseline_slot_last_tick,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -718,6 +722,41 @@ export interface SnapshotBaselineApi {
   ensureCapacity: (handle: number, slot: number) => void;
   /** How many baselines are currently live (created minus destroyed). */
   liveCount: () => number;
+  /** D.3c — capture one unit slot's current state into the baseline.
+   *  Pulls HP / build / suspension / jump from the entity-meta pool
+   *  and per-turret state from the turret pool; takes transform,
+   *  velocity, movement accel, normal, action hash, and turret
+   *  engagement / target bits as parameters. Auto-grows. */
+  captureUnitSlot: (
+    handle: number,
+    slot: number,
+    tick: number,
+    x: number, y: number, z: number,
+    rotation: number,
+    velocityX: number, velocityY: number, velocityZ: number,
+    movementAccelX: number, movementAccelY: number, movementAccelZ: number,
+    normalX: number, normalY: number, normalZ: number,
+    actionCount: number,
+    actionHash: number,
+    isEngagedBits: number,
+    targetBits: number,
+  ) => void;
+  /** D.3c — capture one building slot's current state into the
+   *  baseline. Pulls HP + factory/solar/build progress from the
+   *  entity-meta pool; takes transform as parameters. Auto-grows.
+   *  Zeros the velocity / turret / engagement fields so a stray emit
+   *  can't pick up stale unit data from a slot recycle. */
+  captureBuildingSlot: (
+    handle: number,
+    slot: number,
+    tick: number,
+    x: number, y: number, z: number,
+    rotation: number,
+  ) => void;
+  /** Per-slot used flag (0 = unset, 1 = baseline captured). */
+  slotUsed: (handle: number, slot: number) => number;
+  /** Tick at which a slot's baseline was last captured (0 if unset). */
+  slotLastTick: (handle: number, slot: number) => number;
 }
 
 /** Phase 9 — Pathfinder. Mirror of Pathfinder.ts findPath. Full
@@ -1103,6 +1142,10 @@ export function initSimWasm(): Promise<SimWasm> {
           unsetSlot: snapshot_baseline_unset_slot,
           ensureCapacity: snapshot_baseline_ensure_capacity,
           liveCount: snapshot_baseline_live_count,
+          captureUnitSlot: snapshot_baseline_capture_unit_slot,
+          captureBuildingSlot: snapshot_baseline_capture_building_slot,
+          slotUsed: snapshot_baseline_slot_used,
+          slotLastTick: snapshot_baseline_slot_last_tick,
         },
         spatial: {
           init: spatial_init,

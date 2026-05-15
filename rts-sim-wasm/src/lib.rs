@@ -5599,3 +5599,130 @@ pub fn snapshot_baseline_ensure_capacity(handle: u32, slot: u32) {
 pub fn snapshot_baseline_live_count() -> u32 {
     snapshot_baseline_registry().live_count()
 }
+
+// Per-slot capture kernels (Phase 10 D.3c). Mirror
+// stateSerializerEntityDelta.ts:captureEntityState + copyPrevState
+// into the per-recipient baseline. Transform / velocity / normal /
+// action data come in as parameters (the JS-side authoritative
+// source is the entity object); HP and the variable-shape fields
+// (turrets, build/factory/solar state, suspension, jump) come from
+// the already-populated entity-meta + turret pools.
+
+#[wasm_bindgen]
+pub fn snapshot_baseline_capture_unit_slot(
+    handle: u32,
+    slot: u32,
+    tick: u32,
+    x: f32, y: f32, z: f32,
+    rotation: f32,
+    velocity_x: f32, velocity_y: f32, velocity_z: f32,
+    movement_accel_x: f32, movement_accel_y: f32, movement_accel_z: f32,
+    normal_x: f32, normal_y: f32, normal_z: f32,
+    action_count: u16,
+    action_hash: u32,
+    is_engaged_bits: u32,
+    target_bits: u32,
+) {
+    let registry = snapshot_baseline_registry();
+    let Some(b) = registry.get_mut(handle) else { return; };
+    b.ensure_capacity(slot);
+    let s = slot as usize;
+    b.used[s] = 1;
+    b.last_tick[s] = tick;
+    b.x[s] = x; b.y[s] = y; b.z[s] = z;
+    b.rotation[s] = rotation;
+    b.velocity_x[s] = velocity_x; b.velocity_y[s] = velocity_y; b.velocity_z[s] = velocity_z;
+    b.movement_accel_x[s] = movement_accel_x;
+    b.movement_accel_y[s] = movement_accel_y;
+    b.movement_accel_z[s] = movement_accel_z;
+    b.normal_x[s] = normal_x; b.normal_y[s] = normal_y; b.normal_z[s] = normal_z;
+    b.action_count[s] = action_count;
+    b.action_hash[s] = action_hash;
+    b.is_engaged_bits[s] = is_engaged_bits;
+    b.target_bits[s] = target_bits;
+
+    // HP + build/suspension/jump from the entity-meta pool.
+    let meta = entity_meta_pool();
+    if s < meta.hp_curr.len() {
+        b.hp[s] = meta.hp_curr[s];
+        b.build_progress[s] = if s < meta.build_progress.len() { meta.build_progress[s] } else { 0.0 };
+    }
+
+    // Turret state from the turret pool.
+    let turret = turret_pool();
+    if s < turret.count_per_entity.len() {
+        let count = turret.count_per_entity[s];
+        b.weapon_count[s] = count;
+        let base = s * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize);
+        for t in 0..(count as usize) {
+            let src = base + t;
+            let dst = base + t;
+            b.turret_rots[dst] = turret.rotation[src];
+            b.turret_ang_vels[dst] = turret.angular_velocity[src];
+            b.turret_pitches[dst] = turret.pitch[src];
+            b.force_field_ranges[dst] = turret.force_field_range[src];
+        }
+    } else {
+        b.weapon_count[s] = 0;
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_baseline_capture_building_slot(
+    handle: u32,
+    slot: u32,
+    tick: u32,
+    x: f32, y: f32, z: f32,
+    rotation: f32,
+) {
+    let registry = snapshot_baseline_registry();
+    let Some(b) = registry.get_mut(handle) else { return; };
+    b.ensure_capacity(slot);
+    let s = slot as usize;
+    b.used[s] = 1;
+    b.last_tick[s] = tick;
+    b.x[s] = x; b.y[s] = y; b.z[s] = z;
+    b.rotation[s] = rotation;
+    // Buildings don't move — clear physics-fields so a stray emit can't
+    // pick up stale unit data left over from a slot recycle.
+    b.velocity_x[s] = 0.0; b.velocity_y[s] = 0.0; b.velocity_z[s] = 0.0;
+    b.movement_accel_x[s] = 0.0;
+    b.movement_accel_y[s] = 0.0;
+    b.movement_accel_z[s] = 0.0;
+    b.weapon_count[s] = 0;
+    b.is_engaged_bits[s] = 0;
+    b.target_bits[s] = 0;
+
+    // HP + factory/solar/build progress from the entity-meta pool.
+    let meta = entity_meta_pool();
+    if s < meta.hp_curr.len() {
+        b.hp[s] = meta.hp_curr[s];
+        b.build_progress[s] = if s < meta.build_progress.len() { meta.build_progress[s] } else { 1.0 };
+        b.factory_progress[s] = if s < meta.factory_progress.len() { meta.factory_progress[s] } else { 0.0 };
+        b.is_producing[s] = if s < meta.factory_is_producing.len() { meta.factory_is_producing[s] } else { 0 };
+        b.build_queue_len[s] = if s < meta.factory_build_queue_len.len() { meta.factory_build_queue_len[s] } else { 0 };
+        b.solar_open[s] = if s < meta.solar_open.len() { meta.solar_open[s] } else { 1 };
+    }
+}
+
+/// Read-back accessor used by the (future) D.3d diff kernel and by
+/// invariant checks. Returns 0 (unset) or 1 (used).
+#[wasm_bindgen]
+pub fn snapshot_baseline_slot_used(handle: u32, slot: u32) -> u8 {
+    let registry = snapshot_baseline_registry();
+    let Some(b) = registry.get_mut(handle) else { return 0; };
+    let s = slot as usize;
+    if s >= b.used.len() { return 0; }
+    b.used[s]
+}
+
+/// Read-back accessor for the last tick at which the baseline was
+/// captured for `slot`. Returns 0 if the slot is unset.
+#[wasm_bindgen]
+pub fn snapshot_baseline_slot_last_tick(handle: u32, slot: u32) -> u32 {
+    let registry = snapshot_baseline_registry();
+    let Some(b) = registry.get_mut(handle) else { return 0; };
+    let s = slot as usize;
+    if s >= b.last_tick.len() { return 0; }
+    b.last_tick[s]
+}
