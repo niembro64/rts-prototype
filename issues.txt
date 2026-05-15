@@ -520,15 +520,14 @@ Sub-phases:
              the same packing-cost problem. Revisit only if a
              stress test ever shows the beam point loop on the
              profiler.
-  Phase 5e — Traveling (non-packed) projectile path. DEFERRED.
-             Hot WASM-eligible math in the per-projectile loop
-             (gravity integration, homing rotation, terrain-follow
-             getGroundZ, kinematic intercept) is already in WASM
-             via earlier phases. What remains in JS is per-tick
-             entity management (HP/target-validity checks, source-
-             clearance via entity AABBs, swept collision against
-             buildings/units) — all bound to the JS-side SpatialGrid
-             and Entity shapes. Revisit after Phase 7 lands.
+  Phase 5e — Traveling (non-packed) projectile path. DEFERRED
+             (round 2 confirmed). The per-projectile inner math is
+             trivial scalar work (vz -= GRAVITY*dt, then position
+             += vel*dt). Terrain-follow's only non-trivial bit is
+             world.getGroundZ, which already dispatches to WASM via
+             Phase 8. A batched per-tick call would marshal ~12 KB
+             per side at busy scales (50-100 active projectiles ×
+             11 f64 each) to save ~5 µs/tick. Net loss. Skip.
 
 ------------------------------------------------------------------------------
  Phase 5a — Packed projectile SoA pool. DONE.
