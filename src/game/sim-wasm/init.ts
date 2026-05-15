@@ -138,6 +138,8 @@ import __wbg_init, {
   snapshot_baseline_diff_slot,
   snapshot_encode_entity_basic,
   snapshot_encode_entity_unit,
+  snapshot_encode_turret_scratch_ptr,
+  snapshot_encode_turret_scratch_ensure,
   messagepack_writer_ptr,
   messagepack_writer_len,
   pool_pos_x_ptr,
@@ -869,6 +871,8 @@ export interface SnapshotEncodeApi {
     hasBuildTargetId: number,
     buildTargetIdIsNull: number,
     buildTargetId: number,
+    hasTurrets: number,
+    turretCount: number,
   ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
    *  by every encoder call. */
@@ -876,6 +880,14 @@ export interface SnapshotEncodeApi {
   /** Bytes currently in the D.2 scratch (matches the last encoder
    *  call's return value). */
   writerLen: () => number;
+  /** Raw pointer to the turret scratch buffer. JS fills 12 f64 per
+   *  turret (see lib.rs SNAPSHOT_ENCODE_TURRET_STRIDE layout)
+   *  before calling encodeEntityUnit with hasTurrets=1. */
+  turretScratchPtr: () => number;
+  /** Pre-grow the turret scratch to fit `count` turrets (12 f64 each). */
+  turretScratchEnsure: (count: number) => void;
+  /** Stride per turret in the scratch buffer (f64 count). */
+  readonly turretScratchStride: number;
 }
 
 /** Entity-type tags for SnapshotEncodeApi.encodeEntityBasic. Mirrors
@@ -1284,6 +1296,9 @@ export function initSimWasm(): Promise<SimWasm> {
           encodeEntityUnit: snapshot_encode_entity_unit,
           writerPtr: messagepack_writer_ptr,
           writerLen: messagepack_writer_len,
+          turretScratchPtr: snapshot_encode_turret_scratch_ptr,
+          turretScratchEnsure: snapshot_encode_turret_scratch_ensure,
+          turretScratchStride: 12,
         },
         spatial: {
           init: spatial_init,

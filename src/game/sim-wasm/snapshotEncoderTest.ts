@@ -8,10 +8,27 @@ import { encode as msgpackEncode } from '@msgpack/msgpack';
 import {
   snapshot_encode_entity_basic,
   snapshot_encode_entity_unit,
+  snapshot_encode_turret_scratch_ptr,
+  snapshot_encode_turret_scratch_ensure,
   messagepack_writer_ptr,
   messagepack_writer_len,
 } from './pkg/rts_sim_wasm';
 import { SNAPSHOT_ENTITY_TYPE_UNIT, SNAPSHOT_ENTITY_TYPE_BUILDING } from './init';
+
+const TURRET_SCRATCH_STRIDE = 12;
+
+type TurretFixture = {
+  turret: {
+    id: number;
+    angular: {
+      rot: number; vel: number; acc: number;
+      pitch: number; pitchVel: number; pitchAcc: number;
+    };
+  };
+  targetId?: number;
+  state: number;
+  currentForceFieldRange?: number;
+};
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
@@ -112,8 +129,33 @@ type UnitFixture = BasicEntityFixture & {
     fireEnabled?: false;
     isCommander?: true;
     buildTargetId?: number | null;
+    turrets?: TurretFixture[];
   };
 };
+
+function packTurretsIntoScratch(memory: WebAssembly.Memory, turrets: TurretFixture[]): void {
+  snapshot_encode_turret_scratch_ensure(turrets.length);
+  const ptr = snapshot_encode_turret_scratch_ptr();
+  const view = new Float64Array(
+    memory.buffer, ptr, turrets.length * TURRET_SCRATCH_STRIDE,
+  );
+  for (let i = 0; i < turrets.length; i++) {
+    const t = turrets[i];
+    const base = i * TURRET_SCRATCH_STRIDE;
+    view[base + 0] = t.turret.angular.rot;
+    view[base + 1] = t.turret.angular.vel;
+    view[base + 2] = t.turret.angular.acc;
+    view[base + 3] = t.turret.angular.pitch;
+    view[base + 4] = t.turret.angular.pitchVel;
+    view[base + 5] = t.turret.angular.pitchAcc;
+    view[base + 6] = t.turret.id;
+    view[base + 7] = t.state;
+    view[base + 8] = t.targetId !== undefined ? 1 : 0;
+    view[base + 9] = t.targetId ?? 0;
+    view[base + 10] = t.currentForceFieldRange !== undefined ? 1 : 0;
+    view[base + 11] = t.currentForceFieldRange ?? 0;
+  }
+}
 
 function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
   const fixtures: UnitFixture[] = [
@@ -377,6 +419,96 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         buildTargetId: 99999,
       },
     },
+    // Single idle turret (no target, no force field, all-zero angular state)
+    {
+      id: 700, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        turrets: [
+          {
+            turret: {
+              id: 5,
+              angular: { rot: 0, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 },
+            },
+            state: 0,  // idle
+          },
+        ],
+      },
+    },
+    // Engaged turret with target + non-trivial angular state
+    {
+      id: 701, type: 'unit', pos: { x: 100, y: 200, z: 0 }, rotation: 0, playerId: 2,
+      unit: {
+        hp: { curr: 75, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        turrets: [
+          {
+            turret: {
+              id: 12,
+              angular: { rot: 1.235, vel: 0.5, acc: -0.1, pitch: 0.3, pitchVel: 0.05, pitchAcc: 0 },
+            },
+            targetId: 887,
+            state: 2,  // engaged
+          },
+        ],
+      },
+    },
+    // Force-field turret (engaged with FF range and target)
+    {
+      id: 702, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 3,
+      unit: {
+        hp: { curr: 50, max: 50 },
+        velocity: { x: 0, y: 0, z: 0 },
+        turrets: [
+          {
+            turret: {
+              id: 33,
+              angular: { rot: 0, vel: 0, acc: 0, pitch: 1.571, pitchVel: 0, pitchAcc: 0 },
+            },
+            targetId: 1234,
+            state: 1,  // tracking
+            currentForceFieldRange: 250.5,
+          },
+        ],
+      },
+    },
+    // Multi-turret unit (3 turrets, mixed states + targets)
+    {
+      id: 703, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x20,
+      unit: {
+        hp: { curr: 200, max: 200 },
+        velocity: { x: 0, y: 0, z: 0 },
+        turrets: [
+          {
+            turret: { id: 1, angular: { rot: 0, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 } },
+            state: 0,
+          },
+          {
+            turret: { id: 2, angular: { rot: 1.5, vel: 0.1, acc: 0, pitch: 0.2, pitchVel: 0, pitchAcc: 0 } },
+            targetId: 999,
+            state: 2,
+          },
+          {
+            turret: { id: 3, angular: { rot: -0.5, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 } },
+            state: 1,
+            currentForceFieldRange: 100,
+          },
+        ],
+      },
+    },
+    // Max-cap turret unit (8 turrets — capacity stress)
+    {
+      id: 704, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2,
+      unit: {
+        hp: { curr: 1000, max: 1000 },
+        velocity: { x: 0, y: 0, z: 0 },
+        turrets: Array.from({ length: 8 }, (_, i): TurretFixture => ({
+          turret: { id: i, angular: { rot: i * 0.1, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 } },
+          state: i % 3,
+        })),
+      },
+    },
   ];
 
   let passed = 0;
@@ -405,6 +537,12 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasBuildTargetId = f.unit.buildTargetId !== undefined ? 1 : 0;
     const buildTargetIdIsNull = f.unit.buildTargetId === null ? 1 : 0;
     const buildTargetIdValue = typeof f.unit.buildTargetId === 'number' ? f.unit.buildTargetId : 0;
+    const turrets = f.unit.turrets;
+    const hasTurrets = turrets !== undefined ? 1 : 0;
+    const turretCount = turrets?.length ?? 0;
+    if (hasTurrets && turrets) {
+      packTurretsIntoScratch(memory, turrets);
+    }
     snapshot_encode_entity_unit(
       f.id, typeTag,
       f.pos.x, f.pos.y, f.pos.z,
@@ -436,6 +574,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       hasBuildTargetId,
       buildTargetIdIsNull,
       buildTargetIdValue,
+      hasTurrets,
+      turretCount,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();

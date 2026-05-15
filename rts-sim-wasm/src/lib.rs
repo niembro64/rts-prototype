@@ -5947,6 +5947,56 @@ pub fn snapshot_baseline_diff_slot(
 pub const SNAPSHOT_ENTITY_TYPE_UNIT: u8 = 1;
 pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 
+/// Encoder turret scratch — JS pre-fills with already-quantized
+/// turret values, then the encoder reads from it when emitting the
+/// turrets array. Layout per turret (12 f64 = 96 bytes):
+///   [0..6]  qRot(rotation, vel, acc, pitch, pitchVel, pitchAcc)
+///   [6]     turret-id code (TurretTypeCode as f64)
+///   [7]     state code (TurretStateCode as f64)
+///   [8]     has_target_id (0 or 1)
+///   [9]     target_id (raw entity id as f64; ignored when has_target_id==0)
+///   [10]    has_force_field_range (0 or 1)
+///   [11]    force_field_range (raw value; ignored when has_ff_range==0)
+///
+/// Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
+const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 12;
+
+struct SnapshotEncodeTurretScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeTurretScratchHolder(UnsafeCell<Option<SnapshotEncodeTurretScratch>>);
+unsafe impl Sync for SnapshotEncodeTurretScratchHolder {}
+static SNAPSHOT_ENCODE_TURRET_SCRATCH: SnapshotEncodeTurretScratchHolder =
+    SnapshotEncodeTurretScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_turret_scratch() -> &'static mut SnapshotEncodeTurretScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_TURRET_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeTurretScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_TURRET_STRIDE * 8],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_turret_scratch_ptr() -> *const f64 {
+    snapshot_encode_turret_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_turret_scratch_ensure(turret_count: u32) {
+    let needed = (turret_count as usize) * SNAPSHOT_ENCODE_TURRET_STRIDE;
+    let s = snapshot_encode_turret_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Write the six envelope key-value pairs (id, type, pos, rotation,
 /// playerId, changedFields) shared by every encoder kernel. Caller
 /// is responsible for writing the parent map header with the right
@@ -6079,6 +6129,8 @@ pub fn snapshot_encode_entity_unit(
     has_build_target_id: u8,
     build_target_id_is_null: u8,
     build_target_id: u32,
+    has_turrets: u8,
+    turret_count: u8,
 ) -> u32 {
     let w = messagepack_writer();
     w.buf.clear();
@@ -6105,6 +6157,7 @@ pub fn snapshot_encode_entity_unit(
     if has_fire_enabled != 0 { unit_field_count += 1; }
     if has_is_commander != 0 { unit_field_count += 1; }
     if has_build_target_id != 0 { unit_field_count += 1; }
+    if has_turrets != 0 { unit_field_count += 1; }
 
     w.write_str("unit");
     w.write_map_header(unit_field_count);
@@ -6243,6 +6296,67 @@ pub fn snapshot_encode_entity_unit(
             w.write_nil();
         } else {
             w.write_uint(build_target_id as u64);
+        }
+    }
+
+    if has_turrets != 0 {
+        let count = turret_count as usize;
+        let scratch = snapshot_encode_turret_scratch();
+        w.write_str("turrets");
+        w.write_array_header(count);
+        for t in 0..count {
+            let base = t * SNAPSHOT_ENCODE_TURRET_STRIDE;
+            let qrot = scratch.buf[base];
+            let qvel = scratch.buf[base + 1];
+            let qacc = scratch.buf[base + 2];
+            let qpitch = scratch.buf[base + 3];
+            let qpitch_vel = scratch.buf[base + 4];
+            let qpitch_acc = scratch.buf[base + 5];
+            let turret_id_code = scratch.buf[base + 6];
+            let state_code = scratch.buf[base + 7];
+            let has_target = scratch.buf[base + 8] != 0.0;
+            let target_id_raw = scratch.buf[base + 9];
+            let has_ff_range = scratch.buf[base + 10] != 0.0;
+            let ff_range_raw = scratch.buf[base + 11];
+
+            // turret DTO: { turret: { id, angular: {6 fields} }, [targetId,]
+            // state, [currentForceFieldRange] }
+            let mut turret_field_count: usize = 2; // turret + state
+            if has_target { turret_field_count += 1; }
+            if has_ff_range { turret_field_count += 1; }
+            w.write_map_header(turret_field_count);
+
+            w.write_str("turret");
+            w.write_map_header(2); // id + angular
+            w.write_str("id");
+            w.write_number(turret_id_code);
+            w.write_str("angular");
+            w.write_map_header(6);
+            w.write_str("rot");
+            w.write_number(qrot);
+            w.write_str("vel");
+            w.write_number(qvel);
+            w.write_str("acc");
+            w.write_number(qacc);
+            w.write_str("pitch");
+            w.write_number(qpitch);
+            w.write_str("pitchVel");
+            w.write_number(qpitch_vel);
+            w.write_str("pitchAcc");
+            w.write_number(qpitch_acc);
+
+            if has_target {
+                w.write_str("targetId");
+                w.write_number(target_id_raw);
+            }
+
+            w.write_str("state");
+            w.write_number(state_code);
+
+            if has_ff_range {
+                w.write_str("currentForceFieldRange");
+                w.write_number(ff_range_raw);
+            }
         }
     }
 
