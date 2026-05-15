@@ -1895,3 +1895,355 @@ pub fn integrate_damped_rotation(
     out_buf[1] = new_vel;
     out_buf[2] = out_acc;
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 8 — Terrain heightmap in WASM linear memory
+//
+//  Mirrors the read side of src/game/sim/terrain/terrainTileMap.ts:
+//    terrainTriangleSampleFromGlobalMesh  +  terrainBarycentricAt
+//    terrainMeshHeightFromSample (triangle branch)
+//    terrainMeshNormalFromSample (triangle branch)
+//  plus the WATER_LEVEL clamp / below-water-up-vector semantics from
+//  terrainSurface.ts.
+//
+//  The 8 mesh arrays land in WASM linear memory once at world-load
+//  via `terrain_install_mesh` (called by the JS-side
+//  setAuthoritativeTerrainTileMap install hook). Per-call samplers
+//  walk the cell's triangle bucket and barycentric-interpolate
+//  directly from those Vecs — no JS callback, no per-call
+//  marshalling.
+//
+//  Fallback path (bilinear quad over the noise generator) is NOT
+//  ported here. The triangle walk should always find a containing
+//  triangle in a real match; the rare-case fallback in
+//  `getTerrainMeshSample` is only hit before the mesh is baked or
+//  for points outside the map (already clamped away). Rust signals
+//  "no triangle found" by returning NaN from height and 0 from
+//  normal; JS falls back to the TS path on either sentinel.
+// ─────────────────────────────────────────────────────────────────
+
+// Mirrors src/game/sim/terrain/terrainConfig.ts:
+//   TILE_FLOOR_Y       = -1200
+//   WATER_LEVEL_FRACTION = 0.71
+//   WATER_LEVEL        = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION)
+const TERRAIN_TILE_FLOOR_Y: f64 = -1200.0;
+const TERRAIN_WATER_LEVEL_FRACTION: f64 = 0.71;
+const TERRAIN_WATER_LEVEL: f64 = TERRAIN_TILE_FLOOR_Y * (1.0 - TERRAIN_WATER_LEVEL_FRACTION);
+
+// Matches terrainTileMap.ts TERRAIN_MESH_EPSILON for the degenerate
+// barycentric guard.
+const TERRAIN_MESH_EPSILON: f64 = 1e-6;
+
+struct TerrainGrid {
+    map_width: f64,
+    map_height: f64,
+    cell_size: f64,
+    subdiv: i32,
+    cells_x: i32,
+    cells_y: i32,
+    installed: bool,
+    // mesh storage — names mirror TerrainTileMap field names in
+    // src/types/terrain.ts (without the "mesh" prefix since this is
+    // already inside a terrain struct).
+    vertex_coords: Vec<f64>,        // (x, z) pairs, length = 2 * vertex_count
+    vertex_heights: Vec<f64>,
+    triangle_indices: Vec<i32>,     // (ia, ib, ic) triples, length = 3 * triangle_count
+    triangle_levels: Vec<i32>,
+    neighbor_indices: Vec<i32>,
+    neighbor_levels: Vec<i32>,
+    cell_triangle_offsets: Vec<i32>,
+    cell_triangle_indices: Vec<i32>,
+}
+
+impl TerrainGrid {
+    const fn empty() -> Self {
+        Self {
+            map_width: 0.0,
+            map_height: 0.0,
+            cell_size: 0.0,
+            subdiv: 0,
+            cells_x: 0,
+            cells_y: 0,
+            installed: false,
+            vertex_coords: Vec::new(),
+            vertex_heights: Vec::new(),
+            triangle_indices: Vec::new(),
+            triangle_levels: Vec::new(),
+            neighbor_indices: Vec::new(),
+            neighbor_levels: Vec::new(),
+            cell_triangle_offsets: Vec::new(),
+            cell_triangle_indices: Vec::new(),
+        }
+    }
+}
+
+struct TerrainGridHolder(UnsafeCell<TerrainGrid>);
+unsafe impl Sync for TerrainGridHolder {}
+static TERRAIN_GRID: TerrainGridHolder = TerrainGridHolder(UnsafeCell::new(TerrainGrid::empty()));
+
+#[inline]
+fn terrain_grid() -> &'static mut TerrainGrid {
+    // SAFETY: WASM is single-threaded; no &mut ever lives across
+    // calls. The static Vecs grow on install (one-time per match
+    // boundary) and shrink on clear.
+    unsafe { &mut *TERRAIN_GRID.0.get() }
+}
+
+#[wasm_bindgen]
+pub fn terrain_install_mesh(
+    vertex_coords: &[f64],
+    vertex_heights: &[f64],
+    triangle_indices: &[i32],
+    triangle_levels: &[i32],
+    neighbor_indices: &[i32],
+    neighbor_levels: &[i32],
+    cell_triangle_offsets: &[i32],
+    cell_triangle_indices: &[i32],
+    map_width: f64,
+    map_height: f64,
+    cell_size: f64,
+    subdiv: i32,
+    cells_x: i32,
+    cells_y: i32,
+) {
+    let t = terrain_grid();
+    t.vertex_coords.clear();
+    t.vertex_coords.extend_from_slice(vertex_coords);
+    t.vertex_heights.clear();
+    t.vertex_heights.extend_from_slice(vertex_heights);
+    t.triangle_indices.clear();
+    t.triangle_indices.extend_from_slice(triangle_indices);
+    t.triangle_levels.clear();
+    t.triangle_levels.extend_from_slice(triangle_levels);
+    t.neighbor_indices.clear();
+    t.neighbor_indices.extend_from_slice(neighbor_indices);
+    t.neighbor_levels.clear();
+    t.neighbor_levels.extend_from_slice(neighbor_levels);
+    t.cell_triangle_offsets.clear();
+    t.cell_triangle_offsets.extend_from_slice(cell_triangle_offsets);
+    t.cell_triangle_indices.clear();
+    t.cell_triangle_indices.extend_from_slice(cell_triangle_indices);
+    t.map_width = map_width;
+    t.map_height = map_height;
+    t.cell_size = cell_size;
+    t.subdiv = subdiv;
+    t.cells_x = cells_x;
+    t.cells_y = cells_y;
+    t.installed = true;
+}
+
+#[wasm_bindgen]
+pub fn terrain_clear() {
+    let t = terrain_grid();
+    t.installed = false;
+    // Drop Vec contents so the memory comes back to Rust's allocator
+    // — installs are rare so the next install will reallocate.
+    t.vertex_coords.clear();
+    t.vertex_heights.clear();
+    t.triangle_indices.clear();
+    t.triangle_levels.clear();
+    t.neighbor_indices.clear();
+    t.neighbor_levels.clear();
+    t.cell_triangle_offsets.clear();
+    t.cell_triangle_indices.clear();
+}
+
+#[wasm_bindgen]
+pub fn terrain_is_installed() -> u32 {
+    if terrain_grid().installed { 1 } else { 0 }
+}
+
+#[wasm_bindgen]
+pub fn terrain_metadata(out_buf: &mut [f64]) {
+    debug_assert!(out_buf.len() >= 6);
+    let t = terrain_grid();
+    out_buf[0] = t.map_width;
+    out_buf[1] = t.map_height;
+    out_buf[2] = t.cell_size;
+    out_buf[3] = t.subdiv as f64;
+    out_buf[4] = t.cells_x as f64;
+    out_buf[5] = t.cells_y as f64;
+}
+
+#[inline]
+fn terrain_barycentric_at(
+    px: f64, pz: f64,
+    ax: f64, az: f64,
+    bx: f64, bz: f64,
+    cx: f64, cz: f64,
+) -> Option<(f64, f64, f64)> {
+    let denom = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+    if denom.abs() <= TERRAIN_MESH_EPSILON {
+        return None;
+    }
+    let inv = 1.0 / denom;
+    let wa = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) * inv;
+    let wb = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) * inv;
+    Some((wa, wb, 1.0 - wa - wb))
+}
+
+#[inline]
+fn normalize_barycentric_weights(wa: f64, wb: f64, wc: f64) -> (f64, f64, f64) {
+    let ca = wa.max(0.0);
+    let cb = wb.max(0.0);
+    let cc = wc.max(0.0);
+    let sum = ca + cb + cc;
+    if sum <= 0.0 {
+        return (1.0, 0.0, 0.0);
+    }
+    let inv = 1.0 / sum;
+    (ca * inv, cb * inv, cc * inv)
+}
+
+/// Triangle sample tuple: (wa, wb, wc, ax, az, ah, bx, bz, bh, cx, cz, ch).
+/// Same shape as TerrainTriangleSample in terrainTileMap.ts.
+type TerrainTriangleSample = (
+    f64, f64, f64,  // weights
+    f64, f64, f64,  // a (x, z, h)
+    f64, f64, f64,  // b
+    f64, f64, f64,  // c
+);
+
+fn terrain_triangle_sample_at(
+    t: &TerrainGrid,
+    px: f64, pz: f64,
+    cell_x: i32, cell_y: i32,
+) -> Option<TerrainTriangleSample> {
+    if cell_x < 0 || cell_y < 0 || cell_x >= t.cells_x || cell_y >= t.cells_y {
+        return None;
+    }
+    let cell_idx = (cell_y * t.cells_x + cell_x) as usize;
+    if cell_idx + 1 >= t.cell_triangle_offsets.len() {
+        return None;
+    }
+    let start = t.cell_triangle_offsets[cell_idx] as usize;
+    let end = t.cell_triangle_offsets[cell_idx + 1] as usize;
+    let mut best: Option<TerrainTriangleSample> = None;
+    let mut best_score = f64::NEG_INFINITY;
+
+    for ref_idx in start..end {
+        let tri = t.cell_triangle_indices[ref_idx] as usize;
+        let tri_offset = tri * 3;
+        let ia = t.triangle_indices[tri_offset] as usize;
+        let ib = t.triangle_indices[tri_offset + 1] as usize;
+        let ic = t.triangle_indices[tri_offset + 2] as usize;
+        let ax = t.vertex_coords[ia * 2];
+        let az = t.vertex_coords[ia * 2 + 1];
+        let bx = t.vertex_coords[ib * 2];
+        let bz = t.vertex_coords[ib * 2 + 1];
+        let cx = t.vertex_coords[ic * 2];
+        let cz = t.vertex_coords[ic * 2 + 1];
+        let (wa, wb, wc) = match terrain_barycentric_at(px, pz, ax, az, bx, bz, cx, cz) {
+            Some(b) => b,
+            None => continue,
+        };
+        let score = wa.min(wb).min(wc);
+        if score < -1e-5 && score <= best_score {
+            continue;
+        }
+        let (final_wa, final_wb, final_wc) = if score >= -1e-5 {
+            (wa, wb, wc)
+        } else {
+            normalize_barycentric_weights(wa, wb, wc)
+        };
+        // TerrainTileMap uses ?? 0 for missing heights; clamp the
+        // index get to 0 if out of range.
+        let ah = t.vertex_heights.get(ia).copied().unwrap_or(0.0);
+        let bh = t.vertex_heights.get(ib).copied().unwrap_or(0.0);
+        let ch = t.vertex_heights.get(ic).copied().unwrap_or(0.0);
+        let sample = (
+            final_wa, final_wb, final_wc,
+            ax, az, ah,
+            bx, bz, bh,
+            cx, cz, ch,
+        );
+        if score >= -1e-5 {
+            return Some(sample);
+        }
+        best = Some(sample);
+        best_score = score;
+    }
+    best
+}
+
+#[inline]
+fn terrain_clamp_to_cell(t: &TerrainGrid, x: f64, z: f64) -> (f64, f64, i32, i32) {
+    let max_x = t.cells_x as f64 * t.cell_size;
+    let max_z = t.cells_y as f64 * t.cell_size;
+    let px = if x <= 0.0 { 0.0 } else if x >= max_x { max_x } else { x };
+    let pz = if z <= 0.0 { 0.0 } else if z >= max_z { max_z } else { z };
+    let cell_x = ((px / t.cell_size).floor() as i32).max(0).min(t.cells_x - 1);
+    let cell_y = ((pz / t.cell_size).floor() as i32).max(0).min(t.cells_y - 1);
+    (px, pz, cell_x, cell_y)
+}
+
+/// Sample terrain surface height at world-space (x, z). Returns
+/// NaN if no mesh is installed or the triangle walk degenerates —
+/// JS callers should treat NaN as "fall back to TS sampler" since
+/// that handles the bilinear-quad-over-noise path.
+#[wasm_bindgen]
+pub fn terrain_get_surface_height(x: f64, z: f64) -> f64 {
+    let t = terrain_grid();
+    if !t.installed {
+        return f64::NAN;
+    }
+    let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
+    match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
+        Some((wa, wb, wc, _, _, ah, _, _, bh, _, _, ch)) => {
+            let h = wa * ah + wb * bh + wc * ch;
+            h.max(TERRAIN_WATER_LEVEL)
+        }
+        None => f64::NAN,
+    }
+}
+
+/// Sample terrain surface normal at world-space (x, z). Writes
+/// (nx, ny, nz) into out_buf[0..3] and returns 1 on success, 0 on
+/// "no mesh installed / degenerate" so JS can fall back to TS.
+/// nz is the up component (vertical); nx / ny are the horizontal
+/// slope components. Below-water samples return (0, 0, 1) as the
+/// flat water surface normal — matches getSurfaceNormal in
+/// terrainSurface.ts.
+#[wasm_bindgen]
+pub fn terrain_get_surface_normal(x: f64, z: f64, out_buf: &mut [f64]) -> u32 {
+    debug_assert!(out_buf.len() >= 3);
+    let t = terrain_grid();
+    if !t.installed {
+        return 0;
+    }
+    let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
+    let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
+        Some(s) => s,
+        None => return 0,
+    };
+    let (wa, wb, wc, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
+    let h0 = wa * ah + wb * bh + wc * ch;
+    if h0 < TERRAIN_WATER_LEVEL {
+        out_buf[0] = 0.0;
+        out_buf[1] = 0.0;
+        out_buf[2] = 1.0;
+        return 1;
+    }
+    // Triangle-plane normal — same math as terrainMeshNormalFromSample.
+    let ux = bx - ax;
+    let uy = bh - ah;
+    let uz = bz - az;
+    let vx_ = cx - ax;
+    let vy = ch - ah;
+    let vz = cz - az;
+    let mut nx = uy * vz - uz * vy;
+    let mut vertical = uz * vx_ - ux * vz;
+    let mut nz = ux * vy - uy * vx_;
+    if vertical < 0.0 {
+        nx = -nx;
+        vertical = -vertical;
+        nz = -nz;
+    }
+    let len_sq = nx * nx + vertical * vertical + nz * nz;
+    let len = if len_sq > 0.0 { len_sq.sqrt() } else { 1.0 };
+    out_buf[0] = nx / len;
+    // Match terrainMeshNormalFromSample's return shape: { nx, ny: nz, nz: vertical }.
+    out_buf[1] = nz / len;
+    out_buf[2] = vertical / len;
+    1
+}

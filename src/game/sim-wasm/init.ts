@@ -42,6 +42,11 @@ import __wbg_init, {
   solve_kinematic_intercept,
   apply_homing_steering,
   integrate_damped_rotation,
+  terrain_install_mesh,
+  terrain_clear,
+  terrain_is_installed,
+  terrain_get_surface_height,
+  terrain_get_surface_normal,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -272,6 +277,44 @@ export interface SimWasm {
     minAngle: number,
     maxAngle: number,
   ) => void;
+  /** Phase 8 — terrain heightmap installed in WASM linear memory.
+   *  Called once at world-load (or any time setAuthoritativeTerrainTileMap
+   *  receives a new map) from the JS-side terrain state. Arrays are
+   *  copied into Rust-side Vecs; further mutation on the JS side has
+   *  no effect on the installed mesh. */
+  readonly terrainInstallMesh: (
+    vertexCoords: Float64Array,
+    vertexHeights: Float64Array,
+    triangleIndices: Int32Array,
+    triangleLevels: Int32Array,
+    neighborIndices: Int32Array,
+    neighborLevels: Int32Array,
+    cellTriangleOffsets: Int32Array,
+    cellTriangleIndices: Int32Array,
+    mapWidth: number,
+    mapHeight: number,
+    cellSize: number,
+    subdiv: number,
+    cellsX: number,
+    cellsY: number,
+  ) => void;
+  /** Drop the installed mesh — Vecs come back to Rust's allocator
+   *  and `terrainIsInstalled` returns 0. Sampling falls back to the
+   *  TS path until the next install. */
+  readonly terrainClear: () => void;
+  /** 1 if a mesh is currently installed, 0 otherwise. */
+  readonly terrainIsInstalled: () => number;
+  /** Sample terrain surface height at world-space (x, z). Returns
+   *  NaN if no mesh is installed or the triangle walk degenerates;
+   *  JS callers treat NaN as "fall back to TS sampler" since that
+   *  handles the bilinear-quad-over-noise path. The mesh-installed
+   *  return is max(WATER_LEVEL, triangle_height). */
+  readonly terrainGetSurfaceHeight: (x: number, z: number) => number;
+  /** Sample terrain surface normal at world-space (x, z). Writes
+   *  (nx, ny, nz) into out[0..3] and returns 1 on success, 0 if no
+   *  mesh is installed or the triangle walk fails. Below-water
+   *  samples return (0, 0, 1) — flat water surface normal. */
+  readonly terrainGetSurfaceNormal: (x: number, z: number, out: Float64Array) => number;
 }
 
 /** Bit flags for `integrateDampedRotation`. Mirrors the
@@ -531,6 +574,11 @@ export function initSimWasm(): Promise<SimWasm> {
         solveKinematicIntercept: solve_kinematic_intercept,
         applyHomingSteering: apply_homing_steering,
         integrateDampedRotation: integrate_damped_rotation,
+        terrainInstallMesh: terrain_install_mesh,
+        terrainClear: terrain_clear,
+        terrainIsInstalled: terrain_is_installed,
+        terrainGetSurfaceHeight: terrain_get_surface_height,
+        terrainGetSurfaceNormal: terrain_get_surface_normal,
       };
       resolvedHandle = handle;
       return handle;

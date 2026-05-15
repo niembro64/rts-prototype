@@ -5,6 +5,7 @@ import {
   type TerrainTileMap,
 } from '@/types/terrain';
 import { getTerrainDividerTeamCount } from '../playerLayout';
+import { getSimWasm } from '../../sim-wasm/init';
 import { TERRAIN_FINE_TRIANGLE_SUBDIV, TERRAIN_SHAPE_MAGNITUDE } from './terrainConfig';
 
 let mountainRippleAmplitude = TERRAIN_SHAPE_MAGNITUDE;
@@ -25,6 +26,39 @@ export function getTerrainVersion(): number {
 export function invalidateTerrainConfig(): void {
   authoritativeTerrainTileMap = null;
   terrainVersion++;
+  // Drop the WASM-side mesh too so a stale install doesn't outlive
+  // the JS state.
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    sim.terrainClear();
+  }
+}
+
+/** Copy the just-installed TerrainTileMap into WASM linear memory so
+ *  hot-path samplers (terrain_get_surface_height / _normal) can read
+ *  directly from Rust-side Vecs without crossing the boundary per
+ *  call. Called from `setAuthoritativeTerrainTileMap` after the
+ *  module-local assignment; the JS-side state remains authoritative
+ *  for the rare structural query paths that haven't been ported. */
+function installMeshIntoSim(map: TerrainTileMap): void {
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  sim.terrainInstallMesh(
+    Float64Array.from(map.meshVertexCoords),
+    Float64Array.from(map.meshVertexHeights),
+    Int32Array.from(map.meshTriangleIndices),
+    Int32Array.from(map.meshTriangleLevels),
+    Int32Array.from(map.meshTriangleNeighborIndices),
+    Int32Array.from(map.meshTriangleNeighborLevels),
+    Int32Array.from(map.meshCellTriangleOffsets),
+    Int32Array.from(map.meshCellTriangleIndices),
+    map.mapWidth,
+    map.mapHeight,
+    map.cellSize,
+    map.subdiv,
+    map.cellsX,
+    map.cellsY,
+  );
 }
 
 export function getMountainRippleAmplitude(): number {
@@ -95,6 +129,16 @@ export function setAuthoritativeTerrainTileMap(map: TerrainTileMap | null): void
   if (!map && !authoritativeTerrainTileMap) return;
   authoritativeTerrainTileMap = map;
   terrainVersion++;
+  // Mirror the new mesh into WASM linear memory (or clear the
+  // WASM-side mesh on a null assignment).
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    if (map) {
+      installMeshIntoSim(map);
+    } else {
+      sim.terrainClear();
+    }
+  }
 }
 
 export function getInstalledTerrainTileMap(
