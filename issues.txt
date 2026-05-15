@@ -579,15 +579,18 @@ hot paths on busy maps; all are pure numeric over per-turret /
 per-candidate state.
 
   - integrateDampedRotation — DONE (Phase 6a, see above).
-  - chooseBestTargetCandidate — DEFERRED. The per-candidate work
-    is a JS-side closure (rankCandidate) that depends on the
-    weapon's TurretRanges + radius tier classification. The
-    remaining work (bubble-up insertion sort over K=8) would
-    save ~few µs at busy candidate counts but costs marshalling
-    Entity/Turret/ForceField data into Rust. Not worth porting
-    until either (a) Phase 7 lands and entity slots become the
-    natural language, or (b) profiling shows targeting is hot
-    enough to justify packing closures into a flat schema.
+  - chooseBestTargetCandidate — DEFERRED (round 2 analysis).
+    Now that Phase 7 is live, candidates arrive as slot ids and
+    the rank formula's distSq + radius classification could run
+    in Rust against the SpatialGrid slot SoA. BUT the mirror-
+    target score (passive weapons) is JS-side metadata that has
+    no clean WASM representation, requiring a JS pre-pass per
+    candidate before any WASM call. Net win at typical busy
+    candidate counts (~100 enemies × 8-weapon scan) is ~10-30 µs/
+    pick, which doesn't justify the new boundary surface +
+    schema churn. Re-evaluate if profiling ever shows targeting
+    hot enough to warrant porting both the ranker AND a JS-side
+    mirror-score precompute pass.
   - lineOfSight: segment-vs-terrain walk. Pure numeric, accesses
     heightmap (Phase 8 — DONE) + entity AABBs (Phase 7 still
     deferred, so the swept-volume AABB query stays JS-side).
