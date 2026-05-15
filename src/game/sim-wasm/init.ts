@@ -136,6 +136,9 @@ import __wbg_init, {
   snapshot_baseline_slot_used,
   snapshot_baseline_slot_last_tick,
   snapshot_baseline_diff_slot,
+  snapshot_encode_entity_basic,
+  messagepack_writer_ptr,
+  messagepack_writer_len,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -158,6 +161,7 @@ import __wbg_init, {
   pool_sleep_ticks_ptr,
   pool_flags_ptr,
 } from './pkg/rts_sim_wasm';
+import { runSnapshotEncoderByteEqualityTest } from './snapshotEncoderTest';
 
 
 /** Public handle to the loaded WASM module. Re-exported kernels
@@ -437,6 +441,12 @@ export interface SimWasm {
    *  Foundation for the D.3c quantize + D.3d delta-encode kernels;
    *  no consumer reads from it yet. */
   readonly snapshotBaseline: SnapshotBaselineApi;
+  /** Phase 10 D.3j — Entity-DTO encoder kernels. Each successive
+   *  commit handles one more field group of the snapshot DTO; the
+   *  ported portion is verified byte-equal against
+   *  @msgpack/msgpack's `ignoreUndefined: true` output on every
+   *  dev build. No consumer reads the bytes yet. */
+  readonly snapshotEncode: SnapshotEncodeApi;
   /** The WASM linear memory — JS wrapper code constructs typed-array
    *  views over this for zero-copy result reads. Re-bind views after
    *  any operation that might grow the memory (rare). */
@@ -793,6 +803,38 @@ export interface SnapshotBaselineApi {
 export const SNAPSHOT_DIFF_KIND_UNIT = 1;
 export const SNAPSHOT_DIFF_KIND_BUILDING = 2;
 
+/** Phase 10 D.3j — entity-DTO encoder kernels. Byte-equal port of
+ *  stateSerializerEntities.ts:serializeEntitySnapshot's output as
+ *  encoded by @msgpack/msgpack with `ignoreUndefined: true`. The
+ *  port lands one field group per commit; basic envelope here is
+ *  the always-present `{id, type, pos, rotation, playerId}` plus
+ *  the optional `changedFields` delta mask. Output lands in the
+ *  shared D.2 MessagePack writer scratch; read via writerPtr/Len. */
+export interface SnapshotEncodeApi {
+  /** Encode the basic entity envelope into the D.2 scratch. Returns
+   *  the byte count; caller reads via writerPtr() + writerLen(). */
+  encodeEntityBasic: (
+    id: number,
+    typeTag: number,
+    qposX: number, qposY: number, qposZ: number,
+    qrot: number,
+    playerId: number,
+    hasChangedFields: number,
+    changedFields: number,
+  ) => number;
+  /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
+   *  by every encoder call. */
+  writerPtr: () => number;
+  /** Bytes currently in the D.2 scratch (matches the last encoder
+   *  call's return value). */
+  writerLen: () => number;
+}
+
+/** Entity-type tags for SnapshotEncodeApi.encodeEntityBasic. Mirrors
+ *  SNAPSHOT_ENTITY_TYPE_* in lib.rs. */
+export const SNAPSHOT_ENTITY_TYPE_UNIT = 1;
+export const SNAPSHOT_ENTITY_TYPE_BUILDING = 2;
+
 /** Phase 9 — Pathfinder. Mirror of Pathfinder.ts findPath. Full
  *  pipeline (mask + CC + A* + LOS smoothing) runs inside a single
  *  WASM call. Caller passes the building-occupied cells list per
@@ -964,6 +1006,13 @@ export function initSimWasm(): Promise<SimWasm> {
         );
       }
       const memory = initOutput.memory;
+      // Phase 10 D.3j — verify the entity-DTO encoder is byte-equal
+      // with @msgpack/msgpack on a representative set of envelopes.
+      // Dev-only: a regression here means the production encoder
+      // would diverge from the wire format as we land more fields.
+      if (import.meta.env.DEV) {
+        await runSnapshotEncoderByteEqualityTest(memory);
+      }
       const capacity = pool_capacity();
       const projCapacity = projectile_pool_capacity();
 
@@ -1181,6 +1230,11 @@ export function initSimWasm(): Promise<SimWasm> {
           slotUsed: snapshot_baseline_slot_used,
           slotLastTick: snapshot_baseline_slot_last_tick,
           diffSlot: snapshot_baseline_diff_slot,
+        },
+        snapshotEncode: {
+          encodeEntityBasic: snapshot_encode_entity_basic,
+          writerPtr: messagepack_writer_ptr,
+          writerLen: messagepack_writer_len,
         },
         spatial: {
           init: spatial_init,

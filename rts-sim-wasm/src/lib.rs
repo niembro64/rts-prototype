@@ -5896,3 +5896,88 @@ pub fn snapshot_baseline_diff_slot(
 
     mask
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Snapshot entity encoder (Phase 10 D.3j)
+//
+// Byte-equal port of stateSerializerEntities.ts:serializeEntitySnapshot's
+// output AS msgpack-encoded via @msgpack/msgpack with ignoreUndefined:
+// true. Each `snapshot_encode_entity_*` function emits one entity's
+// MessagePack bytes into the D.2 writer's scratch buffer; JS reads
+// via messagepack_writer_ptr() / _len().
+//
+// The port lands incrementally — each successive commit handles one
+// more field group (envelope → unit sub-object → turret array →
+// building sub-object → factory/solar/build/...). Until the full
+// kernel exists, callers that need the OUTGOING wire bytes still go
+// through the JS path; the Rust path is verified against the JS
+// path on every dev build via the (D.3j) byte-equality test runner.
+// ─────────────────────────────────────────────────────────────────
+
+/// Entity-type tag for the encoder kernels. Mirrors EntityType
+/// strings used in the JS NetworkServerSnapshotEntity DTO.
+pub const SNAPSHOT_ENTITY_TYPE_UNIT: u8 = 1;
+pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
+
+/// Encode the always-present entity envelope: `{id, type, pos,
+/// rotation, playerId [, changedFields]}` — the five fields every
+/// NetworkServerSnapshotEntity carries plus the optional delta mask.
+/// Output written to the D.2 writer; returns the number of bytes.
+///
+/// Field order matches the JS DTO's property insertion order so the
+/// MessagePack key sequence is identical: id → type → pos → rotation
+/// → playerId → changedFields. Quantized integers are passed in as
+/// i32 (caller does qPos / qRot conversion).
+#[wasm_bindgen]
+pub fn snapshot_encode_entity_basic(
+    id: u32,
+    type_tag: u8,
+    qpos_x: i32,
+    qpos_y: i32,
+    qpos_z: i32,
+    qrot: i32,
+    player_id: u8,
+    has_changed_fields: u8,
+    changed_fields: u32,
+) -> u32 {
+    let w = messagepack_writer();
+    w.buf.clear();
+
+    let mut key_count: usize = 5;
+    if has_changed_fields != 0 {
+        key_count += 1;
+    }
+    w.write_map_header(key_count);
+
+    w.write_str("id");
+    w.write_uint(id as u64);
+
+    w.write_str("type");
+    match type_tag {
+        SNAPSHOT_ENTITY_TYPE_UNIT => w.write_str("unit"),
+        SNAPSHOT_ENTITY_TYPE_BUILDING => w.write_str("building"),
+        _ => w.write_str(""),
+    }
+
+    w.write_str("pos");
+    w.write_map_header(3);
+    w.write_str("x");
+    w.write_int(qpos_x as i64);
+    w.write_str("y");
+    w.write_int(qpos_y as i64);
+    w.write_str("z");
+    w.write_int(qpos_z as i64);
+
+    w.write_str("rotation");
+    w.write_int(qrot as i64);
+
+    w.write_str("playerId");
+    w.write_uint(player_id as u64);
+
+    if has_changed_fields != 0 {
+        w.write_str("changedFields");
+        w.write_uint(changed_fields as u64);
+    }
+
+    w.buf.len() as u32
+}
