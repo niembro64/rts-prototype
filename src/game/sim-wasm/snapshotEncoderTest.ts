@@ -12,13 +12,54 @@ import {
   snapshot_encode_turret_scratch_ensure,
   snapshot_encode_action_scratch_ptr,
   snapshot_encode_action_scratch_ensure,
+  snapshot_encode_string_scratch_bytes_ptr,
+  snapshot_encode_string_scratch_table_ptr,
+  snapshot_encode_string_scratch_ensure_bytes,
+  snapshot_encode_string_scratch_ensure_table,
   messagepack_writer_ptr,
   messagepack_writer_len,
 } from './pkg/rts_sim_wasm';
 import { SNAPSHOT_ENTITY_TYPE_UNIT, SNAPSHOT_ENTITY_TYPE_BUILDING } from './init';
 
 const TURRET_SCRATCH_STRIDE = 12;
-const ACTION_SCRATCH_STRIDE = 14;
+const ACTION_SCRATCH_STRIDE = 16;
+
+const _utf8 = new TextEncoder();
+
+/** Build the string scratch from a list of strings. Returns a
+ *  Map from string to slot index that callers use when filling
+ *  scratch buffers. */
+function packStringsIntoScratch(
+  memory: WebAssembly.Memory,
+  strings: readonly string[],
+): Map<string, number> {
+  const slotByString = new Map<string, number>();
+  if (strings.length === 0) return slotByString;
+  const utf8Bytes: Uint8Array[] = [];
+  let totalBytes = 0;
+  for (const s of strings) {
+    if (slotByString.has(s)) continue;
+    const bytes = _utf8.encode(s);
+    slotByString.set(s, utf8Bytes.length);
+    utf8Bytes.push(bytes);
+    totalBytes += bytes.length;
+  }
+  snapshot_encode_string_scratch_ensure_bytes(Math.max(totalBytes, 1));
+  snapshot_encode_string_scratch_ensure_table(utf8Bytes.length);
+  const bytesPtr = snapshot_encode_string_scratch_bytes_ptr();
+  const tablePtr = snapshot_encode_string_scratch_table_ptr();
+  const bytesView = new Uint8Array(memory.buffer, bytesPtr, totalBytes);
+  const tableView = new Uint32Array(memory.buffer, tablePtr, utf8Bytes.length * 2);
+  let offset = 0;
+  for (let i = 0; i < utf8Bytes.length; i++) {
+    const bytes = utf8Bytes[i];
+    bytesView.set(bytes, offset);
+    tableView[i * 2] = offset;
+    tableView[i * 2 + 1] = bytes.length;
+    offset += bytes.length;
+  }
+  return slotByString;
+}
 
 type TurretFixture = {
   turret: {
@@ -39,7 +80,7 @@ type ActionFixture = {
   posZ?: number;
   pathExp?: true;
   targetId?: number;
-  // buildingType skipped — string encoding not yet supported.
+  buildingType?: string;
   grid?: { x: number; y: number };
   buildingId?: number;
 };
@@ -152,7 +193,11 @@ type UnitFixture = BasicEntityFixture & {
   };
 };
 
-function packActionsIntoScratch(memory: WebAssembly.Memory, actions: ActionFixture[]): void {
+function packActionsIntoScratch(
+  memory: WebAssembly.Memory,
+  actions: ActionFixture[],
+  stringSlots: Map<string, number>,
+): void {
   snapshot_encode_action_scratch_ensure(actions.length);
   const ptr = snapshot_encode_action_scratch_ptr();
   const view = new Float64Array(
@@ -170,11 +215,13 @@ function packActionsIntoScratch(memory: WebAssembly.Memory, actions: ActionFixtu
     view[base + 6] = a.pathExp === true ? 1 : 0;
     view[base + 7] = a.targetId !== undefined ? 1 : 0;
     view[base + 8] = a.targetId ?? 0;
-    view[base + 9] = a.grid !== undefined ? 1 : 0;
-    view[base + 10] = a.grid?.x ?? 0;
-    view[base + 11] = a.grid?.y ?? 0;
-    view[base + 12] = a.buildingId !== undefined ? 1 : 0;
-    view[base + 13] = a.buildingId ?? 0;
+    view[base + 9] = a.buildingType !== undefined ? 1 : 0;
+    view[base + 10] = a.buildingType !== undefined ? (stringSlots.get(a.buildingType) ?? 0) : 0;
+    view[base + 11] = a.grid !== undefined ? 1 : 0;
+    view[base + 12] = a.grid?.x ?? 0;
+    view[base + 13] = a.grid?.y ?? 0;
+    view[base + 14] = a.buildingId !== undefined ? 1 : 0;
+    view[base + 15] = a.buildingId ?? 0;
   }
 }
 
@@ -680,6 +727,61 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         },
       },
     },
+    // Build action with buildingType string
+    {
+      id: 1000, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          { type: 7, buildingType: 'factory', grid: { x: 10, y: 20 } },
+        ],
+      },
+    },
+    // Multiple build actions referencing the same string (slot dedup)
+    {
+      id: 1001, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          { type: 7, buildingType: 'pylon', grid: { x: 0, y: 0 } },
+          { type: 7, buildingType: 'pylon', grid: { x: 5, y: 5 } },
+        ],
+      },
+    },
+    // Different string for each action (table grows)
+    {
+      id: 1002, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          { type: 7, buildingType: 'commandCenter', grid: { x: 0, y: 0 } },
+          { type: 7, buildingType: 'energyConverter', grid: { x: 10, y: 0 } },
+          { type: 7, buildingType: 'extractor', grid: { x: 20, y: 0 } },
+        ],
+      },
+    },
+    // buildingType with full action (everything optional present)
+    {
+      id: 1003, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x10,
+      unit: {
+        hp: { curr: 75, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          {
+            type: 7,
+            pos: { x: 1234, y: 5678 },
+            posZ: 42,
+            targetId: 999,
+            buildingType: 'turret_defender',
+            grid: { x: 50, y: 100 },
+            buildingId: 88888,
+          },
+        ],
+      },
+    },
   ];
 
   let passed = 0;
@@ -711,8 +813,16 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const actions = f.unit.actions;
     const hasActions = actions !== undefined ? 1 : 0;
     const actionCount = actions?.length ?? 0;
+    let stringSlots = new Map<string, number>();
     if (hasActions && actions) {
-      packActionsIntoScratch(memory, actions);
+      const strings: string[] = [];
+      for (const a of actions) {
+        if (a.buildingType !== undefined) strings.push(a.buildingType);
+      }
+      if (strings.length > 0) {
+        stringSlots = packStringsIntoScratch(memory, strings);
+      }
+      packActionsIntoScratch(memory, actions, stringSlots);
     }
     const turrets = f.unit.turrets;
     const hasTurrets = turrets !== undefined ? 1 : 0;

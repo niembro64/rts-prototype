@@ -142,6 +142,10 @@ import __wbg_init, {
   snapshot_encode_turret_scratch_ensure,
   snapshot_encode_action_scratch_ptr,
   snapshot_encode_action_scratch_ensure,
+  snapshot_encode_string_scratch_bytes_ptr,
+  snapshot_encode_string_scratch_table_ptr,
+  snapshot_encode_string_scratch_ensure_bytes,
+  snapshot_encode_string_scratch_ensure_table,
   messagepack_writer_ptr,
   messagepack_writer_len,
   pool_pos_x_ptr,
@@ -897,15 +901,25 @@ export interface SnapshotEncodeApi {
   turretScratchEnsure: (count: number) => void;
   /** Stride per turret in the scratch buffer (f64 count). */
   readonly turretScratchStride: number;
-  /** Raw pointer to the action scratch buffer. JS fills 14 f64 per
+  /** Raw pointer to the action scratch buffer. JS fills 16 f64 per
    *  action (see lib.rs SNAPSHOT_ENCODE_ACTION_STRIDE layout)
-   *  before calling encodeEntityUnit with hasActions=1.
-   *  NOTE: buildingType (string) not yet supported. */
+   *  before calling encodeEntityUnit with hasActions=1. */
   actionScratchPtr: () => number;
-  /** Pre-grow the action scratch to fit `count` actions (14 f64 each). */
+  /** Pre-grow the action scratch to fit `count` actions (16 f64 each). */
   actionScratchEnsure: (count: number) => void;
   /** Stride per action in the scratch buffer (f64 count). */
   readonly actionScratchStride: number;
+  /** Raw pointer to the string-scratch UTF-8 byte buffer. JS writes
+   *  the concatenated UTF-8 bytes of every string field here. */
+  stringScratchBytesPtr: () => number;
+  /** Raw pointer to the string-scratch offset/length table (Uint32Array).
+   *  table[2i] is the byte offset, table[2i+1] is the byte length for
+   *  string slot `i`. */
+  stringScratchTablePtr: () => number;
+  /** Pre-grow the byte buffer to hold at least `byteCount` bytes. */
+  stringScratchEnsureBytes: (byteCount: number) => void;
+  /** Pre-grow the offset/length table to fit `slotCount` strings. */
+  stringScratchEnsureTable: (slotCount: number) => void;
 }
 
 /** Entity-type tags for SnapshotEncodeApi.encodeEntityBasic. Mirrors
@@ -1319,7 +1333,11 @@ export function initSimWasm(): Promise<SimWasm> {
           turretScratchStride: 12,
           actionScratchPtr: snapshot_encode_action_scratch_ptr,
           actionScratchEnsure: snapshot_encode_action_scratch_ensure,
-          actionScratchStride: 14,
+          actionScratchStride: 16,
+          stringScratchBytesPtr: snapshot_encode_string_scratch_bytes_ptr,
+          stringScratchTablePtr: snapshot_encode_string_scratch_table_ptr,
+          stringScratchEnsureBytes: snapshot_encode_string_scratch_ensure_bytes,
+          stringScratchEnsureTable: snapshot_encode_string_scratch_ensure_table,
         },
         spatial: {
           init: spatial_init,

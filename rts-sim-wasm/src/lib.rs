@@ -5999,7 +5999,7 @@ pub fn snapshot_encode_turret_scratch_ensure(turret_count: u32) {
 
 /// Encoder action scratch — JS pre-fills with action data, then the
 /// encoder reads when emitting the actions array. Layout per action
-/// (14 f64 = 112 bytes):
+/// (16 f64 = 128 bytes):
 ///   [0]   action type code (u8 ActionTypeCode as f64)
 ///   [1]   has_pos (0 or 1)
 ///   [2..4] pos.x, pos.y (when has_pos)
@@ -6008,16 +6008,13 @@ pub fn snapshot_encode_turret_scratch_ensure(turret_count: u32) {
 ///   [6]   path_exp (1 emits `true`, 0 omits the key)
 ///   [7]   has_target_id (0 or 1)
 ///   [8]   target_id (when has_target_id)
-///   [9]   has_grid (0 or 1)
-///   [10..12] grid.x, grid.y (when has_grid)
-///   [12]  has_building_id (0 or 1)
-///   [13]  building_id (when has_building_id)
-///
-/// NOTE: buildingType (a string field) is not yet supported by the
-/// encoder — a string scratch lands in a followup commit. Callers
-/// that need it should keep using the JS encode path for those
-/// entities until support is added.
-const SNAPSHOT_ENCODE_ACTION_STRIDE: usize = 14;
+///   [9]   has_building_type (0 or 1)
+///   [10]  building_type_string_slot (when has_building_type)
+///   [11]  has_grid (0 or 1)
+///   [12..14] grid.x, grid.y (when has_grid)
+///   [14]  has_building_id (0 or 1)
+///   [15]  building_id (when has_building_id)
+const SNAPSHOT_ENCODE_ACTION_STRIDE: usize = 16;
 
 struct SnapshotEncodeActionScratch {
     buf: Vec<f64>,
@@ -6053,6 +6050,90 @@ pub fn snapshot_encode_action_scratch_ensure(action_count: u32) {
     if s.buf.len() < needed {
         s.buf.resize(needed, 0.0);
     }
+}
+
+/// String scratch — UTF-8 byte buffer plus an offset/length table
+/// indexed by string slot. JS pre-fills both before any encoder
+/// call that emits a string field; the kernel reads via the table.
+///
+/// `bytes` holds the concatenated UTF-8 of every string; `table[2i]`
+/// is the byte offset, `table[2i+1]` is the byte length. A slot
+/// with length 0 emits the empty string `""`.
+struct SnapshotEncodeStringScratch {
+    bytes: Vec<u8>,
+    table: Vec<u32>,
+}
+
+struct SnapshotEncodeStringScratchHolder(UnsafeCell<Option<SnapshotEncodeStringScratch>>);
+unsafe impl Sync for SnapshotEncodeStringScratchHolder {}
+static SNAPSHOT_ENCODE_STRING_SCRATCH: SnapshotEncodeStringScratchHolder =
+    SnapshotEncodeStringScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_string_scratch() -> &'static mut SnapshotEncodeStringScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_STRING_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeStringScratch {
+                bytes: vec![0u8; 256],
+                table: vec![0u32; 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_string_scratch_bytes_ptr() -> *const u8 {
+    snapshot_encode_string_scratch().bytes.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_string_scratch_table_ptr() -> *const u32 {
+    snapshot_encode_string_scratch().table.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_string_scratch_ensure_bytes(byte_count: u32) {
+    let s = snapshot_encode_string_scratch();
+    let needed = byte_count as usize;
+    if s.bytes.len() < needed {
+        s.bytes.resize(needed, 0);
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_string_scratch_ensure_table(slot_count: u32) {
+    let s = snapshot_encode_string_scratch();
+    let needed = (slot_count as usize) * 2; // pairs of (offset, length)
+    if s.table.len() < needed {
+        s.table.resize(needed, 0);
+    }
+}
+
+/// Write a string slot's bytes to the MessagePack writer. Returns
+/// silently for out-of-bounds slots (caller is responsible for
+/// having populated the slot via the byte+table buffers).
+fn write_string_from_scratch(w: &mut MessagePackWriter, slot: u32) {
+    let scratch = snapshot_encode_string_scratch();
+    let s = slot as usize;
+    let i = s * 2;
+    if i + 1 >= scratch.table.len() {
+        w.write_str("");
+        return;
+    }
+    let offset = scratch.table[i] as usize;
+    let length = scratch.table[i + 1] as usize;
+    if offset + length > scratch.bytes.len() {
+        w.write_str("");
+        return;
+    }
+    // SAFETY: caller wrote valid UTF-8 into this region. Skip the
+    // UTF-8 check (from_utf8 + unwrap) — wasm-bindgen guarantees
+    // valid UTF-8 from the JS TextEncoder source.
+    let bytes = &scratch.bytes[offset..offset + length];
+    let s = unsafe { core::str::from_utf8_unchecked(bytes) };
+    w.write_str(s);
 }
 
 /// Write the six envelope key-value pairs (id, type, pos, rotation,
@@ -6382,20 +6463,23 @@ pub fn snapshot_encode_entity_unit(
             let path_exp = scratch.buf[base + 6] != 0.0;
             let has_target_id = scratch.buf[base + 7] != 0.0;
             let target_id = scratch.buf[base + 8];
-            let has_grid = scratch.buf[base + 9] != 0.0;
-            let grid_x = scratch.buf[base + 10];
-            let grid_y = scratch.buf[base + 11];
-            let has_building_id = scratch.buf[base + 12] != 0.0;
-            let building_id = scratch.buf[base + 13];
+            let has_building_type = scratch.buf[base + 9] != 0.0;
+            let building_type_string_slot = scratch.buf[base + 10] as u32;
+            let has_grid = scratch.buf[base + 11] != 0.0;
+            let grid_x = scratch.buf[base + 12];
+            let grid_y = scratch.buf[base + 13];
+            let has_building_id = scratch.buf[base + 14] != 0.0;
+            let building_id = scratch.buf[base + 15];
 
             // Insertion order in createActionDto: type, pos, posZ,
-            // pathExp, targetId, buildingType (unsupported here), grid,
-            // buildingId. ignoreUndefined drops absent keys.
+            // pathExp, targetId, buildingType, grid, buildingId.
+            // ignoreUndefined drops absent keys.
             let mut action_field_count: usize = 1; // type (always present)
             if has_pos { action_field_count += 1; }
             if has_pos_z { action_field_count += 1; }
             if path_exp { action_field_count += 1; }
             if has_target_id { action_field_count += 1; }
+            if has_building_type { action_field_count += 1; }
             if has_grid { action_field_count += 1; }
             if has_building_id { action_field_count += 1; }
             w.write_map_header(action_field_count);
@@ -6423,7 +6507,10 @@ pub fn snapshot_encode_entity_unit(
                 w.write_str("targetId");
                 w.write_number(target_id);
             }
-            // buildingType not yet supported — followup commit.
+            if has_building_type {
+                w.write_str("buildingType");
+                write_string_from_scratch(w, building_type_string_slot);
+            }
             if has_grid {
                 w.write_str("grid");
                 w.write_map_header(2);
