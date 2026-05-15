@@ -149,7 +149,11 @@ Split into sub-phases to keep each ship-able and reviewable.
              per-tick body-state marshal eliminated; only slot ids +
              pre-sampled ground state + transition output buffers
              cross the boundary now.
-  Phase 3e — Hover lift + quat-spring + bank-into-turn (or roll into Phase 4).
+  Phase 3e — Hover quat-spring + bank-into-turn ported as a batched
+             WASM kernel (paired with Phase 4). DONE. Hover lift force
+             computation (F_up = K/altitude − c·vz) stays JS-side for
+             now since it depends on terrain (Phase 8) and the math is
+             trivial.
   Phase 3f — Static cuboid broadphase port. DONE.
 
 ------------------------------------------------------------------------------
@@ -476,19 +480,46 @@ hot-reloading PhysicsEngine3D becomes a thing.
     possible).
 
 ------------------------------------------------------------------------------
- Phase 4 — Quaternion math + damped-spring kernel → Rust/WASM.
+ Phase 4 + 3e — Quaternion math + batched hover orientation kernel. DONE.
 ------------------------------------------------------------------------------
-src/game/math/Quaternion.ts is small (~150 lines) and already used
-by Phase 3's hover bank physics. Port it as a Rust module so the
-hover kernel doesn't have to call back into JS for quat ops.
+Landed: private Rust quat helpers (quat_normalize_inplace,
+quat_from_yaw_pitch_roll, quat_shortest_axis_angle,
+quat_integrate_inplace, quat_yaw — all bit-identical to the
+Quaternion.ts originals). Plus the public batched kernel
+`quat_hover_orientation_step_batch` that runs the entire per-hover
+spring update inside Rust:
 
-  - quatMultiply, quatNormalize, quatIntegrate (q ⊕ ω·dt),
-    quatShortestAxisAngle, quatFromYawPitchRoll, quatYaw.
-  - quatDampedSpringStep — the one-law `α = k · (axis·angle) − c·ω`
-    that drives hover orientation. Takes a target quat + current
-    quat + ω-vec, mutates both.
-  - Both client (ClientUnitPrediction's orientation drift) and
-    server (UnitForceSystem hover branch) use this once landed.
+  build target quat from yaw/pitch/roll →
+    α = k·(axis·angle) − c·ω        (spring law)
+    ω += α · dt                     (integrate)
+    q ← q ⊕ (ω · dt) → renormalize   (orientation step)
+    yaw_extracted = quatYaw(q_new)   (for transform.rotation sync)
+
+UnitForceSystem.applyForces refactored to defer the per-hover
+quat work into a module-scope buffer (`_hoverDeferBuf`,
+QUAT_HOVER_BATCH_STRIDE = 14 f64s/entity). Per-entity loop pushes
+(orientation, omega, target yaw/pitch/roll) and the entity
+reference; one batched WASM call after the loop runs the spring
+for every hover entity at once. JS scatters back to
+entity.unit.orientation / .angularVelocity3 / .angularAcceleration3
+and entity.transform.rotation in a post-call pass.
+
+The lift force computation (F_up = K/altitude − c·vz) and target-
+yaw/pitch/roll derivation (from body-frame velocity) STAY JS-side:
+the lift formula needs the terrain (Phase 8 will move that into
+WASM), and the target-vel decomposition is trivial scalar math
+that doesn't benefit from batching.
+
+ClientUnitPrediction's orientation drift logic (mentioned in the
+original Phase 4 plan as a co-consumer) was not touched in this
+commit — it doesn't currently use quatDampedSpringStep, just
+quatYaw extraction and direct quat mutation. Future client-side
+prediction port can add a similar batched kernel call if needed.
+
+Quaternion.ts stays — quatYaw is still consumed JS-side once per
+hover entity per tick (cheap, ~30 ns). The dead exports
+(quatDampedSpringStep, quatFromYawPitchRoll, quatIntegrate,
+quatShortestAxisAngle) can be deleted in a follow-on cleanup.
 
 ------------------------------------------------------------------------------
  Phase 5 — Projectile motion → Rust/WASM.

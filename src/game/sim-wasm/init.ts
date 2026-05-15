@@ -26,6 +26,7 @@ import __wbg_init, {
   engine_statics_add,
   engine_statics_remove,
   pool_resolve_sphere_cuboid_full,
+  quat_hover_orientation_step_batch,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -165,7 +166,26 @@ export interface SimWasm {
     cellSize: number,
     wakeTransitionsOut: Uint32Array,
   ) => number;
+  /** Phase 4 + 3e — batched hover orientation kernel. UnitForceSystem
+   *  builds a per-tick scratch with one entry per hover entity:
+   *  orientation (in/out), omega (in/out), target yaw/pitch/roll
+   *  (in), then the kernel writes alpha (out) and the extracted yaw
+   *  of the new orientation (out). Per entity stride =
+   *  QUAT_HOVER_BATCH_STRIDE f64s. JS scatters back to
+   *  entity.unit.orientation / .angularVelocity3 / .angularAcceleration3
+   *  and entity.transform.rotation in a post-call pass. */
+  readonly quatHoverOrientationStepBatch: (
+    buf: Float64Array,
+    count: number,
+    k: number,
+    c: number,
+    dtSec: number,
+  ) => void;
 }
+
+/** Layout stride for `quatHoverOrientationStepBatch`. Mirrors
+ *  QUAT_HOVER_BATCH_STRIDE in rts-sim-wasm/src/lib.rs. */
+export const QUAT_HOVER_BATCH_STRIDE = 14;
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
@@ -329,6 +349,7 @@ export function initSimWasm(): Promise<SimWasm> {
         engineStaticsAdd: engine_statics_add,
         engineStaticsRemove: engine_statics_remove,
         poolResolveSphereCuboidFull: pool_resolve_sphere_cuboid_full,
+        quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
       };
       resolvedHandle = handle;
       return handle;

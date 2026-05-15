@@ -1150,3 +1150,192 @@ pub fn pool_resolve_sphere_cuboid_full(
 
     wake_count
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 4 — Quaternion math primitives
+//
+//  Mirrors src/game/math/Quaternion.ts. Convention: unit quats
+//  stored as (x, y, z, w) where w is the scalar part. Identity is
+//  (0, 0, 0, 1). Yaw is rotation about world +Z, ZYX intrinsic
+//  Euler order — same as the TS module.
+//
+//  These are private fn helpers (no #[wasm_bindgen]) consumed by
+//  the batched kernel below. Bit-identical to the TS path on
+//  finite inputs.
+// ─────────────────────────────────────────────────────────────────
+
+#[inline]
+fn quat_normalize_inplace(q: &mut [f64; 4]) {
+    let m2 = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if m2 <= 1e-20 {
+        q[0] = 0.0;
+        q[1] = 0.0;
+        q[2] = 0.0;
+        q[3] = 1.0;
+        return;
+    }
+    let inv = 1.0 / m2.sqrt();
+    q[0] *= inv;
+    q[1] *= inv;
+    q[2] *= inv;
+    q[3] *= inv;
+}
+
+#[inline]
+fn quat_from_yaw_pitch_roll(yaw: f64, pitch: f64, roll: f64) -> [f64; 4] {
+    let cy = (yaw * 0.5).cos();
+    let sy = (yaw * 0.5).sin();
+    let cp = (pitch * 0.5).cos();
+    let sp = (pitch * 0.5).sin();
+    let cr = (roll * 0.5).cos();
+    let sr = (roll * 0.5).sin();
+    [
+        cy * cp * sr - sy * sp * cr,
+        sy * cp * sr + cy * sp * cr,
+        sy * cp * cr - cy * sp * sr,
+        cy * cp * cr + sy * sp * sr,
+    ]
+}
+
+/// Returns (axis · angle) of the shortest-path rotation from
+/// `current` to `target`. Mirrors quatShortestAxisAngle in TS:
+/// computes Δq = target · conjugate(current), flips to shortest
+/// hemisphere if w<0, then expands axis · angle via the small-
+/// angle-safe scale factor `angle / sin(angle/2)`.
+#[inline]
+fn quat_shortest_axis_angle(current: [f64; 4], target: [f64; 4]) -> [f64; 3] {
+    let cx = -current[0];
+    let cy = -current[1];
+    let cz = -current[2];
+    let cw = current[3];
+    let tx = target[0];
+    let ty = target[1];
+    let tz = target[2];
+    let tw = target[3];
+    let mut dx = tw * cx + tx * cw + ty * cz - tz * cy;
+    let mut dy = tw * cy - tx * cz + ty * cw + tz * cx;
+    let mut dz = tw * cz + tx * cy - ty * cx + tz * cw;
+    let mut dw = tw * cw - tx * cx - ty * cy - tz * cz;
+    if dw < 0.0 {
+        dx = -dx;
+        dy = -dy;
+        dz = -dz;
+        dw = -dw;
+    }
+    let sin2 = dx * dx + dy * dy + dz * dz;
+    let sin_half = sin2.sqrt();
+    let scale = if sin_half < 1e-7 {
+        // Small-angle: angle ≈ 2·sin_half, so angle/sin_half ≈ 2.
+        2.0
+    } else {
+        let angle = 2.0 * sin_half.atan2(dw);
+        angle / sin_half
+    };
+    [dx * scale, dy * scale, dz * scale]
+}
+
+/// Integrate `q ← q ⊕ (ω · dt)` via the small-step quaternion
+/// derivative `dq = 0.5 · ω·q · dt`, then renormalize. Mirrors
+/// quatIntegrate. ω is in the world frame.
+#[inline]
+fn quat_integrate_inplace(q: &mut [f64; 4], omega: [f64; 3], dt_sec: f64) {
+    let half_dt = 0.5 * dt_sec;
+    let ox = omega[0] * half_dt;
+    let oy = omega[1] * half_dt;
+    let oz = omega[2] * half_dt;
+    let qx = q[0];
+    let qy = q[1];
+    let qz = q[2];
+    let qw = q[3];
+    q[0] = qx + (ox * qw + oy * qz - oz * qy);
+    q[1] = qy + (-ox * qz + oy * qw + oz * qx);
+    q[2] = qz + (ox * qy - oy * qx + oz * qw);
+    q[3] = qw + (-ox * qx - oy * qy - oz * qz);
+    quat_normalize_inplace(q);
+}
+
+/// Yaw extraction from a unit quaternion (rotation about world +Z).
+/// Mirrors quatYaw — kept here so the batched kernel can sync the
+/// post-integrate yaw into the output buffer for JS consumers
+/// (turret mount, network code, transform.rotation) that still
+/// only want the scalar.
+#[inline]
+fn quat_yaw(q: [f64; 4]) -> f64 {
+    let siny_cosp = 2.0 * (q[3] * q[2] + q[0] * q[1]);
+    let cosy_cosp = 1.0 - 2.0 * (q[1] * q[1] + q[2] * q[2]);
+    siny_cosp.atan2(cosy_cosp)
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 3e — Batched hover orientation kernel
+//
+//  Replaces the per-entity quatFromYawPitchRoll + quatDampedSpringStep
+//  + quatYaw chain in UnitForceSystem.ts (hover branch). One WASM
+//  call processes every hover entity this tick.
+//
+//  Buffer layout per entity (QUAT_HOVER_BATCH_STRIDE = 14 f64s):
+//    0..4   orientation (x, y, z, w)             in/out
+//    4..7   omega (x, y, z)                      in/out
+//    7..10  target_yaw, target_pitch, target_roll  in
+//    10..13 alpha (x, y, z)                      out
+//    13     yaw extracted from new orientation   out
+//
+//  Caller responsibility: build target_yaw/pitch/roll JS-side from
+//  thrust direction + body-frame velocity (as the existing TS code
+//  does). Read alpha into entity.unit.angularAcceleration3, write
+//  yaw into entity.transform.rotation, push snapshot dirty.
+// ─────────────────────────────────────────────────────────────────
+
+pub const QUAT_HOVER_BATCH_STRIDE: usize = 14;
+
+#[wasm_bindgen]
+pub fn quat_hover_orientation_step_batch(
+    buf: &mut [f64],
+    count: usize,
+    k: f64,
+    c: f64,
+    dt_sec: f64,
+) {
+    debug_assert!(buf.len() >= count * QUAT_HOVER_BATCH_STRIDE);
+    for i in 0..count {
+        let base = i * QUAT_HOVER_BATCH_STRIDE;
+        let mut orientation = [
+            buf[base],
+            buf[base + 1],
+            buf[base + 2],
+            buf[base + 3],
+        ];
+        let mut omega = [
+            buf[base + 4],
+            buf[base + 5],
+            buf[base + 6],
+        ];
+        let target_yaw = buf[base + 7];
+        let target_pitch = buf[base + 8];
+        let target_roll = buf[base + 9];
+
+        let target = quat_from_yaw_pitch_roll(target_yaw, target_pitch, target_roll);
+
+        // Spring law: α = k · (axis·angle) − c · ω.
+        let axis_angle = quat_shortest_axis_angle(orientation, target);
+        let alpha_x = axis_angle[0] * k - omega[0] * c;
+        let alpha_y = axis_angle[1] * k - omega[1] * c;
+        let alpha_z = axis_angle[2] * k - omega[2] * c;
+        omega[0] += alpha_x * dt_sec;
+        omega[1] += alpha_y * dt_sec;
+        omega[2] += alpha_z * dt_sec;
+        quat_integrate_inplace(&mut orientation, omega, dt_sec);
+
+        buf[base] = orientation[0];
+        buf[base + 1] = orientation[1];
+        buf[base + 2] = orientation[2];
+        buf[base + 3] = orientation[3];
+        buf[base + 4] = omega[0];
+        buf[base + 5] = omega[1];
+        buf[base + 6] = omega[2];
+        buf[base + 10] = alpha_x;
+        buf[base + 11] = alpha_y;
+        buf[base + 12] = alpha_z;
+        buf[base + 13] = quat_yaw(orientation);
+    }
+}

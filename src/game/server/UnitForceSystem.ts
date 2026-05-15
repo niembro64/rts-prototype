@@ -30,16 +30,11 @@ import {
 } from '../../types/network';
 import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
-import type { CombatComponent, EntityId, Unit } from '../sim/types';
+import type { CombatComponent, Entity, EntityId, Unit } from '../sim/types';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
-import {
-  quatDampedSpringStep,
-  quatFromYawPitchRoll,
-  quatYaw,
-  type AngularVec3,
-  type Quat,
-} from '../math/Quaternion';
+import { quatYaw } from '../math/Quaternion';
+import { getSimWasm, QUAT_HOVER_BATCH_STRIDE } from '../sim-wasm/init';
 
 const WATER_PROBE_DX = [
   1, 0.7071067811865476, 0, -0.7071067811865475,
@@ -52,10 +47,14 @@ const WATER_PROBE_DY = [
 const WATER_ESCAPE_PROBE_MULTS = [1.5, 3, 6];
 const MATTER_FORCE_SCALE = 150000;
 
-// Per-step scratch for the hover orientation spring. Allocated once
-// at module load and reused so the inner loop allocates nothing.
-const _hoverTargetQuat: Quat = { x: 0, y: 0, z: 0, w: 1 };
-const _hoverAlpha: AngularVec3 = { x: 0, y: 0, z: 0 };
+// Phase 4 + 3e — deferred batch buffer for the hover orientation
+// quaternion spring. UnitForceSystem.applyForces gathers per-hover
+// (orientation, omega, target yaw/pitch/roll) into this buffer
+// during the per-entity loop, then runs ONE WASM call after the
+// loop to advance every hover entity's orientation in place.
+let _hoverDeferBuf: Float64Array = new Float64Array(0);
+let _hoverDeferEntities: Entity[] = [];
+let _hoverDeferCount = 0;
 
 // Hover bank/pitch behaviour constants. Both are dimensionless
 // "radians of bank/pitch per world-unit/second of body-frame
@@ -263,6 +262,13 @@ export class UnitForceSystem {
         // bank). The damped spring on the unit-quaternion advances
         // all three axes through ONE law — α = k · (axis·angle) −
         // c · ω — with no preferred axis or gimbal lock.
+        //
+        // Defer the actual spring step into a batched WASM call
+        // that runs after the per-entity loop (Phase 4+3e). JS-side
+        // here we just compute the target yaw/pitch/roll (cheap
+        // scalars, depend on body-frame velocity which is per-entity)
+        // and push the buffer entry; alpha + new orientation come
+        // back from the kernel below.
         const orientation = entity.unit.orientation;
         const omega = entity.unit.angularVelocity3;
         if (orientation && omega) {
@@ -280,30 +286,27 @@ export class UnitForceSystem {
           else if (targetPitch < -HOVER_PITCH_MAX) targetPitch = -HOVER_PITCH_MAX;
           if (targetRoll > HOVER_BANK_MAX) targetRoll = HOVER_BANK_MAX;
           else if (targetRoll < -HOVER_BANK_MAX) targetRoll = -HOVER_BANK_MAX;
-          quatFromYawPitchRoll(targetYaw, targetPitch, targetRoll, _hoverTargetQuat);
-          quatDampedSpringStep(
-            orientation,
-            omega,
-            _hoverTargetQuat,
-            HOVER_ORIENTATION_K,
-            HOVER_ORIENTATION_C,
-            dtSec,
-            _hoverAlpha,
-          );
-          const angularAccel = entity.unit.angularAcceleration3;
-          if (angularAccel) {
-            angularAccel.x = _hoverAlpha.x;
-            angularAccel.y = _hoverAlpha.y;
-            angularAccel.z = _hoverAlpha.z;
+          const requiredLen = (_hoverDeferCount + 1) * QUAT_HOVER_BATCH_STRIDE;
+          if (_hoverDeferBuf.length < requiredLen) {
+            const grown = new Float64Array(
+              Math.max(requiredLen, _hoverDeferBuf.length * 2, 256),
+            );
+            grown.set(_hoverDeferBuf);
+            _hoverDeferBuf = grown;
           }
-          // Sync transform.rotation to the quaternion's yaw extraction
-          // so every existing consumer of the 2D yaw scalar (turret
-          // mounts, camera, AI, network code) stays correct.
-          const newYaw = quatYaw(orientation);
-          if (newYaw !== entity.transform.rotation) {
-            entity.transform.rotation = newYaw;
-            this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
-          }
+          const base = _hoverDeferCount * QUAT_HOVER_BATCH_STRIDE;
+          _hoverDeferBuf[base + 0] = orientation.x;
+          _hoverDeferBuf[base + 1] = orientation.y;
+          _hoverDeferBuf[base + 2] = orientation.z;
+          _hoverDeferBuf[base + 3] = orientation.w;
+          _hoverDeferBuf[base + 4] = omega.x;
+          _hoverDeferBuf[base + 5] = omega.y;
+          _hoverDeferBuf[base + 6] = omega.z;
+          _hoverDeferBuf[base + 7] = targetYaw;
+          _hoverDeferBuf[base + 8] = targetPitch;
+          _hoverDeferBuf[base + 9] = targetRoll;
+          _hoverDeferEntities[_hoverDeferCount] = entity;
+          _hoverDeferCount++;
         }
 
         // Fall through to the shared totalForce / applyForce block
@@ -485,6 +488,57 @@ export class UnitForceSystem {
       // and the ground-contact resolver clamps to the surface, so the
       // unit settles onto the rendered tile triangle each tick.
       this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6, totalForceZ * 1e6);
+    }
+
+    // Phase 4 + 3e — flush the hover orientation batch. One WASM
+    // call processes every hover entity that pushed an entry above;
+    // the kernel runs quat_from_yaw_pitch_roll → spring step →
+    // integrate → renormalize → quat_yaw extraction internally and
+    // writes back orientation/omega/alpha/yaw. Scatter the results
+    // back to entity.unit.* and entity.transform.rotation.
+    if (_hoverDeferCount > 0) {
+      const sim = getSimWasm()!;
+      const view = _hoverDeferBuf.subarray(0, _hoverDeferCount * QUAT_HOVER_BATCH_STRIDE);
+      sim.quatHoverOrientationStepBatch(
+        view,
+        _hoverDeferCount,
+        HOVER_ORIENTATION_K,
+        HOVER_ORIENTATION_C,
+        dtSec,
+      );
+      for (let i = 0; i < _hoverDeferCount; i++) {
+        const entity = _hoverDeferEntities[i];
+        const orientation = entity.unit?.orientation;
+        const omega = entity.unit?.angularVelocity3;
+        if (!orientation || !omega) {
+          _hoverDeferEntities[i] = undefined as unknown as Entity;
+          continue;
+        }
+        const base = i * QUAT_HOVER_BATCH_STRIDE;
+        orientation.x = _hoverDeferBuf[base + 0];
+        orientation.y = _hoverDeferBuf[base + 1];
+        orientation.z = _hoverDeferBuf[base + 2];
+        orientation.w = _hoverDeferBuf[base + 3];
+        omega.x = _hoverDeferBuf[base + 4];
+        omega.y = _hoverDeferBuf[base + 5];
+        omega.z = _hoverDeferBuf[base + 6];
+        const angularAccel = entity.unit?.angularAcceleration3;
+        if (angularAccel) {
+          angularAccel.x = _hoverDeferBuf[base + 10];
+          angularAccel.y = _hoverDeferBuf[base + 11];
+          angularAccel.z = _hoverDeferBuf[base + 12];
+        }
+        // Sync transform.rotation to the kernel's yaw extraction so
+        // every existing consumer of the 2D yaw scalar (turret mounts,
+        // camera, AI, network code) stays correct.
+        const newYaw = _hoverDeferBuf[base + 13];
+        if (newYaw !== entity.transform.rotation) {
+          entity.transform.rotation = newYaw;
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
+        }
+        _hoverDeferEntities[i] = undefined as unknown as Entity;
+      }
+      _hoverDeferCount = 0;
     }
   }
 
