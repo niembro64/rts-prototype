@@ -9,6 +9,9 @@ import {
   snapshot_encode_entity_basic,
   snapshot_encode_entity_unit,
   snapshot_encode_entity_building,
+  snapshot_encode_envelope_begin,
+  snapshot_encode_envelope_continue,
+  messagepack_writer_clear,
   snapshot_encode_turret_scratch_ptr,
   snapshot_encode_turret_scratch_ensure,
   snapshot_encode_action_scratch_ptr,
@@ -141,6 +144,7 @@ function runEntityBasicCases(memory: WebAssembly.Memory): { passed: number; fail
     const typeTag = f.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
+    messagepack_writer_clear();
     snapshot_encode_entity_basic(
       f.id, typeTag,
       f.pos.x, f.pos.y, f.pos.z,
@@ -843,6 +847,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const buildPaidEnergy = build?.paid.energy ?? 0;
     const buildPaidMana = build?.paid.mana ?? 0;
     const buildPaidMetal = build?.paid.metal ?? 0;
+    messagepack_writer_clear();
     snapshot_encode_entity_unit(
       f.id, typeTag,
       f.pos.x, f.pos.y, f.pos.z,
@@ -1189,6 +1194,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       packFactoryQueueIntoScratch(memory, factory.queue);
       packWaypointsIntoScratch(memory, factory.waypoints, stringSlots);
     }
+    messagepack_writer_clear();
     snapshot_encode_entity_building(
       f.id,
       f.pos.x, f.pos.y, f.pos.z,
@@ -1240,6 +1246,202 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
   return { passed, failed };
 }
 
+type EnvelopeFixture = {
+  tick: number;
+  entities: (UnitFixture | BuildingFixture)[];
+  economy: Record<string, unknown>;  // empty for D.3j-15
+  isDelta: boolean;
+};
+
+function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
+  const fixtures: EnvelopeFixture[] = [
+    // Empty envelope — no entities, just shell
+    { tick: 0, entities: [], economy: {}, isDelta: false },
+    // Single tick
+    { tick: 1, entities: [], economy: {}, isDelta: true },
+    // Large tick value (forces u32-range encoding)
+    { tick: 1_000_000, entities: [], economy: {}, isDelta: false },
+    // One unit entity
+    {
+      tick: 42, entities: [
+        {
+          id: 100, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+          unit: { hp: { curr: 100, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
+        },
+      ], economy: {}, isDelta: true,
+    },
+    // One building entity
+    {
+      tick: 99, entities: [
+        {
+          id: 200, type: 'building', pos: { x: 1000, y: 1000, z: 0 }, rotation: 0, playerId: 1,
+          building: {
+            hp: { curr: 500, max: 500 },
+            build: { complete: true, paid: { energy: 100, mana: 0, metal: 50 } },
+          },
+        },
+      ], economy: {}, isDelta: false,
+    },
+    // Mixed: one unit + one building
+    {
+      tick: 7, entities: [
+        {
+          id: 1, type: 'unit', pos: { x: 50, y: 50, z: 10 }, rotation: 314, playerId: 1, changedFields: 5,
+          unit: {
+            hp: { curr: 80, max: 100 },
+            velocity: { x: 10, y: -5, z: 0 },
+            surfaceNormal: { nx: 0, ny: 0, nz: 1000 },
+          },
+        },
+        {
+          id: 2, type: 'building', pos: { x: 500, y: 500, z: 0 }, rotation: 0, playerId: 1,
+          building: {
+            type: 'pylon',
+            dim: { x: 4, y: 4 },
+            hp: { curr: 300, max: 300 },
+            build: { complete: true, paid: { energy: 50, mana: 0, metal: 30 } },
+          },
+        },
+      ], economy: {}, isDelta: true,
+    },
+  ];
+
+  let passed = 0;
+  let failed = 0;
+  for (const f of fixtures) {
+    const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
+
+    snapshot_encode_envelope_begin(f.tick, f.entities.length);
+
+    for (const e of f.entities) {
+      if (e.type === 'unit') {
+        const u = e as UnitFixture;
+        const ma = u.unit.movementAccel;
+        const sn = u.unit.surfaceNormal;
+        const sp = u.unit.suspension;
+        const jp = u.unit.jump;
+        const or = u.unit.orientation;
+        const av = u.unit.angularVelocity3;
+        const aa = u.unit.angularAcceleration3;
+        const ufActions = u.unit.actions;
+        const turrets = u.unit.turrets;
+        const build = u.unit.build;
+        const stringList: string[] = [];
+        if (ufActions) {
+          for (const a of ufActions) {
+            if (a.buildingType !== undefined) stringList.push(a.buildingType);
+          }
+        }
+        const stringSlots = stringList.length > 0
+          ? packStringsIntoScratch(memory, stringList)
+          : new Map<string, number>();
+        if (ufActions) packActionsIntoScratch(memory, ufActions, stringSlots);
+        if (turrets) packTurretsIntoScratch(memory, turrets);
+        const hasChanged = u.changedFields !== undefined ? 1 : 0;
+        snapshot_encode_entity_unit(
+          u.id, SNAPSHOT_ENTITY_TYPE_UNIT,
+          u.pos.x, u.pos.y, u.pos.z,
+          u.rotation, u.playerId,
+          hasChanged, u.changedFields ?? 0,
+          u.unit.hp.curr, u.unit.hp.max,
+          u.unit.velocity.x, u.unit.velocity.y, u.unit.velocity.z,
+          ma !== undefined ? 1 : 0, ma?.x ?? 0, ma?.y ?? 0, ma?.z ?? 0,
+          sn !== undefined ? 1 : 0, sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
+          sp !== undefined ? 1 : 0,
+          sp?.offset.x ?? 0, sp?.offset.y ?? 0, sp?.offset.z ?? 0,
+          sp?.velocity.x ?? 0, sp?.velocity.y ?? 0, sp?.velocity.z ?? 0,
+          sp?.legContact === true ? 1 : 0,
+          jp !== undefined ? 1 : 0,
+          jp?.enabled === true ? 1 : 0,
+          jp?.active === true ? 1 : 0,
+          jp?.launchSeq !== undefined ? 1 : 0, jp?.launchSeq ?? 0,
+          or !== undefined ? 1 : 0, or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
+          av !== undefined ? 1 : 0, av?.x ?? 0, av?.y ?? 0, av?.z ?? 0,
+          aa !== undefined ? 1 : 0, aa?.x ?? 0, aa?.y ?? 0, aa?.z ?? 0,
+          u.unit.fireEnabled === false ? 1 : 0,
+          u.unit.isCommander === true ? 1 : 0,
+          u.unit.buildTargetId !== undefined ? 1 : 0,
+          u.unit.buildTargetId === null ? 1 : 0,
+          typeof u.unit.buildTargetId === 'number' ? u.unit.buildTargetId : 0,
+          ufActions !== undefined ? 1 : 0, ufActions?.length ?? 0,
+          turrets !== undefined ? 1 : 0, turrets?.length ?? 0,
+          build !== undefined ? 1 : 0,
+          build?.complete === true ? 1 : 0,
+          build?.paid.energy ?? 0,
+          build?.paid.mana ?? 0,
+          build?.paid.metal ?? 0,
+        );
+      } else {
+        const b = e as BuildingFixture;
+        const stringList: string[] = [];
+        if (b.building.type !== undefined) stringList.push(b.building.type);
+        if (b.building.factory) {
+          for (const wp of b.building.factory.waypoints) stringList.push(wp.type);
+        }
+        const stringSlots = stringList.length > 0
+          ? packStringsIntoScratch(memory, stringList)
+          : new Map<string, number>();
+        const bTurrets = b.building.turrets;
+        if (bTurrets) packTurretsIntoScratch(memory, bTurrets);
+        const factory = b.building.factory;
+        if (factory) {
+          packFactoryQueueIntoScratch(memory, factory.queue);
+          packWaypointsIntoScratch(memory, factory.waypoints, stringSlots);
+        }
+        const hasChanged = b.changedFields !== undefined ? 1 : 0;
+        snapshot_encode_entity_building(
+          b.id, b.pos.x, b.pos.y, b.pos.z, b.rotation, b.playerId,
+          hasChanged, b.changedFields ?? 0,
+          b.building.type !== undefined ? 1 : 0,
+          b.building.type !== undefined ? (stringSlots.get(b.building.type) ?? 0) : 0,
+          b.building.dim !== undefined ? 1 : 0,
+          b.building.dim?.x ?? 0, b.building.dim?.y ?? 0,
+          b.building.hp.curr, b.building.hp.max,
+          b.building.build.complete ? 1 : 0,
+          b.building.build.paid.energy,
+          b.building.build.paid.mana,
+          b.building.build.paid.metal,
+          b.building.metalExtractionRate !== undefined ? 1 : 0,
+          b.building.metalExtractionRate ?? 0,
+          b.building.solar !== undefined ? 1 : 0,
+          b.building.solar?.open === true ? 1 : 0,
+          bTurrets !== undefined ? 1 : 0, bTurrets?.length ?? 0,
+          factory !== undefined ? 1 : 0,
+          factory?.queue.length ?? 0,
+          factory?.progress ?? 0,
+          factory?.producing === true ? 1 : 0,
+          factory?.energyRate ?? 0,
+          factory?.manaRate ?? 0,
+          factory?.metalRate ?? 0,
+          factory?.waypoints.length ?? 0,
+        );
+      }
+    }
+
+    snapshot_encode_envelope_continue(f.isDelta ? 1 : 0);
+
+    const ptr = messagepack_writer_ptr();
+    const len = messagepack_writer_len();
+    const rustBytes = new Uint8Array(memory.buffer, ptr, len).slice();
+    if (bytesEqual(jsBytes, rustBytes)) {
+      passed++;
+    } else {
+      failed++;
+      console.error(
+        '[snapshot encoder] envelope byte mismatch',
+        {
+          fixture: f,
+          jsLen: jsBytes.length,
+          rustLen: rustBytes.length,
+          jsHex: hex(jsBytes),
+          rustHex: hex(rustBytes),
+        },
+      );
+    }
+  }
+  return { passed, failed };
+}
+
 export async function runSnapshotEncoderByteEqualityTest(
   memory: WebAssembly.Memory,
 ): Promise<void> {
@@ -1247,8 +1449,9 @@ export async function runSnapshotEncoderByteEqualityTest(
   const basic = runEntityBasicCases(memory);
   const unit = runEntityUnitCases(memory);
   const building = runEntityBuildingCases(memory);
-  const passed = basic.passed + unit.passed + building.passed;
-  const failed = basic.failed + unit.failed + building.failed;
+  const envelope = runEnvelopeCases(memory);
+  const passed = basic.passed + unit.passed + building.passed + envelope.passed;
+  const failed = basic.failed + unit.failed + building.failed + envelope.failed;
   const total = passed + failed;
   if (failed > 0) {
     throw new Error(

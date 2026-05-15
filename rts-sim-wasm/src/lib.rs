@@ -6284,7 +6284,7 @@ pub fn snapshot_encode_entity_basic(
     changed_fields: u32,
 ) -> u32 {
     let w = messagepack_writer();
-    w.buf.clear();
+    let start = w.buf.len();
 
     let mut key_count: usize = 5;
     if has_changed_fields != 0 {
@@ -6296,7 +6296,7 @@ pub fn snapshot_encode_entity_basic(
         qpos_x, qpos_y, qpos_z, qrot,
         player_id, has_changed_fields, changed_fields,
     );
-    w.buf.len() as u32
+    (w.buf.len() - start) as u32
 }
 
 /// Encode an entity with a unit sub-object. Mandatory keys: `hp` +
@@ -6358,7 +6358,7 @@ pub fn snapshot_encode_entity_unit(
     build_paid_metal: f64,
 ) -> u32 {
     let w = messagepack_writer();
-    w.buf.clear();
+    let start = w.buf.len();
 
     let mut key_count: usize = 5 + 1; // envelope + unit
     if has_changed_fields != 0 {
@@ -6681,7 +6681,7 @@ pub fn snapshot_encode_entity_unit(
         w.write_number(build_paid_metal);
     }
 
-    w.buf.len() as u32
+    (w.buf.len() - start) as u32
 }
 
 /// Encode a building entity DTO: `{...envelope, building: {
@@ -6725,7 +6725,7 @@ pub fn snapshot_encode_entity_building(
     factory_waypoint_count: u32,
 ) -> u32 {
     let w = messagepack_writer();
-    w.buf.clear();
+    let start = w.buf.len();
 
     let mut key_count: usize = 5 + 1; // envelope + building
     if has_changed_fields != 0 {
@@ -6909,5 +6909,57 @@ pub fn snapshot_encode_entity_building(
         }
     }
 
+    (w.buf.len() - start) as u32
+}
+
+/// Phase 10 D.3j-15: snapshot envelope encoder.
+///
+/// Mirrors stateSerializer.ts's `_snapshotBuf` pool entry layout:
+/// the entries are inserted in declaration order at pool creation
+/// (tick, entities, minimapEntities, economy, sprayTargets,
+/// audioEvents, projectiles, gameState, grid, isDelta,
+/// removedEntityIds, visibilityFiltered). msgpack-with-
+/// ignoreUndefined emits ONLY the keys whose values are not
+/// undefined.
+///
+/// This commit covers the always-present minimum subset:
+///   - tick (uint)
+///   - entities[] (array of unit/building DTOs appended between
+///     `_begin` and `_continue` via the per-entity encoders)
+///   - economy (empty map for now)
+///   - isDelta (bool)
+///
+/// Other envelope fields (audioEvents, projectiles, gameState,
+/// economy contents, etc.) come in follow-up commits.
+///
+/// API:
+///   1. `snapshot_encode_envelope_begin(tick, entity_count)`
+///      → clears the writer, writes the envelope map header + tick
+///      key + entities key + array16 header.
+///   2. For each entity: JS packs scratches and calls one of the
+///      existing entity encoders. They APPEND now (no auto-clear).
+///   3. `snapshot_encode_envelope_continue(is_delta)`
+///      → writes economy = {} + isDelta key. Returns total
+///      written bytes.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_begin(tick: u32, entity_count: u32) {
+    let w = messagepack_writer();
+    w.buf.clear();
+    // Envelope key count for this commit's coverage: tick + entities
+    // + economy + isDelta = 4.
+    w.write_map_header(4);
+    w.write_str("tick");
+    w.write_uint(tick as u64);
+    w.write_str("entities");
+    w.write_array_header(entity_count as usize);
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_continue(is_delta: u8) -> u32 {
+    let w = messagepack_writer();
+    w.write_str("economy");
+    w.write_map_header(0);
+    w.write_str("isDelta");
+    w.write_bool(is_delta != 0);
     w.buf.len() as u32
 }
