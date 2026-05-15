@@ -7,7 +7,7 @@
 import { encode as msgpackEncode } from '@msgpack/msgpack';
 import {
   snapshot_encode_entity_basic,
-  snapshot_encode_entity_unit_hp_vel,
+  snapshot_encode_entity_unit,
   messagepack_writer_ptr,
   messagepack_writer_len,
 } from './pkg/rts_sim_wasm';
@@ -90,31 +90,32 @@ function runEntityBasicCases(memory: WebAssembly.Memory): { passed: number; fail
   return { passed, failed };
 }
 
-type UnitHpVelFixture = BasicEntityFixture & {
+type UnitFixture = BasicEntityFixture & {
   unit: {
     hp: { curr: number; max: number };
     velocity: { x: number; y: number; z: number };
+    surfaceNormal?: { nx: number; ny: number; nz: number };
   };
 };
 
-function runEntityUnitHpVelCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
-  const fixtures: UnitHpVelFixture[] = [
-    // Integer HP values + zero velocity (most common idle case)
+function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
+  const fixtures: UnitFixture[] = [
+    // hp + velocity only (no surfaceNormal). Most common idle case.
     {
       id: 1, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       unit: { hp: { curr: 100, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
     },
-    // Damaged unit, signed quantized velocity
+    // Damaged unit, signed quantized velocity, no normal
     {
       id: 42, type: 'unit', pos: { x: 1000, y: -2000, z: 50 }, rotation: 314, playerId: 2,
       unit: { hp: { curr: 73, max: 250 }, velocity: { x: 15, y: -8, z: 0 } },
     },
-    // Fractional HP (mid-construction shell — exercises f64 encoding branch)
+    // Fractional HP — exercises f64 encoding branch
     {
       id: 99, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       unit: { hp: { curr: 12.5, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
     },
-    // Delta path with changedFields + larger velocity magnitudes
+    // Delta path with changedFields, no normal
     {
       id: 7, type: 'unit', pos: { x: 1, y: 2, z: 3 }, rotation: 100, playerId: 1, changedFields: 4,
       unit: { hp: { curr: 200, max: 200 }, velocity: { x: 500, y: -500, z: 100 } },
@@ -123,6 +124,33 @@ function runEntityUnitHpVelCases(memory: WebAssembly.Memory): { passed: number; 
     {
       id: 0xFFFFFF, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 0,
       unit: { hp: { curr: 1234567, max: 9999999 }, velocity: { x: 0, y: 0, z: 0 } },
+    },
+    // Flat-ground normal (z = qNormal(1.0) = 1000)
+    {
+      id: 1, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        surfaceNormal: { nx: 0, ny: 0, nz: 1000 },
+      },
+    },
+    // Tilted slope normal (non-axis-aligned)
+    {
+      id: 256, type: 'unit', pos: { x: 5000, y: 5000, z: 100 }, rotation: -1571, playerId: 3,
+      unit: {
+        hp: { curr: 88, max: 120 },
+        velocity: { x: 10, y: -5, z: 2 },
+        surfaceNormal: { nx: 174, ny: -342, nz: 924 },  // ~80° from vertical
+      },
+    },
+    // Inverted normal (e.g. a unit on a steep overhang) + delta path
+    {
+      id: 9999, type: 'unit', pos: { x: -100, y: -200, z: 500 }, rotation: 100, playerId: 2, changedFields: 0x108,
+      unit: {
+        hp: { curr: 50, max: 50 },
+        velocity: { x: 0, y: 0, z: -120 },
+        surfaceNormal: { nx: -707, ny: 0, nz: 707 },
+      },
     },
   ];
 
@@ -133,13 +161,17 @@ function runEntityUnitHpVelCases(memory: WebAssembly.Memory): { passed: number; 
     const typeTag = f.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
-    snapshot_encode_entity_unit_hp_vel(
+    const sn = f.unit.surfaceNormal;
+    const hasNormal = sn !== undefined ? 1 : 0;
+    snapshot_encode_entity_unit(
       f.id, typeTag,
       f.pos.x, f.pos.y, f.pos.z,
       f.rotation, f.playerId,
       hasChanged, changed,
       f.unit.hp.curr, f.unit.hp.max,
       f.unit.velocity.x, f.unit.velocity.y, f.unit.velocity.z,
+      hasNormal,
+      sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
@@ -149,7 +181,7 @@ function runEntityUnitHpVelCases(memory: WebAssembly.Memory): { passed: number; 
     } else {
       failed++;
       console.error(
-        '[snapshot encoder] unit hp+vel byte mismatch',
+        '[snapshot encoder] unit byte mismatch',
         {
           fixture: f,
           jsLen: jsBytes.length,
@@ -167,9 +199,9 @@ export async function runSnapshotEncoderByteEqualityTest(
   memory: WebAssembly.Memory,
 ): Promise<void> {
   const basic = runEntityBasicCases(memory);
-  const unitHpVel = runEntityUnitHpVelCases(memory);
-  const passed = basic.passed + unitHpVel.passed;
-  const failed = basic.failed + unitHpVel.failed;
+  const unit = runEntityUnitCases(memory);
+  const passed = basic.passed + unit.passed;
+  const failed = basic.failed + unit.failed;
   const total = passed + failed;
   if (failed > 0) {
     console.error(
