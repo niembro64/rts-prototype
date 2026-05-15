@@ -74,6 +74,12 @@ import __wbg_init, {
   spatial_scratch_ptr,
   spatial_scratch_len,
   spatial_slot_kind,
+  pathfinder_init,
+  pathfinder_rebuild_mask_and_cc,
+  pathfinder_find_path,
+  pathfinder_waypoints_ptr,
+  pathfinder_grid_size_w,
+  pathfinder_grid_size_h,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -360,6 +366,9 @@ export interface SimWasm {
    *  Uint32Array view over the scratch buffer. EntityId↔slot map
    *  is JS-side; Rust only sees u32 slot ids. */
   readonly spatial: SpatialApi;
+  /** Phase 9 — Pathfinder A* over the build/walk grid. Mask + CC +
+   *  A* + LOS smoothing all in one WASM call. */
+  readonly pathfinder: PathfinderApi;
   /** The WASM linear memory — JS wrapper code constructs typed-array
    *  views over this for zero-copy result reads. Re-bind views after
    *  any operation that might grow the memory (rare). */
@@ -517,6 +526,40 @@ export interface SpatialApi {
   /** Read a slot's kind tag. Useful when consuming combined query
    *  results that intermix units / buildings / projectiles. */
   slotKind: (slot: number) => number;
+}
+
+/** Phase 9 — Pathfinder. Mirror of Pathfinder.ts findPath. Full
+ *  pipeline (mask + CC + A* + LOS smoothing) runs inside a single
+ *  WASM call. Caller passes the building-occupied cells list per
+ *  rebuild; the Rust side caches mask + CC by version pair. */
+export interface PathfinderApi {
+  /** Allocate the per-cell SoA arrays for the given map dimensions.
+   *  Idempotent if map size is unchanged. Recomputes cell counts as
+   *  `ceil(mapW/20), ceil(mapH/20)`. */
+  init: (mapWidth: number, mapHeight: number) => void;
+  /** Rebuild blocked mask + CC labels from `buildingCells` (flat
+   *  Uint32Array of interleaved gx, gy pairs). The terrain mask is
+   *  cached by `terrainVersion`; full mask + CC by both versions —
+   *  no-op when nothing has changed. */
+  rebuildMaskAndCc: (
+    buildingCells: Uint32Array,
+    terrainVersion: number,
+    buildingVersion: number,
+  ) => void;
+  /** Run findPath. Writes smoothed waypoints into the WASM-side
+   *  scratch buffer as interleaved (x, y) f64 pairs; returns the
+   *  waypoint COUNT (not the f64 element count). */
+  findPath: (
+    startX: number, startY: number,
+    goalX: number, goalY: number,
+    minNormalZ: number,
+  ) => number;
+  /** Raw pointer to the waypoint scratch buffer. Build a fresh
+   *  Float64Array(memory.buffer, ptr, count * 2) view per call. */
+  waypointsPtr: () => number;
+  /** Current grid dimensions (refreshed by init). */
+  gridWidth: () => number;
+  gridHeight: () => number;
 }
 
 /** Bit flags for `integrateDampedRotation`. Mirrors the
@@ -787,6 +830,14 @@ export function initSimWasm(): Promise<SimWasm> {
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainHasLineOfSight: terrain_has_line_of_sight,
         memory,
+        pathfinder: {
+          init: pathfinder_init,
+          rebuildMaskAndCc: pathfinder_rebuild_mask_and_cc,
+          findPath: pathfinder_find_path,
+          waypointsPtr: pathfinder_waypoints_ptr,
+          gridWidth: pathfinder_grid_size_w,
+          gridHeight: pathfinder_grid_size_h,
+        },
         spatial: {
           init: spatial_init,
           clear: spatial_clear,

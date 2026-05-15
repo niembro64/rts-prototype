@@ -658,29 +658,36 @@ terrain-follow, hover lift, targeting LOS, render chassis tilt).
     side memory.
 
 ------------------------------------------------------------------------------
- Phase 9 — Pathfinder → Rust/WASM.
+ Phase 9 — Pathfinder → Rust/WASM.  DONE.
 ------------------------------------------------------------------------------
-Pathfinder.ts is 851 lines. A* over the build/walk grid. Less time-
-critical per-tick than the items above (paths are recomputed on
-order issue, not every tick) but ports cleanly: open / closed set,
-binary heap, g/f-cost arrays — all numeric.
+Landed: `PathfinderState` in rts-sim-wasm/src/lib.rs. Full findPath
+pipeline (terrain mask + building dilation + connected-component
+BFS + A* with octile heuristic + supercover Bresenham LOS smoothing)
+runs inside one WASM call.
 
-DEFERRED (multi-session work). Like Phase 7, a full port requires
-moving the build/walk grid representation into WASM linear memory
-AND wiring every buildGrid mutation site (place/destroy building,
-terrain refresh) to also mirror state across the boundary. The
-mask + CC pre-computation, the per-unit slope filter (uses
-getSurfaceNormal — already in WASM), and the expandPathActions
-post-pass all add surface area. Path queries are spiky but not
-per-tick; per-tick win is modest, end-to-end test risk is high.
-Revisit alongside Phase 7 when budgeting a multi-session port.
+JS-side Pathfinder.ts shrunk from 851 to ~230 lines. Mask + CC
+caches keyed on the (terrainVersion, buildingVersion) pair Rust-
+side, so calling pathfinder_rebuild_mask_and_cc with unchanged
+versions is effectively free.
 
-When we revisit, the right shape is:
-  - Grid representation in linear memory; cell flags for buildable
-    / walkable / blocked.
-  - A* kernel returning a path as a Rust-owned slice of (x, y).
-  - JS shim translates path slots back to world-space waypoint
-    Vec2[] for the action system.
+Terrain sampling reads directly from the Phase 8 in-WASM TerrainGrid
+(no boundary crossing during a rebuild). At a typical 95×95 grid
+the rebuild saved 9k × 2 ≈ 18k JS↔WASM dispatches per
+terrain-version bump.
+
+The external API (`expandPathActions`, `PathTerrainFilter`) is
+unchanged. expandPathActions stays JS-side because it threads
+goalZ + isPathExpansion into UnitAction; the inner findPath call
+returns smoothed waypoints from WASM via a Float64Array view.
+
+A* internals are bit-equivalent on the non-degenerate paths:
+8-connected with octile heuristic, binary min-heap of node indices,
+push-duplicates + closed-flag idiom, MAX_A_STAR_NODES = 50_000.
+The string-pull Bresenham smoothing matches the JS impl's
+diagonal-side-cell anti-corner-cutting check.
+
+f32 g/f costs match the JS Float32Array — small tie-breaks may
+differ across a wasm/JS swap but smoothed paths converge.
 
 ------------------------------------------------------------------------------
  Phase 10 — Snapshot serializer hot loops → Rust/WASM.  DEFERRED.
