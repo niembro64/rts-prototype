@@ -16,708 +16,152 @@ for our needs uniquely. And we need it to be in the fastest languages
 for that we can use in a browser. This should be for both frontend
 and backend."
 
-What that means concretely:
-
-  One Rust crate. Compiled to WebAssembly via wasm-pack. Loaded by
-  BOTH the authoritative server tick (LocalGameConnection-host or
-  RemoteGameConnection-host) AND the client prediction stepper
-  (ClientUnitPrediction / ClientProjectilePrediction / ClientPrediction
-  Stepper). Same integrator, same numerical behavior, same code
-  path — so client prediction is bit-identical to server authoritative
-  motion and we stop carrying a TS shadow of every physics step.
-
-  Bespoke, NOT a generic engine (no Rapier, no Ammo). The existing
-  PhysicsEngine3D already makes RTS-specific shortcuts a generic
-  engine couldn't:
-    - Implicit infinite ground plane at z=0; terrain is a heightmap
-      sample, not a mesh collider.
-    - Sphere bodies for units, axis-aligned cuboid bodies for
-      buildings, nothing else. No general convex hulls, no
-      rotating cuboids, no constraints.
-    - Locomotion-aware ground spring instead of generic contact
-      manifolds — the spring is measured from the unit's authored
-      "locomotion ground point", which depends on whether the unit
-      has wheels / treads / legs / hover gear.
-    - Sleep heuristics tuned for "few hundred mostly-static units"
-      rather than a generic broadphase with O(n log n) scaling.
-    - Knockback / impulse via a per-tick ForceAccumulator that
-      games can author into; not a generic constraint solver.
-    - Inverse-distance hover lift integrator and quaternion bank
-      physics in the same pipeline as ground-locomotion thrust.
-
-  These shortcuts are part of why our physics is fast on the TS side
-  even without WASM. The port preserves them. Performance comes from
-  "tightly numeric hot loops in linear memory + no JS GC pressure on
-  the per-tick path", not from a heavier feature set.
-
-  Rust is the language. Stack: wasm-pack + wasm-bindgen + (optionally)
-  wasm SIMD intrinsics for the vector inner loops. Standard browser
-  WASM loading on both sides — the host's browser tab runs the
-  server, every browser tab runs the client, all of them load the
-  same .wasm.
-
-------------------------------------------------------------------------------
- Phase 1 — Crate scaffolding + dual-load pipeline. DONE.
-------------------------------------------------------------------------------
-Landed: rts-sim-wasm/ Rust crate at repo root (Cargo.toml + lib.rs
-skeleton with a `version()` export and `#[wasm_bindgen(start)]`
-panic-hook installer). `npm run build:wasm` invokes wasm-pack and
-writes to src/game/sim-wasm/pkg/. Shared singleton loader at
-src/game/sim-wasm/init.ts (module-level Promise — concurrent
-awaiters share one fetch + compile). main.ts kicks the load in
-parallel with Vue mount so the first GameServer.create() / client
-ClientViewState construction await is a no-op. .gitignore covers
-target/ and pkg/; Cargo.lock IS checked in for reproducible
-builds. Final .wasm is ~18 KB (well under the 250 KB budget;
-scaffolding only, will grow as kernels land).
-
-Open follow-ups within Phase 1:
-  - **wasm-opt is disabled** via Cargo metadata. The wasm-pack-
-    bundled wasm-opt errors on "Bulk memory operations require
-    bulk memory [--enable-bulk-memory]" against modern rustc
-    output. Either bundle a newer wasm-opt locally and pass
-    `--enable-bulk-memory`, or wait for wasm-pack to ship one.
-    No size impact yet (release profile already opt-level=3 +
-    lto); revisit when the .wasm grows past ~100 KB.
-  - **SIMD target feature**: `+simd128` not yet enabled. Phase 2/3
-    inner loops are the place to opt in (target_feature attr +
-    runtime detection / non-SIMD fallback for older iOS Safari).
-  - **CI hookup**: README + CI script that runs `build:wasm` before
-    `build` (the npm `build` target already chains it; CI just
-    needs `cargo` + `wasm-pack` on PATH).
-
-------------------------------------------------------------------------------
- Phase 2 — Shared unit-motion integrator. DONE.
-------------------------------------------------------------------------------
-Landed: `step_unit_motion` in rts-sim-wasm/src/lib.rs. Mirrors the
-existing TS `advanceUnitMotionPhysicsMutable` exactly — same
-constants (UNIT_GROUND_CONTACT_EPSILON, UNIT_GROUND_SPRING_ACCEL
-_PER_WORLD_UNIT = 900, UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED = 5,
-GROUND_SPRING_DAMPING_ACCEL_PER_SPEED = 60), same operation order
-(spring contribution → v += a·dt → air-damp v → ground tangent damp
-→ rebound cap → pos += v·dt), same f64 precision throughout. Motion
-is a Float64Array of length 6 ([x, y, z, vx, vy, vz]) read/written
-in place by the WASM kernel; module-scope scratch buffer in
-unitMotionIntegration.ts avoids a per-call typed-array allocation.
-
-Departure from the original phase-plan: rather than have the WASM
-kernel call back into JS via js_sys::Function for ground sampling,
-the JS wrapper now pre-samples groundZ and (only when penetration
-is in contact) groundNormal, then passes both as plain f64 params
-into Rust. This preserves the existing "skip getGroundNormal for
-airborne bodies" optimization AND avoids per-body WASM→JS callback
-overhead. Phase 8 will move the heightmap into linear memory and
-the wrapper's sampler calls will collapse into pure Rust reads.
-
-Both consumers are now on the WASM path on the same commit:
-  - Server: PhysicsEngine3D.integrate → advanceUnitMotionPhysicsMutable
-  - Client: ClientUnitPrediction.advanceSharedUnitMotionPrediction →
-    advanceUnitMotionPhysicsMutable
-
-TS fallback is preserved inside the same function, gated on
-`getSimWasm() === undefined`. It runs during the boot window
-before initSimWasm() resolves (every tick after that uses WASM)
-and when a dev intentionally drops the WASM module out for
-debugging. The TS branch is kept structurally + numerically
-identical to the Rust kernel so swapping mid-session doesn't
-shift motion.
-
-Open follow-up for this kernel: Phase 3's Body3D SoA pool will
-move the [x,y,z,vx,vy,vz] state into linear memory directly,
-and `step_unit_motion` will operate on slot indices instead of a
-copy-in/copy-out Float64Array. The 48-byte marshal cost is
-negligible at 60 Hz but disappears entirely under the SoA pool.
-
-------------------------------------------------------------------------------
- Phase 3 — PhysicsEngine3D core → Rust/WASM. (THE BIG ONE.)
-------------------------------------------------------------------------------
-Port the full 926-line PhysicsEngine3D.ts to Rust. The shared
-integrator from Phase 2 is the inner kernel; this phase wraps it
-with a Body3D pool and the contact resolvers.
-
-Split into sub-phases to keep each ship-able and reviewable.
-
-  Phase 3a — Batched integrate() + sleep state machine. DONE.
-  Phase 3b — Sphere-vs-cuboid pair resolver port. DONE (after 3d-2 made
-             the per-pair WASM call basically free — both bodies' state
-             lives in the pool, only the pair list crosses the boundary).
-  Phase 3c — Sphere-vs-sphere resolver + broadphase port. DONE.
-  Phase 3d — Body3D SoA pool in WASM linear memory (state ownership). DONE.
-             3d-1 (foundation): pool exists, Body3D class proxies to
-             pool views, create/remove allocate/free slots.
-             3d-2: Phase 3a/3c kernels route through pool directly —
-             per-tick body-state marshal eliminated; only slot ids +
-             pre-sampled ground state + transition output buffers
-             cross the boundary now.
-  Phase 3e — Hover quat-spring + bank-into-turn ported as a batched
-             WASM kernel (paired with Phase 4). DONE. Hover lift force
-             computation (F_up = K/altitude − c·vz) stays JS-side for
-             now since it depends on terrain (Phase 8) and the math is
-             trivial.
-  Phase 3f — Static cuboid broadphase port. DONE.
-
-------------------------------------------------------------------------------
- Phase 3a — Batched PhysicsEngine3D.integrate(). DONE.
-------------------------------------------------------------------------------
-Landed: `step_unit_motions_batch` in rts-sim-wasm/src/lib.rs. Runs
-the whole per-tick integrate() loop over every awake dynamic sphere
-body in ONE WASM call instead of N per-body boundary calls. Pre-
-sampled ground state (groundZ + optional normal) is packed into a
-JS-side Float64Array at stride STEP_UNIT_MOTIONS_BATCH_STRIDE = 19
-f64s per body; Rust loops in-WASM, mutates motion + sleep counters
-in place, signals 0→1 sleep transitions via the buffer's
-sleeping_flag slot. JS reads results back and calls `sleepBody()`
-on transitioned bodies to handle the awake-count decrement and the
-eager accumulator clear (resolvers may otherwise see stale ax/ay/az
-on a body that re-wakes from collision the same step).
-
-Bit-identical to the existing TS path: same constants
-(SLEEP_SPEED_SQ, SLEEP_ACCEL_SQ, SLEEP_TICKS, SLEEP_GROUND_
-PENETRATION_EPS, GRAVITY all hardcoded in lib.rs matching
-PhysicsEngine3D.ts + config.ts), same operation order, same f64
-math. Internal helper `integrate_unit_motion_inline` is shared by
-both `step_unit_motion` (per-body — used by Phase 2's TS fallback
-shim) and the new `step_unit_motions_batch` (per-tick — used by
-the live integrate loop), so the inner-kernel math has one
-implementation.
-
-Sleep heuristic approximation: the TS path re-samples groundZ at
-the body's POST-integration (x, y) for the sleep contact check.
-The batched Rust path reuses the STARTING groundZ. Sleep-eligible
-bodies have speed ≤ 0.5 wu/s, so per-tick displacement is ≤ 0.008
-wu — terrain elevation can't change meaningfully across that
-distance. Numerically equivalent today; revisit if any future
-change makes high-speed bodies sleep-eligible.
-
-Non-sphere dynamic bodies (none exist in the current scope) still
-run free-Euler inline JS-side, both in the batched-WASM path and
-the bootstrap-fallback path. If a non-sphere dynamic ever appears,
-no behavior change.
-
-TS fallback path preserved: `integratePerBodyFallback` covers the
-boot window before `initSimWasm()` resolves AND mid-session WASM
-swaps for debugging. Kept structurally identical to the batched
-path so motion is bit-identical across the swap.
-
-Open follow-up for this kernel: Phase 3d (Body3D SoA pool in
-linear memory) will eliminate the per-tick pack/unpack marshal
-entirely — `integrate()` will operate on Rust-owned state directly,
-and JS will read body fields through typed-array views over the
-WASM linear memory. The current 19-f64-per-body marshal is fine
-at the unit counts we run (< 30 KB per tick) but goes to zero
-under the SoA pool.
-
-------------------------------------------------------------------------------
- Phase 3c — Sphere-vs-sphere resolver + broadphase. DONE.
-------------------------------------------------------------------------------
-Landed: `resolve_sphere_sphere_contacts` in rts-sim-wasm/src/lib.rs.
-Runs PhysicsEngine3D.ts's `rebuildContactCells()` + the iterated
-`resolveSphereSphereContacts` loop (SPHERE_ITERATIONS sub-passes)
-inside a single WASM call. This was the biggest pure-physics hot
-loop in the engine — at typical RTS unit counts the broadphase
-walk (~21k cell lookups per tick) dominated PhysicsEngine3D CPU
-time. Moving it across the boundary entirely (one call per step
-instead of one per pair) is a meaningful per-tick win.
-
-Buffer layout: 13 f64s per body (motion, radius, inv_mass,
-restitution, entity_id, sleeping_flag in; wake_flag,
-upward_contact_flag out). Stride = RESOLVE_SPHERE_SPHERE_STRIDE.
-
-Behavior preserved:
-  - Sleeping bodies still iterate the broadphase (PhysicsEngine3D.ts
-    line ~806 documents why: a freshly-spawned body landing in a
-    sleeping body's slot must still get pushed apart).
-  - Pair dedup via `j > i` (buffer index).
-  - Cell key encoding matches the TS 48-bit packed scheme so log
-    dumps can be cross-referenced.
-  - Neighbor-range scaling on max radius.
-  - Position re-read per pair within an iteration so prior pushes
-    propagate.
-  - Velocity reflection with `min(a.restitution, b.restitution)`.
-  - wake_flag → JS-side wakeBody (idempotent on already-awake).
-  - upward_contact_flag → b.upwardSurfaceContact = true.
-
-Tiny divergence (acceptable): the degenerate-case random tie-break
-(both sphere centers exactly coincident, distSq < 1e-12) uses a
-slightly different seed derivation in Rust vs TS. JS's `>>> 0` and
-implicit int32 coercion in `^` aren't trivially replicable in Rust
-without a JS-ToInt32 helper; Rust uses `u64.wrapping_mul` instead.
-Same statistical distribution, different exact seed when entity ids
-exceed int32 range. The case fires on co-located spheres which won't
-realistically happen during the bootstrap-window swap from TS→WASM,
-so this is safe in practice. Document if/when full bit-determinism
-across the WASM/TS swap is needed (Cross-cutting concerns §3).
-
-TS fallback path preserved: `resolveSphereSphereContactsTsIteration`
-(renamed from the original) runs once per sub-pass when the WASM
-module isn't loaded yet. The dispatcher `resolveSphereSphereContacts
-(iterations)` picks the path. step() now calls the dispatcher with
-the budget computed by `getSphereIterationBudget()`.
-
-------------------------------------------------------------------------------
- Phase 3d — Body3D SoA pool in WASM linear memory (foundation). DONE.
-------------------------------------------------------------------------------
-Landed: `BodyPool` in rts-sim-wasm/src/lib.rs — fixed-capacity
-(POOL_CAPACITY = 4096) SoA storage with one Vec per numeric body
-field (pos_x/y/z, vel_x/y/z, accel_x/y/z, launch_x/y/z, radius,
-half_x/y/z, inv_mass, restitution, ground_offset, sleep_ticks)
-plus a packed flags byte (sleeping, is_static, upward_contact,
-shape_cuboid, occupied bits). Slot allocation via free-list
-+ high-water mark. Pool is initialised once via `pool_init()`
-called by `initSimWasm()`; capacity is allocated up front so JS
-typed-array views over the WASM linear memory stay valid forever
-(no per-tick refresh).
-
-Bindings: per-field raw pointer exports (pool_pos_x_ptr() etc.)
-let JS construct Float64Array / Uint8Array views over WASM memory
-once, then index by slot for direct field access. Body3DPool wrapper
-in src/game/sim-wasm/init.ts exposes them as `SimWasm.pool` with
-allocSlot / freeSlot / refreshViews + per-field views.
-
-Body3D refactored from a struct literal to a class:
-  - `slot`, `shape`, `mass`, `isStatic` are immutable instance fields.
-  - `label`, `entityId`, `_staticQueryStamp` stay JS-side (never read
-    by Rust; living in WASM would just waste cycles marshalling).
-  - All other fields (motion, accumulators, geometry, sleep state,
-    boolean flags) are getters/setters that read/write the pool
-    typed-array views directly. JIT-inline-cacheable; ~3-5 ns per
-    access vs ~2 ns for the prior plain field — overhead recouped
-    once Phase 3a/3c stop building per-tick scratch buffers.
-  - Static factory `Body3D.allocate(args)` allocates a pool slot,
-    populates initial field values via the views, and returns the
-    handle. PhysicsEngine3D.createUnitBody / .createBuildingBody
-    construct via this factory.
-  - `body.free()` releases the slot back to the pool. Called from
-    PhysicsEngine3D.removeBody.
-
-Bootstrap timing: `GameServer.create()` now `await initSimWasm()`
-before constructing GameServer. This guarantees the pool is ready
-before any PhysicsEngine3D instance is built — and therefore before
-any Body3D is allocated. main.ts already kicks initSimWasm() in
-parallel with the Vue mount, so in practice the create() await is
-a no-op (the promise has already resolved by the time host code
-calls in).
-
-External API surface preserved: every consumer of Body3D field
-access (UnitForceSystem, damageHelpers, snapshot serializers, etc.)
-continues to read body.x / body.vx / etc. via the getter — no
-caller-side change needed.
-
-Phase 3d-2 follow-on landed in the same series — see below.
-
-------------------------------------------------------------------------------
- Phase 3d-2 — Pool-backed integrate + sphere-sphere kernels. DONE.
-------------------------------------------------------------------------------
-Landed: `pool_step_integrate` and `pool_resolve_sphere_sphere` in
-rts-sim-wasm/src/lib.rs. Same numerical kernels as Phase 3a /
-Phase 3c but read body state directly from BodyPool by slot index
-— no per-tick body-state marshal.
-
-Per-tick boundary traffic dropped from O(N · 19 + N · 13) f64s
-(motion + accumulators + ground state + sleep flag, packed twice)
-to O(N · 4 + 4N) f64s (slot ids + pre-sampled ground state +
-transition output). At 200 awake bodies that's ~50 KB/tick down
-to ~7 KB/tick, ~7x reduction. Real wins:
-  - JS no longer iterates Body3D fields to pack a buffer that the
-    Rust kernel will immediately re-write — body state IS the
-    canonical representation in linear memory.
-  - Sphere-sphere broadphase reads radius / inv_mass / restitution
-    once from the pool per body per iteration instead of from a
-    re-packed scratch each call.
-
-Behavior preserved bit-for-bit on the non-degenerate paths: same
-constants, same op order, same f64 math. Tiny divergence on the
-sphere-sphere coincident-centers tie-break — Phase 3c used the
-entityId in the seed; the pool path uses the slot id. Both are
-stable per body lifetime, both deterministic; the seed value
-differs but the case is unobservable in practice.
-
-Sleep transitions: integrate kernel writes slot ids of bodies that
-just transitioned to sleep into a JS-allocated transition buffer,
-returns the count. JS iterates the buffer and runs sleepBody() on
-each — handles the awake-count decrement + accumulator clear
-(resolvers may re-wake a body before the post-step accumulator-
-clear loop runs).
-
-Wake transitions: sphere-sphere kernel writes slot ids of bodies
-that got pushed into a wake buffer, returns the count. JS runs
-wakeBody() per slot; idempotent on already-awake bodies, so the
-"always wake on resolution" semantics from the TS path are
-preserved.
-
-Upward-contact flag: now set directly on the pool's flags byte
-(BODY_FLAG_UPWARD_CONTACT bit) by the Rust kernel; reading via
-the body.upwardSurfaceContact getter returns the freshly-set
-value. clearDynamicSurfaceContacts before each step still works
-through the same getter/setter path.
-
-Slot → Body3D lookup: PhysicsEngine3D maintains
-`bodyBySlot: (Body3D | undefined)[]` indexed by pool slot,
-populated in addBody, cleared in removeBody. O(1) lookup for
-the transition-list bookkeeping.
-
-Old per-call buffer functions (`step_unit_motions_batch`,
-`resolve_sphere_sphere_contacts`) and their *_BATCH_STRIDE
-constants are deleted in the cleanup commit that follows.
-
-------------------------------------------------------------------------------
- Phase 3b — Sphere-vs-cuboid pair resolver. DONE.
-------------------------------------------------------------------------------
-Landed: `pool_resolve_sphere_cuboid_pairs` in rts-sim-wasm/src/lib.rs.
-Ports the closest-point-on-AABB + push-out + restitution-reflect
-math from PhysicsEngine3D.ts `resolveSphereCuboidPair` into a
-single batched WASM call. Both dynamic and static body state live
-in the BodyPool, so the call signature is just a flat pair index
-buffer (interleaved dyn_slot / static_slot u32s) plus a wake-
-transitions output buffer.
-
-JS broadphase iteration is unchanged — `resolveSphereCuboidContacts`
-walks the existing `staticCells` Map per dynamic body, applies the
-ignoreStatic + staticQueryStamp dedup, and accumulates pairs into
-`_sphereCuboidPairs` instead of calling a per-pair resolver. One
-WASM call resolves all pairs in place. Pair scratch grows on
-demand (initial cap = max(64, dynCount * 16) * 2 u32 entries).
-
-Bit-identical to the original TS path: same closest-point math,
-same degenerate-case face-normal selection, same restitution
-reflection. Wake bookkeeping uses the always-emit / idempotent-
-wakeBody pattern from Phase 3c — duplicates from a single dyn
-body hitting multiple cuboids in one tick are safe.
-
-Upward-contact flag (`BODY_FLAG_UPWARD_CONTACT`) set directly on
-the dyn body's pool flags byte by the Rust kernel, so the
-clearDynamicSurfaceContacts → resolver-sets-flag → renderer-reads
-chain works through the existing Body3D getter without per-pair
-JS round-trip.
-
-Phase 3f follow-up landed — see below.
-
-------------------------------------------------------------------------------
- Phase 3f — Static cuboid broadphase in Rust. DONE.
-------------------------------------------------------------------------------
-Landed: `EngineStatics` struct in rts-sim-wasm/src/lib.rs, plus
-`engine_statics_create`, `engine_statics_add`, `engine_statics_remove`,
-and the unified `pool_resolve_sphere_cuboid_full` kernel. Each
-PhysicsEngine3D constructs its own EngineStatics handle (`sim.
-engineStaticsCreate()`) at startup so the foreground game and the
-LobbyManager background battle keep their cuboid buckets isolated
-even though they share the global BodyPool.
-
-PhysicsEngine3D's JS-side static-cell map / staticQueryStamp /
-packContactCellKey / cellCoordXy / cellCoordZ / Body3D.
-_staticQueryStamp are all GONE — bucketing + per-static-body visit
-dedup runs entirely in Rust. The remaining JS state is the
-ignoreStatic Map (per-dyn override that says "don't collide with
-this specific cuboid as you exit your factory") which is encoded
-into a parallel u32 array (NO_IGNORE_SLOT = 0xFFFFFFFF for "no
-ignore") and passed to the kernel each tick.
-
-Per-tick boundary cost for sphere-cuboid resolution drops to one
-WASM call carrying:
-  - dyn slot list (one u32 per active dyn sphere, ~200)
-  - parallel ignored-static-slot list (same length)
-  - wake-transition output buffer (same length, written by Rust)
-  - cell_size scalar
-Internally Rust walks each dyn body's overlapping cells, dedups via
-the per-static visit-stamp counter (per-engine, persistent across
-calls), and runs the closest-point-on-AABB resolver in place. The
-~5400 cell lookups that used to happen JS-side per tick (200 dyn ×
-27 cells) are gone.
-
-Numerical behavior bit-identical to Phase 3b's pair-list path:
-same closest-point math, same restitution, same upward-contact
-flag logic. The internal `resolve_sphere_cuboid_pair_in_pool`
-helper is shared between both code paths — it's the only place
-the pair-resolve math lives now.
-
-PhysicsEngine3D shrinks from 964 → 867 lines. Phase 3 (the entire
-PhysicsEngine3D core) is now fully in Rust/WASM:
-  - integrate() + sleep state          (3a / 3d-2)
-  - sphere-vs-cuboid resolver          (3b → unified in 3f)
-  - sphere-vs-sphere resolver + grid   (3c / 3d-2)
-  - body state pool                    (3d / 3d-2)
-  - static cuboid broadphase           (3f)
-
-------------------------------------------------------------------------------
- Phase 4 + 3e — Quaternion math + batched hover orientation kernel. DONE.
-------------------------------------------------------------------------------
-Landed: private Rust quat helpers (quat_normalize_inplace,
-quat_from_yaw_pitch_roll, quat_shortest_axis_angle,
-quat_integrate_inplace, quat_yaw — all bit-identical to the
-Quaternion.ts originals). Plus the public batched kernel
-`quat_hover_orientation_step_batch` that runs the entire per-hover
-spring update inside Rust:
-
-  build target quat from yaw/pitch/roll →
-    α = k·(axis·angle) − c·ω        (spring law)
-    ω += α · dt                     (integrate)
-    q ← q ⊕ (ω · dt) → renormalize   (orientation step)
-    yaw_extracted = quatYaw(q_new)   (for transform.rotation sync)
-
-UnitForceSystem.applyForces refactored to defer the per-hover
-quat work into a module-scope buffer (`_hoverDeferBuf`,
-QUAT_HOVER_BATCH_STRIDE = 14 f64s/entity). Per-entity loop pushes
-(orientation, omega, target yaw/pitch/roll) and the entity
-reference; one batched WASM call after the loop runs the spring
-for every hover entity at once. JS scatters back to
-entity.unit.orientation / .angularVelocity3 / .angularAcceleration3
-and entity.transform.rotation in a post-call pass.
-
-The lift force computation (F_up = K/altitude − c·vz) and target-
-yaw/pitch/roll derivation (from body-frame velocity) STAY JS-side:
-the lift formula needs the terrain (Phase 8 will move that into
-WASM), and the target-vel decomposition is trivial scalar math
-that doesn't benefit from batching.
-
-ClientUnitPrediction's orientation drift logic (mentioned in the
-original Phase 4 plan as a co-consumer) was not touched in this
-commit — it doesn't currently use quatDampedSpringStep, just
-quatYaw extraction and direct quat mutation. Future client-side
-prediction port can add a similar batched kernel call if needed.
-
-Quaternion.ts stays — quatYaw is still consumed JS-side once per
-hover entity per tick (cheap, ~30 ns). The dead exports
-(quatDampedSpringStep, quatFromYawPitchRoll, quatIntegrate,
-quatShortestAxisAngle) can be deleted in a follow-on cleanup.
-
-------------------------------------------------------------------------------
- Phase 5 — Projectile motion → Rust/WASM.
-------------------------------------------------------------------------------
-projectileSystem.ts is 1221 lines. Ballistic integration + homing +
-terrain-follow + beam-path point integration. The client mirrors a
-large subset of this in ClientProjectilePrediction.ts.
-
-Sub-phases:
-
-  Phase 5a — Packed projectile pool to WASM linear memory + batched
-             ballistic integrate kernel. DONE.
-  Phase 5b — Kinematic intercept solver port. DONE (per-call WASM
-             dispatch from Ballistics.ts; module-scope scratch
-             buffers; TS fallback retained for the bootstrap window
-             and as a reference impl).
-  Phase 5c — Homing steering Rodrigues rotation port. DONE (per-call
-             WASM dispatch from HomingSteering.ts; output via 4-f64
-             scratch buffer; TS fallback retained).
-  Phase 5c2 — Terrain-follow path (DGUN_TERRAIN_FOLLOW_HEIGHT). OBVIATED
-              by Phase 8. The only WASM-eligible cost in the dgun
-              loop was world.getGroundZ() → getSurfaceHeight(), which
-              now dispatches through WASM linear memory. The
-              remaining per-tick math (vx*dt, vy*dt, vz = delta/dt)
-              is scalar and doesn't justify a separate packed-batch
-              kernel — typical dgun count is 0–3 active and the JS
-              loop already ran at trivial cost. No further work.
-  Phase 5d — Beam-path point integration. DEFERRED (not porting).
-             The PREDICT-gated per-point ax/ay/az step lives in
-             ClientPredictionStepper.applyBeamSnapshotPrediction.
-             At a realistic busy-scene load (10 simultaneous beams ×
-             ~5 points each = 50 point steps per FRAME, 7–9 float
-             ops per step) total per-frame work is ~350 ops. Data
-             lives in JS BeamPoint object arrays, so a WASM call
-             would have to pack/scatter Float64Array(50 × 6) every
-             frame just to integrate ~350 ops — net regression.
-             Server-side finite-diff (projectileSystem ~line 1080+)
-             is sparse (runs every `beamPathStride` ticks) and has
-             the same packing-cost problem. Revisit only if a
-             stress test ever shows the beam point loop on the
-             profiler.
-  Phase 5e — Traveling (non-packed) projectile path. DEFERRED
-             (round 2 confirmed). The per-projectile inner math is
-             trivial scalar work (vz -= GRAVITY*dt, then position
-             += vel*dt). Terrain-follow's only non-trivial bit is
-             world.getGroundZ, which already dispatches to WASM via
-             Phase 8. A batched per-tick call would marshal ~12 KB
-             per side at busy scales (50-100 active projectiles ×
-             11 f64 each) to save ~5 µs/tick. Net loss. Skip.
-
-------------------------------------------------------------------------------
- Phase 5a — Packed projectile SoA pool. DONE.
-------------------------------------------------------------------------------
-Landed: `ProjectilePool` in rts-sim-wasm/src/lib.rs — same
-fixed-capacity SoA pattern as BodyPool, sized at PROJECTILE_POOL_
-CAPACITY = 8192 (covers steady-state busy combat, fits in the
-pre-grown 32 MiB WASM memory). Per-tick ballistic integrate
-kernel `pool_step_packed_projectiles_batch(count, dt_sec)` runs
-`vz -= GRAVITY*dt` (gated on per-slot has_gravity flag) and
-position update over slots 0..count in one WASM call.
-
-projectileSystem.ts refactored: `_packedProjectile{X,Y,Z,Vx,Vy,
-Vz,TimeAlive,HasGravity}` are now typed-array views over the
-WASM pool (rebound on first use + on each per-tick call via
-`refreshPackedProjectileViews()` to survive memory.grow). The
-`_packedProjectileIds` Int32Array stays JS-side — Rust never
-needs the EntityId mapping.
-
-`_updatePackedProjectilesJS` split into three passes to leverage
-the batched kernel:
-  - Pass 1: per-slot validation, sync proj/transform fields into
-    pool views, bump timeAlive, stash prev / collisionStart.
-  - Pass 2: ONE WASM call runs the ballistic integrate over every
-    slot.
-  - Pass 3: scatter post-integrate pool state back to entity.
-    transform + proj.velocity*, run source-clearance check on the
-    new position.
-
-`ensurePackedProjectileCapacity` is now a hard cap check —
-exceeds throws a clear "bump PROJECTILE_POOL_CAPACITY" message.
-Growable JS-side reallocation (which doubled from 256 each
-overflow) is gone since the WASM pool is pre-sized at init.
-
-Boundary cost win is small in absolute terms (the per-projectile
-work is dominated by proj/transform field shuffling, which has
-to stay JS-side). Architectural win: projectile state lives in
-WASM linear memory now so future phases (collision queries,
-homing intercept) can read directly from the pool with no
-marshalling.
-
-------------------------------------------------------------------------------
- Phase 6 — Turret rotation + targeting → Rust/WASM.
-------------------------------------------------------------------------------
-turretSystem.ts (245 lines) + targetingSystem.ts (1104 lines) +
-aimSolver.ts (648 lines) + lineOfSight.ts (244 lines). All are
-hot paths on busy maps; all are pure numeric over per-turret /
-per-candidate state.
-
-  - integrateDampedRotation — DONE (Phase 6a, see above).
-  - chooseBestTargetCandidate — DEFERRED (round 2 analysis).
-    Now that Phase 7 is live, candidates arrive as slot ids and
-    the rank formula's distSq + radius classification could run
-    in Rust against the SpatialGrid slot SoA. BUT the mirror-
-    target score (passive weapons) is JS-side metadata that has
-    no clean WASM representation, requiring a JS pre-pass per
-    candidate before any WASM call. Net win at typical busy
-    candidate counts (~100 enemies × 8-weapon scan) is ~10-30 µs/
-    pick, which doesn't justify the new boundary surface +
-    schema churn. Re-evaluate if profiling ever shows targeting
-    hot enough to warrant porting both the ranker AND a JS-side
-    mirror-score precompute pass.
-  - lineOfSight: segment-vs-terrain walk. Pure numeric, accesses
-    heightmap (Phase 8 — DONE) + entity AABBs (Phase 7 still
-    deferred, so the swept-volume AABB query stays JS-side).
-    The terrain-vs-segment portion is ported.
-  - aimSolver: ballistic / kinematic intercept solvers. DONE via
-    Phase 5b (solveKinematicIntercept WASM dispatch).
-
-------------------------------------------------------------------------------
- Phase 7 — SpatialGrid → Rust/WASM.  DONE.
-------------------------------------------------------------------------------
-Landed: `SpatialGridState` in rts-sim-wasm/src/lib.rs — 3D voxel hash
-storing units, buildings, projectiles by u32 slot id. JS-side
-SpatialGrid.ts shrunk from 1438 to ~380 lines (a thin wrapper that
-owns the EntityId↔slot map + reusable result arrays).
-
-Same public API as before: every caller of `queryUnitsInRadius`,
-`queryEnemyEntitiesInCircle2D`, etc. is unchanged. Per-query traffic
-across the boundary is one WASM call plus a Uint32Array view over
-the scratch buffer; the JS wrapper resolves slot ids back to Entity
-refs and fills the same reusable result arrays the old grid used.
-
-All 8 query families ported:
-  - Radius (units / buildings / enemy variants).
-  - Combined units+buildings in radius.
-  - Combined units+buildings in 2D rect (the AoI snapshot path).
-  - Combined units+buildings in 2D circle.
-  - Line segment (units / buildings / combined).
-  - Capture occupancy.
-  - Debug occupied-cells dump.
-
-Capture votes (`captureByLandCell` + per-entity vote tracking) run
-inside the Rust grid; the cube→land-cell conversion bit-matches
-JS's `spatialCubeKeyToLandCellKey` so CaptureCell.key values are
-byte-equal across the swap.
-
-The `landUnitCells` Map from the JS impl was internal-only (no
-external reader) and is dropped in the port.
-
-spatial_init runs from initSimWasm so the grid is ready before any
-mutation. spatial_clear is called by GameServer.stop().
-
-The Rust SpatialGridState lives in an UnsafeCell<Option<...>>
-(HashMap::new isn't const) lazily initialised on first
-spatial_grid() access — same pattern as TerrainGrid.
-
-Open follow-ups: the JS wrapper currently constructs a fresh
-Uint32Array view per query (cheap, but not zero-cost). A future
-optimisation could cache the view + invalidate it on the rare
-memory.grow event via the same refreshViews discipline the BodyPool
-uses. Today's 32 MiB pre-grow makes the issue extremely unlikely to
-fire under steady-state play.
-
-------------------------------------------------------------------------------
- Phase 8 — Terrain sampling → Rust/WASM.
-------------------------------------------------------------------------------
-Terrain.ts top-level is small (66 lines) but getSurfaceHeight /
-getSurfaceNormal are the most-called functions in the whole sim —
-called from EVERY hot path (physics ground spring, projectile
-terrain-follow, hover lift, targeting LOS, render chassis tilt).
-
-  - Move the heightmap Vec<f32> into Rust linear memory at world-
-    load time. Built JS-side (generators stay TS) but transferred
-    into WASM once.
-  - getSurfaceHeight (bilinear interpolation) + getSurfaceNormal
-    (gradient sample with the water-exclusion rule).
-  - Remove the sampler-callback overhead from Phase 2 / 3 / 5 / 6.
-    Every kernel that needed terrain now reads directly from Rust-
-    side memory.
-
-------------------------------------------------------------------------------
- Phase 9 — Pathfinder → Rust/WASM.  DONE.
-------------------------------------------------------------------------------
-Landed: `PathfinderState` in rts-sim-wasm/src/lib.rs. Full findPath
-pipeline (terrain mask + building dilation + connected-component
-BFS + A* with octile heuristic + supercover Bresenham LOS smoothing)
-runs inside one WASM call.
-
-JS-side Pathfinder.ts shrunk from 851 to ~230 lines. Mask + CC
-caches keyed on the (terrainVersion, buildingVersion) pair Rust-
-side, so calling pathfinder_rebuild_mask_and_cc with unchanged
-versions is effectively free.
-
-Terrain sampling reads directly from the Phase 8 in-WASM TerrainGrid
-(no boundary crossing during a rebuild). At a typical 95×95 grid
-the rebuild saved 9k × 2 ≈ 18k JS↔WASM dispatches per
-terrain-version bump.
-
-The external API (`expandPathActions`, `PathTerrainFilter`) is
-unchanged. expandPathActions stays JS-side because it threads
-goalZ + isPathExpansion into UnitAction; the inner findPath call
-returns smoothed waypoints from WASM via a Float64Array view.
-
-A* internals are bit-equivalent on the non-degenerate paths:
-8-connected with octile heuristic, binary min-heap of node indices,
-push-duplicates + closed-flag idiom, MAX_A_STAR_NODES = 50_000.
-The string-pull Bresenham smoothing matches the JS impl's
-diagonal-side-cell anti-corner-cutting check.
-
-f32 g/f costs match the JS Float32Array — small tie-breaks may
-differ across a wasm/JS swap but smoothed paths converge.
-
-------------------------------------------------------------------------------
- Phase 10 — Snapshot serializer hot loops → Rust/WASM.  DEFERRED.
-------------------------------------------------------------------------------
-stateSerializer*.ts is ~3000 lines across several files. The per-
-entity inner loop (qPos / qVel / qRot quantization, delta encoding,
-FOW visibility, AoI gate) is hot under load — every server tick
-that ships a snapshot pays it per visible entity per recipient.
-
-DEFERRED. The user opted for "full port" over partial — moving
-MessagePack encoder AND the entire per-recipient build path to
-Rust as a single WASM call per recipient. That's the biggest
-remaining item in the plan (~3000 lines + an MP encoder), with
-the strictest correctness requirement (snapshot bytes must be
-byte-equal pre/post for any non-breaking change). And it depends
-on Phase 7 (FOW/AoI feeds from SpatialGrid) being in WASM to
-hit the single-call-per-recipient pattern that avoids
-boundary-cost regressions. Revisit after Phase 7 lands.
-
-Tradeoff: boundary cost. A naive port that calls into Rust per
-entity per recipient would be slower than today. The right shape is
-"build the snapshot as a Rust-owned bytes buffer, hand it to JS once
-per recipient for WebRTC send". Means moving the MessagePack encoder
-to Rust too (rmp-serde or hand-rolled).
-
-Lower priority than 2-8. Land it last so we have a year of practice
-with the boundary discipline before tackling the most marshalling-
-intensive system.
+One Rust crate at `rts-sim-wasm/`, compiled to WebAssembly via
+wasm-pack, loaded by BOTH the authoritative server tick AND the
+client prediction stepper. Same integrator, same numerical
+behavior, same code path — client prediction is bit-identical to
+server authoritative motion.
+
+Bespoke, NOT a generic engine (no Rapier, no Ammo). The existing
+PhysicsEngine3D makes RTS-specific shortcuts a generic engine
+couldn't (implicit infinite ground plane, sphere bodies for units +
+axis-aligned cuboids for buildings, locomotion-aware ground spring,
+sleep heuristics tuned for "few hundred mostly-static units",
+hover lift + quaternion bank physics in the same pipeline). The
+port preserves those shortcuts.
+
+==============================================================================
+ STATUS — what's in WASM today
+==============================================================================
+
+  Phase 1   crate scaffolding + dual-load pipeline                 DONE
+  Phase 2   shared unit-motion integrator                          DONE
+  Phase 3a  batched integrate() + sleep state machine              DONE
+  Phase 3b  sphere-vs-cuboid pair resolver                         DONE
+  Phase 3c  sphere-vs-sphere resolver + broadphase                 DONE
+  Phase 3d  Body3D SoA pool in linear memory (+3d-2 kernels)       DONE
+  Phase 3e  hover quat orientation batch (paired with 4)           DONE
+  Phase 3f  static cuboid broadphase                               DONE
+            + engine_statics_destroy free list                     DONE
+  Phase 4   quaternion math + hover spring batch                   DONE
+  Phase 5a  packed projectile SoA pool + ballistic integrate       DONE
+  Phase 5b  kinematic intercept solver                             DONE
+  Phase 5c  homing-steering Rodrigues rotation                     DONE
+  Phase 5c2 dgun terrain-follow (obviated by Phase 8 dispatch)     DONE
+  Phase 5d  beam-path point integration                            DEFERRED — see below
+  Phase 5e  traveling (non-packed) projectile                      DEFERRED — see below
+  Phase 6a  integrateDampedRotation                                DONE
+  Phase 6b  chooseBestTargetCandidate                              DEFERRED — see below
+  Phase 6c  lineOfSight terrain segment walk                       DONE
+            (entity-AABB portion stays JS — depends on Phase 7
+             slots which exist but the callers haven't migrated)
+  Phase 7   SpatialGrid into WASM linear memory                    DONE
+  Phase 8   terrain heightmap into WASM linear memory              DONE
+  Phase 9   Pathfinder A* + LOS smoothing                          DONE
+  Phase 10  Snapshot serializer FULL PORT                          IN PROGRESS
+            D.1 entity-meta SoA pool                                pending
+            D.2 hand-rolled MessagePack encoder + self-test         DONE
+            D.3 quantize + delta-encode kernel                      pending
+            D.4 snapshot_build_for_recipient (FOW + AoI)            pending
+            D.5 stateSerializer*.ts wholesale replacement           pending
+  Tier E    SIMD inner loops (auto-vec via +simd128)               DONE
+            dual-build (simd + non-simd) for iOS<16.4              DEFERRED
+
+Build / housekeeping:
+  - wasm-opt -Oz post-build pass                                  DONE (gated on binaryen)
+  - rts-sim-wasm/README.md (build + dev-loop + browser reqs)      DONE
+
+==============================================================================
+ Phase 10 — Snapshot serializer hot loops — IN PROGRESS
+==============================================================================
+
+stateSerializer*.ts is ~1.8k LOC across 13 files (~3k LOC counting
+NetworkSnapshotTransport.ts + snapshotDtoCopy.ts + snapshotClone.ts).
+Per-entity inner loop (qPos / qVel / qRot quantization, delta
+encoding, FOW visibility, AoI gate) is hot under load — every
+server tick that ships a snapshot pays it per visible entity per
+recipient.
+
+D.2 (MessagePack encoder) shipped: hand-rolled subset matching
+@msgpack/msgpack's `ignoreUndefined: true` output on 21 fixture
+cases. Self-test runs at module load and aborts initSimWasm if
+any case fails. Verified byte-equal with the JS lib on 23 inputs.
+
+Remaining sub-commits:
+
+  D.1 — Entity-meta SoA pool. ~300 lines Rust + ~150 lines JS
+        sync. Mirrors snapshot-relevant fields (HP curr/max, owner
+        playerId, unit/building tag, build state, combat mode,
+        actions array, turret array, orientation triad, suspension,
+        jump). Variable-length sub-arrays (turrets, actions) need a
+        separate sub-pool. Slot id matches the SpatialGrid slot
+        (Phase 7) — one canonical entity slot for both spatial
+        lookups and snapshot serialization.
+
+  D.3 — Per-entity quantize + delta-encode kernel. ~400 lines Rust.
+        Reads entity-meta + Body3D pool state, applies quantization
+        (qPos×100, qVel×10, qRot×1000, qNormal, qSuspension),
+        compares against per-recipient baseline, emits delta bytes
+        using the D.2 encoder.
+
+  D.4 — `snapshot_build_for_recipient`. One WASM call per recipient
+        per snapshot tick. Reads SpatialGrid (Phase 7) for AoI
+        candidates, applies FOW visibility (port from
+        stateSerializerVisibility.ts), wraps in envelope (tick,
+        version, audio events, shroud bitmap), outputs MessagePack
+        bytes ready for WebRTC send.
+
+  D.5 — JS-side migration. `stateSerializer.ts` becomes a thin
+        orchestrator that owns per-listener visibility precomputation,
+        calls snapshot_build_for_recipient for each, hands the bytes
+        to the WebRTC transport. The 13 serializer files collapse
+        to ~3.
+
+Critical risk: byte-equality requirement. Snapshot bytes must be
+byte-equal pre/post for the client decode path to keep working
+without changes. Strategy for the next session: capture a 60-tick
+golden snapshot from the current JS path BEFORE starting D.3, then
+assert byte-equality on every D.3+ commit.
+
+Phase 10 is sized for multi-session work — D.1 alone is one
+focused session, D.3-D.5 each warrant their own.
+
+==============================================================================
+ Deferred items — re-evaluate when conditions change
+==============================================================================
+
+Phase 5d — Beam-path point integration. The PREDICT-gated per-point
+ax/ay/az step lives in ClientPredictionStepper.applyBeamSnapshot
+Prediction. At a realistic busy-scene load (10 simultaneous beams ×
+~5 points each = 50 point steps per FRAME, 7-9 float ops per step)
+total per-frame work is ~350 ops. Data lives in JS BeamPoint
+object arrays, so a WASM call would have to pack/scatter
+Float64Array(50 × 6) every frame just to integrate ~350 ops — net
+regression. Revisit only if a stress test ever shows the beam
+point loop on the profiler.
+
+Phase 5e — Traveling (non-packed) projectile path. Per-projectile
+inner math is trivial scalar work (vz -= GRAVITY*dt, then position
++= vel*dt). Terrain-follow's only non-trivial bit is
+world.getGroundZ, which already dispatches to WASM via Phase 8.
+A batched per-tick call would marshal ~12 KB per side at busy
+scales (50-100 active projectiles × 11 f64 each) to save ~5 µs/
+tick. Net loss.
+
+Phase 6b — chooseBestTargetCandidate. The rank formula's distSq +
+radius classification could run in Rust against the SpatialGrid
+slot SoA. BUT the mirror-target score for passive weapons is
+JS-side metadata with no clean WASM schema, requiring a per-
+candidate JS pre-pass before any WASM call. Net win at typical
+busy candidate counts (~10-30 µs/pick) doesn't justify the new
+boundary surface. Re-evaluate if profiling ever shows targeting
+hot enough.
+
+Tier E SIMD dual-build — current build enables +simd128 globally;
+browsers without SIMD support (iOS Safari < 16.4) fail at WASM
+compile time. The right fallback is a dual-build (simd + non-simd
+.wasm with runtime feature detection). Deferred until profiling
+or analytics show older iOS users hitting the gate.
 
 ==============================================================================
  Cross-cutting concerns — apply to every phase
@@ -742,69 +186,39 @@ intensive system.
     migration is that client prediction and server authority run
     the SAME integrator. That means every kernel must be a pure
     function of its inputs — no globals, no per-instance hidden
-    state, no JS-side intrusion mid-tick. Server runs it with
-    authoritative dt and the full world; client runs it with
-    render-frame dt and the local entity set. Identical numerical
+    state, no JS-side intrusion mid-tick. Identical numerical
     behavior is the contract.
 
   - **Determinism (deferred, but architected for).** Strict bit-
     identical determinism across machines isn't a requirement yet,
-    but the structure should NOT block it. That means:
-      * No f64 → f32 narrowing in unexpected places.
-      * Stable iteration order (avoid HashMap; use BTreeMap or
-        index-stable Vec-based pools).
-      * No `std::f32::sin` ambiguity — pick one math impl and
-        stick with it on both client and server. (They're the
-        same WASM module, so this comes for free under the
-        shared-load pattern above. The risk would be only if a
-        client falls back to JS for a system that the server has
-        in WASM.)
+    but the structure should NOT block it. No f64 → f32 narrowing
+    in unexpected places. Stable iteration order (index-stable
+    Vec-based pools). Same WASM module on client + server so
+    `std::f64::sin` etc. comes for free under the shared-load
+    pattern.
 
   - **Debugging conventions.** WASM panics are harder to chase
-    than TS errors. Use console_error_panic_hook. Prefix every
-    WASM log with "(rust)" so it stands out in dev console.
-    Keep entity ID lookups + blueprint config on the JS side so
-    the WASM kernel only sees primitive SoA data; that minimizes
-    the surface area to debug.
+    than TS errors — console_error_panic_hook is wired in
+    `#[wasm_bindgen(start)]`. Keep entity ID lookups + blueprint
+    config on the JS side so the WASM kernel only sees primitive
+    SoA data; that minimizes the surface area to debug.
 
   - **Hot-reload dev workflow.** `cargo watch -s 'cd .. && npm run
-    build:wasm'` recipe is in rts-sim-wasm/README.md. A unified
-    polyfill flag to swap kernels back to their TS path WAS in
-    the original plan, but post-Phase-3 the Body3D + projectile
-    pools live in WASM linear memory — they're not optional. TS
-    fallbacks now run only during the brief boot window (before
-    initSimWasm resolves) and as structural reference impls for
-    bit-identity audits. A runtime "WASM off" toggle no longer
-    makes sense; if you need to A/B a single kernel, comment out
-    the `if (sim !== undefined)` branch in that kernel's TS
-    dispatcher temporarily.
-
-  - **SIMD.** Partially done. `.cargo/config.toml` now sets
-    `-C target-feature=+simd128` for the wasm32 build, so LLVM's
-    auto-vectorizer emits v128 intrinsics for the physics inner
-    loops (Vec3 / Quat math, sphere-sphere broadphase, closest-
-    point on AABB) without manual annotations. Browsers without
-    SIMD support (iOS Safari < 16.4) fail at WASM compile time
-    with a clear opcode error — no graceful fallback yet. A
-    dual-build (simd + non-simd .wasm with runtime feature
-    detection) is the right shape if older iOS becomes a target;
-    deferred until profiling justifies the build-system work.
-    Manual `#[target_feature(enable = "simd128")]` on specific
-    kernels could squeeze more out of loops the auto-vectorizer
-    misses, but no measurements yet.
+    build:wasm'` recipe is in rts-sim-wasm/README.md. Post-Phase-3
+    the Body3D + projectile pools live in WASM linear memory —
+    they're not optional. TS fallbacks now run only during the
+    brief boot window before initSimWasm resolves, and as
+    structural reference impls for bit-identity audits.
 
   - **Threading: defer.** WASM threads via SharedArrayBuffer + web
     workers are real but require COOP/COEP headers and complicate
     WebRTC. Start single-threaded; revisit only if we hit a hard
-    single-core ceiling AND the cross-origin embedder rules can
-    be satisfied by the deployment environment.
+    single-core ceiling.
 
-  - **Bundle size budget.** Final .wasm under 250 KB. wasm-pack
-    `--release` + opt-level=3 + lto=true + strip=symbols. Run
-    `wasm-strip` and `wasm-opt -Oz` as part of the build script.
+  - **Bundle size budget.** Final .wasm under 250 KB. Currently
+    ~180 KB after Phase 7 + 9 + Phase 10 D.2 + SIMD. wasm-opt -Oz
+    runs as a build post-pass (gated on local binaryen).
 
-  - **CI builds the .wasm.** Don't check in the build artifacts
-    (per M12's deletion list of "physics-wasm/pkg/"); have CI run
-    `npm run build:wasm` before any test that loads the module,
-    and have `npm run dev` rebuild on Rust file changes via
-    vite-plugin-wasm + cargo watch.
+  - **CI builds the .wasm.** `npm run build:wasm` runs before any
+    test that loads the module. README documents the prerequisites
+    (cargo + wasm-pack on PATH, binaryen optional).
