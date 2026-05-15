@@ -877,6 +877,11 @@ export interface SnapshotEncodeApi {
     actionCount: number,
     hasTurrets: number,
     turretCount: number,
+    hasBuild: number,
+    buildComplete: number,
+    buildPaidEnergy: number,
+    buildPaidMana: number,
+    buildPaidMetal: number,
   ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
    *  by every encoder call. */

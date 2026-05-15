@@ -6191,6 +6191,11 @@ pub fn snapshot_encode_entity_unit(
     action_count: u8,
     has_turrets: u8,
     turret_count: u8,
+    has_build: u8,
+    build_complete: u8,
+    build_paid_energy: f64,
+    build_paid_mana: f64,
+    build_paid_metal: f64,
 ) -> u32 {
     let w = messagepack_writer();
     w.buf.clear();
@@ -6219,6 +6224,7 @@ pub fn snapshot_encode_entity_unit(
     if has_build_target_id != 0 { unit_field_count += 1; }
     if has_actions != 0 { unit_field_count += 1; }
     if has_turrets != 0 { unit_field_count += 1; }
+    if has_build != 0 { unit_field_count += 1; }
 
     w.write_str("unit");
     w.write_map_header(unit_field_count);
@@ -6492,6 +6498,21 @@ pub fn snapshot_encode_entity_unit(
                 w.write_number(ff_range_raw);
             }
         }
+    }
+
+    if has_build != 0 {
+        w.write_str("build");
+        w.write_map_header(2);  // complete + paid
+        w.write_str("complete");
+        w.write_bool(build_complete != 0);
+        w.write_str("paid");
+        w.write_map_header(3);
+        w.write_str("energy");
+        w.write_number(build_paid_energy);
+        w.write_str("mana");
+        w.write_number(build_paid_mana);
+        w.write_str("metal");
+        w.write_number(build_paid_metal);
     }
 
     w.buf.len() as u32

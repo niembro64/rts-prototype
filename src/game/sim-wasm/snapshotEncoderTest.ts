@@ -145,6 +145,10 @@ type UnitFixture = BasicEntityFixture & {
     buildTargetId?: number | null;
     actions?: ActionFixture[];
     turrets?: TurretFixture[];
+    build?: {
+      complete: boolean;
+      paid: { energy: number; mana: number; metal: number };
+    };
   };
 };
 
@@ -639,6 +643,43 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         ],
       },
     },
+    // Unit-shell under construction (build sub-object, incomplete)
+    {
+      id: 900, type: 'unit', pos: { x: 1000, y: 1000, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 5, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        build: {
+          complete: false,
+          paid: { energy: 25, mana: 0, metal: 15 },
+        },
+      },
+    },
+    // Newly completed shell (build sub-object, complete=true)
+    {
+      id: 901, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2, changedFields: 0x40,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        build: {
+          complete: true,
+          paid: { energy: 100, mana: 50, metal: 200 },
+        },
+      },
+    },
+    // Build sub-object with fractional resources + everything else
+    // (a shell mid-construction that's also moving + tracking)
+    {
+      id: 902, type: 'unit', pos: { x: 500, y: 500, z: 0 }, rotation: 314, playerId: 1, changedFields: 0x4F,
+      unit: {
+        hp: { curr: 42.7, max: 100 },
+        velocity: { x: 5, y: 0, z: 0 },
+        build: {
+          complete: false,
+          paid: { energy: 33.3, mana: 11.1, metal: 55.5 },
+        },
+      },
+    },
   ];
 
   let passed = 0;
@@ -679,6 +720,12 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     if (hasTurrets && turrets) {
       packTurretsIntoScratch(memory, turrets);
     }
+    const build = f.unit.build;
+    const hasBuild = build !== undefined ? 1 : 0;
+    const buildComplete = build?.complete === true ? 1 : 0;
+    const buildPaidEnergy = build?.paid.energy ?? 0;
+    const buildPaidMana = build?.paid.mana ?? 0;
+    const buildPaidMetal = build?.paid.metal ?? 0;
     snapshot_encode_entity_unit(
       f.id, typeTag,
       f.pos.x, f.pos.y, f.pos.z,
@@ -714,6 +761,11 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       actionCount,
       hasTurrets,
       turretCount,
+      hasBuild,
+      buildComplete,
+      buildPaidEnergy,
+      buildPaidMana,
+      buildPaidMetal,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
