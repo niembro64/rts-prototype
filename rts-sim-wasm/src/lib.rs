@@ -6941,25 +6941,99 @@ pub fn snapshot_encode_entity_building(
 ///   3. `snapshot_encode_envelope_continue(is_delta)`
 ///      → writes economy = {} + isDelta key. Returns total
 ///      written bytes.
+/// Removed-entity-IDs scratch — Uint32Array of EntityId values for
+/// the envelope's removedEntityIds field. JS pre-fills before
+/// calling snapshot_encode_envelope_continue with
+/// has_removed_entity_ids=1.
+struct SnapshotEncodeRemovedIdsScratch {
+    buf: Vec<u32>,
+}
+
+struct SnapshotEncodeRemovedIdsScratchHolder(UnsafeCell<Option<SnapshotEncodeRemovedIdsScratch>>);
+unsafe impl Sync for SnapshotEncodeRemovedIdsScratchHolder {}
+static SNAPSHOT_ENCODE_REMOVED_IDS_SCRATCH: SnapshotEncodeRemovedIdsScratchHolder =
+    SnapshotEncodeRemovedIdsScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_removed_ids_scratch() -> &'static mut SnapshotEncodeRemovedIdsScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_REMOVED_IDS_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeRemovedIdsScratch { buf: vec![0u32; 16] });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
 #[wasm_bindgen]
-pub fn snapshot_encode_envelope_begin(tick: u32, entity_count: u32) {
+pub fn snapshot_encode_removed_ids_scratch_ptr() -> *const u32 {
+    snapshot_encode_removed_ids_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
+    let s = snapshot_encode_removed_ids_scratch();
+    if s.buf.len() < count as usize {
+        s.buf.resize(count as usize, 0);
+    }
+}
+
+/// Open the envelope: clear writer, emit map header with the
+/// caller-computed total_key_count, emit tick key + entities array
+/// header. `total_key_count` includes tick + entities + every
+/// optional envelope key the caller will subsequently emit (the
+/// continue function counts only the ones it's about to write).
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_begin(
+    tick: u32,
+    entity_count: u32,
+    total_key_count: u32,
+) {
     let w = messagepack_writer();
     w.buf.clear();
-    // Envelope key count for this commit's coverage: tick + entities
-    // + economy + isDelta = 4.
-    w.write_map_header(4);
+    w.write_map_header(total_key_count as usize);
     w.write_str("tick");
     w.write_uint(tick as u64);
     w.write_str("entities");
     w.write_array_header(entity_count as usize);
 }
 
+/// Close the envelope. Emits the post-entities optional keys in
+/// stateSerializer.ts pool-insertion order: economy, gameState,
+/// isDelta, removedEntityIds, visibilityFiltered. Caller flags
+/// gate which appear; map-header count in _begin must match.
+///
+/// gameState arrives in a follow-up commit (needs the string scratch
+/// for the `phase` field); placeholder reserved here so the argument
+/// list stays stable.
 #[wasm_bindgen]
-pub fn snapshot_encode_envelope_continue(is_delta: u8) -> u32 {
+pub fn snapshot_encode_envelope_continue(
+    has_economy: u8,
+    is_delta: u8,
+    has_removed_entity_ids: u8,
+    removed_entity_id_count: u32,
+    has_visibility_filtered: u8,
+    visibility_filtered: u8,
+) -> u32 {
     let w = messagepack_writer();
-    w.write_str("economy");
-    w.write_map_header(0);
+    if has_economy != 0 {
+        w.write_str("economy");
+        w.write_map_header(0);
+    }
     w.write_str("isDelta");
     w.write_bool(is_delta != 0);
+    if has_removed_entity_ids != 0 {
+        let count = removed_entity_id_count as usize;
+        let scratch = snapshot_encode_removed_ids_scratch();
+        w.write_str("removedEntityIds");
+        w.write_array_header(count);
+        for i in 0..count {
+            w.write_uint(scratch.buf[i] as u64);
+        }
+    }
+    if has_visibility_filtered != 0 {
+        w.write_str("visibilityFiltered");
+        w.write_bool(visibility_filtered != 0);
+    }
     w.buf.len() as u32
 }

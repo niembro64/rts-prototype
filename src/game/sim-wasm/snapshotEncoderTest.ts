@@ -11,6 +11,8 @@ import {
   snapshot_encode_entity_building,
   snapshot_encode_envelope_begin,
   snapshot_encode_envelope_continue,
+  snapshot_encode_removed_ids_scratch_ptr,
+  snapshot_encode_removed_ids_scratch_ensure,
   messagepack_writer_clear,
   snapshot_encode_turret_scratch_ptr,
   snapshot_encode_turret_scratch_ensure,
@@ -1249,9 +1251,19 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
 type EnvelopeFixture = {
   tick: number;
   entities: (UnitFixture | BuildingFixture)[];
-  economy: Record<string, unknown>;  // empty for D.3j-15
+  economy: Record<string, unknown>;  // empty for D.3j-15+
   isDelta: boolean;
+  removedEntityIds?: number[];
+  visibilityFiltered?: boolean;
 };
+
+function packRemovedIdsIntoScratch(memory: WebAssembly.Memory, ids: number[]): void {
+  if (ids.length === 0) return;
+  snapshot_encode_removed_ids_scratch_ensure(ids.length);
+  const ptr = snapshot_encode_removed_ids_scratch_ptr();
+  const view = new Uint32Array(memory.buffer, ptr, ids.length);
+  for (let i = 0; i < ids.length; i++) view[i] = ids[i];
+}
 
 function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
   const fixtures: EnvelopeFixture[] = [
@@ -1304,6 +1316,37 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         },
       ], economy: {}, isDelta: true,
     },
+    // removedEntityIds present (single removal)
+    {
+      tick: 100, entities: [], economy: {}, isDelta: true,
+      removedEntityIds: [42],
+    },
+    // removedEntityIds with multiple ids
+    {
+      tick: 101, entities: [], economy: {}, isDelta: true,
+      removedEntityIds: [1, 2, 3, 999, 1_000_000],
+    },
+    // visibilityFiltered true (FOW snapshot)
+    {
+      tick: 200, entities: [], economy: {}, isDelta: false,
+      visibilityFiltered: true,
+    },
+    // visibilityFiltered false (full snapshot)
+    {
+      tick: 201, entities: [], economy: {}, isDelta: false,
+      visibilityFiltered: false,
+    },
+    // Everything together — entities + removed + visibility
+    {
+      tick: 300, entities: [
+        {
+          id: 5, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+          unit: { hp: { curr: 100, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
+        },
+      ], economy: {}, isDelta: true,
+      removedEntityIds: [10, 11],
+      visibilityFiltered: true,
+    },
   ];
 
   let passed = 0;
@@ -1311,7 +1354,19 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
   for (const f of fixtures) {
     const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
 
-    snapshot_encode_envelope_begin(f.tick, f.entities.length);
+    const hasEconomy = 1;  // always emitted in this commit
+    const hasRemovedIds = f.removedEntityIds !== undefined ? 1 : 0;
+    const hasVisibilityFiltered = f.visibilityFiltered !== undefined ? 1 : 0;
+    const totalKeyCount =
+      2 /* tick + entities */ +
+      hasEconomy +
+      1 /* isDelta */ +
+      hasRemovedIds +
+      hasVisibilityFiltered;
+    if (hasRemovedIds && f.removedEntityIds) {
+      packRemovedIdsIntoScratch(memory, f.removedEntityIds);
+    }
+    snapshot_encode_envelope_begin(f.tick, f.entities.length, totalKeyCount);
 
     for (const e of f.entities) {
       if (e.type === 'unit') {
@@ -1418,7 +1473,14 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       }
     }
 
-    snapshot_encode_envelope_continue(f.isDelta ? 1 : 0);
+    snapshot_encode_envelope_continue(
+      hasEconomy,
+      f.isDelta ? 1 : 0,
+      hasRemovedIds,
+      f.removedEntityIds?.length ?? 0,
+      hasVisibilityFiltered,
+      f.visibilityFiltered === true ? 1 : 0,
+    );
 
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
