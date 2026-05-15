@@ -65,6 +65,12 @@ import {
   getSimWasm,
   STEP_UNIT_MOTIONS_BATCH_STRIDE,
   RESOLVE_SPHERE_SPHERE_STRIDE,
+  BODY_FLAG_SLEEPING,
+  BODY_FLAG_IS_STATIC,
+  BODY_FLAG_UPWARD_CONTACT,
+  BODY_FLAG_SHAPE_CUBOID,
+  BODY_FLAG_OCCUPIED,
+  type BodyPoolViews,
 } from '../sim-wasm/init';
 import type { EntityId } from '../sim/types';
 
@@ -104,61 +110,188 @@ function packContactCellKey(cx: number, cy: number, cz: number): number {
   return cxB * CONTACT_CX_MULT + cyB * CONTACT_CY_MULT + czB;
 }
 
+// Module-scope cached pool views — bound once when PhysicsEngine3D
+// is first constructed (which awaits initSimWasm via GameServer.create).
+// Body3D field accessors read/write these typed arrays directly; no
+// per-call function dispatch on the hot path.
+let _poolViews: BodyPoolViews | undefined;
+
+function bindBody3DPool(views: BodyPoolViews): void {
+  _poolViews = views;
+}
+
+function pv(): BodyPoolViews {
+  if (_poolViews === undefined) {
+    throw new Error(
+      'Body3D pool not bound — initSimWasm() must resolve before any Body3D is constructed',
+    );
+  }
+  return _poolViews;
+}
+
 /** A body participating in the 3D physics simulation. One shape type
  *  per body ('sphere' or 'cuboid'); spheres are always dynamic, cuboids
- *  are always static in the current scope. */
-export type Body3D = {
-  /** World position in sim units. (x,y)=ground plane, z=altitude. */
-  x: number;
-  y: number;
-  z: number;
-  /** Linear velocity. */
-  vx: number;
-  vy: number;
-  vz: number;
-  shape: 'sphere' | 'cuboid';
-  /** Sphere radius (shape='sphere' only). 0 for cuboids. */
-  radius: number;
-  /** Authored body-center height above the locomotion ground point.
-   *  The ground spring compares `z - groundOffset` against terrain
-   *  height; `radius` remains the unit-vs-unit/building push volume. */
-  groundOffset: number;
-  /** Cuboid half-extents (shape='cuboid' only). */
-  halfX: number;
-  halfY: number;
-  halfZ: number;
-  mass: number;
-  invMass: number;
-  /** Bounciness on contact (0..1). 0 = inelastic, 1 = full bounce. */
-  restitution: number;
-  isStatic: boolean;
-  /** Per-step accumulated acceleration. Cleared after each physics step. */
-  ax: number;
-  ay: number;
-  az: number;
-  /** Per-step acceleration from forces that are allowed to launch a
-   *  penetrating ground point upward. Passive terrain contact does
-   *  not set this; jump actuation does. */
-  groundLaunchAx: number;
-  groundLaunchAy: number;
-  groundLaunchAz: number;
-  /** True when the previous collision pass found this sphere resting
-   *  against a non-terrain surface with an upward support normal.
-   *  Force systems read this on the next tick to allow jumps from
-   *  units/buildings without treating vertical walls as floors. */
-  upwardSurfaceContact: boolean;
-  /** Idle-body sleep state. Sleeping spheres skip integration and
-   *  static/ground contact work until a force or collision wakes them. */
-  sleeping: boolean;
-  sleepTicks: number;
+ *  are always static in the current scope.
+ *
+ *  Phase 3d: numeric body fields (position, velocity, acceleration,
+ *  geometry, sleep state) live in the WASM-side BodyPool linear-memory
+ *  arrays — see rts-sim-wasm/src/lib.rs `struct BodyPool`. The Body3D
+ *  class is a thin handle: it stores its slot index plus a few cold
+ *  JS-side fields (label, entityId, etc.) that don't benefit from
+ *  living in WASM. Hot field access goes through the cached typed-
+ *  array views in `pv()` — direct typed-array index reads, fully
+ *  inline-cacheable in the JIT.
+ *
+ *  External callers should never `new Body3D(...)` directly — use
+ *  PhysicsEngine3D.createUnitBody / .createBuildingBody. */
+export class Body3D {
+  readonly slot: number;
+  readonly shape: 'sphere' | 'cuboid';
+  /** Pre-multiplier mass × UNIT_MASS_MULTIPLIER for dynamic bodies;
+   *  0 for static bodies. Kept JS-side because it's set once at
+   *  construction and only read for diagnostics/serialization. */
+  readonly mass: number;
+  readonly isStatic: boolean;
   /** Debug / log tag — entity type or id for tracing. */
   label: string;
   /** Owning sim entity id for dynamic unit bodies. */
   entityId?: EntityId;
   /** Internal broad-phase query stamp. Avoids duplicate narrow-phase
-   *  checks when a large static cuboid spans several queried cells. */
+   *  checks when a large static cuboid spans several queried cells.
+   *  Pure JS-side — Rust never touches this. */
   _staticQueryStamp?: number;
-};
+
+  private constructor(args: {
+    slot: number;
+    shape: 'sphere' | 'cuboid';
+    mass: number;
+    isStatic: boolean;
+    label: string;
+    entityId?: EntityId;
+  }) {
+    this.slot = args.slot;
+    this.shape = args.shape;
+    this.mass = args.mass;
+    this.isStatic = args.isStatic;
+    this.label = args.label;
+    this.entityId = args.entityId;
+  }
+
+  /** Factory: allocates a pool slot, populates the numeric fields
+   *  via pool views, and returns a Body3D handle. Used internally
+   *  by PhysicsEngine3D — external callers should go through
+   *  createUnitBody / createBuildingBody on the engine. */
+  static allocate(args: {
+    shape: 'sphere' | 'cuboid';
+    isStatic: boolean;
+    mass: number;
+    label: string;
+    entityId?: EntityId;
+    x: number;
+    y: number;
+    z: number;
+    radius?: number;
+    halfX?: number;
+    halfY?: number;
+    halfZ?: number;
+    groundOffset?: number;
+    restitution: number;
+  }): Body3D {
+    const views = pv();
+    const slot = views.allocSlot();
+    const body = new Body3D({
+      slot,
+      shape: args.shape,
+      mass: args.mass,
+      isStatic: args.isStatic,
+      label: args.label,
+      entityId: args.entityId,
+    });
+    // pool_alloc_slot zeros all fields and sets BODY_FLAG_OCCUPIED;
+    // we only need to write the non-zero defaults explicitly.
+    views.posX[slot] = args.x;
+    views.posY[slot] = args.y;
+    views.posZ[slot] = args.z;
+    views.radius[slot] = args.radius ?? 0;
+    views.halfX[slot] = args.halfX ?? 0;
+    views.halfY[slot] = args.halfY ?? 0;
+    views.halfZ[slot] = args.halfZ ?? 0;
+    views.invMass[slot] = args.mass > 0 ? 1 / args.mass : 0;
+    views.restitution[slot] = args.restitution;
+    views.groundOffset[slot] = args.groundOffset ?? 0;
+    let flags = BODY_FLAG_OCCUPIED;
+    if (args.isStatic) flags |= BODY_FLAG_IS_STATIC;
+    if (args.shape === 'cuboid') flags |= BODY_FLAG_SHAPE_CUBOID;
+    views.flags[slot] = flags;
+    return body;
+  }
+
+  /** Release this body's pool slot. Called by PhysicsEngine3D.removeBody. */
+  free(): void {
+    pv().freeSlot(this.slot);
+  }
+
+  // ──── Pool-backed numeric field accessors ──────────────────────
+  // Each is a single typed-array index op — JIT-inline-cacheable,
+  // ~3-5 ns per access in V8 (versus ~2 ns for a direct field on
+  // a plain object — the gap is dwarfed by the per-tick physics
+  // work and is recouped by avoiding all per-tick marshalling).
+
+  get x(): number { return pv().posX[this.slot]; }
+  set x(v: number) { pv().posX[this.slot] = v; }
+  get y(): number { return pv().posY[this.slot]; }
+  set y(v: number) { pv().posY[this.slot] = v; }
+  get z(): number { return pv().posZ[this.slot]; }
+  set z(v: number) { pv().posZ[this.slot] = v; }
+  get vx(): number { return pv().velX[this.slot]; }
+  set vx(v: number) { pv().velX[this.slot] = v; }
+  get vy(): number { return pv().velY[this.slot]; }
+  set vy(v: number) { pv().velY[this.slot] = v; }
+  get vz(): number { return pv().velZ[this.slot]; }
+  set vz(v: number) { pv().velZ[this.slot] = v; }
+  get ax(): number { return pv().accelX[this.slot]; }
+  set ax(v: number) { pv().accelX[this.slot] = v; }
+  get ay(): number { return pv().accelY[this.slot]; }
+  set ay(v: number) { pv().accelY[this.slot] = v; }
+  get az(): number { return pv().accelZ[this.slot]; }
+  set az(v: number) { pv().accelZ[this.slot] = v; }
+  get groundLaunchAx(): number { return pv().launchX[this.slot]; }
+  set groundLaunchAx(v: number) { pv().launchX[this.slot] = v; }
+  get groundLaunchAy(): number { return pv().launchY[this.slot]; }
+  set groundLaunchAy(v: number) { pv().launchY[this.slot] = v; }
+  get groundLaunchAz(): number { return pv().launchZ[this.slot]; }
+  set groundLaunchAz(v: number) { pv().launchZ[this.slot] = v; }
+
+  // Geometry — set at construction, read often, never written after.
+  get radius(): number { return pv().radius[this.slot]; }
+  get halfX(): number { return pv().halfX[this.slot]; }
+  get halfY(): number { return pv().halfY[this.slot]; }
+  get halfZ(): number { return pv().halfZ[this.slot]; }
+  get invMass(): number { return pv().invMass[this.slot]; }
+  get restitution(): number { return pv().restitution[this.slot]; }
+  get groundOffset(): number { return pv().groundOffset[this.slot]; }
+
+  get sleepTicks(): number { return pv().sleepTicks[this.slot]; }
+  set sleepTicks(v: number) { pv().sleepTicks[this.slot] = v; }
+
+  // Boolean flags packed into the flags byte.
+  get sleeping(): boolean {
+    return (pv().flags[this.slot] & BODY_FLAG_SLEEPING) !== 0;
+  }
+  set sleeping(v: boolean) {
+    const f = pv().flags;
+    if (v) f[this.slot] |= BODY_FLAG_SLEEPING;
+    else f[this.slot] &= ~BODY_FLAG_SLEEPING;
+  }
+  get upwardSurfaceContact(): boolean {
+    return (pv().flags[this.slot] & BODY_FLAG_UPWARD_CONTACT) !== 0;
+  }
+  set upwardSurfaceContact(v: boolean) {
+    const f = pv().flags;
+    if (v) f[this.slot] |= BODY_FLAG_UPWARD_CONTACT;
+    else f[this.slot] &= ~BODY_FLAG_UPWARD_CONTACT;
+  }
+}
 
 // Gravity is imported from src/config.ts as the single source of
 // truth (see `export const GRAVITY`). Every falling thing — units
@@ -232,6 +365,18 @@ export class PhysicsEngine3D {
   constructor(mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+    // Body3D fields live in the WASM-side SoA pool (Phase 3d) — bind
+    // the pool views once now so every Body3D allocated by this
+    // engine reads/writes the same canonical state. GameServer.create
+    // awaits initSimWasm() before constructing PhysicsEngine3D, so
+    // the pool is guaranteed ready by this point.
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error(
+        'PhysicsEngine3D: sim-wasm pool not initialised. Construct PhysicsEngine3D only after `await initSimWasm()`.',
+      );
+    }
+    bindBody3DPool(sim.pool);
   }
 
   /** Wire in the terrain heightmap so spring/friction contact uses
@@ -262,35 +407,19 @@ export class PhysicsEngine3D {
     const z = Number.isFinite(initialZ)
       ? initialZ!
       : this.getGroundZ(x, y) + bodyCenterHeight;
-    const body: Body3D = {
+    const body = Body3D.allocate({
+      shape: 'sphere',
+      isStatic: false,
+      mass: physicsMass,
+      label,
+      entityId,
       x,
       y,
       z,
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      shape: 'sphere',
       radius: physicsRadius,
       groundOffset: bodyCenterHeight,
-      halfX: 0,
-      halfY: 0,
-      halfZ: 0,
-      mass: physicsMass,
-      invMass: 1 / physicsMass,
       restitution: 0.2,
-      isStatic: false,
-      ax: 0,
-      ay: 0,
-      az: 0,
-      groundLaunchAx: 0,
-      groundLaunchAy: 0,
-      groundLaunchAz: 0,
-      upwardSurfaceContact: false,
-      sleeping: false,
-      sleepTicks: 0,
-      label,
-      entityId,
-    };
+    });
     this.addBody(body);
     return body;
   }
@@ -310,34 +439,19 @@ export class PhysicsEngine3D {
     baseZ: number,
     label: string,
   ): Body3D {
-    const body: Body3D = {
+    const body = Body3D.allocate({
+      shape: 'cuboid',
+      isStatic: true,
+      mass: 0,
+      label,
       x,
       y,
       z: baseZ + depth / 2,
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      shape: 'cuboid',
-      radius: 0,
-      groundOffset: 0,
       halfX: width / 2,
       halfY: height / 2,
       halfZ: depth / 2,
-      mass: 0,
-      invMass: 0,
       restitution: 0.1,
-      isStatic: true,
-      ax: 0,
-      ay: 0,
-      az: 0,
-      groundLaunchAx: 0,
-      groundLaunchAy: 0,
-      groundLaunchAz: 0,
-      upwardSurfaceContact: false,
-      sleeping: false,
-      sleepTicks: 0,
-      label,
-    };
+    });
     this.addBody(body);
     return body;
   }
@@ -370,6 +484,8 @@ export class PhysicsEngine3D {
     for (const [dyn, stat] of this.ignoreStatic) {
       if (dyn === body || stat === body) this.ignoreStatic.delete(dyn);
     }
+    // Release the BodyPool slot so future bodies can reuse it.
+    body.free();
   }
 
   /** Apply a 3D force to a dynamic body. Accumulates until the next

@@ -140,9 +140,13 @@ Split into sub-phases to keep each ship-able and reviewable.
   Phase 3a — Batched integrate() + sleep state machine. DONE.
   Phase 3b — Sphere-vs-cuboid resolver port. (Deferred behind 3d — per-pair
              WASM calls would currently cost more than they save; revisit
-             after Body3D state lives in linear memory.)
+             after the per-tick marshal is gone.)
   Phase 3c — Sphere-vs-sphere resolver + broadphase port. DONE.
-  Phase 3d — Body3D SoA pool in WASM linear memory (state ownership).
+  Phase 3d — Body3D SoA pool in WASM linear memory (state ownership). DONE
+             (foundation: pool exists, Body3D class proxies to pool views,
+             create/remove allocate/free slots). Follow-on work: route
+             Phase 3a/3c WASM kernels through the pool directly to
+             eliminate the per-tick scratch-buffer marshal.
   Phase 3e — Hover lift + quat-spring + bank-into-turn (or roll into Phase 4).
   Phase 3f — Static cuboid broadphase port.
 
@@ -243,6 +247,63 @@ TS fallback path preserved: `resolveSphereSphereContactsTsIteration`
 module isn't loaded yet. The dispatcher `resolveSphereSphereContacts
 (iterations)` picks the path. step() now calls the dispatcher with
 the budget computed by `getSphereIterationBudget()`.
+
+------------------------------------------------------------------------------
+ Phase 3d — Body3D SoA pool in WASM linear memory (foundation). DONE.
+------------------------------------------------------------------------------
+Landed: `BodyPool` in rts-sim-wasm/src/lib.rs — fixed-capacity
+(POOL_CAPACITY = 4096) SoA storage with one Vec per numeric body
+field (pos_x/y/z, vel_x/y/z, accel_x/y/z, launch_x/y/z, radius,
+half_x/y/z, inv_mass, restitution, ground_offset, sleep_ticks)
+plus a packed flags byte (sleeping, is_static, upward_contact,
+shape_cuboid, occupied bits). Slot allocation via free-list
++ high-water mark. Pool is initialised once via `pool_init()`
+called by `initSimWasm()`; capacity is allocated up front so JS
+typed-array views over the WASM linear memory stay valid forever
+(no per-tick refresh).
+
+Bindings: per-field raw pointer exports (pool_pos_x_ptr() etc.)
+let JS construct Float64Array / Uint8Array views over WASM memory
+once, then index by slot for direct field access. Body3DPool wrapper
+in src/game/sim-wasm/init.ts exposes them as `SimWasm.pool` with
+allocSlot / freeSlot / refreshViews + per-field views.
+
+Body3D refactored from a struct literal to a class:
+  - `slot`, `shape`, `mass`, `isStatic` are immutable instance fields.
+  - `label`, `entityId`, `_staticQueryStamp` stay JS-side (never read
+    by Rust; living in WASM would just waste cycles marshalling).
+  - All other fields (motion, accumulators, geometry, sleep state,
+    boolean flags) are getters/setters that read/write the pool
+    typed-array views directly. JIT-inline-cacheable; ~3-5 ns per
+    access vs ~2 ns for the prior plain field — overhead recouped
+    once Phase 3a/3c stop building per-tick scratch buffers.
+  - Static factory `Body3D.allocate(args)` allocates a pool slot,
+    populates initial field values via the views, and returns the
+    handle. PhysicsEngine3D.createUnitBody / .createBuildingBody
+    construct via this factory.
+  - `body.free()` releases the slot back to the pool. Called from
+    PhysicsEngine3D.removeBody.
+
+Bootstrap timing: `GameServer.create()` now `await initSimWasm()`
+before constructing GameServer. This guarantees the pool is ready
+before any PhysicsEngine3D instance is built — and therefore before
+any Body3D is allocated. main.ts already kicks initSimWasm() in
+parallel with the Vue mount, so in practice the create() await is
+a no-op (the promise has already resolved by the time host code
+calls in).
+
+External API surface preserved: every consumer of Body3D field
+access (UnitForceSystem, damageHelpers, snapshot serializers, etc.)
+continues to read body.x / body.vx / etc. via the getter — no
+caller-side change needed.
+
+Open follow-up (Phase 3d-2, separate commit): rewrite the Phase 3a
+`step_unit_motions_batch` and Phase 3c `resolve_sphere_sphere_
+contacts` WASM functions to read state from the pool directly via
+slot-index lists instead of taking a per-call Float64Array packed
+buffer. That eliminates the JS-side marshal step entirely and is
+the actual perf win — this commit ships the foundation that makes
+that follow-on possible.
 
   - SoA Body3D representation in linear memory: separate Vec<f32>
     for x, y, z, vx, vy, vz, ax, ay, az, mass, invMass, radius,

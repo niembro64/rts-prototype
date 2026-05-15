@@ -18,6 +18,31 @@ import __wbg_init, {
   step_unit_motion,
   step_unit_motions_batch,
   resolve_sphere_sphere_contacts,
+  pool_init,
+  pool_capacity,
+  pool_alloc_slot,
+  pool_free_slot,
+  pool_pos_x_ptr,
+  pool_pos_y_ptr,
+  pool_pos_z_ptr,
+  pool_vel_x_ptr,
+  pool_vel_y_ptr,
+  pool_vel_z_ptr,
+  pool_accel_x_ptr,
+  pool_accel_y_ptr,
+  pool_accel_z_ptr,
+  pool_launch_x_ptr,
+  pool_launch_y_ptr,
+  pool_launch_z_ptr,
+  pool_radius_ptr,
+  pool_half_x_ptr,
+  pool_half_y_ptr,
+  pool_half_z_ptr,
+  pool_inv_mass_ptr,
+  pool_restitution_ptr,
+  pool_ground_offset_ptr,
+  pool_sleep_ticks_ptr,
+  pool_flags_ptr,
 } from './pkg/rts_sim_wasm';
 
 /** Layout stride for `stepUnitMotionsBatch`. Each body occupies
@@ -112,6 +137,69 @@ export interface SimWasm {
     iterations: number,
     cellSize: number,
   ) => void;
+  /** Body3D SoA pool — Phase 3d. Linear-memory-backed storage
+   *  for every numeric body field. Slots are stable for a body's
+   *  lifetime; `allocSlot()` returns the next free slot, `freeSlot`
+   *  returns it. The view properties expose Float64Array /
+   *  Uint8Array views over the pool's underlying storage so JS
+   *  can read/write any body's field in O(1) without crossing
+   *  the WASM boundary per access. Pool is initialized
+   *  automatically at WASM load (one-time call to pool_init). */
+  readonly pool: BodyPoolViews;
+}
+
+/** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
+ *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
+export const BODY_FLAG_SLEEPING = 1 << 0;
+export const BODY_FLAG_IS_STATIC = 1 << 1;
+export const BODY_FLAG_UPWARD_CONTACT = 1 << 2;
+export const BODY_FLAG_SHAPE_CUBOID = 1 << 3;
+export const BODY_FLAG_OCCUPIED = 1 << 4;
+
+/** Typed-array views over the WASM-side BodyPool. All views are
+ *  indexed by slot id (returned by allocSlot()). Capacity is
+ *  fixed at pool_init() so views never need to be refreshed
+ *  unless the WASM linear memory itself grows underneath us;
+ *  call `refreshViews()` after any operation that might trigger
+ *  memory growth (rare under our usage pattern). */
+export interface BodyPoolViews {
+  readonly capacity: number;
+  /** Allocate the next free slot; throws if pool is exhausted. */
+  allocSlot: () => number;
+  /** Return a slot to the free list. Caller must clear any
+   *  pool-managed fields the slot held to sensible defaults if
+   *  it's reused later (alloc_slot zeros all fields, so explicit
+   *  cleanup isn't required for correctness — just for clarity). */
+  freeSlot: (slot: number) => void;
+  /** Re-construct all views over the WASM linear memory. Call after
+   *  any operation that may have grown WASM memory and detached
+   *  existing views. In practice the fixed-capacity pool means
+   *  growth is very rare — call defensively at the start of each
+   *  tick if you're paranoid, or rely on the views' detachment
+   *  check (`view.byteLength === 0`) to detect stale views. */
+  refreshViews: () => void;
+
+  posX: Float64Array;
+  posY: Float64Array;
+  posZ: Float64Array;
+  velX: Float64Array;
+  velY: Float64Array;
+  velZ: Float64Array;
+  accelX: Float64Array;
+  accelY: Float64Array;
+  accelZ: Float64Array;
+  launchX: Float64Array;
+  launchY: Float64Array;
+  launchZ: Float64Array;
+  radius: Float64Array;
+  halfX: Float64Array;
+  halfY: Float64Array;
+  halfZ: Float64Array;
+  invMass: Float64Array;
+  restitution: Float64Array;
+  groundOffset: Float64Array;
+  sleepTicks: Float64Array;
+  flags: Uint8Array;
 }
 
 let cached: Promise<SimWasm> | undefined;
@@ -123,12 +211,101 @@ let resolvedHandle: SimWasm | undefined;
 export function initSimWasm(): Promise<SimWasm> {
   if (cached === undefined) {
     cached = (async () => {
-      await __wbg_init();
+      const initOutput = await __wbg_init();
+      pool_init();
+      const memory = initOutput.memory;
+      const capacity = pool_capacity();
+
+      const f64View = (ptr: number): Float64Array =>
+        new Float64Array(memory.buffer, ptr, capacity);
+      const u8View = (ptr: number): Uint8Array =>
+        new Uint8Array(memory.buffer, ptr, capacity);
+
+      // Hold field pointers so refreshViews() can rebuild the
+      // typed-array views over potentially-detached WASM memory
+      // (linear memory grow detaches all existing views).
+      const ptrs = {
+        posX: pool_pos_x_ptr(),
+        posY: pool_pos_y_ptr(),
+        posZ: pool_pos_z_ptr(),
+        velX: pool_vel_x_ptr(),
+        velY: pool_vel_y_ptr(),
+        velZ: pool_vel_z_ptr(),
+        accelX: pool_accel_x_ptr(),
+        accelY: pool_accel_y_ptr(),
+        accelZ: pool_accel_z_ptr(),
+        launchX: pool_launch_x_ptr(),
+        launchY: pool_launch_y_ptr(),
+        launchZ: pool_launch_z_ptr(),
+        radius: pool_radius_ptr(),
+        halfX: pool_half_x_ptr(),
+        halfY: pool_half_y_ptr(),
+        halfZ: pool_half_z_ptr(),
+        invMass: pool_inv_mass_ptr(),
+        restitution: pool_restitution_ptr(),
+        groundOffset: pool_ground_offset_ptr(),
+        sleepTicks: pool_sleep_ticks_ptr(),
+        flags: pool_flags_ptr(),
+      };
+
+      const pool: BodyPoolViews = {
+        capacity,
+        allocSlot: pool_alloc_slot,
+        freeSlot: pool_free_slot,
+        refreshViews: () => {
+          pool.posX = f64View(ptrs.posX);
+          pool.posY = f64View(ptrs.posY);
+          pool.posZ = f64View(ptrs.posZ);
+          pool.velX = f64View(ptrs.velX);
+          pool.velY = f64View(ptrs.velY);
+          pool.velZ = f64View(ptrs.velZ);
+          pool.accelX = f64View(ptrs.accelX);
+          pool.accelY = f64View(ptrs.accelY);
+          pool.accelZ = f64View(ptrs.accelZ);
+          pool.launchX = f64View(ptrs.launchX);
+          pool.launchY = f64View(ptrs.launchY);
+          pool.launchZ = f64View(ptrs.launchZ);
+          pool.radius = f64View(ptrs.radius);
+          pool.halfX = f64View(ptrs.halfX);
+          pool.halfY = f64View(ptrs.halfY);
+          pool.halfZ = f64View(ptrs.halfZ);
+          pool.invMass = f64View(ptrs.invMass);
+          pool.restitution = f64View(ptrs.restitution);
+          pool.groundOffset = f64View(ptrs.groundOffset);
+          pool.sleepTicks = f64View(ptrs.sleepTicks);
+          pool.flags = u8View(ptrs.flags);
+        },
+        // Initialised below; the explicit assignments make the
+        // type narrowing happy.
+        posX: f64View(ptrs.posX),
+        posY: f64View(ptrs.posY),
+        posZ: f64View(ptrs.posZ),
+        velX: f64View(ptrs.velX),
+        velY: f64View(ptrs.velY),
+        velZ: f64View(ptrs.velZ),
+        accelX: f64View(ptrs.accelX),
+        accelY: f64View(ptrs.accelY),
+        accelZ: f64View(ptrs.accelZ),
+        launchX: f64View(ptrs.launchX),
+        launchY: f64View(ptrs.launchY),
+        launchZ: f64View(ptrs.launchZ),
+        radius: f64View(ptrs.radius),
+        halfX: f64View(ptrs.halfX),
+        halfY: f64View(ptrs.halfY),
+        halfZ: f64View(ptrs.halfZ),
+        invMass: f64View(ptrs.invMass),
+        restitution: f64View(ptrs.restitution),
+        groundOffset: f64View(ptrs.groundOffset),
+        sleepTicks: f64View(ptrs.sleepTicks),
+        flags: u8View(ptrs.flags),
+      };
+
       const handle: SimWasm = {
         version: version(),
         stepUnitMotion: step_unit_motion,
         stepUnitMotionsBatch: step_unit_motions_batch,
         resolveSphereSphereContacts: resolve_sphere_sphere_contacts,
+        pool,
       };
       resolvedHandle = handle;
       return handle;

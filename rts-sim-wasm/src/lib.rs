@@ -17,6 +17,7 @@
 //   9  pathfinder              — A* over the walk grid
 //  10  snapshot serializer     — per-entity quantize + delta path
 
+use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
@@ -622,3 +623,245 @@ pub fn resolve_sphere_sphere_contacts(
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 3d — Body3D SoA pool in WASM linear memory
+//
+//  Foundational data structure for the bespoke physics engine. All
+//  per-body state lives here as parallel SoA arrays; JS gets
+//  Float64Array / Uint8Array views over linear memory and reads/
+//  writes body fields by slot index. Future phases route every
+//  Rust kernel directly through these arrays — eliminating per-
+//  tick marshalling between JS Body3D structs and Rust scratch
+//  buffers (Phase 3a's _integrateBatchBuf, Phase 3c's
+//  _sphereSphereBatchBuf). Slot indices are STABLE for the body's
+//  lifetime — they're handed back to JS at create time and used
+//  for every subsequent operation.
+//
+//  Capacity is fixed at POOL_CAPACITY at init time. Vecs never
+//  reallocate, so the typed-array views JS holds remain valid
+//  forever (no per-tick view refresh). Sized for an upper bound
+//  on simultaneous bodies (units + buildings); 4096 is plenty for
+//  the unit counts the game runs (typically a few hundred).
+//
+//  Free-slot management: a free-list Vec drains last-allocated
+//  first. `next_unused_slot` tracks the high-water mark for the
+//  initial allocation walk before any body is removed.
+//
+//  Field set chosen to cover Body3D in PhysicsEngine3D.ts. Cold
+//  fields (label string, EntityId, shape category) stay JS-side —
+//  Rust doesn't need them and crossing them across the boundary
+//  every step would waste cycles.
+// ─────────────────────────────────────────────────────────────────
+
+pub const POOL_CAPACITY: u32 = 4096;
+const POOL_CAPACITY_USIZE: usize = POOL_CAPACITY as usize;
+
+// Bit positions inside the per-body `flags: Vec<u8>`. Mirrors the
+// JS-side BODY_FLAG_* constants in src/game/server/Body3DPool.ts.
+pub const BODY_FLAG_SLEEPING: u8 = 1 << 0;
+pub const BODY_FLAG_IS_STATIC: u8 = 1 << 1;
+pub const BODY_FLAG_UPWARD_CONTACT: u8 = 1 << 2;
+pub const BODY_FLAG_SHAPE_CUBOID: u8 = 1 << 3;
+pub const BODY_FLAG_OCCUPIED: u8 = 1 << 4;
+
+struct BodyPool {
+    // Position + velocity + per-step accumulator. The hot integrator
+    // path mutates these every tick.
+    pos_x: Vec<f64>,
+    pos_y: Vec<f64>,
+    pos_z: Vec<f64>,
+    vel_x: Vec<f64>,
+    vel_y: Vec<f64>,
+    vel_z: Vec<f64>,
+    accel_x: Vec<f64>,
+    accel_y: Vec<f64>,
+    accel_z: Vec<f64>,
+    launch_x: Vec<f64>,
+    launch_y: Vec<f64>,
+    launch_z: Vec<f64>,
+
+    // Geometry / mass — set at body creation, rarely changed after.
+    radius: Vec<f64>,
+    half_x: Vec<f64>,
+    half_y: Vec<f64>,
+    half_z: Vec<f64>,
+    inv_mass: Vec<f64>,
+    restitution: Vec<f64>,
+    ground_offset: Vec<f64>,
+
+    // Sleep state. `sleep_ticks` is f64 to match the JS side's
+    // numeric counter and sit on a single ptr export.
+    sleep_ticks: Vec<f64>,
+
+    // Bitfield: see BODY_FLAG_* constants.
+    flags: Vec<u8>,
+
+    // Free-list + high-water mark for slot allocation.
+    free_slots: Vec<u32>,
+    next_unused_slot: u32,
+}
+
+impl BodyPool {
+    fn new() -> Self {
+        let cap = POOL_CAPACITY_USIZE;
+        Self {
+            pos_x: vec![0.0; cap],
+            pos_y: vec![0.0; cap],
+            pos_z: vec![0.0; cap],
+            vel_x: vec![0.0; cap],
+            vel_y: vec![0.0; cap],
+            vel_z: vec![0.0; cap],
+            accel_x: vec![0.0; cap],
+            accel_y: vec![0.0; cap],
+            accel_z: vec![0.0; cap],
+            launch_x: vec![0.0; cap],
+            launch_y: vec![0.0; cap],
+            launch_z: vec![0.0; cap],
+            radius: vec![0.0; cap],
+            half_x: vec![0.0; cap],
+            half_y: vec![0.0; cap],
+            half_z: vec![0.0; cap],
+            inv_mass: vec![0.0; cap],
+            restitution: vec![0.0; cap],
+            ground_offset: vec![0.0; cap],
+            sleep_ticks: vec![0.0; cap],
+            flags: vec![0u8; cap],
+            free_slots: Vec::with_capacity(64),
+            next_unused_slot: 0,
+        }
+    }
+
+    fn alloc_slot(&mut self) -> u32 {
+        let slot = if let Some(s) = self.free_slots.pop() {
+            s
+        } else {
+            let s = self.next_unused_slot;
+            self.next_unused_slot += 1;
+            s
+        };
+        debug_assert!(
+            (slot as usize) < POOL_CAPACITY_USIZE,
+            "BodyPool exhausted (capacity {})",
+            POOL_CAPACITY_USIZE
+        );
+        // Zero the slot in case it's being reused.
+        let i = slot as usize;
+        self.pos_x[i] = 0.0;
+        self.pos_y[i] = 0.0;
+        self.pos_z[i] = 0.0;
+        self.vel_x[i] = 0.0;
+        self.vel_y[i] = 0.0;
+        self.vel_z[i] = 0.0;
+        self.accel_x[i] = 0.0;
+        self.accel_y[i] = 0.0;
+        self.accel_z[i] = 0.0;
+        self.launch_x[i] = 0.0;
+        self.launch_y[i] = 0.0;
+        self.launch_z[i] = 0.0;
+        self.radius[i] = 0.0;
+        self.half_x[i] = 0.0;
+        self.half_y[i] = 0.0;
+        self.half_z[i] = 0.0;
+        self.inv_mass[i] = 0.0;
+        self.restitution[i] = 0.0;
+        self.ground_offset[i] = 0.0;
+        self.sleep_ticks[i] = 0.0;
+        self.flags[i] = BODY_FLAG_OCCUPIED;
+        slot
+    }
+
+    fn free_slot(&mut self, slot: u32) {
+        let i = slot as usize;
+        debug_assert!(i < POOL_CAPACITY_USIZE);
+        debug_assert_ne!(self.flags[i] & BODY_FLAG_OCCUPIED, 0, "freeing already-free slot");
+        self.flags[i] = 0;
+        self.free_slots.push(slot);
+    }
+}
+
+// Single-threaded WASM, so an UnsafeCell-wrapped static is safe.
+// Rust doesn't have a true single-threaded global without unsafe;
+// the OnceCell + UnsafeCell pattern keeps the unsafety contained.
+struct PoolHolder(UnsafeCell<Option<BodyPool>>);
+
+unsafe impl Sync for PoolHolder {}
+
+static POOL: PoolHolder = PoolHolder(UnsafeCell::new(None));
+
+#[inline]
+fn pool() -> &'static mut BodyPool {
+    // SAFETY: WASM is single-threaded; there's no concurrent access.
+    // pool_init must have been called before any pool_* function.
+    unsafe {
+        (*POOL.0.get())
+            .as_mut()
+            .expect("pool_init() not called before pool access")
+    }
+}
+
+#[wasm_bindgen]
+pub fn pool_init() {
+    // SAFETY: see `pool()`.
+    unsafe {
+        let cell = POOL.0.get();
+        if (*cell).is_none() {
+            *cell = Some(BodyPool::new());
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn pool_capacity() -> u32 {
+    POOL_CAPACITY
+}
+
+#[wasm_bindgen]
+pub fn pool_alloc_slot() -> u32 {
+    pool().alloc_slot()
+}
+
+#[wasm_bindgen]
+pub fn pool_free_slot(slot: u32) {
+    pool().free_slot(slot);
+}
+
+// Per-field raw pointer exports. JS constructs Float64Array /
+// Uint8Array views once after pool_init(); pointers stay stable
+// because the underlying Vecs were sized to POOL_CAPACITY at init
+// and never reallocate.
+//
+// One ptr per field rather than a single struct-of-arrays handle
+// — wasm-bindgen doesn't have first-class ptr-to-struct support
+// and per-field access keeps the JS view code straightforward.
+
+macro_rules! pool_ptr_export {
+    ($name:ident, $field:ident, $ty:ty) => {
+        #[wasm_bindgen]
+        pub fn $name() -> *const $ty {
+            pool().$field.as_ptr()
+        }
+    };
+}
+
+pool_ptr_export!(pool_pos_x_ptr, pos_x, f64);
+pool_ptr_export!(pool_pos_y_ptr, pos_y, f64);
+pool_ptr_export!(pool_pos_z_ptr, pos_z, f64);
+pool_ptr_export!(pool_vel_x_ptr, vel_x, f64);
+pool_ptr_export!(pool_vel_y_ptr, vel_y, f64);
+pool_ptr_export!(pool_vel_z_ptr, vel_z, f64);
+pool_ptr_export!(pool_accel_x_ptr, accel_x, f64);
+pool_ptr_export!(pool_accel_y_ptr, accel_y, f64);
+pool_ptr_export!(pool_accel_z_ptr, accel_z, f64);
+pool_ptr_export!(pool_launch_x_ptr, launch_x, f64);
+pool_ptr_export!(pool_launch_y_ptr, launch_y, f64);
+pool_ptr_export!(pool_launch_z_ptr, launch_z, f64);
+pool_ptr_export!(pool_radius_ptr, radius, f64);
+pool_ptr_export!(pool_half_x_ptr, half_x, f64);
+pool_ptr_export!(pool_half_y_ptr, half_y, f64);
+pool_ptr_export!(pool_half_z_ptr, half_z, f64);
+pool_ptr_export!(pool_inv_mass_ptr, inv_mass, f64);
+pool_ptr_export!(pool_restitution_ptr, restitution, f64);
+pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
+pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
+pool_ptr_export!(pool_flags_ptr, flags, u8);

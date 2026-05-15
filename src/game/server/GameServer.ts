@@ -65,6 +65,7 @@ import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import type { CaptureSystem } from '../sim/CaptureSystem';
 import { factoryProductionSystem } from '../sim/factoryProduction';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
+import { initSimWasm } from '../sim-wasm/init';
 import { ServerBootstrap } from './ServerBootstrap';
 import { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerTickLoop } from './ServerTickLoop';
@@ -222,10 +223,15 @@ export class GameServer {
   // Public IP address (set by host component)
   private ipAddress: string = 'N/A';
 
-  /** Async factory — kept for API compatibility with the pre-3D branch
-   *  (host code still calls `GameServer.create(...)`) but there is no
-   *  longer a WASM path to initialize: the 3D engine is pure TS. */
+  /** Async factory. Awaits the bespoke Rust/WASM physics module
+   *  (rts-sim-wasm) before constructing the engine — Body3D state
+   *  lives in WASM linear memory via the SoA pool (Phase 3d), so
+   *  the pool MUST be initialised before any PhysicsEngine3D body
+   *  is created. main.ts kicks initSimWasm() in parallel with the
+   *  Vue mount, so by the time host code calls create() the
+   *  promise is usually already resolved (no actual wait). */
   static async create(config: GameServerConfig): Promise<GameServer> {
+    await initSimWasm();
     return new GameServer(config);
   }
 
