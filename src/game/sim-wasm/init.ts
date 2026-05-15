@@ -756,15 +756,19 @@ export interface SnapshotBaselineApi {
   ) => void;
   /** D.3c — capture one building slot's current state into the
    *  baseline. Pulls HP + factory/solar/build progress from the
-   *  entity-meta pool; takes transform as parameters. Auto-grows.
-   *  Zeros the velocity / turret / engagement fields so a stray emit
-   *  can't pick up stale unit data from a slot recycle. */
+   *  entity-meta pool and turret state from the turret pool (for
+   *  defense-turret buildings); takes transform plus engagement /
+   *  target bits as parameters. Auto-grows. Zeros velocity /
+   *  movementAccel so a stray emit can't pick up stale unit data
+   *  from a slot recycle. */
   captureBuildingSlot: (
     handle: number,
     slot: number,
     tick: number,
     x: number, y: number, z: number,
     rotation: number,
+    isEngagedBits: number,
+    targetBits: number,
   ) => void;
   /** Per-slot used flag (0 = unset, 1 = baseline captured). */
   slotUsed: (handle: number, slot: number) => number;

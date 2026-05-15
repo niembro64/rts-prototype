@@ -485,7 +485,9 @@ export function getNextEntityState(entity: Entity): PrevEntityState {
 
 /** Phase 10 D.3a — mirror the snapshot-relevant scalars + per-turret
  *  state of one entity into the WASM-side entity-meta + turret pools.
- *  No consumer reads these yet; the encoder lands in D.3b. */
+ *  Turret pool population runs for ALL entities with combat (units
+ *  AND defense-turret buildings) so the Rust diff sees fresh weapon
+ *  state for either category. */
 function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
   const slot = spatialGrid.getSlot(e.id);
   if (slot < 0) return;
@@ -510,19 +512,6 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       u.jump?.launchSeq ?? 0,
       buildable ? getBuildFraction(buildable) : 0,
     );
-    const turrets = e.combat?.turrets;
-    const turretCount = turrets ? turrets.length : 0;
-    sim.turretPool.setCount(slot, turretCount);
-    for (let t = 0; t < turretCount; t++) {
-      const w = turrets![t];
-      sim.turretPool.setTurret(
-        slot, t,
-        w.rotation, w.angularVelocity, w.angularAcceleration,
-        w.pitch, w.pitchVelocity, w.pitchAcceleration,
-        w.forceField?.range ?? 0,
-        w.target ?? -1,
-      );
-    }
   } else if (e.building) {
     const b = e.building;
     const f = e.factory;
@@ -535,6 +524,20 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       f?.currentBuildProgress ?? 0,
       b.solar?.open === false ? 0 : 1,
       e.buildable ? getBuildFraction(e.buildable) : 1,
+    );
+  }
+
+  const turrets = e.combat?.turrets;
+  const turretCount = turrets ? turrets.length : 0;
+  sim.turretPool.setCount(slot, turretCount);
+  for (let t = 0; t < turretCount; t++) {
+    const w = turrets![t];
+    sim.turretPool.setTurret(
+      slot, t,
+      w.rotation, w.angularVelocity, w.angularAcceleration,
+      w.pitch, w.pitchVelocity, w.pitchAcceleration,
+      w.forceField?.range ?? 0,
+      w.target ?? -1,
     );
   }
 }

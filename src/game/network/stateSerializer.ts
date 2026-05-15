@@ -83,6 +83,7 @@ function captureToRustBaseline(
     sim.snapshotBaseline.captureBuildingSlot(
       handle, slot, tick,
       next.x, next.y, next.z, next.rotation,
+      next.isEngagedBits, next.targetBits,
     );
   }
 }

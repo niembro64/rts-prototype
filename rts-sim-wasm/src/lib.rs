@@ -5676,6 +5676,8 @@ pub fn snapshot_baseline_capture_building_slot(
     tick: u32,
     x: f32, y: f32, z: f32,
     rotation: f32,
+    is_engaged_bits: u32,
+    target_bits: u32,
 ) {
     let registry = snapshot_baseline_registry();
     let Some(b) = registry.get_mut(handle) else { return; };
@@ -5691,9 +5693,8 @@ pub fn snapshot_baseline_capture_building_slot(
     b.movement_accel_x[s] = 0.0;
     b.movement_accel_y[s] = 0.0;
     b.movement_accel_z[s] = 0.0;
-    b.weapon_count[s] = 0;
-    b.is_engaged_bits[s] = 0;
-    b.target_bits[s] = 0;
+    b.is_engaged_bits[s] = is_engaged_bits;
+    b.target_bits[s] = target_bits;
 
     // HP + factory/solar/build progress from the entity-meta pool.
     let meta = entity_meta_pool();
@@ -5704,6 +5705,27 @@ pub fn snapshot_baseline_capture_building_slot(
         b.is_producing[s] = if s < meta.factory_is_producing.len() { meta.factory_is_producing[s] } else { 0 };
         b.build_queue_len[s] = if s < meta.factory_build_queue_len.len() { meta.factory_build_queue_len[s] } else { 0 };
         b.solar_open[s] = if s < meta.solar_open.len() { meta.solar_open[s] } else { 1 };
+    }
+
+    // Turret state — buildings with defense turrets (combat) need
+    // weapon_count + per-turret state captured the same as units, or
+    // the diff kernel would see ENTITY_CHANGED_TURRETS divergence
+    // every tick.
+    let turret = turret_pool();
+    if s < turret.count_per_entity.len() {
+        let count = turret.count_per_entity[s];
+        b.weapon_count[s] = count;
+        let base = s * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize);
+        for t in 0..(count as usize) {
+            let src = base + t;
+            let dst = base + t;
+            b.turret_rots[dst] = turret.rotation[src];
+            b.turret_ang_vels[dst] = turret.angular_velocity[src];
+            b.turret_pitches[dst] = turret.pitch[src];
+            b.force_field_ranges[dst] = turret.force_field_range[src];
+        }
+    } else {
+        b.weapon_count[s] = 0;
     }
 }
 
