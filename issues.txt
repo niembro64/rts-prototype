@@ -587,13 +587,33 @@ per-candidate state.
     projectile homing (server + client).
 
 ------------------------------------------------------------------------------
- Phase 7 — SpatialGrid → Rust/WASM.
+ Phase 7 — SpatialGrid → Rust/WASM.  DEFERRED (multi-session work).
 ------------------------------------------------------------------------------
-SpatialGrid.ts is 1438 lines — the 3D voxel hash every other hot
-path consults. Once it's in Rust the per-tick query traffic
-between physics / targeting / projectile collision / render scope /
-AoI all stays inside WASM linear memory.
+SpatialGrid.ts is 1438 lines with ~48 public methods across three
+entity types (units, buildings, projectiles) plus capture-vote
+tracking, two parallel cell structures (`cells` + `landUnitCells`),
+and multiple per-entity-type EntityId→cell-key maps. Returning
+Entity arrays is baked into the public API at dozens of caller
+sites.
 
+A full slot-keyed Rust port requires:
+  - Every entity type to have a stable WASM-pool slot. Units and
+    cuboid bodies do (BodyPool). Projectiles do (ProjectilePool).
+    Buildings as captureable objects with playerId metadata do
+    not yet — would need an entity-meta SoA.
+  - Refactoring every caller of `getUnitsInRadius`, `getBuildings
+    InRect`, etc. from `Entity[]` results to `slot[] → JS-side
+    Entity lookup` — touches dozens of files.
+  - Two parallel grids (cells + landUnitCells), capture votes,
+    and the AoI keyframe-vs-delta path all ported.
+
+Doing this in a single commit risks weeks of regression hunting.
+Defer until we can budget a multi-session port. In the interim
+the JS SpatialGrid remains the source of truth; tier-3 ports
+(targeting LOS, lineOfSight) consume slot ids extracted from the
+JS-side query result rather than reading the grid in Rust.
+
+When we revisit, the right shape is:
   - 48-bit packed cell key (already documented in current code).
   - insert / remove / move APIs keyed by entity slot id (NOT
     EntityId — slots are stable in linear memory).
