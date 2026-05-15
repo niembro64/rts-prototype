@@ -10,12 +10,15 @@ import {
   snapshot_encode_entity_unit,
   snapshot_encode_turret_scratch_ptr,
   snapshot_encode_turret_scratch_ensure,
+  snapshot_encode_action_scratch_ptr,
+  snapshot_encode_action_scratch_ensure,
   messagepack_writer_ptr,
   messagepack_writer_len,
 } from './pkg/rts_sim_wasm';
 import { SNAPSHOT_ENTITY_TYPE_UNIT, SNAPSHOT_ENTITY_TYPE_BUILDING } from './init';
 
 const TURRET_SCRATCH_STRIDE = 12;
+const ACTION_SCRATCH_STRIDE = 14;
 
 type TurretFixture = {
   turret: {
@@ -28,6 +31,17 @@ type TurretFixture = {
   targetId?: number;
   state: number;
   currentForceFieldRange?: number;
+};
+
+type ActionFixture = {
+  type: number;
+  pos?: { x: number; y: number };
+  posZ?: number;
+  pathExp?: true;
+  targetId?: number;
+  // buildingType skipped — string encoding not yet supported.
+  grid?: { x: number; y: number };
+  buildingId?: number;
 };
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
@@ -129,9 +143,36 @@ type UnitFixture = BasicEntityFixture & {
     fireEnabled?: false;
     isCommander?: true;
     buildTargetId?: number | null;
+    actions?: ActionFixture[];
     turrets?: TurretFixture[];
   };
 };
+
+function packActionsIntoScratch(memory: WebAssembly.Memory, actions: ActionFixture[]): void {
+  snapshot_encode_action_scratch_ensure(actions.length);
+  const ptr = snapshot_encode_action_scratch_ptr();
+  const view = new Float64Array(
+    memory.buffer, ptr, actions.length * ACTION_SCRATCH_STRIDE,
+  );
+  for (let i = 0; i < actions.length; i++) {
+    const a = actions[i];
+    const base = i * ACTION_SCRATCH_STRIDE;
+    view[base + 0] = a.type;
+    view[base + 1] = a.pos !== undefined ? 1 : 0;
+    view[base + 2] = a.pos?.x ?? 0;
+    view[base + 3] = a.pos?.y ?? 0;
+    view[base + 4] = a.posZ !== undefined ? 1 : 0;
+    view[base + 5] = a.posZ ?? 0;
+    view[base + 6] = a.pathExp === true ? 1 : 0;
+    view[base + 7] = a.targetId !== undefined ? 1 : 0;
+    view[base + 8] = a.targetId ?? 0;
+    view[base + 9] = a.grid !== undefined ? 1 : 0;
+    view[base + 10] = a.grid?.x ?? 0;
+    view[base + 11] = a.grid?.y ?? 0;
+    view[base + 12] = a.buildingId !== undefined ? 1 : 0;
+    view[base + 13] = a.buildingId ?? 0;
+  }
+}
 
 function packTurretsIntoScratch(memory: WebAssembly.Memory, turrets: TurretFixture[]): void {
   snapshot_encode_turret_scratch_ensure(turrets.length);
@@ -509,6 +550,95 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         })),
       },
     },
+    // Single move action (just type — minimal case)
+    {
+      id: 800, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          { type: 1 },
+        ],
+      },
+    },
+    // Move action with pos + posZ
+    {
+      id: 801, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          { type: 1, pos: { x: 5000, y: 3000 }, posZ: 50 },
+        ],
+      },
+    },
+    // Attack-target action (type + targetId)
+    {
+      id: 802, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          { type: 5, targetId: 999 },
+        ],
+      },
+    },
+    // Path-expansion intermediate (pos + pathExp)
+    {
+      id: 803, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          { type: 1, pos: { x: 1000, y: 2000 }, posZ: 25, pathExp: true },
+        ],
+      },
+    },
+    // Build action with grid + buildingId (no buildingType — string not supported yet)
+    {
+      id: 804, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          { type: 7, grid: { x: 50, y: 75 }, buildingId: 12345 },
+        ],
+      },
+    },
+    // Multi-action queue (path-expansion sequence)
+    {
+      id: 805, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x10,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        actions: [
+          { type: 1, pos: { x: 1000, y: 0 }, posZ: 10, pathExp: true },
+          { type: 1, pos: { x: 2000, y: 500 }, posZ: 15, pathExp: true },
+          { type: 1, pos: { x: 3000, y: 1000 }, posZ: 20 },
+        ],
+      },
+    },
+    // Actions + turrets together
+    {
+      id: 806, type: 'unit', pos: { x: 100, y: 200, z: 0 }, rotation: 314, playerId: 1, changedFields: 0x30,
+      unit: {
+        hp: { curr: 75, max: 100 },
+        velocity: { x: 10, y: 5, z: 0 },
+        actions: [
+          { type: 5, targetId: 888 },
+        ],
+        turrets: [
+          {
+            turret: {
+              id: 7,
+              angular: { rot: 1.5, vel: 0.2, acc: 0, pitch: 0.1, pitchVel: 0, pitchAcc: 0 },
+            },
+            targetId: 888,
+            state: 2,
+          },
+        ],
+      },
+    },
   ];
 
   let passed = 0;
@@ -537,6 +667,12 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasBuildTargetId = f.unit.buildTargetId !== undefined ? 1 : 0;
     const buildTargetIdIsNull = f.unit.buildTargetId === null ? 1 : 0;
     const buildTargetIdValue = typeof f.unit.buildTargetId === 'number' ? f.unit.buildTargetId : 0;
+    const actions = f.unit.actions;
+    const hasActions = actions !== undefined ? 1 : 0;
+    const actionCount = actions?.length ?? 0;
+    if (hasActions && actions) {
+      packActionsIntoScratch(memory, actions);
+    }
     const turrets = f.unit.turrets;
     const hasTurrets = turrets !== undefined ? 1 : 0;
     const turretCount = turrets?.length ?? 0;
@@ -574,6 +710,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       hasBuildTargetId,
       buildTargetIdIsNull,
       buildTargetIdValue,
+      hasActions,
+      actionCount,
       hasTurrets,
       turretCount,
     );

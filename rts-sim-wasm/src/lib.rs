@@ -5997,6 +5997,64 @@ pub fn snapshot_encode_turret_scratch_ensure(turret_count: u32) {
     }
 }
 
+/// Encoder action scratch — JS pre-fills with action data, then the
+/// encoder reads when emitting the actions array. Layout per action
+/// (14 f64 = 112 bytes):
+///   [0]   action type code (u8 ActionTypeCode as f64)
+///   [1]   has_pos (0 or 1)
+///   [2..4] pos.x, pos.y (when has_pos)
+///   [4]   has_pos_z (0 or 1)
+///   [5]   pos_z (when has_pos_z)
+///   [6]   path_exp (1 emits `true`, 0 omits the key)
+///   [7]   has_target_id (0 or 1)
+///   [8]   target_id (when has_target_id)
+///   [9]   has_grid (0 or 1)
+///   [10..12] grid.x, grid.y (when has_grid)
+///   [12]  has_building_id (0 or 1)
+///   [13]  building_id (when has_building_id)
+///
+/// NOTE: buildingType (a string field) is not yet supported by the
+/// encoder — a string scratch lands in a followup commit. Callers
+/// that need it should keep using the JS encode path for those
+/// entities until support is added.
+const SNAPSHOT_ENCODE_ACTION_STRIDE: usize = 14;
+
+struct SnapshotEncodeActionScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeActionScratchHolder(UnsafeCell<Option<SnapshotEncodeActionScratch>>);
+unsafe impl Sync for SnapshotEncodeActionScratchHolder {}
+static SNAPSHOT_ENCODE_ACTION_SCRATCH: SnapshotEncodeActionScratchHolder =
+    SnapshotEncodeActionScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_action_scratch() -> &'static mut SnapshotEncodeActionScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_ACTION_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeActionScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_ACTION_STRIDE * 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_action_scratch_ptr() -> *const f64 {
+    snapshot_encode_action_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_action_scratch_ensure(action_count: u32) {
+    let needed = (action_count as usize) * SNAPSHOT_ENCODE_ACTION_STRIDE;
+    let s = snapshot_encode_action_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Write the six envelope key-value pairs (id, type, pos, rotation,
 /// playerId, changedFields) shared by every encoder kernel. Caller
 /// is responsible for writing the parent map header with the right
@@ -6129,6 +6187,8 @@ pub fn snapshot_encode_entity_unit(
     has_build_target_id: u8,
     build_target_id_is_null: u8,
     build_target_id: u32,
+    has_actions: u8,
+    action_count: u8,
     has_turrets: u8,
     turret_count: u8,
 ) -> u32 {
@@ -6157,6 +6217,7 @@ pub fn snapshot_encode_entity_unit(
     if has_fire_enabled != 0 { unit_field_count += 1; }
     if has_is_commander != 0 { unit_field_count += 1; }
     if has_build_target_id != 0 { unit_field_count += 1; }
+    if has_actions != 0 { unit_field_count += 1; }
     if has_turrets != 0 { unit_field_count += 1; }
 
     w.write_str("unit");
@@ -6296,6 +6357,79 @@ pub fn snapshot_encode_entity_unit(
             w.write_nil();
         } else {
             w.write_uint(build_target_id as u64);
+        }
+    }
+
+    if has_actions != 0 {
+        let count = action_count as usize;
+        let scratch = snapshot_encode_action_scratch();
+        w.write_str("actions");
+        w.write_array_header(count);
+        for a in 0..count {
+            let base = a * SNAPSHOT_ENCODE_ACTION_STRIDE;
+            let type_code = scratch.buf[base];
+            let has_pos = scratch.buf[base + 1] != 0.0;
+            let pos_x = scratch.buf[base + 2];
+            let pos_y = scratch.buf[base + 3];
+            let has_pos_z = scratch.buf[base + 4] != 0.0;
+            let pos_z = scratch.buf[base + 5];
+            let path_exp = scratch.buf[base + 6] != 0.0;
+            let has_target_id = scratch.buf[base + 7] != 0.0;
+            let target_id = scratch.buf[base + 8];
+            let has_grid = scratch.buf[base + 9] != 0.0;
+            let grid_x = scratch.buf[base + 10];
+            let grid_y = scratch.buf[base + 11];
+            let has_building_id = scratch.buf[base + 12] != 0.0;
+            let building_id = scratch.buf[base + 13];
+
+            // Insertion order in createActionDto: type, pos, posZ,
+            // pathExp, targetId, buildingType (unsupported here), grid,
+            // buildingId. ignoreUndefined drops absent keys.
+            let mut action_field_count: usize = 1; // type (always present)
+            if has_pos { action_field_count += 1; }
+            if has_pos_z { action_field_count += 1; }
+            if path_exp { action_field_count += 1; }
+            if has_target_id { action_field_count += 1; }
+            if has_grid { action_field_count += 1; }
+            if has_building_id { action_field_count += 1; }
+            w.write_map_header(action_field_count);
+
+            w.write_str("type");
+            w.write_number(type_code);
+
+            if has_pos {
+                w.write_str("pos");
+                w.write_map_header(2);
+                w.write_str("x");
+                w.write_number(pos_x);
+                w.write_str("y");
+                w.write_number(pos_y);
+            }
+            if has_pos_z {
+                w.write_str("posZ");
+                w.write_number(pos_z);
+            }
+            if path_exp {
+                w.write_str("pathExp");
+                w.write_bool(true);
+            }
+            if has_target_id {
+                w.write_str("targetId");
+                w.write_number(target_id);
+            }
+            // buildingType not yet supported — followup commit.
+            if has_grid {
+                w.write_str("grid");
+                w.write_map_header(2);
+                w.write_str("x");
+                w.write_number(grid_x);
+                w.write_str("y");
+                w.write_number(grid_y);
+            }
+            if has_building_id {
+                w.write_str("buildingId");
+                w.write_number(building_id);
+            }
         }
     }
 

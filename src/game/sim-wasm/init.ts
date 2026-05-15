@@ -140,6 +140,8 @@ import __wbg_init, {
   snapshot_encode_entity_unit,
   snapshot_encode_turret_scratch_ptr,
   snapshot_encode_turret_scratch_ensure,
+  snapshot_encode_action_scratch_ptr,
+  snapshot_encode_action_scratch_ensure,
   messagepack_writer_ptr,
   messagepack_writer_len,
   pool_pos_x_ptr,
@@ -871,6 +873,8 @@ export interface SnapshotEncodeApi {
     hasBuildTargetId: number,
     buildTargetIdIsNull: number,
     buildTargetId: number,
+    hasActions: number,
+    actionCount: number,
     hasTurrets: number,
     turretCount: number,
   ) => number;
@@ -888,6 +892,15 @@ export interface SnapshotEncodeApi {
   turretScratchEnsure: (count: number) => void;
   /** Stride per turret in the scratch buffer (f64 count). */
   readonly turretScratchStride: number;
+  /** Raw pointer to the action scratch buffer. JS fills 14 f64 per
+   *  action (see lib.rs SNAPSHOT_ENCODE_ACTION_STRIDE layout)
+   *  before calling encodeEntityUnit with hasActions=1.
+   *  NOTE: buildingType (string) not yet supported. */
+  actionScratchPtr: () => number;
+  /** Pre-grow the action scratch to fit `count` actions (14 f64 each). */
+  actionScratchEnsure: (count: number) => void;
+  /** Stride per action in the scratch buffer (f64 count). */
+  readonly actionScratchStride: number;
 }
 
 /** Entity-type tags for SnapshotEncodeApi.encodeEntityBasic. Mirrors
@@ -1299,6 +1312,9 @@ export function initSimWasm(): Promise<SimWasm> {
           turretScratchPtr: snapshot_encode_turret_scratch_ptr,
           turretScratchEnsure: snapshot_encode_turret_scratch_ensure,
           turretScratchStride: 12,
+          actionScratchPtr: snapshot_encode_action_scratch_ptr,
+          actionScratchEnsure: snapshot_encode_action_scratch_ensure,
+          actionScratchStride: 14,
         },
         spatial: {
           init: spatial_init,
