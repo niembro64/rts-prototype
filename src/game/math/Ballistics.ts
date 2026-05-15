@@ -20,6 +20,17 @@
 // This file is imported by both the server turret system and the
 // client for any future prediction. Zero state, pure function.
 
+import { getSimWasm } from '../sim-wasm/init';
+
+// Cached at module scope so the per-call dispatch in
+// solveKinematicIntercept doesn't pay the function-call cost
+// for every invocation. Refreshed once per call (cheap — a
+// single module-scope pointer read) so it picks up the WASM
+// handle as soon as initSimWasm() resolves during boot.
+function simHandle() {
+  return getSimWasm();
+}
+
 /** Two real solutions to the ballistic equation, in radians. */
 export type BallisticSolution = {
   low: number;
@@ -163,6 +174,14 @@ function writeInterceptSolution(
   return out;
 }
 
+// Phase 5b — solveKinematicIntercept dispatches through the Rust
+// kernel when the WASM module is loaded. Module-scope scratch
+// buffers keep per-call allocation down to zero. The pure-TS
+// implementation below stays as a fallback for the bootstrap
+// window (initSimWasm hasn't resolved) and as a reference impl.
+const _interceptInputScratch = new Float64Array(22);
+const _interceptOutScratch = new Float64Array(7);
+
 /**
  * Constant-acceleration intercept solver. Both origin and target are
  * explicit 3D kinematic states; projectile acceleration is explicit so
@@ -183,6 +202,66 @@ export function solveKinematicIntercept(
     return null;
   }
 
+  const sim = simHandle();
+  if (sim !== undefined) {
+    return solveKinematicInterceptWasm(sim, input, out);
+  }
+  return solveKinematicInterceptTs(input, out);
+}
+
+function solveKinematicInterceptWasm(
+  sim: NonNullable<ReturnType<typeof simHandle>>,
+  input: KinematicInterceptInput,
+  out: KinematicInterceptSolution,
+): KinematicInterceptSolution | null {
+  const buf = _interceptInputScratch;
+  buf[0] = input.origin.position.x;
+  buf[1] = input.origin.position.y;
+  buf[2] = input.origin.position.z;
+  buf[3] = input.origin.velocity.x;
+  buf[4] = input.origin.velocity.y;
+  buf[5] = input.origin.velocity.z;
+  buf[6] = input.origin.acceleration.x;
+  buf[7] = input.origin.acceleration.y;
+  buf[8] = input.origin.acceleration.z;
+  buf[9] = input.target.position.x;
+  buf[10] = input.target.position.y;
+  buf[11] = input.target.position.z;
+  buf[12] = input.target.velocity.x;
+  buf[13] = input.target.velocity.y;
+  buf[14] = input.target.velocity.z;
+  buf[15] = input.target.acceleration.x;
+  buf[16] = input.target.acceleration.y;
+  buf[17] = input.target.acceleration.z;
+  buf[18] = input.projectileAcceleration.x;
+  buf[19] = input.projectileAcceleration.y;
+  buf[20] = input.projectileAcceleration.z;
+  buf[21] = input.projectileSpeed;
+  const preferLate = input.preferLateSolution ? 1 : 0;
+  const maxTime = input.maxTimeSec !== undefined && Number.isFinite(input.maxTimeSec)
+    ? input.maxTimeSec
+    : 0;
+  const found = sim.solveKinematicIntercept(
+    buf,
+    _interceptOutScratch,
+    preferLate,
+    maxTime,
+  );
+  if (found === 0) return null;
+  out.time = _interceptOutScratch[0];
+  out.aimPoint.x = _interceptOutScratch[1];
+  out.aimPoint.y = _interceptOutScratch[2];
+  out.aimPoint.z = _interceptOutScratch[3];
+  out.launchVelocity.x = _interceptOutScratch[4];
+  out.launchVelocity.y = _interceptOutScratch[5];
+  out.launchVelocity.z = _interceptOutScratch[6];
+  return out;
+}
+
+function solveKinematicInterceptTs(
+  input: KinematicInterceptInput,
+  out: KinematicInterceptSolution,
+): KinematicInterceptSolution | null {
   const maxTime = input.maxTimeSec !== undefined && Number.isFinite(input.maxTimeSec)
     ? clampTime(input.maxTimeSec)
     : defaultInterceptMaxTime(input);

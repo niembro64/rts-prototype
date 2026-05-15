@@ -1440,6 +1440,194 @@ projectile_pool_ptr_export!(projectile_pool_vel_z_ptr, vel_z, f64);
 projectile_pool_ptr_export!(projectile_pool_time_alive_ptr, time_alive, f64);
 projectile_pool_ptr_export!(projectile_pool_has_gravity_ptr, has_gravity, u8);
 
+// ─────────────────────────────────────────────────────────────────
+//  Phase 5b — Kinematic intercept solver
+//
+//  Mirrors src/game/math/Ballistics.ts solveKinematicIntercept.
+//  Sample-and-bisect search for the time t at which a projectile
+//  launched from `origin` at constant speed `projectile_speed`
+//  would intercept `target` (both are full kinematic states with
+//  position + velocity + acceleration). Bit-identical to the TS
+//  path — same constants, same evaluation count, same epsilon.
+//
+//  Used per-tick by:
+//    - server homing projectiles (projectileSystem)
+//    - server turret aim (aimSolver)
+//    - client homing prediction (ClientProjectilePrediction)
+//    - render-time range envelope (ProjectileRangeEnvelope3D)
+//
+//  Input buffer layout (22 f64s — caller fills a module-scope
+//  scratch and passes by reference):
+//    0..3   origin.position                  (x, y, z)
+//    3..6   origin.velocity
+//    6..9   origin.acceleration
+//    9..12  target.position
+//    12..15 target.velocity
+//    15..18 target.acceleration
+//    18..21 projectile_acceleration
+//    21     projectile_speed
+//
+//  Output buffer (7 f64s):
+//    0      time
+//    1..4   aim_point
+//    4..7   launch_velocity
+//
+//  Returns 1 if a solution was found and out_buf was written, 0
+//  otherwise (out_buf untouched).
+// ─────────────────────────────────────────────────────────────────
+
+const INTERCEPT_SAMPLE_COUNT: usize = 64;
+const INTERCEPT_BISECT_STEPS: usize = 14;
+const INTERCEPT_MIN_TIME: f64 = 1.0 / 120.0;
+const INTERCEPT_MAX_TIME_DEFAULT: f64 = 30.0;
+const INTERCEPT_ROOT_EPSILON: f64 = 1e-5;
+
+#[inline]
+fn intercept_input_finite(input: &[f64; 22]) -> bool {
+    // All 22 fields finite; speed must be > 1e-6.
+    for v in input.iter() {
+        if !v.is_finite() {
+            return false;
+        }
+    }
+    input[21] > 1e-6
+}
+
+#[inline]
+fn intercept_clamp_time(t: f64) -> f64 {
+    t.max(INTERCEPT_MIN_TIME).min(INTERCEPT_MAX_TIME_DEFAULT)
+}
+
+#[inline]
+fn intercept_default_max_time(input: &[f64; 22]) -> f64 {
+    let dx = input[9] - input[0];
+    let dy = input[10] - input[1];
+    let dz = input[11] - input[2];
+    let dist = (dx * dx + dy * dy + dz * dz).sqrt();
+    let speed = input[21];
+    let base_time = if speed > 1e-6 { dist / speed } else { 0.0 };
+    let rel_ax = input[15] - input[18];
+    let rel_ay = input[16] - input[19];
+    let rel_az = input[17] - input[20];
+    let rel_accel = (rel_ax * rel_ax + rel_ay * rel_ay + rel_az * rel_az).sqrt();
+    let accel_time = if rel_accel > 1e-6 {
+        2.0 * speed / rel_accel
+    } else {
+        0.0
+    };
+    intercept_clamp_time((2.0_f64).max(base_time * 8.0 + 4.0).max(accel_time * 2.0 + 1.0))
+}
+
+#[inline]
+fn intercept_function(input: &[f64; 22], t: f64) -> f64 {
+    let rel_x = input[9] - input[0]
+        + (input[12] - input[3]) * t
+        + 0.5 * (input[15] - input[18]) * t * t;
+    let rel_y = input[10] - input[1]
+        + (input[13] - input[4]) * t
+        + 0.5 * (input[16] - input[19]) * t * t;
+    let rel_z = input[11] - input[2]
+        + (input[14] - input[5]) * t
+        + 0.5 * (input[17] - input[20]) * t * t;
+    (rel_x * rel_x + rel_y * rel_y + rel_z * rel_z).sqrt() - input[21] * t
+}
+
+#[inline]
+fn intercept_bisect_root(input: &[f64; 22], lo_t: f64, hi_t: f64) -> f64 {
+    let mut lo = lo_t;
+    let mut hi = hi_t;
+    let mut lo_f = intercept_function(input, lo);
+    for _ in 0..INTERCEPT_BISECT_STEPS {
+        let mid = (lo + hi) * 0.5;
+        let mid_f = intercept_function(input, mid);
+        if mid_f.abs() <= INTERCEPT_ROOT_EPSILON {
+            return mid;
+        }
+        if (lo_f <= 0.0 && mid_f <= 0.0) || (lo_f >= 0.0 && mid_f >= 0.0) {
+            lo = mid;
+            lo_f = mid_f;
+        } else {
+            hi = mid;
+        }
+    }
+    (lo + hi) * 0.5
+}
+
+#[wasm_bindgen]
+pub fn solve_kinematic_intercept(
+    input: &[f64],
+    out_buf: &mut [f64],
+    prefer_late_solution: u8,
+    max_time_sec_or_zero: f64,
+) -> u32 {
+    debug_assert!(input.len() >= 22, "intercept input buffer too small");
+    debug_assert!(out_buf.len() >= 7, "intercept output buffer too small");
+    let inp: &[f64; 22] = (&input[0..22]).try_into().unwrap();
+    if !intercept_input_finite(inp) {
+        return 0;
+    }
+    let max_time = if max_time_sec_or_zero > 0.0 && max_time_sec_or_zero.is_finite() {
+        intercept_clamp_time(max_time_sec_or_zero)
+    } else {
+        intercept_default_max_time(inp)
+    };
+
+    let mut selected_root = 0.0_f64;
+    let mut prev_t = 0.0_f64;
+    let mut prev_f = intercept_function(inp, prev_t);
+    let want_late = prefer_late_solution != 0;
+
+    for i in 1..=INTERCEPT_SAMPLE_COUNT {
+        let t = (max_time * (i as f64)) / (INTERCEPT_SAMPLE_COUNT as f64);
+        let f = intercept_function(inp, t);
+        let mut root = 0.0_f64;
+        if f.abs() <= INTERCEPT_ROOT_EPSILON {
+            root = t;
+        } else if (prev_f > 0.0 && f < 0.0) || (prev_f < 0.0 && f > 0.0) {
+            root = intercept_bisect_root(inp, prev_t, t);
+        }
+        if root > 0.0 {
+            selected_root = root;
+            if !want_late {
+                break;
+            }
+        }
+        prev_t = t;
+        prev_f = f;
+    }
+
+    if selected_root <= INTERCEPT_MIN_TIME {
+        return 0;
+    }
+
+    // Write solution. Aim point = target's position at intercept time.
+    let t = selected_root;
+    let aim_x = inp[9] + inp[12] * t + 0.5 * inp[15] * t * t;
+    let aim_y = inp[10] + inp[13] * t + 0.5 * inp[16] * t * t;
+    let aim_z = inp[11] + inp[14] * t + 0.5 * inp[17] * t * t;
+
+    // Origin at intercept time + projectile-relative acceleration → launch velocity.
+    let origin_at_t_x = inp[0] + inp[3] * t + 0.5 * inp[6] * t * t;
+    let origin_at_t_y = inp[1] + inp[4] * t + 0.5 * inp[7] * t * t;
+    let origin_at_t_z = inp[2] + inp[5] * t + 0.5 * inp[8] * t * t;
+    let proj_rel_ax = inp[18] - inp[6];
+    let proj_rel_ay = inp[19] - inp[7];
+    let proj_rel_az = inp[20] - inp[8];
+    let inv_t = 1.0 / t;
+    let lv_x = (aim_x - origin_at_t_x - 0.5 * proj_rel_ax * t * t) * inv_t;
+    let lv_y = (aim_y - origin_at_t_y - 0.5 * proj_rel_ay * t * t) * inv_t;
+    let lv_z = (aim_z - origin_at_t_z - 0.5 * proj_rel_az * t * t) * inv_t;
+
+    out_buf[0] = t;
+    out_buf[1] = aim_x;
+    out_buf[2] = aim_y;
+    out_buf[3] = aim_z;
+    out_buf[4] = lv_x;
+    out_buf[5] = lv_y;
+    out_buf[6] = lv_z;
+    1
+}
+
 /// Per-tick ballistic integrator. For slots 0..count:
 ///   if has_gravity[i] != 0: vel_z[i] -= GRAVITY * dt_sec
 ///   pos_x[i] += vel_x[i] * dt_sec

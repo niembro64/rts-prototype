@@ -38,6 +38,7 @@ import __wbg_init, {
   projectile_pool_time_alive_ptr,
   projectile_pool_has_gravity_ptr,
   pool_step_packed_projectiles_batch,
+  solve_kinematic_intercept,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -205,6 +206,32 @@ export interface SimWasm {
    *  projectileSystem._updatePackedProjectilesJS but runs entirely
    *  in WASM with no per-projectile boundary call. */
   readonly poolStepPackedProjectilesBatch: (count: number, dtSec: number) => void;
+  /** Phase 5b — kinematic intercept solver. Per-call (not batched —
+   *  call sites are scattered across server/client/render code).
+   *
+   *  `input` is a Float64Array of 22 elements:
+   *    0..3   origin.position             (x, y, z)
+   *    3..6   origin.velocity
+   *    6..9   origin.acceleration
+   *    9..12  target.position
+   *    12..15 target.velocity
+   *    15..18 target.acceleration
+   *    18..21 projectile_acceleration
+   *    21     projectile_speed
+   *  `out` is a Float64Array of 7 elements:
+   *    0      time
+   *    1..4   aim_point
+   *    4..7   launch_velocity
+   *  `preferLateSolution` is 1 to keep scanning past the first root,
+   *  0 to take the earliest. `maxTimeSecOrZero` overrides the auto
+   *  search horizon when nonzero (clamped to [1/120, 30]).
+   *  Returns 1 if a solution was written, 0 otherwise. */
+  readonly solveKinematicIntercept: (
+    input: Float64Array,
+    out: Float64Array,
+    preferLateSolution: number,
+    maxTimeSecOrZero: number,
+  ) => number;
 }
 
 /** Views over the projectile SoA pool. Indexed by slot id (0..count
@@ -454,6 +481,7 @@ export function initSimWasm(): Promise<SimWasm> {
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         projectilePool,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
+        solveKinematicIntercept: solve_kinematic_intercept,
       };
       resolvedHandle = handle;
       return handle;
