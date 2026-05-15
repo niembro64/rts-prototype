@@ -258,6 +258,7 @@ export class ServerSnapshotPublisher {
       }
       const serializeOptions: SerializeGameStateOptions = {
         trackingKey: listener.deltaTrackingKey,
+        snapshotBaselineHandle: listener.snapshotBaselineHandle,
         dirtyEntityIds: this.dirtyIdsBuf,
         dirtyEntityFields: this.dirtyFieldsBuf,
         removedEntities: this.removedEntitiesBuf,

@@ -36,6 +36,7 @@ import {
   aoiRemovedEntityIdsBuf as _aoiRemovedIdsBuf,
   copyPrevState,
   type DeltaTrackingState,
+  type PrevEntityState,
   dirtyEntityFieldsBuf as _dirtyEntityFieldsBuf,
   dirtyEntityIdsBuf as _dirtyEntityIdsBuf,
   getDeltaTrackingState,
@@ -45,12 +46,45 @@ import {
   removedEntityIdsBuf as _removedIdsBuf,
 } from './stateSerializerEntityDelta';
 import { spatialGrid } from '../sim/SpatialGrid';
+import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 export {
   captureSnapshotEntityStates,
   resetDeltaTracking,
   resetDeltaTrackingForKey,
 } from './stateSerializerEntityDelta';
+
+/** Phase 10 D.3f — capture one entity's just-emitted next state
+ *  into the recipient's Rust-side snapshot baseline. Mirrors the
+ *  JS-side copyPrevState that runs alongside it. The caller must
+ *  have already populated the entity-meta + turret pools for this
+ *  entity via D.3a's captureSnapshotEntityStates pass. */
+function captureToRustBaseline(
+  sim: SimWasm,
+  handle: number,
+  entity: Entity,
+  next: PrevEntityState,
+  tick: number,
+): void {
+  const slot = spatialGrid.getSlot(entity.id);
+  if (slot < 0) return;
+  if (entity.type === 'unit') {
+    sim.snapshotBaseline.captureUnitSlot(
+      handle, slot, tick,
+      next.x, next.y, next.z, next.rotation,
+      next.velocityX, next.velocityY, next.velocityZ,
+      next.movementAccelX, next.movementAccelY, next.movementAccelZ,
+      next.normalX, next.normalY, next.normalZ,
+      next.actionCount, next.actionHash,
+      next.isEngagedBits, next.targetBits,
+    );
+  } else if (entity.type === 'building') {
+    sim.snapshotBaseline.captureBuildingSlot(
+      handle, slot, tick,
+      next.x, next.y, next.z, next.rotation,
+    );
+  }
+}
 
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
@@ -94,6 +128,11 @@ export type SerializeGameStateOptions = {
    * does not leak across players.
    */
   trackingKey?: string | number;
+  /** Phase 10 D.3f — Rust-side snapshot baseline handle for this
+   *  recipient. When present, each emitted entity also gets captured
+   *  into the WASM-side baseline so the (future) D.3g diff kernel
+   *  can compute the next tick's mask from Rust state. */
+  snapshotBaselineHandle?: number;
   dirtyEntityIds?: readonly EntityId[];
   dirtyEntityFields?: readonly number[];
   removedEntityIds?: readonly EntityId[];
@@ -331,6 +370,11 @@ export function serializeGameState(
   const visibility = options?.visibility ?? SnapshotVisibility.forRecipient(world, recipientPlayerId);
   const predictionMode = options?.predictionMode ?? 'acc';
   const tick = world.getTick();
+  // Phase 10 D.3f — Rust-side baseline sync. Resolved once per
+  // listener-tick; per-entity capture happens inside the emit loops
+  // when both `sim` and `baselineHandle` are present.
+  const baselineHandle = options?.snapshotBaselineHandle;
+  const baselineSim = baselineHandle === undefined ? undefined : getSimWasm();
 
   // Reset entity pool for this frame
   resetEntitySnapshotPool();
@@ -467,6 +511,9 @@ export function serializeGameState(
         const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility, predictionMode);
         if (netEntity) _entityBuf.push(netEntity);
         copyPrevState(next, prev);
+        if (baselineSim !== undefined && baselineHandle !== undefined) {
+          captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick);
+        }
       }
     }
 
@@ -495,6 +542,9 @@ export function serializeGameState(
           if (netEntity) _entityBuf.push(netEntity);
           const prev = getPrevState(tracking, entity.id);
           copyPrevState(next, prev);
+          if (baselineSim !== undefined && baselineHandle !== undefined) {
+            captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick);
+          }
         }
       }
 
@@ -552,7 +602,11 @@ export function serializeGameState(
         const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility, predictionMode);
         if (netEntity) _entityBuf.push(netEntity);
         const prev = getPrevState(tracking, entity.id);
-        copyPrevState(getNextEntityState(entity), prev);
+        const next = getNextEntityState(entity);
+        copyPrevState(next, prev);
+        if (baselineSim !== undefined && baselineHandle !== undefined) {
+          captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick);
+        }
       }
     }
     if (!options?.dirtyEntityIds) {

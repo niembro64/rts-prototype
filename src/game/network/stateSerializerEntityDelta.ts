@@ -465,6 +465,27 @@ export function captureSnapshotEntityStates(
 
   const sim = getSimWasm();
 
+  // Phase 10 D.3f — Pool sync runs over ALL entities every emit so
+  // the Rust-side snapshot baseline (per-recipient) can read fresh
+  // hp / build / factory / solar / turret state even for entities
+  // that aren't in this tick's dirty set (e.g. a non-dirty entity
+  // re-entering a recipient's vision still needs an up-to-date
+  // pool view). Map population below stays dirty-only on delta.
+  const allSources: ReadonlyArray<readonly Entity[]> = [
+    world.getUnits(),
+    world.getBuildings(),
+  ];
+  if (sim !== undefined) {
+    for (let s = 0; s < allSources.length; s++) {
+      const src = allSources[s];
+      for (let i = 0; i < src.length; i++) {
+        const e = src[i];
+        if (!accepts(e)) continue;
+        syncEntityMetaPools(e, sim);
+      }
+    }
+  }
+
   if (isDelta && SNAPSHOT_CONFIG.deltaEnabled) {
     if (!dirtyEntityIds) return;
     for (let i = 0; i < dirtyEntityIds.length; i++) {
@@ -473,24 +494,18 @@ export function captureSnapshotEntityStates(
       const captured = acquireCapturedNextState();
       captureEntityState(e, captured);
       capturedNextStates.set(e.id, captured);
-      if (sim !== undefined) syncEntityMetaPools(e, sim);
     }
     return;
   }
 
-  const sources: ReadonlyArray<readonly Entity[]> = [
-    world.getUnits(),
-    world.getBuildings(),
-  ];
-  for (let s = 0; s < sources.length; s++) {
-    const src = sources[s];
+  for (let s = 0; s < allSources.length; s++) {
+    const src = allSources[s];
     for (let i = 0; i < src.length; i++) {
       const e = src[i];
       if (!accepts(e)) continue;
       const captured = acquireCapturedNextState();
       captureEntityState(e, captured);
       capturedNextStates.set(e.id, captured);
-      if (sim !== undefined) syncEntityMetaPools(e, sim);
     }
   }
 }
