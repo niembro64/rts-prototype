@@ -779,12 +779,19 @@ intensive system.
     the `if (sim !== undefined)` branch in that kernel's TS
     dispatcher temporarily.
 
-  - **SIMD.** wasm SIMD (128-bit) is widely supported now (Chrome,
-    Firefox, Safari 16.4+, Edge). The physics inner loops (Body3D
-    integrate, sphere-sphere resolver, quaternion math) all
-    operate over Vec3 / Vec4 / Quat which map directly to v128.
-    Use std::simd or wide::f32x4. Provide a non-SIMD fallback for
-    older iOS Safari.
+  - **SIMD.** Partially done. `.cargo/config.toml` now sets
+    `-C target-feature=+simd128` for the wasm32 build, so LLVM's
+    auto-vectorizer emits v128 intrinsics for the physics inner
+    loops (Vec3 / Quat math, sphere-sphere broadphase, closest-
+    point on AABB) without manual annotations. Browsers without
+    SIMD support (iOS Safari < 16.4) fail at WASM compile time
+    with a clear opcode error — no graceful fallback yet. A
+    dual-build (simd + non-simd .wasm with runtime feature
+    detection) is the right shape if older iOS becomes a target;
+    deferred until profiling justifies the build-system work.
+    Manual `#[target_feature(enable = "simd128")]` on specific
+    kernels could squeeze more out of loops the auto-vectorizer
+    misses, but no measurements yet.
 
   - **Threading: defer.** WASM threads via SharedArrayBuffer + web
     workers are real but require COOP/COEP headers and complicate

@@ -63,6 +63,23 @@ runs during the brief boot window before `initSimWasm()` resolves,
 and as a structural identity-check reference implementation when
 swapping a system out for debugging.
 
+## Browser requirement: WebAssembly SIMD
+
+The release build enables `+simd128` (see `.cargo/config.toml`).
+LLVM's auto-vectorizer uses v128 intrinsics for the physics inner
+loops (Vec3 / Quat math, sphere-sphere broadphase, closest-point
+on AABB) without manual SIMD annotations in the source.
+
+Required browser versions:
+- Chrome 91+ (May 2021)
+- Firefox 89+ (June 2021)
+- Safari 16.4+ / iOS Safari 16.4+ (March 2023)
+
+Older browsers fail at WASM compile time with a clear opcode error.
+If iOS Safari < 16.4 needs to be a target, see the deferred Tier E
+follow-up in `issues.txt` for a dual-build (simd + non-simd) plan
+with runtime feature detection.
+
 ## Architecture invariants
 
 - The Body3D and projectile pools live in WASM linear memory.

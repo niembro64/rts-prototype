@@ -1,0 +1,19 @@
+# Per-target build flags for the wasm32 build.
+#
+# `+simd128` enables WebAssembly SIMD (128-bit) codegen. LLVM's auto-
+# vectorizer uses v128 intrinsics for the inner physics + spatial
+# loops (Vec3 / Quat dot products, sphere-sphere broadphase distance
+# checks, sphere-cuboid closest-point math). No manual #[target_feature]
+# annotations are needed in the source — the auto-vectorizer picks up
+# data-parallel patterns automatically.
+#
+# Browser requirement: WASM SIMD is supported in
+#   Chrome 91+ (May 2021), Firefox 89+ (June 2021), Safari 16.4+
+#   (March 2023, also iOS Safari).
+# Older browsers fail at WASM compile time with a clear opcode error.
+# A future dual-build (simd + non-simd .wasm with runtime feature
+# detection) can extend reach to iOS Safari < 16.4 if needed — see
+# the Tier E plan in `issues.txt`.
+
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]
