@@ -353,10 +353,8 @@ populated in addBody, cleared in removeBody. O(1) lookup for
 the transition-list bookkeeping.
 
 Old per-call buffer functions (`step_unit_motions_batch`,
-`resolve_sphere_sphere_contacts`) and their related
-*_BATCH_STRIDE constants are now dead code — kept around in this
-commit for one cycle to make rollback easy. A follow-on cleanup
-commit can delete them.
+`resolve_sphere_sphere_contacts`) and their *_BATCH_STRIDE
+constants are deleted in the cleanup commit that follows.
 
 ------------------------------------------------------------------------------
  Phase 3b — Sphere-vs-cuboid pair resolver. DONE.

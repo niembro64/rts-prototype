@@ -91,6 +91,25 @@ fn ground_spring_accel(penetration: f64, normal_velocity: f64) -> f64 {
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Contact-cell broadphase encoding (shared helper)
+//
+//  Mirrors the JS-side packContactCellKey in PhysicsEngine3D.ts —
+//  16-bit cx + 16-bit cy + 16-bit cz packed into a u64. Used by
+//  the sphere-sphere broadphase in pool_resolve_sphere_sphere
+//  (Phase 3d-2).
+// ─────────────────────────────────────────────────────────────────
+const CONTACT_CELL_BIAS: i64 = 32768;
+const CONTACT_CELL_MASK: i64 = 0xFFFF;
+
+#[inline]
+fn pack_contact_cell_key(cx: i32, cy: i32, cz: i32) -> u64 {
+    let cxb = ((cx as i64 + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK) as u64;
+    let cyb = ((cy as i64 + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK) as u64;
+    let czb = ((cz as i64 + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK) as u64;
+    (cxb << 32) | (cyb << 16) | czb
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Shared unit-motion integrator. Used by both:
 //   - PhysicsEngine3D.integrate (server authoritative tick)
 //   - ClientUnitPrediction.advanceSharedUnitMotionPrediction
@@ -249,380 +268,17 @@ pub fn step_unit_motion(
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Batched PhysicsEngine3D.integrate() — Phase 3a
-//
-//  Runs the full integrate() loop over every awake dynamic sphere
-//  body in ONE WASM call. Eliminates the per-body marshalling cost
-//  that Phase 2's `step_unit_motion` boundary calls still paid.
-//
-//  Buffer layout (per body, 19 f64s = 152 bytes):
-//    0..6   x, y, z, vx, vy, vz           (in/out — motion)
-//    6..9   ax, ay, az                    (in — authored accel; gravity added inside)
-//    9..12  launch_ax, launch_ay, launch_az (in — only contributes to rebound cap)
-//    12     ground_offset                 (in)
-//    13..17 ground_z, normal_x/y/z        (in — pre-sampled JS-side)
-//    17     sleeping_flag                 (in 0.0; out 0.0 still-awake, 1.0 just-slept)
-//    18     sleep_ticks                   (in/out f64 counter)
-//
-//  Caller responsibility:
-//    - Pack only awake dynamic SPHERE bodies (sleeping bodies skip
-//      integration today; non-sphere dynamic bodies use the old
-//      free-Euler TS path and aren't in the buffer).
-//    - Pre-sample ground_z + normal per body. Gate the normal sample
-//      on penetration if you want to skip the expensive gradient
-//      lookup for airborne bodies (same optimization as Phase 2).
-//    - On return, scan the sleeping_flag for 0→1 transitions: those
-//      are bodies that just slept this step; clear their force
-//      accumulators in the JS Body3D mirror and decrement
-//      awakeDynamicBodyCount.
-//
-//  Sleep heuristic note: the per-body sleep check re-samples ground_z
-//  at the body's NEW position in the TS implementation. The batched
-//  Rust path uses the STARTING ground_z instead (the pre-sampled
-//  value). For sleep-eligible bodies (speed ≤ 0.5 wu/s) the per-tick
-//  displacement is at most ~0.008 wu — terrain elevation can't
-//  change meaningfully across that distance, so the approximation
-//  is numerically indistinguishable from the original. If a future
-//  change adds high-speed sleep cases this assumption must be
-//  revisited; today it's free.
+//  Buffer-based step_unit_motions_batch (Phase 3a) and
+//  resolve_sphere_sphere_contacts (Phase 3c) were superseded by
+//  the pool-backed pool_step_integrate / pool_resolve_sphere_sphere
+//  in Phase 3d-2 — both bodies' state lives in the BodyPool now,
+//  so the per-tick pack/unpack scratch buffer is gone. The old
+//  functions are deleted; the inline integrate-math helper above
+//  is shared with the per-body `step_unit_motion` (still used by
+//  the TS bootstrap fallback in unitMotionIntegration.ts) and the
+//  pool-backed kernels below.
 // ─────────────────────────────────────────────────────────────────
 
-pub const STEP_UNIT_MOTIONS_BATCH_STRIDE: usize = 19;
-
-#[wasm_bindgen]
-pub fn step_unit_motions_batch(
-    buf: &mut [f64],
-    count: usize,
-    dt_sec: f64,
-    air_damp: f64,
-    ground_damp: f64,
-) {
-    debug_assert!(
-        buf.len() >= count * STEP_UNIT_MOTIONS_BATCH_STRIDE,
-        "step_unit_motions_batch buffer too small"
-    );
-    let stride = STEP_UNIT_MOTIONS_BATCH_STRIDE;
-    for i in 0..count {
-        let base = i * stride;
-        let slot = &mut buf[base..base + stride];
-
-        let ground_offset = slot[12];
-        let ground_z = slot[13];
-        let normal_x = slot[14];
-        let normal_y = slot[15];
-        let normal_z = slot[16];
-
-        // authoredAccelSq is measured BEFORE adding gravity — it
-        // represents external force only, matching the TS path's
-        // `b.ax * b.ax + b.ay * b.ay + b.az * b.az` check.
-        let authored_ax = slot[6];
-        let authored_ay = slot[7];
-        let authored_az = slot[8];
-        let authored_accel_sq =
-            authored_ax * authored_ax + authored_ay * authored_ay + authored_az * authored_az;
-
-        // Gravity is added to az BEFORE the integrate helper runs.
-        // Matches PhysicsEngine3D.ts integrate(): `let az = b.az - GRAVITY`.
-        let ax_with_g = authored_ax;
-        let ay_with_g = authored_ay;
-        let az_with_g = authored_az - GRAVITY;
-
-        let launch_ax = slot[9];
-        let launch_ay = slot[10];
-        let launch_az = slot[11];
-
-        let motion: &mut [f64; 6] = (&mut slot[0..6]).try_into().unwrap();
-        integrate_unit_motion_inline(
-            motion,
-            dt_sec,
-            ground_offset,
-            ax_with_g, ay_with_g, az_with_g,
-            air_damp, ground_damp,
-            launch_ax, launch_ay, launch_az,
-            ground_z,
-            normal_x, normal_y, normal_z,
-        );
-
-        // Re-load mutated motion for the sleep check.
-        let x = slot[0];
-        let y = slot[1];
-        let z = slot[2];
-        let vx = slot[3];
-        let vy = slot[4];
-        let vz = slot[5];
-        let _ = (x, y); // silence unused-binding lint — kept for symmetry
-
-        // Sleep heuristic. Uses the STARTING ground_z (pre-sampled JS-
-        // side) as an approximation; see header comment for why this
-        // is exact for sleep-eligible bodies.
-        let speed_sq = vx * vx + vy * vy + vz * vz;
-        let mut sleep_ticks = slot[18];
-        let mut sleeping_flag = 0.0_f64;
-        if authored_accel_sq <= SLEEP_ACCEL_SQ && speed_sq <= SLEEP_SPEED_SQ {
-            let next_penetration = ground_z - (z - ground_offset);
-            if is_in_contact(next_penetration)
-                && next_penetration <= SLEEP_GROUND_PENETRATION_EPS
-            {
-                sleep_ticks += 1.0;
-                if sleep_ticks >= SLEEP_TICKS {
-                    // Snap to surface + zero velocity exactly as
-                    // PhysicsEngine3D.sleepBody does.
-                    slot[2] = ground_z + ground_offset;
-                    slot[3] = 0.0;
-                    slot[4] = 0.0;
-                    slot[5] = 0.0;
-                    sleep_ticks = SLEEP_TICKS;
-                    sleeping_flag = 1.0;
-                }
-            } else {
-                sleep_ticks = 0.0;
-            }
-        } else {
-            sleep_ticks = 0.0;
-        }
-        slot[17] = sleeping_flag;
-        slot[18] = sleep_ticks;
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  Phase 3c — Sphere-vs-sphere contact resolver + broadphase
-//
-//  Ports PhysicsEngine3D.ts `rebuildContactCells()` AND the
-//  iterated `resolveSphereSphereContacts()` loop into one batched
-//  WASM call. JS-side per-tick work shrinks to: pack body state,
-//  call this once, unpack body state + wake/upward-contact flags.
-//
-//  Cell broadphase matches the TS implementation exactly:
-//    - Bucket each body by its CENTER (one cell each).
-//    - cx/cy: floor(v / cell_size).
-//    - cz:    floor((v + cell_size/2) / cell_size)   ← half-cell bias
-//             so z=0 falls in the MIDDLE of the bottom cell instead
-//             of straddling an edge (ground units cluster cleanly).
-//    - Cell key encoding: same 48-bit pack as packContactCellKey
-//      in PhysicsEngine3D.ts — useful when cross-reading WASM and
-//      TS log dumps side-by-side.
-//    - Neighbor range scales with max radius across all bodies so
-//      the largest active push pair stays in-window even if its
-//      centers are more than one cell apart.
-//
-//  Iteration: caller passes the sub-iteration budget (TS computes
-//  it from awake-body count via getSphereIterationBudget). The
-//  whole 1..4-pass loop happens inside this one WASM call.
-//
-//  Sleeping bodies: TS iterates them in the broadphase even when
-//  sleeping (see the long comment around line 806 of
-//  PhysicsEngine3D.ts) so that a sleeping body which spawns into
-//  another body's slot still gets pushed apart. We match that here:
-//  every body gets a broadphase entry, no sleep filter. The
-//  wake_flag in the output buffer is set when a pair resolves; JS
-//  then runs `wakeBody` on the marked entries (no-op if already
-//  awake — same as the TS path).
-//
-//  Buffer layout per body (RESOLVE_SPHERE_SPHERE_STRIDE = 13 f64s):
-//    0..6  x, y, z, vx, vy, vz             in/out
-//    6     radius                           in
-//    7     inv_mass                         in
-//    8     restitution                      in
-//    9     entity_id_or_zero                in   (0 = use buffer index)
-//    10    sleeping_flag                    in   (informational; resolver doesn't gate)
-//    11    wake_flag                        out  (1.0 if a pair resolved on this body)
-//    12    upward_contact_flag              out  (1.0 if got an upward-normal contact)
-// ─────────────────────────────────────────────────────────────────
-
-pub const RESOLVE_SPHERE_SPHERE_STRIDE: usize = 13;
-
-const CONTACT_CELL_BIAS: i64 = 32768;
-const CONTACT_CELL_MASK: i64 = 0xFFFF;
-
-#[inline]
-fn pack_contact_cell_key(cx: i32, cy: i32, cz: i32) -> u64 {
-    let cxb = ((cx as i64 + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK) as u64;
-    let cyb = ((cy as i64 + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK) as u64;
-    let czb = ((cz as i64 + CONTACT_CELL_BIAS) & CONTACT_CELL_MASK) as u64;
-    (cxb << 32) | (cyb << 16) | czb
-}
-
-#[wasm_bindgen]
-pub fn resolve_sphere_sphere_contacts(
-    buf: &mut [f64],
-    count: usize,
-    iterations: usize,
-    cell_size: f64,
-) {
-    let stride = RESOLVE_SPHERE_SPHERE_STRIDE;
-    debug_assert!(
-        buf.len() >= count * stride,
-        "resolve_sphere_sphere_contacts buffer too small"
-    );
-    if count == 0 || iterations == 0 || cell_size <= 0.0 {
-        return;
-    }
-
-    let half_cs = cell_size * 0.5;
-
-    // Bucket bodies by center cell. Done once, reused across all
-    // sub-iterations — matches the TS path where rebuildContactCells
-    // runs once before the iteration loop and small positional drift
-    // from sub-passes is well below CONTACT_CELL_SIZE.
-    let mut cells: HashMap<u64, Vec<u32>> = HashMap::new();
-    let mut max_radius = 0.0_f64;
-    for i in 0..count {
-        let base = i * stride;
-        let x = buf[base];
-        let y = buf[base + 1];
-        let z = buf[base + 2];
-        let r = buf[base + 6];
-        if r > max_radius {
-            max_radius = r;
-        }
-        let cx = (x / cell_size).floor() as i32;
-        let cy = (y / cell_size).floor() as i32;
-        let cz = ((z + half_cs) / cell_size).floor() as i32;
-        let key = pack_contact_cell_key(cx, cy, cz);
-        cells.entry(key).or_default().push(i as u32);
-    }
-    let range = (((max_radius * 2.0) / cell_size).ceil() as i32).max(1);
-
-    for _iter in 0..iterations {
-        for i in 0..count {
-            let base_a = i * stride;
-            let ar = buf[base_a + 6];
-            let a_inv_mass = buf[base_a + 7];
-            let a_restitution = buf[base_a + 8];
-
-            // Re-cell the body each iteration on its CURRENT position.
-            // Drift across sub-passes is small but visible; the TS path
-            // also re-reads `a.x`, `a.y`, `a.z` each iter through the
-            // outer cell-coord computation.
-            let acx = (buf[base_a] / cell_size).floor() as i32;
-            let acy = (buf[base_a + 1] / cell_size).floor() as i32;
-            let acz = ((buf[base_a + 2] + half_cs) / cell_size).floor() as i32;
-
-            for dz in -range..=range {
-                for dy in -range..=range {
-                    for dx in -range..=range {
-                        let key = pack_contact_cell_key(acx + dx, acy + dy, acz + dz);
-                        let bucket = match cells.get(&key) {
-                            Some(b) => b,
-                            None => continue,
-                        };
-                        for &j_u32 in bucket.iter() {
-                            let j = j_u32 as usize;
-                            if j <= i {
-                                continue;
-                            }
-                            let base_b = j * stride;
-                            let br = buf[base_b + 6];
-
-                            // Re-read positions fresh per pair — earlier
-                            // pairs may have pushed a or b this iter.
-                            let ax = buf[base_a];
-                            let ay = buf[base_a + 1];
-                            let az = buf[base_a + 2];
-                            let bx = buf[base_b];
-                            let by = buf[base_b + 1];
-                            let bz = buf[base_b + 2];
-
-                            let ddx = bx - ax;
-                            let ddy = by - ay;
-                            let ddz = bz - az;
-                            let r_sum = ar + br;
-                            let dist_sq = ddx * ddx + ddy * ddy + ddz * ddz;
-                            if dist_sq >= r_sum * r_sum {
-                                continue;
-                            }
-
-                            // Both bodies got involved in a pair → mark
-                            // wake flags. wakeBody on the JS side is
-                            // idempotent so we don't gate on prior state.
-                            buf[base_a + 11] = 1.0;
-                            buf[base_b + 11] = 1.0;
-
-                            let dist: f64;
-                            let nx: f64;
-                            let ny: f64;
-                            let nz: f64;
-                            if dist_sq < 1e-12 {
-                                // Degenerate: pick a deterministic random
-                                // horizontal direction from the entity-id
-                                // hash. Matches the TS path's seed scheme
-                                // bit-for-bit when entity ids are small
-                                // enough to fit JS int32 mul; for ids that
-                                // wrap, the seed differs but the case is
-                                // vanishingly rare (two centers exactly
-                                // co-located).
-                                let a_id_raw = buf[base_a + 9] as u64;
-                                let b_id_raw = buf[base_b + 9] as u64;
-                                let a_id = if a_id_raw == 0 { i as u64 } else { a_id_raw };
-                                let b_id = if b_id_raw == 0 { j as u64 } else { b_id_raw };
-                                let seed = (a_id
-                                    .wrapping_mul(73856093)
-                                    ^ b_id.wrapping_mul(19349663))
-                                    as u32;
-                                let angle =
-                                    (seed as f64 / 4294967296.0) * core::f64::consts::PI * 2.0;
-                                dist = 1e-6;
-                                nx = angle.cos();
-                                ny = angle.sin();
-                                nz = 0.0;
-                            } else {
-                                dist = dist_sq.sqrt();
-                                let inv_dist = 1.0 / dist;
-                                nx = ddx * inv_dist;
-                                ny = ddy * inv_dist;
-                                nz = ddz * inv_dist;
-                            }
-                            let penetration = r_sum - dist;
-                            let b_inv_mass = buf[base_b + 7];
-                            let inv_mass_sum_inv = 1.0 / (a_inv_mass + b_inv_mass);
-                            let w_a = a_inv_mass * inv_mass_sum_inv;
-                            let w_b = b_inv_mass * inv_mass_sum_inv;
-                            buf[base_a] = ax - nx * penetration * w_a;
-                            buf[base_a + 1] = ay - ny * penetration * w_a;
-                            buf[base_a + 2] = az - nz * penetration * w_a;
-                            buf[base_b] = bx + nx * penetration * w_b;
-                            buf[base_b + 1] = by + ny * penetration * w_b;
-                            buf[base_b + 2] = bz + nz * penetration * w_b;
-
-                            if nz > 0.35 {
-                                buf[base_b + 12] = 1.0;
-                            } else if nz < -0.35 {
-                                buf[base_a + 12] = 1.0;
-                            }
-
-                            let a_vx = buf[base_a + 3];
-                            let a_vy = buf[base_a + 4];
-                            let a_vz = buf[base_a + 5];
-                            let b_vx = buf[base_b + 3];
-                            let b_vy = buf[base_b + 4];
-                            let b_vz = buf[base_b + 5];
-                            let rvx = b_vx - a_vx;
-                            let rvy = b_vy - a_vy;
-                            let rvz = b_vz - a_vz;
-                            let v_dot_n = rvx * nx + rvy * ny + rvz * nz;
-                            if v_dot_n >= 0.0 {
-                                continue;
-                            }
-                            let b_restitution = buf[base_b + 8];
-                            let e = a_restitution.min(b_restitution);
-                            let j_mag = -(1.0 + e) * v_dot_n * inv_mass_sum_inv;
-                            let ix = j_mag * nx;
-                            let iy = j_mag * ny;
-                            let iz = j_mag * nz;
-                            buf[base_a + 3] = a_vx - ix * a_inv_mass;
-                            buf[base_a + 4] = a_vy - iy * a_inv_mass;
-                            buf[base_a + 5] = a_vz - iz * a_inv_mass;
-                            buf[base_b + 3] = b_vx + ix * b_inv_mass;
-                            buf[base_b + 4] = b_vy + iy * b_inv_mass;
-                            buf[base_b + 5] = b_vz + iz * b_inv_mass;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 3d — Body3D SoA pool in WASM linear memory
