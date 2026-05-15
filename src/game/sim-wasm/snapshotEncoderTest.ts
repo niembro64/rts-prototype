@@ -8,6 +8,7 @@ import { encode as msgpackEncode } from '@msgpack/msgpack';
 import {
   snapshot_encode_entity_basic,
   snapshot_encode_entity_unit,
+  snapshot_encode_entity_building,
   snapshot_encode_turret_scratch_ptr,
   snapshot_encode_turret_scratch_ensure,
   snapshot_encode_action_scratch_ptr,
@@ -899,14 +900,205 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
   return { passed, failed };
 }
 
+type BuildingFixture = {
+  id: number;
+  type: 'building';
+  pos: { x: number; y: number; z: number };
+  rotation: number;
+  playerId: number;
+  changedFields?: number;
+  building: {
+    type?: string;
+    dim?: { x: number; y: number };
+    hp: { curr: number; max: number };
+    build: {
+      complete: boolean;
+      paid: { energy: number; mana: number; metal: number };
+    };
+    metalExtractionRate?: number;
+    solar?: { open: boolean };
+    turrets?: TurretFixture[];
+  };
+};
+
+function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
+  const fixtures: BuildingFixture[] = [
+    // Minimal building (just hp + build, completed)
+    {
+      id: 2000, type: 'building', pos: { x: 1000, y: 1000, z: 0 }, rotation: 0, playerId: 1,
+      building: {
+        hp: { curr: 500, max: 500 },
+        build: { complete: true, paid: { energy: 100, mana: 0, metal: 50 } },
+      },
+    },
+    // Full record: type + dim + hp + build
+    {
+      id: 2001, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      building: {
+        type: 'factory',
+        dim: { x: 8, y: 8 },
+        hp: { curr: 1000, max: 1000 },
+        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+      },
+    },
+    // Under-construction shell (incomplete build)
+    {
+      id: 2002, type: 'building', pos: { x: 200, y: 300, z: 50 }, rotation: 0, playerId: 2,
+      building: {
+        type: 'pylon',
+        dim: { x: 4, y: 4 },
+        hp: { curr: 30, max: 300 },
+        build: { complete: false, paid: { energy: 25, mana: 0, metal: 10 } },
+      },
+    },
+    // Extractor (has metalExtractionRate)
+    {
+      id: 2003, type: 'building', pos: { x: 100, y: 100, z: 0 }, rotation: 0, playerId: 1,
+      building: {
+        type: 'extractor',
+        dim: { x: 4, y: 4 },
+        hp: { curr: 200, max: 200 },
+        build: { complete: true, paid: { energy: 50, mana: 0, metal: 100 } },
+        metalExtractionRate: 12.5,
+      },
+    },
+    // Solar panel (has solar.open)
+    {
+      id: 2004, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      building: {
+        type: 'solar',
+        dim: { x: 4, y: 4 },
+        hp: { curr: 150, max: 150 },
+        build: { complete: true, paid: { energy: 0, mana: 0, metal: 80 } },
+        solar: { open: true },
+      },
+    },
+    // Solar closed (panel folded for protection)
+    {
+      id: 2005, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      building: {
+        hp: { curr: 150, max: 150 },
+        build: { complete: true, paid: { energy: 0, mana: 0, metal: 80 } },
+        solar: { open: false },
+      },
+    },
+    // Defense turret (has turrets array)
+    {
+      id: 2006, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2,
+      building: {
+        type: 'turretDefender',
+        dim: { x: 2, y: 2 },
+        hp: { curr: 400, max: 400 },
+        build: { complete: true, paid: { energy: 100, mana: 0, metal: 100 } },
+        turrets: [
+          {
+            turret: {
+              id: 9,
+              angular: { rot: 1.5, vel: 0.2, acc: 0, pitch: 0.5, pitchVel: 0, pitchAcc: 0 },
+            },
+            targetId: 1234,
+            state: 2,
+          },
+        ],
+      },
+    },
+    // Delta record (no type/dim) with hp change
+    {
+      id: 2007, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x8,
+      building: {
+        hp: { curr: 950, max: 1000 },
+        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+      },
+    },
+    // Everything together — full record with all optional fields populated
+    {
+      id: 2008, type: 'building', pos: { x: 5000, y: 5000, z: 100 }, rotation: 0, playerId: 1,
+      building: {
+        type: 'fortifiedExtractor',
+        dim: { x: 6, y: 6 },
+        hp: { curr: 880, max: 1000 },
+        build: { complete: true, paid: { energy: 200, mana: 50, metal: 300 } },
+        metalExtractionRate: 25,
+        solar: { open: true },
+        turrets: [
+          {
+            turret: { id: 1, angular: { rot: 0, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 } },
+            state: 0,
+          },
+        ],
+      },
+    },
+  ];
+
+  let passed = 0;
+  let failed = 0;
+  for (const f of fixtures) {
+    const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
+    const hasChanged = f.changedFields !== undefined ? 1 : 0;
+    const changed = f.changedFields ?? 0;
+    const stringList: string[] = [];
+    if (f.building.type !== undefined) stringList.push(f.building.type);
+    const stringSlots = stringList.length > 0
+      ? packStringsIntoScratch(memory, stringList)
+      : new Map<string, number>();
+    const turrets = f.building.turrets;
+    const hasTurrets = turrets !== undefined ? 1 : 0;
+    const turretCount = turrets?.length ?? 0;
+    if (hasTurrets && turrets) {
+      packTurretsIntoScratch(memory, turrets);
+    }
+    snapshot_encode_entity_building(
+      f.id,
+      f.pos.x, f.pos.y, f.pos.z,
+      f.rotation, f.playerId,
+      hasChanged, changed,
+      f.building.type !== undefined ? 1 : 0,
+      f.building.type !== undefined ? (stringSlots.get(f.building.type) ?? 0) : 0,
+      f.building.dim !== undefined ? 1 : 0,
+      f.building.dim?.x ?? 0, f.building.dim?.y ?? 0,
+      f.building.hp.curr, f.building.hp.max,
+      f.building.build.complete ? 1 : 0,
+      f.building.build.paid.energy,
+      f.building.build.paid.mana,
+      f.building.build.paid.metal,
+      f.building.metalExtractionRate !== undefined ? 1 : 0,
+      f.building.metalExtractionRate ?? 0,
+      f.building.solar !== undefined ? 1 : 0,
+      f.building.solar?.open === true ? 1 : 0,
+      hasTurrets,
+      turretCount,
+    );
+    const ptr = messagepack_writer_ptr();
+    const len = messagepack_writer_len();
+    const rustBytes = new Uint8Array(memory.buffer, ptr, len).slice();
+    if (bytesEqual(jsBytes, rustBytes)) {
+      passed++;
+    } else {
+      failed++;
+      console.error(
+        '[snapshot encoder] building byte mismatch',
+        {
+          fixture: f,
+          jsLen: jsBytes.length,
+          rustLen: rustBytes.length,
+          jsHex: hex(jsBytes),
+          rustHex: hex(rustBytes),
+        },
+      );
+    }
+  }
+  return { passed, failed };
+}
+
 export async function runSnapshotEncoderByteEqualityTest(
   memory: WebAssembly.Memory,
 ): Promise<void> {
   console.log('[snapshot encoder] running D.3j byte-equality fixtures…');
   const basic = runEntityBasicCases(memory);
   const unit = runEntityUnitCases(memory);
-  const passed = basic.passed + unit.passed;
-  const failed = basic.failed + unit.failed;
+  const building = runEntityBuildingCases(memory);
+  const passed = basic.passed + unit.passed + building.passed;
+  const failed = basic.failed + unit.failed + building.failed;
   const total = passed + failed;
   if (failed > 0) {
     throw new Error(

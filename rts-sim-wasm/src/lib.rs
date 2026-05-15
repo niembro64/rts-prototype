@@ -6604,3 +6604,162 @@ pub fn snapshot_encode_entity_unit(
 
     w.buf.len() as u32
 }
+
+/// Encode a building entity DTO: `{...envelope, building: {
+///   [type,] [dim,] hp, build, [metalExtractionRate,] [solar,] [turrets]
+/// }}` — covers everything except the factory sub-object (next commit).
+///
+/// hp + build are always present (the JS pool initializer creates them
+/// non-undefined). Other building-sub fields are gated by their `has_*`
+/// flags. Turrets reuse the same scratch as units (D.3j-9).
+#[wasm_bindgen]
+pub fn snapshot_encode_entity_building(
+    id: u32,
+    qpos_x: i32, qpos_y: i32, qpos_z: i32,
+    qrot: i32,
+    player_id: u8,
+    has_changed_fields: u8,
+    changed_fields: u32,
+    has_type: u8,
+    type_string_slot: u32,
+    has_dim: u8,
+    dim_x: f64, dim_y: f64,
+    hp_curr: f64,
+    hp_max: f64,
+    build_complete: u8,
+    build_paid_energy: f64,
+    build_paid_mana: f64,
+    build_paid_metal: f64,
+    has_metal_extraction_rate: u8,
+    metal_extraction_rate: f64,
+    has_solar: u8,
+    solar_open: u8,
+    has_turrets: u8,
+    turret_count: u8,
+) -> u32 {
+    let w = messagepack_writer();
+    w.buf.clear();
+
+    let mut key_count: usize = 5 + 1; // envelope + building
+    if has_changed_fields != 0 {
+        key_count += 1;
+    }
+    w.write_map_header(key_count);
+    write_entity_envelope_keys(
+        w, id, SNAPSHOT_ENTITY_TYPE_BUILDING,
+        qpos_x, qpos_y, qpos_z, qrot,
+        player_id, has_changed_fields, changed_fields,
+    );
+
+    let mut building_field_count: usize = 2; // hp + build
+    if has_type != 0 { building_field_count += 1; }
+    if has_dim != 0 { building_field_count += 1; }
+    if has_metal_extraction_rate != 0 { building_field_count += 1; }
+    if has_solar != 0 { building_field_count += 1; }
+    if has_turrets != 0 { building_field_count += 1; }
+
+    w.write_str("building");
+    w.write_map_header(building_field_count);
+
+    if has_type != 0 {
+        w.write_str("type");
+        write_string_from_scratch(w, type_string_slot);
+    }
+    if has_dim != 0 {
+        w.write_str("dim");
+        w.write_map_header(2);
+        w.write_str("x");
+        w.write_number(dim_x);
+        w.write_str("y");
+        w.write_number(dim_y);
+    }
+
+    w.write_str("hp");
+    w.write_map_header(2);
+    w.write_str("curr");
+    w.write_number(hp_curr);
+    w.write_str("max");
+    w.write_number(hp_max);
+
+    w.write_str("build");
+    w.write_map_header(2);
+    w.write_str("complete");
+    w.write_bool(build_complete != 0);
+    w.write_str("paid");
+    w.write_map_header(3);
+    w.write_str("energy");
+    w.write_number(build_paid_energy);
+    w.write_str("mana");
+    w.write_number(build_paid_mana);
+    w.write_str("metal");
+    w.write_number(build_paid_metal);
+
+    if has_metal_extraction_rate != 0 {
+        w.write_str("metalExtractionRate");
+        w.write_number(metal_extraction_rate);
+    }
+    if has_solar != 0 {
+        w.write_str("solar");
+        w.write_map_header(1);
+        w.write_str("open");
+        w.write_bool(solar_open != 0);
+    }
+    if has_turrets != 0 {
+        let count = turret_count as usize;
+        let scratch = snapshot_encode_turret_scratch();
+        w.write_str("turrets");
+        w.write_array_header(count);
+        for t in 0..count {
+            let base = t * SNAPSHOT_ENCODE_TURRET_STRIDE;
+            let qrot_t = scratch.buf[base];
+            let qvel = scratch.buf[base + 1];
+            let qacc = scratch.buf[base + 2];
+            let qpitch = scratch.buf[base + 3];
+            let qpitch_vel = scratch.buf[base + 4];
+            let qpitch_acc = scratch.buf[base + 5];
+            let turret_id_code = scratch.buf[base + 6];
+            let state_code = scratch.buf[base + 7];
+            let has_target = scratch.buf[base + 8] != 0.0;
+            let target_id_raw = scratch.buf[base + 9];
+            let has_ff_range = scratch.buf[base + 10] != 0.0;
+            let ff_range_raw = scratch.buf[base + 11];
+
+            let mut turret_field_count: usize = 2; // turret + state
+            if has_target { turret_field_count += 1; }
+            if has_ff_range { turret_field_count += 1; }
+            w.write_map_header(turret_field_count);
+
+            w.write_str("turret");
+            w.write_map_header(2);
+            w.write_str("id");
+            w.write_number(turret_id_code);
+            w.write_str("angular");
+            w.write_map_header(6);
+            w.write_str("rot");
+            w.write_number(qrot_t);
+            w.write_str("vel");
+            w.write_number(qvel);
+            w.write_str("acc");
+            w.write_number(qacc);
+            w.write_str("pitch");
+            w.write_number(qpitch);
+            w.write_str("pitchVel");
+            w.write_number(qpitch_vel);
+            w.write_str("pitchAcc");
+            w.write_number(qpitch_acc);
+
+            if has_target {
+                w.write_str("targetId");
+                w.write_number(target_id_raw);
+            }
+            w.write_str("state");
+            w.write_number(state_code);
+            if has_ff_range {
+                w.write_str("currentForceFieldRange");
+                w.write_number(ff_range_raw);
+            }
+        }
+    }
+
+    w.buf.len() as u32
+}

@@ -138,6 +138,7 @@ import __wbg_init, {
   snapshot_baseline_diff_slot,
   snapshot_encode_entity_basic,
   snapshot_encode_entity_unit,
+  snapshot_encode_entity_building,
   snapshot_encode_turret_scratch_ptr,
   snapshot_encode_turret_scratch_ensure,
   snapshot_encode_action_scratch_ptr,
@@ -901,6 +902,34 @@ export interface SnapshotEncodeApi {
   turretScratchEnsure: (count: number) => void;
   /** Stride per turret in the scratch buffer (f64 count). */
   readonly turretScratchStride: number;
+  /** Encode a building entity DTO (envelope + building sub-object
+   *  with type / dim / hp / build / metalExtractionRate / solar /
+   *  turrets). Turrets reuse the same scratch as unit turrets.
+   *  Factory sub-object not yet supported. */
+  encodeEntityBuilding: (
+    id: number,
+    qposX: number, qposY: number, qposZ: number,
+    qrot: number,
+    playerId: number,
+    hasChangedFields: number,
+    changedFields: number,
+    hasType: number,
+    typeStringSlot: number,
+    hasDim: number,
+    dimX: number, dimY: number,
+    hpCurr: number,
+    hpMax: number,
+    buildComplete: number,
+    buildPaidEnergy: number,
+    buildPaidMana: number,
+    buildPaidMetal: number,
+    hasMetalExtractionRate: number,
+    metalExtractionRate: number,
+    hasSolar: number,
+    solarOpen: number,
+    hasTurrets: number,
+    turretCount: number,
+  ) => number;
   /** Raw pointer to the action scratch buffer. JS fills 16 f64 per
    *  action (see lib.rs SNAPSHOT_ENCODE_ACTION_STRIDE layout)
    *  before calling encodeEntityUnit with hasActions=1. */
@@ -1326,6 +1355,7 @@ export function initSimWasm(): Promise<SimWasm> {
         snapshotEncode: {
           encodeEntityBasic: snapshot_encode_entity_basic,
           encodeEntityUnit: snapshot_encode_entity_unit,
+          encodeEntityBuilding: snapshot_encode_entity_building,
           writerPtr: messagepack_writer_ptr,
           writerLen: messagepack_writer_len,
           turretScratchPtr: snapshot_encode_turret_scratch_ptr,
