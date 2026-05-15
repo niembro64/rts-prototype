@@ -23,6 +23,7 @@ import __wbg_init, {
   pool_step_integrate,
   pool_resolve_sphere_sphere,
   engine_statics_create,
+  engine_statics_destroy,
   engine_statics_add,
   engine_statics_remove,
   pool_resolve_sphere_cuboid_full,
@@ -148,6 +149,14 @@ export interface SimWasm {
    *  static cells stay isolated even though they share the global
    *  BodyPool. */
   readonly engineStaticsCreate: () => number;
+  /** Release a handle previously returned by `engineStaticsCreate`.
+   *  Drops the per-engine cell HashMap + visit-stamp vec so the
+   *  memory comes back to Rust's allocator, and returns the slot
+   *  to a free list for the next create() to recycle. Call from
+   *  PhysicsEngine3D teardown (GameServer.stop -> dispose).
+   *  Using the handle afterwards panics — the caller must drop
+   *  every reference to it before destroy is invoked. */
+  readonly engineStaticsDestroy: (handle: number) => void;
   /** Insert a cuboid (by pool slot) into this engine's static
    *  broadphase. Reads pos + half-extents from the pool, walks
    *  every overlapping cell, and pushes the slot id onto each
@@ -512,6 +521,7 @@ export function initSimWasm(): Promise<SimWasm> {
         poolStepIntegrate: pool_step_integrate,
         poolResolveSphereSphere: pool_resolve_sphere_sphere,
         engineStaticsCreate: engine_statics_create,
+        engineStaticsDestroy: engine_statics_destroy,
         engineStaticsAdd: engine_statics_add,
         engineStaticsRemove: engine_statics_remove,
         poolResolveSphereCuboidFull: pool_resolve_sphere_cuboid_full,

@@ -971,18 +971,30 @@ impl EngineStatics {
     }
 }
 
-struct EngineStaticsHolder(UnsafeCell<Vec<EngineStatics>>);
+struct EngineStaticsTable {
+    handles: Vec<Option<EngineStatics>>,
+    free_list: Vec<u32>,
+}
+
+struct EngineStaticsHolder(UnsafeCell<EngineStaticsTable>);
 unsafe impl Sync for EngineStaticsHolder {}
-static ENGINE_STATICS: EngineStaticsHolder = EngineStaticsHolder(UnsafeCell::new(Vec::new()));
+static ENGINE_STATICS: EngineStaticsHolder = EngineStaticsHolder(UnsafeCell::new(EngineStaticsTable {
+    handles: Vec::new(),
+    free_list: Vec::new(),
+}));
 
 #[inline]
 fn engine_statics(handle: u32) -> &'static mut EngineStatics {
     // SAFETY: WASM is single-threaded; only one Rust call active at a
-    // time. The Vec never shrinks (engine_statics_create only pushes)
-    // so existing &mut references stay valid across calls.
+    // time, so no aliasing &mut refs ever co-exist. The `handles` Vec
+    // never shrinks (destroy nulls the slot but keeps the index live),
+    // so the address backing a `Some(_)` stays stable for the slot's
+    // lifetime.
     unsafe {
         let v = &mut *ENGINE_STATICS.0.get();
-        &mut v[handle as usize]
+        v.handles[handle as usize]
+            .as_mut()
+            .expect("engine_statics: handle was destroyed")
     }
 }
 
@@ -1001,9 +1013,33 @@ pub fn engine_statics_create() -> u32 {
     // SAFETY: see `engine_statics`.
     unsafe {
         let v = &mut *ENGINE_STATICS.0.get();
-        let handle = v.len() as u32;
-        v.push(EngineStatics::new());
-        handle
+        if let Some(handle) = v.free_list.pop() {
+            v.handles[handle as usize] = Some(EngineStatics::new());
+            handle
+        } else {
+            let handle = v.handles.len() as u32;
+            v.handles.push(Some(EngineStatics::new()));
+            handle
+        }
+    }
+}
+
+/// Release a handle previously returned by `engine_statics_create`.
+/// Drops the underlying HashMap + visit_stamps Vec and returns the
+/// slot to a free list so the next create() can recycle it. Calling
+/// destroy twice on the same handle, or using a destroyed handle
+/// afterwards, will panic (caught by the .expect() in
+/// `engine_statics`).
+#[wasm_bindgen]
+pub fn engine_statics_destroy(handle: u32) {
+    // SAFETY: see `engine_statics`.
+    unsafe {
+        let v = &mut *ENGINE_STATICS.0.get();
+        let idx = handle as usize;
+        debug_assert!(idx < v.handles.len(), "engine_statics_destroy: handle out of range");
+        debug_assert!(v.handles[idx].is_some(), "engine_statics_destroy: handle already destroyed");
+        v.handles[idx] = None;
+        v.free_list.push(handle);
     }
 }
 

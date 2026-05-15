@@ -438,6 +438,13 @@ export class GameServer {
     this.snapshotPublisher.reset();
     this.startupReadyListenerKeys.clear();
     this.startupGateOpen = false;
+
+    // Release the WASM-side per-engine static-cuboid broadphase
+    // handle so its HashMap + visit-stamp Vec come back to Rust's
+    // allocator and the handle slot can be reused by a future
+    // GameServer.create() (avoids unbounded growth across
+    // load/teardown cycles in dev hot-reload).
+    this.physics.dispose();
   }
 
   // Main simulation tick — variable timestep (driven by internal setInterval)

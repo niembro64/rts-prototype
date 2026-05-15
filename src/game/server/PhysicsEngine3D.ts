@@ -599,6 +599,19 @@ export class PhysicsEngine3D {
     getSimWasm()!.engineStaticsRemove(this.staticsHandle, body.slot, CONTACT_CELL_SIZE);
   }
 
+  /** Release WASM-side resources owned by this engine. Call once at
+   *  teardown — GameServer.stop does this. After dispose, no other
+   *  method on this instance is safe to call (the static-broadphase
+   *  handle is gone). The dynamic / static body pools are NOT freed
+   *  here; the caller is responsible for `removeBody(body)` on each
+   *  prior to disposing the engine. */
+  dispose(): void {
+    const sim = getSimWasm();
+    if (sim !== undefined) {
+      sim.engineStaticsDestroy(this.staticsHandle);
+    }
+  }
+
   step(dtSec: number): void {
     // Refresh BodyPool typed-array views in case the WASM linear
     // memory grew since the last step. Vec growths (sphere-sphere
