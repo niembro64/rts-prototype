@@ -8,7 +8,7 @@
     "dev": "node ./node_modules/vite/bin/vite.js --host",
     "build": "npm run build:wasm && node ./node_modules/vue-tsc/bin/vue-tsc.js && node ./node_modules/vite/bin/vite.js build",
     "build:web": "npm run build:wasm && node ./node_modules/vue-tsc/bin/vue-tsc.js && node ./node_modules/vite/bin/vite.js build",
-    "build:wasm": "cd rts-sim-wasm && wasm-pack build --release --target web --out-dir ../src/game/sim-wasm/pkg",
+    "build:wasm": "cd rts-sim-wasm && wasm-pack build --release --target web --out-dir ../src/game/sim-wasm/pkg && (command -v wasm-opt >/dev/null 2>&1 && wasm-opt -Oz --enable-bulk-memory --enable-mutable-globals ../src/game/sim-wasm/pkg/rts_sim_wasm_bg.wasm -o ../src/game/sim-wasm/pkg/rts_sim_wasm_bg.wasm || echo '(rust) wasm-opt not installed; skipping optimization pass. brew install binaryen to enable.')",
     "build:wasm:dev": "cd rts-sim-wasm && wasm-pack build --dev --target web --out-dir ../src/game/sim-wasm/pkg",
     "preview": "node ./node_modules/vite/bin/vite.js preview --host",
     "tauri:dev": "npx tauri dev",
