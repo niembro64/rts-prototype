@@ -88,6 +88,12 @@ let _integrateSleepTransitions: Uint32Array = new Uint32Array(0);
 let _sphereSphereSlots: Uint32Array = new Uint32Array(0);
 let _sphereSphereWakeTransitions: Uint32Array = new Uint32Array(0);
 
+// Phase 3b sphere-vs-cuboid scratch buffers. JS broadphase iteration
+// fills `_sphereCuboidPairs` with interleaved (dyn_slot, static_slot)
+// u32s; the wake transitions buffer holds at most one slot per pair.
+let _sphereCuboidPairs: Uint32Array = new Uint32Array(0);
+let _sphereCuboidWakeTransitions: Uint32Array = new Uint32Array(0);
+
 // Pack a (cx, cy, cz) integer cell coordinate into a single numeric
 // key. Each axis is 16-bit biased; the packed value is a 48-bit
 // non-negative safe integer (well under JS's 2^53 ceiling). Mirrors
@@ -903,21 +909,50 @@ export class PhysicsEngine3D {
     }
   }
 
-  /** Sphere-vs-cuboid contact: find the closest point on the cuboid
-   *  to the sphere center, push apart if overlapping, reflect velocity
-   *  along the contact normal. Static cuboid doesn't move. */
+  /** Sphere-vs-cuboid contact resolver — Phase 3b: JS broadphase
+   *  builds a flat (dyn_slot, static_slot) pair list, one batched
+   *  WASM call resolves every pair. Both bodies' state lives in the
+   *  BodyPool, so only the pair list and a wake-transitions output
+   *  buffer cross the boundary. The static-cell broadphase + the
+   *  ignoreStatic / staticQueryStamp dedup stay in JS for now —
+   *  Phase 3f will move the broadphase itself into Rust. */
   private resolveSphereCuboidContacts(): void {
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      // GameServer.create awaits initSimWasm so the pool is always
+      // ready by the time step() runs. This branch is genuine dead
+      // code in production but kept as a defensive guard.
+      return;
+    }
+
+    const dynCount = this.dynamicBodies.length;
+    if (dynCount === 0) return;
+
+    // Pre-size the pair scratch generously (16 cuboids per dyn is
+    // very generous in practice). The grow-on-demand block below
+    // handles overflow for pathological cases.
+    const initialCap = Math.max(64, dynCount * 16) * 2;
+    if (_sphereCuboidPairs.length < initialCap) {
+      _sphereCuboidPairs = new Uint32Array(initialCap);
+    }
+
+    let pairCount = 0; // count of u32 entries (not pairs); each pair occupies 2
     for (const dyn of this.dynamicBodies) {
       if (!this.shouldProcessBodyThisStep(dyn)) continue;
       if (dyn.shape !== 'sphere') continue;
       const stamp = ++this.staticQueryStamp;
       const ignored = this.ignoreStatic.get(dyn);
-      const minCx = this.cellCoordXy(dyn.x - dyn.radius);
-      const maxCx = this.cellCoordXy(dyn.x + dyn.radius);
-      const minCy = this.cellCoordXy(dyn.y - dyn.radius);
-      const maxCy = this.cellCoordXy(dyn.y + dyn.radius);
-      const minCz = this.cellCoordZ(dyn.z - dyn.radius);
-      const maxCz = this.cellCoordZ(dyn.z + dyn.radius);
+      const dynRadius = dyn.radius;
+      const dynX = dyn.x;
+      const dynY = dyn.y;
+      const dynZ = dyn.z;
+      const minCx = this.cellCoordXy(dynX - dynRadius);
+      const maxCx = this.cellCoordXy(dynX + dynRadius);
+      const minCy = this.cellCoordXy(dynY - dynRadius);
+      const maxCy = this.cellCoordXy(dynY + dynRadius);
+      const minCz = this.cellCoordZ(dynZ - dynRadius);
+      const maxCz = this.cellCoordZ(dynZ + dynRadius);
+      const dynSlot = dyn.slot;
 
       for (let cz = minCz; cz <= maxCz; cz++) {
         for (let cy = minCy; cy <= maxCy; cy++) {
@@ -929,72 +964,39 @@ export class PhysicsEngine3D {
               if (st._staticQueryStamp === stamp) continue;
               st._staticQueryStamp = stamp;
               if (st === ignored) continue;
-              this.resolveSphereCuboidPair(dyn, st);
+              if (pairCount + 2 > _sphereCuboidPairs.length) {
+                const grown = new Uint32Array(_sphereCuboidPairs.length * 2);
+                grown.set(_sphereCuboidPairs);
+                _sphereCuboidPairs = grown;
+              }
+              _sphereCuboidPairs[pairCount] = dynSlot;
+              _sphereCuboidPairs[pairCount + 1] = st.slot;
+              pairCount += 2;
             }
           }
         }
       }
     }
-  }
 
-  private resolveSphereCuboidPair(dyn: Body3D, st: Body3D): void {
-    // Closest point on AABB (aligned cuboid) to sphere center.
-    const dx = dyn.x - st.x;
-    const dy = dyn.y - st.y;
-    const dz = dyn.z - st.z;
-    const cx = Math.max(-st.halfX, Math.min(dx, st.halfX));
-    const cy = Math.max(-st.halfY, Math.min(dy, st.halfY));
-    const cz = Math.max(-st.halfZ, Math.min(dz, st.halfZ));
-    const sepX = dx - cx;
-    const sepY = dy - cy;
-    const sepZ = dz - cz;
-    const distSq = sepX * sepX + sepY * sepY + sepZ * sepZ;
-    if (distSq >= dyn.radius * dyn.radius) return;
-    const dist = Math.sqrt(distSq);
-    // Degenerate case: sphere center inside the box. Push out along
-    // the shortest face normal.
-    let nx: number;
-    let ny: number;
-    let nz: number;
-    let penetration: number;
-    if (dist < 1e-6) {
-      const overX = st.halfX - Math.abs(dx);
-      const overY = st.halfY - Math.abs(dy);
-      const overZ = st.halfZ - Math.abs(dz);
-      if (overX <= overY && overX <= overZ) {
-        nx = Math.sign(dx) || 1;
-        ny = 0;
-        nz = 0;
-        penetration = overX + dyn.radius;
-      } else if (overY <= overZ) {
-        nx = 0;
-        ny = Math.sign(dy) || 1;
-        nz = 0;
-        penetration = overY + dyn.radius;
-      } else {
-        nx = 0;
-        ny = 0;
-        nz = Math.sign(dz) || 1;
-        penetration = overZ + dyn.radius;
-      }
-    } else {
-      nx = sepX / dist;
-      ny = sepY / dist;
-      nz = sepZ / dist;
-      penetration = dyn.radius - dist;
+    if (pairCount === 0) return;
+
+    const numPairs = pairCount / 2;
+    if (_sphereCuboidWakeTransitions.length < numPairs) {
+      _sphereCuboidWakeTransitions = new Uint32Array(numPairs);
     }
-    dyn.x += nx * penetration;
-    dyn.y += ny * penetration;
-    dyn.z += nz * penetration;
-    if (dyn.sleeping) this.wakeBody(dyn);
-    this.recordUpwardSurfaceContact(dyn, nz);
-    // Velocity reflection along the contact normal if moving into it.
-    const vDotN = dyn.vx * nx + dyn.vy * ny + dyn.vz * nz;
-    if (vDotN < 0) {
-      const j = (1 + dyn.restitution) * vDotN;
-      dyn.vx -= j * nx;
-      dyn.vy -= j * ny;
-      dyn.vz -= j * nz;
+    const pairsView = _sphereCuboidPairs.subarray(0, pairCount);
+    const wakeView = _sphereCuboidWakeTransitions.subarray(0, numPairs);
+    const wakeCount = sim.poolResolveSphereCuboidPairs(pairsView, wakeView);
+    for (let i = 0; i < wakeCount; i++) {
+      const slot = wakeView[i];
+      const b = this.bodyBySlot[slot];
+      if (b !== undefined) {
+        // wakeBody() is idempotent; safe even when the same dyn slot
+        // appears multiple times in wake_transitions_out (one entry
+        // per pair that resolved, may include duplicates from a body
+        // hitting multiple cuboids).
+        this.wakeBody(b);
+      }
     }
   }
 

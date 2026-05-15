@@ -24,6 +24,7 @@ import __wbg_init, {
   pool_free_slot,
   pool_step_integrate,
   pool_resolve_sphere_sphere,
+  pool_resolve_sphere_cuboid_pairs,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -177,6 +178,25 @@ export interface SimWasm {
     sphereSlots: Uint32Array,
     iterations: number,
     cellSize: number,
+    wakeTransitionsOut: Uint32Array,
+  ) => number;
+  /** Pool-backed sphere-vs-cuboid pair resolver — Phase 3b. JS
+   *  iterates the existing static-cell broadphase to build a flat
+   *  pair list (dyn_slot, static_slot interleaved); one WASM call
+   *  resolves every pair in place. Both bodies' state lives in
+   *  the BodyPool; only the pair list and a wake-transition output
+   *  cross the boundary.
+   *
+   *  Wake bookkeeping: the kernel emits a wake transition for every
+   *  pair that pushes — sleeping bodies and already-awake bodies
+   *  alike. JS calls wakeBody() on each (idempotent on already-awake)
+   *  to handle the awake-count + sleepTicks reset. Duplicates from
+   *  a single dyn body hitting multiple cuboids in one tick are
+   *  safe under wakeBody's idempotence.
+   *
+   *  Returns count of wake transitions written into the buffer. */
+  readonly poolResolveSphereCuboidPairs: (
+    pairs: Uint32Array,
     wakeTransitionsOut: Uint32Array,
   ) => number;
 }
@@ -341,6 +361,7 @@ export function initSimWasm(): Promise<SimWasm> {
         pool,
         poolStepIntegrate: pool_step_integrate,
         poolResolveSphereSphere: pool_resolve_sphere_sphere,
+        poolResolveSphereCuboidPairs: pool_resolve_sphere_cuboid_pairs,
       };
       resolvedHandle = handle;
       return handle;

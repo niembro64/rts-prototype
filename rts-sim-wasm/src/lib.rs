@@ -1172,3 +1172,135 @@ pub fn pool_resolve_sphere_sphere(
     }
     transitions
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 3b — Pool-backed sphere-vs-cuboid pair resolver
+//
+//  Ports PhysicsEngine3D.ts `resolveSphereCuboidPair` into a single
+//  batched WASM call. JS's existing broadphase (the `staticCells`
+//  Map keyed by AABB cell) iterates per dynamic sphere, does the
+//  ignoreStatic + staticQueryStamp dedup, and accumulates a flat
+//  pair list (dyn_slot, static_slot interleaved). One WASM call
+//  resolves every pair; both bodies' state lives in the BodyPool
+//  so nothing else crosses the boundary.
+//
+//  Sleep-wake rule mirrors the TS path: every pair that pushes a
+//  dynamic body emits a wake transition. JS calls wakeBody() on
+//  each — idempotent on already-awake bodies, so the wake-count
+//  bookkeeping is correct regardless of duplicates from a single
+//  dyn body that hits multiple cuboids in one tick.
+//
+//  Upward contact: BODY_FLAG_UPWARD_CONTACT set directly on the
+//  dyn body's pool flags byte when contact normal nz > 0.35.
+// ─────────────────────────────────────────────────────────────────
+
+#[wasm_bindgen]
+pub fn pool_resolve_sphere_cuboid_pairs(
+    pairs: &[u32],
+    wake_transitions_out: &mut [u32],
+) -> u32 {
+    let pair_count = pairs.len() / 2;
+    if pair_count == 0 {
+        return 0;
+    }
+    debug_assert!(wake_transitions_out.len() >= pair_count);
+
+    let p = pool();
+    let mut woken_count = 0_u32;
+
+    for i in 0..pair_count {
+        let dyn_slot_u32 = pairs[i * 2];
+        let dyn_slot = dyn_slot_u32 as usize;
+        let st_slot = pairs[i * 2 + 1] as usize;
+
+        let dyn_x = p.pos_x[dyn_slot];
+        let dyn_y = p.pos_y[dyn_slot];
+        let dyn_z = p.pos_z[dyn_slot];
+        let dyn_r = p.radius[dyn_slot];
+        let st_x = p.pos_x[st_slot];
+        let st_y = p.pos_y[st_slot];
+        let st_z = p.pos_z[st_slot];
+        let st_hx = p.half_x[st_slot];
+        let st_hy = p.half_y[st_slot];
+        let st_hz = p.half_z[st_slot];
+
+        // Closest point on AABB (cuboid) to sphere center, expressed
+        // in the cuboid's local frame.
+        let dx = dyn_x - st_x;
+        let dy = dyn_y - st_y;
+        let dz = dyn_z - st_z;
+        let cx = dx.max(-st_hx).min(st_hx);
+        let cy = dy.max(-st_hy).min(st_hy);
+        let cz = dz.max(-st_hz).min(st_hz);
+        let sep_x = dx - cx;
+        let sep_y = dy - cy;
+        let sep_z = dz - cz;
+        let dist_sq = sep_x * sep_x + sep_y * sep_y + sep_z * sep_z;
+        if dist_sq >= dyn_r * dyn_r {
+            continue;
+        }
+        let dist = dist_sq.sqrt();
+
+        let nx: f64;
+        let ny: f64;
+        let nz: f64;
+        let penetration: f64;
+        if dist < 1e-6 {
+            // Degenerate: sphere center inside the box. Push out
+            // along the shortest face normal. Matches the TS path's
+            // `Math.sign(dx) || 1` semantics for dx == 0.
+            let over_x = st_hx - dx.abs();
+            let over_y = st_hy - dy.abs();
+            let over_z = st_hz - dz.abs();
+            if over_x <= over_y && over_x <= over_z {
+                nx = if dx >= 0.0 { 1.0 } else { -1.0 };
+                ny = 0.0;
+                nz = 0.0;
+                penetration = over_x + dyn_r;
+            } else if over_y <= over_z {
+                nx = 0.0;
+                ny = if dy >= 0.0 { 1.0 } else { -1.0 };
+                nz = 0.0;
+                penetration = over_y + dyn_r;
+            } else {
+                nx = 0.0;
+                ny = 0.0;
+                nz = if dz >= 0.0 { 1.0 } else { -1.0 };
+                penetration = over_z + dyn_r;
+            }
+        } else {
+            let inv_dist = 1.0 / dist;
+            nx = sep_x * inv_dist;
+            ny = sep_y * inv_dist;
+            nz = sep_z * inv_dist;
+            penetration = dyn_r - dist;
+        }
+
+        p.pos_x[dyn_slot] = dyn_x + nx * penetration;
+        p.pos_y[dyn_slot] = dyn_y + ny * penetration;
+        p.pos_z[dyn_slot] = dyn_z + nz * penetration;
+
+        // Always emit wake transition. JS wakeBody is idempotent;
+        // duplicates from a body hitting multiple cuboids are safe.
+        wake_transitions_out[woken_count as usize] = dyn_slot_u32;
+        woken_count += 1;
+
+        if nz > 0.35 {
+            p.flags[dyn_slot] |= BODY_FLAG_UPWARD_CONTACT;
+        }
+
+        let dyn_vx = p.vel_x[dyn_slot];
+        let dyn_vy = p.vel_y[dyn_slot];
+        let dyn_vz = p.vel_z[dyn_slot];
+        let v_dot_n = dyn_vx * nx + dyn_vy * ny + dyn_vz * nz;
+        if v_dot_n < 0.0 {
+            let restitution = p.restitution[dyn_slot];
+            let j = (1.0 + restitution) * v_dot_n;
+            p.vel_x[dyn_slot] = dyn_vx - j * nx;
+            p.vel_y[dyn_slot] = dyn_vy - j * ny;
+            p.vel_z[dyn_slot] = dyn_vz - j * nz;
+        }
+    }
+
+    woken_count
+}

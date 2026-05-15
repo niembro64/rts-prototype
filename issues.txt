@@ -138,9 +138,9 @@ with a Body3D pool and the contact resolvers.
 Split into sub-phases to keep each ship-able and reviewable.
 
   Phase 3a — Batched integrate() + sleep state machine. DONE.
-  Phase 3b — Sphere-vs-cuboid resolver port. (Deferred behind 3d — per-pair
-             WASM calls would currently cost more than they save; revisit
-             after the per-tick marshal is gone.)
+  Phase 3b — Sphere-vs-cuboid pair resolver port. DONE (after 3d-2 made
+             the per-pair WASM call basically free — both bodies' state
+             lives in the pool, only the pair list crosses the boundary).
   Phase 3c — Sphere-vs-sphere resolver + broadphase port. DONE.
   Phase 3d — Body3D SoA pool in WASM linear memory (state ownership). DONE.
              3d-1 (foundation): pool exists, Body3D class proxies to
@@ -357,6 +357,41 @@ Old per-call buffer functions (`step_unit_motions_batch`,
 *_BATCH_STRIDE constants are now dead code — kept around in this
 commit for one cycle to make rollback easy. A follow-on cleanup
 commit can delete them.
+
+------------------------------------------------------------------------------
+ Phase 3b — Sphere-vs-cuboid pair resolver. DONE.
+------------------------------------------------------------------------------
+Landed: `pool_resolve_sphere_cuboid_pairs` in rts-sim-wasm/src/lib.rs.
+Ports the closest-point-on-AABB + push-out + restitution-reflect
+math from PhysicsEngine3D.ts `resolveSphereCuboidPair` into a
+single batched WASM call. Both dynamic and static body state live
+in the BodyPool, so the call signature is just a flat pair index
+buffer (interleaved dyn_slot / static_slot u32s) plus a wake-
+transitions output buffer.
+
+JS broadphase iteration is unchanged — `resolveSphereCuboidContacts`
+walks the existing `staticCells` Map per dynamic body, applies the
+ignoreStatic + staticQueryStamp dedup, and accumulates pairs into
+`_sphereCuboidPairs` instead of calling a per-pair resolver. One
+WASM call resolves all pairs in place. Pair scratch grows on
+demand (initial cap = max(64, dynCount * 16) * 2 u32 entries).
+
+Bit-identical to the original TS path: same closest-point math,
+same degenerate-case face-normal selection, same restitution
+reflection. Wake bookkeeping uses the always-emit / idempotent-
+wakeBody pattern from Phase 3c — duplicates from a single dyn
+body hitting multiple cuboids in one tick are safe.
+
+Upward-contact flag (`BODY_FLAG_UPWARD_CONTACT`) set directly on
+the dyn body's pool flags byte by the Rust kernel, so the
+clearDynamicSurfaceContacts → resolver-sets-flag → renderer-reads
+chain works through the existing Body3D getter without per-pair
+JS round-trip.
+
+Phase 3f follow-up (move the static-cell broadphase itself into
+Rust) is now unblocked — the ignoreStatic Map stays JS-side as a
+per-engine dedup state, but the spatial bucketing and the
+broadphase walk can move to the pool's static-cell SoA mirror.
 
   - SoA Body3D representation in linear memory: separate Vec<f32>
     for x, y, z, vx, vy, vz, ax, ay, az, mass, invMass, radius,
