@@ -106,6 +106,9 @@ type UnitFixture = BasicEntityFixture & {
       active?: true;
       launchSeq?: number;
     };
+    orientation?: { x: number; y: number; z: number; w: number };
+    angularVelocity3?: { x: number; y: number; z: number };
+    angularAcceleration3?: { x: number; y: number; z: number };
   };
 };
 
@@ -283,6 +286,47 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         jump: { enabled: true, active: true, launchSeq: 123 },
       },
     },
+    // POS-client hover unit: orientation only, no angular fields
+    {
+      id: 510, type: 'unit', pos: { x: 0, y: 0, z: 500 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        orientation: { x: 0, y: 0, z: 0, w: 1000 },  // identity (×1000)
+      },
+    },
+    // VEL-client hover unit: orientation + angularVelocity3, no acceleration
+    {
+      id: 511, type: 'unit', pos: { x: 100, y: 0, z: 500 }, rotation: 314, playerId: 2,
+      unit: {
+        hp: { curr: 90, max: 100 },
+        velocity: { x: 150, y: 0, z: 0 },
+        orientation: { x: 0, y: 0, z: 707, w: 707 },  // 90° yaw
+        angularVelocity3: { x: 0, y: 0, z: 50 },
+      },
+    },
+    // ACC-client hover unit: full triad (banking into a turn)
+    {
+      id: 512, type: 'unit', pos: { x: 500, y: 500, z: 800 }, rotation: 1571, playerId: 3, changedFields: 0x4,
+      unit: {
+        hp: { curr: 75, max: 100 },
+        velocity: { x: 200, y: 100, z: 10 },
+        orientation: { x: -100, y: 0, z: 707, w: 700 },
+        angularVelocity3: { x: 0, y: -30, z: 100 },
+        angularAcceleration3: { x: 0, y: 0, z: 50 },
+      },
+    },
+    // Negative quaternion components + negative angular vectors
+    {
+      id: 513, type: 'unit', pos: { x: -100, y: -200, z: 600 }, rotation: -1571, playerId: 1,
+      unit: {
+        hp: { curr: 40, max: 100 },
+        velocity: { x: -50, y: -100, z: -20 },
+        orientation: { x: -174, y: -342, z: -924, w: 1 },
+        angularVelocity3: { x: -25, y: -50, z: -75 },
+        angularAcceleration3: { x: -10, y: -20, z: -30 },
+      },
+    },
   ];
 
   let passed = 0;
@@ -300,6 +344,12 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasSuspension = sp !== undefined ? 1 : 0;
     const jp = f.unit.jump;
     const hasJump = jp !== undefined ? 1 : 0;
+    const or = f.unit.orientation;
+    const hasOrientation = or !== undefined ? 1 : 0;
+    const av = f.unit.angularVelocity3;
+    const hasAngularVelocity3 = av !== undefined ? 1 : 0;
+    const aa = f.unit.angularAcceleration3;
+    const hasAngularAcceleration3 = aa !== undefined ? 1 : 0;
     snapshot_encode_entity_unit(
       f.id, typeTag,
       f.pos.x, f.pos.y, f.pos.z,
@@ -320,6 +370,12 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       jp?.active === true ? 1 : 0,
       jp?.launchSeq !== undefined ? 1 : 0,
       jp?.launchSeq ?? 0,
+      hasOrientation,
+      or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
+      hasAngularVelocity3,
+      av?.x ?? 0, av?.y ?? 0, av?.z ?? 0,
+      hasAngularAcceleration3,
+      aa?.x ?? 0, aa?.y ?? 0, aa?.z ?? 0,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();

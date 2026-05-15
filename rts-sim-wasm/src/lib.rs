@@ -6064,6 +6064,12 @@ pub fn snapshot_encode_entity_unit(
     jump_active: u8,
     has_jump_launch_seq: u8,
     jump_launch_seq: u32,
+    has_orientation: u8,
+    qorient_x: i32, qorient_y: i32, qorient_z: i32, qorient_w: i32,
+    has_angular_velocity3: u8,
+    qangvel_x: i32, qangvel_y: i32, qangvel_z: i32,
+    has_angular_acceleration3: u8,
+    qangacc_x: i32, qangacc_y: i32, qangacc_z: i32,
 ) -> u32 {
     let w = messagepack_writer();
     w.buf.clear();
@@ -6084,6 +6090,9 @@ pub fn snapshot_encode_entity_unit(
     if has_surface_normal != 0 { unit_field_count += 1; }
     if has_suspension != 0 { unit_field_count += 1; }
     if has_jump != 0 { unit_field_count += 1; }
+    if has_orientation != 0 { unit_field_count += 1; }
+    if has_angular_velocity3 != 0 { unit_field_count += 1; }
+    if has_angular_acceleration3 != 0 { unit_field_count += 1; }
 
     w.write_str("unit");
     w.write_map_header(unit_field_count);
@@ -6168,6 +6177,41 @@ pub fn snapshot_encode_entity_unit(
             w.write_str("launchSeq");
             w.write_uint(jump_launch_seq as u64);
         }
+    }
+
+    if has_orientation != 0 {
+        w.write_str("orientation");
+        w.write_map_header(4);
+        w.write_str("x");
+        w.write_int(qorient_x as i64);
+        w.write_str("y");
+        w.write_int(qorient_y as i64);
+        w.write_str("z");
+        w.write_int(qorient_z as i64);
+        w.write_str("w");
+        w.write_int(qorient_w as i64);
+    }
+
+    if has_angular_velocity3 != 0 {
+        w.write_str("angularVelocity3");
+        w.write_map_header(3);
+        w.write_str("x");
+        w.write_int(qangvel_x as i64);
+        w.write_str("y");
+        w.write_int(qangvel_y as i64);
+        w.write_str("z");
+        w.write_int(qangvel_z as i64);
+    }
+
+    if has_angular_acceleration3 != 0 {
+        w.write_str("angularAcceleration3");
+        w.write_map_header(3);
+        w.write_str("x");
+        w.write_int(qangacc_x as i64);
+        w.write_str("y");
+        w.write_int(qangacc_y as i64);
+        w.write_str("z");
+        w.write_int(qangacc_z as i64);
     }
 
     w.buf.len() as u32

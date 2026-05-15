@@ -858,6 +858,12 @@ export interface SnapshotEncodeApi {
     jumpActive: number,
     hasJumpLaunchSeq: number,
     jumpLaunchSeq: number,
+    hasOrientation: number,
+    qorientX: number, qorientY: number, qorientZ: number, qorientW: number,
+    hasAngularVelocity3: number,
+    qangvelX: number, qangvelY: number, qangvelZ: number,
+    hasAngularAcceleration3: number,
+    qangaccX: number, qangaccY: number, qangaccZ: number,
   ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
    *  by every encoder call. */
