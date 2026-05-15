@@ -749,11 +749,17 @@ intensive system.
     the WASM kernel only sees primitive SoA data; that minimizes
     the surface area to debug.
 
-  - **Hot-reload dev workflow.** wasm-pack rebuild on every Rust
-    edit is slow; pair it with `cargo watch` and a polyfill flag
-    that lets the dev temporarily swap a system back to its pure-
-    TS path. Cost: a TS shadow of each Rust kernel — kept around
-    as a fallback / reference implementation. Worth it.
+  - **Hot-reload dev workflow.** `cargo watch -s 'cd .. && npm run
+    build:wasm'` recipe is in rts-sim-wasm/README.md. A unified
+    polyfill flag to swap kernels back to their TS path WAS in
+    the original plan, but post-Phase-3 the Body3D + projectile
+    pools live in WASM linear memory — they're not optional. TS
+    fallbacks now run only during the brief boot window (before
+    initSimWasm resolves) and as structural reference impls for
+    bit-identity audits. A runtime "WASM off" toggle no longer
+    makes sense; if you need to A/B a single kernel, comment out
+    the `if (sim !== undefined)` branch in that kernel's TS
+    dispatcher temporarily.
 
   - **SIMD.** wasm SIMD (128-bit) is widely supported now (Chrome,
     Firefox, Safari 16.4+, Edge). The physics inner loops (Body3D
