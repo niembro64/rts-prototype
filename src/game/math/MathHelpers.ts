@@ -1,5 +1,12 @@
 // Common math utility functions
 
+import {
+  getSimWasm,
+  DAMPED_ROTATION_FLAG_WRAP,
+  DAMPED_ROTATION_FLAG_HAS_MIN,
+  DAMPED_ROTATION_FLAG_HAS_MAX,
+} from '../sim-wasm/init';
+
 /**
  * Compute squared distance between two points (avoids sqrt for comparisons)
  */
@@ -148,6 +155,9 @@ export type DampedRotationOptions = {
  *  read it so the client can integrate ω += α·dt under the PREDICT
  *  ACC mode. */
 const _dampedRotationResult = { angle: 0, angularVel: 0, angularAcc: 0 };
+// Module-scope scratch for the WASM dispatch — written by Rust into
+// (angle, angularVel, angularAcc) at indices 0..3.
+const _dampedRotationWasmScratch = new Float64Array(3);
 
 /** Damped-spring single-axis rotation integrator:
  *
@@ -169,6 +179,35 @@ export function integrateDampedRotation(
   dtSec: number,
   options?: DampedRotationOptions,
 ): { angle: number; angularVel: number; angularAcc: number } {
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    let flags = 0;
+    let minA = 0;
+    let maxA = 0;
+    if (options !== undefined) {
+      if (options.wrap) flags |= DAMPED_ROTATION_FLAG_WRAP;
+      if (options.minAngle !== undefined) {
+        flags |= DAMPED_ROTATION_FLAG_HAS_MIN;
+        minA = options.minAngle;
+      }
+      if (options.maxAngle !== undefined) {
+        flags |= DAMPED_ROTATION_FLAG_HAS_MAX;
+        maxA = options.maxAngle;
+      }
+    }
+    sim.integrateDampedRotation(
+      _dampedRotationWasmScratch,
+      angle, angularVel, targetAngle, k, c, dtSec,
+      flags, minA, maxA,
+    );
+    _dampedRotationResult.angle = _dampedRotationWasmScratch[0];
+    _dampedRotationResult.angularVel = _dampedRotationWasmScratch[1];
+    _dampedRotationResult.angularAcc = _dampedRotationWasmScratch[2];
+    return _dampedRotationResult;
+  }
+  // Bootstrap-window fallback — pure-TS impl kept structurally
+  // identical to the Rust kernel so motion is bit-identical across
+  // the swap.
   const diff = options?.wrap
     ? normalizeAngle(targetAngle - angle)
     : targetAngle - angle;

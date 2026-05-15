@@ -40,6 +40,7 @@ import __wbg_init, {
   pool_step_packed_projectiles_batch,
   solve_kinematic_intercept,
   apply_homing_steering,
+  integrate_damped_rotation,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -246,7 +247,29 @@ export interface SimWasm {
     homingTurnRate: number,
     dtSec: number,
   ) => void;
+  /** Phase 6a — damped-spring single-axis rotation integrator. Per-
+   *  call (call sites already loop per-turret-axis). `flags` packs
+   *  the options object: bit 0 = wrap, bit 1 = has_min, bit 2 = has_max.
+   *  Writes (newAngle, newAngularVel, angularAcc) into out[0..3]. */
+  readonly integrateDampedRotation: (
+    out: Float64Array,
+    angle: number,
+    angularVel: number,
+    targetAngle: number,
+    k: number,
+    c: number,
+    dtSec: number,
+    flags: number,
+    minAngle: number,
+    maxAngle: number,
+  ) => void;
 }
+
+/** Bit flags for `integrateDampedRotation`. Mirrors the
+ *  DAMPED_ROTATION_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
+export const DAMPED_ROTATION_FLAG_WRAP = 1 << 0;
+export const DAMPED_ROTATION_FLAG_HAS_MIN = 1 << 1;
+export const DAMPED_ROTATION_FLAG_HAS_MAX = 1 << 2;
 
 /** Views over the projectile SoA pool. Indexed by slot id (0..count
  *  where count is JS-managed in projectileSystem.ts). All views
@@ -497,6 +520,7 @@ export function initSimWasm(): Promise<SimWasm> {
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         solveKinematicIntercept: solve_kinematic_intercept,
         applyHomingSteering: apply_homing_steering,
+        integrateDampedRotation: integrate_damped_rotation,
       };
       resolvedHandle = handle;
       return handle;

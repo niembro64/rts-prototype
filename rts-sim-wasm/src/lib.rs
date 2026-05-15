@@ -1766,3 +1766,96 @@ pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
         p.pos_z[i] += p.vel_z[i] * dt_sec;
     }
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 6a — Damped-spring single-axis rotation integrator
+//
+//  Mirrors src/game/math/MathHelpers.ts integrateDampedRotation.
+//  Used by both server (turretSystem per tick) and client
+//  prediction (applyClientCombatExpensivePrediction per frame) so
+//  authoritative + predicted turret motion stay bit-identical.
+//
+//  Options on the TS side are an object: { wrap?, minAngle?, maxAngle? }.
+//  We encode them into a u32 flags word plus two scalar slots:
+//    flags bit 0 = wrap (yaw axes — turn the short way around ±π)
+//    flags bit 1 = has_min (cap newAngle to min_angle, zero velocity)
+//    flags bit 2 = has_max (cap newAngle to max_angle, zero velocity)
+//  Wrap and clamp are mutually exclusive in current callers; the
+//  kernel doesn't enforce that — same precedence as the TS impl
+//  (wrap normalises first, then min/max checks fire).
+//
+//  Output buffer (3 f64s): newAngle, newAngularVel, angularAcc.
+// ─────────────────────────────────────────────────────────────────
+
+pub const DAMPED_ROTATION_FLAG_WRAP: u32 = 1 << 0;
+pub const DAMPED_ROTATION_FLAG_HAS_MIN: u32 = 1 << 1;
+pub const DAMPED_ROTATION_FLAG_HAS_MAX: u32 = 1 << 2;
+
+/// Bit-identical to MathHelpers.ts normalizeAngle. Wraps angle into
+/// (-π, π]; non-finite input collapses to 0. The two pre-checks
+/// match the TS short-circuits exactly so the fast path stays fast.
+#[inline]
+fn normalize_angle_ts(mut angle: f64) -> f64 {
+    let pi = core::f64::consts::PI;
+    let two_pi = pi * 2.0;
+    if angle <= pi && angle >= -pi {
+        return angle;
+    }
+    if !angle.is_finite() {
+        return 0.0;
+    }
+    if angle > pi && angle <= pi + two_pi {
+        return angle - two_pi;
+    }
+    if angle < -pi && angle >= -pi - two_pi {
+        return angle + two_pi;
+    }
+    // JS `%` on negatives returns a value with the dividend's sign;
+    // Rust's `%` does the same, so this transcribes directly.
+    angle = (((angle + pi) % two_pi) + two_pi) % two_pi - pi;
+    angle
+}
+
+#[wasm_bindgen]
+pub fn integrate_damped_rotation(
+    out_buf: &mut [f64],
+    angle: f64,
+    angular_vel: f64,
+    target_angle: f64,
+    k: f64,
+    c: f64,
+    dt_sec: f64,
+    flags: u32,
+    min_angle: f64,
+    max_angle: f64,
+) {
+    debug_assert!(out_buf.len() >= 3);
+    let wrap = flags & DAMPED_ROTATION_FLAG_WRAP != 0;
+    let has_min = flags & DAMPED_ROTATION_FLAG_HAS_MIN != 0;
+    let has_max = flags & DAMPED_ROTATION_FLAG_HAS_MAX != 0;
+
+    let diff = if wrap {
+        normalize_angle_ts(target_angle - angle)
+    } else {
+        target_angle - angle
+    };
+    let accel = diff * k - angular_vel * c;
+    let mut new_vel = angular_vel + accel * dt_sec;
+    let mut new_angle = angle + new_vel * dt_sec;
+    let mut out_acc = accel;
+    if wrap {
+        new_angle = normalize_angle_ts(new_angle);
+    }
+    if has_min && new_angle < min_angle {
+        new_angle = min_angle;
+        new_vel = 0.0;
+        out_acc = 0.0;
+    } else if has_max && new_angle > max_angle {
+        new_angle = max_angle;
+        new_vel = 0.0;
+        out_acc = 0.0;
+    }
+    out_buf[0] = new_angle;
+    out_buf[1] = new_vel;
+    out_buf[2] = out_acc;
+}
