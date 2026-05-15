@@ -6941,6 +6941,52 @@ pub fn snapshot_encode_entity_building(
 ///   3. `snapshot_encode_envelope_continue(is_delta)`
 ///      → writes economy = {} + isDelta key. Returns total
 ///      written bytes.
+/// Minimap-entities scratch — 6 f64 per entry:
+///   [0]   id (entity id)
+///   [1]   pos.x
+///   [2]   pos.y
+///   [3]   type_tag (1 = unit, 2 = building, matches SNAPSHOT_ENTITY_TYPE_*)
+///   [4]   playerId
+///   [5]   has_radar_only + (radar_only << 1) packed: 0 = omit, 2 = emit
+///         false (rare), 3 = emit true. Practically only 0 or 3 appear.
+const SNAPSHOT_ENCODE_MINIMAP_STRIDE: usize = 6;
+
+struct SnapshotEncodeMinimapScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeMinimapScratchHolder(UnsafeCell<Option<SnapshotEncodeMinimapScratch>>);
+unsafe impl Sync for SnapshotEncodeMinimapScratchHolder {}
+static SNAPSHOT_ENCODE_MINIMAP_SCRATCH: SnapshotEncodeMinimapScratchHolder =
+    SnapshotEncodeMinimapScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_minimap_scratch() -> &'static mut SnapshotEncodeMinimapScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_MINIMAP_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeMinimapScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_MINIMAP_STRIDE * 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_minimap_scratch_ptr() -> *const f64 {
+    snapshot_encode_minimap_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_minimap_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_MINIMAP_STRIDE;
+    let s = snapshot_encode_minimap_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Removed-entity-IDs scratch — Uint32Array of EntityId values for
 /// the envelope's removedEntityIds field. JS pre-fills before
 /// calling snapshot_encode_envelope_continue with
@@ -6998,6 +7044,56 @@ pub fn snapshot_encode_envelope_begin(
     w.write_array_header(entity_count as usize);
 }
 
+/// Append the minimapEntities array. Called after the last
+/// entity in the envelope's `entities[]` is written and BEFORE
+/// snapshot_encode_envelope_continue runs (minimapEntities sits
+/// between entities and economy in the pool insertion order).
+/// Reads count entries from the minimap scratch.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_minimap(count: u32) {
+    let w = messagepack_writer();
+    let scratch = snapshot_encode_minimap_scratch();
+    let n = count as usize;
+    w.write_str("minimapEntities");
+    w.write_array_header(n);
+    for i in 0..n {
+        let base = i * SNAPSHOT_ENCODE_MINIMAP_STRIDE;
+        let id = scratch.buf[base] as u32;
+        let pos_x = scratch.buf[base + 1];
+        let pos_y = scratch.buf[base + 2];
+        let type_tag = scratch.buf[base + 3] as u8;
+        let player_id = scratch.buf[base + 4] as u8;
+        let radar_packed = scratch.buf[base + 5] as u8;
+        let has_radar = (radar_packed & 0x01) != 0;
+        let radar_value = (radar_packed & 0x02) != 0;
+
+        // Pool insertion order for the minimap DTO: id, pos, type,
+        // playerId, radarOnly.
+        let field_count = if has_radar { 5 } else { 4 };
+        w.write_map_header(field_count);
+        w.write_str("id");
+        w.write_uint(id as u64);
+        w.write_str("pos");
+        w.write_map_header(2);
+        w.write_str("x");
+        w.write_number(pos_x);
+        w.write_str("y");
+        w.write_number(pos_y);
+        w.write_str("type");
+        match type_tag {
+            SNAPSHOT_ENTITY_TYPE_UNIT => w.write_str("unit"),
+            SNAPSHOT_ENTITY_TYPE_BUILDING => w.write_str("building"),
+            _ => w.write_str(""),
+        }
+        w.write_str("playerId");
+        w.write_uint(player_id as u64);
+        if has_radar {
+            w.write_str("radarOnly");
+            w.write_bool(radar_value);
+        }
+    }
+}
+
 /// Close the envelope. Emits the post-entities optional keys in
 /// stateSerializer.ts pool-insertion order: economy, gameState,
 /// isDelta, removedEntityIds, visibilityFiltered. Caller flags
@@ -7009,6 +7105,10 @@ pub fn snapshot_encode_envelope_begin(
 #[wasm_bindgen]
 pub fn snapshot_encode_envelope_continue(
     has_economy: u8,
+    has_game_state: u8,
+    game_state_phase_slot: u32,
+    has_winner_id: u8,
+    winner_id: u8,
     is_delta: u8,
     has_removed_entity_ids: u8,
     removed_entity_id_count: u32,
@@ -7019,6 +7119,17 @@ pub fn snapshot_encode_envelope_continue(
     if has_economy != 0 {
         w.write_str("economy");
         w.write_map_header(0);
+    }
+    if has_game_state != 0 {
+        w.write_str("gameState");
+        let gs_field_count = if has_winner_id != 0 { 2 } else { 1 };
+        w.write_map_header(gs_field_count);
+        w.write_str("phase");
+        write_string_from_scratch(w, game_state_phase_slot);
+        if has_winner_id != 0 {
+            w.write_str("winnerId");
+            w.write_uint(winner_id as u64);
+        }
     }
     w.write_str("isDelta");
     w.write_bool(is_delta != 0);

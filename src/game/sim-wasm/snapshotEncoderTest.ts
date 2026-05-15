@@ -11,6 +11,9 @@ import {
   snapshot_encode_entity_building,
   snapshot_encode_envelope_begin,
   snapshot_encode_envelope_continue,
+  snapshot_encode_envelope_emit_minimap,
+  snapshot_encode_minimap_scratch_ptr,
+  snapshot_encode_minimap_scratch_ensure,
   snapshot_encode_removed_ids_scratch_ptr,
   snapshot_encode_removed_ids_scratch_ensure,
   messagepack_writer_clear,
@@ -1248,10 +1251,53 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
   return { passed, failed };
 }
 
+type MinimapEntityFixture = {
+  id: number;
+  pos: { x: number; y: number };
+  type: 'unit' | 'building';
+  playerId: number;
+  radarOnly?: boolean;
+};
+
+type GameStateFixture = {
+  phase: string;
+  winnerId?: number;
+};
+
+const MINIMAP_SCRATCH_STRIDE = 6;
+
+function packMinimapIntoScratch(
+  memory: WebAssembly.Memory,
+  entries: MinimapEntityFixture[],
+): void {
+  if (entries.length === 0) return;
+  snapshot_encode_minimap_scratch_ensure(entries.length);
+  const ptr = snapshot_encode_minimap_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, entries.length * MINIMAP_SCRATCH_STRIDE);
+  for (let i = 0; i < entries.length; i++) {
+    const m = entries[i];
+    const base = i * MINIMAP_SCRATCH_STRIDE;
+    view[base + 0] = m.id;
+    view[base + 1] = m.pos.x;
+    view[base + 2] = m.pos.y;
+    view[base + 3] = m.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
+    view[base + 4] = m.playerId;
+    // Pack: bit 0 = has, bit 1 = value
+    let packed = 0;
+    if (m.radarOnly !== undefined) {
+      packed |= 0x01;
+      if (m.radarOnly) packed |= 0x02;
+    }
+    view[base + 5] = packed;
+  }
+}
+
 type EnvelopeFixture = {
   tick: number;
   entities: (UnitFixture | BuildingFixture)[];
+  minimapEntities?: MinimapEntityFixture[];
   economy: Record<string, unknown>;  // empty for D.3j-15+
+  gameState?: GameStateFixture;
   isDelta: boolean;
   removedEntityIds?: number[];
   visibilityFiltered?: boolean;
@@ -1347,6 +1393,41 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       removedEntityIds: [10, 11],
       visibilityFiltered: true,
     },
+    // gameState during battle (phase only)
+    {
+      tick: 400, entities: [], economy: {}, isDelta: true,
+      gameState: { phase: 'battle' },
+    },
+    // gameState at game over with winner
+    {
+      tick: 401, entities: [], economy: {}, isDelta: false,
+      gameState: { phase: 'gameOver', winnerId: 1 },
+    },
+    // minimapEntities — units + buildings + radar-only mix
+    {
+      tick: 500, entities: [], economy: {}, isDelta: true,
+      minimapEntities: [
+        { id: 1, pos: { x: 100, y: 100 }, type: 'unit', playerId: 1 },
+        { id: 2, pos: { x: 200, y: 300 }, type: 'building', playerId: 2 },
+        { id: 3, pos: { x: -50, y: 0 }, type: 'unit', playerId: 3, radarOnly: true },
+      ],
+    },
+    // minimapEntities + gameState + visibility — busier envelope
+    {
+      tick: 600, entities: [
+        {
+          id: 10, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+          unit: { hp: { curr: 100, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
+        },
+      ],
+      minimapEntities: [
+        { id: 10, pos: { x: 0, y: 0 }, type: 'unit', playerId: 1 },
+        { id: 11, pos: { x: 500, y: 500 }, type: 'building', playerId: 2 },
+      ],
+      economy: {}, gameState: { phase: 'battle' }, isDelta: true,
+      removedEntityIds: [99],
+      visibilityFiltered: true,
+    },
   ];
 
   let passed = 0;
@@ -1354,17 +1435,38 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
   for (const f of fixtures) {
     const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
 
+    const hasMinimap = f.minimapEntities !== undefined ? 1 : 0;
     const hasEconomy = 1;  // always emitted in this commit
+    const hasGameState = f.gameState !== undefined ? 1 : 0;
+    const hasWinnerId = f.gameState?.winnerId !== undefined ? 1 : 0;
     const hasRemovedIds = f.removedEntityIds !== undefined ? 1 : 0;
     const hasVisibilityFiltered = f.visibilityFiltered !== undefined ? 1 : 0;
     const totalKeyCount =
       2 /* tick + entities */ +
+      hasMinimap +
       hasEconomy +
+      hasGameState +
       1 /* isDelta */ +
       hasRemovedIds +
       hasVisibilityFiltered;
+
+    // Pre-pack all scratches before any kernel call. String scratch
+    // collects every string needed by THIS envelope's encode (waypoint
+    // types from buildings, action buildingTypes from units, gameState
+    // phase).
+    const envelopeStrings: string[] = [];
+    if (f.gameState?.phase !== undefined) envelopeStrings.push(f.gameState.phase);
+    // Building waypoints + buildingTypes are packed inside the per-entity
+    // loop below — but for envelope-level strings we collect now too.
+    const envelopeStringSlots = envelopeStrings.length > 0
+      ? packStringsIntoScratch(memory, envelopeStrings)
+      : new Map<string, number>();
+
     if (hasRemovedIds && f.removedEntityIds) {
       packRemovedIdsIntoScratch(memory, f.removedEntityIds);
+    }
+    if (hasMinimap && f.minimapEntities) {
+      packMinimapIntoScratch(memory, f.minimapEntities);
     }
     snapshot_encode_envelope_begin(f.tick, f.entities.length, totalKeyCount);
 
@@ -1473,8 +1575,32 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       }
     }
 
+    // minimapEntities slots between entities and economy in pool
+    // insertion order — emit before _continue. minimap scratch has
+    // no string deps so safe to call regardless of envelope strings.
+    if (hasMinimap && f.minimapEntities) {
+      snapshot_encode_envelope_emit_minimap(f.minimapEntities.length);
+    }
+
+    // Re-pack envelope-level strings — the per-entity emit loop
+    // above may have overwritten the string scratch with action /
+    // waypoint-type strings. By the time _continue calls
+    // write_string_from_scratch for gameState.phase, the scratch
+    // must contain the right bytes for the gameState slot.
+    let phaseSlot = 0;
+    if (hasGameState && f.gameState !== undefined) {
+      const continueStrings = [f.gameState.phase];
+      const continueSlots = packStringsIntoScratch(memory, continueStrings);
+      phaseSlot = continueSlots.get(f.gameState.phase) ?? 0;
+    } else if (envelopeStringSlots.has(f.gameState?.phase ?? '')) {
+      phaseSlot = envelopeStringSlots.get(f.gameState!.phase) ?? 0;
+    }
     snapshot_encode_envelope_continue(
       hasEconomy,
+      hasGameState,
+      phaseSlot,
+      hasWinnerId,
+      f.gameState?.winnerId ?? 0,
       f.isDelta ? 1 : 0,
       hasRemovedIds,
       f.removedEntityIds?.length ?? 0,
