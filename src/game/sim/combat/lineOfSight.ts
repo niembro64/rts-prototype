@@ -8,6 +8,7 @@
 
 import { LAND_CELL_SIZE } from '../../../config';
 import { lineSphereIntersectionT, rayBoxIntersectionT } from '../../math';
+import { getSimWasm } from '../../sim-wasm/init';
 import { spatialGrid } from '../SpatialGrid';
 import type { WorldState } from '../WorldState';
 import type { EntityId, Turret } from '../../../types/sim';
@@ -52,11 +53,19 @@ export function hasTerrainLineOfSight(
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
 ): boolean {
+  const stepLen = LAND_CELL_SIZE * LOS_STEP_FRAC;
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    // WASM walks the segment entirely inside Rust — one boundary
+    // crossing instead of `stepCount` getGroundZ dispatches.
+    const result = sim.terrainHasLineOfSight(sx, sy, sz, tx, ty, tz, stepLen);
+    if (result !== 2) return result === 1;
+    // result === 2: no mesh installed → fall through to TS path.
+  }
   const dx = tx - sx;
   const dy = ty - sy;
   const dz = tz - sz;
   const horizDist = Math.hypot(dx, dy);
-  const stepLen = LAND_CELL_SIZE * LOS_STEP_FRAC;
   if (horizDist < stepLen) return true;
   const stepCount = Math.ceil(horizDist / stepLen);
   for (let i = 1; i < stepCount; i++) {

@@ -572,19 +572,22 @@ aimSolver.ts (648 lines) + lineOfSight.ts (244 lines). All are
 hot paths on busy maps; all are pure numeric over per-turret /
 per-candidate state.
 
-  - integrateDampedRotation — already returns (angle, angularVel,
-    angularAcc) for the PREDICT serializer; trivial port. Used by
-    both server (turretSystem) and client (applyClientCombat
-    ExpensivePrediction's rotation step).
-  - chooseBestTargetCandidate — top-K insertion + LOS check
-    structure becomes a Rust kernel returning the chosen entity
-    slot (or -1). Caller provides candidate slot id list via a
-    Rust-owned scratch buffer.
+  - integrateDampedRotation — DONE (Phase 6a, see above).
+  - chooseBestTargetCandidate — DEFERRED. The per-candidate work
+    is a JS-side closure (rankCandidate) that depends on the
+    weapon's TurretRanges + radius tier classification. The
+    remaining work (bubble-up insertion sort over K=8) would
+    save ~few µs at busy candidate counts but costs marshalling
+    Entity/Turret/ForceField data into Rust. Not worth porting
+    until either (a) Phase 7 lands and entity slots become the
+    natural language, or (b) profiling shows targeting is hot
+    enough to justify packing closures into a flat schema.
   - lineOfSight: segment-vs-terrain walk. Pure numeric, accesses
-    heightmap (needs Phase 8) + entity AABBs (needs Phase 7).
-  - aimSolver: ballistic / kinematic intercept solvers. Pure
-    numeric, easy port. Used by both targeting (server) and
-    projectile homing (server + client).
+    heightmap (Phase 8 — DONE) + entity AABBs (Phase 7 still
+    deferred, so the swept-volume AABB query stays JS-side).
+    The terrain-vs-segment portion is ported.
+  - aimSolver: ballistic / kinematic intercept solvers. DONE via
+    Phase 5b (solveKinematicIntercept WASM dispatch).
 
 ------------------------------------------------------------------------------
  Phase 7 — SpatialGrid → Rust/WASM.  DEFERRED (multi-session work).

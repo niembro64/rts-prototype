@@ -2197,6 +2197,58 @@ pub fn terrain_get_surface_height(x: f64, z: f64) -> f64 {
     }
 }
 
+/// Segment-vs-terrain line-of-sight test. Walks the line from
+/// (sx, sy, sz) to (tx, ty, tz) in `step_len`-spaced samples and
+/// returns:
+///   0 = ground blocks the ray (one sample's height > ray height)
+///   1 = segment clears terrain end to end
+///   2 = no mesh installed → caller should fall back to TS path
+/// Mirrors hasTerrainLineOfSight in lineOfSight.ts. Caller passes
+/// the JS-side step_len (LAND_CELL_SIZE * 0.5 today — kept JS-side
+/// so we don't duplicate the LAND_CELL_SIZE constant across the
+/// boundary).
+#[wasm_bindgen]
+pub fn terrain_has_line_of_sight(
+    sx: f64, sy: f64, sz: f64,
+    tx: f64, ty: f64, tz: f64,
+    step_len: f64,
+) -> u32 {
+    let t = terrain_grid();
+    if !t.installed {
+        return 2;
+    }
+    let dx = tx - sx;
+    let dy = ty - sy;
+    let dz = tz - sz;
+    let horiz_dist = (dx * dx + dy * dy).sqrt();
+    if horiz_dist < step_len {
+        return 1;
+    }
+    let step_count = (horiz_dist / step_len).ceil() as i32;
+    let inv_steps = 1.0 / step_count as f64;
+    for i in 1..step_count {
+        let f = i as f64 * inv_steps;
+        let x = sx + dx * f;
+        let y = sy + dy * f;
+        let ray_z = sz + dz * f;
+        // Inline the height sampler — same path as
+        // terrain_get_surface_height, but skip the NaN sentinel
+        // branch since we're inside Rust and an unmapped point
+        // produces a degenerate sample (no triangle found) which
+        // we treat as "no blocker" (height = -inf → never blocks).
+        let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, y);
+        if let Some((wa, wb, wc, _, _, ah, _, _, bh, _, _, ch)) =
+            terrain_triangle_sample_at(t, px, pz, cell_x, cell_y)
+        {
+            let h = (wa * ah + wb * bh + wc * ch).max(TERRAIN_WATER_LEVEL);
+            if h > ray_z {
+                return 0;
+            }
+        }
+    }
+    1
+}
+
 /// Sample terrain surface normal at world-space (x, z). Writes
 /// (nx, ny, nz) into out_buf[0..3] and returns 1 on success, 0 on
 /// "no mesh installed / degenerate" so JS can fall back to TS.

@@ -47,6 +47,7 @@ import __wbg_init, {
   terrain_is_installed,
   terrain_get_surface_height,
   terrain_get_surface_normal,
+  terrain_has_line_of_sight,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -315,6 +316,18 @@ export interface SimWasm {
    *  mesh is installed or the triangle walk fails. Below-water
    *  samples return (0, 0, 1) — flat water surface normal. */
   readonly terrainGetSurfaceNormal: (x: number, z: number, out: Float64Array) => number;
+  /** Phase 6c — segment-vs-terrain line-of-sight test. Returns:
+   *    0 = ground blocks the ray
+   *    1 = segment clears terrain end to end
+   *    2 = no mesh installed → caller falls back to TS path
+   *  Same step-walk algorithm as hasTerrainLineOfSight in
+   *  lineOfSight.ts. Replaces N JS↔WASM groundZ samples with a
+   *  single WASM call (saves boundary cost on long LOS rays). */
+  readonly terrainHasLineOfSight: (
+    sx: number, sy: number, sz: number,
+    tx: number, ty: number, tz: number,
+    stepLen: number,
+  ) => number;
 }
 
 /** Bit flags for `integrateDampedRotation`. Mirrors the
@@ -579,6 +592,7 @@ export function initSimWasm(): Promise<SimWasm> {
         terrainIsInstalled: terrain_is_installed,
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
+        terrainHasLineOfSight: terrain_has_line_of_sight,
       };
       resolvedHandle = handle;
       return handle;
