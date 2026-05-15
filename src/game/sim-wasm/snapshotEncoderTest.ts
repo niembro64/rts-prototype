@@ -1393,24 +1393,33 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       removedEntityIds: [10, 11],
       visibilityFiltered: true,
     },
-    // gameState during battle (phase only)
+    // gameState during battle (phase only). Property order must
+    // match stateSerializer.ts:_snapshotBuf pool: tick, entities,
+    // economy, gameState, isDelta. msgpackEncode walks JS object
+    // insertion order so the fixture must place gameState BEFORE
+    // isDelta to match the Rust emit sequence.
     {
-      tick: 400, entities: [], economy: {}, isDelta: true,
+      tick: 400, entities: [], economy: {},
       gameState: { phase: 'battle' },
+      isDelta: true,
     },
     // gameState at game over with winner
     {
-      tick: 401, entities: [], economy: {}, isDelta: false,
+      tick: 401, entities: [], economy: {},
       gameState: { phase: 'gameOver', winnerId: 1 },
+      isDelta: false,
     },
-    // minimapEntities — units + buildings + radar-only mix
+    // minimapEntities — pool order puts minimapEntities BETWEEN
+    // entities and economy, so the fixture's literal-property order
+    // matches.
     {
-      tick: 500, entities: [], economy: {}, isDelta: true,
+      tick: 500, entities: [],
       minimapEntities: [
         { id: 1, pos: { x: 100, y: 100 }, type: 'unit', playerId: 1 },
         { id: 2, pos: { x: 200, y: 300 }, type: 'building', playerId: 2 },
         { id: 3, pos: { x: -50, y: 0 }, type: 'unit', playerId: 3, radarOnly: true },
       ],
+      economy: {}, isDelta: true,
     },
     // minimapEntities + gameState + visibility — busier envelope
     {
