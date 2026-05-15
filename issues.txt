@@ -528,23 +528,62 @@ projectileSystem.ts is 1221 lines. Ballistic integration + homing +
 terrain-follow + beam-path point integration. The client mirrors a
 large subset of this in ClientProjectilePrediction.ts.
 
-  - Projectile SoA pool keyed by entity id slot: pos, vel, accel,
-    gravity flag, lifespan, homingTarget, homingTurnRate,
-    sourceEntity, beamPath byte buffer for line shots.
-  - Ballistic integration kernel (vz -= g·dt; pos += vel·dt) shared
-    between server and client (server uses authoritative dt,
-    client uses prediction dt; same kernel).
-  - Homing intercept solver (solveKinematicIntercept) — pure
-    numeric, easy port. The earlier "Phase 4: WASM batch turret
-    rotation + projectile integration" commit (f3c3eac4) had this
-    batched approach.
-  - Terrain-follow path (clamp Z to surface + groundOffset).
-  - Beam-path point integration (the per-point ax/ay/az chain
-    PREDICT-gated by POS/VEL/ACC).
-  - Collision queries — needs Phase 7 (spatial grid) to stay
-    fully WASM-side. Until then the broadphase remains JS-side and
-    the kernel returns hit-candidate slot ids via a Rust-owned
-    output buffer.
+Sub-phases:
+
+  Phase 5a — Packed projectile pool to WASM linear memory + batched
+             ballistic integrate kernel. DONE.
+  Phase 5b — Homing intercept solver port (solveKinematicIntercept).
+             Pure numeric — port to Rust, expose batched call for
+             projectiles in `_homingVelocityUpdates`.
+  Phase 5c — Terrain-follow path (DGUN_TERRAIN_FOLLOW_HEIGHT). Needs
+             Phase 8 (terrain in linear memory) to be fully WASM.
+  Phase 5d — Beam-path point integration (per-point ax/ay/az chain
+             PREDICT-gated by POS/VEL/ACC). Beams have variable
+             segment counts so this benefits from a flattened buffer
+             with per-beam offsets.
+  Phase 5e — Traveling (non-packed) projectile path. Larger surface;
+             likely won't move state to WASM until per-projectile
+             collision queries also need it.
+
+------------------------------------------------------------------------------
+ Phase 5a — Packed projectile SoA pool. DONE.
+------------------------------------------------------------------------------
+Landed: `ProjectilePool` in rts-sim-wasm/src/lib.rs — same
+fixed-capacity SoA pattern as BodyPool, sized at PROJECTILE_POOL_
+CAPACITY = 8192 (covers steady-state busy combat, fits in the
+pre-grown 32 MiB WASM memory). Per-tick ballistic integrate
+kernel `pool_step_packed_projectiles_batch(count, dt_sec)` runs
+`vz -= GRAVITY*dt` (gated on per-slot has_gravity flag) and
+position update over slots 0..count in one WASM call.
+
+projectileSystem.ts refactored: `_packedProjectile{X,Y,Z,Vx,Vy,
+Vz,TimeAlive,HasGravity}` are now typed-array views over the
+WASM pool (rebound on first use + on each per-tick call via
+`refreshPackedProjectileViews()` to survive memory.grow). The
+`_packedProjectileIds` Int32Array stays JS-side — Rust never
+needs the EntityId mapping.
+
+`_updatePackedProjectilesJS` split into three passes to leverage
+the batched kernel:
+  - Pass 1: per-slot validation, sync proj/transform fields into
+    pool views, bump timeAlive, stash prev / collisionStart.
+  - Pass 2: ONE WASM call runs the ballistic integrate over every
+    slot.
+  - Pass 3: scatter post-integrate pool state back to entity.
+    transform + proj.velocity*, run source-clearance check on the
+    new position.
+
+`ensurePackedProjectileCapacity` is now a hard cap check —
+exceeds throws a clear "bump PROJECTILE_POOL_CAPACITY" message.
+Growable JS-side reallocation (which doubled from 256 each
+overflow) is gone since the WASM pool is pre-sized at init.
+
+Boundary cost win is small in absolute terms (the per-projectile
+work is dominated by proj/transform field shuffling, which has
+to stay JS-side). Architectural win: projectile state lives in
+WASM linear memory now so future phases (collision queries,
+homing intercept) can read directly from the pool with no
+marshalling.
 
 ------------------------------------------------------------------------------
  Phase 6 — Turret rotation + targeting → Rust/WASM.

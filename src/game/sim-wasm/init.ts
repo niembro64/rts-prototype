@@ -27,6 +27,17 @@ import __wbg_init, {
   engine_statics_remove,
   pool_resolve_sphere_cuboid_full,
   quat_hover_orientation_step_batch,
+  projectile_pool_init,
+  projectile_pool_capacity,
+  projectile_pool_pos_x_ptr,
+  projectile_pool_pos_y_ptr,
+  projectile_pool_pos_z_ptr,
+  projectile_pool_vel_x_ptr,
+  projectile_pool_vel_y_ptr,
+  projectile_pool_vel_z_ptr,
+  projectile_pool_time_alive_ptr,
+  projectile_pool_has_gravity_ptr,
+  pool_step_packed_projectiles_batch,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -181,6 +192,36 @@ export interface SimWasm {
     c: number,
     dtSec: number,
   ) => void;
+  /** Phase 5a — Packed projectile SoA pool. Same lifetime / view
+   *  semantics as `pool` (BodyPool): fixed capacity, views captured
+   *  once, refresh on memory.grow via `refreshViews`. JS-side slot
+   *  management (swap-remove on unregister) writes through these
+   *  views directly; per-tick ballistic integrate runs in
+   *  `poolStepPackedProjectilesBatch`. */
+  readonly projectilePool: ProjectilePoolViews;
+  /** Per-tick ballistic integrator for slots 0..count of the
+   *  projectile pool. Applies gravity (gated on `hasGravity[i]`)
+   *  and integrates position. Same math as the inner loop in
+   *  projectileSystem._updatePackedProjectilesJS but runs entirely
+   *  in WASM with no per-projectile boundary call. */
+  readonly poolStepPackedProjectilesBatch: (count: number, dtSec: number) => void;
+}
+
+/** Views over the projectile SoA pool. Indexed by slot id (0..count
+ *  where count is JS-managed in projectileSystem.ts). All views
+ *  share the same WASM linear memory and detach together if memory
+ *  grows — `refreshViews` rebuilds them. */
+export interface ProjectilePoolViews {
+  readonly capacity: number;
+  refreshViews: () => void;
+  posX: Float64Array;
+  posY: Float64Array;
+  posZ: Float64Array;
+  velX: Float64Array;
+  velY: Float64Array;
+  velZ: Float64Array;
+  timeAlive: Float64Array;
+  hasGravity: Uint8Array;
 }
 
 /** Layout stride for `quatHoverOrientationStepBatch`. Mirrors
@@ -273,8 +314,10 @@ export function initSimWasm(): Promise<SimWasm> {
       }
 
       pool_init();
+      projectile_pool_init();
       const memory = initOutput.memory;
       const capacity = pool_capacity();
+      const projCapacity = projectile_pool_capacity();
 
       const f64View = (ptr: number): Float64Array =>
         new Float64Array(memory.buffer, ptr, capacity);
@@ -360,6 +403,44 @@ export function initSimWasm(): Promise<SimWasm> {
         flags: u8View(ptrs.flags),
       };
 
+      // Phase 5a — projectile pool views over the WASM linear
+      // memory. Same lifetime/refresh pattern as the body pool.
+      const projF64View = (ptr: number): Float64Array =>
+        new Float64Array(memory.buffer, ptr, projCapacity);
+      const projU8View = (ptr: number): Uint8Array =>
+        new Uint8Array(memory.buffer, ptr, projCapacity);
+      const projPtrs = {
+        posX: projectile_pool_pos_x_ptr(),
+        posY: projectile_pool_pos_y_ptr(),
+        posZ: projectile_pool_pos_z_ptr(),
+        velX: projectile_pool_vel_x_ptr(),
+        velY: projectile_pool_vel_y_ptr(),
+        velZ: projectile_pool_vel_z_ptr(),
+        timeAlive: projectile_pool_time_alive_ptr(),
+        hasGravity: projectile_pool_has_gravity_ptr(),
+      };
+      const projectilePool: ProjectilePoolViews = {
+        capacity: projCapacity,
+        refreshViews: () => {
+          projectilePool.posX = projF64View(projPtrs.posX);
+          projectilePool.posY = projF64View(projPtrs.posY);
+          projectilePool.posZ = projF64View(projPtrs.posZ);
+          projectilePool.velX = projF64View(projPtrs.velX);
+          projectilePool.velY = projF64View(projPtrs.velY);
+          projectilePool.velZ = projF64View(projPtrs.velZ);
+          projectilePool.timeAlive = projF64View(projPtrs.timeAlive);
+          projectilePool.hasGravity = projU8View(projPtrs.hasGravity);
+        },
+        posX: projF64View(projPtrs.posX),
+        posY: projF64View(projPtrs.posY),
+        posZ: projF64View(projPtrs.posZ),
+        velX: projF64View(projPtrs.velX),
+        velY: projF64View(projPtrs.velY),
+        velZ: projF64View(projPtrs.velZ),
+        timeAlive: projF64View(projPtrs.timeAlive),
+        hasGravity: projU8View(projPtrs.hasGravity),
+      };
+
       const handle: SimWasm = {
         version: version(),
         stepUnitMotion: step_unit_motion,
@@ -371,6 +452,8 @@ export function initSimWasm(): Promise<SimWasm> {
         engineStaticsRemove: engine_statics_remove,
         poolResolveSphereCuboidFull: pool_resolve_sphere_cuboid_full,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
+        projectilePool,
+        poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
       };
       resolvedHandle = handle;
       return handle;

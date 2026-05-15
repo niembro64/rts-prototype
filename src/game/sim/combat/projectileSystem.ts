@@ -34,6 +34,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { getSimDetailConfig } from '../simQuality';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromTurret } from '../projectileConfigs';
+import { getSimWasm } from '../../sim-wasm/init';
 
 /** Rocket seeker re-acquisition radius. When a rocket's homing target
  *  dies, it scans this radius around its current position for the
@@ -93,19 +94,54 @@ const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
 const _orphanedIds: EntityId[] = [];
 const _despawnEvents: ProjectileDespawnEvent[] = [];
 
-let _packedProjectileCapacity = 0;
+// Phase 5a — packed projectile dense state lives in the WASM-side
+// ProjectilePool (see rts-sim-wasm/src/lib.rs). The local typed-
+// array views below are captured lazily (the pool isn't ready
+// until initSimWasm resolves) and refreshed when WASM linear
+// memory grows (refreshPackedProjectileViews). Fixed capacity =
+// PROJECTILE_POOL_CAPACITY in the Rust crate; ensurePackedProjectile
+// Capacity now just asserts we're under the cap.
 let _packedProjectileCount = 0;
+// Slot-id Int32Array stays JS-side — used only during swap-remove
+// for the EntityId → slot Map back-lookup; Rust never touches it.
 let _packedProjectileIds = new Int32Array(0);
-let _packedProjectileX = new Float64Array(0);
-let _packedProjectileY = new Float64Array(0);
-let _packedProjectileZ = new Float64Array(0);
-let _packedProjectileVx = new Float64Array(0);
-let _packedProjectileVy = new Float64Array(0);
-let _packedProjectileVz = new Float64Array(0);
-let _packedProjectileTimeAlive = new Float64Array(0);
-let _packedProjectileHasGravity = new Uint8Array(0);
+let _packedProjectileX: Float64Array = new Float64Array(0);
+let _packedProjectileY: Float64Array = new Float64Array(0);
+let _packedProjectileZ: Float64Array = new Float64Array(0);
+let _packedProjectileVx: Float64Array = new Float64Array(0);
+let _packedProjectileVy: Float64Array = new Float64Array(0);
+let _packedProjectileVz: Float64Array = new Float64Array(0);
+let _packedProjectileTimeAlive: Float64Array = new Float64Array(0);
+let _packedProjectileHasGravity: Uint8Array = new Uint8Array(0);
+let _packedProjectilePoolCapacity = 0;
+let _packedProjectileViewsBound = false;
 const _packedProjectileEntities: Entity[] = [];
 const _packedProjectileSlots = new Map<EntityId, number>();
+
+/** Bind / refresh the local typed-array view variables to the
+ *  WASM ProjectilePool. Called once at first need (lazy bind) and
+ *  again before each per-tick update so a memory.grow that happened
+ *  between ticks doesn't leave us writing through a detached view
+ *  (same issue + fix as the Body3D pool refresh in PhysicsEngine3D
+ *  / UnitForceSystem). */
+function refreshPackedProjectileViews(): void {
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  sim.projectilePool.refreshViews();
+  _packedProjectileX = sim.projectilePool.posX;
+  _packedProjectileY = sim.projectilePool.posY;
+  _packedProjectileZ = sim.projectilePool.posZ;
+  _packedProjectileVx = sim.projectilePool.velX;
+  _packedProjectileVy = sim.projectilePool.velY;
+  _packedProjectileVz = sim.projectilePool.velZ;
+  _packedProjectileTimeAlive = sim.projectilePool.timeAlive;
+  _packedProjectileHasGravity = sim.projectilePool.hasGravity;
+  if (!_packedProjectileViewsBound) {
+    _packedProjectilePoolCapacity = sim.projectilePool.capacity;
+    _packedProjectileIds = new Int32Array(_packedProjectilePoolCapacity);
+    _packedProjectileViewsBound = true;
+  }
+}
 const _fireMountVelocity = { x: 0, y: 0, z: 0 };
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
@@ -184,40 +220,17 @@ function isWeaponAimedForFire(weapon: Turret): boolean {
 }
 
 function ensurePackedProjectileCapacity(needed: number): void {
-  if (needed <= _packedProjectileCapacity) return;
-  let next = _packedProjectileCapacity > 0 ? _packedProjectileCapacity * 2 : 256;
-  while (next < needed) next *= 2;
-
-  const ids = new Int32Array(next);
-  const x = new Float64Array(next);
-  const y = new Float64Array(next);
-  const z = new Float64Array(next);
-  const vx = new Float64Array(next);
-  const vy = new Float64Array(next);
-  const vz = new Float64Array(next);
-  const timeAlive = new Float64Array(next);
-  const hasGravity = new Uint8Array(next);
-
-  ids.set(_packedProjectileIds);
-  x.set(_packedProjectileX);
-  y.set(_packedProjectileY);
-  z.set(_packedProjectileZ);
-  vx.set(_packedProjectileVx);
-  vy.set(_packedProjectileVy);
-  vz.set(_packedProjectileVz);
-  timeAlive.set(_packedProjectileTimeAlive);
-  hasGravity.set(_packedProjectileHasGravity);
-
-  _packedProjectileCapacity = next;
-  _packedProjectileIds = ids;
-  _packedProjectileX = x;
-  _packedProjectileY = y;
-  _packedProjectileZ = z;
-  _packedProjectileVx = vx;
-  _packedProjectileVy = vy;
-  _packedProjectileVz = vz;
-  _packedProjectileTimeAlive = timeAlive;
-  _packedProjectileHasGravity = hasGravity;
+  // Lazy bind / refresh views on first use. After Phase 5a the
+  // pool is fixed-capacity in WASM; growth would mean changing
+  // PROJECTILE_POOL_CAPACITY in the Rust crate. Surface a clear
+  // error rather than silently corrupt out-of-bounds writes.
+  if (!_packedProjectileViewsBound) refreshPackedProjectileViews();
+  if (needed > _packedProjectilePoolCapacity) {
+    throw new Error(
+      `Packed projectile pool exhausted: needed ${needed}, capacity ${_packedProjectilePoolCapacity}. ` +
+      'Bump PROJECTILE_POOL_CAPACITY in rts-sim-wasm/src/lib.rs.',
+    );
+  }
 }
 
 function isPackedProjectileEligible(entity: Entity): boolean {
@@ -622,6 +635,15 @@ const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] 
 // engine, client dead-reckoning, debris, and explosion sparks.
 
 function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
+  // Phase 5a — three-pass structure so the inner ballistic integrate
+  // can run in one batched WASM call:
+  //   Pass 1: validate slot, sync external mutations into pool,
+  //           bump timeAlive, stash prev / collision-start.
+  //   Pass 2: pool_step_packed_projectiles_batch (all slots, one call).
+  //   Pass 3: scatter pool → entity.transform + proj.velocity*,
+  //           run source-clearance check on the new position.
+
+  // Pass 1.
   for (let slot = 0; slot < _packedProjectileCount;) {
     const entity = _packedProjectileEntities[slot];
     const proj = entity?.projectile;
@@ -632,42 +654,50 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
 
     // Other systems may mutate velocity before the projectile
     // integration pass. Pull those object-side velocities back into
-    // the dense sidecar so packed shots stay authoritative.
-    let vx = proj.velocityX;
-    let vy = proj.velocityY;
-    let vz = proj.velocityZ;
-    let x = entity.transform.x;
-    let y = entity.transform.y;
-    let z = entity.transform.z;
+    // the WASM-side pool so packed shots stay authoritative.
+    _packedProjectileX[slot] = entity.transform.x;
+    _packedProjectileY[slot] = entity.transform.y;
+    _packedProjectileZ[slot] = entity.transform.z;
+    _packedProjectileVx[slot] = proj.velocityX;
+    _packedProjectileVy[slot] = proj.velocityY;
+    _packedProjectileVz[slot] = proj.velocityZ;
 
     proj.timeAlive += dtMs;
     _packedProjectileTimeAlive[slot] = proj.timeAlive;
 
     if (proj.collisionStartX === undefined) {
-      proj.collisionStartX = x;
-      proj.collisionStartY = y;
-      proj.collisionStartZ = z;
+      proj.collisionStartX = entity.transform.x;
+      proj.collisionStartY = entity.transform.y;
+      proj.collisionStartZ = entity.transform.z;
     }
 
     // Stash prev-state for swept 3D collision in ProjectileCollisionHandler.
-    proj.prevX = x;
-    proj.prevY = y;
-    proj.prevZ = z;
+    proj.prevX = entity.transform.x;
+    proj.prevY = entity.transform.y;
+    proj.prevZ = entity.transform.z;
 
-    if (_packedProjectileHasGravity[slot] !== 0) {
-      vz -= GRAVITY * dtSec;
-    }
+    slot++;
+  }
 
-    x += vx * dtSec;
-    y += vy * dtSec;
-    z += vz * dtSec;
+  if (_packedProjectileCount === 0) return;
 
-    _packedProjectileX[slot] = x;
-    _packedProjectileY[slot] = y;
-    _packedProjectileZ[slot] = z;
-    _packedProjectileVx[slot] = vx;
-    _packedProjectileVy[slot] = vy;
-    _packedProjectileVz[slot] = vz;
+  // Pass 2: batched ballistic integrate in WASM. Refresh views so a
+  // memory grow between ticks doesn't write through detached views.
+  refreshPackedProjectileViews();
+  getSimWasm()!.poolStepPackedProjectilesBatch(_packedProjectileCount, dtSec);
+
+  // Pass 3: scatter post-integrate state back to JS-side mirrors,
+  // then the per-projectile source-clearance check.
+  for (let slot = 0; slot < _packedProjectileCount; slot++) {
+    const entity = _packedProjectileEntities[slot];
+    if (!entity || !entity.projectile) continue;
+    const proj = entity.projectile;
+    const x = _packedProjectileX[slot];
+    const y = _packedProjectileY[slot];
+    const z = _packedProjectileZ[slot];
+    const vx = _packedProjectileVx[slot];
+    const vy = _packedProjectileVy[slot];
+    const vz = _packedProjectileVz[slot];
 
     entity.transform.x = x;
     entity.transform.y = y;
@@ -687,8 +717,6 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
       proj.collisionStartY = y;
       proj.collisionStartZ = z;
     }
-
-    slot++;
   }
 }
 

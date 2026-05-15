@@ -1339,3 +1339,124 @@ pub fn quat_hover_orientation_step_batch(
         buf[base + 13] = quat_yaw(orientation);
     }
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 5a — Packed projectile SoA pool in WASM linear memory
+//
+//  Mirrors the dense parallel arrays projectileSystem.ts already
+//  maintains for projectiles eligible for the "packed" fast path
+//  (no homing, single-hit, ballistic). Slots are JS-managed via
+//  swap-remove on unregister; Rust just owns the storage and runs
+//  the per-tick ballistic integrate kernel.
+//
+//  Single pool (not per-engine). Background battles don't fire
+//  projectiles in current scope so multi-engine isolation isn't
+//  needed today; if/when that changes the engine-handle pattern
+//  from EngineStatics is the migration path.
+//
+//  Capacity is fixed at PROJECTILE_POOL_CAPACITY so the typed-
+//  array views JS holds stay valid (no Vec realloc → no view
+//  detachment from memory.grow). 8192 covers steady-state busy
+//  combat well; allocator pre-grow at initSimWasm sizes the
+//  WASM linear memory comfortably above this.
+// ─────────────────────────────────────────────────────────────────
+
+pub const PROJECTILE_POOL_CAPACITY: u32 = 8192;
+const PROJECTILE_POOL_CAPACITY_USIZE: usize = PROJECTILE_POOL_CAPACITY as usize;
+
+struct ProjectilePool {
+    pos_x: Vec<f64>,
+    pos_y: Vec<f64>,
+    pos_z: Vec<f64>,
+    vel_x: Vec<f64>,
+    vel_y: Vec<f64>,
+    vel_z: Vec<f64>,
+    time_alive: Vec<f64>,
+    has_gravity: Vec<u8>,
+}
+
+impl ProjectilePool {
+    fn new() -> Self {
+        let cap = PROJECTILE_POOL_CAPACITY_USIZE;
+        Self {
+            pos_x: vec![0.0; cap],
+            pos_y: vec![0.0; cap],
+            pos_z: vec![0.0; cap],
+            vel_x: vec![0.0; cap],
+            vel_y: vec![0.0; cap],
+            vel_z: vec![0.0; cap],
+            time_alive: vec![0.0; cap],
+            has_gravity: vec![0u8; cap],
+        }
+    }
+}
+
+struct ProjectilePoolHolder(UnsafeCell<Option<ProjectilePool>>);
+unsafe impl Sync for ProjectilePoolHolder {}
+static PROJECTILE_POOL: ProjectilePoolHolder = ProjectilePoolHolder(UnsafeCell::new(None));
+
+#[inline]
+fn projectile_pool() -> &'static mut ProjectilePool {
+    // SAFETY: WASM is single-threaded; pool_init() is the unique
+    // initialiser. Consumers must call projectile_pool_init() before
+    // any pool access.
+    unsafe {
+        (*PROJECTILE_POOL.0.get())
+            .as_mut()
+            .expect("projectile_pool_init() not called before access")
+    }
+}
+
+#[wasm_bindgen]
+pub fn projectile_pool_init() {
+    unsafe {
+        let cell = PROJECTILE_POOL.0.get();
+        if (*cell).is_none() {
+            *cell = Some(ProjectilePool::new());
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn projectile_pool_capacity() -> u32 {
+    PROJECTILE_POOL_CAPACITY
+}
+
+macro_rules! projectile_pool_ptr_export {
+    ($name:ident, $field:ident, $ty:ty) => {
+        #[wasm_bindgen]
+        pub fn $name() -> *const $ty {
+            projectile_pool().$field.as_ptr()
+        }
+    };
+}
+
+projectile_pool_ptr_export!(projectile_pool_pos_x_ptr, pos_x, f64);
+projectile_pool_ptr_export!(projectile_pool_pos_y_ptr, pos_y, f64);
+projectile_pool_ptr_export!(projectile_pool_pos_z_ptr, pos_z, f64);
+projectile_pool_ptr_export!(projectile_pool_vel_x_ptr, vel_x, f64);
+projectile_pool_ptr_export!(projectile_pool_vel_y_ptr, vel_y, f64);
+projectile_pool_ptr_export!(projectile_pool_vel_z_ptr, vel_z, f64);
+projectile_pool_ptr_export!(projectile_pool_time_alive_ptr, time_alive, f64);
+projectile_pool_ptr_export!(projectile_pool_has_gravity_ptr, has_gravity, u8);
+
+/// Per-tick ballistic integrator. For slots 0..count:
+///   if has_gravity[i] != 0: vel_z[i] -= GRAVITY * dt_sec
+///   pos_x[i] += vel_x[i] * dt_sec
+///   pos_y[i] += vel_y[i] * dt_sec
+///   pos_z[i] += vel_z[i] * dt_sec
+/// Same math as the inner loop in projectileSystem._updatePackedProjectilesJS.
+#[wasm_bindgen]
+pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
+    let p = projectile_pool();
+    let n = count as usize;
+    debug_assert!(n <= PROJECTILE_POOL_CAPACITY_USIZE);
+    for i in 0..n {
+        if p.has_gravity[i] != 0 {
+            p.vel_z[i] -= GRAVITY * dt_sec;
+        }
+        p.pos_x[i] += p.vel_x[i] * dt_sec;
+        p.pos_y[i] += p.vel_y[i] * dt_sec;
+        p.pos_z[i] += p.vel_z[i] * dt_sec;
+    }
+}
