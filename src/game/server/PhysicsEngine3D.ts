@@ -57,10 +57,8 @@ import { UNIT_MASS_MULTIPLIER, GRAVITY } from '../../config';
 import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
 import {
   getUnitGroundFrictionDamp,
-  isUnitGroundPenetrationInContact,
   UNIT_GROUND_CONTACT_EPSILON,
 } from '../sim/unitGroundPhysics';
-import { advanceUnitMotionPhysicsMutable } from '../sim/unitMotionIntegration';
 import {
   getSimWasm,
   BODY_FLAG_SLEEPING,
@@ -314,10 +312,12 @@ const SPHERE_ITERATIONS_HIGH_COUNT = 6000;
 // common query to the immediate 3x3x3 neighborhood while the dynamic
 // range below still handles future oversized bodies correctly.
 const CONTACT_CELL_SIZE = 160;
-const SLEEP_SPEED_SQ = 0.25;
-const SLEEP_ACCEL_SQ = 1e-6;
+// SLEEP_TICKS still consumed by the JS-side `sleepBody` (initial
+// counter value when JS triggers a manual sleep). The TS-side
+// thresholds (SPEED_SQ, ACCEL_SQ, GROUND_PENETRATION_EPS) used
+// to gate the integrate-time sleep transition now live in the
+// Rust kernel — see rts-sim-wasm/src/lib.rs `pool_step_integrate`.
 const SLEEP_TICKS = 12;
-const SLEEP_GROUND_PENETRATION_EPS = 0.1;
 
 export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
@@ -335,14 +335,6 @@ export class PhysicsEngine3D {
   private stepSyncEntityIdSet = new Set<EntityId>();
   private mapWidth: number;
   private mapHeight: number;
-
-  // Broad-phase scratch state: cellKey → array of indices into
-  // `dynamicBodies`. Map and bucket arrays persist across calls and
-  // are cleared on each broad-phase rebuild — avoids per-step Map
-  // allocation churn.
-  private contactCells = new Map<number, number[]>();
-  private contactCellPool: number[][] = [];
-  private contactNeighborRange = 1;
 
   // Static cuboid broad-phase: buildings do not move, so index them
   // once on creation into every CONTACT_CELL_SIZE cell overlapped by
@@ -701,10 +693,6 @@ export class PhysicsEngine3D {
     }
   }
 
-  private recordUpwardSurfaceContact(body: Body3D, normalZ: number): void {
-    if (normalZ > 0.35) body.upwardSurfaceContact = true;
-  }
-
   /** Explicit-Euler integration with a soft terrain contact model.
    *  Every dynamic unit follows the same path:
    *
@@ -718,43 +706,21 @@ export class PhysicsEngine3D {
    *      contact.
    *   5. Integrate position.
    *
-   *  There is no separate "airborne" branch and no ground snap in the
-   *  normal path. "On ground" is just the shared ground-penetration
-   *  contact predicate used by locomotion, jump actuation, suspension,
-   *  and client prediction.
+   *  Phase 3d-2: state lives in the BodyPool, integration runs in
+   *  one Rust/WASM call (`pool_step_integrate`) reading body fields
+   *  by slot index. Per-tick boundary traffic is just the awake-
+   *  slot list + pre-sampled ground state + a sleep-transition
+   *  output buffer; no per-body Body3D field marshal.
    *
-   *  Phase 3a (Rust/WASM port): once `sim-wasm` has loaded, the whole
-   *  per-tick body loop runs in ONE WASM call via
-   *  `stepUnitMotionsBatch`. JS pre-samples ground state per body,
-   *  packs into a Float64Array, calls into Rust once, reads results
-   *  back. Eliminates the N per-body marshal cost that Phase 2 still
-   *  paid (one call per body per tick). Bootstrap window before the
-   *  WASM module resolves falls back to the per-body path below,
-   *  which itself uses Phase 2's per-body WASM call when available
-   *  and TS otherwise — every branch is numerically identical. */
+   *  Non-sphere dynamic bodies (none exist today but the path is
+   *  defensive) still run free-Euler inline JS-side. */
   private integrate(dtSec: number): void {
     const airDamp = getUnitAirFrictionDamp(dtSec);
     const groundDamp = getUnitGroundFrictionDamp(dtSec);
-    const sim = getSimWasm();
-    if (sim !== undefined) {
-      this.integrateBatchedWasm(dtSec, airDamp, groundDamp, sim);
-      return;
-    }
-    this.integratePerBodyFallback(dtSec, airDamp, groundDamp);
-  }
-
-  /** Phase 3d-2: pool-backed batched integrate. Sphere bodies are
-   *  integrated by SLOT INDEX with state read directly from the
-   *  WASM-side BodyPool — no Body3D state crosses the boundary
-   *  (only the slot list, pre-sampled ground state, and the
-   *  sleep-transition output buffer). Non-sphere dynamic bodies
-   *  (none exist today) still run free-Euler inline JS-side. */
-  private integrateBatchedWasm(
-    dtSec: number,
-    airDamp: number,
-    groundDamp: number,
-    sim: NonNullable<ReturnType<typeof getSimWasm>>,
-  ): void {
+    // Pool readiness was enforced in the constructor, so getSimWasm
+    // is guaranteed defined here. Cast through `!` to keep the
+    // call sites tight without re-checking.
+    const sim = getSimWasm()!;
     const maxCount = this.dynamicBodies.length;
     if (_integrateAwakeSlots.length < maxCount) {
       _integrateAwakeSlots = new Uint32Array(maxCount);
@@ -832,79 +798,6 @@ export class PhysicsEngine3D {
         // velocity in the pool, so b.x/y/z and v[xyz] are already
         // at the snapped/rest values.
         this.sleepBody(b);
-      }
-    }
-  }
-
-  /** Bootstrap-window fallback. Used before initSimWasm() resolves
-   *  (a handful of frames at startup) and during dev when a
-   *  developer swaps WASM out for debugging. Kept bit-identical to
-   *  the WASM batch path so motion never shifts across the swap. */
-  private integratePerBodyFallback(
-    dtSec: number,
-    airDamp: number,
-    groundDamp: number,
-  ): void {
-    for (const b of this.dynamicBodies) {
-      if (b.sleeping) continue;
-      const authoredAccelSq = b.ax * b.ax + b.ay * b.ay + b.az * b.az;
-      const ax = b.ax;
-      const ay = b.ay;
-      const az = b.az - GRAVITY;
-
-      if (b.shape !== 'sphere') {
-        b.vx += ax * dtSec;
-        b.vy += ay * dtSec;
-        b.vz += az * dtSec;
-        b.vx *= airDamp;
-        b.vy *= airDamp;
-        b.vz *= airDamp;
-        b.x += b.vx * dtSec;
-        b.y += b.vy * dtSec;
-        b.z += b.vz * dtSec;
-        continue;
-      }
-
-      advanceUnitMotionPhysicsMutable(
-        b,
-        dtSec,
-        b.groundOffset,
-        ax,
-        ay,
-        az,
-        airDamp,
-        groundDamp,
-        b.groundLaunchAx,
-        b.groundLaunchAy,
-        b.groundLaunchAz,
-        this.getGroundZ,
-        this.getGroundNormal,
-      );
-
-      const speedSq = b.vx * b.vx + b.vy * b.vy + b.vz * b.vz;
-      if (
-        authoredAccelSq <= SLEEP_ACCEL_SQ &&
-        speedSq <= SLEEP_SPEED_SQ
-      ) {
-        const nextGroundZ = this.getGroundZ(b.x, b.y);
-        const nextPenetration = nextGroundZ - (b.z - b.groundOffset);
-        if (
-          isUnitGroundPenetrationInContact(nextPenetration) &&
-          nextPenetration <= SLEEP_GROUND_PENETRATION_EPS
-        ) {
-          b.sleepTicks++;
-          if (b.sleepTicks >= SLEEP_TICKS) {
-            b.z = nextGroundZ + b.groundOffset;
-            b.vx = 0;
-            b.vy = 0;
-            b.vz = 0;
-            this.sleepBody(b);
-          }
-        } else {
-          b.sleepTicks = 0;
-        }
-      } else {
-        b.sleepTicks = 0;
       }
     }
   }
@@ -1000,36 +893,13 @@ export class PhysicsEngine3D {
     }
   }
 
-  /** Iterated sphere-vs-sphere resolver. Phase 3c port: when WASM is
-   *  loaded, the whole broadphase rebuild + N-pass resolver runs in
-   *  one Rust call. JS handles the wake/upward-contact callbacks
-   *  after the call returns. Bootstrap window falls back to the
-   *  pure-TS path below — bit-identical for non-degenerate cases
-   *  (the random-tie-break seed in the centers-coincident degenerate
-   *  case is computed slightly differently in Rust vs TS — see the
-   *  comment in lib.rs — but the case fires on co-located spheres
-   *  which won't happen during the bootstrap window). */
-  private resolveSphereSphereContacts(iterations: number): void {
-    const sim = getSimWasm();
-    if (sim !== undefined) {
-      this.resolveSphereSphereContactsBatchedWasm(sim, iterations);
-      return;
-    }
-    this.rebuildContactCells();
-    for (let i = 0; i < iterations; i++) {
-      this.resolveSphereSphereContactsTsIteration();
-    }
-  }
-
-  /** Phase 3d-2: pool-backed sphere-sphere resolver. The Rust
-   *  kernel reads body state by slot index and writes positions /
+  /** Phase 3d-2 pool-backed sphere-sphere resolver. The Rust kernel
+   *  reads body state by slot index and writes positions /
    *  velocities / upward-contact flag bit directly into the pool;
    *  JS only marshals the slot list and a wake-transition output
    *  buffer. */
-  private resolveSphereSphereContactsBatchedWasm(
-    sim: NonNullable<ReturnType<typeof getSimWasm>>,
-    iterations: number,
-  ): void {
+  private resolveSphereSphereContacts(iterations: number): void {
+    const sim = getSimWasm()!;
     const bodies = this.dynamicBodies;
     const maxCount = bodies.length;
     if (maxCount === 0 || iterations <= 0) return;
@@ -1071,175 +941,6 @@ export class PhysicsEngine3D {
     }
   }
 
-  /** Bucket every dynamic sphere into a single broad-phase cube keyed
-   *  by its center. Reused across the SPHERE_ITERATIONS sub-steps via
-   *  a single rebuild per call to resolveSphereSphereContacts; small
-   *  positional drift from the iterations is well below CONTACT_CELL_SIZE
-   *  so the buckets stay valid for all 4 sub-passes.
-   *
-   *  Cell key matches the sim-side SpatialGrid encoding: 16-bit cx +
-   *  16-bit cy + 16-bit cz packed into a 48-bit safe integer via
-   *  multiplication. The Z axis is biased by half a cell so z=0 sits
-   *  at the CENTER of the bottom cube — ground units cluster
-   *  predictably instead of straddling a cube edge. */
-  private rebuildContactCells(): void {
-    // Recycle existing bucket arrays to avoid per-step allocations.
-    for (const bucket of this.contactCells.values()) {
-      bucket.length = 0;
-      this.contactCellPool.push(bucket);
-    }
-    this.contactCells.clear();
-    const cs = CONTACT_CELL_SIZE;
-    const halfCs = cs / 2;
-    let maxRadius = 0;
-    for (let i = 0; i < this.dynamicBodies.length; i++) {
-      const a = this.dynamicBodies[i];
-      if (a.shape !== 'sphere') continue;
-      if (a.radius > maxRadius) maxRadius = a.radius;
-      const cx = Math.floor(a.x / cs);
-      const cy = Math.floor(a.y / cs);
-      const cz = Math.floor((a.z + halfCs) / cs);
-      const key = packContactCellKey(cx, cy, cz);
-      let bucket = this.contactCells.get(key);
-      if (!bucket) {
-        bucket = this.contactCellPool.pop() ?? [];
-        this.contactCells.set(key, bucket);
-      }
-      bucket.push(i);
-    }
-    this.contactNeighborRange = Math.max(1, Math.ceil((maxRadius * 2) / cs));
-  }
-
-  /** Sphere-sphere push: full 3D. Two units at the same altitude push
-   *  each other horizontally exactly as the old 2D path did — because
-   *  dz is zero, the contact normal lies entirely in the XY plane —
-   *  but an elevated unit hovering directly above a ground unit now
-   *  separates along +z / −z instead of the old behavior where their
-   *  sphere overlap resolved through the horizontal axis and randomly
-   *  shoved them sideways. Iterated SPHERE_ITERATIONS times per step
-   *  so crowded pile-ups settle reasonably.
-   *
-   *  Pair generation: a spatial-hash broad-phase keyed by sphere
-   *  center. Each body lives in its primary cell; pair tests run
-   *  across the neighbor range required by the largest active push
-   *  radius. Pairs are de-duplicated by index ordering (j > i), so the
-   *  work stays near O(N) for the normal radius mix instead of the
-   *  O(N²) every-pair scan we had before.
-   *
-   *  Projectile/laser vs unit collisions are ALSO 3D but handled
-   *  outside this engine — see ProjectileCollisionHandler + DamageSystem.
-   *
-   *  This is the pure-TS per-iteration body; Phase 3c's dispatcher
-   *  `resolveSphereSphereContacts(iterations)` invokes it
-   *  `iterations` times when the WASM module isn't loaded yet. */
-  private resolveSphereSphereContactsTsIteration(): void {
-    const cs = CONTACT_CELL_SIZE;
-    const halfCs = cs / 2;
-    const bodies = this.dynamicBodies;
-    const range = this.contactNeighborRange;
-    for (let i = 0; i < bodies.length; i++) {
-      const a = bodies[i];
-      if (a.shape !== 'sphere') continue;
-      // Sleeping bodies must STILL iterate the broad phase here even
-      // though they don't integrate motion. Pair dedup uses j > i; if
-      // a sleeping body at low index sat out, an awake neighbor at
-      // higher index would test j > iAwake (no candidates) and the
-      // sleeping body's outer pass would have been skipped — so the
-      // pair would never test. Result: a daddy that spawns into the
-      // exact slot of a sleeping daddy never separates, and once both
-      // sleep with overlap, step()'s early-return locks the state
-      // forever. Letting sleeping bodies iterate is cheap (one extra
-      // 3×3×3 cell walk per sleeping body, only when something else
-      // was active at the start of this step) and the contact path
-      // itself wakes both via wakeBody() so the resolve still does
-      // real work.
-      const acx = Math.floor(a.x / cs);
-      const acy = Math.floor(a.y / cs);
-      const acz = Math.floor((a.z + halfCs) / cs);
-      // Usually a 3x3x3 neighborhood. The range expands when any
-      // active unit's push radius is large enough that two overlapping
-      // centers can sit more than one cell apart.
-      for (let dz = -range; dz <= range; dz++) {
-        for (let dy = -range; dy <= range; dy++) {
-          for (let dx = -range; dx <= range; dx++) {
-            const key = packContactCellKey(acx + dx, acy + dy, acz + dz);
-            const bucket = this.contactCells.get(key);
-            if (!bucket) continue;
-            for (let bi = 0; bi < bucket.length; bi++) {
-              const j = bucket[bi];
-              // Resolve each pair once: only when b's index is strictly
-              // greater than a's. Bodies sharing multiple buckets (none
-              // do here since we bucket by center) would otherwise be
-              // counted multiple times.
-              if (j <= i) continue;
-              const b = bodies[j];
-              // (b.shape === 'sphere' is implied — only spheres are bucketed.)
-              const ddx = b.x - a.x;
-              const ddy = b.y - a.y;
-              const ddz = b.z - a.z;
-              const rSum = a.radius + b.radius;
-              const distSq = ddx * ddx + ddy * ddy + ddz * ddz;
-              if (distSq >= rSum * rSum) continue;
-              this.wakeBody(a);
-              this.wakeBody(b);
-              let dist: number;
-              let nx: number;
-              let ny: number;
-              let nz: number;
-              if (distSq < 1e-12) {
-                const seed = ((((a.entityId ?? i) * 73856093) ^ ((b.entityId ?? j) * 19349663)) >>> 0);
-                const angle = (seed / 0x100000000) * Math.PI * 2;
-                dist = 1e-6;
-                nx = Math.cos(angle);
-                ny = Math.sin(angle);
-                nz = 0;
-              } else {
-                dist = Math.sqrt(distSq);
-                const invDist = 1 / dist;
-                nx = ddx * invDist;
-                ny = ddy * invDist;
-                nz = ddz * invDist;
-              }
-              const penetration = rSum - dist;
-              // Same denominator (a.invMass + b.invMass) was being divided
-              // into 3 times below — fold to one inverse and multiply.
-              const invMassSum = 1 / (a.invMass + b.invMass);
-              const wA = a.invMass * invMassSum;
-              const wB = b.invMass * invMassSum;
-              a.x -= nx * penetration * wA;
-              a.y -= ny * penetration * wA;
-              a.z -= nz * penetration * wA;
-              b.x += nx * penetration * wB;
-              b.y += ny * penetration * wB;
-              b.z += nz * penetration * wB;
-              if (nz > 0.35) {
-                this.recordUpwardSurfaceContact(b, nz);
-              } else if (nz < -0.35) {
-                this.recordUpwardSurfaceContact(a, -nz);
-              }
-              // Relative velocity along the 3D contact normal.
-              const rvx = b.vx - a.vx;
-              const rvy = b.vy - a.vy;
-              const rvz = b.vz - a.vz;
-              const vDotN = rvx * nx + rvy * ny + rvz * nz;
-              if (vDotN >= 0) continue;
-              const e = Math.min(a.restitution, b.restitution);
-              const jMag = -(1 + e) * vDotN * invMassSum;
-              const ix = jMag * nx;
-              const iy = jMag * ny;
-              const iz = jMag * nz;
-              a.vx -= ix * a.invMass;
-              a.vy -= iy * a.invMass;
-              a.vz -= iz * a.invMass;
-              b.vx += ix * b.invMass;
-              b.vy += iy * b.invMass;
-              b.vz += iz * b.invMass;
-            }
-          }
-        }
-      }
-    }
-  }
 
   /** Hard-clamp horizontal position to the map AABB so units can't
    *  fly off the world. Vertical bounds are bounded below by the
