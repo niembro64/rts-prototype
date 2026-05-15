@@ -5204,3 +5204,189 @@ entity_meta_ptr_export!(entity_meta_build_progress_ptr, build_progress, f32);
 pub fn entity_meta_capacity() -> u32 {
     entity_meta_pool().entity_type.len() as u32
 }
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 10 D.1b — Turret sub-pool
+//
+//  Each entity can have up to MAX_TURRETS_PER_ENTITY = 8 turrets
+//  (matches MAX_WEAPONS_PER_ENTITY in stateSerializerEntities.ts).
+//  Per-turret state lives at index `entity_slot * MAX + turret_idx`
+//  in a flat SoA. Per-entity turret count gates which indices are
+//  live. Indexes for inactive slots stay at their defaults; consumers
+//  only read the first `count` entries for an entity.
+//
+//  Fields cover the snapshot turret DTO: rotation, angularVelocity,
+//  angularAcceleration, pitch, pitchVelocity, pitchAcceleration,
+//  forceFieldRange, plus a target_id reference (-1 = none).
+//
+//  Variable-length action sub-pool is a follow-up (D.1c) — action
+//  ActionType is a JS string enum that needs a stable u8 mapping
+//  before it can be ported.
+// ─────────────────────────────────────────────────────────────────
+
+pub const TURRET_POOL_MAX_PER_ENTITY: u32 = 8;
+
+struct TurretPool {
+    // count_per_entity[i] = number of turrets used by entity slot i.
+    count_per_entity: Vec<u8>,
+    // Per-turret state, indexed by (entity_slot * MAX + turret_idx).
+    rotation: Vec<f32>,
+    angular_velocity: Vec<f32>,
+    angular_acceleration: Vec<f32>,
+    pitch: Vec<f32>,
+    pitch_velocity: Vec<f32>,
+    pitch_acceleration: Vec<f32>,
+    force_field_range: Vec<f32>,
+    target_id: Vec<i32>,
+}
+
+impl TurretPool {
+    fn empty() -> Self {
+        Self {
+            count_per_entity: Vec::new(),
+            rotation: Vec::new(),
+            angular_velocity: Vec::new(),
+            angular_acceleration: Vec::new(),
+            pitch: Vec::new(),
+            pitch_velocity: Vec::new(),
+            pitch_acceleration: Vec::new(),
+            force_field_range: Vec::new(),
+            target_id: Vec::new(),
+        }
+    }
+
+    fn ensure_entity_capacity(&mut self, entity_slot: u32) {
+        let entity_needed = (entity_slot as usize) + 1;
+        if self.count_per_entity.len() < entity_needed {
+            self.count_per_entity.resize(entity_needed, 0);
+        }
+        let turret_needed = entity_needed * (TURRET_POOL_MAX_PER_ENTITY as usize);
+        if self.rotation.len() < turret_needed {
+            self.rotation.resize(turret_needed, 0.0);
+            self.angular_velocity.resize(turret_needed, 0.0);
+            self.angular_acceleration.resize(turret_needed, 0.0);
+            self.pitch.resize(turret_needed, 0.0);
+            self.pitch_velocity.resize(turret_needed, 0.0);
+            self.pitch_acceleration.resize(turret_needed, 0.0);
+            self.force_field_range.resize(turret_needed, 0.0);
+            self.target_id.resize(turret_needed, -1);
+        }
+    }
+
+    fn unset_entity(&mut self, entity_slot: u32) {
+        let s = entity_slot as usize;
+        if s >= self.count_per_entity.len() { return; }
+        self.count_per_entity[s] = 0;
+        // Per-turret fields stay at last value; consumers gate on count.
+    }
+}
+
+struct TurretPoolHolder(UnsafeCell<Option<TurretPool>>);
+unsafe impl Sync for TurretPoolHolder {}
+static TURRET_POOL: TurretPoolHolder = TurretPoolHolder(UnsafeCell::new(None));
+
+#[inline]
+fn turret_pool() -> &'static mut TurretPool {
+    unsafe {
+        let cell = &mut *TURRET_POOL.0.get();
+        if cell.is_none() {
+            *cell = Some(TurretPool::empty());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn turret_pool_init(initial_entity_capacity: u32) {
+    let pool = turret_pool();
+    pool.ensure_entity_capacity(initial_entity_capacity);
+    for c in pool.count_per_entity.iter_mut() { *c = 0; }
+}
+
+#[wasm_bindgen]
+pub fn turret_pool_clear() {
+    let pool = turret_pool();
+    for c in pool.count_per_entity.iter_mut() { *c = 0; }
+}
+
+#[wasm_bindgen]
+pub fn turret_pool_max_per_entity() -> u32 {
+    TURRET_POOL_MAX_PER_ENTITY
+}
+
+/// Set the number of live turrets for an entity. Caller is responsible
+/// for calling turret_pool_set_turret for each of the first `count`
+/// turret indices. Counts past TURRET_POOL_MAX_PER_ENTITY are clamped.
+#[wasm_bindgen]
+pub fn turret_pool_set_count(entity_slot: u32, count: u8) {
+    let pool = turret_pool();
+    pool.ensure_entity_capacity(entity_slot);
+    let max = TURRET_POOL_MAX_PER_ENTITY as u8;
+    let clamped = if count > max { max } else { count };
+    pool.count_per_entity[entity_slot as usize] = clamped;
+}
+
+/// Bulk per-turret setter. `target_id` of -1 means "no target".
+#[wasm_bindgen]
+pub fn turret_pool_set_turret(
+    entity_slot: u32,
+    turret_idx: u32,
+    rotation: f32,
+    angular_velocity: f32,
+    angular_acceleration: f32,
+    pitch: f32,
+    pitch_velocity: f32,
+    pitch_acceleration: f32,
+    force_field_range: f32,
+    target_id: i32,
+) {
+    let pool = turret_pool();
+    pool.ensure_entity_capacity(entity_slot);
+    debug_assert!(turret_idx < TURRET_POOL_MAX_PER_ENTITY);
+    let global_idx = (entity_slot as usize) * (TURRET_POOL_MAX_PER_ENTITY as usize)
+        + (turret_idx as usize);
+    pool.rotation[global_idx] = rotation;
+    pool.angular_velocity[global_idx] = angular_velocity;
+    pool.angular_acceleration[global_idx] = angular_acceleration;
+    pool.pitch[global_idx] = pitch;
+    pool.pitch_velocity[global_idx] = pitch_velocity;
+    pool.pitch_acceleration[global_idx] = pitch_acceleration;
+    pool.force_field_range[global_idx] = force_field_range;
+    pool.target_id[global_idx] = target_id;
+}
+
+#[wasm_bindgen]
+pub fn turret_pool_unset_entity(entity_slot: u32) {
+    turret_pool().unset_entity(entity_slot);
+}
+
+#[wasm_bindgen]
+pub fn turret_pool_count(entity_slot: u32) -> u8 {
+    let pool = turret_pool();
+    if (entity_slot as usize) >= pool.count_per_entity.len() { return 0; }
+    pool.count_per_entity[entity_slot as usize]
+}
+
+macro_rules! turret_pool_ptr_export {
+    ($name:ident, $field:ident, $ty:ty) => {
+        #[wasm_bindgen]
+        pub fn $name() -> *const $ty {
+            turret_pool().$field.as_ptr()
+        }
+    };
+}
+
+turret_pool_ptr_export!(turret_pool_count_per_entity_ptr, count_per_entity, u8);
+turret_pool_ptr_export!(turret_pool_rotation_ptr, rotation, f32);
+turret_pool_ptr_export!(turret_pool_angular_velocity_ptr, angular_velocity, f32);
+turret_pool_ptr_export!(turret_pool_angular_acceleration_ptr, angular_acceleration, f32);
+turret_pool_ptr_export!(turret_pool_pitch_ptr, pitch, f32);
+turret_pool_ptr_export!(turret_pool_pitch_velocity_ptr, pitch_velocity, f32);
+turret_pool_ptr_export!(turret_pool_pitch_acceleration_ptr, pitch_acceleration, f32);
+turret_pool_ptr_export!(turret_pool_force_field_range_ptr, force_field_range, f32);
+turret_pool_ptr_export!(turret_pool_target_id_ptr, target_id, i32);
+
+#[wasm_bindgen]
+pub fn turret_pool_entity_capacity() -> u32 {
+    turret_pool().count_per_entity.len() as u32
+}

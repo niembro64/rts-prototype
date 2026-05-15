@@ -60,6 +60,8 @@ port preserves those shortcuts.
   Phase 9   Pathfinder A* + LOS smoothing                          DONE
   Phase 10  Snapshot serializer FULL PORT                          IN PROGRESS
             D.1 entity-meta SoA pool (foundation, no JS sync yet)   DONE
+            D.1b turret sub-pool (foundation, no JS sync yet)       DONE
+            D.1c action sub-pool                                    pending
             D.2 hand-rolled MessagePack encoder + self-test         DONE
             D.3 quantize + delta-encode kernel                      pending
                 (also wires JS-side per-tick population of D.1)
@@ -105,12 +107,17 @@ Remaining sub-commits:
         slotByEntityId map in SpatialGrid.ts is the canonical
         mapping. JS-side per-tick population lands with D.3.
 
-        FOLLOW-UP D.1b: variable-length sub-pools for turrets +
-        actions. Snapshot reads up to 8 turrets per unit (rotation,
-        pitch, angular vel/accel, pitch vel/accel, forceField range,
-        target id). Actions are variable-length per unit (move /
-        attack / build / etc commands). Both need their own SoA
-        with `(entity_slot → base_offset, length)` indexing.
+        D.1b — Turret sub-pool DONE. Up to 8 turrets per entity at
+        fixed offset `entity_slot * MAX + turret_idx` in a flat SoA.
+        Per-entity count gates which indices are live. Fields cover
+        the snapshot turret DTO (rotation, angular vel/accel, pitch,
+        pitch vel/accel, forceFieldRange, target_id). JS-side
+        population lands with D.3.
+
+        D.1c — Action sub-pool. Still pending. Actions are variable-
+        length per entity with a JS-string ActionType enum that
+        needs a stable u8 mapping before porting. Defer until D.3
+        forces the schema decision.
 
   D.3 — Per-entity quantize + delta-encode kernel. Reads entity-
         meta (D.1) + Body3D pool + projectile pool, applies

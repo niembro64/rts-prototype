@@ -108,6 +108,23 @@ import __wbg_init, {
   entity_meta_solar_open_ptr,
   entity_meta_build_progress_ptr,
   entity_meta_capacity,
+  turret_pool_init,
+  turret_pool_clear,
+  turret_pool_max_per_entity,
+  turret_pool_set_count,
+  turret_pool_set_turret,
+  turret_pool_unset_entity,
+  turret_pool_count,
+  turret_pool_entity_capacity,
+  turret_pool_count_per_entity_ptr,
+  turret_pool_rotation_ptr,
+  turret_pool_angular_velocity_ptr,
+  turret_pool_angular_acceleration_ptr,
+  turret_pool_pitch_ptr,
+  turret_pool_pitch_velocity_ptr,
+  turret_pool_pitch_acceleration_ptr,
+  turret_pool_force_field_range_ptr,
+  turret_pool_target_id_ptr,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -401,6 +418,10 @@ export interface SimWasm {
    *  D.3 quantize/delta-encode kernel; JS-side population lands in
    *  D.3 when there's a consumer. */
   readonly entityMeta: EntityMetaApi;
+  /** Phase 10 D.1b — Turret sub-pool. Per-entity turret arrays
+   *  indexed at fixed offsets. JS-side population lands with D.3
+   *  alongside the entity-meta capture pass. */
+  readonly turretPool: TurretPoolApi;
   /** The WASM linear memory — JS wrapper code constructs typed-array
    *  views over this for zero-copy result reads. Re-bind views after
    *  any operation that might grow the memory (rare). */
@@ -626,6 +647,43 @@ export const ENTITY_META_TYPE_UNSET = 0;
 export const ENTITY_META_TYPE_UNIT = 1;
 export const ENTITY_META_TYPE_BUILDING = 2;
 
+/** Phase 10 D.1b — Turret sub-pool. Up to 8 turrets per entity at
+ *  fixed offset `entity_slot * MAX + turret_idx` in a flat SoA.
+ *  Per-entity count gates which indices are live. Used by the
+ *  future D.3 quantize/delta-encode kernel when serializing the
+ *  turrets array in a unit snapshot DTO. */
+export interface TurretPoolApi {
+  init: (initialEntityCapacity: number) => void;
+  clear: () => void;
+  /** Max turret count per entity (mirrors TURRET_POOL_MAX_PER_ENTITY = 8). */
+  maxPerEntity: () => number;
+  setCount: (entitySlot: number, count: number) => void;
+  setTurret: (
+    entitySlot: number,
+    turretIdx: number,
+    rotation: number,
+    angularVelocity: number,
+    angularAcceleration: number,
+    pitch: number,
+    pitchVelocity: number,
+    pitchAcceleration: number,
+    forceFieldRange: number,
+    targetId: number,
+  ) => void;
+  unsetEntity: (entitySlot: number) => void;
+  count: (entitySlot: number) => number;
+  entityCapacity: () => number;
+  readonly countPerEntityPtr: () => number;
+  readonly rotationPtr: () => number;
+  readonly angularVelocityPtr: () => number;
+  readonly angularAccelerationPtr: () => number;
+  readonly pitchPtr: () => number;
+  readonly pitchVelocityPtr: () => number;
+  readonly pitchAccelerationPtr: () => number;
+  readonly forceFieldRangePtr: () => number;
+  readonly targetIdPtr: () => number;
+}
+
 /** Phase 9 — Pathfinder. Mirror of Pathfinder.ts findPath. Full
  *  pipeline (mask + CC + A* + LOS smoothing) runs inside a single
  *  WASM call. Caller passes the building-occupied cells list per
@@ -782,6 +840,9 @@ export function initSimWasm(): Promise<SimWasm> {
       // capacity hint as SpatialGrid since the slot spaces are
       // shared (one EntityId<->slot map JS-side).
       entity_meta_init(1024);
+      // Phase 10 D.1b — turret sub-pool. Per-entity turret arrays
+      // indexed at fixed offsets up to MAX_TURRETS_PER_ENTITY = 8.
+      turret_pool_init(1024);
       // Phase 10 D.2 — verify the hand-rolled MessagePack encoder
       // matches its expected byte output across 21 fixture cases.
       // Returns a bitmask of failed cases (0 = all pass). Future
@@ -979,6 +1040,25 @@ export function initSimWasm(): Promise<SimWasm> {
           factoryProgressPtr: entity_meta_factory_progress_ptr,
           solarOpenPtr: entity_meta_solar_open_ptr,
           buildProgressPtr: entity_meta_build_progress_ptr,
+        },
+        turretPool: {
+          init: turret_pool_init,
+          clear: turret_pool_clear,
+          maxPerEntity: turret_pool_max_per_entity,
+          setCount: turret_pool_set_count,
+          setTurret: turret_pool_set_turret,
+          unsetEntity: turret_pool_unset_entity,
+          count: turret_pool_count,
+          entityCapacity: turret_pool_entity_capacity,
+          countPerEntityPtr: turret_pool_count_per_entity_ptr,
+          rotationPtr: turret_pool_rotation_ptr,
+          angularVelocityPtr: turret_pool_angular_velocity_ptr,
+          angularAccelerationPtr: turret_pool_angular_acceleration_ptr,
+          pitchPtr: turret_pool_pitch_ptr,
+          pitchVelocityPtr: turret_pool_pitch_velocity_ptr,
+          pitchAccelerationPtr: turret_pool_pitch_acceleration_ptr,
+          forceFieldRangePtr: turret_pool_force_field_range_ptr,
+          targetIdPtr: turret_pool_target_id_ptr,
         },
         spatial: {
           init: spatial_init,
