@@ -536,6 +536,9 @@ Sub-phases:
              dispatch from Ballistics.ts; module-scope scratch
              buffers; TS fallback retained for the bootstrap window
              and as a reference impl).
+  Phase 5c — Homing steering Rodrigues rotation port. DONE (per-call
+             WASM dispatch from HomingSteering.ts; output via 4-f64
+             scratch buffer; TS fallback retained).
   Phase 5c — Terrain-follow path (DGUN_TERRAIN_FOLLOW_HEIGHT). Needs
              Phase 8 (terrain in linear memory) to be fully WASM.
   Phase 5d — Beam-path point integration (per-point ax/ay/az chain

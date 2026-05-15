@@ -1628,6 +1628,124 @@ pub fn solve_kinematic_intercept(
     1
 }
 
+// ─────────────────────────────────────────────────────────────────
+//  Phase 5c — Homing steering (Rodrigues rotation toward target)
+//
+//  Mirrors src/game/math/HomingSteering.ts applyHomingSteering.
+//  Rotates a 3D velocity vector toward the line-to-target by at
+//  most homingTurnRate · dt radians this tick, preserving speed.
+//  Output buffer (4 f64s): velX, velY, velZ, rotation (yaw).
+//
+//  Used per-homing-projectile per-tick by both the server
+//  projectile system and the client prediction stepper. Per-call
+//  WASM dispatch — call sites already loop over projectiles
+//  individually, batching would require a substantial caller
+//  refactor.
+// ─────────────────────────────────────────────────────────────────
+
+#[wasm_bindgen]
+pub fn apply_homing_steering(
+    out_buf: &mut [f64],
+    vel_x: f64, vel_y: f64, vel_z: f64,
+    target_x: f64, target_y: f64, target_z: f64,
+    current_x: f64, current_y: f64, current_z: f64,
+    homing_turn_rate: f64,
+    dt_sec: f64,
+) {
+    debug_assert!(out_buf.len() >= 4);
+    let speed = (vel_x * vel_x + vel_y * vel_y + vel_z * vel_z).sqrt();
+    out_buf[0] = vel_x;
+    out_buf[1] = vel_y;
+    out_buf[2] = vel_z;
+    out_buf[3] = vel_y.atan2(vel_x);
+
+    if speed < 1e-6 {
+        return;
+    }
+    let dx = target_x - current_x;
+    let dy = target_y - current_y;
+    let dz = target_z - current_z;
+    let d_mag = (dx * dx + dy * dy + dz * dz).sqrt();
+    if d_mag < 1e-6 {
+        return;
+    }
+
+    let inv_speed = 1.0 / speed;
+    let inv_d_mag = 1.0 / d_mag;
+    let vxn = vel_x * inv_speed;
+    let vyn = vel_y * inv_speed;
+    let vzn = vel_z * inv_speed;
+    let dxn = dx * inv_d_mag;
+    // `dyn` is reserved in Rust — use `dyn_` for the y-direction unit.
+    let dyn_ = dy * inv_d_mag;
+    let dzn = dz * inv_d_mag;
+
+    let mut cos_angle = vxn * dxn + vyn * dyn_ + vzn * dzn;
+    if cos_angle > 1.0 {
+        cos_angle = 1.0;
+    } else if cos_angle < -1.0 {
+        cos_angle = -1.0;
+    }
+    let angle = cos_angle.acos();
+    let max_turn = homing_turn_rate * dt_sec;
+
+    if angle <= max_turn {
+        out_buf[0] = dxn * speed;
+        out_buf[1] = dyn_ * speed;
+        out_buf[2] = dzn * speed;
+        out_buf[3] = (dyn_ * speed).atan2(dxn * speed);
+        return;
+    }
+
+    // Rodrigues rotation around axis = v̂ × d̂ (or fallback if anti-parallel).
+    let mut axis_x = vyn * dzn - vzn * dyn_;
+    let mut axis_y = vzn * dxn - vxn * dzn;
+    let mut axis_z = vxn * dyn_ - vyn * dxn;
+    let axis_mag = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
+    if axis_mag < 1e-6 {
+        // v̂ and d̂ (anti-)parallel — pick a stable perpendicular.
+        if vxn.abs() < 0.99 && vyn.abs() < 0.99 {
+            axis_x = -vyn;
+            axis_y = vxn;
+            axis_z = 0.0;
+        } else {
+            axis_x = 0.0;
+            axis_y = 0.0;
+            axis_z = 1.0;
+        }
+        let mut fallback_mag = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
+        if fallback_mag == 0.0 {
+            fallback_mag = 1.0;
+        }
+        let inv = 1.0 / fallback_mag;
+        axis_x *= inv;
+        axis_y *= inv;
+        axis_z *= inv;
+    } else {
+        let inv = 1.0 / axis_mag;
+        axis_x *= inv;
+        axis_y *= inv;
+        axis_z *= inv;
+    }
+
+    let cos_t = max_turn.cos();
+    let sin_t = max_turn.sin();
+    let one_minus_cos = 1.0 - cos_t;
+    let k_dot_v = axis_x * vxn + axis_y * vyn + axis_z * vzn;
+    let kxv_x = axis_y * vzn - axis_z * vyn;
+    let kxv_y = axis_z * vxn - axis_x * vzn;
+    let kxv_z = axis_x * vyn - axis_y * vxn;
+
+    let rot_xn = vxn * cos_t + kxv_x * sin_t + axis_x * k_dot_v * one_minus_cos;
+    let rot_yn = vyn * cos_t + kxv_y * sin_t + axis_y * k_dot_v * one_minus_cos;
+    let rot_zn = vzn * cos_t + kxv_z * sin_t + axis_z * k_dot_v * one_minus_cos;
+
+    out_buf[0] = rot_xn * speed;
+    out_buf[1] = rot_yn * speed;
+    out_buf[2] = rot_zn * speed;
+    out_buf[3] = (rot_yn * speed).atan2(rot_xn * speed);
+}
+
 /// Per-tick ballistic integrator. For slots 0..count:
 ///   if has_gravity[i] != 0: vel_z[i] -= GRAVITY * dt_sec
 ///   pos_x[i] += vel_x[i] * dt_sec

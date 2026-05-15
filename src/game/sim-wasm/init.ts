@@ -39,6 +39,7 @@ import __wbg_init, {
   projectile_pool_has_gravity_ptr,
   pool_step_packed_projectiles_batch,
   solve_kinematic_intercept,
+  apply_homing_steering,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -232,6 +233,19 @@ export interface SimWasm {
     preferLateSolution: number,
     maxTimeSecOrZero: number,
   ) => number;
+  /** Phase 5c — homing steering Rodrigues rotation. Per-call (call
+   *  sites loop per-projectile already). Writes (velX, velY, velZ,
+   *  rotation) into out[0..4]. Speed is preserved; rotation is the
+   *  yaw of the new horizontal velocity (matches the JS impl's
+   *  return shape). */
+  readonly applyHomingSteering: (
+    out: Float64Array,
+    velX: number, velY: number, velZ: number,
+    targetX: number, targetY: number, targetZ: number,
+    currentX: number, currentY: number, currentZ: number,
+    homingTurnRate: number,
+    dtSec: number,
+  ) => void;
 }
 
 /** Views over the projectile SoA pool. Indexed by slot id (0..count
@@ -482,6 +496,7 @@ export function initSimWasm(): Promise<SimWasm> {
         projectilePool,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         solveKinematicIntercept: solve_kinematic_intercept,
+        applyHomingSteering: apply_homing_steering,
       };
       resolvedHandle = handle;
       return handle;

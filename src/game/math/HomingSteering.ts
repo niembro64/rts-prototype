@@ -20,9 +20,13 @@
 // physics-natural homing.
 
 import { magnitude3 } from './MathHelpers';
+import { getSimWasm } from '../sim-wasm/init';
 
 // Reusable output to avoid per-call allocations in a hot path.
 const _hsOut = { velocityX: 0, velocityY: 0, velocityZ: 0, rotation: 0 };
+// Module-scope scratch for the WASM dispatch — written by Rust into
+// (velX, velY, velZ, rotation) at indices 0..4.
+const _hsWasmScratch = new Float64Array(4);
 
 /**
  * Rotate `(velX, velY, velZ)` toward the direction from the projectile's
@@ -40,6 +44,36 @@ const _hsOut = { velocityX: 0, velocityY: 0, velocityZ: 0, rotation: 0 };
  * renderer can orient the projectile sprite/mesh as before.
  */
 export function applyHomingSteering(
+  velX: number, velY: number, velZ: number,
+  targetX: number, targetY: number, targetZ: number,
+  currentX: number, currentY: number, currentZ: number,
+  homingTurnRate: number, dtSec: number,
+): { velocityX: number; velocityY: number; velocityZ: number; rotation: number } {
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    sim.applyHomingSteering(
+      _hsWasmScratch,
+      velX, velY, velZ,
+      targetX, targetY, targetZ,
+      currentX, currentY, currentZ,
+      homingTurnRate, dtSec,
+    );
+    _hsOut.velocityX = _hsWasmScratch[0];
+    _hsOut.velocityY = _hsWasmScratch[1];
+    _hsOut.velocityZ = _hsWasmScratch[2];
+    _hsOut.rotation = _hsWasmScratch[3];
+    return _hsOut;
+  }
+  // Bootstrap-window fallback — pure-TS impl below.
+  return applyHomingSteeringTs(
+    velX, velY, velZ,
+    targetX, targetY, targetZ,
+    currentX, currentY, currentZ,
+    homingTurnRate, dtSec,
+  );
+}
+
+function applyHomingSteeringTs(
   velX: number, velY: number, velZ: number,
   targetX: number, targetY: number, targetZ: number,
   currentX: number, currentY: number, currentZ: number,
