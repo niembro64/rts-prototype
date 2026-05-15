@@ -13,13 +13,21 @@ import {
   SNAPSHOT_DIFF_KIND_BUILDING,
 } from '../sim-wasm/init';
 
-/** Phase 10 D.3g — flip to `true` (in dev only) to compare the
- *  Rust-side snapshot_baseline_diff_slot result against the JS-side
- *  getEntityDeltaChangedFields output every per-entity per-recipient
- *  emit. Mismatches are console.warn'd with the entity id and both
- *  masks. Default OFF because even no-op divergence checking adds
- *  one WASM call per emitted entity per recipient. */
-const VERIFY_RUST_DIFF = false;
+/** Phase 10 D.3g — compare the Rust-side snapshot_baseline_diff_slot
+ *  result against the JS-side getEntityDeltaChangedFields output
+ *  every per-entity per-recipient emit. Mismatches are
+ *  console.warn'd with the entity id and both masks. Auto-enabled
+ *  in Vite dev builds; production builds skip the check entirely
+ *  (~50 µs/snapshot saved). Force-disable by changing the RHS to
+ *  `false` if dev console traffic is too noisy. */
+const VERIFY_RUST_DIFF: boolean = import.meta.env.DEV;
+
+/** Rate-limit for the diff-mismatch warning. After this many warns
+ *  we stop logging individual divergences (one bookend message
+ *  prints once) so a systematic mismatch can't flood the console.
+ *  Reset by reloading the page. */
+const VERIFY_RUST_DIFF_WARN_LIMIT = 50;
+let _verifyRustDiffWarnCount = 0;
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
@@ -390,16 +398,25 @@ export function verifyRustDiffMask(
     entity.factory ? 1 : 0,
   );
   if (rustMask !== expectedJsMask) {
-    console.warn(
-      '[snapshot diff] Rust/JS mask divergence',
-      {
-        entityId: entity.id,
-        entityType: entity.type,
-        jsMask: expectedJsMask.toString(2),
-        rustMask: rustMask.toString(2),
-        diff: (expectedJsMask ^ rustMask).toString(2),
-      },
-    );
+    if (_verifyRustDiffWarnCount < VERIFY_RUST_DIFF_WARN_LIMIT) {
+      _verifyRustDiffWarnCount++;
+      console.warn(
+        '[snapshot diff] Rust/JS mask divergence',
+        {
+          entityId: entity.id,
+          entityType: entity.type,
+          jsMask: expectedJsMask.toString(2),
+          rustMask: rustMask.toString(2),
+          diff: (expectedJsMask ^ rustMask).toString(2),
+        },
+      );
+      if (_verifyRustDiffWarnCount === VERIFY_RUST_DIFF_WARN_LIMIT) {
+        console.warn(
+          `[snapshot diff] reached ${VERIFY_RUST_DIFF_WARN_LIMIT} divergence warns; ` +
+          `suppressing further warns for this session.`,
+        );
+      }
+    }
   }
 }
 
