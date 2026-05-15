@@ -214,9 +214,15 @@ function forgetTrackedEntity(
   tracking: DeltaTrackingState,
   id: EntityId,
   emitRemoval: boolean,
+  baselineSim?: SimWasm,
+  baselineHandle?: number,
 ): void {
   const wasVisible = tracking.prevEntityIds.delete(id);
   tracking.prevStates.delete(id);
+  if (baselineSim !== undefined && baselineHandle !== undefined) {
+    const slot = spatialGrid.getSlot(id);
+    if (slot >= 0) baselineSim.snapshotBaseline.unsetSlot(baselineHandle, slot);
+  }
   if (emitRemoval && wasVisible) {
     _removedIdsBuf.push(id);
   }
@@ -231,11 +237,13 @@ function processRemovedEntities(
   records: readonly RemovedSnapshotEntity[],
   tracking: DeltaTrackingState,
   visibility: SnapshotVisibility,
+  baselineSim?: SimWasm,
+  baselineHandle?: number,
 ): void {
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
     if (visibility.shouldSendRemoval(record)) {
-      forgetTrackedEntity(tracking, record.id, true);
+      forgetTrackedEntity(tracking, record.id, true, baselineSim, baselineHandle);
       tracking.ghostedBuildingPositions.delete(record.id);
       continue;
     }
@@ -259,7 +267,7 @@ function processRemovedEntities(
       // silent removal: the recipient already lost sight of this
       // unit, so the deletion looks the same as a move-out-of-vision
       // and no extra info leaks.
-      forgetTrackedEntity(tracking, record.id, true);
+      forgetTrackedEntity(tracking, record.id, true, baselineSim, baselineHandle);
     }
   }
 }
@@ -391,7 +399,7 @@ export function serializeGameState(
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
 
   if (options?.removedEntities) {
-    processRemovedEntities(options.removedEntities, tracking, visibility);
+    processRemovedEntities(options.removedEntities, tracking, visibility, baselineSim, baselineHandle);
   }
 
   if (deltaEnabled) {
@@ -400,13 +408,17 @@ export function serializeGameState(
       // Already filtered above with removal metadata.
     } else if (removedIds) {
       for (let i = 0; i < removedIds.length; i++) {
-        forgetTrackedEntity(tracking, removedIds[i], true);
+        forgetTrackedEntity(tracking, removedIds[i], true, baselineSim, baselineHandle);
       }
     } else {
       world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
       for (const id of _removedIdsBuf) {
         tracking.prevEntityIds.delete(id);
         tracking.prevStates.delete(id);
+        if (baselineSim !== undefined && baselineHandle !== undefined) {
+          const slot = spatialGrid.getSlot(id);
+          if (slot >= 0) baselineSim.snapshotBaseline.unsetSlot(baselineHandle, slot);
+        }
       }
     }
 
@@ -473,12 +485,12 @@ export function serializeGameState(
       }
       if (aoiActive) {
         for (let i = 0; i < _aoiRemovedIdsBuf.length; i++) {
-          forgetTrackedEntity(tracking, _aoiRemovedIdsBuf[i], true);
+          forgetTrackedEntity(tracking, _aoiRemovedIdsBuf[i], true, baselineSim, baselineHandle);
         }
       }
       if (visibilityActive) {
         for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
-          forgetTrackedEntity(tracking, _visibilityHiddenIdsBuf[i], true);
+          forgetTrackedEntity(tracking, _visibilityHiddenIdsBuf[i], true, baselineSim, baselineHandle);
         }
       }
     }
@@ -568,6 +580,10 @@ export function serializeGameState(
           }
           tracking.prevStates.delete(id);
           tracking.ghostedBuildingPositions.delete(id);
+          if (baselineSim !== undefined && baselineHandle !== undefined) {
+            const slot = spatialGrid.getSlot(id);
+            if (slot >= 0) baselineSim.snapshotBaseline.unsetSlot(baselineHandle, slot);
+          }
         }
       }
     }
@@ -631,6 +647,10 @@ export function serializeGameState(
     for (const id of tracking.prevStates.keys()) {
       if (!tracking.currentEntityIds.has(id)) {
         tracking.prevStates.delete(id);
+        if (baselineSim !== undefined && baselineHandle !== undefined) {
+          const slot = spatialGrid.getSlot(id);
+          if (slot >= 0) baselineSim.snapshotBaseline.unsetSlot(baselineHandle, slot);
+        }
       }
     }
   }
