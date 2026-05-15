@@ -52,8 +52,8 @@ import __wbg_init, {
 
 
 /** Public handle to the loaded WASM module. Re-exported kernels
- *  go here as later phases land — e.g. `physicsTick`,
- *  `quatDampedSpringStep`, etc. */
+ *  + the Body3D pool views + per-engine static-cuboid handles all
+ *  hang off this. */
 export interface SimWasm {
   /** Build-stamp from the Rust crate (CARGO_PKG_VERSION).
    *  Useful in dev / startup logs to confirm a fresh wasm-pack
