@@ -5414,10 +5414,14 @@ pub const SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY: u32 = TURRET_POOL_MAX_PER_EN
 struct SnapshotBaseline {
     used: Vec<u8>,
     last_tick: Vec<u32>,
-    x: Vec<f32>, y: Vec<f32>, z: Vec<f32>,
-    rotation: Vec<f32>,
-    velocity_x: Vec<f32>, velocity_y: Vec<f32>, velocity_z: Vec<f32>,
-    movement_accel_x: Vec<f32>, movement_accel_y: Vec<f32>, movement_accel_z: Vec<f32>,
+    // f64 to match JS PrevEntityState's Number precision exactly.
+    // f32 storage triggered a bit-10 (MOVEMENT_ACCEL) divergence
+    // when JS f64 values straddled an f32 rounding step that the
+    // baseline read flipped on threshold compare.
+    x: Vec<f64>, y: Vec<f64>, z: Vec<f64>,
+    rotation: Vec<f64>,
+    velocity_x: Vec<f64>, velocity_y: Vec<f64>, velocity_z: Vec<f64>,
+    movement_accel_x: Vec<f64>, movement_accel_y: Vec<f64>, movement_accel_z: Vec<f64>,
     hp: Vec<f32>,
     action_count: Vec<u16>,
     action_hash: Vec<u32>,
@@ -5428,7 +5432,7 @@ struct SnapshotBaseline {
     turret_ang_vels: Vec<f32>,
     turret_pitches: Vec<f32>,
     force_field_ranges: Vec<f32>,
-    normal_x: Vec<f32>, normal_y: Vec<f32>, normal_z: Vec<f32>,
+    normal_x: Vec<f64>, normal_y: Vec<f64>, normal_z: Vec<f64>,
     build_progress: Vec<f32>,
     solar_open: Vec<u8>,
     factory_progress: Vec<f32>,
@@ -5615,11 +5619,11 @@ pub fn snapshot_baseline_capture_unit_slot(
     handle: u32,
     slot: u32,
     tick: u32,
-    x: f32, y: f32, z: f32,
-    rotation: f32,
-    velocity_x: f32, velocity_y: f32, velocity_z: f32,
-    movement_accel_x: f32, movement_accel_y: f32, movement_accel_z: f32,
-    normal_x: f32, normal_y: f32, normal_z: f32,
+    x: f64, y: f64, z: f64,
+    rotation: f64,
+    velocity_x: f64, velocity_y: f64, velocity_z: f64,
+    movement_accel_x: f64, movement_accel_y: f64, movement_accel_z: f64,
+    normal_x: f64, normal_y: f64, normal_z: f64,
     action_count: u16,
     action_hash: u32,
     is_engaged_bits: u32,
@@ -5674,8 +5678,8 @@ pub fn snapshot_baseline_capture_building_slot(
     handle: u32,
     slot: u32,
     tick: u32,
-    x: f32, y: f32, z: f32,
-    rotation: f32,
+    x: f64, y: f64, z: f64,
+    rotation: f64,
     is_engaged_bits: u32,
     target_bits: u32,
 ) {
@@ -5763,7 +5767,7 @@ const ENTITY_CHANGED_FACTORY: u32 = 1 << 7;
 const ENTITY_CHANGED_NORMAL: u32 = 1 << 8;
 const ENTITY_CHANGED_MOVEMENT_ACCEL: u32 = 1 << 10;
 
-const SNAPSHOT_NORMAL_THRESHOLD: f32 = 0.001;
+const SNAPSHOT_NORMAL_THRESHOLD: f64 = 0.001;
 const SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD: f32 = 0.001;
 
 // Kind tags for snapshot_baseline_diff_slot (mirror EntityType strings
@@ -5790,19 +5794,19 @@ pub fn snapshot_baseline_diff_slot(
     handle: u32,
     slot: u32,
     kind: u8,
-    x: f32, y: f32, z: f32,
-    rotation: f32,
-    velocity_x: f32, velocity_y: f32, velocity_z: f32,
-    movement_accel_x: f32, movement_accel_y: f32, movement_accel_z: f32,
-    normal_x: f32, normal_y: f32, normal_z: f32,
+    x: f64, y: f64, z: f64,
+    rotation: f64,
+    velocity_x: f64, velocity_y: f64, velocity_z: f64,
+    movement_accel_x: f64, movement_accel_y: f64, movement_accel_z: f64,
+    normal_x: f64, normal_y: f64, normal_z: f64,
     action_count: u16,
     action_hash: u32,
     is_engaged_bits: u32,
     target_bits: u32,
-    pos_threshold: f32,
-    rot_pos_threshold: f32,
-    vel_threshold: f32,
-    rot_vel_threshold: f32,
+    pos_threshold: f64,
+    rot_pos_threshold: f64,
+    vel_threshold: f64,
+    rot_vel_threshold: f64,
     has_buildable: u8,
     has_combat: u8,
     has_factory: u8,
@@ -5876,9 +5880,9 @@ pub fn snapshot_baseline_diff_slot(
             let mut turrets_changed = false;
             for t in 0..(cur_weapon_count as usize) {
                 let idx = base + t;
-                if (turret.rotation[idx] - b.turret_rots[idx]).abs() > rot_pos_threshold
-                    || (turret.angular_velocity[idx] - b.turret_ang_vels[idx]).abs() > rot_vel_threshold
-                    || (turret.pitch[idx] - b.turret_pitches[idx]).abs() > rot_pos_threshold
+                if ((turret.rotation[idx] - b.turret_rots[idx]).abs() as f64) > rot_pos_threshold
+                    || ((turret.angular_velocity[idx] - b.turret_ang_vels[idx]).abs() as f64) > rot_vel_threshold
+                    || ((turret.pitch[idx] - b.turret_pitches[idx]).abs() as f64) > rot_pos_threshold
                     || (turret.force_field_range[idx] - b.force_field_ranges[idx]).abs() > SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD
                 {
                     turrets_changed = true;
