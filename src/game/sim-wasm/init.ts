@@ -147,6 +147,10 @@ import __wbg_init, {
   snapshot_encode_string_scratch_table_ptr,
   snapshot_encode_string_scratch_ensure_bytes,
   snapshot_encode_string_scratch_ensure_table,
+  snapshot_encode_factory_queue_scratch_ptr,
+  snapshot_encode_factory_queue_scratch_ensure,
+  snapshot_encode_waypoint_scratch_ptr,
+  snapshot_encode_waypoint_scratch_ensure,
   messagepack_writer_ptr,
   messagepack_writer_len,
   pool_pos_x_ptr,
@@ -929,6 +933,14 @@ export interface SnapshotEncodeApi {
     solarOpen: number,
     hasTurrets: number,
     turretCount: number,
+    hasFactory: number,
+    factoryQueueCount: number,
+    factoryProgress: number,
+    factoryProducing: number,
+    factoryEnergyRate: number,
+    factoryManaRate: number,
+    factoryMetalRate: number,
+    factoryWaypointCount: number,
   ) => number;
   /** Raw pointer to the action scratch buffer. JS fills 16 f64 per
    *  action (see lib.rs SNAPSHOT_ENCODE_ACTION_STRIDE layout)
@@ -949,6 +961,20 @@ export interface SnapshotEncodeApi {
   stringScratchEnsureBytes: (byteCount: number) => void;
   /** Pre-grow the offset/length table to fit `slotCount` strings. */
   stringScratchEnsureTable: (slotCount: number) => void;
+  /** Raw pointer to the factory queue scratch (Uint32Array of unit
+   *  type codes). JS fills before encodeEntityBuilding with
+   *  hasFactory=1; encoder reads factoryQueueCount entries. */
+  factoryQueueScratchPtr: () => number;
+  /** Pre-grow the factory queue scratch to hold `count` codes. */
+  factoryQueueScratchEnsure: (count: number) => void;
+  /** Raw pointer to the waypoint scratch (Float64Array, 5 f64
+   *  per waypoint — see SNAPSHOT_ENCODE_WAYPOINT_STRIDE in lib.rs).
+   *  type field is a string-scratch slot index. */
+  waypointScratchPtr: () => number;
+  /** Pre-grow the waypoint scratch to hold `count` waypoints. */
+  waypointScratchEnsure: (count: number) => void;
+  /** Stride per waypoint in the scratch buffer (f64 count). */
+  readonly waypointScratchStride: number;
 }
 
 /** Entity-type tags for SnapshotEncodeApi.encodeEntityBasic. Mirrors
@@ -1368,6 +1394,11 @@ export function initSimWasm(): Promise<SimWasm> {
           stringScratchTablePtr: snapshot_encode_string_scratch_table_ptr,
           stringScratchEnsureBytes: snapshot_encode_string_scratch_ensure_bytes,
           stringScratchEnsureTable: snapshot_encode_string_scratch_ensure_table,
+          factoryQueueScratchPtr: snapshot_encode_factory_queue_scratch_ptr,
+          factoryQueueScratchEnsure: snapshot_encode_factory_queue_scratch_ensure,
+          waypointScratchPtr: snapshot_encode_waypoint_scratch_ptr,
+          waypointScratchEnsure: snapshot_encode_waypoint_scratch_ensure,
+          waypointScratchStride: 5,
         },
         spatial: {
           init: spatial_init,

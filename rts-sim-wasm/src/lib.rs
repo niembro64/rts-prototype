@@ -6111,6 +6111,85 @@ pub fn snapshot_encode_string_scratch_ensure_table(slot_count: u32) {
     }
 }
 
+/// Factory queue scratch — flat Uint32Array of unit-type codes that
+/// the encoder reads when emitting `factory.queue`. JS pre-fills
+/// before calling encode_entity_building with has_factory=1.
+struct SnapshotEncodeFactoryQueueScratch {
+    buf: Vec<u32>,
+}
+
+struct SnapshotEncodeFactoryQueueScratchHolder(UnsafeCell<Option<SnapshotEncodeFactoryQueueScratch>>);
+unsafe impl Sync for SnapshotEncodeFactoryQueueScratchHolder {}
+static SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH: SnapshotEncodeFactoryQueueScratchHolder =
+    SnapshotEncodeFactoryQueueScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_factory_queue_scratch() -> &'static mut SnapshotEncodeFactoryQueueScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeFactoryQueueScratch { buf: vec![0u32; 16] });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_factory_queue_scratch_ptr() -> *const u32 {
+    snapshot_encode_factory_queue_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_factory_queue_scratch_ensure(count: u32) {
+    let s = snapshot_encode_factory_queue_scratch();
+    if s.buf.len() < count as usize {
+        s.buf.resize(count as usize, 0);
+    }
+}
+
+/// Factory waypoint scratch — 5 f64 per waypoint:
+///   [0..2]  pos.x, pos.y
+///   [2]     has_pos_z (0 or 1)
+///   [3]     pos_z (when has_pos_z)
+///   [4]     type_string_slot (index into string scratch)
+const SNAPSHOT_ENCODE_WAYPOINT_STRIDE: usize = 5;
+
+struct SnapshotEncodeWaypointScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeWaypointScratchHolder(UnsafeCell<Option<SnapshotEncodeWaypointScratch>>);
+unsafe impl Sync for SnapshotEncodeWaypointScratchHolder {}
+static SNAPSHOT_ENCODE_WAYPOINT_SCRATCH: SnapshotEncodeWaypointScratchHolder =
+    SnapshotEncodeWaypointScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_waypoint_scratch() -> &'static mut SnapshotEncodeWaypointScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_WAYPOINT_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeWaypointScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_WAYPOINT_STRIDE * 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_waypoint_scratch_ptr() -> *const f64 {
+    snapshot_encode_waypoint_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_waypoint_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_WAYPOINT_STRIDE;
+    let s = snapshot_encode_waypoint_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Write a string slot's bytes to the MessagePack writer. Returns
 /// silently for out-of-bounds slots (caller is responsible for
 /// having populated the slot via the byte+table buffers).
@@ -6636,6 +6715,14 @@ pub fn snapshot_encode_entity_building(
     solar_open: u8,
     has_turrets: u8,
     turret_count: u8,
+    has_factory: u8,
+    factory_queue_count: u32,
+    factory_progress: f64,
+    factory_producing: u8,
+    factory_energy_rate: f64,
+    factory_mana_rate: f64,
+    factory_metal_rate: f64,
+    factory_waypoint_count: u32,
 ) -> u32 {
     let w = messagepack_writer();
     w.buf.clear();
@@ -6657,6 +6744,7 @@ pub fn snapshot_encode_entity_building(
     if has_metal_extraction_rate != 0 { building_field_count += 1; }
     if has_solar != 0 { building_field_count += 1; }
     if has_turrets != 0 { building_field_count += 1; }
+    if has_factory != 0 { building_field_count += 1; }
 
     w.write_str("building");
     w.write_map_header(building_field_count);
@@ -6757,6 +6845,66 @@ pub fn snapshot_encode_entity_building(
             if has_ff_range {
                 w.write_str("currentForceFieldRange");
                 w.write_number(ff_range_raw);
+            }
+        }
+    }
+
+    if has_factory != 0 {
+        w.write_str("factory");
+        w.write_map_header(7);  // queue, progress, producing, energyRate, manaRate, metalRate, waypoints
+
+        let qc = factory_queue_count as usize;
+        w.write_str("queue");
+        w.write_array_header(qc);
+        if qc > 0 {
+            let q = snapshot_encode_factory_queue_scratch();
+            for i in 0..qc {
+                w.write_uint(q.buf[i] as u64);
+            }
+        }
+
+        w.write_str("progress");
+        w.write_number(factory_progress);
+
+        w.write_str("producing");
+        w.write_bool(factory_producing != 0);
+
+        w.write_str("energyRate");
+        w.write_number(factory_energy_rate);
+
+        w.write_str("manaRate");
+        w.write_number(factory_mana_rate);
+
+        w.write_str("metalRate");
+        w.write_number(factory_metal_rate);
+
+        let wpc = factory_waypoint_count as usize;
+        w.write_str("waypoints");
+        w.write_array_header(wpc);
+        if wpc > 0 {
+            let wp = snapshot_encode_waypoint_scratch();
+            for i in 0..wpc {
+                let base = i * SNAPSHOT_ENCODE_WAYPOINT_STRIDE;
+                let pos_x = wp.buf[base];
+                let pos_y = wp.buf[base + 1];
+                let has_pos_z = wp.buf[base + 2] != 0.0;
+                let pos_z = wp.buf[base + 3];
+                let type_slot = wp.buf[base + 4] as u32;
+
+                let wp_field_count = if has_pos_z { 3 } else { 2 };
+                w.write_map_header(wp_field_count);
+                w.write_str("pos");
+                w.write_map_header(2);
+                w.write_str("x");
+                w.write_number(pos_x);
+                w.write_str("y");
+                w.write_number(pos_y);
+                if has_pos_z {
+                    w.write_str("posZ");
+                    w.write_number(pos_z);
+                }
+                w.write_str("type");
+                write_string_from_scratch(w, type_slot);
             }
         }
     }

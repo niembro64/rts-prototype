@@ -17,9 +17,15 @@ import {
   snapshot_encode_string_scratch_table_ptr,
   snapshot_encode_string_scratch_ensure_bytes,
   snapshot_encode_string_scratch_ensure_table,
+  snapshot_encode_factory_queue_scratch_ptr,
+  snapshot_encode_factory_queue_scratch_ensure,
+  snapshot_encode_waypoint_scratch_ptr,
+  snapshot_encode_waypoint_scratch_ensure,
   messagepack_writer_ptr,
   messagepack_writer_len,
 } from './pkg/rts_sim_wasm';
+
+const WAYPOINT_SCRATCH_STRIDE = 5;
 import { SNAPSHOT_ENTITY_TYPE_UNIT, SNAPSHOT_ENTITY_TYPE_BUILDING } from './init';
 
 const TURRET_SCRATCH_STRIDE = 12;
@@ -900,6 +906,22 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
   return { passed, failed };
 }
 
+type WaypointFixture = {
+  pos: { x: number; y: number };
+  posZ?: number;
+  type: string;
+};
+
+type FactoryFixture = {
+  queue: number[];
+  progress: number;
+  producing: boolean;
+  energyRate: number;
+  manaRate: number;
+  metalRate: number;
+  waypoints: WaypointFixture[];
+};
+
 type BuildingFixture = {
   id: number;
   type: 'building';
@@ -918,8 +940,37 @@ type BuildingFixture = {
     metalExtractionRate?: number;
     solar?: { open: boolean };
     turrets?: TurretFixture[];
+    factory?: FactoryFixture;
   };
 };
+
+function packFactoryQueueIntoScratch(memory: WebAssembly.Memory, queue: number[]): void {
+  if (queue.length === 0) return;
+  snapshot_encode_factory_queue_scratch_ensure(queue.length);
+  const ptr = snapshot_encode_factory_queue_scratch_ptr();
+  const view = new Uint32Array(memory.buffer, ptr, queue.length);
+  for (let i = 0; i < queue.length; i++) view[i] = queue[i];
+}
+
+function packWaypointsIntoScratch(
+  memory: WebAssembly.Memory,
+  waypoints: WaypointFixture[],
+  stringSlots: Map<string, number>,
+): void {
+  if (waypoints.length === 0) return;
+  snapshot_encode_waypoint_scratch_ensure(waypoints.length);
+  const ptr = snapshot_encode_waypoint_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, waypoints.length * WAYPOINT_SCRATCH_STRIDE);
+  for (let i = 0; i < waypoints.length; i++) {
+    const w = waypoints[i];
+    const base = i * WAYPOINT_SCRATCH_STRIDE;
+    view[base + 0] = w.pos.x;
+    view[base + 1] = w.pos.y;
+    view[base + 2] = w.posZ !== undefined ? 1 : 0;
+    view[base + 3] = w.posZ ?? 0;
+    view[base + 4] = stringSlots.get(w.type) ?? 0;
+  }
+}
 
 function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
   const fixtures: BuildingFixture[] = [
@@ -1028,6 +1079,88 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         ],
       },
     },
+    // Idle factory (empty queue, default rally point only)
+    {
+      id: 2100, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      building: {
+        type: 'factory',
+        dim: { x: 8, y: 8 },
+        hp: { curr: 1000, max: 1000 },
+        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+        factory: {
+          queue: [],
+          progress: 0,
+          producing: false,
+          energyRate: 0,
+          manaRate: 0,
+          metalRate: 0,
+          waypoints: [
+            { pos: { x: 100, y: 100 }, type: 'move' },
+          ],
+        },
+      },
+    },
+    // Active factory mid-production
+    {
+      id: 2101, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x80,
+      building: {
+        hp: { curr: 1000, max: 1000 },
+        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+        factory: {
+          queue: [3, 7, 12],
+          progress: 0.42,
+          producing: true,
+          energyRate: 0.85,
+          manaRate: 0,
+          metalRate: 0.5,
+          waypoints: [
+            { pos: { x: 200, y: 200 }, type: 'move' },
+          ],
+        },
+      },
+    },
+    // Factory with multi-step rally (rally point + player waypoints with posZ)
+    {
+      id: 2102, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2,
+      building: {
+        hp: { curr: 1000, max: 1000 },
+        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+        factory: {
+          queue: [1],
+          progress: 0.05,
+          producing: true,
+          energyRate: 0.3,
+          manaRate: 0,
+          metalRate: 0.3,
+          waypoints: [
+            { pos: { x: 100, y: 100 }, type: 'move' },
+            { pos: { x: 500, y: 500 }, posZ: 50, type: 'move' },
+            { pos: { x: 1000, y: 800 }, posZ: 75, type: 'patrol' },
+          ],
+        },
+      },
+    },
+    // Full factory with everything
+    {
+      id: 2103, type: 'building', pos: { x: 2000, y: 2000, z: 0 }, rotation: 0, playerId: 1,
+      building: {
+        type: 'commandCenter',
+        dim: { x: 10, y: 10 },
+        hp: { curr: 5000, max: 5000 },
+        build: { complete: true, paid: { energy: 0, mana: 0, metal: 0 } },
+        factory: {
+          queue: [99, 100, 101, 102],
+          progress: 0.9,
+          producing: true,
+          energyRate: 1.0,
+          manaRate: 0.5,
+          metalRate: 0.7,
+          waypoints: [
+            { pos: { x: 2200, y: 2200 }, type: 'move' },
+          ],
+        },
+      },
+    },
   ];
 
   let passed = 0;
@@ -1038,6 +1171,9 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     const changed = f.changedFields ?? 0;
     const stringList: string[] = [];
     if (f.building.type !== undefined) stringList.push(f.building.type);
+    if (f.building.factory !== undefined) {
+      for (const wp of f.building.factory.waypoints) stringList.push(wp.type);
+    }
     const stringSlots = stringList.length > 0
       ? packStringsIntoScratch(memory, stringList)
       : new Map<string, number>();
@@ -1046,6 +1182,12 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     const turretCount = turrets?.length ?? 0;
     if (hasTurrets && turrets) {
       packTurretsIntoScratch(memory, turrets);
+    }
+    const factory = f.building.factory;
+    const hasFactory = factory !== undefined ? 1 : 0;
+    if (factory) {
+      packFactoryQueueIntoScratch(memory, factory.queue);
+      packWaypointsIntoScratch(memory, factory.waypoints, stringSlots);
     }
     snapshot_encode_entity_building(
       f.id,
@@ -1067,6 +1209,14 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       f.building.solar?.open === true ? 1 : 0,
       hasTurrets,
       turretCount,
+      hasFactory,
+      factory?.queue.length ?? 0,
+      factory?.progress ?? 0,
+      factory?.producing === true ? 1 : 0,
+      factory?.energyRate ?? 0,
+      factory?.manaRate ?? 0,
+      factory?.metalRate ?? 0,
+      factory?.waypoints.length ?? 0,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
