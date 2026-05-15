@@ -864,6 +864,11 @@ export interface SnapshotEncodeApi {
     qangvelX: number, qangvelY: number, qangvelZ: number,
     hasAngularAcceleration3: number,
     qangaccX: number, qangaccY: number, qangaccZ: number,
+    hasFireEnabled: number,
+    hasIsCommander: number,
+    hasBuildTargetId: number,
+    buildTargetIdIsNull: number,
+    buildTargetId: number,
   ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
    *  by every encoder call. */

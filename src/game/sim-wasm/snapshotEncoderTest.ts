@@ -109,6 +109,9 @@ type UnitFixture = BasicEntityFixture & {
     orientation?: { x: number; y: number; z: number; w: number };
     angularVelocity3?: { x: number; y: number; z: number };
     angularAcceleration3?: { x: number; y: number; z: number };
+    fireEnabled?: false;
+    isCommander?: true;
+    buildTargetId?: number | null;
   };
 };
 
@@ -327,6 +330,53 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         angularAcceleration3: { x: -10, y: -20, z: -30 },
       },
     },
+    // fireEnabled (hold-fire mode)
+    {
+      id: 610, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        fireEnabled: false,
+      },
+    },
+    // isCommander flag (commander shell)
+    {
+      id: 611, type: 'unit', pos: { x: 1000, y: 1000, z: 50 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 5000, max: 5000 },
+        velocity: { x: 0, y: 0, z: 0 },
+        isCommander: true,
+      },
+    },
+    // buildTargetId — concrete number (builder actively constructing)
+    {
+      id: 612, type: 'unit', pos: { x: 200, y: 200, z: 0 }, rotation: 0, playerId: 2,
+      unit: {
+        hp: { curr: 80, max: 80 },
+        velocity: { x: 0, y: 0, z: 0 },
+        buildTargetId: 5432,
+      },
+    },
+    // buildTargetId — null (target out of recipient's vision)
+    {
+      id: 613, type: 'unit', pos: { x: 300, y: 300, z: 0 }, rotation: 0, playerId: 2,
+      unit: {
+        hp: { curr: 80, max: 80 },
+        velocity: { x: 0, y: 0, z: 0 },
+        buildTargetId: null,
+      },
+    },
+    // All three scalar optionals together (commander on hold-fire while building)
+    {
+      id: 614, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x1008,
+      unit: {
+        hp: { curr: 4500, max: 5000 },
+        velocity: { x: 0, y: 0, z: 0 },
+        fireEnabled: false,
+        isCommander: true,
+        buildTargetId: 99999,
+      },
+    },
   ];
 
   let passed = 0;
@@ -350,6 +400,11 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasAngularVelocity3 = av !== undefined ? 1 : 0;
     const aa = f.unit.angularAcceleration3;
     const hasAngularAcceleration3 = aa !== undefined ? 1 : 0;
+    const hasFireEnabled = f.unit.fireEnabled === false ? 1 : 0;
+    const hasIsCommander = f.unit.isCommander === true ? 1 : 0;
+    const hasBuildTargetId = f.unit.buildTargetId !== undefined ? 1 : 0;
+    const buildTargetIdIsNull = f.unit.buildTargetId === null ? 1 : 0;
+    const buildTargetIdValue = typeof f.unit.buildTargetId === 'number' ? f.unit.buildTargetId : 0;
     snapshot_encode_entity_unit(
       f.id, typeTag,
       f.pos.x, f.pos.y, f.pos.z,
@@ -376,6 +431,11 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       av?.x ?? 0, av?.y ?? 0, av?.z ?? 0,
       hasAngularAcceleration3,
       aa?.x ?? 0, aa?.y ?? 0, aa?.z ?? 0,
+      hasFireEnabled,
+      hasIsCommander,
+      hasBuildTargetId,
+      buildTargetIdIsNull,
+      buildTargetIdValue,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();

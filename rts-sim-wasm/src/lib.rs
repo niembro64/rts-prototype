@@ -6070,6 +6070,11 @@ pub fn snapshot_encode_entity_unit(
     qangvel_x: i32, qangvel_y: i32, qangvel_z: i32,
     has_angular_acceleration3: u8,
     qangacc_x: i32, qangacc_y: i32, qangacc_z: i32,
+    has_fire_enabled: u8,
+    has_is_commander: u8,
+    has_build_target_id: u8,
+    build_target_id_is_null: u8,
+    build_target_id: u32,
 ) -> u32 {
     let w = messagepack_writer();
     w.buf.clear();
@@ -6093,6 +6098,9 @@ pub fn snapshot_encode_entity_unit(
     if has_orientation != 0 { unit_field_count += 1; }
     if has_angular_velocity3 != 0 { unit_field_count += 1; }
     if has_angular_acceleration3 != 0 { unit_field_count += 1; }
+    if has_fire_enabled != 0 { unit_field_count += 1; }
+    if has_is_commander != 0 { unit_field_count += 1; }
+    if has_build_target_id != 0 { unit_field_count += 1; }
 
     w.write_str("unit");
     w.write_map_header(unit_field_count);
@@ -6212,6 +6220,26 @@ pub fn snapshot_encode_entity_unit(
         w.write_int(qangacc_y as i64);
         w.write_str("z");
         w.write_int(qangacc_z as i64);
+    }
+
+    // Tri-state scalar/boolean optionals — JS emits them as
+    // `false`/`true`/`number|null` or undefined (omitted). Each
+    // `has_*` flag gates the key-value pair entirely.
+    if has_fire_enabled != 0 {
+        w.write_str("fireEnabled");
+        w.write_bool(false);
+    }
+    if has_is_commander != 0 {
+        w.write_str("isCommander");
+        w.write_bool(true);
+    }
+    if has_build_target_id != 0 {
+        w.write_str("buildTargetId");
+        if build_target_id_is_null != 0 {
+            w.write_nil();
+        } else {
+            w.write_uint(build_target_id as u64);
+        }
     }
 
     w.buf.len() as u32
