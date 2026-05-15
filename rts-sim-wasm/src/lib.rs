@@ -865,3 +865,310 @@ pool_ptr_export!(pool_restitution_ptr, restitution, f64);
 pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
 pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
+
+// ─────────────────────────────────────────────────────────────────
+//  Phase 3d-2 — Pool-backed integrate + sphere-sphere kernels
+//
+//  The per-tick "scratch buffer + pack + call + unpack" pattern of
+//  Phase 3a's `step_unit_motions_batch` and Phase 3c's
+//  `resolve_sphere_sphere_contacts` is replaced by direct pool
+//  reads/writes via slot indices. JS only marshals:
+//    - the slot-index list (4 bytes per active body)
+//    - per-body pre-sampled ground state (groundZ + normal —
+//      terrain sampler is still JS-side until Phase 8)
+//    - sleep / wake transition output buffers (slot ids of bodies
+//      whose sleep state flipped this call; JS handles the awake-
+//      count bookkeeping)
+//  All body fields (motion, velocity, accumulators, geometry,
+//  flags) live in linear memory and are read directly. Per-tick
+//  marshal drops from O(N · 19 + N · 13) f64s to O(N · 4 + 4N)
+//  f64s — about a 6x reduction at typical unit counts.
+// ─────────────────────────────────────────────────────────────────
+
+#[wasm_bindgen]
+pub fn pool_step_integrate(
+    awake_slots: &[u32],
+    ground_z: &[f64],
+    ground_normals: &[f64],
+    sleep_transitions_out: &mut [u32],
+    dt_sec: f64,
+    air_damp: f64,
+    ground_damp: f64,
+) -> u32 {
+    let count = awake_slots.len();
+    debug_assert!(ground_z.len() >= count);
+    debug_assert!(ground_normals.len() >= 3 * count);
+    debug_assert!(sleep_transitions_out.len() >= count);
+
+    let p = pool();
+    let mut transitions = 0_u32;
+    for i in 0..count {
+        let slot_u32 = awake_slots[i];
+        let slot = slot_u32 as usize;
+        let g_z = ground_z[i];
+        let n_x = ground_normals[i * 3];
+        let n_y = ground_normals[i * 3 + 1];
+        let n_z = ground_normals[i * 3 + 2];
+
+        let ground_offset = p.ground_offset[slot];
+
+        // authored_accel is the input force BEFORE gravity is added.
+        // Mirrors PhysicsEngine3D.integrate's authoredAccelSq
+        // computation (used for the sleep gate).
+        let authored_ax = p.accel_x[slot];
+        let authored_ay = p.accel_y[slot];
+        let authored_az = p.accel_z[slot];
+        let authored_accel_sq =
+            authored_ax * authored_ax + authored_ay * authored_ay + authored_az * authored_az;
+
+        let launch_ax = p.launch_x[slot];
+        let launch_ay = p.launch_y[slot];
+        let launch_az = p.launch_z[slot];
+
+        // Run the integrator on a 6-element scratch — the inline
+        // helper is shared with the per-body / batched buffer paths
+        // so all branches stay numerically identical.
+        let mut motion = [
+            p.pos_x[slot],
+            p.pos_y[slot],
+            p.pos_z[slot],
+            p.vel_x[slot],
+            p.vel_y[slot],
+            p.vel_z[slot],
+        ];
+        integrate_unit_motion_inline(
+            &mut motion,
+            dt_sec,
+            ground_offset,
+            authored_ax,
+            authored_ay,
+            authored_az - GRAVITY,
+            air_damp,
+            ground_damp,
+            launch_ax,
+            launch_ay,
+            launch_az,
+            g_z,
+            n_x,
+            n_y,
+            n_z,
+        );
+        p.pos_x[slot] = motion[0];
+        p.pos_y[slot] = motion[1];
+        p.pos_z[slot] = motion[2];
+        p.vel_x[slot] = motion[3];
+        p.vel_y[slot] = motion[4];
+        p.vel_z[slot] = motion[5];
+
+        // Sleep heuristic — same constants + check order as Phase 3a.
+        let speed_sq = motion[3] * motion[3] + motion[4] * motion[4] + motion[5] * motion[5];
+        let mut sleep_ticks = p.sleep_ticks[slot];
+        let mut just_slept = false;
+        if authored_accel_sq <= SLEEP_ACCEL_SQ && speed_sq <= SLEEP_SPEED_SQ {
+            let next_penetration = g_z - (motion[2] - ground_offset);
+            if is_in_contact(next_penetration)
+                && next_penetration <= SLEEP_GROUND_PENETRATION_EPS
+            {
+                sleep_ticks += 1.0;
+                if sleep_ticks >= SLEEP_TICKS {
+                    p.pos_z[slot] = g_z + ground_offset;
+                    p.vel_x[slot] = 0.0;
+                    p.vel_y[slot] = 0.0;
+                    p.vel_z[slot] = 0.0;
+                    sleep_ticks = SLEEP_TICKS;
+                    p.flags[slot] |= BODY_FLAG_SLEEPING;
+                    just_slept = true;
+                }
+            } else {
+                sleep_ticks = 0.0;
+            }
+        } else {
+            sleep_ticks = 0.0;
+        }
+        p.sleep_ticks[slot] = sleep_ticks;
+        if just_slept {
+            sleep_transitions_out[transitions as usize] = slot_u32;
+            transitions += 1;
+        }
+    }
+    transitions
+}
+
+#[wasm_bindgen]
+pub fn pool_resolve_sphere_sphere(
+    sphere_slots: &[u32],
+    iterations: u32,
+    cell_size: f64,
+    wake_transitions_out: &mut [u32],
+) -> u32 {
+    let count = sphere_slots.len();
+    debug_assert!(wake_transitions_out.len() >= count);
+    if count == 0 || iterations == 0 || cell_size <= 0.0 {
+        return 0;
+    }
+
+    let p = pool();
+    let half_cs = cell_size * 0.5;
+
+    // Bucket bodies by center cell; reused across all sub-iterations
+    // — same as PhysicsEngine3D.rebuildContactCells / Phase 3c.
+    let mut cells: HashMap<u64, Vec<u32>> = HashMap::new();
+    let mut max_radius = 0.0_f64;
+    for i in 0..count {
+        let slot = sphere_slots[i] as usize;
+        let x = p.pos_x[slot];
+        let y = p.pos_y[slot];
+        let z = p.pos_z[slot];
+        let r = p.radius[slot];
+        if r > max_radius {
+            max_radius = r;
+        }
+        let cx = (x / cell_size).floor() as i32;
+        let cy = (y / cell_size).floor() as i32;
+        let cz = ((z + half_cs) / cell_size).floor() as i32;
+        let key = pack_contact_cell_key(cx, cy, cz);
+        cells.entry(key).or_default().push(i as u32);
+    }
+    let range = (((max_radius * 2.0) / cell_size).ceil() as i32).max(1);
+
+    // Track "got pushed" per local index so JS can fire wakeBody on
+    // exactly the bodies whose state flipped.
+    let mut woke = vec![false; count];
+
+    for _iter in 0..iterations {
+        for i in 0..count {
+            let slot_a = sphere_slots[i] as usize;
+            let ar = p.radius[slot_a];
+            let a_inv_mass = p.inv_mass[slot_a];
+            let a_restitution = p.restitution[slot_a];
+
+            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
+            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
+            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
+
+            for dz in -range..=range {
+                for dy in -range..=range {
+                    for dx in -range..=range {
+                        let key = pack_contact_cell_key(acx + dx, acy + dy, acz + dz);
+                        let bucket = match cells.get(&key) {
+                            Some(b) => b,
+                            None => continue,
+                        };
+                        for &j_u32 in bucket.iter() {
+                            let j = j_u32 as usize;
+                            if j <= i {
+                                continue;
+                            }
+                            let slot_b = sphere_slots[j] as usize;
+                            let br = p.radius[slot_b];
+
+                            let ax = p.pos_x[slot_a];
+                            let ay = p.pos_y[slot_a];
+                            let az = p.pos_z[slot_a];
+                            let bx = p.pos_x[slot_b];
+                            let by = p.pos_y[slot_b];
+                            let bz = p.pos_z[slot_b];
+
+                            let ddx = bx - ax;
+                            let ddy = by - ay;
+                            let ddz = bz - az;
+                            let r_sum = ar + br;
+                            let dist_sq = ddx * ddx + ddy * ddy + ddz * ddz;
+                            if dist_sq >= r_sum * r_sum {
+                                continue;
+                            }
+
+                            woke[i] = true;
+                            woke[j] = true;
+
+                            let dist: f64;
+                            let nx: f64;
+                            let ny: f64;
+                            let nz: f64;
+                            if dist_sq < 1e-12 {
+                                // Degenerate: deterministic random direction.
+                                // Using slot ids (stable for body lifetime) as
+                                // the seed source — slightly different from the
+                                // Phase 3c buffer-based version (which used the
+                                // entityId), but functionally equivalent for the
+                                // tie-break case (centers exactly coincident).
+                                let a_id = slot_a as u64;
+                                let b_id = slot_b as u64;
+                                let seed = (a_id
+                                    .wrapping_mul(73856093)
+                                    ^ b_id.wrapping_mul(19349663))
+                                    as u32;
+                                let angle =
+                                    (seed as f64 / 4294967296.0) * core::f64::consts::PI * 2.0;
+                                dist = 1e-6;
+                                nx = angle.cos();
+                                ny = angle.sin();
+                                nz = 0.0;
+                            } else {
+                                dist = dist_sq.sqrt();
+                                let inv_dist = 1.0 / dist;
+                                nx = ddx * inv_dist;
+                                ny = ddy * inv_dist;
+                                nz = ddz * inv_dist;
+                            }
+                            let penetration = r_sum - dist;
+                            let b_inv_mass = p.inv_mass[slot_b];
+                            let inv_mass_sum_inv = 1.0 / (a_inv_mass + b_inv_mass);
+                            let w_a = a_inv_mass * inv_mass_sum_inv;
+                            let w_b = b_inv_mass * inv_mass_sum_inv;
+                            p.pos_x[slot_a] = ax - nx * penetration * w_a;
+                            p.pos_y[slot_a] = ay - ny * penetration * w_a;
+                            p.pos_z[slot_a] = az - nz * penetration * w_a;
+                            p.pos_x[slot_b] = bx + nx * penetration * w_b;
+                            p.pos_y[slot_b] = by + ny * penetration * w_b;
+                            p.pos_z[slot_b] = bz + nz * penetration * w_b;
+
+                            // Upward contact flag — set directly in pool;
+                            // JS reads via the body.upwardSurfaceContact getter.
+                            if nz > 0.35 {
+                                p.flags[slot_b] |= BODY_FLAG_UPWARD_CONTACT;
+                            } else if nz < -0.35 {
+                                p.flags[slot_a] |= BODY_FLAG_UPWARD_CONTACT;
+                            }
+
+                            let a_vx = p.vel_x[slot_a];
+                            let a_vy = p.vel_y[slot_a];
+                            let a_vz = p.vel_z[slot_a];
+                            let b_vx = p.vel_x[slot_b];
+                            let b_vy = p.vel_y[slot_b];
+                            let b_vz = p.vel_z[slot_b];
+                            let rvx = b_vx - a_vx;
+                            let rvy = b_vy - a_vy;
+                            let rvz = b_vz - a_vz;
+                            let v_dot_n = rvx * nx + rvy * ny + rvz * nz;
+                            if v_dot_n >= 0.0 {
+                                continue;
+                            }
+                            let b_restitution = p.restitution[slot_b];
+                            let e = a_restitution.min(b_restitution);
+                            let j_mag = -(1.0 + e) * v_dot_n * inv_mass_sum_inv;
+                            let ix = j_mag * nx;
+                            let iy = j_mag * ny;
+                            let iz = j_mag * nz;
+                            p.vel_x[slot_a] = a_vx - ix * a_inv_mass;
+                            p.vel_y[slot_a] = a_vy - iy * a_inv_mass;
+                            p.vel_z[slot_a] = a_vz - iz * a_inv_mass;
+                            p.vel_x[slot_b] = b_vx + ix * b_inv_mass;
+                            p.vel_y[slot_b] = b_vy + iy * b_inv_mass;
+                            p.vel_z[slot_b] = b_vz + iz * b_inv_mass;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut transitions = 0_u32;
+    for i in 0..count {
+        if woke[i] {
+            wake_transitions_out[transitions as usize] = sphere_slots[i];
+            transitions += 1;
+        }
+    }
+    transitions
+}

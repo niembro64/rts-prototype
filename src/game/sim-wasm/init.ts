@@ -22,6 +22,8 @@ import __wbg_init, {
   pool_capacity,
   pool_alloc_slot,
   pool_free_slot,
+  pool_step_integrate,
+  pool_resolve_sphere_sphere,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -146,6 +148,37 @@ export interface SimWasm {
    *  the WASM boundary per access. Pool is initialized
    *  automatically at WASM load (one-time call to pool_init). */
   readonly pool: BodyPoolViews;
+  /** Pool-backed integrate kernel — Phase 3d-2. Runs the per-tick
+   *  integrate loop over every awake dynamic sphere by SLOT INDEX,
+   *  reading body state directly from the pool. The Float64Array
+   *  for body state is no longer marshalled per call; only the
+   *  slot index list, pre-sampled ground state (terrain sampler
+   *  is still JS-side until Phase 8), and a sleep-transitions
+   *  output buffer cross the boundary. Returns the count of
+   *  bodies that just slept this call (slot ids are written into
+   *  sleep_transitions_out[0..return_value]). */
+  readonly poolStepIntegrate: (
+    awakeSlots: Uint32Array,
+    groundZ: Float64Array,
+    groundNormals: Float64Array,
+    sleepTransitionsOut: Uint32Array,
+    dtSec: number,
+    airDamp: number,
+    groundDamp: number,
+  ) => number;
+  /** Pool-backed sphere-sphere resolver — Phase 3d-2. Iterates
+   *  the broadphase + N sub-passes over body slots. State read /
+   *  written via the pool; only the slot list, scalar params,
+   *  and a wake-transitions output buffer cross the boundary.
+   *  Upward-contact flag is set on the pool flags byte directly.
+   *  Returns the count of bodies that need wake bookkeeping
+   *  (slot ids are written into wake_transitions_out[0..return_value]). */
+  readonly poolResolveSphereSphere: (
+    sphereSlots: Uint32Array,
+    iterations: number,
+    cellSize: number,
+    wakeTransitionsOut: Uint32Array,
+  ) => number;
 }
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
@@ -306,6 +339,8 @@ export function initSimWasm(): Promise<SimWasm> {
         stepUnitMotionsBatch: step_unit_motions_batch,
         resolveSphereSphereContacts: resolve_sphere_sphere_contacts,
         pool,
+        poolStepIntegrate: pool_step_integrate,
+        poolResolveSphereSphere: pool_resolve_sphere_sphere,
       };
       resolvedHandle = handle;
       return handle;

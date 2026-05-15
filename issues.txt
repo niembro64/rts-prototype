@@ -142,11 +142,13 @@ Split into sub-phases to keep each ship-able and reviewable.
              WASM calls would currently cost more than they save; revisit
              after the per-tick marshal is gone.)
   Phase 3c — Sphere-vs-sphere resolver + broadphase port. DONE.
-  Phase 3d — Body3D SoA pool in WASM linear memory (state ownership). DONE
-             (foundation: pool exists, Body3D class proxies to pool views,
-             create/remove allocate/free slots). Follow-on work: route
-             Phase 3a/3c WASM kernels through the pool directly to
-             eliminate the per-tick scratch-buffer marshal.
+  Phase 3d — Body3D SoA pool in WASM linear memory (state ownership). DONE.
+             3d-1 (foundation): pool exists, Body3D class proxies to
+             pool views, create/remove allocate/free slots.
+             3d-2: Phase 3a/3c kernels route through pool directly —
+             per-tick body-state marshal eliminated; only slot ids +
+             pre-sampled ground state + transition output buffers
+             cross the boundary now.
   Phase 3e — Hover lift + quat-spring + bank-into-turn (or roll into Phase 4).
   Phase 3f — Static cuboid broadphase port.
 
@@ -297,13 +299,64 @@ access (UnitForceSystem, damageHelpers, snapshot serializers, etc.)
 continues to read body.x / body.vx / etc. via the getter — no
 caller-side change needed.
 
-Open follow-up (Phase 3d-2, separate commit): rewrite the Phase 3a
-`step_unit_motions_batch` and Phase 3c `resolve_sphere_sphere_
-contacts` WASM functions to read state from the pool directly via
-slot-index lists instead of taking a per-call Float64Array packed
-buffer. That eliminates the JS-side marshal step entirely and is
-the actual perf win — this commit ships the foundation that makes
-that follow-on possible.
+Phase 3d-2 follow-on landed in the same series — see below.
+
+------------------------------------------------------------------------------
+ Phase 3d-2 — Pool-backed integrate + sphere-sphere kernels. DONE.
+------------------------------------------------------------------------------
+Landed: `pool_step_integrate` and `pool_resolve_sphere_sphere` in
+rts-sim-wasm/src/lib.rs. Same numerical kernels as Phase 3a /
+Phase 3c but read body state directly from BodyPool by slot index
+— no per-tick body-state marshal.
+
+Per-tick boundary traffic dropped from O(N · 19 + N · 13) f64s
+(motion + accumulators + ground state + sleep flag, packed twice)
+to O(N · 4 + 4N) f64s (slot ids + pre-sampled ground state +
+transition output). At 200 awake bodies that's ~50 KB/tick down
+to ~7 KB/tick, ~7x reduction. Real wins:
+  - JS no longer iterates Body3D fields to pack a buffer that the
+    Rust kernel will immediately re-write — body state IS the
+    canonical representation in linear memory.
+  - Sphere-sphere broadphase reads radius / inv_mass / restitution
+    once from the pool per body per iteration instead of from a
+    re-packed scratch each call.
+
+Behavior preserved bit-for-bit on the non-degenerate paths: same
+constants, same op order, same f64 math. Tiny divergence on the
+sphere-sphere coincident-centers tie-break — Phase 3c used the
+entityId in the seed; the pool path uses the slot id. Both are
+stable per body lifetime, both deterministic; the seed value
+differs but the case is unobservable in practice.
+
+Sleep transitions: integrate kernel writes slot ids of bodies that
+just transitioned to sleep into a JS-allocated transition buffer,
+returns the count. JS iterates the buffer and runs sleepBody() on
+each — handles the awake-count decrement + accumulator clear
+(resolvers may re-wake a body before the post-step accumulator-
+clear loop runs).
+
+Wake transitions: sphere-sphere kernel writes slot ids of bodies
+that got pushed into a wake buffer, returns the count. JS runs
+wakeBody() per slot; idempotent on already-awake bodies, so the
+"always wake on resolution" semantics from the TS path are
+preserved.
+
+Upward-contact flag: now set directly on the pool's flags byte
+(BODY_FLAG_UPWARD_CONTACT bit) by the Rust kernel; reading via
+the body.upwardSurfaceContact getter returns the freshly-set
+value. clearDynamicSurfaceContacts before each step still works
+through the same getter/setter path.
+
+Slot → Body3D lookup: PhysicsEngine3D maintains
+`bodyBySlot: (Body3D | undefined)[]` indexed by pool slot,
+populated in addBody, cleared in removeBody. O(1) lookup for
+the transition-list bookkeeping.
+
+Old per-call buffer functions (`step_unit_motions_batch`,
+`resolve_sphere_sphere_contacts`) and their related
+*_BATCH_STRIDE constants are now dead code — kept around in this
+commit for one cycle to make rollback easy. A follow-on cleanup
+commit can delete them.
 
   - SoA Body3D representation in linear memory: separate Vec<f32>
     for x, y, z, vx, vy, vz, ax, ay, az, mass, invMass, radius,

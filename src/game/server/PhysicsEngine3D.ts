@@ -63,8 +63,6 @@ import {
 import { advanceUnitMotionPhysicsMutable } from '../sim/unitMotionIntegration';
 import {
   getSimWasm,
-  STEP_UNIT_MOTIONS_BATCH_STRIDE,
-  RESOLVE_SPHERE_SPHERE_STRIDE,
   BODY_FLAG_SLEEPING,
   BODY_FLAG_IS_STATIC,
   BODY_FLAG_UPWARD_CONTACT,
@@ -74,25 +72,21 @@ import {
 } from '../sim-wasm/init';
 import type { EntityId } from '../sim/types';
 
-// Reusable Float64Array scratch for the batched WASM integrate
-// kernel. Grown on demand; never shrunk so we don't churn
-// allocations across ticks. Single module-scope buffer is safe
-// because integrate() is never called re-entrantly within one
-// JS turn (server ticks at 60 Hz on a setInterval — each tick
-// is a separate microtask).
-let _integrateBatchBuf: Float64Array = new Float64Array(0);
-// Parallel array of the Body3D references at each slot in
-// _integrateBatchBuf — used to read results back into the same
-// body objects after the WASM call. Sized to match the buf.
-let _integrateBatchBodies: Body3D[] = [];
+// Phase 3d-2 scratch buffers. Body state lives in the WASM-side
+// BodyPool, so per-tick marshalling shrinks to: a Uint32Array of
+// active slot ids + per-body pre-sampled ground state (terrain
+// stays JS-side until Phase 8) + a Uint32Array sized to the active
+// count for sleep / wake transitions written out by the kernel.
+// All grown on demand; never shrunk to avoid per-tick allocation
+// churn. Single module-scope set is safe because step() is never
+// called re-entrantly within one JS turn.
+let _integrateAwakeSlots: Uint32Array = new Uint32Array(0);
+let _integrateGroundZ: Float64Array = new Float64Array(0);
+let _integrateGroundNormals: Float64Array = new Float64Array(0);
+let _integrateSleepTransitions: Uint32Array = new Uint32Array(0);
 
-// Separate scratch for the sphere-sphere resolver batch (Phase 3c).
-// Layout is different from the integrate batch (stride 13 vs 19) AND
-// it includes sleeping bodies (the resolver iterates them so a body
-// spawning into a sleeping body's slot can still get pushed apart),
-// so a shared buffer would be wasteful.
-let _sphereSphereBatchBuf: Float64Array = new Float64Array(0);
-let _sphereSphereBatchBodies: Body3D[] = [];
+let _sphereSphereSlots: Uint32Array = new Uint32Array(0);
+let _sphereSphereWakeTransitions: Uint32Array = new Uint32Array(0);
 
 // Pack a (cx, cy, cz) integer cell coordinate into a single numeric
 // key. Each axis is 16-bit biased; the packed value is a 48-bit
@@ -323,6 +317,13 @@ export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
   private dynamicBodies: Body3D[] = [];
   private staticBodies: Body3D[] = [];
+  // Slot-id → Body3D lookup. Indexed by the pool slot, so the
+  // sleep-/wake-transition outputs from pool kernels (which carry
+  // slot ids, not Body3D references) can resolve back to the JS
+  // Body3D for engine-side bookkeeping (awake count, accumulator
+  // clear, ignore-pair purge). Sparse — undefined entries are slots
+  // not owned by this engine instance.
+  private bodyBySlot: (Body3D | undefined)[] = [];
   private awakeDynamicBodyCount = 0;
   private stepSyncEntityIds: EntityId[] = [];
   private stepSyncEntityIdSet = new Set<EntityId>();
@@ -458,6 +459,7 @@ export class PhysicsEngine3D {
 
   private addBody(body: Body3D): void {
     this.bodies.push(body);
+    this.bodyBySlot[body.slot] = body;
     if (body.isStatic) {
       this.staticBodies.push(body);
       this.addStaticToBroadphase(body);
@@ -484,6 +486,7 @@ export class PhysicsEngine3D {
     for (const [dyn, stat] of this.ignoreStatic) {
       if (dyn === body || stat === body) this.ignoreStatic.delete(dyn);
     }
+    this.bodyBySlot[body.slot] = undefined;
     // Release the BodyPool slot so future bodies can reuse it.
     body.free();
   }
@@ -734,28 +737,25 @@ export class PhysicsEngine3D {
     this.integratePerBodyFallback(dtSec, airDamp, groundDamp);
   }
 
-  /** Phase 3a batched WASM path. Sphere bodies get packed into the
-   *  scratch buffer and integrated in one Rust call; non-sphere
-   *  dynamic bodies (none exist today but the code path remains
-   *  defensive) run free-Euler inline. Sleep transitions are
-   *  signalled via the buffer's sleeping_flag slot and applied to
-   *  the matching Body3D JS object after the call. */
+  /** Phase 3d-2: pool-backed batched integrate. Sphere bodies are
+   *  integrated by SLOT INDEX with state read directly from the
+   *  WASM-side BodyPool — no Body3D state crosses the boundary
+   *  (only the slot list, pre-sampled ground state, and the
+   *  sleep-transition output buffer). Non-sphere dynamic bodies
+   *  (none exist today) still run free-Euler inline JS-side. */
   private integrateBatchedWasm(
     dtSec: number,
     airDamp: number,
     groundDamp: number,
     sim: NonNullable<ReturnType<typeof getSimWasm>>,
   ): void {
-    const stride = STEP_UNIT_MOTIONS_BATCH_STRIDE;
     const maxCount = this.dynamicBodies.length;
-    const requiredLen = maxCount * stride;
-    if (_integrateBatchBuf.length < requiredLen) {
-      _integrateBatchBuf = new Float64Array(requiredLen);
+    if (_integrateAwakeSlots.length < maxCount) {
+      _integrateAwakeSlots = new Uint32Array(maxCount);
+      _integrateGroundZ = new Float64Array(maxCount);
+      _integrateGroundNormals = new Float64Array(maxCount * 3);
+      _integrateSleepTransitions = new Uint32Array(maxCount);
     }
-    if (_integrateBatchBodies.length < maxCount) {
-      _integrateBatchBodies = new Array(maxCount);
-    }
-    const buf = _integrateBatchBuf;
     let count = 0;
     for (let i = 0; i < this.dynamicBodies.length; i++) {
       const b = this.dynamicBodies[i];
@@ -791,50 +791,42 @@ export class PhysicsEngine3D {
         ny = n.ny;
         nz = n.nz;
       }
-      const base = count * stride;
-      buf[base + 0] = b.x;
-      buf[base + 1] = b.y;
-      buf[base + 2] = b.z;
-      buf[base + 3] = b.vx;
-      buf[base + 4] = b.vy;
-      buf[base + 5] = b.vz;
-      buf[base + 6] = b.ax;
-      buf[base + 7] = b.ay;
-      buf[base + 8] = b.az;
-      buf[base + 9] = b.groundLaunchAx;
-      buf[base + 10] = b.groundLaunchAy;
-      buf[base + 11] = b.groundLaunchAz;
-      buf[base + 12] = b.groundOffset;
-      buf[base + 13] = groundZ;
-      buf[base + 14] = nx;
-      buf[base + 15] = ny;
-      buf[base + 16] = nz;
-      buf[base + 17] = 0;
-      buf[base + 18] = b.sleepTicks;
-      _integrateBatchBodies[count] = b;
+      _integrateAwakeSlots[count] = b.slot;
+      _integrateGroundZ[count] = groundZ;
+      _integrateGroundNormals[count * 3] = nx;
+      _integrateGroundNormals[count * 3 + 1] = ny;
+      _integrateGroundNormals[count * 3 + 2] = nz;
       count++;
     }
     if (count === 0) return;
-    sim.stepUnitMotionsBatch(buf, count, dtSec, airDamp, groundDamp);
-    for (let i = 0; i < count; i++) {
-      const base = i * stride;
-      const b = _integrateBatchBodies[i];
-      b.x = buf[base + 0];
-      b.y = buf[base + 1];
-      b.z = buf[base + 2];
-      b.vx = buf[base + 3];
-      b.vy = buf[base + 4];
-      b.vz = buf[base + 5];
-      b.sleepTicks = buf[base + 18];
-      if (buf[base + 17] === 1) {
-        // Rust kernel snapped position + zeroed velocity in the
-        // buffer; sleepBody() handles the awake-count decrement +
-        // accumulator clear that the JS sleepBody() always did.
+    // Slice the typed arrays down to `count` so the kernel's
+    // debug_assert on length matches; the underlying buffer is
+    // shared so this is zero-copy.
+    const slotsView = _integrateAwakeSlots.subarray(0, count);
+    const groundZView = _integrateGroundZ.subarray(0, count);
+    const groundNormalsView = _integrateGroundNormals.subarray(0, count * 3);
+    const transitionsView = _integrateSleepTransitions.subarray(0, count);
+    const transitionCount = sim.poolStepIntegrate(
+      slotsView,
+      groundZView,
+      groundNormalsView,
+      transitionsView,
+      dtSec,
+      airDamp,
+      groundDamp,
+    );
+    for (let i = 0; i < transitionCount; i++) {
+      const slot = transitionsView[i];
+      const b = this.bodyBySlot[slot];
+      if (b !== undefined) {
+        // sleepBody() handles the awake-count decrement + the eager
+        // accumulator clear (resolvers may otherwise see stale
+        // ax/ay/az on a body that re-wakes from collision the same
+        // step). The Rust kernel already snapped position + zeroed
+        // velocity in the pool, so b.x/y/z and v[xyz] are already
+        // at the snapped/rest values.
         this.sleepBody(b);
       }
-      // Release the Body3D reference so it can be GC'd if the
-      // body is removed before the next tick.
-      _integrateBatchBodies[i] = undefined as unknown as Body3D;
     }
   }
 
@@ -1027,66 +1019,53 @@ export class PhysicsEngine3D {
     }
   }
 
+  /** Phase 3d-2: pool-backed sphere-sphere resolver. The Rust
+   *  kernel reads body state by slot index and writes positions /
+   *  velocities / upward-contact flag bit directly into the pool;
+   *  JS only marshals the slot list and a wake-transition output
+   *  buffer. */
   private resolveSphereSphereContactsBatchedWasm(
     sim: NonNullable<ReturnType<typeof getSimWasm>>,
     iterations: number,
   ): void {
     const bodies = this.dynamicBodies;
-    const stride = RESOLVE_SPHERE_SPHERE_STRIDE;
     const maxCount = bodies.length;
     if (maxCount === 0 || iterations <= 0) return;
-    const requiredLen = maxCount * stride;
-    if (_sphereSphereBatchBuf.length < requiredLen) {
-      _sphereSphereBatchBuf = new Float64Array(requiredLen);
+    if (_sphereSphereSlots.length < maxCount) {
+      _sphereSphereSlots = new Uint32Array(maxCount);
+      _sphereSphereWakeTransitions = new Uint32Array(maxCount);
     }
-    if (_sphereSphereBatchBodies.length < maxCount) {
-      _sphereSphereBatchBodies = new Array(maxCount);
-    }
-    const buf = _sphereSphereBatchBuf;
     let n = 0;
     for (let i = 0; i < maxCount; i++) {
       const b = bodies[i];
       if (b.shape !== 'sphere') continue;
-      const base = n * stride;
-      buf[base + 0] = b.x;
-      buf[base + 1] = b.y;
-      buf[base + 2] = b.z;
-      buf[base + 3] = b.vx;
-      buf[base + 4] = b.vy;
-      buf[base + 5] = b.vz;
-      buf[base + 6] = b.radius;
-      buf[base + 7] = b.invMass;
-      buf[base + 8] = b.restitution;
-      // entityId is `number | undefined`. Pass 0 for undefined so Rust
-      // can fall back to the buffer index for the tie-break seed.
-      buf[base + 9] = b.entityId ?? 0;
-      buf[base + 10] = b.sleeping ? 1 : 0;
-      buf[base + 11] = 0; // wake_flag (out)
-      buf[base + 12] = 0; // upward_contact_flag (out)
-      _sphereSphereBatchBodies[n] = b;
+      // Sleeping bodies still iterate the broadphase here — see the
+      // long comment in resolveSphereSphereContactsTsIteration around
+      // line 800 for why (a body spawning into a sleeping body's slot
+      // must still get pushed apart).
+      _sphereSphereSlots[n] = b.slot;
       n++;
     }
     if (n === 0) return;
-    sim.resolveSphereSphereContacts(buf, n, iterations, CONTACT_CELL_SIZE);
-    for (let i = 0; i < n; i++) {
-      const base = i * stride;
-      const b = _sphereSphereBatchBodies[i];
-      b.x = buf[base + 0];
-      b.y = buf[base + 1];
-      b.z = buf[base + 2];
-      b.vx = buf[base + 3];
-      b.vy = buf[base + 4];
-      b.vz = buf[base + 5];
-      if (buf[base + 11] === 1) {
-        // wakeBody is idempotent on already-awake bodies — same as
-        // the TS path's unconditional wakeBody(a); wakeBody(b);
-        // after a pair resolves.
+    const slotsView = _sphereSphereSlots.subarray(0, n);
+    const wakeView = _sphereSphereWakeTransitions.subarray(0, n);
+    const wakeCount = sim.poolResolveSphereSphere(
+      slotsView,
+      iterations,
+      CONTACT_CELL_SIZE,
+      wakeView,
+    );
+    for (let i = 0; i < wakeCount; i++) {
+      const slot = wakeView[i];
+      const b = this.bodyBySlot[slot];
+      if (b !== undefined) {
+        // wakeBody is idempotent on already-awake bodies — matches
+        // the TS path's unconditional wake on pair resolution. The
+        // upward-contact flag is already set on the pool's flags
+        // byte by the Rust kernel; reading via b.upwardSurfaceContact
+        // (the getter on Body3D) returns the freshly-set value.
         this.wakeBody(b);
       }
-      if (buf[base + 12] === 1) {
-        b.upwardSurfaceContact = true;
-      }
-      _sphereSphereBatchBodies[i] = undefined as unknown as Body3D;
     }
   }
 
