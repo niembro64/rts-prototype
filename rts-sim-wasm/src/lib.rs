@@ -6059,6 +6059,11 @@ pub fn snapshot_encode_entity_unit(
     qsuspension_offset_x: i32, qsuspension_offset_y: i32, qsuspension_offset_z: i32,
     qsuspension_vel_x: i32, qsuspension_vel_y: i32, qsuspension_vel_z: i32,
     suspension_leg_contact: u8,
+    has_jump: u8,
+    jump_enabled: u8,
+    jump_active: u8,
+    has_jump_launch_seq: u8,
+    jump_launch_seq: u32,
 ) -> u32 {
     let w = messagepack_writer();
     w.buf.clear();
@@ -6078,6 +6083,7 @@ pub fn snapshot_encode_entity_unit(
     if has_movement_accel != 0 { unit_field_count += 1; }
     if has_surface_normal != 0 { unit_field_count += 1; }
     if has_suspension != 0 { unit_field_count += 1; }
+    if has_jump != 0 { unit_field_count += 1; }
 
     w.write_str("unit");
     w.write_map_header(unit_field_count);
@@ -6143,6 +6149,24 @@ pub fn snapshot_encode_entity_unit(
         if suspension_leg_contact != 0 {
             w.write_str("legContact");
             w.write_bool(true);
+        }
+    }
+
+    if has_jump != 0 {
+        let mut jump_field_count: usize = 1;  // enabled (always present)
+        if jump_active != 0 { jump_field_count += 1; }
+        if has_jump_launch_seq != 0 { jump_field_count += 1; }
+        w.write_str("jump");
+        w.write_map_header(jump_field_count);
+        w.write_str("enabled");
+        w.write_bool(jump_enabled != 0);
+        if jump_active != 0 {
+            w.write_str("active");
+            w.write_bool(true);
+        }
+        if has_jump_launch_seq != 0 {
+            w.write_str("launchSeq");
+            w.write_uint(jump_launch_seq as u64);
         }
     }
 

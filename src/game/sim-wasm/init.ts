@@ -853,6 +853,11 @@ export interface SnapshotEncodeApi {
     qsuspensionOffsetX: number, qsuspensionOffsetY: number, qsuspensionOffsetZ: number,
     qsuspensionVelX: number, qsuspensionVelY: number, qsuspensionVelZ: number,
     suspensionLegContact: number,
+    hasJump: number,
+    jumpEnabled: number,
+    jumpActive: number,
+    hasJumpLaunchSeq: number,
+    jumpLaunchSeq: number,
   ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
    *  by every encoder call. */

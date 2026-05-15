@@ -101,6 +101,11 @@ type UnitFixture = BasicEntityFixture & {
       velocity: { x: number; y: number; z: number };
       legContact?: true;
     };
+    jump?: {
+      enabled: boolean;
+      active?: true;
+      launchSeq?: number;
+    };
   };
 };
 
@@ -226,6 +231,58 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         },
       },
     },
+    // jump enabled=false, no active, no launchSeq (idle jumper)
+    {
+      id: 410, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        jump: { enabled: false },
+      },
+    },
+    // jump enabled=true, no active, no launchSeq (armed but pre-launch)
+    {
+      id: 411, type: 'unit', pos: { x: 100, y: 0, z: 0 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        jump: { enabled: true },
+      },
+    },
+    // jump enabled=true, active=true, launchSeq (mid-flight after launch)
+    {
+      id: 412, type: 'unit', pos: { x: 200, y: 0, z: 500 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 90, max: 100 },
+        velocity: { x: 50, y: 0, z: 100 },
+        jump: { enabled: true, active: true, launchSeq: 42 },
+      },
+    },
+    // jump with launchSeq only (no active) + delta path
+    {
+      id: 413, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2, changedFields: 0x800,
+      unit: {
+        hp: { curr: 50, max: 50 },
+        velocity: { x: 0, y: 0, z: 0 },
+        jump: { enabled: true, launchSeq: 9999 },
+      },
+    },
+    // Everything together — jumping unit on a slope
+    {
+      id: 414, type: 'unit', pos: { x: 1000, y: 2000, z: 300 }, rotation: -1571, playerId: 3, changedFields: 0x80F,
+      unit: {
+        hp: { curr: 60, max: 100 },
+        velocity: { x: 75, y: -25, z: 200 },
+        movementAccel: { x: 50, y: 0, z: 0 },
+        surfaceNormal: { nx: 50, ny: -100, nz: 990 },
+        suspension: {
+          offset: { x: 0, y: 0, z: 150 },
+          velocity: { x: 0, y: 0, z: 50 },
+          legContact: true,
+        },
+        jump: { enabled: true, active: true, launchSeq: 123 },
+      },
+    },
   ];
 
   let passed = 0;
@@ -241,6 +298,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasNormal = sn !== undefined ? 1 : 0;
     const sp = f.unit.suspension;
     const hasSuspension = sp !== undefined ? 1 : 0;
+    const jp = f.unit.jump;
+    const hasJump = jp !== undefined ? 1 : 0;
     snapshot_encode_entity_unit(
       f.id, typeTag,
       f.pos.x, f.pos.y, f.pos.z,
@@ -256,6 +315,11 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       sp?.offset.x ?? 0, sp?.offset.y ?? 0, sp?.offset.z ?? 0,
       sp?.velocity.x ?? 0, sp?.velocity.y ?? 0, sp?.velocity.z ?? 0,
       sp?.legContact === true ? 1 : 0,
+      hasJump,
+      jp?.enabled === true ? 1 : 0,
+      jp?.active === true ? 1 : 0,
+      jp?.launchSeq !== undefined ? 1 : 0,
+      jp?.launchSeq ?? 0,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
