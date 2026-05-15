@@ -829,13 +829,11 @@ export interface SnapshotEncodeApi {
     changedFields: number,
   ) => number;
   /** Encode envelope + `unit: {hp, velocity [, movementAccel]
-   *  [, surfaceNormal]}`. HP values use raw msgpack `number` (int
-   *  branch for integer doubles, f64 otherwise); velocity,
-   *  movementAccel, surfaceNormal are pre-quantized i32 (caller
-   *  does qVel + qNormal). Optional fields gated by their `has_*`
-   *  flags in field-declaration order so the MessagePack key
-   *  sequence matches the JS NetworkUnitSnapshot type's property
-   *  order. */
+   *  [, surfaceNormal] [, suspension]}`. Numeric vector components
+   *  are pre-quantized i32 (caller does qVel / qNormal /
+   *  qSuspension). Suspension has nested offset / velocity plus an
+   *  optional legContact flag (1 emits `true`, 0 omits the key —
+   *  mirrors JS `out.legContact = ? true : undefined`). */
   encodeEntityUnit: (
     id: number,
     typeTag: number,
@@ -851,6 +849,10 @@ export interface SnapshotEncodeApi {
     qmovX: number, qmovY: number, qmovZ: number,
     hasSurfaceNormal: number,
     qnormalX: number, qnormalY: number, qnormalZ: number,
+    hasSuspension: number,
+    qsuspensionOffsetX: number, qsuspensionOffsetY: number, qsuspensionOffsetZ: number,
+    qsuspensionVelX: number, qsuspensionVelY: number, qsuspensionVelZ: number,
+    suspensionLegContact: number,
   ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
    *  by every encoder call. */

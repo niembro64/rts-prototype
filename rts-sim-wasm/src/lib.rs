@@ -6028,14 +6028,17 @@ pub fn snapshot_encode_entity_basic(
 }
 
 /// Encode an entity with a unit sub-object. Mandatory keys: `hp` +
-/// `velocity` (always present when the unit sub-object exists).
-/// Optional keys gated by their `has_*` flags: movementAccel,
-/// surfaceNormal.
+/// `velocity`. Optional keys gated by `has_*` flags: movementAccel,
+/// surfaceNormal, suspension.
+///
+/// suspension is nested: `{offset, velocity, [legContact]}`. The
+/// `legContact` key is either `true` or absent (never `false`) —
+/// JS writes `out.legContact = ... ? true : undefined;` and
+/// ignoreUndefined drops the undefined case. `leg_contact` here is
+/// 0 (omit) or 1 (emit true).
 ///
 /// Field order inside `unit` mirrors NetworkUnitSnapshot's type
-/// declaration (movementAccel between velocity and surfaceNormal)
-/// so the MessagePack key sequence stays stable as future commits
-/// add more optional fields.
+/// declaration.
 #[wasm_bindgen]
 pub fn snapshot_encode_entity_unit(
     id: u32,
@@ -6052,6 +6055,10 @@ pub fn snapshot_encode_entity_unit(
     qmov_x: i32, qmov_y: i32, qmov_z: i32,
     has_surface_normal: u8,
     qnormal_x: i32, qnormal_y: i32, qnormal_z: i32,
+    has_suspension: u8,
+    qsuspension_offset_x: i32, qsuspension_offset_y: i32, qsuspension_offset_z: i32,
+    qsuspension_vel_x: i32, qsuspension_vel_y: i32, qsuspension_vel_z: i32,
+    suspension_leg_contact: u8,
 ) -> u32 {
     let w = messagepack_writer();
     w.buf.clear();
@@ -6070,6 +6077,7 @@ pub fn snapshot_encode_entity_unit(
     let mut unit_field_count: usize = 2; // hp + velocity
     if has_movement_accel != 0 { unit_field_count += 1; }
     if has_surface_normal != 0 { unit_field_count += 1; }
+    if has_suspension != 0 { unit_field_count += 1; }
 
     w.write_str("unit");
     w.write_map_header(unit_field_count);
@@ -6110,6 +6118,32 @@ pub fn snapshot_encode_entity_unit(
         w.write_int(qnormal_y as i64);
         w.write_str("nz");
         w.write_int(qnormal_z as i64);
+    }
+
+    if has_suspension != 0 {
+        let suspension_field_count = if suspension_leg_contact != 0 { 3 } else { 2 };
+        w.write_str("suspension");
+        w.write_map_header(suspension_field_count);
+        w.write_str("offset");
+        w.write_map_header(3);
+        w.write_str("x");
+        w.write_int(qsuspension_offset_x as i64);
+        w.write_str("y");
+        w.write_int(qsuspension_offset_y as i64);
+        w.write_str("z");
+        w.write_int(qsuspension_offset_z as i64);
+        w.write_str("velocity");
+        w.write_map_header(3);
+        w.write_str("x");
+        w.write_int(qsuspension_vel_x as i64);
+        w.write_str("y");
+        w.write_int(qsuspension_vel_y as i64);
+        w.write_str("z");
+        w.write_int(qsuspension_vel_z as i64);
+        if suspension_leg_contact != 0 {
+            w.write_str("legContact");
+            w.write_bool(true);
+        }
     }
 
     w.buf.len() as u32

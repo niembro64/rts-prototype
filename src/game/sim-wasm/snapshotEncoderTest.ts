@@ -96,6 +96,11 @@ type UnitFixture = BasicEntityFixture & {
     velocity: { x: number; y: number; z: number };
     movementAccel?: { x: number; y: number; z: number };
     surfaceNormal?: { nx: number; ny: number; nz: number };
+    suspension?: {
+      offset: { x: number; y: number; z: number };
+      velocity: { x: number; y: number; z: number };
+      legContact?: true;
+    };
   };
 };
 
@@ -181,6 +186,46 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         movementAccel: { x: -150, y: -100, z: 0 },
       },
     },
+    // suspension without legContact (legged walker airborne mid-step)
+    {
+      id: 110, type: 'unit', pos: { x: 0, y: 0, z: 50 }, rotation: 0, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: -10 },
+        suspension: {
+          offset: { x: 0, y: 0, z: 200 },
+          velocity: { x: 0, y: 0, z: -50 },
+        },
+      },
+    },
+    // suspension with legContact (grounded, settled)
+    {
+      id: 220, type: 'unit', pos: { x: 100, y: 200, z: 30 }, rotation: 314, playerId: 2,
+      unit: {
+        hp: { curr: 88, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        suspension: {
+          offset: { x: 5, y: -3, z: 0 },
+          velocity: { x: 0, y: 0, z: 0 },
+          legContact: true,
+        },
+      },
+    },
+    // suspension + movementAccel + surfaceNormal (mid-stride on slope)
+    {
+      id: 330, type: 'unit', pos: { x: 5000, y: 5000, z: 200 }, rotation: 1571, playerId: 2, changedFields: 0x204,
+      unit: {
+        hp: { curr: 75, max: 120 },
+        velocity: { x: 50, y: 25, z: 3 },
+        movementAccel: { x: 40, y: 20, z: 0 },
+        surfaceNormal: { nx: 100, ny: 100, nz: 985 },
+        suspension: {
+          offset: { x: -10, y: 5, z: 100 },
+          velocity: { x: 0, y: 0, z: 20 },
+          legContact: true,
+        },
+      },
+    },
   ];
 
   let passed = 0;
@@ -194,6 +239,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasMovementAccel = ma !== undefined ? 1 : 0;
     const sn = f.unit.surfaceNormal;
     const hasNormal = sn !== undefined ? 1 : 0;
+    const sp = f.unit.suspension;
+    const hasSuspension = sp !== undefined ? 1 : 0;
     snapshot_encode_entity_unit(
       f.id, typeTag,
       f.pos.x, f.pos.y, f.pos.z,
@@ -205,6 +252,10 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       ma?.x ?? 0, ma?.y ?? 0, ma?.z ?? 0,
       hasNormal,
       sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
+      hasSuspension,
+      sp?.offset.x ?? 0, sp?.offset.y ?? 0, sp?.offset.z ?? 0,
+      sp?.velocity.x ?? 0, sp?.velocity.y ?? 0, sp?.velocity.z ?? 0,
+      sp?.legContact === true ? 1 : 0,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
