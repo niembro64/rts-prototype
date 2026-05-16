@@ -7305,6 +7305,97 @@ pub fn snapshot_encode_capture_height_scratch_ensure(count: u32) {
     }
 }
 
+/// Audio-event scratch — 16 f64 per event (NetworkServerSnapshotSimEvent
+/// minus deathContext / impactContext, which arrive in follow-ups).
+///   [0]    type_code (0='fire', 1='hit', 2='death', 3='laserStart',
+///           4='laserStop', 5='forceFieldStart', 6='forceFieldStop',
+///           7='forceFieldImpact', 8='ping', 9='attackAlert',
+///           10='projectileExpire')
+///   [1..4] pos.x, pos.y, pos.z (always present)
+///   [4]    playerId (gated by flags bit 2)
+///   [5]    entityId (gated by flags bit 3)
+///   [6]    killerPlayerId (gated by flags bit 5)
+///   [7]    victimPlayerId (gated by flags bit 6)
+///   [8..11] forceFieldImpact.normal.x/y/z (gated by flags bit 4)
+///   [11]   forceFieldImpact.playerId
+///   [12]   sourceType_code (gated by flags bit 0; 0='turret', 1='unit',
+///           2='building', 3='system')
+///   [13]   turretId string-scratch slot (always present — empty
+///           string is a valid value, encoded as fixstr 0xA0)
+///   [14]   sourceKey string-scratch slot (gated by flags bit 1)
+///   [15]   flags: bit 0 has_sourceType, bit 1 has_sourceKey,
+///           bit 2 has_playerId, bit 3 has_entityId,
+///           bit 4 has_forceFieldImpact, bit 5 has_killerPlayerId,
+///           bit 6 has_victimPlayerId, bit 7 has_audioOnly,
+///           bit 8 audioOnly_value, bit 9 has_deathContext (TBD),
+///           bit 10 has_impactContext (TBD).
+const SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE: usize = 16;
+
+struct SnapshotEncodeAudioEventScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeAudioEventScratchHolder(UnsafeCell<Option<SnapshotEncodeAudioEventScratch>>);
+unsafe impl Sync for SnapshotEncodeAudioEventScratchHolder {}
+static SNAPSHOT_ENCODE_AUDIO_EVENT_SCRATCH: SnapshotEncodeAudioEventScratchHolder =
+    SnapshotEncodeAudioEventScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_audio_event_scratch() -> &'static mut SnapshotEncodeAudioEventScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_AUDIO_EVENT_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeAudioEventScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE * 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_audio_event_scratch_ptr() -> *const f64 {
+    snapshot_encode_audio_event_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_audio_event_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE;
+    let s = snapshot_encode_audio_event_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
+#[inline]
+fn audio_event_type_str(code: u8) -> &'static str {
+    match code {
+        0 => "fire",
+        1 => "hit",
+        2 => "death",
+        3 => "laserStart",
+        4 => "laserStop",
+        5 => "forceFieldStart",
+        6 => "forceFieldStop",
+        7 => "forceFieldImpact",
+        8 => "ping",
+        9 => "attackAlert",
+        10 => "projectileExpire",
+        _ => "",
+    }
+}
+
+#[inline]
+fn audio_event_source_type_str(code: u8) -> &'static str {
+    match code {
+        0 => "turret",
+        1 => "unit",
+        2 => "building",
+        3 => "system",
+        _ => "",
+    }
+}
+
 /// Economy scratch — 16 f64 per player (caller must pack in ASCENDING
 /// playerId order to match @msgpack/msgpack's iteration of a JS
 /// object with integer-string keys).
@@ -7959,6 +8050,123 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
         w.write_str("extraction"); w.write_number(scratch.buf[base + 14]);
         w.write_str("expenditure");
         w.write_number(scratch.buf[base + 15]);
+    }
+    w.buf.len() as u32
+}
+
+/// Append `audioEvents: [...]`. Sits between sprayTargets and
+/// projectiles in iteration order. Per-event pool-iteration order
+/// matches the order properties are first assigned to the pooled
+/// SimEventDto (createSimEventDto static keys first, then the
+/// lazy-added entityId/deathContext/impactContext from
+/// copySimEventInto): type, turretId, sourceType, sourceKey, pos,
+/// playerId, forceFieldImpact, killerPlayerId, victimPlayerId,
+/// audioOnly, entityId, [deathContext], [impactContext].
+///
+/// D.3j-26 emits everything EXCEPT deathContext + impactContext —
+/// those are large nested objects (~30 fields combined) and come in
+/// follow-up commits. Bits 9 + 10 in the flags word are reserved.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
+    let w = messagepack_writer();
+    let n = count as usize;
+    let scratch = snapshot_encode_audio_event_scratch();
+    w.write_str("audioEvents");
+    w.write_array_header(n);
+    for i in 0..n {
+        let base = i * SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE;
+        let type_code = scratch.buf[base] as u8;
+        let pos_x = scratch.buf[base + 1];
+        let pos_y = scratch.buf[base + 2];
+        let pos_z = scratch.buf[base + 3];
+        let player_id = scratch.buf[base + 4] as u32;
+        let entity_id = scratch.buf[base + 5] as u32;
+        let killer_player_id = scratch.buf[base + 6] as u32;
+        let victim_player_id = scratch.buf[base + 7] as u32;
+        let ff_nx = scratch.buf[base + 8];
+        let ff_ny = scratch.buf[base + 9];
+        let ff_nz = scratch.buf[base + 10];
+        let ff_player_id = scratch.buf[base + 11] as u32;
+        let source_type_code = scratch.buf[base + 12] as u8;
+        let turret_id_slot = scratch.buf[base + 13] as u32;
+        let source_key_slot = scratch.buf[base + 14] as u32;
+        let flags = scratch.buf[base + 15] as u32;
+
+        let has_source_type = (flags & 0x001) != 0;
+        let has_source_key = (flags & 0x002) != 0;
+        let has_player_id = (flags & 0x004) != 0;
+        let has_entity_id = (flags & 0x008) != 0;
+        let has_ff_impact = (flags & 0x010) != 0;
+        let has_killer = (flags & 0x020) != 0;
+        let has_victim = (flags & 0x040) != 0;
+        let has_audio_only = (flags & 0x080) != 0;
+        let audio_only_value = (flags & 0x100) != 0;
+
+        // Per-event field count: 3 always (type, turretId, pos) +
+        // optionals. deathContext + impactContext flags are reserved
+        // for future commits — current D.3j-26 fixtures don't set them.
+        let mut field_count: usize = 3;
+        if has_source_type { field_count += 1; }
+        if has_source_key { field_count += 1; }
+        if has_player_id { field_count += 1; }
+        if has_ff_impact { field_count += 1; }
+        if has_killer { field_count += 1; }
+        if has_victim { field_count += 1; }
+        if has_audio_only { field_count += 1; }
+        if has_entity_id { field_count += 1; }
+        w.write_map_header(field_count);
+
+        // Pool-iteration order as documented above.
+        w.write_str("type");
+        w.write_str(audio_event_type_str(type_code));
+        w.write_str("turretId");
+        write_string_from_scratch(w, turret_id_slot);
+        if has_source_type {
+            w.write_str("sourceType");
+            w.write_str(audio_event_source_type_str(source_type_code));
+        }
+        if has_source_key {
+            w.write_str("sourceKey");
+            write_string_from_scratch(w, source_key_slot);
+        }
+        w.write_str("pos");
+        w.write_map_header(3);
+        w.write_str("x"); w.write_number(pos_x);
+        w.write_str("y"); w.write_number(pos_y);
+        w.write_str("z"); w.write_number(pos_z);
+        if has_player_id {
+            w.write_str("playerId");
+            w.write_uint(player_id as u64);
+        }
+        if has_ff_impact {
+            w.write_str("forceFieldImpact");
+            // Pool order: normal, playerId (from copySimEventInto's
+            // defensive literal).
+            w.write_map_header(2);
+            w.write_str("normal");
+            w.write_map_header(3);
+            w.write_str("x"); w.write_number(ff_nx);
+            w.write_str("y"); w.write_number(ff_ny);
+            w.write_str("z"); w.write_number(ff_nz);
+            w.write_str("playerId");
+            w.write_uint(ff_player_id as u64);
+        }
+        if has_killer {
+            w.write_str("killerPlayerId");
+            w.write_uint(killer_player_id as u64);
+        }
+        if has_victim {
+            w.write_str("victimPlayerId");
+            w.write_uint(victim_player_id as u64);
+        }
+        if has_audio_only {
+            w.write_str("audioOnly");
+            w.write_bool(audio_only_value);
+        }
+        if has_entity_id {
+            w.write_str("entityId");
+            w.write_uint(entity_id as u64);
+        }
     }
     w.buf.len() as u32
 }

@@ -166,6 +166,9 @@ import __wbg_init, {
   snapshot_encode_capture_height_scratch_ensure,
   snapshot_encode_economy_scratch_ptr,
   snapshot_encode_economy_scratch_ensure,
+  snapshot_encode_envelope_emit_audio_events,
+  snapshot_encode_audio_event_scratch_ptr,
+  snapshot_encode_audio_event_scratch_ensure,
   snapshot_encode_proj_despawn_scratch_ptr,
   snapshot_encode_proj_despawn_scratch_ensure,
   snapshot_encode_proj_spawn_scratch_ptr,
@@ -1119,6 +1122,18 @@ export interface SnapshotEncodeApi {
   economyScratchEnsure: (count: number) => void;
   /** Stride per economy entry (f64 count). */
   readonly economyScratchStride: number;
+  /** Emit `audioEvents: [...]`. D.3j-26 covers everything except
+   *  deathContext + impactContext (large nested objects deferred to
+   *  later commits). Caller pre-packs strings into the shared string
+   *  scratch and stores their slot indices in the audio scratch. */
+  emitAudioEvents: (count: number) => number;
+  /** Raw pointer to the audio-event scratch (Float64Array, 16 f64
+   *  per event — see lib.rs SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE). */
+  audioEventScratchPtr: () => number;
+  /** Pre-grow the audio-event scratch to hold `count` events. */
+  audioEventScratchEnsure: (count: number) => void;
+  /** Stride per audio-event entry (f64 count). */
+  readonly audioEventScratchStride: number;
   /** Raw pointer to the beam-update header scratch (Float64Array,
    *  4 f64 per update: id, flags, obstructionT, point_count). */
   beamUpdateScratchPtr: () => number;
@@ -1600,6 +1615,10 @@ export function initSimWasm(): Promise<SimWasm> {
           economyScratchPtr: snapshot_encode_economy_scratch_ptr,
           economyScratchEnsure: snapshot_encode_economy_scratch_ensure,
           economyScratchStride: 16,
+          emitAudioEvents: snapshot_encode_envelope_emit_audio_events,
+          audioEventScratchPtr: snapshot_encode_audio_event_scratch_ptr,
+          audioEventScratchEnsure: snapshot_encode_audio_event_scratch_ensure,
+          audioEventScratchStride: 16,
           projDespawnScratchPtr: snapshot_encode_proj_despawn_scratch_ptr,
           projDespawnScratchEnsure: snapshot_encode_proj_despawn_scratch_ensure,
           projSpawnScratchPtr: snapshot_encode_proj_spawn_scratch_ptr,

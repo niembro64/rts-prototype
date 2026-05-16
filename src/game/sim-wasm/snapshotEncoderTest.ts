@@ -24,6 +24,9 @@ import {
   snapshot_encode_capture_height_scratch_ensure,
   snapshot_encode_economy_scratch_ptr,
   snapshot_encode_economy_scratch_ensure,
+  snapshot_encode_envelope_emit_audio_events,
+  snapshot_encode_audio_event_scratch_ptr,
+  snapshot_encode_audio_event_scratch_ensure,
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
@@ -1516,6 +1519,84 @@ function packBeamUpdatesIntoScratch(
   }
 }
 
+type AudioEventType =
+  | 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop'
+  | 'forceFieldStart' | 'forceFieldStop' | 'forceFieldImpact'
+  | 'ping' | 'attackAlert' | 'projectileExpire';
+type AudioEventSourceType = 'turret' | 'unit' | 'building' | 'system';
+
+const AUDIO_EVENT_TYPE_CODES: Record<AudioEventType, number> = {
+  fire: 0, hit: 1, death: 2, laserStart: 3, laserStop: 4,
+  forceFieldStart: 5, forceFieldStop: 6, forceFieldImpact: 7,
+  ping: 8, attackAlert: 9, projectileExpire: 10,
+};
+
+const AUDIO_EVENT_SOURCE_TYPE_CODES: Record<AudioEventSourceType, number> = {
+  turret: 0, unit: 1, building: 2, system: 3,
+};
+
+type AudioEventFixture = {
+  type: AudioEventType;
+  turretId: string;
+  sourceType?: AudioEventSourceType;
+  sourceKey?: string;
+  pos: { x: number; y: number; z: number };
+  playerId?: number;
+  entityId?: number;
+  forceFieldImpact?: {
+    normal: { x: number; y: number; z: number };
+    playerId: number;
+  };
+  killerPlayerId?: number;
+  victimPlayerId?: number;
+  audioOnly?: boolean;
+};
+
+const AUDIO_EVENT_SCRATCH_STRIDE = 16;
+
+function packAudioEventsIntoScratch(
+  memory: WebAssembly.Memory,
+  events: AudioEventFixture[],
+  stringSlots: Map<string, number>,
+): void {
+  if (events.length === 0) return;
+  snapshot_encode_audio_event_scratch_ensure(events.length);
+  const ptr = snapshot_encode_audio_event_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, events.length * AUDIO_EVENT_SCRATCH_STRIDE);
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    const base = i * AUDIO_EVENT_SCRATCH_STRIDE;
+    view[base + 0] = AUDIO_EVENT_TYPE_CODES[e.type];
+    view[base + 1] = e.pos.x;
+    view[base + 2] = e.pos.y;
+    view[base + 3] = e.pos.z;
+    view[base + 4] = e.playerId ?? 0;
+    view[base + 5] = e.entityId ?? 0;
+    view[base + 6] = e.killerPlayerId ?? 0;
+    view[base + 7] = e.victimPlayerId ?? 0;
+    view[base + 8] = e.forceFieldImpact?.normal.x ?? 0;
+    view[base + 9] = e.forceFieldImpact?.normal.y ?? 0;
+    view[base + 10] = e.forceFieldImpact?.normal.z ?? 0;
+    view[base + 11] = e.forceFieldImpact?.playerId ?? 0;
+    view[base + 12] = e.sourceType ? AUDIO_EVENT_SOURCE_TYPE_CODES[e.sourceType] : 0;
+    view[base + 13] = stringSlots.get(e.turretId) ?? 0;
+    view[base + 14] = e.sourceKey !== undefined ? (stringSlots.get(e.sourceKey) ?? 0) : 0;
+    let flags = 0;
+    if (e.sourceType !== undefined) flags |= 0x001;
+    if (e.sourceKey !== undefined) flags |= 0x002;
+    if (e.playerId !== undefined) flags |= 0x004;
+    if (e.entityId !== undefined) flags |= 0x008;
+    if (e.forceFieldImpact !== undefined) flags |= 0x010;
+    if (e.killerPlayerId !== undefined) flags |= 0x020;
+    if (e.victimPlayerId !== undefined) flags |= 0x040;
+    if (e.audioOnly !== undefined) {
+      flags |= 0x080;
+      if (e.audioOnly) flags |= 0x100;
+    }
+    view[base + 15] = flags;
+  }
+}
+
 type EconomyPlayerFixture = {
   stockpile: { curr: number; max: number };
   income: { base: number; production: number };
@@ -1729,6 +1810,7 @@ type EnvelopeFixture = {
   minimapEntities?: MinimapEntityFixture[];
   economy: EconomyFixture;
   sprayTargets?: SprayTargetFixture[];
+  audioEvents?: AudioEventFixture[];
   projectiles?: ProjectilesFixture;
   gameState?: GameStateFixture;
   isDelta: boolean;
@@ -2049,6 +2131,77 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { playerId: 3, x: 0, y: 0, z: 0, radius: 600, expiresAtTick: 1101 },
       ],
     },
+    // audioEvents — single fire event, minimum fields.
+    {
+      tick: 1400, entities: [], economy: {}, isDelta: true,
+      audioEvents: [{
+        type: 'fire',
+        turretId: 'turret.cannon',
+        pos: { x: 500, y: 500, z: 12 },
+      }],
+    },
+    // audioEvents — laserStart with playerId + sourceType + sourceKey.
+    {
+      tick: 1401, entities: [], economy: {}, isDelta: true,
+      audioEvents: [{
+        type: 'laserStart',
+        turretId: 'turret.laser',
+        sourceType: 'turret',
+        sourceKey: 'turret.laser#0',
+        pos: { x: 100, y: 200, z: 0 },
+        playerId: 1,
+        entityId: 42,
+      }],
+    },
+    // audioEvents — forceFieldImpact with the nested normal vec.
+    {
+      tick: 1402, entities: [], economy: {}, isDelta: true,
+      audioEvents: [{
+        type: 'forceFieldImpact',
+        turretId: '',  // empty-string turretId is valid (fixstr 0xA0)
+        pos: { x: 300, y: 400, z: 50 },
+        forceFieldImpact: {
+          normal: { x: 0.707, y: 0.707, z: 0 },
+          playerId: 2,
+        },
+      }],
+    },
+    // audioEvents — attackAlert with victimPlayerId + audioOnly=true.
+    {
+      tick: 1403, entities: [], economy: {}, isDelta: true,
+      audioEvents: [{
+        type: 'attackAlert',
+        turretId: 'shot.rocket',
+        pos: { x: -100, y: -200, z: 0 },
+        playerId: 3,
+        victimPlayerId: 1,
+        audioOnly: true,
+      }],
+    },
+    // audioEvents — death with killerPlayerId; deathContext omitted
+    // (handled in D.3j-27 follow-up).
+    {
+      tick: 1404, entities: [], economy: {}, isDelta: true,
+      audioEvents: [{
+        type: 'death',
+        turretId: 'unit.tank',
+        sourceType: 'unit',
+        pos: { x: 800, y: 800, z: 5 },
+        playerId: 2,
+        entityId: 100,
+        killerPlayerId: 1,
+      }],
+    },
+    // audioEvents — multiple events in one snapshot mixing types.
+    {
+      tick: 1405, entities: [], economy: {}, isDelta: true,
+      audioEvents: [
+        { type: 'fire', turretId: 'turret.cannon', pos: { x: 0, y: 0, z: 0 } },
+        { type: 'hit', turretId: 'shot.shell', pos: { x: 100, y: 100, z: 0 }, entityId: 50 },
+        { type: 'projectileExpire', turretId: 'shot.shell', pos: { x: 200, y: 200, z: 10 } },
+        { type: 'ping', turretId: '', pos: { x: 0, y: 0, z: 0 }, playerId: 1, audioOnly: false },
+      ],
+    },
     // economy — single player.
     {
       tick: 1300, entities: [], isDelta: true,
@@ -2350,6 +2503,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
 
     const hasMinimap = f.minimapEntities !== undefined ? 1 : 0;
     const hasSprayTargets = f.sprayTargets !== undefined ? 1 : 0;
+    const hasAudioEvents = f.audioEvents !== undefined ? 1 : 0;
     const hasProjectiles = f.projectiles !== undefined ? 1 : 0;
     const hasEconomy = 1;  // always emitted in this commit
     const hasGameState = f.gameState !== undefined ? 1 : 0;
@@ -2363,6 +2517,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       2 /* tick + entities */ +
       hasMinimap +
       hasSprayTargets +
+      hasAudioEvents +
       hasProjectiles +
       hasEconomy +
       hasGameState +
@@ -2379,6 +2534,12 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     // phase).
     const envelopeStrings: string[] = [];
     if (f.gameState?.phase !== undefined) envelopeStrings.push(f.gameState.phase);
+    if (hasAudioEvents && f.audioEvents) {
+      for (const e of f.audioEvents) {
+        envelopeStrings.push(e.turretId);
+        if (e.sourceKey !== undefined) envelopeStrings.push(e.sourceKey);
+      }
+    }
     // Building waypoints + buildingTypes are packed inside the per-entity
     // loop below — but for envelope-level strings we collect now too.
     const envelopeStringSlots = envelopeStrings.length > 0
@@ -2390,6 +2551,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     }
     if (hasMinimap && f.minimapEntities) {
       packMinimapIntoScratch(memory, f.minimapEntities);
+    }
+    if (hasAudioEvents && f.audioEvents) {
+      packAudioEventsIntoScratch(memory, f.audioEvents, envelopeStringSlots);
     }
     if (hasScanPulses && f.scanPulses) {
       packScanPulsesIntoScratch(memory, f.scanPulses);
@@ -2534,6 +2698,26 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     }
     if (hasSprayTargets && f.sprayTargets) {
       snapshot_encode_envelope_emit_spray_targets(f.sprayTargets.length);
+    }
+    if (hasAudioEvents && f.audioEvents) {
+      // The per-entity loop above overwrites the string scratch with
+      // action / waypoint strings, but the audio scratch only stores
+      // SLOT INDICES into the string scratch. Re-pack the same audio
+      // strings here so the slot indices stored in the audio scratch
+      // still point at the right bytes by the time the Rust encoder
+      // reads them. packStringsIntoScratch is deterministic — same
+      // input order yields the same slot assignments.
+      const audioStrings: string[] = [];
+      for (const e of f.audioEvents) {
+        audioStrings.push(e.turretId);
+        if (e.sourceKey !== undefined) audioStrings.push(e.sourceKey);
+      }
+      // Re-include envelope strings so gameState.phase stays valid
+      // when emit_continue runs later (continue also reads the string
+      // scratch).
+      if (f.gameState?.phase !== undefined) audioStrings.unshift(f.gameState.phase);
+      packStringsIntoScratch(memory, audioStrings);
+      snapshot_encode_envelope_emit_audio_events(f.audioEvents.length);
     }
     if (hasProjectiles && f.projectiles) {
       const spawns = f.projectiles.spawns;
