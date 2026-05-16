@@ -28,11 +28,15 @@ src/serverBarConfig.ts now centralizes the HOST SERVER snapshot source of truth:
 SPS options are labeled diagnostic. src/config.ts now uses the documented MID
 delta thresholds for normal play (0.5 wu position and velocity), and projectile
 and beam corrections are not sub-strided beyond the normal snapshot cadence.
+The gated DP-01 regression runner can be enabled with ?dp01=1 or
+VITE_BA_DP01_REGRESSION=1. On the host client it cycles 5/8/10 SPS at a
+60 TPS target, emits safe ping probes for command response, and reports
+correction distance, snapshot bytes, encode time, decode/apply time, render FPS,
+server TPS, and command response in the browser console.
 
 Steps:
-1. Verify local host and remote WebRTC play at 5, 8, and 10 SPS with 60-ish TPS.
-2. Add a regression scenario that reports correction distance, snapshot bytes,
-   encode time, decode/apply time, render FPS, and command response feel.
+1. Run the DP-01 regression locally and in remote WebRTC play at 5, 8, and
+   10 SPS, then save or summarize the console report to close the item.
 
 DP-02 - Turn snapshots into an owned binary wire path instead of JS DTOs plus
 library MessagePack on the hot path.

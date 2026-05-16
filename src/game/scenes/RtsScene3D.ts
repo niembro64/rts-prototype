@@ -11,6 +11,7 @@ import type { SceneCameraState } from '@/types/game';
 import { isShotId, isTurretId, isUnitTypeId } from '@/types/blueprintIds';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
+import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { buildEconomyInfo } from './helpers';
 import type { EconomyInfo, MinimapData, SelectionInfo } from './helpers';
 import { EmaTracker } from './helpers/EmaTracker';
@@ -66,7 +67,7 @@ import {
   getGraphicsConfig,
   getGraphicsConfigFor,
 } from '@/clientBarConfig';
-import { CommandQueue } from '../sim/commands';
+import { CommandQueue, type Command } from '../sim/commands';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
 import {
   getTerrainMeshHeight,
@@ -735,6 +736,17 @@ export class RtsScene3D {
     // Process local commands — select/clearSelection apply to ClientViewState,
     // everything else gets forwarded to the server via GameConnection
     this.processLocalCommands();
+    SNAPSHOT_CADENCE_REGRESSION.tickHostScenario({
+      now: performance.now(),
+      currentTick: this.clientViewState.getTick(),
+      localPlayerId: this.localPlayerId,
+      hostPlayerId: this.playerIds[0],
+      mapWidth: this.mapWidth,
+      mapHeight: this.mapHeight,
+      backgroundMode: this.backgroundMode,
+      lobbyPreview: this.lobbyPreview,
+      sendCommand: (command) => this.gameConnection.sendCommand(command),
+    });
 
     if (!this.clientRenderEnabled) {
       // Diagnostic PLAYER CLIENT OFF path. Keep network snapshot intake,
@@ -755,6 +767,7 @@ export class RtsScene3D {
       this.logicMsTracker.update(frameMs);
       // Render-disabled branch never runs prediction, so PRED ms is 0.
       this.predMsTracker.update(0);
+      SNAPSHOT_CADENCE_REGRESSION.recordFrame({ frameMs, now: frameEnd });
       this.longtaskTracker.tick();
       return;
     }
@@ -830,6 +843,7 @@ export class RtsScene3D {
     this.renderMsTracker.update(renderMs);
     this.logicMsTracker.update(logicMs);
     this.predMsTracker.update(predMs);
+    SNAPSHOT_CADENCE_REGRESSION.recordFrame({ frameMs, now: frameEnd });
     this.longtaskTracker.tick();
   }
 
@@ -841,8 +855,16 @@ export class RtsScene3D {
         command,
         () => this.inputManager?.setWaypointMode('move'),
       );
-      if (!handledSelectionCommand) this.gameConnection.sendCommand(command);
+      if (!handledSelectionCommand) this.sendAuthoritativeCommand(command);
     }
+  }
+
+  private sendAuthoritativeCommand(command: Command): void {
+    SNAPSHOT_CADENCE_REGRESSION.recordCommandIssued(
+      command,
+      this.clientViewState.getTick(),
+    );
+    this.gameConnection.sendCommand(command);
   }
 
   private graphicsConfigForEffectCell(
@@ -1322,7 +1344,7 @@ export class RtsScene3D {
     // Factory build queue is server-authoritative, so this command
     // goes straight through gameConnection (same path the 2D scene's
     // processLocalCommands forwards it to).
-    this.gameConnection.sendCommand({
+    this.sendAuthoritativeCommand({
       type: 'queueUnit',
       tick: this.clientViewState.getTick(),
       factoryId,
@@ -1331,7 +1353,7 @@ export class RtsScene3D {
   }
 
   public cancelFactoryQueueItem(factoryId: number, index: number): void {
-    this.gameConnection.sendCommand({
+    this.sendAuthoritativeCommand({
       type: 'cancelQueueItem',
       tick: this.clientViewState.getTick(),
       factoryId,

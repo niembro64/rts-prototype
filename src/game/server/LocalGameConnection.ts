@@ -6,6 +6,8 @@ import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
+import { encodeNetworkSnapshot } from '../network/snapshotWireCodec';
+import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 
 export class LocalGameConnection implements GameConnection {
   readonly sharesAuthoritativeState = true;
@@ -79,6 +81,7 @@ export class LocalGameConnection implements GameConnection {
 
   private subscribeSnapshots(playerId: PlayerId | undefined): string {
     return this.server.addSnapshotListener((state) => {
+      this.recordLocalSnapshotWireCost(state);
       if (this.snapshotCallback) {
         this.snapshotCallback(state);
       } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
@@ -87,6 +90,17 @@ export class LocalGameConnection implements GameConnection {
           : this.pendingSnapshotCloner.clone(state);
       }
     }, playerId);
+  }
+
+  private recordLocalSnapshotWireCost(state: NetworkServerSnapshot): void {
+    if (!SNAPSHOT_CADENCE_REGRESSION.enabled) return;
+    const start = performance.now();
+    const payload = encodeNetworkSnapshot(state);
+    SNAPSHOT_CADENCE_REGRESSION.recordSnapshotEncode({
+      rate: state.serverMeta?.snaps.rate,
+      bytes: payload.byteLength,
+      encodeMs: performance.now() - start,
+    });
   }
 
   sendCommand(command: Command): void {

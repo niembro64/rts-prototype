@@ -6,6 +6,7 @@ import type {
 } from '../../network/NetworkTypes';
 import type { GameConnection } from '../../server/GameConnection';
 import type { PlayerId } from '../../sim/types';
+import { SNAPSHOT_CADENCE_REGRESSION } from '../../SnapshotCadenceRegression';
 import { EmaTracker } from './EmaTracker';
 import { SnapshotBuffer } from './SnapshotBuffer';
 
@@ -72,9 +73,11 @@ export class RtsScene3DSnapshotIntake {
       };
     }
 
-    this.clientViewState.applyNetworkState(state, {
+    const applyStart = performance.now();
+    const applyStats = this.clientViewState.applyNetworkState(state, {
       syncEconomy: this.gameConnection.sharesAuthoritativeState !== true,
     });
+    const applyMs = performance.now() - applyStart;
     if (!this.startupReadyAckSent && !state.isDelta) {
       this.startupFullSnapshotApplied = true;
     }
@@ -84,6 +87,14 @@ export class RtsScene3DSnapshotIntake {
 
     const now = options.now ?? performance.now();
     this.recordSnapshotArrival(state.isDelta, now);
+    SNAPSHOT_CADENCE_REGRESSION.recordSnapshotApply({
+      tick: state.tick,
+      isDelta: state.isDelta,
+      meta: state.serverMeta,
+      applyMs,
+      correction: applyStats.correction,
+      now,
+    });
 
     if (options.clientRenderEnabled && options.audio) {
       options.audio.scheduler.recordSnapshot(now);

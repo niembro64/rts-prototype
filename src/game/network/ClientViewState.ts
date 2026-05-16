@@ -58,6 +58,14 @@ export type { PredictionLodContext, PredictionLodTier } from './ClientPrediction
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
+export type ClientSnapshotApplyStats = {
+  correction: {
+    count: number;
+    totalDistance: number;
+    maxDistance: number;
+  };
+};
+
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
   private entities: Map<EntityId, Entity> = new Map();
@@ -425,7 +433,14 @@ export class ClientViewState {
   applyNetworkState(
     state: NetworkServerSnapshot,
     options: { syncEconomy?: boolean } = {},
-  ): void {
+  ): ClientSnapshotApplyStats {
+    const applyStats: ClientSnapshotApplyStats = {
+      correction: {
+        count: 0,
+        totalDistance: 0,
+        maxDistance: 0,
+      },
+    };
     if (state.terrain) {
       this.setMapDimensions(state.terrain.mapWidth, state.terrain.mapHeight);
       setAuthoritativeTerrainTileMap(state.terrain);
@@ -482,6 +497,17 @@ export class ClientViewState {
       }
 
       const existing = this.entities.get(netEntity.id);
+      if (existing && (cf == null || (cf & ENTITY_CHANGED_POS) !== 0)) {
+        const dx = existing.transform.x - netEntity.pos.x;
+        const dy = existing.transform.y - netEntity.pos.y;
+        const dz = existing.transform.z - netEntity.pos.z;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        applyStats.correction.count++;
+        applyStats.correction.totalDistance += distance;
+        if (distance > applyStats.correction.maxDistance) {
+          applyStats.correction.maxDistance = distance;
+        }
+      }
 
       if (!existing) {
         // Only create entities from full data (keyframes or new-entity entries).
@@ -657,6 +683,7 @@ export class ClientViewState {
     if (state.serverMeta) {
       this.serverMeta = state.serverMeta;
     }
+    return applyStats;
   }
 
   /**

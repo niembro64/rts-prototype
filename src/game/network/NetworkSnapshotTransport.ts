@@ -1,18 +1,14 @@
-import { encode as msgpackEncode, decode as msgpackDecode } from '@msgpack/msgpack';
 import type { DataConnection } from 'peerjs';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
+import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import type { NetworkMessage, NetworkServerSnapshot } from './NetworkTypes';
 import type { PlayerId } from '../sim/types';
+import {
+  decodeNetworkSnapshot,
+  encodeNetworkSnapshot,
+} from './snapshotWireCodec';
 
 const SNAPSHOT_BACKPRESSURE_DROP_BYTES = 2 * 1024 * 1024;
-
-// Snapshot DTOs are pooled, so optional fields stay as own properties
-// assigned to `undefined`. Default msgpack encodes those as `nil`,
-// which the client decodes as `null` and treats as a present value
-// (e.g. `metalExtractionRate !== undefined` would fire on null).
-// `ignoreUndefined: true` makes msgpack skip those keys entirely,
-// matching `JSON.stringify`'s behavior.
-const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
 export class NetworkSnapshotTransport {
   private snapshotsSent = 0;
@@ -30,7 +26,13 @@ export class NetworkSnapshotTransport {
     if (this.shouldDropForBackpressure(playerId, conn)) return null;
 
     this.snapshotsSent++;
-    const buf = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
+    const encodeStart = performance.now();
+    const buf = encodeNetworkSnapshot(state);
+    SNAPSHOT_CADENCE_REGRESSION.recordSnapshotEncode({
+      rate: state.serverMeta?.snaps.rate,
+      bytes: buf.byteLength,
+      encodeMs: performance.now() - encodeStart,
+    });
 
     if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsSent % 100 === 0) {
       const dc = conn.dataChannel;
@@ -58,10 +60,27 @@ export class NetworkSnapshotTransport {
       );
     }
 
-    if (raw instanceof Uint8Array) return msgpackDecode(raw) as NetworkServerSnapshot;
-    if (raw instanceof ArrayBuffer) return msgpackDecode(new Uint8Array(raw)) as NetworkServerSnapshot;
-    if (typeof raw === 'string') return JSON.parse(raw);
-    return raw as NetworkServerSnapshot;
+    const decodeStart = performance.now();
+    let bytes: number | undefined;
+    let state: NetworkServerSnapshot;
+    if (raw instanceof Uint8Array) {
+      bytes = raw.byteLength;
+      state = decodeNetworkSnapshot(raw);
+    } else if (raw instanceof ArrayBuffer) {
+      bytes = raw.byteLength;
+      state = decodeNetworkSnapshot(raw);
+    } else if (typeof raw === 'string') {
+      bytes = raw.length;
+      state = JSON.parse(raw);
+    } else {
+      state = raw as NetworkServerSnapshot;
+    }
+    SNAPSHOT_CADENCE_REGRESSION.recordSnapshotDecode({
+      rate: state.serverMeta?.snaps.rate,
+      bytes,
+      decodeMs: performance.now() - decodeStart,
+    });
+    return state;
   }
 
   storePendingState(state: NetworkServerSnapshot): void {
