@@ -2252,18 +2252,21 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { playerId: 3, x: 0, y: 0, z: 0, radius: 600, expiresAtTick: 1101 },
       ],
     },
+    // audioEvents belongs before isDelta in the production _snapshotBuf
+    // insertion order.
     // audioEvents — single fire event, minimum fields.
     {
-      tick: 1400, entities: [], economy: {}, isDelta: true,
+      tick: 1400, entities: [], economy: {},
       audioEvents: [{
         type: 'fire',
         turretId: 'turret.cannon',
         pos: { x: 500, y: 500, z: 12 },
       }],
+      isDelta: true,
     },
     // audioEvents — laserStart with playerId + sourceType + sourceKey.
     {
-      tick: 1401, entities: [], economy: {}, isDelta: true,
+      tick: 1401, entities: [], economy: {},
       audioEvents: [{
         type: 'laserStart',
         turretId: 'turret.laser',
@@ -2273,10 +2276,11 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         playerId: 1,
         entityId: 42,
       }],
+      isDelta: true,
     },
     // audioEvents — forceFieldImpact with the nested normal vec.
     {
-      tick: 1402, entities: [], economy: {}, isDelta: true,
+      tick: 1402, entities: [], economy: {},
       audioEvents: [{
         type: 'forceFieldImpact',
         turretId: '',  // empty-string turretId is valid (fixstr 0xA0)
@@ -2286,10 +2290,11 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           playerId: 2,
         },
       }],
+      isDelta: true,
     },
     // audioEvents — attackAlert with victimPlayerId + audioOnly=true.
     {
-      tick: 1403, entities: [], economy: {}, isDelta: true,
+      tick: 1403, entities: [], economy: {},
       audioEvents: [{
         type: 'attackAlert',
         turretId: 'shot.rocket',
@@ -2298,11 +2303,12 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         victimPlayerId: 1,
         audioOnly: true,
       }],
+      isDelta: true,
     },
     // audioEvents — death with killerPlayerId; deathContext omitted
     // (handled in D.3j-27 follow-up).
     {
-      tick: 1404, entities: [], economy: {}, isDelta: true,
+      tick: 1404, entities: [], economy: {},
       audioEvents: [{
         type: 'death',
         turretId: 'unit.tank',
@@ -2312,21 +2318,23 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         entityId: 100,
         killerPlayerId: 1,
       }],
+      isDelta: true,
     },
     // audioEvents — multiple events in one snapshot mixing types.
     {
-      tick: 1405, entities: [], economy: {}, isDelta: true,
+      tick: 1405, entities: [], economy: {},
       audioEvents: [
         { type: 'fire', turretId: 'turret.cannon', pos: { x: 0, y: 0, z: 0 } },
         { type: 'hit', turretId: 'shot.shell', pos: { x: 100, y: 100, z: 0 }, entityId: 50 },
         { type: 'projectileExpire', turretId: 'shot.shell', pos: { x: 200, y: 200, z: 10 } },
         { type: 'ping', turretId: '', pos: { x: 0, y: 0, z: 0 }, playerId: 1, audioOnly: false },
       ],
+      isDelta: true,
     },
     // audioEvents — death with deathContext (no turretPoses, no
     // unitType — building-style death).
     {
-      tick: 1410, entities: [], economy: {}, isDelta: true,
+      tick: 1410, entities: [], economy: {},
       audioEvents: [{
         type: 'death',
         turretId: 'unit.pylon',
@@ -2345,18 +2353,18 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           color: 0xFF8800,
         },
       }],
+      isDelta: true,
     },
     // audioEvents — death with full deathContext (unit-style: every
     // optional populated + nested turretPoses array).
     {
-      tick: 1411, entities: [], economy: {}, isDelta: true,
+      tick: 1411, entities: [], economy: {},
       audioEvents: [{
         type: 'death',
         turretId: 'unit.tank',
         sourceType: 'unit',
         pos: { x: 500, y: 500, z: 12 },
         entityId: 300,
-        killerPlayerId: 2,
         deathContext: {
           unitVel: { x: 10, y: -5 },
           hitDir: { x: 0.707, y: 0.707 },
@@ -2374,11 +2382,13 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             { rotation: -0.3, pitch: 0 },
           ],
         },
+        killerPlayerId: 2,
       }],
+      isDelta: true,
     },
     // audioEvents — hit with impactContext (all required nested vecs).
     {
-      tick: 1412, entities: [], economy: {}, isDelta: true,
+      tick: 1412, entities: [], economy: {},
       audioEvents: [{
         type: 'hit',
         turretId: 'shot.shell',
@@ -2392,11 +2402,12 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           penetrationDir: { x: 1, y: 0 },
         },
       }],
+      isDelta: true,
     },
     // audioEvents — multiple deaths + hits + plain events in one tick
     // (validates the per-context offset walker).
     {
-      tick: 1413, entities: [], economy: {}, isDelta: true,
+      tick: 1413, entities: [], economy: {},
       audioEvents: [
         { type: 'fire', turretId: 'turret.cannon', pos: { x: 0, y: 0, z: 0 } },
         {
@@ -2435,10 +2446,11 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           },
         },
       ],
+      isDelta: true,
     },
     // economy — single player.
     {
-      tick: 1300, entities: [], isDelta: true,
+      tick: 1300, entities: [],
       economy: {
         1: {
           stockpile: { curr: 500, max: 1000 },
@@ -2456,11 +2468,12 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           },
         },
       },
+      isDelta: true,
     },
     // economy — multiple players, intentionally out-of-order keys to
     // verify the helper's ASC-by-playerId sort.
     {
-      tick: 1301, entities: [], isDelta: false,
+      tick: 1301, entities: [],
       economy: {
         3: {
           stockpile: { curr: 50, max: 200 },
@@ -2493,6 +2506,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           },
         },
       },
+      isDelta: false,
     },
     // capture — single tile, single owner.
     {
@@ -2988,8 +3002,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       const continueStrings = [f.gameState.phase];
       const continueSlots = packStringsIntoScratch(memory, continueStrings);
       phaseSlot = continueSlots.get(f.gameState.phase) ?? 0;
-    } else if (envelopeStringSlots.has(f.gameState?.phase ?? '')) {
-      phaseSlot = envelopeStringSlots.get(f.gameState!.phase) ?? 0;
     }
     snapshot_encode_envelope_continue(
       hasGameState,
@@ -3032,7 +3044,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     } else {
       failed++;
       console.error(
-        '[snapshot encoder] envelope byte mismatch',
+        `[snapshot encoder] envelope byte mismatch tick=${f.tick}`,
         {
           fixture: f,
           jsLen: jsBytes.length,

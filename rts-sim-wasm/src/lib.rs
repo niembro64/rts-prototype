@@ -8201,12 +8201,10 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
 
 /// Append `audioEvents: [...]`. Sits between sprayTargets and
 /// projectiles in iteration order. Per-event pool-iteration order
-/// matches the order properties are first assigned to the pooled
-/// SimEventDto (createSimEventDto static keys first, then the
-/// lazy-added entityId/deathContext/impactContext from
-/// copySimEventInto): type, turretId, sourceType, sourceKey, pos,
-/// playerId, forceFieldImpact, killerPlayerId, victimPlayerId,
-/// audioOnly, entityId, [deathContext], [impactContext].
+/// matches NetworkServerSnapshotSimEvent / createPooledSimEvent:
+/// type, turretId, sourceType, sourceKey, pos, playerId, entityId,
+/// deathContext, impactContext, forceFieldImpact, killerPlayerId,
+/// victimPlayerId, audioOnly.
 ///
 /// D.3j-27 adds deathContext + impactContext support. Caller pre-packs
 /// per-context scratches in event order; the encoder walks audio
@@ -8261,13 +8259,13 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         if has_source_type { field_count += 1; }
         if has_source_key { field_count += 1; }
         if has_player_id { field_count += 1; }
+        if has_entity_id { field_count += 1; }
+        if has_death_context { field_count += 1; }
+        if has_impact_context { field_count += 1; }
         if has_ff_impact { field_count += 1; }
         if has_killer { field_count += 1; }
         if has_victim { field_count += 1; }
         if has_audio_only { field_count += 1; }
-        if has_entity_id { field_count += 1; }
-        if has_death_context { field_count += 1; }
-        if has_impact_context { field_count += 1; }
         w.write_map_header(field_count);
 
         // Pool-iteration order as documented above.
@@ -8291,31 +8289,6 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         if has_player_id {
             w.write_str("playerId");
             w.write_uint(player_id as u64);
-        }
-        if has_ff_impact {
-            w.write_str("forceFieldImpact");
-            // Pool order: normal, playerId (from copySimEventInto's
-            // defensive literal).
-            w.write_map_header(2);
-            w.write_str("normal");
-            w.write_map_header(3);
-            w.write_str("x"); w.write_number(ff_nx);
-            w.write_str("y"); w.write_number(ff_ny);
-            w.write_str("z"); w.write_number(ff_nz);
-            w.write_str("playerId");
-            w.write_uint(ff_player_id as u64);
-        }
-        if has_killer {
-            w.write_str("killerPlayerId");
-            w.write_uint(killer_player_id as u64);
-        }
-        if has_victim {
-            w.write_str("victimPlayerId");
-            w.write_uint(victim_player_id as u64);
-        }
-        if has_audio_only {
-            w.write_str("audioOnly");
-            w.write_bool(audio_only_value);
         }
         if has_entity_id {
             w.write_str("entityId");
@@ -8463,6 +8436,31 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             w.write_str("x"); w.write_number(pen_dir_x);
             w.write_str("y"); w.write_number(pen_dir_y);
             impact_offset += 1;
+        }
+        if has_ff_impact {
+            w.write_str("forceFieldImpact");
+            // Pool order: normal, playerId (from copySimEventInto's
+            // defensive literal).
+            w.write_map_header(2);
+            w.write_str("normal");
+            w.write_map_header(3);
+            w.write_str("x"); w.write_number(ff_nx);
+            w.write_str("y"); w.write_number(ff_ny);
+            w.write_str("z"); w.write_number(ff_nz);
+            w.write_str("playerId");
+            w.write_uint(ff_player_id as u64);
+        }
+        if has_killer {
+            w.write_str("killerPlayerId");
+            w.write_uint(killer_player_id as u64);
+        }
+        if has_victim {
+            w.write_str("victimPlayerId");
+            w.write_uint(victim_player_id as u64);
+        }
+        if has_audio_only {
+            w.write_str("audioOnly");
+            w.write_bool(audio_only_value);
         }
     }
     w.buf.len() as u32
