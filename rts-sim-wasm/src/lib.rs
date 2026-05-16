@@ -7221,6 +7221,48 @@ pub fn snapshot_encode_beam_point_scratch_ensure(count: u32) {
     }
 }
 
+/// Scan-pulse scratch — 6 f64 per pulse:
+///   [0] playerId   [1] x   [2] y   [3] z
+///   [4] radius     [5] expiresAtTick
+/// Field count is fixed (no optionals on NetworkServerSnapshotScanPulse).
+const SNAPSHOT_ENCODE_SCAN_PULSE_STRIDE: usize = 6;
+
+struct SnapshotEncodeScanPulseScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeScanPulseScratchHolder(UnsafeCell<Option<SnapshotEncodeScanPulseScratch>>);
+unsafe impl Sync for SnapshotEncodeScanPulseScratchHolder {}
+static SNAPSHOT_ENCODE_SCAN_PULSE_SCRATCH: SnapshotEncodeScanPulseScratchHolder =
+    SnapshotEncodeScanPulseScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_scan_pulse_scratch() -> &'static mut SnapshotEncodeScanPulseScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_SCAN_PULSE_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeScanPulseScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_SCAN_PULSE_STRIDE * 8],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_scan_pulse_scratch_ptr() -> *const f64 {
+    snapshot_encode_scan_pulse_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_scan_pulse_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_SCAN_PULSE_STRIDE;
+    let s = snapshot_encode_scan_pulse_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Removed-entity-IDs scratch — Uint32Array of EntityId values for
 /// the envelope's removedEntityIds field. JS pre-fills before
 /// calling snapshot_encode_envelope_continue with
@@ -7678,6 +7720,47 @@ pub fn snapshot_encode_envelope_continue(
     if has_visibility_filtered != 0 {
         w.write_str("visibilityFiltered");
         w.write_bool(visibility_filtered != 0);
+    }
+    w.buf.len() as u32
+}
+
+/// Append the scanPulses array. Sits AFTER visibilityFiltered in
+/// pool-insertion order because scanPulses is added to _snapshotBuf
+/// (stateSerializer.ts) lazily on its first non-undefined assignment,
+/// not in the static init — so its property slot lands at the end of
+/// the iteration order. Reads `count` entries (6 f64 each) from the
+/// scan-pulse scratch.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
+    let w = messagepack_writer();
+    let n = count as usize;
+    let scratch = snapshot_encode_scan_pulse_scratch();
+    w.write_str("scanPulses");
+    w.write_array_header(n);
+    for i in 0..n {
+        let base = i * SNAPSHOT_ENCODE_SCAN_PULSE_STRIDE;
+        let player_id = scratch.buf[base] as u32;
+        let x = scratch.buf[base + 1];
+        let y = scratch.buf[base + 2];
+        let z = scratch.buf[base + 3];
+        let radius = scratch.buf[base + 4];
+        let expires_at_tick = scratch.buf[base + 5] as u32;
+
+        // Pool order from createScanPulseDto: playerId, x, y, z,
+        // radius, expiresAtTick. All 6 fields always present.
+        w.write_map_header(6);
+        w.write_str("playerId");
+        w.write_uint(player_id as u64);
+        w.write_str("x");
+        w.write_number(x);
+        w.write_str("y");
+        w.write_number(y);
+        w.write_str("z");
+        w.write_number(z);
+        w.write_str("radius");
+        w.write_number(radius);
+        w.write_str("expiresAtTick");
+        w.write_uint(expires_at_tick as u64);
     }
     w.buf.len() as u32
 }

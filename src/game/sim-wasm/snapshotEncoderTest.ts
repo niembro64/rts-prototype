@@ -14,6 +14,9 @@ import {
   snapshot_encode_envelope_emit_economy,
   snapshot_encode_envelope_emit_minimap,
   snapshot_encode_envelope_emit_projectiles,
+  snapshot_encode_envelope_emit_scan_pulses,
+  snapshot_encode_scan_pulse_scratch_ptr,
+  snapshot_encode_scan_pulse_scratch_ensure,
   snapshot_encode_minimap_scratch_ptr,
   snapshot_encode_minimap_scratch_ensure,
   snapshot_encode_beam_update_scratch_ptr,
@@ -1500,6 +1503,35 @@ function packBeamUpdatesIntoScratch(
   }
 }
 
+type ScanPulseFixture = {
+  playerId: number;
+  x: number; y: number; z: number;
+  radius: number;
+  expiresAtTick: number;
+};
+
+const SCAN_PULSE_SCRATCH_STRIDE = 6;
+
+function packScanPulsesIntoScratch(
+  memory: WebAssembly.Memory,
+  pulses: ScanPulseFixture[],
+): void {
+  if (pulses.length === 0) return;
+  snapshot_encode_scan_pulse_scratch_ensure(pulses.length);
+  const ptr = snapshot_encode_scan_pulse_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, pulses.length * SCAN_PULSE_SCRATCH_STRIDE);
+  for (let i = 0; i < pulses.length; i++) {
+    const p = pulses[i];
+    const base = i * SCAN_PULSE_SCRATCH_STRIDE;
+    view[base + 0] = p.playerId;
+    view[base + 1] = p.x;
+    view[base + 2] = p.y;
+    view[base + 3] = p.z;
+    view[base + 4] = p.radius;
+    view[base + 5] = p.expiresAtTick;
+  }
+}
+
 type EnvelopeFixture = {
   tick: number;
   entities: (UnitFixture | BuildingFixture)[];
@@ -1510,6 +1542,7 @@ type EnvelopeFixture = {
   isDelta: boolean;
   removedEntityIds?: number[];
   visibilityFiltered?: boolean;
+  scanPulses?: ScanPulseFixture[];
 };
 
 function packRemovedIdsIntoScratch(memory: WebAssembly.Memory, ids: number[]): void {
@@ -1806,6 +1839,43 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       },
       isDelta: true,
     },
+    // scanPulses — single pulse, all-required field shape.
+    {
+      tick: 1000, entities: [], economy: {}, isDelta: true,
+      scanPulses: [
+        { playerId: 1, x: 5000, y: 6000, z: 0, radius: 800, expiresAtTick: 1064 },
+      ],
+    },
+    // scanPulses — multiple pulses, varied owners + tick offsets.
+    {
+      tick: 1001, entities: [], economy: {}, isDelta: true,
+      scanPulses: [
+        { playerId: 1, x: 100, y: 200, z: 0, radius: 1000, expiresAtTick: 1065 },
+        { playerId: 2, x: -500, y: 300, z: 50, radius: 1500, expiresAtTick: 1090 },
+        { playerId: 3, x: 0, y: 0, z: 0, radius: 600, expiresAtTick: 1101 },
+      ],
+    },
+    // scanPulses + everything else (validates ordering: scanPulses
+    // emits AFTER visibilityFiltered).
+    {
+      tick: 1002, entities: [
+        {
+          id: 30, type: 'unit', pos: { x: 50, y: 50, z: 0 }, rotation: 0, playerId: 1,
+          unit: { hp: { curr: 100, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
+        },
+      ],
+      minimapEntities: [
+        { id: 30, pos: { x: 50, y: 50 }, type: 'unit', playerId: 1 },
+      ],
+      economy: {},
+      gameState: { phase: 'battle' },
+      isDelta: true,
+      removedEntityIds: [25],
+      visibilityFiltered: true,
+      scanPulses: [
+        { playerId: 1, x: 50, y: 50, z: 0, radius: 1200, expiresAtTick: 1066 },
+      ],
+    },
     // beamUpdates: minimal 2-vertex beam (start + end), no reflectors.
     {
       tick: 900, entities: [], economy: {},
@@ -1921,6 +1991,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     const hasWinnerId = f.gameState?.winnerId !== undefined ? 1 : 0;
     const hasRemovedIds = f.removedEntityIds !== undefined ? 1 : 0;
     const hasVisibilityFiltered = f.visibilityFiltered !== undefined ? 1 : 0;
+    const hasScanPulses = f.scanPulses !== undefined ? 1 : 0;
     const totalKeyCount =
       2 /* tick + entities */ +
       hasMinimap +
@@ -1929,7 +2000,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       hasGameState +
       1 /* isDelta */ +
       hasRemovedIds +
-      hasVisibilityFiltered;
+      hasVisibilityFiltered +
+      hasScanPulses;
 
     // Pre-pack all scratches before any kernel call. String scratch
     // collects every string needed by THIS envelope's encode (waypoint
@@ -1948,6 +2020,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     }
     if (hasMinimap && f.minimapEntities) {
       packMinimapIntoScratch(memory, f.minimapEntities);
+    }
+    if (hasScanPulses && f.scanPulses) {
+      packScanPulsesIntoScratch(memory, f.scanPulses);
     }
     if (hasProjectiles && f.projectiles) {
       if (f.projectiles.spawns) {
@@ -2118,6 +2193,13 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       hasVisibilityFiltered,
       f.visibilityFiltered === true ? 1 : 0,
     );
+
+    // scanPulses sits AFTER visibilityFiltered in iteration order
+    // because _snapshotBuf adds it lazily (not in the static init);
+    // see commit message for D.3j-21.
+    if (hasScanPulses && f.scanPulses) {
+      snapshot_encode_envelope_emit_scan_pulses(f.scanPulses.length);
+    }
 
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
