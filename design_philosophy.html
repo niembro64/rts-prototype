@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RTS Prototype Design Philosophy</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f4ed;
+      --ink: #1f2528;
+      --muted: #59666b;
+      --rule: #c8d0ca;
+      --panel: #fffdf8;
+      --accent: #266b5e;
+      --accent-2: #8a4d2f;
+      --code: #e8eee9;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.58 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(980px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 44px 0 64px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 28px;
+      margin-bottom: 32px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.15;
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 860px;
+      font-size: clamp(2.2rem, 5vw, 4.6rem);
+      font-weight: 780;
+    }
+
+    h2 {
+      margin-top: 42px;
+      font-size: 1.45rem;
+      color: var(--accent);
+    }
+
+    h3 {
+      margin-top: 26px;
+      font-size: 1.08rem;
+      color: var(--accent-2);
+    }
+
+    p {
+      max-width: 850px;
+      margin: 14px 0 0;
+    }
+
+    ul {
+      max-width: 850px;
+      margin: 12px 0 0;
+      padding-left: 24px;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    strong {
+      font-weight: 720;
+    }
+
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 0.08rem 0.28rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.95em;
+    }
+
+    .dek {
+      color: var(--muted);
+      font-size: 1.1rem;
+      max-width: 780px;
+      margin-top: 18px;
+    }
+
+    .principle-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 28px 0 8px;
+    }
+
+    .principle {
+      background: var(--panel);
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .principle b {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--accent);
+    }
+
+    .callout {
+      background: var(--panel);
+      border-left: 4px solid var(--accent);
+      margin: 26px 0;
+      padding: 18px 20px;
+    }
+
+    .callout p {
+      margin-top: 0;
+    }
+
+    .rule-list li::marker {
+      color: var(--accent);
+    }
+
+    footer {
+      border-top: 1px solid var(--rule);
+      color: var(--muted);
+      margin-top: 46px;
+      padding-top: 20px;
+      font-size: 0.95rem;
+    }
+
+    @media (max-width: 760px) {
+      main {
+        width: min(100% - 28px, 980px);
+        padding-top: 28px;
+      }
+
+      .principle-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Design Philosophy: Two Simulations, One Authority, Full Physics</h1>
+      <p class="dek">
+        This prototype is a browser RTS inspired by the command scale and battlefield clarity of
+        Beyond All Reason, but its technical identity is stricter: every meaningful physical
+        interaction should reduce to mass, force, acceleration, velocity, position, collision, and
+        correction.
+      </p>
+    </header>
+
+    <section class="principle-grid" aria-label="Core principles">
+      <div class="principle">
+        <b>Authority stays singular</b>
+        Client commands go directly to the authoritative simulation. The server validates and
+        executes them. Clients never negotiate gameplay truth with each other.
+      </div>
+      <div class="principle">
+        <b>Clients stay continuous</b>
+        The client runs a predicted local shadow on its own cadence, and the renderer samples that
+        shadow every frame while server snapshots correct it only a few times per second.
+      </div>
+      <div class="principle">
+        <b>Physics is the language</b>
+        Movement, recoil, collision, hover, jump, beams, blast pressure, and terrain contact are
+        force and mass problems before they are gameplay effects.
+      </div>
+    </section>
+
+    <section>
+      <h2>North Star</h2>
+      <p>
+        We are not building a lockstep RTS where every browser must simulate the same authoritative
+        future from the same command stream. We are also not building a thin renderer that waits for
+        the host to stream every position at display rate. The model is simpler and more scalable:
+        run two simulations, let one own truth, and use the other as a responsive local shadow.
+      </p>
+      <p>
+        The authoritative simulation owns the real world: commands, ownership, economy, construction,
+        targeting, damage, projectile hits, physics bodies, collision response, fog of war, victory,
+        and persistent state. The client simulation owns presentation: local command feedback,
+        prediction, smoothing, camera-visible detail, audio scheduling, and render-time interpolation.
+      </p>
+      <p>
+        The preferred implementation is shared code, not shared authority. Physical kernels and
+        battlefield contracts should be described once and reused by both the authoritative sim and
+        the client prediction sim where that reuse buys correctness: body integration, forces,
+        projectile motion, terrain sampling, turret pose, hover, jump, and collision math. That does
+        not mean every browser must run every authoritative system. Economy, construction truth,
+        target ownership, fog filtering, damage resolution, entity creation and removal, and victory
+        stay host-owned unless a specific prediction problem proves otherwise.
+      </p>
+      <div class="callout">
+        <p>
+          The target networking feel is: commands arrive at the authoritative sim immediately, while
+          the authoritative sim only needs to update the client sim about 5 to 10 times per second in
+          normal play. Higher snapshot rates are a diagnostic or low-unit-count luxury, not the
+          architecture.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Network Model</h2>
+      <h3>Commands flow upward</h3>
+      <p>
+        A client issues a command and sends it directly to the authoritative host. The host checks
+        player authority, filters illegal unit IDs, clamps unsafe parameters, and enqueues the command
+        into the server command queue. The command is not broadcast as peer truth. Other clients learn
+        the result through snapshots and events emitted by the authoritative sim.
+      </p>
+      <ul class="rule-list">
+        <li>Selection can remain local because it is UI state.</li>
+        <li>Move, attack, guard, build, repair, reclaim, scan, production, and server-control commands must be authorized by the host.</li>
+        <li>Command latency should be hidden with local intent previews, not by letting clients create real gameplay state.</li>
+        <li>Every command path should be stable enough to work for local host play, remote WebRTC play, and a future dedicated worker or server.</li>
+      </ul>
+
+      <h3>Snapshots flow downward</h3>
+      <p>
+        Server snapshots are corrections, not per-frame animation frames. They should contain changed
+        authoritative targets, creation and removal events, projectile events, audio events, fog and
+        minimap deltas, and occasional keyframes. The client stores those values as server targets,
+        predicts forward locally, and drifts toward the newest authoritative target.
+      </p>
+      <ul class="rule-list">
+        <li>Normal target cadence is 5 to 10 snapshots per second.</li>
+        <li>Server tick rate and snapshot rate are independent.</li>
+        <li>Full keyframes are rare recovery points. Delta snapshots are the default.</li>
+        <li>Area-of-interest and fog filtering are server responsibilities.</li>
+        <li>Backpressure should drop or coarsen snapshots before it lets the browser build an unbounded send queue.</li>
+      </ul>
+
+      <h3>Client prediction is an explicit contract</h3>
+      <p>
+        The client view should continue to run smoothly whether snapshots arrive at 60 Hz, 10 Hz,
+        5 Hz, or briefly not at all. Prediction should use the same motion math as the server
+        wherever possible. The current code already points this way with shared TypeScript/WASM unit
+        motion, server targets, drift modes, and prediction LOD. New systems should preserve that
+        shape.
+      </p>
+    </section>
+
+    <section>
+      <h2>Client Simulation Model</h2>
+      <h3>Shared core, bounded client</h3>
+      <p>
+        There should be one headless simulation core for physical behavior, but two different runtime
+        responsibilities. The server runs the complete authoritative game simulation. The client runs
+        a bounded prediction simulation for the parts the player sees and feels between snapshots.
+        This client sim may be a real fixed-step loop, and it may eventually live in a worker, but it
+        must remain a prediction layer. It is corrected by authoritative state and never becomes the
+        source of gameplay truth.
+      </p>
+      <ul class="rule-list">
+        <li>Share physical kernels for body motion, projectile stepping, recoil, hover, jump, turret pose, terrain sampling, and collision helpers.</li>
+        <li>Keep authoritative-only systems on the host: command validation, economy, construction completion, targeting truth, damage, fog filtering, unit creation and death, and victory.</li>
+        <li>Predict visible state locally: movement, velocity, acceleration, turret rotation, beam path presentation, projectile travel, force-field presentation, and local command intent.</li>
+        <li>Use snapshots as correction targets. The client may drift, snap, or reset toward <code>pos</code>, <code>vel</code>, <code>acc</code>, rotation, health, orders, and event state, but it does not argue with them.</li>
+      </ul>
+
+      <h3>Rendering samples prediction</h3>
+      <p>
+        Rendering should not own simulation cadence. <code>requestAnimationFrame</code> is a display
+        scheduler, not a simulation clock. The client prediction loop can run at a fixed or
+        semi-fixed timestep, while the renderer samples the latest predicted state every frame and
+        performs render-time interpolation. If the browser renders at 144 Hz, 60 Hz, 37 Hz, or is
+        briefly tab-throttled, the prediction contract should stay coherent.
+      </p>
+      <p>
+        This split keeps the browser responsive and keeps future options open. The prediction loop
+        can move toward Rust/WASM and a worker without rewriting the renderer, while the renderer can
+        reduce visual detail, LOD effects, or skip frames without changing gameplay semantics.
+      </p>
+    </section>
+
+    <section>
+      <h2>Physics Model</h2>
+      <p>
+        The game should be more physics based than its inspiration. BAR is the ergonomic and strategic
+        reference point; this project should make the physical world more fundamental. The rule of
+        thumb is <code>F = M * A</code>. If a gameplay feature moves, pushes, resists, falls, recoils,
+        hovers, jumps, blocks, crushes, reflects, or explodes, it should be described through forces
+        acting on masses and integrated into motion.
+      </p>
+
+      <h3>Full 3D, not decorative altitude</h3>
+      <p>
+        The sim uses a real 3D state: horizontal <code>x/y</code>, vertical <code>z</code>, velocity,
+        acceleration, gravity, surface normals, sphere and cuboid bodies, terrain contact, building
+        collision, unit collision, projectile collision, hover lift, and jump actuation. The renderer
+        can simplify distant visuals, but the authoritative sim should treat altitude and contact as
+        real gameplay inputs.
+      </p>
+
+      <h3>Mass must matter</h3>
+      <ul class="rule-list">
+        <li>Unit propulsion is a force profile applied to a mass, not a direct position edit.</li>
+        <li>Recoil applies counter-force to the firing body.</li>
+        <li>Explosions, beams, collisions, impact impulses, and force fields apply forces that heavier units resist differently.</li>
+        <li>Hover lift balances gravity through force and damping.</li>
+        <li>Ground contact is spring and friction behavior against terrain, not a clamp disguised as physics.</li>
+      </ul>
+
+      <h3>Discrete gameplay still enters through physical effects</h3>
+      <p>
+        Commands, economy, construction, fog, build queues, and ownership are intentionally discrete
+        systems. They do not need fake physics. But when those systems touch the battlefield, their
+        visible result should enter the world as bodies, forces, energy, mass, constraints, or
+        collisions. A factory can make a unit shell discretely; once it exists, gravity, terrain,
+        collision, and force response should own its motion.
+      </p>
+    </section>
+
+    <section>
+      <h2>Scale Target</h2>
+      <p>
+        The design target is thousands of active units in a browser, with a path toward larger battle
+        scenes. That target changes the default answer to every implementation question. Expensive
+        correctness that works for 200 units but collapses at 5,000 units is not correct for this
+        project.
+      </p>
+
+      <h3>Hot paths are data-oriented</h3>
+      <ul class="rule-list">
+        <li>Prefer stable IDs, packed numeric fields, typed arrays, and struct-of-arrays storage for dense simulation data.</li>
+        <li>Batch numeric work into WASM kernels when it can run over typed arrays without heavy object marshalling.</li>
+        <li>Keep TypeScript as orchestration, UI, Three.js integration, networking glue, and gameplay control flow.</li>
+        <li>Pool snapshot DTOs, event objects, scratch arrays, and temporary buffers.</li>
+        <li>Do not allocate in per-unit, per-projectile, per-turret, per-cell, or per-frame loops unless the allocation is proven irrelevant.</li>
+      </ul>
+
+      <h3>Spatial structure beats broad scans</h3>
+      <p>
+        Targeting, collision, capture, fog, projectile queries, and selection should use spatial
+        indices, dirty sets, visibility masks, and area-of-interest bounds. Full-world scans are
+        acceptable for bootstrapping, debugging, and rare keyframes. They are not the normal steady
+        state for gameplay ticks.
+      </p>
+
+      <h3>LOD is allowed, but it must be honest</h3>
+      <p>
+        There are two separate LOD systems: server simulation LOD and client render/prediction LOD.
+        Server LOD may stride, budget, and stagger expensive systems like targeting, beam tracing,
+        projectile collision checks, and capture accumulation, as long as the time-integral and
+        gameplay meaning remain coherent. Client LOD may reduce visual detail, prediction frequency,
+        labels, effects, and mesh richness. Client LOD must not become gameplay authority.
+      </p>
+    </section>
+
+    <section>
+      <h2>Browser Performance Rules</h2>
+      <p>
+        Browser performance is not an afterthought. The browser is the platform. Code should be
+        written as if V8, SpiderMonkey, WebKit, WebAssembly, WebGL, garbage collection, and WebRTC
+        buffering are part of the game engine.
+      </p>
+      <ul class="rule-list">
+        <li>Use plain counted loops in hot paths. Avoid <code>map</code>, <code>filter</code>, <code>Object.entries</code>, spread copies, and iterator churn inside tick loops.</li>
+        <li>Reuse arrays by setting <code>length = 0</code>. Grow buffers on demand and avoid shrinking steady-state buffers.</li>
+        <li>Use bit flags and append-only numeric wire enums for snapshot fields and blueprint IDs.</li>
+        <li>Serialize snapshots as compact binary payloads. Do not rely on deep JSON object trees for high-frequency state.</li>
+        <li>Separate debug overlays from gameplay state and throttle them aggressively.</li>
+        <li>Measure TPS, CPU budget, render time, prediction time, snapshot rate, and backpressure continuously.</li>
+        <li>Prefer instancing, shared geometry, shared materials, LOD grids, and GPU-friendly batches over per-unit scene graph complexity.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Languages and Frameworks</h2>
+      <p>
+        Peak performance wins over framework convenience. For simulation and rendering, the default
+        choice should be the fastest browser-viable language and API we can own directly. Frameworks
+        are allowed only when they do not sit inside hot loops and do not prevent us from controlling
+        memory layout, batching, scheduling, serialization, GPU buffers, or shader code.
+      </p>
+
+      <h3>Simulation language</h3>
+      <ul class="rule-list">
+        <li>Use <code>Rust</code> compiled to <code>WebAssembly</code> for dense numeric simulation kernels.</li>
+        <li>Move physics, projectile stepping, collision kernels, pathfinding kernels, terrain sampling, targeting batches, visibility packing, and snapshot-diff kernels toward WASM when the data can be batched.</li>
+        <li>Use struct-of-arrays storage in WASM linear memory for bodies, projectiles, turrets, spatial indices, and other high-count state.</li>
+        <li>Keep <code>TypeScript</code> as orchestration: UI, commands, networking glue, configuration, scene lifecycle, and code that would pay too much JS/WASM boundary cost.</li>
+        <li>Do not use a general-purpose JavaScript physics engine, ECS framework, pathfinding framework, or game framework in the authoritative sim hot path.</li>
+      </ul>
+
+      <h3>Rendering language and API</h3>
+      <ul class="rule-list">
+        <li>Use GPU-native code for the expensive work: custom <code>GLSL</code> for WebGL2 or <code>WGSL</code> for WebGPU.</li>
+        <li>Prefer raw <code>WebGPU</code> or raw <code>WebGL2</code> for long-term high-count rendering paths where framework overhead blocks scale.</li>
+        <li>Three.js can remain a prototype shell and utility layer while it is productive, but any bottlenecked renderer path should be replaced with owned buffers, owned shaders, and direct instancing.</li>
+        <li>Vue is UI only. Vue must not own simulation cadence, render-loop state, per-unit updates, or per-frame battlefield data.</li>
+        <li>Do not introduce rendering frameworks that hide draw-call count, buffer ownership, material compilation, culling, or shader control from us.</li>
+      </ul>
+
+      <h3>Raw by default</h3>
+      <p>
+        The preferred implementation is owned code in Rust/WASM, TypeScript, and shader code, not a
+        stack of general-purpose frameworks. If a library saves time but costs measurable simulation
+        or rendering throughput, it should be treated as temporary scaffolding. The end-state engine
+        should be raw enough that we know where every per-frame allocation, buffer upload, kernel
+        call, draw call, and branch-heavy world scan comes from.
+      </p>
+    </section>
+
+    <section>
+      <h2>Rendering Philosophy</h2>
+      <p>
+        The renderer should make huge battles legible without forcing the simulation to become fake.
+        Rich nearby units can have turrets, legs, treads, chassis tilt, beams, labels, decals, and
+        effects. Distant units should collapse to cheaper instanced representations. The object LOD
+        grid is the right shape: classify a region once, then let all renderable objects in that
+        region inherit the tier.
+      </p>
+      <p>
+        Rendering should never ask the authoritative sim to send more data just because a visual is
+        expensive. If a visual cannot be supported at scale, it should degrade on the client. The sim
+        remains physical; the rendering becomes cheaper.
+      </p>
+    </section>
+
+    <section>
+      <h2>BAR Inspiration, Project Identity</h2>
+      <p>
+        Beyond All Reason is the comparison point for command ergonomics, readable large battles,
+        queue-friendly controls, minimap interaction, and the feeling of commanding armies instead of
+        individual pieces. This project should feel familiar to BAR players in its command vocabulary
+        and battlefield expectations.
+      </p>
+      <p>
+        The project identity is different: the browser is a hard constraint, the network model is
+        authoritative snapshots plus client prediction, and the world should be even more physically
+        grounded. BAR is a benchmark, not a source of code or assets.
+      </p>
+    </section>
+
+    <section>
+      <h2>Atomic Gameplay Pieces</h2>
+      <p>
+        Gameplay should be built from small, atomic pieces that do one job and compose cleanly:
+        <code>locomotion</code>, <code>unit</code>, <code>turret</code>, <code>shot</code>, and
+        <code>building</code> definitions. These pieces should be swappable without hidden coupling.
+        A unit should be able to change locomotion profiles, mount different turret sets, fire
+        different shot profiles, or appear from different factories because each piece carries a clear
+        contract instead of leaking responsibility into its neighbors.
+      </p>
+      <ul class="rule-list">
+        <li><code>locomotion</code> owns how a body produces and applies movement forces.</li>
+        <li><code>unit</code> owns the entity's body, mass, health, command capabilities, build cost, and composition slots.</li>
+        <li><code>turret</code> owns aiming, tracking, cooldown, mount behavior, and which shot it emits.</li>
+        <li><code>shot</code> owns projectile, beam, laser, force-field, recoil, damage, impulse, and collision behavior.</li>
+        <li><code>building</code> owns static footprint, construction, production, extraction, storage, or other building-specific behavior.</li>
+      </ul>
+      <p>
+        We do not want mixed or overlapping roles. A turret should not secretly define locomotion. A
+        shot should not secretly define a unit. A building should not smuggle combat behavior except
+        by mounting turrets. A unit should not duplicate shot physics. Cross-piece behavior should be
+        expressed through explicit references and narrow data contracts, so designers can recombine
+        pieces freely and the simulation can keep hot paths simple.
+      </p>
+    </section>
+
+    <section>
+      <h2>Single Source Of Truth</h2>
+      <p>
+        No gameplay rule, command builder, validation path, physics formula, serializer shape,
+        blueprint contract, UI label, or tuning table should be duplicated. If two systems need the
+        same atomic action, that action belongs in one small module with one clear owner and every
+        caller imports it. Copying logic between client, server, renderer, lobby, tests, and debug
+        tools creates drift, and drift is a correctness bug.
+      </p>
+      <ul class="rule-list">
+        <li>Extract shared helpers before copying code into a second place.</li>
+        <li>Keep constants, enums, labels, thresholds, and wire codes in one canonical module.</li>
+        <li>Put command construction, authorization, and sanitization behind shared functions instead of reimplementing branches in components.</li>
+        <li>When duplication is temporary during a migration, leave a specific removal path and delete the old path as soon as parity is proven.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>What New Code Should Optimize For</h2>
+      <ul class="rule-list">
+        <li>Keep the authoritative sim headless and portable. It should not depend on DOM, Vue, or Three.js.</li>
+        <li>Describe shared physical behavior once, then reuse it from both server authority and client prediction.</li>
+        <li>Keep the client prediction sim bounded to responsiveness and presentation unless a full-system prediction need is proven.</li>
+        <li>Keep rendering decoupled from simulation cadence; <code>requestAnimationFrame</code> samples state, it does not define truth.</li>
+        <li>Keep commands small, direct, validated, and host-owned.</li>
+        <li>Keep snapshots sparse, recipient-aware, and low cadence by default.</li>
+        <li>Keep client prediction physically compatible with the server, especially for motion and projectiles.</li>
+        <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
+        <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
+        <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
+        <li>Use Rust/WASM, TypeScript orchestration, and custom GPU shader code; keep frameworks out of simulation and rendering hot paths.</li>
+        <li>Move dense numeric kernels toward WASM when batching can beat JS object loops.</li>
+        <li>Design every feature with 5,000 units in mind before celebrating it at 50 units.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Document purpose: align implementation decisions around a browser-native, massive-scale,
+      force-and-mass RTS where the authoritative sim corrects a continuous client sim instead of
+      streaming every frame.
+    </footer>
+  </main>
+</body>
+</html>

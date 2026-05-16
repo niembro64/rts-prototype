@@ -7,315 +7,265 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 
 ==============================================================================
 
-==============================================================================
- BIG PICTURE — bespoke Rust/WASM physics, shared by client + server
-==============================================================================
+DESIGN PHILOSOPHY GAP PLAN
 
-User directive (2026-05-14): "we need to write our own physics engine
-for our needs uniquely. And we need it to be in the fastest languages
-for that we can use in a browser. This should be for both frontend
-and backend."
+Source of goal: design_philosophy.html
+Current baseline checked against: the current TypeScript/Vue/Three.js/Rust-WASM codebase.
 
-One Rust crate at `rts-sim-wasm/`, compiled to WebAssembly via
-wasm-pack, loaded by BOTH the authoritative server tick AND the
-client prediction stepper. Same integrator, same numerical
-behavior, same code path — client prediction is bit-identical to
-server authoritative motion.
+These items are ordered so each step creates a better foundation for the next one.
+Delete each whole item when the current implementation fully matches the goal.
 
-Bespoke, NOT a generic engine (no Rapier, no Ammo). The existing
-PhysicsEngine3D makes RTS-specific shortcuts a generic engine
-couldn't (implicit infinite ground plane, sphere bodies for units +
-axis-aligned cuboids for buildings, locomotion-aware ground spring,
-sleep heuristics tuned for "few hundred mostly-static units",
-hover lift + quaternion bank physics in the same pipeline). The
-port preserves those shortcuts.
+DP-01 - Make the normal network cadence match the design target.
 
-==============================================================================
- STATUS — what's in WASM today
-==============================================================================
+Goal:
+The design philosophy says normal authoritative snapshots should be 5 to 10 per
+second, with server tick rate and snapshot rate independent. Higher snapshot
+rates should be diagnostic or low-unit-count luxuries.
 
-  Phase 1   crate scaffolding + dual-load pipeline                 DONE
-  Phase 2   shared unit-motion integrator                          DONE
-  Phase 3a  batched integrate() + sleep state machine              DONE
-  Phase 3b  sphere-vs-cuboid pair resolver                         DONE
-  Phase 3c  sphere-vs-sphere resolver + broadphase                 DONE
-  Phase 3d  Body3D SoA pool in linear memory (+3d-2 kernels)       DONE
-  Phase 3e  hover quat orientation batch (paired with 4)           DONE
-  Phase 3f  static cuboid broadphase                               DONE
-            + engine_statics_destroy free list                     DONE
-  Phase 4   quaternion math + hover spring batch                   DONE
-  Phase 5a  packed projectile SoA pool + ballistic integrate       DONE
-  Phase 5b  kinematic intercept solver                             DONE
-  Phase 5c  homing-steering Rodrigues rotation                     DONE
-  Phase 5c2 dgun terrain-follow (obviated by Phase 8 dispatch)     DONE
-  Phase 5d  beam-path point integration                            DEFERRED — see below
-  Phase 5e  traveling (non-packed) projectile                      DEFERRED — see below
-  Phase 6a  integrateDampedRotation                                DONE
-  Phase 6b  chooseBestTargetCandidate                              DEFERRED — see below
-  Phase 6c  lineOfSight terrain segment walk                       DONE
-            (entity-AABB portion stays JS — depends on Phase 7
-             slots which exist but the callers haven't migrated)
-  Phase 7   SpatialGrid into WASM linear memory                    DONE
-  Phase 8   terrain heightmap into WASM linear memory              DONE
-  Phase 9   Pathfinder A* + LOS smoothing                          DONE
-  Phase 10  Snapshot serializer FULL PORT                          IN PROGRESS
-            D.1 entity-meta SoA pool (foundation, no JS sync yet)   DONE
-            D.1b turret sub-pool (foundation, no JS sync yet)       DONE
-            D.1c action sub-pool                                    pending
-            D.2 hand-rolled MessagePack encoder + self-test         DONE
-            D.3a JS-side population of entity-meta + turret pools   DONE
-            D.3b per-recipient baseline registry (Rust storage)     DONE
-            D.3c baseline capture kernels (Rust)                    DONE
-            D.3d diff kernel returning mask (Rust)                  DONE
-            D.3e per-listener baseline handle lifecycle (JS)        DONE
-            D.3f per-emit capture into baseline (JS wiring)         DONE
-            D.3g dev-mode Rust-vs-JS diff verification (default OFF) DONE
-            D.3h baseline cleanup on removal / dropout (JS wiring)  DONE
-            D.3i swap JS diff for Rust diff (drop JS prevStates)    pending
-            D.3j byte-equal MessagePack delta encoder (Rust)        pending
-            D.4 snapshot_build_for_recipient (FOW + AoI)            pending
-            D.5 stateSerializer*.ts wholesale replacement           pending
-  Tier E    SIMD inner loops (auto-vec via +simd128)               DONE
-            dual-build (simd + non-simd) for iOS<16.4              DEFERRED
+Current:
+src/serverBarConfig.ts defaults HOST SERVER snapshots to 64 SPS and offers
+1/4/8/16/32/64/128. src/config.ts uses high-fidelity delta thresholds
+(0.1 wu position and velocity), which fits a higher-cadence stream more than
+the stated normal 5-10 SPS target.
 
-Build / housekeeping:
-  - wasm-opt -Oz post-build pass                                  DONE (gated on binaryen)
-  - rts-sim-wasm/README.md (build + dev-loop + browser reqs)      DONE
+Steps:
+1. Add explicit 5 and 10 SPS options, then make the default a normal-play value
+   in the 5-10 SPS range.
+2. Keep high rates available but label and treat them as diagnostics.
+3. Tune delta thresholds and projectile update stride for that lower cadence.
+4. Verify local host and remote WebRTC play at 5, 8, and 10 SPS with 60-ish TPS.
+5. Add a regression scenario that reports correction distance, snapshot bytes,
+   encode time, decode/apply time, render FPS, and command response feel.
 
-==============================================================================
- Phase 10 — Snapshot serializer hot loops — IN PROGRESS
-==============================================================================
+DP-02 - Turn snapshots into an owned binary wire path instead of JS DTOs plus
+library MessagePack on the hot path.
 
-stateSerializer*.ts is ~1.8k LOC across 13 files (~3k LOC counting
-NetworkSnapshotTransport.ts + snapshotDtoCopy.ts + snapshotClone.ts).
-Per-entity inner loop (qPos / qVel / qRot quantization, delta
-encoding, FOW visibility, AoI gate) is hot under load — every
-server tick that ships a snapshot pays it per visible entity per
-recipient.
+Goal:
+Snapshots should be compact binary payloads. The hot path should not rely on
+deep JSON-like object trees, generic encoders, or avoidable per-snapshot object
+walks.
 
-D.2 (MessagePack encoder) shipped: hand-rolled subset matching
-@msgpack/msgpack's `ignoreUndefined: true` output on 21 fixture
-cases. Self-test runs at module load and aborts initSimWasm if
-any case fails. Verified byte-equal with the JS lib on 23 inputs.
+Current:
+src/game/network/stateSerializer.ts builds pooled JavaScript snapshot DTOs.
+src/game/network/NetworkSnapshotTransport.ts then encodes them with
+@msgpack/msgpack. The Rust crate already has snapshot_encode_* and envelope
+encoder functions, and src/game/sim-wasm/snapshotEncoderTest.ts checks
+byte-equality fixtures, but production still sends the JS-encoded DTO.
 
-Remaining sub-commits:
+Steps:
+1. Instrument current encode time and byte size per listener at 5-10 SPS,
+   1k units, and 5k units.
+2. Add a feature flag that encodes the existing snapshot DTO through the Rust
+   encoder and compares bytes with @msgpack/msgpack in development.
+3. Switch production snapshot sending to the Rust encoder once parity is stable.
+4. Remove DTO construction from the hottest entity/projectile/economy paths by
+   writing directly from SoA/WASM-side pools into the binary envelope.
+5. Keep the old object decoder only as a temporary compatibility/debug path, then
+   delete it once no sender emits object snapshots.
 
-  D.1 — Entity-meta SoA pool. DONE for fixed-scalar fields.
-        Rust-side `EntityMetaPool` covers HP curr/max, owner playerId,
-        entity-type tag (unit/building), combat mode, is_commander
-        flag, build state (complete + paid energy/mana/metal +
-        target id), suspension spring offset/velocity, jump airborne/
-        timer, factory state (producing + queue len + progress),
-        solar open, build progress. Setters: entity_meta_set_unit /
-        entity_meta_set_building (one bulk call per dirty entity per
-        tick — amortises boundary overhead). Per-field raw pointers
-        exposed for typed-array view reads.
+DP-03 - Make client prediction prove itself at low snapshot cadence.
 
-        Slot space is shared with SpatialGrid — the JS-side
-        slotByEntityId map in SpatialGrid.ts is the canonical
-        mapping. JS-side per-tick population lands with D.3.
+Goal:
+The client sim should stay smooth at render cadence whether snapshots arrive at
+60 Hz, 10 Hz, 5 Hz, or briefly not at all. Commands should feel immediate through
+local intent feedback, not by giving the client authority.
 
-        D.1b — Turret sub-pool DONE. Up to 8 turrets per entity at
-        fixed offset `entity_slot * MAX + turret_idx` in a flat SoA.
-        Per-entity count gates which indices are live. Fields cover
-        the snapshot turret DTO (rotation, angular vel/accel, pitch,
-        pitch vel/accel, forceFieldRange, target_id). JS-side
-        population lands with D.3.
+Current:
+ClientViewState, ClientPredictionStepper, ClientUnitPrediction, projectile spawn
+queues, beam path targets, drift modes, and prediction LOD already implement a
+real prediction/correction path. But the high 64 SPS default can hide weak spots,
+and local command feedback is still mostly visual-only previews: selection,
+build ghost, line-drag targets, and waypoint drawing. Most gameplay-visible
+state waits for the authoritative snapshot.
 
-        D.1c — Action sub-pool. Still pending. Actions are variable-
-        length per entity with a JS-string ActionType enum that
-        needs a stable u8 mapping before porting. Defer until D.3
-        forces the schema decision.
+Steps:
+1. Run and record correction behavior with the DP-01 5-10 SPS default.
+2. Add prediction diagnostics for per-frame prediction cost, correction distance,
+   correction velocity, and target age.
+3. Add local intent previews for move, attack, guard, build, repair, reclaim,
+   scan, production, and factory waypoints without mutating authoritative state.
+4. Confirm projectiles, beams, force fields, jump arcs, hover lift, and turret
+   rotation can coast through at least 500-1000 ms of missing snapshots.
+5. Add a deliberately delayed/dropped snapshot test mode and keep it passing.
 
-  D.3 — Per-entity quantize + delta-encode kernel. Split into a/b/c/d/e.
+DP-04 - Harden the command authority boundary.
 
-        D.3a DONE — captureSnapshotEntityStates in
-        stateSerializerEntityDelta.ts now syncs each captured entity
-        into the entity-meta + turret pools via SpatialGrid.getSlot.
-        Both delta and keyframe branches mirror the JS-side fields.
-        Guarded on getSimWasm() !== undefined (boot window) and
-        spatial slot != -1 (entity not yet in grid).
+Goal:
+Client commands go directly to the authoritative host. The host validates player
+authority, filters illegal unit IDs, clamps unsafe parameters, and enqueues only
+safe gameplay commands.
 
-        D.3b DONE — per-recipient SnapshotBaseline registry in Rust.
-        Free-list-managed pool of per-slot SoA arrays mirroring
-        stateSerializerEntityDelta.ts:PrevEntityState (transform,
-        velocity, hp, weapon counts + turret state, normal, build/
-        factory/solar/jump/suspension). Each network listener
-        registers a u32 handle via snapshot_baseline_create() at
-        session start. Float storage — quantization happens at emit
-        time so threshold compares stay byte-equal with the JS path.
+Current:
+GameServer.receiveCommand already keeps server-control commands host-only for
+network players and filters many gameplay commands by owned entity/factory.
+However, fromPlayerId === undefined is an admin override, server-control commands
+apply immediately outside the normal command queue, and several command payloads
+still need a single sanitization layer for finite values, map bounds, radii,
+queue indexes, unit/building IDs, and enum strings.
 
-        D.3c DONE — snapshot_baseline_capture_unit_slot /
-        _capture_building_slot. One WASM call per emitted entity per
-        recipient. Pulls HP + build/factory/solar/suspension/jump
-        from the entity-meta pool, turret state from the turret pool;
-        takes transform / velocity / movement accel / normal /
-        action hash / engagement bits as parameters. No JS consumer
-        wires these calls yet — D.3e will land that.
+Steps:
+1. Replace the implicit undefined-player override with explicit authority modes:
+   host-admin, local-offline, player, spectator.
+2. Create a single sanitize/authorize command module used by local, host, and
+   remote command paths.
+3. Clamp target coordinates to the map, reject non-finite values, cap radii and
+   waypoint counts, validate queue indexes, and validate unit/building/shot enum
+   values before enqueue.
+4. Decide which server-control commands are truly immediate and which should be
+   queued or snapshot-versioned.
+5. Add hostile-client tests for wrong-owner unit IDs, mixed-owner selections,
+   bad coordinates, invalid queue indexes, invalid unit IDs, and spectator input.
 
-        D.3d DONE — Rust diff kernel snapshot_baseline_diff_slot
-        returns the ENTITY_CHANGED_* mask by threshold-comparing
-        JS-supplied current scalars + pool-resident hp / turret /
-        build / factory / solar state against the per-recipient
-        baseline. Mirrors stateSerializerEntityDelta.ts:
-        getEntityDeltaChangedFields bit-for-bit. Returns 0 when
-        baseline is unset (caller treats as isNew / emit full).
+DP-05 - Make AOI and fog filtering the default remote snapshot path.
 
-        D.3e DONE — Per-listener baseline handle lifecycle.
-        GameServer.addSnapshotListener allocates a Rust handle via
-        snapshot_baseline_create; removeSnapshotListener frees it.
-        Stored on SnapshotListenerEntry; threaded through
-        SerializeGameStateOptions.snapshotBaselineHandle.
+Goal:
+Area-of-interest, fog filtering, minimap filtering, removals, shroud state, and
+recipient-specific deltas are server responsibilities. Full-world snapshots are
+for global observers, recovery, or debugging, not normal remote play.
 
-        D.3f DONE — Per-emit capture into baseline. After every
-        successful entity emit (delta dirty path, visibility
-        re-entry, keyframe), serializeGameState calls
-        captureToRustBaseline to mirror copyPrevState into the
-        recipient's WASM baseline. D.3a's pool-sync pass broadened
-        to cover ALL entities every emit so the capture kernel
-        reads fresh pool data even for non-dirty re-entries.
+Current:
+ServerSnapshotPublisher, stateSerializerVisibility, shroud bitmaps, AOI listener
+bounds, team caches, recipient delta tracking, and static-terrain suppression
+already point in the right direction. The remaining gap is proving that every
+normal remote listener always has the correct recipient filter and AOI behavior,
+and that fallback keyframes/debug paths do not leak unnecessary full-world state.
 
-        D.3g DONE — Dev-mode Rust/JS diff verification.
-        verifyRustDiffMask helper calls snapshot_baseline_diff_slot
-        alongside the JS getEntityDeltaChangedFields and
-        console.warns on mismatch. Default OFF
-        (VERIFY_RUST_DIFF const in stateSerializerEntityDelta.ts).
-        Flip true in dev to validate the Rust threshold math
-        before D.3i swaps the JS diff out for production.
+Steps:
+1. Audit every addSnapshotListener call and mark whether it is player-filtered,
+   spectator/global, lobby preview, or debug.
+2. Ensure remote real-battle clients start with a player-filtered listener before
+   any gameplay snapshot can be sent.
+3. Make camera AOI updates robust when the client is loading, tab-throttled, or
+   has not sent a camera footprint yet.
+4. Add snapshot-size and entity-count telemetry split by full, delta, AOI, and
+   visibility-filtered output.
+5. Add tests for hidden enemies, out-of-AOI enemies, destroyed out-of-vision
+   buildings, shroud keyframes, scan pulses, and spectator/global views.
 
-        D.3h DONE — Baseline cleanup on entity removal / dropout.
-        forgetTrackedEntity + processRemovedEntities now also call
-        snapshot_baseline_unset_slot through the listener's handle
-        so slot reuse can't replay stale baseline data. Covers all
-        four removal paths (world-supplied, fallback, AoI dropout,
-        visibility hide) + the FOW-02b ghost-cleanup pass + the
-        keyframe end-of-frame stale-state sweep.
+DP-06 - Move remaining high-count simulation hot paths toward SoA and WASM.
 
-        D.3i pending — Drop JS prevStates / copyPrevState, swap to
-        Rust diff. Requires confidence from D.3g verification
-        being clean across a range of scenarios.
+Goal:
+Dense simulation work should use stable IDs, packed numeric fields, typed arrays,
+struct-of-arrays storage, and WASM kernels where batching beats JS object loops.
+TypeScript should orchestrate, not own high-count numeric loops.
 
-        D.3j pending — Byte-equal MessagePack delta encoder.
-        Wraps the D.2 writer with the quantize + per-field-emit
-        logic from stateSerializerEntities.ts. The verification
-        gate is per-tick Uint8Array byte-equality against the
-        existing JS encode path (golden capture replay).
+Current:
+Several important systems already moved in this direction: Body3D pool,
+projectile pool, spatial grid, pathfinder, terrain mesh sampling, hover
+orientation batch, snapshot baseline diff, and parts of snapshot encoding.
+But authoritative world state is still a Map<EntityId, Entity>, many systems
+iterate cached Entity[] lists, and hot paths such as targeting, construction,
+energy, capture, cloak/detection, combat activity, factory production, and some
+projectile/collision branches still operate through object graphs.
 
-  D.4 — `snapshot_build_for_recipient`. One WASM call per recipient
-        per snapshot tick. Reads SpatialGrid (Phase 7) for AoI
-        candidates, applies FOW visibility (port from
-        stateSerializerVisibility.ts), wraps in envelope (tick,
-        version, audio events, shroud bitmap), outputs MessagePack
-        bytes ready for WebRTC send.
+Steps:
+1. Produce a per-system tick-cost profile at 1k, 3k, and 5k active units.
+2. Rank systems by cost and allocation rate, not by code size.
+3. Convert the top offenders to typed-array/SoA storage behind the existing
+   public APIs first.
+4. Batch numeric kernels into Rust/WASM only after the data is already contiguous.
+5. Keep TypeScript as orchestration and remove old object-loop paths after parity
+   tests pass.
 
-  D.5 — JS-side migration. `stateSerializer.ts` becomes a thin
-        orchestrator that owns per-listener visibility precomputation,
-        calls snapshot_build_for_recipient for each, hands the bytes
-        to the WebRTC transport. The 13 serializer files collapse
-        to ~3.
+DP-07 - Complete the mass/force contract for battlefield interactions.
 
-Critical risk: byte-equality requirement. Snapshot bytes must be
-byte-equal pre/post for the client decode path to keep working
-without changes. Strategy for the next session: capture a 60-tick
-golden snapshot from the current JS path BEFORE starting D.3, then
-assert byte-equality on every D.3+ commit.
+Goal:
+Movement, recoil, collision, hover, jump, beams, blast pressure, force fields,
+and terrain contact should reduce to mass, force, acceleration, velocity,
+position, collision, and correction wherever they physically move things.
 
-Phase 10 is sized for multi-session work — D.1 alone is one
-focused session, D.3-D.5 each warrant their own.
+Current:
+The project already has real 3D state, Body3D, terrain contact, dynamic z,
+unit-vs-unit/building collision, force accumulation, propulsion, recoil,
+explosion knockback, beam force, hover lift, jump actuation, and shared motion
+math. Gaps remain where force handling is still partly 2D, where some gameplay
+effects mutate state discretely without a physical effect, and where heavy/light
+mass response is not continuously tested across every force producer.
 
-==============================================================================
- Deferred items — re-evaluate when conditions change
-==============================================================================
+Steps:
+1. Audit every call that moves, pushes, clamps, teleports, reflects, explodes,
+   hovers, jumps, or corrects a unit/projectile.
+2. Convert force producers to explicit 3D force/impulse fields where vertical
+   behavior matters.
+3. Add tests that compare light/medium/heavy units under the same recoil,
+   explosion, beam, collision, force-field, hover, and jump inputs.
+4. Keep discrete systems discrete, but ensure their battlefield output enters as
+   bodies, forces, energy, mass, constraints, or collisions.
+5. Document any intentional non-physical shortcuts as temporary with a scale or
+   gameplay reason.
 
-Phase 5d — Beam-path point integration. The PREDICT-gated per-point
-ax/ay/az step lives in ClientPredictionStepper.applyBeamSnapshot
-Prediction. At a realistic busy-scene load (10 simultaneous beams ×
-~5 points each = 50 point steps per FRAME, 7-9 float ops per step)
-total per-frame work is ~350 ops. Data lives in JS BeamPoint
-object arrays, so a WASM call would have to pack/scatter
-Float64Array(50 × 6) every frame just to integrate ~350 ops — net
-regression. Revisit only if a stress test ever shows the beam
-point loop on the profiler.
+DP-08 - Tighten atomic gameplay blueprint boundaries.
 
-Phase 5e — Traveling (non-packed) projectile path. Per-projectile
-inner math is trivial scalar work (vz -= GRAVITY*dt, then position
-+= vel*dt). Terrain-follow's only non-trivial bit is
-world.getGroundZ, which already dispatches to WASM via Phase 8.
-A batched per-tick call would marshal ~12 KB per side at busy
-scales (50-100 active projectiles × 11 f64 each) to save ~5 µs/
-tick. Net loss.
+Goal:
+locomotion, unit, turret, shot, and building definitions should each own one
+clear job and compose through explicit references. A unit should be able to swap
+locomotion profiles, turret sets, shot profiles, or factories without hidden
+coupling.
 
-Phase 6b — chooseBestTargetCandidate. The rank formula's distSq +
-radius classification could run in Rust against the SpatialGrid
-slot SoA. BUT the mirror-target score for passive weapons is
-JS-side metadata with no clean WASM schema, requiring a per-
-candidate JS pre-pass before any WASM call. Net win at typical
-busy candidate counts (~10-30 µs/pick) doesn't justify the new
-boundary surface. Re-evaluate if profiling ever shows targeting
-hot enough.
+Current:
+The blueprint files are already split into units, locomotion, turrets, shots,
+buildings, and display rosters. The remaining coupling is still visible:
+UnitBlueprint embeds locomotion objects and many visual/HUD/audio details;
+TurretBlueprint mixes projectile reference, launch force, aiming, range, barrel
+visuals, audio, mirror panels, force fields, and construction emitters; Shot
+Blueprint mixes physics/damage with smoke/audio/render shape details.
 
-Tier E SIMD dual-build — current build enables +simd128 globally;
-browsers without SIMD support (iOS Safari < 16.4) fail at WASM
-compile time. The right fallback is a dual-build (simd + non-simd
-.wasm with runtime feature detection). Deferred until profiling
-or analytics show older iOS users hitting the gate.
+Steps:
+1. Define narrow runtime contracts for locomotion, unit, turret, shot, building,
+   visual, audio, and UI metadata.
+2. Change unit definitions to reference locomotion IDs and turret-set IDs rather
+   than embedding mutable object-shaped configs.
+3. Move visual-only barrel/body/smoke/HUD/audio data out of authoritative sim
+   blueprints or into clearly named visual subcontracts.
+4. Make turret-to-shot and building-to-turret links explicit IDs with validation
+   tests.
+5. Add a recombination test that creates a unit with swapped locomotion, swapped
+   turret set, swapped shot profile, and a different factory without touching
+   unrelated systems.
 
-==============================================================================
- Cross-cutting concerns — apply to every phase
-==============================================================================
+DP-09 - Move high-count rendering away from framework-owned scene graph paths.
 
-  - **Boundary cost discipline.** Every JS↔WASM call has overhead
-    (~10-100 ns per call). A naive port that calls into WASM once
-    per entity per tick can be SLOWER than pure TS. Design every
-    kernel as a single batched call per tick that operates over a
-    Rust-owned SoA. The fast pattern: "JS pushes intents in →
-    Rust runs the whole tick → JS reads results out".
+Goal:
+Three.js can remain a productive prototype shell, but bottlenecked renderer paths
+should move to owned buffers, owned shaders, direct instancing, and eventually
+raw WebGL2/WebGPU where needed.
 
-  - **Memory model.** Body / projectile / spatial / terrain state
-    lives in linear memory on the WASM side. JS reads via
-    DataView / typed-array views (zero-copy). Writes from JS use
-    explicit setter methods so Rust can validate / wake bodies /
-    mark dirty. EntityId ↔ slot mapping is JS-side (Map<EntityId,
-    u32>); slots are stable for the entity's lifetime so JS can
-    cache them.
+Current:
+The renderer is built around Three.js with substantial custom instancing, object
+LOD, render LOD grids, shared geometry/materials, and GPU timing. That matches
+the prototype phase but not the long-term raw-rendering goal for thousands of
+units and effects.
 
-  - **Shared client + server semantics.** The whole point of this
-    migration is that client prediction and server authority run
-    the SAME integrator. That means every kernel must be a pure
-    function of its inputs — no globals, no per-instance hidden
-    state, no JS-side intrusion mid-tick. Identical numerical
-    behavior is the contract.
+Steps:
+1. Measure draw calls, buffer uploads, material switches, CPU render prep, GPU
+   frame time, and per-LOD object counts at 1k, 3k, and 5k units.
+2. Identify the first renderer path where Three.js overhead blocks scale.
+3. Move that path to owned instanced buffers and custom shaders while keeping the
+   same visual contract.
+4. Repeat for units, projectiles, beams, terrain overlays, labels, debris, and
+   high-count effects in cost order.
+5. Keep Three.js only where it is not measurable bottleneck or where replacement
+   would not improve scale.
 
-  - **Determinism (deferred, but architected for).** Strict bit-
-    identical determinism across machines isn't a requirement yet,
-    but the structure should NOT block it. No f64 → f32 narrowing
-    in unexpected places. Stable iteration order (index-stable
-    Vec-based pools). Same WASM module on client + server so
-    `std::f64::sin` etc. comes for free under the shared-load
-    pattern.
+DP-10 - Add scale-target benchmarks and budgets.
 
-  - **Debugging conventions.** WASM panics are harder to chase
-    than TS errors — console_error_panic_hook is wired in
-    `#[wasm_bindgen(start)]`. Keep entity ID lookups + blueprint
-    config on the JS side so the WASM kernel only sees primitive
-    SoA data; that minimizes the surface area to debug.
+Goal:
+Every major implementation decision should be evaluated against thousands of
+active units in a browser, with a path toward larger scenes. A feature that works
+at 50 or 200 units is not done unless it has a scale story.
 
-  - **Hot-reload dev workflow.** `cargo watch -s 'cd .. && npm run
-    build:wasm'` recipe is in rts-sim-wasm/README.md. Post-Phase-3
-    the Body3D + projectile pools live in WASM linear memory —
-    they're not optional. TS fallbacks now run only during the
-    brief boot window before initSimWasm resolves, and as
-    structural reference impls for bit-identity audits.
+Current:
+The app exposes useful live telemetry: server TPS/CPU, render TPS, frame/render/
+logic/GPU timing, long task timing, snapshot rates, unit count, LOD states, and
+debug overlays. There is no obvious automated benchmark gate that runs standard
+1k/3k/5k scenarios and records pass/fail budgets.
 
-  - **Threading: defer.** WASM threads via SharedArrayBuffer + web
-    workers are real but require COOP/COEP headers and complicate
-    WebRTC. Start single-threaded; revisit only if we hit a hard
-    single-core ceiling.
-
-  - **Bundle size budget.** Final .wasm under 250 KB. Currently
-    ~180 KB after Phase 7 + 9 + Phase 10 D.2 + SIMD. wasm-opt -Oz
-    runs as a build post-pass (gated on local binaryen).
-
-  - **CI builds the .wasm.** `npm run build:wasm` runs before any
-    test that loads the module. README documents the prerequisites
-    (cargo + wasm-pack on PATH, binaryen optional).
+Steps:
+1. Add deterministic benchmark scenarios for idle armies, moving armies, heavy
+   targeting, projectile-heavy combat, fog/AOI, construction, and mixed battles.
+2. Record server tick cost, render cost, prediction cost, snapshot encode/decode
+   cost, bytes/sec, allocations, and long tasks.
+3. Define budget thresholds for 1k, 3k, and 5k active units.
+4. Make benchmark output easy to compare before/after each performance change.
+5. Use those budgets to decide when a JS object-loop or Three.js path must move
+   to SoA/WASM or owned GPU buffers.
