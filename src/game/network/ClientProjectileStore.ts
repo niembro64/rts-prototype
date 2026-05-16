@@ -37,6 +37,7 @@ export class ClientProjectileStore {
   readonly projectileSpawns = new ProjectileSpawnQueue();
 
   private lineProjectileRenderVersion = 0;
+  private _applySpawnDiagCounter = 0;
 
   constructor(private readonly options: ClientProjectileStoreOptions) {}
 
@@ -60,6 +61,11 @@ export class ClientProjectileStore {
   applySpawn(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
     const { entities } = this.options;
     if (entities.has(spawn.id)) return false;
+    if (((this._applySpawnDiagCounter++) % 60) === 0) {
+      const v = spawn.velocity;
+      const speed = Math.hypot(v.x, v.y, v.z);
+      console.log(`[ClientProjectileStore] spawn id=${spawn.id} pos=(${spawn.pos.x.toFixed(0)},${spawn.pos.y.toFixed(0)},${spawn.pos.z.toFixed(0)}) v=(${v.x.toFixed(1)},${v.y.toFixed(1)},${v.z.toFixed(1)}) speed=${speed.toFixed(1)}`);
+    }
     try {
       const entity = this.createProjectileFromSpawn(spawn);
       this.options.markEntitySetChanged(false);
