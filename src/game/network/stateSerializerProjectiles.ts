@@ -81,10 +81,6 @@ function qVel(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-function qAccel(n: number): number {
-  return Math.round(n * 10) / 10;
-}
-
 function qRot(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
@@ -533,15 +529,14 @@ export function serializeProjectileSnapshot({
           out.vy = qVel(sp.vy);
           out.vz = qVel(sp.vz);
         }
-        if (sp.ax === 0 && sp.ay === 0 && sp.az === 0) {
-          out.ax = 0;
-          out.ay = 0;
-          out.az = 0;
-        } else {
-          out.ax = qAccel(sp.ax);
-          out.ay = qAccel(sp.ay);
-          out.az = qAccel(sp.az);
-        }
+        // Beam-path point acceleration mirrors the turret-angular-acc
+        // and unit-movement-accel decision: instantaneous force values
+        // are unstable to integrate under arbitrary client dt, so we
+        // omit them from the wire and let the client extrapolate from
+        // velocity alone.
+        out.ax = 0;
+        out.ay = 0;
+        out.az = 0;
         const canReferenceReflector = canReferenceEntityId(world, visibility, sp.mirrorEntityId);
         out.mirrorEntityId = canReferenceReflector ? sp.mirrorEntityId : undefined;
         out.reflectorKind = canReferenceReflector ? sp.reflectorKind : undefined;
