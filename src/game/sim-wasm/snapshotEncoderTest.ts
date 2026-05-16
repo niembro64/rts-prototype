@@ -22,6 +22,8 @@ import {
   snapshot_encode_capture_tile_scratch_ensure,
   snapshot_encode_capture_height_scratch_ptr,
   snapshot_encode_capture_height_scratch_ensure,
+  snapshot_encode_economy_scratch_ptr,
+  snapshot_encode_economy_scratch_ensure,
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
@@ -1514,6 +1516,58 @@ function packBeamUpdatesIntoScratch(
   }
 }
 
+type EconomyPlayerFixture = {
+  stockpile: { curr: number; max: number };
+  income: { base: number; production: number };
+  expenditure: number;
+  mana: {
+    stockpile: { curr: number; max: number };
+    income: { base: number; territory: number };
+    expenditure: number;
+  };
+  metal: {
+    stockpile: { curr: number; max: number };
+    income: { base: number; extraction: number };
+    expenditure: number;
+  };
+};
+type EconomyFixture = Record<number, EconomyPlayerFixture>;
+
+const ECONOMY_SCRATCH_STRIDE = 16;
+
+function packEconomyIntoScratch(
+  memory: WebAssembly.Memory,
+  economy: EconomyFixture,
+): number {
+  const ids = Object.keys(economy).map(Number).sort((a, b) => a - b);
+  if (ids.length === 0) return 0;
+  snapshot_encode_economy_scratch_ensure(ids.length);
+  const ptr = snapshot_encode_economy_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, ids.length * ECONOMY_SCRATCH_STRIDE);
+  for (let i = 0; i < ids.length; i++) {
+    const pid = ids[i];
+    const e = economy[pid];
+    const base = i * ECONOMY_SCRATCH_STRIDE;
+    view[base + 0] = pid;
+    view[base + 1] = e.stockpile.curr;
+    view[base + 2] = e.stockpile.max;
+    view[base + 3] = e.income.base;
+    view[base + 4] = e.income.production;
+    view[base + 5] = e.expenditure;
+    view[base + 6] = e.mana.stockpile.curr;
+    view[base + 7] = e.mana.stockpile.max;
+    view[base + 8] = e.mana.income.base;
+    view[base + 9] = e.mana.income.territory;
+    view[base + 10] = e.mana.expenditure;
+    view[base + 11] = e.metal.stockpile.curr;
+    view[base + 12] = e.metal.stockpile.max;
+    view[base + 13] = e.metal.income.base;
+    view[base + 14] = e.metal.income.extraction;
+    view[base + 15] = e.metal.expenditure;
+  }
+  return ids.length;
+}
+
 type CaptureTileFixture = {
   cx: number;
   cy: number;
@@ -1673,7 +1727,7 @@ type EnvelopeFixture = {
   tick: number;
   entities: (UnitFixture | BuildingFixture)[];
   minimapEntities?: MinimapEntityFixture[];
-  economy: Record<string, unknown>;  // empty for D.3j-15+
+  economy: EconomyFixture;
   sprayTargets?: SprayTargetFixture[];
   projectiles?: ProjectilesFixture;
   gameState?: GameStateFixture;
@@ -1994,6 +2048,64 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { playerId: 2, x: -500, y: 300, z: 50, radius: 1500, expiresAtTick: 1090 },
         { playerId: 3, x: 0, y: 0, z: 0, radius: 600, expiresAtTick: 1101 },
       ],
+    },
+    // economy — single player.
+    {
+      tick: 1300, entities: [], isDelta: true,
+      economy: {
+        1: {
+          stockpile: { curr: 500, max: 1000 },
+          income: { base: 25, production: 12 },
+          expenditure: 8,
+          mana: {
+            stockpile: { curr: 100, max: 500 },
+            income: { base: 5, territory: 3 },
+            expenditure: 2,
+          },
+          metal: {
+            stockpile: { curr: 200, max: 800 },
+            income: { base: 10, extraction: 4 },
+            expenditure: 6,
+          },
+        },
+      },
+    },
+    // economy — multiple players, intentionally out-of-order keys to
+    // verify the helper's ASC-by-playerId sort.
+    {
+      tick: 1301, entities: [], isDelta: false,
+      economy: {
+        3: {
+          stockpile: { curr: 50, max: 200 },
+          income: { base: 5, production: 0 },
+          expenditure: 3,
+          mana: {
+            stockpile: { curr: 0, max: 100 },
+            income: { base: 1, territory: 0 },
+            expenditure: 0,
+          },
+          metal: {
+            stockpile: { curr: 10, max: 200 },
+            income: { base: 2, extraction: 0 },
+            expenditure: 1,
+          },
+        },
+        1: {
+          stockpile: { curr: 1000, max: 1000 },
+          income: { base: 30, production: 20 },
+          expenditure: 15,
+          mana: {
+            stockpile: { curr: 500, max: 500 },
+            income: { base: 8, territory: 5 },
+            expenditure: 3,
+          },
+          metal: {
+            stockpile: { curr: 800, max: 800 },
+            income: { base: 15, extraction: 8 },
+            expenditure: 10,
+          },
+        },
+      },
     },
     // capture — single tile, single owner.
     {
@@ -2417,7 +2529,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       snapshot_encode_envelope_emit_minimap(f.minimapEntities.length);
     }
     if (hasEconomy) {
-      snapshot_encode_envelope_emit_economy();
+      const economyPlayerCount = packEconomyIntoScratch(memory, f.economy);
+      snapshot_encode_envelope_emit_economy(economyPlayerCount);
     }
     if (hasSprayTargets && f.sprayTargets) {
       snapshot_encode_envelope_emit_spray_targets(f.sprayTargets.length);

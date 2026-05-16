@@ -7305,6 +7305,57 @@ pub fn snapshot_encode_capture_height_scratch_ensure(count: u32) {
     }
 }
 
+/// Economy scratch — 16 f64 per player (caller must pack in ASCENDING
+/// playerId order to match @msgpack/msgpack's iteration of a JS
+/// object with integer-string keys).
+///   [0]   playerId (becomes the outer-map string key)
+///   [1..3] stockpile.curr, stockpile.max
+///   [3..5] income.base, income.production
+///   [5]   expenditure
+///   [6..8] mana.stockpile.curr, mana.stockpile.max
+///   [8..10] mana.income.base, mana.income.territory
+///   [10]  mana.expenditure
+///   [11..13] metal.stockpile.curr, metal.stockpile.max
+///   [13..15] metal.income.base, metal.income.extraction
+///   [15]  metal.expenditure
+const SNAPSHOT_ENCODE_ECONOMY_STRIDE: usize = 16;
+
+struct SnapshotEncodeEconomyScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeEconomyScratchHolder(UnsafeCell<Option<SnapshotEncodeEconomyScratch>>);
+unsafe impl Sync for SnapshotEncodeEconomyScratchHolder {}
+static SNAPSHOT_ENCODE_ECONOMY_SCRATCH: SnapshotEncodeEconomyScratchHolder =
+    SnapshotEncodeEconomyScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_economy_scratch() -> &'static mut SnapshotEncodeEconomyScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_ECONOMY_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeEconomyScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_ECONOMY_STRIDE * 8],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_economy_scratch_ptr() -> *const f64 {
+    snapshot_encode_economy_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_economy_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_ECONOMY_STRIDE;
+    let s = snapshot_encode_economy_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Spray-target scratch — 16 f64 per spray (NetworkServerSnapshotSprayTarget).
 ///   [0]    source.id
 ///   [1..3] source.pos.x, source.pos.y
@@ -7844,13 +7895,72 @@ pub fn snapshot_encode_envelope_emit_minimap(count: u32) {
 }
 
 /// Append the economy key. Sits between minimapEntities and
-/// sprayTargets in pool insertion order. Body is currently empty {};
-/// follow-ups will add per-player resource/storage contents.
+/// sprayTargets in pool insertion order. Body is a Record<PlayerId,
+/// EconomySnapshot>; the caller pre-packs the economy scratch with
+/// per-player data sorted ASC by playerId (so msgpack key iteration
+/// matches @msgpack/msgpack on a JS object with integer-string keys),
+/// then passes the player count.
 #[wasm_bindgen]
-pub fn snapshot_encode_envelope_emit_economy() {
+pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
     let w = messagepack_writer();
+    let n = player_count as usize;
     w.write_str("economy");
-    w.write_map_header(0);
+    w.write_map_header(n);
+    if n == 0 {
+        return w.buf.len() as u32;
+    }
+    let scratch = snapshot_encode_economy_scratch();
+    let mut key_buf = [0u8; 12];
+    for i in 0..n {
+        let base = i * SNAPSHOT_ENCODE_ECONOMY_STRIDE;
+        let player_id = scratch.buf[base] as u32;
+        let key_str = u32_to_decimal(&mut key_buf, player_id);
+        w.write_str(key_str);
+
+        // Per-player DTO field count = 5 (stockpile, income,
+        // expenditure, mana, metal — all required).
+        w.write_map_header(5);
+        // stockpile: { curr, max }
+        w.write_str("stockpile");
+        w.write_map_header(2);
+        w.write_str("curr"); w.write_number(scratch.buf[base + 1]);
+        w.write_str("max"); w.write_number(scratch.buf[base + 2]);
+        // income: { base, production }
+        w.write_str("income");
+        w.write_map_header(2);
+        w.write_str("base"); w.write_number(scratch.buf[base + 3]);
+        w.write_str("production"); w.write_number(scratch.buf[base + 4]);
+        // expenditure
+        w.write_str("expenditure");
+        w.write_number(scratch.buf[base + 5]);
+        // mana: { stockpile, income, expenditure }
+        w.write_str("mana");
+        w.write_map_header(3);
+        w.write_str("stockpile");
+        w.write_map_header(2);
+        w.write_str("curr"); w.write_number(scratch.buf[base + 6]);
+        w.write_str("max"); w.write_number(scratch.buf[base + 7]);
+        w.write_str("income");
+        w.write_map_header(2);
+        w.write_str("base"); w.write_number(scratch.buf[base + 8]);
+        w.write_str("territory"); w.write_number(scratch.buf[base + 9]);
+        w.write_str("expenditure");
+        w.write_number(scratch.buf[base + 10]);
+        // metal: { stockpile, income, expenditure }
+        w.write_str("metal");
+        w.write_map_header(3);
+        w.write_str("stockpile");
+        w.write_map_header(2);
+        w.write_str("curr"); w.write_number(scratch.buf[base + 11]);
+        w.write_str("max"); w.write_number(scratch.buf[base + 12]);
+        w.write_str("income");
+        w.write_map_header(2);
+        w.write_str("base"); w.write_number(scratch.buf[base + 13]);
+        w.write_str("extraction"); w.write_number(scratch.buf[base + 14]);
+        w.write_str("expenditure");
+        w.write_number(scratch.buf[base + 15]);
+    }
+    w.buf.len() as u32
 }
 
 /// Append `sprayTargets: [...]`. Sits between economy and projectiles

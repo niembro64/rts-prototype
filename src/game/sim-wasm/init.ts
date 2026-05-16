@@ -164,6 +164,8 @@ import __wbg_init, {
   snapshot_encode_capture_tile_scratch_ensure,
   snapshot_encode_capture_height_scratch_ptr,
   snapshot_encode_capture_height_scratch_ensure,
+  snapshot_encode_economy_scratch_ptr,
+  snapshot_encode_economy_scratch_ensure,
   snapshot_encode_proj_despawn_scratch_ptr,
   snapshot_encode_proj_despawn_scratch_ensure,
   snapshot_encode_proj_spawn_scratch_ptr,
@@ -1029,8 +1031,10 @@ export interface SnapshotEncodeApi {
     hasVisibilityFiltered: number,
     visibilityFiltered: number,
   ) => number;
-  /** Emit the `economy: {}` key. Sub-fields not yet implemented. */
-  emitEconomy: () => void;
+  /** Emit `economy: { [playerId]: EconomyDTO }`. Caller pre-packs the
+   *  economy scratch (16 f64 per player, ASC by playerId) and passes
+   *  the player count. Pass 0 to emit an empty economy map. */
+  emitEconomy: (playerCount: number) => number;
   /** Emit `minimapEntities: [...]`. Reads `count` entries from the
    *  minimap scratch (6 f64 per entry). */
   emitMinimap: (count: number) => void;
@@ -1107,6 +1111,14 @@ export interface SnapshotEncodeApi {
   captureHeightScratchEnsure: (count: number) => void;
   /** Stride per height entry (f64 count: playerId + value). */
   readonly captureHeightScratchStride: number;
+  /** Raw pointer to the economy scratch (Float64Array, 16 f64 per
+   *  player — see lib.rs SNAPSHOT_ENCODE_ECONOMY_STRIDE for layout).
+   *  Caller must sort entries ASCENDING by playerId. */
+  economyScratchPtr: () => number;
+  /** Pre-grow the economy scratch to hold `count` players. */
+  economyScratchEnsure: (count: number) => void;
+  /** Stride per economy entry (f64 count). */
+  readonly economyScratchStride: number;
   /** Raw pointer to the beam-update header scratch (Float64Array,
    *  4 f64 per update: id, flags, obstructionT, point_count). */
   beamUpdateScratchPtr: () => number;
@@ -1585,6 +1597,9 @@ export function initSimWasm(): Promise<SimWasm> {
           captureHeightScratchPtr: snapshot_encode_capture_height_scratch_ptr,
           captureHeightScratchEnsure: snapshot_encode_capture_height_scratch_ensure,
           captureHeightScratchStride: 2,
+          economyScratchPtr: snapshot_encode_economy_scratch_ptr,
+          economyScratchEnsure: snapshot_encode_economy_scratch_ensure,
+          economyScratchStride: 16,
           projDespawnScratchPtr: snapshot_encode_proj_despawn_scratch_ptr,
           projDespawnScratchEnsure: snapshot_encode_proj_despawn_scratch_ensure,
           projSpawnScratchPtr: snapshot_encode_proj_spawn_scratch_ptr,
