@@ -2,7 +2,9 @@
 
 import type { EntityId, WaypointType, BuildingType, PlayerId } from './sim';
 import type { RenderMode } from './graphics';
+import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { ForceFieldReflectionMode } from './shotTypes';
+import type { TiltEmaMode } from '../shellConfig';
 
 export type CommandType =
   | 'select'
@@ -243,17 +245,17 @@ export type GuardCommand = BaseCommand & {
 
 export type SetSnapshotRateCommand = BaseCommand & {
   type: 'setSnapshotRate';
-  rate: number | 'none';
+  rate: SnapshotRate;
 };
 
 export type SetKeyframeRatioCommand = BaseCommand & {
   type: 'setKeyframeRatio';
-  ratio: number | 'ALL' | 'NONE';
+  ratio: KeyframeRatio;
 };
 
 export type SetTickRateCommand = BaseCommand & {
   type: 'setTickRate';
-  rate: number;
+  rate: TickRate;
 };
 
 /** Pick the smoothing strength for the per-unit chassis-tilt EMA
@@ -263,7 +265,7 @@ export type SetTickRateCommand = BaseCommand & {
  *  effective EMA, just like setTickRate / setSnapshotRate. */
 export type SetTiltEmaModeCommand = BaseCommand & {
   type: 'setTiltEmaMode';
-  mode: 'snap' | 'fast' | 'mid' | 'slow';
+  mode: TiltEmaMode;
 };
 
 export type SetSendGridInfoCommand = BaseCommand & {

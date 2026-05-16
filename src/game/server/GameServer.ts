@@ -54,7 +54,13 @@ import {
   EMA_CONFIG,
   MAX_TICK_DT_MS,
   type KeyframeRatio,
+  type SnapshotRate,
 } from '../../config';
+import {
+  HOST_SNAPSHOT_RATE_DEFAULT,
+  normalizeSnapshotRate,
+  snapshotRateIntervalMs,
+} from '../../serverBarConfig';
 import { SERVER_SIM_LOD_EMA_SOURCE } from '../../serverSimLodConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
@@ -174,9 +180,9 @@ export class GameServer {
    *  the world's own counter). */
   private _adaptCheckTicks = 0;
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
-  private maxSnapshotsDisplay: number | 'none';
+  private maxSnapshotsDisplay: SnapshotRate;
   private lastSnapshotTime: number = 0;
-  private keyframeRatioDisplay: number | 'ALL' | 'NONE';
+  private keyframeRatioDisplay: KeyframeRatio;
 
   // Background mode — allowed unit types for AI production & UI toggles.
   // Initial set comes from GameServerConfig.initialAllowedTypes when the
@@ -245,9 +251,11 @@ export class GameServer {
     this.tpsLow = 0;
     this.tickMsAvg = 0;
     this.tickMsHi = 0;
-    const maxSnaps = config.maxSnapshotsPerSec ?? 30;
-    this.maxSnapshotIntervalMs = maxSnaps > 0 ? 1000 / maxSnaps : 0;
-    this.maxSnapshotsDisplay = maxSnaps > 0 ? maxSnaps : 'none';
+    const maxSnaps = normalizeSnapshotRate(
+      config.maxSnapshotsPerSec ?? HOST_SNAPSHOT_RATE_DEFAULT,
+    );
+    this.maxSnapshotIntervalMs = snapshotRateIntervalMs(maxSnaps);
+    this.maxSnapshotsDisplay = maxSnaps;
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
     // Bootstrap the entire world: terrain, physics, world state, sim,
@@ -966,10 +974,12 @@ export class GameServer {
     this.snapshotPublisher.forceNextKeyframe();
   }
 
-  // Change max snapshots per second cap ('none' = no cap, send every tick)
-  setSnapshotRate(rate: number | 'none'): void {
-    this.maxSnapshotsDisplay = rate;
-    this.maxSnapshotIntervalMs = rate === 'none' ? 0 : 1000 / rate;
+  // Change max snapshots per second cap. Legacy/invalid rates are normalized
+  // through the host snapshot-rate options before reaching the hot path.
+  setSnapshotRate(rate: SnapshotRate): void {
+    const normalizedRate = normalizeSnapshotRate(rate);
+    this.maxSnapshotsDisplay = normalizedRate;
+    this.maxSnapshotIntervalMs = snapshotRateIntervalMs(normalizedRate);
   }
 
   /** Change HOST SERVER LOD tier ('auto' / 'auto-tps' / 'auto-cpu' /

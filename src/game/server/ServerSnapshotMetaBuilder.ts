@@ -1,13 +1,15 @@
 import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
+import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
 import type { ForceFieldReflectionMode } from '../../types/shotTypes';
+import type { TiltEmaMode } from '../../shellConfig';
 
 export type ServerSnapshotMetaInput = {
   tickAvg: number;
   tickLow: number;
-  tickRateHz: number;
-  tickTargetHz: number;
-  snapshotRate: number | 'none';
-  keyframeRatio: number | 'ALL' | 'NONE';
+  tickRateHz: TickRate;
+  tickTargetHz: TickRate;
+  snapshotRate: SnapshotRate;
+  keyframeRatio: KeyframeRatio;
   ipAddress: string;
   gridEnabled: boolean;
   allowedUnits?: Iterable<string>;
@@ -30,7 +32,7 @@ export type ServerSnapshotMetaInput = {
     speed: number;
     angle: number;
   };
-  tiltEmaMode: string;
+  tiltEmaMode: TiltEmaMode;
 };
 
 export class ServerSnapshotMetaBuilder {

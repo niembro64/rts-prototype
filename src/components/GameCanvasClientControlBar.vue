@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
 import { GOOD_TPS } from '../lodConfig';
+import { snapshotRateHz } from '../serverBarConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
@@ -220,9 +221,7 @@ defineProps<{
                 :style="
                   statBarStyle(
                     model.snapAvgRate,
-                    model.displaySnapshotRate === 'none'
-                      ? 60
-                      : model.displaySnapshotRate,
+                    snapshotRateHz(model.displaySnapshotRate),
                   )
                 "
               ></div>
@@ -239,9 +238,7 @@ defineProps<{
                 :style="
                   statBarStyle(
                     model.snapWorstRate,
-                    model.displaySnapshotRate === 'none'
-                      ? 60
-                      : model.displaySnapshotRate,
+                    snapshotRateHz(model.displaySnapshotRate),
                   )
                 "
               ></div>

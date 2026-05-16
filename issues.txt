@@ -23,18 +23,16 @@ second, with server tick rate and snapshot rate independent. Higher snapshot
 rates should be diagnostic or low-unit-count luxuries.
 
 Current:
-src/serverBarConfig.ts defaults HOST SERVER snapshots to 64 SPS and offers
-1/4/8/16/32/64/128. src/config.ts uses high-fidelity delta thresholds
-(0.1 wu position and velocity), which fits a higher-cadence stream more than
-the stated normal 5-10 SPS target.
+src/serverBarConfig.ts now centralizes the HOST SERVER snapshot source of truth:
+8 SPS is the default, 5 and 10 SPS are explicit normal-play options, and 16+
+SPS options are labeled diagnostic. src/config.ts still uses high-fidelity
+delta thresholds (0.1 wu position and velocity), which fits a higher-cadence
+stream more than the stated normal 5-10 SPS target.
 
 Steps:
-1. Add explicit 5 and 10 SPS options, then make the default a normal-play value
-   in the 5-10 SPS range.
-2. Keep high rates available but label and treat them as diagnostics.
-3. Tune delta thresholds and projectile update stride for that lower cadence.
-4. Verify local host and remote WebRTC play at 5, 8, and 10 SPS with 60-ish TPS.
-5. Add a regression scenario that reports correction distance, snapshot bytes,
+1. Tune delta thresholds and projectile update stride for that lower cadence.
+2. Verify local host and remote WebRTC play at 5, 8, and 10 SPS with 60-ish TPS.
+3. Add a regression scenario that reports correction distance, snapshot bytes,
    encode time, decode/apply time, render FPS, and command response feel.
 
 DP-02 - Turn snapshots into an owned binary wire path instead of JS DTOs plus

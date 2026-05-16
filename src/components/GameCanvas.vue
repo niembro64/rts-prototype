@@ -37,6 +37,7 @@ import {
   loadStoredSimQuality,
   loadStoredSimSignalStates,
   loadStoredTiltEmaMode,
+  snapshotRateHz,
 } from '../serverBarConfig';
 import type { TiltEmaMode } from '../shellConfig';
 import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
@@ -525,7 +526,7 @@ const displayKeyframeRatio = computed(
 // has no recurring keyframes so we still draw a tiny non-zero
 // target (1 fps) so the bar isn't divide-by-zero.
 const fullSnapBarTarget = computed(() => {
-  const sps = displaySnapshotRate.value === 'none' ? 60 : displaySnapshotRate.value;
+  const sps = snapshotRateHz(displaySnapshotRate.value);
   const kf = displayKeyframeRatio.value;
   if (kf === 'NONE') return 1;
   if (kf === 'ALL') return sps;

@@ -7,7 +7,9 @@ import {
   UNIT_TYPE_IDS,
 } from './blueprintIds';
 import type { ShotId, TurretId } from './blueprintIds';
+import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { BeamReflectorKind, EntityType, PlayerId, TurretState } from './sim';
+import type { TiltEmaMode } from '../shellConfig';
 
 // ── Bit-packed enum codes for the wire format ─────────────────────
 // String enums compress poorly even after msgpack — every "tracking"
@@ -460,11 +462,11 @@ export type NetworkServerSnapshotMeta = {
     avg: number;
     low: number;
     /** Effective tick rate after adaptive host throttling. */
-    rate: number;
+    rate: TickRate;
     /** User-selected HOST SERVER TARGET TPS. */
-    target: number;
+    target: TickRate;
   };
-  snaps: { rate: number | 'none'; keyframes: number | 'ALL' | 'NONE' };
+  snaps: { rate: SnapshotRate; keyframes: KeyframeRatio };
   server: { time: string; ip: string };
   grid: boolean;
   units: { allowed?: string[]; max?: number; count?: number };
@@ -502,7 +504,7 @@ export type NetworkServerSnapshotMeta = {
    *  simLod.picked. Remote clients read this so their HOST SERVER tilt
    *  bar reflects the host's setting rather than their own stale
    *  localStorage. */
-  tiltEma?: string;
+  tiltEma?: TiltEmaMode;
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';

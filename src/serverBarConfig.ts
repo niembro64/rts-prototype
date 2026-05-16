@@ -8,6 +8,72 @@ import {
 } from './serverSimLodConfig';
 import { TILT_EMA_MODE_DEFAULT, type TiltEmaMode } from './shellConfig';
 
+export const HOST_SNAPSHOT_RATE_NORMAL_MIN = 5;
+export const HOST_SNAPSHOT_RATE_NORMAL_MAX = 10;
+export const HOST_SNAPSHOT_RATE_DIAGNOSTIC_MIN = 16;
+export const HOST_SNAPSHOT_RATE_DEFAULT: SnapshotRate = 8;
+export const HOST_SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
+  1, 4, 5, 8, 10, 16, 32, 64, 128,
+];
+export const LEGACY_UNCAPPED_SNAPSHOT_RATE_FALLBACK = 60;
+
+export function isNormalSnapshotRate(rate: SnapshotRate): boolean {
+  return (
+    typeof rate === 'number' &&
+    rate >= HOST_SNAPSHOT_RATE_NORMAL_MIN &&
+    rate <= HOST_SNAPSHOT_RATE_NORMAL_MAX
+  );
+}
+
+export function isDiagnosticSnapshotRate(rate: SnapshotRate): boolean {
+  return typeof rate === 'number' && rate >= HOST_SNAPSHOT_RATE_DIAGNOSTIC_MIN;
+}
+
+export function isSnapshotRateOption(rate: SnapshotRate): boolean {
+  return HOST_SNAPSHOT_RATE_OPTIONS.includes(rate);
+}
+
+export function normalizeSnapshotRate(rate: SnapshotRate): SnapshotRate {
+  return isSnapshotRateOption(rate) ? rate : HOST_SNAPSHOT_RATE_DEFAULT;
+}
+
+export function parseSnapshotRate(value: string | null | undefined): SnapshotRate {
+  if (!value) return HOST_SNAPSHOT_RATE_DEFAULT;
+  if (value === 'none') return HOST_SNAPSHOT_RATE_DEFAULT;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return HOST_SNAPSHOT_RATE_DEFAULT;
+  return normalizeSnapshotRate(parsed);
+}
+
+export function snapshotRateHz(
+  rate: SnapshotRate,
+  uncappedFallback = LEGACY_UNCAPPED_SNAPSHOT_RATE_FALLBACK,
+): number {
+  return rate === 'none' ? uncappedFallback : rate;
+}
+
+export function snapshotRateIntervalMs(rate: SnapshotRate): number {
+  const normalized = normalizeSnapshotRate(rate);
+  return normalized === 'none' ? 0 : 1000 / normalized;
+}
+
+export function snapshotRateLabel(rate: SnapshotRate): string {
+  return rate === 'none' ? 'NONE' : String(rate);
+}
+
+export function snapshotRateTitle(rate: SnapshotRate): string {
+  if (isNormalSnapshotRate(rate)) {
+    return `Normal authoritative snapshot cap: ${rate}/sec.`;
+  }
+  if (isDiagnosticSnapshotRate(rate)) {
+    return `Diagnostic snapshot cap: ${rate}/sec for low-unit-count testing.`;
+  }
+  if (rate === 'none') {
+    return 'Legacy uncapped snapshots; normalized back to the normal default.';
+  }
+  return `Low-cadence snapshot cap: ${rate}/sec for prediction stress testing.`;
+}
+
 export const SERVER_CONFIG = {
   tickRate: {
     default: 32 as TickRate,
@@ -18,9 +84,10 @@ export const SERVER_CONFIG = {
     options: ['snap', 'fast', 'mid', 'slow'] as readonly TiltEmaMode[],
   },
   snapshot: {
-    default: 64 as SnapshotRate,
-    options: [1, 4, 8, 16, 32, 64, 128] as readonly SnapshotRate[],
-    // 'none' removed — uncapped SPS at high TPS causes delta snapshot issues
+    default: HOST_SNAPSHOT_RATE_DEFAULT,
+    options: HOST_SNAPSHOT_RATE_OPTIONS,
+    // 5-10 SPS is normal play. 16+ SPS remains available as diagnostic
+    // headroom for low-unit-count tests and snapshot/prediction debugging.
   },
   keyframe: {
     default: (1 / Math.pow(2, 9)) as KeyframeRatio,
@@ -135,17 +202,11 @@ export function resetSimSignalStates(): ServerSimSignalStates {
 
 export function loadStoredSnapshotRate(): SnapshotRate {
   ensureHostServerMigrations();
-  const stored = readPersisted(STORAGE_SNAPSHOT_RATE);
-  if (stored === 'none') return 'none';
-  if (stored) {
-    const num = Number(stored);
-    if (!isNaN(num) && num > 0) return num;
-  }
-  return SERVER_CONFIG.snapshot.default;
+  return parseSnapshotRate(readPersisted(STORAGE_SNAPSHOT_RATE));
 }
 
 export function saveSnapshotRate(rate: SnapshotRate): void {
-  persist(STORAGE_SNAPSHOT_RATE, String(rate));
+  persist(STORAGE_SNAPSHOT_RATE, String(normalizeSnapshotRate(rate)));
 }
 
 export function loadStoredKeyframeRatio(): KeyframeRatio {
@@ -178,12 +239,10 @@ export function saveTickRate(rate: TickRate): void {
   persist(STORAGE_TICK_RATE, String(rate));
 }
 
-const TILT_EMA_MODES: readonly TiltEmaMode[] = ['snap', 'fast', 'mid', 'slow'];
-
 export function loadStoredTiltEmaMode(): TiltEmaMode {
   ensureHostServerMigrations();
   const stored = readPersisted(STORAGE_TILT_EMA_MODE);
-  if (stored && (TILT_EMA_MODES as readonly string[]).includes(stored)) {
+  if (stored && (SERVER_CONFIG.tiltEma.options as readonly string[]).includes(stored)) {
     return stored as TiltEmaMode;
   }
   return TILT_EMA_MODE_DEFAULT;

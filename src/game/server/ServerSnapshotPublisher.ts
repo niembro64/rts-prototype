@@ -1,4 +1,5 @@
 import { SNAPSHOT_CONFIG } from '../../config';
+import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
 import { getSimSignalStates } from '../sim/simQuality';
 import { getTiltEmaMode } from '../sim/unitTilt';
 import type { WorldState } from '../sim/WorldState';
@@ -79,10 +80,10 @@ export type ServerSnapshotPublisherInput = {
   terrainBuildabilityGrid: TerrainBuildabilityGrid;
   tpsAvg: number;
   tpsLow: number;
-  tickRateHz: number;
-  userTickRateHz: number;
-  maxSnapshotsDisplay: number | 'none';
-  keyframeRatioDisplay: number | 'ALL' | 'NONE';
+  tickRateHz: TickRate;
+  userTickRateHz: TickRate;
+  maxSnapshotsDisplay: SnapshotRate;
+  keyframeRatioDisplay: KeyframeRatio;
   keyframeRatio: number;
   ipAddress: string;
   backgroundMode: boolean;

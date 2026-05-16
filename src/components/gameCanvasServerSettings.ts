@@ -7,6 +7,7 @@ import {
 import type { GameConnection } from '../game/server/GameConnection';
 import {
   SERVER_CONFIG,
+  normalizeSnapshotRate,
   saveKeyframeRatio,
   saveSimQuality,
   saveSimSignalStates,
@@ -50,8 +51,13 @@ export function useGameCanvasServerSettings({
   getActiveConnection,
 }: GameCanvasServerSettingsOptions): GameCanvasServerSettings {
   function setNetworkUpdateRate(rate: SnapshotRate): void {
-    getActiveConnection()?.sendCommand({ type: 'setSnapshotRate', tick: 0, rate });
-    saveSnapshotRate(rate);
+    const normalizedRate = normalizeSnapshotRate(rate);
+    getActiveConnection()?.sendCommand({
+      type: 'setSnapshotRate',
+      tick: 0,
+      rate: normalizedRate,
+    });
+    saveSnapshotRate(normalizedRate);
   }
 
   function setTickRateValue(rate: TickRate): void {

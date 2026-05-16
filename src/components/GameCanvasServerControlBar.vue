@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { CLIENT_CONFIG } from '../clientBarConfig';
 import { GOOD_TPS } from '../lodConfig';
-import { SERVER_CONFIG } from '../serverBarConfig';
+import {
+  SERVER_CONFIG,
+  snapshotRateHz,
+  snapshotRateLabel,
+  snapshotRateTitle,
+} from '../serverBarConfig';
 import { SERVER_SIM_LOD_SIGNALS_ENABLED } from '../serverSimLodConfig';
 import type { TiltEmaMode } from '../shellConfig';
 import BarButton from './BarButton.vue';
@@ -24,10 +29,7 @@ const TILT_EMA_LABEL: Record<TiltEmaMode, string> = {
 };
 
 function secPerFullsnap(ratio: number): string {
-  const sps =
-    props.model.displaySnapshotRate === 'none'
-      ? props.model.displayTickRate
-      : props.model.displaySnapshotRate;
+  const sps = snapshotRateHz(props.model.displaySnapshotRate, props.model.displayTickRate);
   const sec = 1 / (sps * ratio);
   return `~1 fullsnap every ${+sec.toPrecision(2)}s`;
 }
@@ -168,9 +170,9 @@ function secPerFullsnap(ratio: number): string {
             v-for="rate in SERVER_CONFIG.snapshot.options"
             :key="String(rate)"
             :active="model.displaySnapshotRate === rate"
-            :title="`Cap snapshots at ${rate === 'none' ? 'no limit (every tick)' : rate + '/sec'}`"
+            :title="snapshotRateTitle(rate)"
             @click="model.setNetworkUpdateRate(rate)"
-          >{{ rate === 'none' ? 'NONE' : (rate as number) }}</BarButton>
+          >{{ snapshotRateLabel(rate) }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>
