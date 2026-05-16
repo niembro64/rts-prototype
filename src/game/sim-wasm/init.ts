@@ -148,6 +148,8 @@ import __wbg_init, {
   snapshot_encode_minimap_scratch_ensure,
   snapshot_encode_proj_despawn_scratch_ptr,
   snapshot_encode_proj_despawn_scratch_ensure,
+  snapshot_encode_proj_spawn_scratch_ptr,
+  snapshot_encode_proj_spawn_scratch_ensure,
   snapshot_encode_proj_vel_scratch_ptr,
   snapshot_encode_proj_vel_scratch_ensure,
   snapshot_encode_removed_ids_scratch_ptr,
@@ -1014,10 +1016,13 @@ export interface SnapshotEncodeApi {
   /** Emit `minimapEntities: [...]`. Reads `count` entries from the
    *  minimap scratch (6 f64 per entry). */
   emitMinimap: (count: number) => void;
-  /** Emit `projectiles: { despawns?, velocityUpdates? }`. Reads
-   *  despawn ids from projDespawnScratch and velocity-update tuples
-   *  from projVelScratch (7 f64 each). */
+  /** Emit `projectiles: { spawns?, despawns?, velocityUpdates? }`.
+   *  Reads spawn DTOs from projSpawnScratch (27 f64 each), despawn
+   *  ids from projDespawnScratch, velocity-update tuples from
+   *  projVelScratch (7 f64 each). */
   emitProjectiles: (
+    hasSpawns: number,
+    spawnCount: number,
     hasDespawns: number,
     despawnCount: number,
     hasVelocityUpdates: number,
@@ -1035,6 +1040,15 @@ export interface SnapshotEncodeApi {
   projDespawnScratchPtr: () => number;
   /** Pre-grow the proj-despawn scratch to hold `count` ids. */
   projDespawnScratchEnsure: (count: number) => void;
+  /** Raw pointer to the projectile-spawn scratch (Float64Array,
+   *  SNAPSHOT_ENCODE_PROJ_SPAWN_STRIDE f64 per entry — see lib.rs
+   *  layout comment for field offsets and the optional-presence
+   *  bitmask at offset 26). */
+  projSpawnScratchPtr: () => number;
+  /** Pre-grow the proj-spawn scratch to hold `count` entries. */
+  projSpawnScratchEnsure: (count: number) => void;
+  /** Stride per proj-spawn entry (f64 count). */
+  readonly projSpawnScratchStride: number;
   /** Raw pointer to the projectile-velocity-update scratch
    *  (Float64Array, 7 f64 per entry: id, pos.x/y/z, vel.x/y/z). */
   projVelScratchPtr: () => number;
@@ -1463,6 +1477,9 @@ export function initSimWasm(): Promise<SimWasm> {
           minimapScratchStride: 6,
           projDespawnScratchPtr: snapshot_encode_proj_despawn_scratch_ptr,
           projDespawnScratchEnsure: snapshot_encode_proj_despawn_scratch_ensure,
+          projSpawnScratchPtr: snapshot_encode_proj_spawn_scratch_ptr,
+          projSpawnScratchEnsure: snapshot_encode_proj_spawn_scratch_ensure,
+          projSpawnScratchStride: 27,
           projVelScratchPtr: snapshot_encode_proj_vel_scratch_ptr,
           projVelScratchEnsure: snapshot_encode_proj_vel_scratch_ensure,
           projVelScratchStride: 7,

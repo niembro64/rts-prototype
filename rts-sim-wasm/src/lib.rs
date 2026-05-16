@@ -7064,6 +7064,68 @@ pub fn snapshot_encode_proj_vel_scratch_ensure(count: u32) {
     }
 }
 
+/// Projectile spawn scratch — 27 f64 per entry. Field order matches
+/// `createPooledProjectileSpawn` in stateSerializerProjectiles.ts so
+/// the emit loop walks the slots in DTO insertion order.
+///   [0]    id
+///   [1..4] pos.x, pos.y, pos.z
+///   [4]    rotation
+///   [5..8] velocity.x, velocity.y, velocity.z
+///   [8]    projectileType (code)
+///   [9]    maxLifespan (gated by flag bit 0)
+///   [10]   turretId (code)
+///   [11]   shotId (gated by flag bit 1)
+///   [12]   sourceTurretId (gated by flag bit 2)
+///   [13]   playerId
+///   [14]   sourceEntityId
+///   [15]   turretIndex
+///   [16]   barrelIndex
+///   [17..20] beam.start.x/y/z (gated by flag bit 5)
+///   [20..23] beam.end.x/y/z (gated by flag bit 5)
+///   [23]   targetEntityId (gated by flag bit 6)
+///   [24]   homingTurnRate (gated by flag bit 7)
+///   [25]   reserved (future expansion)
+///   [26]   flags: bit 0 maxLifespan, 1 shotId, 2 sourceTurretId,
+///          3 isDGun(true), 4 fromParentDetonation(true), 5 beam,
+///          6 targetEntityId, 7 homingTurnRate.
+const SNAPSHOT_ENCODE_PROJ_SPAWN_STRIDE: usize = 27;
+
+struct SnapshotEncodeProjSpawnScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeProjSpawnScratchHolder(UnsafeCell<Option<SnapshotEncodeProjSpawnScratch>>);
+unsafe impl Sync for SnapshotEncodeProjSpawnScratchHolder {}
+static SNAPSHOT_ENCODE_PROJ_SPAWN_SCRATCH: SnapshotEncodeProjSpawnScratchHolder =
+    SnapshotEncodeProjSpawnScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_proj_spawn_scratch() -> &'static mut SnapshotEncodeProjSpawnScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_PROJ_SPAWN_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeProjSpawnScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_PROJ_SPAWN_STRIDE * 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_proj_spawn_scratch_ptr() -> *const f64 {
+    snapshot_encode_proj_spawn_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_proj_spawn_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_PROJ_SPAWN_STRIDE;
+    let s = snapshot_encode_proj_spawn_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Removed-entity-IDs scratch — Uint32Array of EntityId values for
 /// the envelope's removedEntityIds field. JS pre-fills before
 /// calling snapshot_encode_envelope_continue with
@@ -7122,12 +7184,15 @@ pub fn snapshot_encode_envelope_begin(
 }
 
 /// Append the envelope's `projectiles: {...}` nested object.
-/// Currently supports the `despawns` and `velocityUpdates` sub-
-/// arrays; `spawns` and `beamUpdates` come in follow-up commits
-/// (each adds its own scratch). Called between emit_minimap and
-/// _continue (pool order: projectiles sits before gameState).
+/// Supports `spawns`, `despawns`, `velocityUpdates`. `beamUpdates`
+/// arrives in a follow-up commit (needs its own variable-length
+/// scratch with per-spawn nested point arrays). Called between
+/// emit_economy and _continue (pool order: projectiles sits after
+/// economy and before gameState).
 #[wasm_bindgen]
 pub fn snapshot_encode_envelope_emit_projectiles(
+    has_spawns: u8,
+    spawn_count: u32,
     has_despawns: u8,
     despawn_count: u32,
     has_velocity_updates: u8,
@@ -7135,6 +7200,7 @@ pub fn snapshot_encode_envelope_emit_projectiles(
 ) {
     let w = messagepack_writer();
     let mut nested_count: usize = 0;
+    if has_spawns != 0 { nested_count += 1; }
     if has_despawns != 0 { nested_count += 1; }
     if has_velocity_updates != 0 { nested_count += 1; }
     if nested_count == 0 { return; }
@@ -7142,9 +7208,111 @@ pub fn snapshot_encode_envelope_emit_projectiles(
     w.write_str("projectiles");
     w.write_map_header(nested_count);
 
-    // Sub-key order in NetworkServerSnapshot.projectiles:
-    // spawns, despawns, velocityUpdates, beamUpdates. We emit
-    // only the present subset.
+    // Sub-key order in ProjectileSnapshot (stateSerializerProjectiles.ts
+    // _projectilesBuf pool init): spawns, despawns, velocityUpdates,
+    // beamUpdates. We emit only the present subset.
+    if has_spawns != 0 {
+        let n = spawn_count as usize;
+        let scratch = snapshot_encode_proj_spawn_scratch();
+        w.write_str("spawns");
+        w.write_array_header(n);
+        for i in 0..n {
+            let base = i * SNAPSHOT_ENCODE_PROJ_SPAWN_STRIDE;
+            let flags = scratch.buf[base + 26] as u32;
+            let has_max_lifespan = (flags & 0x01) != 0;
+            let has_shot_id = (flags & 0x02) != 0;
+            let has_source_turret_id = (flags & 0x04) != 0;
+            let has_is_dgun = (flags & 0x08) != 0;
+            let has_from_parent = (flags & 0x10) != 0;
+            let has_beam = (flags & 0x20) != 0;
+            let has_target = (flags & 0x40) != 0;
+            let has_homing = (flags & 0x80) != 0;
+
+            // Field count = always-present 9 (id, pos, rotation,
+            // velocity, projectileType, turretId, playerId,
+            // sourceEntityId, turretIndex, barrelIndex) -> 10.
+            let mut field_count: usize = 10;
+            if has_max_lifespan { field_count += 1; }
+            if has_shot_id { field_count += 1; }
+            if has_source_turret_id { field_count += 1; }
+            if has_is_dgun { field_count += 1; }
+            if has_from_parent { field_count += 1; }
+            if has_beam { field_count += 1; }
+            if has_target { field_count += 1; }
+            if has_homing { field_count += 1; }
+            w.write_map_header(field_count);
+
+            // Pool order from createPooledProjectileSpawn.
+            w.write_str("id");
+            w.write_uint(scratch.buf[base] as u64);
+            w.write_str("pos");
+            w.write_map_header(3);
+            w.write_str("x"); w.write_number(scratch.buf[base + 1]);
+            w.write_str("y"); w.write_number(scratch.buf[base + 2]);
+            w.write_str("z"); w.write_number(scratch.buf[base + 3]);
+            w.write_str("rotation");
+            w.write_number(scratch.buf[base + 4]);
+            w.write_str("velocity");
+            w.write_map_header(3);
+            w.write_str("x"); w.write_number(scratch.buf[base + 5]);
+            w.write_str("y"); w.write_number(scratch.buf[base + 6]);
+            w.write_str("z"); w.write_number(scratch.buf[base + 7]);
+            w.write_str("projectileType");
+            w.write_uint(scratch.buf[base + 8] as u64);
+            if has_max_lifespan {
+                w.write_str("maxLifespan");
+                w.write_number(scratch.buf[base + 9]);
+            }
+            w.write_str("turretId");
+            w.write_uint(scratch.buf[base + 10] as u64);
+            if has_shot_id {
+                w.write_str("shotId");
+                w.write_uint(scratch.buf[base + 11] as u64);
+            }
+            if has_source_turret_id {
+                w.write_str("sourceTurretId");
+                w.write_uint(scratch.buf[base + 12] as u64);
+            }
+            w.write_str("playerId");
+            w.write_uint(scratch.buf[base + 13] as u64);
+            w.write_str("sourceEntityId");
+            w.write_uint(scratch.buf[base + 14] as u64);
+            w.write_str("turretIndex");
+            w.write_uint(scratch.buf[base + 15] as u64);
+            w.write_str("barrelIndex");
+            w.write_uint(scratch.buf[base + 16] as u64);
+            if has_is_dgun {
+                w.write_str("isDGun");
+                w.write_bool(true);
+            }
+            if has_from_parent {
+                w.write_str("fromParentDetonation");
+                w.write_bool(true);
+            }
+            if has_beam {
+                w.write_str("beam");
+                w.write_map_header(2);
+                w.write_str("start");
+                w.write_map_header(3);
+                w.write_str("x"); w.write_number(scratch.buf[base + 17]);
+                w.write_str("y"); w.write_number(scratch.buf[base + 18]);
+                w.write_str("z"); w.write_number(scratch.buf[base + 19]);
+                w.write_str("end");
+                w.write_map_header(3);
+                w.write_str("x"); w.write_number(scratch.buf[base + 20]);
+                w.write_str("y"); w.write_number(scratch.buf[base + 21]);
+                w.write_str("z"); w.write_number(scratch.buf[base + 22]);
+            }
+            if has_target {
+                w.write_str("targetEntityId");
+                w.write_uint(scratch.buf[base + 23] as u64);
+            }
+            if has_homing {
+                w.write_str("homingTurnRate");
+                w.write_number(scratch.buf[base + 24]);
+            }
+        }
+    }
     if has_despawns != 0 {
         let n = despawn_count as usize;
         let scratch = snapshot_encode_proj_despawn_scratch();

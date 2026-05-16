@@ -18,6 +18,8 @@ import {
   snapshot_encode_minimap_scratch_ensure,
   snapshot_encode_proj_despawn_scratch_ptr,
   snapshot_encode_proj_despawn_scratch_ensure,
+  snapshot_encode_proj_spawn_scratch_ptr,
+  snapshot_encode_proj_spawn_scratch_ensure,
   snapshot_encode_proj_vel_scratch_ptr,
   snapshot_encode_proj_vel_scratch_ensure,
   snapshot_encode_removed_ids_scratch_ptr,
@@ -1298,6 +1300,26 @@ function packMinimapIntoScratch(
   }
 }
 
+type ProjectileSpawnFixture = {
+  id: number;
+  pos: { x: number; y: number; z: number };
+  rotation: number;
+  velocity: { x: number; y: number; z: number };
+  projectileType: number;
+  maxLifespan?: number;
+  turretId: number;
+  shotId?: number;
+  sourceTurretId?: number;
+  playerId: number;
+  sourceEntityId: number;
+  turretIndex: number;
+  barrelIndex: number;
+  isDGun?: true;
+  fromParentDetonation?: true;
+  beam?: { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number } };
+  targetEntityId?: number;
+  homingTurnRate?: number;
+};
 type ProjectileDespawnFixture = { id: number };
 type ProjectileVelocityUpdateFixture = {
   id: number;
@@ -1305,11 +1327,60 @@ type ProjectileVelocityUpdateFixture = {
   velocity: { x: number; y: number; z: number };
 };
 type ProjectilesFixture = {
+  spawns?: ProjectileSpawnFixture[];
   despawns?: ProjectileDespawnFixture[];
   velocityUpdates?: ProjectileVelocityUpdateFixture[];
 };
 
+const PROJ_SPAWN_SCRATCH_STRIDE = 27;
 const PROJ_VEL_SCRATCH_STRIDE = 7;
+
+function packProjSpawnsIntoScratch(memory: WebAssembly.Memory, spawns: ProjectileSpawnFixture[]): void {
+  if (spawns.length === 0) return;
+  snapshot_encode_proj_spawn_scratch_ensure(spawns.length);
+  const ptr = snapshot_encode_proj_spawn_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, spawns.length * PROJ_SPAWN_SCRATCH_STRIDE);
+  for (let i = 0; i < spawns.length; i++) {
+    const s = spawns[i];
+    const base = i * PROJ_SPAWN_SCRATCH_STRIDE;
+    view[base + 0] = s.id;
+    view[base + 1] = s.pos.x;
+    view[base + 2] = s.pos.y;
+    view[base + 3] = s.pos.z;
+    view[base + 4] = s.rotation;
+    view[base + 5] = s.velocity.x;
+    view[base + 6] = s.velocity.y;
+    view[base + 7] = s.velocity.z;
+    view[base + 8] = s.projectileType;
+    view[base + 9] = s.maxLifespan ?? 0;
+    view[base + 10] = s.turretId;
+    view[base + 11] = s.shotId ?? 0;
+    view[base + 12] = s.sourceTurretId ?? 0;
+    view[base + 13] = s.playerId;
+    view[base + 14] = s.sourceEntityId;
+    view[base + 15] = s.turretIndex;
+    view[base + 16] = s.barrelIndex;
+    view[base + 17] = s.beam?.start.x ?? 0;
+    view[base + 18] = s.beam?.start.y ?? 0;
+    view[base + 19] = s.beam?.start.z ?? 0;
+    view[base + 20] = s.beam?.end.x ?? 0;
+    view[base + 21] = s.beam?.end.y ?? 0;
+    view[base + 22] = s.beam?.end.z ?? 0;
+    view[base + 23] = s.targetEntityId ?? 0;
+    view[base + 24] = s.homingTurnRate ?? 0;
+    view[base + 25] = 0;  // reserved
+    let flags = 0;
+    if (s.maxLifespan !== undefined) flags |= 0x01;
+    if (s.shotId !== undefined) flags |= 0x02;
+    if (s.sourceTurretId !== undefined) flags |= 0x04;
+    if (s.isDGun === true) flags |= 0x08;
+    if (s.fromParentDetonation === true) flags |= 0x10;
+    if (s.beam !== undefined) flags |= 0x20;
+    if (s.targetEntityId !== undefined) flags |= 0x40;
+    if (s.homingTurnRate !== undefined) flags |= 0x80;
+    view[base + 26] = flags;
+  }
+}
 
 function packProjDespawnsIntoScratch(memory: WebAssembly.Memory, ids: number[]): void {
   if (ids.length === 0) return;
@@ -1537,6 +1608,115 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       removedEntityIds: [10],
       visibilityFiltered: false,
     },
+    // projectiles.spawns — single minimal spawn (required fields only).
+    {
+      tick: 800, entities: [], economy: {},
+      projectiles: {
+        spawns: [{
+          id: 9001,
+          pos: { x: 100, y: 200, z: 50 },
+          rotation: 0,
+          velocity: { x: 0, y: 0, z: 0 },
+          projectileType: 1,
+          turretId: 2,
+          playerId: 1,
+          sourceEntityId: 500,
+          turretIndex: 0,
+          barrelIndex: 0,
+        }],
+      },
+      isDelta: true,
+    },
+    // projectiles.spawns — every optional field set.
+    {
+      tick: 801, entities: [], economy: {},
+      projectiles: {
+        spawns: [{
+          id: 9002,
+          pos: { x: 0, y: 0, z: 0 },
+          rotation: 1.5708,
+          velocity: { x: 100, y: 0, z: 50 },
+          projectileType: 3,
+          maxLifespan: 5000,
+          turretId: 4,
+          shotId: 7,
+          sourceTurretId: 8,
+          playerId: 2,
+          sourceEntityId: 600,
+          turretIndex: 1,
+          barrelIndex: 2,
+          isDGun: true,
+          fromParentDetonation: true,
+          beam: {
+            start: { x: 0, y: 0, z: 10 },
+            end: { x: 1000, y: 500, z: 10 },
+          },
+          targetEntityId: 700,
+          homingTurnRate: 0.5,
+        }],
+      },
+      isDelta: true,
+    },
+    // projectiles.spawns — multiple, mix of optional combos.
+    {
+      tick: 802, entities: [], economy: {},
+      projectiles: {
+        spawns: [
+          {
+            id: 9003,
+            pos: { x: 500, y: 500, z: 0 },
+            rotation: 3.14,
+            velocity: { x: -50, y: 0, z: 0 },
+            projectileType: 2,
+            turretId: 1,
+            playerId: 1,
+            sourceEntityId: 0,
+            turretIndex: 0,
+            barrelIndex: 0,
+            isDGun: true,
+          },
+          {
+            id: 9004,
+            pos: { x: -100, y: 200, z: 75 },
+            rotation: 0,
+            velocity: { x: 0, y: 100, z: 0 },
+            projectileType: 5,
+            maxLifespan: 3000,
+            turretId: 6,
+            playerId: 3,
+            sourceEntityId: 800,
+            turretIndex: 2,
+            barrelIndex: 1,
+            targetEntityId: 900,
+            homingTurnRate: 1.2,
+          },
+        ],
+      },
+      isDelta: true,
+    },
+    // projectiles with spawns + despawns + velocityUpdates.
+    {
+      tick: 803, entities: [], economy: {},
+      projectiles: {
+        spawns: [{
+          id: 9005,
+          pos: { x: 0, y: 0, z: 0 },
+          rotation: 0,
+          velocity: { x: 50, y: 0, z: 0 },
+          projectileType: 1,
+          turretId: 2,
+          playerId: 1,
+          sourceEntityId: 100,
+          turretIndex: 0,
+          barrelIndex: 0,
+        }],
+        despawns: [{ id: 8000 }, { id: 8001 }],
+        velocityUpdates: [
+          { id: 7000, pos: { x: 50, y: 0, z: 50 }, velocity: { x: 25, y: 0, z: 0 } },
+        ],
+      },
+      isDelta: true,
+    },
   ];
 
   let passed = 0;
@@ -1580,6 +1760,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       packMinimapIntoScratch(memory, f.minimapEntities);
     }
     if (hasProjectiles && f.projectiles) {
+      if (f.projectiles.spawns) {
+        packProjSpawnsIntoScratch(memory, f.projectiles.spawns);
+      }
       if (f.projectiles.despawns) {
         packProjDespawnsIntoScratch(memory, f.projectiles.despawns.map((d) => d.id));
       }
@@ -1702,9 +1885,12 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       snapshot_encode_envelope_emit_economy();
     }
     if (hasProjectiles && f.projectiles) {
+      const spawns = f.projectiles.spawns;
       const despawns = f.projectiles.despawns;
       const vels = f.projectiles.velocityUpdates;
       snapshot_encode_envelope_emit_projectiles(
+        spawns !== undefined ? 1 : 0,
+        spawns?.length ?? 0,
         despawns !== undefined ? 1 : 0,
         despawns?.length ?? 0,
         vels !== undefined ? 1 : 0,
