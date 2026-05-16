@@ -6987,6 +6987,83 @@ pub fn snapshot_encode_minimap_scratch_ensure(count: u32) {
     }
 }
 
+/// Projectile-despawn scratch — Uint32Array of projectile ids
+/// (one u32 per despawn entry).
+struct SnapshotEncodeProjDespawnScratch {
+    buf: Vec<u32>,
+}
+
+struct SnapshotEncodeProjDespawnScratchHolder(UnsafeCell<Option<SnapshotEncodeProjDespawnScratch>>);
+unsafe impl Sync for SnapshotEncodeProjDespawnScratchHolder {}
+static SNAPSHOT_ENCODE_PROJ_DESPAWN_SCRATCH: SnapshotEncodeProjDespawnScratchHolder =
+    SnapshotEncodeProjDespawnScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_proj_despawn_scratch() -> &'static mut SnapshotEncodeProjDespawnScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_PROJ_DESPAWN_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeProjDespawnScratch { buf: vec![0u32; 32] });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_proj_despawn_scratch_ptr() -> *const u32 {
+    snapshot_encode_proj_despawn_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_proj_despawn_scratch_ensure(count: u32) {
+    let s = snapshot_encode_proj_despawn_scratch();
+    if s.buf.len() < count as usize {
+        s.buf.resize(count as usize, 0);
+    }
+}
+
+/// Projectile velocity-update scratch — 7 f64 per entry:
+///   [0]   id
+///   [1..4] pos.x, pos.y, pos.z
+///   [4..7] velocity.x, velocity.y, velocity.z
+const SNAPSHOT_ENCODE_PROJ_VEL_STRIDE: usize = 7;
+
+struct SnapshotEncodeProjVelScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeProjVelScratchHolder(UnsafeCell<Option<SnapshotEncodeProjVelScratch>>);
+unsafe impl Sync for SnapshotEncodeProjVelScratchHolder {}
+static SNAPSHOT_ENCODE_PROJ_VEL_SCRATCH: SnapshotEncodeProjVelScratchHolder =
+    SnapshotEncodeProjVelScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_proj_vel_scratch() -> &'static mut SnapshotEncodeProjVelScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_PROJ_VEL_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeProjVelScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_PROJ_VEL_STRIDE * 32],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_proj_vel_scratch_ptr() -> *const f64 {
+    snapshot_encode_proj_vel_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_proj_vel_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_PROJ_VEL_STRIDE;
+    let s = snapshot_encode_proj_vel_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Removed-entity-IDs scratch — Uint32Array of EntityId values for
 /// the envelope's removedEntityIds field. JS pre-fills before
 /// calling snapshot_encode_envelope_continue with
@@ -7044,6 +7121,80 @@ pub fn snapshot_encode_envelope_begin(
     w.write_array_header(entity_count as usize);
 }
 
+/// Append the envelope's `projectiles: {...}` nested object.
+/// Currently supports the `despawns` and `velocityUpdates` sub-
+/// arrays; `spawns` and `beamUpdates` come in follow-up commits
+/// (each adds its own scratch). Called between emit_minimap and
+/// _continue (pool order: projectiles sits before gameState).
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_projectiles(
+    has_despawns: u8,
+    despawn_count: u32,
+    has_velocity_updates: u8,
+    velocity_update_count: u32,
+) {
+    let w = messagepack_writer();
+    let mut nested_count: usize = 0;
+    if has_despawns != 0 { nested_count += 1; }
+    if has_velocity_updates != 0 { nested_count += 1; }
+    if nested_count == 0 { return; }
+
+    w.write_str("projectiles");
+    w.write_map_header(nested_count);
+
+    // Sub-key order in NetworkServerSnapshot.projectiles:
+    // spawns, despawns, velocityUpdates, beamUpdates. We emit
+    // only the present subset.
+    if has_despawns != 0 {
+        let n = despawn_count as usize;
+        let scratch = snapshot_encode_proj_despawn_scratch();
+        w.write_str("despawns");
+        w.write_array_header(n);
+        for i in 0..n {
+            // Despawn DTO: {id: number}
+            w.write_map_header(1);
+            w.write_str("id");
+            w.write_uint(scratch.buf[i] as u64);
+        }
+    }
+    if has_velocity_updates != 0 {
+        let n = velocity_update_count as usize;
+        let scratch = snapshot_encode_proj_vel_scratch();
+        w.write_str("velocityUpdates");
+        w.write_array_header(n);
+        for i in 0..n {
+            let base = i * SNAPSHOT_ENCODE_PROJ_VEL_STRIDE;
+            let id = scratch.buf[base] as u32;
+            let px = scratch.buf[base + 1];
+            let py = scratch.buf[base + 2];
+            let pz = scratch.buf[base + 3];
+            let vx = scratch.buf[base + 4];
+            let vy = scratch.buf[base + 5];
+            let vz = scratch.buf[base + 6];
+            // velocityUpdate DTO: {id, pos: {x, y, z}, velocity: {x, y, z}}
+            w.write_map_header(3);
+            w.write_str("id");
+            w.write_uint(id as u64);
+            w.write_str("pos");
+            w.write_map_header(3);
+            w.write_str("x");
+            w.write_number(px);
+            w.write_str("y");
+            w.write_number(py);
+            w.write_str("z");
+            w.write_number(pz);
+            w.write_str("velocity");
+            w.write_map_header(3);
+            w.write_str("x");
+            w.write_number(vx);
+            w.write_str("y");
+            w.write_number(vy);
+            w.write_str("z");
+            w.write_number(vz);
+        }
+    }
+}
+
 /// Append the minimapEntities array. Called after the last
 /// entity in the envelope's `entities[]` is written and BEFORE
 /// snapshot_encode_envelope_continue runs (minimapEntities sits
@@ -7094,17 +7245,22 @@ pub fn snapshot_encode_envelope_emit_minimap(count: u32) {
     }
 }
 
-/// Close the envelope. Emits the post-entities optional keys in
-/// stateSerializer.ts pool-insertion order: economy, gameState,
-/// isDelta, removedEntityIds, visibilityFiltered. Caller flags
-/// gate which appear; map-header count in _begin must match.
-///
-/// gameState arrives in a follow-up commit (needs the string scratch
-/// for the `phase` field); placeholder reserved here so the argument
-/// list stays stable.
+/// Append the economy key. Sits between minimapEntities and
+/// projectiles in pool insertion order. Body is currently empty {};
+/// follow-ups will add per-player resource/storage contents.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_economy() {
+    let w = messagepack_writer();
+    w.write_str("economy");
+    w.write_map_header(0);
+}
+
+/// Close the envelope. Emits the post-projectiles optional keys in
+/// stateSerializer.ts pool-insertion order: gameState, isDelta,
+/// removedEntityIds, visibilityFiltered. Caller flags gate which
+/// appear; map-header count in _begin must match.
 #[wasm_bindgen]
 pub fn snapshot_encode_envelope_continue(
-    has_economy: u8,
     has_game_state: u8,
     game_state_phase_slot: u32,
     has_winner_id: u8,
@@ -7116,10 +7272,6 @@ pub fn snapshot_encode_envelope_continue(
     visibility_filtered: u8,
 ) -> u32 {
     let w = messagepack_writer();
-    if has_economy != 0 {
-        w.write_str("economy");
-        w.write_map_header(0);
-    }
     if has_game_state != 0 {
         w.write_str("gameState");
         let gs_field_count = if has_winner_id != 0 { 2 } else { 1 };

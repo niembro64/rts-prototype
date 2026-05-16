@@ -139,6 +139,19 @@ import __wbg_init, {
   snapshot_encode_entity_basic,
   snapshot_encode_entity_unit,
   snapshot_encode_entity_building,
+  snapshot_encode_envelope_begin,
+  snapshot_encode_envelope_continue,
+  snapshot_encode_envelope_emit_economy,
+  snapshot_encode_envelope_emit_minimap,
+  snapshot_encode_envelope_emit_projectiles,
+  snapshot_encode_minimap_scratch_ptr,
+  snapshot_encode_minimap_scratch_ensure,
+  snapshot_encode_proj_despawn_scratch_ptr,
+  snapshot_encode_proj_despawn_scratch_ensure,
+  snapshot_encode_proj_vel_scratch_ptr,
+  snapshot_encode_proj_vel_scratch_ensure,
+  snapshot_encode_removed_ids_scratch_ptr,
+  snapshot_encode_removed_ids_scratch_ensure,
   snapshot_encode_turret_scratch_ptr,
   snapshot_encode_turret_scratch_ensure,
   snapshot_encode_action_scratch_ptr,
@@ -975,6 +988,64 @@ export interface SnapshotEncodeApi {
   waypointScratchEnsure: (count: number) => void;
   /** Stride per waypoint in the scratch buffer (f64 count). */
   readonly waypointScratchStride: number;
+  /** Open the snapshot envelope: clear writer, emit map header with
+   *  totalKeyCount (caller-tallied), then tick + entities array
+   *  header. Per-entity encodeEntityUnit/encodeEntityBuilding calls
+   *  follow, then emitMinimap/emitEconomy/emitProjectiles in pool
+   *  order, then envelopeContinue closes the envelope. */
+  envelopeBegin: (tick: number, entityCount: number, totalKeyCount: number) => void;
+  /** Close the envelope. Emits gameState (if hasGameState), isDelta,
+   *  removedEntityIds (if hasRemovedIds), visibilityFiltered (if
+   *  hasVisibilityFiltered) in that order. Returns total bytes
+   *  written. */
+  envelopeContinue: (
+    hasGameState: number,
+    gameStatePhaseSlot: number,
+    hasWinnerId: number,
+    winnerId: number,
+    isDelta: number,
+    hasRemovedEntityIds: number,
+    removedEntityIdCount: number,
+    hasVisibilityFiltered: number,
+    visibilityFiltered: number,
+  ) => number;
+  /** Emit the `economy: {}` key. Sub-fields not yet implemented. */
+  emitEconomy: () => void;
+  /** Emit `minimapEntities: [...]`. Reads `count` entries from the
+   *  minimap scratch (6 f64 per entry). */
+  emitMinimap: (count: number) => void;
+  /** Emit `projectiles: { despawns?, velocityUpdates? }`. Reads
+   *  despawn ids from projDespawnScratch and velocity-update tuples
+   *  from projVelScratch (7 f64 each). */
+  emitProjectiles: (
+    hasDespawns: number,
+    despawnCount: number,
+    hasVelocityUpdates: number,
+    velocityUpdateCount: number,
+  ) => void;
+  /** Raw pointer to the minimap scratch (Float64Array, 6 f64 per
+   *  entry: id, posX, posY, typeTag, playerId, radarPacked). */
+  minimapScratchPtr: () => number;
+  /** Pre-grow the minimap scratch to hold `count` entries. */
+  minimapScratchEnsure: (count: number) => void;
+  /** Stride per minimap entry (f64 count). */
+  readonly minimapScratchStride: number;
+  /** Raw pointer to the projectile-despawn scratch (Uint32Array of
+   *  ids). */
+  projDespawnScratchPtr: () => number;
+  /** Pre-grow the proj-despawn scratch to hold `count` ids. */
+  projDespawnScratchEnsure: (count: number) => void;
+  /** Raw pointer to the projectile-velocity-update scratch
+   *  (Float64Array, 7 f64 per entry: id, pos.x/y/z, vel.x/y/z). */
+  projVelScratchPtr: () => number;
+  /** Pre-grow the proj-vel scratch to hold `count` entries. */
+  projVelScratchEnsure: (count: number) => void;
+  /** Stride per proj-vel entry (f64 count). */
+  readonly projVelScratchStride: number;
+  /** Raw pointer to the removed-entity-ids scratch (Uint32Array). */
+  removedIdsScratchPtr: () => number;
+  /** Pre-grow the removed-ids scratch to hold `count` ids. */
+  removedIdsScratchEnsure: (count: number) => void;
 }
 
 /** Entity-type tags for SnapshotEncodeApi.encodeEntityBasic. Mirrors
@@ -1382,6 +1453,21 @@ export function initSimWasm(): Promise<SimWasm> {
           encodeEntityBasic: snapshot_encode_entity_basic,
           encodeEntityUnit: snapshot_encode_entity_unit,
           encodeEntityBuilding: snapshot_encode_entity_building,
+          envelopeBegin: snapshot_encode_envelope_begin,
+          envelopeContinue: snapshot_encode_envelope_continue,
+          emitEconomy: snapshot_encode_envelope_emit_economy,
+          emitMinimap: snapshot_encode_envelope_emit_minimap,
+          emitProjectiles: snapshot_encode_envelope_emit_projectiles,
+          minimapScratchPtr: snapshot_encode_minimap_scratch_ptr,
+          minimapScratchEnsure: snapshot_encode_minimap_scratch_ensure,
+          minimapScratchStride: 6,
+          projDespawnScratchPtr: snapshot_encode_proj_despawn_scratch_ptr,
+          projDespawnScratchEnsure: snapshot_encode_proj_despawn_scratch_ensure,
+          projVelScratchPtr: snapshot_encode_proj_vel_scratch_ptr,
+          projVelScratchEnsure: snapshot_encode_proj_vel_scratch_ensure,
+          projVelScratchStride: 7,
+          removedIdsScratchPtr: snapshot_encode_removed_ids_scratch_ptr,
+          removedIdsScratchEnsure: snapshot_encode_removed_ids_scratch_ensure,
           writerPtr: messagepack_writer_ptr,
           writerLen: messagepack_writer_len,
           turretScratchPtr: snapshot_encode_turret_scratch_ptr,
