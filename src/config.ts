@@ -128,7 +128,7 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
    *      Every drift gets sent. Approaches keyframe bandwidth on
    *      lots of mobile units. Reserve for low-unit-count scenes
    *      where you want pixel-perfect motion. */
-  positionThreshold: 0.1,
+  positionThreshold: 0.5,
 
   /** velocityX/Y (in WORLD UNITS / SECOND) must change by more than
    *  this for a fresh velocity field on the wire. Used by the
@@ -146,7 +146,7 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
    *    HIGH resolution — 0.1 wu/s
    *      Every micro-acceleration shipped. Best for slow-motion
    *      replay or low-count debug. */
-  velocityThreshold: 0.1,
+  velocityThreshold: 0.5,
 
   /** Body rotation + turret rotations must change by more than this
    *  many RADIANS to re-send. Use Math.PI fractions for clarity —
@@ -199,9 +199,11 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
 
   /** Projectile side-channel cadence in emitted snapshots. Spawns and
    *  despawns always ship immediately; this only gates live velocity
-   *  corrections and authoritative beam path updates. */
+   *  corrections and authoritative beam path updates. At normal 5-10
+   *  SPS, snapshot cadence is already the throttle, so live projectile
+   *  and beam corrections should not be sub-strided by ownership. */
   ownedProjectileUpdateStride: 1,
-  observedProjectileUpdateStride: 3,
+  observedProjectileUpdateStride: 1,
 };
 
 // Re-export bar config values used by sim/server code
