@@ -71,7 +71,8 @@ export class ClientProjectileStore {
         this.activeProjectilePredictionIds.add(spawn.id);
       }
       return true;
-    } catch {
+    } catch (err) {
+      console.error('[ClientProjectileStore] applySpawn failed', { spawn, err });
       return false;
     }
   }
