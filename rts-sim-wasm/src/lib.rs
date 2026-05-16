@@ -6320,8 +6320,8 @@ pub fn snapshot_encode_entity_basic(
 /// ignoreUndefined drops the undefined case. `leg_contact` here is
 /// 0 (omit) or 1 (emit true).
 ///
-/// Field order inside `unit` mirrors NetworkUnitSnapshot's type
-/// declaration.
+/// Field order inside `unit` mirrors the pooled DTO's runtime
+/// insertion order in stateSerializerEntities.ts.
 #[wasm_bindgen]
 pub fn snapshot_encode_entity_unit(
     id: u32,
@@ -6334,6 +6334,16 @@ pub fn snapshot_encode_entity_unit(
     hp_curr: f64,
     hp_max: f64,
     qvel_x: f64, qvel_y: f64, qvel_z: f64,
+    has_unit_type: u8,
+    unit_type_code: u32,
+    has_radius: u8,
+    radius_body: f64,
+    radius_shot: f64,
+    radius_push: f64,
+    has_body_center_height: u8,
+    body_center_height: f64,
+    has_mass: u8,
+    mass: f64,
     has_movement_accel: u8,
     qmov_x: f64, qmov_y: f64, qmov_z: f64,
     has_surface_normal: u8,
@@ -6383,6 +6393,11 @@ pub fn snapshot_encode_entity_unit(
     );
 
     let mut unit_field_count: usize = 2; // hp + velocity
+    if has_unit_type != 0 { unit_field_count += 1; }
+    if has_radius != 0 { unit_field_count += 1; }
+    if has_body_center_height != 0 { unit_field_count += 1; }
+    if has_mass != 0 { unit_field_count += 1; }
+    if has_is_commander != 0 { unit_field_count += 1; }
     if has_movement_accel != 0 { unit_field_count += 1; }
     if has_surface_normal != 0 { unit_field_count += 1; }
     if has_suspension != 0 { unit_field_count += 1; }
@@ -6391,11 +6406,10 @@ pub fn snapshot_encode_entity_unit(
     if has_angular_velocity3 != 0 { unit_field_count += 1; }
     if has_angular_acceleration3 != 0 { unit_field_count += 1; }
     if has_fire_enabled != 0 { unit_field_count += 1; }
-    if has_is_commander != 0 { unit_field_count += 1; }
-    if has_build_target_id != 0 { unit_field_count += 1; }
+    if has_build != 0 { unit_field_count += 1; }
     if has_actions != 0 { unit_field_count += 1; }
     if has_turrets != 0 { unit_field_count += 1; }
-    if has_build != 0 { unit_field_count += 1; }
+    if has_build_target_id != 0 { unit_field_count += 1; }
 
     w.write_str("unit");
     w.write_map_header(unit_field_count);
@@ -6415,6 +6429,37 @@ pub fn snapshot_encode_entity_unit(
     w.write_number(qvel_y);
     w.write_str("z");
     w.write_number(qvel_z);
+
+    if has_unit_type != 0 {
+        w.write_str("unitType");
+        w.write_uint(unit_type_code as u64);
+    }
+
+    if has_radius != 0 {
+        w.write_str("radius");
+        w.write_map_header(3);
+        w.write_str("body");
+        w.write_number(radius_body);
+        w.write_str("shot");
+        w.write_number(radius_shot);
+        w.write_str("push");
+        w.write_number(radius_push);
+    }
+
+    if has_body_center_height != 0 {
+        w.write_str("bodyCenterHeight");
+        w.write_number(body_center_height);
+    }
+
+    if has_mass != 0 {
+        w.write_str("mass");
+        w.write_number(mass);
+    }
+
+    if has_is_commander != 0 {
+        w.write_str("isCommander");
+        w.write_bool(true);
+    }
 
     if has_movement_accel != 0 {
         w.write_str("movementAccel");
@@ -6524,17 +6569,20 @@ pub fn snapshot_encode_entity_unit(
         w.write_str("fireEnabled");
         w.write_bool(false);
     }
-    if has_is_commander != 0 {
-        w.write_str("isCommander");
-        w.write_bool(true);
-    }
-    if has_build_target_id != 0 {
-        w.write_str("buildTargetId");
-        if build_target_id_is_null != 0 {
-            w.write_nil();
-        } else {
-            w.write_uint(build_target_id as u64);
-        }
+
+    if has_build != 0 {
+        w.write_str("build");
+        w.write_map_header(2);  // complete + paid
+        w.write_str("complete");
+        w.write_bool(build_complete != 0);
+        w.write_str("paid");
+        w.write_map_header(3);
+        w.write_str("energy");
+        w.write_number(build_paid_energy);
+        w.write_str("mana");
+        w.write_number(build_paid_mana);
+        w.write_str("metal");
+        w.write_number(build_paid_metal);
     }
 
     if has_actions != 0 {
@@ -6677,19 +6725,13 @@ pub fn snapshot_encode_entity_unit(
         }
     }
 
-    if has_build != 0 {
-        w.write_str("build");
-        w.write_map_header(2);  // complete + paid
-        w.write_str("complete");
-        w.write_bool(build_complete != 0);
-        w.write_str("paid");
-        w.write_map_header(3);
-        w.write_str("energy");
-        w.write_number(build_paid_energy);
-        w.write_str("mana");
-        w.write_number(build_paid_mana);
-        w.write_str("metal");
-        w.write_number(build_paid_metal);
+    if has_build_target_id != 0 {
+        w.write_str("buildTargetId");
+        if build_target_id_is_null != 0 {
+            w.write_nil();
+        } else {
+            w.write_uint(build_target_id as u64);
+        }
     }
 
     (w.buf.len() - start) as u32

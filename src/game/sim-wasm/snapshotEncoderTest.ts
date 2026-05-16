@@ -219,6 +219,10 @@ type UnitFixture = BasicEntityFixture & {
   unit: {
     hp: { curr: number; max: number };
     velocity: { x: number; y: number; z: number };
+    unitType?: number;
+    radius?: { body: number; shot: number; push: number };
+    bodyCenterHeight?: number;
+    mass?: number;
     movementAccel?: { x: number; y: number; z: number };
     surfaceNormal?: { nx: number; ny: number; nz: number };
     suspension?: {
@@ -318,6 +322,32 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     {
       id: 99, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       unit: { hp: { curr: 12.5, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
+    },
+    // Full keyframe static unit fields. Runtime DTO pools start with
+    // hp + velocity, then add static fields in this order on full records.
+    {
+      id: 100, type: 'unit', pos: { x: 10, y: 20, z: 30 }, rotation: 1571, playerId: 1,
+      unit: {
+        hp: { curr: 100, max: 100 },
+        velocity: { x: 0, y: 0, z: 0 },
+        unitType: 4,
+        radius: { body: 12, shot: 15, push: 18 },
+        bodyCenterHeight: 21,
+        mass: 35,
+      },
+    },
+    // Full commander keyframe static fields with the isCommander flag.
+    {
+      id: 101, type: 'unit', pos: { x: 40, y: 50, z: 60 }, rotation: 0, playerId: 2,
+      unit: {
+        hp: { curr: 5000, max: 5000 },
+        velocity: { x: 0, y: 0, z: 0 },
+        unitType: 0,
+        radius: { body: 20, shot: 20, push: 22 },
+        bodyCenterHeight: 24,
+        mass: 250,
+        isCommander: true,
+      },
     },
     // Delta path with changedFields, no normal
     {
@@ -559,8 +589,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       unit: {
         hp: { curr: 4500, max: 5000 },
         velocity: { x: 0, y: 0, z: 0 },
-        fireEnabled: false,
         isCommander: true,
+        fireEnabled: false,
         buildTargetId: 99999,
       },
     },
@@ -897,6 +927,16 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       hasChanged, changed,
       f.unit.hp.curr, f.unit.hp.max,
       f.unit.velocity.x, f.unit.velocity.y, f.unit.velocity.z,
+      f.unit.unitType !== undefined ? 1 : 0,
+      f.unit.unitType ?? 0,
+      f.unit.radius !== undefined ? 1 : 0,
+      f.unit.radius?.body ?? 0,
+      f.unit.radius?.shot ?? 0,
+      f.unit.radius?.push ?? 0,
+      f.unit.bodyCenterHeight !== undefined ? 1 : 0,
+      f.unit.bodyCenterHeight ?? 0,
+      f.unit.mass !== undefined ? 1 : 0,
+      f.unit.mass ?? 0,
       hasMovementAccel,
       ma?.x ?? 0, ma?.y ?? 0, ma?.z ?? 0,
       hasNormal,
@@ -2867,6 +2907,16 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           hasChanged, u.changedFields ?? 0,
           u.unit.hp.curr, u.unit.hp.max,
           u.unit.velocity.x, u.unit.velocity.y, u.unit.velocity.z,
+          u.unit.unitType !== undefined ? 1 : 0,
+          u.unit.unitType ?? 0,
+          u.unit.radius !== undefined ? 1 : 0,
+          u.unit.radius?.body ?? 0,
+          u.unit.radius?.shot ?? 0,
+          u.unit.radius?.push ?? 0,
+          u.unit.bodyCenterHeight !== undefined ? 1 : 0,
+          u.unit.bodyCenterHeight ?? 0,
+          u.unit.mass !== undefined ? 1 : 0,
+          u.unit.mass ?? 0,
           ma !== undefined ? 1 : 0, ma?.x ?? 0, ma?.y ?? 0, ma?.z ?? 0,
           sn !== undefined ? 1 : 0, sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
           sp !== undefined ? 1 : 0,

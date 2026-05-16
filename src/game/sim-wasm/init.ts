@@ -887,12 +887,10 @@ export interface SnapshotEncodeApi {
     hasChangedFields: number,
     changedFields: number,
   ) => number;
-  /** Encode envelope + `unit: {hp, velocity [, movementAccel]
-   *  [, surfaceNormal] [, suspension]}`. Numeric vector components
+  /** Encode envelope + the unit sub-object. Numeric vector components
    *  are pre-quantized JS numbers (caller does qVel / qNormal /
-   *  qSuspension). Suspension has nested offset / velocity plus an
-   *  optional legContact flag (1 emits `true`, 0 omits the key —
-   *  mirrors JS `out.legContact = ? true : undefined`). */
+   *  qSuspension). Optional static fields cover full keyframes;
+   *  delta-only fields stay gated by their has* flags. */
   encodeEntityUnit: (
     id: number,
     typeTag: number,
@@ -904,6 +902,16 @@ export interface SnapshotEncodeApi {
     hpCurr: number,
     hpMax: number,
     qvelX: number, qvelY: number, qvelZ: number,
+    hasUnitType: number,
+    unitTypeCode: number,
+    hasRadius: number,
+    radiusBody: number,
+    radiusShot: number,
+    radiusPush: number,
+    hasBodyCenterHeight: number,
+    bodyCenterHeight: number,
+    hasMass: number,
+    mass: number,
     hasMovementAccel: number,
     qmovX: number, qmovY: number, qmovZ: number,
     hasSurfaceNormal: number,

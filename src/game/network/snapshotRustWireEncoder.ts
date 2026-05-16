@@ -142,10 +142,14 @@ function packTurretsIntoScratch(
 
 function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
   return (
-    unit.unitType !== undefined ||
-    unit.radius !== undefined ||
-    unit.bodyCenterHeight !== undefined ||
-    unit.mass !== undefined ||
+    (unit.unitType !== undefined && !isUint(unit.unitType, 0xFFFF_FFFF)) ||
+    (unit.radius !== undefined && (
+      !Number.isFinite(unit.radius.body) ||
+      !Number.isFinite(unit.radius.shot) ||
+      !Number.isFinite(unit.radius.push)
+    )) ||
+    (unit.bodyCenterHeight !== undefined && !Number.isFinite(unit.bodyCenterHeight)) ||
+    (unit.mass !== undefined && !Number.isFinite(unit.mass)) ||
     (unit.jump !== undefined && unit.jump.enabled === undefined) ||
     unit.jump?.active === false ||
     unit.suspension?.legContact === false ||
@@ -190,6 +194,16 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     unit.hp.curr,
     unit.hp.max,
     unit.velocity.x, unit.velocity.y, unit.velocity.z,
+    unit.unitType !== undefined ? 1 : 0,
+    unit.unitType ?? 0,
+    unit.radius !== undefined ? 1 : 0,
+    unit.radius?.body ?? 0,
+    unit.radius?.shot ?? 0,
+    unit.radius?.push ?? 0,
+    unit.bodyCenterHeight !== undefined ? 1 : 0,
+    unit.bodyCenterHeight ?? 0,
+    unit.mass !== undefined ? 1 : 0,
+    unit.mass ?? 0,
     movementAccel !== undefined ? 1 : 0,
     movementAccel?.x ?? 0,
     movementAccel?.y ?? 0,
