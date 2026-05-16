@@ -169,6 +169,12 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_audio_events,
   snapshot_encode_audio_event_scratch_ptr,
   snapshot_encode_audio_event_scratch_ensure,
+  snapshot_encode_death_context_scratch_ptr,
+  snapshot_encode_death_context_scratch_ensure,
+  snapshot_encode_turret_pose_scratch_ptr,
+  snapshot_encode_turret_pose_scratch_ensure,
+  snapshot_encode_impact_context_scratch_ptr,
+  snapshot_encode_impact_context_scratch_ensure,
   snapshot_encode_proj_despawn_scratch_ptr,
   snapshot_encode_proj_despawn_scratch_ensure,
   snapshot_encode_proj_spawn_scratch_ptr,
@@ -1134,6 +1140,29 @@ export interface SnapshotEncodeApi {
   audioEventScratchEnsure: (count: number) => void;
   /** Stride per audio-event entry (f64 count). */
   readonly audioEventScratchStride: number;
+  /** Raw pointer to the death-context scratch (16 f64 per
+   *  deathContext, one per audio event with the has_deathContext
+   *  flag set). Caller packs in audio-event order. */
+  deathContextScratchPtr: () => number;
+  /** Pre-grow the death-context scratch to hold `count` contexts. */
+  deathContextScratchEnsure: (count: number) => void;
+  /** Stride per death-context entry (f64 count). */
+  readonly deathContextScratchStride: number;
+  /** Raw pointer to the turret-pose scratch (2 f64 per pose: rotation,
+   *  pitch — flat across all deathContexts in pack order). */
+  turretPoseScratchPtr: () => number;
+  /** Pre-grow the turret-pose scratch to hold `count` total poses. */
+  turretPoseScratchEnsure: (count: number) => void;
+  /** Stride per turret-pose entry (f64 count). */
+  readonly turretPoseScratchStride: number;
+  /** Raw pointer to the impact-context scratch (11 f64 per
+   *  impactContext, one per audio event with the has_impactContext
+   *  flag set). All fields required (no optionals). */
+  impactContextScratchPtr: () => number;
+  /** Pre-grow the impact-context scratch to hold `count` contexts. */
+  impactContextScratchEnsure: (count: number) => void;
+  /** Stride per impact-context entry (f64 count). */
+  readonly impactContextScratchStride: number;
   /** Raw pointer to the beam-update header scratch (Float64Array,
    *  4 f64 per update: id, flags, obstructionT, point_count). */
   beamUpdateScratchPtr: () => number;
@@ -1619,6 +1648,15 @@ export function initSimWasm(): Promise<SimWasm> {
           audioEventScratchPtr: snapshot_encode_audio_event_scratch_ptr,
           audioEventScratchEnsure: snapshot_encode_audio_event_scratch_ensure,
           audioEventScratchStride: 16,
+          deathContextScratchPtr: snapshot_encode_death_context_scratch_ptr,
+          deathContextScratchEnsure: snapshot_encode_death_context_scratch_ensure,
+          deathContextScratchStride: 16,
+          turretPoseScratchPtr: snapshot_encode_turret_pose_scratch_ptr,
+          turretPoseScratchEnsure: snapshot_encode_turret_pose_scratch_ensure,
+          turretPoseScratchStride: 2,
+          impactContextScratchPtr: snapshot_encode_impact_context_scratch_ptr,
+          impactContextScratchEnsure: snapshot_encode_impact_context_scratch_ensure,
+          impactContextScratchStride: 11,
           projDespawnScratchPtr: snapshot_encode_proj_despawn_scratch_ptr,
           projDespawnScratchEnsure: snapshot_encode_proj_despawn_scratch_ensure,
           projSpawnScratchPtr: snapshot_encode_proj_spawn_scratch_ptr,

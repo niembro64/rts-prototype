@@ -7305,6 +7305,151 @@ pub fn snapshot_encode_capture_height_scratch_ensure(count: u32) {
     }
 }
 
+/// Death-context scratch — 16 f64 per deathContext (one per audio
+/// event that has the has_deathContext flag set). Caller packs in
+/// the same order as the audio events appear; Rust walks audio
+/// events and uses a local offset to pull the next deathContext.
+///   [0..2]  unitVel.x, unitVel.y
+///   [2..4]  hitDir.x, hitDir.y
+///   [4..6]  projectileVel.x, projectileVel.y
+///   [6]     attackMagnitude
+///   [7]     radius
+///   [8]     color
+///   [9]     visualRadius (gated by flags bit 0)
+///   [10]    pushRadius (gated by flags bit 1)
+///   [11]    baseZ (gated by flags bit 2)
+///   [12]    rotation (gated by flags bit 4)
+///   [13]    unitType string-scratch slot (gated by flags bit 3)
+///   [14]    turretPoses_count (gated by flags bit 5)
+///   [15]    flags: bit 0 has_visualRadius, bit 1 has_pushRadius,
+///            bit 2 has_baseZ, bit 3 has_unitType, bit 4 has_rotation,
+///            bit 5 has_turretPoses
+const SNAPSHOT_ENCODE_DEATH_CONTEXT_STRIDE: usize = 16;
+
+struct SnapshotEncodeDeathContextScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeDeathContextScratchHolder(UnsafeCell<Option<SnapshotEncodeDeathContextScratch>>);
+unsafe impl Sync for SnapshotEncodeDeathContextScratchHolder {}
+static SNAPSHOT_ENCODE_DEATH_CONTEXT_SCRATCH: SnapshotEncodeDeathContextScratchHolder =
+    SnapshotEncodeDeathContextScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_death_context_scratch() -> &'static mut SnapshotEncodeDeathContextScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_DEATH_CONTEXT_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeDeathContextScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_DEATH_CONTEXT_STRIDE * 4],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_death_context_scratch_ptr() -> *const f64 {
+    snapshot_encode_death_context_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_death_context_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_DEATH_CONTEXT_STRIDE;
+    let s = snapshot_encode_death_context_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
+/// Turret-pose scratch (for deathContext.turretPoses arrays) — flat
+/// across all deathContexts in pack order; stride 2 (rotation, pitch).
+const SNAPSHOT_ENCODE_TURRET_POSE_STRIDE: usize = 2;
+
+struct SnapshotEncodeTurretPoseScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeTurretPoseScratchHolder(UnsafeCell<Option<SnapshotEncodeTurretPoseScratch>>);
+unsafe impl Sync for SnapshotEncodeTurretPoseScratchHolder {}
+static SNAPSHOT_ENCODE_TURRET_POSE_SCRATCH: SnapshotEncodeTurretPoseScratchHolder =
+    SnapshotEncodeTurretPoseScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_turret_pose_scratch() -> &'static mut SnapshotEncodeTurretPoseScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_TURRET_POSE_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeTurretPoseScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_TURRET_POSE_STRIDE * 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_turret_pose_scratch_ptr() -> *const f64 {
+    snapshot_encode_turret_pose_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_turret_pose_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_TURRET_POSE_STRIDE;
+    let s = snapshot_encode_turret_pose_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
+/// Impact-context scratch — 11 f64 per impactContext (one per audio
+/// event with has_impactContext flag set). All fields are required
+/// in the source DTO (no optionals).
+///   [0]    collisionRadius
+///   [1]    explosionRadius
+///   [2..4] projectile.pos.x, projectile.pos.y
+///   [4..6] projectile.vel.x, projectile.vel.y
+///   [6..8] entity.vel.x, entity.vel.y
+///   [8]    entity.collisionRadius
+///   [9..11] penetrationDir.x, penetrationDir.y
+const SNAPSHOT_ENCODE_IMPACT_CONTEXT_STRIDE: usize = 11;
+
+struct SnapshotEncodeImpactContextScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeImpactContextScratchHolder(UnsafeCell<Option<SnapshotEncodeImpactContextScratch>>);
+unsafe impl Sync for SnapshotEncodeImpactContextScratchHolder {}
+static SNAPSHOT_ENCODE_IMPACT_CONTEXT_SCRATCH: SnapshotEncodeImpactContextScratchHolder =
+    SnapshotEncodeImpactContextScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_impact_context_scratch() -> &'static mut SnapshotEncodeImpactContextScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_IMPACT_CONTEXT_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeImpactContextScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_IMPACT_CONTEXT_STRIDE * 4],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_impact_context_scratch_ptr() -> *const f64 {
+    snapshot_encode_impact_context_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_impact_context_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_IMPACT_CONTEXT_STRIDE;
+    let s = snapshot_encode_impact_context_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Audio-event scratch — 16 f64 per event (NetworkServerSnapshotSimEvent
 /// minus deathContext / impactContext, which arrive in follow-ups).
 ///   [0]    type_code (0='fire', 1='hit', 2='death', 3='laserStart',
@@ -8063,16 +8208,22 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
 /// playerId, forceFieldImpact, killerPlayerId, victimPlayerId,
 /// audioOnly, entityId, [deathContext], [impactContext].
 ///
-/// D.3j-26 emits everything EXCEPT deathContext + impactContext —
-/// those are large nested objects (~30 fields combined) and come in
-/// follow-up commits. Bits 9 + 10 in the flags word are reserved.
+/// D.3j-27 adds deathContext + impactContext support. Caller pre-packs
+/// per-context scratches in event order; the encoder walks audio
+/// events with local offsets into each context scratch.
 #[wasm_bindgen]
 pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
     let w = messagepack_writer();
     let n = count as usize;
     let scratch = snapshot_encode_audio_event_scratch();
+    let death_scratch = snapshot_encode_death_context_scratch();
+    let pose_scratch = snapshot_encode_turret_pose_scratch();
+    let impact_scratch = snapshot_encode_impact_context_scratch();
     w.write_str("audioEvents");
     w.write_array_header(n);
+    let mut death_offset: usize = 0;
+    let mut pose_offset: usize = 0;
+    let mut impact_offset: usize = 0;
     for i in 0..n {
         let base = i * SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE;
         let type_code = scratch.buf[base] as u8;
@@ -8101,10 +8252,11 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         let has_victim = (flags & 0x040) != 0;
         let has_audio_only = (flags & 0x080) != 0;
         let audio_only_value = (flags & 0x100) != 0;
+        let has_death_context = (flags & 0x200) != 0;
+        let has_impact_context = (flags & 0x400) != 0;
 
         // Per-event field count: 3 always (type, turretId, pos) +
-        // optionals. deathContext + impactContext flags are reserved
-        // for future commits — current D.3j-26 fixtures don't set them.
+        // optionals.
         let mut field_count: usize = 3;
         if has_source_type { field_count += 1; }
         if has_source_key { field_count += 1; }
@@ -8114,6 +8266,8 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         if has_victim { field_count += 1; }
         if has_audio_only { field_count += 1; }
         if has_entity_id { field_count += 1; }
+        if has_death_context { field_count += 1; }
+        if has_impact_context { field_count += 1; }
         w.write_map_header(field_count);
 
         // Pool-iteration order as documented above.
@@ -8166,6 +8320,149 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         if has_entity_id {
             w.write_str("entityId");
             w.write_uint(entity_id as u64);
+        }
+        if has_death_context {
+            let db = death_offset * SNAPSHOT_ENCODE_DEATH_CONTEXT_STRIDE;
+            let unit_vel_x = death_scratch.buf[db];
+            let unit_vel_y = death_scratch.buf[db + 1];
+            let hit_dir_x = death_scratch.buf[db + 2];
+            let hit_dir_y = death_scratch.buf[db + 3];
+            let proj_vel_x = death_scratch.buf[db + 4];
+            let proj_vel_y = death_scratch.buf[db + 5];
+            let attack_magnitude = death_scratch.buf[db + 6];
+            let radius = death_scratch.buf[db + 7];
+            let color = death_scratch.buf[db + 8];
+            let visual_radius = death_scratch.buf[db + 9];
+            let push_radius = death_scratch.buf[db + 10];
+            let base_z = death_scratch.buf[db + 11];
+            let rotation = death_scratch.buf[db + 12];
+            let unit_type_slot = death_scratch.buf[db + 13] as u32;
+            let turret_pose_count = death_scratch.buf[db + 14] as usize;
+            let dflags = death_scratch.buf[db + 15] as u32;
+
+            let has_visual_radius = (dflags & 0x01) != 0;
+            let has_push_radius = (dflags & 0x02) != 0;
+            let has_base_z = (dflags & 0x04) != 0;
+            let has_unit_type = (dflags & 0x08) != 0;
+            let has_rotation = (dflags & 0x10) != 0;
+            let has_turret_poses = (dflags & 0x20) != 0;
+
+            // Field count: 6 always (unitVel, hitDir, projectileVel,
+            // attackMagnitude, radius, color) + optionals.
+            let mut dc_field_count: usize = 6;
+            if has_visual_radius { dc_field_count += 1; }
+            if has_push_radius { dc_field_count += 1; }
+            if has_base_z { dc_field_count += 1; }
+            if has_unit_type { dc_field_count += 1; }
+            if has_rotation { dc_field_count += 1; }
+            if has_turret_poses { dc_field_count += 1; }
+
+            w.write_str("deathContext");
+            w.write_map_header(dc_field_count);
+
+            // Literal order from damageHelpers.ts: unitVel, hitDir,
+            // projectileVel, attackMagnitude, radius, visualRadius,
+            // pushRadius, baseZ, color, unitType, rotation, turretPoses.
+            w.write_str("unitVel");
+            w.write_map_header(2);
+            w.write_str("x"); w.write_number(unit_vel_x);
+            w.write_str("y"); w.write_number(unit_vel_y);
+            w.write_str("hitDir");
+            w.write_map_header(2);
+            w.write_str("x"); w.write_number(hit_dir_x);
+            w.write_str("y"); w.write_number(hit_dir_y);
+            w.write_str("projectileVel");
+            w.write_map_header(2);
+            w.write_str("x"); w.write_number(proj_vel_x);
+            w.write_str("y"); w.write_number(proj_vel_y);
+            w.write_str("attackMagnitude");
+            w.write_number(attack_magnitude);
+            w.write_str("radius");
+            w.write_number(radius);
+            if has_visual_radius {
+                w.write_str("visualRadius");
+                w.write_number(visual_radius);
+            }
+            if has_push_radius {
+                w.write_str("pushRadius");
+                w.write_number(push_radius);
+            }
+            if has_base_z {
+                w.write_str("baseZ");
+                w.write_number(base_z);
+            }
+            w.write_str("color");
+            w.write_number(color);
+            if has_unit_type {
+                w.write_str("unitType");
+                write_string_from_scratch(w, unit_type_slot);
+            }
+            if has_rotation {
+                w.write_str("rotation");
+                w.write_number(rotation);
+            }
+            if has_turret_poses {
+                w.write_str("turretPoses");
+                w.write_array_header(turret_pose_count);
+                for p in 0..turret_pose_count {
+                    let pb = (pose_offset + p) * SNAPSHOT_ENCODE_TURRET_POSE_STRIDE;
+                    let rot = pose_scratch.buf[pb];
+                    let pitch = pose_scratch.buf[pb + 1];
+                    // Inner pose DTO: {rotation, pitch}
+                    w.write_map_header(2);
+                    w.write_str("rotation"); w.write_number(rot);
+                    w.write_str("pitch"); w.write_number(pitch);
+                }
+                pose_offset += turret_pose_count;
+            }
+            death_offset += 1;
+        }
+        if has_impact_context {
+            let ib = impact_offset * SNAPSHOT_ENCODE_IMPACT_CONTEXT_STRIDE;
+            let collision_radius = impact_scratch.buf[ib];
+            let explosion_radius = impact_scratch.buf[ib + 1];
+            let proj_pos_x = impact_scratch.buf[ib + 2];
+            let proj_pos_y = impact_scratch.buf[ib + 3];
+            let proj_vel_x = impact_scratch.buf[ib + 4];
+            let proj_vel_y = impact_scratch.buf[ib + 5];
+            let entity_vel_x = impact_scratch.buf[ib + 6];
+            let entity_vel_y = impact_scratch.buf[ib + 7];
+            let entity_radius = impact_scratch.buf[ib + 8];
+            let pen_dir_x = impact_scratch.buf[ib + 9];
+            let pen_dir_y = impact_scratch.buf[ib + 10];
+
+            w.write_str("impactContext");
+            // Per the ImpactContext type def, all 5 fields are
+            // required: collisionRadius, explosionRadius, projectile,
+            // entity, penetrationDir.
+            w.write_map_header(5);
+            w.write_str("collisionRadius");
+            w.write_number(collision_radius);
+            w.write_str("explosionRadius");
+            w.write_number(explosion_radius);
+            w.write_str("projectile");
+            w.write_map_header(2);
+            w.write_str("pos");
+            w.write_map_header(2);
+            w.write_str("x"); w.write_number(proj_pos_x);
+            w.write_str("y"); w.write_number(proj_pos_y);
+            w.write_str("vel");
+            w.write_map_header(2);
+            w.write_str("x"); w.write_number(proj_vel_x);
+            w.write_str("y"); w.write_number(proj_vel_y);
+            w.write_str("entity");
+            w.write_map_header(2);
+            w.write_str("vel");
+            w.write_map_header(2);
+            w.write_str("x"); w.write_number(entity_vel_x);
+            w.write_str("y"); w.write_number(entity_vel_y);
+            w.write_str("collisionRadius");
+            w.write_number(entity_radius);
+            w.write_str("penetrationDir");
+            w.write_map_header(2);
+            w.write_str("x"); w.write_number(pen_dir_x);
+            w.write_str("y"); w.write_number(pen_dir_y);
+            impact_offset += 1;
         }
     }
     w.buf.len() as u32

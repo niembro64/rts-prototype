@@ -27,6 +27,12 @@ import {
   snapshot_encode_envelope_emit_audio_events,
   snapshot_encode_audio_event_scratch_ptr,
   snapshot_encode_audio_event_scratch_ensure,
+  snapshot_encode_death_context_scratch_ptr,
+  snapshot_encode_death_context_scratch_ensure,
+  snapshot_encode_turret_pose_scratch_ptr,
+  snapshot_encode_turret_pose_scratch_ensure,
+  snapshot_encode_impact_context_scratch_ptr,
+  snapshot_encode_impact_context_scratch_ensure,
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
@@ -1535,6 +1541,27 @@ const AUDIO_EVENT_SOURCE_TYPE_CODES: Record<AudioEventSourceType, number> = {
   turret: 0, unit: 1, building: 2, system: 3,
 };
 
+type DeathContextFixture = {
+  unitVel: { x: number; y: number };
+  hitDir: { x: number; y: number };
+  projectileVel: { x: number; y: number };
+  attackMagnitude: number;
+  radius: number;
+  visualRadius?: number;
+  pushRadius?: number;
+  baseZ?: number;
+  color: number;
+  unitType?: string;
+  rotation?: number;
+  turretPoses?: Array<{ rotation: number; pitch: number }>;
+};
+type ImpactContextFixture = {
+  collisionRadius: number;
+  explosionRadius: number;
+  projectile: { pos: { x: number; y: number }; vel: { x: number; y: number } };
+  entity: { vel: { x: number; y: number }; collisionRadius: number };
+  penetrationDir: { x: number; y: number };
+};
 type AudioEventFixture = {
   type: AudioEventType;
   turretId: string;
@@ -1550,7 +1577,99 @@ type AudioEventFixture = {
   killerPlayerId?: number;
   victimPlayerId?: number;
   audioOnly?: boolean;
+  deathContext?: DeathContextFixture;
+  impactContext?: ImpactContextFixture;
 };
+
+const DEATH_CONTEXT_STRIDE = 16;
+const TURRET_POSE_STRIDE = 2;
+const IMPACT_CONTEXT_STRIDE = 11;
+
+function packDeathContextsIntoScratch(
+  memory: WebAssembly.Memory,
+  events: AudioEventFixture[],
+  stringSlots: Map<string, number>,
+): void {
+  const deaths = events.filter((e) => e.deathContext !== undefined);
+  if (deaths.length === 0) return;
+  snapshot_encode_death_context_scratch_ensure(deaths.length);
+  const ptr = snapshot_encode_death_context_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, deaths.length * DEATH_CONTEXT_STRIDE);
+
+  let totalPoses = 0;
+  for (const e of deaths) totalPoses += e.deathContext!.turretPoses?.length ?? 0;
+  let poseView: Float64Array | undefined;
+  if (totalPoses > 0) {
+    snapshot_encode_turret_pose_scratch_ensure(totalPoses);
+    const posePtr = snapshot_encode_turret_pose_scratch_ptr();
+    poseView = new Float64Array(memory.buffer, posePtr, totalPoses * TURRET_POSE_STRIDE);
+  }
+
+  let poseOffset = 0;
+  for (let i = 0; i < deaths.length; i++) {
+    const dc = deaths[i].deathContext!;
+    const base = i * DEATH_CONTEXT_STRIDE;
+    view[base + 0] = dc.unitVel.x;
+    view[base + 1] = dc.unitVel.y;
+    view[base + 2] = dc.hitDir.x;
+    view[base + 3] = dc.hitDir.y;
+    view[base + 4] = dc.projectileVel.x;
+    view[base + 5] = dc.projectileVel.y;
+    view[base + 6] = dc.attackMagnitude;
+    view[base + 7] = dc.radius;
+    view[base + 8] = dc.color;
+    view[base + 9] = dc.visualRadius ?? 0;
+    view[base + 10] = dc.pushRadius ?? 0;
+    view[base + 11] = dc.baseZ ?? 0;
+    view[base + 12] = dc.rotation ?? 0;
+    view[base + 13] = dc.unitType !== undefined ? (stringSlots.get(dc.unitType) ?? 0) : 0;
+    view[base + 14] = dc.turretPoses?.length ?? 0;
+    let flags = 0;
+    if (dc.visualRadius !== undefined) flags |= 0x01;
+    if (dc.pushRadius !== undefined) flags |= 0x02;
+    if (dc.baseZ !== undefined) flags |= 0x04;
+    if (dc.unitType !== undefined) flags |= 0x08;
+    if (dc.rotation !== undefined) flags |= 0x10;
+    if (dc.turretPoses !== undefined) flags |= 0x20;
+    view[base + 15] = flags;
+
+    if (dc.turretPoses && poseView) {
+      for (let p = 0; p < dc.turretPoses.length; p++) {
+        const pose = dc.turretPoses[p];
+        const pb = (poseOffset + p) * TURRET_POSE_STRIDE;
+        poseView[pb + 0] = pose.rotation;
+        poseView[pb + 1] = pose.pitch;
+      }
+      poseOffset += dc.turretPoses.length;
+    }
+  }
+}
+
+function packImpactContextsIntoScratch(
+  memory: WebAssembly.Memory,
+  events: AudioEventFixture[],
+): void {
+  const impacts = events.filter((e) => e.impactContext !== undefined);
+  if (impacts.length === 0) return;
+  snapshot_encode_impact_context_scratch_ensure(impacts.length);
+  const ptr = snapshot_encode_impact_context_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, impacts.length * IMPACT_CONTEXT_STRIDE);
+  for (let i = 0; i < impacts.length; i++) {
+    const ic = impacts[i].impactContext!;
+    const base = i * IMPACT_CONTEXT_STRIDE;
+    view[base + 0] = ic.collisionRadius;
+    view[base + 1] = ic.explosionRadius;
+    view[base + 2] = ic.projectile.pos.x;
+    view[base + 3] = ic.projectile.pos.y;
+    view[base + 4] = ic.projectile.vel.x;
+    view[base + 5] = ic.projectile.vel.y;
+    view[base + 6] = ic.entity.vel.x;
+    view[base + 7] = ic.entity.vel.y;
+    view[base + 8] = ic.entity.collisionRadius;
+    view[base + 9] = ic.penetrationDir.x;
+    view[base + 10] = ic.penetrationDir.y;
+  }
+}
 
 const AUDIO_EVENT_SCRATCH_STRIDE = 16;
 
@@ -1593,6 +1712,8 @@ function packAudioEventsIntoScratch(
       flags |= 0x080;
       if (e.audioOnly) flags |= 0x100;
     }
+    if (e.deathContext !== undefined) flags |= 0x200;
+    if (e.impactContext !== undefined) flags |= 0x400;
     view[base + 15] = flags;
   }
 }
@@ -2202,6 +2323,119 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { type: 'ping', turretId: '', pos: { x: 0, y: 0, z: 0 }, playerId: 1, audioOnly: false },
       ],
     },
+    // audioEvents — death with deathContext (no turretPoses, no
+    // unitType — building-style death).
+    {
+      tick: 1410, entities: [], economy: {}, isDelta: true,
+      audioEvents: [{
+        type: 'death',
+        turretId: 'unit.pylon',
+        sourceType: 'building',
+        pos: { x: 1000, y: 1000, z: 0 },
+        entityId: 200,
+        deathContext: {
+          unitVel: { x: 0, y: 0 },
+          hitDir: { x: 0, y: -1 },
+          projectileVel: { x: 0, y: 0 },
+          attackMagnitude: 50,
+          radius: 80,
+          visualRadius: 80,
+          pushRadius: 4,
+          baseZ: 0,
+          color: 0xFF8800,
+        },
+      }],
+    },
+    // audioEvents — death with full deathContext (unit-style: every
+    // optional populated + nested turretPoses array).
+    {
+      tick: 1411, entities: [], economy: {}, isDelta: true,
+      audioEvents: [{
+        type: 'death',
+        turretId: 'unit.tank',
+        sourceType: 'unit',
+        pos: { x: 500, y: 500, z: 12 },
+        entityId: 300,
+        killerPlayerId: 2,
+        deathContext: {
+          unitVel: { x: 10, y: -5 },
+          hitDir: { x: 0.707, y: 0.707 },
+          projectileVel: { x: 50, y: 0 },
+          attackMagnitude: 120,
+          radius: 40,
+          visualRadius: 35,
+          pushRadius: 30,
+          baseZ: 10,
+          color: 0xFF0000,
+          unitType: 'tank',
+          rotation: 1.5708,
+          turretPoses: [
+            { rotation: 0.5, pitch: 0.2 },
+            { rotation: -0.3, pitch: 0 },
+          ],
+        },
+      }],
+    },
+    // audioEvents — hit with impactContext (all required nested vecs).
+    {
+      tick: 1412, entities: [], economy: {}, isDelta: true,
+      audioEvents: [{
+        type: 'hit',
+        turretId: 'shot.shell',
+        pos: { x: 600, y: 600, z: 5 },
+        entityId: 400,
+        impactContext: {
+          collisionRadius: 8,
+          explosionRadius: 24,
+          projectile: { pos: { x: 600, y: 600 }, vel: { x: 50, y: 0 } },
+          entity: { vel: { x: 0, y: 0 }, collisionRadius: 12 },
+          penetrationDir: { x: 1, y: 0 },
+        },
+      }],
+    },
+    // audioEvents — multiple deaths + hits + plain events in one tick
+    // (validates the per-context offset walker).
+    {
+      tick: 1413, entities: [], economy: {}, isDelta: true,
+      audioEvents: [
+        { type: 'fire', turretId: 'turret.cannon', pos: { x: 0, y: 0, z: 0 } },
+        {
+          type: 'death', turretId: 'unit.tank', pos: { x: 100, y: 100, z: 5 },
+          deathContext: {
+            unitVel: { x: 1, y: 1 },
+            hitDir: { x: 1, y: 0 },
+            projectileVel: { x: 30, y: 0 },
+            attackMagnitude: 90,
+            radius: 35,
+            color: 0xFFFF00,
+            unitType: 'tank',
+            rotation: 0.5,
+            turretPoses: [{ rotation: 0.1, pitch: 0.05 }],
+          },
+        },
+        {
+          type: 'hit', turretId: 'shot.rocket', pos: { x: 200, y: 200, z: 10 },
+          impactContext: {
+            collisionRadius: 6,
+            explosionRadius: 40,
+            projectile: { pos: { x: 200, y: 200 }, vel: { x: 100, y: 0 } },
+            entity: { vel: { x: -5, y: 5 }, collisionRadius: 20 },
+            penetrationDir: { x: 0.707, y: -0.707 },
+          },
+        },
+        {
+          type: 'death', turretId: 'unit.commander', pos: { x: 300, y: 300, z: 0 },
+          deathContext: {
+            unitVel: { x: 0, y: 0 },
+            hitDir: { x: -1, y: 0 },
+            projectileVel: { x: -50, y: 0 },
+            attackMagnitude: 200,
+            radius: 50,
+            color: 0x00FF00,
+          },
+        },
+      ],
+    },
     // economy — single player.
     {
       tick: 1300, entities: [], isDelta: true,
@@ -2538,6 +2772,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       for (const e of f.audioEvents) {
         envelopeStrings.push(e.turretId);
         if (e.sourceKey !== undefined) envelopeStrings.push(e.sourceKey);
+        if (e.deathContext?.unitType !== undefined) {
+          envelopeStrings.push(e.deathContext.unitType);
+        }
       }
     }
     // Building waypoints + buildingTypes are packed inside the per-entity
@@ -2554,6 +2791,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     }
     if (hasAudioEvents && f.audioEvents) {
       packAudioEventsIntoScratch(memory, f.audioEvents, envelopeStringSlots);
+      packDeathContextsIntoScratch(memory, f.audioEvents, envelopeStringSlots);
+      packImpactContextsIntoScratch(memory, f.audioEvents);
     }
     if (hasScanPulses && f.scanPulses) {
       packScanPulsesIntoScratch(memory, f.scanPulses);
@@ -2711,6 +2950,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       for (const e of f.audioEvents) {
         audioStrings.push(e.turretId);
         if (e.sourceKey !== undefined) audioStrings.push(e.sourceKey);
+        if (e.deathContext?.unitType !== undefined) {
+          audioStrings.push(e.deathContext.unitType);
+        }
       }
       // Re-include envelope strings so gameState.phase stays valid
       // when emit_continue runs later (continue also reads the string
