@@ -214,7 +214,7 @@ export class SnapshotEncodeInstrumentation {
   private printReport(now: number): void {
     const rows = this.buildRows();
     if (rows.length === 0) return;
-    console.info(`[DP-02] Snapshot JS MessagePack encode report @ ${Math.round(now)}ms`);
+    console.info(`[DP-02] Snapshot wire encode report @ ${Math.round(now)}ms`);
     console.table(rows);
   }
 }

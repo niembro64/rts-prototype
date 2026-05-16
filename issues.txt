@@ -24,31 +24,33 @@ deep JSON-like object trees, generic encoders, or avoidable per-snapshot object
 walks.
 
 Current:
-src/game/network/stateSerializer.ts builds pooled JavaScript snapshot DTOs.
-src/game/network/NetworkSnapshotTransport.ts then encodes them with
-@msgpack/msgpack. The Rust crate already has snapshot_encode_* and envelope
-encoder functions, and src/game/sim-wasm/snapshotEncoderTest.ts checks
-byte-equality fixtures, but production still sends the JS-encoded DTO.
+src/game/network/stateSerializer.ts still builds pooled JavaScript snapshot
+DTOs. The production snapshot wire path is now Rust-first:
+src/game/network/snapshotWireCodec.ts asks the Rust-backed envelope encoder for
+bytes and falls back to @msgpack/msgpack only when WASM is unavailable, DTO key
+order is unsupported, or a development parity check catches a mismatch. The
+Rust crate already has snapshot_encode_* and envelope encoder functions, and
+src/game/sim-wasm/snapshotEncoderTest.ts checks byte-equality fixtures.
 DP-02 encode instrumentation now exists behind ?dp02=1 /
-VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports current JS MessagePack encode time
-and byte size per listener, snapshot rate, and unit-count band, and exposes
+VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports active snapshot wire encode time and
+byte size per listener, snapshot rate, and unit-count band, and exposes
 window.__BA_DP02_SNAPSHOT_WIRE__ for repeatable captures.
-DP-02 Rust parity comparison now exists in development behind ?dp02rust=1 /
-VITE_BA_DP02_RUST_SNAPSHOT_WIRE=1. It keeps production sends on the current JS
-bytes, builds a second Rust-backed byte stream from the same DTO, compares byte
-equality, and exposes window.__BA_DP02_RUST_SNAPSHOT_WIRE__.stats(). Unported
-DTO pieces use explicit raw MessagePack fallback counters so the remaining
-burn-down is measurable.
+DP-02 Rust parity comparison exists in development behind ?dp02rust=1 /
+VITE_BA_DP02_RUST_SNAPSHOT_WIRE=1. The legacy JS sender can be forced with
+?dp02js=1 / VITE_BA_DP02_FORCE_JS_SNAPSHOT_WIRE=1. Otherwise, the parity path
+compares the Rust-backed send bytes with JavaScript MessagePack bytes and falls
+back to JS for any mismatching dev snapshot. It exposes
+window.__BA_DP02_RUST_SNAPSHOT_WIRE__.stats(). Unported DTO pieces use explicit
+raw MessagePack fallback counters so the remaining burn-down is measurable.
 
 Steps:
-1. Run and record the current JS MessagePack encode baseline at 5/8/10 SPS,
+1. Run and record the forced-JS MessagePack encode baseline at 5/8/10 SPS,
    1k units, and 5k units using docs/dp-02-snapshot-wire-instrumentation.md.
 2. Use the Rust parity flag to burn down byte mismatches, raw entity fallback,
    and raw top-level fallback until normal live snapshots are fully Rust-encoded.
-3. Switch production snapshot sending to the Rust encoder once parity is stable.
-4. Remove DTO construction from the hottest entity/projectile/economy paths by
+3. Remove DTO construction from the hottest entity/projectile/economy paths by
    writing directly from SoA/WASM-side pools into the binary envelope.
-5. Keep the old object decoder only as a temporary compatibility/debug path, then
+4. Keep the old object decoder only as a temporary compatibility/debug path, then
    delete it once no sender emits object snapshots.
 
 DP-03 - Make client prediction prove itself at low snapshot cadence.

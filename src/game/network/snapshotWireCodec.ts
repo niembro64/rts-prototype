@@ -13,8 +13,11 @@ import {
 // matching `JSON.stringify`'s behavior.
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 const RUST_SNAPSHOT_WIRE_COMPARE_ENABLED = import.meta.env.DEV && isRustSnapshotWireCompareEnabled();
+const FORCE_JS_SNAPSHOT_WIRE = isForceJsSnapshotWireEnabled();
 
 type RustSnapshotWireStats = {
+  rustSends: number;
+  jsSends: number;
   attempts: number;
   matches: number;
   mismatches: number;
@@ -30,6 +33,8 @@ type RustSnapshotWireDebugApi = {
 };
 
 const rustSnapshotWireStats: RustSnapshotWireStats = {
+  rustSends: 0,
+  jsSends: 0,
   attempts: 0,
   matches: 0,
   mismatches: 0,
@@ -48,8 +53,26 @@ declare global {
 }
 
 export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
+  if (!FORCE_JS_SNAPSHOT_WIRE) {
+    const rustResult = encodeNetworkSnapshotWithRustFallback(state);
+    if (rustResult) {
+      noteRustSnapshotWireResult(rustResult);
+      if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
+        const jsBytes = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
+        if (!compareRustSnapshotWireResult(state, jsBytes, rustResult)) {
+          rustSnapshotWireStats.jsSends++;
+          return jsBytes;
+        }
+      }
+      rustSnapshotWireStats.rustSends++;
+      return rustResult.bytes;
+    }
+    noteRustSnapshotWireUnavailable();
+  }
+
   const bytes = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
-  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
+  rustSnapshotWireStats.jsSends++;
+  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && FORCE_JS_SNAPSHOT_WIRE) {
     compareRustSnapshotWire(state, bytes);
   }
   return bytes;
@@ -64,6 +87,23 @@ function isRustSnapshotWireCompareEnabled(): boolean {
   if (import.meta.env.VITE_BA_DP02_RUST_SNAPSHOT_WIRE === '1') return true;
   if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).has('dp02rust');
+}
+
+function isForceJsSnapshotWireEnabled(): boolean {
+  const env = import.meta.env.VITE_BA_DP02_FORCE_JS_SNAPSHOT_WIRE;
+  if (typeof env === 'string') {
+    const normalized = env.toLowerCase();
+    if (env === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
+      return true;
+    }
+  }
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get('dp02js');
+  if (value === null) return false;
+  if (value === '' || value === '1') return true;
+  const normalized = value.toLowerCase();
+  return normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -83,22 +123,35 @@ function noteRustSnapshotWireResult(result: RustSnapshotEncodeResult): void {
   }
 }
 
+function noteRustSnapshotWireUnavailable(): void {
+  if (!RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) return;
+  rustSnapshotWireStats.unavailable++;
+  if (!rustUnavailableLogged) {
+    rustUnavailableLogged = true;
+    console.warn('[DP-02] Rust snapshot wire compare skipped: WASM encoder unavailable or DTO key order unsupported.');
+  }
+}
+
 function compareRustSnapshotWire(state: NetworkServerSnapshot, jsBytes: Uint8Array): void {
   const rustResult = encodeNetworkSnapshotWithRustFallback(state);
   if (!rustResult) {
-    rustSnapshotWireStats.unavailable++;
-    if (!rustUnavailableLogged) {
-      rustUnavailableLogged = true;
-      console.warn('[DP-02] Rust snapshot wire compare skipped: WASM encoder unavailable or DTO key order unsupported.');
-    }
+    noteRustSnapshotWireUnavailable();
     return;
   }
 
-  rustSnapshotWireStats.attempts++;
   noteRustSnapshotWireResult(rustResult);
+  compareRustSnapshotWireResult(state, jsBytes, rustResult);
+}
+
+function compareRustSnapshotWireResult(
+  state: NetworkServerSnapshot,
+  jsBytes: Uint8Array,
+  rustResult: RustSnapshotEncodeResult,
+): boolean {
+  rustSnapshotWireStats.attempts++;
   if (bytesEqual(jsBytes, rustResult.bytes)) {
     rustSnapshotWireStats.matches++;
-    return;
+    return true;
   }
 
   rustSnapshotWireStats.mismatches++;
@@ -113,9 +166,12 @@ function compareRustSnapshotWire(state: NetworkServerSnapshot, jsBytes: Uint8Arr
       stats: { ...rustSnapshotWireStats },
     });
   }
+  return false;
 }
 
 function resetRustSnapshotWireStats(): void {
+  rustSnapshotWireStats.rustSends = 0;
+  rustSnapshotWireStats.jsSends = 0;
   rustSnapshotWireStats.attempts = 0;
   rustSnapshotWireStats.matches = 0;
   rustSnapshotWireStats.mismatches = 0;
