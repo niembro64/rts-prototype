@@ -343,22 +343,19 @@ export function applyClientCombatExpensivePrediction(options: {
   const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
   const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
 
-  // PREDICT mode gates turret yaw / pitch integration, mirroring the
-  // translational gate. POS skips both; VEL integrates angle from
-  // angular velocity but treats angular acceleration as zero; ACC
-  // additionally integrates ω += α · dt before stepping the angle.
+  // PREDICT mode gates turret yaw / pitch integration. POS skips both
+  // and just lerps toward the snapshot rotation; VEL / ACC integrate
+  // rotation from angular velocity. Angular acceleration is no longer
+  // sent on the wire (it's an instantaneous spring force, unstable to
+  // integrate under arbitrary client dt), so the velocity-only path
+  // is the same in VEL and ACC mode.
   const predictionMode = getPredictionMode();
   const integrateRotation = predictionMode !== 'pos';
-  const integrateAngularAccel = predictionMode === 'acc';
   const turrets = entity.combat.turrets;
   for (let i = 0; i < turrets.length; i++) {
     const weapon = turrets[i];
     if (weapon.config.visualOnly) continue;
     if (integrateRotation) {
-      if (integrateAngularAccel) {
-        weapon.angularVelocity += weapon.angularAcceleration * dt;
-        weapon.pitchVelocity += weapon.pitchAcceleration * dt;
-      }
       weapon.rotation += weapon.angularVelocity * dt;
       weapon.pitch += weapon.pitchVelocity * dt;
     }
@@ -366,10 +363,6 @@ export function applyClientCombatExpensivePrediction(options: {
     const tw = target?.turrets?.[i];
     if (tw) {
       if (integrateRotation) {
-        if (integrateAngularAccel) {
-          tw.angularVelocity += tw.angularAcceleration * targetDt;
-          tw.pitchVelocity += tw.pitchAcceleration * targetDt;
-        }
         tw.rotation += tw.angularVelocity * targetDt;
         tw.pitch += tw.pitchVelocity * targetDt;
       }

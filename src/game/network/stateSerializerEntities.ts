@@ -45,7 +45,6 @@ import {
   writeNetworkUnitActions,
   writeNetworkUnitCombatMode,
   writeNetworkUnitJump,
-  writeNetworkUnitMovementAccel,
   writeNetworkUnitStaticFields,
   writeNetworkUnitSurfaceNormal,
   writeNetworkUnitSuspension,
@@ -118,10 +117,15 @@ function writeTurretsToPool(
     t.id = turretIdToCode(src.config.id);
     t.angular.rot = qRot(src.rotation);
     t.angular.vel = qRot(src.angularVelocity);
-    t.angular.acc = qRot(src.angularAcceleration);
+    // Acceleration is the instantaneous damped-spring force at this
+    // tick (depends on error-to-target), not a constant. Integrating
+    // it on the client under a long LOD prediction-stride dt blows
+    // up angular velocity — so we omit it from the wire and let the
+    // client predict turret motion from velocity alone.
+    t.angular.acc = 0;
     t.angular.pitch = qRot(src.pitch);
     t.angular.pitchVel = qRot(src.pitchVelocity);
-    t.angular.pitchAcc = qRot(src.pitchAcceleration);
+    t.angular.pitchAcc = 0;
     dst.targetId = canReferenceEntityId?.(src.target ?? undefined) === false
       ? undefined
       : src.target ?? undefined;
@@ -258,15 +262,12 @@ export function serializeEntitySnapshot(
         }
       }
 
-      if (isFull || (changedFields! & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
-        if (canSeePrivateDetails) {
-          writeNetworkUnitMovementAccel(u, entity.unit, poolEntry.unitMovementAccel, qVel);
-        } else {
-          clearNetworkUnitMovementAccel(u);
-        }
-      } else {
-        clearNetworkUnitMovementAccel(u);
-      }
+      // Acceleration is an instantaneous force value, not a constant.
+      // Integrating it on the client over an arbitrary prediction-stride
+      // dt overshoots — the client's EMA-toward-velocity already smooths
+      // approach to a new target, so movementAccel adds bandwidth + jitter
+      // for no visual benefit. Always omit from the wire.
+      clearNetworkUnitMovementAccel(u);
 
       if (
         isFull ||
@@ -298,12 +299,14 @@ export function serializeEntitySnapshot(
       if (orient) {
         u.orientation = orient;
         u.angularVelocity3 = entity.unit.angularVelocity3 ?? undefined;
-        u.angularAcceleration3 = entity.unit.angularAcceleration3 ?? undefined;
       } else {
         u.orientation = undefined;
         u.angularVelocity3 = undefined;
-        u.angularAcceleration3 = undefined;
       }
+      // Same reasoning as movementAccel + per-turret angular acc:
+      // instantaneous second derivative is unstable to integrate
+      // under arbitrary client dt. Always omit from the wire.
+      u.angularAcceleration3 = undefined;
 
       if (isFull || (changedFields! & ENTITY_CHANGED_COMBAT_MODE)) {
         writeNetworkUnitCombatMode(u, entity);
