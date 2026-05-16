@@ -17,6 +17,9 @@ import {
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
+  snapshot_encode_envelope_emit_shroud,
+  snapshot_encode_shroud_scratch_ptr,
+  snapshot_encode_shroud_scratch_ensure,
   snapshot_encode_minimap_scratch_ptr,
   snapshot_encode_minimap_scratch_ensure,
   snapshot_encode_beam_update_scratch_ptr,
@@ -1503,6 +1506,24 @@ function packBeamUpdatesIntoScratch(
   }
 }
 
+type ShroudFixture = {
+  gridW: number;
+  gridH: number;
+  cellSize: number;
+  bitmap: Uint8Array;
+};
+
+function packShroudBitmapIntoScratch(
+  memory: WebAssembly.Memory,
+  bitmap: Uint8Array,
+): void {
+  if (bitmap.length === 0) return;
+  snapshot_encode_shroud_scratch_ensure(bitmap.length);
+  const ptr = snapshot_encode_shroud_scratch_ptr();
+  const view = new Uint8Array(memory.buffer, ptr, bitmap.length);
+  view.set(bitmap);
+}
+
 type ScanPulseFixture = {
   playerId: number;
   x: number; y: number; z: number;
@@ -1543,6 +1564,7 @@ type EnvelopeFixture = {
   removedEntityIds?: number[];
   visibilityFiltered?: boolean;
   scanPulses?: ScanPulseFixture[];
+  shroud?: ShroudFixture;
 };
 
 function packRemovedIdsIntoScratch(memory: WebAssembly.Memory, ids: number[]): void {
@@ -1855,6 +1877,23 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { playerId: 3, x: 0, y: 0, z: 0, radius: 600, expiresAtTick: 1101 },
       ],
     },
+    // shroud — small bitmap exercising bin8 path (len <= 0xFF).
+    {
+      tick: 1010, entities: [], economy: {}, isDelta: false,
+      shroud: {
+        gridW: 8, gridH: 4, cellSize: 64,
+        bitmap: new Uint8Array([0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F, 0xFF]),
+      },
+    },
+    // shroud — bitmap > 255 bytes pushes msgpack into bin16 territory.
+    {
+      tick: 1011, entities: [], economy: {}, isDelta: false,
+      shroud: (() => {
+        const bytes = new Uint8Array(300);
+        for (let i = 0; i < bytes.length; i++) bytes[i] = i & 0xFF;
+        return { gridW: 30, gridH: 10, cellSize: 32, bitmap: bytes };
+      })(),
+    },
     // scanPulses + everything else (validates ordering: scanPulses
     // emits AFTER visibilityFiltered).
     {
@@ -1875,6 +1914,18 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       scanPulses: [
         { playerId: 1, x: 50, y: 50, z: 0, radius: 1200, expiresAtTick: 1066 },
       ],
+    },
+    // scanPulses + shroud together — both lazy-added, scanPulses
+    // first, shroud second.
+    {
+      tick: 1003, entities: [], economy: {}, isDelta: false,
+      scanPulses: [
+        { playerId: 2, x: 200, y: 300, z: 10, radius: 500, expiresAtTick: 1067 },
+      ],
+      shroud: {
+        gridW: 4, gridH: 2, cellSize: 64,
+        bitmap: new Uint8Array([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22]),
+      },
     },
     // beamUpdates: minimal 2-vertex beam (start + end), no reflectors.
     {
@@ -1992,6 +2043,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     const hasRemovedIds = f.removedEntityIds !== undefined ? 1 : 0;
     const hasVisibilityFiltered = f.visibilityFiltered !== undefined ? 1 : 0;
     const hasScanPulses = f.scanPulses !== undefined ? 1 : 0;
+    const hasShroud = f.shroud !== undefined ? 1 : 0;
     const totalKeyCount =
       2 /* tick + entities */ +
       hasMinimap +
@@ -2001,7 +2053,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       1 /* isDelta */ +
       hasRemovedIds +
       hasVisibilityFiltered +
-      hasScanPulses;
+      hasScanPulses +
+      hasShroud;
 
     // Pre-pack all scratches before any kernel call. String scratch
     // collects every string needed by THIS envelope's encode (waypoint
@@ -2023,6 +2076,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     }
     if (hasScanPulses && f.scanPulses) {
       packScanPulsesIntoScratch(memory, f.scanPulses);
+    }
+    if (hasShroud && f.shroud) {
+      packShroudBitmapIntoScratch(memory, f.shroud.bitmap);
     }
     if (hasProjectiles && f.projectiles) {
       if (f.projectiles.spawns) {
@@ -2196,9 +2252,15 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
 
     // scanPulses sits AFTER visibilityFiltered in iteration order
     // because _snapshotBuf adds it lazily (not in the static init);
-    // see commit message for D.3j-21.
+    // see commit message for D.3j-21. shroud follows scanPulses by
+    // the same lazy-add ordering.
     if (hasScanPulses && f.scanPulses) {
       snapshot_encode_envelope_emit_scan_pulses(f.scanPulses.length);
+    }
+    if (hasShroud && f.shroud) {
+      snapshot_encode_envelope_emit_shroud(
+        f.shroud.gridW, f.shroud.gridH, f.shroud.cellSize, f.shroud.bitmap.length,
+      );
     }
 
     const ptr = messagepack_writer_ptr();

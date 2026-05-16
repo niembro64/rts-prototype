@@ -153,6 +153,9 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
+  snapshot_encode_envelope_emit_shroud,
+  snapshot_encode_shroud_scratch_ptr,
+  snapshot_encode_shroud_scratch_ensure,
   snapshot_encode_proj_despawn_scratch_ptr,
   snapshot_encode_proj_despawn_scratch_ensure,
   snapshot_encode_proj_spawn_scratch_ptr,
@@ -1057,6 +1060,15 @@ export interface SnapshotEncodeApi {
   scanPulseScratchEnsure: (count: number) => void;
   /** Stride per scan-pulse entry (f64 count). */
   readonly scanPulseScratchStride: number;
+  /** Emit `shroud: { gridW, gridH, cellSize, bitmap }`. The bitmap
+   *  bytes come from the shroud scratch (caller pre-fills `bytes`
+   *  bytes); the wrapper map is emitted with the gridW/gridH/cellSize
+   *  args. */
+  emitShroud: (gridW: number, gridH: number, cellSize: number, bitmapBytes: number) => number;
+  /** Raw pointer to the shroud-bitmap scratch (Uint8Array). */
+  shroudScratchPtr: () => number;
+  /** Pre-grow the shroud scratch to hold `byteCount` bytes. */
+  shroudScratchEnsure: (byteCount: number) => void;
   /** Raw pointer to the beam-update header scratch (Float64Array,
    *  4 f64 per update: id, flags, obstructionT, point_count). */
   beamUpdateScratchPtr: () => number;
@@ -1521,6 +1533,9 @@ export function initSimWasm(): Promise<SimWasm> {
           scanPulseScratchPtr: snapshot_encode_scan_pulse_scratch_ptr,
           scanPulseScratchEnsure: snapshot_encode_scan_pulse_scratch_ensure,
           scanPulseScratchStride: 6,
+          emitShroud: snapshot_encode_envelope_emit_shroud,
+          shroudScratchPtr: snapshot_encode_shroud_scratch_ptr,
+          shroudScratchEnsure: snapshot_encode_shroud_scratch_ensure,
           projDespawnScratchPtr: snapshot_encode_proj_despawn_scratch_ptr,
           projDespawnScratchEnsure: snapshot_encode_proj_despawn_scratch_ensure,
           projSpawnScratchPtr: snapshot_encode_proj_spawn_scratch_ptr,
