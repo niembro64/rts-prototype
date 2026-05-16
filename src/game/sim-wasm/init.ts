@@ -195,6 +195,8 @@ import __wbg_init, {
   snapshot_encode_factory_queue_scratch_ensure,
   snapshot_encode_waypoint_scratch_ptr,
   snapshot_encode_waypoint_scratch_ensure,
+  snapshot_encode_envelope_emit_raw_key_value,
+  messagepack_writer_append_raw_value,
   messagepack_writer_ptr,
   messagepack_writer_len,
   pool_pos_x_ptr,
@@ -887,7 +889,7 @@ export interface SnapshotEncodeApi {
   ) => number;
   /** Encode envelope + `unit: {hp, velocity [, movementAccel]
    *  [, surfaceNormal] [, suspension]}`. Numeric vector components
-   *  are pre-quantized i32 (caller does qVel / qNormal /
+   *  are pre-quantized JS numbers (caller does qVel / qNormal /
    *  qSuspension). Suspension has nested offset / velocity plus an
    *  optional legContact flag (1 emits `true`, 0 omits the key —
    *  mirrors JS `out.legContact = ? true : undefined`). */
@@ -942,6 +944,10 @@ export interface SnapshotEncodeApi {
   /** Bytes currently in the D.2 scratch (matches the last encoder
    *  call's return value). */
   writerLen: () => number;
+  /** Append an already MessagePack-encoded value to the writer. Used
+   *  by the DP-02 parity flag as a temporary fallback for DTO shapes
+   *  that are not fully ported to Rust yet. */
+  appendRawValue: (bytes: Uint8Array) => number;
   /** Raw pointer to the turret scratch buffer. JS fills 12 f64 per
    *  turret (see lib.rs SNAPSHOT_ENCODE_TURRET_STRIDE layout)
    *  before calling encodeEntityUnit with hasTurrets=1. */
@@ -951,7 +957,7 @@ export interface SnapshotEncodeApi {
   /** Stride per turret in the scratch buffer (f64 count). */
   readonly turretScratchStride: number;
   /** Encode a building entity DTO (envelope + building sub-object
-   *  with type / dim / hp / build / metalExtractionRate / solar /
+   *  with numeric type / dim / hp / build / metalExtractionRate / solar /
    *  turrets). Turrets reuse the same scratch as unit turrets.
    *  Factory sub-object not yet supported. */
   encodeEntityBuilding: (
@@ -962,7 +968,7 @@ export interface SnapshotEncodeApi {
     hasChangedFields: number,
     changedFields: number,
     hasType: number,
-    typeStringSlot: number,
+    typeCode: number,
     hasDim: number,
     dimX: number, dimY: number,
     hpCurr: number,
@@ -1025,6 +1031,10 @@ export interface SnapshotEncodeApi {
    *  follow, then emitMinimap/emitEconomy/emitProjectiles in pool
    *  order, then envelopeContinue closes the envelope. */
   envelopeBegin: (tick: number, entityCount: number, totalKeyCount: number) => void;
+  /** Append a top-level key and an already MessagePack-encoded value.
+   *  Transitional DP-02 bridge for low-frequency fields such as
+   *  serverMeta while their dedicated Rust encoders are still pending. */
+  emitRawKeyValue: (key: string, value: Uint8Array) => number;
   /** Close the envelope. Emits gameState (if hasGameState), isDelta,
    *  removedEntityIds (if hasRemovedIds), visibilityFiltered (if
    *  hasVisibilityFiltered) in that order. Returns total bytes
@@ -1667,6 +1677,8 @@ export function initSimWasm(): Promise<SimWasm> {
           projVelScratchStride: 7,
           removedIdsScratchPtr: snapshot_encode_removed_ids_scratch_ptr,
           removedIdsScratchEnsure: snapshot_encode_removed_ids_scratch_ensure,
+          appendRawValue: messagepack_writer_append_raw_value,
+          emitRawKeyValue: snapshot_encode_envelope_emit_raw_key_value,
           writerPtr: messagepack_writer_ptr,
           writerLen: messagepack_writer_len,
           turretScratchPtr: snapshot_encode_turret_scratch_ptr,

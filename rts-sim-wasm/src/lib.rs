@@ -4731,6 +4731,10 @@ impl MessagePackWriter {
         }
         self.buf.extend_from_slice(bytes);
     }
+
+    fn append_raw_value(&mut self, bytes: &[u8]) {
+        self.buf.extend_from_slice(bytes);
+    }
 }
 
 // Module-scope writer reused by the self-test + future encoders.
@@ -4762,6 +4766,13 @@ pub fn messagepack_writer_len() -> u32 {
 #[wasm_bindgen]
 pub fn messagepack_writer_clear() {
     messagepack_writer().clear();
+}
+
+#[wasm_bindgen]
+pub fn messagepack_writer_append_raw_value(bytes: &[u8]) -> u32 {
+    let w = messagepack_writer();
+    w.append_raw_value(bytes);
+    w.buf.len() as u32
 }
 
 /// Run a battery of known-output encodings. Returns 0 if every case
@@ -6225,8 +6236,8 @@ fn write_entity_envelope_keys(
     w: &mut MessagePackWriter,
     id: u32,
     type_tag: u8,
-    qpos_x: i32, qpos_y: i32, qpos_z: i32,
-    qrot: i32,
+    qpos_x: f64, qpos_y: f64, qpos_z: f64,
+    qrot: f64,
     player_id: u8,
     has_changed_fields: u8,
     changed_fields: u32,
@@ -6244,14 +6255,14 @@ fn write_entity_envelope_keys(
     w.write_str("pos");
     w.write_map_header(3);
     w.write_str("x");
-    w.write_int(qpos_x as i64);
+    w.write_number(qpos_x);
     w.write_str("y");
-    w.write_int(qpos_y as i64);
+    w.write_number(qpos_y);
     w.write_str("z");
-    w.write_int(qpos_z as i64);
+    w.write_number(qpos_z);
 
     w.write_str("rotation");
-    w.write_int(qrot as i64);
+    w.write_number(qrot);
 
     w.write_str("playerId");
     w.write_uint(player_id as u64);
@@ -6269,16 +6280,16 @@ fn write_entity_envelope_keys(
 ///
 /// Field order matches the JS DTO's property insertion order so the
 /// MessagePack key sequence is identical: id → type → pos → rotation
-/// → playerId → changedFields. Quantized integers are passed in as
-/// i32 (caller does qPos / qRot conversion).
+/// → playerId → changedFields. Quantized numbers are passed in as
+/// f64 (caller does qPos / qRot conversion).
 #[wasm_bindgen]
 pub fn snapshot_encode_entity_basic(
     id: u32,
     type_tag: u8,
-    qpos_x: i32,
-    qpos_y: i32,
-    qpos_z: i32,
-    qrot: i32,
+    qpos_x: f64,
+    qpos_y: f64,
+    qpos_z: f64,
+    qrot: f64,
     player_id: u8,
     has_changed_fields: u8,
     changed_fields: u32,
@@ -6315,21 +6326,21 @@ pub fn snapshot_encode_entity_basic(
 pub fn snapshot_encode_entity_unit(
     id: u32,
     type_tag: u8,
-    qpos_x: i32, qpos_y: i32, qpos_z: i32,
-    qrot: i32,
+    qpos_x: f64, qpos_y: f64, qpos_z: f64,
+    qrot: f64,
     player_id: u8,
     has_changed_fields: u8,
     changed_fields: u32,
     hp_curr: f64,
     hp_max: f64,
-    qvel_x: i32, qvel_y: i32, qvel_z: i32,
+    qvel_x: f64, qvel_y: f64, qvel_z: f64,
     has_movement_accel: u8,
-    qmov_x: i32, qmov_y: i32, qmov_z: i32,
+    qmov_x: f64, qmov_y: f64, qmov_z: f64,
     has_surface_normal: u8,
-    qnormal_x: i32, qnormal_y: i32, qnormal_z: i32,
+    qnormal_x: f64, qnormal_y: f64, qnormal_z: f64,
     has_suspension: u8,
-    qsuspension_offset_x: i32, qsuspension_offset_y: i32, qsuspension_offset_z: i32,
-    qsuspension_vel_x: i32, qsuspension_vel_y: i32, qsuspension_vel_z: i32,
+    qsuspension_offset_x: f64, qsuspension_offset_y: f64, qsuspension_offset_z: f64,
+    qsuspension_vel_x: f64, qsuspension_vel_y: f64, qsuspension_vel_z: f64,
     suspension_leg_contact: u8,
     has_jump: u8,
     jump_enabled: u8,
@@ -6337,11 +6348,11 @@ pub fn snapshot_encode_entity_unit(
     has_jump_launch_seq: u8,
     jump_launch_seq: u32,
     has_orientation: u8,
-    qorient_x: i32, qorient_y: i32, qorient_z: i32, qorient_w: i32,
+    qorient_x: f64, qorient_y: f64, qorient_z: f64, qorient_w: f64,
     has_angular_velocity3: u8,
-    qangvel_x: i32, qangvel_y: i32, qangvel_z: i32,
+    qangvel_x: f64, qangvel_y: f64, qangvel_z: f64,
     has_angular_acceleration3: u8,
-    qangacc_x: i32, qangacc_y: i32, qangacc_z: i32,
+    qangacc_x: f64, qangacc_y: f64, qangacc_z: f64,
     has_fire_enabled: u8,
     has_is_commander: u8,
     has_build_target_id: u8,
@@ -6399,32 +6410,32 @@ pub fn snapshot_encode_entity_unit(
     w.write_str("velocity");
     w.write_map_header(3);
     w.write_str("x");
-    w.write_int(qvel_x as i64);
+    w.write_number(qvel_x);
     w.write_str("y");
-    w.write_int(qvel_y as i64);
+    w.write_number(qvel_y);
     w.write_str("z");
-    w.write_int(qvel_z as i64);
+    w.write_number(qvel_z);
 
     if has_movement_accel != 0 {
         w.write_str("movementAccel");
         w.write_map_header(3);
         w.write_str("x");
-        w.write_int(qmov_x as i64);
+        w.write_number(qmov_x);
         w.write_str("y");
-        w.write_int(qmov_y as i64);
+        w.write_number(qmov_y);
         w.write_str("z");
-        w.write_int(qmov_z as i64);
+        w.write_number(qmov_z);
     }
 
     if has_surface_normal != 0 {
         w.write_str("surfaceNormal");
         w.write_map_header(3);
         w.write_str("nx");
-        w.write_int(qnormal_x as i64);
+        w.write_number(qnormal_x);
         w.write_str("ny");
-        w.write_int(qnormal_y as i64);
+        w.write_number(qnormal_y);
         w.write_str("nz");
-        w.write_int(qnormal_z as i64);
+        w.write_number(qnormal_z);
     }
 
     if has_suspension != 0 {
@@ -6434,19 +6445,19 @@ pub fn snapshot_encode_entity_unit(
         w.write_str("offset");
         w.write_map_header(3);
         w.write_str("x");
-        w.write_int(qsuspension_offset_x as i64);
+        w.write_number(qsuspension_offset_x);
         w.write_str("y");
-        w.write_int(qsuspension_offset_y as i64);
+        w.write_number(qsuspension_offset_y);
         w.write_str("z");
-        w.write_int(qsuspension_offset_z as i64);
+        w.write_number(qsuspension_offset_z);
         w.write_str("velocity");
         w.write_map_header(3);
         w.write_str("x");
-        w.write_int(qsuspension_vel_x as i64);
+        w.write_number(qsuspension_vel_x);
         w.write_str("y");
-        w.write_int(qsuspension_vel_y as i64);
+        w.write_number(qsuspension_vel_y);
         w.write_str("z");
-        w.write_int(qsuspension_vel_z as i64);
+        w.write_number(qsuspension_vel_z);
         if suspension_leg_contact != 0 {
             w.write_str("legContact");
             w.write_bool(true);
@@ -6475,35 +6486,35 @@ pub fn snapshot_encode_entity_unit(
         w.write_str("orientation");
         w.write_map_header(4);
         w.write_str("x");
-        w.write_int(qorient_x as i64);
+        w.write_number(qorient_x);
         w.write_str("y");
-        w.write_int(qorient_y as i64);
+        w.write_number(qorient_y);
         w.write_str("z");
-        w.write_int(qorient_z as i64);
+        w.write_number(qorient_z);
         w.write_str("w");
-        w.write_int(qorient_w as i64);
+        w.write_number(qorient_w);
     }
 
     if has_angular_velocity3 != 0 {
         w.write_str("angularVelocity3");
         w.write_map_header(3);
         w.write_str("x");
-        w.write_int(qangvel_x as i64);
+        w.write_number(qangvel_x);
         w.write_str("y");
-        w.write_int(qangvel_y as i64);
+        w.write_number(qangvel_y);
         w.write_str("z");
-        w.write_int(qangvel_z as i64);
+        w.write_number(qangvel_z);
     }
 
     if has_angular_acceleration3 != 0 {
         w.write_str("angularAcceleration3");
         w.write_map_header(3);
         w.write_str("x");
-        w.write_int(qangacc_x as i64);
+        w.write_number(qangacc_x);
         w.write_str("y");
-        w.write_int(qangacc_y as i64);
+        w.write_number(qangacc_y);
         w.write_str("z");
-        w.write_int(qangacc_z as i64);
+        w.write_number(qangacc_z);
     }
 
     // Tri-state scalar/boolean optionals — JS emits them as
@@ -6694,13 +6705,13 @@ pub fn snapshot_encode_entity_unit(
 #[wasm_bindgen]
 pub fn snapshot_encode_entity_building(
     id: u32,
-    qpos_x: i32, qpos_y: i32, qpos_z: i32,
-    qrot: i32,
+    qpos_x: f64, qpos_y: f64, qpos_z: f64,
+    qrot: f64,
     player_id: u8,
     has_changed_fields: u8,
     changed_fields: u32,
     has_type: u8,
-    type_string_slot: u32,
+    type_code: f64,
     has_dim: u8,
     dim_x: f64, dim_y: f64,
     hp_curr: f64,
@@ -6751,7 +6762,7 @@ pub fn snapshot_encode_entity_building(
 
     if has_type != 0 {
         w.write_str("type");
-        write_string_from_scratch(w, type_string_slot);
+        w.write_number(type_code);
     }
     if has_dim != 0 {
         w.write_str("dim");
@@ -7780,6 +7791,18 @@ pub fn snapshot_encode_envelope_begin(
     w.write_uint(tick as u64);
     w.write_str("entities");
     w.write_array_header(entity_count as usize);
+}
+
+/// Append a top-level snapshot key whose value has already been
+/// MessagePack-encoded by a transitional JS fallback. This keeps the
+/// envelope writer authoritative for key ordering while DP-02 ports
+/// the remaining low-frequency DTO fields.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_raw_key_value(key: &str, value: &[u8]) -> u32 {
+    let w = messagepack_writer();
+    w.write_str(key);
+    w.append_raw_value(value);
+    w.buf.len() as u32
 }
 
 /// Append the envelope's `projectiles: {...}` nested object.

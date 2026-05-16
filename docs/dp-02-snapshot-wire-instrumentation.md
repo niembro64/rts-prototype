@@ -18,6 +18,28 @@ window.__BA_DP02_SNAPSHOT_WIRE__.report()
 window.__BA_DP02_SNAPSHOT_WIRE__.reset()
 ```
 
+## Rust Parity Compare
+
+Run the app with either:
+
+- URL flag: `?dp02rust=1`
+- Env flag: `VITE_BA_DP02_RUST_SNAPSHOT_WIRE=1`
+
+In development this keeps the actual outgoing snapshot bytes on the current
+JavaScript `@msgpack/msgpack` path, then builds a second Rust-backed byte stream
+from the same DTO and compares the bytes. DTO pieces that are not ported yet use
+a raw MessagePack fallback so live snapshots can still be compared end to end.
+
+The compare path exposes:
+
+```js
+window.__BA_DP02_RUST_SNAPSHOT_WIRE__.stats()
+window.__BA_DP02_RUST_SNAPSHOT_WIRE__.reset()
+```
+
+`rawEntities` and `rawTopLevelKeys` show the remaining DTO surface that still
+needs dedicated Rust encoding before the production sender can switch over.
+
 ## Rows
 
 Rows are grouped by:

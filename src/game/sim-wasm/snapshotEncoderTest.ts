@@ -977,7 +977,7 @@ type BuildingFixture = {
   playerId: number;
   changedFields?: number;
   building: {
-    type?: string;
+    type?: number;
     dim?: { x: number; y: number };
     hp: { curr: number; max: number };
     build: {
@@ -1033,7 +1033,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2001, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 'factory',
+        type: 2,
         dim: { x: 8, y: 8 },
         hp: { curr: 1000, max: 1000 },
         build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
@@ -1043,7 +1043,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2002, type: 'building', pos: { x: 200, y: 300, z: 50 }, rotation: 0, playerId: 2,
       building: {
-        type: 'pylon',
+        type: 255,
         dim: { x: 4, y: 4 },
         hp: { curr: 30, max: 300 },
         build: { complete: false, paid: { energy: 25, mana: 0, metal: 10 } },
@@ -1053,7 +1053,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2003, type: 'building', pos: { x: 100, y: 100, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 'extractor',
+        type: 3,
         dim: { x: 4, y: 4 },
         hp: { curr: 200, max: 200 },
         build: { complete: true, paid: { energy: 50, mana: 0, metal: 100 } },
@@ -1064,7 +1064,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2004, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 'solar',
+        type: 0,
         dim: { x: 4, y: 4 },
         hp: { curr: 150, max: 150 },
         build: { complete: true, paid: { energy: 0, mana: 0, metal: 80 } },
@@ -1084,7 +1084,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2006, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2,
       building: {
-        type: 'turretDefender',
+        type: 255,
         dim: { x: 2, y: 2 },
         hp: { curr: 400, max: 400 },
         build: { complete: true, paid: { energy: 100, mana: 0, metal: 100 } },
@@ -1112,7 +1112,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2008, type: 'building', pos: { x: 5000, y: 5000, z: 100 }, rotation: 0, playerId: 1,
       building: {
-        type: 'fortifiedExtractor',
+        type: 3,
         dim: { x: 6, y: 6 },
         hp: { curr: 880, max: 1000 },
         build: { complete: true, paid: { energy: 200, mana: 50, metal: 300 } },
@@ -1130,7 +1130,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2100, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 'factory',
+        type: 2,
         dim: { x: 8, y: 8 },
         hp: { curr: 1000, max: 1000 },
         build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
@@ -1191,7 +1191,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2103, type: 'building', pos: { x: 2000, y: 2000, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 'commandCenter',
+        type: 255,
         dim: { x: 10, y: 10 },
         hp: { curr: 5000, max: 5000 },
         build: { complete: true, paid: { energy: 0, mana: 0, metal: 0 } },
@@ -1217,7 +1217,6 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
     const stringList: string[] = [];
-    if (f.building.type !== undefined) stringList.push(f.building.type);
     if (f.building.factory !== undefined) {
       for (const wp of f.building.factory.waypoints) stringList.push(wp.type);
     }
@@ -1243,7 +1242,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       f.rotation, f.playerId,
       hasChanged, changed,
       f.building.type !== undefined ? 1 : 0,
-      f.building.type !== undefined ? (stringSlots.get(f.building.type) ?? 0) : 0,
+      f.building.type ?? 0,
       f.building.dim !== undefined ? 1 : 0,
       f.building.dim?.x ?? 0, f.building.dim?.y ?? 0,
       f.building.hp.curr, f.building.hp.max,
@@ -1993,7 +1992,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         {
           id: 2, type: 'building', pos: { x: 500, y: 500, z: 0 }, rotation: 0, playerId: 1,
           building: {
-            type: 'pylon',
+            type: 255,
             dim: { x: 4, y: 4 },
             hp: { curr: 300, max: 300 },
             build: { complete: true, paid: { energy: 50, mana: 0, metal: 30 } },
@@ -2897,7 +2896,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       } else {
         const b = e as BuildingFixture;
         const stringList: string[] = [];
-        if (b.building.type !== undefined) stringList.push(b.building.type);
         if (b.building.factory) {
           for (const wp of b.building.factory.waypoints) stringList.push(wp.type);
         }
@@ -2916,7 +2914,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           b.id, b.pos.x, b.pos.y, b.pos.z, b.rotation, b.playerId,
           hasChanged, b.changedFields ?? 0,
           b.building.type !== undefined ? 1 : 0,
-          b.building.type !== undefined ? (stringSlots.get(b.building.type) ?? 0) : 0,
+          b.building.type ?? 0,
           b.building.dim !== undefined ? 1 : 0,
           b.building.dim?.x ?? 0, b.building.dim?.y ?? 0,
           b.building.hp.curr, b.building.hp.max,
