@@ -14,6 +14,9 @@ import {
   snapshot_encode_envelope_emit_economy,
   snapshot_encode_envelope_emit_minimap,
   snapshot_encode_envelope_emit_projectiles,
+  snapshot_encode_envelope_emit_spray_targets,
+  snapshot_encode_spray_scratch_ptr,
+  snapshot_encode_spray_scratch_ensure,
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
@@ -1506,6 +1509,61 @@ function packBeamUpdatesIntoScratch(
   }
 }
 
+type SprayTargetFixture = {
+  source: { id: number; pos: { x: number; y: number }; z?: number; playerId: number };
+  target: {
+    id: number;
+    pos: { x: number; y: number };
+    z?: number;
+    dim?: { x: number; y: number };
+    radius?: number;
+  };
+  type: 'build' | 'heal';
+  intensity: number;
+  speed?: number;
+  particleRadius?: number;
+};
+
+const SPRAY_SCRATCH_STRIDE = 16;
+
+function packSprayTargetsIntoScratch(
+  memory: WebAssembly.Memory,
+  sprays: SprayTargetFixture[],
+): void {
+  if (sprays.length === 0) return;
+  snapshot_encode_spray_scratch_ensure(sprays.length);
+  const ptr = snapshot_encode_spray_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, sprays.length * SPRAY_SCRATCH_STRIDE);
+  for (let i = 0; i < sprays.length; i++) {
+    const s = sprays[i];
+    const base = i * SPRAY_SCRATCH_STRIDE;
+    view[base + 0] = s.source.id;
+    view[base + 1] = s.source.pos.x;
+    view[base + 2] = s.source.pos.y;
+    view[base + 3] = s.source.z ?? 0;
+    view[base + 4] = s.source.playerId;
+    view[base + 5] = s.target.id;
+    view[base + 6] = s.target.pos.x;
+    view[base + 7] = s.target.pos.y;
+    view[base + 8] = s.target.z ?? 0;
+    view[base + 9] = s.target.dim?.x ?? 0;
+    view[base + 10] = s.target.dim?.y ?? 0;
+    view[base + 11] = s.target.radius ?? 0;
+    view[base + 12] = s.intensity;
+    view[base + 13] = s.speed ?? 0;
+    view[base + 14] = s.particleRadius ?? 0;
+    let flags = 0;
+    if (s.type === 'heal') flags |= 0x01;
+    if (s.source.z !== undefined) flags |= 0x02;
+    if (s.target.z !== undefined) flags |= 0x04;
+    if (s.target.dim !== undefined) flags |= 0x08;
+    if (s.target.radius !== undefined) flags |= 0x10;
+    if (s.speed !== undefined) flags |= 0x20;
+    if (s.particleRadius !== undefined) flags |= 0x40;
+    view[base + 15] = flags;
+  }
+}
+
 type ShroudFixture = {
   gridW: number;
   gridH: number;
@@ -1558,6 +1616,7 @@ type EnvelopeFixture = {
   entities: (UnitFixture | BuildingFixture)[];
   minimapEntities?: MinimapEntityFixture[];
   economy: Record<string, unknown>;  // empty for D.3j-15+
+  sprayTargets?: SprayTargetFixture[];
   projectiles?: ProjectilesFixture;
   gameState?: GameStateFixture;
   isDelta: boolean;
@@ -1877,6 +1936,57 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { playerId: 3, x: 0, y: 0, z: 0, radius: 600, expiresAtTick: 1101 },
       ],
     },
+    // sprayTargets — minimal build spray, no z / dim / radius / speed / particleRadius.
+    {
+      tick: 1100, entities: [], economy: {},
+      sprayTargets: [{
+        source: { id: 1, pos: { x: 100, y: 200 }, playerId: 1 },
+        target: { id: 2, pos: { x: 300, y: 400 } },
+        type: 'build',
+        intensity: 0.5,
+      }],
+      isDelta: true,
+    },
+    // sprayTargets — heal type with all optional fields populated.
+    {
+      tick: 1101, entities: [], economy: {},
+      sprayTargets: [{
+        source: { id: 10, pos: { x: 0, y: 0 }, z: 5, playerId: 2 },
+        target: {
+          id: 20,
+          pos: { x: 500, y: 600 },
+          z: 10,
+          dim: { x: 4, y: 6 },
+          radius: 80,
+        },
+        type: 'heal',
+        intensity: 0.85,
+        speed: 12,
+        particleRadius: 3,
+      }],
+      isDelta: true,
+    },
+    // sprayTargets — multiple sprays mixing types and optional combos.
+    {
+      tick: 1102, entities: [], economy: {},
+      sprayTargets: [
+        {
+          source: { id: 30, pos: { x: 1000, y: 1000 }, playerId: 1 },
+          target: { id: 31, pos: { x: 1100, y: 1100 }, dim: { x: 8, y: 8 } },
+          type: 'build',
+          intensity: 0.3,
+          speed: 5,
+        },
+        {
+          source: { id: 32, pos: { x: -200, y: 0 }, z: 12, playerId: 3 },
+          target: { id: 33, pos: { x: -100, y: 50 }, radius: 25 },
+          type: 'heal',
+          intensity: 1.0,
+          particleRadius: 2,
+        },
+      ],
+      isDelta: true,
+    },
     // shroud — small bitmap exercising bin8 path (len <= 0xFF).
     {
       tick: 1010, entities: [], economy: {}, isDelta: false,
@@ -2036,6 +2146,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
 
     const hasMinimap = f.minimapEntities !== undefined ? 1 : 0;
+    const hasSprayTargets = f.sprayTargets !== undefined ? 1 : 0;
     const hasProjectiles = f.projectiles !== undefined ? 1 : 0;
     const hasEconomy = 1;  // always emitted in this commit
     const hasGameState = f.gameState !== undefined ? 1 : 0;
@@ -2047,6 +2158,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     const totalKeyCount =
       2 /* tick + entities */ +
       hasMinimap +
+      hasSprayTargets +
       hasProjectiles +
       hasEconomy +
       hasGameState +
@@ -2079,6 +2191,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     }
     if (hasShroud && f.shroud) {
       packShroudBitmapIntoScratch(memory, f.shroud.bitmap);
+    }
+    if (hasSprayTargets && f.sprayTargets) {
+      packSprayTargetsIntoScratch(memory, f.sprayTargets);
     }
     if (hasProjectiles && f.projectiles) {
       if (f.projectiles.spawns) {
@@ -2207,6 +2322,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     }
     if (hasEconomy) {
       snapshot_encode_envelope_emit_economy();
+    }
+    if (hasSprayTargets && f.sprayTargets) {
+      snapshot_encode_envelope_emit_spray_targets(f.sprayTargets.length);
     }
     if (hasProjectiles && f.projectiles) {
       const spawns = f.projectiles.spawns;

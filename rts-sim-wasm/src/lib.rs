@@ -7221,6 +7221,60 @@ pub fn snapshot_encode_beam_point_scratch_ensure(count: u32) {
     }
 }
 
+/// Spray-target scratch — 16 f64 per spray (NetworkServerSnapshotSprayTarget).
+///   [0]    source.id
+///   [1..3] source.pos.x, source.pos.y
+///   [3]    source.z (gated by flags bit 1)
+///   [4]    source.playerId
+///   [5]    target.id
+///   [6..8] target.pos.x, target.pos.y
+///   [8]    target.z (gated by flags bit 2)
+///   [9..11] target.dim.x, target.dim.y (gated by flags bit 3)
+///   [11]   target.radius (gated by flags bit 4)
+///   [12]   intensity
+///   [13]   speed (gated by flags bit 5)
+///   [14]   particleRadius (gated by flags bit 6)
+///   [15]   flags: bit 0 type_is_heal (else 'build'), bit 1 has_source_z,
+///          bit 2 has_target_z, bit 3 has_target_dim, bit 4 has_target_radius,
+///          bit 5 has_speed, bit 6 has_particleRadius.
+const SNAPSHOT_ENCODE_SPRAY_STRIDE: usize = 16;
+
+struct SnapshotEncodeSprayScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeSprayScratchHolder(UnsafeCell<Option<SnapshotEncodeSprayScratch>>);
+unsafe impl Sync for SnapshotEncodeSprayScratchHolder {}
+static SNAPSHOT_ENCODE_SPRAY_SCRATCH: SnapshotEncodeSprayScratchHolder =
+    SnapshotEncodeSprayScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_spray_scratch() -> &'static mut SnapshotEncodeSprayScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_SPRAY_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeSprayScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_SPRAY_STRIDE * 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_spray_scratch_ptr() -> *const f64 {
+    snapshot_encode_spray_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_spray_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_SPRAY_STRIDE;
+    let s = snapshot_encode_spray_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Shroud-bitmap scratch — flat Uint8Array of explored-tile bits. JS
 /// fills before calling snapshot_encode_envelope_emit_shroud which
 /// emits the wrapper map (gridW, gridH, cellSize, bitmap) using the
@@ -7706,13 +7760,102 @@ pub fn snapshot_encode_envelope_emit_minimap(count: u32) {
 }
 
 /// Append the economy key. Sits between minimapEntities and
-/// projectiles in pool insertion order. Body is currently empty {};
+/// sprayTargets in pool insertion order. Body is currently empty {};
 /// follow-ups will add per-player resource/storage contents.
 #[wasm_bindgen]
 pub fn snapshot_encode_envelope_emit_economy() {
     let w = messagepack_writer();
     w.write_str("economy");
     w.write_map_header(0);
+}
+
+/// Append `sprayTargets: [...]`. Sits between economy and projectiles
+/// in iteration order (sprayTargets is in the _snapshotBuf static
+/// init). Reads `count` entries (16 f64 each) from the spray scratch.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
+    let w = messagepack_writer();
+    let n = count as usize;
+    let scratch = snapshot_encode_spray_scratch();
+    w.write_str("sprayTargets");
+    w.write_array_header(n);
+    for i in 0..n {
+        let base = i * SNAPSHOT_ENCODE_SPRAY_STRIDE;
+        let flags = scratch.buf[base + 15] as u32;
+        let type_is_heal = (flags & 0x01) != 0;
+        let has_source_z = (flags & 0x02) != 0;
+        let has_target_z = (flags & 0x04) != 0;
+        let has_target_dim = (flags & 0x08) != 0;
+        let has_target_radius = (flags & 0x10) != 0;
+        let has_speed = (flags & 0x20) != 0;
+        let has_particle_radius = (flags & 0x40) != 0;
+
+        // Outer field count: source, target, type, intensity always +
+        // optional speed + particleRadius.
+        let mut field_count: usize = 4;
+        if has_speed { field_count += 1; }
+        if has_particle_radius { field_count += 1; }
+        w.write_map_header(field_count);
+
+        // source: { id, pos: {x, y}, [z], playerId } in pool order.
+        w.write_str("source");
+        let src_field_count = if has_source_z { 4 } else { 3 };
+        w.write_map_header(src_field_count);
+        w.write_str("id");
+        w.write_uint(scratch.buf[base] as u64);
+        w.write_str("pos");
+        w.write_map_header(2);
+        w.write_str("x"); w.write_number(scratch.buf[base + 1]);
+        w.write_str("y"); w.write_number(scratch.buf[base + 2]);
+        if has_source_z {
+            w.write_str("z");
+            w.write_number(scratch.buf[base + 3]);
+        }
+        w.write_str("playerId");
+        w.write_uint(scratch.buf[base + 4] as u64);
+
+        // target: { id, pos: {x, y}, [z], [dim], [radius] } in pool order.
+        w.write_str("target");
+        let mut tgt_field_count: usize = 2;
+        if has_target_z { tgt_field_count += 1; }
+        if has_target_dim { tgt_field_count += 1; }
+        if has_target_radius { tgt_field_count += 1; }
+        w.write_map_header(tgt_field_count);
+        w.write_str("id");
+        w.write_uint(scratch.buf[base + 5] as u64);
+        w.write_str("pos");
+        w.write_map_header(2);
+        w.write_str("x"); w.write_number(scratch.buf[base + 6]);
+        w.write_str("y"); w.write_number(scratch.buf[base + 7]);
+        if has_target_z {
+            w.write_str("z");
+            w.write_number(scratch.buf[base + 8]);
+        }
+        if has_target_dim {
+            w.write_str("dim");
+            w.write_map_header(2);
+            w.write_str("x"); w.write_number(scratch.buf[base + 9]);
+            w.write_str("y"); w.write_number(scratch.buf[base + 10]);
+        }
+        if has_target_radius {
+            w.write_str("radius");
+            w.write_number(scratch.buf[base + 11]);
+        }
+
+        w.write_str("type");
+        if type_is_heal { w.write_str("heal"); } else { w.write_str("build"); }
+        w.write_str("intensity");
+        w.write_number(scratch.buf[base + 12]);
+        if has_speed {
+            w.write_str("speed");
+            w.write_number(scratch.buf[base + 13]);
+        }
+        if has_particle_radius {
+            w.write_str("particleRadius");
+            w.write_number(scratch.buf[base + 14]);
+        }
+    }
+    w.buf.len() as u32
 }
 
 /// Close the envelope. Emits the post-projectiles optional keys in

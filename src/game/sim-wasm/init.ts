@@ -156,6 +156,9 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_shroud,
   snapshot_encode_shroud_scratch_ptr,
   snapshot_encode_shroud_scratch_ensure,
+  snapshot_encode_envelope_emit_spray_targets,
+  snapshot_encode_spray_scratch_ptr,
+  snapshot_encode_spray_scratch_ensure,
   snapshot_encode_proj_despawn_scratch_ptr,
   snapshot_encode_proj_despawn_scratch_ensure,
   snapshot_encode_proj_spawn_scratch_ptr,
@@ -1069,6 +1072,17 @@ export interface SnapshotEncodeApi {
   shroudScratchPtr: () => number;
   /** Pre-grow the shroud scratch to hold `byteCount` bytes. */
   shroudScratchEnsure: (byteCount: number) => void;
+  /** Emit `sprayTargets: [...]`. Sits between economy and projectiles
+   *  in iteration order. Reads `count` entries (16 f64 each) from the
+   *  spray scratch. */
+  emitSprayTargets: (count: number) => number;
+  /** Raw pointer to the spray-target scratch (Float64Array, 16 f64
+   *  per spray — see lib.rs SNAPSHOT_ENCODE_SPRAY_STRIDE for layout). */
+  sprayScratchPtr: () => number;
+  /** Pre-grow the spray scratch to hold `count` sprays. */
+  sprayScratchEnsure: (count: number) => void;
+  /** Stride per spray entry (f64 count). */
+  readonly sprayScratchStride: number;
   /** Raw pointer to the beam-update header scratch (Float64Array,
    *  4 f64 per update: id, flags, obstructionT, point_count). */
   beamUpdateScratchPtr: () => number;
@@ -1536,6 +1550,10 @@ export function initSimWasm(): Promise<SimWasm> {
           emitShroud: snapshot_encode_envelope_emit_shroud,
           shroudScratchPtr: snapshot_encode_shroud_scratch_ptr,
           shroudScratchEnsure: snapshot_encode_shroud_scratch_ensure,
+          emitSprayTargets: snapshot_encode_envelope_emit_spray_targets,
+          sprayScratchPtr: snapshot_encode_spray_scratch_ptr,
+          sprayScratchEnsure: snapshot_encode_spray_scratch_ensure,
+          sprayScratchStride: 16,
           projDespawnScratchPtr: snapshot_encode_proj_despawn_scratch_ptr,
           projDespawnScratchEnsure: snapshot_encode_proj_despawn_scratch_ensure,
           projSpawnScratchPtr: snapshot_encode_proj_spawn_scratch_ptr,
