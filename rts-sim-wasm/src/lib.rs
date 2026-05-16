@@ -7126,6 +7126,101 @@ pub fn snapshot_encode_proj_spawn_scratch_ensure(count: u32) {
     }
 }
 
+/// Beam-update header scratch — 4 f64 per update:
+///   [0]   id
+///   [1]   flags: bit 0 has_obstructionT, bit 1 has_endpointDamageable_false
+///   [2]   obstructionT (qRot value, only valid if flag set)
+///   [3]   point_count (u32 as f64, points come from beam_point_scratch
+///         in order — first update's points then next update's, etc.)
+const SNAPSHOT_ENCODE_BEAM_UPDATE_STRIDE: usize = 4;
+
+struct SnapshotEncodeBeamUpdateScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeBeamUpdateScratchHolder(UnsafeCell<Option<SnapshotEncodeBeamUpdateScratch>>);
+unsafe impl Sync for SnapshotEncodeBeamUpdateScratchHolder {}
+static SNAPSHOT_ENCODE_BEAM_UPDATE_SCRATCH: SnapshotEncodeBeamUpdateScratchHolder =
+    SnapshotEncodeBeamUpdateScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_beam_update_scratch() -> &'static mut SnapshotEncodeBeamUpdateScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_BEAM_UPDATE_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeBeamUpdateScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_BEAM_UPDATE_STRIDE * 16],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_beam_update_scratch_ptr() -> *const f64 {
+    snapshot_encode_beam_update_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_beam_update_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_BEAM_UPDATE_STRIDE;
+    let s = snapshot_encode_beam_update_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
+/// Beam-point scratch — flat 15 f64 per point across ALL beam updates
+/// (first update's N1 points, then next update's N2 points, etc.).
+///   [0..3]  x, y, z
+///   [3..6]  vx, vy, vz
+///   [6..9]  ax, ay, az (server zeros these — kept for byte-equality
+///           with current JS encoder; future commit may drop)
+///   [9]     flags: bit 0 has_mirrorEntityId, bit 1 has_reflectorKind,
+///           bit 2 reflectorKind_is_forceField (else 'mirror' when
+///           bit 1 set), bit 3 has_reflectorPlayerId, bit 4 has_normalX,
+///           bit 5 has_normalY, bit 6 has_normalZ.
+///   [10]    mirrorEntityId
+///   [11]    reflectorPlayerId
+///   [12..15] normalX, normalY, normalZ
+const SNAPSHOT_ENCODE_BEAM_POINT_STRIDE: usize = 15;
+
+struct SnapshotEncodeBeamPointScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeBeamPointScratchHolder(UnsafeCell<Option<SnapshotEncodeBeamPointScratch>>);
+unsafe impl Sync for SnapshotEncodeBeamPointScratchHolder {}
+static SNAPSHOT_ENCODE_BEAM_POINT_SCRATCH: SnapshotEncodeBeamPointScratchHolder =
+    SnapshotEncodeBeamPointScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_beam_point_scratch() -> &'static mut SnapshotEncodeBeamPointScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_BEAM_POINT_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeBeamPointScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_BEAM_POINT_STRIDE * 64],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_beam_point_scratch_ptr() -> *const f64 {
+    snapshot_encode_beam_point_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_beam_point_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_BEAM_POINT_STRIDE;
+    let s = snapshot_encode_beam_point_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Removed-entity-IDs scratch — Uint32Array of EntityId values for
 /// the envelope's removedEntityIds field. JS pre-fills before
 /// calling snapshot_encode_envelope_continue with
@@ -7184,11 +7279,9 @@ pub fn snapshot_encode_envelope_begin(
 }
 
 /// Append the envelope's `projectiles: {...}` nested object.
-/// Supports `spawns`, `despawns`, `velocityUpdates`. `beamUpdates`
-/// arrives in a follow-up commit (needs its own variable-length
-/// scratch with per-spawn nested point arrays). Called between
-/// emit_economy and _continue (pool order: projectiles sits after
-/// economy and before gameState).
+/// Supports `spawns`, `despawns`, `velocityUpdates`, `beamUpdates`.
+/// Called between emit_economy and _continue (pool order: projectiles
+/// sits after economy and before gameState).
 #[wasm_bindgen]
 pub fn snapshot_encode_envelope_emit_projectiles(
     has_spawns: u8,
@@ -7197,12 +7290,15 @@ pub fn snapshot_encode_envelope_emit_projectiles(
     despawn_count: u32,
     has_velocity_updates: u8,
     velocity_update_count: u32,
+    has_beam_updates: u8,
+    beam_update_count: u32,
 ) {
     let w = messagepack_writer();
     let mut nested_count: usize = 0;
     if has_spawns != 0 { nested_count += 1; }
     if has_despawns != 0 { nested_count += 1; }
     if has_velocity_updates != 0 { nested_count += 1; }
+    if has_beam_updates != 0 { nested_count += 1; }
     if nested_count == 0 { return; }
 
     w.write_str("projectiles");
@@ -7359,6 +7455,123 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             w.write_number(vy);
             w.write_str("z");
             w.write_number(vz);
+        }
+    }
+    if has_beam_updates != 0 {
+        let n = beam_update_count as usize;
+        let header_scratch = snapshot_encode_beam_update_scratch();
+        let point_scratch = snapshot_encode_beam_point_scratch();
+        w.write_str("beamUpdates");
+        w.write_array_header(n);
+        let mut point_offset: usize = 0;
+        for i in 0..n {
+            let h = i * SNAPSHOT_ENCODE_BEAM_UPDATE_STRIDE;
+            let id = header_scratch.buf[h] as u32;
+            let flags = header_scratch.buf[h + 1] as u32;
+            let has_obstruction_t = (flags & 0x01) != 0;
+            let has_endpoint_damageable = (flags & 0x02) != 0;
+            let obstruction_t = header_scratch.buf[h + 2];
+            let point_count = header_scratch.buf[h + 3] as usize;
+
+            // BeamUpdate DTO field count = always 2 (id + points) +
+            // optional obstructionT + optional endpointDamageable.
+            let mut field_count: usize = 2;
+            if has_obstruction_t { field_count += 1; }
+            if has_endpoint_damageable { field_count += 1; }
+            w.write_map_header(field_count);
+
+            // Pool order in createPooledBeamUpdate: id, points,
+            // obstructionT, endpointDamageable.
+            w.write_str("id");
+            w.write_uint(id as u64);
+            w.write_str("points");
+            w.write_array_header(point_count);
+            for p in 0..point_count {
+                let pb = (point_offset + p) * SNAPSHOT_ENCODE_BEAM_POINT_STRIDE;
+                let x = point_scratch.buf[pb];
+                let y = point_scratch.buf[pb + 1];
+                let z = point_scratch.buf[pb + 2];
+                let vx = point_scratch.buf[pb + 3];
+                let vy = point_scratch.buf[pb + 4];
+                let vz = point_scratch.buf[pb + 5];
+                let ax = point_scratch.buf[pb + 6];
+                let ay = point_scratch.buf[pb + 7];
+                let az = point_scratch.buf[pb + 8];
+                let pflags = point_scratch.buf[pb + 9] as u32;
+                let has_mirror_id = (pflags & 0x01) != 0;
+                let has_reflector_kind = (pflags & 0x02) != 0;
+                let kind_is_force_field = (pflags & 0x04) != 0;
+                let has_reflector_player = (pflags & 0x08) != 0;
+                let has_normal_x = (pflags & 0x10) != 0;
+                let has_normal_y = (pflags & 0x20) != 0;
+                let has_normal_z = (pflags & 0x40) != 0;
+                let mirror_id = point_scratch.buf[pb + 10] as u32;
+                let reflector_player = point_scratch.buf[pb + 11] as u32;
+                let nx = point_scratch.buf[pb + 12];
+                let ny = point_scratch.buf[pb + 13];
+                let nz = point_scratch.buf[pb + 14];
+
+                // BeamPoint DTO field count = always 9 (x,y,z,vx,vy,vz,
+                // ax,ay,az) + optional reflector + normal fields.
+                let mut pf_count: usize = 9;
+                if has_mirror_id { pf_count += 1; }
+                if has_reflector_kind { pf_count += 1; }
+                if has_reflector_player { pf_count += 1; }
+                if has_normal_x { pf_count += 1; }
+                if has_normal_y { pf_count += 1; }
+                if has_normal_z { pf_count += 1; }
+                w.write_map_header(pf_count);
+
+                // Pool order from createPooledBeamPoint: x, y, z,
+                // vx, vy, vz, ax, ay, az, [mirrorEntityId,
+                // reflectorKind, reflectorPlayerId, normalX/Y/Z].
+                w.write_str("x"); w.write_number(x);
+                w.write_str("y"); w.write_number(y);
+                w.write_str("z"); w.write_number(z);
+                w.write_str("vx"); w.write_number(vx);
+                w.write_str("vy"); w.write_number(vy);
+                w.write_str("vz"); w.write_number(vz);
+                w.write_str("ax"); w.write_number(ax);
+                w.write_str("ay"); w.write_number(ay);
+                w.write_str("az"); w.write_number(az);
+                if has_mirror_id {
+                    w.write_str("mirrorEntityId");
+                    w.write_uint(mirror_id as u64);
+                }
+                if has_reflector_kind {
+                    w.write_str("reflectorKind");
+                    if kind_is_force_field {
+                        w.write_str("forceField");
+                    } else {
+                        w.write_str("mirror");
+                    }
+                }
+                if has_reflector_player {
+                    w.write_str("reflectorPlayerId");
+                    w.write_uint(reflector_player as u64);
+                }
+                if has_normal_x {
+                    w.write_str("normalX");
+                    w.write_number(nx);
+                }
+                if has_normal_y {
+                    w.write_str("normalY");
+                    w.write_number(ny);
+                }
+                if has_normal_z {
+                    w.write_str("normalZ");
+                    w.write_number(nz);
+                }
+            }
+            point_offset += point_count;
+            if has_obstruction_t {
+                w.write_str("obstructionT");
+                w.write_number(obstruction_t);
+            }
+            if has_endpoint_damageable {
+                w.write_str("endpointDamageable");
+                w.write_bool(false);
+            }
         }
     }
 }

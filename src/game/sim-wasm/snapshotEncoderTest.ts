@@ -16,6 +16,10 @@ import {
   snapshot_encode_envelope_emit_projectiles,
   snapshot_encode_minimap_scratch_ptr,
   snapshot_encode_minimap_scratch_ensure,
+  snapshot_encode_beam_update_scratch_ptr,
+  snapshot_encode_beam_update_scratch_ensure,
+  snapshot_encode_beam_point_scratch_ptr,
+  snapshot_encode_beam_point_scratch_ensure,
   snapshot_encode_proj_despawn_scratch_ptr,
   snapshot_encode_proj_despawn_scratch_ensure,
   snapshot_encode_proj_spawn_scratch_ptr,
@@ -1326,10 +1330,28 @@ type ProjectileVelocityUpdateFixture = {
   pos: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
 };
+type BeamPointFixture = {
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  ax: number; ay: number; az: number;
+  mirrorEntityId?: number;
+  reflectorKind?: 'mirror' | 'forceField';
+  reflectorPlayerId?: number;
+  normalX?: number;
+  normalY?: number;
+  normalZ?: number;
+};
+type BeamUpdateFixture = {
+  id: number;
+  points: BeamPointFixture[];
+  obstructionT?: number;
+  endpointDamageable?: false;  // tri-state — undefined or false (true never sent)
+};
 type ProjectilesFixture = {
   spawns?: ProjectileSpawnFixture[];
   despawns?: ProjectileDespawnFixture[];
   velocityUpdates?: ProjectileVelocityUpdateFixture[];
+  beamUpdates?: BeamUpdateFixture[];
 };
 
 const PROJ_SPAWN_SCRATCH_STRIDE = 27;
@@ -1408,6 +1430,73 @@ function packProjVelocityUpdatesIntoScratch(
     view[base + 4] = u.velocity.x;
     view[base + 5] = u.velocity.y;
     view[base + 6] = u.velocity.z;
+  }
+}
+
+const BEAM_UPDATE_HEADER_STRIDE = 4;
+const BEAM_POINT_STRIDE = 15;
+
+function packBeamUpdatesIntoScratch(
+  memory: WebAssembly.Memory,
+  updates: BeamUpdateFixture[],
+): void {
+  if (updates.length === 0) return;
+  snapshot_encode_beam_update_scratch_ensure(updates.length);
+  let totalPoints = 0;
+  for (const u of updates) totalPoints += u.points.length;
+  if (totalPoints > 0) snapshot_encode_beam_point_scratch_ensure(totalPoints);
+
+  const headerPtr = snapshot_encode_beam_update_scratch_ptr();
+  const headerView = new Float64Array(
+    memory.buffer, headerPtr, updates.length * BEAM_UPDATE_HEADER_STRIDE,
+  );
+  const pointPtr = snapshot_encode_beam_point_scratch_ptr();
+  const pointView = totalPoints > 0
+    ? new Float64Array(memory.buffer, pointPtr, totalPoints * BEAM_POINT_STRIDE)
+    : new Float64Array(0);
+
+  let pointOffset = 0;
+  for (let i = 0; i < updates.length; i++) {
+    const u = updates[i];
+    const h = i * BEAM_UPDATE_HEADER_STRIDE;
+    headerView[h + 0] = u.id;
+    let flags = 0;
+    if (u.obstructionT !== undefined) flags |= 0x01;
+    if (u.endpointDamageable === false) flags |= 0x02;
+    headerView[h + 1] = flags;
+    headerView[h + 2] = u.obstructionT ?? 0;
+    headerView[h + 3] = u.points.length;
+
+    for (let p = 0; p < u.points.length; p++) {
+      const pt = u.points[p];
+      const pb = (pointOffset + p) * BEAM_POINT_STRIDE;
+      pointView[pb + 0] = pt.x;
+      pointView[pb + 1] = pt.y;
+      pointView[pb + 2] = pt.z;
+      pointView[pb + 3] = pt.vx;
+      pointView[pb + 4] = pt.vy;
+      pointView[pb + 5] = pt.vz;
+      pointView[pb + 6] = pt.ax;
+      pointView[pb + 7] = pt.ay;
+      pointView[pb + 8] = pt.az;
+      let pflags = 0;
+      if (pt.mirrorEntityId !== undefined) pflags |= 0x01;
+      if (pt.reflectorKind !== undefined) {
+        pflags |= 0x02;
+        if (pt.reflectorKind === 'forceField') pflags |= 0x04;
+      }
+      if (pt.reflectorPlayerId !== undefined) pflags |= 0x08;
+      if (pt.normalX !== undefined) pflags |= 0x10;
+      if (pt.normalY !== undefined) pflags |= 0x20;
+      if (pt.normalZ !== undefined) pflags |= 0x40;
+      pointView[pb + 9] = pflags;
+      pointView[pb + 10] = pt.mirrorEntityId ?? 0;
+      pointView[pb + 11] = pt.reflectorPlayerId ?? 0;
+      pointView[pb + 12] = pt.normalX ?? 0;
+      pointView[pb + 13] = pt.normalY ?? 0;
+      pointView[pb + 14] = pt.normalZ ?? 0;
+    }
+    pointOffset += u.points.length;
   }
 }
 
@@ -1717,6 +1806,107 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       },
       isDelta: true,
     },
+    // beamUpdates: minimal 2-vertex beam (start + end), no reflectors.
+    {
+      tick: 900, entities: [], economy: {},
+      projectiles: {
+        beamUpdates: [{
+          id: 11001,
+          points: [
+            { x: 100, y: 200, z: 50, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            { x: 1000, y: 800, z: 50, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+          ],
+        }],
+      },
+      isDelta: true,
+    },
+    // beamUpdates: full optionals (obstructionT + endpointDamageable +
+    // mid-vertex reflector with normal + reflectorPlayerId).
+    {
+      tick: 901, entities: [], economy: {},
+      projectiles: {
+        beamUpdates: [{
+          id: 11002,
+          points: [
+            { x: 0, y: 0, z: 10, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            {
+              x: 500, y: 500, z: 10, vx: 1, vy: 2, vz: 0, ax: 0, ay: 0, az: 0,
+              mirrorEntityId: 4242,
+              reflectorKind: 'mirror',
+              reflectorPlayerId: 2,
+              normalX: -707, normalY: 707, normalZ: 0,
+            },
+            { x: 1000, y: 0, z: 10, vx: -1, vy: 2, vz: 0, ax: 0, ay: 0, az: 0 },
+          ],
+          obstructionT: 0.755,
+          endpointDamageable: false,
+        }],
+      },
+      isDelta: true,
+    },
+    // beamUpdates: forceField reflector kind exercises the alternate
+    // string branch in the encoder.
+    {
+      tick: 902, entities: [], economy: {},
+      projectiles: {
+        beamUpdates: [{
+          id: 11003,
+          points: [
+            { x: 50, y: 50, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            {
+              x: 200, y: 100, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0,
+              mirrorEntityId: 7777,
+              reflectorKind: 'forceField',
+              reflectorPlayerId: 3,
+            },
+            { x: 350, y: 50, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+          ],
+        }],
+      },
+      isDelta: true,
+    },
+    // beamUpdates: multiple beams in one tick + mixed with all other
+    // projectile sub-arrays.
+    {
+      tick: 903, entities: [], economy: {},
+      projectiles: {
+        spawns: [{
+          id: 12000,
+          pos: { x: 0, y: 0, z: 0 },
+          rotation: 0,
+          velocity: { x: 50, y: 0, z: 0 },
+          projectileType: 1,
+          turretId: 2,
+          playerId: 1,
+          sourceEntityId: 100,
+          turretIndex: 0,
+          barrelIndex: 0,
+        }],
+        despawns: [{ id: 12001 }],
+        velocityUpdates: [
+          { id: 12002, pos: { x: 50, y: 0, z: 50 }, velocity: { x: 25, y: 0, z: 0 } },
+        ],
+        beamUpdates: [
+          {
+            id: 12003,
+            points: [
+              { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+              { x: 500, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            ],
+          },
+          {
+            id: 12004,
+            points: [
+              { x: 0, y: 100, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+              { x: 500, y: 100, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+              { x: 1000, y: 100, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            ],
+            obstructionT: 0.5,
+          },
+        ],
+      },
+      isDelta: true,
+    },
   ];
 
   let passed = 0;
@@ -1768,6 +1958,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       }
       if (f.projectiles.velocityUpdates) {
         packProjVelocityUpdatesIntoScratch(memory, f.projectiles.velocityUpdates);
+      }
+      if (f.projectiles.beamUpdates) {
+        packBeamUpdatesIntoScratch(memory, f.projectiles.beamUpdates);
       }
     }
     snapshot_encode_envelope_begin(f.tick, f.entities.length, totalKeyCount);
@@ -1888,6 +2081,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       const spawns = f.projectiles.spawns;
       const despawns = f.projectiles.despawns;
       const vels = f.projectiles.velocityUpdates;
+      const beams = f.projectiles.beamUpdates;
       snapshot_encode_envelope_emit_projectiles(
         spawns !== undefined ? 1 : 0,
         spawns?.length ?? 0,
@@ -1895,6 +2089,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         despawns?.length ?? 0,
         vels !== undefined ? 1 : 0,
         vels?.length ?? 0,
+        beams !== undefined ? 1 : 0,
+        beams?.length ?? 0,
       );
     }
 

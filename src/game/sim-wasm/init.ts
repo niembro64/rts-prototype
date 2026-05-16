@@ -146,6 +146,10 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_projectiles,
   snapshot_encode_minimap_scratch_ptr,
   snapshot_encode_minimap_scratch_ensure,
+  snapshot_encode_beam_update_scratch_ptr,
+  snapshot_encode_beam_update_scratch_ensure,
+  snapshot_encode_beam_point_scratch_ptr,
+  snapshot_encode_beam_point_scratch_ensure,
   snapshot_encode_proj_despawn_scratch_ptr,
   snapshot_encode_proj_despawn_scratch_ensure,
   snapshot_encode_proj_spawn_scratch_ptr,
@@ -1016,10 +1020,12 @@ export interface SnapshotEncodeApi {
   /** Emit `minimapEntities: [...]`. Reads `count` entries from the
    *  minimap scratch (6 f64 per entry). */
   emitMinimap: (count: number) => void;
-  /** Emit `projectiles: { spawns?, despawns?, velocityUpdates? }`.
-   *  Reads spawn DTOs from projSpawnScratch (27 f64 each), despawn
-   *  ids from projDespawnScratch, velocity-update tuples from
-   *  projVelScratch (7 f64 each). */
+  /** Emit `projectiles: { spawns?, despawns?, velocityUpdates?,
+   *  beamUpdates? }`. Reads spawn DTOs from projSpawnScratch (27 f64
+   *  each), despawn ids from projDespawnScratch, velocity-update
+   *  tuples from projVelScratch (7 f64 each), beam-update headers
+   *  from beamUpdateScratch (4 f64 each, with point_count[3] driving
+   *  the per-update slice of beamPointScratch (15 f64 each)). */
   emitProjectiles: (
     hasSpawns: number,
     spawnCount: number,
@@ -1027,6 +1033,8 @@ export interface SnapshotEncodeApi {
     despawnCount: number,
     hasVelocityUpdates: number,
     velocityUpdateCount: number,
+    hasBeamUpdates: number,
+    beamUpdateCount: number,
   ) => void;
   /** Raw pointer to the minimap scratch (Float64Array, 6 f64 per
    *  entry: id, posX, posY, typeTag, playerId, radarPacked). */
@@ -1035,6 +1043,20 @@ export interface SnapshotEncodeApi {
   minimapScratchEnsure: (count: number) => void;
   /** Stride per minimap entry (f64 count). */
   readonly minimapScratchStride: number;
+  /** Raw pointer to the beam-update header scratch (Float64Array,
+   *  4 f64 per update: id, flags, obstructionT, point_count). */
+  beamUpdateScratchPtr: () => number;
+  /** Pre-grow the beam-update header scratch to hold `count` updates. */
+  beamUpdateScratchEnsure: (count: number) => void;
+  /** Stride per beam-update header (f64 count). */
+  readonly beamUpdateScratchStride: number;
+  /** Raw pointer to the beam-point scratch (Float64Array, 15 f64 per
+   *  point — flat across all beam updates in pool order). */
+  beamPointScratchPtr: () => number;
+  /** Pre-grow the beam-point scratch to hold `count` total points. */
+  beamPointScratchEnsure: (count: number) => void;
+  /** Stride per beam-point (f64 count). */
+  readonly beamPointScratchStride: number;
   /** Raw pointer to the projectile-despawn scratch (Uint32Array of
    *  ids). */
   projDespawnScratchPtr: () => number;
@@ -1475,6 +1497,12 @@ export function initSimWasm(): Promise<SimWasm> {
           minimapScratchPtr: snapshot_encode_minimap_scratch_ptr,
           minimapScratchEnsure: snapshot_encode_minimap_scratch_ensure,
           minimapScratchStride: 6,
+          beamUpdateScratchPtr: snapshot_encode_beam_update_scratch_ptr,
+          beamUpdateScratchEnsure: snapshot_encode_beam_update_scratch_ensure,
+          beamUpdateScratchStride: 4,
+          beamPointScratchPtr: snapshot_encode_beam_point_scratch_ptr,
+          beamPointScratchEnsure: snapshot_encode_beam_point_scratch_ensure,
+          beamPointScratchStride: 15,
           projDespawnScratchPtr: snapshot_encode_proj_despawn_scratch_ptr,
           projDespawnScratchEnsure: snapshot_encode_proj_despawn_scratch_ensure,
           projSpawnScratchPtr: snapshot_encode_proj_spawn_scratch_ptr,
