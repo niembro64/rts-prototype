@@ -8,6 +8,7 @@ import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 import { encodeNetworkSnapshot } from '../network/snapshotWireCodec';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
+import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
 
 export class LocalGameConnection implements GameConnection {
   readonly sharesAuthoritativeState = true;
@@ -68,6 +69,7 @@ export class LocalGameConnection implements GameConnection {
 
   private rebindFilter(playerId: PlayerId | undefined): void {
     this.server.removeSnapshotListener(this.snapshotListenerKey);
+    SNAPSHOT_ENCODE_INSTRUMENTATION.clearListener(this.snapshotListenerKey, 'local');
     this.filterPlayerId = playerId;
     // Drop any held pending-snapshot from the previous binding — its
     // delta baseline is for the old recipient, so applying it on top
@@ -93,13 +95,23 @@ export class LocalGameConnection implements GameConnection {
   }
 
   private recordLocalSnapshotWireCost(state: NetworkServerSnapshot): void {
-    if (!SNAPSHOT_CADENCE_REGRESSION.enabled) return;
+    if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
     const start = performance.now();
     const payload = encodeNetworkSnapshot(state);
+    const encodeMs = performance.now() - start;
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotEncode({
       rate: state.serverMeta?.snaps.rate,
       bytes: payload.byteLength,
-      encodeMs: performance.now() - start,
+      encodeMs,
+    });
+    SNAPSHOT_ENCODE_INSTRUMENTATION.record({
+      source: 'local',
+      listener: this.snapshotListenerKey,
+      rate: state.serverMeta?.snaps.rate,
+      unitCount: state.serverMeta?.units.count,
+      bytes: payload.byteLength,
+      encodeMs,
+      isDelta: state.isDelta,
     });
   }
 
@@ -130,6 +142,7 @@ export class LocalGameConnection implements GameConnection {
 
   disconnect(): void {
     this.server.removeSnapshotListener(this.snapshotListenerKey);
+    SNAPSHOT_ENCODE_INSTRUMENTATION.clearListener(this.snapshotListenerKey, 'local');
     this.server.removeGameOverListener(this.gameOverListenerRef);
     this.snapshotCallback = null;
     this.gameOverCallback = null;

@@ -1,4 +1,11 @@
 import { GAME_DIAGNOSTICS } from './diagnostics';
+import {
+  addRunningStat,
+  createRunningStats,
+  formatRunningAverage,
+  formatRunningMax,
+  type RunningStats,
+} from './diagnosticStats';
 import type { Command } from './sim/commands';
 import type { PlayerId } from './sim/types';
 import type { NetworkServerSnapshotMeta } from './network/NetworkTypes';
@@ -14,12 +21,6 @@ const MAX_PENDING_COMMANDS = 64;
 
 type StatKey = 'bytes' | 'encodeMs' | 'decodeMs' | 'applyMs' | 'correctionAvgDistance' | 'correctionMaxDistance' |
   'renderFps' | 'frameMs' | 'serverTpsAvg' | 'serverTpsLow' | 'commandResponseMs';
-
-type RunningStats = {
-  count: number;
-  total: number;
-  max: number;
-};
 
 type RateBucket = {
   rate: string;
@@ -79,30 +80,6 @@ declare global {
   }
 }
 
-function createStats(): RunningStats {
-  return { count: 0, total: 0, max: 0 };
-}
-
-function addStat(stats: RunningStats, value: number): void {
-  if (!Number.isFinite(value)) return;
-  stats.count++;
-  stats.total += value;
-  if (value > stats.max) stats.max = value;
-}
-
-function avg(stats: RunningStats): number | null {
-  return stats.count > 0 ? stats.total / stats.count : null;
-}
-
-function value(stats: RunningStats, digits = 2): number | string {
-  const average = avg(stats);
-  return average === null ? 'n/a' : Number(average.toFixed(digits));
-}
-
-function maxValue(stats: RunningStats, digits = 2): number | string {
-  return stats.count > 0 ? Number(stats.max.toFixed(digits)) : 'n/a';
-}
-
 function makeBucket(rate: string, now: number): RateBucket {
   return {
     rate,
@@ -113,17 +90,17 @@ function makeBucket(rate: string, now: number): RateBucket {
     fullSnapshots: 0,
     correctionSamples: 0,
     stats: {
-      bytes: createStats(),
-      encodeMs: createStats(),
-      decodeMs: createStats(),
-      applyMs: createStats(),
-      correctionAvgDistance: createStats(),
-      correctionMaxDistance: createStats(),
-      renderFps: createStats(),
-      frameMs: createStats(),
-      serverTpsAvg: createStats(),
-      serverTpsLow: createStats(),
-      commandResponseMs: createStats(),
+      bytes: createRunningStats(),
+      encodeMs: createRunningStats(),
+      decodeMs: createRunningStats(),
+      applyMs: createRunningStats(),
+      correctionAvgDistance: createRunningStats(),
+      correctionMaxDistance: createRunningStats(),
+      renderFps: createRunningStats(),
+      frameMs: createRunningStats(),
+      serverTpsAvg: createRunningStats(),
+      serverTpsLow: createRunningStats(),
+      commandResponseMs: createRunningStats(),
     },
   };
 }
@@ -188,8 +165,8 @@ export class SnapshotCadenceRegression {
   }): void {
     if (!this.enabled) return;
     const bucket = this.bucket(sample.rate, sample.now);
-    addStat(bucket.stats.bytes, sample.bytes);
-    addStat(bucket.stats.encodeMs, sample.encodeMs);
+    addRunningStat(bucket.stats.bytes, sample.bytes);
+    addRunningStat(bucket.stats.encodeMs, sample.encodeMs);
   }
 
   recordSnapshotDecode(sample: {
@@ -200,8 +177,8 @@ export class SnapshotCadenceRegression {
   }): void {
     if (!this.enabled) return;
     const bucket = this.bucket(sample.rate, sample.now);
-    if (sample.bytes !== undefined) addStat(bucket.stats.bytes, sample.bytes);
-    addStat(bucket.stats.decodeMs, sample.decodeMs);
+    if (sample.bytes !== undefined) addRunningStat(bucket.stats.bytes, sample.bytes);
+    addRunningStat(bucket.stats.decodeMs, sample.decodeMs);
   }
 
   recordSnapshotApply(sample: SnapshotCadenceRegressionApplySample): void {
@@ -212,18 +189,18 @@ export class SnapshotCadenceRegression {
     const bucket = this.bucket(meta?.snaps.rate, now);
     bucket.snapshots++;
     if (!sample.isDelta) bucket.fullSnapshots++;
-    addStat(bucket.stats.applyMs, sample.applyMs);
+    addRunningStat(bucket.stats.applyMs, sample.applyMs);
     if (sample.correction.count > 0) {
       bucket.correctionSamples += sample.correction.count;
-      addStat(
+      addRunningStat(
         bucket.stats.correctionAvgDistance,
         sample.correction.totalDistance / sample.correction.count,
       );
-      addStat(bucket.stats.correctionMaxDistance, sample.correction.maxDistance);
+      addRunningStat(bucket.stats.correctionMaxDistance, sample.correction.maxDistance);
     }
     if (meta) {
-      addStat(bucket.stats.serverTpsAvg, meta.ticks.avg);
-      addStat(bucket.stats.serverTpsLow, meta.ticks.low);
+      addRunningStat(bucket.stats.serverTpsAvg, meta.ticks.avg);
+      addRunningStat(bucket.stats.serverTpsLow, meta.ticks.low);
     }
     this.resolveCommandResponses(sample.tick, now, bucket);
     this.maybeReport(now);
@@ -236,8 +213,8 @@ export class SnapshotCadenceRegression {
     if (!this.enabled) return;
     const now = sample.now ?? performance.now();
     const bucket = this.bucket(undefined, now);
-    addStat(bucket.stats.frameMs, sample.frameMs);
-    if (sample.frameMs > 0) addStat(bucket.stats.renderFps, 1000 / sample.frameMs);
+    addRunningStat(bucket.stats.frameMs, sample.frameMs);
+    if (sample.frameMs > 0) addRunningStat(bucket.stats.renderFps, 1000 / sample.frameMs);
   }
 
   recordCommandIssued(command: Command, currentTick: number, now = performance.now()): void {
@@ -360,7 +337,7 @@ export class SnapshotCadenceRegression {
         i++;
         continue;
       }
-      addStat(bucket.stats.commandResponseMs, now - pending.sentAt);
+      addRunningStat(bucket.stats.commandResponseMs, now - pending.sentAt);
       this.pendingCommands.splice(i, 1);
     }
   }
@@ -384,22 +361,22 @@ export class SnapshotCadenceRegression {
         snapshots: bucket.snapshots,
         sps: Number((bucket.snapshots / durationSec).toFixed(2)),
         full: bucket.fullSnapshots,
-        bytesAvg: value(bucket.stats.bytes, 0),
-        bytesMax: maxValue(bucket.stats.bytes, 0),
-        encodeMs: value(bucket.stats.encodeMs),
-        decodeMs: value(bucket.stats.decodeMs),
-        applyMs: value(bucket.stats.applyMs),
-        correctionAvg: value(bucket.stats.correctionAvgDistance),
-        correctionMax: maxValue(bucket.stats.correctionMaxDistance),
+        bytesAvg: formatRunningAverage(bucket.stats.bytes, 0),
+        bytesMax: formatRunningMax(bucket.stats.bytes, 0),
+        encodeMs: formatRunningAverage(bucket.stats.encodeMs),
+        decodeMs: formatRunningAverage(bucket.stats.decodeMs),
+        applyMs: formatRunningAverage(bucket.stats.applyMs),
+        correctionAvg: formatRunningAverage(bucket.stats.correctionAvgDistance),
+        correctionMax: formatRunningMax(bucket.stats.correctionMaxDistance),
         correctionSamples: bucket.correctionSamples,
-        renderFps: value(bucket.stats.renderFps, 1),
+        renderFps: formatRunningAverage(bucket.stats.renderFps, 1),
         renderFpsWorst: bucket.stats.frameMs.count > 0
           ? Number((1000 / Math.max(bucket.stats.frameMs.max, 0.001)).toFixed(1))
           : 'n/a',
-        serverTps: value(bucket.stats.serverTpsAvg, 1),
-        serverTpsLow: value(bucket.stats.serverTpsLow, 1),
-        commandMs: value(bucket.stats.commandResponseMs),
-        commandMsMax: maxValue(bucket.stats.commandResponseMs),
+        serverTps: formatRunningAverage(bucket.stats.serverTpsAvg, 1),
+        serverTpsLow: formatRunningAverage(bucket.stats.serverTpsLow, 1),
+        commandMs: formatRunningAverage(bucket.stats.commandResponseMs),
+        commandMsMax: formatRunningMax(bucket.stats.commandResponseMs),
         commands: bucket.stats.commandResponseMs.count,
       });
     }

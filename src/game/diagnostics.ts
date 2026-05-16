@@ -24,6 +24,9 @@ export const GAME_DIAGNOSTICS = {
   snapshotCadenceRegression:
     envFlag('VITE_BA_DP01_REGRESSION') ||
     queryFlag('dp01', 'snapshotCadenceRegression'),
+  snapshotEncodeInstrumentation:
+    envFlag('VITE_BA_DP02_SNAPSHOT_WIRE') ||
+    queryFlag('dp02', 'snapshotEncodeInstrumentation', 'snapshotWireStats'),
 };
 
 export function debugLog(enabled: boolean, ...args: unknown[]): void {

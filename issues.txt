@@ -29,10 +29,14 @@ src/game/network/NetworkSnapshotTransport.ts then encodes them with
 @msgpack/msgpack. The Rust crate already has snapshot_encode_* and envelope
 encoder functions, and src/game/sim-wasm/snapshotEncoderTest.ts checks
 byte-equality fixtures, but production still sends the JS-encoded DTO.
+DP-02 encode instrumentation now exists behind ?dp02=1 /
+VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports current JS MessagePack encode time
+and byte size per listener, snapshot rate, and unit-count band, and exposes
+window.__BA_DP02_SNAPSHOT_WIRE__ for repeatable captures.
 
 Steps:
-1. Instrument current encode time and byte size per listener at 5-10 SPS,
-   1k units, and 5k units.
+1. Run and record the current JS MessagePack encode baseline at 5/8/10 SPS,
+   1k units, and 5k units using docs/dp-02-snapshot-wire-instrumentation.md.
 2. Add a feature flag that encodes the existing snapshot DTO through the Rust
    encoder and compares bytes with @msgpack/msgpack in development.
 3. Switch production snapshot sending to the Rust encoder once parity is stable.

@@ -1,6 +1,7 @@
 import type { DataConnection } from 'peerjs';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
+import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
 import type { NetworkMessage, NetworkServerSnapshot } from './NetworkTypes';
 import type { PlayerId } from '../sim/types';
 import {
@@ -28,10 +29,20 @@ export class NetworkSnapshotTransport {
     this.snapshotsSent++;
     const encodeStart = performance.now();
     const buf = encodeNetworkSnapshot(state);
+    const encodeMs = performance.now() - encodeStart;
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotEncode({
       rate: state.serverMeta?.snaps.rate,
       bytes: buf.byteLength,
-      encodeMs: performance.now() - encodeStart,
+      encodeMs,
+    });
+    SNAPSHOT_ENCODE_INSTRUMENTATION.record({
+      source: 'remote',
+      listener: `player-${playerId}`,
+      rate: state.serverMeta?.snaps.rate,
+      unitCount: state.serverMeta?.units.count,
+      bytes: buf.byteLength,
+      encodeMs,
+      isDelta: state.isDelta,
     });
 
     if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsSent % 100 === 0) {
@@ -97,12 +108,14 @@ export class NetworkSnapshotTransport {
 
   clearPlayer(playerId: PlayerId): void {
     this.snapshotDropCounts.delete(playerId);
+    SNAPSHOT_ENCODE_INSTRUMENTATION.clearListener(`player-${playerId}`, 'remote');
   }
 
   reset(): void {
     this.pendingReceivedState = null;
     this.snapshotDropCounts.clear();
     this.snapshotsDropped = 0;
+    SNAPSHOT_ENCODE_INSTRUMENTATION.clearSource('remote');
   }
 
   private shouldDropForBackpressure(playerId: PlayerId, conn: DataConnection): boolean {
