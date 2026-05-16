@@ -25,6 +25,7 @@ type RateBucket = {
   rate: string;
   startedAt: number;
   lastAt: number;
+  activeMs: number;
   snapshots: number;
   fullSnapshots: number;
   correctionSamples: number;
@@ -42,6 +43,41 @@ type SnapshotCorrectionStats = {
   totalDistance: number;
   maxDistance: number;
 };
+
+export type SnapshotCadenceRegressionReportRow = {
+  rate: string;
+  seconds: number;
+  snapshots: number;
+  sps: number;
+  full: number;
+  bytesAvg: number | string;
+  bytesMax: number | string;
+  encodeMs: number | string;
+  decodeMs: number | string;
+  applyMs: number | string;
+  correctionAvg: number | string;
+  correctionMax: number | string;
+  correctionSamples: number;
+  renderFps: number | string;
+  renderFpsWorst: number | string;
+  serverTps: number | string;
+  serverTpsLow: number | string;
+  commandMs: number | string;
+  commandMsMax: number | string;
+  commands: number;
+};
+
+export type SnapshotCadenceRegressionDebugApi = {
+  reset(): void;
+  report(): void;
+  rows(): SnapshotCadenceRegressionReportRow[];
+};
+
+declare global {
+  interface Window {
+    __BA_DP01_REGRESSION__?: SnapshotCadenceRegressionDebugApi;
+  }
+}
 
 function createStats(): RunningStats {
   return { count: 0, total: 0, max: 0 };
@@ -72,6 +108,7 @@ function makeBucket(rate: string, now: number): RateBucket {
     rate,
     startedAt: now,
     lastAt: now,
+    activeMs: 0,
     snapshots: 0,
     fullSnapshots: 0,
     correctionSamples: 0,
@@ -135,6 +172,8 @@ export class SnapshotCadenceRegression {
   private readonly buckets = new Map<string, RateBucket>();
   private readonly pendingCommands: PendingCommandProbe[] = [];
   private currentRate = 'unknown';
+  private lastRecordKey = 'unknown';
+  private lastRecordAt = 0;
   private phaseIndex = -1;
   private phaseStartedAt = 0;
   private lastProbeAt = 0;
@@ -224,6 +263,7 @@ export class SnapshotCadenceRegression {
     if (options.hostPlayerId === undefined || options.localPlayerId !== options.hostPlayerId) return;
 
     if (!this.scenarioAnnounced) {
+      this.reset(options.now);
       this.scenarioAnnounced = true;
       console.info(
         '[DP-01] Snapshot cadence regression enabled. Cycling 5/8/10 SPS at 60 TPS; console tables report snapshots, bytes, encode/decode/apply time, correction distance, render FPS, and ping command response.',
@@ -259,6 +299,20 @@ export class SnapshotCadenceRegression {
     this.printReport(performance.now());
   }
 
+  reset(now = performance.now()): void {
+    this.buckets.clear();
+    this.pendingCommands.length = 0;
+    this.currentRate = 'unknown';
+    this.lastRecordKey = 'unknown';
+    this.lastRecordAt = 0;
+    this.lastReportAt = now;
+  }
+
+  rows(now = performance.now()): SnapshotCadenceRegressionReportRow[] {
+    if (!this.enabled) return [];
+    return this.buildReportRows(now);
+  }
+
   private advancePhase(options: {
     now: number;
     currentTick: number;
@@ -290,6 +344,11 @@ export class SnapshotCadenceRegression {
       bucket = makeBucket(key, now);
       this.buckets.set(key, bucket);
     }
+    if (this.lastRecordAt > 0 && this.lastRecordKey === key) {
+      bucket.activeMs += Math.max(0, now - this.lastRecordAt);
+    }
+    this.lastRecordKey = key;
+    this.lastRecordAt = now;
     bucket.lastAt = now;
     return bucket;
   }
@@ -312,13 +371,13 @@ export class SnapshotCadenceRegression {
     this.printReport(now);
   }
 
-  private printReport(now: number): void {
-    const rows = [];
+  private buildReportRows(_now: number): SnapshotCadenceRegressionReportRow[] {
+    const rows: SnapshotCadenceRegressionReportRow[] = [];
     const orderedRates = [...SCENARIO_RATES.map(String), 'unknown'];
     for (const key of orderedRates) {
       const bucket = this.buckets.get(key);
       if (!bucket) continue;
-      const durationSec = Math.max(0.001, (bucket.lastAt - bucket.startedAt) / 1000);
+      const durationSec = Math.max(0.001, bucket.activeMs / 1000);
       rows.push({
         rate: bucket.rate,
         seconds: Number(durationSec.toFixed(1)),
@@ -344,6 +403,11 @@ export class SnapshotCadenceRegression {
         commands: bucket.stats.commandResponseMs.count,
       });
     }
+    return rows;
+  }
+
+  private printReport(now: number): void {
+    const rows = this.buildReportRows(now);
     if (rows.length === 0) return;
     console.info(`[DP-01] Snapshot cadence regression report @ ${Math.round(now)}ms`);
     console.table(rows);
@@ -351,3 +415,14 @@ export class SnapshotCadenceRegression {
 }
 
 export const SNAPSHOT_CADENCE_REGRESSION = new SnapshotCadenceRegression();
+
+if (
+  typeof window !== 'undefined' &&
+  SNAPSHOT_CADENCE_REGRESSION.enabled
+) {
+  window.__BA_DP01_REGRESSION__ = {
+    reset: () => SNAPSHOT_CADENCE_REGRESSION.reset(),
+    report: () => SNAPSHOT_CADENCE_REGRESSION.report(),
+    rows: () => SNAPSHOT_CADENCE_REGRESSION.rows(),
+  };
+}

@@ -15,29 +15,6 @@ Current baseline checked against: the current TypeScript/Vue/Three.js/Rust-WASM 
 These items are ordered so each step creates a better foundation for the next one.
 Delete each whole item when the current implementation fully matches the goal.
 
-DP-01 - Make the normal network cadence match the design target.
-
-Goal:
-The design philosophy says normal authoritative snapshots should be 5 to 10 per
-second, with server tick rate and snapshot rate independent. Higher snapshot
-rates should be diagnostic or low-unit-count luxuries.
-
-Current:
-src/serverBarConfig.ts now centralizes the HOST SERVER snapshot source of truth:
-8 SPS is the default, 5 and 10 SPS are explicit normal-play options, and 16+
-SPS options are labeled diagnostic. src/config.ts now uses the documented MID
-delta thresholds for normal play (0.5 wu position and velocity), and projectile
-and beam corrections are not sub-strided beyond the normal snapshot cadence.
-The gated DP-01 regression runner can be enabled with ?dp01=1 or
-VITE_BA_DP01_REGRESSION=1. On the host client it cycles 5/8/10 SPS at a
-60 TPS target, emits safe ping probes for command response, and reports
-correction distance, snapshot bytes, encode time, decode/apply time, render FPS,
-server TPS, and command response in the browser console.
-
-Steps:
-1. Run the DP-01 regression locally and in remote WebRTC play at 5, 8, and
-   10 SPS, then save or summarize the console report to close the item.
-
 DP-02 - Turn snapshots into an owned binary wire path instead of JS DTOs plus
 library MessagePack on the hot path.
 
