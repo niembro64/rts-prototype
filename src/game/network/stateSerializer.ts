@@ -1,7 +1,6 @@
 import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import type { PredictionMode } from '@/types/client';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
@@ -157,13 +156,6 @@ export type SerializeGameStateOptions = {
   audioOverride?: SerializerAudioOverride;
   sprayOverride?: SerializerSprayOverride;
   minimapOverride?: SerializerMinimapOverride;
-  /** PLAYER CLIENT bar PREDICT mode this recipient has selected.
-   *  Default 'acc' (every snapshot field always emitted). When 'pos'
-   *  the serializer zeros velocity fields and drops movementAccel;
-   *  when 'vel' it drops only movementAccel. The client's local
-   *  PREDICT integrator gate is the authoritative one for correctness;
-   *  this is purely a bandwidth optimization (per-recipient). */
-  predictionMode?: PredictionMode;
 };
 
 export type SerializerAudioOverride = {
@@ -378,7 +370,6 @@ export function serializeGameState(
   const recipientPlayerId = options?.recipientPlayerId;
   const aoi = options?.aoi;
   const visibility = options?.visibility ?? SnapshotVisibility.forRecipient(world, recipientPlayerId);
-  const predictionMode = options?.predictionMode ?? 'acc';
   const tick = world.getTick();
   // Phase 10 D.3f — Rust-side baseline sync. Resolved once per
   // listener-tick; per-entity capture happens inside the emit loops
@@ -526,7 +517,7 @@ export function serializeGameState(
         verifyRustDiffMask(entity, next, visibility, rawDeltaMask, baselineHandle);
       }
       if (isNew || changedFields! > 0) {
-        const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility, predictionMode);
+        const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);
         copyPrevState(next, prev);
         if (baselineSim !== undefined && baselineHandle !== undefined) {
@@ -556,7 +547,7 @@ export function serializeGameState(
           if (!acceptsSerializedEntity(entity, aoi, visibility)) continue;
           tracking.prevEntityIds.add(entity.id);
           const next = getNextEntityState(entity);
-          const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility, predictionMode);
+          const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
           if (netEntity) _entityBuf.push(netEntity);
           const prev = getPrevState(tracking, entity.id);
           copyPrevState(next, prev);
@@ -621,7 +612,7 @@ export function serializeGameState(
         const entity = source[i];
         if (!acceptsSerializedEntity(entity, aoi, visibility)) continue;
         tracking.currentEntityIds.add(entity.id);
-        const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility, predictionMode);
+        const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);
         const prev = getPrevState(tracking, entity.id);
         const next = getNextEntityState(entity);
@@ -693,7 +684,6 @@ export function serializeGameState(
     projectileSpawns,
     projectileDespawns,
     projectileVelocityUpdates,
-    predictionMode,
   });
 
   const netGrid = serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize);

@@ -31,7 +31,6 @@ import { resetSprayPoolForKey } from '../network/stateSerializerSpray';
 import { resetMinimapPoolForKey } from '../network/stateSerializerMinimap';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import type { PredictionMode } from '@/types/client';
 import type { DeathContext } from '../sim/combat';
 import { ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_POS, ENTITY_CHANGED_TURRETS, ENTITY_CHANGED_VEL } from '../../types/network';
 import { economyManager } from '../sim/economy';
@@ -636,22 +635,6 @@ export class GameServer {
       case 'setCameraAoi':
         this.setCameraAoi(command, fromPlayerId);
         return;
-      case 'setPredictionMode':
-        // PLAYER CLIENT bar PREDICT mode. Per-listener, not a server-
-        // wide setting — apply to every snapshot listener belonging
-        // to the sender. fromPlayerId === undefined comes from the
-        // host/admin path (local-only); the local connection already
-        // routes through setSnapshotListenerPredictionMode directly,
-        // so an undefined attribution here is a no-op fall-through
-        // to keep the command from accidentally re-applying to global
-        // observers (which are uniformly 'acc' by intent).
-        if (fromPlayerId === undefined) return;
-        for (const listener of this.snapshotListeners) {
-          if (listener.playerId === fromPlayerId) {
-            this.setSnapshotListenerPredictionMode(listener.trackingKey, command.mode);
-          }
-        }
-        return;
     }
     const authorizedCommand = this.authorizeGameplayCommand(command, fromPlayerId);
     if (authorizedCommand) this.commandQueue.enqueue(authorizedCommand);
@@ -916,21 +899,6 @@ export class GameServer {
         this.startupReadyListenerKeys.add(listener.trackingKey);
       }
     }
-  }
-
-  /** Update the per-recipient PREDICT mode used by the snapshot
-   *  serializer's bandwidth gate. No-op if the listener doesn't
-   *  exist. Forces a keyframe on the affected listener so the next
-   *  snapshot rebuilds with the new mode without delta gaps. */
-  setSnapshotListenerPredictionMode(
-    trackingKey: string,
-    mode: PredictionMode,
-  ): void {
-    const listener = this.snapshotListeners.find((l) => l.trackingKey === trackingKey);
-    if (!listener) return;
-    if (listener.predictionMode === mode) return;
-    listener.predictionMode = mode;
-    listener.forceKeyframe = true;
   }
 
   removeSnapshotListener(trackingKey: string): void {

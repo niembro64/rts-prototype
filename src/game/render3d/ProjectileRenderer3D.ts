@@ -72,7 +72,6 @@ export class ProjectileRenderer3D {
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
   private lastProjectileEntitySetVersion = -1;
-  private diagFrameCounter = 0;
 
   private readonly projDir = new THREE.Vector3();
   private readonly projQuat = new THREE.Quaternion();
@@ -112,9 +111,6 @@ export class ProjectileRenderer3D {
     const projectiles = this.clientViewState.collectTravelingProjectiles(
       this.projectileRenderScratch,
     );
-    if (projectiles.length > 0 && (this.diagFrameCounter++ % 120) === 0) {
-      console.log(`[ProjectileRenderer3D] collected=${projectiles.length}`);
-    }
     const seen = this.seenProjectileIds;
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const pruneProjectiles = entitySetVersion !== this.lastProjectileEntitySetVersion;

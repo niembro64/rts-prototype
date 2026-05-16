@@ -89,16 +89,13 @@ function applyClientProjectileHoming(options: {
     }
   }
   if (targetValid && homingTarget) {
-    // PREDICT mode gates how much physics the homing intercept solver
-    // gets to use. POS skips homing steering entirely — the projectile
-    // flies ballistically until the next snapshot corrects it. VEL
-    // keeps steering but feeds zero acceleration into the solver
-    // (target accel and projectile gravity), so the intercept assumes
-    // constant velocities. ACC is the full kinematic intercept.
+    // PREDICT mode picks which derivatives feed the homing intercept
+    // solver. VEL assumes constant velocities (target accel + projectile
+    // gravity treated as zero); ACC is the full kinematic intercept.
+    // POS would skip homing steering entirely, but projectiles get no
+    // per-tick snapshot updates (only spawn/despawn events), so without
+    // local steering they'd fly straight forever — treat POS as VEL.
     const predictionMode = getPredictionMode();
-    if (predictionMode === 'pos') {
-      return;
-    }
     const useAccel = predictionMode === 'acc';
     const aimPoint = resolveTargetAimPoint(
       homingTarget,
@@ -217,14 +214,12 @@ export function applyClientProjectilePrediction(options: {
   const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
   proj.timeAlive += entityDeltaMs;
 
-  // PREDICT mode gates how the client extrapolates between snapshots.
-  // 'pos' freezes both the snapshot target and the locally rendered
-  // projectile in place between snaps (the lerp drift below still
-  // pulls render → target each frame). 'vel' integrates position from
-  // velocity each frame but does NOT apply gravity to the velocity.
-  // 'acc' is the full ballistic chain (default).
+  // PREDICT mode picks which derivatives feed projectile extrapolation.
+  // Projectiles have no per-tick snapshot positions to snap to (only
+  // spawn / despawn events), so position integration always runs — POS
+  // is treated as VEL here. 'vel' integrates position from velocity but
+  // skips gravity; 'acc' is the full ballistic chain (default).
   const predictionMode = getPredictionMode();
-  const integratePosition = predictionMode !== 'pos';
   const integrateAcceleration = predictionMode === 'acc';
 
   // Drift projectile position + velocity toward server target
@@ -238,17 +233,15 @@ export function applyClientProjectilePrediction(options: {
     if (integrateAcceleration && !targetIgnoresGravity && !terrainFollow) {
       target.velocityZ -= GRAVITY * targetDt;
     }
-    if (integratePosition) {
-      const targetPrevZ = target.z;
-      target.x += target.velocityX * targetDt;
-      target.y += target.velocityY * targetDt;
-      if (terrainFollow) {
-        const nextZ = getSurfaceHeight(target.x, target.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-        target.velocityZ = targetDt > 0 ? (nextZ - targetPrevZ) / targetDt : 0;
-        target.z = nextZ;
-      } else {
-        target.z += target.velocityZ * targetDt;
-      }
+    const targetPrevZ = target.z;
+    target.x += target.velocityX * targetDt;
+    target.y += target.velocityY * targetDt;
+    if (terrainFollow) {
+      const nextZ = getSurfaceHeight(target.x, target.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
+      target.velocityZ = targetDt > 0 ? (nextZ - targetPrevZ) / targetDt : 0;
+      target.z = nextZ;
+    } else {
+      target.z += target.velocityZ * targetDt;
     }
     entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
     entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
@@ -268,16 +261,14 @@ export function applyClientProjectilePrediction(options: {
   if (integrateAcceleration && !ignoresGravity && !terrainFollow) {
     proj.velocityZ -= GRAVITY * dt;
   }
-  if (integratePosition) {
-    entity.transform.x += proj.velocityX * dt;
-    entity.transform.y += proj.velocityY * dt;
-    if (terrainFollow) {
-      const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-      proj.velocityZ = dt > 0 ? (nextZ - prevTerrainFollowZ) / dt : 0;
-      entity.transform.z = nextZ;
-    } else {
-      entity.transform.z += proj.velocityZ * dt;
-    }
+  entity.transform.x += proj.velocityX * dt;
+  entity.transform.y += proj.velocityY * dt;
+  if (terrainFollow) {
+    const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
+    proj.velocityZ = dt > 0 ? (nextZ - prevTerrainFollowZ) / dt : 0;
+    entity.transform.z = nextZ;
+  } else {
+    entity.transform.z += proj.velocityZ * dt;
   }
 
   applyClientProjectileHoming({

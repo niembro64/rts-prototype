@@ -4,7 +4,6 @@ import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallba
 import type { Command } from '../sim/commands';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { networkManager } from '../network/NetworkManager';
-import type { PredictionMode } from '@/types/client';
 
 export class RemoteGameConnection implements GameConnection {
   private snapshotCallback: SnapshotCallback | null = null;
@@ -29,18 +28,6 @@ export class RemoteGameConnection implements GameConnection {
 
   sendCommand(command: Command): void {
     networkManager.sendCommand(command);
-  }
-
-  setPredictionMode(mode: PredictionMode): void {
-    // Routed through the regular command channel — flows over the
-    // WebRTC data channel via NetworkCommandTransport just like every
-    // other client→server command. The remote host's receiveCommand
-    // intercepts the setPredictionMode type and applies it to every
-    // snapshot listener belonging to the sender's player. tick=0 is
-    // fine here because this is an out-of-band control command (the
-    // server-control switch in receiveCommand short-circuits before
-    // any tick-synchronization queueing).
-    networkManager.sendCommand({ type: 'setPredictionMode', tick: 0, mode });
   }
 
   markClientReady(): void {

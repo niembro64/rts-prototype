@@ -743,7 +743,6 @@ function loadFromStorage(): void {
   ) {
     currentPredictionMode = storedPredictionMode;
   }
-  console.log(`[clientBarConfig] PREDICT mode at boot = ${currentPredictionMode} (stored=${storedPredictionMode ?? 'none'})`);
   const storedClientTilt = readPersisted(TILT_EMA_MODE_STORAGE_KEY);
   if (
     storedClientTilt &&

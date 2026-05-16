@@ -43,8 +43,7 @@ export type CommandType =
   | 'setFogOfWarEnabled'
   | 'setSimQuality'
   | 'setSimSignalStates'
-  | 'setCameraAoi'
-  | 'setPredictionMode';
+  | 'setCameraAoi';
 
 export type BaseCommand = {
   type: CommandType;
@@ -341,16 +340,6 @@ export type SetCameraAoiCommand = BaseCommand & {
   bounds?: CameraAoiBounds;
 };
 
-/** PLAYER CLIENT bar PREDICT mode this client wants its snapshots
- *  emitted under. Routed through the regular command queue so it
- *  flows over WebRTC for remote clients via the existing channel.
- *  Server applies it to every snapshot listener belonging to the
- *  sender's player. */
-export type SetPredictionModeCommand = BaseCommand & {
-  type: 'setPredictionMode';
-  mode: 'pos' | 'vel' | 'acc';
-};
-
 export type Command =
   | SelectCommand
   | MoveCommand
@@ -390,5 +379,4 @@ export type Command =
   | SetFogOfWarEnabledCommand
   | SetSimQualityCommand
   | SetSimSignalStatesCommand
-  | SetCameraAoiCommand
-  | SetPredictionModeCommand;
+  | SetCameraAoiCommand;

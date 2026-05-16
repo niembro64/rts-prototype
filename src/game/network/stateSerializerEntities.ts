@@ -52,7 +52,6 @@ import {
   writeNetworkUnitVelocity,
 } from './unitSnapshotFields';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
-import type { PredictionMode } from '@/types/client';
 
 const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
@@ -108,29 +107,21 @@ function writeTurretsToPool(
   pool: PooledEntry,
   weapons: NonNullable<Entity['combat']>['turrets'],
   canReferenceEntityId: ((id: number | undefined) => boolean) | undefined,
-  predictionMode: PredictionMode,
 ): NetworkServerSnapshotTurret[] {
   const count = weapons.length;
   while (pool.turrets.length < count) pool.turrets.push(createTurretDto());
   pool.turrets.length = count;
-  // PREDICT-aware bandwidth gate, mirrored from the unit-body path:
-  // POS clients integrate nothing → zero both axes' velocity AND
-  // acceleration. VEL clients integrate ω → keep velocities, zero
-  // accelerations. ACC sends everything. Zeros encode in 1 byte each
-  // via MessagePack's positive-fixint vs ~5 for a qRot float.
-  const sendAngularVel = predictionMode !== 'pos';
-  const sendAngularAcc = predictionMode === 'acc';
   for (let i = 0; i < count; i++) {
     const src = weapons[i];
     const dst = pool.turrets[i];
     const t = dst.turret;
     t.id = turretIdToCode(src.config.id);
     t.angular.rot = qRot(src.rotation);
-    t.angular.vel = sendAngularVel ? qRot(src.angularVelocity) : 0;
-    t.angular.acc = sendAngularAcc ? qRot(src.angularAcceleration) : 0;
+    t.angular.vel = qRot(src.angularVelocity);
+    t.angular.acc = qRot(src.angularAcceleration);
     t.angular.pitch = qRot(src.pitch);
-    t.angular.pitchVel = sendAngularVel ? qRot(src.pitchVelocity) : 0;
-    t.angular.pitchAcc = sendAngularAcc ? qRot(src.pitchAcceleration) : 0;
+    t.angular.pitchVel = qRot(src.pitchVelocity);
+    t.angular.pitchAcc = qRot(src.pitchAcceleration);
     dst.targetId = canReferenceEntityId?.(src.target ?? undefined) === false
       ? undefined
       : src.target ?? undefined;
@@ -202,7 +193,6 @@ export function serializeEntitySnapshot(
   changedFields: number | undefined,
   world: WorldState,
   visibility?: SnapshotVisibility,
-  predictionMode: PredictionMode = 'acc',
 ): NetworkServerSnapshotEntity | null {
   const poolEntry = getPooledEntry();
   const ne = poolEntry.entity;
@@ -258,19 +248,8 @@ export function serializeEntitySnapshot(
         clearNetworkUnitStaticFields(u);
       }
 
-      // PREDICT-aware bandwidth gate (per-recipient): a POS client
-      // doesn't integrate velocity OR acceleration, so we zero the
-      // velocity (MessagePack encodes the integer 0 in 1 byte vs ~5
-      // for a quantized float) and drop movementAccel entirely. A
-      // VEL client integrates velocity but not acceleration, so it
-      // still wants velocity but not movementAccel. Writing zeros vs
-      // omitting is cosmetic; what matters is the wire payload is
-      // smaller and the client's local PREDICT integrator gate (the
-      // authoritative one) treats them as 0.
-      const sendVelocity = predictionMode !== 'pos';
-      const sendMovementAccel = predictionMode === 'acc';
       if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
-        if (canSeePrivateDetails && sendVelocity) {
+        if (canSeePrivateDetails) {
           writeNetworkUnitVelocity(u, entity.unit, qVel);
         } else {
           u.velocity.x = 0;
@@ -279,10 +258,7 @@ export function serializeEntitySnapshot(
         }
       }
 
-      if (
-        sendMovementAccel &&
-        (isFull || (changedFields! & ENTITY_CHANGED_MOVEMENT_ACCEL))
-      ) {
+      if (isFull || (changedFields! & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
         if (canSeePrivateDetails) {
           writeNetworkUnitMovementAccel(u, entity.unit, poolEntry.unitMovementAccel, qVel);
         } else {
@@ -318,25 +294,11 @@ export function serializeEntitySnapshot(
       // these undefined on the entity and we omit them from the
       // wire entirely (MessagePack drops undefined fields), so this
       // adds zero overhead for the vast majority of snapshots.
-      //
-      // PREDICT serializer gate: under POS clients see no
-      // extrapolatable angular state, so omega+alpha are dropped.
-      // Under VEL only alpha is dropped. ACC ships the full triad.
       const orient = entity.unit.orientation;
       if (orient) {
         u.orientation = orient;
-        const av = entity.unit.angularVelocity3;
-        if (av && predictionMode !== 'pos') {
-          u.angularVelocity3 = av;
-        } else {
-          u.angularVelocity3 = undefined;
-        }
-        const aa = entity.unit.angularAcceleration3;
-        if (aa && predictionMode === 'acc') {
-          u.angularAcceleration3 = aa;
-        } else {
-          u.angularAcceleration3 = undefined;
-        }
+        u.angularVelocity3 = entity.unit.angularVelocity3 ?? undefined;
+        u.angularAcceleration3 = entity.unit.angularAcceleration3 ?? undefined;
       } else {
         u.orientation = undefined;
         u.angularVelocity3 = undefined;
@@ -378,7 +340,6 @@ export function serializeEntitySnapshot(
           poolEntry,
           weapons0,
           canSeePrivateDetails ? canReferenceEntityId : () => false,
-          predictionMode,
         );
       }
 
@@ -452,7 +413,6 @@ export function serializeEntitySnapshot(
           poolEntry,
           weapons0,
           canSeePrivateDetails ? canReferenceEntityId : () => false,
-          predictionMode,
         );
       }
 

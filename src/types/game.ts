@@ -1,7 +1,6 @@
 // Top-level game types extracted from game/createGame.ts and server files
 
 import type { PlayerId } from './sim';
-import type { PredictionMode } from './client';
 import type { Command } from './commands';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
@@ -97,17 +96,6 @@ export type GameConnection = {
    *  uses this to follow a specific player's POV without being able
    *  to issue orders as that player (issues.txt FOW-07). */
   setSpectatorTarget?(playerId: PlayerId | undefined): void;
-  /** Inform the server that this client wants its snapshots emitted
-   *  under the given PREDICT mode. Drives the per-recipient
-   *  bandwidth gate in the serializer (POS zeros velocity + drops
-   *  movementAccel; VEL drops movementAccel; ACC unchanged). The
-   *  client's local PREDICT integrator gate is the authoritative
-   *  one for correctness — this only affects which fields are sent.
-   *
-   *  Optional: remote connections may no-op until the wire message
-   *  for this is added. Default behaviour (always 'acc') preserves
-   *  full-fidelity snapshots in that case. */
-  setPredictionMode?(mode: PredictionMode): void;
 };
 
 export type GameServerConfig = {
