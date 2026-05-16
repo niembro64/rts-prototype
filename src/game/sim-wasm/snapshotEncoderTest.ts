@@ -17,6 +17,11 @@ import {
   snapshot_encode_envelope_emit_spray_targets,
   snapshot_encode_spray_scratch_ptr,
   snapshot_encode_spray_scratch_ensure,
+  snapshot_encode_envelope_emit_capture,
+  snapshot_encode_capture_tile_scratch_ptr,
+  snapshot_encode_capture_tile_scratch_ensure,
+  snapshot_encode_capture_height_scratch_ptr,
+  snapshot_encode_capture_height_scratch_ensure,
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
@@ -1509,6 +1514,59 @@ function packBeamUpdatesIntoScratch(
   }
 }
 
+type CaptureTileFixture = {
+  cx: number;
+  cy: number;
+  heights: Record<number, number>;
+};
+type CaptureFixture = {
+  tiles: CaptureTileFixture[];
+  cellSize: number;
+};
+
+const CAPTURE_TILE_STRIDE = 3;
+const CAPTURE_HEIGHT_STRIDE = 2;
+
+function packCaptureIntoScratch(
+  memory: WebAssembly.Memory,
+  capture: CaptureFixture,
+): void {
+  const tiles = capture.tiles;
+  if (tiles.length === 0) return;
+
+  let totalHeights = 0;
+  for (const t of tiles) totalHeights += Object.keys(t.heights).length;
+
+  snapshot_encode_capture_tile_scratch_ensure(tiles.length);
+  if (totalHeights > 0) snapshot_encode_capture_height_scratch_ensure(totalHeights);
+
+  const tilePtr = snapshot_encode_capture_tile_scratch_ptr();
+  const tileView = new Float64Array(memory.buffer, tilePtr, tiles.length * CAPTURE_TILE_STRIDE);
+  const heightPtr = snapshot_encode_capture_height_scratch_ptr();
+  const heightView = totalHeights > 0
+    ? new Float64Array(memory.buffer, heightPtr, totalHeights * CAPTURE_HEIGHT_STRIDE)
+    : new Float64Array(0);
+
+  let heightOffset = 0;
+  for (let i = 0; i < tiles.length; i++) {
+    const t = tiles[i];
+    const tb = i * CAPTURE_TILE_STRIDE;
+    tileView[tb + 0] = t.cx;
+    tileView[tb + 1] = t.cy;
+    // Sort heights by playerId ASC — JS Object iteration on
+    // integer-string keys is ASC by spec, so msgpack walks in that
+    // order too. The Rust encoder emits in the order JS packs.
+    const ids = Object.keys(t.heights).map(Number).sort((a, b) => a - b);
+    tileView[tb + 2] = ids.length;
+    for (let j = 0; j < ids.length; j++) {
+      const hb = (heightOffset + j) * CAPTURE_HEIGHT_STRIDE;
+      heightView[hb + 0] = ids[j];
+      heightView[hb + 1] = t.heights[ids[j]];
+    }
+    heightOffset += ids.length;
+  }
+}
+
 type SprayTargetFixture = {
   source: { id: number; pos: { x: number; y: number }; z?: number; playerId: number };
   target: {
@@ -1624,6 +1682,7 @@ type EnvelopeFixture = {
   visibilityFiltered?: boolean;
   scanPulses?: ScanPulseFixture[];
   shroud?: ShroudFixture;
+  capture?: CaptureFixture;
 };
 
 function packRemovedIdsIntoScratch(memory: WebAssembly.Memory, ids: number[]): void {
@@ -1936,6 +1995,38 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { playerId: 3, x: 0, y: 0, z: 0, radius: 600, expiresAtTick: 1101 },
       ],
     },
+    // capture — single tile, single owner.
+    {
+      tick: 1200, entities: [], economy: {}, isDelta: false,
+      capture: {
+        tiles: [{ cx: 5, cy: 7, heights: { 1: 0.85 } }],
+        cellSize: 64,
+      },
+    },
+    // capture — multiple tiles, multi-owner heights with player IDs
+    // out-of-order in the literal (helper sorts ASC).
+    {
+      tick: 1201, entities: [], economy: {}, isDelta: false,
+      capture: {
+        tiles: [
+          { cx: 0, cy: 0, heights: { 2: 0.3, 1: 0.5 } },
+          { cx: 1, cy: 0, heights: { 1: 0.4, 3: 0.6, 2: 0.2 } },
+          { cx: 0, cy: 1, heights: { 1: 1.0 } },
+        ],
+        cellSize: 64,
+      },
+    },
+    // capture with negative cx/cy (origin-quadrant tiles).
+    {
+      tick: 1202, entities: [], economy: {}, isDelta: false,
+      capture: {
+        tiles: [
+          { cx: -3, cy: -2, heights: { 1: 0.9 } },
+          { cx: -1, cy: 4, heights: { 2: 0.7 } },
+        ],
+        cellSize: 32,
+      },
+    },
     // sprayTargets — minimal build spray, no z / dim / radius / speed / particleRadius.
     {
       tick: 1100, entities: [], economy: {},
@@ -2155,6 +2246,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     const hasVisibilityFiltered = f.visibilityFiltered !== undefined ? 1 : 0;
     const hasScanPulses = f.scanPulses !== undefined ? 1 : 0;
     const hasShroud = f.shroud !== undefined ? 1 : 0;
+    const hasCapture = f.capture !== undefined ? 1 : 0;
     const totalKeyCount =
       2 /* tick + entities */ +
       hasMinimap +
@@ -2166,7 +2258,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       hasRemovedIds +
       hasVisibilityFiltered +
       hasScanPulses +
-      hasShroud;
+      hasShroud +
+      hasCapture;
 
     // Pre-pack all scratches before any kernel call. String scratch
     // collects every string needed by THIS envelope's encode (waypoint
@@ -2194,6 +2287,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     }
     if (hasSprayTargets && f.sprayTargets) {
       packSprayTargetsIntoScratch(memory, f.sprayTargets);
+    }
+    if (hasCapture && f.capture) {
+      packCaptureIntoScratch(memory, f.capture);
     }
     if (hasProjectiles && f.projectiles) {
       if (f.projectiles.spawns) {
@@ -2378,6 +2474,14 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     if (hasShroud && f.shroud) {
       snapshot_encode_envelope_emit_shroud(
         f.shroud.gridW, f.shroud.gridH, f.shroud.cellSize, f.shroud.bitmap.length,
+      );
+    }
+    // capture is added by ServerSnapshotPublisher AFTER scanPulses /
+    // shroud (both added in stateSerializer), so it lands later in
+    // iteration order.
+    if (hasCapture && f.capture) {
+      snapshot_encode_envelope_emit_capture(
+        f.capture.tiles.length, f.capture.cellSize,
       );
     }
 

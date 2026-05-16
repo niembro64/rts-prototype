@@ -7221,6 +7221,90 @@ pub fn snapshot_encode_beam_point_scratch_ensure(count: u32) {
     }
 }
 
+/// Capture-tile header scratch — 3 f64 per tile:
+///   [0] cx
+///   [1] cy
+///   [2] heights_count (drives the per-tile slice of the heights scratch)
+const SNAPSHOT_ENCODE_CAPTURE_TILE_STRIDE: usize = 3;
+
+struct SnapshotEncodeCaptureTileScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeCaptureTileScratchHolder(UnsafeCell<Option<SnapshotEncodeCaptureTileScratch>>);
+unsafe impl Sync for SnapshotEncodeCaptureTileScratchHolder {}
+static SNAPSHOT_ENCODE_CAPTURE_TILE_SCRATCH: SnapshotEncodeCaptureTileScratchHolder =
+    SnapshotEncodeCaptureTileScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_capture_tile_scratch() -> &'static mut SnapshotEncodeCaptureTileScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_CAPTURE_TILE_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeCaptureTileScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_CAPTURE_TILE_STRIDE * 32],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_capture_tile_scratch_ptr() -> *const f64 {
+    snapshot_encode_capture_tile_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_capture_tile_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_CAPTURE_TILE_STRIDE;
+    let s = snapshot_encode_capture_tile_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
+/// Capture-tile heights scratch — 2 f64 per (playerId, height) entry,
+/// flat across all tiles in pool order. Caller must sort heights
+/// ASCENDING by playerId per tile (matches JS Object iteration order
+/// for integer-string keys).
+const SNAPSHOT_ENCODE_CAPTURE_HEIGHT_STRIDE: usize = 2;
+
+struct SnapshotEncodeCaptureHeightScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeCaptureHeightScratchHolder(UnsafeCell<Option<SnapshotEncodeCaptureHeightScratch>>);
+unsafe impl Sync for SnapshotEncodeCaptureHeightScratchHolder {}
+static SNAPSHOT_ENCODE_CAPTURE_HEIGHT_SCRATCH: SnapshotEncodeCaptureHeightScratchHolder =
+    SnapshotEncodeCaptureHeightScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_capture_height_scratch() -> &'static mut SnapshotEncodeCaptureHeightScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_CAPTURE_HEIGHT_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeCaptureHeightScratch {
+                buf: vec![0.0; SNAPSHOT_ENCODE_CAPTURE_HEIGHT_STRIDE * 64],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_capture_height_scratch_ptr() -> *const f64 {
+    snapshot_encode_capture_height_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_capture_height_scratch_ensure(count: u32) {
+    let needed = (count as usize) * SNAPSHOT_ENCODE_CAPTURE_HEIGHT_STRIDE;
+    let s = snapshot_encode_capture_height_scratch();
+    if s.buf.len() < needed {
+        s.buf.resize(needed, 0.0);
+    }
+}
+
 /// Spray-target scratch — 16 f64 per spray (NetworkServerSnapshotSprayTarget).
 ///   [0]    source.id
 ///   [1..3] source.pos.x, source.pos.y
@@ -7930,6 +8014,77 @@ pub fn snapshot_encode_envelope_emit_shroud(
     w.write_str("bitmap");
     w.write_bin(&scratch.buf[0..n]);
     w.buf.len() as u32
+}
+
+/// Append `capture: { tiles: [...], cellSize }`. Sits AFTER shroud
+/// in iteration order — both shroud and capture are lazy-added to
+/// _snapshotBuf (shroud inside stateSerializer, capture inside the
+/// publisher). Reads tile headers (3 f64 each) from the capture-tile
+/// scratch, slicing per-tile heights from the flat heights scratch.
+///
+/// Per-tile heights map keys are encoded as base-10 string keys to
+/// match @msgpack/msgpack's emit of a JS object with integer-string
+/// keys (Object.keys on `{1: 0.5}` yields the string "1").
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_capture(tile_count: u32, cell_size: f64) -> u32 {
+    let w = messagepack_writer();
+    let n = tile_count as usize;
+    let tiles = snapshot_encode_capture_tile_scratch();
+    let heights = snapshot_encode_capture_height_scratch();
+    w.write_str("capture");
+    // Wrapper field count: tiles + cellSize (always present in
+    // production publisher's object literal).
+    w.write_map_header(2);
+    w.write_str("tiles");
+    w.write_array_header(n);
+    let mut height_offset: usize = 0;
+    let mut key_buf = [0u8; 12];
+    for i in 0..n {
+        let tb = i * SNAPSHOT_ENCODE_CAPTURE_TILE_STRIDE;
+        let cx = tiles.buf[tb] as i64;
+        let cy = tiles.buf[tb + 1] as i64;
+        let height_count = tiles.buf[tb + 2] as usize;
+
+        // Per-tile DTO field count: cx, cy, heights (always present).
+        w.write_map_header(3);
+        w.write_str("cx");
+        w.write_int(cx);
+        w.write_str("cy");
+        w.write_int(cy);
+        w.write_str("heights");
+        w.write_map_header(height_count);
+        for h in 0..height_count {
+            let hb = (height_offset + h) * SNAPSHOT_ENCODE_CAPTURE_HEIGHT_STRIDE;
+            let player_id = heights.buf[hb] as u32;
+            let value = heights.buf[hb + 1];
+            // base-10 itoa into a stack buffer (no allocation). u32::MAX
+            // is 10 digits; 12-byte buffer is safe.
+            let key_str = u32_to_decimal(&mut key_buf, player_id);
+            w.write_str(key_str);
+            w.write_number(value);
+        }
+        height_offset += height_count;
+    }
+    w.write_str("cellSize");
+    w.write_number(cell_size);
+    w.buf.len() as u32
+}
+
+/// Write `value` in base-10 ASCII into the END of `buf`, return the
+/// &str slice covering the digits. Avoids std::fmt allocation in WASM.
+#[inline]
+fn u32_to_decimal<'a>(buf: &'a mut [u8; 12], mut value: u32) -> &'a str {
+    if value == 0 {
+        buf[11] = b'0';
+        return core::str::from_utf8(&buf[11..12]).unwrap();
+    }
+    let mut idx = 12;
+    while value > 0 {
+        idx -= 1;
+        buf[idx] = b'0' + (value % 10) as u8;
+        value /= 10;
+    }
+    core::str::from_utf8(&buf[idx..12]).unwrap()
 }
 
 /// Append the scanPulses array. Sits AFTER visibilityFiltered in
