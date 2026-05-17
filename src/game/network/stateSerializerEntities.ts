@@ -65,7 +65,8 @@ export const ENTITY_SNAPSHOT_WIRE_TYPE_UNIT = 1;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING = 2;
 export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 71;
-export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 31;
+export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 32;
+export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 12;
 
 export type EntitySnapshotWireRows = {
   values: number[];
@@ -78,6 +79,7 @@ export type EntitySnapshotWireSource = {
   basicRows: EntitySnapshotWireRows;
   unitRows: EntitySnapshotWireRows;
   buildingRows: EntitySnapshotWireRows;
+  turretRows: EntitySnapshotWireRows;
 };
 
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
@@ -107,6 +109,7 @@ const entityWireSource: EntitySnapshotWireSource = {
   basicRows: { values: [], count: 0 },
   unitRows: { values: [], count: 0 },
   buildingRows: { values: [], count: 0 },
+  turretRows: { values: [], count: 0 },
 };
 const entityWireSources = new WeakMap<object, EntitySnapshotWireSource>();
 
@@ -251,11 +254,38 @@ function resetEntitySnapshotWireSource(): void {
   entityWireSource.basicRows.count = 0;
   entityWireSource.unitRows.count = 0;
   entityWireSource.buildingRows.count = 0;
+  entityWireSource.turretRows.count = 0;
 }
 
 function appendRawEntityWireRow(): void {
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_RAW);
   entityWireSource.rowIndices.push(-1);
+}
+
+function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | undefined): number {
+  if (turrets === undefined || turrets.length === 0) return -1;
+  const rows = entityWireSource.turretRows;
+  const offset = rows.count;
+  const values = rows.values;
+  for (let i = 0; i < turrets.length; i++) {
+    const src = turrets[i];
+    const angular = src.turret.angular;
+    const base = (rows.count + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+    values[base + 0] = angular.rot;
+    values[base + 1] = angular.vel;
+    values[base + 2] = angular.acc;
+    values[base + 3] = angular.pitch;
+    values[base + 4] = angular.pitchVel;
+    values[base + 5] = angular.pitchAcc;
+    values[base + 6] = src.turret.id;
+    values[base + 7] = src.state;
+    values[base + 8] = src.targetId !== undefined ? 1 : 0;
+    values[base + 9] = src.targetId ?? 0;
+    values[base + 10] = src.currentForceFieldRange !== undefined ? 1 : 0;
+    values[base + 11] = src.currentForceFieldRange ?? 0;
+  }
+  rows.count += turrets.length;
+  return offset;
 }
 
 function appendBasicEntityWireRow(entity: NetworkServerSnapshotEntity): void {
@@ -297,6 +327,7 @@ function appendUnitEntityWireRow(
   const buildTargetId = unit.buildTargetId;
   const actions = unit.actions;
   const turrets = unit.turrets;
+  const turretOffset = appendTurretWireRows(turrets);
 
   values[base + 0] = entity.id;
   values[base + 1] = entity.pos.x;
@@ -368,7 +399,7 @@ function appendUnitEntityWireRow(
   values[base + 67] = build !== undefined && build.complete === true ? 1 : 0;
   values[base + 68] = build !== undefined ? build.paid.energy : 0;
   values[base + 69] = build !== undefined ? build.paid.metal : 0;
-  values[base + 70] = 0;
+  values[base + 70] = turretOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
   entityWireSource.rowIndices.push(rows.count);
   rows.count++;
@@ -385,6 +416,7 @@ function appendBuildingEntityWireRow(
   const dim = building.dim;
   const solar = building.solar;
   const turrets = building.turrets;
+  const turretOffset = appendTurretWireRows(turrets);
   values[base + 0] = entity.id;
   values[base + 1] = entity.pos.x;
   values[base + 2] = entity.pos.y;
@@ -416,6 +448,7 @@ function appendBuildingEntityWireRow(
   values[base + 28] = factory !== undefined ? factory.energyRate : 0;
   values[base + 29] = factory !== undefined ? factory.metalRate : 0;
   values[base + 30] = factory !== undefined ? factory.waypoints.length : 0;
+  values[base + 31] = turretOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BUILDING);
   entityWireSource.rowIndices.push(rows.count);
   rows.count++;
@@ -429,10 +462,8 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
   ) {
     const unit = entity.unit;
     const actions = unit.actions;
-    const turrets = unit.turrets;
     if (
-      (actions !== undefined && actions.length > 0) ||
-      (turrets !== undefined && turrets.length > 0)
+      actions !== undefined && actions.length > 0
     ) {
       appendRawEntityWireRow();
       return;
@@ -447,8 +478,7 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     entity.unit === undefined
   ) {
     const building = entity.building;
-    const turrets = building.turrets;
-    if ((turrets !== undefined && turrets.length > 0) || building.factory !== undefined) {
+    if (building.factory !== undefined) {
       appendRawEntityWireRow();
       return;
     }

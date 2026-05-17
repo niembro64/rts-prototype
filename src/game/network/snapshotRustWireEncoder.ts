@@ -30,6 +30,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
   ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
@@ -478,6 +479,9 @@ function encodeEntityWireRow(
   if (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
     const values = source.unitRows.values;
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    if (!copyEntityTurretRowsIntoScratch(sim, source, values[base + 70], values[base + 65])) {
+      return false;
+    }
     api.encodeEntityUnit(
       values[base + 0],
       SNAPSHOT_ENTITY_TYPE_UNIT,
@@ -557,6 +561,9 @@ function encodeEntityWireRow(
   if (kind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING) {
     const values = source.buildingRows.values;
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+    if (!copyEntityTurretRowsIntoScratch(sim, source, values[base + 31], values[base + 23])) {
+      return false;
+    }
     api.encodeEntityBuilding(
       values[base + 0],
       values[base + 1],
@@ -594,6 +601,43 @@ function encodeEntityWireRow(
   }
 
   return false;
+}
+
+function copyEntityTurretRowsIntoScratch(
+  sim: SimWasm,
+  source: EntitySnapshotWireSource,
+  offset: number,
+  count: number,
+): boolean {
+  if (count <= 0) return true;
+  if (offset < 0 || offset + count > source.turretRows.count) return false;
+
+  const api = sim.snapshotEncode;
+  api.turretScratchEnsure(count);
+  const view = new Float64Array(
+    sim.memory.buffer,
+    api.turretScratchPtr(),
+    count * api.turretScratchStride,
+  );
+  const src = source.turretRows.values;
+  const srcBase = offset * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+  for (let i = 0; i < count; i++) {
+    const srcRow = srcBase + i * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+    const dstRow = i * api.turretScratchStride;
+    view[dstRow + 0] = src[srcRow + 0];
+    view[dstRow + 1] = src[srcRow + 1];
+    view[dstRow + 2] = src[srcRow + 2];
+    view[dstRow + 3] = src[srcRow + 3];
+    view[dstRow + 4] = src[srcRow + 4];
+    view[dstRow + 5] = src[srcRow + 5];
+    view[dstRow + 6] = src[srcRow + 6];
+    view[dstRow + 7] = src[srcRow + 7];
+    view[dstRow + 8] = src[srcRow + 8];
+    view[dstRow + 9] = src[srcRow + 9];
+    view[dstRow + 10] = src[srcRow + 10];
+    view[dstRow + 11] = src[srcRow + 11];
+  }
+  return true;
 }
 
 function packFactoryQueueIntoScratch(sim: SimWasm, queue: readonly number[]): void {

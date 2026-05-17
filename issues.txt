@@ -63,6 +63,10 @@ basic entities, unit rows without variable action/turret payloads, and building
 rows without variable turret/factory payloads. The Rust encode bridge consumes
 those rows before falling back to DTO walking for the remaining variable-shape
 entity payloads.
+Entity turret payloads now also publish serializer-owned flat wire rows and are
+copied directly into WASM turret scratch for unit and non-factory building
+entities, so turret-bearing combat entities no longer require the encode bridge
+to walk pooled turret DTOs.
 DP-02 encode instrumentation now exists behind ?dp02=1 /
 VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports active snapshot wire encode time and
 byte size per listener, snapshot rate, and unit-count band, and exposes
