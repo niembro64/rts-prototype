@@ -322,8 +322,6 @@ defineProps<{
             title="Fast interpolation to server state"
             @click="model.changeDriftMode('fast')"
           >FAST</BarButton>
-        </BarButtonGroup>
-        <BarButtonGroup>
           <BarButton
             :active="model.driftMode === 'mid'"
             title="Medium interpolation to server state"
