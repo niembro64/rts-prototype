@@ -195,6 +195,7 @@ import __wbg_init, {
   snapshot_encode_factory_queue_scratch_ensure,
   snapshot_encode_waypoint_scratch_ptr,
   snapshot_encode_waypoint_scratch_ensure,
+  snapshot_encode_envelope_emit_server_meta,
   snapshot_encode_envelope_emit_raw_key_value,
   messagepack_writer_append_raw_value,
   messagepack_writer_ptr,
@@ -1041,8 +1042,56 @@ export interface SnapshotEncodeApi {
   envelopeBegin: (tick: number, entityCount: number, totalKeyCount: number) => void;
   /** Append a top-level key and an already MessagePack-encoded value.
    *  Transitional DP-02 bridge for low-frequency fields such as
-   *  serverMeta while their dedicated Rust encoders are still pending. */
+   *  debug grids while their dedicated Rust encoders are still pending. */
   emitRawKeyValue: (key: string, value: Uint8Array) => number;
+  /** Emit `serverMeta: {...}` in ServerSnapshotMetaBuilder field
+   *  order. String values must already be packed into string scratch;
+   *  the `units.allowed` array uses contiguous string slots beginning
+   *  at `unitsAllowedSlotStart`. */
+  emitServerMeta: (
+    ticksAvg: number,
+    ticksLow: number,
+    ticksRate: number,
+    ticksTarget: number,
+    snapsRateIsString: number,
+    snapsRate: number,
+    snapsRateSlot: number,
+    snapsKeyframesIsString: number,
+    snapsKeyframes: number,
+    snapsKeyframesSlot: number,
+    serverTimeSlot: number,
+    serverIpSlot: number,
+    gridEnabled: number,
+    hasUnitsAllowed: number,
+    unitsAllowedSlotStart: number,
+    unitsAllowedCount: number,
+    hasUnitsMax: number,
+    unitsMax: number,
+    hasUnitsCount: number,
+    unitsCount: number,
+    hasMirrorsEnabled: number,
+    mirrorsEnabled: number,
+    hasForceFieldsEnabled: number,
+    forceFieldsEnabled: number,
+    hasForceFieldsBlockTargeting: number,
+    forceFieldsBlockTargeting: number,
+    hasForceFieldReflectionMode: number,
+    forceFieldReflectionModeSlot: number,
+    hasFogOfWarEnabled: number,
+    fogOfWarEnabled: number,
+    cpuAvg: number,
+    cpuHi: number,
+    simLodPickedSlot: number,
+    simLodEffectiveSlot: number,
+    simLodSignalTpsSlot: number,
+    simLodSignalCpuSlot: number,
+    simLodSignalUnitsSlot: number,
+    windX: number,
+    windY: number,
+    windSpeed: number,
+    windAngle: number,
+    tiltEmaSlot: number,
+  ) => number;
   /** Close the envelope. Emits gameState (if hasGameState), isDelta,
    *  removedEntityIds (if hasRemovedIds), visibilityFiltered (if
    *  hasVisibilityFiltered) in that order. Returns total bytes
@@ -1686,6 +1735,7 @@ export function initSimWasm(): Promise<SimWasm> {
           removedIdsScratchPtr: snapshot_encode_removed_ids_scratch_ptr,
           removedIdsScratchEnsure: snapshot_encode_removed_ids_scratch_ensure,
           appendRawValue: messagepack_writer_append_raw_value,
+          emitServerMeta: snapshot_encode_envelope_emit_server_meta,
           emitRawKeyValue: snapshot_encode_envelope_emit_raw_key_value,
           writerPtr: messagepack_writer_ptr,
           writerLen: messagepack_writer_len,

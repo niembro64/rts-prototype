@@ -7847,6 +7847,169 @@ pub fn snapshot_encode_envelope_emit_raw_key_value(key: &str, value: &[u8]) -> u
     w.buf.len() as u32
 }
 
+/// Append the `serverMeta` top-level snapshot key. This mirrors the
+/// ServerSnapshotMetaBuilder object-literal insertion order so the
+/// Rust envelope remains byte-identical with @msgpack/msgpack while
+/// removing one always-present raw fallback from the DP-02 hot path.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_server_meta(
+    ticks_avg: f64,
+    ticks_low: f64,
+    ticks_rate: f64,
+    ticks_target: f64,
+    snaps_rate_is_string: u8,
+    snaps_rate: f64,
+    snaps_rate_slot: u32,
+    snaps_keyframes_is_string: u8,
+    snaps_keyframes: f64,
+    snaps_keyframes_slot: u32,
+    server_time_slot: u32,
+    server_ip_slot: u32,
+    grid_enabled: u8,
+    has_units_allowed: u8,
+    units_allowed_slot_start: u32,
+    units_allowed_count: u32,
+    has_units_max: u8,
+    units_max: f64,
+    has_units_count: u8,
+    units_count: f64,
+    has_mirrors_enabled: u8,
+    mirrors_enabled: u8,
+    has_force_fields_enabled: u8,
+    force_fields_enabled: u8,
+    has_force_fields_block_targeting: u8,
+    force_fields_block_targeting: u8,
+    has_force_field_reflection_mode: u8,
+    force_field_reflection_mode_slot: u32,
+    has_fog_of_war_enabled: u8,
+    fog_of_war_enabled: u8,
+    cpu_avg: f64,
+    cpu_hi: f64,
+    sim_lod_picked_slot: u32,
+    sim_lod_effective_slot: u32,
+    sim_lod_signal_tps_slot: u32,
+    sim_lod_signal_cpu_slot: u32,
+    sim_lod_signal_units_slot: u32,
+    wind_x: f64,
+    wind_y: f64,
+    wind_speed: f64,
+    wind_angle: f64,
+    tilt_ema_slot: u32,
+) -> u32 {
+    let w = messagepack_writer();
+
+    let mut field_count: usize = 9; // ticks, snaps, server, grid, units, cpu, simLod, wind, tiltEma
+    if has_mirrors_enabled != 0 { field_count += 1; }
+    if has_force_fields_enabled != 0 { field_count += 1; }
+    if has_force_fields_block_targeting != 0 { field_count += 1; }
+    if has_force_field_reflection_mode != 0 { field_count += 1; }
+    if has_fog_of_war_enabled != 0 { field_count += 1; }
+
+    w.write_str("serverMeta");
+    w.write_map_header(field_count);
+
+    w.write_str("ticks");
+    w.write_map_header(4);
+    w.write_str("avg"); w.write_number(ticks_avg);
+    w.write_str("low"); w.write_number(ticks_low);
+    w.write_str("rate"); w.write_number(ticks_rate);
+    w.write_str("target"); w.write_number(ticks_target);
+
+    w.write_str("snaps");
+    w.write_map_header(2);
+    w.write_str("rate");
+    if snaps_rate_is_string != 0 {
+        write_string_from_scratch(w, snaps_rate_slot);
+    } else {
+        w.write_number(snaps_rate);
+    }
+    w.write_str("keyframes");
+    if snaps_keyframes_is_string != 0 {
+        write_string_from_scratch(w, snaps_keyframes_slot);
+    } else {
+        w.write_number(snaps_keyframes);
+    }
+
+    w.write_str("server");
+    w.write_map_header(2);
+    w.write_str("time"); write_string_from_scratch(w, server_time_slot);
+    w.write_str("ip"); write_string_from_scratch(w, server_ip_slot);
+
+    w.write_str("grid");
+    w.write_bool(grid_enabled != 0);
+
+    let mut units_field_count: usize = 0;
+    if has_units_allowed != 0 { units_field_count += 1; }
+    if has_units_max != 0 { units_field_count += 1; }
+    if has_units_count != 0 { units_field_count += 1; }
+    w.write_str("units");
+    w.write_map_header(units_field_count);
+    if has_units_allowed != 0 {
+        w.write_str("allowed");
+        let count = units_allowed_count as usize;
+        w.write_array_header(count);
+        for i in 0..count {
+            write_string_from_scratch(w, units_allowed_slot_start + i as u32);
+        }
+    }
+    if has_units_max != 0 {
+        w.write_str("max");
+        w.write_number(units_max);
+    }
+    if has_units_count != 0 {
+        w.write_str("count");
+        w.write_number(units_count);
+    }
+
+    if has_mirrors_enabled != 0 {
+        w.write_str("mirrorsEnabled");
+        w.write_bool(mirrors_enabled != 0);
+    }
+    if has_force_fields_enabled != 0 {
+        w.write_str("forceFieldsEnabled");
+        w.write_bool(force_fields_enabled != 0);
+    }
+    if has_force_fields_block_targeting != 0 {
+        w.write_str("forceFieldsBlockTargeting");
+        w.write_bool(force_fields_block_targeting != 0);
+    }
+    if has_force_field_reflection_mode != 0 {
+        w.write_str("forceFieldReflectionMode");
+        write_string_from_scratch(w, force_field_reflection_mode_slot);
+    }
+    if has_fog_of_war_enabled != 0 {
+        w.write_str("fogOfWarEnabled");
+        w.write_bool(fog_of_war_enabled != 0);
+    }
+
+    w.write_str("cpu");
+    w.write_map_header(2);
+    w.write_str("avg"); w.write_number(cpu_avg);
+    w.write_str("hi"); w.write_number(cpu_hi);
+
+    w.write_str("simLod");
+    w.write_map_header(3);
+    w.write_str("picked"); write_string_from_scratch(w, sim_lod_picked_slot);
+    w.write_str("effective"); write_string_from_scratch(w, sim_lod_effective_slot);
+    w.write_str("signals");
+    w.write_map_header(3);
+    w.write_str("tps"); write_string_from_scratch(w, sim_lod_signal_tps_slot);
+    w.write_str("cpu"); write_string_from_scratch(w, sim_lod_signal_cpu_slot);
+    w.write_str("units"); write_string_from_scratch(w, sim_lod_signal_units_slot);
+
+    w.write_str("wind");
+    w.write_map_header(4);
+    w.write_str("x"); w.write_number(wind_x);
+    w.write_str("y"); w.write_number(wind_y);
+    w.write_str("speed"); w.write_number(wind_speed);
+    w.write_str("angle"); w.write_number(wind_angle);
+
+    w.write_str("tiltEma");
+    write_string_from_scratch(w, tilt_ema_slot);
+
+    w.buf.len() as u32
+}
+
 /// Append the envelope's `projectiles: {...}` nested object.
 /// Supports `spawns`, `despawns`, `velocityUpdates`, `beamUpdates`.
 /// Called between emit_economy and _continue (pool order: projectiles

@@ -7,6 +7,7 @@ import type {
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotProjectileSpawn,
+  NetworkServerSnapshotMeta,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotTurret,
@@ -25,6 +26,7 @@ type SnapshotUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type SnapshotBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
 type SnapshotCapture = NonNullable<NetworkServerSnapshot['capture']>;
 type SnapshotProjectiles = NonNullable<NetworkServerSnapshot['projectiles']>;
+type SnapshotServerMeta = NetworkServerSnapshotMeta;
 
 const _utf8 = new TextEncoder();
 
@@ -34,6 +36,49 @@ function hasValue<T>(value: T | undefined): value is T {
 
 function isUint(value: unknown, max: number): value is number {
   return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= max;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isOptionalFiniteNumber(value: unknown): value is number | undefined {
+  return value === undefined || isFiniteNumber(value);
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+  return value === undefined || typeof value === 'boolean';
+}
+
+function isFiniteNumberOrString(value: unknown): value is number | string {
+  return isFiniteNumber(value) || typeof value === 'string';
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+function writeStringsIntoScratch(
+  sim: SimWasm,
+  utf8Bytes: readonly Uint8Array[],
+  totalBytes: number,
+): void {
+  const api = sim.snapshotEncode;
+  api.stringScratchEnsureBytes(Math.max(totalBytes, 1));
+  api.stringScratchEnsureTable(utf8Bytes.length);
+  const bytesPtr = api.stringScratchBytesPtr();
+  const tablePtr = api.stringScratchTablePtr();
+  const bytesView = new Uint8Array(sim.memory.buffer, bytesPtr, totalBytes);
+  const tableView = new Uint32Array(sim.memory.buffer, tablePtr, utf8Bytes.length * 2);
+
+  let offset = 0;
+  for (let i = 0; i < utf8Bytes.length; i++) {
+    const bytes = utf8Bytes[i];
+    bytesView.set(bytes, offset);
+    tableView[i * 2] = offset;
+    tableView[i * 2 + 1] = bytes.length;
+    offset += bytes.length;
+  }
 }
 
 function packStringsIntoScratch(
@@ -53,23 +98,20 @@ function packStringsIntoScratch(
     totalBytes += bytes.length;
   }
 
-  const api = sim.snapshotEncode;
-  api.stringScratchEnsureBytes(Math.max(totalBytes, 1));
-  api.stringScratchEnsureTable(utf8Bytes.length);
-  const bytesPtr = api.stringScratchBytesPtr();
-  const tablePtr = api.stringScratchTablePtr();
-  const bytesView = new Uint8Array(sim.memory.buffer, bytesPtr, totalBytes);
-  const tableView = new Uint32Array(sim.memory.buffer, tablePtr, utf8Bytes.length * 2);
-
-  let offset = 0;
-  for (let i = 0; i < utf8Bytes.length; i++) {
-    const bytes = utf8Bytes[i];
-    bytesView.set(bytes, offset);
-    tableView[i * 2] = offset;
-    tableView[i * 2 + 1] = bytes.length;
-    offset += bytes.length;
-  }
+  writeStringsIntoScratch(sim, utf8Bytes, totalBytes);
   return slotByString;
+}
+
+function packOrderedStringsIntoScratch(sim: SimWasm, strings: readonly string[]): void {
+  if (strings.length === 0) return;
+  const utf8Bytes: Uint8Array[] = [];
+  let totalBytes = 0;
+  for (const s of strings) {
+    const bytes = _utf8.encode(s);
+    utf8Bytes.push(bytes);
+    totalBytes += bytes.length;
+  }
+  writeStringsIntoScratch(sim, utf8Bytes, totalBytes);
 }
 
 function packActionsIntoScratch(
@@ -459,6 +501,143 @@ function packEconomyIntoScratch(
     view[base + 15] = src.metal.expenditure;
   }
   return ids.length;
+}
+
+function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
+  if (
+    !meta.ticks ||
+    !isFiniteNumber(meta.ticks.avg) ||
+    !isFiniteNumber(meta.ticks.low) ||
+    !isFiniteNumber(meta.ticks.rate) ||
+    !isFiniteNumber(meta.ticks.target) ||
+    !meta.snaps ||
+    !isFiniteNumberOrString(meta.snaps.rate) ||
+    !isFiniteNumberOrString(meta.snaps.keyframes) ||
+    !meta.server ||
+    typeof meta.server.time !== 'string' ||
+    typeof meta.server.ip !== 'string' ||
+    typeof meta.grid !== 'boolean' ||
+    !meta.units ||
+    (meta.units.allowed !== undefined && !isStringArray(meta.units.allowed)) ||
+    !isOptionalFiniteNumber(meta.units.max) ||
+    !isOptionalFiniteNumber(meta.units.count) ||
+    !isOptionalBoolean(meta.mirrorsEnabled) ||
+    !isOptionalBoolean(meta.forceFieldsEnabled) ||
+    !isOptionalBoolean(meta.forceFieldsBlockTargeting) ||
+    (
+      meta.forceFieldReflectionMode !== undefined &&
+      typeof meta.forceFieldReflectionMode !== 'string'
+    ) ||
+    !isOptionalBoolean(meta.fogOfWarEnabled) ||
+    !meta.cpu ||
+    !isFiniteNumber(meta.cpu.avg) ||
+    !isFiniteNumber(meta.cpu.hi) ||
+    !meta.simLod ||
+    typeof meta.simLod.picked !== 'string' ||
+    typeof meta.simLod.effective !== 'string' ||
+    !meta.simLod.signals ||
+    typeof meta.simLod.signals.tps !== 'string' ||
+    typeof meta.simLod.signals.cpu !== 'string' ||
+    typeof meta.simLod.signals.units !== 'string' ||
+    !meta.wind ||
+    !isFiniteNumber(meta.wind.x) ||
+    !isFiniteNumber(meta.wind.y) ||
+    !isFiniteNumber(meta.wind.speed) ||
+    !isFiniteNumber(meta.wind.angle) ||
+    typeof meta.tiltEma !== 'string'
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
+  const strings: string[] = [];
+  const pushString = (value: string): number => {
+    const slot = strings.length;
+    strings.push(value);
+    return slot;
+  };
+
+  const serverTimeSlot = pushString(meta.server.time);
+  const serverIpSlot = pushString(meta.server.ip);
+
+  const unitsAllowed = meta.units.allowed;
+  const unitsAllowedSlotStart = strings.length;
+  if (unitsAllowed !== undefined) {
+    for (const unitType of unitsAllowed) pushString(unitType);
+  }
+
+  const snapsRate = meta.snaps.rate;
+  let snapsRateSlot = 0;
+  if (typeof snapsRate === 'string') {
+    snapsRateSlot = pushString(snapsRate);
+  }
+
+  const snapsKeyframes = meta.snaps.keyframes;
+  let snapsKeyframesSlot = 0;
+  if (typeof snapsKeyframes === 'string') {
+    snapsKeyframesSlot = pushString(snapsKeyframes);
+  }
+
+  let forceFieldReflectionModeSlot = 0;
+  if (meta.forceFieldReflectionMode !== undefined) {
+    forceFieldReflectionModeSlot = pushString(meta.forceFieldReflectionMode);
+  }
+
+  const simLodPickedSlot = pushString(meta.simLod!.picked);
+  const simLodEffectiveSlot = pushString(meta.simLod!.effective);
+  const simLodSignalTpsSlot = pushString(meta.simLod!.signals!.tps);
+  const simLodSignalCpuSlot = pushString(meta.simLod!.signals!.cpu);
+  const simLodSignalUnitsSlot = pushString(meta.simLod!.signals!.units);
+  const tiltEmaSlot = pushString(meta.tiltEma!);
+  packOrderedStringsIntoScratch(sim, strings);
+
+  sim.snapshotEncode.emitServerMeta(
+    meta.ticks.avg,
+    meta.ticks.low,
+    meta.ticks.rate,
+    meta.ticks.target,
+    typeof snapsRate === 'string' ? 1 : 0,
+    typeof snapsRate === 'string' ? 0 : snapsRate,
+    snapsRateSlot,
+    typeof snapsKeyframes === 'string' ? 1 : 0,
+    typeof snapsKeyframes === 'string' ? 0 : snapsKeyframes,
+    snapsKeyframesSlot,
+    serverTimeSlot,
+    serverIpSlot,
+    meta.grid ? 1 : 0,
+    unitsAllowed !== undefined ? 1 : 0,
+    unitsAllowedSlotStart,
+    unitsAllowed?.length ?? 0,
+    meta.units.max !== undefined ? 1 : 0,
+    meta.units.max ?? 0,
+    meta.units.count !== undefined ? 1 : 0,
+    meta.units.count ?? 0,
+    meta.mirrorsEnabled !== undefined ? 1 : 0,
+    meta.mirrorsEnabled === true ? 1 : 0,
+    meta.forceFieldsEnabled !== undefined ? 1 : 0,
+    meta.forceFieldsEnabled === true ? 1 : 0,
+    meta.forceFieldsBlockTargeting !== undefined ? 1 : 0,
+    meta.forceFieldsBlockTargeting === true ? 1 : 0,
+    meta.forceFieldReflectionMode !== undefined ? 1 : 0,
+    forceFieldReflectionModeSlot,
+    meta.fogOfWarEnabled !== undefined ? 1 : 0,
+    meta.fogOfWarEnabled === true ? 1 : 0,
+    meta.cpu!.avg,
+    meta.cpu!.hi,
+    simLodPickedSlot,
+    simLodEffectiveSlot,
+    simLodSignalTpsSlot,
+    simLodSignalCpuSlot,
+    simLodSignalUnitsSlot,
+    meta.wind!.x,
+    meta.wind!.y,
+    meta.wind!.speed,
+    meta.wind!.angle,
+    tiltEmaSlot,
+  );
 }
 
 function packSprayTargetsIntoScratch(
@@ -1006,6 +1185,16 @@ function emitTopLevelKey(
         value as Record<number, NetworkServerSnapshotEconomy>,
       );
       api.emitEconomy(playerCount);
+      return;
+    }
+    case 'serverMeta': {
+      const meta = value as SnapshotServerMeta;
+      if (!canEncodeServerMeta(meta)) {
+        rawTopLevelKeys.push(key);
+        emitRawKeyValue(api, key, value);
+        return;
+      }
+      emitServerMeta(sim, meta);
       return;
     }
     case 'sprayTargets': {
