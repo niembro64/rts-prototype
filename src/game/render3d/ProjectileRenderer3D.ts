@@ -22,9 +22,9 @@ const CURVED_CONE_CURVE_SEGMENTS = 6;
 const CURVED_CONE_RADIAL_SEGMENTS = 10;
 const CURVED_CONE_VERTS_PER_TAIL = (CURVED_CONE_CURVE_SEGMENTS + 1) * CURVED_CONE_RADIAL_SEGMENTS;
 const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RADIAL_SEGMENTS * 6;
-const TAIL_HISTORY_MAX_SAMPLES = 5;
+const TAIL_HISTORY_MAX_SAMPLES = 3;
 const TAIL_HISTORY_MIN_MOVE_SQ = 0.01;
-const TAIL_HISTORY_MIN_ARC_STEP = 0.1;
+const TAIL_HISTORY_MIN_FIT_DISTANCE = 0.1;
 const TAIL_CURVE_EMA_HALF_LIFE_SEC = 0.08;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
 const IDENTITY_QUAT = new THREE.Quaternion();
@@ -55,11 +55,9 @@ type ProjectileTailHistory = {
   x0: number; y0: number; z0: number; t0: number;
   x1: number; y1: number; z1: number; t1: number;
   x2: number; y2: number; z2: number; t2: number;
-  x3: number; y3: number; z3: number; t3: number;
-  x4: number; y4: number; z4: number; t4: number;
   curveReady: boolean;
   curveUpdatedAt: number;
-  curveAx: number; curveAy: number; curveAz: number;
+  curveAz: number;
   curveBx: number; curveBy: number; curveBz: number;
 };
 
@@ -342,11 +340,9 @@ export class ProjectileRenderer3D {
         x0: x, y0: y, z0: z, t0: nowMs,
         x1: x, y1: y, z1: z, t1: nowMs,
         x2: x, y2: y, z2: z, t2: nowMs,
-        x3: x, y3: y, z3: z, t3: nowMs,
-        x4: x, y4: y, z4: z, t4: nowMs,
         curveReady: false,
         curveUpdatedAt: nowMs,
-        curveAx: 0, curveAy: 0, curveAz: 0,
+        curveAz: 0,
         curveBx: 0, curveBy: 0, curveBz: 0,
       };
       this.projectileTailHistories.set(id, history);
@@ -358,8 +354,6 @@ export class ProjectileRenderer3D {
     const dz = z - history.z0;
     if (dx * dx + dy * dy + dz * dz < TAIL_HISTORY_MIN_MOVE_SQ) return history;
 
-    history.x4 = history.x3; history.y4 = history.y3; history.z4 = history.z3; history.t4 = history.t3;
-    history.x3 = history.x2; history.y3 = history.y2; history.z3 = history.z2; history.t3 = history.t2;
     history.x2 = history.x1; history.y2 = history.y1; history.z2 = history.z1; history.t2 = history.t1;
     history.x1 = history.x0; history.y1 = history.y0; history.z1 = history.z0; history.t1 = history.t0;
     history.x0 = x; history.y0 = y; history.z0 = z; history.t0 = nowMs;
@@ -378,108 +372,64 @@ export class ProjectileRenderer3D {
     const vx = proj?.velocityX ?? 0;
     const vy = proj?.velocityY ?? 0;
     const vz = proj?.velocityZ ?? 0;
-    const speed = Math.hypot(vx, vy, vz);
-    let candidateAx = 0;
-    let candidateAy = 0;
+    const horizontalSpeed = Math.hypot(vx, vy);
+    const fallbackAxisX = horizontalSpeed > 1e-6
+      ? -vx / horizontalSpeed
+      : -Math.cos(entity.transform.rotation);
+    const fallbackAxisY = horizontalSpeed > 1e-6
+      ? -vy / horizontalSpeed
+      : -Math.sin(entity.transform.rotation);
+    const fallbackSlopeZ = horizontalSpeed > 1e-6 ? -vz / horizontalSpeed : 0;
     let candidateAz = 0;
-    let candidateBx = speed > 1e-6 ? -vx / speed : -Math.cos(entity.transform.rotation);
-    let candidateBy = speed > 1e-6 ? -vy / speed : -Math.sin(entity.transform.rotation);
-    let candidateBz = speed > 1e-6 ? -vz / speed : 0;
+    let candidateBx = fallbackAxisX;
+    let candidateBy = fallbackAxisY;
+    let candidateBz = fallbackSlopeZ;
     let fitValid = false;
 
     if (history.samples >= 3) {
-      let s2 = 0;
-      let s3 = 0;
-      let s4 = 0;
-      let rx1 = 0; let ry1 = 0; let rz1 = 0;
-      let rx2 = 0; let ry2 = 0; let rz2 = 0;
-      let validSamples = 0;
-      let arcDistance = 0;
-      let prevX = history.x0;
-      let prevY = history.y0;
-      let prevZ = history.z0;
-
-      for (let sample = 1; sample < history.samples; sample++) {
-        let sx = history.x1;
-        let sy = history.y1;
-        let sz = history.z1;
-        if (sample === 2) {
-          sx = history.x2; sy = history.y2; sz = history.z2;
-        } else if (sample === 3) {
-          sx = history.x3; sy = history.y3; sz = history.z3;
-        } else if (sample === 4) {
-          sx = history.x4; sy = history.y4; sz = history.z4;
-        }
-
-        const stepX = sx - prevX;
-        const stepY = sy - prevY;
-        const stepZ = sz - prevZ;
-        arcDistance += Math.hypot(stepX, stepY, stepZ);
-        prevX = sx; prevY = sy; prevZ = sz;
-        if (arcDistance < TAIL_HISTORY_MIN_ARC_STEP) continue;
-
-        const arc2 = arcDistance * arcDistance;
-        s2 += arc2;
-        s3 += arc2 * arcDistance;
-        s4 += arc2 * arc2;
-        const dx = sx - history.x0;
-        const dy = sy - history.y0;
-        const dz = sz - history.z0;
-        rx1 += arcDistance * dx;
-        ry1 += arcDistance * dy;
-        rz1 += arcDistance * dz;
-        rx2 += arc2 * dx;
-        ry2 += arc2 * dy;
-        rz2 += arc2 * dz;
-        validSamples++;
+      let axisX = history.x2 - history.x0;
+      let axisY = history.y2 - history.y0;
+      let axisLen = Math.hypot(axisX, axisY);
+      if (axisLen <= TAIL_HISTORY_MIN_FIT_DISTANCE) {
+        axisX = history.x1 - history.x0;
+        axisY = history.y1 - history.y0;
+        axisLen = Math.hypot(axisX, axisY);
       }
 
-      const denom = s2 * s4 - s3 * s3;
-      if (validSamples >= 2 && Math.abs(denom) > 1e-9) {
-        const invDenom = 1 / denom;
-        candidateBx = (rx1 * s4 - rx2 * s3) * invDenom;
-        candidateBy = (ry1 * s4 - ry2 * s3) * invDenom;
-        candidateBz = (rz1 * s4 - rz2 * s3) * invDenom;
-        candidateAx = (s2 * rx2 - s3 * rx1) * invDenom;
-        candidateAy = (s2 * ry2 - s3 * ry1) * invDenom;
-        candidateAz = (s2 * rz2 - s3 * rz1) * invDenom;
-        fitValid = Number.isFinite(
-          candidateAx + candidateAy + candidateAz +
-          candidateBx + candidateBy + candidateBz,
-        );
+      if (axisLen > TAIL_HISTORY_MIN_FIT_DISTANCE) {
+        axisX /= axisLen;
+        axisY /= axisLen;
+        const q1 = (history.x1 - history.x0) * axisX +
+          (history.y1 - history.y0) * axisY;
+        const q2 = (history.x2 - history.x0) * axisX +
+          (history.y2 - history.y0) * axisY;
+
+        if (q1 > TAIL_HISTORY_MIN_FIT_DISTANCE && q2 > q1 + TAIL_HISTORY_MIN_FIT_DISTANCE) {
+          const z1 = history.z1 - history.z0;
+          const z2 = history.z2 - history.z0;
+          const denom = q1 * q2 * (q2 - q1);
+          if (Math.abs(denom) > 1e-9) {
+            candidateAz = (z2 * q1 - z1 * q2) / denom;
+            candidateBx = axisX;
+            candidateBy = axisY;
+            candidateBz = (z1 - candidateAz * q1 * q1) / q1;
+            fitValid = Number.isFinite(candidateAz + candidateBz);
+          }
+        }
       }
     }
 
     if (!fitValid) {
-      candidateAx = 0; candidateAy = 0; candidateAz = 0;
-      candidateBx = speed > 1e-6 ? -vx / speed : -Math.cos(entity.transform.rotation);
-      candidateBy = speed > 1e-6 ? -vy / speed : -Math.sin(entity.transform.rotation);
-      candidateBz = speed > 1e-6 ? -vz / speed : 0;
-    }
-    let candidateLen = Math.hypot(candidateBx, candidateBy, candidateBz);
-    if (candidateLen <= 1e-6) {
-      candidateAx = 0; candidateAy = 0; candidateAz = 0;
-      candidateBx = speed > 1e-6 ? -vx / speed : -Math.cos(entity.transform.rotation);
-      candidateBy = speed > 1e-6 ? -vy / speed : -Math.sin(entity.transform.rotation);
-      candidateBz = speed > 1e-6 ? -vz / speed : 0;
-      candidateLen = Math.hypot(candidateBx, candidateBy, candidateBz);
-    }
-    if (candidateLen > 1e-6) {
-      const invCandidateLen = 1 / candidateLen;
-      candidateBx *= invCandidateLen;
-      candidateBy *= invCandidateLen;
-      candidateBz *= invCandidateLen;
-      candidateAx *= invCandidateLen * invCandidateLen;
-      candidateAy *= invCandidateLen * invCandidateLen;
-      candidateAz *= invCandidateLen * invCandidateLen;
+      candidateAz = 0;
+      candidateBx = fallbackAxisX;
+      candidateBy = fallbackAxisY;
+      candidateBz = fallbackSlopeZ;
     }
 
     const curveDt = Math.max(0, (history.t0 - history.curveUpdatedAt) / 1000);
     const curveBlend = history.curveReady
       ? 1 - Math.pow(0.5, curveDt / TAIL_CURVE_EMA_HALF_LIFE_SEC)
       : 1;
-    history.curveAx += (candidateAx - history.curveAx) * curveBlend;
-    history.curveAy += (candidateAy - history.curveAy) * curveBlend;
     history.curveAz += (candidateAz - history.curveAz) * curveBlend;
     history.curveBx += (candidateBx - history.curveBx) * curveBlend;
     history.curveBy += (candidateBy - history.curveBy) * curveBlend;
@@ -487,15 +437,20 @@ export class ProjectileRenderer3D {
     history.curveReady = true;
     history.curveUpdatedAt = history.t0;
 
-    const curveLen = Math.hypot(history.curveBx, history.curveBy, history.curveBz);
-    if (curveLen > 1e-6) {
-      const invCurveLen = 1 / curveLen;
-      history.curveBx *= invCurveLen;
-      history.curveBy *= invCurveLen;
-      history.curveBz *= invCurveLen;
-      history.curveAx *= invCurveLen * invCurveLen;
-      history.curveAy *= invCurveLen * invCurveLen;
-      history.curveAz *= invCurveLen * invCurveLen;
+    let curveHorizontalLen = Math.hypot(history.curveBx, history.curveBy);
+    if (curveHorizontalLen <= 1e-6) {
+      history.curveBx = fallbackAxisX;
+      history.curveBy = fallbackAxisY;
+      history.curveBz = fallbackSlopeZ;
+      history.curveAz = 0;
+      curveHorizontalLen = 1;
+    }
+    if (Math.abs(curveHorizontalLen - 1) > 1e-6) {
+      const invCurveHorizontalLen = 1 / curveHorizontalLen;
+      history.curveBx *= invCurveHorizontalLen;
+      history.curveBy *= invCurveHorizontalLen;
+      history.curveBz *= invCurveHorizontalLen;
+      history.curveAz *= invCurveHorizontalLen * invCurveHorizontalLen;
     }
 
     const positions = this.curvedCone.positions;
@@ -503,13 +458,19 @@ export class ProjectileRenderer3D {
     const vertexBase = slot * CURVED_CONE_VERTS_PER_TAIL;
     for (let segment = 0; segment <= CURVED_CONE_CURVE_SEGMENTS; segment++) {
       const u = segment / CURVED_CONE_CURVE_SEGMENTS;
-      const tailDistance = length * u;
-      const px = history.x0 + history.curveBx * tailDistance + history.curveAx * tailDistance * tailDistance;
-      const py = history.y0 + history.curveBy * tailDistance + history.curveAy * tailDistance * tailDistance;
-      const pz = history.z0 + history.curveBz * tailDistance + history.curveAz * tailDistance * tailDistance;
-      const tx = history.curveBx + 2 * history.curveAx * tailDistance;
-      const ty = history.curveBy + 2 * history.curveAy * tailDistance;
-      const tz = history.curveBz + 2 * history.curveAz * tailDistance;
+      const arcDistance = length * u;
+      const curveDistance = solveVerticalParabolaArcDistance(
+        arcDistance,
+        history.curveBz,
+        history.curveAz,
+      );
+      const px = history.x0 + history.curveBx * curveDistance;
+      const py = history.y0 + history.curveBy * curveDistance;
+      const pz = history.z0 + history.curveBz * curveDistance +
+        history.curveAz * curveDistance * curveDistance;
+      const tx = history.curveBx;
+      const ty = history.curveBy;
+      const tz = history.curveBz + 2 * history.curveAz * curveDistance;
       this.setCurveBasis(tx, ty, tz);
       const ringRadius = radius * (1 - u);
       for (let radial = 0; radial < CURVED_CONE_RADIAL_SEGMENTS; radial++) {
@@ -701,6 +662,47 @@ export class ProjectileRenderer3D {
     attr.addUpdateRange(minSlot * 16, (maxSlot - minSlot + 1) * 16);
     attr.needsUpdate = true;
   }
+}
+
+function verticalParabolaArcPrimitive(slope: number): number {
+  return 0.5 * (
+    slope * Math.sqrt(1 + slope * slope) +
+    Math.asinh(slope)
+  );
+}
+
+function verticalParabolaArcLength(distance: number, slope: number, curvature: number): number {
+  if (distance <= 0) return 0;
+  if (Math.abs(curvature) <= 1e-9) {
+    return distance * Math.sqrt(1 + slope * slope);
+  }
+  const k = 2 * curvature;
+  const start = verticalParabolaArcPrimitive(slope);
+  const end = verticalParabolaArcPrimitive(slope + k * distance);
+  return Math.max(0, (end - start) / k);
+}
+
+function solveVerticalParabolaArcDistance(
+  arcDistance: number,
+  slope: number,
+  curvature: number,
+): number {
+  if (arcDistance <= 0) return 0;
+  if (Math.abs(curvature) <= 1e-9) {
+    return arcDistance / Math.sqrt(1 + slope * slope);
+  }
+
+  let lo = 0;
+  let hi = arcDistance;
+  for (let i = 0; i < 10; i++) {
+    const mid = (lo + hi) * 0.5;
+    if (verticalParabolaArcLength(mid, slope, curvature) < arcDistance) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return (lo + hi) * 0.5;
 }
 
 // Local +Y aligns with projDir (rocket-rearward) after the instance
