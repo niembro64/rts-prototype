@@ -413,6 +413,91 @@
     </section>
 
     <section>
+      <h2>TypeScript Coordinates, WASM Computes</h2>
+      <p>
+        The absolute performance ceiling for browser 3D is set by how little
+        JavaScript runs in the per-frame hot path. TypeScript stays in the
+        project because the browser&rsquo;s native dialect is JS &mdash; boot,
+        asset loading, input, UI, networking glue, calling into WASM &mdash;
+        but it should never be the layer that integrates physics, walks
+        per-unit update loops, builds render lists for thousands of objects,
+        or carries large serialization work. Those belong in WebAssembly,
+        compiled from Rust, running over typed linear memory with
+        SIMD-friendly, struct-of-arrays layouts. The renderer that consumes
+        the engine&rsquo;s output belongs on <code>WebGPU</code> with
+        <code>WGSL</code> shaders, so the GPU can be driven directly with
+        instancing, compute, and large buffers instead of one draw call per
+        object.
+      </p>
+      <p>
+        This is the same commitment that <strong>Languages and Frameworks</strong>
+        makes for language choice and <strong>Config Is Data, Not Code</strong>
+        makes for content authoring, expressed as a runtime architecture: the
+        layers are stacked so that hot data crosses the JS/WASM boundary as
+        rarely as possible, and the JS side never owns the inner loop. The
+        end-state shape is a TypeScript shell wrapped around a Rust + WASM
+        simulation that talks to a WebGPU renderer through GPU-resident buffers,
+        with Web Workers and <code>SharedArrayBuffer</code> separating cadences
+        where independent stepping or true cross-thread shared memory pays for
+        itself.
+      </p>
+
+      <h3>Layer responsibilities</h3>
+      <ul class="rule-list">
+        <li><strong>TypeScript shell</strong> &mdash; application boot, asset loading, canvas creation, WebGPU initialization, input collection, UI / menus / dev tools, WebSocket and WebRTC setup, and the bridge that calls into WASM. This layer coordinates; it does not compute.</li>
+        <li><strong>WebAssembly engine (Rust)</strong> &mdash; ECS, physics, collision, pathfinding, visibility and fog, animation state, projectile simulation, spatial queries, culling, and render-packet generation. Everything that runs every tick or every unit lives here.</li>
+        <li><strong>WebGPU + WGSL</strong> &mdash; GPU buffers, pipelines, compute shaders, instanced rendering, post-processing. Where the pixel work happens and where mass parallelism is recovered.</li>
+        <li><strong>Web Workers + <code>SharedArrayBuffer</code></strong> &mdash; when simulation and render need to step on independent cadences, or when a kernel can be parallelized across cores against shared linear memory without copying.</li>
+      </ul>
+
+      <h3>What TypeScript must never own in hot paths</h3>
+      <p>
+        Each item below is a per-unit, per-projectile, or per-frame loop that
+        compounds at scale. Running any of them from JavaScript at thousands of
+        units gives up the performance ceiling, regardless of how careful the
+        TypeScript is.
+      </p>
+      <ul class="rule-list">
+        <li>Per-unit update loops.</li>
+        <li>Physics integration and collision detection.</li>
+        <li>Projectile simulation and spatial partitioning.</li>
+        <li>Pathfinding and fog-of-war calculation.</li>
+        <li>Animation blending for thousands of units.</li>
+        <li>Render-list generation for thousands of objects.</li>
+        <li>Large serialization loops and large per-frame allocations.</li>
+      </ul>
+
+      <h3>What TypeScript should keep doing</h3>
+      <ul class="rule-list">
+        <li>Bootstrapping, developer tools, debug overlays.</li>
+        <li>Settings, lobby, and the Vue / UI layer.</li>
+        <li>Asset loading and input event collection.</li>
+        <li>WebGPU initialization and pipeline assembly.</li>
+        <li>WebSocket / WebRTC setup and the network glue.</li>
+        <li>Calling exported WASM functions and marshalling the few values that genuinely need to cross the boundary.</li>
+      </ul>
+
+      <h3>The slow architecture vs the fast one</h3>
+      <p>
+        The slow browser game architecture is the one most browser code drifts
+        into: thousands of JS objects, each carrying methods, each updated every
+        frame, each allocating temporaries, each issuing its own draw call.
+        That shape pays the cost of language overhead, garbage collection,
+        scene-graph traversal, and one-draw-per-thing at every layer
+        simultaneously.
+      </p>
+      <p>
+        The fast architecture is the inversion: flat typed memory, batched
+        updates, almost no allocations, very few crossings of the JS/WASM
+        boundary, large GPU buffers, instanced rendering, compute shaders where
+        the work parallelizes, and as few draw calls as the scene can be
+        expressed in. The rule of thumb is: if you can make the loop run over a
+        slab of bytes instead of a list of objects, you should &mdash; and that
+        loop almost certainly belongs in WASM or on the GPU, not in TypeScript.
+      </p>
+    </section>
+
+    <section>
       <h2>Languages and Frameworks</h2>
       <p>
         Peak performance wins over framework convenience. For simulation and rendering, the default
@@ -697,6 +782,7 @@
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
         <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>
         <li>Use Rust/WASM, TypeScript orchestration, and custom GPU shader code; keep frameworks out of simulation and rendering hot paths.</li>
+        <li>Stack the runtime so TypeScript coordinates and WASM computes: the TS shell handles boot, UI, IO, and WASM calls; the Rust/WASM engine owns every per-unit and per-tick loop; WebGPU/WGSL owns the GPU buffers, instancing, and compute work. Hot data should cross the JS/WASM boundary as rarely as the design allows.</li>
         <li>Author blueprints, tuning tables, maps, and other content as JSON data validated by a shared schema, not as TypeScript modules. Data the Rust/WASM simulation cannot read is a wall that prevents the TS-to-Rust migration from ever completing.</li>
         <li>Move dense numeric kernels toward WASM when batching can beat JS object loops.</li>
         <li>Design every feature with 5,000 units in mind before celebrating it at 50 units.</li>
