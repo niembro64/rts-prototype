@@ -228,21 +228,16 @@ function validateTurretAimStyle(
   turretBlueprint: TurretBlueprint,
   shot: ShotConfig | undefined,
 ): void {
-  switch (turretBlueprint.aimStyle) {
-    case 'lowArc':
-    case 'highArc':
+  switch (turretBlueprint.aimStyle.arcType) {
+    case 'ballisticArcLow':
+    case 'ballisticArcHight':
       if (!shot || (shot.type !== 'projectile' && shot.type !== 'rocket')) {
         throw new Error(
-          `Turret ${turretId} uses aimStyle "${turretBlueprint.aimStyle}" without a projectile shot`,
+          `Turret ${turretId} uses aimStyle.arcType "${turretBlueprint.aimStyle.arcType}" without a projectile shot`,
         );
       }
       return;
-    case 'direct':
-      if (!shot || (shot.type !== 'beam' && shot.type !== 'laser')) {
-        throw new Error(`Turret ${turretId} uses direct aim without a line shot`);
-      }
-      return;
-    case 'none':
+    case 'rayDirect':
       return;
   }
 }
@@ -412,7 +407,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     rangeOverrides: turretBlueprint.rangeMultiplierOverrides,
     eventsSmooth: turretBlueprint.eventsSmooth,
     shot,
-    aimStyle: turretBlueprint.aimStyle,
+    aimStyle: { ...turretBlueprint.aimStyle },
     verticalLauncher: turretBlueprint.verticalLauncher ?? false,
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction,

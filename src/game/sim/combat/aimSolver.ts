@@ -1,4 +1,5 @@
 import type { Vec3 } from '@/types/vec2';
+import type { TurretAimLockOnType } from '@/types/blueprints';
 import type { Entity, ProjectileShot, Turret, TurretConfig } from '../types';
 import { getShotMaxLifespan, isProjectileShot } from '../types';
 import {
@@ -16,10 +17,16 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
-import { pickMirrorTargetTurret } from './mirrorTargetPriority';
+import { pickTargetAimTurret } from './mirrorTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
 
 type GroundHeightLookup = (x: number, y: number) => number;
+
+type ResolveTargetAimPointOptions = {
+  lockOnType?: TurretAimLockOnType;
+  source?: Entity;
+  currentTick?: number;
+};
 
 const _mirrorEnemyTurretMount = { x: 0, y: 0, z: 0 };
 const _projectileAcceleration: KinematicVec3 = { x: 0, y: 0, z: 0 };
@@ -88,11 +95,12 @@ export function createTurretAimScratch(): TurretAimSolution {
 }
 
 /**
- * Resolve the point a turret should aim at on a target's gameplay
- * collider. Buildings are AABBs, so the correct point is the closest
- * point on that box from the turret launch origin, not always the building
- * center. This is what keeps weapons from visually shooting over a
- * building sitting at a different terrain height.
+ * Resolve the point a turret should aim at on a target. Most weapons
+ * lock onto the gameplay collider; lockOnToTurret instead resolves the
+ * target's most relevant damaging turret mount. Buildings are AABBs, so
+ * body lock-on uses the closest point on that box from the launch origin,
+ * not always the building center. This is what keeps weapons from visually
+ * shooting over a building sitting at a different terrain height.
  */
 export function resolveTargetAimPoint(
   target: Entity,
@@ -100,7 +108,29 @@ export function resolveTargetAimPoint(
   originY: number,
   originZ: number,
   out: Vec3,
+  options?: ResolveTargetAimPointOptions,
 ): Vec3 {
+  if (options?.lockOnType === 'lockOnToTurret') {
+    const picked = pickTargetAimTurret(target, options.source?.id);
+    if (picked) {
+      const tCS = getTransformCosSin(target.transform);
+      const targetMount = resolveWeaponWorldMount(
+        target, picked.turret, picked.index,
+        tCS.cos, tCS.sin,
+        {
+          currentTick: options.currentTick,
+          unitGroundZ: getUnitGroundZ(target),
+          surfaceN: target.unit?.surfaceNormal,
+        },
+        _mirrorEnemyTurretMount,
+      );
+      out.x = targetMount.x;
+      out.y = targetMount.y;
+      out.z = targetMount.z;
+      return out;
+    }
+  }
+
   if (target.building) {
     const halfW = target.building.width / 2;
     const halfH = target.building.height / 2;
@@ -195,72 +225,6 @@ function writeFallbackDirectionAimPoint(
   return out;
 }
 
-/**
- * Mirror turrets share the normal turret aiming pipeline: resolve a
- * world-space point, then yaw/pitch toward it. The only mirror-specific
- * part is this point provider: it returns the direction bisecting
- * own-mirror-center→enemy-turret-mount-center and
- * own-mirror-center→enemy-body-center, where the enemy turret picked
- * is the highest-DPS active threat on that target.
- */
-export function resolveMirrorTurretAimPoint(
-  unit: Entity,
-  target: Entity,
-  mountX: number,
-  mountY: number,
-  mountZ: number,
-  fallbackYaw: number,
-  fallbackPitch: number,
-  currentTick: number | undefined,
-  out: Vec3,
-): Vec3 | null {
-  if (!target.combat || !unit.unit) return null;
-
-  const picked = pickMirrorTargetTurret(target, unit.id);
-  if (picked === null) return null;
-
-  const tCS = getTransformCosSin(target.transform);
-  const enemyMount = resolveWeaponWorldMount(
-    target, picked.turret, picked.index,
-    tCS.cos, tCS.sin,
-    {
-      currentTick,
-      unitGroundZ: getUnitGroundZ(target),
-      surfaceN: target.unit?.surfaceNormal,
-    },
-    _mirrorEnemyTurretMount,
-  );
-
-  const turretVecX = enemyMount.x - mountX;
-  const turretVecY = enemyMount.y - mountY;
-  const turretVecZ = enemyMount.z - mountZ;
-  const turretLen = Math.hypot(turretVecX, turretVecY, turretVecZ);
-  const bodyVecX = target.transform.x - mountX;
-  const bodyVecY = target.transform.y - mountY;
-  const bodyVecZ = target.transform.z - mountZ;
-  const bodyLen = Math.hypot(bodyVecX, bodyVecY, bodyVecZ);
-  if (turretLen <= 1e-6 || bodyLen <= 1e-6) {
-    return writeFallbackDirectionAimPoint(
-      mountX, mountY, mountZ, fallbackYaw, fallbackPitch, out,
-    );
-  }
-
-  const nx = turretVecX / turretLen + bodyVecX / bodyLen;
-  const ny = turretVecY / turretLen + bodyVecY / bodyLen;
-  const nz = turretVecZ / turretLen + bodyVecZ / bodyLen;
-  const nLen = Math.hypot(nx, ny, nz);
-  if (nLen <= 1e-6) {
-    return writeFallbackDirectionAimPoint(
-      mountX, mountY, mountZ, fallbackYaw, fallbackPitch, out,
-    );
-  }
-
-  out.x = mountX + nx / nLen;
-  out.y = mountY + ny / nLen;
-  out.z = mountZ + nz / nLen;
-  return out;
-}
-
 export function solveTurretAimAtPoint(
   aimPoint: Vec3,
   mountX: number,
@@ -290,15 +254,26 @@ export function solveTurretAimAtPoint(
 }
 
 export function solveDirectTurretAim(
+  source: Entity,
   target: Entity,
   mountX: number,
   mountY: number,
   mountZ: number,
   _currentPitch: number,
-  _config: TurretConfig,
+  config: TurretConfig,
   out: DirectTurretAim,
+  currentTick?: number,
 ): DirectTurretAim {
-  resolveTargetAimPoint(target, mountX, mountY, mountZ, out.aim);
+  resolveTargetAimPoint(
+    target,
+    mountX, mountY, mountZ,
+    out.aim,
+    {
+      lockOnType: config.aimStyle.lockOnType,
+      source,
+      currentTick,
+    },
+  );
 
   const horizDist = Math.hypot(out.aim.x - mountX, out.aim.y - mountY);
   const heightDiff = out.aim.z - mountZ;
@@ -345,11 +320,23 @@ function getProjectileMaxTimeSec(shot: ProjectileShot): number | undefined {
 }
 
 function usesHighBallisticPath(config: TurretConfig, shot: ProjectileShot): boolean {
-  return !shot.ignoresGravity && config.aimStyle === 'highArc';
+  return !shot.ignoresGravity && config.aimStyle.arcType === 'ballisticArcHight';
 }
 
 function usesBallisticAim(config: TurretConfig): boolean {
-  return config.aimStyle === 'lowArc' || config.aimStyle === 'highArc';
+  return (
+    config.aimStyle.arcType === 'ballisticArcLow' ||
+    config.aimStyle.arcType === 'ballisticArcHight'
+  );
+}
+
+function weaponUsesNormalAim(weapon: Turret): boolean {
+  const config = weapon.config;
+  if (config.visualOnly) return false;
+  if (config.verticalLauncher) return false;
+  if (config.isManualFire) return false;
+  if (config.shot?.type === 'force') return false;
+  return true;
 }
 
 function solveStaticProjectileAim(
@@ -387,11 +374,21 @@ export function solveProjectileTurretAim(
   inheritOriginVelocity: boolean,
   groundHeightAt: GroundHeightLookup,
   out: ProjectileTurretAim,
+  currentTick?: number,
 ): ProjectileTurretAim {
   const shot = weapon.config.shot as ProjectileShot;
   const launchSpeed = getProjectileLaunchSpeed(shot);
 
-  resolveTargetAimPoint(target, mountX, mountY, mountZ, out.aim);
+  resolveTargetAimPoint(
+    target,
+    mountX, mountY, mountZ,
+    out.aim,
+    {
+      lockOnType: weapon.config.aimStyle.lockOnType,
+      source,
+      currentTick,
+    },
+  );
   let yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
 
   const targetVelocity = getEntityVelocity3(target, out.targetVelocity);
@@ -545,7 +542,7 @@ export function solveTurretAimAtGroundPoint(
   groundHeightAt: GroundHeightLookup,
   out: TurretAimSolution,
 ): TurretAimSolution {
-  if (weapon.config.aimStyle === 'none') {
+  if (!weaponUsesNormalAim(weapon)) {
     return solveTurretAimAtPoint(
       writeFallbackDirectionAimPoint(
         mountX, mountY, mountZ,
@@ -594,17 +591,19 @@ export function solveTurretAim(
   groundHeightAt: GroundHeightLookup,
   out: TurretAimSolution,
 ): TurretAimSolution | null {
-  if (weapon.config.aimStyle === 'none') return null;
+  if (!weaponUsesNormalAim(weapon)) return null;
 
   if (weapon.config.passive) {
-    const aimPoint = resolveMirrorTurretAimPoint(
-      unit, target,
+    const aimPoint = resolveTargetAimPoint(
+      target,
       mountX, mountY, mountZ,
-      weapon.rotation, weapon.pitch,
-      currentTick,
       out.aim,
+      {
+        lockOnType: weapon.config.aimStyle.lockOnType,
+        source: unit,
+        currentTick,
+      },
     );
-    if (!aimPoint) return null;
     return solveTurretAimAtPoint(
       aimPoint,
       mountX, mountY, mountZ,
@@ -625,15 +624,18 @@ export function solveTurretAim(
       true,
       groundHeightAt,
       out,
+      currentTick,
     );
   }
 
   solveDirectTurretAim(
+    unit,
     target,
     mountX, mountY, mountZ,
     currentPitch,
     weapon.config,
     out,
+    currentTick,
   );
   out.hasBallisticSolution = true;
   out.targetVelocity.x = 0;

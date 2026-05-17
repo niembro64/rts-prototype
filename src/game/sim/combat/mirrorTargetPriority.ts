@@ -59,6 +59,32 @@ export function pickMirrorTargetTurret(
   return best;
 }
 
+export function pickTargetAimTurret(
+  target: Entity,
+  sourceEntityId?: number,
+): MirrorTargetTurretPick | null {
+  if (sourceEntityId !== undefined) {
+    const directThreat = pickMirrorTargetTurret(target, sourceEntityId);
+    if (directThreat) return directThreat;
+  }
+
+  const turrets = target.combat?.turrets;
+  if (!turrets) return null;
+  let best: MirrorTargetTurretPick | null = null;
+  for (let ti = 0; ti < turrets.length; ti++) {
+    const turret = turrets[ti];
+    if (turret.config.passive) continue;
+    if (turret.config.visualOnly) continue;
+    if (turret.config.isManualFire) continue;
+    const score = turretDps(turret);
+    if (score <= 0) continue;
+    if (best === null || score > best.score) {
+      best = { turret, index: ti, score };
+    }
+  }
+  return best;
+}
+
 export function getMirrorTargetScore(target: Entity, ourUnitId: number): number {
   return pickMirrorTargetTurret(target, ourUnitId)?.score ?? 0;
 }

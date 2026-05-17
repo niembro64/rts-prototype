@@ -13,10 +13,30 @@ import {
 import { AUDIO } from '../../../audioConfig';
 import { isTurretId, type TurretId } from '../../../types/blueprintIds';
 import type { HysteresisRangeMultiplier } from '../../../types/sim';
-import type { TurretBlueprint } from './types';
+import type { TurretAimStyle, TurretBlueprint } from './types';
 
 const COLOR_WHITE = 0xffffff;
 export const CONSTRUCTION_TURRET_HEAD_RADIUS = 8;
+
+const AIM_BODY_RAY_DIRECT = {
+  arcType: 'rayDirect',
+  lockOnType: 'lockOnToBody',
+} as const satisfies TurretAimStyle;
+
+const AIM_BODY_BALLISTIC_LOW = {
+  arcType: 'ballisticArcLow',
+  lockOnType: 'lockOnToBody',
+} as const satisfies TurretAimStyle;
+
+const AIM_BODY_BALLISTIC_HIGHT = {
+  arcType: 'ballisticArcHight',
+  lockOnType: 'lockOnToBody',
+} as const satisfies TurretAimStyle;
+
+const AIM_TURRET_RAY_DIRECT = {
+  arcType: 'rayDirect',
+  lockOnType: 'lockOnToTurret',
+} as const satisfies TurretAimStyle;
 
 const CONSTRUCTION_EMITTER_VISUALS = {
   defaultSize: 'small',
@@ -104,7 +124,7 @@ export const TURRET_BLUEPRINTS = {
     spread: { angle: 0 },
     radius: { body: 3 },
     audio: { fireSound: AUDIO.event.fire.lightTurret },
-    aimStyle: 'lowArc',
+    aimStyle: AIM_BODY_BALLISTIC_LOW,
   },
   pulseTurret: {
     id: 'pulseTurret',
@@ -133,7 +153,7 @@ export const TURRET_BLUEPRINTS = {
     burst: { count: 4, delay: 100 },
     radius: { body: 9 },
     audio: { fireSound: AUDIO.event.fire.pulseTurret },
-    aimStyle: 'lowArc',
+    aimStyle: AIM_BODY_BALLISTIC_LOW,
   },
   cannonTurret: {
     id: 'cannonTurret',
@@ -153,7 +173,7 @@ export const TURRET_BLUEPRINTS = {
     spread: { angle: 0 },
     radius: { body: 10 },
     audio: { fireSound: AUDIO.event.fire.cannonTurret },
-    aimStyle: 'lowArc',
+    aimStyle: AIM_BODY_BALLISTIC_LOW,
   },
   mortarTurret: {
     id: 'mortarTurret',
@@ -173,7 +193,7 @@ export const TURRET_BLUEPRINTS = {
     spread: { angle: 0 },
     radius: { body: 9 },
     audio: { fireSound: AUDIO.event.fire.mortarTurret },
-    aimStyle: 'highArc',
+    aimStyle: AIM_BODY_BALLISTIC_HIGHT,
     // Aim directly at the target point. mortarShot detonates on
     // ground impact and releases mediumShot fragments from there.
     groundAimFraction: 1.0,
@@ -217,7 +237,7 @@ export const TURRET_BLUEPRINTS = {
     // Fast high-arc carrier. The submunitions do the area spread; this
     // keeps the gatling role readable without adding another cluster
     // layer.
-    aimStyle: 'highArc',
+    aimStyle: AIM_BODY_BALLISTIC_HIGHT,
     // Aim directly at the target group; the carrier's submunition spray
     // creates the area coverage.
     groundAimFraction: 1.0,
@@ -247,7 +267,7 @@ export const TURRET_BLUEPRINTS = {
     burst: { count: 1, delay: 80 },
     radius: { body: 12 },
     audio: { fireSound: AUDIO.event.fire.hippoGatlingTurret },
-    aimStyle: 'lowArc',
+    aimStyle: AIM_BODY_BALLISTIC_LOW,
   },
   // Salvo rocket pod — vertical-launch system. The turret is pinned
   // pointing straight up (verticalLauncher=true → turretSystem locks
@@ -297,7 +317,7 @@ export const TURRET_BLUEPRINTS = {
     // spread: { angle: Math.PI / 2, pelletCount: 1 },
     radius: { body: 8 },
     audio: { fireSound: AUDIO.event.fire.salvoRocketTurret },
-    aimStyle: 'none',
+    aimStyle: AIM_BODY_RAY_DIRECT,
     verticalLauncher: true,
     // Spawn pointing straight up. verticalLauncher pins pitch to π/2
     // every tick once combat runs, but during construction (shell
@@ -328,7 +348,7 @@ export const TURRET_BLUEPRINTS = {
     color: 0xff8800,
     radius: { body: 8 },
     audio: { fireSound: AUDIO.event.fire.dgunTurret },
-    aimStyle: 'none',
+    aimStyle: AIM_BODY_RAY_DIRECT,
   },
   mirrorTurret: {
     id: 'mirrorTurret',
@@ -354,7 +374,7 @@ export const TURRET_BLUEPRINTS = {
     // Rest pose: panel pitched straight up so a freshly-spawned mirror
     // unit reads as "scanning the sky" until it acquires an actual
     // threat. As soon as the aim solver runs, the damper takes over
-    // and pitches the panel to the bisector solution.
+    // and points the panel at the target turret mount.
     idlePitch: Math.PI / 2,
     // The mirror-host turret's head sphere is hidden; radius.body
     // defines the panel half-side used by the mirror visual/collision.
@@ -367,7 +387,7 @@ export const TURRET_BLUEPRINTS = {
     // ignores these per-panel fields entirely — they're declared as
     // a count of 1 so the cache builder emits one panel per host.
     mirrorPanels: [{ offsetX: 0, offsetY: 0, angle: 0 }],
-    aimStyle: 'direct',
+    aimStyle: AIM_TURRET_RAY_DIRECT,
   },
   beamTurret: {
     id: 'beamTurret',
@@ -386,7 +406,7 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     radius: { body: 8 },
-    aimStyle: 'direct',
+    aimStyle: AIM_BODY_RAY_DIRECT,
     audio: {
       fireSound: AUDIO.event.fire.beamTurret,
     },
@@ -411,7 +431,7 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     radius: { body: 3 },
-    aimStyle: 'direct',
+    aimStyle: AIM_BODY_RAY_DIRECT,
     audio: {
       fireSound: AUDIO.event.fire.miniBeam,
     },
@@ -439,7 +459,7 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     radius: { body: 14 },
-    aimStyle: 'direct',
+    aimStyle: AIM_BODY_RAY_DIRECT,
     audio: {
       fireSound: AUDIO.event.fire.megaBeamTurret,
     },
@@ -468,7 +488,7 @@ export const TURRET_BLUEPRINTS = {
     // sphere; radius.body remains available to shared barrel/mount
     // helpers even though the normal turret head is hidden.
     radius: { body: 12 },
-    aimStyle: 'none',
+    aimStyle: AIM_BODY_RAY_DIRECT,
     forceField: {
       angle: Math.PI * 2,
       transitionTime: 500,
@@ -497,7 +517,7 @@ export const TURRET_BLUEPRINTS = {
     color: COLOR_WHITE,
     spread: { angle: 0 },
     radius: { body: CONSTRUCTION_TURRET_HEAD_RADIUS },
-    aimStyle: 'none',
+    aimStyle: AIM_BODY_RAY_DIRECT,
     isManualFire: true,
     constructionEmitter: CONSTRUCTION_EMITTER_VISUALS,
   },
@@ -523,7 +543,7 @@ export const TURRET_BLUEPRINTS = {
     eventsSmooth: false,
     color: COLOR_WHITE,
     radius: { body: 18 },
-    aimStyle: 'direct',
+    aimStyle: AIM_BODY_RAY_DIRECT,
     audio: {
       fireSound: AUDIO.event.fire.megaBeamTurret,
     },
@@ -554,7 +574,7 @@ export const TURRET_BLUEPRINTS = {
     spread: { angle: 0 },
     radius: { body: 16 },
     audio: { fireSound: AUDIO.event.fire.cannonTurret },
-    aimStyle: 'lowArc',
+    aimStyle: AIM_BODY_BALLISTIC_LOW,
   },
 } satisfies Record<TurretId, TurretBlueprint>;
 

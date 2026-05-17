@@ -246,6 +246,11 @@ function hasWeaponLineOfSight(
     target,
     weaponX, weaponY, weaponZ,
     _losTargetPoint,
+    {
+      lockOnType: weapon.config.aimStyle.lockOnType,
+      source,
+      currentTick: world.getTick(),
+    },
   );
   return (
     hasCombatLineOfSight(
@@ -285,7 +290,9 @@ function hasWeaponLineOfSightToPoint(
  *  any other weapon mounted on the same unit can fight from within
  *  the protective sphere. */
 function hasWeaponForceFieldClearance(
-  sourceEntityId: number,
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
   target: Entity,
   weaponX: number,
   weaponY: number,
@@ -297,12 +304,17 @@ function hasWeaponForceFieldClearance(
     target,
     weaponX, weaponY, weaponZ,
     _ffTargetPoint,
+    {
+      lockOnType: weapon.config.aimStyle.lockOnType,
+      source,
+      currentTick: world.getTick(),
+    },
   );
   return hasForceFieldClearance(
     weaponX, weaponY, weaponZ,
     targetPoint.x, targetPoint.y, targetPoint.z,
     activeForceFields,
-    { excludeOwnerEntityId: sourceEntityId },
+    { excludeOwnerEntityId: source.id },
   );
 }
 
@@ -463,7 +475,14 @@ function chooseBestTargetCandidate(
     }
     if (
       needsForceFieldClearance &&
-      !hasWeaponForceFieldClearance(source.id, enemy, weaponX, weaponY, weaponZ, activeForceFields)
+      !hasWeaponForceFieldClearance(
+        world,
+        source,
+        weapon,
+        enemy,
+        weaponX, weaponY, weaponZ,
+        activeForceFields,
+      )
     ) {
       continue;
     }
@@ -776,7 +795,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             wpx, wpy, wpz,
           );
           const ffClear = hasWeaponForceFieldClearance(
-            unit.id, priorityTarget, wpx, wpy, wpz, activeForceFields,
+            world,
+            unit,
+            weapon,
+            priorityTarget,
+            wpx, wpy, wpz,
+            activeForceFields,
           );
           if (!losClear || !ffClear) {
             setWeaponTarget(weapon, unit, wi, null);
@@ -864,7 +888,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
               wpx, wpy, wpz,
             )) ||
           !hasWeaponForceFieldClearance(
-            unit.id, target, wpx, wpy, wpz, activeForceFields,
+            world,
+            unit,
+            weapon,
+            target,
+            wpx, wpy, wpz,
+            activeForceFields,
           );
         weapon.losBlockedTicks = losBlocked
           ? (weapon.losBlockedTicks ?? 0) + 1
