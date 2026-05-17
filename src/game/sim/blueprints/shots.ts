@@ -14,8 +14,6 @@ import type { ShotBlueprint } from './types';
 
 const PROJECTILE_EXPLICIT_FIELDS = [
   'explosion',
-  'lifespan',
-  'lifespanVariance',
   'hitSound',
   'submunitions',
   'homingTurnRate',

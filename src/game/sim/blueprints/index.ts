@@ -319,8 +319,6 @@ function buildShotConfig(
     collision: shotBlueprint.collision,
     explosion: shotBlueprint.explosion ?? undefined,
     detonateOnExpiry: shotBlueprint.detonateOnExpiry || undefined,
-    lifespan: shotBlueprint.lifespan ?? undefined,
-    lifespanVariance: shotBlueprint.lifespanVariance ?? undefined,
     homingTurnRate: shotBlueprint.homingTurnRate ?? undefined,
     submunitions: shotBlueprint.submunitions ?? undefined,
     smokeTrail: shotBlueprint.smokeTrail ?? undefined,

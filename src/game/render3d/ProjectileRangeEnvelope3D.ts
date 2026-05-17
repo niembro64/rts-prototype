@@ -118,7 +118,7 @@ export class ProjectileRangeEnvelope3D {
       ring.mesh.position.set(mount.x, baseY, mount.y);
 
       const key = `${entity.id}:${turretIndex}:${shot.id}:${shot.launchForce}:${shot.mass}:`
-        + `${shot.lifespan ?? 0}:${isRocketLikeShot(shot) ? 1 : 0}:`
+        + `${isRocketLikeShot(shot) ? 1 : 0}:`
         + `${mapWidth}:${mapHeight}`;
       if (ring.cacheKey !== key || ring.framesUntilRecompute <= 0) {
         this.writeEnvelopeGeometry(ring, mount.x, mount.y, mount.z, shot, speed, mapWidth, mapHeight, baseY);

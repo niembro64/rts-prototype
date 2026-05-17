@@ -587,6 +587,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             projectile.projectile!.homingTargetId = weapon.target;
             projectile.projectile!.homingTurnRate = projShot.homingTurnRate;
           }
+          const maxLifespan = projectile.projectile?.maxLifespan;
 
           newProjectiles.push(projectile);
           spawnEvents.push({
@@ -594,7 +595,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: yaw,
             velocity: { x: projVx, y: projVy, z: projVz },
             projectileType: 'projectile',
-            maxLifespan: projectile.projectile?.maxLifespan,
+            maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)
+              ? maxLifespan
+              : undefined,
             turretId: config.id,
             shotId: projShot.id,
             sourceTurretId: config.id,
@@ -961,8 +964,8 @@ export function updateProjectiles(
         // laser pulses: if the firing weapon is no longer 'engaged'
         // (target died, moved out of engage range, etc.) the beam
         // stops immediately. Continuous beams reset timeAlive so they
-        // don't hit their (Infinity) lifespan check; laser pulses
-        // keep accumulating timeAlive so they still expire at their
+        // never hit a finite timeout check; laser pulses keep
+        // accumulating timeAlive so they still expire at their
         // configured duration if the weapon stays engaged the whole
         // time. Without this gate the client's render path was
         // disposing the beam at disengagement while the server kept

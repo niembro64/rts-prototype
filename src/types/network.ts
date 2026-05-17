@@ -378,7 +378,7 @@ export type NetworkServerSnapshotProjectileSpawn = {
   /** Bit-packed projectile type code (see PROJECTILE_TYPE_* constants
    *  and projectileTypeToCode / codeToProjectileType helpers). */
   projectileType: ProjectileTypeCode;
-  /** Resolved per-instance max lifespan in ms. */
+  /** Resolved finite runtime timeout in ms, when the projectile has one. */
   maxLifespan?: number;
   /** Compatibility/source turret wire code. Prefer sourceTurretId + shotId. */
   turretId: TurretTypeCode;

@@ -364,7 +364,7 @@ export const BODY_SLEEP_TICKS = sharedSimConstants.bodySleepTicks;
 
 /** D-gun wave altitude above local terrain. The D-gun is no longer a
  *  ballistic shell; it rides the terrain at this offset until its
- *  configured lifespan expires. */
+ *  range-derived runtime timeout expires. */
 export const DGUN_TERRAIN_FOLLOW_HEIGHT = 4;
 
 // =============================================================================

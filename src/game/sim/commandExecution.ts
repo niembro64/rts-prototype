@@ -594,6 +594,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     projectile.projectile.velocityZ = velocityZ;
     projectile.projectile.lastSentVelZ = velocityZ;
   }
+  const maxLifespan = projectile.projectile?.maxLifespan;
 
   ctx.world.addEntity(projectile);
 
@@ -605,7 +606,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     rotation: fireAngle,
     velocity: { x: velocityX, y: velocityY, z: velocityZ },
     projectileType: 'projectile',
-    maxLifespan: projectile.projectile?.maxLifespan,
+    maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)
+      ? maxLifespan
+      : undefined,
     turretId: dgunTurret.config.id,
     shotId: dgunShot.id,
     sourceTurretId: dgunTurret.config.id,

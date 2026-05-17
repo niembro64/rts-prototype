@@ -275,8 +275,8 @@ export function applyClientProjectilePrediction(options: {
     return { becameLineProjectile: false, shouldDelete: true };
   }
 
-  // Auto-remove if projectile has exceeded its lifespan.
-  if (proj.timeAlive > (proj.maxLifespan ?? 10000)) {
+  // Auto-remove if this projectile has a finite runtime timeout.
+  if (Number.isFinite(proj.maxLifespan) && proj.timeAlive > proj.maxLifespan) {
     return { becameLineProjectile: false, shouldDelete: true };
   }
 

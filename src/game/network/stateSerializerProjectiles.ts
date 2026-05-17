@@ -322,7 +322,9 @@ export function serializeProjectileSnapshot({
         out._velocity.y = ps.velocity.y;
         out._velocity.z = ps.velocity.z;
         out.projectileType = projectileTypeToCode(ps.projectileType);
-        out.maxLifespan = ps.maxLifespan;
+        out.maxLifespan = typeof ps.maxLifespan === 'number' && Number.isFinite(ps.maxLifespan)
+          ? ps.maxLifespan
+          : undefined;
         out.turretId = turretIdToCode(ps.turretId);
         out.shotId = shotIdToCode(ps.shotId);
         out.sourceTurretId = ps.sourceTurretId !== undefined
@@ -384,7 +386,9 @@ export function serializeProjectileSnapshot({
         out._velocity.y = proj.velocityY;
         out._velocity.z = proj.velocityZ;
         out.projectileType = projectileTypeToCode(proj.projectileType);
-        out.maxLifespan = proj.maxLifespan;
+        out.maxLifespan = Number.isFinite(proj.maxLifespan)
+          ? proj.maxLifespan
+          : undefined;
         out.turretId = proj.sourceTurretId !== undefined
           ? turretIdToCode(proj.sourceTurretId)
           : TURRET_ID_UNKNOWN;

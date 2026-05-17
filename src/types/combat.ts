@@ -127,8 +127,8 @@ export type ProjectileSpawnEvent = {
   rotation: number;
   velocity: Vec3;
   projectileType: string;
-  /** Resolved per-instance max lifespan in ms. Present for projectiles
-   *  whose blueprint lifespan may be randomized. */
+  /** Resolved finite runtime timeout in ms. Omitted for ordinary
+   *  traveling shots, which terminate through collision/ground physics. */
   maxLifespan?: number;
   /** Compatibility/source turret id. New code should use
    *  sourceTurretId for provenance and shotId for projectile config. */

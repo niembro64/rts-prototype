@@ -12,8 +12,6 @@
       "force": 500
     },
     "detonateOnExpiry": true,
-    "lifespan": 2000,
-    "lifespanVariance": null,
     "hitSound": {
       "$audio": "event.hit.lightShot"
     },
@@ -36,8 +34,6 @@
       "force": 1000
     },
     "detonateOnExpiry": true,
-    "lifespan": 3000,
-    "lifespanVariance": null,
     "hitSound": {
       "$audio": "event.hit.mediumShot"
     },
@@ -60,8 +56,6 @@
       "force": 800
     },
     "detonateOnExpiry": true,
-    "lifespan": 9000,
-    "lifespanVariance": null,
     "hitSound": {
       "$audio": "event.hit.lightRocket"
     },
@@ -69,7 +63,6 @@
     "homingTurnRate": 0.7,
     "smokeTrail": {
       "emitFramesSkip": 0,
-      "lifespanMs": 1400,
       "startRadius": 1,
       "endRadius": 8,
       "startAlpha": 0.9,
@@ -91,8 +84,6 @@
       "force": 7000
     },
     "detonateOnExpiry": true,
-    "lifespan": 5000,
-    "lifespanVariance": null,
     "hitSound": {
       "$audio": "event.hit.heavyShot"
     },
@@ -115,8 +106,6 @@
       "force": 10000
     },
     "detonateOnExpiry": true,
-    "lifespan": 5000,
-    "lifespanVariance": 0.2,
     "hitSound": {
       "$audio": "event.hit.mortarShot"
     },
@@ -145,8 +134,6 @@
       "force": 2499750
     },
     "detonateOnExpiry": true,
-    "lifespan": 2000,
-    "lifespanVariance": null,
     "hitSound": {
       "$audio": "event.hit.disruptorShot"
     },

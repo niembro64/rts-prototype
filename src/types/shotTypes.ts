@@ -103,11 +103,8 @@ export type ProjectileShotBlueprint = {
   collision: ShotCollision;
   /** Null for carrier shots that only release submunitions. */
   explosion: ShotExplosion | null;
-  /** When true, the projectile runs detonation logic at the end of `lifespan`. */
+  /** When true, terminal impacts/timeouts run detonation logic. */
   detonateOnExpiry: boolean;
-  lifespan: number | null;
-  /** Fractional per-instance lifespan variance. `0.1` means plus/minus 10%. */
-  lifespanVariance: number | null;
   hitSound: SoundEntry | null;
   /** Cluster behavior. */
   submunitions: SubmunitionSpec | null;
@@ -182,11 +179,8 @@ export type ProjectileShot = {
   collision: ShotCollision;
   /** Splash AoE. */
   explosion?: ShotExplosion;
-  /** When true, run detonation logic at the end of `lifespan`. */
+  /** When true, terminal impacts/timeouts run detonation logic. */
   detonateOnExpiry?: boolean;
-  lifespan?: number;
-  /** Fractional per-instance variance applied to maxLifespan at projectile creation. */
-  lifespanVariance?: number;
   homingTurnRate?: number;
   trailLength?: number;
   /** Cluster / flak-burst behavior. */
@@ -328,10 +322,11 @@ export function isRocketLikeShot(shot: ShotConfig): boolean {
   return isProjectileShot(shot) && shot.type === 'rocket';
 }
 
-/** Static (no-RNG) max lifespan for a shot. */
+/** Static max active time for runtime shot entities. Traveling shots
+ *  are physical bodies and do not carry authored time-to-live values. */
 export function getShotMaxLifespan(shot: ShotConfig, fallbackLifespan: number = 2000): number {
   if (shot.type === 'beam') return Infinity;
   if (shot.type === 'laser') return shot.duration;
-  if (shot.type === 'plasma' || shot.type === 'rocket') return shot.lifespan ?? fallbackLifespan;
+  if (shot.type === 'plasma' || shot.type === 'rocket') return Infinity;
   return fallbackLifespan;
 }

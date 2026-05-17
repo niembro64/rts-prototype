@@ -209,7 +209,7 @@ export function resetCollisionBuffers(): void {
  *
  * `surfaceNormalX/Y/Z` is the world-space surface normal at the
  * impact point (sim coords: z is up). Pass undefined for all three
- * when there is no surface (lifespan expiry mid-air).
+ * when there is no surface.
  */
 function spawnSubmunitions(
   world: WorldState,
@@ -320,6 +320,7 @@ function spawnSubmunitions(
       proj.projectile.velocityZ = launchVz;
       proj.projectile.lastSentVelZ = launchVz;
     }
+    const maxLifespan = proj.projectile?.maxLifespan;
     outProjectiles.push(proj);
     outSpawnEvents.push({
       id: proj.id,
@@ -327,7 +328,9 @@ function spawnSubmunitions(
       rotation: Math.atan2(launchVy, launchVx),
       velocity: { x: launchVx, y: launchVy, z: launchVz },
       projectileType: 'projectile',
-      maxLifespan: proj.projectile?.maxLifespan,
+      maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)
+        ? maxLifespan
+        : undefined,
       // Source/provenance remains the real turret; shotId tells the
       // client which child projectile blueprint to hydrate.
       turretId: sourceTurretId ?? '',
@@ -594,8 +597,8 @@ export function checkProjectileCollisions(
     }
 
     // Ground impact — a traveling projectile whose center drops below
-    // the ground plane is treated exactly like lifespan expiry: if the
-    // shot has detonateOnExpiry the splash goes off at the impact point,
+    // the ground plane is a terminal event: if the shot has
+    // detonateOnExpiry the splash goes off at the impact point,
     // otherwise just a projectileExpire visual. Snap z to the local
     // terrain so splash AOE is centered ON the ground, not below it
     // — for tiles in the central ripple disc the snap can lift the
@@ -615,7 +618,7 @@ export function checkProjectileCollisions(
       projEntity.transform.z = groundZAtProj;
     }
 
-    // Check if projectile expired (lifespan OR ground/barrier impact)
+    // Check if the projectile hit a terminal timeout, ground, or barrier.
     const terminalReflectorHit = (hitMirrorPanel || hitForceField) && !reflectedProjectile;
     if (proj.timeAlive >= proj.maxLifespan || hitGround || terminalReflectorHit) {
       // Beam audio is handled by updateLaserSounds based on targeting state
@@ -636,9 +639,9 @@ export function checkProjectileCollisions(
         );
       }
 
-      // Detonate on lifespan expiry when detonateOnExpiry is set AND the
-      // shot has something to do at the apex (an explosion, submunitions,
-      // or both). A pure carrier (no explosion, only submunitions) still
+      // Detonate on terminal events when detonateOnExpiry is set AND the
+      // shot has something to do there (an explosion, submunitions, or
+      // both). A pure carrier (no explosion, only submunitions) still
       // fragments here.
       if (runtimeProfile.detonateOnExpiry && proj.hasLeftSource && !proj.hasExploded) {
         const projShot = config.shot as ProjectileShot;

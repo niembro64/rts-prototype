@@ -480,6 +480,8 @@ export type Projectile = {
   collisionStartY?: number;
   collisionStartZ?: number;
   timeAlive: number;
+  /** Finite runtime timeout for lasers and special projectile classes;
+   *  Infinity for ordinary traveling shot bodies. */
   maxLifespan: number;
   /** Beam/laser polyline. Index 0 = start (turret mount center), last = end
    *  (range/hit/ground/terminal reflector), middles = reflections.

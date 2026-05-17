@@ -1,4 +1,4 @@
-import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, ProjectileShot, UnitLocomotion } from './types';
+import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, UnitLocomotion } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ShotId, TurretId } from '../../types/blueprintIds';
 import { EntityCacheManager } from './EntityCacheManager';
@@ -848,6 +848,10 @@ export class WorldState {
     // D-gun hits everything (infinite hits)
     if (entity.projectile) {
       entity.projectile.maxHits = Infinity;
+      const speed = Math.hypot(velocityX, velocityY);
+      if (speed > 1e-6 && Number.isFinite(config.range) && config.range > 0) {
+        entity.projectile.maxLifespan = (config.range / speed) * 1000;
+      }
     }
 
     return entity;
@@ -906,18 +910,10 @@ export class WorldState {
     // Calculate rotation from velocity
     const rotation = Math.atan2(velocityY, velocityX);
 
-    // Static (no-RNG) lifespan from shot type, then apply per-instance
-    // variance for projectiles/rockets so each spawn gets a slightly
-    // different fuse.
-    let maxLifespan = config.shotProfile.runtime.maxLifespan;
-    if (config.shotProfile.runtime.isProjectile) {
-      const shot = config.shot as ProjectileShot;
-      const variance = Math.max(0, shot.lifespanVariance ?? 0);
-      if (variance > 0) {
-        const factor = 1 + (this.rng.next() * 2 - 1) * variance;
-        maxLifespan = Math.max(0, maxLifespan * factor);
-      }
-    }
+    // Traveling projectile shots do not carry authored time-to-live values; they
+    // terminate through collision/ground physics. Line shots still use
+    // this runtime timeout for laser pulse duration.
+    const maxLifespan = config.shotProfile.runtime.maxLifespan;
 
     // Always single hit (DGun overrides maxHits to Infinity after creation)
     const maxHits = 1;
