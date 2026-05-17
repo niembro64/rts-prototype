@@ -280,9 +280,9 @@ pub fn step_unit_motion(
 //
 //  Capacity is fixed at POOL_CAPACITY at init time. Vecs never
 //  reallocate, so the typed-array views JS holds remain valid
-//  forever (no per-tick view refresh). Sized for an upper bound
-//  on simultaneous bodies (units + buildings); 4096 is plenty for
-//  the unit counts the game runs (typically a few hundred).
+//  forever (no per-tick view refresh). Sized for the current scale
+//  target: 5k active units plus commanders, buildings, and headroom
+//  for short-lived bodies during stress captures.
 //
 //  Free-slot management: a free-list Vec drains last-allocated
 //  first. `next_unused_slot` tracks the high-water mark for the
@@ -294,7 +294,7 @@ pub fn step_unit_motion(
 //  every step would waste cycles.
 // ─────────────────────────────────────────────────────────────────
 
-pub const POOL_CAPACITY: u32 = 4096;
+pub const POOL_CAPACITY: u32 = 8192;
 const POOL_CAPACITY_USIZE: usize = POOL_CAPACITY as usize;
 
 // Bit positions inside the per-body `flags: Vec<u8>`. Mirrors the
