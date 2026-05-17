@@ -3,8 +3,12 @@
 //
 // All three buildings share the same lifecycle:
 //
-//   - When complete and undamaged they sit OPEN (state.open = true) and
-//     produce their resource.
+//   - At completion (real construction or pre-placed) the building
+//     starts CLOSED / not-producing and counts down
+//     BUILDING_REOPEN_DELAY_MS before opening for the first time. This
+//     is the shared activation debounce — every on/off producer goes
+//     through it, no per-type variation.
+//   - Once OPEN they produce their resource.
 //   - The first incoming damage hit starts a 2-second grace timer
 //     (state.damageDelayMs counts down from BUILDING_DAMAGE_DELAY_MS).
 //     During the grace they still take full damage and still produce.
@@ -122,28 +126,13 @@ function setBuildingProducing(entity: Entity, producing: boolean): boolean {
   return false;
 }
 
-/** Called from applyCompletedBuildingEffects (and the standalone background
- *  battle spawner) once the building is alive and owned. Snaps the
- *  active-state to OPEN and starts production. */
-export function activateBuildingActiveState(world: WorldState, entity: Entity): void {
-  const state = ensureBuildingActiveState(entity);
-  if (!state || !entity.building || !isEntityActive(entity) || entity.building.hp <= 0) return;
-  let changed = false;
-  if (!state.open || state.damageDelayMs !== 0 || state.reopenDelayMs !== 0) {
-    state.open = true;
-    state.damageDelayMs = 0;
-    state.reopenDelayMs = 0;
-    changed = true;
-  }
-  setBuildingProducing(entity, true);
-  if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
-}
-
-/** Called during spawn for the visual "starts closed" pose on solar
- *  collectors — it makes their first-frame appearance match the rest
- *  of the close-on-damage flow. Wind/extractor don't use this path
- *  (they're built open and stay open until damaged). */
-export function startBuildingActiveStateClosed(world: WorldState, entity: Entity): void {
+/** Called from applyCompletedBuildingEffects (and the standalone
+ *  background-battle spawner) once any on/off producer building is
+ *  alive and owned. Puts it into the shared initial pose: CLOSED, not
+ *  producing, with the reopen timer primed to BUILDING_REOPEN_DELAY_MS.
+ *  The per-tick driver then counts that down and snaps the building
+ *  OPEN, matching every later close→open transition in the lifecycle. */
+export function initializeBuildingActiveState(world: WorldState, entity: Entity): void {
   const state = ensureBuildingActiveState(entity);
   if (!state || !entity.building || !isEntityActive(entity) || entity.building.hp <= 0) return;
   let changed = false;

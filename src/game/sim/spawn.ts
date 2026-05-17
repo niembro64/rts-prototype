@@ -16,10 +16,9 @@ import {
 } from '../../config';
 import { isWaterAt } from './Terrain';
 import {
-  activateBuildingActiveState,
   buildingTypeHasActiveState,
   ensureBuildingActiveState,
-  startBuildingActiveStateClosed,
+  initializeBuildingActiveState,
 } from './buildingActiveState';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import {
@@ -131,8 +130,7 @@ function commanderRadiusForMap(mapWidth: number, mapHeight: number): number {
  *  first snapshot arrives — without that, the camera stays centered
  *  on the map mid and the joiner's commander spawns off-frustum on
  *  the periphery. The radial-sector layout uses the same oval as
- *  `getDemoOval`, so this is also the same seat the capture
- *  system pre-paints for that player. */
+ *  `getDemoOval`. */
 export function getSpawnPositionForSeat(
   seatIndex: number,
   playerCount: number,
@@ -250,10 +248,8 @@ function placeCompleteBuilding(
     };
   }
 
-  if (buildingType === 'solar' && config.energyProduction) {
-    startBuildingActiveStateClosed(world, entity);
-  } else if (buildingTypeHasActiveState(buildingType)) {
-    activateBuildingActiveState(world, entity);
+  if (buildingTypeHasActiveState(buildingType)) {
+    initializeBuildingActiveState(world, entity);
   }
 
   // Buildings whose blueprint declares turrets get a CombatComponent

@@ -2,12 +2,10 @@ import type { WorldState } from './WorldState';
 import type { Entity } from './types';
 import { factoryProductionSystem } from './factoryProduction';
 import {
-  activateBuildingActiveState,
   deactivateBuildingActiveState,
-  startBuildingActiveStateClosed,
+  initializeBuildingActiveState,
   buildingTypeHasActiveState,
 } from './buildingActiveState';
-import { spatialGrid } from './SpatialGrid';
 import { isEntityActive } from './buildableHelpers';
 import {
   claimDepositsForExtractor,
@@ -20,28 +18,23 @@ export function getExtractorMetalRate(entity: Entity): number {
 }
 
 export function applyCompletedBuildingEffects(world: WorldState, entity: Entity): void {
-  spatialGrid.syncBuildingCapture(entity);
-
   if (entity.buildingType === 'extractor' && entity.ownership) {
     // Binary deposit-claim system. Walk every deposit the extractor
     // footprint overlaps; each currently-free deposit becomes owned
     // by this extractor. Already-owned deposits stay where they are.
-    // We DON'T credit income here — activateBuildingActiveState below
-    // calls setBuildingProducing(open=true) which adds the just-claimed
-    // rate to the player's tally, so the two paths share one source of
-    // truth ("am I currently open?") rather than racing.
+    // We DON'T credit income here — initializeBuildingActiveState
+    // below starts the extractor CLOSED, and the per-tick driver only
+    // calls setBuildingProducing(open=true) once the activation
+    // debounce elapses; that's the single source of truth for "is
+    // this extractor's rate currently in the player's tally."
     claimDepositsForExtractor(world, entity);
   }
 
-  // Solar starts closed (visual + production matches the rest of the
-  // close-on-damage flow); wind + extractor start open and producing,
-  // which is also where extractor's metal income kicks in.
-  if (entity.buildingType === 'solar' && entity.ownership) {
-    startBuildingActiveStateClosed(world, entity);
-  } else if (
-    buildingTypeHasActiveState(entity.buildingType) && entity.ownership
-  ) {
-    activateBuildingActiveState(world, entity);
+  // Every on/off producer (solar, wind, extractor) goes through the
+  // same activation policy: start CLOSED / not-producing, debounce to
+  // OPEN after BUILDING_REOPEN_DELAY_MS.
+  if (buildingTypeHasActiveState(entity.buildingType) && entity.ownership) {
+    initializeBuildingActiveState(world, entity);
   }
 }
 
