@@ -967,6 +967,14 @@ function packCaptureIntoScratch(sim: SimWasm, capture: SnapshotCapture): void {
   }
 }
 
+function packRemovedIdsIntoScratch(sim: SimWasm, ids: readonly number[]): void {
+  if (ids.length === 0) return;
+  const api = sim.snapshotEncode;
+  api.removedIdsScratchEnsure(ids.length);
+  const view = new Uint32Array(sim.memory.buffer, api.removedIdsScratchPtr(), ids.length);
+  for (let i = 0; i < ids.length; i++) view[i] = ids[i];
+}
+
 export type RustSnapshotEncodeResult = {
   bytes: Uint8Array;
   rustEntityCount: number;
@@ -1050,6 +1058,78 @@ function emitTopLevelKey(
   }
 }
 
+function emitEnvelopeTail(
+  sim: SimWasm,
+  state: NetworkServerSnapshot,
+  keys: readonly string[],
+  startIndex: number,
+): number {
+  const api = sim.snapshotEncode;
+  let index = startIndex;
+  let hasGameState = 0;
+  let gameStatePhaseSlot = 0;
+  let hasWinnerId = 0;
+  let winnerId = 0;
+
+  if (keys[index] === 'gameState') {
+    const gameState = state.gameState;
+    if (
+      gameState === undefined ||
+      typeof gameState.phase !== 'string' ||
+      (gameState.winnerId !== undefined && !isUint(gameState.winnerId, 0xFF))
+    ) {
+      return startIndex;
+    }
+    const stringSlots = packStringsIntoScratch(sim, [gameState.phase]);
+    gameStatePhaseSlot = stringSlots.get(gameState.phase) ?? 0;
+    hasGameState = 1;
+    if (gameState.winnerId !== undefined) {
+      hasWinnerId = 1;
+      winnerId = gameState.winnerId;
+    }
+    index++;
+  }
+
+  if (keys[index] !== 'isDelta' || typeof state.isDelta !== 'boolean') return startIndex;
+  index++;
+
+  let hasRemovedEntityIds = 0;
+  let removedEntityIdCount = 0;
+  if (keys[index] === 'removedEntityIds') {
+    const ids = state.removedEntityIds;
+    if (ids === undefined) return startIndex;
+    for (let i = 0; i < ids.length; i++) {
+      if (!isUint(ids[i], 0xFFFF_FFFF)) return startIndex;
+    }
+    packRemovedIdsIntoScratch(sim, ids);
+    hasRemovedEntityIds = 1;
+    removedEntityIdCount = ids.length;
+    index++;
+  }
+
+  let hasVisibilityFiltered = 0;
+  let visibilityFiltered = 0;
+  if (keys[index] === 'visibilityFiltered') {
+    if (typeof state.visibilityFiltered !== 'boolean') return startIndex;
+    hasVisibilityFiltered = 1;
+    visibilityFiltered = state.visibilityFiltered ? 1 : 0;
+    index++;
+  }
+
+  api.envelopeContinue(
+    hasGameState,
+    gameStatePhaseSlot,
+    hasWinnerId,
+    winnerId,
+    state.isDelta ? 1 : 0,
+    hasRemovedEntityIds,
+    removedEntityIdCount,
+    hasVisibilityFiltered,
+    visibilityFiltered,
+  );
+  return index;
+}
+
 export function encodeNetworkSnapshotWithRustFallback(
   state: NetworkServerSnapshot,
 ): RustSnapshotEncodeResult | null {
@@ -1076,6 +1156,13 @@ export function encodeNetworkSnapshotWithRustFallback(
   const rawTopLevelKeys: string[] = [];
   for (let i = 2; i < keys.length; i++) {
     const key = keys[i];
+    if (key === 'gameState' || key === 'isDelta') {
+      const nextIndex = emitEnvelopeTail(sim, state, keys, i);
+      if (nextIndex !== i) {
+        i = nextIndex - 1;
+        continue;
+      }
+    }
     emitTopLevelKey(sim, key, (state as Record<string, unknown>)[key], rawTopLevelKeys);
   }
 

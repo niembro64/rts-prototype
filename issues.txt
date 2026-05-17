@@ -31,6 +31,11 @@ bytes and falls back to @msgpack/msgpack only when WASM is unavailable, DTO key
 order is unsupported, or a development parity check catches a mismatch. The
 Rust crate already has snapshot_encode_* and envelope encoder functions, and
 src/game/sim-wasm/snapshotEncoderTest.ts checks byte-equality fixtures.
+The normal envelope tail is now Rust-emitted for gameState, isDelta,
+removedEntityIds, and visibilityFiltered when the snapshot key order is
+compatible; raw top-level fallback remains for unported/debug fields such as
+serverMeta, grid, terrain/buildability, and unsupported audio/projectile
+variants.
 DP-02 encode instrumentation now exists behind ?dp02=1 /
 VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports active snapshot wire encode time and
 byte size per listener, snapshot rate, and unit-count band, and exposes
